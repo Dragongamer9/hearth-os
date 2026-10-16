@@ -103,6 +103,27 @@ Art is served to the UI from `https://nimbus-art.local/<id>/<cover|hero|logo|wid
 - **Downloads**: state and progress come from each `appmanifest_*.acf` (`StateFlags`, `BytesDownloaded/BytesToDownload`). Steam only writes those at checkpoints, so between checkpoints Nimbus estimates progress from the PC's received network bytes and shows the speed. The UI polls `library.downloads` every 3 s while something is installing, reloads the library when a download finishes, and shows "ready to play".
 - **Steam in the background** (*Settings › Library sources*, on by default): Nimbus starts `steam.exe -silent` at startup and before Steam launches/installs, and hides Steam's main window (title exactly "Steam") for a short while afterwards. Other Steam windows, like the Install dialog, are left alone, and the tray icon still opens Steam.
 
+## Store accounts: Epic, GOG and Xbox (Library › Stores)
+
+Open **Library › Stores & accounts** (X on a controller, F on a keyboard) to sign in. Each store's own sign-in page opens in a full-screen window; you type your password there, and Nimbus only picks up the one-time code the store hands back. In that window the controller mouse turns on by itself, Y opens an on-screen keyboard and B cancels.
+
+| Store | What you get | How |
+|---|---|---|
+| **Epic Games** | Your whole Epic library; install, launch and uninstall **without the Epic Games Launcher** | [legendary](https://github.com/legendary-gl/legendary) 0.21.1 (open source, GPLv3) |
+| **GOG** | Your whole GOG library with covers; install, launch and uninstall **without GOG Galaxy** | GOG's web API for sign-in and the list, [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl) 1.3.0 (from Heroic, GPLv3) for downloads |
+| **Xbox** | Gamertag and gamerpic; the PC games you've played on Xbox, with Xbox art | Microsoft account → Xbox Live sign-in. Install opens the Microsoft Store, since Microsoft only lets the Store / Xbox app install these games |
+| **Steam** | Already built in | Signs in through Steam itself ("Open Steam") |
+
+- legendary and gogdl are separate programs, downloaded from their GitHub releases the first time you sign in, checked against a pinned SHA-256, and kept in `%LOCALAPPDATA%\Nimbus\tools`. They are not part of Nimbus.
+- These are unofficial integrations (the same approach Heroic and Playnite use). Stores can change their APIs.
+- Sign-ins are stored per Windows user: Epic in `%LOCALAPPDATA%\Nimbus\legendary`, GOG in `%LOCALAPPDATA%\Nimbus\gog`, Xbox's token encrypted with Windows DPAPI in `%LOCALAPPDATA%\Nimbus\accounts`.
+- Epic and GOG games install to `%USERPROFILE%\Games\Epic` and `\GOG` by default (change it on the Stores page). Downloads run one at a time and show in **Downloads**, where you can cancel them; starting again resumes. Epic games' one-time prerequisites (e.g. Visual C++ runtimes) run after the install, like the Epic launcher does.
+- Game lists refresh in the background every 12 hours, or with **Refresh list**.
+
+## Profile
+
+**Settings › Profile**: your name, a status line, a picture (initials, 12 built-in pictures, your Xbox/Steam/GOG picture once signed in, or any image file), an accent color, and a background theme (Midnight, Slate, Plum, Forest, Ember, Black, or your own picture). The picture shows in the top bar and the menu.
+
 Debug helpers: `bridge.log` next to `Nimbus.exe` logs every bridge call and UI image failures; **Ctrl+Shift+D** logs the focused game's art state. `rebuild-and-run.cmd` builds and relaunches in one click.
 
 ## Install on any PC
@@ -169,7 +190,7 @@ No license: all rights reserved. The source is public to read, but it may not be
 
 ## Next milestones
 
-1. ~~Real library~~ ✅ done (incl. owned Steam games, installs, download progress). Still to do: art for Epic/GOG/manual games (e.g. SteamGridDB); owned-but-uninstalled games for Epic/GOG/Xbox (needs their sign-in APIs).
+1. ~~Real library~~ ✅ done (incl. owned Steam games, installs, download progress). Owned games for Epic, GOG and Xbox ✅ (store accounts). Still to do: art for manual games (e.g. SteamGridDB), Game Pass catalog, cloud saves.
 2. ~~Shell mode~~ ✅ first version. Still to do: run Startup/Run-key apps, a tray replacement, other apps' notifications.
 3. **More system controls:** external-monitor brightness (DDC/CI), resolution/refresh switching, TDP via vendor tools, volume-change notifications.
 4. **Guide button overlay:** global gamepad hook so the Quick Access panel opens over a running game.

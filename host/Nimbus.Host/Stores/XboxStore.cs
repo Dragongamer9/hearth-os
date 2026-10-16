@@ -203,7 +203,7 @@ public sealed class XboxStore
     {
         await EnsureXstsAsync();
         if (_saved!.Gamerpic is null) { await LoadProfileAsync(); Persist(); }
-        using var doc = await GetAsync($"https://titlehub.xboxlive.com/users/xuid({_xsts!.Value.Xuid})/titles/titlehistory/decoration/Image,Detail?maxItems=1000", "2");
+        using var doc = await GetAsync($"https://titlehub.xboxlive.com/users/xuid({_xsts!.Value.Xuid})/titles/titlehistory/decoration/image,detail?maxItems=1000", "2");
         var cache = new OwnedCache { Fetched = Time.NowMs };
         foreach (var t in doc.RootElement.Arr("titles"))
         {
