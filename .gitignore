@@ -1,0 +1,6 @@
+bin/
+obj/
+*.log
+*.user
+.vs/
+tools/TestGame/bin/
