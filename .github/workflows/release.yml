@@ -1,8 +1,9 @@
-# Builds Nimbus on Windows.
-# - Every push and pull request: build (catches compile errors).
+# Builds Nimbus for Windows and Linux.
+# - Every push and pull request: build both (catches compile errors) and run the Linux host's tests.
 # - Push to main with a new <Version> in Nimbus.Host.csproj: also publish GitHub Release vX.Y.Z
-#   (the tag is created here). Pushing a tag vX.Y.Z by hand does the same.
+#   (the tag is created here) with both builds. Pushing a tag vX.Y.Z by hand does the same.
 #   Nimbus checks the latest release and offers it in Settings › Updates.
+# The version lives in one place, hosts/windows/Nimbus.Host/Nimbus.Host.csproj; the Linux build takes it from there.
 name: Build and release
 
 on:
@@ -15,7 +16,23 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Work out the version
+        id: ver
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then v="${{ github.ref_name }}"; v="${v#v}"
+          else v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1); fi
+          [ -n "$v" ] || { echo "No <Version> in Nimbus.Host.csproj"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Version: $v"
+
+  windows:
+    needs: version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,22 +41,12 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Work out the version
-        id: ver
-        shell: pwsh
-        run: |
-          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart('v') }
-          else { $v = ([xml](Get-Content host/Nimbus.Host/Nimbus.Host.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1 }
-          if (-not $v) { throw "No <Version> in Nimbus.Host.csproj" }
-          "version=$v" >> $env:GITHUB_OUTPUT
-          "Version: $v" 
-
       - name: Publish
         shell: pwsh
         run: >
-          dotnet publish host/Nimbus.Host/Nimbus.Host.csproj
+          dotnet publish hosts/windows/Nimbus.Host/Nimbus.Host.csproj
           -c Release -r win-x64 --self-contained false -p:Platform=x64
-          -p:Version=${{ steps.ver.outputs.version }}
+          -p:Version=${{ needs.version.outputs.version }}
           -o out -nologo
 
       - name: Check the package
@@ -59,19 +66,65 @@ jobs:
       - name: Keep the build
         uses: actions/upload-artifact@v4
         with:
-          name: Nimbus-win-x64-${{ steps.ver.outputs.version }}
-          path: Nimbus-win-x64.zip
+          name: windows
+          path: |
+            Nimbus-win-x64.zip
+            Nimbus-win-x64.zip.sha256
+
+  linux:
+    needs: version
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hosts/linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Test
+        run: npm test
+
+      - name: Build the AppImage
+        run: |
+          npm version "${{ needs.version.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm run dist
+          cd dist
+          f=Nimbus-linux-x86_64.AppImage
+          test -f "$f" || { echo "Missing $f"; ls; exit 1; }
+          sha256sum "$f" | cut -d' ' -f1 | tr -d '\n' > "$f.sha256"
+
+      - name: Keep the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            hosts/linux/dist/Nimbus-linux-x86_64.AppImage
+            hosts/linux/dist/Nimbus-linux-x86_64.AppImage.sha256
+
+  release:
+    needs: [version, windows, linux]
+    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: builds
+          merge-multiple: true
 
       - name: Publish the release (new versions only)
-        if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v${{ steps.ver.outputs.version }}"
-          gh release view $tag 2>$null
-          if ($LASTEXITCODE -eq 0) { "Release $tag already exists; nothing to publish."; exit 0 }
-          $notes = git log -1 --pretty=%B
-          gh release create $tag Nimbus-win-x64.zip Nimbus-win-x64.zip.sha256 `
-            --target "${{ github.sha }}" --title "Nimbus ${{ steps.ver.outputs.version }}" --notes "$notes"
-          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+          tag="v${{ needs.version.outputs.version }}"
+          if gh release view "$tag" >/dev/null 2>&1; then echo "Release $tag already exists; nothing to publish."; exit 0; fi
+          notes="$(git log -1 --pretty=%B)"
+          gh release create "$tag" builds/* --target "${{ github.sha }}" \
+            --title "Nimbus ${{ needs.version.outputs.version }}" --notes "$notes"

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Nimbus
+Comment=Controller-first game mode (SteamOS-style), running in gamescope
+Exec=/usr/local/bin/nimbus-session
+TryExec=/usr/local/bin/nimbus-session
+Type=Application
+DesktopNames=Nimbus
