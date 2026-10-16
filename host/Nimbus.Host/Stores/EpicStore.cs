@@ -112,7 +112,7 @@ public sealed class EpicStore
                 var path = e.Str("install_path"); var title = e.Str("title");
                 if (path is null || title is null || !Directory.Exists(path)) continue;
                 if (e.True("is_dlc")) continue;
-                long size = e.TryGetProperty("install_size", out var s) && s.TryGetInt64(out var n) ? n : 0;
+                long size = e.TryGetProperty("install_size", out var s) && s.ValueKind == JsonValueKind.Number && s.TryGetInt64(out var n) ? n : 0;
                 var g = new Game
                 {
                     Id = "epic:" + p.Name,

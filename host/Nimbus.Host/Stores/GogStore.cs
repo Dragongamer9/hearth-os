@@ -126,7 +126,7 @@ public sealed class GogStore
         {
             using var doc = await GetAsync($"https://embed.gog.com/account/getFilteredProducts?mediaType=1&sortBy=title&page={page}");
             var r = doc.RootElement;
-            pages = r.TryGetProperty("totalPages", out var tp) && tp.TryGetInt32(out var n) ? n : 1;
+            pages = r.TryGetProperty("totalPages", out var tp) && tp.ValueKind == JsonValueKind.Number && tp.TryGetInt32(out var n) ? n : 1;
             foreach (var p in r.Arr("products"))
             {
                 if (!p.Obj("worksOn").True("Windows")) continue;
