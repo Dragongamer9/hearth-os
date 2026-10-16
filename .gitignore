@@ -4,3 +4,5 @@ obj/
 *.user
 .vs/
 tools/TestGame/bin/
+hosts/linux/node_modules/
+hosts/linux/dist/

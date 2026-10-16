@@ -1,0 +1,35 @@
+#!/bin/sh
+# Keeps Nimbus running inside the session, like the Windows host's watchdog.
+#   exit 0   Nimbus quit on purpose (sign out, switch to desktop): end the session.
+#   exit 75  Nimbus installed an update: start it again right away.
+#   other    a crash: restart it. Three crashes within two minutes roll back a just-installed
+#            update (<app>.old); if there's nothing to roll back, end the session so the
+#            login screen comes back instead of a black screen.
+
+APP="$1"
+LOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/session.log"
+mkdir -p "$(dirname "$LOG")"
+crashes=""
+
+while :; do
+  "$APP" --session --ozone-platform=x11 >>"$LOG" 2>&1
+  code=$?
+  now=$(date +%s)
+  case $code in
+    0) exit 0 ;;
+    75) echo "$(date) update installed, restarting" >>"$LOG"; continue ;;
+  esac
+  echo "$(date) Nimbus exited with code $code" >>"$LOG"
+  recent=""
+  for t in $crashes; do [ $((now - t)) -lt 120 ] && recent="$recent $t"; done
+  crashes="$recent $now"
+  if [ "$(echo $crashes | wc -w)" -ge 3 ]; then
+    if [ -f "$APP.old" ]; then
+      echo "$(date) new version keeps crashing, rolling back" >>"$LOG"
+      mv -f "$APP.old" "$APP" && crashes="" && continue
+    fi
+    echo "$(date) too many crashes, ending the session" >>"$LOG"
+    exit 1
+  fi
+  sleep 1
+done

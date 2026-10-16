@@ -7,7 +7,7 @@ set LOG=%~dp0install-shell.log
 set PATH=%ProgramFiles%\dotnet;%PATH%
 echo === %DATE% %TIME% === > "%LOG%"
 taskkill /im Nimbus.exe /f >nul 2>&1
-cd /d "%~dp0host\Nimbus.Host"
+cd /d "%~dp0hosts\windows\Nimbus.Host"
 echo Building Nimbus...
 dotnet publish -c Release -r win-x64 --self-contained false -p:Platform=x64 -o "%APP%" -nologo >> "%LOG%" 2>&1
 if errorlevel 1 (

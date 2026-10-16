@@ -157,6 +157,16 @@ public sealed class SystemBridge : IDisposable
     {
         switch (method)
         {
+            case "host.info":
+                return new
+                {
+                    platform = "windows",
+                    name = "Windows 11 PC",
+                    host = "Nimbus.Host (WebView2)",
+                    version = typeof(SystemBridge).Assembly.GetName().Version?.ToString(3),
+                    session = Program.IsShell,
+                    user = Environment.UserName,
+                };
             case "sys.status": return await StatusAsync();
 
             case "radios.set":

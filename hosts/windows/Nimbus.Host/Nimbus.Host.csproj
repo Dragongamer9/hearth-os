@@ -26,7 +26,7 @@
 
   <!-- Copy the web UI next to the exe as wwwroot/ -->
   <ItemGroup>
-    <Content Include="..\..\ui\**\*.*" LinkBase="wwwroot">
+    <Content Include="..\..\..\ui\**\*.*" LinkBase="wwwroot">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

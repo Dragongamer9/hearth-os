@@ -1,0 +1,93 @@
+# Nimbus bridge contract
+
+The UI (`ui/index.html`) is shared by every platform. It talks to its host only through the messages
+below, so a host is "done" when it answers all of them. If you add a method, add it here, to both hosts,
+and to the browser-preview `MOCK` in the UI.
+
+| Host | Channel the UI sees | Implementation |
+|---|---|---|
+| Windows | `window.chrome.webview` (WebView2) | `hosts/windows/Nimbus.Host/SystemBridge.cs`, `ShellForm.cs` |
+| Linux | `window.nimbusHost` (Electron preload, same API) | `hosts/linux/src/bridge.js`, `main.js` |
+| Browser preview | none, the UI uses its built-in `MOCK` | `ui/index.html` |
+
+Both channels have the same shape: `postMessage(obj)` and `addEventListener('message', e => e.data)`.
+
+## Messages
+
+**UI → host**
+
+| Message | Meaning |
+|---|---|
+| `{type:'ready'}` | The page (re)loaded. |
+| `{type:'call', id, method, args}` | Request; answered by a `result` with the same `id`. |
+| `{type:'log', text}` | Line for the host's `bridge.log`. |
+| `{type:'power', action}` | `sleep` · `restart` · `shutdown` · `signout` · `desktop` (Windows: open File Explorer; Linux: leave the Nimbus session). |
+| `{type:'resume'}` | Quick Access closed while a game runs: give the screen back to the game. Linux only; Windows ignores it. |
+| `{type:'setting', key, value}` | Settings with no host support yet (frame limit, TDP). Ignored. |
+
+**Host → UI**
+
+| Message | Meaning |
+|---|---|
+| `{type:'result', id, ok, value \| error}` | Answer to a `call`. |
+| `{type:'event', name, data}` | Push (list below). |
+| `{type:'toast', text}` | Show a short notice. |
+
+## Methods
+
+Values are camelCase JSON. "—" means the method returns `null`.
+
+| Method | Args | Returns |
+|---|---|---|
+| `host.info` | | `{platform:'windows'\|'linux', name, host, version, session, user}` |
+| `sys.status` | | `{wifi:{available,on,ssid,bars}, bt:{available,on}, airplane, battery:{present,pct,charging}, audio:{volume,muted}, display:{supported,brightness}, powerMode}` |
+| `radios.set` | `{kind:'wifi'\|'bt', on}` | status |
+| `airplane.set` | `{on}` | status |
+| `wifi.scan` | | `[{ssid, bars, secure, saved, connected}]` |
+| `wifi.connect` | `{ssid, password?}` | `{ok, error?}` |
+| `wifi.disconnect` · `wifi.forget` | `{ssid}` for forget | — |
+| `bt.paired` | | `[{id, name, kind, connected, paired}]` |
+| `bt.scanStart` · `bt.scanStop` | `{seconds?}` | — (devices arrive as `bt.found`, end as `bt.scanDone`) |
+| `bt.pair` · `bt.unpair` | `{id}` | `{ok, error?}` |
+| `bt.confirmPin` | `{accept}` | — |
+| `audio.get` | | `{volume, muted, devices:[{id,name,isDefault}]}` |
+| `audio.setVolume` · `audio.setMute` · `audio.setDefault` | `{v}` · `{m}` · `{id}` | — · — · audio |
+| `display.get` | | `{supported, brightness, resolution, scale}` |
+| `display.setBrightness` | `{v}` | — |
+| `power.get` · `power.setMode` | `{mode:'efficiency'\|'balanced'\|'performance'}` | `{present, pct, charging, mode}` |
+| `library.get` | `{rescan?}` | `{games:[Game], sources, counts, runningId, steamBackground}` |
+| `library.setFav` · `library.setHidden` | `{id, on}` | — |
+| `library.setSources` | `{steam, epic, gog, xbox}` | library |
+| `library.addManual` | | Game, or `null` if cancelled (the host shows a file picker) |
+| `library.remove` | `{id}` | — |
+| `library.downloads` | | `{active:[Game], changed}` |
+| `library.setSteamBackground` | `{on}` | — |
+| `game.launch` | `{id}` | `{tracked}` (false: started but can't be watched) |
+| `game.install` | `{id}` | — |
+| `game.close` | | `{ok}` |
+| `update.status` · `update.check` · `update.download` | | `{current, state, latest, progress, error, canInstallHere, installFolder, autoCheck, lastChecked}` |
+| `update.install` | | — (the host restarts) |
+| `update.setAuto` | `{on}` | update status |
+| `pad.status` · `pad.setMouseMode` | `{mode}` | `{connected, mouseMode, mouseOn}` (Windows only; Linux reports none) |
+| `game.uninstall` · `game.cancelInstall` | `{id}` | library · `{ok}` (Windows: games Nimbus installed; Linux: not offered) |
+| `accounts.status` | | `{installRoot, accounts:[{store, signedIn, name, avatar, owned, installed, fetched, busy, error, note?}]}` |
+| `accounts.signIn` · `accounts.signOut` · `accounts.refresh` | `{store}` | `{ok}` · — · — (Linux: opens Steam, Heroic, or the Xbox cloud window) |
+| `accounts.pickFolder` | | `{installRoot}` (Windows only) |
+| `profile.get` · `profile.set` | `{name?, status?, avatar?, accent?, background?}` for set | `{name, status, avatar, accent, background, customAvatar, customBackground, storeAvatars}` |
+| `profile.pickImage` | `{kind:'avatar'\|'background'}` | profile, or `null` if cancelled |
+| `shell.status` | | `{running, registered, value, exe}` (+ `gamescope` on Linux) |
+| `shell.register` · `shell.unregister` · `shell.returnToDesktop` | | |
+
+**Game** = `{id, title, source, fav, hidden, minutes, lastPlayed, added, sizeBytes, art:{cover,hero,logo,wide}, path, canRemove, installed, state, cloud, progress, bytesDone, bytesTotal, bytesPerSec?}`
+
+- `source`: `steam` · `epic` · `gog` · `xbox` · `manual`.
+- `state`: `installed` · `notInstalled` · `downloading` · `queued` · `paused` · `updating` · `cloud`.
+- `cloud: true` means the game streams (Xbox Cloud Gaming on Linux). The UI shows **Stream** instead of Install.
+- `art` values are URLs the page can load: store CDNs, or the host's art scheme for local files
+  (`https://nimbus-art.local/{id}/{kind}` on Windows, `nimbus-art://art/{id}/{kind}` on Linux).
+
+## Events
+
+`status` · `game.started {id}` · `game.exited Game` · `game.timeout {id}` · `update` (update status) ·
+`bt.found` (device) · `bt.scanDone` · `bt.pin {pin, confirm}` · `pad {b}` (a controller button the host read; `guide` toggles Quick Access) ·
+`padMouse {on}` · `padHost {connected}` (when > 0 the UI stops reading controllers itself) · `accounts.changed`.
