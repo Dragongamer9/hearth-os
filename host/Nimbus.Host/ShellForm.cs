@@ -18,6 +18,7 @@ public sealed class ShellForm : Form
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(12, 16, 22) };
     private readonly bool _windowed;
     private SystemBridge? _system;
+    private Input.ControllerBridge? _pad;
 
     public ShellForm(bool windowed)
     {
@@ -84,6 +85,17 @@ public sealed class ShellForm : Form
         _system = new SystemBridge(this, json => _web.CoreWebView2?.PostWebMessageAsJson(json));
         FormClosed += (_, _) => _system?.Dispose();
         _system.StartBackgroundServices();
+        // Controller support for Steam dialogs and native pop-ups (the web UI handles its own).
+        _pad = new Input.ControllerBridge(Handle, () => _system?.Games.RunningId is not null, _system.Games.ControllerMouse);
+        _system.Pad = _pad;
+        _pad.MouseChanged += on => BeginInvoke((MethodInvoker)(() =>
+        {
+            Input.Osd.Show(on ? "🖱  Controller mouse on" : "Controller mouse off");
+            Post(new { type = "event", name = "padMouse", data = new { on } });
+        }));
+        _pad.UiButton += b => BeginInvoke((MethodInvoker)(() => Post(new { type = "event", name = "pad", data = new { b } })));
+        _pad.ControllersChanged += n => BeginInvoke((MethodInvoker)(() => Post(new { type = "event", name = "padHost", data = new { connected = n } })));
+        FormClosed += (_, _) => _pad?.Dispose();
         // A just-installed update that runs for a minute is considered good (no rollback needed).
         _ = Task.Delay(TimeSpan.FromMinutes(1)).ContinueWith(_ => Updates.UpdateService.ConfirmHealthy());
         core.WebMessageReceived += OnWebMessage;
@@ -130,7 +142,9 @@ public sealed class ShellForm : Form
             var type = m.GetProperty("type").GetString();
             switch (type)
             {
-                case "ready": break; // later: push the real library here
+                case "ready": // the page (re)loaded: tell it whether the host is reading the controller
+                    Post(new { type = "event", name = "padHost", data = new { connected = _pad?.Connected ?? 0 } });
+                    break;
                 case "call": _system?.Handle(m.Clone()); break;
                 case "log": SystemBridge.Log("ui: " + m.GetProperty("text").GetString()); break; // Clone: the handler is async and outlives this JsonDocument
                 case "power": Power(m.GetProperty("action").GetString()); break;

@@ -761,11 +761,21 @@ const KEY_LIST = [['Move','Arrow keys or W A S D'],['Select','Enter or Space'],[
   ['Search','/'],['Switch tabs','Tab / Shift+Tab, or [ and ]'],['Favorite (game page)','F'],['Home','Home'],['This page','F1'],
   ['Open File Explorer','Ctrl+Alt+Shift+E'],['Task Manager','Ctrl+Shift+Esc']];
 function pageControls(){
-  const now = {pad:'Controller', kbd:'Keyboard', mouse:'Mouse or touch'}[INPUT.last];
+  const now = `<span id="inputNow">${INPUT_NAMES[INPUT.last]}</span>`;
   const pads = (navigator.getGamepads ? [...navigator.getGamepads()] : []).filter(Boolean);
   let h = `<div class="row"><div class="rt"><b>Button prompts</b><small>Automatic follows whatever you used last (now: ${now})</small></div>
     <div class="seg">${[['auto','Automatic'],['pad','Controller'],['kbd','Keyboard']].map(([k,l])=>`<button class="${INPUT.mode===k?'on':''}" data-f data-k="ctl-${k}" data-act="inputMode" data-v="${k}">${l}</button>`).join('')}</div></div>`;
   h += shead('Controllers');
+  h += `<div class="row"><span class="ricon">${I.pad}</span><div class="rt"><b>Button test</b><small>Press any button: its name shows here. If it doesn't match the label on your controller, use the swaps below.</small></div><div class="rv" id="padTest" style="font-weight:700;color:var(--text)">${PAD.last?(PAD_NAMES[PAD.last]||PAD.last):'—'}</div></div>`;
+  h += `<button class="row" data-f data-k="ctl-swapab" data-act="padSwap" data-v="AB"><div class="rt"><b>Swap A and B</b></div><div class="sw ${PAD.swapAB?'on':''}"></div></button>`;
+  h += `<button class="row" data-f data-k="ctl-swapxy" data-act="padSwap" data-v="XY"><div class="rt"><b>Swap X and Y</b></div><div class="sw ${PAD.swapXY?'on':''}"></div></button>`;
+  if(PAD.host) h += note('Xbox-style controllers are read directly by Nimbus (XInput), so their buttons match their labels.');
+  h += shead('Controller mouse');
+  h += `<div class="row"><div class="rt"><b>Right stick as mouse</b><small>${PAD.mouseOn?'On right now':'Off right now'} · View + Menu together turns it on or off any time</small></div>
+    <div class="seg">${[['off','Off'],['steam','Steam windows'],['always','Everywhere']].map(([k,l])=>`<button class="${PAD.mouseMode===k?'on':''}" data-f data-k="cm-${k}" data-act="padMouseMode" data-v="${k}">${l}</button>`).join('')}</div></div>`;
+  h += [['Move pointer','Right stick'],['Left click (hold to drag)','A or RT'],['Right click','LT'],['Scroll','Left stick'],['Back / close','B'],['Turn mouse on / off','View + Menu together']]
+        .map(([a,k],i)=>`<div class="row" data-f data-k="cmk-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
+  h += note('“Steam windows” turns the mouse on by itself while a Steam pop-up (like the Install window) is in front. Games always get the controller to themselves.');
   h += pads.length ? pads.map((p,i)=>`<div class="row"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(p.id.split('(')[0].trim()||'Controller')}</b><small>Player ${i+1}</small></div></div>`).join('')
                    : note('No controller detected. Press any button on a connected controller.');
   h += shead('Keyboard');
@@ -1143,6 +1153,8 @@ function act(el){
     case 'shellReturn': return shellReturn();
     case 'sheet': return sheetPick(+d.i);
     case 'hint': return hintAction(d.h);
+    case 'padMouseMode': return call('pad.setMouseMode',{mode:d.v}).then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; render('cm-'+d.v); }).catch(e=>toast(e.message));
+    case 'padSwap': { const k='swap'+d.v; PAD[k]=!PAD[k]; try{ localStorage.setItem('nimbus.'+k, PAD[k]?'1':'0'); }catch(e){} return render('ctl-swap'+d.v.toLowerCase()); }
     case 'inputMode': INPUT.mode=d.v; try{ localStorage.setItem('nimbus.inputMode', d.v); }catch(e){} renderFooter(); return render('ctl-'+d.v);
     case 'pkey': return promptKey(d.c);
     case 'qtab': S.qtab=d.tab; renderQam(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
@@ -1269,7 +1281,7 @@ async function installGame(g){
   if(!host) return toast(`The browser preview can't install games`);
   try{
     await call('game.install',{id:g.id},60000);
-    toast(`${SOURCES[g.src]} is asking where to install ${g.title}. Confirm there, then follow it under Downloads.`);
+    toast(`${SOURCES[g.src]}'s install window is open: A installs, B cancels, D-pad moves (or use the right stick as a mouse).`);
     startDownloadPoll(true);
   }catch(e){ toast(e.message); }
 }
@@ -1336,6 +1348,9 @@ function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
   if(name==='game.started') return gameStarted(data.id);
   if(name==='update') return onUpdate(data);
+  if(name==='pad') return hostPad(data.b);
+  if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
+  if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
   if(name==='game.timeout'){ hideLaunch(); const g=G(data.id); return toast(`Nimbus couldn't see ${g?g.title:'the game'} start. If it's running, it still works; it just won't show here.`); }
   if(name==='bt.found'){
@@ -1390,6 +1405,7 @@ function onSettingsTab(t){
   if(t==='wifi') wifiScan();
   if(t==='shell') loadShellStatus();
   if(t==='updates') loadUpdateStatus();
+  if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();
   if(t==='audio') call('audio.get').then(r=>{ Object.assign(S.sys.audio,r); S.set.vol=r.volume; refreshUI(); }).catch(e=>toast(e.message));
   if(t==='display') call('display.get').then(r=>{ Object.assign(S.sys.display,r); S.set.bright=r.brightness; refreshUI(); }).catch(e=>toast(e.message));
@@ -1517,8 +1533,10 @@ function setInput(kind){
   INPUT.last=kind;
   document.body.classList.toggle('pad-mode', kind==='pad');
   renderFooter();
-  if(S.view==='settings' && S.settingsTab==='controller') render(null,true);
+  // Update the label in place: re-rendering here would swallow the click that caused it.
+  const n=$('#inputNow'); if(n) n.textContent = INPUT_NAMES[kind];
 }
+const INPUT_NAMES = {pad:'Controller', kbd:'Keyboard', mouse:'Mouse or touch'};
 const GLYPHS = {
   pad: {select:['A','a'], back:['B','b'], search:['Y','y'], menu:['☰',''], qam:['⧉',''], tabs:['LB RB',''], adjust:['◀▶',''], del:['Y','y'], space:['X','x'], done:['☰','']},
   kbd: {select:['Enter','kc'], back:['Esc','kc'], search:['/','kc'], menu:['M','kc'], qam:['Q','kc'], tabs:['Tab','kc'], adjust:['← →','kc'], del:['Bksp','kc'], space:['Space','kc'], done:['Enter','kc']},
@@ -1573,12 +1591,31 @@ function shiftTab(d){
   if(!top && S.view==='library'){ const i=LIB_TABS.findIndex(t=>t[0]===S.tab); S.tab=LIB_TABS[(i+d+LIB_TABS.length)%LIB_TABS.length][0]; render('tab-'+S.tab); return blip(600); }
 }
 
+// Controllers: Xbox-style controllers come from the host (XInput, exact button names, works with any
+// controller order). Other controllers use the browser gamepad API, with optional A/B and X/Y swaps.
+const PAD = {host:false, last:'', swapAB:false, swapXY:false, mouseMode:'steam', mouseOn:false};
+try{ PAD.swapAB = localStorage.getItem('nimbus.swapAB')==='1'; PAD.swapXY = localStorage.getItem('nimbus.swapXY')==='1'; }catch(e){}
+function mapPad(k){
+  if(PAD.swapAB && (k==='a'||k==='b')) return k==='a'?'b':'a';
+  if(PAD.swapXY && (k==='x'||k==='y')) return k==='x'?'y':'x';
+  return k;
+}
+const PAD_NAMES = {a:'A',b:'B',x:'X',y:'Y',lb:'LB',rb:'RB',start:'Menu (☰)',select:'View (⧉)',guide:'Xbox / Guide',up:'D-pad up',down:'D-pad down',left:'D-pad left',right:'D-pad right'};
+function padPressed(k){
+  setInput('pad');
+  PAD.last=k;
+  const t=$('#padTest'); if(t) t.textContent = PAD_NAMES[k]||k;
+  input(k);
+}
+function hostPad(k){ padPressed(mapPad(k)); }
+
 // Gamepad (standard mapping) with key-repeat on d-pad / stick
 const REPEAT = new Set(['up','down','left','right']);
 const held={};
 let padSeen=false;
 function pollPads(t){
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
+  const pads = PAD.host ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
   const st={};
   for(const p of pads){ if(!p) continue;
     const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
@@ -1589,7 +1626,7 @@ function pollPads(t){
   }
   for(const k of ['a','b','x','y','lb','rb','select','start','guide','up','down','left','right']){
     const on=!!st[k], h=held[k];
-    if(on && !h){ held[k]={t0:t,last:t}; setInput('pad'); input(k); }
+    if(on && !h){ held[k]={t0:t,last:t}; padPressed(mapPad(k)); }
     else if(on && h && REPEAT.has(k) && t-h.t0>340 && t-h.last>85){ h.last=t; input(k); }
     else if(!on && h) delete held[k];
   }
