@@ -18,7 +18,18 @@ public static class SteamWindows
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int max);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int cmd);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
+    [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(int pid);
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int L, T, R, B; }
     private const int SW_HIDE = 0;
+    private const int ASFW_ANY = -1;
+
+    // Dialogs we've already brought to the front (so we don't keep stealing focus back).
+    private static readonly HashSet<IntPtr> Focused = new();
+
+    /// <summary>Lets Steam put its own windows in front (called just before sending it a steam:// request).</summary>
+    public static void AllowSteamToFocus() => AllowSetForegroundWindow(ASFW_ANY);
 
     private static readonly object Gate = new();
     private static DateTime _watchUntil = DateTime.MinValue;
@@ -66,7 +77,14 @@ public static class SteamWindows
             if (!steamPids.Contains(pid)) return true;
             title.Clear();
             GetWindowText(h, title, title.Capacity);
-            if (title.ToString() == "Steam") { ShowWindow(h, SW_HIDE); hidden++; }
+            var t = title.ToString();
+            if (t == "Steam") { ShowWindow(h, SW_HIDE); hidden++; }
+            else if (t.Length > 0 && GetWindowRect(h, out var r) && r.R - r.L > 250 && r.B - r.T > 150)
+            {
+                // A real Steam dialog (e.g. "Install - <game>"): bring it to the front once so the
+                // controller bridge's keys reach it.
+                lock (Focused) if (Focused.Add(h)) SetForegroundWindow(h);
+            }
             return true;
         }, IntPtr.Zero);
         return hidden;

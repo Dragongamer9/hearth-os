@@ -24,6 +24,8 @@ public sealed class SystemBridge : IDisposable
     private readonly PowerService _power = new();
     public Nimbus.Host.Library.LibraryService Games { get; } = new();
     public Nimbus.Host.Updates.UpdateService Updater { get; }
+    /// <summary>Set by the window once the controller bridge is running.</summary>
+    public Input.ControllerBridge? Pad { get; set; }
     private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 6 * 60 * 60 * 1000 };
     private readonly System.Windows.Forms.Timer _statusDebounce = new() { Interval = 400 };
     private readonly System.Windows.Forms.Timer _batteryPoll = new() { Interval = 30_000 };
@@ -235,6 +237,17 @@ public sealed class SystemBridge : IDisposable
                 }));
                 return null;
             case "update.setAuto": Games.AutoUpdateCheck = Bool(a, "on"); return Updater.Status();
+
+            case "pad.status":
+                return new { connected = Pad?.Connected ?? 0, mouseMode = Games.ControllerMouse, mouseOn = Pad?.MouseActive ?? false };
+            case "pad.setMouseMode":
+            {
+                var mode = Req(a, "mode");
+                if (mode is not ("off" or "steam" or "always")) throw new ArgumentException("Unknown mode");
+                Games.ControllerMouse = mode;
+                Pad?.SetMouseMode(mode);
+                return new { connected = Pad?.Connected ?? 0, mouseMode = mode, mouseOn = Pad?.MouseActive ?? false };
+            }
 
             case "shell.status":
                 return new
