@@ -26,6 +26,12 @@ public sealed class Game
     public string? Args { get; init; }
     public string? WorkDir { get; init; }
     public string? XboxFamily { get; init; }
+    /// <summary>"legendary": started through legendary (Epic games Nimbus installed).</summary>
+    public string? LaunchVia { get; init; }
+    /// <summary>Nimbus installed it (Epic via legendary, GOG via gogdl), so Nimbus can uninstall it.</summary>
+    public bool CanUninstall { get; init; }
+    /// <summary>Shown on the game page, e.g. why it can't be installed from Nimbus.</summary>
+    public string? Note { get; init; }
 
     // Install state. Installed games have State "installed"; Steam can also report
     // "downloading", "queued", "paused", "updating"; owned-but-not-installed games are "notInstalled".
@@ -34,6 +40,7 @@ public sealed class Game
     public double? Progress { get; init; }          // 0..1 while downloading
     public long? BytesDone { get; init; }
     public long? BytesTotal { get; init; }
+    /// <summary>steam://install/…, a Store link, or nimbus-epic:/nimbus-gog: for installs Nimbus runs itself.</summary>
     public string? InstallUri { get; init; }
 }
 

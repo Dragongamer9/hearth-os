@@ -17,6 +17,17 @@ public sealed class GameStats
     public int Minutes { get; set; }
 }
 
+/// <summary>How you look in Nimbus: name, picture, colors.</summary>
+public sealed class ProfileData
+{
+    public string? Name { get; set; }                  // null: your Windows name
+    public string? Status { get; set; }                // short line under your name
+    public string Avatar { get; set; } = "initials";   // initials | preset:N | custom | steam | xbox | gog
+    public string Accent { get; set; } = "#3fd0b8";
+    public string Background { get; set; } = "default"; // default | preset:N | custom
+    public long ImageStamp { get; set; }               // changes when a custom picture changes (cache busting)
+}
+
 public sealed class LibraryData
 {
     public HashSet<string> Favorites { get; set; } = new();
@@ -26,6 +37,9 @@ public sealed class LibraryData
     public bool SteamBackground { get; set; } = true;   // keep Steam running hidden (-silent)
     public bool AutoUpdateCheck { get; set; } = true;   // check GitHub for Nimbus updates
     public string ControllerMouse { get; set; } = "steam"; // right stick as mouse: off | steam | always
+    public string? InstallRoot { get; set; }            // where Nimbus installs Epic and GOG games
+    public Dictionary<string, string> GogInstalls { get; set; } = new();   // GOG product id → folder
+    public ProfileData Profile { get; set; } = new();
     public Dictionary<string, bool> Sources { get; set; } = new()
     {
         ["steam"] = true, ["epic"] = true, ["gog"] = true, ["xbox"] = true,

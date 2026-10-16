@@ -21,14 +21,14 @@ h2{font-size:15px;font-weight:600;letter-spacing:.02em;color:var(--dim);text-tra
 
 /* ---------- focus ---------- */
 [data-f]{outline:none;transition:transform .16s var(--ease),box-shadow .16s var(--ease),background .16s}
-[data-f].focus{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent),0 8px 30px rgba(63,208,184,.18)}
+[data-f].focus{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent),0 8px 30px color-mix(in srgb,var(--accent) 18%,transparent)}
 .tile[data-f].focus{transform:scale(1.045);z-index:2}
 
 /* ---------- frame ---------- */
-#app{position:fixed;inset:0;display:grid;grid-template-rows:var(--top) 1fr var(--foot)}
+#app{position:fixed;inset:0;display:grid;grid-template-rows:var(--top) 1fr var(--foot);grid-template-columns:minmax(0,1fr)}
 #app.dim{filter:brightness(.55) saturate(.8);transition:filter .25s}
 .topbar{display:flex;align-items:center;gap:6px;padding:0 var(--gut);background:linear-gradient(var(--bg2),rgba(18,24,33,.6));border-bottom:1px solid rgba(255,255,255,.03);z-index:5}
-.topbar .title{font-weight:600;font-size:16px;margin-left:6px}
+.topbar .title{font-weight:600;font-size:16px;margin-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .topbar .sp{flex:1}
 .ibtn{width:38px;height:38px;border-radius:8px;display:grid;place-items:center;position:relative;color:var(--dim)}
 .ibtn:hover,.ibtn.focus{color:var(--text);background:var(--panel2)}
@@ -161,7 +161,54 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .mitem{position:relative}
 .mitem.focus{background:var(--panel2);color:var(--text)}
 .mfoot{margin-top:auto;display:flex;align-items:center;gap:12px;padding:14px;border-top:1px solid var(--line)}
-.avatar{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#7a8cff,var(--accent))}
+.avatar{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#7a8cff,var(--accent));position:relative;overflow:hidden;display:grid;place-items:center;flex:none;font-weight:800;font-size:15px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.35)}
+.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.avatar .ave{font-size:1.5em;text-shadow:none}
+.avatar.sm{width:30px;height:30px;border-radius:8px;font-size:12px}
+.avatar.md{width:64px;height:64px;border-radius:14px;font-size:22px}
+.avatar.lg{width:104px;height:104px;border-radius:20px;font-size:38px}
+.ibtn.av{width:40px;height:40px;margin-left:4px}
+.mfoot{width:100%;border-radius:9px}
+.mfoot.focus{background:var(--panel2)}
+.mfoot b{display:block}
+/* profile */
+.prof{display:flex;align-items:center;gap:20px;padding:18px;background:var(--panel);border-radius:var(--r)}
+.prof .pname{font-size:24px;font-weight:800}
+.opts{display:flex;flex-wrap:wrap;gap:10px;padding:4px 2px}
+.avopt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border-radius:12px;width:88px}
+.avopt small{font-size:11px;color:var(--dim);text-align:center;line-height:1.2}
+.avopt.on{background:var(--panel2)} .avopt.on small{color:var(--text)}
+.avopt .pick{width:64px;height:64px;border-radius:14px;border:2px dashed var(--line);display:grid;place-items:center;color:var(--dim);font-size:26px}
+.swatch{width:44px;height:44px;border-radius:50%;background:var(--c);display:grid;place-items:center;color:#0b0f14}
+.swatch.on:after{content:"✓";font-weight:800;font-size:18px}
+.theme{display:flex;flex-direction:column;gap:6px;align-items:center;padding:6px;border-radius:12px;width:112px}
+.theme .tprev{width:100px;height:62px;border-radius:10px;position:relative;overflow:hidden;background-size:cover;background-position:center;border:1px solid rgba(255,255,255,.06)}
+.theme .tprev i{position:absolute;left:10px;bottom:10px;width:34px;height:6px;border-radius:3px;background:var(--accent)}
+.theme small{font-size:11px;color:var(--dim)}
+.theme.on{background:var(--panel2)} .theme.on small{color:var(--text)}
+#bg{position:fixed;inset:0;background-size:cover;background-position:center;display:none}
+body.hasbg #bg{display:block}
+body.hasbg #bg:after{content:"";position:absolute;inset:0;background:rgba(6,8,12,.72)}
+html.hasbg,body.hasbg{background:#000}
+body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(180deg,transparent 30%,rgba(6,8,12,.55))}
+/* stores */
+.stores{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr));gap:14px;max-width:1100px}
+.scard{min-width:0;background:var(--panel);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px;border-top:3px solid var(--sc)}
+.scard .shd{display:flex;align-items:center;gap:14px}
+.smark{width:48px;height:48px;border-radius:12px;background:var(--sc);display:grid;place-items:center;font-weight:900;font-size:22px;color:#fff;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.scard .sti{flex:1;min-width:0}
+.scard .sti b{display:block;font-size:17px}
+.scard .sti small{color:var(--dim);font-size:13px}
+.scard .sti small.on{color:var(--accent)}
+.sblurb{color:var(--dim);font-size:13px;line-height:1.5}
+.sstats{display:flex;gap:18px;flex-wrap:wrap;font-size:13px}
+.sstats span{color:var(--dim)} .sstats b{color:var(--text)}
+.serr{font-size:13px;color:var(--warn);line-height:1.4}
+.sbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+.sbtn{padding:10px 16px;border-radius:8px;background:var(--panel3);font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px}
+.sbtn.pri{background:var(--accent);color:var(--accentInk)}
+.sbtn svg{width:16px;height:16px}
+.libmeta .lmr{display:flex;gap:8px}
 #qam{top:0;bottom:0;right:0;width:min(400px,92vw);background:var(--panel);transform:translateX(102%);transition:transform .24s var(--ease),visibility .24s;display:grid;grid-template-columns:1fr 58px;box-shadow:-20px 0 60px rgba(0,0,0,.4)}
 #qam.open{transform:none}
 .qbody{overflow-y:auto;padding:22px 18px;scrollbar-width:none}
@@ -256,6 +303,7 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 </head>
 <body>
 
+<div id="bg"></div>
 <div id="app">
   <header class="topbar">
     <button class="ibtn" data-f data-k="top-menu" data-act="menu" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
@@ -268,6 +316,7 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
     <div class="stat hide-s" id="wifiStat"><svg viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.6 16a5 5 0 0 1 6.8 0"/><circle cx="12" cy="19" r=".8" fill="currentColor"/></svg></div>
     <div class="stat" id="batt"><svg viewBox="0 0 24 24"><rect x="2.5" y="7" width="17" height="10" rx="2"/><path d="M22 10.5v3"/><rect x="4.5" y="9" width="10" height="6" rx="1" fill="currentColor" stroke="none" id="battFill"/></svg><span id="battPct">82%</span></div>
     <div class="clock" id="clock">--:--</div>
+    <button class="ibtn av" id="topAv" data-f data-k="top-av" data-act="goset" data-tab="profile" aria-label="Profile"></button>
   </header>
   <main id="view"></main>
   <footer class="footer" id="footer"></footer>
@@ -476,6 +525,17 @@ const MOCK = (()=>{
     'display.setBrightness':async({v})=>{ st.display.brightness=v; },
     'power.get':async()=>({...st.battery,mode:st.powerMode}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
+    // Stores & profile (preview data)
+    'accounts.status':async()=>({installRoot:'C:\\Users\\Player\\Games', accounts:[
+      {store:'steam',signedIn:true,name:'player_one',avatar:null,owned:517,installed:6,fetched:0,busy:false,error:null,toolReady:true},
+      {store:'epic',signedIn:true,name:'PlayerOne',avatar:null,owned:142,installed:3,fetched:Date.now()-7.2e6,busy:false,error:null,toolReady:true},
+      {store:'gog',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:false},
+      {store:'xbox',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:true}]}),
+    'profile.get':async()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){} return {name:'Player One',status:null,avatar:'initials',accent:'#3fd0b8',background:'default',customAvatar:null,customBackground:null,storeAvatars:{},...p}; },
+    'profile.set':async(c)=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){}
+      for(const k of ['name','status','avatar','accent','background']) if(c[k]!=null) p[k]=String(c[k]).trim()||null;
+      try{ localStorage.setItem('nimbus.profile',JSON.stringify(p)); }catch(e){}
+      return {name:'Player One',status:null,avatar:'initials',accent:'#3fd0b8',background:'default',customAvatar:null,customBackground:null,storeAvatars:{},...p}; },
   };
   return {call:(m,a)=> H[m] ? H[m](a||{}) : Promise.reject(new Error('Not available in the browser preview: '+m))};
 })();
@@ -511,7 +571,7 @@ function artNext(img){
   if(!alts.length) return img.remove();
   img.dataset.alts=alts.slice(1).join('\n'); img.src=alts[0];
 }
-const STATE_LABEL = {downloading:'Downloading', queued:'Queued', paused:'Paused', updating:'Updating'};
+const STATE_LABEL = {downloading:'Downloading', queued:'Queued', paused:'Paused', updating:'Updating', installing:'Installing'};
 const isActive = g => !!STATE_LABEL[g.state];
 function dlInfo(g){
   const pct = g.progress!=null ? Math.round(g.progress*100) : null;
@@ -548,7 +608,7 @@ function blip(f=700,d=.035,v=.035){
 // =====================================================================
 // Views
 // =====================================================================
-const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',settings:'Settings'};
+const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',settings:'Settings',stores:'Game stores'};
 
 const visible = () => GAMES.filter(g=>!g.hidden);
 function heroStyle(g){ return g ? artBg(g) : 'background:var(--panel)'; }
@@ -607,8 +667,10 @@ function viewLibrary(){
     <span class="glyph lbrb">RB</span>
   </div>
   <div class="libmeta"><span>${L.length} game${L.length===1?'':'s'}</span>
-    <button class="pill" data-f data-k="sort" data-act="sort">Sort: ${SORTS.find(s=>s[0]===S.sort)[1]}</button></div>
-  ${L.length?`<div class="grid">${L.map(g=>tile(g,'p','l-'+g.id)).join('')}</div>`:`<div class="empty">${LIB.loading?'Loading your games…':'Nothing here yet.'}</div>`}`;
+    <div class="lmr"><button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
+    <button class="pill" data-f data-k="sort" data-act="sort">Sort: ${SORTS.find(s=>s[0]===S.sort)[1]}</button></div></div>
+  ${L.length?`<div class="grid">${L.map(g=>tile(g,'p','l-'+g.id)).join('')}</div>`:`<div class="empty">${LIB.loading?'Loading your games…':
+     STORE_INFO[S.tab]?`Sign in to ${STORE_INFO[S.tab].name} under Stores &amp; accounts to see your games here.`:'Nothing here yet.'}</div>`}`;
 }
 
 function viewGame(){
@@ -619,11 +681,14 @@ function viewGame(){
     ? `<img class="glogo-img" src="${esc(g.art.logo)}" alt="${esc(g.title)}" onload="this.previousElementSibling&&this.previousElementSibling.remove()" onerror="this.remove()">` : '');
   const side = g.ach
     ? `<div class="card"><h3>Achievements</h3><div class="muted" style="margin-bottom:10px">${g.ach[0]} of ${g.ach[1]} unlocked</div><div class="bar"><i style="width:${(g.ach[0]/g.ach[1]*100).toFixed(0)}%"></i></div></div>`
-    : `<div class="card"><h3>Details</h3><div class="muted">${g.added?`Added ${new Date(g.added).toLocaleDateString()}`:'Not installed'}${g.hidden?'<br>Hidden from your library':''}</div></div>`;
+    : `<div class="card"><h3>Details</h3><div class="muted">${g.added?`Added ${new Date(g.added).toLocaleDateString()}`:g.inst?'Installed':'Not installed'}${g.hidden?'<br>Hidden from your library':''}</div></div>`;
   const about = g.genre
     ? `${esc(g.genre)}. Placeholder description from the browser preview.`
     : g.inst ? `Installed through ${SOURCES[g.src]}.`
-    : isActive(g) ? `${SOURCES[g.src]} is installing this game.`
+    : isActive(g) ? (g.installKind==='nimbus' ? `Nimbus is installing this game into your games folder.` : `${SOURCES[g.src]} is installing this game.`)
+    : g.note ? `In your ${SOURCES[g.src]} library. ${esc(g.note)}, so Nimbus can't install it.`
+    : g.installKind==='nimbus' ? `In your ${SOURCES[g.src]} library. Select Install and Nimbus downloads it${ACC.root?` to <code>${esc(ACC.root)}\\${g.src==='epic'?'Epic':'GOG'}</code>`:''}, no launcher needed.`
+    : g.installKind==='store' ? `You've played this on Xbox. Select Install to get it from the Microsoft Store (Game Pass games also install from the Xbox app).`
     : `In your ${SOURCES[g.src]} library. Select Install and ${SOURCES[g.src]} will ask where to put it.`;
   return `<div class="gpage">
     <div class="ghero"><div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}${logo}</div>
@@ -656,12 +721,13 @@ function viewDownloads(){
     if(!A.length) return `<h2>Downloads</h2><div class="rows"><div class="note">Nothing is downloading. Pick a game under Library › All games and select Install.</div></div>`;
     const gb=b=>b!=null?(b/1e9).toFixed(b>=1e10?0:1)+' GB':'';
     return `<h2>Downloads</h2><div class="rows">${A.map((g,i)=>{ const d=dlInfo(g); return `
-      <button class="row" data-f data-k="d-${i}" data-act="game" data-id="${esc(g.id)}">
+      <button class="row" data-f data-k="d-${i}" data-act="${g.installKind==='nimbus'?'dlopts':'game'}" data-id="${esc(g.id)}">
         <div class="thumb">${cover(g,{wide:true,badge:false}).replace('<div class="dl">','<div class="dl" style="display:none">')}</div>
         <div class="rt"><b>${esc(g.title)}</b><small>${d.label}${g.bytesTotal?` · ${gb(g.bytesDone)} of ${gb(g.bytesTotal)}`:''}${g.speed>1e5&&g.state==='downloading'?` · ${(g.speed/1e6).toFixed(1)} MB/s`:''} · ${SOURCES[g.src]}</small>
           <div class="bar" style="margin-top:8px"><i style="width:${d.pct??0}%"></i></div></div>
         <div class="rv">${d.pct!=null?d.pct+'%':''}</div></button>`}).join('')}</div>
-      <div class="note">Pause, cancel or reorder downloads in Steam for now.</div>`;
+      ${A.some(g=>g.src==='steam')?'<div class="note">Pause, cancel or reorder Steam downloads in Steam for now.</div>':''}
+      ${A.some(g=>g.installKind==='nimbus')?'<div class="note">Epic and GOG games download one at a time. Select one to cancel it; starting it again later picks up where it left off.</div>':''}`;
   }
   return `<h2>Download queue</h2><div class="rows">${DOWNLOADS.map((d,i)=>{const g=G(d.g);return `
     <button class="row" data-f data-k="d-${i}" data-act="game" data-id="${g.id}">
@@ -671,7 +737,7 @@ function viewDownloads(){
       <div class="rv">${Math.round(d.p*100)}%</div></button>`}).join('')}</div>`;
 }
 
-const STABS = [['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
+const STABS = [['profile','user','Profile'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
   ['controller','pad','Controls'],['sources','lib','Library sources'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
@@ -861,16 +927,18 @@ function viewSettings(){
   if(t==='display') body = pageDisplay();
   if(t==='audio') body = pageAudio();
   if(t==='power') body = pagePower();
-  if(t==='system') body = infoRow('dev','Device','Windows 11 PC')+infoRow('user','Account','Player One')+swRow('startOnBoot','Start Nimbus at sign-in','Registers Nimbus as the shell for this user')+swRow('sounds','Interface sounds');
+  if(t==='profile') body = pageProfile();
+  if(t==='system') body = infoRow('dev','Device','Windows 11 PC')+infoRow('user','Profile name',PROFILE.name)+swRow('startOnBoot','Start Nimbus at sign-in','Registers Nimbus as the shell for this user')+swRow('sounds','Interface sounds');
   if(t==='controller') body = pageControls();
   if(t==='sources'){
     const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
     const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
     body = swRow('srcSteam','Steam','Installed and owned games from Steam'+n('steam').replace('game','installed game')+owned)
       +swRow('steamBg','Keep Steam running in the background','Starts Steam hidden so games and installs open without its window')
-      +swRow('srcEpic','Epic Games','Games installed with the Epic Games Launcher'+n('epic'))
-      +swRow('srcGog','GOG','Games installed with GOG Galaxy or GOG installers'+n('gog'))
-      +swRow('srcXbox','Xbox / Game Pass','PC games installed with the Xbox app'+n('xbox'))
+      +swRow('srcEpic','Epic Games','Your Epic account and games installed by Nimbus or the Epic Games Launcher'+n('epic'))
+      +swRow('srcGog','GOG','Your GOG account and games installed by Nimbus, GOG Galaxy or GOG installers'+n('gog'))
+      +swRow('srcXbox','Xbox / Game Pass','PC games installed with the Xbox app, and games you\'ve played on Xbox'+n('xbox'))
+      +`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`
       +`<button class="row" data-f data-k="s-addexe" data-act="addManual"><div class="rt"><b>Add a game manually</b><small>Any .exe or shortcut${n('manual')}</small></div><div class="rv">＋</div></button>`
       +`<button class="row" data-f data-k="s-rescan" data-act="rescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${LIB.loading?'Scanning…':'Rescan library'}</b><small>Picks up games you installed or removed</small></div></button>`;
   }
@@ -882,7 +950,7 @@ function viewSettings(){
     <div class="rows">${body}</div></div>`;
 }
 
-const VIEWS = {home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings};
+const VIEWS = {home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 function render(focusKey, quiet){
@@ -908,6 +976,7 @@ function navigate(view, params={}, push=true){
   render(params.focusKey);
   if(view==='settings') onSettingsTab(S.settingsTab);
   if(view==='downloads' && host) startDownloadPoll();
+  if(view==='stores') loadAccounts();
 }
 function goBack(){
   const h=S.history.pop(); if(!h) return false;
@@ -924,7 +993,7 @@ function renderMenu(){
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
     <button class="mitem" data-f data-k="m-power" data-act="power">${I.power}Power</button>
-    <div class="mfoot"><div class="avatar"></div><div><b>Player One</b><div class="muted">Online</div></div></div>`;
+    <button class="mfoot" data-f data-k="m-prof" data-act="goset" data-tab="profile">${avatarHtml(PROFILE)}<div><b>${esc(PROFILE.name)}</b><div class="muted">${esc(PROFILE.status||'Online')}</div></div></button>`;
 }
 function sliderCtl(key,ic,label,min=0,max=100,step=5,unit='%'){
   const v=S.set[key], pct=(v-min)/(max-min)*100;
@@ -996,7 +1065,7 @@ function sheetPick(i){ const it=sheet && sheet.items[i]; if(!it) return; sheet.p
 // ---------- text prompt with on-screen keyboard (passwords etc.) ----------
 let prompt=null;
 const OSK_SYM=['1234567890','!@#$%^&*()','-_=+[]{};:',"'\",.?/\\|~`"];
-function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:'',shift:false,sym:false,show:!o.secret,res,done:false}; openLayer('prompt','pk-1-0'); }); }
+function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',shift:false,sym:false,show:!o.secret,res,done:false}; openLayer('prompt','pk-1-0'); }); }
 function renderPrompt(keepK){
   const p=prompt; if(!p) return;
   const rows=(p.sym?OSK_SYM:OSK).map(r=>p.shift&&!p.sym?r.toUpperCase():r);
@@ -1169,6 +1238,19 @@ function act(el){
       if(host) call('library.setFav',{id:g.id,on:g.fav}).catch(e=>toast(e.message));
       return render('g-fav'); }
     case 'gopts': return gameOptions(G(d.id));
+    case 'dlopts': return downloadOptions(G(d.id));
+    case 'stores': closeAll(); return S.view==='stores' ? null : navigate('stores');
+    case 'accSignIn': return accSignIn(d.s);
+    case 'accSignOut': return accSignOut(d.s);
+    case 'accRefresh': return accRefresh(d.s);
+    case 'accShow': S.tab=d.s; S.history=[]; return navigate('library',{focusKey:'tab-'+d.s},false);
+    case 'accFolder': return pickInstallFolder();
+    case 'pfName': return openPrompt({title:'Your name', value:PROFILE.name}).then(v=>{ if(v!=null) saveProfile({name:v},'pf-name'); });
+    case 'pfStatus': return openPrompt({title:'Status line (shown under your name)', value:PROFILE.status||''}).then(v=>{ if(v!=null) saveProfile({status:v},'pf-status'); });
+    case 'pfAvatar': return saveProfile({avatar:d.v},'pa-'+d.v.replace(':','-'));
+    case 'pfAccent': return saveProfile({accent:d.v},focused?.dataset.k);
+    case 'pfBg': return saveProfile({background:d.v},'pb-'+d.v.replace(':','-'));
+    case 'pfPick': return pickProfileImage(d.kind);
     case 'addManual': return addManual();
     case 'rescan': return loadLibrary(true, true);
     case 'install': return installGame(G(d.id));
@@ -1251,7 +1333,26 @@ function gameOptions(g){
   const items=[];
   items.push(g.hidden ? {label:'Show in library',icon:'lib',run:()=>setHidden(g,false)} : {label:'Hide from library',icon:'x',run:()=>setHidden(g,true)});
   if(g.canRemove) items.push({label:'Remove from Nimbus',icon:'trash',run:()=>removeGame(g)});
+  if(isActive(g) && g.installKind==='nimbus') items.unshift({label:'Cancel download',icon:'x',run:()=>cancelInstall(g)});
+  if(g.inst && g.canUninstall && !isActive(g)) items.push({label:'Uninstall…',icon:'trash',run:()=>uninstallGame(g)});
   openSheet({title:g.title, sub:SOURCES[g.src], items});
+}
+function downloadOptions(g){
+  if(!g) return;
+  openSheet({title:g.title, sub:`${SOURCES[g.src]} · ${dlInfo(g).label}`, items:[
+    {label:'Cancel download',icon:'x',run:()=>cancelInstall(g)},
+    {label:'Game details',icon:'info',run:()=>navigate('game',{game:g.id})}]});
+}
+async function cancelInstall(g){
+  try{ await call('game.cancelInstall',{id:g.id}); }catch(e){ toast(e.message); }
+}
+function uninstallGame(g){
+  openSheet({title:`Uninstall ${g.title}?`, sub:`Deletes the game's files${g.path?' in '+g.path:''}. Your ${SOURCES[g.src]} account keeps the game, so you can install it again.`,
+    items:[{label:'Yes, uninstall',icon:'trash',run:async()=>{
+      toast(`Uninstalling ${g.title}…`);
+      try{ const lib=await call('game.uninstall',{id:g.id},15*60e3); applyLib(lib); toast(`Uninstalled ${g.title}`); render(null,true); }
+      catch(e){ toast(e.message); }
+    }}]});
 }
 async function setHidden(g,on){
   g.hidden=on; toast(on?`Hid ${g.title}. Find it under Library › Hidden.`:`${g.title} is back in your library`);
@@ -1279,9 +1380,15 @@ async function addManual(){
 async function installGame(g){
   if(!g) return;
   if(!host) return toast(`The browser preview can't install games`);
+  if(g.note) return toast(`${g.note}. Nimbus can't install it.`);
   try{
     await call('game.install',{id:g.id},60000);
-    toast(`${SOURCES[g.src]}'s install window is open: A installs, B cancels, D-pad moves (or use the right stick as a mouse).`);
+    if(g.installKind==='nimbus'){
+      g.state='queued'; toast(`Downloading ${g.title}. Follow it under Downloads.`);
+      render(null,true);
+    }
+    else if(g.installKind==='store') toast(`The Microsoft Store is open. Install ${g.title} there; Nimbus picks it up when it's done.`);
+    else toast(`${SOURCES[g.src]}'s install window is open: A installs, B cancels, D-pad moves (or use the right stick as a mouse).`);
     startDownloadPoll(true);
   }catch(e){ toast(e.message); }
 }
@@ -1309,6 +1416,185 @@ function startDownloadPoll(expectNew){
   dlTimer=setTimeout(tick, 1500);
 }
 
+// ---------- game stores & accounts (Library › Stores) ----------
+const STORE_INFO = {
+  steam:{name:'Steam', color:'#1f4a73', mark:'S', blurb:'Steam signs in through its own window. Nimbus keeps Steam running quietly in the background for installs and launches.'},
+  epic:{name:'Epic Games', color:'#3a3d44', mark:'E', blurb:'Your Epic library, installed and launched without the Epic Games Launcher.'},
+  gog:{name:'GOG', color:'#7a35b0', mark:'G', blurb:'Your GOG library, installed and launched without GOG Galaxy.'},
+  xbox:{name:'Xbox', color:'#16801a', mark:'X', blurb:'Your gamertag and the PC games you\'ve played on Xbox. Microsoft only lets the Xbox app and Microsoft Store install these games, so Install opens the Store.'},
+};
+const ACC = {list:null, root:'', signing:null, sig:''};
+async function loadAccounts(fromEvent){
+  if(!host && !MOCK) return;
+  try{
+    const r = await call('accounts.status');
+    ACC.list=r.accounts||[]; ACC.root=r.installRoot||'';
+    // Reload the library when an account was added/removed or its game list arrived.
+    const sig=ACC.list.map(a=>`${a.store}:${a.signedIn?1:0}:${a.fetched}`).join('|');
+    const changed = ACC.sig && sig!==ACC.sig; ACC.sig=sig;
+    if(changed && host) loadLibrary(true);
+    if(S.view==='stores' || S.view==='library') render(null,true);
+    else if(S.view==='settings' && S.settingsTab==='profile') render(null,true);
+  }catch(e){ if(!fromEvent) toast(e.message); }
+}
+function viewStores(){
+  if(!ACC.list) return `<h2>Game stores</h2><div class="note">Loading…</div>`;
+  const cards = ACC.list.map(a=>{
+    const info=STORE_INFO[a.store]; if(!info) return '';
+    const signing = ACC.signing===a.store;
+    const status = signing ? 'Signing in… finish in the sign-in window'
+      : a.store==='steam' ? (a.note ? a.note : a.signedIn ? `Signed in as ${a.name}` : 'Not signed in')
+      : a.signedIn ? `Signed in${a.name?` as ${a.name}`:''}` : 'Not signed in';
+    const av = a.signedIn && a.avatar ? `<div class="avatar md" style="width:48px;height:48px;border-radius:12px"><span>${esc(initials(a.name||info.name))}</span><img src="${esc(a.avatar)}" alt="" onerror="this.remove()"></div>` : '';
+    const stats = [];
+    if(a.signedIn || a.store==='steam'){
+      if(a.owned) stats.push(`<span><b>${a.owned}</b> games${a.store==='xbox'?' played on PC':''}</span>`);
+      stats.push(`<span><b>${a.installed}</b> installed</span>`);
+      if(a.busy) stats.push(`<span>Updating game list…</span>`);
+      else if(a.fetched) stats.push(`<span>Updated ${ago(a.fetched).toLowerCase()}</span>`);
+      else if(a.signedIn && a.store!=='steam') stats.push(`<span>Getting your games…</span>`);
+    }
+    const b=(act,label,icon,pri)=>`<button class="sbtn ${pri?'pri':''}" data-f data-k="sa-${a.store}-${act}" data-act="${act}" data-s="${a.store}">${icon?I[icon]:''}${label}</button>`;
+    let btns='';
+    if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?'Open Steam':'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : ''); }
+    else if(signing) btns = `<span class="mini-spin"></span>`;
+    else if(!a.signedIn) btns = b('accSignIn','Sign in','user',true);
+    else btns = b('accShow','Show games','lib',true) + (a.busy?'':b('accRefresh','Refresh list','refresh')) + b('accSignOut','Sign out','x');
+    return `<div class="scard" style="--sc:${info.color}">
+      <div class="shd"><div class="smark">${info.mark}</div><div class="sti"><b>${info.name}</b><small class="${a.signedIn?'on':''}">${esc(status)}</small></div>${av}</div>
+      <div class="sblurb">${info.blurb}</div>
+      ${stats.length?`<div class="sstats">${stats.join('')}</div>`:''}
+      ${a.error?`<div class="serr">${esc(a.error)}</div>`:''}
+      <div class="sbtns">${btns}</div></div>`;
+  }).join('');
+  return `<h2>Game stores &amp; accounts</h2>
+    <div class="stores">${cards}</div>
+    <h2>Installing</h2>
+    <div class="rows">
+      <button class="row" data-f data-k="sa-folder" data-act="accFolder"><span class="ricon">${I.dl}</span><div class="rt"><b>Install folder for Epic and GOG games</b><small>${esc(ACC.root||'—')}</small></div><div class="rv">Change ›</div></button>
+      ${note(`You sign in on each store's own page; Nimbus never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, which Nimbus downloads from GitHub the first time you sign in. In the sign-in window, the right stick moves the pointer, A clicks, Y opens a keyboard and B cancels.`)}
+    </div>`;
+}
+async function accSignIn(store){
+  const info=STORE_INFO[store];
+  if(!host) return toast(`Signing in needs the Nimbus app (not the browser preview).`);
+  if(store==='steam'){
+    try{ await call('accounts.signIn',{store}); toast('Steam is open. Sign in or switch accounts there, then come back to Nimbus.'); }catch(e){ toast(e.message); }
+    return;
+  }
+  ACC.signing=store; render(null,true);
+  toast(`Sign in to ${info.name} in the window that opened.`);
+  try{
+    const r=await call('accounts.signIn',{store},60*60e3);
+    if(r && r.ok) toast(`Signed in to ${info.name}. Getting your games…`);
+  }catch(e){ toast(e.message); }
+  finally{ ACC.signing=null; loadAccounts(); }
+}
+function accSignOut(store){
+  const info=STORE_INFO[store];
+  openSheet({title:`Sign out of ${info.name}?`, sub:`Games Nimbus installed stay on this PC. You'll need to sign in again to install or play ${store==='epic'?'online ':''}games from this account.`,
+    items:[{label:'Sign out',icon:'x',run:async()=>{
+      try{ await call('accounts.signOut',{store}); toast(`Signed out of ${info.name}`); }catch(e){ toast(e.message); }
+      loadAccounts(); if(host) loadLibrary(true);
+    }}]});
+}
+async function accRefresh(store){
+  try{ const p=call('accounts.refresh',{store},10*60e3); setTimeout(()=>loadAccounts(true),300); await p; }catch(e){ toast(e.message); }
+  loadAccounts();
+}
+async function pickInstallFolder(){
+  if(!host) return toast('Choosing a folder needs the Nimbus app.');
+  try{ const r=await call('accounts.pickFolder',{},600000); ACC.root=r.installRoot; render('sa-folder'); }catch(e){ toast(e.message); }
+}
+
+// ---------- profile ----------
+const PROFILE = {name:'Player One', status:null, avatar:'initials', accent:'#3fd0b8', background:'default', customAvatar:null, customBackground:null, storeAvatars:{}};
+const AV_PRESETS = [['🎮',210],['👾',275],['🐉',140],['🦊',22],['🚀',195],['🌙',245],['⚡',45],['🐱',320],['🍄',0],['🌊',205],['🔥',12],['🤖',170]];
+const ACCENTS = [['#3fd0b8','Teal'],['#4c9dff','Blue'],['#9d7bff','Violet'],['#ff6fae','Pink'],['#ff5d5d','Red'],['#ff9f43','Orange'],['#f5c84b','Gold'],['#5fd068','Green'],['#e9eef4','White']];
+// [key, name, bg, bg2, panel, panel2, panel3, line]
+const THEMES = [
+  ['default','Midnight','#0c1016','#121821','#161d27','#1d2531','#273140','#2a3443'],
+  ['preset:1','Slate','#101215','#16191d','#1b1f24','#23282e','#2e343c','#30363e'],
+  ['preset:2','Plum','#130f1a','#191424','#1f1830','#271f3b','#33294b','#382d4a'],
+  ['preset:3','Forest','#0b1411','#101b17','#15221d','#1b2b25','#243830','#28392f'],
+  ['preset:4','Ember','#160f0d','#1e1512','#251a16','#2f221d','#3d2c25','#40302a'],
+  ['preset:5','Black','#000000','#07080a','#0e1014','#161a20','#20252d','#242a33'],
+];
+function initials(n){ const p=String(n||'?').trim().split(/\s+/).filter(Boolean); return ((p[0]||'?')[0]+(p.length>1?p[p.length-1][0]:'')).toUpperCase(); }
+function avatarUrl(p, a){
+  if(a==='custom') return p.customAvatar;
+  if(a==='steam'||a==='xbox'||a==='gog') return (p.storeAvatars||{})[a];
+  return null;
+}
+function avatarHtml(p=PROFILE, cls='avatar', key){
+  const a=key||p.avatar||'initials';
+  if(a.startsWith('preset:')){
+    const [e,h]=AV_PRESETS[+a.slice(7)]||AV_PRESETS[0];
+    return `<div class="${cls}" style="background:linear-gradient(135deg,hsl(${h},72%,58%),hsl(${(h+45)%360},65%,32%))"><span class="ave">${e}</span></div>`;
+  }
+  const url=avatarUrl(p,a);
+  return `<div class="${cls}"><span>${esc(initials(p.name))}</span>${url?`<img src="${esc(url)}" alt="" onerror="this.remove()">`:''}</div>`;
+}
+function hexRgb(h){ const n=parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+function rgbHex(r,g,b){ return '#'+[r,g,b].map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join(''); }
+function applyProfile(){
+  const st=document.documentElement.style, acc=/^#[0-9a-f]{6}$/i.test(PROFILE.accent)?PROFILE.accent:'#3fd0b8';
+  const [r,g,b]=hexRgb(acc);
+  st.setProperty('--accent',acc);
+  st.setProperty('--accent2',rgbHex(r*.8,g*.8,b*.8));
+  const lum=(.2126*r+.7152*g+.0722*b)/255;
+  st.setProperty('--accentInk', lum>.45 ? rgbHex(r*.12,g*.12,b*.12) : '#ffffff');
+  const custom = PROFILE.background==='custom' && PROFILE.customBackground;
+  const th = THEMES.find(t=>t[0]===PROFILE.background) || THEMES[0];
+  ['--bg','--bg2','--panel','--panel2','--panel3','--line'].forEach((k,i)=>st.setProperty(k, th[i+2]));
+  if(custom){
+    st.setProperty('--bg','rgba(10,13,18,.55)'); st.setProperty('--bg2','rgba(14,18,25,.82)');
+    $('#bg').style.backgroundImage=`url("${PROFILE.customBackground}")`;
+  }
+  document.body.classList.toggle('hasbg', !!custom); document.documentElement.classList.toggle('hasbg', !!custom);
+  $('#topAv').innerHTML = avatarHtml(PROFILE,'avatar sm');
+  if(S.layers.includes('menu')){ const k=focused?.dataset.k; renderMenu(); if(k){ const el=$(`#menu [data-k="${k}"]`); if(el) setFocus(el,true); } }
+}
+async function loadProfile(){
+  try{ Object.assign(PROFILE, await call('profile.get')); }catch(e){}
+  applyProfile();
+  if(S.view==='settings') render(null,true);
+}
+async function saveProfile(changes, focusKey){
+  try{ Object.assign(PROFILE, await call('profile.set', changes)); }catch(e){ return toast(e.message); }
+  applyProfile();
+  if(S.view==='settings') render(focusKey||focused?.dataset.k, true);
+}
+async function pickProfileImage(kind){
+  if(!host) return toast('Choosing a picture needs the Nimbus app (not the browser preview).');
+  try{ const r=await call('profile.pickImage',{kind},600000); if(!r) return; Object.assign(PROFILE,r); applyProfile(); render(kind==='avatar'?'pa-custom':'pb-custom',true); }
+  catch(e){ toast(e.message); }
+}
+function pageProfile(){
+  const p=PROFILE;
+  let h = `<div class="prof">${avatarHtml(p,'avatar lg')}<div><div class="pname">${esc(p.name)}</div><div class="muted">${esc(p.status||'Online')}</div></div></div>`;
+  h += `<button class="row" data-f data-k="pf-name" data-act="pfName"><span class="ricon">${I.user}</span><div class="rt"><b>Name</b><small>${esc(p.name)}</small></div><div class="rv">Edit ›</div></button>`;
+  h += `<button class="row" data-f data-k="pf-status" data-act="pfStatus"><span class="ricon">${I.note}</span><div class="rt"><b>Status line</b><small>${esc(p.status||'Online')}</small></div><div class="rv">Edit ›</div></button>`;
+  // Picture
+  const opt=(key,label)=>`<button class="avopt ${p.avatar===key?'on':''}" data-f data-k="pa-${key.replace(':','-')}" data-act="pfAvatar" data-v="${key}">${avatarHtml(p,'avatar md',key)}<small>${label}</small></button>`;
+  let av = opt('initials','Initials') + AV_PRESETS.map((_,i)=>opt('preset:'+i,'')).join('');
+  const sa=p.storeAvatars||{};
+  if(sa.xbox) av += opt('xbox','Xbox gamerpic');
+  if(sa.steam) av += opt('steam','Steam picture');
+  if(sa.gog) av += opt('gog','GOG picture');
+  if(p.customAvatar) av += opt('custom','Your picture');
+  av += `<button class="avopt" data-f data-k="pa-pick" data-act="pfPick" data-kind="avatar"><div class="pick">＋</div><small>Choose a picture…</small></button>`;
+  h += shead('Picture') + `<div class="opts">${av}</div>`;
+  // Accent
+  h += shead('Accent color') + `<div class="opts">${ACCENTS.map(([c,n],i)=>`<button class="swatch ${p.accent.toLowerCase()===c?'on':''}" data-f data-k="pc-${i}" data-act="pfAccent" data-v="${c}" style="--c:${c}" aria-label="${n}" title="${n}"></button>`).join('')}</div>`;
+  // Background
+  const th=THEMES.map(t=>`<button class="theme ${p.background===t[0]?'on':''}" data-f data-k="pb-${t[0].replace(':','-')}" data-act="pfBg" data-v="${t[0]}"><div class="tprev" style="background:linear-gradient(135deg,${t[2]} 0%,${t[2]} 45%,${t[6]} 100%)"><i></i></div><small>${t[1]}</small></button>`).join('');
+  const cust = p.customBackground ? `<button class="theme ${p.background==='custom'?'on':''}" data-f data-k="pb-custom" data-act="pfBg" data-v="custom"><div class="tprev" style="background-image:url('${esc(p.customBackground)}')"><i></i></div><small>Your picture</small></button>` : '';
+  h += shead('Background') + `<div class="opts">${th}${cust}<button class="theme" data-f data-k="pb-pick" data-act="pfPick" data-kind="background"><div class="tprev" style="display:grid;place-items:center;color:var(--dim);font-size:24px;border-style:dashed">＋</div><small>Choose a picture…</small></button></div>`;
+  h += note('Your profile is saved on this PC. Signing in to Xbox, Steam or GOG (Library › Stores) adds their pictures to the choices above.');
+  return h;
+}
+
 // ---------- real library (host) ----------
 const LIB = {loading:false, counts:{}};
 const fmtSize = b => !b ? '' : b>=1e9 ? (b/1e9).toFixed(1)+' GB' : Math.round(b/1e6)+' MB';
@@ -1316,15 +1602,15 @@ function fromHost(d){
   return {id:d.id, title:d.title, src:d.source, fav:!!d.fav, hidden:!!d.hidden,
           hrs:(d.minutes||0)/60, last:d.lastPlayed||0, added:d.added||0, size:fmtSize(d.sizeBytes),
           ach:null, art:d.art||{}, path:d.path||'', canRemove:!!d.canRemove,
-          inst:d.installed!==false, state:d.state||'installed', progress:d.progress, bytesDone:d.bytesDone, bytesTotal:d.bytesTotal, speed:d.bytesPerSec};
+          inst:d.installed!==false, state:d.state||'installed', progress:d.progress, bytesDone:d.bytesDone, bytesTotal:d.bytesTotal, speed:d.bytesPerSec,
+          canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null};
 }
 async function loadLibrary(rescan, announce){
   if(!host) return;
   LIB.loading=true; if(!GAMES.length) render(null,true);
   try{
     const lib=await call('library.get',{rescan:!!rescan},120000);
-    GAMES.length=0; lib.games.forEach(d=>GAMES.push(fromHost(d)));
-    LIB.counts=lib.counts||{};
+    applyLib(lib);
     const s=lib.sources||{}; S.set.srcSteam=s.steam!==false; S.set.srcEpic=s.epic!==false; S.set.srcGog=s.gog!==false; S.set.srcXbox=s.xbox!==false;
     if(lib.runningId) S.running=lib.runningId;
     S.set.steamBg = lib.steamBackground!==false;
@@ -1332,6 +1618,11 @@ async function loadLibrary(rescan, announce){
     if(announce) toast(`Found ${GAMES.length} game${GAMES.length===1?'':'s'}`);
   }catch(e){ toast("Couldn't load your library: "+e.message); }
   finally{ LIB.loading=false; render(null,true); }
+}
+function applyLib(lib){
+  if(!lib || !lib.games) return;
+  GAMES.length=0; lib.games.forEach(d=>GAMES.push(fromHost(d)));
+  LIB.counts=lib.counts||{};
 }
 async function setSources(){
   try{
@@ -1352,6 +1643,14 @@ function onSysEvent(name, data){
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
+  if(name==='accounts.changed') return loadAccounts(true);
+  if(name==='install.done'){
+    const t=data.title||'The game';
+    if(data.error==='cancelled') toast(`Cancelled the download of ${t}`);
+    else if(data.error) toast(`${t} didn't install: ${data.error}`);
+    else { toast(`${t} is installed and ready to play`); NOTIFS.unshift({i:'dl', t:`${t} is ready to play`, s:'Installed by Nimbus'}); updateBadge(); }
+    return loadLibrary(true);
+  }
   if(name==='game.timeout'){ hideLaunch(); const g=G(data.id); return toast(`Nimbus couldn't see ${g?g.title:'the game'} start. If it's running, it still works; it just won't show here.`); }
   if(name==='bt.found'){
     const known = S.sys.found.some(d=>d.id===data.id) || (S.sys.paired||[]).some(d=>d.id===data.id);
@@ -1404,6 +1703,7 @@ function updateStatusBar(){
 function onSettingsTab(t){
   if(t==='wifi') wifiScan();
   if(t==='shell') loadShellStatus();
+  if(t==='profile'){ loadProfile(); loadAccounts(true); }
   if(t==='updates') loadUpdateStatus();
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();
@@ -1538,10 +1838,10 @@ function setInput(kind){
 }
 const INPUT_NAMES = {pad:'Controller', kbd:'Keyboard', mouse:'Mouse or touch'};
 const GLYPHS = {
-  pad: {select:['A','a'], back:['B','b'], search:['Y','y'], menu:['☰',''], qam:['⧉',''], tabs:['LB RB',''], adjust:['◀▶',''], del:['Y','y'], space:['X','x'], done:['☰','']},
-  kbd: {select:['Enter','kc'], back:['Esc','kc'], search:['/','kc'], menu:['M','kc'], qam:['Q','kc'], tabs:['Tab','kc'], adjust:['← →','kc'], del:['Bksp','kc'], space:['Space','kc'], done:['Enter','kc']},
+  pad: {select:['A','a'], back:['B','b'], search:['Y','y'], menu:['☰',''], qam:['⧉',''], tabs:['LB RB',''], adjust:['◀▶',''], del:['Y','y'], space:['X','x'], done:['☰',''], stores:['X','x']},
+  kbd: {select:['Enter','kc'], back:['Esc','kc'], search:['/','kc'], menu:['M','kc'], qam:['Q','kc'], tabs:['Tab','kc'], adjust:['← →','kc'], del:['Bksp','kc'], space:['Space','kc'], done:['Enter','kc'], stores:['F','kc']},
 };
-const HINT_ICON = {back:I.x, search:I.search, menu:'<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>', qam:I.sliders, tabs:I.lib};
+const HINT_ICON = {back:I.x, search:I.search, menu:'<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>', qam:I.sliders, tabs:I.lib, stores:I.user};
 function renderFooter(){
   const top=S.layers.at(-1);
   const tb=$('#topBack'); if(tb) tb.classList.toggle('show', !!(S.layers.length || S.history.length));
@@ -1551,7 +1851,7 @@ function renderFooter(){
   if(focused?.dataset.slider) h.push(['adjust','Adjust']);
   h.push(['select','Select'],['back','Back']);
   if(top==='prompt') h.push(['del','Delete'],['space','Space'],['done','Done']);
-  if(!top && S.view==='library') h.push(['tabs','Tabs']);
+  if(!top && S.view==='library') h.push(['tabs','Tabs'],['stores','Stores']);
   if(top==='qam') h.push(['tabs','Sections']);
   if(!top) h.push(['search','Search'],['menu','Menu'],['qam','Quick Access']);
   const g=S.running&&G(S.running);
@@ -1565,7 +1865,7 @@ function renderFooter(){
 }
 function hintAction(id){
   ({select:()=>focused&&act(focused), back:()=>back(), search:()=>input('y'), menu:()=>input('start'),
-    qam:()=>input('select'), tabs:()=>input('rb'), adjust:()=>{}, del:()=>input('y'), space:()=>input('x'), done:()=>input('start')})[id]?.();
+    qam:()=>input('select'), tabs:()=>input('rb'), adjust:()=>{}, del:()=>input('y'), space:()=>input('x'), done:()=>input('start'), stores:()=>input('x')})[id]?.();
 }
 
 // =====================================================================
@@ -1581,7 +1881,7 @@ function input(k){
     case 'start': return top==='prompt' ? promptSubmit() : toggleLayer('menu');
     case 'select': case 'guide': return top==='prompt'||top==='sheet' ? null : toggleLayer('qam');
     case 'y': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (closeAll(), query='', openLayer('search'));
-    case 'x': return top==='prompt' ? promptKey(' ') : top==='search' ? typeKey(' ') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : null);
+    case 'x': return top==='prompt' ? promptKey(' ') : top==='search' ? typeKey(' ') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
     case 'lb': case 'rb': return shiftTab(k==='lb'?-1:1);
   }
 }
@@ -1694,7 +1994,10 @@ if(host){ NOTIFS=[]; GAMES.length=0; }
 updateBadge();
 render();
 refreshStatus();
+applyProfile();
+loadProfile();
 loadLibrary();
+loadAccounts(true);
 loadUpdateStatus();
 requestAnimationFrame(pollPads);
 send({type:'ready'});
