@@ -29,6 +29,7 @@ public sealed class SystemBridge : IDisposable
     private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 6 * 60 * 60 * 1000 };
     private readonly System.Windows.Forms.Timer _statusDebounce = new() { Interval = 400 };
     private readonly System.Windows.Forms.Timer _batteryPoll = new() { Interval = 30_000 };
+    private readonly System.Windows.Forms.Timer _accountsDebounce = new() { Interval = 300 };
 
     // Windows has no public airplane-mode API, so we emulate it: remember the radios, switch them off.
     private bool _airplane;
@@ -53,6 +54,14 @@ public sealed class SystemBridge : IDisposable
         Updater.Changed += () => Event("update", Updater.Status());
         _updateTimer.Tick += async (_, _) => { if (Games.AutoUpdateCheck) await Updater.CheckAsync(); };
         _updateTimer.Start();
+
+        // Store accounts: tell the UI (debounced) when an account or its game list changes.
+        _accountsDebounce.Tick += (_, _) => { _accountsDebounce.Stop(); Event("accounts.changed", new { }); };
+        Games.Accounts.Changed += () =>
+        {
+            if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => { _accountsDebounce.Stop(); _accountsDebounce.Start(); }));
+        };
+        Games.InstallFinished += (id, title, error) => Event("install.done", new { id, title, error });
 
         Games.GameStarted += id => { Log($"game started {id}"); Event("game.started", new { id }); };
         Games.GameStartTimedOut += id => { Log($"game start timed out {id}"); Event("game.timeout", new { id }); };
@@ -225,6 +234,52 @@ public sealed class SystemBridge : IDisposable
             case "library.downloads": return await Games.DownloadsAsync();
             case "library.setSteamBackground": await Games.SetSteamBackgroundAsync(Bool(a, "on")); return null;
             case "game.close": return new { ok = await Games.CloseRunningAsync() };
+            case "game.cancelInstall": return new { ok = Games.CancelInstall(Req(a, "id")) };
+            case "game.uninstall": await Games.UninstallAsync(Req(a, "id")); return await Games.GetAsync(false);
+
+            case "accounts.status": return new { accounts = Games.AccountsStatus(), installRoot = Games.Accounts.InstallRoot };
+            case "accounts.signIn":
+            {
+                var store = Req(a, "store");
+                if (store == "steam")
+                {
+                    // Steam signs in through its own window.
+                    Library.SteamWindows.StopHiding();
+                    Library.SteamWindows.AllowSteamToFocus();
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("steam://open/main") { UseShellExecute = true })?.Dispose();
+                    return new { ok = true };
+                }
+                return new { ok = await Games.Accounts.SignInAsync(store, _ui.FindForm()) };
+            }
+            case "accounts.signOut": await Games.Accounts.SignOutAsync(Req(a, "store")); return null;
+            case "accounts.refresh": await Games.Accounts.RefreshAsync(Req(a, "store")); return null;
+            case "accounts.pickFolder":
+            {
+                using var dlg = new FolderBrowserDialog
+                {
+                    Description = "Choose where Nimbus installs Epic and GOG games",
+                    UseDescriptionForTitle = true,
+                    SelectedPath = Games.Accounts.InstallRoot,
+                    ShowNewFolderButton = true,
+                };
+                if (dlg.ShowDialog(_ui.FindForm()) == DialogResult.OK) Games.Accounts.InstallRoot = dlg.SelectedPath;
+                return new { installRoot = Games.Accounts.InstallRoot };
+            }
+
+            case "profile.get": return Games.Profile();
+            case "profile.set": return Games.SetProfile(Str(a, "name"), Str(a, "status"), Str(a, "avatar"), Str(a, "accent"), Str(a, "background"));
+            case "profile.pickImage":
+            {
+                var kind = Req(a, "kind");
+                using var dlg = new OpenFileDialog
+                {
+                    Title = kind == "avatar" ? "Choose a profile picture" : "Choose a background picture",
+                    Filter = "Pictures (*.png;*.jpg;*.jpeg;*.webp;*.gif)|*.png;*.jpg;*.jpeg;*.webp;*.gif",
+                    CheckFileExists = true,
+                };
+                if (dlg.ShowDialog(_ui.FindForm()) != DialogResult.OK) return null;
+                return Games.SetProfileImage(kind, dlg.FileName);
+            }
 
             case "update.status": return Updater.Status();
             case "update.check": return await Updater.CheckAsync();
@@ -338,6 +393,7 @@ public sealed class SystemBridge : IDisposable
     {
         _statusDebounce.Dispose();
         _batteryPoll.Dispose();
+        _accountsDebounce.Dispose();
         _bt.Dispose();
         Games.Dispose();
         _updateTimer.Dispose();
