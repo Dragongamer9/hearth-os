@@ -20,6 +20,8 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <!-- WMI, for screen brightness -->
     <PackageReference Include="System.Management" Version="8.0.0" />
+    <!-- DPAPI, for the Xbox sign-in token -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 
   <!-- Copy the web UI next to the exe as wwwroot/ -->

@@ -43,7 +43,7 @@ public sealed class ControllerBridge : IDisposable
         _thread.Start();
     }
 
-    private enum Target { Game, Ui, Steam, NimbusDialog, Other }
+    private enum Target { Game, Ui, Steam, Web, NimbusDialog, Other }   // Web = a store sign-in window
 
     /// <summary>Raised on the bridge thread when the Nimbus UI is in front: button name (a, b, x, y, lb, rb, start, select, up, down, left, right).</summary>
     public event Action<string>? UiButton;
@@ -100,7 +100,7 @@ public sealed class ControllerBridge : IDisposable
             bool mouse = _mouseOverride ?? MouseMode switch
             {
                 "always" => true,
-                "steam" => target == Target.Steam,
+                "steam" => target is Target.Steam or Target.Web,
                 _ => false,
             };
             SetMouse(mouse);
@@ -187,7 +187,7 @@ public sealed class ControllerBridge : IDisposable
         if (fg == IntPtr.Zero) return Target.Other;
         if (fg == _mainWindow) return Target.Ui;
         GetWindowThreadProcessId(fg, out var pid);
-        if (pid == (uint)Environment.ProcessId) return Target.NimbusDialog;
+        if (pid == (uint)Environment.ProcessId) return Stores.SignInWindow.IsSignInWindow(fg) ? Target.Web : Target.NimbusDialog;
         if (IsSteam(pid)) return Target.Steam;
         return Target.Other;
     }
@@ -223,7 +223,7 @@ public sealed class ControllerBridge : IDisposable
             };
             if (name is not null) UiButton?.Invoke(name);
         }
-        else if (target is Target.Steam or Target.NimbusDialog) Press(b, target);
+        else if (target is Target.Steam or Target.Web or Target.NimbusDialog) Press(b, target);
         // Other apps: only the controller mouse (if on) acts; no keys are sent to them.
     }
 
@@ -232,9 +232,11 @@ public sealed class ControllerBridge : IDisposable
 
     private static void Press(ushort button, Target target)
     {
-        bool steam = target == Target.Steam;
+        bool steam = target is Target.Steam or Target.Web;
         switch (button)
         {
+            // Y: on-screen keyboard for typing into web pages (sign-in, Steam's login).
+            case Y when steam: ShowKeyboard(); break;
             case A: Key(VK_RETURN); break;
             case B: Key(VK_ESCAPE); break;
             case START: Key(VK_RETURN); break;
@@ -248,6 +250,13 @@ public sealed class ControllerBridge : IDisposable
             case LEFT: Key(VK_LEFT); break;
             case RIGHT: Key(VK_RIGHT); break;
         }
+    }
+
+    private static void ShowKeyboard()
+    {
+        var t = new Thread(Stores.TouchKeyboard.Toggle) { IsBackground = true };
+        t.SetApartmentState(ApartmentState.STA);   // the touch keyboard's COM interface wants STA
+        t.Start();
     }
 
     private static void Key(byte vk, bool shift = false)

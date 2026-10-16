@@ -162,6 +162,22 @@ public static class SteamScanner
         }
     }
 
+    /// <summary>The most recently signed-in Steam account: its name and its cached avatar picture, if any.</summary>
+    public static (string? Name, string? AvatarFile) Account()
+    {
+        var steam = SteamPath();
+        if (steam is null) return (null, null);
+        var users = Vdf.Obj(Vdf.Load(Path.Combine(steam, "config", "loginusers.vdf")), "users");
+        if (users is null) return (null, null);
+        foreach (var (id64, v) in users)
+        {
+            if (v is not Dictionary<string, object> u || Vdf.Str(u, "MostRecent") != "1") continue;
+            var avatar = Path.Combine(steam, "config", "avatarcache", id64 + ".png");
+            return (Vdf.Str(u, "PersonaName") ?? Vdf.Str(u, "AccountName"), File.Exists(avatar) ? avatar : null);
+        }
+        return (null, null);
+    }
+
     /// <summary>Custom grid folder and per-app stats for the most recently signed-in Steam user.</summary>
     private static (string? GridDir, Dictionary<string, (int Minutes, long LastPlayed)> Stats) UserData(string steam)
     {

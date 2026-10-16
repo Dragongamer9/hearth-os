@@ -60,6 +60,9 @@ public static class SteamWindows
         });
     }
 
+    /// <summary>Stops hiding Steam's main window (when you asked to open Steam).</summary>
+    public static void StopHiding() { lock (Gate) _watchUntil = DateTime.MinValue; }
+
     /// <summary>Hides the visible top-level window titled exactly "Steam" owned by Steam. Returns how many were hidden.</summary>
     public static int HideMainOnce()
     {
