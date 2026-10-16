@@ -1,16 +1,21 @@
 # Nimbus Shell
 
-A controller-first replacement shell for Windows 11, modeled on the SteamOS gamepad UI.
-Milestone 1: clickable UI prototype + the native host it runs in.
+A controller-first replacement shell for Windows 11 and Linux, modeled on the SteamOS gamepad UI.
+One shared UI, one native host per platform.
 
 ```
 Nimbus/
-  ui/index.html              Whole UI (HTML/CSS/JS, mock library). Runs in any browser.
-  host/Nimbus.Host/          .NET 8 WinForms + WebView2 host (fullscreen, bridge, escape hatch)
+  ui/index.html              Whole UI (HTML/CSS/JS, mock library). Shared by every host; runs in any browser.
+  shared/bridge.md           The message contract between the UI and a host
+  hosts/windows/Nimbus.Host/ .NET 8 WinForms + WebView2 host (fullscreen, bridge, escape hatch)
     SystemBridge.cs          Request/response API the settings pages call
     Services/                Wi-Fi, Bluetooth, radios, audio, brightness, power
+  hosts/linux/               Electron host, run inside gamescope (see hosts/linux/README.md)
   tools/restore-explorer.ps1 Puts explorer.exe back if the shell ever breaks
 ```
+
+**Linux:** see [hosts/linux/README.md](hosts/linux/README.md). Same UI and features, plus Xbox Cloud Gaming
+streaming in place of installed Xbox app games.
 
 ## Try the prototype (no build)
 
@@ -34,12 +39,12 @@ Touch and mouse work too. Sliders in Quick Access adjust with left/right while f
 Needs the .NET 8 SDK. The WebView2 runtime ships with Windows 11.
 
 ```powershell
-cd host\Nimbus.Host
+cd hosts\windows\Nimbus.Host
 dotnet run -- --windowed      # dev: normal window
 dotnet run                    # fullscreen, like the real shell
 ```
 
-The UI detects the host via `window.chrome.webview` and sends messages to it:
+The UI detects the host via `window.chrome.webview` (on Linux, `window.nimbusHost`) and sends messages to it. The full contract is in [shared/bridge.md](shared/bridge.md).
 
 | Message | Host does today |
 |---|---|
@@ -165,7 +170,7 @@ Nimbus updates itself from GitHub Releases of **Dragongamer9/nimbus**.
 - If the new version crashes 3 times within 2 minutes, the watchdog swaps `app.old` back automatically. After a minute of running fine, the update counts as good.
 - Only the installed copy (`%LOCALAPPDATA%\Nimbus\app`) updates; a development build from this folder doesn't.
 
-**Publishing an update:** raise `<Version>` in `host/Nimbus.Host/Nimbus.Host.csproj` (e.g. 0.3.0 → 0.3.1) and push to `main`. The *Build and release* workflow (`.github/workflows/release.yml`) builds on Windows, packages `Nimbus-win-x64.zip` + `.sha256`, creates tag `v0.3.1` and publishes the release; the commit message becomes the release notes. Every Nimbus PC then sees it. Pushes that don't change the version are only built, as a compile check.
+**Publishing an update:** raise `<Version>` in `hosts/windows/Nimbus.Host/Nimbus.Host.csproj` (e.g. 0.3.0 → 0.3.1) and push to `main`. The *Build and release* workflow (`.github/workflows/release.yml`) builds on Windows and Linux, packages `Nimbus-win-x64.zip` and `Nimbus-linux-x86_64.AppImage` (each with a `.sha256`), creates tag `v0.3.1` and publishes the release; the commit message becomes the release notes. Every Nimbus PC then sees it. Pushes that don't change the version are only built, as a compile check.
 
 ## Controls
 

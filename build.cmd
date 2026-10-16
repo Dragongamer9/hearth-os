@@ -1,7 +1,7 @@
 @echo off
 rem Builds Nimbus and writes everything to build.log next to this script.
 set LOG=%~dp0build.log
-cd /d "%~dp0host\Nimbus.Host"
+cd /d "%~dp0hosts\windows\Nimbus.Host"
 set PATH=%ProgramFiles%\dotnet;%PATH%
 echo === %DATE% %TIME% === > "%LOG%"
 where dotnet >> "%LOG%" 2>&1

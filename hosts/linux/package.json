@@ -1,0 +1,31 @@
+{
+  "name": "nimbus-linux",
+  "productName": "Nimbus",
+  "version": "0.4.0",
+  "description": "Nimbus shell for Linux: the SteamOS-style UI hosted in Electron, run inside gamescope",
+  "main": "src/main.js",
+  "author": "Dragongamer9",
+  "private": true,
+  "scripts": {
+    "start": "electron . --windowed",
+    "start:fullscreen": "electron .",
+    "test": "node --test test/*.test.js",
+    "dist": "electron-builder --linux AppImage --publish never"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "io.github.dragongamer9.nimbus",
+    "productName": "Nimbus",
+    "artifactName": "Nimbus-linux-${arch}.${ext}",
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "package.json"],
+    "extraResources": [
+      { "from": "../../ui", "to": "ui" },
+      { "from": "session", "to": "session" }
+    ],
+    "linux": { "target": ["AppImage"], "category": "Game" }
+  }
+}

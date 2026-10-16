@@ -449,7 +449,12 @@ const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settin
 // ---------- host bridge ----------
 // send(): fire-and-forget message.  call(): request/response, resolves with the host's result.
 // Host pushes: {type:'event', name, data} for status changes, Bluetooth discovery, PIN prompts.
-const host = window.chrome && window.chrome.webview ? window.chrome.webview : null;
+// Windows hosts the UI in WebView2 (window.chrome.webview); Linux in Electron (window.nimbusHost). Same messages.
+const host = window.chrome && window.chrome.webview ? window.chrome.webview : (window.nimbusHost || null);
+// Which platform we're on; host.info fills in the details at boot. Text that names Windows things checks this.
+const HOSTINFO = {platform: window.nimbusHost ? 'linux' : 'windows', name:null, host:null, session:false};
+const LINUX = HOSTINFO.platform==='linux';
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); }).catch(()=>{}); }
 const pending = new Map(); let rid = 0;
 function send(msg){ if(host) host.postMessage(msg); else console.log('[bridge:mock]', msg); }
 function call(method, args={}, timeout=30000){
@@ -573,6 +578,8 @@ function artNext(img){
 }
 const STATE_LABEL = {downloading:'Downloading', queued:'Queued', paused:'Paused', updating:'Updating', installing:'Installing'};
 const isActive = g => !!STATE_LABEL[g.state];
+// Cloud games stream instead of installing: they can be played but aren't "installed".
+const playable = g => g.inst || g.cloud;
 function dlInfo(g){
   const pct = g.progress!=null ? Math.round(g.progress*100) : null;
   return {pct, label: STATE_LABEL[g.state] + (pct!=null && g.state!=='queued' ? ` ${pct}%` : '')};
@@ -580,10 +587,10 @@ function dlInfo(g){
 function cover(g, opts={}){
   const kinds = opts.wide ? ['wide','hero','cover'] : ['cover','wide'];
   const act = isActive(g) ? dlInfo(g) : null;
-  return `<div class="cover ${!g.inst&&!act?'ni':''}"><div class="art" style="${artBg(g)}"></div>
+  return `<div class="cover ${!playable(g)&&!act?'ni':''}"><div class="art" style="${artBg(g)}"></div>
     <div class="ct">${esc(g.title)}</div>${artImg(g,kinds)}
     ${opts.badge!==false?`<span class="src">${SOURCES[g.src]}</span>`:''}
-    ${!g.inst&&!act?'<span class="notinst">Not installed</span>':''}
+    ${g.cloud&&!g.inst?'<span class="notinst">Cloud</span>':!g.inst&&!act?'<span class="notinst">Not installed</span>':''}
     ${act?`<div class="dl"><span>${act.label}</span><div class="bar"><i style="width:${act.pct??0}%"></i></div></div>`:''}</div>`;
 }
 function tile(g, kind='p', key=''){
@@ -615,10 +622,10 @@ function heroStyle(g){ return g ? artBg(g) : 'background:var(--panel)'; }
 function heroImg(g){ return g ? artImg(g,['hero','wide']) : ''; }
 
 function viewHome(){
-  const V=visible().filter(g=>g.inst || isActive(g));
+  const V=visible().filter(g=>g.inst || isActive(g) || (g.cloud && (g.last || g.fav)));
   if(!V.length) return `<div class="empty" style="padding-top:18vh">
       <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:8px">${LIB.loading?'Loading your games…':'No games found yet'}</div>
-      ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.</div>
+      ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">${LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':'Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.'}</div>
       <button class="pill" style="display:inline-flex" data-f data-k="h-add" data-act="addManual">＋ Add a game</button>`}</div>`;
   const recent=V.filter(g=>g.last).sort((a,b)=>b.last-a.last).slice(0,10);
   const favs=V.filter(g=>g.fav);
@@ -684,6 +691,7 @@ function viewGame(){
     : `<div class="card"><h3>Details</h3><div class="muted">${g.added?`Added ${new Date(g.added).toLocaleDateString()}`:g.inst?'Installed':'Not installed'}${g.hidden?'<br>Hidden from your library':''}</div></div>`;
   const about = g.genre
     ? `${esc(g.genre)}. Placeholder description from the browser preview.`
+    : g.cloud ? `Streams with Xbox Cloud Gaming. Needs Game Pass Ultimate; sign in with your Xbox account the first time. Hold View + Menu to leave the stream.`
     : g.inst ? `Installed through ${SOURCES[g.src]}.`
     : isActive(g) ? (g.installKind==='nimbus' ? `Nimbus is installing this game into your games folder.` : `${SOURCES[g.src]} is installing this game.`)
     : g.note ? `In your ${SOURCES[g.src]} library. ${esc(g.note)}, so Nimbus can't install it.`
@@ -695,8 +703,8 @@ function viewGame(){
     <div class="gbar">
       ${isActive(g) && !g.inst
         ? `<button class="play dling" data-f data-k="g-play" data-act="nav" data-view="downloads"><span>${dlInfo(g).label}</span><div class="bar"><i style="width:${dlInfo(g).pct??0}%"></i></div></button>`
-        : g.inst
-        ? `<button class="play" data-f data-k="g-play" data-act="${running?'exitgame':'play'}" data-id="${esc(g.id)}">${running?I.stop+'Stop':I.play+'Play'}</button>`
+        : playable(g)
+        ? `<button class="play" data-f data-k="g-play" data-act="${running?'exitgame':'play'}" data-id="${esc(g.id)}">${running?I.stop+'Stop':I.play+(g.cloud&&!g.inst?'Stream':'Play')}</button>`
         : `<button class="play install" data-f data-k="g-play" data-act="install" data-id="${esc(g.id)}">${I.dl}Install</button>`}
       <button class="sq ${g.fav?'on':''}" data-f data-k="g-fav" data-act="fav" data-id="${esc(g.id)}" aria-label="Favorite">${I.star}</button>
       <button class="sq" data-f data-k="g-opt" data-act="gopts" data-id="${esc(g.id)}" aria-label="Options">${I.dots}</button>
@@ -758,7 +766,7 @@ function pageWifi(){
   h += shead('Available networks', S.sys.scanning);
   const nets=S.sys.nets;
   if(!nets) h += note(S.sys.scanning?'Looking for networks…':'');
-  else if(!nets.length) h += note('No networks found. On Windows 11 24H2 and later, scanning needs location access for desktop apps (Windows Settings › Privacy & security › Location).');
+  else if(!nets.length) h += note(LINUX ? 'No networks found.' : 'No networks found. On Windows 11 24H2 and later, scanning needs location access for desktop apps (Windows Settings › Privacy & security › Location).');
   else h += nets.map(n=>{
     const right = S.sys.connecting===n.ssid ? '<span class="mini-spin"></span>'
                : n.connected ? '<span class="tag on">Connected</span>'
@@ -826,6 +834,7 @@ function pagePower(){
 const KEY_LIST = [['Move','Arrow keys or W A S D'],['Select','Enter or Space'],['Back','Esc or Backspace'],['Main menu','M'],['Quick Access','Q'],
   ['Search','/'],['Switch tabs','Tab / Shift+Tab, or [ and ]'],['Favorite (game page)','F'],['Home','Home'],['This page','F1'],
   ['Open File Explorer','Ctrl+Alt+Shift+E'],['Task Manager','Ctrl+Shift+Esc']];
+const KEY_LIST_LINUX = [...KEY_LIST.slice(0,-2), ['Leave a cloud stream','Ctrl+Shift+Q'], ['Text console (if Nimbus is stuck)','Ctrl+Alt+F3']];
 function pageControls(){
   const now = `<span id="inputNow">${INPUT_NAMES[INPUT.last]}</span>`;
   const pads = (navigator.getGamepads ? [...navigator.getGamepads()] : []).filter(Boolean);
@@ -836,16 +845,18 @@ function pageControls(){
   h += `<button class="row" data-f data-k="ctl-swapab" data-act="padSwap" data-v="AB"><div class="rt"><b>Swap A and B</b></div><div class="sw ${PAD.swapAB?'on':''}"></div></button>`;
   h += `<button class="row" data-f data-k="ctl-swapxy" data-act="padSwap" data-v="XY"><div class="rt"><b>Swap X and Y</b></div><div class="sw ${PAD.swapXY?'on':''}"></div></button>`;
   if(PAD.host) h += note('Xbox-style controllers are read directly by Nimbus (XInput), so their buttons match their labels.');
+  if(!LINUX){
   h += shead('Controller mouse');
   h += `<div class="row"><div class="rt"><b>Right stick as mouse</b><small>${PAD.mouseOn?'On right now':'Off right now'} · View + Menu together turns it on or off any time</small></div>
     <div class="seg">${[['off','Off'],['steam','Steam windows'],['always','Everywhere']].map(([k,l])=>`<button class="${PAD.mouseMode===k?'on':''}" data-f data-k="cm-${k}" data-act="padMouseMode" data-v="${k}">${l}</button>`).join('')}</div></div>`;
   h += [['Move pointer','Right stick'],['Left click (hold to drag)','A or RT'],['Right click','LT'],['Scroll','Left stick'],['Back / close','B'],['Turn mouse on / off','View + Menu together']]
         .map(([a,k],i)=>`<div class="row" data-f data-k="cmk-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
   h += note('“Steam windows” turns the mouse on by itself while a Steam pop-up (like the Install window) is in front. Games always get the controller to themselves.');
+  } else h += note('During a game, the Guide (Xbox / Home) button brings Nimbus back with Quick Access open. In a cloud stream, holding View + Menu leaves the stream.');
   h += pads.length ? pads.map((p,i)=>`<div class="row"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(p.id.split('(')[0].trim()||'Controller')}</b><small>Player ${i+1}</small></div></div>`).join('')
                    : note('No controller detected. Press any button on a connected controller.');
   h += shead('Keyboard');
-  h += KEY_LIST.map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
+  h += (LINUX?KEY_LIST_LINUX:KEY_LIST).map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
   h += note('Mouse and touch: click anything to select it. The buttons in the bottom bar and the top bar do the same as the controller buttons.');
   return h;
 }
@@ -882,7 +893,8 @@ function pageUpdates(){
   if(!['checking','downloading'].includes(s.state))
     h += `<button class="row" data-f data-k="up-check" data-act="updCheck"><span class="ricon">${I.refresh}</span><div class="rt"><b>Check for updates</b></div></button>`;
   h += `<button class="row" data-f data-k="up-auto" data-act="updAuto"><div class="rt"><b>Check automatically</b><small>At startup and every 6 hours</small></div><div class="sw ${s.autoCheck?'on':''}"></div></button>`;
-  if(!s.canInstallHere) h += note(`This is a development copy of Nimbus. Updates install into <code>${esc(s.installFolder)}</code>, the copy that install-shell.cmd set up.`);
+  if(!s.canInstallHere) h += note(LINUX ? 'This copy of Nimbus runs from source, so it can only check for updates. The AppImage from GitHub Releases updates itself.'
+    : `This is a development copy of Nimbus. Updates install into <code>${esc(s.installFolder)}</code>, the copy that install-shell.cmd set up.`);
   if(L && L.notes && ['available','ready','downloading'].includes(s.state)) h += shead("What's new") + note(esc(L.notes).replace(/\n/g,'<br>'));
   return h;
 }
@@ -890,7 +902,27 @@ function pageUpdates(){
 // ---------- Settings › Shell ----------
 const SHELL = {status:null};
 function loadShellStatus(){ if(host) call('shell.status').then(s=>{ SHELL.status=s; refreshUI(); }).catch(e=>toast(e.message)); }
+function pageShellLinux(){
+  const s=SHELL.status;
+  const state = !s ? 'Checking…'
+    : s.running ? 'You\'re in the Nimbus session'
+    : s.registered ? 'The Nimbus session is set up'
+    : 'Nimbus is running as an app';
+  let h = `<div class="row"><span class="ricon">${I.shell}</span><div class="rt"><b>${state}</b><small>The Nimbus session starts Nimbus fullscreen in gamescope, like SteamOS Gaming Mode. Pick it on the login screen.</small></div></div>`;
+  if(s){
+    if(s.registered)
+      h += `<button class="row" data-f data-k="sh-return" data-act="shellReturn"><span class="ricon">${I.desk}</span><div class="rt"><b>Remove the Nimbus session</b><small>Takes it off the login screen</small></div><div class="rv">›</div></button>`;
+    else
+      h += `<button class="row" data-f data-k="sh-make" data-act="shellMake"><span class="ricon">${I.shell}</span><div class="rt"><b>Add the Nimbus session</b><small>Asks for your password${s.gamescope?'':' · gamescope isn\'t installed yet'}</small></div><div class="rv">›</div></button>`;
+  }
+  h += shead('If something goes wrong')
+    + `<button class="row" data-f data-k="sh-fe" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Switch to desktop</b><small>Leaves Nimbus; pick your usual desktop on the login screen</small></div></button>`
+    + note(`Black screen? Press <b>Ctrl+Alt+F3</b> for a text console, sign in, and run <code>loginctl terminate-user $USER</code>. That brings back the login screen. If Nimbus keeps crashing, the session rolls back an update by itself, then gives up and returns to the login screen.`)
+    + (s&&s.exe ? note(`Running from <code>${esc(s.exe)}</code>`) : '');
+  return h;
+}
 function pageShell(){
+  if(LINUX) return pageShellLinux();
   const s=SHELL.status;
   const state = !host ? 'Browser preview' : !s ? 'Checking…'
     : s.running ? 'Nimbus is your Windows shell'
@@ -910,12 +942,20 @@ function pageShell(){
   return h;
 }
 function shellMake(){
+  if(LINUX) return openSheet({title:'Add the Nimbus session?', sub:'Adds "Nimbus" to the login screen. It runs Nimbus fullscreen in gamescope. Your password is needed once.',
+    items:[{label:'Yes, add it',icon:'check',run:async()=>{
+      try{ await call('shell.register',{},180000); toast('Done. Sign out and pick Nimbus on the login screen.'); }catch(e){ toast(e.message); }
+      loadShellStatus(); }}]});
   openSheet({title:'Make Nimbus your shell?', sub:'Nimbus will replace the Windows taskbar and desktop the next time you sign in. You can switch back here at any time.',
     items:[{label:'Yes, use Nimbus at sign-in',icon:'check',run:async()=>{
       try{ await call('shell.register'); toast('Done. Sign out and back in to start Nimbus as your shell.'); }catch(e){ toast(e.message); }
       loadShellStatus(); }}]});
 }
 function shellReturn(){
+  if(LINUX) return openSheet({title:'Remove the Nimbus session?', sub:'Takes Nimbus off the login screen. Nimbus still works as an app.',
+    items:[{label:'Yes, remove it',icon:'check',run:async()=>{
+      try{ await call('shell.unregister',{},180000); toast('Removed from the login screen.'); }catch(e){ toast(e.message); }
+      loadShellStatus(); }}]});
   openSheet({title:'Return to the Windows desktop?', sub:'Nimbus closes and Explorer (taskbar and desktop) comes back now and at every sign-in.',
     items:[{label:'Yes, switch back to Explorer',icon:'check',run:()=>call('shell.returnToDesktop').catch(e=>toast(e.message))}]});
 }
@@ -928,23 +968,24 @@ function viewSettings(){
   if(t==='audio') body = pageAudio();
   if(t==='power') body = pagePower();
   if(t==='profile') body = pageProfile();
-  if(t==='system') body = infoRow('dev','Device','Windows 11 PC')+infoRow('user','Profile name',PROFILE.name)+swRow('startOnBoot','Start Nimbus at sign-in','Registers Nimbus as the shell for this user')+swRow('sounds','Interface sounds');
+  if(t==='system') body = infoRow('dev','Device',HOSTINFO.name||(LINUX?'Linux PC':'Windows 11 PC'))+infoRow('user','Profile name',PROFILE.name)
+    +(LINUX?'':swRow('startOnBoot','Start Nimbus at sign-in','Registers Nimbus as the shell for this user'))+swRow('sounds','Interface sounds');
   if(t==='controller') body = pageControls();
   if(t==='sources'){
     const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
     const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
-    body = swRow('srcSteam','Steam','Installed and owned games from Steam'+n('steam').replace('game','installed game')+owned)
+    body = swRow('srcSteam','Steam',(LINUX?'Installed games from Steam':'Installed and owned games from Steam')+n('steam').replace('game','installed game')+owned)
       +swRow('steamBg','Keep Steam running in the background','Starts Steam hidden so games and installs open without its window')
-      +swRow('srcEpic','Epic Games','Your Epic account and games installed by Nimbus or the Epic Games Launcher'+n('epic'))
-      +swRow('srcGog','GOG','Your GOG account and games installed by Nimbus, GOG Galaxy or GOG installers'+n('gog'))
-      +swRow('srcXbox','Xbox / Game Pass','PC games installed with the Xbox app, and games you\'ve played on Xbox'+n('xbox'))
-      +`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`
-      +`<button class="row" data-f data-k="s-addexe" data-act="addManual"><div class="rt"><b>Add a game manually</b><small>Any .exe or shortcut${n('manual')}</small></div><div class="rv">＋</div></button>`
+      +swRow('srcEpic','Epic Games',(LINUX?'Games installed with Heroic Games Launcher':'Your Epic account and games installed by Nimbus or the Epic Games Launcher')+n('epic'))
+      +swRow('srcGog','GOG',(LINUX?'Games installed with Heroic Games Launcher':'Your GOG account and games installed by Nimbus, GOG Galaxy or GOG installers')+n('gog'))
+      +swRow('srcXbox',LINUX?'Xbox Cloud Gaming':'Xbox / Game Pass',(LINUX?'Stream Game Pass games (needs Game Pass Ultimate)':'PC games installed with the Xbox app, and games you\'ve played on Xbox')+(LINUX&&host?` · ${LIB.counts.xbox??0} cloud games`:n('xbox')))
+      +(LINUX?'':`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`)
+      +`<button class="row" data-f data-k="s-addexe" data-act="addManual"><div class="rt"><b>Add a game manually</b><small>${LINUX?'A program, AppImage, .desktop file, or Windows .exe (runs with Proton)':'Any .exe or shortcut'}${n('manual')}</small></div><div class="rv">＋</div></button>`
       +`<button class="row" data-f data-k="s-rescan" data-act="rescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${LIB.loading?'Scanning…':'Rescan library'}</b><small>Picks up games you installed or removed</small></div></button>`;
   }
   if(t==='shell') body = pageShell();
   if(t==='updates') body = pageUpdates();
-  if(t==='about') body = infoRow('ver','Nimbus', UPD.status ? UPD.status.current : (host?'…':'Browser preview'))+infoRow('host','Host',host?'Nimbus.Host (WebView2)':'Browser preview');
+  if(t==='about') body = infoRow('ver','Nimbus', UPD.status ? UPD.status.current : (host?'…':'Browser preview'))+infoRow('host','Host',!host?'Browser preview':LINUX?(HOSTINFO.host||'Electron')+(HOSTINFO.session?' in gamescope':''):'Nimbus.Host (WebView2)');
   return `<div class="settings">
     <div class="snav">${STABS.map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
     <div class="rows">${body}</div></div>`;
@@ -1026,6 +1067,7 @@ function renderQam(){
   if(t==='now'){ const g=S.running&&G(S.running);
     body = `<h3>Now playing</h3>${g?`<div class="np"><div class="nart" style="${artBg(g)}"></div><div class="nb"><b>${esc(g.title)}</b><div class="muted">${SOURCES[g.src]} · running</div>
       <button class="btn" data-f data-k="q-gp" data-act="game" data-id="${g.id}">Game details</button>
+      ${LINUX?`<button class="btn" data-f data-k="q-resume" data-act="resume">${I.play}Back to game</button>`:''}
       <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>`:'<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
   }
   $('#qam').innerHTML = `<div class="qbody">${body}</div><div class="qtabs">${QTABS.map(([k,ic,l])=>`<button class="qtab ${t===k?'on':''}" data-f data-k="qt-${k}" data-act="qtab" data-tab="${k}" aria-label="${l}">${I[ic]}</button>`).join('')}</div>`;
@@ -1036,7 +1078,7 @@ function renderPower(){
     <button class="mitem" data-f data-k="p-restart" data-act="pwr" data-p="restart">${I.restart}Restart</button>
     <button class="mitem" data-f data-k="p-shutdown" data-act="pwr" data-p="shutdown">${I.power}Shut down</button>
     <button class="mitem" data-f data-k="p-signout" data-act="pwr" data-p="signout">${I.user}Sign out</button>
-    <button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}Open File Explorer</button>
+    <button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}${LINUX?'Switch to desktop':'Open File Explorer'}</button>
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`;
 }
 let query='';
@@ -1123,7 +1165,9 @@ function closeLayer(){
   renderFooter(); blip(420,.05);
 }
 function closeAll(){ while(S.layers.length) closeLayer(); }
-function toggleLayer(id){ if(S.layers.at(-1)===id) closeLayer(); else { closeAll(); openLayer(id); } }
+function toggleLayer(id){ if(S.layers.at(-1)===id){ closeLayer(); resumeIfGame(id); } else { closeAll(); openLayer(id); } }
+// Leaving Quick Access with a game running goes back to the game (the Linux host hides Nimbus; Windows ignores it).
+function resumeIfGame(closed){ if(LINUX && host && closed==='qam' && S.running && !S.layers.length) send({type:'resume'}); }
 function syncScrim(){
   const top=S.layers.at(-1);
   $('#scrim').classList.toggle('open', !!top && top!=='launch');
@@ -1256,6 +1300,7 @@ function act(el){
     case 'install': return installGame(G(d.id));
     case 'play': return launch(G(d.id));
     case 'exitgame': return exitGame();
+    case 'resume': closeAll(); return send({type:'resume'});
     case 'dismiss': NOTIFS.splice(+d.i,1); updateBadge(); renderQam(); return setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true);
     case 'clearnotifs': NOTIFS=[]; updateBadge(); renderQam(); return setFocus($('#qam [data-f]'),true);
     case 'key': return typeKey(d.c);
@@ -1264,7 +1309,7 @@ function act(el){
   }
 }
 function back(){
-  if(S.layers.length && S.layers.at(-1)!=='launch') return closeLayer();
+  if(S.layers.length && S.layers.at(-1)!=='launch'){ const top=S.layers.at(-1); closeLayer(); return resumeIfGame(top); }
   if(!S.layers.length && goBack()) return blip(420,.05);
 }
 function typeKey(c){
@@ -1274,7 +1319,7 @@ function typeKey(c){
 }
 function power(p){
   closeAll();
-  const label={sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:'Opening File Explorer…'}[p];
+  const label={sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Leaving Nimbus…':'Opening File Explorer…'}[p];
   send({type:'power', action:p});
   toast(host?label:label+' (simulated in the browser preview)');
 }
@@ -1290,7 +1335,7 @@ function hideLaunch(){
 function launch(g){
   if(S.running && S.running!==g.id){ toast(`Exit ${G(S.running).title} first (Quick Access → Now playing)`); return; }
   const L=$('#launch');
-  L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">Starting via ${SOURCES[g.src]}…</div></div>`;
+  L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">${g.cloud?'Streaming with Xbox Cloud Gaming…':`Starting via ${SOURCES[g.src]}…`}</div></div>`;
   closeAll();
   focusStack.push({el:focused, k:focused?.dataset.k}); S.layers.push('launch'); L.classList.add('open'); renderFooter();
 
@@ -1423,6 +1468,10 @@ const STORE_INFO = {
   gog:{name:'GOG', color:'#7a35b0', mark:'G', blurb:'Your GOG library, installed and launched without GOG Galaxy.'},
   xbox:{name:'Xbox', color:'#16801a', mark:'X', blurb:'Your gamertag and the PC games you\'ve played on Xbox. Microsoft only lets the Xbox app and Microsoft Store install these games, so Install opens the Store.'},
 };
+// On Linux the stores' own apps hold the sign-ins; Nimbus opens them.
+if(LINUX) Object.assign(STORE_INFO.epic, {blurb:'Sign in and install in Heroic Games Launcher. Nimbus shows and launches the Epic games Heroic installed.'});
+if(LINUX) Object.assign(STORE_INFO.gog, {blurb:'Sign in and install in Heroic Games Launcher. Nimbus shows and launches the GOG games Heroic installed.'});
+if(LINUX) Object.assign(STORE_INFO.xbox, {blurb:'Game Pass games stream with Xbox Cloud Gaming (needs Game Pass Ultimate). Sign in opens the Xbox cloud-gaming window; you stay signed in there for streaming.'});
 const ACC = {list:null, root:'', signing:null, sig:''};
 async function loadAccounts(fromEvent){
   if(!host && !MOCK) return;
@@ -1467,6 +1516,9 @@ function viewStores(){
       ${a.error?`<div class="serr">${esc(a.error)}</div>`:''}
       <div class="sbtns">${btns}</div></div>`;
   }).join('');
+  if(LINUX) return `<h2>Game stores &amp; accounts</h2>
+    <div class="stores">${cards}</div>
+    <div class="rows">${note('On Linux, Steam signs in in Steam, Epic and GOG in Heroic Games Launcher, and Xbox in the cloud-gaming window. Nimbus never sees your password.')}</div>`;
   return `<h2>Game stores &amp; accounts</h2>
     <div class="stores">${cards}</div>
     <h2>Installing</h2>
@@ -1602,7 +1654,7 @@ function fromHost(d){
   return {id:d.id, title:d.title, src:d.source, fav:!!d.fav, hidden:!!d.hidden,
           hrs:(d.minutes||0)/60, last:d.lastPlayed||0, added:d.added||0, size:fmtSize(d.sizeBytes),
           ach:null, art:d.art||{}, path:d.path||'', canRemove:!!d.canRemove,
-          inst:d.installed!==false, state:d.state||'installed', progress:d.progress, bytesDone:d.bytesDone, bytesTotal:d.bytesTotal, speed:d.bytesPerSec,
+          inst:d.installed!==false, cloud:!!d.cloud, state:d.state||'installed', progress:d.progress, bytesDone:d.bytesDone, bytesTotal:d.bytesTotal, speed:d.bytesPerSec,
           canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null};
 }
 async function loadLibrary(rescan, announce){
@@ -1993,6 +2045,7 @@ tick(); setInterval(tick, 10e3);
 if(host){ NOTIFS=[]; GAMES.length=0; }
 updateBadge();
 render();
+loadHostInfo();
 refreshStatus();
 applyProfile();
 loadProfile();
