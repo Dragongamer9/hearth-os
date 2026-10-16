@@ -134,7 +134,7 @@ Nimbus updates itself from GitHub Releases of **Dragongamer9/nimbus**.
 - If the new version crashes 3 times within 2 minutes, the watchdog swaps `app.old` back automatically. After a minute of running fine, the update counts as good.
 - Only the installed copy (`%LOCALAPPDATA%\Nimbus\app`) updates; a development build from this folder doesn't.
 
-**Publishing an update:** push a tag like `v0.3.1`. The *Build and release* workflow (`.github/workflows/release.yml`) builds on Windows, packages `Nimbus-win-x64.zip` + `.sha256`, and publishes the release. Every Nimbus PC then sees it. Pushes to `main` are built too, as a compile check.
+**Publishing an update:** raise `<Version>` in `host/Nimbus.Host/Nimbus.Host.csproj` (e.g. 0.3.0 → 0.3.1) and push to `main`. The *Build and release* workflow (`.github/workflows/release.yml`) builds on Windows, packages `Nimbus-win-x64.zip` + `.sha256`, creates tag `v0.3.1` and publishes the release; the commit message becomes the release notes. Every Nimbus PC then sees it. Pushes that don't change the version are only built, as a compile check.
 
 ## Controls
 
