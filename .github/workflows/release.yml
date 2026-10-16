@@ -1,0 +1,71 @@
+# Builds Nimbus on Windows.
+# - Every push and pull request: build only (catches compile errors).
+# - Pushing a tag like v0.3.1: build, package and publish a GitHub Release.
+#   Nimbus checks the latest release and offers it in Settings › Updates.
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Work out the version
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart('v') }
+          else { $v = "0.0.0-ci.${{ github.run_number }}" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Publish
+        shell: pwsh
+        run: >
+          dotnet publish host/Nimbus.Host/Nimbus.Host.csproj
+          -c Release -r win-x64 --self-contained false -p:Platform=x64
+          -p:Version=${{ steps.ver.outputs.version }}
+          -o out -nologo
+
+      - name: Check the package
+        shell: pwsh
+        run: |
+          foreach ($f in 'out/Nimbus.exe', 'out/wwwroot/index.html') {
+            if (-not (Test-Path $f)) { throw "Missing $f in the published output" }
+          }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Compress-Archive -Path out/* -DestinationPath Nimbus-win-x64.zip
+          (Get-FileHash Nimbus-win-x64.zip -Algorithm SHA256).Hash.ToLower() |
+            Out-File -Encoding ascii -NoNewline Nimbus-win-x64.zip.sha256
+
+      - name: Keep the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nimbus-win-x64-${{ steps.ver.outputs.version }}
+          path: Nimbus-win-x64.zip
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ github.ref_name }}"
+          Nimbus-win-x64.zip Nimbus-win-x64.zip.sha256
+          --title "Nimbus ${{ steps.ver.outputs.version }}"
+          --generate-notes
