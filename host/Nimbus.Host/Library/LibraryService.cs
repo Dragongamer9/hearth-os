@@ -230,15 +230,18 @@ public sealed class LibraryService : IDisposable
             await SteamScanner.EnsureRunningSilentAsync();
             SteamWindows.HideMainFor(20);
         }
+        SteamWindows.AllowSteamToFocus();
         Process.Start(new ProcessStartInfo(g.InstallUri) { UseShellExecute = true });
         // Steam brings its main window forward for steam:// requests; keep only the Install dialog.
         if (g.Source == "steam" && SteamBackground) SteamWindows.HideMainFor(20);
+        else if (g.Source == "steam") SteamWindows.HideMainFor(0);
     }
 
     // ------------------------------------------------------------------ Steam in the background
 
     public bool SteamBackground => _store.Read(d => d.SteamBackground);
     public bool AutoUpdateCheck { get => _store.Read(d => d.AutoUpdateCheck); set => _store.Update(d => d.AutoUpdateCheck = value); }
+    public string ControllerMouse { get => _store.Read(d => d.ControllerMouse); set => _store.Update(d => d.ControllerMouse = value); }
 
     public async Task SetSteamBackgroundAsync(bool on)
     {
@@ -335,6 +338,7 @@ public sealed class LibraryService : IDisposable
     }
 
     public Task<bool> CloseRunningAsync() => _monitor.CloseAsync();
+    public string? RunningId => _monitor.RunningId;
 
     public void Dispose() => _monitor.Dispose();
 }

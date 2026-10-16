@@ -25,6 +25,7 @@ public sealed class LibraryData
     public Dictionary<string, GameStats> Stats { get; set; } = new();
     public bool SteamBackground { get; set; } = true;   // keep Steam running hidden (-silent)
     public bool AutoUpdateCheck { get; set; } = true;   // check GitHub for Nimbus updates
+    public string ControllerMouse { get; set; } = "steam"; // right stick as mouse: off | steam | always
     public Dictionary<string, bool> Sources { get; set; } = new()
     {
         ["steam"] = true, ["epic"] = true, ["gog"] = true, ["xbox"] = true,
