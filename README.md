@@ -105,6 +105,16 @@ Art is served to the UI from `https://nimbus-art.local/<id>/<cover|hero|logo|wid
 
 Debug helpers: `bridge.log` next to `Nimbus.exe` logs every bridge call and UI image failures; **Ctrl+Shift+D** logs the focused game's art state. `rebuild-and-run.cmd` builds and relaunches in one click.
 
+## Install on any PC
+
+Open PowerShell and run:
+
+```powershell
+irm https://raw.githubusercontent.com/Dragongamer9/nimbus/main/tools/install-nimbus.ps1 | iex
+```
+
+or double-click `install-nimbus.cmd` in this folder. It installs the .NET 8 Desktop Runtime if missing, downloads the latest release, checks its SHA-256, installs it to `%LOCALAPPDATA%\Nimbus\app`, saves the undo script, and makes Nimbus your shell (add `-NoShell` to skip that). `install-shell.cmd` does the same from a local build, for development.
+
 ## Using Nimbus as your shell
 
 1. Run **`install-shell.cmd`**. It publishes a Release build to `%LOCALAPPDATA%\Nimbus\app`, copies the undo script to `%USERPROFILE%\nimbus-restore.cmd`, and sets
