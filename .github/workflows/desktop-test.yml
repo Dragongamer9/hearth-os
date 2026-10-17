@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Install labwc, Quickshell and friends
         run: |
-          dnf -y install dnf5-plugins git labwc grim wlr-randr python3 python3-evdev qt6ct \
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland grim wlr-randr python3 python3-evdev qt6ct \
             google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme wlsunset >/dev/null
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
