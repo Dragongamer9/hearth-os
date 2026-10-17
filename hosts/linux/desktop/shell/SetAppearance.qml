@@ -46,7 +46,8 @@ SetPage {
                 id: tile
                 required property string modelData
                 readonly property bool lit: Settings.wallpaper === modelData
-                Layout.preferredWidth: (grid.width - 20) / 3
+                Layout.fillWidth: true
+                Layout.preferredWidth: 200          // equal columns (a width tied to the grid made them 0 wide)
                 implicitHeight: 130
                 border.color: activeFocus ? Theme.accent : lit ? Qt.lighter(Theme.accent, 1.2) : "transparent"
                 onActivated: Settings.wallpaper = modelData
