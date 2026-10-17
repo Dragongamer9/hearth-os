@@ -285,6 +285,7 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .ctl.tg .mini-spin{margin-left:auto}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 #sheet{inset:0;display:grid;place-items:center}
+#sheetBox{max-height:86vh;overflow-y:auto;scrollbar-width:none}
 #sheet.open .modal{transform:none;opacity:1}
 #prompt{top:0;left:0;right:0;background:var(--panel);padding:20px var(--gut) 18px;transform:translateY(-102%);transition:transform .24s var(--ease),visibility .24s;box-shadow:0 20px 60px rgba(0,0,0,.45)}
 #prompt.open{transform:none}
@@ -520,7 +521,12 @@ const MOCK = (()=>{
     'audio.setVolume':async({v})=>{ st.audio.volume=v; },
     'audio.setMute':async({m})=>{ st.audio.muted=m; },
     'audio.setDefault':async({id})=>{ devices.forEach(d=>d.isDefault=d.id===id); return {volume:st.audio.volume,muted:st.audio.muted,devices:clone(devices)}; },
+    'display.setMode':async({w,h,hz})=>{ Object.assign(st.display,{width:w,height:h,refreshRate:hz}); return H['display.get'](); },
+    'display.setScale':async({v})=>{ st.display.scalePercent=v; return H['display.get'](); },
     'display.get':async()=>({supported:true,brightness:st.display.brightness,
+      width:st.display.width||1920,height:st.display.height||1080,refreshRate:st.display.refreshRate||120,
+      modes:[{width:1920,height:1080,rates:[144,120,60]},{width:1600,height:900,rates:[120,60]},{width:1280,height:720,rates:[120,60]}],
+      scalePercent:st.display.scalePercent||125,scaleRecommended:125,scales:[100,125,150,175],
       resolution:`${Math.round(screen.width*devicePixelRatio)} × ${Math.round(screen.height*devicePixelRatio)}`,scale:Math.round(devicePixelRatio*100)+'%'}),
     'display.setBrightness':async({v})=>{ st.display.brightness=v; },
     'power.get':async()=>({...st.battery,mode:st.powerMode}),
@@ -801,8 +807,54 @@ function pageBluetooth(){
 }
 function pageDisplay(){
   const d=S.sys.display;
-  return (d.supported ? sliderCtl('bright','sun','Brightness') : note('Brightness control works on built-in screens (laptops and handhelds). External monitors are not supported yet.'))
-    + infoRow('res','Resolution',d.resolution||'—') + infoRow('scale','Scale',d.scale||'—');
+  const pick=(k,label,val,act,sub)=>`<button class="row" data-f data-k="s-${k}" data-act="${act}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="rv">${esc(val)} ›</div></button>`;
+  let h = d.supported ? sliderCtl('bright','sun','Brightness') : '';
+  if(d.modes && d.modes.length){
+    h += pick('res','Resolution', d.width?`${d.width} × ${d.height}`:d.resolution, 'dispRes', d.width===d.modes[0].width&&d.height===d.modes[0].height?'Native (recommended)':`Native: ${d.modes[0].width} × ${d.modes[0].height}`);
+    h += pick('hz','Refresh rate', d.refreshRate?`${d.refreshRate} Hz`:'—', 'dispHz');
+  } else h += infoRow('res','Resolution',d.resolution||'—');
+  if(d.scales && d.scales.length) h += pick('scale','Scale', (d.scalePercent||'')+'%', 'dispScale', d.scaleRecommended?`Recommended: ${d.scaleRecommended}%`:'');
+  else h += infoRow('scale','Scale',d.scale||'—');
+  if(!d.supported) h += note('Brightness control works on built-in screens (laptops and handhelds). External monitors are not supported yet.');
+  h += note('Resolution and refresh-rate changes switch back by themselves after 15 seconds unless you keep them, in case the screen goes black.');
+  return h;
+}
+function dispModeOf(w,h){ return (S.sys.display.modes||[]).find(m=>m.width===w&&m.height===h); }
+function dispRes(){
+  const d=S.sys.display;
+  openSheet({title:'Resolution', items:d.modes.slice(0,14).map((m,i)=>({label:`${m.width} × ${m.height}${i===0?'  (native)':''}`, icon:m.width===d.width&&m.height===d.height?'check':'',
+    run:()=>{ const hz=m.rates.includes(d.refreshRate)?d.refreshRate:m.rates[0]||0; setDisplayMode(m.width,m.height,hz); }}))});
+}
+function dispHz(){
+  const d=S.sys.display, m=dispModeOf(d.width,d.height);
+  if(!m || !m.rates.length) return toast('No other refresh rates at this resolution');
+  openSheet({title:'Refresh rate', sub:`At ${d.width} × ${d.height}`, items:m.rates.map(r=>({label:`${r} Hz`, icon:r===d.refreshRate?'check':'', run:()=>setDisplayMode(d.width,d.height,r)}))});
+}
+function dispScale(){
+  const d=S.sys.display;
+  openSheet({title:'Scale', sub:'Makes text and everything else bigger or smaller', items:d.scales.map(v=>({label:`${v}%${v===d.scaleRecommended?'  (recommended)':''}`, icon:v===d.scalePercent?'check':'',
+    run:async()=>{ try{ const r=await call('display.setScale',{v},30000); Object.assign(S.sys.display,r); toast(`Scale set to ${v}%`); }catch(e){ toast(e.message); } refreshUI(); }}))});
+}
+let dispRevert=null;
+async function setDisplayMode(w,h,hz){
+  const d=S.sys.display, prev={w:d.width,h:d.height,hz:d.refreshRate};
+  if(prev.w===w && prev.h===h && prev.hz===hz) return;
+  try{ const r=await call('display.setMode',{w,h,hz},30000); Object.assign(S.sys.display,r); refreshUI(); }
+  catch(e){ return toast(e.message); }
+  let left=15;
+  const revert=async()=>{ clearInterval(dispRevert); dispRevert=null;
+    try{ const r=await call('display.setMode',prev,30000); Object.assign(S.sys.display,r); toast('Switched back to the previous display settings'); }catch(e){ toast(e.message); }
+    refreshUI(); };
+  openSheet({title:'Keep these display settings?', sub:`${w} × ${h} at ${hz} Hz. Switching back in ${left} seconds…`, noCancel:true,
+    items:[{label:'Keep changes',icon:'check',run:()=>{ clearInterval(dispRevert); dispRevert=null; toast('Display settings saved'); }},
+           {label:'Switch back',icon:'restart',run:revert}],
+    onCancel:revert});
+  clearInterval(dispRevert);
+  dispRevert=setInterval(()=>{
+    left--;
+    if(left<=0){ if(S.layers.at(-1)==='sheet' && sheet && sheet.title.startsWith('Keep these')){ sheet.picked=true; closeLayer(); } return revert(); }
+    if(sheet && sheet.title.startsWith('Keep these')){ sheet.sub=`${w} × ${h} at ${hz} Hz. Switching back in ${left} seconds…`; const sub=$('#sheetBox .muted'); if(sub) sub.textContent=sheet.sub; }
+  },1000);
 }
 function pageAudio(){
   const a=S.sys.audio;
@@ -1213,6 +1265,9 @@ function act(el){
     case 'mute': return setMute(!S.sys.audio.muted);
     case 'audioDev': return setOutput(d.id);
     case 'pmode': return setPowerMode(d.mode);
+    case 'dispRes': return dispRes();
+    case 'dispHz': return dispHz();
+    case 'dispScale': return dispScale();
     case 'shellMake': return shellMake();
     case 'updCheck': return call('update.check',{},60000).then(onUpdate).catch(e=>toast(e.message));
     case 'updDownload': return call('update.download').then(onUpdate).catch(e=>toast(e.message));

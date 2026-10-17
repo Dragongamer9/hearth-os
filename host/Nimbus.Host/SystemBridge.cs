@@ -201,6 +201,14 @@ public sealed class SystemBridge : IDisposable
 
             case "display.get": return await _display.GetAsync(_ui);
             case "display.setBrightness": await _display.SetBrightnessAsync(Int(a, "v")); return null;
+            case "display.setMode":
+                await _display.SetModeAsync(_ui, Int(a, "w"), Int(a, "h"), Int(a, "hz"));
+                await Task.Delay(800);   // let Windows and the window settle before reading back
+                return await _display.GetAsync(_ui);
+            case "display.setScale":
+                await _display.SetScaleAsync(_ui, Int(a, "v"));
+                await Task.Delay(500);
+                return await _display.GetAsync(_ui);
 
             case "power.get": return _power.Get();
             case "power.setMode": _power.SetMode(Req(a, "mode")); return _power.Get();

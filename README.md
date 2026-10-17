@@ -192,5 +192,5 @@ No license: all rights reserved. The source is public to read, but it may not be
 
 1. ~~Real library~~ ✅ done (incl. owned Steam games, installs, download progress). Owned games for Epic, GOG and Xbox ✅ (store accounts). Still to do: art for manual games (e.g. SteamGridDB), Game Pass catalog, cloud saves.
 2. ~~Shell mode~~ ✅ first version. Still to do: run Startup/Run-key apps, a tray replacement, other apps' notifications.
-3. **More system controls:** external-monitor brightness (DDC/CI), resolution/refresh switching, TDP via vendor tools, volume-change notifications.
+3. **More system controls:** external-monitor brightness (DDC/CI), TDP via vendor tools, volume-change notifications.
 4. **Guide button overlay:** global gamepad hook so the Quick Access panel opens over a running game.
