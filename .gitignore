@@ -6,3 +6,4 @@ obj/
 tools/TestGame/bin/
 hosts/linux/node_modules/
 hosts/linux/dist/
+__pycache__/
