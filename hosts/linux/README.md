@@ -73,6 +73,18 @@ Needs `labwc` and `quickshell` (Fedora: COPR `errornointernet/quickshell`; Arch:
 `~/.config/nimbus/wallpaper.jpg`. Your own startup apps: an executable `~/.config/nimbus/autostart`.
 Taskbar log: `$XDG_RUNTIME_DIR/nimbus-shell.log`.
 
+## Display
+
+Settings › Display changes resolution, refresh rate and scale. A new mode is kept only if you confirm it
+within 15 seconds; otherwise Nimbus switches back, so a mode your screen can't show fixes itself.
+
+| Where Nimbus runs | Uses | Scale changes |
+|---|---|---|
+| Game Mode (gamescope) | `-W -H -r` gamescope options in `~/.config/nimbus/session.conf`; Game Mode restarts to apply | The Nimbus interface |
+| Desktop Mode (labwc) and other wlroots desktops | `wlr-randr`, saved to `~/.config/nimbus/display.sh` | The whole screen |
+| KDE Plasma | `kscreen-doctor` | The whole screen |
+| X11 desktops | `xrandr` | The Nimbus interface |
+
 ## Games
 
 | Source | Where it looks | Launches with | Running detection |
