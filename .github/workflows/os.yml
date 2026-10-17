@@ -90,7 +90,20 @@ jobs:
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
           v="${{ needs.app.outputs.version }}"
           sudo podman build --pull=newer -f os/Containerfile --build-arg NIMBUS_VERSION="$v" -t hearth:latest .
+
+      # Smaller updates: split the image into up to 127 pieces grouped by package, which stay the same
+      # between builds when their files do, so an update only downloads what really changed (Universal
+      # Blue's image template does the same). Without it, everything Hearth adds is one piece that changes
+      # with every build.
+      - name: Rechunk for smaller updates
+        run: |
+          sudo podman run --rm --pull=newer --privileged -v /var/lib/containers:/var/lib/containers \
+            --entrypoint /usr/bin/rpm-ostree quay.io/fedora/fedora-bootc:latest \
+            compose build-chunked-oci --bootc --format-version=2 --max-layers 127 \
+            --from localhost/hearth:latest --output containers-storage:localhost/hearth:latest
+          v="${{ needs.app.outputs.version }}"
           sudo podman tag hearth:latest "hearth:$v" "hearth:$v-$(date -u +%Y%m%d)"
+          sudo podman image inspect hearth:latest --format '{{len .RootFS.Layers}} layers'
 
       # Every Hearth must be able to update itself, or people get stuck on it: check before publishing.
       - name: Check the image can update itself
