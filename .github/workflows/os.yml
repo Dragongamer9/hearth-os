@@ -92,6 +92,20 @@ jobs:
           sudo podman build --pull=newer -f os/Containerfile --build-arg NIMBUS_VERSION="$v" -t hearth:latest .
           sudo podman tag hearth:latest "hearth:$v" "hearth:$v-$(date -u +%Y%m%d)"
 
+      # Every Hearth must be able to update itself, or people get stuck on it: check before publishing.
+      - name: Check the image can update itself
+        run: |
+          sudo podman run --rm hearth:latest sh -c '
+            set -e
+            command -v bootc >/dev/null && command -v pkexec >/dev/null
+            test -x /usr/libexec/nimbus/hearth-admin
+            python3 -c "import ast,sys; ast.parse(open(\"/usr/libexec/nimbus/hearth-admin\").read())"
+            test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules
+            grep -q sysUpdInstall /usr/lib/nimbus/resources/ui/index.html
+            systemctl is-enabled uupd.timer >/dev/null 2>&1 || systemctl is-enabled rpm-ostreed-automatic.timer >/dev/null 2>&1 \
+              || systemctl is-enabled bootc-fetch-apply-updates.timer >/dev/null 2>&1 || { echo "no background update timer"; exit 1; }
+            echo "update paths ok"'
+
       - name: Publish to GitHub Container Registry
         if: env.PUBLISH == 'true'
         id: push
