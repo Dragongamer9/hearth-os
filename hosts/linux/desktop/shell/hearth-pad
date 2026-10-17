@@ -92,6 +92,7 @@ class Pad:
         self.alt_until = 0.0
         self.view_used = False
         self.precise = False
+        self.speed = 1.0           # pointer speed multiplier (Hearth Settings › Controller)
         self.sel = -1
         self.osk = {'row': 1, 'col': 0, 'shift': False}
         self.repeat = {}           # nav direction → next repeat time (radial / osk)
@@ -368,7 +369,7 @@ class Pad:
             return
 
         # Pointer (right stick), in every mode but the radial menu.
-        speed = POINTER_SPEED * (PRECISE if self.precise else 1.0) * dt
+        speed = POINTER_SPEED * self.speed * (PRECISE if self.precise else 1.0) * dt
         self.acc[0] += curve(rx) * speed
         self.acc[1] += curve(ry) * speed
         dx, dy = int(self.acc[0]), int(self.acc[1])
@@ -406,6 +407,11 @@ class Pad:
             if self.user_off:
                 self.release_all()
             self.out.send({'t': 'mouse', 'on': not self.user_off})
+        elif c == 'speed':
+            try:
+                self.speed = max(0.2, min(3.0, float(m.get('value', 1.0))))
+            except (TypeError, ValueError):
+                pass
         elif c == 'radial':
             self.open_radial() if m.get('open') else (self.close_radial() if self.mode == 'radial' else None)
 

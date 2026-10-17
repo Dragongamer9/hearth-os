@@ -10,6 +10,7 @@ import Quickshell.Widgets
 PanelWindow {
     id: root
     property bool shown: false
+    signal settingsRequested()
     function toggle() { shown = !shown; }
 
     visible: shown
@@ -154,7 +155,7 @@ PanelWindow {
                 Layout.fillWidth: true
                 spacing: 8
                 ActionButton { label: "Game Mode"; primary: true; command: ["nimbus-mode", "game"] }
-                ActionButton { label: "Settings"; command: ["sh", "-c", "exec \"${NIMBUS_APP:-nimbus}\" --windowed --settings"] }
+                ActionButton { label: "Settings"; command: [] }
                 Item { Layout.fillWidth: true }
                 ActionButton { label: "Sleep"; command: ["systemctl", "suspend"] }
                 ActionButton { label: "Restart"; command: ["systemctl", "reboot"] }
@@ -179,7 +180,7 @@ PanelWindow {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: { root.shown = false; Quickshell.execDetached(ab.command); }
+            onClicked: { root.shown = false; if (ab.command.length) Quickshell.execDetached(ab.command); else root.settingsRequested(); }
         }
     }
 }

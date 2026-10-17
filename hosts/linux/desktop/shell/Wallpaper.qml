@@ -16,7 +16,8 @@ PanelWindow {
     color: Theme.bg
 
     readonly property string dir: Quickshell.env("HOME") + "/.config/nimbus/"
-    readonly property bool custom: jpg.status === Image.Ready || png.status === Image.Ready
+    // Hearth Settings › Appearance picks a picture (Settings.wallpaper); older setups used wallpaper.jpg/.png.
+    readonly property bool custom: chosen.status === Image.Ready || (!Settings.wallpaper && (jpg.status === Image.Ready || png.status === Image.Ready))
 
     Item {
         id: fireside
@@ -32,7 +33,7 @@ PanelWindow {
             }
         }
 
-        // The fire's light: a wide glow rising from the bottom, breathing slowly...
+        // The fire's light: a wide glow rising from the bottom, breathing slowly (still with Reduce motion)...
         Image {
             id: glow
             source: Qt.resolvedUrl("ember-glow.png")
@@ -43,6 +44,7 @@ PanelWindow {
             smooth: true
             opacity: 0.32
             SequentialAnimation on opacity {
+                running: !Settings.reduceMotion
                 loops: Animation.Infinite
                 NumberAnimation { to: 0.42; duration: 3600; easing.type: Easing.InOutSine }
                 NumberAnimation { to: 0.30; duration: 4200; easing.type: Easing.InOutSine }
@@ -59,6 +61,7 @@ PanelWindow {
             opacity: 0.22
             property real drift: 0
             SequentialAnimation on opacity {
+                running: !Settings.reduceMotion
                 loops: Animation.Infinite
                 NumberAnimation { to: 0.30; duration: 700; easing.type: Easing.InOutQuad }
                 NumberAnimation { to: 0.20; duration: 1100; easing.type: Easing.InOutQuad }
@@ -66,6 +69,7 @@ PanelWindow {
                 NumberAnimation { to: 0.18; duration: 1500; easing.type: Easing.InOutQuad }
             }
             SequentialAnimation on drift {
+                running: !Settings.reduceMotion
                 loops: Animation.Infinite
                 NumberAnimation { to: root.width * 0.02; duration: 5200; easing.type: Easing.InOutSine }
                 NumberAnimation { to: -root.width * 0.02; duration: 6100; easing.type: Easing.InOutSine }
@@ -73,7 +77,7 @@ PanelWindow {
         }
 
         // Embers: a few sparks float up from the fire and fade.
-        ParticleSystem { id: sparks; running: fireside.visible }
+        ParticleSystem { id: sparks; running: fireside.visible && !Settings.reduceMotion }
         Emitter {
             system: sparks
             anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
@@ -100,9 +104,17 @@ PanelWindow {
     }
 
     Image {
+        id: chosen
+        anchors.fill: parent
+        source: Settings.wallpaper ? "file://" + Settings.wallpaper : ""
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        visible: status === Image.Ready
+    }
+    Image {
         id: jpg
         anchors.fill: parent
-        source: "file://" + root.dir + "wallpaper.jpg"
+        source: Settings.wallpaper ? "" : "file://" + root.dir + "wallpaper.jpg"
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         visible: status === Image.Ready
@@ -110,7 +122,7 @@ PanelWindow {
     Image {
         id: png
         anchors.fill: parent
-        source: jpg.status === Image.Error ? "file://" + root.dir + "wallpaper.png" : ""
+        source: !Settings.wallpaper && jpg.status === Image.Error ? "file://" + root.dir + "wallpaper.png" : ""
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         visible: status === Image.Ready

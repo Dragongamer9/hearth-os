@@ -14,11 +14,14 @@ Scope {
     required property var radial
     required property var keyboard
     required property var help
+    required property var settings
     property bool mouseOn: true
     property string problem: ""
 
-    readonly property bool keysContext: launcher.shown || quick.shown
     readonly property var active: ToplevelManager.activeToplevel
+    // The controller types arrow keys / Enter / Esc instead of moving the pointer in Hearth's own menus
+    // and in Hearth Settings when it's the window in front.
+    readonly property bool keysContext: launcher.shown || quick.shown || (settings.shown && active !== null && active.title === "Hearth Settings")
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
 
     function send(o) { if (proc.running) proc.write(JSON.stringify(o) + "\n"); }
@@ -26,6 +29,11 @@ Scope {
         send({ cmd: "keys", on: keysContext });
         send({ cmd: "pause", on: fullscreenApp });
         send({ cmd: "mouse", on: mouseOn });
+        send({ cmd: "speed", value: Settings.pointerSpeed });
+    }
+    Connections {
+        target: Settings
+        function onPointerSpeedChanged() { pad.send({ cmd: "speed", value: Settings.pointerSpeed }); }
     }
     onKeysContextChanged: send({ cmd: "keys", on: keysContext })
     onFullscreenAppChanged: send({ cmd: "pause", on: fullscreenApp })
