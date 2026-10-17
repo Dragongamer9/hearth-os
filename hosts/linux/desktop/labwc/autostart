@@ -5,8 +5,24 @@ SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
 # Let portals (screen sharing, file pickers) and D-Bus-started apps see this session.
 dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE NIMBUS_SHARE NIMBUS_APP >/dev/null 2>&1 &
 
-# Resolution, refresh rate and scale chosen in Nimbus › Settings › Display.
-[ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" ] && "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh"
+# Resolution, refresh rate and scale chosen in Settings › Display. Until you choose, small sharp screens
+# (handhelds, high-DPI laptops) get a comfortable scale so text and buttons are big enough to touch.
+if [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" ]; then
+  "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh"
+elif command -v wlr-randr >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+  wlr-randr --json 2>/dev/null | python3 -c '
+import json, subprocess, sys
+for o in json.load(sys.stdin):
+    mode = next((m for m in o.get("modes", []) if m.get("current")), None)
+    mm = (o.get("physical_size") or {}).get("width") or 0
+    if not o.get("enabled") or not mode or mm <= 0:
+        continue
+    dpi = mode["width"] / (mm / 25.4)      # size and mode both follow the panel, not the rotation
+    scale = 1.5 if dpi > 250 else 1.25 if dpi > 175 else 1.0
+    if scale != 1.0:
+        subprocess.run(["wlr-randr", "--output", o["name"], "--scale", str(scale)])
+' 2>/dev/null
+fi
 
 # The Nimbus taskbar, launcher, notifications and wallpaper.
 [ -f "$SHARE/desktop/shell/shell.qml" ] && command -v quickshell >/dev/null 2>&1 &&

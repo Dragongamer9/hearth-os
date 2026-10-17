@@ -1,5 +1,6 @@
-// The Nimbus taskbar: launcher button, open apps, then tray, volume, network, battery, clock and a
-// Game Mode button. A floating rounded bar along the bottom of each screen; windows don't cover it.
+// The Hearth taskbar: launcher button, open apps, then tray, volume, network, battery, clock, Quick Access,
+// keyboard and a Game Mode button. A floating rounded bar along the bottom of each screen (down the left
+// side when the screen is upright); windows don't cover it.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -13,25 +14,48 @@ import Quickshell.Services.UPower
 PanelWindow {
     id: bar
     signal launcherRequested()
+    signal quickRequested()
+    signal keyboardRequested()
 
-    anchors { bottom: true; left: true; right: true }
-    implicitHeight: 60
-    exclusiveZone: implicitHeight
+    // Upright screen (a handheld held vertically, a rotated monitor): the bar goes down the left side.
+    readonly property bool portrait: screen && screen.height > screen.width
+    readonly property int thickness: 60
+
+    anchors { bottom: true; left: true; right: !portrait; top: portrait }
+    implicitHeight: portrait ? 0 : thickness
+    implicitWidth: portrait ? thickness : 0
+    exclusiveZone: thickness
     color: "transparent"
-    WlrLayershell.namespace: "nimbus-bar"
+    WlrLayershell.namespace: "hearth-bar"
     WlrLayershell.layer: WlrLayer.Top
 
     Rectangle {
         id: body
-        anchors { fill: parent; leftMargin: 8; rightMargin: 8; bottomMargin: 6; topMargin: 4 }
+        anchors {
+            fill: parent
+            leftMargin: bar.portrait ? 6 : 8
+            rightMargin: bar.portrait ? 4 : 8
+            bottomMargin: bar.portrait ? 8 : 6
+            topMargin: bar.portrait ? 8 : 4
+        }
         radius: Theme.radius
         color: Theme.panel
         border.color: Theme.line
         border.width: 1
 
-        RowLayout {
-            anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
-            spacing: 6
+        GridLayout {
+            anchors {
+                fill: parent
+                leftMargin: bar.portrait ? 0 : 8
+                rightMargin: bar.portrait ? 0 : 8
+                topMargin: bar.portrait ? 8 : 0
+                bottomMargin: bar.portrait ? 8 : 0
+            }
+            flow: bar.portrait ? GridLayout.TopToBottom : GridLayout.LeftToRight
+            rows: bar.portrait ? -1 : 1
+            columns: bar.portrait ? 1 : -1
+            rowSpacing: 6
+            columnSpacing: 6
 
             // Launcher (the Hearth mark)
             BarButton {
@@ -45,7 +69,7 @@ PanelWindow {
                 }
             }
 
-            Rectangle { width: 1; Layout.fillHeight: true; Layout.topMargin: 12; Layout.bottomMargin: 12; color: Theme.line }
+            Separator {}
 
             // Open windows
             Repeater {
@@ -67,7 +91,7 @@ PanelWindow {
                 }
             }
 
-            Item { Layout.fillWidth: true }
+            Item { Layout.fillWidth: !bar.portrait; Layout.fillHeight: bar.portrait }
 
             // Tray icons (apps like Discord, Steam)
             Repeater {
@@ -94,13 +118,13 @@ PanelWindow {
                 readonly property var audio: Pipewire.defaultAudioSink ? Pipewire.defaultAudioSink.audio : null
                 readonly property int pct: audio ? Math.round(audio.volume * 100) : 0
                 visible: audio !== null
-                wide: true
+                wide: !bar.portrait
                 tip: audio && audio.muted ? "Muted" : "Volume " + pct + "%"
                 onClicked: if (audio) audio.muted = !audio.muted
                 onScrolled: delta => { if (audio) audio.volume = Math.max(0, Math.min(1, audio.volume + (delta > 0 ? 0.05 : -0.05))); }
                 StatusLabel {
                     icon: !vol.audio || vol.audio.muted ? "audio-volume-muted-symbolic" : vol.pct > 66 ? "audio-volume-high-symbolic" : vol.pct > 33 ? "audio-volume-medium-symbolic" : "audio-volume-low-symbolic"
-                    label: vol.audio && vol.audio.muted ? "" : vol.pct + "%"
+                    label: bar.portrait || (vol.audio && vol.audio.muted) ? "" : vol.pct + "%"
                 }
             }
 
@@ -109,9 +133,8 @@ PanelWindow {
                 id: net
                 property string kind: ""     // wifi | ethernet | ""
                 property string name: ""
-                wide: true
                 tip: name ? "Connected to " + name : "Not connected"
-                onClicked: Quickshell.execDetached(["sh", "-c", "command -v nm-connection-editor >/dev/null && exec nm-connection-editor"])
+                onClicked: bar.quickRequested()
                 StatusLabel {
                     icon: net.kind === "wifi" ? "network-wireless-signal-good-symbolic" : net.kind === "ethernet" ? "network-wired-symbolic" : "network-offline-symbolic"
                     label: ""
@@ -140,30 +163,56 @@ PanelWindow {
                 readonly property int pct: dev ? Math.round(dev.percentage * 100) : 0
                 readonly property bool charging: dev && dev.state === UPowerDeviceState.Charging
                 visible: dev && dev.isLaptopBattery
-                wide: true
+                wide: !bar.portrait
                 tip: pct + "%" + (charging ? ", charging" : "")
+                onClicked: bar.quickRequested()
                 StatusLabel {
                     icon: batt.charging ? "battery-good-charging-symbolic" : batt.pct > 60 ? "battery-good-symbolic" : batt.pct > 20 ? "battery-low-symbolic" : "battery-caution-symbolic"
-                    label: batt.pct + "%"
+                    label: bar.portrait ? "" : batt.pct + "%"
                 }
+            }
+
+            // Quick Access and the on-screen keyboard (handy on touchscreens)
+            BarButton {
+                tip: "Quick Access"
+                onClicked: bar.quickRequested()
+                Icon { anchors.centerIn: parent; name: "open-menu-symbolic"; size: 20 }
+            }
+            BarButton {
+                tip: "Keyboard"
+                onClicked: bar.keyboardRequested()
+                Icon { anchors.centerIn: parent; name: "input-keyboard-symbolic"; size: 20 }
             }
 
             // Clock
             SystemClock { id: clock; precision: SystemClock.Minutes }
             Column {
-                Layout.leftMargin: 6
-                Layout.rightMargin: 6
-                Text { anchors.right: parent.right; text: Qt.formatTime(clock.date, "h:mm AP"); color: Theme.text; font.pixelSize: 14; font.bold: true; font.family: Theme.font }
-                Text { anchors.right: parent.right; text: Qt.formatDate(clock.date, "ddd, MMM d"); color: Theme.muted; font.pixelSize: 11; font.family: Theme.font }
+                Layout.leftMargin: bar.portrait ? 0 : 6
+                Layout.rightMargin: bar.portrait ? 0 : 6
+                Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+                Text {
+                    anchors.horizontalCenter: bar.portrait ? parent.horizontalCenter : undefined
+                    anchors.right: bar.portrait ? undefined : parent.right
+                    text: bar.portrait ? Qt.formatTime(clock.date, "h:mm") : Qt.formatTime(clock.date, "h:mm AP")
+                    color: Theme.text; font.pixelSize: bar.portrait ? 13 : 14; font.bold: true; font.family: Theme.font
+                }
+                Text {
+                    visible: !bar.portrait
+                    anchors.right: parent.right
+                    text: Qt.formatDate(clock.date, "ddd, MMM d")
+                    color: Theme.muted; font.pixelSize: 11; font.family: Theme.font
+                }
             }
 
             // Back to Game Mode
             Rectangle {
-                implicitWidth: gm.implicitWidth + 28
-                implicitHeight: 36
+                Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+                implicitWidth: bar.portrait ? 44 : gm.implicitWidth + 28
+                implicitHeight: bar.portrait ? 44 : 36
                 radius: 10
                 color: gmArea.containsMouse ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
-                Text { id: gm; anchors.centerIn: parent; text: "Game Mode"; color: Theme.accentInk; font.bold: true; font.pixelSize: 13; font.family: Theme.font }
+                Text { id: gm; visible: !bar.portrait; anchors.centerIn: parent; text: "Game Mode"; color: Theme.accentInk; font.bold: true; font.pixelSize: 13; font.family: Theme.font }
+                Icon { visible: bar.portrait; anchors.centerIn: parent; name: "input-gaming-symbolic"; size: 22; color: Theme.accentInk }
                 MouseArea { id: gmArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Quickshell.execDetached(["nimbus-mode", "game"]) }
             }
         }
@@ -184,17 +233,21 @@ PanelWindow {
         signal scrolled(int delta)
 
         implicitWidth: narrow ? 30 : wide ? Math.max(44, holder.childrenRect.width + 16) : 44
-        implicitHeight: 44
+        implicitHeight: narrow && bar.portrait ? 30 : 44
+        Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
         Rectangle {
             anchors.fill: parent
             radius: 10
             color: area.containsMouse ? Theme.panel3 : btn.active ? Theme.panel2 : "transparent"
         }
         Item { id: holder; anchors.fill: parent }
-        Rectangle { // running-and-focused indicator
+        Rectangle { // running-and-focused indicator: under the icon, or beside it on a side bar
             visible: btn.active
-            anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter; bottomMargin: 2 }
-            width: 16; height: 3; radius: 2
+            x: bar.portrait ? 1 : (parent.width - width) / 2
+            y: bar.portrait ? (parent.height - height) / 2 : parent.height - height - 2
+            width: bar.portrait ? 3 : 16
+            height: bar.portrait ? 16 : 3
+            radius: 2
             color: Theme.accent
         }
         MouseArea {
@@ -213,8 +266,8 @@ PanelWindow {
         PopupWindow {
             visible: area.containsMouse && btn.tip !== ""
             anchor.item: btn
-            anchor.rect.x: btn.width / 2 - implicitWidth / 2
-            anchor.rect.y: -implicitHeight - 10
+            anchor.rect.x: bar.portrait ? btn.width + 12 : btn.width / 2 - implicitWidth / 2
+            anchor.rect.y: bar.portrait ? btn.height / 2 - implicitHeight / 2 : -implicitHeight - 10
             implicitWidth: tipText.implicitWidth + 20
             implicitHeight: tipText.implicitHeight + 12
             color: "transparent"
@@ -228,12 +281,19 @@ PanelWindow {
         }
     }
 
+    component Separator: Rectangle {
+        Layout.preferredWidth: bar.portrait ? 28 : 1
+        Layout.preferredHeight: bar.portrait ? 1 : 24
+        Layout.alignment: Qt.AlignCenter
+        color: Theme.line
+    }
+
     component StatusLabel: Row {
         property string icon
         property string label
         anchors.centerIn: parent
         spacing: 6
-        IconImage { anchors.verticalCenter: parent.verticalCenter; implicitSize: 18; source: Quickshell.iconPath(parent.icon, true) }
+        Icon { anchors.verticalCenter: parent.verticalCenter; size: 18; name: parent.icon }
         Text { anchors.verticalCenter: parent.verticalCenter; visible: text !== ""; text: parent.label; color: Theme.text; font.pixelSize: 13; font.family: Theme.font }
     }
 }

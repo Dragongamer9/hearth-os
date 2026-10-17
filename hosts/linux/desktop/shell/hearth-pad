@@ -1,0 +1,618 @@
+#!/usr/bin/env python3
+"""hearth-pad: use the whole Hearth desktop with a game controller.
+
+Started by the Desktop Mode shell (Pad.qml), which reads what this prints and draws the menus.
+It reads every connected controller from /dev/input and acts as a mouse and keyboard through
+/dev/uinput:
+
+  Right stick   move the pointer (R3: precise)      Left stick   scroll
+  A / RT        click (hold to drag)                X / LT       right-click
+  B             back (Esc)                          Y            on-screen keyboard
+  D-pad         arrow keys                          LB / RB      switch windows
+  Menu (☰)      apps                                Guide        Hearth menu (radial)
+  View + D-pad  snap left/right, maximize, minimize View + B     close the window
+  View (tap)    show these controls                 L3           middle-click
+
+Talks to the shell with one JSON object per line: events out on stdout, commands in on stdin.
+Out: ready, error, radial {open, sel, pick}, osk {open, rows, row, col, shift}, launcher, help,
+     mouse {on}, toast {text}.
+In:  pause {on} (a fullscreen app is in front), keys {on} (a menu with keyboard focus is open:
+     A is Enter, B is Esc), osk {open}, type {key} (a key tapped on the on-screen keyboard),
+     mouse {on} (controller mouse on/off), radial {open}.
+Exit codes: 2 python3-evdev missing, 3 no access to /dev/uinput (the shell doesn't restart those).
+"""
+import json
+import math
+import os
+import select
+import sys
+import time
+
+RADIAL_ITEMS = 8
+DEAD = 0.14
+POINTER_SPEED = 1500.0      # px/s at full tilt
+PRECISE = 0.3
+SCROLL_SPEED = 16.0         # wheel notches/s at full tilt
+ALT_HOLD = 0.9              # s the window switcher stays open after the last LB/RB
+HELP_TAP = 0.45             # View shorter than this (and not used with the D-pad) shows the controls
+
+OSK_ROWS = [
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+    ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', '@'],
+    ['z', 'x', 'c', 'v', 'b', 'n', 'm', '.', '-', '_'],
+    ['shift', 'space', 'bksp', 'tab', 'enter'],
+]
+OSK_SHIFTED = {'1': '!', '2': '#', '3': '$', '4': '%', '5': '&', '6': '*', '7': '+', '8': '?', '9': '(',
+               '0': ')', '.': ',', '-': '/', '_': '=', '@': '~'}
+
+# Characters the keyboard types → (key, needs Shift). US layout.
+CHARS = {' ': ('KEY_SPACE', False), '.': ('KEY_DOT', False), '-': ('KEY_MINUS', False),
+         '_': ('KEY_MINUS', True), '@': ('KEY_2', True), '!': ('KEY_1', True), '#': ('KEY_3', True),
+         '$': ('KEY_4', True), '%': ('KEY_5', True), '&': ('KEY_7', True), '*': ('KEY_8', True),
+         '+': ('KEY_EQUAL', True), '?': ('KEY_SLASH', True), '(': ('KEY_9', True), ')': ('KEY_0', True),
+         ',': ('KEY_COMMA', False), '/': ('KEY_SLASH', False), '=': ('KEY_EQUAL', False),
+         '~': ('KEY_GRAVE', True)}
+for _c in 'abcdefghijklmnopqrstuvwxyz':
+    CHARS[_c] = ('KEY_' + _c.upper(), False)
+    CHARS[_c.upper()] = ('KEY_' + _c.upper(), True)
+for _c in '0123456789':
+    CHARS[_c] = ('KEY_' + _c, False)
+
+ARROWS = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}
+SNAP = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}  # with Super
+
+KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
+                   {'KEY_LEFTSHIFT', 'KEY_LEFTALT', 'KEY_LEFTMETA', 'KEY_TAB', 'KEY_ENTER', 'KEY_ESC',
+                    'KEY_BACKSPACE', 'KEY_Q'})
+
+
+def curve(v):
+    """Stick value → speed factor: nothing inside the dead zone, then a smooth ramp."""
+    m = abs(v)
+    if m < DEAD:
+        return 0.0
+    f = (m - DEAD) / (1 - DEAD)
+    return math.copysign(f * f, v)
+
+
+class Pad:
+    """What the controller does, without any device code (so it can be tested)."""
+
+    def __init__(self, out):
+        self.out = out             # .move(dx, dy) .wheel(v, h) .press(name, down) .send(obj)
+        self.mode = 'desk'         # desk | radial | osk
+        self.fs_pause = False      # a fullscreen app (a game) is in front
+        self.user_off = False      # turned off from the menu
+        self.keys_ctx = False
+        self.sticks = (0.0, 0.0, 0.0, 0.0)
+        self.held = {}             # button → time pressed
+        self.mouse_src = {'BTN_LEFT': set(), 'BTN_RIGHT': set(), 'BTN_MIDDLE': set()}
+        self.keys_down = set()     # keys we hold for a held button (arrows)
+        self.alt_until = 0.0
+        self.view_used = False
+        self.precise = False
+        self.sel = -1
+        self.osk = {'row': 1, 'col': 0, 'shift': False}
+        self.repeat = {}           # nav direction → next repeat time (radial / osk)
+        self.acc = [0.0, 0.0, 0.0, 0.0]   # sub-pixel pointer x/y, wheel v/h (in 1/120 notches)
+
+    # ------------------------------------------------------------------ helpers
+    @property
+    def paused(self):
+        return self.fs_pause or self.user_off
+
+    def tap(self, *keys):
+        for k in keys:
+            self.out.press(k, True)
+        for k in reversed(keys):
+            self.out.press(k, False)
+
+    def mouse(self, btn, src, down):
+        s = self.mouse_src[btn]
+        was = bool(s)
+        (s.add if down else s.discard)(src)
+        if bool(s) != was:
+            self.out.press(btn, bool(s))
+
+    def release_all(self):
+        for btn, s in self.mouse_src.items():
+            if s:
+                s.clear()
+                self.out.press(btn, False)
+        for k in list(self.keys_down):
+            self.out.press(k, False)
+        self.keys_down.clear()
+        if self.alt_until:
+            self.alt_until = 0.0
+            self.out.press('KEY_LEFTALT', False)
+
+    def set_mode(self, mode):
+        if mode != self.mode:
+            self.release_all()
+            self.mode = mode
+            self.repeat.clear()
+
+    def osk_msg(self, open_=True):
+        m = {'t': 'osk', 'open': open_}
+        if open_:
+            m.update(rows=OSK_ROWS, shifted=OSK_SHIFTED, **self.osk)
+        self.out.send(m)
+
+    def open_osk(self):
+        self.set_mode('osk')
+        self.osk_msg()
+
+    def close_osk(self):
+        self.set_mode('desk')
+        self.osk_msg(False)
+
+    def open_radial(self):
+        self.set_mode('radial')
+        self.sel = -1
+        self.out.send({'t': 'radial', 'open': True, 'sel': -1})
+
+    def close_radial(self, pick=-1):
+        self.set_mode('desk')
+        self.out.send({'t': 'radial', 'open': False, 'pick': pick})
+
+    def type_char(self, ch):
+        if ch not in CHARS:
+            return
+        key, shift = CHARS[ch]
+        self.tap(*(['KEY_LEFTSHIFT', key] if shift else [key]))
+
+    def osk_key(self, k):
+        """A key on the on-screen keyboard: chosen with the controller, or tapped."""
+        if k == 'shift':
+            self.osk['shift'] = not self.osk['shift']
+            return self.osk_msg()
+        if k == 'space':
+            return self.tap('KEY_SPACE')
+        if k == 'bksp':
+            return self.tap('KEY_BACKSPACE')
+        if k == 'tab':
+            return self.tap('KEY_TAB')
+        if k == 'enter':
+            return self.tap('KEY_ENTER')
+        if self.osk['shift']:
+            self.type_char(OSK_SHIFTED.get(k, k.upper()))
+            self.osk['shift'] = False
+            self.osk_msg()
+        else:
+            self.type_char(k)
+
+    def osk_move(self, d):
+        r, c = self.osk['row'], self.osk['col']
+        if d in ('up', 'down'):
+            last = len(OSK_ROWS[r]) - 1
+            nr = max(0, min(len(OSK_ROWS) - 1, r + (1 if d == 'down' else -1)))
+            c = round((c / last if last else 0) * (len(OSK_ROWS[nr]) - 1))
+            r = nr
+        else:
+            c = max(0, min(len(OSK_ROWS[r]) - 1, c + (1 if d == 'right' else -1)))
+        self.osk.update(row=r, col=c)
+        self.osk_msg()
+
+    def radial_set(self, sel):
+        if sel != self.sel:
+            self.sel = sel
+            self.out.send({'t': 'radial', 'open': True, 'sel': sel})
+
+    # ------------------------------------------------------------------ input
+    def button(self, name, down, now):
+        if down:
+            self.held[name] = now
+        else:
+            self.held.pop(name, None)
+
+        if name == 'guide':
+            if down:
+                self.close_radial() if self.mode == 'radial' else self.open_radial()
+            return
+
+        if self.mode == 'radial':
+            return self.radial_button(name, down, now)
+        if self.mode == 'osk':
+            return self.osk_button(name, down, now)
+        if self.paused:
+            return
+        if self.keys_ctx:
+            return self.keys_button(name, down)
+        return self.desk_button(name, down, now)
+
+    def radial_button(self, name, down, now):
+        if not down:
+            return
+        if name == 'a' and self.sel >= 0:
+            self.close_radial(self.sel)
+        elif name == 'b':
+            self.close_radial()
+        elif name in ('up', 'right', 'down', 'left'):
+            self.radial_set({'up': 0, 'right': 2, 'down': 4, 'left': 6}[name] * RADIAL_ITEMS // 8)
+        elif name in ('lb', 'rb'):
+            self.radial_set(((self.sel if self.sel >= 0 else 0) + (1 if name == 'rb' else -1)) % RADIAL_ITEMS)
+
+    def osk_button(self, name, down, now):
+        if name == 'rt':                      # click a field without closing the keyboard
+            return self.mouse('BTN_LEFT', 'rt', down)
+        if not down:
+            if name in self.repeat:
+                del self.repeat[name]
+            return
+        if name in ('up', 'down', 'left', 'right'):
+            self.osk_move(name)
+            self.repeat[name] = now + 0.4
+        elif name == 'a':
+            self.osk_key(OSK_ROWS[self.osk['row']][self.osk['col']])
+            self.repeat['a'] = now + 0.4
+        elif name == 'x':
+            self.tap('KEY_BACKSPACE')
+            self.repeat['x'] = now + 0.4
+        elif name == 'lb':
+            self.osk_key('shift')
+        elif name == 'menu':
+            self.tap('KEY_ENTER')
+        elif name in ('b', 'y'):
+            self.close_osk()
+
+    def keys_button(self, name, down):
+        if name in ARROWS:
+            return self.hold_key(ARROWS[name], down)
+        if not down:
+            return
+        if name == 'a':
+            self.tap('KEY_ENTER')
+        elif name == 'b':
+            self.tap('KEY_ESC')
+        elif name == 'y':
+            self.open_osk()
+        elif name == 'menu':
+            self.out.send({'t': 'launcher'})
+
+    def hold_key(self, key, down):
+        if down and key not in self.keys_down:
+            self.keys_down.add(key)
+            self.out.press(key, True)
+        elif not down and key in self.keys_down:
+            self.keys_down.discard(key)
+            self.out.press(key, False)
+
+    def desk_button(self, name, down, now):
+        view = 'view' in self.held
+        if name in ('a', 'rt'):
+            return self.mouse('BTN_LEFT', name, down)
+        if name in ('x', 'lt'):
+            return self.mouse('BTN_RIGHT', name, down)
+        if name == 'l3':
+            return self.mouse('BTN_MIDDLE', name, down)
+        if name in ARROWS:
+            if view:
+                if down:
+                    self.view_used = True
+                    self.tap('KEY_LEFTMETA', SNAP[name])
+                return
+            return self.hold_key(ARROWS[name], down)
+        if name == 'view':
+            if down:
+                self.view_used = False
+                self.view_at = now
+            elif not self.view_used and now - getattr(self, 'view_at', now) < HELP_TAP:
+                self.out.send({'t': 'help'})
+            return
+        if not down:
+            return
+        if name == 'b':
+            if view:
+                self.view_used = True
+                self.tap('KEY_LEFTMETA', 'KEY_Q')
+            else:
+                self.tap('KEY_ESC')
+        elif name == 'y':
+            self.open_osk()
+        elif name == 'menu':
+            self.out.send({'t': 'launcher'})
+        elif name in ('lb', 'rb'):
+            if not self.alt_until:
+                self.out.press('KEY_LEFTALT', True)
+            self.alt_until = now + ALT_HOLD
+            self.tap(*(['KEY_TAB'] if name == 'rb' else ['KEY_LEFTSHIFT', 'KEY_TAB']))
+        elif name == 'r3':
+            self.precise = not self.precise
+            self.out.send({'t': 'toast', 'text': 'Precise pointer ' + ('on' if self.precise else 'off')})
+
+    def axes(self, lx, ly, rx, ry):
+        self.sticks = (lx, ly, rx, ry)
+
+    def tick(self, now, dt):
+        lx, ly, rx, ry = self.sticks
+        if self.alt_until and now >= self.alt_until:
+            self.alt_until = 0.0
+            self.out.press('KEY_LEFTALT', False)
+
+        if self.mode == 'radial':
+            # Point either stick at an item.
+            for x, y in ((rx, ry), (lx, ly)):
+                if math.hypot(x, y) > 0.55:
+                    ang = math.atan2(x, -y) % (2 * math.pi)     # 0 = up, clockwise
+                    self.radial_set(int(round(ang / (2 * math.pi / RADIAL_ITEMS))) % RADIAL_ITEMS)
+                    break
+            return
+
+        if self.mode == 'osk':
+            # Left stick picks keys like the D-pad; held D-pad/A/X repeat.
+            stick = None
+            if abs(lx) > 0.6 or abs(ly) > 0.6:
+                stick = ('left' if lx < 0 else 'right') if abs(lx) > abs(ly) else ('up' if ly < 0 else 'down')
+            for d in ('up', 'down', 'left', 'right'):
+                key = 'stick_' + d
+                if stick == d:
+                    if key not in self.repeat:
+                        self.osk_move(d)
+                        self.repeat[key] = now + 0.4
+                    elif now >= self.repeat[key]:
+                        self.osk_move(d)
+                        self.repeat[key] = now + 0.11
+                else:
+                    self.repeat.pop(key, None)
+            for name in ('up', 'down', 'left', 'right', 'a', 'x'):
+                if name in self.repeat and name in self.held and now >= self.repeat[name]:
+                    self.repeat[name] = now + 0.11
+                    if name == 'a':
+                        self.osk_key(OSK_ROWS[self.osk['row']][self.osk['col']])
+                    elif name == 'x':
+                        self.tap('KEY_BACKSPACE')
+                    else:
+                        self.osk_move(name)
+        elif self.paused:
+            return
+
+        # Pointer (right stick), in every mode but the radial menu.
+        speed = POINTER_SPEED * (PRECISE if self.precise else 1.0) * dt
+        self.acc[0] += curve(rx) * speed
+        self.acc[1] += curve(ry) * speed
+        dx, dy = int(self.acc[0]), int(self.acc[1])
+        self.acc[0] -= dx
+        self.acc[1] -= dy
+        if dx or dy:
+            self.out.move(dx, dy)
+
+        # Scroll (left stick), not while the keyboard uses it.
+        if self.mode == 'desk':
+            self.acc[2] += -curve(ly) * SCROLL_SPEED * 120 * dt
+            self.acc[3] += curve(lx) * SCROLL_SPEED * 120 * dt
+            v, h = int(self.acc[2]), int(self.acc[3])
+            self.acc[2] -= v
+            self.acc[3] -= h
+            if v or h:
+                self.out.wheel(v, h)
+
+    # ------------------------------------------------------------------ from the shell
+    def command(self, m):
+        c = m.get('cmd')
+        if c == 'pause':
+            self.fs_pause = bool(m.get('on'))
+            if self.paused and self.mode == 'desk':
+                self.release_all()
+        elif c == 'keys':
+            self.release_all()
+            self.keys_ctx = bool(m.get('on'))
+        elif c == 'osk':
+            self.open_osk() if m.get('open') else (self.close_osk() if self.mode == 'osk' else None)
+        elif c == 'type':
+            self.osk_key(str(m.get('key', '')))
+        elif c == 'mouse':
+            self.user_off = not m.get('on', True)
+            if self.user_off:
+                self.release_all()
+            self.out.send({'t': 'mouse', 'on': not self.user_off})
+        elif c == 'radial':
+            self.open_radial() if m.get('open') else (self.close_radial() if self.mode == 'radial' else None)
+
+
+# ---------------------------------------------------------------------- devices (python3-evdev)
+
+def emit(obj):
+    sys.stdout.write(json.dumps(obj) + '\n')
+    sys.stdout.flush()
+
+
+class Output:
+    """Virtual mouse and keyboard (uinput)."""
+
+    def __init__(self, evdev):
+        e = evdev.ecodes
+        self.e = e
+        rel = [e.REL_X, e.REL_Y, e.REL_WHEEL, e.REL_HWHEEL]
+        self.hires = hasattr(e, 'REL_WHEEL_HI_RES')
+        if self.hires:
+            rel += [e.REL_WHEEL_HI_RES, e.REL_HWHEEL_HI_RES]
+        self.ptr = evdev.UInput({e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE], e.EV_REL: rel},
+                                name='Hearth controller pointer')
+        self.kbd = evdev.UInput({e.EV_KEY: [getattr(e, k) for k in KEYS_USED]}, name='Hearth controller keyboard')
+        self.wheel_acc = [0, 0]
+
+    def move(self, dx, dy):
+        e = self.e
+        if dx:
+            self.ptr.write(e.EV_REL, e.REL_X, dx)
+        if dy:
+            self.ptr.write(e.EV_REL, e.REL_Y, dy)
+        self.ptr.syn()
+
+    def wheel(self, v, h):
+        e = self.e
+        # v, h in 1/120 notches: hi-res for smooth scrolling, whole notches for apps that only read those.
+        for i, (amount, lo, hi) in enumerate(((v, e.REL_WHEEL, getattr(e, 'REL_WHEEL_HI_RES', None)),
+                                              (h, e.REL_HWHEEL, getattr(e, 'REL_HWHEEL_HI_RES', None)))):
+            if not amount:
+                continue
+            if self.hires and hi is not None:
+                self.ptr.write(e.EV_REL, hi, amount)
+            self.wheel_acc[i] += amount
+            notches = int(self.wheel_acc[i] / 120)
+            if notches:
+                self.wheel_acc[i] -= notches * 120
+                self.ptr.write(e.EV_REL, lo, notches)
+        self.ptr.syn()
+
+    def press(self, name, down):
+        dev = self.ptr if name.startswith('BTN_') else self.kbd
+        dev.write(self.e.EV_KEY, getattr(self.e, name), 1 if down else 0)
+        dev.syn()
+
+    def send(self, obj):
+        emit(obj)
+
+
+def button_map(e):
+    m = {e.BTN_SOUTH: 'a', e.BTN_EAST: 'b', e.BTN_NORTH: 'x', e.BTN_WEST: 'y',   # xpad's X/Y codes
+         e.BTN_TL: 'lb', e.BTN_TR: 'rb', e.BTN_TL2: 'lt', e.BTN_TR2: 'rt',
+         e.BTN_SELECT: 'view', e.BTN_START: 'menu', e.BTN_MODE: 'guide',
+         e.BTN_THUMBL: 'l3', e.BTN_THUMBR: 'r3'}
+    for code, name in (('BTN_DPAD_UP', 'up'), ('BTN_DPAD_DOWN', 'down'), ('BTN_DPAD_LEFT', 'left'),
+                       ('BTN_DPAD_RIGHT', 'right')):
+        if hasattr(e, code):
+            m[getattr(e, code)] = name
+    return m
+
+
+class Controller:
+    def __init__(self, dev, e):
+        self.dev = dev
+        self.e = e
+        self.btn = {}       # name → pressed (buttons, triggers, hat)
+        self.ax = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0}
+        self.info = {}
+        for code, info in dev.capabilities(absinfo=True).get(e.EV_ABS, []):
+            self.info[code] = info
+
+    def norm(self, code, value, centered=True):
+        i = self.info.get(code)
+        if not i or i.max == i.min:
+            return 0.0
+        if centered:
+            mid = (i.max + i.min) / 2
+            return max(-1.0, min(1.0, (value - mid) / ((i.max - i.min) / 2)))
+        return max(0.0, min(1.0, (value - i.min) / (i.max - i.min)))
+
+    def handle(self, ev, bmap):
+        e = self.e
+        if ev.type == e.EV_KEY and ev.code in bmap:
+            self.btn[bmap[ev.code]] = ev.value != 0
+        elif ev.type == e.EV_ABS:
+            c = ev.code
+            sticks = {e.ABS_X: 'lx', e.ABS_Y: 'ly', e.ABS_RX: 'rx', e.ABS_RY: 'ry'}
+            if c in sticks:
+                self.ax[sticks[c]] = self.norm(c, ev.value)
+            elif c in (e.ABS_Z, e.ABS_BRAKE, e.ABS_RZ, e.ABS_GAS):
+                name = 'lt' if c in (e.ABS_Z, e.ABS_BRAKE) else 'rt'
+                v = self.norm(c, ev.value, centered=False)
+                was = self.btn.get(name + '_axis', False)
+                self.btn[name + '_axis'] = v > (0.4 if was else 0.55)
+            elif c == e.ABS_HAT0X:
+                self.btn['left'], self.btn['right'] = ev.value < 0, ev.value > 0
+            elif c == e.ABS_HAT0Y:
+                self.btn['up'], self.btn['down'] = ev.value < 0, ev.value > 0
+
+
+def gamepads(evdev, known):
+    e = evdev.ecodes
+    found = {}
+    for path in evdev.list_devices():
+        if path in known:
+            found[path] = known[path]
+            continue
+        try:
+            d = evdev.InputDevice(path)
+        except OSError:
+            continue
+        caps = d.capabilities()
+        if d.name.startswith('Hearth ') or e.BTN_SOUTH not in caps.get(e.EV_KEY, []) or e.EV_ABS not in caps:
+            d.close()
+            continue
+        found[path] = Controller(d, e)
+    for path, c in known.items():
+        if path not in found:
+            try:
+                c.dev.close()
+            except OSError:
+                pass
+    return found
+
+
+def main():
+    try:
+        import evdev
+    except ImportError:
+        emit({'t': 'error', 'text': 'Controller support needs python3-evdev.'})
+        return 2
+    try:
+        out = Output(evdev)
+    except (OSError, evdev.UInputError) as err:
+        emit({'t': 'error', 'text': 'Controller support needs access to /dev/uinput (%s).' % err})
+        return 3
+    e = evdev.ecodes
+    bmap = button_map(e)
+    pad = Pad(out)
+    pads = {}
+    pressed = set()
+    names = ('a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'view', 'menu', 'guide', 'l3', 'r3',
+             'up', 'down', 'left', 'right')
+    last = time.monotonic()
+    next_scan = 0.0
+    emit({'t': 'ready'})
+    os.set_blocking(sys.stdin.fileno(), False)
+    inbuf = ''
+    while True:
+        now = time.monotonic()
+        if now >= next_scan:
+            pads = gamepads(evdev, pads)
+            next_scan = now + 3
+        fds = {c.dev.fd: (p, c) for p, c in pads.items()}
+        try:
+            ready, _, _ = select.select(list(fds) + [sys.stdin.fileno()], [], [], 0.008)
+        except (OSError, ValueError):
+            ready = []
+        for fd in ready:
+            if fd == sys.stdin.fileno():
+                try:
+                    chunk = os.read(fd, 4096).decode('utf-8', 'replace')
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    return 0        # the shell went away
+                inbuf += chunk
+                while '\n' in inbuf:
+                    line, inbuf = inbuf.split('\n', 1)
+                    try:
+                        pad.command(json.loads(line))
+                    except (ValueError, AttributeError):
+                        pass
+                continue
+            path, c = fds[fd]
+            try:
+                for ev in c.dev.read():
+                    c.handle(ev, bmap)
+            except (BlockingIOError, InterruptedError):
+                pass
+            except OSError:          # unplugged
+                pads.pop(path, None)
+        now = time.monotonic()
+        state = set()
+        for c in pads.values():
+            for n in names:
+                if c.btn.get(n) or c.btn.get(n + '_axis'):
+                    state.add(n)
+        for n in names:
+            if (n in state) != (n in pressed):
+                pad.button(n, n in state, now)
+        pressed = state
+        clip = lambda v: max(-1.0, min(1.0, v))
+        pad.axes(*(clip(sum(c.ax[k] for c in pads.values())) for k in ('lx', 'ly', 'rx', 'ry')))
+        pad.tick(now, min(0.05, now - last))
+        last = now
+
+
+if __name__ == '__main__':
+    sys.exit(main())
