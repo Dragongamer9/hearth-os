@@ -13,6 +13,7 @@ const { Bridge } = require('./bridge');
 const { Updates } = require('./updates');
 const { StreamWindow } = require('./stream');
 const { GuideButton } = require('./guide');
+const { DisplayModes } = require('./display');
 const sessionSetup = require('./session');
 const { run, readText, log } = require('./util');
 
@@ -131,6 +132,7 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   win.once('ready-to-show', () => win.show());
+  win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor((library.store.data.uiScale || 100) / 100));
   // Nimbus only ever shows its own pages.
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('nimbus://')) e.preventDefault(); });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -151,9 +153,29 @@ app.whenReady().then(() => {
   library = new Library({ stream });
   updates = new Updates({ version: app.getVersion(), autoCheck: () => library.store.data.autoUpdateCheck });
 
+  // Interface zoom: the Scale setting in Game Mode (and on X11), remembered between runs.
+  const getZoom = () => library.store.data.uiScale || 100;
+  const setZoom = pct => { library.store.update(d => { d.uiScale = pct; }); if (win) win.webContents.setZoomFactor(pct / 100); };
+  const displayModes = new DisplayModes({
+    screen: () => {
+      const d = screen.getPrimaryDisplay();
+      return { w: Math.round(d.size.width * d.scaleFactor), h: Math.round(d.size.height * d.scaleFactor), rate: d.displayFrequency || 60 };
+    },
+    getZoom, setZoom,
+    // New gamescope options take effect when Game Mode starts again: ask the session to restart it.
+    restartGameMode: () => {
+      leaving = true;
+      if (IN_SESSION) {
+        try { fs.writeFileSync(path.join(process.env.XDG_RUNTIME_DIR || '/tmp', 'nimbus-next'), 'game\n'); } catch {}
+        app.exit(0);
+      } else { app.relaunch(); app.exit(0); }
+    },
+  });
+
   bridge = new Bridge({
     post, library, updates,
     platform: {
+      displayModes,
       info: () => ({
         platform: 'linux', name: osName(), host: `Electron ${process.versions.electron}`, version: app.getVersion(),
         session: IN_SESSION, user: os.userInfo().username,

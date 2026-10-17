@@ -54,6 +54,8 @@ Values are camelCase JSON. "—" means the method returns `null`.
 | `audio.setVolume` · `audio.setMute` · `audio.setDefault` | `{v}` · `{m}` · `{id}` | — · — · audio |
 | `display.get` | | `{supported, brightness, resolution, scale}` |
 | `display.setBrightness` | `{v}` | — |
+| `display.get` (mode fields, optional) | | `modesSupported, output, resolutions:[{w,h,rates}], current:{w,h,rate}, refresh, scalePct, scales, scaleIsInterface, appliesOnRestart` (Linux; hosts without them show resolution and scale read-only) |
+| `display.setMode` · `display.setScale` | `{w,h,rate}` · `{pct}` | display (mode fields) |
 | `power.get` · `power.setMode` | `{mode:'efficiency'\|'balanced'\|'performance'}` | `{present, pct, charging, mode}` |
 | `library.get` | `{rescan?}` | `{games:[Game], sources, counts, runningId, steamBackground}` |
 | `library.setFav` · `library.setHidden` | `{id, on}` | — |

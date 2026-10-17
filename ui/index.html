@@ -526,8 +526,12 @@ const MOCK = (()=>{
     'audio.setMute':async({m})=>{ st.audio.muted=m; },
     'audio.setDefault':async({id})=>{ devices.forEach(d=>d.isDefault=d.id===id); return {volume:st.audio.volume,muted:st.audio.muted,devices:clone(devices)}; },
     'display.get':async()=>({supported:true,brightness:st.display.brightness,
-      resolution:`${Math.round(screen.width*devicePixelRatio)} × ${Math.round(screen.height*devicePixelRatio)}`,scale:Math.round(devicePixelRatio*100)+'%'}),
+      resolution:`${(st.mode||{w:1920}).w} × ${(st.mode||{h:1080}).h}`,scale:(st.scalePct||100)+'%', modesSupported:true, output:'Built-in screen',
+      resolutions:[{w:2560,h:1440,rates:[144,120,60]},{w:1920,h:1080,rates:[144,120,60,59.94]},{w:1280,h:800,rates:[90,60]},{w:1280,h:720,rates:[60]}],
+      current:st.mode||{w:1920,h:1080,rate:60}, refresh:Math.round((st.mode||{rate:60}).rate)+' Hz', scalePct:st.scalePct||100, scales:[100,125,150,175,200]}),
     'display.setBrightness':async({v})=>{ st.display.brightness=v; },
+    'display.setMode':async({w,h,rate})=>{ await wait(300); st.mode={w,h,rate}; return H['display.get'](); },
+    'display.setScale':async({pct})=>{ st.scalePct=pct; return H['display.get'](); },
     'power.get':async()=>({...st.battery,mode:st.powerMode}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
     // Stores & profile (preview data)
@@ -809,8 +813,48 @@ function pageBluetooth(){
 }
 function pageDisplay(){
   const d=S.sys.display;
-  return (d.supported ? sliderCtl('bright','sun','Brightness') : note('Brightness control works on built-in screens (laptops and handhelds). External monitors are not supported yet.'))
-    + infoRow('res','Resolution',d.resolution||'—') + infoRow('scale','Scale',d.scale||'—');
+  let h = d.supported ? sliderCtl('bright','sun','Brightness') : note('Brightness control works on built-in screens (laptops and handhelds). External monitors are not supported yet.');
+  // Hosts that can change modes send resolutions, the current mode and scale choices; others only report them.
+  if(!d.modesSupported || !d.current) return h + infoRow('res','Resolution',d.resolution||'—') + infoRow('scale','Scale',d.scale||'—');
+  const cur=d.current, res=(d.resolutions||[]).find(r=>r.w===cur.w&&r.h===cur.h);
+  h += `<button class="row" data-f data-k="dp-res" data-act="dispRes"><span class="ricon">${I.display}</span><div class="rt"><b>Resolution</b><small>${esc(d.output||'Screen')}</small></div><div class="rv">${cur.w} × ${cur.h} ›</div></button>`;
+  // One button per refresh rate (59.94 and 60 count as one), fastest first.
+  const rates=[]; for(const r of (res?res.rates:[cur.rate])) if(!rates.some(x=>Math.round(x)===Math.round(r))) rates.push(r);
+  h += `<div class="row"><div class="rt"><b>Refresh rate</b><small>Now ${esc(d.refresh||Math.round(cur.rate)+' Hz')}</small></div>
+    <div class="seg">${rates.slice(0,7).map(r=>`<button class="${Math.round(r)===Math.round(cur.rate)?'on':''}" data-f data-k="dp-rate-${Math.round(r)}" data-act="dispRate" data-v="${r}">${Math.round(r)}</button>`).join('')}</div></div>`;
+  h += `<div class="row"><div class="rt"><b>Scale</b><small>${d.scaleIsInterface?'Size of the Nimbus interface':'Size of everything on this screen'}</small></div>
+    <div class="seg">${(d.scales||[]).map(p=>`<button class="${p===d.scalePct?'on':''}" data-f data-k="dp-scale-${p}" data-act="dispScale" data-v="${p}">${p}%</button>`).join('')}</div></div>`;
+  if(d.appliesOnRestart) h += note('In Game Mode, a new resolution or refresh rate restarts Nimbus for a moment to apply it.');
+  return h;
+}
+function dispRes(){
+  const d=S.sys.display, cur=d.current;
+  openSheet({title:'Resolution', sub:d.output||'', items:(d.resolutions||[]).slice(0,12).map(r=>({
+    label:`${r.w} × ${r.h}${r.w===cur.w&&r.h===cur.h?'  (current)':''}`, icon:'display',
+    // Keep the refresh rate if this resolution has it, else its fastest.
+    run:()=>setDisplayMode(r.w, r.h, (r.rates.find(x=>Math.round(x)===Math.round(cur.rate)) ?? r.rates[0]))}))});
+}
+async function setDisplayMode(w,h,rate){
+  const d=S.sys.display, prev={...d.current};
+  if(w===prev.w && h===prev.h && Math.round(rate)===Math.round(prev.rate)) return;
+  if(d.appliesOnRestart){
+    toast('Restarting Game Mode with the new display settings…');
+    try{ await call('display.setMode',{w,h,rate}); }catch(e){ toast(e.message); }
+    return;
+  }
+  try{ Object.assign(S.sys.display, await call('display.setMode',{w,h,rate})); refreshUI(); }
+  catch(e){ return toast(e.message); }
+  // A mode the screen can't show leaves you blind: go back on its own unless you keep it.
+  let kept=false;
+  const revert=setTimeout(async()=>{ if(kept) return; if(S.layers.at(-1)==='sheet') closeLayer();
+    try{ Object.assign(S.sys.display, await call('display.setMode',prev)); refreshUI(); toast('Went back to the previous display settings'); }catch(e){ toast(e.message); } }, 15000);
+  openSheet({title:'Keep these display settings?', sub:'Going back in 15 seconds…', noCancel:true,
+    items:[{label:'Keep',icon:'check',run:()=>{ kept=true; clearTimeout(revert); }},
+           {label:'Go back',icon:'x',run:()=>{ kept=true; clearTimeout(revert);
+             call('display.setMode',prev).then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(e=>toast(e.message)); }}]});
+}
+async function setDisplayScale(pct){
+  try{ Object.assign(S.sys.display, await call('display.setScale',{pct})); render('dp-scale-'+pct,true); }catch(e){ toast(e.message); }
 }
 function pageAudio(){
   const a=S.sys.audio;
@@ -1257,6 +1301,9 @@ function act(el){
     case 'mute': return setMute(!S.sys.audio.muted);
     case 'audioDev': return setOutput(d.id);
     case 'pmode': return setPowerMode(d.mode);
+    case 'dispRes': return dispRes();
+    case 'dispRate': { const c=S.sys.display.current; return setDisplayMode(c.w, c.h, +d.v); }
+    case 'dispScale': return setDisplayScale(+d.v);
     case 'shellMake': return shellMake();
     case 'updCheck': return call('update.check',{},60000).then(onUpdate).catch(e=>toast(e.message));
     case 'updDownload': return call('update.download').then(onUpdate).catch(e=>toast(e.message));
