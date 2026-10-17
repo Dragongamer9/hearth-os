@@ -67,3 +67,17 @@ test('Desktop Mode keeps wlr-randr changes in display.sh', () => {
   const sh = fs.readFileSync(path.join(tmp, 'nimbus', 'display.sh'), 'utf8');
   assert.match(sh, /wlr-randr --output 'DP-1' --mode '2560x1440@164.958Hz' --scale 1.25/);
 });
+
+test('updater picks the newest preview that has an AppImage', async () => {
+  const { Updates } = require('../src/updates');
+  const rel = (tag, pre, assets = ['Nimbus-linux-x86_64.AppImage']) => ({ tag_name: tag, prerelease: pre, draft: false,
+    assets: assets.map(n => ({ name: n, browser_download_url: 'https://x/' + tag + '/' + n, size: 1 })) });
+  global.fetch = async () => ({ ok: true, json: async () => [
+    rel('v0.4.0-linux.9', true), rel('v0.4.0-linux.15', true), rel('v0.4.0', false, ['Nimbus-win-x64.zip']), rel('v0.4.0-linux.13', true)] });
+  const u = new Updates({ version: '0.4.0-linux.13', appImage: '/x/Nimbus.AppImage' });
+  const s = await u.check();
+  assert.equal(s.state, 'available');
+  assert.equal(s.latest.version, '0.4.0-linux.15');
+  const full = new Updates({ version: '0.4.0', appImage: '/x' });
+  assert.equal((await full.check()).state, 'upToDate'); // full releases don't take previews
+});
