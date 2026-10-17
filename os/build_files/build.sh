@@ -44,6 +44,35 @@ dnf5 -y copr disable errornointernet/quickshell
 # ------------------------------------------------------------------ boot straight into Nimbus
 systemctl enable nimbus-autologin.service
 
+# ------------------------------------------------------------------ package repos the installer can read
+# The ISO builder reads every enabled repo in the image, and refuses one whose signing key file is missing
+# (Bazzite's terra-mesa points at a key it doesn't ship). Switch those off: their packages are already in
+# the image, and system updates come as whole images, not from these repos.
+for f in /etc/yum.repos.d/*.repo; do
+  [ -f "$f" ] || continue
+  python3 - "$f" <<'PY'
+import configparser, os, re, sys
+path = sys.argv[1]
+VER = re.search(r'^VERSION_ID="?(\d+)', open('/usr/lib/os-release').read(), re.M).group(1)
+cp = configparser.RawConfigParser(strict=False)
+cp.read(path)
+changed = False
+for sec in cp.sections():
+    if cp.get(sec, 'enabled', fallback='1').strip() != '1':
+        continue
+    keys = re.split(r'[\s,]+', cp.get(sec, 'gpgkey', fallback='').strip())
+    keys = [k.replace('$releasever', VER).replace('$basearch', 'x86_64') for k in keys]
+    missing = [k for k in keys if k.startswith('file://') and not os.path.exists(k[7:])]
+    if missing:
+        print(f'{path}: [{sec}] off, missing key {missing[0]}')
+        cp.set(sec, 'enabled', '0')
+        changed = True
+if changed:
+    with open(path, 'w') as fh:
+        cp.write(fh)
+PY
+done
+
 # ------------------------------------------------------------------ name
 sed -i \
   -e 's/^NAME=.*/NAME="Hearth"/' \
