@@ -3,7 +3,7 @@
 // Inside the "Nimbus" login session it runs in gamescope (see session/); started from a desktop
 // with --windowed it runs in a normal window for development.
 
-const { app, BrowserWindow, ipcMain, protocol, net, dialog, screen, session, Menu, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, dialog, screen, session, Menu, safeStorage, globalShortcut } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -155,6 +155,9 @@ function signInWindow({ title, url, onNavigate, onLoaded }) {
       finish(r);
     };
     const wc = w.webContents;
+    const wcId = wc.id;
+    signInContents.add(wcId);
+    w.on('closed', () => signInContents.delete(wcId));
     wc.on('will-redirect', (e, u) => check(e, u));
     wc.on('will-navigate', (e, u) => check(e, u));
     wc.on('did-navigate', (_e, u) => check(null, u));
@@ -171,7 +174,32 @@ function signInWindow({ title, url, onNavigate, onLoaded }) {
     w.loadURL(url);
   });
 }
-ipcMain.on('signin:cancel', e => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.close(); });
+// Controller input from a sign-in window's preload (pointer, keyboard), turned into real input events so every
+// site accepts it. Only sign-in windows may ask for this.
+const signInContents = new Set();
+const signInSender = e => (signInContents.has(e.sender.id) ? e.sender : null);
+ipcMain.on('signin:cancel', e => { const w = BrowserWindow.fromWebContents(e.sender); if (w && signInSender(e)) w.close(); });
+ipcMain.on('signin:click', (e, p) => {
+  const wc = signInSender(e); if (!wc || !p) return;
+  const x = Math.round(+p.x), y = Math.round(+p.y);
+  wc.sendInputEvent({ type: 'mouseMove', x, y });
+  wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+  wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+});
+ipcMain.on('signin:wheel', (e, p) => {
+  const wc = signInSender(e); if (!wc || !p) return;
+  wc.sendInputEvent({ type: 'mouseWheel', x: Math.round(+p.x), y: Math.round(+p.y), deltaX: 0, deltaY: Math.round(+p.dy), canScroll: true });
+});
+ipcMain.on('signin:type', (e, text) => {
+  const wc = signInSender(e); if (!wc || typeof text !== 'string') return;
+  for (const ch of text.slice(0, 64)) wc.sendInputEvent({ type: 'char', keyCode: ch });
+});
+ipcMain.on('signin:key', (e, key) => {
+  const wc = signInSender(e); if (!wc || !['Backspace', 'Tab', 'Return'].includes(key)) return;
+  wc.sendInputEvent({ type: 'keyDown', keyCode: key });
+  if (key === 'Return') wc.sendInputEvent({ type: 'char', keyCode: '\r' });
+  wc.sendInputEvent({ type: 'keyUp', keyCode: key });
+});
 
 // ------------------------------------------------------------------ screenshots
 
@@ -287,6 +315,12 @@ app.whenReady().then(() => {
         return r.canceled ? null : r.filePaths[0];
       },
       screenshot,
+      // Bringing Nimbus up over a game (the Linux "overlay"): Guide button, optional held View, Ctrl+Alt+Q.
+      overlay: {
+        settings: () => ({ holdView: !!library.store.data.holdView, gameBarButton: false, hotkey: 'Ctrl+Alt+Q',
+          guide: guide ? guide.status() : { devices: [], problems: [], lastPress: 0 } }),
+        setHoldView: on => { library.store.update(d => { d.holdView = !!on; }); if (guide) guide.holdView = !!on; },
+      },
       screenInfo: () => {
         const d = screen.getPrimaryDisplay();
         const w = Math.round(d.size.width * d.scaleFactor), h = Math.round(d.size.height * d.scaleFactor);
@@ -315,12 +349,16 @@ app.whenReady().then(() => {
 
   // Guide button over a game: bring Nimbus back with Quick Access open.
   guide = new GuideButton();
-  guide.on('press', () => {
+  guide.holdView = !!library.store.data.holdView;
+  guide.on('press', how => {
+    log(`overlay: ${how} pressed${library.runningId ? '' : ' (no game running)'}`);
     if (!library.runningId || (win && win.isVisible() && win.isFocused())) return; // the UI handles it itself then
     comeBack();
     post({ type: 'event', name: 'pad', data: { b: 'guide' } });
   });
   guide.start();
+  // Keyboard backup, like Windows: works when the game runs under X11/Xwayland (most do, and all in gamescope).
+  try { globalShortcut.register('Control+Alt+Q', () => guide.fire('hotkey')); } catch (e) { log('Ctrl+Alt+Q: ' + e.message); }
 
   createWindow();
   library.startBackgroundServices().catch(e => log('background services FAILED ' + e.message));
