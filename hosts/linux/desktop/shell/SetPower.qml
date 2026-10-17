@@ -60,10 +60,10 @@ SetPage {
     SetSlider {
         visible: !!(page.tdp && page.tdp.supported)
         icon: "power"; title: "Power limit (TDP)"
-        readonly property int lo: page.tdp ? page.tdp.min : 5
-        readonly property int hi: page.tdp ? page.tdp.max : 30
-        value: page.tdp ? (page.tdp.watts - lo) / Math.max(1, hi - lo) : 0
-        valueText: (page.tdp ? page.tdp.watts : 0) + " W"
+        readonly property int lo: page.tdp && page.tdp.min !== undefined ? page.tdp.min : 5
+        readonly property int hi: page.tdp && page.tdp.max !== undefined ? page.tdp.max : 30
+        value: page.tdp && page.tdp.supported ? (page.tdp.watts - lo) / Math.max(1, hi - lo) : 0
+        valueText: (page.tdp && page.tdp.watts !== undefined ? page.tdp.watts : 0) + " W"
         step: 1 / Math.max(1, hi - lo)
         onMoved: v => { const w = Math.round(lo + v * (hi - lo)); if (page.tdp) page.tdp = Object.assign({}, page.tdp, { watts: w }); tdpApply.restart(); }
         Timer { id: tdpApply; interval: 500; onTriggered: page.power(["tdp", String(page.tdp.watts)]) }
