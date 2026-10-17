@@ -22,7 +22,7 @@ jobs:
       - name: Install labwc, Quickshell and friends
         run: |
           dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-evdev qt6ct \
-            google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme wlsunset >/dev/null
+            google-noto-sans-fonts adwaita-icon-theme NetworkManager bluez pciutils breeze-icon-theme wlsunset >/dev/null
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           quickshell --version || true
@@ -52,6 +52,12 @@ jobs:
           ipc menu open; grim shots/3-hearth-menu.png || true; ipc menu close
           ipc launcher toggle; grim shots/4-launcher.png || true; ipc launcher toggle
           ipc help toggle; grim shots/5-controls.png || true; ipc help toggle
+          # Hearth Settings, every page
+          n=6
+          for p in wifi bluetooth sound display appearance power controller signin updates about; do
+            ipc settings page "$p"; grim "shots/$n-settings-$p.png" || true; n=$((n+1))
+          done
+          ipc settings close
           cp "$LOG" shots/nimbus-shell.log 2>/dev/null || true
           ls "$XDG_RUNTIME_DIR" > shots/runtime-dir.txt
           pgrep -af "quickshell|/qs( |$)" > shots/quickshell-running.txt || echo "not running" > shots/quickshell-running.txt
