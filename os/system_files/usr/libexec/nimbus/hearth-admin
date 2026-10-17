@@ -1,0 +1,157 @@
+#!/usr/bin/python3
+"""hearth-admin: the few things the Hearth app does that need root, on Hearth (the OS).
+
+Run by the Hearth app through pkexec; /usr/share/polkit-1/rules.d/49-hearth-admin.rules lets the person
+signed in at the device (local, active session, in the wheel group) run it without a password prompt,
+which a handheld with no keyboard couldn't answer. Each command does one narrow job and checks its input.
+
+  hearth-admin autologin on|off      sign straight into Hearth at boot, or show the login screen
+  hearth-admin hostname NAME         the device's name on the network
+  hearth-admin password              change your password; stdin: {"old": "...", "new": "..."}
+                                     (the current password is checked first)
+  hearth-admin update-status         JSON: the running version, a downloaded update, an available one
+  hearth-admin update-check          look for an update, then the same JSON
+  hearth-admin update                download and stage the update (applies at restart), and update the
+                                     system Flatpak apps; progress lines, then the JSON
+
+Output: progress lines as "log: ...", the result as one JSON line. Exit 1 with "error: ..." on failure.
+"""
+import json
+import os
+import pwd
+import re
+import subprocess
+import sys
+
+NO_AUTOLOGIN = '/etc/nimbus/no-autologin'
+AUTOLOGIN_SCRIPT = '/usr/libexec/nimbus/nimbus-autologin'
+
+
+def fail(msg):
+    print('error: ' + msg, flush=True)
+    sys.exit(1)
+
+
+def caller():
+    """The account that ran pkexec."""
+    uid = os.environ.get('PKEXEC_UID')
+    if not uid or not uid.isdigit():
+        fail('run this through pkexec')
+    return pwd.getpwuid(int(uid))
+
+
+def autologin(state):
+    if state == 'on':
+        if os.path.exists(NO_AUTOLOGIN):
+            os.remove(NO_AUTOLOGIN)
+    elif state == 'off':
+        os.makedirs(os.path.dirname(NO_AUTOLOGIN), exist_ok=True)
+        open(NO_AUTOLOGIN, 'w').close()
+    else:
+        fail('autologin on|off')
+    subprocess.run([AUTOLOGIN_SCRIPT], check=True)   # writes or clears the login screen's settings
+    print(json.dumps({'autologin': state == 'on'}))
+
+
+def hostname(name):
+    if not re.fullmatch(r'[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?', name or ''):
+        fail('use letters, numbers and dashes (up to 63), not starting or ending with a dash')
+    subprocess.run(['hostnamectl', 'hostname', name], check=True)
+    print(json.dumps({'hostname': name}))
+
+
+def password():
+    user = caller()
+    try:
+        req = json.loads(sys.stdin.readline())
+        old, new = str(req['old']), str(req['new'])
+    except (ValueError, KeyError, TypeError):
+        fail('expected {"old": ..., "new": ...}')
+    if len(new) < 4:
+        fail('the new password needs at least 4 characters')
+    if '\n' in new or '\r' in new:
+        fail('the new password can\'t contain line breaks')
+    # Check the current password the way the login screen does (pam_unix's helper, run as that user).
+    chk = subprocess.run(['runuser', '-u', user.pw_name, '--', '/usr/sbin/unix_chkpwd', user.pw_name, 'nullok'],
+                         input=(old + '\0').encode(), capture_output=True)
+    if chk.returncode != 0:
+        fail('the current password is incorrect')
+    r = subprocess.run(['chpasswd'], input=f'{user.pw_name}:{new}\n'.encode(), capture_output=True)
+    if r.returncode != 0:
+        fail(r.stderr.decode(errors='replace').strip() or 'couldn\'t change the password')
+    print(json.dumps({'ok': True}))
+
+
+def bootc_status():
+    r = subprocess.run(['bootc', 'status', '--format', 'json'], capture_output=True, text=True)
+    if r.returncode != 0:
+        fail(r.stderr.strip() or 'bootc status failed')
+    st = json.loads(r.stdout).get('status') or {}
+
+    def info(entry):
+        if not entry:
+            return None
+        img = entry.get('image') or {}
+        return {'version': img.get('version'), 'timestamp': img.get('timestamp'),
+                'image': ((img.get('image') or {}).get('image'))}
+
+    booted = st.get('booted') or {}
+    cached = booted.get('cachedUpdate')
+    staged = st.get('staged')
+    return {
+        'booted': info(booted),
+        'staged': info(staged),
+        'available': ({'version': cached.get('version'), 'timestamp': cached.get('timestamp')} if cached else None),
+    }
+
+
+def run_logged(cmd):
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    last = ''
+    for line in p.stdout:
+        line = line.rstrip()
+        if line:
+            last = line
+            print('log: ' + line[:300], flush=True)
+    if p.wait() != 0:
+        if re.search(r'lock|another|in progress', last, re.I):
+            fail('another update is already running (Hearth also updates by itself in the background). Try again in a few minutes.')
+        fail(last or ' '.join(cmd) + ' failed')
+
+
+def update_check():
+    run_logged(['bootc', 'upgrade', '--check'])
+    print(json.dumps(bootc_status()))
+
+
+def update():
+    print('log: Downloading the system update…', flush=True)
+    run_logged(['bootc', 'upgrade'])
+    if subprocess.run(['sh', '-c', 'command -v flatpak'], capture_output=True).returncode == 0:
+        print('log: Updating apps…', flush=True)
+        run_logged(['flatpak', 'update', '--system', '-y', '--noninteractive'])
+    print(json.dumps(bootc_status()))
+
+
+def main(argv):
+    if os.geteuid() != 0:
+        fail('needs root (run through pkexec)')
+    cmd = argv[1] if len(argv) > 1 else ''
+    if cmd == 'autologin' and len(argv) == 3:
+        autologin(argv[2])
+    elif cmd == 'hostname' and len(argv) == 3:
+        hostname(argv[2])
+    elif cmd == 'password':
+        password()
+    elif cmd == 'update-status':
+        print(json.dumps(bootc_status()))
+    elif cmd == 'update-check':
+        update_check()
+    elif cmd == 'update':
+        update()
+    else:
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update')
+
+
+if __name__ == '__main__':
+    main(sys.argv)
