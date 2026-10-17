@@ -165,8 +165,11 @@ class Bridge {
       }
 
       case 'perf.stats':
-        return { ...(await perf.sample()), battery: this.power.battery(), runningId: L.runningId, runningSince: L.runningSince };
-      // Linux has no separate overlay window: the Guide button brings Nimbus over the game instead.
+        return { ...(await perf.sample()), battery: this.power.battery(), runningId: L.runningId, runningSince: L.runningSince,
+          canFpsLimit: !!(this.platform.canFpsLimit && this.platform.canFpsLimit()), fpsLimit: L.store && L.store.data ? (L.store.data.fpsLimit || 0) : 0,
+          powerMode: (await this.power.get().catch(() => ({}))).mode };
+      case 'perf.setFpsLimit': return { fpsLimit: await this.platform.setFpsLimit(+a.fps || 0) };
+      // In Game Mode Quick Access opens in an overlay window over the game; elsewhere Hearth comes back over it.
       case 'overlay.settings': return this.platform.overlay.settings();
       case 'overlay.setHoldView': this.platform.overlay.setHoldView(!!a.on); return this.platform.overlay.settings();
       case 'overlay.setGameBarButton': return this.platform.overlay.settings(); // Windows only

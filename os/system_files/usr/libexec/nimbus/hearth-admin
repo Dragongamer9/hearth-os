@@ -14,7 +14,7 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin update                download and stage the update (applies at restart), and update the
                                      system Flatpak apps; progress lines, then the JSON
 
-Output: progress lines as "log: ...", the result as one JSON line. Exit 1 with "error: ..." on failure.
+Output: progress lines as "log: ...", percentages as "progress: <0-100> <what>", the result as one JSON line. Exit 1 with "error: ..." on failure.
 """
 import json
 import os
@@ -22,6 +22,7 @@ import pwd
 import re
 import subprocess
 import sys
+import threading
 
 NO_AUTOLOGIN = '/etc/nimbus/no-autologin'
 AUTOLOGIN_SCRIPT = '/usr/libexec/nimbus/nimbus-autologin'
@@ -124,12 +125,59 @@ def update_check():
     print(json.dumps(bootc_status()))
 
 
+def progress(pct, what):
+    print('progress: %.1f %s' % (max(0.0, min(100.0, pct)), what), flush=True)
+
+
+def bootc_upgrade_with_progress(lo, hi):
+    """bootc upgrade, reporting its download as lo..hi percent (bootc's --progress-fd JSON). Older bootc
+    without that option: plain output, no percentage."""
+    help_text = subprocess.run(['bootc', 'upgrade', '--help'], capture_output=True, text=True).stdout
+    if '--progress-fd' not in help_text:
+        return run_logged(['bootc', 'upgrade'])
+    rfd, wfd = os.pipe()
+    p = subprocess.Popen(['bootc', 'upgrade', '--progress-fd', str(wfd)], pass_fds=(wfd,),
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    os.close(wfd)
+    last = ['']
+
+    def logs():
+        for line in p.stdout:
+            line = line.rstrip()
+            if line:
+                last[0] = line
+                print('log: ' + line[:300], flush=True)
+    t = threading.Thread(target=logs, daemon=True)
+    t.start()
+    with os.fdopen(rfd) as events:
+        for line in events:
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            kind = ev.get('type')
+            done, total = ev.get('bytes') or 0, ev.get('bytesTotal') or 0
+            if kind == 'ProgressBytes' and total:
+                progress(lo + (hi - lo) * done / total,
+                         'Downloading %s (%.1f of %.1f GB)' % (ev.get('description') or 'the update', done / 1e9, total / 1e9))
+            elif kind in ('ProgressSteps', 'ProgressBytes') and ev.get('stepsTotal'):
+                progress(lo + (hi - lo) * (ev.get('steps') or 0) / ev['stepsTotal'], ev.get('description') or 'Updating')
+    t.join()
+    if p.wait() != 0:
+        if re.search(r'lock|another|in progress', last[0], re.I):
+            fail('another update is already running (Hearth also updates by itself in the background). Try again in a few minutes.')
+        fail(last[0] or 'bootc upgrade failed')
+
+
 def update():
+    progress(0, 'Starting')
     print('log: Downloading the system update…', flush=True)
-    run_logged(['bootc', 'upgrade'])
+    bootc_upgrade_with_progress(0, 90)
     if subprocess.run(['sh', '-c', 'command -v flatpak'], capture_output=True).returncode == 0:
+        progress(90, 'Updating apps')
         print('log: Updating apps…', flush=True)
         run_logged(['flatpak', 'update', '--system', '-y', '--noninteractive'])
+    progress(100, 'Done')
     print(json.dumps(bootc_status()))
 
 
