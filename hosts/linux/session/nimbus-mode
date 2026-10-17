@@ -1,0 +1,21 @@
+#!/bin/sh
+# Switches the Nimbus session between modes, or leaves it.
+#   nimbus-mode game      go to Game Mode
+#   nimbus-mode desktop   go to Desktop Mode
+#   nimbus-mode logout    end the session (back to the login screen)
+#   nimbus-mode current   print the mode you're in
+
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+case "$1" in
+  current)
+    if [ -n "$LABWC_PID" ]; then echo desktop; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
+  game|desktop|logout)
+    [ "$1" = logout ] && rm -f "$RUN/nimbus-next" || echo "$1" >"$RUN/nimbus-next"
+    if [ -n "$LABWC_PID" ]; then
+      labwc --exit 2>/dev/null || kill -TERM "$LABWC_PID"
+    else
+      # In Game Mode, Nimbus quits itself after writing the file; this is the fallback for scripts.
+      pkill -TERM -x gamescope 2>/dev/null || pkill -TERM -f gamescope-wl 2>/dev/null
+    fi ;;
+  *) echo "usage: nimbus-mode game|desktop|logout|current" >&2; exit 2 ;;
+esac

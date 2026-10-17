@@ -24,7 +24,8 @@
     "files": ["src/**/*", "package.json"],
     "extraResources": [
       { "from": "../../ui", "to": "ui" },
-      { "from": "session", "to": "session" }
+      { "from": "session", "to": "session" },
+      { "from": "desktop", "to": "desktop" }
     ],
     "linux": { "target": ["AppImage"], "category": "Game" }
   }

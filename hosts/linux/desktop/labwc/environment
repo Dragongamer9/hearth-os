@@ -1,0 +1,8 @@
+# Environment for every app started in Nimbus Desktop Mode.
+XDG_CURRENT_DESKTOP=Nimbus:wlroots
+XDG_SESSION_TYPE=wayland
+MOZ_ENABLE_WAYLAND=1
+QT_QPA_PLATFORM=wayland;xcb
+ELECTRON_OZONE_PLATFORM_HINT=auto
+SDL_VIDEODRIVER=wayland,x11
+_JAVA_AWT_WM_NONREPARENTING=1

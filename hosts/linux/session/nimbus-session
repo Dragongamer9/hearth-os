@@ -1,23 +1,62 @@
 #!/bin/sh
 # Started by the login screen when you pick the "Nimbus" session.
-# Runs Nimbus fullscreen inside gamescope (Valve's compositor, the same one SteamOS Gaming Mode uses).
 #
-# Which Nimbus to run: ~/.config/nimbus/app-path (written by Nimbus › Settings › Shell),
-# or NIMBUS_APP. Extra gamescope options: NIMBUS_GAMESCOPE_ARGS in ~/.config/nimbus/session.conf,
-# e.g. NIMBUS_GAMESCOPE_ARGS="-W 1280 -H 800 --adaptive-sync"
+# One session, two modes, switched without logging out (like SteamOS's Game Mode and Desktop Mode):
+#   Game Mode     Nimbus fullscreen in gamescope (Valve's compositor, the same one SteamOS uses)
+#   Desktop Mode  the labwc window manager with the Nimbus taskbar, launcher and notifications (Quickshell)
+#
+# To switch, a mode writes the next one to $XDG_RUNTIME_DIR/nimbus-next and ends itself
+# (nimbus-mode does both). A mode that ends without asking for another one ends the session.
+#
+# Settings in ~/.config/nimbus/session.conf (shell syntax):
+#   NIMBUS_START_MODE=desktop             start in Desktop Mode instead of Game Mode
+#   NIMBUS_GAMESCOPE_ARGS="-W 1280 -H 800 --adaptive-sync"
+# Which Nimbus to run: ~/.config/nimbus/app-path (written by Nimbus › Settings › Shell), or NIMBUS_APP.
 
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus"
+SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+NEXT="$RUN/nimbus-next"
+LOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/session.log"
+mkdir -p "$(dirname "$LOG")"
+log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
+
 [ -f "$CONF/session.conf" ] && . "$CONF/session.conf"
 [ -z "$NIMBUS_APP" ] && [ -f "$CONF/app-path" ] && NIMBUS_APP="$(cat "$CONF/app-path")"
-if [ -z "$NIMBUS_APP" ] || [ ! -x "$NIMBUS_APP" ]; then
-  echo "nimbus-session: Nimbus not found (set it up from Nimbus › Settings › Shell)" >&2
-  exit 1
-fi
-if ! command -v gamescope >/dev/null 2>&1; then
-  echo "nimbus-session: gamescope is not installed" >&2
-  exit 1
-fi
+export NIMBUS_SESSION=1 NIMBUS_APP NIMBUS_SHARE="$SHARE"
+export XDG_CURRENT_DESKTOP=Nimbus XDG_SESSION_DESKTOP=nimbus
 
-export NIMBUS_SESSION=1
-# shellcheck disable=SC2086
-exec gamescope -f $NIMBUS_GAMESCOPE_ARGS -- /usr/local/lib/nimbus/nimbus-watchdog "$NIMBUS_APP"
+have() { command -v "$1" >/dev/null 2>&1; }
+
+can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
+can_desktop() { have labwc; }
+
+run_game() {
+  log "game mode"
+  # shellcheck disable=SC2086
+  gamescope -f $NIMBUS_GAMESCOPE_ARGS -- /usr/local/lib/nimbus/nimbus-watchdog "$NIMBUS_APP"
+}
+
+run_desktop() {
+  log "desktop mode"
+  # labwc reads rc.xml, autostart, environment and menu.xml from this folder; your own
+  # ~/.config/labwc/rc.xml and autostart are added on top by Nimbus's autostart if they exist.
+  labwc -C "$SHARE/desktop/labwc"
+}
+
+mode="${NIMBUS_START_MODE:-game}"
+rm -f "$NEXT"
+while :; do
+  # Fall back to whichever mode can run.
+  if [ "$mode" = game ] && ! can_game; then log "game mode unavailable (gamescope or Nimbus missing)"; mode=desktop; fi
+  if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc missing)"; can_game && mode=game || exit 1; fi
+
+  if [ "$mode" = game ]; then run_game; else run_desktop; fi
+  code=$?
+
+  next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
+  case "$next" in
+    game|desktop) log "switching to $next"; mode="$next" ;;
+    *) log "$mode mode ended (code $code), leaving the session"; exit 0 ;;
+  esac
+done
