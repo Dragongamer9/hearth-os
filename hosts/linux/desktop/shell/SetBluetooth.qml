@@ -31,7 +31,7 @@ SetPage {
         command: ["sh", "-c", "bluetoothctl devices Paired; echo ---; bluetoothctl devices Connected"]
         stdout: StdioCollector {
             onStreamFinished: {
-                const [p, c] = text.split("---");
+                const parts = text.split("---"), p = parts[0], c = parts[1];
                 const conn = page.parseDevices(c || "").map(d => d.mac);
                 page.paired = page.parseDevices(p || "").map(d => ({ mac: d.mac, name: d.name, connected: conn.includes(d.mac) }));
             }
