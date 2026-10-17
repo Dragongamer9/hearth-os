@@ -160,8 +160,9 @@ class Bridge {
       case 'perf.stats':
         return { ...(await perf.sample()), battery: this.power.battery(), runningId: L.runningId, runningSince: L.runningSince };
       // Linux has no separate overlay window: the Guide button brings Nimbus over the game instead.
-      case 'overlay.settings': return { holdView: false, gameBarButton: false, hotkey: 'Guide button' };
-      case 'overlay.setHoldView': case 'overlay.setGameBarButton': return { holdView: false, gameBarButton: false, hotkey: 'Guide button' };
+      case 'overlay.settings': return this.platform.overlay.settings();
+      case 'overlay.setHoldView': this.platform.overlay.setHoldView(!!a.on); return this.platform.overlay.settings();
+      case 'overlay.setGameBarButton': return this.platform.overlay.settings(); // Windows only
       case 'overlay.screenshot': return this.platform.screenshot();
 
       case 'profile.get': return this.profile.get();
