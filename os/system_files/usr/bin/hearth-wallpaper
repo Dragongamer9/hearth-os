@@ -1,0 +1,37 @@
+#!/usr/bin/python3
+"""hearth-wallpaper: set Hearth Desktop Mode's wallpaper (the file manager's "Set as Hearth wallpaper").
+
+  hearth-wallpaper PICTURE        use this picture
+  hearth-wallpaper fireside|lava|aurora   one of the moving ones
+The desktop picks the change up straight away (Hearth Settings › Appearance shows the same choice).
+"""
+import json
+import os
+import sys
+
+path = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'nimbus', 'desktop.json')
+if len(sys.argv) != 2:
+    print(__doc__.strip())
+    sys.exit(2)
+arg = sys.argv[1]
+if arg.startswith('file://'):
+    from urllib.parse import unquote
+    arg = unquote(arg[7:])
+if arg in ('fireside', 'lava', 'aurora'):
+    value = '' if arg == 'fireside' else 'anim:' + arg
+elif os.path.isfile(arg):
+    value = os.path.abspath(arg)
+else:
+    print('error: no such picture: ' + arg)
+    sys.exit(1)
+try:
+    with open(path) as f:
+        conf = json.load(f)
+except (OSError, ValueError):
+    conf = {}
+conf['wallpaper'] = value
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path + '.tmp', 'w') as f:
+    json.dump(conf, f, indent=2)
+    f.write('\n')
+os.replace(path + '.tmp', path)

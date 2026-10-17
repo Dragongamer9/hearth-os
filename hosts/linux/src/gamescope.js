@@ -40,20 +40,49 @@ function procName(pid) {
   try { return fs.readFileSync(`/proc/${pid}/comm`, 'utf8').trim(); } catch { return ''; }
 }
 
-/** Open apps for the overlay: [{id, pid, title, app, focused}], one per process (its first window). */
-async function apps() {
-  const [wins, focused] = await Promise.all([focusableWindows(), cardinals('GAMESCOPE_FOCUSED_WINDOW')]);
-  const out = [], seen = new Set();
-  for (const w of wins) {
-    if (!w.pid || seen.has(w.pid)) continue;
-    seen.add(w.pid);
-    const title = (await strProp(w.win, '_NET_WM_NAME')) || (await strProp(w.win, 'WM_NAME'));
-    out.push({ id: w.win, pid: w.pid, appid: w.appid, title: title || procName(w.pid) || 'App', app: procName(w.pid), focused: focused[0] === w.win });
+/** "xwininfo -root -children" lines → [{win, title, w, h}] (top-level windows with a name). */
+function parseChildren(text) {
+  const out = [];
+  for (const line of String(text).split('\n')) {
+    const m = line.match(/^\s*(0x[0-9a-f]+)\s+"(.*)":\s.*?\s(\d+)x(\d+)[+-]/i);
+    if (m && m[2] && m[2] !== 'has no name') out.push({ win: parseInt(m[1], 16), title: m[2], w: +m[3], h: +m[4] });
   }
   return out;
 }
 
-async function focusWindow(win) { await setRoot('GAMESCOPECTRL_BASELAYER_WINDOW', win); }
+/** Visible top-level X windows, with their process: gamescope's focusable list only has some of them. */
+async function mappedWindows() {
+  if (!has('xwininfo')) return [];
+  const kids = parseChildren(await run('xwininfo', ['-root', '-children'], { timeout: 3000 }).catch(() => ''));
+  const out = [];
+  for (const k of kids.filter(k => k.w >= 200 && k.h >= 150).slice(0, 40)) {
+    const st = await run('xwininfo', ['-id', String(k.win)], { timeout: 2000 }).catch(() => '');
+    if (!/Map State:\s*IsViewable/.test(st)) continue;
+    const pid = (await cardinals('_NET_WM_PID', k.win))[0] || 0;
+    const appid = (await cardinals('STEAM_GAME', k.win))[0] || 0;
+    out.push({ win: k.win, pid, appid, title: k.title });
+  }
+  return out;
+}
+
+/** Open apps for the overlay: [{id, pid, title, app, focused}], one per process (its first window). */
+async function apps({ exclude = [] } = {}) {
+  const [wins, focused, mapped] = await Promise.all([focusableWindows(), cardinals('GAMESCOPE_FOCUSED_WINDOW'), mappedWindows()]);
+  const out = [], seen = new Set();
+  const add = async (w, title) => {
+    const key = w.pid || ('w' + w.win);
+    if (seen.has(key) || exclude.includes(w.pid) || exclude.includes(w.win)) return;
+    seen.add(key);
+    title = title || (await strProp(w.win, '_NET_WM_NAME')) || (await strProp(w.win, 'WM_NAME'));
+    out.push({ id: w.win, pid: w.pid, appid: w.appid, title: title || procName(w.pid) || 'App', app: procName(w.pid), focused: focused[0] === w.win });
+  };
+  for (const w of wins) await add(w);
+  for (const w of mapped) await add(w, w.title);
+  return out;
+}
+
+/** Puts one window in front. A Steam app id set earlier would win over it, so that goes first. */
+async function focusWindow(win) { await removeRoot('GAMESCOPECTRL_BASELAYER_APPID'); await setRoot('GAMESCOPECTRL_BASELAYER_WINDOW', win); }
 async function focusAppId(appid) { await setRoot('GAMESCOPECTRL_BASELAYER_APPID', appid); }
 async function clearFocus() { await removeRoot('GAMESCOPECTRL_BASELAYER_WINDOW'); await removeRoot('GAMESCOPECTRL_BASELAYER_APPID'); }
 
@@ -74,4 +103,4 @@ async function focusGame({ pids = () => [], steamAppId = 0, exclude = [], tries 
   return false;
 }
 
-module.exports = { available, apps, focusWindow, focusAppId, clearFocus, focusGame, focusableWindows, setRoot, cardinals };
+module.exports = { available, apps, parseChildren, focusWindow, focusAppId, clearFocus, focusGame, focusableWindows, setRoot, cardinals };

@@ -17,16 +17,37 @@ const IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
 
 // ------------------------------------------------------------------ who is signed in
 
+/**
+ * The Steam account on this device: the user marked MostRecent in loginusers.vdf, else the AutoLoginUser in
+ * registry.vdf, else the one that signed in last. Steam rewrites these files while it runs; a read that finds
+ * nothing keeps the last good answer instead of flipping to "not signed in".
+ */
+let lastAccount = null;
+function pickUser(users, autoLogin) {
+  const list = Object.entries(users || {}).filter(([, u]) => u && typeof u === 'object');
+  if (!list.length) return null;
+  return list.find(([, u]) => vdf.str(u, 'MostRecent') === '1')
+    || (autoLogin && list.find(([, u]) => (vdf.str(u, 'AccountName') || '').toLowerCase() === autoLogin.toLowerCase()))
+    || list.sort((a, b) => (+vdf.str(b[1], 'Timestamp') || 0) - (+vdf.str(a[1], 'Timestamp') || 0))[0];
+}
 function steamAccount(home) {
   const dir = steam.steamPath(home);
-  if (!dir) return { signedIn: false, name: null, avatarFile: null, note: 'Steam is not installed' };
-  const users = vdf.obj(vdf.load(path.join(dir, 'config', 'loginusers.vdf')), 'users') || {};
-  for (const [id64, u] of Object.entries(users)) {
-    if (typeof u !== 'object' || vdf.str(u, 'MostRecent') !== '1') continue;
-    const avatar = path.join(dir, 'config', 'avatarcache', id64 + '.png');
-    return { signedIn: true, name: vdf.str(u, 'PersonaName') || vdf.str(u, 'AccountName') || null, avatarFile: exists(avatar) ? avatar : null };
+  if (!dir) {
+    const installed = !home && steam.clientInstalled();
+    return { signedIn: false, name: null, avatarFile: null, installed, note: installed ? 'Open Steam once to sign in' : 'Steam is not installed' };
   }
-  return { signedIn: false, name: null, avatarFile: null };
+  const file = path.join(dir, 'config', 'loginusers.vdf');
+  let users = vdf.obj(vdf.load(file), 'users');
+  if (!users && exists(file)) users = vdf.obj(vdf.load(file), 'users');        // caught it mid-write: once more
+  const reg = vdf.load(path.join(path.dirname(dir), 'registry.vdf')) || vdf.load(path.join(os.homedir(), '.steam', 'registry.vdf'));
+  const autoLogin = vdf.str(reg, 'Registry', 'HKCU', 'Software', 'Valve', 'Steam', 'AutoLoginUser');
+  const hit = pickUser(users, autoLogin);
+  if (!hit) return (!home && lastAccount && exists(file)) ? lastAccount : { signedIn: false, name: null, avatarFile: null, installed: true };
+  const [id64, u] = hit;
+  const avatar = path.join(dir, 'config', 'avatarcache', id64 + '.png');
+  const out = { signedIn: true, installed: true, name: vdf.str(u, 'PersonaName') || vdf.str(u, 'AccountName') || null, avatarFile: exists(avatar) ? avatar : null };
+  if (!home) lastAccount = out;
+  return out;
 }
 
 // ------------------------------------------------------------------ profile
@@ -94,4 +115,4 @@ class Profile {
   }
 }
 
-module.exports = { Profile, steamAccount };
+module.exports = { Profile, steamAccount, pickUser };

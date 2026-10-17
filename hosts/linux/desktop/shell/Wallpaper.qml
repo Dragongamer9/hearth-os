@@ -1,5 +1,7 @@
-// Desktop background: ~/.config/nimbus/wallpaper.jpg (or .png) if you have one, otherwise the Hearth
-// fireside: warm darkness lit from below by a fire that slowly breathes, with the odd ember drifting up.
+// Desktop background, picked in Hearth Settings › Appearance (Settings.wallpaper): a picture, or one of the
+// moving ones: the Hearth fireside (the default: warm darkness lit from below by a fire that slowly breathes,
+// with the odd ember drifting up), Lava (slow glowing blobs) or Aurora (warm light ribbons under the stars).
+// Older setups' ~/.config/nimbus/wallpaper.jpg/.png still work.
 // The motion is slow and cheap (a few animated layers, a handful of particles) and stops when the
 // background isn't visible. Sits on the background layer under every window.
 import QtQuick
@@ -17,12 +19,117 @@ PanelWindow {
 
     readonly property string dir: Quickshell.env("HOME") + "/.config/nimbus/"
     // Hearth Settings › Appearance picks a picture (Settings.wallpaper); older setups used wallpaper.jpg/.png.
-    readonly property bool custom: chosen.status === Image.Ready || (!Settings.wallpaper && (jpg.status === Image.Ready || png.status === Image.Ready))
+    readonly property string anim: Settings.wallpaper.startsWith("anim:") ? Settings.wallpaper.slice(5) : ""
+    readonly property string picture: anim ? "" : Settings.wallpaper
+    readonly property bool custom: !anim && (chosen.status === Image.Ready || (!picture && (jpg.status === Image.Ready || png.status === Image.Ready)))
+    readonly property bool moving: !Settings.reduceMotion
+
+    // ---------------------------------------------------------------- Lava: big soft blobs drifting slowly
+    Item {
+        id: lava
+        anchors.fill: parent
+        visible: root.anim === "lava"
+        Rectangle { anchors.fill: parent; color: "#120a09" }
+        Repeater {
+            model: [
+                { src: "blob-red.png", x: 0.22, y: 0.62, s: 0.62, dx: 0.10, dy: 0.08, t: 23000 },
+                { src: "blob-orange.png", x: 0.52, y: 0.34, s: 0.55, dx: -0.12, dy: 0.10, t: 29000 },
+                { src: "blob-gold.png", x: 0.74, y: 0.66, s: 0.58, dx: -0.08, dy: -0.12, t: 31000 },
+                { src: "blob-plum.png", x: 0.80, y: 0.22, s: 0.40, dx: -0.10, dy: 0.06, t: 26000 },
+                { src: "blob-orange.png", x: 0.30, y: 0.20, s: 0.36, dx: 0.12, dy: 0.10, t: 34000 },
+                { src: "blob-red.png", x: 0.58, y: 0.90, s: 0.44, dx: 0.06, dy: -0.12, t: 27000 }
+            ]
+            delegate: Image {
+                id: b
+                required property var modelData
+                source: Qt.resolvedUrl(modelData.src)
+                width: root.height * modelData.s * 1.6 * scaleK
+                height: width
+                property real scaleK: 1
+                property real k: 0
+                x: root.width * (modelData.x + modelData.dx * k) - width / 2
+                y: root.height * (modelData.y + modelData.dy * k) - height / 2
+                opacity: 0.85
+                smooth: true
+                SequentialAnimation on k {
+                    running: lava.visible && root.moving; loops: Animation.Infinite
+                    NumberAnimation { to: 1; duration: b.modelData.t; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: -1; duration: b.modelData.t * 1.3; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 0; duration: b.modelData.t * 0.7; easing.type: Easing.InOutSine }
+                }
+                SequentialAnimation on scaleK {
+                    running: lava.visible && root.moving; loops: Animation.Infinite
+                    NumberAnimation { to: 1.18; duration: b.modelData.t * 0.8; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 0.9; duration: b.modelData.t; easing.type: Easing.InOutSine }
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- Aurora: warm ribbons, twinkling stars
+    Item {
+        id: aurora
+        anchors.fill: parent
+        visible: root.anim === "aurora"
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient { GradientStop { position: 0; color: "#0a0609" } GradientStop { position: 1; color: "#1e0f0d" } }
+        }
+        Repeater {
+            model: 90
+            delegate: Rectangle {
+                id: star
+                required property int index
+                readonly property real rx: (index * 0.6180339) % 1
+                readonly property real ry: (index * 0.3819660 * 1.7) % 1
+                x: rx * root.width; y: ry * root.height * 0.85
+                width: 2 + (index % 3); height: width; radius: width / 2
+                color: "#fff4e0"
+                opacity: 0.3 + (index % 5) * 0.12
+                SequentialAnimation on opacity {
+                    running: aurora.visible && root.moving; loops: Animation.Infinite
+                    PauseAnimation { duration: (star.index * 397) % 4000 }
+                    NumberAnimation { to: 0.15; duration: 1800 + (star.index % 7) * 300; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 0.9; duration: 1600 + (star.index % 5) * 400; easing.type: Easing.InOutSine }
+                }
+            }
+        }
+        Repeater {
+            model: [{ src: "aurora-a.png", y: 0.20, t: 40000, o: 0.75 }, { src: "aurora-b.png", y: 0.30, t: 52000, o: 0.55 }, { src: "aurora-c.png", y: 0.38, t: 46000, o: 0.6 }]
+            delegate: Image {
+                id: rib
+                required property var modelData
+                source: Qt.resolvedUrl(modelData.src)
+                width: root.width * 1.6
+                height: root.height * 0.45
+                y: root.height * modelData.y
+                property real k: 0
+                x: -root.width * 0.3 + root.width * 0.15 * k
+                opacity: modelData.o
+                smooth: true
+                SequentialAnimation on k {
+                    running: aurora.visible && root.moving; loops: Animation.Infinite
+                    NumberAnimation { to: 1; duration: rib.modelData.t; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: -1; duration: rib.modelData.t; easing.type: Easing.InOutSine }
+                }
+                SequentialAnimation on opacity {
+                    running: aurora.visible && root.moving; loops: Animation.Infinite
+                    NumberAnimation { to: rib.modelData.o * 0.5; duration: rib.modelData.t / 3; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: rib.modelData.o; duration: rib.modelData.t / 3; easing.type: Easing.InOutSine }
+                }
+            }
+        }
+        Rectangle {          // a dark ridge along the bottom
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: root.height * 0.12
+            gradient: Gradient { GradientStop { position: 0; color: "transparent" } GradientStop { position: 0.4; color: "#0c0607" } }
+        }
+    }
 
     Item {
         id: fireside
         anchors.fill: parent
-        visible: !root.custom
+        visible: !root.custom && !root.anim
 
         Rectangle {
             anchors.fill: parent
@@ -106,7 +213,7 @@ PanelWindow {
     Image {
         id: chosen
         anchors.fill: parent
-        source: Settings.wallpaper ? "file://" + Settings.wallpaper : ""
+        source: root.picture ? "file://" + root.picture : ""
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         visible: status === Image.Ready

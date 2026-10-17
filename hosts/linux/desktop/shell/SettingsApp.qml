@@ -20,11 +20,12 @@ Scope {
         { id: "power", icon: "power", label: "Power" },
         { id: "controller", icon: "pad", label: "Controller" },
         { id: "signin", icon: "user", label: "Sign-in" },
+        { id: "browser", icon: "globe", label: "Web browser" },
         { id: "updates", icon: "update", label: "Updates" },
         { id: "about", icon: "info", label: "About" }
     ]
     readonly property var files: ({ wifi: "SetWifi.qml", bluetooth: "SetBluetooth.qml", sound: "SetSound.qml", display: "SetDisplay.qml",
-        appearance: "SetAppearance.qml", power: "SetPower.qml", controller: "SetController.qml", signin: "SetSignin.qml",
+        appearance: "SetAppearance.qml", power: "SetPower.qml", controller: "SetController.qml", signin: "SetSignin.qml", browser: "SetBrowser.qml",
         updates: "SetUpdates.qml", about: "SetAbout.qml" })
 
     function open(p) {

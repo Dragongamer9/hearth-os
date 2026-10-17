@@ -52,18 +52,23 @@ PanelWindow {
         command: ["nmcli", "radio", "wifi"]
         stdout: StdioCollector { onStreamFinished: { root.wifiOn = text.trim() === "enabled"; root.wifiKnown = text.trim() !== ""; } }
     }
+    readonly property string powerHelper: decodeURIComponent(Qt.resolvedUrl("hearth-power").toString().replace(/^file:\/\//, ""))
     Process {
         id: ppdRead
-        command: ["powerprofilesctl", "get"]
-        stdout: StdioCollector { onStreamFinished: root.profile = text.trim() }
-        onExited: code => { if (code !== 0) root.profile = ""; }
+        command: ["python3", root.powerHelper, "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { const r = JSON.parse(text.trim().split("\n").pop()); root.profile = r.mode && r.mode.supported ? r.mode.active : ""; }
+                catch (e) { root.profile = ""; }
+            }
+        }
     }
     function setBrightness(p) {
         brightness = Math.max(1, Math.min(100, p));
         run(["brightnessctl", "-q", "-c", "backlight", "set", brightness + "%"]);
     }
     function setVolume(v) { if (audio) { audio.muted = false; audio.volume = Math.max(0, Math.min(Buttons.maxVolume, v)); } }
-    function setProfile(p) { profile = p; run(["powerprofilesctl", "set", p]); }
+    function setProfile(p) { profile = p; run(["python3", powerHelper, "mode", p]); }
     function setWifi(on) { wifiOn = on; run(["nmcli", "radio", "wifi", on ? "on" : "off"]); }
 
     // ------------------------------------------------------------------ controller / keyboard navigation

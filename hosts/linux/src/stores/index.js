@@ -47,7 +47,7 @@ class StoreAccounts extends EventEmitter {
     const gog = this.gog.profile();
     return [
       { ...base('steam'), signedIn: !!steam.name, name: steam.name, avatar: steam.avatar, owned: steam.owned, fetched: 0,
-        toolReady: true, note: steam.missing ? "Steam isn't installed on this PC." : null },
+        toolReady: true, note: steam.missing ? "Steam isn't installed on this device." : steam.note || null },
       { ...base('epic'), signedIn: this.epic.signedIn, name: this.epic.displayName(), avatar: null, owned: this.epic.owned.games.length,
         fetched: this.epic.owned.fetched, toolReady: tools.isReady(tools.TOOLS.legendary), note: null },
       { ...base('gog'), signedIn: this.gog.signedIn, name: gog.name, avatar: gog.avatar, owned: this.gog.owned.games.length,

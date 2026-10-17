@@ -230,8 +230,6 @@ class Display {
 
 // ------------------------------------------------------------------ Power
 
-const PROFILE_TO_MODE = { 'power-saver': 'efficiency', balanced: 'balanced', performance: 'performance' };
-const MODE_TO_PROFILE = { efficiency: 'power-saver', balanced: 'balanced', performance: 'performance' };
 
 class Power {
   constructor(root = '/sys/class/power_supply') { this.root = root; }
@@ -251,20 +249,14 @@ class Power {
     return { present: false, pct: 0, charging: false };
   }
 
-  async mode() {
-    if (!has('powerprofilesctl')) return 'balanced';
-    const p = (await run('powerprofilesctl', ['get']).catch(() => 'balanced')).trim();
-    return PROFILE_TO_MODE[p] || 'balanced';
-  }
+  // Power mode through hearth-power (power-profiles D-Bus / tuned on Bazzite, powerprofilesctl, or SteamOS Manager).
+  async mode() { return (await require('./power-control').status()).mode.mode; }
+  async setMode(mode) { await require('./power-control').setMode(mode); }
 
-  async setMode(mode) {
-    if (!has('powerprofilesctl')) throw new Error('Power modes need power-profiles-daemon');
-    const p = MODE_TO_PROFILE[mode];
-    if (!p) throw new Error('Unknown mode');
-    await run('powerprofilesctl', ['set', p]);
+  async get() {
+    const st = await require('./power-control').status();
+    return { ...this.battery(), mode: st.mode.mode, modes: st.mode.available, modeSupported: st.mode.supported, tdp: st.tdp };
   }
-
-  async get() { return { ...this.battery(), mode: await this.mode() }; }
 }
 
 // ------------------------------------------------------------------ Radios / airplane mode

@@ -1,0 +1,44 @@
+/* Written by Hearth; delete this line to keep your own settings.
+   Hearth's colours for GTK 4 / libadwaita apps (Bazaar, GNOME apps): warm firelit darks, ember accent.
+   Installed to ~/.config/gtk-4.0/gtk.css by Hearth's theme script; Flatpak apps read it too. */
+@define-color accent_color #ff9a52;
+@define-color accent_bg_color #ff8a3d;
+@define-color accent_fg_color #2a1206;
+@define-color destructive_color #ff6b5d;
+@define-color destructive_bg_color #e5483b;
+@define-color destructive_fg_color #ffffff;
+@define-color success_color #8fd18a;
+@define-color warning_color #ffd166;
+@define-color error_color #ff6b5d;
+@define-color window_bg_color #0f0b09;
+@define-color window_fg_color #f4ece3;
+@define-color view_bg_color #17110e;
+@define-color view_fg_color #f4ece3;
+@define-color headerbar_bg_color #1c1512;
+@define-color headerbar_fg_color #f4ece3;
+@define-color headerbar_border_color #3b2e26;
+@define-color headerbar_backdrop_color #17110e;
+@define-color sidebar_bg_color #1c1512;
+@define-color sidebar_fg_color #f4ece3;
+@define-color sidebar_backdrop_color #17110e;
+@define-color secondary_sidebar_bg_color #17110e;
+@define-color card_bg_color #261d18;
+@define-color card_fg_color #f4ece3;
+@define-color dialog_bg_color #1c1512;
+@define-color dialog_fg_color #f4ece3;
+@define-color popover_bg_color #261d18;
+@define-color popover_fg_color #f4ece3;
+@define-color thumbnail_bg_color #261d18;
+@define-color shade_color rgba(0, 0, 0, 0.36);
+
+/* libadwaita 1.6+ also reads these */
+:root {
+  --accent-bg-color: #ff8a3d; --accent-fg-color: #2a1206; --accent-color: #ff9a52;
+  --window-bg-color: #0f0b09; --window-fg-color: #f4ece3;
+  --view-bg-color: #17110e; --view-fg-color: #f4ece3;
+  --headerbar-bg-color: #1c1512; --headerbar-fg-color: #f4ece3;
+  --sidebar-bg-color: #1c1512; --sidebar-fg-color: #f4ece3;
+  --card-bg-color: #261d18; --card-fg-color: #f4ece3;
+  --dialog-bg-color: #1c1512; --popover-bg-color: #261d18;
+  --destructive-bg-color: #e5483b;
+}

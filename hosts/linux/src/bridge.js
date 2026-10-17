@@ -11,6 +11,7 @@ const steam = require('./library/steam');
 const { DisplayModes } = require('./display');
 const { SystemAdmin } = require('./system-admin');
 const { ButtonPrefs, Controller } = require('./buttons');
+const { Browser } = require('./browser');
 const sysinfo = require('./sysinfo');
 const { log } = require('./util');
 
@@ -36,6 +37,8 @@ class Bridge {
     this.admin = platform.admin || new SystemAdmin();
     this.prefs = platform.buttonPrefs || new ButtonPrefs();
     this.controller = platform.controller || null;
+    this.browser = platform.browser || new Browser();
+    this.browser.on('changed', s => this.event('browser', s));
     this.admin.on('update', s => this.event('systemUpdate', s));
     // Account changes come in bursts (sign-in, list refresh): tell the UI once they settle.
     library.accounts.on('changed', () => { clearTimeout(this.accTimer); this.accTimer = setTimeout(() => this.event('accounts.changed', {}), 400); });
@@ -114,6 +117,10 @@ class Bridge {
         return this.buttonsInfo();
       }
 
+      // Web browser (Aloha), Settings › System
+      case 'browser.status': return this.browser.status();
+      case 'browser.act': this.browser.act(req('action')); return this.browser.status();
+
       // Controller remapping through InputPlumber (Settings › Controller)
       case 'controller.status': return this.ctl().status();
       case 'controller.set': return this.ctl().set({ button: a.button, to: a.to, target: a.target });
@@ -170,8 +177,8 @@ class Bridge {
         for (const g of L.games.values()) if (g.installed) counts[g.source] = (counts[g.source] || 0) + 1;
         const st = steamAccount();
         return {
-          accounts: L.accounts.status(counts, { name: st.signedIn ? st.name : null, avatar: st.avatarFile ? 'nimbus-art://profile/steam' : null,
-            owned: [...L.games.values()].filter(g => g.source === 'steam').length, missing: !steam.steamPath() }),
+          accounts: L.accounts.status(counts, { name: st.signedIn ? (st.name || 'Signed in') : null, avatar: st.avatarFile ? 'nimbus-art://profile/steam' : null,
+            owned: [...L.games.values()].filter(g => g.source === 'steam').length, missing: st.installed === false, note: st.signedIn ? null : st.note || null }),
           installRoot: L.accounts.installRoot,
         };
       }
@@ -191,8 +198,8 @@ class Bridge {
       case 'perf.stats':
         return { ...(await perf.sample()), battery: this.power.battery(), runningId: L.runningId, runningSince: L.runningSince,
           canFpsLimit: !!(this.platform.canFpsLimit && this.platform.canFpsLimit()), fpsLimit: L.store && L.store.data ? (L.store.data.fpsLimit || 0) : 0,
-          powerMode: (await this.power.get().catch(() => ({}))).mode, tdp: await require('./powerstation').get().catch(() => ({ supported: false })) };
-      case 'perf.setTdp': return require('./powerstation').set(+a.watts);
+          ...(await require('./power-control').status().then(s => ({ powerMode: s.mode.supported ? s.mode.mode : null, powerModes: s.mode.available, tdp: s.tdp })).catch(() => ({ powerMode: 'balanced', tdp: { supported: false } }))) };
+      case 'perf.setTdp': return require('./power-control').setTdp(+a.watts);
       case 'apps.list': return this.platform.apps && this.platform.apps.supported() ? this.platform.apps.list() : [];
       case 'apps.focus': return this.platform.apps.focus(+a.id, +a.pid);
       case 'apps.close': return { ok: await this.platform.apps.close(+a.pid) };
