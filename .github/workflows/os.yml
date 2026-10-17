@@ -139,6 +139,9 @@ jobs:
         id: build
         run: |
           set -o pipefail
+          # Any failure: post the end of this step's output as annotations (readable without the full log).
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; grep -v "^\s*$" /tmp/step.log | tail -40 | while IFS= read -r l; do echo "::error title=iso::${l:0:400}"; done' ERR
           out=/mnt/hearth-iso
           sudo mkdir -p "$out" /mnt/containers
           sudo mkdir -p /etc/containers
@@ -153,10 +156,9 @@ jobs:
               -v /mnt/containers:/var/lib/containers/storage \
               quay.io/centos-bootc/bootc-image-builder:latest \
               --type anaconda-iso --use-librepo=True --rootfs btrfs \
-              "$IMAGE:latest" 2>&1 | tee /tmp/bib.log; then
-            df -h / /mnt | while read -r l; do echo "::error title=disk::$l"; done
-            grep -v '^\s*$' /tmp/bib.log | tail -40 | while IFS= read -r l; do echo "::error title=bootc-image-builder::${l:0:400}"; done
-            exit 1
+              "$IMAGE:latest"; then
+            df -h / /mnt
+            false
           fi
           sudo chown -R "$(id -u):$(id -g)" "$out"
           ls -lR "$out"
