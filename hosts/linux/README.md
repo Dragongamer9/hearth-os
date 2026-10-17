@@ -89,16 +89,23 @@ within 15 seconds; otherwise Nimbus switches back, so a mode your screen can't s
 
 | Source | Where it looks | Launches with | Running detection |
 |---|---|---|---|
-| Steam (native or Flatpak) | `libraryfolders.vdf` → `appmanifest_*.acf`; play time from `localconfig.vdf` | `steam steam://rungameid/<id>` | Steam's `reaper` process with `AppId=<id>`, plus its children |
-| Epic, GOG | Heroic Games Launcher (native or Flatpak): `legendaryConfig/legendary/installed.json`, `gog_store/installed.json`; art from Heroic's store caches | `heroic://launch?appName=…&runner=…` | Processes in the install folder (Wine paths included) |
-| Xbox Cloud Gaming | Microsoft's public Game Pass catalog (cached a day) | Fullscreen stream window | The window |
-| Manual | File picker | Programs and AppImages directly; `.desktop` files by their `Exec`; Windows `.exe` with `umu-run` (Proton), or `wine` | Its process and folder |
+| Steam (native or Flatpak) | `libraryfolders.vdf` → `appmanifest_*.acf`; play time from `localconfig.vdf`; owned-but-not-installed games from Steam's `appinfo.vdf` / `packageinfo.vdf` | `steam steam://rungameid/<id>` | Steam's `reaper` process with `AppId=<id>`, plus its children |
+| Epic | Your Epic account (Library › Stores), through **legendary**; games Heroic installed are found too | Proton via **umu-run**, one Wine prefix per game | Processes in the install folder (Wine paths included) |
+| GOG | Your GOG account, GOG's web API plus **gogdl** for downloads; Heroic installs found too | Proton via umu-run | Same |
+| Xbox | Your Xbox profile (gamertag, gamerpic, games you've played); the games themselves stream (below) | Xbox Cloud Gaming window | The window |
+| Manual | File picker | Programs and AppImages directly; `.desktop` files by their `Exec`; Windows `.exe` with umu-run, or `wine` | Its process and folder |
 
-When a game starts, Nimbus hides its window so gamescope shows the game. When the game exits it comes back.
-The **Guide** button during a game brings Nimbus back with Quick Access open; **Back to game** or B returns.
+Epic and GOG games install to `~/Games/Epic` and `~/Games/GOG` (change it on the Stores page), with download
+progress, cancel and uninstall, the same as on Windows. legendary, gogdl and umu-launcher are downloaded from
+their GitHub releases the first time they're needed and checked against pinned SHA-256 hashes; an `umu-run`
+already installed on the system is used instead. Wine prefixes: `~/.local/share/nimbus/prefixes/<store>-<id>`.
 
-Not on Linux yet: owned-but-not-installed Steam games, the controller mouse, Bluetooth PIN confirmation,
-frame limit / TDP controls.
+When a game starts, Nimbus hides its window so the game is in front, and comes back when the game ends.
+The **Guide** button during a game brings Nimbus back with Quick Access open: Performance (CPU, GPU and video
+memory on AMD, RAM, battery), Take a screenshot (Pictures/Screenshots/Nimbus), Back to game, Exit game.
+
+Not on Linux yet: the controller mouse (Steam Input's desktop mode does the same job meanwhile) and the
+on-screen keyboard in store sign-in windows (use touch or the desktop's keyboard).
 
 ## Xbox Cloud Gaming
 

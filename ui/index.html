@@ -720,7 +720,7 @@ function viewGame(){
     : g.inst ? `Installed through ${SOURCES[g.src]}.`
     : isActive(g) ? (g.installKind==='nimbus' ? `Nimbus is installing this game into your games folder.` : `${SOURCES[g.src]} is installing this game.`)
     : g.note ? `In your ${SOURCES[g.src]} library. ${esc(g.note)}, so Nimbus can't install it.`
-    : g.installKind==='nimbus' ? `In your ${SOURCES[g.src]} library. Select Install and Nimbus downloads it${ACC.root?` to <code>${esc(ACC.root)}\\${g.src==='epic'?'Epic':'GOG'}</code>`:''}, no launcher needed.`
+    : g.installKind==='nimbus' ? `In your ${SOURCES[g.src]} library. Select Install and Nimbus downloads it${ACC.root?` to <code>${esc(ACC.root)}${LINUX?'/':'\\'}${g.src==='epic'?'Epic':'GOG'}</code>`:''}, no launcher needed.`
     : g.installKind==='store' ? `You've played this on Xbox. Select Install to get it from the Microsoft Store (Game Pass games also install from the Xbox app).`
     : `In your ${SOURCES[g.src]} library. Select Install and ${SOURCES[g.src]} will ask where to put it.`;
   return `<div class="gpage">
@@ -1065,10 +1065,10 @@ function viewSettings(){
     const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
     body = swRow('srcSteam','Steam',(LINUX?'Installed games from Steam':'Installed and owned games from Steam')+n('steam').replace('game','installed game')+owned)
       +swRow('steamBg','Keep Steam running in the background','Starts Steam hidden so games and installs open without its window')
-      +swRow('srcEpic','Epic Games',(LINUX?'Games installed with Heroic Games Launcher':'Your Epic account and games installed by Nimbus or the Epic Games Launcher')+n('epic'))
-      +swRow('srcGog','GOG',(LINUX?'Games installed with Heroic Games Launcher':'Your GOG account and games installed by Nimbus, GOG Galaxy or GOG installers')+n('gog'))
+      +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by Nimbus or Heroic':'Your Epic account and games installed by Nimbus or the Epic Games Launcher')+n('epic'))
+      +swRow('srcGog','GOG',(LINUX?'Your GOG account and games installed by Nimbus or Heroic':'Your GOG account and games installed by Nimbus, GOG Galaxy or GOG installers')+n('gog'))
       +swRow('srcXbox',LINUX?'Xbox Cloud Gaming':'Xbox / Game Pass',(LINUX?'Stream Game Pass games (needs Game Pass Ultimate)':'PC games installed with the Xbox app, and games you\'ve played on Xbox')+(LINUX&&host?` · ${LIB.counts.xbox??0} cloud games`:n('xbox')))
-      +(LINUX?'':`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`)
+      +`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`
       +`<button class="row" data-f data-k="s-addexe" data-act="addManual"><div class="rt"><b>Add a game manually</b><small>${LINUX?'A program, AppImage, .desktop file, or Windows .exe (runs with Proton)':'Any .exe or shortcut'}${n('manual')}</small></div><div class="rv">＋</div></button>`
       +`<button class="row" data-f data-k="s-rescan" data-act="rescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${LIB.loading?'Scanning…':'Rescan library'}</b><small>Picks up games you installed or removed</small></div></button>`;
   }
@@ -1615,9 +1615,8 @@ const STORE_INFO = {
   xbox:{name:'Xbox', color:'#16801a', mark:'X', blurb:'Your gamertag and the PC games you\'ve played on Xbox. Microsoft only lets the Xbox app and Microsoft Store install these games, so Install opens the Store.'},
 };
 // On Linux the stores' own apps hold the sign-ins; Nimbus opens them.
-if(LINUX) Object.assign(STORE_INFO.epic, {blurb:'Sign in and install in Heroic Games Launcher. Nimbus shows and launches the Epic games Heroic installed.'});
-if(LINUX) Object.assign(STORE_INFO.gog, {blurb:'Sign in and install in Heroic Games Launcher. Nimbus shows and launches the GOG games Heroic installed.'});
-if(LINUX) Object.assign(STORE_INFO.xbox, {blurb:'Game Pass games stream with Xbox Cloud Gaming (needs Game Pass Ultimate). Sign in opens the Xbox cloud-gaming window; you stay signed in there for streaming.'});
+// On Linux, Xbox PC games can't be installed; they stream instead (Xbox Cloud Gaming).
+if(LINUX) Object.assign(STORE_INFO.xbox, {blurb:'Your gamertag and the games you\'ve played on Xbox. On Linux, Game Pass games stream with Xbox Cloud Gaming (Library › Xbox).'});
 const ACC = {list:null, root:'', signing:null, sig:''};
 async function loadAccounts(fromEvent){
   if(!host && !MOCK) return;
@@ -1662,15 +1661,13 @@ function viewStores(){
       ${a.error?`<div class="serr">${esc(a.error)}</div>`:''}
       <div class="sbtns">${btns}</div></div>`;
   }).join('');
-  if(LINUX) return `<h2>Game stores &amp; accounts</h2>
-    <div class="stores">${cards}</div>
-    <div class="rows">${note('On Linux, Steam signs in in Steam, Epic and GOG in Heroic Games Launcher, and Xbox in the cloud-gaming window. Nimbus never sees your password.')}</div>`;
   return `<h2>Game stores &amp; accounts</h2>
     <div class="stores">${cards}</div>
     <h2>Installing</h2>
     <div class="rows">
       <button class="row" data-f data-k="sa-folder" data-act="accFolder"><span class="ricon">${I.dl}</span><div class="rt"><b>Install folder for Epic and GOG games</b><small>${esc(ACC.root||'—')}</small></div><div class="rv">Change ›</div></button>
-      ${note(`You sign in on each store's own page; Nimbus never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, which Nimbus downloads from GitHub the first time you sign in. In the sign-in window, the right stick moves the pointer, A clicks, Y opens a keyboard and B cancels.`)}
+      ${note(LINUX ? `You sign in on each store's own page; Nimbus never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, and run with Proton through <b>umu-launcher</b>; Nimbus downloads them from GitHub the first time they're needed. In the sign-in window, use touch or a mouse; B or Esc cancels.`
+        : `You sign in on each store's own page; Nimbus never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, which Nimbus downloads from GitHub the first time you sign in. In the sign-in window, the right stick moves the pointer, A clicks, Y opens a keyboard and B cancels.`)}
     </div>`;
 }
 async function accSignIn(store){

@@ -10,15 +10,23 @@ const xcloud = require('./xcloud');
 const manual = require('./manual');
 const proc = require('./proc');
 const { Store } = require('./store');
+const { StoreAccounts, norm } = require('../stores');
 const { log } = require('../util');
 
 const POLL_MS = 2000;
 const START_TIMEOUT_MS = 3 * 60 * 1000; // Steam may update the game first
 
 class Library extends EventEmitter {
-  constructor({ store = new Store(), stream } = {}) {
+  constructor({ store = new Store(), stream, accounts } = {}) {
     super();
     this.store = store;
+    // Epic / GOG / Xbox accounts and the installs Nimbus runs (stores/), same as Windows.
+    this.accounts = accounts || new StoreAccounts(store);
+    this.accounts.on('installFinished', (id, error) => {
+      const g = this.games.get(id);
+      this.emit('installDone', { id, title: g ? g.title : id, error });
+      if (!error) this.scan().catch(() => {});
+    });
     this.stream = stream;            // opens xCloud games in a window; set by main.js
     this.games = new Map();
     this.counts = {};
@@ -31,6 +39,7 @@ class Library extends EventEmitter {
   // ------------------------------------------------------------------ scanning
 
   async get(rescan) {
+    if (rescan) this.accounts.refreshStale();
     if (rescan || this.games.size === 0) await this.scan();
     return {
       games: [...this.games.values()].map(g => this.dto(g)).sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })),
@@ -51,8 +60,9 @@ class Library extends EventEmitter {
     const on = k => this.store.sourceOn(k);
     const jobs = {
       steam: on('steam') ? () => steam.scan() : null,
-      epic: on('epic') ? () => heroic.scanEpic() : null,
-      gog: on('gog') ? () => heroic.scanGog() : null,
+      // Games Nimbus installed itself (legendary / gogdl), then any Heroic installed.
+      epic: on('epic') ? () => [...this.accounts.installed('epic'), ...heroic.scanEpic()] : null,
+      gog: on('gog') ? () => [...this.accounts.installed('gog'), ...heroic.scanGog()] : null,
       xbox: on('xbox') ? () => xcloud.scan() : null,
       manual: () => this.manualGames(),
     };
@@ -64,6 +74,26 @@ class Library extends EventEmitter {
       counts[src] = src === 'xbox' ? list.filter(g => g.id !== 'xbox:cloud').length : list.filter(g => g.installed).length;
       for (const g of list) if (!all.has(g.id)) all.set(g.id, g);
     }));
+
+    // Games on your Epic and GOG accounts that aren't installed: shown with an Install button.
+    for (const s of ['epic', 'gog']) {
+      if (!on(s)) continue;
+      const mine = [...all.values()].filter(g => g.source === s);
+      for (const g of mine) this.accounts.addArt(g);
+      for (const g of this.accounts.notInstalled(s, new Set(mine.map(g => g.id)))) if (!all.has(g.id)) all.set(g.id, g);
+    }
+    // Owned-but-not-installed Steam games come from Steam's binary caches (slower, so after the rest).
+    if (on('steam')) {
+      try {
+        const have = new Set([...all.values()].filter(g => g.source === 'steam').map(g => g.id.slice(6)));
+        for (const g of steam.scanOwned(have)) if (!all.has(g.id)) all.set(g.id, g);
+      } catch (e) { log('steam owned: ' + e.message); }
+      counts.steamOwned = [...all.values()].filter(g => g.source === 'steam').length;
+    }
+    // Cloud games you've played on Xbox (when signed in): when you last played them.
+    const played = this.accounts.xboxPlayed();
+    if (played.size) for (const g of all.values()) if (g.cloud && played.has(norm(g.title))) g.storeLastPlayed = played.get(norm(g.title));
+
     this.games = all;
     this.counts = counts;
     this.downloadSig = signature(all.values());
@@ -96,7 +126,16 @@ class Library extends EventEmitter {
       canRemove: g.source === 'manual',
       installed: !!g.installed, state: g.state || 'installed', cloud: !!g.cloud,
       progress: g.progress ?? null, bytesDone: g.bytesDone ?? null, bytesTotal: g.bytesTotal ?? null,
+      canUninstall: !!g.canUninstall, note: g.note || null,
+      installKind: !g.installUri ? null : g.installUri.startsWith('nimbus-') ? 'nimbus' : g.installUri.startsWith('steam:') ? 'steam' : 'store',
+      // An install Nimbus is running shows as a download.
+      ...this.jobState(g.id),
     };
+  }
+
+  jobState(id) {
+    const j = this.accounts.installs.get(id);
+    return j ? { state: j.state, progress: j.progress, bytesDone: j.bytesDone, bytesTotal: j.bytesTotal, bytesPerSec: j.speed } : {};
   }
 
   /** Local file behind nimbus-art://art/{id}/{kind}, or null. */
@@ -110,26 +149,49 @@ class Library extends EventEmitter {
 
   /** Cheap refresh of Steam's install records: what's downloading, and whether that set changed. */
   async downloads() {
-    if (!this.store.sourceOn('steam')) return { active: [], changed: false };
-    const manifests = steam.scan();
-    const fresh = new Set(manifests.map(m => m.id));
-    for (const old of [...this.games.values()]) {
-      // A cancelled download removes its manifest.
-      if (old.source === 'steam' && old.state !== 'installed' && old.state !== 'notInstalled' && !fresh.has(old.id)) this.games.delete(old.id);
+    if (this.store.sourceOn('steam')) {
+      const manifests = steam.scan();
+      const fresh = new Set(manifests.map(m => m.id));
+      for (const old of [...this.games.values()]) {
+        // A cancelled Steam download removes its manifest: back to "not installed" (rescan restores it).
+        if (old.source === 'steam' && !['installed', 'notInstalled'].includes(old.state) && !fresh.has(old.id)) this.games.delete(old.id);
+      }
+      for (const m of manifests) this.games.set(m.id, m);
     }
-    for (const m of manifests) this.games.set(m.id, m);
-    const sig = signature(this.games.values());
+    const sig = this.signature();
     const changed = sig !== this.downloadSig;
     this.downloadSig = sig;
     const active = [...this.games.values()].filter(g => !['installed', 'notInstalled', 'cloud'].includes(g.state)).map(g => this.dto(g));
+    for (const j of this.accounts.installs.active()) {
+      const g = this.games.get(j.gameId);
+      if (g && !active.some(a => a.id === g.id)) active.push(this.dto(g));
+    }
     return { active, changed };
+  }
+
+  signature() {
+    const jobs = this.accounts.installs.active().map(j => `${j.gameId}=${j.state === 'queued' ? 'queued' : 'active'}`);
+    return [signature(this.games.values()), ...jobs].join(';');
   }
 
   async install(id) {
     const g = this.games.get(id);
-    if (!g || !g.installUri) throw new Error("Nimbus can't install this game. Install it from its store app.");
+    if (!g || !g.installUri) {
+      throw new Error(g && g.note ? `${g.note}. Nimbus can't install it.` : "Nimbus can't install this game. Install it from its store app.");
+    }
+    if (g.installUri.startsWith('nimbus-')) { this.accounts.startInstall(g); return; } // Epic / GOG: Nimbus downloads it itself
     if (g.source === 'steam' && this.store.data.steamBackground) await steam.ensureRunningSilent();
     steam.openUri(g.installUri);
+  }
+
+  cancelInstall(id) { return this.accounts.installs.cancel(id); }
+
+  async uninstall(id) {
+    const g = this.games.get(id);
+    if (!g) throw new Error("That game isn't in the library anymore.");
+    if (this.running && this.running.id === id) throw new Error(`Exit ${g.title} first.`);
+    await this.accounts.uninstall(g);
+    await this.scan();
   }
 
   // ------------------------------------------------------------------ edits
@@ -157,6 +219,7 @@ class Library extends EventEmitter {
   }
 
   async startBackgroundServices() {
+    this.accounts.refreshStale(); // Epic / GOG / Xbox game lists, if they're old
     if (this.store.data.steamBackground && this.store.sourceOn('steam')) await steam.ensureRunningSilent();
   }
 
@@ -182,6 +245,10 @@ class Library extends EventEmitter {
     if (g.source === 'steam') {
       if (this.store.data.steamBackground) await steam.ensureRunningSilent();
       steam.openUri(g.launchUri);
+    } else if (g.launchVia === 'legendary' || g.windowsExe) {
+      // Installed by Nimbus: started directly with Proton, so Nimbus can watch it.
+      child = await this.accounts.launch(g);
+      track = { ...(g.track || {}), pid: child && child.pid };
     } else if (g.source === 'epic' || g.source === 'gog') {
       heroic.openUri(g.launchUri, g.launchVia);
     } else if (g.source === 'manual') {
@@ -253,6 +320,7 @@ class Library extends EventEmitter {
   }
 
   get runningId() { return this.running && this.running.startedAt ? this.running.id : null; }
+  get runningSince() { return this.running && this.running.startedAt ? this.running.startedAt : null; }
 
   dispose() { clearTimeout(this.timer); }
 }
