@@ -943,6 +943,16 @@ function pageControls(){
     h += `<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to open the overlay</b><small>A backup for controllers without an Xbox button. Off by default because some games use a held View (like scoreboards).</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`;
   }
   h += note('The overlay works over games in borderless or windowed mode, and the fullscreen mode most Windows 10/11 games use. Very old games in true exclusive fullscreen may minimize when it opens.');
+  } else {
+    // Linux: Nimbus comes back over the game with Quick Access open.
+    h += shead('Bring up Nimbus during a game');
+    const o=OVS.s, gd=o&&o.guide;
+    h += `<div class="row" data-f data-k="ov-info"><span class="ricon">${I.sliders}</span><div class="rt"><b>Guide (Xbox) button, or Ctrl+Alt+Q</b><small>Quick Access opens over the game: performance, screenshots, Back to game, Exit game.</small></div></div>`;
+    if(o){
+      h += `<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to bring up Nimbus</b><small>For controllers whose Guide button doesn't reach Nimbus. Off by default because some games use a held View.</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`;
+      h += `<div class="row" data-f data-k="ov-dev"><div class="rt"><b>Controllers Nimbus watches</b><small>${gd&&gd.devices.length?esc(gd.devices.join(', ')):'None found with a Guide button'}${gd&&gd.lastPress?` · Guide last seen ${ago(gd.lastPress).toLowerCase()}`:''}</small></div></div>`;
+      if(gd && gd.problems && gd.problems.length) h += note('Can\'t read: '+esc(gd.problems.join('; ')));
+    }
   }
   h += shead('Keyboard');
   h += (LINUX?KEY_LIST_LINUX:KEY_LIST).map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
@@ -1902,7 +1912,7 @@ function onSettingsTab(t){
   if(t==='shell') loadShellStatus();
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
   if(t==='updates') loadUpdateStatus();
-  if(t==='controller' && !LINUX) call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
+  if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();
   if(t==='audio') call('audio.get').then(r=>{ Object.assign(S.sys.audio,r); S.set.vol=r.volume; refreshUI(); }).catch(e=>toast(e.message));
