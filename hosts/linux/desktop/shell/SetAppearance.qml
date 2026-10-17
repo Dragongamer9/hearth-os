@@ -17,6 +17,7 @@ SetPage {
 
     SetHeader { text: "Wallpaper" }
     GridLayout {
+        id: grid
         Layout.fillWidth: true
         columns: 3
         columnSpacing: 10
@@ -27,7 +28,7 @@ SetPage {
                 id: tile
                 required property string modelData
                 readonly property bool lit: Settings.wallpaper === modelData
-                Layout.fillWidth: true
+                Layout.preferredWidth: (grid.width - 20) / 3
                 implicitHeight: 130
                 border.color: activeFocus ? Theme.accent : lit ? Qt.lighter(Theme.accent, 1.2) : "transparent"
                 onActivated: Settings.wallpaper = modelData

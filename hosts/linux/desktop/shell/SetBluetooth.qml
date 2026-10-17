@@ -33,7 +33,7 @@ SetPage {
             onStreamFinished: {
                 const [p, c] = text.split("---");
                 const conn = page.parseDevices(c || "").map(d => d.mac);
-                page.paired = page.parseDevices(p || "").map(d => ({ ...d, connected: conn.includes(d.mac) }));
+                page.paired = page.parseDevices(p || "").map(d => ({ mac: d.mac, name: d.name, connected: conn.includes(d.mac) }));
             }
         }
     }
