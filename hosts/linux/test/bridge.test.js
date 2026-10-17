@@ -117,6 +117,6 @@ test('bridge: profile and accounts', async () => {
     assert.equal((await call(bridge, out, 'profile.get')).accent, '#ff5d5d');
     const acc = await call(bridge, out, 'accounts.status');
     assert.deepEqual(acc.accounts.map(a => a.store), ['steam', 'epic', 'gog', 'xbox']);
-    await assert.rejects(call(bridge, out, 'game.uninstall', { id: 'x' }), /Steam or Heroic/);
+    await assert.rejects(call(bridge, out, 'game.uninstall', { id: 'x' }), /isn't in the library/);
   } finally { bridge.dispose(); }
 });

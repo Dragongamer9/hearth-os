@@ -201,6 +201,45 @@ function findArt(appId, grid, cache) {
   return art;
 }
 
+// ------------------------------------------------------------------ owned, not installed
+
+const ASSET_CDN = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/';
+
+/**
+ * Games the signed-in account owns but hasn't installed, from Steam's local app and license caches.
+ * Released games for Windows or Linux (Windows ones run with Proton) are included.
+ */
+function scanOwned(installedIds, { home } = {}) {
+  const games = [];
+  const steam = steamPath(home);
+  if (!steam) return games;
+  const cache = require('./steamcache');
+  const appinfo = cache.readAppInfo(path.join(steam, 'appcache', 'appinfo.vdf'));
+  const owned = cache.readOwnedAppIds(path.join(steam, 'appcache', 'packageinfo.vdf'));
+  const { gridDir, stats } = userData(steam);
+  const lib = path.join(steam, 'appcache', 'librarycache');
+  for (const id of owned) {
+    const app = appinfo.get(id);
+    const appId = String(id);
+    if (!app || installedIds.has(appId) || SKIP_APP_IDS.has(appId)) continue;
+    if (app.type.toLowerCase() !== 'game') continue;
+    if (app.osList && !/windows|linux/i.test(app.osList)) continue;
+    if (app.releaseState && app.releaseState.toLowerCase() !== 'released') continue;
+    if (SKIP_PREFIXES.some(p => app.name.toLowerCase().startsWith(p.toLowerCase()))) continue;
+    const st = stats[appId] || { minutes: 0, lastPlayed: 0 };
+    const art = findArt(appId, gridDir, lib);
+    // Exact CDN paths from Steam's own metadata beat the guessed ones.
+    for (const [kind, rel] of Object.entries(app.assets)) if (!art[kind] || /^https?:/.test(art[kind])) art[kind] = ASSET_CDN + appId + '/' + rel;
+    games.push({
+      id: 'steam:' + appId, title: app.name, source: 'steam', added: 0,
+      storeMinutes: st.minutes, storeLastPlayed: st.lastPlayed,
+      launchUri: 'steam://rungameid/' + appId, installUri: 'steam://install/' + appId,
+      installed: false, state: 'notInstalled', art, track: { steamAppId: appId },
+    });
+  }
+  return games;
+}
+
 // ------------------------------------------------------------------ running Steam
 
 /** How to hand a steam:// URL to Steam: native client, Flatpak, or the desktop's URL handler. */
@@ -241,4 +280,4 @@ async function ensureRunningSilent() {
   }
 }
 
-module.exports = { scan, steamPath, openUri, isRunning, ensureRunningSilent, candidates };
+module.exports = { scan, scanOwned, steamPath, openUri, isRunning, ensureRunningSilent, candidates };
