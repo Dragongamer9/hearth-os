@@ -25,7 +25,7 @@
   <placement><policy>cascade</policy></placement>
 
   <!-- Drag a window to a screen edge to tile it. -->
-  <snapping><range>12</range><topMaximize>yes</topMaximize></snapping>
+  <snapping><range inner="12" outer="12" /><topMaximize>yes</topMaximize></snapping>
 
   <keyboard>
     <default />
