@@ -140,7 +140,7 @@ public sealed class UpdateService
     public async Task DownloadAsync()
     {
         if (Latest is null || State is "downloading" or "ready") return;
-        if (!RunningFromInstall) throw new InvalidOperationException("This copy of Nimbus is a development build. Updates install to the copy set up by install-shell.cmd.");
+        if (!RunningFromInstall) throw new InvalidOperationException("This copy of Ember is a development build. Updates install to the copy set up by install-shell.cmd.");
         var info = Latest;
         Set("downloading", 0);
         try

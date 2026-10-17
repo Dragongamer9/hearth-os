@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=Nimbus
-Comment=Nimbus: Game Mode (gamescope) and Desktop Mode (labwc), like SteamOS
+Name=Hearth
+Comment=Hearth: Game Mode (gamescope) and Desktop Mode (labwc), like SteamOS
 Exec=/usr/local/bin/nimbus-session
 TryExec=/usr/local/bin/nimbus-session
 Type=Application

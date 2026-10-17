@@ -13,7 +13,7 @@ $winlogon = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
 function Step($t) { Write-Host "-> $t" -ForegroundColor Cyan }
 
 try {
-    Write-Host "Nimbus installer" -ForegroundColor White
+    Write-Host "Ember installer" -ForegroundColor White
 
     # Nimbus needs the .NET 8 Desktop Runtime (the SDK includes it).
     $runtimes = ''
@@ -28,12 +28,12 @@ try {
     $all = Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=30" -Headers @{ 'User-Agent' = 'Nimbus-Installer' }
     $rel = $all | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -notmatch '^v?0\.[3-5]\.' -and ($_.assets | Where-Object name -eq 'Nimbus-win-x64.zip') } |
         Sort-Object { [version](($_.tag_name -replace '^v', '') -replace '-.*$', '') } -Descending | Select-Object -First 1
-    if (-not $rel) { throw "No Nimbus release with a Windows build was found." }
+    if (-not $rel) { throw "No Ember release with a Windows build was found." }
     $zip = $rel.assets | Where-Object name -eq 'Nimbus-win-x64.zip'
     $sha = $rel.assets | Where-Object name -eq 'Nimbus-win-x64.zip.sha256'
     if (-not $zip) { throw "The latest release ($($rel.tag_name)) has no Nimbus-win-x64.zip." }
 
-    Step "Downloading Nimbus $($rel.tag_name)"
+    Step "Downloading Ember $($rel.tag_name)"
     $tmp = Join-Path $env:TEMP "Nimbus-$($rel.tag_name).zip"
     Invoke-WebRequest $zip.browser_download_url -OutFile $tmp -UseBasicParsing
     if ($sha) {
@@ -70,12 +70,12 @@ timeout /t 5 >nul
     Set-Content -Path (Join-Path $root 'restore-explorer.cmd') -Value $restore -Encoding ASCII
 
     if (-not $NoShell) {
-        Step "Making Nimbus your shell (your account only)"
+        Step "Making Ember your shell (your account only)"
         Set-ItemProperty $winlogon -Name Shell -Value "`"$app\Nimbus.exe`" --shell"
     }
 
     Write-Host ""
-    Write-Host "Nimbus $($rel.tag_name) is installed." -ForegroundColor Green
+    Write-Host "Ember $($rel.tag_name) is installed." -ForegroundColor Green
     if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) {
         # Running inside a Nimbus session (no Explorer): start the new version right away.
         Start-Process "$app\Nimbus.exe" -ArgumentList '--shell'

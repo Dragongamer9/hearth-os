@@ -23,14 +23,14 @@ public sealed class OverlayForm : Form
     private bool _ready;
     private DateTime _shownAt;
 
-    /// <summary>Raised when you choose "Back to Nimbus" (the game keeps running).</summary>
+    /// <summary>Raised when you choose "Back to Ember" (the game keeps running).</summary>
     public event Action? HomeRequested;
 
     public OverlayForm(SystemBridge bridge, Func<int> controllers)
     {
         _bridge = bridge;
         _controllers = controllers;
-        Text = "Nimbus overlay";
+        Text = "Ember overlay";
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
@@ -168,7 +168,7 @@ public sealed class OverlayForm : Form
 
             var title = _bridge.Games.RunningTitle ?? "Screenshot";
             foreach (var c in Path.GetInvalidFileNameChars()) title = title.Replace(c, ' ');
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Screenshots", "Nimbus");
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Screenshots", "Ember");
             Directory.CreateDirectory(dir);
             var file = Path.Combine(dir, $"{title.Trim()} {DateTime.Now:yyyy-MM-dd HH-mm-ss}.png");
             bmp.Save(file, ImageFormat.Png);

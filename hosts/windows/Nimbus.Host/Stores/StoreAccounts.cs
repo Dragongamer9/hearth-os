@@ -219,7 +219,7 @@ public sealed class StoreAccounts
                 },
             });
         }
-        else throw new InvalidOperationException("Nimbus can't install this game itself.");
+        else throw new InvalidOperationException("Ember can't install this game itself.");
     }
 
     public async Task UninstallAsync(Game g)

@@ -1,0 +1,11 @@
+[Unit]
+Description=Boot into the Hearth session
+Before=display-manager.service
+After=bazzite-autologin.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/nimbus-autologin
+
+[Install]
+WantedBy=multi-user.target

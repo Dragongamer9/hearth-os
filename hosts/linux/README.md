@@ -1,7 +1,7 @@
-# Nimbus for Linux
+# Hearth (Nimbus for Linux)
 
-The same Nimbus UI (`../../ui`), hosted in Electron and run inside **gamescope**, the compositor SteamOS uses
-for Gaming Mode. Nimbus takes Steam's place in that setup: you pick "Nimbus" on the login screen and get a
+Hearth is the Linux side of Nimbus: the same UI (`../../ui`), hosted in Electron and run inside **gamescope**, the compositor SteamOS uses
+for Gaming Mode. Nimbus takes Steam's place in that setup: you pick "Hearth" on the login screen and get a
 fullscreen, controller-first library of your Steam, Epic, GOG and manual games, plus Xbox Cloud Gaming.
 
 > Status: first version. The scanners, game tracking, bridge and session watchdog have tests (`npm test`);
@@ -30,16 +30,18 @@ cd hosts/linux
 npm install
 npm start                 # windowed, on your normal desktop
 npm test                  # scanner, tracking and bridge tests
-npm run dist              # builds dist/Nimbus-linux-x86_64.AppImage
+npm run dist              # builds the AppImage in dist/
 ```
 
 F12 opens the developer tools when running from source.
 
-## The Nimbus session
+## The Hearth session
+
+On Hearth, the OS (`../../os`), all of this is already installed. On another distro:
 
 *Settings › Shell › Add the Nimbus session* (asks for your password once) installs:
 
-- `/usr/share/wayland-sessions/nimbus.desktop`: the "Nimbus" entry on the login screen
+- `/usr/share/wayland-sessions/nimbus.desktop`: the "Hearth" entry on the login screen
 - `/usr/local/bin/nimbus-session`: starts `gamescope -f -- nimbus-watchdog <Nimbus>`
 - `/usr/local/lib/nimbus/nimbus-watchdog`: restarts Nimbus if it crashes, restarts it after an update,
   rolls back an update that keeps crashing, and ends the session (back to the login screen) rather than leave a black screen
@@ -102,10 +104,12 @@ already installed on the system is used instead. Wine prefixes: `~/.local/share/
 
 When a game starts, Nimbus hides its window so the game is in front, and comes back when the game ends.
 The **Guide** button during a game brings Nimbus back with Quick Access open: Performance (CPU, GPU and video
-memory on AMD, RAM, battery), Take a screenshot (Pictures/Screenshots/Nimbus), Back to game, Exit game.
+memory on AMD, RAM, battery), Take a screenshot (Pictures/Screenshots/Hearth), Back to game, Exit game.
 
-Not on Linux yet: the controller mouse (Steam Input's desktop mode does the same job meanwhile) and the
-on-screen keyboard in store sign-in windows (use touch or the desktop's keyboard).
+Store sign-in windows (Epic, GOG, Microsoft) work with a controller: the sticks move a pointer, A clicks,
+Y opens an on-screen keyboard, B cancels. If the Guide button doesn't come through on your controller,
+Settings › Controls lists the devices being watched and can open Quick Access on View held for a second.
+Not on Linux yet: the controller mouse for the whole desktop (Steam Input's desktop mode does the job meanwhile).
 
 ## Xbox Cloud Gaming
 

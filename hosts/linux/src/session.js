@@ -20,12 +20,20 @@ function appCommand(appRoot) {
   return launcher;
 }
 
+/** Installed as part of Hearth, the OS (under /usr/lib/nimbus), not run from an AppImage or source. */
+function isSystemInstall() {
+  return !process.env.APPIMAGE && process.execPath.startsWith('/usr/lib/nimbus/');
+}
+
 function status() {
   let value = null;
   try { value = fs.readFileSync(APP_PATH_FILE, 'utf8').trim(); } catch {}
+  // Part of Hearth, the OS: the session comes with the system and can't be removed from here.
+  const system = isSystemInstall();
   return {
     running: process.env.NIMBUS_SESSION === '1',
-    registered: exists(SESSION_FILE) && !!value,
+    registered: exists(SESSION_FILE) && (!!value || system),
+    system,
     value,
     exe: process.env.APPIMAGE || process.execPath,
     gamescope: has('gamescope'),
@@ -68,4 +76,4 @@ async function unregister(sessionDir, desktopDir) {
   return status();
 }
 
-module.exports = { status, register, unregister };
+module.exports = { status, register, unregister, isSystemInstall };

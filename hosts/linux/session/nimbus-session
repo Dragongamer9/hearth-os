@@ -14,7 +14,10 @@
 # Which Nimbus to run: ~/.config/nimbus/app-path (written by Nimbus › Settings › Shell), or NIMBUS_APP.
 
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus"
-SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
+# Installed as part of Nimbus OS, everything lives under /usr; installed from the app, under /usr/local.
+if [ -d /usr/share/nimbus/desktop ]; then DEFAULT_SHARE=/usr/share/nimbus; else DEFAULT_SHARE=/usr/local/share/nimbus; fi
+if [ -x /usr/libexec/nimbus/nimbus-watchdog ]; then WATCHDOG=/usr/libexec/nimbus/nimbus-watchdog; else WATCHDOG=/usr/local/lib/nimbus/nimbus-watchdog; fi
+SHARE="${NIMBUS_SHARE:-$DEFAULT_SHARE}"
 RUN="${XDG_RUNTIME_DIR:-/tmp}"
 NEXT="$RUN/nimbus-next"
 LOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/session.log"
@@ -23,6 +26,7 @@ log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
 
 [ -f "$CONF/session.conf" ] && . "$CONF/session.conf"
 [ -z "$NIMBUS_APP" ] && [ -f "$CONF/app-path" ] && NIMBUS_APP="$(cat "$CONF/app-path")"
+[ -z "$NIMBUS_APP" ] && [ -x /usr/bin/nimbus ] && NIMBUS_APP=/usr/bin/nimbus
 export NIMBUS_SESSION=1 NIMBUS_APP NIMBUS_SHARE="$SHARE"
 export XDG_CURRENT_DESKTOP=Nimbus XDG_SESSION_DESKTOP=nimbus
 
@@ -34,7 +38,7 @@ can_desktop() { have labwc; }
 run_game() {
   log "game mode"
   # shellcheck disable=SC2086
-  gamescope -f $NIMBUS_GAMESCOPE_ARGS -- /usr/local/lib/nimbus/nimbus-watchdog "$NIMBUS_APP"
+  gamescope -f $NIMBUS_GAMESCOPE_ARGS -- "$WATCHDOG" "$NIMBUS_APP"
 }
 
 run_desktop() {

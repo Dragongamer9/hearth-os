@@ -143,7 +143,7 @@ jobs:
           # --latest=false: GitHub's "latest" stays on the v0.5.1 bridge (below) so copies from before the
           # renumbering, which only look at "latest", can still update. Current copies look at every release.
           gh release create "$tag" builds/* --target "${{ github.sha }}" --latest=false \
-            --title "Nimbus $v" --notes "$notes"
+            --title "Nimbus $v (Ember for Windows, Hearth for Linux)" --notes "$notes"
 
           # One time, at the switch to 0.0.x numbering: bridge releases with old-style tags that old copies see as
           # newer than what they have. They carry this build; after it, the new updaters ignore v0.3-v0.5 tags.
@@ -181,4 +181,4 @@ jobs:
 
           Download Nimbus-linux-x86_64.AppImage, make it executable (chmod +x), and run it with --windowed to try it on your desktop."
           gh release create "$tag" builds/* --prerelease --target "${{ github.sha }}" \
-            --title "Nimbus ${{ needs.version.outputs.version }} for Linux (preview ${{ github.run_number }})" --notes "$notes"
+            --title "Hearth ${{ needs.version.outputs.version }} for Linux (preview ${{ github.run_number }})" --notes "$notes"
