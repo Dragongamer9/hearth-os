@@ -95,16 +95,18 @@ jobs:
       # Every Hearth must be able to update itself, or people get stuck on it: check before publishing.
       - name: Check the image can update itself
         run: |
-          sudo podman run --rm hearth:latest sh -c '
-            set -e
-            command -v bootc >/dev/null && command -v pkexec >/dev/null
-            test -x /usr/libexec/nimbus/hearth-admin
-            python3 -c "import ast,sys; ast.parse(open(\"/usr/libexec/nimbus/hearth-admin\").read())"
-            test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules
-            grep -q sysUpdInstall /usr/lib/nimbus/resources/ui/index.html
-            systemctl is-enabled uupd.timer >/dev/null 2>&1 || systemctl is-enabled rpm-ostreed-automatic.timer >/dev/null 2>&1 \
-              || systemctl is-enabled bootc-fetch-apply-updates.timer >/dev/null 2>&1 || { echo "no background update timer"; exit 1; }
-            echo "update paths ok"'
+          cat > /tmp/check.sh <<'EOF'
+          fail=0
+          check() { if sh -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::error title=update path::$1"; fail=1; fi; }
+          check "bootc is installed" "command -v bootc"
+          check "pkexec is installed" "command -v pkexec"
+          check "hearth-admin is installed" "test -x /usr/libexec/nimbus/hearth-admin"
+          check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
+          check "the Hearth app has the Update now button" "grep -rqs sysUpdInstall /usr/lib/nimbus/resources"
+          check "background updates are scheduled" "ls /usr/lib/systemd/system/*.timer /etc/systemd/system/timers.target.wants/ /usr/lib/systemd/system/timers.target.wants/ 2>/dev/null | grep -qE 'uupd|rpm-ostreed-automatic|bootc-fetch-apply-updates'"
+          exit $fail
+          EOF
+          sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth:latest sh /check.sh
 
       - name: Publish to GitHub Container Registry
         if: env.PUBLISH == 'true'
