@@ -141,7 +141,7 @@ jobs:
           set -o pipefail
           # Any failure: post the end of this step's output as annotations (readable without the full log).
           exec > >(tee /tmp/step.log) 2>&1
-          trap 'sleep 1; grep -v "^\s*$" /tmp/step.log | tail -40 | while IFS= read -r l; do echo "::error title=iso::${l:0:400}"; done' ERR
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=iso::$msg"' ERR
           out=/mnt/hearth-iso
           sudo mkdir -p "$out"
           df -h / /mnt
