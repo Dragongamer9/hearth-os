@@ -101,7 +101,11 @@ jobs:
 
       - name: Build the AppImage
         run: |
-          npm version "${{ needs.version.outputs.version }}" --no-git-tag-version --allow-same-version
+          # Builds from linux-host are previews: 0.4.0-linux.<run>, the same number as their pre-release tag,
+          # so the updater can tell them apart.
+          v="${{ needs.version.outputs.version }}"
+          if [ "${{ github.ref }}" = "refs/heads/linux-host" ] && [ "${{ github.event_name }}" = "push" ]; then v="$v-linux.${{ github.run_number }}"; fi
+          npm version "$v" --no-git-tag-version --allow-same-version
           npm run dist
           cd dist
           f=Nimbus-linux-x86_64.AppImage

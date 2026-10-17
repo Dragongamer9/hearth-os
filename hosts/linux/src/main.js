@@ -38,6 +38,13 @@ let win = null;
 let leaving = false;
 let library, bridge, updates, stream, guide;
 
+/** Restart Nimbus. As an AppImage, start the AppImage file again (it may have just been replaced by an update). */
+function relaunch() {
+  if (process.env.APPIMAGE) app.relaunch({ execPath: process.env.APPIMAGE, args: process.argv.slice(1) });
+  else app.relaunch();
+  app.exit(0);
+}
+
 function post(msg) { if (win && !win.isDestroyed()) win.webContents.send('nimbus:msg', msg); }
 
 function osName() {
@@ -168,7 +175,7 @@ app.whenReady().then(() => {
       if (IN_SESSION) {
         try { fs.writeFileSync(path.join(process.env.XDG_RUNTIME_DIR || '/tmp', 'nimbus-next'), 'game\n'); } catch {}
         app.exit(0);
-      } else { app.relaunch(); app.exit(0); }
+      } else { relaunch(); }
     },
   });
 
@@ -213,7 +220,7 @@ app.whenReady().then(() => {
         try { updates.install(); } catch (e) { post({ type: 'event', name: 'update', data: { ...updates.status(), error: e.message } }); return; }
         leaving = true;
         if (IN_SESSION) app.exit(UPDATE_EXIT_CODE);
-        else { app.relaunch(); app.exit(0); }
+        else relaunch();
       },
       returnToDesktop: () => power('desktop'),
     },
