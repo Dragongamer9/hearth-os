@@ -13,6 +13,7 @@ const { Bridge } = require('./bridge');
 const { Updates } = require('./updates');
 const { StreamWindow } = require('./stream');
 const { GuideButton } = require('./guide');
+const { ButtonPrefs, Buttons, Controller } = require('./buttons');
 const { DisplayModes } = require('./display');
 const { secure } = require('./stores/common');
 const sessionSetup = require('./session');
@@ -39,7 +40,9 @@ protocol.registerSchemesAsPrivileged([
 
 let win = null;
 let leaving = false;
-let library, bridge, updates, stream, guide;
+let library, bridge, updates, stream, guide, buttons;
+const buttonPrefs = new ButtonPrefs();
+const controller = new Controller(path.join(DESKTOP_DIR, 'shell', 'hearth-controller'));
 
 /** Restart Nimbus. As an AppImage, start the AppImage file again (it may have just been replaced by an update). */
 function relaunch() {
@@ -293,6 +296,43 @@ function hideOverlay() {
   overlay.hide();
 }
 
+// ------------------------------------------------------------------ power and volume buttons (Game Mode)
+// hearth-buttons reads them from the kernel; what the power button does is in Settings › Power.
+let osdTimer = null, osdOverlay = false;
+const hearthInFront = () => win && win.isVisible() && win.isFocused() && !overlayOn;
+
+/** The volume bar: in Hearth when it's in front, else over the game (the overlay, without taking input). */
+function osd(data) {
+  if (hearthInFront() || !overlay || !library.runningId) return post({ type: 'event', name: 'osd', data });
+  if (!overlayOn && !osdOverlay) { osdOverlay = true; overlay.showInactive(); }
+  overlay.webContents.send('nimbus:msg', { type: 'event', name: 'osd', data });
+  clearTimeout(osdTimer);
+  osdTimer = setTimeout(() => { if (osdOverlay && !overlayOn) overlay.hide(); osdOverlay = false; }, 1800);
+}
+
+function powerMenu() {
+  if (library.runningId && !hearthInFront()) {
+    if (overlayOn || showOverlay()) { osdOverlay = false; overlay.webContents.send('nimbus:msg', { type: 'event', name: 'power.menu', data: {} }); return; }
+    comeBack();
+  }
+  post({ type: 'event', name: 'power.menu', data: {} });
+}
+
+function startButtons() {
+  buttons = new Buttons(path.join(DESKTOP_DIR, 'shell', 'hearth-buttons'));
+  const max = () => buttonPrefs.maxVolume();
+  buttons.on('volume', d => bridge.audio.step(d, max()).then(v => osd({ kind: 'vol', ...v, max: max() })).catch(e => log('volume: ' + e.message)));
+  buttons.on('mute', () => bridge.audio.toggleMute().then(v => osd({ kind: 'vol', ...v, max: max() })).catch(e => log('mute: ' + e.message)));
+  buttons.on('power', kind => {
+    const what = buttonPrefs.get()[kind === 'long' ? 'hold' : 'press'];
+    log(`power button: ${kind} press → ${what}`);
+    if (what === 'sleep') power('sleep');
+    else if (what === 'shutdown') power('shutdown');
+    else if (what === 'menu') powerMenu();
+  });
+  buttons.start();
+}
+
 /** Frame-rate limit for games in Game Mode (gamescope's own limiter); 0 = no limit. */
 async function setFpsLimit(fps) {
   const n = Math.max(0, Math.min(240, Math.round(+fps || 0)));
@@ -406,7 +446,7 @@ app.whenReady().then(() => {
         session: IN_SESSION, user: os.userInfo().username,
         system: sessionSetup.isSystemInstall(),   // part of Hearth (the OS): updates come with the system
         start: START_PAGE,                         // the page to open on
-        features: ['restartApp', 'exportLogs'],
+        features: ['restartApp', 'exportLogs', 'powerButton', 'overamp', ...(controller.available ? ['remap'] : [])],
       }),
       restartApp: () => { setTimeout(relaunch, 300); return null; },
       canFpsLimit: () => IN_SESSION && require('./util').has('xprop'),
@@ -479,6 +519,8 @@ app.whenReady().then(() => {
         else relaunch();
       },
       returnToDesktop: () => power('desktop'),
+      buttonPrefs, controller,
+      get buttons() { return buttons; },
     },
   });
 
@@ -499,8 +541,10 @@ app.whenReady().then(() => {
     comeBack();
     post({ type: 'event', name: 'pad', data: { b: 'guide' } });
   });
-  // Opened just for Settings (from Desktop Mode): the desktop's own controller support handles Guide.
+  // Opened just for Settings (from Desktop Mode): the desktop's own controller support handles Guide,
+  // and the desktop handles the power and volume buttons.
   if (!START_PAGE) guide.start();
+  if (IN_SESSION && !WINDOWED && !START_PAGE) startButtons();
   // Keyboard backup, like Windows: works when the game runs under X11/Xwayland (most do, and all in gamescope).
   try { globalShortcut.register('Control+Alt+Q', () => guide.fire('hotkey')); } catch (e) { log('Ctrl+Alt+Q: ' + e.message); }
 
@@ -518,4 +562,4 @@ app.on('second-instance', (_e, argv) => {
   if (argv.includes('--settings')) post({ type: 'event', name: 'open', data: { view: 'settings' } });
 });
 app.on('window-all-closed', () => app.quit());
-app.on('will-quit', () => { guide && guide.stop(); bridge && bridge.dispose(); });
+app.on('will-quit', () => { guide && guide.stop(); buttons && buttons.stop(); bridge && bridge.dispose(); });

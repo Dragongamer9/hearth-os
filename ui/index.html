@@ -267,6 +267,15 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .spin{width:44px;height:44px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:var(--accent);animation:sp .8s linear infinite;margin:0 auto}
 @keyframes sp{to{transform:rotate(360deg)}}
 #toasts{position:fixed;right:var(--gut);bottom:calc(var(--foot) + 14px);display:flex;flex-direction:column;gap:8px;z-index:40;pointer-events:none}
+.osd{position:fixed;top:26px;left:50%;z-index:9999;display:flex;align-items:center;gap:14px;min-width:320px;padding:12px 20px;border-radius:999px;
+  background:var(--panel2);box-shadow:0 14px 40px rgba(0,0,0,.5);opacity:0;transform:translate(-50%,-16px);transition:opacity .18s var(--ease),transform .18s var(--ease);pointer-events:none}
+.osd.on{opacity:1;transform:translate(-50%,0)}
+.osd svg{width:22px;height:22px;flex:none}
+.osd .obar{flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.14);position:relative;overflow:visible}
+.osd .obar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--accent)}
+.osd .obar i.hot{background:linear-gradient(90deg,var(--accent),#ff5d5d)}
+.osd .obar u{position:absolute;top:-4px;bottom:-4px;width:2px;background:rgba(255,255,255,.5);border-radius:1px}
+.osd b{min-width:44px;text-align:right;font-variant-numeric:tabular-nums}
 .toast{background:var(--panel2);border-left:3px solid var(--accent);padding:12px 16px;border-radius:8px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.4);animation:tin .25s var(--ease);max-width:340px}
 @keyframes tin{from{transform:translateY(10px);opacity:0}}
 .vfade{animation:vf .22s var(--ease)}
@@ -666,6 +675,17 @@ const MOCK = (()=>{
     'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
     'game.options.get':async({id})=>({id,kind:'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
       protonChoices:[{id:'',label:'Default',sub:'UMU-Proton, the newest, downloaded when needed'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'Community build with extra fixes'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
+    'buttons.get':async()=>clone(Object.assign({press:'sleep',hold:'menu',overamp:false},st.btn||{},{maxVolume:st.btn&&st.btn.overamp?150:100,watching:{devices:['Power Button','AT Translated Set 2 keyboard'],problems:[]}})),
+    'buttons.set':async(o)=>{ st.btn=Object.assign({press:'sleep',hold:'menu',overamp:false},st.btn||{},o); if(!st.btn.overamp&&st.audio.volume>100) st.audio.volume=100; return MOCK.call('buttons.get'); },
+    'controller.status':async()=>{ const B=[['South','A'],['East','B'],['West','X'],['North','Y'],['LeftBumper','LB'],['RightBumper','RB'],['Select','View'],['Start','Menu'],['Guide','Guide (Xbox)'],['LeftStick','Left stick click'],['RightStick','Right stick click'],['DPadUp','D-pad up'],['DPadDown','D-pad down'],['DPadLeft','D-pad left'],['DPadRight','D-pad right'],['LeftPaddle1','Left back button'],['RightPaddle1','Right back button'],['QuickAccess','Quick Access button']];
+      const K=[['key:KeyEnter','Enter'],['key:KeyEsc','Esc'],['key:KeySpace','Space'],['key:KeyLeftAlt+KeyTab','Alt + Tab (switch apps)'],['key:KeyF11','F11 (full screen)']];
+      st.ctl=st.ctl||{map:{},target:''};
+      return {available:true,error:null,devices:[{name:'ASUS ROG Ally',profile:'Hearth'}],config:clone(st.ctl),buttons:B.map(([id,label])=>({id,label})),
+        targets:[...B.map(([id,label])=>({id,label,kind:'button'})),...K.map(([id,label])=>({id,label,kind:'key'})),{id:'none',label:'Nothing (turn the button off)',kind:'none'}],
+        types:[{id:'',label:'Automatic',sub:'Whatever InputPlumber picks for this device'},{id:'xbox-elite',label:'Xbox Elite',sub:'Back buttons work in most games'},{id:'ds5',label:'DualSense',sub:'PlayStation button prompts in games that have them'},{id:'deck',label:'Steam Deck',sub:'Best with Steam Input'}]}; },
+    'controller.set':async({button,to,target})=>{ st.ctl=st.ctl||{map:{},target:''}; if(button!==undefined){ if(!to) delete st.ctl.map[button]; else st.ctl.map[button]=to; } if(target!==undefined) st.ctl.target=target; await wait(300); return MOCK.call('controller.status'); },
+    'controller.preset':async()=>{ st.ctl=st.ctl||{map:{},target:''}; Object.assign(st.ctl.map,{South:'East',East:'South',West:'North',North:'West'}); return MOCK.call('controller.status'); },
+    'controller.reset':async()=>{ st.ctl={map:{},target:''}; return MOCK.call('controller.status'); },
     'game.options.set':async({id,options})=>{ MOCKOPT[id]=Object.assign(MOCKOPT[id]||{},options); return MOCK.call('game.options.get',{id}); },
     'pad.toggleMouse':async()=>({mouseOn:!PAD.mouseOn}),
     'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}),
@@ -1207,13 +1227,44 @@ async function setDisplayMode(w,h,hz){
     if(sheet && sheet.title.startsWith('Keep these')){ sheet.sub=`${w} × ${h} at ${hz} Hz. Switching back in ${left} seconds…`; const sub=$('#sheetBox .muted'); if(sub) sub.textContent=sheet.sub; }
   },1000);
 }
+// ---------- power and volume buttons (Linux) ----------
+const BTNS = {s:null};
+function loadButtons(){ if(LINUX) call('buttons.get').then(r=>{ BTNS.s=r; S.sys.audio.max=r.maxVolume; refreshUI(); }).catch(()=>{}); }
+const volMax = () => (BTNS.s && BTNS.s.maxVolume) || S.sys.audio.max || 100;
+const POWER_CHOICES = [['sleep','Sleep'],['menu','Power menu'],['shutdown','Shut down'],['nothing','Nothing']];
+let osdTimer=null;
+function showOsd(d){
+  if(!d || d.kind!=='vol') return;
+  let el=$('#osd'); if(!el){ el=document.createElement('div'); el.id='osd'; el.className='osd'; document.body.appendChild(el); }
+  const max=d.max||100, v=d.volume||0, pct=Math.min(100,v/max*100);
+  el.innerHTML = `${d.muted||!v?I.mute:I.vol}<div class="obar"><i class="${v>100?'hot':''}" style="width:${d.muted?0:pct}%"></i>${max>100?`<u style="left:${100/max*100}%"></u>`:''}</div><b>${d.muted?'Muted':v+'%'}</b>`;
+  el.classList.add('on');
+  S.sys.audio.volume=v; S.sys.audio.muted=!!d.muted; S.set.vol=v;
+  clearTimeout(osdTimer); osdTimer=setTimeout(()=>el.classList.remove('on'),1500);
+}
+function powerButtonRows(){
+  const b=BTNS.s;
+  if(!b) return note('Loading…');
+  const seg=(w,sub,label)=>`<div class="row"><div class="rt"><b>${label}</b><small>${sub}</small></div>
+    <div class="seg">${POWER_CHOICES.map(([k,l])=>`<button class="${b[w]===k?'on':''}" data-f data-k="pb-${w}-${k}" data-act="pbtn" data-w="${w}" data-v="${k}">${l}</button>`).join('')}</div></div>`;
+  let h = seg('press','A quick press','Press') + seg('hold','Held down for a second','Hold');
+  const w=b.watching||{};
+  h += note(w.devices && w.devices.length ? 'Holding it for several seconds always turns the device off, whatever is set here.'
+    : 'The power button can\'t be read right now'+(w.problems&&w.problems.length?': '+esc(w.problems.join('; ')):'.')+' It works in Game Mode on Hearth, the OS.');
+  return h;
+}
 function pageAudio(){
   const a=S.sys.audio;
-  let h = sliderCtl('vol','vol','Volume')
+  let h = sliderCtl('vol','vol','Volume',0,volMax())
     + `<button class="row" data-f data-k="a-mute" data-act="mute"><span class="ricon">${a.muted?I.mute:I.vol}</span><div class="rt"><b>Mute</b></div><div class="sw ${a.muted?'on':''}"></div></button>`
     + shead('Output device');
   h += a.devices && a.devices.length ? a.devices.map(d=>`<button class="row" data-f data-k="a-${hk(d.id)}" data-act="audioDev" data-id="${esc(d.id)}"><span class="ricon">${I.vol}</span><div class="rt"><b>${esc(d.name)}</b></div>${d.isDefault?`<span class="rv" style="color:var(--accent)">${I.check}</span>`:''}</button>`).join('')
        : note('Loading output devices…');
+  if(LINUX){
+    const on=!!(BTNS.s && BTNS.s.overamp);
+    h += shead('Louder than 100%');
+    h += `<button class="row" data-f data-k="a-overamp" data-act="overamp"><span class="ricon">${I.vol}</span><div class="rt"><b>Over-amplification</b><small>Lets the volume go up to 150%. Sound can distort, and loud sound can damage speakers or your hearing.</small></div><div class="sw ${on?'on':''}"></div></button>`;
+  }
   return h;
 }
 const PMODES=[['efficiency','Efficiency'],['balanced','Balanced'],['performance','Performance']];
@@ -1222,7 +1273,43 @@ function pagePower(){
   const batt = !b ? '—' : b.present===false ? 'No battery (plugged in)' : `${b.pct}% · ${b.charging?'Charging':'On battery'}`;
   return infoRow('batt','Battery',batt)
     + `<div class="row"><div class="rt"><b>Power mode</b><small>Applies while the Balanced power plan is active</small></div>
-       <div class="seg">${PMODES.map(([k,l])=>`<button class="${S.sys.powerMode===k?'on':''}" data-f data-k="pm-${k}" data-act="pmode" data-mode="${k}">${l}</button>`).join('')}</div></div>`;
+       <div class="seg">${PMODES.map(([k,l])=>`<button class="${S.sys.powerMode===k?'on':''}" data-f data-k="pm-${k}" data-act="pmode" data-mode="${k}">${l}</button>`).join('')}</div></div>`
+    + (LINUX ? shead('Power button') + powerButtonRows() : '');
+}
+
+// ---------- Settings › Controller › Button mapping (InputPlumber, Linux) ----------
+const CTL = {s:null, busy:false};
+function loadRemap(){ if(LINUX) call('controller.status').then(r=>{ CTL.s=r; render(null,true); }).catch(e=>{ CTL.s={available:false,error:e.message}; render(null,true); }); }
+const ctlLabel = id => { const t=CTL.s&&(CTL.s.targets||[]).find(x=>x.id===id); return t?t.label:id; };
+function remapRows(){
+  let h = shead('Button mapping', CTL.busy);
+  const c=CTL.s;
+  if(!c) return h + note('Loading…');
+  if(!c.available) return h + note('Remapping works on Hearth, the OS, with the built-in controller (InputPlumber)'+(c.error?': '+esc(c.error):'.'));
+  const map=c.config.map||{}, type=(c.types||[]).find(t=>t.id===(c.config.target||''))||{label:'Automatic'};
+  h += note('Changes apply everywhere, in games too'+(c.devices&&c.devices.length?' ('+esc(c.devices.map(d=>d.name).join(', '))+')':'')+'.');
+  h += `<button class="row" data-f data-k="rm-type" data-act="rtype"><span class="ricon">${I.pad}</span><div class="rt"><b>Controller type games see</b><small>${esc(type.sub||'Some games show button prompts to match')}</small></div><div class="rv">${esc(type.label)} ›</div></button>`;
+  h += c.buttons.map(b=>{ const m=map[b.id]; return `<button class="row" data-f data-k="rm-${b.id}" data-act="remap" data-b="${b.id}"><div class="rt"><b>${esc(b.label)}</b></div><div class="rv" style="${m?'color:var(--accent)':''}">${m?esc(m==='none'?'Off':ctlLabel(m)):'Default'} ›</div></button>`; }).join('');
+  h += `<button class="row" data-f data-k="rm-nin" data-act="rpreset" data-v="nintendo"><div class="rt"><b>Nintendo layout</b><small>Swaps A with B, and X with Y</small></div></button>`;
+  h += `<button class="row" data-f data-k="rm-reset" data-act="rreset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset all buttons</b><small>Back to how the controller came</small></div></button>`;
+  return h;
+}
+async function ctlDo(p, k){
+  CTL.busy=true; render(null,true);
+  try{ CTL.s = await p; toast('Controller updated'); }catch(e){ toast(e.message); }
+  CTL.busy=false; render(k,true);
+}
+function remapPick(id){
+  const c=CTL.s; if(!c) return;
+  const b=c.buttons.find(x=>x.id===id); if(!b) return;
+  const k='rm-'+id, set=to=>ctlDo(call('controller.set',{button:id,to},30000),k);
+  const pick=(title,list)=>openSheet({title, items:list.map(t=>({label:t.label, run:()=>set(t.id)}))});
+  openSheet({title:b.label, sub:'What should this button do?', items:[
+    {label:'Default ('+b.label+')', icon:'refresh', run:()=>set('')},
+    {label:'Another controller button…', icon:'pad', run:()=>setTimeout(()=>pick(b.label+' acts as', c.targets.filter(t=>t.kind==='button'&&t.id!==id)),0)},
+    {label:'A keyboard key…', icon:'kbd', run:()=>setTimeout(()=>pick(b.label+' types', c.targets.filter(t=>t.kind==='key')),0)},
+    {label:'Nothing (turn it off)', icon:'x', run:()=>set('none')},
+  ]});
 }
 
 // ---------- Settings › Controls ----------
@@ -1271,6 +1358,7 @@ function pageControls(){
       if(gd && gd.problems && gd.problems.length) h += note('Can\'t read: '+esc(gd.problems.join('; ')));
     }
   }
+  if(LINUX) h += remapRows();
   h += shead('Keyboard');
   h += (LINUX?KEY_LIST_LINUX:KEY_LIST).map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
   h += note('Mouse and touch: click anything to select it. The buttons in the bottom bar and the top bar do the same as the controller buttons.');
@@ -1615,7 +1703,7 @@ function appsBody(){
 const OV = {shown:false};
 function overlayClose(){ send({type:'overlay', action:'close'}); }
 async function overlayShown(){
-  OV.shown=true;
+  OV.shown=true; OV.busy=true;
   while(S.layers.length>1) closeLayer();
   try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); if(!r.runningId) S.running=null; }catch(e){}
   if(S.running && !G(S.running)) await loadLibrary();
@@ -1623,6 +1711,8 @@ async function overlayShown(){
   if(!S.layers.includes('qam')) openLayer('qam'); else { renderQam(); setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
   refreshStatus(); loadProfile();
   if(S.qtab==='perf') startPerf();
+  OV.busy=false;
+  if(OV.wantPower){ OV.wantPower=false; openLayer('power'); }
 }
 function overlayHidden(){ OV.shown=false; while(S.layers.length>1) closeLayer(); }
 
@@ -1630,7 +1720,7 @@ function renderQam(){
   const t=S.qtab; let body='';
   if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="n-${i}" ${n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
   if(t==='quick'){ const w=S.sys.wifi;
-    body = `<h3>Quick settings</h3>${S.sys.display.supported?sliderCtl('bright','sun','Brightness'):''}${sliderCtl('vol',S.sys.audio.muted?'mute':'vol','Volume')}
+    body = `<h3>Quick settings</h3>${S.sys.display.supported?sliderCtl('bright','sun','Brightness'):''}${sliderCtl('vol',S.sys.audio.muted?'mute':'vol','Volume',0,volMax())}
     ${qRadio('wifi','wifi','Wi-Fi', w.on ? (w.ssid||'Not connected') : 'Off')}
     ${qRadio('bt','bt','Bluetooth', S.sys.bt.on?'On':'Off')}
     ${qRadio('air','plane','Airplane mode', '')}
@@ -1840,6 +1930,12 @@ function act(el){
     case 'mute': return setMute(!S.sys.audio.muted);
     case 'audioDev': return setOutput(d.id);
     case 'pmode': return setPowerMode(d.mode);
+    case 'pbtn': return call('buttons.set',{[d.w]:d.v}).then(r=>{ BTNS.s=r; render('pb-'+d.w+'-'+d.v,true); }).catch(e=>toast(e.message));
+    case 'overamp': return call('buttons.set',{overamp:!(BTNS.s&&BTNS.s.overamp)}).then(r=>{ BTNS.s=r; S.sys.audio.max=r.maxVolume; if(S.set.vol>r.maxVolume){ S.set.vol=S.sys.audio.volume=r.maxVolume; } render('a-overamp',true); toast(r.overamp?'Volume can now go up to 150%':'Volume is limited to 100% again'); }).catch(e=>toast(e.message));
+    case 'remap': return remapPick(d.b);
+    case 'rtype': { const c=CTL.s; if(!c) return; return openSheet({title:'Controller type games see', sub:'Games may need to be restarted to notice.', items:c.types.map(t=>({label:t.label+(t.sub?' · '+t.sub:''), icon:(c.config.target||'')===t.id?'check':'', run:()=>ctlDo(call('controller.set',{target:t.id},30000),'rm-type')}))}); }
+    case 'rpreset': return ctlDo(call('controller.preset',{name:d.v},30000),'rm-nin');
+    case 'rreset': return openSheet({title:'Reset all buttons?', items:[{label:'Reset', icon:'refresh', run:()=>ctlDo(call('controller.reset',{},30000),'rm-reset')}]});
     case 'dispRes': return dispRes();
     case 'dispHz': return dispHz();
     case 'dispScale': return dispScale();
@@ -2345,6 +2441,8 @@ function onSysEvent(name, data){
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
   if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
+  if(name==='osd') return showOsd(data);
+  if(name==='power.menu'){ if(OVERLAY && OV.busy){ OV.wantPower=true; return; } if(S.layers.at(-1)!=='power'){ if(!OVERLAY) closeAll(); openLayer('power'); } return; }
   if(name==='overlay.shown') return overlayShown();
   if(name==='overlay.hidden') return overlayHidden();
   if(name==='install.done'){
@@ -2415,6 +2513,8 @@ function onSettingsTab(t){
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();
+  if(t==='power' || t==='audio') loadButtons();
+  if(t==='controller') loadRemap();
   if(t==='audio') call('audio.get').then(r=>{ Object.assign(S.sys.audio,r); S.set.vol=r.volume; refreshUI(); }).catch(e=>toast(e.message));
   if(t==='display') call('display.get').then(r=>{ Object.assign(S.sys.display,r); S.set.bright=r.brightness; refreshUI(); }).catch(e=>toast(e.message));
   if(t==='power') call('power.get').then(r=>{ S.sys.battery={present:r.present,pct:r.pct,charging:r.charging}; S.sys.powerMode=r.mode; refreshUI(); }).catch(e=>toast(e.message));

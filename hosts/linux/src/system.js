@@ -198,7 +198,17 @@ class Audio {
   }
 
   async get() { return { ...(await this.volume()), devices: await this.devices().catch(() => []) }; }
-  async setVolume(v) { await run('wpctl', ['set-volume', '@DEFAULT_AUDIO_SINK@', (Math.max(0, Math.min(100, v)) / 100).toFixed(2)]); }
+  /** max: 100, or 150 with over-amplification on (Settings › Audio). */
+  async setVolume(v, max = 100) { await run('wpctl', ['set-volume', '@DEFAULT_AUDIO_SINK@', (Math.max(0, Math.min(max, v)) / 100).toFixed(2)]); }
+  /** The volume buttons: 5% steps, unmuting, never past max. Returns the new {volume, muted}. */
+  async step(d, max = 100) {
+    const cur = await this.volume();
+    const v = Math.max(0, Math.min(max, Math.round((cur.volume + d * 5) / 5) * 5));
+    await this.setVolume(v, max);
+    if (cur.muted && d > 0) await this.setMute(false);
+    return { volume: v, muted: cur.muted && d <= 0 };
+  }
+  async toggleMute() { const cur = await this.volume(); await this.setMute(!cur.muted); return { volume: cur.volume, muted: !cur.muted }; }
   async setMute(m) { await run('wpctl', ['set-mute', '@DEFAULT_AUDIO_SINK@', m ? '1' : '0']); }
   async setDefault(id) { await run('wpctl', ['set-default', String(id)]); }
 }

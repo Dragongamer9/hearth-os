@@ -58,6 +58,7 @@ jobs:
             ipc settings page "$p"; grim "shots/$n-settings-$p.png" || true; n=$((n+1))
           done
           ipc settings close
+          ipc power menu; grim "shots/$n-power-menu.png" || true; ipc power close
           cp "$LOG" shots/nimbus-shell.log 2>/dev/null || true
           ls "$XDG_RUNTIME_DIR" > shots/runtime-dir.txt
           pgrep -af "quickshell|/qs( |$)" > shots/quickshell-running.txt || echo "not running" > shots/quickshell-running.txt

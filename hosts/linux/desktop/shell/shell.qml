@@ -50,9 +50,12 @@ ShellRoot {
     Keyboard { id: keyboard }
     Help { id: help }
     SettingsApp { id: settings }
+    VolumeOsd {}
+    PowerMenu { id: powerMenu }
     Pad {
         id: pad
         settings: settings
+        powerMenu: powerMenu
         launcher: launcher
         quick: quick
         radial: radial
@@ -76,6 +79,19 @@ ShellRoot {
     }
 
     Component.onCompleted: { SettingsNav.pad = pad; SettingsNav.help = help; }
+    // labwc's key bindings for the volume and power keys (a backup for what hearth-buttons can't read).
+    IpcHandler {
+        target: "buttons"
+        function up(): void { Buttons.volume(1, false); }
+        function down(): void { Buttons.volume(-1, false); }
+        function mute(): void { Buttons.mute(false); }
+        function power(): void { Buttons.power("short", false); }
+    }
+    IpcHandler {
+        target: "power"
+        function menu(): void { powerMenu.open(); }
+        function close(): void { powerMenu.shown = false; }
+    }
     IpcHandler {
         target: "settings"
         function open(): void { settings.open(""); }

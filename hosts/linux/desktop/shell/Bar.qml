@@ -123,7 +123,7 @@ PanelWindow {
                 wide: !bar.portrait
                 tip: audio && audio.muted ? "Muted" : "Volume " + pct + "%"
                 onClicked: if (audio) audio.muted = !audio.muted
-                onScrolled: delta => { if (audio) audio.volume = Math.max(0, Math.min(1, audio.volume + (delta > 0 ? 0.05 : -0.05))); }
+                onScrolled: delta => { if (audio) audio.volume = Math.max(0, Math.min(Buttons.maxVolume, audio.volume + (delta > 0 ? 0.05 : -0.05))); }
                 StatusLabel {
                     icon: !vol.audio || vol.audio.muted ? "audio-volume-muted-symbolic" : vol.pct > 66 ? "audio-volume-high-symbolic" : vol.pct > 33 ? "audio-volume-medium-symbolic" : "audio-volume-low-symbolic"
                     label: bar.portrait || (vol.audio && vol.audio.muted) ? "" : vol.pct + "%"
