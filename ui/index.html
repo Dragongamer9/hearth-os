@@ -155,6 +155,7 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .brand{display:flex;align-items:center;gap:10px;padding:4px 12px 22px;font-weight:800;font-size:22px;letter-spacing:.04em}
 .brand .mark{width:30px;height:30px;border-radius:9px;background:conic-gradient(from 200deg,var(--accent),#7a8cff,var(--accent));display:grid;place-items:center}
 .brand .mark i{width:12px;height:12px;border-radius:50%;background:var(--panel)}
+.brand .mark.hm{background:none;width:34px;height:34px}
 .mitem{display:flex;align-items:center;gap:14px;padding:13px 14px;border-radius:9px;font-weight:600;font-size:16px;color:var(--dim)}
 .mitem.cur{color:var(--text)}
 .mitem.cur:before{content:"";position:absolute;left:4px;width:3px;height:22px;border-radius:2px;background:var(--accent)}
@@ -304,6 +305,73 @@ body.overlay .modal{width:min(380px,92vw)}
 .ptitle{font-weight:600;margin-bottom:12px}
 .key.on{background:var(--text);color:var(--bg)}
 
+/* ---------- layouts (Settings › Appearance) ---------- */
+.topnav{display:none;gap:4px;margin-left:8px}
+.topnav button{padding:8px 16px;border-radius:20px;font-size:14px;font-weight:600;color:var(--dim);white-space:nowrap}
+.topnav button.cur{background:var(--text);color:var(--bg)}
+.topnav button.focus{color:var(--text)} .topnav button.cur.focus{color:var(--bg)}
+body.L-tiles .topnav,body.L-spotlight .topnav{display:flex}
+body.L-tiles #vtitle,body.L-spotlight #vtitle{display:none}
+body.reduce-motion *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+body.no-battpct #battPct{display:none}
+
+/* Tiles: a dashboard — the latest game big, recent ones around it, pins and shortcuts below */
+.tl-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-auto-rows:clamp(92px,13vh,150px);gap:12px;margin:14px 0 6px}
+.tl{position:relative;border-radius:6px;overflow:hidden;background:var(--panel2)}
+.tl .cover{position:absolute;inset:0;border-radius:0}
+.tl .cover .ct{font-size:15px}
+.tl.big{grid-column:span 2;grid-row:span 2}
+.tl.big .cover .ct{font-size:clamp(20px,2.2vw,30px);bottom:44px}
+.tl .tlbar{position:absolute;left:0;right:0;bottom:0;padding:8px 12px;background:linear-gradient(transparent,rgba(0,0,0,.75));font-size:12px;font-weight:600;display:flex;gap:8px;align-items:center}
+.tl .tlbar span{color:var(--dim);font-weight:500}
+.tl[data-f].focus{transform:scale(1.03);z-index:2}
+.tl.util{display:flex;flex-direction:column;justify-content:space-between;padding:14px;background:var(--panel)}
+.tl.util svg{width:30px;height:30px;color:var(--accent)}
+.tl.util b{font-size:15px}
+.tl.util small{color:var(--dim);font-size:12px}
+.tl-row{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-auto-rows:clamp(92px,13vh,150px);gap:12px}
+
+/* Spotlight: one row of games; the focused one fills the screen */
+.sp-bg{position:fixed;inset:0;z-index:-1;pointer-events:none}
+.sp-bg .art,.sp-bg .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.sp-bg:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(6,8,12,.9) 0%,rgba(6,8,12,.55) 45%,rgba(6,8,12,.15) 100%),linear-gradient(0deg,var(--bg) 0%,transparent 45%)}
+body.L-spotlight #app{background:transparent}
+body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent);border-bottom:0}
+.sp-strip{display:flex;gap:12px;align-items:center;overflow-x:auto;padding:16px 14px 18px;margin:0 -14px;scrollbar-width:none;scroll-behavior:smooth}
+.sp-strip::-webkit-scrollbar{display:none}
+.sp-ic{flex:none;width:clamp(64px,7vw,92px);aspect-ratio:1;border-radius:14px;overflow:hidden;position:relative;background:var(--panel2);transition:width .2s var(--ease)}
+.sp-ic .cover{position:absolute;inset:0;border-radius:0}
+.sp-ic .cover .ct,.sp-ic .cover .src,.sp-ic .cover .notinst{display:none}
+.sp-ic.focus{width:clamp(96px,10vw,136px)}
+.sp-ic.lib{display:grid;place-items:center;background:var(--panel)}
+.sp-ic.lib svg{width:34px;height:34px;color:var(--dim)}
+.sp-name{font-size:18px;font-weight:700;min-height:26px;margin:0 0 4px;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.sp-detail{margin-top:clamp(16px,6vh,80px);max-width:min(640px,90%)}
+.sp-logo{max-width:min(520px,80%);max-height:140px;object-fit:contain;object-position:left bottom;filter:drop-shadow(0 4px 24px rgba(0,0,0,.6));display:block}
+.sp-title{font-size:clamp(30px,4.6vw,56px);font-weight:800;line-height:1.05;text-shadow:0 4px 30px rgba(0,0,0,.6)}
+.sp-meta{color:var(--dim);margin:12px 0 22px;display:flex;gap:18px;flex-wrap:wrap;font-size:14px}
+.sp-acts{display:flex;gap:12px;align-items:center}
+.sp-acts .sq{background:rgba(255,255,255,.1)}
+
+/* Appearance: layout picker */
+.layouts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:900px}
+.lcard{background:var(--panel);border-radius:var(--r);padding:10px 10px 14px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent}
+.lcard.on{border-color:var(--accent)}
+.lcard b{font-size:15px;margin-top:4px;display:flex;align-items:center;gap:8px}
+.lcard b em{font-style:normal;font-size:11px;font-weight:700;color:var(--accentInk);background:var(--accent);border-radius:6px;padding:2px 6px}
+.lcard small{color:var(--dim);font-size:12px;line-height:1.4}
+.lprev{position:relative;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:var(--bg)}
+.lprev i{position:absolute;display:block;border-radius:2px;background:var(--panel3)}
+.lprev .acc{background:var(--accent)}
+.lprev .glow{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 45%,transparent),transparent)}
+.storage{height:10px;border-radius:5px;background:var(--panel3);overflow:hidden;margin-top:8px}
+.storage i{display:block;height:100%;background:var(--accent)}
+.about-head{display:flex;align-items:center;gap:18px;padding:18px;background:var(--panel);border-radius:var(--r);max-width:900px}
+.about-head .amark{width:64px;height:64px;flex:none;display:grid;place-items:center;border-radius:16px;background:var(--panel2)}
+.about-head .amark svg{width:44px;height:44px}
+.about-head h3{font-size:22px}
+@media (max-width:760px){ .layouts{grid-template-columns:1fr} .tl-grid,.tl-row{grid-template-columns:repeat(3,minmax(0,1fr))} }
+
 @media (max-width:760px){
   .gbody{grid-template-columns:1fr}
   .settings{grid-template-columns:1fr}
@@ -321,6 +389,7 @@ body.overlay .modal{width:min(380px,92vw)}
     <button class="ibtn" data-f data-k="top-menu" data-act="menu" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     <button class="ibtn" id="topBack" data-f data-k="top-back" data-act="back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
     <div class="title" id="vtitle">Home</div>
+    <nav class="topnav" id="topnav" aria-label="Sections"></nav>
     <div class="sp"></div>
     <button class="ibtn" data-f data-k="top-search" data-act="search" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg></button>
     <button class="ibtn" data-f data-k="top-qam" data-act="qam" data-tab="quick" aria-label="Quick Access"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
@@ -382,6 +451,8 @@ const I = {
   stop:'<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
   trophy:'<svg viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7"/></svg>',
   user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
+  layout:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 10h18M10 10v10"/></svg>',
+  text:'<svg viewBox="0 0 24 24"><path d="M4 7V5h10v2M9 5v14M7 19h4M14 12v-1h6v1M17 11v8M15.5 19h3"/></svg>',
   shell:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18"/></svg>',
   info:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>',
   display:'<svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20h6"/></svg>',
@@ -510,6 +581,7 @@ const MOCK = (()=>{
   const push=()=>setTimeout(()=>onSysEvent('status',status()),0);
   const H={
     'sys.status':async()=>status(),
+    'system.info':async()=>({os:'Preview',osVersion:'',osPretty:'Browser preview',device:'Handheld PC',cpu:'8-core processor',cores:16,gpu:'Integrated graphics',memoryBytes:16e9,storage:{path:'/',totalBytes:512e9,freeBytes:301e9},uptimeSec:7380,kernel:'',hostname:'preview'}),
     'radios.set':async({kind,on})=>{ await wait(350);
       if(on && st.airplane) st.airplane=false;
       if(kind==='wifi'){ st.wifi.on=on; st.wifi.ssid=on?HOME:null; st.wifi.bars=on?4:0; } else st.bt.on=on;
@@ -649,12 +721,177 @@ const visible = () => GAMES.filter(g=>!g.hidden);
 function heroStyle(g){ return g ? artBg(g) : 'background:var(--panel)'; }
 function heroImg(g){ return g ? artImg(g,['hero','wide']) : ''; }
 
+const HEARTH_MARK = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\" width=\"100%\" height=\"100%\">  <defs> <linearGradient id=\"hm-flame\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"> <stop offset=\"0\" stop-color=\"#ffd166\"/> <stop offset=\".55\" stop-color=\"#ff8a3d\"/> <stop offset=\"1\" stop-color=\"#e5483b\"/> </linearGradient> <linearGradient id=\"hm-core\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"> <stop offset=\"0\" stop-color=\"#fff6d6\"/> <stop offset=\"1\" stop-color=\"#ffc24f\"/> </linearGradient> <linearGradient id=\"hm-stone\" gradientUnits=\"userSpaceOnUse\" x1=\"0\" y1=\"108\" x2=\"0\" y2=\"475\"> <stop offset=\"0\" stop-color=\"#f6ece0\"/> <stop offset=\"1\" stop-color=\"#cdbba8\"/> </linearGradient> </defs> <path d=\"M112 432 V252 A144 144 0 0 1 400 252 V432\" fill=\"none\" stroke=\"url(#hm-stone)\" stroke-width=\"30\" stroke-linecap=\"round\"/> <path d=\"M76 462 H436\" stroke=\"url(#hm-stone)\" stroke-width=\"26\" stroke-linecap=\"round\"/> <path d=\"M256 168 C298 222 340 262 340 332 C340 386 302 422 256 422 C210 422 172 386 172 332 C172 294 190 266 212 244 C210 276 222 298 242 306 C232 258 236 212 256 168 Z\" fill=\"url(#hm-flame)\"/> <path d=\"M258 284 C280 314 300 338 300 368 C300 394 282 412 258 412 C234 412 216 394 216 368 C216 340 238 316 258 284 Z\" fill=\"url(#hm-core)\"/> </svg>";
+// =====================================================================
+// Appearance: layout, text size, motion, top bar (kept per device in localStorage)
+// =====================================================================
+const LOOK = {layout:'shelf', textSize:'normal', reduceMotion:false, clock24:false, battPct:true};
+try{ Object.assign(LOOK, JSON.parse(localStorage.getItem('nimbus.look')||'{}')); }catch(e){}
+const LAYOUTS = [
+  {id:'shelf', name:'Shelf', desc:'Big shelves of your games under the art of the last one you played, with the menu at the side.'},
+  {id:'tiles', name:'Tiles', desc:'A dashboard: your latest game as a big tile, recent games and shortcuts around it, tabs along the top.'},
+  {id:'spotlight', name:'Spotlight', desc:'One row of games across the top. Whichever you pick fills the screen, with Play right there.'},
+];
+const TEXT_SIZES = [['small','Small',0.9],['normal','Default',1],['large','Large',1.15],['xl','Extra large',1.3]];
+function applyLook(){
+  if(!LAYOUTS.some(l=>l.id===LOOK.layout)) LOOK.layout='shelf';
+  const b=document.body;
+  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id)); b.classList.add('L-'+LOOK.layout);
+  b.classList.toggle('reduce-motion', !!LOOK.reduceMotion);
+  b.classList.toggle('no-battpct', !LOOK.battPct);
+  b.style.zoom = (TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[2];
+  renderTopNav(); if(typeof tick==='function') tick();
+}
+function saveLook(){ try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} applyLook(); }
+function renderTopNav(){
+  const n=$('#topnav'); if(!n) return;
+  const items=[['home','Home'],['library','Library'],['downloads','Downloads'],['settings','Settings']];
+  n.innerHTML = items.map(([v,l])=>`<button class="${S.view===v?'cur':''}" data-f data-k="tn-${v}" data-act="nav" data-view="${v}">${l}</button>`).join('');
+}
+function layoutPreview(id){
+  if(id==='tiles') return `<i class="glow" style="left:6%;top:14%;width:36%;height:52%"></i>${[0,1,2,3].map(i=>`<i style="left:${45+(i%2)*25}%;top:${14+Math.floor(i/2)*27}%;width:22%;height:24%"></i>`).join('')}
+    ${[0,1,2,3,4,5].map(i=>`<i style="left:${6+i*15}%;top:72%;width:13%;height:20%"></i>`).join('')}<i class="acc" style="left:6%;top:4%;width:12%;height:5%"></i>`;
+  if(id==='spotlight') return `<i class="glow" style="left:0;top:0;width:100%;height:100%"></i>${[0,1,2,3,4,5].map(i=>`<i style="left:${6+i*11}%;top:${i?10:8}%;width:${i?9:12}%;height:${i?16:20}%;${i?'':'background:var(--text)'}"></i>`).join('')}
+    <i style="left:6%;top:48%;width:44%;height:12%;background:var(--text)"></i><i style="left:6%;top:64%;width:30%;height:5%"></i><i class="acc" style="left:6%;top:76%;width:16%;height:10%"></i>`;
+  return `<i class="glow" style="left:0;top:0;width:100%;height:42%"></i><i style="left:6%;top:36%;width:30%;height:34%;background:var(--text)"></i>
+    ${[0,1,2,3].map(i=>`<i style="left:${39+i*14}%;top:44%;width:12%;height:26%"></i>`).join('')}${[0,1,2,3,4,5].map(i=>`<i style="left:${6+i*15}%;top:80%;width:13%;height:20%"></i>`).join('')}`;
+}
+
+// ---------- Home, by layout ----------
+function homeTiles(V){
+  const recent=V.filter(g=>g.last).sort((a,b)=>b.last-a.last);
+  const order=[...recent, ...V.filter(g=>!g.last).sort((a,b)=>b.added-a.added)].slice(0,9);
+  const big=order[0], rest=order.slice(1,9);
+  const favs=V.filter(g=>g.fav).slice(0,12);
+  const tl=(g,cls,k)=>`<button class="tl ${cls}" data-f data-k="${k}" data-act="game" data-id="${esc(g.id)}">${cover(g,{wide:true,badge:false})}
+    ${cls==='big'?`<div class="tlbar">${playable(g)?(g.cloud&&!g.inst?'Stream':'Play'):'Install'}<span>${g.last?'Played '+ago(g.last).toLowerCase():SOURCES[g.src]}</span></div>`:''}</button>`;
+  const util=(k,ic,b,s,act,extra='')=>`<button class="tl util" data-f data-k="${k}" data-act="${act}" ${extra}>${I[ic]}<div><b>${b}</b><br><small>${s}</small></div></button>`;
+  return `<div class="tl-grid">${tl(big,'big','h-big')}${rest.map(g=>tl(g,'','h-t-'+g.id)).join('')}</div>
+    ${favs.length?`<h2>Pinned</h2><div class="shelf">${favs.map(g=>tile(g,'p','h-f-'+g.id)).join('')}</div>`:''}
+    <h2>Shortcuts</h2>
+    <div class="tl-row">
+      ${util('h-u-lib','lib','Library',`${visible().length} games`,'nav','data-view="library"')}
+      ${util('h-u-dl','dl','Downloads','Installs and updates','nav','data-view="downloads"')}
+      ${util('h-u-stores','user','Game stores','Epic, GOG, Xbox','nav','data-view="stores"')}
+      ${util('h-u-search','search','Search','Find a game','search')}
+      ${util('h-u-add','lib','Add a game','Any program or .exe','addManual')}
+      ${util('h-u-set','gear','Settings','Wi-Fi, display, controls','nav','data-view="settings"')}
+    </div>`;
+}
+function spotGames(V){
+  const recent=V.filter(g=>g.last).sort((a,b)=>b.last-a.last);
+  return [...recent, ...V.filter(g=>!g.last).sort((a,b)=>b.added-a.added)].slice(0,14);
+}
+function spotDetail(g){
+  if(!g) return '';
+  const logo = (g.art||{}).logo ? `<img class="sp-logo" src="${esc(g.art.logo)}" alt="" onerror="this.outerHTML='<div class=&quot;sp-title&quot;>${esc(g.title).replace(/'/g,'&#39;')}</div>'">` : `<div class="sp-title">${esc(g.title)}</div>`;
+  const label = playable(g) ? (g.cloud&&!g.inst?'Stream':'Play') : isActive(g) ? dlInfo(g).label : 'Install';
+  return `${logo}<div class="sp-meta"><span>${SOURCES[g.src]}</span>${g.last?`<span>Played ${ago(g.last).toLowerCase()}</span>`:''}${g.hrs?`<span>${hrs(g.hrs)}</span>`:''}</div>
+    <div class="sp-acts"><button class="play" data-f data-k="sp-play" data-act="${playable(g)?'play':'game'}" data-id="${esc(g.id)}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>${label}</button>
+    <button class="sq" data-f data-k="sp-more" data-act="game" data-id="${esc(g.id)}" aria-label="Game page">${I.info}</button>
+    <button class="sq ${g.fav?'on':''}" data-f data-k="sp-fav" data-act="fav" data-id="${esc(g.id)}" aria-label="Favorite"><svg viewBox="0 0 24 24"><path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/></svg></button></div>`;
+}
+function homeSpotlight(V){
+  const L=spotGames(V), g=L[0];
+  return `<div class="sp-bg" id="spBg" data-id="${g?esc(g.id):''}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</div>
+    <div class="sp-strip">${L.map(x=>`<button class="sp-ic" data-f data-k="sp-${x.id}" data-act="${playable(x)?'play':'game'}" data-spot="${esc(x.id)}" data-id="${esc(x.id)}">${cover(x,{badge:false})}</button>`).join('')}
+      <button class="sp-ic lib" data-f data-k="sp-lib" data-act="nav" data-view="library" aria-label="Library">${I.lib}</button></div>
+    <div class="sp-name" id="spName">${g?esc(g.title):''}</div>
+    <div class="sp-detail" id="spDetail">${spotDetail(g)}</div>`;
+}
+function updateSpot(id){
+  const g=G(id), bg=$('#spBg'); if(!g||!bg||bg.dataset.id===id) return;
+  bg.dataset.id=id; bg.innerHTML=`<div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}`;
+  $('#spName').textContent=g.title; $('#spDetail').innerHTML=spotDetail(g);
+}
+
+// ---------- Settings › Appearance ----------
+function pageAppearance(){
+  const ts=(TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[1];
+  return shead('Home layout')
+    + `<div class="layouts">${LAYOUTS.map(l=>`<button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
+        <div class="lprev">${layoutPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>`).join('')}</div>`
+    + shead('Text and motion')
+    + `<button class="row" data-f data-k="ap-text" data-act="textSize"><span class="ricon">${I.text}</span><div class="rt"><b>Text size</b><small>Makes everything in ${APP} bigger or smaller</small></div><div class="rv">${ts} ›</div></button>`
+    + lookRow('reduceMotion','Reduce motion','Turns off animations and smooth scrolling')
+    + shead('Top bar')
+    + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM')
+    + lookRow('battPct','Battery percentage','Next to the battery icon')
+    + shead('More')
+    + swRow('sounds','Interface sounds','Soft clicks when you move around')
+    + `<button class="row" data-f data-k="ap-prof" data-act="goset" data-tab="profile"><span class="ricon">${I.user}</span><div class="rt"><b>Accent color and background</b><small>In your profile</small></div><div class="rv">›</div></button>`;
+}
+function lookRow(key,label,sub){ return `<button class="row" data-f data-k="ap-${key}" data-act="lookToggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${LOOK[key]?'on':''}"></div></button>`; }
+function pickTextSize(){
+  openSheet({title:'Text size', sub:'Makes everything in '+APP+' bigger or smaller', items:TEXT_SIZES.map(([k,l])=>({label:l, icon:LOOK.textSize===k?'check':'', run:()=>{ LOOK.textSize=k; saveLook(); render('ap-text'); }}))});
+}
+
+// ---------- Settings › System and › About ----------
+const SYSINFO = {s:null};
+function loadSysInfo(){ call('system.info').then(r=>{ SYSINFO.s=r; refreshUI(); }).catch(()=>{}); }
+const gb = b => b>=1e12 ? (b/1e12).toFixed(1)+' TB' : Math.round(b/1e9)+' GB';
+function uptimeText(s){ const d=Math.floor(s/86400), h=Math.floor(s%86400/3600), m=Math.floor(s%3600/60); return (d?d+' d ':'')+(d||h?h+' h ':'')+m+' min'; }
+function pageSystem(){
+  const i=SYSINFO.s||{}, st=i.storage;
+  const feat=f=>(HOSTINFO.features||[]).includes(f);
+  let h = shead('This device');
+  h += LINUX
+    ? `<button class="row" data-f data-k="sy-name" data-act="goset" data-tab="signin"><span class="ricon">${I.info}</span><div class="rt"><b>Device name</b><small>Change it in Settings › Sign-in</small></div><div class="rv">${esc(i.hostname||HOSTINFO.name||'')} ›</div></button>`
+    : infoRow('dev','Device name', i.hostname||HOSTINFO.name||'Windows 11 PC');
+  h += infoRow('user','Profile name',PROFILE.name);
+  if(st && st.totalBytes){
+    const used=st.totalBytes-st.freeBytes, pct=Math.round(used/st.totalBytes*100);
+    h += `<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Storage</b><small>${gb(st.freeBytes)} free of ${gb(st.totalBytes)}</small><div class="storage"><i style="width:${pct}%"></i></div></div><div class="rv">${pct}% used</div></div>`;
+  }
+  const tz=(()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }catch(e){ return ''; } })();
+  h += shead('Date and time')
+    + infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
+    + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM');
+  h += shead('Startup');
+  if(!LINUX) h += swRow('startOnBoot','Start '+APP+' at sign-in','Registers '+APP+' as the shell for this user');
+  else h += `<button class="row" data-f data-k="sy-signin" data-act="goset" data-tab="signin"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign-in and startup</b><small>Sign in automatically, start in Game or Desktop Mode, password</small></div><div class="rv">›</div></button>`;
+  h += shead('Troubleshooting');
+  if(feat('restartApp')) h += `<button class="row" data-f data-k="sy-restart" data-act="restartApp"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP}</b><small>Closes and reopens ${APP}. Games keep running.</small></div></button>`;
+  if(feat('exportLogs')) h += `<button class="row" data-f data-k="sy-logs" data-act="exportLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs</b><small>Puts ${APP}'s logs in one file in your home folder, to send with a bug report</small></div></button>`;
+  h += `<button class="row" data-f data-k="sy-reset" data-act="resetLook"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset appearance</b><small>Layout, text size and top bar back to how they started. Your games and accounts stay.</small></div></button>`;
+  return h;
+}
+const CREDITS = LINUX
+  ? [['Electron','Runs '+APP+'\'s interface'],['gamescope','Game Mode compositor (Valve)'],['labwc','Desktop Mode window manager'],['Quickshell','Desktop Mode taskbar and menus'],
+     ['Bazzite / Universal Blue','The OS Hearth is built on'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)'],['umu-launcher','Runs Windows games with Proton'],['Proton / Wine','Windows compatibility']]
+  : [['WebView2','Runs '+APP+'\'s interface (Microsoft Edge)'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)']];
+function pageAbout(){
+  const i=SYSINFO.s||{}, ver=UPD.status ? UPD.status.current : (host?'…':'Browser preview');
+  const sysVer = LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted ? SYSUPD.s.status.booted.version : '';
+  let h = `<div class="about-head"><div class="amark">${LINUX?HEARTH_MARK:I.shell}</div><div style="flex:1"><h3>${APP} ${esc(ver||'')}</h3>
+      <div class="muted">${LINUX?(HOSTINFO.system?'Hearth, the OS, built on Bazzite':'Hearth for Linux'):'Ember, the shell for Windows 11'} · part of the Nimbus project</div></div>
+      <button class="pill" data-f data-k="ab-upd" data-act="goset" data-tab="updates">${I.refresh}Updates</button></div>`;
+  h += shead('This device');
+  if(i.device) h += infoRow('ab-dev','Device', i.device);
+  h += infoRow('ab-os','Operating system', i.osPretty || [i.os,i.osVersion].filter(Boolean).join(' ') || (LINUX?'Linux':'Windows'));
+  if(sysVer) h += infoRow('ab-img','Hearth OS version', sysVer);
+  if(i.cpu) h += infoRow('ab-cpu','Processor', i.cpu + (i.cores?` · ${i.cores} threads`:''));
+  if(i.gpu) h += infoRow('ab-gpu','Graphics', i.gpu);
+  if(i.memoryBytes) h += infoRow('ab-ram','Memory', gb(i.memoryBytes)+' RAM');
+  if(i.storage && i.storage.totalBytes) h += infoRow('ab-disk','Storage', `${gb(i.storage.totalBytes)} (${gb(i.storage.freeBytes)} free)`);
+  if(S.sys.display && S.sys.display.width) h += infoRow('ab-disp','Display', `${S.sys.display.width} × ${S.sys.display.height}${S.sys.display.refreshRate?` at ${S.sys.display.refreshRate} Hz`:''}`);
+  if(i.kernel) h += infoRow('ab-kern', LINUX?'Kernel':'Windows version', i.kernel);
+  if(i.uptimeSec) h += infoRow('ab-up','Running for', uptimeText(i.uptimeSec));
+  h += infoRow('host','App engine',!host?'Browser preview':LINUX?(HOSTINFO.host||'Electron')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
+  h += shead('Open source')
+    + `<button class="row" data-f data-k="ab-credits" data-act="credits"><span class="ricon">${I.info}</span><div class="rt"><b>Built with</b><small>The open-source projects ${APP} uses</small></div><div class="rv">›</div></button>`
+    + note(`${APP} is part of Nimbus, a controller-first game library. Game names and art belong to their owners.`);
+  return h;
+}
+
 function viewHome(){
   const V=visible().filter(g=>g.inst || isActive(g) || (g.cloud && (g.last || g.fav)));
   if(!V.length) return `<div class="empty" style="padding-top:18vh">
       <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:8px">${LIB.loading?'Loading your games…':'No games found yet'}</div>
       ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">${LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':'Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.'}</div>
       <button class="pill" style="display:inline-flex" data-f data-k="h-add" data-act="addManual">＋ Add a game</button>`}</div>`;
+  if(LOOK.layout==='tiles') return homeTiles(V);
+  if(LOOK.layout==='spotlight') return homeSpotlight(V);
   const recent=V.filter(g=>g.last).sort((a,b)=>b.last-a.last).slice(0,10);
   const favs=V.filter(g=>g.fav);
   const added=[...V].sort((a,b)=>b.added-a.added).slice(0,10);
@@ -773,7 +1010,7 @@ function viewDownloads(){
       <div class="rv">${Math.round(d.p*100)}%</div></button>`}).join('')}</div>`;
 }
 
-const STABS = [['profile','user','Profile'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
+const STABS = [['profile','user','Profile'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
   ['controller','pad','Controls'],['sources','lib','Library sources'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
@@ -1146,8 +1383,8 @@ function viewSettings(){
   if(t==='power') body = pagePower();
   if(t==='profile') body = pageProfile();
   if(t==='signin') body = pageSignin();
-  if(t==='system') body = infoRow('dev','Device',HOSTINFO.name||(LINUX?'Linux PC':'Windows 11 PC'))+infoRow('user','Profile name',PROFILE.name)
-    +(LINUX?'':swRow('startOnBoot','Start '+APP+' at sign-in','Registers '+APP+' as the shell for this user'))+swRow('sounds','Interface sounds');
+  if(t==='system') body = pageSystem();
+  if(t==='appearance') body = pageAppearance();
   if(t==='controller') body = pageControls();
   if(t==='sources'){
     const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
@@ -1163,7 +1400,7 @@ function viewSettings(){
   }
   if(t==='shell') body = pageShell();
   if(t==='updates') body = pageUpdates();
-  if(t==='about') body = infoRow('ver',''+APP+'', UPD.status ? UPD.status.current : (host?'…':'Browser preview'))+infoRow('host','Host',!host?'Browser preview':LINUX?(HOSTINFO.host||'Electron')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
+  if(t==='about') body = pageAbout();
   return `<div class="settings">
     <div class="snav">${STABS.filter(([k])=>k!=='signin'||LINUX).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
     <div class="rows">${body}</div></div>`;
@@ -1181,6 +1418,7 @@ function render(focusKey, quiet){
   if(quiet) v.scrollTop = top;
   else { v.classList.remove('vfade'); void v.offsetWidth; v.classList.add('vfade'); }
   $('#vtitle').textContent = S.view==='game' ? (G(S.game)?.title||'') : TITLES[S.view];
+  renderTopNav();
   if(!S.layers.length && (focusKey || wasInView || !focused || !document.contains(focused))){
     const el = k && $(`#view [data-k="${k}"]`);
     if(quiet && el){ if(focused) focused.classList.remove('focus'); focused=el; el.classList.add('focus'); el.focus({preventScroll:true}); }
@@ -1208,7 +1446,7 @@ function goBack(){
 // =====================================================================
 function renderMenu(){
   const items=[['home','home','Home'],['library','lib','Library'],['downloads','dl','Downloads'],['settings','gear','Settings']];
-  $('#menu').innerHTML = `<div class="brand"><div class="mark"><i></i></div>nimbus</div>
+  $('#menu').innerHTML = `<div class="brand">${LINUX?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
     <button class="mitem" data-f data-k="m-power" data-act="power">${I.power}Power</button>
@@ -1412,6 +1650,7 @@ function setFocus(el, quiet){
   el.focus({preventScroll:true});
   const shelf = el.closest('.shelf,.news,.tabs,.sres');
   el.scrollIntoView({block: shelf?'nearest':'center', inline: shelf?'center':'nearest', behavior: quiet?'auto':'smooth'});
+  if(S.view==='home' && el.dataset.spot && !S.layers.length) updateSpot(el.dataset.spot);
   if(S.view==='home' && el.dataset.id && !S.layers.length){
     const h=$('#heroArt'), hi=$('#heroImg'), g=G(el.dataset.id);
     if(h&&g&&h.dataset.id!==g.id){ h.dataset.id=g.id; h.setAttribute('style', artBg(g)); if(hi) hi.innerHTML=heroImg(g); }
@@ -1486,6 +1725,13 @@ function act(el){
     case 'dispHz': return dispHz();
     case 'dispScale': return dispScale();
     case 'shellMake': return shellMake();
+    case 'look': LOOK[d.key]=d.v; saveLook(); return render('ap-l-'+d.v);
+    case 'lookToggle': LOOK[d.key]=!LOOK[d.key]; saveLook(); return render('ap-'+d.key);
+    case 'textSize': return pickTextSize();
+    case 'restartApp': toast('Restarting '+APP+'…'); return call('app.restart').catch(e=>toast(e.message));
+    case 'exportLogs': toast('Saving logs…'); return call('app.exportLogs',{},60000).then(r=>toast(r&&r.path?'Saved to '+r.path:'Saved')).catch(e=>toast(e.message));
+    case 'resetLook': Object.assign(LOOK,{layout:'shelf',textSize:'normal',reduceMotion:false,clock24:false,battPct:true}); saveLook(); toast('Appearance reset'); return render('sy-reset');
+    case 'credits': return openSheet({title:'Built with', sub:APP+' stands on these open-source projects. Thank you!', items:CREDITS.map(([n,w])=>({label:n+' — '+w, icon:'', run:()=>{}}))});
     case 'loginAuto': return loginAuto();
     case 'loginStart': return loginStart();
     case 'loginPass': return loginPass();
@@ -1519,7 +1765,7 @@ function act(el){
     case 'fps': S.set.fps=d.v; send({type:'setting',key:'fps',value:d.v}); renderQam(); return setFocus($(`#qam [data-k="q-fps-${d.v}"]`),true);
     case 'fav': { const g=G(d.id); g.fav=!g.fav; toast(g.fav?`Added ${g.title} to Favorites`:`Removed from Favorites`);
       if(host) call('library.setFav',{id:g.id,on:g.fav}).catch(e=>toast(e.message));
-      return render('g-fav'); }
+      return render(S.view==='home' ? 'sp-'+g.id : 'g-fav'); }
     case 'gopts': return gameOptions(G(d.id));
     case 'dlopts': return downloadOptions(G(d.id));
     case 'stores': closeAll(); return S.view==='stores' ? null : navigate('stores');
@@ -2001,6 +2247,8 @@ function onSettingsTab(t){
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
   if(t==='signin') loadLogin();
+  if(t==='system' || t==='about') loadSysInfo();
+  if(t==='about'){ if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();
@@ -2298,13 +2546,14 @@ document.addEventListener('pointermove', e=>{
 document.addEventListener('contextmenu', e=>e.preventDefault());
 
 // ---------- status bar ----------
-function tick(){ const d=new Date(); $('#clock').textContent=d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); }
+function tick(){ const d=new Date(); const c=$('#clock'); if(c) c.textContent=d.toLocaleTimeString([], LOOK.clock24?{hour:'2-digit',minute:'2-digit',hour12:false}:{hour:'numeric',minute:'2-digit'}); }
 tick(); setInterval(tick, 10e3);
 
 // ---------- boot ----------
 if(host){ NOTIFS=[]; GAMES.length=0; }
 updateBadge();
 render();
+applyLook();
 loadHostInfo();
 refreshStatus();
 if(OVERLAY){ document.body.classList.add('overlay'); NOTIFS=[]; }
