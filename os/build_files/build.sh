@@ -47,6 +47,7 @@ systemctl enable nimbus-autologin.service
 # ------------------------------------------------------------------ boot splash
 # Hearth's Plymouth theme (system_files/usr/share/plymouth/themes/hearth, drawn by os/branding/make-assets.py).
 # The splash runs from the initramfs, so that's rebuilt to carry it (no host-only bits: it boots any PC).
+dnf5 -y install plymouth-plugin-script
 plymouth-set-default-theme hearth
 KVER=$(ls /usr/lib/modules | sort -V | tail -1)
 export DRACUT_NO_XATTR=1
