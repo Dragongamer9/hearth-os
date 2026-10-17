@@ -40,6 +40,9 @@ jobs:
           chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
           labwc -C hosts/linux/desktop/labwc >labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-* >/dev/null 2>&1 && break; sleep 1; done
+          if ! ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1; then
+            msg=$(tail -25 labwc.log | cut -c1-250 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=labwc::$msg"; exit 1
+          fi
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? | head -1)")
           wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
           sleep 15
