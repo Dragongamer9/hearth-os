@@ -59,7 +59,9 @@ function parseWlr(json) {
   if (!o) return null;
   const modes = (o.modes || []).map(m => ({ w: m.width, h: m.height, rate: round2(m.refresh), exact: m.refresh }));
   const cur = (o.modes || []).find(m => m.current);
-  return { output: o.name, modes, current: cur ? { w: cur.width, h: cur.height, rate: round2(cur.refresh) } : null, scale: Math.round((o.scale || 1) * 100) };
+  const pref = (o.modes || []).find(m => m.preferred);
+  return { output: o.name, modes, current: cur ? { w: cur.width, h: cur.height, rate: round2(cur.refresh) } : null,
+    preferred: pref ? { w: pref.width, h: pref.height } : null, scale: Math.round((o.scale || 1) * 100) };
 }
 
 function parseXrandr(text) {
@@ -77,10 +79,11 @@ function parseXrandr(text) {
       const mode = { w: +m[1], h: +m[2], rate: round2(r) };
       cur.modes.push(mode);
       if (tok.includes('*')) cur.current = mode;
+      if (tok.includes('+')) cur.preferred = { w: mode.w, h: mode.h };
     }
   }
   const o = outs.find(x => x.primary && x.modes.length) || outs.find(x => x.modes.length);
-  return o ? { output: o.output, modes: o.modes, current: o.current, scale: 100 } : null;
+  return o ? { output: o.output, modes: o.modes, current: o.current, preferred: o.preferred || null, scale: 100 } : null;
 }
 
 /** Connected screen's resolutions from the kernel (/sys/class/drm/*\/modes). */
@@ -140,35 +143,42 @@ class DisplayModes {
         const w = +(/-W\s+(\d+)/.exec(args) || [])[1] || s.w, h = +(/-H\s+(\d+)/.exec(args) || [])[1] || s.h;
         const sizes = drm ? drm.list : [{ w, h }];
         const modes = sizes.flatMap(m => COMMON_RATES.map(r => ({ w: m.w, h: m.h, rate: r })));
-        return { output: drm ? drm.output : 'screen', modes, current: { w, h, rate }, scale: this.getZoom() };
+        // The kernel lists the screen's preferred (native) mode first.
+        return { output: drm ? drm.output : 'screen', modes, current: { w, h, rate }, preferred: sizes[0], scale: this.getZoom() };
       }
       default: return null;
     }
   }
 
-  /** What the UI shows: resolutions with their refresh rates, the current mode, scale choices. */
+  /**
+   * What the UI shows, in the same shape as the Windows host: the current mode, every resolution
+   * (native first) with its refresh rates in whole hertz, and scale choices.
+   */
   async get() {
     const d = await this.read().catch(() => null);
-    if (!d) return { modesSupported: false };
-    const cur = d.current || { w: this.screen().w, h: this.screen().h, rate: this.screen().rate };
+    if (!d) return {};
+    const scr = this.screen();
+    const cur = d.current || { w: scr.w, h: scr.h, rate: scr.rate };
     const zoomScale = this.backend === 'gamescope' || this.backend === 'xrandr';
+    const groups = group(d.modes);
+    // Native (the screen's preferred mode) first, like Windows.
+    const pref = d.preferred && groups.findIndex(g => g.w === d.preferred.w && g.h === d.preferred.h);
+    if (pref > 0) groups.unshift(groups.splice(pref, 1)[0]);
+    const pct = zoomScale ? this.getZoom() : d.scale;
     return {
-      modesSupported: true,
-      backend: this.backend,
-      output: d.output,
-      resolutions: group(d.modes).map(g => ({ w: g.w, h: g.h, rates: g.rates })),
-      current: { w: cur.w, h: cur.h, rate: cur.rate },
       resolution: `${cur.w} × ${cur.h}`,
-      refresh: rateLabel(cur.rate) + ' Hz',
-      scalePct: zoomScale ? this.getZoom() : d.scale,
-      scale: (zoomScale ? this.getZoom() : d.scale) + '%',
-      scales: SCALES,
+      scale: pct + '%',
+      width: cur.w, height: cur.h, refreshRate: Math.round(cur.rate),
+      modes: groups.map(g => ({ width: g.w, height: g.h, rates: [...new Set(g.rates.map(Math.round))] })),
+      scalePercent: pct, scaleRecommended: 100, scales: SCALES,
+      // Linux extras the UI understands:
+      backend: this.backend,
       scaleIsInterface: zoomScale,
       appliesOnRestart: this.backend === 'gamescope',
     };
   }
 
-  async setMode(w, h, rate) {
+  async setMode(w, h, rate) {   // rate in Hz; the nearest the screen offers is used
     const d = await this.read();
     if (!d) throw new Error('Changing the resolution isn\'t supported on this desktop');
     // Pick the exact mode the tool reported (refresh rates like 59.94 must match).

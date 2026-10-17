@@ -33,6 +33,11 @@ const newer = (a, b) => {
 };
 const isPreview = v => parseVersion(v).preview != null;
 
+// Nimbus was renumbered to 0.0.x at 0.0.5. Releases from before that (v0.3.0 to v0.5.x, including Linux
+// previews and the v0.4.0-linux.100 bridge that carried 0.0.5 to existing installs) use the old numbers,
+// which look newer than 0.0.x; ignore them so they're never offered as updates.
+const LEGACY_TAG = /^v?0\.[3-5]\./;
+
 class Updates extends EventEmitter {
   constructor({ version, appImage = process.env.APPIMAGE, autoCheck = () => true } = {}) {
     super();
@@ -65,7 +70,7 @@ class Updates extends EventEmitter {
         { headers: { accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(20000) });
       if (!r.ok) throw new Error(`GitHub answered ${r.status}`);
       const candidates = (await r.json())
-        .filter(x => !x.draft && (x.assets || []).some(a => ASSET.test(a.name)))
+        .filter(x => !x.draft && !LEGACY_TAG.test(x.tag_name) && (x.assets || []).some(a => ASSET.test(a.name)))
         .filter(x => isPreview(this.current) || !x.prerelease);
       const rel = candidates.reduce((best, x) => (!best || newer(x.tag_name, best.tag_name) ? x : best), null);
       if (!rel) { this.latest = null; this.set('upToDate', { lastChecked: Date.now() }); return this.status(); }
@@ -121,4 +126,4 @@ class Updates extends EventEmitter {
   }
 }
 
-module.exports = { Updates, newer, parseVersion };
+module.exports = { Updates, newer, parseVersion, LEGACY_TAG };
