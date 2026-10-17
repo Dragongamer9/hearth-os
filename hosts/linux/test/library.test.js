@@ -165,8 +165,13 @@ test('system: nmcli field splitting and signal bars', () => {
   assert.deepEqual([bars(90), bars(60), bars(30), bars(5), bars(0)], [4, 3, 2, 1, 0]);
 });
 
-test('updates: version comparison', () => {
+test('updates: version comparison, including previews', () => {
   assert.equal(newer('0.3.10', '0.3.9'), true);
   assert.equal(newer('0.3.1', '0.3.1'), false);
   assert.equal(newer('1.0', '0.9.9'), true);
+  assert.equal(newer('v0.4.0-linux.15', '0.4.0-linux.13'), true);
+  assert.equal(newer('0.4.0-linux.13', '0.4.0-linux.15'), false);
+  assert.equal(newer('0.4.0-linux.13', '0.4.0'), true);    // previews are built on top of 0.4.0
+  assert.equal(newer('0.4.1', '0.4.0-linux.13'), true);    // the next full release beats them
+  assert.equal(newer('v0.4.0', '0.4.0-linux.13'), false);
 });

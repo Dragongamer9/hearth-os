@@ -12,11 +12,26 @@ const { log } = require('./util');
 const REPO = 'Dragongamer9/nimbus';
 const ASSET = /^Nimbus-linux-x86_64\.AppImage$/;
 
+// Versions look like 0.4.0 (a full release) or 0.4.0-linux.13 (preview 13 on the way to the next release).
+// A full release is newer than every preview of the same version, and older than previews built after it
+// (which carry its version plus a preview number).
+function parseVersion(v) {
+  const m = /^v?(\d+(?:\.\d+)*)(?:-linux\.(\d+))?/.exec(String(v || ''));
+  if (!m) return { parts: [0], preview: null };
+  return { parts: m[1].split('.').map(Number), preview: m[2] != null ? +m[2] : null };
+}
 const newer = (a, b) => {
-  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0), pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
-  return false;
+  const A = parseVersion(a), B = parseVersion(b);
+  for (let i = 0; i < Math.max(A.parts.length, B.parts.length); i++) {
+    if ((A.parts[i] || 0) !== (B.parts[i] || 0)) return (A.parts[i] || 0) > (B.parts[i] || 0);
+  }
+  if (A.preview === B.preview) return false;
+  // Same base version: a preview is built on top of the release with that number, so it counts as newer.
+  if (A.preview == null) return false;
+  if (B.preview == null) return true;
+  return A.preview > B.preview;
 };
+const isPreview = v => parseVersion(v).preview != null;
 
 class Updates extends EventEmitter {
   constructor({ version, appImage = process.env.APPIMAGE, autoCheck = () => true } = {}) {
@@ -44,11 +59,16 @@ class Updates extends EventEmitter {
     if (['downloading', 'ready'].includes(this.state)) return this.status();
     this.set('checking', { error: null });
     try {
-      const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`,
+      // Every recent release that has a Linux AppImage. Preview builds also take newer previews;
+      // full releases only take full releases.
+      const r = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=30`,
         { headers: { accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(20000) });
-      if (r.status === 404) { this.set('upToDate', { lastChecked: Date.now() }); return this.status(); }
       if (!r.ok) throw new Error(`GitHub answered ${r.status}`);
-      const rel = await r.json();
+      const candidates = (await r.json())
+        .filter(x => !x.draft && (x.assets || []).some(a => ASSET.test(a.name)))
+        .filter(x => isPreview(this.current) || !x.prerelease);
+      const rel = candidates.reduce((best, x) => (!best || newer(x.tag_name, best.tag_name) ? x : best), null);
+      if (!rel) { this.latest = null; this.set('upToDate', { lastChecked: Date.now() }); return this.status(); }
       const version = String(rel.tag_name || '').replace(/^v/, '');
       const asset = (rel.assets || []).find(a => ASSET.test(a.name));
       const sha = (rel.assets || []).find(a => asset && a.name === asset.name + '.sha256');
@@ -101,4 +121,4 @@ class Updates extends EventEmitter {
   }
 }
 
-module.exports = { Updates, newer };
+module.exports = { Updates, newer, parseVersion };
