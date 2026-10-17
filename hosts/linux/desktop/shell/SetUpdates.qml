@@ -16,7 +16,7 @@ SetPage {
     property string line: ""
     property string error: ""
 
-    function ver(i) { return i && i.version ? i.version : (i && i.timestamp ? i.timestamp.slice(0, 10) : "unknown"); }
+    function ver(i) { return i && i.version ? i.version : (i && i.timestamp ? i.timestamp.slice(0, 10) : ""); }
     function start(cmd) {
         if (admin.running) return;
         error = ""; line = cmd === "update" ? "Starting…" : cmd === "update-check" ? "Looking for updates…" : "";
@@ -50,6 +50,7 @@ SetPage {
     }
 
     SetRow {
+        visible: page.canAdmin
         interactive: false; chevron: false
         icon: "info"; title: "Hearth " + page.ver(page.status && page.status.booted)
         sub: page.status && page.status.booted && page.status.booted.image ? page.status.booted.image : "Running now"
