@@ -7,3 +7,6 @@ tools/TestGame/bin/
 hosts/linux/node_modules/
 hosts/linux/dist/
 __pycache__/
+
+# Hearth OS files that go to /usr/bin
+!os/system_files/usr/bin/
