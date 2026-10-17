@@ -7,6 +7,7 @@
 FROM scratch AS ctx
 COPY os/build_files /
 COPY os/system_files /system_files
+COPY os/branding/wallpapers /wallpapers
 COPY os/nimbus-app /nimbus-app
 COPY hosts/linux/session /session
 COPY hosts/linux/desktop /desktop

@@ -1,0 +1,52 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#0b0807}
+svg{display:block}
+</style></head><body><div id="w"></div><script>const LOGO="<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\" width=\"512\" height=\"512\">\n  <!-- Hearth mark: a fireplace arch with a flame inside. -->\n  <defs>\n    <linearGradient id=\"flame\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">\n      <stop offset=\"0\" stop-color=\"#ffd166\"/>\n      <stop offset=\".55\" stop-color=\"#ff8a3d\"/>\n      <stop offset=\"1\" stop-color=\"#e5483b\"/>\n    </linearGradient>\n    <linearGradient id=\"core\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">\n      <stop offset=\"0\" stop-color=\"#fff6d6\"/>\n      <stop offset=\"1\" stop-color=\"#ffc24f\"/>\n    </linearGradient>\n    <linearGradient id=\"stone\" gradientUnits=\"userSpaceOnUse\" x1=\"0\" y1=\"108\" x2=\"0\" y2=\"475\">\n      <stop offset=\"0\" stop-color=\"#f6ece0\"/>\n      <stop offset=\"1\" stop-color=\"#cdbba8\"/>\n    </linearGradient>\n  </defs>\n  <path d=\"M112 432 V252 A144 144 0 0 1 400 252 V432\" fill=\"none\" stroke=\"url(#stone)\" stroke-width=\"30\" stroke-linecap=\"round\"/>\n  <path d=\"M76 462 H436\" stroke=\"url(#stone)\" stroke-width=\"26\" stroke-linecap=\"round\"/>\n  <path d=\"M256 168 C298 222 340 262 340 332 C340 386 302 422 256 422 C210 422 172 386 172 332 C172 294 190 266 212 244 C210 276 222 298 242 306 C232 258 236 212 256 168 Z\" fill=\"url(#flame)\"/>\n  <path d=\"M258 284 C280 314 300 338 300 368 C300 394 282 412 258 412 C234 412 216 394 216 368 C216 340 238 316 258 284 Z\" fill=\"url(#core)\"/>\n</svg>\n";
+// Deterministic random
+let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return (seed-1)/2147483646};
+const W=1920,H=1080;
+const scenes={
+// 1. Fireside: the default, still
+fireside(){seed=3;let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b0807"/><stop offset=".6" stop-color="#17110e"/><stop offset="1" stop-color="#26170f"/></linearGradient>
+<radialGradient id="g" cx=".5" cy="1.02" r=".75" gradientTransform="translate(0 0) scale(1 .7)"><stop offset="0" stop-color="#ffb35c" stop-opacity=".75"/><stop offset=".25" stop-color="#ff7a32" stop-opacity=".45"/><stop offset=".6" stop-color="#a8361c" stop-opacity=".15"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+<radialGradient id="c" cx=".5" cy="1" r=".35"><stop offset="0" stop-color="#ffe2a0" stop-opacity=".55"/><stop offset="1" stop-color="#ff8a3d" stop-opacity="0"/></radialGradient>
+<filter id="b"><feGaussianBlur stdDeviation="1.2"/></filter></defs>
+<rect width="100%" height="100%" fill="url(#bg)"/><rect width="100%" height="100%" fill="url(#g)"/><ellipse cx="960" cy="1100" rx="700" ry="420" fill="url(#c)"/>`;
+for(let i=0;i<70;i++){const x=560+rnd()*800,y=300+rnd()*780,r=1+rnd()*2.6,o=.15+(y/H)*.7*rnd();s+=`<circle cx="${x}" cy="${y}" r="${r}" fill="${rnd()>.5?'#ff8a3d':'#ffd166'}" opacity="${o.toFixed(2)}" filter="url(#b)"/>`}
+return s+'</svg>'},
+
+// 2. Embers: soft bokeh of drifting sparks
+embers(){seed=11;let s=`<svg width="${W}" height="${H}"><defs><radialGradient id="bg" cx=".3" cy=".8" r="1.1"><stop offset="0" stop-color="#2a160c"/><stop offset=".5" stop-color="#140d0a"/><stop offset="1" stop-color="#080605"/></radialGradient>
+<filter id="b1"><feGaussianBlur stdDeviation="14"/></filter><filter id="b2"><feGaussianBlur stdDeviation="5"/></filter><filter id="b3"><feGaussianBlur stdDeviation="1"/></filter></defs><rect width="100%" height="100%" fill="url(#bg)"/>`;
+const layer=(n,rmin,rmax,f,op)=>{for(let i=0;i<n;i++){const x=rnd()*W,y=rnd()*H,r=rmin+rnd()*(rmax-rmin),warm=['#ff8a3d','#ff6a2b','#ff9a4a','#e5483b','#ffb060'][Math.floor(rnd()*5)];const d=Math.hypot((x-W*.3)/W,(y-H*.8)/H);s+=`<circle cx="${x}" cy="${y}" r="${r}" fill="${warm}" opacity="${(op*(1.1-d)).toFixed(2)}" filter="url(#${f})"/>`}};
+layer(26,40,110,'b1',.28);layer(60,8,22,'b2',.45);layer(140,1,3,'b3',.8);return s+'</svg>'},
+
+// 3. Dusk Ridge: layered hills under a low ember sun
+ridge(){seed=5;let s=`<svg width="${W}" height="${H}"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f0a09"/><stop offset=".35" stop-color="#2b1610"/><stop offset=".55" stop-color="#7a3220"/><stop offset=".68" stop-color="#e86a33"/><stop offset=".76" stop-color="#ffb35c"/></linearGradient>
+<radialGradient id="sun" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff4d6"/><stop offset=".22" stop-color="#ffd98a"/><stop offset=".5" stop-color="#ffab55" stop-opacity=".55"/><stop offset="1" stop-color="#ff8a3d" stop-opacity="0"/></radialGradient>
+<linearGradient id="haze" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8a3d" stop-opacity=".25"/><stop offset="1" stop-color="#ff8a3d" stop-opacity="0"/></linearGradient></defs>
+<rect width="100%" height="100%" fill="url(#sky)"/><circle cx="1260" cy="800" r="330" fill="url(#sun)"/>`;
+const cols=['#7a3523','#55251a','#3a1912','#24100c','#130a08'];
+cols.forEach((c,k)=>{const y0=760+k*62,a1=70-k*8,f1=1/(330-k*30),f2=1/(120-k*10),p=rnd()*10;let d=`M0 ${H}`;
+ for(let x=0;x<=W;x+=12){const y=y0-a1*(0.6*Math.sin(x*f1+p)+0.4*Math.sin(x*f2+p*1.7))-a1*0.25*Math.sin(x*f2*2.3+p*3);d+=` L${x} ${y.toFixed(1)}`}
+ d+=` L${W} ${H} Z`;s+=`<path d="${d}" fill="${c}"/>`});
+return s+'</svg>'},
+
+// 4. The Mark: the Hearth logo glowing in the dark
+mark(){return Promise.resolve(LOGO).then(t=>{const inner=t.replace(/<svg[^>]*>/,'').replace('</svg>','');
+return `<svg width="${W}" height="${H}"><defs><radialGradient id="bg" cx=".5" cy=".55" r=".75"><stop offset="0" stop-color="#2a170e"/><stop offset=".45" stop-color="#120c0a"/><stop offset="1" stop-color="#070505"/></radialGradient>
+<radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ff8a3d" stop-opacity=".35"/><stop offset="1" stop-color="#ff8a3d" stop-opacity="0"/></radialGradient></defs>
+<rect width="100%" height="100%" fill="url(#bg)"/><circle cx="960" cy="560" r="420" fill="url(#glow)"/>
+<g transform="translate(800 390) scale(.625)">${inner}</g></svg>`})},
+
+// 5. Kiln: flowing heat waves, abstract
+kiln(){seed=21;let s=`<svg width="${W}" height="${H}"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0c0807"/><stop offset="1" stop-color="#1c110c"/></linearGradient>
+<linearGradient id="l" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e5483b" stop-opacity="0"/><stop offset=".35" stop-color="#ff8a3d"/><stop offset=".7" stop-color="#ffd166"/><stop offset="1" stop-color="#ffd166" stop-opacity="0"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><rect width="100%" height="100%" fill="url(#bg)"/>`;
+for(let k=0;k<26;k++){let d='';const base=430+k*16,amp=60+k*5,ph=k*.23;for(let x=-20;x<=W+20;x+=20){const y=base+Math.sin(x/300+ph)*amp+Math.sin(x/97+ph*2)*14;d+=(x<0?'M':'L')+x+' '+y.toFixed(1)}
+s+=`<path d="${d}" fill="none" stroke="url(#l)" stroke-width="${k%5==0?2.2:1}" opacity="${(0.15+0.6*Math.sin(k/26*Math.PI)).toFixed(2)}" ${k%5==0?'filter="url(#glow)"':''}/>`}
+return s+'</svg>'},
+};
+Promise.resolve(scenes[new URLSearchParams(location.search).get('s')]()).then(h=>{document.getElementById('w').innerHTML=h;document.title='ready'});
+</script></body></html>
