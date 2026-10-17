@@ -24,7 +24,7 @@ PanelWindow {
 
     // Every app with a .desktop file, A–Z, filtered by what you type.
     readonly property var apps: Array.from(DesktopEntries.applications.values)
-        .filter(a => !a.noDisplay)
+        .filter(a => !a.noDisplay && !/^(qt5ct|qt6ct)$/.test(a.id || ""))
         .sort((a, b) => a.name.localeCompare(b.name))
     readonly property var matches: {
         const q = search.text.trim().toLowerCase();

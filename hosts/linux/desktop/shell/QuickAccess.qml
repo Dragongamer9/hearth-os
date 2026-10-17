@@ -18,7 +18,8 @@ PanelWindow {
     signal keyboardRequested()
     function toggle() { shown = !shown; }
 
-    visible: shown || slide.running
+    visible: shown || closing.running
+    Timer { id: closing; interval: Theme.calm + 60 }
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "hearth-quick"
     WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -26,7 +27,7 @@ PanelWindow {
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
 
-    onShownChanged: if (shown) { refresh(); r = 0; c = 0; keys.forceActiveFocus(); }
+    onShownChanged: if (shown) { refresh(); r = 0; c = 0; keys.forceActiveFocus(); } else closing.restart()
 
     // ------------------------------------------------------------------ state read from the system
     PwObjectTracker { objects: [Pipewire.defaultAudioSink] }
@@ -136,7 +137,7 @@ PanelWindow {
         width: Math.min(400, root.width - 32)
         anchors { top: parent.top; bottom: parent.bottom; topMargin: 12; bottomMargin: 72 }
         x: root.shown ? root.width - width - 12 : root.width + 8
-        Behavior on x { NumberAnimation { id: slide; duration: Theme.calm; easing.type: Easing.OutCubic } }
+        Behavior on x { NumberAnimation { duration: Theme.calm; easing.type: Easing.OutCubic } }
         radius: Theme.radius + 6
         color: Theme.glass
         border.color: Theme.line
@@ -282,7 +283,7 @@ PanelWindow {
         property string detail
         property bool lit
         Layout.fillWidth: true
-        implicitHeight: 92
+        implicitHeight: 100
         opacity: enabled ? 1 : 0.5
         color: lit ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : Theme.panel2
         Behavior on color { ColorAnimation { duration: Theme.quick } }
@@ -291,7 +292,7 @@ PanelWindow {
             spacing: 4
             Icon { name: t.icon; size: 22; color: t.lit ? Theme.accent : Theme.text }
             Item { Layout.fillHeight: true }
-            Text { Layout.fillWidth: true; text: t.label; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight }
+            Text { Layout.fillWidth: true; text: t.label; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
             Text { Layout.fillWidth: true; text: t.detail; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; elide: Text.ElideRight }
         }
         MouseArea { anchors.fill: parent; enabled: t.enabled; onClicked: root.activate(t.navId) }
