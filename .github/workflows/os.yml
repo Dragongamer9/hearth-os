@@ -25,7 +25,7 @@ env:
   IMAGE: ghcr.io/dragongamer9/hearth
 
 concurrency:
-  group: hearth-os-${{ github.ref }}
+  group: hearth-os-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
