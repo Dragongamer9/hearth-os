@@ -32,7 +32,7 @@ SetPage {
             }
         }
     }
-    readonly property var rows: [
+    readonly property var facts: [
         ["Device", [info.vendor, info.model].filter(Boolean).join(" ")],
         ["Name", info.host], ["Signed in as", info.user],
         ["Processor", info.cpu ? info.cpu + (info.cores ? " (" + info.cores + " threads)" : "") : ""],
@@ -51,7 +51,7 @@ SetPage {
         }
     }
     Repeater {
-        model: page.rows
+        model: page.facts
         delegate: SetRow {
             required property var modelData
             interactive: false; chevron: false
