@@ -79,6 +79,10 @@ Values are camelCase JSON. "—" means the method returns `null`.
 | `profile.pickImage` | `{kind:'avatar'\|'background'}` | profile, or `null` if cancelled |
 | `shell.status` | | `{running, registered, value, exe}` (+ `gamescope` on Linux) |
 | `shell.register` · `shell.unregister` · `shell.returnToDesktop` | | |
+| `login.get` (Linux) | | `{canAdmin, autologin, startMode, hostname, user}`; `canAdmin`: Hearth, the OS (root options available) |
+| `login.setAutologin` · `login.setStartMode` · `login.setHostname` | `{on}` · `{mode: game\|desktop}` · `{name}` | login |
+| `login.password` | `{old, new}` | `{ok}`; checks the current password first |
+| `system.update.status` · `.check` · `.install` (Hearth OS) | | `{canAdmin, state: idle\|checking\|updating, line, error, status: {booted, staged, available}}`; check and install return at once and push `systemUpdate` |
 
 **Game** = `{id, title, source, fav, hidden, minutes, lastPlayed, added, sizeBytes, art:{cover,hero,logo,wide}, path, canRemove, installed, state, cloud, progress, bytesDone, bytesTotal, bytesPerSec?}`
 
@@ -92,4 +96,5 @@ Values are camelCase JSON. "—" means the method returns `null`.
 
 `status` · `game.started {id}` · `game.exited Game` · `game.timeout {id}` · `update` (update status) ·
 `bt.found` (device) · `bt.scanDone` · `bt.pin {pin, confirm}` · `pad {b}` (a controller button the host read; `guide` toggles Quick Access) ·
-`padMouse {on}` · `padHost {connected}` (when > 0 the UI stops reading controllers itself) · `accounts.changed`.
+`padMouse {on}` · `padHost {connected}` (when > 0 the UI stops reading controllers itself) · `accounts.changed` ·
+`systemUpdate` (system update status, Linux) · `desktopFailed {text}` (Desktop Mode couldn't start, Linux) · `open {view}` (show a page, Linux).

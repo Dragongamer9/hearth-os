@@ -773,7 +773,7 @@ function viewDownloads(){
       <div class="rv">${Math.round(d.p*100)}%</div></button>`}).join('')}</div>`;
 }
 
-const STABS = [['profile','user','Profile'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
+const STABS = [['profile','user','Profile'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
   ['controller','pad','Controls'],['sources','lib','Library sources'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
@@ -979,6 +979,7 @@ function onUpdate(s){
 }
 function pageUpdates(){
   if(!host) return note('Updates work in the '+APP+' app, not the browser preview.');
+  if(LINUX && HOSTINFO.system) return pageSystemUpdate();
   const s=UPD.status;
   if(!s) return note('Checking…');
   const L=s.latest, mb=b=>b?` (${(b/1e6).toFixed(0)} MB)`:'';
@@ -1002,6 +1003,77 @@ function pageUpdates(){
   return h;
 }
 
+// ---------- Settings › Sign-in (Linux) ----------
+const LOGIN = {s:null};
+function loadLogin(){ if(host) call('login.get').then(r=>{ LOGIN.s=r; refreshUI(); }).catch(e=>toast(e.message)); }
+function pageSignin(){
+  if(!host) return note('Sign-in settings work in the '+APP+' app.');
+  const L=LOGIN.s; if(!L) return note('Loading…');
+  const mode = L.startMode==='desktop' ? 'Desktop Mode' : 'Game Mode';
+  let h='';
+  if(L.canAdmin) h += `<button class="row" data-f data-k="li-auto" data-act="loginAuto"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign in automatically</b><small>${L.autologin?'Starts straight into '+APP+' when you turn it on, like a console':'Shows the login screen when you turn it on'}</small></div><div class="sw ${L.autologin?'on':''}"></div></button>`;
+  h += `<button class="row" data-f data-k="li-start" data-act="loginStart"><span class="ricon">${I.desk}</span><div class="rt"><b>Start in</b><small>What you see after signing in</small></div><div class="rv">${mode} ›</div></button>`;
+  if(L.canAdmin){
+    h += `<button class="row" data-f data-k="li-pass" data-act="loginPass"><span class="ricon">${I.lock}</span><div class="rt"><b>Change password</b><small>For the account <b>${esc(L.user)}</b>: the login screen, admin tasks and remote access</small></div><div class="rv">›</div></button>`;
+    h += `<button class="row" data-f data-k="li-host" data-act="loginHost"><span class="ricon">${I.info}</span><div class="rt"><b>Device name</b><small>How this PC shows up on your network and to other devices</small></div><div class="rv">${esc(L.hostname)} ›</div></button>`;
+  } else h += note('Signing in automatically, your password and the device name can be changed here on Hearth, the OS. On other Linux systems, use the system\'s own settings.');
+  return h;
+}
+async function loginAuto(){
+  const on=!(LOGIN.s&&LOGIN.s.autologin);
+  try{ LOGIN.s=await call('login.setAutologin',{on},30000); toast(on?'Signs in automatically from the next start':'Shows the login screen from the next start'); }catch(e){ toast(e.message); }
+  refreshUI();
+}
+function loginStart(){
+  const cur=LOGIN.s&&LOGIN.s.startMode;
+  const pick=mode=>call('login.setStartMode',{mode}).then(r=>{ LOGIN.s=r; refreshUI(); toast('Starts in '+(mode==='desktop'?'Desktop':'Game')+' Mode from the next sign-in'); }).catch(e=>toast(e.message));
+  openSheet({title:'Start in', sub:'What you see after signing in', items:[
+    {label:'Game Mode', icon:cur!=='desktop'?'check':'', run:()=>pick('game')},
+    {label:'Desktop Mode', icon:cur==='desktop'?'check':'', run:()=>pick('desktop')}]});
+}
+async function loginPass(){
+  const old=await openPrompt({title:'Current password', secret:true}); if(old==null) return;
+  const pw=await openPrompt({title:'New password', secret:true, min:4}); if(pw==null) return;
+  const again=await openPrompt({title:'New password again', secret:true}); if(again==null) return;
+  if(pw!==again) return toast('The new passwords don\'t match');
+  try{ await call('login.password',{old, new:pw},60000); toast('Password changed'); }catch(e){ toast(e.message); }
+}
+async function loginHost(){
+  const name=await openPrompt({title:'Device name', value:(LOGIN.s&&LOGIN.s.hostname)||''}); if(name==null||!name.trim()) return;
+  try{ LOGIN.s=await call('login.setHostname',{name:name.trim()},30000); toast('Device name changed'); }catch(e){ toast(e.message); }
+  refreshUI();
+}
+
+// ---------- Settings › Updates › System (Hearth, the OS) ----------
+const SYSUPD = {s:null};
+function loadSystemUpdate(){ if(host && LINUX && HOSTINFO.system) call('system.update.status',{},90000).then(r=>{ SYSUPD.s=r; refreshUI(); }).catch(()=>{}); }
+function onSystemUpdate(d){
+  const was=SYSUPD.s; SYSUPD.s=d;
+  if(was && was.state==='updating' && d.state==='idle') toast(d.error ? d.error : (d.status&&d.status.staged ? 'Update downloaded. Restart to finish.' : 'Everything is up to date'));
+  if(was && was.state==='checking' && d.state==='idle' && d.error) toast(d.error);
+  if(S.view==='settings' && S.settingsTab==='updates') render(null,true);
+}
+function pageSystemUpdate(){
+  const u=SYSUPD.s;
+  let h=shead('System', u&&u.state!=='idle');
+  if(!u) return h+note('Checking…');
+  const st=u.status||{}, v=x=>x&&x.version?x.version:'';
+  const line = u.state==='checking' ? 'Checking for updates…'
+    : u.state==='updating' ? (u.line||'Updating…')
+    : st.staged ? `Version ${v(st.staged)} is downloaded. Restart to finish.`
+    : st.available ? `Version ${v(st.available)} is available`
+    : u.error ? u.error
+    : 'Up to date';
+  h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(v(st.booted))}</b><small>${esc(line)}</small></div>${u.state!=='idle'?'<span class="mini-spin"></span>':''}</div>`;
+  if(u.state==='idle'){
+    if(st.staged) h += `<button class="row" data-f data-k="su-restart" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to finish updating</b><small>Takes a minute. If something's wrong, the previous version is still in the boot menu.</small></div></button>`;
+    h += `<button class="row" data-f data-k="su-install" data-act="sysUpdInstall"><span class="ricon">${I.dl}</span><div class="rt"><b>Update now</b><small>Downloads the newest Hearth (system, drivers, ${APP}) and updates your apps. Keep playing while it downloads.</small></div></button>`;
+    h += `<button class="row" data-f data-k="su-check" data-act="sysUpdCheck"><span class="ricon">${I.refresh}</span><div class="rt"><b>Check for updates</b></div></button>`;
+  }
+  h += note('Hearth also updates by itself in the background and finishes the next time you restart.');
+  return h;
+}
+
 // ---------- Settings › Shell ----------
 const SHELL = {status:null};
 function loadShellStatus(){ if(host) call('shell.status').then(s=>{ SHELL.status=s; refreshUI(); }).catch(e=>toast(e.message)); }
@@ -1013,7 +1085,7 @@ function pageShellLinux(){
     : ''+APP+' is running as an app';
   let h = `<div class="row"><span class="ricon">${I.shell}</span><div class="rt"><b>${state}</b><small>The ${APP} session starts ${APP} fullscreen in gamescope, like SteamOS Gaming Mode. Pick it on the login screen.</small></div></div>`;
   if(s && s.system){
-    h += note('This PC runs Hearth: its session is part of the system, and the PC starts in it. To boot to the login screen instead, run <code>sudo touch /etc/nimbus/no-autologin</code> in a terminal.');
+    h += note('This PC runs Hearth: its session is part of the system, and the PC starts in it. To show the login screen at start instead, see Settings › Sign-in.');
   } else if(s){
     if(s.registered)
       h += `<button class="row" data-f data-k="sh-return" data-act="shellReturn"><span class="ricon">${I.desk}</span><div class="rt"><b>Remove the ${APP} session</b><small>Takes it off the login screen</small></div><div class="rv">›</div></button>`;
@@ -1073,6 +1145,7 @@ function viewSettings(){
   if(t==='audio') body = pageAudio();
   if(t==='power') body = pagePower();
   if(t==='profile') body = pageProfile();
+  if(t==='signin') body = pageSignin();
   if(t==='system') body = infoRow('dev','Device',HOSTINFO.name||(LINUX?'Linux PC':'Windows 11 PC'))+infoRow('user','Profile name',PROFILE.name)
     +(LINUX?'':swRow('startOnBoot','Start '+APP+' at sign-in','Registers '+APP+' as the shell for this user'))+swRow('sounds','Interface sounds');
   if(t==='controller') body = pageControls();
@@ -1092,7 +1165,7 @@ function viewSettings(){
   if(t==='updates') body = pageUpdates();
   if(t==='about') body = infoRow('ver',''+APP+'', UPD.status ? UPD.status.current : (host?'…':'Browser preview'))+infoRow('host','Host',!host?'Browser preview':LINUX?(HOSTINFO.host||'Electron')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
   return `<div class="settings">
-    <div class="snav">${STABS.map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
+    <div class="snav">${STABS.filter(([k])=>k!=='signin'||LINUX).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
     <div class="rows">${body}</div></div>`;
 }
 
@@ -1413,6 +1486,12 @@ function act(el){
     case 'dispHz': return dispHz();
     case 'dispScale': return dispScale();
     case 'shellMake': return shellMake();
+    case 'loginAuto': return loginAuto();
+    case 'loginStart': return loginStart();
+    case 'loginPass': return loginPass();
+    case 'loginHost': return loginHost();
+    case 'sysUpdCheck': return call('system.update.check').then(onSystemUpdate).catch(e=>toast(e.message));
+    case 'sysUpdInstall': return call('system.update.install').then(onSystemUpdate).catch(e=>toast(e.message));
     case 'updCheck': return call('update.check',{},60000).then(onUpdate).catch(e=>toast(e.message));
     case 'updDownload': return call('update.download').then(onUpdate).catch(e=>toast(e.message));
     case 'updInstall': return openSheet({title:'Restart '+APP+' to update?', sub:''+APP+' closes for a few seconds and comes back on the new version.',
@@ -1848,6 +1927,7 @@ async function setSources(){
 // =====================================================================
 function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
+  if(name==='systemUpdate') return onSystemUpdate(data);
   if(name==='desktopFailed') return openSheet({title:"Desktop Mode couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});
   if(name==='open'){ if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
   if(name==='game.started') return gameStarted(data.id);
@@ -1919,7 +1999,8 @@ function onSettingsTab(t){
   if(t==='wifi') wifiScan();
   if(t==='shell') loadShellStatus();
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
-  if(t==='updates') loadUpdateStatus();
+  if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
+  if(t==='signin') loadLogin();
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();

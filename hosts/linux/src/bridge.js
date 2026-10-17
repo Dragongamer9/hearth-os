@@ -9,6 +9,7 @@ const { Profile, steamAccount } = require('./accounts');
 const perf = require('./perf');
 const steam = require('./library/steam');
 const { DisplayModes } = require('./display');
+const { SystemAdmin } = require('./system-admin');
 const { log } = require('./util');
 
 class Bridge {
@@ -30,6 +31,8 @@ class Bridge {
     this.display = new Display();
     this.power = new Power();
     this.profile = new Profile(library.store, library.accounts);
+    this.admin = platform.admin || new SystemAdmin();
+    this.admin.on('update', s => this.event('systemUpdate', s));
     // Account changes come in bursts (sign-in, list refresh): tell the UI once they settle.
     library.accounts.on('changed', () => { clearTimeout(this.accTimer); this.accTimer = setTimeout(() => this.event('accounts.changed', {}), 400); });
     library.on('installDone', d => this.event('install.done', d));
@@ -172,6 +175,17 @@ class Bridge {
         const file = await this.platform.pickImage(kind);
         return file ? this.profile.setImage(kind, file) : null;
       }
+
+      // Settings › Sign-in (Linux)
+      case 'login.get': return this.admin.login();
+      case 'login.setAutologin': return this.admin.setAutologin(!!a.on);
+      case 'login.setStartMode': return this.admin.setStartMode(req('mode'));
+      case 'login.setHostname': return this.admin.setHostname(req('name'));
+      case 'login.password': return this.admin.changePassword(req('old'), req('new'));
+      // Settings › Updates › System (Hearth, the OS)
+      case 'system.update.status': return this.admin.refreshUpdate();
+      case 'system.update.check': this.admin.checkUpdate(); return this.admin.updateStatus();
+      case 'system.update.install': this.admin.installUpdate(); return this.admin.updateStatus();
 
       case 'update.status': return this.updates.status();
       case 'update.check': return this.updates.check();

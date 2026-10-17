@@ -1,0 +1,11 @@
+// Hearth: the person signed in at the device can use Hearth Settings' system options (sign-in, device name,
+// password, system update) without a password prompt, which a handheld couldn't answer.
+// Only the hearth-admin helper, only from a local active session, only for administrators (wheel).
+// The password change still checks the current password itself.
+polkit.addRule(function (action, subject) {
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        subject.local && subject.active && subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});
