@@ -30,6 +30,11 @@ Scope {
     onKeysContextChanged: send({ cmd: "keys", on: keysContext })
     onFullscreenAppChanged: send({ cmd: "pause", on: fullscreenApp })
 
+    function openMenu() {
+        radial.sel = -1;
+        radial.open = true;
+        send({ cmd: "radial", open: true });
+    }
     function openKeyboard() {
         if (problem) return help.toast(problem);
         send({ cmd: "osk", open: true });

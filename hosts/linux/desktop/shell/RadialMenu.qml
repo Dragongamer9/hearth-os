@@ -30,7 +30,9 @@ PanelWindow {
         if (m.pick >= 0 && m.pick < items.length) picked(items[m.pick].action);
     }
 
-    visible: open || fade.running
+    visible: open || closing.running
+    Timer { id: closing; interval: Theme.calm + 60 }
+    onOpenChanged: if (!open) closing.restart()
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "hearth-radial"
     exclusionMode: ExclusionMode.Ignore
@@ -45,7 +47,7 @@ PanelWindow {
         anchors.fill: parent
         color: "#000000"
         opacity: root.open ? 0.55 : 0
-        Behavior on opacity { NumberAnimation { id: fade; duration: Theme.calm; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: Theme.calm; easing.type: Easing.OutCubic } }
     }
 
     Item {

@@ -232,7 +232,7 @@ PanelWindow {
         signal rightClicked()
         signal scrolled(int delta)
 
-        implicitWidth: narrow ? 30 : wide ? Math.max(44, holder.childrenRect.width + 16) : 44
+        implicitWidth: narrow ? 30 : wide ? Math.max(44, (holder.children.length ? holder.children[0].implicitWidth : 0) + 20) : 44
         implicitHeight: narrow && bar.portrait ? 30 : 44
         Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
         Rectangle {
