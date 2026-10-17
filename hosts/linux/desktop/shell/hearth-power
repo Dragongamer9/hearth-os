@@ -1,0 +1,224 @@
+#!/usr/bin/python3
+"""hearth-power: power mode and power limit (TDP) for Hearth's Game Mode and Desktop Mode.
+
+  hearth-power status          JSON: {"mode": {...}, "tdp": {...}}
+  hearth-power mode NAME       power-saver | balanced | performance
+  hearth-power tdp WATTS       set the power limit
+  hearth-power restore         put back the last power limit you chose (after a restart)
+
+It tries what the system offers, in this order, and says which one it used ("via"):
+  power mode   power-profiles D-Bus (tuned-ppd on Bazzite)  ->  powerprofilesctl  ->  SteamOS Manager
+  power limit  SteamOS Manager (what Steam's Game Mode uses on Bazzite)  ->  PowerStation  ->
+               Hearth's own: hearth-admin through pkexec, which writes the limits itself (ASUS firmware
+               attributes, the older asus-nb-wmi files, or ryzenadj on other AMD handhelds)
+Output is one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+PP = [('org.freedesktop.UPower.PowerProfiles', '/org/freedesktop/UPower/PowerProfiles', 'org.freedesktop.UPower.PowerProfiles'),
+      ('net.hadess.PowerProfiles', '/net/hadess/PowerProfiles', 'net.hadess.PowerProfiles')]
+SOM = ('com.steampowered.SteamOSManager1', '/com/steampowered/SteamOSManager1')
+PS = 'org.shadowblip.PowerStation'
+PS_IFACE = 'org.shadowblip.GPU.Card.TDP'
+ADMIN = '/usr/libexec/nimbus/hearth-admin'
+MODES = ['power-saver', 'balanced', 'performance']
+# SteamOS Manager / platform_profile names → ours
+SOM_NAMES = {'low-power': 'power-saver', 'quiet': 'power-saver', 'power-saver': 'power-saver',
+             'balanced': 'balanced', 'performance': 'performance'}
+
+
+class Fail(Exception):
+    pass
+
+
+def busctl(bus, *args, timeout=6):
+    if not shutil.which('busctl'):
+        raise Fail('busctl is missing')
+    r = subprocess.run(['busctl', '--' + bus, *args], capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        raise Fail((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else 'busctl failed')
+    return r.stdout
+
+
+def getp(bus, svc, path, iface, name):
+    return json.loads(busctl(bus, '--json=short', 'get-property', svc, path, iface, name))['data']
+
+
+def state_file():
+    base = os.environ.get('XDG_STATE_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'state')
+    return os.path.join(base, 'nimbus', 'tdp')
+
+
+def remember(watts):
+    try:
+        os.makedirs(os.path.dirname(state_file()), exist_ok=True)
+        with open(state_file(), 'w') as f:
+            f.write(f'{int(watts)}\n')
+    except OSError:
+        pass
+
+
+def remembered():
+    try:
+        with open(state_file()) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+# ---------------------------------------------------------------------- power mode
+def mode_status():
+    for svc, path, iface in PP:
+        try:
+            active = getp('system', svc, path, iface, 'ActiveProfile')
+            profiles = [p['Profile']['data'] for p in getp('system', svc, path, iface, 'Profiles')]
+            return {'supported': True, 'active': active, 'available': [m for m in MODES if m in profiles] or profiles, 'via': 'power-profiles'}
+        except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+            continue
+    if shutil.which('powerprofilesctl'):
+        try:
+            active = subprocess.run(['powerprofilesctl', 'get'], capture_output=True, text=True, timeout=5).stdout.strip()
+            if active:
+                return {'supported': True, 'active': active, 'available': MODES, 'via': 'powerprofilesctl'}
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    try:
+        iface = SOM[0] + '.PerformanceProfile1'
+        active = getp('user', SOM[0], SOM[1], iface, 'PerformanceProfile')
+        avail = getp('user', SOM[0], SOM[1], iface, 'AvailablePerformanceProfiles')
+        mapped = sorted({SOM_NAMES[a] for a in avail if a in SOM_NAMES}, key=MODES.index)
+        return {'supported': bool(mapped), 'active': SOM_NAMES.get(active, active), 'available': mapped, 'via': 'steamos-manager', 'raw': avail}
+    except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        pass
+    return {'supported': False, 'active': 'balanced', 'available': [], 'via': None}
+
+
+def set_mode(name):
+    if name not in MODES:
+        raise Fail('unknown power mode ' + name)
+    st = mode_status()
+    if st['via'] == 'power-profiles':
+        errors = []
+        for svc, path, iface in PP:
+            try:
+                busctl('system', 'set-property', svc, path, iface, 'ActiveProfile', 's', name)
+                return
+            except (Fail, subprocess.TimeoutExpired) as e:
+                errors.append(str(e))
+        raise Fail(errors[0])
+    if st['via'] == 'powerprofilesctl':
+        r = subprocess.run(['powerprofilesctl', 'set', name], capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            raise Fail(r.stderr.strip() or 'powerprofilesctl failed')
+        return
+    if st['via'] == 'steamos-manager':
+        raw = next((a for a in st.get('raw', []) if SOM_NAMES.get(a) == name), None)
+        if not raw:
+            raise Fail('this device has no ' + name + ' mode')
+        busctl('user', 'set-property', SOM[0], SOM[1], SOM[0] + '.PerformanceProfile1', 'PerformanceProfile', 's', raw)
+        return
+    raise Fail("power modes aren't available on this device")
+
+
+# ---------------------------------------------------------------------- power limit
+def ps_card():
+    tree = busctl('system', '--list', 'tree', PS, timeout=4)
+    for p in (l.strip() for l in tree.splitlines()):
+        if p.startswith('/org/shadowblip/Performance/GPU/card') and p.rsplit('card', 1)[-1].isdigit():
+            try:
+                getp('system', PS, p, PS_IFACE, 'TDP')
+                return p
+            except (Fail, ValueError, KeyError):
+                continue
+    raise Fail('no PowerStation GPU')
+
+
+def admin(*args):
+    if not os.path.exists(ADMIN):
+        raise Fail('hearth-admin is missing')
+    r = subprocess.run(['pkexec', ADMIN, *args], capture_output=True, text=True, timeout=30)
+    lines = [l for l in r.stdout.splitlines() if l.strip()]
+    err = next((l[7:] for l in lines if l.startswith('error: ')), None)
+    if err:
+        raise Fail(err)
+    if r.returncode != 0:
+        raise Fail((r.stderr.strip().splitlines() or ['hearth-admin failed'])[-1])
+    for l in reversed(lines):
+        if l.startswith('{'):
+            return json.loads(l)
+    return {}
+
+
+def tdp_status():
+    iface = SOM[0] + '.TdpLimit1'
+    try:
+        w = getp('user', SOM[0], SOM[1], iface, 'TdpLimit')
+        lo = getp('user', SOM[0], SOM[1], iface, 'TdpLimitMin')
+        hi = getp('user', SOM[0], SOM[1], iface, 'TdpLimitMax')
+        if hi:
+            return {'supported': True, 'watts': int(w), 'min': int(lo or 3), 'max': int(hi), 'via': 'steamos-manager'}
+    except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        pass
+    try:
+        card = ps_card()
+        w = getp('system', PS, card, PS_IFACE, 'TDP')
+        return {'supported': True, 'watts': round(float(w)), 'min': 5, 'max': 30, 'via': 'powerstation'}
+    except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        pass
+    if os.path.exists(ADMIN):
+        try:
+            r = subprocess.run([ADMIN, 'tdp-info'], capture_output=True, text=True, timeout=10)  # read-only, no root needed
+            info = json.loads(r.stdout.strip().splitlines()[-1])
+            if info.get('method'):
+                w = info.get('watts') or remembered() or info.get('default')
+                return {'supported': True, 'watts': int(w or 15), 'min': int(info['min']), 'max': int(info['max']), 'via': 'hearth:' + info['method']}
+        except (OSError, ValueError, IndexError, KeyError, subprocess.TimeoutExpired):
+            pass
+    return {'supported': False, 'via': None}
+
+
+def set_tdp(watts):
+    st = tdp_status()
+    if not st['supported']:
+        raise Fail("this device's power limit can't be changed here")
+    w = max(st['min'], min(st['max'], int(round(float(watts)))))
+    via = st['via']
+    if via == 'steamos-manager':
+        busctl('user', 'set-property', SOM[0], SOM[1], SOM[0] + '.TdpLimit1', 'TdpLimit', 'u', str(w))
+    elif via == 'powerstation':
+        busctl('system', 'set-property', PS, ps_card(), PS_IFACE, 'TDP', 'd', str(w))
+    else:
+        admin('tdp', str(w))
+    remember(w)
+    return w
+
+
+def cmd(argv):
+    c = argv[1] if len(argv) > 1 else 'status'
+    if c == 'status':
+        out = {'mode': mode_status(), 'tdp': tdp_status()}
+    elif c == 'mode' and len(argv) == 3:
+        set_mode(argv[2])
+        out = {'mode': mode_status()}
+    elif c == 'tdp' and len(argv) == 3:
+        set_tdp(argv[2])
+        out = {'tdp': tdp_status()}
+    elif c == 'restore':
+        w = remembered()
+        out = {'tdp': {'watts': set_tdp(w)} if w else None}
+    else:
+        print('usage: hearth-power status | mode power-saver|balanced|performance | tdp WATTS | restore')
+        sys.exit(2)
+    print(json.dumps(out))
+
+
+if __name__ == '__main__':
+    try:
+        cmd(sys.argv)
+    except (Fail, OSError, ValueError, subprocess.TimeoutExpired) as e:
+        print('error: ' + str(e))
+        sys.exit(1)

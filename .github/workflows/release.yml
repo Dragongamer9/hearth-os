@@ -100,7 +100,7 @@ jobs:
           python3 -c "import xml.dom.minidom as m; [m.parse(f) for f in ['desktop/labwc/rc.xml', 'desktop/labwc/menu.xml']]"
           sudo apt-get install -y -qq qt6-declarative-dev-tools >/dev/null
           for f in desktop/shell/*.qml; do /usr/lib/qt6/bin/qmlformat "$f" >/dev/null || { echo "::error file=hosts/linux/$f::QML syntax error"; /usr/lib/qt6/bin/qmlformat "$f" 2>&1 >/dev/null | head -20; exit 1; }; done
-          python3 -m py_compile desktop/shell/hearth-pad desktop/shell/hearth-buttons desktop/shell/hearth-controller
+          python3 -m py_compile desktop/shell/hearth-pad desktop/shell/hearth-buttons desktop/shell/hearth-controller desktop/shell/hearth-power desktop/shell/hearth-browser
 
       - name: Build the AppImage
         run: |

@@ -20,7 +20,7 @@ install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/bin/hearth-settings
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 
 # Let Nimbus's app menu entry exist for Desktop Mode / Plasma too.
@@ -37,7 +37,7 @@ DESKTOP
 # ------------------------------------------------------------------ Desktop Mode: labwc + Quickshell
 # (gamescope, wlr-randr and umu-launcher already come with Bazzite.)
 dnf5 -y install labwc grim brightnessctl wlr-randr wlsunset python3-evdev \
-  qt6ct qt5ct xdg-desktop-portal-wlr xdg-desktop-portal-gtk xprop
+  qt6ct qt5ct xdg-desktop-portal-wlr xdg-desktop-portal-gtk xprop xwininfo cpio
 dnf5 -y copr enable errornointernet/quickshell
 dnf5 -y install quickshell
 dnf5 -y copr disable errornointernet/quickshell
@@ -62,7 +62,9 @@ DESKTOP
 # The Hearth color scheme, also selectable in Plasma (System Settings › Colors).
 install -Dm644 /usr/share/nimbus/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
 # Wallpapers: /usr/share/backgrounds/hearth, and as Plasma wallpapers (System Settings › Wallpaper).
-declare -A WALL=([fireside]="Fireside" [embers]="Embers" [ridge]="Dusk Ridge" [mark]="The Mark" [kiln]="Kiln")
+declare -A WALL=([fireside]="Fireside" [embers]="Embers" [ridge]="Dusk Ridge" [mark]="The Mark" [kiln]="Kiln"
+  [cat]="Hearth Cat" [cabin]="Night Cabin" [lanterns]="Lanterns" [bloom]="Ember Bloom" [peaks]="Low Poly Peaks"
+  [forge]="Forge Grid" [topo]="Cinder Topo" [fox]="Fox Moon")
 for id in "${!WALL[@]}"; do
   install -Dm644 "/ctx/wallpapers/hearth-$id.jpg" "/usr/share/backgrounds/hearth/hearth-$id.jpg"
   dir="/usr/share/wallpapers/Hearth-$id"

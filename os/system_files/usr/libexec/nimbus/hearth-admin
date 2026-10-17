@@ -13,6 +13,9 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin update-check          look for an update, then the same JSON
   hearth-admin update                download and stage the update (applies at restart), and update the
                                      system Flatpak apps; progress lines, then the JSON
+  hearth-admin tdp-info              JSON: how this device's power limit can be set, its range and value
+                                     (read-only; works without root)
+  hearth-admin tdp WATTS             set the power limit: ASUS firmware attributes, asus-nb-wmi, or ryzenadj
 
 Output: progress lines as "log: ...", percentages as "progress: <0-100> <what>", the result as one JSON line. Exit 1 with "error: ..." on failure.
 """
@@ -181,10 +184,82 @@ def update():
     print(json.dumps(bootc_status()))
 
 
+# ---------------------------------------------------------------------- power limit (TDP)
+FW_GLOB = '/sys/class/firmware-attributes/*/attributes/ppt_pl1_spl'
+WMI = '/sys/devices/platform/asus-nb-wmi'
+
+
+def read_int(path):
+    try:
+        with open(path) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def tdp_method():
+    """(method, details) for the first way this device offers."""
+    import glob
+    for spl in sorted(glob.glob(FW_GLOB)):
+        base = os.path.dirname(spl)
+        lo, hi = read_int(os.path.join(spl, 'min_value')), read_int(os.path.join(spl, 'max_value'))
+        if hi:
+            return 'firmware', {'base': base, 'min': lo or 5, 'max': hi, 'watts': read_int(os.path.join(spl, 'current_value'))}
+    if os.path.exists(os.path.join(WMI, 'ppt_pl1_spl')):
+        return 'asus-wmi', {'min': 7, 'max': 30, 'watts': read_int(os.path.join(WMI, 'ppt_pl1_spl'))}
+    if subprocess.run(['sh', '-c', 'command -v ryzenadj'], capture_output=True).returncode == 0:
+        with open('/proc/cpuinfo') as f:
+            if 'AuthenticAMD' in f.read():
+                return 'ryzenadj', {'min': 5, 'max': 30, 'watts': None}
+    return None, {}
+
+
+def tdp_info():
+    method, d = tdp_method()
+    print(json.dumps({'method': method, 'min': d.get('min'), 'max': d.get('max'), 'watts': d.get('watts'), 'default': 15}))
+
+
+def write_value(path, value):
+    with open(path, 'w') as f:
+        f.write(str(value))
+
+
+def tdp(watts):
+    method, d = tdp_method()
+    if not method:
+        fail("this device's power limit can't be set (no ASUS firmware attributes, asus-nb-wmi or ryzenadj)")
+    try:
+        w = int(watts)
+    except ValueError:
+        fail('watts must be a number')
+    w = max(d['min'], min(d['max'], w))
+    if method == 'firmware':
+        # sustained, short boost and fast boost limits, each within its own range
+        for name in ('ppt_pl1_spl', 'ppt_pl2_sppt', 'ppt_pl3_fppt'):
+            attr = os.path.join(d['base'], name)
+            if not os.path.isdir(attr):
+                continue
+            lo = read_int(os.path.join(attr, 'min_value')) or 0
+            hi = read_int(os.path.join(attr, 'max_value')) or w
+            write_value(os.path.join(attr, 'current_value'), max(lo, min(hi, w)))
+    elif method == 'asus-wmi':
+        for name in ('ppt_pl1_spl', 'ppt_pl2_sppt', 'ppt_fppt'):
+            if os.path.exists(os.path.join(WMI, name)):
+                write_value(os.path.join(WMI, name), w)
+    else:
+        mw = str(w * 1000)
+        r = subprocess.run(['ryzenadj', '--stapm-limit=' + mw, '--fast-limit=' + mw, '--slow-limit=' + mw], capture_output=True, text=True)
+        if r.returncode != 0:
+            fail((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else 'ryzenadj failed')
+    print(json.dumps({'method': method, 'watts': w}))
+
+
 def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    if cmd == 'tdp-info':
+        return tdp_info()
     if os.geteuid() != 0:
         fail('needs root (run through pkexec)')
-    cmd = argv[1] if len(argv) > 1 else ''
     if cmd == 'autologin' and len(argv) == 3:
         autologin(argv[2])
     elif cmd == 'hostname' and len(argv) == 3:
@@ -197,8 +272,10 @@ def main(argv):
         update_check()
     elif cmd == 'update':
         update()
+    elif cmd == 'tdp' and len(argv) == 3:
+        tdp(argv[2])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS')
 
 
 if __name__ == '__main__':

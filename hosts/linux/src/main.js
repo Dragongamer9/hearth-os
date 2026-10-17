@@ -14,7 +14,9 @@ const { Updates } = require('./updates');
 const { StreamWindow } = require('./stream');
 const { GuideButton } = require('./guide');
 const { ButtonPrefs, Buttons, Controller } = require('./buttons');
+const { Browser } = require('./browser');
 const { DisplayModes } = require('./display');
+const steam = require('./library/steam');
 const { secure } = require('./stores/common');
 const sessionSetup = require('./session');
 const { run, readText, log } = require('./util');
@@ -453,17 +455,26 @@ app.whenReady().then(() => {
       // The overlay's open apps (Game Mode): list, switch to, close.
       apps: {
         supported: () => inGamescope(),
+        // Hearth is always first (hidden while a game plays, so gamescope doesn't list it), then every window
+        // that's open, then Steam if it's running in the background without a window.
         list: async () => {
           const game = new Set(library.gamePids());
-          return (await gamescope.apps()).map(a => ({ ...a,
-            title: a.pid === process.pid ? 'Hearth' : a.title,
-            hearth: a.pid === process.pid, game: game.has(a.pid) }));
+          const own = [xid(win), overlay ? xid(overlay) : 0].filter(Boolean);
+          const list = (await gamescope.apps({ exclude: [process.pid, ...own] })).map(a => ({ ...a, hearth: false, game: game.has(a.pid) }));
+          const hearthFront = win && win.isVisible() && !list.some(a => a.focused);
+          const out = [{ id: xid(win), pid: process.pid, title: 'Hearth', app: 'hearth', hearth: true, game: false, focused: hearthFront }, ...list];
+          if (steam.isRunning() && !list.some(a => /steam/i.test(a.app || '') || /^Steam$/i.test(a.title))) {
+            out.push({ id: 0, pid: 0, title: 'Steam', app: 'steam', steam: true, game: false, focused: false });
+          }
+          return out;
         },
         focus: async (id, pid) => {
           hideOverlay();
           if (pid === process.pid) return comeBack();
+          if (!id && !pid) { stepAside(); return steam.openUri('steam://open/main'); }   // Steam without a window
           stepAside();
           await gamescope.focusWindow(id);
+          setTimeout(() => { if (overlayOn) hideOverlay(); }, 400);
         },
         close: async pid => {
           if (!pid || pid === process.pid) throw new Error("Hearth can't close itself here.");
@@ -519,7 +530,7 @@ app.whenReady().then(() => {
         else relaunch();
       },
       returnToDesktop: () => power('desktop'),
-      buttonPrefs, controller,
+      buttonPrefs, controller, browser: new Browser(),
       get buttons() { return buttons; },
     },
   });

@@ -1,0 +1,311 @@
+#!/usr/bin/python3
+"""hearth-browser: Aloha Browser as Hearth's web browser.
+
+Aloha is closed-source and only offers .deb/.rpm packages, so it can't ship inside Hearth's image. Instead
+this downloads Aloha's official RPM from alohabrowser.com on the device, unpacks it into your home folder
+(nothing is installed system-wide, so Hearth's updates stay small) and makes it the default browser.
+
+  hearth-browser status      JSON: installed, default, version, when it last looked for an update
+  hearth-browser install     download and install (or reinstall) the newest Aloha, and make it the default
+  hearth-browser update      install a newer Aloha if alohabrowser.com has one
+  hearth-browser default     make Aloha the default browser
+  hearth-browser remove      uninstall it (and stop installing it by itself)
+  hearth-browser ensure      what the session runs: install if it was never installed or removed, otherwise
+                             look for an update once a week
+Progress lines "progress: <0-100> <what>", then one JSON line; failures print "error: ..." and exit 1.
+"""
+import glob
+import io
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+
+URL = 'https://alohabrowser.com/pc/download/aloha_setup64.rpm'
+HOME = os.path.expanduser('~')
+DATA = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share'))
+ROOT = os.path.join(HOME, '.local', 'opt', 'aloha-browser')
+STATE = os.path.join(DATA, 'nimbus', 'browser.json')
+DESKTOP_ID = 'hearth-aloha.desktop'
+DESKTOP = os.path.join(DATA, 'applications', DESKTOP_ID)
+LAUNCHER = os.path.join(HOME, '.local', 'bin', 'aloha-browser')
+WEEK = 7 * 24 * 3600
+MIME = ['x-scheme-handler/http', 'x-scheme-handler/https', 'text/html', 'application/xhtml+xml']
+
+
+class Fail(Exception):
+    pass
+
+
+def progress(pct, what):
+    print('progress: %d %s' % (pct, what), flush=True)
+
+
+def load_state():
+    try:
+        with open(STATE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(st):
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE + '.tmp', 'w') as f:
+        json.dump(st, f, indent=2)
+    os.replace(STATE + '.tmp', STATE)
+
+
+def remote_stamp():
+    """Something that changes when Aloha publishes a new package: ETag, Last-Modified, or size."""
+    r = subprocess.run(['curl', '-fsSLI', '--max-time', '20', URL], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Fail("couldn't reach alohabrowser.com (are you online?)")
+    heads = {}
+    for line in r.stdout.splitlines():           # after redirects, the last response wins
+        if ':' in line:
+            k, v = line.split(':', 1)
+            heads[k.strip().lower()] = v.strip()
+    return heads.get('etag') or heads.get('last-modified') or heads.get('content-length') or ''
+
+
+def download(dest):
+    p = subprocess.Popen(['curl', '-fL', '--max-time', '1800', '-o', dest, '--progress-bar', URL],
+                         stderr=subprocess.PIPE, text=True, bufsize=1)
+    buf, last = '', -1
+    while True:
+        ch = p.stderr.read(1)
+        if not ch:
+            break
+        if ch in '\r\n':
+            m = re.search(r'(\d+(?:\.\d+)?)%', buf)
+            if m:
+                pct = int(float(m.group(1)))
+                if pct != last:
+                    last = pct
+                    progress(5 + pct * 0.75, 'Downloading Aloha Browser')
+            buf = ''
+        else:
+            buf += ch
+    if p.wait() != 0:
+        raise Fail("couldn't download Aloha Browser from alohabrowser.com")
+
+
+def unpack(rpm, dest):
+    """RPM → files, with whatever this system has: rpm2archive (rpm's own), rpm2cpio + cpio, or bsdtar."""
+    os.makedirs(dest, exist_ok=True)
+    if shutil.which('rpm2archive'):
+        with open(rpm, 'rb') as f:
+            r = subprocess.run(['rpm2archive', '-'], stdin=f, capture_output=True)
+        if r.returncode == 0 and r.stdout:
+            with tarfile.open(fileobj=io.BytesIO(r.stdout), mode='r:*') as t:
+                t.extractall(dest, filter='tar') if hasattr(tarfile, 'tar_filter') else t.extractall(dest)
+            return
+    if shutil.which('rpm2cpio') and shutil.which('cpio'):
+        r = subprocess.run(f'rpm2cpio "{rpm}" | cpio -idm --quiet', shell=True, cwd=dest, capture_output=True)
+        if r.returncode == 0:
+            return
+    if shutil.which('bsdtar'):
+        if subprocess.run(['bsdtar', '-xf', rpm, '-C', dest], capture_output=True).returncode == 0:
+            return
+    raise Fail("can't unpack the package (needs rpm2archive, rpm2cpio + cpio, or bsdtar)")
+
+
+def find_entry(root):
+    """Aloha's own .desktop file inside the package, and the program it starts."""
+    files = glob.glob(os.path.join(root, 'usr', 'share', 'applications', '*.desktop'))
+    files.sort(key=lambda f: ('aloha' not in os.path.basename(f).lower(), f))
+    for f in files:
+        with open(f, errors='replace') as fh:
+            text = fh.read()
+        m = re.search(r'^Exec=(\S+)', text, re.M)
+        if m:
+            return f, text, m.group(1)
+    # no .desktop: look for the browser binary itself
+    for cand in glob.glob(os.path.join(root, 'opt', '**', '*aloha*'), recursive=True):
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return None, '', '/' + os.path.relpath(cand, root)
+    raise Fail("couldn't find the browser inside Aloha's package")
+
+
+def is_default():
+    try:
+        r = subprocess.run(['xdg-settings', 'get', 'default-web-browser'], capture_output=True, text=True, timeout=10)
+        if r.stdout.strip() == DESKTOP_ID:
+            return True
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        r = subprocess.run(['xdg-mime', 'query', 'default', 'x-scheme-handler/https'], capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() == DESKTOP_ID
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def make_default():
+    if not os.path.exists(DESKTOP):
+        raise Fail('Aloha Browser is not installed')
+    ok = False
+    for cmd in [['xdg-settings', 'set', 'default-web-browser', DESKTOP_ID]] + [['xdg-mime', 'default', DESKTOP_ID, m] for m in MIME]:
+        try:
+            ok = subprocess.run(cmd, capture_output=True, timeout=15).returncode == 0 or ok
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if not ok:
+        # No xdg-utils: write the defaults file they would have written.
+        path = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config'), 'mimeapps.list')
+        lines = []
+        try:
+            with open(path) as f:
+                lines = [l for l in f.read().splitlines() if not any(l.startswith(m + '=') for m in MIME)]
+        except OSError:
+            pass
+        if '[Default Applications]' not in lines:
+            lines.append('[Default Applications]')
+        i = lines.index('[Default Applications]') + 1
+        lines[i:i] = [m + '=' + DESKTOP_ID for m in MIME]
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
+
+
+def install(stamp=None):
+    progress(2, 'Checking alohabrowser.com')
+    stamp = stamp if stamp is not None else remote_stamp()
+    with tempfile.TemporaryDirectory(prefix='hearth-aloha-', dir=os.path.join(HOME, '.cache') if os.path.isdir(os.path.join(HOME, '.cache')) else None) as tmp:
+        rpm = os.path.join(tmp, 'aloha.rpm')
+        download(rpm)
+        progress(82, 'Unpacking')
+        new = ROOT + '.new'
+        shutil.rmtree(new, ignore_errors=True)
+        unpack(rpm, new)
+        entry, text, exe = find_entry(new)
+        if not os.path.exists(new + exe):
+            raise Fail("Aloha's package doesn't contain " + exe)
+        # Without the setuid helper (which can't work from a home folder) Chromium uses its user-namespace
+        # sandbox instead; a helper that's present but not setuid makes it refuse to start.
+        for helper in glob.glob(os.path.join(new, '**', 'chrome-sandbox'), recursive=True):
+            os.remove(helper)
+        progress(90, 'Installing')
+        shutil.rmtree(ROOT, ignore_errors=True)
+        os.makedirs(os.path.dirname(ROOT), exist_ok=True)
+        os.replace(new, ROOT)
+
+    # A launcher in ~/.local/bin, the menu entry pointing at it, and the icons.
+    os.makedirs(os.path.dirname(LAUNCHER), exist_ok=True)
+    with open(LAUNCHER, 'w') as f:
+        f.write('#!/bin/sh\n# Aloha Browser, installed by Hearth (hearth-browser)\nexec "%s" "$@"\n' % (ROOT + exe))
+    os.chmod(LAUNCHER, 0o755)
+    icon = 'aloha-browser'
+    if text:
+        m = re.search(r'^Icon=(.+)$', text, re.M)
+        icon = m.group(1).strip() if m else icon
+        out = re.sub(r'^(Exec=)(\S+)', lambda mm: mm.group(1) + LAUNCHER, text, flags=re.M)
+        out = re.sub(r'^TryExec=.*$', 'TryExec=' + LAUNCHER, out, flags=re.M)
+    else:
+        out = ('[Desktop Entry]\nName=Aloha Browser\nGenericName=Web Browser\nExec=%s %%U\nIcon=%s\nType=Application\n'
+               'Categories=Network;WebBrowser;\nMimeType=%s;\n' % (LAUNCHER, icon, ';'.join(MIME)))
+    if os.path.isabs(icon) and icon.startswith('/'):
+        out = out.replace('Icon=' + icon, 'Icon=' + ROOT + icon)
+    os.makedirs(os.path.dirname(DESKTOP), exist_ok=True)
+    with open(DESKTOP, 'w') as f:
+        f.write(out)
+    share_icons = os.path.join(ROOT, 'usr', 'share', 'icons')
+    if os.path.isdir(share_icons):
+        shutil.copytree(share_icons, os.path.join(DATA, 'icons'), dirs_exist_ok=True)
+    for png in glob.glob(os.path.join(ROOT, 'opt', '**', 'product_logo_256.png'), recursive=True)[:1]:
+        dst = os.path.join(DATA, 'icons', 'hicolor', '256x256', 'apps', icon + '.png')
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy(png, dst)
+    if shutil.which('update-desktop-database'):
+        subprocess.run(['update-desktop-database', os.path.dirname(DESKTOP)], capture_output=True)
+
+    make_default()
+    st = load_state()
+    st.update({'installed': True, 'removed': False, 'stamp': stamp, 'installedAt': int(time.time()), 'checkedAt': int(time.time()),
+               'version': version()})
+    save_state(st)
+    progress(100, 'Done')
+
+
+def version():
+    """The version Aloha reports, if it says (Chromium-style --version), else when it was installed."""
+    if not os.path.exists(LAUNCHER):
+        return None
+    try:
+        r = subprocess.run([LAUNCHER, '--version'], capture_output=True, text=True, timeout=15)
+        m = re.search(r'(\d+(?:\.\d+)+)', r.stdout)
+        return m.group(1) if m else None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def status():
+    st = load_state()
+    installed = os.path.exists(DESKTOP) and os.path.exists(LAUNCHER)
+    return {'installed': installed, 'default': installed and is_default(), 'version': st.get('version'),
+            'checkedAt': st.get('checkedAt'), 'installedAt': st.get('installedAt'), 'removed': bool(st.get('removed')),
+            'name': 'Aloha Browser'}
+
+
+def update(force_check=True):
+    st = load_state()
+    stamp = remote_stamp()
+    st['checkedAt'] = int(time.time())
+    save_state(st)
+    if stamp and stamp == st.get('stamp') and os.path.exists(LAUNCHER):
+        return False
+    install(stamp)
+    return True
+
+
+def remove():
+    shutil.rmtree(ROOT, ignore_errors=True)
+    for f in (DESKTOP, LAUNCHER):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    st = load_state()
+    st.update({'installed': False, 'removed': True})
+    save_state(st)
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else 'status'
+    if c == 'status':
+        pass
+    elif c == 'install':
+        install()
+    elif c == 'update':
+        if not os.path.exists(LAUNCHER):
+            raise Fail('Aloha Browser is not installed')
+        update()
+    elif c == 'default':
+        make_default()
+    elif c == 'remove':
+        remove()
+    elif c == 'ensure':
+        st = load_state()
+        if not os.path.exists(LAUNCHER):
+            if not st.get('removed'):
+                install()
+        elif time.time() - (st.get('checkedAt') or 0) > WEEK:
+            update()
+    else:
+        print('usage: hearth-browser status|install|update|default|remove|ensure')
+        sys.exit(2)
+    print(json.dumps(status()))
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv)
+    except (Fail, OSError, subprocess.SubprocessError, tarfile.TarError) as e:
+        print('error: ' + str(e))
+        sys.exit(1)

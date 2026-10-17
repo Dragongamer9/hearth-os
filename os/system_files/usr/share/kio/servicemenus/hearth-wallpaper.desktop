@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+MimeType=image/jpeg;image/png;image/webp;
+Actions=hearthWallpaper
+X-KDE-Priority=TopLevel
+
+[Desktop Action hearthWallpaper]
+Name=Set as Hearth wallpaper
+Icon=preferences-desktop-wallpaper
+Exec=/usr/bin/hearth-wallpaper %f
