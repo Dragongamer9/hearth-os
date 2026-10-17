@@ -168,9 +168,9 @@ class GogStore {
     return dir;
   }
 
-  launch(g) {
+  launch(g, options = null) {
     const args = g.args ? g.args.match(/"[^"]*"|\S+/g).map(a => a.replace(/^"|"$/g, '')) : [];
-    return proton.launch({ store: 'gog', id: g.gogId, exe: g.windowsExe, args, cwd: g.workDir });
+    return proton.launch({ store: 'gog', id: g.gogId, exe: g.windowsExe, args, cwd: g.workDir, options });
   }
 }
 

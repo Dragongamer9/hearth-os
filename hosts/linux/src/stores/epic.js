@@ -124,7 +124,7 @@ class EpicStore {
    * Asks legendary how to start the game (with a fresh Epic login token) and starts it with Proton.
    * Resolves with the child process.
    */
-  async launch(app) {
+  async launch(app, options = null) {
     let r = await tools.run(tools.TOOLS.legendary, ['launch', app, '--json', '--skip-version-check'], { env: ENV, timeoutMs: 60000 });
     let p = jsonIn(r.out, '{');
     if (!p) {
@@ -138,7 +138,7 @@ class EpicStore {
     if (!fs.existsSync(exe)) throw new Error(`The game's program is missing (${exe}). Try reinstalling it.`);
     const args = [...(p.game_parameters || []), ...(p.user_parameters || []), ...(p.egl_parameters || [])].filter(a => typeof a === 'string');
     log(`epic: launching ${app}`);
-    return proton.launch({ store: 'epic', id: app, exe, args, cwd: p.working_directory || dir, env: p.environment || {} });
+    return proton.launch({ store: 'epic', id: app, exe, args, cwd: p.working_directory || dir, env: p.environment || {}, options });
   }
 }
 

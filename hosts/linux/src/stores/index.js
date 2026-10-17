@@ -179,9 +179,9 @@ class StoreAccounts extends EventEmitter {
   }
 
   /** Starts an Epic or GOG game Nimbus installed. Resolves with the child process. */
-  launch(g) {
-    if (g.launchVia === 'legendary') return this.epic.launch(g.id.slice(5));
-    if (g.source === 'gog' && g.windowsExe) return this.gog.launch(g);
+  launch(g, options = null) {
+    if (g.launchVia === 'legendary') return this.epic.launch(g.id.slice(5), options);
+    if (g.source === 'gog' && g.windowsExe) return this.gog.launch(g, options);
     throw new Error("Nimbus doesn't know how to start this game.");
   }
 }

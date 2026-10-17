@@ -138,6 +138,9 @@ class Bridge {
       case 'game.install': await L.install(req('id')); return null;
       case 'game.close': return { ok: await L.closeRunning() };
       // Installs and uninstalls happen in Steam and Heroic on Linux; their games never offer these.
+      case 'game.options.get': return L.gameOptions(req('id'));
+      case 'game.options.set': return L.setGameOptions(req('id'), a.options || {});
+      case 'game.resetPrefix': return { ok: L.resetPrefix(req('id')) };
       case 'game.cancelInstall': return { ok: L.cancelInstall(req('id')) };
       case 'game.uninstall': await L.uninstall(req('id')); return L.get(false);
 
@@ -167,7 +170,11 @@ class Bridge {
       case 'perf.stats':
         return { ...(await perf.sample()), battery: this.power.battery(), runningId: L.runningId, runningSince: L.runningSince,
           canFpsLimit: !!(this.platform.canFpsLimit && this.platform.canFpsLimit()), fpsLimit: L.store && L.store.data ? (L.store.data.fpsLimit || 0) : 0,
-          powerMode: (await this.power.get().catch(() => ({}))).mode };
+          powerMode: (await this.power.get().catch(() => ({}))).mode, tdp: await require('./powerstation').get().catch(() => ({ supported: false })) };
+      case 'perf.setTdp': return require('./powerstation').set(+a.watts);
+      case 'apps.list': return this.platform.apps && this.platform.apps.supported() ? this.platform.apps.list() : [];
+      case 'apps.focus': return this.platform.apps.focus(+a.id, +a.pid);
+      case 'apps.close': return { ok: await this.platform.apps.close(+a.pid) };
       case 'perf.setFpsLimit': return { fpsLimit: await this.platform.setFpsLimit(+a.fps || 0) };
       // In Game Mode Quick Access opens in an overlay window over the game; elsewhere Hearth comes back over it.
       case 'overlay.settings': return this.platform.overlay.settings();
