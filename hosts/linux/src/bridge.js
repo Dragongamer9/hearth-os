@@ -94,12 +94,14 @@ class Bridge {
         const [b, modes] = await Promise.all([this.display.brightness().catch(() => null), this.displayModes.get()]);
         return { supported: b != null, brightness: b ?? 0, ...this.platform.screenInfo(), ...modes };
       }
+      // Same arguments as Windows: {w, h, hz} and {v} (percent).
       case 'display.setMode': {
-        const w = Math.round(+a.w), h = Math.round(+a.h), rate = +a.rate;
-        if (!(w > 0 && h > 0 && rate > 0)) throw new Error('Pick a resolution and refresh rate');
-        return this.displayModes.setMode(w, h, rate);
+        const w = Math.round(+a.w), h = Math.round(+a.h), hz = +a.hz;
+        if (!(w > 0 && h > 0 && hz > 0)) throw new Error('Pick a resolution and refresh rate');
+        await this.displayModes.setMode(w, h, hz);
+        return this.dispatch('display.get', {});
       }
-      case 'display.setScale': return this.displayModes.setScale(Math.round(+a.pct));
+      case 'display.setScale': await this.displayModes.setScale(Math.round(+a.v)); return this.dispatch('display.get', {});
       case 'display.setBrightness': await this.display.setBrightness(Math.round(+a.v || 0)); return null;
 
       case 'power.get': return this.power.get();

@@ -28,6 +28,8 @@ public sealed class GameMonitor : IDisposable
     public event Action<string>? StartTimedOut;
 
     public string? RunningId { get { lock (_lock) return _startedAt is null ? null : _id; } }
+    /// <summary>When the running game started (UTC), or null.</summary>
+    public DateTime? StartedAt { get { lock (_lock) return _startedAt; } }
 
     public GameMonitor() => _timer = new System.Threading.Timer(_ => Poll(), null, Timeout.Infinite, Timeout.Infinite);
 

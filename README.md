@@ -108,6 +108,15 @@ Art is served to the UI from `https://nimbus-art.local/<id>/<cover|hero|logo|wid
 - **Downloads**: state and progress come from each `appmanifest_*.acf` (`StateFlags`, `BytesDownloaded/BytesToDownload`). Steam only writes those at checkpoints, so between checkpoints Nimbus estimates progress from the PC's received network bytes and shows the speed. The UI polls `library.downloads` every 3 s while something is installing, reloads the library when a download finishes, and shows "ready to play".
 - **Steam in the background** (*Settings › Library sources*, on by default): Nimbus starts `steam.exe -silent` at startup and before Steam launches/installs, and hides Steam's main window (title exactly "Steam") for a short while afterwards. Other Steam windows, like the Install dialog, are left alone, and the tray icon still opens Steam.
 
+## In-game overlay
+
+Press the **Xbox button** (or **Ctrl+Alt+Q**) during a game: a Quick Access panel slides in from the right over the game, with quick settings, live performance (CPU, GPU, video memory, RAM, battery), Now playing (play time, screenshot, controller mouse, Back to Nimbus, Exit game) and notifications. B, the Xbox button or clicking the game closes it. In the Nimbus UI itself the Xbox button opens Quick Access.
+
+- It's an ordinary always-on-top window: nothing is injected into games, so anti-cheat has nothing to object to. It shows over borderless/windowed games and the "fullscreen optimized" mode most games use on Windows 10/11; very old exclusive-fullscreen games may minimize when it opens.
+- Windows Game Bar also opens on the Xbox button by default. **Settings › Controls › Xbox button opens only Nimbus** turns that off (`HKCU\Software\Microsoft\GameBar\UseNexusForGameBarEnabled`). **Hold View to open the overlay** is an optional backup.
+- Screenshots go to `Pictures\Screenshots\Nimbus`.
+- The Xbox button is read with XInput's long-standing undocumented `XInputGetStateEx` (ordinal 100).
+
 ## Store accounts: Epic, GOG and Xbox (Library › Stores)
 
 Open **Library › Stores & accounts** (X on a controller, F on a keyboard) to sign in. Each store's own sign-in page opens in a full-screen window; you type your password there, and Nimbus only picks up the one-time code the store hands back. In that window the controller mouse turns on by itself, Y opens an on-screen keyboard and B cancels.
@@ -197,5 +206,5 @@ No license: all rights reserved. The source is public to read, but it may not be
 
 1. ~~Real library~~ ✅ done (incl. owned Steam games, installs, download progress). Owned games for Epic, GOG and Xbox ✅ (store accounts). Still to do: art for manual games (e.g. SteamGridDB), Game Pass catalog, cloud saves.
 2. ~~Shell mode~~ ✅ first version. Still to do: run Startup/Run-key apps, a tray replacement, other apps' notifications.
-3. **More system controls:** external-monitor brightness (DDC/CI), resolution/refresh switching, TDP via vendor tools, volume-change notifications.
-4. **Guide button overlay:** global gamepad hook so the Quick Access panel opens over a running game.
+3. **More system controls:** external-monitor brightness (DDC/CI), TDP via vendor tools, volume-change notifications.
+4. ~~Guide button overlay~~ ✅ first version. Still to do: FPS counter (PresentMon-style ETW), blocking game input while the overlay is open.

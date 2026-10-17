@@ -73,11 +73,25 @@ test('updater picks the newest preview that has an AppImage', async () => {
   const rel = (tag, pre, assets = ['Nimbus-linux-x86_64.AppImage']) => ({ tag_name: tag, prerelease: pre, draft: false,
     assets: assets.map(n => ({ name: n, browser_download_url: 'https://x/' + tag + '/' + n, size: 1 })) });
   global.fetch = async () => ({ ok: true, json: async () => [
-    rel('v0.4.0-linux.9', true), rel('v0.4.0-linux.15', true), rel('v0.4.0', false, ['Nimbus-win-x64.zip']), rel('v0.4.0-linux.13', true)] });
-  const u = new Updates({ version: '0.4.0-linux.13', appImage: '/x/Nimbus.AppImage' });
+    rel('v0.0.6-linux.9', true), rel('v0.0.6-linux.15', true), rel('v0.0.6', false, ['Nimbus-win-x64.zip']), rel('v0.0.6-linux.13', true)] });
+  const u = new Updates({ version: '0.0.6-linux.13', appImage: '/x/Nimbus.AppImage' });
   const s = await u.check();
   assert.equal(s.state, 'available');
-  assert.equal(s.latest.version, '0.4.0-linux.15');
-  const full = new Updates({ version: '0.4.0', appImage: '/x' });
+  assert.equal(s.latest.version, '0.0.6-linux.15');
+  const full = new Updates({ version: '0.0.6', appImage: '/x' });
   assert.equal((await full.check()).state, 'upToDate'); // full releases don't take previews
+});
+
+test('after renumbering, 0.0.x ignores the old 0.3-0.5 releases (and the bridge)', async () => {
+  const { Updates } = require('../src/updates');
+  const rel = (tag, pre) => ({ tag_name: tag, prerelease: pre, draft: false,
+    assets: [{ name: 'Nimbus-linux-x86_64.AppImage', browser_download_url: 'https://x/' + tag, size: 1 }] });
+  global.fetch = async () => ({ ok: true, json: async () => [
+    rel('v0.4.0-linux.100', true), rel('v0.4.0-linux.16', true), rel('v0.5.0', false), rel('v0.0.5', false), rel('v0.0.6', false)] });
+  const u = new Updates({ version: '0.0.5', appImage: '/x/Nimbus.AppImage' });
+  const s = await u.check();
+  assert.equal(s.latest.version, '0.0.6');
+  // An install still on the old numbering takes the bridge.
+  const { newer } = require('../src/updates');
+  assert.equal(newer('v0.4.0-linux.100', '0.4.0-linux.16'), true);
 });

@@ -285,6 +285,18 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .ctl.tg .mini-spin{margin-left:auto}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 #sheet{inset:0;display:grid;place-items:center}
+#sheetBox{max-height:86vh;overflow-y:auto;scrollbar-width:none}
+/* in-game overlay window: only the Quick Access panel */
+body.overlay #app,body.overlay #scrim,body.overlay #bg{display:none!important}
+body.overlay #qam{position:fixed;inset:0;width:100%;transform:none;transition:none;box-shadow:none}
+body.overlay #toasts{bottom:14px;right:72px}
+body.overlay .modal{width:min(380px,92vw)}
+.np .nart .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pstat{padding:12px;border-radius:9px;background:var(--panel2);margin-bottom:6px}
+.pstat .lab{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600;margin-bottom:8px}
+.pstat .lab span{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--text)}
+.pstat .lab small{color:var(--dim);font-weight:500}
+.btn.sm{margin-top:6px;padding:10px 14px}
 #sheet.open .modal{transform:none;opacity:1}
 #prompt{top:0;left:0;right:0;background:var(--panel);padding:20px var(--gut) 18px;transform:translateY(-102%);transition:transform .24s var(--ease),visibility .24s;box-shadow:0 20px 60px rgba(0,0,0,.45)}
 #prompt.open{transform:none}
@@ -455,6 +467,8 @@ const host = window.chrome && window.chrome.webview ? window.chrome.webview : (w
 const HOSTINFO = {platform: window.nimbusHost ? 'linux' : 'windows', name:null, host:null, session:false};
 const LINUX = HOSTINFO.platform==='linux';
 function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); }).catch(()=>{}); }
+// The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
+const OVERLAY = /[?&]overlay/.test(location.search);
 const pending = new Map(); let rid = 0;
 function send(msg){ if(host) host.postMessage(msg); else console.log('[bridge:mock]', msg); }
 function call(method, args={}, timeout=30000){
@@ -525,15 +539,22 @@ const MOCK = (()=>{
     'audio.setVolume':async({v})=>{ st.audio.volume=v; },
     'audio.setMute':async({m})=>{ st.audio.muted=m; },
     'audio.setDefault':async({id})=>{ devices.forEach(d=>d.isDefault=d.id===id); return {volume:st.audio.volume,muted:st.audio.muted,devices:clone(devices)}; },
+    'display.setMode':async({w,h,hz})=>{ Object.assign(st.display,{width:w,height:h,refreshRate:hz}); return H['display.get'](); },
+    'display.setScale':async({v})=>{ st.display.scalePercent=v; return H['display.get'](); },
     'display.get':async()=>({supported:true,brightness:st.display.brightness,
-      resolution:`${(st.mode||{w:1920}).w} × ${(st.mode||{h:1080}).h}`,scale:(st.scalePct||100)+'%', modesSupported:true, output:'Built-in screen',
-      resolutions:[{w:2560,h:1440,rates:[144,120,60]},{w:1920,h:1080,rates:[144,120,60,59.94]},{w:1280,h:800,rates:[90,60]},{w:1280,h:720,rates:[60]}],
-      current:st.mode||{w:1920,h:1080,rate:60}, refresh:Math.round((st.mode||{rate:60}).rate)+' Hz', scalePct:st.scalePct||100, scales:[100,125,150,175,200]}),
+      width:st.display.width||1920,height:st.display.height||1080,refreshRate:st.display.refreshRate||120,
+      modes:[{width:1920,height:1080,rates:[144,120,60]},{width:1600,height:900,rates:[120,60]},{width:1280,height:720,rates:[120,60]}],
+      scalePercent:st.display.scalePercent||125,scaleRecommended:125,scales:[100,125,150,175],
+      resolution:`${Math.round(screen.width*devicePixelRatio)} × ${Math.round(screen.height*devicePixelRatio)}`,scale:Math.round(devicePixelRatio*100)+'%'}),
     'display.setBrightness':async({v})=>{ st.display.brightness=v; },
-    'display.setMode':async({w,h,rate})=>{ await wait(300); st.mode={w,h,rate}; return H['display.get'](); },
-    'display.setScale':async({pct})=>{ st.scalePct=pct; return H['display.get'](); },
+
     'power.get':async()=>({...st.battery,mode:st.powerMode}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
+    'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null}),
+    'pad.toggleMouse':async()=>({mouseOn:!PAD.mouseOn}),
+    'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}),
+    'overlay.setHoldView':async({on})=>{ st.holdView=on; return {holdView:on,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}; },
+    'overlay.setGameBarButton':async({on})=>{ st.gbb=on; return {holdView:!!st.holdView,gameBarButton:on,hotkey:'Ctrl+Alt+Q'}; },
     // Stores & profile (preview data)
     'accounts.status':async()=>({installRoot:'C:\\Users\\Player\\Games', accounts:[
       {store:'steam',signedIn:true,name:'player_one',avatar:null,owned:517,installed:6,fetched:0,busy:false,error:null,toolReady:true},
@@ -813,48 +834,61 @@ function pageBluetooth(){
 }
 function pageDisplay(){
   const d=S.sys.display;
-  let h = d.supported ? sliderCtl('bright','sun','Brightness') : note('Brightness control works on built-in screens (laptops and handhelds). External monitors are not supported yet.');
-  // Hosts that can change modes send resolutions, the current mode and scale choices; others only report them.
-  if(!d.modesSupported || !d.current) return h + infoRow('res','Resolution',d.resolution||'—') + infoRow('scale','Scale',d.scale||'—');
-  const cur=d.current, res=(d.resolutions||[]).find(r=>r.w===cur.w&&r.h===cur.h);
-  h += `<button class="row" data-f data-k="dp-res" data-act="dispRes"><span class="ricon">${I.display}</span><div class="rt"><b>Resolution</b><small>${esc(d.output||'Screen')}</small></div><div class="rv">${cur.w} × ${cur.h} ›</div></button>`;
-  // One button per refresh rate (59.94 and 60 count as one), fastest first.
-  const rates=[]; for(const r of (res?res.rates:[cur.rate])) if(!rates.some(x=>Math.round(x)===Math.round(r))) rates.push(r);
-  h += `<div class="row"><div class="rt"><b>Refresh rate</b><small>Now ${esc(d.refresh||Math.round(cur.rate)+' Hz')}</small></div>
-    <div class="seg">${rates.slice(0,7).map(r=>`<button class="${Math.round(r)===Math.round(cur.rate)?'on':''}" data-f data-k="dp-rate-${Math.round(r)}" data-act="dispRate" data-v="${r}">${Math.round(r)}</button>`).join('')}</div></div>`;
-  h += `<div class="row"><div class="rt"><b>Scale</b><small>${d.scaleIsInterface?'Size of the Nimbus interface':'Size of everything on this screen'}</small></div>
-    <div class="seg">${(d.scales||[]).map(p=>`<button class="${p===d.scalePct?'on':''}" data-f data-k="dp-scale-${p}" data-act="dispScale" data-v="${p}">${p}%</button>`).join('')}</div></div>`;
-  if(d.appliesOnRestart) h += note('In Game Mode, a new resolution or refresh rate restarts Nimbus for a moment to apply it.');
+  const pick=(k,label,val,act,sub)=>`<button class="row" data-f data-k="s-${k}" data-act="${act}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="rv">${esc(val)} ›</div></button>`;
+  let h = d.supported ? sliderCtl('bright','sun','Brightness') : '';
+  if(d.modes && d.modes.length){
+    h += pick('res','Resolution', d.width?`${d.width} × ${d.height}`:d.resolution, 'dispRes', d.width===d.modes[0].width&&d.height===d.modes[0].height?'Native (recommended)':`Native: ${d.modes[0].width} × ${d.modes[0].height}`);
+    h += pick('hz','Refresh rate', d.refreshRate?`${d.refreshRate} Hz`:'—', 'dispHz');
+  } else h += infoRow('res','Resolution',d.resolution||'—');
+  if(d.scales && d.scales.length) h += pick('scale','Scale', (d.scalePercent||'')+'%', 'dispScale', d.scaleRecommended?`Recommended: ${d.scaleRecommended}%`:'');
+  else h += infoRow('scale','Scale',d.scale||'—');
+  if(!d.supported) h += note('Brightness control works on built-in screens (laptops and handhelds). External monitors are not supported yet.');
+  h += note(d.appliesOnRestart ? 'In Game Mode, a new resolution or refresh rate restarts Nimbus for a moment to apply it.'
+    : 'Resolution and refresh-rate changes switch back by themselves after 15 seconds unless you keep them, in case the screen goes black.');
+  if(d.scaleIsInterface) h += note('Scale here sizes the Nimbus interface.');
   return h;
 }
+function dispModeOf(w,h){ return (S.sys.display.modes||[]).find(m=>m.width===w&&m.height===h); }
 function dispRes(){
-  const d=S.sys.display, cur=d.current;
-  openSheet({title:'Resolution', sub:d.output||'', items:(d.resolutions||[]).slice(0,12).map(r=>({
-    label:`${r.w} × ${r.h}${r.w===cur.w&&r.h===cur.h?'  (current)':''}`, icon:'display',
-    // Keep the refresh rate if this resolution has it, else its fastest.
-    run:()=>setDisplayMode(r.w, r.h, (r.rates.find(x=>Math.round(x)===Math.round(cur.rate)) ?? r.rates[0]))}))});
+  const d=S.sys.display;
+  openSheet({title:'Resolution', items:d.modes.slice(0,14).map((m,i)=>({label:`${m.width} × ${m.height}${i===0?'  (native)':''}`, icon:m.width===d.width&&m.height===d.height?'check':'',
+    run:()=>{ const hz=m.rates.includes(d.refreshRate)?d.refreshRate:m.rates[0]||0; setDisplayMode(m.width,m.height,hz); }}))});
 }
-async function setDisplayMode(w,h,rate){
-  const d=S.sys.display, prev={...d.current};
-  if(w===prev.w && h===prev.h && Math.round(rate)===Math.round(prev.rate)) return;
-  if(d.appliesOnRestart){
+function dispHz(){
+  const d=S.sys.display, m=dispModeOf(d.width,d.height);
+  if(!m || !m.rates.length) return toast('No other refresh rates at this resolution');
+  openSheet({title:'Refresh rate', sub:`At ${d.width} × ${d.height}`, items:m.rates.map(r=>({label:`${r} Hz`, icon:r===d.refreshRate?'check':'', run:()=>setDisplayMode(d.width,d.height,r)}))});
+}
+function dispScale(){
+  const d=S.sys.display;
+  openSheet({title:'Scale', sub:'Makes text and everything else bigger or smaller', items:d.scales.map(v=>({label:`${v}%${v===d.scaleRecommended?'  (recommended)':''}`, icon:v===d.scalePercent?'check':'',
+    run:async()=>{ try{ const r=await call('display.setScale',{v},30000); Object.assign(S.sys.display,r); toast(`Scale set to ${v}%`); }catch(e){ toast(e.message); } refreshUI(); }}))});
+}
+let dispRevert=null;
+async function setDisplayMode(w,h,hz){
+  const d=S.sys.display, prev={w:d.width,h:d.height,hz:d.refreshRate};
+  if(prev.w===w && prev.h===h && prev.hz===hz) return;
+  if(d.appliesOnRestart){ // Linux Game Mode: gamescope picks up the new mode when Game Mode starts again
     toast('Restarting Game Mode with the new display settings…');
-    try{ await call('display.setMode',{w,h,rate}); }catch(e){ toast(e.message); }
+    try{ await call('display.setMode',{w,h,hz},30000); }catch(e){ toast(e.message); }
     return;
   }
-  try{ Object.assign(S.sys.display, await call('display.setMode',{w,h,rate})); refreshUI(); }
+  try{ const r=await call('display.setMode',{w,h,hz},30000); Object.assign(S.sys.display,r); refreshUI(); }
   catch(e){ return toast(e.message); }
-  // A mode the screen can't show leaves you blind: go back on its own unless you keep it.
-  let kept=false;
-  const revert=setTimeout(async()=>{ if(kept) return; if(S.layers.at(-1)==='sheet') closeLayer();
-    try{ Object.assign(S.sys.display, await call('display.setMode',prev)); refreshUI(); toast('Went back to the previous display settings'); }catch(e){ toast(e.message); } }, 15000);
-  openSheet({title:'Keep these display settings?', sub:'Going back in 15 seconds…', noCancel:true,
-    items:[{label:'Keep',icon:'check',run:()=>{ kept=true; clearTimeout(revert); }},
-           {label:'Go back',icon:'x',run:()=>{ kept=true; clearTimeout(revert);
-             call('display.setMode',prev).then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(e=>toast(e.message)); }}]});
-}
-async function setDisplayScale(pct){
-  try{ Object.assign(S.sys.display, await call('display.setScale',{pct})); render('dp-scale-'+pct,true); }catch(e){ toast(e.message); }
+  let left=15;
+  const revert=async()=>{ clearInterval(dispRevert); dispRevert=null;
+    try{ const r=await call('display.setMode',prev,30000); Object.assign(S.sys.display,r); toast('Switched back to the previous display settings'); }catch(e){ toast(e.message); }
+    refreshUI(); };
+  openSheet({title:'Keep these display settings?', sub:`${w} × ${h} at ${hz} Hz. Switching back in ${left} seconds…`, noCancel:true,
+    items:[{label:'Keep changes',icon:'check',run:()=>{ clearInterval(dispRevert); dispRevert=null; toast('Display settings saved'); }},
+           {label:'Switch back',icon:'restart',run:revert}],
+    onCancel:revert});
+  clearInterval(dispRevert);
+  dispRevert=setInterval(()=>{
+    left--;
+    if(left<=0){ if(S.layers.at(-1)==='sheet' && sheet && sheet.title.startsWith('Keep these')){ sheet.picked=true; closeLayer(); } return revert(); }
+    if(sheet && sheet.title.startsWith('Keep these')){ sheet.sub=`${w} × ${h} at ${hz} Hz. Switching back in ${left} seconds…`; const sub=$('#sheetBox .muted'); if(sub) sub.textContent=sheet.sub; }
+  },1000);
 }
 function pageAudio(){
   const a=S.sys.audio;
@@ -877,8 +911,9 @@ function pagePower(){
 // ---------- Settings › Controls ----------
 const KEY_LIST = [['Move','Arrow keys or W A S D'],['Select','Enter or Space'],['Back','Esc or Backspace'],['Main menu','M'],['Quick Access','Q'],
   ['Search','/'],['Switch tabs','Tab / Shift+Tab, or [ and ]'],['Favorite (game page)','F'],['Home','Home'],['This page','F1'],
-  ['Open File Explorer','Ctrl+Alt+Shift+E'],['Task Manager','Ctrl+Shift+Esc']];
-const KEY_LIST_LINUX = [...KEY_LIST.slice(0,-2), ['Leave a cloud stream','Ctrl+Shift+Q'], ['Text console (if Nimbus is stuck)','Ctrl+Alt+F3']];
+  ['In-game overlay','Ctrl+Alt+Q'],['Open File Explorer','Ctrl+Alt+Shift+E'],['Task Manager','Ctrl+Shift+Esc']];
+const KEY_LIST_LINUX = [...KEY_LIST.filter(([a])=>!['In-game overlay','Open File Explorer','Task Manager'].includes(a)),
+  ['Leave a cloud stream','Ctrl+Shift+Q'], ['Text console (if Nimbus is stuck)','Ctrl+Alt+F3']];
 function pageControls(){
   const now = `<span id="inputNow">${INPUT_NAMES[INPUT.last]}</span>`;
   const pads = (navigator.getGamepads ? [...navigator.getGamepads()] : []).filter(Boolean);
@@ -899,6 +934,16 @@ function pageControls(){
   } else h += note('During a game, the Guide (Xbox / Home) button brings Nimbus back with Quick Access open. In a cloud stream, holding View + Menu leaves the stream.');
   h += pads.length ? pads.map((p,i)=>`<div class="row"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(p.id.split('(')[0].trim()||'Controller')}</b><small>Player ${i+1}</small></div></div>`).join('')
                    : note('No controller detected. Press any button on a connected controller.');
+  if(!LINUX){
+  h += shead('In-game overlay');
+  const o=OVS.s;
+  h += `<div class="row" data-f data-k="ov-info"><span class="ricon">${I.sliders}</span><div class="rt"><b>Open it during a game</b><small>Xbox button, or ${o?o.hotkey:'Ctrl+Alt+Q'} on a keyboard. Quick settings, performance, screenshots and Exit game, over whatever is running.</small></div></div>`;
+  if(o){
+    h += `<button class="row" data-f data-k="ov-gb" data-act="ovGameBar"><div class="rt"><b>Xbox button opens only Nimbus</b><small>${o.gameBarButton?'Right now Windows Game Bar also opens on the Xbox button. Turn this on to stop that.':'Game Bar no longer uses the Xbox button. Turn this off to give it back to Game Bar.'}</small></div><div class="sw ${o.gameBarButton?'':'on'}"></div></button>`;
+    h += `<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to open the overlay</b><small>A backup for controllers without an Xbox button. Off by default because some games use a held View (like scoreboards).</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`;
+  }
+  h += note('The overlay works over games in borderless or windowed mode, and the fullscreen mode most Windows 10/11 games use. Very old games in true exclusive fullscreen may minimize when it opens.');
+  }
   h += shead('Keyboard');
   h += (LINUX?KEY_LIST_LINUX:KEY_LIST).map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
   h += note('Mouse and touch: click anything to select it. The buttons in the bottom bar and the top bar do the same as the controller buttons.');
@@ -1091,6 +1136,51 @@ function qRadio(kind,ic,label,sub){
   const busy=S.sys.busy[kind];
   return `<button class="ctl tg" data-f data-k="q-${kind}" data-act="radio" data-kind="${kind}">${I[ic]}<span class="tgl">${label}${sub?`<small>${esc(sub)}</small>`:''}</span>${busy?'<span class="mini-spin"></span>':`<div class="sw ${radioOn(kind)?'on':''}"></div>`}</button>`;
 }
+// ---------- live performance (Quick Access › Performance) ----------
+const PERF = {s:null, timer:null};
+function perfBody(){
+  const p=PERF.s;
+  if(!p) return '<div class="muted">Reading…</div>';
+  const row=(ic,label,val,pct,sub)=>`<div class="pstat"><div class="lab">${I[ic]}${label}${sub?` <small>${sub}</small>`:''}<span>${val}</span></div>${pct!=null?`<div class="bar"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></div>`:''}</div>`;
+  let h = row('bolt','CPU', p.cpu+'%', p.cpu);
+  h += p.gpu!=null ? row('display','GPU', p.gpu+'%', p.gpu, p.vramUsed!=null?`${p.vramUsed} GB video memory`:'') : row('display','GPU','—',null,'Not available on this PC');
+  h += row('sliders','Memory', `${p.ramUsed} / ${p.ramTotal} GB`, p.ramTotal?p.ramUsed/p.ramTotal*100:null);
+  const b=p.battery; if(b && b.present!==false && b.pct!=null) h += row('bolt','Battery', b.pct+'%'+(b.charging?' ⚡':''), b.pct);
+  h += '<div class="muted" style="margin-top:8px">Frame rate (FPS) is coming in a later update.</div>';
+  return h;
+}
+async function perfTick(){
+  PERF.timer=null;
+  const showing = S.layers.includes('qam') && S.qtab==='perf' && (!OVERLAY || OV.shown);
+  if(!showing) return;
+  try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); }catch(e){}
+  if(S.layers.includes('qam') && S.qtab==='perf'){
+    const qb=$('#qam .qbody'); if(qb){ const k=focused?.dataset.k; qb.innerHTML=`<h3>Performance</h3>${perfBody()}`; if(k){ const el=$(`#qam [data-k="${k}"]`); if(el) setFocus(el,true); } }
+  }
+  PERF.timer=setTimeout(perfTick, 1000);
+}
+function startPerf(){ if(!PERF.timer) PERF.timer=setTimeout(perfTick, 50); }
+function applyRunning(r){
+  if(!r) return;
+  if(r.runningId && S.running!==r.runningId) S.running=r.runningId;
+  if(r.runningSince) S.runningSince=r.runningSince;
+}
+
+// ---------- overlay window mode ----------
+const OV = {shown:false};
+function overlayClose(){ send({type:'overlay', action:'close'}); }
+async function overlayShown(){
+  OV.shown=true;
+  while(S.layers.length>1) closeLayer();
+  try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); if(!r.runningId) S.running=null; }catch(e){}
+  if(S.running && !G(S.running)) await loadLibrary();
+  S.qtab = S.running ? 'now' : 'quick';
+  if(!S.layers.includes('qam')) openLayer('qam'); else { renderQam(); setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
+  refreshStatus(); loadProfile();
+  if(S.qtab==='perf') startPerf();
+}
+function overlayHidden(){ OV.shown=false; while(S.layers.length>1) closeLayer(); }
+
 function renderQam(){
   const t=S.qtab; let body='';
   if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="n-${i}" ${n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
@@ -1102,17 +1192,19 @@ function renderQam(){
     ${tgCtl('sounds','note','Interface sounds')}
     <div class="two"><button class="btn" data-f data-k="q-gw" data-act="goset" data-tab="wifi">${I.wifi}Wi-Fi</button><button class="btn" data-f data-k="q-gb" data-act="goset" data-tab="bluetooth">${I.bt}Bluetooth</button></div>
     <button class="btn" data-f data-k="q-kbd" data-act="search">${I.kbd}Keyboard</button>`; }
-  if(t==='perf') body = `<h3>Performance</h3>
-    <div class="ctl"><div class="lab">${I.play}Frame limit<span>${S.set.fps==='off'?'Off':S.set.fps+' FPS'}</span></div>
-      <div class="seg">${['30','40','60','off'].map(f=>`<button class="${S.set.fps===f?'on':''}" data-f data-k="q-fps-${f}" data-act="fps" data-v="${f}">${f==='off'?'Off':f}</button>`).join('')}</div></div>
-    ${sliderCtl('tdp','bolt','Power limit (TDP)',5,30,1,' W')}
-    ${sliderCtl('overlay','display','Performance overlay',0,4,1,'')}
-    <div class="muted" style="margin-top:10px">Wiring these to real hardware needs vendor APIs (e.g. RyzenAdj, NVAPI) in the host.</div>`;
+  if(t==='perf') body = `<h3>Performance</h3>${perfBody()}`;
   if(t==='now'){ const g=S.running&&G(S.running);
-    body = `<h3>Now playing</h3>${g?`<div class="np"><div class="nart" style="${artBg(g)}"></div><div class="nb"><b>${esc(g.title)}</b><div class="muted">${SOURCES[g.src]} · running</div>
-      <button class="btn" data-f data-k="q-gp" data-act="game" data-id="${g.id}">Game details</button>
+    const mins = S.runningSince ? Math.max(0,Math.round((Date.now()-S.runningSince)/60000)) : null;
+    const mouseBtn = `<button class="btn sm" data-f data-k="q-mouse" data-act="toggleMouse">${I.mouse}Controller mouse: ${PAD.mouseOn?'on':'off'}</button>`;
+    const ovBtns = OVERLAY ? `<button class="btn sm" data-f data-k="q-shot" data-act="ovShot">${I.display}Take a screenshot</button>${mouseBtn}
+      <button class="btn sm" data-f data-k="q-home" data-act="ovHome">${I.home}Back to Nimbus</button>` : '';
+    body = `<h3>Now playing</h3>${g?`<div class="np"><div class="nart" style="${artBg(g)}">${artImg(g,['hero','wide','cover'])}</div><div class="nb"><b>${esc(g.title)}</b>
+      <div class="muted">${SOURCES[g.src]}${mins!=null?` · playing for ${mins<60?mins+' min':hrs(mins/60)}`:' · running'}</div>
+      ${OVERLAY?'':`<button class="btn" data-f data-k="q-gp" data-act="game" data-id="${g.id}">Game details</button>`}
+      ${ovBtns}
       ${LINUX?`<button class="btn" data-f data-k="q-resume" data-act="resume">${I.play}Back to game</button>`:''}
-      <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>`:'<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
+      <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>`
+      : OVERLAY ? `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}` : '<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
   }
   $('#qam').innerHTML = `<div class="qbody">${body}</div><div class="qtabs">${QTABS.map(([k,ic,l])=>`<button class="qtab ${t===k?'on':''}" data-f data-k="qt-${k}" data-act="qtab" data-tab="${k}" aria-label="${l}">${I[ic]}</button>`).join('')}</div>`;
 }
@@ -1179,7 +1271,7 @@ function promptSubmit(){
   p.done=true; closeLayer(); p.res(p.text);
 }
 
-const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt()};
+const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(S.qtab==='perf') startPerf(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt()};
 const LAYER_CLOSE = {
   sheet:()=>{ if(sheet && !sheet.picked && sheet.onCancel) sheet.onCancel(); sheet=null; },
   prompt:()=>{ if(prompt && !prompt.done) prompt.res(null); prompt=null; },
@@ -1302,8 +1394,8 @@ function act(el){
     case 'audioDev': return setOutput(d.id);
     case 'pmode': return setPowerMode(d.mode);
     case 'dispRes': return dispRes();
-    case 'dispRate': { const c=S.sys.display.current; return setDisplayMode(c.w, c.h, +d.v); }
-    case 'dispScale': return setDisplayScale(+d.v);
+    case 'dispHz': return dispHz();
+    case 'dispScale': return dispScale();
     case 'shellMake': return shellMake();
     case 'updCheck': return call('update.check',{},60000).then(onUpdate).catch(e=>toast(e.message));
     case 'updDownload': return call('update.download').then(onUpdate).catch(e=>toast(e.message));
@@ -1317,7 +1409,12 @@ function act(el){
     case 'padSwap': { const k='swap'+d.v; PAD[k]=!PAD[k]; try{ localStorage.setItem('nimbus.'+k, PAD[k]?'1':'0'); }catch(e){} return render('ctl-swap'+d.v.toLowerCase()); }
     case 'inputMode': INPUT.mode=d.v; try{ localStorage.setItem('nimbus.inputMode', d.v); }catch(e){} renderFooter(); return render('ctl-'+d.v);
     case 'pkey': return promptKey(d.c);
-    case 'qtab': S.qtab=d.tab; renderQam(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
+    case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
+    case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
+    case 'ovShot': return call('overlay.screenshot',{},20000).then(r=>toast(`Screenshot saved to Pictures › Screenshots › Nimbus`)).catch(e=>toast(e.message));
+    case 'ovHome': return send({type:'overlay', action:'home'});
+    case 'ovHoldView': return call('overlay.setHoldView',{on:!(OVS.s&&OVS.s.holdView)}).then(r=>{ OVS.s=r; render('ov-hold'); }).catch(e=>toast(e.message));
+    case 'ovGameBar': return call('overlay.setGameBarButton',{on:!(OVS.s&&OVS.s.gameBarButton)}).then(r=>{ OVS.s=r; render('ov-gb'); }).catch(e=>toast(e.message));
     case 'toggle': S.set[d.key]=!S.set[d.key];
       if(host && /^src/.test(d.key)) setSources();
       else if(host && d.key==='steamBg') call('library.setSteamBackground',{on:S.set.steamBg}).catch(e=>toast(e.message));
@@ -1356,6 +1453,7 @@ function act(el){
   }
 }
 function back(){
+  if(OVERLAY && S.layers.length<=1) return overlayClose();
   if(S.layers.length && S.layers.at(-1)!=='launch'){ const top=S.layers.at(-1); closeLayer(); return resumeIfGame(top); }
   if(!S.layers.length && goBack()) return blip(420,.05);
 }
@@ -1401,7 +1499,8 @@ function launch(g){
 }
 function gameStarted(id){
   const g=G(id); hideLaunch();
-  S.running=id; if(g) g.last=Date.now();
+  S.running=id; S.runningSince=Date.now(); if(g) g.last=Date.now();
+  if(!OVERLAY) overlayTip();
   if(S.view==='game') render(null,true); else renderFooter();
   if(S.layers.includes('qam')) renderQam();
   if(g) toast(`${g.title} is running. Open Quick Access to exit.`);
@@ -1737,18 +1836,20 @@ async function setSources(){
 function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
   if(name==='game.started') return gameStarted(data.id);
-  if(name==='update') return onUpdate(data);
+  if(name==='update') return OVERLAY ? null : onUpdate(data);
   if(name==='pad') return hostPad(data.b);
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
-  if(name==='accounts.changed') return loadAccounts(true);
+  if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
+  if(name==='overlay.shown') return overlayShown();
+  if(name==='overlay.hidden') return overlayHidden();
   if(name==='install.done'){
     const t=data.title||'The game';
     if(data.error==='cancelled') toast(`Cancelled the download of ${t}`);
     else if(data.error) toast(`${t} didn't install: ${data.error}`);
     else { toast(`${t} is installed and ready to play`); NOTIFS.unshift({i:'dl', t:`${t} is ready to play`, s:'Installed by Nimbus'}); updateBadge(); }
-    return loadLibrary(true);
+    return OVERLAY ? null : loadLibrary(true);
   }
   if(name==='game.timeout'){ hideLaunch(); const g=G(data.id); return toast(`Nimbus couldn't see ${g?g.title:'the game'} start. If it's running, it still works; it just won't show here.`); }
   if(name==='bt.found'){
@@ -1804,6 +1905,7 @@ function onSettingsTab(t){
   if(t==='shell') loadShellStatus();
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
   if(t==='updates') loadUpdateStatus();
+  if(t==='controller' && !LINUX) call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();
   if(t==='audio') call('audio.get').then(r=>{ Object.assign(S.sys.audio,r); S.set.vol=r.volume; refreshUI(); }).catch(e=>toast(e.message));
@@ -1973,6 +2075,12 @@ function hintAction(id){
 function input(k){
   const top=S.layers.at(-1);
   if(top==='launch') return;
+  if(OVERLAY){
+    // The overlay is only the Quick Access panel (plus its pop-ups and the text prompt).
+    if((k==='select'||k==='guide') && top==='qam') return overlayClose();
+    if(k==='start' && top!=='prompt') return;
+    if((k==='y'||k==='x') && top!=='prompt') return;
+  }
   switch(k){
     case 'up': case 'down': case 'left': case 'right': return move(k);
     case 'a': return focused && act(focused);
@@ -1986,12 +2094,21 @@ function input(k){
 }
 function shiftTab(d){
   const top=S.layers.at(-1);
-  if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
+  if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
   if(!top && S.view==='library'){ const i=LIB_TABS.findIndex(t=>t[0]===S.tab); S.tab=LIB_TABS[(i+d+LIB_TABS.length)%LIB_TABS.length][0]; render('tab-'+S.tab); return blip(600); }
 }
 
 // Controllers: Xbox-style controllers come from the host (XInput, exact button names, works with any
 // controller order). Other controllers use the browser gamepad API, with optional A/B and X/Y swaps.
+const OVS = {s:null};
+async function overlayTip(){
+  let shown=false; try{ shown=localStorage.getItem('nimbus.overlayTip')==='1'; }catch(e){}
+  if(shown || !host || LINUX) return;
+  try{ localStorage.setItem('nimbus.overlayTip','1'); }catch(e){}
+  try{ OVS.s=await call('overlay.settings'); }catch(e){ return; }
+  toast(OVS.s.gameBarButton ? 'Tip: press the Xbox button for the Nimbus overlay. If Game Bar opens too, turn it off in Settings › Controls.'
+                            : 'Tip: press the Xbox button for the Nimbus overlay.');
+}
 const PAD = {host:false, last:'', swapAB:false, swapXY:false, mouseMode:'steam', mouseOn:false};
 try{ PAD.swapAB = localStorage.getItem('nimbus.swapAB')==='1'; PAD.swapXY = localStorage.getItem('nimbus.swapXY')==='1'; }catch(e){}
 function mapPad(k){
@@ -2094,11 +2211,12 @@ updateBadge();
 render();
 loadHostInfo();
 refreshStatus();
+if(OVERLAY){ document.body.classList.add('overlay'); NOTIFS=[]; }
 applyProfile();
 loadProfile();
 loadLibrary();
-loadAccounts(true);
-loadUpdateStatus();
+if(!OVERLAY){ loadAccounts(true); loadUpdateStatus(); }
+else { S.qtab='quick'; openLayer('qam'); }
 requestAnimationFrame(pollPads);
 send({type:'ready'});
 </script>

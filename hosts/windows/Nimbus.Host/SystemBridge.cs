@@ -22,6 +22,10 @@ public sealed class SystemBridge : IDisposable
     private readonly AudioService _audio = new();
     private readonly DisplayService _display = new();
     private readonly PowerService _power = new();
+    private readonly PerfService _perf = new();
+    /// <summary>Other pages (the in-game overlay) that also receive events.</summary>
+    private readonly List<Action<string>> _listeners = new();
+    public void AddListener(Action<string> post) => _listeners.Add(post);
     public Nimbus.Host.Library.LibraryService Games { get; } = new();
     public Nimbus.Host.Updates.UpdateService Updater { get; }
     /// <summary>Set by the window once the controller bridge is running.</summary>
@@ -96,7 +100,8 @@ public sealed class SystemBridge : IDisposable
 
     // ------------------------------------------------------------- plumbing
 
-    public async void Handle(JsonElement m)
+    /// <summary>Handles a call from a page. <paramref name="reply"/>: where the result goes (default: the main UI).</summary>
+    public async void Handle(JsonElement m, Action<string>? reply = null)
     {
         int id = m.GetProperty("id").GetInt32();
         string method = m.GetProperty("method").GetString() ?? "";
@@ -106,12 +111,12 @@ public sealed class SystemBridge : IDisposable
         {
             var value = await DispatchAsync(method, args);
             Log($"{method} ok {sw.ElapsedMilliseconds}ms {Summarize(value)}");
-            Post(new { type = "result", id, ok = true, value });
+            Post(new { type = "result", id, ok = true, value }, reply);
         }
         catch (Exception ex)
         {
             Log($"{method} FAILED {sw.ElapsedMilliseconds}ms {ex.GetType().Name}: {ex.Message}");
-            Post(new { type = "result", id, ok = false, error = ex.Message });
+            Post(new { type = "result", id, ok = false, error = ex.Message }, reply);
         }
     }
 
@@ -130,15 +135,23 @@ public sealed class SystemBridge : IDisposable
         _ => v.GetType().Name,
     };
 
-    private void Post(object msg)
+    private void Post(object msg, Action<string>? to = null)
     {
         var json = JsonSerializer.Serialize(msg, Json);
         if (_ui.IsDisposed) return;
-        if (_ui.InvokeRequired) _ui.BeginInvoke((MethodInvoker)(() => _postJson(json)));
-        else _postJson(json);
+        var target = to ?? _postJson;
+        if (_ui.InvokeRequired) _ui.BeginInvoke((MethodInvoker)(() => target(json)));
+        else target(json);
     }
 
-    private void Event(string name, object data) => Post(new { type = "event", name, data });
+    /// <summary>Events go to the main UI and every other page (the overlay).</summary>
+    public void Event(string name, object data)
+    {
+        var json = JsonSerializer.Serialize(new { type = "event", name, data }, Json);
+        void Send() { _postJson(json); foreach (var l in _listeners) { try { l(json); } catch { } } }
+        if (_ui.IsDisposed) return;
+        if (_ui.InvokeRequired) _ui.BeginInvoke((MethodInvoker)Send); else Send();
+    }
 
     private void StatusChangedSoon()
     {
@@ -211,6 +224,14 @@ public sealed class SystemBridge : IDisposable
 
             case "display.get": return await _display.GetAsync(_ui);
             case "display.setBrightness": await _display.SetBrightnessAsync(Int(a, "v")); return null;
+            case "display.setMode":
+                await _display.SetModeAsync(_ui, Int(a, "w"), Int(a, "h"), Int(a, "hz"));
+                await Task.Delay(800);   // let Windows and the window settle before reading back
+                return await _display.GetAsync(_ui);
+            case "display.setScale":
+                await _display.SetScaleAsync(_ui, Int(a, "v"));
+                await Task.Delay(500);
+                return await _display.GetAsync(_ui);
 
             case "power.get": return _power.Get();
             case "power.setMode": _power.SetMode(Req(a, "mode")); return _power.Get();
@@ -303,6 +324,29 @@ public sealed class SystemBridge : IDisposable
                 return null;
             case "update.setAuto": Games.AutoUpdateCheck = Bool(a, "on"); return Updater.Status();
 
+            case "perf.stats":
+            {
+                var p = await Task.Run(_perf.Sample);
+                var since = Games.RunningSince;
+                return new
+                {
+                    cpu = p.Cpu, gpu = p.Gpu, ramUsed = p.RamUsedGb, ramTotal = p.RamTotalGb, vramUsed = p.VramUsedGb,
+                    battery = _power.Battery(),
+                    runningId = Games.RunningId,
+                    runningSince = since is { } t ? new DateTimeOffset(DateTime.SpecifyKind(t, DateTimeKind.Utc)).ToUnixTimeMilliseconds() : (long?)null,
+                };
+            }
+
+            case "overlay.settings": return OverlaySettings();
+            case "overlay.setHoldView":
+                Games.OverlayHoldView = Bool(a, "on");
+                if (Pad is not null) Pad.HoldViewOpensOverlay = Games.OverlayHoldView;
+                return OverlaySettings();
+            case "overlay.setGameBarButton":
+                Overlay.GameBarButton.Set(Bool(a, "on"));
+                return OverlaySettings();
+
+            case "pad.toggleMouse": return new { mouseOn = Pad?.ToggleMouse() ?? false };
             case "pad.status":
                 return new { connected = Pad?.Connected ?? 0, mouseMode = Games.ControllerMouse, mouseOn = Pad?.MouseActive ?? false };
             case "pad.setMouseMode":
@@ -335,6 +379,13 @@ public sealed class SystemBridge : IDisposable
             default: throw new NotSupportedException($"Unknown method: {method}");
         }
     }
+
+    private object OverlaySettings() => new
+    {
+        holdView = Games.OverlayHoldView,
+        gameBarButton = Overlay.GameBarButton.Get(),
+        hotkey = "Ctrl+Alt+Q",
+    };
 
     private async Task SetAirplaneAsync(bool on)
     {
