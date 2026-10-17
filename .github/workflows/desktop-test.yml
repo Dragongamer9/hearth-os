@@ -1,0 +1,63 @@
+# Starts Hearth Desktop Mode for real on a virtual screen (labwc headless + Quickshell on Fedora, as on
+# Hearth) and fails if the shell reports errors. Takes screenshots of the desktop, Quick Access, the Hearth
+# menu and the help card, kept as a download on the run.
+name: Desktop Mode test
+
+on:
+  push:
+    branches: [main, linux-host]
+    paths: ['hosts/linux/desktop/**', '.github/workflows/desktop-test.yml']
+  pull_request:
+    paths: ['hosts/linux/desktop/**']
+  workflow_dispatch:
+
+jobs:
+  desktop:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc grim wlr-randr python3 python3-evdev qt6ct \
+            google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme wlsunset >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Start Desktop Mode
+        run: |
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" shots && chmod 700 "$XDG_RUNTIME_DIR"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          labwc -C hosts/linux/desktop/labwc >labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-* >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@"; sleep 3; }
+          grim shots/1-desktop.png
+          ipc quick toggle; grim shots/2-quick-access.png; ipc quick toggle
+          ipc menu open; grim shots/3-hearth-menu.png
+          ipc launcher toggle; grim shots/4-launcher.png; ipc launcher toggle
+          echo "------ shell log"; cat "$LOG" || true
+          echo "------ labwc log"; tail -50 labwc.log || true
+          cp "$LOG" shots/nimbus-shell.log 2>/dev/null || true
+          pgrep -a quickshell || { echo "::error::Quickshell is not running"; grep -iE "error|fail|cannot|unable|not a type|non-existent" "$LOG" | head -20 | while IFS= read -r l; do echo "::error title=shell::${l:0:300}"; done; exit 1; }
+          # Errors that matter (not "missing python3-evdev/uinput", which is expected here).
+          if grep -iE "ERROR|TypeError|ReferenceError|Cannot assign|non-existent|is not a type|Failed to load" "$LOG" | grep -viE "uinput|evdev"; then
+            grep -iE "ERROR|TypeError|ReferenceError|Cannot assign|non-existent|is not a type|Failed to load" "$LOG" | grep -viE "uinput|evdev" | head -20 | while IFS= read -r l; do echo "::error title=shell::${l:0:300}"; done
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-screenshots
+          path: shots
+          retention-days: 14
