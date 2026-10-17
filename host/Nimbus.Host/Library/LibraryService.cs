@@ -473,6 +473,9 @@ public sealed class LibraryService : IDisposable
         return Profile();
     }
     public string? RunningId => _monitor.RunningId;
+    public string? RunningTitle => _monitor.RunningId is { } id && _games.TryGetValue(id, out var g) ? g.Title : null;
+    public DateTime? RunningSince => _monitor.StartedAt;
+    public bool OverlayHoldView { get => _store.Read(d => d.OverlayHoldView); set => _store.Update(d => d.OverlayHoldView = value); }
 
     public void Dispose() => _monitor.Dispose();
 }

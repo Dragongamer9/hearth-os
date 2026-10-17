@@ -286,6 +286,17 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 #sheet{inset:0;display:grid;place-items:center}
 #sheetBox{max-height:86vh;overflow-y:auto;scrollbar-width:none}
+/* in-game overlay window: only the Quick Access panel */
+body.overlay #app,body.overlay #scrim,body.overlay #bg{display:none!important}
+body.overlay #qam{position:fixed;inset:0;width:100%;transform:none;transition:none;box-shadow:none}
+body.overlay #toasts{bottom:14px;right:72px}
+body.overlay .modal{width:min(380px,92vw)}
+.np .nart .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pstat{padding:12px;border-radius:9px;background:var(--panel2);margin-bottom:6px}
+.pstat .lab{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600;margin-bottom:8px}
+.pstat .lab span{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--text)}
+.pstat .lab small{color:var(--dim);font-weight:500}
+.btn.sm{margin-top:6px;padding:10px 14px}
 #sheet.open .modal{transform:none;opacity:1}
 #prompt{top:0;left:0;right:0;background:var(--panel);padding:20px var(--gut) 18px;transform:translateY(-102%);transition:transform .24s var(--ease),visibility .24s;box-shadow:0 20px 60px rgba(0,0,0,.45)}
 #prompt.open{transform:none}
@@ -451,6 +462,8 @@ const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settin
 // send(): fire-and-forget message.  call(): request/response, resolves with the host's result.
 // Host pushes: {type:'event', name, data} for status changes, Bluetooth discovery, PIN prompts.
 const host = window.chrome && window.chrome.webview ? window.chrome.webview : null;
+// The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
+const OVERLAY = /[?&]overlay/.test(location.search);
 const pending = new Map(); let rid = 0;
 function send(msg){ if(host) host.postMessage(msg); else console.log('[bridge:mock]', msg); }
 function call(method, args={}, timeout=30000){
@@ -531,6 +544,11 @@ const MOCK = (()=>{
     'display.setBrightness':async({v})=>{ st.display.brightness=v; },
     'power.get':async()=>({...st.battery,mode:st.powerMode}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
+    'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null}),
+    'pad.toggleMouse':async()=>({mouseOn:!PAD.mouseOn}),
+    'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}),
+    'overlay.setHoldView':async({on})=>{ st.holdView=on; return {holdView:on,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}; },
+    'overlay.setGameBarButton':async({on})=>{ st.gbb=on; return {holdView:!!st.holdView,gameBarButton:on,hotkey:'Ctrl+Alt+Q'}; },
     // Stores & profile (preview data)
     'accounts.status':async()=>({installRoot:'C:\\Users\\Player\\Games', accounts:[
       {store:'steam',signedIn:true,name:'player_one',avatar:null,owned:517,installed:6,fetched:0,busy:false,error:null,toolReady:true},
@@ -877,7 +895,7 @@ function pagePower(){
 // ---------- Settings › Controls ----------
 const KEY_LIST = [['Move','Arrow keys or W A S D'],['Select','Enter or Space'],['Back','Esc or Backspace'],['Main menu','M'],['Quick Access','Q'],
   ['Search','/'],['Switch tabs','Tab / Shift+Tab, or [ and ]'],['Favorite (game page)','F'],['Home','Home'],['This page','F1'],
-  ['Open File Explorer','Ctrl+Alt+Shift+E'],['Task Manager','Ctrl+Shift+Esc']];
+  ['In-game overlay','Ctrl+Alt+Q'],['Open File Explorer','Ctrl+Alt+Shift+E'],['Task Manager','Ctrl+Shift+Esc']];
 function pageControls(){
   const now = `<span id="inputNow">${INPUT_NAMES[INPUT.last]}</span>`;
   const pads = (navigator.getGamepads ? [...navigator.getGamepads()] : []).filter(Boolean);
@@ -896,6 +914,14 @@ function pageControls(){
   h += note('“Steam windows” turns the mouse on by itself while a Steam pop-up (like the Install window) is in front. Games always get the controller to themselves.');
   h += pads.length ? pads.map((p,i)=>`<div class="row"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(p.id.split('(')[0].trim()||'Controller')}</b><small>Player ${i+1}</small></div></div>`).join('')
                    : note('No controller detected. Press any button on a connected controller.');
+  h += shead('In-game overlay');
+  const o=OVS.s;
+  h += `<div class="row" data-f data-k="ov-info"><span class="ricon">${I.sliders}</span><div class="rt"><b>Open it during a game</b><small>Xbox button, or ${o?o.hotkey:'Ctrl+Alt+Q'} on a keyboard. Quick settings, performance, screenshots and Exit game, over whatever is running.</small></div></div>`;
+  if(o){
+    h += `<button class="row" data-f data-k="ov-gb" data-act="ovGameBar"><div class="rt"><b>Xbox button opens only Nimbus</b><small>${o.gameBarButton?'Right now Windows Game Bar also opens on the Xbox button. Turn this on to stop that.':'Game Bar no longer uses the Xbox button. Turn this off to give it back to Game Bar.'}</small></div><div class="sw ${o.gameBarButton?'':'on'}"></div></button>`;
+    h += `<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to open the overlay</b><small>A backup for controllers without an Xbox button. Off by default because some games use a held View (like scoreboards).</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`;
+  }
+  h += note('The overlay works over games in borderless or windowed mode, and the fullscreen mode most Windows 10/11 games use. Very old games in true exclusive fullscreen may minimize when it opens.');
   h += shead('Keyboard');
   h += KEY_LIST.map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
   h += note('Mouse and touch: click anything to select it. The buttons in the bottom bar and the top bar do the same as the controller buttons.');
@@ -1058,6 +1084,51 @@ function qRadio(kind,ic,label,sub){
   const busy=S.sys.busy[kind];
   return `<button class="ctl tg" data-f data-k="q-${kind}" data-act="radio" data-kind="${kind}">${I[ic]}<span class="tgl">${label}${sub?`<small>${esc(sub)}</small>`:''}</span>${busy?'<span class="mini-spin"></span>':`<div class="sw ${radioOn(kind)?'on':''}"></div>`}</button>`;
 }
+// ---------- live performance (Quick Access › Performance) ----------
+const PERF = {s:null, timer:null};
+function perfBody(){
+  const p=PERF.s;
+  if(!p) return '<div class="muted">Reading…</div>';
+  const row=(ic,label,val,pct,sub)=>`<div class="pstat"><div class="lab">${I[ic]}${label}${sub?` <small>${sub}</small>`:''}<span>${val}</span></div>${pct!=null?`<div class="bar"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></div>`:''}</div>`;
+  let h = row('bolt','CPU', p.cpu+'%', p.cpu);
+  h += p.gpu!=null ? row('display','GPU', p.gpu+'%', p.gpu, p.vramUsed!=null?`${p.vramUsed} GB video memory`:'') : row('display','GPU','—',null,'Not available on this PC');
+  h += row('sliders','Memory', `${p.ramUsed} / ${p.ramTotal} GB`, p.ramTotal?p.ramUsed/p.ramTotal*100:null);
+  const b=p.battery; if(b && b.present!==false && b.pct!=null) h += row('bolt','Battery', b.pct+'%'+(b.charging?' ⚡':''), b.pct);
+  h += '<div class="muted" style="margin-top:8px">Frame rate (FPS) is coming in a later update.</div>';
+  return h;
+}
+async function perfTick(){
+  PERF.timer=null;
+  const showing = S.layers.includes('qam') && S.qtab==='perf' && (!OVERLAY || OV.shown);
+  if(!showing) return;
+  try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); }catch(e){}
+  if(S.layers.includes('qam') && S.qtab==='perf'){
+    const qb=$('#qam .qbody'); if(qb){ const k=focused?.dataset.k; qb.innerHTML=`<h3>Performance</h3>${perfBody()}`; if(k){ const el=$(`#qam [data-k="${k}"]`); if(el) setFocus(el,true); } }
+  }
+  PERF.timer=setTimeout(perfTick, 1000);
+}
+function startPerf(){ if(!PERF.timer) PERF.timer=setTimeout(perfTick, 50); }
+function applyRunning(r){
+  if(!r) return;
+  if(r.runningId && S.running!==r.runningId) S.running=r.runningId;
+  if(r.runningSince) S.runningSince=r.runningSince;
+}
+
+// ---------- overlay window mode ----------
+const OV = {shown:false};
+function overlayClose(){ send({type:'overlay', action:'close'}); }
+async function overlayShown(){
+  OV.shown=true;
+  while(S.layers.length>1) closeLayer();
+  try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); if(!r.runningId) S.running=null; }catch(e){}
+  if(S.running && !G(S.running)) await loadLibrary();
+  S.qtab = S.running ? 'now' : 'quick';
+  if(!S.layers.includes('qam')) openLayer('qam'); else { renderQam(); setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
+  refreshStatus(); loadProfile();
+  if(S.qtab==='perf') startPerf();
+}
+function overlayHidden(){ OV.shown=false; while(S.layers.length>1) closeLayer(); }
+
 function renderQam(){
   const t=S.qtab; let body='';
   if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="n-${i}" ${n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
@@ -1069,16 +1140,18 @@ function renderQam(){
     ${tgCtl('sounds','note','Interface sounds')}
     <div class="two"><button class="btn" data-f data-k="q-gw" data-act="goset" data-tab="wifi">${I.wifi}Wi-Fi</button><button class="btn" data-f data-k="q-gb" data-act="goset" data-tab="bluetooth">${I.bt}Bluetooth</button></div>
     <button class="btn" data-f data-k="q-kbd" data-act="search">${I.kbd}Keyboard</button>`; }
-  if(t==='perf') body = `<h3>Performance</h3>
-    <div class="ctl"><div class="lab">${I.play}Frame limit<span>${S.set.fps==='off'?'Off':S.set.fps+' FPS'}</span></div>
-      <div class="seg">${['30','40','60','off'].map(f=>`<button class="${S.set.fps===f?'on':''}" data-f data-k="q-fps-${f}" data-act="fps" data-v="${f}">${f==='off'?'Off':f}</button>`).join('')}</div></div>
-    ${sliderCtl('tdp','bolt','Power limit (TDP)',5,30,1,' W')}
-    ${sliderCtl('overlay','display','Performance overlay',0,4,1,'')}
-    <div class="muted" style="margin-top:10px">Wiring these to real hardware needs vendor APIs (e.g. RyzenAdj, NVAPI) in the host.</div>`;
+  if(t==='perf') body = `<h3>Performance</h3>${perfBody()}`;
   if(t==='now'){ const g=S.running&&G(S.running);
-    body = `<h3>Now playing</h3>${g?`<div class="np"><div class="nart" style="${artBg(g)}"></div><div class="nb"><b>${esc(g.title)}</b><div class="muted">${SOURCES[g.src]} · running</div>
-      <button class="btn" data-f data-k="q-gp" data-act="game" data-id="${g.id}">Game details</button>
-      <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>`:'<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
+    const mins = S.runningSince ? Math.max(0,Math.round((Date.now()-S.runningSince)/60000)) : null;
+    const mouseBtn = `<button class="btn sm" data-f data-k="q-mouse" data-act="toggleMouse">${I.mouse}Controller mouse: ${PAD.mouseOn?'on':'off'}</button>`;
+    const ovBtns = OVERLAY ? `<button class="btn sm" data-f data-k="q-shot" data-act="ovShot">${I.display}Take a screenshot</button>${mouseBtn}
+      <button class="btn sm" data-f data-k="q-home" data-act="ovHome">${I.home}Back to Nimbus</button>` : '';
+    body = `<h3>Now playing</h3>${g?`<div class="np"><div class="nart" style="${artBg(g)}">${artImg(g,['hero','wide','cover'])}</div><div class="nb"><b>${esc(g.title)}</b>
+      <div class="muted">${SOURCES[g.src]}${mins!=null?` · playing for ${mins<60?mins+' min':hrs(mins/60)}`:' · running'}</div>
+      ${OVERLAY?'':`<button class="btn" data-f data-k="q-gp" data-act="game" data-id="${g.id}">Game details</button>`}
+      ${ovBtns}
+      <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>`
+      : OVERLAY ? `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}` : '<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
   }
   $('#qam').innerHTML = `<div class="qbody">${body}</div><div class="qtabs">${QTABS.map(([k,ic,l])=>`<button class="qtab ${t===k?'on':''}" data-f data-k="qt-${k}" data-act="qtab" data-tab="${k}" aria-label="${l}">${I[ic]}</button>`).join('')}</div>`;
 }
@@ -1145,7 +1218,7 @@ function promptSubmit(){
   p.done=true; closeLayer(); p.res(p.text);
 }
 
-const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt()};
+const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(S.qtab==='perf') startPerf(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt()};
 const LAYER_CLOSE = {
   sheet:()=>{ if(sheet && !sheet.picked && sheet.onCancel) sheet.onCancel(); sheet=null; },
   prompt:()=>{ if(prompt && !prompt.done) prompt.res(null); prompt=null; },
@@ -1281,7 +1354,12 @@ function act(el){
     case 'padSwap': { const k='swap'+d.v; PAD[k]=!PAD[k]; try{ localStorage.setItem('nimbus.'+k, PAD[k]?'1':'0'); }catch(e){} return render('ctl-swap'+d.v.toLowerCase()); }
     case 'inputMode': INPUT.mode=d.v; try{ localStorage.setItem('nimbus.inputMode', d.v); }catch(e){} renderFooter(); return render('ctl-'+d.v);
     case 'pkey': return promptKey(d.c);
-    case 'qtab': S.qtab=d.tab; renderQam(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
+    case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
+    case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
+    case 'ovShot': return call('overlay.screenshot',{},20000).then(r=>toast(`Screenshot saved to Pictures › Screenshots › Nimbus`)).catch(e=>toast(e.message));
+    case 'ovHome': return send({type:'overlay', action:'home'});
+    case 'ovHoldView': return call('overlay.setHoldView',{on:!(OVS.s&&OVS.s.holdView)}).then(r=>{ OVS.s=r; render('ov-hold'); }).catch(e=>toast(e.message));
+    case 'ovGameBar': return call('overlay.setGameBarButton',{on:!(OVS.s&&OVS.s.gameBarButton)}).then(r=>{ OVS.s=r; render('ov-gb'); }).catch(e=>toast(e.message));
     case 'toggle': S.set[d.key]=!S.set[d.key];
       if(host && /^src/.test(d.key)) setSources();
       else if(host && d.key==='steamBg') call('library.setSteamBackground',{on:S.set.steamBg}).catch(e=>toast(e.message));
@@ -1319,6 +1397,7 @@ function act(el){
   }
 }
 function back(){
+  if(OVERLAY && S.layers.length<=1) return overlayClose();
   if(S.layers.length && S.layers.at(-1)!=='launch') return closeLayer();
   if(!S.layers.length && goBack()) return blip(420,.05);
 }
@@ -1364,7 +1443,8 @@ function launch(g){
 }
 function gameStarted(id){
   const g=G(id); hideLaunch();
-  S.running=id; if(g) g.last=Date.now();
+  S.running=id; S.runningSince=Date.now(); if(g) g.last=Date.now();
+  if(!OVERLAY) overlayTip();
   if(S.view==='game') render(null,true); else renderFooter();
   if(S.layers.includes('qam')) renderQam();
   if(g) toast(`${g.title} is running. Open Quick Access to exit.`);
@@ -1693,18 +1773,20 @@ async function setSources(){
 function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
   if(name==='game.started') return gameStarted(data.id);
-  if(name==='update') return onUpdate(data);
+  if(name==='update') return OVERLAY ? null : onUpdate(data);
   if(name==='pad') return hostPad(data.b);
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
-  if(name==='accounts.changed') return loadAccounts(true);
+  if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
+  if(name==='overlay.shown') return overlayShown();
+  if(name==='overlay.hidden') return overlayHidden();
   if(name==='install.done'){
     const t=data.title||'The game';
     if(data.error==='cancelled') toast(`Cancelled the download of ${t}`);
     else if(data.error) toast(`${t} didn't install: ${data.error}`);
     else { toast(`${t} is installed and ready to play`); NOTIFS.unshift({i:'dl', t:`${t} is ready to play`, s:'Installed by Nimbus'}); updateBadge(); }
-    return loadLibrary(true);
+    return OVERLAY ? null : loadLibrary(true);
   }
   if(name==='game.timeout'){ hideLaunch(); const g=G(data.id); return toast(`Nimbus couldn't see ${g?g.title:'the game'} start. If it's running, it still works; it just won't show here.`); }
   if(name==='bt.found'){
@@ -1760,6 +1842,7 @@ function onSettingsTab(t){
   if(t==='shell') loadShellStatus();
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
   if(t==='updates') loadUpdateStatus();
+  if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();
   if(t==='audio') call('audio.get').then(r=>{ Object.assign(S.sys.audio,r); S.set.vol=r.volume; refreshUI(); }).catch(e=>toast(e.message));
@@ -1929,6 +2012,12 @@ function hintAction(id){
 function input(k){
   const top=S.layers.at(-1);
   if(top==='launch') return;
+  if(OVERLAY){
+    // The overlay is only the Quick Access panel (plus its pop-ups and the text prompt).
+    if((k==='select'||k==='guide') && top==='qam') return overlayClose();
+    if(k==='start' && top!=='prompt') return;
+    if((k==='y'||k==='x') && top!=='prompt') return;
+  }
   switch(k){
     case 'up': case 'down': case 'left': case 'right': return move(k);
     case 'a': return focused && act(focused);
@@ -1942,12 +2031,21 @@ function input(k){
 }
 function shiftTab(d){
   const top=S.layers.at(-1);
-  if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
+  if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
   if(!top && S.view==='library'){ const i=LIB_TABS.findIndex(t=>t[0]===S.tab); S.tab=LIB_TABS[(i+d+LIB_TABS.length)%LIB_TABS.length][0]; render('tab-'+S.tab); return blip(600); }
 }
 
 // Controllers: Xbox-style controllers come from the host (XInput, exact button names, works with any
 // controller order). Other controllers use the browser gamepad API, with optional A/B and X/Y swaps.
+const OVS = {s:null};
+async function overlayTip(){
+  let shown=false; try{ shown=localStorage.getItem('nimbus.overlayTip')==='1'; }catch(e){}
+  if(shown || !host) return;
+  try{ localStorage.setItem('nimbus.overlayTip','1'); }catch(e){}
+  try{ OVS.s=await call('overlay.settings'); }catch(e){ return; }
+  toast(OVS.s.gameBarButton ? 'Tip: press the Xbox button for the Nimbus overlay. If Game Bar opens too, turn it off in Settings › Controls.'
+                            : 'Tip: press the Xbox button for the Nimbus overlay.');
+}
 const PAD = {host:false, last:'', swapAB:false, swapXY:false, mouseMode:'steam', mouseOn:false};
 try{ PAD.swapAB = localStorage.getItem('nimbus.swapAB')==='1'; PAD.swapXY = localStorage.getItem('nimbus.swapXY')==='1'; }catch(e){}
 function mapPad(k){
@@ -2049,11 +2147,12 @@ if(host){ NOTIFS=[]; GAMES.length=0; }
 updateBadge();
 render();
 refreshStatus();
+if(OVERLAY){ document.body.classList.add('overlay'); NOTIFS=[]; }
 applyProfile();
 loadProfile();
 loadLibrary();
-loadAccounts(true);
-loadUpdateStatus();
+if(!OVERLAY){ loadAccounts(true); loadUpdateStatus(); }
+else { S.qtab='quick'; openLayer('qam'); }
 requestAnimationFrame(pollPads);
 send({type:'ready'});
 </script>

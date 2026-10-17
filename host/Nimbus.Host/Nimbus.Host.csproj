@@ -22,6 +22,8 @@
     <PackageReference Include="System.Management" Version="8.0.0" />
     <!-- DPAPI, for the Xbox sign-in token -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <!-- GPU use for the Performance panel -->
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.0" />
   </ItemGroup>
 
   <!-- Copy the web UI next to the exe as wwwroot/ -->
