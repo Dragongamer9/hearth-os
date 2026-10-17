@@ -57,10 +57,38 @@ If Nimbus is stuck: Ctrl+Alt+F3, sign in, `loginctl terminate-user $USER`.
 
 ## Desktop Mode
 
-*Power › Switch to desktop* (or Settings › Shell) switches the Nimbus session to Desktop Mode without logging out:
-normal windows on the **labwc** window manager, with a Nimbus taskbar, app launcher, notifications and wallpaper
-made with **Quickshell** (`desktop/shell/`). The **Game Mode** button on the taskbar, Super+G, or *Return to Game Mode*
-in the right-click menu goes back.
+*Power › Switch to desktop* (or Settings › Shell) switches the Hearth session to Desktop Mode without logging out:
+normal windows on the **labwc** window manager, with Hearth's own taskbar, app launcher, Quick Access, notifications,
+on-screen keyboard and wallpaper, made with **Quickshell** (`desktop/shell/`). The **Game Mode** button on the
+taskbar, Super+G, or Game Mode in Quick Access or the Hearth menu goes back.
+
+**With a controller** (`desktop/shell/hearth-pad`), the whole desktop works without a mouse or keyboard:
+
+| Control | Does |
+|---|---|
+| Right stick (press: precise) | Move the pointer |
+| Left stick | Scroll |
+| A / RT | Click (hold to drag) |
+| X / LT | Right-click |
+| B | Back (Esc) |
+| Y | On-screen keyboard (D-pad picks keys, A types, X ⌫, LB shift, ☰ Enter, B closes) |
+| D-pad | Arrow keys |
+| LB / RB | Switch windows |
+| Menu ☰ | Apps |
+| Guide | Hearth menu: point either stick at Apps, Keyboard, Quick Access, Close window, Game Mode, Screenshot, Controller mouse on/off, Controls |
+| View + D-pad / View + B | Snap left/right, maximize, minimize / close the window |
+| View | Show the controls |
+
+It pauses while a game is fullscreen (Guide still opens the menu) and can be turned off in Quick Access.
+Needs `python3-evdev` and access to `/dev/uinput` (Hearth, the OS, has both; elsewhere Steam's udev rules usually
+give it). If Steam is running with its own desktop controller layout, turn one of them off.
+
+**Touch:** swipe in from the right edge for Quick Access, the left edge for the keyboard, the bottom edge for apps.
+The taskbar moves down the left side on an upright screen, and small sharp screens (handhelds) start at 125–150%
+scale until you pick one in Settings › Display.
+
+**Look:** warm, firelit colors, a wallpaper with a slowly breathing fire glow and drifting embers, and
+**Night light** in Quick Access (warmer screen from sunset to sunrise, with `wlsunset`).
 
 | Key | Does |
 |---|---|
@@ -73,7 +101,7 @@ in the right-click menu goes back.
 
 Needs `labwc` and `quickshell` (Fedora: COPR `errornointernet/quickshell`; Arch: `quickshell`). Your wallpaper:
 `~/.config/nimbus/wallpaper.jpg`. Your own startup apps: an executable `~/.config/nimbus/autostart`.
-Taskbar log: `$XDG_RUNTIME_DIR/nimbus-shell.log`.
+Shell log: `$XDG_RUNTIME_DIR/nimbus-shell.log`.
 
 ## Display
 
