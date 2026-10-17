@@ -10,6 +10,7 @@ const perf = require('./perf');
 const steam = require('./library/steam');
 const { DisplayModes } = require('./display');
 const { SystemAdmin } = require('./system-admin');
+const sysinfo = require('./sysinfo');
 const { log } = require('./util');
 
 class Bridge {
@@ -72,6 +73,9 @@ class Bridge {
     switch (method) {
       case 'host.info': return this.platform.info();
       case 'sys.status': return this.status();
+      case 'system.info': return sysinfo.info();
+      case 'app.restart': return this.platform.restartApp ? this.platform.restartApp() : null;
+      case 'app.exportLogs': return this.platform.exportLogs ? this.platform.exportLogs() : null;
 
       case 'radios.set':
         if (a.kind === 'wifi') await this.wifi.setRadio(!!a.on); else await this.bt.setPower(!!a.on);
