@@ -55,6 +55,15 @@ Keywords=wifi;bluetooth;sound;display;controller;update;
 DESKTOP
 # The Hearth color scheme, also selectable in Plasma (System Settings › Colors).
 install -Dm644 /usr/share/nimbus/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
+# Wallpapers: /usr/share/backgrounds/hearth, and as Plasma wallpapers (System Settings › Wallpaper).
+declare -A WALL=([fireside]="Fireside" [embers]="Embers" [ridge]="Dusk Ridge" [mark]="The Mark" [kiln]="Kiln")
+for id in "${!WALL[@]}"; do
+  install -Dm644 "/ctx/wallpapers/hearth-$id.jpg" "/usr/share/backgrounds/hearth/hearth-$id.jpg"
+  dir="/usr/share/wallpapers/Hearth-$id"
+  install -Dm644 "/ctx/wallpapers/hearth-$id.jpg" "$dir/contents/images/3840x2160.jpg"
+  printf '{ "KPlugin": { "Id": "Hearth-%s", "Name": "Hearth %s", "Authors": [{ "Name": "Hearth" }], "License": "CC-BY-SA-4.0" } }\n' \
+    "$id" "${WALL[$id]}" > "$dir/metadata.json"
+done
 # Portals for Desktop Mode (XDG_CURRENT_DESKTOP=Nimbus): screen sharing and screenshots through wlroots,
 # KDE file dialogs, everything else from GTK.
 mkdir -p /usr/share/xdg-desktop-portal
