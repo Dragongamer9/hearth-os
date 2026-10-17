@@ -18,6 +18,11 @@ namespace Nimbus.Host.Input;
 ///   "always" = everywhere), and View + Menu together toggles it on/off at any time.
 ///
 /// Nothing is sent while a game is running: games get the controller to themselves.
+///
+/// In-game overlay
+/// - The Xbox (Guide) button opens/closes the Nimbus overlay over whatever is in front (in the Nimbus UI
+///   it opens Quick Access instead). Optionally, holding View for a second does the same.
+/// - While the overlay is in front, buttons go to the overlay page.
 /// </summary>
 public sealed class ControllerBridge : IDisposable
 {
@@ -43,7 +48,16 @@ public sealed class ControllerBridge : IDisposable
         _thread.Start();
     }
 
-    private enum Target { Game, Ui, Steam, Web, NimbusDialog, Other }   // Web = a store sign-in window
+    private enum Target { Game, Ui, Overlay, Steam, Web, NimbusDialog, Other }   // Web = a store sign-in window
+
+    /// <summary>The overlay window's handle (IntPtr.Zero when there is none).</summary>
+    public Func<IntPtr> OverlayWindow { get; set; } = () => IntPtr.Zero;
+    /// <summary>Holding View for a second toggles the overlay (off by default: some games use a held View).</summary>
+    public bool HoldViewOpensOverlay { get; set; }
+    /// <summary>Raised on the bridge thread when the overlay should open or close.</summary>
+    public event Action? OverlayToggle;
+    /// <summary>Raised on the bridge thread when the overlay is in front: button name, like <see cref="UiButton"/>.</summary>
+    public event Action<string>? OverlayButton;
 
     /// <summary>Raised on the bridge thread when the Nimbus UI is in front: button name (a, b, x, y, lb, rb, start, select, up, down, left, right).</summary>
     public event Action<string>? UiButton;
@@ -65,6 +79,8 @@ public sealed class ControllerBridge : IDisposable
         bool suppressCombo = false;
         bool leftDown = false, rightDown = false;
         double carryX = 0, carryY = 0, carryWheel = 0;
+        bool guidePrev = false, viewFired = false;
+        DateTime viewSince = DateTime.MaxValue;
 
         while (!_stop)
         {
@@ -74,6 +90,25 @@ public sealed class ControllerBridge : IDisposable
             if (connected == 0) { prev = 0; held.Clear(); SetMouse(false); continue; }
 
             var target = CurrentTarget();
+
+            // Xbox button: Quick Access in the Nimbus UI, the overlay everywhere else.
+            bool guide = (pad.Buttons & GUIDE) != 0;
+            if (guide && !guidePrev)
+            {
+                if (target == Target.Ui) UiButton?.Invoke("guide");
+                else OverlayToggle?.Invoke();
+            }
+            guidePrev = guide;
+            pad.Buttons &= unchecked((ushort)~GUIDE);
+
+            // Optional: hold View (alone) for a second.
+            if (HoldViewOpensOverlay && pad.Buttons == BACK && target is not (Target.Ui or Target.Overlay))
+            {
+                if (viewSince == DateTime.MaxValue) viewSince = DateTime.UtcNow;
+                if (!viewFired && DateTime.UtcNow - viewSince > TimeSpan.FromSeconds(1)) { viewFired = true; OverlayToggle?.Invoke(); }
+            }
+            else { viewSince = DateTime.MaxValue; viewFired = false; }
+
             if (target == Target.Game)
             {
                 if (leftDown) { Mouse(MOUSEEVENTF_LEFTUP); leftDown = false; }
@@ -162,6 +197,14 @@ public sealed class ControllerBridge : IDisposable
         if (_mouseOverride is null) MouseChanged?.Invoke(on);
     }
 
+    /// <summary>Same as pressing View + Menu: turns the controller mouse on or off until toggled again.</summary>
+    public bool ToggleMouse()
+    {
+        _mouseOverride = !MouseActive;
+        MouseChanged?.Invoke(_mouseOverride.Value);
+        return _mouseOverride.Value;
+    }
+
     /// <summary>Changing the setting clears a View + Menu override.</summary>
     public void SetMouseMode(string mode) { MouseMode = mode; _mouseOverride = null; }
 
@@ -182,10 +225,11 @@ public sealed class ControllerBridge : IDisposable
 
     private Target CurrentTarget()
     {
-        if (_gameRunning()) return Target.Game;                          // games get the controller to themselves
         var fg = GetForegroundWindow();
+        if (fg != IntPtr.Zero && fg == OverlayWindow()) return Target.Overlay;
+        if (fg != IntPtr.Zero && fg == _mainWindow) return Target.Ui;
+        if (_gameRunning()) return Target.Game;                          // games get the controller to themselves
         if (fg == IntPtr.Zero) return Target.Other;
-        if (fg == _mainWindow) return Target.Ui;
         GetWindowThreadProcessId(fg, out var pid);
         if (pid == (uint)Environment.ProcessId) return Stores.SignInWindow.IsSignInWindow(fg) ? Target.Web : Target.NimbusDialog;
         if (IsSteam(pid)) return Target.Steam;
@@ -208,20 +252,20 @@ public sealed class ControllerBridge : IDisposable
 
     private const ushort UP = 0x0001, DOWN = 0x0002, LEFT = 0x0004, RIGHT = 0x0008,
                          START = 0x0010, BACK = 0x0020, LB = 0x0100, RB = 0x0200,
-                         A = 0x1000, B = 0x2000, X = 0x4000, Y = 0x8000;
+                         GUIDE = 0x0400, A = 0x1000, B = 0x2000, X = 0x4000, Y = 0x8000;
     private static readonly ushort[] AllButtons = { UP, DOWN, LEFT, RIGHT, LB, RB, A, B, X, Y, START, BACK };
     private static bool IsDirection(ushort b) => b is UP or DOWN or LEFT or RIGHT;
 
     private void Dispatch(ushort b, Target target)
     {
-        if (target == Target.Ui)
+        if (target is Target.Ui or Target.Overlay)
         {
             var name = b switch
             {
                 A => "a", B => "b", X => "x", Y => "y", LB => "lb", RB => "rb", START => "start", BACK => "select",
                 UP => "up", DOWN => "down", LEFT => "left", RIGHT => "right", _ => null,
             };
-            if (name is not null) UiButton?.Invoke(name);
+            if (name is not null) { if (target == Target.Overlay) OverlayButton?.Invoke(name); else UiButton?.Invoke(name); }
         }
         else if (target is Target.Steam or Target.Web or Target.NimbusDialog) Press(b, target);
         // Other apps: only the controller mouse (if on) acts; no keys are sent to them.
@@ -278,6 +322,19 @@ public sealed class ControllerBridge : IDisposable
     private struct XINPUT_STATE { public uint dwPacketNumber; public XINPUT_GAMEPAD Gamepad; }
 
     [DllImport("xinput1_4.dll")] private static extern int XInputGetState(int index, out XINPUT_STATE state);
+    // Undocumented but long-standing (ordinal 100): same as XInputGetState, plus the Guide button (0x0400).
+    [DllImport("xinput1_4.dll", EntryPoint = "#100")] private static extern int XInputGetStateEx(int index, out XINPUT_STATE state);
+    private static bool _noStateEx;
+
+    private static int GetState(int i, out XINPUT_STATE s)
+    {
+        if (!_noStateEx)
+        {
+            try { return XInputGetStateEx(i, out s); }
+            catch (EntryPointNotFoundException) { _noStateEx = true; }
+        }
+        return XInputGetState(i, out s);
+    }
 
     private struct Pad { public ushort Buttons; public byte LT, RT; public short LX, LY, RX, RY; }
 
@@ -294,7 +351,7 @@ public sealed class ControllerBridge : IDisposable
         {
             for (int i = 0; i < 4; i++)
             {
-                if (XInputGetState(i, out var s) != 0) continue;   // not connected
+                if (GetState(i, out var s) != 0) continue;   // not connected
                 connected++;
                 var g = s.Gamepad;
                 pad.Buttons |= g.wButtons;

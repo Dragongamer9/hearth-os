@@ -14,11 +14,14 @@ public sealed class ShellForm : Form
 {
     private const string VirtualHost = "nimbus.local";
     private const int HotkeyEscapeHatch = 0x4E01;
+    private const int HotkeyOverlay = 0x4E02;
 
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(12, 16, 22) };
     private readonly bool _windowed;
     private SystemBridge? _system;
     private Input.ControllerBridge? _pad;
+    private Overlay.OverlayForm? _overlay;
+    private IntPtr _overlayHandle;
 
     public ShellForm(bool windowed)
     {
@@ -105,6 +108,42 @@ public sealed class ShellForm : Form
         core.WebResourceRequested += (_, e) => ServeArt(env, e);
 
         core.Navigate($"https://{VirtualHost}/index.html");
+
+        await InitOverlayAsync(env, www);
+    }
+
+    /// <summary>The in-game overlay: its own window and page, opened with the Xbox button or Ctrl+Alt+Q.</summary>
+    private async Task InitOverlayAsync(CoreWebView2Environment env, string www)
+    {
+        if (_system is null || _pad is null) return;
+        try
+        {
+            var overlay = new Overlay.OverlayForm(_system, () => _pad?.Connected ?? 0);
+            overlay.HomeRequested += () =>
+            {
+                if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+                TopMost = true; TopMost = false;
+                Activate();
+            };
+            await overlay.InitAsync(env, $"https://{VirtualHost}/index.html?overlay=1", c =>
+            {
+                c.SetVirtualHostNameToFolderMapping(VirtualHost, www, CoreWebView2HostResourceAccessKind.Allow);
+                c.AddWebResourceRequestedFilter($"https://{Library.LibraryService.ArtHost}/*", CoreWebView2WebResourceContext.Image);
+                c.WebResourceRequested += (_, e) => ServeArt(env, e);
+            });
+            _overlay = overlay;
+            _overlayHandle = overlay.Handle;
+            FormClosed += (_, _) => overlay.Dispose();
+
+            _pad.OverlayWindow = () => _overlayHandle;
+            _pad.HoldViewOpensOverlay = _system.Games.OverlayHoldView;
+            _pad.OverlayToggle += () => BeginInvoke((MethodInvoker)(() => _overlay?.Toggle()));
+            _pad.OverlayButton += b => BeginInvoke((MethodInvoker)(() => _overlay?.PadButton(b)));
+            _system.Games.GameExited += _ => BeginInvoke((MethodInvoker)(() => _overlay?.HideOverlay(restoreFocus: false)));
+            Activate();   // the overlay's first (off-screen) show took focus
+            SystemBridge.Log("overlay ready");
+        }
+        catch (Exception ex) { SystemBridge.Log("overlay failed to start: " + ex.Message); }
     }
 
     private void ServeArt(CoreWebView2Environment env, CoreWebView2WebResourceRequestedEventArgs e)
@@ -209,17 +248,25 @@ public sealed class ShellForm : Form
     {
         base.OnHandleCreated(e);
         RegisterHotKey(Handle, HotkeyEscapeHatch, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, (uint)Keys.E);
+        RegisterHotKey(Handle, HotkeyOverlay, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, (uint)Keys.Q);
     }
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
         UnregisterHotKey(Handle, HotkeyEscapeHatch);
+        UnregisterHotKey(Handle, HotkeyOverlay);
         base.OnHandleDestroyed(e);
     }
 
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HotkeyEscapeHatch) StartExplorer();
+        if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HotkeyOverlay)
+        {
+            // In Nimbus itself it opens Quick Access; anywhere else, the overlay.
+            if (Form.ActiveForm == this) Post(new { type = "event", name = "pad", data = new { b = "guide" } });
+            else _overlay?.Toggle();
+        }
         base.WndProc(ref m);
     }
 }
