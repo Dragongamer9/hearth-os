@@ -24,7 +24,7 @@ ShellRoot {
                     onQuickRequested: quick.toggle()
                     onKeyboardRequested: keyboard.open ? pad.closeKeyboard() : pad.openKeyboard()
                 }
-                Edges {
+                EdgeSwipes {
                     screen: modelData
                     onSwiped: edge => {
                         if (edge === "right") quick.shown = true;
