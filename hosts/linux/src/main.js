@@ -116,8 +116,15 @@ function resumeGame() {
 
 // ------------------------------------------------------------------ messages from the UI
 
-function onMessage(_e, m) {
+function onMessage(e, m) {
   if (!m || typeof m !== 'object') return;
+  if (overlay && e && e.sender === overlay.webContents) {
+    if (m.type === 'call') overlayBridge.handle(m);
+    else if (m.type === 'overlay' && m.action === 'close') hideOverlay();
+    else if (m.type === 'log') log('overlay: ' + m.text);
+    else if (m.type === 'power') { hideOverlay(); power(m.action); }
+    return;
+  }
   switch (m.type) {
     case 'ready': post({ type: 'event', name: 'padHost', data: { connected: 0 } }); break; // the UI reads pads itself
     case 'call': bridge.handle(m); break;
@@ -222,6 +229,65 @@ ipcMain.on('signin:key', (e, key) => {
   wc.sendInputEvent({ type: 'keyUp', keyCode: key });
 });
 
+// ------------------------------------------------------------------ in-game overlay (gamescope)
+// In Game Mode, Quick Access opens on top of the running game instead of switching back to Hearth: a
+// transparent window marked as gamescope's overlay (STEAM_OVERLAY), which gamescope draws over the game,
+// and gives input to while it's open (STEAM_INPUT_FOCUS). It loads the same page with ?overlay=full.
+// Elsewhere (a desktop, or without xprop) the Guide button brings Hearth itself back, as before.
+let overlay = null, overlayBridge = null, overlayOn = false;
+
+function xid(w) { const h = w.getNativeWindowHandle(); return h.length >= 8 ? Number(h.readBigUInt64LE(0)) : h.readUInt32LE(0); }
+function xprop(args) { return run('xprop', args, { timeout: 4000 }); }
+const setWinAtom = (w, name, v) => xprop(['-id', String(xid(w)), '-f', name, '32c', '-set', name, String(v)]);
+const setRootAtom = (name, v) => xprop(['-root', '-f', name, '32c', '-set', name, String(v)]);
+
+function overlayAvailable() {
+  return IN_SESSION && !WINDOWED && require('./util').has('xprop') && !!process.env.DISPLAY;
+}
+
+function createOverlay(platform) {
+  if (!overlayAvailable()) return;
+  const b = screen.getPrimaryDisplay().bounds;
+  overlay = new BrowserWindow({
+    show: false, frame: false, transparent: true, backgroundColor: '#00000000', hasShadow: false,
+    x: b.x, y: b.y, width: b.width, height: b.height, alwaysOnTop: true, skipTaskbar: true, resizable: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  overlay.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('nimbus://')) e.preventDefault(); });
+  overlay.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  overlay.on('close', e => { if (!leaving) { e.preventDefault(); hideOverlay(); } });
+  overlay.on('closed', () => { overlay = null; });
+  overlayBridge = new Bridge({ post: m => { if (overlay && !overlay.isDestroyed()) overlay.webContents.send('nimbus:msg', m); }, library, updates, platform });
+  setWinAtom(overlay, 'STEAM_OVERLAY', 1).catch(e => { log('overlay: xprop failed, using the old way: ' + e.message); overlay.destroy(); overlay = null; });
+  overlay.loadURL('nimbus://app/index.html?overlay=full');
+}
+
+function showOverlay() {
+  if (!overlay) return false;
+  overlayOn = true;
+  overlay.showInactive();
+  overlay.focus();
+  setWinAtom(overlay, 'STEAM_INPUT_FOCUS', 1).catch(() => {});
+  overlay.webContents.send('nimbus:msg', { type: 'event', name: 'overlay.shown', data: {} });
+  return true;
+}
+function hideOverlay() {
+  if (!overlay || !overlayOn) return;
+  overlayOn = false;
+  overlay.webContents.send('nimbus:msg', { type: 'event', name: 'overlay.hidden', data: {} });
+  setWinAtom(overlay, 'STEAM_INPUT_FOCUS', 0).catch(() => {});
+  overlay.hide();
+}
+
+/** Frame-rate limit for games in Game Mode (gamescope's own limiter); 0 = no limit. */
+async function setFpsLimit(fps) {
+  const n = Math.max(0, Math.min(240, Math.round(+fps || 0)));
+  if (!IN_SESSION || !require('./util').has('xprop')) throw new Error('The frame-rate limit works in Game Mode.');
+  await setRootAtom('GAMESCOPE_FPS_LIMIT', n);
+  library.store.update(d => { d.fpsLimit = n; });
+  return n;
+}
+
 // ------------------------------------------------------------------ screenshots
 
 /**
@@ -234,6 +300,8 @@ async function screenshot() {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `Screenshot ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}.png`);
   const wasVisible = win && win.isVisible();
+  const overlayWasOn = overlayOn;
+  if (overlayWasOn) { overlay.hide(); await new Promise(r => setTimeout(r, 450)); }
   if (wasVisible) { win.hide(); await new Promise(r => setTimeout(r, 450)); }
   const tries = [
     ['grim', [file]],                                   // wlroots desktops (Desktop Mode)
@@ -248,7 +316,7 @@ async function screenshot() {
       try { await run(cmd, args, { timeout: 10000 }); } catch { continue; }
       if (fs.existsSync(file)) { ok = true; break; }
     }
-  } finally { if (wasVisible) comeBack(); }
+  } finally { if (wasVisible) comeBack(); if (overlayWasOn && overlay) overlay.showInactive(); }
   if (!ok) throw new Error('No screenshot tool found. Install grim (Desktop Mode), Spectacle (KDE) or GNOME Screenshot.');
   return { file };
 }
@@ -327,6 +395,8 @@ app.whenReady().then(() => {
         features: ['restartApp', 'exportLogs'],
       }),
       restartApp: () => { setTimeout(relaunch, 300); return null; },
+      canFpsLimit: () => IN_SESSION && require('./util').has('xprop'),
+      setFpsLimit,
       exportLogs,
       pickGameFile: async () => {
         const r = await dialog.showOpenDialog(win, {
@@ -377,7 +447,7 @@ app.whenReady().then(() => {
   });
 
   library.on('started', () => stepAside());
-  library.on('exited', () => comeBack());
+  library.on('exited', () => { hideOverlay(); comeBack(); });
   stream.on('closed', () => library.markExited());
   ipcMain.on('stream:exit', () => stream.close());
   ipcMain.on('nimbus:msg', onMessage);
@@ -388,6 +458,8 @@ app.whenReady().then(() => {
   guide.on('press', how => {
     log(`overlay: ${how} pressed${library.runningId ? '' : ' (no game running)'}`);
     if (!library.runningId || (win && win.isVisible() && win.isFocused())) return; // the UI handles it itself then
+    if (overlayOn) return hideOverlay();
+    if (showOverlay()) return;
     comeBack();
     post({ type: 'event', name: 'pad', data: { b: 'guide' } });
   });
@@ -397,6 +469,8 @@ app.whenReady().then(() => {
   try { globalShortcut.register('Control+Alt+Q', () => guide.fire('hotkey')); } catch (e) { log('Ctrl+Alt+Q: ' + e.message); }
 
   createWindow();
+  createOverlay(bridge.platform);
+  if (IN_SESSION && library.store.data.fpsLimit) setFpsLimit(library.store.data.fpsLimit).catch(() => {});
   library.startBackgroundServices().catch(e => log('background services FAILED ' + e.message));
   setTimeout(() => { if (library.store.data.autoUpdateCheck) updates.check(); }, 20000);
   setInterval(() => { if (library.store.data.autoUpdateCheck) updates.check(); }, 6 * 60 * 60 * 1000);

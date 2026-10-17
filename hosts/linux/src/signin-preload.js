@@ -5,7 +5,9 @@
 //   B                             close the keyboard, or cancel sign-in
 // In the keyboard: d-pad / left stick pick a key, A types it, X backspace, LB shift, Menu (☰) Enter, Y or B close.
 // The pointer and keyboard are drawn on top of the store's page (in a shadow root, so the page's styles can't
-// touch them). Clicks and typing are sent by Nimbus as real input events, so every site accepts them.
+// touch them). Clicks are real input events. Typing goes straight into the text box you picked (and stays
+// there, even if the page moves focus), the way a paste would, so sites accept it. Picking a text box opens
+// the keyboard by itself.
 
 const { ipcRenderer } = require('electron');
 
@@ -23,6 +25,35 @@ const LABEL = { shift: '⇧ Shift', space: 'Space', bksp: '⌫', tab: 'Tab ⇥',
 let ui, cursor, kb, hint;
 let x = innerWidth / 2, y = innerHeight / 2;
 let kbOpen = false, shift = false, row = 1, col = 0;
+let field = null;   // the text box you're typing into
+
+const editable = el => !!el && (el.isContentEditable || el.tagName === 'TEXTAREA' ||
+  (el.tagName === 'INPUT' && !/^(button|submit|reset|checkbox|radio|file|image|range|color|hidden)$/i.test(el.type || 'text')));
+document.addEventListener('focusin', e => { if (editable(e.target)) field = e.target; }, true);
+function target() {
+  const a = document.activeElement;
+  if (editable(a)) return a;
+  if (field && document.contains(field)) return field;
+  return null;
+}
+/** Types into the text box itself; falls back to key events if there isn't one. */
+function typeText(t) {
+  const el = target();
+  if (!el) return ipcRenderer.send('signin:type', t);
+  if (document.activeElement !== el) el.focus();
+  if (!document.execCommand('insertText', false, t)) ipcRenderer.send('signin:type', t);
+}
+function backspace() {
+  const el = target();
+  if (!el) return ipcRenderer.send('signin:key', 'Backspace');
+  if (document.activeElement !== el) el.focus();
+  if (!document.execCommand('delete', false)) ipcRenderer.send('signin:key', 'Backspace');
+}
+function enter() {
+  const el = target();
+  if (el && document.activeElement !== el) el.focus();
+  ipcRenderer.send('signin:key', 'Return');
+}
 const prev = {};
 const repeatAt = {};
 
@@ -60,7 +91,7 @@ function renderKb() {
     const label = LABEL[k] || (shift ? SHIFTED[k] || k.toUpperCase() : k);
     const cls = ['k', LABEL[k] ? 'wide' : '', ri === row && ci === col ? 'on' : '', k === 'shift' && shift ? 'lit' : ''].join(' ');
     return `<div class="${cls}">${label}</div>`;
-  }).join('')}</div>`).join('') + '<div class="tip">Click the field you want to type in first (A), then press Y.</div>';
+  }).join('')}</div>`).join('') + '<div class="tip">' + (target() ? 'Typing into the box you picked. B closes the keyboard.' : 'Pick a text box first: close the keyboard (B), point at the box and press A.') + '</div>';
 }
 
 function setKb(open) {
@@ -77,11 +108,11 @@ function setKb(open) {
 function pressKey() {
   const k = ROWS[row][col];
   if (k === 'shift') { shift = !shift; return renderKb(); }
-  if (k === 'space') return ipcRenderer.send('signin:type', ' ');
-  if (k === 'bksp') return ipcRenderer.send('signin:key', 'Backspace');
-  if (k === 'tab') return ipcRenderer.send('signin:key', 'Tab');
-  if (k === 'enter') return ipcRenderer.send('signin:key', 'Return');
-  ipcRenderer.send('signin:type', shift ? SHIFTED[k] || k.toUpperCase() : k);
+  if (k === 'space') return typeText(' ');
+  if (k === 'bksp') return backspace();
+  if (k === 'tab') { const el = target(); if (el) el.focus(); return ipcRenderer.send('signin:key', 'Tab'); }
+  if (k === 'enter') return enter();
+  typeText(shift ? SHIFTED[k] || k.toUpperCase() : k);
   if (shift) { shift = false; renderKb(); }
 }
 
@@ -131,9 +162,9 @@ function poll(now) {
     if (pressed('left', st.left || lx < -0.6, now, true)) moveKey(0, -1);
     if (pressed('right', st.right || lx > 0.6, now, true)) moveKey(0, 1);
     if (pressed('a', st.a, now, true)) pressKey();
-    if (pressed('x', st.x, now, true)) ipcRenderer.send('signin:key', 'Backspace');
+    if (pressed('x', st.x, now, true)) backspace();
     if (pressed('lb', st.lb, now)) { shift = !shift; renderKb(); }
-    if (pressed('start', st.start, now)) ipcRenderer.send('signin:key', 'Return');
+    if (pressed('start', st.start, now)) enter();
     if (pressed('b', st.b, now)) setKb(false);
   } else {
     // Pointer: either stick, faster the further it's pushed; d-pad nudges.
@@ -151,7 +182,11 @@ function poll(now) {
     cursor.style.left = x + 'px';
     cursor.style.top = y + 'px';
     if (st.lb && Math.abs(ry) > 0) ipcRenderer.send('signin:wheel', { x, y, dy: -ry * 40 * dt });
-    if (pressed('a', st.a, now)) ipcRenderer.send('signin:click', { x, y });
+    if (pressed('a', st.a, now)) {
+      ipcRenderer.send('signin:click', { x, y });
+      // Clicked into a text box: open the keyboard for it.
+      setTimeout(() => { if (!kbOpen && editable(document.activeElement)) { field = document.activeElement; setKb(true); } }, 250);
+    }
     if (pressed('start', st.start, now)) ipcRenderer.send('signin:key', 'Return');
     if (pressed('b', st.b, now)) ipcRenderer.send('signin:cancel');
   }
