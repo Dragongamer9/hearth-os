@@ -20,7 +20,7 @@ install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 
 # Let Nimbus's app menu entry exist for Desktop Mode / Plasma too.
@@ -36,10 +36,35 @@ DESKTOP
 
 # ------------------------------------------------------------------ Desktop Mode: labwc + Quickshell
 # (gamescope, wlr-randr and umu-launcher already come with Bazzite.)
-dnf5 -y install labwc grim brightnessctl wlr-randr wlsunset python3-evdev
+dnf5 -y install labwc grim brightnessctl wlr-randr wlsunset python3-evdev \
+  qt6ct qt5ct xdg-desktop-portal-wlr xdg-desktop-portal-gtk
 dnf5 -y copr enable errornointernet/quickshell
 dnf5 -y install quickshell
 dnf5 -y copr disable errornointernet/quickshell
+
+# ------------------------------------------------------------------ Hearth Settings and the Hearth look
+cat > /usr/share/applications/hearth-settings.desktop <<DESKTOP
+[Desktop Entry]
+Name=Hearth Settings
+Comment=Wi-Fi, Bluetooth, sound, display, controllers, accounts and updates
+Exec=/usr/bin/nimbus --windowed --settings
+Icon=hearth
+Type=Application
+Categories=Settings;
+Keywords=wifi;bluetooth;sound;display;controller;update;
+DESKTOP
+# The Hearth color scheme, also selectable in Plasma (System Settings › Colors).
+install -Dm644 /usr/share/nimbus/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
+# Portals for Desktop Mode (XDG_CURRENT_DESKTOP=Nimbus): screen sharing and screenshots through wlroots,
+# KDE file dialogs, everything else from GTK.
+mkdir -p /usr/share/xdg-desktop-portal
+cat > /usr/share/xdg-desktop-portal/nimbus-portals.conf <<PORTALS
+[preferred]
+default=gtk
+org.freedesktop.impl.portal.ScreenCast=wlr
+org.freedesktop.impl.portal.Screenshot=wlr
+org.freedesktop.impl.portal.FileChooser=kde
+PORTALS
 
 # ------------------------------------------------------------------ boot straight into Nimbus
 systemctl enable nimbus-autologin.service
