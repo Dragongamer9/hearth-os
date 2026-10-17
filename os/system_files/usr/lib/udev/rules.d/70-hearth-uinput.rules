@@ -1,0 +1,3 @@
+# Hearth Desktop Mode drives the desktop with a game controller through a virtual mouse and keyboard
+# (hosts/linux/desktop/shell/hearth-pad). Let the signed-in user create them, as Steam does.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"
