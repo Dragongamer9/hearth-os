@@ -47,7 +47,8 @@
         "AppImage"
       ],
       "category": "Game",
-      "executableName": "nimbus"
+      "executableName": "nimbus",
+      "icon": "build/icon.png"
     }
   }
 }

@@ -33,15 +33,15 @@ PanelWindow {
             anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
             spacing: 6
 
-            // Launcher (the Nimbus mark)
+            // Launcher (the Hearth mark)
             BarButton {
                 tip: "Apps (Super)"
                 onClicked: bar.launcherRequested()
-                Rectangle {
+                Image {
                     anchors.centerIn: parent
-                    width: 30; height: 30; radius: 9
-                    color: Theme.accent
-                    Text { anchors.centerIn: parent; text: "H"; color: Theme.accentInk; font.bold: true; font.pixelSize: 16; font.family: Theme.font }
+                    width: 32; height: 32
+                    source: Qt.resolvedUrl("hearth-logo.png")
+                    smooth: true; mipmap: true
                 }
             }
 
