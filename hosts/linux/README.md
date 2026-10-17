@@ -53,6 +53,26 @@ Needs: `gamescope`, and for the settings pages NetworkManager (`nmcli`), BlueZ (
 **Getting out:** *Power › Switch to desktop* ends the session; pick your usual desktop on the login screen.
 If Nimbus is stuck: Ctrl+Alt+F3, sign in, `loginctl terminate-user $USER`.
 
+## Desktop Mode
+
+*Power › Switch to desktop* (or Settings › Shell) switches the Nimbus session to Desktop Mode without logging out:
+normal windows on the **labwc** window manager, with a Nimbus taskbar, app launcher, notifications and wallpaper
+made with **Quickshell** (`desktop/shell/`). The **Game Mode** button on the taskbar, Super+G, or *Return to Game Mode*
+in the right-click menu goes back.
+
+| Key | Does |
+|---|---|
+| Super | App launcher (type to search, Enter to open) |
+| Super+G | Game Mode |
+| Super+Return / Super+E | Terminal / file manager (whichever is installed) |
+| Super+Q | Close window |
+| Super+Arrows | Maximize, minimize, snap left/right |
+| Alt+Tab | Switch windows |
+
+Needs `labwc` and `quickshell` (Fedora: COPR `errornointernet/quickshell`; Arch: `quickshell`). Your wallpaper:
+`~/.config/nimbus/wallpaper.jpg`. Your own startup apps: an executable `~/.config/nimbus/autostart`.
+Taskbar log: `$XDG_RUNTIME_DIR/nimbus-shell.log`.
+
 ## Games
 
 | Source | Where it looks | Launches with | Running detection |

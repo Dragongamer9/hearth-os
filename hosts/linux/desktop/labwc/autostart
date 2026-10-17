@@ -6,7 +6,6 @@ SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
 dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE NIMBUS_SHARE NIMBUS_APP >/dev/null 2>&1 &
 
 # The Nimbus taskbar, launcher, notifications and wallpaper.
-# (Not shipped yet: until it is, Desktop Mode is labwc with the right-click menu.)
 [ -f "$SHARE/desktop/shell/shell.qml" ] && command -v quickshell >/dev/null 2>&1 &&
   quickshell -p "$SHARE/desktop/shell" >"${XDG_RUNTIME_DIR:-/tmp}/nimbus-shell.log" 2>&1 &
 
