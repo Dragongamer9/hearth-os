@@ -24,7 +24,10 @@ for o in json.load(sys.stdin):
 ' 2>/dev/null
 fi
 
-# The Nimbus taskbar, launcher, notifications and wallpaper.
+# The Hearth look for apps (colors for Qt/KDE and GTK apps).
+[ -x "$SHARE/desktop/theme/apply.sh" ] && "$SHARE/desktop/theme/apply.sh"
+
+# The Hearth taskbar, launcher, Quick Access, notifications and wallpaper.
 [ -f "$SHARE/desktop/shell/shell.qml" ] && command -v quickshell >/dev/null 2>&1 &&
   quickshell -p "$SHARE/desktop/shell" >"${XDG_RUNTIME_DIR:-/tmp}/nimbus-shell.log" 2>&1 &
 

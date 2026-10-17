@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!--
-  Nimbus Desktop Mode: labwc settings. labwc's own defaults fill in everything not set here
+  Hearth Desktop Mode: labwc settings. labwc's own defaults fill in everything not set here
   (see `man labwc-config`). Your own ~/.config/labwc/rc.xml is not read in Desktop Mode;
   change this file in /usr/local/share/nimbus/desktop/labwc instead.
 -->
@@ -51,7 +51,6 @@
   <mouse><default /></mouse>
 
   <windowRules>
-    <!-- Nimbus itself (when started from the desktop) and Steam Big Picture go fullscreen without decorations. -->
-    <windowRule identifier="Nimbus" serverDecoration="no" />
+    <!-- Hearth Settings and the Hearth app open as normal windows with title bars (fullscreen ones have none anyway). -->
   </windowRules>
 </labwc_config>

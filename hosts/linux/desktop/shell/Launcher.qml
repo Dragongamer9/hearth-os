@@ -16,7 +16,7 @@ PanelWindow {
     onShownChanged: if (shown) { search.text = ""; grid.currentIndex = 0; search.forceActiveFocus(); }
 
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.namespace: "nimbus-launcher"
+    WlrLayershell.namespace: "hearth-launcher"
     WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
@@ -154,6 +154,7 @@ PanelWindow {
                 Layout.fillWidth: true
                 spacing: 8
                 ActionButton { label: "Game Mode"; primary: true; command: ["nimbus-mode", "game"] }
+                ActionButton { label: "Settings"; command: ["sh", "-c", "exec \"${NIMBUS_APP:-nimbus}\" --windowed --settings"] }
                 Item { Layout.fillWidth: true }
                 ActionButton { label: "Sleep"; command: ["systemctl", "suspend"] }
                 ActionButton { label: "Restart"; command: ["systemctl", "reboot"] }

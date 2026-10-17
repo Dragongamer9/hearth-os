@@ -469,7 +469,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 const pending = new Map(); let rid = 0;
@@ -1848,6 +1848,7 @@ async function setSources(){
 // =====================================================================
 function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
+  if(name==='open'){ if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
   if(name==='game.started') return gameStarted(data.id);
   if(name==='update') return OVERLAY ? null : onUpdate(data);
   if(name==='pad') return hostPad(data.b);
