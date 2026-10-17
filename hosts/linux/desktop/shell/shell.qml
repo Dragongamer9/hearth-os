@@ -88,7 +88,11 @@ ShellRoot {
         function close(): void { pad.closeKeyboard(); }
     }
     IpcHandler {
+        target: "help"
+        function toggle(): void { help.toggle(); }
+    }
+    IpcHandler {
         target: "menu"
-        function open(): void { pad.send({ cmd: "radial", open: true }); }
+        function open(): void { pad.openMenu(); }
     }
 }
