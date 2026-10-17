@@ -1848,6 +1848,7 @@ async function setSources(){
 // =====================================================================
 function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
+  if(name==='desktopFailed') return openSheet({title:"Desktop Mode couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});
   if(name==='open'){ if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
   if(name==='game.started') return gameStarted(data.id);
   if(name==='update') return OVERLAY ? null : onUpdate(data);
