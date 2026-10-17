@@ -18,12 +18,19 @@ SetPage {
     SetSlider {
         icon: page.sink && page.sink.audio && page.sink.audio.muted ? "vol-mute" : "vol"
         title: "Volume"
-        value: page.sink && page.sink.audio ? page.sink.audio.volume : 0
-        onMoved: v => { if (page.sink && page.sink.audio) { page.sink.audio.muted = false; page.sink.audio.volume = v; } }
+        value: page.sink && page.sink.audio ? page.sink.audio.volume / Buttons.maxVolume : 0
+        valueText: Math.round(value * Buttons.maxVolume * 100) + "%"
+        onMoved: v => { if (page.sink && page.sink.audio) { page.sink.audio.muted = false; page.sink.audio.volume = v * Buttons.maxVolume; } }
     }
     SetSwitch {
         icon: "vol-mute"; title: "Mute"; checked: !!(page.sink && page.sink.audio && page.sink.audio.muted)
         onToggled: v => { if (page.sink && page.sink.audio) page.sink.audio.muted = v; }
+    }
+    SetSwitch {
+        icon: "vol"; title: "Over-amplification"
+        sub: "Lets the volume go up to 150%. Sound can distort, and loud sound can damage speakers or your hearing."
+        checked: Buttons.overamp
+        onToggled: v => Buttons.set("overamp", v)
     }
     SetHeader { text: "Play sound through" }
     Repeater {

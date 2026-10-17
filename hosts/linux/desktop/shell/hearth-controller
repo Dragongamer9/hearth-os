@@ -1,0 +1,355 @@
+#!/usr/bin/python3
+"""hearth-controller: button remapping and controller type for the built-in controller, through
+InputPlumber (which Bazzite uses for handheld controls). Works everywhere, games included, because
+InputPlumber is what turns the handheld's buttons into the controller games see.
+
+  hearth-controller status    JSON: whether InputPlumber is there, its controllers, and your settings
+  hearth-controller apply     apply ~/.config/nimbus/controller.json to every controller
+  hearth-controller reset     forget your remaps and load InputPlumber's default profile
+  hearth-controller set BUTTON TO     remap one button ("" = back to default), then apply; prints status
+  hearth-controller type TYPE         the controller type games see ("" = automatic), then apply; prints status
+  hearth-controller preset nintendo   swap A/B and X/Y, then apply; prints status
+  hearth-controller watch     keep it applied (controllers reconnect after sleep, InputPlumber restarts)
+
+controller.json: {"map": {"<button>": "<button>" | "key:<Key...>[+<Key...>]" | "none"}, "target": "" | "xbox-elite" | ...}
+Buttons and keys are InputPlumber's names (South = A, East = B, West = X, North = Y, LeftPaddle1 = left back
+button ...). Unmapped buttons keep InputPlumber's own default profile. Talks to InputPlumber with busctl;
+its polkit rule lets the wheel group (the Hearth account) do this without a prompt.
+"""
+import glob
+import json
+import os
+import subprocess
+import sys
+import time
+
+BUS = 'org.shadowblip.InputPlumber'
+IFACE = 'org.shadowblip.Input.CompositeDevice'
+DEFAULT_PROFILE = '/usr/share/inputplumber/profiles/default.yaml'
+DEVICE_DIRS = ['/etc/inputplumber/devices.d', '/usr/share/inputplumber/devices']
+PROFILE_NAME = 'Hearth'
+TARGETS = {
+    'xbox-elite': ['xbox-elite', 'mouse', 'keyboard'],
+    'xbox-series': ['xbox-series', 'mouse', 'keyboard'],
+    'ds5': ['ds5', 'mouse', 'keyboard'],
+    'ds5-edge': ['ds5-edge', 'mouse', 'keyboard'],
+    'deck': ['deck-uhid', 'mouse', 'keyboard'],
+}
+BUTTONS = ['South', 'East', 'North', 'West', 'Start', 'Select', 'Guide', 'QuickAccess', 'QuickAccess2', 'Keyboard',
+           'Screenshot', 'DPadUp', 'DPadDown', 'DPadLeft', 'DPadRight', 'LeftBumper', 'RightBumper', 'LeftStick',
+           'RightStick', 'LeftPaddle1', 'LeftPaddle2', 'RightPaddle1', 'RightPaddle2', 'LeftTop', 'RightTop']
+
+
+# What Settings offers (Hearth's Game Mode settings and Desktop Mode's Hearth Settings both show these).
+LABELS = [
+    ('South', 'A'), ('East', 'B'), ('West', 'X'), ('North', 'Y'), ('LeftBumper', 'LB'), ('RightBumper', 'RB'),
+    ('Select', 'View'), ('Start', 'Menu'), ('Guide', 'Guide (Xbox)'), ('LeftStick', 'Left stick click'),
+    ('RightStick', 'Right stick click'), ('DPadUp', 'D-pad up'), ('DPadDown', 'D-pad down'), ('DPadLeft', 'D-pad left'),
+    ('DPadRight', 'D-pad right'), ('LeftPaddle1', 'Left back button'), ('RightPaddle1', 'Right back button'),
+    ('LeftPaddle2', 'Left back button 2'), ('RightPaddle2', 'Right back button 2'), ('QuickAccess', 'Quick Access button'),
+    ('QuickAccess2', 'Quick Access button (hold)'), ('Keyboard', 'Keyboard button'),
+]
+ALWAYS = {'South', 'East', 'West', 'North', 'LeftBumper', 'RightBumper', 'Select', 'Start', 'Guide', 'LeftStick',
+          'RightStick', 'DPadUp', 'DPadDown', 'DPadLeft', 'DPadRight'}
+KEYS = [
+    ('key:KeyEnter', 'Enter'), ('key:KeyEsc', 'Esc'), ('key:KeySpace', 'Space'), ('key:KeyTab', 'Tab'),
+    ('key:KeyLeftAlt+KeyTab', 'Alt + Tab (switch apps)'), ('key:KeyLeftMeta', 'Super (Windows key)'),
+    ('key:KeyUp', 'Arrow up'), ('key:KeyDown', 'Arrow down'), ('key:KeyLeft', 'Arrow left'), ('key:KeyRight', 'Arrow right'),
+    ('key:KeyPageUp', 'Page up'), ('key:KeyPageDown', 'Page down'), ('key:KeyF11', 'F11 (full screen)'),
+]
+TYPES = [
+    ('', 'Automatic', 'Whatever InputPlumber picks for this device'), ('xbox-elite', 'Xbox Elite', 'Back buttons work in most games'),
+    ('xbox-series', 'Xbox Series', 'A standard Xbox controller'), ('ds5', 'DualSense', 'PlayStation button prompts in games that have them'),
+    ('ds5-edge', 'DualSense Edge', 'DualSense with back buttons'), ('deck', 'Steam Deck', 'Best with Steam Input'),
+]
+
+
+def choices(caps):
+    """The buttons this controller has, what they can be turned into, and the controller types."""
+    have = set(caps or [])
+    return {
+        'buttons': [{'id': i, 'label': l} for i, l in LABELS if i in ALWAYS or i in have],
+        'targets': [{'id': i, 'label': l, 'kind': 'button'} for i, l in LABELS] + [{'id': 'Screenshot', 'label': 'Screenshot', 'kind': 'button'}]
+                   + [{'id': i, 'label': l, 'kind': 'key'} for i, l in KEYS] + [{'id': 'none', 'label': 'Nothing (turn the button off)', 'kind': 'none'}],
+        'types': [{'id': i, 'label': l, 'sub': s} for i, l, s in TYPES],
+    }
+
+
+def valid_target(to):
+    return to in ('', 'none', 'Screenshot') or to in dict(LABELS) or to in dict(KEYS)
+
+
+def save_conf(conf, path=None):
+    path = path or conf_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(conf, f, indent=2)
+        f.write('\n')
+    os.replace(tmp, path)
+
+
+def conf_path():
+    base = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+    return os.path.join(base, 'nimbus', 'controller.json')
+
+
+def load_conf(path=None):
+    try:
+        with open(path or conf_path()) as f:
+            c = json.load(f)
+        return {'map': dict(c.get('map') or {}), 'target': str(c.get('target') or '')}
+    except (OSError, ValueError, AttributeError):
+        return {'map': {}, 'target': ''}
+
+
+def target_events(dst):
+    """'East' → [{gamepad: {button: East}}]; 'key:KeyLeftAlt+KeyTab' → two keys together; 'none' → []."""
+    if not dst or dst == 'none':
+        return []
+    if dst.startswith('key:'):
+        return [{'keyboard': k} for k in dst[4:].split('+') if k.startswith('Key')]
+    if dst in BUTTONS:
+        return [{'gamepad': {'button': dst}}]
+    raise ValueError('unknown target ' + dst)
+
+
+def source_button(m):
+    try:
+        return m['source_event']['gamepad']['button']
+    except (KeyError, TypeError):
+        return None
+
+
+def build_profile(conf, base_mapping):
+    """InputPlumber DeviceProfile (as a dict) from your settings on top of the default profile's mappings."""
+    remapped = {k for k in conf['map'] if k in BUTTONS}
+    mapping = [m for m in base_mapping if source_button(m) not in remapped]
+    for src in sorted(remapped):
+        mapping.append({'name': 'Hearth: ' + src, 'source_event': {'gamepad': {'button': src}},
+                        'target_events': target_events(conf['map'][src])})
+    prof = {'version': 1, 'kind': 'DeviceProfile', 'name': PROFILE_NAME, 'mapping': mapping}
+    if conf['target'] in TARGETS:
+        prof['target_devices'] = TARGETS[conf['target']]
+    return prof
+
+
+def read_yaml(path):
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        with open(path) as f:
+            return yaml.safe_load(f)
+    except (OSError, yaml.YAMLError):
+        return None
+
+
+def default_mapping():
+    d = read_yaml(DEFAULT_PROFILE)
+    return list((d or {}).get('mapping') or [])
+
+
+def device_default_targets(name):
+    """The controller types InputPlumber's own config for this device makes (to go back to Automatic)."""
+    for d in DEVICE_DIRS:
+        for f in sorted(glob.glob(os.path.join(d, '*.yaml'))):
+            c = read_yaml(f)
+            if isinstance(c, dict) and c.get('name') == name and c.get('target_devices'):
+                return list(c['target_devices'])
+    return ['xbox-elite', 'mouse', 'keyboard']
+
+
+# ---------------------------------------------------------------------- InputPlumber over D-Bus
+def busctl(*args, timeout=10):
+    r = subprocess.run(['busctl', '--system', *args], capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout).strip() or 'busctl failed')
+    return r.stdout
+
+
+def devices():
+    out = busctl('--list', 'tree', BUS)
+    return [l.strip() for l in out.splitlines() if l.strip().rsplit('/', 1)[-1].startswith('CompositeDevice')]
+
+
+def prop(path, name):
+    try:
+        return json.loads(busctl('--json=short', 'get-property', BUS, path, IFACE, name))['data']
+    except (RuntimeError, ValueError, KeyError):
+        return None
+
+
+def info(path):
+    return {'path': path, 'name': prop(path, 'Name') or 'Controller', 'profile': prop(path, 'ProfileName') or '',
+            'capabilities': [c.split(':')[-1] for c in (prop(path, 'Capabilities') or []) if c.startswith('Gamepad:Button:')]}
+
+
+def set_targets(path, kinds):
+    busctl('call', BUS, path, IFACE, 'SetTargetDevices', 'as', str(len(kinds)), *kinds)
+
+
+def state_path():
+    base = os.environ.get('XDG_STATE_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'state')
+    return os.path.join(base, 'nimbus', 'controller-target')
+
+
+def last_target():
+    try:
+        with open(state_path()) as f:
+            return f.read().strip()
+    except OSError:
+        return ''
+
+
+def remember_target(t):
+    try:
+        os.makedirs(os.path.dirname(state_path()), exist_ok=True)
+        with open(state_path(), 'w') as f:
+            f.write(t + '\n')
+    except OSError:
+        pass
+
+
+def apply_to(path, conf, base, force_targets=False):
+    """Loads the profile, and changes the controller type only when it changed (that briefly reconnects
+    the virtual controller)."""
+    if conf['map'] or conf['target']:
+        busctl('call', BUS, path, IFACE, 'LoadProfileFromYaml', 's', json.dumps(build_profile(conf, base)))  # JSON is YAML
+    elif prop(path, 'ProfileName') == PROFILE_NAME:
+        busctl('call', BUS, path, IFACE, 'LoadProfilePath', 's', DEFAULT_PROFILE)
+    before = last_target()
+    if conf['target'] in TARGETS and (force_targets or before != conf['target']):
+        set_targets(path, TARGETS[conf['target']])
+    elif not conf['target'] and before:
+        set_targets(path, device_default_targets(prop(path, 'Name')))
+
+
+def available():
+    try:
+        devices()
+        return True
+    except (RuntimeError, OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def status():
+    out = {'available': False, 'devices': [], 'config': load_conf(), 'error': None}
+    try:
+        out['devices'] = [info(p) for p in devices()]
+        out['available'] = True
+    except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
+        out['error'] = str(e).splitlines()[-1] if str(e) else 'InputPlumber is not running'
+    out.update(choices([c for d in out['devices'] for c in d['capabilities']]))
+    return out
+
+
+def cmd_status():
+    print(json.dumps(status()))
+
+
+def apply_all():
+    conf, base = load_conf(), default_mapping()
+    errors = []
+    for p in devices():
+        try:
+            apply_to(p, conf, base)
+        except (RuntimeError, ValueError, subprocess.TimeoutExpired) as e:
+            errors.append(f'{p}: {e}')
+    if errors:
+        raise RuntimeError('; '.join(errors))
+    remember_target(conf['target'] if conf['target'] in TARGETS else '')
+
+
+def cmd_set(button, to):
+    if button not in dict(LABELS):
+        raise RuntimeError('unknown button ' + button)
+    if not valid_target(to):
+        raise RuntimeError('unknown target ' + to)
+    conf = load_conf()
+    if not to or to == button:
+        conf['map'].pop(button, None)
+    else:
+        conf['map'][button] = to
+    save_conf(conf)
+    apply_all()
+    cmd_status()
+
+
+def cmd_type(kind):
+    if kind and kind not in TARGETS:
+        raise RuntimeError('unknown controller type ' + kind)
+    conf = load_conf()
+    conf['target'] = kind
+    save_conf(conf)
+    apply_all()
+    cmd_status()
+
+
+def cmd_preset(name):
+    if name != 'nintendo':
+        raise RuntimeError('unknown preset ' + name)
+    conf = load_conf()
+    conf['map'].update({'South': 'East', 'East': 'South', 'West': 'North', 'North': 'West'})
+    save_conf(conf)
+    apply_all()
+    cmd_status()
+
+
+def cmd_apply():
+    apply_all()
+    print(json.dumps({'ok': True}))
+
+
+def cmd_reset():
+    path = conf_path()
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    apply_all()
+    cmd_status()
+
+
+def cmd_watch():
+    last = None
+    while True:
+        try:
+            conf = load_conf()
+            wanted = bool(conf['map'] or conf['target'])
+            key = json.dumps(conf, sort_keys=True)
+            changed = key != last
+            for p in devices():
+                lost = wanted and prop(p, 'ProfileName') != PROFILE_NAME   # reconnected, or InputPlumber restarted
+                if lost or changed:
+                    apply_to(p, conf, default_mapping(), force_targets=lost)
+            remember_target(conf['target'] if conf['target'] in TARGETS else '')
+            last = key
+        except (RuntimeError, OSError, ValueError, subprocess.TimeoutExpired):
+            pass
+        time.sleep(5)
+
+
+def main(argv):
+    cmd, args = (argv[1] if len(argv) > 1 else 'status'), argv[2:]
+    simple = {'status': cmd_status, 'apply': cmd_apply, 'reset': cmd_reset, 'watch': cmd_watch}
+    try:
+        if cmd in simple and not args:
+            simple[cmd]()
+        elif cmd == 'set' and len(args) in (1, 2):
+            cmd_set(args[0], args[1] if len(args) == 2 else '')
+        elif cmd == 'type' and len(args) <= 1:
+            cmd_type(args[0] if args else '')
+        elif cmd == 'preset' and len(args) == 1:
+            cmd_preset(args[0])
+        else:
+            print('usage: hearth-controller status|apply|reset|watch | set BUTTON [TO] | type [TYPE] | preset nintendo')
+            sys.exit(2)
+    except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
+        print('error: ' + (str(e).splitlines()[-1] if str(e) else 'InputPlumber is not running'))
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main(sys.argv)

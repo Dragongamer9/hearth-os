@@ -20,7 +20,7 @@ install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/bin/hearth-settings
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/bin/hearth-settings
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 
 # Let Nimbus's app menu entry exist for Desktop Mode / Plasma too.
@@ -41,6 +41,12 @@ dnf5 -y install labwc grim brightnessctl wlr-randr wlsunset python3-evdev \
 dnf5 -y copr enable errornointernet/quickshell
 dnf5 -y install quickshell
 dnf5 -y copr disable errornointernet/quickshell
+
+# ------------------------------------------------------------------ power button
+# Bazzite gives the power button to Steam's UI (steamos-powerbuttond, logind ignores it). In Hearth's
+# session Hearth handles it (Settings › Power button), so don't start that for every session; Bazzite's own
+# Steam session still pulls it in where it needs it.
+systemctl --global disable steamos-powerbuttond.service 2>/dev/null || true
 
 # ------------------------------------------------------------------ Hearth Settings and the Hearth look
 cat > /usr/share/applications/hearth-settings.desktop <<DESKTOP

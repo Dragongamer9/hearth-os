@@ -1,0 +1,175 @@
+#!/usr/bin/python3
+"""hearth-buttons: the power and volume buttons, for Hearth's Game Mode and Desktop Mode.
+
+On Bazzite the power button is ignored by the system (logind) and handed to Steam's own UI, which Hearth
+replaces, and nothing takes the volume buttons while a game is in front. This reads those buttons straight
+from the kernel's input devices (without taking them away from anything else) and tells whoever started it,
+one JSON object per line on stdout:
+
+  {"t": "power", "press": "short"}    the power button was pressed and let go
+  {"t": "power", "press": "long"}     ... held for a second (sent while still held)
+  {"t": "vol", "d": 1}  / -1          volume up / down (repeats while held)
+  {"t": "mute"}                       the mute key
+  {"t": "devices", "list": [...], "problems": [...]}   what it's watching, and what it can't read
+
+Hearth (Game Mode) and the Desktop Mode shell decide what each press does (Settings › Power button).
+Many power buttons only report "pressed and let go" together; those can't be held, only pressed.
+The press that wakes the device from sleep is ignored, so waking up doesn't put it straight back to sleep.
+
+Needs python3-evdev and read access to the devices (Hearth's udev rule 70-hearth-buttons.rules).
+Exit 2: python3-evdev missing.
+"""
+import json
+import os
+import select
+import sys
+import time
+
+KEY_MUTE, KEY_VOLUMEDOWN, KEY_VOLUMEUP, KEY_POWER = 113, 114, 115, 116
+BTN_GAMEPAD = 0x130
+WATCH = (KEY_POWER, KEY_VOLUMEUP, KEY_VOLUMEDOWN, KEY_MUTE)
+HOLD = 1.0           # seconds held for a long press
+REPEAT = 0.12        # fastest volume repeat while held
+WAKE_GRACE = 2.0     # ignore the power button this long after waking from sleep
+
+
+def sleep_offset():
+    """Time spent asleep since boot: BOOTTIME keeps counting during sleep, MONOTONIC doesn't."""
+    try:
+        return time.clock_gettime(time.CLOCK_BOOTTIME) - time.monotonic()
+    except (AttributeError, OSError):
+        return 0.0
+
+
+class Buttons:
+    """What the presses mean; no devices here, so it can be tested."""
+
+    def __init__(self, out, offset=sleep_offset):
+        self.out = out
+        self.offset = offset
+        self.last_offset = offset()
+        self.power_down = None      # time the power button went down
+        self.long_sent = False
+        self.ignore_until = 0.0
+        self.last_vol = {}
+
+    def woke_up(self, now):
+        o = self.offset()
+        if o - self.last_offset > 1.0:          # slept since we last looked
+            self.ignore_until = now + WAKE_GRACE
+            self.power_down = None
+        self.last_offset = o
+
+    def key(self, code, value, now):
+        self.woke_up(now)
+        if code == KEY_POWER:
+            if now < self.ignore_until:
+                return
+            if value == 1:
+                self.power_down, self.long_sent = now, False
+            elif value == 0:
+                if self.power_down is not None and not self.long_sent:
+                    self.out({'t': 'power', 'press': 'short'})
+                self.power_down = None
+        elif code in (KEY_VOLUMEUP, KEY_VOLUMEDOWN):
+            d = 1 if code == KEY_VOLUMEUP else -1
+            if value == 1 or (value == 2 and now - self.last_vol.get(code, 0) >= REPEAT):
+                self.last_vol[code] = now
+                self.out({'t': 'vol', 'd': d})
+        elif code == KEY_MUTE and value == 1:
+            self.out({'t': 'mute'})
+
+    def tick(self, now):
+        self.woke_up(now)
+        if self.power_down is not None and not self.long_sent and now - self.power_down >= HOLD:
+            self.long_sent = True
+            self.out({'t': 'power', 'press': 'long'})
+
+
+def emit(obj):
+    try:
+        sys.stdout.write(json.dumps(obj) + '\n')
+        sys.stdout.flush()
+    except BrokenPipeError:
+        sys.exit(0)
+
+
+def wanted(caps):
+    """Power/volume keys, and not a controller (InputPlumber's virtual pads have lots of keys)."""
+    keys = set(caps.get(1, []))       # EV_KEY
+    return bool(keys & set(WATCH)) and not any(BTN_GAMEPAD <= k < BTN_GAMEPAD + 16 for k in keys)
+
+
+def main():
+    try:
+        import evdev
+    except ImportError:
+        emit({'t': 'devices', 'list': [], 'problems': ['python3-evdev is not installed']})
+        sys.exit(2)
+
+    b = Buttons(emit)
+    devs = {}            # path → InputDevice
+    problems = {}
+    reported = None
+
+    def rescan():
+        nonlocal reported
+        for path in sorted(evdev.list_devices()):
+            if path in devs:
+                continue
+            try:
+                d = evdev.InputDevice(path)
+            except PermissionError:
+                problems[path] = 'no permission'
+                continue
+            except OSError:
+                continue
+            try:
+                ok = wanted(d.capabilities())
+            except OSError:
+                ok = False
+            if ok:
+                devs[path] = d
+                problems.pop(path, None)
+            else:
+                d.close()
+                problems.pop(path, None)
+        for path in [p for p in devs if not os.path.exists(p)]:
+            devs.pop(path).close()
+        state = (sorted(d.name for d in devs.values()), sorted(problems))
+        if state != reported:
+            reported = state
+            emit({'t': 'devices', 'list': state[0], 'problems': [f'{p}: {problems[p]}' for p in state[1]]})
+
+    last_scan = 0.0
+    while True:
+        now = time.monotonic()
+        if now - last_scan > 5:
+            rescan()
+            last_scan = now
+        fds = {d.fd: (p, d) for p, d in devs.items()}
+        try:
+            ready, _, _ = select.select(list(fds), [], [], 0.1)
+        except (OSError, ValueError):
+            ready = []
+            last_scan = 0
+        for fd in ready:
+            path, d = fds[fd]
+            try:
+                for ev in d.read():
+                    if ev.type == 1 and ev.code in WATCH:
+                        b.key(ev.code, ev.value, time.monotonic())
+            except OSError:          # unplugged
+                devs.pop(path, None)
+                try:
+                    d.close()
+                except OSError:
+                    pass
+        b.tick(time.monotonic())
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

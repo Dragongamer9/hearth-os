@@ -62,7 +62,7 @@ PanelWindow {
         brightness = Math.max(1, Math.min(100, p));
         run(["brightnessctl", "-q", "-c", "backlight", "set", brightness + "%"]);
     }
-    function setVolume(v) { if (audio) { audio.muted = false; audio.volume = Math.max(0, Math.min(1, v)); } }
+    function setVolume(v) { if (audio) { audio.muted = false; audio.volume = Math.max(0, Math.min(Buttons.maxVolume, v)); } }
     function setProfile(p) { profile = p; run(["powerprofilesctl", "set", p]); }
     function setWifi(on) { wifiOn = on; run(["nmcli", "radio", "wifi", on ? "on" : "off"]); }
 
@@ -172,6 +172,7 @@ PanelWindow {
                     icon: root.audio && root.audio.muted ? "audio-volume-muted-symbolic" : "audio-volume-high-symbolic"
                     label: "Volume"
                     value: root.audio ? (root.audio.muted ? 0 : root.audio.volume) : 0
+                    maxValue: Buttons.maxVolume
                     onMoved: v => root.setVolume(v)
                     onIconClicked: root.activate("volume")
                 }
@@ -235,6 +236,7 @@ PanelWindow {
         property string icon
         property string label
         property real value
+        property real maxValue: 1          // volume can go to 1.5 with over-amplification on
         signal moved(real v)
         signal iconClicked()
         Layout.fillWidth: true
@@ -259,7 +261,7 @@ PanelWindow {
                     implicitHeight: 8
                     Rectangle { anchors.fill: parent; radius: 4; color: Theme.panel3 }
                     Rectangle {
-                        width: Math.max(8, track.width * Math.max(0, Math.min(1, s.value)))
+                        width: Math.max(8, track.width * Math.max(0, Math.min(1, s.value / s.maxValue)))
                         height: parent.height; radius: 4
                         gradient: Gradient {
                             orientation: Gradient.Horizontal
@@ -269,8 +271,8 @@ PanelWindow {
                     }
                     MouseArea {
                         anchors { fill: parent; topMargin: -14; bottomMargin: -14 }
-                        onPressed: m => s.moved(Math.max(0, Math.min(1, m.x / track.width)))
-                        onPositionChanged: m => { if (pressed) s.moved(Math.max(0, Math.min(1, m.x / track.width))); }
+                        onPressed: m => s.moved(s.maxValue * Math.max(0, Math.min(1, m.x / track.width)))
+                        onPositionChanged: m => { if (pressed) s.moved(s.maxValue * Math.max(0, Math.min(1, m.x / track.width))); }
                     }
                 }
             }

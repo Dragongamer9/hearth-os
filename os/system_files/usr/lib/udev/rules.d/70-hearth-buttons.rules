@@ -1,0 +1,5 @@
+# Hearth handles the power and volume buttons itself (hosts/linux/desktop/shell/hearth-buttons), in Game
+# Mode and Desktop Mode, so the signed-in user may read input devices that have only a few keys: the power
+# button, laptop/handheld hotkeys, lid and video-bus keys. Full keyboards and controllers aren't included
+# (Bazzite already allows the built-in i8042 keyboard, where many handhelds report their volume buttons).
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_KEY}=="1", ENV{ID_INPUT_KEYBOARD}!="1", ENV{ID_INPUT_JOYSTICK}!="1", TAG+="uaccess"
