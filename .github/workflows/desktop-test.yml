@@ -27,7 +27,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Start Desktop Mode
+        shell: bash
         run: |
+          mkdir -p shots
+          exec > >(tee shots/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v "^\s*$" shots/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=desktop::$msg"' ERR
           set -x
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
           mkdir -p "$XDG_RUNTIME_DIR" "$HOME" shots && chmod 700 "$XDG_RUNTIME_DIR"
