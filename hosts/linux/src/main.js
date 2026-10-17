@@ -247,6 +247,14 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   win.once('ready-to-show', () => win.show());
+  // Desktop Mode couldn't start and sent us back here: say why (see desktop/labwc/autostart).
+  win.webContents.once('did-finish-load', () => setTimeout(() => {
+    const f = path.join(process.env.XDG_RUNTIME_DIR || '/tmp', 'nimbus-desktop-failed');
+    let text = '';
+    try { text = fs.readFileSync(f, 'utf8'); fs.rmSync(f, { force: true }); } catch { return; }
+    log('desktop mode failed: ' + text);
+    post({ type: 'event', name: 'desktopFailed', data: { text: text.trim().slice(0, 1500) } });
+  }, 2500));
   win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor((library.store.data.uiScale || 100) / 100));
   // Nimbus only ever shows its own pages.
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('nimbus://')) e.preventDefault(); });

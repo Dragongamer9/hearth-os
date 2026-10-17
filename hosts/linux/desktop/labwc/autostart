@@ -27,9 +27,33 @@ fi
 # The Hearth look for apps (colors for Qt/KDE and GTK apps).
 [ -x "$SHARE/desktop/theme/apply.sh" ] && "$SHARE/desktop/theme/apply.sh"
 
-# The Hearth taskbar, launcher, Quick Access, notifications and wallpaper.
-[ -f "$SHARE/desktop/shell/shell.qml" ] && command -v quickshell >/dev/null 2>&1 &&
-  quickshell -p "$SHARE/desktop/shell" >"${XDG_RUNTIME_DIR:-/tmp}/nimbus-shell.log" 2>&1 &
+# The Hearth taskbar, launcher, Quick Access, notifications and wallpaper (Quickshell).
+# Without it Desktop Mode is an empty black screen you can't leave on a handheld, so it's watched: if it
+# can't start (or keeps crashing), go back to Game Mode, which shows why.
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+SHELL_LOG="$RUN/nimbus-shell.log"
+give_up() {
+  { echo "$1"; echo; tail -n 12 "$SHELL_LOG" 2>/dev/null; } >"$RUN/nimbus-desktop-failed"
+  nimbus-mode game
+}
+if [ ! -f "$SHARE/desktop/shell/shell.qml" ]; then
+  give_up "The Desktop Mode files are missing ($SHARE/desktop/shell)."
+elif ! command -v quickshell >/dev/null 2>&1; then
+  give_up "Desktop Mode needs Quickshell, which isn't installed."
+else
+  (
+    : >"$SHELL_LOG"
+    fails=0
+    while :; do
+      started=$(date +%s)
+      quickshell -p "$SHARE/desktop/shell" >>"$SHELL_LOG" 2>&1
+      if [ $(($(date +%s) - started)) -lt 20 ]; then fails=$((fails + 1)); else fails=0; fi
+      if [ "$fails" -ge 3 ]; then give_up "Desktop Mode's taskbar and menus (Quickshell) keep closing right after they start."; exit 0; fi
+      echo "--- restarting the shell" >>"$SHELL_LOG"
+      sleep 1
+    done
+  ) &
+fi
 
 # Password prompts for apps that need admin rights: the first polkit agent found.
 for agent in /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
