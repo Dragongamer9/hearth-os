@@ -3,6 +3,7 @@
 // Same messages and shapes as the Windows host's LibraryService, so the shared UI can't tell them apart.
 
 const { EventEmitter } = require('node:events');
+const { GameOptions, kindOf: optionsKind, protonChoices } = require('./game-options');
 const crypto = require('node:crypto');
 const steam = require('./steam');
 const heroic = require('./heroic');
@@ -20,6 +21,7 @@ class Library extends EventEmitter {
   constructor({ store = new Store(), stream, accounts } = {}) {
     super();
     this.store = store;
+    this.options = new GameOptions(store);
     // Epic / GOG / Xbox accounts and the installs Nimbus runs (stores/), same as Windows.
     this.accounts = accounts || new StoreAccounts(store);
     this.accounts.on('installFinished', (id, error) => {
@@ -247,12 +249,12 @@ class Library extends EventEmitter {
       steam.openUri(g.launchUri);
     } else if (g.launchVia === 'legendary' || g.windowsExe) {
       // Installed by Nimbus: started directly with Proton, so Nimbus can watch it.
-      child = await this.accounts.launch(g);
+      child = await this.accounts.launch(g, this.options.get(id));
       track = { ...(g.track || {}), pid: child && child.pid };
     } else if (g.source === 'epic' || g.source === 'gog') {
       heroic.openUri(g.launchUri, g.launchVia);
     } else if (g.source === 'manual') {
-      child = manual.launch(g);
+      child = manual.launch(g, this.options.get(id));
       // Watch the folder too (games that hand off to another process), but never a folder so broad
       // that unrelated programs would count as "the game is running".
       const dir = require('node:path').dirname(g.exe);
@@ -317,6 +319,33 @@ class Library extends EventEmitter {
     const ok = await proc.stop(proc.gameProcesses(r.track));
     this.poll();
     return ok;
+  }
+
+  /** Game settings page: what this game can set, and what it has. */
+  gameOptions(id) {
+    const g = this.games.get(id);
+    if (!g) throw new Error("That game isn't in the library anymore.");
+    const kind = optionsKind(g);
+    return { id, kind, options: this.options.get(id), protonChoices: kind === 'proton' ? protonChoices() : [],
+      gamemode: require('../util').has('gamemoderun'), canResetPrefix: kind === 'proton' && (g.launchVia === 'legendary' || !!g.windowsExe) };
+  }
+  setGameOptions(id, patch) { this.options.set(id, patch || {}); return this.gameOptions(id); }
+  /** Deletes the game's Wine prefix, so Proton sets it up fresh next time (fixes broken setups; local saves in it go too). */
+  resetPrefix(id) {
+    const g = this.games.get(id);
+    if (!g || !(g.launchVia === 'legendary' || g.windowsExe)) throw new Error("This game doesn't have a Hearth Wine prefix.");
+    if (this.runningId === id) throw new Error('Close the game first.');
+    const proton = require('../stores/proton');
+    if (g.launchVia === 'legendary') proton.removePrefix('epic', g.id.slice(5));
+    else proton.removePrefix('gog', g.gogId);
+    return true;
+  }
+
+  /** Process ids of the running game (for bringing its window to the front). */
+  gamePids() {
+    const r = this.running;
+    if (!r || !r.track) return [];
+    try { return proc.gameProcesses(r.track).map(p => (typeof p === 'object' ? p.pid : p)); } catch { return []; }
   }
 
   get runningId() { return this.running && this.running.startedAt ? this.running.id : null; }
