@@ -6,6 +6,7 @@
 
 const { Wifi, Bluetooth, Audio, Display, Power, setAirplane, airplaneOn } = require('./system');
 const { Accounts, Profile } = require('./accounts');
+const { DisplayModes } = require('./display');
 const { log } = require('./util');
 
 class Bridge {
@@ -28,6 +29,9 @@ class Bridge {
     this.power = new Power();
     this.accounts = new Accounts({ library, openXboxSignIn: () => (platform.openXboxSignIn ? platform.openXboxSignIn() : Promise.resolve()) });
     this.profile = new Profile(library.store);
+    this.displayModes = platform.displayModes || new DisplayModes({
+      screen: () => ({ w: 0, h: 0, rate: 60 }), getZoom: () => 100, setZoom() {}, restartGameMode() {},
+    });
 
     this.bt.on('found', d => this.event('bt.found', d));
     this.bt.on('scanDone', () => this.event('bt.scanDone', {}));
@@ -87,9 +91,15 @@ class Bridge {
       case 'audio.setDefault': await this.audio.setDefault(req('id')); return this.audio.get();
 
       case 'display.get': {
-        const b = await this.display.brightness();
-        return { supported: b != null, brightness: b ?? 0, ...this.platform.screenInfo() };
+        const [b, modes] = await Promise.all([this.display.brightness().catch(() => null), this.displayModes.get()]);
+        return { supported: b != null, brightness: b ?? 0, ...this.platform.screenInfo(), ...modes };
       }
+      case 'display.setMode': {
+        const w = Math.round(+a.w), h = Math.round(+a.h), rate = +a.rate;
+        if (!(w > 0 && h > 0 && rate > 0)) throw new Error('Pick a resolution and refresh rate');
+        return this.displayModes.setMode(w, h, rate);
+      }
+      case 'display.setScale': return this.displayModes.setScale(Math.round(+a.pct));
       case 'display.setBrightness': await this.display.setBrightness(Math.round(+a.v || 0)); return null;
 
       case 'power.get': return this.power.get();

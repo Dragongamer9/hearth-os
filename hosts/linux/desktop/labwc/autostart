@@ -5,6 +5,9 @@ SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
 # Let portals (screen sharing, file pickers) and D-Bus-started apps see this session.
 dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE NIMBUS_SHARE NIMBUS_APP >/dev/null 2>&1 &
 
+# Resolution, refresh rate and scale chosen in Nimbus › Settings › Display.
+[ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" ] && "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh"
+
 # The Nimbus taskbar, launcher, notifications and wallpaper.
 [ -f "$SHARE/desktop/shell/shell.qml" ] && command -v quickshell >/dev/null 2>&1 &&
   quickshell -p "$SHARE/desktop/shell" >"${XDG_RUNTIME_DIR:-/tmp}/nimbus-shell.log" 2>&1 &
