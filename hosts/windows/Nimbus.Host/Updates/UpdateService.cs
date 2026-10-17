@@ -75,14 +75,26 @@ public sealed class UpdateService
         Set("checking");
         try
         {
-            using var res = await Http.GetAsync($"https://api.github.com/repos/{Repo}/releases/latest");
+            // All recent releases, not just GitHub's "latest": that one stays on the v0.5.1 bridge release
+            // (see LegacyTag) so copies from before the renumbering can still update.
+            using var res = await Http.GetAsync($"https://api.github.com/repos/{Repo}/releases?per_page=30");
             LastChecked = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            if (res.StatusCode == System.Net.HttpStatusCode.NotFound) { Latest = null; Set("upToDate"); return Status(); }
             res.EnsureSuccessStatusCode();
 
             using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
-            var r = doc.RootElement;
-            var tag = r.GetProperty("tag_name").GetString() ?? "";
+            JsonElement? best = null;
+            string bestTag = "";
+            foreach (var rel in doc.RootElement.EnumerateArray())
+            {
+                if (rel.TryGetProperty("draft", out var dr) && dr.ValueKind == JsonValueKind.True) continue;
+                if (rel.TryGetProperty("prerelease", out var pr) && pr.ValueKind == JsonValueKind.True) continue;
+                var t = rel.GetProperty("tag_name").GetString() ?? "";
+                if (LegacyTag.IsMatch(t)) continue;
+                if (!rel.GetProperty("assets").EnumerateArray().Any(a => a.GetProperty("name").GetString() == Asset)) continue;
+                if (best is null || IsNewer(t.TrimStart('v', 'V'), bestTag.TrimStart('v', 'V'))) { best = rel.Clone(); bestTag = t; }
+            }
+            if (best is not { } r) { Latest = null; Set("upToDate"); return Status(); }
+            var tag = bestTag;
             string? zip = null, sha = null; long size = 0;
             foreach (var a in r.GetProperty("assets").EnumerateArray())
             {
@@ -106,6 +118,12 @@ public sealed class UpdateService
         }
         return Status();
     }
+
+    /// <summary>
+    /// Nimbus was renumbered to 0.0.x at 0.0.5. Releases from before that (v0.3.0 to v0.5.x, including the
+    /// v0.5.1 bridge that carried 0.0.5 to existing installs) look newer than 0.0.x, so they're skipped.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex LegacyTag = new(@"^v?0\.[3-5]\.");
 
     public static bool IsNewer(string candidate, string current)
     {

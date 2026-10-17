@@ -37,6 +37,7 @@ public sealed class LibraryData
     public bool SteamBackground { get; set; } = true;   // keep Steam running hidden (-silent)
     public bool AutoUpdateCheck { get; set; } = true;   // check GitHub for Nimbus updates
     public string ControllerMouse { get; set; } = "steam"; // right stick as mouse: off | steam | always
+    public bool OverlayHoldView { get; set; }              // hold View for a second to open the in-game overlay
     public string? InstallRoot { get; set; }            // where Nimbus installs Epic and GOG games
     public Dictionary<string, string> GogInstalls { get; set; } = new();   // GOG product id → folder
     public ProfileData Profile { get; set; } = new();
