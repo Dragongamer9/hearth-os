@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Hearth
+Description=Hearth boot splash: the Hearth mark with a breathing ember glow
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/hearth
+ScriptFile=/usr/share/plymouth/themes/hearth/hearth.script
