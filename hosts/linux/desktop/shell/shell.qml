@@ -5,7 +5,7 @@
 // on-screen keyboard, controller support and touch gestures, on top of labwc.
 // Started by labwc's autostart: quickshell -p <share>/desktop/shell
 // From a terminal or a key binding: quickshell ipc -p <this folder> call <target> <function>
-//   launcher toggle|open|close   quick toggle   keyboard open|close   menu open
+//   launcher toggle|open|close   quick toggle   keyboard open|close   menu open   settings open|page <name>|close
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -36,7 +36,7 @@ ShellRoot {
         }
     }
 
-    Launcher { id: launcher }
+    Launcher { id: launcher; onSettingsRequested: settings.open("") }
     Notifications {}
     QuickAccess {
         id: quick
@@ -44,12 +44,15 @@ ShellRoot {
         nightAvailable: night.available
         onMouseToggled: enable => pad.setMouse(enable)
         onKeyboardRequested: pad.openKeyboard()
+        onSettingsRequested: settings.open("")
     }
     RadialMenu { id: radial; mouseOn: pad.mouseOn }
     Keyboard { id: keyboard }
     Help { id: help }
+    SettingsApp { id: settings }
     Pad {
         id: pad
+        settings: settings
         launcher: launcher
         quick: quick
         radial: radial
@@ -72,6 +75,14 @@ ShellRoot {
         }
     }
 
+    Component.onCompleted: { SettingsNav.pad = pad; SettingsNav.help = help; }
+    IpcHandler {
+        target: "settings"
+        function open(): void { settings.open(""); }
+        function page(name: string): void { settings.open(name); }
+        function close(): void { settings.close(); }
+        function toggle(): void { settings.toggle(); }
+    }
     IpcHandler {
         target: "launcher"
         function toggle(): void { launcher.toggle(); }

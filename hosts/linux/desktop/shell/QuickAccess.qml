@@ -16,6 +16,7 @@ PanelWindow {
     property bool nightAvailable: false  // wlsunset installed
     signal mouseToggled(bool enable)
     signal keyboardRequested()
+    signal settingsRequested()
     function toggle() { shown = !shown; }
 
     visible: shown || closing.running
@@ -97,7 +98,7 @@ PanelWindow {
         case "mouse": root.mouseToggled(!root.mouseOn); break;
         case "wifi": setWifi(!wifiOn); break;
         case "power-saver": case "balanced": case "performance": setProfile(id); break;
-        case "settings": shown = false; run(["sh", "-c", "exec \"${NIMBUS_APP:-nimbus}\" --windowed --settings"]); break;
+        case "settings": shown = false; root.settingsRequested(); break;
         case "keyboard": shown = false; root.keyboardRequested(); break;
         case "screenshot": shown = false; run(["sh", "-c", "sleep 0.4; sh \"${NIMBUS_SHARE:-/usr/local/share/nimbus}/desktop/open.sh\" screenshot"]); break;
         case "game": run(["nimbus-mode", "game"]); break;

@@ -20,7 +20,7 @@ install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/bin/hearth-settings
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 
 # Let Nimbus's app menu entry exist for Desktop Mode / Plasma too.
@@ -47,7 +47,7 @@ cat > /usr/share/applications/hearth-settings.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth Settings
 Comment=Wi-Fi, Bluetooth, sound, display, controllers, accounts and updates
-Exec=/usr/bin/nimbus --windowed --settings
+Exec=/usr/bin/hearth-settings
 Icon=hearth
 Type=Application
 Categories=Settings;

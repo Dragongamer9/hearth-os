@@ -70,6 +70,21 @@ class Desktop(unittest.TestCase):
         self.assertEqual(out.moved[1], 0)
         self.assertGreater(out.wheeled[0], 0)       # stick up scrolls up
 
+    def test_pointer_speed_setting(self):
+        pad, out = make()
+        pad.command({'cmd': 'speed', 'value': 0.5})
+        pad.axes(0, 0, 1, 0)
+        for i in range(100):
+            pad.tick(i * 0.01, 0.01)
+        slow = out.moved[0]
+        pad2, out2 = make()
+        pad2.axes(0, 0, 1, 0)
+        for i in range(100):
+            pad2.tick(i * 0.01, 0.01)
+        self.assertAlmostEqual(slow, out2.moved[0] / 2, delta=3)
+        pad.command({'cmd': 'speed', 'value': 'nonsense'})   # ignored
+        self.assertEqual(pad.speed, 0.5)
+
     def test_dead_zone(self):
         pad, out = make()
         pad.axes(0.1, 0.1, 0.1, -0.1)
