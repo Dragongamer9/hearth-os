@@ -101,17 +101,31 @@ function registerProtocols() {
 /** A game is in front: get out of its way (gamescope shows whichever window is on top). */
 function stepAside() { if (win && !WINDOWED) win.hide(); }
 
+const gamescope = require('./gamescope');
+const inGamescope = () => IN_SESSION && !WINDOWED && gamescope.available();
+/** Puts the running game in front (gamescope): its window, or its Steam app id. */
+function focusRunningGame() {
+  if (!inGamescope() || !library.running) return;
+  const id = String(library.running.id || '');
+  const steamAppId = id.startsWith('steam:') ? parseInt(id.slice(6), 10) || 0 : 0;
+  gamescope.focusGame({ pids: () => library.gamePids(), steamAppId, exclude: [process.pid] }).catch(() => {});
+}
+
 /** Back in front, e.g. when a game ends or the Guide button is pressed. */
 function comeBack() {
   if (!win || win.isDestroyed()) return;
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+  // gamescope shows one app at a time: tell it Hearth is the one now.
+  if (inGamescope()) gamescope.focusWindow(xid(win)).catch(() => {});
 }
 
 function resumeGame() {
   if (!library.runningId) return;
-  if (stream.isOpen) { stepAside(); stream.focus(); } else stepAside();
+  if (stream.isOpen) { stepAside(); stream.focus(); if (inGamescope()) gamescope.focusWindow(xid(stream.win || win)).catch(() => {}); return; }
+  stepAside();
+  focusRunningGame();
 }
 
 // ------------------------------------------------------------------ messages from the UI
@@ -396,6 +410,28 @@ app.whenReady().then(() => {
       }),
       restartApp: () => { setTimeout(relaunch, 300); return null; },
       canFpsLimit: () => IN_SESSION && require('./util').has('xprop'),
+      // The overlay's open apps (Game Mode): list, switch to, close.
+      apps: {
+        supported: () => inGamescope(),
+        list: async () => {
+          const game = new Set(library.gamePids());
+          return (await gamescope.apps()).map(a => ({ ...a,
+            title: a.pid === process.pid ? 'Hearth' : a.title,
+            hearth: a.pid === process.pid, game: game.has(a.pid) }));
+        },
+        focus: async (id, pid) => {
+          hideOverlay();
+          if (pid === process.pid) return comeBack();
+          stepAside();
+          await gamescope.focusWindow(id);
+        },
+        close: async pid => {
+          if (!pid || pid === process.pid) throw new Error("Hearth can't close itself here.");
+          if (library.gamePids().includes(pid)) return library.closeRunning();
+          try { process.kill(pid, 'SIGTERM'); } catch (e) { throw new Error("Couldn't close it: " + e.message); }
+          return true;
+        },
+      },
       setFpsLimit,
       exportLogs,
       pickGameFile: async () => {
@@ -446,8 +482,8 @@ app.whenReady().then(() => {
     },
   });
 
-  library.on('started', () => stepAside());
-  library.on('exited', () => { hideOverlay(); comeBack(); });
+  library.on('started', () => { stepAside(); focusRunningGame(); });
+  library.on('exited', () => { hideOverlay(); if (inGamescope()) gamescope.clearFocus().catch(() => {}); comeBack(); });
   stream.on('closed', () => library.markExited());
   ipcMain.on('stream:exit', () => stream.close());
   ipcMain.on('nimbus:msg', onMessage);

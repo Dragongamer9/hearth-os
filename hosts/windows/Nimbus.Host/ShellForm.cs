@@ -187,6 +187,7 @@ public sealed class ShellForm : Form
                 case "call": _system?.Handle(m.Clone()); break;
                 case "log": SystemBridge.Log("ui: " + m.GetProperty("text").GetString()); break; // Clone: the handler is async and outlives this JsonDocument
                 case "power": Power(m.GetProperty("action").GetString()); break;
+                case "resume": WindowState = FormWindowState.Minimized; break; // Resume: get out of the way so the game is in front
                 case "setting": break; // later: brightness, volume, Wi-Fi, TDP
             }
         }

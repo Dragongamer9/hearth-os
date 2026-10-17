@@ -391,6 +391,19 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .dl-now .bar{height:10px;border-radius:5px;background:rgba(255,255,255,.15)}
 .dl-meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--dim)}
 .dl-meta span:first-child{color:var(--text);font-weight:700}
+.appr{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:var(--panel2);margin-bottom:8px}
+.appr .btn{width:auto;flex:none;margin:0;padding:8px 12px}
+.appr.on{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--accent) 60%,transparent)}
+.appi{width:36px;height:36px;border-radius:9px;background:var(--panel3);display:grid;place-items:center;flex:none}
+.appi svg{width:22px;height:22px}
+.appt{flex:1;min-width:0}.appt b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.appt small{color:var(--dim);font-size:12px}
+.np-banner{display:flex;align-items:center;gap:16px;padding:12px 16px;margin:14px 0 6px;border-radius:var(--r);background:var(--panel);max-width:900px;position:relative;overflow:hidden}
+.np-banner .art{position:absolute;inset:0;opacity:.35}
+.np-banner>*{position:relative}
+.np-banner .dot{flex:none}
+.np-banner b{font-size:16px}
+.np-banner small{display:block;color:var(--dim);font-size:12px}
+.np-banner .sp{flex:1}
 @media (max-width:760px){ .layouts{grid-template-columns:1fr} .tl-grid,.tl-row{grid-template-columns:repeat(3,minmax(0,1fr))} }
 
 @media (max-width:760px){
@@ -549,6 +562,7 @@ const S = {
 };
 const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['manual','Non-library'],['hidden','Hidden']];
 const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settings'],['perf','bolt','Performance'],['now','play','Now playing']];
+if(/[?&]overlay=full/.test(location.search) || (window.nimbusHost && !/[?&]overlay/.test(location.search))) QTABS.splice(3,0,['apps','lib','Open apps']);
 
 // ---------- host bridge ----------
 // send(): fire-and-forget message.  call(): request/response, resolves with the host's result.
@@ -648,6 +662,11 @@ const MOCK = (()=>{
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
     'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,powerMode:st.powerMode}),
     'perf.setFpsLimit':async({fps})=>{ MOCKFPS=fps; return {fpsLimit:fps}; },
+    'apps.list':async()=>[{id:1,pid:10,title:'Ironvale Tactics',app:'Ironvale.exe',game:true,focused:true},{id:2,pid:11,title:'Hearth',hearth:true},{id:3,pid:12,title:'Discord',app:'Discord'},{id:4,pid:13,title:'Steam',app:'steam'}],
+    'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
+    'game.options.get':async({id})=>({id,kind:'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
+      protonChoices:[{id:'',label:'Default',sub:'UMU-Proton, the newest, downloaded when needed'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'Community build with extra fixes'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
+    'game.options.set':async({id,options})=>{ MOCKOPT[id]=Object.assign(MOCKOPT[id]||{},options); return MOCK.call('game.options.get',{id}); },
     'pad.toggleMouse':async()=>({mouseOn:!PAD.mouseOn}),
     'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}),
     'overlay.setHoldView':async({on})=>{ st.holdView=on; return {holdView:on,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}; },
@@ -737,7 +756,7 @@ function blip(f=700,d=.035,v=.035){
 // =====================================================================
 // Views
 // =====================================================================
-const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',settings:'Settings',stores:'Game stores'};
+const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',settings:'Settings',stores:'Game stores',gameset:'Game settings'};
 
 const visible = () => GAMES.filter(g=>!g.hidden);
 function heroStyle(g){ return g ? artBg(g) : 'background:var(--panel)'; }
@@ -780,6 +799,14 @@ function layoutPreview(id){
 }
 
 // ---------- Home, by layout ----------
+// A game is running (and Hearth is in front): a strip to jump back in, on every layout.
+function nowPlayingBanner(){
+  const g=S.running && G(S.running); if(!g) return '';
+  return `<div class="np-banner"><div class="art" style="${artBg(g)}"></div><span class="dot"></span>
+    <div><small>Now playing</small><b>${esc(g.title)}</b></div><div class="sp"></div>
+    <button class="play" data-f data-k="h-resume" data-act="resume" data-id="${esc(g.id)}" style="padding:10px 22px;font-size:15px">${I.play}Resume</button>
+    <button class="sq" data-f data-k="h-exit" data-act="exitgame" aria-label="Exit game">${I.stop}</button></div>`;
+}
 function homeTiles(V){
   const recent=V.filter(g=>g.last).sort((a,b)=>b.last-a.last);
   const order=[...recent, ...V.filter(g=>!g.last).sort((a,b)=>b.added-a.added)].slice(0,9);
@@ -807,16 +834,17 @@ function spotGames(V){
 function spotDetail(g){
   if(!g) return '';
   const logo = (g.art||{}).logo ? `<img class="sp-logo" src="${esc(g.art.logo)}" alt="" onerror="this.outerHTML='<div class=&quot;sp-title&quot;>${esc(g.title).replace(/'/g,'&#39;')}</div>'">` : `<div class="sp-title">${esc(g.title)}</div>`;
-  const label = playable(g) ? (g.cloud&&!g.inst?'Stream':'Play') : isActive(g) ? dlInfo(g).label : 'Install';
+  const running = S.running===g.id;
+  const label = running ? 'Resume' : playable(g) ? (g.cloud&&!g.inst?'Stream':'Play') : isActive(g) ? dlInfo(g).label : 'Install';
   return `${logo}<div class="sp-meta"><span>${SOURCES[g.src]}</span>${g.last?`<span>Played ${ago(g.last).toLowerCase()}</span>`:''}${g.hrs?`<span>${hrs(g.hrs)}</span>`:''}</div>
-    <div class="sp-acts"><button class="play" data-f data-k="sp-play" data-act="${playable(g)?'play':'game'}" data-id="${esc(g.id)}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>${label}</button>
+    <div class="sp-acts"><button class="play" data-f data-k="sp-play" data-act="${running?'resume':playable(g)?'play':'game'}" data-id="${esc(g.id)}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>${label}</button>
     <button class="sq" data-f data-k="sp-more" data-act="game" data-id="${esc(g.id)}" aria-label="Game page">${I.info}</button>
     <button class="sq ${g.fav?'on':''}" data-f data-k="sp-fav" data-act="fav" data-id="${esc(g.id)}" aria-label="Favorite"><svg viewBox="0 0 24 24"><path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/></svg></button></div>`;
 }
 function homeSpotlight(V){
   const L=spotGames(V), g=L[0];
   return `<div class="sp-bg" id="spBg" data-id="${g?esc(g.id):''}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</div>
-    <div class="sp-strip">${L.map(x=>`<button class="sp-ic" data-f data-k="sp-${x.id}" data-act="${playable(x)?'play':'game'}" data-spot="${esc(x.id)}" data-id="${esc(x.id)}">${cover(x,{badge:false})}</button>`).join('')}
+    <div class="sp-strip">${L.map(x=>`<button class="sp-ic" data-f data-k="sp-${x.id}" data-act="${S.running===x.id?'resume':playable(x)?'play':'game'}" data-spot="${esc(x.id)}" data-id="${esc(x.id)}">${cover(x,{badge:false})}</button>`).join('')}
       <button class="sp-ic lib" data-f data-k="sp-lib" data-act="nav" data-view="library" aria-label="Library">${I.lib}</button></div>
     <div class="sp-name" id="spName">${g?esc(g.title):''}</div>
     <div class="sp-detail" id="spDetail">${spotDetail(g)}</div>`;
@@ -912,7 +940,7 @@ function viewHome(){
       <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:8px">${LIB.loading?'Loading your games…':'No games found yet'}</div>
       ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">${LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':'Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.'}</div>
       <button class="pill" style="display:inline-flex" data-f data-k="h-add" data-act="addManual">＋ Add a game</button>`}</div>`;
-  if(LOOK.layout==='tiles') return homeTiles(V);
+  if(LOOK.layout==='tiles') return nowPlayingBanner()+homeTiles(V);
   if(LOOK.layout==='spotlight') return homeSpotlight(V);
   const recent=V.filter(g=>g.last).sort((a,b)=>b.last-a.last).slice(0,10);
   const favs=V.filter(g=>g.fav);
@@ -923,6 +951,7 @@ function viewHome(){
       <div class="nart" style="${artBg(g)}"></div><div class="nb"><div class="nk">${esc(n.k)} · ${esc(g.title)}</div><div class="nt">${esc(n.t)}</div><div class="nd">${esc(n.d)}</div></div></button>`}).join('')}</div>`;
   return `<div class="home-hero"><div class="art" id="heroArt" style="${heroStyle(first)}"></div><div id="heroImg">${heroImg(first)}</div></div>
   <div class="home-sec">
+    ${nowPlayingBanner()}
     ${recent.length?`<h2>Recent games</h2><div class="shelf">${recent.map((g,i)=>tile(g,i===0?'l':'p','h-r-'+g.id)).join('')}</div>`:''}
     ${news}
     ${favs.length?`<h2>Favorites</h2><div class="shelf">${favs.map(g=>tile(g,'p','h-f-'+g.id)).join('')}</div>`:''}
@@ -991,7 +1020,8 @@ function viewGame(){
       ${isActive(g) && !g.inst
         ? `<button class="play dling" data-f data-k="g-play" data-act="nav" data-view="downloads"><span>${dlInfo(g).label}</span><div class="bar"><i style="width:${dlInfo(g).pct??0}%"></i></div></button>`
         : playable(g)
-        ? `<button class="play" data-f data-k="g-play" data-act="${running?'exitgame':'play'}" data-id="${esc(g.id)}">${running?I.stop+'Stop':I.play+(g.cloud&&!g.inst?'Stream':'Play')}</button>`
+        ? (running ? `<button class="play" data-f data-k="g-play" data-act="resume" data-id="${esc(g.id)}">${I.play}Resume</button><button class="play install" data-f data-k="g-stop" data-act="exitgame" data-id="${esc(g.id)}">${I.stop}Exit game</button>`
+            : `<button class="play" data-f data-k="g-play" data-act="play" data-id="${esc(g.id)}">${I.play}${g.cloud&&!g.inst?'Stream':'Play'}</button>`)
         : `<button class="play install" data-f data-k="g-play" data-act="install" data-id="${esc(g.id)}">${I.dl}Install</button>`}
       <button class="sq ${g.fav?'on':''}" data-f data-k="g-fav" data-act="fav" data-id="${esc(g.id)}" aria-label="Favorite">${I.star}</button>
       <button class="sq" data-f data-k="g-opt" data-act="gopts" data-id="${esc(g.id)}" aria-label="Options">${I.dots}</button>
@@ -1456,7 +1486,7 @@ function viewSettings(){
     <div class="rows">${body}</div></div>`;
 }
 
-const VIEWS = {home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores};
+const VIEWS = {home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 function render(focusKey, quiet){
@@ -1484,6 +1514,7 @@ function navigate(view, params={}, push=true){
   if(view==='settings') onSettingsTab(S.settingsTab);
   if(view==='downloads'){ if(host) startDownloadPoll(); loadSysInfo(); }
   if(view==='stores') loadAccounts();
+  if(view==='gameset') loadGameSet(S.game);
 }
 function goBack(){
   const h=S.history.pop(); if(!h) return false;
@@ -1514,7 +1545,7 @@ function qRadio(kind,ic,label,sub){
   return `<button class="ctl tg" data-f data-k="q-${kind}" data-act="radio" data-kind="${kind}">${I[ic]}<span class="tgl">${label}${sub?`<small>${esc(sub)}</small>`:''}</span>${busy?'<span class="mini-spin"></span>':`<div class="sw ${radioOn(kind)?'on':''}"></div>`}</button>`;
 }
 // ---------- live performance (Quick Access › Performance) ----------
-let MOCKFPS=0;
+let MOCKFPS=0; const MOCKOPT={};
 const PERF = {s:null, timer:null};
 const FPS_CHOICES = [0,30,40,45,60,90,120];
 function perfBody(){
@@ -1530,6 +1561,12 @@ function perfBody(){
     h += `<div class="pctl"><div class="lab">${I.display}Frame-rate limit<span style="margin-left:auto">${lim?lim+' FPS':'Off'}</span></div>
       <div class="chips">${FPS_CHOICES.map(v=>`<button class="chip ${lim===v?'on':''}" data-f data-k="pf-${v}" data-act="fpsLimit" data-v="${v}">${v?v:'Off'}</button>`).join('')}</div>
       <div class="muted">Lower limits save battery and keep the device cooler.</div></div>`;
+  }
+  if(p.tdp && p.tdp.supported){
+    const choices=[5,8,10,12,15,18,20,25,30].filter(v=>v>=p.tdp.min&&v<=p.tdp.max);
+    h += `<div class="pctl"><div class="lab">${I.bolt}Power limit (TDP)<span style="margin-left:auto">${p.tdp.watts} W</span></div>
+      <div class="chips">${choices.map(v=>`<button class="chip ${p.tdp.watts===v?'on':''}" data-f data-k="pt-${v}" data-act="tdp" data-v="${v}">${v} W</button>`).join('')}</div>
+      <div class="muted">Lower uses less battery; higher runs demanding games faster.</div></div>`;
   }
   if(p.powerMode){
     h += `<div class="pctl"><div class="lab">${I.bolt}Power</div>
@@ -1553,6 +1590,25 @@ function applyRunning(r){
   if(!r) return;
   if(r.runningId && S.running!==r.runningId) S.running=r.runningId;
   if(r.runningSince) S.runningSince=r.runningSince;
+}
+
+// ---------- Quick Access › Open apps (Game Mode): switch to or close what's open ----------
+const APPS = {list:null, loading:false};
+async function loadApps(){
+  APPS.loading=true;
+  try{ APPS.list = await call('apps.list'); }catch(e){ APPS.list=[]; }
+  APPS.loading=false;
+  if(S.layers.includes('qam') && S.qtab==='apps'){ const k=focused?.dataset.k; renderQam(); const el=k&&$(`#qam [data-k="${k}"]`); setFocus(el||$('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
+}
+function appsBody(){
+  if(!APPS.list) return '<div class="muted">Looking…</div>';
+  if(!APPS.list.length) return `<div class="muted">${HOSTINFO.session?'Nothing else is open.':'Open apps can be switched here in Game Mode.'}</div>`;
+  return APPS.list.map((a,i)=>`<div class="appr ${a.focused?'on':''}">
+      <div class="appi">${a.hearth&&LINUX?HEARTH_MARK:a.game?I.play:I.display}</div>
+      <div class="appt"><b>${esc(a.title)}</b><small>${a.focused?'On screen':a.game?'Your game':a.hearth?APP:esc(a.app||'')}</small></div>
+      <button class="btn sm" data-f data-k="ap-go-${i}" data-act="appFocus" data-id="${a.id}" data-pid="${a.pid}">Switch</button>
+      ${a.hearth?'':`<button class="btn sm danger" data-f data-k="ap-x-${i}" data-act="appClose" data-pid="${a.pid}" data-t="${esc(a.title)}">Close</button>`}</div>`).join('')
+    + `<button class="btn" data-f data-k="ap-refresh" data-act="appsRefresh">${I.refresh}Refresh</button>`;
 }
 
 // ---------- overlay window mode ----------
@@ -1582,6 +1638,7 @@ function renderQam(){
     <div class="two"><button class="btn" data-f data-k="q-gw" data-act="goset" data-tab="wifi">${I.wifi}Wi-Fi</button><button class="btn" data-f data-k="q-gb" data-act="goset" data-tab="bluetooth">${I.bt}Bluetooth</button></div>
     <button class="btn" data-f data-k="q-kbd" data-act="search">${I.kbd}Keyboard</button>`; }
   if(t==='perf') body = `<h3>Performance</h3>${perfBody()}`;
+  if(t==='apps') body = `<h3>Open apps</h3>${appsBody()}`;
   if(t==='now'){ const g=S.running&&G(S.running);
     const mins = S.runningSince ? Math.max(0,Math.round((Date.now()-S.runningSince)/60000)) : null;
     const mouseBtn = `<button class="btn sm" data-f data-k="q-mouse" data-act="toggleMouse">${I.mouse}Controller mouse: ${PAD.mouseOn?'on':'off'}</button>`;
@@ -1660,7 +1717,7 @@ function promptSubmit(){
   p.done=true; closeLayer(); p.res(p.text);
 }
 
-const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(S.qtab==='perf') startPerf(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt()};
+const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt()};
 const LAYER_CLOSE = {
   sheet:()=>{ if(sheet && !sheet.picked && sheet.onCancel) sheet.onCancel(); sheet=null; },
   prompt:()=>{ if(prompt && !prompt.done) prompt.res(null); prompt=null; },
@@ -1812,8 +1869,17 @@ function act(el){
     case 'padSwap': { const k='swap'+d.v; PAD[k]=!PAD[k]; try{ localStorage.setItem('nimbus.'+k, PAD[k]?'1':'0'); }catch(e){} return render('ctl-swap'+d.v.toLowerCase()); }
     case 'inputMode': INPUT.mode=d.v; try{ localStorage.setItem('nimbus.inputMode', d.v); }catch(e){} renderFooter(); return render('ctl-'+d.v);
     case 'pkey': return promptKey(d.c);
-    case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
+    case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); if(d.tab==='apps') loadApps(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
     case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
+    case 'gsToggle': return saveGameSet({[d.key]:!GSET.s.options[d.key]}, 'gs-'+d.key);
+    case 'gsProton': return openSheet({title:'Proton version', sub:'For '+(G(GSET.id)?.title||'this game'), items:GSET.s.protonChoices.map(c=>({label:c.label+(c.sub?' — '+c.sub:''), icon:GSET.s.options.proton===c.id?'check':'', run:()=>saveGameSet({proton:c.id},'gs-proton')}))});
+    case 'gsText': { const key=d.key; const title=key==='args'?'Launch options':'Environment variables';
+      return openPrompt({title, value:GSET.s.options[key]||''}).then(v=>{ if(v!=null) saveGameSet({[key]:v.trim()}, 'gs-'+key); }); }
+    case 'gsReset': return openSheet({title:'Reset Proton files?', sub:'Deletes this game\'s Wine prefix. Proton sets it up again the next time you play. Cloud saves are fine; saves stored only in the prefix are lost.', items:[{label:'Reset', icon:'refresh', run:()=>call('game.resetPrefix',{id:GSET.id}).then(()=>toast('Done. The next start sets it up fresh.')).catch(e=>toast(e.message))}]});
+    case 'appsRefresh': return loadApps();
+    case 'appFocus': return call('apps.focus',{id:+d.id, pid:+d.pid}).then(()=>{ if(OVERLAY) overlayClose(); else closeAll(); }).catch(e=>toast(e.message));
+    case 'appClose': return openSheet({title:`Close ${d.t}?`, sub:'Anything unsaved in it may be lost.', items:[{label:'Close it', icon:'x', run:()=>call('apps.close',{pid:+d.pid}).then(()=>{ toast(`Closed ${d.t}`); setTimeout(loadApps,800); }).catch(e=>toast(e.message))}]});
+    case 'tdp': return call('perf.setTdp',{watts:+d.v}).then(r=>{ if(PERF.s) PERF.s.tdp=r; renderQam(); setFocus($(`#qam [data-k="pt-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'fpsLimit': return call('perf.setFpsLimit',{fps:+d.v}).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'perfPower': return call('power.setMode',{mode:d.v}).then(r=>{ if(PERF.s) PERF.s.powerMode=r.mode||d.v; renderQam(); setFocus($(`#qam [data-k="pp-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'ovShot': return call('overlay.screenshot',{},20000).then(r=>toast(`Screenshot saved to Pictures › Screenshots › ${APP}`)).catch(e=>toast(e.message));
@@ -1924,9 +1990,41 @@ async function exitGame(){
   // The exit itself arrives as a game.exited event once the process is gone.
 }
 
+// ---------- Game settings (game page › ⋯ › Game settings) ----------
+const GSET = {id:null, s:null};
+function loadGameSet(id){ GSET.id=id; GSET.s=null; call('game.options.get',{id}).then(r=>{ if(GSET.id===id){ GSET.s=r; if(S.view==='gameset' && !S.layers.length) render(null,true); } }).catch(e=>toast(e.message)); }
+function saveGameSet(patch, k){
+  return call('game.options.set',{id:GSET.id, options:patch}).then(r=>{ GSET.s=r; render(k,true); }).catch(e=>toast(e.message));
+}
+function viewGameSettings(){
+  const g=G(S.game); if(!g) return note('That game isn\'t in the library anymore.');
+  const r=GSET.s; if(!r) return `<h2>${esc(g.title)}</h2>`+note('Loading…');
+  const o=r.options;
+  const sw=(k,label,sub)=>`<button class="row" data-f data-k="gs-${k}" data-act="gsToggle" data-key="${k}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${o[k]?'on':''}"></div></button>`;
+  let h=`<h2>${esc(g.title)}</h2><div class="rows">`;
+  if(r.kind==='steam') return h+note(`Steam starts ${esc(g.title)}, so it uses Steam's own settings: in Steam, open the game's Properties to pick a Proton version or add launch options.`)+'</div>';
+  if(r.kind==='external') return h+note(`Heroic starts ${esc(g.title)}, so its settings are in Heroic. Games ${APP} installs itself have their settings here.`)+'</div>';
+  if(r.kind==='proton'){
+    const cur=r.protonChoices.find(c=>c.id===o.proton) || {label:o.proton?o.proton.split('/').pop():'Default'};
+    h += shead('Compatibility')
+      + `<button class="row" data-f data-k="gs-proton" data-act="gsProton"><span class="ricon">${I.gear}</span><div class="rt"><b>Proton version</b><small>Runs this Windows game on Linux. Try another if it won't start or has problems.</small></div><div class="rv">${esc(cur.label)} ›</div></button>`
+      + sw('fsr','AMD FSR upscaling','Sharper picture when the game runs below the screen\'s resolution (fullscreen games)');
+  }
+  h += shead('Launch')
+    + `<button class="row" data-f data-k="gs-args" data-act="gsText" data-key="args"><div class="rt"><b>Launch options</b><small>${o.args?esc(o.args):'Extra options passed to the game, like -skipintro'}</small></div><div class="rv">Edit ›</div></button>`
+    + `<button class="row" data-f data-k="gs-env" data-act="gsText" data-key="env"><div class="rt"><b>Environment variables</b><small>${o.env?esc(o.env):'Like DXVK_HUD=fps or PROTON_USE_WINED3D=1'}</small></div><div class="rv">Edit ›</div></button>`;
+  h += shead('Performance')
+    + sw('mangohud','Performance overlay (MangoHud)','Shows FPS, CPU and GPU in the corner of the game')
+    + (r.gamemode ? sw('gamemode','GameMode','Asks the system for full performance while the game runs') : '');
+  if(r.canResetPrefix) h += shead('Troubleshooting')
+    + `<button class="row" data-f data-k="gs-reset" data-act="gsReset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset Proton files</b><small>Sets up this game's Wine prefix from scratch next time. Fixes broken setups; saves that only live there are lost.</small></div></button>`;
+  return h+`</div>`+note('Changes apply the next time you start the game.');
+}
+
 function gameOptions(g){
   if(!g) return;
   const items=[];
+  if(host && LINUX && !g.cloud) items.push({label:'Game settings',icon:'gear',run:()=>navigate('gameset',{game:g.id})});
   items.push(g.hidden ? {label:'Show in library',icon:'lib',run:()=>setHidden(g,false)} : {label:'Hide from library',icon:'x',run:()=>setHidden(g,true)});
   if(g.canRemove) items.push({label:'Remove from '+APP+'',icon:'trash',run:()=>removeGame(g)});
   if(isActive(g) && g.installKind==='nimbus') items.unshift({label:'Cancel download',icon:'x',run:()=>cancelInstall(g)});
@@ -2503,7 +2601,7 @@ function input(k){
 }
 function shiftTab(d){
   const top=S.layers.at(-1);
-  if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
+  if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
   if(!top && S.view==='library'){ const i=LIB_TABS.findIndex(t=>t[0]===S.tab); S.tab=LIB_TABS[(i+d+LIB_TABS.length)%LIB_TABS.length][0]; render('tab-'+S.tab); return blip(600); }
 }
 

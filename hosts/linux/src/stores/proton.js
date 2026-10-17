@@ -7,20 +7,22 @@ const fs = require('node:fs');
 const path = require('node:path');
 const tools = require('./tools');
 const { DATA_DIR, launchDetached, log } = require('../util');
+const { apply } = require('../library/game-options');
 
 const PREFIXES = path.join(DATA_DIR, 'prefixes');
 const STORE_CODE = { epic: 'egs', gog: 'gog' }; // umu's names, used to apply known per-game fixes
 
-/** Starts exe with Proton. Resolves with the child process. */
-async function launch({ store, id, exe, args = [], cwd, env = {} }) {
+/** Starts exe with Proton. options: the game's settings (Proton version, launch options, ...). Resolves with the child process. */
+async function launch({ store, id, exe, args = [], cwd, env = {}, options = null }) {
   const umu = await tools.ensure(tools.TOOLS.umu);
   const prefix = path.join(PREFIXES, `${store}-${String(id).replace(/[^\w.-]/g, '_')}`);
   fs.mkdirSync(prefix, { recursive: true });
-  log(`proton: ${store}:${id} ${exe}`);
-  return launchDetached(umu, [exe, ...args], {
+  const r = apply(options, { cmd: umu, args: [exe, ...args], env }, { proton: true });
+  log(`proton: ${store}:${id} ${exe}${r.env.PROTONPATH ? ' with ' + r.env.PROTONPATH : ''}`);
+  return launchDetached(r.cmd, r.args, {
     cwd: cwd || path.dirname(exe),
     env: {
-      ...process.env, ...env,
+      ...process.env, ...r.env,
       WINEPREFIX: prefix,
       GAMEID: process.env.NIMBUS_GAMEID || '0',
       STORE: STORE_CODE[store] || 'none',
@@ -35,4 +37,6 @@ function removePrefix(store, id) {
   if (prefix.startsWith(PREFIXES + path.sep)) fs.rmSync(prefix, { recursive: true, force: true });
 }
 
-module.exports = { launch, removePrefix, PREFIXES };
+const prefixOf = (store, id) => path.join(PREFIXES, `${store}-${String(id).replace(/[^\w.-]/g, '_')}`);
+
+module.exports = { launch, removePrefix, prefixOf, PREFIXES };
