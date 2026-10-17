@@ -54,35 +54,6 @@ dracut --no-hostonly --kver "$KVER" --reproducible --zstd --add ostree --add ply
   -f "/usr/lib/modules/$KVER/initramfs.img"
 chmod 0600 "/usr/lib/modules/$KVER/initramfs.img"
 
-# ------------------------------------------------------------------ package repos the installer can read
-# The ISO builder reads every enabled repo in the image, and refuses one whose signing key file is missing
-# (Bazzite's terra-mesa points at a key it doesn't ship), even when the repo is switched off. Remove those:
-# their packages are already in the image, and system updates come as whole images, not from these repos.
-for f in /etc/yum.repos.d/*.repo /usr/etc/yum.repos.d/*.repo; do
-  [ -f "$f" ] || continue
-  python3 - "$f" <<'PY'
-import configparser, os, re, sys
-path = sys.argv[1]
-VER = re.search(r'^VERSION_ID="?(\d+)', open('/usr/lib/os-release').read(), re.M).group(1)
-cp = configparser.RawConfigParser(strict=False)
-cp.read(path)
-changed = False
-for sec in cp.sections():
-    keys = re.split(r'[\s,]+', cp.get(sec, 'gpgkey', fallback='').strip())
-    keys = [k.replace('$releasever', VER).replace('$basearch', 'x86_64') for k in keys]
-    missing = [k for k in keys if k.startswith('file://') and not os.path.exists(k[7:])]
-    if missing:
-        print(f'{path}: removed [{sec}], missing key {missing[0]}')
-        cp.remove_section(sec)
-        changed = True
-if changed and cp.sections():
-    with open(path, 'w') as fh:
-        cp.write(fh)
-elif changed:
-    os.remove(path)
-PY
-done
-
 # ------------------------------------------------------------------ name
 sed -i \
   -e 's/^NAME=.*/NAME="Hearth"/' \
