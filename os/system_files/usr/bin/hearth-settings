@@ -1,0 +1,10 @@
+#!/bin/sh
+# Opens Hearth Settings: Desktop Mode's own settings app (part of the Quickshell desktop), optionally at a
+# page (wifi, bluetooth, sound, display, appearance, power, controller, signin, updates, about). Anywhere
+# the Hearth desktop isn't running, opens the Hearth app's settings instead.
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+if command -v quickshell >/dev/null 2>&1; then
+  if [ -n "$1" ]; then quickshell ipc -p "$SHELL_DIR" call settings page "$1" >/dev/null 2>&1 && exit 0
+  else quickshell ipc -p "$SHELL_DIR" call settings open >/dev/null 2>&1 && exit 0; fi
+fi
+exec /usr/bin/nimbus --windowed --settings
