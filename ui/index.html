@@ -916,7 +916,7 @@ function pageShellLinux(){
       h += `<button class="row" data-f data-k="sh-make" data-act="shellMake"><span class="ricon">${I.shell}</span><div class="rt"><b>Add the Nimbus session</b><small>Asks for your password${s.gamescope?'':' · gamescope isn\'t installed yet'}</small></div><div class="rv">›</div></button>`;
   }
   h += shead('If something goes wrong')
-    + `<button class="row" data-f data-k="sh-fe" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Switch to desktop</b><small>Leaves Nimbus; pick your usual desktop on the login screen</small></div></button>`
+    + `<button class="row" data-f data-k="sh-fe" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Switch to desktop</b><small>${HOSTINFO.session?'Opens Nimbus Desktop Mode (windows, taskbar). Return with the Game Mode menu item or Super+G':'Minimizes Nimbus'}</small></div></button>`
     + note(`Black screen? Press <b>Ctrl+Alt+F3</b> for a text console, sign in, and run <code>loginctl terminate-user $USER</code>. That brings back the login screen. If Nimbus keeps crashing, the session rolls back an update by itself, then gives up and returns to the login screen.`)
     + (s&&s.exe ? note(`Running from <code>${esc(s.exe)}</code>`) : '');
   return h;
@@ -1319,7 +1319,7 @@ function typeKey(c){
 }
 function power(p){
   closeAll();
-  const label={sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Leaving Nimbus…':'Opening File Explorer…'}[p];
+  const label={sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Desktop Mode…':'Opening File Explorer…'}[p];
   send({type:'power', action:p});
   toast(host?label:label+' (simulated in the browser preview)');
 }
