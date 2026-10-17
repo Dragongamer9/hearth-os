@@ -33,13 +33,26 @@ function candidates(home = os.homedir()) {
   ];
 }
 
+// A Steam folder: has a library, the sign-in list, or Steam's own launcher script. (Requiring only steamapps
+// made Steam look "not installed" before its first download, or while Steam was updating itself.)
+const looksLikeSteam = p => isDir(path.join(p, 'steamapps')) || exists(path.join(p, 'config', 'loginusers.vdf')) || exists(path.join(p, 'steam.sh'));
+let lastPath = null;
 function steamPath(home) {
   for (const p of candidates(home)) {
-    if (isDir(path.join(p, 'steamapps'))) {
-      try { return fs.realpathSync(p); } catch { return p; }
+    if (looksLikeSteam(p)) {
+      let real = p;
+      try { real = fs.realpathSync(p); } catch {}
+      if (!home) lastPath = real;
+      return real;
     }
   }
-  return null;
+  return home ? null : lastPath;   // a moment where nothing reads right (Steam rewriting its files) keeps the last answer
+}
+
+/** Steam itself is there (the client, native or Flatpak), even if it was never started. */
+function clientInstalled() {
+  if (has('steam')) return true;
+  return exists(path.join('/var/lib/flatpak/app', FLATPAK_ID)) || exists(path.join(os.homedir(), '.local/share/flatpak/app', FLATPAK_ID));
 }
 
 const isFlatpak = p => !!p && p.includes(path.join('.var', 'app', FLATPAK_ID));
@@ -280,4 +293,4 @@ async function ensureRunningSilent() {
   }
 }
 
-module.exports = { scan, scanOwned, steamPath, openUri, isRunning, ensureRunningSilent, candidates };
+module.exports = { scan, scanOwned, steamPath, clientInstalled, openUri, isRunning, ensureRunningSilent, candidates };

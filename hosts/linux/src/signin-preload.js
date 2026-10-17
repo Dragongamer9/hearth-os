@@ -39,23 +39,43 @@ function target() {
 /** Types into the text box itself; falls back to key events if there isn't one. */
 function typeText(t) {
   const el = target();
-  if (!el) return ipcRenderer.send('signin:type', t);
+  if (!el) return sendType(t);
   if (document.activeElement !== el) el.focus();
-  if (!document.execCommand('insertText', false, t)) ipcRenderer.send('signin:type', t);
+  if (!document.execCommand('insertText', false, t)) sendType(t);
 }
 function backspace() {
   const el = target();
-  if (!el) return ipcRenderer.send('signin:key', 'Backspace');
+  if (!el) return sendKey('Backspace');
   if (document.activeElement !== el) el.focus();
-  if (!document.execCommand('delete', false)) ipcRenderer.send('signin:key', 'Backspace');
+  if (!document.execCommand('delete', false)) sendKey('Backspace');
 }
 function enter() {
   const el = target();
   if (el && document.activeElement !== el) el.focus();
-  ipcRenderer.send('signin:key', 'Return');
+  sendKey('Return');
 }
 const prev = {};
 const repeatAt = {};
+
+// Steam (running in the background) and some handheld drivers also turn controller buttons into keys for the
+// focused window: A becomes Enter, B Escape. On a store's page that Enter "clicks" whatever link has focus, on
+// top of what A already did here. Key presses that arrive while a controller button is held, and that this
+// script didn't send, are dropped; a real keyboard still works.
+let ownKeyAt = 0;
+const sendKey = key => { ownKeyAt = performance.now(); ipcRenderer.send('signin:key', key); };
+const sendType = t => { ownKeyAt = performance.now(); ipcRenderer.send('signin:type', t); };
+let padHeldAt = 0;
+function padHeld() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  if (pads.some(p => p.buttons.some(b => b && b.pressed))) padHeldAt = performance.now();
+  return performance.now() - padHeldAt < 300;
+}
+for (const type of ['keydown', 'keypress', 'keyup']) {
+  window.addEventListener(type, e => {
+    if (performance.now() - ownKeyAt < 250) return;
+    if (padHeld()) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+}
 
 function build() {
   const host = document.createElement('div');
@@ -110,7 +130,7 @@ function pressKey() {
   if (k === 'shift') { shift = !shift; return renderKb(); }
   if (k === 'space') return typeText(' ');
   if (k === 'bksp') return backspace();
-  if (k === 'tab') { const el = target(); if (el) el.focus(); return ipcRenderer.send('signin:key', 'Tab'); }
+  if (k === 'tab') { const el = target(); if (el) el.focus(); return sendKey('Tab'); }
   if (k === 'enter') return enter();
   typeText(shift ? SHIFTED[k] || k.toUpperCase() : k);
   if (shift) { shift = false; renderKb(); }
@@ -187,7 +207,7 @@ function poll(now) {
       // Clicked into a text box: open the keyboard for it.
       setTimeout(() => { if (!kbOpen && editable(document.activeElement)) { field = document.activeElement; setKb(true); } }, 250);
     }
-    if (pressed('start', st.start, now)) ipcRenderer.send('signin:key', 'Return');
+    if (pressed('start', st.start, now)) sendKey('Return');
     if (pressed('b', st.b, now)) ipcRenderer.send('signin:cancel');
   }
   requestAnimationFrame(poll);

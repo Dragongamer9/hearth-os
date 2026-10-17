@@ -12,15 +12,25 @@ SetPage {
     readonly property bool battery: !!(dev && dev.isLaptopBattery)
     property string profile: ""
     property var profiles: []
+    property var tdp: null             // {supported, watts, min, max, via}
+    property string powerError: ""
+    readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-power").toString().replace(/^file:\/\//, ""))
 
+    // Power mode and power limit through hearth-power (the same as Hearth's Game Mode settings).
+    function power(args) { if (!pw.running) { pw.command = ["python3", helper].concat(args); pw.running = true; } }
+    Component.onCompleted: power(["status"])
     Process {
-        running: true
-        command: ["sh", "-c", "powerprofilesctl list 2>/dev/null | sed -n 's/^[* ]*\\([a-z-]*\\):$/\\1/p'; echo '--'; powerprofilesctl get 2>/dev/null"]
+        id: pw
         stdout: StdioCollector {
             onStreamFinished: {
-                const parts = text.split("--\n");
-                page.profiles = (parts[0] || "").split("\n").filter(Boolean);
-                page.profile = (parts[1] || "").trim();
+                const line = text.trim().split("\n").pop() || "";
+                if (line.startsWith("error: ")) { page.powerError = line.slice(7); page.power(["status"]); return; }
+                try {
+                    const r = JSON.parse(line);
+                    if (r.mode) { page.profiles = r.mode.supported ? r.mode.available : []; page.profile = r.mode.active; }
+                    if (r.tdp) page.tdp = r.tdp;
+                    if (!r.mode || !r.tdp) page.power(["status"]);
+                } catch (e) {}
             }
         }
     }
@@ -45,7 +55,23 @@ SetPage {
         title: "Power mode"; sub: "Battery saver lasts longer; Performance is faster and warmer"
         options: page.profiles.map(p => ({ value: p, label: page.labels[p] || p }))
         current: page.profile
-        onChosen: v => { page.profile = v; Quickshell.execDetached(["powerprofilesctl", "set", v]); }
+        onChosen: v => { page.profile = v; page.powerError = ""; page.power(["mode", v]); }
+    }
+    SetSlider {
+        visible: !!(page.tdp && page.tdp.supported)
+        icon: "power"; title: "Power limit (TDP)"
+        readonly property int lo: page.tdp ? page.tdp.min : 5
+        readonly property int hi: page.tdp ? page.tdp.max : 30
+        value: page.tdp ? (page.tdp.watts - lo) / Math.max(1, hi - lo) : 0
+        valueText: (page.tdp ? page.tdp.watts : 0) + " W"
+        step: 1 / Math.max(1, hi - lo)
+        onMoved: v => { const w = Math.round(lo + v * (hi - lo)); if (page.tdp) page.tdp = Object.assign({}, page.tdp, { watts: w }); tdpApply.restart(); }
+        Timer { id: tdpApply; interval: 500; onTriggered: page.power(["tdp", String(page.tdp.watts)]) }
+    }
+    Text {
+        visible: page.powerError !== ""
+        Layout.fillWidth: true
+        text: page.powerError; color: Theme.danger; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
     SetHeader { text: "Power button" }
     SetChoice {

@@ -56,6 +56,16 @@ if [ -x "$SHARE/desktop/shell/hearth-controller" ] && have busctl; then
   trap 'kill $REMAP_PID 2>/dev/null' EXIT
 fi
 
+# Hearth's look for Qt and GTK apps (Bazaar, Dolphin...), in both modes.
+[ -f "$SHARE/desktop/theme/apply.sh" ] && sh "$SHARE/desktop/theme/apply.sh" >/dev/null 2>&1 &
+
+# The power limit you chose last time (a restart resets it on most handhelds).
+[ -x "$SHARE/desktop/shell/hearth-power" ] && (sleep 12; python3 "$SHARE/desktop/shell/hearth-power" restore) >/dev/null 2>&1 &
+
+# Aloha Browser, Hearth's web browser: downloaded from alohabrowser.com once (it can't ship in the image),
+# then checked for updates weekly. Settings › System › Web browser can remove it or reinstall it.
+[ -x "$SHARE/desktop/shell/hearth-browser" ] && (sleep 45; python3 "$SHARE/desktop/shell/hearth-browser" ensure) >>"$(dirname "$LOG")/browser.log" 2>&1 &
+
 mode="${NIMBUS_START_MODE:-game}"
 rm -f "$NEXT"
 while :; do

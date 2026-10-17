@@ -1,0 +1,204 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#0b0807}
+svg{display:block}
+</style></head><body><div id="w"></div><script>
+// Hearth wallpapers, set two (0.0.15). Render with render2.py: ?s=<name>. Warm, firelit palette throughout;
+// the illustrated ones (cat, fox, cabin, lanterns) take after the friendly mascot art of Nyarch and PikaOS,
+// the abstract ones after PikaOS's soft gradients.
+let seed=11;const rnd=()=>{seed=(seed*16807)%2147483647;return (seed-1)/2147483646};
+const W=1920,H=1080;
+const P={bg:'#0f0b09',bg2:'#17110e',deep:'#2a1206',ember:'#ff8a3d',flame:'#ffd166',red:'#e5483b',cream:'#f4ece3',plum:'#3a1e2c',wine:'#5b2333'};
+const stars=(n,y0,y1,o=1)=>{let s='';for(let i=0;i<n;i++){const x=rnd()*W,y=y0+rnd()*(y1-y0),r=.6+rnd()*1.6;s+=`<circle cx="${x}" cy="${y}" r="${r}" fill="#fff4e0" opacity="${(.25+rnd()*.7)*o}"/>`}return s};
+const svg=(defs,body)=>`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><defs>${defs}</defs>${body}</svg>`;
+const ridge=(y,amp,step,seedv)=>{seed=seedv;let d=`M0 ${H} L0 ${y}`;for(let x=0;x<=W+step;x+=step){d+=` L${x} ${y-rnd()*amp}`}return d+` L${W} ${H} Z`};
+const smooth=(pts)=>{let d=`M${pts[0][0]} ${pts[0][1]}`;for(let i=1;i<pts.length;i++){const [x0,y0]=pts[i-1],[x1,y1]=pts[i];const mx=(x0+x1)/2;d+=` C${mx} ${y0} ${mx} ${y1} ${x1} ${y1}`}return d};
+
+const scenes={
+// 1. Hearth Cat: a cat asleep on a rug in front of the fire.
+cat(){seed=21;
+ const defs=`<linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c120e"/><stop offset="1" stop-color="#2b1912"/></linearGradient>
+ <radialGradient id="fire" cx=".5" cy=".75" r=".6"><stop offset="0" stop-color="#ffcf7a" stop-opacity=".9"/><stop offset=".35" stop-color="#ff8a3d" stop-opacity=".5"/><stop offset="1" stop-color="#ff8a3d" stop-opacity="0"/></radialGradient>
+ <linearGradient id="fl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe9a8"/><stop offset=".5" stop-color="#ffb347"/><stop offset="1" stop-color="#ff6a2b"/></linearGradient>
+ <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a2216"/><stop offset="1" stop-color="#1d110b"/></linearGradient>
+ <radialGradient id="rugl" cx=".5" cy=".2" r=".9"><stop offset="0" stop-color="#ffb35c" stop-opacity=".35"/><stop offset="1" stop-color="#ffb35c" stop-opacity="0"/></radialGradient>
+ <linearGradient id="fur" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb066"/><stop offset="1" stop-color="#d9692c"/></linearGradient>`;
+ let b=`<rect width="${W}" height="${H}" fill="url(#wall)"/>`;
+ // brick pattern on the wall
+ for(let y=0;y<760;y+=46){for(let x=(y/46)%2?-60:0;x<W;x+=120){b+=`<rect x="${x+3}" y="${y+3}" width="114" height="40" rx="5" fill="#ffffff" opacity="${.012+rnd()*.02}"/>`}}
+ // fireplace
+ b+=`<rect x="610" y="250" width="700" height="520" rx="34" fill="#2a1a13"/><rect x="580" y="220" width="760" height="56" rx="18" fill="#3d281d"/>
+ <path d="M700 770 V470 A260 210 0 0 1 1220 470 V770 Z" fill="#0d0705"/>
+ <ellipse cx="960" cy="640" rx="420" ry="330" fill="url(#fire)"/>
+ <path d="M960 470 C1010 540 1060 580 1060 650 C1060 712 1015 748 960 748 C905 748 860 712 860 650 C860 610 885 580 905 560 C905 595 918 615 940 622 C928 570 935 520 960 470 Z" fill="url(#fl)"/>
+ <path d="M880 560 C905 600 920 625 918 665 C915 700 895 720 870 722 C845 724 822 704 822 676 C822 645 845 620 880 560 Z" fill="url(#fl)" opacity=".85"/>
+ <path d="M1045 575 C1070 610 1092 640 1090 680 C1088 712 1066 730 1042 730 C1018 730 1000 710 1002 685 C1004 650 1030 625 1045 575 Z" fill="url(#fl)" opacity=".85"/>
+ <rect x="820" y="728" width="280" height="30" rx="14" fill="#5a3320"/><rect x="850" y="712" width="230" height="26" rx="13" fill="#6e3f27" transform="rotate(-6 960 725)"/>`;
+ // mantel things: candles and a plant
+ b+=`<rect x="640" y="168" width="22" height="52" rx="6" fill="#f4ece3"/><ellipse cx="651" cy="160" rx="6" ry="11" fill="#ffd166"/>
+ <rect x="676" y="182" width="18" height="38" rx="5" fill="#f4ece3"/><ellipse cx="685" cy="174" rx="5" ry="9" fill="#ffd166"/>
+ <rect x="1230" y="176" width="54" height="44" rx="8" fill="#a5532e"/>${[0,1,2,3,4].map(i=>`<ellipse cx="${1240+i*9}" cy="${150+(i%2)*8}" rx="10" ry="24" fill="#4f7a4a" transform="rotate(${-30+i*15} ${1257} 176)"/>`).join('')}`;
+ // floor + rug
+ b+=`<rect y="770" width="${W}" height="${H-770}" fill="url(#floor)"/>
+ <ellipse cx="960" cy="930" rx="640" ry="120" fill="#7a2f2a"/><ellipse cx="960" cy="930" rx="600" ry="104" fill="none" stroke="#e8a35a" stroke-width="6" stroke-dasharray="2 18" opacity=".7"/>
+ <ellipse cx="960" cy="930" rx="560" ry="92" fill="#8f3a30"/><ellipse cx="960" cy="900" rx="700" ry="200" fill="url(#rugl)"/>`;
+ // the cat, curled up, tail around, eyes closed
+ b+=`<g transform="translate(960 905)">
+  <ellipse cx="0" cy="30" rx="210" ry="34" fill="#000" opacity=".25"/>
+  <path d="M-170 10 C-180 -80 -60 -120 30 -110 C130 -100 190 -40 180 20 C175 50 120 60 0 60 C-110 60 -165 45 -170 10 Z" fill="url(#fur)"/>
+  <path d="M-60 -95 C-20 -70 30 -72 70 -100" stroke="#c75a22" stroke-width="10" fill="none" stroke-linecap="round" opacity=".6"/>
+  <path d="M10 -60 C40 -40 80 -40 110 -62" stroke="#c75a22" stroke-width="9" fill="none" stroke-linecap="round" opacity=".5"/>
+  <path d="M175 25 C230 20 250 -30 215 -55 C200 -65 185 -55 195 -45 C215 -25 200 5 165 5 Z" fill="#e47a37"/>
+  <g transform="translate(-150 -10)">
+   <path d="M-70 10 C-80 -50 -40 -85 0 -85 C45 -85 80 -50 72 10 C66 50 -62 50 -70 10 Z" fill="#ffb066"/>
+   <path d="M-58 -50 L-62 -118 L-12 -80 Z" fill="#ffb066"/><path d="M50 -52 L58 -118 L10 -82 Z" fill="#ffb066"/>
+   <path d="M-50 -60 L-52 -100 L-22 -78 Z" fill="#ff8a8a" opacity=".7"/><path d="M42 -62 L46 -100 L18 -80 Z" fill="#ff8a8a" opacity=".7"/>
+   <path d="M-40 -18 Q-28 -8 -16 -18" stroke="#3a1f12" stroke-width="5" fill="none" stroke-linecap="round"/>
+   <path d="M14 -18 Q26 -8 38 -18" stroke="#3a1f12" stroke-width="5" fill="none" stroke-linecap="round"/>
+   <path d="M-4 2 L4 2 L0 8 Z" fill="#c45a5a"/>
+   <ellipse cx="-44" cy="8" rx="11" ry="6" fill="#ff8a8a" opacity=".45"/><ellipse cx="44" cy="8" rx="11" ry="6" fill="#ff8a8a" opacity=".45"/>
+   ${[-1,1].map(s=>[0,1,2].map(i=>`<path d="M${s*22} ${6+i*5} L${s*(60+i*4)} ${2+i*9}" stroke="#fff3e2" stroke-width="2" opacity=".6"/>`).join('')).join('')}
+  </g>
+  <ellipse cx="-80" cy="48" rx="34" ry="16" fill="#ffc285"/><ellipse cx="-20" cy="52" rx="30" ry="14" fill="#ffc285"/>
+  <text x="-100" y="-150" font-family="sans-serif" font-size="34" font-weight="700" fill="#f4ece3" opacity=".75">z</text>
+  <text x="-66" y="-188" font-family="sans-serif" font-size="26" font-weight="700" fill="#f4ece3" opacity=".55">z</text>
+ </g>`;
+ // a few sparks
+ for(let i=0;i<26;i++){const x=860+rnd()*200,y=360+rnd()*240;b+=`<circle cx="${x}" cy="${y}" r="${1.5+rnd()*2.5}" fill="${rnd()>.5?P.flame:P.ember}" opacity="${.3+rnd()*.6}"/>`}
+ return svg(defs,b)},
+
+// 2. Night Cabin: snowy pines, a cabin with a lit window and chimney smoke, under the stars.
+cabin(){seed=33;
+ const defs=`<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a0710"/><stop offset=".6" stop-color="#1f1220"/><stop offset="1" stop-color="#3b1d22"/></linearGradient>
+ <radialGradient id="win" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffd27a" stop-opacity=".8"/><stop offset="1" stop-color="#ff8a3d" stop-opacity="0"/></radialGradient>
+ <linearGradient id="snow" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6f5a5c"/><stop offset=".5" stop-color="#4a383e"/><stop offset="1" stop-color="#2a1e24"/></linearGradient>
+ <radialGradient id="pool" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffb35c" stop-opacity=".35"/><stop offset="1" stop-color="#ffb35c" stop-opacity="0"/></radialGradient>`;
+ let b=`<rect width="${W}" height="${H}" fill="url(#sky)"/>${stars(220,0,620)}
+ <circle cx="1520" cy="210" r="70" fill="#ffe7c0" opacity=".9"/><circle cx="1520" cy="210" r="150" fill="#ffd6a0" opacity=".08"/>`;
+ b+=`<path d="${ridge(640,120,90,5)}" fill="#2a1824"/><path d="${ridge(720,90,70,9)}" fill="#22131c"/>`;
+ const pine=(x,y,h,c)=>{let s='';for(let i=0;i<4;i++){const w=h*(.5-i*.09),yy=y-i*h*.22;s+=`<path d="M${x-w/2} ${yy} L${x} ${yy-h*.42} L${x+w/2} ${yy} Z" fill="${c}"/><path d="M${x-w*.32} ${yy-h*.12} L${x} ${yy-h*.42} L${x+w*.32} ${yy-h*.12} Z" fill="#cdbdb6" opacity=".35"/>`}return s+`<rect x="${x-h*.03}" y="${y}" width="${h*.06}" height="${h*.12}" fill="#1a0f0c"/>`};
+ for(let i=0;i<26;i++){const x=rnd()*W,h=120+rnd()*140;b+=pine(x,800-rnd()*40,h,'#1a1218')}
+ b+=`<path d="M0 820 C400 780 700 800 960 790 C1300 780 1600 800 ${W} 780 L${W} ${H} L0 ${H} Z" fill="url(#snow)"/>`;
+ // cabin
+ b+=`<g transform="translate(860 640)"><path d="M-30 90 L130 -20 L290 90 Z" fill="#4a2a20"/><path d="M-40 92 L130 -30 L300 92" stroke="#f4ece3" stroke-width="14" fill="none" stroke-linejoin="round"/>
+ <rect x="0" y="88" width="260" height="150" fill="#5d3424"/>${[0,1,2,3,4].map(i=>`<rect x="0" y="${92+i*29}" width="260" height="3" fill="#3d2018"/>`).join('')}
+ <rect x="200" y="-10" width="34" height="70" fill="#3a2019"/>
+ <ellipse cx="80" cy="160" rx="140" ry="110" fill="url(#win)"/><rect x="40" y="130" width="70" height="60" rx="4" fill="#ffcf6e"/><path d="M75 130 V190 M40 160 H110" stroke="#5d3424" stroke-width="6"/>
+ <rect x="160" y="150" width="56" height="88" rx="4" fill="#3a2019"/><circle cx="205" cy="196" r="4" fill="#ffcf6e"/>
+ <path d="M-20 238 L280 238" stroke="#8a7676" stroke-width="10" stroke-linecap="round"/></g>`;
+ for(let i=0;i<6;i++){b+=`<circle cx="${1078+i*18+Math.sin(i)*20}" cy="${600-i*50}" r="${18+i*9}" fill="#a8948e" opacity="${.12-i*.018}"/>`}
+ b+=`<ellipse cx="960" cy="900" rx="360" ry="70" fill="url(#pool)"/>`;
+ for(let i=0;i<120;i++){b+=`<circle cx="${rnd()*W}" cy="${rnd()*H}" r="${1+rnd()*2.2}" fill="#fff" opacity="${.2+rnd()*.5}"/>`}
+ return svg(defs,b)},
+
+// 3. Lanterns: sky lanterns rising over a still lake at dusk.
+lanterns(){seed=44;
+ const defs=`<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#120a14"/><stop offset=".55" stop-color="#3a1a26"/><stop offset="1" stop-color="#8a3a2a"/></linearGradient>
+ <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a2626"/><stop offset="1" stop-color="#140b0d"/></linearGradient>
+ <radialGradient id="lg" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffcf6e" stop-opacity=".7"/><stop offset="1" stop-color="#ff8a3d" stop-opacity="0"/></radialGradient>
+ <linearGradient id="lb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe2a0"/><stop offset="1" stop-color="#ff7a32"/></linearGradient>`;
+ let b=`<rect width="${W}" height="${H}" fill="url(#sky)"/>${stars(140,0,420,.7)}
+ <path d="${ridge(700,60,110,3)}" fill="#231219"/><rect y="700" width="${W}" height="${H-700}" fill="url(#lake)"/>`;
+ const L=[];for(let i=0;i<46;i++){const d=rnd();L.push({x:rnd()*W,y:80+d*560,s:10+d*38})}
+ L.sort((a,b)=>a.s-b.s);
+ for(const l of L){const w=l.s,h=l.s*1.25;b+=`<circle cx="${l.x}" cy="${l.y}" r="${w*2.2}" fill="url(#lg)"/>
+  <path d="M${l.x-w/2} ${l.y-h/2} L${l.x+w/2} ${l.y-h/2} L${l.x+w*.38} ${l.y+h/2} L${l.x-w*.38} ${l.y+h/2} Z" fill="url(#lb)"/>
+  <rect x="${l.x-w*.36}" y="${l.y+h/2-2}" width="${w*.72}" height="${Math.max(2,w*.08)}" fill="#8a3a1a"/>`;
+  // reflection
+  b+=`<ellipse cx="${l.x}" cy="${1400-l.y*0.9}" rx="${w*.5}" ry="${w*.18}" fill="#ffb35c" opacity="${.12+l.s/120}"/>`}
+ for(let i=0;i<40;i++){const y=720+rnd()*340;b+=`<rect x="${rnd()*W}" y="${y}" width="${40+rnd()*160}" height="2" fill="#ffcf8a" opacity="${.05+rnd()*.12}"/>`}
+ return svg(defs,b)},
+
+// 4. Ember Bloom: soft glassy blobs of colour (PikaOS-style gradient art) in Hearth's warm tones.
+bloom(){seed=55;
+ const defs=`<filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="90"/></filter>
+ <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 .9  0 0 0 0 .8  0 0 0 .05 0"/></filter>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#140c0b"/><stop offset="1" stop-color="#22110f"/></linearGradient>`;
+ let b=`<rect width="${W}" height="${H}" fill="url(#bg)"/><g filter="url(#blur)">
+ <circle cx="420" cy="760" r="380" fill="#e5483b" opacity=".75"/><circle cx="900" cy="420" r="330" fill="#ff8a3d" opacity=".8"/>
+ <circle cx="1420" cy="700" r="360" fill="#ffd166" opacity=".55"/><circle cx="1600" cy="260" r="260" fill="#8c2f4a" opacity=".7"/>
+ <circle cx="1100" cy="980" r="280" fill="#b8402a" opacity=".6"/><circle cx="260" cy="200" r="220" fill="#5b2333" opacity=".7"/></g>
+ <g opacity=".22" fill="none" stroke="#fff3e2" stroke-width="2">${[0,1,2,3].map(i=>`<path d="${smooth([[-50,620+i*40],[500,520+i*30],[1000,700-i*20],[1500,540+i*25],[1980,640-i*30]])}"/>`).join('')}</g>
+ <rect width="${W}" height="${H}" filter="url(#grain)"/>`;
+ return svg(defs,b)},
+
+// 5. Low Poly Peaks: faceted mountains at sunset.
+peaks(){seed=66;
+ const defs=`<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a0d14"/><stop offset=".55" stop-color="#6a2a2a"/><stop offset="1" stop-color="#ff9a4a"/></linearGradient>`;
+ let b=`<rect width="${W}" height="${H}" fill="url(#sky)"/><circle cx="1180" cy="380" r="120" fill="#ffd38a"/><circle cx="1180" cy="380" r="260" fill="#ffb35c" opacity=".15"/>`;
+ const layer=(base,amp,cols,n,sd)=>{seed=sd;const pts=[];for(let i=0;i<=n;i++)pts.push([i*W/n,base-amp*(.3+rnd()*.7)*(i%2?1:.55)]);let s='';
+  for(let i=0;i<n;i++){const [x0,y0]=pts[i],[x1,y1]=pts[i+1];const mx=(x0+x1)/2,my=base+40;
+   s+=`<path d="M${x0} ${y0} L${x1} ${y1} L${mx} ${my} Z" fill="${cols[i%cols.length]}"/><path d="M${x0} ${y0} L${mx} ${my} L${x0} ${H} L${x0-W/n/2} ${my} Z" fill="${cols[(i+1)%cols.length]}"/>
+   <path d="M${x1} ${y1} L${mx} ${my} L${x1} ${H} Z" fill="${cols[(i+2)%cols.length]}"/><path d="M${mx} ${my} L${x0} ${H} L${x1} ${H} Z" fill="${cols[(i+3)%cols.length]}"/>`}
+  return s};
+ b+=layer(560,260,['#7a3434','#8f3f36','#6a2b2f','#9b4a3a'],9,4);
+ b+=layer(720,240,['#4a1f27','#5a2630','#3d1a22','#642a2e'],11,8);
+ b+=layer(880,220,['#2a121a','#331620','#22101a','#3a1a20'],14,12);
+ b+=`<rect y="1000" width="${W}" height="80" fill="#1a0b10"/>`;
+ return svg(defs,b)},
+
+// 6. Forge Grid: a retro sun over a glowing grid, in ember colours.
+forge(){seed=77;
+ const defs=`<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c060a"/><stop offset=".6" stop-color="#2a0e18"/><stop offset="1" stop-color="#5a1a1a"/></linearGradient>
+ <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset=".5" stop-color="#ff8a3d"/><stop offset="1" stop-color="#e5483b"/></linearGradient>
+ <clipPath id="sc"><circle cx="960" cy="560" r="250"/></clipPath>
+ <linearGradient id="fl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0c10"/><stop offset="1" stop-color="#0c0507"/></linearGradient>`;
+ let b=`<rect width="${W}" height="${H}" fill="url(#sky)"/>${stars(160,0,450,.8)}<circle cx="960" cy="560" r="380" fill="#ff7a32" opacity=".12"/>
+ <g clip-path="url(#sc)"><rect x="700" y="300" width="520" height="520" fill="url(#sun)"/>${[0,1,2,3,4,5,6].map(i=>`<rect x="700" y="${600+i*26}" width="520" height="${4+i*3}" fill="#2a0e18"/>`).join('')}</g>
+ <path d="${ridge(640,70,60,2)}" fill="#1a0a10"/><rect y="640" width="${W}" height="${H-640}" fill="url(#fl)"/>`;
+ for(let i=0;i<16;i++){const y=640+Math.pow(i/15,2.2)*440;b+=`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#ff8a3d" stroke-width="${1+i*.18}" opacity="${.25+i*.04}"/>`}
+ for(let i=-20;i<=20;i++){b+=`<line x1="${960+i*14}" y1="640" x2="${960+i*190}" y2="${H}" stroke="#ff8a3d" stroke-width="1.6" opacity=".5"/>`}
+ return svg(defs,b)},
+
+// 7. Cinder Topo: glowing contour lines, like a heat map of a hillside.
+topo(){seed=88;
+ const defs=`<radialGradient id="g" cx=".62" cy=".55" r=".7"><stop offset="0" stop-color="#3a1a12"/><stop offset="1" stop-color="#0e0908"/></radialGradient>`;
+ let b=`<rect width="${W}" height="${H}" fill="url(#g)"/>`;
+ const cx=1180,cy=590;
+ for(let k=0;k<34;k++){const r=30+k*34;let d='';const n=120;
+  for(let i=0;i<=n;i++){const a=i/n*Math.PI*2;const wob=1+.18*Math.sin(a*3+k*.35)+.08*Math.sin(a*7-k*.2)+.05*Math.cos(a*11+k);
+   const x=cx+Math.cos(a)*r*wob*1.25,y=cy+Math.sin(a)*r*wob*.85;d+=(i?' L':'M')+x.toFixed(1)+' '+y.toFixed(1)}
+  const t=k/33;const col=t<.25?'#ffd166':t<.55?'#ff8a3d':'#b8402a';
+  b+=`<path d="${d} Z" fill="none" stroke="${col}" stroke-width="${k%5===0?2.6:1.3}" opacity="${.85-t*.6}"/>`}
+ b+=`<circle cx="${cx}" cy="${cy}" r="10" fill="#fff0c8"/>`;
+ return svg(defs,b)},
+
+// 8. Fox Moon: a little fox on a hill, watching a huge warm moon rise.
+fox(){seed=99;
+ const defs=`<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#100912"/><stop offset=".7" stop-color="#2e1520"/><stop offset="1" stop-color="#4a1f22"/></linearGradient>
+ <radialGradient id="moon" cx=".45" cy=".4" r=".6"><stop offset="0" stop-color="#fff2d6"/><stop offset=".7" stop-color="#ffd59a"/><stop offset="1" stop-color="#ffb877"/></radialGradient>
+ <linearGradient id="fox" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff9a4a"/><stop offset="1" stop-color="#e0602a"/></linearGradient>`;
+ let b=`<rect width="${W}" height="${H}" fill="url(#sky)"/>${stars(180,0,700)}
+ <circle cx="1240" cy="560" r="560" fill="#ffcf8a" opacity=".06"/><circle cx="1240" cy="560" r="380" fill="url(#moon)"/>
+ <circle cx="1120" cy="480" r="46" fill="#f0c48a" opacity=".5"/><circle cx="1360" cy="660" r="70" fill="#f0c48a" opacity=".4"/><circle cx="1290" cy="420" r="26" fill="#f0c48a" opacity=".45"/>
+ <path d="M0 900 C300 820 600 780 900 800 C1200 820 1500 900 ${W} 880 L${W} ${H} L0 ${H} Z" fill="#1a0c10"/>
+ <path d="M0 960 C400 900 800 930 1200 960 C1500 985 1700 960 ${W} 950 L${W} ${H} L0 ${H} Z" fill="#120809"/>`;
+ // grass
+ for(let i=0;i<160;i++){const x=rnd()*W,y=880+rnd()*40;b+=`<path d="M${x} ${y+30} Q${x+3} ${y+12} ${x+(rnd()-.5)*14} ${y}" stroke="#1a0c10" stroke-width="3" fill="none"/>`}
+ // the fox, seen from behind, sitting on the ridge
+ b+=`<g transform="translate(860 800)">
+  <path d="M60 10 C150 0 200 -60 170 -110 C160 -126 140 -122 148 -104 C170 -60 120 -30 70 -20 Z" fill="url(#fox)"/>
+  <path d="M168 -104 C176 -96 186 -100 182 -114 C176 -128 160 -128 158 -116 Z" fill="#fff3e2"/>
+  <path d="M-40 0 C-60 -80 -30 -150 20 -150 C70 -150 100 -80 80 0 Z" fill="url(#fox)"/>
+  <path d="M-20 -140 C-10 -200 50 -200 60 -140 C55 -110 -15 -110 -20 -140 Z" fill="url(#fox)"/>
+  <path d="M-12 -170 L-28 -238 L14 -190 Z" fill="#e0602a"/><path d="M50 -172 L68 -238 L28 -192 Z" fill="#e0602a"/>
+  <path d="M-12 -182 L-20 -222 L4 -194 Z" fill="#3a1a12"/><path d="M48 -184 L58 -222 L36 -196 Z" fill="#3a1a12"/>
+  <path d="M-30 0 L-20 -30 L0 0 Z M50 0 L60 -30 L74 0 Z" fill="#2a120c"/>
+ </g>`;
+ return svg(defs,b)},
+
+// Previews for the moving wallpapers (Hearth Settings shows these on the tiles).
+lava(){seed=101;
+ const defs=`<filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>`;
+ return svg(defs,`<rect width="${W}" height="${H}" fill="#120a09"/><g filter="url(#blur)">
+ <circle cx="560" cy="700" r="300" fill="#e5483b" opacity=".85"/><circle cx="1050" cy="380" r="260" fill="#ff8a3d" opacity=".85"/><circle cx="1450" cy="720" r="290" fill="#ffd166" opacity=".6"/><circle cx="1500" cy="250" r="180" fill="#8c2f4a" opacity=".8"/></g>`)},
+aurora(){seed=102;
+ const defs=`<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a0609"/><stop offset="1" stop-color="#1e0f0d"/></linearGradient><filter id="blur" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="40"/></filter>`;
+ let b=`<rect width="${W}" height="${H}" fill="url(#sky)"/>${stars(240,0,H)}<g filter="url(#blur)" fill="none" stroke-linecap="round">`;
+ const cols=['#ff8a3d','#ffd166','#e5483b'];
+ for(let i=0;i<3;i++)b+=`<path d="${smooth([[-100,420+i*90],[400,300+i*80],[900,460+i*60],[1400,320+i*90],[2020,430+i*70]])}" stroke="${cols[i]}" stroke-width="${120-i*25}" opacity="${.55-i*.1}"/>`;
+ return svg(defs,b+`</g><path d="${ridge(940,80,80,7)}" fill="#0c0607"/>`)},
+};
+const s=new URLSearchParams(location.search).get('s')||'cat';
+document.getElementById('w').innerHTML=scenes[s]();
+document.title='ready';
+</script></body></html>

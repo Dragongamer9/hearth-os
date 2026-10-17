@@ -497,6 +497,7 @@ const I = {
   layout:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 10h18M10 10v10"/></svg>',
   text:'<svg viewBox="0 0 24 24"><path d="M4 7V5h10v2M9 5v14M7 19h4M14 12v-1h6v1M17 11v8M15.5 19h3"/></svg>',
   shell:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18"/></svg>',
+  globe:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.6 5.4 3.6 8.5s-1.1 5.9-3.6 8.5c-2.5-2.6-3.6-5.4-3.6-8.5S9.5 6.1 12 3.5z"/></svg>',
   info:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>',
   display:'<svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20h6"/></svg>',
   head:'<svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3.5" y="14" width="4" height="6" rx="1.5"/><rect x="16.5" y="14" width="4" height="6" rx="1.5"/></svg>',
@@ -667,14 +668,17 @@ const MOCK = (()=>{
       resolution:`${Math.round(screen.width*devicePixelRatio)} × ${Math.round(screen.height*devicePixelRatio)}`,scale:Math.round(devicePixelRatio*100)+'%'}),
     'display.setBrightness':async({v})=>{ st.display.brightness=v; },
 
-    'power.get':async()=>({...st.battery,mode:st.powerMode}),
+    'power.get':async()=>({...st.battery,mode:st.powerMode,modes:['efficiency','balanced','performance'],modeSupported:true,tdp:{supported:true,watts:st.tdp||15,min:7,max:30}}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
-    'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,powerMode:st.powerMode}),
+    'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'}}),
+    'perf.setTdp':async({watts})=>{ st.tdp=watts; return {supported:true,watts,min:7,max:30}; },
     'perf.setFpsLimit':async({fps})=>{ MOCKFPS=fps; return {fpsLimit:fps}; },
     'apps.list':async()=>[{id:1,pid:10,title:'Ironvale Tactics',app:'Ironvale.exe',game:true,focused:true},{id:2,pid:11,title:'Hearth',hearth:true},{id:3,pid:12,title:'Discord',app:'Discord'},{id:4,pid:13,title:'Steam',app:'steam'}],
     'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
     'game.options.get':async({id})=>({id,kind:'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
       protonChoices:[{id:'',label:'Default',sub:'UMU-Proton, the newest, downloaded when needed'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'Community build with extra fixes'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
+    'browser.status':async()=>clone(st.br||{available:true,installed:true,default:true,version:'4.9.1.0',checkedAt:Math.floor(Date.now()/1000)-86400,state:'idle'}),
+    'browser.act':async({action})=>{ st.br=Object.assign({available:true,installed:true,default:true,version:'4.9.1.0',state:'idle'},st.br||{}); if(action==='remove') st.br.installed=false; if(action==='install'||action==='default'){ st.br.installed=true; st.br.default=true; } return clone(st.br); },
     'buttons.get':async()=>clone(Object.assign({press:'sleep',hold:'menu',overamp:false},st.btn||{},{maxVolume:st.btn&&st.btn.overamp?150:100,watching:{devices:['Power Button','AT Translated Set 2 keyboard'],problems:[]}})),
     'buttons.set':async(o)=>{ st.btn=Object.assign({press:'sleep',hold:'menu',overamp:false},st.btn||{},o); if(!st.btn.overamp&&st.audio.volume>100) st.audio.volume=100; return MOCK.call('buttons.get'); },
     'controller.status':async()=>{ const B=[['South','A'],['East','B'],['West','X'],['North','Y'],['LeftBumper','LB'],['RightBumper','RB'],['Select','View'],['Start','Menu'],['Guide','Guide (Xbox)'],['LeftStick','Left stick click'],['RightStick','Right stick click'],['DPadUp','D-pad up'],['DPadDown','D-pad down'],['DPadLeft','D-pad left'],['DPadRight','D-pad right'],['LeftPaddle1','Left back button'],['RightPaddle1','Right back button'],['QuickAccess','Quick Access button']];
@@ -914,6 +918,7 @@ function pageSystem(){
     h += `<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Storage</b><small>${gb(st.freeBytes)} free of ${gb(st.totalBytes)}</small><div class="storage"><i style="width:${pct}%"></i></div></div><div class="rv">${pct}% used</div></div>`;
   }
   const tz=(()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }catch(e){ return ''; } })();
+  if(LINUX) h += browserRows();
   h += shead('Date and time')
     + infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
     + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM');
@@ -926,6 +931,32 @@ function pageSystem(){
   h += `<button class="row" data-f data-k="sy-reset" data-act="resetLook"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset appearance</b><small>Layout, text size and top bar back to how they started. Your games and accounts stay.</small></div></button>`;
   return h;
 }
+// ---------- Settings › System › Web browser (Aloha, Linux) ----------
+const BROWSER = {s:null};
+function loadBrowser(){ if(LINUX) call('browser.status').then(r=>{ BROWSER.s=r; refreshUI(); }).catch(()=>{}); }
+function browserRows(){
+  const b=BROWSER.s;
+  let h = shead('Web browser');
+  if(!b) return h + note('Loading…');
+  if(b.available===false) return h + note('The web browser is set up on Hearth, the OS.');
+  const busy = b.state && b.state!=='idle';
+  if(busy){
+    const pct = b.progress!=null ? Math.round(b.progress*100) : null;
+    h += `<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>${{install:'Installing Aloha Browser',update:'Updating Aloha Browser',remove:'Removing Aloha Browser',default:'Making Aloha the default'}[b.state]||'Working'}…</b><small>${esc(b.line||'')}</small>${pct!=null?`<div class="storage"><i style="width:${pct}%"></i></div>`:''}</div><div class="rv">${pct!=null?pct+'%':''}</div></div>`;
+    return h;
+  }
+  if(b.installed){
+    h += `<div class="row"><span class="ricon">${I.globe||I.display}</span><div class="rt"><b>Aloha Browser</b><small>${b.default?'Your default browser':'Installed, but another browser opens links'}${b.version?' · version '+esc(b.version):''}${b.checkedAt?' · checked for updates '+ago(b.checkedAt*1000).toLowerCase():''}</small></div></div>`;
+    if(!b.default) h += `<button class="row" data-f data-k="br-def" data-act="browser" data-v="default"><div class="rt"><b>Make Aloha the default browser</b></div></button>`;
+    h += `<button class="row" data-f data-k="br-upd" data-act="browser" data-v="update"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look for an update</b><small>Hearth also checks once a week</small></div></button>`;
+    h += `<button class="row" data-f data-k="br-rm" data-act="browserRemove"><span class="ricon">${I.trash}</span><div class="rt"><b>Remove Aloha Browser</b><small>Hearth won't install it again by itself</small></div></button>`;
+  } else {
+    h += `<button class="row" data-f data-k="br-inst" data-act="browser" data-v="install"><span class="ricon">${I.dl}</span><div class="rt"><b>Install Aloha Browser</b><small>Downloads the official package from alohabrowser.com (about 150 MB) and makes it the default browser</small></div></button>`;
+  }
+  if(b.error) h += note('Last try didn\'t work: '+esc(b.error));
+  return h;
+}
+
 const CREDITS = LINUX
   ? [['Electron','Runs '+APP+'\'s interface'],['gamescope','Game Mode compositor (Valve)'],['labwc','Desktop Mode window manager'],['Quickshell','Desktop Mode taskbar and menus'],
      ['Bazzite / Universal Blue','The OS Hearth is built on'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)'],['umu-launcher','Runs Windows games with Proton'],['Proton / Wine','Windows compatibility']]
@@ -1271,10 +1302,18 @@ const PMODES=[['efficiency','Efficiency'],['balanced','Balanced'],['performance'
 function pagePower(){
   const b=S.sys.battery;
   const batt = !b ? '—' : b.present===false ? 'No battery (plugged in)' : `${b.pct}% · ${b.charging?'Charging':'On battery'}`;
-  return infoRow('batt','Battery',batt)
-    + `<div class="row"><div class="rt"><b>Power mode</b><small>Applies while the Balanced power plan is active</small></div>
-       <div class="seg">${PMODES.map(([k,l])=>`<button class="${S.sys.powerMode===k?'on':''}" data-f data-k="pm-${k}" data-act="pmode" data-mode="${k}">${l}</button>`).join('')}</div></div>`
-    + (LINUX ? shead('Power button') + powerButtonRows() : '');
+  const pw=S.sys.power||{}, modes=LINUX&&pw.modes&&pw.modes.length ? PMODES.filter(([k])=>pw.modes.includes(k)) : PMODES;
+  let h = infoRow('batt','Battery',batt);
+  if(!LINUX || pw.modeSupported!==false)
+    h += `<div class="row"><div class="rt"><b>Power mode</b><small>${LINUX?'Battery saver lasts longer; Performance is faster and warmer':'Applies while the Balanced power plan is active'}</small></div>
+       <div class="seg">${modes.map(([k,l])=>`<button class="${S.sys.powerMode===k?'on':''}" data-f data-k="pm-${k}" data-act="pmode" data-mode="${k}">${l}</button>`).join('')}</div></div>`;
+  else h += note('Power modes aren\'t available on this device.');
+  if(LINUX && pw.tdp && pw.tdp.supported){
+    const t=pw.tdp, choices=[5,8,10,12,15,18,20,22,25,28,30,35].filter(v=>v>=t.min&&v<=t.max);
+    h += `<div class="row"><div class="rt"><b>Power limit (TDP)</b><small>${t.watts} W now · lower uses less battery, higher runs demanding games faster. Kept after a restart.</small></div></div>
+      <div class="chips" style="margin:-4px 0 10px">${choices.map(v=>`<button class="chip ${t.watts===v?'on':''}" data-f data-k="ptd-${v}" data-act="setTdp" data-v="${v}">${v} W</button>`).join('')}</div>`;
+  }
+  return h + (LINUX ? shead('Power button') + powerButtonRows() : '');
 }
 
 // ---------- Settings › Controller › Button mapping (InputPlumber, Linux) ----------
@@ -1658,7 +1697,7 @@ function perfBody(){
   }
   if(p.powerMode){
     h += `<div class="pctl"><div class="lab">${I.bolt}Power</div>
-      <div class="chips">${PMODES.map(([k,l])=>`<button class="chip ${p.powerMode===k?'on':''}" data-f data-k="pp-${k}" data-act="perfPower" data-v="${k}">${l}</button>`).join('')}</div></div>`;
+      <div class="chips">${(p.powerModes&&p.powerModes.length?PMODES.filter(([k])=>p.powerModes.includes(k)):PMODES).map(([k,l])=>`<button class="chip ${p.powerMode===k?'on':''}" data-f data-k="pp-${k}" data-act="perfPower" data-v="${k}">${l}</button>`).join('')}</div></div>`;
   }
   if(!p.canFpsLimit && LINUX) h += '<div class="muted" style="margin-top:10px">The frame-rate limit works in Game Mode.</div>';
   return h;
@@ -1693,9 +1732,9 @@ function appsBody(){
   if(!APPS.list.length) return `<div class="muted">${HOSTINFO.session?'Nothing else is open.':'Open apps can be switched here in Game Mode.'}</div>`;
   return APPS.list.map((a,i)=>`<div class="appr ${a.focused?'on':''}">
       <div class="appi">${a.hearth&&LINUX?HEARTH_MARK:a.game?I.play:I.display}</div>
-      <div class="appt"><b>${esc(a.title)}</b><small>${a.focused?'On screen':a.game?'Your game':a.hearth?APP:esc(a.app||'')}</small></div>
+      <div class="appt"><b>${esc(a.title)}</b><small>${a.focused?'On screen':a.game?'Your game':a.hearth?'Your library':a.steam?'Running in the background':esc(a.app||'')}</small></div>
       <button class="btn sm" data-f data-k="ap-go-${i}" data-act="appFocus" data-id="${a.id}" data-pid="${a.pid}">Switch</button>
-      ${a.hearth?'':`<button class="btn sm danger" data-f data-k="ap-x-${i}" data-act="appClose" data-pid="${a.pid}" data-t="${esc(a.title)}">Close</button>`}</div>`).join('')
+      ${a.hearth||a.steam?'':`<button class="btn sm danger" data-f data-k="ap-x-${i}" data-act="appClose" data-pid="${a.pid}" data-t="${esc(a.title)}">Close</button>`}</div>`).join('')
     + `<button class="btn" data-f data-k="ap-refresh" data-act="appsRefresh">${I.refresh}Refresh</button>`;
 }
 
@@ -1930,6 +1969,9 @@ function act(el){
     case 'mute': return setMute(!S.sys.audio.muted);
     case 'audioDev': return setOutput(d.id);
     case 'pmode': return setPowerMode(d.mode);
+    case 'browser': return call('browser.act',{action:d.v}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
+    case 'browserRemove': return openSheet({title:'Remove Aloha Browser?', sub:'Your bookmarks and history stay in your home folder.', items:[{label:'Remove', icon:'trash', run:()=>call('browser.act',{action:'remove'}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message))}]});
+    case 'setTdp': return call('perf.setTdp',{watts:+d.v}).then(r=>{ S.sys.power=Object.assign(S.sys.power||{},{tdp:r}); toast(`Power limit ${r.watts} W`); render('ptd-'+d.v,true); }).catch(e=>toast(e.message));
     case 'pbtn': return call('buttons.set',{[d.w]:d.v}).then(r=>{ BTNS.s=r; render('pb-'+d.w+'-'+d.v,true); }).catch(e=>toast(e.message));
     case 'overamp': return call('buttons.set',{overamp:!(BTNS.s&&BTNS.s.overamp)}).then(r=>{ BTNS.s=r; S.sys.audio.max=r.maxVolume; if(S.set.vol>r.maxVolume){ S.set.vol=S.sys.audio.volume=r.maxVolume; } render('a-overamp',true); toast(r.overamp?'Volume can now go up to 150%':'Volume is limited to 100% again'); }).catch(e=>toast(e.message));
     case 'remap': return remapPick(d.b);
@@ -1973,7 +2015,8 @@ function act(el){
       return openPrompt({title, value:GSET.s.options[key]||''}).then(v=>{ if(v!=null) saveGameSet({[key]:v.trim()}, 'gs-'+key); }); }
     case 'gsReset': return openSheet({title:'Reset Proton files?', sub:'Deletes this game\'s Wine prefix. Proton sets it up again the next time you play. Cloud saves are fine; saves stored only in the prefix are lost.', items:[{label:'Reset', icon:'refresh', run:()=>call('game.resetPrefix',{id:GSET.id}).then(()=>toast('Done. The next start sets it up fresh.')).catch(e=>toast(e.message))}]});
     case 'appsRefresh': return loadApps();
-    case 'appFocus': return call('apps.focus',{id:+d.id, pid:+d.pid}).then(()=>{ if(OVERLAY) overlayClose(); else closeAll(); }).catch(e=>toast(e.message));
+    case 'appFocus': if(OVERLAY) overlayClose(); else closeAll();   // close first, so a slow or failed switch can't leave it open
+      return call('apps.focus',{id:+d.id, pid:+d.pid}).catch(e=>toast(e.message));
     case 'appClose': return openSheet({title:`Close ${d.t}?`, sub:'Anything unsaved in it may be lost.', items:[{label:'Close it', icon:'x', run:()=>call('apps.close',{pid:+d.pid}).then(()=>{ toast(`Closed ${d.t}`); setTimeout(loadApps,800); }).catch(e=>toast(e.message))}]});
     case 'tdp': return call('perf.setTdp',{watts:+d.v}).then(r=>{ if(PERF.s) PERF.s.tdp=r; renderQam(); setFocus($(`#qam [data-k="pt-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'fpsLimit': return call('perf.setFpsLimit',{fps:+d.v}).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
@@ -2442,6 +2485,7 @@ function onSysEvent(name, data){
   if(name==='game.exited') return gameEnded(data);
   if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
   if(name==='osd') return showOsd(data);
+  if(name==='browser'){ BROWSER.s=data; if(S.view==='settings' && S.settingsTab==='system') render(null,true); if(data && data.error && data.state==='idle') toast(data.error); return; }
   if(name==='power.menu'){ if(OVERLAY && OV.busy){ OV.wantPower=true; return; } if(S.layers.at(-1)!=='power'){ if(!OVERLAY) closeAll(); openLayer('power'); } return; }
   if(name==='overlay.shown') return overlayShown();
   if(name==='overlay.hidden') return overlayHidden();
@@ -2509,6 +2553,7 @@ function onSettingsTab(t){
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
   if(t==='signin') loadLogin();
   if(t==='system' || t==='about') loadSysInfo();
+  if(t==='system') loadBrowser();
   if(t==='about'){ if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
@@ -2517,7 +2562,7 @@ function onSettingsTab(t){
   if(t==='controller') loadRemap();
   if(t==='audio') call('audio.get').then(r=>{ Object.assign(S.sys.audio,r); S.set.vol=r.volume; refreshUI(); }).catch(e=>toast(e.message));
   if(t==='display') call('display.get').then(r=>{ Object.assign(S.sys.display,r); S.set.bright=r.brightness; refreshUI(); }).catch(e=>toast(e.message));
-  if(t==='power') call('power.get').then(r=>{ S.sys.battery={present:r.present,pct:r.pct,charging:r.charging}; S.sys.powerMode=r.mode; refreshUI(); }).catch(e=>toast(e.message));
+  if(t==='power') call('power.get').then(r=>{ S.sys.battery={present:r.present,pct:r.pct,charging:r.charging}; S.sys.powerMode=r.mode; S.sys.power=r; refreshUI(); }).catch(e=>toast(e.message));
 }
 
 async function toggleRadio(kind){

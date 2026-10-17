@@ -9,7 +9,7 @@ import Quickshell.Io
 Singleton {
     id: root
     property bool nightLight: false      // warm the screen from sunset to sunrise
-    property string wallpaper: ""        // a picture file; "" = the animated fireside
+    property string wallpaper: ""        // a picture file; "" = the animated fireside; "anim:lava" / "anim:aurora" = the other moving ones
     property bool reduceMotion: false    // still wallpaper, fewer animations
     property real pointerSpeed: 1.0      // controller pointer speed, 0.4 – 2
     property bool loaded: false
@@ -29,6 +29,9 @@ Singleton {
     FileView {
         id: file
         path: Quickshell.env("HOME") + "/.local/share/nimbus/desktop.json"
+        // hearth-wallpaper (the file manager's "Set as Hearth wallpaper") changes this file too
+        watchChanges: true
+        onFileChanged: reload()
         onLoaded: {
             try {
                 const o = JSON.parse(text());
