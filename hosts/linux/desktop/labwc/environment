@@ -1,4 +1,4 @@
-# Environment for every app started in Nimbus Desktop Mode.
+# Environment for every app started in Hearth Desktop Mode.
 XDG_CURRENT_DESKTOP=Nimbus:wlroots
 XDG_SESSION_TYPE=wayland
 MOZ_ENABLE_WAYLAND=1
@@ -6,3 +6,8 @@ QT_QPA_PLATFORM=wayland;xcb
 ELECTRON_OZONE_PLATFORM_HINT=auto
 SDL_VIDEODRIVER=wayland,x11
 _JAVA_AWT_WM_NONREPARENTING=1
+# The Hearth look for apps (see theme/apply.sh): Qt/KDE apps through qt6ct/qt5ct, GTK apps dark.
+QT_QPA_PLATFORMTHEME=qt6ct
+GTK_THEME=Adwaita:dark
+XCURSOR_THEME=breeze_cursors
+XCURSOR_SIZE=24

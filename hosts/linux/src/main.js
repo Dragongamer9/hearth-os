@@ -20,6 +20,8 @@ const { run, readText, log } = require('./util');
 
 const args = process.argv.slice(1);
 const WINDOWED = args.includes('--windowed');
+// --settings: open on Settings ("Hearth Settings" in Desktop Mode); with --windowed, a normal window.
+const START_PAGE = args.includes('--settings') ? 'settings' : null;
 const IN_SESSION = process.env.NIMBUS_SESSION === '1' || args.includes('--session');
 const UPDATE_EXIT_CODE = 75; // nimbus-watchdog starts the new version right away
 
@@ -236,10 +238,11 @@ async function screenshot() {
 
 function createWindow() {
   win = new BrowserWindow({
-    title: 'Hearth',
+    title: START_PAGE === 'settings' ? 'Hearth Settings' : 'Hearth',
     backgroundColor: '#0c1016',
     show: false,
     fullscreen: !WINDOWED, width: 1280, height: 800,
+    icon: path.join(__dirname, 'hearth-icon.png'),
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
@@ -293,6 +296,7 @@ app.whenReady().then(() => {
         platform: 'linux', name: osName(), host: `Electron ${process.versions.electron}`, version: app.getVersion(),
         session: IN_SESSION, user: os.userInfo().username,
         system: sessionSetup.isSystemInstall(),   // part of Hearth (the OS): updates come with the system
+        start: START_PAGE,                         // the page to open on
       }),
       pickGameFile: async () => {
         const r = await dialog.showOpenDialog(win, {
@@ -357,7 +361,8 @@ app.whenReady().then(() => {
     comeBack();
     post({ type: 'event', name: 'pad', data: { b: 'guide' } });
   });
-  guide.start();
+  // Opened just for Settings (from Desktop Mode): the desktop's own controller support handles Guide.
+  if (!START_PAGE) guide.start();
   // Keyboard backup, like Windows: works when the game runs under X11/Xwayland (most do, and all in gamescope).
   try { globalShortcut.register('Control+Alt+Q', () => guide.fire('hotkey')); } catch (e) { log('Ctrl+Alt+Q: ' + e.message); }
 
@@ -367,6 +372,10 @@ app.whenReady().then(() => {
   setInterval(() => { if (library.store.data.autoUpdateCheck) updates.check(); }, 6 * 60 * 60 * 1000);
 });
 
-app.on('second-instance', () => comeBack());
+// Started again (e.g. Settings from the Desktop Mode taskbar while Hearth is open): show this one.
+app.on('second-instance', (_e, argv) => {
+  comeBack();
+  if (argv.includes('--settings')) post({ type: 'event', name: 'open', data: { view: 'settings' } });
+});
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', () => { guide && guide.stop(); bridge && bridge.dispose(); });

@@ -70,7 +70,7 @@ PanelWindow {
         if (brightness >= 0) rows.push(["brightness"]);
         rows.push(["night", "mouse", "wifi"]);
         if (profile !== "") rows.push(["power-saver", "balanced", "performance"]);
-        rows.push(["keyboard", "screenshot", "game", "sleep"]);
+        rows.push(["settings", "keyboard", "game", "sleep"]);
         return rows;
     }
     property int r: 0
@@ -96,6 +96,7 @@ PanelWindow {
         case "mouse": root.mouseToggled(!root.mouseOn); break;
         case "wifi": setWifi(!wifiOn); break;
         case "power-saver": case "balanced": case "performance": setProfile(id); break;
+        case "settings": shown = false; run(["sh", "-c", "exec \"${NIMBUS_APP:-nimbus}\" --windowed --settings"]); break;
         case "keyboard": shown = false; root.keyboardRequested(); break;
         case "screenshot": shown = false; run(["sh", "-c", "sleep 0.4; sh \"${NIMBUS_SHARE:-/usr/local/share/nimbus}/desktop/open.sh\" screenshot"]); break;
         case "game": run(["nimbus-mode", "game"]); break;
@@ -208,8 +209,8 @@ PanelWindow {
                     Layout.fillWidth: true
                     columns: 4
                     columnSpacing: 8
+                    Action { navId: "settings"; icon: "emblem-system-symbolic"; label: "Settings" }
                     Action { navId: "keyboard"; icon: "input-keyboard-symbolic"; label: "Keyboard" }
-                    Action { navId: "screenshot"; icon: "camera-photo-symbolic"; label: "Screenshot" }
                     Action { navId: "game"; icon: "input-gaming-symbolic"; label: "Game Mode"; accent: true }
                     Action { navId: "sleep"; icon: "weather-clear-night-symbolic"; label: "Sleep" }
                 }
