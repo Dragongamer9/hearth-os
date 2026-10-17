@@ -150,7 +150,19 @@ jobs:
           df -h / /mnt
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           sudo podman pull "$IMAGE:latest"
-          echo "Repos in the image:"; sudo podman run --rm "$IMAGE:latest" sh -c 'grep -H -e "^\[" -e "^enabled" -e "^gpgkey" /etc/yum.repos.d/*.repo' | grep -i -B1 -A2 terra || true
+          # The ISO builder reads the image's package repos with its own copy of Fedora's signing keys, so
+          # repos signed with keys only the image has (Bazzite's Terra, negativo17, ...) stop it. Build the
+          # ISO from a copy with those switched off: the installed PC moves to the real image straight away
+          # (see iso.toml), so it never keeps this copy.
+          cat > /tmp/Containerfile.iso <<EOF
+          FROM $IMAGE:latest
+          RUN for f in /etc/yum.repos.d/*.repo; do \\
+                if ! grep -q RPM-GPG-KEY-fedora "\$f" && grep -q '^enabled=1' "\$f"; then echo "off: \$f"; sed -i 's/^enabled=1/enabled=0/' "\$f"; fi; \\
+              done
+          EOF
+          sed -i 's/^          //' /tmp/Containerfile.iso
+          cat /tmp/Containerfile.iso
+          sudo podman build -t localhost/hearth-iso:latest -f /tmp/Containerfile.iso /tmp
           if ! sudo podman run --rm --privileged --pull=newer \
               --security-opt label=type:unconfined_t \
               -v "$PWD/os/disk_config/iso.toml:/config.toml:ro" \
@@ -158,7 +170,7 @@ jobs:
               -v /var/lib/containers/storage:/var/lib/containers/storage \
               quay.io/centos-bootc/bootc-image-builder:latest \
               --type anaconda-iso --use-librepo=True --rootfs btrfs \
-              "$IMAGE:latest"; then
+              localhost/hearth-iso:latest; then
             df -h / /mnt
             false
           fi
