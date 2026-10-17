@@ -3,7 +3,7 @@
 // Inside the "Nimbus" login session it runs in gamescope (see session/); started from a desktop
 // with --windowed it runs in a normal window for development.
 
-const { app, BrowserWindow, ipcMain, protocol, net, dialog, screen, session, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, dialog, screen, session, Menu, safeStorage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -14,6 +14,7 @@ const { Updates } = require('./updates');
 const { StreamWindow } = require('./stream');
 const { GuideButton } = require('./guide');
 const { DisplayModes } = require('./display');
+const { secure } = require('./stores/common');
 const sessionSetup = require('./session');
 const { run, readText, log } = require('./util');
 
@@ -127,6 +128,82 @@ function power(action) {
   }
 }
 
+// ------------------------------------------------------------------ store sign-in
+
+/**
+ * A full-screen window showing a store's own sign-in page. You type your password into the store's page;
+ * Nimbus only watches for the page the store sends you to afterwards, which carries a one-time code.
+ * onNavigate(url): a code, '' (matched but no code: cancelled), or null (keep going).
+ * onLoaded(url, readText, navigate): async, for stores that put the code in the page itself (Epic).
+ * Esc or B on a controller cancels. Resolves with the code, or null.
+ */
+function signInWindow({ title, url, onNavigate, onLoaded }) {
+  return new Promise(resolve => {
+    let done = false;
+    const w = new BrowserWindow({
+      title, backgroundColor: '#0c1016', fullscreen: !WINDOWED, width: 1100, height: 820, autoHideMenuBar: true,
+      // A fresh browser profile each time: nothing from one sign-in is left for the next.
+      webPreferences: { partition: 'signin-' + Date.now(), contextIsolation: true, sandbox: true,
+        preload: path.join(__dirname, 'signin-preload.js') },
+    });
+    const finish = v => { if (done) return; done = true; resolve(v || null); if (!w.isDestroyed()) w.close(); };
+    const check = (e, u) => {
+      if (!onNavigate) return;
+      const r = onNavigate(u);
+      if (r === null || r === undefined) return;
+      if (e) e.preventDefault();
+      finish(r);
+    };
+    const wc = w.webContents;
+    wc.on('will-redirect', (e, u) => check(e, u));
+    wc.on('will-navigate', (e, u) => check(e, u));
+    wc.on('did-navigate', (_e, u) => check(null, u));
+    wc.on('did-finish-load', async () => {
+      if (!onLoaded || done) return;
+      try {
+        const r = await onLoaded(wc.getURL(), () => wc.executeJavaScript('document.body ? document.body.innerText : ""'), u => w.loadURL(u));
+        if (r) finish(r);
+      } catch (e) { log('sign-in: ' + e.message); }
+    });
+    wc.setWindowOpenHandler(({ url: u }) => { w.loadURL(u); return { action: 'deny' }; });
+    wc.on('before-input-event', (_e, i) => { if (i.type === 'keyDown' && i.key === 'Escape') finish(null); });
+    w.on('closed', () => finish(null));
+    w.loadURL(url);
+  });
+}
+ipcMain.on('signin:cancel', e => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.close(); });
+
+// ------------------------------------------------------------------ screenshots
+
+/**
+ * Saves a screenshot of the game to Pictures/Screenshots/Nimbus. Nimbus steps aside first so the picture
+ * shows the game, not Quick Access. Uses whichever tool this desktop has.
+ */
+async function screenshot() {
+  const pics = (await run('xdg-user-dir', ['PICTURES']).catch(() => '')).trim() || path.join(os.homedir(), 'Pictures');
+  const dir = path.join(pics, 'Screenshots', 'Nimbus');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `Screenshot ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}.png`);
+  const wasVisible = win && win.isVisible();
+  if (wasVisible) { win.hide(); await new Promise(r => setTimeout(r, 450)); }
+  const tries = [
+    ['grim', [file]],                                   // wlroots desktops (Desktop Mode)
+    ['spectacle', ['-b', '-n', '-f', '-o', file]],      // KDE
+    ['gnome-screenshot', ['-f', file]],                 // GNOME
+    ['gamescopectl', ['screenshot', file]],             // gamescope (newer versions)
+  ];
+  let ok = false;
+  try {
+    for (const [cmd, args] of tries) {
+      if (!require('./util').has(cmd)) continue;
+      try { await run(cmd, args, { timeout: 10000 }); } catch { continue; }
+      if (fs.existsSync(file)) { ok = true; break; }
+    }
+  } finally { if (wasVisible) comeBack(); }
+  if (!ok) throw new Error('No screenshot tool found. Install grim (Desktop Mode), Spectacle (KDE) or GNOME Screenshot.');
+  return { file };
+}
+
 // ------------------------------------------------------------------ startup
 
 function createWindow() {
@@ -154,6 +231,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  secure.impl = safeStorage; // the desktop keyring encrypts the Xbox sign-in
   registerProtocols();
 
   stream = new StreamWindow({ BrowserWindow, session, windowed: WINDOWED });
@@ -202,10 +280,13 @@ app.whenReady().then(() => {
         return r.canceled ? null : r.filePaths[0];
       },
       // Xbox signs in inside the cloud-gaming window; resolves when it's closed.
-      openXboxSignIn: () => new Promise(resolve => {
-        stream.open('https://play.xbox.com/', 'Sign in to Xbox');
-        stream.once('closed', resolve);
-      }),
+      signInWindow,
+      pickFolder: async current => {
+        const r = await dialog.showOpenDialog(win, { title: 'Install folder for Epic and GOG games', defaultPath: current,
+          properties: ['openDirectory', 'createDirectory'] });
+        return r.canceled ? null : r.filePaths[0];
+      },
+      screenshot,
       screenInfo: () => {
         const d = screen.getPrimaryDisplay();
         const w = Math.round(d.size.width * d.scaleFactor), h = Math.round(d.size.height * d.scaleFactor);

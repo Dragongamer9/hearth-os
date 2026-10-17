@@ -5,7 +5,9 @@
 // Platform pieces that need Electron (dialogs, windows, quitting) come in through `platform`.
 
 const { Wifi, Bluetooth, Audio, Display, Power, setAirplane, airplaneOn } = require('./system');
-const { Accounts, Profile } = require('./accounts');
+const { Profile, steamAccount } = require('./accounts');
+const perf = require('./perf');
+const steam = require('./library/steam');
 const { DisplayModes } = require('./display');
 const { log } = require('./util');
 
@@ -27,8 +29,10 @@ class Bridge {
     this.audio = new Audio();
     this.display = new Display();
     this.power = new Power();
-    this.accounts = new Accounts({ library, openXboxSignIn: () => (platform.openXboxSignIn ? platform.openXboxSignIn() : Promise.resolve()) });
-    this.profile = new Profile(library.store);
+    this.profile = new Profile(library.store, library.accounts);
+    // Account changes come in bursts (sign-in, list refresh): tell the UI once they settle.
+    library.accounts.on('changed', () => { clearTimeout(this.accTimer); this.accTimer = setTimeout(() => this.event('accounts.changed', {}), 400); });
+    library.on('installDone', d => this.event('install.done', d));
     this.displayModes = platform.displayModes || new DisplayModes({
       screen: () => ({ w: 0, h: 0, rate: 60 }), getZoom: () => 100, setZoom() {}, restartGameMode() {},
     });
@@ -127,13 +131,38 @@ class Bridge {
       case 'game.install': await L.install(req('id')); return null;
       case 'game.close': return { ok: await L.closeRunning() };
       // Installs and uninstalls happen in Steam and Heroic on Linux; their games never offer these.
-      case 'game.uninstall': case 'game.cancelInstall': throw new Error('Uninstall it from Steam or Heroic Games Launcher');
+      case 'game.cancelInstall': return { ok: L.cancelInstall(req('id')) };
+      case 'game.uninstall': await L.uninstall(req('id')); return L.get(false);
 
-      case 'accounts.status': return this.accounts.status();
-      case 'accounts.signIn': { const r = await this.accounts.signIn(req('store')); this.event('accounts.changed', {}); return r; }
-      case 'accounts.signOut': this.accounts.signOut(req('store')); return null;
-      case 'accounts.refresh': await this.accounts.refresh(); this.event('accounts.changed', {}); return null;
-      case 'accounts.pickFolder': throw new Error('Epic and GOG games install through Heroic on Linux; choose the folder there');
+      case 'accounts.status': {
+        const counts = {};
+        for (const g of L.games.values()) if (g.installed) counts[g.source] = (counts[g.source] || 0) + 1;
+        const st = steamAccount();
+        return {
+          accounts: L.accounts.status(counts, { name: st.signedIn ? st.name : null, avatar: st.avatarFile ? 'nimbus-art://profile/steam' : null,
+            owned: [...L.games.values()].filter(g => g.source === 'steam').length, missing: !steam.steamPath() }),
+          installRoot: L.accounts.installRoot,
+        };
+      }
+      case 'accounts.signIn': {
+        const store = req('store');
+        if (store === 'steam') { steam.openUri('steam://open/main'); return { ok: true }; }
+        return { ok: await L.accounts.signIn(store, this.platform.signInWindow) };
+      }
+      case 'accounts.signOut': await L.accounts.signOut(req('store')); return null;
+      case 'accounts.refresh': await L.accounts.refresh(req('store')); await L.scan(); return null;
+      case 'accounts.pickFolder': {
+        const dir = await this.platform.pickFolder(L.accounts.installRoot);
+        if (dir) L.accounts.installRoot = dir;
+        return { installRoot: L.accounts.installRoot };
+      }
+
+      case 'perf.stats':
+        return { ...(await perf.sample()), battery: this.power.battery(), runningId: L.runningId, runningSince: L.runningSince };
+      // Linux has no separate overlay window: the Guide button brings Nimbus over the game instead.
+      case 'overlay.settings': return { holdView: false, gameBarButton: false, hotkey: 'Guide button' };
+      case 'overlay.setHoldView': case 'overlay.setGameBarButton': return { holdView: false, gameBarButton: false, hotkey: 'Guide button' };
+      case 'overlay.screenshot': return this.platform.screenshot();
 
       case 'profile.get': return this.profile.get();
       case 'profile.set': return this.profile.set(a);
