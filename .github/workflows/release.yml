@@ -3,12 +3,14 @@
 # - Push to main with a new <Version> in Nimbus.Host.csproj: also publish GitHub Release vX.Y.Z
 #   (the tag is created here) with both builds. Pushing a tag vX.Y.Z by hand does the same.
 #   Nimbus checks the latest release and offers it in Settings › Updates.
+# - Push to linux-host (the Linux work in progress): also publish a pre-release vX.Y.Z-linux.N with the
+#   AppImage. Pre-releases are never offered as updates (Nimbus only looks at the latest full release).
 # The version lives in one place, hosts/windows/Nimbus.Host/Nimbus.Host.csproj; the Linux build takes it from there.
 name: Build and release
 
 on:
   push:
-    branches: [main]
+    branches: [main, linux-host]
     tags: ['v*']
   pull_request:
 
@@ -128,3 +130,28 @@ jobs:
           notes="$(git log -1 --pretty=%B)"
           gh release create "$tag" builds/* --target "${{ github.sha }}" \
             --title "Nimbus ${{ needs.version.outputs.version }}" --notes "$notes"
+
+  linux-preview:
+    needs: [version, linux]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/linux-host'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux
+          path: builds
+
+      - name: Publish a Linux pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ needs.version.outputs.version }}-linux.${{ github.run_number }}"
+          notes="Linux preview from the linux-host branch ($(git rev-parse --short HEAD)).
+
+          $(git log -1 --pretty=%B)
+
+          Download Nimbus-linux-x86_64.AppImage, make it executable (chmod +x), and run it with --windowed to try it on your desktop."
+          gh release create "$tag" builds/* --prerelease --target "${{ github.sha }}" \
+            --title "Nimbus ${{ needs.version.outputs.version }} for Linux (preview ${{ github.run_number }})" --notes "$notes"
