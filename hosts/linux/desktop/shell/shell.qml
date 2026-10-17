@@ -94,5 +94,6 @@ ShellRoot {
     IpcHandler {
         target: "menu"
         function open(): void { pad.openMenu(); }
+        function close(): void { radial.open = false; }
     }
 }
