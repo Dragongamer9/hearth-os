@@ -10,6 +10,7 @@ const perf = require('./perf');
 const steam = require('./library/steam');
 const { DisplayModes } = require('./display');
 const { SystemAdmin } = require('./system-admin');
+const { ButtonPrefs, Controller } = require('./buttons');
 const sysinfo = require('./sysinfo');
 const { log } = require('./util');
 
@@ -33,6 +34,8 @@ class Bridge {
     this.power = new Power();
     this.profile = new Profile(library.store, library.accounts);
     this.admin = platform.admin || new SystemAdmin();
+    this.prefs = platform.buttonPrefs || new ButtonPrefs();
+    this.controller = platform.controller || null;
     this.admin.on('update', s => this.event('systemUpdate', s));
     // Account changes come in bursts (sign-in, list refresh): tell the UI once they settle.
     library.accounts.on('changed', () => { clearTimeout(this.accTimer); this.accTimer = setTimeout(() => this.event('accounts.changed', {}), 400); });
@@ -97,7 +100,25 @@ class Bridge {
       case 'bt.unpair': return this.bt.unpair(req('id'));
 
       case 'audio.get': return this.audio.get();
-      case 'audio.setVolume': await this.audio.setVolume(Math.round(+a.v || 0)); return null;
+      case 'audio.setVolume': await this.audio.setVolume(Math.round(+a.v || 0), this.prefs.maxVolume()); return null;
+
+      // Power and volume buttons (Settings › Power › Power button, Settings › Audio › Over-amplification)
+      case 'buttons.get': return this.buttonsInfo();
+      case 'buttons.set': {
+        const before = this.prefs.get();
+        const now = this.prefs.set(a);
+        if (before.overamp && !now.overamp && this.audio.available) {
+          const v = await this.audio.volume().catch(() => null);
+          if (v && v.volume > 100) await this.audio.setVolume(100);
+        }
+        return this.buttonsInfo();
+      }
+
+      // Controller remapping through InputPlumber (Settings › Controller)
+      case 'controller.status': return this.ctl().status();
+      case 'controller.set': return this.ctl().set({ button: a.button, to: a.to, target: a.target });
+      case 'controller.preset': return this.ctl().preset(req('name'));
+      case 'controller.reset': return this.ctl().reset();
       case 'audio.setMute': await this.audio.setMute(!!a.m); return null;
       case 'audio.setDefault': await this.audio.setDefault(req('id')); return this.audio.get();
 
@@ -220,6 +241,15 @@ class Bridge {
     }
   }
 
+  buttonsInfo() {
+    const b = this.platform.buttons;
+    return { ...this.prefs.get(), maxVolume: this.prefs.maxVolume(), watching: b ? b.status() : { devices: [], problems: ['Only in Game Mode'] } };
+  }
+  ctl() {
+    if (!this.controller) throw new Error('Controller remapping needs Hearth, the OS.');
+    return this.controller;
+  }
+
   async status() {
     const safe = (p, fallback = null) => Promise.resolve().then(p).catch(() => fallback);
     const [wifiOn, btOn, airplane, audio, brightness, powerMode] = await Promise.all([
@@ -233,7 +263,7 @@ class Bridge {
       bt: { available: btOn != null, on: btOn === true },
       airplane: !!airplane,
       battery: this.power.battery(),
-      audio,
+      audio: audio ? { ...audio, max: this.prefs.maxVolume() } : audio,
       display: { supported: brightness != null, brightness: brightness ?? 0 },
       powerMode,
     };

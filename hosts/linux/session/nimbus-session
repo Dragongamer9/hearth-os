@@ -48,6 +48,14 @@ run_desktop() {
   labwc -C "$SHARE/desktop/labwc"
 }
 
+# Button remaps for the built-in controller (Settings › Controller), kept applied for the whole session in
+# both modes: InputPlumber goes back to its default profile when the controller reconnects (after sleep).
+if [ -x "$SHARE/desktop/shell/hearth-controller" ] && have busctl; then
+  python3 "$SHARE/desktop/shell/hearth-controller" watch >/dev/null 2>&1 &
+  REMAP_PID=$!
+  trap 'kill $REMAP_PID 2>/dev/null' EXIT
+fi
+
 mode="${NIMBUS_START_MODE:-game}"
 rm -f "$NEXT"
 while :; do

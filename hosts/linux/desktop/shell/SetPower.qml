@@ -32,6 +32,7 @@ SetPage {
         if (dev.state === UPowerDeviceState.FullyCharged) return pct + " · full";
         return pct + (dev.timeToEmpty > 0 ? " · about " + hm(dev.timeToEmpty) + " left" : "");
     }
+    readonly property var powerChoices: [{ value: "sleep", label: "Sleep" }, { value: "menu", label: "Power menu" }, { value: "shutdown", label: "Shut down" }, { value: "nothing", label: "Nothing" }]
     readonly property var labels: ({ "power-saver": "Battery saver", "balanced": "Balanced", "performance": "Performance" })
 
     SetRow {
@@ -45,6 +46,25 @@ SetPage {
         options: page.profiles.map(p => ({ value: p, label: page.labels[p] || p }))
         current: page.profile
         onChosen: v => { page.profile = v; Quickshell.execDetached(["powerprofilesctl", "set", v]); }
+    }
+    SetHeader { text: "Power button" }
+    SetChoice {
+        title: "Press"; sub: "A quick press"
+        options: page.powerChoices
+        current: Buttons.press
+        onChosen: v => Buttons.set("press", v)
+    }
+    SetChoice {
+        title: "Hold"; sub: "Held down for a second"
+        options: page.powerChoices
+        current: Buttons.hold
+        onChosen: v => Buttons.set("hold", v)
+    }
+    Text {
+        Layout.fillWidth: true
+        text: Buttons.watching.length ? "Holding it for several seconds always turns the device off, whatever is set here."
+            : "The power button can't be read right now" + (Buttons.problems.length ? ": " + Buttons.problems.join("; ") : ".")
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
     SetHeader { text: "Turn off or switch" }
     SetRow { icon: "pad"; title: "Game Mode"; sub: "Back to Hearth on the full screen"; onActivated: Quickshell.execDetached(["nimbus-mode", "game"]) }
