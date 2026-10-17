@@ -48,6 +48,25 @@ function relaunch() {
   app.exit(0);
 }
 
+/** Settings › System › Save logs: Hearth's logs in one file in your home folder, for bug reports. */
+async function exportLogs() {
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-logs-'));
+  const data = path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'nimbus');
+  const runDir = process.env.XDG_RUNTIME_DIR || '/tmp';
+  const copy = (from, name) => { try { fs.copyFileSync(from, path.join(dir, name)); } catch {} };
+  for (const f of ['bridge.log', 'session.log']) copy(path.join(data, f), f);
+  copy(path.join(runDir, 'nimbus-shell.log'), 'desktop-shell.log');
+  copy('/etc/os-release', 'os-release.txt');
+  const info = { version: app.getVersion(), electron: process.versions.electron, ...require('./sysinfo').info() };
+  fs.writeFileSync(path.join(dir, 'about.json'), JSON.stringify(info, null, 2));
+  await run('sh', ['-c', 'bootc status 2>/dev/null > "$0/bootc-status.txt"; journalctl --user -b -n 3000 --no-pager > "$0/journal-user.txt" 2>/dev/null; true', dir]).catch(() => {});
+  const out = path.join(os.homedir(), `Hearth-logs-${stamp}.tar.gz`);
+  await run('tar', ['-czf', out, '-C', dir, '.']);
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { path: out };
+}
+
 function post(msg) { if (win && !win.isDestroyed()) win.webContents.send('nimbus:msg', msg); }
 
 function osName() {
@@ -305,7 +324,10 @@ app.whenReady().then(() => {
         session: IN_SESSION, user: os.userInfo().username,
         system: sessionSetup.isSystemInstall(),   // part of Hearth (the OS): updates come with the system
         start: START_PAGE,                         // the page to open on
+        features: ['restartApp', 'exportLogs'],
       }),
+      restartApp: () => { setTimeout(relaunch, 300); return null; },
+      exportLogs,
       pickGameFile: async () => {
         const r = await dialog.showOpenDialog(win, {
           title: 'Add a game to Hearth', properties: ['openFile'],

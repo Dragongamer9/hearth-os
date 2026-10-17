@@ -180,6 +180,7 @@ public sealed class SystemBridge : IDisposable
                     session = Program.IsShell,
                     user = Environment.UserName,
                 };
+            case "system.info": return SystemInfo.Get();
             case "sys.status": return await StatusAsync();
 
             case "radios.set":
