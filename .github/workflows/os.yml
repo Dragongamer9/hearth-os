@@ -1,0 +1,158 @@
+# Builds Hearth, the Linux OS: Bazzite (deck edition) with the Hearth session (the Nimbus UI) installed and booted into.
+# - Pushes to main that touch the OS, the Linux host or the UI, a weekly rebuild (to pick up Bazzite's
+#   updates), or a manual run: build the image and publish it as ghcr.io/dragongamer9/hearth.
+# - Manual run with "Build the installer ISO" ticked: also build the installer and keep it as a download
+#   on the run (GitHub releases can't hold files over 2 GB).
+# The image is signed when the SIGNING_SECRET repository secret holds a Cosign private key.
+name: Hearth OS
+
+on:
+  push:
+    branches: [main]
+    paths: ['os/**', 'hosts/linux/**', 'ui/**', '.github/workflows/os.yml']
+  pull_request:
+    paths: ['os/**', '.github/workflows/os.yml']
+  schedule:
+    - cron: '20 9 * * 1'   # Mondays: rebuild on Bazzite's latest
+  workflow_dispatch:
+    inputs:
+      iso:
+        description: Build the installer ISO
+        type: boolean
+        default: false
+
+env:
+  IMAGE: ghcr.io/dragongamer9/hearth
+
+concurrency:
+  group: hearth-os-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Build the Hearth app (unpacked)
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        id: ver
+        run: |
+          v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build
+        working-directory: hosts/linux
+        run: |
+          npm install --no-audit --no-fund
+          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm run dist:dir
+          test -x dist/linux-unpacked/nimbus
+          tar -C dist/linux-unpacked -cf ../../nimbus-app.tar .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nimbus-app
+          path: nimbus-app.tar
+
+  image:
+    name: Build the OS image
+    needs: app
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      HAS_KEY: ${{ secrets.SIGNING_SECRET != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room (the image is several GB)
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: nimbus-app
+
+      - name: Unpack Nimbus into the build context
+        run: |
+          mkdir -p os/nimbus-app
+          tar -C os/nimbus-app -xf nimbus-app.tar
+
+      - name: Build
+        run: |
+          v="${{ needs.app.outputs.version }}"
+          sudo podman build --pull=newer -f os/Containerfile --build-arg NIMBUS_VERSION="$v" -t hearth:latest .
+          sudo podman tag hearth:latest "hearth:$v" "hearth:$v-$(date -u +%Y%m%d)"
+
+      - name: Publish to GitHub Container Registry
+        if: env.PUBLISH == 'true'
+        id: push
+        run: |
+          v="${{ needs.app.outputs.version }}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for tag in latest "$v" "$v-$(date -u +%Y%m%d)"; do
+            sudo podman push --digestfile /tmp/digest "hearth:$tag" "$IMAGE:$tag"
+          done
+          echo "digest=$(cat /tmp/digest)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Cosign
+        if: env.PUBLISH == 'true' && env.HAS_KEY == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: 'v3.1.2'
+
+      - name: Sign the image
+        if: env.PUBLISH == 'true' && env.HAS_KEY == 'true'
+        env:
+          COSIGN_EXPERIMENTAL: false
+          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | cosign login ghcr.io -u "${{ github.actor }}" --password-stdin
+          cosign sign -y --new-bundle-format=false --use-signing-config=false --key env://COSIGN_PRIVATE_KEY "$IMAGE@${{ steps.push.outputs.digest }}"
+
+      - name: Not signed
+        if: env.PUBLISH == 'true' && env.HAS_KEY != 'true'
+        run: echo "::warning::Hearth was published unsigned. Add a Cosign private key as the SIGNING_SECRET repository secret to sign it."
+
+  iso:
+    name: Build the installer ISO
+    needs: [app, image]
+    if: github.event_name == 'workflow_dispatch' && inputs.iso
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+        with:
+          remove-codeql: true
+
+      - name: Sign in to the registry (the image may be private)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build the ISO
+        id: build
+        uses: osbuild/bootc-image-builder-action@8661cd3832544ad68c12dcde8681b13ab0f56a8d
+        with:
+          builder-image: quay.io/centos-bootc/bootc-image-builder:latest
+          config-file: ./os/disk_config/iso.toml
+          image: ghcr.io/dragongamer9/hearth:latest
+          types: anaconda-iso
+          additional-args: --use-librepo=True
+
+      - name: Keep the ISO as a download on this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: hearth-${{ needs.app.outputs.version || 'latest' }}-iso
+          path: ${{ steps.build.outputs.output-directory }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

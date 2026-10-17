@@ -175,7 +175,7 @@ public sealed class SystemBridge : IDisposable
                 {
                     platform = "windows",
                     name = "Windows 11 PC",
-                    host = "Nimbus.Host (WebView2)",
+                    host = "Ember (WebView2)",
                     version = typeof(SystemBridge).Assembly.GetName().Version?.ToString(3),
                     session = Program.IsShell,
                     user = Environment.UserName,
@@ -251,7 +251,7 @@ public sealed class SystemBridge : IDisposable
             {
                 using var dlg = new OpenFileDialog
                 {
-                    Title = "Add a game to Nimbus",
+                    Title = "Add a game to Ember",
                     Filter = "Games and shortcuts (*.exe;*.lnk;*.url)|*.exe;*.lnk;*.url|All files (*.*)|*.*",
                     CheckFileExists = true,
                     DereferenceLinks = false,
@@ -288,7 +288,7 @@ public sealed class SystemBridge : IDisposable
             {
                 using var dlg = new FolderBrowserDialog
                 {
-                    Description = "Choose where Nimbus installs Epic and GOG games",
+                    Description = "Choose where Ember installs Epic and GOG games",
                     UseDescriptionForTitle = true,
                     SelectedPath = Games.Accounts.InstallRoot,
                     ShowNewFolderButton = true,

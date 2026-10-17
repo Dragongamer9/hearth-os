@@ -70,7 +70,7 @@ public static class HelperTools
             if (hash != t.Sha256)
             {
                 File.Delete(tmp);
-                throw new InvalidOperationException($"The download of {t.Name} didn't match its checksum, so Nimbus didn't use it. Try again later.");
+                throw new InvalidOperationException($"The download of {t.Name} didn't match its checksum, so Ember didn't use it. Try again later.");
             }
             File.Move(tmp, path, overwrite: true);
             SystemBridge.Log($"tools: downloaded {t.Name}");

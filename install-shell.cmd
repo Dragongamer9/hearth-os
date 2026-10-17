@@ -8,7 +8,7 @@ set PATH=%ProgramFiles%\dotnet;%PATH%
 echo === %DATE% %TIME% === > "%LOG%"
 taskkill /im Nimbus.exe /f >nul 2>&1
 cd /d "%~dp0hosts\windows\Nimbus.Host"
-echo Building Nimbus...
+echo Building Ember...
 dotnet publish -c Release -r win-x64 --self-contained false -p:Platform=x64 -o "%APP%" -nologo >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo PUBLISH_FAILED >> "%LOG%"
@@ -29,6 +29,6 @@ reg add "HKCU\Software\Microsoft\Windows NT\CurrentVersion\Winlogon" /v Shell /t
 echo INSTALL_EXIT=%ERRORLEVEL% >> "%LOG%"
 reg query "HKCU\Software\Microsoft\Windows NT\CurrentVersion\Winlogon" /v Shell >> "%LOG%" 2>&1
 echo.
-echo Nimbus is now your shell. Sign out and back in to start it.
+echo Ember is now your shell. Sign out and back in to start it.
 echo To undo: Ctrl+Shift+Esc, File, Run new task, then: %%USERPROFILE%%\nimbus-restore.cmd
 timeout /t 15 >nul

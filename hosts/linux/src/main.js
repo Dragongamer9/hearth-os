@@ -209,7 +209,7 @@ ipcMain.on('signin:key', (e, key) => {
  */
 async function screenshot() {
   const pics = (await run('xdg-user-dir', ['PICTURES']).catch(() => '')).trim() || path.join(os.homedir(), 'Pictures');
-  const dir = path.join(pics, 'Screenshots', 'Nimbus');
+  const dir = path.join(pics, 'Screenshots', 'Hearth');
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `Screenshot ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}.png`);
   const wasVisible = win && win.isVisible();
@@ -236,7 +236,7 @@ async function screenshot() {
 
 function createWindow() {
   win = new BrowserWindow({
-    title: 'Nimbus',
+    title: 'Hearth',
     backgroundColor: '#0c1016',
     show: false,
     fullscreen: !WINDOWED, width: 1280, height: 800,
@@ -292,10 +292,11 @@ app.whenReady().then(() => {
       info: () => ({
         platform: 'linux', name: osName(), host: `Electron ${process.versions.electron}`, version: app.getVersion(),
         session: IN_SESSION, user: os.userInfo().username,
+        system: sessionSetup.isSystemInstall(),   // part of Hearth (the OS): updates come with the system
       }),
       pickGameFile: async () => {
         const r = await dialog.showOpenDialog(win, {
-          title: 'Add a game to Nimbus', properties: ['openFile'],
+          title: 'Add a game to Hearth', properties: ['openFile'],
           filters: [{ name: 'Games', extensions: ['exe', 'desktop', 'AppImage', 'appimage', 'sh', 'x86_64', '*'] }],
         });
         return r.canceled ? null : r.filePaths[0];

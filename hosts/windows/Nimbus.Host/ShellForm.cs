@@ -26,7 +26,7 @@ public sealed class ShellForm : Form
     public ShellForm(bool windowed)
     {
         _windowed = windowed;
-        Text = "Nimbus";
+        Text = "Ember";
         BackColor = Color.FromArgb(12, 16, 22);
         if (windowed)
         {
@@ -64,7 +64,7 @@ public sealed class ShellForm : Form
             // Without WebView2 there is no UI. As the shell, fall back to Explorer rather than a black screen.
             SystemBridge.Log("WebView2 failed: " + ex);
             if (Program.IsShell) StartExplorer();
-            MessageBox.Show("Nimbus couldn't start its interface (WebView2): " + ex.Message, "Nimbus");
+            MessageBox.Show("Ember couldn't start its interface (WebView2): " + ex.Message, "Ember");
             _leaving = true;
             Close();
             return;
