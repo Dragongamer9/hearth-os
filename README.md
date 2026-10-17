@@ -1,7 +1,11 @@
-# Nimbus Shell
+# Nimbus
 
-A controller-first replacement shell for Windows 11 and Linux, modeled on the SteamOS gamepad UI.
-One shared UI, one native host per platform.
+A controller-first game library and shell modeled on the SteamOS gamepad UI. One shared UI, two products:
+
+- **Ember**: the Windows 11 shell (replaces Explorer). `hosts/windows/`
+- **Hearth**: the Linux version, both an app/session for any distro and an installable OS built on Bazzite. `hosts/linux/`, `os/`
+
+Internal names (program files, data folders, release file names) stay "Nimbus" so existing installs keep updating.
 
 ```
 Nimbus/
@@ -14,8 +18,8 @@ Nimbus/
   tools/restore-explorer.ps1 Puts explorer.exe back if the shell ever breaks
 ```
 
-**Linux:** see [hosts/linux/README.md](hosts/linux/README.md). Same UI and features, plus Xbox Cloud Gaming
-streaming in place of installed Xbox app games.
+**Hearth (Linux):** see [hosts/linux/README.md](hosts/linux/README.md) for the app and session, and [os/README.md](os/README.md)
+for the OS. The rest of this file is about Ember (Windows).
 
 ## Try the prototype (no build)
 

@@ -1,6 +1,6 @@
-# Nimbus roadmap: shell → desktop environment → Nimbus OS
+# Nimbus roadmap: Ember (Windows) and Hearth (Linux)
 
-Nimbus started as a Windows shell. On Linux it grows in three steps, each usable on its own.
+Nimbus is the project: one UI with two products. **Ember** is the Windows shell. **Hearth** is the Linux side, which grows in three steps, each usable on its own.
 
 ## 1. Nimbus session on any distro (done, in testing)
 
@@ -19,7 +19,7 @@ labwc for windows, Quickshell for everything Nimbus draws (`hosts/linux/desktop/
 - [x] Wallpaper (Nimbus default, or `~/.config/nimbus/wallpaper.jpg`)
 - [ ] Later: lock screen, Wi-Fi/Bluetooth panels, screen settings (labwc + wlr-randr)
 
-## 3. Nimbus OS (next)
+## 3. Hearth OS (started)
 
 An installable, image-based distro that boots straight into Nimbus, like SteamOS. Built the same way as
 Bazzite: a container image on Fedora Atomic (bootc), built in GitHub Actions from the Universal Blue
@@ -32,18 +32,18 @@ image template.
 | `os/Containerfile` | `FROM ghcr.io/ublue-os/bazzite:stable` (drivers, Steam, gamescope, codecs already there), then add labwc, Quickshell, Heroic, umu-launcher and Nimbus |
 | `os/build.sh` | Package installs, Nimbus files into `/usr/lib/nimbus` and `/usr/share/nimbus`, default session = Nimbus, autologin |
 | `os/disk_config/iso.toml` | Installer settings for the ISO |
-| `.github/workflows/os.yml` | Build and sign the image, push to `ghcr.io/dragongamer9/nimbus-os`; build the ISO on release |
+| `.github/workflows/os.yml` | Build and sign the image, push to `ghcr.io/dragongamer9/hearth`; build the ISO on release |
 
 **Decisions**
 
 - Base: Bazzite (desktop variant). It already solves GPU drivers, Steam, gamescope and handheld support; we replace its session, not its plumbing.
 - Nimbus inside the OS is unpacked (no AppImage): `/usr/lib/nimbus`, session scripts in `/usr/bin`, Desktop Mode in `/usr/share/nimbus`. The AppImage's self-update is turned off there; the whole OS updates as one image.
-- Updates: `bootc upgrade` in the background, applied at next boot; the previous image stays in the boot menu for rollback. Nimbus › Settings › Updates shows OS updates when running on Nimbus OS.
+- Updates: `bootc upgrade` in the background, applied at next boot; the previous image stays in the boot menu for rollback. Nimbus › Settings › Updates shows OS updates when running on Hearth.
 - Signing: Cosign key; the private key is a GitHub secret (`SIGNING_SECRET`), never committed.
 
 **Milestones**
 
-1. Image builds in CI; an existing Bazzite/Fedora Atomic PC can `sudo bootc switch ghcr.io/dragongamer9/nimbus-os` and boot into Nimbus.
+1. Image builds in CI; an existing Bazzite/Fedora Atomic PC can `sudo bootc switch ghcr.io/dragongamer9/hearth` and boot into Nimbus.
 2. ISO: installs on a blank PC, first boot goes straight to Game Mode.
 3. First-boot setup in Nimbus (Wi-Fi, account sign-ins), Plymouth boot splash and login theme in Nimbus colors.
 4. OS updates and rollback in Settings.

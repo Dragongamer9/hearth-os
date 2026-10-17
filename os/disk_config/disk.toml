@@ -1,0 +1,4 @@
+# Virtual machine disk (qcow2), for trying Hearth without installing it.
+[[customizations.filesystem]]
+mountpoint = "/"
+minsize = "30 GiB"

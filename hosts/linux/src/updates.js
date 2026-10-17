@@ -54,7 +54,7 @@ class Updates extends EventEmitter {
 
   status() {
     return { current: this.current, state: this.state, latest: this.latest, progress: this.progress, error: this.error,
-      canInstallHere: !!this.appImage, installFolder: this.appImage || 'the Nimbus AppImage', autoCheck: this.autoCheck(),
+      canInstallHere: !!this.appImage, installFolder: this.appImage || 'the Hearth AppImage', autoCheck: this.autoCheck(),
       lastChecked: this.lastChecked };
   }
 

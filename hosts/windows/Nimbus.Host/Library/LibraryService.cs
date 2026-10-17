@@ -266,7 +266,7 @@ public sealed class LibraryService : IDisposable
     {
         if (!_games.TryGetValue(id, out var g) || g.InstallUri is null)
             throw new InvalidOperationException(_games.TryGetValue(id, out var x) && x.Note is not null
-                ? $"{x.Note}. Nimbus can't install it." : "Nimbus can't install this game. Install it from its store app.");
+                ? $"{x.Note}. Ember can't install it." : "Ember can't install this game. Install it from its store app.");
         if (g.InstallUri.StartsWith("nimbus-"))
         {
             Accounts.StartInstall(g);   // Epic / GOG: Nimbus downloads it itself
@@ -382,7 +382,7 @@ public sealed class LibraryService : IDisposable
                 WorkingDirectory = g.WorkDir ?? Path.GetDirectoryName(g.Exe) ?? "",
             });
         }
-        else throw new InvalidOperationException("Nimbus doesn't know how to start this game.");
+        else throw new InvalidOperationException("Ember doesn't know how to start this game.");
 
         if (g.ProcessDirs.Count == 0) return false;
         _monitor.Track(g.Id, g.ProcessDirs);

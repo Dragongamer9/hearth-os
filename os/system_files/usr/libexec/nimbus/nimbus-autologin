@@ -1,0 +1,18 @@
+#!/usr/bin/bash
+# Signs the main user (the first account, uid 1000) straight into the Hearth session at boot, like a console.
+# Runs before the login screen each boot. Bazzite writes its own autologin files (zz-*); this one sorts after
+# them, so Hearth wins. To boot to the login screen instead: sudo touch /etc/nimbus/no-autologin
+set -euo pipefail
+
+CONF=/etc/sddm.conf.d/zzz-nimbus-autologin.conf
+if [[ -f /etc/nimbus/no-autologin ]]; then rm -f "$CONF"; exit 0; fi
+USER_NAME=$(id -nu 1000 2>/dev/null) || { echo "nimbus-autologin: no user yet"; exit 0; }
+
+mkdir -p /etc/sddm.conf.d
+cat > "$CONF.tmp" <<CONF
+[Autologin]
+User=${USER_NAME}
+Session=nimbus.desktop
+Relogin=true
+CONF
+mv "$CONF.tmp" "$CONF"

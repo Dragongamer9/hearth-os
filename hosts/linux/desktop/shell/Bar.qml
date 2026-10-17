@@ -41,7 +41,7 @@ PanelWindow {
                     anchors.centerIn: parent
                     width: 30; height: 30; radius: 9
                     color: Theme.accent
-                    Text { anchors.centerIn: parent; text: "N"; color: Theme.accentInk; font.bold: true; font.pixelSize: 16; font.family: Theme.font }
+                    Text { anchors.centerIn: parent; text: "H"; color: Theme.accentInk; font.bold: true; font.pixelSize: 16; font.family: Theme.font }
                 }
             }
 

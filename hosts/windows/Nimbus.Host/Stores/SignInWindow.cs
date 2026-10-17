@@ -113,7 +113,7 @@ public sealed class SignInWindow : Form
             core.NavigationCompleted += async (_, e) =>
             {
                 if (_done) return;
-                _status.Text = "Sign in with your account. Nimbus never sees your password.";
+                _status.Text = "Sign in with your account. Ember never sees your password.";
                 if (_onLoaded is null) return;
                 try
                 {
