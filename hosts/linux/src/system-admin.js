@@ -52,13 +52,13 @@ class SystemAdmin extends EventEmitter {
     this.sessionConf = sessionConf;
     this.exists = exists;
     this.spawn = spawnFn;
-    this.update = { state: 'idle', line: '', status: null, error: null };
+    this.update = { state: 'idle', line: '', progress: null, status: null, error: null };
   }
 
   get canAdmin() { return this.exists(this.helper); }
 
-  /** Runs hearth-admin with pkexec. onLine gets each "log:" line. */
-  run(args, { input = null, onLine = null, timeout = 30 * 60 * 1000 } = {}) {
+  /** Runs hearth-admin with pkexec. onLine gets each "log:" line, onProgress each "progress: <pct> <what>". */
+  run(args, { input = null, onLine = null, onProgress = null, timeout = 30 * 60 * 1000 } = {}) {
     if (!this.canAdmin) return Promise.reject(new Error('This needs Hearth, the OS.'));
     return new Promise((resolve, reject) => {
       const p = this.spawn('pkexec', [this.helper, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -70,6 +70,8 @@ class SystemAdmin extends EventEmitter {
         while ((i = buf.indexOf('\n')) >= 0) {
           const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
           if (onLine && line.startsWith('log: ')) onLine(line.slice(5));
+          const m = onProgress && line.match(/^progress: ([\d.]+) ?(.*)$/);
+          if (m) onProgress(+m[1] / 100, m[2]);
         }
       });
       p.stderr.on('data', d => { errText += d; });
@@ -129,9 +131,17 @@ class SystemAdmin extends EventEmitter {
   }
   async installUpdate() {
     if (['checking', 'updating'].includes(this.update.state)) return this.updateStatus();
-    this.setUpdate({ state: 'updating', line: 'Starting…', error: null });
-    try { this.setUpdate({ state: 'idle', line: '', status: await this.run(['update'], { onLine: l => this.setUpdate({ line: l }) }) }); }
-    catch (e) { this.setUpdate({ state: 'idle', error: e.message }); }
+    this.setUpdate({ state: 'updating', line: 'Starting…', progress: 0, error: null });
+    let lastPush = 0;
+    const onProgress = (p, what) => {
+      // Many events per second while downloading: pass on a few.
+      const now = Date.now();
+      if (now - lastPush < 400 && p < 1) { this.update.progress = p; this.update.line = what || this.update.line; return; }
+      lastPush = now;
+      this.setUpdate({ progress: p, line: what || this.update.line });
+    };
+    try { this.setUpdate({ state: 'idle', line: '', progress: null, status: await this.run(['update'], { onLine: l => this.setUpdate({ line: l }), onProgress }) }); }
+    catch (e) { this.setUpdate({ state: 'idle', progress: null, error: e.message }); }
     return this.updateStatus();
   }
 }

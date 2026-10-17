@@ -290,6 +290,14 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 /* in-game overlay window: only the Quick Access panel */
 body.overlay #app,body.overlay #scrim,body.overlay #bg{display:none!important}
 body.overlay #qam{position:fixed;inset:0;width:100%;transform:none;transition:none;box-shadow:none}
+html.ovfull,html.ovfull body{background:transparent!important}
+body.ovfull:before{content:"";position:fixed;inset:0;background:rgba(0,0,0,.35)}
+body.overlay.ovfull #qam{left:auto;width:min(440px,92vw);box-shadow:-20px 0 60px rgba(0,0,0,.5)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px}
+.chip{padding:8px 12px;border-radius:16px;background:var(--panel2);font-size:13px;font-weight:600}
+.chip.on{background:var(--accent);color:var(--accentInk)}
+.pctl{margin-top:14px}
+.pctl .lab{font-size:13px;color:var(--dim);display:flex;align-items:center;gap:8px}
 body.overlay #toasts{bottom:14px;right:72px}
 body.overlay .modal{width:min(380px,92vw)}
 .np .nart .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -370,6 +378,19 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .about-head .amark{width:64px;height:64px;flex:none;display:grid;place-items:center;border-radius:16px;background:var(--panel2)}
 .about-head .amark svg{width:44px;height:44px}
 .about-head h3{font-size:22px}
+.dl-sum{display:flex;align-items:center;gap:24px;margin:16px 0 14px;max-width:900px}
+.dl-sum b{display:block;font-size:20px}
+.dl-sum small{color:var(--dim);font-size:13px}
+.dl-disk{margin-left:auto;min-width:220px}
+.dl-now{display:block;position:relative;width:100%;max-width:900px;height:clamp(180px,30vh,260px);border-radius:var(--r);overflow:hidden;background:var(--panel)}
+.dl-now .art,.dl-now .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.dl-now:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(6,8,12,.92) 0%,rgba(6,8,12,.6) 55%,rgba(6,8,12,.2))}
+.dl-now-body{position:absolute;left:24px;right:24px;bottom:22px;z-index:1}
+.dl-k{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.dl-t{font-size:clamp(22px,3vw,34px);font-weight:800;margin:4px 0 14px;text-shadow:0 2px 16px rgba(0,0,0,.6)}
+.dl-now .bar{height:10px;border-radius:5px;background:rgba(255,255,255,.15)}
+.dl-meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--dim)}
+.dl-meta span:first-child{color:var(--text);font-weight:700}
 @media (max-width:760px){ .layouts{grid-template-columns:1fr} .tl-grid,.tl-row{grid-template-columns:repeat(3,minmax(0,1fr))} }
 
 @media (max-width:760px){
@@ -625,7 +646,8 @@ const MOCK = (()=>{
 
     'power.get':async()=>({...st.battery,mode:st.powerMode}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
-    'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null}),
+    'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,powerMode:st.powerMode}),
+    'perf.setFpsLimit':async({fps})=>{ MOCKFPS=fps; return {fpsLimit:fps}; },
     'pad.toggleMouse':async()=>({mouseOn:!PAD.mouseOn}),
     'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}),
     'overlay.setHoldView':async({on})=>{ st.holdView=on; return {holdView:on,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}; },
@@ -988,26 +1010,51 @@ function viewGame(){
   </div>`;
 }
 
+// Downloads: the one downloading now (big), what's next, and what finished while Hearth was open.
+const DL_DONE = [];   // ids installed this session, newest first
+function dlItems(){
+  if(host) return GAMES.filter(isActive).map(g=>({g, state:g.state, pct:dlInfo(g).pct, label:dlInfo(g).label, done:g.bytesDone, total:g.bytesTotal, speed:g.state==='downloading'?g.speed:0}));
+  return DOWNLOADS.map(d=>{ const g=G(d.g); const tot=parseFloat(g.size)*1e9||0; return {g, state:d.p>=1?'updating':d.p>0?'downloading':'queued', pct:Math.round(d.p*100), label:d.state,
+    done:tot*d.p, total:tot, speed:d.speed?parseFloat(d.speed)*1e6:0}; });
+}
+const gbs = b => b!=null&&b>0 ? (b/1e9).toFixed(b>=1e10?0:1)+' GB' : '';
+function etaText(it){
+  if(!it.speed || !it.total || it.done==null) return '';
+  const s=(it.total-it.done)/it.speed; if(!(s>0) || !isFinite(s)) return '';
+  if(s<60) return 'less than a minute left';
+  const m=Math.round(s/60); return m<60 ? `${m} min left` : `${Math.floor(m/60)} h ${m%60} min left`;
+}
 function viewDownloads(){
-  if(host){
-    const A=GAMES.filter(isActive);
-    if(!A.length) return `<h2>Downloads</h2><div class="rows"><div class="note">Nothing is downloading. Pick a game under Library › All games and select Install.</div></div>`;
-    const gb=b=>b!=null?(b/1e9).toFixed(b>=1e10?0:1)+' GB':'';
-    return `<h2>Downloads</h2><div class="rows">${A.map((g,i)=>{ const d=dlInfo(g); return `
-      <button class="row" data-f data-k="d-${i}" data-act="${g.installKind==='nimbus'?'dlopts':'game'}" data-id="${esc(g.id)}">
-        <div class="thumb">${cover(g,{wide:true,badge:false}).replace('<div class="dl">','<div class="dl" style="display:none">')}</div>
-        <div class="rt"><b>${esc(g.title)}</b><small>${d.label}${g.bytesTotal?` · ${gb(g.bytesDone)} of ${gb(g.bytesTotal)}`:''}${g.speed>1e5&&g.state==='downloading'?` · ${(g.speed/1e6).toFixed(1)} MB/s`:''} · ${SOURCES[g.src]}</small>
-          <div class="bar" style="margin-top:8px"><i style="width:${d.pct??0}%"></i></div></div>
-        <div class="rv">${d.pct!=null?d.pct+'%':''}</div></button>`}).join('')}</div>
-      ${A.some(g=>g.src==='steam')?'<div class="note">Pause, cancel or reorder Steam downloads in Steam for now.</div>':''}
-      ${A.some(g=>g.installKind==='nimbus')?'<div class="note">Epic and GOG games download one at a time. Select one to cancel it; starting it again later picks up where it left off.</div>':''}`;
+  const items=dlItems(), cur=items.find(i=>i.state==='downloading') || items[0], next=items.filter(i=>i!==cur);
+  const speed=items.reduce((t,i)=>t+(i.speed||0),0);
+  const st=SYSINFO.s && SYSINFO.s.storage;
+  const done=DL_DONE.map(G).filter(Boolean);
+  let h = `<div class="dl-sum">
+      <div><b>${items.length?`${items.length} ${items.length===1?'download':'downloads'}`:'No downloads'}</b><small>${speed>1e5?`${(speed/1e6).toFixed(1)} MB/s`:items.length?'Waiting':'Everything is up to date'}</small></div>
+      ${st&&st.totalBytes?`<div class="dl-disk"><small>${gbs(st.freeBytes)} free of ${gbs(st.totalBytes)}</small><div class="storage"><i style="width:${Math.round((1-st.freeBytes/st.totalBytes)*100)}%"></i></div></div>`:''}
+    </div>`;
+  if(cur){
+    const g=cur.g, eta=etaText(cur);
+    h += `<button class="dl-now" data-f data-k="d-now" data-act="${host&&g.installKind==='nimbus'?'dlopts':'game'}" data-id="${esc(g.id)}">
+        <div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}
+        <div class="dl-now-body"><div class="dl-k">${esc(cur.label)}</div><div class="dl-t">${esc(g.title)}</div>
+          <div class="bar"><i style="width:${cur.pct??0}%"></i></div>
+          <div class="dl-meta"><span>${cur.pct!=null?cur.pct+'%':''}</span>${cur.total?`<span>${gbs(cur.done)} of ${gbs(cur.total)}</span>`:''}${cur.speed>1e5?`<span>${(cur.speed/1e6).toFixed(1)} MB/s</span>`:''}${eta?`<span>${eta}</span>`:''}<span>${SOURCES[g.src]}</span></div></div></button>`;
   }
-  return `<h2>Download queue</h2><div class="rows">${DOWNLOADS.map((d,i)=>{const g=G(d.g);return `
-    <button class="row" data-f data-k="d-${i}" data-act="game" data-id="${g.id}">
-      <div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div>
-      <div class="rt"><b>${esc(g.title)}</b><small>${d.state}${d.speed?' · '+d.speed:''} · ${g.size}</small>
-        <div class="bar" style="margin-top:8px"><i style="width:${d.p*100}%"></i></div></div>
-      <div class="rv">${Math.round(d.p*100)}%</div></button>`}).join('')}</div>`;
+  if(next.length) h += `<h2>Up next</h2><div class="rows">${next.map((it,i)=>{ const g=it.g; return `
+      <button class="row" data-f data-k="d-${i}" data-act="${host&&g.installKind==='nimbus'?'dlopts':'game'}" data-id="${esc(g.id)}">
+        <div class="thumb">${cover(g,{wide:true,badge:false}).replace('<div class="dl">','<div class="dl" style="display:none">')}</div>
+        <div class="rt"><b>${esc(g.title)}</b><small>${esc(it.label)}${it.total?` · ${gbs(it.total)}`:''} · ${SOURCES[g.src]}</small>
+          ${it.pct?`<div class="bar" style="margin-top:8px"><i style="width:${it.pct}%"></i></div>`:''}</div>
+        <div class="rv">${it.pct?it.pct+'%':''}</div></button>`}).join('')}</div>`;
+  if(done.length) h += `<h2>Ready to play</h2><div class="rows">${done.map(g=>`
+      <div class="row"><div class="thumb">${cover(g,{wide:true,badge:false})}</div><div class="rt"><b>${esc(g.title)}</b><small>Installed · ${SOURCES[g.src]}</small></div>
+        <button class="pill" data-f data-k="dd-${g.id}" data-act="play" data-id="${esc(g.id)}">${I.play||'▶'} Play</button></div>`).join('')}</div>`;
+  if(!items.length && !done.length) h += `<div class="empty"><div class="muted" style="margin-bottom:16px">Nothing is downloading. Find a game to install in your library.</div>
+      <button class="pill" style="display:inline-flex" data-f data-k="d-lib" data-act="nav" data-view="library">${I.lib} Library</button></div>`;
+  if(host && items.some(i=>i.g.src==='steam')) h += note('Pause, cancel or reorder Steam downloads in Steam for now.');
+  if(host && items.some(i=>i.g.installKind==='nimbus')) h += note('Epic and GOG games download one at a time. Select one to cancel it; starting it again later picks up where it left off.');
+  return h;
 }
 
 const STABS = [['profile','user','Profile'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
@@ -1301,7 +1348,10 @@ function pageSystemUpdate(){
     : st.available ? `Version ${v(st.available)} is available`
     : u.error ? u.error
     : 'Up to date';
-  h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(v(st.booted))}</b><small>${esc(line)}</small></div>${u.state!=='idle'?'<span class="mini-spin"></span>':''}</div>`;
+  const pct = u.state==='updating' && u.progress!=null ? Math.round(u.progress*100) : null;
+  h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(v(st.booted))}</b><small>${esc(line)}</small>
+      ${pct!=null?`<div class="bar" style="margin-top:10px;height:8px"><i style="width:${pct}%"></i></div>`:''}</div>
+      ${pct!=null?`<div class="rv" style="font-weight:700;color:var(--text)">${pct}%</div>`:u.state!=='idle'?'<span class="mini-spin"></span>':''}</div>`;
   if(u.state==='idle'){
     if(st.staged) h += `<button class="row" data-f data-k="su-restart" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to finish updating</b><small>Takes a minute. If something's wrong, the previous version is still in the boot menu.</small></div></button>`;
     h += `<button class="row" data-f data-k="su-install" data-act="sysUpdInstall"><span class="ricon">${I.dl}</span><div class="rt"><b>Update now</b><small>Downloads the newest Hearth (system, drivers, ${APP}) and updates your apps. Keep playing while it downloads.</small></div></button>`;
@@ -1432,7 +1482,7 @@ function navigate(view, params={}, push=true){
   $('#view').scrollTop=0;
   render(params.focusKey);
   if(view==='settings') onSettingsTab(S.settingsTab);
-  if(view==='downloads' && host) startDownloadPoll();
+  if(view==='downloads'){ if(host) startDownloadPoll(); loadSysInfo(); }
   if(view==='stores') loadAccounts();
 }
 function goBack(){
@@ -1464,7 +1514,9 @@ function qRadio(kind,ic,label,sub){
   return `<button class="ctl tg" data-f data-k="q-${kind}" data-act="radio" data-kind="${kind}">${I[ic]}<span class="tgl">${label}${sub?`<small>${esc(sub)}</small>`:''}</span>${busy?'<span class="mini-spin"></span>':`<div class="sw ${radioOn(kind)?'on':''}"></div>`}</button>`;
 }
 // ---------- live performance (Quick Access › Performance) ----------
+let MOCKFPS=0;
 const PERF = {s:null, timer:null};
+const FPS_CHOICES = [0,30,40,45,60,90,120];
 function perfBody(){
   const p=PERF.s;
   if(!p) return '<div class="muted">Reading…</div>';
@@ -1473,7 +1525,17 @@ function perfBody(){
   h += p.gpu!=null ? row('display','GPU', p.gpu+'%', p.gpu, p.vramUsed!=null?`${p.vramUsed} GB video memory`:'') : row('display','GPU','—',null,'Not available on this PC');
   h += row('sliders','Memory', `${p.ramUsed} / ${p.ramTotal} GB`, p.ramTotal?p.ramUsed/p.ramTotal*100:null);
   const b=p.battery; if(b && b.present!==false && b.pct!=null) h += row('bolt','Battery', b.pct+'%'+(b.charging?' ⚡':''), b.pct);
-  h += '<div class="muted" style="margin-top:8px">Frame rate (FPS) is coming in a later update.</div>';
+  if(p.canFpsLimit){
+    const lim=p.fpsLimit||0;
+    h += `<div class="pctl"><div class="lab">${I.display}Frame-rate limit<span style="margin-left:auto">${lim?lim+' FPS':'Off'}</span></div>
+      <div class="chips">${FPS_CHOICES.map(v=>`<button class="chip ${lim===v?'on':''}" data-f data-k="pf-${v}" data-act="fpsLimit" data-v="${v}">${v?v:'Off'}</button>`).join('')}</div>
+      <div class="muted">Lower limits save battery and keep the device cooler.</div></div>`;
+  }
+  if(p.powerMode){
+    h += `<div class="pctl"><div class="lab">${I.bolt}Power</div>
+      <div class="chips">${PMODES.map(([k,l])=>`<button class="chip ${p.powerMode===k?'on':''}" data-f data-k="pp-${k}" data-act="perfPower" data-v="${k}">${l}</button>`).join('')}</div></div>`;
+  }
+  if(!p.canFpsLimit && LINUX) h += '<div class="muted" style="margin-top:10px">The frame-rate limit works in Game Mode.</div>';
   return h;
 }
 async function perfTick(){
@@ -1752,6 +1814,8 @@ function act(el){
     case 'pkey': return promptKey(d.c);
     case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
     case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
+    case 'fpsLimit': return call('perf.setFpsLimit',{fps:+d.v}).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
+    case 'perfPower': return call('power.setMode',{mode:d.v}).then(r=>{ if(PERF.s) PERF.s.powerMode=r.mode||d.v; renderQam(); setFocus($(`#qam [data-k="pp-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'ovShot': return call('overlay.screenshot',{},20000).then(r=>toast(`Screenshot saved to Pictures › Screenshots › ${APP}`)).catch(e=>toast(e.message));
     case 'ovHome': return send({type:'overlay', action:'home'});
     case 'ovHoldView': return call('overlay.setHoldView',{on:!(OVS.s&&OVS.s.holdView)}).then(r=>{ OVS.s=r; render('ov-hold'); }).catch(e=>toast(e.message));
@@ -2189,7 +2253,8 @@ function onSysEvent(name, data){
     const t=data.title||'The game';
     if(data.error==='cancelled') toast(`Cancelled the download of ${t}`);
     else if(data.error) toast(`${t} didn't install: ${data.error}`);
-    else { toast(`${t} is installed and ready to play`); NOTIFS.unshift({i:'dl', t:`${t} is ready to play`, s:'Installed by '+APP+''}); updateBadge(); }
+    else { if(data.id){ const k=DL_DONE.indexOf(data.id); if(k>=0) DL_DONE.splice(k,1); DL_DONE.unshift(data.id); DL_DONE.length=Math.min(DL_DONE.length,6); }
+      toast(`${t} is installed and ready to play`); NOTIFS.unshift({i:'dl', t:`${t} is ready to play`, s:'Installed by '+APP+''}); updateBadge(); }
     return OVERLAY ? null : loadLibrary(true);
   }
   if(name==='game.timeout'){ hideLaunch(); const g=G(data.id); return toast(`${APP} couldn't see ${g?g.title:'the game'} start. If it's running, it still works; it just won't show here.`); }
@@ -2475,7 +2540,7 @@ const held={};
 let padSeen=false;
 function pollPads(t){
   // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
-  const pads = PAD.host ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
+  const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
   const st={};
   for(const p of pads){ if(!p) continue;
     const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
@@ -2557,6 +2622,7 @@ applyLook();
 loadHostInfo();
 refreshStatus();
 if(OVERLAY){ document.body.classList.add('overlay'); NOTIFS=[]; }
+if(/[?&]overlay=full/.test(location.search)){ document.documentElement.classList.add('ovfull'); document.body.classList.add('ovfull'); }
 applyProfile();
 loadProfile();
 loadLibrary();
