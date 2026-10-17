@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!--
+  Nimbus Desktop Mode: labwc settings. labwc's own defaults fill in everything not set here
+  (see `man labwc-config`). Your own ~/.config/labwc/rc.xml is not read in Desktop Mode;
+  change this file in /usr/local/share/nimbus/desktop/labwc instead.
+-->
+<labwc_config>
+  <core>
+    <decoration>server</decoration>
+    <gap>6</gap>
+  </core>
+
+  <theme>
+    <cornerRadius>10</cornerRadius>
+    <dropShadows>yes</dropShadows>
+    <titlebar>
+      <layout>icon:iconify,max,close</layout>
+    </titlebar>
+    <font place="ActiveWindow"><name>sans</name><size>10</size><weight>bold</weight></font>
+    <font place="InactiveWindow"><name>sans</name><size>10</size></font>
+    <font place="MenuItem"><name>sans</name><size>10</size></font>
+    <font place="OnScreenDisplay"><name>sans</name><size>11</size></font>
+  </theme>
+
+  <placement><policy>cascade</policy></placement>
+
+  <!-- Drag a window to a screen edge to tile it. -->
+  <snapping><range>12</range><topMaximize>yes</topMaximize></snapping>
+
+  <keyboard>
+    <default />
+    <!-- Super opens the Nimbus launcher, like the Start/Steam button. -->
+    <keybind key="Super_L" onRelease="yes"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher toggle'" /></keybind>
+    <keybind key="W-space"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher toggle'" /></keybind>
+    <keybind key="W-Return"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh terminal'" /></keybind>
+    <keybind key="W-e"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh files'" /></keybind>
+    <keybind key="W-g"><action name="Execute" command="nimbus-mode game" /></keybind>
+    <keybind key="W-q"><action name="Close" /></keybind>
+    <keybind key="W-Up"><action name="ToggleMaximize" /></keybind>
+    <keybind key="W-Down"><action name="Iconify" /></keybind>
+    <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
+    <keybind key="W-Right"><action name="SnapToEdge" direction="right" /></keybind>
+    <keybind key="Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot'" /></keybind>
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+" /></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-" /></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute" command="wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle" /></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="brightnessctl set 5%+" /></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="brightnessctl set 5%-" /></keybind>
+  </keyboard>
+
+  <mouse><default /></mouse>
+
+  <windowRules>
+    <!-- Nimbus itself (when started from the desktop) and Steam Big Picture go fullscreen without decorations. -->
+    <windowRule identifier="Nimbus" serverDecoration="no" />
+  </windowRules>
+</labwc_config>

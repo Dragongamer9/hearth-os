@@ -5,6 +5,7 @@
 
 const { app, BrowserWindow, ipcMain, protocol, net, dialog, screen, session, Menu } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
 const os = require('node:os');
 const { pathToFileURL } = require('node:url');
 const { Library } = require('./library');
@@ -22,6 +23,7 @@ const UPDATE_EXIT_CODE = 75; // nimbus-watchdog starts the new version right awa
 
 const UI_DIR = app.isPackaged ? path.join(process.resourcesPath, 'ui') : path.join(__dirname, '..', '..', '..', 'ui');
 const SESSION_DIR = app.isPackaged ? path.join(process.resourcesPath, 'session') : path.join(__dirname, '..', 'session');
+const DESKTOP_DIR = app.isPackaged ? path.join(process.resourcesPath, 'desktop') : path.join(__dirname, '..', 'desktop');
 const APP_ROOT = path.join(__dirname, '..');
 
 if (!app.requestSingleInstanceLock()) { app.exit(0); }
@@ -104,9 +106,13 @@ function power(action) {
     case 'shutdown': sys('poweroff'); break;
     case 'signout':
     case 'desktop':
-      // In the Nimbus session, quitting ends the session and the login screen comes back,
-      // where you can pick your desktop. In a desktop window, just get out of the way.
-      if (IN_SESSION) { leaving = true; app.exit(0); }
+      // In the Nimbus session, Nimbus asks the session for the next mode and quits: "desktop" switches to
+      // Desktop Mode, sign out (no next mode) ends the session. Outside it, just get out of the way.
+      if (IN_SESSION) {
+        const next = path.join(process.env.XDG_RUNTIME_DIR || '/tmp', 'nimbus-next');
+        try { if (action === 'desktop') fs.writeFileSync(next, 'desktop\n'); else fs.rmSync(next, { force: true }); } catch (e) { log('mode switch: ' + e.message); }
+        leaving = true; app.exit(0);
+      }
       else if (action === 'signout' && process.env.XDG_SESSION_ID) run('loginctl', ['terminate-session', process.env.XDG_SESSION_ID]).catch(() => {});
       else win.minimize();
       break;
@@ -178,8 +184,8 @@ app.whenReady().then(() => {
       },
       session: {
         status: () => sessionSetup.status(),
-        register: () => sessionSetup.register(SESSION_DIR, APP_ROOT),
-        unregister: () => sessionSetup.unregister(SESSION_DIR),
+        register: () => sessionSetup.register(SESSION_DIR, DESKTOP_DIR, APP_ROOT),
+        unregister: () => sessionSetup.unregister(SESSION_DIR, DESKTOP_DIR),
       },
       installUpdate: () => {
         try { updates.install(); } catch (e) { post({ type: 'event', name: 'update', data: { ...updates.status(), error: e.message } }); return; }

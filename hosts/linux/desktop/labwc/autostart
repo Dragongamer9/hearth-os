@@ -1,0 +1,24 @@
+#!/bin/sh
+# Run by labwc when Desktop Mode starts.
+SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
+
+# Let portals (screen sharing, file pickers) and D-Bus-started apps see this session.
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE NIMBUS_SHARE NIMBUS_APP >/dev/null 2>&1 &
+
+# The Nimbus taskbar, launcher, notifications and wallpaper.
+# (Not shipped yet: until it is, Desktop Mode is labwc with the right-click menu.)
+[ -f "$SHARE/desktop/shell/shell.qml" ] && command -v quickshell >/dev/null 2>&1 &&
+  quickshell -p "$SHARE/desktop/shell" >"${XDG_RUNTIME_DIR:-/tmp}/nimbus-shell.log" 2>&1 &
+
+# Password prompts for apps that need admin rights: the first polkit agent found.
+for agent in /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
+             /usr/libexec/polkit-gnome-authentication-agent-1 \
+             /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 \
+             /usr/libexec/polkit-kde-authentication-agent-1 \
+             /usr/lib/polkit-kde-authentication-agent-1 \
+             lxqt-policykit-agent; do
+  if command -v "$agent" >/dev/null 2>&1; then "$agent" >/dev/null 2>&1 & break; fi
+done
+
+# Your own additions: ~/.config/nimbus/autostart (any executable script).
+[ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/autostart" ] && "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/autostart" &

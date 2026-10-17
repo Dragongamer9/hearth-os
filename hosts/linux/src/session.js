@@ -29,33 +29,40 @@ function status() {
     value,
     exe: process.env.APPIMAGE || process.execPath,
     gamescope: has('gamescope'),
+    labwc: has('labwc'),
+    quickshell: has('quickshell') || has('qs'),
   };
 }
 
-/** Copies the session scripts somewhere root can read (an AppImage's files are a user-only mount), then installs. */
-function stageScripts(sessionDir) {
+/**
+ * Copies the session scripts and Desktop Mode files somewhere root can read (an AppImage's files are a
+ * user-only mount), then the installer copies them into place.
+ */
+function stageScripts(sessionDir, desktopDir) {
   const dst = path.join(DATA_DIR, 'session');
-  fs.mkdirSync(dst, { recursive: true });
-  for (const f of ['nimbus-session', 'nimbus-watchdog', 'nimbus.desktop', 'install-session.sh']) {
-    fs.copyFileSync(path.join(sessionDir, f), path.join(dst, f));
-    fs.chmodSync(path.join(dst, f), f.endsWith('.desktop') ? 0o644 : 0o755);
+  fs.rmSync(dst, { recursive: true, force: true });
+  fs.cpSync(sessionDir, dst, { recursive: true });
+  if (desktopDir && exists(desktopDir)) fs.cpSync(desktopDir, path.join(dst, 'desktop'), { recursive: true });
+  for (const f of fs.readdirSync(dst)) {
+    const p = path.join(dst, f);
+    if (fs.statSync(p).isFile()) fs.chmodSync(p, f.endsWith('.desktop') ? 0o644 : 0o755);
   }
   return dst;
 }
 
-async function register(sessionDir, appRoot) {
+async function register(sessionDir, desktopDir, appRoot) {
   if (!has('pkexec')) throw new Error('pkexec is missing. Run install-session.sh as root instead');
-  const staged = stageScripts(sessionDir);
+  const staged = stageScripts(sessionDir, desktopDir);
   fs.mkdirSync(CONF_DIR, { recursive: true });
   fs.writeFileSync(APP_PATH_FILE, appCommand(appRoot) + '\n');
   await run('pkexec', [path.join(staged, 'install-session.sh')], { timeout: 120000 });
   return status();
 }
 
-async function unregister(sessionDir) {
+async function unregister(sessionDir, desktopDir) {
   try { fs.unlinkSync(APP_PATH_FILE); } catch {}
   if (exists(SESSION_FILE)) {
-    const staged = stageScripts(sessionDir);
+    const staged = stageScripts(sessionDir, desktopDir);
     await run('pkexec', [path.join(staged, 'install-session.sh'), '--remove'], { timeout: 120000 });
   }
   return status();
