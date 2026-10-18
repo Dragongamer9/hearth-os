@@ -6,8 +6,9 @@ name: Hearth installer ISO
 
 on:
   # Changes to the installer USB on the work branch build it and boot-test it (never uploaded from here).
+  # On rust-host it carries the Rust app instead of the Electron one.
   push:
-    branches: [linux-host]
+    branches: [linux-host, rust-host]
     paths: ['os/installer/**', 'os/live/src/hearth-install', 'os/live/src/hearth-live-prep', '.github/workflows/installer-iso.yml']
   workflow_dispatch:
     inputs:
@@ -15,6 +16,11 @@ on:
         description: 'Upload the ISO to SourceForge (needs the SF_* secrets)'
         type: boolean
         default: false
+      app:
+        description: 'Which Hearth app the USB carries'
+        type: choice
+        options: [electron, rust]
+        default: electron
 
 permissions:
   contents: write
@@ -26,6 +32,8 @@ jobs:
     timeout-minutes: 240
     env:
       HAVE_SF: ${{ secrets.SF_SSH_KEY != '' && secrets.SF_USER != '' && secrets.SF_PROJECT != '' }}
+      APP: ${{ inputs.app || (github.ref_name == 'rust-host' && 'rust') || 'electron' }}
+      SHOTS: ${{ (inputs.app == 'rust' || github.ref_name == 'rust-host') && 'ci/installer-shots-rust' || 'ci/installer-shots' }}
       SF_USER: ${{ secrets.SF_USER }}
       SF_PROJECT: ${{ secrets.SF_PROJECT }}
     steps:
@@ -34,9 +42,24 @@ jobs:
         uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
 
       - uses: actions/setup-node@v4
+        if: env.APP == 'electron'
         with:
           node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+        if: env.APP == 'rust'
+      - name: Build the Hearth app (this commit, Rust)
+        if: env.APP == 'rust'
+        working-directory: hosts/hearth-rs
+        run: |
+          v=$(grep -oP '(?<=<Version>)[^<]+' ../windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev >/dev/null
+          sed -i "s/^version = \".*\"/version = \"$v\"/" Cargo.toml
+          cargo build --release
+          mkdir -p ../../os/nimbus-app && cp target/release/hearth ../../os/nimbus-app/hearth
+          echo "$v" > ../../os/nimbus-app/hearth-version
       - name: Build the Hearth app (this commit)
+        if: env.APP == 'electron'
         working-directory: hosts/linux
         run: |
           v=$(grep -oP '(?<=<Version>)[^<]+' ../windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
@@ -111,13 +134,13 @@ jobs:
           ls -l shots
           sudo cp serial.log shots/serial.log; sudo chmod 644 shots/serial.log
           tail -c 2500 serial.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\n' '|' | sed 's/^/::notice title=Serial (end)::/' || true
-      - name: Publish the screenshots (ci/installer-shots)
+      - name: Publish the screenshots (ci/installer-shots, or -rust)
         run: |
           git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
-          git checkout --orphan ci/installer-shots
+          git checkout --orphan "$SHOTS"
           git rm -rfq --cached . >/dev/null
           git add -f shots
-          git commit -qm "Installer ISO screenshots ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/installer-shots || true
+          git commit -qm "Installer ISO screenshots ($GITHUB_RUN_ID)" && git push -f -q origin "HEAD:refs/heads/$SHOTS" || true
 
       - name: Upload to SourceForge
         if: env.HAVE_SF == 'true' && inputs.upload

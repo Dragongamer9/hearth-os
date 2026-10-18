@@ -52,6 +52,8 @@ systemctl enable var-tmp.mount NetworkManager bluetooth
 rm -f /etc/localtime; systemd-firstboot --timezone UTC || true
 
 # ---------------------------------------------------------------- the Hearth app and the installer
+# The Rust app (hosts/hearth-rs) is one file, "hearth", drawn by the system's WebKit.
+if [ -x /usr/lib/nimbus/hearth ]; then mv /usr/lib/nimbus/hearth /usr/lib/nimbus/nimbus; dnf install -y webkit2gtk4.1; fi
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 [ -f /usr/lib/nimbus/chrome-sandbox ] && chown root:root /usr/lib/nimbus/chrome-sandbox && chmod 4755 /usr/lib/nimbus/chrome-sandbox
 install -Dm755 /live/hearth-install /usr/libexec/nimbus/hearth-install
@@ -86,10 +88,20 @@ cat >/usr/libexec/hearth-installer-session <<'SH'
 # The Hearth app on its own; it comes back if it closes.
 export XDG_SESSION_TYPE=wayland ELECTRON_OZONE_PLATFORM_HINT=wayland
 # Graphics this USB has no driver for (a brand-new card, or "basic graphics" picked at start): draw in software.
-extra=""
-if grep -qw nomodeset /proc/cmdline || [ ! -e /dev/dri/renderD128 ]; then extra="--disable-gpu"; fi
+soft=""
+if grep -qw nomodeset /proc/cmdline || [ ! -e /dev/dri/renderD128 ]; then soft=1; fi
+if [ -d /usr/lib/nimbus/resources ]; then
+  # The Electron app
+  extra=""; [ -n "$soft" ] && extra="--disable-gpu"
+  run() { /usr/lib/nimbus/nimbus --ozone-platform=wayland --enable-features=UseOzonePlatform $extra; }
+else
+  # The Rust app (WebKit)
+  export GDK_BACKEND=wayland
+  [ -n "$soft" ] && export LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1
+  run() { /usr/lib/nimbus/nimbus; }
+fi
 while :; do
-  /usr/lib/nimbus/nimbus --ozone-platform=wayland --enable-features=UseOzonePlatform $extra >>"$HOME/hearth-installer.log" 2>&1
+  run >>"$HOME/hearth-installer.log" 2>&1
   sleep 1
 done
 SH
