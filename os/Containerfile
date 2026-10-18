@@ -1,7 +1,10 @@
-# Hearth: Bazzite's handheld edition (bazzite-deck) with the Hearth session (the Nimbus UI) as what it boots into.
+# Hearth: Bazzite's Game Mode edition (bazzite-deck, or bazzite-deck-nvidia for Nvidia GPUs) with the Hearth session (the Nimbus UI) as what it boots into.
 # Built by .github/workflows/os.yml from the repository root:
 #   podman build -f os/Containerfile -t hearth .
 # os/nimbus-app must hold the unpacked Linux build of Nimbus (electron-builder --linux dir); CI puts it there.
+
+# Base image (see below). Must come before the first FROM to be usable in one.
+ARG BASE=bazzite-deck
 
 # Files the build script needs, kept out of the final image.
 FROM scratch AS ctx
@@ -12,7 +15,9 @@ COPY os/nimbus-app /nimbus-app
 COPY hosts/linux/session /session
 COPY hosts/linux/desktop /desktop
 
-FROM ghcr.io/ublue-os/bazzite-deck:stable
+# bazzite-deck: AMD and Intel graphics (handhelds, most PCs). bazzite-deck-nvidia: Nvidia's open driver
+# (GeForce GTX 16 series, RTX 20 series and newer). os.yml builds both, as hearth and hearth-nvidia.
+FROM ghcr.io/ublue-os/${BASE}:stable
 
 ARG NIMBUS_VERSION=0.0.0
 LABEL org.opencontainers.image.title="Hearth" \
