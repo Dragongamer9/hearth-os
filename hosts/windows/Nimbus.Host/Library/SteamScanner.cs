@@ -178,6 +178,28 @@ public static class SteamScanner
         return (null, null);
     }
 
+    /// <summary>The signed-in (most recent) Steam user's folder, userdata\&lt;account id&gt;, or null.</summary>
+    public static string? AccountDir()
+    {
+        var steam = SteamPath();
+        if (steam is null) return null;
+        var userdata = Path.Combine(steam, "userdata");
+        if (!Directory.Exists(userdata)) return null;
+        var users = Vdf.Obj(Vdf.Load(Path.Combine(steam, "config", "loginusers.vdf")), "users");
+        if (users is not null)
+            foreach (var (id64, v) in users)
+                if (v is Dictionary<string, object> u && Vdf.Str(u, "MostRecent") == "1" && long.TryParse(id64, out var n))
+                {
+                    var dir = Path.Combine(userdata, (n - SteamId64Base).ToString());
+                    if (Directory.Exists(dir)) return dir;
+                }
+        return Directory.EnumerateDirectories(userdata)
+            .Where(d => File.Exists(Path.Combine(d, "config", "localconfig.vdf")))
+            .OrderByDescending(d => File.GetLastWriteTimeUtc(Path.Combine(d, "config", "localconfig.vdf")))
+            .FirstOrDefault();
+    }
+    public const long Id64Base = SteamId64Base;
+
     /// <summary>Custom grid folder and per-app stats for the most recently signed-in Steam user.</summary>
     private static (string? GridDir, Dictionary<string, (int Minutes, long LastPlayed)> Stats) UserData(string steam)
     {

@@ -68,6 +68,22 @@ pub fn libraries(steam: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// The signed-in (most recent) Steam user's folder: userdata/<account id>.
+pub fn account_dir(steam: &Path) -> Option<PathBuf> {
+    let userdata = steam.join("userdata");
+    if !userdata.is_dir() { return None; }
+    if let Some(users) = vdf::load(&steam.join("config/loginusers.vdf")).and_then(|k| k.obj(&["users"]).cloned()) {
+        for (id64, u) in &users {
+            if u.str(&["MostRecent"]) != Some("1") { continue; }
+            if let Ok(n) = id64.parse::<u64>() { let dir = userdata.join((n.saturating_sub(STEAM_ID64_BASE)).to_string()); if dir.is_dir() { return Some(dir); } }
+        }
+    }
+    std::fs::read_dir(&userdata).ok().into_iter().flatten().flatten()
+        .filter_map(|e| { let cfg = e.path().join("config/localconfig.vdf"); cfg.metadata().and_then(|m| m.modified()).ok().map(|t| (t, e.path())) })
+        .max_by_key(|(t, _)| *t).map(|(_, p)| p)
+}
+pub const ID64_BASE: u64 = STEAM_ID64_BASE;
+
 /// The most recent Steam user's folder (userdata/<account id>): its grid art and play stats.
 pub fn user_data(steam: &Path) -> (Option<PathBuf>, HashMap<String, (u64, u64)>) {
     let mut stats = HashMap::new();
