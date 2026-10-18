@@ -215,7 +215,7 @@ class Keyboard(unittest.TestCase):
     def test_shift_types_symbols_once(self):
         pad, out = make()
         pad.command({'cmd': 'osk', 'open': True})
-        press(pad, 'up')              # row 0, col 0: '1'
+        press(pad, 'up')              # row 0, col 1: '1'
         press(pad, 'lb')              # shift
         press(pad, 'a')               # '!'
         press(pad, 'a')               # '1' (shift used up)
@@ -230,21 +230,36 @@ class Keyboard(unittest.TestCase):
     def test_row_change_keeps_position(self):
         pad, out = make()
         press(pad, 'y')
-        for _ in range(9):
-            press(pad, 'right')       # 'p', last of row 1
+        for _ in range(12):
+            press(pad, 'right')       # '\\', last of row 1
         press(pad, 'down')
         press(pad, 'down')
-        press(pad, 'down')            # bottom row: 'enter' (last)
-        self.assertEqual(hp.OSK_ROWS[pad.osk['row']][pad.osk['col']], 'enter')
+        press(pad, 'down')            # bottom row: 'right' (last)
+        self.assertEqual(hp.OSK_ROWS[pad.osk['row']][pad.osk['col']], 'right')
+
+    def test_every_terminal_character(self):
+        # Everything a command line needs: quotes, pipes, colons, braces, backslash, tilde...
+        for ch in '"|:{}\\~<>?_+`^\'[];,./-=':
+            self.assertIn(ch, hp.CHARS, ch)
+        pad, out = make()
+        pad.command({'cmd': 'type', 'key': 'shift'})
+        pad.command({'cmd': 'type', 'key': '\\'})   # shifted: '|'
+        self.assertEqual(self.typed(out), ['KEY_LEFTSHIFT', 'KEY_BACKSLASH'])
+
+    def test_ctrl_c_and_caps(self):
+        pad, out = make()
+        for k in ('ctrl', 'c', 'caps', 'a', 'b', 'caps', 'c'):
+            pad.command({'cmd': 'type', 'key': k})
+        self.assertEqual(self.typed(out), ['KEY_LEFTCTRL', 'KEY_C', 'KEY_LEFTSHIFT', 'KEY_A', 'KEY_LEFTSHIFT', 'KEY_B', 'KEY_C'])
 
     def test_held_dpad_repeats(self):
         pad, out = make()
         press(pad, 'y')
         pad.button('right', True, 1.0)
         pad.tick(1.2, 0.01)
-        self.assertEqual(pad.osk['col'], 1)
-        pad.tick(1.45, 0.01)
         self.assertEqual(pad.osk['col'], 2)
+        pad.tick(1.45, 0.01)
+        self.assertEqual(pad.osk['col'], 3)
 
     def test_b_closes_and_pointer_still_moves(self):
         pad, out = make()
