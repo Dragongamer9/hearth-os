@@ -3,15 +3,11 @@
 # installs, so the USB stays small (about 2 GB instead of 7). One USB for every PC: it installs the Nvidia
 # edition on PCs with an Nvidia card, the AMD/Intel one on the rest.
 # Built by .github/workflows/installer-iso.yml (from the repository's root), made into an ISO by Titanoboa.
-ARG HEARTH=ghcr.io/dragongamer9/hearth:latest
-FROM ${HEARTH} AS hearth
-
 FROM quay.io/fedora/fedora-bootc:43
-# The Hearth app and the helpers the installer uses, straight from the Hearth image.
-COPY --from=hearth /usr/lib/nimbus /usr/lib/nimbus
-COPY --from=hearth /usr/libexec/nimbus/hearth-import /usr/libexec/nimbus/hearth-import
-COPY --from=hearth /usr/share/plymouth/themes/hearth /usr/share/plymouth/themes/hearth
-COPY --from=hearth /usr/share/nimbus/version /usr/share/nimbus/version
+# The Hearth app (built by the workflow into os/nimbus-app, from this commit) and the helpers the installer uses.
+COPY os/nimbus-app /usr/lib/nimbus
+COPY os/system_files/usr/libexec/nimbus/hearth-import /usr/libexec/nimbus/hearth-import
+COPY os/system_files/usr/share/plymouth/themes/hearth /usr/share/plymouth/themes/hearth
 COPY os/installer/src /src
 COPY os/live/src /live
 RUN --mount=type=cache,target=/var/cache/libdnf5 /src/build.sh && rm -rf /src /live
