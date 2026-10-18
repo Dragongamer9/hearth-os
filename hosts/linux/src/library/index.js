@@ -13,6 +13,7 @@ const proc = require('./proc');
 const { Store } = require('./store');
 const { StoreAccounts, norm } = require('../stores');
 const { log } = require('../util');
+const { artCache } = require('../art-cache');
 
 const POLL_MS = 2000;
 const START_TIMEOUT_MS = 3 * 60 * 1000; // Steam may update the game first
@@ -116,7 +117,8 @@ class Library extends EventEmitter {
     // Steam counts its own play time; for other stores Nimbus's numbers are the only ones.
     const art = {};
     for (const [k, v] of Object.entries(g.art || {})) {
-      art[k] = /^https?:\/\//.test(v) ? v : `nimbus-art://art/${encodeURIComponent(g.id)}/${k}`;
+      // Web pictures come from the on-device copy once it's downloaded (art-cache.js), so they work offline.
+      art[k] = /^https?:\/\//.test(v) ? artCache().url(v) : `nimbus-art://art/${encodeURIComponent(g.id)}/${k}`;
     }
     return {
       id: g.id, title: g.title, source: g.source,

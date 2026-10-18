@@ -96,6 +96,7 @@ function registerProtocols() {
     const u = new URL(req.url);
     const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     const file = u.hostname === 'profile' ? bridge && bridge.profile.file(parts[0])
+      : u.hostname === 'cache' ? require('./art-cache').artCache().file(parts[0])   // downloaded web art
       : library && library.artFile(parts[0], parts[1]);
     return file ? net.fetch(pathToFileURL(file).toString()) : new Response('Not found', { status: 404 });
   });
@@ -114,6 +115,19 @@ function focusRunningGame() {
   const id = String(library.running.id || '');
   const steamAppId = id.startsWith('steam:') ? parseInt(id.slice(6), 10) || 0 : 0;
   gamescope.focusGame({ pids: () => library.gamePids(), steamAppId, exclude: [process.pid] }).catch(() => {});
+}
+
+/** Puts another Hearth window (a sign-in page, a file picker) in front in gamescope. */
+function toFront(w) {
+  if (!w || w.isDestroyed()) return;
+  if (!w.isVisible()) w.show();
+  w.focus();
+  if (inGamescope()) gamescope.focusWindow(xid(w)).catch(() => {});
+}
+/** File pickers are separate windows gamescope wouldn't show while Hearth's is pinned in front. */
+async function withDialog(fn) {
+  if (inGamescope()) await gamescope.clearFocus().catch(() => {});
+  try { return await fn(); } finally { comeBack(); }
 }
 
 /** Back in front, e.g. when a game ends or the Guide button is pressed. */
@@ -140,6 +154,10 @@ function onMessage(e, m) {
   if (overlay && e && e.sender === overlay.webContents) {
     if (m.type === 'call') overlayBridge.handle(m);
     else if (m.type === 'overlay' && m.action === 'close') hideOverlay();
+    else if (m.type === 'overlay' && m.action === 'alive') overlayAlive = Date.now();
+    // "Back to Hearth" and "Back to game" in the overlay (these were ignored, so the overlay stayed open)
+    else if (m.type === 'overlay' && m.action === 'home') { hideOverlay(); comeBack(); }
+    else if (m.type === 'resume') { hideOverlay(); resumeGame(); }
     else if (m.type === 'log') log('overlay: ' + m.text);
     else if (m.type === 'power') { hideOverlay(); power(m.action); }
     return;
@@ -217,7 +235,12 @@ function signInWindow({ title, url, onNavigate, onLoaded }) {
     });
     wc.setWindowOpenHandler(({ url: u }) => { w.loadURL(u); return { action: 'deny' }; });
     wc.on('before-input-event', (_e, i) => { if (i.type === 'keyDown' && i.key === 'Escape') finish(null); });
-    w.on('closed', () => finish(null));
+    w.on('closed', () => { finish(null); comeBack(); });
+    // gamescope keeps showing whichever window Hearth last put in front (Hearth's own): put this one there,
+    // or the sign-in page opens out of sight and looks like it never loads.
+    w.once('ready-to-show', () => toFront(w));
+    w.on('show', () => toFront(w));
+    setTimeout(() => toFront(w), 800);
     w.loadURL(url);
   });
 }
@@ -270,8 +293,13 @@ function createOverlay(platform) {
   overlay = new BrowserWindow({
     show: false, frame: false, transparent: true, backgroundColor: '#00000000', hasShadow: false,
     x: b.x, y: b.y, width: b.width, height: b.height, alwaysOnTop: true, skipTaskbar: true, resizable: false,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+    // Never paused while hidden: Chromium thought a window gamescope draws on top was still hidden and
+    // stopped its timers and drawing, so the overlay froze after a few uses.
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
   });
+  // A frozen or crashed page: start it again (and get it out of the way).
+  overlay.webContents.on('render-process-gone', (_e, d) => { log('overlay: page gone (' + d.reason + '), reloading'); hideOverlay(); overlay.loadURL('nimbus://app/index.html?overlay=full'); });
+  overlay.webContents.on('unresponsive', () => { log('overlay: page unresponsive, reloading'); hideOverlay(); overlay.webContents.forcefullyCrashRenderer(); });
   overlay.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('nimbus://')) e.preventDefault(); });
   overlay.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   overlay.on('close', e => { if (!leaving) { e.preventDefault(); hideOverlay(); } });
@@ -281,9 +309,24 @@ function createOverlay(platform) {
   overlay.loadURL('nimbus://app/index.html?overlay=full');
 }
 
+let overlayAlive = 0, overlayWatch = null, beforeOverlay = 0;
 function showOverlay() {
   if (!overlay) return false;
   overlayOn = true;
+  // What was on screen, to give it back the controller when the overlay closes.
+  gamescope.cardinals('GAMESCOPE_FOCUSED_WINDOW').then(f => { beforeOverlay = f[0] || 0; }).catch(() => {});
+  // The page says it's alive every second while open; silence for 5 s means it froze: reload it, close it.
+  overlayAlive = Date.now();
+  clearInterval(overlayWatch);
+  overlayWatch = setInterval(() => {
+    if (!overlayOn) return clearInterval(overlayWatch);
+    if (Date.now() - overlayAlive > 5000) {
+      log('overlay: page stopped answering, closing and reloading it');
+      clearInterval(overlayWatch);
+      hideOverlay();
+      overlay.webContents.reloadIgnoringCache();
+    }
+  }, 1000);
   // Unmapped and mapped again, so gamescope sees it as the newest overlay (Steam has overlay windows too).
   if (overlay.isVisible()) overlay.hide();
   overlay.showInactive();
@@ -305,15 +348,27 @@ function hideOverlay() {
   overlay.webContents.send('nimbus:msg', { type: 'event', name: 'overlay.hidden', data: {} });
   setWinAtom(overlay, 'STEAM_INPUT_FOCUS', 0).catch(() => {});
   overlay.hide();
+  clearInterval(overlayWatch);
   // Belt and braces: if it's somehow still up a moment later, hide it again.
   setTimeout(() => { if (!overlayOn && overlay && !overlay.isDestroyed() && overlay.isVisible()) overlay.hide(); }, 600);
+  // Give the controller back to what was on screen (gamescope can leave it with nothing in front).
+  if (inGamescope() && !(win && win.isVisible() && win.isFocused())) {
+    setTimeout(() => {
+      if (overlayOn) return;
+      if (beforeOverlay && beforeOverlay !== xid(overlay)) gamescope.focusWindow(beforeOverlay).catch(() => {});
+      else if (library.runningId) focusRunningGame();
+    }, 150);
+  }
 }
 
 // Controller presses for the overlay, with repeat on held directions like the UI's own.
 let repeatTimer = null, lastPad = { b: '', t: 0 };
 function stopRepeat() { clearTimeout(repeatTimer); repeatTimer = null; }
+let bHold = null;
 function overlayPad(b, down) {
   if (!overlayOn || !overlay) return;
+  // Holding B for a second always closes it, even if the page has stopped answering.
+  if (b === 'b') { clearTimeout(bHold); if (down) bHold = setTimeout(() => { log('overlay: B held, closing'); hideOverlay(); }, 1000); }
   if (!down) { stopRepeat(); return; }
   const now = Date.now();
   if (b === lastPad.b && now - lastPad.t < 40) return;      // the same press from two devices
@@ -449,6 +504,11 @@ function createWindow() {
   win.loadURL('nimbus://app/index.html');
 }
 
+// Windows that gamescope draws without telling Chromium they're visible must keep running.
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   secure.impl = safeStorage; // the desktop keyring encrypts the Xbox sign-in
@@ -525,24 +585,24 @@ app.whenReady().then(() => {
       setFpsLimit,
       exportLogs,
       pickGameFile: async () => {
-        const r = await dialog.showOpenDialog(win, {
+        const r = await withDialog(() => dialog.showOpenDialog(win, {
           title: 'Add a game to Hearth', properties: ['openFile'],
           filters: [{ name: 'Games', extensions: ['exe', 'desktop', 'AppImage', 'appimage', 'sh', 'x86_64', '*'] }],
-        });
+        }));
         return r.canceled ? null : r.filePaths[0];
       },
       pickImage: async kind => {
-        const r = await dialog.showOpenDialog(win, {
+        const r = await withDialog(() => dialog.showOpenDialog(win, {
           title: kind === 'avatar' ? 'Choose a profile picture' : 'Choose a background picture', properties: ['openFile'],
           filters: [{ name: 'Pictures', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
-        });
+        }));
         return r.canceled ? null : r.filePaths[0];
       },
       // Xbox signs in inside the cloud-gaming window; resolves when it's closed.
       signInWindow,
       pickFolder: async current => {
-        const r = await dialog.showOpenDialog(win, { title: 'Install folder for Epic and GOG games', defaultPath: current,
-          properties: ['openDirectory', 'createDirectory'] });
+        const r = await withDialog(() => dialog.showOpenDialog(win, { title: 'Install folder for Epic and GOG games', defaultPath: current,
+          properties: ['openDirectory', 'createDirectory'] }));
         return r.canceled ? null : r.filePaths[0];
       },
       screenshot,
@@ -574,7 +634,26 @@ app.whenReady().then(() => {
     },
   });
 
-  library.on('started', () => { stepAside(); focusRunningGame(); });
+  // Offline: know it (launches skip waiting on the network), and when it comes back, finish downloading art.
+  const { setOnline } = require('./util');
+  let wasOnline = net.isOnline();
+  setOnline(wasOnline);
+  setInterval(() => {
+    const on = net.isOnline();
+    if (on === wasOnline) return;
+    wasOnline = on; setOnline(on);
+    log(`network: ${on ? 'online' : 'offline'}`);
+    post({ type: 'event', name: 'net', data: { online: on } });
+    if (on) require('./art-cache').artCache().retry();
+  }, 15000);
+  // Art finished downloading: the UI reloads the library quietly to use the on-device copies.
+  require('./art-cache').artCache().on('changed', () => post({ type: 'event', name: 'library.art', data: {} }));
+
+  library.on('started', () => {
+    stepAside(); focusRunningGame();
+    // Xbox Cloud Gaming plays in Hearth's own stream window: that's the one to put in front.
+    if (inGamescope()) setTimeout(() => { if (stream.isOpen && stream.win && !stream.win.isDestroyed()) gamescope.focusWindow(xid(stream.win)).catch(() => {}); }, 900);
+  });
   library.on('exited', () => { hideOverlay(); if (inGamescope()) gamescope.clearFocus().catch(() => {}); comeBack(); });
   stream.on('closed', () => library.markExited());
   ipcMain.on('stream:exit', () => stream.close());

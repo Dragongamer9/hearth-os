@@ -23,6 +23,8 @@ async function launch({ store, id, exe, args = [], cwd, env = {}, options = null
     cwd: cwd || path.dirname(exe),
     env: {
       ...process.env, ...r.env,
+      // Offline: don't let umu wait on checking for runtime updates.
+      ...(require('../util').isOnline() ? {} : { UMU_RUNTIME_UPDATE: '0' }),
       WINEPREFIX: prefix,
       GAMEID: process.env.NIMBUS_GAMEID || '0',
       STORE: STORE_CODE[store] || 'none',
