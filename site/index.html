@@ -106,6 +106,11 @@ ul.ticks b{color:var(--text)}
 .steps b{color:var(--text)}
 .beta{background:linear-gradient(90deg,rgba(255,138,61,.18),rgba(255,209,102,.12));border-bottom:1px solid rgba(255,138,61,.35);font-size:14px;color:#f1e3d3}
 .beta .wrap{padding-top:9px;padding-bottom:9px}
+.live{display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;padding:5px 12px;border-radius:999px;background:rgba(255,138,61,.12);border:1px solid rgba(255,138,61,.35);font-size:14px;color:#f1e3d3}
+.live[hidden]{display:none}
+.live i{width:8px;height:8px;border-radius:50%;background:#5bd68a;box-shadow:0 0 0 0 rgba(91,214,138,.6);animation:pulse 2s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 8px rgba(91,214,138,0)}100%{box-shadow:0 0 0 0 rgba(91,214,138,0)}}
+@media (prefers-reduced-motion:reduce){.live i{animation:none}}
 .beta b{display:inline-block;background:var(--ember);color:var(--ink);border-radius:999px;padding:1px 9px;margin-right:8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
 .note{margin-top:28px;padding:16px 18px;border-radius:14px;background:rgba(255,209,102,.07);border:1px solid rgba(255,209,102,.25);color:#e9dcc9;font-size:15px}
 
@@ -156,6 +161,7 @@ footer .legal{flex-basis:100%;font-size:13px;opacity:.85}
   <div class="wrap">
     <div>
       <span class="eyebrow">For handhelds and desktop PCs · Beta</span>
+      <p class="live" id="live" hidden><i></i><span id="liveText"></span></p>
       <h1>Your whole library,<br><em>by the fire.</em></h1>
       <p class="lead">Hearth OS is a controller-first system for playing games. Steam, Epic, GOG and Xbox sit together in one
         library you drive with a gamepad, and a full desktop called Mantel is one button away.</p>
@@ -326,5 +332,19 @@ footer .legal{flex-basis:100%;font-size:13px;opacity:.85}
   </div>
 </footer>
 
+<script>
+// Live player count from the Hearth OS counter (installs say they're running about every 10 minutes).
+(function(){
+  var el=document.getElementById('live'), t=document.getElementById('liveText');
+  function load(){
+    fetch('https://hearth-counter.game305-cl.workers.dev/v1/stats').then(function(r){return r.json();}).then(function(j){
+      if(!j || (!j.now && !j.month)) return;
+      t.textContent = j.now.toLocaleString()+' playing right now · '+j.month.toLocaleString()+' this month';
+      el.hidden=false;
+    }).catch(function(){});
+  }
+  load(); setInterval(load, 60000);
+})();
+</script>
 </body>
 </html>
