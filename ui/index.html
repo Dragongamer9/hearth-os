@@ -2488,6 +2488,8 @@ function act(el){
     case 'profEdit': return profEdit(d.id);
     case 'profAsk': return call('profiles.setAsk',{on:!(PROF.s&&PROF.s.askAtStart)}).then(loadProfiles).catch(e=>toast(e.message));
     case 'achAll': { const a=(GINFO[d.id]||{}).achievements; if(!a) return; return openSheet({title:`Achievements · ${a.done} of ${a.total}`, items:a.list.map(x=>({label:`${x.done?'✓ ':''}${x.hidden&&!x.done?'Hidden achievement':x.name}`, icon:x.done?'check':'lock', run:()=>{}}))}); }
+    case 'gsFps': return openSheet({title:'Frame-rate cap', sub:'While this game plays', items:[0,30,40,45,60,90,120].map(v=>({label:v?v+' FPS':'Usual (no change)', icon:(GSET.s.options.fpsLimit||0)===v?'check':'', run:()=>saveGameSet({fpsLimit:v},'gs-fps')}))});
+    case 'gsTdp': return openSheet({title:'Power limit', sub:'While this game plays (if this device supports it)', items:[0,8,10,12,15,18,20,25,30].map(v=>({label:v?v+' W':'Usual (no change)', icon:(GSET.s.options.tdp||0)===v?'check':'', run:()=>saveGameSet({tdp:v},'gs-tdp')}))});
     case 'osiNoPass': OSI.user.nopassword=!OSI.user.nopassword; if(OSI.user.nopassword) OSI.user.password=''; return render('osi-nopass');
     case 'osiStart': return osiStart();
     case 'osiRestart': return call('osinstall.restart').catch(e=>toast(e.message));
@@ -2675,14 +2677,19 @@ function viewGameSettings(){
   const o=r.options;
   const sw=(k,label,sub)=>`<button class="row" data-f data-k="gs-${k}" data-act="gsToggle" data-key="${k}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${o[k]?'on':''}"></div></button>`;
   let h=`<h2>${esc(g.title)}</h2><div class="rows">`;
-  if(r.kind==='steam') return h+note(`Steam starts ${esc(g.title)}, so it uses Steam's own settings: in Steam, open the game's Properties to pick a Proton version or add launch options.`)+'</div>';
-  if(r.kind==='external') return h+note(`Heroic starts ${esc(g.title)}, so its settings are in Heroic. Games ${APP} installs itself have their settings here.`)+'</div>';
+  // For every game, Steam's too: Hearth sets these while it plays.
+  const ingame = shead('While it plays')
+    + `<button class="row" data-f data-k="gs-fps" data-act="gsFps"><span class="ricon">${I.perf||I.gear}</span><div class="rt"><b>Frame-rate cap</b><small>Smoother and cooler: caps this game, then goes back to your usual limit</small></div><div class="rv">${o.fpsLimit?o.fpsLimit+' FPS':'Usual'} ›</div></button>`
+    + `<button class="row" data-f data-k="gs-tdp" data-act="gsTdp"><span class="ricon">${I.power}</span><div class="rt"><b>Power limit</b><small>More watts for a demanding game, fewer for battery life</small></div><div class="rv">${o.tdp?o.tdp+' W':'Usual'} ›</div></button>`;
+  if(r.kind==='steam') return h+ingame+note(`Steam starts ${esc(g.title)}, so it uses Steam's own settings: in Steam, open the game's Properties to pick a Proton version or add launch options.`)+'</div>';
+  if(r.kind==='external') return h+ingame+note(`Heroic starts ${esc(g.title)}, so its settings are in Heroic. Games ${APP} installs itself have their settings here.`)+'</div>';
   if(r.kind==='proton'){
     const cur=r.protonChoices.find(c=>c.id===o.proton) || {label:o.proton?o.proton.split('/').pop():'Default'};
     h += shead('Compatibility')
       + `<button class="row" data-f data-k="gs-proton" data-act="gsProton"><span class="ricon">${I.gear}</span><div class="rt"><b>Proton version</b><small>Runs this Windows game on Linux. Try another if it won't start or has problems.</small></div><div class="rv">${esc(cur.label)} ›</div></button>`
       + sw('fsr','AMD FSR upscaling','Sharper picture when the game runs below the screen\'s resolution (fullscreen games)');
   }
+  h += ingame;
   h += shead('Launch')
     + `<button class="row" data-f data-k="gs-args" data-act="gsText" data-key="args"><div class="rt"><b>Launch options</b><small>${o.args?esc(o.args):'Extra options passed to the game, like -skipintro'}</small></div><div class="rv">Edit ›</div></button>`
     + `<button class="row" data-f data-k="gs-env" data-act="gsText" data-key="env"><div class="rt"><b>Environment variables</b><small>${o.env?esc(o.env):'Like DXVK_HUD=fps or PROTON_USE_WINED3D=1'}</small></div><div class="rv">Edit ›</div></button>`;
