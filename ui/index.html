@@ -318,6 +318,8 @@ body.overlay.ovfull #qam{left:auto;width:min(440px,92vw);box-shadow:-20px 0 60px
 .pctl{margin-top:14px}
 .pctl .lab{font-size:13px;color:var(--dim);display:flex;align-items:center;gap:8px}
 body.overlay #toasts{bottom:14px;right:72px}
+/* Closed overlay: nothing drawn but the volume bar (the window itself stays on screen, see-through) */
+body.overlay.ov-closed > :not(#osd){visibility:hidden!important}
 body.overlay .modal{width:min(380px,92vw)}
 .np .nart .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .pstat{padding:12px;border-radius:9px;background:var(--panel2);margin-bottom:6px}
@@ -2126,7 +2128,7 @@ function appsBody(){
 const OV = {shown:false};
 function overlayClose(){ send({type:'overlay', action:'close'}); }
 async function overlayShown(){
-  OV.shown=true; OV.busy=true;
+  OV.shown=true; OV.busy=true; document.body.classList.remove('ov-closed');
   while(S.layers.length>1) closeLayer();
   try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); if(!r.runningId) S.running=null; }catch(e){}
   if(S.running && !G(S.running)) await loadLibrary();
@@ -2137,7 +2139,7 @@ async function overlayShown(){
   OV.busy=false;
   if(OV.wantPower){ OV.wantPower=false; openLayer('power'); }
 }
-function overlayHidden(){ OV.shown=false; while(S.layers.length>1) closeLayer(); }
+function overlayHidden(){ OV.shown=false; document.body.classList.add('ov-closed'); while(S.layers.length>1) closeLayer(); }
 
 function renderQam(){
   const t=S.qtab; let body='';
@@ -3396,7 +3398,7 @@ render();
 applyLook();
 loadHostInfo();
 refreshStatus();
-if(OVERLAY){ document.body.classList.add('overlay'); NOTIFS=[]; }
+if(OVERLAY){ document.body.classList.add('overlay','ov-closed'); NOTIFS=[]; }
 if(/[?&]overlay=full/.test(location.search)){ document.documentElement.classList.add('ovfull'); document.body.classList.add('ovfull'); }
 applyProfile();
 loadProfile();

@@ -22,6 +22,7 @@ public sealed class OverlayForm : Form
     private bool _busy;          // screenshot in progress: ignore focus changes
     private bool _ready;
     private DateTime _shownAt;
+    private readonly System.Windows.Forms.Timer _watch = new() { Interval = 500 };
 
     /// <summary>Raised when you choose "Back to Ember" (the game keeps running).</summary>
     public event Action? HomeRequested;
@@ -41,6 +42,14 @@ public sealed class OverlayForm : Form
         {
             // Clicking the game (or Alt+Tab) closes the overlay, like Steam's Quick Access.
             if (!_busy && Visible && DateTime.UtcNow - _shownAt > TimeSpan.FromMilliseconds(400)) HideOverlay(restoreFocus: false);
+        };
+        // Belt and braces: Deactivate isn't always raised (a game grabbing the foreground, a fullscreen switch),
+        // which left the overlay up over the game without the controller. Closed if something else is in front.
+        _watch.Tick += (_, _) =>
+        {
+            if (!Visible || _busy || DateTime.UtcNow - _shownAt < TimeSpan.FromMilliseconds(800)) return;
+            var fg = GetForegroundWindow();
+            if (fg != Handle && fg != IntPtr.Zero) { SystemBridge.Log("overlay: something else is in front, closing"); HideOverlay(restoreFocus: false); }
         };
     }
 
@@ -138,6 +147,7 @@ public sealed class OverlayForm : Form
         if (!Visible) Show();
         TopMost = true;
         ForceForeground(Handle);
+        _watch.Start();
         _web.Focus();
         Event("overlay.shown", new { });
         SystemBridge.Log("overlay shown");
@@ -145,6 +155,7 @@ public sealed class OverlayForm : Form
 
     public void HideOverlay(bool restoreFocus)
     {
+        _watch.Stop();
         if (!Visible) return;
         Event("overlay.hidden", new { });
         Hide();
