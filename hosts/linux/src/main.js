@@ -807,7 +807,10 @@ app.whenReady().then(() => {
   });
   library.on('exited', () => { hideOverlay(); comeBack(); });
   // The launcher closed and the game itself started: put the game's window in front once it's up.
-  library.on('handoff', id => { if (inGamescope()) showGameWhenReady(id); });
+  // Nothing of the game running (it quit, or its launcher closed and the game hasn't started yet): Hearth
+  // comes back; if the game does start, it's put in front again.
+  library.on('gap', () => { hideOverlay(); comeBack(); });
+  library.on('handoff', id => { if (inGamescope()) showGameWhenReady(id); else focusRunningGame(); });
   stream.on('closed', () => library.markExited());
   ipcMain.on('stream:exit', () => stream.close());
   ipcMain.on('nimbus:msg', onMessage);
