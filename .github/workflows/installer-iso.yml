@@ -97,18 +97,20 @@ jobs:
           mkdir -p shots
           sudo qemu-system-x86_64 -m 6144 -smp 4 $( [ -e /dev/kvm ] && echo -enable-kvm -cpu host ) \
             -drive if=pflash,format=raw,readonly=on,file="$code" -drive if=pflash,format=raw,file=vars.fd \
-            -cdrom "$ISO" -drive file=target.img,format=raw,if=virtio -vga virtio -display none \
+            -cdrom "$ISO" -drive file=target.img,format=raw,if=virtio -vga std -display none \
             -serial file:serial.log -monitor unix:/tmp/mon,server,nowait -usb -device usb-tablet &
           sleep 5
-          for t in 60 120 180 240 300; do
-            sleep 60
+          last=0
+          for t in 15 30 60 120 180 240 300; do
+            sleep $((t-last)); last=$t
             echo "screendump /tmp/s$t.ppm" | sudo socat - unix-connect:/tmp/mon >/dev/null 2>&1 || true
             sleep 2
             sudo python3 -c "from PIL import Image; Image.open('/tmp/s$t.ppm').save('shots/at-${t}s.png')" 2>/dev/null || true
           done
           sudo pkill qemu-system || true
           ls -l shots
-          tail -c 3000 serial.log | tr -d '\r' || true
+          sudo cp serial.log shots/serial.log; sudo chmod 644 shots/serial.log
+          tail -c 2500 serial.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\n' '|' | sed 's/^/::notice title=Serial (end)::/' || true
       - name: Publish the screenshots (ci/installer-shots)
         run: |
           git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
