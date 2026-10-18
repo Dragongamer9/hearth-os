@@ -41,6 +41,11 @@ class Plan(unittest.TestCase):
         with self.assertRaises(H.Fail):
             H.check_plan({**GOOD, 'user': {'name': 'sam', 'password': ''}})
 
+    def test_no_password(self):
+        p = H.check_plan({**GOOD, 'user': {'name': 'sam', 'password': '', 'nopassword': True}})
+        self.assertTrue(p['user']['nopassword'])
+        self.assertEqual(p['user']['password'], '')
+
     def test_beside_needs_room(self):
         with self.assertRaises(H.Fail):
             H.check_plan({**GOOD, 'mode': 'beside', 'give': 10 * GIB})

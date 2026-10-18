@@ -42,8 +42,8 @@ SetPage {
         }
         if (!fullName.text.trim()) return "Type your name";
         if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(userName.text)) return "The user name can only have small letters, numbers, - and _";
-        if (!pass1.text) return "Choose a password";
-        if (pass1.text !== pass2.text) return "The passwords don't match";
+        if (!noPass.checked && !pass1.text) return "Choose a password, or turn on No password";
+        if (!noPass.checked && pass1.text !== pass2.text) return "The passwords don't match";
         return "";
     }
     function sizes() {
@@ -61,7 +61,7 @@ SetPage {
         checkProc.running = true;
     }
     function start() {
-        const plan = { mode: mode, disk: disk, user: { full: fullName.text.trim(), name: userName.text, password: pass1.text },
+        const plan = { mode: mode, disk: disk, user: { full: fullName.text.trim(), name: userName.text, password: noPass.checked ? "" : pass1.text, nopassword: noPass.checked },
                        hostname: (hostName.text || (userName.text + "-hearth")), timezone: tz };
         if (mode === "beside") plan.give = Math.round(give);
         error = ""; pct = 0; stageText = "Starting"; stage = "start"; left = -1;
@@ -175,9 +175,14 @@ SetPage {
     }
     Text { visible: page.phase === "setup"; text: "User name (small letters and numbers)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
     SetField { id: userName; property bool edited: false; visible: page.phase === "setup"; placeholder: "e.g. sam"; onSubmitted: edited = true; onTextChanged: if (activeFocus) edited = true }
-    Text { visible: page.phase === "setup"; text: "Password"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
-    SetField { id: pass1; visible: page.phase === "setup"; secret: true; placeholder: "Password" }
-    SetField { id: pass2; visible: page.phase === "setup"; secret: true; placeholder: "The same password again" }
+    SetSwitch {
+        id: noPass; visible: page.phase === "setup"; icon: "lock"; title: "No password"
+        sub: checked ? "Anyone who picks up this device can use it and make system changes. You can add a password later in Settings › Sign-in." : "Skip the password: signing in and system changes just need Enter"
+        onToggled: v => checked = v
+    }
+    Text { visible: page.phase === "setup" && !noPass.checked; text: "Password"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+    SetField { id: pass1; visible: page.phase === "setup" && !noPass.checked; secret: true; placeholder: "Password" }
+    SetField { id: pass2; visible: page.phase === "setup" && !noPass.checked; secret: true; placeholder: "The same password again" }
     Text { visible: page.phase === "setup"; text: "Device name and time zone"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
     SetField { id: hostName; visible: page.phase === "setup"; placeholder: (userName.text || "my") + "-hearth" }
     SetField { id: tzField; visible: page.phase === "setup"; text: page.tz; placeholder: "Time zone, e.g. America/Chicago"; onTextChanged: page.tz = text }
