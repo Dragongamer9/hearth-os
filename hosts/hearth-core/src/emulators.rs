@@ -113,7 +113,7 @@ pub fn scan(roots: &[PathBuf]) -> Vec<crate::library::Game> {
                     id, title: clean_title(&fs), source: "emu", install_path: Some(f.clone()), size_bytes: None, added, store_minutes: 0, store_last_played: 0,
                     installed: true, state: "installed", bytes_done: None, bytes_total: None, launch_uri: None, exe: Some(fs.clone()), args: String::new(),
                     art: vec![("cover", thumb_url(sys, &fs, "Named_Boxarts")), ("wide", thumb_url(sys, &fs, "Named_Snaps")), ("hero", thumb_url(sys, &fs, "Named_Snaps"))],
-                    system: Some(sys.name), system_key: Some(sys.dirs[0]),
+                    system: Some(sys.name), system_key: Some(sys.dirs[0]), ..Default::default()
                 });
             }
         }
