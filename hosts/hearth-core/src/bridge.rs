@@ -67,6 +67,21 @@ impl Bridge {
             "library.get" => Ok(self.library.get(a["rescan"].as_bool().unwrap_or(false))),
             "library.setFav" => io(self.library.store.set_in("favorites", &req("id")?, a["on"].as_bool().unwrap_or(false))),
             "library.setHidden" => io(self.library.store.set_in("hidden", &req("id")?, a["on"].as_bool().unwrap_or(false))),
+            "library.setSources" => {
+                let src = a.clone();
+                io(self.library.store.update(|d| {
+                    let s = d.entry("sources").or_insert(json!({}));
+                    for k in ["steam", "epic", "gog", "xbox", "emu"] { if let Some(v) = src.get(k) { s[k] = json!(v == true); } }
+                }))?;
+                Ok(self.library.get(true))
+            }
+            "library.setSteamBackground" => io(self.library.store.update(|d| { d.insert("steamBackground".into(), json!(a["on"] == true)); })),
+            "library.collection.create" => crate::collections::create(&mut self.library.store, a["name"].as_str().unwrap_or("")),
+            "library.collection.rename" => crate::collections::rename(&mut self.library.store, &req("id")?, a["name"].as_str().unwrap_or("")).map(|_| Value::Null),
+            "library.collection.remove" => crate::collections::remove(&mut self.library.store, &req("id")?).map(|_| Value::Null),
+            "library.collection.set" => crate::collections::set_game(&mut self.library.store, &req("id")?, a["game"].as_str().unwrap_or(""), a["on"] == true).map(|_| Value::Null),
+            "game.options.get" => self.game_options(&req("id")?),
+            "game.options.set" => { let id = req("id")?; crate::game_options::set(&mut self.library.store, &id, &a["options"])?; self.game_options(&id) }
             "game.launch" => {
                 let id = req("id")?;
                 let g = self.library.games.get(&id).ok_or("That game isn't in the library anymore. Try rescanning.")?;
@@ -159,6 +174,13 @@ impl Bridge {
         let save = json!({"press": cur["press"], "hold": cur["hold"], "overamp": cur["overamp"]});
         paths::write_atomic(&paths::config_dir().join("buttons.json"), format!("{}\n", serde_json::to_string_pretty(&save).unwrap()).as_bytes()).map_err(|e| e.to_string())?;
         Ok(self.button_prefs())
+    }
+    pub fn game_options(&self, id: &str) -> Result<Value, String> {
+        let g = self.library.games.get(id).ok_or("That game isn't in the library anymore.")?;
+        let kind = if g.source == "steam" { "steam" } else { "external" };
+        Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
+                  "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
+                  "gamemode": system::has("gamemoderun"), "canResetPrefix": false}))
     }
     /// An event for the UI ({type:'event', name, data}), like the status the top bar refreshes every 30 s.
     pub fn event(name: &str, data: Value) -> Value { json!({"type": "event", "name": name, "data": data}) }
