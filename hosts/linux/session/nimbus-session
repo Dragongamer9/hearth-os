@@ -38,7 +38,15 @@ can_desktop() { have labwc; }
 run_game() {
   log "game mode"
   # shellcheck disable=SC2086
-  gamescope -f $NIMBUS_GAMESCOPE_ARGS -- "$WATCHDOG" "$NIMBUS_APP"
+  # Performance overlay (Quick Access › Performance): mangoapp draws it and reloads this file when Hearth writes it.
+  extra=""
+  if have mangoapp; then
+    export MANGOHUD_CONFIGFILE="${XDG_RUNTIME_DIR:-/tmp}/hearth-mangohud.conf"
+    echo no_display >"$MANGOHUD_CONFIGFILE"
+    extra="--mangoapp"
+  fi
+  # shellcheck disable=SC2086
+  gamescope -f $extra $NIMBUS_GAMESCOPE_ARGS -- "$WATCHDOG" "$NIMBUS_APP"
 }
 
 run_desktop() {

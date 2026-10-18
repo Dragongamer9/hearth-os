@@ -77,6 +77,8 @@ class Bridge {
     library.on('started', id => this.event('game.started', { id }));
     library.on('timeout', id => this.event('game.timeout', { id }));
     library.on('exited', dto => this.event('game.exited', dto));
+    library.on('paused', id => this.event('game.paused', { id, paused: true }));
+    library.on('unpaused', id => this.event('game.paused', { id, paused: false }));
     updates.on('changed', s => this.event('update', s));
 
     // Battery and network change on their own; push them every 30 s like the Windows host.
@@ -212,6 +214,8 @@ class Bridge {
       case 'game.launch': return L.launch(req('id'));
       case 'game.install': await L.install(req('id')); return null;
       case 'game.close': return { ok: await L.closeRunning() };
+      case 'game.pause': return { paused: L.pause() };
+      case 'game.unpause': L.resume(); return { paused: false };
       // Installs and uninstalls happen in Steam and Heroic on Linux; their games never offer these.
       // ProtonDB rating and Steam achievements for a game's page
       case 'game.info': {
@@ -258,11 +262,13 @@ class Bridge {
       case 'perf.stats':
         return { ...(await perf.sample()), battery: this.power.battery(), runningId: L.runningId, runningSince: L.runningSince,
           canFpsLimit: !!(this.platform.canFpsLimit && this.platform.canFpsLimit()), fpsLimit: L.store && L.store.data ? (L.store.data.fpsLimit || 0) : 0,
+          canOverlay: !!(this.platform.perfOverlay && this.platform.perfOverlay.supported()), perfOverlay: L.store && L.store.data ? (L.store.data.perfOverlay || 0) : 0,
           ...(await require('./power-control').status().then(s => ({ powerMode: s.mode.supported ? s.mode.mode : null, powerModes: s.mode.available, tdp: s.tdp })).catch(() => ({ powerMode: 'balanced', tdp: { supported: false } }))) };
       case 'perf.setTdp': return require('./power-control').setTdp(+a.watts);
       case 'apps.list': return this.platform.apps && this.platform.apps.supported() ? this.platform.apps.list() : [];
       case 'apps.focus': return this.platform.apps.focus(+a.id, +a.pid);
       case 'apps.close': return { ok: await this.platform.apps.close(+a.pid) };
+      case 'perf.setOverlay': if (!this.platform.perfOverlay) throw new Error('The performance overlay works in Game Mode.'); return { perfOverlay: this.platform.perfOverlay.set(+a.level || 0) };
       case 'perf.setFpsLimit': return { fpsLimit: await this.platform.setFpsLimit(+a.fps || 0) };
       // In Game Mode Quick Access opens in an overlay window over the game; elsewhere Hearth comes back over it.
       case 'overlay.settings': return this.platform.overlay.settings();

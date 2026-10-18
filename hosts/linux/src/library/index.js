@@ -356,7 +356,8 @@ class Library extends EventEmitter {
     this.running = null;
     clearTimeout(this.timer);
     if (r.startedAt) {
-      const minutes = Math.round((Date.now() - r.startedAt) / 60000);
+      if (r.pausedAt) r.pausedMs = (r.pausedMs || 0) + Date.now() - r.pausedAt;   // paused time isn't play time
+      const minutes = Math.round((Date.now() - r.startedAt - (r.pausedMs || 0)) / 60000);
       this.store.update(d => {
         const s = d.stats[r.id] || (d.stats[r.id] = { minutes: 0, lastPlayed: 0 });
         s.minutes += minutes;
@@ -377,6 +378,35 @@ class Library extends EventEmitter {
     this.poll();
     return ok;
   }
+
+  /**
+   * Pauses the running game (Quick Access › Pause): every one of its processes is frozen with SIGSTOP, so it
+   * uses no CPU or GPU and its battery drain drops to nothing, then picks up exactly where it was. Steam games
+   * too (only the game is paused, not Steam). Not cloud games: those run on someone else's computer.
+   */
+  pause() {
+    const r = this.running;
+    if (!r || !r.startedAt) throw new Error('No game is running.');
+    if (r.cloud) throw new Error("Cloud games can't be paused here: pause from the game's own menu.");
+    if (r.pausedAt) return true;
+    const pids = this.gamePids();
+    if (!pids.length || !proc.signal(pids, 'SIGSTOP')) throw new Error("Couldn't pause the game.");
+    r.pausedAt = Date.now();
+    log(`game paused ${r.id}`);
+    this.emit('paused', r.id);
+    return true;
+  }
+  resume() {
+    const r = this.running;
+    if (!r || !r.pausedAt) return false;
+    proc.signal(this.gamePids(), 'SIGCONT');
+    r.pausedMs = (r.pausedMs || 0) + Date.now() - r.pausedAt;
+    r.pausedAt = 0;
+    log(`game resumed ${r.id}`);
+    this.emit('unpaused', r.id);
+    return true;
+  }
+  get paused() { return !!(this.running && this.running.pausedAt); }
 
   /** Game settings page: what this game can set, and what it has. */
   gameOptions(id) {
