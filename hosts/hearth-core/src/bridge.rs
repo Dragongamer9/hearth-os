@@ -932,4 +932,18 @@ mod tests {
             .filter(|m| !rust.contains(&format!("\"{m}\" =>")) && !rust.contains(&format!("\"{m}\" |")) && !rust.contains(&format!("| \"{m}\""))).collect();
         assert!(missing.is_empty(), "not in the Rust host yet: {missing:?}");
     }
+    #[test]
+    fn read_only_calls_answer() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut b = Bridge::with(Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), crate::profiles::Profiles::open(dir.path()), "0.0.23");
+        for (i, m) in ["host.info", "library.get", "library.downloads", "accounts.status", "display.get", "update.status", "import.status", "osinstall.status",
+                       "overlay.settings", "apps.list", "shell.status", "art.status", "perf.stats", "pad.status", "profiles.get", "profile.get", "desktop.wallpaper",
+                       "audio.get", "sys.status", "power.get", "system.info"].iter().enumerate() {
+            let r = b.handle(&json!({"type": "call", "id": i, "method": m, "args": {}})).unwrap_or_else(|| panic!("{m}: no answer"));
+            assert!(r["ok"] == true || !r["error"].as_str().unwrap_or("").contains("isn't in the Rust version"), "{m}: {r}");
+        }
+        let a = b.handle(&json!({"type": "call", "id": 99, "method": "accounts.status", "args": {}})).unwrap();
+        assert_eq!(a["value"]["accounts"].as_array().unwrap().len(), 4);
+        assert_eq!(b.handle(&json!({"type": "call", "id": 100, "method": "library.downloads", "args": {}})).unwrap()["value"]["active"], json!([]));
+    }
 }
