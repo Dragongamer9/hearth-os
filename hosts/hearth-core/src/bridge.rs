@@ -53,7 +53,10 @@ const DEFERRED: &str = "__deferred";
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
         let store = Store::open(paths::data_dir().join("library.json"));
-        Bridge::with(Library::new(store, paths::home()), crate::profiles::Profiles::open(&paths::data_dir()), version)
+        let mut b = Bridge::with(Library::new(store, paths::home()), crate::profiles::Profiles::open(&paths::data_dir()), version);
+        // Quick Resume games (and a game that was running) are still there after Hearth restarts.
+        b.library.restore_quick();
+        b
     }
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
         use std::sync::Arc;
@@ -209,7 +212,7 @@ impl Bridge {
                 "user": std::env::var("USER").unwrap_or_default(),
                 "live": std::path::Path::new("/etc/hearth-live").exists(),
                 "installer": std::path::Path::new("/etc/hearth-installer").exists(),
-                "features": ["restartApp", "exportLogs", "powerButton", "overamp"], "setupDone": self.setup_done(),
+                "features": ["restartApp", "exportLogs", "powerButton", "overamp", "quickResume"], "setupDone": self.setup_done(),
                 "openInstaller": std::path::Path::new("/etc/hearth-live").exists() && crate::osinstall::handoff(false),
             })),
             "library.get" => Ok(self.library.get(a["rescan"].as_bool().unwrap_or(false))),
@@ -465,8 +468,43 @@ impl Bridge {
                 if pc["ok"] != true { return Err(pc["reason"].as_str().unwrap_or("Not now").to_string()); }
                 let r = self.library.launch(&id)?;
                 if let Some(url) = r["stream"].as_str() { (self.stream)(Some((url, r["title"].as_str().unwrap_or("Xbox Cloud Gaming")))); }
-                Ok(json!({"tracked": r["tracked"]}))
+                (self.emit)(Bridge::event("quickResume", self.library.quick_state()));
+                if r["resumed"] == true { (self.host)("resumeGame", &Value::Null); }
+                Ok(json!({"tracked": r["tracked"], "resumed": r["resumed"] == true}))
             }
+            // Quick Resume: games put aside stay frozen in memory and carry on where they were
+            "game.quickResume" => {
+                let id = req("id")?;
+                let pc = self.profiles.can_play(Some(&id), chrono::Local::now(), 0.0);
+                if pc["ok"] != true { return Err(pc["reason"].as_str().unwrap_or("Not now").to_string()); }
+                self.library.quick_resume(&id)?;
+                (self.host)("resumeGame", &Value::Null);
+                let st = self.library.quick_state();
+                (self.emit)(Bridge::event("quickResume", st.clone()));
+                Ok(st)
+            }
+            "game.putAside" => {
+                self.library.freeze_running()?;
+                (self.host)("comeBack", &Value::Null);
+                let st = self.library.quick_state();
+                (self.emit)(Bridge::event("quickResume", st.clone()));
+                Ok(st)
+            }
+            "game.quickClose" => {
+                let dto = self.library.close_frozen(&req("id")?)?;
+                let st = self.library.quick_state();
+                (self.emit)(Bridge::event("quickResume", st.clone()));
+                Ok(json!({"state": st, "game": dto}))
+            }
+            "quickResume.set" => {
+                let on = a["on"] != false;
+                io(self.library.store.update(|d| { d.insert("quickResume".into(), json!(on)); }))?;
+                Ok(self.library.quick_state())
+            }
+            // Turned off with the games kept (hibernation: memory saved to the drive), the closest Linux gets to
+            // Xbox's Quick Resume surviving a power-off.
+            "power.hibernateStatus" => Ok(crate::power::hibernate_status()),
+            "power.hibernateSetup" => { crate::admin::run(&["hibernate-setup"], None, &mut |_| {})?; Ok(crate::power::hibernate_status()) }
             "game.close" => {
                 if self.library.running.as_ref().map(|r| r.cloud).unwrap_or(false) {
                     (self.stream)(None);
@@ -551,6 +589,7 @@ impl Bridge {
             "audio.setDefault" => { system::audio::set_default(&req("id")?)?; Ok(system::audio::get(self.max_volume())) }
             "perf.stats" => {
                 let mut s = crate::perf::sample();
+                s["quickResume"] = self.library.quick_state();
                 let st = crate::power::status();
                 s["battery"] = system::battery(std::path::Path::new("/sys/class/power_supply"));
                 s["runningId"] = json!(self.library.running_id()); s["runningSince"] = json!(self.library.running_since());

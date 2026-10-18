@@ -399,7 +399,9 @@ impl GameMode {
                 } else if self.overlay_on.load(Ordering::SeqCst) { self.overlay_look(true, true); }
             }
             "closeGame" => { if let Ok(mut b) = self.bridge.lock() { b.library.close_running(); } }
-            "comeBack" => self.come_back(),
+            "comeBack" => { self.hide_overlay(); self.come_back(); }
+            // Quick Resume: the game picked is running again; put it in front.
+            "resumeGame" => { self.hide_overlay(); self.resume_game(); }
             _ => {}
         }
     }
