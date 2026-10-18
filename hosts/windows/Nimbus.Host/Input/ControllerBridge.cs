@@ -56,6 +56,8 @@ public sealed class ControllerBridge : IDisposable
     public bool HoldViewOpensOverlay { get; set; }
     /// <summary>In Desktop Mode the controller is a mouse everywhere except Ember's own windows and games.</summary>
     public Func<bool> DesktopMode { get; set; } = () => false;
+    /// <summary>Menu (☰) on the desktop: Mantel's launcher.</summary>
+    public event Action? DesktopMenu;
     /// <summary>Raised on the bridge thread when the overlay should open or close.</summary>
     public event Action? OverlayToggle;
     /// <summary>Raised on the bridge thread when the overlay is in front: button name, like <see cref="UiButton"/>.</summary>
@@ -270,6 +272,16 @@ public sealed class ControllerBridge : IDisposable
             if (name is not null) { if (target == Target.Overlay) OverlayButton?.Invoke(name); else UiButton?.Invoke(name); }
         }
         else if (target is Target.Steam or Target.Web or Target.NimbusDialog) Press(b, target);
+        // Desktop Mode, like Hearth's Mantel: Y opens the on-screen keyboard, B is Esc, LB/RB switch windows.
+        else if (DesktopMode() && target == Target.Other)
+        {
+            switch (b)
+            {
+                case Y: ShowKeyboard(); break;
+                case B: Key(VK_ESCAPE); break;
+                case START: DesktopMenu?.Invoke(); break;   // Mantel's launcher
+            }
+        }
         // Other apps: only the controller mouse (if on) acts; no keys are sent to them.
     }
 
