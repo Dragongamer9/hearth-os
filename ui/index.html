@@ -1237,7 +1237,7 @@ function viewDownloads(){
 }
 
 const STABS = [['profile','user','Profile'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
-  ['controller','pad','Controls'],['sources','lib','Library sources'],['import','dl','Import games'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
+  ['controller','pad','Controls'],['sources','lib','Library sources'],['import','dl','Import games'],['switch','dl','Switch to Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
 const note = t => `<div class="note">${t}</div>`;
@@ -1777,6 +1777,54 @@ function pageImport(){
   return h + pageTakeover(st);
 }
 
+// ---------- Settings › Switch to Hearth OS (Ember on Windows) ----------
+// Make room on C:, write the installer USB, restart into it. Steps that change the PC ask Windows for an
+// administrator OK (the UAC prompt) and show their progress here.
+const SW = {s:null};
+if(!host) SW.s={uefi:true,fastStartup:true,free:3.1e11,size:9.9e11,plugged:true,games:23,gameBytes:6.4e11,gpu:'AMD Radeon RX 7800 XT',edition:'amd-intel',isoUrl:'',isoPage:'https://dragongamer9.github.io/hearth-os/#download',iso:null,isoSize:0,usb:[{disk:2,name:'SanDisk Ultra',size:3.2e10,bigEnough:true}],job:null};
+function loadSwitch(){ if(host && !LINUX) call('switch.status',{},60000).then(r=>{ SW.s=r; if(S.view==='settings'&&S.settingsTab==='switch') render(null,true); }).catch(e=>toast(e.message)); }
+function swPrep(){
+  const s=SW.s, maxGb=Math.floor((s.free-20e9)/1e9);
+  if(maxGb<64) return toast('Windows needs at least 84 GB free for this (64 GB for Hearth, 20 GB left for Windows). Free up space first.');
+  const opts=[64,128,256,512,1024].filter(g=>g<=maxGb);
+  openSheet({title:'How much space for Hearth?', sub:`Taken from C:, which keeps the rest (${gb(s.free)} free now). Games you bring over need room too.`, items:opts.map(g=>({label:g+' GB'+(g*1e9>=s.gameBytes+64e9&&!opts.some(x=>x<g&&x*1e9>=s.gameBytes+64e9)?' (fits your games)':''), icon:'dl', run:()=>setTimeout(()=>openSheet({title:`Shrink Windows by ${g} GB?`, sub:'Windows makes the room itself; your files stay. Fast Startup is turned off so Hearth can reach the drive safely. Windows asks for your OK next.', items:[{label:'Make room', icon:'check', run:()=>call('switch.prepare',{gb:g},60000).then(r=>{ SW.s=r; render(null,true); }).catch(e=>toast(e.message))}]}),250)}))});
+}
+function swUsb(disk,name){
+  openSheet({title:`Erase ${name}?`, sub:'Everything on this USB drive is erased and replaced with the Hearth installer. Windows asks for your OK next.', items:[
+    {label:'Erase it and write the installer', icon:'trash', run:()=>call('switch.writeUsb',{disk},60000).then(r=>{ SW.s=r; render(null,true); }).catch(e=>toast(e.message))}]});
+}
+function swRestart(){
+  openSheet({title:'Restart into the installer?', sub:'Save your work first. In the blue menu that comes up, choose "Use a device", then your USB drive. On the USB, pick Install next to Windows › Open the installer, and choose "Use free space".', items:[
+    {label:'Restart now', icon:'restart', run:()=>call('switch.restart').catch(e=>toast(e.message))}]});
+}
+function pageSwitch(){
+  if(!SW.s) return note(host?'Checking this PC…':'');
+  const s=SW.s, j=s.job;
+  let h=`<div class="row"><span class="ricon">${HEARTH_MARK}</span><div class="rt"><b>Move this PC to Hearth OS</b><small>Keep Windows for now, install Hearth next to it, and bring your games over. Once you're happy, Hearth can remove Windows and take the whole drive. Back up anything important first: changing drives is never completely risk-free.</small></div></div>`;
+  if(j && j.state==='running') h+=`<div class="su-card"><div class="su-head"><div><b>${esc({prepare:'Making room for Hearth',writeusb:'Making the installer USB',download:'Downloading the installer'}[j.kind]||'Working')}</b><div class="muted" style="font-size:13px;margin-top:4px">${esc(j.text||'')}</div></div><div class="pc">${Math.round(j.pct||0)}%</div></div><div class="bar" style="height:8px"><i style="width:${Math.round(j.pct||0)}%"></i></div></div>`;
+  h+=shead('This PC');
+  const ok=(t,sub,good)=>`<div class="row"><span class="ricon">${good?I.check:I.info}</span><div class="rt"><b>${t}</b><small>${sub}</small></div></div>`;
+  h+=ok(s.uefi?'Starts with UEFI':'Starts in legacy (BIOS) mode', s.uefi?'Hearth can install next to Windows':'Hearth needs UEFI. Switch the PC to UEFI in its firmware settings, or install on a separate drive', s.uefi);
+  h+=ok(`${gb(s.free)} free on C:`, s.free>=84e9?`Up to ${Math.floor((s.free-20e9)/1e9)} GB can go to Hearth`:'Hearth needs 64 GB, plus 20 GB left for Windows', s.free>=84e9);
+  h+=ok(`${s.games} installed game${s.games===1?'':'s'}`, s.games?`${gb(s.gameBytes)} · Hearth brings them over after installing`:'Nothing to bring over', true);
+  if(s.gpu) h+=ok(s.gpu, `Uses the ${s.edition==='nvidia'?'Nvidia':'AMD / Intel'} edition of Hearth OS`, true);
+  if(!s.plugged) h+=ok('Plug in the charger', 'Changing drives on battery is risky if it runs out', false);
+  h+=shead('1 · Make room');
+  h+=`<button class="row" data-f data-k="sw-prep" data-act="swPrep"><span class="ricon">${I.dl}</span><div class="rt"><b>Make room for Hearth</b><small>Shrinks C: and turns off Fast Startup${s.fastStartup?' (it\'s on now)':''}. Takes a few minutes.</small></div><div class="rv">›</div></button>`;
+  h+=shead('2 · Installer USB');
+  if(s.iso) h+=ok('Installer ready', esc(s.iso)+(s.isoSize?' · '+gb(s.isoSize):''), true);
+  if(s.isoUrl) h+=`<button class="row" data-f data-k="sw-dl" data-act="swDl"><span class="ricon">${I.dl}</span><div class="rt"><b>Download the installer</b><small>About 7 GB, into Downloads</small></div></button>`;
+  else h+=note(`Download the ${s.edition==='nvidia'?'Nvidia':'AMD / Intel'} installer from <b>${esc(s.isoPage)}</b>, then choose it here.`);
+  h+=`<button class="row" data-f data-k="sw-iso" data-act="swIso"><span class="ricon">${I.lib}</span><div class="rt"><b>${s.iso?'Choose a different installer file':'Choose the installer file'}</b><small>The Hearth OS .iso you downloaded</small></div><div class="rv">›</div></button>`;
+  const usb=(s.usb||[]);
+  if(!usb.length) h+=note('Plug in a USB drive (16 GB or more). Everything on it will be erased.');
+  h+=usb.map(u=>`<button class="row" data-f data-k="sw-usb-${u.disk}" ${u.bigEnough&&s.iso?`data-act="swUsb" data-disk="${u.disk}" data-name="${esc(u.name)}"`:''}><span class="ricon">${I.dl}</span><div class="rt"><b>Write it to ${esc(u.name)}</b><small>${gb(u.size)}${!u.bigEnough?' · too small (needs 16 GB)':!s.iso?' · choose the installer first':' · erases this drive'}</small></div></button>`).join('');
+  h+=shead('3 · Install');
+  h+=`<button class="row" data-f data-k="sw-restart" data-act="swRestart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart into the installer</b><small>Opens Windows' start-up menu: choose "Use a device", then the USB drive</small></div></button>`;
+  h+=note('After installing, Hearth finds your Windows games on its first start (Settings › Import games). When everything\'s over, Settings › Import games › Remove the old system gives Hearth the whole drive.');
+  return h;
+}
+
 // ---------- Settings › Shell ----------
 const SHELL = {status:null};
 function loadShellStatus(){ if(host) call('shell.status').then(s=>{ SHELL.status=s; refreshUI(); }).catch(e=>toast(e.message)); }
@@ -1903,9 +1951,10 @@ function viewSettings(){
   if(t==='shell') body = pageShell();
   if(t==='updates') body = pageUpdates();
   if(t==='import') body = pageImport();
+  if(t==='switch') body = pageSwitch();
   if(t==='about') body = pageAbout();
   return `<div class="settings">
-    <div class="snav">${STABS.filter(([k])=>(k!=='signin'&&k!=='import')||LINUX).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
+    <div class="snav">${STABS.filter(([k])=>k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX)).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
     <div class="rows">${body}</div></div>`;
 }
 
@@ -2321,6 +2370,11 @@ function act(el){
     case 'tkoBoot': TKO.boot=!TKO.boot; return render(null,true);
     case 'tkoRun': return tkoRun();
     case 'tkoDone': if(IMP.s){ IMP.s.takeoverResult=null; IMP.s.takeoverError=null; } return render(null,true);
+    case 'swPrep': return swPrep();
+    case 'swIso': return call('switch.pickIso',{},600000).then(r=>{ SW.s=r; render(null,true); }).catch(e=>toast(e.message));
+    case 'swDl': return call('switch.download',{url:SW.s.isoUrl}).then(r=>{ SW.s=r; render(null,true); }).catch(e=>toast(e.message));
+    case 'swUsb': return swUsb(+d.disk, d.name);
+    case 'swRestart': return swRestart();
     case 'impDone': if(IMP.s) IMP.s.result=null; IMP.sel.clear(); return render(null,true);
     case 'sysUpdInstall': return call('system.update.install').then(onSystemUpdate).catch(e=>toast(e.message));
     case 'updCheck': return call('update.check',{},60000).then(onUpdate).catch(e=>toast(e.message));
@@ -2842,6 +2896,7 @@ function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
   if(name==='systemUpdate') return onSystemUpdate(data);
   if(name==='import') return onImport(data);
+  if(name==='switch'){ if(SW.s) SW.s.job=data.job; if(data.job && data.job.state==='done') loadSwitch(); if(data.job && data.job.state==='error') toast(data.job.error||'That step didn\'t work'); if(S.view==='settings'&&S.settingsTab==='switch') render(null,true); return; }
   if(name==='library.changed'){ if(!OVERLAY) loadLibrary(false); return; }
   if(name==='desktopFailed') return openSheet({title:"Mantel (Desktop Mode) couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});
   if(name==='open'){ if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
@@ -2925,6 +2980,7 @@ function onSettingsTab(t){
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
   if(t==='signin') loadLogin();
   if(t==='import') loadImport();
+  if(t==='switch') loadSwitch();
   if(t==='system' || t==='about') loadSysInfo();
   if(t==='system'){ loadBrowser(); loadArtStatus(); }
   if(t==='about'){ if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }

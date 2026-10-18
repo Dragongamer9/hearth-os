@@ -28,6 +28,8 @@ public sealed class SystemBridge : IDisposable
     public void AddListener(Action<string> post) => _listeners.Add(post);
     public Nimbus.Host.Library.LibraryService Games { get; } = new();
     public Nimbus.Host.Updates.UpdateService Updater { get; }
+    /// <summary>Settings › Switch to Hearth OS.</summary>
+    public Nimbus.Host.Switch.SwitchToHearth Switch { get; }
     /// <summary>Set by the window once the controller bridge is running.</summary>
     public Input.ControllerBridge? Pad { get; set; }
     private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 6 * 60 * 60 * 1000 };
@@ -55,6 +57,7 @@ public sealed class SystemBridge : IDisposable
         _bt.Pin += (pin, confirm) => Event("bt.pin", new { pin, confirm });
 
         Updater = new Nimbus.Host.Updates.UpdateService(() => Games.AutoUpdateCheck);
+        Switch = new Nimbus.Host.Switch.SwitchToHearth((n, d) => Event(n, d), Games);
         Updater.Changed += () => Event("update", Updater.Status());
         _updateTimer.Tick += async (_, _) => { if (Games.AutoUpdateCheck) await Updater.CheckAsync(); };
         _updateTimer.Start();
@@ -394,6 +397,18 @@ public sealed class SystemBridge : IDisposable
                 if ((_ui as ShellForm)?.Mantel is { Active: true } m) m.ApplyWallpaper();
                 return await DispatchAsync("shell.status", a);
             }
+            case "switch.status": return await Switch.StatusAsync();
+            case "switch.prepare": Switch.Prepare(Int(a, "gb")); return await Switch.StatusAsync();
+            case "switch.pickIso":
+            {
+                string? picked = null; Exception? err = null;
+                _ui.Invoke((MethodInvoker)(() => { try { picked = Switch.PickIso(_ui.FindForm()!); } catch (Exception ex) { err = ex; } }));
+                if (err is not null) throw err;
+                return await Switch.StatusAsync();
+            }
+            case "switch.download": _ = Switch.DownloadIsoAsync(Str(a, "url") ?? "").ContinueWith(t => { if (t.Exception is not null) Event("switch", new { job = new { kind = "download", state = "error", pct = 0, text = "", error = t.Exception.InnerException?.Message } }); }); return await Switch.StatusAsync();
+            case "switch.writeUsb": Switch.WriteUsb(Int(a, "disk")); return await Switch.StatusAsync();
+            case "switch.restart": Nimbus.Host.Switch.SwitchToHearth.RestartToBootMenu(); return null;
             case "shell.setStartMode":
             {
                 var mode = Req(a, "mode");
