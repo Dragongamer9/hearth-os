@@ -71,3 +71,25 @@ test('system update reports progress, then the new status', async () => {
   assert.deepStrictEqual(r.status, status);
   assert.ok(seen.some(s => s.state === 'updating' && s.line === 'Fetching layer 3/9'));
 });
+
+test('system update: detailed stages fill in download, install and apps', async () => {
+  const lines = [
+    'stage: ' + JSON.stringify({ phase: 'download', pct: 50, done: 5e8, total: 1e9, bps: 2e7, eta: 25, layer: 3, layers: 9 }),
+    'stage: ' + JSON.stringify({ phase: 'install', pct: 40, step: 2, steps: 5, desc: 'Deploying' }),
+    'stage: ' + JSON.stringify({ phase: 'apps', pct: 0, n: 1, total: 4, desc: 'Updating org.x.App' }),
+    JSON.stringify({ booted: { version: '0.0.18' } }),
+  ];
+  const a = new SystemAdmin({ exists: () => true, spawnFn: fakeSpawn(lines) });
+  const seen = [];
+  a.on('update', s => seen.push(JSON.parse(JSON.stringify(s))));
+  const r = await a.installUpdate();
+  assert.strictEqual(r.state, 'idle');
+  assert.ok(r.lastRun.ok);
+  const last = seen.filter(s => s.state === 'updating').pop();
+  assert.strictEqual(last.stage.phase, 'apps');
+  assert.strictEqual(last.phases.download.pct, 100);   // a later phase finishes the earlier ones
+  assert.strictEqual(last.phases.install.pct, 100);
+  assert.strictEqual(last.phases.apps.total, 4);
+  assert.strictEqual(last.speeds.length, 1);
+  assert.strictEqual(last.speeds[0][1], 2e7);
+});
