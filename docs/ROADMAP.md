@@ -43,14 +43,23 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Overlay rework: stays on screen see-through and only changes visibility and input (Game Bar style), one focus owner so the screen stops jumping back, Ember closes a stuck overlay
 - [x] Live player counter: Hearth and Ember report in, the count shows on the website and About page (off switch in Settings › System › Privacy)
 
+## 0.0.21 (released)
+
+- [x] Hearth's own installer instead of Fedora's: screens in the Hearth app (controller) and Mantel (mouse and keyboard), no-password option
+- [x] Sign-in choices: sign in automatically or not, ask for the password after sleep (Game Mode lock screen too)
+- [x] Ember: Desktop style and wallpaper in Settings › Shell
+
 ## 0.0.22
 
+- [x] Hearth's own login screen (SDDM theme like the lock screen, controller works on it)
+- [x] Hearth Browser, first version: tabs, address bar with suggestions, bookmarks, history, downloads, find, zoom, start page, settings
+- [x] Ember: Hearth Settings window in Mantel; taskbar down the side on upright screens
+- [x] Overlay doesn't flash black when opened over a fullscreen game
 - [x] Ember's full Mantel looks and works like Hearth OS's: floating taskbar, launcher, Quick Access, power menu, Hearth menu (Xbox button), controls card, volume bar, fireside wallpaper, Hearth's controller layout
 
 ## 0.0.25
 
 - [ ] New live ISOs (AMD/Intel and Nvidia) with Install next to Windows (no ISOs before this)
-- [x] Hearth's own installer instead of Fedora's: screens in the Hearth app (controller) and Mantel (mouse and keyboard), you pick when you click Install
 - [x] Installer test in CI: installs onto a disk image and boots it
 
 ## Not started
@@ -62,6 +71,8 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - SourceForge project for the ISOs (then the website's download buttons go live)
 - Cosign key for signing the OS images (`SIGNING_SECRET`); then turn on signature checks in Hearth OS
 
-## Parked
+## Hearth Browser, next
 
-- Hearth Browser (Electron)
+- Ad and tracker blocking
+- Controller: move between links with the D-pad in Game Mode
+- Hearth Browser on Windows (Ember)
