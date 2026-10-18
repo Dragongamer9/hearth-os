@@ -302,6 +302,8 @@ impl Bridge {
             "takeover.plan" => self.importer.takeover_plan(self.pending_epic().len()),
             "takeover.run" => self.importer.takeover_run(&a["remove"], a["windowsBoot"] != false, self.pending_epic().len()),
             "art.status" => Ok(crate::artcache::status()),
+            // Steam friends: who's online and what they're playing
+            "steam.friends" => Ok(crate::friends::list(&self.library.home)),
             // Game Mode: frame-rate limit, performance overlay, Quick Access over the game, open apps
             "perf.setFpsLimit" => { let n = crate::gamescope::set_fps_limit(a["fps"].as_f64().unwrap_or(0.0).max(0.0).round() as u64)?; io(self.library.store.update(|d| { d.insert("fpsLimit".into(), json!(n)); }))?; Ok(json!({"fpsLimit": n})) }
             "perf.setOverlay" => { let n = crate::gamescope::set_perf_overlay(a["level"].as_f64().unwrap_or(0.0).max(0.0).round() as u64)?; io(self.library.store.update(|d| { d.insert("perfOverlay".into(), json!(n)); }))?; Ok(json!({"perfOverlay": n})) }
@@ -946,7 +948,7 @@ fn shell_install(remove: bool) -> Result<(), String> {
 }
 
 fn features() -> Vec<&'static str> {
-    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume"];
+    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends"];
     if crate::guide::controller_available() { f.push("remap"); }
     f
 }
