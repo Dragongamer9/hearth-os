@@ -117,6 +117,9 @@ class Bridge {
         return this.buttonsInfo();
       }
 
+      // Game art kept on the device (Settings › System)
+      case 'art.status': return require('./art-cache').artCache().status();
+
       // Web browser (Aloha), Settings › System
       case 'browser.status': return this.browser.status();
       case 'browser.act': this.browser.act(req('action')); return this.browser.status();

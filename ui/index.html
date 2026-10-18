@@ -811,7 +811,13 @@ function saveLook(){ try{ localStorage.setItem('nimbus.look', JSON.stringify(LOO
 function renderTopNav(){
   const n=$('#topnav'); if(!n) return;
   const items=[['home','Home'],['library','Library'],['downloads','Downloads'],['settings','Settings']];
-  n.innerHTML = items.map(([v,l])=>`<button class="${S.view===v?'cur':''}" data-f data-k="tn-${v}" data-act="nav" data-view="${v}">${l}</button>`).join('');
+  const html = items.map(([v,l])=>`<button class="${S.view===v?'cur':''}" data-f data-k="tn-${v}" data-act="nav" data-view="${v}">${l}</button>`).join('');
+  // Only rebuild when it changed: Settings refreshes often (battery, Wi-Fi), and rebuilding these buttons
+  // under the selection threw it back to the first setting (Profile), so Home/Library/Downloads couldn't be reached.
+  if(n.dataset.html===html) return;
+  const k = focused && n.contains(focused) ? focused.dataset.k : null;
+  n.innerHTML = html; n.dataset.html = html;
+  if(k){ const el=n.querySelector(`[data-k="${k}"]`); if(el){ focused=el; el.classList.add('focus'); el.focus({preventScroll:true}); } }
 }
 function layoutPreview(id){
   if(id==='tiles') return `<i class="glow" style="left:6%;top:14%;width:36%;height:52%"></i>${[0,1,2,3].map(i=>`<i style="left:${45+(i%2)*25}%;top:${14+Math.floor(i/2)*27}%;width:22%;height:24%"></i>`).join('')}
@@ -918,6 +924,7 @@ function pageSystem(){
     h += `<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Storage</b><small>${gb(st.freeBytes)} free of ${gb(st.totalBytes)}</small><div class="storage"><i style="width:${pct}%"></i></div></div><div class="rv">${pct}% used</div></div>`;
   }
   const tz=(()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }catch(e){ return ''; } })();
+  if(LINUX && ART.s) h += shead('Offline') + `<div class="row" data-f data-k="sy-art"><span class="ricon">${I.dl}</span><div class="rt"><b>Game art on this device</b><small>${ART.s.pictures} pictures (${Math.round(ART.s.bytes/1e6)} MB)${ART.s.waiting?` · ${ART.s.waiting} still downloading`:' · your library looks the same offline'}</small></div></div>`;
   if(LINUX) h += browserRows();
   h += shead('Date and time')
     + infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
@@ -934,6 +941,8 @@ function pageSystem(){
 }
 // ---------- Settings › System › Web browser (Aloha, Linux) ----------
 const BROWSER = {s:null};
+const ART = {s:null};
+function loadArtStatus(){ if(LINUX && host) call('art.status').then(r=>{ ART.s=r; refreshUI(); }).catch(()=>{}); }
 function loadBrowser(){ if(LINUX) call('browser.status').then(r=>{ BROWSER.s=r; refreshUI(); }).catch(()=>{}); }
 function browserRows(){
   const b=BROWSER.s;
@@ -1627,7 +1636,8 @@ function render(focusKey, quiet){
   else { v.classList.remove('vfade'); void v.offsetWidth; v.classList.add('vfade'); }
   $('#vtitle').textContent = S.view==='game' ? (G(S.game)?.title||'') : TITLES[S.view];
   renderTopNav();
-  if(!S.layers.length && (focusKey || wasInView || !focused || !document.contains(focused))){
+  const inTop = focused && document.contains(focused) && !v.contains(focused) && focused.closest('#top, header, .topbar, #topnav');
+  if(!S.layers.length && !(quiet && inTop && !focusKey) && (focusKey || wasInView || !focused || !document.contains(focused))){
     const el = k && $(`#view [data-k="${k}"]`);
     if(quiet && el){ if(focused) focused.classList.remove('focus'); focused=el; el.classList.add('focus'); el.focus({preventScroll:true}); }
     else setFocus(el || $('#view [data-f]'), true);
@@ -1875,8 +1885,13 @@ function closeLayer(){
            : (prev?.k && r.querySelector(`[data-k="${prev.k}"]`)) || (S.layers.length ? r.querySelector('[data-f]') : $('#view [data-f]'));
   setFocus(el, true);
   renderFooter(); blip(420,.05);
+  if(OVERLAY && !S.layers.length) setTimeout(overlayEmptyCheck, 50);
 }
 function closeAll(){ while(S.layers.length) closeLayer(); }
+// The overlay with nothing open in it is just an invisible window holding the controller: close it.
+function overlayEmptyCheck(){ if(OVERLAY && OV.shown && !S.layers.length) overlayClose(); }
+// While the overlay is open, tell Hearth every second that this page is alive (it reloads a frozen one).
+if(OVERLAY) setInterval(()=>{ if(OV.shown) send({type:'overlay', action:'alive'}); }, 1000);
 function toggleLayer(id){ if(S.layers.at(-1)===id){ closeLayer(); resumeIfGame(id); } else { closeAll(); openLayer(id); } }
 // Leaving Quick Access with a game running goes back to the game (the Linux host hides Nimbus; Windows ignores it).
 function resumeIfGame(closed){ if(LINUX && host && closed==='qam' && S.running && !S.layers.length) send({type:'resume'}); }
@@ -2500,6 +2515,8 @@ function onSysEvent(name, data){
   if(name==='game.exited') return gameEnded(data);
   if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
   if(name==='osd') return showOsd(data);
+  if(name==='library.art'){ if(!LIB.loading && !OVERLAY) loadLibrary(false); return; }
+  if(name==='net'){ S.online=!!data.online; toast(data.online?'Back online':"You're offline. Installed games and your library still work."); return; }
   if(name==='browser'){ BROWSER.s=data; if(S.view==='settings' && S.settingsTab==='system') render(null,true); if(data && data.error && data.state==='idle') toast(data.error); return; }
   if(name==='power.menu'){ if(OVERLAY && OV.busy){ OV.wantPower=true; return; } if(S.layers.at(-1)!=='power'){ if(!OVERLAY) closeAll(); openLayer('power'); } return; }
   if(name==='overlay.shown') return overlayShown();
@@ -2568,7 +2585,7 @@ function onSettingsTab(t){
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
   if(t==='signin') loadLogin();
   if(t==='system' || t==='about') loadSysInfo();
-  if(t==='system') loadBrowser();
+  if(t==='system'){ loadBrowser(); loadArtStatus(); }
   if(t==='about'){ if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});

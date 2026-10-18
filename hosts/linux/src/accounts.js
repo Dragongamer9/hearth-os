@@ -11,6 +11,7 @@ const os = require('node:os');
 const vdf = require('./library/vdf');
 const steam = require('./library/steam');
 const { DATA_DIR, exists } = require('./util');
+const { artCache } = require('./art-cache');
 
 const PROFILE_DIR = path.join(DATA_DIR, 'profile');
 const IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
@@ -78,8 +79,8 @@ class Profile {
     return {
       name: p.name || os.userInfo().username, status: p.status, avatar: p.avatar, accent: p.accent, background: p.background,
       customAvatar: url('avatar'), customBackground: url('background'),
-      storeAvatars: { steam: url('steam'), xbox: this.accounts ? this.accounts.xbox.gamerpic : null,
-        gog: this.accounts ? this.accounts.gog.profile().avatar : null },
+      storeAvatars: { steam: url('steam'), xbox: this.accounts ? artCache().url(this.accounts.xbox.gamerpic) : null,
+        gog: this.accounts ? artCache().url(this.accounts.gog.profile().avatar) : null },
     };
   }
 
