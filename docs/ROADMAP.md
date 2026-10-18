@@ -57,7 +57,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Overlay doesn't flash black when opened over a fullscreen game
 - [x] Ember's full Mantel looks and works like Hearth OS's: floating taskbar, launcher, Quick Access, power menu, Hearth menu (Xbox button), controls card, volume bar, fireside wallpaper, Hearth's controller layout
 
-## 0.0.23
+## 0.0.23 (released)
 
 - [x] Profiles on Hearth: "Who's playing?", each person's own Steam account, Epic/GOG/Xbox sign-ins, favorites and play time; installed games shared
 - [x] Faster Game Mode ↔ Desktop switches
