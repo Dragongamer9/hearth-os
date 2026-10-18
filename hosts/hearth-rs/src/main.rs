@@ -97,9 +97,27 @@ fn stream(app: &tauri::AppHandle, open: Option<(&str, &str)>, windowed: bool) {
         .background_color(tauri::window::Color(0, 0, 0, 255))
         .build();
     match r {
-        Ok(w) => w.on_window_event(|e| if let tauri::WindowEvent::Destroyed = e {
-            hearth_core::stores::notify(serde_json::json!({"type": "internal", "what": "streamClosed"}));
-        }),
+        Ok(w) => {
+            // WebRTC (the stream itself), media sources and protected media: off in WebKit unless turned on.
+            #[cfg(target_os = "linux")]
+            {
+                let again = url.to_string();
+                let _ = w.with_webview(move |wv| {
+                    use webkit2gtk::{SettingsExt, WebViewExt};
+                    if let Some(s) = wv.inner().settings() {
+                        s.set_enable_webrtc(true);
+                        s.set_enable_media_stream(true);
+                        s.set_enable_mediasource(true);
+                        s.set_enable_encrypted_media(true);
+                        s.set_media_playback_requires_user_gesture(false);
+                    }
+                    wv.inner().load_uri(&again);
+                });
+            }
+            w.on_window_event(|e| if let tauri::WindowEvent::Destroyed = e {
+                hearth_core::stores::notify(serde_json::json!({"type": "internal", "what": "streamClosed"}));
+            });
+        }
         Err(e) => hearth_core::bridge::log(&format!("stream window: {e}")),
     }
 }
