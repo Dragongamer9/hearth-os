@@ -330,7 +330,8 @@ class Library extends EventEmitter {
     } else if (!pids.length) {
       // Older games start with a launcher (Neverwinter Nights, many GOG classics): you press Play, the launcher
       // closes and the game itself starts a moment later. Only call it over once nothing's run for a while.
-      if (!r.goneSince) r.goneSince = Date.now();
+      if (r.closing) return this.markExited();   // you closed it: no waiting
+      if (!r.goneSince) { r.goneSince = Date.now(); this.emit('gap', r.id); }   // Hearth comes back meanwhile
       if (Date.now() - r.goneSince > EXIT_GRACE_MS) return this.markExited();
     } else if (r.goneSince) {
       r.goneSince = 0;
@@ -370,6 +371,7 @@ class Library extends EventEmitter {
   async closeRunning() {
     const r = this.running;
     if (!r) return true;
+    r.closing = true;
     if (r.cloud) { this.stream && this.stream.close(); return true; }
     const ok = await proc.stop(proc.gameProcesses(r.track));
     this.poll();
