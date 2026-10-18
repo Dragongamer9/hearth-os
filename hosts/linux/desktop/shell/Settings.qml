@@ -12,13 +12,15 @@ Singleton {
     property string wallpaper: ""        // a picture file; "" = the animated fireside; "anim:lava" / "anim:aurora" = the other moving ones
     property bool reduceMotion: false    // still wallpaper, fewer animations
     property real pointerSpeed: 1.0      // controller pointer speed, 0.4 – 2
+    property bool lockOnWake: false      // lock the screen when the device goes to sleep (Desktop Mode)
     property bool loaded: false
 
-    readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed"]
+    readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake"]
     onNightLightChanged: save()
     onWallpaperChanged: save()
     onReduceMotionChanged: save()
     onPointerSpeedChanged: save()
+    onLockOnWakeChanged: save()
     function save() {
         if (!loaded) return;
         const o = {};
