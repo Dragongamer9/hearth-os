@@ -45,6 +45,24 @@ body.bar{background:rgba(23,17,14,.94);border-top:1px solid var(--line);display:
 .game:hover{background:#ff9d5a}
 .tip{position:fixed;bottom:56px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-size:12px;pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .12s}
 
+/* ---------------- tray (full Mantel) ---------------- */
+.ticons{display:flex;align-items:center;gap:0}
+.ti{width:34px;height:42px;border-radius:8px;display:grid;place-items:center}
+.ti:hover{background:var(--panel2)}
+.ti img{width:20px;height:20px}
+
+/* ---------------- desktop (full Mantel): the wallpaper, still or moving ---------------- */
+body.desktop{background:#0f0b09}
+.wall{position:fixed;inset:0;background:center/cover no-repeat}
+.scene{position:fixed;inset:0;overflow:hidden;background:radial-gradient(ellipse at 50% 120%,#3a1a0c 0%,#140c08 55%,#0b0806 100%)}
+.blob{position:absolute;border-radius:50%;filter:blur(60px);opacity:.75;mix-blend-mode:screen;animation:drift var(--t) ease-in-out infinite alternate}
+@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(var(--dx),var(--dy)) scale(1.25)}}
+.aur{position:absolute;left:-20%;width:140%;height:30%;filter:blur(50px);opacity:.32;mix-blend-mode:screen;animation:wave var(--t) ease-in-out infinite alternate}
+@keyframes wave{from{transform:translateX(-6%) skewY(-4deg)}to{transform:translateX(6%) skewY(4deg)}}
+.ember{position:absolute;bottom:-10px;width:4px;height:4px;border-radius:50%;background:#ffb86b;box-shadow:0 0 8px #ff8a3d;animation:rise var(--t) linear infinite;opacity:0}
+@keyframes rise{0%{transform:translate(0,0);opacity:0}10%{opacity:.9}100%{transform:translate(var(--dx),-105vh);opacity:0}}
+@media (prefers-reduced-motion:reduce){.blob,.aur,.ember{animation:none}}
+
 /* ---------------- launcher ---------------- */
 body.launcher{background:rgba(23,17,14,.97);border:1px solid var(--line);border-radius:18px;display:flex;flex-direction:column;padding:18px 18px 14px}
 .search{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:0 14px;height:46px}
@@ -111,7 +129,7 @@ const I = {
 const gen = name => `<div class="gen">${esc((name||'?').trim().charAt(0).toUpperCase())}</div>`;
 const img = (src, name) => src ? `<img src="${src}" alt="">` : gen(name);
 
-const ST = {windows:[], pins:[], apps:null, status:null, query:''};
+const ST = {windows:[], pins:[], apps:null, status:null, query:'', tray:{full:false, icons:[]}, wallpaper:'', full:false};
 
 // ---------------------------------------------------------------- messages from Ember
 if(host) host.addEventListener('message', e => {
@@ -120,24 +138,43 @@ if(host) host.addEventListener('message', e => {
   if(m.type!=='event') return;
   const d = m.data;
   if(m.name==='mantel.windows'){ ST.windows=d||[]; if(PART==='bar') renderBar(); }
-  else if(m.name==='mantel.state'){ ST.pins=(d&&d.pins)||[]; render(); }
+  else if(m.name==='mantel.state'){ ST.pins=(d&&d.pins)||[]; ST.full=!!(d&&d.full); ST.wallpaper=(d&&d.wallpaper)||''; render(); }
+  else if(m.name==='mantel.tray'){ ST.tray=d||{full:false,icons:[]}; if(PART==='bar') renderTray(); }
   else if(m.name==='mantel.apps'){ ST.apps=d||[]; if(PART==='launcher') renderLauncher(); }
   else if(m.name==='mantel.opened'){ ST.query=''; renderLauncher(); setTimeout(()=>{ const i=document.querySelector('.search input'); i&&i.focus(); }, 30); if(!ST.apps) mantel('apps'); }
   else if(m.name==='status'){ ST.status=d; if(PART==='bar') renderStatus(); }
 });
 
-function render(){ PART==='bar' ? renderBar() : renderLauncher(); }
+function render(){ PART==='bar' ? renderBar() : PART==='desktop' ? renderDesktop() : renderLauncher(); }
+
+// ---------------------------------------------------------------- desktop (full Mantel)
+let shownWall = null;
+function renderDesktop(){
+  if(shownWall===ST.wallpaper) return;
+  shownWall = ST.wallpaper;
+  const w = ST.wallpaper || 'hearth-cabin';
+  if(w==='anim:lava'){
+    const blobs=[['#ff5a36',.22,.62,.62,'10vw','8vh',23],['#ff8a3d',.52,.34,.55,'-12vw','10vh',29],['#ffd166',.74,.66,.58,'-8vw','-12vh',31],['#8a3b6b',.80,.22,.40,'-10vw','6vh',26],['#ff8a3d',.30,.20,.36,'12vw','10vh',34],['#e5483b',.58,.90,.44,'6vw','-12vh',27]];
+    document.body.innerHTML=`<div class="scene">${blobs.map(([c,x,y,sz,dx,dy,t])=>`<div class="blob" style="background:${c};left:${x*100-sz*25}vw;top:${y*100-sz*25}vh;width:${sz*50}vmax;height:${sz*50}vmax;--dx:${dx};--dy:${dy};--t:${t}s"></div>`).join('')}</div>`;
+  } else if(w==='anim:aurora'){
+    const bands=[['linear-gradient(90deg,transparent,#ff8a3d,#ffd166,transparent)',20,40],['linear-gradient(90deg,transparent,#e5483b,#ff8a3d,transparent)',30,52],['linear-gradient(90deg,transparent,#8a3b6b,#ff5a36,transparent)',38,46]];
+    const embers=Array.from({length:26},(_,i)=>`<div class="ember" style="left:${(i*37)%100}vw;--dx:${((i*53)%40)-20}vw;--t:${9+(i*7)%11}s;animation-delay:${(i*1.3)%12}s"></div>`).join('');
+    document.body.innerHTML=`<div class="scene">${bands.map(([g,y,t])=>`<div class="aur" style="background:${g};top:${y}%;--t:${t}s"></div>`).join('')}${embers}</div>`;
+  } else {
+    document.body.innerHTML=`<div class="wall" style="background-image:url('wallpapers/${esc(w)}.jpg')"></div>`;
+  }
+}
 
 // ---------------------------------------------------------------- taskbar
 function renderBar(){
   if(!document.querySelector('.apps')){
     document.body.innerHTML = `<button class="tb start" data-act="launcher" title="Apps"><img src="hearth-logo.svg" alt="Apps"></button><div class="sep"></div>
       <div class="apps"></div>
-      <div class="tray"><button class="tb" data-act="tray" title="Tray icons and notifications">${I.up}</button>
+      <div class="tray"><div class="ticons"></div><button class="tb trayb" data-act="tray" title="Tray icons and notifications">${I.up}</button>
         <button class="tb status" data-act="quick" title="Quick Access"></button>
         <button class="tb clock" data-act="quick"><b></b><small></small></button>
         <button class="game" data-act="game" title="Back to Game Mode">${I.pad.replace('<svg','<svg style="width:18px;height:18px;vertical-align:-4px;margin-right:6px"')}Game Mode</button></div>`;
-    renderStatus(); tickClock();
+    renderStatus(); tickClock(); renderTray();
   }
   // Pinned apps first (lit when one of their windows is open), then the other open windows.
   const wins = ST.windows.slice(), used = new Set();
@@ -151,6 +188,12 @@ function renderBar(){
   for(const w of wins) if(!used.has(w.id))
     h += `<button class="tb app run ${w.active?'active':''}" data-act="focus" data-id="${w.id}" title="${esc(w.title)}">${img(w.icon, w.app||w.title)}</button>`;
   document.querySelector('.apps').innerHTML = h;
+}
+// Full Mantel shows the apps' tray icons itself; on top of Explorer, the ^ button shows Windows' tray.
+function renderTray(){
+  const el=document.querySelector('.ticons'), b=document.querySelector('.trayb'); if(!el) return;
+  if(b) b.style.display = ST.tray.full ? 'none' : '';
+  el.innerHTML = ST.tray.full ? ST.tray.icons.map(i=>`<button class="ti" data-act="trayIcon" data-key="${esc(i.key)}" title="${esc(i.tip)}">${i.image?`<img src="${i.image}" alt="">`:I.up}</button>`).join('') : '';
 }
 function renderStatus(){
   const el = document.querySelector('.status'); if(!el) return;
@@ -218,7 +261,16 @@ document.addEventListener('click', e => {
     case 'focus': return mantel('focus', {id:+d.id});
     case 'launch': return mantel('launch', {id:d.app});
     case 'pin': return mantel('pin', {id:d.app, name:d.name, on:d.on==='1'});
+    case 'trayIcon': return trayClick(el, e.detail>=2 ? 'double' : 'left');
   }
+});
+function trayClick(el, button){
+  const r=el.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  mantel('trayClick', {key:el.dataset.key, button, x:Math.round((window.screenX+r.left+r.width/2)*dpr), y:Math.round((window.screenY+r.top)*dpr)});
+}
+document.addEventListener('mouseup', e => {   // right click on a tray icon: its menu
+  const el=e.target.closest('[data-act="trayIcon"]');
+  if(el && e.button===2) trayClick(el, 'right');
 });
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('auxclick', e => {   // middle click on a window closes it, like Windows
@@ -251,6 +303,8 @@ document.addEventListener('keydown', e => {
 });
 
 // ---------------------------------------------------------------- start
+if(!host && PART==='desktop'){ ST.wallpaper=new URLSearchParams(location.search).get('wall')||'anim:lava'; }
+if(!host && PART==='bar'){ ST.tray={full:true, icons:[{key:'1',tip:'Discord'},{key:'2',tip:'Steam'}]}; }
 if(!host){   // browser preview
   ST.pins=[{id:'a',name:'Steam'},{id:'b',name:'Discord'}];
   ST.windows=[{id:1,title:'Steam',app:'steam',active:true},{id:2,title:'Downloads - File Explorer',app:'explorer'},{id:3,title:'Mods folder',app:'notepad'}];
