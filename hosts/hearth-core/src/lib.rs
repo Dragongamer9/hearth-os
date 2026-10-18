@@ -2,10 +2,12 @@
 //! passes its messages here. Replaces the Electron host (hosts/linux) a part at a time; see docs/RUST.md.
 pub mod admin;
 pub mod backup;
+pub mod binkv;
 pub mod bridge;
 pub mod collections;
 pub mod emulators;
 pub mod game_options;
+pub mod gameinfo;
 pub mod library;
 pub mod manual;
 pub mod paths;
