@@ -119,7 +119,14 @@ public sealed class ShellForm : Form
         Mantel.GameModeRequested += () => Desktop?.Leave();
         Mantel.QuickAccessRequested += () => _overlay?.Toggle();
         Mantel.PowerRequested += a => Power(a);
-        Desktop.DesktopShown = async () => { if (Games0().DesktopStyle == "mantel" && Mantel is not null) await Mantel.StartAsync(); };
+        Desktop.WantsExplorer = () => Games0().DesktopStyle != "mantel-full";
+        Desktop.DesktopShown = async () =>
+        {
+            var style = Games0().DesktopStyle;
+            if (style.StartsWith("mantel") && Mantel is not null) await Mantel.StartAsync(full: style == "mantel-full");
+        };
+        _pad.DesktopMenu += () => BeginInvoke((MethodInvoker)(() => Mantel?.ToggleLauncherFromPad()));
+        Mantel.VolumeRequested += d => { try { Input.Osd.Show(_system!.VolumeStep(d)); } catch (Exception ex) { SystemBridge.Log("volume: " + ex.Message); } };
         Desktop.DesktopLeaving = () => Mantel?.Stop();
         // As the shell: start on the desktop if that's the choice, or go back to it if Explorer is already the
         // desktop (Ember restarted after an update or a crash while you were on it).

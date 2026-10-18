@@ -19,7 +19,12 @@ public sealed class MantelHost : IDisposable
     private readonly CoreWebView2Environment _env;
     private readonly string _baseUrl;
     private readonly Action<CoreWebView2> _setup;
-    private MantelWindow? _bar, _launcher;
+    private MantelWindow? _bar, _launcher, _desk;
+    private readonly TrayHost _tray = new();
+    private readonly FullShell _full = new();
+    /// <summary>Full Mantel: no Explorer at all (Ember is the whole desktop and hosts the tray itself).</summary>
+    public bool Full { get; private set; }
+    public event Action<int>? VolumeRequested;
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 1000 };
     private string _lastWindows = "";
     private DateTime _peekUntil = DateTime.MinValue;
@@ -40,23 +45,39 @@ public sealed class MantelHost : IDisposable
         _setup = setup;
         _bridge.AddListener(json => { if (Active) { _bar?.Post(json); _launcher?.Post(json); } });
         _tick.Tick += (_, _) => Tick();
+        _tray.Changed += () => _bar?.BeginInvoke((MethodInvoker)PushTray);
+        _full.WinKey += () => _bar?.BeginInvoke((MethodInvoker)ToggleLauncher);
+        _full.VolumeKey += d => _bar?.BeginInvoke((MethodInvoker)(() => VolumeRequested?.Invoke(d)));
     }
 
     // ------------------------------------------------------------------ start / stop
 
-    public async Task StartAsync()
+    public async Task StartAsync(bool full = false)
     {
         if (Active) return;
+        // Full Mantel needs Explorer gone (Ember as the shell); with Explorer running, Mantel goes on top of it.
+        if (full && DesktopMode.ExplorerShellRunning()) { SystemBridge.Log("mantel: Explorer is running, so Mantel goes on top of it"); full = false; }
         Active = true;
-        SystemBridge.Log("mantel: starting");
+        Full = full;
+        SystemBridge.Log("mantel: starting" + (full ? " (full, no Explorer)" : ""));
         try
         {
-            HideWindowsTaskbar();
-            ApplyWallpaper();
+            MantelWindow.OwnTray = full;
+            if (full)
+            {
+                if (!_tray.Start()) SystemBridge.Log("mantel: couldn't host the tray");
+                _desk ??= await Create(bar: false, desktop: true);
+                _desk.Show();
+                _desk.SendToBack();
+            }
+            else { HideWindowsTaskbar(); ApplyWallpaper(); }
             _bar ??= await Create(bar: true);
             _launcher ??= await Create(bar: false);
             _bar.Show();
-            _bar.PlaceAppBar();
+            if (full) { _bar.PlaceManually(); _full.Start(_bar.Height); }
+            else { _bar.EnsureAppBar(); _bar.PlaceAppBar(); }
+            foreach (var w in new[] { _bar, _launcher, _desk }) if (w is not null) PushState(w);
+            PushTray();
             _tick.Start();
             PushWindows(force: true);
         }
@@ -75,15 +96,33 @@ public sealed class MantelHost : IDisposable
         _tick.Stop();
         _launcher?.Hide();
         if (_bar is not null) { _bar.RemoveAppBar(); _bar.Hide(); }
-        RestoreWindowsTaskbar();
+        if (Full) { _full.Stop(); _tray.Stop(); _desk?.Hide(); MantelWindow.OwnTray = false; }
+        else RestoreWindowsTaskbar();
+        Full = false;
     }
 
-    private async Task<MantelWindow> Create(bool bar)
+    private async Task<MantelWindow> Create(bool bar, bool desktop = false)
     {
-        var w = new MantelWindow(bar);
+        var w = new MantelWindow(bar, desktop);
         w.PageMessage += m => OnMessage(m, w);
-        await w.InitAsync(_env, _baseUrl + (bar ? "mantel.html?part=bar" : "mantel.html?part=launcher"), _setup);
+        await w.InitAsync(_env, _baseUrl + "mantel.html?part=" + (desktop ? "desktop" : bar ? "bar" : "launcher"), _setup);
         return w;
+    }
+
+    public void ToggleLauncherFromPad() { if (Active) ToggleLauncher(); }
+
+    private void ToggleLauncher()
+    {
+        if (_launcher is null) return;
+        if (_launcher.Visible) _launcher.Hide();
+        else { _launcher.ShowLauncher(_bar?.Height ?? 54); Send(_launcher, "mantel.opened", new { }); }
+    }
+
+    private void PushTray()
+    {
+        if (_bar is null) return;
+        var icons = Full ? _tray.Icons.Select(i => new { key = i.Key, tip = i.Tip, image = i.Image }).ToList<object>() : new List<object>();
+        Send(_bar, "mantel.tray", new { full = Full, icons });
     }
 
     // ------------------------------------------------------------------ Windows' taskbar
@@ -146,6 +185,7 @@ public sealed class MantelHost : IDisposable
     private void Tick()
     {
         if (!Active) return;
+        if (Full) { _desk?.SendToBack(); PushWindows(); return; }
         // Explorer brings its taskbar back now and then (Start menu, a restart of Explorer): hide it again,
         // except while you're using it (the tray peek, or the Start menu open on top).
         if (DateTime.UtcNow > _peekUntil && !StartMenuOpen())
@@ -179,11 +219,8 @@ public sealed class MantelHost : IDisposable
             case "launch": Apps.Launch(Str("id")); _launcher?.Hide(); break;
             case "focus": Apps.Focus(Long("id")); _launcher?.Hide(); break;
             case "close": Apps.Close(Long("id")); break;
-            case "launcher":
-                if (_launcher is null) break;
-                if (_launcher.Visible) _launcher.Hide();
-                else { _launcher.ShowLauncher(_bar?.Height ?? 54); Send(_launcher, "mantel.opened", new { }); }
-                break;
+            case "launcher": ToggleLauncher(); break;
+            case "trayClick": _tray.Click(Str("key"), Str("button"), (int)Long("x"), (int)Long("y")); break;
             case "hideLauncher": _launcher?.Hide(); break;
             case "tray": PeekTray(); break;
             case "quick": QuickAccessRequested?.Invoke(); break;
@@ -237,7 +274,7 @@ public sealed class MantelHost : IDisposable
         catch (Exception ex) { SystemBridge.Log("mantel: save: " + ex.Message); }
     }
 
-    private void PushState(MantelWindow to) => Send(to, "mantel.state", new { pins = Load().Pins });
+    private void PushState(MantelWindow to) => Send(to, "mantel.state", new { pins = Load().Pins, full = Full, wallpaper = Wallpaper });
 
     private void SetPin(string id, string name, bool on)
     {
@@ -255,6 +292,8 @@ public sealed class MantelHost : IDisposable
 
     public void ApplyWallpaper()
     {
+        if (Full) { if (_desk is not null) PushState(_desk); return; }   // full Mantel draws its own desktop
+        if (Wallpaper.StartsWith("anim:")) return;                     // moving wallpapers need full Mantel
         var s = Load();
         try
         {
@@ -277,5 +316,8 @@ public sealed class MantelHost : IDisposable
         _tick.Dispose();
         _bar?.Dispose();
         _launcher?.Dispose();
+        _desk?.Dispose();
+        _tray.Dispose();
+        _full.Dispose();
     }
 }

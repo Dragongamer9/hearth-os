@@ -1847,8 +1847,8 @@ function pageShellLinux(){
     const dm = s.startMode==='desktop' ? 'Desktop Mode' : 'Game Mode';
     h += shead('Desktop Mode')
       + `<button class="row" data-f data-k="sh-dm" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Switch to the desktop</b><small>The normal Windows desktop with the taskbar and Start menu. The controller works as a mouse. Come back with the Game Mode shortcut on the desktop, the ${APP} tray icon, Ctrl+Alt+G, or the Xbox button</small></div></button>`
-      + `<button class="row" data-f data-k="sh-style" data-act="emberStyle"><span class="ricon">${I.layout}</span><div class="rt"><b>Desktop style</b><small>${s.desktopStyle==='windows'?'The normal Windows desktop':'Mantel: Hearth\'s taskbar, app launcher and wallpapers on top of Windows. Windows\' tray icons and notifications still work'}</small></div><div class="rv">${s.desktopStyle==='windows'?'Windows':'Mantel'} ›</div></button>`
-      + (s.desktopStyle!=='windows' ? `<button class="row" data-f data-k="sh-wall" data-act="emberWall"><span class="ricon">${I.display}</span><div class="rt"><b>Wallpaper</b><small>Used while you're in Mantel</small></div><div class="rv">${s.wallpaper?esc(s.wallpaper.replace('hearth-','').replace(/^./,c=>c.toUpperCase())):'Your Windows wallpaper'} ›</div></button>` : '')
+      + `<button class="row" data-f data-k="sh-style" data-act="emberStyle"><span class="ricon">${I.layout}</span><div class="rt"><b>Desktop style</b><small>${s.desktopStyle==='windows'?'The normal Windows desktop':s.desktopStyle==='mantel-full'?'Full Mantel: Hearth\'s own desktop with no Explorer at all. Ember shows the tray icons itself; other apps\' pop-up notifications may not appear':'Mantel: Hearth\'s taskbar, app launcher and wallpapers on top of Windows. Windows\' tray icons and notifications still work'}</small></div><div class="rv">${{windows:'Windows','mantel-full':'Full Mantel'}[s.desktopStyle]||'Mantel'} ›</div></button>`
+      + (s.desktopStyle!=='windows' ? `<button class="row" data-f data-k="sh-wall" data-act="emberWall"><span class="ricon">${I.display}</span><div class="rt"><b>Wallpaper</b><small>Used while you're in Mantel</small></div><div class="rv">${s.wallpaper?esc(s.wallpaper.replace('hearth-','').replace('anim:','').replace(/^./,c=>c.toUpperCase())+(s.wallpaper.startsWith('anim:')?' (moving)':'')):'Your Windows wallpaper'} ›</div></button>` : '')
       + (s.running ? `<button class="row" data-f data-k="sh-start" data-act="emberStart"><span class="ricon">${I.desk}</span><div class="rt"><b>Start in</b><small>What you see after signing in</small></div><div class="rv">${dm} ›</div></button>` : '');
   }
   h += shead('If something goes wrong')
@@ -1887,7 +1887,8 @@ function emberStyle(){
   const cur=SHELL.status&&SHELL.status.desktopStyle;
   const pick=style=>call('shell.setDesktopStyle',{style}).then(r=>{ SHELL.status=r; refreshUI(); }).catch(e=>toast(e.message));
   openSheet({title:'Desktop style', sub:'How Desktop Mode looks', items:[
-    {label:'Mantel (Hearth\'s desktop)', icon:cur!=='windows'?'check':'', run:()=>pick('mantel')},
+    {label:'Mantel (on top of Windows)', icon:cur==='mantel'||!cur?'check':'', run:()=>pick('mantel')},
+    {label:'Full Mantel (no Explorer, experimental)', icon:cur==='mantel-full'?'check':'', run:()=>pick('mantel-full')},
     {label:'Windows', icon:cur==='windows'?'check':'', run:()=>pick('windows')}]});
 }
 const EMBER_WALLS=['cabin','lanterns','fox','peaks','embers','bloom','topo','forge'];
@@ -1896,6 +1897,7 @@ function emberWall(){
   const pick=name=>call('shell.setWallpaper',{name}).then(r=>{ SHELL.status=r; refreshUI(); }).catch(e=>toast(e.message));
   openSheet({title:'Wallpaper', sub:'Hearth\'s wallpapers, or the one you had in Windows', items:[
     ...EMBER_WALLS.map(w=>({label:w.charAt(0).toUpperCase()+w.slice(1), icon:cur==='hearth-'+w?'check':'', run:()=>pick('hearth-'+w)})),
+    ...(SHELL.status&&SHELL.status.desktopStyle==='mantel-full' ? [['anim:lava','Lava (moving)'],['anim:aurora','Aurora (moving)']].map(([v,l])=>({label:l, icon:cur===v?'check':'', run:()=>pick(v)})) : []),
     {label:'Your Windows wallpaper', icon:!cur?'check':'', run:()=>pick('')}]});
 }
 function emberStart(){

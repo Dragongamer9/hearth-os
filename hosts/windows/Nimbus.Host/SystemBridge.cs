@@ -147,6 +147,18 @@ public sealed class SystemBridge : IDisposable
         else target(json);
     }
 
+    /// <summary>The volume keys in full Mantel (Explorer normally handles them): +1 / -1 steps of 5 %, 0 = mute.
+    /// Returns what the volume bar shows.</summary>
+    public string VolumeStep(int d)
+    {
+        var s = _audio.Get();
+        if (d == 0) _audio.SetMute(!s.Muted);
+        else { _audio.SetVolume(Math.Clamp(s.Volume + d * 5, 0, 100)); if (s.Muted) _audio.SetMute(false); }
+        var n = _audio.Get();
+        StatusChangedSoon();
+        return n.Muted || n.Volume == 0 ? "🔇  Muted" : $"🔊  {n.Volume}%";
+    }
+
     /// <summary>Events go to the main UI and every other page (the overlay).</summary>
     public void Event(string name, object data)
     {
@@ -378,12 +390,16 @@ public sealed class SystemBridge : IDisposable
             case "shell.setDesktopStyle":
             {
                 var style = Req(a, "style");
-                if (style is not ("mantel" or "windows")) throw new ArgumentException("Desktop style is mantel or windows");
+                if (style is not ("mantel" or "mantel-full" or "windows")) throw new ArgumentException("Desktop style is mantel, mantel-full or windows");
+                var before = Games.DesktopStyle;
                 Games.DesktopStyle = style;
                 var form = _ui as ShellForm;
-                if (form?.Desktop?.Active == true && form.Mantel is not null)
+                if (form?.Desktop?.Active == true && form.Mantel is not null && before != style)
                 {
-                    if (style == "mantel") _ui.BeginInvoke((MethodInvoker)(async () => await form.Mantel.StartAsync()));
+                    // Switching to or from full Mantel changes whether Explorer runs: go back through Game Mode.
+                    if (style == "mantel-full" || before == "mantel-full")
+                        _ui.BeginInvoke((MethodInvoker)(async () => { form.Desktop.Leave(); await Task.Delay(2500); form.Desktop.Enter(); }));
+                    else if (style == "mantel") _ui.BeginInvoke((MethodInvoker)(async () => await form.Mantel.StartAsync()));
                     else _ui.BeginInvoke((MethodInvoker)(() => form.Mantel.Stop()));
                 }
                 return await DispatchAsync("shell.status", a);
@@ -391,7 +407,7 @@ public sealed class SystemBridge : IDisposable
             case "shell.setWallpaper":
             {
                 var w = Str(a, "name") ?? "";
-                if (w.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(w, "^hearth-[a-z]+$")) throw new ArgumentException("Unknown wallpaper");
+                if (w.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(w, "^(hearth-[a-z]+|anim:(lava|aurora))$")) throw new ArgumentException("Unknown wallpaper");
                 Games.MantelWallpaper = w;
                 Mantel.MantelHost.Wallpaper = w;
                 if ((_ui as ShellForm)?.Mantel is { Active: true } m) m.ApplyWallpaper();

@@ -5,31 +5,34 @@ using Microsoft.Web.WebView2.WinForms;
 namespace Nimbus.Host.Mantel;
 
 /// <summary>A Mantel window: the taskbar (docked to the bottom of the screen as an app bar, so maximized
-/// windows stop above it) or the launcher (a panel above the taskbar). Both show mantel.html.</summary>
+/// windows stop above it), the launcher (a panel above the taskbar), or, in full Mantel, the desktop itself
+/// (the wallpaper, still or moving, behind every other window). All show mantel.html.</summary>
 internal sealed class MantelWindow : Form
 {
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(15, 11, 9) };
     private readonly bool _bar;
+    private readonly bool _desktop;
     private bool _appBar;
     private const uint CallbackMsg = 0x8000 + 0x4D;   // WM_APP + 'M'
 
     public event Action<JsonElement>? PageMessage;
     public bool Ready { get; private set; }
 
-    public MantelWindow(bool bar)
+    public MantelWindow(bool bar, bool desktop = false)
     {
         _bar = bar;
-        Text = bar ? "Mantel" : "Mantel launcher";
+        _desktop = desktop;
+        Text = desktop ? "Mantel desktop" : bar ? "Mantel" : "Mantel launcher";
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
-        TopMost = true;
+        TopMost = !desktop;
         BackColor = Color.FromArgb(15, 11, 9);
         Controls.Add(_web);
-        if (!bar) Deactivate += (_, _) => { if (Visible) Hide(); };   // clicking elsewhere closes the launcher
+        if (!bar && !desktop) Deactivate += (_, _) => { if (Visible) Hide(); };   // clicking elsewhere closes the launcher
     }
 
-    protected override bool ShowWithoutActivation => _bar;
+    protected override bool ShowWithoutActivation => _bar || _desktop;
 
     protected override CreateParams CreateParams
     {
@@ -37,6 +40,7 @@ internal sealed class MantelWindow : Form
         {
             var cp = base.CreateParams;
             cp.ExStyle |= 0x00000080 /* WS_EX_TOOLWINDOW: not in Alt+Tab or its own taskbar */;
+            if (_desktop) cp.ExStyle |= 0x08000000 /* WS_EX_NOACTIVATE */;
             return cp;
         }
     }
@@ -45,10 +49,10 @@ internal sealed class MantelWindow : Form
     {
         var scr = Screen.PrimaryScreen!.Bounds;
         int h = BarHeight();
-        Bounds = _bar ? new Rectangle(scr.Left, scr.Bottom - h, scr.Width, h) : new Rectangle(-32000, -32000, 760, 640);
+        Bounds = _desktop ? scr : _bar ? new Rectangle(scr.Left, scr.Bottom - h, scr.Width, h) : new Rectangle(-32000, -32000, 760, 640);
         Show();
         await _web.EnsureCoreWebView2Async(env);
-        if (!_bar) Hide();
+        if (!_bar && !_desktop) Hide();
         var core = _web.CoreWebView2;
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.IsZoomControlEnabled = false;
@@ -62,9 +66,33 @@ internal sealed class MantelWindow : Form
             catch (Exception ex) { SystemBridge.Log("mantel message: " + ex.Message); }
         };
         core.Navigate(url);
-        if (_bar) RegisterAppBar();
+        if (_bar && FindWindow("Shell_TrayWnd", null) != IntPtr.Zero && !OwnTray) RegisterAppBar();
+        if (_desktop) SendToBack();
         Ready = true;
     }
+
+    /// <summary>Full Mantel hosts the tray itself: there's no Explorer to take app bar messages, so the bar is
+    /// placed by hand and the work area is set by FullShell.</summary>
+    public static bool OwnTray { get; set; }
+
+    /// <summary>Full Mantel: the bar along the bottom without the app bar machinery.</summary>
+    public void PlaceManually()
+    {
+        var scr = Screen.PrimaryScreen!.Bounds;
+        int h = BarHeight();
+        RemoveAppBar();
+        Bounds = new Rectangle(scr.Left, scr.Bottom - h, scr.Width, h);
+    }
+
+    /// <summary>The desktop window: full screen, behind everything.</summary>
+    public new void SendToBack()
+    {
+        Bounds = Screen.PrimaryScreen!.Bounds;
+        SetWindowPos(Handle, new IntPtr(1) /* HWND_BOTTOM */, 0, 0, 0, 0, 0x2 | 0x1 | 0x10);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] private static extern IntPtr FindWindow(string? cls, string? title);
 
     public int BarHeight() => (int)Math.Round(54 * DeviceDpi / 96.0);
 
@@ -88,6 +116,8 @@ internal sealed class MantelWindow : Form
     }
 
     // ------------------------------------------------------------------ app bar
+
+    public void EnsureAppBar() { if (!_appBar && !OwnTray) RegisterAppBar(); }
 
     private void RegisterAppBar()
     {
@@ -117,10 +147,21 @@ internal sealed class MantelWindow : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (_desktop && m.Msg == 0x0046 /* WM_WINDOWPOSCHANGING: the desktop always stays at the back */)
+        {
+            var wp = System.Runtime.InteropServices.Marshal.PtrToStructure<WINDOWPOS>(m.LParam);
+            wp.hwndInsertAfter = new IntPtr(1);
+            wp.flags &= ~0x0004u;
+            System.Runtime.InteropServices.Marshal.StructureToPtr(wp, m.LParam, false);
+        }
+        if (_desktop && m.Msg == 0x0021 /* WM_MOUSEACTIVATE */) { m.Result = (IntPtr)3; return; }
         // ABN_POSCHANGED (another app bar or the screen changed): put ours back.
         if (_appBar && m.Msg == CallbackMsg && m.WParam.ToInt32() == 1) PlaceAppBar();
         base.WndProc(ref m);
     }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct WINDOWPOS { public IntPtr hwnd, hwndInsertAfter; public int x, y, cx, cy; public uint flags; }
 
     public void RemoveAppBar()
     {

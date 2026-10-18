@@ -74,7 +74,7 @@ public sealed class DesktopMode : IDisposable
             ShowTray();
             Changed?.Invoke(true);
             // Off the UI thread: waiting for Explorer's taskbar can take a few seconds.
-            if (Program.IsShell && !ExplorerShellRunning()) await Task.Run(StartExplorerAsDesktop);
+            if (Program.IsShell && !ExplorerShellRunning() && WantsExplorer()) await Task.Run(StartExplorerAsDesktop);
             await Task.Run(EnsureShortcut);
             if (DesktopShown is not null) await DesktopShown();
         }
@@ -92,7 +92,7 @@ public sealed class DesktopMode : IDisposable
             SystemBridge.Log("desktop mode: leaving");
             _ui.ShowFullscreen();   // in front right away; Explorer closes behind it
             try { DesktopLeaving?.Invoke(); } catch (Exception ex) { SystemBridge.Log("desktop mode: " + ex.Message); }
-            if (Program.IsShell) await Task.Run(CloseExplorer);
+            if (Program.IsShell && ExplorerShellRunning()) await Task.Run(CloseExplorer);
             Active = false;
             HideTray();
             _ui.ShowFullscreen();
@@ -139,7 +139,18 @@ public sealed class DesktopMode : IDisposable
         return Process.GetProcessesByName("explorer").Where(p => { try { return p.SessionId == session; } catch { return false; } });
     }
 
-    public static bool ExplorerShellRunning() => FindWindow("Shell_TrayWnd", null) != IntPtr.Zero;
+    /// <summary>Explorer's taskbar is up (full Mantel's own tray window has the same class, so it doesn't count).</summary>
+    public static bool ExplorerShellRunning()
+    {
+        var h = FindWindow("Shell_TrayWnd", null);
+        if (h == IntPtr.Zero) return false;
+        GetWindowThreadProcessId(h, out var pid);
+        return pid != (uint)Environment.ProcessId;
+    }
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+
+    /// <summary>False for full Mantel: the desktop is Ember's alone, Explorer isn't started.</summary>
+    public Func<bool> WantsExplorer { get; set; } = () => true;
 
     // ------------------------------------------------------------------ ways back
 
