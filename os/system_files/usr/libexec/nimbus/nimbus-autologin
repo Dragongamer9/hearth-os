@@ -6,6 +6,14 @@
 set -euo pipefail
 
 CONF=/etc/sddm.conf.d/zzz-nimbus-autologin.conf
+# /etc/sddm.conf beats every file in sddm.conf.d. The live USB's set-up (livesys) writes an autologin into
+# it for Bazzite's KDE desktop, and Bazzite can too: take that section out, so Hearth's is the one used.
+strip_main_conf() {
+  if [[ -f /etc/sddm.conf ]] && grep -q '^\[Autologin\]' /etc/sddm.conf; then
+    awk 'BEGIN{skip=0} /^\[/{skip=($0=="[Autologin]")} !skip' /etc/sddm.conf > /etc/sddm.conf.hearth-tmp && mv /etc/sddm.conf.hearth-tmp /etc/sddm.conf
+  fi
+}
+strip_main_conf
 mkdir -p /etc/sddm.conf.d
 if [[ -f /etc/nimbus/no-autologin ]]; then
   # Empty values override Bazzite's own autologin (into Steam), so the login screen really shows.
@@ -13,7 +21,10 @@ if [[ -f /etc/nimbus/no-autologin ]]; then
   mv "$CONF.tmp" "$CONF"
   exit 0
 fi
-USER_NAME=$(id -nu 1000 2>/dev/null) || { echo "nimbus-autologin: no user yet"; exit 0; }
+# The live USB signs in its "liveuser" (made by livesys at boot); an installed Hearth, the first account.
+if [[ -e /etc/hearth-live ]] && id liveuser >/dev/null 2>&1; then USER_NAME=liveuser
+else USER_NAME=$(id -nu 1000 2>/dev/null) || { echo "nimbus-autologin: no user yet"; exit 0; }
+fi
 
 cat > "$CONF.tmp" <<CONF
 [Autologin]
@@ -22,3 +33,4 @@ Session=nimbus.desktop
 Relogin=true
 CONF
 mv "$CONF.tmp" "$CONF"
+

@@ -46,12 +46,18 @@ rm -f /etc/localtime; systemd-firstboot --timezone UTC
 
 # ---------------------------------------------------------------- the live session
 echo "${IMAGE_NAME:-hearth}" > /etc/hearth-live   # Hearth's session and desktop look for this; the installer reads the edition
-# Boot into Hearth (the live user is the first account, so Hearth's own autologin picks it up), in Desktop
-# Mode, where the installer is easy to use with the controller mouse and on-screen keyboard.
-mkdir -p /etc/systemd/system/nimbus-autologin.service.d
-printf '[Unit]\nAfter=livesys.service livesys-late.service\n' > /etc/systemd/system/nimbus-autologin.service.d/live.conf
+# Boot into Hearth as the live user.
+# livesys makes liveuser and writes its own autologin (into Bazzite's KDE desktop) into /etc/sddm.conf, which
+# beats Hearth's file in sddm.conf.d: so Hearth's autologin runs again right before the login manager starts,
+# after livesys, and takes that out. (Ordering it after livesys-late as well could loop with the login
+# manager, and systemd would then drop Hearth's step: that's how 0.0.22's USB ended up in Bazzite.)
+mkdir -p /etc/systemd/system/nimbus-autologin.service.d /etc/systemd/system/sddm.service.d
+printf '[Unit]\nAfter=livesys.service\n' > /etc/systemd/system/nimbus-autologin.service.d/live.conf
+printf '[Service]\nExecStartPre=-/usr/libexec/nimbus/nimbus-autologin\n' > /etc/systemd/system/sddm.service.d/hearth-live.conf
+# Hearth (Game Mode) first: it asks for a controller (Skip with a keyboard or mouse), then Install / Wi-Fi /
+# Try it. "Install with Mantel" switches to the desktop for a mouse and keyboard.
 mkdir -p /etc/skel/.config/nimbus
-echo 'NIMBUS_START_MODE=desktop' > /etc/skel/.config/nimbus/session.conf
+echo 'NIMBUS_START_MODE=game' > /etc/skel/.config/nimbus/session.conf
 # The live user may do anything without a password prompt (it's a live USB).
 cat >/etc/polkit-1/rules.d/10-hearth-live.rules <<'RULE'
 polkit.addRule(function(action, subject) { if (subject.user == "liveuser") return polkit.Result.YES; });
