@@ -15,12 +15,13 @@ pub struct Bridge {
     pub version: String,
     /// Sends an event to the UI (set by the app; does nothing in tests).
     pub emit: system::bt_scan::Emit,
+    pub updates: crate::admin::Updates,
 }
 
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
         let store = Store::open(paths::data_dir().join("library.json"));
-        Bridge { library: Library::new(store, paths::home()), version: version.to_string(), emit: std::sync::Arc::new(|_| {}) }
+        Bridge { library: Library::new(store, paths::home()), version: version.to_string(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new() }
     }
 
     /// Messages that aren't calls: the power menu, log lines. Returns true when Hearth should close
@@ -89,6 +90,18 @@ impl Bridge {
             "audio.setVolume" => system::audio::set_volume(a["v"].as_f64().unwrap_or(0.0).round().max(0.0) as u32, self.max_volume()).map(|_| Value::Null),
             "audio.setMute" => system::audio::set_mute(a["m"].as_bool().unwrap_or(false)).map(|_| Value::Null),
             "display.setBrightness" => system::set_brightness(a["v"].as_f64().unwrap_or(0.0).round().max(0.0) as u32).map(|_| Value::Null),
+            // Settings › Sign-in
+            "login.get" => Ok(crate::admin::login()),
+            "login.setAutologin" => { crate::admin::run(&["autologin", if a["on"] == true { "on" } else { "off" }], None, &mut |_| {})?; Ok(crate::admin::login()) }
+            "login.setStartMode" => crate::admin::set_start_mode(&req("mode")?),
+            "login.setLockOnWake" => crate::admin::set_lock_on_wake(a["on"] == true),
+            "login.setHostname" => { crate::admin::run(&["hostname", req("name")?.trim()], None, &mut |_| {})?; Ok(crate::admin::login()) }
+            "login.password" => { crate::admin::run(&["password"], Some(&format!("{}\n", json!({"old": req("old")?, "new": req("new")?}))), &mut |_| {})?; Ok(json!({"ok": true})) }
+            "login.unlock" => Ok(json!({"ok": crate::admin::check_password(a["password"].as_str().unwrap_or(""))})),
+            // Settings › Updates (Hearth OS itself)
+            "system.update.status" => Ok(self.updates.refresh()),
+            "system.update.check" => Ok(self.updates.start(false, self.emit.clone())),
+            "system.update.install" => Ok(self.updates.start(true, self.emit.clone())),
             "profile.get" => Ok(crate::profile::get(&self.library.store)),
             "profile.set" => crate::profile::set(&mut self.library.store, a),
             "audio.get" => Ok(system::audio::get(self.max_volume())),
@@ -168,7 +181,7 @@ mod tests {
     #[test]
     fn answers_calls_and_says_what_is_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let mut b = Bridge { library: Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), version: "0.0.23".into(), emit: std::sync::Arc::new(|_| {}) };
+        let mut b = Bridge { library: Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), version: "0.0.23".into(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new() };
         let r = b.handle(&json!({"type":"call","id":7,"method":"library.get","args":{}})).unwrap();
         assert_eq!(r["id"], 7); assert_eq!(r["ok"], true); assert_eq!(r["value"]["games"], json!([]));
         let r = b.handle(&json!({"type":"call","id":8,"method":"epic.signIn"})).unwrap();
