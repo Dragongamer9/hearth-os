@@ -37,8 +37,9 @@ pub struct GameMode {
     before_overlay: AtomicU64,
     pub overlay_alive: AtomicU64,
     reveal_gen: AtomicU64,
-    /// The game's processes Hearth froze while the overlay is open (it mustn't react to the controller meanwhile).
-    held: Mutex<Vec<u32>>,
+    /// InputPlumber catches the Guide button and, while Quick Access is open, every press (see inputplumber.rs).
+    pub ip: AtomicBool,
+    last_guide: AtomicU64,
     b_gen: AtomicU64,
     repeat_gen: AtomicU64,
     last_pad: Mutex<(String, u64)>,
@@ -53,7 +54,7 @@ impl GameMode {
     pub fn new(app: AppHandle, bridge: Arc<Mutex<Bridge>>, guide: hearth_core::guide::Guide, windowed: bool) -> Arc<GameMode> {
         Arc::new(GameMode { app, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
             overlay_on: AtomicBool::new(false), osd_on: AtomicBool::new(false), osd_gen: AtomicU64::new(0), look_closed: AtomicBool::new(true),
-            before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), held: Mutex::new(vec![]), b_gen: AtomicU64::new(0),
+            before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), last_guide: AtomicU64::new(0), b_gen: AtomicU64::new(0),
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()) })
     }
 
@@ -254,21 +255,62 @@ impl GameMode {
         self.to_overlay(ev("overlay.shown", json!({})));
         true
     }
-    /// While the overlay is open the game gets no controller input: Hearth takes the controllers for itself
-    /// (games that read them another way are covered too, by holding the game still until the overlay closes).
+    /// While the overlay is open the game gets no controller input, and it keeps running: InputPlumber sends every
+    /// press to Hearth instead of the game; controllers it doesn't manage are taken by Hearth for the time being.
     fn hold_game(&self, on: bool) {
         self.guide.grab(on);
-        if on {
-            let pids = self.bridge.lock().ok().filter(|b| b.library.running.as_ref().map(|r| !r.cloud && r.paused_at == 0 && r.started_at > 0).unwrap_or(false))
-                .map(|b| b.library.game_pids()).unwrap_or_default();
-            if !pids.is_empty() { hearth_core::procs::signal(&pids, "STOP"); }
-            *self.held.lock().unwrap() = pids;
-        } else {
-            let pids = std::mem::take(&mut *self.held.lock().unwrap());
-            // Paused from Quick Access meanwhile: it stays paused.
-            let paused = self.bridge.lock().map(|b| b.library.running.as_ref().map(|r| r.paused_at > 0).unwrap_or(true)).unwrap_or(false);
-            if !pids.is_empty() && !paused { hearth_core::procs::signal(&pids, "CONT"); }
+        if self.ip.load(Ordering::SeqCst) {
+            hearth_core::inputplumber::set_mode(if on { hearth_core::inputplumber::MODE_ALWAYS } else { hearth_core::inputplumber::MODE_PASS });
         }
+    }
+
+    /// Hearth OS: InputPlumber catches the Xbox / Guide button (and only it), and while Quick Access is open hands
+    /// every press to Hearth. Reads its presses from D-Bus.
+    pub fn start_inputplumber(self: &Arc<Self>) {
+        if !self.inside() || !hearth_core::inputplumber::available() { return; }
+        hearth_core::inputplumber::guide_only();
+        hearth_core::inputplumber::set_mode(hearth_core::inputplumber::MODE_PASS);
+        self.ip.store(true, Ordering::SeqCst);
+        log("inputplumber: catching the Guide button for Quick Access");
+        let me = self.clone();
+        std::thread::spawn(move || loop {
+            use std::io::BufRead;
+            let child = std::process::Command::new("gdbus").args(["monitor", "--system", "--dest", "org.shadowblip.InputPlumber"])
+                .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn();
+            let Ok(mut child) = child else { return };
+            if let Some(out) = child.stdout.take() {
+                for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                    let Some((ev, down)) = hearth_core::inputplumber::parse_event(&line) else { continue };
+                    if ev == "ui_guide" { if down { let m = me.clone(); std::thread::spawn(move || m.guide_pressed("guide")); } continue; }
+                    if me.overlay_on.load(Ordering::SeqCst) { if let Some(b) = hearth_core::inputplumber::button(&ev) { me.overlay_pad(b, down); } }
+                    // Caught presses with nothing open (shouldn't happen): give the controller back.
+                    else if down { hearth_core::inputplumber::set_mode(hearth_core::inputplumber::MODE_PASS); }
+                }
+            }
+            let _ = child.wait();
+            std::thread::sleep(Duration::from_secs(2));
+            // New controllers (paired later) get the same Guide-only catch.
+            hearth_core::inputplumber::guide_only();
+            hearth_core::inputplumber::set_mode(if me.overlay_on.load(Ordering::SeqCst) { hearth_core::inputplumber::MODE_ALWAYS } else { hearth_core::inputplumber::MODE_PASS });
+        });
+        // Controllers that connect later: set them up too, every 10 seconds (cheap).
+        let me2 = self.clone();
+        std::thread::spawn(move || {
+            let mut known = hearth_core::inputplumber::devices();
+            loop {
+                std::thread::sleep(Duration::from_secs(10));
+                let now = hearth_core::inputplumber::devices();
+                if now != known {
+                    hearth_core::inputplumber::guide_only();
+                    hearth_core::inputplumber::set_mode(if me2.overlay_on.load(Ordering::SeqCst) { hearth_core::inputplumber::MODE_ALWAYS } else { hearth_core::inputplumber::MODE_PASS });
+                    known = now;
+                }
+            }
+        });
+    }
+    /// Leaving: InputPlumber goes back to normal (or the Guide button would do nothing on the desktop).
+    pub fn stop_inputplumber(&self) {
+        if self.ip.swap(false, Ordering::SeqCst) { hearth_core::inputplumber::set_mode(hearth_core::inputplumber::MODE_NONE); }
     }
     pub fn reveal_overlay(&self) {
         self.reveal_gen.fetch_add(1, Ordering::SeqCst);
@@ -327,10 +369,18 @@ impl GameMode {
 
     /// Guide (or View held, or Ctrl+Alt+Q): over anything that isn't Hearth, opens the overlay; again closes it.
     pub fn guide_pressed(self: &Arc<Self>, how: &str) {
+        // The same press can come from two places (InputPlumber and the controller itself).
+        let t = now();
+        if t.saturating_sub(self.last_guide.swap(t, Ordering::SeqCst)) < 400 { return; }
         if self.overlay_on.load(Ordering::SeqCst) { log(&format!("overlay: {how} pressed, closing")); self.hide_overlay(); return; }
-        if self.hearth_on_screen() { return; }   // Hearth's own UI handles Guide itself
+        if self.hearth_on_screen() {
+            // Hearth's own UI handles Guide itself: InputPlumber caught it, so pass it on and give the controller back.
+            if self.ip.load(Ordering::SeqCst) { hearth_core::inputplumber::set_mode(hearth_core::inputplumber::MODE_PASS); self.to_main(ev("pad", json!({"b": "guide"}))); }
+            return;
+        }
         log(&format!("overlay: {how} pressed over another app"));
         if self.show_overlay() { return; }
+        if self.ip.load(Ordering::SeqCst) { hearth_core::inputplumber::set_mode(hearth_core::inputplumber::MODE_PASS); }
         self.come_back();
         self.to_main(ev("pad", json!({"b": "guide"})));
     }

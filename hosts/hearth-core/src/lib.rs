@@ -16,6 +16,7 @@ pub mod gamescope;
 pub mod guide;
 pub mod http;
 pub mod importer;
+pub mod inputplumber;
 pub mod library;
 pub mod owned;
 pub mod manual;
