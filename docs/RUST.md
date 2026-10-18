@@ -35,10 +35,20 @@ Every method the Electron host's bridge answers has an answer in the Rust one (a
 - App updates: the Rust app updates from a release file named Hearth-linux-x86_64 (+ .sha256), which
   releases start carrying when Hearth switches over. On Hearth OS the app updates with the system.
 
+## Tested in CI so far
+- hearth-core's tests, the app built and run in a virtual screen (home, Quick Access, menu, Library,
+  Downloads, Settings screenshots: ci/rust-shots)
+- Hearth OS built with the Rust app instead of Electron (.github/workflows/rust-os.yml): every library the
+  app needs is on the system, and it runs there (ci/rust-os-shots)
+- The installer USB built with the Rust app (installer-iso.yml on rust-host): boots to "Connect a controller"
+  like the Electron one, and the ISO is 1.6 GB (ci/installer-shots-rust)
+
 ## Things that need Chromium today, and what happens to them
-- Xbox Cloud Gaming streams in Chromium. WebKit's WebRTC may not be enough for it: if not, the stream opens
-  in a small Chromium-based player only while streaming.
-- Store sign-in pages (Epic, GOG, Microsoft) open in Tauri web view windows with the same helper script.
+- Xbox Cloud Gaming streams in Chromium. The Rust host turns WebKit's WebRTC on for its window; whether
+  that's enough for xCloud has to be tried on a real device. If not, the stream opens in a small
+  Chromium-based player only while streaming.
+- Store sign-in pages (Epic, GOG, Microsoft) open in web view windows with the same controller helper
+  (pointer, on-screen keyboard); clicks are made in the page rather than as real input events.
 - Hearth Browser stays a separate app (Electron for now); moving it to WebKit is its own project.
 
 ## Known WebKit issue
