@@ -4,14 +4,19 @@
 Run as root (pkexec; the live user is allowed). Installed only on the live USB.
 
   hearth-install disks          JSON: the drives Hearth can go on (not the USB it's running from), with their
-                                size, model, partitions and whether Windows is on them
+                                size, model, partitions and the systems already on them (Windows, SteamOS,
+                                other Linux)
+  hearth-install check PART     JSON: next to the Linux on partition PART: its size, how much is used, how
+                                much room it can give Hearth, and what's in the way
   hearth-install run            reads the plan as JSON on stdin and installs. Progress lines as
                                 "stage: {json}", then "result: {json}" or "error: <message>"
 
 The plan:
-  {"mode": "whole" | "beside",          whole: erase the drive; beside: shrink Windows and install next to it
+  {"mode": "whole" | "beside",          whole: erase the drive; beside: install next to what's on it
    "disk": "/dev/nvme0n1",
-   "give": 137438953472,                beside only: how much space to take from Windows (bytes)
+   "part": "/dev/nvme0n1p8",            beside next to Linux: the partition that gives the room (ext4 or btrfs;
+                                        SteamOS: its home partition). Left out: Windows (hearth-live-prep)
+   "give": 137438953472,                beside only: how much space to take (bytes)
    "user": {"name": "sam", "full": "Sam", "password": "..."},
    "hostname": "sams-deck", "timezone": "America/Chicago",
    "image": "ghcr.io/dragongamer9/hearth:latest",   optional; defaults to the edition this USB is
@@ -99,6 +104,8 @@ def check_plan(p):
     tz = p.get('timezone') or 'UTC'
     if not re.fullmatch(r'[A-Za-z0-9_+/-]+', tz) or '..' in tz:
         raise Fail('unknown time zone')
+    if p.get('part') and not re.fullmatch(r'/dev/[A-Za-z0-9/_-]+', p['part']):
+        raise Fail('choose what to install next to')
     if p['mode'] == 'beside' and not (isinstance(p.get('give'), int) and p['give'] >= MIN_DISK):
         raise Fail(f'Hearth needs at least {MIN_DISK // GIB} GB')
     image = p.get('image') or default_image()
@@ -136,7 +143,7 @@ def live_disk():
 
 
 def disks():
-    tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'NAME,PATH,TYPE,SIZE,MODEL,TRAN,RM,RO,FSTYPE,LABEL,PARTTYPE']).stdout)
+    tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'NAME,PATH,TYPE,SIZE,MODEL,TRAN,RM,RO,FSTYPE,LABEL,PARTTYPE,PARTLABEL,UUID']).stdout)
     live = live_disk()
     out = []
     for d in tree.get('blockdevices', []):
@@ -146,15 +153,230 @@ def disks():
         if re.match(r'/dev/(zram|sr|ram)', d['path']) or (d['path'].startswith('/dev/loop') and not os.environ.get('HEARTH_INSTALL_TEST')):
             continue
         parts = [{'dev': c['path'], 'fs': c.get('fstype'), 'label': c.get('label'), 'size': int(c.get('size') or 0),
-                  'type': (c.get('parttype') or '').lower()} for c in (d.get('children') or []) if c.get('type') == 'part']
+                  'type': (c.get('parttype') or '').lower(), 'partlabel': c.get('partlabel') or '', 'uuid': c.get('uuid')}
+                 for c in (d.get('children') or []) if c.get('type') == 'part']
+        # Linux in LVM volumes (Ubuntu's and Fedora's encrypted or LVM installs): looked at, never shrunk.
+        lvs = [{'dev': g['path'], 'fs': g.get('fstype'), 'label': g.get('label'), 'size': int(g.get('size') or 0), 'type': '',
+                'partlabel': '', 'uuid': g.get('uuid'), 'lvm': True}
+               for c in (d.get('children') or []) for g in (c.get('children') or []) if g.get('type') == 'lvm']
         out.append({
             'dev': d['path'], 'size': int(d['size']), 'model': (d.get('model') or '').strip() or 'Drive',
             'tran': d.get('tran') or '', 'removable': bool(d.get('rm')), 'live': d['path'] == live,
             'parts': parts,
             'windows': any(p['fs'] in ('ntfs', 'BitLocker') and p['size'] > 30 * GIB for p in parts),
+            'systems': systems(parts + lvs, d['path'] == live),
             'tooSmall': int(d['size']) < MIN_DISK,
         })
     return out
+
+
+# ------------------------------------------------------------------ what's already on a drive
+
+STEAMOS_LABELS = {'rootfs-A', 'rootfs-B', 'var-A', 'var-B', 'efi-A', 'efi-B'}
+SHRINKABLE = ('ext4', 'btrfs')
+
+
+def is_ours(p):
+    return (p.get('partlabel'), p.get('type')) in (('boot', XBOOTLDR_TYPE), ('hearth', LINUX_TYPE))
+
+
+def parse_os_release(text):
+    vals = {}
+    for line in text.splitlines():
+        m = re.match(r'\s*([A-Z_]+)=(.*)', line)
+        if m:
+            vals[m.group(1)] = m.group(2).strip().strip('"\'')
+    return vals
+
+
+def os_name(vals):
+    if vals.get('ID') == 'steamos':
+        return 'SteamOS'
+    return vals.get('NAME') or vals.get('PRETTY_NAME') or vals.get('ID') or 'Linux'
+
+
+def peek_mount(dev, fs, mnt):
+    opts = {'ext4': 'ro,noload', 'ntfs': 'ro'}.get(fs, 'ro')
+    for t in (['-t', 'ntfs3'], ['-t', 'ntfs-3g']) if fs == 'ntfs' else ([],):
+        if sh(['mount', *t, '-o', opts, dev, mnt], check=False).returncode == 0:
+            return True
+    return False
+
+
+def inside(root, rel):
+    """A file inside a mounted system, following its links inside that system (never into this USB's)."""
+    root = os.path.normpath(root)
+    p = os.path.normpath(os.path.join(root, rel))
+    for _ in range(8):
+        if p != root and not p.startswith(root + os.sep):
+            return None
+        if not os.path.islink(p):
+            return p if os.path.isfile(p) else None
+        t = os.readlink(p)
+        p = os.path.normpath(os.path.join(root, t.lstrip('/')) if t.startswith('/') else os.path.join(os.path.dirname(p), t))
+    return None
+
+
+def home_uuid(fstab_text):
+    """The UUID a system mounts as /home (or /var/home), from its fstab."""
+    for line in fstab_text.splitlines():
+        bits = line.split()
+        if len(bits) >= 2 and not bits[0].startswith('#') and bits[1] in ('/home', '/var/home') and bits[0].startswith('UUID='):
+            return bits[0][5:]
+    return None
+
+
+def read_os_release(dev, fs):
+    """(os-release, /home's UUID) of the Linux on a partition, looked at read-only; None if there's none.
+    Plain installs, btrfs subvolumes (Fedora, openSUSE, Arch's @), and atomic ones (ostree: Bazzite, Silverblue)."""
+    mnt = f'/run/hearth-install/peek-{os.path.basename(dev)}'
+    os.makedirs(mnt, exist_ok=True)
+    if not peek_mount(dev, fs, mnt):
+        return None
+    try:
+        roots = [os.path.join(mnt, sub) for sub in ('', 'root', '@', '@root', '@rootfs')]
+        roots += sorted(glob.glob(f'{mnt}/ostree/deploy/*/deploy/*.0')) + sorted(glob.glob(f'{mnt}/root/ostree/deploy/*/deploy/*.0'))
+        for root in roots:
+            f = inside(root, 'etc/os-release') or inside(root, 'usr/lib/os-release')
+            if not f:
+                continue
+            vals = parse_os_release(open(f, errors='replace').read())
+            fstab = inside(root, 'etc/fstab')
+            return vals, (home_uuid(open(fstab, errors='replace').read()) if fstab else None)
+        return None
+    except OSError:
+        return None
+    finally:
+        sh(['umount', mnt], check=False)
+
+
+def has_windows(dev):
+    """True/False: Windows' folders on an NTFS partition; None when it can't be looked at (hibernated...)."""
+    mnt = f'/run/hearth-install/peek-{os.path.basename(dev)}'
+    os.makedirs(mnt, exist_ok=True)
+    if not peek_mount(dev, 'ntfs', mnt):
+        return None
+    try:
+        names = {n.lower() for n in os.listdir(mnt)}
+        return 'windows' in names and any(os.path.isdir(os.path.join(mnt, n, 'System32')) or os.path.isdir(os.path.join(mnt, n, 'system32'))
+                                          for n in os.listdir(mnt) if n.lower() == 'windows')
+    except OSError:
+        return None
+    finally:
+        sh(['umount', mnt], check=False)
+
+
+LINUX_FS = ('ext4', 'ext3', 'btrfs', 'xfs', 'f2fs', 'jfs', 'reiserfs')
+
+
+def systems(parts, live=False, peek=read_os_release, peek_win=has_windows):
+    """Every system on a drive's partitions: Windows, SteamOS and any other Linux, as [{kind, name, part,
+    shrink}]. `shrink` is the partition that can give Hearth room (None when Hearth can't shrink it: XFS, LVM,
+    encrypted); free space on the drive works for those."""
+    if live:
+        return []
+    out, taken = [], set()
+    for p in parts:
+        if p['size'] < 30 * GIB:
+            continue
+        if p['fs'] == 'BitLocker':
+            out.append({'kind': 'windows', 'name': 'Windows', 'part': p['dev'], 'shrink': p['dev']})
+        elif p['fs'] == 'ntfs':
+            w = peek_win(p['dev'])
+            if w or (w is None and not any(x['kind'] == 'windows' for x in out)):   # can't look (hibernated): assume Windows
+                out.append({'kind': 'windows', 'name': 'Windows', 'part': p['dev'], 'shrink': p['dev']})
+    labels = {p.get('partlabel') for p in parts}
+    if labels & STEAMOS_LABELS:
+        # SteamOS (Steam Deck layout): two read-only system copies and a big "home" (ext4) with the games.
+        home = next((p for p in parts if p.get('partlabel') == 'home' and p['fs'] in SHRINKABLE), None)
+        out.append({'kind': 'linux', 'name': 'SteamOS', 'part': (home or {}).get('dev') or next(p['dev'] for p in parts if p.get('partlabel') in STEAMOS_LABELS),
+                    'shrink': home['dev'] if home else None})
+        taken |= {p['dev'] for p in parts if p.get('partlabel') in STEAMOS_LABELS | {'home', 'esp'}}
+    by_uuid = {p.get('uuid'): p for p in parts if p.get('uuid')}
+    for p in parts:
+        if p['dev'] in taken or is_ours(p) or p['type'] in (ESP_TYPE, XBOOTLDR_TYPE) or p['size'] < 2 * GIB:
+            continue
+        if p['fs'] == 'crypto_LUKS':
+            out.append({'kind': 'linux', 'name': 'Linux (encrypted)', 'part': p['dev'], 'shrink': None})
+            continue
+        if p['fs'] not in LINUX_FS:
+            continue
+        found = peek(p['dev'], p['fs'])
+        if not found:
+            continue
+        vals, home = found
+        shrink = p['dev'] if p['fs'] in SHRINKABLE and not p.get('lvm') else None
+        h = by_uuid.get(home) if home else None
+        if h and h['dev'] != p['dev'] and h['dev'] not in taken:
+            taken.add(h['dev'])                              # its /home: not a system of its own
+            if h['fs'] in SHRINKABLE and not h.get('lvm') and (not shrink or h['size'] > p['size']):
+                shrink = h['dev']                           # the bigger one, usually with the games
+        taken.add(p['dev'])
+        out.append({'kind': 'linux', 'name': os_name(vals), 'part': p['dev'], 'shrink': shrink})
+    # Two of the same (two Windows, two Ubuntus): tell them apart.
+    seen = {}
+    for x in out:
+        seen[x['name']] = seen.get(x['name'], 0) + 1
+        if seen[x['name']] > 1:
+            x['name'] = f"{x['name']} ({seen[x['name']]})"
+    return out
+
+
+def fs_usage(dev, fs):
+    """(size, used) in bytes of a file system, looked at read-only."""
+    mnt = f'/run/hearth-install/peek-{os.path.basename(dev)}'
+    os.makedirs(mnt, exist_ok=True)
+    sh(['mount', '-o', 'ro,noload' if fs == 'ext4' else 'ro', dev, mnt])
+    try:
+        st = os.statvfs(mnt)
+        size = st.f_blocks * st.f_frsize
+        return size, size - st.f_bfree * st.f_frsize
+    finally:
+        sh(['umount', mnt], check=False)
+
+
+KEEP_FREE = 20 * GIB
+
+
+def can_give(size, used, part_size):
+    """How much a Linux file system can give: it keeps what's used plus 20 GB, in whole GB."""
+    keep = used + KEEP_FREE
+    return max(0, (min(part_size, size) - keep) // GIB * GIB)
+
+
+def check_linux(part):
+    """Next to the Linux on `part`: {target: {...}, problems: [...], suggested}."""
+    info = json.loads(sh(['lsblk', '-J', '-b', '-o', 'PATH,PKNAME,FSTYPE,SIZE,PARTLABEL,MOUNTPOINTS', part]).stdout)['blockdevices'][0]
+    fs, psize = info.get('fstype'), int(info.get('size') or 0)
+    problems = []
+    # The drive it's on (an LVM volume's parent isn't the drive itself: find it through the systems list).
+    d = next((x for x in disks() if any(part in (s.get('shrink'), s.get('part')) for s in x.get('systems', []))), None)
+    disk = d['dev'] if d else '/dev/' + (info.get('pkname') or '')
+    sysinfo = next((x for x in (d or {}).get('systems', []) if part in (x.get('shrink'), x.get('part'))), None)
+    name = (sysinfo or {}).get('name') or 'Linux'
+    shrinkable = fs in SHRINKABLE and bool(sysinfo and sysinfo.get('shrink') == part)
+    target = {'kind': 'linux', 'name': name, 'part': part, 'disk': disk, 'fs': fs, 'size': psize, 'used': 0, 'min': psize, 'canGive': 0}
+    free = free_regions(disk)
+    target['freeSpace'] = free[0][1] * 512 if free else 0
+    if not shrinkable:
+        if target['freeSpace'] < MIN_DISK:
+            why = 'is encrypted' if fs == 'crypto_LUKS' else 'uses LVM' if sysinfo and part.startswith('/dev/mapper/') else f"uses {fs or 'a file system'}"
+            problems.append({'id': 'fs', 'text': f"{name} {why}, which Hearth can't make smaller. Make {MIN_DISK // GIB} GB or more of free (unpartitioned) space on that drive in {name} first, or install on another drive."})
+    else:
+        if any(m for m in (info.get('mountpoints') or []) if m):
+            release(disk)
+        try:
+            size, used = fs_usage(part, fs)
+            target.update(used=used, min=used + KEEP_FREE, canGive=can_give(size, used, psize))
+        except Fail as e:
+            problems.append({'id': 'mount', 'text': f"Couldn't look inside {name}'s drive ({e}). It may need a check: start {name} once and shut it down properly."})
+    if not existing_esp(disk):
+        problems.append({'id': 'esp', 'text': f'{name} on this drive starts the old way (legacy BIOS). Hearth needs UEFI.'})
+    give = max(target['canGive'], target['freeSpace'])   # free space already there, or what shrinking gives
+    if not problems and give < MIN_DISK:
+        problems.append({'id': 'room', 'text': f"{name} doesn't have room to give: Hearth needs {MIN_DISK // GIB} GB and {name} can give {give // GIB} GB. Free up space in {name}, or install on another drive."})
+    suggested = min(give, max(MIN_DISK, give // 2 // (16 * GIB) * (16 * GIB)))
+    return {'target': {**target, 'canGive': give}, 'problems': problems, 'suggested': suggested}
 
 
 def free_regions(disk):
@@ -207,8 +429,8 @@ def partition_whole(disk):
     return part_path(disk, 1), part_path(disk, 2), part_path(disk, 3), True
 
 
-def windows_esp(disk):
-    """Windows' EFI partition on this drive (Hearth's boot loader goes next to Windows' on it)."""
+def existing_esp(disk):
+    """The EFI partition already on this drive (Windows' or SteamOS'): Hearth's boot loader goes next to theirs."""
     tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'PATH,PARTTYPE,FSTYPE,SIZE', disk]).stdout)
     for d in tree['blockdevices']:
         for c in d.get('children') or []:
@@ -242,6 +464,67 @@ def partition_beside(disk, give):
     return partition_free(disk)
 
 
+def partition_beside_linux(disk, part, give):
+    """Makes room next to a Linux (SteamOS' home, or another Linux's ext4/btrfs) and installs there."""
+    remove_ours(disk)
+    room = free_regions(disk)
+    if room and room[0][1] * 512 >= min(give, MIN_DISK) * 0.95:
+        stage('shrink', 14, 'Using the free space on the drive')
+        return partition_free(disk)
+    if part not in [p['dev'] for p in disks_parts(disk) if p['fs'] in SHRINKABLE]:
+        raise Fail('there isn\'t enough free space on the drive, and that system can\'t be made smaller')
+    shrink_linux(disk, part, give)
+    return partition_free(disk)
+
+
+def disks_parts(disk):
+    return next((d['parts'] for d in disks() if d['dev'] == disk), [])
+
+
+def part_number(part):
+    return int(re.search(r'(\d+)$', part).group(1))
+
+
+def new_fs_size(size, give, used):
+    """The file system's size after giving `give` bytes, in whole MiB; Fail if that would squeeze what's on it."""
+    new = (size - give) // MIB * MIB
+    if new < used + KEEP_FREE:
+        raise Fail(f'that leaves too little room for what is already there: it can give at most {max(0, size - used - KEEP_FREE) // GIB} GB')
+    return new
+
+
+def shrink_linux(disk, part, give):
+    """Shrinks the ext4 or btrfs file system on `part`, then its partition (its start stays where it is)."""
+    info = json.loads(sh(['lsblk', '-J', '-b', '-o', 'PATH,FSTYPE,SIZE,START', part]).stdout)['blockdevices'][0]
+    fs, psize = info.get('fstype'), int(info['size'])
+    if fs not in SHRINKABLE:
+        raise Fail(f"that partition uses {fs}, which can't be made smaller")
+    release(disk)
+    stage('shrink', 1, 'Checking the drive')
+    size, used = fs_usage(part, fs)
+    new = new_fs_size(min(size, psize), give, used)
+    if fs == 'ext4':
+        r = sh(['e2fsck', '-f', '-y', part], check=False)
+        if r.returncode not in (0, 1):
+            raise Fail('the drive needs repairs first: ' + ((r.stderr or r.stdout).strip().splitlines() or ['e2fsck failed'])[-1])
+        stage('shrink', 4, 'Making room (this can take a while if the drive is full)')
+        sh(['resize2fs', part, f'{new // 1024}K'])
+    else:
+        mnt = '/run/hearth-install/shrink'
+        os.makedirs(mnt, exist_ok=True)
+        sh(['mount', part, mnt])
+        try:
+            stage('shrink', 4, 'Making room (this can take a while if the drive is full)')
+            devid = (re.search(r'devid\s+(\d+)', sh(['btrfs', 'filesystem', 'show', mnt]).stdout) or [None, '1'])[1]
+            sh(['btrfs', 'filesystem', 'resize', f'{devid}:{new}', mnt])
+        finally:
+            sh(['umount', mnt], check=False)
+    stage('shrink', 12, 'Making room')
+    start = int(open(f'/sys/class/block/{os.path.basename(part)}/start').read())
+    sh(['sfdisk', '--no-reread', '--force', '-N', str(part_number(part)), disk], input=f'start={start}, size={new // 512}\n')
+    settle(disk)
+
+
 def remove_ours(disk):
     tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'PATH,PARTLABEL,PARTTYPE,PARTN', disk]).stdout)
     ours = [c for c in tree['blockdevices'][0].get('children') or []
@@ -256,14 +539,14 @@ def remove_ours(disk):
 
 
 def partition_free(disk):
-    """/boot and Hearth in the biggest free space on a drive that has Windows (and its EFI partition)."""
-    esp = windows_esp(disk)
+    """/boot and Hearth in the biggest free space on a drive that has Windows or Linux (and an EFI partition)."""
+    esp = existing_esp(disk)
     if not esp:
-        raise Fail("this drive has no EFI partition (is Windows installed in legacy BIOS mode?)")
+        raise Fail("this drive has no EFI partition (is the system on it installed in legacy BIOS mode?)")
     release(disk)
     regions = free_regions(disk)
     if not regions or regions[0][1] * 512 < MIN_DISK:
-        raise Fail("there's no room after shrinking Windows")
+        raise Fail("there's no room for Hearth on the drive after making room")
     start, n = regions[0]
     start = (start + 2047) // 2048 * 2048
     boot_n = BOOT_SIZE // 512
@@ -403,6 +686,89 @@ def bootloader(disk, firmware):
         ensure_boot_entry(disk)
 
 
+# Other systems' boot loaders on EFI partitions: "Windows", "SteamOS", ... in Hearth's boot menu.
+KNOWN_LOADERS = [('Microsoft', 'Boot/bootmgfw.efi', 'Windows'), ('steamos', 'steamcl.efi', 'SteamOS')]
+GENERIC_LOADERS = ('shimx64.efi', 'grubx64.efi', 'systemd-bootx64.efi')
+SKIP_DIRS = {'boot', 'fedora', 'hearth', 'tools', 'linux', 'efi'}
+
+
+def find_loaders(esp_root):
+    """[(title, path on the EFI partition)] of other systems' boot loaders under esp_root/EFI."""
+    efi = next((os.path.join(esp_root, n) for n in os.listdir(esp_root) if n.lower() == 'efi'), None) if os.path.isdir(esp_root) else None
+    if not efi:
+        return []
+    out = []
+    dirs = sorted(os.listdir(efi))
+    for d in dirs:
+        full = os.path.join(efi, d)
+        if not os.path.isdir(full) or d.lower() in SKIP_DIRS:
+            continue
+        hit = None
+        for name, rel, title in KNOWN_LOADERS:
+            if d.lower() == name.lower() and os.path.isfile(os.path.join(full, rel)):
+                hit = (title, f'/EFI/{d}/{rel}')
+        if not hit:
+            for f in GENERIC_LOADERS:
+                if os.path.isfile(os.path.join(full, f)):
+                    hit = (d.capitalize() if d.islower() else d, f'/EFI/{d}/{f}')
+                    break
+        if hit:
+            out.append(hit)
+    return out
+
+
+def menu_text(entries):
+    """grub menu entries that start each system's own boot loader (chainloader), by EFI partition UUID."""
+    out = ['# Other systems on this PC, found by Hearth\'s installer. Each starts that system\'s own boot loader.']
+    for title, uuid, path in entries:
+        safe = re.sub(r"[^A-Za-z0-9 ._()-]", '', title) or 'Other system'
+        out.append(f"menuentry '{safe}' --class os {{\n"
+                   f"  insmod part_gpt\n  insmod fat\n  insmod chain\n"
+                   f"  search --no-floppy --fs-uuid --set=root {uuid}\n"
+                   f"  chainloader {path}\n}}")
+    return '\n'.join(out) + '\n'
+
+
+def other_systems_menu():
+    """Adds Windows, SteamOS and other systems to Hearth's boot menu (custom.cfg, which Hearth's boot loader
+    reads), and shows the menu at start when there are any."""
+    entries = []
+    tree = json.loads(sh(['lsblk', '-J', '-o', 'PATH,PARTTYPE,UUID']).stdout)
+    def walk(ds):
+        for d in ds:
+            yield d
+            yield from walk(d.get('children') or [])
+    mine = sh(['findmnt', '-no', 'SOURCE', f'{TARGET}/boot/efi'], check=False).stdout.strip()
+    for d in walk(tree.get('blockdevices', [])):
+        if (d.get('parttype') or '').lower() != ESP_TYPE or not d.get('uuid'):
+            continue
+        if d['path'] == mine:
+            root = f'{TARGET}/boot/efi'
+            entries += [(t, d['uuid'], p) for t, p in find_loaders(root)]
+            continue
+        mnt = '/run/hearth-install/esp-peek'
+        os.makedirs(mnt, exist_ok=True)
+        if sh(['mount', '-o', 'ro', d['path'], mnt], check=False).returncode == 0:
+            try:
+                entries += [(t, d['uuid'], p) for t, p in find_loaders(mnt)]
+            finally:
+                sh(['umount', mnt], check=False)
+    seen, uniq = set(), []
+    for e in entries:
+        if (e[1], e[2]) not in seen:
+            seen.add((e[1], e[2])); uniq.append(e)
+    if not uniq:
+        return []
+    grub = f'{TARGET}/boot/grub2'
+    os.makedirs(grub, exist_ok=True)
+    with open(f'{grub}/custom.cfg', 'w') as f:
+        f.write(menu_text(uniq))
+    env = f'{grub}/grubenv'
+    if os.path.exists(env) and shutil.which('grub2-editenv'):
+        sh(['grub2-editenv', env, 'unset', 'menu_auto_hide'], check=False)   # show the menu: there's a choice
+    return uniq
+
+
 def ensure_boot_entry(disk):
     """A firmware boot entry for Hearth, first in the boot order (bootupd normally adds one)."""
     if not os.path.isdir('/sys/firmware/efi'):
@@ -526,12 +892,15 @@ def run(plan):
     try:
         if plan['mode'] == 'whole':
             esp, boot, root, esp_new = partition_whole(disk)
+        elif plan.get('part') and any(plan['part'] in (x.get('part'), x.get('shrink')) for x in info['systems'] if x['kind'] == 'linux'):
+            esp, boot, root, esp_new = partition_beside_linux(disk, plan['part'], plan['give'])
         else:
             esp, boot, root, esp_new = partition_beside(disk, plan['give'])
         make_filesystems(esp, boot, root, esp_new)
         dep = deploy(plan['image'], uuid_of(root))
         add_kargs(image_kargs(dep) + plan['kargs'])
         bootloader(disk, plan.get('firmware', True))
+        other_systems_menu()
         write_fstab(dep, esp, boot, root)
         setup_system(dep, root, plan)
         stage('finish', 97, 'Finishing up')
@@ -550,10 +919,12 @@ def main(argv):
     try:
         if cmd == 'disks':
             print(json.dumps({'disks': disks(), 'image': default_image(), 'efi': os.path.isdir('/sys/firmware/efi')}))
+        elif cmd == 'check' and len(argv) > 2:
+            print(json.dumps(check_linux(argv[2])))
         elif cmd == 'run':
             print('result: ' + json.dumps(run(json.loads(sys.stdin.read() or '{}'))), flush=True)
         else:
-            print('error: usage: hearth-install disks | run < plan.json', flush=True)
+            print('error: usage: hearth-install disks | check PART | run < plan.json', flush=True)
             return 1
     except (Fail, json.JSONDecodeError) as e:
         print('error: ' + str(e), flush=True)

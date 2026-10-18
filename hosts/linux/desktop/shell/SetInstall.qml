@@ -1,6 +1,6 @@
 // Hearth Settings › Install Hearth OS (live USB only): Hearth's own installer with a mouse and keyboard.
-// The same engine as the Hearth app's install screens (/usr/libexec/nimbus/hearth-install): next to Windows
-// (shrinks Windows with hearth-live-prep first) or on a whole drive, your account, then the install itself,
+// The same engine as the Hearth app's install screens (/usr/libexec/nimbus/hearth-install): next to Windows,
+// SteamOS or any other Linux on the PC (makes room first), or on a whole drive, your account, then the install itself,
 // which downloads Hearth OS straight onto the drive.
 import QtQuick
 import QtQuick.Layouts
@@ -17,7 +17,10 @@ SetPage {
     property string mode: ""           // beside | whole
     property var drives: null          // hearth-install disks
     property string disk: ""
-    property var win: null             // hearth-live-prep check (beside)
+    property var win: null             // the check (beside): {target, problems, suggested}
+    property var target: null          // what Hearth goes next to: {kind, name, part, shrink, disk, model}
+    readonly property string tname: target ? target.name : "Windows"
+    readonly property var systems: drives ? drives.filter(d => !d.live).reduce((a, d) => a.concat((d.systems || []).map(x => Object.assign({}, x, { disk: d.dev, model: d.model }))), []) : []
     property bool checking: false
     property real give: 0
     property string tz: "UTC"
@@ -36,7 +39,7 @@ SetPage {
         if (!mode) return "Choose how to install";
         if (!disk) return "Choose a drive";
         if (mode === "beside") {
-            if (checking || !win) return "Checking Windows…";
+            if (checking || !win) return "Checking " + tname + "…";
             if (blockers.length) return blockers[0].text;
             if (give < 64 * gib) return "Hearth needs at least 64 GB";
         }
@@ -47,8 +50,8 @@ SetPage {
         return "";
     }
     function sizes() {
-        if (!win || !win.windows) return [];
-        const max = Math.floor(win.windows.canGive / gib);
+        if (!win || !win.target) return [];
+        const max = Math.floor(win.target.canGive / gib);
         const out = [];
         const steps = [64, 128, 256, 512, 1024];
         for (let i = 0; i < steps.length; i++) if (steps[i] < max) out.push({ value: steps[i] * gib, label: steps[i] + " GB" });
@@ -63,7 +66,7 @@ SetPage {
     function start() {
         const plan = { mode: mode, disk: disk, user: { full: fullName.text.trim(), name: userName.text, password: noPass.checked ? "" : pass1.text, nopassword: noPass.checked },
                        hostname: (hostName.text || (userName.text + "-hearth")), timezone: tz, signin: signinChoice.current };
-        if (mode === "beside") plan.give = Math.round(give);
+        if (mode === "beside") { plan.give = Math.round(give); if (target && target.kind === "linux") plan.part = target.shrink || target.part; }
         error = ""; pct = 0; stageText = "Starting"; stage = "start"; secsLeft = -1;
         phase = "running";
         runProc.plan = JSON.stringify(plan);
@@ -84,8 +87,8 @@ SetPage {
     }
     Process {
         id: checkProc
-        command: ["pkexec", page.prep, "check"]
-        stdout: SplitParser { onRead: l => { l = l.trim(); if (l.startsWith("{")) { try { page.win = JSON.parse(l); page.give = page.win.suggested || 0; } catch (e) {} } else if (l.startsWith("error: ")) page.win = { problems: [{ id: "error", text: l.slice(7) }] }; } }
+        command: page.target && page.target.kind === "linux" ? ["pkexec", page.engine, "check", page.target.shrink || page.target.part] : ["pkexec", page.prep, "check"]
+        stdout: SplitParser { onRead: l => { l = l.trim(); if (l.startsWith("{")) { try { const r = JSON.parse(l); if (!r.target && r.windows) r.target = Object.assign({ kind: "windows", name: "Windows", freeSpace: 0 }, r.windows); page.win = r; page.give = r.suggested || 0; } catch (e) {} } else if (l.startsWith("error: ")) page.win = { problems: [{ id: "error", text: l.slice(7) }] }; } }
         onExited: page.checking = false
     }
     Process {
@@ -111,22 +114,43 @@ SetPage {
         text: "Hearth OS is downloaded while it installs (about 5 GB), so stay connected to the internet and plugged in. It takes about 10 to 20 minutes."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
     }
-    SetChoice {
-        visible: page.phase === "setup"
-        title: "How"
-        sub: page.mode === "whole" ? "Hearth gets the whole drive. Everything on it is erased." : page.mode === "beside" ? "Keep Windows and its files. Hearth gets space Windows isn't using." : "Next to Windows keeps it; a whole drive erases it."
-        options: [{ value: "beside", label: "Next to Windows" }, { value: "whole", label: "Erase a drive" }]
-        current: page.mode
-        onChosen: v => { page.mode = v; page.disk = ""; page.win = null; }
+    // How: next to each system found on the PC (Windows, SteamOS, any Linux), or erase a drive
+    SetHeader { visible: page.phase === "setup"; text: "How" }
+    SetRow {
+        visible: page.phase === "setup" && page.drives === null
+        interactive: false; chevron: false; icon: "update"; title: "Looking for Windows, SteamOS and other systems…"
+    }
+    Repeater {
+        model: page.phase === "setup" ? page.systems : []
+        delegate: SetRow {
+            required property var modelData
+            readonly property bool on: page.mode === "beside" && !!page.target && page.target.disk === modelData.disk && page.target.part === modelData.part
+            chevron: false
+            icon: on ? "check" : modelData.kind === "windows" ? "display" : "pad"
+            title: "Next to " + modelData.name + (new Set(page.systems.map(x => x.disk)).size > 1 ? " (" + modelData.model + ")" : "")
+            sub: !modelData.shrink ? "Keep " + modelData.name + ". Hearth can't make it smaller, so it needs free space on that drive."
+                 : "Keep " + modelData.name + " and its files. Hearth gets space " + modelData.name + " isn't using; pick which one to start when the PC turns on."
+            value: on ? "Chosen" : ""
+            onActivated: { page.mode = "beside"; page.target = modelData; page.disk = modelData.disk; page.check(); }
+        }
+    }
+    SetRow {
+        visible: page.phase === "setup" && page.drives !== null
+        chevron: false
+        icon: page.mode === "whole" ? "check" : "close"
+        title: "Erase a drive"
+        sub: "Hearth gets the whole drive. Everything on it is erased."
+        value: page.mode === "whole" ? "Chosen" : ""
+        onActivated: { page.mode = "whole"; page.target = null; page.disk = ""; page.win = null; }
     }
 
-    SetHeader { visible: page.phase === "setup" && page.mode !== ""; text: page.mode === "beside" ? "The drive with Windows" : "The drive for Hearth" }
+    SetHeader { visible: page.phase === "setup" && page.mode === "whole"; text: "The drive for Hearth" }
     SetRow {
-        visible: page.phase === "setup" && page.mode !== "" && page.drives === null
+        visible: page.phase === "setup" && page.mode === "whole" && page.drives === null
         interactive: false; chevron: false; icon: "update"; title: "Looking for drives…"
     }
     Repeater {
-        model: page.phase === "setup" && page.mode !== "" && page.drives ? page.drives.filter(d => page.mode === "whole" || d.windows) : []
+        model: page.phase === "setup" && page.mode === "whole" && page.drives ? page.drives : []
         delegate: SetRow {
             required property var modelData
             readonly property string why: modelData.live ? "The USB stick Hearth is running from" : modelData.tooSmall ? "Too small (Hearth needs 64 GB)" : ""
@@ -134,16 +158,16 @@ SetPage {
             chevron: false
             icon: modelData.dev === page.disk ? "check" : "display"
             title: modelData.model + " · " + page.gb(modelData.size)
-            sub: why || [modelData.tran.toUpperCase(), modelData.windows ? "Has Windows" : "", modelData.parts.length ? modelData.parts.length + " partitions" : "Empty"].filter(x => x).join(" · ")
+            sub: why || [modelData.tran.toUpperCase(), (modelData.systems || []).length ? "Has " + modelData.systems.map(x => x.name).join(" and ") : "", modelData.parts.length ? modelData.parts.length + " partitions" : "Empty"].filter(x => x).join(" · ")
             value: modelData.dev === page.disk ? "Chosen" : ""
-            onActivated: { page.disk = modelData.dev; if (page.mode === "beside" && !page.win) page.check(); }
+            onActivated: page.disk = modelData.dev
         }
     }
 
-    // next to Windows: what was found, and how much room
+    // next to a system: what was found, and how much room
     SetRow {
         visible: page.phase === "setup" && page.mode === "beside" && page.checking
-        interactive: false; chevron: false; icon: "update"; title: "Checking Windows…"; sub: "Free space, BitLocker, Fast Startup and your games (up to a minute)"
+        interactive: false; chevron: false; icon: "update"; title: "Checking " + page.tname + "…"; sub: page.target && page.target.kind === "linux" ? "How much room it can give (up to a minute)" : "Free space, BitLocker, Fast Startup and your games (up to a minute)"
     }
     Repeater {
         model: page.phase === "setup" && page.mode === "beside" ? page.blockers : []
@@ -158,9 +182,9 @@ SetPage {
         icon: "restart"; title: "Check again"; onActivated: page.check()
     }
     SetChoice {
-        visible: page.phase === "setup" && page.mode === "beside" && !!page.win && !!page.win.windows && page.blockers.length === 0
+        visible: page.phase === "setup" && page.mode === "beside" && !!page.win && !!page.win.target && page.blockers.length === 0
         title: "Room for Hearth"
-        sub: page.win && page.win.windows ? "Windows keeps " + page.gb(page.win.windows.size - page.give) + (page.win.games && page.win.games.count ? ". " + page.win.games.count + " games found in Windows (" + page.gb(page.win.games.size) + "): leave room to bring them over." : ".") : ""
+        sub: page.win && page.win.target ? (page.win.target.freeSpace >= page.give ? "From free space on the drive: " + page.tname + " stays the same size." : page.tname + " keeps " + page.gb(page.win.target.size - page.give)) + (page.win.games && page.win.games.count ? ". " + page.win.games.count + " games found in Windows (" + page.gb(page.win.games.size) + "): leave room to bring them over." : ".") : ""
         options: page.sizes()
         current: page.give
         onChosen: v => page.give = v
@@ -200,7 +224,7 @@ SetPage {
         visible: page.phase === "setup"
         icon: "update"
         title: page.problem() === "" ? "Install Hearth OS" : "Install Hearth OS"
-        sub: page.problem() || (page.mode === "whole" ? "Next, a last check before anything is erased" : "Next, a last check before Windows is shrunk")
+        sub: page.problem() || (page.mode === "whole" ? "Next, a last check before anything is erased" : "Next, a last check before " + page.tname + " is made smaller")
         onActivated: if (page.problem() === "") page.phase = "confirm"
     }
 
@@ -215,12 +239,12 @@ SetPage {
             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 16 }
             wrapMode: Text.WordWrap
             text: page.mode === "whole"
-                ? "Everything on " + (page.drive ? page.drive.model + " (" + page.gb(page.drive.size) + ")" : "the drive") + " is erased for good" + (page.drive && page.drive.windows ? ", including Windows" : "") + ", and Hearth OS goes on it."
-                : "Windows gets " + page.gb(page.give) + " smaller and Hearth OS goes in that space. Windows and its files stay, but back up anything important first: resizing a drive is never completely risk-free."
+                ? "Everything on " + (page.drive ? page.drive.model + " (" + page.gb(page.drive.size) + ")" : "the drive") + " is erased for good" + (page.drive && (page.drive.systems || []).length ? ", including " + page.drive.systems.map(x => x.name).join(" and ") : "") + ", and Hearth OS goes on it."
+                : page.tname + " gets " + page.gb(page.give) + " smaller and Hearth OS goes in that space. " + page.tname + " and its files stay, but back up anything important first: resizing a drive is never completely risk-free. When the PC starts, Hearth's menu lets you pick Hearth or " + page.tname + "."
             color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold
         }
     }
-    SetRow { visible: page.phase === "confirm"; icon: page.mode === "whole" ? "close" : "update"; danger: page.mode === "whole"; title: page.mode === "whole" ? "Erase it and install Hearth OS" : "Install Hearth OS next to Windows"; onActivated: page.start() }
+    SetRow { visible: page.phase === "confirm"; icon: page.mode === "whole" ? "close" : "update"; danger: page.mode === "whole"; title: page.mode === "whole" ? "Erase it and install Hearth OS" : "Install Hearth OS next to " + page.tname; onActivated: page.start() }
     SetRow { visible: page.phase === "confirm"; icon: "back"; title: "Go back"; onActivated: page.phase = "setup" }
 
     // ================================================================ installing
@@ -250,7 +274,7 @@ SetPage {
             id: doneText
             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 16 }
             wrapMode: Text.WordWrap
-            text: "Hearth OS is installed. Restart, and take out the USB stick when the screen goes dark. Hearth starts with a short setup" + (page.mode === "beside" ? ", including bringing your games over from Windows." : ".")
+            text: "Hearth OS is installed. Restart, and take out the USB stick when the screen goes dark. Hearth starts with a short setup" + (page.mode === "beside" ? ", including bringing your games over from " + page.tname + "." : ".")
             color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold
         }
     }
@@ -259,7 +283,7 @@ SetPage {
     SetRow {
         visible: page.phase === "failed"
         icon: "restart"; title: "Try again"
-        sub: page.mode === "whole" ? "Installing again starts over." : "Windows is still there. If it got smaller, the space is still free: installing again uses it."
+        sub: page.mode === "whole" ? "Installing again starts over." : page.tname + " is still there. If it got smaller, the space is still free: installing again uses it."
         onActivated: page.phase = "setup"
     }
 }

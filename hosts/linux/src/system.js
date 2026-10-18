@@ -165,6 +165,40 @@ class Bluetooth extends EventEmitter {
     try { await run('bluetoothctl', ['remove', mac]); return { ok: true }; }
     catch (e) { return { ok: false, error: e.message }; }
   }
+
+  /**
+   * "Connect a controller" (first screen on the live USB and at first start): with nothing but the controller,
+   * Hearth has to pair it by itself. Bluetooth goes on, scanning keeps going, and any controller in pairing
+   * mode that shows up is paired, trusted and connected. Events: 'pad' {state: 'pairing'|'paired'|'failed', name}.
+   */
+  autoPairPads(on) {
+    clearInterval(this._auto && this._auto.poll);
+    if (!on) { if (this._auto) run('bluetoothctl', ['scan', 'off']).catch(() => {}); this._auto = null; return; }
+    if (!this.available) return;
+    const auto = this._auto = { busy: false, tried: new Map() };
+    const scan = () => { if (this._auto === auto) run('bluetoothctl', ['--timeout', '120', 'scan', 'on'], { timeout: 125000 }).catch(() => {}).then(() => { if (this._auto === auto) scan(); }); };
+    this.setPower(true).catch(() => {}).then(scan);
+    auto.poll = setInterval(async () => {
+      if (auto.busy || this._auto !== auto) return;
+      for (const mac of await this.devices()) {
+        const last = auto.tried.get(mac);
+        if (last && Date.now() - last < 20000) continue;
+        const d = await this.info(mac).catch(() => null);
+        if (!d || d.paired || !isGamepad(d)) continue;
+        auto.busy = true; auto.tried.set(mac, Date.now());
+        this.emit('pad', { state: 'pairing', name: d.name });
+        const r = await this.pair(mac);
+        this.emit('pad', { state: r.ok ? 'paired' : 'failed', name: d.name });
+        auto.busy = false;
+        break;
+      }
+    }, 2000);
+  }
+}
+
+/** Looks like a game controller: Bluetooth says so, or its name does. */
+function isGamepad(d) {
+  return d.kind === 'Input.Gamepad' || /controller|gamepad|xbox|dualsense|dualshock|wireless controller|pro controller|joy-?con|8bitdo|stadia|gamesir|flydigi|nimbus|razer kishi|backbone/i.test(d.name || '');
 }
 
 // ------------------------------------------------------------------ Audio (PipeWire)
@@ -275,4 +309,4 @@ async function airplaneOn() {
   return rows.length > 0 && rows.every(s => s === 'blocked');
 }
 
-module.exports = { Wifi, Bluetooth, Audio, Display, Power, setAirplane, airplaneOn, nmFields, bars };
+module.exports = { Wifi, Bluetooth, Audio, Display, Power, setAirplane, airplaneOn, nmFields, bars, isGamepad };

@@ -8,6 +8,9 @@ on:
     branches: [linux-host, main]
     paths: ['os/live/src/hearth-install', '.github/workflows/installer-test.yml']
 
+permissions:
+  contents: write
+
 jobs:
   install:
     runs-on: ubuntu-latest
@@ -86,3 +89,86 @@ jobs:
           path: |
             install.log
             boot.log
+
+  # Next to SteamOS: a disk laid out like a Steam Deck's (EFI, two system copies, a big "home" with games),
+  # then Hearth installs next to it. Checks SteamOS is found, its home is made smaller but still fine, both
+  # are in Hearth's boot menu, and the result boots.
+  beside-steamos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+      - name: A disk with SteamOS on it
+        run: |
+          set -ex
+          sudo apt-get install -y -qq btrfs-progs dosfstools >/dev/null
+          truncate -s 160G disk.img
+          LOOP=$(sudo losetup -fP --show disk.img); echo "LOOP=$LOOP" >> "$GITHUB_ENV"
+          printf 'label: gpt\nsize=64MiB, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name="esp"\nsize=64MiB, type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, name="efi-A"\nsize=64MiB, type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, name="efi-B"\nsize=6GiB, type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709, name="rootfs-A"\nsize=6GiB, type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709, name="rootfs-B"\nsize=256MiB, type=4D21B016-B534-45C2-A9FB-5C16E091FD2D, name="var-A"\nsize=256MiB, type=4D21B016-B534-45C2-A9FB-5C16E091FD2D, name="var-B"\ntype=933AC7E1-2EB4-4F13-B844-0E14E2AEF915, name="home"\n' | sudo sfdisk "$LOOP"
+          sudo partx -u "$LOOP"; sleep 1
+          sudo mkfs.vfat -F 32 "${LOOP}p1"; sudo mkfs.btrfs -q -L rootfs "${LOOP}p4"; sudo mkfs.btrfs -q -L rootfs "${LOOP}p5"
+          sudo mkfs.ext4 -q -L var "${LOOP}p6"; sudo mkfs.ext4 -q -L var "${LOOP}p7"; sudo mkfs.ext4 -q -L home "${LOOP}p8"
+          sudo mkdir -p /mnt/e /mnt/r /mnt/h
+          sudo mount "${LOOP}p1" /mnt/e && sudo mkdir -p /mnt/e/EFI/steamos && echo steamcl | sudo tee /mnt/e/EFI/steamos/steamcl.efi >/dev/null && sudo umount /mnt/e
+          sudo mount "${LOOP}p4" /mnt/r && sudo mkdir -p /mnt/r/etc && printf 'NAME="SteamOS"\nID=steamos\n' | sudo tee /mnt/r/etc/os-release >/dev/null && sudo umount /mnt/r
+          sudo mount "${LOOP}p8" /mnt/h && sudo mkdir -p /mnt/h/deck/.local/share/Steam/steamapps/common/SomeGame && sudo dd if=/dev/urandom of=/mnt/h/deck/.local/share/Steam/steamapps/common/SomeGame/data.pak bs=1M count=200 status=none
+          sudo sha256sum /mnt/h/deck/.local/share/Steam/steamapps/common/SomeGame/data.pak | cut -d' ' -f1 > game.sha; sudo umount /mnt/h
+          lsblk -o NAME,SIZE,FSTYPE,PARTLABEL "$LOOP"
+      - name: Hearth finds SteamOS
+        run: |
+          sudo podman run --rm --privileged --pid=host --net=host -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" \
+            -e HEARTH_INSTALL_TEST=1 --security-opt label=disable ghcr.io/dragongamer9/hearth:latest /src/hearth-install disks | tee disks.json
+          python3 - "$LOOP" <<'PY'
+          import json, sys
+          d = next(x for x in json.load(open('disks.json'))['disks'] if x['dev'] == sys.argv[1])
+          print('systems:', d['systems'])
+          s = d['systems']
+          assert s and s[0]['name'] == 'SteamOS' and s[0]['shrink'] == sys.argv[1] + 'p8', s
+          PY
+          sudo podman run --rm --privileged --pid=host --net=host -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" \
+            -e HEARTH_INSTALL_TEST=1 --security-opt label=disable ghcr.io/dragongamer9/hearth:latest /src/hearth-install check "${LOOP}p8" | tee check.json
+      - name: Install Hearth OS next to it
+        run: |
+          plan=$(printf '{"mode":"beside","disk":"%s","part":"%sp8","give":%s,"user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"UTC","image":"ghcr.io/dragongamer9/hearth:latest","firmware":false,"kargs":["console=ttyS0,115200"]}' "$LOOP" "$LOOP" $((70*1024*1024*1024)))
+          echo "$plan" | sudo podman run --rm -i --privileged --pid=host --net=host \
+            -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" -e HEARTH_INSTALL_TEST=1 \
+            --security-opt label=disable ghcr.io/dragongamer9/hearth:latest /src/hearth-install run 2>&1 | tee install.log || true
+          grep -q '^result: ' install.log || { echo "::error title=Install failed::$(tail -n 25 install.log | tr '\n' '|' | cut -c1-3500)"; exit 1; }
+      - name: Check SteamOS is fine and both are in the boot menu
+        run: |
+          set -x
+          sudo partx -u "$LOOP" || true
+          lsblk -o NAME,SIZE,FSTYPE,PARTLABEL "$LOOP"
+          ok=1; check() { if eval "$2"; then echo "ok: $1"; else echo "::error::$1"; ok=0; fi; }
+          check "SteamOS home still clean" "sudo e2fsck -fn ${LOOP}p8"
+          sudo mount -o ro "${LOOP}p8" /mnt/h
+          check "SteamOS games untouched" "[ \"\$(sudo sha256sum /mnt/h/deck/.local/share/Steam/steamapps/common/SomeGame/data.pak | cut -d' ' -f1)\" = \"\$(cat game.sha)\" ]"
+          sudo umount /mnt/h
+          check "SteamOS home smaller" "[ \$(lsblk -bno SIZE ${LOOP}p8) -lt $((80*1024*1024*1024)) ]"
+          root=$(lsblk -lnpo NAME,PARTLABEL "$LOOP" | awk '$2=="hearth"{print $1}'); boot=$(lsblk -lnpo NAME,PARTLABEL "$LOOP" | awk '$2=="boot"{print $1}')
+          check "Hearth partitions" "[ -n '$root' ] && [ -n '$boot' ]"
+          sudo mkdir -p /mnt/b && sudo mount "$boot" /mnt/b
+          sudo cat /mnt/b/grub2/custom.cfg || true
+          check "SteamOS in Hearth's boot menu" "sudo grep -q 'chainloader /EFI/steamos/steamcl.efi' /mnt/b/grub2/custom.cfg"
+          sudo mount "${LOOP}p1" /mnt/e
+          check "Hearth's boot loader next to SteamOS's" "sudo test -e /mnt/e/EFI/steamos/steamcl.efi -a -d /mnt/e/EFI/fedora"
+          echo "::notice title=grub reads custom.cfg::$(sudo grep -rl 'custom.cfg' /mnt/b/grub2/grub.cfg /mnt/e/EFI/fedora/grub.cfg 2>/dev/null | tr '\n' ' ')"
+          check "Hearth's boot loader reads custom.cfg" "sudo grep -q 'custom.cfg' /mnt/b/grub2/grub.cfg"
+          sudo umount /mnt/b /mnt/e
+          [ $ok = 1 ]
+      - name: Boot it and wait for the login prompt
+        run: |
+          sudo apt-get install -y -qq qemu-system-x86 ovmf >/dev/null
+          sudo losetup -d "$LOOP"
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd 2>/dev/null || cp /usr/share/OVMF/OVMF_VARS.fd vars.fd
+          code=$(ls /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd 2>/dev/null | head -1)
+          timeout 900 sudo qemu-system-x86_64 -m 4096 -smp 2 $( [ -e /dev/kvm ] && echo -enable-kvm -cpu host ) \
+            -drive if=pflash,format=raw,readonly=on,file="$code" -drive if=pflash,format=raw,file=vars.fd \
+            -drive file=disk.img,format=raw,if=virtio -nographic -serial mon:stdio -display none -net none > boot.log 2>&1 &
+          for i in $(seq 1 180); do grep -qE 'login:|Reached target.*(Multi-User|Graphical)' boot.log && break; sleep 5; done
+          sudo pkill qemu-system || true
+          grep -a -o "SteamOS" boot.log | head -1 | sed 's/^/::notice title=Boot menu shows::/' || true
+          grep -qE 'login:|Reached target.*(Multi-User|Graphical)' boot.log && echo "::notice::Hearth next to SteamOS boots" || { echo "::error title=Boot failed::$(tail -c 3000 boot.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\n' '|')"; exit 1; }
