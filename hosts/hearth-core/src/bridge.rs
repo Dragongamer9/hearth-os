@@ -95,7 +95,7 @@ mod tests {
         let mut b = Bridge { library: Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), version: "0.0.23".into() };
         let r = b.handle(&json!({"type":"call","id":7,"method":"library.get","args":{}})).unwrap();
         assert_eq!(r["id"], 7); assert_eq!(r["ok"], true); assert_eq!(r["value"]["games"], json!([]));
-        let r = b.handle(&json!({"type":"call","id":8,"method":"wifi.scan"})).unwrap();
+        let r = b.handle(&json!({"type":"call","id":8,"method":"epic.signIn"})).unwrap();
         assert_eq!(r["ok"], false); assert!(r["error"].as_str().unwrap().contains("Rust version"));
         assert!(b.handle(&json!({"type":"log","text":"hi"})).is_none());
         let r = b.handle(&json!({"type":"call","id":9,"method":"library.setFav","args":{"id":"steam:1","on":true}})).unwrap();
