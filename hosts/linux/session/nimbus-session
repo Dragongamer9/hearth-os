@@ -64,7 +64,8 @@ fi
 
 # Aloha Browser, Hearth's web browser: downloaded from alohabrowser.com once (it can't ship in the image),
 # then checked for updates weekly. Settings › System › Web browser can remove it or reinstall it.
-[ -x "$SHARE/desktop/shell/hearth-browser" ] && (sleep 45; python3 "$SHARE/desktop/shell/hearth-browser" ensure) >>"$(dirname "$LOG")/browser.log" 2>&1 &
+# (Not on the live USB: it would download into memory.)
+[ -x "$SHARE/desktop/shell/hearth-browser" ] && [ ! -e /etc/hearth-live ] && (sleep 45; python3 "$SHARE/desktop/shell/hearth-browser" ensure) >>"$(dirname "$LOG")/browser.log" 2>&1 &
 
 mode="${NIMBUS_START_MODE:-game}"
 rm -f "$NEXT"

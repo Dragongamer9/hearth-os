@@ -585,7 +585,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.live){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'To install it: Power › Switch to desktop, then Install Hearth'}); updateBadge(); toast('Running from the USB stick. To install Hearth: Power › Switch to desktop › Install Hearth.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 const pending = new Map(); let rid = 0;

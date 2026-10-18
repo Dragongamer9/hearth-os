@@ -1,0 +1,67 @@
+# Builds the Hearth live ISO: boots from a USB stick into Hearth (Desktop Mode) so you can try it, with a
+# welcome card and an "Install Hearth" installer. Same idea and tool as Bazzite's live ISO (Titanoboa).
+# Manual only (Actions › Hearth live ISO › Run workflow); the ISO is kept as a download on the run for 14 days
+# (GitHub releases can't hold files over 2 GB). Installing needs internet: it downloads the current Hearth
+# image, so a fresh install is always up to date.
+name: Hearth live ISO
+
+on:
+  workflow_dispatch:
+  # Also when the live ISO's own files change on linux-host, to try them before they reach main.
+  push:
+    branches: [linux-host]
+    paths: ['os/live/**', '.github/workflows/live-iso.yml']
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  live-iso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+
+      - name: Build the live system
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=live system::$msg"' ERR
+          # Container storage on the big disk: the image, the live layer and the squashfs need ~40 GB.
+          sudo mkdir -p /mnt/containers /var/lib/containers
+          sudo mount --bind /mnt/containers /var/lib/containers
+          df -h / /mnt
+          sudo podman build --pull=newer --cap-add sys_admin --security-opt label=disable \
+            -t localhost/hearth-live:latest -f os/live/Containerfile os/live
+
+      - name: Make the ISO (Titanoboa)
+        id: iso
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=iso::$msg"' ERR
+          git clone -q https://github.com/ublue-os/titanoboa.git /tmp/titanoboa
+          git -C /tmp/titanoboa checkout -q 5c457c3d0518bd17e754be0fd98a60d29d26abb4
+          out=/mnt/live-out
+          sudo mkdir -p "$out"
+          iso=$(cd /tmp/titanoboa && sudo TITANOBOA_OUTPUT_DIR="$out" ./main.sh localhost/hearth-live:latest)
+          sudo chown -R "$(id -u):$(id -g)" "$out"
+          v=$(sudo podman run --rm localhost/hearth-live:latest cat /usr/share/nimbus/version 2>/dev/null || echo latest)
+          mv "$iso" "$out/hearth-live-$v.iso"
+          (cd "$out" && sha256sum "hearth-live-$v.iso" | tee "hearth-live-$v.iso.sha256")
+          ls -lh "$out"
+          echo "dir=$out" >> "$GITHUB_OUTPUT"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the ISO as a download on this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: hearth-live-${{ steps.iso.outputs.version }}
+          path: ${{ steps.iso.outputs.dir }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

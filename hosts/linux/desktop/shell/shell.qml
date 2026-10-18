@@ -52,10 +52,12 @@ ShellRoot {
     SettingsApp { id: settings }
     VolumeOsd {}
     PowerMenu { id: powerMenu }
+    LiveWelcome { id: liveWelcome; settingsApp: settings }
     Pad {
         id: pad
         settings: settings
         powerMenu: powerMenu
+        liveWelcome: liveWelcome
         launcher: launcher
         quick: quick
         radial: radial
@@ -86,6 +88,11 @@ ShellRoot {
         function down(): void { Buttons.volume(-1, false); }
         function mute(): void { Buttons.mute(false); }
         function power(): void { Buttons.power("short", false); }
+    }
+    IpcHandler {
+        target: "live"
+        function welcome(): void { liveWelcome.shown = true; }
+        function close(): void { liveWelcome.shown = false; }
     }
     IpcHandler {
         target: "power"
