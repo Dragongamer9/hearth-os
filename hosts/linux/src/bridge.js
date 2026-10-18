@@ -258,6 +258,8 @@ class Bridge {
       // Settings › Sign-in (Linux)
       case 'login.get': return this.admin.login();
       case 'login.setAutologin': return this.admin.setAutologin(!!a.on);
+      case 'login.setLockOnWake': return this.admin.setLockOnWake(!!a.on);
+      case 'login.unlock': { const ok = await this.admin.checkPassword(a.password); if (ok) this.platform.unlocked && this.platform.unlocked(); return { ok }; }
       case 'login.setStartMode': return this.admin.setStartMode(req('mode'));
       case 'login.setHostname': return this.admin.setHostname(req('name'));
       case 'login.password': return this.admin.changePassword(req('old'), req('new'));

@@ -62,7 +62,7 @@ SetPage {
     }
     function start() {
         const plan = { mode: mode, disk: disk, user: { full: fullName.text.trim(), name: userName.text, password: noPass.checked ? "" : pass1.text, nopassword: noPass.checked },
-                       hostname: (hostName.text || (userName.text + "-hearth")), timezone: tz };
+                       hostname: (hostName.text || (userName.text + "-hearth")), timezone: tz, signin: signinChoice.current };
         if (mode === "beside") plan.give = Math.round(give);
         error = ""; pct = 0; stageText = "Starting"; stage = "start"; left = -1;
         phase = "running";
@@ -183,6 +183,15 @@ SetPage {
     Text { visible: page.phase === "setup" && !noPass.checked; text: "Password"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
     SetField { id: pass1; visible: page.phase === "setup" && !noPass.checked; secret: true; placeholder: "Password" }
     SetField { id: pass2; visible: page.phase === "setup" && !noPass.checked; secret: true; placeholder: "The same password again" }
+    SetChoice {
+        id: signinChoice
+        visible: page.phase === "setup" && !noPass.checked
+        title: "Ask for my password"
+        sub: current === "auto" ? "Starts and wakes straight into Hearth, like a console. Change it any time in Settings › Sign-in." : current === "start" ? "The login screen when it turns on." : "The login screen when it turns on, and the lock screen after sleep."
+        options: [{ value: "auto", label: "Never" }, { value: "start", label: "When it turns on" }, { value: "always", label: "On and after sleep" }]
+        current: "auto"
+        onChosen: v => current = v
+    }
     Text { visible: page.phase === "setup"; text: "Device name and time zone"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
     SetField { id: hostName; visible: page.phase === "setup"; placeholder: (userName.text || "my") + "-hearth" }
     SetField { id: tzField; visible: page.phase === "setup"; text: page.tz; placeholder: "Time zone, e.g. America/Chicago"; onTextChanged: page.tz = text }
