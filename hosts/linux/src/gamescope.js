@@ -90,13 +90,14 @@ async function clearFocus() { await removeRoot('GAMESCOPECTRL_BASELAYER_WINDOW')
  * Brings a game to the front once its window exists: tries for a while (games take time to open a window),
  * matching the game's processes, or its Steam app id. Resolves true when it found one.
  */
-async function focusGame({ pids = () => [], steamAppId = 0, exclude = [], tries = 20, every = 1500 } = {}) {
+async function focusGame({ pids = () => [], steamAppId = 0, exclude = [], tries = 20, every = 1500, still = () => true } = {}) {
   if (!available()) return false;
   if (steamAppId) await focusAppId(steamAppId).catch(() => {});
-  for (let i = 0; i < tries; i++) {
+  for (let i = 0; i < tries && still(); i++) {
     const want = new Set(pids());
     const wins = (await focusableWindows()).filter(w => !exclude.includes(w.pid));
     const hit = wins.find(w => want.has(w.pid)) || (steamAppId ? wins.find(w => w.appid === steamAppId) : null);
+    if (hit && !still()) return false;   // something else was put in front meanwhile: stop
     if (hit) { await focusWindow(hit.win).catch(() => {}); log(`gamescope: game window ${hit.win} in front`); return true; }
     await new Promise(r => setTimeout(r, every));
   }
