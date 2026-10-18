@@ -104,6 +104,29 @@ class Importer extends EventEmitter {
     this.state.scan = null;
   }
 
+  // ------------------------------------------------------------------ remove the old system
+  // After importing: erase the other systems' partitions on Hearth's own drive and give Hearth the space
+  // (hearth-takeover). Only partitions it offers can be chosen, never Hearth's own.
+
+  async takeoverPlan() {
+    if (!this.supported) throw new Error('This needs Hearth, the OS.');
+    if (this.state.state !== 'idle') return this.status();
+    try { this.set({ takeover: await this.admin.run(['takeover-plan'], { timeout: 60000 }), takeoverError: null }); }
+    catch (e) { this.set({ takeover: null, takeoverError: e.message }); }
+    return this.status();
+  }
+
+  takeoverRun(remove, windowsBoot = true) {
+    if (this.state.state !== 'idle') throw new Error('Already busy');
+    if (!Array.isArray(remove) || !remove.length) throw new Error('Choose what to remove first');
+    this.set({ state: 'takeover', takeoverStage: { phase: 'erase', step: 0, steps: 3, desc: 'Starting' }, takeoverResult: null, takeoverError: null });
+    this.admin.run(['takeover-run'], { input: JSON.stringify({ remove, windowsBoot: !!windowsBoot }) + '\n',
+      onStage: st => this.set({ takeoverStage: st }), timeout: 60 * 60000 })
+      .then(r => { this.set({ state: 'idle', takeoverResult: r || {}, takeover: null, scan: null }); log('takeover: done ' + JSON.stringify(r)); })
+      .catch(e => { this.set({ state: 'idle', takeoverError: e.message }); log('takeover: ' + e.message); this.takeoverPlan(); });
+    return this.status();
+  }
+
   async finishPendingEpic() {
     const pending = this.store.data.pendingEpicImports || [];
     if (!pending.length || !this.library.accounts.epic.signedIn || this.epicBusy) return pending.length;
