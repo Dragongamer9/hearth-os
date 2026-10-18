@@ -69,7 +69,7 @@ async function download(t, progress) {
   await new Promise((res, rej) => out.end(e => (e ? rej(e) : res())));
   if (hash.digest('hex') !== t.sha256) {
     fs.rmSync(tmp, { force: true });
-    throw new Error(`The download of ${t.name} didn't match its checksum, so Nimbus didn't use it. Try again later.`);
+    throw new Error(`The download of ${t.name} didn't match its checksum, so Hearth didn't use it. Try again later.`);
   }
   if (t.archive === 'tar') {
     await new Promise((res, rej) => execFile('tar', ['-xf', tmp, '-C', TOOLS_DIR], e => (e ? rej(e) : res())));

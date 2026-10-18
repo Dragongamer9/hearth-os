@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Hearth
-Comment=Hearth: Game Mode (gamescope) and Desktop Mode (labwc), like SteamOS
+Comment=Hearth OS: Game Mode (gamescope) and the Mantel desktop, like SteamOS
 Exec=/usr/local/bin/nimbus-session
 TryExec=/usr/local/bin/nimbus-session
 Type=Application

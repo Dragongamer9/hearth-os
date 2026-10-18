@@ -1,7 +1,7 @@
-# Hearth (Nimbus for Linux)
+# Hearth (Hearth OS for Linux)
 
-Hearth is the Linux side of Nimbus: the same UI (`../../ui`), hosted in Electron and run inside **gamescope**, the compositor SteamOS uses
-for Gaming Mode. Nimbus takes Steam's place in that setup: you pick "Hearth" on the login screen and get a
+Hearth is the Linux side of Hearth OS: the same UI (`../../ui`), hosted in Electron and run inside **gamescope**, the compositor SteamOS uses
+for Gaming Mode. Hearth takes Steam's place in that setup: you pick "Hearth" on the login screen and get a
 fullscreen, controller-first library of your Steam, Epic, GOG and manual games, plus Xbox Cloud Gaming.
 
 > Status: first version. The scanners, game tracking, bridge and session watchdog have tests (`npm test`);
@@ -39,11 +39,11 @@ F12 opens the developer tools when running from source.
 
 On Hearth, the OS (`../../os`), all of this is already installed. On another distro:
 
-*Settings › Shell › Add the Nimbus session* (asks for your password once) installs:
+*Settings › Shell › Add the Hearth session* (asks for your password once) installs:
 
 - `/usr/share/wayland-sessions/nimbus.desktop`: the "Hearth" entry on the login screen
-- `/usr/local/bin/nimbus-session`: starts `gamescope -f -- nimbus-watchdog <Nimbus>`
-- `/usr/local/lib/nimbus/nimbus-watchdog`: restarts Nimbus if it crashes, restarts it after an update,
+- `/usr/local/bin/nimbus-session`: starts `gamescope -f -- nimbus-watchdog <Hearth>`
+- `/usr/local/lib/nimbus/nimbus-watchdog`: restarts Hearth if it crashes, restarts it after an update,
   rolls back an update that keeps crashing, and ends the session (back to the login screen) rather than leave a black screen
 
 Without the UI: `sudo session/install-session.sh` (or `--remove`), and put the path of the AppImage in `~/.config/nimbus/app-path`.
@@ -53,7 +53,7 @@ Needs: `gamescope`, and for the settings pages NetworkManager (`nmcli`), BlueZ (
 `brightnessctl` and `power-profiles-daemon`. Anything missing just shows as unavailable.
 
 **Getting out:** *Power › Switch to desktop* ends the session; pick your usual desktop on the login screen.
-If Nimbus is stuck: Ctrl+Alt+F3, sign in, `loginctl terminate-user $USER`.
+If Hearth is stuck: Ctrl+Alt+F3, sign in, `loginctl terminate-user $USER`.
 
 ## Desktop Mode
 
@@ -106,14 +106,14 @@ Shell log: `$XDG_RUNTIME_DIR/nimbus-shell.log`.
 ## Display
 
 Settings › Display changes resolution, refresh rate and scale. A new mode is kept only if you confirm it
-within 15 seconds; otherwise Nimbus switches back, so a mode your screen can't show fixes itself.
+within 15 seconds; otherwise Hearth switches back, so a mode your screen can't show fixes itself.
 
-| Where Nimbus runs | Uses | Scale changes |
+| Where Hearth runs | Uses | Scale changes |
 |---|---|---|
-| Game Mode (gamescope) | `-W -H -r` gamescope options in `~/.config/nimbus/session.conf`; Game Mode restarts to apply | The Nimbus interface |
+| Game Mode (gamescope) | `-W -H -r` gamescope options in `~/.config/nimbus/session.conf`; Game Mode restarts to apply | The Hearth interface |
 | Desktop Mode (labwc) and other wlroots desktops | `wlr-randr`, saved to `~/.config/nimbus/display.sh` | The whole screen |
 | KDE Plasma | `kscreen-doctor` | The whole screen |
-| X11 desktops | `xrandr` | The Nimbus interface |
+| X11 desktops | `xrandr` | The Hearth interface |
 
 ## Games
 
@@ -130,8 +130,8 @@ progress, cancel and uninstall, the same as on Windows. legendary, gogdl and umu
 their GitHub releases the first time they're needed and checked against pinned SHA-256 hashes; an `umu-run`
 already installed on the system is used instead. Wine prefixes: `~/.local/share/nimbus/prefixes/<store>-<id>`.
 
-When a game starts, Nimbus hides its window so the game is in front, and comes back when the game ends.
-The **Guide** button during a game brings Nimbus back with Quick Access open: Performance (CPU, GPU and video
+When a game starts, Hearth hides its window so the game is in front, and comes back when the game ends.
+The **Guide** button during a game brings Hearth back with Quick Access open: Performance (CPU, GPU and video
 memory on AMD, RAM, battery), Take a screenshot (Pictures/Screenshots/Hearth), Back to game, Exit game.
 
 Store sign-in windows (Epic, GOG, Microsoft) work with a controller: the sticks move a pointer, A clicks,

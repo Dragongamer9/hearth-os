@@ -37,7 +37,7 @@ SetPage {
         ["Name", info.host], ["Signed in as", info.user],
         ["Processor", info.cpu ? info.cpu + (info.cores ? " (" + info.cores + " threads)" : "") : ""],
         ["Graphics", info.gpu], ["Memory", info.mem], ["Storage", info.disk],
-        ["System", info.os], ["Version", info.ver], ["Kernel", info.kernel], ["Desktop", info.shell ? "Hearth Desktop Mode · " + info.shell : ""]
+        ["System", info.os], ["Version", info.ver], ["Kernel", info.kernel], ["Desktop", info.shell ? "Mantel · " + info.shell : ""]
     ].filter(r => r[1])
 
     RowLayout {

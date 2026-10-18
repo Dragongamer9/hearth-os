@@ -2,7 +2,7 @@
   "name": "nimbus-linux",
   "productName": "Nimbus",
   "version": "0.0.16",
-  "description": "Nimbus shell for Linux: the SteamOS-style UI hosted in Electron, run inside gamescope",
+  "description": "Hearth OS for Linux: the SteamOS-style UI hosted in Electron, run inside gamescope",
   "main": "src/main.js",
   "author": "Dragongamer9",
   "private": true,

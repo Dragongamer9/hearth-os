@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth OS</title>
+<meta name="description" content="Hearth OS: a controller-first gaming system for handhelds and PCs. Game Mode for your whole library, Mantel for the desktop. Built on Bazzite.">
+<meta property="og:title" content="Hearth OS">
+<meta property="og:description" content="A controller-first gaming system for handhelds and PCs. Steam, Epic, GOG and Xbox in one library.">
+<meta property="og:image" content="img/game-home.webp">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --ember:#ff8a3d; --flame:#ffd166; --ink:#2a1206;
+  --r:18px; --max:1160px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--flame);text-decoration:none}
+a:hover{text-decoration:underline}
+img{max-width:100%;height:auto;display:block}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+code{font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px 7px}
+pre{white-space:pre-wrap;word-break:break-all;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;margin:10px 0 0}
+pre code{background:none;border:0;padding:0}
+
+/* nav */
+nav{position:sticky;top:0;z-index:10;background:rgba(15,11,9,.82);backdrop-filter:blur(12px);border-bottom:1px solid rgba(59,46,38,.6)}
+nav .wrap{display:flex;align-items:center;gap:22px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;color:var(--text);letter-spacing:-.01em}
+.brand img{width:30px;height:30px}
+.brand:hover{text-decoration:none}
+nav .links{display:flex;gap:22px;margin-left:auto;font-size:15px}
+nav .links a{color:var(--muted)}
+nav .links a:hover{color:var(--text);text-decoration:none}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:9px;padding:13px 22px;border-radius:999px;font-weight:700;font-size:16px;border:1px solid transparent;transition:transform .15s,background .15s}
+.btn:hover{text-decoration:none;transform:translateY(-1px)}
+.btn.primary{background:var(--ember);color:var(--ink)}
+.btn.primary:hover{background:#ff9d5a}
+.btn.ghost{background:rgba(255,255,255,.04);border-color:var(--line);color:var(--text)}
+.btn.ghost:hover{background:rgba(255,255,255,.08)}
+.btn svg{width:18px;height:18px}
+
+/* hero */
+.hero{position:relative;overflow:hidden;border-bottom:1px solid var(--line)}
+.hero::before{content:"";position:absolute;inset:0;background:url(img/hero.webp) center/cover;opacity:.55}
+.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,11,9,.35) 0%,rgba(15,11,9,.7) 60%,var(--bg) 100%)}
+.hero .wrap{position:relative;z-index:1;padding:96px 24px 72px;display:grid;grid-template-columns:1.05fr 1fr;gap:48px;align-items:center}
+.eyebrow{display:inline-block;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--flame);margin-bottom:14px}
+h1{font-size:clamp(40px,6vw,64px);line-height:1.04;letter-spacing:-.03em;margin:0 0 18px;font-weight:800}
+h1 em{font-style:normal;background:linear-gradient(90deg,var(--flame),var(--ember));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{font-size:19px;color:#d9cbbd;max-width:34em;margin:0 0 30px}
+.ctas{display:flex;flex-wrap:wrap;gap:12px}
+.small{font-size:14px;color:var(--muted);margin-top:16px}
+.shot{border-radius:var(--r);overflow:hidden;border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(255,138,61,.08)}
+.hero .shot{transform:perspective(1400px) rotateY(-6deg)}
+
+/* sections */
+section{padding:84px 0}
+h2{font-size:clamp(28px,4vw,40px);letter-spacing:-.02em;line-height:1.15;margin:0 0 14px}
+.sub{color:var(--muted);font-size:18px;max-width:40em;margin:0 0 40px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center}
+.split.rev > :first-child{order:2}
+ul.ticks{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:12px}
+ul.ticks li{position:relative;padding-left:30px;color:#dccfc2}
+ul.ticks li::before{content:"";position:absolute;left:0;top:7px;width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 50% 60%,var(--flame),var(--ember) 60%,transparent 62%)}
+ul.ticks b{color:var(--text)}
+
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:24px}
+.card h3{margin:12px 0 6px;font-size:18px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.ic{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:rgba(255,138,61,.12);color:var(--ember)}
+.ic svg{width:22px;height:22px}
+
+.gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.gallery figure{margin:0}
+.gallery figcaption{color:var(--muted);font-size:14px;margin-top:10px}
+.walls{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:26px}
+.walls img{border-radius:12px;border:1px solid var(--line);aspect-ratio:16/9;object-fit:cover;width:100%}
+
+.stores{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chip{padding:8px 14px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);font-weight:600;font-size:14px}
+
+/* download */
+.dl{background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);border-top:1px solid var(--line)}
+.dlgrid{display:grid;min-width:0;grid-template-columns:1.3fr 1fr 1fr;gap:16px}
+.dlcard{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:26px;display:flex;flex-direction:column}
+.dlcard.main{border-color:rgba(255,138,61,.55);background:linear-gradient(160deg,rgba(255,138,61,.12),var(--panel) 55%)}
+.dlcard h3{margin:0 0 6px;font-size:20px}
+.dlcard p{color:var(--muted);font-size:15px;margin:0 0 18px;flex:1}
+.dlcard .btn{align-self:flex-start}
+.steps{counter-reset:s;list-style:none;padding:0;margin:40px 0 0;display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.steps li{counter-increment:s;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;font-size:15px;color:#d6c8ba}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--ember);color:var(--ink);font-weight:800;margin-bottom:10px}
+.steps b{color:var(--text)}
+.note{margin-top:28px;padding:16px 18px;border-radius:14px;background:rgba(255,209,102,.07);border:1px solid rgba(255,209,102,.25);color:#e9dcc9;font-size:15px}
+
+footer{border-top:1px solid var(--line);padding:34px 0 48px;color:var(--muted);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center}
+footer .brand{font-size:16px}
+footer .legal{flex-basis:100%;font-size:13px;opacity:.85}
+
+@media (max-width:900px){
+  .hero .wrap,.split{grid-template-columns:1fr}
+  .split.rev > :first-child{order:0}
+  .hero .shot{transform:none}
+  .grid,.dlgrid{grid-template-columns:1fr 1fr}
+  .steps{grid-template-columns:1fr 1fr}
+  .walls{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:600px){
+  .wrap{padding:0 16px}
+  .hero .wrap{padding:64px 16px 48px}
+  nav .links a:not(.keep){display:none}
+  .grid,.dlgrid,.steps,.gallery{grid-template-columns:1fr}
+  section{padding:60px 0}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn{transition:none}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="img/logo.svg" alt="">Hearth OS</a>
+    <div class="links">
+      <a href="#game-mode">Game Mode</a>
+      <a href="#mantel">Mantel</a>
+      <a href="#features">Features</a>
+      <a class="keep" href="#download">Download</a>
+      <a class="keep" href="https://github.com/Dragongamer9/nimbus">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow">For handhelds and gaming PCs</span>
+      <h1>Your whole library,<br><em>by the fire.</em></h1>
+      <p class="lead">Hearth OS is a controller-first system for playing games. Steam, Epic, GOG and Xbox sit together in one
+        library you drive with a gamepad, and a full desktop called Mantel is one button away.</p>
+      <div class="ctas">
+        <a class="btn primary" href="#download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>Download Hearth OS</a>
+        <a class="btn ghost" href="https://github.com/Dragongamer9/nimbus">View the source</a>
+      </div>
+      <p class="small">Free and open source. Built on Bazzite and Fedora Atomic.</p>
+    </div>
+    <div class="shot"><img src="img/game-home.webp" width="1280" height="800" alt="Hearth's Game Mode home screen with recent games and news"></div>
+  </div>
+</header>
+
+<section id="game-mode">
+  <div class="wrap split">
+    <div>
+      <span class="eyebrow">Game Mode</span>
+      <h2>Made for a controller from the first screen</h2>
+      <p class="sub" style="margin-bottom:0">Game Mode runs fullscreen in gamescope, the same compositor SteamOS uses. Everything works with
+        the D-pad, sticks and face buttons, with an on-screen keyboard whenever you need to type.</p>
+      <ul class="ticks">
+        <li><b>One library for every store.</b> Install, play and uninstall Epic and GOG games without their launchers.</li>
+        <li><b>Quick Access over any game.</b> Press the Guide button for volume, brightness, power, performance and open apps.</li>
+        <li><b>Works offline.</b> Game art is saved on the device, so your library looks the same on a plane.</li>
+      </ul>
+      <div class="stores"><span class="chip">Steam</span><span class="chip">Epic Games</span><span class="chip">GOG</span><span class="chip">Xbox Cloud Gaming</span><span class="chip">Your own games</span></div>
+    </div>
+    <div class="shot"><img src="img/game-library.webp" width="1280" height="800" alt="The library in Game Mode" loading="lazy"></div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="gallery">
+      <figure><div class="shot"><img src="img/game-downloads.webp" width="1280" height="800" alt="Downloads page with a speed graph" loading="lazy"></div>
+        <figcaption>Downloads: a live speed graph, pause and resume, and a queue you can reorder. It picks up where it left off after a restart.</figcaption></figure>
+      <figure><div class="shot"><img src="img/game-qa.webp" width="1280" height="800" alt="Quick Access panel" loading="lazy"></div>
+        <figcaption>Quick Access: the settings you reach for mid-game, without leaving it.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="mantel" style="background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap split rev">
+    <div>
+      <span class="eyebrow">Mantel</span>
+      <h2>A real desktop, still in reach of your thumbs</h2>
+      <p class="sub" style="margin-bottom:0">Mantel is Hearth's desktop. Switch to it from Game Mode for browsing, mods, files and anything else,
+        then hop back with one button. No logging out.</p>
+      <ul class="ticks">
+        <li><b>Its own settings app</b> for Wi-Fi, Bluetooth, sound, display, power, controller and updates.</li>
+        <li><b>The controller works as a mouse and keyboard</b> everywhere on the desktop.</li>
+        <li><b>Power limit and power modes</b> you can set yourself, plus volume up to 150% when you turn it on.</li>
+        <li><b>Wallpapers made for Hearth</b>, including moving ones.</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="img/mantel-cabin.webp" width="1600" height="900" alt="The Mantel desktop with a Hearth wallpaper and taskbar" loading="lazy"></div>
+  </div>
+  <div class="wrap">
+    <div class="walls">
+      <img src="img/wall-lanterns.webp" alt="Lanterns wallpaper" loading="lazy">
+      <img src="img/wall-fox.webp" alt="Fox wallpaper" loading="lazy">
+      <img src="img/wall-peaks.webp" alt="Peaks wallpaper" loading="lazy">
+      <img src="img/wall-bloom.webp" alt="Bloom wallpaper" loading="lazy">
+      <img src="img/wall-forge.webp" alt="Forge wallpaper" loading="lazy">
+      <img src="img/wall-topo.webp" alt="Topographic wallpaper" loading="lazy">
+      <img src="img/wall-cat.webp" alt="Cat wallpaper" loading="lazy">
+      <img src="img/wall-cabin.webp" alt="Cabin wallpaper" loading="lazy">
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <span class="eyebrow">Under the hood</span>
+    <h2>A system that looks after itself</h2>
+    <p class="sub">Hearth OS is an image-based system: the whole OS updates as one piece, and if something goes wrong you boot the previous version.</p>
+    <div class="grid">
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div>
+        <h3>Updates that roll back</h3><p>System updates land in the background and take effect on the next boot. A bad one is undone by picking the previous entry.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="12" rx="4"/><path d="M7 11v4M5 13h4M15 12h.01M18 14h.01"/></svg></div>
+        <h3>Handheld ready</h3><p>Built on Bazzite's deck edition, with its drivers and fixes for the ROG Ally, Legion Go, Steam Deck and others.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div>
+        <h3>Your power, your call</h3><p>Pick a power mode or set the power limit in watts. Hearth remembers it across restarts.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+        <h3>Remap your controller</h3><p>Change what each button does and save layouts, right from Settings.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></div>
+        <h3>Sign in your way</h3><p>Each store's own sign-in page, with the on-screen keyboard and controller mouse built in.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <h3>Nothing injected</h3><p>The overlay is an ordinary window on top, so anti-cheat has nothing to object to.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="download" class="dl">
+  <div class="wrap">
+    <span class="eyebrow">Download</span>
+    <h2>Get Hearth OS</h2>
+    <p class="sub">The live ISO boots straight into Hearth so you can try it, then installs it from the welcome screen.</p>
+    <div class="dlgrid">
+      <div class="dlcard main">
+        <h3>Hearth OS installer (ISO)</h3>
+        <p>For handhelds and PCs with an AMD or Intel GPU. About 7 GB. Installing erases the drive you pick.</p>
+        <a class="btn primary" href="https://sourceforge.net/projects/hearth-os/files/latest/download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>Download ISO</a>
+        <p class="small" style="flex:0;margin:12px 0 0"><a href="https://sourceforge.net/projects/hearth-os/files/">All versions and checksums</a></p>
+      </div>
+      <div class="dlcard">
+        <h3>Already on Bazzite?</h3>
+        <p>Switch your current system over. Your files stay, and you can switch back the same way.</p>
+        <pre><code>sudo bootc switch ghcr.io/dragongamer9/hearth:latest</code></pre>
+      </div>
+      <div class="dlcard">
+        <h3>Just the app</h3>
+        <p>Hearth's Game Mode as an AppImage for other Linux systems, or Ember, the Windows 11 shell.</p>
+        <div class="ctas">
+          <a class="btn ghost" href="https://github.com/Dragongamer9/nimbus/releases/latest/download/Nimbus-linux-x86_64.AppImage">Linux AppImage</a>
+          <a class="btn ghost" href="https://github.com/Dragongamer9/nimbus/releases/latest">Windows (Ember)</a>
+        </div>
+      </div>
+    </div>
+    <ol class="steps">
+      <li><b>Write the ISO to a USB stick</b> (16 GB or more) with Fedora Media Writer or balenaEtcher.</li>
+      <li><b>Boot from the USB.</b> On a ROG Ally, hold Volume Down while powering on and pick the USB drive.</li>
+      <li><b>Try it out.</b> The live system starts in Hearth with a welcome card. Nothing is changed yet.</li>
+      <li><b>Choose Install Hearth</b>, pick a drive and restart when it's done.</li>
+    </ol>
+    <div class="note">Hearth OS is early and made by a small team. Keep a backup of anything important before installing, and
+      <a href="https://github.com/Dragongamer9/nimbus/issues">tell us what breaks</a>.</div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="img/logo.svg" alt="" style="width:24px;height:24px">Hearth OS</a>
+    <a href="https://github.com/Dragongamer9/nimbus">Source code</a>
+    <a href="https://github.com/Dragongamer9/nimbus/releases">Release notes</a>
+    <a href="https://sourceforge.net/projects/hearth-os/files/">ISO downloads</a>
+    <a href="https://bazzite.gg">Built on Bazzite</a>
+    <p class="legal">Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft or Universal Blue.
+      Steam, Epic Games, GOG and Xbox are trademarks of their owners. Game names and art in screenshots are placeholders.</p>
+  </div>
+</footer>
+
+</body>
+</html>
