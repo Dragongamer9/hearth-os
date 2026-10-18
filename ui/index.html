@@ -581,6 +581,7 @@ const I = {
   head:'<svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3.5" y="14" width="4" height="6" rx="1.5"/><rect x="16.5" y="14" width="4" height="6" rx="1.5"/></svg>',
   mouse:'<svg viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="5.5"/><path d="M12 7v3"/></svg>',
   phone:'<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>',
+  clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
   lock:'<svg viewBox="0 0 24 24"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>',
   check:'<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   refresh:'<svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4v4.5H15"/></svg>',
@@ -728,7 +729,8 @@ const MOCK = (()=>{
   const push=()=>setTimeout(()=>onSysEvent('status',status()),0);
   const H={
     'sys.status':async()=>status(),
-    'profiles.get':async()=>({active:'main',askAtStart:true,picked:false,list:[{id:'main',name:'Dragon',color:'#ff8a3d',steam:'dragongamer9',current:true},{id:'p2',name:'Sarah',color:'#b57bff',steam:'sarahplays',current:false},{id:'p3',name:'Kids',color:'#3fd0b8',steam:null,current:false}],steamAccounts:[{account:'dragongamer9',name:'Dragon'},{account:'sarahplays',name:'Sarah'}]}),
+    'profiles.setLimits':async()=>({}), 'profiles.setPin':async()=>true, 'profiles.unlock':async()=>true,
+    'profiles.get':async()=>({active:'main',askAtStart:true,picked:false,hasPin:true,unlocked:true,list:[{id:'main',name:'Dragon',color:'#ff8a3d',steam:'dragongamer9',current:true,limits:{minutesPerDay:0,allowed:null}},{id:'p2',name:'Sarah',color:'#b57bff',steam:'sarahplays',current:false,limits:{minutesPerDay:0,allowed:null}},{id:'p3',name:'Kids',color:'#3fd0b8',steam:null,current:false,limits:{minutesPerDay:90,allowed:['a','b']},playedToday:35}],steamAccounts:[{account:'dragongamer9',name:'Dragon'},{account:'sarahplays',name:'Sarah'}]}),
     'osinstall.status':async()=>({available:true,state:'idle'}),
     'osinstall.disks':async()=>{ await wait(400); return {disks:[
       {dev:'/dev/nvme0n1',size:1e12,model:'Samsung 980 PRO',tran:'nvme',live:false,windows:true,tooSmall:false,parts:[{},{},{},{}]},
@@ -898,7 +900,9 @@ function blip(f=700,d=.035,v=.035){
 // =====================================================================
 const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',settings:'Settings',stores:'Game stores',gameset:'Game settings'};
 
-const visible = () => GAMES.filter(g=>!g.hidden);
+// A profile with parental limits sees only the games it's allowed (when a grown-up chose some).
+const allowedList = () => { const s=PROF.s, c=s&&s.hasPin&&s.list.find(p=>p.current); return c&&c.limits&&c.limits.allowed ? c.limits.allowed : null; };
+const visible = () => { const a=allowedList(); return GAMES.filter(g=>!g.hidden && (!a || a.includes(g.id))); };
 function heroStyle(g){ return g ? artBg(g) : 'background:var(--panel)'; }
 function heroImg(g){ return g ? artImg(g,['hero','wide']) : ''; }
 
@@ -1494,8 +1498,10 @@ const volMax = () => (BTNS.s && BTNS.s.maxVolume) || S.sys.audio.max || 100;
 const POWER_CHOICES = [['sleep','Sleep'],['menu','Power menu'],['shutdown','Shut down'],['nothing','Nothing']];
 let osdTimer=null;
 function showOsd(d){
-  if(!d || d.kind!=='vol') return;
+  if(!d) return;
   let el=$('#osd'); if(!el){ el=document.createElement('div'); el.id='osd'; el.className='osd'; document.body.appendChild(el); }
+  if(d.kind==='msg'){ el.innerHTML=`${I[d.icon]||I.bell}<span style="flex:1">${esc(d.text||'')}</span>`; el.classList.add('on'); clearTimeout(osdTimer); osdTimer=setTimeout(()=>el.classList.remove('on'),(d.ms||4000)-300); return; }
+  if(d.kind!=='vol') return;
   const max=d.max||100, v=d.volume||0, pct=Math.min(100,v/max*100);
   el.innerHTML = `${d.muted||!v?I.mute:I.vol}<div class="obar"><i class="${v>100?'hot':''}" style="width:${d.muted?0:pct}%"></i>${max>100?`<u style="left:${100/max*100}%"></u>`:''}</div><b>${d.muted?'Muted':v+'%'}</b>`;
   el.classList.add('on');
@@ -2542,7 +2548,7 @@ function act(el){
     case 'profPick': return profPick(d.id);
     case 'profAdd': return profAdd();
     case 'profEdit': return profEdit(d.id);
-    case 'profAsk': return call('profiles.setAsk',{on:!(PROF.s&&PROF.s.askAtStart)}).then(loadProfiles).catch(e=>toast(e.message));
+    case 'profAsk': return pinCall('profiles.setAsk',{on:!(PROF.s&&PROF.s.askAtStart)}).then(loadProfiles).catch(e=>toast(e.message));
     case 'achAll': { const a=(GINFO[d.id]||{}).achievements; if(!a) return; return openSheet({title:`Achievements · ${a.done} of ${a.total}`, items:a.list.map(x=>({label:`${x.done?'✓ ':''}${x.hidden&&!x.done?'Hidden achievement':x.name}`, icon:x.done?'check':'lock', run:()=>{}}))}); }
     case 'gsFps': return openSheet({title:'Frame-rate cap', sub:'While this game plays', items:[0,30,40,45,60,90,120].map(v=>({label:v?v+' FPS':'Usual (no change)', icon:(GSET.s.options.fpsLimit||0)===v?'check':'', run:()=>saveGameSet({fpsLimit:v},'gs-fps')}))});
     case 'gsTdp': return openSheet({title:'Power limit', sub:'While this game plays (if this device supports it)', items:[0,8,10,12,15,18,20,25,30].map(v=>({label:v?v+' W':'Usual (no change)', icon:(GSET.s.options.tdp||0)===v?'check':'', run:()=>saveGameSet({tdp:v},'gs-tdp')}))});
@@ -2600,6 +2606,7 @@ function act(el){
       return render(S.view==='home' ? 'sp-'+g.id : 'g-fav'); }
     case 'gopts': return gameOptions(G(d.id));
     case 'colNew': return colNew(null);
+    case 'pinSetup': return pinSetup();
     case 'colEdit': return colEdit(d.id);
     case 'lfilter': return openSheet({title:'Show', items:LFILTERS.map(([k,l])=>({label:l, icon:(S.lfilter||'')===k?'check':'', run:()=>{ S.lfilter=k; render('lfilter'); }}))});
     case 'dlopts': return downloadOptions(G(d.id));
@@ -3155,7 +3162,7 @@ function profTile(p, k){
   const init = esc(profName(p).trim().charAt(0).toUpperCase() || '?');
   return `<button class="ptile ${p.current?'cur':''}" data-f data-k="${k}" data-act="profPick" data-id="${esc(p.id)}">
     <div class="pav" style="background:${esc(p.color||'#ff8a3d')}">${p.current ? avatarHtml(PROFILE,'avatar pavimg') : `<span>${init}</span>`}</div>
-    <b>${esc(profName(p))}</b><small>${p.current?'Playing now':p.steam?'Steam: '+esc(p.steam):'No Steam account yet'}</small></button>`;
+    <b>${esc(profName(p))}</b><small>${p.current?'Playing now':p.steam?'Steam: '+esc(p.steam):'No Steam account yet'}${p.limits&&p.limits.minutesPerDay&&PROF.s&&PROF.s.hasPin?` · ${fmtMins(Math.max(0,p.limits.minutesPerDay-(p.playedToday||0)))} left today`:''}</small></button>`;
 }
 /** "Who's playing?": every profile, plus Add profile. At start (when that's turned on) and from the menu. */
 function viewProfiles(){
@@ -3168,17 +3175,62 @@ function viewProfiles(){
       ${s.list.length<8?`<button class="ptile add" data-f data-k="pt-add" data-act="profAdd"><div class="pav"><span>+</span></div><b>Add profile</b><small>For someone else who plays here</small></button>`:''}</div>
     <div class="acts" style="justify-content:center;margin-top:34px"><button class="pill ghost" data-f data-k="pt-manage" data-act="goset" data-tab="profiles">Manage profiles</button>${HOSTINFO.profilesAtStart?'':`<button class="pill ghost" data-f data-k="pt-back" data-act="back">Back</button>`}</div></div>`;
 }
+// ---------- parental controls: PIN, daily play time, allowed games ----------
+async function askPin(title){
+  const pin=await openPrompt({title:title||'Enter the PIN', secret:true, min:4}); if(pin==null) return false;
+  try{ await call('profiles.unlock',{pin}); if(PROF.s) PROF.s.unlocked=true; return true; }catch(e){ toast(e.message); return false; }
+}
+/** A profiles call that may need the PIN: asks for it once, then tries again. */
+async function pinCall(method, args, ms){
+  try{ return await call(method, args, ms); }
+  catch(e){ if(!/PIN first/.test(e.message)) throw e; if(!(await askPin())) throw new Error('Not changed: that needs the PIN'); return call(method, args, ms); }
+}
+const fmtMins = m => m>=60 ? `${Math.floor(m/60)} h${m%60?' '+(m%60)+' min':''}` : `${m} min`;
+const LIMIT_CHOICES=[0,30,45,60,90,120,180,240];
+function limitsSummary(p){ const l=p.limits||{}; const a=[]; if(l.minutesPerDay) a.push(`${fmtMins(l.minutesPerDay)} a day`); if(l.allowed) a.push(`${l.allowed.length} game${l.allowed.length===1?'':'s'}`); return a.length?a.join(' · '):'No limits'; }
+async function pinSetup(){
+  const s=PROF.s; if(!s) return;
+  if(s.hasPin && !s.unlocked && !(await askPin('Current PIN'))) return;
+  const items=[{label:s.hasPin?'Change PIN':'Set a PIN', icon:'lock', run:()=>setTimeout(async()=>{
+    const a=await openPrompt({title:'New PIN (4 to 8 numbers)', secret:true, min:4}); if(a==null) return;
+    const b=await openPrompt({title:'Same PIN again', secret:true, min:4}); if(b==null) return;
+    if(a!==b) return toast("Those didn't match. Try again.");
+    try{ await pinCall('profiles.setPin',{pin:a}); await loadProfiles(); toast('PIN set. Now set limits on a profile.'); }catch(e){ toast(e.message); } },250)}];
+  if(s.hasPin) items.push({label:'Remove PIN and all limits', icon:'trash', run:()=>pinCall('profiles.setPin',{pin:''}).then(loadProfiles).then(()=>toast('PIN and limits removed')).catch(e=>toast(e.message))});
+  openSheet({title:'Parental controls', sub:'The PIN keeps limits, profiles and switching away from a limited profile for grown-ups.', items});
+}
+async function profLimits(id){
+  const s=PROF.s, p=s&&s.list.find(x=>x.id===id); if(!p) return;
+  if(!s.hasPin) return openSheet({title:'Set a PIN first', sub:'So only you can change the limits.', items:[{label:'Set a PIN', icon:'lock', run:()=>setTimeout(pinSetup,250)}]});
+  if(!s.unlocked && !(await askPin())) return;
+  const l=p.limits||{};
+  openSheet({title:`Limits for ${profName(p)}`, sub:`Played today: ${fmtMins(p.playedToday||0)}`, items:[
+    {label:`Play time a day: ${l.minutesPerDay?fmtMins(l.minutesPerDay):'No limit'}`, icon:'clock', run:()=>setTimeout(()=>openSheet({title:'Play time a day', sub:'A warning 5 minutes before the end, then the game closes.', items:LIMIT_CHOICES.map(m=>({label:m?fmtMins(m):'No limit', icon:(l.minutesPerDay||0)===m?'check':'', run:()=>pinCall('profiles.setLimits',{id, minutesPerDay:m}).then(loadProfiles).then(()=>toast(m?`${profName(p)} can play ${fmtMins(m)} a day`:'No daily limit')).catch(e=>toast(e.message))}))}),250)},
+    {label:`Games they can play: ${l.allowed?l.allowed.length+' chosen':'All'}`, icon:'lib', run:()=>setTimeout(()=>openSheet({title:'Games they can play', items:[
+      {label:'All games', icon:l.allowed?'':'check', run:()=>pinCall('profiles.setLimits',{id, allowed:null}).then(loadProfiles).catch(e=>toast(e.message))},
+      {label:'Only games I choose…', icon:l.allowed?'check':'', run:()=>setTimeout(()=>allowPicker(id, l.allowed||[]),250)}]}),250)}]});
+}
+function allowPicker(id, chosen){
+  const set=new Set(chosen);
+  const list=GAMES.filter(g=>!g.hidden).sort((a,b)=>a.title.localeCompare(b.title));
+  const save=()=>pinCall('profiles.setLimits',{id, allowed:[...set]}).then(loadProfiles).catch(e=>toast(e.message));
+  const open=(focus)=>openSheet({title:`Allowed games (${set.size})`, sub:'Pick each game they can play. Done saves.', items:[
+    {label:'Done', icon:'check', run:()=>{ save(); toast(`${set.size} game${set.size===1?'':'s'} allowed`); }},
+    ...list.map(g=>({label:g.title, icon:set.has(g.id)?'check':'', run:()=>{ if(set.has(g.id)) set.delete(g.id); else set.add(g.id); setTimeout(()=>open(g.id),60); }}))]});
+  open();
+}
 function profPick(id){
   const s=PROF.s, p=s&&s.list.find(x=>x.id===id); if(!p) return;
   if(p.current){ HOSTINFO.profilesAtStart=false; S.history=[]; return navigate('home',{},false); }
+  if(PROF.s.restricted && !PROF.s.unlocked){ askPin('A grown-up\'s PIN, to switch profile').then(ok=>{ if(ok) profPick(id); }); return; }
   if(S.running) return toast('Close the game first, then switch');
   PROF.switching=profName(p); render(null,true);
-  call('profiles.switch',{id},60000).catch(e=>{ PROF.switching=null; render(null,true); toast(e.message); });
+  pinCall('profiles.switch',{id},60000).catch(e=>{ PROF.switching=null; render(null,true); toast(e.message); });
 }
 async function profAdd(){
   const name=await openPrompt({title:'Name for the new profile'}); if(!name||!name.trim()) return;
   try{
-    const p=await call('profiles.create',{name:name.trim(), color:PROF_COLORS[((PROF.s&&PROF.s.list.length)||0)%PROF_COLORS.length]});
+    const p=await pinCall('profiles.create',{name:name.trim(), color:PROF_COLORS[((PROF.s&&PROF.s.list.length)||0)%PROF_COLORS.length]});
     await loadProfiles();
     openSheet({title:`${p.name} is ready`, sub:'Switch to it now? Then sign in to Steam, Epic, GOG or Xbox as them (Settings › Profiles, or Library › Stores).', items:[
       {label:`Switch to ${p.name}`, icon:'user', run:()=>profPick(p.id)},
@@ -3188,10 +3240,11 @@ async function profAdd(){
 function pageProfiles(){
   const s=PROF.s;
   if(!s) return note('Loading…');
-  let h = shead('Profiles') + s.list.map((p,i)=>`<button class="row" data-f data-k="pr-${i}" data-act="profEdit" data-id="${esc(p.id)}"><span class="ricon" style="background:${esc(p.color)};color:#1a0d06;font-weight:800">${esc(profName(p).charAt(0).toUpperCase())}</span><div class="rt"><b>${esc(profName(p))}${p.current?' (you)':''}</b><small>${p.steam?'Steam: '+esc(p.steam):'No Steam account linked'}</small></div><div class="rv">›</div></button>`).join('');
+  let h = shead('Profiles') + s.list.map((p,i)=>`<button class="row" data-f data-k="pr-${i}" data-act="profEdit" data-id="${esc(p.id)}"><span class="ricon" style="background:${esc(p.color)};color:#1a0d06;font-weight:800">${esc(profName(p).charAt(0).toUpperCase())}</span><div class="rt"><b>${esc(profName(p))}${p.current?' (you)':''}</b><small>${p.steam?'Steam: '+esc(p.steam):'No Steam account linked'}${s.hasPin&&p.limits&&(p.limits.minutesPerDay||p.limits.allowed)?' · '+limitsSummary(p):''}</small></div><div class="rv">›</div></button>`).join('');
   if(s.list.length<8) h += `<button class="row" data-f data-k="pr-add" data-act="profAdd"><span class="ricon">${I.user}</span><div class="rt"><b>Add profile</b><small>For someone else who plays here</small></div></button>`;
   h += `<button class="row" data-f data-k="pr-switch" data-act="nav" data-view="profiles"><span class="ricon">${I.user}</span><div class="rt"><b>Switch profile</b><small>Who's playing?</small></div><div class="rv">›</div></button>`;
   h += `<button class="row" data-f data-k="pr-ask" data-act="profAsk"><div class="rt"><b>Ask who's playing when ${APP} starts</b><small>Shows the profiles first, when there's more than one</small></div><div class="sw ${s.askAtStart?'on':''}"></div></button>`;
+  h += shead('Parental controls') + `<button class="row" data-f data-k="pr-pin" data-act="pinSetup"><span class="ricon">${I.lock}</span><div class="rt"><b>${s.hasPin?'PIN is set':'Set a PIN'}</b><small>${s.hasPin?'Change or remove it. Limits are on each profile above.':'Then limit play time a day and which games a profile can play'}</small></div><div class="rv">›</div></button>`;
   h += note('Installed games are shared: a game installed once shows up for everyone who owns it. Saves in Steam Cloud follow each Steam account.');
   return h;
 }
@@ -3201,13 +3254,14 @@ function profEdit(id){
   openSheet({title:profName(p), sub:p.steam?`Steam: ${p.steam}`:'No Steam account linked yet', items:[
     ...(p.current?[]:[{label:`Switch to ${profName(p)}`, icon:'user', run:()=>profPick(p.id)}]),
     {label:'Steam account', icon:'user', run:()=>setTimeout(()=>openSheet({title:'Steam account for '+profName(p), sub:'Accounts that have signed in on this device. Steam remembers them after one sign-in with "Remember me".', items:[
-      ...accts.map(a=>({label:`${a.name} (${a.account})`, icon:p.steam===a.account?'check':'user', run:()=>call('profiles.update',{id:p.id, steam:a.account}).then(loadProfiles).then(()=>toast(`${profName(p)} plays as ${a.name} on Steam`)).catch(e=>toast(e.message))})),
-      {label:'Sign in another Steam account', icon:'user', run:()=>call('profiles.addSteam',{id:p.id}).then(()=>toast('Sign in on Steam\'s screen. Tick "Remember me".')).catch(e=>toast(e.message))},
-      ...(p.steam?[{label:'Unlink', icon:'x', run:()=>call('profiles.update',{id:p.id, steam:''}).then(loadProfiles).catch(e=>toast(e.message))}]:[])]}),250)},
-    {label:'Rename', icon:'kbd', run:()=>setTimeout(async()=>{ const n=await openPrompt({title:'Name', value:profName(p)}); if(n&&n.trim()){ if(p.current) saveProfile({name:n.trim()}); await call('profiles.update',{id:p.id, name:n.trim()}).catch(()=>{}); loadProfiles(); } },250)},
-    {label:'Color', icon:'user', run:()=>setTimeout(()=>openSheet({title:'Color', items:PROF_COLORS.map(c=>({label:c, icon:p.color===c?'check':'', run:()=>{ call('profiles.update',{id:p.id, color:c}).then(loadProfiles); if(p.current) saveProfile({accent:c}); }}))}),250)},
+      ...accts.map(a=>({label:`${a.name} (${a.account})`, icon:p.steam===a.account?'check':'user', run:()=>pinCall('profiles.update',{id:p.id, steam:a.account}).then(loadProfiles).then(()=>toast(`${profName(p)} plays as ${a.name} on Steam`)).catch(e=>toast(e.message))})),
+      {label:'Sign in another Steam account', icon:'user', run:()=>pinCall('profiles.addSteam',{id:p.id}).then(()=>toast('Sign in on Steam\'s screen. Tick "Remember me".')).catch(e=>toast(e.message))},
+      ...(p.steam?[{label:'Unlink', icon:'x', run:()=>pinCall('profiles.update',{id:p.id, steam:''}).then(loadProfiles).catch(e=>toast(e.message))}]:[])]}),250)},
+    {label:`Limits${PROF.s.hasPin?': '+limitsSummary(p):''}`, icon:'clock', run:()=>setTimeout(()=>profLimits(p.id),250)},
+    {label:'Rename', icon:'kbd', run:()=>setTimeout(async()=>{ const n=await openPrompt({title:'Name', value:profName(p)}); if(n&&n.trim()){ if(p.current) saveProfile({name:n.trim()}); await pinCall('profiles.update',{id:p.id, name:n.trim()}).catch(()=>{}); loadProfiles(); } },250)},
+    {label:'Color', icon:'user', run:()=>setTimeout(()=>openSheet({title:'Color', items:PROF_COLORS.map(c=>({label:c, icon:p.color===c?'check':'', run:()=>{ pinCall('profiles.update',{id:p.id, color:c}).then(loadProfiles); if(p.current) saveProfile({accent:c}); }}))}),250)},
     ...(p.current?[]:[{label:'Remove profile', icon:'trash', run:()=>setTimeout(()=>openSheet({title:`Remove ${profName(p)}?`, sub:'Their sign-ins, favorites and play time on this device go. Installed games stay.', items:[
-      {label:'Remove', icon:'trash', run:()=>call('profiles.remove',{id:p.id}).then(loadProfiles).then(()=>toast('Removed')).catch(e=>toast(e.message))}]}),250)}])]});
+      {label:'Remove', icon:'trash', run:()=>pinCall('profiles.remove',{id:p.id}).then(loadProfiles).then(()=>toast('Removed')).catch(e=>toast(e.message))}]}),250)}])]});
 }
 
 function viewStores(){
@@ -3417,6 +3471,7 @@ function onSysEvent(name, data){
   if(name==='osInstall') return onOsInstall(data);
   if(name==='lock') return lockNow();
   if(name==='profiles.changed') return loadProfiles();
+  if(name==='parental.timeup'){ toast("Play time's up for today"); return; }
   if(name==='profiles.switching'){ PROF.switching=data.name; if(S.view!=='profiles') navigate('profiles',{},false); else render(null,true); return; }
   if(name==='switch'){ if(SW.s) SW.s.job=data.job; if(data.job && data.job.state==='done') loadSwitch(); if(data.job && data.job.state==='error') toast(data.job.error||'That step didn\'t work'); if(S.view==='settings'&&S.settingsTab==='switch') render(null,true); return; }
   if(name==='library.changed'){ if(!OVERLAY) loadLibrary(false); return; }

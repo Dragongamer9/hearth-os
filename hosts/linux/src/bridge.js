@@ -215,7 +215,12 @@ class Bridge {
       case 'library.remove': await L.removeManual(req('id')); return null;
       case 'library.downloads': return L.downloads();
       case 'library.setSteamBackground': await L.setSteamBackground(!!a.on); return null;
-      case 'game.launch': return L.launch(req('id'));
+      case 'game.launch': {
+        // Parental controls: a profile's allowed games and daily play time.
+        const pc = this.platform.profiles && this.platform.profiles.canPlay ? this.platform.profiles.canPlay(req('id')) : { ok: true };
+        if (!pc.ok) throw new Error(pc.reason);
+        return L.launch(req('id'));
+      }
       case 'game.install': await L.install(req('id')); return null;
       case 'game.close': return { ok: await L.closeRunning() };
       case 'game.pause': return { paused: L.pause() };
@@ -309,6 +314,9 @@ class Bridge {
       case 'profiles.setAsk': return this.platform.profiles.setAsk(!!a.on);
       case 'profiles.switch': return this.platform.profiles.switchTo(req('id'));
       case 'profiles.addSteam': return this.platform.profiles.addSteam(req('id'));
+      case 'profiles.unlock': return this.platform.profiles.unlock(String(a.pin || ''));
+      case 'profiles.setPin': return this.platform.profiles.setPin(String(a.pin || ''));
+      case 'profiles.setLimits': return this.platform.profiles.setLimits(req('id'), { ...('minutesPerDay' in a ? { minutesPerDay: a.minutesPerDay } : {}), ...('allowed' in a ? { allowed: a.allowed } : {}) });
       case 'osinstall.status': return this.osInstaller.status();
       case 'osinstall.disks': return this.osInstaller.disks();
       case 'osinstall.check': return this.osInstaller.check();

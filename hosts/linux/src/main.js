@@ -307,6 +307,7 @@ async function switchProfile(id) {
   const to = profiles.find(id);
   if (!to) throw new Error('No such profile');
   if (library.runningId) throw new Error('Close the game first');
+  if (profiles.restricted() && id !== profiles.active) needPin();
   log(`profiles: switching to ${to.name || to.id}`);
   post({ type: 'event', name: 'profiles.switching', data: { name: to.name } });
   await stopSteam();
@@ -314,6 +315,33 @@ async function switchProfile(id) {
   profiles.switchTo(id);
   setTimeout(relaunchPicked, 300);
   return true;
+}
+// Parental controls: the PIN unlocks managing profiles for a few minutes (and leaving a profile with limits).
+let pinUntil = 0;
+const pinOk = () => !profiles.hasPin || Date.now() < pinUntil;
+function needPin() { if (!pinOk()) { const e = new Error('Enter the PIN first'); e.code = 'PIN'; throw e; } }
+function unlockPin(pin) {
+  if (!profiles.checkPin(pin)) { log('profiles: wrong PIN'); throw new Error("That PIN isn't right"); }
+  pinUntil = Date.now() + 5 * 60 * 1000;
+  return true;
+}
+// Play time for profiles with a daily limit: counted while a game runs, a warning 5 minutes before the end,
+// then the game closes (saved games in most games are kept: it closes the way Exit game does).
+const parental = { since: 0, timer: null, warned: false };
+function sessionMinutes() { return parental.since ? (Date.now() - parental.since) / 60000 : 0; }
+function parentalTick() {
+  const r = profiles.canPlay(library.runningId, { sessionMinutes: sessionMinutes() });
+  if (r.minutesLeft == null) return;
+  if (!r.ok) {
+    log('parental: time is up');
+    post({ type: 'event', name: 'parental.timeup', data: {} });
+    osd({ kind: 'msg', icon: 'clock', text: "Play time's up for today. The game is closing.", ms: 6000 });
+    setTimeout(() => library.closeRunning().catch(() => {}), 5000);
+    clearInterval(parental.timer); parental.timer = null;
+  } else if (r.minutesLeft <= 5 && !parental.warned) {
+    parental.warned = true;
+    osd({ kind: 'msg', icon: 'clock', text: `${r.minutesLeft} minute${r.minutesLeft === 1 ? '' : 's'} of play time left today. Time to find a save point!`, ms: 7000 });
+  }
 }
 /** Restarts Hearth after a switch, without asking "who's playing?" again. */
 function relaunchPicked() {
@@ -607,7 +635,7 @@ function osd(data) {
   if (!overlayOn && !osdOverlay) { osdOverlay = true; overlayLook(true, false); }   // shown, but the game keeps the controller
   overlay.webContents.send('nimbus:msg', { type: 'event', name: 'osd', data });
   clearTimeout(osdTimer);
-  osdTimer = setTimeout(() => { if (osdOverlay && !overlayOn) { osdOverlay = false; overlayLook(false, false); } }, 1800);
+  osdTimer = setTimeout(() => { if (osdOverlay && !overlayOn) { osdOverlay = false; overlayLook(false, false); } }, (data && data.ms) || 1800);
 }
 
 function powerMenu() {
@@ -764,13 +792,20 @@ app.whenReady().then(() => {
       restartApp: () => { setTimeout(relaunch, 300); return null; },
       profiles: {
         get: () => ({ active: profiles.active, askAtStart: profiles.askAtStart, picked: args.includes('--picked'),
-          list: profiles.list.map(p => ({ ...p, current: p.id === profiles.active })), steamAccounts: knownSteamAccounts() }),
-        create: (o) => profiles.create(o || {}),
-        update: (id, patch) => profiles.update(id, patch || {}),
-        remove: (id) => profiles.remove(id),
-        setAsk: (on) => profiles.setAskAtStart(on),
+          hasPin: profiles.hasPin, unlocked: profiles.hasPin && pinOk(), restricted: profiles.restricted(),
+          left: profiles.canPlay(null, { sessionMinutes: sessionMinutes() }).minutesLeft,
+          list: profiles.list.map(p => ({ ...p, current: p.id === profiles.active, limits: profiles.limits(p.id), playedToday: Math.round(profiles.playedToday(p.id)) })),
+          steamAccounts: knownSteamAccounts() }),
+        create: (o) => { needPin(); return profiles.create(o || {}); },
+        update: (id, patch) => { if (!(id === profiles.active && Object.keys(patch || {}).every(k => k === 'name' || k === 'color' || patch[k] === undefined))) needPin(); return profiles.update(id, patch || {}); },
+        remove: (id) => { needPin(); return profiles.remove(id); },
+        setAsk: (on) => { needPin(); return profiles.setAskAtStart(on); },
         switchTo: (id) => switchProfile(id),
-        addSteam: (id) => addSteamAccount(id),
+        addSteam: (id) => { needPin(); return addSteamAccount(id); },
+        unlock: (pin) => unlockPin(pin),
+        setPin: (pin) => { needPin(); profiles.setPin(pin); if (pin) pinUntil = Date.now() + 5 * 60 * 1000; return true; },
+        setLimits: (id, patch) => { needPin(); return profiles.setLimits(id, patch || {}); },
+        canPlay: (gameId) => profiles.canPlay(gameId, { sessionMinutes: sessionMinutes() }),
       },
       canFpsLimit: () => IN_SESSION && require('./util').has('xprop'),
       // The overlay's open apps (Game Mode): list, switch to, close.
@@ -885,6 +920,17 @@ app.whenReady().then(() => {
     showGameWhenReady(id);
   });
   library.on('exited', () => { hideOverlay(); comeBack(); });
+  // Parental controls: count play time and close the game when today's time is up.
+  library.on('started', () => {
+    parental.since = Date.now(); parental.warned = false;
+    clearInterval(parental.timer);
+    if (profiles.restricted()) { parental.timer = setInterval(parentalTick, 20000); parentalTick(); }
+  });
+  library.on('exited', () => {
+    clearInterval(parental.timer); parental.timer = null;
+    if (parental.since) profiles.addPlayed(profiles.active, sessionMinutes());
+    parental.since = 0;
+  });
   // Per-game frame-rate cap and power limit (game page › Game settings): on while it plays, then back.
   let perGame = null;
   library.on('started', async id => {
