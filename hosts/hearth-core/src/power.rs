@@ -50,6 +50,7 @@ pub fn action(what: &str, in_session: bool) -> Result<bool, String> {
         "sleep" => sys("suspend"),
         "restart" => sys("reboot"),
         "shutdown" => sys("poweroff"),
+        "hibernate" => sys("hibernate"),
         "desktop" | "signout" if in_session => {
             // The session reads the next mode from this file when Hearth closes ("desktop" → Desktop Mode).
             let f = PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("nimbus-next");
@@ -58,4 +59,25 @@ pub fn action(what: &str, in_session: bool) -> Result<bool, String> {
         }
         _ => Ok(false),
     }
+}
+
+/// Can this PC turn off with everything kept (hibernation)? {supported, canSetUp, reason}
+/// Needs: the kernel allows it (Secure Boot's lockdown doesn't), swap on the drive at least as big as memory
+/// (Hearth sets that up: hearth-admin hibernate-setup), and the system says yes.
+pub fn hibernate_status() -> Value {
+    let state = std::fs::read_to_string("/sys/power/state").unwrap_or_default();
+    let lockdown = std::fs::read_to_string("/sys/kernel/security/lockdown").unwrap_or_default();
+    let locked = !lockdown.is_empty() && !lockdown.contains("[none]");
+    let kb = |text: &str, k: &str| text.lines().find(|l| l.starts_with(&format!("{k}:"))).and_then(|l| l.split_whitespace().nth(1)).and_then(|n| n.parse::<u64>().ok()).unwrap_or(0);
+    let mem = kb(&std::fs::read_to_string("/proc/meminfo").unwrap_or_default(), "MemTotal");
+    // Swap on the drive (zram is in memory, so it can't keep anything while off): sizes in KiB.
+    let disk_swap: u64 = std::fs::read_to_string("/proc/swaps").unwrap_or_default().lines().skip(1)
+        .filter(|l| !l.starts_with("/dev/zram")).filter_map(|l| l.split_whitespace().nth(2).and_then(|n| n.parse::<u64>().ok())).sum();
+    let logind = crate::system::run("gdbus", &["call", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1", "--method", "org.freedesktop.login1.Manager.CanHibernate"]).unwrap_or_default();
+    let (supported, can_set_up, reason) = if !state.contains("disk") { (false, false, "This PC's system doesn't support turning off with games kept.") }
+        else if locked { (false, false, "Secure Boot is on, which doesn't allow saving memory to the drive. Games put aside close when the PC turns off.") }
+        else if disk_swap < mem { (false, crate::admin::can_admin(), "Needs room on the drive the size of this PC's memory. Set it up once, then restart.") }
+        else if !logind.contains("'yes'") { (false, false, "The system isn't allowing it right now.") }
+        else { (true, false, "") };
+    json!({"supported": supported, "canSetUp": can_set_up, "reason": if reason.is_empty() { Value::Null } else { json!(reason) }, "memoryGB": (mem as f64 / 1048576.0).round()})
 }

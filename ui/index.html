@@ -505,6 +505,8 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
   .stat.hide-s,.hint.hide-s{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+.tile.qr{position:relative}.tile.qr .qrb{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:rgba(10,14,20,.82);color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.tile.qr .qrb svg{width:12px;height:12px}
+.qrrow{display:flex;gap:8px;align-items:stretch}.qrrow .btn:first-child{flex:1;justify-content:flex-start}
 </style>
 </head>
 <body>
@@ -671,7 +673,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(LINUX&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if(LINUX&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -964,6 +966,40 @@ function layoutPreview(id){
     ${[0,1,2,3].map(i=>`<i style="left:${39+i*14}%;top:44%;width:12%;height:26%"></i>`).join('')}${[0,1,2,3,4,5].map(i=>`<i style="left:${6+i*15}%;top:80%;width:13%;height:20%"></i>`).join('')}`;
 }
 
+// ---------- Quick Resume (Hearth): games put aside stay frozen in memory and carry on where they were ----------
+const QR = {list:[], on:true, hib:null};
+const qrFeature = () => (HOSTINFO.features||[]).includes('quickResume');
+const isFrozen = g => !!g && QR.list.some(q=>q.id===g.id);
+function applyQuick(d){
+  if(!d) return;
+  QR.list = Array.isArray(d.list) ? d.list : []; QR.on = d.on!==false;
+  if('runningId' in d && !S.layers.includes('launch')) { S.running = d.runningId || null; if(!S.running) S.paused=false; }
+}
+function quickResume(id){
+  const g=G(id);
+  closeAll();
+  if(!host){ QR.list=QR.list.filter(q=>q.id!==id); if(S.running) QR.list.unshift({id:S.running,frozenAt:Date.now()}); S.running=id; toast(`Back to ${g?g.title:'the game'}`); return render(null,true); }
+  call('game.quickResume',{id}).then(r=>{ applyQuick(r); toast(`Back to ${g?g.title:'the game'}`); render(null,true); }).catch(e=>toast(e.message));
+}
+function quickClose(id){
+  const g=G(id);
+  if(!host){ QR.list=QR.list.filter(q=>q.id!==id); return render(null,true); }
+  toast(`Closing ${g?g.title:'the game'}…`);
+  call('game.quickClose',{id},20000).then(r=>{ applyQuick(r.state); if(r.game&&r.game.id){ const x=G(r.game.id); if(x) Object.assign(x, fromHost(r.game)); } render(null,true); if(S.layers.includes('qam')) renderQam(); }).catch(e=>toast(e.message));
+}
+function putAside(){
+  const g=G(S.running);
+  if(!host){ if(S.running){ QR.list.unshift({id:S.running,frozenAt:Date.now()}); S.running=null; } closeAll(); return render(null,true); }
+  call('game.putAside').then(r=>{ applyQuick(r); closeAll(); toast(`${g?g.title:'The game'} is put aside. Pick it from Quick Resume to carry on.`); render(null,true); }).catch(e=>toast(e.message));
+}
+// Home: the games put aside, newest first.
+function quickShelf(){
+  const L=QR.list.map(q=>G(q.id)).filter(Boolean);
+  if(!L.length) return '';
+  return `<h2>Quick Resume</h2><div class="shelf">${L.map(g=>`<button class="tile p qr" data-f data-k="h-qr-${esc(g.id)}" data-act="quickres" data-id="${esc(g.id)}">
+    ${cover(g,{badge:false})}<span class="qrb">${I.play}Quick Resume</span><div class="cap">${esc(g.title)} · put aside ${ago(QR.list.find(q=>q.id===g.id).frozenAt).toLowerCase()}</div></button>`).join('')}</div>`;
+}
+
 // ---------- Home, by layout ----------
 // A game is running (and Hearth is in front): a strip to jump back in, on every layout.
 function nowPlayingBanner(){
@@ -1000,10 +1036,10 @@ function spotGames(V){
 function spotDetail(g){
   if(!g) return '';
   const logo = (g.art||{}).logo ? `<img class="sp-logo" src="${esc(g.art.logo)}" alt="" onerror="this.outerHTML='<div class=&quot;sp-title&quot;>${esc(g.title).replace(/'/g,'&#39;')}</div>'">` : `<div class="sp-title">${esc(g.title)}</div>`;
-  const running = S.running===g.id;
+  const running = S.running===g.id || isFrozen(g);
   const label = running ? 'Resume' : playable(g) ? (g.cloud&&!g.inst?'Stream':'Play') : isActive(g) ? dlInfo(g).label : 'Install';
   return `${logo}<div class="sp-meta"><span>${SOURCES[g.src]}</span>${g.last?`<span>Played ${ago(g.last).toLowerCase()}</span>`:''}${g.hrs?`<span>${hrs(g.hrs)}</span>`:''}</div>
-    <div class="sp-acts"><button class="play" data-f data-k="sp-play" data-act="${running?'resume':playable(g)?'play':'game'}" data-id="${esc(g.id)}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>${label}</button>
+    <div class="sp-acts"><button class="play" data-f data-k="sp-play" data-act="${S.running===g.id?'resume':playable(g)?'play':'game'}" data-id="${esc(g.id)}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>${label}</button>
     <button class="sq" data-f data-k="sp-more" data-act="game" data-id="${esc(g.id)}" aria-label="Game page">${I.info}</button>
     <button class="sq ${g.fav?'on':''}" data-f data-k="sp-fav" data-act="fav" data-id="${esc(g.id)}" aria-label="Favorite"><svg viewBox="0 0 24 24"><path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/></svg></button></div>`;
 }
@@ -1201,7 +1237,7 @@ function viewHome(){
       <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:8px">${LIB.loading?'Loading your games…':'No games found yet'}</div>
       ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">${LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':'Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.'}</div>
       <button class="pill" style="display:inline-flex" data-f data-k="h-add" data-act="addManual">＋ Add a game</button>`}</div>`;
-  if(LOOK.layout==='tiles') return nowPlayingBanner()+homeTiles(V);
+  if(LOOK.layout==='tiles') return nowPlayingBanner()+quickShelf()+homeTiles(V);
   if(LOOK.layout==='spotlight') return homeSpotlight(V);
   const recent=V.filter(g=>g.last).sort((a,b)=>b.last-a.last).slice(0,10);
   const favs=V.filter(g=>g.fav);
@@ -1213,6 +1249,7 @@ function viewHome(){
   return `<div class="home-hero"><div class="art" id="heroArt" style="${heroStyle(first)}"></div><div id="heroImg">${heroImg(first)}</div></div>
   <div class="home-sec">
     ${nowPlayingBanner()}
+    ${quickShelf()}
     ${recent.length?`<h2>Recent games</h2><div class="shelf">${recent.map((g,i)=>tile(g,i===0?'l':'p','h-r-'+g.id)).join('')}</div>`:''}
     ${news}
     ${favs.length?`<h2>Favorites</h2><div class="shelf">${favs.map(g=>tile(g,'p','h-f-'+g.id)).join('')}</div>`:''}
@@ -1342,6 +1379,7 @@ function viewGame(){
         ? `<button class="play dling" data-f data-k="g-play" data-act="nav" data-view="downloads"><span>${dlInfo(g).label}</span><div class="bar"><i style="width:${dlInfo(g).pct??0}%"></i></div></button>`
         : playable(g)
         ? (running ? `<button class="play" data-f data-k="g-play" data-act="resume" data-id="${esc(g.id)}">${I.play}Resume</button><button class="play install" data-f data-k="g-stop" data-act="exitgame" data-id="${esc(g.id)}">${I.stop}Exit game</button>`
+            : isFrozen(g) ? `<button class="play" data-f data-k="g-play" data-act="quickres" data-id="${esc(g.id)}">${I.play}Resume</button><button class="play install" data-f data-k="g-stop" data-act="quickclose" data-id="${esc(g.id)}">${I.stop}Close game</button>`
             : `<button class="play" data-f data-k="g-play" data-act="play" data-id="${esc(g.id)}">${I.play}${g.cloud&&!g.inst?'Stream':'Play'}</button>`)
         : `<button class="play install" data-f data-k="g-play" data-act="install" data-id="${esc(g.id)}">${I.dl}Install</button>`}
       <button class="sq ${g.fav?'on':''}" data-f data-k="g-fav" data-act="fav" data-id="${esc(g.id)}" aria-label="Favorite">${I.star}</button>
@@ -1621,7 +1659,22 @@ function pagePower(){
     h += `<div class="row"><div class="rt"><b>Power limit (TDP)</b><small>${t.watts} W now · lower uses less battery, higher runs demanding games faster. Kept after a restart.</small></div></div>
       <div class="chips" style="margin:-4px 0 10px">${choices.map(v=>`<button class="chip ${t.watts===v?'on':''}" data-f data-k="ptd-${v}" data-act="setTdp" data-v="${v}">${v} W</button>`).join('')}</div>`;
   }
-  return h + (LINUX ? shead('Power button') + powerButtonRows() : '');
+  return h + (qrFeature() ? quickResumeRows() : '') + (LINUX ? shead('Power button') + powerButtonRows() : '');
+}
+function quickResumeRows(){
+  if(host && !QR.hib) call('power.hibernateStatus').then(r=>{ QR.hib=r; if(S.view==='settings') render(null,true); }).catch(()=>{ QR.hib={supported:false}; });
+  const hb=QR.hib;
+  let h = shead('Quick Resume');
+  h += `<button class="row" data-f data-k="qr-on" data-act="qrToggle"><div class="rt"><b>Quick Resume</b><small>Starting another game puts the one you're playing aside, frozen where you left it, like on Xbox. Up to 5 games; the oldest closes when memory runs low.</small></div><div class="sw ${QR.on?'on':''}"></div></button>`;
+  if(!hb) return h + note('Checking whether games can be kept when the PC turns off…');
+  if(hb.supported) return h + note('Turn off and keep games (in the power menu while games are open) saves everything to the drive and brings it back when you turn it on.');
+  h += note(esc(hb.reason||'Sleep keeps your games; turning off closes them.'));
+  if(hb.canSetUp) h += `<button class="row" data-f data-k="qr-hib" data-act="hibSetup"><div class="rt"><b>Keep games when the PC turns off</b><small>Uses about ${hb.memoryGB||''} GB of the drive. Takes effect after a restart.</small></div><div class="rv">Set up ›</div></button>`;
+  return h;
+}
+function hibSetup(){
+  toast('Setting it up…');
+  call('power.hibernateSetup',{},300000).then(r=>{ QR.hib=r; toast(r.supported?'Done: games are kept when the PC turns off':'Done. Restart the PC to finish.'); render(null,true); }).catch(e=>toast(e.message));
 }
 
 // ---------- Settings › Controller › Button mapping (InputPlumber, Linux) ----------
@@ -2316,7 +2369,7 @@ async function overlayShown(){
   // before that, gamescope sometimes put up an empty, black overlay over the game).
   if(OVERLAY) requestAnimationFrame(()=>requestAnimationFrame(()=>send({type:'overlay', action:'painted'})));
   while(S.layers.length>1) closeLayer();
-  try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); if(!r.runningId) S.running=null; }catch(e){}
+  try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); if(!r.runningId) S.running=null; if(r.quickResume) applyQuick({list:r.quickResume.list, on:r.quickResume.on}); }catch(e){}
   if(S.running && !G(S.running)) await loadLibrary();
   S.qtab = S.running ? 'now' : 'quick';
   if(!S.layers.includes('qam')) openLayer('qam'); else { renderQam(); setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
@@ -2351,16 +2404,25 @@ function renderQam(){
       ${ovBtns}
       ${LINUX?`<button class="btn" data-f data-k="q-resume" data-act="resume">${I.play}Back to game</button>`:''}
       ${LINUX&&!G(S.running)?.cloud?`<button class="btn" data-f data-k="q-pause" data-act="pauseGame">${S.paused?I.play+'Unpause':I.pause+'Pause'}</button>`:''}
-      <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>`
+      ${qrFeature()&&QR.on&&!g.cloud?`<button class="btn" data-f data-k="q-aside" data-act="putaside">${I.pause}Put aside (Quick Resume)</button>`:''}
+      <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>${qamQuick()}`
+      : (QR.list.length && !OVERLAY) ? `<div class="muted" style="margin-bottom:10px">Nothing running right now.</div>${qamQuick()}`
       : OVERLAY ? `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}` : '<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
   }
   $('#qam').innerHTML = `<div class="qbody">${body}</div><div class="qtabs">${QTABS.map(([k,ic,l])=>`<button class="qtab ${t===k?'on':''}" data-f data-k="qt-${k}" data-act="qtab" data-tab="${k}" aria-label="${l}">${I[ic]}</button>`).join('')}</div>`;
+}
+function qamQuick(){
+  const L=QR.list.map(q=>G(q.id)).filter(Boolean);
+  if(!L.length) return '';
+  return `<h3 style="margin-top:16px">Quick Resume</h3>${L.map(g=>`<div class="qrrow"><button class="btn" data-f data-k="q-qr-${esc(g.id)}" data-act="quickres" data-id="${esc(g.id)}">${I.play}${esc(g.title)}</button><button class="btn sm danger" data-f data-k="q-qrx-${esc(g.id)}" data-act="quickclose" data-id="${esc(g.id)}" aria-label="Close ${esc(g.title)}">${I.stop}</button></div>`).join('')}
+    <div class="muted" style="font-size:12px;margin-top:4px">Put-aside games stay frozen where you left them. ${QR.hib&&QR.hib.supported?'They\'re kept when you choose Turn off and keep games.':'Sleep keeps them; turning off closes them.'}</div>`;
 }
 function renderPower(){
   $('#powerBox').innerHTML = `<h3>Power</h3>
     <button class="mitem" data-f data-k="p-sleep" data-act="pwr" data-p="sleep">${I.moon}Sleep</button>
     <button class="mitem" data-f data-k="p-restart" data-act="pwr" data-p="restart">${I.restart}Restart</button>
-    <button class="mitem" data-f data-k="p-shutdown" data-act="pwr" data-p="shutdown">${I.power}Shut down</button>
+    ${(S.running||QR.list.length)&&QR.hib&&QR.hib.supported?`<button class="mitem" data-f data-k="p-hib" data-act="pwr" data-p="hibernate">${I.power}Turn off and keep games</button>`:''}
+    <button class="mitem" data-f data-k="p-shutdown" data-act="pwr" data-p="shutdown">${I.power}Shut down${(S.running||QR.list.length)&&qrFeature()?'<small style="margin-left:auto;opacity:.6;font-size:12px">closes your games</small>':''}</button>
     <button class="mitem" data-f data-k="p-signout" data-act="pwr" data-p="signout">${I.user}Sign out</button>
     <button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}${LINUX?'Switch to desktop':'Desktop Mode'}</button>
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`;
@@ -2736,6 +2798,11 @@ function act(el){
     case 'rescan': return loadLibrary(true, true);
     case 'install': return installGame(G(d.id));
     case 'play': return launch(G(d.id));
+    case 'quickres': return quickResume(d.id);
+    case 'quickclose': return quickClose(d.id);
+    case 'putaside': return putAside();
+    case 'qrToggle': return call('quickResume.set',{on:!QR.on}).then(r=>{ applyQuick(r); render(null,true); }).catch(e=>toast(e.message));
+    case 'hibSetup': return hibSetup();
     case 'exitgame': return exitGame();
     case 'pauseGame': return call(S.paused?'game.unpause':'game.pause').then(r=>{ S.paused=!!r.paused; toast(S.paused?'Paused. It uses no power while paused: go back to it to carry on.':'Unpaused'); renderQam(); setFocus($('#qam [data-k="q-pause"]'),true); }).catch(e=>toast(e.message));
     case 'resume': closeAll(); return send({type:'resume'});
@@ -2761,7 +2828,7 @@ function typeKey(c){
 }
 function power(p){
   closeAll();
-  const label={sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
+  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
   send({type:'power', action:p});
   toast(host?label:label+' (simulated in the browser preview)');
 }
@@ -2775,7 +2842,17 @@ function hideLaunch(){
   renderFooter();
 }
 function launch(g){
-  if(S.running && S.running!==g.id){ toast(`Exit ${G(S.running).title} first (Quick Access → Now playing)`); return; }
+  if(isFrozen(g)) return quickResume(g.id);
+  if(S.running===g.id){ closeAll(); return send({type:'resume'}); }
+  let aside=null;
+  if(S.running && S.running!==g.id){
+    const cur=G(S.running);
+    // Quick Resume: the game that's running is put aside (frozen where it is) and this one starts.
+    if(!qrFeature() || !QR.on){ toast(`Exit ${cur.title} first (Quick Access → Now playing)`); return; }
+    if(cur && cur.cloud){ toast(`Close ${cur.title} first: cloud games can't be put aside`); return; }
+    aside=cur;
+  }
+  if(aside) toast(`${aside.title} is put aside (Quick Resume)`);
   const L=$('#launch');
   L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">${g.cloud?'Streaming with Xbox Cloud Gaming…':`Starting via ${SOURCES[g.src]}…`}</div></div>`;
   closeAll();
@@ -3641,6 +3718,7 @@ async function loadLibrary(rescan, announce){
     applyLib(lib);
     const s=lib.sources||{}; S.set.srcSteam=s.steam!==false; S.set.srcEpic=s.epic!==false; S.set.srcGog=s.gog!==false; S.set.srcXbox=s.xbox!==false; S.set.srcEmu=s.emu!==false;
     if(lib.runningId) S.running=lib.runningId;
+    if(lib.quickResume) applyQuick({list:lib.quickResume.list, on:lib.quickResume.on});
     S.set.steamBg = lib.steamBackground!==false;
     if(GAMES.some(isActive)) startDownloadPoll();
     if(announce) toast(`Found ${GAMES.length} game${GAMES.length===1?'':'s'}`);
@@ -3686,6 +3764,7 @@ function onSysEvent(name, data){
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
+  if(name==='quickResume'){ applyQuick(data); if(!OVERLAY && !S.layers.length) render(null,true); else { renderFooter(); if(S.layers.includes('qam')) renderQam(); } return; }
   if(name==='game.paused'){ S.paused=!!data.paused; if(S.layers.includes('qam')) renderQam(); return; }
   if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
   if(name==='osd') return showOsd(data);
