@@ -1,52 +1,46 @@
-# Hearth OS roadmap: Ember (Windows) and Hearth (Linux)
+# Hearth OS roadmap
 
-Hearth OS is the project: one UI with two products. **Ember** is the Windows shell. **Hearth** is the Linux side, which grows in three steps, each usable on its own.
+Hearth OS is one controller-first UI with two homes: **Hearth** (Linux: an installable OS built on Bazzite, plus
+an app/session for other distros, with **Mantel** as its desktop) and **Ember** (the Windows 11 shell).
+Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
-## 1. Hearth OS session on any distro (done, in testing)
+## Done
 
-- Game Mode: the shared UI in Electron, fullscreen in gamescope (`hosts/linux/`).
-- One "Hearth" login session that switches between Game Mode and Desktop Mode without logging out.
-- Linux preview AppImages publish to GitHub Releases on every push to `linux-host`.
+- Game Mode in gamescope, Mantel desktop (labwc + Quickshell) with its own settings app, switching between them
+- Hearth OS images for AMD/Intel (`hearth`) and Nvidia (`hearth-nvidia`), updates that roll back, live ISOs
+- Library for Steam, Epic, GOG, Xbox Cloud and your own games; downloads page; in-game overlay; art kept offline
+- Power modes and power limit (TDP), controller remapping, volume/power buttons, Aloha Browser install
+- Website (GitHub Pages), releases that hide older ones
 
-## 2. Desktop Mode (first version done, in testing)
+## 0.0.18 (in progress)
 
-labwc for windows, Quickshell for everything Hearth OS draws (`hosts/linux/desktop/`).
+- [x] Game Mode ↔ Desktop switch can't freeze
+- [x] Detailed system update progress (download speed, time left, install and app steps)
+- [x] Ember Desktop Mode: the Windows desktop and back (shortcut, tray, Ctrl+Alt+G, Xbox button), start-in setting
+- [ ] Import games and files: from Windows, SteamOS / Steam Deck and other Linux, other drives and SD cards
+      (Steam, Epic, GOG, Heroic, Lutris, Proton saves, personal files; copy or move)
+- [ ] Fixes from 0.0.17 testing
 
-- [x] labwc config: Hearth OS window colors, keybinds, right-click menu
-- [x] Taskbar: launcher button, running apps, tray, volume, network, battery, clock, Game Mode button
-- [x] App launcher: search, grid, power actions (Super opens it)
-- [x] Notifications
-- [x] Wallpaper (Hearth OS default, or `~/.config/nimbus/wallpaper.jpg`)
-- [ ] Later: lock screen, Wi-Fi/Bluetooth panels, screen settings (labwc + wlr-randr)
+## 0.0.19
 
-## 3. Hearth OS (started)
+- [ ] Take over the drive: remove the old system after importing, grow Hearth to the whole drive
+- [ ] Guided live USB flow: scan, clear safe files, check BitLocker / Fast Startup / space / power, shrink,
+      install, import on first start
+- [ ] Install Hearth OS from Ember on Windows (needs the ISOs on SourceForge)
 
-An installable, image-based distro that boots straight into Hearth OS, like SteamOS. Built the same way as
-Bazzite: a container image on Fedora Atomic (bootc), built in GitHub Actions from the Universal Blue
-image template.
+## Not started
 
-**Layout:** `os/` in this repo.
+- First-start setup on an installed Hearth OS (Wi-Fi, store sign-ins, controller tour)
+- Mantel lock screen
+- Ember as the shell: startup apps, tray and notifications (Desktop Mode covers them for now)
+- External monitor brightness on Windows (DDC/CI)
 
-| File | Purpose |
-|---|---|
-| `os/Containerfile` | `FROM ghcr.io/ublue-os/bazzite:stable` (drivers, Steam, gamescope, codecs already there), then add labwc, Quickshell, Heroic, umu-launcher and Hearth OS |
-| `os/build.sh` | Package installs, Hearth OS files into `/usr/lib/nimbus` and `/usr/share/nimbus`, default session = Hearth OS, autologin |
-| `os/disk_config/iso.toml` | Installer settings for the ISO |
-| `.github/workflows/os.yml` | Build and sign the image, push to `ghcr.io/dragongamer9/hearth`; build the ISO on release |
+## Waiting on setup
 
-**Decisions**
+- SourceForge project for the ISOs (then the website's download buttons go live)
+- Cosign key for signing the OS images (`SIGNING_SECRET`); then turn on signature checks in Hearth OS
 
-- Base: Bazzite (desktop variant). It already solves GPU drivers, Steam, gamescope and handheld support; we replace its session, not its plumbing.
-- Hearth OS inside the OS is unpacked (no AppImage): `/usr/lib/nimbus`, session scripts in `/usr/bin`, Desktop Mode in `/usr/share/nimbus`. The AppImage's self-update is turned off there; the whole OS updates as one image.
-- Updates: `bootc upgrade` in the background, applied at next boot; the previous image stays in the boot menu for rollback. Hearth OS › Settings › Updates shows OS updates when running on Hearth.
-- Signing: Cosign key; the private key is a GitHub secret (`SIGNING_SECRET`), never committed.
+## Parked
 
-**Milestones**
-
-1. Image builds in CI; an existing Bazzite/Fedora Atomic PC can `sudo bootc switch ghcr.io/dragongamer9/hearth` and boot into Hearth OS.
-2. ISO: installs on a blank PC, first boot goes straight to Game Mode.
-3. First-boot setup in Hearth OS (Wi-Fi, account sign-ins), Plymouth boot splash and login theme in Hearth OS colors.
-4. OS updates and rollback in Settings.
-
-Needs from you before milestone 1: a Cosign key pair (`COSIGN_PASSWORD="" cosign generate-key-pair`), with
-`cosign.key` stored as the `SIGNING_SECRET` repository secret.
+- Live user counter (Cloudflare Workers)
+- Hearth Browser (Electron)
