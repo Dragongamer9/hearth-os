@@ -927,6 +927,7 @@ function pageSystem(){
   else h += `<button class="row" data-f data-k="sy-signin" data-act="goset" data-tab="signin"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign-in and startup</b><small>Sign in automatically, start in Game or Desktop Mode, password</small></div><div class="rv">›</div></button>`;
   h += shead('Troubleshooting');
   if(feat('restartApp')) h += `<button class="row" data-f data-k="sy-restart" data-act="restartApp"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP}</b><small>Closes and reopens ${APP}. Games keep running.</small></div></button>`;
+  h += `<button class="row" data-f data-k="sy-inlog" data-act="inputLog"><div class="rt"><b>Log controller input</b><small>Writes every button press and what it selected to the log, for reporting a jumpy selection. Then use Save logs.</small></div><div class="sw ${INPUT_LOG?'on':''}"></div></button>`;
   if(feat('exportLogs')) h += `<button class="row" data-f data-k="sy-logs" data-act="exportLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs</b><small>Puts ${APP}'s logs in one file in your home folder, to send with a bug report</small></div></button>`;
   h += `<button class="row" data-f data-k="sy-reset" data-act="resetLook"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset appearance</b><small>Layout, text size and top bar back to how they started. Your games and accounts stay.</small></div></button>`;
   return h;
@@ -1891,13 +1892,22 @@ function syncScrim(){
 let focused=null;
 function root(){ const top=S.layers.at(-1); return top ? $('#'+top) : $('#app'); }
 function focusables(){ return [...root().querySelectorAll('[data-f]')].filter(el=>el.getClientRects().length); }
+// Scrolling to the focused item. While presses come quickly (a held direction, fast tapping) it jumps instead
+// of gliding: a smooth scroll still moving under the next press made the next pick wrong (it bounced between
+// two items), and the glide fell behind on a handheld.
+let lastNav=0;
+const scrollOpts = (el, smooth) => { const shelf = el.closest('.shelf,.news,.tabs,.sres');
+  return {block: shelf?'nearest':'center', inline: shelf?'center':'nearest', behavior: smooth?'smooth':'auto'}; };
+/** Ends a smooth scroll still under way (jumps to where it was going), so positions are final. */
+function settleScroll(){ if(focused && document.contains(focused)) focused.scrollIntoView(scrollOpts(focused, false)); }
 function setFocus(el, quiet){
   if(!el) return;
   if(focused) focused.classList.remove('focus');
   focused=el; el.classList.add('focus');
   el.focus({preventScroll:true});
-  const shelf = el.closest('.shelf,.news,.tabs,.sres');
-  el.scrollIntoView({block: shelf?'nearest':'center', inline: shelf?'center':'nearest', behavior: quiet?'auto':'smooth'});
+  const now=performance.now(), rapid = now-lastNav < 260;
+  lastNav=now;
+  el.scrollIntoView(scrollOpts(el, !quiet && !rapid && !LOOK.reduceMotion));
   if(S.view==='home' && el.dataset.spot && !S.layers.length) updateSpot(el.dataset.spot);
   if(S.view==='home' && el.dataset.id && !S.layers.length){
     const h=$('#heroArt'), hi=$('#heroImg'), g=G(el.dataset.id);
@@ -1908,7 +1918,11 @@ function setFocus(el, quiet){
 function move(dir){
   if(!focused || !document.contains(focused) || !root().contains(focused)) return setFocus(focusables()[0]);
   if(focused.dataset.slider && (dir==='left'||dir==='right')) return adjustSlider(focused, dir==='left'?-1:1);
-  const r=focused.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+  settleScroll();
+  // The focused card is drawn a little bigger (scaled from its centre): measure its real box.
+  const rr=focused.getBoundingClientRect(), fw=focused.offsetWidth||rr.width, fh=focused.offsetHeight||rr.height;
+  const cx=rr.left+rr.width/2, cy=rr.top+rr.height/2;
+  const r={left:cx-fw/2, right:cx+fw/2, top:cy-fh/2, bottom:cy+fh/2, width:fw, height:fh};
   let best=null, bs=Infinity;
   for(const el of focusables()){
     if(el===focused) continue;
@@ -1969,6 +1983,7 @@ function act(el){
     case 'mute': return setMute(!S.sys.audio.muted);
     case 'audioDev': return setOutput(d.id);
     case 'pmode': return setPowerMode(d.mode);
+    case 'inputLog': INPUT_LOG=!INPUT_LOG; try{ localStorage.setItem('nimbus.inputLog', INPUT_LOG?'1':'0'); }catch(e){} toast(INPUT_LOG?'Logging controller input':'Stopped logging controller input'); return render('sy-inlog',true);
     case 'browser': return call('browser.act',{action:d.v}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'browserRemove': return openSheet({title:'Remove Aloha Browser?', sub:'Your bookmarks and history stay in your home folder.', items:[{label:'Remove', icon:'trash', run:()=>call('browser.act',{action:'remove'}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message))}]});
     case 'setTdp': return call('perf.setTdp',{watts:+d.v}).then(r=>{ S.sys.power=Object.assign(S.sys.power||{},{tdp:r}); toast(`Power limit ${r.watts} W`); render('ptd-'+d.v,true); }).catch(e=>toast(e.message));
@@ -2724,7 +2739,12 @@ function hintAction(id){
 // =====================================================================
 // Input: gamepad, keyboard, pointer
 // =====================================================================
+// Settings › System › Log controller input: every press and what it selected goes to the log (Save logs),
+// so a jumpy selection can be looked at afterwards.
+let INPUT_LOG=false; try{ INPUT_LOG=localStorage.getItem('nimbus.inputLog')==='1'; }catch(e){}
+function logInput(what){ if(INPUT_LOG) send({type:'log', text:`input ${what} | view ${S.view} layer ${S.layers.at(-1)||'-'} | focus ${focused?.dataset.k||'-'} | t ${Math.round(performance.now())}`}); }
 function input(k){
+  logInput(k);
   const top=S.layers.at(-1);
   if(top==='launch') return;
   if(OVERLAY){
@@ -2808,7 +2828,17 @@ const KEYMAP = {ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right
 // Shortcuts that aren't controller buttons
 const KEY_EXTRA = {Home:()=>{ closeAll(); if(S.view!=='home'){ S.history=[]; navigate('home',{},false); } },
   F1:()=>{ S.settingsTab='controller'; S.view==='settings' ? (render('st-controller'), onSettingsTab('controller')) : navigate('settings',{focusKey:'st-controller'}); }};
+// Steam (running in the background) can turn controller buttons into keys for the window in front: the d-pad
+// into arrow keys, A into Enter. With the controller also read here, every press counted twice, and the
+// selection jumped two places. Navigation keys that arrive while a controller button is held are dropped.
+const NAV_KEYS=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter',' ','Escape','Backspace','Tab','w','a','s','d']);
+function padHeldNow(){
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  return pads.some(p => p.buttons.some(b => b && b.pressed) || p.axes.some(a => Math.abs(a) > .5));
+}
 document.addEventListener('keydown', e=>{
+  if(NAV_KEYS.has(e.key) && !e.ctrlKey && !e.altKey && padHeldNow()){ logInput('key '+e.key+' dropped (controller held)'); e.preventDefault(); e.stopImmediatePropagation(); return; }
+  if(INPUT_LOG && NAV_KEYS.has(e.key)) logInput('key '+e.key);
   // Debug: Ctrl+Shift+D writes the focused/open game's art and image load state to bridge.log
   if(e.ctrlKey && e.shiftKey && (e.key==='D'||e.key==='d')){
     const id = S.view==='game' ? S.game : focused?.dataset.id; const g=id&&G(id);
