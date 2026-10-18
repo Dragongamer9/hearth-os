@@ -130,7 +130,7 @@ jobs:
           check "hearth-import is installed" "test -x /usr/libexec/nimbus/hearth-import && command -v rsync"
           check "hearth-takeover and its tools are installed" "test -x /usr/libexec/nimbus/hearth-takeover && command -v sfdisk && command -v partx && command -v efibootmgr && command -v btrfs"
           check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
-          check "the Hearth app has the Update now button" "grep -rqs sysUpdInstall /usr/lib/nimbus/resources"
+          check "the Hearth app has the Update now button" "grep -aqs system.update.install /usr/lib/nimbus/nimbus || grep -rqs sysUpdInstall /usr/lib/nimbus/resources"
           check "background updates are scheduled" "ls /usr/lib/systemd/system/*.timer /etc/systemd/system/timers.target.wants/ /usr/lib/systemd/system/timers.target.wants/ 2>/dev/null | grep -qE 'uupd|rpm-ostreed-automatic|bootc-fetch-apply-updates'"
           exit $fail
           EOF
