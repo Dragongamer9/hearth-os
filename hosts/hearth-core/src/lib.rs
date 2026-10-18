@@ -3,6 +3,7 @@
 pub mod admin;
 pub mod bridge;
 pub mod collections;
+pub mod emulators;
 pub mod game_options;
 pub mod library;
 pub mod manual;
