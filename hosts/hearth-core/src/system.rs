@@ -302,7 +302,8 @@ pub mod bt_scan {
                     break;
                 }
             }
-            if let Some(mut c) = scanner.lock().unwrap().take() { let _ = c.kill(); let _ = c.wait(); }
+            let last = scanner.lock().unwrap().take();
+            if let Some(mut c) = last { let _ = c.kill(); let _ = c.wait(); }
         });
     }
 }
