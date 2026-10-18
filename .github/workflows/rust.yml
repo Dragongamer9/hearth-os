@@ -59,9 +59,12 @@ jobs:
           printf '"libraryfolders" { "0" { "path" "%s" } }' "$s" > "$s/steamapps/libraryfolders.vdf"
           for g in "620 Portal 2" "400 Portal" "570 Dota 2"; do set -- $g; id=$1; shift
             printf '"AppState" { "appid" "%s" "name" "%s" "installdir" "%s" "StateFlags" "4" "SizeOnDisk" "1000000000" }' "$id" "$*" "$*" > "$s/steamapps/appmanifest_$id.acf"; done
+          # And a big library for the speed test: 400 more games (no pictures, like a fresh library).
+          for i in $(seq 100001 100400); do
+            printf '"AppState" { "appid" "%s" "name" "Test Game %s" "installdir" "T%s" "StateFlags" "4" "SizeOnDisk" "1000" }' "$i" "$i" "$i" > "$s/steamapps/appmanifest_$i.acf"; done
           # A virtual screen has no graphics card: WebKit draws in software.
           export LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 NO_AT_BRIDGE=1
-          dbus-run-session -- ./target/release/hearth --windowed > run.log 2>&1 &
+          HEARTH_PERF_LOG=1 dbus-run-session -- ./target/release/hearth --windowed > run.log 2>&1 &
           for t in 5 12 20; do sleep $((t - ${last:-0})); last=$t; import -window root shots/at-${t}s.png || true; done
           # A few screens: Quick Access (Q), the menu (M), and Settings from it.
           w=$(xdotool search --name '^Hearth$' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true
@@ -74,6 +77,25 @@ jobs:
             xdotool key Return; sleep 3; import -window root shots/$2.png || true
           done
           xdotool key Escape; sleep 1
+          # Speed test: the library with 403 games, moving through it.
+          xdotool key Escape; sleep 1; xdotool key m; sleep 1.5; xdotool key Down; sleep 0.3; xdotool key Return; sleep 4
+          for i in $(seq 20); do xdotool key Right; sleep 0.15; done
+          for i in $(seq 10); do xdotool key Down; sleep 0.15; done
+          sleep 1; import -window root shots/library-big.png || true
+          log="$HOME/.local/share/nimbus/bridge.log"
+          if [ -f "$log" ]; then
+            grep 'perf: ' "$log" | sed 's/.*perf: //' > shots/perf.txt || true
+            summary=$(python3 - <<'PY'
+          import re,statistics
+          rows=[l for l in open('shots/perf.txt') if '(library' in l]
+          def stat(kind):
+              v=[float(re.search(r' ([\d.]+) ms',l).group(1)) for l in rows if l.startswith(kind)]
+              return f"{kind}: {len(v)}x, median {statistics.median(v):.1f} ms, worst {max(v):.1f} ms" if v else f"{kind}: none"
+          print(' | '.join([stat('render'), stat('move')]))
+          PY
+          )
+            echo "::notice title=Library speed (403 games)::$summary"
+          fi
           xwininfo -root -tree | grep -i hearth | head -5 | sed 's/^/::notice title=Windows::/' || true
           pkill -f target/release/hearth || true
           echo "::notice title=App output::$(tail -c 1500 run.log | tr '\n' '|')"

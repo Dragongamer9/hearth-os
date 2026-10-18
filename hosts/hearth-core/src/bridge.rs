@@ -213,6 +213,8 @@ impl Bridge {
                 // Opened just for Settings (from Mantel's taskbar).
                 "start": if std::env::args().any(|a| a == "--settings") { json!("settings") } else { Value::Null },
                 "edition": edition(),
+                // The speed test (CI) asks the screens to time themselves.
+                "perfLog": std::env::var_os("HEARTH_PERF_LOG").is_some(),
                 "session": std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false),
                 "user": std::env::var("USER").unwrap_or_default(),
                 "live": std::path::Path::new("/etc/hearth-live").exists(),
