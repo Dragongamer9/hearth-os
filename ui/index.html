@@ -783,9 +783,11 @@ const MOCK = (()=>{
 
     'power.get':async()=>({...st.battery,mode:st.powerMode,modes:['efficiency','balanced','performance'],modeSupported:true,tdp:{supported:true,watts:st.tdp||15,min:7,max:30}}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
-    'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'}}),
+    'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,canOverlay:true,perfOverlay:MOCKPO,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'}}),
     'perf.setTdp':async({watts})=>{ st.tdp=watts; return {supported:true,watts,min:7,max:30}; },
     'perf.setFpsLimit':async({fps})=>{ MOCKFPS=fps; return {fpsLimit:fps}; },
+    'perf.setOverlay':async({level})=>{ MOCKPO=level; return {perfOverlay:level}; },
+    'game.pause':async()=>({paused:true}), 'game.unpause':async()=>({paused:false}),
     'apps.list':async()=>[{id:1,pid:10,title:'Ironvale Tactics',app:'Ironvale.exe',game:true,focused:true},{id:2,pid:11,title:'Hearth',hearth:true},{id:3,pid:12,title:'Discord',app:'Discord'},{id:4,pid:13,title:'Steam',app:'steam'}],
     'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
     'game.options.get':async({id})=>({id,kind:'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
@@ -2108,6 +2110,7 @@ function qRadio(kind,ic,label,sub){
 let MOCKFPS=0; const MOCKOPT={};
 const PERF = {s:null, timer:null};
 const FPS_CHOICES = [0,30,40,45,60,90,120];
+const PO_LEVELS = ['Off','FPS','Simple','Detailed','Everything']; let MOCKPO=0;
 function perfBody(){
   const p=PERF.s;
   if(!p) return '<div class="muted">Reading…</div>';
@@ -2121,6 +2124,12 @@ function perfBody(){
     h += `<div class="pctl"><div class="lab">${I.display}Frame-rate limit<span style="margin-left:auto">${lim?lim+' FPS':'Off'}</span></div>
       <div class="chips">${FPS_CHOICES.map(v=>`<button class="chip ${lim===v?'on':''}" data-f data-k="pf-${v}" data-act="fpsLimit" data-v="${v}">${v?v:'Off'}</button>`).join('')}</div>
       <div class="muted">Lower limits save battery and keep the device cooler.</div></div>`;
+  }
+  if(p.canOverlay){
+    const lv=p.perfOverlay||0;
+    h += `<div class="pctl"><div class="lab">${I.sliders}On-screen overlay<span style="margin-left:auto">${PO_LEVELS[lv]}</span></div>
+      <div class="chips">${PO_LEVELS.map((l,i)=>`<button class="chip ${lv===i?'on':''}" data-f data-k="po-${i}" data-act="perfOverlay" data-v="${i}">${l}</button>`).join('')}</div>
+      <div class="muted">Shows frame rate, temperatures and more over your game.</div></div>`;
   }
   if(p.tdp && p.tdp.supported){
     const choices=[5,8,10,12,15,18,20,25,30].filter(v=>v>=p.tdp.min&&v<=p.tdp.max);
@@ -2214,6 +2223,7 @@ function renderQam(){
       ${OVERLAY?'':`<button class="btn" data-f data-k="q-gp" data-act="game" data-id="${g.id}">Game details</button>`}
       ${ovBtns}
       ${LINUX?`<button class="btn" data-f data-k="q-resume" data-act="resume">${I.play}Back to game</button>`:''}
+      ${LINUX&&!G(S.running)?.cloud?`<button class="btn" data-f data-k="q-pause" data-act="pauseGame">${S.paused?I.play+'Unpause':I.pause+'Pause'}</button>`:''}
       <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>`
       : OVERLAY ? `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}` : '<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
   }
@@ -2525,6 +2535,7 @@ function act(el){
       return call('apps.focus',{id:+d.id, pid:+d.pid}).catch(e=>toast(e.message));
     case 'appClose': return openSheet({title:`Close ${d.t}?`, sub:'Anything unsaved in it may be lost.', items:[{label:'Close it', icon:'x', run:()=>call('apps.close',{pid:+d.pid}).then(()=>{ toast(`Closed ${d.t}`); setTimeout(loadApps,800); }).catch(e=>toast(e.message))}]});
     case 'tdp': return call('perf.setTdp',{watts:+d.v}).then(r=>{ if(PERF.s) PERF.s.tdp=r; renderQam(); setFocus($(`#qam [data-k="pt-${d.v}"]`),true); }).catch(e=>toast(e.message));
+    case 'perfOverlay': return call('perf.setOverlay',{level:+d.v}).then(r=>{ if(PERF.s) PERF.s.perfOverlay=r.perfOverlay; toast(r.perfOverlay?`Overlay: ${PO_LEVELS[r.perfOverlay]}`:'Overlay off'); renderQam(); setFocus($(`#qam [data-k="po-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'fpsLimit': return call('perf.setFpsLimit',{fps:+d.v}).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'perfPower': return call('power.setMode',{mode:d.v}).then(r=>{ if(PERF.s) PERF.s.powerMode=r.mode||d.v; renderQam(); setFocus($(`#qam [data-k="pp-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'ovShot': return call('overlay.screenshot',{},20000).then(r=>toast(`Screenshot saved to Pictures › Screenshots › ${APP}`)).catch(e=>toast(e.message));
@@ -2566,6 +2577,7 @@ function act(el){
     case 'install': return installGame(G(d.id));
     case 'play': return launch(G(d.id));
     case 'exitgame': return exitGame();
+    case 'pauseGame': return call(S.paused?'game.unpause':'game.pause').then(r=>{ S.paused=!!r.paused; toast(S.paused?'Paused. It uses no power while paused: go back to it to carry on.':'Unpaused'); renderQam(); setFocus($('#qam [data-k="q-pause"]'),true); }).catch(e=>toast(e.message));
     case 'resume': closeAll(); return send({type:'resume'});
     case 'dismiss': NOTIFS.splice(+d.i,1); updateBadge(); renderQam(); return setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true);
     case 'clearnotifs': NOTIFS=[]; updateBadge(); renderQam(); return setFocus($('#qam [data-f]'),true);
@@ -2653,7 +2665,7 @@ function gameStarted(id){
 }
 function gameEnded(dto){
   if(dto && dto.id){ const g=G(dto.id); if(g) Object.assign(g, fromHost(dto)); }
-  S.running=null; S.launchWaiting=null; hideLaunch();
+  S.running=null; S.paused=false; S.launchWaiting=null; hideLaunch();
   if(!S.layers.length) render(null,true); else { renderFooter(); if(S.layers.includes('qam')) renderQam(); }
 }
 async function exitGame(){
@@ -3367,6 +3379,7 @@ function onSysEvent(name, data){
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
+  if(name==='game.paused'){ S.paused=!!data.paused; if(S.layers.includes('qam')) renderQam(); return; }
   if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
   if(name==='osd') return showOsd(data);
   if(name==='library.art'){ if(!LIB.loading && !OVERLAY) loadLibrary(false); return; }

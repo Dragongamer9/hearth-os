@@ -79,7 +79,8 @@ function alive(pid) { try { process.kill(pid, 0); return true; } catch { return 
 
 /** SIGTERM, then SIGKILL whatever is still there after `graceMs`. Resolves true if everything stopped. */
 async function stop(pids, graceMs = 5000) {
-  for (const pid of pids) { try { process.kill(pid, 'SIGTERM'); } catch {} }
+  // SIGCONT too: a paused game (SIGSTOP) only acts on SIGTERM once it runs again.
+  for (const pid of pids) { try { process.kill(pid, 'SIGTERM'); process.kill(pid, 'SIGCONT'); } catch {} }
   const until = Date.now() + graceMs;
   while (Date.now() < until && pids.some(alive)) await new Promise(r => setTimeout(r, 250));
   for (const pid of pids.filter(alive)) { try { process.kill(pid, 'SIGKILL'); } catch {} }
@@ -87,4 +88,7 @@ async function stop(pids, graceMs = 5000) {
   return !pids.some(alive);
 }
 
-module.exports = { snapshot, gameProcesses, withDescendants, stop, under };
+/** Sends a signal to each process, quietly skipping ones that are gone. Returns how many got it. */
+function signal(pids, sig) { let n = 0; for (const pid of pids) { try { process.kill(pid, sig); n++; } catch {} } return n; }
+
+module.exports = { snapshot, gameProcesses, withDescendants, stop, under, signal };

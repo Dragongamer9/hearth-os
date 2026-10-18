@@ -195,6 +195,7 @@ async function showGameWhenReady(id) {
 
 function resumeGame() {
   if (!library.runningId) return;
+  library.resume();   // going back to a paused game un-pauses it
   if (launchWait) launchWait.cancelled = true;
   chooseFocus();
   if (stream.isOpen) { stepAside(); stream.focus(); focusXid('stream', xid(stream.win || win)); return; }
@@ -804,6 +805,7 @@ app.whenReady().then(() => {
         },
       },
       setFpsLimit,
+      perfOverlay: { supported: () => require('./perf-overlay').supported(), set: lvl => { const n = require('./perf-overlay').set(lvl); library.store.update(d => { d.perfOverlay = n; }); return n; } },
       exportLogs,
       pickGameFile: async () => {
         const r = await withDialog(() => dialog.showOpenDialog(win, {
@@ -899,7 +901,7 @@ app.whenReady().then(() => {
   library.on('exited', async () => {
     if (!perGame) return;
     const back = perGame; perGame = null;
-    if (IN_SESSION) setRootAtom('GAMESCOPE_FPS_LIMIT', back.fps).catch(() => {});
+    if (IN_SESSION) setRootAtom('GAMESCOPE_FPS_LIMIT', library.store.data.fpsLimit || 0).catch(() => {});
     if (back.tdp) require('./power-control').setTdp(back.tdp).catch(() => {});
   });
   // The launcher closed and the game itself started: put the game's window in front once it's up.
@@ -948,6 +950,7 @@ app.whenReady().then(() => {
     post({ type: 'event', name: 'lock', data: {} });
   });
   if (IN_SESSION && library.store.data.fpsLimit) setFpsLimit(library.store.data.fpsLimit).catch(() => {});
+  if (IN_SESSION && library.store.data.perfOverlay) try { require('./perf-overlay').set(library.store.data.perfOverlay); } catch {}
   library.startBackgroundServices().catch(e => log('background services FAILED ' + e.message));
   setTimeout(() => { if (library.store.data.autoUpdateCheck) updates.check(); }, 20000);
   setInterval(() => { if (library.store.data.autoUpdateCheck) updates.check(); }, 6 * 60 * 60 * 1000);
