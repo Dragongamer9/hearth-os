@@ -157,7 +157,7 @@ Debug helpers: `bridge.log` next to `Nimbus.exe` logs every bridge call and UI i
 Open PowerShell and run:
 
 ```powershell
-irm https://raw.githubusercontent.com/Dragongamer9/nimbus/main/tools/install-nimbus.ps1 | iex
+irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex
 ```
 
 or double-click `scripts/windows/install-nimbus.cmd`. It installs the .NET 8 Desktop Runtime if missing, downloads the latest release, checks its SHA-256, installs it to `%LOCALAPPDATA%\Nimbus\app`, saves the undo script, and makes Ember your shell (add `-NoShell` to skip that). `scripts/windows/install-shell.cmd` does the same from a local build, for development.
@@ -184,7 +184,7 @@ or double-click `scripts/windows/install-nimbus.cmd`. It installs the .NET 8 Des
 
 ## Updates
 
-Ember updates itself from GitHub Releases of **Dragongamer9/nimbus**.
+Ember updates itself from GitHub Releases of **Dragongamer9/hearth-os**.
 
 - *Settings › Updates* shows the version, checks GitHub (also automatically at startup and every 6 hours), downloads the new build, verifies its SHA-256, and *Restart Ember to update* swaps it in.
 - The swap happens after Ember exits (`%LOCALAPPDATA%\Nimbus\updates\apply-update.cmd`): `app` → `app.old`, new build → `app`, then Ember restarts (as the shell if it was the shell).

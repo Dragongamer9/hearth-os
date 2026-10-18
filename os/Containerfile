@@ -17,7 +17,7 @@ FROM ghcr.io/ublue-os/bazzite-deck:stable
 ARG NIMBUS_VERSION=0.0.0
 LABEL org.opencontainers.image.title="Hearth" \
       org.opencontainers.image.description="Hearth: Bazzite with a controller-first Game Mode and Desktop Mode" \
-      org.opencontainers.image.source="https://github.com/Dragongamer9/nimbus" \
+      org.opencontainers.image.source="https://github.com/Dragongamer9/hearth-os" \
       org.opencontainers.image.version="${NIMBUS_VERSION}" \
       containers.bootc=1
 

@@ -9,7 +9,7 @@ const crypto = require('node:crypto');
 const { EventEmitter } = require('node:events');
 const { log } = require('./util');
 
-const REPO = 'Dragongamer9/nimbus';
+const REPO = 'Dragongamer9/hearth-os';
 const ASSET = /^Nimbus-linux-x86_64\.AppImage$/;
 
 // Versions look like 0.4.0 (a full release) or 0.4.0-linux.13 (preview 13 on the way to the next release).
