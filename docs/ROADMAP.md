@@ -12,12 +12,12 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - Power modes and power limit (TDP), controller remapping, volume/power buttons, Aloha Browser install
 - Website (GitHub Pages), releases that hide older ones
 
-## 0.0.18 (in progress)
+## 0.0.18 (released)
 
 - [x] Game Mode ↔ Desktop switch can't freeze
 - [x] Detailed system update progress (download speed, time left, install and app steps)
 - [x] Ember Desktop Mode: the Windows desktop and back (shortcut, tray, Ctrl+Alt+G, Xbox button), start-in setting
-- [ ] Import games and files: from Windows, SteamOS / Steam Deck and other Linux, other drives and SD cards
+- [x] Import games and files: from Windows, SteamOS / Steam Deck and other Linux, other drives and SD cards
       (Steam, Epic, GOG, Heroic, Lutris, Proton saves, personal files; copy or move)
 - [ ] Fixes from 0.0.17 testing
 
