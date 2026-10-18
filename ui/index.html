@@ -1659,6 +1659,12 @@ function pageShellLinux(){
     else
       h += `<button class="row" data-f data-k="sh-make" data-act="shellMake"><span class="ricon">${I.shell}</span><div class="rt"><b>Add the ${APP} session</b><small>Asks for your password${s.gamescope?'':' · gamescope isn\'t installed yet'}</small></div><div class="rv">›</div></button>`;
   }
+  if(host && s){
+    const dm = s.startMode==='desktop' ? 'Desktop Mode' : 'Game Mode';
+    h += shead('Desktop Mode')
+      + `<button class="row" data-f data-k="sh-dm" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Switch to the desktop</b><small>The normal Windows desktop with the taskbar and Start menu. The controller works as a mouse. Come back with the Game Mode shortcut on the desktop, the ${APP} tray icon, Ctrl+Alt+G, or the Xbox button</small></div></button>`
+      + (s.running ? `<button class="row" data-f data-k="sh-start" data-act="emberStart"><span class="ricon">${I.desk}</span><div class="rt"><b>Start in</b><small>What you see after signing in</small></div><div class="rv">${dm} ›</div></button>` : '');
+  }
   h += shead('If something goes wrong')
     + `<button class="row" data-f data-k="sh-fe" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Switch to desktop</b><small>${HOSTINFO.session?'Opens Mantel, the desktop (windows, taskbar). Return with the Game Mode menu item or Super+G':'Minimizes '+APP+''}</small></div></button>`
     + note(`Black screen? Press <b>Ctrl+Alt+F3</b> for a text console, sign in, and run <code>loginctl terminate-user $USER</code>. That brings back the login screen. If ${APP} keeps crashing, the session rolls back an update by itself, then gives up and returns to the login screen.`)
@@ -1679,11 +1685,24 @@ function pageShell(){
     else
       h += `<button class="row" data-f data-k="sh-make" data-act="shellMake"><span class="ricon">${I.shell}</span><div class="rt"><b>Make ${APP} my shell</b><small>Takes effect the next time you sign in</small></div><div class="rv">›</div></button>`;
   }
+  if(host && s){
+    const dm = s.startMode==='desktop' ? 'Desktop Mode' : 'Game Mode';
+    h += shead('Desktop Mode')
+      + `<button class="row" data-f data-k="sh-dm" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Switch to the desktop</b><small>The normal Windows desktop with the taskbar and Start menu. The controller works as a mouse. Come back with the Game Mode shortcut on the desktop, the ${APP} tray icon, Ctrl+Alt+G, or the Xbox button</small></div></button>`
+      + (s.running ? `<button class="row" data-f data-k="sh-start" data-act="emberStart"><span class="ricon">${I.desk}</span><div class="rt"><b>Start in</b><small>What you see after signing in</small></div><div class="rv">${dm} ›</div></button>` : '');
+  }
   h += shead('If something goes wrong')
-    + `<button class="row" data-f data-k="sh-fe" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Open File Explorer</b><small>Also works any time with Ctrl+Alt+Shift+E</small></div></button>`
+    + `<button class="row" data-f data-k="sh-fe" data-act="pwr" data-p="explorer"><span class="ricon">${I.desk}</span><div class="rt"><b>Open File Explorer</b><small>Also works any time with Ctrl+Alt+Shift+E</small></div></button>`
     + note(`Black screen? Press <b>Ctrl+Shift+Esc</b> for Task Manager, choose <b>Run new task</b>, and run <code>%USERPROFILE%\\nimbus-restore.cmd</code>. That brings back the normal Windows desktop.`)
     + (s&&s.exe ? note(`Running from <code>${esc(s.exe)}</code>`) : '');
   return h;
+}
+function emberStart(){
+  const cur=SHELL.status&&SHELL.status.startMode;
+  const pick=mode=>call('shell.setStartMode',{mode}).then(r=>{ SHELL.status=r; refreshUI(); toast('Starts in '+(mode==='desktop'?'Desktop':'Game')+' Mode from the next sign-in'); }).catch(e=>toast(e.message));
+  openSheet({title:'Start in', sub:'What you see after signing in', items:[
+    {label:'Game Mode', icon:cur!=='desktop'?'check':'', run:()=>pick('game')},
+    {label:'Desktop Mode', icon:cur==='desktop'?'check':'', run:()=>pick('desktop')}]});
 }
 function shellMake(){
   if(LINUX) return openSheet({title:'Add the '+APP+' session?', sub:'Adds "'+APP+'" to the login screen. It runs '+APP+' fullscreen in gamescope. Your password is needed once.',
@@ -1913,7 +1932,7 @@ function renderPower(){
     <button class="mitem" data-f data-k="p-restart" data-act="pwr" data-p="restart">${I.restart}Restart</button>
     <button class="mitem" data-f data-k="p-shutdown" data-act="pwr" data-p="shutdown">${I.power}Shut down</button>
     <button class="mitem" data-f data-k="p-signout" data-act="pwr" data-p="signout">${I.user}Sign out</button>
-    <button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}${LINUX?'Switch to desktop':'Open File Explorer'}</button>
+    <button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}${LINUX?'Switch to desktop':'Desktop Mode'}</button>
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`;
 }
 let query='';
@@ -2144,6 +2163,7 @@ function act(el){
       items:[{label:'Restart and update',icon:'restart',run:()=>{ toast('Updating…'); call('update.install').catch(e=>toast(e.message)); }}]});
     case 'updAuto': return call('update.setAuto',{on:!(UPD.status&&UPD.status.autoCheck)}).then(onUpdate).catch(e=>toast(e.message));
     case 'shellReturn': return shellReturn();
+    case 'emberStart': return emberStart();
     case 'sheet': return sheetPick(+d.i);
     case 'hint': return hintAction(d.h);
     case 'padMouseMode': return call('pad.setMouseMode',{mode:d.v}).then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; render('cm-'+d.v); }).catch(e=>toast(e.message));
@@ -2223,7 +2243,7 @@ function typeKey(c){
 }
 function power(p){
   closeAll();
-  const label={sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Mantel…':'Opening File Explorer…'}[p];
+  const label={sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
   send({type:'power', action:p});
   toast(host?label:label+' (simulated in the browser preview)');
 }
