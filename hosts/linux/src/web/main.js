@@ -58,10 +58,33 @@ function start() {
   });
   pages(ses.protocol);
   pages(protocol);
+  adblock.set(store.settings.adblock !== false);
   const restore = store.settings.restoreTabs ? store.session : [];
   const urls = urlsFromArgs(process.argv);
   openWindow(urls.length ? (restore.length ? [...restore, ...urls] : urls) : restore);
 }
+
+// ---------------------------------------------------------------- ad and tracker blocking
+// Ghostery's blocker with its ready-made ads and trackers lists (EasyList, EasyPrivacy and others): blocks the
+// requests and hides the empty boxes ads leave. The lists are downloaded once and kept in the profile folder.
+const adblock = {
+  blocker: null, on: false, blocked: 0,
+  async set(on) {
+    const ses = session.fromPartition('persist:hearth-browser');
+    this.on = on;
+    try {
+      if (on) {
+        if (!this.blocker) {
+          const { ElectronBlocker } = require('@ghostery/adblocker-electron');
+          const cache = path.join(app.getPath('userData'), 'adblock-engine.bin');
+          this.blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch, { path: cache, read: fs.promises.readFile, write: fs.promises.writeFile });
+          this.blocker.on('request-blocked', () => { this.blocked++; });
+        }
+        if (this.on) this.blocker.enableBlockingInSession(ses);
+      } else if (this.blocker) this.blocker.disableBlockingInSession(ses);
+    } catch (e) { console.error('ad blocking:', e && e.message); }
+  },
+};
 
 // ---------------------------------------------------------------- downloads
 const downloads = {
@@ -278,8 +301,8 @@ ipcMain.handle('hb:page', (e, m) => {
     case 'history': return store.history(m.q || '');
     case 'bookmarks': return store.bookmarks;
     case 'downloads': return downloads.public();
-    case 'settings': return { settings: store.settings, engines: Object.entries(SEARCH).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion() };
-    case 'set': store.set(m.key, m.value); return store.settings;
+    case 'settings': return { settings: store.settings, engines: Object.entries(SEARCH).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion(), blocked: adblock.blocked };
+    case 'set': store.set(m.key, m.value); if (m.key === 'adblock') adblock.set(!!m.value); return store.settings;
     case 'clearHistory': store.clearHistory(); return true;
     case 'clearData': return session.fromPartition('persist:hearth-browser').clearStorageData().then(() => session.fromPartition('persist:hearth-browser').clearCache()).then(() => true);
     case 'removeBookmark': store.removeBookmark(m.url); for (const w of windows) w.pushAll(); return store.bookmarks;

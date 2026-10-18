@@ -11,6 +11,11 @@ if [ -x /ctx/nimbus-app/hearth ]; then
   # The Rust app (hosts/hearth-rs): one file, drawn by the system's WebKit.
   install -Dm755 /ctx/nimbus-app/hearth /usr/lib/nimbus/nimbus
   dnf5 -y install webkit2gtk4.1
+  # Hearth Browser (still Electron) in its own folder.
+  if [ -d /ctx/nimbus-app/browser ]; then
+    mkdir -p /usr/lib/hearth-browser && cp -a /ctx/nimbus-app/browser/. /usr/lib/hearth-browser/
+    if [ -f /usr/lib/hearth-browser/chrome-sandbox ]; then chown root:root /usr/lib/hearth-browser/chrome-sandbox && chmod 4755 /usr/lib/hearth-browser/chrome-sandbox; fi
+  fi
 else
   cp -a /ctx/nimbus-app/. /usr/lib/nimbus/
 fi

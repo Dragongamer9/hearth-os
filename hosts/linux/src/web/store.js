@@ -14,7 +14,7 @@ const SEARCH = {
 const MAX_HISTORY = 5000;
 // Endings that look like a domain but are usually file names or code ("node.js", "readme.md"): search those.
 const NOT_TLD = new Set(['js', 'ts', 'py', 'sh', 'md', 'rs', 'cs', 'cpp', 'exe', 'txt', 'json', 'html', 'css', 'zip', 'pdf', 'png', 'jpg']);
-const DEFAULTS = { search: 'duckduckgo', home: 'hearth://start', restoreTabs: true, blockPopups: true };
+const DEFAULTS = { search: 'duckduckgo', home: 'hearth://start', restoreTabs: true, blockPopups: true, adblock: true };
 const START_TILES = [
   { title: 'YouTube', url: 'https://www.youtube.com/' },
   { title: 'Twitch', url: 'https://www.twitch.tv/' },
