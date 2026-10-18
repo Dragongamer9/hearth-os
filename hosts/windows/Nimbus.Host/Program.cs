@@ -13,6 +13,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // The desktop's "Game Mode" shortcut: ask the running Ember to come back, or start it.
+        if (args.Contains("--game-mode", StringComparer.OrdinalIgnoreCase) && DesktopMode.SignalRunning()) return 0;
+
         bool shell = args.Contains("--shell", StringComparer.OrdinalIgnoreCase);
         bool child = args.Contains("--child", StringComparer.OrdinalIgnoreCase);
 

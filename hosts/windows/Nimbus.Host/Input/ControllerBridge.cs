@@ -54,6 +54,8 @@ public sealed class ControllerBridge : IDisposable
     public Func<IntPtr> OverlayWindow { get; set; } = () => IntPtr.Zero;
     /// <summary>Holding View for a second toggles the overlay (off by default: some games use a held View).</summary>
     public bool HoldViewOpensOverlay { get; set; }
+    /// <summary>In Desktop Mode the controller is a mouse everywhere except Ember's own windows and games.</summary>
+    public Func<bool> DesktopMode { get; set; } = () => false;
     /// <summary>Raised on the bridge thread when the overlay should open or close.</summary>
     public event Action? OverlayToggle;
     /// <summary>Raised on the bridge thread when the overlay is in front: button name, like <see cref="UiButton"/>.</summary>
@@ -132,12 +134,12 @@ public sealed class ControllerBridge : IDisposable
                 prev &= unchecked((ushort)~(START | BACK));
             }
 
-            bool mouse = _mouseOverride ?? MouseMode switch
+            bool mouse = _mouseOverride ?? (DesktopMode() && target is not (Target.Ui or Target.Overlay or Target.Game) ? true : MouseMode switch
             {
                 "always" => true,
                 "steam" => target is Target.Steam or Target.Web,
                 _ => false,
-            };
+            });
             SetMouse(mouse);
 
             ushort buttons = pad.Buttons;
