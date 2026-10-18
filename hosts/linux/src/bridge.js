@@ -11,6 +11,15 @@ const steam = require('./library/steam');
 const { DisplayModes } = require('./display');
 const { SystemAdmin } = require('./system-admin');
 const { Importer } = require('./importer');
+const { OsInstaller } = require('./os-installer');
+
+/** The install chooser's hand-off between the Hearth app and Mantel: a flag in the runtime folder. */
+const HANDOFF = () => require('node:path').join(process.env.XDG_RUNTIME_DIR || require('node:os').tmpdir(), 'hearth-open-installer');
+function installerHandoff(set, target = 'mantel') {
+  const fs = require('node:fs');
+  if (set) { fs.writeFileSync(HANDOFF(), target + '\n'); return true; }
+  try { const t = fs.readFileSync(HANDOFF(), 'utf8').trim(); if (t !== 'hearth') return false; fs.unlinkSync(HANDOFF()); return true; } catch { return false; }
+}
 const { ButtonPrefs, Controller } = require('./buttons');
 const { Browser } = require('./browser');
 const sysinfo = require('./sysinfo');
@@ -45,6 +54,9 @@ class Bridge {
     this.importer = platform.importer || (library.importer ||= new Importer({ admin: this.admin, library }));
     this.importer.on('changed', s => this.event('import', s));
     this.importer.on('libraryChanged', () => this.event('library.changed', {}));
+    // Hearth's own installer (live USB only); one for the app, like the importer.
+    this.osInstaller = platform.osInstaller || (library.osInstaller ||= new OsInstaller());
+    this.osInstaller.on('changed', s => this.event('osInstall', s));
     // Account changes come in bursts (sign-in, list refresh): tell the UI once they settle.
     library.accounts.on('changed', () => { clearTimeout(this.accTimer); this.accTimer = setTimeout(() => this.event('accounts.changed', {}), 400); });
     library.on('installDone', d => this.event('install.done', d));
@@ -93,7 +105,7 @@ class Bridge {
     const req = k => { if (typeof a[k] !== 'string' || !a[k]) throw new Error(`Missing '${k}'`); return a[k]; };
     const L = this.library;
     switch (method) {
-      case 'host.info': return { ...this.platform.info(), setupDone: this.setupDone() };
+      case 'host.info': { const i = { ...this.platform.info(), setupDone: this.setupDone() }; if (i.live) i.openInstaller = installerHandoff(false); return i; }
       case 'setup.done': this.library.store.update(d => { d.setupDone = Date.now(); }); return { ok: true };
       case 'sys.status': return this.status();
       case 'system.info': return sysinfo.info();
@@ -254,6 +266,13 @@ class Bridge {
       case 'import.scan': return this.importer.scan();
       case 'import.start': return this.importer.start(a.items, a.mode || 'copy');
       case 'import.cancel': return this.importer.cancel();
+      case 'osinstall.status': return this.osInstaller.status();
+      case 'osinstall.disks': return this.osInstaller.disks();
+      case 'osinstall.check': return this.osInstaller.check();
+      case 'osinstall.start': return this.osInstaller.start(a.plan || {});
+      case 'osinstall.restart': return this.osInstaller.restart();
+      // "Install with Mantel": Mantel opens its install window when it starts (the UI then switches to Desktop Mode).
+      case 'osinstall.useMantel': return installerHandoff(true);
       case 'takeover.plan': return this.importer.takeoverPlan();
       case 'takeover.run': return this.importer.takeoverRun(a.remove, a.windowsBoot !== false);
       case 'system.update.status': return this.admin.refreshUpdate();

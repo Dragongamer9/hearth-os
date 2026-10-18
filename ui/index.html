@@ -648,7 +648,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'To install it: Power › Switch to desktop, then Install Hearth'}); updateBadge(); toast('Running from the USB stick. To install Hearth: Power › Switch to desktop › Install Hearth.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); if(i.openInstaller) osiOpen(); else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1274,7 +1274,7 @@ function viewDownloads(){
 }
 
 const STABS = [['profile','user','Profile'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
-  ['controller','pad','Controls'],['sources','lib','Library sources'],['import','dl','Import games'],['switch','dl','Switch to Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
+  ['controller','pad','Controls'],['sources','lib','Library sources'],['import','dl','Import games'],['osinstall','dl','Install Hearth OS'],['switch','dl','Switch to Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
 const note = t => `<div class="note">${t}</div>`;
@@ -1992,13 +1992,16 @@ function viewSettings(){
   if(t==='updates') body = pageUpdates();
   if(t==='import') body = pageImport();
   if(t==='switch') body = pageSwitch();
+  if(t==='osinstall') body = shead('Install Hearth OS')
+    + `<button class="row" data-f data-k="osi-open" data-act="osiChoose"><span class="ricon">${I.dl}</span><div class="rt"><b>Install Hearth OS on this PC</b><small>Next to Windows, or on a whole drive. About 10 to 20 minutes, with internet.</small></div><div class="rv">›</div></button>`
+    + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
   if(t==='about') body = pageAbout();
   return `<div class="settings">
-    <div class="snav">${STABS.filter(([k])=>k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX)).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
+    <div class="snav">${STABS.filter(([k])=>k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX)).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
     <div class="rows">${body}</div></div>`;
 }
 
-const VIEWS = {setup:viewSetup, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
+const VIEWS = {setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 function render(focusKey, quiet){
@@ -2418,6 +2421,19 @@ function act(el){
     case 'swRestart': return swRestart();
     case 'setupNext': return SETUP_STEPS[S.setupStep||0]==='done' ? setupFinish() : setupGo(1);
     case 'setupSkip': return setupFinish();
+    case 'osiNext': return osiGo(1);
+    case 'osiBack': return osiGo(-1);
+    case 'osiMode': if(el.disabled) return; OSI.mode=d.v; OSI.disk=null; OSI.check=null; return render('osi-'+d.v);
+    case 'osiDisk': OSI.disk=d.v; if(OSI.mode==='beside' && !OSI.check) osiCheck(); return render(null,true);
+    case 'osiSize': return osiSizeStep(+d.v);
+    case 'osiSizeMax': { const w=OSI.check&&OSI.check.windows; if(w){ OSI.give=w.canGive; render('osi-szmax'); } return; }
+    case 'osiRecheck': return osiCheck();
+    case 'osiEdit': return osiEdit(d.v);
+    case 'osiTz': return osiTzPick();
+    case 'osiStart': return osiStart();
+    case 'osiRestart': return call('osinstall.restart').catch(e=>toast(e.message));
+    case 'osiAgain': OSI.s=null; OSI.step='review'; return render('osi-go');
+    case 'osiChoose': return osiChoose();
     case 'setupImport': if(host) call('setup.done').catch(()=>{}); HOSTINFO.setupDone=true; S.settingsTab='import'; return navigate('settings',{focusKey:'st-import'});
     case 'impDone': if(IMP.s) IMP.s.result=null; IMP.sel.clear(); return render(null,true);
     case 'sysUpdInstall': return call('system.update.install').then(onSystemUpdate).catch(e=>toast(e.message));
@@ -2783,6 +2799,181 @@ function viewSetup(){
   return `<div class="setup" style="max-width:760px;margin:5vh auto 0;padding:0 24px">${dots}${body}</div>`;
 }
 
+// ---------- Install Hearth (live USB): Hearth's own installer, controller-first ----------
+// The same engine as Mantel's install window (hearth-install). Steps: how (next to Windows, or a whole drive),
+// which drive and how much room, your account, internet, a last look, then the install itself.
+const OSI = {step:'how', disks:null, check:null, checking:false, mode:null, disk:null, give:0,
+  user:{full:'', name:'', password:''}, hostname:'', tz:'', s:null};
+const OSI_STEPS = ['how','drive','account','online','review','run'];
+const OSI_TZ = ['America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Anchorage','Pacific/Honolulu',
+  'America/Toronto','America/Mexico_City','America/Sao_Paulo','Europe/London','Europe/Dublin','Europe/Paris','Europe/Berlin','Europe/Madrid','Europe/Rome',
+  'Europe/Warsaw','Europe/Helsinki','Europe/Moscow','Africa/Johannesburg','Asia/Dubai','Asia/Kolkata','Asia/Singapore','Asia/Shanghai','Asia/Tokyo','Asia/Seoul',
+  'Australia/Perth','Australia/Sydney','Pacific/Auckland','UTC'];
+function osiOpen(){
+  if(!S.view || S.view!=='osinstall') navigate('osinstall');
+  if(OSI.s && (OSI.s.state==='running'||OSI.s.state==='done')) OSI.step='run';
+  else OSI.step='how';
+  if(!OSI.tz){ try{ const z=Intl.DateTimeFormat().resolvedOptions().timeZone; OSI.tz = z && z!=='UTC' && z!=='Etc/UTC' ? z : 'America/Chicago'; }catch(e){ OSI.tz='America/Chicago'; } }
+  osiLoad(); render('osi-0');
+}
+function osiLoad(){
+  if(!host) return;
+  call('osinstall.status').then(s=>{ OSI.s=s; if(s.state==='running') OSI.step='run'; render(null,true); }).catch(()=>{});
+  call('osinstall.disks',{},60000).then(r=>{ OSI.disks=r.disks||[]; render(null,true); }).catch(e=>{ OSI.disks=[]; toast(e.message); });
+}
+function osiCheck(){
+  if(OSI.checking) return; OSI.checking=true; OSI.check=null; render(null,true);
+  call('osinstall.check',{},180000).then(r=>{ OSI.check=r; OSI.give = r.suggested || r.windows&&r.windows.canGive || 0; })
+    .catch(e=>{ OSI.check={problems:[{id:'error',text:e.message}]}; })
+    .finally(()=>{ OSI.checking=false; render(null,true); });
+}
+const osiDisk = ()=> (OSI.disks||[]).find(d=>d.dev===OSI.disk);
+const osiUsable = ()=> (OSI.disks||[]).filter(d=>!d.live && !d.tooSmall);
+function osiGo(d){
+  const i=OSI_STEPS.indexOf(OSI.step)+d;
+  if(i<0){ S.history.length ? goBack() : navigate('home',{},false); return; }
+  const next=OSI_STEPS[Math.min(i,OSI_STEPS.length-1)];
+  if(d>0){ const why=osiBlock(OSI.step); if(why) return toast(why); }
+  if(next==='online' && S.sys.wifi && S.sys.wifi.ssid && d>0){ OSI.step='online'; return osiGo(1); }   // already online: skip
+  OSI.step=next;
+  if(next==='online') wifiScan();
+  if(next==='drive' && OSI.mode==='beside' && !OSI.check) osiCheck();
+  render('osi-next');
+}
+function osiBlock(step){
+  if(step==='how' && !OSI.mode) return 'Choose how to install';
+  if(step==='drive'){
+    if(!OSI.disk) return 'Choose a drive';
+    if(OSI.mode==='beside'){ const c=OSI.check; if(!c||OSI.checking) return 'Checking Windows…';
+      const hard=(c.problems||[]).filter(p=>!p.soft); if(hard.length) return hard[0].text; if(OSI.give<64*2**30) return 'Hearth needs at least 64 GB'; }
+  }
+  if(step==='account'){ const u=OSI.user;
+    if(!u.full.trim()) return 'Type your name';
+    if(!/^[a-z_][a-z0-9_-]{0,31}$/.test(u.name)) return 'The user name can only have small letters, numbers, - and _';
+    if(!u.password) return 'Choose a password'; }
+  return '';
+}
+function osiAutoName(full){ return (full||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'').replace(/^[0-9]+/,'').slice(0,20) || 'player'; }
+async function osiEdit(what){
+  const u=OSI.user;
+  if(what==='full'){ const v=await openPrompt({title:'Your name', value:u.full}); if(v==null) return;
+    const auto=!u.name || u.name===osiAutoName(u.full); u.full=v.trim(); if(auto) u.name=osiAutoName(u.full);
+    if(!OSI.hostname || OSI.hostname===osiHost(u)) OSI.hostname=osiHost({...u}); }
+  if(what==='name'){ const v=await openPrompt({title:'User name (small letters and numbers)', value:u.name}); if(v==null) return; u.name=v.trim().toLowerCase(); }
+  if(what==='password'){ const a=await openPrompt({title:'Choose a password', secret:true, min:1}); if(a==null) return;
+    const b=await openPrompt({title:'The same password again', secret:true}); if(b==null) return;
+    if(a!==b) return toast('The passwords don\'t match'); u.password=a; }
+  if(what==='host'){ const v=await openPrompt({title:'Device name', value:OSI.hostname||osiHost(u)}); if(v==null) return;
+    OSI.hostname=v.trim().toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40); }
+  render('osi-'+what);
+}
+const osiHost = u => (u.name ? u.name+'-hearth' : 'hearth');
+function osiTzPick(){
+  openSheet({title:'Time zone', items: OSI_TZ.map(z=>({label:z.replace(/_/g,' ').replace('/',' · '), icon: z===OSI.tz?'check':'info', run:()=>{ OSI.tz=z; render('osi-tz'); }}))});
+}
+function osiSizeStep(dir){
+  const w=OSI.check&&OSI.check.windows; if(!w) return;
+  const step=16*2**30, max=w.canGive, min=64*2**30;
+  OSI.give=Math.max(min, Math.min(max, Math.round((OSI.give+dir*step)/step)*step));
+  render('osi-size');
+}
+function osiStart(){
+  const d=osiDisk(); if(!d) return;
+  const plan={mode:OSI.mode, disk:OSI.disk, user:{...OSI.user}, hostname:OSI.hostname||osiHost(OSI.user), timezone:OSI.tz};
+  if(OSI.mode==='beside') plan.give=OSI.give;
+  const go=()=>call('osinstall.start',{plan},30000).then(s=>{ OSI.s=s; OSI.step='run'; render('osi-run'); }).catch(e=>toast(e.message));
+  if(OSI.mode==='whole') openSheet({title:`Erase ${d.model}?`, sub:`Everything on this ${gb(d.size)} drive is erased for good${d.windows?', including Windows':''}, and Hearth OS goes on it.`, items:[
+    {label:'Erase it and install Hearth', icon:'trash', run:go}]});
+  else openSheet({title:'Install next to Windows?', sub:`Windows gets ${gb(OSI.give)} smaller and Hearth goes in that space. Windows and its files stay. Keep the device plugged in.`, items:[
+    {label:'Install Hearth', icon:'dl', run:go}]});
+}
+function onOsInstall(s){ OSI.s=s; if(S.view==='osinstall'){ if(s.state==='running'||s.state==='done'||s.state==='failed') OSI.step='run'; render(null,true); } }
+function viewOsInstall(){
+  const n=OSI_STEPS.indexOf(OSI.step);
+  const dots=`<div style="display:flex;gap:8px;justify-content:center;margin-bottom:26px">${OSI_STEPS.map((_,i)=>`<span style="width:${i===n?26:8}px;height:8px;border-radius:4px;background:${i<=n?'var(--accent)':'var(--panel3)'};transition:width .2s"></span>`).join('')}</div>`;
+  const next=(label='Next')=>`<button class="play" data-f data-k="osi-next" data-act="osiNext">${label}</button>`;
+  const back=`<button class="pill ghost" data-f data-k="osi-back" data-act="osiBack">Back</button>`;
+  const choice=(k,ic,title,sub,on,act,extra='')=>`<button class="row ${on?'on':''}" data-f data-k="${k}" data-act="${act}" ${extra}><span class="ricon">${I[ic]||I.info}</span><div class="rt"><b>${title}</b><small>${sub}</small></div><div class="rv">${on?I.check:''}</div></button>`;
+  let body='';
+  if(OSI.step==='how'){
+    const win=(OSI.disks||[]).some(d=>d.windows&&!d.live);
+    body=`<div class="center"><div class="mark">${HEARTH_MARK}</div></div><h1>Install Hearth OS</h1><p class="lead">Hearth downloads the newest Hearth OS while it installs, so keep it connected to the internet and plugged in. It takes about 10 to 20 minutes.</p><div class="rows">
+      ${choice('osi-beside','shell','Install next to Windows', win?'Keep Windows and its files. Hearth gets space Windows isn\'t using, and can bring your games over after.':'No Windows was found on this PC', OSI.mode==='beside','osiMode','data-v="beside"'+(win?'':' disabled'))}
+      ${choice('osi-whole','trash','Erase a drive and install Hearth','Hearth gets the whole drive. Everything on it is erased.', OSI.mode==='whole','osiMode','data-v="whole"')}
+      </div><div class="acts">${next()}${back}</div>`;
+  }
+  else if(OSI.step==='drive'){
+    const list=(OSI.disks||[]).filter(d=>OSI.mode==='beside'?d.windows:true);
+    if(!OSI.disks) body=`<h1>Choose a drive</h1>${note('Looking for drives…')}`;
+    else {
+      const rows=list.map(d=>{ const why=d.live?'The USB stick Hearth is running from':d.tooSmall?'Too small (Hearth needs 64 GB)':'';
+        return choice('osi-d-'+d.dev.replace(/\W/g,''),'dl',`${esc(d.model)} · ${gb(d.size)}`, why || [d.tran&&d.tran.toUpperCase(), d.windows?'Has Windows':'', d.parts.length?`${d.parts.length} partition${d.parts.length===1?'':'s'}`:'Empty'].filter(Boolean).join(' · '), OSI.disk===d.dev, why?'noop':'osiDisk', `data-v="${esc(d.dev)}"${why?' disabled':''}`); }).join('');
+      body=`<h1>${OSI.mode==='beside'?'Which drive has Windows?':'Which drive should Hearth go on?'}</h1><p class="lead">${OSI.mode==='whole'?'<b>Everything on the drive you choose is erased.</b>':'Hearth goes next to Windows on the same drive.'}</p><div class="rows">${rows||note('No drives found that Hearth can use.')}</div>`;
+      if(OSI.mode==='beside' && OSI.disk){
+        const c=OSI.check, w=c&&c.windows;
+        if(OSI.checking||!c) body+=note('Checking Windows: free space, BitLocker, Fast Startup and your games… (up to a minute)');
+        else {
+          (c.problems||[]).forEach(p=>{ body+=`<div class="note" style="border-color:${p.soft?'var(--panel3)':'var(--bad,#e5483b)'}">${esc(p.text)}</div>`; });
+          if(w && w.canGive>=64*2**30){
+            const winAfter=w.size-OSI.give;
+            body+=`<h3 style="margin:22px 0 8px">How much room for Hearth?</h3><div class="row" data-f data-k="osi-size" data-act="osiSize" data-v="1"><div class="rt"><b>Hearth: ${gb(OSI.give)}</b><small>Windows keeps ${gb(winAfter)} (${gb(Math.max(0,winAfter-w.min))} free). Left and right change it, 16 GB at a time.</small><div class="storage"><i style="width:${Math.round(OSI.give/w.size*100)}%"></i></div></div><div class="rv">◀ ▶</div></div>`;
+            body+=`<div style="display:flex;gap:10px;margin-top:10px">${[[-1,'Less'],[1,'More']].map(([v,l])=>`<button class="pill" data-f data-k="osi-sz${v}" data-act="osiSize" data-v="${v}">${l}</button>`).join('')}<button class="pill" data-f data-k="osi-szmax" data-act="osiSizeMax">As much as possible</button></div>`;
+            if(c.games && c.games.count) body+=note(`${c.games.count} game${c.games.count===1?'':'s'} found in Windows (${gb(c.games.size)}). After installing, Hearth offers to bring them over: leave room for them.`);
+          }
+          body+=`<div style="margin-top:10px"><button class="pill ghost" data-f data-k="osi-recheck" data-act="osiRecheck">${I.refresh}Check again</button></div>`;
+        }
+      }
+      body+=`<div class="acts">${next()}${back}</div>`;
+    }
+  }
+  else if(OSI.step==='account'){
+    const u=OSI.user, row=(k,ic,t,v,sub)=>`<button class="row" data-f data-k="osi-${k}" data-act="osiEdit" data-v="${k}"><span class="ricon">${I[ic]}</span><div class="rt"><b>${t}</b><small>${sub}</small></div><div class="rv">${v} ›</div></button>`;
+    body=`<h1>Your account</h1><p class="lead">For signing in, the lock screen and system changes. Hearth can still sign you in automatically.</p><div class="rows">
+      ${row('full','user','Your name', esc(u.full)||'Choose', 'Shown on the lock screen')}
+      ${row('name','user','User name', esc(u.name)||'Choose', 'Small letters and numbers, e.g. '+esc(osiAutoName(u.full||'Sam')))}
+      ${row('password','lock','Password', u.password?'•'.repeat(Math.min(12,u.password.length)):'Choose', 'You\'ll need it for system changes')}
+      ${row('host','info','Device name', esc(OSI.hostname||osiHost(u)), 'How it shows up on your network')}
+      <button class="row" data-f data-k="osi-tz" data-act="osiTz"><span class="ricon">${I.clock||I.info}</span><div class="rt"><b>Time zone</b><small>For the clock</small></div><div class="rv">${esc(OSI.tz.replace(/_/g,' '))} ›</div></button>
+      </div><div class="acts">${next()}${back}</div>`;
+  }
+  else if(OSI.step==='online') body=`<h1>Connect to the internet</h1><p class="lead">Hearth OS is downloaded while it installs (about 5 GB).</p><div class="rows" style="max-height:50vh;overflow:auto">${pageWifi()}</div><div class="acts">${next(S.sys.wifi&&S.sys.wifi.ssid?'Next':'I\'m on a cable')}${back}</div>`;
+  else if(OSI.step==='review'){
+    const d=osiDisk()||{model:'?',size:0}, u=OSI.user;
+    const line=(t,v)=>`<div class="row"><div class="rt"><b>${t}</b></div><div class="rv">${v}</div></div>`;
+    body=`<h1>Ready to install</h1><p class="lead">${OSI.mode==='whole'?`<b>${esc(d.model)} is erased</b> and Hearth OS goes on it.`:`Windows gets ${gb(OSI.give)} smaller and Hearth OS goes next to it.`} The PC asks which one to start after, and Hearth is first.</p><div class="rows">
+      ${line('How', OSI.mode==='whole'?'Erase the whole drive':'Next to Windows')}${line('Drive', `${esc(d.model)} · ${gb(d.size)}`)}${OSI.mode==='beside'?line('Room for Hearth', gb(OSI.give)):''}
+      ${line('Account', `${esc(u.full)} (${esc(u.name)})`)}${line('Device name', esc(OSI.hostname||osiHost(u)))}${line('Time zone', esc(OSI.tz.replace(/_/g,' ')))}
+      ${line('Edition', HOSTINFO.edition==='nvidia'?'Nvidia graphics':'AMD and Intel graphics')}
+      </div><div class="acts"><button class="play" data-f data-k="osi-go" data-act="osiStart">${I.dl}Install Hearth OS</button>${back}</div>`;
+  }
+  else {
+    const s=OSI.s||{state:'running',pct:0,text:'Starting'};
+    if(s.state==='done') body=`<div class="center"><div class="mark">${HEARTH_MARK}</div><h1>Hearth OS is installed</h1><p class="lead">Restart, and take out the USB stick when the screen goes dark. Hearth starts with a short setup: Wi-Fi, your game stores${OSI.mode==='beside'?' and bringing your games over from Windows':''}.</p>
+      <div class="acts"><button class="play" data-f data-k="osi-restart" data-act="osiRestart">${I.restart}Restart now</button></div></div>`;
+    else if(s.state==='failed') body=`<h1>The install didn't finish</h1><p class="lead">${esc(s.error||'Something went wrong.')}</p>${note(OSI.mode==='whole'?'The drive may be half-written: installing again starts over.':'Windows is still there. If it got smaller, the space is still free: installing again uses it.')}
+      <div class="acts"><button class="play" data-f data-k="osi-again" data-act="osiAgain">Try again</button><button class="pill ghost" data-f data-k="osi-logs" data-act="exportLogs">Save logs</button></div>`;
+    else {
+      const steps=[['shrink','Making room next to Windows'],['disk','Preparing the drive'],['format','Preparing the drive'],['download','Downloading Hearth OS'],['boot','Setting up starting up'],['user','Creating your account'],['finish','Finishing up']]
+        .filter(([k])=>OSI.mode==='beside'?k!=='disk':k!=='shrink').filter((x,i,a)=>a.findIndex(y=>y[1]===x[1])===i);
+      const order=['start','shrink','disk','format','download','boot','user','finish','done'], at=order.indexOf(s.stage);
+      const left = s.left!=null ? ` · about ${s.left<90?'a minute':Math.round(s.left/60)+' minutes'} left` : '';
+      body=`<h1>Installing Hearth OS</h1><p class="lead">${esc(s.text||'Working')}${left}</p>
+        <div class="storage" style="height:12px;margin:8px 0 22px"><i style="width:${Math.max(2,s.pct||0)}%;transition:width .6s"></i></div>
+        <div class="rows">${steps.map(([k,t])=>{ const i=order.indexOf(k), st=i<at?'ok':i===at||(k==='disk'&&s.stage==='format')?'now':'';
+          return `<div class="row" data-f data-k="osi-st-${k}"><span class="ricon">${st==='ok'?I.check:st==='now'?I.refresh:''}</span><div class="rt"><b style="${st?'':'color:var(--dim)'}">${t}</b></div></div>`; }).join('')}</div>
+        ${note('Keep the device plugged in and don\'t take out the USB stick. You can use Mantel meanwhile: Power › Switch to desktop.')}`;
+    }
+    return `<div class="setup" style="max-width:760px;margin:5vh auto 0;padding:0 24px">${body}</div>`;
+  }
+  return `<div class="setup" style="max-width:760px;margin:5vh auto 0;padding:0 24px">${dots}${body}</div>`;
+}
+/** Install Hearth: pick how (the Hearth app with a controller, or Mantel with a mouse and keyboard). */
+function osiChoose(){
+  openSheet({title:'Install Hearth OS', sub:'Both do the same install. Pick the one that suits how you\'re using this PC.', items:[
+    {label:'Install with Hearth (recommended with a controller)', icon:'pad', run:()=>osiOpen()},
+    {label:'Install with Mantel (mouse and keyboard)', icon:'shell', run:()=>call('osinstall.useMantel').then(()=>send({type:'power', action:'desktop'})).catch(e=>toast(e.message))}]});
+}
+
 function viewStores(){
   if(!ACC.list) return `<h2>Game stores</h2><div class="note">Loading…</div>`;
   const cards = ACC.list.map(a=>{
@@ -2986,6 +3177,7 @@ function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
   if(name==='systemUpdate') return onSystemUpdate(data);
   if(name==='import') return onImport(data);
+  if(name==='osInstall') return onOsInstall(data);
   if(name==='switch'){ if(SW.s) SW.s.job=data.job; if(data.job && data.job.state==='done') loadSwitch(); if(data.job && data.job.state==='error') toast(data.job.error||'That step didn\'t work'); if(S.view==='settings'&&S.settingsTab==='switch') render(null,true); return; }
   if(name==='library.changed'){ if(!OVERLAY) loadLibrary(false); return; }
   if(name==='desktopFailed') return openSheet({title:"Mantel (Desktop Mode) couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});

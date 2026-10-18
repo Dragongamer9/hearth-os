@@ -24,13 +24,16 @@ jobs:
           echo "LOOP=$(sudo losetup -fP --show disk.img)" >> "$GITHUB_ENV"
       - name: Install Hearth OS onto it
         run: |
-          set -o pipefail
           plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","image":"ghcr.io/dragongamer9/hearth:latest","firmware":false,"kargs":["console=ttyS0,115200"]}' "$LOOP")
           echo "$plan" | sudo podman run --rm -i --privileged --pid=host --net=host \
             -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" -e HEARTH_INSTALL_TEST=1 \
             --security-opt label=disable ghcr.io/dragongamer9/hearth:latest \
-            /src/hearth-install run 2>&1 | tee install.log
-          grep -q '^result: ' install.log || { echo "::error::$(grep '^error:' install.log | tail -1)"; exit 1; }
+            /src/hearth-install run 2>&1 | tee install.log || true
+          if ! grep -q '^result: ' install.log; then
+            # Logs can't be downloaded from every place this is read: put the end of it on the run page.
+            echo "::error title=Install failed::$(tail -n 25 install.log | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\n' '|' | cut -c1-3500)"
+            exit 1
+          fi
       - name: Check what it made
         run: |
           set -x
@@ -55,6 +58,7 @@ jobs:
           sudo mkdir -p /mnt/home && sudo mount -o subvol=home "${LOOP}p3" /mnt/home
           check "home folder" "sudo test -d /mnt/home/tester"
           sudo umount -R /mnt/h /mnt/home || true
+          sudo sh -c "cat $dep/etc/fstab /mnt/h/boot/loader/entries/*.conf 2>/dev/null" | sed 's/^/::notice title=Result::/' || true
           [ $ok = 1 ]
       - name: Boot it (UEFI, serial console) and wait for the login prompt
         run: |
@@ -72,7 +76,7 @@ jobs:
           done
           sudo pkill qemu-system || true
           tail -c 4000 boot.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tail -40
-          grep -qE 'login:|Reached target.*(Multi-User|Graphical)' boot.log || { echo "::error::didn't reach the login prompt in 15 minutes (see the log above)"; exit 1; }
+          grep -qE 'login:|Reached target.*(Multi-User|Graphical)' boot.log || { echo "::error title=Boot failed::$(tail -c 3000 boot.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\n' '|')"; exit 1; }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
