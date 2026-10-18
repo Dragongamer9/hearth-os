@@ -23,9 +23,9 @@ internal sealed class FullShell : IDisposable
     /// <summary>+1 / -1 for the volume keys, 0 for mute.</summary>
     public event Action<int>? VolumeKey;
 
-    public void Start(int barHeight)
+    public void Start(int barSize)
     {
-        SetWorkArea(barHeight);
+        SetWorkArea(barSize);
         HideMinimized();
         _hookProc = KeyboardHook;
         _hook = SetWindowsHookEx(13 /* WH_KEYBOARD_LL */, _hookProc, GetModuleHandle(null), 0);
@@ -40,13 +40,16 @@ internal sealed class FullShell : IDisposable
 
     public void Dispose() => Stop();
 
-    private void SetWorkArea(int barHeight)
+    /// <summary>Everything but the bar: along the bottom, or down the left side on an upright screen.</summary>
+    public void SetWorkArea(int barSize)
     {
         var scr = Screen.PrimaryScreen!.Bounds;
         var cur = new Native.RECT();
         Native.SystemParametersInfo(0x0030 /* SPI_GETWORKAREA */, 0, ref cur, 0);
         _savedWorkArea ??= cur;
-        var wa = new Native.RECT { Left = scr.Left, Top = scr.Top, Right = scr.Right, Bottom = scr.Bottom - barHeight };
+        var wa = MantelWindow.Portrait
+            ? new Native.RECT { Left = scr.Left + barSize, Top = scr.Top, Right = scr.Right, Bottom = scr.Bottom }
+            : new Native.RECT { Left = scr.Left, Top = scr.Top, Right = scr.Right, Bottom = scr.Bottom - barSize };
         Native.SystemParametersInfo(0x002F /* SPI_SETWORKAREA */, 0, ref wa, 1 | 2);
     }
 

@@ -50,6 +50,8 @@ public sealed class MantelHost : IDisposable
         _tray.Changed += () => _bar?.BeginInvoke((MethodInvoker)PushTray);
         _full.WinKey += () => _bar?.BeginInvoke((MethodInvoker)ToggleLauncher);
         _full.VolumeKey += d => _bar?.BeginInvoke((MethodInvoker)(() => VolumeRequested?.Invoke(d)));
+        // The screen turned (a handheld held upright) or changed: put the bar on the right edge for its shape.
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => _bar?.BeginInvoke((MethodInvoker)Replace);
     }
 
     // ------------------------------------------------------------------ start / stop
@@ -82,7 +84,7 @@ public sealed class MantelHost : IDisposable
             _dim ??= new Backdrop();
             _dim.Clicked -= HidePanels; _dim.Clicked += HidePanels;
             _bar.Show();
-            if (full) { _bar.PlaceManually(); _full.Start(_bar.Height); }
+            if (full) { _bar.PlaceManually(); _full.Start(_bar.BarHeight()); }
             else { _bar.EnsureAppBar(); _bar.PlaceAppBar(); }
             foreach (var w in new[] { _bar, _launcher, _desk, _quick, _power, _radial, _help }) if (w is not null) PushState(w);
             PushTray();
@@ -116,6 +118,14 @@ public sealed class MantelHost : IDisposable
         w.PanelClosed += () => { if (!AnyPanelOpen()) _dim?.Hide(); };
         await w.InitAsync(_env, _baseUrl + "mantel.html?part=" + part.ToString().ToLowerInvariant(), _setup);
         return w;
+    }
+
+    private void Replace()
+    {
+        if (!Active || _bar is null) return;
+        HidePanels();
+        if (Full) { _bar.PlaceManually(); _full.SetWorkArea(_bar.BarHeight()); _desk?.SendToBack(); }
+        else _bar.PlaceAppBar();
     }
 
     public void ToggleLauncherFromPad() { if (Active) ToggleLauncher(); }

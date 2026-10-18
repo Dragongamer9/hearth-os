@@ -68,6 +68,7 @@ internal static class Native
     [DllImport("shell32.dll")] public static extern UIntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
     public const uint ABM_NEW = 0, ABM_REMOVE = 1, ABM_QUERYPOS = 2, ABM_SETPOS = 3, ABM_GETSTATE = 4, ABM_SETSTATE = 10;
     public const uint ABE_BOTTOM = 3;
+    public const uint ABE_LEFT = 0;
     public const int ABS_AUTOHIDE = 1, ABS_ALWAYSONTOP = 2;
 
     // -------------------------------------------------------------- shell icons (any app, including Store apps)
