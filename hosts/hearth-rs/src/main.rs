@@ -187,6 +187,40 @@ fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: 
         if fps > 0 { let _ = hearth_core::gamescope::set_fps_limit(fps); }
         if perf > 0 { let _ = hearth_core::gamescope::set_perf_overlay(perf); }
     }
+    // Keyboard backup for the Guide button, like Windows: Ctrl+Alt+Q (works while the game runs under X11 /
+    // Xwayland, as all do in gamescope).
+    {
+        use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+        let g = gm.clone();
+        let plugin = tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(move |_app, _sc, event| { if event.state() == ShortcutState::Pressed { let g = g.clone(); std::thread::spawn(move || g.guide_pressed("hotkey")); } })
+            .build();
+        if app.plugin(plugin).is_ok() {
+            if let Err(e) = app.global_shortcut().register(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyQ)) { hearth_core::bridge::log(&format!("Ctrl+Alt+Q: {e}")); }
+        }
+    }
+    // "Ask for my password after sleep" in Game Mode: locked as the device goes to sleep, so it's locked when it
+    // wakes; on waking, Hearth comes to the front with the lock screen. (logind says when through D-Bus.)
+    if in_session() && gm.inside() {
+        let g = gm.clone();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            let Ok(mut child) = std::process::Command::new("gdbus").args(["monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1"])
+                .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() else { return };
+            let Some(out) = child.stdout.take() else { return };
+            let mut locked = false;
+            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                if !line.contains("PrepareForSleep") { continue; }
+                if line.contains("(true") {
+                    if hearth_core::admin::login()["lockOnWake"] == true { locked = true; let _ = g.app.emit_to("main", "nimbus:msg", Bridge::event("lock", serde_json::json!({}))); }
+                } else if locked {
+                    locked = false;
+                    g.hide_overlay(); g.come_back();
+                    let _ = g.app.emit_to("main", "nimbus:msg", Bridge::event("lock", serde_json::json!({})));
+                }
+            }
+        });
+    }
     // Quick Access over a running game: a see-through window gamescope draws on top.
     if gm.overlay_available() {
         let size = app.primary_monitor().ok().flatten().map(|m| { let s = m.size(); let f = m.scale_factor(); (s.width as f64 / f, s.height as f64 / f) }).unwrap_or((1280.0, 800.0));

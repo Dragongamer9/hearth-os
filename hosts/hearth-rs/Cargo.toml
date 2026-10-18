@@ -16,6 +16,7 @@ dirs = "5"
 log = "0.4"
 hearth-core = { path = "../hearth-core" }
 tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
 
 [profile.release]
 opt-level = "s"
