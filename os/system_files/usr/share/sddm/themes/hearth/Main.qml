@@ -91,10 +91,11 @@ Rectangle {
                     MouseArea { anchors.fill: parent; anchors.margins: -10; onClicked: root.userIndex = (root.userIndex + userModel.count - 1) % userModel.count } }
                 Item { Layout.fillWidth: true }
                 Rectangle {
+                    visible: (root.realName || root.userName) !== ""
                     width: 36; height: 36; radius: 18; color: root.accent
                     Text { anchors.centerIn: parent; text: (root.realName || root.userName).charAt(0).toUpperCase(); color: root.accentInk; font.family: root.font; font.pixelSize: 17; font.weight: Font.Bold }
                 }
-                Text { text: root.realName || root.userName; color: root.text; font.family: root.font; font.pixelSize: 20; font.weight: Font.DemiBold }
+                Text { text: root.realName || root.userName || "Hearth"; color: root.text; font.family: root.font; font.pixelSize: 20; font.weight: Font.DemiBold }
                 Item { Layout.fillWidth: true }
                 Text { visible: userModel.count > 1; text: "›"; color: root.muted; font.pixelSize: 26
                     MouseArea { anchors.fill: parent; anchors.margins: -10; onClicked: root.userIndex = (root.userIndex + 1) % userModel.count } }
