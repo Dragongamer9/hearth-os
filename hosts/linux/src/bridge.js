@@ -162,6 +162,14 @@ class Bridge {
       // Web browser (Aloha), Settings › System
       case 'browser.status': return { ...(await this.browser.status()), hearth: await hearthBrowser() };
       // Hearth Browser (Hearth's own): open it, or make it the default browser.
+      // Remote play: Sunshine (stream from here) and Moonlight (play another PC's games here).
+      case 'remote.status': return this.remote().status();
+      case 'remote.setOn': return this.remote().setOn(!!a.on);
+      case 'remote.pair': return this.remote().pair(String(a.pin || ''), a.name);
+      case 'remote.unpair': return this.remote().unpair(req('uuid'));
+      case 'remote.login': return this.remote().login(a.user, a.pass);
+      case 'moonlight.open': return require('./remote-play').openMoonlight();
+      case 'moonlight.install': return require('./remote-play').installMoonlight();
       case 'browser.hearth': {
         const { execFile, spawn } = require('node:child_process');
         if (a.action === 'open') { spawn('/usr/bin/hearth-browser', [], { detached: true, stdio: 'ignore' }).unref(); return true; }
@@ -349,6 +357,7 @@ class Bridge {
     }
   }
 
+  remote() { if (!this._remote) { const { RemotePlay } = require('./remote-play'); this._remote = new RemotePlay(); } return this._remote; }
   buttonsInfo() {
     const b = this.platform.buttons;
     return { ...this.prefs.get(), maxVolume: this.prefs.maxVolume(), watching: b ? b.status() : { devices: [], problems: ['Only in Game Mode'] } };

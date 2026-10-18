@@ -729,6 +729,8 @@ const MOCK = (()=>{
   const push=()=>setTimeout(()=>onSysEvent('status',status()),0);
   const H={
     'sys.status':async()=>status(),
+    'remote.status':async()=>({installed:true,on:true,clients:[{name:'Living room TV',uuid:'u1'}],needsLogin:false,addresses:['192.168.1.42'],moonlight:false}),
+    'remote.setOn':async()=>({}), 'remote.pair':async()=>true, 'remote.unpair':async()=>true, 'moonlight.install':async()=>true,
     'profiles.setLimits':async()=>({}), 'profiles.setPin':async()=>true, 'profiles.unlock':async()=>true,
     'profiles.get':async()=>({active:'main',askAtStart:true,picked:false,hasPin:true,unlocked:true,list:[{id:'main',name:'Dragon',color:'#ff8a3d',steam:'dragongamer9',current:true,limits:{minutesPerDay:0,allowed:null}},{id:'p2',name:'Sarah',color:'#b57bff',steam:'sarahplays',current:false,limits:{minutesPerDay:0,allowed:null}},{id:'p3',name:'Kids',color:'#3fd0b8',steam:null,current:false,limits:{minutesPerDay:90,allowed:['a','b']},playedToday:35}],steamAccounts:[{account:'dragongamer9',name:'Dragon'},{account:'sarahplays',name:'Sarah'}]}),
     'osinstall.status':async()=>({available:true,state:'idle'}),
@@ -1372,7 +1374,7 @@ function viewDownloads(){
 }
 
 const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
-  ['controller','pad','Controls'],['sources','lib','Library sources'],['import','dl','Import games'],['osinstall','dl','Install Hearth OS'],['switch','dl','Switch to Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
+  ['controller','pad','Controls'],['remote','play','Remote play'],['sources','lib','Library sources'],['import','dl','Import games'],['osinstall','dl','Install Hearth OS'],['switch','dl','Switch to Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
 const note = t => `<div class="note">${t}</div>`;
@@ -2068,6 +2070,7 @@ function viewSettings(){
   if(t==='power') body = pagePower();
   if(t==='profile') body = pageProfile();
   if(t==='profiles') body = pageProfiles();
+  if(t==='remote') body = pageRemote();
   if(t==='signin') body = pageSignin();
   if(t==='system') body = pageSystem();
   if(t==='appearance') body = pageAppearance();
@@ -2093,7 +2096,7 @@ function viewSettings(){
     + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
   if(t==='about') body = pageAbout();
   return `<div class="settings">
-    <div class="snav">${STABS.filter(([k])=>k==='profiles'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX)).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
+    <div class="snav">${STABS.filter(([k])=>(k==='profiles'||k==='remote')?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX)).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
     <div class="rows">${body}</div></div>`;
 }
 
@@ -2607,6 +2610,15 @@ function act(el){
     case 'gopts': return gameOptions(G(d.id));
     case 'colNew': return colNew(null);
     case 'pinSetup': return pinSetup();
+    case 'rpToggle': return rpAct('on', async()=>{ const on=!RP.s.on; await call('remote.setOn',{on},60000); toast(on?'Remote play is on. Pair a device to start.':'Remote play is off'); });
+    case 'rpPair': return (async()=>{ const pin=await openPrompt({title:'The 4 numbers Moonlight shows', min:4}); if(pin==null) return;
+      const name=await openPrompt({title:'Name for this device', value:'Moonlight'}); if(name==null) return;
+      rpAct('pair', async()=>{ await call('remote.pair',{pin:pin.trim(), name:name.trim()||'Moonlight'},20000); toast(`Paired ${name.trim()||'Moonlight'}. Pick a game in Moonlight.`); }); })();
+    case 'rpUnpair': return openSheet({title:`Remove ${d.name}?`, sub:'It can pair again any time.', items:[{label:'Remove', icon:'trash', run:()=>rpAct('', ()=>call('remote.unpair',{uuid:d.id}))}]});
+    case 'rpLogin': return (async()=>{ const user=await openPrompt({title:"Sunshine's username"}); if(user==null) return; const pass=await openPrompt({title:"Sunshine's password", secret:true}); if(pass==null) return;
+      rpAct('', ()=>call('remote.login',{user, pass}).then(()=>toast('Thanks. Now pair a device.'))); })();
+    case 'mlOpen': return call('moonlight.open').then(()=>toast('Opening Moonlight…')).catch(e=>toast(e.message));
+    case 'mlInstall': return rpAct('ml', async()=>{ toast('Installing Moonlight. This takes a minute or two.'); await call('moonlight.install',{},15*60000); toast('Moonlight is installed'); });
     case 'colEdit': return colEdit(d.id);
     case 'lfilter': return openSheet({title:'Show', items:LFILTERS.map(([k,l])=>({label:l, icon:(S.lfilter||'')===k?'check':'', run:()=>{ S.lfilter=k; render('lfilter'); }}))});
     case 'dlopts': return downloadOptions(G(d.id));
@@ -3237,6 +3249,32 @@ async function profAdd(){
       {label:'Not now', icon:'x', run:()=>{}}]});
   }catch(e){ toast(e.message); }
 }
+// ---------- Remote play (Linux): Sunshine streams from here, Moonlight plays another PC's games here ----------
+const RP = {s:null, busy:''};
+function loadRemote(){ return call('remote.status',{},20000).then(r=>{ RP.s=r; if(S.view==='settings'&&S.settingsTab==='remote') render(null,true); }).catch(e=>{ RP.s={error:e.message}; render(null,true); }); }
+function pageRemote(){
+  const s=RP.s;
+  if(!s) return note('Loading…');
+  if(s.error) return note(esc(s.error));
+  const busy=k=>RP.busy===k?'<span class="mini-spin"></span>':'';
+  let h = shead('Stream from this device');
+  if(!s.installed) h += note('Remote play uses Sunshine, which comes with Hearth OS. It isn\'t on this system.');
+  else {
+    h += `<button class="row" data-f data-k="rp-on" data-act="rpToggle"><span class="ricon">${I.play}</span><div class="rt"><b>Remote play</b><small>Play your games on a TV, phone, tablet or another PC with the free Moonlight app</small></div>${busy('on')||`<div class="sw ${s.on?'on':''}"></div>`}</button>`;
+    if(s.on){
+      if(s.needsLogin) h += `<button class="row" data-f data-k="rp-login" data-act="rpLogin"><span class="ricon">${I.lock}</span><div class="rt"><b>Sunshine's username and password</b><small>Sunshine was set up before with its own login. Type it once so ${APP} can pair devices.</small></div><div class="rv">›</div></button>`;
+      h += `<button class="row" data-f data-k="rp-pair" data-act="rpPair"><span class="ricon">${I.pad}</span><div class="rt"><b>Pair a device</b><small>In Moonlight, pick this device (or add it by address${s.addresses&&s.addresses.length?': '+esc(s.addresses.join(', ')):''}). It shows 4 numbers: type them here.</small></div>${busy('pair')||'<div class="rv">›</div>'}</button>`;
+      if(s.clients && s.clients.length){
+        h += shead('Paired devices') + s.clients.map((c,i)=>`<button class="row" data-f data-k="rp-c${i}" data-act="rpUnpair" data-id="${esc(c.uuid)}" data-name="${esc(c.name)}"><span class="ricon">${I.display}</span><div class="rt"><b>${esc(c.name)}</b><small>Can stream from this device</small></div><div class="rv">Remove ›</div></button>`).join('');
+      }
+      h += note('Works best on the same home network, with this device plugged in. Streaming uses this device\'s screen, so whatever plays here plays there.');
+    }
+  }
+  h += shead('Play another PC\'s games here');
+  h += `<button class="row" data-f data-k="rp-ml" data-act="${s.moonlight?'mlOpen':'mlInstall'}"><span class="ricon">${I.display}</span><div class="rt"><b>Moonlight</b><small>${s.moonlight?'Stream games from a gaming PC that runs Sunshine or NVIDIA GameStream':'Install it to stream games from a gaming PC (it needs Sunshine on that PC)'}</small></div>${busy('ml')||`<div class="rv">${s.moonlight?'Open':'Install'} ›</div>`}</button>`;
+  return h;
+}
+async function rpAct(k, fn){ RP.busy=k; render(null,true); try{ await fn(); }catch(e){ toast(e.message); } RP.busy=''; await loadRemote(); }
 function pageProfiles(){
   const s=PROF.s;
   if(!s) return note('Loading…');
@@ -3557,6 +3595,7 @@ function onSettingsTab(t){
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
   if(t==='signin') loadLogin();
+  if(t==='remote') loadRemote();
   if(t==='import') loadImport();
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();
