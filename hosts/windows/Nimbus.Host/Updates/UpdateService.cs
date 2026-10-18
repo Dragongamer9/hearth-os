@@ -21,7 +21,7 @@ public sealed record UpdateStatus(
 /// </summary>
 public sealed class UpdateService
 {
-    public const string Repo = "Dragongamer9/nimbus";
+    public const string Repo = "Dragongamer9/hearth-os";
     private const string Asset = "Nimbus-win-x64.zip";
     /// <summary>Exit code meaning "closing to install an update" (the watchdog must not restart).</summary>
     public const int UpdateExitCode = 3;

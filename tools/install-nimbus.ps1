@@ -1,11 +1,11 @@
 # Installs or reinstalls Nimbus from the latest GitHub release and makes it your Windows shell.
 #   Double-click install-nimbus.cmd, or run in PowerShell:
-#   irm https://raw.githubusercontent.com/Dragongamer9/nimbus/main/tools/install-nimbus.ps1 | iex
+#   irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex
 # Only your Windows account is affected. Undo any time: %USERPROFILE%\nimbus-restore.cmd
 param([switch]$NoShell)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # much faster downloads in Windows PowerShell
-$repo = 'Dragongamer9/nimbus'
+$repo = 'Dragongamer9/hearth-os'
 $root = Join-Path $env:LOCALAPPDATA 'Nimbus'
 $app  = Join-Path $root 'app'
 $winlogon = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
