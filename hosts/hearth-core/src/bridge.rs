@@ -322,6 +322,8 @@ impl Bridge {
                 (self.host)("screenshot", &json!({"before": false}));
                 r
             }
+            "screenshots.list" => Ok(json!({"dir": crate::gamescope::screenshot_dir().to_string_lossy(), "list": crate::gamescope::screenshots()})),
+            "screenshots.delete" => { crate::gamescope::delete_screenshot(a["file"].as_str().unwrap_or(""))?; Ok(json!({"list": crate::gamescope::screenshots()})) }
             "apps.list" => Ok(if crate::gamescope::inside() { self.apps_list() } else { json!([]) }),
             "apps.focus" => { (self.host)("focusApp", &json!({"id": a["id"], "pid": a["pid"]})); Ok(Value::Null) }
             "apps.close" => {
@@ -950,7 +952,7 @@ fn shell_install(remove: bool) -> Result<(), String> {
 }
 
 fn features() -> Vec<&'static str> {
-    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends"];
+    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots"];
     if crate::guide::controller_available() { f.push("remap"); }
     f
 }

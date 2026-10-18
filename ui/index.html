@@ -510,6 +510,8 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .tile.qr{position:relative}.tile.qr .qrb{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:rgba(10,14,20,.82);color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.tile.qr .qrb svg{width:12px;height:12px}
 .qrrow{display:flex;gap:8px;align-items:stretch}.qrrow .btn:first-child{flex:1;justify-content:flex-start}
 .osi-dl{display:flex;gap:18px;align-items:baseline;margin:0 0 22px;color:var(--dim);font-size:15px}.osi-dl b{font-size:22px;color:var(--text)}
+.shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}.shot{display:flex;flex-direction:column;gap:6px;padding:0;background:none;border:0;color:var(--muted);text-align:left;border-radius:12px}.shot img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;background:var(--panel2)}.shot small{padding:0 4px}
+.shotview{display:flex;flex-direction:column;gap:12px;height:calc(100vh - 170px)}.shotview img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:12px;background:#000}.shotbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.shotbar .muted{flex:1}
 .frav{position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none;margin-right:12px}.frav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.frav i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#56606e;border:2px solid var(--bg)}.frow.on .frav i{background:#5aa9ff}.frow.ing .frav i{background:#7ad15a}.frow.ing small{color:#7ad15a}
 </style>
 </head>
@@ -920,7 +922,7 @@ function blip(f=700,d=.035,v=.035){
 // =====================================================================
 // Views
 // =====================================================================
-const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',friends:'Friends',settings:'Settings',stores:'Game stores',gameset:'Game settings'};
+const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',friends:'Friends',shots:'Screenshots',settings:'Settings',stores:'Game stores',gameset:'Game settings'};
 
 // A profile with parental limits sees only the games it's allowed (when a grown-up chose some).
 const allowedList = () => { const s=PROF.s, c=s&&s.hasPin&&s.list.find(p=>p.current); return c&&c.limits&&c.limits.allowed ? c.limits.allowed : null; };
@@ -983,6 +985,25 @@ function viewFriends(){
   return `<div class="muted" style="margin:4px 0 16px">${s.online} online · ${s.friends.length} friends</div><div class="rows fr">${s.friends.map((f,i)=>`<div class="row frow ${f.state==='ingame'?'ing':f.state==='online'?'on':''}" data-f data-k="fr-${i}">
     <span class="frav">${f.avatar?`<img src="${esc(f.avatar)}" alt="" loading="lazy">`:`<b>${esc((f.name||'?').charAt(0).toUpperCase())}</b>`}<i></i></span>
     <div class="rt"><b>${esc(f.name)}</b><small>${line(f)}</small></div></div>`).join('')}</div>`;
+}
+
+// ---------- Screenshots: the ones taken from Quick Access, to look through and delete ----------
+const SH = {list:null, open:-1};
+function loadShots(){ if(!host){ SH.list=[]; return render(null,true); }
+  call('screenshots.list',{},15000).then(r=>{ SH.list=r.list||[]; if(SH.open>=SH.list.length) SH.open=SH.list.length-1; if(S.view==='shots') render(null,true); }).catch(e=>toast(e.message)); }
+function shotWhen(t){ const d=new Date(t); return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' · '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
+function viewShots(){
+  const l=SH.list;
+  if(!l) return note('Loading your screenshots…');
+  if(!l.length) return note('No screenshots yet. During a game, press the Xbox button and choose Take a screenshot.');
+  if(SH.open>=0 && l[SH.open]){ const x=l[SH.open];
+    return `<div class="shotview"><img src="${esc(x.url)}" alt=""><div class="shotbar"><span class="muted">${SH.open+1} of ${l.length} · ${shotWhen(x.time)}</span>
+      <button class="btn sm" data-f data-k="sh-prev" data-act="shotStep" data-v="-1" ${SH.open?'':'disabled'}>‹ Newer</button>
+      <button class="btn sm" data-f data-k="sh-next" data-act="shotStep" data-v="1" ${SH.open<l.length-1?'':'disabled'}>Older ›</button>
+      <button class="btn sm" data-f data-k="sh-del" data-act="shotDel">Delete</button>
+      <button class="btn sm" data-f data-k="sh-back" data-act="shotClose">Back</button></div></div>`; }
+  return `<div class="muted" style="margin:4px 0 16px">${l.length} screenshot${l.length===1?'':'s'} · Pictures › Screenshots › ${APP}</div>
+    <div class="shots">${l.map((x,i)=>`<button class="shot" data-f data-k="sh-${i}" data-act="shotOpen" data-v="${i}"><img src="${esc(x.url)}" alt="" loading="lazy"><small>${shotWhen(x.time)}</small></button>`).join('')}</div>`;
 }
 
 // ---------- Quick Resume (Hearth): games put aside stay frozen in memory and carry on where they were ----------
@@ -1351,6 +1372,7 @@ function viewLibrary(){
   </div>
   <div class="libmeta"><span>${L.length} game${L.length===1?'':'s'}</span>
     <div class="lmr"><button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
+    ${(HOSTINFO.features||[]).includes('screenshots')?`<button class="pill" data-f data-k="lib-shots" data-act="shots">${I.display}Screenshots</button>`:''}
     ${S.tab.startsWith('c:')?`<button class="pill" data-f data-k="col-edit" data-act="colEdit" data-id="${esc(S.tab.slice(2))}">Edit collection</button>`:`<button class="pill" data-f data-k="col-new" data-act="colNew">+ Collection</button>`}
     <button class="pill ${S.lfilter?'on':''}" data-f data-k="lfilter" data-act="lfilter">Show: ${LFILTERS.find(f=>f[0]===(S.lfilter||''))[1]}</button>
     <button class="pill" data-f data-k="sort" data-act="sort">Sort: ${SORTS.find(s=>s[0]===S.sort)[1]}</button></div></div>
@@ -2244,7 +2266,7 @@ function viewSettings(){
     <div class="rows">${body}</div></div>`;
 }
 
-const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
+const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, shots:viewShots, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 // Timing for the speed test (HEARTH_PERF_LOG=1): how long drawing a page and moving the focus take.
@@ -2281,6 +2303,7 @@ function navigate(view, params={}, push=true){
   if(view==='downloads'){ if(host) startDownloadPoll(); loadSysInfo(); }
   if(view==='stores') loadAccounts();
   if(view==='friends') loadFriends();
+  if(view==='shots'){ SH.open=-1; loadShots(); }
   if(view==='gameset') loadGameSet(S.game);
 }
 function goBack(){
@@ -2781,7 +2804,7 @@ function act(el){
     case 'perfOverlay': return call('perf.setOverlay',{level:+d.v}).then(r=>{ if(PERF.s) PERF.s.perfOverlay=r.perfOverlay; toast(r.perfOverlay?`Overlay: ${PO_LEVELS[r.perfOverlay]}`:'Overlay off'); renderQam(); setFocus($(`#qam [data-k="po-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'fpsLimit': return call('perf.setFpsLimit',{fps:+d.v}).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'perfPower': return call('power.setMode',{mode:d.v}).then(r=>{ if(PERF.s) PERF.s.powerMode=r.mode||d.v; renderQam(); setFocus($(`#qam [data-k="pp-${d.v}"]`),true); }).catch(e=>toast(e.message));
-    case 'ovShot': return call('overlay.screenshot',{},20000).then(r=>toast(`Screenshot saved to Pictures › Screenshots › ${APP}`)).catch(e=>toast(e.message));
+    case 'ovShot': return call('overlay.screenshot',{},20000).then(r=>{ SH.list=null; toast(`Screenshot saved · see it in Library › Screenshots`); }).catch(e=>toast(e.message));
     case 'ovHome': return send({type:'overlay', action:'home'});
     case 'ovHoldView': return call('overlay.setHoldView',{on:!(OVS.s&&OVS.s.holdView)}).then(r=>{ OVS.s=r; render('ov-hold'); }).catch(e=>toast(e.message));
     case 'ovGameBar': return call('overlay.setGameBarButton',{on:!(OVS.s&&OVS.s.gameBarButton)}).then(r=>{ OVS.s=r; render('ov-gb'); }).catch(e=>toast(e.message));
@@ -2824,6 +2847,12 @@ function act(el){
     case 'dlSteam': return call('steam.downloads').catch(e=>toast(e.message));
     case 'dlClearRecent': DL_DONE.length=0; DLS.recent=[]; return call('downloads.clearRecent').then(()=>render(null,true)).catch(e=>toast(e.message));
     case 'stores': closeAll(); return S.view==='stores' ? null : navigate('stores');
+    case 'shots': closeAll(); return S.view==='shots' ? null : navigate('shots');
+    case 'shotOpen': SH.open=+d.v; return render('sh-back',true);
+    case 'shotClose': { const i=SH.open; SH.open=-1; return render('sh-'+Math.max(0,i),true); }
+    case 'shotStep': { const n=SH.open+(+d.v); if(!SH.list||n<0||n>=SH.list.length) return; SH.open=n; return render(focused?.dataset.k,true); }
+    case 'shotDel': { const x=SH.list&&SH.list[SH.open]; if(!x) return;
+      return call('screenshots.delete',{file:x.file},15000).then(r=>{ SH.list=r.list||[]; if(SH.open>=SH.list.length) SH.open=SH.list.length-1; toast('Screenshot deleted'); render(SH.open>=0?'sh-back':null,true); }).catch(e=>toast(e.message)); }
     case 'accSignIn': return accSignIn(d.s);
     case 'accSignOut': return accSignOut(d.s);
     case 'accRefresh': return accRefresh(d.s);
@@ -2863,6 +2892,7 @@ function back(){
   if(OVERLAY && S.layers.length<=1) return overlayClose();
   if(S.layers.length && S.layers.at(-1)==='launch' && S.launchWaiting) return launchShow();
   if(S.layers.length && S.layers.at(-1)!=='launch'){ const top=S.layers.at(-1); closeLayer(); return resumeIfGame(top); }
+  if(!S.layers.length && S.view==='shots' && SH.open>=0){ const i=SH.open; SH.open=-1; return render('sh-'+i,true); }
   if(!S.layers.length && goBack()) return blip(420,.05);
 }
 function typeKey(c){
