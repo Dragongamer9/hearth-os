@@ -676,7 +676,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if(LINUX&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -2224,7 +2224,7 @@ function viewSettings(){
     + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
   if(t==='about') body = pageAbout();
   return `<div class="settings">
-    <div class="snav">${STABS.filter(([k])=>(k==='profiles'||k==='remote')?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX)).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
+    <div class="snav">${STABS.filter(([k])=>k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX)).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
     <div class="rows">${body}</div></div>`;
 }
 
@@ -2275,7 +2275,7 @@ function renderMenu(){
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
     <button class="mitem" data-f data-k="m-power" data-act="power">${I.power}Power</button>
-    ${LINUX&&PROF.s&&PROF.s.list.length>1?`<button class="mitem" data-f data-k="m-switch" data-act="nav" data-view="profiles">${I.user}Switch profile</button>`:''}
+    ${hasProfiles()&&PROF.s&&PROF.s.list.length>1?`<button class="mitem" data-f data-k="m-switch" data-act="nav" data-view="profiles">${I.user}Switch profile</button>`:''}
     <button class="mfoot" data-f data-k="m-prof" data-act="goset" data-tab="profile">${avatarHtml(PROFILE)}<div><b>${esc(PROFILE.name)}</b><div class="muted">${esc(PROFILE.status||'Online')}</div></div></button>`;
 }
 function sliderCtl(key,ic,label,min=0,max=100,step=5,unit='%'){
@@ -3412,6 +3412,8 @@ function viewLock(){
 // Installed games are shared. Switching restarts Hearth (and Steam, as that profile's account).
 const PROF = {s:null, switching:null};
 const PROF_COLORS = ['#ff8a3d','#3fd0b8','#5aa9ff','#b57bff','#ffd166','#e5483b','#7ad15a'];
+// Profiles: Hearth (Linux) has them; Ember (Windows) since 0.0.26.
+function hasProfiles(){ return LINUX || (HOSTINFO.features||[]).includes('profiles'); }
 function loadProfiles(){ return call('profiles.get').then(r=>{ PROF.s=r; refreshUI(); return r; }).catch(()=>null); }
 const profName = p => (p.current ? PROFILE.name : null) || p.name || 'Player';
 function profTile(p, k){

@@ -48,6 +48,27 @@ public sealed class GameMonitor : IDisposable
         _timer.Change(PollEvery, PollEvery);
     }
 
+    /// <summary>Quick Resume: stops watching the running game without counting it as ended. Returns what was
+    /// watched (id, folders, when it started), or null if nothing was running.</summary>
+    public (string Id, string[] Dirs, DateTime Started)? Detach()
+    {
+        lock (_lock)
+        {
+            if (_id is null || _startedAt is null) return null;
+            var r = (_id, _dirs, _startedAt.Value);
+            _id = null; _startedAt = null;
+            _timer.Change(Timeout.Infinite, Timeout.Infinite);
+            return r;
+        }
+    }
+
+    /// <summary>Quick Resume: watches a game that's already running again (it was put aside), counting from now.</summary>
+    public void Resume(string id, string[] dirs)
+    {
+        lock (_lock) { _id = id; _dirs = dirs; _launchedAt = DateTime.UtcNow; _startedAt = DateTime.UtcNow; _misses = 0; }
+        _timer.Change(PollEvery, PollEvery);
+    }
+
     private void Poll()
     {
         string? id; string[] dirs; DateTime? started; DateTime launched;
@@ -103,6 +124,53 @@ public sealed class GameMonitor : IDisposable
             catch { allGone = false; } // e.g. the game runs as administrator
         }
         return allGone;
+    }
+
+    /// <summary>Process ids of a game's processes (any exe under its folders).</summary>
+    public static List<int> ProcessIds(string[] dirs) { var l = new List<int>(); foreach (var p in MatchingProcesses(dirs)) { l.Add(p.Id); p.Dispose(); } return l; }
+
+    // Quick Resume: the whole game frozen (no processor or graphics use) and carried on later.
+    private const uint PROCESS_SUSPEND_RESUME = 0x0800;
+    [DllImport("ntdll.dll")] private static extern int NtSuspendProcess(IntPtr h);
+    [DllImport("ntdll.dll")] private static extern int NtResumeProcess(IntPtr h);
+    /// <summary>Freezes (or unfreezes) every process of the game. Returns how many it could.</summary>
+    public static int Suspend(string[] dirs, bool freeze)
+    {
+        int n = 0;
+        foreach (var pid in ProcessIds(dirs))
+        {
+            var h = OpenProcess(PROCESS_SUSPEND_RESUME, false, pid);
+            if (h == IntPtr.Zero) continue;   // e.g. running as administrator
+            try { if ((freeze ? NtSuspendProcess(h) : NtResumeProcess(h)) == 0) n++; } finally { CloseHandle(h); }
+        }
+        return n;
+    }
+
+    /// <summary>Closes a game that's frozen: it runs again for a moment so it can close properly.</summary>
+    public static async Task<bool> CloseDirsAsync(string[] dirs)
+    {
+        Suspend(dirs, false);
+        foreach (var p in MatchingProcesses(dirs)) { try { p.CloseMainWindow(); } catch { } p.Dispose(); }
+        for (int i = 0; i < 12 && MatchingProcesses(dirs).Any(); i++) await Task.Delay(500);
+        bool allGone = true;
+        foreach (var p in MatchingProcesses(dirs)) { try { p.Kill(entireProcessTree: true); } catch { allGone = false; } p.Dispose(); }
+        return allGone;
+    }
+
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr h);
+    /// <summary>Puts the game's window in front (after it's carried on).</summary>
+    public static void FocusWindow(string[] dirs)
+    {
+        foreach (var p in MatchingProcesses(dirs))
+        {
+            var h = p.MainWindowHandle; p.Dispose();
+            if (h == IntPtr.Zero) continue;
+            if (IsIconic(h)) ShowWindow(h, 9);   // SW_RESTORE
+            SetForegroundWindow(h);
+            return;
+        }
     }
 
     private static IEnumerable<Process> MatchingProcesses(string[] dirs)

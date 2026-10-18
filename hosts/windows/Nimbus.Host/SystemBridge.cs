@@ -15,6 +15,13 @@ public sealed class SystemBridge : IDisposable
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly Control _ui;
+    /// <summary>Who's playing: their own sign-ins, favorites and play time; parental controls.</summary>
+    public Profiles Profiles { get; } = new(Stores.HelperTools.DataDir);
+    private static readonly bool Picked = ConsumePicked();
+    private static bool ConsumePicked() { try { if (File.Exists(Profiles.PickedFile)) { File.Delete(Profiles.PickedFile); return true; } } catch { } return false; }
+    private DateTime? _playSince;
+    private bool _playWarned;
+    private readonly System.Windows.Forms.Timer _parentalTimer = new() { Interval = 20000 };
     private readonly Action<string> _postJson;
     private readonly RadioService _radios = new();
     private readonly WifiService _wifi = new();
@@ -69,13 +76,20 @@ public sealed class SystemBridge : IDisposable
             if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => { _accountsDebounce.Stop(); _accountsDebounce.Start(); }));
         };
         Games.InstallFinished += (id, title, error) => Event("install.done", new { id, title, error });
+        _parentalTimer.Tick += (_, _) => ParentalTick();
 
-        Games.GameStarted += id => { Log($"game started {id}"); Event("game.started", new { id }); };
+        Games.GameStarted += id => { Log($"game started {id}"); Event("game.started", new { id }); StartPlayClock(); };
+        Games.QuickChanged += msg =>
+        {
+            Event("quickResume", Games.QuickState());
+            if (msg is not null) Event("osd", new { kind = "msg", icon = "clock", text = msg, ms = 5000 });
+        };
         Games.GameStartTimedOut += id => { Log($"game start timed out {id}"); Event("game.timeout", new { id }); };
         Games.GameExited += g =>
         {
             Log($"game exited {g.Id}");
             Event("game.exited", g);
+            StopPlayClock();
             if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)BringShellToFront);
         };
     }
@@ -163,6 +177,55 @@ public sealed class SystemBridge : IDisposable
     }
 
     /// <summary>Events go to the main UI and every other page (the overlay).</summary>
+    // ---------------------------------------------------------------- parental controls: play time a day
+    private double SessionMinutes => _playSince is { } t ? (DateTime.UtcNow - t).TotalMinutes : 0;
+    private void StartPlayClock()
+    {
+        if (_ui.IsDisposed) return;
+        _ui.BeginInvoke((MethodInvoker)(() =>
+        {
+            _playSince = DateTime.UtcNow; _playWarned = false;
+            if (Profiles.Restricted(Profiles.Active)) { _parentalTimer.Start(); ParentalTick(); }
+        }));
+    }
+    private void StopPlayClock()
+    {
+        if (_ui.IsDisposed) return;
+        _ui.BeginInvoke((MethodInvoker)(() =>
+        {
+            _parentalTimer.Stop();
+            if (_playSince is not null) Profiles.AddPlayed(Profiles.Active, SessionMinutes);
+            _playSince = null;
+        }));
+    }
+    private async void ParentalTick()
+    {
+        var (ok, _, left) = Profiles.CanPlay(Games.RunningId, SessionMinutes);
+        if (left is null) return;
+        if (!ok)
+        {
+            Log("parental: time is up");
+            _parentalTimer.Stop();
+            Event("parental.timeup", new { });
+            Event("osd", new { kind = "msg", icon = "clock", text = "Play time's up for today. The game is closing.", ms = 6000 });
+            await Task.Delay(5000);
+            await Games.CloseRunningAsync();
+        }
+        else if (left <= 5 && !_playWarned)
+        {
+            _playWarned = true;
+            Event("osd", new { kind = "msg", icon = "clock", text = $"{left} minute{(left == 1 ? "" : "s")} of play time left today. Time to find a save point!", ms = 7000 });
+        }
+    }
+    private void CheckCanPlay(string id)
+    {
+        var (ok, reason, _) = Profiles.CanPlay(id, SessionMinutes);
+        if (!ok) throw new InvalidOperationException(reason ?? "Not now");
+    }
+
+    /// <summary>Gets Ember out of the way so the game picked from Quick Resume is in front.</summary>
+    private void MinimizeShell() { if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => _ui.WindowState = FormWindowState.Minimized)); }
+
     public void Event(string name, object data)
     {
         var json = JsonSerializer.Serialize(new { type = "event", name, data }, Json);
@@ -196,7 +259,7 @@ public sealed class SystemBridge : IDisposable
                     host = "Ember (WebView2)",
                     version = typeof(SystemBridge).Assembly.GetName().Version?.ToString(3),
                     session = Program.IsShell,
-                    features = new[] { "desktopMode", "mantel" },
+                    features = new[] { "desktopMode", "mantel", "quickResume", "profiles" },
                     user = Environment.UserName,
                 };
             case "system.info": return SystemInfo.Get();
@@ -280,7 +343,76 @@ public sealed class SystemBridge : IDisposable
                 return await Games.AddManualAsync(dlg.FileName);
             }
             case "library.remove": await Games.RemoveManualAsync(Req(a, "id")); return null;
-            case "game.launch": return new { tracked = await Games.LaunchAsync(Req(a, "id")) };
+            case "game.launch":
+            {
+                CheckCanPlay(Req(a, "id"));
+                var tracked = await Games.LaunchAsync(Req(a, "id"));
+                Event("quickResume", Games.QuickState());
+                return new { tracked };
+            }
+            // Quick Resume: games put aside stay frozen and carry on where they were
+            case "game.quickResume":
+                CheckCanPlay(Req(a, "id"));
+                await Games.QuickResumeAsync(Req(a, "id"));
+                MinimizeShell();
+                Event("quickResume", Games.QuickState());
+                return Games.QuickState();
+            case "game.putAside":
+                await Games.PutAsideAsync();
+                if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)BringShellToFront);
+                Event("quickResume", Games.QuickState());
+                return Games.QuickState();
+            case "game.quickClose":
+                await Games.QuickCloseAsync(Req(a, "id"));
+                Event("quickResume", Games.QuickState());
+                return new { state = Games.QuickState() };
+            case "quickResume.set": Games.QuickResumeOn = !(a.TryGetProperty("on", out var qo) && qo.ValueKind == JsonValueKind.False); return Games.QuickState();
+            // Profiles: who's playing (switching restarts Ember with their files and Steam account)
+            case "profiles.get": return Profiles.Info(Picked);
+            case "profiles.create": return Profiles.Create(Str(a, "name") ?? "", Str(a, "color"));
+            case "profiles.update":
+                return Profiles.Update(Req(a, "id"), Str(a, "name"), Str(a, "color"), Str(a, "steam"), a.TryGetProperty("steam", out _));
+            case "profiles.remove": Profiles.Remove(Req(a, "id")); return null;
+            case "profiles.setAsk": Profiles.SetAsk(Bool(a, "on")); return null;
+            case "profiles.unlock": return Profiles.Unlock(Str(a, "pin") ?? "");
+            case "profiles.setPin": Profiles.SetPin(Str(a, "pin") ?? ""); return Profiles.Info(Picked);
+            case "profiles.setLimits": return Profiles.SetLimits(Req(a, "id"), a);
+            case "profiles.switch":
+            {
+                var id = Req(a, "id");
+                if (Games.RunningId is not null) throw new InvalidOperationException("Close the game first");
+                Event("profiles.switching", new { name = Profiles.NameOf(id) });
+                await Task.Run(() => Profiles.SwitchTo(id, false));
+                if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => (_ui as ShellForm)?.RestartForProfile()));
+                return true;
+            }
+            case "profiles.addSteam":
+            {
+                var id = Req(a, "id");
+                Profiles.NeedPin();
+                var before = Profiles.SteamAccounts().Select(x => x.account.ToLowerInvariant()).ToHashSet();
+                await Task.Run(() => { Profiles.StopSteam(); Profiles.SetSteamAccount(""); });
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("steam://open/main") { UseShellExecute = true });
+                if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => _ui.FindForm()!.WindowState = FormWindowState.Minimized));
+                // The account that signs in (within 10 minutes) is linked to the profile.
+                _ = Task.Run(async () =>
+                {
+                    for (int i = 0; i < 300; i++)
+                    {
+                        await Task.Delay(2000);
+                        var now = Profiles.SteamAccounts().Select(x => x.account).FirstOrDefault(x => x.Length > 0 && !before.Contains(x.ToLowerInvariant()));
+                        if (now is null) continue;
+                        try { Profiles.Update(id, null, null, now, true); } catch { }
+                        Log($"profiles: linked Steam account {now}");
+                        Event("profiles.changed", new { });
+                        if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)BringShellToFront);
+                        return;
+                    }
+                });
+                return true;
+            }
+            // Turned off with the games kept: Windows' hibernation, when it's turned on.
+            case "power.hibernateStatus": return Hibernation.Status();
             case "game.install": await Games.InstallAsync(Req(a, "id")); return null;
             case "library.downloads": return await Games.DownloadsAsync();
             case "library.setSteamBackground": await Games.SetSteamBackgroundAsync(Bool(a, "on")); return null;
@@ -354,6 +486,7 @@ public sealed class SystemBridge : IDisposable
                     battery = _power.Battery(),
                     runningId = Games.RunningId,
                     runningSince = since is { } t ? new DateTimeOffset(DateTime.SpecifyKind(t, DateTimeKind.Utc)).ToUnixTimeMilliseconds() : (long?)null,
+                    quickResume = Games.QuickState(),
                 };
             }
 

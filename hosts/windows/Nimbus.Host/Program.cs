@@ -46,6 +46,8 @@ internal static class Program
 
     /// <summary>Exit code the UI uses when it leaves on purpose (sign out, return to desktop).</summary>
     public const int CleanExit = 0;
+    /// <summary>Exit code for "start me again now" (after switching profiles).</summary>
+    public const int RestartExitCode = 76;
 
     private static int Watchdog()
     {
@@ -67,6 +69,7 @@ internal static class Program
             }
 
             if (code == CleanExit) return 0;
+            if (code == RestartExitCode) continue;   // switched profiles: start again straight away
             if (code == Updates.UpdateService.UpdateExitCode) return 0; // the update script starts the new version
 
             SystemBridge.Log($"watchdog: Nimbus exited with code {code}");
