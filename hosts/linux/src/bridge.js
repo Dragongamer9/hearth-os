@@ -63,6 +63,17 @@ class Bridge {
     this.statusTimer = setInterval(() => this.pushStatus(), 30000);
   }
 
+  /** First-start setup: only on Hearth, the OS, and only for a fresh install. An install that was already
+   *  in use before setup existed (games played, accounts, the import offer) counts as set up. */
+  setupDone() {
+    const d = this.library.store.data;
+    if (d.setupDone) return true;
+    if (!this.admin.canAdmin) return true;
+    const used = Object.keys(d.stats || {}).length > 0 || (d.manual || []).length > 0 || !!d.importOffered || !!d.profile;
+    if (used) { this.library.store.update(x => { x.setupDone = Date.now(); }); return true; }
+    return false;
+  }
+
   event(name, data) { this.post({ type: 'event', name, data }); }
   async pushStatus() { try { this.event('status', await this.status()); } catch { /* best effort */ } }
 
@@ -82,7 +93,8 @@ class Bridge {
     const req = k => { if (typeof a[k] !== 'string' || !a[k]) throw new Error(`Missing '${k}'`); return a[k]; };
     const L = this.library;
     switch (method) {
-      case 'host.info': return this.platform.info();
+      case 'host.info': return { ...this.platform.info(), setupDone: this.setupDone() };
+      case 'setup.done': this.library.store.update(d => { d.setupDone = Date.now(); }); return { ok: true };
       case 'sys.status': return this.status();
       case 'system.info': return sysinfo.info();
       case 'app.restart': return this.platform.restartApp ? this.platform.restartApp() : null;
