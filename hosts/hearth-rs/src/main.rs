@@ -28,6 +28,56 @@ const SHIM: &str = r#"
 
 struct Host(Arc<Mutex<Bridge>>);
 
+/// Where a sign-in window's answer goes (one sign-in at a time): the code, or None when it was closed.
+static SIGNIN: Mutex<Option<std::sync::mpsc::Sender<Option<String>>>> = Mutex::new(None);
+fn signin_answer(v: Option<String>) { if let Some(tx) = SIGNIN.lock().unwrap().take() { let _ = tx.send(v); } }
+
+/// Xbox Cloud Gaming serves its best quality to Edge on Windows, so the stream window says it is one.
+const EDGE_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0";
+
+/// A store's sign-in page in its own window. Blocks until it ends with a code, or is closed.
+fn sign_in(app: &tauri::AppHandle, page: &hearth_core::stores::SignIn) -> Option<String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    signin_answer(None);   // a sign-in window left over from before: that one's done
+    *SIGNIN.lock().unwrap() = Some(tx);
+    if let Some(old) = app.get_webview_window("signin") { let _ = old.destroy(); }
+    let done = page.done;
+    let mut b = WebviewWindowBuilder::new(app, "signin", WebviewUrl::External(page.url.parse().ok()?))
+        .title(page.title)
+        .inner_size(900.0, 760.0)
+        .center()
+        .incognito(true)
+        .on_navigation(move |url| match done(url.as_str()) { Some(code) => { signin_answer(Some(code)); false } None => true });
+    if let Some(js) = page.script { b = b.initialization_script(js); }
+    let w = match b.build() { Ok(w) => w, Err(e) => { hearth_core::bridge::log(&format!("sign-in window: {e}")); return None; } };
+    w.on_window_event(|e| if let tauri::WindowEvent::Destroyed = e { signin_answer(None); });
+    let answer = rx.recv().ok().flatten();
+    let _ = w.destroy();
+    answer
+}
+
+/// Xbox Cloud Gaming in a full-screen window (its own sign-in kept between games), or closes it.
+fn stream(app: &tauri::AppHandle, open: Option<(&str, &str)>, windowed: bool) {
+    let old = app.get_webview_window("stream");
+    let Some((url, title)) = open else { if let Some(w) = old { let _ = w.destroy(); } return };
+    if let Some(w) = old { if let Ok(u) = url.parse() { let _ = w.navigate(u); } let _ = w.set_focus(); return; }
+    let Ok(u) = url.parse() else { return };
+    let r = WebviewWindowBuilder::new(app, "stream", WebviewUrl::External(u))
+        .title(title)
+        .fullscreen(!windowed)
+        .inner_size(1280.0, 800.0)
+        .user_agent(EDGE_UA)
+        .data_directory(hearth_core::paths::data_dir().join("xcloud-web"))
+        .background_color(tauri::window::Color(0, 0, 0, 255))
+        .build();
+    match r {
+        Ok(w) => w.on_window_event(|e| if let tauri::WindowEvent::Destroyed = e {
+            hearth_core::stores::notify(serde_json::json!({"type": "internal", "what": "streamClosed"}));
+        }),
+        Err(e) => hearth_core::bridge::log(&format!("stream window: {e}")),
+    }
+}
+
 /// A message from the page: handled off the window's thread (scanning the library can take a moment).
 #[tauri::command]
 async fn nimbus_msg(app: tauri::AppHandle, host: tauri::State<'_, Host>, msg: serde_json::Value) -> Result<(), String> {
@@ -100,6 +150,11 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Host(Arc::new(Mutex::new(Bridge::new(env!("CARGO_PKG_VERSION"))))))
         .register_uri_scheme_protocol("nimbus-art", |_ctx, req| art(&req.uri().to_string()))
+        // Epic's sign-in page hands its code over as hearth-signin://done?code=… (if the window lets it through).
+        .register_uri_scheme_protocol("hearth-signin", |_ctx, req| {
+            signin_answer(hearth_core::http::query_param(&req.uri().to_string(), "code"));
+            Response::builder().status(StatusCode::OK).body(Vec::new()).unwrap()
+        })
         .invoke_handler(tauri::generate_handler![nimbus_msg])
         .setup(move |app| {
             // The top bar's battery, Wi-Fi and volume, refreshed every 30 seconds (the UI asks too, after changes).
@@ -109,8 +164,22 @@ fn main() {
             {
                 let h = handle.clone();
                 let picker = handle.clone();
+                let folder = handle.clone();
+                let signer = handle.clone();
+                let streamer = handle.clone();
+                let br = bridge.clone();
                 if let Ok(mut b) = bridge.lock() {
-                    b.emit = Arc::new(move |v| {
+                    let emit: hearth_core::system::bt_scan::Emit = Arc::new(move |v| {
+                        // The host's background work (a download finished, a store list came in): handled by the
+                        // bridge on its own thread, since whoever sent it may be holding the bridge right now.
+                        if v["type"] == "internal" {
+                            let (br, h) = (br.clone(), h.clone());
+                            std::thread::spawn(move || {
+                                let out = match br.lock() { Ok(mut b) => b.internal(&v), Err(p) => p.into_inner().internal(&v) };
+                                for e in out { let _ = h.emit("nimbus:msg", e); }
+                            });
+                            return;
+                        }
                         // The host asks for a restart (after restoring a backup): Hearth reads everything at start.
                         if v["type"] == "restart" {
                             let h2 = h.clone();
@@ -119,6 +188,15 @@ fn main() {
                         }
                         let _ = h.emit("nimbus:msg", v);
                     });
+                    hearth_core::stores::set_notify(emit.clone());
+                    b.emit = emit;
+                    b.pick_folder = Arc::new(move |title: &str, start: &str| {
+                        folder.dialog().file().set_title(title).set_directory(start).blocking_pick_folder().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().to_string())
+                    });
+                    b.sign_in = Arc::new(move |page| sign_in(&signer, page));
+                    b.stream = Arc::new(move |open| stream(&streamer, open, windowed));
+                    // Store game lists older than 12 hours are fetched again, in the background.
+                    hearth_core::stores::refresh_stale(&b.library.accounts);
                     b.pick_file = Arc::new(move |title: &str| {
                         picker.dialog().file().set_title(title).blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().to_string())
                     });
