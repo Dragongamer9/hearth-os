@@ -282,6 +282,11 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .setup .mark svg{width:100%;height:100%;display:block}
 .setup .acts{display:flex;gap:12px;align-items:center;margin-top:22px}
 .setup .center{text-align:center}
+.padpic{width:120px;height:120px;margin:0 auto 18px;border-radius:32px;display:grid;place-items:center;background:var(--panel2);color:var(--dim);animation:padpulse 1.6s ease-in-out infinite}
+.padpic svg{width:72px;height:72px}
+.padpic.on{background:var(--accent);color:var(--accentInk);animation:none}
+@keyframes padpulse{50%{transform:scale(1.06);opacity:.75}}
+.padwait{display:flex;gap:10px;align-items:center;justify-content:center;margin:6px 0 4px}
 .setup .center .lead{margin-left:auto;margin-right:auto}
 .setup .center .acts{justify-content:center}
 .lbox{position:relative;text-align:center}
@@ -664,7 +669,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(LINUX&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); if(i.openInstaller) osiOpen(); else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(LINUX&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -2164,7 +2169,7 @@ function viewSettings(){
     <div class="rows">${body}</div></div>`;
 }
 
-const VIEWS = {profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
+const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 function render(focusKey, quiet){
@@ -2601,6 +2606,13 @@ function act(el){
     case 'swRestart': return swRestart();
     case 'setupNext': return SETUP_STEPS[S.setupStep||0]==='done' ? setupFinish() : setupGo(1);
     case 'setupSkip': return setupFinish();
+    case 'setupNoPad': S.noPad=true; watchPad(false); return setupGo(1);
+    case 'padDone': return padFinish(false);
+    case 'padSkip': return padFinish(true);
+    case 'padBt': S.settingsTab='bluetooth'; navigate('settings',{focusKey:'st-bluetooth'}); return onSettingsTab('bluetooth');
+    case 'osiOpen': return osiOpen();
+    case 'liveMantel': return call('osinstall.useMantel').then(()=>send({type:'power', action:'desktop'})).catch(e=>toast(e.message));
+    case 'liveTry': S.history=[]; navigate('home',{},false); return toast('Install Hearth OS is in Settings whenever you\'re ready');
     case 'osiNext': return osiGo(1);
     case 'osiBack': return osiGo(-1);
     case 'osiMode': if(el.disabled) return; OSI.mode=d.v; OSI.disk=null; OSI.check=null; return render('osi-'+d.v);
@@ -2980,7 +2992,56 @@ async function loadAccounts(fromEvent){
 // ---------- First start (Hearth OS): Wi-Fi, store accounts, the controller, your games ----------
 // Shown once on a fresh install, instead of dropping straight into the library. Skippable at every step;
 // everything here is also in Settings later.
-const SETUP_STEPS=['welcome','wifi','accounts','controls','games','done'];
+const SETUP_STEPS=['controller','welcome','wifi','accounts','controls','games','done'];
+// ---------- "Connect a controller": the first screen on the live USB and at first start ----------
+// Waits for a controller (USB, Bluetooth or the device's own), with Skip for a keyboard or mouse.
+function padState(){
+  const pads=(navigator.getGamepads?[...navigator.getGamepads()]:[]).filter(p=>p&&p.connected!==false);
+  if(pads.length) return {on:true, name:pads[0].id.split('(')[0].replace(/\s+/g,' ').trim()||'Controller'};
+  if(PAD.host) return {on:true, name:'Controller'};
+  return {on:false, name:''};
+}
+let padWatch=null, padWas=null;
+function watchPad(on){
+  clearInterval(padWatch); padWatch=null; padWas=null;
+  if(!on) return;
+  padWatch=setInterval(()=>{
+    const waiting = S.view==='pad' || (S.view==='setup' && SETUP_STEPS[S.setupStep||0]==='controller');
+    if(!waiting){ clearInterval(padWatch); padWatch=null; return; }
+    const st=padState(); if(padWas===st.on) return;
+    const first=padWas===null; padWas=st.on;
+    if(!first){ if(st.on) blip(880,.06,.05); render(st.on?'pad-go':'pad-skip', true); }
+  }, 600);
+}
+function padBody(go, skip, extra=''){
+  const st=padState();
+  return `<div class="center"><div class="padpic ${st.on?'on':''}">${I.pad}</div>
+    <h1>${st.on?'Controller connected':'Connect a controller'}</h1>
+    <p class="lead">${st.on?`${esc(st.name)} is ready. Press <b>A</b> to carry on.`:`Turn on your controller or plug it in. For a Bluetooth controller, hold its pairing button, then choose Pair a Bluetooth controller.`}</p>
+    ${st.on?'':`<div class="muted padwait"><span class="mini-spin"></span>Waiting for a controller…</div>`}
+    <div class="acts">${st.on?`<button class="play" data-f data-k="pad-go" data-act="${go}">Continue</button>`:''}
+      ${st.on?'':`<button class="pill" data-f data-k="pad-bt" data-act="padBt">${I.bt}Pair a Bluetooth controller</button>`}
+      <button class="pill ghost" data-f data-k="pad-skip" data-act="${skip}">${st.on?'Use a keyboard and mouse instead':'Skip: I\'ll use a keyboard and mouse'}</button></div>${extra}</div>`;
+}
+function viewPad(){ watchPad(true); return `<div class="setup" style="max-width:760px;margin:12vh auto 0;padding:0 24px">${padBody('padDone','padSkip')}</div>`; }
+function padFinish(noPad){
+  S.noPad=!!noPad;
+  try{ localStorage.setItem('hearth.padAsked','1'); }catch(e){}
+  watchPad(false);
+  if(S.padFor==='live') return navigate('live',{},false);
+  S.history=[]; navigate('home',{},false);
+}
+// ---------- the live USB's welcome (after the controller), in the Hearth app ----------
+function viewLive(){
+  const row=(k,ic,t,sub,act,extra='')=>`<button class="row" data-f data-k="${k}" data-act="${act}" ${extra}><span class="ricon">${I[ic]||I.info}</span><div class="rt"><b>${t}</b><small>${sub}</small></div><div class="rv">›</div></button>`;
+  const hearth=row('lv-hearth','dl','Install Hearth OS','With the controller: big and simple. Next to Windows or another Linux like SteamOS, or on a whole drive','osiOpen');
+  const mantel=row('lv-mantel','shell','Install with a mouse and keyboard','In a window on Mantel, the desktop'+(S.noPad?' (recommended without a controller)':''),'liveMantel');
+  return `<div class="setup" style="max-width:760px;margin:8vh auto 0;padding:0 24px"><div class="center"><div class="mark">${HEARTH_MARK}</div></div>
+    <h1>Welcome to Hearth OS</h1><p class="lead">You're running Hearth from the USB stick. Nothing on this PC changes until you install.</p>
+    <div class="rows">${S.noPad?mantel+hearth:hearth+mantel}
+      ${row('lv-wifi','wifi','Connect to Wi-Fi','Hearth OS is downloaded while it installs, so connect first','goset','data-tab="wifi"')}
+      ${row('lv-try','play','Try Hearth first','Install Hearth OS is in Settings whenever you\'re ready','liveTry')}</div></div>`;
+}
 function setupGo(d){
   const i=Math.max(0, Math.min(SETUP_STEPS.length-1, (S.setupStep||0)+d));
   S.setupStep=i; const st=SETUP_STEPS[i];
@@ -3001,7 +3062,8 @@ function viewSetup(){
   const next=(label='Next', k='setup-next')=>`<button class="play" data-f data-k="${k}" data-act="setupNext">${label}</button>`;
   const skip=`<button class="pill ghost" data-f data-k="setup-skip" data-act="setupSkip">Skip setup</button>`;
   let body='';
-  if(st==='welcome') body=`<div class="center"><div class="mark">${HEARTH_MARK}</div>
+  if(st==='controller'){ watchPad(true); body=padBody('setupNext','setupNoPad'); }
+  else if(st==='welcome') body=`<div class="center"><div class="mark">${HEARTH_MARK}</div>
       <h1>Welcome to ${APP}</h1><p class="lead">Let's get you online, sign in to your game stores and bring your games over. It takes a couple of minutes, and you can skip anything.</p>
       <div class="acts">${next('Let\'s go')}${skip}</div></div>`;
   else if(st==='wifi') body=`<h1>Connect to the internet</h1><p class="lead">Store sign-ins, downloads and updates need it.</p><div class="rows" style="max-height:50vh;overflow:auto">${pageWifi()}</div><div class="acts">${next(S.sys.wifi&&S.sys.wifi.ssid?'Next':'Skip for now')}</div>`;
