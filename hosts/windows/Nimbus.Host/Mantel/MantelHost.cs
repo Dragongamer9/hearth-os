@@ -108,8 +108,8 @@ public sealed class MantelHost : IDisposable
         HidePanels();
         if (_bar is not null) { _bar.RemoveAppBar(); _bar.Hide(); }
         if (Full) { _full.Stop(); _tray.Stop(); _desk?.Hide(); MantelWindow.OwnTray = false; }
-        _settings?.Hide();
         else RestoreWindowsTaskbar();
+        _settings?.Hide();
         Full = false;
     }
 
