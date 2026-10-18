@@ -1,0 +1,212 @@
+//! Game Mode: talking to gamescope through X11 root-window properties, the way Steam does (port of
+//! hosts/linux/src/gamescope.js), plus the frame-rate limit, the performance overlay (mangoapp) and screenshots.
+//!   GAMESCOPE_FOCUSABLE_WINDOWS     what can be shown: (window, app id, pid) triples, set by gamescope
+//!   GAMESCOPE_FOCUSED_WINDOW        what's in front now, set by gamescope
+//!   GAMESCOPECTRL_BASELAYER_WINDOW  which window to put in front, set by us (removed = gamescope decides)
+//!   GAMESCOPECTRL_BASELAYER_APPID   same by Steam app id (games Steam starts carry their app id)
+//!   GAMESCOPE_FPS_LIMIT             frame-rate limit, 0 = none
+//! Needs xprop; everything here is best effort.
+
+use serde_json::{json, Value};
+use std::time::{Duration, Instant};
+
+pub fn in_session() -> bool { std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false) }
+pub fn available() -> bool { crate::system::has("xprop") && std::env::var_os("DISPLAY").is_some() }
+/// Running inside gamescope (Game Mode).
+pub fn inside() -> bool { std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some() && available() }
+
+fn xprop(args: &[&str]) -> String { crate::system::run_timeout("xprop", args, Duration::from_secs(3)).unwrap_or_default() }
+
+/// Numbers in a CARDINAL/WINDOW property of the root window (or of a window).
+pub fn parse_cardinals(out: &str) -> Vec<u64> {
+    let Some(i) = out.find('=') else { return vec![] };
+    out[i + 1..].lines().next().unwrap_or("").split(',').filter_map(|s| {
+        let s = s.trim();
+        if let Some(h) = s.strip_prefix("0x") { u64::from_str_radix(h, 16).ok() } else { s.parse().ok() }
+    }).collect()
+}
+pub fn cardinals(name: &str, win: Option<u64>) -> Vec<u64> {
+    let id = win.map(|w| w.to_string());
+    parse_cardinals(&match &id { Some(w) => xprop(&["-id", w, name]), None => xprop(&["-root", name]) })
+}
+fn str_prop(win: u64, name: &str) -> String {
+    let out = xprop(&["-id", &win.to_string(), name]);
+    out.split_once("= \"").map(|(_, r)| r.trim_end().trim_end_matches('"').to_string()).unwrap_or_default()
+}
+pub fn set_root(name: &str, v: u64) -> Result<(), String> { crate::system::run_timeout("xprop", &["-root", "-f", name, "32c", "-set", name, &v.to_string()], Duration::from_secs(3)).map(|_| ()) }
+pub fn remove_root(name: &str) { let _ = crate::system::run_timeout("xprop", &["-root", "-remove", name], Duration::from_secs(3)); }
+pub fn set_window(win: u64, name: &str, v: u64) -> Result<(), String> {
+    crate::system::run_timeout("xprop", &["-id", &win.to_string(), "-f", name, "32c", "-set", name, &v.to_string()], Duration::from_secs(3)).map(|_| ())
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Win { pub win: u64, pub appid: u64, pub pid: u64, pub title: String, pub w: u32, pub h: u32 }
+
+pub fn focusable_windows() -> Vec<Win> {
+    cardinals("GAMESCOPE_FOCUSABLE_WINDOWS", None).chunks(3).filter(|c| c.len() == 3)
+        .map(|c| Win { win: c[0], appid: c[1], pid: c[2], title: String::new(), w: 0, h: 0 }).collect()
+}
+pub fn focused() -> Option<u64> { cardinals("GAMESCOPE_FOCUSED_WINDOW", None).first().copied() }
+fn proc_name(pid: u64) -> String { std::fs::read_to_string(format!("/proc/{pid}/comm")).map(|s| s.trim().to_string()).unwrap_or_default() }
+
+/// "xwininfo -root -children" lines → top-level windows with a name: (win, title, w, h)
+pub fn parse_children(text: &str) -> Vec<(u64, String, u32, u32)> {
+    let re = regex::Regex::new(r#"(?i)^\s*(0x[0-9a-f]+)\s+"(.*)":\s.*?\s(\d+)x(\d+)[+-]"#).unwrap();
+    text.lines().filter_map(|l| {
+        let c = re.captures(l)?;
+        let title = c[2].to_string();
+        if title.is_empty() || title == "has no name" { return None; }
+        Some((u64::from_str_radix(&c[1][2..], 16).ok()?, title, c[3].parse().ok()?, c[4].parse().ok()?))
+    }).collect()
+}
+/// Top-level windows you can see, with their process.
+pub fn mapped_windows() -> Vec<Win> {
+    if !crate::system::has("xwininfo") { return vec![]; }
+    let kids = parse_children(&crate::system::run_timeout("xwininfo", &["-root", "-children"], Duration::from_secs(3)).unwrap_or_default());
+    let mut out = Vec::new();
+    for (win, title, w, h) in kids.into_iter().filter(|k| k.2 >= 200 && k.3 >= 150).take(40) {
+        let st = crate::system::run_timeout("xwininfo", &["-id", &win.to_string()], Duration::from_secs(2)).unwrap_or_default();
+        if !st.contains("IsViewable") { continue; }
+        let pid = cardinals("_NET_WM_PID", Some(win)).first().copied().unwrap_or(0);
+        let appid = cardinals("STEAM_GAME", Some(win)).first().copied().unwrap_or(0);
+        out.push(Win { win, appid, pid, title, w, h });
+    }
+    out
+}
+/// A window by its exact title (Hearth's own windows: the main one and the overlay).
+pub fn window_named(title: &str) -> Option<u64> {
+    let out = crate::system::run_timeout("xwininfo", &["-name", title], Duration::from_secs(2)).ok()?;
+    let i = out.find("Window id: 0x")?;
+    let hex: String = out[i + 13..].chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+    u64::from_str_radix(&hex, 16).ok()
+}
+
+/// Open apps for the overlay: [{id, pid, appid, title, app, focused}], one per process.
+pub fn apps(exclude: &[u64]) -> Vec<Value> {
+    let f = focused();
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for w in focusable_windows().into_iter().chain(mapped_windows()) {
+        let key = if w.pid > 0 { format!("p{}", w.pid) } else { format!("w{}", w.win) };
+        if !seen.insert(key) || exclude.contains(&w.pid) || exclude.contains(&w.win) { continue; }
+        let mut title = w.title.clone();
+        if title.is_empty() { title = str_prop(w.win, "_NET_WM_NAME"); }
+        if title.is_empty() { title = str_prop(w.win, "WM_NAME"); }
+        let app = proc_name(w.pid);
+        if title.is_empty() { title = if app.is_empty() { "App".into() } else { app.clone() }; }
+        out.push(json!({"id": w.win, "pid": w.pid, "appid": w.appid, "title": title, "app": app, "focused": f == Some(w.win)}));
+    }
+    out
+}
+
+/// Puts one window in front. A Steam app id set earlier would win over it, so that goes first.
+pub fn focus_window(win: u64) { remove_root("GAMESCOPECTRL_BASELAYER_APPID"); let _ = set_root("GAMESCOPECTRL_BASELAYER_WINDOW", win); }
+pub fn focus_app_id(appid: u64) { let _ = set_root("GAMESCOPECTRL_BASELAYER_APPID", appid); }
+pub fn clear_focus() { remove_root("GAMESCOPECTRL_BASELAYER_WINDOW"); remove_root("GAMESCOPECTRL_BASELAYER_APPID"); }
+
+/// Brings a game to the front once its window exists (games take a while to open one): matching its processes
+/// or its Steam app id. `still` says whether this is still wanted. True when it found one.
+pub fn focus_game(pids: &dyn Fn() -> Vec<u32>, steam_app_id: u64, exclude: &[u64], still: &dyn Fn() -> bool) -> bool {
+    if !available() { return false; }
+    if steam_app_id > 0 { focus_app_id(steam_app_id); }
+    for _ in 0..20 {
+        if !still() { return false; }
+        let want: Vec<u64> = pids().into_iter().map(u64::from).collect();
+        let wins: Vec<Win> = focusable_windows().into_iter().filter(|w| !exclude.contains(&w.pid)).collect();
+        let hit = wins.iter().find(|w| want.contains(&w.pid)).or_else(|| if steam_app_id > 0 { wins.iter().find(|w| w.appid == steam_app_id) } else { None });
+        if let Some(h) = hit { if !still() { return false; } focus_window(h.win); crate::bridge::log(&format!("gamescope: game window {} in front", h.win)); return true; }
+        std::thread::sleep(Duration::from_millis(1500));
+    }
+    false
+}
+
+pub enum Ready { Window(u64), Dialog(u64, String) }
+
+/// Waits until a game (or its launcher) has a real window up while Hearth shows its "starting" screen: a window
+/// of the game's processes (or with its Steam app id), at least 640x360, seen twice in a row. A Steam window
+/// that stays up a few seconds while the game shows nothing may need you (a cloud-save question): Dialog.
+pub fn wait_for_window(pids: &dyn Fn() -> Vec<u32>, steam_app_id: u64, exclude: &[u64], timeout: Duration, cancelled: &dyn Fn() -> bool) -> Option<Ready> {
+    if !available() { return None; }
+    let start = Instant::now();
+    let mut last = 0;
+    let mut steam_seen: std::collections::HashMap<u64, Instant> = Default::default();
+    while start.elapsed() < timeout {
+        if cancelled() { return None; }
+        let want: Vec<u64> = pids().into_iter().map(u64::from).collect();
+        let wins: Vec<Win> = mapped_windows().into_iter().filter(|w| !exclude.contains(&w.pid)).collect();
+        let game = wins.iter().find(|w| (want.contains(&w.pid) || (steam_app_id > 0 && w.appid == steam_app_id)) && w.w >= 640 && w.h >= 360);
+        match game { Some(g) if g.win == last => return Some(Ready::Window(g.win)), Some(g) => last = g.win, None => last = 0 }
+        for w in &wins {
+            let name = proc_name(w.pid);
+            if (name == "steam" || name == "steamwebhelper") && w.w >= 480 && w.h >= 240 && !want.contains(&w.pid) {
+                let seen = *steam_seen.entry(w.win).or_insert_with(Instant::now);
+                if game.is_none() && seen.elapsed() > Duration::from_millis(3500) && start.elapsed() > Duration::from_secs(5) { return Some(Ready::Dialog(w.win, w.title.clone())); }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(700));
+    }
+    None
+}
+
+/// Frame-rate limit for games (gamescope's own limiter); 0 = none.
+pub fn set_fps_limit(fps: u64) -> Result<u64, String> {
+    let n = fps.min(240);
+    if !in_session() || !crate::system::has("xprop") { return Err("The frame-rate limit works in Game Mode.".into()); }
+    set_root("GAMESCOPE_FPS_LIMIT", n)?;
+    Ok(n)
+}
+pub fn can_fps_limit() -> bool { in_session() && crate::system::has("xprop") }
+
+// ------------------------------------------------------------------ performance overlay (mangoapp)
+// The session starts gamescope with --mangoapp and points MANGOHUD_CONFIGFILE at a file mangoapp watches:
+// writing a new layout there changes what's shown over the game at once.
+
+pub const PERF_PRESETS: [&str; 5] = [
+    "no_display",
+    "legacy_layout=false\nfps_only\nfont_size=20\nbackground_alpha=0.4\nposition=top-left\nhud_no_margin",
+    "legacy_layout=false\nhorizontal\nhud_compact\nfps\nframetime=0\ncpu_stats\ngpu_stats\nbattery\nfont_size=20\nbackground_alpha=0.4\nposition=top-center\ntable_columns=14",
+    "legacy_layout=false\nfps\nframe_timing=1\ncpu_stats\ncpu_temp\ngpu_stats\ngpu_temp\nram\nvram\nbattery\nbattery_time\nfont_size=20\nbackground_alpha=0.5\nposition=top-left",
+    "legacy_layout=false\nfps\nframe_timing=1\nframetime\ncpu_stats\ncpu_temp\ncpu_power\ncpu_mhz\ncore_load\ngpu_stats\ngpu_temp\ngpu_power\ngpu_core_clock\ngpu_mem_clock\nram\nvram\nswap\nbattery\nbattery_watt\nbattery_time\nfan\nresolution\nengine_version\nwine\ngamemode\nfont_size=18\nbackground_alpha=0.5\nposition=top-left",
+];
+fn perf_file() -> Option<String> { std::env::var("MANGOHUD_CONFIGFILE").ok().filter(|s| !s.is_empty()) }
+pub fn perf_overlay_supported() -> bool { perf_file().map(|f| std::path::Path::new(&f).exists()).unwrap_or(false) }
+pub fn set_perf_overlay(level: u64) -> Result<u64, String> {
+    let f = perf_file().ok_or("The performance overlay works in Game Mode.")?;
+    let n = level.min(PERF_PRESETS.len() as u64 - 1);
+    let tmp = format!("{f}.tmp");
+    std::fs::write(&tmp, format!("{}\n", PERF_PRESETS[n as usize])).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &f).map_err(|e| e.to_string())?;
+    Ok(n)
+}
+
+// ------------------------------------------------------------------ screenshots
+
+/// Saves a screenshot to Pictures/Screenshots/Hearth with whichever tool this desktop has. (The host gets
+/// Hearth's own windows out of the way first.)
+pub fn screenshot() -> Result<Value, String> {
+    let pics = crate::system::run("xdg-user-dir", &["PICTURES"]).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+        .unwrap_or_else(|| crate::paths::home().join("Pictures").to_string_lossy().to_string());
+    let dir = std::path::Path::new(&pics).join("Screenshots/Hearth");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let file = dir.join(format!("Screenshot {}.png", chrono::Local::now().format("%Y-%m-%d %H-%M-%S")));
+    let f = file.to_string_lossy().to_string();
+    let tries: [(&str, Vec<&str>); 4] = [("grim", vec![&f]), ("spectacle", vec!["-b", "-n", "-f", "-o", &f]), ("gnome-screenshot", vec!["-f", &f]), ("gamescopectl", vec!["screenshot", &f])];
+    for (cmd, args) in tries.iter() {
+        if !crate::system::has(cmd) { continue; }
+        if crate::system::run_timeout(cmd, args, Duration::from_secs(10)).is_err() { continue; }
+        if file.exists() { return Ok(json!({"file": f})); }
+    }
+    Err("No screenshot tool found. Install grim (Desktop Mode), Spectacle (KDE) or GNOME Screenshot.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn reads_xprop_and_xwininfo() {
+        assert_eq!(parse_cardinals("GAMESCOPE_FOCUSABLE_WINDOWS(CARDINAL) = 4194306, 769, 1234, 0x600001, 0, 99"), vec![4194306, 769, 1234, 0x600001, 0, 99]);
+        assert!(parse_cardinals("GAMESCOPE_FOCUSED_WINDOW:  not found.").is_empty());
+        let kids = parse_children("     0x400002 \"Hearth\": (\"hearth\" \"Hearth\")  1280x800+0+0  +0+0\n     0x400010 (has no name): ()  10x10+0+0  +0+0\n");
+        assert_eq!(kids, vec![(0x400002, "Hearth".to_string(), 1280, 800)]);
+    }
+}

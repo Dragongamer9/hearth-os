@@ -78,7 +78,7 @@ impl From<steam::SteamGame> for Game {
 /// A local picture goes to the UI through Hearth's own address (nimbus-art://file/<path>), so the page can
 /// show it without reading files itself; web pictures pass straight through.
 pub fn art_url(v: &str) -> String {
-    if v.starts_with("http://") || v.starts_with("https://") { return v.to_string(); }
+    if v.starts_with("http://") || v.starts_with("https://") { return crate::artcache::url(v); }
     let mut out = String::from("nimbus-art://file/");
     for b in v.bytes() {
         if b.is_ascii_alphanumeric() || b"-_.~/".contains(&b) { out.push(b as char); } else { out.push_str(&format!("%{b:02X}")); }
@@ -505,6 +505,6 @@ mod tests {
     #[test]
     fn local_pictures_get_hearths_address() {
         assert_eq!(art_url("/home/sam/a b/620p.png"), "nimbus-art://file//home/sam/a%20b/620p.png");
-        assert_eq!(art_url("https://cdn.x/1.jpg"), "https://cdn.x/1.jpg");
+        assert_eq!(art_url("https://cdn.x/1.jpg"), "https://cdn.x/1.jpg");   // until it's downloaded
     }
 }

@@ -30,6 +30,7 @@ pub fn newer(a: &str, b: &str) -> bool {
 /// Releases from before Hearth was renumbered to 0.0.x look newer than they are: never offered.
 fn legacy(tag: &str) -> bool { let t = tag.trim_start_matches('v'); t.starts_with("0.3.") || t.starts_with("0.4.") || t.starts_with("0.5.") }
 
+#[derive(Clone)]
 pub struct AppUpdates { pub state: Arc<Mutex<Value>>, current: String }
 
 impl AppUpdates {

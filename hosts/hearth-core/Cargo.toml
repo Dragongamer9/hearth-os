@@ -11,6 +11,7 @@ serde_json = "1"
 scrypt = { version = "0.11", default-features = false }
 getrandom = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+sha1_smol = "1"
 regex = "1"
 
 [dev-dependencies]

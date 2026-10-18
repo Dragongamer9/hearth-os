@@ -21,3 +21,20 @@ pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()>
     std::fs::write(&tmp, bytes)?;
     std::fs::rename(tmp, path)
 }
+
+/// Hearth's desktop files (the Desktop Mode shell, and helpers like hearth-buttons): shipped beside the app.
+pub fn desktop_dir() -> PathBuf {
+    if let Some(d) = std::env::var_os("HEARTH_DESKTOP_DIR") { return PathBuf::from(d); }
+    let exe = std::env::current_exe().unwrap_or_default();
+    let mut c: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = exe.parent() {
+        c.push(dir.join("desktop"));
+        c.push(dir.join("../share/hearth/desktop"));
+        c.push(dir.join("../lib/hearth/desktop"));
+        // Running from the source tree (target/release/hearth): the Linux host's folder.
+        for a in dir.ancestors() { c.push(a.join("hosts/linux/desktop")); }
+    }
+    c.push(PathBuf::from("/usr/lib/hearth/desktop"));
+    c.push(PathBuf::from("/usr/lib/nimbus/resources/desktop"));
+    c.into_iter().find(|p| p.join("shell").is_dir()).unwrap_or_else(|| PathBuf::from("/usr/lib/hearth/desktop"))
+}

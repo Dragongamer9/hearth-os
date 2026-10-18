@@ -251,6 +251,15 @@ pub mod audio {
         let v = v.min(max) as f64 / 100.0;
         run("wpctl", &["set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{v:.2}")]).map(|_| ())
     }
+    /// The volume buttons: 5% up or down (and un-muted going up). Returns {volume, muted}.
+    pub fn step(d: i32, max: u32) -> Result<Value, String> {
+        let (cur, muted) = volume().ok_or("No sound")?;
+        let v = (((cur as i32 + d * 5) as f64 / 5.0).round() as i32 * 5).clamp(0, max as i32) as u32;
+        set_volume(v, max)?;
+        if muted && d > 0 { set_mute(false)?; }
+        Ok(json!({"volume": v, "muted": muted && d <= 0}))
+    }
+    pub fn toggle_mute() -> Result<Value, String> { let (v, m) = volume().ok_or("No sound")?; set_mute(!m)?; Ok(json!({"volume": v, "muted": !m})) }
     /// Output devices from `wpctl status` (the Sinks list under Audio); the default one is marked with '*'.
     pub fn parse_devices(text: &str) -> Vec<Value> {
         let (mut in_audio, mut in_sinks) = (false, false);
