@@ -62,7 +62,20 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Profiles on Hearth: "Who's playing?", each person's own Steam account, Epic/GOG/Xbox sign-ins, favorites and play time; installed games shared
 - [x] Faster Game Mode ↔ Desktop switches
 - [x] Games with a launcher (press Play, the launcher closes, the game starts) come to the front
+- [x] Game pages: ProtonDB rating ("On Linux: Gold") and your Steam achievements
+- [x] Per-game frame-rate cap and power limit, for every game including Steam's
+- [x] Performance overlay levels in Quick Access (Off, FPS, Simple, Detailed, Everything)
+- [x] Pause a running game (frozen, no power used) from Quick Access
+- [x] Library collections and a Show filter
+- [x] Parental controls: PIN, play time a day, allowed games
+- [x] Remote play: stream to Moonlight (Sunshine set up from Settings), and Moonlight to play another PC here
+- [x] Backup and restore to a USB drive or this device
+- [x] Emulators: ROMs folder (EmuDeck folders too) with box art, played with RetroArch
+- [x] Themes and sound packs; the desktop wallpaper from Hearth's Appearance settings
+- [x] Epic cloud saves for games Hearth installs
 - [ ] Profiles on Ember (Windows)
+- [ ] GOG cloud saves (gogdl), more stores (itch.io, Amazon)
+- [ ] Steam friends (needs Steam's web API)
 
 ## 0.0.25
 
