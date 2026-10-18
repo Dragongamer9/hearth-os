@@ -57,6 +57,13 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Overlay doesn't flash black when opened over a fullscreen game
 - [x] Ember's full Mantel looks and works like Hearth OS's: floating taskbar, launcher, Quick Access, power menu, Hearth menu (Xbox button), controls card, volume bar, fireside wallpaper, Hearth's controller layout
 
+## 0.0.25 (released)
+
+- [x] Quick Resume, like Xbox: starting another game puts the one you're playing aside, frozen where you left it (up to 5); kept through Sleep and Hearth restarting, and through turning off where the PC allows it
+- [x] Library is fast again in the Rust app (covers load in the background, off-screen tiles aren't drawn)
+- [x] Xbox Series controllers pair over Bluetooth
+- [x] Installer download shows percent, GB, speed and time left, every second
+
 ## 0.0.24 (released)
 
 - [x] Hearth is now a Rust app (about 11 MB instead of about 250 MB with Electron): same screens, less memory, faster start
@@ -83,7 +90,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [ ] GOG cloud saves (gogdl), more stores (itch.io, Amazon)
 - [ ] Steam friends (needs Steam's web API)
 
-## 0.0.25
+## 0.0.26
 
 - [ ] New live ISOs (AMD/Intel and Nvidia) with Install next to Windows (no ISOs before this)
 - [x] Installer test in CI: installs onto a disk image and boots it
