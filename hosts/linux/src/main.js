@@ -806,6 +806,8 @@ app.whenReady().then(() => {
     showGameWhenReady(id);
   });
   library.on('exited', () => { hideOverlay(); comeBack(); });
+  // The launcher closed and the game itself started: put the game's window in front once it's up.
+  library.on('handoff', id => { if (inGamescope()) showGameWhenReady(id); });
   stream.on('closed', () => library.markExited());
   ipcMain.on('stream:exit', () => stream.close());
   ipcMain.on('nimbus:msg', onMessage);

@@ -15,6 +15,7 @@ const { StoreAccounts, norm } = require('../stores');
 const { log } = require('../util');
 const { artCache } = require('../art-cache');
 
+const EXIT_GRACE_MS = 10000;   // how long a game may have nothing running (launcher → game) before it's over
 const POLL_MS = 2000;
 const START_TIMEOUT_MS = 3 * 60 * 1000; // Steam may update the game first
 
@@ -326,7 +327,16 @@ class Library extends EventEmitter {
         this.emit('timeout', r.id);
         return;
       }
-    } else if (!pids.length) return this.markExited();
+    } else if (!pids.length) {
+      // Older games start with a launcher (Neverwinter Nights, many GOG classics): you press Play, the launcher
+      // closes and the game itself starts a moment later. Only call it over once nothing's run for a while.
+      if (!r.goneSince) r.goneSince = Date.now();
+      if (Date.now() - r.goneSince > EXIT_GRACE_MS) return this.markExited();
+    } else if (r.goneSince) {
+      r.goneSince = 0;
+      log(`game handed off to another program ${r.id}`);
+      this.emit('handoff', r.id);
+    }
     this.timer = setTimeout(() => this.poll(), POLL_MS);
   }
 
