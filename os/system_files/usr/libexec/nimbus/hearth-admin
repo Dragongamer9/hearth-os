@@ -20,6 +20,8 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      games and files from other drives (see hearth-import)
   hearth-admin takeover-plan|takeover-run
                                      remove other systems from Hearth's drive (see hearth-takeover)
+  hearth-admin hibernate-setup       room on the drive (a swap file the size of memory) so the PC can turn
+                                     off with Quick Resume games kept, and the boot options to come back to it
 
 Output: progress lines as "log: ...", percentages as "progress: <0-100> <what>", the result as one JSON line. Exit 1 with "error: ..." on failure.
 """
@@ -337,6 +339,65 @@ def tdp(watts):
     print(json.dumps({'method': method, 'watts': w}))
 
 
+HIBERNATE_FILE = '/var/swap/hearth-hibernate'
+
+
+def hibernate_setup():
+    """Quick Resume through a power-off: hibernation needs swap on the drive at least as big as memory, and the
+    kernel told where it is (resume= and resume_offset=). zram stays the everyday swap (higher priority)."""
+    state = open('/sys/power/state').read() if os.path.exists('/sys/power/state') else ''
+    if 'disk' not in state:
+        fail("this PC's kernel can't save memory to the drive")
+    lock = '/sys/kernel/security/lockdown'
+    if os.path.exists(lock) and '[none]' not in open(lock).read():
+        fail('Secure Boot is on, which doesn\'t allow saving memory to the drive')
+    mem_kb = 0
+    for line in open('/proc/meminfo'):
+        if line.startswith('MemTotal:'):
+            mem_kb = int(line.split()[1])
+    gib = -(-int(mem_kb * 1.05) // (1024 * 1024))   # rounded up, a little extra
+    os.makedirs(os.path.dirname(HIBERNATE_FILE), exist_ok=True)
+    fstype = subprocess.run(['findmnt', '-no', 'FSTYPE', '-T', os.path.dirname(HIBERNATE_FILE)], capture_output=True, text=True).stdout.strip()
+    if os.path.exists(HIBERNATE_FILE) and os.path.getsize(HIBERNATE_FILE) < gib * 1024 ** 3:
+        subprocess.run(['swapoff', HIBERNATE_FILE], capture_output=True)
+        os.remove(HIBERNATE_FILE)
+    if not os.path.exists(HIBERNATE_FILE):
+        print(f'log: making room for {gib} GB on the drive', flush=True)
+        if fstype == 'btrfs':
+            r = subprocess.run(['btrfs', 'filesystem', 'mkswapfile', '--size', f'{gib}g', HIBERNATE_FILE], capture_output=True, text=True)
+            if r.returncode != 0:
+                fail('couldn\'t make the swap file: ' + (r.stderr or r.stdout).strip())
+        else:
+            for c in (['fallocate', '-l', f'{gib}G', HIBERNATE_FILE], ['chmod', '600', HIBERNATE_FILE], ['mkswap', HIBERNATE_FILE]):
+                r = subprocess.run(c, capture_output=True, text=True)
+                if r.returncode != 0:
+                    fail('couldn\'t make the swap file: ' + (r.stderr or r.stdout).strip())
+    subprocess.run(['swapon', '-p', '1', HIBERNATE_FILE], capture_output=True)
+    fstab = open('/etc/fstab').read() if os.path.exists('/etc/fstab') else ''
+    if HIBERNATE_FILE not in fstab:
+        with open('/etc/fstab', 'a') as f:
+            f.write(('' if fstab.endswith('\n') or not fstab else '\n') + f'{HIBERNATE_FILE} none swap defaults,pri=1,nofail 0 0\n')
+    # Where the saved memory is, for the next start.
+    uuid = subprocess.run(['findmnt', '-no', 'UUID', '-T', HIBERNATE_FILE], capture_output=True, text=True).stdout.strip()
+    if fstype == 'btrfs':
+        offset = subprocess.run(['btrfs', 'inspect-internal', 'map-swapfile', '-r', HIBERNATE_FILE], capture_output=True, text=True).stdout.strip()
+    else:
+        out = subprocess.run(['filefrag', '-v', HIBERNATE_FILE], capture_output=True, text=True).stdout
+        m = re.search(r'^\s*0:\s+0\.\.\s*\d+:\s+(\d+)\.\.', out, re.M)
+        offset = m.group(1) if m else ''
+    if not uuid or not offset.isdigit():
+        fail('couldn\'t find where the swap file is on the drive')
+    cur = open('/proc/cmdline').read().split()
+    old = [a for a in cur if a.startswith('resume=') or a.startswith('resume_offset=')]
+    want = [f'resume=UUID={uuid}', f'resume_offset={offset}']
+    if sorted(old) != sorted(want):
+        args = ['rpm-ostree', 'kargs'] + [f'--delete-if-present={a}' for a in old] + [f'--append-if-missing={a}' for a in want]
+        r = subprocess.run(args, capture_output=True, text=True)
+        if r.returncode != 0:
+            fail('couldn\'t set the boot options: ' + (r.stderr or r.stdout).strip().splitlines()[-1:][0] if (r.stderr or r.stdout).strip() else 'couldn\'t set the boot options')
+    print(json.dumps({'ok': True, 'gb': gib, 'restart': sorted(old) != sorted(want)}))
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
     if cmd == 'tdp-info':
@@ -357,6 +418,8 @@ def main(argv):
         update()
     elif cmd == 'tdp' and len(argv) == 3:
         tdp(argv[2])
+    elif cmd == 'hibernate-setup':
+        hibernate_setup()
     elif cmd in ('import-scan', 'import-run', 'import-unmount', 'takeover-plan', 'takeover-run'):
         # Bringing games and files over from other drives, and removing the old system afterwards: their own
         # scripts, run as root like the rest.

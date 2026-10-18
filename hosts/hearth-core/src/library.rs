@@ -57,6 +57,24 @@ pub struct Running {
     pub closing: bool,
     /// Xbox Cloud Gaming: it runs in the stream window, not here.
     pub cloud: bool,
+    /// Quick Resume: when it was put aside (frozen, kept in memory), or 0.
+    pub frozen_at: u64,
+}
+
+/// Quick Resume, like Xbox's: games put aside stay frozen in memory (no processor or graphics use) and carry on
+/// where they were. At most this many; putting aside one more closes the oldest, as does running low on memory.
+pub const QUICK_RESUME_MAX: usize = 5;
+fn quick_file() -> PathBuf { PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("hearth-quick-resume.json") }
+fn pids_of(track: &crate::procs::Track) -> Vec<u32> { crate::procs::game_processes(track, &crate::procs::snapshot(std::path::Path::new("/proc")), std::process::id()) }
+fn rec(r: &Running) -> Value {
+    json!({"id": r.id, "pid": r.track.pid, "dirs": r.track.dirs, "steamAppId": r.track.steam_app_id, "launchedAt": r.launched_at, "startedAt": r.started_at,
+           "pausedAt": r.paused_at, "pausedMs": r.paused_ms, "frozenAt": r.frozen_at})
+}
+fn from_rec(v: &Value) -> Option<Running> {
+    let track = crate::procs::Track { pid: v["pid"].as_u64().map(|p| p as u32), dirs: v["dirs"].as_array().map(|a| a.iter().filter_map(|d| d.as_str().map(str::to_string)).collect()).unwrap_or_default(),
+        steam_app_id: v["steamAppId"].as_str().map(str::to_string) };
+    Some(Running { id: v["id"].as_str()?.to_string(), track, launched_at: v["launchedAt"].as_u64().unwrap_or(0), started_at: v["startedAt"].as_u64().unwrap_or(0), gone_since: 0,
+        paused_at: v["pausedAt"].as_u64().unwrap_or(0), paused_ms: v["pausedMs"].as_u64().unwrap_or(0), closing: false, cloud: false, frozen_at: v["frozenAt"].as_u64().unwrap_or(0) })
 }
 
 const EXIT_GRACE_MS: u64 = 10_000;     // a launcher closing and the game starting a moment later is still one game
@@ -101,6 +119,9 @@ pub struct Library {
     /// (time, bytes a second) for the Downloads page's graph: the last few minutes.
     speeds: Vec<(u64, u64)>,
     download_sig: String,
+    /// Quick Resume: games put aside, newest first.
+    pub frozen: Vec<Running>,
+    quick_saved: String,
 }
 
 fn norm(s: &str) -> String { s.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect() }
@@ -108,7 +129,7 @@ fn norm(s: &str) -> String { s.to_lowercase().chars().filter(|c| c.is_ascii_alph
 impl Library {
     pub fn new(store: Store, home: PathBuf) -> Library {
         Library { running: None, store, games: BTreeMap::new(), counts: BTreeMap::new(), home, queue: Arc::new(Mutex::new(stores::Queue::new())),
-                  accounts: Arc::new(Mutex::new(stores::AccState::default())), queue_restored: false, steam_bytes: HashMap::new(), speeds: vec![], download_sig: String::new() }
+                  accounts: Arc::new(Mutex::new(stores::AccState::default())), queue_restored: false, steam_bytes: HashMap::new(), speeds: vec![], download_sig: String::new(), frozen: vec![], quick_saved: String::new() }
     }
 
     /// Games you added yourself (kept in library.json "manual").
@@ -362,7 +383,7 @@ impl Library {
             "progress": match (g.bytes_done, g.bytes_total) { (Some(a), Some(b)) if b > 0 => Some((a as f64 / b as f64).min(1.0)), _ => None },
             "bytesDone": g.bytes_done, "bytesTotal": g.bytes_total, "canUninstall": g.can_uninstall, "note": g.note,
             "installKind": match g.install_uri.as_deref() { None => None, Some(u) if u.starts_with("nimbus-") => Some("nimbus"), Some(u) if u.starts_with("steam:") => Some("steam"), Some(_) => Some("store") },
-            "system": g.system,
+            "system": g.system, "frozen": self.frozen.iter().any(|f| f.id == g.id),
         });
         // An install Hearth is running shows as a download.
         if let Some(Value::Object(j)) = self.queue.lock().unwrap().state(&g.id) { for (k, v) in j { out[k] = v; } }
@@ -375,10 +396,16 @@ impl Library {
     /// Starts a game. {tracked} says whether Hearth can watch it (it then shows as running).
     pub fn launch(&mut self, id: &str) -> Result<Value, String> {
         let g = self.games.get(id).cloned().ok_or("That game isn't in the library anymore. Try rescanning.")?;
-        if self.running.is_some() { return Err("Another game is already running".into()); }
+        // Put aside with Quick Resume: carry on where it was.
+        if self.frozen.iter().any(|f| f.id == id) { return self.quick_resume(id).map(|_| json!({"tracked": true, "resumed": true})); }
+        if self.running.as_ref().map(|r| r.id == id).unwrap_or(false) { return Ok(json!({"tracked": true, "resumed": true})); }
+        if self.running.is_some() {
+            if !self.quick_resume_on() { return Err("Another game is already running".into()); }
+            self.freeze_running()?;
+        }
         if g.cloud {
             // The host opens the stream window; Hearth counts it as running from now.
-            self.running = Some(Running { id: id.to_string(), track: Default::default(), launched_at: now_ms(), started_at: now_ms(), gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: true });
+            self.running = Some(Running { id: id.to_string(), track: Default::default(), launched_at: now_ms(), started_at: now_ms(), gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: true, frozen_at: 0 });
             return Ok(json!({"tracked": true, "stream": g.stream_url, "title": g.title}));
         }
         if !g.installed { return Err(format!("{} isn't installed yet.", g.title)); }
@@ -412,7 +439,7 @@ impl Library {
             }
             _ => return Err("Hearth doesn't know how to start this game.".into()),
         };
-        self.running = Some(Running { id: id.to_string(), track, launched_at: now_ms(), started_at: 0, gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false });
+        self.running = Some(Running { id: id.to_string(), track, launched_at: now_ms(), started_at: 0, gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0 });
         Ok(serde_json::json!({"tracked": true}))
     }
 
@@ -423,6 +450,16 @@ impl Library {
 
     /// Looks at what's running (every 2 seconds). Returns events for the UI: started, gap, handoff, exited, timeout.
     pub fn tick(&mut self) -> Vec<Value> {
+        let before = self.frozen.len();
+        let mut events = self.tick_running();
+        let mut q = self.quick_tick();
+        // The list only goes to the page when it changed.
+        if self.frozen.len() == before && q.last().map(|e| e["name"] == "quickResume").unwrap_or(false) { q.pop(); }
+        events.extend(q);
+        events
+    }
+
+    fn tick_running(&mut self) -> Vec<Value> {
         let mut events = Vec::new();
         let pids = self.game_pids();
         let now = now_ms();
@@ -444,6 +481,12 @@ impl Library {
     /// The game is over: play time saved (paused time doesn't count), and the UI told.
     pub fn exited(&mut self) -> Value {
         let r = self.running.take().unwrap();
+        let dto = self.finish(r);
+        json!({"type": "event", "name": "game.exited", "data": dto})
+    }
+
+    /// A game is over (or a Quick Resume game was closed): play time saved, Epic saves uploaded. Returns its dto.
+    fn finish(&mut self, r: Running) -> Value {
         // Epic cloud saves go up once the game has closed.
         if let Some(app) = r.id.strip_prefix("epic:") {
             if crate::game_options::get(&self.store, &r.id)["cloudSaves"] != false {
@@ -462,8 +505,111 @@ impl Library {
                 s["lastPlayed"] = json!(now_ms());
             });
         }
-        let dto = self.games.get(&r.id).map(|g| self.dto(g)).unwrap_or(json!({"id": r.id}));
-        json!({"type": "event", "name": "game.exited", "data": dto})
+        self.games.get(&r.id).map(|g| self.dto(g)).unwrap_or(json!({"id": r.id}))
+    }
+
+    // ------------------------------------------------------------------ Quick Resume
+
+    pub fn quick_resume_on(&self) -> bool { self.store.data["quickResume"] != false }
+
+    /// The running game goes aside: frozen where it is, kept in memory.
+    pub fn freeze_running(&mut self) -> Result<(), String> {
+        let r = self.running.as_ref().ok_or("No game is running.")?;
+        if r.cloud { return Err("Close Xbox Cloud Gaming first: cloud games can't be put aside.".into()); }
+        if r.started_at == 0 { return Err(format!("{} is still starting. Wait a moment, then try again.", self.games.get(&r.id).map(|g| g.title.as_str()).unwrap_or("The game"))); }
+        let pids = self.game_pids();
+        if pids.is_empty() || crate::procs::signal(&pids, "STOP") == 0 { return Err("Couldn't put the game aside.".into()); }
+        let mut r = self.running.take().unwrap();
+        let now = now_ms();
+        if r.paused_at == 0 { r.paused_at = now; }
+        r.frozen_at = now; r.gone_since = 0; r.closing = false;
+        crate::bridge::log(&format!("quick resume: {} put aside", r.id));
+        self.frozen.insert(0, r);
+        while self.frozen.len() > QUICK_RESUME_MAX { let old = self.frozen.pop().unwrap(); self.close_frozen_entry(old); }
+        self.save_quick();
+        Ok(())
+    }
+
+    /// Back to a game that was put aside (the running one, if any, goes aside in its place).
+    pub fn quick_resume(&mut self, id: &str) -> Result<(), String> {
+        let pos = self.frozen.iter().position(|f| f.id == id).ok_or("That game isn't in Quick Resume anymore.")?;
+        if self.running.is_some() { self.freeze_running()?; }
+        let pos = self.frozen.iter().position(|f| f.id == id).unwrap_or(pos);
+        let mut r = self.frozen.remove(pos);
+        crate::procs::signal(&pids_of(&r.track), "CONT");
+        let now = now_ms();
+        if r.paused_at > 0 { r.paused_ms += now.saturating_sub(r.paused_at); r.paused_at = 0; }
+        r.frozen_at = 0;
+        crate::bridge::log(&format!("quick resume: back to {id}"));
+        self.running = Some(r);
+        self.save_quick();
+        Ok(())
+    }
+
+    /// Closes a game that was put aside. Returns its dto.
+    pub fn close_frozen(&mut self, id: &str) -> Result<Value, String> {
+        let pos = self.frozen.iter().position(|f| f.id == id).ok_or("That game isn't in Quick Resume anymore.")?;
+        let r = self.frozen.remove(pos);
+        let dto = self.close_frozen_entry(r);
+        self.save_quick();
+        Ok(dto)
+    }
+    fn close_frozen_entry(&mut self, r: Running) -> Value {
+        let pids = pids_of(&r.track);
+        crate::procs::signal(&pids, "CONT");   // stopped processes only act on "please close" once they run again
+        crate::procs::stop(&pids, std::time::Duration::from_secs(5));
+        crate::bridge::log(&format!("quick resume: closed {}", r.id));
+        self.finish(r)
+    }
+
+    /// What Quick Resume holds, newest first: [{id, title, frozenAt}]
+    pub fn quick_list(&self) -> Value {
+        json!(self.frozen.iter().map(|f| json!({"id": f.id, "title": self.games.get(&f.id).map(|g| g.title.clone()).unwrap_or_else(|| f.id.clone()), "frozenAt": f.frozen_at})).collect::<Vec<_>>())
+    }
+    pub fn quick_state(&self) -> Value { json!({"runningId": self.running_id(), "list": self.quick_list(), "on": self.quick_resume_on()}) }
+
+    /// Kept while the device is on (in the runtime folder), so Quick Resume games are still there after Hearth
+    /// restarts (an update, a crash): the games keep running without Hearth.
+    pub fn save_quick(&mut self) {
+        let v = json!({"running": self.running.as_ref().filter(|r| !r.cloud && r.started_at > 0).map(rec), "frozen": self.frozen.iter().map(rec).collect::<Vec<_>>()});
+        let t = v.to_string();
+        if t != self.quick_saved { let _ = std::fs::write(quick_file(), &t); self.quick_saved = t; }
+    }
+    /// After Hearth starts again: the games that are still there.
+    pub fn restore_quick(&mut self) {
+        let Some(v) = std::fs::read(quick_file()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { return };
+        if self.running.is_none() {
+            if let Some(r) = from_rec(&v["running"]).filter(|r| !pids_of(&r.track).is_empty()) { crate::bridge::log(&format!("quick resume: {} still running after a restart", r.id)); self.running = Some(r); }
+        }
+        for f in v["frozen"].as_array().cloned().unwrap_or_default() {
+            if let Some(r) = from_rec(&f).filter(|r| !pids_of(&r.track).is_empty() && !self.frozen.iter().any(|x| x.id == r.id)) { self.frozen.push(r); }
+        }
+        self.save_quick();
+    }
+
+    /// Every couple of seconds: games put aside that were closed some other way leave the list, and when memory
+    /// runs low the oldest one is closed to make room (like Xbox).
+    pub fn quick_tick(&mut self) -> Vec<Value> {
+        let mut events = Vec::new();
+        if self.frozen.is_empty() { self.save_quick(); return events; }
+        let snap = crate::procs::snapshot(std::path::Path::new("/proc"));
+        let me = std::process::id();
+        let gone: Vec<usize> = self.frozen.iter().enumerate().filter(|(_, f)| crate::procs::game_processes(&f.track, &snap, me).is_empty()).map(|(i, _)| i).collect();
+        for i in gone.into_iter().rev() { let r = self.frozen.remove(i); crate::bridge::log(&format!("quick resume: {} was closed", r.id)); self.finish(r); }
+        let mem = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+        let kb = |k: &str| mem.lines().find(|l| l.starts_with(&format!("{k}:"))).and_then(|l| l.split_whitespace().nth(1)).and_then(|n| n.parse::<u64>().ok()).unwrap_or(0);
+        let (avail, total) = (kb("MemAvailable"), kb("MemTotal"));
+        if total > 0 && avail < (total / 14).max(1_000_000) {
+            if let Some(old) = self.frozen.pop() {
+                let title = self.games.get(&old.id).map(|g| g.title.clone()).unwrap_or_else(|| old.id.clone());
+                crate::bridge::log(&format!("quick resume: low on memory ({} MB left), closing {}", avail / 1024, old.id));
+                self.close_frozen_entry(old);
+                events.push(json!({"type": "event", "name": "osd", "data": {"kind": "msg", "icon": "clock", "text": format!("Closed {title} to make room in memory (Quick Resume)"), "ms": 5000}}));
+            }
+        }
+        self.save_quick();
+        events.push(json!({"type": "event", "name": "quickResume", "data": self.quick_state()}));
+        events
     }
 
     pub fn close_running(&mut self) -> bool {
@@ -495,7 +641,7 @@ impl Library {
         let collections: Vec<Value> = self.store.data["collections"].as_array().map(|a| a.iter()
             .map(|c| json!({"id": c["id"], "name": c["name"], "count": c["games"].as_array().map(|g| g.len()).unwrap_or(0)})).collect()).unwrap_or_default();
         json!({ "games": games, "sources": self.store.data["sources"], "collections": collections, "counts": self.counts,
-                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"] })
+                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "quickResume": self.quick_state() })
     }
 }
 
@@ -506,5 +652,38 @@ mod tests {
     fn local_pictures_get_hearths_address() {
         assert_eq!(art_url("/home/sam/a b/620p.png"), "nimbus-art://file//home/sam/a%20b/620p.png");
         assert_eq!(art_url("https://cdn.x/1.jpg"), "https://cdn.x/1.jpg");   // until it's downloaded
+    }
+    #[test]
+    fn quick_resume_puts_games_aside_and_back() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+        let mut lib = Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf());
+        let state = |pid: u32| std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default().split(") ").nth(1).and_then(|r| r.chars().next()).unwrap_or('?');
+        let mut a = std::process::Command::new("sleep").arg("60").spawn().unwrap();
+        let mut b = std::process::Command::new("sleep").arg("60").spawn().unwrap();
+        let run = |id: &str, pid: u32| Running { id: id.into(), track: crate::procs::Track { pid: Some(pid), ..Default::default() }, launched_at: 1, started_at: now_ms(), gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0 };
+        lib.running = Some(run("manual:a", a.id()));
+        lib.freeze_running().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(lib.running.is_none());
+        assert_eq!(lib.quick_list().as_array().unwrap().len(), 1);
+        assert_eq!(state(a.id()), 'T');
+        // Another game runs; going back to the first puts this one aside in its place.
+        lib.running = Some(run("manual:b", b.id()));
+        lib.quick_resume("manual:a").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert_eq!(lib.running.as_ref().unwrap().id, "manual:a");
+        assert_ne!(state(a.id()), 'T');
+        assert_eq!(state(b.id()), 'T');
+        // Saved for after a restart of Hearth, and read back.
+        let mut again = Library::new(Store::open(dir.path().join("l2.json")), dir.path().to_path_buf());
+        again.restore_quick();
+        assert_eq!(again.running.as_ref().map(|r| r.id.as_str()), Some("manual:a"));
+        assert_eq!(again.frozen.len(), 1);
+        // Closing a put-aside game ends it.
+        lib.close_frozen("manual:b").unwrap();
+        assert!(lib.frozen.is_empty());
+        let _ = b.wait();
+        let _ = a.kill(); let _ = a.wait();
     }
 }
