@@ -120,12 +120,26 @@ def check_plan(p):
                      'password': '' if nopass else u['password'], 'nopassword': nopass}}
 
 
+def has_nvidia(sys_pci='/sys/bus/pci/devices'):
+    """An NVIDIA graphics card in this PC (vendor 10de, display class 03xx)."""
+    for dev in glob.glob(f'{sys_pci}/*'):
+        try:
+            if open(f'{dev}/vendor').read().strip() == '0x10de' and open(f'{dev}/class').read().strip().startswith('0x03'):
+                return True
+        except OSError:
+            pass
+    return False
+
+
 def default_image():
-    """The edition this USB is: hearth or hearth-nvidia (written into the live image when it was built)."""
+    """The edition to install: what this USB was built as (hearth or hearth-nvidia), or for the small installer
+    USB ("auto"), the one for this PC's graphics."""
     try:
         name = open('/etc/hearth-live').read().strip()
     except OSError:
         name = ''
+    if name == 'auto':
+        name = 'hearth-nvidia' if has_nvidia() else 'hearth'
     return f'ghcr.io/dragongamer9/{name if re.fullmatch(r"hearth(-nvidia)?", name) else "hearth"}:latest'
 
 
@@ -668,17 +682,20 @@ def add_kargs(kargs):
             open(entry, 'w').write(text)
 
 
-def bootloader(disk, firmware):
+def bootloader(disk, firmware, dep=None):
     stage('boot', 84, 'Setting up starting up')
     # UEFI only (Hearth's PCs and Windows next to it all start that way); --auto would also try BIOS on some.
     cmd = ['bootupctl', 'backend', 'install', '--component', 'EFI', '--with-static-configs', '--write-uuid', '--device', disk]
+    # The boot loader from Hearth OS itself (the installer USB may be a different system with an older one).
+    if dep and os.path.isdir(f'{dep}/usr/lib/bootupd'):
+        cmd += ['--src-root', dep]
     if firmware:
         cmd.append('--update-firmware')
     r = sh(cmd + [TARGET], check=False)
-    for flag, instead in (('--component', ['--auto']), ('--with-static-configs', [])):
+    for flag, instead in (('--src-root', []), ('--component', ['--auto']), ('--with-static-configs', [])):
         if r.returncode != 0 and flag in ((r.stderr or '') + (r.stdout or '')) and flag in cmd:
             i = cmd.index(flag)
-            cmd = cmd[:i] + instead + cmd[i + (2 if flag == '--component' else 1):]
+            cmd = cmd[:i] + instead + cmd[i + (2 if flag in ('--component', '--src-root') else 1):]
             r = sh(cmd + [TARGET], check=False)
     if r.returncode != 0:
         raise Fail('setting up the boot loader failed: ' + ((r.stderr or r.stdout).strip().splitlines() or ['?'])[-1])
@@ -899,7 +916,7 @@ def run(plan):
         make_filesystems(esp, boot, root, esp_new)
         dep = deploy(plan['image'], uuid_of(root))
         add_kargs(image_kargs(dep) + plan['kargs'])
-        bootloader(disk, plan.get('firmware', True))
+        bootloader(disk, plan.get('firmware', True), dep)
         other_systems_menu()
         write_fstab(dep, esp, boot, root)
         setup_system(dep, root, plan)
