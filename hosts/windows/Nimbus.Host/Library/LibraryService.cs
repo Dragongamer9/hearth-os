@@ -58,6 +58,9 @@ public sealed class LibraryService : IDisposable
                 s.Minutes += minutes;
             });
             if (_games.TryGetValue(id, out var g)) GameExited?.Invoke(ToDto(g));
+            // GOG cloud saves go up once the game has closed.
+            if (GogDir(id) is { } gd)
+                _ = Task.Run(async () => { try { await Accounts.Gog.SyncSavesAsync(id["gog:".Length..], gd, "up"); } catch (Exception ex) { SystemBridge.Log("gog saves: " + ex.Message); } });
         };
     }
 
@@ -391,6 +394,9 @@ public sealed class LibraryService : IDisposable
         else if (g.Exe is not null)
         {
             if (!File.Exists(g.Exe)) throw new InvalidOperationException($"File not found: {g.Exe}");
+            // GOG cloud saves come down first, for GOG games Ember installed.
+            if (GogDir(g.Id) is { } gd)
+                try { await Accounts.Gog.SyncSavesAsync(g.Id["gog:".Length..], gd, "down"); } catch (Exception ex) { SystemBridge.Log("gog saves: " + ex.Message); }
             Process.Start(new ProcessStartInfo(g.Exe, g.Args ?? "")
             {
                 UseShellExecute = true,                                 // allows .lnk/.url and games that need admin
@@ -405,6 +411,8 @@ public sealed class LibraryService : IDisposable
     }
 
     public Task<bool> CloseRunningAsync() => _monitor.CloseAsync();
+
+    private string? GogDir(string id) => id.StartsWith("gog:") && _store.Read(d => d.GogInstalls.TryGetValue(id["gog:".Length..], out var p) ? p : null) is { } dir ? dir : null;
 
     // ------------------------------------------------------------------ Quick Resume
 
