@@ -210,6 +210,7 @@ fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: 
     let (guide, hold) = match bridge.lock() { Ok(b) => (b.guide.clone(), b.library.store.data["holdView"] == true), Err(_) => return };
     let gm = GameMode::new(app.clone(), bridge.clone(), guide.clone(), windowed);
     let _ = GM.set(gm.clone());
+    gm.start_inputplumber();
     guide.hold_view.store(hold, std::sync::atomic::Ordering::SeqCst);
     let (g1, g2) = (gm.clone(), gm.clone());
     guide.start(Arc::new(move |how: &str| { let (gm, how) = (g1.clone(), how.to_string()); std::thread::spawn(move || gm.guide_pressed(&how)); }),
@@ -438,6 +439,10 @@ fn main() {
             start_game_mode(app.handle().clone(), app.state::<Host>().0.clone(), windowed);
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("Hearth couldn't start");
+        .build(tauri::generate_context!())
+        .expect("Hearth couldn't start")
+        .run(|_app, e| {
+            // Leaving: the controller service goes back to normal.
+            if let tauri::RunEvent::Exit = e { if let Some(gm) = GM.get() { gm.stop_inputplumber(); } }
+        });
 }
