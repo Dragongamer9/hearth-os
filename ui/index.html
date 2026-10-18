@@ -3028,7 +3028,7 @@ function padBody(go, skip, extra=''){
   if(!st.on && BTPAD.state==='paired') BTPAD.state='pairing';   // paired: the controller shows up in a moment
   return `<div class="center"><div class="padpic ${st.on?'on':''}">${I.pad}</div>
     <h1>${st.on?'Controller connected':'Connect a controller'}</h1>
-    <p class="lead">${st.on?`${esc(st.name)} is ready. Press <b>A</b> to carry on.`:`Turn on your controller or plug it in. For a Bluetooth controller, hold its pairing button, then choose Pair a Bluetooth controller.`}</p>
+    <p class="lead">${st.on?`${esc(st.name)} is ready. Press <b>A</b> to carry on.`:`Turn on your controller or plug it in. A Bluetooth controller connects by itself once it's in pairing mode.`}</p>
     ${st.on?'':`<div class="muted padwait"><span class="mini-spin"></span>${BTPAD.state==='pairing'?`Connecting to ${esc(BTPAD.name)}…`:BTPAD.state==='failed'?`Couldn't connect to ${esc(BTPAD.name)}. Trying again…`:'Looking for controllers…'}</div>
     <div class="padhow"><b>Bluetooth controller?</b> Put it in pairing mode and Hearth connects to it by itself:<br>
       Xbox: hold the small pair button on top until the logo flashes fast · PlayStation: hold Create and PS until the light flashes · Switch Pro: hold the sync button on top · 8BitDo: hold the pair button</div>`}
