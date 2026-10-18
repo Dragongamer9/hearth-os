@@ -183,3 +183,42 @@ test('updates: version comparison, including previews', () => {
   assert.equal(newer('0.4.1', '0.4.0-linux.13'), true);    // the next full release beats them
   assert.equal(newer('v0.4.0', '0.4.0-linux.13'), false);
 });
+
+test('ProtonDB ratings: Steam games by id, others found on Steam by name', async () => {
+  const { protonDb, norm } = require('../src/game-info');
+  assert.strictEqual(norm('The Witcher® 3: Wild Hunt – Game of the Year Edition'), 'witcher 3 wild hunt');
+  const calls = [];
+  const fake = async url => {
+    calls.push(url);
+    if (url.includes('storesearch')) return { ok: true, status: 200, json: async () => ({ items: [{ id: 999, name: 'Some Other Game' }, { id: 292030, name: 'The Witcher 3: Wild Hunt' }] }) };
+    if (url.includes('/292030.json')) return { ok: true, status: 200, json: async () => ({ tier: 'platinum', total: 1200 }) };
+    if (url.includes('/570.json')) return { ok: true, status: 200, json: async () => ({ tier: 'native', total: 40 }) };
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  const a = await protonDb({ id: 'gog:1', source: 'gog', title: 'The Witcher 3: Wild Hunt - Game of the Year Edition' }, fake);
+  assert.strictEqual(a.appid, 292030); assert.strictEqual(a.label, 'Platinum');
+  const b = await protonDb({ id: 'steam:570', source: 'steam', title: 'Dota 2' }, fake);
+  assert.strictEqual(b.tier, 'native');
+  const n = calls.length;
+  await protonDb({ id: 'steam:570', source: 'steam', title: 'Dota 2' }, fake);   // cached
+  assert.strictEqual(calls.length, n);
+});
+
+test('Steam achievements from Steam\'s own stats files', () => {
+  const { readAchievements } = require('../src/game-info');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ach-'));
+  // binary KeyValues writer, just for the test
+  const kv = obj => { const parts = []; const w = o => { for (const [k, v] of Object.entries(o)) {
+    if (typeof v === 'object') { parts.push(Buffer.from([0]), Buffer.from(k + '\0')); w(v); parts.push(Buffer.from([8])); }
+    else if (typeof v === 'number') { const b = Buffer.alloc(4); b.writeInt32LE(v); parts.push(Buffer.from([2]), Buffer.from(k + '\0'), b); }
+    else parts.push(Buffer.from([1]), Buffer.from(k + '\0'), Buffer.from(v + '\0')); } }; w(obj); parts.push(Buffer.from([8])); return Buffer.concat(parts); };
+  fs.writeFileSync(path.join(dir, 'UserGameStatsSchema_42.bin'), kv({ 42: { gamename: 'Test', stats: { 1: { type: 4, bits: {
+    0: { name: 'ACH_A', display: { name: { english: 'First steps' }, desc: { english: 'Start' }, icon: 'a.jpg', icon_gray: 'ag.jpg' } },
+    1: { name: 'ACH_B', display: { name: { english: 'Second' }, desc: { english: 'Win' }, icon: 'b.jpg', icon_gray: 'bg.jpg', hidden: '1' } } } } } } }));
+  fs.writeFileSync(path.join(dir, 'UserGameStats_7_42.bin'), kv({ cache: { 1: { data: 1, AchievementTimes: { 0: 1700000000 } } } }));
+  const r = readAchievements(dir, 42, 7);
+  assert.strictEqual(r.total, 2); assert.strictEqual(r.done, 1);
+  assert.strictEqual(r.list[0].name, 'First steps'); assert.ok(r.list[0].icon.endsWith('/42/a.jpg'));
+  assert.ok(r.list[1].icon.endsWith('/42/bg.jpg')); assert.strictEqual(r.list[1].hidden, true);
+  assert.strictEqual(readAchievements(dir, 43, 7), null);
+});
