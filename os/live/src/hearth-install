@@ -88,9 +88,10 @@ def check_plan(p):
         raise Fail('the user name can only have small letters, numbers, - and _, and has to start with a letter')
     if name in RESERVED:
         raise Fail(f'"{name}" is used by the system: pick another user name')
-    if not u.get('password'):
-        raise Fail('choose a password')
-    if '\n' in u['password'] or ':' in name:
+    nopass = bool(u.get('nopassword'))
+    if not u.get('password') and not nopass:
+        raise Fail('choose a password (or choose no password)')
+    if '\n' in (u.get('password') or '') or ':' in name:
         raise Fail("the password can't have a line break in it")
     host = (p.get('hostname') or 'hearth').strip().lower()
     if not re.fullmatch(r'[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?', host):
@@ -105,7 +106,8 @@ def check_plan(p):
         raise Fail('bad image name')
     extra = [k for k in (p.get('kargs') or []) if isinstance(k, str) and re.fullmatch(r'[A-Za-z0-9_.,=:/-]+', k)]
     return {**p, 'kargs': extra, 'hostname': host, 'timezone': tz, 'image': image,
-            'user': {'name': name, 'full': (u.get('full') or name).replace(':', ' ').strip(), 'password': u['password']}}
+            'user': {'name': name, 'full': (u.get('full') or name).replace(':', ' ').strip(),
+                     'password': '' if nopass else u['password'], 'nopassword': nopass}}
 
 
 def default_image():
@@ -438,7 +440,11 @@ def setup_system(dep, root, plan):
     try:
         u = plan['user']
         sh(['useradd', '-R', dep, '-m', '-d', f'/var/home/{u["name"]}', '-G', 'wheel', '-c', u['full'], '-s', '/bin/bash', u['name']])
-        sh(['chpasswd', '-R', dep], input=f'{u["name"]}:{u["password"]}\n')
+        if u.get('nopassword'):
+            # No password: signing in, the lock screen and system changes just need Enter (pam_unix nullok).
+            sh(['usermod', '-R', dep, '-p', '', u['name']])
+        else:
+            sh(['chpasswd', '-R', dep], input=f'{u["name"]}:{u["password"]}\n')
         with open(f'{dep}/etc/hostname', 'w') as f:
             f.write(plan['hostname'] + '\n')
         if os.path.exists(f'{dep}/usr/share/zoneinfo/{plan["timezone"]}'):
