@@ -2,7 +2,8 @@
 # - Every push and pull request: build both (catches compile errors) and run the Linux host's tests.
 # - Push to main with a new <Version> in Nimbus.Host.csproj: also publish GitHub Release vX.Y.Z (versions are 0.0.N)
 #   (the tag is created here) with both builds. Pushing a tag vX.Y.Z by hand does the same.
-#   The app checks the latest release and offers it in Settings › Updates.
+#   The app checks the latest release and offers it in Settings › Updates. Older releases are then hidden
+#   (turned into drafts, nothing deleted), so only the newest one shows on GitHub.
 # - Push to linux-host (the Linux work in progress): also publish a pre-release vX.Y.Z-linux.N with the
 #   AppImage. Pre-releases are never offered as updates (the app only looks at the latest full release).
 # The version lives in one place, hosts/windows/Nimbus.Host/Nimbus.Host.csproj; the Linux build takes it from there.
@@ -143,23 +144,13 @@ jobs:
           tag="v$v"
           if gh release view "$tag" >/dev/null 2>&1; then echo "Release $tag already exists; nothing to publish."; exit 0; fi
           notes="$(git log -1 --pretty=%B)"
-          # --latest=false: GitHub's "latest" stays on the v0.5.1 bridge (below) so copies from before the
-          # renumbering, which only look at "latest", can still update. Current copies look at every release.
-          gh release create "$tag" builds/* --target "${{ github.sha }}" --latest=false \
+          gh release create "$tag" builds/* --target "${{ github.sha }}" --latest \
             --title "Hearth OS $v (Hearth for Linux, Ember for Windows)" --notes "$notes"
-
-          # One time, at the switch to 0.0.x numbering: bridge releases with old-style tags that old copies see as
-          # newer than what they have. They carry this build; after it, the new updaters ignore v0.3-v0.5 tags.
-          bridge_notes="Carries Hearth OS $v to copies from before the switch to 0.0.x version numbers. Download Hearth OS $v instead."
-          if ! gh release view v0.5.1 >/dev/null 2>&1; then
-            gh release create v0.5.1 builds/Nimbus-win-x64.zip builds/Nimbus-win-x64.zip.sha256 --target "${{ github.sha }}" \
-              --latest --title "Hearth OS $v (update bridge for Windows 0.5.0 and earlier)" --notes "$bridge_notes"
-          fi
-          if ! gh release view v0.4.0-linux.100 >/dev/null 2>&1; then
-            gh release create v0.4.0-linux.100 builds/Nimbus-linux-x86_64.AppImage builds/Nimbus-linux-x86_64.AppImage.sha256 \
-              --target "${{ github.sha }}" --prerelease \
-              --title "Hearth OS $v for Linux (update bridge for 0.4.0 previews)" --notes "$bridge_notes"
-          fi
+          # Only the newest release stays public: older ones become drafts (hidden, nothing deleted; see
+          # tidy-releases.yml). Current copies only look for newer releases, so they aren't affected.
+          gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
+            -q ".[] | select(.draft == false and .tag_name != \"$tag\") | .id" |
+            while read -r id; do gh api -X PATCH "repos/${{ github.repository }}/releases/$id" -F draft=true >/dev/null; done
 
   linux-preview:
     needs: [version, linux]
