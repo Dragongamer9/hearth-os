@@ -649,10 +649,11 @@ impl Bridge {
     }
     pub fn game_options(&self, id: &str) -> Result<Value, String> {
         let g = self.library.games.get(id).ok_or("That game isn't in the library anymore.")?;
-        let kind = match g.source { "steam" => "steam", "emu" => "emu", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", _ => "external" };
+        let own_proton = (g.source == "epic" || g.source == "gog") && g.can_uninstall;   // installed by Hearth, started with Proton
+        let kind = match g.source { "steam" => "steam", "emu" => "emu", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", _ if own_proton => "proton", _ => "external" };
         Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
                   "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
-                  "gamemode": system::has("gamemoderun"), "canResetPrefix": false}))
+                  "gamemode": system::has("gamemoderun"), "canResetPrefix": own_proton}))
     }
     fn need_pin(&self) -> Result<(), String> {
         if self.profiles.has_pin() && std::time::Instant::now() >= self.pin_until { Err("Enter the PIN first".into()) } else { Ok(()) }

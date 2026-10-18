@@ -488,6 +488,15 @@ impl Library {
     /// A game is over (or a Quick Resume game was closed): play time saved, Epic saves uploaded. Returns its dto.
     fn finish(&mut self, r: Running) -> Value {
         // Epic cloud saves go up once the game has closed.
+        // GOG cloud saves go up once the game has closed.
+        if let Some(gid) = r.id.strip_prefix("gog:") {
+            if crate::game_options::get(&self.store, &r.id)["cloudSaves"] != false {
+                if let Some(dir) = self.store.data["gogInstalls"][gid].as_str().map(PathBuf::from) {
+                    let gid = gid.to_string();
+                    std::thread::spawn(move || { if let Err(e) = gog::sync_saves(&gid, &dir, "up") { crate::bridge::log(&format!("gog saves: {e}")); } });
+                }
+            }
+        }
         if let Some(app) = r.id.strip_prefix("epic:") {
             if crate::game_options::get(&self.store, &r.id)["cloudSaves"] != false {
                 let app = app.to_string();

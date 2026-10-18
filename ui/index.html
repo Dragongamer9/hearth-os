@@ -2943,7 +2943,7 @@ function viewGameSettings(){
       + sw('fsr','AMD FSR upscaling','Sharper picture when the game runs below the screen\'s resolution (fullscreen games)');
   }
   h += ingame;
-  if(g.src==='epic' && r.canResetPrefix) h += shead('Saves') + sw('cloudSaves','Epic cloud saves','Newer saves come down from Epic before you play and go up after, for games that have cloud saves');
+  if((g.src==='epic'||g.src==='gog') && r.canResetPrefix) h += shead('Saves') + sw('cloudSaves',`${g.src==='gog'?'GOG':'Epic'} cloud saves`,`Newer saves come down from ${g.src==='gog'?'GOG':'Epic'} before you play and go up after, for games that have cloud saves`);
   h += shead('Launch')
     + `<button class="row" data-f data-k="gs-args" data-act="gsText" data-key="args"><div class="rt"><b>Launch options</b><small>${o.args?esc(o.args):'Extra options passed to the game, like -skipintro'}</small></div><div class="rv">Edit ›</div></button>`
     + `<button class="row" data-f data-k="gs-env" data-act="gsText" data-key="env"><div class="rt"><b>Environment variables</b><small>${o.env?esc(o.env):'Like DXVK_HUD=fps or PROTON_USE_WINED3D=1'}</small></div><div class="rv">Edit ›</div></button>`;
