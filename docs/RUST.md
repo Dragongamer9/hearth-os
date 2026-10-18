@@ -16,12 +16,26 @@ everything it does; then Hearth OS switches over in one release.
 1. [x] The window, the message channel the screens already use, game art from the disk
 2. [x] Steam library (installed games, play time, art), favorites, hidden, launching Steam games
 3. [x] Status bar and Quick Access: battery, Wi-Fi, Bluetooth, volume, brightness, power modes
-4. [~] Settings: Wi-Fi, Bluetooth, sound, power button, sign-in, Hearth OS updates, device info (display modes still to do)
-5. [~] Manual games, emulators, game settings, launching and watching games, ProtonDB and achievements (Epic, GOG, Xbox still to do)
-6. [ ] Game Mode: gamescope focus, the overlay over games, Guide button, performance overlay, pause
-7. [~] Profiles, parental controls, collections, backup, remote play (themes and wallpaper still to do)
-8. [ ] The installer screens (live USB) and the first-start setup
-9. [ ] Switch Hearth OS to the Rust app; remove Electron
+4. [x] Settings: Wi-Fi, Bluetooth, sound, display modes, power button, sign-in, Hearth OS updates, app updates, device info
+5. [x] Manual games, emulators, game settings, launching and watching games, ProtonDB and achievements
+6. [x] Epic, GOG and Xbox: sign-in windows, game lists, Hearth's own downloads (queue, pause, resume),
+       Proton launching through umu, Epic cloud saves, Xbox Cloud Gaming (catalog and stream window)
+7. [x] Game Mode: gamescope focus, the overlay over games, Guide button, power and volume buttons,
+       frame-rate limit, performance overlay, screenshots, open apps
+8. [x] Profiles, parental controls, collections, backup, remote play, wallpaper, importing from other drives
+9. [x] The installer screens (live USB) and the first-start setup
+10. [ ] Try it on real hardware (Game Mode, the overlay, store sign-ins, xCloud in WebKit)
+11. [ ] Switch Hearth OS to the Rust app; remove Electron
+
+Every method the Electron host's bridge answers has an answer in the Rust one (a test checks it).
+
+## Not done yet in the Rust host
+- Ctrl+Alt+Q (the keyboard way to open Quick Access over a game) needs a global-shortcut plugin
+- "Ask for my password after sleep" in Game Mode (Electron's powerMonitor): needs logind's PrepareForSleep
+- The Xbox sign-in saved by the Electron host is locked with the desktop keyring; the Rust host keeps its
+  own (sign in to Xbox once more after switching)
+- App updates: the Rust app updates from a release file named Hearth-linux-x86_64 (+ .sha256), which
+  releases start carrying when Hearth switches over. On Hearth OS the app updates with the system.
 
 ## Things that need Chromium today, and what happens to them
 - Xbox Cloud Gaming streams in Chromium. WebKit's WebRTC may not be enough for it: if not, the stream opens
