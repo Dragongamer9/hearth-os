@@ -1,10 +1,12 @@
 //! Hearth's host logic in Rust, without a window: the Tauri app (hosts/hearth-rs) puts the UI on screen and
 //! passes its messages here. Replaces the Electron host (hosts/linux) a part at a time; see docs/RUST.md.
 pub mod admin;
+pub mod appupdate;
 pub mod backup;
 pub mod binkv;
 pub mod bridge;
 pub mod collections;
+pub mod display;
 pub mod emulators;
 pub mod game_options;
 pub mod gameinfo;
@@ -12,6 +14,7 @@ pub mod http;
 pub mod library;
 pub mod owned;
 pub mod manual;
+pub mod osinstall;
 pub mod paths;
 pub mod perf;
 pub mod power;

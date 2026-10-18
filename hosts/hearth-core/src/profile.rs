@@ -55,3 +55,20 @@ mod tests {
         assert_eq!(p["accent"], "#ff9f43"); assert_eq!(p["name"], "Sam");
     }
 }
+
+/// A picture of your own for the profile ("avatar" or "background"), copied into Hearth's folder.
+pub fn set_image(store: &mut Store, kind: &str, file: &str) -> Result<Value, String> {
+    if kind != "avatar" && kind != "background" { return Err("Unknown picture".into()); }
+    let ext = std::path::Path::new(file).extension().map(|e| format!(".{}", e.to_string_lossy().to_lowercase())).unwrap_or_default();
+    if !IMAGE_EXT.contains(&ext.as_str()) { return Err("Pick a PNG, JPG, WebP or GIF picture.".into()); }
+    if std::fs::metadata(file).map(|m| m.len()).unwrap_or(0) > 20_000_000 { return Err("That picture is too big (over 20 MB).".into()); }
+    let dir = crate::paths::data_dir().join("profile");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    if let Some(old) = image(kind) { let _ = std::fs::remove_file(old); }
+    std::fs::copy(file, dir.join(format!("{kind}{ext}"))).map_err(|e| e.to_string())?;
+    let mut p = data(store);
+    p["imageStamp"] = json!(crate::library::now_ms());
+    p[if kind == "avatar" { "avatar" } else { "background" }] = json!("custom");
+    store.update(|d| { d.insert("profile".into(), p); }).map_err(|e| e.to_string())?;
+    Ok(get(store))
+}

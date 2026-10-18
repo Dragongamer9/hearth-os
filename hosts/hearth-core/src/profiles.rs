@@ -194,6 +194,48 @@ pub fn steam_registry_text(text: &str, account: &str) -> String {
     if rem.is_match(&t) { t = rem.replace(&t, "${1}\"1\"").into_owned(); }
     t
 }
+/// loginusers.vdf with `account` marked as the one to sign in next.
+pub fn steam_login_users_text(text: &str, account: &str) -> String {
+    let want = account.to_lowercase();
+    let block = regex::Regex::new(r#"("\d{17}"\s*\{)([^{}]*)(\})"#).unwrap();
+    block.replace_all(text, |c: &regex::Captures| {
+        let body = &c[2];
+        let name = regex::Regex::new(r#""AccountName"\s+"([^"]*)""#).unwrap().captures(body).map(|m| m[1].to_lowercase()).unwrap_or_default();
+        let mine = !want.is_empty() && name == want;
+        let set = |b: &str, key: &str, val: &str| {
+            let re = regex::Regex::new(&format!(r#"("{key}"\s+)"[^"]*""#)).unwrap();
+            if re.is_match(b) { re.replace(b, format!("${{1}}\"{val}\"")).into_owned() } else { format!("{}\n\t\t\"{key}\"\t\t\"{val}\"\n\t", b.trim_end()) }
+        };
+        let mut b = set(body, "MostRecent", if mine { "1" } else { "0" });
+        if mine { b = set(&b, "AllowAutoLogin", "1"); }
+        format!("{}{}{}", &c[1], b, &c[3])
+    }).into_owned()
+}
+
+/// Steam's two files that say who signs in: (registry.vdf, loginusers.vdf)
+pub fn steam_files() -> Option<(Option<std::path::PathBuf>, std::path::PathBuf)> {
+    let dir = crate::steam::steam_path(&crate::paths::home())?;
+    let reg = [dir.parent().map(|p| p.join("registry.vdf")), Some(crate::paths::home().join(".steam/registry.vdf"))].into_iter().flatten().find(|f| f.exists());
+    Some((reg, dir.join("config/loginusers.vdf")))
+}
+pub fn known_steam_accounts() -> Vec<Value> { steam_files().and_then(|(_, u)| std::fs::read_to_string(u).ok()).map(|t| steam_accounts(&t)).unwrap_or_default() }
+
+/// Closes Steam (it writes its files as it exits), waiting up to about 10 seconds.
+pub fn stop_steam() {
+    let up = || std::process::Command::new("pgrep").args(["-x", "steam"]).output().map(|o| o.status.success()).unwrap_or(false);
+    if !up() { return; }
+    let _ = std::process::Command::new("steam").arg("-shutdown").spawn();
+    let t = std::time::Instant::now();
+    while t.elapsed().as_secs() < 8 && up() { std::thread::sleep(std::time::Duration::from_millis(300)); }
+    if up() { let _ = std::process::Command::new("pkill").args(["-x", "steam"]).status(); std::thread::sleep(std::time::Duration::from_millis(1500)); }
+}
+/// Steam signs in as `account` the next time it starts ('' shows Steam's own sign-in). Steam must be closed.
+pub fn set_steam_account(account: &str) {
+    let Some((reg, users)) = steam_files() else { return };
+    if let Some(reg) = reg { if let Ok(t) = std::fs::read_to_string(&reg) { let _ = std::fs::write(&reg, steam_registry_text(&t, account)); } }
+    if !account.is_empty() { if let Ok(t) = std::fs::read_to_string(&users) { let _ = std::fs::write(&users, steam_login_users_text(&t, account)); } }
+}
+
 pub fn steam_accounts(login_users: &str) -> Vec<Value> {
     let block = regex::Regex::new(r#""\d{17}"\s*\{([^{}]*)\}"#).unwrap();
     let field = |b: &str, k: &str| regex::Regex::new(&format!(r#""{k}"\s+"([^"]*)""#)).unwrap().captures(b).map(|c| c[1].to_string());
@@ -204,6 +246,15 @@ pub fn steam_accounts(login_users: &str) -> Vec<Value> {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    #[test]
+    fn marks_the_steam_account_to_sign_in() {
+        let t = "\"users\"\n{\n\t\"76561190000000001\"\n\t{\n\t\t\"AccountName\"\t\t\"sam\"\n\t\t\"MostRecent\"\t\t\"1\"\n\t}\n\t\"76561190000000002\"\n\t{\n\t\t\"AccountName\"\t\t\"Kim\"\n\t}\n}\n";
+        let out = steam_login_users_text(t, "kim");
+        let a = steam_accounts(&out);
+        assert_eq!(a.len(), 2);
+        assert!(out.contains("\"AccountName\"\t\t\"sam\"\n\t\t\"MostRecent\"\t\t\"0\""));
+        assert!(out.contains("\"MostRecent\"\t\t\"1\"\n\t\t\"AllowAutoLogin\"\t\t\"1\""));
+    }
     #[test]
     fn parental_controls() {
         let dir = tempfile::tempdir().unwrap();
