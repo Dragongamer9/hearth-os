@@ -16,6 +16,7 @@ const DEFAULTS = { proton: '', args: '', env: '', mangohud: false, gamemode: fal
 function kindOf(g) {
   if (g.cloud) return 'cloud';
   if (g.source === 'steam') return 'steam';
+  if (g.source === 'emu') return 'emu';
   if (g.launchVia === 'legendary' || g.windowsExe || (g.source === 'manual' && /\.exe$/i.test(g.exe || ''))) return 'proton';
   if (g.source === 'manual') return 'native';
   return 'external';   // installed and started by Heroic

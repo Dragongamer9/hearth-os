@@ -598,7 +598,7 @@ function barsIcon(n){
 
 // ---------- mock data ----------
 const H = 3600e3, D = 24*H, now = Date.now();
-const SOURCES = {steam:'Steam', epic:'Epic', gog:'GOG', xbox:'Xbox', manual:'Manual'};
+const SOURCES = {steam:'Steam', epic:'Epic', gog:'GOG', xbox:'Xbox', emu:'Emulators', manual:'Manual'};
 const GAMES = [
   {id:'g01',title:'Starfall Drift',src:'steam',appId:'1000010',inst:true,fav:true,hrs:142.5,last:now-5*H,size:'38.2 GB',ach:[34,50],added:now-200*D,genre:'Arcade racing'},
   {id:'g02',title:'Hollow Pines',src:'gog',inst:true,fav:false,hrs:31.2,last:now-1*D,size:'12.9 GB',ach:[11,40],added:now-30*D,genre:'Survival horror'},
@@ -641,7 +641,7 @@ const S = {
   view:'home', game:null, tab:'inst', sort:'recent', settingsTab:'wifi', qtab:'quick',
   history:[], layers:[], running:null,
   set:{bright:70,vol:55,sounds:true,tdp:15,fps:'60',overlay:0,
-       srcSteam:true,srcEpic:true,srcGog:true,srcXbox:true,steamBg:true,startOnBoot:true,escapeHatch:true},
+       srcSteam:true,srcEpic:true,srcGog:true,srcXbox:true,srcEmu:true,steamBg:true,startOnBoot:true,escapeHatch:true},
   // Live system state, filled from the host (or the browser mock)
   sys:{wifi:{available:true,on:false,ssid:null,bars:0}, bt:{available:true,on:false}, airplane:false,
        battery:null, audio:{volume:55,muted:false,devices:[]}, display:{supported:true,brightness:70,resolution:'',scale:''},
@@ -649,7 +649,7 @@ const S = {
        nets:null, scanning:false, scannedAt:0, connecting:null,
        paired:null, found:[], btScanning:false, foundDone:false, busy:{}}
 };
-const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['manual','Non-library'],['hidden','Hidden']];
+const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['emu','Emulators'],['manual','Non-library'],['hidden','Hidden']];
 const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settings'],['perf','bolt','Performance'],['now','play','Now playing']];
 if(/[?&]overlay=full/.test(location.search) || (window.nimbusHost && !/[?&]overlay/.test(location.search))) QTABS.splice(3,0,['apps','lib','Open apps']);
 
@@ -876,7 +876,7 @@ function cover(g, opts={}){
   const act = isActive(g) ? dlInfo(g) : null;
   return `<div class="cover ${!playable(g)&&!act?'ni':''}"><div class="art" style="${artBg(g)}"></div>
     <div class="ct">${esc(g.title)}</div>${artImg(g,kinds)}
-    ${opts.badge!==false?`<span class="src">${SOURCES[g.src]}</span>`:''}
+    ${opts.badge!==false?`<span class="src">${esc(g.system||SOURCES[g.src])}</span>`:''}
     ${g.cloud&&!g.inst?'<span class="notinst">Cloud</span>':!g.inst&&!act?'<span class="notinst">Not installed</span>':''}
     ${act?`<div class="dl"><span>${act.label}</span><div class="bar"><i style="width:${act.pct??0}%"></i></div></div>`:''}</div>`;
 }
@@ -1065,6 +1065,15 @@ function pageSystem(){
   h += `<button class="row" data-f data-k="sy-inlog" data-act="inputLog"><div class="rt"><b>Log controller input</b><small>Writes every button press and what it selected to the log, for reporting a jumpy selection. Then use Save logs.</small></div><div class="sw ${INPUT_LOG?'on':''}"></div></button>`;
   if(feat('exportLogs')) h += `<button class="row" data-f data-k="sy-logs" data-act="exportLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs</b><small>Puts ${APP}'s logs in one file in your home folder, to send with a bug report</small></div></button>`;
   h += `<button class="row" data-f data-k="sy-reset" data-act="resetLook"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset appearance</b><small>Layout, text size and top bar back to how they started. Your games and accounts stay.</small></div></button>`;
+  return h;
+}
+// ---------- Settings › Library sources › Emulators (Linux) ----------
+const EMU = {s:null, busy:false};
+function loadEmu(){ if(LINUX) call('emu.status').then(r=>{ EMU.s=r; refreshUI(); }).catch(()=>{}); }
+function emuRows(){
+  const e=EMU.s; if(!e || !S.set.srcEmu) return '';
+  let h = e.retroarch ? '' : `<button class="row" data-f data-k="s-emu-ra" data-act="emuInstall"><span class="ricon">${I.dl}</span><div class="rt"><b>Install RetroArch</b><small>Plays the games. Then get cores for your systems in RetroArch › Online Updater.</small></div>${EMU.busy?'<span class="mini-spin"></span>':'<div class="rv">Install ›</div>'}</button>`;
+  h += `<button class="row" data-f data-k="s-emu-dir" data-act="emuFolders"><span class="ricon">${I.lib}</span><div class="rt"><b>ROMs folder</b><small>${e.roots.length?esc(e.roots.join(', ')):esc(e.folder)+' (not made yet)'}. One folder per system: snes, n64, gba, psx… EmuDeck folders work too.</small></div><div class="rv">${e.roots.length?'Systems ›':'Make it ›'}</div></button>`;
   return h;
 }
 // ---------- Settings › System › Backup (Linux) ----------
@@ -1278,6 +1287,7 @@ function viewGame(){
   const about = g.genre
     ? `${esc(g.genre)}. Placeholder description from the browser preview.`
     : g.cloud ? `Streams with Xbox Cloud Gaming. Needs Game Pass Ultimate; sign in with your Xbox account the first time. Hold View + Menu to leave the stream.`
+    : g.system ? `A ${esc(g.system)} game from your ROMs folder, played with RetroArch.`
     : g.inst ? `Installed through ${SOURCES[g.src]}.`
     : isActive(g) ? (g.installKind==='nimbus' ? `${APP} is installing this game into your games folder.` : `${SOURCES[g.src]} is installing this game.`)
     : g.note ? `In your ${SOURCES[g.src]} library. ${esc(g.note)}, so ${APP} can't install it.`
@@ -1298,7 +1308,7 @@ function viewGame(){
       <div class="gstats">
         <div class="gstat"><div class="k">Last played</div><div class="v">${ago(g.last)}</div></div>
         <div class="gstat"><div class="k">Play time</div><div class="v">${g.hrs?hrs(g.hrs):'—'}</div></div>
-        <div class="gstat"><div class="k">Source</div><div class="v">${SOURCES[g.src]}</div></div>
+        <div class="gstat"><div class="k">${g.system?'System':'Source'}</div><div class="v">${esc(g.system||SOURCES[g.src])}</div></div>
         ${pdb?`<div class="gstat" title="${esc(pdb.text)} · ProtonDB, ${pdb.reports||0} reports"><div class="k">On Linux</div><div class="v"><span class="pdb" style="--c:${PDB_COLORS[pdb.tier]||'#7f8b99'}">${esc(pdb.label)}</span></div></div>`:''}
         <div class="gstat"><div class="k">Size</div><div class="v">${g.size||'—'}</div></div>
       </div>
@@ -2103,6 +2113,7 @@ function viewSettings(){
       +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
       +swRow('srcGog','GOG',(LINUX?'Your GOG account and games installed by '+APP+' or Heroic':'Your GOG account and games installed by '+APP+', GOG Galaxy or GOG installers')+n('gog'))
       +swRow('srcXbox',LINUX?'Xbox Cloud Gaming':'Xbox / Game Pass',(LINUX?'Stream Game Pass games (needs Game Pass Ultimate)':'PC games installed with the Xbox app, and games you\'ve played on Xbox')+(LINUX&&host?` · ${LIB.counts.xbox??0} cloud games`:n('xbox')))
+      +(LINUX?swRow('srcEmu','Emulators','Retro games from your ROMs folder, played with RetroArch'+n('emu'))+emuRows():'')
       +`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`
       +`<button class="row" data-f data-k="s-addexe" data-act="addManual"><div class="rt"><b>Add a game manually</b><small>${LINUX?'A program, AppImage, .desktop file, or Windows .exe (runs with Proton)':'Any .exe or shortcut'}${n('manual')}</small></div><div class="rv">＋</div></button>`
       +`<button class="row" data-f data-k="s-rescan" data-act="rescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${LIB.loading?'Scanning…':'Rescan library'}</b><small>Picks up games you installed or removed</small></div></button>`;
@@ -2631,6 +2642,11 @@ function act(el){
     case 'colNew': return colNew(null);
     case 'pinSetup': return pinSetup();
     case 'backupNow': return backupNow();
+    case 'emuInstall': EMU.busy=true; render(null,true); toast('Installing RetroArch. This takes a few minutes.');
+      return call('emu.install',{},20*60000).then(()=>{ toast('RetroArch is installed'); loadEmu(); }).catch(e=>toast(e.message)).finally(()=>{ EMU.busy=false; render(null,true); });
+    case 'emuFolders': return EMU.s&&EMU.s.roots.length
+      ? openSheet({title:'System folders', sub:'Put each game in its system\'s folder, then Rescan library.', items:[...EMU.s.systems.map(s=>({label:`${s.dir}  ·  ${s.name}`, icon:'', run:()=>{}})), {label:'Make any missing folders', icon:'lib', run:()=>call('emu.makeFolders').then(()=>toast('Folders ready')).catch(e=>toast(e.message))}]})
+      : call('emu.makeFolders').then(f=>{ toast(`Made ${f}. Put games in their system's folder, then Rescan.`); loadEmu(); }).catch(e=>toast(e.message));
     case 'restoreBackup': return restoreBackup();
     case 'rpToggle': return rpAct('on', async()=>{ const on=!RP.s.on; await call('remote.setOn',{on},60000); toast(on?'Remote play is on. Pair a device to start.':'Remote play is off'); });
     case 'rpPair': return (async()=>{ const pin=await openPrompt({title:'The 4 numbers Moonlight shows', min:4}); if(pin==null) return;
@@ -2784,6 +2800,7 @@ function viewGameSettings(){
     + `<button class="row" data-f data-k="gs-fps" data-act="gsFps"><span class="ricon">${I.perf||I.gear}</span><div class="rt"><b>Frame-rate cap</b><small>Smoother and cooler: caps this game, then goes back to your usual limit</small></div><div class="rv">${o.fpsLimit?o.fpsLimit+' FPS':'Usual'} ›</div></button>`
     + `<button class="row" data-f data-k="gs-tdp" data-act="gsTdp"><span class="ricon">${I.power}</span><div class="rt"><b>Power limit</b><small>More watts for a demanding game, fewer for battery life</small></div><div class="rv">${o.tdp?o.tdp+' W':'Usual'} ›</div></button>`;
   if(r.kind==='steam') return h+ingame+note(`Steam starts ${esc(g.title)}, so it uses Steam's own settings: in Steam, open the game's Properties to pick a Proton version or add launch options.`)+'</div>';
+  if(r.kind==='emu') return h+ingame+note(`RetroArch plays ${esc(g.title)}. Its own settings (shaders, controls, save states) are in RetroArch's menu: press the left stick and right stick in together while playing.`)+'</div>';
   if(r.kind==='external') return h+ingame+note(`Heroic starts ${esc(g.title)}, so its settings are in Heroic. Games ${APP} installs itself have their settings here.`)+'</div>';
   if(r.kind==='proton'){
     const cur=r.protonChoices.find(c=>c.id===o.proton) || {label:o.proton?o.proton.split('/').pop():'Default'};
@@ -3491,7 +3508,7 @@ function fromHost(d){
           hrs:(d.minutes||0)/60, last:d.lastPlayed||0, added:d.added||0, size:fmtSize(d.sizeBytes),
           ach:null, art:d.art||{}, path:d.path||'', canRemove:!!d.canRemove,
           inst:d.installed!==false, cloud:!!d.cloud, state:d.state||'installed', progress:d.progress, bytesDone:d.bytesDone, bytesTotal:d.bytesTotal, speed:d.bytesPerSec,
-          canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null};
+          canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null, system:d.system||null};
 }
 async function loadLibrary(rescan, announce){
   if(!host) return;
@@ -3499,7 +3516,7 @@ async function loadLibrary(rescan, announce){
   try{
     const lib=await call('library.get',{rescan:!!rescan},120000);
     applyLib(lib);
-    const s=lib.sources||{}; S.set.srcSteam=s.steam!==false; S.set.srcEpic=s.epic!==false; S.set.srcGog=s.gog!==false; S.set.srcXbox=s.xbox!==false;
+    const s=lib.sources||{}; S.set.srcSteam=s.steam!==false; S.set.srcEpic=s.epic!==false; S.set.srcGog=s.gog!==false; S.set.srcXbox=s.xbox!==false; S.set.srcEmu=s.emu!==false;
     if(lib.runningId) S.running=lib.runningId;
     S.set.steamBg = lib.steamBackground!==false;
     if(GAMES.some(isActive)) startDownloadPoll();
@@ -3515,7 +3532,7 @@ function applyLib(lib){
 }
 async function setSources(){
   try{
-    const lib=await call('library.setSources',{steam:S.set.srcSteam,epic:S.set.srcEpic,gog:S.set.srcGog,xbox:S.set.srcXbox},120000);
+    const lib=await call('library.setSources',{steam:S.set.srcSteam,epic:S.set.srcEpic,gog:S.set.srcGog,xbox:S.set.srcXbox,emu:S.set.srcEmu},120000);
     GAMES.length=0; lib.games.forEach(d=>GAMES.push(fromHost(d))); LIB.counts=lib.counts||{};
   }catch(e){ toast(e.message); }
   render(null,true);
@@ -3618,6 +3635,7 @@ function onSettingsTab(t){
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
   if(t==='signin') loadLogin();
   if(t==='remote') loadRemote();
+  if(t==='sources') loadEmu();
   if(t==='import') loadImport();
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();
