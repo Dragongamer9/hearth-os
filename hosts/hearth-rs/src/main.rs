@@ -199,6 +199,8 @@ fn main() {
                     b.stream = Arc::new(move |open| stream(&streamer, open, windowed));
                     let zoomer = handle.clone();
                     b.zoom = Arc::new(move |pct| { if let Some(w) = zoomer.get_webview_window("main") { let _ = w.set_zoom(pct as f64 / 100.0); } });
+                    // First start after installing: a look for games on other drives, offered once (after 90 s).
+                    std::thread::spawn(|| { std::thread::sleep(std::time::Duration::from_secs(90)); hearth_core::stores::notify(serde_json::json!({"type": "internal", "what": "importOffer"})); });
                     // Store game lists older than 12 hours are fetched again, in the background.
                     hearth_core::stores::refresh_stale(&b.library.accounts);
                     b.pick_file = Arc::new(move |title: &str| {
