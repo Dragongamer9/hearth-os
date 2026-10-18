@@ -69,13 +69,16 @@ fi
 
 # Between modes: apps started in one mode belong to its display, which is gone once the mode ends. Steam
 # in particular then hangs, and Game Mode's Hearth (which starts Steam in the background) hangs with it.
-# Give Steam a few seconds to close by itself, then make sure it and the old compositor are gone.
+# Give Steam a moment to close by itself (a couple of seconds, not its whole shutdown), then make sure it
+# and the old compositor are gone.
 settle() {
   if pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; then
     log "closing Steam left from $1 mode"
-    timeout 6 steam -shutdown >/dev/null 2>&1 &
-    i=0; while [ $i -lt 20 ] && pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; do sleep 0.5; i=$((i+1)); done
+    timeout 4 steam -shutdown >/dev/null 2>&1 &
+    i=0; while [ $i -lt 10 ] && pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; do sleep 0.25; i=$((i+1)); done
     pkill -TERM -u "$(id -u)" -x steam 2>/dev/null; pkill -TERM -u "$(id -u)" -f steamwebhelper 2>/dev/null
+    i=0; while [ $i -lt 6 ] && pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; do sleep 0.25; i=$((i+1)); done
+    pkill -KILL -u "$(id -u)" -x steam 2>/dev/null; pkill -KILL -u "$(id -u)" -f steamwebhelper 2>/dev/null
   fi
   pkill -KILL -u "$(id -u)" -x gamescope 2>/dev/null; pkill -KILL -u "$(id -u)" -x gamescope-wl 2>/dev/null
   pkill -KILL -u "$(id -u)" -x labwc 2>/dev/null
