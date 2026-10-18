@@ -172,7 +172,6 @@ mod tests {
 
 // ------------------------------------------------------------------ the desktop's wallpaper (Desktop Mode)
 
-fn desktop_json() -> PathBuf { crate::paths::data_dir().join("desktop.json") }
 fn read_desktop() -> Value { std::fs::read(desktop_json()).ok().and_then(|b| serde_json::from_slice(&b).ok()).filter(Value::is_object).unwrap_or(json!({})) }
 pub fn desktop_wallpaper() -> String { read_desktop()["wallpaper"].as_str().unwrap_or("").to_string() }
 /// Sets it: '' (the default), anim:lava / anim:aurora, or a picture (copied to ~/.config/nimbus/wallpaper.<ext>,
