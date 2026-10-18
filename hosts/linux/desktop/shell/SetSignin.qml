@@ -75,7 +75,7 @@ SetPage {
     }
 
     SetSwitch {
-        icon: "lock"; title: "Lock when waking"; sub: "Desktop Mode asks for your password after sleep. Lock any time with Super+L or the power menu."
+        icon: "lock"; title: "Ask for my password after sleep"; sub: "Locked when it wakes, on the desktop and in Game Mode. Lock any time with Super+L or the power menu."
         checked: Settings.lockOnWake
         onToggled: v => Settings.lockOnWake = v
     }

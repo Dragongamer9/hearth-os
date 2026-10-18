@@ -104,8 +104,11 @@ def check_plan(p):
     image = p.get('image') or default_image()
     if not re.fullmatch(r'[a-z0-9./_:@-]+', image):
         raise Fail('bad image name')
+    signin = p.get('signin') if p.get('signin') in ('auto', 'start', 'always') else 'auto'
+    if nopass:
+        signin = 'auto'   # nothing to ask for
     extra = [k for k in (p.get('kargs') or []) if isinstance(k, str) and re.fullmatch(r'[A-Za-z0-9_.,=:/-]+', k)]
-    return {**p, 'kargs': extra, 'hostname': host, 'timezone': tz, 'image': image,
+    return {**p, 'signin': signin, 'kargs': extra, 'hostname': host, 'timezone': tz, 'image': image,
             'user': {'name': name, 'full': (u.get('full') or name).replace(':', ' ').strip(),
                      'password': '' if nopass else u['password'], 'nopassword': nopass}}
 
@@ -453,6 +456,7 @@ def setup_system(dep, root, plan):
                 os.remove(lt)
             os.symlink(f'../usr/share/zoneinfo/{plan["timezone"]}', lt)
         copy_wifi(dep)
+        signin_choice(dep, u['name'], plan['signin'])
         # Hearth's first start offers to import games from Windows (beside) and sets up the rest.
         os.makedirs(f'{dep}/etc/nimbus', exist_ok=True)
         with open(f'{dep}/etc/nimbus/installed.json', 'w') as f:
@@ -461,6 +465,23 @@ def setup_system(dep, root, plan):
     finally:
         sh(['umount', f'{dep}/var/home'], check=False)
         sh(['umount', f'{dep}/var'], check=False)
+
+
+def signin_choice(dep, name, signin):
+    """auto: straight in at start, no lock after sleep. start: the login screen at start. always: the login
+    screen at start and the password after sleep (Game Mode and Mantel). Changeable in Settings › Sign-in."""
+    if signin in ('start', 'always'):
+        os.makedirs(f'{dep}/etc/nimbus', exist_ok=True)
+        open(f'{dep}/etc/nimbus/no-autologin', 'w').close()
+    if signin == 'always':
+        ent = next(l.split(':') for l in open(f'{dep}/etc/passwd') if l.split(':')[0] == name)
+        uid, gid, home = int(ent[2]), int(ent[3]), dep + ent[5]
+        d = f'{home}/.local/share/nimbus'
+        os.makedirs(d, exist_ok=True)
+        with open(f'{d}/desktop.json', 'w') as f:
+            json.dump({'lockOnWake': True}, f)
+        for path in (f'{home}/.local', f'{home}/.local/share', d, f'{d}/desktop.json'):
+            os.chown(path, uid, gid)
 
 
 def copy_wifi(dep):

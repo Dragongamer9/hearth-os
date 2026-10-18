@@ -24,7 +24,7 @@ jobs:
           echo "LOOP=$(sudo losetup -fP --show disk.img)" >> "$GITHUB_ENV"
       - name: Install Hearth OS onto it
         run: |
-          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","image":"ghcr.io/dragongamer9/hearth:latest","firmware":false,"kargs":["console=ttyS0,115200"]}' "$LOOP")
+          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","image":"ghcr.io/dragongamer9/hearth:latest","firmware":false,"signin":"always","kargs":["console=ttyS0,115200"]}' "$LOOP")
           echo "$plan" | sudo podman run --rm -i --privileged --pid=host --net=host \
             -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" -e HEARTH_INSTALL_TEST=1 \
             --security-opt label=disable ghcr.io/dragongamer9/hearth:latest \
@@ -57,6 +57,8 @@ jobs:
           sudo sh -c 'cat /mnt/h/boot/loader/entries/*.conf' || true
           sudo mkdir -p /mnt/home && sudo mount -o subvol=home "${LOOP}p3" /mnt/home
           check "home folder" "sudo test -d /mnt/home/tester"
+          check "login screen at start" "sudo test -e $dep/etc/nimbus/no-autologin"
+          check "password after sleep" "sudo grep -q lockOnWake /mnt/home/tester/.local/share/nimbus/desktop.json"
           sudo umount -R /mnt/h /mnt/home || true
           sudo sh -c "cat $dep/etc/fstab /mnt/h/boot/loader/entries/*.conf 2>/dev/null" | sed 's/^/::notice title=Result::/' || true
           [ $ok = 1 ]

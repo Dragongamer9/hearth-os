@@ -13,6 +13,10 @@ const { EventEmitter } = require('node:events');
 const HELPER = '/usr/libexec/nimbus/hearth-admin';
 const NO_AUTOLOGIN = '/etc/nimbus/no-autologin';
 
+/** Mantel's settings file; "lockOnWake" there is shared by Mantel and Game Mode. */
+const desktopJson = () => path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'nimbus', 'desktop.json');
+function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } }
+
 const confDir = () => path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'nimbus');
 
 /** Reads NIMBUS_START_MODE from session.conf (shell syntax). */
@@ -46,8 +50,9 @@ function parseHelperOutput(out) {
 }
 
 class SystemAdmin extends EventEmitter {
-  constructor({ helper = HELPER, sessionConf = path.join(confDir(), 'session.conf'), exists = fs.existsSync, spawnFn = spawn } = {}) {
+  constructor({ helper = HELPER, sessionConf = path.join(confDir(), 'session.conf'), exists = fs.existsSync, spawnFn = spawn, desktopFile = desktopJson() } = {}) {
     super();
+    this.desktopFile = desktopFile;
     this.helper = helper;
     this.sessionConf = sessionConf;
     this.exists = exists;
@@ -99,7 +104,28 @@ class SystemAdmin extends EventEmitter {
       startMode: readStartMode(this.sessionConf),
       hostname: os.hostname(),
       user: os.userInfo().username,
+      lockOnWake: readJson(this.desktopFile).lockOnWake === true,
     };
+  }
+  /** Ask for the password after sleep (Game Mode and Mantel both read this). */
+  setLockOnWake(on) {
+    const o = readJson(this.desktopFile);
+    o.lockOnWake = !!on;
+    fs.mkdirSync(path.dirname(this.desktopFile), { recursive: true });
+    fs.writeFileSync(this.desktopFile, JSON.stringify(o, null, 2) + '\n');
+    return this.login();
+  }
+  /** Checks this user's password the way the login screen does (pam_unix's helper). An account with no
+   *  password passes with an empty one. */
+  checkPassword(pw) {
+    return new Promise(resolve => {
+      const helper = ['/usr/sbin/unix_chkpwd', '/usr/bin/unix_chkpwd', '/sbin/unix_chkpwd'].find(f => this.exists(f));
+      if (!helper) return resolve(false);
+      const p = this.spawn(helper, [os.userInfo().username, 'nullok'], { stdio: ['pipe', 'ignore', 'ignore'] });
+      p.on('error', () => resolve(false));
+      p.on('close', code => resolve(code === 0));
+      p.stdin.end(String(pw || '') + '\0');
+    });
   }
   async setAutologin(on) { await this.run(['autologin', on ? 'on' : 'off']); return this.login(); }
   setStartMode(mode) {

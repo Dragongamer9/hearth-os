@@ -3,7 +3,7 @@
 // Inside the "Nimbus" login session it runs in gamescope (see session/); started from a desktop
 // with --windowed it runs in a normal window for development.
 
-const { app, BrowserWindow, ipcMain, protocol, net, dialog, screen, session, Menu, safeStorage, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, dialog, screen, session, Menu, safeStorage, globalShortcut, powerMonitor } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -815,6 +815,20 @@ app.whenReady().then(() => {
 
   createWindow();
   createOverlay(bridge.platform);
+  // "Ask for my password after sleep" in Game Mode (Mantel locks itself on the desktop): lock as the device
+  // goes to sleep, so it's locked when it wakes; on waking, Hearth comes to the front with the lock screen.
+  let lockedForSleep = false;
+  bridge.platform.unlocked = () => { lockedForSleep = false; };
+  powerMonitor.on('suspend', () => {
+    if (!IN_SESSION || !inGamescope() || !bridge.admin.login().lockOnWake) return;
+    lockedForSleep = true;
+    post({ type: 'event', name: 'lock', data: {} });
+  });
+  powerMonitor.on('resume', () => {
+    if (!lockedForSleep) return;
+    hideOverlay(); comeBack();
+    post({ type: 'event', name: 'lock', data: {} });
+  });
   if (IN_SESSION && library.store.data.fpsLimit) setFpsLimit(library.store.data.fpsLimit).catch(() => {});
   library.startBackgroundServices().catch(e => log('background services FAILED ' + e.message));
   setTimeout(() => { if (library.store.data.autoUpdateCheck) updates.check(); }, 20000);

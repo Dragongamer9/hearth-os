@@ -46,6 +46,13 @@ class Plan(unittest.TestCase):
         self.assertTrue(p['user']['nopassword'])
         self.assertEqual(p['user']['password'], '')
 
+    def test_signin_choice(self):
+        self.assertEqual(H.check_plan(GOOD)['signin'], 'auto')
+        self.assertEqual(H.check_plan({**GOOD, 'signin': 'always'})['signin'], 'always')
+        self.assertEqual(H.check_plan({**GOOD, 'signin': 'bogus'})['signin'], 'auto')
+        nop = {**GOOD, 'signin': 'always', 'user': {'name': 'sam', 'password': '', 'nopassword': True}}
+        self.assertEqual(H.check_plan(nop)['signin'], 'auto')
+
     def test_beside_needs_room(self):
         with self.assertRaises(H.Fail):
             H.check_plan({**GOOD, 'mode': 'beside', 'give': 10 * GIB})
