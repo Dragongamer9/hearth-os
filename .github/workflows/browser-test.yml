@@ -24,7 +24,7 @@ jobs:
         working-directory: hosts/linux
         run: |
           sudo apt-get install -y -qq xvfb imagemagick x11-utils fonts-noto-core >/dev/null
-          npm ci --no-audit --no-fund >/dev/null
+          npm install --no-audit --no-fund >/dev/null
       - name: Run Hearth Browser
         working-directory: hosts/linux
         run: |
