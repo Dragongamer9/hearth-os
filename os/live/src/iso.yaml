@@ -1,0 +1,11 @@
+label: "Hearth-Live"
+grub2:
+  default: 0
+  timeout: 5
+  entries:
+    - name: "Try or install Hearth"
+      linux: "/images/pxeboot/vmlinuz quiet rhgb splash root=live:CDLABEL=Hearth-Live enforcing=0 rd.live.image"
+      initrd: "/images/pxeboot/initrd.img"
+    - name: "Try or install Hearth (basic graphics)"
+      linux: "/images/pxeboot/vmlinuz quiet rhgb splash root=live:CDLABEL=Hearth-Live enforcing=0 rd.live.image nomodeset"
+      initrd: "/images/pxeboot/initrd.img"
