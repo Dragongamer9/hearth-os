@@ -1,0 +1,72 @@
+# Hearth's Rust host (moving off Electron): tests hearth-core, builds the Tauri app, and runs it once in a
+# virtual screen to check Hearth's screens come up. Screenshots go to the ci/rust-shots branch.
+name: Rust host
+
+on:
+  push:
+    branches: [rust-host]
+    paths: ['hosts/hearth-core/**', 'hosts/hearth-rs/**', 'ui/**', '.github/workflows/rust.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            hosts/hearth-core
+            hosts/hearth-rs
+      - name: Test hearth-core
+        working-directory: hosts/hearth-core
+        run: |
+          set -o pipefail
+          cargo test 2>&1 | tee test.log
+          echo "::notice title=hearth-core tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: WebKit and GTK for the app
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick x11-apps >/dev/null
+      - name: Build the app
+        working-directory: hosts/hearth-rs
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=Build failed::$(grep -E '^(error|warning: unused)' -A6 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          ls -l target/release/hearth
+          echo "::notice title=App size::$(du -h target/release/hearth | cut -f1) (the Electron app is about 250 MB)"
+      - name: Run it once and take screenshots
+        working-directory: hosts/hearth-rs
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          # A pretend Steam library, so the screens have games in them.
+          s="$HOME/.local/share/Steam"; mkdir -p "$s/steamapps" "$s/config"
+          printf '"libraryfolders" { "0" { "path" "%s" } }' "$s" > "$s/steamapps/libraryfolders.vdf"
+          for g in "620 Portal 2" "400 Portal" "570 Dota 2"; do set -- $g; id=$1; shift
+            printf '"AppState" { "appid" "%s" "name" "%s" "installdir" "%s" "StateFlags" "4" "SizeOnDisk" "1000000000" }' "$id" "$*" "$*" > "$s/steamapps/appmanifest_$id.acf"; done
+          ./target/release/hearth --windowed > run.log 2>&1 &
+          for t in 5 12 20; do sleep $((t - ${last:-0})); last=$t; import -window root shots/at-${t}s.png || true; done
+          pkill -f target/release/hearth || true
+          echo "::notice title=App output::$(tail -c 1500 run.log | tr '\n' '|')"
+      - name: Publish the screenshots (ci/rust-shots)
+        run: |
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          cp -r hosts/hearth-rs/shots /tmp/shots
+          git checkout --orphan ci/rust-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && cp -r /tmp/shots shots
+          git add -f shots
+          git commit -qm "Rust host screenshots ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/rust-shots || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-rust-linux
+          path: hosts/hearth-rs/target/release/hearth

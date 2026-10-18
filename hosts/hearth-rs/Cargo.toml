@@ -1,0 +1,24 @@
+[package]
+name = "hearth"
+version = "0.0.23"
+edition = "2021"
+description = "Hearth: the controller-first game library and Game Mode for Hearth OS (Rust host)"
+license = "MIT"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+log = "0.4"
+hearth-core = { path = "../hearth-core" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
