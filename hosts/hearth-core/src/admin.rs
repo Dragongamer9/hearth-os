@@ -45,10 +45,13 @@ pub fn parse_helper(out: &str) -> Result<Value, String> {
 pub fn can_admin() -> bool { Path::new(HELPER).exists() }
 
 /// Runs hearth-admin; each output line also goes to `on_line` (progress, stages).
-pub fn run(args: &[&str], input: Option<&str>, on_line: &mut dyn FnMut(&str)) -> Result<Value, String> {
+pub fn run(args: &[&str], input: Option<&str>, on_line: &mut dyn FnMut(&str)) -> Result<Value, String> { run_with(args, input, on_line, &mut |_| {}) }
+/// The same, telling `on_spawn` the helper's process id (so it can be stopped).
+pub fn run_with(args: &[&str], input: Option<&str>, on_line: &mut dyn FnMut(&str), on_spawn: &mut dyn FnMut(u32)) -> Result<Value, String> {
     if !can_admin() { return Err("This needs Hearth, the OS.".into()); }
     let mut child = Command::new("pkexec").arg(HELPER).args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn().map_err(|e| e.to_string())?;
+    on_spawn(child.id());
     if let Some(mut stdin) = child.stdin.take() { if let Some(i) = input { let _ = stdin.write_all(i.as_bytes()); } }
     let mut out = String::new();
     if let Some(stdout) = child.stdout.take() {

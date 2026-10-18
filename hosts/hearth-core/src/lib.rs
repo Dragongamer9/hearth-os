@@ -11,6 +11,7 @@ pub mod emulators;
 pub mod game_options;
 pub mod gameinfo;
 pub mod http;
+pub mod importer;
 pub mod library;
 pub mod owned;
 pub mod manual;

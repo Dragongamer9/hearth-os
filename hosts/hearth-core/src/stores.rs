@@ -125,6 +125,12 @@ pub mod epic {
         if !installed(&Owned::default()).iter().any(|g| g.id == format!("epic:{app}")) { return Err(format!("Epic install failed: {}", tools::problem(&r))); }
         Ok(())
     }
+    /// Registers a game copied from another drive (Settings › Import games).
+    pub fn import_game(app: &str, dir: &str) -> Result<(), String> {
+        let r = tools::run(&tools::LEGENDARY, &["-y", "import", app, dir, "--platform", "Windows", "--disable-check"], &env(), None, None, Some(std::time::Duration::from_secs(600)))?;
+        if !installed(&Owned::default()).iter().any(|g| g.id == format!("epic:{app}")) { return Err(format!("Epic didn't accept it: {}", tools::problem(&r))); }
+        Ok(())
+    }
     pub fn uninstall(app: &str) -> Result<(), String> {
         let r = tools::run(&tools::LEGENDARY, &["-y", "uninstall", app], &env(), None, None, Some(std::time::Duration::from_secs(600)))?;
         if installed(&Owned::default()).iter().any(|g| g.id == format!("epic:{app}")) { return Err(format!("Couldn't uninstall: {}", tools::problem(&r))); }
