@@ -21,8 +21,15 @@ plymouth-set-default-theme hearth || true
 DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
   --add "dmsquash-live dmsquash-live-autooverlay plymouth" \
   "/usr/lib/modules/${KVER}/initramfs.img" "${KVER}"
+# Titanoboa wants the EFI boot files under /boot/efi. Fedora's base image keeps them in a different place than
+# Bazzite (bootupd's copy, or /usr/lib/efi), so take whichever is there.
+dnf install -y shim-x64 grub2-efi-x64
 mkdir -p /boot/efi
-cp -av /usr/lib/efi/*/*/EFI /boot/efi/
+src=$(ls -d /usr/lib/efi/*/*/EFI /usr/lib/bootupd/updates/EFI 2>/dev/null | head -1)
+[ -n "$src" ] && cp -av "$src" /boot/efi/
+test -d /boot/efi/EFI/fedora
+mkdir -p /boot/efi/EFI/BOOT
+[ -e /boot/efi/EFI/BOOT/BOOTX64.EFI ] || cp -v /boot/efi/EFI/fedora/shimx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI
 cp -v /boot/efi/EFI/fedora/grubx64.efi /boot/efi/EFI/BOOT/fbx64.efi || true
 rm -rf /var/tmp; mkdir -p /var/tmp
 cat >/etc/systemd/system/var-tmp.mount <<'UNIT'
