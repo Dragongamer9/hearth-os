@@ -64,7 +64,7 @@ PanelWindow {
                 Image {
                     anchors.centerIn: parent
                     width: 32; height: 32
-                    source: Qt.resolvedUrl("hearth-logo.png")
+                    source: Qt.resolvedUrl("images/hearth-logo.png")
                     smooth: true; mipmap: true
                 }
             }
@@ -87,7 +87,7 @@ PanelWindow {
                         anchors.centerIn: parent
                         implicitSize: 28
                         // Hearth Settings is part of this shell (its app id is Quickshell's): show the Hearth mark.
-                        source: task.modelData.title === "Hearth Settings" ? Qt.resolvedUrl("hearth-logo.png")
+                        source: task.modelData.title === "Hearth Settings" ? Qt.resolvedUrl("images/hearth-logo.png")
                             : Quickshell.iconPath(task.entry ? task.entry.icon : task.modelData.appId, "application-x-executable")
                     }
                 }

@@ -44,6 +44,8 @@ nav .links a:hover{color:var(--text);text-decoration:none}
 .btn:hover{text-decoration:none;transform:translateY(-1px)}
 .btn.primary{background:var(--ember);color:var(--ink)}
 .btn.primary:hover{background:#ff9d5a}
+.btn.soon{opacity:.6;cursor:default}
+.btn.soon:hover{transform:none;background:var(--ember)}
 .btn.ghost{background:rgba(255,255,255,.04);border-color:var(--line);color:var(--text)}
 .btn.ghost:hover{background:rgba(255,255,255,.08)}
 .btn svg{width:18px;height:18px}
@@ -248,8 +250,11 @@ footer .legal{flex-basis:100%;font-size:13px;opacity:.85}
       <div class="dlcard main">
         <h3>Hearth OS installer (ISO)</h3>
         <p>For handhelds and PCs with an AMD or Intel GPU. About 7 GB. Installing erases the drive you pick.</p>
-        <a class="btn primary" href="https://sourceforge.net/projects/hearth-os/files/latest/download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>Download ISO</a>
-        <p class="small" style="flex:0;margin:12px 0 0"><a href="https://sourceforge.net/projects/hearth-os/files/">All versions and checksums</a></p>
+        <!-- ISO: switch back to the SourceForge links once the project is set up:
+             <a class="btn primary" href="https://sourceforge.net/projects/hearth-os/files/latest/download">Download ISO</a>
+             <a href="https://sourceforge.net/projects/hearth-os/files/">All versions and checksums</a> -->
+        <span class="btn primary soon" aria-disabled="true">Coming soon</span>
+        <p class="small" style="flex:0;margin:12px 0 0">The first public ISO is on its way. Already on Bazzite? Switch over today.</p>
       </div>
       <div class="dlcard">
         <h3>Already on Bazzite?</h3>
@@ -281,7 +286,7 @@ footer .legal{flex-basis:100%;font-size:13px;opacity:.85}
     <a class="brand" href="#"><img src="img/logo.svg" alt="" style="width:24px;height:24px">Hearth OS</a>
     <a href="https://github.com/Dragongamer9/nimbus">Source code</a>
     <a href="https://github.com/Dragongamer9/nimbus/releases">Release notes</a>
-    <a href="https://sourceforge.net/projects/hearth-os/files/">ISO downloads</a>
+    <a href="https://github.com/Dragongamer9/nimbus/issues">Report a problem</a>
     <a href="https://bazzite.gg">Built on Bazzite</a>
     <p class="legal">Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft or Universal Blue.
       Steam, Epic Games, GOG and Xbox are trademarks of their owners. Game names and art in screenshots are placeholders.</p>

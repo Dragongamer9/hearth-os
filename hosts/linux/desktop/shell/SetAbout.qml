@@ -43,7 +43,7 @@ SetPage {
     RowLayout {
         Layout.fillWidth: true; Layout.bottomMargin: 10
         spacing: 16
-        Image { source: Qt.resolvedUrl("hearth-logo.png"); Layout.preferredWidth: 64; Layout.preferredHeight: 64; fillMode: Image.PreserveAspectFit; smooth: true }
+        Image { source: Qt.resolvedUrl("images/hearth-logo.png"); Layout.preferredWidth: 64; Layout.preferredHeight: 64; fillMode: Image.PreserveAspectFit; smooth: true }
         ColumnLayout {
             spacing: 2
             Text { text: "Hearth"; color: Theme.text; font.family: Theme.font; font.pixelSize: 22; font.weight: Font.DemiBold }

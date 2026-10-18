@@ -71,7 +71,7 @@ PanelWindow {
         Image {
             anchors.centerIn: parent
             width: parent.width * 0.55; height: width
-            source: Qt.resolvedUrl("ember-glow.png")
+            source: Qt.resolvedUrl("images/ember-glow.png")
             opacity: 0.18
         }
 
@@ -82,7 +82,7 @@ PanelWindow {
             Image {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: ring.size * 0.16; height: width
-                source: Qt.resolvedUrl("hearth-logo.png")
+                source: Qt.resolvedUrl("images/hearth-logo.png")
                 smooth: true; mipmap: true
             }
             Text {

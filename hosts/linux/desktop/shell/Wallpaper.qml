@@ -32,12 +32,12 @@ PanelWindow {
         Rectangle { anchors.fill: parent; color: "#120a09" }
         Repeater {
             model: [
-                { src: "blob-red.png", x: 0.22, y: 0.62, s: 0.62, dx: 0.10, dy: 0.08, t: 23000 },
-                { src: "blob-orange.png", x: 0.52, y: 0.34, s: 0.55, dx: -0.12, dy: 0.10, t: 29000 },
-                { src: "blob-gold.png", x: 0.74, y: 0.66, s: 0.58, dx: -0.08, dy: -0.12, t: 31000 },
-                { src: "blob-plum.png", x: 0.80, y: 0.22, s: 0.40, dx: -0.10, dy: 0.06, t: 26000 },
-                { src: "blob-orange.png", x: 0.30, y: 0.20, s: 0.36, dx: 0.12, dy: 0.10, t: 34000 },
-                { src: "blob-red.png", x: 0.58, y: 0.90, s: 0.44, dx: 0.06, dy: -0.12, t: 27000 }
+                { src: "images/blob-red.png", x: 0.22, y: 0.62, s: 0.62, dx: 0.10, dy: 0.08, t: 23000 },
+                { src: "images/blob-orange.png", x: 0.52, y: 0.34, s: 0.55, dx: -0.12, dy: 0.10, t: 29000 },
+                { src: "images/blob-gold.png", x: 0.74, y: 0.66, s: 0.58, dx: -0.08, dy: -0.12, t: 31000 },
+                { src: "images/blob-plum.png", x: 0.80, y: 0.22, s: 0.40, dx: -0.10, dy: 0.06, t: 26000 },
+                { src: "images/blob-orange.png", x: 0.30, y: 0.20, s: 0.36, dx: 0.12, dy: 0.10, t: 34000 },
+                { src: "images/blob-red.png", x: 0.58, y: 0.90, s: 0.44, dx: 0.06, dy: -0.12, t: 27000 }
             ]
             delegate: Image {
                 id: b
@@ -95,7 +95,7 @@ PanelWindow {
             }
         }
         Repeater {
-            model: [{ src: "aurora-a.png", y: 0.20, t: 40000, o: 0.75 }, { src: "aurora-b.png", y: 0.30, t: 52000, o: 0.55 }, { src: "aurora-c.png", y: 0.38, t: 46000, o: 0.6 }]
+            model: [{ src: "images/aurora-a.png", y: 0.20, t: 40000, o: 0.75 }, { src: "images/aurora-b.png", y: 0.30, t: 52000, o: 0.55 }, { src: "images/aurora-c.png", y: 0.38, t: 46000, o: 0.6 }]
             delegate: Image {
                 id: rib
                 required property var modelData
@@ -143,7 +143,7 @@ PanelWindow {
         // The fire's light: a wide glow rising from the bottom, breathing slowly (still with Reduce motion)...
         Image {
             id: glow
-            source: Qt.resolvedUrl("ember-glow.png")
+            source: Qt.resolvedUrl("images/ember-glow.png")
             width: parent.width * 1.5
             height: parent.height * 1.1
             x: (parent.width - width) / 2
@@ -159,7 +159,7 @@ PanelWindow {
         }
         // ...with a smaller, hotter core that flickers and drifts a little.
         Image {
-            source: Qt.resolvedUrl("ember-glow.png")
+            source: Qt.resolvedUrl("images/ember-glow.png")
             width: parent.width * 0.7
             height: parent.height * 0.6
             x: (parent.width - width) / 2 + drift
