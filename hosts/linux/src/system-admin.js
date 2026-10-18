@@ -115,6 +115,27 @@ class SystemAdmin extends EventEmitter {
     fs.writeFileSync(this.desktopFile, JSON.stringify(o, null, 2) + '\n');
     return this.login();
   }
+  /** The desktop's (Mantel's) wallpaper: '' fireside, 'anim:lava', 'anim:aurora', or a picture file. */
+  desktopWallpaper() { const w = readJson(this.desktopFile).wallpaper; return typeof w === 'string' ? w : ''; }
+  /**
+   * Sets it. `picture` is copied to ~/.config/nimbus/wallpaper.<ext> first (a profile's background is put away
+   * when someone else's profile is in use, so the desktop keeps its own copy).
+   */
+  setDesktopWallpaper(value, picture = null) {
+    let v = String(value || '');
+    if (picture) {
+      const dst = path.join(confDir(), 'wallpaper' + (path.extname(picture).toLowerCase() || '.jpg'));
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      for (const e of ['.jpg', '.jpeg', '.png', '.webp']) if (path.join(confDir(), 'wallpaper' + e) !== dst) fs.rmSync(path.join(confDir(), 'wallpaper' + e), { force: true });
+      fs.copyFileSync(picture, dst);
+      v = dst;
+    } else if (v && !/^anim:(lava|aurora)$/.test(v)) throw new Error('Unknown wallpaper');
+    const o = readJson(this.desktopFile);
+    o.wallpaper = v;
+    fs.mkdirSync(path.dirname(this.desktopFile), { recursive: true });
+    fs.writeFileSync(this.desktopFile, JSON.stringify(o, null, 2) + '\n');
+    return v;
+  }
   /** Checks this user's password the way the login screen does (pam_unix's helper). An account with no
    *  password passes with an empty one. */
   checkPassword(pw) {

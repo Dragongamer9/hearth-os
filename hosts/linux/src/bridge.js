@@ -319,6 +319,11 @@ class Bridge {
       // Settings › Sign-in (Linux)
       case 'login.get': return this.admin.login();
       case 'login.setAutologin': return this.admin.setAutologin(!!a.on);
+      case 'desktop.wallpaper': return { wallpaper: this.admin.desktopWallpaper() };
+      case 'desktop.setWallpaper': {
+        if (a.value === 'profile') { const f = this.profile.file('background'); if (!f) throw new Error('Choose a background picture in your profile first'); return { wallpaper: this.admin.setDesktopWallpaper('', f) }; }
+        return { wallpaper: this.admin.setDesktopWallpaper(a.value || '') };
+      }
       case 'login.setLockOnWake': return this.admin.setLockOnWake(!!a.on);
       case 'login.unlock': { const ok = await this.admin.checkPassword(a.password); if (ok) this.platform.unlocked && this.platform.unlocked(); return { ok }; }
       case 'login.setStartMode': return this.admin.setStartMode(req('mode'));
