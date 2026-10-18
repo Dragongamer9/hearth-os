@@ -60,7 +60,7 @@ async function mappedWindows() {
     if (!/Map State:\s*IsViewable/.test(st)) continue;
     const pid = (await cardinals('_NET_WM_PID', k.win))[0] || 0;
     const appid = (await cardinals('STEAM_GAME', k.win))[0] || 0;
-    out.push({ win: k.win, pid, appid, title: k.title });
+    out.push({ win: k.win, pid, appid, title: k.title, w: k.w, h: k.h });
   }
   return out;
 }
@@ -103,4 +103,38 @@ async function focusGame({ pids = () => [], steamAppId = 0, exclude = [], tries 
   return false;
 }
 
-module.exports = { available, apps, parseChildren, focusWindow, focusAppId, clearFocus, focusGame, focusableWindows, setRoot, cardinals };
+/**
+ * Waits until a game (or its launcher) has a real window up, while Hearth stays in front with its "starting"
+ * screen: a window of the game's processes (or with its Steam app id), at least 640x360, seen twice in a row
+ * (so a window that flashes up and goes, or a tiny splash, doesn't count). Resolves {win} when ready,
+ * {dialog} when Steam puts up a window that may need you (a cloud-save question, a first-run prompt) while
+ * the game hasn't shown anything yet, or null on timeout / cancel.
+ */
+async function waitForWindow({ pids = () => [], steamAppId = 0, exclude = [], timeoutMs = 120000, every = 700, cancelled = () => false } = {}) {
+  if (!available()) return null;
+  const start = Date.now();
+  let last = 0, steamSeen = new Map();
+  while (Date.now() - start < timeoutMs) {
+    if (cancelled()) return null;
+    const want = new Set(pids());
+    const wins = (await mappedWindows()).filter(w => !exclude.includes(w.pid));
+    const game = wins.find(w => (want.has(w.pid) || (steamAppId && w.appid === steamAppId)) && w.w >= 640 && w.h >= 360);
+    if (game) {
+      if (game.win === last) return { win: game.win };
+      last = game.win;
+    } else last = 0;
+    // A Steam window that stays up for a few seconds while the game shows nothing may be waiting for you.
+    const now = Date.now();
+    for (const w of wins) {
+      const name = procName(w.pid);
+      if (/^steam(webhelper)?$/.test(name) && w.w >= 480 && w.h >= 240 && !want.has(w.pid)) {
+        if (!steamSeen.has(w.win)) steamSeen.set(w.win, now);
+        else if (!game && now - steamSeen.get(w.win) > 3500 && now - start > 5000) return { dialog: w.win, title: w.title };
+      }
+    }
+    await new Promise(r => setTimeout(r, every));
+  }
+  return null;
+}
+
+module.exports = { available, apps, parseChildren, focusWindow, focusAppId, clearFocus, focusGame, focusableWindows, setRoot, cardinals, waitForWindow };

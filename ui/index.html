@@ -264,6 +264,8 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .lbox{position:relative;text-align:center}
 .lbox .t{font-size:30px;font-weight:800;margin-top:22px}
 .lbox .s{color:var(--dim);margin-top:6px}
+.lbox .hint{color:var(--dim);margin:14px auto 0;max-width:460px;font-size:14px}
+.lbox .btn{margin-top:18px}
 .spin{width:44px;height:44px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:var(--accent);animation:sp .8s linear infinite;margin:0 auto}
 @keyframes sp{to{transform:rotate(360deg)}}
 #toasts{position:fixed;right:var(--gut);bottom:calc(var(--foot) + 14px);display:flex;flex-direction:column;gap:8px;z-index:40;pointer-events:none}
@@ -1654,6 +1656,11 @@ if(!host){ IMP.s={supported:true,state:'idle',free:2.1e11,scan:{free:2.1e11,driv
 function loadImport(){ if(host && LINUX) call('import.status').then(onImport).catch(()=>{}); }
 function onImport(d){
   const was=IMP.s; IMP.s=d;
+  if(d && d.offer && !IMP.offered && !OVERLAY){
+    IMP.offered=true;
+    NOTIFS.unshift({i:'dl', t:`Bring your games to ${APP}`, s:`${d.offer.games} game${d.offer.games===1?'':'s'} found on ${d.offer.from.join(', ')}. Select to import them.`, go:'import'});
+    updateBadge(); toast(`Found ${d.offer.games} game${d.offer.games===1?'':'s'} on ${d.offer.from.join(', ')}. See Settings › Import games.`);
+  }
   if(was && was.state==='importing' && d.state==='idle'){ toast(d.error ? 'Import: '+d.error : 'Import finished'); IMP.sel.clear(); }
   if(was && was.state==='scanning' && d.state==='idle' && d.error) toast(d.error);
   if(S.view==='settings' && S.settingsTab==='import') render(null,true);
@@ -2389,11 +2396,13 @@ function act(el){
     case 'clearnotifs': NOTIFS=[]; updateBadge(); renderQam(); return setFocus($('#qam [data-f]'),true);
     case 'key': return typeKey(d.c);
     case 'pwr': return power(d.p);
+    case 'launchShow': return launchShow();
     case 'toast': return toast(d.text);
   }
 }
 function back(){
   if(OVERLAY && S.layers.length<=1) return overlayClose();
+  if(S.layers.length && S.layers.at(-1)==='launch' && S.launchWaiting) return launchShow();
   if(S.layers.length && S.layers.at(-1)!=='launch'){ const top=S.layers.at(-1); closeLayer(); return resumeIfGame(top); }
   if(!S.layers.length && goBack()) return blip(420,.05);
 }
@@ -2437,7 +2446,28 @@ function launch(g){
     launchTimer=setTimeout(()=>{ hideLaunch(); toast(`${g.title} is still starting. The store may be updating it.`); }, 25000);
   }).catch(e=>{ hideLaunch(); toast(e.message); });
 }
+// Hearth (Linux): the game loads behind the starting screen and comes to the front once its window is up
+// ("game.ready"). Until then the screen says what's happening; B or "Show it now" skips the wait.
+function gameWaiting(id){
+  const g=G(id); clearTimeout(launchTimer);
+  S.running=id; S.runningSince=Date.now(); if(g) g.last=Date.now();
+  const s=$('#launch .s'); if(s) s.textContent='Getting it ready…';
+  S.launchWaiting=id;
+}
+function gameSlow(d){
+  if(S.launchWaiting!==d.id || !S.layers.includes('launch')) return;
+  const box=$('#launch .lbox'); if(!box || box.querySelector('.hint')) return;
+  box.insertAdjacentHTML('beforeend', `<div class="hint">${d.firstRun?'The first start of a Windows game sets up Proton and can take a few minutes. It comes to the front by itself when it\'s ready.':'Still starting. It comes to the front by itself when it\'s ready.'}</div><button class="btn" data-f data-k="l-show" data-act="launchShow">Show it now</button>`);
+  setFocus($('#launch [data-k="l-show"]'));
+}
+function launchShow(){ S.launchWaiting=null; hideLaunch(); send({type:'resume'}); }
+function gameReady(id){
+  if(S.launchWaiting!==id) return;
+  S.launchWaiting=null;
+  gameStarted(id);
+}
 function gameStarted(id){
+  if(host && LINUX && !OVERLAY && S.launchWaiting!==id && S.layers.includes('launch') && S.running!==id){ gameWaiting(id); return; }
   const g=G(id); hideLaunch();
   S.running=id; S.runningSince=Date.now(); if(g) g.last=Date.now();
   if(!OVERLAY) overlayTip();
@@ -2447,7 +2477,7 @@ function gameStarted(id){
 }
 function gameEnded(dto){
   if(dto && dto.id){ const g=G(dto.id); if(g) Object.assign(g, fromHost(dto)); }
-  S.running=null; hideLaunch();
+  S.running=null; S.launchWaiting=null; hideLaunch();
   if(!S.layers.length) render(null,true); else { renderFooter(); if(S.layers.includes('qam')) renderQam(); }
 }
 async function exitGame(){
@@ -2816,6 +2846,8 @@ function onSysEvent(name, data){
   if(name==='desktopFailed') return openSheet({title:"Mantel (Desktop Mode) couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});
   if(name==='open'){ if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
   if(name==='game.started') return gameStarted(data.id);
+  if(name==='game.ready') return gameReady(data.id);
+  if(name==='game.slow') return gameSlow(data);
   if(name==='update') return OVERLAY ? null : onUpdate(data);
   if(name==='pad') return hostPad(data.b);
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
