@@ -12,6 +12,11 @@ name: Hearth live ISO
 on:
   workflow_dispatch:
     inputs:
+      graphics:
+        description: 'Which graphics the ISO is for'
+        type: choice
+        options: [amd-intel, nvidia]
+        default: amd-intel
       upload:
         description: 'Upload the ISO to SourceForge (needs the SF_* secrets)'
         type: boolean
@@ -28,6 +33,8 @@ jobs:
     env:
       SF_USER: ${{ secrets.SF_USER }}
       SF_PROJECT: ${{ secrets.SF_PROJECT }}
+      IMAGE_NAME: ${{ inputs.graphics == 'nvidia' && 'hearth-nvidia' || 'hearth' }}
+      SUFFIX: ${{ inputs.graphics == 'nvidia' && '-nvidia' || '' }}
       HAVE_SF: ${{ secrets.SF_SSH_KEY != '' && secrets.SF_USER != '' && secrets.SF_PROJECT != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +52,7 @@ jobs:
           sudo mount --bind /mnt/containers /var/lib/containers
           df -h / /mnt
           sudo podman build --pull=newer --cap-add sys_admin --security-opt label=disable \
+            --build-arg IMAGE_NAME="$IMAGE_NAME" \
             -t localhost/hearth-live:latest -f os/live/Containerfile os/live
 
       - name: Make the ISO (Titanoboa)
@@ -60,7 +68,7 @@ jobs:
           iso=$(cd /tmp/titanoboa && sudo TITANOBOA_OUTPUT_DIR="$out" ./main.sh localhost/hearth-live:latest)
           sudo chown -R "$(id -u):$(id -g)" "$out"
           v=$(sudo podman run --rm localhost/hearth-live:latest cat /usr/share/nimbus/version 2>/dev/null || echo latest)
-          f="hearth-os-$v-live.iso"
+          f="hearth-os-$v-live$SUFFIX.iso"
           mv "$iso" "$out/$f"
           (cd "$out" && sha256sum "$f" | tee "$f.sha256")
           ls -lh "$out"
@@ -70,7 +78,7 @@ jobs:
       - name: Keep the ISO as a download on this run
         uses: actions/upload-artifact@v4
         with:
-          name: hearth-os-${{ steps.iso.outputs.version }}-live
+          name: hearth-os-${{ steps.iso.outputs.version }}-live${{ env.SUFFIX }}
           path: ${{ steps.iso.outputs.dir }}
           if-no-files-found: error
           compression-level: 0
@@ -94,11 +102,11 @@ jobs:
           rsync -e "$ssh" --partial --progress -t "$DIR"/hearth-os-*.iso "$DIR"/hearth-os-*.iso.sha256 \
             "$SF_USER@frs.sourceforge.net:$dest/"
           echo "Uploaded to https://sourceforge.net/projects/$SF_PROJECT/files/$V/"
-          if [ -n "${SF_API_KEY:-}" ]; then
+          if [ -n "${SF_API_KEY:-}" ] && [ -z "$SUFFIX" ]; then  # the AMD/Intel ISO is the default download
             curl -fsS -H 'Accept: application/json' -X PUT \
               -d default=windows -d default=mac -d default=linux -d default=bsd -d default=solaris -d default=others \
               -d "api_key=$SF_API_KEY" \
-              "https://sourceforge.net/projects/$SF_PROJECT/files/$V/hearth-os-$V-live.iso" >/dev/null \
+              "https://sourceforge.net/projects/$SF_PROJECT/files/$V/hearth-os-$V-live$SUFFIX.iso" >/dev/null \
               && echo "Set as the default download"
           fi
           rm -f ~/.ssh/sf

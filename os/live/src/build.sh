@@ -3,7 +3,7 @@
 # with a welcome card (Install Hearth / Wi-Fi / Try Game Mode) and Fedora's installer (Anaconda), branded and
 # set up to install ghcr.io/dragongamer9/hearth. Based on Titanoboa's Bazzite example.
 set -exo pipefail
-IMAGE_REF=ghcr.io/dragongamer9/hearth
+IMAGE_REF=ghcr.io/dragongamer9/${IMAGE_NAME:-hearth}
 IMAGE_TAG=latest
 
 mkdir -p "$(realpath /root)" /var/lib/rpm-state

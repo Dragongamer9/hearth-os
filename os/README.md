@@ -15,14 +15,17 @@ os/
 
 The "Hearth OS" workflow (`.github/workflows/os.yml`) builds the image on every push to main that touches the
 OS, the Linux host or the UI, and every Monday to pick up Bazzite's updates. It's published as
-`ghcr.io/dragongamer9/hearth` (tags `latest`, the version, and version-date).
+`ghcr.io/dragongamer9/hearth` (AMD and Intel graphics, from `bazzite-deck`) and `ghcr.io/dragongamer9/hearth-nvidia`
+(Nvidia GTX 16 / RTX 20 and newer, from `bazzite-deck-nvidia`), each tagged `latest`, the version, and version-date.
+Both work on handhelds and desktop PCs.
 
 ## Install
 
 **From an existing Bazzite or Fedora Atomic install** (keeps your files):
 
 ```sh
-sudo bootc switch ghcr.io/dragongamer9/hearth:latest
+sudo bootc switch ghcr.io/dragongamer9/hearth:latest          # AMD / Intel graphics
+sudo bootc switch ghcr.io/dragongamer9/hearth-nvidia:latest   # Nvidia graphics
 systemctl reboot
 ```
 
