@@ -110,7 +110,15 @@ fn main() {
                 let h = handle.clone();
                 let picker = handle.clone();
                 if let Ok(mut b) = bridge.lock() {
-                    b.emit = Arc::new(move |v| { let _ = h.emit("nimbus:msg", v); });
+                    b.emit = Arc::new(move |v| {
+                        // The host asks for a restart (after restoring a backup): Hearth reads everything at start.
+                        if v["type"] == "restart" {
+                            let h2 = h.clone();
+                            std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(1500)); h2.restart(); });
+                            return;
+                        }
+                        let _ = h.emit("nimbus:msg", v);
+                    });
                     b.pick_file = Arc::new(move |title: &str| {
                         picker.dialog().file().set_title(title).blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().to_string())
                     });

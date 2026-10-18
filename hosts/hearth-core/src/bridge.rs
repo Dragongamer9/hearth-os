@@ -85,6 +85,27 @@ impl Bridge {
             "library.collection.rename" => crate::collections::rename(&mut self.library.store, &req("id")?, a["name"].as_str().unwrap_or("")).map(|_| Value::Null),
             "library.collection.remove" => crate::collections::remove(&mut self.library.store, &req("id")?).map(|_| Value::Null),
             "library.collection.set" => crate::collections::set_game(&mut self.library.store, &req("id")?, a["game"].as_str().unwrap_or(""), a["on"] == true).map(|_| Value::Null),
+            // Backup and restore
+            "backup.status" => { let d = crate::backup::destinations(&paths::home()); let dirs: Vec<std::path::PathBuf> = d.iter().filter_map(|x| x["path"].as_str().map(Into::into)).collect(); Ok(json!({"destinations": d, "backups": crate::backup::list(&dirs)})) }
+            "backup.create" => crate::backup::create(std::path::Path::new(&req("dest")?), a["signins"] == true, &paths::data_dir(), &paths::config_dir(), &self.version, &chrono::Local::now().format("%Y-%m-%d-%H-%M").to_string()),
+            "backup.restore" => {
+                let file = req("file")?;
+                let d = crate::backup::destinations(&paths::home());
+                let dirs: Vec<std::path::PathBuf> = d.iter().filter_map(|x| x["path"].as_str().map(Into::into)).collect();
+                if !crate::backup::list(&dirs).iter().any(|b| b["file"] == file.as_str()) { return Err("That backup isn't on a drive Hearth can see anymore".into()); }
+                if self.library.running_id().is_some() { return Err("Close the game first".into()); }
+                let meta = crate::backup::restore(std::path::Path::new(&file), &paths::data_dir(), &paths::config_dir(), &chrono::Local::now().format("%Y-%m-%d-%H-%M-%S").to_string())?;
+                (self.emit)(json!({"type": "restart"}));   // Hearth reads it all at start
+                Ok(meta)
+            }
+            // Remote play
+            "remote.status" => Ok(crate::remote::status()),
+            "remote.setOn" => crate::remote::set_on(a["on"] == true),
+            "remote.pair" => crate::remote::pair(a["pin"].as_str().unwrap_or(""), a["name"].as_str().unwrap_or("Moonlight")).map(|v| json!(v)),
+            "remote.unpair" => crate::remote::unpair(&req("uuid")?).map(|v| json!(v)),
+            "remote.login" => crate::remote::login(a["user"].as_str().unwrap_or(""), a["pass"].as_str().unwrap_or("")).map(|v| json!(v)),
+            "moonlight.open" => Ok(json!(crate::remote::open_moonlight())),
+            "moonlight.install" => crate::remote::install_moonlight().map(|v| json!(v)),
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
