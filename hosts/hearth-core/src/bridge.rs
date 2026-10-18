@@ -21,12 +21,119 @@ pub struct Bridge {
     pub pin_until: std::time::Instant,
     /// Asks the person to pick a file (set by the app: a file dialog).
     pub pick_file: std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
+    /// Asks for a folder (set by the app): (title, starting folder).
+    pub pick_folder: std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
+    /// Opens a store's sign-in page and waits for the code it ends with (None: closed). Runs off the bridge.
+    pub sign_in: SignInFn,
+    /// Opens Xbox Cloud Gaming at an address (Some(url, title)) or closes it (None).
+    pub stream: std::sync::Arc<dyn Fn(Option<(&str, &str)>) + Send + Sync>,
+    /// The call being answered (calls that answer later, from background work, reply to it themselves).
+    cur_id: Value,
 }
+
+pub type SignInFn = std::sync::Arc<dyn Fn(&crate::stores::SignIn) -> Option<String> + Send + Sync>;
+const DEFERRED: &str = "__deferred";
 
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
         let store = Store::open(paths::data_dir().join("library.json"));
-        Bridge { library: Library::new(store, paths::home()), version: version.to_string(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles: crate::profiles::Profiles::open(&paths::data_dir()), pin_until: std::time::Instant::now(), pick_file: std::sync::Arc::new(|_| None) }
+        Bridge::with(Library::new(store, paths::home()), crate::profiles::Profiles::open(&paths::data_dir()), version)
+    }
+    pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
+        use std::sync::Arc;
+        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles, pin_until: std::time::Instant::now(),
+                 pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), cur_id: Value::Null }
+    }
+
+    /// Messages from the host's own background work: {type:'internal', what, ...}. Returns what to send the page.
+    pub fn internal(&mut self, v: &Value) -> Vec<Value> {
+        let mut out = Vec::new();
+        match v["what"].as_str().unwrap_or("") {
+            "rescan" => {
+                self.library.scan();
+                out.push(Bridge::event("library.changed", json!({})));
+                if !v["reply"].is_null() { out.push(json!({"type": "result", "id": v["reply"], "ok": true, "value": null})); }
+            }
+            "installDone" => {
+                let d = self.library.install_done(v["id"].as_str().unwrap_or(""), v["error"].as_str(), v["gogDir"].as_str());
+                out.push(Bridge::event("install.done", d));
+            }
+            "queueChanged" => self.library.save_queue(),
+            "streamClosed" => if self.library.running.as_ref().map(|r| r.cloud).unwrap_or(false) { out.push(self.library.exited()); },
+            _ => {}
+        }
+        out
+    }
+
+    /// The Steam account signed in on this device: (name, avatar picture).
+    fn steam_account(&self) -> (Option<String>, Option<String>, bool) {
+        let Some(dir) = crate::steam::steam_path(&self.library.home) else { return (None, None, system::has("steam")) };
+        let users = crate::vdf::load(&dir.join("config/loginusers.vdf"));
+        let auto = std::fs::read_to_string(paths::home().join(".steam/registry.vdf")).ok().map(|t| crate::vdf::parse(&t))
+            .and_then(|r| r.str(&["Registry", "HKCU", "Software", "Valve", "Steam", "AutoLoginUser"]).map(str::to_string));
+        let list = users.as_ref().and_then(|u| u.obj(&["users"]).cloned()).unwrap_or_default();
+        let pick = list.iter().find(|(_, u)| auto.is_some() && u.str(&["AccountName"]) == auto.as_deref())
+            .or_else(|| list.iter().find(|(_, u)| u.str(&["MostRecent"]) == Some("1"))).or(list.first());
+        match pick {
+            Some((id64, u)) => {
+                let name = u.str(&["PersonaName"]).or(u.str(&["AccountName"])).map(str::to_string);
+                let av = dir.join("config/avatarcache").join(format!("{id64}.png"));
+                (name.or(Some("Signed in".into())), if av.exists() { Some(crate::library::art_url(&av.to_string_lossy())) } else { None }, true)
+            }
+            None => (None, None, true),
+        }
+    }
+
+    /// What Library › Stores shows.
+    fn accounts_status(&self) -> Value {
+        let mut inst: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for g in self.library.games.values() { if g.installed { *inst.entry(g.source).or_default() += 1; } }
+        let acc = self.library.accounts.lock().unwrap();
+        let base = |s: &str| json!({"store": s, "installed": inst.get(s).copied().unwrap_or(0), "busy": acc.busy.contains(s), "error": acc.errors.get(s)});
+        let with = |mut b: Value, extra: Value| { for (k, v) in extra.as_object().cloned().unwrap_or_default() { b[k] = v; } b };
+        let owned = |s: &str| { let o = crate::owned::Owned::load(crate::stores::cache_of(s)); (o.games.len(), o.fetched) };
+        let (sname, savatar, sinstalled) = self.steam_account();
+        let steam_owned = self.library.games.values().filter(|g| g.source == "steam").count();
+        let (eo, ef) = owned("epic"); let (go, gf) = owned("gog"); let (xo, xf) = owned("xbox");
+        let (gname, gavatar) = crate::stores::gog::profile();
+        let xb = crate::stores::xbox::saved().unwrap_or(Value::Null);
+        let accounts = vec![
+            with(base("steam"), json!({"signedIn": sname.is_some(), "name": sname, "avatar": savatar, "owned": steam_owned, "fetched": 0, "toolReady": true,
+                "note": if !sinstalled { Some("Steam isn't installed on this device.") } else if sname.is_none() { Some("Open Steam once to sign in") } else { None }})),
+            with(base("epic"), json!({"signedIn": crate::stores::epic::signed_in(), "name": crate::stores::epic::display_name(), "avatar": null, "owned": eo, "fetched": ef,
+                "toolReady": crate::tools::is_ready(&crate::tools::LEGENDARY), "note": null})),
+            with(base("gog"), json!({"signedIn": crate::stores::gog::signed_in(), "name": gname, "avatar": gavatar, "owned": go, "fetched": gf,
+                "toolReady": crate::tools::is_ready(&crate::tools::GOGDL), "note": null})),
+            with(base("xbox"), json!({"signedIn": !xb.is_null(), "name": xb["gamertag"], "avatar": xb["gamerpic"], "owned": xo, "fetched": xf, "toolReady": true, "note": null})),
+        ];
+        json!({"accounts": accounts, "installRoot": self.library.install_root().to_string_lossy()})
+    }
+
+    /// Signs in to a store: the sign-in page opens in its own window, and the answer comes later (this call is
+    /// answered from the background, so Hearth keeps working while you type your password).
+    fn start_sign_in(&mut self, store: &str) -> Result<Value, String> {
+        let page = crate::stores::sign_in_page(store).ok_or("Unknown store")?;
+        let s: &'static str = crate::stores::STORES.into_iter().find(|x| *x == store).unwrap();
+        self.library.accounts.lock().unwrap().errors.remove(s);
+        let (id, open, acc) = (self.cur_id.clone(), self.sign_in.clone(), self.library.accounts.clone());
+        std::thread::spawn(move || {
+            let reply = |r: Result<bool, String>| crate::stores::notify(match r {
+                Ok(ok) => json!({"type": "result", "id": id, "ok": true, "value": {"ok": ok}}),
+                Err(e) => json!({"type": "result", "id": id, "ok": false, "error": e}),
+            });
+            let Some(code) = open(&page) else { return reply(Ok(false)) };
+            if code.is_empty() { return reply(Err("The sign-in page didn't give Hearth a code. Try again.".into())); }
+            match crate::stores::finish_sign_in(s, &code) {
+                Ok(()) => {
+                    log(&format!("accounts: signed in to {s}"));
+                    crate::stores::notify(Bridge::event("accounts.changed", json!({})));
+                    reply(Ok(true));
+                    crate::stores::refresh(s, acc, Value::Null);
+                }
+                Err(e) => { log(&format!("accounts: {s} sign-in FAILED {e}")); reply(Err(e)); }
+            }
+        });
+        Ok(json!(DEFERRED))
     }
 
     /// Messages that aren't calls: the power menu, log lines. Returns true when Hearth should close
@@ -51,7 +158,9 @@ impl Bridge {
         let id = msg["id"].clone();
         let method = msg["method"].as_str().unwrap_or("");
         let args = if msg["args"].is_object() { msg["args"].clone() } else { json!({}) };
+        self.cur_id = id.clone();
         Some(match self.dispatch(method, &args) {
+            Ok(Value::String(s)) if s == DEFERRED => return None,
             Ok(value) => json!({"type": "result", "id": id, "ok": true, "value": value}),
             Err(error) => json!({"type": "result", "id": id, "ok": false, "error": error}),
         })
@@ -109,6 +218,40 @@ impl Bridge {
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
+            // Downloads and installs (Epic and GOG through Hearth; Steam's in Steam)
+            "library.downloads" => Ok(self.library.downloads()),
+            "game.install" => self.library.install(&req("id")?).map(|_| Value::Null),
+            "game.cancelInstall" => {
+                let id = req("id")?;
+                let (ok, removed) = self.library.cancel_install(&id);
+                if removed { (self.emit)(Bridge::event("install.done", self.library.install_done(&id, Some("cancelled"), None))); }
+                Ok(json!({"ok": ok}))
+            }
+            "game.pauseInstall" => Ok(json!({"ok": self.library.pause_install(&req("id")?)})),
+            "game.resumeInstall" => Ok(json!({"ok": self.library.resume_install(&req("id")?)})),
+            "game.installFirst" => Ok(json!({"ok": self.library.install_first(&req("id")?)})),
+            "downloads.clearRecent" => { self.library.clear_recent(); Ok(json!({"ok": true})) }
+            "steam.downloads" => { let _ = std::process::Command::new("steam").arg("steam://open/downloads").spawn(); Ok(json!({"ok": true})) }
+            "game.uninstall" => { self.library.uninstall(&req("id")?)?; Ok(self.library.get(false)) }
+            // Library › Stores
+            "accounts.status" => Ok(self.accounts_status()),
+            "accounts.signIn" => {
+                let store = req("store")?;
+                if store == "steam" { let _ = std::process::Command::new("steam").arg("steam://open/main").spawn(); return Ok(json!({"ok": true})); }
+                self.start_sign_in(&store)
+            }
+            "accounts.signOut" => { crate::stores::sign_out(&req("store")?)?; self.library.scan(); (self.emit)(Bridge::event("accounts.changed", json!({}))); Ok(Value::Null) }
+            "accounts.refresh" => {
+                let store = req("store")?;
+                let s = crate::stores::STORES.into_iter().find(|x| *x == store).ok_or("Unknown store")?;
+                crate::stores::refresh(s, self.library.accounts.clone(), self.cur_id.clone());
+                Ok(json!(DEFERRED))
+            }
+            "accounts.pickFolder" => {
+                let cur = self.library.install_root().to_string_lossy().to_string();
+                if let Some(dir) = (self.pick_folder)("Where should Hearth install games?", &cur) { io(self.library.store.update(|d| { d.insert("installRoot".into(), json!(dir)); }))?; }
+                Ok(json!({"installRoot": self.library.install_root().to_string_lossy()}))
+            }
             "game.info" => {
                 let id = req("id")?;
                 let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
@@ -123,10 +266,23 @@ impl Bridge {
                 // Parental controls: allowed games and play time a day.
                 let pc = self.profiles.can_play(Some(&id), chrono::Local::now(), 0.0);
                 if pc["ok"] != true { return Err(pc["reason"].as_str().unwrap_or("Not now").to_string()); }
-                self.library.launch(&id)
+                let r = self.library.launch(&id)?;
+                if let Some(url) = r["stream"].as_str() { (self.stream)(Some((url, r["title"].as_str().unwrap_or("Xbox Cloud Gaming")))); }
+                Ok(json!({"tracked": r["tracked"]}))
             }
-            "game.close" => Ok(json!({"ok": self.library.close_running()})),
-            "game.pause" => Ok(json!({"paused": self.library.pause()?})),
+            "game.close" => {
+                if self.library.running.as_ref().map(|r| r.cloud).unwrap_or(false) {
+                    (self.stream)(None);
+                    let e = self.library.exited();
+                    (self.emit)(e);
+                    return Ok(json!({"ok": true}));
+                }
+                Ok(json!({"ok": self.library.close_running()}))
+            }
+            "game.pause" => {
+                if self.library.running.as_ref().map(|r| r.cloud).unwrap_or(false) { return Err("Cloud games can't be paused here: pause from the game's own menu.".into()); }
+                Ok(json!({"paused": self.library.pause()?}))
+            }
             "game.unpause" => { self.library.resume(); Ok(json!({"paused": false})) }
             "library.addManual" => {
                 let file = match a["path"].as_str() { Some(p) if !p.is_empty() => p.to_string(), _ => match (self.pick_file)("Choose a game: a program, AppImage, .desktop file or Windows .exe") { Some(f) => f, None => return Ok(Value::Null) } };
@@ -295,7 +451,7 @@ mod tests {
     #[test]
     fn answers_calls_and_says_what_is_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let mut b = Bridge { library: Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), version: "0.0.23".into(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles: crate::profiles::Profiles::open(dir.path()), pin_until: std::time::Instant::now(), pick_file: std::sync::Arc::new(|_| None) };
+        let mut b = Bridge::with(Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), crate::profiles::Profiles::open(dir.path()), "0.0.23");
         let r = b.handle(&json!({"type":"call","id":7,"method":"library.get","args":{}})).unwrap();
         assert_eq!(r["id"], 7); assert_eq!(r["ok"], true); assert_eq!(r["value"]["games"], json!([]));
         let r = b.handle(&json!({"type":"call","id":8,"method":"epic.signIn"})).unwrap();
