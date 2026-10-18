@@ -261,6 +261,14 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 #launch.open{opacity:1}
 #launch .img{width:100%;height:100%;object-fit:cover}
 #launch .art{position:absolute;inset:0;filter:blur(40px) brightness(.5);transform:scale(1.2)}
+.ptiles{display:flex;flex-wrap:wrap;gap:22px;justify-content:center}
+.ptile{width:170px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:18px 10px;border-radius:20px;border:2px solid transparent;background:transparent}
+.ptile .pav{width:116px;height:116px;border-radius:30px;display:grid;place-items:center;font-size:50px;font-weight:800;color:#1a0d06;overflow:hidden;transition:transform .15s}
+.ptile .pav .pavimg{width:100%;height:100%;border-radius:0}
+.ptile.add .pav{background:var(--panel2);color:var(--dim);border:2px dashed var(--panel3)}
+.ptile b{font-size:17px}.ptile small{color:var(--dim);font-size:12px}
+.ptile.f,.ptile:focus-visible,.ptile.focus{border-color:var(--accent);background:var(--panel)}
+.ptile.cur .pav{box-shadow:0 0 0 3px var(--accent)}
 .setup h1{font-size:32px;font-weight:800;margin:0 0 8px;letter-spacing:-.01em}
 .setup .lead{color:var(--dim);font-size:16px;margin:0 0 18px;max-width:620px}
 .setup .mark{width:110px;height:110px;margin:0 auto 18px}
@@ -648,7 +656,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); if(i.openInstaller) osiOpen(); else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(LINUX&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); if(i.openInstaller) osiOpen(); else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -713,6 +721,7 @@ const MOCK = (()=>{
   const push=()=>setTimeout(()=>onSysEvent('status',status()),0);
   const H={
     'sys.status':async()=>status(),
+    'profiles.get':async()=>({active:'main',askAtStart:true,picked:false,list:[{id:'main',name:'Dragon',color:'#ff8a3d',steam:'dragongamer9',current:true},{id:'p2',name:'Sarah',color:'#b57bff',steam:'sarahplays',current:false},{id:'p3',name:'Kids',color:'#3fd0b8',steam:null,current:false}],steamAccounts:[{account:'dragongamer9',name:'Dragon'},{account:'sarahplays',name:'Sarah'}]}),
     'osinstall.status':async()=>({available:true,state:'idle'}),
     'osinstall.disks':async()=>{ await wait(400); return {disks:[
       {dev:'/dev/nvme0n1',size:1e12,model:'Samsung 980 PRO',tran:'nvme',live:false,windows:true,tooSmall:false,parts:[{},{},{},{}]},
@@ -1289,7 +1298,7 @@ function viewDownloads(){
   return h + '</div>';
 }
 
-const STABS = [['profile','user','Profile'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
+const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
   ['controller','pad','Controls'],['sources','lib','Library sources'],['import','dl','Import games'],['osinstall','dl','Install Hearth OS'],['switch','dl','Switch to Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
@@ -1983,6 +1992,7 @@ function viewSettings(){
   if(t==='audio') body = pageAudio();
   if(t==='power') body = pagePower();
   if(t==='profile') body = pageProfile();
+  if(t==='profiles') body = pageProfiles();
   if(t==='signin') body = pageSignin();
   if(t==='system') body = pageSystem();
   if(t==='appearance') body = pageAppearance();
@@ -2008,11 +2018,11 @@ function viewSettings(){
     + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
   if(t==='about') body = pageAbout();
   return `<div class="settings">
-    <div class="snav">${STABS.filter(([k])=>k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX)).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
+    <div class="snav">${STABS.filter(([k])=>k==='profiles'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX)).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
     <div class="rows">${body}</div></div>`;
 }
 
-const VIEWS = {lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
+const VIEWS = {profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 function render(focusKey, quiet){
@@ -2059,6 +2069,7 @@ function renderMenu(){
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
     <button class="mitem" data-f data-k="m-power" data-act="power">${I.power}Power</button>
+    ${LINUX&&PROF.s&&PROF.s.list.length>1?`<button class="mitem" data-f data-k="m-switch" data-act="nav" data-view="profiles">${I.user}Switch profile</button>`:''}
     <button class="mfoot" data-f data-k="m-prof" data-act="goset" data-tab="profile">${avatarHtml(PROFILE)}<div><b>${esc(PROFILE.name)}</b><div class="muted">${esc(PROFILE.status||'Online')}</div></div></button>`;
 }
 function sliderCtl(key,ic,label,min=0,max=100,step=5,unit='%'){
@@ -2451,6 +2462,10 @@ function act(el){
     case 'osiTz': return osiTzPick();
     case 'osiSignin': return osiSigninPick();
     case 'hearthBrowser': return call('browser.hearth',{action:d.v}).then(r=>{ if(r&&r.hearth){ BROWSER.s=r; refreshUI(); if(d.v==='default') toast('Hearth Browser is your default browser'); } }).catch(e=>toast(e.message));
+    case 'profPick': return profPick(d.id);
+    case 'profAdd': return profAdd();
+    case 'profEdit': return profEdit(d.id);
+    case 'profAsk': return call('profiles.setAsk',{on:!(PROF.s&&PROF.s.askAtStart)}).then(loadProfiles).catch(e=>toast(e.message));
     case 'osiNoPass': OSI.user.nopassword=!OSI.user.nopassword; if(OSI.user.nopassword) OSI.user.password=''; return render('osi-nopass');
     case 'osiStart': return osiStart();
     case 'osiRestart': return call('osinstall.restart').catch(e=>toast(e.message));
@@ -3038,6 +3053,72 @@ function viewLock(){
     <p class="muted" style="margin-top:18px">Press A and type your password</p></div>`;
 }
 
+// ---------- Profiles (Linux): who's playing ----------
+// Each profile has its own Steam account, Epic/GOG/Xbox sign-ins, favorites, recent games and play time.
+// Installed games are shared. Switching restarts Hearth (and Steam, as that profile's account).
+const PROF = {s:null, switching:null};
+const PROF_COLORS = ['#ff8a3d','#3fd0b8','#5aa9ff','#b57bff','#ffd166','#e5483b','#7ad15a'];
+function loadProfiles(){ return call('profiles.get').then(r=>{ PROF.s=r; refreshUI(); return r; }).catch(()=>null); }
+const profName = p => (p.current ? PROFILE.name : null) || p.name || 'Player';
+function profTile(p, k){
+  const init = esc(profName(p).trim().charAt(0).toUpperCase() || '?');
+  return `<button class="ptile ${p.current?'cur':''}" data-f data-k="${k}" data-act="profPick" data-id="${esc(p.id)}">
+    <div class="pav" style="background:${esc(p.color||'#ff8a3d')}">${p.current ? avatarHtml(PROFILE,'avatar pavimg') : `<span>${init}</span>`}</div>
+    <b>${esc(profName(p))}</b><small>${p.current?'Playing now':p.steam?'Steam: '+esc(p.steam):'No Steam account yet'}</small></button>`;
+}
+/** "Who's playing?": every profile, plus Add profile. At start (when that's turned on) and from the menu. */
+function viewProfiles(){
+  const s=PROF.s;
+  if(PROF.switching) return `<div class="setup" style="text-align:center;margin-top:28vh"><div class="mark" style="width:90px;height:90px;margin:0 auto 22px">${HEARTH_MARK}</div><h1>Switching to ${esc(PROF.switching)}…</h1><p class="lead" style="margin:0 auto">Steam restarts as their account. This takes a few seconds.</p></div>`;
+  if(!s) return `<div class="setup" style="margin-top:20vh;text-align:center">${note('Loading…')}</div>`;
+  return `<div class="setup" style="max-width:1000px;margin:10vh auto 0;padding:0 24px;text-align:center">
+    <h1>Who's playing?</h1><p class="lead" style="margin:0 auto 34px">Everyone has their own games, sign-ins and play time. Installed games are shared.</p>
+    <div class="ptiles">${s.list.map((p,i)=>profTile(p,'pt-'+i)).join('')}
+      ${s.list.length<8?`<button class="ptile add" data-f data-k="pt-add" data-act="profAdd"><div class="pav"><span>+</span></div><b>Add profile</b><small>For someone else who plays here</small></button>`:''}</div>
+    <div class="acts" style="justify-content:center;margin-top:34px"><button class="pill ghost" data-f data-k="pt-manage" data-act="goset" data-tab="profiles">Manage profiles</button>${HOSTINFO.profilesAtStart?'':`<button class="pill ghost" data-f data-k="pt-back" data-act="back">Back</button>`}</div></div>`;
+}
+function profPick(id){
+  const s=PROF.s, p=s&&s.list.find(x=>x.id===id); if(!p) return;
+  if(p.current){ HOSTINFO.profilesAtStart=false; S.history=[]; return navigate('home',{},false); }
+  if(S.running) return toast('Close the game first, then switch');
+  PROF.switching=profName(p); render(null,true);
+  call('profiles.switch',{id},60000).catch(e=>{ PROF.switching=null; render(null,true); toast(e.message); });
+}
+async function profAdd(){
+  const name=await openPrompt({title:'Name for the new profile'}); if(!name||!name.trim()) return;
+  try{
+    const p=await call('profiles.create',{name:name.trim(), color:PROF_COLORS[((PROF.s&&PROF.s.list.length)||0)%PROF_COLORS.length]});
+    await loadProfiles();
+    openSheet({title:`${p.name} is ready`, sub:'Switch to it now? Then sign in to Steam, Epic, GOG or Xbox as them (Settings › Profiles, or Library › Stores).', items:[
+      {label:`Switch to ${p.name}`, icon:'user', run:()=>profPick(p.id)},
+      {label:'Not now', icon:'x', run:()=>{}}]});
+  }catch(e){ toast(e.message); }
+}
+function pageProfiles(){
+  const s=PROF.s;
+  if(!s) return note('Loading…');
+  let h = shead('Profiles') + s.list.map((p,i)=>`<button class="row" data-f data-k="pr-${i}" data-act="profEdit" data-id="${esc(p.id)}"><span class="ricon" style="background:${esc(p.color)};color:#1a0d06;font-weight:800">${esc(profName(p).charAt(0).toUpperCase())}</span><div class="rt"><b>${esc(profName(p))}${p.current?' (you)':''}</b><small>${p.steam?'Steam: '+esc(p.steam):'No Steam account linked'}</small></div><div class="rv">›</div></button>`).join('');
+  if(s.list.length<8) h += `<button class="row" data-f data-k="pr-add" data-act="profAdd"><span class="ricon">${I.user}</span><div class="rt"><b>Add profile</b><small>For someone else who plays here</small></div></button>`;
+  h += `<button class="row" data-f data-k="pr-switch" data-act="nav" data-view="profiles"><span class="ricon">${I.user}</span><div class="rt"><b>Switch profile</b><small>Who's playing?</small></div><div class="rv">›</div></button>`;
+  h += `<button class="row" data-f data-k="pr-ask" data-act="profAsk"><div class="rt"><b>Ask who's playing when ${APP} starts</b><small>Shows the profiles first, when there's more than one</small></div><div class="sw ${s.askAtStart?'on':''}"></div></button>`;
+  h += note('Installed games are shared: a game installed once shows up for everyone who owns it. Saves in Steam Cloud follow each Steam account.');
+  return h;
+}
+function profEdit(id){
+  const s=PROF.s, p=s&&s.list.find(x=>x.id===id); if(!p) return;
+  const accts=(s.steamAccounts||[]);
+  openSheet({title:profName(p), sub:p.steam?`Steam: ${p.steam}`:'No Steam account linked yet', items:[
+    ...(p.current?[]:[{label:`Switch to ${profName(p)}`, icon:'user', run:()=>profPick(p.id)}]),
+    {label:'Steam account', icon:'user', run:()=>setTimeout(()=>openSheet({title:'Steam account for '+profName(p), sub:'Accounts that have signed in on this device. Steam remembers them after one sign-in with "Remember me".', items:[
+      ...accts.map(a=>({label:`${a.name} (${a.account})`, icon:p.steam===a.account?'check':'user', run:()=>call('profiles.update',{id:p.id, steam:a.account}).then(loadProfiles).then(()=>toast(`${profName(p)} plays as ${a.name} on Steam`)).catch(e=>toast(e.message))})),
+      {label:'Sign in another Steam account', icon:'user', run:()=>call('profiles.addSteam',{id:p.id}).then(()=>toast('Sign in on Steam\'s screen. Tick "Remember me".')).catch(e=>toast(e.message))},
+      ...(p.steam?[{label:'Unlink', icon:'x', run:()=>call('profiles.update',{id:p.id, steam:''}).then(loadProfiles).catch(e=>toast(e.message))}]:[])]}),250)},
+    {label:'Rename', icon:'kbd', run:()=>setTimeout(async()=>{ const n=await openPrompt({title:'Name', value:profName(p)}); if(n&&n.trim()){ if(p.current) saveProfile({name:n.trim()}); await call('profiles.update',{id:p.id, name:n.trim()}).catch(()=>{}); loadProfiles(); } },250)},
+    {label:'Color', icon:'user', run:()=>setTimeout(()=>openSheet({title:'Color', items:PROF_COLORS.map(c=>({label:c, icon:p.color===c?'check':'', run:()=>{ call('profiles.update',{id:p.id, color:c}).then(loadProfiles); if(p.current) saveProfile({accent:c}); }}))}),250)},
+    ...(p.current?[]:[{label:'Remove profile', icon:'trash', run:()=>setTimeout(()=>openSheet({title:`Remove ${profName(p)}?`, sub:'Their sign-ins, favorites and play time on this device go. Installed games stay.', items:[
+      {label:'Remove', icon:'trash', run:()=>call('profiles.remove',{id:p.id}).then(loadProfiles).then(()=>toast('Removed')).catch(e=>toast(e.message))}]}),250)}])]});
+}
+
 function viewStores(){
   if(!ACC.list) return `<h2>Game stores</h2><div class="note">Loading…</div>`;
   const cards = ACC.list.map(a=>{
@@ -3243,6 +3324,8 @@ function onSysEvent(name, data){
   if(name==='import') return onImport(data);
   if(name==='osInstall') return onOsInstall(data);
   if(name==='lock') return lockNow();
+  if(name==='profiles.changed') return loadProfiles();
+  if(name==='profiles.switching'){ PROF.switching=data.name; if(S.view!=='profiles') navigate('profiles',{},false); else render(null,true); return; }
   if(name==='switch'){ if(SW.s) SW.s.job=data.job; if(data.job && data.job.state==='done') loadSwitch(); if(data.job && data.job.state==='error') toast(data.job.error||'That step didn\'t work'); if(S.view==='settings'&&S.settingsTab==='switch') render(null,true); return; }
   if(name==='library.changed'){ if(!OVERLAY) loadLibrary(false); return; }
   if(name==='desktopFailed') return openSheet({title:"Mantel (Desktop Mode) couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});
@@ -3328,6 +3411,7 @@ function onSettingsTab(t){
   if(t==='signin') loadLogin();
   if(t==='import') loadImport();
   if(t==='switch') loadSwitch();
+  if(t==='profiles') loadProfiles();
   if(t==='system' || t==='about') loadSysInfo();
   if(t==='system'){ loadBrowser(); loadArtStatus(); }
   if(t==='about'){ loadCounterStats(); if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
