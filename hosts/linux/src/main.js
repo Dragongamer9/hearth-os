@@ -486,6 +486,7 @@ app.whenReady().then(() => {
         session: IN_SESSION, user: os.userInfo().username,
         system: sessionSetup.isSystemInstall(),   // part of Hearth (the OS): updates come with the system
         start: START_PAGE,                         // the page to open on
+        live: fs.existsSync('/etc/hearth-live'),    // running from the live USB
         features: ['restartApp', 'exportLogs', 'powerButton', 'overamp', ...(controller.available ? ['remap'] : [])],
       }),
       restartApp: () => { setTimeout(relaunch, 300); return null; },
