@@ -1665,11 +1665,11 @@ function onImport(d){
   if(was && was.state==='scanning' && d.state==='idle' && d.error) toast(d.error);
   if(S.view==='settings' && S.settingsTab==='import') render(null,true);
 }
-const impItems = () => (IMP.s&&IMP.s.scan ? IMP.s.scan.drives : []).flatMap(dr=>[...dr.steam,...dr.epic,...dr.gog,...dr.files]);
+const impItems = () => (IMP.s&&IMP.s.scan ? IMP.s.scan.drives : []).flatMap(dr=>[...dr.steam,...dr.epic,...dr.gog,...(dr.lutris||[]),...dr.files]);
 function impToggle(k){ IMP.sel.has(k)?IMP.sel.delete(k):IMP.sel.add(k); render(null,true); }
 function impAll(id){
   const dr=(IMP.s.scan.drives||[]).find(x=>x.id===id); if(!dr) return;
-  const keys=[...dr.steam,...dr.epic,...dr.gog,...dr.files].map(x=>x.key), all=keys.every(k=>IMP.sel.has(k));
+  const keys=[...dr.steam,...dr.epic,...dr.gog,...(dr.lutris||[]),...dr.files].map(x=>x.key), all=keys.every(k=>IMP.sel.has(k));
   keys.forEach(k=>all?IMP.sel.delete(k):IMP.sel.add(k)); render(null,true);
 }
 function impStart(){
@@ -1693,7 +1693,7 @@ function impProgress(st){
 }
 function impResult(r){
   const done=r.done||[], skipped=r.skipped||[], failed=r.failed||[], kept=r.kept||[];
-  let h=`<div class="row"><span class="ricon">${I.check||I.info}</span><div class="rt"><b>${done.length} ${done.length===1?'thing':'things'} imported</b><small>${[r.steam?`${r.steam} Steam`:'' , (r.epic||[]).length?`${r.epic.length} Epic`:'', (r.gog||[]).length?`${r.gog.length} GOG`:'', done.filter(x=>x.kind==='files').length?`${done.filter(x=>x.kind==='files').length} folder${done.filter(x=>x.kind==='files').length===1?'':'s'}`:''].filter(Boolean).join(' · ')||'Nothing new'}</small></div></div>`;
+  let h=`<div class="row"><span class="ricon">${I.check||I.info}</span><div class="rt"><b>${done.length} ${done.length===1?'thing':'things'} imported</b><small>${[r.steam?`${r.steam} Steam`:'' , (r.epic||[]).length?`${r.epic.length} Epic`:'', (r.gog||[]).length?`${r.gog.length} GOG`:'', (r.lutris||[]).length?`${r.lutris.length} Lutris`:'', done.filter(x=>x.kind==='files').length?`${done.filter(x=>x.kind==='files').length} folder${done.filter(x=>x.kind==='files').length===1?'':'s'}`:''].filter(Boolean).join(' · ')||'Nothing new'}</small></div></div>`;
   (r.notes||[]).forEach(n=>h+=note(esc(n)));
   if(skipped.length) h+=shead('Skipped')+skipped.map(x=>`<div class="row"><div class="rt"><b>${esc(x.name)}</b><small>${esc(x.why)}</small></div></div>`).join('');
   if(failed.length) h+=shead("Didn't work")+failed.map(x=>`<div class="row"><div class="rt"><b>${esc(x.name)}</b><small>${esc(x.why)}</small></div></div>`).join('');
@@ -1756,16 +1756,17 @@ function pageImport(){
     + (st.error?note(esc(st.error)):'') + pageTakeover(st);
   const drives=st.scan.drives||[];
   const row=(it,label)=>`<button class="row" data-f data-k="imp-${esc(it.key)}" data-act="impToggle" data-key="${esc(it.key)}"><div class="rt"><b>${esc(label||it.name)}</b><small>${it.size?gbs(it.size):'Size unknown'}</small></div><div class="sw ${IMP.sel.has(it.key)?'on':''}"></div></button>`;
-  const useful=drives.filter(d=>d.steam.length||d.epic.length||d.gog.length||d.files.length||d.problem);
+  const useful=drives.filter(d=>d.steam.length||d.epic.length||d.gog.length||(d.lutris||[]).length||d.files.length||d.problem);
   if(!useful.length) h+=note('No other drives with games or personal folders were found. Plug in the drive or SD card, then look again.');
   for(const d of useful){
-    const items=[...d.steam,...d.epic,...d.gog,...d.files], all=items.length&&items.every(x=>IMP.sel.has(x.key));
+    const items=[...d.steam,...d.epic,...d.gog,...(d.lutris||[]),...d.files], all=items.length&&items.every(x=>IMP.sel.has(x.key));
     h+=shead(`${esc(d.name)}${d.os&&d.os!==d.name?' · '+esc(d.os):''} · ${gb(d.size)}`);
     if(d.problem){ h+=note('This drive can\'t be read: '+esc(d.problem)+'.'); continue; }
     h+=`<button class="row" data-f data-k="imp-all-${esc(d.id)}" data-act="impAll" data-drive="${esc(d.id)}"><div class="rt"><b>${all?'Unselect everything':'Select everything'} on this drive</b><small>${items.length} item${items.length===1?'':'s'} · ${gbs(items.reduce((a,x)=>a+(x.size||0),0))}</small></div></button>`;
     if(d.steam.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">STEAM</div>`+d.steam.map(x=>row(x)).join('');
     if(d.epic.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">EPIC GAMES</div>`+d.epic.map(x=>row(x)).join('');
     if(d.gog.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">GOG</div>`+d.gog.map(x=>row(x)).join('');
+    if((d.lutris||[]).length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">LUTRIS</div>`+d.lutris.map(x=>row(x)).join('');
     if(d.files.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">YOUR FILES</div>`+d.files.map(x=>row(x, x.name+(x.user?` (${x.user})`:''))).join('');
   }
   const sel=impItems().filter(x=>IMP.sel.has(x.key)), need=sel.reduce((a,x)=>a+(x.size||0),0), free=st.scan.free||0, tooBig=IMP.mode==='copy'&&need>free;

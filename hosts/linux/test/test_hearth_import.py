@@ -118,6 +118,24 @@ class Layouts(unittest.TestCase):
         epic = self.hi.epic_games(mnt, kind, homes, [], 'x')
         self.assertEqual([(e['app'], e['name']) for e in epic], [('Hollow', 'Hollow Knight')])
 
+    def test_lutris_games(self):
+        import sqlite3
+        mnt = os.path.join(self.root, 'ext')
+        home = os.path.join(mnt, 'home', 'sam')
+        game = os.path.join(home, 'Games', 'overwatch')
+        os.makedirs(os.path.join(game, 'drive_c'))
+        os.makedirs(os.path.join(home, '.local', 'share', 'lutris'))
+        con = sqlite3.connect(os.path.join(home, '.local', 'share', 'lutris', 'pga.db'))
+        con.execute('CREATE TABLE games (name TEXT, slug TEXT, runner TEXT, directory TEXT, configpath TEXT, installed INTEGER)')
+        con.execute("INSERT INTO games VALUES ('Overwatch', 'overwatch', 'wine', '/home/sam/Games/overwatch', 'overwatch-123', 1)")
+        con.execute("INSERT INTO games VALUES ('Gone', 'gone', 'wine', '/home/sam/Games/gone', 'gone-1', 0)")
+        con.commit(); con.close()
+        write(os.path.join(home, '.config', 'lutris', 'games', 'overwatch-123.yml'), 'game:\n  exe: /home/sam/Games/overwatch/drive_c/ow.exe\n')
+        homes = self.hi.homes(mnt)
+        got = self.hi.lutris_games(mnt, homes, 'x')
+        self.assertEqual([(g['name'], g['exe']) for g in got], [('Overwatch', '/home/sam/Games/overwatch/drive_c/ow.exe')])
+        self.assertEqual(got[0]['path'], os.path.realpath(game) if os.path.realpath(game) == got[0]['path'] else game)
+
     def test_sd_card_library(self):
         mnt = os.path.join(self.root, 'sd')
         manifest(os.path.join(mnt, 'steamapps'), '413150', 'Stardew Valley', 'Stardew Valley')

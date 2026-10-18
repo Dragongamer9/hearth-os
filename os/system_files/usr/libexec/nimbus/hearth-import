@@ -22,6 +22,7 @@ import pwd
 import re
 import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
@@ -352,6 +353,39 @@ def gog_games(mnt, kind, home_list, drive_id):
     return out
 
 
+def lutris_games(mnt, home_list, drive_id):
+    """Games installed with Lutris (its database, pga.db, plus each game's settings file for the program)."""
+    out = []
+    for h in home_list:
+        for base in (os.path.join(h, '.local', 'share', 'lutris'), os.path.join(h, '.var', 'app', 'net.lutris.Lutris', 'data', 'lutris')):
+            db = os.path.join(base, 'pga.db')
+            if not os.path.isfile(db):
+                continue
+            cfgdir = os.path.join(os.path.dirname(os.path.dirname(base)) if '.var' in base else os.path.join(h, '.config'), 'lutris', 'games')
+            if '.var' in base:
+                cfgdir = os.path.join(h, '.var', 'app', 'net.lutris.Lutris', 'config', 'lutris', 'games')
+            try:
+                con = sqlite3.connect(f'file:{db}?mode=ro&immutable=1', uri=True)
+                rows = con.execute('SELECT name, slug, runner, directory, configpath FROM games WHERE installed = 1').fetchall()
+                con.close()
+            except sqlite3.Error:
+                continue
+            for name, slug, runner, directory, configpath in rows:
+                path = inside(mnt, directory or '')
+                if not path or not isdir(path) or path.rstrip('/') == h.rstrip('/'):
+                    continue
+                exe = None
+                try:
+                    with open(os.path.join(cfgdir, (configpath or '') + '.yml')) as f:
+                        m = re.search(r'^\s+exe:\s*(.+?)\s*$', f.read(), re.M)
+                        exe = m.group(1).strip('\'"') if m else None
+                except OSError:
+                    pass
+                out.append({'key': f'lutris:{drive_id}:{slug}', 'name': name or slug, 'slug': slug, 'runner': runner or '',
+                            'size': du(path, 60), 'path': path, 'oldDir': directory, 'exe': exe})
+    return out
+
+
 def personal_files(kind, mnt, home_list, drive_id):
     users = windows_users(mnt) if kind == 'windows' else home_list
     out = []
@@ -404,7 +438,7 @@ def scan():
     for d in ds:
         mnt = d.get('mount')
         d.update({'kind': 'locked' if d['fs'] in LOCKED else 'unreadable', 'name': d['label'] or d['disk'] or d['dev'],
-                  'steam': [], 'epic': [], 'gog': [], 'files': []})
+                  'steam': [], 'epic': [], 'gog': [], 'lutris': [], 'files': []})
         if not mnt:
             continue
         home_list = homes(mnt)
@@ -419,6 +453,7 @@ def scan():
                     d['steam'].append(g)
         d['epic'] = epic_games(mnt, kind, home_list, windows_mounts, d['id'])
         d['gog'] = gog_games(mnt, kind, home_list, d['id'])
+        d['lutris'] = lutris_games(mnt, home_list, d['id'])
         if kind in ('windows', 'linux'):
             d['files'] = personal_files(kind, mnt, home_list, d['id'])
     user = caller()
@@ -516,7 +551,7 @@ def run():
     found = scan()
     items = []
     for d in found['drives']:
-        for kind in ('steam', 'epic', 'gog', 'files'):
+        for kind in ('steam', 'epic', 'gog', 'lutris', 'files'):
             for it in d[kind]:
                 if it['key'] in keys:
                     items.append((kind, d, it))
@@ -526,7 +561,7 @@ def run():
     stage(phase='start', total=total, n=len(items))
 
     steamapps = user_steamapps(user)
-    result = {'done': [], 'skipped': [], 'failed': [], 'kept': [], 'epic': [], 'gog': [], 'steam': 0}
+    result = {'done': [], 'skipped': [], 'failed': [], 'kept': [], 'epic': [], 'gog': [], 'lutris': [], 'steam': 0}
     finished = 0
     remounted = set()
     for i, (kind, d, it) in enumerate(items):
@@ -565,6 +600,17 @@ def run():
                 rsync(it['path'], dst, progress)
                 chown_tree(dst, user)
                 result[kind].append({'app' if kind == 'epic' else 'id': it['app'] if kind == 'epic' else it['id'], 'name': it['name'], 'path': dst})
+            elif kind == 'lutris':
+                dst = os.path.join(root, 'Lutris', os.path.basename(it['path'].rstrip('/')))
+                rsync(it['path'], dst, progress)
+                chown_tree(dst, user)
+                exe = it.get('exe')
+                old = (it.get('oldDir') or '').rstrip('/')
+                if exe and old and exe.startswith(old + '/'):
+                    exe = dst + exe[len(old):]           # the program moved with the game folder
+                elif exe and not exe.startswith('/'):
+                    exe = os.path.join(dst, exe)
+                result['lutris'].append({'name': it['name'], 'path': dst, 'exe': exe if exe and os.path.exists(exe) else None})
             else:
                 dst = os.path.join(user.pw_dir, it['name'], 'Imported from ' + re.sub(r'[/\\]', '-', d['name']) +
                                    (f' ({it["user"]})' if it.get('user') else ''))
