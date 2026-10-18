@@ -224,7 +224,7 @@ class Library extends EventEmitter {
   async install(id) {
     const g = this.games.get(id);
     if (!g || !g.installUri) {
-      throw new Error(g && g.note ? `${g.note}. Nimbus can't install it.` : "Nimbus can't install this game. Install it from its store app.");
+      throw new Error(g && g.note ? `${g.note}. Hearth can't install it.` : "Hearth can't install this game. Install it from its store app.");
     }
     if (g.installUri.startsWith('nimbus-')) { this.accounts.startInstall(g); return; } // Epic / GOG: Nimbus downloads it itself
     if (g.source === 'steam' && this.store.data.steamBackground) await steam.ensureRunningSilent();
@@ -305,7 +305,7 @@ class Library extends EventEmitter {
       const dir = require('node:path').dirname(g.exe);
       const broad = ['/', '/usr/bin', '/usr/local/bin', '/bin', '/opt', require('node:os').homedir()].includes(dir);
       track = { pid: child && child.pid, dirs: g.exe.endsWith('.desktop') || broad ? [] : [dir] };
-    } else throw new Error("Nimbus doesn't know how to start this game.");
+    } else throw new Error("Hearth doesn't know how to start this game.");
 
     if (!track) return { tracked: false };
     this.running = { id, track, launchedAt: Date.now(), startedAt: 0, child };
