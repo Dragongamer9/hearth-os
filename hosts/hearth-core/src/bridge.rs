@@ -109,6 +109,13 @@ impl Bridge {
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
+            "game.info" => {
+                let id = req("id")?;
+                let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
+                let home = paths::home();
+                let ach = if let Some(app) = id.strip_prefix("steam:") { crate::gameinfo::achievements(&home, app) } else { Value::Null };
+                Ok(json!({"protondb": crate::gameinfo::protondb(&id, &g.title, g.source), "achievements": ach}))
+            }
             "game.options.get" => self.game_options(&req("id")?),
             "game.options.set" => { let id = req("id")?; crate::game_options::set(&mut self.library.store, &id, &a["options"])?; self.game_options(&id) }
             "game.launch" => {
