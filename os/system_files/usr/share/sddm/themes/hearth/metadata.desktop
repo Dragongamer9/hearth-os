@@ -1,0 +1,11 @@
+[SddmGreeterTheme]
+Name=Hearth
+Description=Hearth OS's login screen: the fireside, the clock, and a keyboard you can use with a controller
+Author=Hearth OS
+License=MIT
+Type=sddm-theme
+Version=1.0
+Website=https://github.com/Dragongamer9/hearth-os
+MainScript=Main.qml
+ConfigFile=theme.conf
+QtVersion=6
