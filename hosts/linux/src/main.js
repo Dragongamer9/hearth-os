@@ -630,6 +630,8 @@ app.whenReady().then(() => {
       },
       returnToDesktop: () => power('desktop'),
       buttonPrefs, controller, browser: new Browser(),
+      // Steam's own window (its downloads page): out of Hearth's way so gamescope shows it; Guide comes back.
+      showSteam: () => { stepAside(); if (inGamescope()) gamescope.clearFocus().catch(() => {}); },
       get buttons() { return buttons; },
     },
   });

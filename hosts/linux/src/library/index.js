@@ -28,8 +28,11 @@ class Library extends EventEmitter {
     this.accounts.on('installFinished', (id, error) => {
       const g = this.games.get(id);
       this.emit('installDone', { id, title: g ? g.title : id, error });
-      if (!error) this.scan().catch(() => {});
+      if (!error) { this.recordInstalled(id); this.scan().catch(() => {}); }
     });
+    this.queueRestored = false;
+    this.speeds = [];                // [{t, bps}] for the Downloads page's speed graph (last few minutes)
+    this.steamBytes = new Map();     // id → {t, bytes}, to work out Steam download speeds
     this.stream = stream;            // opens xCloud games in a window; set by main.js
     this.games = new Map();
     this.counts = {};
@@ -98,6 +101,8 @@ class Library extends EventEmitter {
     if (played.size) for (const g of all.values()) if (g.cloud && played.has(norm(g.title))) g.storeLastPlayed = played.get(norm(g.title));
 
     this.games = all;
+    // First scan after starting: put back downloads that were going before a restart.
+    if (!this.queueRestored) { this.queueRestored = true; try { this.accounts.restoreQueue(id => all.get(id)); } catch (e) { log('restore queue: ' + e.message); } }
     this.counts = counts;
     this.downloadSig = signature(all.values());
   }
@@ -170,8 +175,46 @@ class Library extends EventEmitter {
       const g = this.games.get(j.gameId);
       if (g && !active.some(a => a.id === g.id)) active.push(this.dto(g));
     }
-    return { active, changed };
+    // Steam's speed, from how fast its downloaded byte count grows; Steam games that just finished go to the
+    // "Recently installed" list.
+    const now = Date.now();
+    for (const a of active) {
+      if (a.source !== 'steam' || a.bytesDone == null) continue;
+      const prev = this.steamBytes.get(a.id);
+      if (prev && now > prev.t && a.bytesDone >= prev.bytes) a.bytesPerSec = Math.round((a.bytesDone - prev.bytes) / ((now - prev.t) / 1000));
+      if (!prev || a.bytesDone !== prev.bytes || now - prev.t > 20000) this.steamBytes.set(a.id, { t: now, bytes: a.bytesDone, bps: a.bytesPerSec || 0 });
+      else a.bytesPerSec = prev.bps || 0;
+    }
+    for (const id of [...this.steamBytes.keys()]) {
+      if (!active.some(a => a.id === id)) {
+        this.steamBytes.delete(id);
+        const g = this.games.get(id);
+        if (g && g.installed) this.recordInstalled(id);
+      }
+    }
+    const bps = active.reduce((t, a) => t + (a.state === 'downloading' || a.state === 'updating' ? (a.bytesPerSec || 0) : 0), 0);
+    this.speeds.push({ t: now, bps });
+    this.speeds = this.speeds.filter(p => now - p.t < 5 * 60 * 1000);
+    return { active, changed, speeds: this.speeds.map(p => [p.t, p.bps]), recent: this.recentInstalls() };
   }
+
+  /** Remembered across restarts: what finished installing lately (the Downloads page lists them). */
+  recordInstalled(id) {
+    this.store.update(d => {
+      const h = (d.installHistory || []).filter(e => e.id !== id);
+      h.unshift({ id, at: Date.now() });
+      d.installHistory = h.slice(0, 20);
+    });
+  }
+  recentInstalls() {
+    const week = Date.now() - 14 * 24 * 3600 * 1000;
+    return (this.store.data.installHistory || []).filter(e => e.at > week && this.games.has(e.id) && this.games.get(e.id).installed);
+  }
+  clearRecent() { this.store.update(d => { d.installHistory = []; }); }
+
+  pauseInstall(id) { return this.accounts.installs.pause(id); }
+  resumeInstall(id) { return this.accounts.installs.resume(id); }
+  firstInQueue(id) { return this.accounts.installs.first(id); }
 
   signature() {
     const jobs = this.accounts.installs.active().map(j => `${j.gameId}=${j.state === 'queued' ? 'queued' : 'active'}`);

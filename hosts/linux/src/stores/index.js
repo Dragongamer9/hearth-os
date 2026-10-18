@@ -29,6 +29,8 @@ class StoreAccounts extends EventEmitter {
     this.errors = {};
     this.busy = new Set();
     this.installs.on('finished', (id, error) => this.emit('installFinished', id, error));
+    // The download queue is kept in library.json, so a restart (or Hearth closing) doesn't lose it.
+    this.installs.on('changed', () => this.saveQueue());
   }
 
   static get defaultRoot() { return path.join(os.homedir(), 'Games'); }
@@ -141,26 +143,48 @@ class StoreAccounts extends EventEmitter {
 
   // ------------------------------------------------------------------ installs
 
-  startInstall(g) {
+  startInstall(g, { paused = false } = {}) {
     const uri = g.installUri || '';
     const root = this.installRoot;
     if (uri.startsWith('nimbus-epic:')) {
       const app = uri.slice('nimbus-epic:'.length);
       if (!this.epic.signedIn) throw new Error('Sign in to Epic Games first (Library › Stores).');
-      return this.installs.enqueue({ gameId: g.id, title: g.title, work: (job, signal) => this.epic.install(job, app, root, signal) });
+      return this.installs.enqueue({ gameId: g.id, title: g.title, uri, work: (job, signal) => this.epic.install(job, app, root, signal) }, { paused });
     }
     if (uri.startsWith('nimbus-gog:')) {
       const id = uri.slice('nimbus-gog:'.length);
       if (!this.gog.signedIn) throw new Error('Sign in to GOG first (Library › Stores).');
       return this.installs.enqueue({
-        gameId: g.id, title: g.title,
+        gameId: g.id, title: g.title, uri,
         work: async (job, signal) => {
           const dir = await this.gog.install(job, id, root, signal);
           this.store.update(d => { d.gogInstalls = { ...(d.gogInstalls || {}), [id]: dir }; });
         },
-      });
+      }, { paused });
     }
     throw new Error("Nimbus can't install this game itself.");
+  }
+
+  saveQueue() {
+    const q = this.installs.active().map(j => ({ gameId: j.gameId, title: j.title, uri: j.uri, paused: !!j.paused,
+      bytesDone: j.bytesDone || null, bytesTotal: j.bytesTotal || null, progress: j.progress ?? null }));
+    this.store.update(d => { d.installQueue = q; });
+  }
+
+  /** After a restart: puts the saved downloads back in the queue (legendary and gogdl carry on from the files
+   *  already downloaded). find(id) → the library's game. Paused ones stay paused. */
+  restoreQueue(find) {
+    const saved = (this.store.data.installQueue || []).slice();
+    for (const e of saved) {
+      if (this.installs.get(e.gameId)) continue;
+      const g = find(e.gameId);
+      if (!g || g.installed) continue;
+      try {
+        const job = this.startInstall({ ...g, installUri: g.installUri || e.uri }, { paused: !!e.paused });
+        if (job) { job.bytesDone = e.bytesDone; job.bytesTotal = e.bytesTotal; job.progress = e.progress; }
+        log(`install ${e.gameId}: back in the queue after a restart${e.paused ? ' (paused)' : ''}`);
+      } catch (err) { log(`install ${e.gameId}: couldn't restore: ${err.message}`); }
+    }
   }
 
   async uninstall(g) {
