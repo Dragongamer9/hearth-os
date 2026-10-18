@@ -10,6 +10,7 @@ const perf = require('./perf');
 const steam = require('./library/steam');
 const { DisplayModes } = require('./display');
 const { SystemAdmin } = require('./system-admin');
+const { Importer } = require('./importer');
 const { ButtonPrefs, Controller } = require('./buttons');
 const { Browser } = require('./browser');
 const sysinfo = require('./sysinfo');
@@ -40,6 +41,10 @@ class Bridge {
     this.browser = platform.browser || new Browser();
     this.browser.on('changed', s => this.event('browser', s));
     this.admin.on('update', s => this.event('systemUpdate', s));
+    // One importer for the app (the overlay has its own bridge): kept on the library.
+    this.importer = platform.importer || (library.importer ||= new Importer({ admin: this.admin, library }));
+    this.importer.on('changed', s => this.event('import', s));
+    this.importer.on('libraryChanged', () => this.event('library.changed', {}));
     // Account changes come in bursts (sign-in, list refresh): tell the UI once they settle.
     library.accounts.on('changed', () => { clearTimeout(this.accTimer); this.accTimer = setTimeout(() => this.event('accounts.changed', {}), 400); });
     library.on('installDone', d => this.event('install.done', d));
@@ -233,6 +238,10 @@ class Bridge {
       case 'login.setHostname': return this.admin.setHostname(req('name'));
       case 'login.password': return this.admin.changePassword(req('old'), req('new'));
       // Settings › Updates › System (Hearth, the OS)
+      case 'import.status': return this.importer.status();
+      case 'import.scan': return this.importer.scan();
+      case 'import.start': return this.importer.start(a.items, a.mode || 'copy');
+      case 'import.cancel': return this.importer.cancel();
       case 'system.update.status': return this.admin.refreshUpdate();
       case 'system.update.check': this.admin.checkUpdate(); return this.admin.updateStatus();
       case 'system.update.install': this.admin.installUpdate(); return this.admin.updateStatus();
