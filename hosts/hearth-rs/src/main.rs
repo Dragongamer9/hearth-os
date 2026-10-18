@@ -50,13 +50,19 @@ fn sign_in(app: &tauri::AppHandle, page: &hearth_core::stores::SignIn) -> Option
     *SIGNIN.lock().unwrap() = Some(tx);
     if let Some(old) = app.get_webview_window("signin") { let _ = old.destroy(); }
     let done = page.done;
-    let mut b = WebviewWindowBuilder::new(app, "signin", WebviewUrl::External(page.url.parse().ok()?))
+    // Works with just a controller: a pointer, an on-screen keyboard, B to cancel.
+    let script = format!("{}\n{}", include_str!("js/signin-pad.js"), page.script.unwrap_or(""));
+    let b = WebviewWindowBuilder::new(app, "signin", WebviewUrl::External(page.url.parse().ok()?))
         .title(page.title)
         .inner_size(900.0, 760.0)
         .center()
+        .fullscreen(in_session())
         .incognito(true)
-        .on_navigation(move |url| match done(url.as_str()) { Some(code) => { signin_answer(Some(code)); false } None => true });
-    if let Some(js) = page.script { b = b.initialization_script(js); }
+        .initialization_script(&script)
+        .on_navigation(move |url| {
+            if url.as_str().starts_with("hearth-signin://cancel") { signin_answer(None); return false; }
+            match done(url.as_str()) { Some(code) => { signin_answer(Some(code)); false } None => true }
+        });
     let w = match b.build() { Ok(w) => w, Err(e) => { hearth_core::bridge::log(&format!("sign-in window: {e}")); return None; } };
     w.on_window_event(|e| if let tauri::WindowEvent::Destroyed = e { signin_answer(None); });
     // gamescope keeps showing whichever window Hearth last put in front: put this one there.
@@ -79,6 +85,15 @@ fn stream(app: &tauri::AppHandle, open: Option<(&str, &str)>, windowed: bool) {
         .inner_size(1280.0, 800.0)
         .user_agent(EDGE_UA)
         .data_directory(hearth_core::paths::data_dir().join("xcloud-web"))
+        .initialization_script(include_str!("js/stream-exit.js"))
+        .on_navigation(|url| {
+            if url.as_str().starts_with("hearth-signin://stream-exit") {
+                let gm = GM.get().cloned();
+                std::thread::spawn(move || if let Some(gm) = gm { if let Some(w) = gm.app.get_webview_window("stream") { let _ = w.destroy(); } });
+                return false;
+            }
+            true
+        })
         .background_color(tauri::window::Color(0, 0, 0, 255))
         .build();
     match r {
@@ -281,7 +296,9 @@ fn main() {
         .register_uri_scheme_protocol("nimbus-art", |_ctx, req| art(&req.uri().to_string()))
         // Epic's sign-in page hands its code over as hearth-signin://done?code=… (if the window lets it through).
         .register_uri_scheme_protocol("hearth-signin", |_ctx, req| {
-            signin_answer(hearth_core::http::query_param(&req.uri().to_string(), "code"));
+            let u = req.uri().to_string();
+            if u.contains("stream-exit") { if let Some(gm) = GM.get() { if let Some(w) = gm.app.get_webview_window("stream") { let _ = w.destroy(); } } }
+            else { signin_answer(hearth_core::http::query_param(&u, "code")); }
             Response::builder().status(StatusCode::OK).body(Vec::new()).unwrap()
         })
         .invoke_handler(tauri::generate_handler![nimbus_msg])
