@@ -101,7 +101,8 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 <div class="toast"></div>
 <script>
 'use strict';
-const hb = window.hb || { act(){}, suggest: async()=>[], on(){} };
+// (Not named hb: the preload's window.hb can't be redeclared.)
+const HB = window.hb || { act(){}, suggest: async()=>[], on(){} };
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const SV = {
@@ -144,7 +145,7 @@ function renderBar(){
 function openPop(name){
   closePops(false);
   S.open = name;
-  hb.act({act:'expand', on:true});
+  HB.act({act:'expand', on:true});
   $('.cover').classList.add('show');
   if(name==='menu') renderMenu();
   if(name==='downloads') renderDownloads();
@@ -154,7 +155,7 @@ function closePops(shrink=true){
   document.querySelectorAll('.pop.show').forEach(p => { if(!p.classList.contains('find') || S.open!=='find-keep') p.classList.remove('show'); });
   $('.cover').classList.remove('show');
   S.open = null;
-  if(shrink && !$('.find').classList.contains('show')) hb.act({act:'expand', on:false});
+  if(shrink && !$('.find').classList.contains('show')) HB.act({act:'expand', on:false});
 }
 function renderMenu(){
   const t = cur();
@@ -190,13 +191,13 @@ input.addEventListener('focus', () => { S.editing = true; $('.addr').classList.a
 input.addEventListener('blur', () => { setTimeout(() => { S.editing = false; $('.addr').classList.remove('focus'); hideSug(); renderBar(); }, 120); });
 input.addEventListener('input', async () => {
   const q = input.value; S.sel = -1;
-  S.sug = q.trim() ? await hb.suggest(q) : [];
+  S.sug = q.trim() ? await HB.suggest(q) : [];
   if(input.value !== q) return;
   showSug();
 });
 input.addEventListener('keydown', e => {
-  if(e.key==='Enter'){ e.preventDefault(); const s = S.sel>=0 ? S.sug[S.sel] : null; s ? hb.act({act:'open', url:s.url}) : hb.act({act:'go', text:input.value}); hideSug(); input.blur(); }
-  else if(e.key==='Escape'){ e.preventDefault(); input.value = cur().url && !cur().url.startsWith('hearth:') ? cur().url : ''; hideSug(); hb.act({act:'focusPage'}); }
+  if(e.key==='Enter'){ e.preventDefault(); const s = S.sel>=0 ? S.sug[S.sel] : null; s ? HB.act({act:'open', url:s.url}) : HB.act({act:'go', text:input.value}); hideSug(); input.blur(); }
+  else if(e.key==='Escape'){ e.preventDefault(); input.value = cur().url && !cur().url.startsWith('hearth:') ? cur().url : ''; hideSug(); HB.act({act:'focusPage'}); }
   else if(e.key==='ArrowDown' && S.sug.length){ e.preventDefault(); S.sel = Math.min(S.sug.length-1, S.sel+1); showSug(); }
   else if(e.key==='ArrowUp' && S.sug.length){ e.preventDefault(); S.sel = Math.max(-1, S.sel-1); showSug(); }
 });
@@ -204,57 +205,57 @@ function showSug(){
   const p = $('.sug');
   if(!S.sug.length){ return hideSug(); }
   p.innerHTML = S.sug.map((s,i)=>`<button class="mi ${i===S.sel?'sel':''}" data-act="open" data-url="${esc(s.url)}">${s.bookmark?SV.starOn.replace('<svg','<svg style="color:var(--accent)"'):SV.globe}<span class="tt">${esc(s.title||s.url)}</span><span class="u">${esc(s.url.replace(/^https?:\/\/(www\.)?/,''))}</span></button>`).join('');
-  p.classList.add('show'); hb.act({act:'expand', on:true});
+  p.classList.add('show'); HB.act({act:'expand', on:true});
 }
-function hideSug(){ const p=$('.sug'); if(p.classList.contains('show')){ p.classList.remove('show'); if(!S.open && !$('.find').classList.contains('show')) hb.act({act:'expand', on:false}); } }
+function hideSug(){ const p=$('.sug'); if(p.classList.contains('show')){ p.classList.remove('show'); if(!S.open && !$('.find').classList.contains('show')) HB.act({act:'expand', on:false}); } }
 
 // ---------------------------------------------------------------- find on page
 const findIn = $('.find input');
-function openFind(){ closePops(false); $('.find').classList.add('show'); hb.act({act:'expand', on:true}); findIn.focus(); findIn.select(); }
-function closeFind(){ $('.find').classList.remove('show'); $('.fc').textContent=''; hb.act({act:'find', text:''}); hb.act({act:'expand', on:false}); hb.act({act:'focusPage'}); }
-findIn.addEventListener('input', () => hb.act({act:'find', text:findIn.value}));
+function openFind(){ closePops(false); $('.find').classList.add('show'); HB.act({act:'expand', on:true}); findIn.focus(); findIn.select(); }
+function closeFind(){ $('.find').classList.remove('show'); $('.fc').textContent=''; HB.act({act:'find', text:''}); HB.act({act:'expand', on:false}); HB.act({act:'focusPage'}); }
+findIn.addEventListener('input', () => HB.act({act:'find', text:findIn.value}));
 findIn.addEventListener('keydown', e => {
-  if(e.key==='Enter'){ e.preventDefault(); hb.act({act:'find', text:findIn.value, next:true, forward:!e.shiftKey}); }
+  if(e.key==='Enter'){ e.preventDefault(); HB.act({act:'find', text:findIn.value, next:true, forward:!e.shiftKey}); }
   if(e.key==='Escape'){ e.preventDefault(); closeFind(); }
 });
 
 // ---------------------------------------------------------------- clicks
-document.addEventListener('mousedown', e => { if(e.button===1){ const t=e.target.closest('.tab'); if(t){ e.preventDefault(); hb.act({act:'close', id:+t.dataset.id}); } } });
+document.addEventListener('mousedown', e => { if(e.button===1){ const t=e.target.closest('.tab'); if(t){ e.preventDefault(); HB.act({act:'close', id:+t.dataset.id}); } } });
 document.addEventListener('click', e => {
   if(e.target.classList.contains('cover')) return closePops();
   const el = e.target.closest('[data-act]'); if(!el) return;
   const d = el.dataset;
   e.stopPropagation();
   switch(d.act){
-    case 'select': return hb.act({act:'select', id:+d.id});
-    case 'close': return hb.act({act:'close', id:+d.id});
-    case 'mute': return hb.act({act:'select', id:+d.id}), hb.act({act:'mute'});
+    case 'select': return HB.act({act:'select', id:+d.id});
+    case 'close': return HB.act({act:'close', id:+d.id});
+    case 'mute': return HB.act({act:'select', id:+d.id}), HB.act({act:'mute'});
     case 'menu': return S.open==='menu' ? closePops() : openPop('menu');
     case 'downloads': return S.open==='downloads' ? closePops() : openPop('downloads');
     case 'findOpen': return openFind();
-    case 'findNext': return hb.act({act:'find', text:findIn.value, next:true});
-    case 'findPrev': return hb.act({act:'find', text:findIn.value, next:true, forward:false});
+    case 'findNext': return HB.act({act:'find', text:findIn.value, next:true});
+    case 'findPrev': return HB.act({act:'find', text:findIn.value, next:true, forward:false});
     case 'findClose': return closeFind();
-    case 'zoom': hb.act({act:'zoom', v:+d.v}); return;
-    case 'open': closePops(); hideSug(); return hb.act({act:'open', url:d.url});
-    case 'internal': closePops(); return hb.act({act:'internal', page:d.page});
-    case 'downloadOpen': case 'downloadShow': case 'downloadCancel': return hb.act({act:d.act, id:+d.id});
-    default: if(!['zoom'].includes(d.act)) closePops(); return hb.act({act:d.act});
+    case 'zoom': HB.act({act:'zoom', v:+d.v}); return;
+    case 'open': closePops(); hideSug(); return HB.act({act:'open', url:d.url});
+    case 'internal': closePops(); return HB.act({act:'internal', page:d.page});
+    case 'downloadOpen': case 'downloadShow': case 'downloadCancel': return HB.act({act:d.act, id:+d.id});
+    default: if(!['zoom'].includes(d.act)) closePops(); return HB.act({act:d.act});
   }
 });
 // Drag a tab to move it.
 let dragId = null;
 document.addEventListener('dragstart', e => { const t=e.target.closest('.tab'); if(t){ dragId=+t.dataset.id; e.dataTransfer.effectAllowed='move'; } });
 document.addEventListener('dragover', e => { if(dragId) e.preventDefault(); });
-document.addEventListener('drop', e => { const t=e.target.closest('.tab'); if(dragId && t){ e.preventDefault(); const to=S.tabs.findIndex(x=>x.id===+t.dataset.id); hb.act({act:'move', id:dragId, to}); } dragId=null; });
+document.addEventListener('drop', e => { const t=e.target.closest('.tab'); if(dragId && t){ e.preventDefault(); const to=S.tabs.findIndex(x=>x.id===+t.dataset.id); HB.act({act:'move', id:dragId, to}); } dragId=null; });
 document.addEventListener('keydown', e => {
-  if(e.key==='Escape' && S.open){ e.preventDefault(); closePops(); hb.act({act:'focusPage'}); }
+  if(e.key==='Escape' && S.open){ e.preventDefault(); closePops(); HB.act({act:'focusPage'}); }
 });
 let toastT;
 function toast(text){ const t=$('.toast'); t.textContent=text; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'), 3500); }
 
 // ---------------------------------------------------------------- from the browser
-hb.on(({name, data}) => {
+HB.on(({name, data}) => {
   if(name==='tabs'){ S.tabs=data.tabs; S.active=data.active; S.bookmarks=data.bookmarks||S.bookmarks; S.downloads=data.downloads||S.downloads; renderTabs(); renderBar(); }
   else if(name==='tab'){ const i=S.tabs.findIndex(t=>t.id===data.id); if(i>=0) S.tabs[i]=data; renderTabs(); if(data.id===S.active) renderBar(); }
   else if(name==='downloads'){ const was=S.downloads.length; S.downloads=data; renderBar(); if(S.open==='downloads') renderDownloads(); else if(data.length>was) toast('Downloading ' + data[0].name); }
