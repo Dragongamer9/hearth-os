@@ -87,14 +87,21 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Emulators: ROMs folder (EmuDeck folders too) with box art, played with RetroArch
 - [x] Themes and sound packs; the desktop wallpaper from Hearth's Appearance settings
 - [x] Epic cloud saves for games Hearth installs
-- [ ] Profiles on Ember (Windows)
-- [ ] GOG cloud saves (gogdl), more stores (itch.io, Amazon)
-- [ ] Steam friends (needs Steam's web API)
+- [ ] More stores (itch.io, Amazon)
 
 ## 0.0.26
 
-- [ ] New live ISOs (AMD/Intel and Nvidia) with Install next to Windows (no ISOs before this)
+- [x] Settings › Updates: Update now is back on Hearth OS (and Settings from Mantel, the OS name, controller remapping)
+- [x] Ember: Quick Resume and profiles (Who's playing, own Steam account and sign-ins, parental controls)
+- [x] GOG cloud saves (Hearth and Ember)
+- [x] Steam friends: who's online and what they're playing (Hearth and Ember)
+- [x] Hearth Browser blocks ads and trackers; Hearth Browser is back on Hearth OS (missing since 0.0.24)
+- [x] Faster moving through a big library; a library speed test in CI
 - [x] Installer test in CI: installs onto a disk image and boots it
+
+## Later
+
+- [ ] New live ISOs (AMD/Intel and Nvidia) with Install next to Windows
 
 ## Not started
 
@@ -107,6 +114,5 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Hearth Browser, next
 
-- Ad and tracker blocking
 - Controller: move between links with the D-pad in Game Mode
 - Hearth Browser on Windows (Ember)
