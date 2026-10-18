@@ -21,6 +21,7 @@ public sealed class MantelHost : IDisposable
     private readonly Action<CoreWebView2> _setup;
     private MantelWindow? _bar, _launcher, _desk, _quick, _power, _radial, _help;
     private IntPtr _beforeRadial;
+    private SettingsWindow? _settings;
     private Backdrop? _dim;
     private readonly TrayHost _tray = new();
     private readonly FullShell _full = new();
@@ -45,7 +46,7 @@ public sealed class MantelHost : IDisposable
         _env = env;
         _baseUrl = baseUrl;
         _setup = setup;
-        _bridge.AddListener(json => { if (Active) { _bar?.Post(json); _launcher?.Post(json); _quick?.Post(json); } });
+        _bridge.AddListener(json => { if (Active) { _bar?.Post(json); _launcher?.Post(json); _quick?.Post(json); } _settings?.Post(json); });
         _tick.Tick += (_, _) => Tick();
         _tray.Changed += () => _bar?.BeginInvoke((MethodInvoker)PushTray);
         _full.WinKey += () => _bar?.BeginInvoke((MethodInvoker)ToggleLauncher);
@@ -107,6 +108,7 @@ public sealed class MantelHost : IDisposable
         HidePanels();
         if (_bar is not null) { _bar.RemoveAppBar(); _bar.Hide(); }
         if (Full) { _full.Stop(); _tray.Stop(); _desk?.Hide(); MantelWindow.OwnTray = false; }
+        _settings?.Hide();
         else RestoreWindowsTaskbar();
         Full = false;
     }
@@ -291,8 +293,31 @@ public sealed class MantelHost : IDisposable
             case "nightlight": HidePanels(); Apps.OpenUri("ms-settings:nightlight"); break;
             case "radial": RadialPick(Str("pick")); break;
             case "pin": SetPin(Str("id"), Str("name"), m.TryGetProperty("on", out var on) && on.ValueKind == JsonValueKind.True); break;
-            case "settings": HidePanels(); Apps.Launch("windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"); break;
+            case "settings": HidePanels(); _ = OpenSettingsAsync(Str("page")); break;
+            case "windowsSettings": HidePanels(); Apps.Launch("windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"); break;
+            case "closeSettings": _settings?.Hide(); break;
+            case "uri": { var u = Str("uri"); if (u.StartsWith("ms-settings:")) Apps.OpenUri(u); break; }
+            case "accent":   // a new accent color: every Mantel window takes it
+                foreach (var w in new[] { _bar, _launcher, _quick, _power, _radial, _help }) if (w is not null) Send(w, "profile", new { accent = Str("accent") });
+                break;
         }
+    }
+
+    /// <summary>Hearth Settings (mantel-settings.html), opened on a page if one's given.</summary>
+    public async Task OpenSettingsAsync(string? page = null)
+    {
+        if (_settings is null || _settings.IsDisposed)
+        {
+            _settings = new SettingsWindow();
+            _settings.PageMessage += m =>
+            {
+                var type = m.TryGetProperty("type", out var t) ? t.GetString() : null;
+                if (type == "call") _bridge.Handle(m, _settings.Post);
+                else if (type == "mantel") OnMessage(m, _bar!);
+            };
+        }
+        try { await _settings.OpenAsync(_env, _baseUrl + "mantel-settings.html", _setup, page); }
+        catch (Exception ex) { SystemBridge.Log("mantel: settings: " + ex.Message); }
     }
 
     /// <summary>What the Hearth menu's items do (Pad.qml's run()).</summary>
@@ -402,6 +427,7 @@ public sealed class MantelHost : IDisposable
         _power?.Dispose();
         _radial?.Dispose();
         _help?.Dispose();
+        _settings?.Dispose();
         _dim?.Dispose();
         _tray.Dispose();
         _full.Dispose();

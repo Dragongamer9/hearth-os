@@ -29,7 +29,14 @@ internal static class Apps
             int len = Native.GetWindowTextLength(h);
             if (len == 0) return true;
             Native.GetWindowThreadProcessId(h, out var pid);
-            if (pid == self) return true;
+            if (pid == self)
+            {
+                // Ember's own windows stay off the bar, except Hearth Settings (an app you switch to, like on Hearth OS).
+                var own = new StringBuilder(len + 1);
+                Native.GetWindowText(h, own, own.Capacity);
+                if (own.ToString() == "Hearth Settings") list.Add(new Win(h.ToInt64(), "Hearth Settings", "hearth-settings", "hearth-logo.svg", h == fg, Native.IsIconic(h)));
+                return true;
+            }
             var cls = new StringBuilder(256);
             Native.GetClassName(h, cls, cls.Capacity);
             if (cls.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return true;
