@@ -23,7 +23,7 @@ SetPage {
         return f.indexOf("/backgrounds/hearth/") >= 0 && names[id] ? names[id] : base.replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     }
     readonly property var moving: ["", "anim:lava", "anim:aurora"]
-    function preview(f) { return f === "anim:lava" ? Qt.resolvedUrl("wall-lava.jpg") : f === "anim:aurora" ? Qt.resolvedUrl("wall-aurora.jpg") : "file://" + f; }
+    function preview(f) { return f === "anim:lava" ? Qt.resolvedUrl("images/wall-lava.jpg") : f === "anim:aurora" ? Qt.resolvedUrl("images/wall-aurora.jpg") : "file://" + f; }
 
     // "Choose a picture…": the desktop's file picker (KDE's or GNOME's, whichever is installed).
     Process {
@@ -57,7 +57,7 @@ SetPage {
                     clip: true
                     color: "#1a110c"
                     Image { anchors.fill: parent; visible: tile.modelData !== ""; source: tile.modelData ? page.preview(tile.modelData) : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 400 }
-                    Image { anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom } visible: tile.modelData === ""; width: parent.width * 1.4; height: parent.height; source: Qt.resolvedUrl("ember-glow.png"); opacity: 0.6 }
+                    Image { anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom } visible: tile.modelData === ""; width: parent.width * 1.4; height: parent.height; source: Qt.resolvedUrl("images/ember-glow.png"); opacity: 0.6 }
                     Rectangle {
                         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                         height: 30

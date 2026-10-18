@@ -1,5 +1,5 @@
 'use strict';
-// Request/response bridge — the same contract as the Windows host's SystemBridge (see shared/bridge.md).
+// Request/response bridge — the same contract as the Windows host's SystemBridge (see docs/bridge.md).
 //   UI sends   {type:"call", id, method, args}
 //   Host sends {type:"result", id, ok, value | error}   and   {type:"event", name, data} for pushes.
 // Platform pieces that need Electron (dialogs, windows, quitting) come in through `platform`.

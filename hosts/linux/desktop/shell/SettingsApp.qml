@@ -62,7 +62,7 @@ Scope {
                         RowLayout {
                             Layout.bottomMargin: 10; Layout.leftMargin: 6; Layout.topMargin: 6
                             spacing: 10
-                            Image { source: Qt.resolvedUrl("hearth-logo.png"); Layout.preferredWidth: 30; Layout.preferredHeight: 30; fillMode: Image.PreserveAspectFit; smooth: true }
+                            Image { source: Qt.resolvedUrl("images/hearth-logo.png"); Layout.preferredWidth: 30; Layout.preferredHeight: 30; fillMode: Image.PreserveAspectFit; smooth: true }
                             Text { text: "Settings"; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
                         }
                         ListView {

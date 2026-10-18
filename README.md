@@ -7,7 +7,7 @@ A controller-first game library and system modeled on SteamOS. One shared UI, tw
   - **Mantel**: Hearth's desktop (labwc + Quickshell), with its own settings app. `hosts/linux/desktop/`
 - **Ember**: the Windows 11 shell (replaces Explorer). `hosts/windows/`
 
-Website: <https://dragongamer9.github.io/hearth-os/> (source in `site/`). Installer ISOs: <https://sourceforge.net/projects/hearth-os/files/>.
+Website: <https://dragongamer9.github.io/hearth-os/> (source in `site/`). Installer ISOs (coming soon): <https://sourceforge.net/projects/hearth-os/files/>.
 
 The project used to be called Nimbus. Internal names (program files, data folders like `~/.config/nimbus`,
 release file names) stay "Nimbus" so existing installs keep updating.
@@ -15,13 +15,15 @@ release file names) stay "Nimbus" so existing installs keep updating.
 ```
 hearth-os/
   ui/index.html              Whole UI (HTML/CSS/JS, mock library). Shared by every host; runs in any browser.
-  shared/bridge.md           The message contract between the UI and a host
+  docs/                      bridge.md (the message contract between the UI and a host), ROADMAP.md
   hosts/windows/Nimbus.Host/ .NET 8 WinForms + WebView2 host (fullscreen, bridge, escape hatch)
     SystemBridge.cs          Request/response API the settings pages call
     Services/                Wi-Fi, Bluetooth, radios, audio, brightness, power
   hosts/linux/               Electron host, run inside gamescope (see hosts/linux/README.md)
+  scripts/windows/           Build, run and install helpers for Windows (.cmd)
   tools/restore-explorer.ps1 Puts explorer.exe back if the shell ever breaks
   site/                      The website (GitHub Pages, .github/workflows/site.yml)
+  os/                        Hearth OS image (bootc, on Bazzite) and the live ISO (os/live)
 ```
 
 **Hearth (Linux):** see [hosts/linux/README.md](hosts/linux/README.md) for the app and session, and [os/README.md](os/README.md)
@@ -54,7 +56,7 @@ dotnet run -- --windowed      # dev: normal window
 dotnet run                    # fullscreen, like the real shell
 ```
 
-The UI detects the host via `window.chrome.webview` (on Linux, `window.nimbusHost`) and sends messages to it. The full contract is in [shared/bridge.md](shared/bridge.md).
+The UI detects the host via `window.chrome.webview` (on Linux, `window.nimbusHost`) and sends messages to it. The full contract is in [docs/bridge.md](docs/bridge.md).
 
 | Message | Host does today |
 |---|---|
@@ -108,7 +110,7 @@ Art is served to the UI from `https://nimbus-art.local/<id>/<cover|hero|logo|wid
 
 **Running games:** after launch, Ember watches for any process whose exe is inside the game's folder. That is how it knows the game started (even through Steam/Epic) and when it closed. *Stop* asks the game to close, then force-closes it after ~6 s. When the game exits, Ember records play time and comes back to the front. Verified on a real PC with a Steam game: started detected after Steam's hand-off, closed in ~1 s.
 
-`tools/TestGame` + `build-testgame.cmd` build a tiny stand-in game for testing on PCs without any installed games.
+`tools/TestGame` + `scripts/windows/build-testgame.cmd` build a tiny stand-in game for testing on PCs without any installed games.
 
 ## Owned games, installs and Steam in the background
 
@@ -148,7 +150,7 @@ Open **Library › Stores & accounts** (X on a controller, F on a keyboard) to s
 
 **Settings › Profile**: your name, a status line, a picture (initials, 12 built-in pictures, your Xbox/Steam/GOG picture once signed in, or any image file), an accent color, and a background theme (Midnight, Slate, Plum, Forest, Ember, Black, or your own picture). The picture shows in the top bar and the menu.
 
-Debug helpers: `bridge.log` next to `Nimbus.exe` logs every bridge call and UI image failures; **Ctrl+Shift+D** logs the focused game's art state. `rebuild-and-run.cmd` builds and relaunches in one click.
+Debug helpers: `bridge.log` next to `Nimbus.exe` logs every bridge call and UI image failures; **Ctrl+Shift+D** logs the focused game's art state. `scripts/windows/rebuild-and-run.cmd` builds and relaunches in one click.
 
 ## Install on any PC
 
@@ -158,11 +160,11 @@ Open PowerShell and run:
 irm https://raw.githubusercontent.com/Dragongamer9/nimbus/main/tools/install-nimbus.ps1 | iex
 ```
 
-or double-click `install-nimbus.cmd` in this folder. It installs the .NET 8 Desktop Runtime if missing, downloads the latest release, checks its SHA-256, installs it to `%LOCALAPPDATA%\Nimbus\app`, saves the undo script, and makes Ember your shell (add `-NoShell` to skip that). `install-shell.cmd` does the same from a local build, for development.
+or double-click `scripts/windows/install-nimbus.cmd`. It installs the .NET 8 Desktop Runtime if missing, downloads the latest release, checks its SHA-256, installs it to `%LOCALAPPDATA%\Nimbus\app`, saves the undo script, and makes Ember your shell (add `-NoShell` to skip that). `scripts/windows/install-shell.cmd` does the same from a local build, for development.
 
 ## Using Ember as your shell
 
-1. Run **`install-shell.cmd`**. It publishes a Release build to `%LOCALAPPDATA%\Nimbus\app`, copies the undo script to `%USERPROFILE%\nimbus-restore.cmd`, and sets
+1. Run **`scripts/windows/install-shell.cmd`**. It publishes a Release build to `%LOCALAPPDATA%\Nimbus\app`, copies the undo script to `%USERPROFILE%\nimbus-restore.cmd`, and sets
    `HKCU\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\Shell` = `"...\Nimbus.exe" --shell`.
    This affects **your account only**; other accounts and Safe Mode keep Explorer. If the build fails, nothing is changed.
 2. Sign out and back in. Windows starts Ember instead of the taskbar and desktop.
