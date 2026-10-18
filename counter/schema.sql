@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS pings (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  version TEXT,
+  first INTEGER NOT NULL,
+  last INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS pings_last ON pings (last);
