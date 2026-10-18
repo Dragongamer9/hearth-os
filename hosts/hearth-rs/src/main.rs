@@ -31,11 +31,17 @@ struct Host(Arc<Mutex<Bridge>>);
 #[tauri::command]
 async fn nimbus_msg(app: tauri::AppHandle, host: tauri::State<'_, Host>, msg: serde_json::Value) -> Result<(), String> {
     let bridge = host.0.clone();
-    let reply = tauri::async_runtime::spawn_blocking(move || bridge.lock().ok().and_then(|mut b| b.handle(&msg)))
-        .await
-        .map_err(|e| e.to_string())?;
+    let (reply, quit) = tauri::async_runtime::spawn_blocking(move || {
+        let mut b = match bridge.lock() { Ok(b) => b, Err(p) => p.into_inner() };
+        if msg["type"] == "call" { (b.handle(&msg), false) } else { (None, b.other(&msg)) }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     if let Some(r) = reply {
         app.emit("nimbus:msg", r).map_err(|e| e.to_string())?;
+    }
+    if quit {
+        app.exit(0);   // the Hearth session starts Desktop Mode, or ends, when Hearth closes
     }
     Ok(())
 }
@@ -97,6 +103,13 @@ fn main() {
             // The top bar's battery, Wi-Fi and volume, refreshed every 30 seconds (the UI asks too, after changes).
             let handle = app.handle().clone();
             let bridge = app.state::<Host>().0.clone();
+            // Events from the host's own work (Bluetooth found a device, a controller paired...) go to the page.
+            {
+                let h = handle.clone();
+                if let Ok(mut b) = bridge.lock() {
+                    b.emit = Arc::new(move |v| { let _ = h.emit("nimbus:msg", v); });
+                }
+            }
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_secs(30));
                 let max = bridge.lock().map(|b| b.max_volume()).unwrap_or(100);

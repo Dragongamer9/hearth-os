@@ -8,12 +8,35 @@ use crate::store::Store;
 use crate::system;
 use serde_json::{json, Value};
 
-pub struct Bridge { pub library: Library, pub version: String }
+const POWER_ACTIONS: [&str; 4] = ["sleep", "menu", "shutdown", "nothing"];
+
+pub struct Bridge {
+    pub library: Library,
+    pub version: String,
+    /// Sends an event to the UI (set by the app; does nothing in tests).
+    pub emit: system::bt_scan::Emit,
+}
 
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
         let store = Store::open(paths::data_dir().join("library.json"));
-        Bridge { library: Library::new(store, paths::home()), version: version.to_string() }
+        Bridge { library: Library::new(store, paths::home()), version: version.to_string(), emit: std::sync::Arc::new(|_| {}) }
+    }
+
+    /// Messages that aren't calls: the power menu, log lines. Returns true when Hearth should close
+    /// (switching to the desktop or signing out, in the Hearth session).
+    pub fn other(&mut self, msg: &Value) -> bool {
+        match msg["type"].as_str().unwrap_or("") {
+            "power" => {
+                let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
+                match crate::power::action(msg["action"].as_str().unwrap_or(""), in_session) {
+                    Ok(quit) => quit,
+                    Err(e) => { (self.emit)(json!({"type": "toast", "text": e})); false }
+                }
+            }
+            "log" => { log(msg["text"].as_str().unwrap_or("")); false }
+            _ => false,
+        }
     }
 
     /// One message from the UI. Returns the reply to send back (None for messages that don't get one).
@@ -66,6 +89,23 @@ impl Bridge {
             "audio.setVolume" => system::audio::set_volume(a["v"].as_f64().unwrap_or(0.0).round().max(0.0) as u32, self.max_volume()).map(|_| Value::Null),
             "audio.setMute" => system::audio::set_mute(a["m"].as_bool().unwrap_or(false)).map(|_| Value::Null),
             "display.setBrightness" => system::set_brightness(a["v"].as_f64().unwrap_or(0.0).round().max(0.0) as u32).map(|_| Value::Null),
+            "system.info" => Ok(crate::sysinfo::info(std::path::Path::new("/"))),
+            "power.get" => { let st = crate::power::status(); let mut b = system::battery(std::path::Path::new("/sys/class/power_supply"));
+                b["mode"] = st["mode"]["mode"].clone(); b["modes"] = st["mode"]["available"].clone(); b["modeSupported"] = st["mode"]["supported"].clone(); b["tdp"] = st["tdp"].clone(); Ok(b) }
+            "power.setMode" => { crate::power::set_mode(&req("mode")?)?; self.dispatch("power.get", &json!({})) }
+            "perf.setTdp" => crate::power::set_tdp(a["watts"].as_f64().unwrap_or(0.0).round() as u32),
+            "bt.paired" => Ok(system::bt_devices::paired()),
+            "bt.pair" => Ok(system::bt_devices::pair(&req("id")?)),
+            "bt.unpair" => Ok(system::bt_devices::unpair(&req("id")?)),
+            "bt.confirmPin" => Ok(Value::Null),
+            "bt.scanStart" => {
+                if system::bt::powered() != Some(true) { return Err("Bluetooth is off".into()); }
+                system::bt_scan::start(a["seconds"].as_u64().unwrap_or(15), self.emit.clone()); Ok(Value::Null)
+            }
+            "bt.scanStop" => { system::bt_scan::stop(); Ok(Value::Null) }
+            "bt.autoPads" => { system::bt_scan::auto_pads(a["on"].as_bool().unwrap_or(false), self.emit.clone()); Ok(Value::Null) }
+            "buttons.get" => Ok(self.button_prefs()),
+            "buttons.set" => self.set_button_prefs(a),
             "setup.done" => io(self.library.store.update(|d| { d.insert("setupDone".into(), json!(now_ms())); })).map(|_| json!({"ok": true})),
             _ => Err(format!("{method} isn't in the Rust version of Hearth yet")),
         }
@@ -78,8 +118,29 @@ impl Bridge {
         let prefs: Value = std::fs::read(paths::config_dir().join("buttons.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
         if prefs["overamp"] == true { 150 } else { 100 }
     }
+    pub fn button_prefs(&self) -> Value {
+        let saved: Value = std::fs::read(paths::config_dir().join("buttons.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+        let pick = |k: &str, d: &str| saved[k].as_str().filter(|v| POWER_ACTIONS.contains(v)).unwrap_or(d).to_string();
+        json!({"press": pick("press", "sleep"), "hold": pick("hold", "menu"), "overamp": saved["overamp"] == true, "maxVolume": self.max_volume(),
+               "watching": {"devices": [], "problems": ["Only in Game Mode"]}})
+    }
+    pub fn set_button_prefs(&mut self, a: &Value) -> Result<Value, String> {
+        let mut cur = self.button_prefs();
+        for k in ["press", "hold"] { if let Some(v) = a[k].as_str().filter(|v| POWER_ACTIONS.contains(v)) { cur[k] = json!(v); } }
+        if let Some(o) = a["overamp"].as_bool() { cur["overamp"] = json!(o); }
+        let save = json!({"press": cur["press"], "hold": cur["hold"], "overamp": cur["overamp"]});
+        paths::write_atomic(&paths::config_dir().join("buttons.json"), format!("{}\n", serde_json::to_string_pretty(&save).unwrap()).as_bytes()).map_err(|e| e.to_string())?;
+        Ok(self.button_prefs())
+    }
     /// An event for the UI ({type:'event', name, data}), like the status the top bar refreshes every 30 s.
     pub fn event(name: &str, data: Value) -> Value { json!({"type": "event", "name": name, "data": data}) }
+}
+
+/// Hearth's log (the same file the Electron host writes): ~/.local/share/nimbus/bridge.log
+pub fn log(text: &str) {
+    use std::io::Write;
+    let f = paths::data_dir().join("bridge.log");
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(f) { let _ = writeln!(file, "{} [rust] {}", now_ms(), text); }
 }
 
 fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
@@ -92,7 +153,7 @@ mod tests {
     #[test]
     fn answers_calls_and_says_what_is_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let mut b = Bridge { library: Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), version: "0.0.23".into() };
+        let mut b = Bridge { library: Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), version: "0.0.23".into(), emit: std::sync::Arc::new(|_| {}) };
         let r = b.handle(&json!({"type":"call","id":7,"method":"library.get","args":{}})).unwrap();
         assert_eq!(r["id"], 7); assert_eq!(r["ok"], true); assert_eq!(r["value"]["games"], json!([]));
         let r = b.handle(&json!({"type":"call","id":8,"method":"epic.signIn"})).unwrap();

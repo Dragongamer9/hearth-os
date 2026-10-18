@@ -133,6 +133,96 @@ pub mod bt {
     }
 }
 
+pub mod bt_devices {
+    use super::*;
+    pub fn kind(icon: &str) -> &'static str {
+        match icon { "input-gaming" => "Input.Gamepad", "input-keyboard" => "Input.Keyboard", "input-mouse" => "Input.Mouse",
+            "audio-headset" | "audio-headphones" => "Audio.Headphone", "audio-card" => "Audio.Speaker", "phone" => "Phone",
+            "computer" => "Computer", "video-display" => "Display.Television", _ => "Other" }
+    }
+    pub fn parse_info(mac: &str, text: &str) -> Value {
+        let val = |k: &str| text.lines().find_map(|l| l.trim().strip_prefix(&format!("{k}: ")).map(|v| v.trim().to_string())).unwrap_or_default();
+        let name = [val("Alias"), val("Name")].into_iter().find(|s| !s.is_empty()).unwrap_or_else(|| mac.to_string());
+        json!({"id": mac, "name": name, "kind": kind(&val("Icon")), "connected": val("Connected") == "yes", "paired": val("Paired") == "yes"})
+    }
+    pub fn devices(filter: Option<&str>) -> Vec<String> {
+        let mut args = vec!["devices"]; if let Some(f) = filter { args.push(f); }
+        run("bluetoothctl", &args).unwrap_or_default().lines().filter_map(|l| l.strip_prefix("Device ")).map(|l| l.chars().take(17).collect()).collect()
+    }
+    pub fn info(mac: &str) -> Option<Value> { run("bluetoothctl", &["info", mac]).ok().map(|t| parse_info(mac, &t)) }
+    pub fn paired() -> Value { Value::Array(devices(Some("Paired")).iter().filter_map(|m| info(m)).collect()) }
+    pub fn pair(mac: &str) -> Value {
+        match run_timeout("bluetoothctl", &["pair", mac], Duration::from_secs(40)) {
+            Ok(_) => { let _ = run("bluetoothctl", &["trust", mac]); let _ = run_timeout("bluetoothctl", &["connect", mac], Duration::from_secs(20)); json!({"ok": true}) }
+            Err(e) => json!({"ok": false, "error": e}),
+        }
+    }
+    pub fn unpair(mac: &str) -> Value { match run("bluetoothctl", &["remove", mac]) { Ok(_) => json!({"ok": true}), Err(e) => json!({"ok": false, "error": e}) } }
+}
+
+/// Bluetooth scanning (Settings › Bluetooth) and "Connect a controller" (pairs controllers by itself).
+/// Both send events through `emit`; starting one again replaces the running one.
+pub mod bt_scan {
+    use super::*;
+    use std::collections::{HashMap, HashSet};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    pub type Emit = Arc<dyn Fn(Value) + Send + Sync>;
+    static SCAN: AtomicU64 = AtomicU64::new(0);
+    static AUTO: AtomicU64 = AtomicU64::new(0);
+    fn ev(name: &str, data: Value) -> Value { json!({"type": "event", "name": name, "data": data}) }
+
+    pub fn is_gamepad(d: &Value) -> bool {
+        let name = d["name"].as_str().unwrap_or("").to_lowercase();
+        d["kind"] == "Input.Gamepad" || ["controller", "gamepad", "xbox", "dualsense", "dualshock", "pro controller", "joy-con", "joycon", "8bitdo", "stadia", "gamesir", "flydigi", "nimbus", "razer kishi", "backbone"].iter().any(|k| name.contains(k))
+    }
+
+    pub fn start(seconds: u64, emit: Emit) {
+        let me = SCAN.fetch_add(1, Ordering::SeqCst) + 1;
+        std::thread::spawn(move || {
+            let mut seen: HashSet<String> = bt_devices::devices(None).into_iter().collect();
+            let scanner = std::thread::spawn(move || { let _ = run_timeout("bluetoothctl", &["--timeout", &seconds.to_string(), "scan", "on"], Duration::from_secs(seconds + 5)); });
+            let until = std::time::Instant::now() + Duration::from_secs(seconds);
+            while std::time::Instant::now() < until && SCAN.load(Ordering::SeqCst) == me {
+                std::thread::sleep(Duration::from_millis(1500));
+                for mac in bt_devices::devices(None) {
+                    if !seen.insert(mac.clone()) { continue; }
+                    if let Some(d) = bt_devices::info(&mac) { if d["paired"] != true && d["name"] != mac.as_str() { emit(ev("bt.found", d)); } }
+                }
+            }
+            let _ = scanner.join();
+            if SCAN.load(Ordering::SeqCst) == me { emit(ev("bt.scanDone", json!({}))); }
+        });
+    }
+    pub fn stop() { SCAN.fetch_add(1, Ordering::SeqCst); let _ = run("bluetoothctl", &["scan", "off"]); }
+
+    pub fn auto_pads(on: bool, emit: Emit) {
+        let me = AUTO.fetch_add(1, Ordering::SeqCst) + 1;
+        if !on { let _ = run("bluetoothctl", &["scan", "off"]); return; }
+        if !has("bluetoothctl") { return; }
+        std::thread::spawn(move || {
+            let _ = bt::set_power(true);
+            let alive = move || AUTO.load(Ordering::SeqCst) == me;
+            std::thread::spawn(move || while alive() { let _ = run_timeout("bluetoothctl", &["--timeout", "120", "scan", "on"], Duration::from_secs(125)); });
+            let mut tried: HashMap<String, std::time::Instant> = HashMap::new();
+            while AUTO.load(Ordering::SeqCst) == me {
+                std::thread::sleep(Duration::from_secs(2));
+                for mac in bt_devices::devices(None) {
+                    if tried.get(&mac).map(|t| t.elapsed() < Duration::from_secs(20)).unwrap_or(false) { continue; }
+                    let Some(d) = bt_devices::info(&mac) else { continue };
+                    if d["paired"] == true || !is_gamepad(&d) { continue; }
+                    tried.insert(mac.clone(), std::time::Instant::now());
+                    emit(ev("bt.pad", json!({"state": "pairing", "name": d["name"]})));
+                    let r = bt_devices::pair(&mac);
+                    emit(ev("bt.pad", json!({"state": if r["ok"] == true { "paired" } else { "failed" }, "name": d["name"]})));
+                    break;
+                }
+            }
+        });
+    }
+}
+
 pub fn airplane_on() -> bool {
     if !has("rfkill") { return false; }
     let rows: Vec<String> = run("rfkill", &["-n", "-o", "SOFT"]).unwrap_or_default().lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
@@ -217,6 +307,17 @@ mod tests {
         assert_eq!(list[1]["bars"], 4);
         assert_eq!(list[2]["secure"], false);
         assert_eq!(list[0]["connected"], true);
+    }
+    #[test]
+    fn knows_controllers() {
+        assert!(bt_scan::is_gamepad(&json!({"kind": "Input.Gamepad", "name": "Pad"})));
+        for n in ["Xbox Wireless Controller", "DualSense Wireless Controller", "Pro Controller", "8BitDo Ultimate 2C", "Joy-Con (L)"] { assert!(bt_scan::is_gamepad(&json!({"kind": "Other", "name": n})), "{n}"); }
+        for n in ["JBL Flip 5", "Logitech K380"] { assert!(!bt_scan::is_gamepad(&json!({"kind": "Other", "name": n})), "{n}"); }
+    }
+    #[test]
+    fn reads_bluetoothctl() {
+        let d = bt_devices::parse_info("AA:BB", "Device AA:BB\n\tName: Xbox Wireless Controller\n\tIcon: input-gaming\n\tPaired: yes\n\tConnected: no\n");
+        assert_eq!(d, json!({"id": "AA:BB", "name": "Xbox Wireless Controller", "kind": "Input.Gamepad", "connected": false, "paired": true}));
     }
     #[test]
     fn reads_wpctl_and_batteries() {

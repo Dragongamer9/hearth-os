@@ -3,7 +3,9 @@
 pub mod bridge;
 pub mod library;
 pub mod paths;
+pub mod power;
 pub mod steam;
 pub mod store;
 pub mod system;
+pub mod sysinfo;
 pub mod vdf;
