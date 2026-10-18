@@ -2,6 +2,9 @@
 //! with the system's web view, and answers their messages with hearth-core. Replaces the Electron host.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod gamemode;
+
+use gamemode::GameMode;
 use hearth_core::bridge::Bridge;
 use std::sync::{Arc, Mutex};
 use tauri::http::{header::CONTENT_TYPE, Response, StatusCode};
@@ -20,13 +23,18 @@ const SHIM: &str = r#"
     postMessage(msg) { (listening || tauri()).then(() => tauri()).then(T => T.core.invoke('nimbus_msg', { msg })); },
     addEventListener(type, fn) {
       if (type !== 'message' || typeof fn !== 'function') return;
-      listening = tauri().then(T => T.event.listen('nimbus:msg', e => fn({ data: e.payload })));
+      // This window's messages: replies to its own calls, and events for every window.
+      listening = tauri().then(T => T.webviewWindow.getCurrentWebviewWindow().listen('nimbus:msg', e => fn({ data: e.payload })));
     },
   };
 })();
 "#;
 
 struct Host(Arc<Mutex<Bridge>>);
+
+/// Game Mode's window handling (what's in front, the overlay), made once the app is up.
+static GM: std::sync::OnceLock<Arc<GameMode>> = std::sync::OnceLock::new();
+fn in_session() -> bool { hearth_core::gamescope::in_session() }
 
 /// Where a sign-in window's answer goes (one sign-in at a time): the code, or None when it was closed.
 static SIGNIN: Mutex<Option<std::sync::mpsc::Sender<Option<String>>>> = Mutex::new(None);
@@ -51,8 +59,11 @@ fn sign_in(app: &tauri::AppHandle, page: &hearth_core::stores::SignIn) -> Option
     if let Some(js) = page.script { b = b.initialization_script(js); }
     let w = match b.build() { Ok(w) => w, Err(e) => { hearth_core::bridge::log(&format!("sign-in window: {e}")); return None; } };
     w.on_window_event(|e| if let tauri::WindowEvent::Destroyed = e { signin_answer(None); });
+    // gamescope keeps showing whichever window Hearth last put in front: put this one there.
+    if let Some(gm) = GM.get() { gm.to_front(page.title); }
     let answer = rx.recv().ok().flatten();
     let _ = w.destroy();
+    if let Some(gm) = GM.get() { gm.come_back(); }
     answer
 }
 
@@ -78,10 +89,26 @@ fn stream(app: &tauri::AppHandle, open: Option<(&str, &str)>, windowed: bool) {
     }
 }
 
-/// A message from the page: handled off the window's thread (scanning the library can take a moment).
+/// A message from a page (Hearth's window or the overlay): handled off the window's thread (scanning the
+/// library can take a moment). Replies go back to the window that asked.
 #[tauri::command]
-async fn nimbus_msg(app: tauri::AppHandle, host: tauri::State<'_, Host>, msg: serde_json::Value) -> Result<(), String> {
+async fn nimbus_msg(app: tauri::AppHandle, window: tauri::WebviewWindow, host: tauri::State<'_, Host>, msg: serde_json::Value) -> Result<(), String> {
     let bridge = host.0.clone();
+    let label = window.label().to_string();
+    let ty = msg["type"].as_str().unwrap_or("").to_string();
+    // Window things: the overlay opening and closing, back to the game.
+    if let Some(gm) = GM.get() {
+        let gm = gm.clone();
+        if label == "overlay" && ty != "call" && ty != "log" {
+            let m = msg.clone();
+            let handled = tauri::async_runtime::spawn_blocking(move || gm.from_overlay(&m)).await.map_err(|e| e.to_string())?;
+            if handled { return Ok(()); }
+        } else if ty == "resume" {
+            tauri::async_runtime::spawn_blocking(move || gm.resume_game()).await.map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+    }
+    if ty == "ready" { let _ = app.emit_to(label.as_str(), "nimbus:msg", Bridge::event("padHost", serde_json::json!({"connected": 0}))); return Ok(()); }
     let (reply, quit) = tauri::async_runtime::spawn_blocking(move || {
         let mut b = match bridge.lock() { Ok(b) => b, Err(p) => p.into_inner() };
         if msg["type"] == "call" { (b.handle(&msg), false) } else { (None, b.other(&msg)) }
@@ -89,7 +116,7 @@ async fn nimbus_msg(app: tauri::AppHandle, host: tauri::State<'_, Host>, msg: se
     .await
     .map_err(|e| e.to_string())?;
     if let Some(r) = reply {
-        app.emit("nimbus:msg", r).map_err(|e| e.to_string())?;
+        app.emit_to(label.as_str(), "nimbus:msg", r).map_err(|e| e.to_string())?;
     }
     if quit {
         app.exit(0);   // the Hearth session starts Desktop Mode, or ends, when Hearth closes
@@ -115,19 +142,21 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// nimbus-art://file/<path>: game art from the disk (Steam's covers, your own pictures). Pictures only.
+/// nimbus-art://file/<path>: game art from the disk (Steam's covers, your own pictures); nimbus-art://cache/<name>:
+/// web art downloaded to the device. Pictures only.
 fn art(uri: &str) -> Response<Vec<u8>> {
-    let path = uri
-        .splitn(2, "://file/")
-        .nth(1)
-        .map(|p| percent_decode(p.split('?').next().unwrap_or(p)))
-        .unwrap_or_default();
+    let path = if let Some(name) = uri.splitn(2, "://cache/").nth(1) {
+        hearth_core::artcache::file(name.split('?').next().unwrap_or(name)).map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
+    } else {
+        uri.splitn(2, "://file/").nth(1).map(|p| percent_decode(p.split('?').next().unwrap_or(p))).unwrap_or_default()
+    };
     let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     let mime = match ext.as_str() {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
         "gif" => "image/gif",
+        "avif" => "image/avif",
         _ => "",
     };
     match (mime, std::fs::read(&path)) {
@@ -137,6 +166,72 @@ fn art(uri: &str) -> Response<Vec<u8>> {
             .header("Access-Control-Allow-Origin", "*")
             .body(bytes)
             .unwrap(),
+    }
+}
+
+/// Game Mode: the overlay window, the Guide button, the power and volume buttons, and the settings that
+/// only work in gamescope (frame-rate limit, performance overlay).
+fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: bool) {
+    let (guide, hold) = match bridge.lock() { Ok(b) => (b.guide.clone(), b.library.store.data["holdView"] == true), Err(_) => return };
+    let gm = GameMode::new(app.clone(), bridge.clone(), guide.clone(), windowed);
+    let _ = GM.set(gm.clone());
+    guide.hold_view.store(hold, std::sync::atomic::Ordering::SeqCst);
+    let (g1, g2) = (gm.clone(), gm.clone());
+    guide.start(Arc::new(move |how: &str| { let (gm, how) = (g1.clone(), how.to_string()); std::thread::spawn(move || gm.guide_pressed(&how)); }),
+                Arc::new(move |b: &str, down: bool| g2.overlay_pad(b, down)));
+    if in_session() && !windowed {
+        let g3 = gm.clone();
+        let devices = bridge.lock().map(|b| b.buttons.clone()).ok();
+        if let Some(d) = devices { hearth_core::guide::start_buttons(Arc::new(move |m| g3.button(&m)), d); }
+        let (fps, perf) = bridge.lock().map(|b| (b.library.store.data["fpsLimit"].as_u64().unwrap_or(0), b.library.store.data["perfOverlay"].as_u64().unwrap_or(0))).unwrap_or((0, 0));
+        if fps > 0 { let _ = hearth_core::gamescope::set_fps_limit(fps); }
+        if perf > 0 { let _ = hearth_core::gamescope::set_perf_overlay(perf); }
+    }
+    // Quick Access over a running game: a see-through window gamescope draws on top.
+    if gm.overlay_available() {
+        let size = app.primary_monitor().ok().flatten().map(|m| { let s = m.size(); let f = m.scale_factor(); (s.width as f64 / f, s.height as f64 / f) }).unwrap_or((1280.0, 800.0));
+        let built = WebviewWindowBuilder::new(&app, "overlay", WebviewUrl::App("index.html?overlay=full".into()))
+            .title(gamemode::OVERLAY_TITLE)
+            .transparent(true)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(false)
+            .position(0.0, 0.0)
+            .inner_size(size.0, size.1)
+            .visible(false)
+            .background_color(tauri::window::Color(0, 0, 0, 0))
+            .initialization_script(SHIM)
+            .build();
+        match built {
+            Ok(_) => { let g = gm.clone(); std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(3)); g.arm_overlay(); }); }
+            Err(e) => hearth_core::bridge::log(&format!("overlay: couldn't make its window: {e}")),
+        }
+    }
+    // Desktop Mode couldn't start and sent us back here: say why.
+    let h = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        let f = std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("nimbus-desktop-failed");
+        if let Ok(text) = std::fs::read_to_string(&f) {
+            let _ = std::fs::remove_file(&f);
+            hearth_core::bridge::log(&format!("desktop mode failed: {text}"));
+            let t: String = text.trim().chars().take(1500).collect();
+            let _ = h.emit("nimbus:msg", Bridge::event("desktopFailed", serde_json::json!({"text": t})));
+        }
+    });
+    // Updates to the app: looked for 20 seconds after starting, then every 6 hours (when turned on).
+    let upd = bridge.lock().map(|b| b.app_updates.clone()).ok();
+    if let Some(upd) = upd {
+        let b = bridge.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(20));
+            loop {
+                let auto = b.lock().map(|x| x.library.store.data["autoUpdateCheck"] != false).unwrap_or(false);
+                if auto { upd.check(true); }
+                std::thread::sleep(std::time::Duration::from_secs(6 * 3600));
+            }
+        });
     }
 }
 
@@ -183,6 +278,10 @@ fn main() {
                         // The host asks for a restart (after restoring a backup): Hearth reads everything at start.
                         // Game Mode restarts with new options (the session starts it again when Hearth closes).
                         if v["type"] == "quit" { h.exit(0); return; }
+                        // The volume bar and messages: over the game when one is in front.
+                        if v["name"] == "osd" { if let Some(gm) = GM.get() { let (gm, d) = (gm.clone(), v["data"].clone()); std::thread::spawn(move || gm.osd(d)); return; } }
+                        // In the Hearth session, the session's watchdog starts Hearth again right away (exit code 75).
+                        if v["type"] == "restart" && in_session() { h.exit(75); return; }
                         if v["type"] == "restart" {
                             let h2 = h.clone();
                             std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(1500)); h2.restart(); });
@@ -193,7 +292,10 @@ fn main() {
                     hearth_core::stores::set_notify(emit.clone());
                     b.emit = emit;
                     b.pick_folder = Arc::new(move |title: &str, start: &str| {
-                        folder.dialog().file().set_title(title).set_directory(start).blocking_pick_folder().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().to_string())
+                        if let Some(gm) = GM.get() { gm.before_dialog(); }
+                        let r = folder.dialog().file().set_title(title).set_directory(start).blocking_pick_folder().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().to_string());
+                        if let Some(gm) = GM.get() { gm.come_back(); }
+                        r
                     });
                     b.sign_in = Arc::new(move |page| sign_in(&signer, page));
                     b.stream = Arc::new(move |open| stream(&streamer, open, windowed));
@@ -204,18 +306,41 @@ fn main() {
                     // Store game lists older than 12 hours are fetched again, in the background.
                     hearth_core::stores::refresh_stale(&b.library.accounts);
                     b.pick_file = Arc::new(move |title: &str| {
-                        picker.dialog().file().set_title(title).blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().to_string())
+                        if let Some(gm) = GM.get() { gm.before_dialog(); }
+                        let r = picker.dialog().file().set_title(title).blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().to_string());
+                        if let Some(gm) = GM.get() { gm.come_back(); }
+                        r
                     });
+                    b.host = Arc::new(|what: &str, a: &serde_json::Value| { if let Some(gm) = GM.get() { gm.host_action(what, a); } });
                 }
             }
             // The running game, every 2 seconds: started, closed, handed off to the real game (launchers).
             {
                 let h = handle.clone();
                 let b = bridge.clone();
-                std::thread::spawn(move || loop {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
-                    let events = match b.lock() { Ok(mut br) => br.library.tick(), Err(_) => vec![] };
-                    for e in events { let _ = h.emit("nimbus:msg", e); }
+                std::thread::spawn(move || {
+                    let mut n: u64 = 0;
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        n += 1;
+                        let (events, extra) = match b.lock() {
+                            Ok(mut br) => {
+                                let ev = br.library.tick();
+                                let mut extra = br.after_events(&ev);
+                                if n % 10 == 0 { extra.extend(br.parental_tick()); }   // every 20 seconds
+                                (ev, extra)
+                            }
+                            Err(_) => (vec![], vec![]),
+                        };
+                        for e in &events { let _ = h.emit("nimbus:msg", e.clone()); }
+                        if let Some(gm) = GM.get() { for e in &events { gm.on_library_event(e); } }
+                        for e in extra {
+                            match (GM.get(), e["name"].as_str()) {
+                                (Some(gm), Some("osd")) => gm.osd(e["data"].clone()),
+                                _ => { let _ = h.emit("nimbus:msg", e); }
+                            }
+                        }
+                    }
                 });
             }
             std::thread::spawn(move || loop {
@@ -232,6 +357,9 @@ fn main() {
                 .initialization_script(SHIM)
                 .build()?;
             if zoom != 100 { let _ = main.set_zoom(zoom as f64 / 100.0); }
+            // As the session there's nothing behind Hearth, so Alt+F4 must not close it by accident.
+            main.on_window_event(|e| if let tauri::WindowEvent::CloseRequested { api, .. } = e { if in_session() { api.prevent_close(); } });
+            start_game_mode(app.handle().clone(), app.state::<Host>().0.clone(), windowed);
             Ok(())
         })
         .run(tauri::generate_context!())

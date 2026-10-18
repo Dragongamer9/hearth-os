@@ -31,6 +31,17 @@ pub struct Bridge {
     pub zoom: std::sync::Arc<dyn Fn(u32) + Send + Sync>,
     pub osinstall: crate::osinstall::OsInstaller,
     pub importer: crate::importer::Importer,
+    /// The controllers' Guide button (shared with the host, which starts it).
+    pub guide: crate::guide::Guide,
+    /// The power and volume buttons Hearth watches in Game Mode: {devices, problems}
+    pub buttons: std::sync::Arc<std::sync::Mutex<Value>>,
+    /// Things only the app's windows can do: ("focusApp", {id, pid}), ("screenshot", {before: bool}), ("comeBack", null)...
+    pub host: std::sync::Arc<dyn Fn(&str, &Value) + Send + Sync>,
+    /// Parental controls and per-game settings while a game plays.
+    parental_since: u64,
+    parental_warned: bool,
+    per_game: Option<(u64, Option<u32>)>,
+    browser: std::sync::Arc<std::sync::Mutex<Value>>,
     pub app_updates: crate::appupdate::AppUpdates,
     /// The call being answered (calls that answer later, from background work, reply to it themselves).
     cur_id: Value,
@@ -47,7 +58,9 @@ impl Bridge {
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
         use std::sync::Arc;
         Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles, pin_until: std::time::Instant::now(),
-                 pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(),
+                 pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(), guide: crate::guide::Guide::new(),
+                 buttons: Arc::new(std::sync::Mutex::new(json!({"devices": [], "problems": ["Only in Game Mode"]}))), host: Arc::new(|_, _| {}),
+                 parental_since: 0, parental_warned: false, per_game: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
                  app_updates: crate::appupdate::AppUpdates::new(version), cur_id: Value::Null }
     }
 
@@ -280,6 +293,63 @@ impl Bridge {
             "import.cancel" => Ok(self.importer.cancel(self.pending_epic().len())),
             "takeover.plan" => self.importer.takeover_plan(self.pending_epic().len()),
             "takeover.run" => self.importer.takeover_run(&a["remove"], a["windowsBoot"] != false, self.pending_epic().len()),
+            "art.status" => Ok(crate::artcache::status()),
+            // Game Mode: frame-rate limit, performance overlay, Quick Access over the game, open apps
+            "perf.setFpsLimit" => { let n = crate::gamescope::set_fps_limit(a["fps"].as_f64().unwrap_or(0.0).max(0.0).round() as u64)?; io(self.library.store.update(|d| { d.insert("fpsLimit".into(), json!(n)); }))?; Ok(json!({"fpsLimit": n})) }
+            "perf.setOverlay" => { let n = crate::gamescope::set_perf_overlay(a["level"].as_f64().unwrap_or(0.0).max(0.0).round() as u64)?; io(self.library.store.update(|d| { d.insert("perfOverlay".into(), json!(n)); }))?; Ok(json!({"perfOverlay": n})) }
+            "overlay.settings" | "overlay.setGameBarButton" => Ok(self.overlay_settings()),
+            "overlay.setHoldView" => {
+                let on = a["on"] == true;
+                io(self.library.store.update(|d| { d.insert("holdView".into(), json!(on)); }))?;
+                self.guide.hold_view.store(on, std::sync::atomic::Ordering::SeqCst);
+                Ok(self.overlay_settings())
+            }
+            "overlay.screenshot" => {
+                (self.host)("screenshot", &json!({"before": true}));
+                let r = crate::gamescope::screenshot();
+                (self.host)("screenshot", &json!({"before": false}));
+                r
+            }
+            "apps.list" => Ok(if crate::gamescope::inside() { self.apps_list() } else { json!([]) }),
+            "apps.focus" => { (self.host)("focusApp", &json!({"id": a["id"], "pid": a["pid"]})); Ok(Value::Null) }
+            "apps.close" => {
+                let pid = a["pid"].as_u64().unwrap_or(0);
+                if pid == 0 || pid == std::process::id() as u64 { return Err("Hearth can't close itself here.".into()); }
+                if self.library.game_pids().contains(&(pid as u32)) { return Ok(json!({"ok": self.library.close_running()})); }
+                std::process::Command::new("kill").args(["-TERM", &pid.to_string()]).status().map_err(|e| format!("Couldn't close it: {e}"))?;
+                Ok(json!({"ok": true}))
+            }
+            "pad.status" => Ok(json!({"connected": 0, "mouseMode": "off", "mouseOn": false})),
+            "pad.setMouseMode" => Err("Controller mouse is not available on Linux yet".into()),
+            // Settings › Controls: remapping (InputPlumber)
+            "controller.status" => crate::guide::controller(&["status"]),
+            "controller.set" => {
+                let mut r = Value::Null;
+                if !a["button"].is_null() { r = crate::guide::controller(&["set", &value_text(&a["button"]), &value_text(&a["to"])])?; }
+                if !a["target"].is_null() { r = crate::guide::controller(&["type", &value_text(&a["target"])])?; }
+                if r.is_null() { crate::guide::controller(&["status"]) } else { Ok(r) }
+            }
+            "controller.preset" => crate::guide::controller(&["preset", &req("name")?]),
+            "controller.reset" => crate::guide::controller(&["reset"]),
+            // Web browsers: Aloha (downloaded on the device) and Hearth Browser (Hearth's own)
+            "browser.status" => Ok(self.browser_status()),
+            "browser.act" => { self.browser_act(&req("action")?)?; Ok(self.browser_status()) }
+            "browser.hearth" => {
+                if a["action"] == "open" { let _ = std::process::Command::new("/usr/bin/hearth-browser").spawn(); return Ok(json!(true)); }
+                if a["action"] == "default" { system::run("xdg-settings", &["set", "default-web-browser", "hearth-browser.desktop"]).map_err(|_| "Couldn't make it the default".to_string())?; }
+                Ok(self.browser_status())
+            }
+            // "Make Hearth my shell" (a Hearth session on the login screen)
+            "shell.status" => Ok(shell_status()),
+            "shell.register" => { shell_install(false)?; Ok(shell_status()) }
+            "shell.unregister" => { let _ = std::fs::remove_file(paths::config_dir().join("app-path")); if std::path::Path::new(SESSION_FILE).exists() { shell_install(true)?; } Ok(shell_status()) }
+            "shell.returnToDesktop" => {
+                if crate::power::action("desktop", crate::gamescope::in_session())? {
+                    let emit = self.emit.clone();
+                    std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(50)); emit(json!({"type": "quit"})); });
+                }
+                Ok(Value::Null)
+            }
             "app.restart" => { (self.emit)(json!({"type": "restart"})); Ok(Value::Null) }
             "app.exportLogs" => export_logs(&self.version),
             "game.resetPrefix" => {
@@ -483,9 +553,9 @@ impl Bridge {
                 let mut s = crate::perf::sample();
                 let st = crate::power::status();
                 s["battery"] = system::battery(std::path::Path::new("/sys/class/power_supply"));
-                s["runningId"] = Value::Null; s["runningSince"] = Value::Null;
-                s["canFpsLimit"] = json!(false); s["fpsLimit"] = self.library.store.data["fpsLimit"].clone();
-                s["canOverlay"] = json!(false); s["perfOverlay"] = self.library.store.data["perfOverlay"].clone();
+                s["runningId"] = json!(self.library.running_id()); s["runningSince"] = json!(self.library.running_since());
+                s["canFpsLimit"] = json!(crate::gamescope::can_fps_limit()); s["fpsLimit"] = json!(self.library.store.data["fpsLimit"].as_u64().unwrap_or(0));
+                s["canOverlay"] = json!(crate::gamescope::perf_overlay_supported()); s["perfOverlay"] = json!(self.library.store.data["perfOverlay"].as_u64().unwrap_or(0));
                 s["powerMode"] = if st["mode"]["supported"] == true { st["mode"]["mode"].clone() } else { Value::Null };
                 s["powerModes"] = st["mode"]["available"].clone(); s["tdp"] = st["tdp"].clone();
                 Ok(s)
@@ -568,6 +638,114 @@ impl Bridge {
         if used { let _ = self.library.store.update(|x| { x.insert("setupDone".into(), json!(now_ms())); }); }
         used
     }
+    fn overlay_settings(&self) -> Value {
+        json!({"holdView": self.library.store.data["holdView"] == true, "gameBarButton": false, "hotkey": "Ctrl+Alt+Q", "guide": self.guide.status()})
+    }
+    /// Open apps for Quick Access: Hearth first, then every window, then Steam if it runs without a window.
+    fn apps_list(&self) -> Value {
+        let game: Vec<u64> = self.library.game_pids().into_iter().map(u64::from).collect();
+        let me = std::process::id() as u64;
+        let own: Vec<u64> = ["Hearth", "Hearth Overlay"].iter().filter_map(|t| crate::gamescope::window_named(t)).collect();
+        let mut exclude = vec![me]; exclude.extend(own.iter().copied());
+        let list: Vec<Value> = crate::gamescope::apps(&exclude).into_iter().map(|mut a| { let pid = a["pid"].as_u64().unwrap_or(0); a["hearth"] = json!(false); a["game"] = json!(game.contains(&pid)); a }).collect();
+        let front = !list.iter().any(|a| a["focused"] == true);
+        let mut out = vec![json!({"id": own.first().copied().unwrap_or(0), "pid": me, "title": "Hearth", "app": "hearth", "hearth": true, "game": false, "focused": front})];
+        let steam_listed = list.iter().any(|a| a["app"].as_str().unwrap_or("").to_lowercase().contains("steam") || a["title"].as_str().map(|t| t.eq_ignore_ascii_case("steam")).unwrap_or(false));
+        out.extend(list);
+        let steam_up = std::process::Command::new("pgrep").args(["-x", "steam"]).output().map(|o| o.status.success()).unwrap_or(false);
+        if steam_up && !steam_listed { out.push(json!({"id": 0, "pid": 0, "title": "Steam", "app": "steam", "steam": true, "game": false, "focused": false})); }
+        json!(out)
+    }
+
+    /// After the library's events (every couple of seconds): parental controls count play time, and a game's own
+    /// frame-rate cap and power limit go on while it plays.
+    pub fn after_events(&mut self, events: &[Value]) -> Vec<Value> {
+        let mut out = Vec::new();
+        for e in events {
+            match e["name"].as_str().unwrap_or("") {
+                "game.started" => {
+                    self.parental_since = now_ms(); self.parental_warned = false;
+                    out.extend(self.parental_tick());
+                    let id = e["data"]["id"].as_str().unwrap_or("").to_string();
+                    let o = crate::game_options::get(&self.library.store, &id);
+                    let (fps, tdp) = (o["fpsLimit"].as_u64().unwrap_or(0), o["tdp"].as_u64().unwrap_or(0) as u32);
+                    if fps > 0 || tdp > 0 {
+                        let mut back = (self.library.store.data["fpsLimit"].as_u64().unwrap_or(0), None);
+                        if fps > 0 && crate::gamescope::in_session() { let _ = crate::gamescope::set_root("GAMESCOPE_FPS_LIMIT", fps); }
+                        if tdp > 0 { let st = crate::power::status(); if st["tdp"]["supported"] == true { back.1 = st["tdp"]["watts"].as_u64().map(|w| w as u32); let _ = crate::power::set_tdp(tdp); } }
+                        log(&format!("game settings: {id} fps {fps} tdp {tdp}"));
+                        self.per_game = Some(back);
+                    }
+                }
+                "game.exited" => {
+                    if self.parental_since > 0 {
+                        let mins = (now_ms() - self.parental_since) as f64 / 60000.0;
+                        let active = self.profiles.active();
+                        let _ = self.profiles.add_played(&active, mins, chrono::Local::now());
+                    }
+                    self.parental_since = 0;
+                    if let Some((fps, tdp)) = self.per_game.take() {
+                        if crate::gamescope::in_session() { let _ = crate::gamescope::set_root("GAMESCOPE_FPS_LIMIT", fps); }
+                        if let Some(w) = tdp { let _ = crate::power::set_tdp(w); }
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+    /// Every 20 seconds while a game plays, for profiles with a daily limit: a warning 5 minutes before the
+    /// end, then the game closes.
+    pub fn parental_tick(&mut self) -> Vec<Value> {
+        if self.parental_since == 0 || !self.profiles.restricted(&self.profiles.active()) { return vec![]; }
+        let session = (now_ms() - self.parental_since) as f64 / 60000.0;
+        let r = self.profiles.can_play(self.library.running_id().as_deref(), chrono::Local::now(), session);
+        let Some(left) = r["minutesLeft"].as_f64() else { return vec![] };
+        if r["ok"] != true {
+            log("parental: time is up");
+            self.parental_since = 0;
+            let emit = self.emit.clone();
+            let lib_close = self.host.clone();
+            std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(5)); lib_close("closeGame", &Value::Null); let _ = emit; });
+            return vec![Bridge::event("parental.timeup", json!({})), Bridge::event("osd", json!({"kind": "msg", "icon": "clock", "text": "Play time's up for today. The game is closing.", "ms": 6000}))];
+        }
+        if left <= 5.0 && !self.parental_warned {
+            self.parental_warned = true;
+            let m = left.round() as u64;
+            return vec![Bridge::event("osd", json!({"kind": "msg", "icon": "clock", "text": format!("{m} minute{} of play time left today. Time to find a save point!", if m == 1 { "" } else { "s" }), "ms": 7000}))];
+        }
+        vec![]
+    }
+
+    /// Aloha Browser, through desktop/shell/hearth-browser.
+    fn browser_status(&self) -> Value {
+        let helper = paths::desktop_dir().join("shell/hearth-browser");
+        let job = self.browser.lock().unwrap().clone();
+        let mut s = if helper.exists() {
+            let last = if job["state"] == "idle" { browser_run(&helper, &["status"], &mut |_, _| {}).unwrap_or(Value::Null) } else { Value::Null };
+            let mut s = if last.is_object() { last } else { json!({}) };
+            s["available"] = json!(true); s
+        } else { json!({"available": false}) };
+        for (k, v) in job.as_object().cloned().unwrap_or_default() { s[k] = v; }
+        let hb = std::path::Path::new("/usr/bin/hearth-browser").exists();
+        s["hearth"] = if hb { json!({"available": true, "default": system::run("xdg-settings", &["get", "default-web-browser"]).map(|o| o.trim() == "hearth-browser.desktop").unwrap_or(false)}) } else { json!({"available": false}) };
+        s
+    }
+    fn browser_act(&self, what: &str) -> Result<(), String> {
+        if !["install", "update", "default", "remove"].contains(&what) { return Err("Unknown action".into()); }
+        let helper = paths::desktop_dir().join("shell/hearth-browser");
+        { let mut j = self.browser.lock().unwrap(); if j["state"] != "idle" { return Ok(()); } *j = json!({"state": what, "progress": if what == "install" || what == "update" { json!(0) } else { Value::Null }, "line": "", "error": null}); }
+        let (job, what) = (self.browser.clone(), what.to_string());
+        std::thread::spawn(move || {
+            let push = |j: &Value| { let mut s = j.clone(); s["available"] = json!(true); crate::stores::notify(Bridge::event("browser", s)); };
+            let r = browser_run(&helper, &[&what], &mut |p, line| { let mut j = job.lock().unwrap(); j["progress"] = json!(p); j["line"] = json!(line); push(&j); });
+            let mut j = job.lock().unwrap();
+            *j = json!({"state": "idle", "progress": null, "line": "", "error": r.err()});
+            push(&j);
+        });
+        Ok(())
+    }
+
     fn pending_epic(&self) -> Vec<Value> { self.library.store.data["pendingEpicImports"].as_array().cloned().unwrap_or_default() }
 
     /// An import finished: what was copied goes in the library (GOG list, your own games, Epic waiting list).
@@ -665,6 +843,61 @@ fn export_logs(version: &str) -> Result<Value, String> {
     let _ = std::fs::remove_dir_all(&dir);
     if !ok { return Err("Couldn't save the logs".into()); }
     Ok(json!({"path": out.to_string_lossy()}))
+}
+
+fn value_text(v: &Value) -> String { match v { Value::String(s) => s.clone(), Value::Null => String::new(), other => other.to_string() } }
+
+/// Runs hearth-browser: "progress: <pct> <line>" lines while it works, then its JSON answer.
+fn browser_run(helper: &std::path::Path, args: &[&str], on_progress: &mut dyn FnMut(f64, &str)) -> Result<Value, String> {
+    use std::io::BufRead;
+    let mut child = std::process::Command::new("python3").arg(helper).args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null())
+        .spawn().map_err(|e| e.to_string())?;
+    let (mut result, mut err) = (Value::Null, None);
+    if let Some(out) = child.stdout.take() {
+        for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+            let line = line.trim();
+            if let Some(p) = line.strip_prefix("progress: ") {
+                let (n, rest) = p.split_once(' ').unwrap_or((p, ""));
+                if let Ok(n) = n.parse::<f64>() { on_progress(n / 100.0, rest); }
+            } else if let Some(e) = line.strip_prefix("error: ") { err = Some(e.to_string()); }
+            else if line.starts_with('{') { if let Ok(v) = serde_json::from_str(line) { result = v; } }
+        }
+    }
+    let code = child.wait().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
+    match (err, code) { (Some(e), _) => Err(e), (None, 0) => Ok(result), (None, c) => Err(format!("hearth-browser exited with {c}")) }
+}
+
+// ------------------------------------------------------------------ "Make Hearth my shell"
+
+const SESSION_FILE: &str = "/usr/share/wayland-sessions/nimbus.desktop";
+/// Part of Hearth, the OS (installed under /usr), not a downloaded copy.
+fn system_install() -> bool { std::env::current_exe().map(|e| e.starts_with("/usr/")).unwrap_or(false) }
+fn shell_status() -> Value {
+    let value = std::fs::read_to_string(paths::config_dir().join("app-path")).ok().map(|s| s.trim().to_string());
+    let system = system_install();
+    json!({"running": crate::gamescope::in_session(), "registered": std::path::Path::new(SESSION_FILE).exists() && (value.is_some() || system), "system": system,
+           "value": value, "exe": std::env::current_exe().map(|e| e.to_string_lossy().to_string()).unwrap_or_default(),
+           "gamescope": system::has("gamescope"), "labwc": system::has("labwc"), "quickshell": system::has("quickshell") || system::has("qs")})
+}
+/// Copies the session scripts somewhere root can read, then installs (or removes) the session with pkexec.
+fn shell_install(remove: bool) -> Result<(), String> {
+    if !system::has("pkexec") { return Err("pkexec is missing. Run install-session.sh as root instead".into()); }
+    let desk = paths::desktop_dir();
+    let session = desk.parent().map(|p| p.join("session")).filter(|p| p.is_dir()).ok_or("Hearth's session files are missing")?;
+    let dst = paths::data_dir().join("session");
+    let _ = std::fs::remove_dir_all(&dst);
+    system::run("cp", &["-r", &session.to_string_lossy(), &dst.to_string_lossy()])?;
+    let _ = system::run("cp", &["-r", &desk.to_string_lossy(), &dst.join("desktop").to_string_lossy()]);
+    let _ = system::run("sh", &["-c", "cd \"$0\" && for f in *; do [ -f \"$f\" ] || continue; case \"$f\" in *.desktop) chmod 644 \"$f\";; *) chmod 755 \"$f\";; esac; done", &dst.to_string_lossy()]);
+    if !remove {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(paths::config_dir()).map_err(|e| e.to_string())?;
+        std::fs::write(paths::config_dir().join("app-path"), format!("{}\n", exe.to_string_lossy())).map_err(|e| e.to_string())?;
+    }
+    let script = dst.join("install-session.sh").to_string_lossy().to_string();
+    let mut args = vec![script.as_str()];
+    if remove { args.push("--remove"); }
+    system::run_timeout("pkexec", &args, std::time::Duration::from_secs(120)).map(|_| ())
 }
 
 fn hostname() -> String { std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()).unwrap_or_default() }
