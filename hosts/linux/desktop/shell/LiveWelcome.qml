@@ -14,16 +14,18 @@ PanelWindow {
     property bool shown: false
     property int sel: 0
     readonly property var items: [
-        { icon: "update", label: "Install Hearth", sub: "Puts Hearth on this device's drive" },
+        { icon: "update", label: "Install next to Windows", sub: "Keep Windows, bring your games over to Hearth" },
+        { icon: "update", label: "Install Hearth", sub: "Puts Hearth on a whole drive (erases it)" },
         { icon: "wifi", label: "Connect to Wi-Fi", sub: "The installer downloads Hearth, so connect first" },
         { icon: "pad", label: "Try Game Mode", sub: "Come back here from the Power menu › Switch to desktop" },
         { icon: "close", label: "Keep exploring", sub: "Install Hearth is also in the app launcher" }
     ]
     function pick(i) {
         shown = false;
-        if (i === 0) Quickshell.execDetached(["sh", "-c", "command -v liveinst >/dev/null && exec liveinst || exec anaconda-webui"]);
-        else if (i === 1) settingsApp.open("wifi");
-        else if (i === 2) Quickshell.execDetached(["nimbus-mode", "game"]);
+        if (i === 0) settingsApp.open("install");
+        else if (i === 1) Quickshell.execDetached(["sh", "-c", "command -v liveinst >/dev/null && exec liveinst || exec anaconda-webui"]);
+        else if (i === 2) settingsApp.open("wifi");
+        else if (i === 3) Quickshell.execDetached(["nimbus-mode", "game"]);
     }
     Process {
         running: true

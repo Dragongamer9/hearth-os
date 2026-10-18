@@ -54,7 +54,7 @@ jobs:
           ipc help toggle; grim shots/5-controls.png || true; ipc help toggle
           # Hearth Settings, every page
           n=6
-          for p in wifi bluetooth sound display appearance power controller signin browser updates about; do
+          for p in wifi bluetooth sound display appearance power controller signin browser updates about install; do
             ipc settings page "$p"; grim "shots/$n-settings-$p.png" || true; n=$((n+1))
           done
           ipc settings close
