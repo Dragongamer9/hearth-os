@@ -244,9 +244,16 @@ async function leaveGameMode(next) {
   const steamUp = () => run('pgrep', ['-u', String(process.getuid()), '-x', 'steam'], { timeout: 3000 }).then(() => true, () => false);
   try {
     if (await steamUp()) {
+      // Ask Steam to close, but don't wait out its whole shutdown (that was most of a switch's 10-20
+      // seconds): after a moment, stop it. Games are closed by now, so there's nothing for it to save.
       log('closing Steam before switching');
-      run('steam', ['-shutdown'], { timeout: 5000 }).catch(() => {});
-      for (let t = Date.now(); Date.now() - t < 7000 && await steamUp();) await new Promise(r => setTimeout(r, 300));
+      run('steam', ['-shutdown'], { timeout: 4000 }).catch(() => {});
+      for (let t = Date.now(); Date.now() - t < 2500 && await steamUp();) await new Promise(r => setTimeout(r, 200));
+      if (await steamUp()) {
+        run('pkill', ['-TERM', '-u', String(process.getuid()), '-x', 'steam']).catch(() => {});
+        run('pkill', ['-TERM', '-u', String(process.getuid()), '-f', 'steamwebhelper']).catch(() => {});
+        for (let t = Date.now(); Date.now() - t < 1200 && await steamUp();) await new Promise(r => setTimeout(r, 150));
+      }
     }
   } catch {}
   app.exit(0);
