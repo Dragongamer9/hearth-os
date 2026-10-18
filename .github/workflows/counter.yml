@@ -22,18 +22,20 @@ jobs:
       - name: Deploy
         working-directory: counter
         run: |
-          set -euo pipefail
+          set -uo pipefail
           [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets first"; exit 1; }
-          npm install --no-save --no-audit --no-fund wrangler@4.20.0 >/dev/null
+          # Every step's output goes into an annotation if it fails, so the error is visible on the run page.
+          step() { local name="$1"; shift; if ! "$@" > /tmp/out.log 2>&1; then echo "::error title=$name::$(tail -c 1500 /tmp/out.log | tr '\n' ' ')"; cat /tmp/out.log; exit 1; fi; cat /tmp/out.log; }
+          step "npm install" npm install --no-save --no-audit --no-fund wrangler@4.20.0
           W="npx wrangler"
-          id=$($W d1 list --json | python3 -c "import json,sys; print(next((d['uuid'] for d in json.load(sys.stdin) if d['name']=='hearth-counter'), ''))")
-          if [ -z "$id" ]; then
-            $W d1 create hearth-counter
-            id=$($W d1 list --json | python3 -c "import json,sys; print(next((d['uuid'] for d in json.load(sys.stdin) if d['name']=='hearth-counter'), ''))")
-          fi
+          findid() { $W d1 list --json 2>/dev/null | python3 -c "import json,sys; print(next((d['uuid'] for d in json.load(sys.stdin) if d['name']=='hearth-counter'), ''))" 2>/dev/null; }
+          step "Check token" $W whoami
+          id=$(findid)
+          if [ -z "$id" ]; then step "Create database" $W d1 create hearth-counter; id=$(findid); fi
+          [ -n "$id" ] || { echo "::error::Could not find or create the hearth-counter database"; exit 1; }
           sed -i "s/FILLED_IN_BY_CI/$id/" wrangler.toml
-          $W d1 execute hearth-counter --remote --file schema.sql
-          $W deploy 2>&1 | tee /tmp/deploy.log
-          url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' /tmp/deploy.log | head -1)
+          step "Create table" $W d1 execute hearth-counter --remote --yes --file schema.sql
+          step "Deploy worker" $W deploy
+          url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' /tmp/out.log | head -1)
           echo "::notice::Counter is at $url (stats: $url/v1/stats)"
-          [ -n "$url" ] && curl -fsS "$url/v1/stats" && echo
+          sleep 5; [ -n "$url" ] && echo "::notice::Stats: $(curl -fsS "$url/v1/stats")"
