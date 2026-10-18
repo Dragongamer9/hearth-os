@@ -1694,19 +1694,59 @@ function impResult(r){
   if(done.some(x=>x.kind==='files')) h+=note('Your folders are in the same folders in your home, under "Imported from …".');
   return h+`<button class="row" data-f data-k="imp-done" data-act="impDone"><span class="ricon">${I.check||I.info}</span><div class="rt"><b>Done</b></div></button>`;
 }
+// Remove the old system: other systems' partitions on Hearth's own drive, erased after two confirmations.
+const TKO = {sel:null, boot:true};
+const psz = b => b < 1e9 ? Math.max(1, Math.round(b/1e6))+' MB' : gb(b);
+const plabel = p => p.label && p.label!==p.what ? ' “'+p.label+'”' : '';
+function tkoSel(){ if(!TKO.sel){ TKO.sel=new Set(((IMP.s&&IMP.s.takeover&&IMP.s.takeover.parts)||[]).filter(p=>p.chosen).map(p=>p.dev)); } return TKO.sel; }
+function tkoRun(){
+  const t=IMP.s&&IMP.s.takeover, sel=[...tkoSel()]; if(!t||!sel.length) return toast('Choose what to remove first');
+  const parts=t.parts.filter(p=>sel.includes(p.dev)), total=parts.reduce((a,p)=>a+p.size,0);
+  const list=parts.map(p=>`${p.what}${plabel(p)} (${psz(p.size)})`).join(', ');
+  openSheet({title:'Erase the old system?', sub:`This erases ${list}. Everything on ${parts.length===1?'it':'them'} is gone for good, including anything you didn't import. Hearth gets the ${gb(total)}.`, items:[
+    {label:'I\'ve brought over everything I need', icon:'check', run:()=>setTimeout(()=>openSheet({title:'Last check: erase it now?', sub:'This can\'t be undone. Keep the device plugged in until it\'s done.', items:[
+      {label:'Erase and give the space to Hearth', icon:'trash', run:()=>call('takeover.run',{remove:sel, windowsBoot:TKO.boot}).then(onImport).catch(e=>toast(e.message))}]}),250)}]});
+}
+function pageTakeover(st){
+  if(st.state==='takeover'){
+    const g=st.takeoverStage||{}, i=g.step||0;
+    const rows=[['Removing the old system'],['Updating the boot menu'],['Giving the space to Hearth']];
+    return `<div class="su-card"><div class="su-head"><div><b>Removing the old system</b><div class="muted" style="font-size:13px;margin-top:4px">Keep the device on and plugged in. This takes a minute or two.</div></div><span class="mini-spin"></span></div>`
+      + rows.map(([t],k)=>`<div class="su-ph ${k<i?'ok':k===i?'on':''}"><div class="n">${k<i?'✓':k+1}</div><div class="t">${t}</div><div class="p"></div><div class="s">${k===i?esc(g.desc||''):k<i?'Done':''}</div></div>`).join('')+'</div>';
+  }
+  if(st.takeoverResult){ const r=st.takeoverResult;
+    return `<div class="row"><span class="ricon">${I.check}</span><div class="rt"><b>The old system is gone</b><small>Hearth has ${gb((r.grown||0)+(r.added||0))} more space${r.free?` · ${gb(r.free)} free now`:''}${(r.bootEntries||[]).length?' · removed from the boot menu':''}</small></div></div>`
+      + `<button class="row" data-f data-k="tko-done" data-act="tkoDone"><span class="ricon">${I.check}</span><div class="rt"><b>Done</b></div></button>`; }
+  let h=shead('Remove the old system');
+  if(st.takeoverError) h+=note(esc(st.takeoverError));
+  const t=st.takeover;
+  if(!t) return h+`<button class="row" data-f data-k="tko-plan" data-act="tkoPlan"><span class="ricon">${I.trash}</span><div class="rt"><b>Free up this drive</b><small>After importing: see what else is on the drive Hearth runs from (Windows, an old Linux) and give that space to Hearth. Nothing is erased until you confirm twice.</small></div><div class="rv">›</div></button>`;
+  const rem=t.parts.filter(p=>p.removable);
+  if(!rem.length) return h+note('Nothing else is on Hearth\'s drive. All of it is already Hearth\'s.');
+  const sel=tkoSel();
+  h+=rem.map(p=>`<button class="row" data-f data-k="tko-${esc(p.dev)}" data-act="tkoToggle" data-dev="${esc(p.dev)}"><div class="rt"><b>${esc(p.what)}${esc(plabel(p))}</b><small>${psz(p.size)} · ${esc(p.dev)}${p.mounted&&p.mounted.length?' · in use':''}</small></div><div class="sw ${sel.has(p.dev)?'on':''}"></div></button>`).join('');
+  const kept=t.parts.filter(p=>!p.removable).map(p=>p.what).filter((v,i,a)=>a.indexOf(v)===i);
+  if(kept.length) h+=note('Always kept: '+esc(kept.join(', '))+'.');
+  if((t.windowsBoot||[]).length && rem.some(p=>p.kind==='windows'&&sel.has(p.dev)))
+    h+=`<button class="row" data-f data-k="tko-boot" data-act="tkoBoot"><div class="rt"><b>Remove Windows from the boot menu</b><small>So the PC doesn't offer a Windows that's no longer there</small></div><div class="sw ${TKO.boot?'on':''}"></div></button>`;
+  const total=rem.filter(p=>sel.has(p.dev)).reduce((a,p)=>a+p.size,0);
+  h+=`<button class="row" data-f data-k="tko-run" data-act="tkoRun"><span class="ricon">${I.trash}</span><div class="rt"><b>${sel.size?'Erase and give '+gb(total)+' to Hearth':'Choose what to remove'}</b><small>Erases what's turned on above. Import anything you want to keep first.</small></div></button>`;
+  return h;
+}
 function pageImport(){
   if(!host && !IMP.s) return note('Importing works in the '+APP+' app.');
   const st=IMP.s;
   if(!st) return note('Loading…');
   if(!st.supported) return note('Importing games and files needs Hearth, the OS.');
   if(st.state==='importing') return impProgress(st);
+  if(st.state==='takeover' || st.takeoverResult) return pageTakeover(st);
   if(st.result) return impResult(st.result);
   let h='';
   if(st.pendingEpic) h+=note(`${st.pendingEpic} Epic ${st.pendingEpic===1?'game is':'games are'} copied and will finish importing when you sign in to Epic Games (Library › Stores).`);
   if(st.state==='scanning') return h+`<div class="row"><span class="mini-spin"></span><div class="rt"><b>Looking at your drives…</b><small>Opening other drives read-only and finding games and folders. Big drives take a minute.</small></div></div>`;
   if(!st.scan) return h+`<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Bring your games and files</b><small>From Windows, SteamOS (Steam Deck), Bazzite or other Linux, a second drive or an SD card. Steam, Epic and GOG games come over ready to play, without downloading them again, plus your Documents, Pictures and other folders.</small></div></div>`
     + `<button class="row" data-f data-k="imp-scan" data-act="impScan"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look for games and files</b><small>Other drives are only read, never changed</small></div></button>`
-    + (st.error?note(esc(st.error)):'');
+    + (st.error?note(esc(st.error)):'') + pageTakeover(st);
   const drives=st.scan.drives||[];
   const row=(it,label)=>`<button class="row" data-f data-k="imp-${esc(it.key)}" data-act="impToggle" data-key="${esc(it.key)}"><div class="rt"><b>${esc(label||it.name)}</b><small>${it.size?gbs(it.size):'Size unknown'}</small></div><div class="sw ${IMP.sel.has(it.key)?'on':''}"></div></button>`;
   const useful=drives.filter(d=>d.steam.length||d.epic.length||d.gog.length||d.files.length||d.problem);
@@ -1727,7 +1767,7 @@ function pageImport(){
     + `<button class="row" data-f data-k="imp-start" data-act="impStart"><span class="ricon">${I.dl}</span><div class="rt"><b>${sel.length?`Import ${sel.length} item${sel.length===1?'':'s'}`:'Pick what to bring'}</b><small>${sel.length?`${gbs(need)||'0 GB'} · ${gb(free)} free on Hearth`:'Turn on the games and folders you want'}${tooBig?' · not enough space':''}</small></div></button>`
     + `<button class="row" data-f data-k="imp-scan" data-act="impScan"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look again</b></div></button>`
     + note('Steam checks each imported game the first time you start it (a minute, not a download). Epic games need you signed in to Epic. Games that only run on Windows play through Proton, like other Windows games on Hearth.');
-  return h;
+  return h + pageTakeover(st);
 }
 
 // ---------- Settings › Shell ----------
@@ -2252,6 +2292,11 @@ function act(el){
     case 'impMode': IMP.mode = IMP.mode==='copy'?'move':'copy'; return render(null,true);
     case 'impStart': return impStart();
     case 'impStop': return call('import.cancel').then(onImport).catch(e=>toast(e.message));
+    case 'tkoPlan': return call('takeover.plan',{},90000).then(d=>{ TKO.sel=null; onImport(d); }).catch(e=>toast(e.message));
+    case 'tkoToggle': { const sel=tkoSel(); sel.has(d.dev)?sel.delete(d.dev):sel.add(d.dev); return render(null,true); }
+    case 'tkoBoot': TKO.boot=!TKO.boot; return render(null,true);
+    case 'tkoRun': return tkoRun();
+    case 'tkoDone': if(IMP.s){ IMP.s.takeoverResult=null; IMP.s.takeoverError=null; } return render(null,true);
     case 'impDone': if(IMP.s) IMP.s.result=null; IMP.sel.clear(); return render(null,true);
     case 'sysUpdInstall': return call('system.update.install').then(onSystemUpdate).catch(e=>toast(e.message));
     case 'updCheck': return call('update.check',{},60000).then(onUpdate).catch(e=>toast(e.message));

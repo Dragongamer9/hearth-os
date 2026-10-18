@@ -18,6 +18,8 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin tdp WATTS             set the power limit: ASUS firmware attributes, asus-nb-wmi, or ryzenadj
   hearth-admin import-scan|import-run|import-unmount
                                      games and files from other drives (see hearth-import)
+  hearth-admin takeover-plan|takeover-run
+                                     remove other systems from Hearth's drive (see hearth-takeover)
 
 Output: progress lines as "log: ...", percentages as "progress: <0-100> <what>", the result as one JSON line. Exit 1 with "error: ..." on failure.
 """
@@ -355,10 +357,12 @@ def main(argv):
         update()
     elif cmd == 'tdp' and len(argv) == 3:
         tdp(argv[2])
-    elif cmd in ('import-scan', 'import-run', 'import-unmount'):
-        # Bringing games and files over from other drives: its own script, run as root like the rest.
-        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-import')
-        os.execv(sys.executable, [sys.executable, helper, cmd[len('import-'):]])
+    elif cmd in ('import-scan', 'import-run', 'import-unmount', 'takeover-plan', 'takeover-run'):
+        # Bringing games and files over from other drives, and removing the old system afterwards: their own
+        # scripts, run as root like the rest.
+        name, sub = cmd.split('-', 1)
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
+        os.execv(sys.executable, [sys.executable, helper, sub])
     else:
         fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS')
 
