@@ -1,0 +1,121 @@
+# Hearth's small installer USB (os/installer): boots into the Hearth app's install screens and downloads Hearth OS
+# while installing, so the ISO is about 2 GB. One ISO for every PC (it installs the Nvidia edition where there's
+# an Nvidia card). Builds the ISO, boots it in a virtual machine and saves screenshots to the ci/installer-shots
+# branch. Manual only; uploads to SourceForge only when asked.
+name: Hearth installer ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: 'Upload the ISO to SourceForge (needs the SF_* secrets)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  iso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      HAVE_SF: ${{ secrets.SF_SSH_KEY != '' && secrets.SF_USER != '' && secrets.SF_PROJECT != '' }}
+      SF_USER: ${{ secrets.SF_USER }}
+      SF_PROJECT: ${{ secrets.SF_PROJECT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make room
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+
+      - name: Build the installer system
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=installer system::$msg"' ERR
+          sudo mkdir -p /mnt/containers /var/lib/containers
+          sudo mount --bind /mnt/containers /var/lib/containers
+          sudo podman build --pull=newer --cap-add sys_admin --security-opt label=disable \
+            -t localhost/hearth-installer:latest -f os/installer/Containerfile .
+
+      - name: Make the ISO (Titanoboa)
+        id: iso
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=iso::$msg"' ERR
+          git clone -q https://github.com/ublue-os/titanoboa.git /tmp/titanoboa
+          git -C /tmp/titanoboa checkout -q 5c457c3d0518bd17e754be0fd98a60d29d26abb4
+          out=/mnt/installer-out
+          sudo mkdir -p "$out"
+          iso=$(cd /tmp/titanoboa && sudo TITANOBOA_OUTPUT_DIR="$out" ./main.sh localhost/hearth-installer:latest)
+          sudo chown -R "$(id -u):$(id -g)" "$out"
+          v=$(sudo podman run --rm localhost/hearth-installer:latest cat /usr/share/nimbus/version 2>/dev/null || echo latest)
+          f="hearth-os-$v-installer.iso"
+          mv "$iso" "$out/$f"
+          (cd "$out" && sha256sum "$f" | tee "$f.sha256")
+          ls -lh "$out"
+          echo "::notice title=Installer ISO::$f is $(du -h "$out/$f" | cut -f1)"
+          echo "dir=$out" >> "$GITHUB_OUTPUT"; echo "version=$v" >> "$GITHUB_OUTPUT"; echo "file=$out/$f" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the ISO as a download on this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: hearth-os-${{ steps.iso.outputs.version }}-installer
+          path: ${{ steps.iso.outputs.dir }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Boot it and take screenshots
+        env:
+          ISO: ${{ steps.iso.outputs.file }}
+        run: |
+          sudo apt-get install -y -qq qemu-system-x86 ovmf python3-pil socat >/dev/null
+          code=$(ls /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd 2>/dev/null | head -1)
+          cp "$(ls /usr/share/OVMF/OVMF_VARS_4M.fd /usr/share/OVMF/OVMF_VARS.fd 2>/dev/null | head -1)" vars.fd
+          truncate -s 100G target.img
+          mkdir -p shots
+          sudo qemu-system-x86_64 -m 6144 -smp 4 $( [ -e /dev/kvm ] && echo -enable-kvm -cpu host ) \
+            -drive if=pflash,format=raw,readonly=on,file="$code" -drive if=pflash,format=raw,file=vars.fd \
+            -cdrom "$ISO" -drive file=target.img,format=raw,if=virtio -vga virtio -display none \
+            -serial file:serial.log -monitor unix:/tmp/mon,server,nowait -usb -device usb-tablet &
+          sleep 5
+          for t in 60 120 180 240 300; do
+            sleep 60
+            echo "screendump /tmp/s$t.ppm" | sudo socat - unix-connect:/tmp/mon >/dev/null 2>&1 || true
+            sleep 2
+            sudo python3 -c "from PIL import Image; Image.open('/tmp/s$t.ppm').save('shots/at-${t}s.png')" 2>/dev/null || true
+          done
+          sudo pkill qemu-system || true
+          ls -l shots
+          tail -c 3000 serial.log | tr -d '\r' || true
+      - name: Publish the screenshots (ci/installer-shots)
+        run: |
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          git checkout --orphan ci/installer-shots
+          git rm -rfq --cached . >/dev/null
+          git add -f shots
+          git commit -qm "Installer ISO screenshots ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/installer-shots || true
+
+      - name: Upload to SourceForge
+        if: env.HAVE_SF == 'true' && inputs.upload
+        env:
+          SF_SSH_KEY: ${{ secrets.SF_SSH_KEY }}
+          SF_API_KEY: ${{ secrets.SF_API_KEY }}
+          V: ${{ steps.iso.outputs.version }}
+          DIR: ${{ steps.iso.outputs.dir }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SF_SSH_KEY" > ~/.ssh/sf && chmod 600 ~/.ssh/sf
+          ssh-keyscan -t ed25519,rsa frs.sourceforge.net >> ~/.ssh/known_hosts 2>/dev/null
+          dest="/home/frs/project/$SF_PROJECT/$V"
+          rsync -e "ssh -i $HOME/.ssh/sf -o IdentitiesOnly=yes" --partial --progress -t "$DIR"/hearth-os-*.iso "$DIR"/hearth-os-*.iso.sha256 "$SF_USER@frs.sourceforge.net:$dest/"
+          if [ -n "${SF_API_KEY:-}" ]; then
+            curl -fsS -H 'Accept: application/json' -X PUT \
+              -d default=windows -d default=mac -d default=linux -d default=bsd -d default=solaris -d default=others \
+              -d "api_key=$SF_API_KEY" "https://sourceforge.net/projects/$SF_PROJECT/files/$V/hearth-os-$V-installer.iso" >/dev/null && echo "Set as the default download"
+          fi
+          rm -f ~/.ssh/sf

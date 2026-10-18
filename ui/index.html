@@ -2615,6 +2615,7 @@ function act(el){
     case 'padBt': S.settingsTab='bluetooth'; navigate('settings',{focusKey:'st-bluetooth'}); return onSettingsTab('bluetooth');
     case 'osiOpen': return osiOpen();
     case 'liveMantel': return call('osinstall.useMantel').then(()=>send({type:'power', action:'desktop'})).catch(e=>toast(e.message));
+    case 'livePower': return openSheet({title:'Turn off or restart?', items:[{label:'Turn off', icon:'power', run:()=>power('shutdown')},{label:'Restart', icon:'restart', run:()=>power('restart')}]});
     case 'liveTry': S.history=[]; navigate('home',{},false); return toast('Install Hearth OS is in Settings whenever you\'re ready');
     case 'osiNext': return osiGo(1);
     case 'osiBack': return osiGo(-1);
@@ -3048,10 +3049,10 @@ function viewLive(){
   const hearth=row('lv-hearth','dl','Install Hearth OS','With the controller: big and simple. Next to Windows or another Linux like SteamOS, or on a whole drive','osiOpen');
   const mantel=row('lv-mantel','shell','Install with a mouse and keyboard','In a window on Mantel, the desktop'+(S.noPad?' (recommended without a controller)':''),'liveMantel');
   return `<div class="setup" style="max-width:760px;margin:8vh auto 0;padding:0 24px"><div class="center"><div class="mark">${HEARTH_MARK}</div></div>
-    <h1>Welcome to Hearth OS</h1><p class="lead">You're running Hearth from the USB stick. Nothing on this PC changes until you install.</p>
-    <div class="rows">${S.noPad?mantel+hearth:hearth+mantel}
+    <h1>Welcome to Hearth OS</h1><p class="lead">${HOSTINFO.installer?'This USB stick installs Hearth OS. The newest Hearth OS is downloaded while it installs, so connect to the internet first.':'You\'re running Hearth from the USB stick. Nothing on this PC changes until you install.'}</p>
+    <div class="rows">${HOSTINFO.installer?hearth:S.noPad?mantel+hearth:hearth+mantel}
       ${row('lv-wifi','wifi','Connect to Wi-Fi','Hearth OS is downloaded while it installs, so connect first','goset','data-tab="wifi"')}
-      ${row('lv-try','play','Try Hearth first','Install Hearth OS is in Settings whenever you\'re ready','liveTry')}</div></div>`;
+      ${HOSTINFO.installer?row('lv-off','power','Turn off','Take out the USB stick after','livePower'):row('lv-try','play','Try Hearth first','Install Hearth OS is in Settings whenever you\'re ready','liveTry')}</div></div>`;
 }
 function setupGo(d){
   const i=Math.max(0, Math.min(SETUP_STEPS.length-1, (S.setupStep||0)+d));
@@ -3115,7 +3116,7 @@ function osiOpen(){
 }
 function osiLoad(){
   call('osinstall.status').then(s=>{ OSI.s=s; if(s.state==='running') OSI.step='run'; render(null,true); }).catch(()=>{});
-  call('osinstall.disks',{},60000).then(r=>{ OSI.disks=r.disks||[]; render(null,true); }).catch(e=>{ OSI.disks=[]; toast(e.message); });
+  call('osinstall.disks',{},60000).then(r=>{ OSI.disks=r.disks||[]; OSI.image=r.image||''; render(null,true); }).catch(e=>{ OSI.disks=[]; toast(e.message); });
 }
 function osiCheck(){
   if(OSI.checking) return; OSI.checking=true; OSI.check=null; render(null,true);
@@ -3258,7 +3259,7 @@ function viewOsInstall(){
     body=`<h1>Ready to install</h1><p class="lead">${OSI.mode==='whole'?`<b>${esc(d.model)} is erased</b> and Hearth OS goes on it.`:`${esc(osiName())} gets ${gb(OSI.give)} smaller and Hearth OS goes next to it. When the PC starts, Hearth's menu lets you pick Hearth or ${esc(osiName())}.`}</p><div class="rows">
       ${line('How', OSI.mode==='whole'?'Erase the whole drive':'Next to '+esc(osiName()))}${line('Drive', `${esc(d.model)} · ${gb(d.size)}`)}${OSI.mode==='beside'?line('Room for Hearth', gb(OSI.give)):''}
       ${line('Account', `${esc(u.full)} (${esc(u.name)})${u.nopassword?' · no password':''}`)}${u.nopassword?'':line('Ask for my password', OSI_SIGNIN[OSI.signin||'auto'])}${line('Device name', esc(OSI.hostname||osiHost(u)))}${line('Time zone', esc(OSI.tz.replace(/_/g,' ')))}
-      ${line('Edition', HOSTINFO.edition==='nvidia'?'Nvidia graphics':'AMD and Intel graphics')}
+      ${line('Edition', /nvidia/.test(OSI.image||'')?'Nvidia graphics':'AMD and Intel graphics')}
       </div><div class="acts"><button class="play" data-f data-k="osi-go" data-act="osiStart">${I.dl}Install Hearth OS</button>${back}</div>`;
   }
   else {
