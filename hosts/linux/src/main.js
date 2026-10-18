@@ -149,8 +149,47 @@ function comeBack() {
   if (inGamescope()) gamescope.focusWindow(xid(win)).catch(() => {});
 }
 
+/**
+ * Hearth stays in front with its "starting" screen while the game (or its launcher) loads in the background,
+ * and puts it in front once its window is really up, instead of showing a black screen or a half-drawn window
+ * meanwhile. A Steam window that may need you (a cloud-save question) is shown right away. "Show it now" on
+ * the starting screen (resumeGame) skips the wait.
+ */
+let launchWait = null;
+async function showGameWhenReady(id) {
+  const wait = launchWait = { id, cancelled: false };
+  const sid = String(id || '');
+  const steamAppId = sid.startsWith('steam:') ? parseInt(sid.slice(6), 10) || 0 : 0;
+  log(`launch: waiting for ${id} to open its window`);
+  // Windows games through Proton can take minutes the first time (umu sets up Proton and the game's prefix):
+  // keep waiting, and after a while let the starting screen say so and offer "Show it now".
+  const slow = setTimeout(() => { if (launchWait === wait) post({ type: 'event', name: 'game.slow', data: { id, firstRun: !steamAppId } }); }, 40000);
+  const r = await gamescope.waitForWindow({ pids: () => library.gamePids(), steamAppId, exclude: [process.pid], timeoutMs: 10 * 60000,
+    cancelled: () => wait.cancelled || library.runningId !== id }).catch(() => null);
+  clearTimeout(slow);
+  if (wait.cancelled || library.runningId !== id) return;
+  launchWait = null;
+  if (r && r.win) {
+    log(`launch: ${id} is ready (window ${r.win}), bringing it in front`);
+    chooseFocus(); stepAside();
+    await gamescope.focusWindow(r.win).catch(() => {});
+    post({ type: 'event', name: 'game.ready', data: { id } });
+  } else if (r && r.dialog) {
+    log(`launch: Steam is asking something ("${r.title}"), showing it`);
+    chooseFocus(); stepAside();
+    await gamescope.focusWindow(r.dialog).catch(() => {});
+    post({ type: 'event', name: 'game.ready', data: { id } });
+    focusRunningGame();   // and the game once it opens
+  } else {
+    log(`launch: ${id} didn't open a window in 10 minutes; showing whatever it has`);
+    chooseFocus(); stepAside(); focusRunningGame();
+    post({ type: 'event', name: 'game.ready', data: { id } });
+  }
+}
+
 function resumeGame() {
   if (!library.runningId) return;
+  if (launchWait) launchWait.cancelled = true;
   chooseFocus();
   if (stream.isOpen) { stepAside(); stream.focus(); if (inGamescope()) gamescope.focusWindow(xid(stream.win || win)).catch(() => {}); return; }
   stepAside();
@@ -705,10 +744,15 @@ app.whenReady().then(() => {
   // Art finished downloading: the UI reloads the library quietly to use the on-device copies.
   require('./art-cache').artCache().on('changed', () => post({ type: 'event', name: 'library.art', data: {} }));
 
-  library.on('started', () => {
-    stepAside(); focusRunningGame();
+  library.on('started', id => {
     // Xbox Cloud Gaming plays in Hearth's own stream window: that's the one to put in front.
-    if (inGamescope()) setTimeout(() => { if (stream.isOpen && stream.win && !stream.win.isDestroyed()) gamescope.focusWindow(xid(stream.win)).catch(() => {}); }, 900);
+    if (stream.isOpen) {
+      stepAside(); post({ type: 'event', name: 'game.ready', data: { id } });
+      if (inGamescope()) setTimeout(() => { if (stream.isOpen && stream.win && !stream.win.isDestroyed()) gamescope.focusWindow(xid(stream.win)).catch(() => {}); }, 900);
+      return;
+    }
+    if (!inGamescope()) { stepAside(); focusRunningGame(); post({ type: 'event', name: 'game.ready', data: { id } }); return; }
+    showGameWhenReady(id);
   });
   library.on('exited', () => { hideOverlay(); if (inGamescope()) gamescope.clearFocus().catch(() => {}); comeBack(); });
   stream.on('closed', () => library.markExited());
