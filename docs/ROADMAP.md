@@ -32,9 +32,13 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## 0.0.20
 
-- [ ] New live ISOs (AMD/Intel and Nvidia) with Install next to Windows
-- [ ] Full Mantel for Ember: no Explorer at all, Ember hosts the tray
+- [x] Full Mantel for Ember: no Explorer at all, Ember hosts the tray (experimental)
+- [x] Full on-screen keyboard in Mantel (Linux)
 - [ ] Download the installer from inside Ember (needs the ISOs on SourceForge)
+
+## 0.0.25
+
+- [ ] New live ISOs (AMD/Intel and Nvidia) with Install next to Windows (no ISOs before this)
 
 ## Not started
 
