@@ -171,4 +171,5 @@ jobs:
           for i in $(seq 1 180); do grep -qE 'login:|Reached target.*(Multi-User|Graphical)' boot.log && break; sleep 5; done
           sudo pkill qemu-system || true
           grep -a -o "SteamOS" boot.log | head -1 | sed 's/^/::notice title=Boot menu shows::/' || true
+          grep -a -E 'FAILED|Dependency failed|Timed out' boot.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | head -15 | sed 's/^/::warning title=Boot problem::/' || true
           grep -qE 'login:|Reached target.*(Multi-User|Graphical)' boot.log && echo "::notice::Hearth next to SteamOS boots" || { echo "::error title=Boot failed::$(tail -c 3000 boot.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\n' '|')"; exit 1; }

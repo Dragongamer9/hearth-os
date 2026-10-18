@@ -920,7 +920,9 @@ def run(plan):
             esp, boot, root, esp_new = partition_beside(disk, plan['give'])
         make_filesystems(esp, boot, root, esp_new)
         dep = deploy(plan['image'], uuid_of(root))
-        add_kargs(image_kargs(dep) + plan['kargs'])
+        # Hearth mounts what's in its fstab and nothing else: systemd's automatic partition mounting would pick up
+        # another Linux's /home or /var on the same drive (SteamOS marks its partitions that way) and fail.
+        add_kargs(image_kargs(dep) + ['systemd.gpt_auto=0', 'rd.systemd.gpt_auto=0'] + plan['kargs'])
         bootloader(disk, plan.get('firmware', True), dep)
         other_systems_menu()
         write_fstab(dep, esp, boot, root)
