@@ -45,6 +45,7 @@ ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 install -Dm755 /live/hearth-install /usr/libexec/nimbus/hearth-install
 install -Dm755 /live/hearth-live-prep /usr/libexec/nimbus/hearth-live-prep
 install -Dm644 /live/branding/hearth-512.png /usr/share/pixmaps/hearth.png
+mkdir -p /usr/share/nimbus && mv /usr/lib/nimbus/hearth-version /usr/share/nimbus/version 2>/dev/null || echo latest > /usr/share/nimbus/version
 echo auto > /etc/hearth-live        # the installer picks the edition for this PC's graphics
 touch /etc/hearth-installer          # the Hearth app shows only the install screens
 echo "Hearth installer" >/etc/system-release

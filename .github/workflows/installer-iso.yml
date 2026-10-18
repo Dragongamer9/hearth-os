@@ -29,6 +29,20 @@ jobs:
       - name: Make room
         uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build the Hearth app (this commit)
+        working-directory: hosts/linux
+        run: |
+          v=$(grep -oP '(?<=<Version>)[^<]+' ../windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
+          npm install --no-audit --no-fund
+          npm version "$v" --no-git-tag-version --allow-same-version
+          npm run dist:dir
+          test -x dist/linux-unpacked/nimbus
+          mkdir -p ../../os/nimbus-app && cp -a dist/linux-unpacked/. ../../os/nimbus-app/
+          echo "$v" > ../../os/nimbus-app/hearth-version
+
       - name: Build the installer system
         run: |
           set -o pipefail
