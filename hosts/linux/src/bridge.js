@@ -173,6 +173,11 @@ class Bridge {
       case 'game.options.set': return L.setGameOptions(req('id'), a.options || {});
       case 'game.resetPrefix': return { ok: L.resetPrefix(req('id')) };
       case 'game.cancelInstall': return { ok: L.cancelInstall(req('id')) };
+      case 'game.pauseInstall': return { ok: L.pauseInstall(req('id')) };
+      case 'game.resumeInstall': return { ok: L.resumeInstall(req('id')) };
+      case 'game.installFirst': return { ok: L.firstInQueue(req('id')) };
+      case 'downloads.clearRecent': L.clearRecent(); return { ok: true };
+      case 'steam.downloads': if (this.platform.showSteam) this.platform.showSteam(); steam.openUri('steam://open/downloads'); return { ok: true };
       case 'game.uninstall': await L.uninstall(req('id')); return L.get(false);
 
       case 'accounts.status': {

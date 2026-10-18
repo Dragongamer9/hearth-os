@@ -68,3 +68,26 @@ test('guide: controller presses and directions for the overlay', () => {
   assert.deepStrictEqual(padEvents(ev([[3, 17, -1], [3, 17, 0], [3, 0, 30000], [3, 0, 15000], [3, 0, 0]]), st),
     [{ b: 'up', down: true }, { b: 'up', down: false }, { b: 'right', down: true }, { b: 'right', down: false }]);
 });
+
+test('install queue: pause keeps the job, resume carries on, queue order', async () => {
+  const { InstallQueue } = require('../src/stores/installs');
+  const q = new InstallQueue();
+  const started = [];
+  const work = id => async (job, signal) => { started.push(id); await new Promise((res, rej) => { const t = setTimeout(res, 200); signal.addEventListener('abort', () => { clearTimeout(t); rej(new Error('aborted')); }); }); };
+  const finished = [];
+  q.on('finished', (id, err) => finished.push(id + ':' + (err || 'ok')));
+  q.enqueue({ gameId: 'a', title: 'A', work: work('a') });
+  q.enqueue({ gameId: 'b', title: 'B', work: work('b') });
+  q.enqueue({ gameId: 'c', title: 'C', work: work('c') }, { paused: true });
+  await new Promise(r => setTimeout(r, 20));
+  assert.ok(q.pause('a'));
+  await new Promise(r => setTimeout(r, 20));
+  assert.strictEqual(q.get('a').state, 'paused');            // still in the queue
+  assert.deepStrictEqual(started, ['a', 'b']);               // b started while a is paused, c stays paused
+  q.resume('a'); q.first('a');
+  await new Promise(r => setTimeout(r, 500));
+  assert.deepStrictEqual(finished, ['b:ok', 'a:ok']);
+  assert.strictEqual(q.get('c').state, 'paused');
+  q.cancel('c');
+  assert.deepStrictEqual(finished, ['b:ok', 'a:ok', 'c:cancelled']);
+});
