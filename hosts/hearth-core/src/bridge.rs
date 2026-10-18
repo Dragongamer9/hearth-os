@@ -5,6 +5,7 @@
 use crate::library::Library;
 use crate::paths;
 use crate::store::Store;
+use crate::system;
 use serde_json::{json, Value};
 
 pub struct Bridge { pub library: Library, pub version: String }
@@ -50,10 +51,38 @@ impl Bridge {
                 std::process::Command::new("steam").arg(&uri).spawn().map_err(|e| format!("Couldn't start Steam: {e}"))?;
                 Ok(json!({"tracked": false}))
             }
+            // The top bar and Quick Access
+            "sys.status" => Ok(system::status(self.max_volume())),
+            "radios.set" => {
+                let on = a["on"].as_bool().unwrap_or(false);
+                if a["kind"] == "wifi" { system::wifi::set_radio(on)?; } else { system::bt::set_power(on)?; }
+                Ok(system::status(self.max_volume()))
+            }
+            "airplane.set" => { system::set_airplane(a["on"].as_bool().unwrap_or(false))?; Ok(system::status(self.max_volume())) }
+            "wifi.scan" => system::wifi::scan(),
+            "wifi.connect" => Ok(system::wifi::connect(&req("ssid")?, a["password"].as_str().filter(|p| !p.is_empty()))),
+            "wifi.disconnect" => system::wifi::disconnect().map(|_| Value::Null),
+            "wifi.forget" => system::wifi::forget(&req("ssid")?).map(|_| Value::Null),
+            "audio.setVolume" => system::audio::set_volume(a["v"].as_f64().unwrap_or(0.0).round().max(0.0) as u32, self.max_volume()).map(|_| Value::Null),
+            "audio.setMute" => system::audio::set_mute(a["m"].as_bool().unwrap_or(false)).map(|_| Value::Null),
+            "display.setBrightness" => system::set_brightness(a["v"].as_f64().unwrap_or(0.0).round().max(0.0) as u32).map(|_| Value::Null),
+            "setup.done" => io(self.library.store.update(|d| { d.insert("setupDone".into(), json!(now_ms())); })).map(|_| json!({"ok": true})),
             _ => Err(format!("{method} isn't in the Rust version of Hearth yet")),
         }
     }
 }
+
+impl Bridge {
+    /// 100, or 150 with louder-than-100% sound turned on (Settings › Audio).
+    pub fn max_volume(&self) -> u32 {
+        let prefs: Value = std::fs::read(paths::config_dir().join("buttons.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+        if prefs["overamp"] == true { 150 } else { 100 }
+    }
+    /// An event for the UI ({type:'event', name, data}), like the status the top bar refreshes every 30 s.
+    pub fn event(name: &str, data: Value) -> Value { json!({"type": "event", "name": name, "data": data}) }
+}
+
+fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
 
 fn hostname() -> String { std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()).unwrap_or_default() }
 
