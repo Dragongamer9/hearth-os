@@ -13,6 +13,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // Switch to Hearth OS: a step that needs administrator rights (started by Ember after Windows' prompt).
+        if (args.Contains("--admin", StringComparer.OrdinalIgnoreCase)) return Switch.AdminTasks.Run(args);
+
         // The desktop's "Game Mode" shortcut: ask the running Ember to come back, or start it.
         if (args.Contains("--game-mode", StringComparer.OrdinalIgnoreCase) && DesktopMode.SignalRunning()) return 0;
 
