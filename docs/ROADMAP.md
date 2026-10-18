@@ -63,6 +63,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Library is fast again in the Rust app (covers load in the background, off-screen tiles aren't drawn)
 - [x] Xbox Series controllers pair over Bluetooth
 - [x] Installer download shows percent, GB, speed and time left, every second
+- [x] Quick Access over a game no longer moves the game underneath: Hearth takes the controller while it's open
 
 ## 0.0.24 (released)
 
