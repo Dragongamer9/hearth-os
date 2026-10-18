@@ -786,6 +786,7 @@ app.whenReady().then(() => {
         system: sessionSetup.isSystemInstall(),   // part of Hearth (the OS): updates come with the system
         start: START_PAGE,                         // the page to open on
         live: fs.existsSync('/etc/hearth-live'),    // running from the live USB
+        installer: fs.existsSync('/etc/hearth-installer'),   // the small installer USB: only the installer, nothing to try
         edition: edition(),                         // for the player counter: live, nvidia, amd or appimage
         features: ['restartApp', 'exportLogs', 'powerButton', 'overamp', ...(controller.available ? ['remap'] : [])],
       }),
@@ -997,7 +998,7 @@ app.whenReady().then(() => {
   });
   if (IN_SESSION && library.store.data.fpsLimit) setFpsLimit(library.store.data.fpsLimit).catch(() => {});
   if (IN_SESSION && library.store.data.perfOverlay) try { require('./perf-overlay').set(library.store.data.perfOverlay); } catch {}
-  library.startBackgroundServices().catch(e => log('background services FAILED ' + e.message));
+  if (!fs.existsSync('/etc/hearth-installer')) library.startBackgroundServices().catch(e => log('background services FAILED ' + e.message));
   setTimeout(() => { if (library.store.data.autoUpdateCheck) updates.check(); }, 20000);
   setInterval(() => { if (library.store.data.autoUpdateCheck) updates.check(); }, 6 * 60 * 60 * 1000);
 });

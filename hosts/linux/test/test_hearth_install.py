@@ -184,6 +184,20 @@ class OtherSystems(unittest.TestCase):
             H.check_plan({**GOOD, 'mode': 'beside', 'give': 100 * GIB, 'part': '/dev/x;rm'})
 
 
+class Edition(unittest.TestCase):
+    def test_nvidia_card_picks_the_nvidia_edition(self):
+        with tempfile.TemporaryDirectory() as d:
+            def dev(name, vendor, cls):
+                os.makedirs(f'{d}/{name}')
+                with open(f'{d}/{name}/vendor', 'w') as f: f.write(vendor + '\n')
+                with open(f'{d}/{name}/class', 'w') as f: f.write(cls + '\n')
+            dev('0000:00:02.0', '0x8086', '0x030000')      # Intel graphics
+            dev('0000:00:1f.3', '0x10de', '0x040300')      # an Nvidia audio function: not a graphics card
+            self.assertFalse(H.has_nvidia(d))
+            dev('0000:01:00.0', '0x10de', '0x030000')
+            self.assertTrue(H.has_nvidia(d))
+
+
 class BootMenu(unittest.TestCase):
     def test_finds_other_loaders(self):
         with tempfile.TemporaryDirectory() as d:
