@@ -10,7 +10,7 @@ const { has } = require('../util');
 
 // fpsLimit and tdp (watts) work for every game, Steam's included: Hearth sets them when the game starts and puts
 // the usual ones back when it ends (0 = use Hearth's normal setting).
-const DEFAULTS = { proton: '', args: '', env: '', mangohud: false, gamemode: false, fsr: false, fpsLimit: 0, tdp: 0 };
+const DEFAULTS = { proton: '', args: '', env: '', mangohud: false, gamemode: false, fsr: false, fpsLimit: 0, tdp: 0, cloudSaves: true };
 
 /** What kind of launch a game has, which decides the settings it can have. */
 function kindOf(g) {
