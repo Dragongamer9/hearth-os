@@ -10,6 +10,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 /** A person's own files and folders, relative to Hearth's data folder. */
 const OWN = ['library.json', 'profile', 'accounts', 'legendary/user.json', 'gog/auth.json'];
@@ -73,6 +74,67 @@ class Profiles {
 
   setAskAtStart(on) { this.data.askAtStart = !!on; this.save(); }
 
+  // ---------------------------------------------------------------- parental controls
+  // A household PIN (4-8 digits, kept as a salted scrypt hash) guards managing profiles and leaving a profile
+  // that has limits. Limits per profile: minutes of play a day, and which games they can play (null = all).
+
+  get hasPin() { return !!(this.data.pin && this.data.pin.hash); }
+  checkPin(pin) {
+    if (!this.hasPin) return true;
+    const { salt, hash } = this.data.pin;
+    const got = crypto.scryptSync(String(pin || ''), Buffer.from(salt, 'hex'), 32);
+    return crypto.timingSafeEqual(got, Buffer.from(hash, 'hex'));
+  }
+  /** Sets or changes the PIN ('' removes it, and every profile's limits with it). */
+  setPin(pin) {
+    const p = String(pin || '');
+    if (!p) { delete this.data.pin; for (const x of this.data.list) delete x.limits; this.save(); return; }
+    if (!/^\d{4,8}$/.test(p)) throw new Error('The PIN is 4 to 8 numbers');
+    const salt = crypto.randomBytes(16);
+    this.data.pin = { salt: salt.toString('hex'), hash: crypto.scryptSync(p, salt, 32).toString('hex') };
+    this.save();
+  }
+  limits(id) {
+    const p = this.find(id); const l = (p && p.limits) || {};
+    return { minutesPerDay: l.minutesPerDay || 0, allowed: Array.isArray(l.allowed) ? l.allowed : null };
+  }
+  restricted(id = this.active) { const l = this.limits(id); return this.hasPin && (l.minutesPerDay > 0 || !!l.allowed); }
+  setLimits(id, patch) {
+    const p = this.find(id); if (!p) throw new Error('No such profile');
+    if (!this.hasPin) throw new Error('Set a PIN first, so limits can only be changed by you');
+    const l = { ...this.limits(id) };
+    if ('minutesPerDay' in patch) l.minutesPerDay = Math.max(0, Math.min(24 * 60, Math.round(+patch.minutesPerDay || 0)));
+    if ('allowed' in patch) l.allowed = Array.isArray(patch.allowed) ? [...new Set(patch.allowed.map(String))].slice(0, 2000) : null;
+    p.limits = l;
+    this.save();
+    return l;
+  }
+  /** Minutes this profile has played today (local date). */
+  playedToday(id = this.active, now = new Date()) {
+    const t = (this.data.today || {})[id];
+    return t && t.date === dayKey(now) ? t.minutes : 0;
+  }
+  addPlayed(id, minutes, now = new Date()) {
+    if (!(minutes > 0)) return;
+    const today = this.data.today || (this.data.today = {});
+    const k = dayKey(now);
+    if (!today[id] || today[id].date !== k) today[id] = { date: k, minutes: 0 };
+    today[id].minutes = Math.round((today[id].minutes + minutes) * 10) / 10;
+    this.save();
+  }
+  /**
+   * Can the active profile start this game now? {ok, reason, minutesLeft}. `sessionMinutes` counts a game
+   * that's running right now (not saved yet).
+   */
+  canPlay(gameId, { now = new Date(), sessionMinutes = 0 } = {}) {
+    if (!this.restricted()) return { ok: true, minutesLeft: null };
+    const l = this.limits(this.active);
+    if (l.allowed && gameId && !l.allowed.includes(gameId)) return { ok: false, reason: 'This game needs a grown-up to allow it (Settings › Profiles › Limits).', minutesLeft: null };
+    if (!l.minutesPerDay) return { ok: true, minutesLeft: null };
+    const left = l.minutesPerDay - this.playedToday(this.active, now) - sessionMinutes;
+    return left > 0 ? { ok: true, minutesLeft: Math.floor(left) } : { ok: false, reason: "That's all the play time for today. More tomorrow!", minutesLeft: 0 };
+  }
+
   /**
    * Puts the current person's files away and brings out the other person's. Hearth must restart afterwards
    * (it read the old files at start). Manual games carry over (everyone shares them).
@@ -106,6 +168,8 @@ class Profiles {
     return to;
   }
 }
+
+function dayKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
 function move(src, dst) {
   if (!fs.existsSync(src)) return;

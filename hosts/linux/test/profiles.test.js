@@ -57,3 +57,36 @@ test('Steam signs in as the profile\'s account next time', () => {
   assert.deepStrictEqual(steamAccounts(USERS), [{ account: 'dad', name: 'Dad' }, { account: 'mom', name: 'Mom' }]);
   assert.match(steamRegistryText('"Steam"\n{\n}', 'x'), /"AutoLoginUser"\s+"x"/);
 });
+
+test('parental controls: PIN, daily time and allowed games', () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { Profiles } = require('../src/profiles');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pc-'));
+  const ps = new Profiles(dir);
+  const kid = ps.create({ name: 'Sam' });
+  assert.throws(() => ps.setLimits(kid.id, { minutesPerDay: 60 }), /PIN first/);
+  assert.throws(() => ps.setPin('12'), /4 to 8/);
+  ps.setPin('2468');
+  assert.ok(ps.checkPin('2468'));
+  assert.ok(!ps.checkPin('1111'));
+  ps.setLimits(kid.id, { minutesPerDay: 60, allowed: ['steam:1', 'steam:1', 'gog:2'] });
+  assert.deepStrictEqual(ps.limits(kid.id), { minutesPerDay: 60, allowed: ['steam:1', 'gog:2'] });
+  assert.ok(!ps.restricted());          // the main profile has no limits
+  assert.ok(ps.canPlay('anything').ok);
+  ps.switchTo(kid.id);
+  assert.ok(ps.restricted());
+  const day = new Date(2026, 9, 18, 15);
+  assert.strictEqual(ps.canPlay('xbox:9', { now: day }).ok, false);
+  assert.deepStrictEqual(ps.canPlay('steam:1', { now: day }), { ok: true, minutesLeft: 60 });
+  ps.addPlayed(kid.id, 45, day);
+  assert.strictEqual(ps.canPlay('steam:1', { now: day, sessionMinutes: 10 }).minutesLeft, 5);
+  ps.addPlayed(kid.id, 15, day);
+  assert.strictEqual(ps.canPlay('steam:1', { now: day }).ok, false);
+  assert.strictEqual(ps.canPlay('steam:1', { now: new Date(2026, 9, 19, 9) }).minutesLeft, 60);   // new day
+  // kept across restarts
+  const again = new Profiles(dir);
+  assert.ok(again.checkPin('2468'));
+  assert.strictEqual(again.playedToday(kid.id, day), 60);
+  again.setPin('');
+  assert.ok(!again.restricted(kid.id));
+});
