@@ -196,6 +196,8 @@ fn art(uri: &str) -> Response<Vec<u8>> {
         ("", _) | (_, Err(_)) => Response::builder().status(StatusCode::NOT_FOUND).body(Vec::new()).unwrap(),
         (m, Ok(bytes)) => Response::builder()
             .header(CONTENT_TYPE, m)
+            // Kept by the web view, so drawing the library again doesn't read every picture again.
+            .header("Cache-Control", "max-age=86400")
             .header("Access-Control-Allow-Origin", "*")
             .body(bytes)
             .unwrap(),
@@ -311,7 +313,12 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Host(Arc::new(Mutex::new(Bridge::new(env!("CARGO_PKG_VERSION"))))))
-        .register_uri_scheme_protocol("nimbus-art", |_ctx, req| art(&req.uri().to_string()))
+        // Game art is read off the window's thread: with hundreds of covers in the library, reading them on it
+        // froze the screen while you scrolled.
+        .register_asynchronous_uri_scheme_protocol("nimbus-art", |_ctx, req, responder| {
+            let uri = req.uri().to_string();
+            std::thread::spawn(move || responder.respond(art(&uri)));
+        })
         // Epic's sign-in page hands its code over as hearth-signin://done?code=… (if the window lets it through).
         .register_uri_scheme_protocol("hearth-signin", |_ctx, req| {
             let u = req.uri().to_string();
