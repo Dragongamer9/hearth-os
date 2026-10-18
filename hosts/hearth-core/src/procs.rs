@@ -36,7 +36,10 @@ pub fn snapshot(root: &Path) -> Vec<Proc> {
     out
 }
 
-fn under(p: &str, dir: &str) -> bool { !p.is_empty() && !dir.is_empty() && (p == dir || p.starts_with(&format!("{}/", dir.trim_end_matches('/')))) }
+fn under(p: &str, dir: &str) -> bool {
+    let d = dir.trim_end_matches('/');
+    !p.is_empty() && !d.is_empty() && (p.trim_end_matches('/') == d || p.starts_with(&format!("{d}/")))
+}
 
 pub fn game_processes(track: &Track, procs: &[Proc], me: u32) -> Vec<u32> {
     let mut roots: HashSet<u32> = HashSet::new();
