@@ -9,6 +9,15 @@ internal static class Native
 {
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool LockWorkStation();
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+    /// <summary>Win+PrintScreen: Windows saves a screenshot to Pictures\Screenshots (and flashes the screen).</summary>
+    public static void Screenshot()
+    {
+        keybd_event(0x5B, 0, 0, UIntPtr.Zero); keybd_event(0x2C, 0, 0, UIntPtr.Zero);
+        keybd_event(0x2C, 0, 2, UIntPtr.Zero); keybd_event(0x5B, 0, 2, UIntPtr.Zero);
+    }
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
