@@ -21,6 +21,23 @@ class Importer extends EventEmitter {
     this.proc = null;
     // Epic games waiting for an Epic sign-in to finish importing.
     library.accounts.on('changed', () => this.finishPendingEpic().catch(e => log('import: epic: ' + e.message)));
+    // First start after installing (often next to Windows, from the live USB's "Install next to Windows"):
+    // look once for games on other drives and offer to bring them over.
+    this.offerTimer = setTimeout(() => this.offerOnce().catch(e => log('import: offer: ' + e.message)), 90000);
+    if (this.offerTimer.unref) this.offerTimer.unref();
+  }
+
+  async offerOnce() {
+    if (!this.supported || this.store.data.importOffered) return;
+    this.store.update(d => { d.importOffered = Date.now(); });
+    await this.scan();
+    const drives = (this.state.scan && this.state.scan.drives) || [];
+    const games = drives.reduce((n, d) => n + d.steam.length + d.epic.length + d.gog.length, 0);
+    if (games > 0) {
+      const from = drives.filter(d => d.steam.length + d.epic.length + d.gog.length).map(d => d.name);
+      this.set({ offer: { games, from } });
+      log(`import: offering ${games} games from ${from.join(', ')}`);
+    }
   }
 
   get supported() { return this.admin.canAdmin; }
