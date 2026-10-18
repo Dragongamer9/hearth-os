@@ -34,6 +34,7 @@ pub fn desktop_dir() -> PathBuf {
         // Running from the source tree (target/release/hearth): the Linux host's folder.
         for a in dir.ancestors() { c.push(a.join("hosts/linux/desktop")); }
     }
+    c.push(PathBuf::from("/usr/share/nimbus/desktop"));   // Hearth, the OS
     c.push(PathBuf::from("/usr/lib/hearth/desktop"));
     c.push(PathBuf::from("/usr/lib/nimbus/resources/desktop"));
     c.into_iter().find(|p| p.join("shell").is_dir()).unwrap_or_else(|| PathBuf::from("/usr/lib/hearth/desktop"))
