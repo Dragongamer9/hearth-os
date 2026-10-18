@@ -287,6 +287,8 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .padpic.on{background:var(--accent);color:var(--accentInk);animation:none}
 @keyframes padpulse{50%{transform:scale(1.06);opacity:.75}}
 .padwait{display:flex;gap:10px;align-items:center;justify-content:center;margin:6px 0 4px}
+.padhow{max-width:560px;margin:14px auto 0;padding:14px 18px;border-radius:14px;background:var(--panel);color:var(--dim);font-size:14px;line-height:1.55}
+.padhow b{color:var(--text)}
 .setup .center .lead{margin-left:auto;margin-right:auto}
 .setup .center .acts{justify-content:center}
 .lbox{position:relative;text-align:center}
@@ -743,10 +745,11 @@ const MOCK = (()=>{
     'profiles.get':async()=>({active:'main',askAtStart:true,picked:false,hasPin:true,unlocked:true,list:[{id:'main',name:'Dragon',color:'#ff8a3d',steam:'dragongamer9',current:true,limits:{minutesPerDay:0,allowed:null}},{id:'p2',name:'Sarah',color:'#b57bff',steam:'sarahplays',current:false,limits:{minutesPerDay:0,allowed:null}},{id:'p3',name:'Kids',color:'#3fd0b8',steam:null,current:false,limits:{minutesPerDay:90,allowed:['a','b']},playedToday:35}],steamAccounts:[{account:'dragongamer9',name:'Dragon'},{account:'sarahplays',name:'Sarah'}]}),
     'osinstall.status':async()=>({available:true,state:'idle'}),
     'osinstall.disks':async()=>{ await wait(400); return {disks:[
-      {dev:'/dev/nvme0n1',size:1e12,model:'Samsung 980 PRO',tran:'nvme',live:false,windows:true,tooSmall:false,parts:[{},{},{},{}]},
+      {dev:'/dev/nvme0n1',size:1e12,model:'Samsung 980 PRO',tran:'nvme',live:false,windows:true,tooSmall:false,parts:[{},{},{},{}],systems:[{kind:'windows',name:'Windows',part:'/dev/nvme0n1p3',shrink:'/dev/nvme0n1p3'}]},
+      {dev:'/dev/nvme1n1',size:2e12,model:'WD Black SN850',tran:'nvme',live:false,windows:false,tooSmall:false,parts:[{},{},{},{},{},{},{},{}],systems:[{kind:'linux',name:'SteamOS',part:'/dev/nvme1n1p8',shrink:'/dev/nvme1n1p8'}]},
       {dev:'/dev/sda',size:5e11,model:'Crucial MX500',tran:'sata',live:false,windows:false,tooSmall:false,parts:[]},
       {dev:'/dev/sdb',size:3.2e10,model:'SanDisk Ultra',tran:'usb',live:true,windows:false,tooSmall:true,parts:[{},{}]}]}; },
-    'osinstall.check':async()=>{ await wait(900); return {windows:{size:1e12,min:3.1e11,canGive:6.6e11},problems:[],games:{count:14,size:4.1e11},suggested:448*2**30}; },
+    'osinstall.check':async({part})=>{ await wait(900); return part ? {target:{kind:'linux',name:'SteamOS',part,size:1.9e12,min:6e11,used:5.8e11,freeSpace:0,canGive:1.2e12},problems:[],suggested:512*2**30} : {windows:{size:1e12,min:3.1e11,canGive:6.6e11},target:{kind:'windows',name:'Windows',size:1e12,min:3.1e11,canGive:6.6e11,freeSpace:0},problems:[],games:{count:14,size:4.1e11},suggested:448*2**30}; },
     'osinstall.useMantel':async()=>true,
     'osinstall.start':async()=>{ const steps=[['format',15,'Preparing the drive'],['download',20,'Downloading Hearth OS (4.8 GB)'],['download',46,'Downloading Hearth OS (4.8 GB)'],['download',72,'Downloading Hearth OS (4.8 GB)'],['boot',84,'Setting up starting up'],['user',90,'Creating your account'],['finish',97,'Finishing up']];
       steps.forEach(([stage,pct,text],i)=>timers.push(setTimeout(()=>onSysEvent('osInstall',{state:'running',stage,pct,text,left:stage==='download'?Math.round((80-pct)*12):null}),900*(i+1))));
@@ -2615,10 +2618,12 @@ function act(el){
     case 'liveTry': S.history=[]; navigate('home',{},false); return toast('Install Hearth OS is in Settings whenever you\'re ready');
     case 'osiNext': return osiGo(1);
     case 'osiBack': return osiGo(-1);
-    case 'osiMode': if(el.disabled) return; OSI.mode=d.v; OSI.disk=null; OSI.check=null; return render('osi-'+d.v);
+    case 'osiMode': if(el.disabled) return; OSI.mode=d.v; OSI.disk=null; OSI.check=null; OSI.target=null;
+      if(d.v==='beside'){ const t=osiSystems()[+d.i]; if(!t) return; OSI.target=t; OSI.disk=t.disk; }
+      return render('osi-'+d.v+(d.i!=null?'-'+d.i:''));
     case 'osiDisk': OSI.disk=d.v; if(OSI.mode==='beside' && !OSI.check) osiCheck(); return render(null,true);
     case 'osiSize': return osiSizeStep(+d.v);
-    case 'osiSizeMax': { const w=OSI.check&&OSI.check.windows; if(w){ OSI.give=w.canGive; render('osi-szmax'); } return; }
+    case 'osiSizeMax': { const w=OSI.check&&OSI.check.target; if(w){ OSI.give=w.canGive; render('osi-szmax'); } return; }
     case 'osiRecheck': return osiCheck();
     case 'osiEdit': return osiEdit(d.v);
     case 'osiTz': return osiTzPick();
@@ -3002,12 +3007,16 @@ function padState(){
   return {on:false, name:''};
 }
 let padWatch=null, padWas=null;
+const BTPAD={state:'', name:''};
 function watchPad(on){
+  if(!!padWatch===on) return;
   clearInterval(padWatch); padWatch=null; padWas=null;
-  if(!on) return;
+  // Bluetooth controllers are found and paired automatically while this screen is up: nothing else to press.
+  if(host && LINUX) call('bt.autoPads',{on}).catch(()=>{});
+  if(!on){ BTPAD.state=''; return; }
   padWatch=setInterval(()=>{
     const waiting = S.view==='pad' || (S.view==='setup' && SETUP_STEPS[S.setupStep||0]==='controller');
-    if(!waiting){ clearInterval(padWatch); padWatch=null; return; }
+    if(!waiting){ watchPad(false); return; }
     const st=padState(); if(padWas===st.on) return;
     const first=padWas===null; padWas=st.on;
     if(!first){ if(st.on) blip(880,.06,.05); render(st.on?'pad-go':'pad-skip', true); }
@@ -3015,12 +3024,14 @@ function watchPad(on){
 }
 function padBody(go, skip, extra=''){
   const st=padState();
+  if(!st.on && BTPAD.state==='paired') BTPAD.state='pairing';   // paired: the controller shows up in a moment
   return `<div class="center"><div class="padpic ${st.on?'on':''}">${I.pad}</div>
     <h1>${st.on?'Controller connected':'Connect a controller'}</h1>
     <p class="lead">${st.on?`${esc(st.name)} is ready. Press <b>A</b> to carry on.`:`Turn on your controller or plug it in. For a Bluetooth controller, hold its pairing button, then choose Pair a Bluetooth controller.`}</p>
-    ${st.on?'':`<div class="muted padwait"><span class="mini-spin"></span>Waiting for a controller…</div>`}
+    ${st.on?'':`<div class="muted padwait"><span class="mini-spin"></span>${BTPAD.state==='pairing'?`Connecting to ${esc(BTPAD.name)}…`:BTPAD.state==='failed'?`Couldn't connect to ${esc(BTPAD.name)}. Trying again…`:'Looking for controllers…'}</div>
+    <div class="padhow"><b>Bluetooth controller?</b> Put it in pairing mode and Hearth connects to it by itself:<br>
+      Xbox: hold the small pair button on top until the logo flashes fast · PlayStation: hold Create and PS until the light flashes · Switch Pro: hold the sync button on top · 8BitDo: hold the pair button</div>`}
     <div class="acts">${st.on?`<button class="play" data-f data-k="pad-go" data-act="${go}">Continue</button>`:''}
-      ${st.on?'':`<button class="pill" data-f data-k="pad-bt" data-act="padBt">${I.bt}Pair a Bluetooth controller</button>`}
       <button class="pill ghost" data-f data-k="pad-skip" data-act="${skip}">${st.on?'Use a keyboard and mouse instead':'Skip: I\'ll use a keyboard and mouse'}</button></div>${extra}</div>`;
 }
 function viewPad(){ watchPad(true); return `<div class="setup" style="max-width:760px;margin:12vh auto 0;padding:0 24px">${padBody('padDone','padSkip')}</div>`; }
@@ -3088,7 +3099,7 @@ function viewSetup(){
 // ---------- Install Hearth (live USB): Hearth's own installer, controller-first ----------
 // The same engine as Mantel's install window (hearth-install). Steps: how (next to Windows, or a whole drive),
 // which drive and how much room, your account, internet, a last look, then the install itself.
-const OSI = {step:'how', disks:null, check:null, checking:false, mode:null, disk:null, give:0,
+const OSI = {step:'how', disks:null, check:null, checking:false, mode:null, disk:null, give:0, target:null,
   user:{full:'', name:'', password:''}, hostname:'', tz:'', s:null};
 const OSI_STEPS = ['how','drive','account','online','review','run'];
 const OSI_TZ = ['America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Anchorage','Pacific/Honolulu',
@@ -3108,11 +3119,15 @@ function osiLoad(){
 }
 function osiCheck(){
   if(OSI.checking) return; OSI.checking=true; OSI.check=null; render(null,true);
-  call('osinstall.check',{},180000).then(r=>{ OSI.check=r; OSI.give = r.suggested || r.windows&&r.windows.canGive || 0; })
+  const t=OSI.target;
+  call('osinstall.check',{part:t&&t.kind==='linux'?(t.shrink||t.part):null},180000).then(r=>{ OSI.check=r; OSI.give = r.suggested || r.target&&r.target.canGive || 0; })
     .catch(e=>{ OSI.check={problems:[{id:'error',text:e.message}]}; })
     .finally(()=>{ OSI.checking=false; render(null,true); });
 }
 const osiDisk = ()=> (OSI.disks||[]).find(d=>d.dev===OSI.disk);
+/** Systems Hearth can go next to, on every drive: Windows, SteamOS, other Linux. */
+const osiSystems = ()=> (OSI.disks||[]).filter(d=>!d.live).flatMap(d=>(d.systems||[]).map(x=>({...x, disk:d.dev, model:d.model, size:d.size})));
+const osiName = ()=> (OSI.target&&OSI.target.name) || 'Windows';
 const osiUsable = ()=> (OSI.disks||[]).filter(d=>!d.live && !d.tooSmall);
 function osiGo(d){
   const i=OSI_STEPS.indexOf(OSI.step)+d;
@@ -3129,7 +3144,7 @@ function osiBlock(step){
   if(step==='how' && !OSI.mode) return 'Choose how to install';
   if(step==='drive'){
     if(!OSI.disk) return 'Choose a drive';
-    if(OSI.mode==='beside'){ const c=OSI.check; if(!c||OSI.checking) return 'Checking Windows…';
+    if(OSI.mode==='beside'){ const c=OSI.check; if(!c||OSI.checking) return `Checking ${osiName()}…`;
       const hard=(c.problems||[]).filter(p=>!p.soft); if(hard.length) return hard[0].text; if(OSI.give<64*2**30) return 'Hearth needs at least 64 GB'; }
   }
   if(step==='account'){ const u=OSI.user;
@@ -3162,7 +3177,7 @@ function osiTzPick(){
   openSheet({title:'Time zone', items: OSI_TZ.map(z=>({label:z.replace(/_/g,' ').replace('/',' · '), icon: z===OSI.tz?'check':'info', run:()=>{ OSI.tz=z; render('osi-tz'); }}))});
 }
 function osiSizeStep(dir){
-  const w=OSI.check&&OSI.check.windows; if(!w) return;
+  const w=OSI.check&&OSI.check.target; if(!w) return;
   const step=16*2**30, max=w.canGive, min=64*2**30;
   OSI.give=Math.max(min, Math.min(max, Math.round((OSI.give+dir*step)/step)*step));
   render(dir>0?'osi-sz1':'osi-sz-1');
@@ -3170,11 +3185,11 @@ function osiSizeStep(dir){
 function osiStart(){
   const d=osiDisk(); if(!d) return;
   const plan={mode:OSI.mode, disk:OSI.disk, user:{...OSI.user}, hostname:OSI.hostname||osiHost(OSI.user), timezone:OSI.tz, signin:OSI.signin||'auto'};
-  if(OSI.mode==='beside') plan.give=OSI.give;
+  if(OSI.mode==='beside'){ plan.give=OSI.give; if(OSI.target&&OSI.target.kind==='linux') plan.part=OSI.target.shrink||OSI.target.part; }
   const go=()=>call('osinstall.start',{plan},30000).then(s=>{ OSI.s=s; OSI.step='run'; render('osi-run'); }).catch(e=>toast(e.message));
-  if(OSI.mode==='whole') openSheet({title:`Erase ${d.model}?`, sub:`Everything on this ${gb(d.size)} drive is erased for good${d.windows?', including Windows':''}, and Hearth OS goes on it.`, items:[
+  if(OSI.mode==='whole') openSheet({title:`Erase ${d.model}?`, sub:`Everything on this ${gb(d.size)} drive is erased for good${(d.systems||[]).length?', including '+d.systems.map(x=>x.name).join(' and '):''}, and Hearth OS goes on it.`, items:[
     {label:'Erase it and install Hearth', icon:'trash', run:go}]});
-  else openSheet({title:'Install next to Windows?', sub:`Windows gets ${gb(OSI.give)} smaller and Hearth goes in that space. Windows and its files stay. Keep the device plugged in.`, items:[
+  else openSheet({title:`Install next to ${osiName()}?`, sub:`${osiName()} gets ${gb(OSI.give)} smaller and Hearth goes in that space. ${osiName()} and its files stay. Keep the device plugged in.`, items:[
     {label:'Install Hearth', icon:'dl', run:go}]});
 }
 function onOsInstall(s){ OSI.s=s; if(S.view==='osinstall'){ if(s.state==='running'||s.state==='done'||s.state==='failed') OSI.step='run'; render(null,true); } }
@@ -3186,27 +3201,35 @@ function viewOsInstall(){
   const choice=(k,ic,title,sub,on,act,extra='')=>`<button class="row ${on?'on':''}" data-f data-k="${k}" data-act="${act}" ${extra}><span class="ricon">${I[ic]||I.info}</span><div class="rt"><b>${title}</b><small>${sub}</small></div><div class="rv">${on?I.check:''}</div></button>`;
   let body='';
   if(OSI.step==='how'){
-    const win=(OSI.disks||[]).some(d=>d.windows&&!d.live);
+    const sys=osiSystems(), many=new Set(sys.map(x=>x.disk)).size>1;
+    const besides = !OSI.disks ? note('Looking for Windows, SteamOS and other systems…')
+      : sys.length ? sys.map((x,i)=>{ const on=OSI.mode==='beside'&&OSI.target&&OSI.target.disk===x.disk&&OSI.target.part===x.part;
+          const sub = !x.shrink ? `Keep ${esc(x.name)}. Hearth can't make it smaller, so it needs free (unpartitioned) space on that drive.`
+            : x.kind==='windows' ? 'Keep Windows and its files. Hearth gets space Windows isn\'t using, and can bring your games over after.'
+            : `Keep ${esc(x.name)} and its games. Hearth gets space ${esc(x.name)} isn't using. Choose which one to start when the PC turns on.`;
+          return choice('osi-beside-'+i, x.kind==='windows'?'shell':'pad', `Install next to ${esc(x.name)}${many?` <small style="color:var(--dim)">(${esc(x.model)})</small>`:''}`, sub, on, 'osiMode', `data-v="beside" data-i="${i}"`); }).join('')
+      : choice('osi-beside','shell','Install next to another system','Nothing else was found on this PC (Windows, SteamOS or other Linux)', false,'osiMode','data-v="beside" disabled');
     body=`<div class="center"><div class="mark">${HEARTH_MARK}</div></div><h1>Install Hearth OS</h1><p class="lead">Hearth downloads the newest Hearth OS while it installs, so keep it connected to the internet and plugged in. It takes about 10 to 20 minutes.</p><div class="rows">
-      ${choice('osi-beside','shell','Install next to Windows', win?'Keep Windows and its files. Hearth gets space Windows isn\'t using, and can bring your games over after.':'No Windows was found on this PC', OSI.mode==='beside','osiMode','data-v="beside"'+(win?'':' disabled'))}
+      ${besides}
       ${choice('osi-whole','trash','Erase a drive and install Hearth','Hearth gets the whole drive. Everything on it is erased.', OSI.mode==='whole','osiMode','data-v="whole"')}
       </div><div class="acts">${next()}${back}</div>`;
   }
   else if(OSI.step==='drive'){
-    const list=(OSI.disks||[]).filter(d=>OSI.mode==='beside'?d.windows:true);
+    const list=(OSI.disks||[]).filter(d=>OSI.mode==='beside'?d.dev===OSI.disk:true);
     if(!OSI.disks) body=`<h1>Choose a drive</h1>${note('Looking for drives…')}`;
     else {
       const rows=list.map(d=>{ const why=d.live?'The USB stick Hearth is running from':d.tooSmall?'Too small (Hearth needs 64 GB)':'';
-        return choice('osi-d-'+d.dev.replace(/\W/g,''),'dl',`${esc(d.model)} · ${gb(d.size)}`, why || [d.tran&&d.tran.toUpperCase(), d.windows?'Has Windows':'', d.parts.length?`${d.parts.length} partition${d.parts.length===1?'':'s'}`:'Empty'].filter(Boolean).join(' · '), OSI.disk===d.dev, why?'noop':'osiDisk', `data-v="${esc(d.dev)}"${why?' disabled':''}`); }).join('');
-      body=`<h1>${OSI.mode==='beside'?'Which drive has Windows?':'Which drive should Hearth go on?'}</h1><p class="lead">${OSI.mode==='whole'?'<b>Everything on the drive you choose is erased.</b>':'Hearth goes next to Windows on the same drive.'}</p><div class="rows">${rows||note('No drives found that Hearth can use.')}</div>`;
+        return choice('osi-d-'+d.dev.replace(/\W/g,''),'dl',`${esc(d.model)} · ${gb(d.size)}`, why || [d.tran&&d.tran.toUpperCase(), (d.systems||[]).length?'Has '+d.systems.map(x=>x.name).join(' and '):'', d.parts.length?`${d.parts.length} partition${d.parts.length===1?'':'s'}`:'Empty'].filter(Boolean).join(' · '), OSI.disk===d.dev, why?'noop':'osiDisk', `data-v="${esc(d.dev)}"${why?' disabled':''}`); }).join('');
+      body = OSI.mode==='beside' ? `<h1>Room for Hearth</h1><p class="lead">Hearth goes next to ${esc(osiName())} on ${esc((osiDisk()||{}).model||'this drive')}.</p>`
+        : `<h1>Which drive should Hearth go on?</h1><p class="lead"><b>Everything on the drive you choose is erased.</b></p><div class="rows">${rows||note('No drives found that Hearth can use.')}</div>`;
       if(OSI.mode==='beside' && OSI.disk){
-        const c=OSI.check, w=c&&c.windows;
-        if(OSI.checking||!c) body+=note('Checking Windows: free space, BitLocker, Fast Startup and your games… (up to a minute)');
+        const c=OSI.check, w=c&&c.target, nm=esc(osiName());
+        if(OSI.checking||!c) body+=note(OSI.target&&OSI.target.kind==='linux'?`Checking ${nm}: how much room it can give… (up to a minute)`:'Checking Windows: free space, BitLocker, Fast Startup and your games… (up to a minute)');
         else {
           (c.problems||[]).forEach(p=>{ body+=`<div class="note" style="border-color:${p.soft?'var(--panel3)':'var(--bad,#e5483b)'}">${esc(p.text)}</div>`; });
           if(w && w.canGive>=64*2**30){
             const winAfter=w.size-OSI.give;
-            body+=`<h3 style="margin:22px 0 8px">How much room for Hearth?</h3><div class="row" data-f data-k="osi-size"><div class="rt"><b>Hearth: ${gb(OSI.give)}</b><small>Windows keeps ${gb(winAfter)} (${gb(Math.max(0,winAfter-w.min))} free).</small><div class="storage"><i style="width:${Math.round(OSI.give/w.size*100)}%"></i></div></div></div>`;
+            body+=`<h3 style="margin:22px 0 8px">How much room for Hearth?</h3><div class="row" data-f data-k="osi-size"><div class="rt"><b>Hearth: ${gb(OSI.give)}</b><small>${w.freeSpace>=OSI.give?`From free space already on the drive. ${nm} stays the same size.`:`${nm} keeps ${gb(winAfter)} (${gb(Math.max(0,winAfter-w.min))} free).`}</small><div class="storage"><i style="width:${Math.round(OSI.give/w.size*100)}%"></i></div></div></div>`;
             body+=`<div style="display:flex;gap:10px;margin-top:10px">${[[-1,'Less'],[1,'More']].map(([v,l])=>`<button class="pill" data-f data-k="osi-sz${v}" data-act="osiSize" data-v="${v}">${l}</button>`).join('')}<button class="pill" data-f data-k="osi-szmax" data-act="osiSizeMax">As much as possible</button></div>`;
             if(c.games && c.games.count) body+=note(`${c.games.count} game${c.games.count===1?'':'s'} found in Windows (${gb(c.games.size)}). After installing, Hearth offers to bring them over: leave room for them.`);
           }
@@ -3232,20 +3255,20 @@ function viewOsInstall(){
   else if(OSI.step==='review'){
     const d=osiDisk()||{model:'?',size:0}, u=OSI.user;
     const line=(t,v)=>`<div class="row"><div class="rt"><b>${t}</b></div><div class="rv">${v}</div></div>`;
-    body=`<h1>Ready to install</h1><p class="lead">${OSI.mode==='whole'?`<b>${esc(d.model)} is erased</b> and Hearth OS goes on it.`:`Windows gets ${gb(OSI.give)} smaller and Hearth OS goes next to it.`} The PC asks which one to start after, and Hearth is first.</p><div class="rows">
-      ${line('How', OSI.mode==='whole'?'Erase the whole drive':'Next to Windows')}${line('Drive', `${esc(d.model)} · ${gb(d.size)}`)}${OSI.mode==='beside'?line('Room for Hearth', gb(OSI.give)):''}
+    body=`<h1>Ready to install</h1><p class="lead">${OSI.mode==='whole'?`<b>${esc(d.model)} is erased</b> and Hearth OS goes on it.`:`${esc(osiName())} gets ${gb(OSI.give)} smaller and Hearth OS goes next to it. When the PC starts, Hearth's menu lets you pick Hearth or ${esc(osiName())}.`}</p><div class="rows">
+      ${line('How', OSI.mode==='whole'?'Erase the whole drive':'Next to '+esc(osiName()))}${line('Drive', `${esc(d.model)} · ${gb(d.size)}`)}${OSI.mode==='beside'?line('Room for Hearth', gb(OSI.give)):''}
       ${line('Account', `${esc(u.full)} (${esc(u.name)})${u.nopassword?' · no password':''}`)}${u.nopassword?'':line('Ask for my password', OSI_SIGNIN[OSI.signin||'auto'])}${line('Device name', esc(OSI.hostname||osiHost(u)))}${line('Time zone', esc(OSI.tz.replace(/_/g,' ')))}
       ${line('Edition', HOSTINFO.edition==='nvidia'?'Nvidia graphics':'AMD and Intel graphics')}
       </div><div class="acts"><button class="play" data-f data-k="osi-go" data-act="osiStart">${I.dl}Install Hearth OS</button>${back}</div>`;
   }
   else {
     const s=OSI.s||{state:'running',pct:0,text:'Starting'};
-    if(s.state==='done') body=`<div class="center"><div class="mark">${HEARTH_MARK}</div><h1>Hearth OS is installed</h1><p class="lead">Restart, and take out the USB stick when the screen goes dark. Hearth starts with a short setup: Wi-Fi, your game stores${OSI.mode==='beside'?' and bringing your games over from Windows':''}.</p>
+    if(s.state==='done') body=`<div class="center"><div class="mark">${HEARTH_MARK}</div><h1>Hearth OS is installed</h1><p class="lead">Restart, and take out the USB stick when the screen goes dark. Hearth starts with a short setup: Wi-Fi, your game stores${OSI.mode==='beside'?` and bringing your games over from ${esc(osiName())}`:''}.</p>
       <div class="acts"><button class="play" data-f data-k="osi-restart" data-act="osiRestart">${I.restart}Restart now</button></div></div>`;
-    else if(s.state==='failed') body=`<h1>The install didn't finish</h1><p class="lead">${esc(s.error||'Something went wrong.')}</p>${note(OSI.mode==='whole'?'The drive may be half-written: installing again starts over.':'Windows is still there. If it got smaller, the space is still free: installing again uses it.')}
+    else if(s.state==='failed') body=`<h1>The install didn't finish</h1><p class="lead">${esc(s.error||'Something went wrong.')}</p>${note(OSI.mode==='whole'?'The drive may be half-written: installing again starts over.':`${esc(osiName())} is still there. If it got smaller, the space is still free: installing again uses it.`)}
       <div class="acts"><button class="play" data-f data-k="osi-again" data-act="osiAgain">Try again</button><button class="pill ghost" data-f data-k="osi-logs" data-act="exportLogs">Save logs</button></div>`;
     else {
-      const steps=[['shrink','Making room next to Windows'],['disk','Preparing the drive'],['format','Preparing the drive'],['download','Downloading Hearth OS'],['boot','Setting up starting up'],['user','Creating your account'],['finish','Finishing up']]
+      const steps=[['shrink','Making room next to '+osiName()],['disk','Preparing the drive'],['format','Preparing the drive'],['download','Downloading Hearth OS'],['boot','Setting up starting up'],['user','Creating your account'],['finish','Finishing up']]
         .filter(([k])=>OSI.mode==='beside'?k!=='disk':k!=='shrink').filter((x,i,a)=>a.findIndex(y=>y[1]===x[1])===i);
       const order=['start','shrink','disk','format','download','boot','user','finish','done'], at=order.indexOf(s.stage);
       const left = s.left!=null ? ` · about ${s.left<90?'a minute':Math.round(s.left/60)+' minutes'} left` : '';
@@ -3647,6 +3670,7 @@ function onSysEvent(name, data){
   if(name==='osInstall') return onOsInstall(data);
   if(name==='lock') return lockNow();
   if(name==='profiles.changed') return loadProfiles();
+  if(name==='bt.pad'){ BTPAD.state=data.state; BTPAD.name=data.name||'the controller'; if(data.state==='paired') toast(`${BTPAD.name} connected`); if(S.view==='pad'||S.view==='setup') render(null,true); return; }
   if(name==='parental.timeup'){ toast("Play time's up for today"); return; }
   if(name==='profiles.switching'){ PROF.switching=data.name; if(S.view!=='profiles') navigate('profiles',{},false); else render(null,true); return; }
   if(name==='switch'){ if(SW.s) SW.s.job=data.job; if(data.job && data.job.state==='done') loadSwitch(); if(data.job && data.job.state==='error') toast(data.job.error||'That step didn\'t work'); if(S.view==='settings'&&S.settingsTab==='switch') render(null,true); return; }

@@ -74,6 +74,7 @@ class Bridge {
 
     this.bt.on('found', d => this.event('bt.found', d));
     this.bt.on('scanDone', () => this.event('bt.scanDone', {}));
+    this.bt.on('pad', d => this.event('bt.pad', d));
     library.on('started', id => this.event('game.started', { id }));
     library.on('timeout', id => this.event('game.timeout', { id }));
     library.on('exited', dto => this.event('game.exited', dto));
@@ -137,6 +138,7 @@ class Bridge {
         if (!(await this.bt.powered())) throw new Error('Bluetooth is off');
         this.bt.startScan(a.seconds || 15); return null;
       case 'bt.scanStop': this.bt.stopScan(); return null;
+      case 'bt.autoPads': this.bt.autoPairPads(!!a.on); return null;
       case 'bt.pair': return this.bt.pair(req('id'));
       case 'bt.confirmPin': return null; // bluetoothctl's default agent confirms on its own
       case 'bt.unpair': return this.bt.unpair(req('id'));
@@ -347,7 +349,7 @@ class Bridge {
       case 'profiles.setLimits': return this.platform.profiles.setLimits(req('id'), { ...('minutesPerDay' in a ? { minutesPerDay: a.minutesPerDay } : {}), ...('allowed' in a ? { allowed: a.allowed } : {}) });
       case 'osinstall.status': return this.osInstaller.status();
       case 'osinstall.disks': return this.osInstaller.disks();
-      case 'osinstall.check': return this.osInstaller.check();
+      case 'osinstall.check': return this.osInstaller.check(typeof a.part === 'string' ? a.part : null);
       case 'osinstall.start': return this.osInstaller.start(a.plan || {});
       case 'osinstall.restart': return this.osInstaller.restart();
       // "Install with Mantel": Mantel opens its install window when it starts (the UI then switches to Desktop Mode).
