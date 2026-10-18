@@ -261,6 +261,14 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 #launch.open{opacity:1}
 #launch .img{width:100%;height:100%;object-fit:cover}
 #launch .art{position:absolute;inset:0;filter:blur(40px) brightness(.5);transform:scale(1.2)}
+.setup h1{font-size:32px;font-weight:800;margin:0 0 8px;letter-spacing:-.01em}
+.setup .lead{color:var(--dim);font-size:16px;margin:0 0 18px;max-width:620px}
+.setup .mark{width:110px;height:110px;margin:0 auto 18px}
+.setup .mark svg{width:100%;height:100%;display:block}
+.setup .acts{display:flex;gap:12px;align-items:center;margin-top:22px}
+.setup .center{text-align:center}
+.setup .center .lead{margin-left:auto;margin-right:auto}
+.setup .center .acts{justify-content:center}
 .lbox{position:relative;text-align:center}
 .lbox .t{font-size:30px;font-weight:800;margin-top:22px}
 .lbox .s{color:var(--dim);margin-top:6px}
@@ -638,7 +646,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.live){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'To install it: Power › Switch to desktop, then Install Hearth'}); updateBadge(); toast('Running from the USB stick. To install Hearth: Power › Switch to desktop › Install Hearth.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'To install it: Power › Switch to desktop, then Install Hearth'}); updateBadge(); toast('Running from the USB stick. To install Hearth: Power › Switch to desktop › Install Hearth.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 const pending = new Map(); let rid = 0;
@@ -1961,7 +1969,7 @@ function viewSettings(){
     <div class="rows">${body}</div></div>`;
 }
 
-const VIEWS = {home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
+const VIEWS = {setup:viewSetup, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 function render(focusKey, quiet){
@@ -2378,6 +2386,9 @@ function act(el){
     case 'swDl': return call('switch.download',{url:SW.s.isoUrl}).then(r=>{ SW.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'swUsb': return swUsb(+d.disk, d.name);
     case 'swRestart': return swRestart();
+    case 'setupNext': return SETUP_STEPS[S.setupStep||0]==='done' ? setupFinish() : setupGo(1);
+    case 'setupSkip': return setupFinish();
+    case 'setupImport': if(host) call('setup.done').catch(()=>{}); HOSTINFO.setupDone=true; S.settingsTab='import'; return navigate('settings',{focusKey:'st-import'});
     case 'impDone': if(IMP.s) IMP.s.result=null; IMP.sel.clear(); return render(null,true);
     case 'sysUpdInstall': return call('system.update.install').then(onSystemUpdate).catch(e=>toast(e.message));
     case 'updCheck': return call('update.check',{},60000).then(onUpdate).catch(e=>toast(e.message));
@@ -2696,6 +2707,52 @@ async function loadAccounts(fromEvent){
     else if(S.view==='settings' && S.settingsTab==='profile') render(null,true);
   }catch(e){ if(!fromEvent) toast(e.message); }
 }
+// ---------- First start (Hearth OS): Wi-Fi, store accounts, the controller, your games ----------
+// Shown once on a fresh install, instead of dropping straight into the library. Skippable at every step;
+// everything here is also in Settings later.
+const SETUP_STEPS=['welcome','wifi','accounts','controls','games','done'];
+function setupGo(d){
+  const i=Math.max(0, Math.min(SETUP_STEPS.length-1, (S.setupStep||0)+d));
+  S.setupStep=i; const st=SETUP_STEPS[i];
+  if(st==='wifi'){ wifiScan(); }
+  if(st==='accounts') loadAccounts();
+  if(st==='games' && host && LINUX) loadImport();
+  render('setup-next');
+}
+function setupFinish(){
+  if(host) call('setup.done').catch(()=>{});
+  HOSTINFO.setupDone=true; S.history=[];
+  navigate('home',{},false);
+  toast(`Welcome to ${APP}. Settings has everything from setup, any time.`);
+}
+function viewSetup(){
+  const st=SETUP_STEPS[S.setupStep||0], n=S.setupStep||0;
+  const dots=`<div style="display:flex;gap:8px;justify-content:center;margin-bottom:26px">${SETUP_STEPS.map((_,i)=>`<span style="width:${i===n?26:8}px;height:8px;border-radius:4px;background:${i<=n?'var(--accent)':'var(--panel3)'};transition:width .2s"></span>`).join('')}</div>`;
+  const next=(label='Next', k='setup-next')=>`<button class="play" data-f data-k="${k}" data-act="setupNext">${label}</button>`;
+  const skip=`<button class="pill ghost" data-f data-k="setup-skip" data-act="setupSkip">Skip setup</button>`;
+  let body='';
+  if(st==='welcome') body=`<div class="center"><div class="mark">${HEARTH_MARK}</div>
+      <h1>Welcome to ${APP}</h1><p class="lead">Let's get you online, sign in to your game stores and bring your games over. It takes a couple of minutes, and you can skip anything.</p>
+      <div class="acts">${next('Let\'s go')}${skip}</div></div>`;
+  else if(st==='wifi') body=`<h1>Connect to the internet</h1><p class="lead">Store sign-ins, downloads and updates need it.</p><div class="rows" style="max-height:50vh;overflow:auto">${pageWifi()}</div><div class="acts">${next(S.sys.wifi&&S.sys.wifi.ssid?'Next':'Skip for now')}</div>`;
+  else if(st==='accounts'){
+    const rows=(ACC.list||[]).filter(a=>STORE_INFO[a.store]).map(a=>{ const info=STORE_INFO[a.store];
+      const status=ACC.signing===a.store?'Signing in…':a.signedIn?`Signed in${a.name?' as '+a.name:''}`:'Not signed in';
+      return `<button class="row" data-f data-k="setup-acc-${a.store}" data-act="accSignIn" data-s="${a.store}"><span class="ricon" style="color:${info.color}">${info.mark}</span><div class="rt"><b>${info.name}</b><small>${esc(status)}</small></div><div class="rv">${a.signedIn?I.check:'Sign in ›'}</div></button>`; }).join('');
+    body=`<h1>Sign in to your game stores</h1><p class="lead">Your games from each one show up in your library. You type your password on the store's own page; ${APP} never sees it.</p><div class="rows">${rows||note('Loading…')}</div><div class="acts">${next()}</div>`;
+  }
+  else if(st==='controls') body=`<h1>Your controller</h1><p class="lead">The buttons you'll use most.</p><div class="rows">
+      ${[['A','Select'],['B','Back'],['Y','Search, or the on-screen keyboard'],['☰ Menu','Main menu'],['⧉ View','Quick Access: volume, brightness, power, Wi-Fi'],['Xbox / Guide','Over a game: the overlay (back to Hearth, close the game, settings)'],['View + Menu','Use the controller as a mouse'],['Power › Switch to desktop','Mantel, the desktop: windows, files, a browser']].map(([b,t],i)=>`<div class="row" data-f data-k="setup-c${i}"><div class="rt"><b>${b}</b><small>${t}</small></div></div>`).join('')}</div><div class="acts">${next()}</div>`;
+  else if(st==='games'){
+    const s=IMP.s, found=s&&s.offer?s.offer.games:0;
+    body=`<h1>Bring your games over</h1><p class="lead">From Windows, a Steam Deck, another Linux or an SD card in this device: Steam, Epic, GOG and Lutris games come over ready to play.</p><div class="rows">
+      ${found?`<div class="row"><span class="ricon">${I.check}</span><div class="rt"><b>${found} game${found===1?'':'s'} found on ${esc(s.offer.from.join(', '))}</b><small>Choose which ones to bring</small></div></div>`:''}
+      <button class="row" data-f data-k="setup-imp" data-act="setupImport"><span class="ricon">${I.dl}</span><div class="rt"><b>${found?'Choose games to import':'Look for games on other drives'}</b><small>Opens Settings › Import games</small></div><div class="rv">›</div></button></div><div class="acts">${next(found?'Later':'Next')}</div>`;
+  }
+  else body=`<div class="center"><div class="mark">${HEARTH_MARK}</div><h1>You're all set</h1><p class="lead">Your library is ready. Everything from setup is in Settings whenever you need it.</p><div class="acts">${next('Go to my library','setup-done')}</div></div>`;
+  return `<div class="setup" style="max-width:760px;margin:5vh auto 0;padding:0 24px">${dots}${body}</div>`;
+}
+
 function viewStores(){
   if(!ACC.list) return `<h2>Game stores</h2><div class="note">Loading…</div>`;
   const cards = ACC.list.map(a=>{
