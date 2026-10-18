@@ -27,6 +27,10 @@ pub struct Bridge {
     pub sign_in: SignInFn,
     /// Opens Xbox Cloud Gaming at an address (Some(url, title)) or closes it (None).
     pub stream: std::sync::Arc<dyn Fn(Option<(&str, &str)>) + Send + Sync>,
+    /// Hearth's interface zoom (Settings › Display › Scale in Game Mode): the host applies it.
+    pub zoom: std::sync::Arc<dyn Fn(u32) + Send + Sync>,
+    pub osinstall: crate::osinstall::OsInstaller,
+    pub app_updates: crate::appupdate::AppUpdates,
     /// The call being answered (calls that answer later, from background work, reply to it themselves).
     cur_id: Value,
 }
@@ -42,7 +46,8 @@ impl Bridge {
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
         use std::sync::Arc;
         Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles, pin_until: std::time::Instant::now(),
-                 pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), cur_id: Value::Null }
+                 pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(),
+                 app_updates: crate::appupdate::AppUpdates::new(version), cur_id: Value::Null }
     }
 
     /// Messages from the host's own background work: {type:'internal', what, ...}. Returns what to send the page.
@@ -176,7 +181,8 @@ impl Bridge {
                 "user": std::env::var("USER").unwrap_or_default(),
                 "live": std::path::Path::new("/etc/hearth-live").exists(),
                 "installer": std::path::Path::new("/etc/hearth-installer").exists(),
-                "features": [], "setupDone": true,
+                "features": ["restartApp", "exportLogs", "powerButton", "overamp"], "setupDone": self.setup_done(),
+                "openInstaller": std::path::Path::new("/etc/hearth-live").exists() && crate::osinstall::handoff(false),
             })),
             "library.get" => Ok(self.library.get(a["rescan"].as_bool().unwrap_or(false))),
             "library.setFav" => io(self.library.store.set_in("favorites", &req("id")?, a["on"].as_bool().unwrap_or(false))),
@@ -251,6 +257,105 @@ impl Bridge {
                 let cur = self.library.install_root().to_string_lossy().to_string();
                 if let Some(dir) = (self.pick_folder)("Where should Hearth install games?", &cur) { io(self.library.store.update(|d| { d.insert("installRoot".into(), json!(dir)); }))?; }
                 Ok(json!({"installRoot": self.library.install_root().to_string_lossy()}))
+            }
+            "app.restart" => { (self.emit)(json!({"type": "restart"})); Ok(Value::Null) }
+            "app.exportLogs" => export_logs(&self.version),
+            "game.resetPrefix" => {
+                let id = req("id")?;
+                let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
+                if !(g.can_uninstall && (g.source == "epic" || g.source == "gog")) { return Err("This game doesn't have a Hearth Wine prefix.".into()); }
+                if self.library.running_id().as_deref() == Some(id.as_str()) { return Err("Close the game first.".into()); }
+                crate::stores::remove_prefix(g.source, id.split_once(':').map(|x| x.1).unwrap_or(""));
+                Ok(json!({"ok": true}))
+            }
+            "profile.pickImage" => {
+                let kind = req("kind")?;
+                match (self.pick_file)(if kind == "avatar" { "Choose a profile picture" } else { "Choose a background picture" }) {
+                    Some(f) => crate::profile::set_image(&mut self.library.store, &kind, &f),
+                    None => Ok(Value::Null),
+                }
+            }
+            "desktop.wallpaper" => Ok(json!({"wallpaper": crate::admin::desktop_wallpaper()})),
+            "desktop.setWallpaper" => {
+                if a["value"] == "profile" {
+                    let f = crate::profile::image("background").ok_or("Choose a background picture in your profile first")?;
+                    return Ok(json!({"wallpaper": crate::admin::set_desktop_wallpaper("", Some(&f))?}));
+                }
+                Ok(json!({"wallpaper": crate::admin::set_desktop_wallpaper(a["value"].as_str().unwrap_or(""), None)?}))
+            }
+            // Profiles: switching closes Steam, signs it in as theirs, puts their files out and restarts Hearth.
+            "profiles.switch" => {
+                let id = req("id")?;
+                let to = self.profiles.find(&id).ok_or("No such profile")?;
+                if self.library.running_id().is_some() { return Err("Close the game first".into()); }
+                if self.profiles.restricted(&self.profiles.active()) && id != self.profiles.active() { self.need_pin()?; }
+                log(&format!("profiles: switching to {}", to["name"]));
+                (self.emit)(Bridge::event("profiles.switching", json!({"name": to["name"]})));
+                crate::profiles::stop_steam();
+                crate::profiles::set_steam_account(to["steam"].as_str().unwrap_or(""));
+                self.profiles.switch_to(&id)?;
+                let _ = std::fs::write(picked_file(), "1");
+                (self.emit)(json!({"type": "restart"}));
+                Ok(json!(true))
+            }
+            "profiles.addSteam" => {
+                let id = req("id")?;
+                self.need_pin()?;
+                let before: Vec<String> = crate::profiles::known_steam_accounts().iter().filter_map(|a| a["account"].as_str().map(str::to_lowercase)).collect();
+                crate::profiles::stop_steam();
+                crate::profiles::set_steam_account("");
+                let _ = std::process::Command::new("steam").arg("steam://open/main").spawn();
+                // The account that signs in (within 10 minutes) is linked to the profile.
+                std::thread::spawn(move || {
+                    for _ in 0..300 {
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        let now = crate::profiles::known_steam_accounts().into_iter().find(|a| a["account"].as_str().map(|x| !before.contains(&x.to_lowercase())).unwrap_or(false));
+                        if let Some(acc) = now {
+                            let mut ps = crate::profiles::Profiles::open(&paths::data_dir());
+                            if ps.update(&id, &json!({"steam": acc["account"]})).is_ok() { log(&format!("profiles: linked Steam account {}", acc["account"])); }
+                            crate::stores::notify(Bridge::event("profiles.changed", json!({})));
+                            return;
+                        }
+                    }
+                });
+                Ok(json!(true))
+            }
+            // Hearth's own installer (live USB)
+            "osinstall.status" => Ok(self.osinstall.status()),
+            "osinstall.disks" => self.osinstall.disks(),
+            "osinstall.check" => self.osinstall.check(a["part"].as_str()),
+            "osinstall.start" => self.osinstall.start(&a["plan"]),
+            "osinstall.restart" => Ok(json!(self.osinstall.restart())),
+            "osinstall.useMantel" => Ok(json!(crate::osinstall::handoff(true))),
+            // Updates to the app itself
+            "update.status" => Ok(self.app_updates.status(self.auto_update())),
+            "update.check" => Ok(self.app_updates.check(self.auto_update())),
+            "update.download" => Ok(self.app_updates.download(self.auto_update())),
+            "update.install" => { self.app_updates.install()?; (self.emit)(json!({"type": "restart"})); Ok(Value::Null) }
+            "update.setAuto" => { io(self.library.store.update(|d| { d.insert("autoUpdateCheck".into(), json!(a["on"] == true)); }))?; Ok(self.app_updates.status(self.auto_update())) }
+            // Settings › Display
+            "display.get" => Ok(self.display_get()),
+            "display.setMode" => {
+                let (w, h, hz) = (a["w"].as_f64().unwrap_or(0.0).round() as u32, a["h"].as_f64().unwrap_or(0.0).round() as u32, a["hz"].as_f64().unwrap_or(0.0));
+                if w == 0 || h == 0 || hz <= 0.0 { return Err("Pick a resolution and refresh rate".into()); }
+                if crate::display::set_mode(w, h, hz, self.zoom_pct())? {
+                    // New gamescope options take effect when Game Mode starts again.
+                    let mut d = self.display_get(); d["restarting"] = json!(true);
+                    let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
+                    if in_session { let _ = std::fs::write(std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("nimbus-next"), "game\n"); }
+                    let emit = self.emit.clone();
+                    std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(600)); emit(json!({"type": if in_session { "quit" } else { "restart" }})); });
+                    return Ok(d);
+                }
+                Ok(self.display_get())
+            }
+            "display.setScale" => {
+                let pct = a["v"].as_f64().unwrap_or(0.0).round() as u32;
+                if let Some(z) = crate::display::set_scale(pct, self.zoom_pct())? {
+                    io(self.library.store.update(|d| { d.insert("uiScale".into(), json!(z)); }))?;
+                    (self.zoom)(z);
+                }
+                Ok(self.display_get())
             }
             "game.info" => {
                 let id = req("id")?;
@@ -425,10 +530,30 @@ impl Bridge {
             p["current"] = json!(id == active); p["limits"] = self.profiles.limits(&id); p["playedToday"] = json!(self.profiles.played_today(&id, now).round());
             p
         }).collect();
-        json!({"active": active, "askAtStart": self.profiles.data["askAtStart"] == true, "picked": std::env::args().any(|a| a == "--picked"),
+        json!({"active": active, "askAtStart": self.profiles.data["askAtStart"] == true, "picked": picked(),
                "hasPin": self.profiles.has_pin(), "unlocked": self.profiles.has_pin() && std::time::Instant::now() < self.pin_until,
                "restricted": self.profiles.restricted(&active), "left": self.profiles.can_play(None, now, 0.0)["minutesLeft"],
                "list": list, "steamAccounts": crate::profiles::steam_accounts(&steam_users)})
+    }
+    /// First-start setup: only on Hearth, the OS, and only for a fresh install. An install already in use
+    /// before setup existed (games played, accounts, the import offer) counts as set up.
+    pub fn setup_done(&mut self) -> bool {
+        let d = &self.library.store.data;
+        if !d["setupDone"].is_null() && d["setupDone"] != false { return true; }
+        if !crate::admin::can_admin() { return true; }
+        let used = d["stats"].as_object().map(|o| !o.is_empty()).unwrap_or(false) || d["manual"].as_array().map(|a| !a.is_empty()).unwrap_or(false)
+            || d["importOffered"] == true || d["profile"].is_object();
+        if used { let _ = self.library.store.update(|x| { x.insert("setupDone".into(), json!(now_ms())); }); }
+        used
+    }
+    pub fn zoom_pct(&self) -> u32 { self.library.store.data["uiScale"].as_u64().unwrap_or(100) as u32 }
+    fn auto_update(&self) -> bool { self.library.store.data["autoUpdateCheck"] != false }
+    fn display_get(&self) -> Value {
+        let mut d = crate::display::get(self.zoom_pct());
+        let b = system::brightness();
+        d["supported"] = json!(b.is_some());
+        d["brightness"] = json!(b.unwrap_or(0));
+        d
     }
     /// An event for the UI ({type:'event', name, data}), like the status the top bar refreshes every 30 s.
     pub fn event(name: &str, data: Value) -> Value { json!({"type": "event", "name": name, "data": data}) }
@@ -442,6 +567,33 @@ pub fn log(text: &str) {
 }
 
 fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
+
+/// Started again after switching profiles (the profile picker doesn't show again).
+fn picked_file() -> std::path::PathBuf { std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("hearth-picked") }
+pub fn picked() -> bool {
+    static P: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *P.get_or_init(|| std::env::args().any(|a| a == "--picked") || std::fs::remove_file(picked_file()).is_ok())
+}
+
+/// Settings › System › Save logs: Hearth's logs in one file in your home folder, for bug reports.
+fn export_logs(version: &str) -> Result<Value, String> {
+    let stamp = chrono::Local::now().format("%Y-%m-%d-%H-%M").to_string();
+    let dir = std::env::temp_dir().join(format!("hearth-logs-{}", now_ms()));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let data = paths::data_dir();
+    let run = std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into()));
+    for (from, name) in [(data.join("bridge.log"), "bridge.log"), (data.join("session.log"), "session.log"), (run.join("nimbus-shell.log"), "desktop-shell.log"), ("/etc/os-release".into(), "os-release.txt")] {
+        let _ = std::fs::copy(from, dir.join(name));
+    }
+    let mut info = crate::sysinfo::info(std::path::Path::new("/")); info["version"] = json!(version); info["host"] = json!("rust");
+    let _ = std::fs::write(dir.join("about.json"), serde_json::to_string_pretty(&info).unwrap());
+    let _ = std::process::Command::new("sh").args(["-c", "bootc status 2>/dev/null > \"$0/bootc-status.txt\"; journalctl --user -b -n 3000 --no-pager > \"$0/journal-user.txt\" 2>/dev/null; true"]).arg(&dir).status();
+    let out = paths::home().join(format!("Hearth-logs-{stamp}.tar.gz"));
+    let ok = std::process::Command::new("tar").arg("-czf").arg(&out).arg("-C").arg(&dir).arg(".").status().map(|s| s.success()).unwrap_or(false);
+    let _ = std::fs::remove_dir_all(&dir);
+    if !ok { return Err("Couldn't save the logs".into()); }
+    Ok(json!({"path": out.to_string_lossy()}))
+}
 
 fn hostname() -> String { std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()).unwrap_or_default() }
 
