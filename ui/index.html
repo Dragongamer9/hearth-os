@@ -2247,7 +2247,13 @@ function viewSettings(){
 const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
+// Timing for the speed test (HEARTH_PERF_LOG=1): how long drawing a page and moving the focus take.
+const perfLog = (what, t0) => { if(HOSTINFO.perfLog) send({type:'log', text:`perf: ${what} ${(performance.now()-t0).toFixed(1)} ms (${S.view}, ${GAMES.length} games)`}); };
 function render(focusKey, quiet){
+  const t0=performance.now();
+  try { renderNow(focusKey, quiet); } finally { perfLog('render', t0); }
+}
+function renderNow(focusKey, quiet){
   const v=$('#view');
   const wasInView = !!(focused && v.contains(focused));
   const k = focusKey || (wasInView ? focused.dataset.k : null);
@@ -2575,9 +2581,27 @@ function setFocus(el, quiet){
   }
   renderFooter();
 }
+// Big grids (the library): the next tile is worked out from its place in the grid, instead of measuring every
+// tile on the page (hundreds of them made each press slow in WebKit). Leaving the grid uses the normal search.
+function gridMove(dir){
+  const grid=focused.parentElement;
+  if(!grid || !grid.classList.contains('grid')) return null;
+  const items=grid.children, n=items.length, i=Array.prototype.indexOf.call(items, focused);
+  if(i<0 || n<24) return null;
+  const cols=Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(' ').length);
+  const j = dir==='left' ? (i%cols ? i-1 : -1) : dir==='right' ? ((i%cols)<cols-1 && i+1<n ? i+1 : -1) : dir==='up' ? i-cols : i+cols;
+  if(dir==='down' && j>=n){ const last=n-1; return Math.floor(last/cols)>Math.floor(i/cols) ? items[last] : null; }
+  return j>=0 && j<n ? items[j] : null;
+}
 function move(dir){
   if(!focused || !document.contains(focused) || !root().contains(focused)) return setFocus(focusables()[0]);
   if(focused.dataset.slider && (dir==='left'||dir==='right')) return adjustSlider(focused, dir==='left'?-1:1);
+  const t0=performance.now();
+  try { moveNow(dir); } finally { perfLog('move '+dir, t0); }
+}
+function moveNow(dir){
+  const g=gridMove(dir);
+  if(g && g.hasAttribute('data-f')){ setFocus(g); blip(); return; }
   settleScroll();
   // The focused card is drawn a little bigger (scaled from its centre): measure its real box.
   const rr=focused.getBoundingClientRect(), fw=focused.offsetWidth||rr.width, fh=focused.offsetHeight||rr.height;
