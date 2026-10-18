@@ -5,7 +5,7 @@
 use hearth_core::bridge::Bridge;
 use std::sync::{Arc, Mutex};
 use tauri::http::{header::CONTENT_TYPE, Response, StatusCode};
-use tauri::{Emitter, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// The page's side of the message channel, the same one the Electron host's preload gave it:
 /// nimbusHost.postMessage(obj) and nimbusHost.addEventListener('message', fn). Messages wait until the
@@ -94,6 +94,14 @@ fn main() {
         .register_uri_scheme_protocol("nimbus-art", |_ctx, req| art(&req.uri().to_string()))
         .invoke_handler(tauri::generate_handler![nimbus_msg])
         .setup(move |app| {
+            // The top bar's battery, Wi-Fi and volume, refreshed every 30 seconds (the UI asks too, after changes).
+            let handle = app.handle().clone();
+            let bridge = app.state::<Host>().0.clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+                let max = bridge.lock().map(|b| b.max_volume()).unwrap_or(100);
+                let _ = handle.emit("nimbus:msg", Bridge::event("status", hearth_core::system::status(max)));
+            });
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Hearth")
                 .fullscreen(!windowed)
