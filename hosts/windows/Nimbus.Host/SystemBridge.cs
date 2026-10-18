@@ -149,6 +149,9 @@ public sealed class SystemBridge : IDisposable
 
     /// <summary>The volume keys in full Mantel (Explorer normally handles them): +1 / -1 steps of 5 %, 0 = mute.
     /// Returns what the volume bar shows.</summary>
+    /// <summary>The volume now (0–100) and whether it's muted.</summary>
+    public (int Volume, bool Muted) AudioState() { var s = _audio.Get(); return (s.Volume, s.Muted); }
+
     public string VolumeStep(int d)
     {
         var s = _audio.Get();
@@ -407,7 +410,7 @@ public sealed class SystemBridge : IDisposable
             case "shell.setWallpaper":
             {
                 var w = Str(a, "name") ?? "";
-                if (w.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(w, "^(hearth-[a-z]+|anim:(lava|aurora))$")) throw new ArgumentException("Unknown wallpaper");
+                if (w.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(w, "^(hearth-[a-z]+|anim:(fireside|lava|aurora))$")) throw new ArgumentException("Unknown wallpaper");
                 Games.MantelWallpaper = w;
                 Mantel.MantelHost.Wallpaper = w;
                 if ((_ui as ShellForm)?.Mantel is { Active: true } m) m.ApplyWallpaper();

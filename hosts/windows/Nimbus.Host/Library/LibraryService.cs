@@ -478,7 +478,7 @@ public sealed class LibraryService : IDisposable
     public bool OverlayHoldView { get => _store.Read(d => d.OverlayHoldView); set => _store.Update(d => d.OverlayHoldView = value); }
     public string StartMode { get => _store.Read(d => d.StartMode) ?? "game"; set => _store.Update(d => d.StartMode = value); }
     public string DesktopStyle { get => _store.Read(d => d.DesktopStyle) ?? "mantel"; set => _store.Update(d => d.DesktopStyle = value); }
-    public string MantelWallpaper { get => _store.Read(d => d.MantelWallpaper) ?? "hearth-cabin"; set => _store.Update(d => d.MantelWallpaper = value); }
+    public string MantelWallpaper { get => _store.Read(d => d.MantelWallpaper) ?? "anim:fireside"; set => _store.Update(d => d.MantelWallpaper = value); }
 
     public void Dispose() => _monitor.Dispose();
 }

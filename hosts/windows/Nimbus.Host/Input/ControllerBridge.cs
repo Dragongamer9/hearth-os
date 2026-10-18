@@ -58,6 +58,17 @@ public sealed class ControllerBridge : IDisposable
     public Func<bool> DesktopMode { get; set; } = () => false;
     /// <summary>Menu (☰) on the desktop: Mantel's launcher.</summary>
     public event Action? DesktopMenu;
+    /// <summary>Mantel (Desktop Mode): the Xbox button opens the Hearth menu instead of the overlay.</summary>
+    public event Action? DesktopGuide;
+    /// <summary>Mantel: a quick tap of View shows the controls.</summary>
+    public event Action? DesktopHelp;
+    /// <summary>Mantel decides whether it's showing (so the Xbox button and View act like on Hearth OS).</summary>
+    public Func<bool> MantelActive { get; set; } = () => false;
+    /// <summary>A Mantel panel (launcher, Quick Access, power menu, Hearth menu) is in front: the controller
+    /// moves through it (D-pad, A, B) instead of being a mouse.</summary>
+    public Func<bool> MantelPanelInFront { get; set; } = () => false;
+    private bool _viewHeld, _viewUsed, _altHeld;
+    private DateTime _viewAt, _altUntil;
     /// <summary>Raised on the bridge thread when the overlay should open or close.</summary>
     public event Action? OverlayToggle;
     /// <summary>Raised on the bridge thread when the overlay is in front: button name, like <see cref="UiButton"/>.</summary>
@@ -100,6 +111,7 @@ public sealed class ControllerBridge : IDisposable
             if (guide && !guidePrev)
             {
                 if (target == Target.Ui) UiButton?.Invoke("guide");
+                else if (DesktopMode() && MantelActive() && target != Target.Game && target != Target.Overlay) DesktopGuide?.Invoke();
                 else OverlayToggle?.Invoke();
             }
             guidePrev = guide;
@@ -136,7 +148,8 @@ public sealed class ControllerBridge : IDisposable
                 prev &= unchecked((ushort)~(START | BACK));
             }
 
-            bool mouse = _mouseOverride ?? (DesktopMode() && target is not (Target.Ui or Target.Overlay or Target.Game) ? true : MouseMode switch
+            bool panel = MantelPanelInFront();
+            bool mouse = panel ? false : _mouseOverride ?? (DesktopMode() && target is not (Target.Ui or Target.Overlay or Target.Game) ? true : MouseMode switch
             {
                 "always" => true,
                 "steam" => target is Target.Steam or Target.Web,
@@ -178,6 +191,12 @@ public sealed class ControllerBridge : IDisposable
             }
 
             var now = DateTime.UtcNow;
+            // Mantel: LB/RB switch windows (Alt held a moment, like Hearth), View is a modifier and a tap shows the controls.
+            if (_altHeld && now > _altUntil) { keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); _altHeld = false; }
+            bool viewNow = (buttons & BACK) != 0;
+            if (viewNow && !_viewHeld) { _viewAt = now; _viewUsed = false; }
+            if (!viewNow && _viewHeld && !_viewUsed && now - _viewAt < TimeSpan.FromMilliseconds(400) && DesktopMode() && MantelActive() && target == Target.Other) DesktopHelp?.Invoke();
+            _viewHeld = viewNow;
             foreach (var b in AllButtons)
             {
                 bool down = (buttons & b) != 0, was = (prev & b) != 0;
@@ -275,16 +294,39 @@ public sealed class ControllerBridge : IDisposable
         // Desktop Mode, like Hearth's Mantel: Y opens the on-screen keyboard, B is Esc, LB/RB switch windows.
         else if (DesktopMode() && target == Target.Other)
         {
+            if (_viewHeld && b != BACK)
+            {
+                _viewUsed = true;
+                switch (b)
+                {
+                    case B: KeyCombo(VK_MENU, VK_F4); break;                        // View + B: close the window
+                    case UP: KeyCombo(VK_LWIN, VK_UP); break;                       // View + D-pad: snap it
+                    case DOWN: KeyCombo(VK_LWIN, VK_DOWN); break;
+                    case LEFT: KeyCombo(VK_LWIN, VK_LEFT); break;
+                    case RIGHT: KeyCombo(VK_LWIN, VK_RIGHT); break;
+                }
+                return;
+            }
             switch (b)
             {
                 case Y: ShowKeyboard(); break;
                 case B: Key(VK_ESCAPE); break;
                 case START: DesktopMenu?.Invoke(); break;   // Mantel's launcher
+                case LB or RB:
+                    if (!_altHeld) { keybd_event(VK_MENU, 0, 0, UIntPtr.Zero); _altHeld = true; }
+                    _altUntil = DateTime.UtcNow.AddMilliseconds(900);
+                    Key(VK_TAB, shift: b == LB);
+                    break;
+                case UP: Key(VK_UP); break;
+                case DOWN: Key(VK_DOWN); break;
+                case LEFT: Key(VK_LEFT); break;
+                case RIGHT: Key(VK_RIGHT); break;
             }
         }
         // Other apps: only the controller mouse (if on) acts; no keys are sent to them.
     }
 
+    private const byte VK_MENU = 0x12, VK_F4 = 0x73, VK_LWIN = 0x5B;
     private const byte VK_RETURN = 0x0D, VK_ESCAPE = 0x1B, VK_TAB = 0x09, VK_SHIFT = 0x10,
                        VK_LEFT = 0x25, VK_UP = 0x26, VK_RIGHT = 0x27, VK_DOWN = 0x28;
 
@@ -323,6 +365,14 @@ public sealed class ControllerBridge : IDisposable
         keybd_event(vk, 0, 0, UIntPtr.Zero);
         keybd_event(vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
         if (shift) keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+    }
+
+    private static void KeyCombo(byte mod, byte vk)
+    {
+        keybd_event(mod, 0, 0, UIntPtr.Zero);
+        keybd_event(vk, 0, 0, UIntPtr.Zero);
+        keybd_event(vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        keybd_event(mod, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
 
     private static void Mouse(uint flags, int dx = 0, int dy = 0, int data = 0) =>

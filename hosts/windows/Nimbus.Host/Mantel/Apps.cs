@@ -121,4 +121,11 @@ internal static class Apps
         if (string.IsNullOrWhiteSpace(id) || id.Contains('"')) return;
         Process.Start(new ProcessStartInfo("explorer.exe", "\"shell:AppsFolder\\" + id + "\"") { UseShellExecute = true });
     }
+
+    /// <summary>Opens a URI with its app (e.g. ms-settings:nightlight).</summary>
+    public static void OpenUri(string uri)
+    {
+        try { Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true }); }
+        catch (Exception ex) { SystemBridge.Log("mantel: couldn't open " + uri + ": " + ex.Message); }
+    }
 }

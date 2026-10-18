@@ -126,7 +126,14 @@ public sealed class ShellForm : Form
             if (style.StartsWith("mantel") && Mantel is not null) await Mantel.StartAsync(full: style == "mantel-full");
         };
         _pad.DesktopMenu += () => BeginInvoke((MethodInvoker)(() => Mantel?.ToggleLauncherFromPad()));
-        Mantel.VolumeRequested += d => { try { Input.Osd.Show(_system!.VolumeStep(d)); } catch (Exception ex) { SystemBridge.Log("volume: " + ex.Message); } };
+        // The volume keys in full Mantel: Hearth's volume bar at the top of the screen.
+        Mantel.VolumeRequested += d => { try { _system!.VolumeStep(d); var (v, m) = _system.AudioState(); Nimbus.Host.Mantel.VolumeOsd.Present(v, m); } catch (Exception ex) { SystemBridge.Log("volume: " + ex.Message); } };
+        // The controller in Mantel, like on Hearth OS: the Xbox button opens the Hearth menu, a tap of View the
+        // controls, and Mantel's panels are moved through with the D-pad and A instead of the mouse.
+        _pad.MantelActive = () => Mantel?.Active ?? false;
+        _pad.MantelPanelInFront = () => Mantel?.PanelInFront ?? false;
+        _pad.DesktopGuide += () => BeginInvoke((MethodInvoker)(() => Mantel?.ToggleRadial()));
+        _pad.DesktopHelp += () => BeginInvoke((MethodInvoker)(() => Mantel?.ToggleHelp()));
         Desktop.DesktopLeaving = () => Mantel?.Stop();
         // As the shell: start on the desktop if that's the choice, or go back to it if Explorer is already the
         // desktop (Ember restarted after an update or a crash while you were on it).
