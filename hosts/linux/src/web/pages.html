@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Hearth Browser</title>
+<!-- Hearth Browser's own pages: hearth://start (the new tab page), history, bookmarks, downloads, settings. -->
+<style>
+:root{--bg:#0f0b09;--bg2:#17110e;--panel:#1c1512;--panel2:#261d18;--panel3:#33271f;--line:#3b2e26;--text:#f4ece3;--muted:#a69484;--ember:#ff8a3d;--flame:#ffd166;--accent:#ff8a3d;--ink:#2a1206}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,"Segoe UI",sans-serif}
+body.start{background:radial-gradient(ellipse at 50% 120%,#3a1a0c 0%,#17110e 50%,#0f0b09 100%) fixed}
+button,input,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.wrap{width:min(100% - 48px,860px);margin:0 auto;padding:40px 0 60px}
+h1{font-size:28px;font-weight:600;margin-bottom:18px}
+/* start page */
+.hero{display:flex;flex-direction:column;align-items:center;gap:22px;padding-top:12vh}
+.hero img{width:84px;height:84px}
+.hero .clock{font-size:15px;color:var(--muted)}
+.sbox{width:min(100%,640px);height:56px;border-radius:16px;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 18px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+.sbox:focus-within{border-color:var(--accent)}
+.sbox input{flex:1;background:none;border:0;outline:0;font-size:17px;color:var(--text)}
+.sbox input::placeholder{color:var(--muted)}
+.sbox svg{color:var(--muted)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;width:min(100%,720px);margin-top:18px}
+.tile{height:108px;border-radius:16px;background:rgba(28,21,18,.85);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 10px;transition:background .14s,transform .14s}
+.tile:hover,.tile:focus{background:var(--panel2);transform:translateY(-2px);outline:none;border-color:var(--accent)}
+.tile .ic{width:40px;height:40px;border-radius:12px;background:var(--panel3);display:grid;place-items:center;font-weight:700;font-size:18px;color:var(--flame);overflow:hidden}
+.tile .ic img{width:24px;height:24px}
+.tile span{font-size:13px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hint{color:var(--muted);font-size:12px;margin-top:10px}
+/* lists */
+.search{width:100%;height:44px;border-radius:12px;background:var(--panel);border:1px solid var(--line);padding:0 14px;color:var(--text);outline:0;margin-bottom:14px}
+.search:focus{border-color:var(--accent)}
+.day{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin:18px 2px 8px}
+.item{display:flex;align-items:center;gap:14px;min-height:52px;border-radius:12px;background:var(--panel2);padding:8px 14px;margin-bottom:6px}
+.item:hover{background:var(--panel3)}
+.item .tx{flex:1;min-width:0}
+.item b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item small{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.item .when{color:var(--muted);font-size:12px}
+.item .rm{color:var(--muted);padding:6px;border-radius:8px}
+.item .rm:hover{background:var(--panel);color:var(--text)}
+.empty{color:var(--muted);padding:20px 2px}
+.btn{height:40px;border-radius:10px;padding:0 16px;background:var(--panel3);font-weight:600}
+.btn.primary{background:var(--accent);color:var(--ink)}
+.row{display:flex;align-items:center;gap:14px;min-height:64px;border-radius:12px;background:var(--panel2);padding:12px 16px;margin-bottom:8px}
+.row .tx{flex:1}
+.row b{font-weight:600;font-size:15px}
+.row small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.row select{background:var(--panel3);border:0;border-radius:10px;height:38px;padding:0 10px}
+.sw{width:46px;height:26px;border-radius:13px;background:var(--panel3);position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:10px;background:var(--text);transition:left .14s}
+.sw.on{background:var(--accent)}
+.sw.on::after{left:23px;background:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+'use strict';
+const api = window.hearth || { get: async () => null };
+const PAGE = location.host || 'start';
+const app = document.getElementById('app');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+const icon = u => `https://icons.duckduckgo.com/ip3/${encodeURIComponent(host(u))}.ico`;
+const when = t => new Date(t).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+const day = t => { const d=new Date(t), n=new Date(); const k=Math.round((new Date(n.toDateString())-new Date(d.toDateString()))/864e5); return k===0?'Today':k===1?'Yesterday':d.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'}); };
+
+async function start(){
+  document.body.className = 'start';
+  document.title = 'New tab';
+  const d = await api.get({get:'start'}) || {tiles:[], search:'DuckDuckGo'};
+  app.innerHTML = `<div class="hero"><img src="hearth-logo.svg" alt=""><div class="clock"></div>
+    <form class="sbox"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input autofocus placeholder="Search ${esc(d.search)} or type a web address"></form>
+    <div class="tiles">${(d.tiles||[]).map(t=>`<a class="tile" href="${esc(t.url)}"><div class="ic"><img src="${icon(t.url)}" alt="" onerror="this.replaceWith(document.createTextNode('${esc((t.title||host(t.url)).charAt(0).toUpperCase())}'))"></div><span>${esc(t.title||host(t.url))}</span></a>`).join('')}</div>
+    ${(d.bookmarks||[]).length?`<div class="tiles">${d.bookmarks.slice(0,6).map(t=>`<a class="tile" href="${esc(t.url)}"><div class="ic"><img src="${icon(t.url)}" alt=""></div><span>${esc(t.title)}</span></a>`).join('')}</div>`:''}
+    <div class="hint">Ctrl+T new tab · Ctrl+L address bar · Ctrl+D bookmark · Ctrl+H history</div></div>`;
+  const tick = () => { const c=document.querySelector('.clock'); if(c) c.textContent = new Date().toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'}) + ' · ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}); };
+  tick(); setInterval(tick, 15000);
+  document.querySelector('.sbox').addEventListener('submit', e => { e.preventDefault(); const v=document.querySelector('.sbox input').value; if(v.trim()) api.get({get:'search', text:v}); });
+}
+
+async function history(q=''){
+  document.title = 'History';
+  const list = await api.get({get:'history', q}) || [];
+  let h = `<h1>History</h1><input class="search" placeholder="Search history" value="${esc(q)}"><div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button class="btn" data-act="clear">Clear history</button></div>`;
+  let last = '';
+  for(const e of list){ const d=day(e.at); if(d!==last){ h += `<div class="day">${esc(d)}</div>`; last=d; }
+    h += `<a class="item" href="${esc(e.url)}"><img src="${icon(e.url)}" width="18" height="18" alt=""><div class="tx"><b>${esc(e.title||host(e.url))}</b><small>${esc(e.url)}</small></div><span class="when">${when(e.at)}</span></a>`; }
+  if(!list.length) h += `<div class="empty">${q?'Nothing matches.':'Nothing here yet.'}</div>`;
+  app.innerHTML = h;
+  const s=document.querySelector('.search'); s.focus(); s.setSelectionRange(q.length,q.length);
+  s.addEventListener('input', () => { clearTimeout(history.t); history.t=setTimeout(()=>history(s.value), 200); });
+}
+
+async function bookmarks(){
+  document.title = 'Bookmarks';
+  const list = await api.get({get:'bookmarks'}) || [];
+  app.innerHTML = `<h1>Bookmarks</h1>` + (list.map(b=>`<div class="item"><img src="${icon(b.url)}" width="18" height="18" alt=""><a class="tx" href="${esc(b.url)}"><b>${esc(b.title)}</b><small>${esc(b.url)}</small></a><button class="rm" data-act="rmBookmark" data-url="${esc(b.url)}" title="Remove">✕</button></div>`).join('')
+    || `<div class="empty">No bookmarks yet. Press the star in the address bar (or Ctrl+D) to keep a page here.</div>`);
+}
+
+async function downloads(){
+  document.title = 'Downloads';
+  const list = await api.get({get:'downloads'}) || [];
+  app.innerHTML = `<h1>Downloads</h1>` + (list.map(d=>`<div class="item"><div class="tx"><b>${esc(d.name)}</b><small>${esc(d.state==='completed'?d.file:d.state)}</small></div></div>`).join('') || `<div class="empty">Nothing downloaded yet.</div>`);
+}
+
+async function settings(){
+  document.title = 'Settings';
+  const d = await api.get({get:'settings'}) || {settings:{}, engines:[]};
+  const s = d.settings;
+  app.innerHTML = `<h1>Settings</h1>
+    <div class="row"><div class="tx"><b>Search engine</b><small>For what you type in the address bar</small></div><select data-set="search">${d.engines.map(e=>`<option value="${e.id}" ${s.search===e.id?'selected':''}>${esc(e.name)}</option>`).join('')}</select></div>
+    <div class="row" data-toggle="restoreTabs"><div class="tx"><b>Open last time's tabs</b><small>When Hearth Browser starts</small></div><div class="sw ${s.restoreTabs?'on':''}"></div></div>
+    <div class="row"><div class="tx"><b>Make Hearth Browser the default</b><small>Links from other apps open here</small></div><button class="btn primary" data-act="default">Make default</button></div>
+    <div class="row"><div class="tx"><b>Clear history</b><small>The list of pages you've visited</small></div><button class="btn" data-act="clear">Clear</button></div>
+    <div class="row"><div class="tx"><b>Clear cookies and site data</b><small>Signs you out of websites</small></div><button class="btn" data-act="clearData">Clear</button></div>
+    <div class="row"><div class="tx"><b>Hearth Browser</b><small>Part of Hearth OS · built on Chromium (Electron) · version ${esc(d.version||'')}</small></div></div>`;
+  document.querySelector('[data-set="search"]').addEventListener('change', e => api.get({get:'set', key:'search', value:e.target.value}));
+}
+
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act],[data-toggle]'); if(!el) return;
+  if(el.dataset.toggle){ const sw=el.querySelector('.sw'), on=!sw.classList.contains('on'); sw.classList.toggle('on', on); await api.get({get:'set', key:el.dataset.toggle, value:on}); return; }
+  e.preventDefault();
+  const a = el.dataset.act;
+  if(a==='clear'){ await api.get({get:'clearHistory'}); el.textContent='Cleared'; if(PAGE==='history') history(); }
+  if(a==='clearData'){ await api.get({get:'clearData'}); el.textContent='Cleared'; }
+  if(a==='default'){ const ok = await api.get({get:'makeDefault'}); el.textContent = ok ? 'Done' : 'Couldn\'t'; }
+  if(a==='rmBookmark'){ await api.get({get:'removeBookmark', url:el.dataset.url}); bookmarks(); }
+});
+
+({start, history: () => history(), bookmarks, downloads, settings}[PAGE] || start)();
+</script>
+</body>
+</html>

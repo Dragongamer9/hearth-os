@@ -13,6 +13,14 @@ const { SystemAdmin } = require('./system-admin');
 const { Importer } = require('./importer');
 const { OsInstaller } = require('./os-installer');
 
+/** Is Hearth Browser here (Hearth OS), and is it the default browser? */
+function hearthBrowser() {
+  const fs = require('node:fs');
+  if (!fs.existsSync('/usr/bin/hearth-browser')) return Promise.resolve({ available: false });
+  return new Promise(res => require('node:child_process').execFile('xdg-settings', ['get', 'default-web-browser'], (e, out) =>
+    res({ available: true, default: !e && String(out).trim() === 'hearth-browser.desktop' })));
+}
+
 /** The install chooser's hand-off between the Hearth app and Mantel: a flag in the runtime folder. */
 const HANDOFF = () => require('node:path').join(process.env.XDG_RUNTIME_DIR || require('node:os').tmpdir(), 'hearth-open-installer');
 function installerHandoff(set, target = 'mantel') {
@@ -150,7 +158,14 @@ class Bridge {
       case 'art.status': return require('./art-cache').artCache().status();
 
       // Web browser (Aloha), Settings › System
-      case 'browser.status': return this.browser.status();
+      case 'browser.status': return { ...(await this.browser.status()), hearth: await hearthBrowser() };
+      // Hearth Browser (Hearth's own): open it, or make it the default browser.
+      case 'browser.hearth': {
+        const { execFile, spawn } = require('node:child_process');
+        if (a.action === 'open') { spawn('/usr/bin/hearth-browser', [], { detached: true, stdio: 'ignore' }).unref(); return true; }
+        if (a.action === 'default') await new Promise((ok, no) => execFile('xdg-settings', ['set', 'default-web-browser', 'hearth-browser.desktop'], e => e ? no(new Error("Couldn't make it the default")) : ok()));
+        return { ...(await this.browser.status()), hearth: await hearthBrowser() };
+      }
       case 'browser.act': this.browser.act(req('action')); return this.browser.status();
 
       // Controller remapping through InputPlumber (Settings › Controller)
