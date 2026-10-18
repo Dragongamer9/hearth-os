@@ -11,7 +11,7 @@ fullscreen, controller-first library of your Steam, Epic, GOG and manual games, 
 hosts/linux/
   src/main.js            Electron app: fullscreen window, nimbus:// and nimbus-art:// schemes, hides itself while a game runs
   src/preload.js         window.nimbusHost: the same postMessage/addEventListener channel WebView2 gives the UI on Windows
-  src/bridge.js          The bridge contract (../../shared/bridge.md)
+  src/bridge.js          The bridge contract (../../docs/bridge.md)
   src/system.js          Wi-Fi (nmcli), Bluetooth (bluetoothctl), audio (wpctl), brightness (brightnessctl), power
   src/library/           Steam, Heroic (Epic + GOG), Xbox Cloud Gaming, manual games; /proc game tracking
   src/stream.js          Xbox Cloud Gaming window

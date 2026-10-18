@@ -63,7 +63,7 @@ PanelWindow {
             RowLayout {
                 spacing: 16
                 Layout.bottomMargin: 4
-                Image { source: Qt.resolvedUrl("hearth-logo.png"); Layout.preferredWidth: 64; Layout.preferredHeight: 64; fillMode: Image.PreserveAspectFit; smooth: true }
+                Image { source: Qt.resolvedUrl("images/hearth-logo.png"); Layout.preferredWidth: 64; Layout.preferredHeight: 64; fillMode: Image.PreserveAspectFit; smooth: true }
                 ColumnLayout {
                     spacing: 2
                     Text { text: "Welcome to Hearth"; color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.DemiBold }

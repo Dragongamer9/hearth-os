@@ -58,7 +58,7 @@ PanelWindow {
             spacing: 10
             RowLayout {
                 spacing: 12
-                Image { source: Qt.resolvedUrl("hearth-logo.png"); Layout.preferredWidth: 36; Layout.preferredHeight: 36; smooth: true; mipmap: true }
+                Image { source: Qt.resolvedUrl("images/hearth-logo.png"); Layout.preferredWidth: 36; Layout.preferredHeight: 36; smooth: true; mipmap: true }
                 Text { text: "Controller controls"; color: Theme.text; font.family: Theme.font; font.pixelSize: 22; font.weight: Font.DemiBold }
             }
             Text {
