@@ -26,6 +26,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 
 NO_AUTOLOGIN = '/etc/nimbus/no-autologin'
 AUTOLOGIN_SCRIPT = '/usr/libexec/nimbus/nimbus-autologin'
@@ -132,17 +133,47 @@ def progress(pct, what):
     print('progress: %.1f %s' % (max(0.0, min(100.0, pct)), what), flush=True)
 
 
-def bootc_upgrade_with_progress(lo, hi):
-    """bootc upgrade, reporting its download as lo..hi percent (bootc's --progress-fd JSON). Older bootc
-    without that option: plain output, no percentage."""
+class Stage:
+    """Detailed update progress for the Updates page, one JSON line at a time ("stage: {...}"):
+    phase download (bytes, speed, time left, layers), install (bootc's deploy steps) or apps (Flatpak).
+    Printed at most a few times a second."""
+
+    def __init__(self):
+        self.last = 0.0
+        self.samples = []   # (time, bytes) for the speed
+
+    def emit(self, force=False, **info):
+        now = time.monotonic()
+        if not force and now - self.last < 0.5:
+            return
+        self.last = now
+        print('stage: ' + json.dumps(info), flush=True)
+
+    def download(self, done, total, desc, layer=None, layers=None):
+        now = time.monotonic()
+        self.samples.append((now, done))
+        self.samples = [x for x in self.samples if now - x[0] <= 6] or [(now, done)]
+        t0, b0 = self.samples[0]
+        bps = (done - b0) / (now - t0) if now - t0 >= 1 else 0
+        eta = (total - done) / bps if bps > 0 and total > done else None
+        self.emit(force=done >= total, phase='download', pct=round(100.0 * done / total, 1) if total else None,
+                  done=done, total=total, bps=round(bps), eta=round(eta) if eta else None,
+                  layer=layer, layers=layers, desc=desc)
+
+
+def bootc_upgrade_with_progress(lo, hi, stage):
+    """bootc upgrade, reporting its download (and then its install steps) as lo..hi percent and as detailed
+    stages (bootc's --progress-fd JSON). Older bootc without that option: plain output, no percentage."""
     help_text = subprocess.run(['bootc', 'upgrade', '--help'], capture_output=True, text=True).stdout
     if '--progress-fd' not in help_text:
+        stage.emit(force=True, phase='download', pct=None, desc='Downloading the system update')
         return run_logged(['bootc', 'upgrade'])
     rfd, wfd = os.pipe()
     p = subprocess.Popen(['bootc', 'upgrade', '--progress-fd', str(wfd)], pass_fds=(wfd,),
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     os.close(wfd)
     last = ['']
+    downloaded = [False]
 
     def logs():
         for line in p.stdout:
@@ -150,37 +181,85 @@ def bootc_upgrade_with_progress(lo, hi):
             if line:
                 last[0] = line
                 print('log: ' + line[:300], flush=True)
+                # "No changes" / staging messages without progress events still move the page on.
+                if re.search(r'stag|deploy|writing|commit', line, re.I) and not downloaded[0]:
+                    downloaded[0] = True
+                    stage.emit(force=True, phase='install', pct=None, desc='Installing the update')
     t = threading.Thread(target=logs, daemon=True)
     t.start()
+    mid = lo + (hi - lo) * 0.85   # download is most of the time; installing the rest
     with os.fdopen(rfd) as events:
         for line in events:
             try:
                 ev = json.loads(line)
             except ValueError:
                 continue
-            kind = ev.get('type')
+            kind, task = ev.get('type'), ev.get('task') or ''
             done, total = ev.get('bytes') or 0, ev.get('bytesTotal') or 0
+            steps, steps_total = ev.get('steps') or 0, ev.get('stepsTotal') or 0
             if kind == 'ProgressBytes' and total:
-                progress(lo + (hi - lo) * done / total,
-                         'Downloading %s (%.1f of %.1f GB)' % (ev.get('description') or 'the update', done / 1e9, total / 1e9))
-            elif kind in ('ProgressSteps', 'ProgressBytes') and ev.get('stepsTotal'):
-                progress(lo + (hi - lo) * (ev.get('steps') or 0) / ev['stepsTotal'], ev.get('description') or 'Updating')
+                progress(lo + (mid - lo) * done / total,
+                         'Downloading (%.2f of %.2f GB)' % (done / 1e9, total / 1e9))
+                stage.download(done, total, ev.get('description') or 'Downloading the system update',
+                               layer=min(steps + 1, steps_total) if steps_total else None, layers=steps_total or None)
+            elif kind == 'ProgressSteps' and steps_total:
+                downloaded[0] = True
+                pct = 100.0 * steps / steps_total
+                sub = [x.get('description') for x in (ev.get('subtasks') or []) if not x.get('completed')]
+                desc = sub[-1] if sub and sub[-1] else (ev.get('description') or 'Installing the update')
+                progress(mid + (hi - mid) * steps / steps_total, desc)
+                stage.emit(force=steps >= steps_total, phase='install', pct=round(pct, 1), step=steps, steps=steps_total,
+                           desc=desc, task=task)
     t.join()
     if p.wait() != 0:
         if re.search(r'lock|another|in progress', last[0], re.I):
             fail('another update is already running (Hearth also updates by itself in the background). Try again in a few minutes.')
         fail(last[0] or 'bootc upgrade failed')
+    stage.emit(force=True, phase='install', pct=100.0, desc='System update installed')
+
+
+def flatpak_update(stage, lo, hi):
+    """flatpak update with a count: "Updating 3 of 12 apps"."""
+    r = subprocess.run(['flatpak', 'remote-ls', '--updates', '--system', '--columns=application'],
+                       capture_output=True, text=True)
+    names = [l.strip() for l in r.stdout.splitlines() if l.strip()]
+    total = len(names)
+    if total == 0:
+        stage.emit(force=True, phase='apps', pct=100.0, n=0, total=0, desc='Your apps are up to date')
+        return
+    stage.emit(force=True, phase='apps', pct=0.0, n=0, total=total, desc='Updating %d app%s' % (total, '' if total == 1 else 's'))
+    p = subprocess.Popen(['flatpak', 'update', '--system', '-y', '--noninteractive'],
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    seen, last = set(), ''
+    for line in p.stdout:
+        line = line.rstrip()
+        if not line:
+            continue
+        last = line
+        print('log: ' + line[:300], flush=True)
+        m = re.match(r'^(?:Updating|Installing)\s+(?:(?:app|runtime)/)?([A-Za-z0-9_-]+\.[A-Za-z0-9_.-]+)', line)
+        if m and m.group(1) not in seen:
+            seen.add(m.group(1))
+            n = min(len(seen), total)
+            progress(lo + (hi - lo) * (n - 1) / total, 'Updating apps (%d of %d)' % (n, total))
+            stage.emit(force=True, phase='apps', pct=round(100.0 * (n - 1) / total, 1), n=n, total=total,
+                       desc='Updating %s' % m.group(1))
+    if p.wait() != 0:
+        fail(last or 'flatpak update failed')
+    stage.emit(force=True, phase='apps', pct=100.0, n=total, total=total, desc='Apps updated')
 
 
 def update():
+    stage = Stage()
     progress(0, 'Starting')
     print('log: Downloading the system update…', flush=True)
-    bootc_upgrade_with_progress(0, 90)
+    bootc_upgrade_with_progress(0, 90, stage)
     if subprocess.run(['sh', '-c', 'command -v flatpak'], capture_output=True).returncode == 0:
         progress(90, 'Updating apps')
         print('log: Updating apps…', flush=True)
-        run_logged(['flatpak', 'update', '--system', '-y', '--noninteractive'])
+        flatpak_update(stage, 90, 100)
     progress(100, 'Done')
+    stage.emit(force=True, phase='done', pct=100.0, desc='Done')
     print(json.dumps(bootc_status()))
 
 
