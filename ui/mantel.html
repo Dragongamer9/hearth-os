@@ -56,6 +56,22 @@ html.bar,body.bar{background:var(--bg)}
 .clock small{font-size:11px;color:var(--muted)}
 .gm{height:36px;border-radius:10px;padding:0 14px;background:var(--accent);color:var(--accentInk);font-weight:700;font-size:13px;flex:none;transition:filter var(--quick)}
 .gm:hover{filter:brightness(1.12)}
+/* upright screen: the bar runs down the left side (6 in from the left, 4 from the right, 8 top and bottom) */
+body.portrait .barbox{top:8px;bottom:8px;left:6px;right:4px;flex-direction:column;padding:8px 0}
+body.portrait .wins,body.portrait .ticons{flex-direction:column}
+body.portrait .sep{width:28px;height:1px}
+body.portrait .bb.narrow{width:44px;height:30px}
+body.portrait .bb.wide{padding:0}
+body.portrait .bb .lbl{display:none}
+body.portrait .bb.active::after{bottom:auto;left:1px;top:50%;transform:translateY(-50%);width:3px;height:16px}
+body.portrait .bb.run:not(.active)::after{bottom:auto;left:1px;top:50%;transform:translateY(-50%);width:3px;height:5px}
+body.portrait .clock{margin:6px 0;align-items:center}
+body.portrait .clock b{font-size:13px}
+body.portrait .clock small{display:none}
+body.portrait .gm{width:44px;height:44px;padding:0;display:grid;place-items:center}
+body.portrait .gm .gmt{display:none}
+.gm .gmi{display:none}
+body.portrait .gm .gmi{display:block}
 
 /* ---------------- launcher (Launcher.qml): the box in the middle of a dimmed screen ---------------- */
 .box{position:fixed;inset:0;border-radius:20px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;gap:16px;padding:22px}
@@ -303,7 +319,7 @@ function renderBar(){
       <button class="bb" data-act="quick" title="Quick Access">${I.menu}</button>
       <button class="bb" data-act="keyboard" title="Keyboard">${I.kbd}</button>
       <div class="clock"><b></b><small></small></div>
-      <button class="gm" data-act="game" title="Back to Game Mode">Game Mode</button></div>`;
+      <button class="gm" data-act="game" title="Back to Game Mode"><span class="gmt">Game Mode</span><span class="gmi">${I.pad}</span></button></div>`;
     $('.vol').addEventListener('wheel', e => { e.preventDefault(); volumeBy(e.deltaY < 0 ? 5 : -5); }, {passive:false});
   }
   renderWins(); renderTray(); renderStatus(); tickClock();
@@ -345,7 +361,7 @@ function renderStatus(){
 function tickClock(){
   const c=$('.clock'); if(!c) return;
   const now=new Date();
-  c.querySelector('b').textContent = timeText(now);
+  c.querySelector('b').textContent = document.body.classList.contains('portrait') ? now.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}).replace(/\s?[AP]M$/i,'') : timeText(now);
   c.querySelector('small').textContent = now.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
 }
 function volumeBy(d){
@@ -588,6 +604,9 @@ if(!host){   // browser preview with sample data
   ST.wallpaper=Q.get('wall')||'';
   if(Q.get('preview')){ document.body.style.background='#000'; }
 }
+// An upright screen puts the bar down the side (Ember shapes the window to match).
+function orient(){ if(PART!=='bar') return; const p=innerHeight>innerWidth; if(p!==document.body.classList.contains('portrait')){ document.body.classList.toggle('portrait', p); tickClock(); } }
+addEventListener('resize', orient); orient();
 render();
 setInterval(()=>{ if(PART==='bar') tickClock(); if(PART==='quick') { const b=$('.qhead b'); if(b) b.textContent=timeText(new Date()); } }, 15000);
 if(host){

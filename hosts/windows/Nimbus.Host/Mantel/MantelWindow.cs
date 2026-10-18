@@ -66,7 +66,7 @@ internal sealed class MantelWindow : Form
         Bounds = Part switch
         {
             MantelPart.Desktop => scr,
-            MantelPart.Bar => new Rectangle(scr.Left, scr.Bottom - h, scr.Width, h),
+            MantelPart.Bar => BarStrip(),
             _ => new Rectangle(-32000, -32000, S(400), S(400)),
         };
         Show();
@@ -94,6 +94,18 @@ internal sealed class MantelWindow : Form
 
     // ------------------------------------------------------------------ shape
 
+    /// <summary>An upright screen (a handheld held vertically, a rotated monitor): the bar goes down the left
+    /// side, like Hearth's.</summary>
+    public static bool Portrait { get { var b = Screen.PrimaryScreen!.Bounds; return b.Height > b.Width; } }
+
+    /// <summary>The bar's strip, as placed for the screen's shape.</summary>
+    private Rectangle BarStrip()
+    {
+        var scr = Screen.PrimaryScreen!.Bounds;
+        int t = BarHeight();
+        return Portrait ? new Rectangle(scr.Left, scr.Top, t, scr.Height) : new Rectangle(scr.Left, scr.Bottom - t, scr.Width, t);
+    }
+
     /// <summary>The rounded shape (Hearth's radii: 14 for the bar, 20 for panels). The bar floats: 8 px in from
     /// the sides, 4 from the top of its strip and 6 from the bottom of the screen.</summary>
     private void Shape()
@@ -101,7 +113,9 @@ internal sealed class MantelWindow : Form
         if (!IsHandleCreated || Width <= 0 || Height <= 0) return;
         IntPtr rgn = Part switch
         {
-            MantelPart.Bar => CreateRoundRectRgn(S(8), S(4), Width - S(8) + 1, Height - S(6) + 1, S(28), S(28)),
+            MantelPart.Bar => Portrait
+                ? CreateRoundRectRgn(S(6), S(8), Width - S(4) + 1, Height - S(8) + 1, S(28), S(28))
+                : CreateRoundRectRgn(S(8), S(4), Width - S(8) + 1, Height - S(6) + 1, S(28), S(28)),
             MantelPart.Desktop => IntPtr.Zero,
             MantelPart.Radial => CreateEllipticRgn(0, 0, Width + 1, Height + 1),
             _ => CreateRoundRectRgn(0, 0, Width + 1, Height + 1, S(40), S(40)),
@@ -118,10 +132,9 @@ internal sealed class MantelWindow : Form
     /// <summary>Full Mantel: the bar along the bottom without the app bar machinery.</summary>
     public void PlaceManually()
     {
-        var scr = Screen.PrimaryScreen!.Bounds;
-        int h = BarHeight();
         RemoveAppBar();
-        Bounds = new Rectangle(scr.Left, scr.Bottom - h, scr.Width, h);
+        Bounds = BarStrip();
+        Shape();
     }
 
     /// <summary>The desktop window: full screen, behind everything.</summary>
@@ -181,15 +194,16 @@ internal sealed class MantelWindow : Form
     public void PlaceAppBar()
     {
         if (!_appBar) return;
-        var scr = Screen.PrimaryScreen!.Bounds;
         int h = BarHeight();
+        var strip = BarStrip();
         var d = Data();
-        d.uEdge = Native.ABE_BOTTOM;
-        d.rc = new Native.RECT { Left = scr.Left, Right = scr.Right, Top = scr.Bottom - h, Bottom = scr.Bottom };
+        d.uEdge = Portrait ? Native.ABE_LEFT : Native.ABE_BOTTOM;
+        d.rc = new Native.RECT { Left = strip.Left, Right = strip.Right, Top = strip.Top, Bottom = strip.Bottom };
         Native.SHAppBarMessage(Native.ABM_QUERYPOS, ref d);
-        d.rc.Top = d.rc.Bottom - h;
+        if (Portrait) d.rc.Right = d.rc.Left + h; else d.rc.Top = d.rc.Bottom - h;
         Native.SHAppBarMessage(Native.ABM_SETPOS, ref d);
         Bounds = new Rectangle(d.rc.Left, d.rc.Top, d.rc.Right - d.rc.Left, d.rc.Bottom - d.rc.Top);
+        Shape();
     }
 
     private Native.APPBARDATA Data() => new() { cbSize = Marshal.SizeOf<Native.APPBARDATA>(), hWnd = Handle };
