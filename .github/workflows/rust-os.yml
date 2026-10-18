@@ -48,6 +48,8 @@ jobs:
           missing=$(sudo podman run --rm hearth-rs sh -c 'ldd /usr/lib/nimbus/nimbus | grep "not found"' || true)
           if [ -n "$missing" ]; then echo "::error title=Missing libraries::$(echo "$missing" | tr '\n' '|')"; exit 1; fi
           echo "::notice title=Libraries::all found ($(sudo podman run --rm hearth-rs du -h /usr/lib/nimbus/nimbus | cut -f1))"
+          # Hearth's screens read controllers through the web view's Gamepad API: WebKit needs libmanette for it.
+          echo "::notice title=Controllers in WebKit::$(sudo podman run --rm hearth-rs sh -c 'rpm -q --requires webkit2gtk4.1 | grep -i manette; ldd /usr/lib64/libwebkit2gtk-4.1.so.0 | grep -i manette' | tr '\n' ' ')"
       - name: Run it on Hearth OS once
         run: |
           mkdir -p shots; chmod 777 shots
@@ -64,7 +66,7 @@ jobs:
           import -window root /shots/hearth-os.png || xwd -root -silent | convert xwd:- /shots/hearth-os.png
           IN
           chmod 755 /tmp/inner.sh
-          runuser -u tester -- bash /tmp/inner.sh
+          setpriv --reuid=tester --regid=tester --init-groups bash /tmp/inner.sh
           SH
           sed -i 's/^          //' shots/run.sh
           sudo podman run --rm -v "$PWD/shots:/shots:z" hearth-rs bash /shots/run.sh > shots/outer.log 2>&1 || true
