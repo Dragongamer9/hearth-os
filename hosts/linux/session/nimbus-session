@@ -45,6 +45,11 @@ run_game() {
     echo no_display >"$MANGOHUD_CONFIGFILE"
     extra="--mangoapp"
   fi
+  # Games get gamescope's Vulkan layer: the frame-rate limit (Quick Access › Performance) works through it.
+  export ENABLE_GAMESCOPE_WSI="${ENABLE_GAMESCOPE_WSI:-1}"
+  # SteamOS Manager sets the power limit and power modes on Bazzite (what Steam's Game Mode uses); it normally
+  # starts with Steam's session, so start it for Hearth's too.
+  systemctl --user start steamos-manager.service >/dev/null 2>&1 || true
   # shellcheck disable=SC2086
   gamescope -f $extra $NIMBUS_GAMESCOPE_ARGS -- "$WATCHDOG" "$NIMBUS_APP"
 }

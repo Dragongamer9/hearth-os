@@ -71,7 +71,23 @@ def remembered():
 
 
 # ---------------------------------------------------------------------- power mode
+def som_mode():
+    iface = SOM[0] + '.PerformanceProfile1'
+    active = getp('user', SOM[0], SOM[1], iface, 'PerformanceProfile')
+    avail = getp('user', SOM[0], SOM[1], iface, 'AvailablePerformanceProfiles')
+    mapped = sorted({SOM_NAMES[a] for a in avail if a in SOM_NAMES}, key=MODES.index)
+    return {'supported': bool(mapped), 'active': SOM_NAMES.get(active, active), 'available': mapped, 'via': 'steamos-manager', 'raw': avail, 'rawActive': active}
+
+
 def mode_status():
+    # SteamOS Manager first: on Bazzite it owns the power profile (and the power limit only applies in its
+    # "custom" profile), so changing it anywhere else gets undone.
+    try:
+        st = som_mode()
+        if st['supported']:
+            return st
+    except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        pass
     for svc, path, iface in PP:
         try:
             active = getp('system', svc, path, iface, 'ActiveProfile')
@@ -86,14 +102,6 @@ def mode_status():
                 return {'supported': True, 'active': active, 'available': MODES, 'via': 'powerprofilesctl'}
         except (OSError, subprocess.TimeoutExpired):
             pass
-    try:
-        iface = SOM[0] + '.PerformanceProfile1'
-        active = getp('user', SOM[0], SOM[1], iface, 'PerformanceProfile')
-        avail = getp('user', SOM[0], SOM[1], iface, 'AvailablePerformanceProfiles')
-        mapped = sorted({SOM_NAMES[a] for a in avail if a in SOM_NAMES}, key=MODES.index)
-        return {'supported': bool(mapped), 'active': SOM_NAMES.get(active, active), 'available': mapped, 'via': 'steamos-manager', 'raw': avail}
-    except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
-        pass
     return {'supported': False, 'active': 'balanced', 'available': [], 'via': None}
 
 
@@ -186,15 +194,36 @@ def set_tdp(watts):
     if not st['supported']:
         raise Fail("this device's power limit can't be changed here")
     w = max(st['min'], min(st['max'], int(round(float(watts)))))
-    via = st['via']
-    if via == 'steamos-manager':
-        busctl('user', 'set-property', SOM[0], SOM[1], SOM[0] + '.TdpLimit1', 'TdpLimit', 'u', str(w))
-    elif via == 'powerstation':
-        busctl('system', 'set-property', PS, ps_card(), PS_IFACE, 'TDP', 'd', str(w))
-    else:
+    errors = []
+    # Each way in turn, until one takes: SteamOS Manager, PowerStation, then Hearth's own.
+    if st['via'] == 'steamos-manager':
+        try:
+            iface = SOM[0] + '.PerformanceProfile1'
+            # The power limit only applies in SteamOS Manager's "custom" profile (like Steam's Quick Access).
+            avail = getp('user', SOM[0], SOM[1], iface, 'AvailablePerformanceProfiles')
+            if 'custom' in avail and getp('user', SOM[0], SOM[1], iface, 'PerformanceProfile') != 'custom':
+                busctl('user', 'set-property', SOM[0], SOM[1], iface, 'PerformanceProfile', 's', 'custom')
+            busctl('user', 'set-property', SOM[0], SOM[1], SOM[0] + '.TdpLimit1', 'TdpLimit', 'u', str(w))
+            if int(getp('user', SOM[0], SOM[1], SOM[0] + '.TdpLimit1', 'TdpLimit')) == w:
+                remember(w)
+                return w
+            errors.append('SteamOS Manager kept the old limit')
+        except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as e:
+            errors.append('SteamOS Manager: ' + str(e))
+    try:
+        card = ps_card()
+        busctl('system', 'set-property', PS, card, PS_IFACE, 'TDP', 'd', str(w))
+        remember(w)
+        return w
+    except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as e:
+        errors.append('PowerStation: ' + str(e))
+    try:
         admin('tdp', str(w))
-    remember(w)
-    return w
+        remember(w)
+        return w
+    except (Fail, OSError, subprocess.TimeoutExpired) as e:
+        errors.append(str(e))
+    raise Fail("couldn't set the power limit (" + '; '.join(errors) + ')')
 
 
 def cmd(argv):

@@ -181,22 +181,73 @@ pub fn set_perf_overlay(level: u64) -> Result<u64, String> {
 
 // ------------------------------------------------------------------ screenshots
 
-/// Saves a screenshot to Pictures/Screenshots/Hearth with whichever tool this desktop has. (The host gets
-/// Hearth's own windows out of the way first.)
-pub fn screenshot() -> Result<Value, String> {
-    let pics = crate::system::run("xdg-user-dir", &["PICTURES"]).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+/// Where Hearth keeps screenshots: Pictures/Screenshots/Hearth.
+pub fn screenshot_dir() -> std::path::PathBuf {
+    let pics = crate::system::run("xdg-user-dir", &["PICTURES"]).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && s != "/")
         .unwrap_or_else(|| crate::paths::home().join("Pictures").to_string_lossy().to_string());
-    let dir = std::path::Path::new(&pics).join("Screenshots/Hearth");
+    std::path::Path::new(&pics).join("Screenshots/Hearth")
+}
+
+/// gamescope takes it itself, the way Steam asks for one: GAMESCOPECTRL_REQUEST_SCREENSHOT on the root window
+/// (2 = the game and other real windows, without overlays), written to /tmp/gamescope.png; gamescope removes
+/// the property when it's done.
+fn gamescope_shot(to: &std::path::Path) -> bool {
+    if !available() { return false; }
+    let tmp = std::path::Path::new("/tmp/gamescope.png");
+    let before = std::fs::metadata(tmp).and_then(|m| m.modified()).ok();
+    if set_root("GAMESCOPECTRL_REQUEST_SCREENSHOT", 2).is_err() { return false; }
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(4) {
+        std::thread::sleep(Duration::from_millis(150));
+        let now = std::fs::metadata(tmp).and_then(|m| m.modified()).ok();
+        let done = !xprop(&["-root", "GAMESCOPECTRL_REQUEST_SCREENSHOT"]).contains('=');
+        if now.is_some() && now != before && done {
+            std::thread::sleep(Duration::from_millis(100));
+            return std::fs::copy(tmp, to).map(|n| n > 0).unwrap_or(false);
+        }
+    }
+    remove_root("GAMESCOPECTRL_REQUEST_SCREENSHOT");
+    false
+}
+
+/// Saves a screenshot to Pictures/Screenshots/Hearth: in Game Mode gamescope takes it, otherwise whichever
+/// tool this desktop has. (The host gets Hearth's own windows out of the way first.)
+pub fn screenshot() -> Result<Value, String> {
+    let dir = screenshot_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let file = dir.join(format!("Screenshot {}.png", chrono::Local::now().format("%Y-%m-%d %H-%M-%S")));
     let f = file.to_string_lossy().to_string();
+    if inside() && gamescope_shot(&file) { return Ok(json!({"file": f, "url": crate::library::art_url(&f)})); }
     let tries: [(&str, Vec<&str>); 4] = [("grim", vec![&f]), ("spectacle", vec!["-b", "-n", "-f", "-o", &f]), ("gnome-screenshot", vec!["-f", &f]), ("gamescopectl", vec!["screenshot", &f])];
     for (cmd, args) in tries.iter() {
         if !crate::system::has(cmd) { continue; }
         if crate::system::run_timeout(cmd, args, Duration::from_secs(10)).is_err() { continue; }
-        if file.exists() { return Ok(json!({"file": f})); }
+        if file.exists() { return Ok(json!({"file": f, "url": crate::library::art_url(&f)})); }
     }
-    Err("No screenshot tool found. Install grim (Desktop Mode), Spectacle (KDE) or GNOME Screenshot.".into())
+    Err("Couldn't take a screenshot here. In Desktop Mode it needs grim or Spectacle.".into())
+}
+
+/// Screenshots, newest first: [{file, url, name, time, size}]
+pub fn screenshots() -> Vec<Value> {
+    let mut v: Vec<(u64, Value)> = std::fs::read_dir(screenshot_dir()).into_iter().flatten().flatten().filter_map(|e| {
+        let p = e.path();
+        let ext = p.extension()?.to_str()?.to_ascii_lowercase();
+        if !["png", "jpg", "jpeg", "webp"].contains(&ext.as_str()) { return None; }
+        let m = e.metadata().ok()?;
+        let t = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as u64;
+        let f = p.to_string_lossy().to_string();
+        Some((t, json!({"file": f, "url": crate::library::art_url(&f), "name": p.file_stem()?.to_string_lossy(), "time": t, "size": m.len()})))
+    }).collect();
+    v.sort_by(|a, b| b.0.cmp(&a.0));
+    v.into_iter().map(|x| x.1).collect()
+}
+
+/// Deletes one screenshot (only from Hearth's screenshots folder).
+pub fn delete_screenshot(file: &str) -> Result<(), String> {
+    let dir = screenshot_dir().canonicalize().map_err(|_| "No screenshots yet".to_string())?;
+    let p = std::path::Path::new(file).canonicalize().map_err(|_| "That screenshot is already gone".to_string())?;
+    if p.parent() != Some(dir.as_path()) { return Err("Only Hearth's screenshots can be deleted here".into()); }
+    std::fs::remove_file(&p).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
