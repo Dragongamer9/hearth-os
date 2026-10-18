@@ -19,7 +19,9 @@ public sealed class MantelHost : IDisposable
     private readonly CoreWebView2Environment _env;
     private readonly string _baseUrl;
     private readonly Action<CoreWebView2> _setup;
-    private MantelWindow? _bar, _launcher, _desk;
+    private MantelWindow? _bar, _launcher, _desk, _quick, _power, _radial, _help;
+    private IntPtr _beforeRadial;
+    private Backdrop? _dim;
     private readonly TrayHost _tray = new();
     private readonly FullShell _full = new();
     /// <summary>Full Mantel: no Explorer at all (Ember is the whole desktop and hosts the tray itself).</summary>
@@ -43,7 +45,7 @@ public sealed class MantelHost : IDisposable
         _env = env;
         _baseUrl = baseUrl;
         _setup = setup;
-        _bridge.AddListener(json => { if (Active) { _bar?.Post(json); _launcher?.Post(json); } });
+        _bridge.AddListener(json => { if (Active) { _bar?.Post(json); _launcher?.Post(json); _quick?.Post(json); } });
         _tick.Tick += (_, _) => Tick();
         _tray.Changed += () => _bar?.BeginInvoke((MethodInvoker)PushTray);
         _full.WinKey += () => _bar?.BeginInvoke((MethodInvoker)ToggleLauncher);
@@ -66,17 +68,23 @@ public sealed class MantelHost : IDisposable
             if (full)
             {
                 if (!_tray.Start()) SystemBridge.Log("mantel: couldn't host the tray");
-                _desk ??= await Create(bar: false, desktop: true);
+                _desk ??= await Create(MantelPart.Desktop);
                 _desk.Show();
                 _desk.SendToBack();
             }
             else { HideWindowsTaskbar(); ApplyWallpaper(); }
-            _bar ??= await Create(bar: true);
-            _launcher ??= await Create(bar: false);
+            _bar ??= await Create(MantelPart.Bar);
+            _launcher ??= await Create(MantelPart.Launcher);
+            _quick ??= await Create(MantelPart.Quick);
+            _power ??= await Create(MantelPart.Power);
+            _radial ??= await Create(MantelPart.Radial);
+            _help ??= await Create(MantelPart.Help);
+            _dim ??= new Backdrop();
+            _dim.Clicked -= HidePanels; _dim.Clicked += HidePanels;
             _bar.Show();
             if (full) { _bar.PlaceManually(); _full.Start(_bar.Height); }
             else { _bar.EnsureAppBar(); _bar.PlaceAppBar(); }
-            foreach (var w in new[] { _bar, _launcher, _desk }) if (w is not null) PushState(w);
+            foreach (var w in new[] { _bar, _launcher, _desk, _quick, _power, _radial, _help }) if (w is not null) PushState(w);
             PushTray();
             _tick.Start();
             PushWindows(force: true);
@@ -94,28 +102,69 @@ public sealed class MantelHost : IDisposable
         Active = false;
         SystemBridge.Log("mantel: stopping");
         _tick.Stop();
-        _launcher?.Hide();
+        HidePanels();
         if (_bar is not null) { _bar.RemoveAppBar(); _bar.Hide(); }
         if (Full) { _full.Stop(); _tray.Stop(); _desk?.Hide(); MantelWindow.OwnTray = false; }
         else RestoreWindowsTaskbar();
         Full = false;
     }
 
-    private async Task<MantelWindow> Create(bool bar, bool desktop = false)
+    private async Task<MantelWindow> Create(MantelPart part)
     {
-        var w = new MantelWindow(bar, desktop);
+        var w = new MantelWindow(part);
         w.PageMessage += m => OnMessage(m, w);
-        await w.InitAsync(_env, _baseUrl + "mantel.html?part=" + (desktop ? "desktop" : bar ? "bar" : "launcher"), _setup);
+        w.PanelClosed += () => { if (!AnyPanelOpen()) _dim?.Hide(); };
+        await w.InitAsync(_env, _baseUrl + "mantel.html?part=" + part.ToString().ToLowerInvariant(), _setup);
         return w;
     }
 
     public void ToggleLauncherFromPad() { if (Active) ToggleLauncher(); }
-
-    private void ToggleLauncher()
+    /// <summary>The power menu (the power button's "menu" choice, or the controller), like PowerMenu.qml.</summary>
+    public void ShowPowerMenu() { if (Active) TogglePanel(_power); }
+    public void ToggleQuick() { if (Active) TogglePanel(_quick); }
+    /// <summary>The Hearth menu (the Xbox button in Desktop Mode), like RadialMenu.qml.</summary>
+    public void ToggleRadial() { if (!Active) return; if (_radial is { Visible: false }) _beforeRadial = Native.GetForegroundWindow(); TogglePanel(_radial); }
+    /// <summary>The controller's controls (a tap of View), like Help.qml.</summary>
+    public void ToggleHelp() { if (Active) TogglePanel(_help); }
+    /// <summary>Is one of Mantel's panels in front? (Then the controller moves through it instead of being a mouse.)</summary>
+    public bool PanelInFront
     {
-        if (_launcher is null) return;
-        if (_launcher.Visible) _launcher.Hide();
-        else { _launcher.ShowLauncher(_bar?.Height ?? 54); Send(_launcher, "mantel.opened", new { }); }
+        get
+        {
+            if (!Active) return false;
+            var fg = Native.GetForegroundWindow();
+            return fg != IntPtr.Zero && Panels.Any(p => p is not null && p.Hwnd == fg);
+        }
+    }
+    private MantelWindow?[] Panels => new[] { _launcher, _quick, _power, _radial, _help };
+
+    private void ToggleLauncher() => TogglePanel(_launcher);
+
+    private bool AnyPanelOpen() => Panels.Any(p => p is { Visible: true });
+
+    /// <summary>Opens one panel over a dimmed screen (closing any other), or closes it if it's open.</summary>
+    private void TogglePanel(MantelWindow? panel)
+    {
+        if (panel is null) return;
+        if (panel.Visible) { HidePanels(); return; }
+        foreach (var p in Panels) if (p is not null && p != panel && p.Visible) p.Hide();
+        // How dark: the launcher like Hearth's (#b0080b10), Quick Access lighter, the power menu darker.
+        var (op, tint) = panel.Part switch
+        {
+            MantelPart.Launcher => (0.69, Color.FromArgb(8, 11, 16)),
+            MantelPart.Quick => (0.30, Color.Black),
+            MantelPart.Help => (0.0, Color.Black),
+            _ => (0.55, Color.Black),
+        };
+        if (op > 0) _dim?.ShowDim(op, tint); else _dim?.Hide();
+        panel.ShowPanel();
+        Send(panel, "mantel.opened", new { });
+    }
+
+    private void HidePanels()
+    {
+        foreach (var p in Panels) if (p is { Visible: true }) p.Hide();
+        _dim?.Hide();
     }
 
     private void PushTray()
@@ -216,18 +265,40 @@ public sealed class MantelHost : IDisposable
         switch (action)
         {
             case "apps": _ = PushAppsAsync(from, m.TryGetProperty("refresh", out var r) && r.ValueKind == JsonValueKind.True); break;
-            case "launch": Apps.Launch(Str("id")); _launcher?.Hide(); break;
-            case "focus": Apps.Focus(Long("id")); _launcher?.Hide(); break;
+            case "launch": Apps.Launch(Str("id")); HidePanels(); break;
+            case "focus": Apps.Focus(Long("id")); HidePanels(); break;
             case "close": Apps.Close(Long("id")); break;
             case "launcher": ToggleLauncher(); break;
             case "trayClick": _tray.Click(Str("key"), Str("button"), (int)Long("x"), (int)Long("y")); break;
-            case "hideLauncher": _launcher?.Hide(); break;
+            case "hideLauncher": case "hidePanel": HidePanels(); break;
             case "tray": PeekTray(); break;
-            case "quick": QuickAccessRequested?.Invoke(); break;
-            case "game": _launcher?.Hide(); GameModeRequested?.Invoke(); break;
-            case "power": _launcher?.Hide(); PowerRequested?.Invoke(Str("what")); break;
+            case "quick": TogglePanel(_quick); break;
+            case "powerMenu": TogglePanel(_power); break;
+            case "game": HidePanels(); GameModeRequested?.Invoke(); break;
+            case "power": HidePanels(); PowerRequested?.Invoke(Str("what")); break;
+            case "lock": HidePanels(); Native.LockWorkStation(); break;
+            case "keyboard": HidePanels(); new Thread(Stores.TouchKeyboard.Toggle) { IsBackground = true }.Start(); break;
+            case "nightlight": HidePanels(); Apps.OpenUri("ms-settings:nightlight"); break;
+            case "radial": RadialPick(Str("pick")); break;
             case "pin": SetPin(Str("id"), Str("name"), m.TryGetProperty("on", out var on) && on.ValueKind == JsonValueKind.True); break;
-            case "settings": _launcher?.Hide(); Apps.Launch("windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"); break;
+            case "settings": HidePanels(); Apps.Launch("windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"); break;
+        }
+    }
+
+    /// <summary>What the Hearth menu's items do (Pad.qml's run()).</summary>
+    private void RadialPick(string pick)
+    {
+        HidePanels();
+        switch (pick)
+        {
+            case "apps": ToggleLauncher(); break;
+            case "keyboard": new Thread(Stores.TouchKeyboard.Toggle) { IsBackground = true }.Start(); break;
+            case "quick": TogglePanel(_quick); break;
+            case "close": if (_beforeRadial != IntPtr.Zero) Native.PostMessage(_beforeRadial, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero); break;
+            case "game": GameModeRequested?.Invoke(); break;
+            case "screenshot": _ = Task.Delay(400).ContinueWith(_ => Native.Screenshot()); break;
+            case "mouse": _bridge.Pad?.ToggleMouse(); break;
+            case "help": TogglePanel(_help); break;
         }
     }
 
@@ -283,12 +354,12 @@ public sealed class MantelHost : IDisposable
         s.Pins.RemoveAll(p => p.Id == id);
         if (on) s.Pins.Add(new Pin(id, name));
         Save(s);
-        foreach (var w in new[] { _bar, _launcher }) if (w is not null) PushState(w);
+        foreach (var w in new[] { _bar, _launcher, _quick, _radial }) if (w is not null) PushState(w);
     }
 
     /// <summary>The wallpaper chosen in Settings › Shell: one of Hearth's (in wwwroot/wallpapers), or Windows'
     /// own ("" puts back the one you had before Mantel).</summary>
-    public static string Wallpaper { get; set; } = "hearth-cabin";
+    public static string Wallpaper { get; set; } = "anim:fireside";
 
     public void ApplyWallpaper()
     {
@@ -317,6 +388,11 @@ public sealed class MantelHost : IDisposable
         _bar?.Dispose();
         _launcher?.Dispose();
         _desk?.Dispose();
+        _quick?.Dispose();
+        _power?.Dispose();
+        _radial?.Dispose();
+        _help?.Dispose();
+        _dim?.Dispose();
         _tray.Dispose();
         _full.Dispose();
     }

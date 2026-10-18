@@ -1941,7 +1941,7 @@ function emberWall(){
   const pick=name=>call('shell.setWallpaper',{name}).then(r=>{ SHELL.status=r; refreshUI(); }).catch(e=>toast(e.message));
   openSheet({title:'Wallpaper', sub:'Hearth\'s wallpapers, or the one you had in Windows', items:[
     ...EMBER_WALLS.map(w=>({label:w.charAt(0).toUpperCase()+w.slice(1), icon:cur==='hearth-'+w?'check':'', run:()=>pick('hearth-'+w)})),
-    ...(SHELL.status&&SHELL.status.desktopStyle==='mantel-full' ? [['anim:lava','Lava (moving)'],['anim:aurora','Aurora (moving)']].map(([v,l])=>({label:l, icon:cur===v?'check':'', run:()=>pick(v)})) : []),
+    ...(SHELL.status&&SHELL.status.desktopStyle==='mantel-full' ? [['anim:fireside','Hearth fireside (moving)'],['anim:lava','Lava (moving)'],['anim:aurora','Aurora (moving)']].map(([v,l])=>({label:l, icon:cur===v?'check':'', run:()=>pick(v)})) : []),
     {label:'Your Windows wallpaper', icon:!cur?'check':'', run:()=>pick('')}]});
 }
 function emberStart(){

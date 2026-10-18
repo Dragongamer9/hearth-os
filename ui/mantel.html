@@ -5,100 +5,184 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mantel</title>
 <!--
-  Mantel on Windows (Ember's Desktop Mode): the taskbar (?part=bar) and the app launcher (?part=launcher).
-  Hosted by Ember (Mantel/MantelHost.cs) in WebView2. Calls the same bridge as the main UI ("call"), plus
-  "mantel" messages for windows and apps. Opens in a normal browser too, with sample data.
+  Mantel on Windows (Ember's Desktop Mode), built to look and work like Mantel on Hearth OS
+  (hosts/linux/desktop/shell: Bar.qml, Launcher.qml, QuickAccess.qml, PowerMenu.qml, Wallpaper.qml).
+  One page, several windows, picked with ?part=:
+    bar       the floating taskbar along the bottom
+    launcher  the app launcher (search, every app, power)
+    quick     Quick Access (volume, brightness, toggles, performance, actions), from the right edge
+    power     the power menu
+    desktop   full Mantel's desktop: the wallpaper (the Hearth fireside, Lava, Aurora, or a picture)
+  Hosted by Ember (Mantel/MantelHost.cs) in WebView2. Windows give each window its rounded shape; this page
+  draws what's inside. Calls the same bridge as the main UI ("call"), plus "mantel" messages for windows
+  and apps. Opens in a normal browser too, with sample data (add &preview=1 to see the shape).
 -->
 <style>
 :root{
   --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
-  --text:#f4ece3; --muted:#a69484; --ember:#ff8a3d; --flame:#ffd166; --ink:#2a1206;
+  --text:#f4ece3; --muted:#a69484; --danger:#ff5d5d; --ember:#ff8a3d; --flame:#ffd166;
+  --accent:#ff8a3d; --accentInk:#2a1206; --glass:rgba(28,21,18,.97);
+  --quick:140ms; --calm:260ms;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:transparent;color:var(--text);font:14px/1.3 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-font-smoothing:antialiased}
+html,body{height:100%;background:var(--panel);color:var(--text);font:14px/1.3 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
-svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+:focus{outline:none}
 
-/* ---------------- taskbar ---------------- */
-body.bar{background:rgba(23,17,14,.94);border-top:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:0 10px}
-.tb{height:42px;min-width:42px;border-radius:10px;display:grid;place-items:center;position:relative;padding:0 8px}
-.tb:hover{background:var(--panel2)}
-.tb.on{background:var(--panel3)}
-.start{padding:0 10px}
-.start img{width:28px;height:28px}
-.sep{width:1px;height:26px;background:var(--line);margin:0 4px}
-.apps{display:flex;gap:4px;flex:1;min-width:0;overflow:hidden}
-.app img{width:26px;height:26px;display:block}
-.app .gen{width:26px;height:26px;border-radius:7px;background:var(--panel3);display:grid;place-items:center;font-weight:700;font-size:13px;color:var(--flame)}
-.app::after{content:"";position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:6px;height:3px;border-radius:2px;background:transparent}
-.app.run::after{background:var(--muted)}
-.app.active::after{background:var(--ember);width:16px}
-.tray{display:flex;align-items:center;gap:2px}
-.status{display:flex;align-items:center;gap:10px;padding:0 10px}
-.status svg{width:18px;height:18px}
-.status .pct{font-size:12px;color:var(--muted)}
-.clock{text-align:right;padding:0 10px;line-height:1.15}
-.clock b{display:block;font-weight:600}
-.clock small{font-size:11.5px;color:var(--muted)}
-.game{background:var(--ember);color:var(--ink);font-weight:700;border-radius:10px;height:38px;padding:0 14px;margin-left:4px}
-.game:hover{background:#ff9d5a}
-.tip{position:fixed;bottom:56px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-size:12px;pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .12s}
+/* ---------------- taskbar (Bar.qml): a floating rounded bar; the window's shape matches .barbox ---------------- */
+html.bar,body.bar{background:var(--bg)}
+.barbox{position:fixed;top:4px;left:8px;right:8px;bottom:6px;border-radius:14px;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:0 8px}
+.bb{height:44px;min-width:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;gap:6px;position:relative;flex:none;transition:background var(--quick)}
+.bb:hover{background:var(--panel3)}
+.bb.active{background:var(--panel2)}
+.bb.active:hover{background:var(--panel3)}
+.bb.active::after{content:"";position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:16px;height:3px;border-radius:2px;background:var(--accent)}
+.bb.run:not(.active)::after{content:"";position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:5px;height:3px;border-radius:2px;background:var(--muted)}
+.bb.narrow{min-width:30px;width:30px}
+.bb.wide{padding:0 10px}
+.bb .logo{width:32px;height:32px}
+.bb img.ic,.bb .gen{width:28px;height:28px}
+.bb.narrow img{width:20px;height:20px}
+.gen{border-radius:7px;background:var(--panel3);display:grid;place-items:center;font-weight:700;font-size:13px;color:var(--flame)}
+.bb .lbl{font-size:13px}
+.bb svg{width:18px;height:18px}
+.sep{width:1px;height:24px;background:var(--line);flex:none}
+.wins{display:flex;gap:6px;align-items:center;min-width:0;overflow:hidden}
+.fill{flex:1;min-width:0}
+.ticons{display:flex;gap:6px;align-items:center}
+.clock{display:flex;flex-direction:column;align-items:flex-end;margin:0 6px;line-height:1.2;flex:none;cursor:default}
+.clock b{font-size:14px;font-weight:700}
+.clock small{font-size:11px;color:var(--muted)}
+.gm{height:36px;border-radius:10px;padding:0 14px;background:var(--accent);color:var(--accentInk);font-weight:700;font-size:13px;flex:none;transition:filter var(--quick)}
+.gm:hover{filter:brightness(1.12)}
 
-/* ---------------- tray (full Mantel) ---------------- */
-.ticons{display:flex;align-items:center;gap:0}
-.ti{width:34px;height:42px;border-radius:8px;display:grid;place-items:center}
-.ti:hover{background:var(--panel2)}
-.ti img{width:20px;height:20px}
-
-/* ---------------- desktop (full Mantel): the wallpaper, still or moving ---------------- */
-body.desktop{background:#0f0b09}
-.wall{position:fixed;inset:0;background:center/cover no-repeat}
-.scene{position:fixed;inset:0;overflow:hidden;background:radial-gradient(ellipse at 50% 120%,#3a1a0c 0%,#140c08 55%,#0b0806 100%)}
-.blob{position:absolute;border-radius:50%;filter:blur(60px);opacity:.75;mix-blend-mode:screen;animation:drift var(--t) ease-in-out infinite alternate}
-@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(var(--dx),var(--dy)) scale(1.25)}}
-.aur{position:absolute;left:-20%;width:140%;height:30%;filter:blur(50px);opacity:.32;mix-blend-mode:screen;animation:wave var(--t) ease-in-out infinite alternate}
-@keyframes wave{from{transform:translateX(-6%) skewY(-4deg)}to{transform:translateX(6%) skewY(4deg)}}
-.ember{position:absolute;bottom:-10px;width:4px;height:4px;border-radius:50%;background:#ffb86b;box-shadow:0 0 8px #ff8a3d;animation:rise var(--t) linear infinite;opacity:0}
-@keyframes rise{0%{transform:translate(0,0);opacity:0}10%{opacity:.9}100%{transform:translate(var(--dx),-105vh);opacity:0}}
-@media (prefers-reduced-motion:reduce){.blob,.aur,.ember{animation:none}}
-
-/* ---------------- launcher ---------------- */
-body.launcher{background:rgba(23,17,14,.97);border:1px solid var(--line);border-radius:18px;display:flex;flex-direction:column;padding:18px 18px 14px}
-.search{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:0 14px;height:46px}
-.search input{flex:1;background:none;border:0;outline:0;color:var(--text);font:inherit;font-size:15px}
-.search svg{color:var(--muted)}
-h3{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:16px 4px 8px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px;overflow-y:auto;padding:2px;align-content:start}
-.grid.all{flex:1;min-height:0}
-.tile{position:relative;border-radius:12px;padding:12px 6px 10px;display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center}
-.tile:hover,.tile:focus-visible{background:var(--panel2)}
-.tile img,.tile .gen{width:40px;height:40px}
-.tile .gen{border-radius:10px;background:var(--panel3);display:grid;place-items:center;font-weight:700;font-size:18px;color:var(--flame)}
-.tile span{font-size:12.5px;line-height:1.25;max-height:2.5em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
-.pin{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:7px;display:grid;place-items:center;opacity:0;color:var(--muted)}
-.pin svg{width:14px;height:14px}
-.tile:hover .pin,.tile:focus-within .pin{opacity:1}
-.pin:hover{background:var(--panel3);color:var(--flame)}
-.tile.pinned .pin{opacity:1;color:var(--ember)}
-.empty{color:var(--muted);padding:20px 6px}
-.foot{display:flex;gap:6px;align-items:center;border-top:1px solid var(--line);margin-top:10px;padding-top:12px}
-.foot .who{display:flex;align-items:center;gap:10px;flex:1;font-weight:600}
-.foot .who img{width:28px;height:28px}
-.pill{height:38px;border-radius:10px;padding:0 12px;display:flex;align-items:center;gap:8px;background:var(--panel2)}
-.pill:hover{background:var(--panel3)}
-.pill.primary{background:var(--ember);color:var(--ink);font-weight:700}
-.pill.primary:hover{background:#ff9d5a}
-.loading{color:var(--muted);padding:30px 6px;display:flex;gap:10px;align-items:center}
-.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--panel3);border-top-color:var(--ember);animation:s 1s linear infinite}
+/* ---------------- launcher (Launcher.qml): the box in the middle of a dimmed screen ---------------- */
+.box{position:fixed;inset:0;border-radius:20px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;gap:16px;padding:22px}
+.search{height:48px;border-radius:12px;background:var(--bg2);border:1px solid var(--line);display:flex;align-items:center;padding:0 16px;flex:none}
+.search.focus{border-color:var(--accent)}
+.search input{flex:1;background:none;border:0;outline:0;color:var(--text);font:inherit;font-size:17px}
+.search input::placeholder{color:var(--muted)}
+.grid{flex:1;min-height:0;overflow-y:auto;display:grid;align-content:start;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent}
+.cell{height:112px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:14px;margin:4px;padding:0 8px;border:1px solid transparent;cursor:pointer}
+.cell:hover{background:var(--panel2)}
+.cell.cur{background:var(--panel3);border-color:var(--accent)}
+.cell img,.cell .gen{width:48px;height:48px}
+.cell .gen{border-radius:12px;font-size:20px}
+.cell span{font-size:12px;text-align:center;line-height:1.25;max-height:2.5em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;width:100%}
+.cell .pin{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:var(--muted);opacity:0}
+.cell .pin svg{width:14px;height:14px}
+.cell:hover .pin,.cell.cur .pin,.cell.pinned .pin{opacity:1}
+.cell.pinned .pin{color:var(--accent)}
+.cell .pin:hover{background:var(--panel3);color:var(--flame)}
+.none{grid-column:1/-1;align-self:center;text-align:center;color:var(--muted);font-size:14px;padding-top:120px}
+.acts{display:flex;gap:8px;align-items:center;flex:none}
+.ab{height:40px;border-radius:10px;padding:0 16px;background:var(--panel2);font-size:13px;transition:background var(--quick)}
+.ab:hover{background:var(--panel3)}
+.ab.primary{background:var(--accent);color:var(--accentInk);font-weight:700}
+.ab.primary:hover{background:var(--accent);filter:brightness(1.12)}
+.loading{grid-column:1/-1;color:var(--muted);display:flex;gap:10px;align-items:center;justify-content:center;padding-top:120px}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--panel3);border-top-color:var(--accent);animation:s 1s linear infinite}
 @keyframes s{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+
+/* ---------------- Quick Access (QuickAccess.qml) ---------------- */
+.panel{position:fixed;inset:0;border-radius:20px;background:var(--glass);border:1px solid var(--line);padding:18px;overflow-y:auto;scrollbar-width:none}
+.panel::-webkit-scrollbar{display:none}
+.qcol{display:flex;flex-direction:column;gap:16px}
+.qhead{display:flex;align-items:center}
+.qhead b{font-size:26px;font-weight:600;flex:1}
+.qhead span{display:flex;align-items:center;gap:6px;font-size:15px}
+.f{border-radius:12px;border:2px solid transparent;transition:border-color var(--quick),background var(--quick)}
+.f.focus{border-color:var(--accent)}
+.slider{height:64px;background:var(--panel2);display:flex;align-items:center;gap:12px;padding:0 16px 0 14px}
+.slider .sic{display:grid;place-items:center;cursor:pointer}
+.slider .sic svg{width:22px;height:22px}
+.slider .sb{flex:1;display:flex;flex-direction:column;gap:8px}
+.slider .sr{display:flex;justify-content:space-between;font-size:14px}
+.slider .sr small{color:var(--muted);font-size:13px}
+.track{position:relative;height:8px;border-radius:4px;background:var(--panel3);cursor:pointer}
+.track::before{content:"";position:absolute;inset:-14px 0}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:linear-gradient(90deg,var(--ember),var(--flame));min-width:8px}
+.tg3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tog{height:100px;background:var(--panel2);display:flex;flex-direction:column;align-items:flex-start;padding:10px 12px;text-align:left;gap:2px}
+.tog svg{width:22px;height:22px}
+.tog .grow{flex:1}
+.tog b{font-size:13px;font-weight:600;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tog small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tog.lit{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.tog.lit svg{color:var(--accent)}
+.tog.off{opacity:.5}
+.qlabel{color:var(--muted);font-size:13px;margin-bottom:-8px}
+.ch3{display:flex;gap:8px}
+.choice{flex:1;height:44px;background:var(--panel2);font-size:13px}
+.choice.lit{background:var(--accent);color:var(--accentInk);font-weight:600}
+.ac4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.act{height:76px;background:var(--panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:12px}
+.act svg{width:22px;height:22px}
+.act.accent{background:var(--accent);color:var(--accentInk)}
+
+/* ---------------- power menu (PowerMenu.qml) ---------------- */
+.card{position:fixed;inset:0;border-radius:20px;background:var(--glass);border:1px solid var(--line);padding:20px;display:flex;flex-direction:column;gap:6px}
+.card h2{font-size:20px;font-weight:600;margin:0 0 6px 4px}
+.pi{height:52px;border-radius:12px;background:var(--panel2);display:flex;align-items:center;gap:14px;padding:0 16px;font-size:15px;text-align:left;transition:background var(--quick)}
+.pi:hover{background:var(--panel3)}
+.pi.lit{background:var(--accent);color:var(--accentInk);font-weight:600}
+
+/* ---------------- the Hearth menu (RadialMenu.qml): a ring; the window is round ---------------- */
+html.radial,body.radial{background:var(--glass)}
+.ring{position:fixed;inset:0;border-radius:50%;background:var(--glass);border:1px solid var(--line)}
+.ring .warm{position:absolute;left:22.5%;top:22.5%;width:55%;height:55%;background:url(mantel-img/ember-glow.png) center/100% 100% no-repeat;opacity:.18}
+.ring .mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vmin;pointer-events:none}
+.ring .mid img{width:16%;height:16%}
+.ring .mid b{font-size:max(16px,5vmin);font-weight:600}
+.ring .mid small{font-size:max(11px,2.8vmin);color:var(--muted)}
+.slot{position:absolute;width:17%;height:17%;border-radius:50%;background:var(--panel2);border:1px solid var(--line);display:grid;place-items:center;transition:transform var(--quick),background var(--quick)}
+.slot:hover{background:var(--panel3)}
+.slot.lit{background:var(--accent);color:var(--accentInk);border-color:var(--accent);transform:scale(1.14)}
+.slot svg{width:42%;height:42%}
+/* ---------------- controls (Help.qml) ---------------- */
+.help{position:fixed;inset:0;border-radius:20px;background:var(--glass);border:1px solid var(--line);padding:24px;display:flex;flex-direction:column;gap:10px}
+.help h2{font-size:22px;font-weight:600}
+.help p{color:var(--muted);font-size:13px;margin-bottom:6px}
+.help .pairs{display:grid;grid-template-columns:auto 1fr;gap:9px 24px;font-size:14px}
+.help .pairs b{color:var(--accent);font-weight:600;white-space:nowrap}
+
+/* ---------------- desktop (Wallpaper.qml) ---------------- */
+html.desktop,body.desktop{background:var(--bg)}
+.layer{position:fixed;inset:0;overflow:hidden}
+.pic{position:fixed;inset:0;background:center/cover no-repeat}
+/* the Hearth fireside: warm darkness lit from below by a slowly breathing fire, with embers drifting up */
+.fire{background:linear-gradient(180deg,#0b0807 0%,#17110e 60%,#1f140e 100%)}
+.glow{position:absolute;background:url(mantel-img/ember-glow.png) center/100% 100% no-repeat}
+.glow.wide{width:150vw;height:110vh;left:-25vw;top:calc(100vh - 110vh * .45);opacity:.32;animation:breathe 7.8s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:.30}46%{opacity:.42}}
+.glow.core{width:70vw;height:60vh;left:15vw;top:calc(100vh - 60vh * .42);opacity:.22;animation:flicker 3.8s ease-in-out infinite,sway 11.3s ease-in-out infinite}
+@keyframes flicker{0%{opacity:.22}18%{opacity:.30}47%{opacity:.20}60%{opacity:.27}100%{opacity:.18}}
+@keyframes sway{0%,100%{transform:translateX(0)}46%{transform:translateX(2vw)}}
+.spark{position:absolute;bottom:0;width:4px;height:4px;border-radius:2px;opacity:0;animation:rise var(--t) linear infinite;animation-delay:var(--d)}
+@keyframes rise{0%{transform:translate(0,0);opacity:0}8%{opacity:.55}50%{transform:translate(var(--w),-45vh)}85%{opacity:.4}100%{transform:translate(calc(var(--w) * -0.6),-90vh);opacity:0}}
+/* Lava: big soft blobs drifting slowly */
+.lava{background:#120a09}
+.blob{position:absolute;opacity:.85;background:center/100% 100% no-repeat;animation:bdrift var(--t) ease-in-out infinite,bscale var(--s) ease-in-out infinite alternate}
+@keyframes bdrift{0%,100%{translate:0 0}33%{translate:var(--dx) var(--dy)}77%{translate:calc(var(--dx) * -1) calc(var(--dy) * -1)}}
+@keyframes bscale{from{scale:.9}to{scale:1.18}}
+/* Aurora: warm ribbons under twinkling stars */
+.aurora{background:linear-gradient(180deg,#0a0609,#1e0f0d)}
+.star{position:absolute;border-radius:50%;background:#fff4e0;animation:twinkle var(--t) ease-in-out infinite alternate;animation-delay:var(--d)}
+@keyframes twinkle{from{opacity:var(--o)}to{opacity:.15}}
+.rib{position:absolute;width:160vw;height:45vh;left:-30vw;background:center/100% 100% no-repeat;-webkit-mask-image:linear-gradient(180deg,transparent,#000 30%,#000 70%,transparent);animation:ribbon var(--t) ease-in-out infinite alternate,ribfade calc(var(--t) * .66) ease-in-out infinite alternate}
+@keyframes ribbon{from{transform:translateX(-15vw)}to{transform:translateX(15vw)}}
+@keyframes ribfade{from{opacity:var(--o)}to{opacity:calc(var(--o) * .5)}}
+.ridge{position:absolute;left:0;right:0;bottom:0;height:12vh;background:linear-gradient(180deg,transparent,#0c0607 40%)}
+@media (prefers-reduced-motion:reduce){.spark,.blob,.star,.rib{animation:none}.glow.core{animation:none}}
 </style>
 </head>
 <body>
 <script>
 'use strict';
-const PART = new URLSearchParams(location.search).get('part') || 'bar';
+const Q = new URLSearchParams(location.search);
+const PART = Q.get('part') || 'bar';
+document.documentElement.className = PART;
 document.body.className = PART;
 const host = window.chrome && window.chrome.webview ? window.chrome.webview : null;
 const send = m => host ? host.postMessage(m) : null;
@@ -110,26 +194,49 @@ const call = (method, args={}) => new Promise((ok, no) => {
   setTimeout(() => { if(pending[id]){ delete pending[id]; no(new Error('timeout')); } }, 20000);
 });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = s => document.querySelector(s);
 const I = {
-  search:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
-  up:'<svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>',
   wifi:'<svg viewBox="0 0 24 24"><path d="M2.5 9a15 15 0 0 1 19 0M5.5 12.5a10 10 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r=".8" fill="currentColor"/></svg>',
-  wifiOff:'<svg viewBox="0 0 24 24"><path d="M3 3l18 18M8.5 16a5 5 0 0 1 7 0M5.5 12.5a10 10 0 0 1 4-2.3M12 8a15 15 0 0 1 9.5 1"/></svg>',
+  wired:'<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/></svg>',
+  offline:'<svg viewBox="0 0 24 24"><path d="M3 3l18 18M8.5 16a5 5 0 0 1 7 0M5.5 12.5a10 10 0 0 1 4-2.3M12 8a15 15 0 0 1 9.5 1M2.5 9a15 15 0 0 1 3-2"/></svg>',
   vol:'<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
+  volLow:'<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/></svg>',
   mute:'<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg>',
-  bat:'<svg viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="17" height="9" rx="2"/><path d="M21.5 10.5v3"/></svg>',
+  bat:'<svg viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="17" height="9" rx="2"/><path d="M21.5 10.5v3M5.5 10.5v3M8.5 10.5v3M11.5 10.5v3"/></svg>',
+  batLow:'<svg viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="17" height="9" rx="2"/><path d="M21.5 10.5v3M5.5 10.5v3"/></svg>',
+  batChg:'<svg viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="17" height="9" rx="2"/><path d="M21.5 10.5v3M11.5 9l-2 3h3l-2 3"/></svg>',
+  menu:'<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
+  kbd:'<svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M6 14h.01M18 14h.01M9 14h6"/></svg>',
+  up:'<svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>',
   pin:'<svg viewBox="0 0 24 24"><path d="M9 4h6l-1 5 3 3v2H7v-2l3-3zM12 14v6"/></svg>',
-  power:'<svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>',
-  restart:'<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5"/></svg>',
-  sleep:'<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
-  out:'<svg viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg>',
-  gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon:'<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
   pad:'<svg viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M7.5 10.5v4M5.5 12.5h4M15.5 12h.01M18 14h.01"/></svg>',
+  gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  lock:'<svg viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>',
+  sleep:'<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
+  restart:'<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5"/></svg>',
+  power:'<svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>',
+  close:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  logout:'<svg viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg>',
+  mouse:'<svg viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="5.5"/><path d="M12 7v3"/></svg>',
+  grid:'<svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>',
+  cam:'<svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  help:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>',
 };
 const gen = name => `<div class="gen">${esc((name||'?').trim().charAt(0).toUpperCase())}</div>`;
-const img = (src, name) => src ? `<img src="${src}" alt="">` : gen(name);
+const icon = (src, name, cls='ic') => src ? `<img class="${cls}" src="${src}" alt="">` : gen(name);
+const timeText = d => d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
 
-const ST = {windows:[], pins:[], apps:null, status:null, query:'', tray:{full:false, icons:[]}, wallpaper:'', full:false};
+const ST = {windows:[], pins:[], apps:null, status:null, tray:{full:false, icons:[]}, wallpaper:'', full:false, mouseOn:false};
+
+// The accent follows the profile (Settings › Profile), like on Hearth OS.
+function setAccent(a){
+  if(!/^#[0-9a-f]{6}$/i.test(a||'')) return;
+  const n=parseInt(a.slice(1),16), r=(n>>16&255)/255, g=(n>>8&255)/255, b=(n&255)/255;
+  document.documentElement.style.setProperty('--accent', a);
+  document.documentElement.style.setProperty('--accentInk', (r*.2126+g*.7152+b*.0722) > .45 ? '#2a1206' : '#ffffff');
+}
 
 // ---------------------------------------------------------------- messages from Ember
 if(host) host.addEventListener('message', e => {
@@ -137,116 +244,299 @@ if(host) host.addEventListener('message', e => {
   if(m.type==='result'){ const p=pending[m.id]; if(!p) return; delete pending[m.id]; m.ok ? p.ok(m.value) : p.no(new Error(m.error)); return; }
   if(m.type!=='event') return;
   const d = m.data;
-  if(m.name==='mantel.windows'){ ST.windows=d||[]; if(PART==='bar') renderBar(); }
-  else if(m.name==='mantel.state'){ ST.pins=(d&&d.pins)||[]; ST.full=!!(d&&d.full); ST.wallpaper=(d&&d.wallpaper)||''; render(); }
-  else if(m.name==='mantel.tray'){ ST.tray=d||{full:false,icons:[]}; if(PART==='bar') renderTray(); }
-  else if(m.name==='mantel.apps'){ ST.apps=d||[]; if(PART==='launcher') renderLauncher(); }
-  else if(m.name==='mantel.opened'){ ST.query=''; renderLauncher(); setTimeout(()=>{ const i=document.querySelector('.search input'); i&&i.focus(); }, 30); if(!ST.apps) mantel('apps'); }
-  else if(m.name==='status'){ ST.status=d; if(PART==='bar') renderStatus(); }
+  switch(m.name){
+    case 'mantel.windows': ST.windows=d||[]; if(PART==='bar') renderWins(); break;
+    case 'mantel.state': ST.pins=(d&&d.pins)||[]; ST.full=!!(d&&d.full); ST.wallpaper=(d&&d.wallpaper)||''; render(); break;
+    case 'mantel.tray': ST.tray=d||{full:false,icons:[]}; if(PART==='bar') renderTray(); break;
+    case 'mantel.apps': ST.apps=d||[]; if(PART==='launcher') renderGrid(); break;
+    case 'mantel.opened': opened(); break;
+    case 'status': ST.status=d; if(PART==='bar') renderStatus(); if(PART==='quick') renderQuick(); break;
+    case 'profile': if(d&&d.accent) setAccent(d.accent); break;
+  }
 });
+function render(){ ({bar:renderBar, launcher:renderLauncher, quick:renderQuick, power:renderPower, desktop:renderDesktop, radial:renderRadial, help:renderHelp}[PART]||renderBar)(); }
+function opened(){
+  if(PART==='launcher'){ L.query=''; L.cur=0; const i=$('.search input'); if(i){ i.value=''; } renderGrid(); setTimeout(()=>{ const i=$('.search input'); i&&i.focus(); }, 30); if(!ST.apps) mantel('apps'); }
+  if(PART==='quick'){ Qn.r=0; Qn.c=0; refreshStatus(); call('pad.status').then(p=>{ ST.mouseOn=!!p.mouseOn; renderQuick(); }).catch(()=>{}); renderQuick(); }
+  if(PART==='power'){ P.sel=0; renderPower(); }
+  if(PART==='radial'){ R.sel=-1; call('pad.status').then(p=>{ ST.mouseOn=!!p.mouseOn; renderRadial(); }).catch(()=>{}); renderRadial(); }
+}
+const refreshStatus = () => call('sys.status').then(s => { ST.status=s; if(PART==='bar') renderStatus(); if(PART==='quick') renderQuick(); }).catch(()=>{});
 
-function render(){ PART==='bar' ? renderBar() : PART==='desktop' ? renderDesktop() : renderLauncher(); }
-
-// ---------------------------------------------------------------- desktop (full Mantel)
+// ================================================================ desktop (Wallpaper.qml)
 let shownWall = null;
 function renderDesktop(){
-  if(shownWall===ST.wallpaper) return;
-  shownWall = ST.wallpaper;
-  const w = ST.wallpaper || 'hearth-cabin';
+  const w = ST.wallpaper || 'anim:fireside';
+  if(shownWall===w) return;
+  shownWall = w;
   if(w==='anim:lava'){
-    const blobs=[['#ff5a36',.22,.62,.62,'10vw','8vh',23],['#ff8a3d',.52,.34,.55,'-12vw','10vh',29],['#ffd166',.74,.66,.58,'-8vw','-12vh',31],['#8a3b6b',.80,.22,.40,'-10vw','6vh',26],['#ff8a3d',.30,.20,.36,'12vw','10vh',34],['#e5483b',.58,.90,.44,'6vw','-12vh',27]];
-    document.body.innerHTML=`<div class="scene">${blobs.map(([c,x,y,sz,dx,dy,t])=>`<div class="blob" style="background:${c};left:${x*100-sz*25}vw;top:${y*100-sz*25}vh;width:${sz*50}vmax;height:${sz*50}vmax;--dx:${dx};--dy:${dy};--t:${t}s"></div>`).join('')}</div>`;
+    const blobs=[['red',.22,.62,.62,.10,.08,23],['orange',.52,.34,.55,-.12,.10,29],['gold',.74,.66,.58,-.08,-.12,31],['plum',.80,.22,.40,-.10,.06,26],['orange',.30,.20,.36,.12,.10,34],['red',.58,.90,.44,.06,-.12,27]];
+    document.body.innerHTML=`<div class="layer lava">${blobs.map(([c,x,y,s,dx,dy,t])=>{ const size=`calc(100vh * ${s*1.6})`;
+      return `<div class="blob" style="background-image:url(mantel-img/blob-${c}.png);width:${size};height:${size};left:calc(${x*100}vw - ${size} / 2);top:calc(${y*100}vh - ${size} / 2);--dx:${dx*100}vw;--dy:${dy*100}vh;--t:${t*3}s;--s:${t*1.8}s"></div>`; }).join('')}</div>`;
   } else if(w==='anim:aurora'){
-    const bands=[['linear-gradient(90deg,transparent,#ff8a3d,#ffd166,transparent)',20,40],['linear-gradient(90deg,transparent,#e5483b,#ff8a3d,transparent)',30,52],['linear-gradient(90deg,transparent,#8a3b6b,#ff5a36,transparent)',38,46]];
-    const embers=Array.from({length:26},(_,i)=>`<div class="ember" style="left:${(i*37)%100}vw;--dx:${((i*53)%40)-20}vw;--t:${9+(i*7)%11}s;animation-delay:${(i*1.3)%12}s"></div>`).join('');
-    document.body.innerHTML=`<div class="scene">${bands.map(([g,y,t])=>`<div class="aur" style="background:${g};top:${y}%;--t:${t}s"></div>`).join('')}${embers}</div>`;
+    const stars=Array.from({length:90},(_,i)=>{ const rx=(i*0.6180339)%1, ry=(i*0.3819660*1.7)%1, sz=2+(i%3);
+      return `<div class="star" style="left:${rx*100}vw;top:${ry*85}vh;width:${sz}px;height:${sz}px;--o:${(0.3+(i%5)*0.12).toFixed(2)};--t:${(1.8+(i%7)*0.3).toFixed(1)}s;--d:${((i*397)%4000)/1000}s"></div>`; }).join('');
+    const ribs=[['a',.20,40,.75],['b',.30,52,.55],['c',.38,46,.6]].map(([k,y,t,o])=>`<div class="rib" style="background-image:url(mantel-img/aurora-${k}.png);top:${y*100}vh;--t:${t}s;--o:${o}"></div>`).join('');
+    document.body.innerHTML=`<div class="layer aurora">${stars}${ribs}<div class="ridge"></div></div>`;
+  } else if(w.startsWith('anim:')){   // the Hearth fireside (Hearth OS's default)
+    const sparks=Array.from({length:24},(_,i)=>{ const x=25+((i*37)%50), t=6+((i*7)%6), w=((i*53)%60)-30;
+      return `<div class="spark" style="left:${x}vw;background:${i%2?'var(--ember)':'var(--flame)'};--t:${t}s;--d:${-((i*1.7)%t).toFixed(1)}s;--w:${w}px"></div>`; }).join('');
+    document.body.innerHTML=`<div class="layer fire"><div class="glow wide"></div><div class="glow core"></div>${sparks}</div>`;
   } else {
-    document.body.innerHTML=`<div class="wall" style="background-image:url('wallpapers/${esc(w)}.jpg')"></div>`;
+    document.body.innerHTML=`<div class="pic" style="background-image:url('wallpapers/${esc(w)}.jpg')"></div>`;
   }
 }
 
-// ---------------------------------------------------------------- taskbar
+// ================================================================ taskbar (Bar.qml)
 function renderBar(){
-  if(!document.querySelector('.apps')){
-    document.body.innerHTML = `<button class="tb start" data-act="launcher" title="Apps"><img src="hearth-logo.svg" alt="Apps"></button><div class="sep"></div>
-      <div class="apps"></div>
-      <div class="tray"><div class="ticons"></div><button class="tb trayb" data-act="tray" title="Tray icons and notifications">${I.up}</button>
-        <button class="tb status" data-act="quick" title="Quick Access"></button>
-        <button class="tb clock" data-act="quick"><b></b><small></small></button>
-        <button class="game" data-act="game" title="Back to Game Mode">${I.pad.replace('<svg','<svg style="width:18px;height:18px;vertical-align:-4px;margin-right:6px"')}Game Mode</button></div>`;
-    renderStatus(); tickClock(); renderTray();
+  if(!$('.barbox')){
+    document.body.innerHTML = `<div class="barbox">
+      <button class="bb" data-act="launcher" title="Apps (Windows key)"><img class="logo" src="hearth-logo.svg" alt=""></button>
+      <div class="sep"></div>
+      <div class="wins"></div>
+      <div class="fill"></div>
+      <div class="ticons"></div>
+      <button class="bb narrow trayb" data-act="tray" title="Windows' tray icons and notifications">${I.up}</button>
+      <button class="bb wide vol" data-act="mute" title="Volume"></button>
+      <button class="bb net" data-act="quick" title="Network"></button>
+      <button class="bb wide batt" data-act="quick" title="Battery"></button>
+      <button class="bb" data-act="quick" title="Quick Access">${I.menu}</button>
+      <button class="bb" data-act="keyboard" title="Keyboard">${I.kbd}</button>
+      <div class="clock"><b></b><small></small></div>
+      <button class="gm" data-act="game" title="Back to Game Mode">Game Mode</button></div>`;
+    $('.vol').addEventListener('wheel', e => { e.preventDefault(); volumeBy(e.deltaY < 0 ? 5 : -5); }, {passive:false});
   }
-  // Pinned apps first (lit when one of their windows is open), then the other open windows.
-  const wins = ST.windows.slice(), used = new Set();
-  const norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  renderWins(); renderTray(); renderStatus(); tickClock();
+}
+// Pinned apps (lit when one of their windows is open), then every other open window.
+function renderWins(){
+  const el=$('.wins'); if(!el) return;
+  const wins = ST.windows.slice(), used = new Set(), norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
   let h = '';
   for(const p of ST.pins){
-    const w = wins.find(x => !used.has(x.id) && (norm(x.app) && (norm(p.name).includes(norm(x.app)) || norm(p.id).includes(norm(x.app)))));
+    const w = wins.find(x => !used.has(x.id) && norm(x.app) && (norm(p.name).includes(norm(x.app)) || norm(p.id).includes(norm(x.app))));
     if(w) used.add(w.id);
-    h += `<button class="tb app ${w?'run':''} ${w&&w.active?'active':''}" ${w?`data-act="focus" data-id="${w.id}"`:`data-act="launch" data-app="${esc(p.id)}"`} title="${esc(w?w.title:p.name)}">${img(w&&w.icon, p.name)}</button>`;
+    h += `<button class="bb ${w?'run':''} ${w&&w.active?'active':''}" ${w?`data-act="focus" data-id="${w.id}"`:`data-act="launch" data-app="${esc(p.id)}"`} title="${esc(w?w.title:p.name)}">${icon(w&&w.icon, p.name)}</button>`;
   }
   for(const w of wins) if(!used.has(w.id))
-    h += `<button class="tb app run ${w.active?'active':''}" data-act="focus" data-id="${w.id}" title="${esc(w.title)}">${img(w.icon, w.app||w.title)}</button>`;
-  document.querySelector('.apps').innerHTML = h;
+    h += `<button class="bb run ${w.active?'active':''}" data-act="focus" data-id="${w.id}" title="${esc(w.title)}">${icon(w.icon, w.app||w.title)}</button>`;
+  el.innerHTML = h;
 }
-// Full Mantel shows the apps' tray icons itself; on top of Explorer, the ^ button shows Windows' tray.
+// Full Mantel shows the apps' tray icons itself; on top of Explorer, ^ shows Windows' own tray for a moment.
 function renderTray(){
-  const el=document.querySelector('.ticons'), b=document.querySelector('.trayb'); if(!el) return;
-  if(b) b.style.display = ST.tray.full ? 'none' : '';
-  el.innerHTML = ST.tray.full ? ST.tray.icons.map(i=>`<button class="ti" data-act="trayIcon" data-key="${esc(i.key)}" title="${esc(i.tip)}">${i.image?`<img src="${i.image}" alt="">`:I.up}</button>`).join('') : '';
+  const el=$('.ticons'), b=$('.trayb'); if(!el) return;
+  b.style.display = ST.tray.full ? 'none' : '';
+  el.innerHTML = ST.tray.full ? ST.tray.icons.map(i=>`<button class="bb narrow" data-act="trayIcon" data-key="${esc(i.key)}" title="${esc(i.tip)}">${i.image?`<img src="${i.image}" alt="">`:I.up}</button>`).join('') : '';
 }
 function renderStatus(){
-  const el = document.querySelector('.status'); if(!el) return;
-  const s = ST.status || {};
-  const wifi = s.wifi && s.wifi.on ? I.wifi : I.wifiOff;
-  const vol = s.audio && (s.audio.muted || s.audio.volume===0) ? I.mute : I.vol;
-  const b = s.battery;
-  el.innerHTML = wifi + vol + (b && b.present ? I.bat + `<span class="pct">${b.pct ?? ''}%</span>` : '');
-  el.title = [s.wifi&&s.wifi.ssid?('Wi-Fi: '+s.wifi.ssid):'', s.audio?('Volume '+s.audio.volume+'%'):''].filter(Boolean).join(' · ') || 'Quick Access';
+  const s = ST.status || {}, a = s.audio, b = s.battery, w = s.wifi || {};
+  const v=$('.vol'), n=$('.net'), bt=$('.batt'); if(!v) return;
+  if(a){ const pct=a.volume||0; v.style.display='';
+    v.innerHTML = (a.muted||!pct ? I.mute : pct>33 ? I.vol : I.volLow) + (a.muted ? '' : `<span class="lbl">${pct}%</span>`);
+    v.title = a.muted ? 'Muted' : `Volume ${pct}%`; }
+  else v.style.display='none';
+  n.innerHTML = w.on && w.ssid ? I.wifi : s.wired ? I.wired : w.on ? I.wifi : I.offline;
+  n.title = w.ssid ? 'Connected to '+w.ssid : 'Not connected';
+  if(b && b.present){ bt.style.display='';
+    bt.innerHTML = (b.charging ? I.batChg : (b.pct??100) > 20 ? I.bat : I.batLow) + `<span class="lbl">${b.pct ?? ''}%</span>`;
+    bt.title = `${b.pct}%${b.charging?', charging':''}`; }
+  else bt.style.display='none';
 }
 function tickClock(){
-  const c = document.querySelector('.clock'); if(!c) return;
-  const now = new Date();
-  c.querySelector('b').textContent = now.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  const c=$('.clock'); if(!c) return;
+  const now=new Date();
+  c.querySelector('b').textContent = timeText(now);
   c.querySelector('small').textContent = now.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
 }
+function volumeBy(d){
+  const a=ST.status&&ST.status.audio; if(!a) return;
+  const v=Math.max(0, Math.min(100, (a.volume||0)+d));
+  a.volume=v; a.muted=false; renderStatus(); if(PART==='quick') renderQuick();
+  call('audio.setMute',{m:false}).catch(()=>{}); call('audio.setVolume',{v}).catch(()=>{});
+}
 
-// ---------------------------------------------------------------- launcher
+// ================================================================ launcher (Launcher.qml)
+const L = {query:'', cur:0};
 function renderLauncher(){
-  if(!document.querySelector('.search')){
-    document.body.innerHTML = `<div class="search">${I.search}<input placeholder="Search apps" spellcheck="false" aria-label="Search apps"></div>
-      <div class="body" style="flex:1;min-height:0;display:flex;flex-direction:column"></div>
-      <div class="foot"><div class="who"><img src="hearth-logo.svg" alt="">Mantel</div>
-        <button class="pill" data-act="settings" title="Windows Settings">${I.gear}</button>
-        <button class="pill" data-act="power" data-what="sleep" title="Sleep">${I.sleep}</button>
-        <button class="pill" data-act="power" data-what="restart" title="Restart">${I.restart}</button>
-        <button class="pill" data-act="power" data-what="shutdown" title="Shut down">${I.power}</button>
-        <button class="pill" data-act="power" data-what="signout" title="Sign out">${I.out}</button>
-        <button class="pill primary" data-act="game">${I.pad} Game Mode</button></div>`;
-    const input = document.querySelector('.search input');
-    input.addEventListener('input', () => { ST.query = input.value; renderList(); });
+  if(!$('.box')){
+    document.body.innerHTML = `<div class="box">
+      <div class="search"><input placeholder="Search apps" spellcheck="false" aria-label="Search apps"></div>
+      <div class="grid"></div>
+      <div class="acts">
+        <button class="ab primary" data-act="game">Game Mode</button>
+        <button class="ab" data-act="settings">Settings</button>
+        <div class="fill"></div>
+        <button class="ab" data-act="power" data-what="sleep">Sleep</button>
+        <button class="ab" data-act="power" data-what="restart">Restart</button>
+        <button class="ab" data-act="power" data-what="shutdown">Shut down</button>
+        <button class="ab" data-act="power" data-what="signout">Log out</button></div></div>`;
+    const input=$('.search input');
+    input.addEventListener('input', () => { L.query=input.value; L.cur=0; renderGrid(); });
+    input.addEventListener('focus', () => $('.search').classList.add('focus'));
+    input.addEventListener('blur', () => $('.search').classList.remove('focus'));
+    new ResizeObserver(() => renderGrid()).observe($('.grid'));
   }
-  const input = document.querySelector('.search input');
-  if(input.value !== ST.query) input.value = ST.query;
-  renderList();
+  renderGrid();
 }
-function renderList(){
-  const body = document.querySelector('.body'); if(!body) return;
-  if(!ST.apps){ body.innerHTML = `<div class="loading"><span class="spin"></span>Finding your apps…</div>`; return; }
-  const q = ST.query.trim().toLowerCase(), pinned = new Set(ST.pins.map(p=>p.id));
-  const tile = a => `<div class="tile ${pinned.has(a.id)?'pinned':''}" tabindex="0" role="button" data-act="launch" data-app="${esc(a.id)}" title="${esc(a.name)}">${img(a.icon, a.name)}<span>${esc(a.name)}</span>
-    <button class="pin" data-act="pin" data-app="${esc(a.id)}" data-name="${esc(a.name)}" data-on="${pinned.has(a.id)?0:1}" title="${pinned.has(a.id)?'Unpin from':'Pin to'} the taskbar" tabindex="-1">${I.pin}</button></div>`;
-  if(q){
-    const hits = ST.apps.filter(a => a.name.toLowerCase().includes(q)).sort((x,y)=>(y.name.toLowerCase().startsWith(q))-(x.name.toLowerCase().startsWith(q)));
-    body.innerHTML = `<h3>Results</h3><div class="grid all">${hits.map(tile).join('') || '<div class="empty">No apps match “'+esc(ST.query)+'”</div>'}</div>`;
-    return;
+function matches(){
+  const all=(ST.apps||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const q=L.query.trim().toLowerCase(); if(!q) return all;
+  return all.filter(a=>a.name.toLowerCase().includes(q)).sort((a,b)=>(b.name.toLowerCase().startsWith(q))-(a.name.toLowerCase().startsWith(q)));
+}
+function cols(){ const g=$('.grid'); return Math.max(1, Math.floor(((g&&g.clientWidth)||800) / 120)); }
+function renderGrid(){
+  const g=$('.grid'); if(!g) return;
+  g.style.gridTemplateColumns = `repeat(${cols()}, 1fr)`;
+  if(!ST.apps){ g.innerHTML = `<div class="loading"><span class="spin"></span>Finding your apps…</div>`; return; }
+  const list=matches(), pinned=new Set(ST.pins.map(p=>p.id));
+  L.cur=Math.max(0, Math.min(L.cur, list.length-1));
+  g.innerHTML = list.length ? list.map((a,i)=>`<div class="cell ${i===L.cur?'cur':''} ${pinned.has(a.id)?'pinned':''}" data-act="launch" data-app="${esc(a.id)}" data-i="${i}" title="${esc(a.name)}">${icon(a.icon, a.name, '')}<span>${esc(a.name)}</span>
+      <button class="pin" data-act="pin" data-app="${esc(a.id)}" data-name="${esc(a.name)}" data-on="${pinned.has(a.id)?0:1}" title="${pinned.has(a.id)?'Unpin from':'Pin to'} the taskbar">${I.pin}</button></div>`).join('')
+    : `<div class="none">No apps match "${esc(L.query)}"</div>`;
+  const c=g.querySelector('.cell.cur'); if(c) c.scrollIntoView({block:'nearest'});
+}
+function launcherKey(e){
+  const list=matches(), n=cols();
+  const go=i=>{ L.cur=Math.max(0, Math.min(list.length-1, i)); renderGrid(); };
+  switch(e.key){
+    case 'Escape': e.preventDefault(); if(L.query){ L.query=''; $('.search input').value=''; go(0); } else mantel('hidePanel'); return;
+    case 'Enter': e.preventDefault(); if(list[L.cur]) mantel('launch',{id:list[L.cur].id}); return;
+    case 'ArrowDown': e.preventDefault(); return go(L.cur+n);
+    case 'ArrowUp': e.preventDefault(); return go(L.cur-n);
+    case 'ArrowRight': { const i=$('.search input'); if(i.selectionStart===i.value.length){ e.preventDefault(); go(L.cur+1); } return; }
+    case 'ArrowLeft': { const i=$('.search input'); if(!i.value){ e.preventDefault(); go(L.cur-1); } return; }
   }
-  const pins = ST.pins.map(p => ST.apps.find(a=>a.id===p.id) || {id:p.id, name:p.name}).filter(Boolean);
-  body.innerHTML = (pins.length ? `<h3>Pinned</h3><div class="grid">${pins.map(tile).join('')}</div>` : '')
-    + `<h3>All apps</h3><div class="grid all">${ST.apps.map(tile).join('')}</div>`;
 }
 
-// ---------------------------------------------------------------- input
+// ================================================================ Quick Access (QuickAccess.qml)
+const Qn = {r:0, c:0};
+const POWER_MODES=[['efficiency','Battery saver'],['balanced','Balanced'],['performance','Performance']];
+function navRows(){
+  const s=ST.status||{}, rows=[['volume']];
+  if(s.display&&s.display.supported) rows.push(['brightness']);
+  rows.push(['night','mouse','wifi']);
+  if(s.powerMode) rows.push(POWER_MODES.map(m=>m[0]));
+  rows.push(['settings','keyboard','game','sleep']);
+  return rows;
+}
+const qCurrent = () => { const rows=navRows(), r=Math.min(Qn.r, rows.length-1); return rows[r][Math.min(Qn.c, rows[r].length-1)] || ''; };
+function renderQuick(){
+  const s=ST.status||{}, a=s.audio, b=s.battery, w=s.wifi||{}, cur=qCurrent();
+  const f=id=>`f ${cur===id?'focus':''}`;
+  const slider=(id,ic,label,v,act)=>`<div class="${f(id)} slider" data-nav="${id}"><div class="sic" ${act?`data-act="${act}"`:''}>${ic}</div><div class="sb"><div class="sr">${label}<small>${Math.round(v)}%</small></div><div class="track" data-slide="${id}"><i style="width:${Math.max(0,Math.min(100,v))}%"></i></div></div></div>`;
+  const tog=(id,ic,label,detail,lit,off)=>`<button class="${f(id)} tog ${lit?'lit':''} ${off?'off':''}" data-act="q" data-id="${id}">${ic}<div class="grow"></div><b>${label}</b><small>${detail}</small></button>`;
+  const act=(id,ic,label,accent)=>`<button class="${f(id)} act ${accent?'accent':''}" data-act="q" data-id="${id}">${ic}${label}</button>`;
+  document.body.innerHTML = `<div class="panel"><div class="qcol">
+    <div class="qhead"><b>${timeText(new Date())}</b>${b&&b.present?`<span>${b.charging?I.batChg:I.bat}${b.pct}%</span>`:''}</div>
+    ${slider('volume', a&&(a.muted||!a.volume)?I.mute:I.vol, 'Volume', a?(a.muted?0:a.volume):0, 'q-mute')}
+    ${s.display&&s.display.supported ? slider('brightness', I.sun, 'Brightness', s.display.brightness||0) : ''}
+    <div class="tg3">
+      ${tog('night', I.moon, 'Night light', 'In Windows Settings', false)}
+      ${tog('mouse', I.pad, 'Controller mouse', ST.mouseOn?'On':'Off', ST.mouseOn)}
+      ${tog('wifi', I.wifi, 'Wi-Fi', w.on?(w.ssid||'On'):'Off', w.on, !w.available)}
+    </div>
+    ${s.powerMode ? `<div class="qlabel">Performance</div><div class="ch3">${POWER_MODES.map(([id,l])=>`<button class="${f(id)} choice ${s.powerMode===id?'lit':''}" data-act="q" data-id="${id}">${l}</button>`).join('')}</div>` : ''}
+    <div class="ac4">${act('settings', I.gear, 'Settings')}${act('keyboard', I.kbd, 'Keyboard')}${act('game', I.pad, 'Game Mode', true)}${act('sleep', I.moon, 'Sleep')}</div>
+  </div></div>`;
+}
+function quickDo(id){
+  const s=ST.status||{};
+  switch(id){
+    case 'volume': return quickDo('q-mute');
+    case 'q-mute': if(s.audio){ s.audio.muted=!s.audio.muted; call('audio.setMute',{m:s.audio.muted}).catch(()=>{}); renderQuick(); } return;
+    case 'night': return mantel('nightlight');
+    case 'mouse': return call('pad.toggleMouse').then(r=>{ ST.mouseOn=!!r.mouseOn; renderQuick(); }).catch(()=>{});
+    case 'wifi': if(s.wifi&&s.wifi.available){ const on=!s.wifi.on; s.wifi.on=on; renderQuick(); call('radios.set',{kind:'wifi', on}).then(st=>{ ST.status=st; renderQuick(); }).catch(()=>{}); } return;
+    case 'efficiency': case 'balanced': case 'performance': s.powerMode=id; renderQuick(); return call('power.setMode',{mode:id}).catch(()=>{});
+    case 'settings': return mantel('settings');
+    case 'keyboard': return mantel('keyboard');
+    case 'game': return mantel('game');
+    case 'sleep': return mantel('power',{what:'sleep'});
+  }
+}
+function setBrightness(v){ const d=ST.status&&ST.status.display; if(!d) return; d.brightness=Math.max(1,Math.min(100,Math.round(v))); renderQuick(); call('display.setBrightness',{v:d.brightness}).catch(()=>{}); }
+function quickKey(e){
+  const rows=navRows(); let handled=true;
+  switch(e.key){
+    case 'ArrowUp': Qn.r=Math.max(0,Qn.r-1); Qn.c=Math.min(Qn.c, rows[Qn.r].length-1); break;
+    case 'ArrowDown': Qn.r=Math.min(rows.length-1,Qn.r+1); Qn.c=Math.min(Qn.c, rows[Qn.r].length-1); break;
+    case 'ArrowLeft': case 'ArrowRight': { const d=e.key==='ArrowLeft'?-1:1, cur=qCurrent();
+      if(cur==='volume'){ volumeBy(d*5); return e.preventDefault(); }
+      if(cur==='brightness'){ setBrightness(((ST.status.display||{}).brightness||0)+d*5); return e.preventDefault(); }
+      Qn.c=Math.max(0, Math.min(rows[Math.min(Qn.r,rows.length-1)].length-1, Qn.c+d)); break; }
+    case 'Enter': case ' ': quickDo(qCurrent()); break;
+    case 'Escape': mantel('hidePanel'); break;
+    default: handled=false;
+  }
+  if(handled){ e.preventDefault(); renderQuick(); }
+}
+// Sliders: press and drag on the track.
+let sliding=null;
+function slideTo(e){
+  const t=sliding; if(!t) return; const r=t.getBoundingClientRect(), v=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*100;
+  if(t.dataset.slide==='volume'){ const a=ST.status&&ST.status.audio; if(a){ a.volume=Math.round(v); a.muted=false; renderQuickLive(t, v); clearTimeout(slideTo.t); slideTo.t=setTimeout(()=>{ call('audio.setMute',{m:false}).catch(()=>{}); call('audio.setVolume',{v:Math.round(v)}).catch(()=>{}); }, 40); } }
+  else { const d=ST.status&&ST.status.display; if(d){ d.brightness=Math.max(1,Math.round(v)); renderQuickLive(t, v); clearTimeout(slideTo.t); slideTo.t=setTimeout(()=>call('display.setBrightness',{v:d.brightness}).catch(()=>{}), 60); } }
+}
+function renderQuickLive(track, v){ track.querySelector('i').style.width=v+'%'; const sm=track.parentElement.querySelector('small'); if(sm) sm.textContent=Math.round(v)+'%'; }
+document.addEventListener('pointerdown', e => { const t=e.target.closest('[data-slide]'); if(t){ sliding=t; t.setPointerCapture(e.pointerId); slideTo(e); } });
+document.addEventListener('pointermove', e => { if(sliding) slideTo(e); });
+document.addEventListener('pointerup', () => { if(sliding){ sliding=null; renderQuick(); } });
+
+// ================================================================ power menu (PowerMenu.qml)
+const P = {sel:0};
+const POWER_ITEMS=[['lock','Lock',I.lock],['sleep','Sleep',I.sleep],['restart','Restart',I.restart],['shutdown','Shut down',I.power],['game','Game Mode',I.pad],['cancel','Cancel',I.close]];
+function renderPower(){
+  document.body.innerHTML = `<div class="card"><h2>Power</h2>${POWER_ITEMS.map(([id,l,ic],i)=>`<button class="pi ${i===P.sel?'lit':''}" data-act="pw" data-i="${i}">${ic}${l}</button>`).join('')}</div>`;
+}
+function powerPick(i){
+  const id=(POWER_ITEMS[i]||[])[0];
+  if(id==='lock') return mantel('lock');
+  if(id==='game') return mantel('game');
+  if(id==='cancel' || !id) return mantel('hidePanel');
+  mantel('power',{what:id});
+}
+function powerKey(e){
+  const n=POWER_ITEMS.length;
+  if(e.key==='ArrowDown'||e.key==='Tab'&&!e.shiftKey){ P.sel=(P.sel+1)%n; }
+  else if(e.key==='ArrowUp'||e.key==='Tab'&&e.shiftKey){ P.sel=(P.sel+n-1)%n; }
+  else if(e.key==='Enter'||e.key===' '){ e.preventDefault(); return powerPick(P.sel); }
+  else if(e.key==='Escape'){ e.preventDefault(); return mantel('hidePanel'); }
+  else return;
+  e.preventDefault(); renderPower();
+}
+document.addEventListener('mouseover', e => { const it=e.target.closest('.pi'); if(it && +it.dataset.i!==P.sel){ P.sel=+it.dataset.i; renderPower(); } });
+
+// ================================================================ the Hearth menu (RadialMenu.qml)
+const R = {sel:-1};
+const radialItems = () => [['apps','Apps',I.grid],['keyboard','Keyboard',I.kbd],['quick','Quick Access',I.menu],['close','Close window',I.close],
+  ['game','Game Mode',I.pad],['screenshot','Screenshot',I.cam],['mouse',ST.mouseOn?'Controller mouse: on':'Controller mouse: off',I.mouse],['help','Controls',I.help]];
+function renderRadial(){
+  const items=radialItems(), lit=R.sel>=0?items[R.sel]:null;
+  document.body.innerHTML = `<div class="ring"><div class="warm"></div>
+    <div class="mid"><img src="hearth-logo.svg" alt=""><b>${esc(lit?lit[1]:'Hearth')}</b><small>D-pad to choose · A select · B close</small></div>
+    ${items.map(([id,l,ic],i)=>{ const a=i/items.length*2*Math.PI, r=36; return `<button class="slot ${i===R.sel?'lit':''}" data-act="rad" data-i="${i}" title="${esc(l)}" style="left:${50+Math.sin(a)*r-8.5}%;top:${50-Math.cos(a)*r-8.5}%">${ic}</button>`; }).join('')}</div>`;
+}
+function radialPick(i){ const it=radialItems()[i]; if(it) mantel('radial',{pick:it[0]}); }
+function radialKey(e){
+  const n=radialItems().length, at={ArrowUp:0,ArrowRight:2,ArrowDown:4,ArrowLeft:6};
+  if(e.key in at) R.sel=at[e.key];
+  else if(e.key==='Tab') R.sel=((R.sel<0?0:R.sel)+(e.shiftKey?n-1:1))%n;
+  else if(e.key==='Enter'||e.key===' '){ e.preventDefault(); if(R.sel>=0) radialPick(R.sel); return; }
+  else if(e.key==='Escape'){ e.preventDefault(); return mantel('hidePanel'); }
+  else return;
+  e.preventDefault(); renderRadial();
+}
+document.addEventListener('mouseover', e => { if(PART!=='radial') return; const s=e.target.closest('.slot'); if(s && +s.dataset.i!==R.sel){ R.sel=+s.dataset.i; renderRadial(); } });
+
+// ================================================================ controls (Help.qml)
+function renderHelp(){
+  const pairs=[['Right stick','Move the pointer'],['Left stick','Scroll'],['A  /  RT','Click (hold to drag)'],['LT','Right-click'],['B','Back (Esc)'],['Y','On-screen keyboard'],
+    ['D-pad','Arrow keys'],['LB  /  RB','Switch windows'],['Menu ☰','Apps'],['Xbox button','Hearth menu'],['View + D-pad','Snap left / right, maximize, minimize'],['View + B','Close the window'],['View','This list'],['View + Menu','Controller mouse on or off']];
+  document.body.innerHTML = `<div class="help"><h2>Controller controls</h2><p>The controller works like a mouse and keyboard everywhere in Desktop Mode. It pauses while a game is in front.</p>
+    <div class="pairs">${pairs.map(([k,v])=>`<b>${esc(k)}</b><span>${esc(v)}</span>`).join('')}</div></div>`;
+}
+
+// ================================================================ input
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if(!el) return;
   e.stopPropagation();
@@ -255,6 +545,8 @@ document.addEventListener('click', e => {
     case 'launcher': return mantel('launcher');
     case 'tray': return mantel('tray');
     case 'quick': return mantel('quick');
+    case 'keyboard': return mantel('keyboard');
+    case 'mute': { const a=ST.status&&ST.status.audio; if(a){ a.muted=!a.muted; renderStatus(); call('audio.setMute',{m:a.muted}).catch(()=>{}); } return; }
     case 'game': return mantel('game');
     case 'settings': return mantel('settings');
     case 'power': return mantel('power', {what:d.what});
@@ -262,62 +554,48 @@ document.addEventListener('click', e => {
     case 'launch': return mantel('launch', {id:d.app});
     case 'pin': return mantel('pin', {id:d.app, name:d.name, on:d.on==='1'});
     case 'trayIcon': return trayClick(el, e.detail>=2 ? 'double' : 'left');
+    case 'q': { const rows=navRows(); rows.forEach((r,ri)=>{ const ci=r.indexOf(d.id); if(ci>=0){ Qn.r=ri; Qn.c=ci; } }); return quickDo(d.id); }
+    case 'q-mute': return quickDo('q-mute');
+    case 'pw': return powerPick(+d.i);
+    case 'rad': return radialPick(+d.i);
   }
 });
 function trayClick(el, button){
   const r=el.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
   mantel('trayClick', {key:el.dataset.key, button, x:Math.round((window.screenX+r.left+r.width/2)*dpr), y:Math.round((window.screenY+r.top)*dpr)});
 }
-document.addEventListener('mouseup', e => {   // right click on a tray icon: its menu
-  const el=e.target.closest('[data-act="trayIcon"]');
-  if(el && e.button===2) trayClick(el, 'right');
-});
+document.addEventListener('mouseup', e => { const el=e.target.closest('[data-act="trayIcon"]'); if(el && e.button===2) trayClick(el, 'right'); });
 document.addEventListener('contextmenu', e => e.preventDefault());
-document.addEventListener('auxclick', e => {   // middle click on a window closes it, like Windows
+document.addEventListener('auxclick', e => {   // middle click on a window closes it, like on Hearth OS
   const el = e.target.closest('[data-act="focus"]');
   if(el && e.button===1) mantel('close', {id:+el.dataset.id});
 });
 document.addEventListener('keydown', e => {
-  if(PART!=='launcher') return;
-  if(e.key==='Escape'){ e.preventDefault(); if(ST.query){ ST.query=''; renderLauncher(); } else mantel('hideLauncher'); return; }
-  if(e.key==='Enter'){
-    const f = document.activeElement;
-    if(f && f.classList.contains('tile')){ e.preventDefault(); return mantel('launch', {id:f.dataset.app}); }
-    const first = document.querySelector('.grid.all .tile');
-    if(first && ST.query){ e.preventDefault(); mantel('launch', {id:first.dataset.app}); }
-    return;
-  }
-  if(['ArrowDown','ArrowUp','ArrowLeft','ArrowRight'].includes(e.key)){
-    const tiles = [...document.querySelectorAll('.tile')]; if(!tiles.length) return;
-    const cur = tiles.indexOf(document.activeElement);
-    if(cur<0){ if(e.key==='ArrowDown'){ e.preventDefault(); tiles[0].focus(); } return; }
-    e.preventDefault();
-    const r = tiles[cur].getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
-    let best=null, bd=1e9;
-    for(const t of tiles){ if(t===tiles[cur]) continue; const q=t.getBoundingClientRect(), x=q.left+q.width/2, y=q.top+q.height/2;
-      const ok = e.key==='ArrowDown'? y>cy+5 : e.key==='ArrowUp'? y<cy-5 : e.key==='ArrowLeft'? x<cx-5 && Math.abs(y-cy)<10 : x>cx+5 && Math.abs(y-cy)<10;
-      if(!ok) continue; const dist=Math.abs(x-cx)+Math.abs(y-cy)*1.5; if(dist<bd){bd=dist;best=t;} }
-    if(best){ best.focus(); best.scrollIntoView({block:'nearest'}); }
-    else if(e.key==='ArrowUp') document.querySelector('.search input').focus();
-  }
+  if(PART==='launcher') return launcherKey(e);
+  if(PART==='quick') return quickKey(e);
+  if(PART==='power') return powerKey(e);
+  if(PART==='radial') return radialKey(e);
+  if(PART==='help' && ['Escape','Enter',' '].includes(e.key)){ e.preventDefault(); mantel('hidePanel'); }
 });
 
-// ---------------------------------------------------------------- start
-if(!host && PART==='desktop'){ ST.wallpaper=new URLSearchParams(location.search).get('wall')||'anim:lava'; }
-if(!host && PART==='bar'){ ST.tray={full:true, icons:[{key:'1',tip:'Discord'},{key:'2',tip:'Steam'}]}; }
-if(!host){   // browser preview
+// ================================================================ start
+if(!host){   // browser preview with sample data
   ST.pins=[{id:'a',name:'Steam'},{id:'b',name:'Discord'}];
   ST.windows=[{id:1,title:'Steam',app:'steam',active:true},{id:2,title:'Downloads - File Explorer',app:'explorer'},{id:3,title:'Mods folder',app:'notepad'}];
-  ST.apps=['Steam','Discord','Heroic Games Launcher','File Explorer','Notepad','Settings','Microsoft Edge','Spotify','OBS Studio','Calculator','Paint','Terminal','Photos','Xbox'].map((n,i)=>({id:String.fromCharCode(97+i),name:n}));
-  ST.status={wifi:{on:true,ssid:'Home'},audio:{volume:60},battery:{present:true,pct:82}};
+  ST.apps=['Steam','Discord','Heroic Games Launcher','File Explorer','Notepad','Settings','Microsoft Edge','Spotify','OBS Studio','Calculator','Paint','Terminal','Photos','Xbox','Task Manager','Snipping Tool'].map((n,i)=>({id:String.fromCharCode(97+i),name:n}));
+  ST.status={wifi:{available:true,on:true,ssid:'Home'},audio:{volume:60,muted:false},battery:{present:true,pct:82,charging:false},display:{supported:true,brightness:70},powerMode:'balanced'};
+  ST.tray={full:true, icons:[{key:'1',tip:'Discord'},{key:'2',tip:'Steam'}]};
+  ST.wallpaper=Q.get('wall')||'';
+  if(Q.get('preview')){ document.body.style.background='#000'; }
 }
 render();
-setInterval(tickClock, 15000);
+setInterval(()=>{ if(PART==='bar') tickClock(); if(PART==='quick') { const b=$('.qhead b'); if(b) b.textContent=timeText(new Date()); } }, 15000);
 if(host){
   send({type:'ready'});
-  const refresh = () => call('sys.status').then(s => { ST.status=s; if(PART==='bar') renderStatus(); }).catch(()=>{});
-  if(PART==='bar'){ refresh(); setInterval(refresh, 20000); }
+  call('profile.get').then(p=>setAccent(p&&p.accent)).catch(()=>{});
+  if(PART==='bar'){ refreshStatus(); setInterval(refreshStatus, 20000); }
   if(PART==='launcher') mantel('apps');
+  if(PART==='quick') refreshStatus();
 }
 </script>
 </body>

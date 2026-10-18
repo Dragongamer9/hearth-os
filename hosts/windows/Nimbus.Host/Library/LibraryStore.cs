@@ -40,7 +40,7 @@ public sealed class LibraryData
     public bool OverlayHoldView { get; set; }              // hold View for a second to open the in-game overlay
     public string StartMode { get; set; } = "game";        // as the shell: start in "game" (Ember) or "desktop" (Explorer)
     public string DesktopStyle { get; set; } = "mantel";   // Desktop Mode: "mantel" (Hearth's taskbar and launcher) or "windows"
-    public string MantelWallpaper { get; set; } = "hearth-cabin"; // a Hearth wallpaper, or "" for your Windows wallpaper
+    public string MantelWallpaper { get; set; } = "anim:fireside"; // the Hearth fireside (moving), a Hearth picture, or "" for your Windows wallpaper
     public string? InstallRoot { get; set; }            // where Nimbus installs Epic and GOG games
     public Dictionary<string, string> GogInstalls { get; set; } = new();   // GOG product id → folder
     public ProfileData Profile { get; set; } = new();
