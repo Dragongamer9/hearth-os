@@ -169,3 +169,27 @@ mod tests {
         assert_eq!(parse_helper("progress: 5\nerror: no network\n").unwrap_err(), "no network");
     }
 }
+
+// ------------------------------------------------------------------ the desktop's wallpaper (Desktop Mode)
+
+fn desktop_json() -> PathBuf { crate::paths::data_dir().join("desktop.json") }
+fn read_desktop() -> Value { std::fs::read(desktop_json()).ok().and_then(|b| serde_json::from_slice(&b).ok()).filter(Value::is_object).unwrap_or(json!({})) }
+pub fn desktop_wallpaper() -> String { read_desktop()["wallpaper"].as_str().unwrap_or("").to_string() }
+/// Sets it: '' (the default), anim:lava / anim:aurora, or a picture (copied to ~/.config/nimbus/wallpaper.<ext>,
+/// since a profile's background is put away while someone else's profile is in use).
+pub fn set_desktop_wallpaper(value: &str, picture: Option<&Path>) -> Result<String, String> {
+    let mut v = value.to_string();
+    if let Some(pic) = picture {
+        let ext = pic.extension().map(|e| format!(".{}", e.to_string_lossy().to_lowercase())).unwrap_or(".jpg".into());
+        let conf = crate::paths::config_dir();
+        std::fs::create_dir_all(&conf).map_err(|e| e.to_string())?;
+        let dst = conf.join(format!("wallpaper{ext}"));
+        for e in [".jpg", ".jpeg", ".png", ".webp"] { let f = conf.join(format!("wallpaper{e}")); if f != dst { let _ = std::fs::remove_file(f); } }
+        std::fs::copy(pic, &dst).map_err(|e| e.to_string())?;
+        v = dst.to_string_lossy().to_string();
+    } else if !v.is_empty() && v != "anim:lava" && v != "anim:aurora" { return Err("Unknown wallpaper".into()); }
+    let mut o = read_desktop();
+    o["wallpaper"] = json!(v);
+    crate::paths::write_atomic(&desktop_json(), format!("{}\n", serde_json::to_string_pretty(&o).unwrap()).as_bytes()).map_err(|e| e.to_string())?;
+    Ok(v)
+}

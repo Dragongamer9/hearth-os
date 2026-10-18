@@ -181,6 +181,8 @@ fn main() {
                             return;
                         }
                         // The host asks for a restart (after restoring a backup): Hearth reads everything at start.
+                        // Game Mode restarts with new options (the session starts it again when Hearth closes).
+                        if v["type"] == "quit" { h.exit(0); return; }
                         if v["type"] == "restart" {
                             let h2 = h.clone();
                             std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(1500)); h2.restart(); });
@@ -195,6 +197,8 @@ fn main() {
                     });
                     b.sign_in = Arc::new(move |page| sign_in(&signer, page));
                     b.stream = Arc::new(move |open| stream(&streamer, open, windowed));
+                    let zoomer = handle.clone();
+                    b.zoom = Arc::new(move |pct| { if let Some(w) = zoomer.get_webview_window("main") { let _ = w.set_zoom(pct as f64 / 100.0); } });
                     // Store game lists older than 12 hours are fetched again, in the background.
                     hearth_core::stores::refresh_stale(&b.library.accounts);
                     b.pick_file = Arc::new(move |title: &str| {
@@ -217,13 +221,15 @@ fn main() {
                 let max = bridge.lock().map(|b| b.max_volume()).unwrap_or(100);
                 let _ = handle.emit("nimbus:msg", Bridge::event("status", hearth_core::system::status(max)));
             });
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            let zoom = app.state::<Host>().0.lock().map(|b| b.zoom_pct()).unwrap_or(100);
+            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Hearth")
                 .fullscreen(!windowed)
                 .inner_size(1280.0, 800.0)
                 .background_color(tauri::window::Color(12, 16, 22, 255))
                 .initialization_script(SHIM)
                 .build()?;
+            if zoom != 100 { let _ = main.set_zoom(zoom as f64 / 100.0); }
             Ok(())
         })
         .run(tauri::generate_context!())
