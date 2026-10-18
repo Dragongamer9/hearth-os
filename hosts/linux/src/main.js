@@ -276,6 +276,73 @@ function power(action) {
   }
 }
 
+// ------------------------------------------------------------------ profiles
+
+const { Profiles, steamRegistryText, steamLoginUsersText, steamAccounts } = require('./profiles');
+const profiles = new Profiles(require('./util').DATA_DIR);
+const steamFiles = () => {
+  const dir = steam.steamPath();
+  if (!dir) return null;
+  const reg = [path.join(path.dirname(dir), 'registry.vdf'), path.join(os.homedir(), '.steam', 'registry.vdf')].find(f => fs.existsSync(f));
+  return { reg, users: path.join(dir, 'config', 'loginusers.vdf') };
+};
+async function stopSteam() {
+  const up = () => run('pgrep', ['-u', String(process.getuid()), '-x', 'steam'], { timeout: 3000 }).then(() => true, () => false);
+  if (!(await up())) return;
+  run('steam', ['-shutdown'], { timeout: 5000 }).catch(() => {});
+  for (let t = Date.now(); Date.now() - t < 8000 && await up();) await new Promise(r => setTimeout(r, 300));
+  if (await up()) { await run('pkill', ['-u', String(process.getuid()), '-x', 'steam']).catch(() => {}); await new Promise(r => setTimeout(r, 1500)); }
+}
+/** Steam signs in as `account` the next time it starts ('' shows Steam's own sign-in). Steam must be closed
+ *  (it writes these files when it exits). */
+function setSteamAccount(account) {
+  const f = steamFiles(); if (!f) return;
+  try { if (f.reg) fs.writeFileSync(f.reg, steamRegistryText(fs.readFileSync(f.reg, 'utf8'), account)); } catch (e) { log('profiles: registry.vdf: ' + e.message); }
+  try { if (account && fs.existsSync(f.users)) fs.writeFileSync(f.users, steamLoginUsersText(fs.readFileSync(f.users, 'utf8'), account)); } catch (e) { log('profiles: loginusers.vdf: ' + e.message); }
+}
+const knownSteamAccounts = () => { const f = steamFiles(); try { return f ? steamAccounts(fs.readFileSync(f.users, 'utf8')) : []; } catch { return []; } };
+/** Switches to another profile: Steam closes and signs in as theirs, their sign-ins come out, Hearth restarts. */
+async function switchProfile(id) {
+  const to = profiles.find(id);
+  if (!to) throw new Error('No such profile');
+  if (library.runningId) throw new Error('Close the game first');
+  log(`profiles: switching to ${to.name || to.id}`);
+  post({ type: 'event', name: 'profiles.switching', data: { name: to.name } });
+  await stopSteam();
+  setSteamAccount(to.steam || '');
+  profiles.switchTo(id);
+  setTimeout(relaunchPicked, 300);
+  return true;
+}
+/** Restarts Hearth after a switch, without asking "who's playing?" again. */
+function relaunchPicked() {
+  const args = process.argv.slice(1).filter(a => a !== '--picked').concat('--picked');
+  if (process.env.APPIMAGE) app.relaunch({ execPath: process.env.APPIMAGE, args }); else app.relaunch({ args });
+  app.exit(0);
+}
+/** "Add a Steam account" for a profile: Steam shows its own sign-in; the account that signs in is linked. */
+async function addSteamAccount(id) {
+  const before = new Set(knownSteamAccounts().map(a => a.account.toLowerCase()));
+  await stopSteam();
+  setSteamAccount('');
+  stepAside();
+  steam.openUri('steam://open/main');
+  if (inGamescope()) setTimeout(() => focus.run('Steam sign-in', () => gamescope.clearFocus()), 2500);
+  // Watch for the new account (up to 10 minutes)
+  const started = Date.now();
+  const watch = setInterval(() => {
+    const now = knownSteamAccounts().find(a => !before.has(a.account.toLowerCase()));
+    if (now) {
+      clearInterval(watch);
+      profiles.update(id, { steam: now.account });
+      log(`profiles: linked Steam account ${now.account}`);
+      post({ type: 'event', name: 'profiles.changed', data: {} });
+      setTimeout(comeBack, 1500);
+    } else if (Date.now() - started > 600000) clearInterval(watch);
+  }, 2000);
+  return true;
+}
+
 // ------------------------------------------------------------------ store sign-in
 
 /**
@@ -694,6 +761,16 @@ app.whenReady().then(() => {
         features: ['restartApp', 'exportLogs', 'powerButton', 'overamp', ...(controller.available ? ['remap'] : [])],
       }),
       restartApp: () => { setTimeout(relaunch, 300); return null; },
+      profiles: {
+        get: () => ({ active: profiles.active, askAtStart: profiles.askAtStart, picked: args.includes('--picked'),
+          list: profiles.list.map(p => ({ ...p, current: p.id === profiles.active })), steamAccounts: knownSteamAccounts() }),
+        create: (o) => profiles.create(o || {}),
+        update: (id, patch) => profiles.update(id, patch || {}),
+        remove: (id) => profiles.remove(id),
+        setAsk: (on) => profiles.setAskAtStart(on),
+        switchTo: (id) => switchProfile(id),
+        addSteam: (id) => addSteamAccount(id),
+      },
       canFpsLimit: () => IN_SESSION && require('./util').has('xprop'),
       // The overlay's open apps (Game Mode): list, switch to, close.
       apps: {

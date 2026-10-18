@@ -25,7 +25,10 @@ class StreamWindow extends EventEmitter {
 
   open(url, title) {
     if (this.win && !this.win.isDestroyed()) { this.win.loadURL(url); this.win.show(); this.win.focus(); return; }
-    const ses = this.session.fromPartition('persist:xcloud');
+    // Each profile signs in to Xbox Cloud Gaming on its own.
+    let pid = 'main';
+    try { pid = new (require('./profiles').Profiles)(require('./util').DATA_DIR).active; } catch {}
+    const ses = this.session.fromPartition(pid === 'main' ? 'persist:xcloud' : 'persist:xcloud-' + pid);
     ses.setUserAgent(edgeUserAgent(process.versions.chrome));
     this.win = new this.BrowserWindow({
       title: title || 'Xbox Cloud Gaming',

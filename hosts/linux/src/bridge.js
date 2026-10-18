@@ -283,6 +283,14 @@ class Bridge {
       case 'import.scan': return this.importer.scan();
       case 'import.start': return this.importer.start(a.items, a.mode || 'copy');
       case 'import.cancel': return this.importer.cancel();
+      // Profiles (Linux): who's playing. Each has their own store sign-ins, favorites and play time.
+      case 'profiles.get': return this.platform.profiles ? this.platform.profiles.get() : { list: [], active: null };
+      case 'profiles.create': return this.platform.profiles.create({ name: a.name, color: a.color });
+      case 'profiles.update': return this.platform.profiles.update(req('id'), { name: a.name, color: a.color, steam: a.steam });
+      case 'profiles.remove': return this.platform.profiles.remove(req('id'));
+      case 'profiles.setAsk': return this.platform.profiles.setAsk(!!a.on);
+      case 'profiles.switch': return this.platform.profiles.switchTo(req('id'));
+      case 'profiles.addSteam': return this.platform.profiles.addSteam(req('id'));
       case 'osinstall.status': return this.osInstaller.status();
       case 'osinstall.disks': return this.osInstaller.disks();
       case 'osinstall.check': return this.osInstaller.check();
