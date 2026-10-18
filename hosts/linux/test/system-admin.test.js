@@ -93,3 +93,15 @@ test('system update: detailed stages fill in download, install and apps', async 
   assert.strictEqual(last.speeds.length, 1);
   assert.strictEqual(last.speeds[0][1], 2e7);
 });
+
+test('lock after sleep is kept in Mantel\'s settings file, next to its other settings', () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-'));
+  const file = path.join(dir, 'nimbus', 'desktop.json');
+  fs.mkdirSync(path.dirname(file)); fs.writeFileSync(file, JSON.stringify({ wallpaper: 'lava' }));
+  const { SystemAdmin } = require('../src/system-admin');
+  const a = new SystemAdmin({ helper: '/nonexistent', desktopFile: file, sessionConf: path.join(dir, 'session.conf') });
+  assert.strictEqual(a.login().lockOnWake, false);
+  assert.strictEqual(a.setLockOnWake(true).lockOnWake, true);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { wallpaper: 'lava', lockOnWake: true });
+});
