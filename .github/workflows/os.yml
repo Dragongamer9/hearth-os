@@ -1,6 +1,7 @@
 # Builds Hearth, the Linux OS: Bazzite (deck edition) with the Hearth session (the Nimbus UI) installed and booted into.
 # - Pushes to main that touch the OS, the Linux host or the UI, a weekly rebuild (to pick up Bazzite's
-#   updates), or a manual run: build the image and publish it as ghcr.io/dragongamer9/hearth.
+#   updates), or a manual run: build the images and publish them as ghcr.io/dragongamer9/hearth (AMD and
+#   Intel graphics) and ghcr.io/dragongamer9/hearth-nvidia (Nvidia graphics).
 # - Manual run with "Build the installer ISO" ticked: also build the installer and keep it as a download
 #   on the run (GitHub releases can't hold files over 2 GB).
 # The image is signed when the SIGNING_SECRET repository secret holds a Cosign private key.
@@ -58,14 +59,23 @@ jobs:
           path: nimbus-app.tar
 
   image:
-    name: Build the OS image
+    name: Build the OS image (${{ matrix.name }})
     needs: app
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: hearth
+            base: bazzite-deck
+          - name: hearth-nvidia
+            base: bazzite-deck-nvidia
     permissions:
       contents: read
       packages: write
       id-token: write
     env:
+      IMAGE: ghcr.io/dragongamer9/${{ matrix.name }}
       PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
       HAS_KEY: ${{ secrets.SIGNING_SECRET != '' }}
     steps:
@@ -89,7 +99,7 @@ jobs:
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
           v="${{ needs.app.outputs.version }}"
-          sudo podman build --pull=newer -f os/Containerfile --build-arg NIMBUS_VERSION="$v" -t hearth:latest .
+          sudo podman build --pull=newer -f os/Containerfile --build-arg NIMBUS_VERSION="$v" --build-arg BASE="${{ matrix.base }}" -t hearth:latest .
 
       # Smaller updates: split the image into up to 127 pieces grouped by package, which stay the same
       # between builds when their files do, so an update only downloads what really changed (Universal

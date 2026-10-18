@@ -1,7 +1,10 @@
 # Hearth live ISO: the Hearth image plus what a live USB needs (live initramfs, a live user, the installer).
 # Built by .github/workflows/live-iso.yml, then turned into an ISO by Titanoboa (ublue-os/titanoboa), the way
 # Bazzite builds its live ISO. Not used for installed systems: those run ghcr.io/dragongamer9/hearth itself.
-ARG BASE=ghcr.io/dragongamer9/hearth:latest
+# IMAGE_NAME: hearth (AMD/Intel) or hearth-nvidia; the installer installs the same one.
+ARG IMAGE_NAME=hearth
+ARG BASE=ghcr.io/dragongamer9/${IMAGE_NAME}:latest
 FROM ${BASE}
+ARG IMAGE_NAME
 COPY src /src
-RUN --mount=type=cache,target=/var/cache/libdnf5 /src/build.sh && rm -rf /src
+RUN --mount=type=cache,target=/var/cache/libdnf5 IMAGE_NAME="${IMAGE_NAME}" /src/build.sh && rm -rf /src
