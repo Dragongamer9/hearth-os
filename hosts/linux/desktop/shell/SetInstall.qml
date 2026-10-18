@@ -24,7 +24,7 @@ SetPage {
     property string error: ""
     property string stageText: ""
     property real pct: 0
-    property int left: -1
+    property int secsLeft: -1
     property string stage: ""
     readonly property var drive: drives ? drives.find(d => d.dev === disk) || null : null
     readonly property var blockers: win && win.problems ? win.problems.filter(p => !p.soft) : []
@@ -64,7 +64,7 @@ SetPage {
         const plan = { mode: mode, disk: disk, user: { full: fullName.text.trim(), name: userName.text, password: noPass.checked ? "" : pass1.text, nopassword: noPass.checked },
                        hostname: (hostName.text || (userName.text + "-hearth")), timezone: tz, signin: signinChoice.current };
         if (mode === "beside") plan.give = Math.round(give);
-        error = ""; pct = 0; stageText = "Starting"; stage = "start"; left = -1;
+        error = ""; pct = 0; stageText = "Starting"; stage = "start"; secsLeft = -1;
         phase = "running";
         runProc.plan = JSON.stringify(plan);
         runProc.running = true;
@@ -96,7 +96,7 @@ SetPage {
             onRead: l => {
                 l = l.trim();
                 if (l.startsWith("stage: ")) {
-                    try { const s = JSON.parse(l.slice(7)); page.pct = s.pct; page.stageText = s.text; page.stage = s.stage; page.left = s.left != null ? s.left : -1; } catch (e) {}
+                    try { const s = JSON.parse(l.slice(7)); page.pct = s.pct; page.stageText = s.text; page.stage = s.stage; page.secsLeft = s.left != null ? s.left : -1; } catch (e) {}
                 } else if (l.startsWith("result: ")) page.phase = "done";
                 else if (l.startsWith("error: ")) page.error = l.slice(7);
             }
@@ -234,7 +234,7 @@ SetPage {
             Rectangle { width: parent.width * Math.max(0.02, page.pct / 100); height: parent.height; radius: 5; color: Theme.accent; Behavior on width { NumberAnimation { duration: 500 } } }
         }
         Text {
-            text: Math.round(page.pct) + "%" + (page.left > 0 ? " · about " + (page.left < 90 ? "a minute" : Math.round(page.left / 60) + " minutes") + " left" : "")
+            text: Math.round(page.pct) + "%" + (page.secsLeft > 0 ? " · about " + (page.secsLeft < 90 ? "a minute" : Math.round(page.secsLeft / 60) + " minutes") + " left" : "")
             color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
         }
         Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Keep the device plugged in and don't take out the USB stick until this is done."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
