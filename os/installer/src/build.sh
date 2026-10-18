@@ -10,16 +10,21 @@ dnf install -y \
   gtk3 nss alsa-lib libXScrnSaver libxkbcommon at-spi2-atk cups-libs libdrm mesa-libgbm \
   NetworkManager NetworkManager-wifi wpa_supplicant bluez polkit pciutils usbutils \
   ntfsprogs ntfs-3g dosfstools e2fsprogs btrfs-progs xfsprogs lvm2 efibootmgr policycoreutils shadow-utils \
-  rpm-ostree bootupd plymouth-plugin-script \
+  rpm-ostree bootupd \
   linux-firmware amd-gpu-firmware intel-gpu-firmware nvidia-gpu-firmware iwlwifi-mvm-firmware iwlwifi-dvm-firmware \
   atheros-firmware realtek-firmware mt7xxx-firmware brcmfmac-firmware \
   rsms-inter-fonts google-noto-sans-fonts
 
 # ---------------------------------------------------------------- live boot (like the full live USB)
 KVER=$(find /usr/lib/modules -maxdepth 1 -mindepth 1 -type d -printf '%P\n' | head -1)
-plymouth-set-default-theme hearth || true
+# Fedora's small base image has only the core kernel: graphics (amdgpu, i915, nouveau, virtual machines),
+# Wi-Fi, Bluetooth and controller drivers are in kernel-modules. Without them nothing shows on screen.
+dnf install -y "kernel-modules-${KVER}" "kernel-modules-extra-${KVER}" || dnf install -y kernel-modules kernel-modules-extra
+ls "/usr/lib/modules/${KVER}/kernel/drivers/gpu/drm" | head
+# No boot splash on the installer USB: start-up waited for it to close, and the installer screen never came.
+dnf remove -y plymouth || true
 DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
-  --add "dmsquash-live dmsquash-live-autooverlay plymouth" \
+  --add "dmsquash-live dmsquash-live-autooverlay" --omit "plymouth" \
   "/usr/lib/modules/${KVER}/initramfs.img" "${KVER}"
 # Titanoboa wants the EFI boot files under /boot/efi. Fedora's base image keeps them in a different place than
 # Bazzite (bootupd's copy, or /usr/lib/efi), so take whichever is there.
@@ -58,8 +63,11 @@ touch /etc/hearth-installer          # the Hearth app shows only the install scr
 echo "Hearth installer" >/etc/system-release
 
 # The person using it: "liveuser", no password, may do anything (it's an installer USB).
-useradd -m -G wheel -c "Hearth installer" liveuser
+useradd -m -d /var/home/liveuser -G wheel -c "Hearth installer" liveuser
 passwd -d liveuser
+# Its home folder is made at every start (on this base image /var isn't carried onto the USB as built).
+mkdir -p /usr/lib/tmpfiles.d
+printf 'd /var/home 0755 root root -\nd /var/home/liveuser 0700 liveuser liveuser -\n' >/usr/lib/tmpfiles.d/hearth-installer.conf
 cat >/etc/polkit-1/rules.d/10-hearth-installer.rules <<'RULE'
 polkit.addRule(function(action, subject) { if (subject.user == "liveuser") return polkit.Result.YES; });
 RULE
@@ -96,18 +104,20 @@ chmod 755 /usr/libexec/hearth-installer-cage
 cat >/etc/systemd/system/hearth-installer.service <<'UNIT'
 [Unit]
 Description=Hearth installer (the Hearth app, full screen)
-After=systemd-user-sessions.service plymouth-quit-wait.service NetworkManager.service bluetooth.service
+After=systemd-user-sessions.service NetworkManager.service bluetooth.service
 Conflicts=getty@tty1.service
 [Service]
 User=liveuser
-WorkingDirectory=~
+WorkingDirectory=/var/home/liveuser
+Environment=HOME=/var/home/liveuser
 PAMName=hearth-installer
 TTYPath=/dev/tty1
 TTYReset=yes
 TTYVHangup=yes
 TTYVTDisallocate=yes
 StandardInput=tty-fail
-StandardOutput=journal
+StandardOutput=journal+console
+StandardError=journal+console
 UtmpIdentifier=tty1
 UtmpMode=user
 ExecStart=/usr/libexec/hearth-installer-cage
@@ -117,10 +127,23 @@ RestartSec=1
 WantedBy=graphical.target
 UNIT
 systemctl enable hearth-installer.service
+# A minute after start, what the installer screen is doing goes to the serial port (for the CI boot test;
+# real PCs have nothing listening there).
+cat >/etc/systemd/system/hearth-installer-report.service <<'UNIT'
+[Unit]
+Description=Hearth installer: report for the boot test
+After=hearth-installer.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash -c 'sleep 60; { echo "=== hearth report"; ls -l /dev/dri; cat /proc/fb; lsmod | grep -E "^(drm|bochs|virtio_gpu|simpledrm|amdgpu|i915|nouveau)" ; journalctl -b -u hearth-installer --no-pager | tail -40; tail -40 /home/liveuser/hearth-installer.log; echo "=== end"; } >/dev/ttyS0 2>&1'
+[Install]
+WantedBy=graphical.target
+UNIT
+systemctl enable hearth-installer-report.service
 systemctl disable getty@tty1.service || true
 systemctl set-default graphical.target
 # Nothing that updates or writes to disk in the background.
-for s in bootc-fetch-apply-updates.timer rpm-ostreed-automatic.timer; do systemctl disable "$s" 2>/dev/null || true; done
+for s in bootc-fetch-apply-updates.timer rpm-ostreed-automatic.timer bootloader-update.service; do systemctl disable "$s" 2>/dev/null || true; done
 
 # ---------------------------------------------------------------- titanoboa's ISO config
 mkdir -p /usr/lib/bootc-image-builder
