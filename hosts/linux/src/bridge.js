@@ -197,6 +197,10 @@ class Bridge {
 
       case 'library.get': return L.get(!!a.rescan);
       case 'library.setFav': L.setFavorite(req('id'), !!a.on); return null;
+      case 'library.collection.create': return require('./library/collections').create(L.store, a.name);
+      case 'library.collection.rename': require('./library/collections').rename(L.store, req('id'), a.name); return null;
+      case 'library.collection.remove': require('./library/collections').remove(L.store, req('id')); return null;
+      case 'library.collection.set': require('./library/collections').setGame(L.store, req('id'), String(a.game), !!a.on); return null;
       case 'library.setHidden': L.setHidden(req('id'), !!a.on); return null;
       case 'library.setSources': {
         const src = {};

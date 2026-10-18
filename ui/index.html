@@ -98,6 +98,7 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .lbrb{font-size:11px}
 .libmeta{display:flex;align-items:center;justify-content:space-between;color:var(--dim);font-size:13px;margin:8px 0 14px}
 .pill{padding:7px 12px;border-radius:8px;background:var(--panel2);font-size:13px;display:flex;align-items:center;gap:6px}
+.pill.on{background:var(--accent);color:var(--accentInk)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(clamp(118px,13vw,170px),1fr));gap:30px 14px;padding:4px}
 .grid .tile.p{width:100%}
 .empty{padding:60px 0;text-align:center;color:var(--dim)}
@@ -1147,6 +1148,11 @@ function viewHome(){
 function libGames(){
   const t=S.tab;
   let L = t==='hidden' ? GAMES.filter(g=>g.hidden) : visible();
+  if(t.startsWith('c:')) L=L.filter(g=>(g.cols||[]).includes(t.slice(2)));
+  const f=S.lfilter||'';
+  if(f==='inst') L=L.filter(g=>g.inst||isActive(g)); else if(f==='notinst') L=L.filter(g=>!g.inst&&!isActive(g));
+  else if(f==='unplayed') L=L.filter(g=>!g.last&&!g.hrs); else if(f==='played') L=L.filter(g=>g.last||g.hrs);
+  else if(f==='short') L=L.filter(g=>g.hrs<2);
   if(t==='inst') L=L.filter(g=>g.inst || isActive(g));
   else if(t==='fav') L=L.filter(g=>g.fav);
   else if(SOURCES[t]) L=L.filter(g=>g.src===t);
@@ -1158,11 +1164,49 @@ function libGames(){
 }
 // Tabs: hide store tabs with no games (when real data is loaded), show Hidden only when something is hidden.
 function libTabs(){
-  return LIB_TABS.filter(([k])=>{
+  const t=LIB_TABS.filter(([k])=>{
     if(k==='hidden') return GAMES.some(g=>g.hidden);
     if(host && SOURCES[k]) return GAMES.some(g=>g.src===k && !g.hidden);
     return true;
   });
+  // Your collections come right after Favorites.
+  const at=t.findIndex(([k])=>k==='fav')+1;
+  t.splice(at,0,...COLS.map(c=>['c:'+c.id, c.name]));
+  return t;
+}
+// Collections: your own groups of games (each profile has its own).
+let COLS=[];
+const LFILTERS=[['','Everything'],['inst','Installed'],['notinst','Not installed'],['played','Played'],['unplayed','Never played'],['short','Under 2 hours played']];
+function colCount(id){ return GAMES.filter(g=>(g.cols||[]).includes(id)).length; }
+async function colNew(addGame){
+  const name=await openPrompt({title:'New collection', value:''}); if(name==null||!name.trim()) return;
+  try{
+    const c = host ? await call('library.collection.create',{name}) : {id:'c'+Date.now().toString(36), name:name.trim()};
+    COLS.push({id:c.id, name:c.name});
+    if(addGame) await colSet(c.id, addGame, true, true);
+    toast(addGame?`Added ${addGame.title} to ${c.name}`:`Made ${c.name}`);
+    render(null,true);
+  }catch(e){ toast(e.message); }
+}
+async function colSet(id, g, on, quiet){
+  try{
+    if(host) await call('library.collection.set',{id, game:g.id, on});
+    const s=new Set(g.cols||[]); if(on) s.add(id); else s.delete(id); g.cols=[...s];
+    const c=COLS.find(x=>x.id===id);
+    if(!quiet) toast(on?`Added to ${c?c.name:'collection'}`:`Removed from ${c?c.name:'collection'}`);
+  }catch(e){ toast(e.message); }
+}
+function colPick(g){
+  openSheet({title:'Collections', sub:g.title, items:[
+    ...COLS.map(c=>{ const on=(g.cols||[]).includes(c.id); return {label:c.name, icon:on?'check':'', run:()=>colSet(c.id,g,!on).then(()=>render(null,true))}; }),
+    {label:'New collection…', icon:'lib', run:()=>colNew(g)}]});
+}
+function colEdit(id){
+  const c=COLS.find(x=>x.id===id); if(!c) return;
+  openSheet({title:c.name, sub:`${colCount(id)} games · Add games from a game's ⋯ menu`, items:[
+    {label:'Rename', icon:'gear', run:async()=>{ const n=await openPrompt({title:'Rename collection', value:c.name}); if(n==null||!n.trim()) return;
+      try{ if(host) await call('library.collection.rename',{id, name:n}); c.name=n.trim(); render(null,true); }catch(e){ toast(e.message); } }},
+    {label:'Delete collection', icon:'trash', run:async()=>{ try{ if(host) await call('library.collection.remove',{id}); COLS=COLS.filter(x=>x.id!==id); GAMES.forEach(g=>{ if(g.cols) g.cols=g.cols.filter(x=>x!==id); }); S.tab='all'; toast(`Deleted ${c.name}. The games are still in your library.`); render(null,true); }catch(e){ toast(e.message); } }}]});
 }
 const SORTS = [['recent','Recently played'],['alpha','A–Z'],['hours','Play time'],['added','Date added']];
 function viewLibrary(){
@@ -1175,9 +1219,11 @@ function viewLibrary(){
   </div>
   <div class="libmeta"><span>${L.length} game${L.length===1?'':'s'}</span>
     <div class="lmr"><button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
+    ${S.tab.startsWith('c:')?`<button class="pill" data-f data-k="col-edit" data-act="colEdit" data-id="${esc(S.tab.slice(2))}">Edit collection</button>`:`<button class="pill" data-f data-k="col-new" data-act="colNew">+ Collection</button>`}
+    <button class="pill ${S.lfilter?'on':''}" data-f data-k="lfilter" data-act="lfilter">Show: ${LFILTERS.find(f=>f[0]===(S.lfilter||''))[1]}</button>
     <button class="pill" data-f data-k="sort" data-act="sort">Sort: ${SORTS.find(s=>s[0]===S.sort)[1]}</button></div></div>
   ${L.length?`<div class="grid">${L.map(g=>tile(g,'p','l-'+g.id)).join('')}</div>`:`<div class="empty">${LIB.loading?'Loading your games…':
-     STORE_INFO[S.tab]?`Sign in to ${STORE_INFO[S.tab].name} under Stores &amp; accounts to see your games here.`:'Nothing here yet.'}</div>`}`;
+     S.tab.startsWith('c:')&&!S.lfilter?'This collection is empty. Add games from a game\'s ⋯ menu (Add to collection).':S.lfilter?'No games match. Change Show to see more.':STORE_INFO[S.tab]?`Sign in to ${STORE_INFO[S.tab].name} under Stores &amp; accounts to see your games here.`:'Nothing here yet.'}</div>`}`;
 }
 
 // ProtonDB rating and achievements, loaded when a game's page opens (Linux).
@@ -2553,6 +2599,9 @@ function act(el){
       if(host) call('library.setFav',{id:g.id,on:g.fav}).catch(e=>toast(e.message));
       return render(S.view==='home' ? 'sp-'+g.id : 'g-fav'); }
     case 'gopts': return gameOptions(G(d.id));
+    case 'colNew': return colNew(null);
+    case 'colEdit': return colEdit(d.id);
+    case 'lfilter': return openSheet({title:'Show', items:LFILTERS.map(([k,l])=>({label:l, icon:(S.lfilter||'')===k?'check':'', run:()=>{ S.lfilter=k; render('lfilter'); }}))});
     case 'dlopts': return downloadOptions(G(d.id));
     case 'dlPause': return dlCall('game.pauseInstall', d.id, 'dc-pp');
     case 'dlResume': return dlCall('game.resumeInstall', d.id, 'dc-pp');
@@ -2717,6 +2766,7 @@ function gameOptions(g){
   if(!g) return;
   const items=[];
   if(host && LINUX && !g.cloud) items.push({label:'Game settings',icon:'gear',run:()=>navigate('gameset',{game:g.id})});
+  items.push({label:'Add to collection…',icon:'lib',run:()=>colPick(g)});
   items.push(g.hidden ? {label:'Show in library',icon:'lib',run:()=>setHidden(g,false)} : {label:'Hide from library',icon:'x',run:()=>setHidden(g,true)});
   if(g.canRemove) items.push({label:'Remove from '+APP+'',icon:'trash',run:()=>removeGame(g)});
   if(isActive(g) && g.installKind==='nimbus') items.unshift({label:'Cancel download',icon:'x',run:()=>cancelInstall(g)});
@@ -3323,7 +3373,7 @@ function pageProfile(){
 const LIB = {loading:false, counts:{}};
 const fmtSize = b => !b ? '' : b>=1e9 ? (b/1e9).toFixed(1)+' GB' : Math.round(b/1e6)+' MB';
 function fromHost(d){
-  return {id:d.id, title:d.title, src:d.source, fav:!!d.fav, hidden:!!d.hidden,
+  return {id:d.id, title:d.title, src:d.source, fav:!!d.fav, hidden:!!d.hidden, cols:d.cols||[],
           hrs:(d.minutes||0)/60, last:d.lastPlayed||0, added:d.added||0, size:fmtSize(d.sizeBytes),
           ach:null, art:d.art||{}, path:d.path||'', canRemove:!!d.canRemove,
           inst:d.installed!==false, cloud:!!d.cloud, state:d.state||'installed', progress:d.progress, bytesDone:d.bytesDone, bytesTotal:d.bytesTotal, speed:d.bytesPerSec,
@@ -3347,6 +3397,7 @@ function applyLib(lib){
   if(!lib || !lib.games) return;
   GAMES.length=0; lib.games.forEach(d=>GAMES.push(fromHost(d)));
   LIB.counts=lib.counts||{};
+  if(Array.isArray(lib.collections)) COLS=lib.collections.map(c=>({id:c.id,name:c.name}));
 }
 async function setSources(){
   try{
@@ -3654,7 +3705,7 @@ function input(k){
 function shiftTab(d){
   const top=S.layers.at(-1);
   if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
-  if(!top && S.view==='library'){ const i=LIB_TABS.findIndex(t=>t[0]===S.tab); S.tab=LIB_TABS[(i+d+LIB_TABS.length)%LIB_TABS.length][0]; render('tab-'+S.tab); return blip(600); }
+  if(!top && S.view==='library'){ const T=libTabs(), i=T.findIndex(t=>t[0]===S.tab); S.tab=T[(i+d+T.length)%T.length][0]; render('tab-'+S.tab); return blip(600); }
 }
 
 // Controllers: Xbox-style controllers come from the host (XInput, exact button names, works with any

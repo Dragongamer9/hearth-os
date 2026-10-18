@@ -51,6 +51,7 @@ class Library extends EventEmitter {
     return {
       games: [...this.games.values()].map(g => this.dto(g)).sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })),
       sources: { ...this.store.data.sources },
+      collections: require('./collections').summary(this.store.data),
       counts: this.counts,
       runningId: this.running && this.running.startedAt ? this.running.id : null,
       steamBackground: this.store.data.steamBackground,
@@ -128,7 +129,7 @@ class Library extends EventEmitter {
     }
     return {
       id: g.id, title: g.title, source: g.source,
-      fav: d.favorites.includes(g.id), hidden: d.hidden.includes(g.id),
+      fav: d.favorites.includes(g.id), hidden: d.hidden.includes(g.id), cols: require('./collections').of(d, g.id),
       minutes: Math.max(g.storeMinutes || 0, stats.minutes || 0),
       lastPlayed: Math.max(g.storeLastPlayed || 0, stats.lastPlayed || 0),
       added: g.added || 0, sizeBytes: g.sizeBytes || null,
