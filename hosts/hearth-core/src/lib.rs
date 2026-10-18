@@ -5,4 +5,5 @@ pub mod library;
 pub mod paths;
 pub mod steam;
 pub mod store;
+pub mod system;
 pub mod vdf;
