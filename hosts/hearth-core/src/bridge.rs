@@ -453,7 +453,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut b = Bridge::with(Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), crate::profiles::Profiles::open(dir.path()), "0.0.23");
         let r = b.handle(&json!({"type":"call","id":7,"method":"library.get","args":{}})).unwrap();
-        assert_eq!(r["id"], 7); assert_eq!(r["ok"], true); assert_eq!(r["value"]["games"], json!([]));
+        assert_eq!(r["id"], 7); assert_eq!(r["ok"], true);
+        // Nothing installed: only Xbox Cloud Gaming's tile (it needs no install).
+        let ids: Vec<&str> = r["value"]["games"].as_array().unwrap().iter().filter_map(|g| g["id"].as_str()).collect();
+        assert_eq!(ids, vec!["xbox:cloud"]);
         let r = b.handle(&json!({"type":"call","id":8,"method":"epic.signIn"})).unwrap();
         assert_eq!(r["ok"], false); assert!(r["error"].as_str().unwrap().contains("Rust version"));
         assert!(b.handle(&json!({"type":"log","text":"hi"})).is_none());
