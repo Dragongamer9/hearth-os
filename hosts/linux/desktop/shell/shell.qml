@@ -97,6 +97,7 @@ ShellRoot {
     IpcHandler {
         target: "live"
         function welcome(): void { liveWelcome.shown = true; }
+        function install(): void { liveWelcome.choose(); }
         function close(): void { liveWelcome.shown = false; }
     }
     IpcHandler {
