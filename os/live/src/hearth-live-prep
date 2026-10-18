@@ -1,0 +1,237 @@
+#!/usr/bin/python3
+"""hearth-live-prep: the live USB's "Install next to Windows and bring my games" steps, before the installer.
+
+Run as root (pkexec; the live user is allowed). Installed only on the live USB.
+
+  hearth-live-prep check        JSON: the Windows partition (size, free space, how small it can get), what's
+                                in the way (BitLocker, Fast Startup / hibernation, on battery, no internet),
+                                and the games and folders on it (the same scan Hearth's importer uses)
+  hearth-live-prep shrink BYTES make BYTES of free space after Windows for Hearth: shrink the NTFS file system
+                                (ntfsresize, which moves data out of the way), then the partition. Progress
+                                lines as "progress: <0-100> <what>", then a JSON line.
+
+The installer is then started with "Use free space"; Hearth offers to import the games on its first start.
+"""
+import importlib.machinery
+import importlib.util
+import json
+import math
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+MIB = 1024 * 1024
+GIB = 1024 * MIB
+KEEP_FREE = 20 * GIB          # what Windows keeps free after shrinking (updates, page file)
+MIN_HEARTH = 64 * GIB         # smallest Hearth worth installing
+
+
+def fail(msg):
+    print('error: ' + msg, flush=True)
+    sys.exit(1)
+
+
+def sh(cmd, check=True, **kw):
+    r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    if check and r.returncode != 0:
+        raise RuntimeError(((r.stderr or r.stdout or '').strip().splitlines() or [' '.join(cmd) + ' failed'])[-1])
+    return r
+
+
+def importer():
+    """hearth-import (part of the Hearth image), for finding games."""
+    path = '/usr/libexec/nimbus/hearth-import'
+    loader = importlib.machinery.SourceFileLoader('hearth_import', path)
+    spec = importlib.util.spec_from_loader('hearth_import', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+def windows_partition():
+    """The NTFS partition with Windows on it (biggest one with \\Windows\\System32), or a BitLocker one."""
+    tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'NAME,PATH,PKNAME,FSTYPE,LABEL,SIZE,MOUNTPOINTS,TYPE']).stdout)
+    cands, locked = [], []
+
+    def walk(ds):
+        for d in ds:
+            if d.get('type') == 'part':
+                if d.get('fstype') == 'ntfs':
+                    cands.append(d)
+                elif d.get('fstype') == 'BitLocker':
+                    locked.append(d)
+            walk(d.get('children') or [])
+    walk(tree.get('blockdevices', []))
+    found = None
+    for d in sorted(cands, key=lambda x: -int(x['size'])):
+        mnt = '/run/hearth-prep'
+        os.makedirs(mnt, exist_ok=True)
+        for m in (d.get('mountpoints') or []):
+            if m:
+                sh(['umount', m], check=False)
+        r = sh(['mount', '-t', 'ntfs3', '-o', 'ro', d['path'], mnt], check=False)
+        if r.returncode != 0:
+            r = sh(['mount', '-t', 'ntfs3', '-o', 'ro,force', d['path'], mnt], check=False)
+        if r.returncode == 0:
+            is_win = os.path.isdir(os.path.join(mnt, 'Windows', 'System32'))
+            sh(['umount', mnt], check=False)
+            if is_win:
+                found = d
+                break
+        elif d['size'] > 30 * GIB and not found:
+            found = d   # couldn't open it (hibernated?): still likely Windows; ntfsresize will say more
+    return found, locked
+
+
+def ntfs_info(dev):
+    """Current size and the smallest it can be shrunk to (ntfsresize --info), plus why it can't be resized."""
+    r = sh(['ntfsresize', '--info', '--force', '--no-progress-bar', dev], check=False)
+    out = (r.stdout or '') + (r.stderr or '')
+    info = {'raw': out[-600:]}
+    m = re.search(r'Current volume size:\s*(\d+) bytes', out)
+    if m:
+        info['size'] = int(m.group(1))
+    m = re.search(r'You might resize at (\d+) bytes', out)
+    if m:
+        info['min'] = int(m.group(1))
+    if re.search(r'hibernat|unclean|Windows is (?:hibernated|running)|fast restart', out, re.I):
+        info['problem'] = 'fast-startup'
+    elif re.search(r'bad sector|inconsisten|chkdsk|corrupt', out, re.I):
+        info['problem'] = 'needs-check'
+    return info
+
+
+def power():
+    ac, battery = None, None
+    for d in os.listdir('/sys/class/power_supply') if os.path.isdir('/sys/class/power_supply') else []:
+        base = os.path.join('/sys/class/power_supply', d)
+        try:
+            kind = open(os.path.join(base, 'type')).read().strip()
+            if kind == 'Mains':
+                ac = (ac or False) or open(os.path.join(base, 'online')).read().strip() == '1'
+            elif kind == 'Battery':
+                battery = int(open(os.path.join(base, 'capacity')).read().strip())
+        except (OSError, ValueError):
+            pass
+    return {'plugged': ac if ac is not None else battery is None, 'battery': battery}
+
+
+def online():
+    return sh(['nm-online', '-q', '-t', '3'], check=False).returncode == 0 if shutil.which('nm-online') else None
+
+
+def check():
+    win, locked = windows_partition()
+    res = {'power': power(), 'online': online(), 'problems': [], 'windows': None, 'games': None}
+    if locked and not win:
+        res['problems'].append({'id': 'bitlocker', 'text': "Windows is locked with BitLocker. In Windows, open Settings › Privacy & security › Device encryption (or BitLocker), turn it off, wait for it to finish, then try again."})
+    if not win:
+        if not locked:
+            res['problems'].append({'id': 'no-windows', 'text': "No Windows was found on this PC. Use Install Hearth to install it on a whole drive instead."})
+        print(json.dumps(res))
+        return
+    info = ntfs_info(win['path'])
+    size = info.get('size') or int(win['size'])
+    used_min = info.get('min') or size
+    can_give = max(0, size - used_min - KEEP_FREE)
+    can_give = can_give // GIB * GIB
+    res['windows'] = {'dev': win['path'], 'label': win.get('label') or 'Windows', 'size': size, 'min': used_min,
+                      'free': max(0, size - used_min), 'canGive': can_give}
+    if info.get('problem') == 'fast-startup':
+        res['problems'].append({'id': 'fast-startup', 'text': "Windows wasn't fully shut down (Fast Startup or hibernation), so its drive can't be changed. Start Windows, then hold Shift while you choose Shut down. Or turn off Fast Startup: Control Panel › Power Options › Choose what the power buttons do."})
+    elif info.get('problem') == 'needs-check':
+        res['problems'].append({'id': 'needs-check', 'text': "Windows' drive needs a check first. In Windows, run \"chkdsk C: /f\" in a Terminal as administrator, restart, then try again."})
+    elif can_give < MIN_HEARTH:
+        res['problems'].append({'id': 'space', 'text': f"Windows only has room to give {can_give // GIB} GB, and Hearth needs at least {MIN_HEARTH // GIB} GB. Free up space in Windows first (or install Hearth on another drive)."})
+    if not res['power']['plugged']:
+        res['problems'].append({'id': 'power', 'text': 'Plug in the charger. Resizing a drive on battery is risky if the battery runs out.', 'soft': True})
+    if res['online'] is False:
+        res['problems'].append({'id': 'offline', 'text': 'Connect to the internet: the installer downloads Hearth.', 'soft': True})
+    # What would come over (for the summary; the import itself happens in Hearth after installing).
+    try:
+        os.environ.setdefault('PKEXEC_UID', str(os.getuid()))
+        scan = importer().scan()
+        games = [g for d in scan['drives'] for k in ('steam', 'epic', 'gog') for g in d[k]]
+        res['games'] = {'count': len(games), 'size': sum(g.get('size') or 0 for g in games),
+                        'names': [g['name'] for g in games][:12]}
+        importer().unmount()
+    except Exception as e:   # the summary is a nice-to-have
+        res['games'] = {'error': str(e)}
+    # A sensible default: room for the games plus 64 GB, within what Windows can give.
+    want = (res['games'] or {}).get('size', 0) + MIN_HEARTH
+    res['suggested'] = int(min(can_give, max(MIN_HEARTH, math.ceil(want / (32 * GIB)) * 32 * GIB)))
+    print(json.dumps(res))
+
+
+def shrink(give):
+    win, _ = windows_partition()
+    if not win:
+        fail('Windows was not found')
+    dev = win['path']
+    info = ntfs_info(dev)
+    if info.get('problem') == 'fast-startup':
+        fail("Windows wasn't fully shut down (Fast Startup). Shut it down with Shift held, then try again")
+    if info.get('problem'):
+        fail("Windows' drive needs a check (chkdsk) first")
+    size, minimum = info.get('size'), info.get('min')
+    if not size or not minimum:
+        fail("couldn't read Windows' drive: " + info['raw'].strip().splitlines()[-1] if info['raw'].strip() else "couldn't read Windows' drive")
+    new_size = (size - give) // MIB * MIB
+    if new_size < minimum + KEEP_FREE:
+        fail(f'that leaves Windows too little room; the most Hearth can have is {(size - minimum - KEEP_FREE) // GIB} GB')
+    for m in (win.get('mountpoints') or []):
+        if m:
+            sh(['umount', m], check=False)
+    print('progress: 2 Checking Windows\' drive', flush=True)
+    sh(['ntfsresize', '--force', '--no-action', '--size', str(new_size), dev])
+    print('progress: 5 Making room (this can take a while)', flush=True)
+    p = subprocess.Popen(['ntfsresize', '--force', '--size', str(new_size), dev], stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    p.stdin.write('y\n')   # "Are you sure you want to proceed?"
+    p.stdin.close()
+    buf, last = '', ''
+    while True:
+        ch = p.stdout.read(1)
+        if not ch:
+            break
+        if ch in '\r\n':
+            m = re.search(r'([\d.]+) percent completed', buf)
+            if m:
+                print('progress: %.1f Moving Windows\' files out of the way' % (5 + float(m.group(1)) * 0.85), flush=True)
+            elif buf.strip():
+                last = buf.strip()
+            buf = ''
+        else:
+            buf += ch
+    if p.wait() != 0:
+        fail('Windows\' drive could not be shrunk: ' + last)
+    # Now the partition itself, keeping where it starts.
+    print('progress: 92 Updating the partition table', flush=True)
+    disk = '/dev/' + win['pkname']
+    num = re.search(r'(\d+)$', dev).group(1)
+    sectors = math.ceil(new_size / 512) + 2048   # a little slack past the file system's end
+    sh(['sfdisk', '--no-reread', '--force', '-N', num, disk], input=f', {sectors}\n')
+    sh(['partx', '-u', '--nr', num, disk], check=False)
+    print('progress: 100 Done', flush=True)
+    print(json.dumps({'ok': True, 'windowsSize': new_size, 'free': size - new_size}))
+
+
+def main(argv):
+    if os.geteuid() != 0:
+        fail('run this as root (pkexec)')
+    cmd = argv[1] if len(argv) > 1 else ''
+    try:
+        if cmd == 'check':
+            check()
+        elif cmd == 'shrink' and len(argv) == 3 and argv[2].isdigit():
+            shrink(int(argv[2]))
+        else:
+            fail('usage: hearth-live-prep check | shrink BYTES')
+    except RuntimeError as e:
+        fail(str(e))
+
+
+if __name__ == '__main__':
+    main(sys.argv)

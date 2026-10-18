@@ -66,6 +66,9 @@ done
 
 # ---------------------------------------------------------------- the installer (Anaconda, web UI)
 dnf install -y --allowerasing firefox anaconda-live libblockdev-btrfs libblockdev-lvm libblockdev-dm
+# "Install next to Windows": shrinking Windows' NTFS drive (ntfsresize) to make room before the installer.
+dnf install -y ntfsprogs
+install -Dm755 /src/hearth-live-prep /usr/libexec/nimbus/hearth-live-prep
 source /etc/os-release
 cat >/etc/anaconda/profile.d/hearth.conf <<CONF
 [Profile]

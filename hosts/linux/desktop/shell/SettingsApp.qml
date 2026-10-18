@@ -6,12 +6,16 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 
 Scope {
     id: app
     property bool shown: false
     property string page: "wifi"
-    readonly property var pages: [
+    // On the live USB, "Install next to Windows" comes first.
+    property bool live: false
+    Process { running: true; command: ["test", "-e", "/etc/hearth-live"]; onExited: code => app.live = code === 0 }
+    readonly property var pages: (live ? [{ id: "install", icon: "update", label: "Install Hearth" }] : []).concat([
         { id: "wifi", icon: "wifi", label: "Wi-Fi" },
         { id: "bluetooth", icon: "bt", label: "Bluetooth" },
         { id: "sound", icon: "vol", label: "Sound" },
@@ -23,10 +27,10 @@ Scope {
         { id: "browser", icon: "globe", label: "Web browser" },
         { id: "updates", icon: "update", label: "Updates" },
         { id: "about", icon: "info", label: "About" }
-    ]
+    ])
     readonly property var files: ({ wifi: "SetWifi.qml", bluetooth: "SetBluetooth.qml", sound: "SetSound.qml", display: "SetDisplay.qml",
         appearance: "SetAppearance.qml", power: "SetPower.qml", controller: "SetController.qml", signin: "SetSignin.qml", browser: "SetBrowser.qml",
-        updates: "SetUpdates.qml", about: "SetAbout.qml" })
+        updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml" })
 
     function open(p) {
         if (p && files[p]) page = p;
