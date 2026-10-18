@@ -139,6 +139,14 @@ test('proc: finds a Steam game by AppId and includes its children', () => {
   assert.deepEqual(proc.gameProcesses({ dirs: ['/games/Witcher'] }, procs), [200]);
   assert.deepEqual(proc.gameProcesses({ dirs: ['/games/dota'] }, procs).sort(), [101, 102]); // Wine Z:\ path
   assert.deepEqual(proc.gameProcesses({ dirs: ['/games/Witch'] }, procs), []);                // prefix isn't a folder match
+  // A launcher started by Wine's services (not a child of the game) belongs to the game by its Wine prefix.
+  const withLauncher = [
+    { pid: 300, ppid: 1, cmdline: ['/games/Fifa/fifa.exe'], cwd: '/games/Fifa', prefix: '/pfx/fifa' },
+    { pid: 301, ppid: 2, cmdline: ['C:\\Program Files\\EA\\EADesktop.exe'], cwd: '/pfx/fifa/drive_c', prefix: '/pfx/fifa' },
+    { pid: 302, ppid: 2, cmdline: ['C:\\other.exe'], cwd: '/x', prefix: '/pfx/other' },
+    { pid: 303, ppid: 2, cmdline: ['C:\\shared.exe'], cwd: '/x', prefix: '/home/u/.wine' },
+  ];
+  assert.deepEqual(proc.gameProcesses({ dirs: ['/games/Fifa'] }, withLauncher).sort(), [300, 301]);
 });
 
 test('manual: .desktop Exec lines and titles', () => {

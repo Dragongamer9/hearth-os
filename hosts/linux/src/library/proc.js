@@ -17,7 +17,16 @@ function snapshot(procRoot = '/proc') {
       const cmdline = fs.readFileSync(path.join(procRoot, pid, 'cmdline'), 'utf8').split('\0').filter(Boolean);
       let cwd = null;
       try { cwd = fs.readlinkSync(path.join(procRoot, pid, 'cwd')); } catch { /* other users' processes */ }
-      out.push({ pid: +pid, ppid, cmdline, cwd });
+      // Windows programs run with Wine/Proton: which prefix (a game's launcher runs in the game's prefix).
+      let prefix = null;
+      if (cmdline.some(a => /\.exe$/i.test(a) || /(^|\/)(wine|wine64|wine64-preloader|proton)$/.test(a))) {
+        try {
+          const env = fs.readFileSync(path.join(procRoot, pid, 'environ'), 'utf8').split('\0');
+          const v = k => (env.find(e => e.startsWith(k + '=')) || '').slice(k.length + 1);
+          prefix = v('WINEPREFIX') || (v('STEAM_COMPAT_DATA_PATH') ? v('STEAM_COMPAT_DATA_PATH').replace(/\/$/, '') + '/pfx' : '') || null;
+        } catch { /* other users' processes */ }
+      }
+      out.push({ pid: +pid, ppid, cmdline, cwd, prefix });
     } catch { /* process exited while we looked */ }
   }
   return out;
@@ -45,7 +54,15 @@ function gameProcesses(track, procs = snapshot()) {
       if (track.dirs.some(d => under(p.cwd, d) || paths.some(a => under(a, d)))) roots.add(p.pid);
     }
   }
-  return withDescendants(roots, procs);
+  const all = withDescendants(roots, procs);
+  // A game's launcher (EA app, Ubisoft Connect, Rockstar, Battle.net) often isn't started by the game itself
+  // but by Wine's own services, so it's no child of the game. It runs in the game's Wine prefix, though:
+  // everything in the same prefix belongs to the game. (Only prefixes of the game's own processes count, and
+  // never the shared default prefix.)
+  const mine = new Set(all);
+  const prefixes = new Set(procs.filter(p => mine.has(p.pid) && p.prefix && !/\/\.wine\/?$/.test(p.prefix)).map(p => p.prefix));
+  if (prefixes.size) for (const p of procs) if (p.prefix && prefixes.has(p.prefix) && !mine.has(p.pid)) all.push(p.pid);
+  return [...new Set(all)].filter(p => p !== process.pid);
 }
 
 function withDescendants(roots, procs) {

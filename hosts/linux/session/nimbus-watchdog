@@ -22,7 +22,7 @@ while :; do
       # screen: politely after 6 s, forcefully after 10 s.
       gs=$PPID
       if [ "$(cat /proc/$gs/comm 2>/dev/null | cut -c1-9)" = gamescope ]; then
-        setsid sh -c "sleep 6; [ \"\$(cut -c1-9 /proc/$gs/comm 2>/dev/null)\" = gamescope ] || exit 0; echo \"\$(date) gamescope still open, closing it\" >>'$LOG'; kill -TERM $gs; sleep 4; kill -KILL $gs 2>/dev/null" >/dev/null 2>&1 </dev/null &
+        setsid sh -c "sleep 3; [ \"\$(cut -c1-9 /proc/$gs/comm 2>/dev/null)\" = gamescope ] || exit 0; echo \"\$(date) gamescope still open, closing it\" >>'$LOG'; kill -TERM $gs; sleep 2; kill -KILL $gs 2>/dev/null" >/dev/null 2>&1 </dev/null &
       fi
       exit 0 ;;
     75) echo "$(date) update installed, restarting" >>"$LOG"; continue ;;
