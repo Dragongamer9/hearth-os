@@ -371,6 +371,9 @@ class Library extends EventEmitter {
     }
     log(`game exited ${r.id}`);
     const g = this.games.get(r.id);
+    // Epic cloud saves go up once the game has closed.
+    if (g && g.launchVia === 'legendary' && this.options.get(r.id).cloudSaves !== false && require('../util').isOnline())
+      this.accounts.epic.syncSaves(g.id.slice(5), 'up').catch(e => log('epic saves: ' + e.message));
     this.emit('exited', g ? this.dto(g) : { id: r.id });
   }
 
