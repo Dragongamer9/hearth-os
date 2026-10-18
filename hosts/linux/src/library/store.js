@@ -9,7 +9,7 @@ const DEFAULTS = () => ({
   favorites: [], hidden: [], manual: [], stats: {},
   steamBackground: true,
   autoUpdateCheck: true,
-  sources: { steam: true, epic: true, gog: true, xbox: true },
+  sources: { steam: true, epic: true, gog: true, xbox: true, emu: true },
 });
 
 class Store {
