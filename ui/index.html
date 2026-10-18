@@ -1048,7 +1048,12 @@ function browserRows(){
   const b=BROWSER.s;
   let h = shead('Web browser');
   if(!b) return h + note('Loading…');
-  if(b.available===false) return h + note('The web browser is set up on Hearth, the OS.');
+  if(b.available===false && !(b.hearth&&b.hearth.available)) return h + note('The web browser is set up on Hearth, the OS.');
+  if(b.hearth && b.hearth.available){
+    h += `<button class="row" data-f data-k="br-hb" data-act="hearthBrowser" data-v="open"><span class="ricon">${I.globe||I.display}</span><div class="rt"><b>Hearth Browser</b><small>${b.hearth.default?'Your default browser':'Hearth\'s own web browser: tabs, bookmarks, history, downloads'}</small></div><div class="rv">Open ›</div></button>`;
+    if(!b.hearth.default) h += `<button class="row" data-f data-k="br-hbdef" data-act="hearthBrowser" data-v="default"><div class="rt"><b>Make Hearth Browser the default</b><small>Links from other apps open in it</small></div></button>`;
+  }
+  if(b.available===false) return h;
   const busy = b.state && b.state!=='idle';
   if(busy){
     const pct = b.progress!=null ? Math.round(b.progress*100) : null;
@@ -2139,6 +2144,9 @@ const OV = {shown:false};
 function overlayClose(){ send({type:'overlay', action:'close'}); }
 async function overlayShown(){
   OV.shown=true; OV.busy=true; document.body.classList.remove('ov-closed');
+  // Tell Hearth once Quick Access has really been drawn, so it's made visible with something in it (shown
+  // before that, gamescope sometimes put up an empty, black overlay over the game).
+  if(OVERLAY) requestAnimationFrame(()=>requestAnimationFrame(()=>send({type:'overlay', action:'painted'})));
   while(S.layers.length>1) closeLayer();
   try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); if(!r.runningId) S.running=null; }catch(e){}
   if(S.running && !G(S.running)) await loadLibrary();
@@ -2442,6 +2450,7 @@ function act(el){
     case 'osiEdit': return osiEdit(d.v);
     case 'osiTz': return osiTzPick();
     case 'osiSignin': return osiSigninPick();
+    case 'hearthBrowser': return call('browser.hearth',{action:d.v}).then(r=>{ if(r&&r.hearth){ BROWSER.s=r; refreshUI(); if(d.v==='default') toast('Hearth Browser is your default browser'); } }).catch(e=>toast(e.message));
     case 'osiNoPass': OSI.user.nopassword=!OSI.user.nopassword; if(OSI.user.nopassword) OSI.user.password=''; return render('osi-nopass');
     case 'osiStart': return osiStart();
     case 'osiRestart': return call('osinstall.restart').catch(e=>toast(e.message));

@@ -1,0 +1,5 @@
+#!/usr/bin/sh
+# Hearth Browser: Hearth's own web browser (part of the Hearth app; see hosts/linux/src/web).
+# On Wayland (Mantel) it runs natively; anywhere else it uses X11.
+if [ -n "$WAYLAND_DISPLAY" ]; then set -- --ozone-platform=wayland --enable-features=WaylandWindowDecorations "$@"; fi
+exec /usr/lib/nimbus/nimbus --browser "$@"

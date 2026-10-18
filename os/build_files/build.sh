@@ -59,6 +59,26 @@ Type=Application
 Categories=Settings;
 Keywords=wifi;bluetooth;sound;display;controller;update;
 DESKTOP
+# Hearth Browser: Hearth's own web browser (the Hearth app with --browser).
+cat > /usr/share/applications/hearth-browser.desktop <<DESKTOP
+[Desktop Entry]
+Name=Hearth Browser
+GenericName=Web Browser
+Comment=Browse the web
+Exec=/usr/bin/hearth-browser %U
+Icon=hearth
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+StartupWMClass=Hearth Browser
+Actions=new-window;
+Keywords=web;internet;browser;
+
+[Desktop Action new-window]
+Name=New window
+Exec=/usr/bin/hearth-browser
+DESKTOP
+chmod 755 /usr/bin/hearth-browser
 # The Hearth color scheme, also selectable in Plasma (System Settings › Colors).
 install -Dm644 /usr/share/nimbus/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
 # Wallpapers: /usr/share/backgrounds/hearth, and as Plasma wallpapers (System Settings › Wallpaper).
