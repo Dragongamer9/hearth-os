@@ -1,16 +1,21 @@
 # Builds the Hearth live ISO: boots from a USB stick into Hearth (Desktop Mode) so you can try it, with a
 # welcome card and an "Install Hearth" installer. Same idea and tool as Bazzite's live ISO (Titanoboa).
-# Manual only (Actions › Hearth live ISO › Run workflow); the ISO is kept as a download on the run for 14 days
-# (GitHub releases can't hold files over 2 GB). Installing needs internet: it downloads the current Hearth
+# Manual only (Actions › Hearth live ISO › Run workflow). The ISO is kept as a download on the run for 14 days
+# (GitHub releases can't hold files over 2 GB) and, when the SourceForge secrets are set, uploaded to
+# https://sourceforge.net/projects/<SF_PROJECT>/files/<version>/ (what the website's Download button points at).
+#   Secrets (Settings › Secrets and variables › Actions): SF_USER (your SourceForge user name),
+#   SF_SSH_KEY (private key whose public half is in SourceForge › Account › SSH Settings),
+#   SF_PROJECT (project's short name, e.g. hearth-os), optional SF_API_KEY (makes the new ISO the default download). Installing needs internet: it downloads the current Hearth
 # image, so a fresh install is always up to date.
 name: Hearth live ISO
 
 on:
   workflow_dispatch:
-  # Also when the live ISO's own files change on linux-host, to try them before they reach main.
-  push:
-    branches: [linux-host]
-    paths: ['os/live/**', '.github/workflows/live-iso.yml']
+    inputs:
+      upload:
+        description: 'Upload the ISO to SourceForge (needs the SF_* secrets)'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -20,6 +25,10 @@ jobs:
   live-iso:
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    env:
+      SF_USER: ${{ secrets.SF_USER }}
+      SF_PROJECT: ${{ secrets.SF_PROJECT }}
+      HAVE_SF: ${{ secrets.SF_SSH_KEY != '' && secrets.SF_USER != '' && secrets.SF_PROJECT != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,8 +60,9 @@ jobs:
           iso=$(cd /tmp/titanoboa && sudo TITANOBOA_OUTPUT_DIR="$out" ./main.sh localhost/hearth-live:latest)
           sudo chown -R "$(id -u):$(id -g)" "$out"
           v=$(sudo podman run --rm localhost/hearth-live:latest cat /usr/share/nimbus/version 2>/dev/null || echo latest)
-          mv "$iso" "$out/hearth-live-$v.iso"
-          (cd "$out" && sha256sum "hearth-live-$v.iso" | tee "hearth-live-$v.iso.sha256")
+          f="hearth-os-$v-live.iso"
+          mv "$iso" "$out/$f"
+          (cd "$out" && sha256sum "$f" | tee "$f.sha256")
           ls -lh "$out"
           echo "dir=$out" >> "$GITHUB_OUTPUT"
           echo "version=$v" >> "$GITHUB_OUTPUT"
@@ -60,8 +70,35 @@ jobs:
       - name: Keep the ISO as a download on this run
         uses: actions/upload-artifact@v4
         with:
-          name: hearth-live-${{ steps.iso.outputs.version }}
+          name: hearth-os-${{ steps.iso.outputs.version }}-live
           path: ${{ steps.iso.outputs.dir }}
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+
+      - name: Upload to SourceForge
+        if: env.HAVE_SF == 'true' && inputs.upload
+        env:
+          SF_SSH_KEY: ${{ secrets.SF_SSH_KEY }}
+          SF_API_KEY: ${{ secrets.SF_API_KEY }}
+          V: ${{ steps.iso.outputs.version }}
+          DIR: ${{ steps.iso.outputs.dir }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SF_SSH_KEY" > ~/.ssh/sf && chmod 600 ~/.ssh/sf
+          ssh-keyscan -t ed25519,rsa frs.sourceforge.net >> ~/.ssh/known_hosts 2>/dev/null
+          dest="/home/frs/project/$SF_PROJECT/$V"
+          ssh="ssh -i $HOME/.ssh/sf -o IdentitiesOnly=yes"
+          # rsync makes the version folder; --partial lets a dropped 7 GB upload resume on a re-run.
+          rsync -e "$ssh" --partial --progress -t "$DIR"/hearth-os-*.iso "$DIR"/hearth-os-*.iso.sha256 \
+            "$SF_USER@frs.sourceforge.net:$dest/"
+          echo "Uploaded to https://sourceforge.net/projects/$SF_PROJECT/files/$V/"
+          if [ -n "${SF_API_KEY:-}" ]; then
+            curl -fsS -H 'Accept: application/json' -X PUT \
+              -d default=windows -d default=mac -d default=linux -d default=bsd -d default=solaris -d default=others \
+              -d "api_key=$SF_API_KEY" \
+              "https://sourceforge.net/projects/$SF_PROJECT/files/$V/hearth-os-$V-live.iso" >/dev/null \
+              && echo "Set as the default download"
+          fi
+          rm -f ~/.ssh/sf

@@ -162,7 +162,7 @@ class StoreAccounts extends EventEmitter {
         },
       }, { paused });
     }
-    throw new Error("Nimbus can't install this game itself.");
+    throw new Error("Hearth can't install this game itself.");
   }
 
   saveQueue() {
@@ -206,7 +206,7 @@ class StoreAccounts extends EventEmitter {
   launch(g, options = null) {
     if (g.launchVia === 'legendary') return this.epic.launch(g.id.slice(5), options);
     if (g.source === 'gog' && g.windowsExe) return this.gog.launch(g, options);
-    throw new Error("Nimbus doesn't know how to start this game.");
+    throw new Error("Hearth doesn't know how to start this game.");
   }
 }
 

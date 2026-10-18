@@ -1,5 +1,5 @@
 #!/bin/bash
-# Turns Bazzite (deck edition) into Hearth, the Linux OS of the Nimbus project. Runs once, inside the image build.
+# Turns Bazzite (deck edition) into Hearth OS. Runs once, inside the image build.
 set -ouex pipefail
 
 # ------------------------------------------------------------------ files that just get copied in
@@ -100,5 +100,5 @@ chmod 0600 "/usr/lib/modules/$KVER/initramfs.img"
 # ------------------------------------------------------------------ name
 sed -i \
   -e 's/^NAME=.*/NAME="Hearth"/' \
-  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth (based on Bazzite)"/' \
+  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS (based on Bazzite)"/' \
   /usr/lib/os-release

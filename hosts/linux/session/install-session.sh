@@ -11,7 +11,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 if [ "$1" = "--remove" ]; then
   rm -f /usr/share/wayland-sessions/nimbus.desktop /usr/local/bin/nimbus-session /usr/local/bin/nimbus-mode
   rm -rf /usr/local/lib/nimbus /usr/local/share/nimbus
-  echo "Nimbus session removed"
+  echo "Hearth session removed"
   exit 0
 fi
 
@@ -27,4 +27,4 @@ if [ -d "$HERE/desktop" ]; then
   find /usr/local/share/nimbus/desktop -name '*.sh' -exec chmod 755 {} +
   chmod 755 /usr/local/share/nimbus/desktop/labwc/autostart
 fi
-echo "Nimbus session installed. Pick \"Nimbus\" on the login screen."
+echo "Hearth session installed. Pick \"Hearth\" on the login screen."
