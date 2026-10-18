@@ -105,3 +105,23 @@ test('lock after sleep is kept in Mantel\'s settings file, next to its other set
   assert.strictEqual(a.setLockOnWake(true).lockOnWake, true);
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { wallpaper: 'lava', lockOnWake: true });
 });
+
+test('desktop wallpaper: moving ones by name, a picture copied to the config folder', () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-'));
+  const old = process.env.XDG_CONFIG_HOME; process.env.XDG_CONFIG_HOME = path.join(dir, 'conf');
+  try {
+    const desktopFile = path.join(dir, 'desktop.json');
+    fs.writeFileSync(desktopFile, JSON.stringify({ nightLight: true }));
+    const a = new SystemAdmin({ desktopFile });
+    assert.strictEqual(a.desktopWallpaper(), '');
+    a.setDesktopWallpaper('anim:lava');
+    assert.strictEqual(a.desktopWallpaper(), 'anim:lava');
+    assert.throws(() => a.setDesktopWallpaper('/etc/passwd'), /Unknown/);
+    const pic = path.join(dir, 'bg.png'); fs.writeFileSync(pic, 'png');
+    const v = a.setDesktopWallpaper('', pic);
+    assert.strictEqual(v, path.join(dir, 'conf', 'nimbus', 'wallpaper.png'));
+    assert.strictEqual(fs.readFileSync(v, 'utf8'), 'png');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(desktopFile, 'utf8')), { nightLight: true, wallpaper: v });
+  } finally { if (old === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = old; }
+});
