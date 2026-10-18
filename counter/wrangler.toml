@@ -1,0 +1,13 @@
+# Hearth OS player counter. Deployed by .github/workflows/counter.yml (which fills in database_id).
+name = "hearth-counter"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+[triggers]
+crons = ["17 4 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hearth-counter"
+database_id = "FILLED_IN_BY_CI"
