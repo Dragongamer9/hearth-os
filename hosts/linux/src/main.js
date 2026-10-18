@@ -172,6 +172,30 @@ function onMessage(e, m) {
   }
 }
 
+/**
+ * Ends Game Mode and tells the session what comes next ('desktop', 'game', or null to sign out).
+ * Steam is closed first, while Game Mode's display still exists: left running, it kept gamescope from
+ * closing (the switch froze on a black screen) and was stuck on a display that no longer existed. Steam gets
+ * a few seconds to close by itself; the session cleans up anything still running after that.
+ */
+let leavingGameMode = false;
+async function leaveGameMode(next) {
+  if (leavingGameMode) return;
+  leavingGameMode = true; leaving = true;
+  const file = path.join(process.env.XDG_RUNTIME_DIR || '/tmp', 'nimbus-next');
+  try { if (next) fs.writeFileSync(file, next + '\n'); else fs.rmSync(file, { force: true }); } catch (e) { log('mode switch: ' + e.message); }
+  log(`leaving Game Mode (next: ${next || 'sign out'})`);
+  const steamUp = () => run('pgrep', ['-u', String(process.getuid()), '-x', 'steam'], { timeout: 3000 }).then(() => true, () => false);
+  try {
+    if (await steamUp()) {
+      log('closing Steam before switching');
+      run('steam', ['-shutdown'], { timeout: 5000 }).catch(() => {});
+      for (let t = Date.now(); Date.now() - t < 7000 && await steamUp();) await new Promise(r => setTimeout(r, 300));
+    }
+  } catch {}
+  app.exit(0);
+}
+
 function power(action) {
   const sys = verb => run('systemctl', [verb]).catch(e => post({ type: 'toast', text: e.message }));
   switch (action) {
@@ -182,11 +206,7 @@ function power(action) {
     case 'desktop':
       // In the Nimbus session, Nimbus asks the session for the next mode and quits: "desktop" switches to
       // Desktop Mode, sign out (no next mode) ends the session. Outside it, just get out of the way.
-      if (IN_SESSION) {
-        const next = path.join(process.env.XDG_RUNTIME_DIR || '/tmp', 'nimbus-next');
-        try { if (action === 'desktop') fs.writeFileSync(next, 'desktop\n'); else fs.rmSync(next, { force: true }); } catch (e) { log('mode switch: ' + e.message); }
-        leaving = true; app.exit(0);
-      }
+      if (IN_SESSION) leaveGameMode(action === 'desktop' ? 'desktop' : null);
       else if (action === 'signout' && process.env.XDG_SESSION_ID) run('loginctl', ['terminate-session', process.env.XDG_SESSION_ID]).catch(() => {});
       else win.minimize();
       break;
@@ -530,10 +550,8 @@ app.whenReady().then(() => {
     // New gamescope options take effect when Game Mode starts again: ask the session to restart it.
     restartGameMode: () => {
       leaving = true;
-      if (IN_SESSION) {
-        try { fs.writeFileSync(path.join(process.env.XDG_RUNTIME_DIR || '/tmp', 'nimbus-next'), 'game\n'); } catch {}
-        app.exit(0);
-      } else { relaunch(); }
+      if (IN_SESSION) leaveGameMode('game');
+      else relaunch();
     },
   });
 
