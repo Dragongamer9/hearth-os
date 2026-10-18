@@ -6,6 +6,7 @@ use hearth_core::bridge::Bridge;
 use std::sync::{Arc, Mutex};
 use tauri::http::{header::CONTENT_TYPE, Response, StatusCode};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_dialog::DialogExt;
 
 /// The page's side of the message channel, the same one the Electron host's preload gave it:
 /// nimbusHost.postMessage(obj) and nimbusHost.addEventListener('message', fn). Messages wait until the
@@ -96,6 +97,7 @@ fn main() {
     }
     let windowed = std::env::args().any(|a| a == "--windowed");
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(Host(Arc::new(Mutex::new(Bridge::new(env!("CARGO_PKG_VERSION"))))))
         .register_uri_scheme_protocol("nimbus-art", |_ctx, req| art(&req.uri().to_string()))
         .invoke_handler(tauri::generate_handler![nimbus_msg])
@@ -106,9 +108,23 @@ fn main() {
             // Events from the host's own work (Bluetooth found a device, a controller paired...) go to the page.
             {
                 let h = handle.clone();
+                let picker = handle.clone();
                 if let Ok(mut b) = bridge.lock() {
                     b.emit = Arc::new(move |v| { let _ = h.emit("nimbus:msg", v); });
+                    b.pick_file = Arc::new(move |title: &str| {
+                        picker.dialog().file().set_title(title).blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().to_string())
+                    });
                 }
+            }
+            // The running game, every 2 seconds: started, closed, handed off to the real game (launchers).
+            {
+                let h = handle.clone();
+                let b = bridge.clone();
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    let events = match b.lock() { Ok(mut br) => br.library.tick(), Err(_) => vec![] };
+                    for e in events { let _ = h.emit("nimbus:msg", e); }
+                });
             }
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_secs(30));

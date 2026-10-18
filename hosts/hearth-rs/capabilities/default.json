@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "The Hearth window: the message channel to the Rust host.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:default"]
 }
