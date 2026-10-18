@@ -91,6 +91,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## 0.0.26
 
+- [x] In-game overlay: games keep running while it is open, the game gets no controller input (InputPlumber), and only the Xbox / Guide button opens it
 - [x] Settings › Updates: Update now is back on Hearth OS (and Settings from Mantel, the OS name, controller remapping)
 - [x] Ember: Quick Resume and profiles (Who's playing, own Steam account and sign-ins, parental controls)
 - [x] GOG cloud saves (Hearth and Ember)
