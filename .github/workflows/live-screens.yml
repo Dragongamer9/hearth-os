@@ -1,0 +1,73 @@
+# Screenshots of the live USB, from boot to the installer: boots the newest live ISO (from the "Hearth live ISO"
+# workflow) in a virtual machine and saves a picture every few seconds, pressing Enter on the welcome card.
+# The pictures are pushed to the live-screens branch. Manual only.
+name: Live USB screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Live ISO run to use (empty: the newest successful one)'
+        default: ''
+      plan:
+        description: 'When to press keys (seconds:action, action = enter, tab or clickXxY)'
+        default: '200:enter,330:enter,400:enter,470:enter'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  screens:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make room
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+      - name: Which ISO
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.run_id }}
+        run: |
+          if [ -z "$RUN" ]; then
+            RUN=$(gh api "repos/${{ github.repository }}/actions/workflows/live-iso.yml/runs?status=success&per_page=10" \
+              -q '[.workflow_runs[]] | .[0].id')
+          fi
+          name=$(gh api "repos/${{ github.repository }}/actions/runs/$RUN/artifacts" -q '[.artifacts[] | select(.name | test("nvidia") | not)][0].name')
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"; echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Using $name from run $RUN"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.pick.outputs.name }}
+          run-id: ${{ steps.pick.outputs.run }}
+          github-token: ${{ github.token }}
+          path: /mnt/iso
+      - name: Install QEMU
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 ovmf qemu-utils python3-pil >/dev/null
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Boot it and take pictures
+        env:
+          PLAN: ${{ inputs.plan }}
+          DURATION: '720'
+          EVERY: '8'
+        run: |
+          iso=$(ls /mnt/iso/*.iso | head -1); ls -lh "$iso"
+          qemu-img create -f qcow2 /mnt/disk.qcow2 64G
+          python3 .github/scripts/live-screens.py "$iso" /mnt/disk.qcow2
+          python3 - <<'PY'
+          import glob, os
+          from PIL import Image
+          for p in sorted(glob.glob('frames/*.ppm')):
+              Image.open(p).save(p[:-4] + '.png', optimize=True); os.remove(p)
+          PY
+          ls frames | wc -l; tail -40 serial.log || true
+      - name: Push the pictures to the live-screens branch
+        run: |
+          cd frames
+          git init -q -b live-screens && git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -qm "Live USB screenshots (run ${{ github.run_id }})"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" live-screens
