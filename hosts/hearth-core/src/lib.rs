@@ -3,7 +3,9 @@
 pub mod bridge;
 pub mod library;
 pub mod paths;
+pub mod perf;
 pub mod power;
+pub mod profile;
 pub mod steam;
 pub mod store;
 pub mod system;

@@ -251,6 +251,35 @@ pub mod audio {
         let v = v.min(max) as f64 / 100.0;
         run("wpctl", &["set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{v:.2}")]).map(|_| ())
     }
+    /// Output devices from `wpctl status` (the Sinks list under Audio); the default one is marked with '*'.
+    pub fn parse_devices(text: &str) -> Vec<Value> {
+        let (mut in_audio, mut in_sinks) = (false, false);
+        let mut out = Vec::new();
+        for raw in text.lines() {
+            let line: String = raw.chars().map(|c| if "│├└─".contains(c) { ' ' } else { c }).collect();
+            if line.starts_with("Audio") { in_audio = true; continue; }
+            if line.starts_with("Video") || line.starts_with("Settings") { in_audio = false; }
+            if !in_audio { continue; }
+            if line.contains("Sinks:") { in_sinks = true; continue; }
+            if ["Sources:", "Filters:", "Streams:", "Sink endpoints:", "Devices:"].iter().any(|k| line.contains(k)) { in_sinks = false; continue; }
+            if !in_sinks { continue; }
+            let t = line.trim();
+            let is_default = t.starts_with('*');
+            let t = t.trim_start_matches('*').trim();
+            if let Some((id, rest)) = t.split_once(". ") {
+                if id.chars().all(|c| c.is_ascii_digit()) && !id.is_empty() {
+                    let name = rest.split(" [vol:").next().unwrap_or(rest).trim();
+                    out.push(json!({"id": id, "name": name, "isDefault": is_default}));
+                }
+            }
+        }
+        out
+    }
+    pub fn get(max: u32) -> Value {
+        let (v, m) = volume().unwrap_or((0, false));
+        json!({"volume": v, "muted": m, "max": max, "devices": parse_devices(&run("wpctl", &["status"]).unwrap_or_default())})
+    }
+    pub fn set_default(id: &str) -> Result<(), String> { run("wpctl", &["set-default", id]).map(|_| ()) }
     pub fn set_mute(m: bool) -> Result<(), String> { run("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", if m { "1" } else { "0" }]).map(|_| ()) }
 }
 
@@ -307,6 +336,12 @@ mod tests {
         assert_eq!(list[1]["bars"], 4);
         assert_eq!(list[2]["secure"], false);
         assert_eq!(list[0]["connected"], true);
+    }
+    #[test]
+    fn reads_wpctl_status() {
+        let text = "PipeWire 'pipewire-0'\nAudio\n ├─ Devices:\n │      42. Family 17h HD Audio\n ├─ Sinks:\n │  *   53. Speaker                    [vol: 0.40]\n │      61. HDMI / DisplayPort 1 Output [vol: 1.00]\n ├─ Sources:\n │  *   54. Mic\nVideo\n";
+        let d = audio::parse_devices(text);
+        assert_eq!(d, vec![json!({"id": "53", "name": "Speaker", "isDefault": true}), json!({"id": "61", "name": "HDMI / DisplayPort 1 Output", "isDefault": false})]);
     }
     #[test]
     fn knows_controllers() {
