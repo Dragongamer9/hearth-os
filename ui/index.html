@@ -646,9 +646,33 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'To install it: Power › Switch to desktop, then Install Hearth'}); updateBadge(); toast('Running from the USB stick. To install Hearth: Power › Switch to desktop › Install Hearth.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'To install it: Power › Switch to desktop, then Install Hearth'}); updateBadge(); toast('Running from the USB stick. To install Hearth: Power › Switch to desktop › Install Hearth.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
+// ---------- Player counter ----------
+// While Hearth/Ember is open it says "I'm here" to the Hearth OS counter about every 10 minutes: a random id
+// made on this device, the edition and the version. Nothing else (no names, games or accounts). Off switch:
+// Settings › System › Privacy. The count shows on the About page and hearth-os's website.
+const COUNTER = {url:'https://hearth-counter.game305-cl.workers.dev', stats:null, timer:null};
+function counterOn(){ try{ return localStorage.getItem('nimbus.countMe')!=='0'; }catch(e){ return true; } }
+function counterId(){
+  let id=null; try{ id=localStorage.getItem('nimbus.counterId'); }catch(e){}
+  if(!/^[a-f0-9]{32}$/.test(id||'')){ const b=new Uint8Array(16); crypto.getRandomValues(b); id=[...b].map(x=>x.toString(16).padStart(2,'0')).join(''); try{ localStorage.setItem('nimbus.counterId', id); }catch(e){} }
+  return id;
+}
+function counterKind(){ return HOSTINFO.edition || (LINUX ? (HOSTINFO.live ? 'live' : 'appimage') : 'windows'); }
+function counterPing(){
+  if(!host || OVERLAY || !counterOn()) return;
+  fetch(COUNTER.url+'/v1/ping', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({id:counterId(), v:HOSTINFO.version||'', k:counterKind()})}).catch(()=>{});
+}
+function startCounter(){
+  if(COUNTER.timer || !host || OVERLAY) return;
+  setTimeout(counterPing, 20e3);                       // a moment after start, then every 10 minutes
+  COUNTER.timer = setInterval(counterPing, 10*60e3);
+}
+function loadCounterStats(){
+  fetch(COUNTER.url+'/v1/stats').then(r=>r.json()).then(j=>{ COUNTER.stats=j; refreshUI(); }).catch(()=>{});
+}
 const pending = new Map(); let rid = 0;
 function send(msg){ if(host) host.postMessage(msg); else console.log('[bridge:mock]', msg); }
 function call(method, args={}, timeout=30000){
@@ -993,6 +1017,8 @@ function pageSystem(){
   h += shead('Startup');
   if(!LINUX) h += swRow('startOnBoot','Start '+APP+' at sign-in','Registers '+APP+' as the shell for this user');
   else h += `<button class="row" data-f data-k="sy-signin" data-act="goset" data-tab="signin"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign-in and startup</b><small>Sign in automatically, start in Game or Desktop Mode, password</small></div><div class="rv">›</div></button>`;
+  h += shead('Privacy')
+    + `<button class="row" data-f data-k="sy-count" data-act="countMe"><div class="rt"><b>Count me in the player count</b><small>${APP} tells Hearth OS's counter it's running about every 10 minutes: a random number made on this device, the edition and the version. No names, games or accounts.</small></div><div class="sw ${counterOn()?'on':''}"></div></button>`;
   h += shead('Troubleshooting');
   if(feat('restartApp')) h += `<button class="row" data-f data-k="sy-restart" data-act="restartApp"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP}</b><small>Closes and reopens ${APP}. Games keep running.</small></div></button>`;
   h += `<button class="row" data-f data-k="sy-inlog" data-act="inputLog"><div class="rt"><b>Log controller input</b><small>Writes every button press and what it selected to the log, for reporting a jumpy selection. Then use Save logs.</small></div><div class="sw ${INPUT_LOG?'on':''}"></div></button>`;
@@ -1050,6 +1076,7 @@ function pageAbout(){
   if(i.kernel) h += infoRow('ab-kern', LINUX?'Kernel':'Windows version', i.kernel);
   if(i.uptimeSec) h += infoRow('ab-up','Running for', uptimeText(i.uptimeSec));
   h += infoRow('host','App engine',!host?'Browser preview':LINUX?(HOSTINFO.host||'Electron')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
+  if(COUNTER.stats) h += shead('Hearth OS players') + infoRow('ab-count','Playing right now', `🔥 ${COUNTER.stats.now.toLocaleString()}`) + infoRow('ab-count2','In the last 30 days', COUNTER.stats.month.toLocaleString());
   h += shead('Open source')
     + `<button class="row" data-f data-k="ab-credits" data-act="credits"><span class="ricon">${I.info}</span><div class="rt"><b>Built with</b><small>The open-source projects ${APP} uses</small></div><div class="rv">›</div></button>`
     + note(`${APP} is part of Hearth OS, a controller-first game library and system. Game names and art belong to their owners.`);
@@ -2344,6 +2371,7 @@ function act(el){
     case 'mute': return setMute(!S.sys.audio.muted);
     case 'audioDev': return setOutput(d.id);
     case 'pmode': return setPowerMode(d.mode);
+    case 'countMe': { const on=!counterOn(); try{ localStorage.setItem('nimbus.countMe', on?'1':'0'); }catch(e){} if(on) counterPing(); toast(on?'You\'re in the player count':'You\'re no longer counted'); return render('sy-count',true); }
     case 'inputLog': INPUT_LOG=!INPUT_LOG; try{ localStorage.setItem('nimbus.inputLog', INPUT_LOG?'1':'0'); }catch(e){} toast(INPUT_LOG?'Logging controller input':'Stopped logging controller input'); return render('sy-inlog',true);
     case 'browser': return call('browser.act',{action:d.v}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'browserRemove': return openSheet({title:'Remove Aloha Browser?', sub:'Your bookmarks and history stay in your home folder.', items:[{label:'Remove', icon:'trash', run:()=>call('browser.act',{action:'remove'}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message))}]});
@@ -3043,7 +3071,7 @@ function onSettingsTab(t){
   if(t==='switch') loadSwitch();
   if(t==='system' || t==='about') loadSysInfo();
   if(t==='system'){ loadBrowser(); loadArtStatus(); }
-  if(t==='about'){ if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
+  if(t==='about'){ loadCounterStats(); if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();

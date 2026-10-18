@@ -602,6 +602,14 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 
+// Which Hearth this is, for the player counter: the live USB, the Nvidia or AMD/Intel image, or the AppImage.
+function edition() {
+  if (fs.existsSync('/etc/hearth-live')) return 'live';
+  if (!sessionSetup.isSystemInstall()) return 'appimage';
+  try { return /nvidia/i.test(JSON.parse(fs.readFileSync('/usr/share/ublue-os/image-info.json', 'utf8'))['image-name'] || '') ? 'nvidia' : 'amd'; }
+  catch { return 'amd'; }
+}
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   secure.impl = safeStorage; // the desktop keyring encrypts the Xbox sign-in
@@ -638,6 +646,7 @@ app.whenReady().then(() => {
         system: sessionSetup.isSystemInstall(),   // part of Hearth (the OS): updates come with the system
         start: START_PAGE,                         // the page to open on
         live: fs.existsSync('/etc/hearth-live'),    // running from the live USB
+        edition: edition(),                         // for the player counter: live, nvidia, amd or appimage
         features: ['restartApp', 'exportLogs', 'powerButton', 'overamp', ...(controller.available ? ['remap'] : [])],
       }),
       restartApp: () => { setTimeout(relaunch, 300); return null; },

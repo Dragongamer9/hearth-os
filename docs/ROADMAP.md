@@ -40,6 +40,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Ember as the shell starts your startup apps
 - [x] External monitor brightness on Windows (DDC/CI)
 - [x] Import games from Lutris
+- [x] Live player counter: Hearth and Ember report in, the count shows on the website and About page (off switch in Settings › System › Privacy)
 
 ## 0.0.25
 
@@ -56,5 +57,4 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Parked
 
-- Live user counter (Cloudflare Workers)
 - Hearth Browser (Electron)
