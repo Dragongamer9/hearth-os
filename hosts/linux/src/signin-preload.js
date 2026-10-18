@@ -30,30 +30,38 @@ let field = null;   // the text box you're typing into
 const editable = el => !!el && (el.isContentEditable || el.tagName === 'TEXTAREA' ||
   (el.tagName === 'INPUT' && !/^(button|submit|reset|checkbox|radio|file|image|range|color|hidden)$/i.test(el.type || 'text')));
 document.addEventListener('focusin', e => { if (editable(e.target)) field = e.target; }, true);
+const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
 function target() {
   const a = document.activeElement;
   if (editable(a)) return a;
-  if (field && document.contains(field)) return field;
+  if (field && document.contains(field) && visible(field)) return field;
+  // The page swapped the box for a new one (Microsoft's sign-in does this between the email and password
+  // steps): use the box that's on screen now, rather than typing into whatever else has focus.
+  const box = [...document.querySelectorAll('input,textarea,[contenteditable="true"]')].find(el => editable(el) && visible(el) && !el.disabled && !el.readOnly);
+  if (box) { field = box; return box; }
   return null;
 }
 /** Types into the text box itself; falls back to key events if there isn't one. */
 function typeText(t) {
   const el = target();
-  if (!el) return sendType(t);
+  // No text box: don't type into the page at all (a space or Enter on a focused link would open it).
+  if (!el) return flashTip();
   if (document.activeElement !== el) el.focus();
   if (!document.execCommand('insertText', false, t)) sendType(t);
 }
 function backspace() {
   const el = target();
-  if (!el) return sendKey('Backspace');
+  if (!el) return flashTip();
   if (document.activeElement !== el) el.focus();
   if (!document.execCommand('delete', false)) sendKey('Backspace');
 }
 function enter() {
   const el = target();
-  if (el && document.activeElement !== el) el.focus();
+  if (!el) return flashTip();
+  if (document.activeElement !== el) el.focus();
   sendKey('Return');
 }
+function flashTip() { if (kb) { renderKb(); kb.querySelector('.tip').style.color = '#ffb4a8'; } }
 const prev = {};
 const repeatAt = {};
 
@@ -73,6 +81,16 @@ function padHeld() {
 for (const type of ['keydown', 'keypress', 'keyup']) {
   window.addEventListener(type, e => {
     if (performance.now() - ownKeyAt < 250) return;
+    if (padHeld()) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+}
+// The same for clicks: while a controller button is held, the only clicks that reach
+// the page are the ones this script makes (Steam's desktop controls also turn A and the triggers into mouse
+// clicks, which clicked whatever link was under the pointer while you typed).
+let ownClickAt = 0;
+for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'auxclick', 'dblclick']) {
+  window.addEventListener(type, e => {
+    if (performance.now() - ownClickAt < 400) return;
     if (padHeld()) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
 }
@@ -203,6 +221,7 @@ function poll(now) {
     cursor.style.top = y + 'px';
     if (st.lb && Math.abs(ry) > 0) ipcRenderer.send('signin:wheel', { x, y, dy: -ry * 40 * dt });
     if (pressed('a', st.a, now)) {
+      ownClickAt = performance.now();
       ipcRenderer.send('signin:click', { x, y });
       // Clicked into a text box: open the keyboard for it.
       setTimeout(() => { if (!kbOpen && editable(document.activeElement)) { field = document.activeElement; setKb(true); } }, 250);
