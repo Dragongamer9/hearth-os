@@ -117,6 +117,7 @@ async function settings(){
   const s = d.settings;
   app.innerHTML = `<h1>Settings</h1>
     <div class="row"><div class="tx"><b>Search engine</b><small>For what you type in the address bar</small></div><select data-set="search">${d.engines.map(e=>`<option value="${e.id}" ${s.search===e.id?'selected':''}>${esc(e.name)}</option>`).join('')}</select></div>
+    <div class="row" data-toggle="adblock"><div class="tx"><b>Block ads and trackers</b><small>${s.adblock!==false?`${d.blocked||0} blocked since Hearth Browser started`:'Pages load everything, ads included'}</small></div><div class="sw ${s.adblock!==false?'on':''}"></div></div>
     <div class="row" data-toggle="restoreTabs"><div class="tx"><b>Open last time's tabs</b><small>When Hearth Browser starts</small></div><div class="sw ${s.restoreTabs?'on':''}"></div></div>
     <div class="row"><div class="tx"><b>Make Hearth Browser the default</b><small>Links from other apps open here</small></div><button class="btn primary" data-act="default">Make default</button></div>
     <div class="row"><div class="tx"><b>Clear history</b><small>The list of pages you've visited</small></div><button class="btn" data-act="clear">Clear</button></div>

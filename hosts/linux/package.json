@@ -50,5 +50,8 @@
       "executableName": "nimbus",
       "icon": "build/icon.png"
     }
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron": "^2.0.0"
   }
 }
