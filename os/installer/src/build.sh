@@ -25,7 +25,7 @@ DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
 # Bazzite (bootupd's copy, or /usr/lib/efi), so take whichever is there.
 dnf install -y shim-x64 grub2-efi-x64
 mkdir -p /boot/efi
-src=$(ls -d /usr/lib/efi/*/*/EFI /usr/lib/bootupd/updates/EFI 2>/dev/null | head -1)
+src=$( (ls -d /usr/lib/efi/*/*/EFI /usr/lib/bootupd/updates/EFI 2>/dev/null || true) | head -1)
 [ -n "$src" ] && cp -av "$src" /boot/efi/
 test -d /boot/efi/EFI/fedora
 mkdir -p /boot/efi/EFI/BOOT
