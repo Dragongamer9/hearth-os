@@ -44,7 +44,7 @@ systemctl enable var-tmp.mount
 rm -f /etc/localtime; systemd-firstboot --timezone UTC
 
 # ---------------------------------------------------------------- the live session
-touch /etc/hearth-live                     # Hearth's session and desktop look for this
+echo "${IMAGE_NAME:-hearth}" > /etc/hearth-live   # Hearth's session and desktop look for this; the installer reads the edition
 # Boot into Hearth (the live user is the first account, so Hearth's own autologin picks it up), in Desktop
 # Mode, where the installer is easy to use with the controller mouse and on-screen keyboard.
 mkdir -p /etc/systemd/system/nimbus-autologin.service.d
@@ -69,6 +69,8 @@ dnf install -y --allowerasing firefox anaconda-live libblockdev-btrfs libblockde
 # "Install next to Windows": shrinking Windows' NTFS drive (ntfsresize) to make room before the installer.
 dnf install -y ntfsprogs
 install -Dm755 /src/hearth-live-prep /usr/libexec/nimbus/hearth-live-prep
+# Hearth's own installer (the engine behind the Hearth app's and Mantel's install screens)
+install -Dm755 /src/hearth-install /usr/libexec/nimbus/hearth-install
 source /etc/os-release
 cat >/etc/anaconda/profile.d/hearth.conf <<CONF
 [Profile]
