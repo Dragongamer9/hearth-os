@@ -101,6 +101,8 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .pill.on{background:var(--accent);color:var(--accentInk)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(clamp(118px,13vw,170px),1fr));gap:30px 14px;padding:4px}
 .grid .tile.p{width:100%}
+/* Big libraries: tiles off screen aren't drawn until they scroll into view (WebKit drew every one). */
+.grid .tile{content-visibility:auto;contain-intrinsic-size:auto 170px auto 280px}
 .empty{padding:60px 0;text-align:center;color:var(--dim)}
 
 /* ---------- game page ---------- */
