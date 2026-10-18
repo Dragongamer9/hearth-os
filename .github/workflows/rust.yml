@@ -39,7 +39,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
-            xvfb imagemagick x11-apps x11-utils dbus-x11 >/dev/null
+            xvfb imagemagick x11-apps x11-utils dbus-x11 xdotool >/dev/null
       - name: Build the app
         working-directory: hosts/hearth-rs
         run: |
@@ -63,6 +63,11 @@ jobs:
           export LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 NO_AT_BRIDGE=1
           dbus-run-session -- ./target/release/hearth --windowed > run.log 2>&1 &
           for t in 5 12 20; do sleep $((t - ${last:-0})); last=$t; import -window root shots/at-${t}s.png || true; done
+          # A few screens: Quick Access (Q), the menu (M), and Settings from it.
+          w=$(xdotool search --name '^Hearth$' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true
+          xdotool key q; sleep 3; import -window root shots/quick-access.png || true
+          xdotool key Escape; sleep 1; xdotool key m; sleep 2; import -window root shots/menu.png || true
+          xdotool key Escape; sleep 1
           xwininfo -root -tree | grep -i hearth | head -5 | sed 's/^/::notice title=Windows::/' || true
           pkill -f target/release/hearth || true
           echo "::notice title=App output::$(tail -c 1500 run.log | tr '\n' '|')"
