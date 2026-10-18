@@ -177,7 +177,8 @@ pub fn scan(home: &Path) -> Vec<SteamGame> {
             let state = if installed { if flags & BUSY != 0 { "updating" } else { "installed" } }
                 else if flags & UPDATE_PAUSED != 0 { "paused" } else if flags & BUSY != 0 { "downloading" } else { "queued" };
             let (minutes, last) = stats.get(&app_id).cloned().unwrap_or((0, 0));
-            let meta = std::fs::metadata(if dir.is_dir() { &dir } else { &e.path() }).ok();
+            let manifest = e.path();
+            let meta = std::fs::metadata(if dir.is_dir() { &dir } else { &manifest }).ok();
             let added = meta.map(|m| { let b = millis(m.created()); if b > 0 { b } else { millis(m.modified()) } }).unwrap_or(0);
             games.push(SteamGame {
                 art: find_art(&app_id, grid.as_deref(), &cache),
