@@ -713,6 +713,17 @@ const MOCK = (()=>{
   const push=()=>setTimeout(()=>onSysEvent('status',status()),0);
   const H={
     'sys.status':async()=>status(),
+    'osinstall.status':async()=>({available:true,state:'idle'}),
+    'osinstall.disks':async()=>{ await wait(400); return {disks:[
+      {dev:'/dev/nvme0n1',size:1e12,model:'Samsung 980 PRO',tran:'nvme',live:false,windows:true,tooSmall:false,parts:[{},{},{},{}]},
+      {dev:'/dev/sda',size:5e11,model:'Crucial MX500',tran:'sata',live:false,windows:false,tooSmall:false,parts:[]},
+      {dev:'/dev/sdb',size:3.2e10,model:'SanDisk Ultra',tran:'usb',live:true,windows:false,tooSmall:true,parts:[{},{}]}]}; },
+    'osinstall.check':async()=>{ await wait(900); return {windows:{size:1e12,min:3.1e11,canGive:6.6e11},problems:[],games:{count:14,size:4.1e11},suggested:448*2**30}; },
+    'osinstall.useMantel':async()=>true,
+    'osinstall.start':async()=>{ const steps=[['format',15,'Preparing the drive'],['download',20,'Downloading Hearth OS (4.8 GB)'],['download',46,'Downloading Hearth OS (4.8 GB)'],['download',72,'Downloading Hearth OS (4.8 GB)'],['boot',84,'Setting up starting up'],['user',90,'Creating your account'],['finish',97,'Finishing up']];
+      steps.forEach(([stage,pct,text],i)=>timers.push(setTimeout(()=>onSysEvent('osInstall',{state:'running',stage,pct,text,left:stage==='download'?Math.round((80-pct)*12):null}),900*(i+1))));
+      timers.push(setTimeout(()=>onSysEvent('osInstall',{state:'done',stage:'done',pct:100,text:'Hearth OS is installed'}),900*(steps.length+1)));
+      return {state:'running',stage:'start',pct:0,text:'Starting'}; },
     'system.info':async()=>({os:'Preview',osVersion:'',osPretty:'Browser preview',device:'Handheld PC',cpu:'8-core processor',cores:16,gpu:'Integrated graphics',memoryBytes:16e9,storage:{path:'/',totalBytes:512e9,freeBytes:301e9},uptimeSec:7380,kernel:'',hostname:'preview'}),
     'radios.set':async({kind,on})=>{ await wait(350);
       if(on && st.airplane) st.airplane=false;
@@ -1832,7 +1843,7 @@ function swUsb(disk,name){
     {label:'Erase it and write the installer', icon:'trash', run:()=>call('switch.writeUsb',{disk},60000).then(r=>{ SW.s=r; render(null,true); }).catch(e=>toast(e.message))}]});
 }
 function swRestart(){
-  openSheet({title:'Restart into the installer?', sub:'Save your work first. In the blue menu that comes up, choose "Use a device", then your USB drive. On the USB, pick Install next to Windows › Open the installer, and choose "Use free space".', items:[
+  openSheet({title:'Restart into the installer?', sub:'Save your work first. In the blue menu that comes up, choose "Use a device", then your USB drive. On the USB, pick Install Hearth OS › Next to Windows: it uses the space Ember made.', items:[
     {label:'Restart now', icon:'restart', run:()=>call('switch.restart').catch(e=>toast(e.message))}]});
 }
 function pageSwitch(){
@@ -2813,11 +2824,10 @@ function osiOpen(){
   if(!S.view || S.view!=='osinstall') navigate('osinstall');
   if(OSI.s && (OSI.s.state==='running'||OSI.s.state==='done')) OSI.step='run';
   else OSI.step='how';
-  if(!OSI.tz){ try{ const z=Intl.DateTimeFormat().resolvedOptions().timeZone; OSI.tz = z && z!=='UTC' && z!=='Etc/UTC' ? z : 'America/Chicago'; }catch(e){ OSI.tz='America/Chicago'; } }
+  if(!OSI.tz){ try{ const z=Intl.DateTimeFormat().resolvedOptions().timeZone; OSI.tz = z && z!=='Etc/UTC' ? z : 'UTC'; }catch(e){ OSI.tz='UTC'; } }
   osiLoad(); render('osi-0');
 }
 function osiLoad(){
-  if(!host) return;
   call('osinstall.status').then(s=>{ OSI.s=s; if(s.state==='running') OSI.step='run'; render(null,true); }).catch(()=>{});
   call('osinstall.disks',{},60000).then(r=>{ OSI.disks=r.disks||[]; render(null,true); }).catch(e=>{ OSI.disks=[]; toast(e.message); });
 }
@@ -2875,7 +2885,7 @@ function osiSizeStep(dir){
   const w=OSI.check&&OSI.check.windows; if(!w) return;
   const step=16*2**30, max=w.canGive, min=64*2**30;
   OSI.give=Math.max(min, Math.min(max, Math.round((OSI.give+dir*step)/step)*step));
-  render('osi-size');
+  render(dir>0?'osi-sz1':'osi-sz-1');
 }
 function osiStart(){
   const d=osiDisk(); if(!d) return;
@@ -2916,7 +2926,7 @@ function viewOsInstall(){
           (c.problems||[]).forEach(p=>{ body+=`<div class="note" style="border-color:${p.soft?'var(--panel3)':'var(--bad,#e5483b)'}">${esc(p.text)}</div>`; });
           if(w && w.canGive>=64*2**30){
             const winAfter=w.size-OSI.give;
-            body+=`<h3 style="margin:22px 0 8px">How much room for Hearth?</h3><div class="row" data-f data-k="osi-size" data-act="osiSize" data-v="1"><div class="rt"><b>Hearth: ${gb(OSI.give)}</b><small>Windows keeps ${gb(winAfter)} (${gb(Math.max(0,winAfter-w.min))} free). Left and right change it, 16 GB at a time.</small><div class="storage"><i style="width:${Math.round(OSI.give/w.size*100)}%"></i></div></div><div class="rv">◀ ▶</div></div>`;
+            body+=`<h3 style="margin:22px 0 8px">How much room for Hearth?</h3><div class="row" data-f data-k="osi-size"><div class="rt"><b>Hearth: ${gb(OSI.give)}</b><small>Windows keeps ${gb(winAfter)} (${gb(Math.max(0,winAfter-w.min))} free).</small><div class="storage"><i style="width:${Math.round(OSI.give/w.size*100)}%"></i></div></div></div>`;
             body+=`<div style="display:flex;gap:10px;margin-top:10px">${[[-1,'Less'],[1,'More']].map(([v,l])=>`<button class="pill" data-f data-k="osi-sz${v}" data-act="osiSize" data-v="${v}">${l}</button>`).join('')}<button class="pill" data-f data-k="osi-szmax" data-act="osiSizeMax">As much as possible</button></div>`;
             if(c.games && c.games.count) body+=note(`${c.games.count} game${c.games.count===1?'':'s'} found in Windows (${gb(c.games.size)}). After installing, Hearth offers to bring them over: leave room for them.`);
           }

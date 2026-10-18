@@ -1,7 +1,8 @@
 #!/usr/bin/bash
 # Turns the Hearth image into a live system: boots from the USB stick into Hearth Desktop Mode as "liveuser",
-# with a welcome card (Install Hearth / Wi-Fi / Try Game Mode) and Fedora's installer (Anaconda), branded and
-# set up to install ghcr.io/dragongamer9/hearth. Based on Titanoboa's Bazzite example.
+# with a welcome card (Install Hearth OS / Wi-Fi / Try Game Mode) and Hearth's own installer (hearth-install,
+# with screens in the Hearth app and in Mantel), which installs ghcr.io/dragongamer9/hearth. Based on
+# Titanoboa's Bazzite example.
 set -exo pipefail
 IMAGE_REF=ghcr.io/dragongamer9/${IMAGE_NAME:-hearth}
 IMAGE_TAG=latest
@@ -64,71 +65,26 @@ for s in ublue-flatpak-manager.service ublue-user-setup.service podman-auto-upda
   systemctl --global disable "$s" 2>/dev/null || true
 done
 
-# ---------------------------------------------------------------- the installer (Anaconda, web UI)
-dnf install -y --allowerasing firefox anaconda-live libblockdev-btrfs libblockdev-lvm libblockdev-dm
-# "Install next to Windows": shrinking Windows' NTFS drive (ntfsresize) to make room before the installer.
-dnf install -y ntfsprogs
+# ---------------------------------------------------------------- the installer (Hearth's own)
+# The engine (hearth-install) partitions, downloads Hearth OS onto the drive with ostree and sets up the boot
+# loader with bootupd; its screens are in the Hearth app (controller) and Mantel's Settings (mouse/keyboard).
+# "Install next to Windows" shrinks Windows' NTFS drive first (hearth-live-prep, ntfsresize).
+dnf install -y ntfsprogs dosfstools e2fsprogs btrfs-progs efibootmgr
 install -Dm755 /src/hearth-live-prep /usr/libexec/nimbus/hearth-live-prep
-# Hearth's own installer (the engine behind the Hearth app's and Mantel's install screens)
 install -Dm755 /src/hearth-install /usr/libexec/nimbus/hearth-install
 source /etc/os-release
-cat >/etc/anaconda/profile.d/hearth.conf <<CONF
-[Profile]
-profile_id = hearth
-
-[Profile Detection]
-os_id = ${ID}
-
-[Network]
-default_on_boot = FIRST_WIRED_WITH_LINK
-
-[Bootloader]
-efi_dir = fedora
-menu_auto_hide = True
-
-[Storage]
-default_scheme = BTRFS
-btrfs_compression = zstd:1
-default_partitioning =
-    /     (min 1 GiB, max 70 GiB)
-    /home (min 500 MiB, free 50 GiB)
-    /var  (btrfs)
-
-[User Interface]
-hidden_spokes =
-    PasswordSpoke
-hidden_webui_pages =
-    root-password
-
-[Localization]
-use_geolocation = False
-CONF
 echo "Hearth release ${VERSION_ID}" >/etc/system-release
-
-# Hearth's mark wherever the installer shows a logo.
-for f in /usr/share/anaconda/pixmaps/*logo*.png /usr/share/anaconda/pixmaps/*/*logo*.png; do
-  [ -f "$f" ] && cp /src/branding/hearth-512.png "$f"
-done
-for f in /usr/share/icons/hicolor/scalable/apps/org.fedoraproject.AnacondaInstaller.svg \
-         /usr/share/icons/hicolor/48x48/apps/org.fedoraproject.AnacondaInstaller.svg; do
-  [ -e "$f" ] && cp /src/branding/hearth.svg "$f"
-done
-sed -i -e 's/^Name=.*/Name=Install Hearth/' -e 's/^Comment=.*/Comment=Install Hearth on this device/' \
-  /usr/share/applications/liveinst.desktop 2>/dev/null || true
-
-# What it installs: Hearth straight from the registry (needs internet while installing; keeps the USB image
-# small), updating from there afterwards like any Hearth.
-cat >>/usr/share/anaconda/interactive-defaults.ks <<KS
-%pre-install --erroronfail
-rm -rf /mnt/sysroot/boot/efi/EFI/fedora
-%end
-
-ostreecontainer --url=${IMAGE_REF}:${IMAGE_TAG} --transport=registry --no-signature-verification
-
-%post --erroronfail
-systemctl disable flatpak-add-fedora-repos.service || :
-%end
-KS
+# "Install Hearth OS" in the app launcher: the welcome card's "how do you want to install" choice.
+cat >/usr/share/applications/hearth-install.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Install Hearth OS
+Comment=Install Hearth OS on this PC, next to Windows or on a whole drive
+Exec=sh -c 'quickshell ipc -p "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell" call live install'
+Icon=/usr/share/pixmaps/hearth.png
+Categories=System;
+DESKTOP
+install -Dm644 /src/branding/hearth-512.png /usr/share/pixmaps/hearth.png
 
 # ---------------------------------------------------------------- titanoboa's ISO config
 mkdir -p /usr/lib/bootc-image-builder

@@ -135,7 +135,8 @@ def disks():
     live = live_disk()
     out = []
     for d in tree.get('blockdevices', []):
-        if d.get('type') != 'disk' or d.get('ro') or int(d.get('size') or 0) < 8 * GIB:
+        test_loop = d.get('type') == 'loop' and os.environ.get('HEARTH_INSTALL_TEST')   # the CI test's disk image
+        if (d.get('type') != 'disk' and not test_loop) or d.get('ro') or int(d.get('size') or 0) < 8 * GIB:
             continue
         if re.match(r'/dev/(zram|sr|ram)', d['path']) or (d['path'].startswith('/dev/loop') and not os.environ.get('HEARTH_INSTALL_TEST')):
             continue
@@ -213,6 +214,14 @@ def windows_esp(disk):
 
 def partition_beside(disk, give):
     """Shrinks Windows (hearth-live-prep) and adds /boot and Hearth in the space it gave. Returns like above."""
+    # A try that stopped after making Hearth's partitions: take those away again first (only ours: named
+    # "boot" and "hearth" with Linux partition types, which Windows never makes).
+    remove_ours(disk)
+    # Already room (a try that stopped after shrinking, or Ember's "Switch to Hearth OS" made it): use it.
+    room = free_regions(disk)
+    if room and room[0][1] * 512 >= min(give, MIN_DISK) * 0.95:
+        stage('shrink', 14, 'Using the free space next to Windows')
+        return partition_free(disk)
     stage('shrink', 0, 'Checking Windows')
     p = subprocess.Popen([PREP, 'shrink', str(give)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     last = ''
@@ -225,6 +234,24 @@ def partition_beside(disk, give):
             last = line[7:]
     if p.wait() != 0:
         raise Fail(last or "Windows' drive couldn't be shrunk")
+    return partition_free(disk)
+
+
+def remove_ours(disk):
+    tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'PATH,PARTLABEL,PARTTYPE,PARTN', disk]).stdout)
+    ours = [c for c in tree['blockdevices'][0].get('children') or []
+            if (c.get('partlabel'), (c.get('parttype') or '').lower()) in (('boot', XBOOTLDR_TYPE), ('hearth', LINUX_TYPE))]
+    if not ours:
+        return
+    release(disk)
+    for c in ours:
+        n = c.get('partn') or int(re.search(r'(\d+)$', c['path']).group(1))
+        sh(['sfdisk', '--no-reread', '--force', '--delete', disk, str(n)])
+    settle(disk)
+
+
+def partition_free(disk):
+    """/boot and Hearth in the biggest free space on a drive that has Windows (and its EFI partition)."""
     esp = windows_esp(disk)
     if not esp:
         raise Fail("this drive has no EFI partition (is Windows installed in legacy BIOS mode?)")

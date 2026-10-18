@@ -1,7 +1,7 @@
-// Hearth Settings › Install next to Windows (live USB only): checks the PC (Windows found, BitLocker, Fast
-// Startup, charger, internet, games on it), lets you pick how much space Hearth gets, makes that room by
-// shrinking Windows (hearth-live-prep), then opens the installer with "Use free space". After installing,
-// Hearth offers to bring the games over on its first start (Settings › Import games).
+// Hearth Settings › Install Hearth OS (live USB only): Hearth's own installer with a mouse and keyboard.
+// The same engine as the Hearth app's install screens (/usr/libexec/nimbus/hearth-install): next to Windows
+// (shrinks Windows with hearth-live-prep first) or on a whole drive, your account, then the install itself,
+// which downloads Hearth OS straight onto the drive.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -9,169 +9,243 @@ import Quickshell.Io
 
 SetPage {
     id: page
-    title: "Install next to Windows"
-    readonly property string helper: "/usr/libexec/nimbus/hearth-live-prep"
-    property var info: null          // hearth-live-prep check
-    property string phase: "idle"    // idle | checking | shrinking | ready
-    property real progress: -1
-    property string line: ""
-    property string error: ""
-    property real give: 0
+    title: "Install Hearth OS"
+    readonly property string engine: "/usr/libexec/nimbus/hearth-install"
+    readonly property string prep: "/usr/libexec/nimbus/hearth-live-prep"
     readonly property real gib: 1024 * 1024 * 1024
-    readonly property var blockers: info ? info.problems.filter(p => !p.soft) : []
-    readonly property var warnings: info ? info.problems.filter(p => p.soft) : []
+    property string phase: "setup"     // setup | confirm | running | done | failed
+    property string mode: ""           // beside | whole
+    property var drives: null          // hearth-install disks
+    property string disk: ""
+    property var win: null             // hearth-live-prep check (beside)
+    property bool checking: false
+    property real give: 0
+    property string tz: "UTC"
+    property string error: ""
+    property string stageText: ""
+    property real pct: 0
+    property int left: -1
+    property string stage: ""
+    readonly property var drive: drives ? drives.find(d => d.dev === disk) || null : null
+    readonly property var blockers: win && win.problems ? win.problems.filter(p => !p.soft) : []
+    readonly property var warnings: win && win.problems ? win.problems.filter(p => p.soft) : []
 
-    function gb(b) { return Math.round(b / gib) + " GB"; }
-    function run(args) {
-        if (proc.running) return;
-        error = ""; line = ""; progress = -1;
-        proc.command = ["pkexec", helper].concat(args);
-        proc.running = true;
+    function gb(b) { return b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : Math.round(b / 1e9) + " GB"; }
+    function autoName(full) { return full.toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/^[0-9]+/, "").slice(0, 20); }
+    function problem() {
+        if (!mode) return "Choose how to install";
+        if (!disk) return "Choose a drive";
+        if (mode === "beside") {
+            if (checking || !win) return "Checking Windows…";
+            if (blockers.length) return blockers[0].text;
+            if (give < 64 * gib) return "Hearth needs at least 64 GB";
+        }
+        if (!fullName.text.trim()) return "Type your name";
+        if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(userName.text)) return "The user name can only have small letters, numbers, - and _";
+        if (!pass1.text) return "Choose a password";
+        if (pass1.text !== pass2.text) return "The passwords don't match";
+        return "";
     }
-    function check() { phase = "checking"; info = null; run(["check"]); }
     function sizes() {
-        if (!info || !info.windows) return [];
-        const max = Math.floor(info.windows.canGive / gib);
+        if (!win || !win.windows) return [];
+        const max = Math.floor(win.windows.canGive / gib);
         const out = [];
         const steps = [64, 128, 256, 512, 1024];
         for (let i = 0; i < steps.length; i++) if (steps[i] < max) out.push({ value: steps[i] * gib, label: steps[i] + " GB" });
         out.push({ value: max * gib, label: "All it can (" + max + " GB)" });
         return out;
     }
-    Component.onCompleted: check()
+    function check() {
+        if (checkProc.running) return;
+        win = null; checking = true;
+        checkProc.running = true;
+    }
+    function start() {
+        const plan = { mode: mode, disk: disk, user: { full: fullName.text.trim(), name: userName.text, password: pass1.text },
+                       hostname: (hostName.text || (userName.text + "-hearth")), timezone: tz };
+        if (mode === "beside") plan.give = Math.round(give);
+        error = ""; pct = 0; stageText = "Starting"; stage = "start"; left = -1;
+        phase = "running";
+        runProc.plan = JSON.stringify(plan);
+        runProc.running = true;
+    }
+
+    Component.onCompleted: { drivesProc.running = true; tzProc.running = true; }
 
     Process {
-        id: proc
+        id: drivesProc
+        command: ["pkexec", page.engine, "disks"]
+        stdout: SplitParser { onRead: l => { l = l.trim(); if (l.startsWith("{")) { try { page.drives = JSON.parse(l).disks; } catch (e) {} } else if (l.startsWith("error: ")) page.error = l.slice(7); } }
+    }
+    Process {
+        id: tzProc
+        command: ["timedatectl", "show", "-p", "Timezone", "--value"]
+        stdout: SplitParser { onRead: l => { if (l.trim()) page.tz = l.trim(); } }
+    }
+    Process {
+        id: checkProc
+        command: ["pkexec", page.prep, "check"]
+        stdout: SplitParser { onRead: l => { l = l.trim(); if (l.startsWith("{")) { try { page.win = JSON.parse(l); page.give = page.win.suggested || 0; } catch (e) {} } else if (l.startsWith("error: ")) page.win = { problems: [{ id: "error", text: l.slice(7) }] }; } }
+        onExited: page.checking = false
+    }
+    Process {
+        id: runProc
+        property string plan: ""
+        command: ["sh", "-c", 'printf %s "$1" | pkexec "$2" run', "sh", plan, page.engine]
         stdout: SplitParser {
             onRead: l => {
                 l = l.trim();
-                if (l.startsWith("error: ")) page.error = l.slice(7);
-                else if (l.startsWith("progress: ")) {
-                    const m = l.match(/^progress: ([\d.]+) ?(.*)$/);
-                    if (m) { page.progress = parseFloat(m[1]) / 100; if (m[2]) page.line = m[2]; }
-                } else if (l.startsWith("{")) {
-                    try {
-                        const j = JSON.parse(l);
-                        if (page.phase === "checking") { page.info = j; page.give = j.suggested || 0; }
-                        else if (j.ok) page.phase = "ready";
-                    } catch (e) {}
-                }
+                if (l.startsWith("stage: ")) {
+                    try { const s = JSON.parse(l.slice(7)); page.pct = s.pct; page.stageText = s.text; page.stage = s.stage; page.left = s.left != null ? s.left : -1; } catch (e) {}
+                } else if (l.startsWith("result: ")) page.phase = "done";
+                else if (l.startsWith("error: ")) page.error = l.slice(7);
             }
         }
-        onExited: code => {
-            if (page.phase === "checking" || (page.phase === "shrinking" && page.error)) page.phase = "idle";
-            page.progress = -1;
-        }
+        onExited: code => { if (page.phase === "running") { page.phase = code === 0 && !page.error ? "done" : "failed"; if (page.phase === "failed" && !page.error) page.error = "The install stopped."; } }
     }
 
-    // ---------------------------------------------------------------- explanation
+    // ================================================================ choosing
     Text {
+        visible: page.phase === "setup" || page.phase === "confirm"
         Layout.fillWidth: true; wrapMode: Text.WordWrap
-        text: "Keep Windows and your games, and add Hearth next to it. Hearth gets part of Windows' drive, and after installing it brings your Steam, Epic and GOG games over (Settings › Import games). Later you can remove Windows and give Hearth the whole drive."
+        text: "Hearth OS is downloaded while it installs (about 5 GB), so stay connected to the internet and plugged in. It takes about 10 to 20 minutes."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
     }
-
-    SetRow {
-        visible: page.phase === "checking"
-        interactive: false; chevron: false
-        icon: "update"; title: "Checking this PC…"; sub: "Looking for Windows, how much room it has, and your games"
-    }
-
-    // ---------------------------------------------------------------- what was found
-    SetRow {
-        visible: !!(page.info && page.info.windows) && page.phase !== "checking"
-        interactive: false; chevron: false
-        icon: "display"
-        title: page.info && page.info.windows ? "Windows · " + page.gb(page.info.windows.size) : ""
-        sub: page.info && page.info.windows ? page.gb(page.info.windows.free) + " free · can give Hearth up to " + page.gb(page.info.windows.canGive) + " (keeps 20 GB free for Windows)" : ""
-    }
-    SetRow {
-        visible: !!(page.info && page.info.games && page.info.games.count > 0)
-        interactive: false; chevron: false
-        icon: "pad"
-        title: page.info && page.info.games ? page.info.games.count + " games to bring over · " + page.gb(page.info.games.size || 0) : ""
-        sub: page.info && page.info.games && page.info.games.names ? page.info.games.names.join(", ") : ""
-    }
-    Repeater {
-        model: page.blockers
-        delegate: SetRow {
-            required property var modelData
-            interactive: false; chevron: false; danger: true
-            icon: "lock"; title: "Can't continue yet"; sub: modelData.text
-        }
-    }
-    Repeater {
-        model: page.warnings
-        delegate: SetRow {
-            required property var modelData
-            interactive: false; chevron: false
-            icon: "info"; title: modelData.id === "power" ? "Plug in the charger" : "No internet"; sub: modelData.text
-        }
-    }
-    SetRow {
-        visible: page.phase === "idle" && !!page.info && page.blockers.length > 0
-        icon: "restart"; title: "Check again"; sub: "After fixing the above (or restarting into Windows and back)"
-        onActivated: page.check()
-    }
-
-    // ---------------------------------------------------------------- choose and go
     SetChoice {
-        visible: page.phase === "idle" && !!page.info && page.blockers.length === 0
-        title: "Space for Hearth"
-        sub: "Games you bring over need room too. Windows keeps the rest."
+        visible: page.phase === "setup"
+        title: "How"
+        sub: page.mode === "whole" ? "Hearth gets the whole drive. Everything on it is erased." : page.mode === "beside" ? "Keep Windows and its files. Hearth gets space Windows isn't using." : "Next to Windows keeps it; a whole drive erases it."
+        options: [{ value: "beside", label: "Next to Windows" }, { value: "whole", label: "Erase a drive" }]
+        current: page.mode
+        onChosen: v => { page.mode = v; page.disk = ""; page.win = null; }
+    }
+
+    SetHeader { visible: page.phase === "setup" && page.mode !== ""; text: page.mode === "beside" ? "The drive with Windows" : "The drive for Hearth" }
+    SetRow {
+        visible: page.phase === "setup" && page.mode !== "" && page.drives === null
+        interactive: false; chevron: false; icon: "update"; title: "Looking for drives…"
+    }
+    Repeater {
+        model: page.phase === "setup" && page.mode !== "" && page.drives ? page.drives.filter(d => page.mode === "whole" || d.windows) : []
+        delegate: SetRow {
+            required property var modelData
+            readonly property string why: modelData.live ? "The USB stick Hearth is running from" : modelData.tooSmall ? "Too small (Hearth needs 64 GB)" : ""
+            interactive: why === ""
+            chevron: false
+            icon: modelData.dev === page.disk ? "check" : "display"
+            title: modelData.model + " · " + page.gb(modelData.size)
+            sub: why || [modelData.tran.toUpperCase(), modelData.windows ? "Has Windows" : "", modelData.parts.length ? modelData.parts.length + " partitions" : "Empty"].filter(x => x).join(" · ")
+            value: modelData.dev === page.disk ? "Chosen" : ""
+            onActivated: { page.disk = modelData.dev; if (page.mode === "beside" && !page.win) page.check(); }
+        }
+    }
+
+    // next to Windows: what was found, and how much room
+    SetRow {
+        visible: page.phase === "setup" && page.mode === "beside" && page.checking
+        interactive: false; chevron: false; icon: "update"; title: "Checking Windows…"; sub: "Free space, BitLocker, Fast Startup and your games (up to a minute)"
+    }
+    Repeater {
+        model: page.phase === "setup" && page.mode === "beside" ? page.blockers : []
+        delegate: SetRow { required property var modelData; interactive: false; chevron: false; danger: true; icon: "lock"; title: "Can't continue yet"; sub: modelData.text }
+    }
+    Repeater {
+        model: page.phase === "setup" && page.mode === "beside" ? page.warnings : []
+        delegate: SetRow { required property var modelData; interactive: false; chevron: false; icon: "info"; title: modelData.id === "power" ? "Plug in the charger" : "No internet"; sub: modelData.text }
+    }
+    SetRow {
+        visible: page.phase === "setup" && page.mode === "beside" && !page.checking && !!page.win && page.blockers.length > 0
+        icon: "restart"; title: "Check again"; onActivated: page.check()
+    }
+    SetChoice {
+        visible: page.phase === "setup" && page.mode === "beside" && !!page.win && !!page.win.windows && page.blockers.length === 0
+        title: "Room for Hearth"
+        sub: page.win && page.win.windows ? "Windows keeps " + page.gb(page.win.windows.size - page.give) + (page.win.games && page.win.games.count ? ". " + page.win.games.count + " games found in Windows (" + page.gb(page.win.games.size) + "): leave room to bring them over." : ".") : ""
         options: page.sizes()
         current: page.give
         onChosen: v => page.give = v
     }
-    SetRow {
-        visible: page.phase === "idle" && !!page.info && page.blockers.length === 0
-        icon: "update"; title: "Make room for Hearth (" + page.gb(page.give) + ")"
-        sub: "Shrinks Windows' drive. Your files stay, but back up anything important first: resizing a drive is never completely risk-free. Takes a few minutes, longer on a full drive."
-        onActivated: { page.phase = "shrinking"; page.run(["shrink", String(Math.round(page.give))]); }
+
+    // your account
+    SetHeader { visible: page.phase === "setup"; text: "Your account" }
+    Text { visible: page.phase === "setup"; text: "Your name"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+    SetField {
+        id: fullName; visible: page.phase === "setup"; placeholder: "e.g. Sam Rivera"
+        onTextChanged: if (!userName.edited) userName.text = page.autoName(text)
     }
+    Text { visible: page.phase === "setup"; text: "User name (small letters and numbers)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+    SetField { id: userName; property bool edited: false; visible: page.phase === "setup"; placeholder: "e.g. sam"; onSubmitted: edited = true; onTextChanged: if (activeFocus) edited = true }
+    Text { visible: page.phase === "setup"; text: "Password"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+    SetField { id: pass1; visible: page.phase === "setup"; secret: true; placeholder: "Password" }
+    SetField { id: pass2; visible: page.phase === "setup"; secret: true; placeholder: "The same password again" }
+    Text { visible: page.phase === "setup"; text: "Device name and time zone"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+    SetField { id: hostName; visible: page.phase === "setup"; placeholder: (userName.text || "my") + "-hearth" }
+    SetField { id: tzField; visible: page.phase === "setup"; text: page.tz; placeholder: "Time zone, e.g. America/Chicago"; onTextChanged: page.tz = text }
 
     SetRow {
-        visible: page.phase === "idle" && !!page.info
-        icon: "update"; title: "Already made room in Windows?"
-        sub: "If Ember's Switch to Hearth OS already shrank Windows, go straight to the installer and choose \"Use free space\"."
-        onActivated: Quickshell.execDetached(["sh", "-c", "command -v liveinst >/dev/null && exec liveinst || exec anaconda-webui"])
+        visible: page.phase === "setup"
+        icon: "update"
+        title: page.problem() === "" ? "Install Hearth OS" : "Install Hearth OS"
+        sub: page.problem() || (page.mode === "whole" ? "Next, a last check before anything is erased" : "Next, a last check before Windows is shrunk")
+        onActivated: if (page.problem() === "") page.phase = "confirm"
     }
 
-    // ---------------------------------------------------------------- progress
-    ColumnLayout {
-        visible: page.phase === "shrinking"
-        Layout.fillWidth: true; Layout.topMargin: 6
-        spacing: 8
-        Text { text: page.line || "Starting…"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
-        Rectangle {
-            Layout.fillWidth: true; implicitHeight: 8; radius: 4; color: Theme.panel3
-            Rectangle { width: parent.width * Math.max(0, page.progress); height: parent.height; radius: 4; color: Theme.accent }
-        }
-        Text { text: "Don't turn off the device or unplug it until this is done."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
-    }
-    SetRow {
-        visible: page.error !== ""
-        interactive: false; chevron: false; danger: true
-        icon: "info"; title: "That didn't work"; sub: page.error
-    }
-
-    // ---------------------------------------------------------------- ready
+    // ================================================================ last check
     Rectangle {
-        visible: page.phase === "ready"
+        visible: page.phase === "confirm"
         Layout.fillWidth: true
-        implicitHeight: readyText.implicitHeight + 32; radius: 12
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18); border.color: Theme.accent
+        implicitHeight: confirmText.implicitHeight + 32; radius: 12
+        color: Qt.rgba(0.9, 0.28, 0.23, 0.16); border.color: "#e5483b"
         Text {
-            id: readyText
+            id: confirmText
             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 16 }
             wrapMode: Text.WordWrap
-            text: "There's room for Hearth now. In the installer, pick the drive and choose \"Use free space\" so Windows stays. After the restart, Hearth offers to bring your games over."
+            text: page.mode === "whole"
+                ? "Everything on " + (page.drive ? page.drive.model + " (" + page.gb(page.drive.size) + ")" : "the drive") + " is erased for good" + (page.drive && page.drive.windows ? ", including Windows" : "") + ", and Hearth OS goes on it."
+                : "Windows gets " + page.gb(page.give) + " smaller and Hearth OS goes in that space. Windows and its files stay, but back up anything important first: resizing a drive is never completely risk-free."
             color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold
         }
     }
+    SetRow { visible: page.phase === "confirm"; icon: page.mode === "whole" ? "close" : "update"; danger: page.mode === "whole"; title: page.mode === "whole" ? "Erase it and install Hearth OS" : "Install Hearth OS next to Windows"; onActivated: page.start() }
+    SetRow { visible: page.phase === "confirm"; icon: "back"; title: "Go back"; onActivated: page.phase = "setup" }
+
+    // ================================================================ installing
+    ColumnLayout {
+        visible: page.phase === "running"
+        Layout.fillWidth: true; Layout.topMargin: 6
+        spacing: 10
+        Text { text: page.stageText || "Starting…"; color: Theme.text; font.family: Theme.font; font.pixelSize: 18; font.weight: Font.DemiBold }
+        Rectangle {
+            Layout.fillWidth: true; implicitHeight: 10; radius: 5; color: Theme.panel3
+            Rectangle { width: parent.width * Math.max(0.02, page.pct / 100); height: parent.height; radius: 5; color: Theme.accent; Behavior on width { NumberAnimation { duration: 500 } } }
+        }
+        Text {
+            text: Math.round(page.pct) + "%" + (page.left > 0 ? " · about " + (page.left < 90 ? "a minute" : Math.round(page.left / 60) + " minutes") + " left" : "")
+            color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+        }
+        Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Keep the device plugged in and don't take out the USB stick until this is done."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+    }
+
+    // ================================================================ done / failed
+    Rectangle {
+        visible: page.phase === "done"
+        Layout.fillWidth: true
+        implicitHeight: doneText.implicitHeight + 32; radius: 12
+        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18); border.color: Theme.accent
+        Text {
+            id: doneText
+            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 16 }
+            wrapMode: Text.WordWrap
+            text: "Hearth OS is installed. Restart, and take out the USB stick when the screen goes dark. Hearth starts with a short setup" + (page.mode === "beside" ? ", including bringing your games over from Windows." : ".")
+            color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold
+        }
+    }
+    SetRow { visible: page.phase === "done"; icon: "restart"; title: "Restart now"; onActivated: Quickshell.execDetached(["systemctl", "reboot"]) }
+    SetRow { visible: page.phase === "failed"; interactive: false; chevron: false; danger: true; icon: "info"; title: "The install didn't finish"; sub: page.error }
     SetRow {
-        visible: page.phase === "ready"
-        icon: "update"; title: "Open the installer"
-        onActivated: Quickshell.execDetached(["sh", "-c", "command -v liveinst >/dev/null && exec liveinst || exec anaconda-webui"])
+        visible: page.phase === "failed"
+        icon: "restart"; title: "Try again"
+        sub: page.mode === "whole" ? "Installing again starts over." : "Windows is still there. If it got smaller, the space is still free: installing again uses it."
+        onActivated: page.phase = "setup"
     }
 }

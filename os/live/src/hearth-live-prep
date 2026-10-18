@@ -10,7 +10,8 @@ Run as root (pkexec; the live user is allowed). Installed only on the live USB.
                                 (ntfsresize, which moves data out of the way), then the partition. Progress
                                 lines as "progress: <0-100> <what>", then a JSON line.
 
-The installer is then started with "Use free space"; Hearth offers to import the games on its first start.
+hearth-install (Hearth's installer) runs the shrink, then installs into that space; Hearth offers to import
+the games on its first start.
 """
 import importlib.machinery
 import importlib.util
