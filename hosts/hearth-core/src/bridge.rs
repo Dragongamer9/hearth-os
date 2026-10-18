@@ -30,6 +30,7 @@ pub struct Bridge {
     /// Hearth's interface zoom (Settings › Display › Scale in Game Mode): the host applies it.
     pub zoom: std::sync::Arc<dyn Fn(u32) + Send + Sync>,
     pub osinstall: crate::osinstall::OsInstaller,
+    pub importer: crate::importer::Importer,
     pub app_updates: crate::appupdate::AppUpdates,
     /// The call being answered (calls that answer later, from background work, reply to it themselves).
     cur_id: Value,
@@ -46,7 +47,7 @@ impl Bridge {
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
         use std::sync::Arc;
         Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles, pin_until: std::time::Instant::now(),
-                 pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(),
+                 pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(),
                  app_updates: crate::appupdate::AppUpdates::new(version), cur_id: Value::Null }
     }
 
@@ -64,6 +65,19 @@ impl Bridge {
                 out.push(Bridge::event("install.done", d));
             }
             "queueChanged" => self.library.save_queue(),
+            "importDone" => out.extend(self.import_done(&v["result"])),
+            "epicImported" => {
+                let left = v["left"].clone();
+                let _ = self.library.store.update(|d| { d.insert("pendingEpicImports".into(), left); });
+                if v["done"].as_u64().unwrap_or(0) > 0 { self.library.scan(); out.push(Bridge::event("library.changed", json!({}))); }
+            }
+            "importOffer" => {
+                if crate::admin::can_admin() && self.library.store.data["importOffered"].is_null() {
+                    let _ = self.library.store.update(|d| { d.insert("importOffered".into(), json!(now_ms())); });
+                    self.importer.offer();
+                }
+            }
+            "epicSignedIn" => self.importer.finish_pending_epic(self.pending_epic()),
             "streamClosed" => if self.library.running.as_ref().map(|r| r.cloud).unwrap_or(false) { out.push(self.library.exited()); },
             _ => {}
         }
@@ -133,6 +147,7 @@ impl Bridge {
                     log(&format!("accounts: signed in to {s}"));
                     crate::stores::notify(Bridge::event("accounts.changed", json!({})));
                     reply(Ok(true));
+                    if s == "epic" { crate::stores::notify(json!({"type": "internal", "what": "epicSignedIn"})); }
                     crate::stores::refresh(s, acc, Value::Null);
                 }
                 Err(e) => { log(&format!("accounts: {s} sign-in FAILED {e}")); reply(Err(e)); }
@@ -258,6 +273,13 @@ impl Bridge {
                 if let Some(dir) = (self.pick_folder)("Where should Hearth install games?", &cur) { io(self.library.store.update(|d| { d.insert("installRoot".into(), json!(dir)); }))?; }
                 Ok(json!({"installRoot": self.library.install_root().to_string_lossy()}))
             }
+            // Settings › Import games, and removing the old system afterwards
+            "import.status" => Ok(self.importer.status(self.pending_epic().len())),
+            "import.scan" => self.importer.scan(self.pending_epic().len()),
+            "import.start" => self.importer.start(&a["items"], a["mode"].as_str().unwrap_or("copy"), &self.library.install_root(), self.pending_epic().len()),
+            "import.cancel" => Ok(self.importer.cancel(self.pending_epic().len())),
+            "takeover.plan" => self.importer.takeover_plan(self.pending_epic().len()),
+            "takeover.run" => self.importer.takeover_run(&a["remove"], a["windowsBoot"] != false, self.pending_epic().len()),
             "app.restart" => { (self.emit)(json!({"type": "restart"})); Ok(Value::Null) }
             "app.exportLogs" => export_logs(&self.version),
             "game.resetPrefix" => {
@@ -545,6 +567,56 @@ impl Bridge {
             || d["importOffered"] == true || d["profile"].is_object();
         if used { let _ = self.library.store.update(|x| { x.insert("setupDone".into(), json!(now_ms())); }); }
         used
+    }
+    fn pending_epic(&self) -> Vec<Value> { self.library.store.data["pendingEpicImports"].as_array().cloned().unwrap_or_default() }
+
+    /// An import finished: what was copied goes in the library (GOG list, your own games, Epic waiting list).
+    fn import_done(&mut self, r: &Value) -> Vec<Value> {
+        let mut notes: Vec<String> = Vec::new();
+        let list = |k: &str| r[k].as_array().cloned().unwrap_or_default();
+        let gog = list("gog");
+        if !gog.is_empty() {
+            let _ = self.library.store.update(|d| {
+                let m = d.entry("gogInstalls").or_insert(json!({}));
+                if let Some(o) = m.as_object_mut() { for g in &gog { if let (Some(id), Some(p)) = (g["id"].as_str().map(str::to_string).or(g["id"].as_u64().map(|n| n.to_string())), g["path"].as_str()) { o.insert(id, json!(p)); } } }
+            });
+        }
+        let lutris = list("lutris");
+        if !lutris.is_empty() {
+            let missing: Vec<String> = lutris.iter().filter(|g| g["exe"].as_str().map(str::is_empty).unwrap_or(true)).filter_map(|g| g["name"].as_str().map(str::to_string)).collect();
+            let _ = self.library.store.update(|d| {
+                let m = d.entry("manual").or_insert(json!([]));
+                let Some(arr) = m.as_array_mut() else { return };
+                for (i, g) in lutris.iter().enumerate() {
+                    let Some(exe) = g["exe"].as_str().filter(|e| !e.is_empty()) else { continue };
+                    if arr.iter().any(|x| x["path"] == exe) { continue; }
+                    arr.push(json!({"id": format!("manual:{:012x}", now_ms() * 100 + i as u64), "title": g["name"], "path": exe, "added": now_ms()}));
+                }
+            });
+            if !missing.is_empty() {
+                let one = missing.len() == 1;
+                notes.push(format!("Copied {} from Lutris, but couldn't tell which program starts {}. Add {} with Library › Add a game.", missing.join(", "), if one { "it" } else { "them" }, if one { "it" } else { "them" }));
+            }
+        }
+        let epic = list("epic");
+        if !epic.is_empty() {
+            let mut p = self.pending_epic(); p.extend(epic);
+            let n = p.len();
+            let _ = self.library.store.update(|d| { d.insert("pendingEpicImports".into(), json!(p.clone())); });
+            if crate::stores::epic::signed_in() { self.importer.finish_pending_epic(p); }
+            else { notes.push(format!("Sign in to Epic Games (Library › Stores) to finish {}.", if n == 1 { "1 Epic game".to_string() } else { format!("{n} Epic games") })); }
+        }
+        // Steam reads its game list when it starts: restart it if it's running.
+        let steam_games = r["steam"].as_u64().unwrap_or(0);
+        let running = std::process::Command::new("pgrep").args(["-x", "steam"]).output().map(|o| o.status.success()).unwrap_or(false);
+        if steam_games > 0 && running {
+            notes.push("Steam restarted to find the new games. It checks each one before you play.".into());
+            let _ = std::process::Command::new("steam").arg("steam://exit").spawn();
+            std::thread::spawn(|| { std::thread::sleep(std::time::Duration::from_secs(8)); let _ = std::process::Command::new("steam").arg("-silent").spawn(); });
+        } else if steam_games > 0 { notes.push("Steam checks each game the first time you start it.".into()); }
+        self.importer.finish(r, notes);
+        self.library.scan();
+        vec![Bridge::event("library.changed", json!({}))]
     }
     pub fn zoom_pct(&self) -> u32 { self.library.store.data["uiScale"].as_u64().unwrap_or(100) as u32 }
     fn auto_update(&self) -> bool { self.library.store.data["autoUpdateCheck"] != false }
