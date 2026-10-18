@@ -37,6 +37,8 @@ pub struct GameMode {
     before_overlay: AtomicU64,
     pub overlay_alive: AtomicU64,
     reveal_gen: AtomicU64,
+    /// The game's processes Hearth froze while the overlay is open (it mustn't react to the controller meanwhile).
+    held: Mutex<Vec<u32>>,
     b_gen: AtomicU64,
     repeat_gen: AtomicU64,
     last_pad: Mutex<(String, u64)>,
@@ -51,7 +53,7 @@ impl GameMode {
     pub fn new(app: AppHandle, bridge: Arc<Mutex<Bridge>>, guide: hearth_core::guide::Guide, windowed: bool) -> Arc<GameMode> {
         Arc::new(GameMode { app, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
             overlay_on: AtomicBool::new(false), osd_on: AtomicBool::new(false), osd_gen: AtomicU64::new(0), look_closed: AtomicBool::new(true),
-            before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), b_gen: AtomicU64::new(0),
+            before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), held: Mutex::new(vec![]), b_gen: AtomicU64::new(0),
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()) })
     }
 
@@ -227,6 +229,7 @@ impl GameMode {
         self.claim();   // opening it is a choice too: a hand-back still waiting from the last close is dropped
         self.before_overlay.store(gs::focused().unwrap_or(0), Ordering::SeqCst);
         self.guide.buttons.store(true, Ordering::SeqCst);
+        self.hold_game(true);
         // The page says it's alive every second while open; silence for 5 s means it froze: reload, close.
         self.overlay_alive.store(now(), Ordering::SeqCst);
         let me = self.clone();
@@ -251,6 +254,22 @@ impl GameMode {
         self.to_overlay(ev("overlay.shown", json!({})));
         true
     }
+    /// While the overlay is open the game gets no controller input: Hearth takes the controllers for itself
+    /// (games that read them another way are covered too, by holding the game still until the overlay closes).
+    fn hold_game(&self, on: bool) {
+        self.guide.grab(on);
+        if on {
+            let pids = self.bridge.lock().ok().filter(|b| b.library.running.as_ref().map(|r| !r.cloud && r.paused_at == 0 && r.started_at > 0).unwrap_or(false))
+                .map(|b| b.library.game_pids()).unwrap_or_default();
+            if !pids.is_empty() { hearth_core::procs::signal(&pids, "STOP"); }
+            *self.held.lock().unwrap() = pids;
+        } else {
+            let pids = std::mem::take(&mut *self.held.lock().unwrap());
+            // Paused from Quick Access meanwhile: it stays paused.
+            let paused = self.bridge.lock().map(|b| b.library.running.as_ref().map(|r| r.paused_at > 0).unwrap_or(true)).unwrap_or(false);
+            if !pids.is_empty() && !paused { hearth_core::procs::signal(&pids, "CONT"); }
+        }
+    }
     pub fn reveal_overlay(&self) {
         self.reveal_gen.fetch_add(1, Ordering::SeqCst);
         if self.overlay_on.load(Ordering::SeqCst) && self.look_closed.load(Ordering::SeqCst) { self.overlay_look(true, true); }
@@ -264,6 +283,7 @@ impl GameMode {
         self.repeat_gen.fetch_add(1, Ordering::SeqCst);
         self.b_gen.fetch_add(1, Ordering::SeqCst);
         self.guide.buttons.store(false, Ordering::SeqCst);
+        self.hold_game(false);
         self.to_overlay(ev("overlay.hidden", json!({})));
         self.overlay_look(false, false);
         let me = self.clone();

@@ -84,8 +84,14 @@ pub fn pad_events(buf: &[u8], state: &mut HashMap<&'static str, i32>) -> Vec<(&'
 pub type OnPress = Arc<dyn Fn(&str) + Send + Sync>;
 pub type OnButton = Arc<dyn Fn(&str, bool) + Send + Sync>;
 
+extern "C" { fn ioctl(fd: i32, request: u64, ...) -> i32; }
+const EVIOCGRAB: u64 = 0x4004_4590;   // _IOW('E', 0x90, int)
+
 #[derive(Clone)]
 pub struct Guide {
+    /// The controllers' event devices, while they're read: grabbed while the overlay is open, so only Hearth
+    /// gets their buttons (the game underneath doesn't).
+    fds: Arc<Mutex<HashMap<String, i32>>>,
     pub hold_view: Arc<AtomicBool>,
     pub buttons: Arc<AtomicBool>,
     open: Arc<Mutex<HashMap<String, String>>>,
@@ -96,13 +102,17 @@ pub struct Guide {
 impl Default for Guide { fn default() -> Self { Self::new() } }
 
 impl Guide {
-    pub fn new() -> Guide { Guide { hold_view: Arc::default(), buttons: Arc::default(), open: Arc::default(), problems: Arc::default(), last_press: Arc::default() } }
+    pub fn new() -> Guide { Guide { fds: Arc::default(), hold_view: Arc::default(), buttons: Arc::default(), open: Arc::default(), problems: Arc::default(), last_press: Arc::default() } }
     /// For Settings › Controls: which devices are watched, and when Guide last came through.
     pub fn status(&self) -> Value {
         json!({"devices": self.open.lock().unwrap().values().cloned().collect::<Vec<_>>(),
                "problems": self.problems.lock().unwrap().iter().map(|(p, w)| format!("{p}: {w}")).collect::<Vec<_>>(), "lastPress": *self.last_press.lock().unwrap()})
     }
     pub fn connected(&self) -> usize { self.open.lock().unwrap().len() }
+    /// Only Hearth gets the controllers' input (on), or everyone again (off).
+    pub fn grab(&self, on: bool) {
+        for fd in self.fds.lock().unwrap().values() { unsafe { ioctl(*fd, EVIOCGRAB, if on { 1i32 } else { 0i32 }); } }
+    }
     pub fn fire(&self, how: &str, on_press: &OnPress) { *self.last_press.lock().unwrap() = crate::library::now_ms(); on_press(how); }
 
     /// Watches controllers as they come and go (looks every 5 seconds).
@@ -126,6 +136,10 @@ impl Guide {
     }
 
     fn read(&self, mut f: std::fs::File, path: &str, on_press: OnPress, on_button: OnButton) {
+        use std::os::unix::io::AsRawFd;
+        self.fds.lock().unwrap().insert(path.to_string(), f.as_raw_fd());
+        // A controller plugged in while the overlay is open is grabbed straight away.
+        if self.buttons.load(Ordering::SeqCst) { unsafe { ioctl(f.as_raw_fd(), EVIOCGRAB, 1i32); } }
         let mut buf = [0u8; EVENT_SIZE * 64];
         let mut rest: Vec<u8> = Vec::new();
         let mut state = HashMap::new();
@@ -150,6 +164,7 @@ impl Guide {
                 }
             }
         }
+        self.fds.lock().unwrap().remove(path);
         self.open.lock().unwrap().remove(path);
     }
 }
