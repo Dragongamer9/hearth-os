@@ -1,10 +1,14 @@
 # Hearth's small installer USB (os/installer): boots into the Hearth app's install screens and downloads Hearth OS
 # while installing, so the ISO is about 2 GB. One ISO for every PC (it installs the Nvidia edition where there's
 # an Nvidia card). Builds the ISO, boots it in a virtual machine and saves screenshots to the ci/installer-shots
-# branch. Manual only; uploads to SourceForge only when asked.
+# branch. Uploads to SourceForge only when run by hand with Upload ticked.
 name: Hearth installer ISO
 
 on:
+  # Changes to the installer USB on the work branch build it and boot-test it (never uploaded from here).
+  push:
+    branches: [linux-host]
+    paths: ['os/installer/**', '.github/workflows/installer-iso.yml']
   workflow_dispatch:
     inputs:
       upload:
