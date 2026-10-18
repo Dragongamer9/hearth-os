@@ -27,6 +27,9 @@ pub struct Game {
     /// Non-library games: the file to start and its extra arguments.
     pub exe: Option<String>,
     pub args: String,
+    /// Emulated games: the system's name ("Super Nintendo") and folder name ("snes").
+    pub system: Option<&'static str>,
+    pub system_key: Option<&'static str>,
 }
 
 /// The game that's running: what to watch, and its times (ms since 1970).
@@ -52,7 +55,7 @@ impl From<steam::SteamGame> for Game {
             id: format!("steam:{}", g.app_id), launch_uri: Some(format!("steam://rungameid/{}", g.app_id)),
             title: g.title, source: "steam", install_path: Some(g.install_path), size_bytes: g.size_bytes, added: g.added,
             store_minutes: g.minutes, store_last_played: g.last_played, installed: g.installed, state: g.state,
-            bytes_done: g.bytes_done, bytes_total: g.bytes_total, art: g.art, exe: None, args: String::new(),
+            bytes_done: g.bytes_done, bytes_total: g.bytes_total, art: g.art, exe: None, args: String::new(), system: None, system_key: None,
         }
     }
 }
@@ -86,7 +89,7 @@ impl Library {
             let path = m["path"].as_str()?.to_string();
             Some(Game { id, title: m["title"].as_str().unwrap_or("Game").to_string(), source: "manual", install_path: Some(path.clone().into()),
                 size_bytes: None, added: m["added"].as_u64().unwrap_or(0), store_minutes: 0, store_last_played: 0, installed: true, state: "installed",
-                bytes_done: None, bytes_total: None, art: vec![], launch_uri: None, exe: Some(path), args: m["args"].as_str().unwrap_or("").to_string() })
+                bytes_done: None, bytes_total: None, art: vec![], launch_uri: None, exe: Some(path), args: m["args"].as_str().unwrap_or("").to_string(), system: None, system_key: None })
         }).collect()
     }
 
@@ -97,6 +100,11 @@ impl Library {
             let list: Vec<Game> = steam::scan(&self.home).into_iter().map(Game::from).collect();
             counts.insert("steam".to_string(), list.iter().filter(|g| g.installed).count());
             for g in list { all.entry(g.id.clone()).or_insert(g); }
+        }
+        if self.store.source_on("emu") {
+            let emu = crate::emulators::scan(&crate::emulators::rom_roots(&self.home));
+            counts.insert("emu".to_string(), emu.len());
+            for g in emu { all.entry(g.id.clone()).or_insert(g); }
         }
         let manual = self.manual_games();
         counts.insert("manual".to_string(), manual.len());
@@ -122,7 +130,7 @@ impl Library {
             "canRemove": g.source == "manual", "installed": g.installed, "state": g.state, "cloud": false,
             "progress": match (g.bytes_done, g.bytes_total) { (Some(a), Some(b)) if b > 0 => Some((a as f64 / b as f64).min(1.0)), _ => None },
             "bytesDone": g.bytes_done, "bytesTotal": g.bytes_total, "canUninstall": false, "note": Value::Null,
-            "installKind": if g.source == "steam" { Some("steam") } else { None }, "system": Value::Null,
+            "installKind": if g.source == "steam" { Some("steam") } else { None }, "system": g.system,
         })
     }
 
@@ -150,6 +158,10 @@ impl Library {
                 let home = crate::paths::home().to_string_lossy().to_string();
                 let broad = ["/", "/usr/bin", "/usr/local/bin", "/bin", "/opt", home.as_str()].contains(&dir.as_str()) || exe.ends_with(".desktop");
                 crate::procs::Track { pid: Some(pid), dirs: if broad { vec![] } else { vec![dir] }, ..Default::default() }
+            }
+            "emu" => {
+                let pid = crate::emulators::launch(g.exe.as_deref().unwrap_or(""), g.system_key.unwrap_or(""), &self.home)?;
+                crate::procs::Track { pid: Some(pid), ..Default::default() }
             }
             _ => return Err("The Rust version of Hearth can't start this kind of game yet.".into()),
         };
