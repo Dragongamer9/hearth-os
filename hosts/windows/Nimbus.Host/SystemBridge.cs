@@ -178,7 +178,7 @@ public sealed class SystemBridge : IDisposable
                     host = "Ember (WebView2)",
                     version = typeof(SystemBridge).Assembly.GetName().Version?.ToString(3),
                     session = Program.IsShell,
-                    features = new[] { "desktopMode" },
+                    features = new[] { "desktopMode", "mantel" },
                     user = Environment.UserName,
                 };
             case "system.info": return SystemInfo.Get();
@@ -368,8 +368,32 @@ public sealed class SystemBridge : IDisposable
                     value = ShellRegistration.Current(),
                     exe = Environment.ProcessPath,
                     startMode = Games.StartMode,
+                    desktopStyle = Games.DesktopStyle,
+                    wallpaper = Games.MantelWallpaper,
                     desktopMode = (_ui as ShellForm)?.Desktop?.Active ?? false,
                 };
+            case "shell.setDesktopStyle":
+            {
+                var style = Req(a, "style");
+                if (style is not ("mantel" or "windows")) throw new ArgumentException("Desktop style is mantel or windows");
+                Games.DesktopStyle = style;
+                var form = _ui as ShellForm;
+                if (form?.Desktop?.Active == true && form.Mantel is not null)
+                {
+                    if (style == "mantel") _ui.BeginInvoke((MethodInvoker)(async () => await form.Mantel.StartAsync()));
+                    else _ui.BeginInvoke((MethodInvoker)(() => form.Mantel.Stop()));
+                }
+                return await DispatchAsync("shell.status", a);
+            }
+            case "shell.setWallpaper":
+            {
+                var w = Str(a, "name") ?? "";
+                if (w.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(w, "^hearth-[a-z]+$")) throw new ArgumentException("Unknown wallpaper");
+                Games.MantelWallpaper = w;
+                Mantel.MantelHost.Wallpaper = w;
+                if ((_ui as ShellForm)?.Mantel is { Active: true } m) m.ApplyWallpaper();
+                return await DispatchAsync("shell.status", a);
+            }
             case "shell.setStartMode":
             {
                 var mode = Req(a, "mode");
