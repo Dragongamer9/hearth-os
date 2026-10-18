@@ -63,8 +63,11 @@ touch /etc/hearth-installer          # the Hearth app shows only the install scr
 echo "Hearth installer" >/etc/system-release
 
 # The person using it: "liveuser", no password, may do anything (it's an installer USB).
-useradd -m -G wheel -c "Hearth installer" liveuser
+useradd -m -d /var/home/liveuser -G wheel -c "Hearth installer" liveuser
 passwd -d liveuser
+# Its home folder is made at every start (on this base image /var isn't carried onto the USB as built).
+mkdir -p /usr/lib/tmpfiles.d
+printf 'd /var/home 0755 root root -\nd /var/home/liveuser 0700 liveuser liveuser -\n' >/usr/lib/tmpfiles.d/hearth-installer.conf
 cat >/etc/polkit-1/rules.d/10-hearth-installer.rules <<'RULE'
 polkit.addRule(function(action, subject) { if (subject.user == "liveuser") return polkit.Result.YES; });
 RULE
@@ -105,7 +108,8 @@ After=systemd-user-sessions.service NetworkManager.service bluetooth.service
 Conflicts=getty@tty1.service
 [Service]
 User=liveuser
-WorkingDirectory=~
+WorkingDirectory=/var/home/liveuser
+Environment=HOME=/var/home/liveuser
 PAMName=hearth-installer
 TTYPath=/dev/tty1
 TTYReset=yes
