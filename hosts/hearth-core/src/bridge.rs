@@ -16,12 +16,15 @@ pub struct Bridge {
     /// Sends an event to the UI (set by the app; does nothing in tests).
     pub emit: system::bt_scan::Emit,
     pub updates: crate::admin::Updates,
+    pub profiles: crate::profiles::Profiles,
+    /// The parental-controls PIN unlocks managing profiles for a few minutes.
+    pub pin_until: std::time::Instant,
 }
 
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
         let store = Store::open(paths::data_dir().join("library.json"));
-        Bridge { library: Library::new(store, paths::home()), version: version.to_string(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new() }
+        Bridge { library: Library::new(store, paths::home()), version: version.to_string(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles: crate::profiles::Profiles::open(&paths::data_dir()), pin_until: std::time::Instant::now() }
     }
 
     /// Messages that aren't calls: the power menu, log lines. Returns true when Hearth should close
@@ -117,6 +120,24 @@ impl Bridge {
             "system.update.status" => Ok(self.updates.refresh()),
             "system.update.check" => Ok(self.updates.start(false, self.emit.clone())),
             "system.update.install" => Ok(self.updates.start(true, self.emit.clone())),
+            // Profiles and parental controls (switching restarts Hearth; that part comes with the app's restart)
+            "profiles.get" => Ok(self.profiles_info()),
+            "profiles.create" => { self.need_pin()?; self.profiles.create(a["name"].as_str().unwrap_or(""), a["color"].as_str()) }
+            "profiles.update" => {
+                let id = req("id")?;
+                let own_look = id == self.profiles.active() && ["steam"].iter().all(|k| a.get(*k).is_none());
+                if !own_look { self.need_pin()?; }
+                self.profiles.update(&id, a)
+            }
+            "profiles.remove" => { self.need_pin()?; self.profiles.remove(&req("id")?).map(|_| Value::Null) }
+            "profiles.setAsk" => { self.need_pin()?; self.profiles.set_ask_at_start(a["on"] == true).map(|_| Value::Null) }
+            "profiles.unlock" => {
+                if !self.profiles.check_pin(a["pin"].as_str().unwrap_or("")) { return Err("That PIN isn't right".into()); }
+                self.pin_until = std::time::Instant::now() + std::time::Duration::from_secs(300); Ok(json!(true))
+            }
+            "profiles.setPin" => { self.need_pin()?; let pin = a["pin"].as_str().unwrap_or(""); self.profiles.set_pin(pin)?;
+                if !pin.is_empty() { self.pin_until = std::time::Instant::now() + std::time::Duration::from_secs(300); } Ok(json!(true)) }
+            "profiles.setLimits" => { self.need_pin()?; self.profiles.set_limits(&req("id")?, a) }
             "profile.get" => Ok(crate::profile::get(&self.library.store)),
             "profile.set" => crate::profile::set(&mut self.library.store, a),
             "audio.get" => Ok(system::audio::get(self.max_volume())),
@@ -181,6 +202,23 @@ impl Bridge {
         Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
                   "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
                   "gamemode": system::has("gamemoderun"), "canResetPrefix": false}))
+    }
+    fn need_pin(&self) -> Result<(), String> {
+        if self.profiles.has_pin() && std::time::Instant::now() >= self.pin_until { Err("Enter the PIN first".into()) } else { Ok(()) }
+    }
+    pub fn profiles_info(&self) -> Value {
+        let now = chrono::Local::now();
+        let active = self.profiles.active();
+        let steam_users = crate::steam::steam_path(&paths::home()).and_then(|s| std::fs::read_to_string(s.join("config/loginusers.vdf")).ok()).unwrap_or_default();
+        let list: Vec<Value> = self.profiles.list().into_iter().map(|mut p| {
+            let id = p["id"].as_str().unwrap_or("").to_string();
+            p["current"] = json!(id == active); p["limits"] = self.profiles.limits(&id); p["playedToday"] = json!(self.profiles.played_today(&id, now).round());
+            p
+        }).collect();
+        json!({"active": active, "askAtStart": self.profiles.data["askAtStart"] == true, "picked": std::env::args().any(|a| a == "--picked"),
+               "hasPin": self.profiles.has_pin(), "unlocked": self.profiles.has_pin() && std::time::Instant::now() < self.pin_until,
+               "restricted": self.profiles.restricted(&active), "left": self.profiles.can_play(None, now, 0.0)["minutesLeft"],
+               "list": list, "steamAccounts": crate::profiles::steam_accounts(&steam_users)})
     }
     /// An event for the UI ({type:'event', name, data}), like the status the top bar refreshes every 30 s.
     pub fn event(name: &str, data: Value) -> Value { json!({"type": "event", "name": name, "data": data}) }

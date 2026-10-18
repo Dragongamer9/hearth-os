@@ -9,6 +9,7 @@ pub mod paths;
 pub mod perf;
 pub mod power;
 pub mod profile;
+pub mod profiles;
 pub mod steam;
 pub mod store;
 pub mod system;
