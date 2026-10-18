@@ -37,7 +37,7 @@ DESKTOP
 # ------------------------------------------------------------------ Desktop Mode: labwc + Quickshell
 # (gamescope, wlr-randr and umu-launcher already come with Bazzite.)
 dnf5 -y install labwc grim brightnessctl wlr-randr wlsunset python3-evdev \
-  qt6ct qt5ct xdg-desktop-portal-wlr xdg-desktop-portal-gtk xprop xwininfo cpio
+  qt6ct qt5ct xdg-desktop-portal-wlr xdg-desktop-portal-gtk xprop xwininfo cpio rsync
 dnf5 -y copr enable errornointernet/quickshell
 dnf5 -y install quickshell
 dnf5 -y copr disable errornointernet/quickshell

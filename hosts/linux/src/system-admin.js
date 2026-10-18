@@ -59,10 +59,11 @@ class SystemAdmin extends EventEmitter {
 
   /** Runs hearth-admin with pkexec. onLine gets each "log:" line, onProgress each "progress: <pct> <what>",
    *  onStage each "stage: {json}" (detailed update progress). */
-  run(args, { input = null, onLine = null, onProgress = null, onStage = null, timeout = 30 * 60 * 1000 } = {}) {
+  run(args, { input = null, onLine = null, onProgress = null, onStage = null, onSpawn = null, timeout = 30 * 60 * 1000 } = {}) {
     if (!this.canAdmin) return Promise.reject(new Error('This needs Hearth, the OS.'));
     return new Promise((resolve, reject) => {
       const p = this.spawn('pkexec', [this.helper, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+      if (onSpawn) onSpawn(p);
       let out = '', errText = '', buf = '';
       const timer = setTimeout(() => { p.kill('SIGTERM'); reject(new Error('Timed out')); }, timeout);
       p.stdout.on('data', d => {

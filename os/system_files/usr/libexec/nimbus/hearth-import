@@ -1,0 +1,634 @@
+#!/usr/bin/python3
+"""hearth-import: brings games and personal files from this PC's other drives into Hearth.
+
+Run as root through hearth-admin (pkexec): other drives have to be mounted, and their files may belong to
+another account (a Steam Deck's "deck" user, Windows). It only ever reads from those drives, except when
+you choose Move, and only ever writes into your own home folder.
+
+  hearth-import scan        JSON: every other drive, what's on it (Steam, Epic and GOG games, personal
+                            folders, with sizes) and why a drive can't be read (BitLocker, encrypted...)
+  hearth-import run         stdin: {"mode": "copy"|"move", "items": [keys from scan], "root": "<games folder>"}
+                            copies them in (progress as "stage: {json}" lines), then one JSON result line
+  hearth-import unmount     unmounts what scan mounted
+
+Drives are mounted read-only under /run/hearth-import/. Steam games go into your Steam library with their
+manifest (so Steam sees them as installed and only checks them), plus their Proton data from Linux (local
+saves). Epic and GOG games go into Hearth's games folder; the Hearth app registers them afterwards.
+Personal folders go into the same folder in your home, under "Imported from <drive>".
+"""
+import json
+import os
+import pwd
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+MNT = '/run/hearth-import'
+READABLE = {'ntfs', 'ext4', 'ext3', 'btrfs', 'exfat', 'vfat', 'xfs', 'f2fs'}
+LOCKED = {'BitLocker': "it's locked with BitLocker. Turn BitLocker off in Windows (Settings › Privacy & security › Device encryption), then scan again",
+          'crypto_LUKS': "it's encrypted. Unlock it in Mantel's file manager first, then scan again"}
+SYSTEM_MOUNTS = ('/', '/sysroot', '/boot', '/boot/efi', '/efi', '/var', '/etc', '/usr', '/var/home', '/home', '/sysroot/ostree/deploy')
+SKIP_APPS = {'228980', '250820', '1070560', '1391110', '1628350', '1493710', '1826330', '2180100', '2348590'}
+SKIP_NAMES = ('Steamworks', 'Proton', 'Steam Linux Runtime', 'SteamVR')
+FOLDERS = ['Desktop', 'Documents', 'Downloads', 'Music', 'Pictures', 'Videos']
+SKIP_USERS = {'Public', 'Default', 'Default User', 'All Users', 'defaultuser0', 'WDAGUtilityAccount'}
+current = {'proc': None}
+
+
+def fail(msg):
+    print('error: ' + msg, flush=True)
+    sys.exit(1)
+
+
+def caller():
+    uid = os.environ.get('PKEXEC_UID')
+    if not uid or not uid.isdigit():
+        fail('run this through hearth-admin')
+    return pwd.getpwuid(int(uid))
+
+
+# ---------------------------------------------------------------------- small helpers
+
+def vdf_parse(text):
+    """Valve's KeyValues text format, enough for appmanifest and libraryfolders."""
+    tokens = re.findall(r'"((?:[^"\\]|\\.)*)"|([{}])', text)
+    root, stack, key = {}, [], None
+    cur = root
+    for s, brace in tokens:
+        if brace == '{':
+            new = {}
+            if key is not None:
+                cur[key] = new
+            stack.append(cur)
+            cur, key = new, None
+        elif brace == '}':
+            cur = stack.pop() if stack else root
+            key = None
+        elif key is None:
+            key = s
+        else:
+            cur[key] = s.replace('\\\\', '\\')
+            key = None
+    return root
+
+
+def vdf_load(p):
+    try:
+        with open(p, encoding='utf-8', errors='replace') as f:
+            return vdf_parse(f.read())
+    except OSError:
+        return {}
+
+
+def ci(d, key):
+    """Case-insensitive dict lookup (Steam isn't consistent about case)."""
+    for k, v in d.items():
+        if k.lower() == key.lower():
+            return v
+    return None
+
+
+def isdir(p):
+    try:
+        return os.path.isdir(p) and not os.path.islink(p)
+    except OSError:
+        return False
+
+
+def listdir(p):
+    try:
+        return sorted(os.listdir(p))
+    except OSError:
+        return []
+
+
+def du(p, timeout=20):
+    """Size of a folder in bytes (None if it takes too long)."""
+    try:
+        r = subprocess.run(['du', '-sb', '--', p], capture_output=True, text=True, timeout=timeout)
+        return int(r.stdout.split()[0]) if r.returncode == 0 and r.stdout else None
+    except (subprocess.TimeoutExpired, ValueError, IndexError):
+        return None
+
+
+def inside(mnt, p):
+    """A path from the scanned system (/home/deck/...) as a path under its mount, if it's on that drive."""
+    if not p or not p.startswith('/'):
+        return None
+    for base in ('', '/var'):
+        cand = os.path.normpath(mnt + base + p)
+        if os.path.exists(cand):
+            return cand
+    return None
+
+
+# ---------------------------------------------------------------------- drives
+
+def drives():
+    r = subprocess.run(['lsblk', '-J', '-b', '-o', 'NAME,KNAME,PATH,FSTYPE,LABEL,PARTLABEL,SIZE,MOUNTPOINTS,TYPE,RM,TRAN,MODEL'],
+                       capture_output=True, text=True)
+    try:
+        tree = json.loads(r.stdout).get('blockdevices', [])
+    except ValueError:
+        return []
+    out = []
+
+    def walk(devs, disk=None):
+        for d in devs:
+            parent = disk or d
+            if d.get('children'):
+                walk(d['children'], parent)
+                continue
+            mps = [m for m in (d.get('mountpoints') or []) if m]
+            if any(m in SYSTEM_MOUNTS or m.startswith(('/sysroot', '/boot', '/usr', '/etc')) for m in mps):
+                continue
+            fs = d.get('fstype') or ''
+            size = int(d.get('size') or 0)
+            if fs in ('swap', '') or (fs == 'vfat' and size < 2 * 1024**3) or (fs == 'ntfs' and size < 3 * 1024**3):
+                continue   # swap, EFI, Microsoft's small recovery partition, unformatted
+            if fs not in READABLE and fs not in LOCKED:
+                continue
+            out.append({'id': d['kname'], 'dev': d['path'], 'fs': fs, 'size': size,
+                        'label': d.get('label') or d.get('partlabel') or '',
+                        'removable': bool(d.get('rm')) or (parent.get('tran') in ('usb', 'mmc')),
+                        'disk': (parent.get('model') or '').strip(), 'mounts': mps})
+    walk(tree)
+    return out
+
+
+def mount(d):
+    """Mount point for a drive: where it's already mounted, or read-only under /run/hearth-import."""
+    for m in d['mounts']:
+        if os.path.isdir(m):
+            return m, None
+    target = os.path.join(MNT, d['id'])
+    if os.path.ismount(target):
+        return target, None
+    os.makedirs(target, exist_ok=True)
+    tries = {'ntfs': [['-t', 'ntfs3', '-o', 'ro'], ['-t', 'ntfs-3g', '-o', 'ro'], ['-t', 'ntfs3', '-o', 'ro,force']],
+             'btrfs': [['-o', 'ro,subvolid=5'], ['-o', 'ro']]}.get(d['fs'], [['-o', 'ro']])
+    err = ''
+    for opts in tries:
+        r = subprocess.run(['mount', *opts, d['dev'], target], capture_output=True, text=True)
+        if r.returncode == 0:
+            return target, None
+        err = (r.stderr or '').strip()
+    if d['fs'] == 'ntfs' and re.search(r'hibernat|dirty|unclean|fast', err, re.I):
+        return None, "Windows wasn't fully shut down (Fast Startup or hibernation). In Windows, hold Shift while choosing Shut down, then scan again"
+    return None, "it couldn't be opened" + (': ' + err.splitlines()[-1] if err else '')
+
+
+# ---------------------------------------------------------------------- what's on a drive
+
+def homes(mnt):
+    """Linux home folders on a drive: /home/*, /var/home/* (Fedora Atomic, Bazzite), a home partition
+    (SteamOS keeps /home on its own partition), btrfs subvolumes (home, @home, root/...)."""
+    found = []
+    roots = [mnt, os.path.join(mnt, 'home'), os.path.join(mnt, 'var', 'home'), os.path.join(mnt, '@home'),
+             os.path.join(mnt, 'root', 'home'), os.path.join(mnt, 'root', 'var', 'home')]
+    for sub in listdir(mnt):   # btrfs top level: <subvolume>/home, <subvolume>/var/home (ostree deploys too)
+        roots += [os.path.join(mnt, sub, 'home'), os.path.join(mnt, sub, 'var', 'home')]
+    for r in roots:
+        for u in listdir(r):
+            h = os.path.join(r, u)
+            if isdir(h) and any(os.path.exists(os.path.join(h, x)) for x in ('.local', '.steam', '.config', '.var')):
+                real = os.path.realpath(h)
+                if real not in found:
+                    found.append(real)
+    return found
+
+
+def windows_users(mnt):
+    base = os.path.join(mnt, 'Users')
+    return [os.path.join(base, u) for u in listdir(base)
+            if u not in SKIP_USERS and isdir(os.path.join(base, u)) and not u.startswith(('.', '$'))]
+
+
+def steam_libraries(mnt, kind, home_list):
+    libs = []
+    if kind == 'windows' or os.path.isdir(os.path.join(mnt, 'Program Files (x86)')):
+        libs += [os.path.join(mnt, 'Program Files (x86)', 'Steam'), os.path.join(mnt, 'Program Files', 'Steam')]
+    for h in home_list:
+        libs += [os.path.join(h, '.local', 'share', 'Steam'), os.path.join(h, '.var', 'app', 'com.valvesoftware.Steam', '.local', 'share', 'Steam'),
+                 os.path.join(h, '.var', 'app', 'com.valvesoftware.Steam', 'data', 'Steam')]
+        link = os.path.join(h, '.steam', 'steam')
+        if os.path.islink(link):
+            t = inside(mnt, os.readlink(link))
+            if t:
+                libs.append(t)
+    # Libraries at the top of a drive (an SD card, a games drive) or one level down.
+    libs += [mnt] + [os.path.join(mnt, x) for x in listdir(mnt)]
+    out = []
+    for lib in libs:
+        sa = os.path.join(lib, 'steamapps')
+        if isdir(sa):
+            real = os.path.realpath(sa)
+            if real not in out:
+                out.append(real)
+            # More libraries on the same drive.
+            lf = ci(vdf_load(os.path.join(sa, 'libraryfolders.vdf')), 'libraryfolders') or {}
+            for e in lf.values():
+                p = ci(e, 'path') if isinstance(e, dict) else e
+                q = inside(mnt, p) if p and p.startswith('/') else None
+                if q and isdir(os.path.join(q, 'steamapps')):
+                    r2 = os.path.realpath(os.path.join(q, 'steamapps'))
+                    if r2 not in out:
+                        out.append(r2)
+    return out
+
+
+def steam_games(steamapps, drive_id):
+    games = []
+    for f in listdir(steamapps):
+        m = re.fullmatch(r'appmanifest_(\d+)\.acf', f)
+        if not m:
+            continue
+        man = os.path.join(steamapps, f)
+        st = ci(vdf_load(man), 'AppState') or {}
+        appid, name, idir = ci(st, 'appid') or m.group(1), ci(st, 'name') or '', ci(st, 'installdir') or ''
+        try:
+            flags = int(ci(st, 'StateFlags') or 0)
+        except ValueError:
+            flags = 0
+        if appid in SKIP_APPS or not name or not idir or any(name.startswith(p) for p in SKIP_NAMES):
+            continue
+        if not flags & 4 or flags & (256 | 1024 | 524288 | 1048576 | 2097152 | 4194304):
+            continue   # not fully installed, or Steam is in the middle of updating it
+        game = os.path.join(steamapps, 'common', idir)
+        if not isdir(game):
+            continue
+        try:
+            size = int(ci(st, 'SizeOnDisk') or 0) or None
+        except ValueError:
+            size = None
+        compat = os.path.join(steamapps, 'compatdata', appid)
+        games.append({'key': f'steam:{drive_id}:{appid}', 'appid': appid, 'name': name, 'size': size or du(game, 60),
+                      'path': game, 'manifest': man, 'installdir': idir,
+                      'compat': compat if isdir(compat) else None})
+    return games
+
+
+def epic_games(mnt, kind, home_list, all_mounts, drive_id):
+    out = []
+    if kind == 'windows':
+        mdir = os.path.join(mnt, 'ProgramData', 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests')
+        for f in listdir(mdir):
+            if not f.endswith('.item'):
+                continue
+            try:
+                with open(os.path.join(mdir, f), encoding='utf-8', errors='replace') as fh:
+                    it = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if it.get('bIsIncompleteInstall') or not it.get('AppName') or not it.get('InstallLocation'):
+                continue
+            if it.get('MainGameAppName') and it.get('MainGameAppName') != it.get('AppName'):
+                continue   # DLC
+            path = windows_path(it['InstallLocation'], mnt, all_mounts)
+            if path:
+                out.append({'key': f'epic:{drive_id}:{it["AppName"]}', 'app': it['AppName'], 'name': it.get('DisplayName') or it['AppName'],
+                            'size': int(it.get('InstallSize') or 0) or du(path, 60), 'path': path})
+    for h in home_list:   # Heroic (Epic through legendary) on Linux
+        for cfg in (os.path.join(h, '.config', 'heroic', 'legendaryConfig', 'legendary', 'installed.json'),
+                    os.path.join(h, '.var', 'app', 'com.heroicgameslauncher.hgl', 'config', 'heroic', 'legendaryConfig', 'legendary', 'installed.json'),
+                    os.path.join(h, '.config', 'legendary', 'installed.json')):
+            try:
+                with open(cfg) as fh:
+                    recs = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            for app, e in recs.items():
+                if not isinstance(e, dict) or e.get('is_dlc'):
+                    continue
+                path = inside(mnt, e.get('install_path') or '')
+                if path and isdir(path) and not any(x['app'] == app for x in out):
+                    out.append({'key': f'epic:{drive_id}:{app}', 'app': app, 'name': e.get('title') or app,
+                                'size': int(e.get('install_size') or 0) or du(path, 60), 'path': path})
+    return out
+
+
+def windows_path(p, mnt, all_mounts):
+    """C:\\Games\\X: on this drive if it's there, otherwise on another Windows drive (D:, E:...)."""
+    rel = re.sub(r'^[A-Za-z]:[\\/]*', '', p).replace('\\', '/')
+    for base in [mnt] + [m for m in all_mounts if m != mnt]:
+        cand = os.path.join(base, rel)
+        if isdir(cand):
+            return cand
+    return None
+
+
+def gog_games(mnt, kind, home_list, drive_id):
+    places = []
+    if kind == 'windows' or isdir(os.path.join(mnt, 'GOG Games')):
+        places += [os.path.join(mnt, 'GOG Games'), os.path.join(mnt, 'Program Files (x86)', 'GOG Galaxy', 'Games'),
+                   os.path.join(mnt, 'Program Files', 'GOG Galaxy', 'Games'), os.path.join(mnt, 'Games')]
+    for h in home_list:
+        places += [os.path.join(h, 'Games', 'Heroic'), os.path.join(h, 'Games'), os.path.join(h, 'GOG Games')]
+    out, seen = [], set()
+    for base in places:
+        for g in listdir(base):
+            d = os.path.join(base, g)
+            if not isdir(d):
+                continue
+            for f in listdir(d):
+                m = re.fullmatch(r'goggame-(\d+)\.info', f)
+                if not m:
+                    continue
+                try:
+                    with open(os.path.join(d, f), encoding='utf-8', errors='replace') as fh:
+                        info = json.load(fh)
+                except (OSError, ValueError):
+                    continue
+                gid = str(info.get('gameId') or m.group(1))
+                if info.get('rootGameId') and str(info['rootGameId']) != gid:
+                    continue   # DLC
+                if gid in seen:
+                    continue
+                seen.add(gid)
+                out.append({'key': f'gog:{drive_id}:{gid}', 'id': gid, 'name': info.get('name') or g, 'size': du(d, 60), 'path': d})
+    return out
+
+
+def personal_files(kind, mnt, home_list, drive_id):
+    users = windows_users(mnt) if kind == 'windows' else home_list
+    out = []
+    for u in users:
+        who = os.path.basename(u)
+        for name in FOLDERS:
+            p = os.path.join(u, name)
+            if isdir(p) and listdir(p):
+                size = du(p)
+                if size is None or size > 0:
+                    out.append({'key': f'files:{drive_id}:{who}:{name}', 'name': name, 'user': who, 'size': size, 'path': p})
+    return out
+
+
+def describe(mnt, d, home_list):
+    if os.path.isdir(os.path.join(mnt, 'Windows', 'System32')):
+        return 'windows', 'Windows'
+    rel = ''
+    for p in (os.path.join(mnt, 'etc', 'os-release'), os.path.join(mnt, 'usr', 'lib', 'os-release')):
+        try:
+            rel = open(p).read()
+            break
+        except OSError:
+            pass
+    m = re.search(r'^PRETTY_NAME="?([^"\n]+)', rel, re.M)
+    if any(os.path.basename(h) == 'deck' for h in home_list):
+        return 'linux', 'SteamOS' if not m else m.group(1)
+    if m:
+        return 'linux', m.group(1)
+    if home_list:
+        return 'linux', 'Linux'
+    return 'data', 'SD card' if d['removable'] and d['fs'] in ('ext4', 'exfat', 'btrfs') else 'Drive'
+
+
+def scan():
+    os.makedirs(MNT, exist_ok=True)
+    ds = drives()
+    mounted = []
+    for d in ds:
+        if d['fs'] in LOCKED:
+            d['problem'] = LOCKED[d['fs']]
+            continue
+        mnt, problem = mount(d)
+        d['mount'] = mnt
+        if problem:
+            d['problem'] = problem
+        if mnt:
+            mounted.append(mnt)
+    windows_mounts = [d['mount'] for d in ds if d.get('mount') and d['fs'] == 'ntfs']
+    for d in ds:
+        mnt = d.get('mount')
+        d.update({'kind': 'locked' if d['fs'] in LOCKED else 'unreadable', 'name': d['label'] or d['disk'] or d['dev'],
+                  'steam': [], 'epic': [], 'gog': [], 'files': []})
+        if not mnt:
+            continue
+        home_list = homes(mnt)
+        kind, osname = describe(mnt, d, home_list)
+        d['kind'], d['os'] = kind, osname
+        d['name'] = d['label'] or osname
+        seen = set()
+        for sa in steam_libraries(mnt, kind, home_list):
+            for g in steam_games(sa, d['id']):
+                if g['appid'] not in seen:
+                    seen.add(g['appid'])
+                    d['steam'].append(g)
+        d['epic'] = epic_games(mnt, kind, home_list, windows_mounts, d['id'])
+        d['gog'] = gog_games(mnt, kind, home_list, d['id'])
+        if kind in ('windows', 'linux'):
+            d['files'] = personal_files(kind, mnt, home_list, d['id'])
+    user = caller()
+    usage = shutil.disk_usage(user.pw_dir)
+    return {'free': usage.free, 'drives': ds}
+
+
+# ---------------------------------------------------------------------- copying
+
+def user_steamapps(user):
+    for p in (os.path.join(user.pw_dir, '.local', 'share', 'Steam'), os.path.join(user.pw_dir, '.steam', 'steam'),
+              os.path.join(user.pw_dir, '.var', 'app', 'com.valvesoftware.Steam', '.local', 'share', 'Steam')):
+        if os.path.isdir(p):
+            return os.path.join(os.path.realpath(p), 'steamapps')
+    return os.path.join(user.pw_dir, '.local', 'share', 'Steam', 'steamapps')
+
+
+def under(path, base):
+    path, base = os.path.realpath(path), os.path.realpath(base)
+    return path == base or path.startswith(base + os.sep)
+
+
+def chown_tree(p, user):
+    """Hands what was copied (and any folders made for it) to you."""
+    if not os.path.exists(p):
+        return
+    subprocess.run(['chown', '-R', f'{user.pw_uid}:{user.pw_gid}', '--', p], capture_output=True)
+    parent = os.path.dirname(os.path.realpath(p))
+    while under(parent, user.pw_dir) and parent != os.path.realpath(user.pw_dir):
+        try:
+            if os.stat(parent).st_uid == 0:
+                os.chown(parent, user.pw_uid, user.pw_gid)
+        except OSError:
+            pass
+        parent = os.path.dirname(parent)
+
+
+def stage(**info):
+    print('stage: ' + json.dumps(info), flush=True)
+
+
+def rsync(src, dst, on_bytes):
+    """Copies src/ into dst/, calling on_bytes(done, bps) as it goes. rsync checks every file it writes."""
+    os.makedirs(dst, exist_ok=True)
+    cmd = ['rsync', '-rlt', '--partial', '--info=progress2', '--no-inc-recursive', '--no-human-readable',
+           '--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r', '--', src.rstrip('/') + '/', dst.rstrip('/') + '/']
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+    current['proc'] = p
+    buf = ''
+    while True:
+        ch = p.stdout.read(1)
+        if not ch:
+            break
+        if ch in '\r\n':
+            m = re.match(r'\s*([\d,]+)\s+(\d+)%\s+([\d.,]+)([kMG]?B)/s', buf)
+            if m:
+                done = int(m.group(1).replace(',', ''))
+                mult = {'B': 1, 'kB': 1e3, 'MB': 1e6, 'GB': 1e9}.get(m.group(4), 1)
+                on_bytes(done, float(m.group(3).replace(',', '')) * mult)
+            buf = ''
+        else:
+            buf += ch
+    err = p.stderr.read()
+    current['proc'] = None
+    if p.wait() != 0:
+        raise RuntimeError((err or 'copy failed').strip().splitlines()[-1])
+
+
+def fix_manifest(src, dst, installdir):
+    """Steam's manifest from the other system, marked fully installed (Steam checks the files on next start)."""
+    with open(src, encoding='utf-8', errors='replace') as f:
+        text = f.read()
+    text = re.sub(r'("StateFlags"\s*)"\d+"', r'\1"4"', text, flags=re.I)
+    text = re.sub(r'("installdir"\s*)"[^"]*"', lambda m: m.group(1) + '"' + installdir.replace('\\', '\\\\') + '"', text, flags=re.I)
+    text = re.sub(r'\s*"LauncherPath"\s*"[^"]*"', '', text, flags=re.I)
+    with open(dst, 'w', encoding='utf-8') as f:
+        f.write(text)
+
+
+def run():
+    user = caller()
+    try:
+        req = json.loads(sys.stdin.readline())
+    except ValueError:
+        fail('expected {"mode": ..., "items": [...], "root": ...}')
+    mode = req.get('mode', 'copy')
+    keys = set(req.get('items') or [])
+    root = os.path.realpath(req.get('root') or os.path.join(user.pw_dir, 'Games'))
+    if mode not in ('copy', 'move') or not keys:
+        fail('nothing to import')
+    if not under(root, user.pw_dir):
+        fail('the games folder has to be inside your home folder')
+
+    # Only what a fresh scan finds can be imported (paths never come from the caller).
+    found = scan()
+    items = []
+    for d in found['drives']:
+        for kind in ('steam', 'epic', 'gog', 'files'):
+            for it in d[kind]:
+                if it['key'] in keys:
+                    items.append((kind, d, it))
+    if not items:
+        fail("the selected items weren't found any more. Scan again")
+    total = sum(it.get('size') or 0 for _, _, it in items)
+    stage(phase='start', total=total, n=len(items))
+
+    steamapps = user_steamapps(user)
+    result = {'done': [], 'skipped': [], 'failed': [], 'kept': [], 'epic': [], 'gog': [], 'steam': 0}
+    finished = 0
+    remounted = set()
+    for i, (kind, d, it) in enumerate(items):
+        size = it.get('size') or 0
+        name = it['name'] + (f' ({it["user"]})' if kind == 'files' and it.get('user') else '')
+        last = [0.0]
+
+        def progress(done, bps, _i=i, _name=name, _size=size, _kind=kind):
+            now = time.monotonic()
+            if now - last[0] < 0.4:
+                return
+            last[0] = now
+            stage(phase='copy', i=_i, n=len(items), key=it['key'], name=_name, kind=_kind, done=done, size=_size, bps=round(bps),
+                  overall=finished + min(done, _size or done), total=total)
+
+        stage(phase='copy', i=i, n=len(items), key=it['key'], name=name, kind=kind, done=0, size=size, bps=0, overall=finished, total=total)
+        try:
+            if kind == 'steam':
+                man_dst = os.path.join(steamapps, f'appmanifest_{it["appid"]}.acf')
+                if os.path.exists(man_dst):
+                    result['skipped'].append({'key': it['key'], 'name': name, 'why': 'already installed in Hearth'})
+                    finished += size
+                    continue
+                dst = os.path.join(steamapps, 'common', it['installdir'])
+                rsync(it['path'], dst, progress)
+                if it.get('compat'):
+                    cdst = os.path.join(steamapps, 'compatdata', it['appid'])
+                    if not os.path.exists(cdst):
+                        rsync(it['compat'], cdst, lambda *_: None)
+                fix_manifest(it['manifest'], man_dst, it['installdir'])
+                for x in (dst, os.path.join(steamapps, 'compatdata', it['appid']), man_dst):
+                    chown_tree(x, user)
+                result['steam'] += 1
+            elif kind in ('epic', 'gog'):
+                dst = os.path.join(root, 'Epic' if kind == 'epic' else 'GOG', os.path.basename(it['path'].rstrip('/')))
+                rsync(it['path'], dst, progress)
+                chown_tree(dst, user)
+                result[kind].append({'app' if kind == 'epic' else 'id': it['app'] if kind == 'epic' else it['id'], 'name': it['name'], 'path': dst})
+            else:
+                dst = os.path.join(user.pw_dir, it['name'], 'Imported from ' + re.sub(r'[/\\]', '-', d['name']) +
+                                   (f' ({it["user"]})' if it.get('user') else ''))
+                rsync(it['path'], dst, progress)
+                chown_tree(dst, user)
+            result['done'].append({'key': it['key'], 'name': name, 'kind': kind})
+        except Exception as e:   # one item failing doesn't stop the rest
+            result['failed'].append({'key': it['key'], 'name': name, 'why': str(e)})
+            finished += size
+            continue
+        finished += size
+
+        if mode == 'move':
+            mnt = d.get('mount')
+            ok = mnt in remounted or subprocess.run(['mount', '-o', 'remount,rw', mnt], capture_output=True).returncode == 0
+            if ok:
+                remounted.add(mnt)
+                try:
+                    shutil.rmtree(it['path'])
+                    if kind == 'steam':
+                        os.remove(it['manifest'])
+                except OSError as e:
+                    result['kept'].append({'key': it['key'], 'name': name, 'why': str(e)})
+            else:
+                result['kept'].append({'key': it['key'], 'name': name, 'why': "the drive couldn't be changed (Windows wasn't fully shut down?)"})
+    for mnt in remounted:
+        subprocess.run(['mount', '-o', 'remount,ro', mnt], capture_output=True)
+    stage(phase='done', overall=total, total=total)
+    unmount()
+    print(json.dumps(result))
+
+
+def unmount():
+    for x in listdir(MNT):
+        p = os.path.join(MNT, x)
+        if os.path.ismount(p):
+            subprocess.run(['umount', p], capture_output=True)
+        try:
+            os.rmdir(p)
+        except OSError:
+            pass
+
+
+def on_term(*_):
+    p = current['proc']
+    if p:
+        p.terminate()
+    unmount()
+    sys.exit(1)
+
+
+def main(argv):
+    signal.signal(signal.SIGTERM, on_term)
+    cmd = argv[1] if len(argv) > 1 else ''
+    if cmd == 'scan':
+        print(json.dumps(scan()))
+    elif cmd == 'run':
+        run()
+    elif cmd == 'unmount':
+        unmount()
+        print(json.dumps({'ok': True}))
+    else:
+        fail('usage: hearth-import scan | run | unmount')
+
+
+if __name__ == '__main__':
+    main(sys.argv)
