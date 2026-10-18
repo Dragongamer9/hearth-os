@@ -52,13 +52,14 @@ class SystemAdmin extends EventEmitter {
     this.sessionConf = sessionConf;
     this.exists = exists;
     this.spawn = spawnFn;
-    this.update = { state: 'idle', line: '', progress: null, status: null, error: null };
+    this.update = { state: 'idle', line: '', progress: null, status: null, error: null, stage: null, phases: null, speeds: [] };
   }
 
   get canAdmin() { return this.exists(this.helper); }
 
-  /** Runs hearth-admin with pkexec. onLine gets each "log:" line, onProgress each "progress: <pct> <what>". */
-  run(args, { input = null, onLine = null, onProgress = null, timeout = 30 * 60 * 1000 } = {}) {
+  /** Runs hearth-admin with pkexec. onLine gets each "log:" line, onProgress each "progress: <pct> <what>",
+   *  onStage each "stage: {json}" (detailed update progress). */
+  run(args, { input = null, onLine = null, onProgress = null, onStage = null, timeout = 30 * 60 * 1000 } = {}) {
     if (!this.canAdmin) return Promise.reject(new Error('This needs Hearth, the OS.'));
     return new Promise((resolve, reject) => {
       const p = this.spawn('pkexec', [this.helper, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -72,6 +73,7 @@ class SystemAdmin extends EventEmitter {
           if (onLine && line.startsWith('log: ')) onLine(line.slice(5));
           const m = onProgress && line.match(/^progress: ([\d.]+) ?(.*)$/);
           if (m) onProgress(+m[1] / 100, m[2]);
+          if (onStage && line.startsWith('stage: ')) { try { onStage(JSON.parse(line.slice(7))); } catch {} }
         }
       });
       p.stderr.on('data', d => { errText += d; });
@@ -131,17 +133,37 @@ class SystemAdmin extends EventEmitter {
   }
   async installUpdate() {
     if (['checking', 'updating'].includes(this.update.state)) return this.updateStatus();
-    this.setUpdate({ state: 'updating', line: 'Starting…', progress: 0, error: null });
+    const started = Date.now();
+    this.setUpdate({ state: 'updating', line: 'Starting…', progress: 0, error: null, stage: null, speeds: [], started,
+      phases: { download: { pct: 0 }, install: { pct: 0 }, apps: { pct: 0 } } });
     let lastPush = 0;
-    const onProgress = (p, what) => {
-      // Many events per second while downloading: pass on a few.
+    const push = (patch, force) => {
+      // Many events per second while downloading: pass a few on to the page.
+      Object.assign(this.update, patch);
       const now = Date.now();
-      if (now - lastPush < 400 && p < 1) { this.update.progress = p; this.update.line = what || this.update.line; return; }
+      if (!force && now - lastPush < 500) return;
       lastPush = now;
-      this.setUpdate({ progress: p, line: what || this.update.line });
+      this.emit('update', this.updateStatus());
     };
-    try { this.setUpdate({ state: 'idle', line: '', progress: null, status: await this.run(['update'], { onLine: l => this.setUpdate({ line: l }), onProgress }) }); }
-    catch (e) { this.setUpdate({ state: 'idle', progress: null, error: e.message }); }
+    const onProgress = (p, what) => push({ progress: p, line: what || this.update.line }, p >= 1);
+    const onStage = st => {
+      const phases = { ...this.update.phases };
+      // Reaching a later phase finishes the earlier ones.
+      const order = ['download', 'install', 'apps', 'done'];
+      const at = order.indexOf(st.phase);
+      order.slice(0, Math.max(0, at)).forEach(k => { if (phases[k]) phases[k] = { ...phases[k], pct: 100, finished: true }; });
+      if (phases[st.phase]) phases[st.phase] = { ...phases[st.phase], ...st, started: phases[st.phase].started || Date.now() };
+      const speeds = st.phase === 'download' && st.bps != null
+        ? [...this.update.speeds.filter(([t]) => Date.now() - t < 5 * 60e3), [Date.now(), st.bps]].slice(-400)
+        : this.update.speeds;
+      push({ stage: st, phases, speeds }, st.pct === 100 || st.phase !== (this.update.stage || {}).phase);
+    };
+    try {
+      const status = await this.run(['update'], { onLine: l => push({ line: l }, true), onProgress, onStage });
+      this.setUpdate({ state: 'idle', line: '', progress: null, status, lastRun: { ok: true, at: Date.now(), took: Date.now() - started } });
+    } catch (e) {
+      this.setUpdate({ state: 'idle', progress: null, error: e.message, lastRun: { ok: false, at: Date.now() } });
+    }
     return this.updateStatus();
   }
 }
