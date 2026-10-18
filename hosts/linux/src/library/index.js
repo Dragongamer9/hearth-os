@@ -72,6 +72,7 @@ class Library extends EventEmitter {
       epic: on('epic') ? () => [...this.accounts.installed('epic'), ...heroic.scanEpic()] : null,
       gog: on('gog') ? () => [...this.accounts.installed('gog'), ...heroic.scanGog()] : null,
       xbox: on('xbox') ? () => xcloud.scan() : null,
+      emu: on('emu') ? () => require('./emulators').scan() : null,
       manual: () => this.manualGames(),
     };
     const all = new Map();
@@ -137,7 +138,7 @@ class Library extends EventEmitter {
       canRemove: g.source === 'manual',
       installed: !!g.installed, state: g.state || 'installed', cloud: !!g.cloud,
       progress: g.progress ?? null, bytesDone: g.bytesDone ?? null, bytesTotal: g.bytesTotal ?? null,
-      canUninstall: !!g.canUninstall, note: g.note || null,
+      canUninstall: !!g.canUninstall, note: g.note || null, system: g.system || null,
       installKind: !g.installUri ? null : g.installUri.startsWith('nimbus-') ? 'nimbus' : g.installUri.startsWith('steam:') ? 'steam' : 'store',
       // An install Nimbus is running shows as a download.
       ...this.jobState(g.id),
@@ -300,6 +301,9 @@ class Library extends EventEmitter {
       track = { ...(g.track || {}), pid: child && child.pid };
     } else if (g.source === 'epic' || g.source === 'gog') {
       heroic.openUri(g.launchUri, g.launchVia);
+    } else if (g.source === 'emu') {
+      child = require('./emulators').launch(g);
+      track = { pid: child && child.pid, dirs: [] };
     } else if (g.source === 'manual') {
       child = manual.launch(g, this.options.get(id));
       // Watch the folder too (games that hand off to another process), but never a folder so broad

@@ -175,6 +175,9 @@ class Bridge {
         setTimeout(() => this.platform.restartApp && this.platform.restartApp(), 1500);   // Hearth reads it all at start
         return meta;
       }
+      case 'emu.status': return require('./library/emulators').status();
+      case 'emu.makeFolders': return require('./library/emulators').makeFolders();
+      case 'emu.install': return require('./library/emulators').installRetroArch();
       case 'remote.status': return this.remote().status();
       case 'remote.setOn': return this.remote().setOn(!!a.on);
       case 'remote.pair': return this.remote().pair(String(a.pin || ''), a.name);
@@ -224,7 +227,7 @@ class Bridge {
       case 'library.setHidden': L.setHidden(req('id'), !!a.on); return null;
       case 'library.setSources': {
         const src = {};
-        for (const k of ['steam', 'epic', 'gog', 'xbox']) if (k in a) src[k] = a[k] === true;
+        for (const k of ['steam', 'epic', 'gog', 'xbox', 'emu']) if (k in a) src[k] = a[k] === true;
         await L.setSources(src);
         return L.get(false);
       }
