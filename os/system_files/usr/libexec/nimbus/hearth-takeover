@@ -1,0 +1,272 @@
+#!/usr/bin/python3
+"""hearth-takeover: removes the other systems from Hearth's own drive and gives their space to Hearth.
+
+Run as root through hearth-admin (pkexec), from Settings › Import games › Remove the old system, after
+you've brought over what you need. Only partitions on the drive Hearth itself runs from are offered, never
+Hearth's own (its system, /boot, the shared EFI partition), and only the ones you confirm are erased.
+
+  hearth-takeover plan      JSON: Hearth's drive, its partitions (what each one is, whether it can be
+                            removed and whether it's chosen by default), Windows' boot entries, the space
+  hearth-takeover run       stdin: {"remove": ["/dev/nvme0n1p3", ...], "windowsBoot": true}
+                            erases those partitions, removes Windows from the boot menu if asked, then grows
+                            Hearth into the free space (progress as "stage: {json}"), then a JSON result
+
+Growing: free space right after Hearth's partition grows that partition and the file system (btrfs) in
+place; free space elsewhere on the drive (usually where Windows was, before Hearth) becomes a new partition
+that's added to Hearth's file system. Both happen while Hearth runs; no restart needed.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+LINUX_FS_TYPE = '0FC63DAF-8483-4772-8E79-3D69D8477DE4'
+ESP_TYPE = 'C12A7328-F81F-11D2-BA4B-00A0C93EC93B'
+MSR_TYPE = 'E3C9E316-0B5C-4DB8-817D-F92DF00215AE'
+WINRE_TYPE = 'DE94BBA4-06D1-4D40-A16A-BFD50179D6AC'
+BASIC_DATA = 'EBD0A0A2-B9E5-4433-87C0-68B6B72699C7'
+MIB = 1024 * 1024
+
+
+def fail(msg):
+    print('error: ' + msg, flush=True)
+    sys.exit(1)
+
+
+def sh(cmd, check=True, **kw):
+    r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    if check and r.returncode != 0:
+        raise RuntimeError(((r.stderr or r.stdout or '').strip().splitlines() or [' '.join(cmd) + ' failed'])[-1])
+    return r.stdout
+
+
+def stage(**info):
+    print('stage: ' + json.dumps(info), flush=True)
+
+
+# ---------------------------------------------------------------------- what's on the drive
+
+def root_mount():
+    """Where Hearth's own (btrfs) file system is mounted for resizing: /sysroot on Fedora Atomic."""
+    for target in ('/sysroot', '/'):
+        out = sh(['findmnt', '-n', '-o', 'SOURCE,FSTYPE', target], check=False).split()
+        if len(out) >= 2 and out[1] == 'btrfs':
+            return target, re.sub(r'\[.*\]$', '', out[0])
+    fail("Hearth's file system wasn't found (expected btrfs at /sysroot)")
+
+
+def btrfs_devices(mnt):
+    out = sh(['btrfs', 'filesystem', 'show', mnt], check=False)
+    return [os.path.realpath(m) for m in re.findall(r'path (/dev/\S+)', out)]
+
+
+def mounts_of(dev):
+    out = sh(['lsblk', '-n', '-o', 'MOUNTPOINTS', dev], check=False)
+    return [m for m in out.split('\n') if m.strip()]
+
+
+def plan_data(lsblk_json=None, sfdisk_json=None, root_devs=None, boot_mounts=None, efi_entries=None):
+    """Works out the plan. The arguments are for tests; normally everything is read from the system."""
+    if root_devs is None:
+        mnt, src = root_mount()
+        root_devs = btrfs_devices(mnt) or [os.path.realpath(src)]
+    root_devs = [os.path.realpath(d) for d in root_devs]
+    if lsblk_json is None:
+        lsblk_json = json.loads(sh(['lsblk', '-J', '-b', '-o', 'NAME,PATH,PKNAME,FSTYPE,LABEL,PARTLABEL,PARTTYPE,SIZE,MOUNTPOINTS,TYPE']))
+    devs = {}
+
+    def walk(ds):
+        for d in ds:
+            devs[os.path.realpath(d['path'])] = d
+            walk(d.get('children') or [])
+    walk(lsblk_json.get('blockdevices', []))
+    first = devs.get(root_devs[0])
+    if not first or not first.get('pkname'):
+        fail("couldn't tell which drive Hearth is on")
+    disk = '/dev/' + first['pkname']
+    if sfdisk_json is None:
+        sfdisk_json = json.loads(sh(['sfdisk', '-J', disk]))
+    table = sfdisk_json['partitiontable']
+    sector = int(table.get('sectorsize') or 512)
+    if boot_mounts is None:
+        boot_mounts = ['/boot', '/boot/efi', '/efi']
+    if efi_entries is None:
+        efi_entries = windows_boot_entries()
+
+    parts = []
+    for p in table.get('partitions', []):
+        node = os.path.realpath(p['node'])
+        info = devs.get(node, {})
+        ptype = (p.get('type') or '').upper()
+        fs = info.get('fstype') or ''
+        mps = [m for m in (info.get('mountpoints') or []) if m]
+        num = int(re.search(r'(\d+)$', node).group(1))
+        label = info.get('label') or info.get('partlabel') or ''
+        size = int(p['size']) * sector
+        if node in root_devs:
+            kind, removable, why = 'hearth', False, "Hearth's system"
+        elif ptype == ESP_TYPE or (fs == 'vfat' and any(m in ('/boot/efi', '/efi') for m in mps)):
+            kind, removable, why = 'efi', False, 'Start-up (EFI) partition, shared by every system on this drive'
+        elif any(m in boot_mounts for m in mps):
+            kind, removable, why = 'hearth', False, "Hearth's start-up files"
+        elif ptype == MSR_TYPE:
+            kind, removable, why = 'windows', True, 'Microsoft reserved'
+        elif ptype == WINRE_TYPE or (fs == 'ntfs' and re.search(r'recovery', label, re.I)):
+            kind, removable, why = 'windows', True, 'Windows recovery'
+        elif fs == 'ntfs' or fs == 'BitLocker':
+            kind, removable, why = 'windows', True, 'Windows' + (' (BitLocker)' if fs == 'BitLocker' else '')
+        elif fs in ('ext4', 'ext3', 'btrfs', 'xfs', 'f2fs', 'swap', 'crypto_LUKS'):
+            kind, removable, why = 'linux', True, {'swap': 'Linux swap', 'crypto_LUKS': 'Encrypted Linux'}.get(fs, 'Another Linux system')
+        else:
+            kind, removable, why = 'data', True, 'Other data' + (' (' + fs + ')' if fs else '')
+        in_use = [m for m in mps if not m.startswith('/run/hearth-import')]
+        parts.append({'dev': node, 'num': num, 'start': int(p['start']), 'sectors': int(p['size']), 'size': size,
+                      'fs': fs, 'label': label, 'kind': kind, 'what': why, 'removable': removable and not (kind == 'hearth'),
+                      # Windows and old Linux systems are chosen by default; plain data partitions aren't.
+                      'chosen': removable and kind in ('windows', 'linux'), 'mounted': in_use})
+    parts.sort(key=lambda x: x['start'])
+    return {'disk': disk, 'sector': sector, 'lastLba': int(table.get('lastlba') or 0), 'parts': parts,
+            'windowsBoot': efi_entries, 'hearth': [p['dev'] for p in parts if p['dev'] in root_devs]}
+
+
+def windows_boot_entries():
+    out = sh(['efibootmgr'], check=False)
+    return [{'id': m.group(1), 'name': m.group(2).strip()} for m in re.finditer(r'^Boot([0-9A-Fa-f]{4})\*?\s+(.*Windows.*?)(?:\t|$)', out, re.M)]
+
+
+def free_regions(plan_, removing):
+    """Free stretches of the drive (in sectors) once `removing` is gone, merged with any already free."""
+    sector = plan_['sector']
+    align = MIB // sector
+    keep = [p for p in plan_['parts'] if p['dev'] not in removing]
+    regions, cursor = [], 2048
+    for p in keep:
+        if p['start'] - cursor >= align * 16:
+            regions.append({'start': cursor, 'end': p['start'], 'after': None, 'before': p['dev']})
+        cursor = max(cursor, p['start'] + p['sectors'])
+    end = plan_['lastLba'] - 33
+    if end - cursor >= align * 16:
+        regions.append({'start': cursor, 'end': end, 'after': None, 'before': None})
+    for r in regions:   # what partition sits right before each region
+        prev = [p for p in keep if p['start'] + p['sectors'] <= r['start']]
+        r['after'] = max(prev, key=lambda p: p['start'])['dev'] if prev else None
+        r['bytes'] = (r['end'] - r['start']) * sector
+    return regions
+
+
+def what_grows(plan_, removing):
+    """How the space would be used: grow Hearth's partition (space right after it), add a new partition to
+    Hearth's file system (space elsewhere), or both."""
+    regions = [r for r in free_regions(plan_, removing) if r['bytes'] >= 1024 * MIB]
+    hearth = set(plan_['hearth'])
+    grow = [r for r in regions if r['after'] in hearth]
+    add = [r for r in regions if r['after'] not in hearth]
+    return grow, add
+
+
+def plan():
+    p = plan_data()
+    chosen = [x['dev'] for x in p['parts'] if x['chosen']]
+    grow, add = what_grows(p, chosen)
+    p['gain'] = sum(r['bytes'] for r in grow + add)
+    print(json.dumps(p))
+
+
+# ---------------------------------------------------------------------- doing it
+
+def run():
+    try:
+        req = json.loads(sys.stdin.readline())
+    except ValueError:
+        fail('expected {"remove": [...], "windowsBoot": true|false}')
+    p = plan_data()
+    removable = {x['dev']: x for x in p['parts'] if x['removable']}
+    remove = [os.path.realpath(d) for d in req.get('remove') or []]
+    if not remove:
+        fail('nothing chosen')
+    for d in remove:
+        if d not in removable:
+            fail(d + " can't be removed (it's Hearth's own, or not on Hearth's drive)")
+    # Let go of drives the importer opened, and anything else mounted from them (a file manager).
+    for d in remove:
+        for m in mounts_of(d):
+            sh(['umount', m], check=False)
+        if mounts_of(d):
+            fail(f'{d} is still in use (open in another app?). Close it and try again')
+        sh(['swapoff', d], check=False)
+
+    disk = p['disk']
+    steps = ['erase', 'boot', 'grow']
+    stage(phase='erase', step=0, steps=len(steps), desc='Removing the old system')
+    nums = [str(removable[d]['num']) for d in remove]
+    for d in remove:   # so nothing recognises the old file systems later
+        sh(['wipefs', '-a', '-f', d], check=False)
+    sh(['sfdisk', '--no-reread', '--no-tell-kernel', '--force', '--delete', disk, *nums])
+    for n in nums:
+        sh(['partx', '-d', '--nr', n, disk], check=False)
+    windows_gone = any(removable[d]['kind'] == 'windows' for d in remove)
+
+    stage(phase='boot', step=1, steps=len(steps), desc='Updating the boot menu')
+    removed_entries = []
+    if req.get('windowsBoot') and windows_gone:
+        for e in windows_boot_entries():
+            if subprocess.run(['efibootmgr', '-q', '-b', e['id'], '-B'], capture_output=True).returncode == 0:
+                removed_entries.append(e['name'])
+        for esp in ('/boot/efi', '/efi'):
+            ms = os.path.join(esp, 'EFI', 'Microsoft')
+            if os.path.isdir(ms):
+                sh(['rm', '-rf', '--', ms], check=False)
+
+    stage(phase='grow', step=2, steps=len(steps), desc='Giving the space to Hearth')
+    p2 = plan_data()
+    grow, add = what_grows(p2, [])
+    mnt, _ = root_mount()
+    grown = added = 0
+    for r in grow:
+        part = next(x for x in p2['parts'] if x['dev'] == r['after'])
+        sh(['sfdisk', '--no-reread', '--no-tell-kernel', '--force', '-N', str(part['num']), disk], input=', +\n')
+        sh(['partx', '-u', '--nr', str(part['num']), disk])
+        sh(['btrfs', 'filesystem', 'resize', f'{btrfs_devid(mnt, part["dev"])}:max', mnt])
+        grown += r['bytes']
+    for r in add:
+        before = {x['num'] for x in plan_data()['parts']}
+        size = r['end'] - r['start']
+        sh(['sfdisk', '--no-reread', '--no-tell-kernel', '--force', '--append', disk],
+           input=f'start={r["start"]}, size={size}, type={LINUX_FS_TYPE}, name="Hearth"\n')
+        after = plan_data()
+        new = next((x for x in after['parts'] if x['num'] not in before), None)
+        if not new:
+            raise RuntimeError("the new partition didn't appear")
+        sh(['partx', '-a', '--nr', str(new['num']), disk], check=False)
+        sh(['udevadm', 'settle'], check=False)
+        sh(['btrfs', 'device', 'add', '-f', new['dev'], mnt])
+        added += r['bytes']
+    stage(phase='done', step=3, steps=len(steps), desc='Done')
+    print(json.dumps({'removed': remove, 'bootEntries': removed_entries, 'grown': grown, 'added': added,
+                      'free': os.statvfs(mnt).f_bavail * os.statvfs(mnt).f_frsize}))
+
+
+def btrfs_devid(mnt, dev):
+    out = sh(['btrfs', 'filesystem', 'show', mnt], check=False)
+    for m in re.finditer(r'devid\s+(\d+).*path (/dev/\S+)', out):
+        if os.path.realpath(m.group(2)) == os.path.realpath(dev):
+            return m.group(1)
+    return '1'
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    try:
+        if cmd == 'plan':
+            plan()
+        elif cmd == 'run':
+            run()
+        else:
+            fail('usage: hearth-takeover plan | run')
+    except RuntimeError as e:
+        fail(str(e))
+
+
+if __name__ == '__main__':
+    main(sys.argv)

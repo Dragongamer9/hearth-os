@@ -242,6 +242,8 @@ class Bridge {
       case 'import.scan': return this.importer.scan();
       case 'import.start': return this.importer.start(a.items, a.mode || 'copy');
       case 'import.cancel': return this.importer.cancel();
+      case 'takeover.plan': return this.importer.takeoverPlan();
+      case 'takeover.run': return this.importer.takeoverRun(a.remove, a.windowsBoot !== false);
       case 'system.update.status': return this.admin.refreshUpdate();
       case 'system.update.check': this.admin.checkUpdate(); return this.admin.updateStatus();
       case 'system.update.install': this.admin.installUpdate(); return this.admin.updateStatus();
