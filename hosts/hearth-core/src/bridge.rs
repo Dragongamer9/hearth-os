@@ -89,6 +89,21 @@ impl Bridge {
             "audio.setVolume" => system::audio::set_volume(a["v"].as_f64().unwrap_or(0.0).round().max(0.0) as u32, self.max_volume()).map(|_| Value::Null),
             "audio.setMute" => system::audio::set_mute(a["m"].as_bool().unwrap_or(false)).map(|_| Value::Null),
             "display.setBrightness" => system::set_brightness(a["v"].as_f64().unwrap_or(0.0).round().max(0.0) as u32).map(|_| Value::Null),
+            "profile.get" => Ok(crate::profile::get(&self.library.store)),
+            "profile.set" => crate::profile::set(&mut self.library.store, a),
+            "audio.get" => Ok(system::audio::get(self.max_volume())),
+            "audio.setDefault" => { system::audio::set_default(&req("id")?)?; Ok(system::audio::get(self.max_volume())) }
+            "perf.stats" => {
+                let mut s = crate::perf::sample();
+                let st = crate::power::status();
+                s["battery"] = system::battery(std::path::Path::new("/sys/class/power_supply"));
+                s["runningId"] = Value::Null; s["runningSince"] = Value::Null;
+                s["canFpsLimit"] = json!(false); s["fpsLimit"] = self.library.store.data["fpsLimit"].clone();
+                s["canOverlay"] = json!(false); s["perfOverlay"] = self.library.store.data["perfOverlay"].clone();
+                s["powerMode"] = if st["mode"]["supported"] == true { st["mode"]["mode"].clone() } else { Value::Null };
+                s["powerModes"] = st["mode"]["available"].clone(); s["tdp"] = st["tdp"].clone();
+                Ok(s)
+            }
             "system.info" => Ok(crate::sysinfo::info(std::path::Path::new("/"))),
             "power.get" => { let st = crate::power::status(); let mut b = system::battery(std::path::Path::new("/sys/class/power_supply"));
                 b["mode"] = st["mode"]["mode"].clone(); b["modes"] = st["mode"]["available"].clone(); b["modeSupported"] = st["mode"]["supported"].clone(); b["tdp"] = st["tdp"].clone(); Ok(b) }
