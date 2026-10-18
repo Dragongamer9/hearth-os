@@ -1,0 +1,82 @@
+# Runs Hearth's installer (os/live/src/hearth-install) for real against an empty 40 GB disk image, inside the
+# Hearth OS image, then checks the result: partitions, Hearth OS deployed, boot loader, boot entry, user.
+name: Installer test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [linux-host, main]
+    paths: ['os/live/src/hearth-install', '.github/workflows/installer-test.yml']
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+          df -h /
+      - name: Empty disk
+        run: |
+          truncate -s 40G disk.img
+          echo "LOOP=$(sudo losetup -fP --show disk.img)" >> "$GITHUB_ENV"
+      - name: Install Hearth OS onto it
+        run: |
+          set -o pipefail
+          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","image":"ghcr.io/dragongamer9/hearth:latest","firmware":false,"kargs":["console=ttyS0,115200"]}' "$LOOP")
+          echo "$plan" | sudo podman run --rm -i --privileged --pid=host --net=host \
+            -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" -e HEARTH_INSTALL_TEST=1 \
+            --security-opt label=disable ghcr.io/dragongamer9/hearth:latest \
+            /src/hearth-install run 2>&1 | tee install.log
+          grep -q '^result: ' install.log || { echo "::error::$(grep '^error:' install.log | tail -1)"; exit 1; }
+      - name: Check what it made
+        run: |
+          set -x
+          sudo partx -u "$LOOP" || true
+          lsblk -o NAME,SIZE,FSTYPE,LABEL,PARTTYPENAME "$LOOP"
+          sudo mkdir -p /mnt/h && sudo mount -o subvol=root "${LOOP}p3" /mnt/h
+          sudo mount "${LOOP}p2" /mnt/h/boot && sudo mount "${LOOP}p1" /mnt/h/boot/efi
+          ok=1
+          check() { if eval "$2"; then echo "ok: $1"; else echo "::error::missing: $1"; ok=0; fi; }
+          dep=$(sudo sh -c 'ls -d /mnt/h/ostree/deploy/default/deploy/*.0 | head -1')
+          check "Hearth OS deployed" "[ -n '$dep' ]"
+          check "boot entry" "sudo sh -c 'ls /mnt/h/boot/loader/entries/*.conf' >/dev/null"
+          check "boot loader on the EFI partition" "sudo sh -c 'ls /mnt/h/boot/efi/EFI/fedora/*.efi' >/dev/null"
+          check "grub config" "sudo test -e /mnt/h/boot/grub2/grub.cfg -o -e /mnt/h/boot/efi/EFI/fedora/grub.cfg"
+          check "fstab" "sudo grep -q 'subvol=home' $dep/etc/fstab"
+          check "user" "sudo grep -q '^tester:' $dep/etc/passwd"
+          check "user in wheel" "sudo grep -q '^wheel:.*tester' $dep/etc/group"
+          check "password set" "sudo grep -q '^tester:\\\$' $dep/etc/shadow"
+          check "hostname" "sudo grep -qx hearth-ci $dep/etc/hostname"
+          check "time zone" "sudo readlink $dep/etc/localtime | grep -q Chicago"
+          sudo sh -c 'cat /mnt/h/boot/loader/entries/*.conf' || true
+          sudo mkdir -p /mnt/home && sudo mount -o subvol=home "${LOOP}p3" /mnt/home
+          check "home folder" "sudo test -d /mnt/home/tester"
+          sudo umount -R /mnt/h /mnt/home || true
+          [ $ok = 1 ]
+      - name: Boot it (UEFI, serial console) and wait for the login prompt
+        run: |
+          sudo apt-get install -y -qq qemu-system-x86 ovmf >/dev/null
+          sudo losetup -d "$LOOP"
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd 2>/dev/null || cp /usr/share/OVMF/OVMF_VARS.fd vars.fd
+          code=$(ls /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd 2>/dev/null | head -1)
+          timeout 900 sudo qemu-system-x86_64 -m 4096 -smp 2 $( [ -e /dev/kvm ] && echo -enable-kvm -cpu host ) \
+            -drive if=pflash,format=raw,readonly=on,file="$code" -drive if=pflash,format=raw,file=vars.fd \
+            -drive file=disk.img,format=raw,if=virtio -nographic -serial mon:stdio -display none -net none \
+            > boot.log 2>&1 &
+          for i in $(seq 1 180); do
+            if grep -qE 'login:|Reached target.*(Multi-User|Graphical)' boot.log; then echo "::notice::Installed Hearth OS boots"; break; fi
+            sleep 5
+          done
+          sudo pkill qemu-system || true
+          tail -c 4000 boot.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tail -40
+          grep -qE 'login:|Reached target.*(Multi-User|Graphical)' boot.log || { echo "::error::didn't reach the login prompt in 15 minutes (see the log above)"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-logs
+          path: |
+            install.log
+            boot.log
