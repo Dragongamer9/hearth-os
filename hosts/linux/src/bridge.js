@@ -213,6 +213,14 @@ class Bridge {
       case 'game.install': await L.install(req('id')); return null;
       case 'game.close': return { ok: await L.closeRunning() };
       // Installs and uninstalls happen in Steam and Heroic on Linux; their games never offer these.
+      // ProtonDB rating and Steam achievements for a game's page
+      case 'game.info': {
+        const g = L.games.get(req('id'));
+        if (!g) return {};
+        const info = require('./game-info');
+        const appid = /^steam:(\d+)$/.test(g.id) ? +g.id.slice(6) : 0;
+        return { protondb: await info.protonDb(g), achievements: appid ? info.achievements(appid) : null };
+      }
       case 'game.options.get': return L.gameOptions(req('id'));
       case 'game.options.set': return L.setGameOptions(req('id'), a.options || {});
       case 'game.resetPrefix': return { ok: L.resetPrefix(req('id')) };
