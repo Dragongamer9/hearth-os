@@ -30,8 +30,6 @@ everything it does; then Hearth OS switches over in one release.
 Every method the Electron host's bridge answers has an answer in the Rust one (a test checks it).
 
 ## Not done yet in the Rust host
-- Ctrl+Alt+Q (the keyboard way to open Quick Access over a game) needs a global-shortcut plugin
-- "Ask for my password after sleep" in Game Mode (Electron's powerMonitor): needs logind's PrepareForSleep
 - The Xbox sign-in saved by the Electron host is locked with the desktop keyring; the Rust host keeps its
   own (sign in to Xbox once more after switching)
 - App updates: the Rust app updates from a release file named Hearth-linux-x86_64 (+ .sha256), which
