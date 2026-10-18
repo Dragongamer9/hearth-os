@@ -883,6 +883,25 @@ app.whenReady().then(() => {
     showGameWhenReady(id);
   });
   library.on('exited', () => { hideOverlay(); comeBack(); });
+  // Per-game frame-rate cap and power limit (game page › Game settings): on while it plays, then back.
+  let perGame = null;
+  library.on('started', async id => {
+    const o = library.options.get(id);
+    if (!o.fpsLimit && !o.tdp) return;
+    const pc = require('./power-control');
+    perGame = { fps: library.store.data.fpsLimit || 0, tdp: null };
+    try {
+      if (o.fpsLimit && IN_SESSION) await setRootAtom('GAMESCOPE_FPS_LIMIT', o.fpsLimit);
+      if (o.tdp) { const st = await pc.status().catch(() => null); if (st && st.tdp && st.tdp.supported) { perGame.tdp = st.tdp.watts; await pc.setTdp(o.tdp); } }
+      log(`game settings: ${id} fps ${o.fpsLimit || '-'} tdp ${o.tdp || '-'}`);
+    } catch (e) { log('game settings: ' + e.message); }
+  });
+  library.on('exited', async () => {
+    if (!perGame) return;
+    const back = perGame; perGame = null;
+    if (IN_SESSION) setRootAtom('GAMESCOPE_FPS_LIMIT', back.fps).catch(() => {});
+    if (back.tdp) require('./power-control').setTdp(back.tdp).catch(() => {});
+  });
   // The launcher closed and the game itself started: put the game's window in front once it's up.
   // Nothing of the game running (it quit, or its launcher closed and the game hasn't started yet): Hearth
   // comes back; if the game does start, it's put in front again.

@@ -8,7 +8,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { has } = require('../util');
 
-const DEFAULTS = { proton: '', args: '', env: '', mangohud: false, gamemode: false, fsr: false };
+// fpsLimit and tdp (watts) work for every game, Steam's included: Hearth sets them when the game starts and puts
+// the usual ones back when it ends (0 = use Hearth's normal setting).
+const DEFAULTS = { proton: '', args: '', env: '', mangohud: false, gamemode: false, fsr: false, fpsLimit: 0, tdp: 0 };
 
 /** What kind of launch a game has, which decides the settings it can have. */
 function kindOf(g) {
@@ -87,7 +89,9 @@ class GameOptions {
   get(id) { return { ...DEFAULTS, ...((this.store.data.gameOptions || {})[id] || {}) }; }
   set(id, patch) {
     const clean = {};
-    for (const k of Object.keys(DEFAULTS)) if (k in patch) clean[k] = typeof DEFAULTS[k] === 'boolean' ? !!patch[k] : String(patch[k] || '').slice(0, 2000);
+    for (const k of Object.keys(DEFAULTS)) if (k in patch) clean[k] = typeof DEFAULTS[k] === 'boolean' ? !!patch[k]
+      : typeof DEFAULTS[k] === 'number' ? Math.max(0, Math.min(k === 'tdp' ? 120 : 240, Math.round(+patch[k] || 0)))
+      : String(patch[k] || '').slice(0, 2000);
     this.store.update(d => { d.gameOptions = d.gameOptions || {}; d.gameOptions[id] = { ...this.get(id), ...clean }; });
     return this.get(id);
   }
