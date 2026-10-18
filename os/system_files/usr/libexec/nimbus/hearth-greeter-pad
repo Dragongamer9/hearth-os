@@ -1,0 +1,117 @@
+#!/usr/bin/python3
+"""hearth-greeter-pad: the controller works on Hearth's login screen.
+
+While the login screen (sddm-greeter) is up, controller buttons become keys for it: the D-pad and left stick
+are the arrow keys, A is Enter, B is Backspace, Start is Enter, Y clears. Nothing happens at any other time
+(Hearth reads the controller itself once you're signed in). Runs as a system service (hearth-greeter-pad).
+"""
+import os
+import select
+import sys
+import time
+
+try:
+    import evdev
+    from evdev import ecodes as e
+except ImportError:
+    sys.exit(0)
+
+KEYS = {e.BTN_SOUTH: e.KEY_ENTER, e.BTN_EAST: e.KEY_BACKSPACE, e.BTN_NORTH: e.KEY_ESC, e.BTN_START: e.KEY_ENTER,
+        e.BTN_DPAD_UP: e.KEY_UP, e.BTN_DPAD_DOWN: e.KEY_DOWN, e.BTN_DPAD_LEFT: e.KEY_LEFT, e.BTN_DPAD_RIGHT: e.KEY_RIGHT,
+        e.BTN_TL: e.KEY_LEFT, e.BTN_TR: e.KEY_RIGHT}
+HAT = {(e.ABS_HAT0X, -1): e.KEY_LEFT, (e.ABS_HAT0X, 1): e.KEY_RIGHT, (e.ABS_HAT0Y, -1): e.KEY_UP, (e.ABS_HAT0Y, 1): e.KEY_DOWN}
+STICK = 0.6        # how far the left stick goes before it's an arrow press
+REPEAT_AFTER, REPEAT_EVERY = 0.38, 0.12
+
+
+def greeter_up():
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f'/proc/{pid}/comm') as f:
+                if f.read().strip().startswith('sddm-greeter'):
+                    return True
+        except OSError:
+            pass
+    return False
+
+
+def pads():
+    out = []
+    for path in evdev.list_devices():
+        try:
+            d = evdev.InputDevice(path)
+        except OSError:
+            continue
+        caps = d.capabilities()
+        if e.BTN_SOUTH in caps.get(e.EV_KEY, []) and e.EV_ABS in caps:
+            out.append(d)
+        else:
+            d.close()
+    return out
+
+
+def main():
+    ui = evdev.UInput({e.EV_KEY: sorted(set(KEYS.values()) | set(HAT.values()))}, name='Hearth login controller')
+    devices, last_scan, up, checked = [], 0, False, 0
+    stick = {}      # (dev, axis) -> (key, pressed_at, last_repeat)
+
+    def tap(key, down):
+        ui.write(e.EV_KEY, key, 1 if down else 0)
+        ui.syn()
+
+    while True:
+        now = time.monotonic()
+        if now - checked > 1:
+            up, checked = greeter_up(), now
+        if not up:
+            for d in devices:
+                d.close()
+            devices, stick = [], {}
+            time.sleep(1)
+            continue
+        if now - last_scan > 3:
+            known = {d.path for d in devices}
+            devices += [d for d in pads() if d.path not in known]
+            last_scan = now
+        if not devices:
+            time.sleep(0.5)
+            continue
+        r, _, _ = select.select(devices, [], [], 0.05)
+        for d in r:
+            try:
+                events = list(d.read())
+            except OSError:
+                devices.remove(d)
+                continue
+            for ev in events:
+                if ev.type == e.EV_KEY and ev.code in KEYS and ev.value in (0, 1):
+                    tap(KEYS[ev.code], ev.value == 1)
+                elif ev.type == e.EV_ABS and ev.code in (e.ABS_HAT0X, e.ABS_HAT0Y):
+                    for (axis, v), key in HAT.items():
+                        if axis == ev.code:
+                            tap(key, ev.value == v)
+                elif ev.type == e.EV_ABS and ev.code in (e.ABS_X, e.ABS_Y):
+                    info = d.absinfo(ev.code)
+                    mid, span = (info.max + info.min) / 2, (info.max - info.min) / 2 or 1
+                    v = (ev.value - mid) / span
+                    key = None
+                    if v < -STICK:
+                        key = e.KEY_LEFT if ev.code == e.ABS_X else e.KEY_UP
+                    elif v > STICK:
+                        key = e.KEY_RIGHT if ev.code == e.ABS_X else e.KEY_DOWN
+                    held = stick.get((d.path, ev.code))
+                    if key and (not held or held[0] != key):
+                        tap(key, True); tap(key, False)
+                        stick[(d.path, ev.code)] = (key, now, now)
+                    elif not key and held:
+                        stick.pop((d.path, ev.code), None)
+        for k, (key, at, last) in list(stick.items()):   # a held stick repeats
+            if now - at > REPEAT_AFTER and now - last > REPEAT_EVERY:
+                tap(key, True); tap(key, False)
+                stick[k] = (key, at, now)
+
+
+if __name__ == '__main__':
+    main()

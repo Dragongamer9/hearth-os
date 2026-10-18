@@ -85,6 +85,7 @@ PORTALS
 
 # ------------------------------------------------------------------ boot straight into Nimbus
 systemctl enable nimbus-autologin.service
+systemctl enable hearth-greeter-pad.service   # the controller on the login screen
 
 # ------------------------------------------------------------------ boot splash
 # Hearth's Plymouth theme (system_files/usr/share/plymouth/themes/hearth, drawn by os/branding/make-assets.py).

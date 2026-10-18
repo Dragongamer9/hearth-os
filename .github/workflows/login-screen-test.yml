@@ -1,0 +1,41 @@
+# Loads Hearth's login screen (the SDDM theme) in SDDM's test mode, inside the Hearth OS image, and fails if
+# QML reports errors. Logs and a screenshot go on the run page.
+name: Login screen test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [linux-host, main]
+    paths: ['os/system_files/usr/share/sddm/themes/hearth/**', '.github/workflows/login-screen-test.yml']
+
+jobs:
+  greeter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make room
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+      - name: Run the greeter in test mode
+        run: |
+          sudo podman run --rm -v "$PWD/os/system_files/usr/share/sddm/themes/hearth:/theme:ro" -v "$PWD:/out" \
+            ghcr.io/dragongamer9/hearth:latest bash -c '
+              set -x
+              dnf5 -y -q install xorg-x11-server-Xvfb xwd ImageMagick >/dev/null 2>&1 || dnf -y -q install xorg-x11-server-Xvfb xwd ImageMagick >/dev/null 2>&1
+              G=$(command -v sddm-greeter-qt6 || command -v sddm-greeter)
+              Xvfb :9 -screen 0 1280x800x24 & sleep 2
+              DISPLAY=:9 QT_QUICK_BACKEND=software timeout 20 "$G" --test-mode --theme /theme > /out/greeter.log 2>&1 &
+              sleep 14
+              xwd -root -display :9 -silent | convert xwd:- /out/login.png || true
+              sleep 7; cat /out/greeter.log'
+          if grep -E "qrc:|file:.*(Error|error)|ReferenceError|TypeError|is not a type|module .* is not installed|Cannot assign" greeter.log | grep -v "Binding loop"; then
+            echo "::error title=Login screen::$(grep -E "Error|is not a type|not installed|Cannot assign" greeter.log | head -5 | tr '\n' '|')"; exit 1
+          fi
+          echo "::notice title=Login screen::loaded without QML errors ($(wc -l < greeter.log) log lines)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: login-screen
+          path: |
+            greeter.log
+            login.png
