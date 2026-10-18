@@ -8,7 +8,7 @@ on:
   # Changes to the installer USB on the work branch build it and boot-test it (never uploaded from here).
   push:
     branches: [linux-host]
-    paths: ['os/installer/**', '.github/workflows/installer-iso.yml']
+    paths: ['os/installer/**', 'os/live/src/hearth-install', 'os/live/src/hearth-live-prep', '.github/workflows/installer-iso.yml']
   workflow_dispatch:
     inputs:
       upload:
