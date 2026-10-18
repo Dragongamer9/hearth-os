@@ -19,12 +19,14 @@ pub struct Bridge {
     pub profiles: crate::profiles::Profiles,
     /// The parental-controls PIN unlocks managing profiles for a few minutes.
     pub pin_until: std::time::Instant,
+    /// Asks the person to pick a file (set by the app: a file dialog).
+    pub pick_file: std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
 }
 
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
         let store = Store::open(paths::data_dir().join("library.json"));
-        Bridge { library: Library::new(store, paths::home()), version: version.to_string(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles: crate::profiles::Profiles::open(&paths::data_dir()), pin_until: std::time::Instant::now() }
+        Bridge { library: Library::new(store, paths::home()), version: version.to_string(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles: crate::profiles::Profiles::open(&paths::data_dir()), pin_until: std::time::Instant::now(), pick_file: std::sync::Arc::new(|_| None) }
     }
 
     /// Messages that aren't calls: the power menu, log lines. Returns true when Hearth should close
@@ -87,11 +89,32 @@ impl Bridge {
             "game.options.set" => { let id = req("id")?; crate::game_options::set(&mut self.library.store, &id, &a["options"])?; self.game_options(&id) }
             "game.launch" => {
                 let id = req("id")?;
-                let g = self.library.games.get(&id).ok_or("That game isn't in the library anymore. Try rescanning.")?;
-                if !g.installed { return Err(format!("{} isn't installed yet.", g.title)); }
-                let uri = g.launch_uri.clone().ok_or("The Rust version can't start this kind of game yet.")?;
-                std::process::Command::new("steam").arg(&uri).spawn().map_err(|e| format!("Couldn't start Steam: {e}"))?;
-                Ok(json!({"tracked": false}))
+                // Parental controls: allowed games and play time a day.
+                let pc = self.profiles.can_play(Some(&id), chrono::Local::now(), 0.0);
+                if pc["ok"] != true { return Err(pc["reason"].as_str().unwrap_or("Not now").to_string()); }
+                self.library.launch(&id)
+            }
+            "game.close" => Ok(json!({"ok": self.library.close_running()})),
+            "game.pause" => Ok(json!({"paused": self.library.pause()?})),
+            "game.unpause" => { self.library.resume(); Ok(json!({"paused": false})) }
+            "library.addManual" => {
+                let file = match a["path"].as_str() { Some(p) if !p.is_empty() => p.to_string(), _ => match (self.pick_file)("Choose a game: a program, AppImage, .desktop file or Windows .exe") { Some(f) => f, None => return Ok(Value::Null) } };
+                if !std::path::Path::new(&file).exists() { return Err(format!("File not found: {file}")); }
+                let id = format!("manual:{:012x}", crate::library::now_ms() * 1000 + (std::process::id() as u64 % 1000));
+                let m = json!({"id": id, "title": crate::manual::title_for(&file), "path": file, "added": crate::library::now_ms()});
+                io(self.library.store.update(|d| { d.entry("manual").or_insert(json!([])).as_array_mut().unwrap().push(m); }))?;
+                self.library.scan();
+                self.library.games.get(&id).map(|g| self.library.dto(g)).ok_or("Couldn't add it".into())
+            }
+            "library.remove" => {
+                let id = req("id")?;
+                io(self.library.store.update(|d| {
+                    for list in ["manual"] { if let Some(a) = d.get_mut(list).and_then(|v| v.as_array_mut()) { a.retain(|m| m["id"] != id.as_str()); } }
+                    for list in ["favorites", "hidden"] { if let Some(a) = d.get_mut(list).and_then(|v| v.as_array_mut()) { a.retain(|m| m != id.as_str()); } }
+                    if let Some(st) = d.get_mut("stats").and_then(|v| v.as_object_mut()) { st.remove(&id); }
+                }))?;
+                self.library.scan();
+                Ok(Value::Null)
             }
             // The top bar and Quick Access
             "sys.status" => Ok(system::status(self.max_volume())),
@@ -241,7 +264,7 @@ mod tests {
     #[test]
     fn answers_calls_and_says_what_is_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let mut b = Bridge { library: Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), version: "0.0.23".into(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles: crate::profiles::Profiles::open(dir.path()), pin_until: std::time::Instant::now() };
+        let mut b = Bridge { library: Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), version: "0.0.23".into(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles: crate::profiles::Profiles::open(dir.path()), pin_until: std::time::Instant::now(), pick_file: std::sync::Arc::new(|_| None) };
         let r = b.handle(&json!({"type":"call","id":7,"method":"library.get","args":{}})).unwrap();
         assert_eq!(r["id"], 7); assert_eq!(r["ok"], true); assert_eq!(r["value"]["games"], json!([]));
         let r = b.handle(&json!({"type":"call","id":8,"method":"epic.signIn"})).unwrap();
