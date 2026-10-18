@@ -85,6 +85,9 @@ impl Bridge {
             "library.collection.rename" => crate::collections::rename(&mut self.library.store, &req("id")?, a["name"].as_str().unwrap_or("")).map(|_| Value::Null),
             "library.collection.remove" => crate::collections::remove(&mut self.library.store, &req("id")?).map(|_| Value::Null),
             "library.collection.set" => crate::collections::set_game(&mut self.library.store, &req("id")?, a["game"].as_str().unwrap_or(""), a["on"] == true).map(|_| Value::Null),
+            "emu.status" => Ok(crate::emulators::status(&paths::home())),
+            "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
+            "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
             "game.options.get" => self.game_options(&req("id")?),
             "game.options.set" => { let id = req("id")?; crate::game_options::set(&mut self.library.store, &id, &a["options"])?; self.game_options(&id) }
             "game.launch" => {
@@ -221,7 +224,7 @@ impl Bridge {
     }
     pub fn game_options(&self, id: &str) -> Result<Value, String> {
         let g = self.library.games.get(id).ok_or("That game isn't in the library anymore.")?;
-        let kind = if g.source == "steam" { "steam" } else { "external" };
+        let kind = match g.source { "steam" => "steam", "emu" => "emu", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", _ => "external" };
         Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
                   "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
                   "gamemode": system::has("gamemoderun"), "canResetPrefix": false}))
