@@ -510,6 +510,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .tile.qr{position:relative}.tile.qr .qrb{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:rgba(10,14,20,.82);color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.tile.qr .qrb svg{width:12px;height:12px}
 .qrrow{display:flex;gap:8px;align-items:stretch}.qrrow .btn:first-child{flex:1;justify-content:flex-start}
 .osi-dl{display:flex;gap:18px;align-items:baseline;margin:0 0 22px;color:var(--dim);font-size:15px}.osi-dl b{font-size:22px;color:var(--text)}
+.frav{position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none;margin-right:12px}.frav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.frav i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#56606e;border:2px solid var(--bg)}.frow.on .frav i{background:#5aa9ff}.frow.ing .frav i{background:#7ad15a}.frow.ing small{color:#7ad15a}
 </style>
 </head>
 <body>
@@ -919,7 +920,7 @@ function blip(f=700,d=.035,v=.035){
 // =====================================================================
 // Views
 // =====================================================================
-const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',settings:'Settings',stores:'Game stores',gameset:'Game settings'};
+const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',friends:'Friends',settings:'Settings',stores:'Game stores',gameset:'Game settings'};
 
 // A profile with parental limits sees only the games it's allowed (when a grown-up chose some).
 const allowedList = () => { const s=PROF.s, c=s&&s.hasPin&&s.list.find(p=>p.current); return c&&c.limits&&c.limits.allowed ? c.limits.allowed : null; };
@@ -967,6 +968,21 @@ function layoutPreview(id){
     <i style="left:6%;top:48%;width:44%;height:12%;background:var(--text)"></i><i style="left:6%;top:64%;width:30%;height:5%"></i><i class="acc" style="left:6%;top:76%;width:16%;height:10%"></i>`;
   return `<i class="glow" style="left:0;top:0;width:100%;height:42%"></i><i style="left:6%;top:36%;width:30%;height:34%;background:var(--text)"></i>
     ${[0,1,2,3].map(i=>`<i style="left:${39+i*14}%;top:44%;width:12%;height:26%"></i>`).join('')}${[0,1,2,3,4,5].map(i=>`<i style="left:${6+i*15}%;top:80%;width:13%;height:20%"></i>`).join('')}`;
+}
+
+// ---------- Steam friends: who's online and what they're playing ----------
+const FR = {s:null};
+function loadFriends(){ if(!host){ FR.s={signedIn:true,online:2,friends:[{id:'1',name:'Sarah',state:'ingame',game:'Hades II'},{id:'2',name:'Mike',state:'online'},{id:'3',name:'Jo',state:'offline'}]}; return render(null,true); }
+  call('steam.friends',{},30000).then(r=>{ FR.s=r; if(S.view==='friends') render(null,true); }).catch(e=>toast(e.message)); }
+function viewFriends(){
+  const s=FR.s;
+  if(!s) return note('Loading your Steam friends…');
+  if(!s.signedIn) return note('Sign in to Steam on this device to see your friends.');
+  if(!s.friends.length) return note('No friends yet, or Steam hasn\'t listed them on this device. Open Steam once and they\'ll show here.');
+  const line=f=>f.state==='ingame'?`Playing ${esc(f.game||'a game')}`:f.state==='online'?'Online':f.state==='away'||f.state==='snooze'?'Away':f.state==='unknown'?'Private profile or checking…':'Offline';
+  return `<div class="muted" style="margin:4px 0 16px">${s.online} online · ${s.friends.length} friends</div><div class="rows fr">${s.friends.map((f,i)=>`<div class="row frow ${f.state==='ingame'?'ing':f.state==='online'?'on':''}" data-f data-k="fr-${i}">
+    <span class="frav">${f.avatar?`<img src="${esc(f.avatar)}" alt="" loading="lazy">`:`<b>${esc((f.name||'?').charAt(0).toUpperCase())}</b>`}<i></i></span>
+    <div class="rt"><b>${esc(f.name)}</b><small>${line(f)}</small></div></div>`).join('')}</div>`;
 }
 
 // ---------- Quick Resume (Hearth): games put aside stay frozen in memory and carry on where they were ----------
@@ -2228,7 +2244,7 @@ function viewSettings(){
     <div class="rows">${body}</div></div>`;
 }
 
-const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
+const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 function render(focusKey, quiet){
@@ -2258,6 +2274,7 @@ function navigate(view, params={}, push=true){
   if(view==='settings') onSettingsTab(S.settingsTab);
   if(view==='downloads'){ if(host) startDownloadPoll(); loadSysInfo(); }
   if(view==='stores') loadAccounts();
+  if(view==='friends') loadFriends();
   if(view==='gameset') loadGameSet(S.game);
 }
 function goBack(){
@@ -2270,7 +2287,7 @@ function goBack(){
 // Overlays
 // =====================================================================
 function renderMenu(){
-  const items=[['home','home','Home'],['library','lib','Library'],['downloads','dl','Downloads'],['settings','gear','Settings']];
+  const items=[['home','home','Home'],['library','lib','Library'],['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),['settings','gear','Settings']];
   $('#menu').innerHTML = `<div class="brand">${LINUX?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
@@ -3771,6 +3788,7 @@ function onSysEvent(name, data){
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
+  if(name==='friends'){ if(S.view==='friends' && !S.layers.length) loadFriends(); return; }
   if(name==='quickResume'){ applyQuick(data); if(!OVERLAY && !S.layers.length) render(null,true); else { renderFooter(); if(S.layers.includes('qam')) renderQam(); } return; }
   if(name==='game.paused'){ S.paused=!!data.paused; if(S.layers.includes('qam')) renderQam(); return; }
   if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);

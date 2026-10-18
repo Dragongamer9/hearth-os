@@ -9,6 +9,7 @@ pub mod bridge;
 pub mod collections;
 pub mod display;
 pub mod emulators;
+pub mod friends;
 pub mod game_options;
 pub mod gameinfo;
 pub mod gamescope;

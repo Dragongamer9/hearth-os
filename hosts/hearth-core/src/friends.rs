@@ -1,0 +1,97 @@
+//! Steam friends: who's online and what they're playing. The list comes from the Steam client on this device
+//! (its cached friends in localconfig.vdf, so no Steam Web API key is needed); each friend's state from their
+//! public Steam Community profile (?xml=1), fetched in the background and kept for a minute. Friends with a
+//! private profile show without a state.
+
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
+struct Status { at: u64, state: String, game: Option<String>, message: Option<String>, avatar: Option<String>, name: Option<String> }
+
+fn cache() -> &'static Mutex<HashMap<u64, Status>> { static C: OnceLock<Mutex<HashMap<u64, Status>>> = OnceLock::new(); C.get_or_init(Default::default) }
+static FETCHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Friends the Steam client knows: (id64, name, avatar hash)
+pub fn known(home: &std::path::Path) -> Vec<(u64, String, Option<String>)> {
+    let Some(steam) = crate::steam::steam_path(home) else { return vec![] };
+    let Some(acct) = crate::steam::account_dir(&steam) else { return vec![] };
+    let Some(cfg) = crate::vdf::load(&acct.join("config/localconfig.vdf")) else { return vec![] };
+    let mine: u64 = acct.file_name().and_then(|n| n.to_str()).and_then(|n| n.parse().ok()).unwrap_or(0);
+    let mut out = Vec::new();
+    for (k, v) in cfg.obj(&["UserLocalConfigStore", "friends"]).cloned().unwrap_or_default() {
+        let Ok(acc) = k.parse::<u64>() else { continue };   // other keys are settings, not friends
+        if acc == mine || acc == 0 { continue; }
+        let Some(name) = v.str(&["name"]).map(str::to_string) else { continue };
+        let avatar = v.str(&["avatar"]).filter(|h| h.len() >= 20 && !h.chars().all(|c| c == '0')).map(str::to_string);
+        out.push((crate::steam::ID64_BASE + acc, name, avatar));
+    }
+    out
+}
+
+/// One <tag>...</tag> from Steam's profile XML (CDATA or plain).
+pub fn tag(xml: &str, t: &str) -> Option<String> {
+    let start = xml.find(&format!("<{t}>"))? + t.len() + 2;
+    let end = xml[start..].find(&format!("</{t}>"))? + start;
+    let v = xml[start..end].trim().trim_start_matches("<![CDATA[").trim_end_matches("]]>").trim();
+    if v.is_empty() { None } else { Some(v.to_string()) }
+}
+
+fn fetch(id: u64) -> Option<Status> {
+    let r = crate::http::get(&format!("https://steamcommunity.com/profiles/{id}/?xml=1"), &[]).ok()?;
+    if !r.ok() { return None; }
+    let x = &r.text;
+    let game = tag(x, "inGameInfo").and_then(|g| tag(&g, "gameName"));
+    let state = tag(x, "onlineState").unwrap_or_else(|| "unknown".into());
+    Some(Status { at: crate::library::now_ms(), state: if game.is_some() { "ingame".into() } else { state }, game, message: tag(x, "stateMessage").map(|m| m.replace("<br/>", " · ")),
+                  avatar: tag(x, "avatarMedium"), name: tag(x, "steamID") })
+}
+
+/// Fetches stale states in the background (a few at a time); the host hears {name:'friends'} when they're in.
+fn refresh(ids: Vec<u64>) {
+    if ids.is_empty() || FETCHING.swap(true, std::sync::atomic::Ordering::SeqCst) { return; }
+    std::thread::spawn(move || {
+        let chunks: Vec<Vec<u64>> = ids.chunks(ids.len().div_ceil(4).max(1)).map(|c| c.to_vec()).collect();
+        let workers: Vec<_> = chunks.into_iter().map(|c| std::thread::spawn(move || for id in c {
+            let st = fetch(id).unwrap_or(Status { at: crate::library::now_ms(), state: "unknown".into(), game: None, message: None, avatar: None, name: None });
+            cache().lock().unwrap().insert(id, st);
+        })).collect();
+        for w in workers { let _ = w.join(); }
+        FETCHING.store(false, std::sync::atomic::Ordering::SeqCst);
+        crate::stores::notify(json!({"type": "event", "name": "friends", "data": {}}));
+    });
+}
+
+/// The friends list for the screen: playing first, then online, then the rest, each by name.
+pub fn list(home: &std::path::Path) -> Value {
+    let friends = known(home);
+    let now = crate::library::now_ms();
+    let mut stale = Vec::new();
+    let mut out: Vec<Value> = {
+        let c = cache().lock().unwrap();
+        friends.iter().map(|(id, name, hash)| {
+            let st = c.get(id);
+            if st.map(|s| now.saturating_sub(s.at) > 60_000).unwrap_or(true) { stale.push(*id); }
+            let avatar = st.and_then(|s| s.avatar.clone()).or(hash.as_ref().map(|h| format!("https://avatars.steamstatic.com/{h}_medium.jpg")));
+            json!({"id": id.to_string(), "name": st.and_then(|s| s.name.clone()).unwrap_or_else(|| name.clone()),
+                   "avatar": avatar.map(|a| crate::artcache::url(&a)), "state": st.map(|s| s.state.clone()).unwrap_or_else(|| "unknown".into()),
+                   "game": st.and_then(|s| s.game.clone()), "message": st.and_then(|s| s.message.clone())})
+        }).collect()
+    };
+    refresh(stale);
+    let rank = |v: &Value| match v["state"].as_str().unwrap_or("") { "ingame" => 0, "online" => 1, "unknown" => 2, _ => 3 };
+    out.sort_by(|a, b| rank(a).cmp(&rank(b)).then(a["name"].as_str().unwrap_or("").to_lowercase().cmp(&b["name"].as_str().unwrap_or("").to_lowercase())));
+    let online = out.iter().filter(|f| rank(f) < 2).count();
+    json!({"friends": out, "online": online, "signedIn": crate::steam::steam_path(home).and_then(|s| crate::steam::account_dir(&s)).is_some()})
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reads_steam_profile_xml() {
+        let x = "<profile><steamID><![CDATA[Gabe]]></steamID><onlineState>in-game</onlineState><stateMessage><![CDATA[In-Game<br/>Half-Life 3]]></stateMessage><inGameInfo><gameName><![CDATA[Half-Life 3]]></gameName></inGameInfo></profile>";
+        assert_eq!(super::tag(x, "steamID").as_deref(), Some("Gabe"));
+        assert_eq!(super::tag(x, "inGameInfo").and_then(|g| super::tag(&g, "gameName")).as_deref(), Some("Half-Life 3"));
+        assert_eq!(super::tag(x, "missing"), None);
+    }
+}

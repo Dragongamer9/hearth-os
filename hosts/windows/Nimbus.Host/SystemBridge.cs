@@ -77,6 +77,7 @@ public sealed class SystemBridge : IDisposable
         };
         Games.InstallFinished += (id, title, error) => Event("install.done", new { id, title, error });
         _parentalTimer.Tick += (_, _) => ParentalTick();
+        Library.Friends.Changed += () => Event("friends", new { });
 
         Games.GameStarted += id => { Log($"game started {id}"); Event("game.started", new { id }); StartPlayClock(); };
         Games.QuickChanged += msg =>
@@ -259,7 +260,7 @@ public sealed class SystemBridge : IDisposable
                     host = "Ember (WebView2)",
                     version = typeof(SystemBridge).Assembly.GetName().Version?.ToString(3),
                     session = Program.IsShell,
-                    features = new[] { "desktopMode", "mantel", "quickResume", "profiles" },
+                    features = new[] { "desktopMode", "mantel", "quickResume", "profiles", "friends" },
                     user = Environment.UserName,
                 };
             case "system.info": return SystemInfo.Get();
@@ -367,6 +368,8 @@ public sealed class SystemBridge : IDisposable
                 Event("quickResume", Games.QuickState());
                 return new { state = Games.QuickState() };
             case "quickResume.set": Games.QuickResumeOn = !(a.TryGetProperty("on", out var qo) && qo.ValueKind == JsonValueKind.False); return Games.QuickState();
+            // Steam friends: who's online and what they're playing
+            case "steam.friends": return await Task.Run(Library.Friends.List);
             // Profiles: who's playing (switching restarts Ember with their files and Steam account)
             case "profiles.get": return Profiles.Info(Picked);
             case "profiles.create": return Profiles.Create(Str(a, "name") ?? "", Str(a, "color"));
