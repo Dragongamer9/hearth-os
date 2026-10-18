@@ -151,11 +151,64 @@ pub mod bt_devices {
     }
     pub fn info(mac: &str) -> Option<Value> { run("bluetoothctl", &["info", mac]).ok().map(|t| parse_info(mac, &t)) }
     pub fn paired() -> Value { Value::Array(devices(Some("Paired")).iter().filter_map(|m| info(m)).collect()) }
+    /// Pairs, trusts and connects, in one bluetoothctl session with its own "just works" agent (controllers
+    /// have no screen or keys to confirm a code). Scanning has to be off while pairing: many adapters drop the
+    /// connection otherwise, which is what made Xbox Series controllers fail ("found it, couldn't connect").
     pub fn pair(mac: &str) -> Value {
-        match run_timeout("bluetoothctl", &["pair", mac], Duration::from_secs(40)) {
-            Ok(_) => { let _ = run("bluetoothctl", &["trust", mac]); let _ = run_timeout("bluetoothctl", &["connect", mac], Duration::from_secs(20)); json!({"ok": true}) }
-            Err(e) => json!({"ok": false, "error": e}),
-        }
+        use std::io::{BufRead, Write};
+        use std::sync::mpsc;
+        // Any scan Hearth is running stops first (they're separate bluetoothctl clients).
+        let _ = run("pkill", &["-f", "bluetoothctl --timeout"]);
+        // A half-done earlier attempt gets in the way of a new one.
+        if info(mac).map(|d| d["paired"] != true).unwrap_or(false) { let _ = run("bluetoothctl", &["cancel-pairing", mac]); }
+        let child = std::process::Command::new("bluetoothctl").stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn();
+        let Ok(mut child) = child else { return json!({"ok": false, "error": "bluetoothctl is missing"}) };
+        let mut input = child.stdin.take().unwrap();
+        let out = child.stdout.take().unwrap();
+        let (tx, rx) = mpsc::channel::<String>();
+        std::thread::spawn(move || { for l in std::io::BufReader::new(out).lines().map_while(Result::ok) { if tx.send(l).is_err() { break; } } });
+        let mut say = |cmd: &str| { let _ = writeln!(input, "{cmd}"); let _ = input.flush(); };
+        // Waits for one of the answers; true for the first (success) list.
+        let wait = |rx: &mpsc::Receiver<String>, ok: &[&str], bad: &[&str], secs: u64| -> Result<(), String> {
+            let until = std::time::Instant::now() + Duration::from_secs(secs);
+            while let Some(left) = until.checked_duration_since(std::time::Instant::now()) {
+                match rx.recv_timeout(left) {
+                    Ok(l) => {
+                        if ok.iter().any(|k| l.contains(k)) { return Ok(()); }
+                        if let Some(b) = bad.iter().find(|k| l.contains(*k)) { return Err(l.split(b).nth(1).unwrap_or("").trim_start_matches(':').trim().to_string()); }
+                    }
+                    Err(_) => break,
+                }
+            }
+            Err("it took too long".into())
+        };
+        say("agent NoInputNoOutput");
+        say("default-agent");
+        say("scan off");
+        std::thread::sleep(Duration::from_millis(600));
+        say(&format!("pair {mac}"));
+        let paired = wait(&rx, &["Pairing successful", "AlreadyExists"], &["Failed to pair"], 40);
+        let r = match paired {
+            Ok(()) => {
+                say(&format!("trust {mac}"));
+                let _ = wait(&rx, &["trust succeeded"], &["Failed to set trusted"], 5);
+                say(&format!("connect {mac}"));
+                // Controllers often connect by themselves right after pairing; either way is fine.
+                let _ = wait(&rx, &["Connection successful", "Connected: yes"], &["Failed to connect"], 15);
+                json!({"ok": true})
+            }
+            Err(e) => {
+                // Forget the failed attempt so the next try starts clean.
+                say(&format!("remove {mac}"));
+                std::thread::sleep(Duration::from_millis(500));
+                json!({"ok": false, "error": if e.is_empty() { "The controller didn't accept the connection".to_string() } else { e }})
+            }
+        };
+        say("quit");
+        std::thread::sleep(Duration::from_millis(200));
+        let _ = child.kill();
+        let _ = child.wait();
+        r
     }
     pub fn unpair(mac: &str) -> Value { match run("bluetoothctl", &["remove", mac]) { Ok(_) => json!({"ok": true}), Err(e) => json!({"ok": false, "error": e}) } }
 }
@@ -181,7 +234,8 @@ pub mod bt_scan {
     pub fn start(seconds: u64, emit: Emit) {
         let me = SCAN.fetch_add(1, Ordering::SeqCst) + 1;
         std::thread::spawn(move || {
-            let mut seen: HashSet<String> = bt_devices::devices(None).into_iter().collect();
+            // Devices Bluetooth already knows but that aren't paired (a controller whose pairing failed) show too.
+            let mut seen: HashSet<String> = bt_devices::devices(Some("Paired")).into_iter().collect();
             let scanner = std::thread::spawn(move || { let _ = run_timeout("bluetoothctl", &["--timeout", &seconds.to_string(), "scan", "on"], Duration::from_secs(seconds + 5)); });
             let until = std::time::Instant::now() + Duration::from_secs(seconds);
             while std::time::Instant::now() < until && SCAN.load(Ordering::SeqCst) == me {
@@ -204,21 +258,51 @@ pub mod bt_scan {
         std::thread::spawn(move || {
             let _ = bt::set_power(true);
             let alive = move || AUTO.load(Ordering::SeqCst) == me;
-            std::thread::spawn(move || while alive() { let _ = run_timeout("bluetoothctl", &["--timeout", "120", "scan", "on"], Duration::from_secs(125)); });
-            let mut tried: HashMap<String, std::time::Instant> = HashMap::new();
+            // The scan runs in its own bluetoothctl; it's stopped while a controller pairs (pairing while
+            // scanning fails on many adapters) and starts again after.
+            let scanner: Arc<std::sync::Mutex<Option<std::process::Child>>> = Arc::default();
+            let pairing = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            {
+                let (scanner, pairing) = (scanner.clone(), pairing.clone());
+                std::thread::spawn(move || while alive() {
+                    if pairing.load(Ordering::SeqCst) { std::thread::sleep(Duration::from_millis(500)); continue; }
+                    let c = std::process::Command::new("bluetoothctl").args(["--timeout", "120", "scan", "on"])
+                        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+                    let Ok(c) = c else { return };
+                    *scanner.lock().unwrap() = Some(c);
+                    loop {
+                        std::thread::sleep(Duration::from_millis(500));
+                        let mut g = scanner.lock().unwrap();
+                        match g.as_mut().map(|c| c.try_wait()) { Some(Ok(None)) if alive() && !pairing.load(Ordering::SeqCst) => continue, _ => {} }
+                        if let Some(mut c) = g.take() { let _ = c.kill(); let _ = c.wait(); }
+                        break;
+                    }
+                });
+            }
+            let mut tried: HashMap<String, (std::time::Instant, u32)> = HashMap::new();
             while AUTO.load(Ordering::SeqCst) == me {
                 std::thread::sleep(Duration::from_secs(2));
                 for mac in bt_devices::devices(None) {
-                    if tried.get(&mac).map(|t| t.elapsed() < Duration::from_secs(20)).unwrap_or(false) { continue; }
+                    // A controller that didn't pair is tried again after a pause (the person may still be
+                    // holding its pair button), a few times.
+                    if let Some((t, n)) = tried.get(&mac) { if t.elapsed() < Duration::from_secs(8) || *n >= 5 { continue; } }
                     let Some(d) = bt_devices::info(&mac) else { continue };
                     if d["paired"] == true || !is_gamepad(&d) { continue; }
-                    tried.insert(mac.clone(), std::time::Instant::now());
+                    let n = tried.get(&mac).map(|x| x.1).unwrap_or(0) + 1;
+                    tried.insert(mac.clone(), (std::time::Instant::now(), n));
                     emit(ev("bt.pad", json!({"state": "pairing", "name": d["name"]})));
+                    pairing.store(true, Ordering::SeqCst);
+                    if let Some(mut c) = scanner.lock().unwrap().take() { let _ = c.kill(); let _ = c.wait(); }
+                    let _ = run("bluetoothctl", &["scan", "off"]);
                     let r = bt_devices::pair(&mac);
-                    emit(ev("bt.pad", json!({"state": if r["ok"] == true { "paired" } else { "failed" }, "name": d["name"]})));
+                    pairing.store(false, Ordering::SeqCst);
+                    crate::bridge::log(&format!("bluetooth: pairing {} ({mac}) try {n}: {}", d["name"], if r["ok"] == true { "ok".to_string() } else { r["error"].to_string() }));
+                    let ok = r["ok"] == true;
+                    emit(ev("bt.pad", json!({"state": if ok { "paired" } else { "failed" }, "name": d["name"], "error": r["error"]})));
                     break;
                 }
             }
+            if let Some(mut c) = scanner.lock().unwrap().take() { let _ = c.kill(); let _ = c.wait(); }
         });
     }
 }

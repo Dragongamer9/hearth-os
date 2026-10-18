@@ -507,6 +507,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 .tile.qr{position:relative}.tile.qr .qrb{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:rgba(10,14,20,.82);color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.tile.qr .qrb svg{width:12px;height:12px}
 .qrrow{display:flex;gap:8px;align-items:stretch}.qrrow .btn:first-child{flex:1;justify-content:flex-start}
+.osi-dl{display:flex;gap:18px;align-items:baseline;margin:0 0 22px;color:var(--dim);font-size:15px}.osi-dl b{font-size:22px;color:var(--text)}
 </style>
 </head>
 <body>
@@ -3350,8 +3351,10 @@ function viewOsInstall(){
         .filter(([k])=>OSI.mode==='beside'?k!=='disk':k!=='shrink').filter((x,i,a)=>a.findIndex(y=>y[1]===x[1])===i);
       const order=['start','shrink','disk','format','download','boot','user','finish','done'], at=order.indexOf(s.stage);
       const left = s.left!=null ? ` · about ${s.left<90?'a minute':Math.round(s.left/60)+' minutes'} left` : '';
-      body=`<h1>Installing Hearth OS</h1><p class="lead">${esc(s.text||'Working')}${left}</p>
-        <div class="storage" style="height:12px;margin:8px 0 22px"><i style="width:${Math.max(2,s.pct||0)}%;transition:width .6s"></i></div>
+      // While downloading: how far along, how fast, and how long is left, every second (so it never looks frozen).
+      const dl = s.stage==='download' && s.bytes ? `<div class="osi-dl"><b>${s.percent??0}%</b><span>${((s.got||0)/1e9).toFixed(1)} of ${(s.bytes/1e9).toFixed(1)} GB</span><span>${s.speed?(s.speed/1e6).toFixed(1)+' MB/s':'Starting…'}</span>${s.left!=null?`<span>about ${s.left<90?'a minute':Math.round(s.left/60)+' minutes'} left</span>`:''}</div>` : '';
+      body=`<h1>Installing Hearth OS</h1><p class="lead">${esc(s.stage==='download'&&s.bytes?'Downloading Hearth OS':(s.text||'Working'))}${dl?'':left}</p>
+        <div class="storage" style="height:12px;margin:8px 0 ${dl?'10px':'22px'}"><i style="width:${Math.max(2,s.pct||0)}%;transition:width .6s"></i></div>${dl}
         <div class="rows">${steps.map(([k,t])=>{ const i=order.indexOf(k), st=i<at?'ok':i===at||(k==='disk'&&s.stage==='format')?'now':'';
           return `<div class="row" data-f data-k="osi-st-${k}"><span class="ricon">${st==='ok'?I.check:st==='now'?I.refresh:''}</span><div class="rt"><b style="${st?'':'color:var(--dim)'}">${t}</b></div></div>`; }).join('')}</div>
         ${note('Keep the device plugged in and don\'t take out the USB stick. You can use Mantel meanwhile: Power › Switch to desktop.')}`;

@@ -218,3 +218,16 @@ class BootMenu(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DownloadProgress(unittest.TestCase):
+    def test_counts_bytes_received_but_not_loopback(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, 'dev')
+            pathlib.Path(f).write_text('Inter-|   Receive\n face |bytes    packets\n    lo: 5000 10 0 0 0 0 0 0 5000 0 0 0 0 0 0 0\n'
+                                        '  wlp2s0: 1200000 900 0 0 0 0 0 0 3000 0 0 0 0 0 0 0\n  eth0: 300 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n')
+            self.assertEqual(H.rx_bytes(f), 1200300)
+
+    def test_says_how_much_and_how_fast(self):
+        self.assertEqual(H.download_text(3_200_000_000, 9_600_000_000, 12_400_000), 'Downloading Hearth OS · 3.2 of 9.6 GB · 12.4 MB/s')
+        self.assertEqual(H.download_text(0, 0, 0), 'Downloading Hearth OS')

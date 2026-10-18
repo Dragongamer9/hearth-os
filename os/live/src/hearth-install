@@ -66,8 +66,12 @@ def sh(cmd, check=True, input=None, **kw):
     return r
 
 
+_STAGE_LOCK = __import__('threading').Lock()
+
+
 def stage(name, pct, text, **extra):
-    print('stage: ' + json.dumps({'stage': name, 'pct': round(max(0, min(100, pct)), 1), 'text': text, **extra}), flush=True)
+    with _STAGE_LOCK:
+            print('stage: ' + json.dumps({'stage': name, 'pct': round(max(0, min(100, pct)), 1), 'text': text, **extra}), flush=True)
 
 
 def part_path(disk, n):
@@ -615,6 +619,29 @@ def parse_needed(line):
     return int(m.group(1)), int(round(float(m.group(2)) * mult))
 
 
+def rx_bytes(net='/proc/net/dev'):
+    """Bytes received so far on every network interface but loopback."""
+    total = 0
+    try:
+        for line in open(net).read().splitlines()[2:]:
+            name, _, rest = line.partition(':')
+            if name.strip() != 'lo' and rest.split():
+                total += int(rest.split()[0])
+    except OSError:
+        pass
+    return total
+
+
+def download_text(got, total, bps):
+    """'Downloading Hearth OS · 3.2 of 9.6 GB · 12.4 MB/s'"""
+    t = 'Downloading Hearth OS'
+    if total:
+        t += f' · {min(got, total) / 1e9:.1f} of {total / 1e9:.1f} GB'
+    if bps:
+        t += f' · {bps / 1e6:.1f} MB/s'
+    return t
+
+
 def deploy(image, root_uuid):
     """Downloads Hearth OS onto the drive. Progress from ostree's "Fetching layer" lines."""
     stage('download', 18, 'Connecting')
@@ -629,8 +656,33 @@ def deploy(image, root_uuid):
            '--imgref', ref, '--target-imgref', ref,
            '--karg', f'root=UUID={root_uuid}', '--karg', 'rootflags=subvol=root', '--karg', 'rw']
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-    needed, done, total, tail = 0, 0, 0, []
+    st = {'needed': 0, 'done': 0, 'total': 0, 'unpacking': False}
+    tail = []
     started = time.time()
+    rx0 = rx_bytes()
+
+    # Every second: how much has come in (the network's own count) and how fast, so the screen moves even while
+    # one big piece downloads. The layer count is the fallback when the network count isn't there.
+    def watch():
+        last_t, last_rx, bps = time.time(), rx_bytes(), 0.0
+        while p.poll() is None:
+            time.sleep(1)
+            if st['unpacking']:
+                continue
+            now, rx = time.time(), rx_bytes()
+            got = max(0, rx - rx0)
+            inst = (rx - last_rx) / max(0.001, now - last_t)
+            bps = inst if bps == 0 else bps * 0.7 + inst * 0.3   # smoothed, so the number doesn't jump around
+            last_t, last_rx = now, rx
+            total = st['total']
+            frac_layers = st['done'] / st['needed'] if st['needed'] else 0
+            frac = min(0.99, max(frac_layers, got / total if total else 0))
+            left = int((total - got) / bps) if total and bps > 50_000 and got < total else None
+            stage('download', 20 + 60 * frac, download_text(got, total, bps), done=st['done'], of=st['needed'], bytes=total,
+                  got=min(got, total) if total else got, speed=int(bps), left=left, percent=int(frac * 100))
+
+    import threading
+    threading.Thread(target=watch, daemon=True).start()
     for line in p.stdout:
         line = line.strip()
         if not line:
@@ -638,16 +690,12 @@ def deploy(image, root_uuid):
         tail = (tail + [line])[-8:]
         n = parse_needed(line)
         if n:
-            needed, total = n
-            stage('download', 20, f'Downloading Hearth OS ({total / 1e9:.1f} GB)', bytes=total)
+            st['needed'], st['total'] = n
+            stage('download', 20, download_text(0, st['total'], 0), bytes=st['total'], got=0, speed=0, percent=0)
         elif re.match(r'Fetching (layer|ostree chunk|ostree commit)', line):
-            done = min(done + 1, needed or done + 1)
-            frac = done / needed if needed else 0
-            took = time.time() - started
-            left = int(took / frac - took) if frac > 0.05 else None
-            stage('download', 20 + 60 * frac, f'Downloading Hearth OS ({total / 1e9:.1f} GB)' if total else 'Downloading Hearth OS',
-                  done=done, of=needed, bytes=total, left=left)
+            st['done'] = min(st['done'] + 1, st['needed'] or st['done'] + 1)
         elif re.search(r'Deploying|Staging|Writing|Committing', line):
+            st['unpacking'] = True
             stage('download', 81, 'Unpacking Hearth OS')
     if p.wait() != 0:
         msg = next((l for l in reversed(tail) if re.search(r'error', l, re.I)), tail[-1] if tail else 'download failed')

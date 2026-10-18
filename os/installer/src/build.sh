@@ -49,6 +49,16 @@ Options=size=50%%,nr_inodes=1m
 WantedBy=local-fs.target
 UNIT
 systemctl enable var-tmp.mount NetworkManager bluetooth
+# Bluetooth controllers: Xbox Series (and other Bluetooth LE) controllers need BlueZ's own HID handling, and
+# pairing again over an earlier half-done attempt must be allowed without a code.
+mkdir -p /etc/bluetooth
+grep -q '^UserspaceHID' /etc/bluetooth/input.conf 2>/dev/null || printf '[General]\nUserspaceHID=true\n' >> /etc/bluetooth/input.conf
+if [ -f /etc/bluetooth/main.conf ]; then
+  sed -i 's/^#\?\s*JustWorksRepairing.*/JustWorksRepairing = always/; s/^#\?\s*FastConnectable.*/FastConnectable = true/' /etc/bluetooth/main.conf
+else
+  printf '[General]\nJustWorksRepairing = always\nFastConnectable = true\n' > /etc/bluetooth/main.conf
+fi
+mkdir -p /usr/lib/modules-load.d && echo uhid > /usr/lib/modules-load.d/hearth-uhid.conf
 rm -f /etc/localtime; systemd-firstboot --timezone UTC || true
 
 # ---------------------------------------------------------------- the Hearth app and the installer
