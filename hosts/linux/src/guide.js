@@ -42,6 +42,45 @@ function gamepadDevices(sysRoot = '/sys/class/input') {
   return out;
 }
 
+// Every button and direction, for driving the overlay from here (a window that gamescope draws on top
+// doesn't reliably get the controller through the browser's Gamepad API).
+const EV_ABS = 3;
+const KEYS = { 0x130: 'a', 0x131: 'b', 0x133: 'x', 0x134: 'y', 0x136: 'lb', 0x137: 'rb', 0x13a: 'select', 0x13b: 'start',
+  0x13c: 'guide', 0x220: 'up', 0x221: 'down', 0x222: 'left', 0x223: 'right' };
+const ABS_X = 0, ABS_Y = 1, HAT_X = 16, HAT_Y = 17;
+
+/**
+ * Controller input in a chunk of raw input_event records, as [{b, down}] with b in a b x y lb rb select start
+ * guide up down left right. The d-pad comes as hat axes or buttons, the left stick as directions too.
+ * `state` keeps the axes between chunks.
+ */
+function padEvents(buf, state) {
+  const out = [];
+  const dir = (neg, pos, v, key) => {
+    const was = state[key] || 0, now = v < 0 ? -1 : v > 0 ? 1 : 0;
+    if (was === now) return;
+    if (was) out.push({ b: was < 0 ? neg : pos, down: false });
+    if (now) out.push({ b: now < 0 ? neg : pos, down: true });
+    state[key] = now;
+  };
+  for (let off = 0; off + EVENT_SIZE <= buf.length; off += EVENT_SIZE) {
+    const type = buf.readUInt16LE(off + 16), code = buf.readUInt16LE(off + 18), value = buf.readInt32LE(off + 20);
+    if (type === EV_KEY && KEYS[code] && value !== 2) out.push({ b: KEYS[code], down: value === 1 });
+    else if (type === EV_ABS) {
+      if (code === HAT_X) dir('left', 'right', value, 'hx');
+      else if (code === HAT_Y) dir('up', 'down', value, 'hy');
+      else if (code === ABS_X || code === ABS_Y) {
+        // xpad-style sticks go -32768..32767; some devices 0..65535. Past ~60% counts as a direction.
+        if (value > 40000) state.unsigned = true;
+        const v = state.unsigned ? value - 32768 : value;
+        const d = v < -20000 ? -1 : v > 20000 ? 1 : (Math.abs(v) < 12000 ? 0 : (state[code === ABS_X ? 'sx' : 'sy'] || 0));
+        if (code === ABS_X) dir('left', 'right', d, 'sx'); else dir('up', 'down', d, 'sy');
+      }
+    }
+  }
+  return out;
+}
+
 /** Button changes in a chunk of raw input_event records: [{code, value}] for Guide and View. */
 function buttonEvents(buf) {
   const out = [];
@@ -87,9 +126,11 @@ class GuideButton extends EventEmitter {
       const s = fs.createReadStream(dev.path, { highWaterMark: EVENT_SIZE * 64 });
       let rest = Buffer.alloc(0);
       let viewTimer = null;
+      const state = {};
       s.on('data', chunk => {
         const buf = Buffer.concat([rest, chunk]);
         const whole = buf.length - (buf.length % EVENT_SIZE);
+        if (this.listenerCount('button')) for (const e of padEvents(buf.subarray(0, whole), state)) this.emit('button', e.b, e.down);
         for (const e of buttonEvents(buf.subarray(0, whole))) {
           if (e.code === BTN_MODE && e.value === 1) this.fire('guide');
           if (e.code === BTN_SELECT) {
@@ -112,4 +153,4 @@ class GuideButton extends EventEmitter {
   }
 }
 
-module.exports = { GuideButton, hasBit, gamepadDevices, guidePresses, buttonEvents, EVENT_SIZE };
+module.exports = { GuideButton, hasBit, gamepadDevices, guidePresses, buttonEvents, padEvents, EVENT_SIZE };

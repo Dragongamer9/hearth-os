@@ -58,3 +58,13 @@ test('steam account: MostRecent, then AutoLoginUser, then newest', () => {
   assert.strictEqual(pickUser({ ...users, 4: { AccountName: 'x', MostRecent: '1' } }, 'auto')[0], '4');
   assert.strictEqual(pickUser({}, null), null);
 });
+
+test('guide: controller presses and directions for the overlay', () => {
+  const { padEvents, EVENT_SIZE } = require('../src/guide');
+  const ev = list => { const b = Buffer.alloc(EVENT_SIZE * list.length); list.forEach(([t, c, v], i) => { b.writeUInt16LE(t, i * EVENT_SIZE + 16); b.writeUInt16LE(c, i * EVENT_SIZE + 18); b.writeInt32LE(v, i * EVENT_SIZE + 20); }); return b; };
+  const st = {};
+  assert.deepStrictEqual(padEvents(ev([[1, 0x130, 1], [1, 0x130, 2], [1, 0x130, 0], [1, 0x13c, 1]]), st),
+    [{ b: 'a', down: true }, { b: 'a', down: false }, { b: 'guide', down: true }]);
+  assert.deepStrictEqual(padEvents(ev([[3, 17, -1], [3, 17, 0], [3, 0, 30000], [3, 0, 15000], [3, 0, 0]]), st),
+    [{ b: 'up', down: true }, { b: 'up', down: false }, { b: 'right', down: true }, { b: 'right', down: false }]);
+});

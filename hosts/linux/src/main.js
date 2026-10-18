@@ -284,18 +284,56 @@ function createOverlay(platform) {
 function showOverlay() {
   if (!overlay) return false;
   overlayOn = true;
+  // Unmapped and mapped again, so gamescope sees it as the newest overlay (Steam has overlay windows too).
+  if (overlay.isVisible()) overlay.hide();
   overlay.showInactive();
   overlay.focus();
+  setWinAtom(overlay, 'STEAM_OVERLAY', 1).catch(() => {});
   setWinAtom(overlay, 'STEAM_INPUT_FOCUS', 1).catch(() => {});
-  overlay.webContents.send('nimbus:msg', { type: 'event', name: 'overlay.shown', data: {} });
+  // The controller is read here (evdev) and passed on: a window gamescope draws on top doesn't reliably get
+  // it through the browser's Gamepad API, which left the overlay open with no way to close it.
+  const sendMsg = m => overlay.webContents.send('nimbus:msg', m);
+  sendMsg({ type: 'event', name: 'padHost', data: { connected: guide && guide.open.size ? 1 : 0 } });
+  sendMsg({ type: 'event', name: 'overlay.shown', data: {} });
   return true;
 }
 function hideOverlay() {
-  if (!overlay || !overlayOn) return;
+  if (!overlay) return;
+  if (!overlayOn && !overlay.isVisible()) return;
   overlayOn = false;
+  stopRepeat();
   overlay.webContents.send('nimbus:msg', { type: 'event', name: 'overlay.hidden', data: {} });
   setWinAtom(overlay, 'STEAM_INPUT_FOCUS', 0).catch(() => {});
   overlay.hide();
+  // Belt and braces: if it's somehow still up a moment later, hide it again.
+  setTimeout(() => { if (!overlayOn && overlay && !overlay.isDestroyed() && overlay.isVisible()) overlay.hide(); }, 600);
+}
+
+// Controller presses for the overlay, with repeat on held directions like the UI's own.
+let repeatTimer = null, lastPad = { b: '', t: 0 };
+function stopRepeat() { clearTimeout(repeatTimer); repeatTimer = null; }
+function overlayPad(b, down) {
+  if (!overlayOn || !overlay) return;
+  if (!down) { stopRepeat(); return; }
+  const now = Date.now();
+  if (b === lastPad.b && now - lastPad.t < 40) return;      // the same press from two devices
+  lastPad = { b, t: now };
+  if (b === 'guide') return;                                 // Guide closes it (handled with 'press')
+  const send = () => overlay && !overlay.isDestroyed() && overlay.webContents.send('nimbus:msg', { type: 'event', name: 'pad', data: { b } });
+  send();
+  stopRepeat();
+  if (['up', 'down', 'left', 'right'].includes(b)) {
+    const again = () => { send(); repeatTimer = setTimeout(again, 85); };
+    repeatTimer = setTimeout(again, 340);
+  }
+}
+
+/** Is Hearth's own window the one on screen? (gamescope knows; elsewhere, window focus.) */
+async function hearthOnScreen() {
+  if (!win || !win.isVisible()) return false;
+  if (!inGamescope()) return win.isFocused();
+  const f = (await gamescope.cardinals('GAMESCOPE_FOCUSED_WINDOW').catch(() => []))[0];
+  return f ? f === xid(win) : win.isFocused();
 }
 
 // ------------------------------------------------------------------ power and volume buttons (Game Mode)
@@ -544,14 +582,16 @@ app.whenReady().then(() => {
   // Guide button over a game: bring Nimbus back with Quick Access open.
   guide = new GuideButton();
   guide.holdView = !!library.store.data.holdView;
-  guide.on('press', how => {
-    log(`overlay: ${how} pressed${library.runningId ? '' : ' (no game running)'}`);
-    if (!library.runningId || (win && win.isVisible() && win.isFocused())) return; // the UI handles it itself then
-    if (overlayOn) return hideOverlay();
+  // Over anything that isn't Hearth (a game, Steam, any app), Guide opens the overlay; again closes it.
+  guide.on('press', async how => {
+    if (overlayOn) { log(`overlay: ${how} pressed, closing`); return hideOverlay(); }
+    if (await hearthOnScreen()) return;           // Hearth's own UI handles Guide itself
+    log(`overlay: ${how} pressed over ${library.runningId ? 'a game' : 'another app'}`);
     if (showOverlay()) return;
     comeBack();
     post({ type: 'event', name: 'pad', data: { b: 'guide' } });
   });
+  guide.on('button', overlayPad);
   // Opened just for Settings (from Desktop Mode): the desktop's own controller support handles Guide,
   // and the desktop handles the power and volume buttons.
   if (!START_PAGE) guide.start();
