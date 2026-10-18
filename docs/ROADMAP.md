@@ -43,6 +43,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Overlay rework: stays on screen see-through and only changes visibility and input (Game Bar style), one focus owner so the screen stops jumping back, Ember closes a stuck overlay
 - [x] Live player counter: Hearth and Ember report in, the count shows on the website and About page (off switch in Settings › System › Privacy)
 
+## 0.0.22
+
+- [x] Ember's full Mantel looks and works like Hearth OS's: floating taskbar, launcher, Quick Access, power menu, Hearth menu (Xbox button), controls card, volume bar, fireside wallpaper, Hearth's controller layout
+
 ## 0.0.25
 
 - [ ] New live ISOs (AMD/Intel and Nvidia) with Install next to Windows (no ISOs before this)
