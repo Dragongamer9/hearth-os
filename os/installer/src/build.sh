@@ -17,6 +17,10 @@ dnf install -y \
 
 # ---------------------------------------------------------------- live boot (like the full live USB)
 KVER=$(find /usr/lib/modules -maxdepth 1 -mindepth 1 -type d -printf '%P\n' | head -1)
+# Fedora's small base image has only the core kernel: graphics (amdgpu, i915, nouveau, virtual machines),
+# Wi-Fi, Bluetooth and controller drivers are in kernel-modules. Without them nothing shows on screen.
+dnf install -y "kernel-modules-${KVER}" "kernel-modules-extra-${KVER}" || dnf install -y kernel-modules kernel-modules-extra
+ls "/usr/lib/modules/${KVER}/kernel/drivers/gpu/drm" | head
 # No boot splash on the installer USB: start-up waited for it to close, and the installer screen never came.
 dnf remove -y plymouth || true
 DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
