@@ -12,7 +12,7 @@ public sealed record GameDto(
     bool CanUninstall = false, string? Note = null, string? InstallKind = null);
 
 public sealed record LibraryDto(List<GameDto> Games, Dictionary<string, bool> Sources, Dictionary<string, int> Counts,
-                                string? RunningId, bool SteamBackground);
+                                string? RunningId, bool SteamBackground, object? QuickResume = null);
 
 public sealed record DownloadsDto(List<GameDto> Active, bool Changed);
 
@@ -23,6 +23,9 @@ public sealed class LibraryService : IDisposable
 
     private readonly LibraryStore _store = new();
     private readonly GameMonitor _monitor = new();
+    private readonly QuickResume _quick = new();
+    /// <summary>Quick Resume's list changed: (message for a toast, or null).</summary>
+    public event Action<string?>? QuickChanged;
     public Stores.StoreAccounts Accounts { get; }
     private Dictionary<string, Game> _games = new();
     private Dictionary<string, int> _counts = new();
@@ -43,6 +46,8 @@ public sealed class LibraryService : IDisposable
             InstallFinished?.Invoke(id, title, error);
         };
         _monitor.Started += id => GameStarted?.Invoke(id);
+        _quick.Changed += closedForRoom => QuickChanged?.Invoke(closedForRoom is { } id && _games.TryGetValue(id, out var cg)
+            ? $"Closed {cg.Title} to make room in memory (Quick Resume)" : null);
         _monitor.StartTimedOut += id => GameStartTimedOut?.Invoke(id);
         _monitor.Exited += (id, minutes) =>
         {
@@ -67,7 +72,8 @@ public sealed class LibraryService : IDisposable
             _store.Read(d => new Dictionary<string, bool>(d.Sources)),
             _counts,
             _monitor.RunningId,
-            _store.Read(d => d.SteamBackground));
+            _store.Read(d => d.SteamBackground),
+            QuickState());
     }
 
     private async Task ScanAsync()
@@ -349,7 +355,16 @@ public sealed class LibraryService : IDisposable
     public async Task<bool> LaunchAsync(string id)
     {
         if (!_games.TryGetValue(id, out var g)) throw new InvalidOperationException("That game isn't in the library anymore. Try rescanning.");
+        // Put aside with Quick Resume: carry on where it was.
+        if (_quick.Has(id)) { await QuickResumeAsync(id); return true; }
+        if (_monitor.RunningId == id) { GameMonitor.FocusWindow(g.ProcessDirs.ToArray()); return true; }
         if (!g.Installed) throw new InvalidOperationException($"{g.Title} isn't installed yet.");
+        if (_monitor.RunningId is { } other)
+        {
+            var ot = _games.TryGetValue(other, out var og) ? og.Title : "the game that's running";
+            if (!QuickResumeOn) throw new InvalidOperationException($"Exit {ot} first (Quick Access → Now playing)");
+            await PutAsideAsync();
+        }
         if (g.Source == "steam" && SteamBackground)
         {
             await SteamScanner.EnsureRunningSilentAsync();
@@ -390,6 +405,44 @@ public sealed class LibraryService : IDisposable
     }
 
     public Task<bool> CloseRunningAsync() => _monitor.CloseAsync();
+
+    // ------------------------------------------------------------------ Quick Resume
+
+    public bool QuickResumeOn { get => _store.Read(d => d.QuickResume); set => _store.Update(d => d.QuickResume = value); }
+
+    public object QuickState() => new
+    {
+        runningId = _monitor.RunningId,
+        on = QuickResumeOn,
+        list = _quick.List().Select(e => new { id = e.Id, title = _games.TryGetValue(e.Id, out var g) ? g.Title : e.Id, frozenAt = e.FrozenAt }).ToList(),
+    };
+
+    /// <summary>The running game goes aside: frozen where it is. Play time so far is saved now.</summary>
+    public async Task PutAsideAsync()
+    {
+        var d = _monitor.Detach() ?? throw new InvalidOperationException("No game is running.");
+        try { var over = _quick.Add(d.Id, d.Dirs); foreach (var e in over) await GameMonitor.CloseDirsAsync(e.Dirs); }
+        catch { _monitor.Resume(d.Id, d.Dirs); throw; }
+        var minutes = (int)Math.Round((DateTime.UtcNow - d.Started).TotalMinutes);
+        _store.Update(x =>
+        {
+            if (!x.Stats.TryGetValue(d.Id, out var s)) x.Stats[d.Id] = s = new GameStats();
+            s.LastPlayed = Time.NowMs;
+            s.Minutes += Math.Max(0, minutes);
+        });
+    }
+
+    /// <summary>Back to a game that was put aside (the running one goes aside in its place) and in front.</summary>
+    public async Task QuickResumeAsync(string id)
+    {
+        if (!_quick.Has(id)) throw new InvalidOperationException("That game isn't in Quick Resume anymore.");
+        if (_monitor.RunningId is not null) await PutAsideAsync();
+        var e = _quick.Take(id);
+        _monitor.Resume(e.Id, e.Dirs);
+        GameMonitor.FocusWindow(e.Dirs);
+    }
+
+    public Task QuickCloseAsync(string id) => _quick.CloseAsync(id);
 
     // ------------------------------------------------------------------ Nimbus-run installs (Epic, GOG)
 
@@ -480,5 +533,5 @@ public sealed class LibraryService : IDisposable
     public string DesktopStyle { get => _store.Read(d => d.DesktopStyle) ?? "mantel"; set => _store.Update(d => d.DesktopStyle = value); }
     public string MantelWallpaper { get => _store.Read(d => d.MantelWallpaper) ?? "anim:fireside"; set => _store.Update(d => d.MantelWallpaper = value); }
 
-    public void Dispose() => _monitor.Dispose();
+    public void Dispose() { _monitor.Dispose(); _quick.Dispose(); }
 }
