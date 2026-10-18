@@ -36,34 +36,40 @@ SCROLL_SPEED = 16.0         # wheel notches/s at full tilt
 ALT_HOLD = 0.9              # s the window switcher stays open after the last LB/RB
 HELP_TAP = 0.45             # View shorter than this (and not used with the D-pad) shows the controls
 
+# A full US keyboard: every character a terminal or a password needs, plus Esc, Ctrl, Alt and arrows.
+# Shift, Ctrl and Alt apply to the next key; Caps keeps letters upper case until pressed again.
 OSK_ROWS = [
-    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-    ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
-    ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', '@'],
-    ['z', 'x', 'c', 'v', 'b', 'n', 'm', '.', '-', '_'],
-    ['shift', 'space', 'bksp', 'tab', 'enter'],
+    ['`', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 'bksp'],
+    ['tab', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\\'],
+    ['caps', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', "'", 'enter'],
+    ['shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 'up'],
+    ['ctrl', 'alt', 'esc', 'space', 'left', 'down', 'right'],
 ]
-OSK_SHIFTED = {'1': '!', '2': '#', '3': '$', '4': '%', '5': '&', '6': '*', '7': '+', '8': '?', '9': '(',
-               '0': ')', '.': ',', '-': '/', '_': '=', '@': '~'}
+OSK_SHIFTED = {'`': '~', '1': '!', '2': '@', '3': '#', '4': '$', '5': '%', '6': '^', '7': '&', '8': '*',
+               '9': '(', '0': ')', '-': '_', '=': '+', '[': '{', ']': '}', '\\': '|', ';': ':', "'": '"',
+               ',': '<', '.': '>', '/': '?'}
+OSK_SPECIAL = {'space': 'KEY_SPACE', 'bksp': 'KEY_BACKSPACE', 'tab': 'KEY_TAB', 'enter': 'KEY_ENTER', 'esc': 'KEY_ESC',
+               'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}
 
 # Characters the keyboard types → (key, needs Shift). US layout.
-CHARS = {' ': ('KEY_SPACE', False), '.': ('KEY_DOT', False), '-': ('KEY_MINUS', False),
-         '_': ('KEY_MINUS', True), '@': ('KEY_2', True), '!': ('KEY_1', True), '#': ('KEY_3', True),
-         '$': ('KEY_4', True), '%': ('KEY_5', True), '&': ('KEY_7', True), '*': ('KEY_8', True),
-         '+': ('KEY_EQUAL', True), '?': ('KEY_SLASH', True), '(': ('KEY_9', True), ')': ('KEY_0', True),
-         ',': ('KEY_COMMA', False), '/': ('KEY_SLASH', False), '=': ('KEY_EQUAL', False),
-         '~': ('KEY_GRAVE', True)}
+_BASE = {'`': 'KEY_GRAVE', '-': 'KEY_MINUS', '=': 'KEY_EQUAL', '[': 'KEY_LEFTBRACE', ']': 'KEY_RIGHTBRACE',
+         '\\': 'KEY_BACKSLASH', ';': 'KEY_SEMICOLON', "'": 'KEY_APOSTROPHE', ',': 'KEY_COMMA', '.': 'KEY_DOT',
+         '/': 'KEY_SLASH', ' ': 'KEY_SPACE'}
+CHARS = {c: (k, False) for c, k in _BASE.items()}
 for _c in 'abcdefghijklmnopqrstuvwxyz':
     CHARS[_c] = ('KEY_' + _c.upper(), False)
     CHARS[_c.upper()] = ('KEY_' + _c.upper(), True)
 for _c in '0123456789':
     CHARS[_c] = ('KEY_' + _c, False)
+for _plain, _shifted in OSK_SHIFTED.items():
+    CHARS[_shifted] = (CHARS[_plain][0], True)
 
 ARROWS = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}
 SNAP = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}  # with Super
 
 KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
-                   {'KEY_LEFTSHIFT', 'KEY_LEFTALT', 'KEY_LEFTMETA', 'KEY_TAB', 'KEY_ENTER', 'KEY_ESC',
+                   set(OSK_SPECIAL.values()) |
+                   {'KEY_LEFTSHIFT', 'KEY_LEFTCTRL', 'KEY_LEFTALT', 'KEY_LEFTMETA', 'KEY_TAB', 'KEY_ENTER', 'KEY_ESC',
                     'KEY_BACKSPACE', 'KEY_Q'})
 
 
@@ -94,7 +100,7 @@ class Pad:
         self.precise = False
         self.speed = 1.0           # pointer speed multiplier (Hearth Settings › Controller)
         self.sel = -1
-        self.osk = {'row': 1, 'col': 0, 'shift': False}
+        self.osk = {'row': 1, 'col': 1, 'shift': False, 'caps': False, 'ctrl': False, 'alt': False}
         self.repeat = {}           # nav direction → next repeat time (radial / osk)
         self.acc = [0.0, 0.0, 0.0, 0.0]   # sub-pixel pointer x/y, wheel v/h (in 1/120 notches)
 
@@ -157,31 +163,30 @@ class Pad:
         self.set_mode('desk')
         self.out.send({'t': 'radial', 'open': False, 'pick': pick})
 
-    def type_char(self, ch):
+    def type_char(self, ch, mods=()):
         if ch not in CHARS:
             return
         key, shift = CHARS[ch]
-        self.tap(*(['KEY_LEFTSHIFT', key] if shift else [key]))
+        self.tap(*(list(mods) + (['KEY_LEFTSHIFT'] if shift else []) + [key]))
 
     def osk_key(self, k):
         """A key on the on-screen keyboard: chosen with the controller, or tapped."""
-        if k == 'shift':
-            self.osk['shift'] = not self.osk['shift']
+        o = self.osk
+        if k in ('shift', 'caps', 'ctrl', 'alt'):
+            o[k] = not o[k]
             return self.osk_msg()
-        if k == 'space':
-            return self.tap('KEY_SPACE')
-        if k == 'bksp':
-            return self.tap('KEY_BACKSPACE')
-        if k == 'tab':
-            return self.tap('KEY_TAB')
-        if k == 'enter':
-            return self.tap('KEY_ENTER')
-        if self.osk['shift']:
-            self.type_char(OSK_SHIFTED.get(k, k.upper()))
-            self.osk['shift'] = False
-            self.osk_msg()
+        mods = (['KEY_LEFTCTRL'] if o['ctrl'] else []) + (['KEY_LEFTALT'] if o['alt'] else [])
+        if k in OSK_SPECIAL:
+            self.tap(*(mods + (['KEY_LEFTSHIFT'] if o['shift'] else []) + [OSK_SPECIAL[k]]))
         else:
-            self.type_char(k)
+            if k.isalpha():
+                ch = k.upper() if o['shift'] != o['caps'] else k
+            else:
+                ch = OSK_SHIFTED.get(k, k) if o['shift'] else k
+            self.type_char(ch, mods)
+        if o['shift'] or o['ctrl'] or o['alt']:   # one key each
+            o.update(shift=False, ctrl=False, alt=False)
+            self.osk_msg()
 
     def osk_move(self, d):
         r, c = self.osk['row'], self.osk['col']
