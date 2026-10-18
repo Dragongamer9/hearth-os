@@ -50,17 +50,27 @@ jobs:
           echo "::notice title=Libraries::all found ($(sudo podman run --rm hearth-rs du -h /usr/lib/nimbus/nimbus | cut -f1))"
       - name: Run it on Hearth OS once
         run: |
-          mkdir -p shots
-          sudo podman run --rm -v "$PWD/shots:/shots:z" hearth-rs bash -c '
-            dnf5 -y -q install xorg-x11-server-Xvfb ImageMagick dbus-daemon >/dev/null 2>&1 || dnf -y -q install xorg-x11-server-Xvfb ImageMagick >/dev/null 2>&1
-            useradd -m tester; cd /home/tester
-            su tester -c "export HOME=/home/tester DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 NO_AT_BRIDGE=1
-              Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 2
-              dbus-run-session -- /usr/lib/nimbus/nimbus --windowed > /tmp/run.log 2>&1 &
-              sleep 15; import -window root /shots/hearth-os.png; tail -c 2000 /tmp/run.log > /shots/run.log; true"
-          ' || true
+          mkdir -p shots; chmod 777 shots
+          cat > shots/run.sh <<'SH'
+          set -x
+          dnf5 -y install xorg-x11-server-Xvfb ImageMagick xwd || dnf -y install xorg-x11-server-Xvfb ImageMagick
+          id tester || useradd -m tester
+          cat > /tmp/inner.sh <<'IN'
+          export HOME=/home/tester DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 NO_AT_BRIDGE=1
+          Xvfb :99 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 &
+          sleep 3
+          dbus-run-session -- /usr/lib/nimbus/nimbus --windowed > /shots/run.log 2>&1 &
+          sleep 20
+          import -window root /shots/hearth-os.png || xwd -root -silent | convert xwd:- /shots/hearth-os.png
+          IN
+          chmod 755 /tmp/inner.sh
+          runuser -u tester -- bash /tmp/inner.sh
+          SH
+          sed -i 's/^          //' shots/run.sh
+          sudo podman run --rm -v "$PWD/shots:/shots:z" hearth-rs bash /shots/run.sh > shots/outer.log 2>&1 || true
           ls -la shots
-          echo "::notice title=App output::$(tail -c 1500 shots/run.log 2>/dev/null | tr '\n' '|')"
+          echo "::notice title=Container::$(tail -c 1500 shots/outer.log | tr '\n' '|')"
+          echo "::notice title=App output::$(tail -c 1500 shots/run.log 2>/dev/null | tr '\n' '|') ."
       - name: Publish the screenshot (ci/rust-os-shots)
         run: |
           git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
