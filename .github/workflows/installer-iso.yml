@@ -19,8 +19,8 @@ on:
       app:
         description: 'Which Hearth app the USB carries'
         type: choice
-        options: [electron, rust]
-        default: electron
+        options: [rust, electron]
+        default: rust
 
 permissions:
   contents: write
@@ -32,8 +32,8 @@ jobs:
     timeout-minutes: 240
     env:
       HAVE_SF: ${{ secrets.SF_SSH_KEY != '' && secrets.SF_USER != '' && secrets.SF_PROJECT != '' }}
-      APP: ${{ inputs.app || (github.ref_name == 'rust-host' && 'rust') || 'electron' }}
-      SHOTS: ${{ (inputs.app == 'rust' || github.ref_name == 'rust-host') && 'ci/installer-shots-rust' || 'ci/installer-shots' }}
+      APP: ${{ inputs.app || 'rust' }}
+      SHOTS: ${{ inputs.app == 'electron' && 'ci/installer-shots-electron' || 'ci/installer-shots' }}
       SF_USER: ${{ secrets.SF_USER }}
       SF_PROJECT: ${{ secrets.SF_PROJECT }}
     steps:

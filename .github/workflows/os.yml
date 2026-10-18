@@ -10,7 +10,7 @@ name: Hearth OS
 on:
   push:
     branches: [main]
-    paths: ['os/**', 'hosts/linux/**', 'ui/**', '.github/workflows/os.yml']
+    paths: ['os/**', 'hosts/linux/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'ui/**', '.github/workflows/os.yml']
   pull_request:
     paths: ['os/**', '.github/workflows/os.yml']
   schedule:
@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   app:
-    name: Build the Hearth app (unpacked)
+    name: Build the Hearth app (Rust)
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
@@ -42,17 +42,20 @@ jobs:
         run: |
           v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
           echo "version=$v" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      # The Rust app (hosts/hearth-rs): one file, drawn by the system's WebKit (os/build_files/build.sh installs it).
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          node-version: '22'
+          workspaces: hosts/hearth-rs
       - name: Build
-        working-directory: hosts/linux
+        working-directory: hosts/hearth-rs
         run: |
-          npm install --no-audit --no-fund
-          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
-          npm run dist:dir
-          test -x dist/linux-unpacked/nimbus
-          tar -C dist/linux-unpacked -cf ../../nimbus-app.tar .
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev >/dev/null
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release
+          mkdir -p /tmp/app && cp target/release/hearth /tmp/app/hearth
+          tar -C /tmp/app -cf ../../nimbus-app.tar .
       - uses: actions/upload-artifact@v4
         with:
           name: nimbus-app
