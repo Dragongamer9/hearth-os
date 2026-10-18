@@ -32,9 +32,9 @@ class Importer extends EventEmitter {
     this.store.update(d => { d.importOffered = Date.now(); });
     await this.scan();
     const drives = (this.state.scan && this.state.scan.drives) || [];
-    const games = drives.reduce((n, d) => n + d.steam.length + d.epic.length + d.gog.length, 0);
+    const games = drives.reduce((n, d) => n + d.steam.length + d.epic.length + d.gog.length + (d.lutris || []).length, 0);
     if (games > 0) {
-      const from = drives.filter(d => d.steam.length + d.epic.length + d.gog.length).map(d => d.name);
+      const from = drives.filter(d => d.steam.length + d.epic.length + d.gog.length + (d.lutris || []).length).map(d => d.name);
       this.set({ offer: { games, from } });
       log(`import: offering ${games} games from ${from.join(', ')}`);
     }
@@ -99,6 +99,19 @@ class Importer extends EventEmitter {
     // GOG: Hearth's own list of GOG installs.
     if (r.gog && r.gog.length) {
       this.store.update(d => { d.gogInstalls = { ...(d.gogInstalls || {}) }; for (const g of r.gog) d.gogInstalls[g.id] = g.path; });
+    }
+    // Lutris: they become your own games in Hearth (Library), started with Proton or natively like any other.
+    if (r.lutris && r.lutris.length) {
+      const crypto = require('node:crypto');
+      const missing = r.lutris.filter(g => !g.exe).map(g => g.name);
+      this.store.update(d => {
+        d.manual = d.manual || [];
+        for (const g of r.lutris.filter(x => x.exe)) {
+          if (d.manual.some(m => m.path === g.exe)) continue;
+          d.manual.push({ id: 'manual:' + crypto.randomBytes(6).toString('hex'), title: g.name, path: g.exe, added: Date.now() });
+        }
+      });
+      if (missing.length) notes.push(`Copied ${missing.join(', ')} from Lutris, but couldn't tell which program starts ${missing.length === 1 ? 'it' : 'them'}. Add ${missing.length === 1 ? 'it' : 'them'} with Library › Add a game.`);
     }
     // Epic: legendary needs to know about them (and needs you signed in to Epic for that).
     if (r.epic && r.epic.length) {
