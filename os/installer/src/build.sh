@@ -10,16 +10,17 @@ dnf install -y \
   gtk3 nss alsa-lib libXScrnSaver libxkbcommon at-spi2-atk cups-libs libdrm mesa-libgbm \
   NetworkManager NetworkManager-wifi wpa_supplicant bluez polkit pciutils usbutils \
   ntfsprogs ntfs-3g dosfstools e2fsprogs btrfs-progs xfsprogs lvm2 efibootmgr policycoreutils shadow-utils \
-  rpm-ostree bootupd plymouth-plugin-script \
+  rpm-ostree bootupd \
   linux-firmware amd-gpu-firmware intel-gpu-firmware nvidia-gpu-firmware iwlwifi-mvm-firmware iwlwifi-dvm-firmware \
   atheros-firmware realtek-firmware mt7xxx-firmware brcmfmac-firmware \
   rsms-inter-fonts google-noto-sans-fonts
 
 # ---------------------------------------------------------------- live boot (like the full live USB)
 KVER=$(find /usr/lib/modules -maxdepth 1 -mindepth 1 -type d -printf '%P\n' | head -1)
-plymouth-set-default-theme hearth || true
+# No boot splash on the installer USB: start-up waited for it to close, and the installer screen never came.
+dnf remove -y plymouth || true
 DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
-  --add "dmsquash-live dmsquash-live-autooverlay plymouth" \
+  --add "dmsquash-live dmsquash-live-autooverlay" --omit "plymouth" \
   "/usr/lib/modules/${KVER}/initramfs.img" "${KVER}"
 # Titanoboa wants the EFI boot files under /boot/efi. Fedora's base image keeps them in a different place than
 # Bazzite (bootupd's copy, or /usr/lib/efi), so take whichever is there.
@@ -96,7 +97,7 @@ chmod 755 /usr/libexec/hearth-installer-cage
 cat >/etc/systemd/system/hearth-installer.service <<'UNIT'
 [Unit]
 Description=Hearth installer (the Hearth app, full screen)
-After=systemd-user-sessions.service plymouth-quit-wait.service NetworkManager.service bluetooth.service
+After=systemd-user-sessions.service NetworkManager.service bluetooth.service
 Conflicts=getty@tty1.service
 [Service]
 User=liveuser
@@ -107,7 +108,8 @@ TTYReset=yes
 TTYVHangup=yes
 TTYVTDisallocate=yes
 StandardInput=tty-fail
-StandardOutput=journal
+StandardOutput=journal+console
+StandardError=journal+console
 UtmpIdentifier=tty1
 UtmpMode=user
 ExecStart=/usr/libexec/hearth-installer-cage
@@ -120,7 +122,7 @@ systemctl enable hearth-installer.service
 systemctl disable getty@tty1.service || true
 systemctl set-default graphical.target
 # Nothing that updates or writes to disk in the background.
-for s in bootc-fetch-apply-updates.timer rpm-ostreed-automatic.timer; do systemctl disable "$s" 2>/dev/null || true; done
+for s in bootc-fetch-apply-updates.timer rpm-ostreed-automatic.timer bootloader-update.service; do systemctl disable "$s" 2>/dev/null || true; done
 
 # ---------------------------------------------------------------- titanoboa's ISO config
 mkdir -p /usr/lib/bootc-image-builder

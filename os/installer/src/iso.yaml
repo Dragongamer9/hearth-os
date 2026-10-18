@@ -4,8 +4,8 @@ grub2:
   timeout: 5
   entries:
     - name: "Install Hearth OS"
-      linux: "/images/pxeboot/vmlinuz quiet rhgb splash root=live:CDLABEL=Hearth-Install enforcing=0 rd.live.image console=ttyS0,115200 console=tty0"
+      linux: "/images/pxeboot/vmlinuz quiet root=live:CDLABEL=Hearth-Install enforcing=0 rd.live.image console=ttyS0,115200 console=tty0"
       initrd: "/images/pxeboot/initrd.img"
     - name: "Install Hearth OS (basic graphics)"
-      linux: "/images/pxeboot/vmlinuz quiet rhgb splash root=live:CDLABEL=Hearth-Install enforcing=0 rd.live.image nomodeset console=ttyS0,115200 console=tty0"
+      linux: "/images/pxeboot/vmlinuz quiet root=live:CDLABEL=Hearth-Install enforcing=0 rd.live.image nomodeset console=ttyS0,115200 console=tty0"
       initrd: "/images/pxeboot/initrd.img"

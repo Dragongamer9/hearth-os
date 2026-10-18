@@ -7,7 +7,6 @@ FROM quay.io/fedora/fedora-bootc:43
 # The Hearth app (built by the workflow into os/nimbus-app, from this commit) and the helpers the installer uses.
 COPY os/nimbus-app /usr/lib/nimbus
 COPY os/system_files/usr/libexec/nimbus/hearth-import /usr/libexec/nimbus/hearth-import
-COPY os/system_files/usr/share/plymouth/themes/hearth /usr/share/plymouth/themes/hearth
 COPY os/installer/src /src
 COPY os/live/src /live
 RUN --mount=type=cache,target=/var/cache/libdnf5 /src/build.sh && rm -rf /src /live
