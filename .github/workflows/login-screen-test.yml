@@ -2,6 +2,9 @@
 # QML reports errors. Logs and a screenshot go on the run page.
 name: Login screen test
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   push:
@@ -22,16 +25,25 @@ jobs:
             ghcr.io/dragongamer9/hearth:latest bash -c '
               set -x
               dnf5 -y -q install xorg-x11-server-Xvfb xwd ImageMagick >/dev/null 2>&1 || dnf -y -q install xorg-x11-server-Xvfb xwd ImageMagick >/dev/null 2>&1
-              G=$(command -v sddm-greeter-qt6 || command -v sddm-greeter)
+              G=$(command -v sddm-greeter-qt6 || command -v sddm-greeter || ls /usr/bin/sddm-greeter* 2>/dev/null | head -1)
+              echo "greeter: $G" > /out/greeter.log
               Xvfb :9 -screen 0 1280x800x24 & sleep 2
-              DISPLAY=:9 QT_QUICK_BACKEND=software timeout 20 "$G" --test-mode --theme /theme > /out/greeter.log 2>&1 &
+              DISPLAY=:9 QT_QUICK_BACKEND=software timeout 20 "$G" --test-mode --theme /theme >> /out/greeter.log 2>&1 &
               sleep 14
               xwd -root -display :9 -silent | convert xwd:- /out/login.png || true
               sleep 7; cat /out/greeter.log'
           if grep -E "qrc:|file:.*(Error|error)|ReferenceError|TypeError|is not a type|module .* is not installed|Cannot assign" greeter.log | grep -v "Binding loop"; then
             echo "::error title=Login screen::$(grep -E "Error|is not a type|not installed|Cannot assign" greeter.log | head -5 | tr '\n' '|')"; exit 1
           fi
+          [ -s login.png ] || { echo "::error title=Login screen::no screenshot (did the greeter start?) $(head -5 greeter.log | tr '\n' '|')"; exit 1; }
           echo "::notice title=Login screen::loaded without QML errors ($(wc -l < greeter.log) log lines)"
+      - name: Publish the screenshot to a branch
+        if: always()
+        run: |
+          mkdir -p shots && cp greeter.log login.png shots/ 2>/dev/null || true
+          cd shots && git init -q -b ci/login-shots && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Login screen test ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/login-shots
       - uses: actions/upload-artifact@v4
         if: always()
         with:

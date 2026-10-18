@@ -1,0 +1,54 @@
+# Starts Hearth Browser on a virtual screen, opens its own pages and a website, and takes screenshots
+# (published to the ci/browser-shots branch). Fails if the browser crashes or reports errors.
+name: Browser test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [linux-host, main]
+    paths: ['hosts/linux/src/web/**', '.github/workflows/browser-test.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        working-directory: hosts/linux
+        run: |
+          sudo apt-get install -y -qq xvfb imagemagick x11-utils fonts-noto-core >/dev/null
+          npm ci --no-audit --no-fund >/dev/null
+      - name: Run Hearth Browser
+        working-directory: hosts/linux
+        run: |
+          mkdir -p ../../shots
+          export HOME=$RUNNER_TEMP/home; mkdir -p "$HOME/Downloads"
+          Xvfb :5 -screen 0 1400x900x24 & sleep 2
+          export DISPLAY=:5 ELECTRON_DISABLE_SECURITY_WARNINGS=1
+          B="npx electron . --browser --no-sandbox"
+          $B > ../../shots/browser.log 2>&1 &
+          sleep 12; import -window root ../../shots/1-start.png
+          $B hearth://settings >/dev/null 2>&1; sleep 4; import -window root ../../shots/2-settings.png
+          $B https://example.com >/dev/null 2>&1; sleep 8; import -window root ../../shots/3-website.png
+          $B hearth://history >/dev/null 2>&1; sleep 4; import -window root ../../shots/4-history.png
+          pgrep -af "electron.*--browser" > ../../shots/running.txt || echo "not running" > ../../shots/running.txt
+          cat ../../shots/browser.log | tail -40
+          if grep -q "not running" ../../shots/running.txt || grep -E "Uncaught|TypeError|ReferenceError|Error: " ../../shots/browser.log | grep -v "Failed to connect to the bus\|dbus\|GPU\|gpu_\|viz_\|EGL\|libva\|vaapi" ; then
+            echo "::error title=Browser::$(tail -12 ../../shots/browser.log | tr '\n' '|' | cut -c1-1500)"; touch ../../shots/FAILED
+          fi
+      - name: Publish screenshots to a branch
+        if: always()
+        run: |
+          cd shots && git init -q -b ci/browser-shots && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Browser test ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/browser-shots
+      - name: Fail if the browser had problems
+        if: always()
+        run: test ! -e shots/FAILED

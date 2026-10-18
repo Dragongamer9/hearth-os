@@ -1,4 +1,6 @@
 'use strict';
+// Hearth Browser runs from this same app: `nimbus --browser [url]` (see web/main.js).
+if (process.argv.includes('--browser')) { require('./web/main'); return; }
 // Nimbus for Linux: hosts the shared web UI (../../ui) in a fullscreen Electron window.
 // Inside the "Nimbus" login session it runs in gamescope (see session/); started from a desktop
 // with --windowed it runs in a normal window for development.
@@ -208,6 +210,7 @@ function onMessage(e, m) {
     if (m.type === 'call') overlayBridge.handle(m);
     else if (m.type === 'overlay' && m.action === 'close') hideOverlay();
     else if (m.type === 'overlay' && m.action === 'alive') overlayAlive = Date.now();
+    else if (m.type === 'overlay' && m.action === 'painted') revealOverlay();
     // "Back to Hearth" and "Back to game" in the overlay (these were ignored, so the overlay stayed open)
     else if (m.type === 'overlay' && m.action === 'home') { chooseFocus(); hideOverlay(); comeBack(); }
     else if (m.type === 'resume') { chooseFocus(); hideOverlay(); resumeGame(); }
@@ -427,7 +430,12 @@ function parkOverlay() {
   setTimeout(() => { if (!overlayOn) armOverlay(); }, 1500);
 }
 
-let overlayAlive = 0, overlayWatch = null, beforeOverlay = 0;
+let overlayAlive = 0, overlayWatch = null, beforeOverlay = 0, revealTimer = null;
+/** Opening, the last step: visible (the page has drawn Quick Access by now). */
+function revealOverlay() {
+  clearTimeout(revealTimer);
+  if (overlayOn && look !== 'open') overlayLook(true, true);
+}
 function showOverlay() {
   if (!overlay || overlay.isDestroyed()) return false;
   overlayOn = true;
@@ -447,14 +455,15 @@ function showOverlay() {
       overlay.webContents.reloadIgnoringCache();
     }
   }, 1000);
-  // Steam has overlay windows too: mapped again so gamescope puts ours above them. (Closing never unmaps.)
-  parked = false;
-  overlay.setBounds(screen.getPrimaryDisplay().bounds);
-  if (overlay.isVisible()) overlay.hide();
-  overlay.showInactive();
+  // It's already on screen (see-through): no unmapping and mapping again, which over a fullscreen game
+  // sometimes left gamescope showing a black screen for a moment. Take the controller now; become visible
+  // once the page says Quick Access is drawn (or after 300 ms at the latest).
+  if (parked || !overlay.isVisible()) { parked = false; overlay.setBounds(screen.getPrimaryDisplay().bounds); overlay.showInactive(); }
   overlay.focus();
   setWinAtom(overlay, 'STEAM_OVERLAY', 1).catch(() => {});
-  overlayLook(true, true);
+  setWinAtom(overlay, 'STEAM_INPUT_FOCUS', 1).catch(() => {});
+  clearTimeout(revealTimer);
+  revealTimer = setTimeout(revealOverlay, 300);
   // The controller is read here (evdev) and passed on: a window gamescope draws on top doesn't reliably get
   // it through the browser's Gamepad API, which left the overlay open with no way to close it.
   const sendMsg = m => overlay.webContents.send('nimbus:msg', m);
@@ -467,6 +476,7 @@ function hideOverlay() {
   if (!overlayOn && !osdOverlay && look === 'closed') return;
   overlayOn = false;
   osdOverlay = false;
+  clearTimeout(revealTimer);
   stopRepeat(); clearTimeout(bHold);
   clearInterval(overlayWatch);
   overlay.webContents.send('nimbus:msg', { type: 'event', name: 'overlay.hidden', data: {} });
