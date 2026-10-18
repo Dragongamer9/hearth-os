@@ -57,7 +57,12 @@ jobs:
           DURATION: '720'
           EVERY: '8'
         run: |
-          iso=$(ls /mnt/iso/*.iso | head -1); ls -lh "$iso"
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(tail -25 /tmp/step.log | cut -c1-250 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=screens::$msg"' ERR
+          mkdir -p frames
+          iso=$(find /mnt/iso -name '*.iso' | head -1)
+          if [ -z "$iso" ]; then ls -laR /mnt/iso; false; fi
+          ls -lh "$iso"; ls -l /dev/kvm
           qemu-img create -f qcow2 /mnt/disk.qcow2 64G
           python3 .github/scripts/live-screens.py "$iso" /mnt/disk.qcow2
           python3 - <<'PY'
@@ -67,8 +72,11 @@ jobs:
               Image.open(p).save(p[:-4] + '.png', optimize=True); os.remove(p)
           PY
           ls frames | wc -l; tail -40 serial.log || true
+          cp serial.log frames/ 2>/dev/null || true
       - name: Push the pictures to the live-screens branch
+        if: always()
         run: |
+          mkdir -p frames; cp /tmp/step.log frames/step.log 2>/dev/null || true
           cd frames
           git init -q -b live-screens && git add -A
           git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -qm "Live USB screenshots (run ${{ github.run_id }})"
