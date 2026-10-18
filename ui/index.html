@@ -1235,7 +1235,7 @@ function viewDownloads(){
 }
 
 const STABS = [['profile','user','Profile'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
-  ['controller','pad','Controls'],['sources','lib','Library sources'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
+  ['controller','pad','Controls'],['sources','lib','Library sources'],['import','dl','Import games'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
 const note = t => `<div class="note">${t}</div>`;
@@ -1641,6 +1641,95 @@ function pageSystemUpdate(){
   return h;
 }
 
+// ---------- Settings › Import games (Hearth, the OS) ----------
+// Games and personal files from this PC's other drives: Windows, SteamOS / Steam Deck, other Linux, SD cards.
+const IMP = {s:null, sel:new Set(), mode:'copy'};
+if(!host){ IMP.s={supported:true,state:'idle',free:2.1e11,scan:{free:2.1e11,drives:[
+  {id:'nvme0n1p3',name:'Windows',os:'Windows',kind:'windows',fs:'ntfs',size:9.9e11,
+   steam:[{key:'s1',name:'Starfall Drift',size:4.6e10},{key:'s2',name:'Hollow Pines',size:9.1e9},{key:'s3',name:'Neon Courier',size:2.2e10}],
+   epic:[{key:'e1',name:'Ironvale Tactics',size:3.1e10}],gog:[{key:'g1',name:'Lantern Keep',size:1.2e10}],
+   files:[{key:'f1',name:'Documents',user:'Sam',size:3.2e9},{key:'f2',name:'Pictures',user:'Sam',size:1.7e10}]},
+  {id:'mmcblk0p1',name:'SD card',os:'SD card',kind:'data',fs:'ext4',size:5.1e11,steam:[{key:'s4',name:'Tidebound',size:6.4e9}],epic:[],gog:[],files:[]},
+  {id:'sda1',name:'Games',kind:'locked',fs:'BitLocker',size:1e12,problem:"it's locked with BitLocker. Turn BitLocker off in Windows (Settings › Privacy & security › Device encryption), then scan again",steam:[],epic:[],gog:[],files:[]}]}}; }
+function loadImport(){ if(host && LINUX) call('import.status').then(onImport).catch(()=>{}); }
+function onImport(d){
+  const was=IMP.s; IMP.s=d;
+  if(was && was.state==='importing' && d.state==='idle'){ toast(d.error ? 'Import: '+d.error : 'Import finished'); IMP.sel.clear(); }
+  if(was && was.state==='scanning' && d.state==='idle' && d.error) toast(d.error);
+  if(S.view==='settings' && S.settingsTab==='import') render(null,true);
+}
+const impItems = () => (IMP.s&&IMP.s.scan ? IMP.s.scan.drives : []).flatMap(dr=>[...dr.steam,...dr.epic,...dr.gog,...dr.files]);
+function impToggle(k){ IMP.sel.has(k)?IMP.sel.delete(k):IMP.sel.add(k); render(null,true); }
+function impAll(id){
+  const dr=(IMP.s.scan.drives||[]).find(x=>x.id===id); if(!dr) return;
+  const keys=[...dr.steam,...dr.epic,...dr.gog,...dr.files].map(x=>x.key), all=keys.every(k=>IMP.sel.has(k));
+  keys.forEach(k=>all?IMP.sel.delete(k):IMP.sel.add(k)); render(null,true);
+}
+function impStart(){
+  const keys=[...IMP.sel]; if(!keys.length) return toast('Pick something to import first');
+  const go=()=>call('import.start',{items:keys, mode:IMP.mode}).then(onImport).catch(e=>toast(e.message));
+  if(IMP.mode==='move') return openSheet({title:'Move these to Hearth?', sub:'After each one is copied and checked, the original is deleted from the other drive. Games and files that are only on that drive will then only be in Hearth.',
+    items:[{label:'Yes, move them', icon:'check', run:go}, {label:'Copy instead (keep the originals)', icon:'dl', run:()=>{ IMP.mode='copy'; go(); }}]});
+  go();
+}
+function impProgress(st){
+  const p=st.progress||{}, pct=p.total?Math.min(100,Math.round(100*p.overall/p.total)):0;
+  const left=p.bps>0&&p.total?timeLeft((p.total-p.overall)/p.bps):'';
+  const pts=st.speeds||[], peak=pts.length?Math.max(...pts.map(x=>x[1])):0;
+  const kindName={steam:'Steam game',epic:'Epic game',gog:'GOG game',files:'folder'}[p.kind]||'';
+  let h=`<div class="su-card"><div class="su-head"><div><b>${st.mode==='move'?'Moving':'Copying'} into Hearth</b><div class="muted" style="font-size:13px;margin-top:4px">${p.total?`${gbx(p.overall||0)} of ${gbx(p.total)}`:'Getting ready…'}${p.bps?' · '+fmtSpeed(p.bps):''}${left?' · '+left:''}</div></div><div class="pc">${pct}%</div></div>
+    <div class="bar" style="height:8px"><i style="width:${pct}%"></i></div>`;
+  if(p.name) h+=`<div class="su-ph on"><div class="n">${(p.i||0)+1}</div><div class="t">${esc(p.name)}</div><div class="p">${p.size?Math.min(100,Math.round(100*(p.done||0)/p.size))+'%':''}</div>
+    <div class="bar"><i style="width:${p.size?Math.min(100,Math.round(100*(p.done||0)/p.size)):0}%"></i></div><div class="s">${kindName} · ${(p.i||0)+1} of ${p.n||1}${p.size?` · ${gbx(p.done||0)} of ${gbx(p.size)}`:''}</div></div>`;
+  if(pts.length) h+=`<div class="su-speed"><div><div class="big">${fmtSpeed(pts.at(-1)[1]).replace(/ (\S+)$/,'<small>$1</small>')}</div><div class="sub">Peak ${fmtSpeed(peak)}</div></div>${speedGraph(pts,'img')}</div>`;
+  return h+`</div><button class="row" data-f data-k="imp-stop" data-act="impStop"><span class="ricon">${I.x}</span><div class="rt"><b>Stop</b><small>What's already copied stays; nothing is deleted from the other drive</small></div></button>`;
+}
+function impResult(r){
+  const done=r.done||[], skipped=r.skipped||[], failed=r.failed||[], kept=r.kept||[];
+  let h=`<div class="row"><span class="ricon">${I.check||I.info}</span><div class="rt"><b>${done.length} ${done.length===1?'thing':'things'} imported</b><small>${[r.steam?`${r.steam} Steam`:'' , (r.epic||[]).length?`${r.epic.length} Epic`:'', (r.gog||[]).length?`${r.gog.length} GOG`:'', done.filter(x=>x.kind==='files').length?`${done.filter(x=>x.kind==='files').length} folder${done.filter(x=>x.kind==='files').length===1?'':'s'}`:''].filter(Boolean).join(' · ')||'Nothing new'}</small></div></div>`;
+  (r.notes||[]).forEach(n=>h+=note(esc(n)));
+  if(skipped.length) h+=shead('Skipped')+skipped.map(x=>`<div class="row"><div class="rt"><b>${esc(x.name)}</b><small>${esc(x.why)}</small></div></div>`).join('');
+  if(failed.length) h+=shead("Didn't work")+failed.map(x=>`<div class="row"><div class="rt"><b>${esc(x.name)}</b><small>${esc(x.why)}</small></div></div>`).join('');
+  if(kept.length) h+=shead('Copied, but the original was kept')+kept.map(x=>`<div class="row"><div class="rt"><b>${esc(x.name)}</b><small>${esc(x.why)}</small></div></div>`).join('');
+  if(done.some(x=>x.kind==='files')) h+=note('Your folders are in the same folders in your home, under "Imported from …".');
+  return h+`<button class="row" data-f data-k="imp-done" data-act="impDone"><span class="ricon">${I.check||I.info}</span><div class="rt"><b>Done</b></div></button>`;
+}
+function pageImport(){
+  if(!host && !IMP.s) return note('Importing works in the '+APP+' app.');
+  const st=IMP.s;
+  if(!st) return note('Loading…');
+  if(!st.supported) return note('Importing games and files needs Hearth, the OS.');
+  if(st.state==='importing') return impProgress(st);
+  if(st.result) return impResult(st.result);
+  let h='';
+  if(st.pendingEpic) h+=note(`${st.pendingEpic} Epic ${st.pendingEpic===1?'game is':'games are'} copied and will finish importing when you sign in to Epic Games (Library › Stores).`);
+  if(st.state==='scanning') return h+`<div class="row"><span class="mini-spin"></span><div class="rt"><b>Looking at your drives…</b><small>Opening other drives read-only and finding games and folders. Big drives take a minute.</small></div></div>`;
+  if(!st.scan) return h+`<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Bring your games and files</b><small>From Windows, SteamOS (Steam Deck), Bazzite or other Linux, a second drive or an SD card. Steam, Epic and GOG games come over ready to play, without downloading them again, plus your Documents, Pictures and other folders.</small></div></div>`
+    + `<button class="row" data-f data-k="imp-scan" data-act="impScan"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look for games and files</b><small>Other drives are only read, never changed</small></div></button>`
+    + (st.error?note(esc(st.error)):'');
+  const drives=st.scan.drives||[];
+  const row=(it,label)=>`<button class="row" data-f data-k="imp-${esc(it.key)}" data-act="impToggle" data-key="${esc(it.key)}"><div class="rt"><b>${esc(label||it.name)}</b><small>${it.size?gbs(it.size):'Size unknown'}</small></div><div class="sw ${IMP.sel.has(it.key)?'on':''}"></div></button>`;
+  const useful=drives.filter(d=>d.steam.length||d.epic.length||d.gog.length||d.files.length||d.problem);
+  if(!useful.length) h+=note('No other drives with games or personal folders were found. Plug in the drive or SD card, then look again.');
+  for(const d of useful){
+    const items=[...d.steam,...d.epic,...d.gog,...d.files], all=items.length&&items.every(x=>IMP.sel.has(x.key));
+    h+=shead(`${esc(d.name)}${d.os&&d.os!==d.name?' · '+esc(d.os):''} · ${gb(d.size)}`);
+    if(d.problem){ h+=note('This drive can\'t be read: '+esc(d.problem)+'.'); continue; }
+    h+=`<button class="row" data-f data-k="imp-all-${esc(d.id)}" data-act="impAll" data-drive="${esc(d.id)}"><div class="rt"><b>${all?'Unselect everything':'Select everything'} on this drive</b><small>${items.length} item${items.length===1?'':'s'} · ${gbs(items.reduce((a,x)=>a+(x.size||0),0))}</small></div></button>`;
+    if(d.steam.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">STEAM</div>`+d.steam.map(x=>row(x)).join('');
+    if(d.epic.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">EPIC GAMES</div>`+d.epic.map(x=>row(x)).join('');
+    if(d.gog.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">GOG</div>`+d.gog.map(x=>row(x)).join('');
+    if(d.files.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">YOUR FILES</div>`+d.files.map(x=>row(x, x.name+(x.user?` (${x.user})`:''))).join('');
+  }
+  const sel=impItems().filter(x=>IMP.sel.has(x.key)), need=sel.reduce((a,x)=>a+(x.size||0),0), free=st.scan.free||0, tooBig=IMP.mode==='copy'&&need>free;
+  h+=shead('Import')
+    + `<button class="row" data-f data-k="imp-mode" data-act="impMode"><div class="rt"><b>Delete the originals after copying</b><small>${IMP.mode==='move'?'Move: frees up the other drive. Each original is deleted only after its copy is checked':'Copy: the other drive keeps everything'}</small></div><div class="sw ${IMP.mode==='move'?'on':''}"></div></button>`
+    + `<button class="row" data-f data-k="imp-start" data-act="impStart"><span class="ricon">${I.dl}</span><div class="rt"><b>${sel.length?`Import ${sel.length} item${sel.length===1?'':'s'}`:'Pick what to bring'}</b><small>${sel.length?`${gbs(need)||'0 GB'} · ${gb(free)} free on Hearth`:'Turn on the games and folders you want'}${tooBig?' · not enough space':''}</small></div></button>`
+    + `<button class="row" data-f data-k="imp-scan" data-act="impScan"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look again</b></div></button>`
+    + note('Steam checks each imported game the first time you start it (a minute, not a download). Epic games need you signed in to Epic. Games that only run on Windows play through Proton, like other Windows games on Hearth.');
+  return h;
+}
+
 // ---------- Settings › Shell ----------
 const SHELL = {status:null};
 function loadShellStatus(){ if(host) call('shell.status').then(s=>{ SHELL.status=s; refreshUI(); }).catch(e=>toast(e.message)); }
@@ -1749,9 +1838,10 @@ function viewSettings(){
   }
   if(t==='shell') body = pageShell();
   if(t==='updates') body = pageUpdates();
+  if(t==='import') body = pageImport();
   if(t==='about') body = pageAbout();
   return `<div class="settings">
-    <div class="snav">${STABS.filter(([k])=>k!=='signin'||LINUX).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
+    <div class="snav">${STABS.filter(([k])=>(k!=='signin'&&k!=='import')||LINUX).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
     <div class="rows">${body}</div></div>`;
 }
 
@@ -2156,6 +2246,13 @@ function act(el){
     case 'loginPass': return loginPass();
     case 'loginHost': return loginHost();
     case 'sysUpdCheck': return call('system.update.check').then(onSystemUpdate).catch(e=>toast(e.message));
+    case 'impScan': return call('import.scan',{},6*60e3).then(onImport).catch(e=>toast(e.message));
+    case 'impToggle': return impToggle(d.key);
+    case 'impAll': return impAll(d.drive);
+    case 'impMode': IMP.mode = IMP.mode==='copy'?'move':'copy'; return render(null,true);
+    case 'impStart': return impStart();
+    case 'impStop': return call('import.cancel').then(onImport).catch(e=>toast(e.message));
+    case 'impDone': if(IMP.s) IMP.s.result=null; IMP.sel.clear(); return render(null,true);
     case 'sysUpdInstall': return call('system.update.install').then(onSystemUpdate).catch(e=>toast(e.message));
     case 'updCheck': return call('update.check',{},60000).then(onUpdate).catch(e=>toast(e.message));
     case 'updDownload': return call('update.download').then(onUpdate).catch(e=>toast(e.message));
@@ -2650,6 +2747,8 @@ async function setSources(){
 function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
   if(name==='systemUpdate') return onSystemUpdate(data);
+  if(name==='import') return onImport(data);
+  if(name==='library.changed'){ if(!OVERLAY) loadLibrary(false); return; }
   if(name==='desktopFailed') return openSheet({title:"Mantel (Desktop Mode) couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});
   if(name==='open'){ if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
   if(name==='game.started') return gameStarted(data.id);
@@ -2729,6 +2828,7 @@ function onSettingsTab(t){
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
   if(t==='signin') loadLogin();
+  if(t==='import') loadImport();
   if(t==='system' || t==='about') loadSysInfo();
   if(t==='system'){ loadBrowser(); loadArtStatus(); }
   if(t==='about'){ if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }

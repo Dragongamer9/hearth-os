@@ -114,6 +114,14 @@ class EpicStore {
     if (!this.installed().some(g => g.id === 'epic:' + app)) throw new Error('Epic install failed: ' + tools.problem(r));
   }
 
+  /** Registers a game that's already on disk (brought over from another drive) with legendary, so it shows
+   *  as installed instead of downloading again. legendary checks it against Epic's file list. */
+  async importGame(app, dir) {
+    const r = await tools.run(tools.TOOLS.legendary, ['-y', 'import', app, dir, '--platform', 'Windows', '--disable-check'],
+      { env: ENV, timeoutMs: 10 * 60000 });
+    if (!this.installed().some(g => g.id === 'epic:' + app)) throw new Error("Epic didn't accept it: " + tools.problem(r));
+  }
+
   async uninstall(app) {
     const r = await tools.run(tools.TOOLS.legendary, ['-y', 'uninstall', app], { env: ENV, timeoutMs: 600000 });
     if (this.installed().some(g => g.id === 'epic:' + app)) throw new Error("Couldn't uninstall: " + tools.problem(r));
