@@ -207,12 +207,17 @@ impl Bridge {
         let io = |r: std::io::Result<()>| r.map(|_| Value::Null).map_err(|e| e.to_string());
         match method {
             "host.info" => Ok(json!({
-                "platform": "linux", "name": hostname(), "host": "Hearth (Rust)", "version": self.version,
+                "platform": "linux", "name": os_name(), "host": "Hearth (Rust)", "version": self.version,
+                // Part of Hearth, the OS: the app updates with the system (Settings › Updates shows Update now).
+                "system": system_install(),
+                // Opened just for Settings (from Mantel's taskbar).
+                "start": if std::env::args().any(|a| a == "--settings") { json!("settings") } else { Value::Null },
+                "edition": edition(),
                 "session": std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false),
                 "user": std::env::var("USER").unwrap_or_default(),
                 "live": std::path::Path::new("/etc/hearth-live").exists(),
                 "installer": std::path::Path::new("/etc/hearth-installer").exists(),
-                "features": ["restartApp", "exportLogs", "powerButton", "overamp", "quickResume"], "setupDone": self.setup_done(),
+                "features": features(), "setupDone": self.setup_done(),
                 "openInstaller": std::path::Path::new("/etc/hearth-live").exists() && crate::osinstall::handoff(false),
             })),
             "library.get" => Ok(self.library.get(a["rescan"].as_bool().unwrap_or(false))),
@@ -939,6 +944,25 @@ fn shell_install(remove: bool) -> Result<(), String> {
     system::run_timeout("pkexec", &args, std::time::Duration::from_secs(120)).map(|_| ())
 }
 
+fn features() -> Vec<&'static str> {
+    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume"];
+    if crate::guide::controller_available() { f.push("remap"); }
+    f
+}
+/// "Hearth 0.0.25 (Bazzite)": the system's own name, for About and the top of Settings.
+fn os_name() -> String {
+    std::fs::read_to_string("/etc/os-release").ok().and_then(|t| t.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=").map(|v| v.trim_matches('"').to_string())))
+        .unwrap_or_else(|| "Linux".into())
+}
+/// Which Hearth this is, for the player counter: the live USB, the Nvidia or AMD/Intel image, or a download.
+fn edition() -> &'static str {
+    if std::path::Path::new("/etc/hearth-live").exists() { return "live"; }
+    if !system_install() { return "appimage"; }
+    let info = std::fs::read_to_string("/usr/share/ublue-os/image-info.json").unwrap_or_default();
+    if info.to_lowercase().contains("nvidia") { "nvidia" } else { "amd" }
+}
+
+#[allow(dead_code)]
 fn hostname() -> String { std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()).unwrap_or_default() }
 
 #[cfg(test)]
@@ -980,6 +1004,11 @@ mod tests {
                        "audio.get", "sys.status", "power.get", "system.info"].iter().enumerate() {
             let r = b.handle(&json!({"type": "call", "id": i, "method": m, "args": {}})).unwrap_or_else(|| panic!("{m}: no answer"));
             assert!(r["ok"] == true || !r["error"].as_str().unwrap_or("").contains("isn't in the Rust version"), "{m}: {r}");
+        }
+        // Settings › Updates shows Update now only when it knows this is the OS install ("system").
+        let info = b.handle(&json!({"type": "call", "id": 98, "method": "host.info", "args": {}})).unwrap();
+        for k in ["system", "start", "edition", "live", "installer", "session", "features", "setupDone", "version", "name"] {
+            assert!(info["value"].get(k).is_some(), "host.info is missing {k}");
         }
         let a = b.handle(&json!({"type": "call", "id": 99, "method": "accounts.status", "args": {}})).unwrap();
         assert_eq!(a["value"]["accounts"].as_array().unwrap().len(), 4);
