@@ -224,7 +224,7 @@ public sealed class SystemBridge : IDisposable
     }
 
     /// <summary>Gets Ember out of the way so the game picked from Quick Resume is in front.</summary>
-    private void MinimizeShell() { if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => _ui.WindowState = FormWindowState.Minimized)); }
+    private void MinimizeShell() { if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => { if (_ui.FindForm() is { } f) f.WindowState = FormWindowState.Minimized; })); }
 
     public void Event(string name, object data)
     {
