@@ -28,7 +28,7 @@ jobs:
         run: |
           set -o pipefail
           if ! cargo test 2>&1 | tee test.log; then
-            echo "::error title=hearth-core::$(grep -E -A8 '^(error|---- |thread .* panicked)' test.log | head -80 | tr '\n' '|' | cut -c1-3900)"
+            echo "::error title=hearth-core::$( (grep -E -A8 '^(error|---- |thread .* panicked)' test.log | head -60; echo ===; tail -25 test.log) | tr '\n' '|' | cut -c1-3900)"
             exit 1
           fi
           echo "::notice title=hearth-core tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
