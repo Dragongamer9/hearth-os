@@ -130,6 +130,13 @@ SetPage {
         onActivated: { page.phase = "shrinking"; page.run(["shrink", String(Math.round(page.give))]); }
     }
 
+    SetRow {
+        visible: page.phase === "idle" && !!page.info
+        icon: "update"; title: "Already made room in Windows?"
+        sub: "If Ember's Switch to Hearth OS already shrank Windows, go straight to the installer and choose \"Use free space\"."
+        onActivated: Quickshell.execDetached(["sh", "-c", "command -v liveinst >/dev/null && exec liveinst || exec anaconda-webui"])
+    }
+
     // ---------------------------------------------------------------- progress
     ColumnLayout {
         visible: page.phase === "shrinking"
