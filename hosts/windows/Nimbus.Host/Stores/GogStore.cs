@@ -206,6 +206,77 @@ public sealed class GogStore
     }
 
     /// <summary>Downloads a game into &lt;root&gt;\GOG\&lt;its folder&gt;. Returns the folder.</summary>
+    // ------------------------------------------------------------------ cloud saves
+
+    private static string SavesPath => Path.Combine(Dir, "saves.json");
+
+    /// <summary>GOG's folder placeholders (&lt;?INSTALL?&gt;, %AppData%, %Documents%...) as real folders.</summary>
+    public static string? Resolve(string loc, string install)
+    {
+        string F(Environment.SpecialFolder f) => Environment.GetFolderPath(f);
+        var user = F(Environment.SpecialFolder.UserProfile);
+        var map = new (string, string)[]
+        {
+            ("<?INSTALL?>", install), ("%INSTALL%", install),
+            ("%LocalAppData%", F(Environment.SpecialFolder.LocalApplicationData)), ("%AppData%", F(Environment.SpecialFolder.ApplicationData)),
+            ("%LocalAppDataLow%", Path.Combine(user, "AppData", "LocalLow")), ("%Documents%", F(Environment.SpecialFolder.MyDocuments)),
+            ("%UserProfile%", user), ("%SavedGames%", Path.Combine(user, "Saved Games")), ("%Public%", Environment.GetEnvironmentVariable("PUBLIC") ?? @"C:\Users\Public"),
+        };
+        var o = loc.Replace('/', '\\');
+        foreach (var (k, v) in map)
+        {
+            int i = o.IndexOf(k, StringComparison.OrdinalIgnoreCase);
+            if (i >= 0) o = o[..i] + v + o[(i + k.Length)..];
+        }
+        return o.Contains('%') || o.Contains("<?") ? null : o;
+    }
+
+    /// <summary>Where the game keeps its saves, from GOG's own settings for it (as GOG Galaxy uses).</summary>
+    public static async Task<List<(string Name, string Path)>> SaveLocationsAsync(string id, string install)
+    {
+        var info = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(install, $"goggame-{id}.info")));
+        var client = (string?)info?["clientId"] ?? throw new InvalidOperationException("no GOG client id for this game");
+        var cfg = JsonNode.Parse(await HelperTools.Http.GetStringAsync($"https://remote-config.gog.com/components/galaxy_client/clients/{client}?component_version=2.0.45"));
+        var cloud = cfg?["content"]?["Windows"]?["cloudStorage"];
+        var list = new List<(string, string)>();
+        if (cloud?["enabled"]?.GetValue<bool>() != true) return list;
+        var locs = cloud["locations"] as JsonArray ?? new JsonArray();
+        if (locs.Count == 0 && Resolve($"%LocalAppData%/GOG.com/Galaxy/Applications/{client}/Storage/Shared/Files", install) is { } d) list.Add(("__default", d));
+        foreach (var l in locs)
+            if ((string?)l?["name"] is { } n && (string?)l?["location"] is { } loc && Resolve(loc, install) is { } p) list.Add((n, p));
+        return list;
+    }
+
+    /// <summary>GOG cloud saves: "down" before playing, "up" after. Returns how many places were synced.</summary>
+    public async Task<int> SyncSavesAsync(string id, string install, string direction)
+    {
+        if (!SignedIn) return 0;
+        await TokenAsync();
+        var locs = await SaveLocationsAsync(id, install);
+        if (locs.Count == 0) return 0;
+        JsonObject stamps;
+        try { stamps = JsonNode.Parse(File.ReadAllText(SavesPath)) as JsonObject ?? new(); } catch { stamps = new(); }
+        int n = 0;
+        foreach (var (name, path) in locs)
+        {
+            Directory.CreateDirectory(path);
+            var ts = (stamps[id]?[name]?.GetValue<double>() ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var r = await HelperTools.RunAsync(HelperTools.Gogdl, new[] { "--auth-config-path", AuthPath, "save-sync", path, id, "--os", "windows", "--ts", ts, "--name", name,
+                direction == "down" ? "--skip-upload" : "--skip-download" }, Env, timeout: TimeSpan.FromMinutes(3));
+            if (r.ExitCode != 0) { Nimbus.Host.SystemBridge.Log($"gog saves: {id} {name} {direction} failed"); continue; }
+            var last = r.Out.Split('\n').Select(x => x.Trim()).LastOrDefault(x => double.TryParse(x, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _));
+            if (last is not null)
+            {
+                if (stamps[id] is not JsonObject) stamps[id] = new JsonObject();
+                stamps[id]![name] = double.Parse(last, System.Globalization.CultureInfo.InvariantCulture);
+            }
+            n++;
+        }
+        File.WriteAllText(SavesPath, stamps.ToJsonString());
+        Nimbus.Host.SystemBridge.Log($"gog saves: {id} {direction}: {n} place(s)");
+        return n;
+    }
+
     public async Task<string> InstallAsync(InstallJob job, string id, string root, CancellationToken ct)
     {
         await TokenAsync();   // refresh now so gogdl finds a valid token

@@ -319,11 +319,87 @@ pub mod gog {
     }
     pub fn launch(g: &crate::library::Game, opts: &Value) -> Result<u32, String> {
         let id = g.id.trim_start_matches("gog:");
+        // Cloud saves come down first (games with GOG cloud saves).
+        if opts["cloudSaves"] != false {
+            if let Some(dir) = g.install_path.as_ref() { if let Err(e) = sync_saves(id, dir, "down") { crate::bridge::log(&format!("gog saves: {e}")); } }
+        }
         let args = crate::manual::split_args(&g.args);
         let cwd = g.work_dir.clone().unwrap_or_else(|| "/".into());
         super::proton_launch("gog", id, g.exe.as_deref().unwrap_or(""), args, &cwd, vec![], opts)
     }
+
+    /// Where a GOG game keeps its saves, from GOG's own settings for it (the same ones GOG Galaxy uses):
+    /// (name, folder in the game's Wine prefix). Games without cloud saves give an empty list.
+    pub fn save_locations(id: &str, install: &Path) -> Result<Vec<(String, PathBuf)>, String> {
+        let info = read_json(&install.join(format!("goggame-{id}.info")));
+        let client = info["clientId"].as_str().ok_or("no GOG client id for this game")?.to_string();
+        let cfg = http::get_json(&format!("https://remote-config.gog.com/components/galaxy_client/clients/{client}?component_version=2.0.45"), &[])?;
+        let cloud = &cfg["content"]["Windows"]["cloudStorage"];
+        if cloud["enabled"] != true { return Ok(vec![]); }
+        let mut out = Vec::new();
+        let list = cloud["locations"].as_array().cloned().unwrap_or_default();
+        let prefix = super::prefix_of("gog", id);
+        if list.is_empty() {
+            let def = format!("%LocalAppData%/GOG.com/Galaxy/Applications/{client}/Storage/Shared/Files");
+            if let Some(p) = resolve(&def, &prefix, install) { out.push(("__default".to_string(), p)); }
+        }
+        for l in list {
+            let (Some(name), Some(loc)) = (l["name"].as_str(), l["location"].as_str()) else { continue };
+            if let Some(p) = resolve(loc, &prefix, install) { out.push((name.to_string(), p)); }
+        }
+        Ok(out)
+    }
+
+    /// GOG's folder placeholders (<?INSTALL?>, %AppData%, %Documents%...) for the game's Wine prefix.
+    pub fn resolve(loc: &str, prefix: &Path, install: &Path) -> Option<PathBuf> {
+        let user = prefix.join("drive_c/users/steamuser");
+        let map: [(&str, PathBuf); 9] = [
+            ("<?INSTALL?>", install.to_path_buf()), ("%INSTALL%", install.to_path_buf()),
+            ("%LocalAppData%", user.join("AppData/Local")), ("%AppData%", user.join("AppData/Roaming")), ("%LocalAppDataLow%", user.join("AppData/LocalLow")),
+            ("%Documents%", user.join("Documents")), ("%UserProfile%", user.clone()), ("%SavedGames%", user.join("Saved Games")), ("%Public%", prefix.join("drive_c/users/Public")),
+        ];
+        let mut out = loc.replace('\\', "/");
+        for (k, v) in map.iter() {
+            if let Some(i) = out.to_lowercase().find(&k.to_lowercase()) { out.replace_range(i..i + k.len(), &v.to_string_lossy()); }
+        }
+        if out.contains('%') || out.contains("<?") { return None; }
+        Some(PathBuf::from(out))
+    }
+
+    fn sync_file() -> PathBuf { dir().join("saves.json") }
+
+    /// GOG cloud saves: "down" before playing, "up" after. Remembers when each place was last synced, as
+    /// gogdl needs. Returns how many places were synced.
+    pub fn sync_saves(id: &str, install: &Path, direction: &str) -> Result<usize, String> {
+        if !signed_in() { return Ok(0); }
+        token()?;
+        let locs = save_locations(id, install)?;
+        if locs.is_empty() { return Ok(0); }
+        let mut stamps = read_json(&sync_file());
+        if !stamps.is_object() { stamps = json!({}); }
+        let mut n = 0;
+        for (name, path) in locs {
+            std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+            let ts = stamps[id][&name].as_f64().unwrap_or(0.0).to_string();
+            let skip = if direction == "down" { "--skip-upload" } else { "--skip-download" };
+            let env = vec![("GOGDL_CONFIG_PATH", dir().to_string_lossy().to_string())];
+            let r = tools::run(&tools::GOGDL, &["--auth-config-path", &auth().to_string_lossy(), "save-sync", &path.to_string_lossy(), id, "--os", "windows", "--ts", &ts, "--name", &name, skip],
+                &env, None, None, Some(std::time::Duration::from_secs(180)))?;
+            if r.code != 0 { crate::bridge::log(&format!("gog saves: {id} {name} {direction}: {}", tools::problem(&r))); continue; }
+            // gogdl ends with the new sync time.
+            if let Some(t) = r.out.lines().rev().find_map(|l| l.trim().parse::<f64>().ok()) {
+                if !stamps[id].is_object() { stamps[id] = json!({}); }
+                stamps[id][&name] = json!(t);
+            }
+            n += 1;
+        }
+        let _ = crate::paths::write_atomic(&sync_file(), stamps.to_string().as_bytes());
+        crate::bridge::log(&format!("gog saves: {id} {direction}: {n} place(s)"));
+        Ok(n)
+    }
 }
+
+// ------------------------------------------------------------------ GOG cloud saves
 
 // ------------------------------------------------------------------ Xbox (Microsoft account → Xbox Live)
 
@@ -732,5 +808,12 @@ mod tests {
         assert_eq!((epic::sign_in().done)("hearth-signin://done?code=abc").as_deref(), Some("abc"));
         assert_eq!((gog::sign_in().done)("https://embed.gog.com/on_login_success?origin=client&code=xyz").as_deref(), Some("xyz"));
         assert_eq!((gog::sign_in().done)("https://auth.gog.com/login"), None);
+    }
+    #[test]
+    fn gog_save_folders() {
+        let (p, i) = (Path::new("/p/gog-1"), Path::new("/games/Witcher"));
+        assert_eq!(gog::resolve("<?INSTALL?>/saves", p, i).unwrap(), PathBuf::from("/games/Witcher/saves"));
+        assert_eq!(gog::resolve("%Documents%\\The Witcher 3\\gamesaves", p, i).unwrap(), PathBuf::from("/p/gog-1/drive_c/users/steamuser/Documents/The Witcher 3/gamesaves"));
+        assert!(gog::resolve("%Mystery%/x", p, i).is_none());
     }
 }
