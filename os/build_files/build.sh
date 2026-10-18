@@ -7,7 +7,13 @@ cp -avf /ctx/system_files/. /
 
 # ------------------------------------------------------------------ Nimbus itself, under /usr (the OS updates it)
 mkdir -p /usr/lib/nimbus
-cp -a /ctx/nimbus-app/. /usr/lib/nimbus/
+if [ -x /ctx/nimbus-app/hearth ]; then
+  # The Rust app (hosts/hearth-rs): one file, drawn by the system's WebKit.
+  install -Dm755 /ctx/nimbus-app/hearth /usr/lib/nimbus/nimbus
+  dnf5 -y install webkit2gtk4.1
+else
+  cp -a /ctx/nimbus-app/. /usr/lib/nimbus/
+fi
 test -x /usr/lib/nimbus/nimbus
 # Chromium's sandbox helper must be setuid root to work.
 if [ -f /usr/lib/nimbus/chrome-sandbox ]; then chown root:root /usr/lib/nimbus/chrome-sandbox && chmod 4755 /usr/lib/nimbus/chrome-sandbox; fi

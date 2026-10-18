@@ -1,0 +1,72 @@
+# Hearth OS with the Rust app instead of the Electron one (rust-host branch): builds the image (not published),
+# checks the app has every library it needs on Hearth OS, and runs it once there in a virtual screen.
+# Screenshots go to the ci/rust-os-shots branch.
+name: Hearth OS (Rust app)
+
+on:
+  push:
+    branches: [rust-host]
+    paths: ['os/build_files/**', 'os/Containerfile', '.github/workflows/rust-os.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space (the base image is big)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h /
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-rs
+      - name: Build the Rust app
+        working-directory: hosts/hearth-rs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev >/dev/null
+          v=$(grep -oP '(?<=<Version>)[^<]+' ../windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
+          sed -i "s/^version = \".*\"/version = \"$v\"/" Cargo.toml
+          cargo build --release
+          mkdir -p ../../os/nimbus-app
+          cp target/release/hearth ../../os/nimbus-app/hearth
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+      - name: Build the image
+        run: |
+          set -o pipefail
+          sudo podman build --build-arg BASE=bazzite-deck --build-arg NIMBUS_VERSION="$VERSION" -f os/Containerfile -t hearth-rs . 2>&1 | tail -80 | tee build.log
+          sudo podman image exists hearth-rs || { echo "::error title=Image build failed::$(tail -30 build.log | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+      - name: The app's libraries
+        run: |
+          missing=$(sudo podman run --rm hearth-rs sh -c 'ldd /usr/lib/nimbus/nimbus | grep "not found"' || true)
+          if [ -n "$missing" ]; then echo "::error title=Missing libraries::$(echo "$missing" | tr '\n' '|')"; exit 1; fi
+          echo "::notice title=Libraries::all found ($(sudo podman run --rm hearth-rs du -h /usr/lib/nimbus/nimbus | cut -f1))"
+      - name: Run it on Hearth OS once
+        run: |
+          mkdir -p shots
+          sudo podman run --rm -v "$PWD/shots:/shots:z" hearth-rs bash -c '
+            dnf5 -y -q install xorg-x11-server-Xvfb ImageMagick dbus-daemon >/dev/null 2>&1 || dnf -y -q install xorg-x11-server-Xvfb ImageMagick >/dev/null 2>&1
+            useradd -m tester; cd /home/tester
+            su tester -c "export HOME=/home/tester DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 NO_AT_BRIDGE=1
+              Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 2
+              dbus-run-session -- /usr/lib/nimbus/nimbus --windowed > /tmp/run.log 2>&1 &
+              sleep 15; import -window root /shots/hearth-os.png; tail -c 2000 /tmp/run.log > /shots/run.log; true"
+          ' || true
+          ls -la shots
+          echo "::notice title=App output::$(tail -c 1500 shots/run.log 2>/dev/null | tr '\n' '|')"
+      - name: Publish the screenshot (ci/rust-os-shots)
+        run: |
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          cp -r shots /tmp/shots
+          git checkout --orphan ci/rust-os-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && cp -r /tmp/shots shots
+          git add -f shots
+          git commit -qm "Hearth OS (Rust app) screenshot ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/rust-os-shots || true
