@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn answers_calls_and_says_what_is_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let mut b = Bridge { library: Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), version: "0.0.23".into(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new() };
+        let mut b = Bridge { library: Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), version: "0.0.23".into(), emit: std::sync::Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles: crate::profiles::Profiles::open(dir.path()), pin_until: std::time::Instant::now() };
         let r = b.handle(&json!({"type":"call","id":7,"method":"library.get","args":{}})).unwrap();
         assert_eq!(r["id"], 7); assert_eq!(r["ok"], true); assert_eq!(r["value"]["games"], json!([]));
         let r = b.handle(&json!({"type":"call","id":8,"method":"epic.signIn"})).unwrap();
