@@ -1792,6 +1792,8 @@ function pageShellLinux(){
     const dm = s.startMode==='desktop' ? 'Desktop Mode' : 'Game Mode';
     h += shead('Desktop Mode')
       + `<button class="row" data-f data-k="sh-dm" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Switch to the desktop</b><small>The normal Windows desktop with the taskbar and Start menu. The controller works as a mouse. Come back with the Game Mode shortcut on the desktop, the ${APP} tray icon, Ctrl+Alt+G, or the Xbox button</small></div></button>`
+      + `<button class="row" data-f data-k="sh-style" data-act="emberStyle"><span class="ricon">${I.layout}</span><div class="rt"><b>Desktop style</b><small>${s.desktopStyle==='windows'?'The normal Windows desktop':'Mantel: Hearth\'s taskbar, app launcher and wallpapers on top of Windows. Windows\' tray icons and notifications still work'}</small></div><div class="rv">${s.desktopStyle==='windows'?'Windows':'Mantel'} ›</div></button>`
+      + (s.desktopStyle!=='windows' ? `<button class="row" data-f data-k="sh-wall" data-act="emberWall"><span class="ricon">${I.display}</span><div class="rt"><b>Wallpaper</b><small>Used while you're in Mantel</small></div><div class="rv">${s.wallpaper?esc(s.wallpaper.replace('hearth-','').replace(/^./,c=>c.toUpperCase())):'Your Windows wallpaper'} ›</div></button>` : '')
       + (s.running ? `<button class="row" data-f data-k="sh-start" data-act="emberStart"><span class="ricon">${I.desk}</span><div class="rt"><b>Start in</b><small>What you see after signing in</small></div><div class="rv">${dm} ›</div></button>` : '');
   }
   h += shead('If something goes wrong')
@@ -1825,6 +1827,21 @@ function pageShell(){
     + note(`Black screen? Press <b>Ctrl+Shift+Esc</b> for Task Manager, choose <b>Run new task</b>, and run <code>%USERPROFILE%\\nimbus-restore.cmd</code>. That brings back the normal Windows desktop.`)
     + (s&&s.exe ? note(`Running from <code>${esc(s.exe)}</code>`) : '');
   return h;
+}
+function emberStyle(){
+  const cur=SHELL.status&&SHELL.status.desktopStyle;
+  const pick=style=>call('shell.setDesktopStyle',{style}).then(r=>{ SHELL.status=r; refreshUI(); }).catch(e=>toast(e.message));
+  openSheet({title:'Desktop style', sub:'How Desktop Mode looks', items:[
+    {label:'Mantel (Hearth\'s desktop)', icon:cur!=='windows'?'check':'', run:()=>pick('mantel')},
+    {label:'Windows', icon:cur==='windows'?'check':'', run:()=>pick('windows')}]});
+}
+const EMBER_WALLS=['cabin','lanterns','fox','peaks','embers','bloom','topo','forge'];
+function emberWall(){
+  const cur=SHELL.status&&SHELL.status.wallpaper;
+  const pick=name=>call('shell.setWallpaper',{name}).then(r=>{ SHELL.status=r; refreshUI(); }).catch(e=>toast(e.message));
+  openSheet({title:'Wallpaper', sub:'Hearth\'s wallpapers, or the one you had in Windows', items:[
+    ...EMBER_WALLS.map(w=>({label:w.charAt(0).toUpperCase()+w.slice(1), icon:cur==='hearth-'+w?'check':'', run:()=>pick('hearth-'+w)})),
+    {label:'Your Windows wallpaper', icon:!cur?'check':'', run:()=>pick('')}]});
 }
 function emberStart(){
   const cur=SHELL.status&&SHELL.status.startMode;
@@ -2306,6 +2323,8 @@ function act(el){
     case 'updAuto': return call('update.setAuto',{on:!(UPD.status&&UPD.status.autoCheck)}).then(onUpdate).catch(e=>toast(e.message));
     case 'shellReturn': return shellReturn();
     case 'emberStart': return emberStart();
+    case 'emberStyle': return emberStyle();
+    case 'emberWall': return emberWall();
     case 'sheet': return sheetPick(+d.i);
     case 'hint': return hintAction(d.h);
     case 'padMouseMode': return call('pad.setMouseMode',{mode:d.v}).then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; render('cm-'+d.v); }).catch(e=>toast(e.message));

@@ -30,6 +30,9 @@ public sealed class DesktopMode : IDisposable
 
     public bool Active { get; private set; }
     private bool _busy;
+    /// <summary>Runs once the desktop is up (Mantel starts here) and before it's left (Mantel stops).</summary>
+    public Func<Task>? DesktopShown { get; set; }
+    public Action? DesktopLeaving { get; set; }
     public event Action<bool>? Changed;
 
     public DesktopMode(ShellForm ui)
@@ -73,6 +76,7 @@ public sealed class DesktopMode : IDisposable
             // Off the UI thread: waiting for Explorer's taskbar can take a few seconds.
             if (Program.IsShell && !ExplorerShellRunning()) await Task.Run(StartExplorerAsDesktop);
             await Task.Run(EnsureShortcut);
+            if (DesktopShown is not null) await DesktopShown();
         }
         catch (Exception ex) { SystemBridge.Log("desktop mode: " + ex.Message); }
         finally { _busy = false; }
@@ -87,6 +91,7 @@ public sealed class DesktopMode : IDisposable
         {
             SystemBridge.Log("desktop mode: leaving");
             _ui.ShowFullscreen();   // in front right away; Explorer closes behind it
+            try { DesktopLeaving?.Invoke(); } catch (Exception ex) { SystemBridge.Log("desktop mode: " + ex.Message); }
             if (Program.IsShell) await Task.Run(CloseExplorer);
             Active = false;
             HideTray();

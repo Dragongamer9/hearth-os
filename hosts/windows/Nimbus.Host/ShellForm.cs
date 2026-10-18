@@ -25,6 +25,8 @@ public sealed class ShellForm : Form
     private IntPtr _overlayHandle;
     /// <summary>Desktop Mode (the normal Windows desktop) and the ways back to Game Mode.</summary>
     public DesktopMode? Desktop { get; private set; }
+    /// <summary>Hearth's desktop look on Windows, shown in Desktop Mode.</summary>
+    public Nimbus.Host.Mantel.MantelHost? Mantel { get; private set; }
 
     public ShellForm(bool windowed)
     {
@@ -106,6 +108,19 @@ public sealed class ShellForm : Form
         FormClosed += (_, _) => Desktop?.Dispose();
         _pad.DesktopMode = () => Desktop?.Active == true;
         Desktop.Changed += on => Post(new { type = "event", name = "desktopMode", data = new { on } });
+        // Mantel: Hearth's desktop look in Desktop Mode (Settings › Shell › Desktop style).
+        Mantel = new Nimbus.Host.Mantel.MantelHost(_system, env, $"https://{VirtualHost}/", c =>
+        {
+            c.SetVirtualHostNameToFolderMapping(VirtualHost, www, CoreWebView2HostResourceAccessKind.Allow);
+        });
+        Nimbus.Host.Mantel.MantelHost.Wallpaper = Games0().MantelWallpaper;
+        Mantel.RecoverTaskbar();
+        FormClosed += (_, _) => Mantel?.Dispose();
+        Mantel.GameModeRequested += () => Desktop?.Leave();
+        Mantel.QuickAccessRequested += () => _overlay?.Toggle();
+        Mantel.PowerRequested += a => Power(a);
+        Desktop.DesktopShown = async () => { if (Games0().DesktopStyle == "mantel" && Mantel is not null) await Mantel.StartAsync(); };
+        Desktop.DesktopLeaving = () => Mantel?.Stop();
         // As the shell: start on the desktop if that's the choice, or go back to it if Explorer is already the
         // desktop (Ember restarted after an update or a crash while you were on it).
         if (Program.IsShell && (Games0().StartMode == "desktop" || DesktopMode.ExplorerShellRunning()))
