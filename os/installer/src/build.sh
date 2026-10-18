@@ -123,6 +123,19 @@ RestartSec=1
 WantedBy=graphical.target
 UNIT
 systemctl enable hearth-installer.service
+# A minute after start, what the installer screen is doing goes to the serial port (for the CI boot test;
+# real PCs have nothing listening there).
+cat >/etc/systemd/system/hearth-installer-report.service <<'UNIT'
+[Unit]
+Description=Hearth installer: report for the boot test
+After=hearth-installer.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash -c 'sleep 60; { echo "=== hearth report"; ls -l /dev/dri; cat /proc/fb; lsmod | grep -E "^(drm|bochs|virtio_gpu|simpledrm|amdgpu|i915|nouveau)" ; journalctl -b -u hearth-installer --no-pager | tail -40; tail -40 /home/liveuser/hearth-installer.log; echo "=== end"; } >/dev/ttyS0 2>&1'
+[Install]
+WantedBy=graphical.target
+UNIT
+systemctl enable hearth-installer-report.service
 systemctl disable getty@tty1.service || true
 systemctl set-default graphical.target
 # Nothing that updates or writes to disk in the background.
