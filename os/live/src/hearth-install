@@ -1,0 +1,511 @@
+#!/usr/bin/python3
+"""hearth-install: Hearth's own installer, the engine behind both of its faces (the Hearth app and Mantel).
+
+Run as root (pkexec; the live user is allowed). Installed only on the live USB.
+
+  hearth-install disks          JSON: the drives Hearth can go on (not the USB it's running from), with their
+                                size, model, partitions and whether Windows is on them
+  hearth-install run            reads the plan as JSON on stdin and installs. Progress lines as
+                                "stage: {json}", then "result: {json}" or "error: <message>"
+
+The plan:
+  {"mode": "whole" | "beside",          whole: erase the drive; beside: shrink Windows and install next to it
+   "disk": "/dev/nvme0n1",
+   "give": 137438953472,                beside only: how much space to take from Windows (bytes)
+   "user": {"name": "sam", "full": "Sam", "password": "..."},
+   "hostname": "sams-deck", "timezone": "America/Chicago",
+   "image": "ghcr.io/dragongamer9/hearth:latest",   optional; defaults to the edition this USB is
+   "firmware": true}                    optional; false skips adding the boot entry (for tests)
+
+How (the same way Fedora's installer puts an atomic system on a drive, without the installer):
+  1. partitions: a new EFI partition (or Windows' existing one), /boot (ext4) and Hearth (btrfs, with
+     "root" and "home" subvolumes)
+  2. `ostree container image deploy` downloads Hearth OS straight onto the drive (nothing is kept in RAM)
+  3. bootupd installs the boot loader and adds the boot entry
+  4. fstab, the user account, the computer's name, time zone and Wi-Fi networks are written into the new system
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+MIB = 1024 * 1024
+GIB = 1024 * MIB
+MIN_DISK = 64 * GIB
+ESP_SIZE = 600 * MIB
+BOOT_SIZE = 2 * GIB
+ESP_TYPE = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
+LINUX_TYPE = '0fc63daf-8483-4772-8e79-3d69d8477de4'
+XBOOTLDR_TYPE = 'bc13c2ff-59e6-4262-a352-b275fd6f7172'
+TARGET = '/run/hearth-install/target'
+PREP = '/usr/libexec/nimbus/hearth-live-prep'
+RESERVED = {'root', 'bin', 'daemon', 'adm', 'lp', 'sync', 'shutdown', 'halt', 'mail', 'operator', 'games', 'ftp',
+            'nobody', 'liveuser', 'admin', 'system', 'systemd', 'dbus', 'polkitd', 'sddm', 'gdm', 'wheel', 'users'}
+
+
+# ------------------------------------------------------------------ small helpers
+
+class Fail(Exception):
+    pass
+
+
+def sh(cmd, check=True, input=None, **kw):
+    r = subprocess.run(cmd, capture_output=True, text=True, input=input, **kw)
+    if check and r.returncode != 0:
+        last = ((r.stderr or r.stdout or '').strip().splitlines() or [' '.join(cmd) + ' failed'])[-1]
+        raise Fail(f'{os.path.basename(cmd[0])}: {last}')
+    return r
+
+
+def stage(name, pct, text, **extra):
+    print('stage: ' + json.dumps({'stage': name, 'pct': round(max(0, min(100, pct)), 1), 'text': text, **extra}), flush=True)
+
+
+def part_path(disk, n):
+    """/dev/sda + 3 -> /dev/sda3; /dev/nvme0n1 + 3 -> /dev/nvme0n1p3; /dev/loop0 -> /dev/loop0p3."""
+    return f'{disk}{"p" if disk[-1].isdigit() else ""}{n}'
+
+
+def uuid_of(dev):
+    return sh(['blkid', '-s', 'UUID', '-o', 'value', dev]).stdout.strip()
+
+
+# ------------------------------------------------------------------ checks on what was asked
+
+def check_plan(p):
+    """Raises Fail with a message people can act on; returns the plan with defaults filled in."""
+    if p.get('mode') not in ('whole', 'beside'):
+        raise Fail('choose how to install: on the whole drive, or next to Windows')
+    if not re.fullmatch(r'/dev/[A-Za-z0-9/_-]+', p.get('disk') or ''):
+        raise Fail('choose a drive')
+    u = p.get('user') or {}
+    name = (u.get('name') or '').strip()
+    if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', name):
+        raise Fail('the user name can only have small letters, numbers, - and _, and has to start with a letter')
+    if name in RESERVED:
+        raise Fail(f'"{name}" is used by the system: pick another user name')
+    if not u.get('password'):
+        raise Fail('choose a password')
+    if '\n' in u['password'] or ':' in name:
+        raise Fail("the password can't have a line break in it")
+    host = (p.get('hostname') or 'hearth').strip().lower()
+    if not re.fullmatch(r'[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?', host):
+        raise Fail('the device name can only have letters, numbers and -')
+    tz = p.get('timezone') or 'UTC'
+    if not re.fullmatch(r'[A-Za-z0-9_+/-]+', tz) or '..' in tz:
+        raise Fail('unknown time zone')
+    if p['mode'] == 'beside' and not (isinstance(p.get('give'), int) and p['give'] >= MIN_DISK):
+        raise Fail(f'Hearth needs at least {MIN_DISK // GIB} GB')
+    image = p.get('image') or default_image()
+    if not re.fullmatch(r'[a-z0-9./_:@-]+', image):
+        raise Fail('bad image name')
+    extra = [k for k in (p.get('kargs') or []) if isinstance(k, str) and re.fullmatch(r'[A-Za-z0-9_.,=:/-]+', k)]
+    return {**p, 'kargs': extra, 'hostname': host, 'timezone': tz, 'image': image,
+            'user': {'name': name, 'full': (u.get('full') or name).replace(':', ' ').strip(), 'password': u['password']}}
+
+
+def default_image():
+    """The edition this USB is: hearth or hearth-nvidia (written into the live image when it was built)."""
+    try:
+        name = open('/etc/hearth-live').read().strip()
+    except OSError:
+        name = ''
+    return f'ghcr.io/dragongamer9/{name if re.fullmatch(r"hearth(-nvidia)?", name) else "hearth"}:latest'
+
+
+# ------------------------------------------------------------------ drives
+
+def live_disk():
+    """The USB stick Hearth is running from (never offered)."""
+    for mnt in ('/run/initramfs/live', '/run/initramfs/isoscan'):
+        r = sh(['findmnt', '-no', 'SOURCE', mnt], check=False)
+        src = r.stdout.strip()
+        if src:
+            pk = sh(['lsblk', '-no', 'PKNAME', src], check=False).stdout.strip().splitlines()
+            return '/dev/' + (pk[0] if pk and pk[0] else os.path.basename(src))
+    return None
+
+
+def disks():
+    tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'NAME,PATH,TYPE,SIZE,MODEL,TRAN,RM,RO,FSTYPE,LABEL,PARTTYPE']).stdout)
+    live = live_disk()
+    out = []
+    for d in tree.get('blockdevices', []):
+        if d.get('type') != 'disk' or d.get('ro') or int(d.get('size') or 0) < 8 * GIB:
+            continue
+        if re.match(r'/dev/(zram|sr|ram)', d['path']) or (d['path'].startswith('/dev/loop') and not os.environ.get('HEARTH_INSTALL_TEST')):
+            continue
+        parts = [{'dev': c['path'], 'fs': c.get('fstype'), 'label': c.get('label'), 'size': int(c.get('size') or 0),
+                  'type': (c.get('parttype') or '').lower()} for c in (d.get('children') or []) if c.get('type') == 'part']
+        out.append({
+            'dev': d['path'], 'size': int(d['size']), 'model': (d.get('model') or '').strip() or 'Drive',
+            'tran': d.get('tran') or '', 'removable': bool(d.get('rm')), 'live': d['path'] == live,
+            'parts': parts,
+            'windows': any(p['fs'] in ('ntfs', 'BitLocker') and p['size'] > 30 * GIB for p in parts),
+            'tooSmall': int(d['size']) < MIN_DISK,
+        })
+    return out
+
+
+def free_regions(disk):
+    """Unpartitioned space on a drive: [(start_sector, sectors)], biggest first (sfdisk -F)."""
+    out = sh(['sfdisk', '-F', '--bytes', disk]).stdout
+    return parse_free(out)
+
+
+def parse_free(text):
+    regions = []
+    for line in text.splitlines():
+        m = re.match(r'\s*(\d+)\s+(\d+)\s+(\d+)\s+\d+', line)
+        if m:
+            start, end, n = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            regions.append((start, n))
+    return sorted(regions, key=lambda r: -r[1])
+
+
+def release(disk):
+    """Nothing on the drive may be in use: unmount it and turn off swap on it."""
+    for line in sh(['lsblk', '-nrpo', 'NAME,MOUNTPOINTS', disk], check=False).stdout.splitlines():
+        bits = line.split(None, 1)
+        if len(bits) == 2 and bits[1].strip():
+            for m in bits[1].split('\\x0a'):
+                if m.strip() == '[SWAP]':
+                    sh(['swapoff', bits[0]], check=False)
+                elif m.strip():
+                    sh(['umount', '-R', m.strip()], check=False)
+
+
+def settle(disk):
+    sh(['partx', '-u', disk], check=False)
+    sh(['udevadm', 'settle', '-t', '10'], check=False)
+    time.sleep(1)
+
+
+# ------------------------------------------------------------------ partitions
+
+def partition_whole(disk):
+    """GPT with EFI, /boot and Hearth. Returns (esp, boot, root, esp_is_new)."""
+    release(disk)
+    stage('disk', 1, 'Erasing the drive')
+    sh(['wipefs', '-a', disk])
+    layout = (f'label: gpt\n'
+              f'size={ESP_SIZE // 512}, type={ESP_TYPE}, name="EFI System"\n'
+              f'size={BOOT_SIZE // 512}, type={XBOOTLDR_TYPE}, name="boot"\n'
+              f'type={LINUX_TYPE}, name="hearth"\n')
+    sh(['sfdisk', '--wipe', 'always', '--wipe-partitions', 'always', disk], input=layout)
+    settle(disk)
+    return part_path(disk, 1), part_path(disk, 2), part_path(disk, 3), True
+
+
+def windows_esp(disk):
+    """Windows' EFI partition on this drive (Hearth's boot loader goes next to Windows' on it)."""
+    tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'PATH,PARTTYPE,FSTYPE,SIZE', disk]).stdout)
+    for d in tree['blockdevices']:
+        for c in d.get('children') or []:
+            if (c.get('parttype') or '').lower() == ESP_TYPE:
+                return c['path']
+    return None
+
+
+def partition_beside(disk, give):
+    """Shrinks Windows (hearth-live-prep) and adds /boot and Hearth in the space it gave. Returns like above."""
+    stage('shrink', 0, 'Checking Windows')
+    p = subprocess.Popen([PREP, 'shrink', str(give)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    last = ''
+    for line in p.stdout:
+        line = line.strip()
+        m = re.match(r'progress: ([\d.]+) (.*)', line)
+        if m:
+            stage('shrink', float(m.group(1)) * 0.14, m.group(2))
+        elif line.startswith('error: '):
+            last = line[7:]
+    if p.wait() != 0:
+        raise Fail(last or "Windows' drive couldn't be shrunk")
+    esp = windows_esp(disk)
+    if not esp:
+        raise Fail("this drive has no EFI partition (is Windows installed in legacy BIOS mode?)")
+    release(disk)
+    regions = free_regions(disk)
+    if not regions or regions[0][1] * 512 < MIN_DISK:
+        raise Fail("there's no room after shrinking Windows")
+    start, n = regions[0]
+    start = (start + 2047) // 2048 * 2048
+    boot_n = BOOT_SIZE // 512
+    sh(['sfdisk', '--append', '--no-reread', '--force', disk],
+       input=f'start={start}, size={boot_n}, type={XBOOTLDR_TYPE}, name="boot"\n'
+             f'start={start + boot_n}, type={LINUX_TYPE}, name="hearth"\n')
+    settle(disk)
+    tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'PATH,PARTLABEL,START', disk]).stdout)
+    kids = tree['blockdevices'][0].get('children') or []
+    by_start = {int(c.get('start') or 0): c['path'] for c in kids}
+    boot, root = by_start.get(start), by_start.get(start + boot_n)
+    if not boot or not root:
+        raise Fail("couldn't find the new partitions")
+    return esp, boot, root, False
+
+
+# ------------------------------------------------------------------ file systems
+
+def make_filesystems(esp, boot, root, esp_new):
+    stage('format', 15, 'Preparing the drive')
+    if esp_new:
+        sh(['mkfs.vfat', '-F', '32', '-n', 'EFI', esp])
+    sh(['mkfs.ext4', '-F', '-q', '-L', 'boot', boot])
+    sh(['mkfs.btrfs', '-f', '-q', '-L', 'hearth', root])
+    os.makedirs(TARGET, exist_ok=True)
+    sh(['mount', root, TARGET])
+    for sv in ('root', 'home'):
+        sh(['btrfs', 'subvolume', 'create', f'{TARGET}/{sv}'])
+    sh(['umount', TARGET])
+    sh(['mount', '-o', 'subvol=root,compress=zstd:1', root, TARGET])
+    os.makedirs(f'{TARGET}/boot', exist_ok=True)
+    sh(['mount', boot, f'{TARGET}/boot'])
+    os.makedirs(f'{TARGET}/boot/efi', exist_ok=True)
+    sh(['mount', '-o', 'umask=0077', esp, f'{TARGET}/boot/efi'])
+
+
+def unmount_all():
+    sh(['umount', '-R', TARGET], check=False)
+
+
+# ------------------------------------------------------------------ Hearth OS itself
+
+def parse_needed(line):
+    """'layers already present: 3; layers needed: 62 (4.1 GB)' -> (62, bytes)."""
+    m = re.search(r'layers needed:\s*(\d+)\s*\(([\d.]+)\s*([kMGT]?B)\)', line)
+    if not m:
+        return None
+    mult = {'B': 1, 'kB': 1e3, 'MB': 1e6, 'GB': 1e9, 'TB': 1e12}[m.group(3)]
+    return int(m.group(1)), int(round(float(m.group(2)) * mult))
+
+
+def deploy(image, root_uuid):
+    """Downloads Hearth OS onto the drive. Progress from ostree's "Fetching layer" lines."""
+    stage('download', 18, 'Connecting')
+    sh(['ostree', 'admin', 'init-fs', '--modern', TARGET])
+    sh(['ostree', 'admin', 'stateroot-init', '--sysroot', TARGET, 'default'], check=False).returncode == 0 or \
+        sh(['ostree', 'admin', 'os-init', '--sysroot', TARGET, 'default'])
+    repo = f'{TARGET}/ostree/repo'
+    sh(['ostree', 'config', '--repo', repo, 'set', 'sysroot.bootloader', 'none'])
+    sh(['ostree', 'config', '--repo', repo, 'set', 'sysroot.readonly', 'true'])
+    ref = f'ostree-unverified-registry:{image}'
+    cmd = ['ostree', 'container', 'image', 'deploy', '--sysroot', TARGET, '--stateroot', 'default',
+           '--imgref', ref, '--target-imgref', ref,
+           '--karg', f'root=UUID={root_uuid}', '--karg', 'rootflags=subvol=root', '--karg', 'rw']
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    needed, done, total, tail = 0, 0, 0, []
+    started = time.time()
+    for line in p.stdout:
+        line = line.strip()
+        if not line:
+            continue
+        tail = (tail + [line])[-8:]
+        n = parse_needed(line)
+        if n:
+            needed, total = n
+            stage('download', 20, f'Downloading Hearth OS ({total / 1e9:.1f} GB)', bytes=total)
+        elif re.match(r'Fetching (layer|ostree chunk|ostree commit)', line):
+            done = min(done + 1, needed or done + 1)
+            frac = done / needed if needed else 0
+            took = time.time() - started
+            left = int(took / frac - took) if frac > 0.05 else None
+            stage('download', 20 + 60 * frac, f'Downloading Hearth OS ({total / 1e9:.1f} GB)' if total else 'Downloading Hearth OS',
+                  done=done, of=needed, bytes=total, left=left)
+        elif re.search(r'Deploying|Staging|Writing|Committing', line):
+            stage('download', 81, 'Unpacking Hearth OS')
+    if p.wait() != 0:
+        msg = next((l for l in reversed(tail) if re.search(r'error', l, re.I)), tail[-1] if tail else 'download failed')
+        if re.search(r'resolve|network|connect|timeout|TLS|dial', msg, re.I):
+            raise Fail("couldn't download Hearth OS. Check the internet connection and try again")
+        raise Fail('installing Hearth OS failed: ' + msg)
+    found = sorted(glob.glob(f'{TARGET}/ostree/deploy/default/deploy/*.0'), key=os.path.getmtime)
+    if not found:
+        raise Fail("Hearth OS was downloaded but couldn't be found on the drive")
+    return found[-1]
+
+
+def image_kargs(dep):
+    """Kernel options the image asks for (/usr/lib/bootc/kargs.d/*.toml, e.g. Nvidia's), which bootc would add."""
+    out = []
+    for f in sorted(glob.glob(f'{dep}/usr/lib/bootc/kargs.d/*.toml')):
+        text = open(f).read()
+        if re.search(r'match-architectures\s*=\s*\[([^\]]*)\]', text) and 'x86_64' not in text:
+            continue
+        m = re.search(r'kargs\s*=\s*\[([^\]]*)\]', text, re.S)
+        if m:
+            out += re.findall(r'"([^"]+)"', m.group(1))
+    return out
+
+
+def add_kargs(kargs):
+    if not kargs:
+        return
+    args = ['ostree', 'admin', 'kargs', 'edit-in-place', '--sysroot', TARGET]
+    r = sh(args + [f'--append-if-missing={k}' for k in kargs], check=False)
+    if r.returncode != 0:   # older ostree: append to the boot entry by hand
+        for entry in glob.glob(f'{TARGET}/boot/loader/entries/*.conf'):
+            text = open(entry).read()
+            text = re.sub(r'^(options .*)$', lambda m: m.group(1) + ''.join(' ' + k for k in kargs if k not in m.group(1)), text, flags=re.M)
+            open(entry, 'w').write(text)
+
+
+def bootloader(disk, firmware):
+    stage('boot', 84, 'Setting up starting up')
+    # UEFI only (Hearth's PCs and Windows next to it all start that way); --auto would also try BIOS on some.
+    cmd = ['bootupctl', 'backend', 'install', '--component', 'EFI', '--with-static-configs', '--write-uuid', '--device', disk]
+    if firmware:
+        cmd.append('--update-firmware')
+    r = sh(cmd + [TARGET], check=False)
+    for flag, instead in (('--component', ['--auto']), ('--with-static-configs', [])):
+        if r.returncode != 0 and flag in ((r.stderr or '') + (r.stdout or '')) and flag in cmd:
+            i = cmd.index(flag)
+            cmd = cmd[:i] + instead + cmd[i + (2 if flag == '--component' else 1):]
+            r = sh(cmd + [TARGET], check=False)
+    if r.returncode != 0:
+        raise Fail('setting up the boot loader failed: ' + ((r.stderr or r.stdout).strip().splitlines() or ['?'])[-1])
+    if firmware:
+        ensure_boot_entry(disk)
+
+
+def ensure_boot_entry(disk):
+    """A firmware boot entry for Hearth, first in the boot order (bootupd normally adds one)."""
+    if not os.path.isdir('/sys/firmware/efi'):
+        return
+    entries = sh(['efibootmgr'], check=False).stdout
+    if re.search(r'Boot\d{4}\*?\s+(Fedora|Hearth)', entries):
+        return
+    esp_part = sh(['findmnt', '-no', 'SOURCE', f'{TARGET}/boot/efi']).stdout.strip()
+    num = re.search(r'(\d+)$', esp_part).group(1)
+    loader = '\\EFI\\fedora\\shimx64.efi' if os.path.exists(f'{TARGET}/boot/efi/EFI/fedora/shimx64.efi') else '\\EFI\\fedora\\grubx64.efi'
+    sh(['efibootmgr', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', loader], check=False)
+
+
+# ------------------------------------------------------------------ the new system's settings
+
+def write_fstab(dep, esp, boot, root):
+    ru, bu, eu = uuid_of(root), uuid_of(boot), uuid_of(esp)
+    text = fstab_text(ru, bu, eu)
+    with open(f'{dep}/etc/fstab', 'w') as f:
+        f.write(text)
+
+
+def fstab_text(ru, bu, eu):
+    return ('# Written by Hearth\'s installer\n'
+            f'UUID={ru} / btrfs subvol=root,compress=zstd:1,x-systemd.device-timeout=0 0 0\n'
+            f'UUID={bu} /boot ext4 defaults 1 2\n'
+            f'UUID={eu} /boot/efi vfat umask=0077,shortname=winnt 0 2\n'
+            f'UUID={ru} /var/home btrfs subvol=home,compress=zstd:1,x-systemd.device-timeout=0 0 0\n')
+
+
+def setup_system(dep, root, plan):
+    stage('user', 90, 'Creating your account')
+    var = f'{TARGET}/ostree/deploy/default/var'
+    os.makedirs(f'{dep}/var', exist_ok=True)
+    sh(['mount', '--bind', var, f'{dep}/var'])
+    os.makedirs(f'{dep}/var/home', exist_ok=True)
+    sh(['mount', '-o', 'subvol=home,compress=zstd:1', root, f'{dep}/var/home'])
+    try:
+        u = plan['user']
+        sh(['useradd', '-R', dep, '-m', '-d', f'/var/home/{u["name"]}', '-G', 'wheel', '-c', u['full'], '-s', '/bin/bash', u['name']])
+        sh(['chpasswd', '-R', dep], input=f'{u["name"]}:{u["password"]}\n')
+        with open(f'{dep}/etc/hostname', 'w') as f:
+            f.write(plan['hostname'] + '\n')
+        if os.path.exists(f'{dep}/usr/share/zoneinfo/{plan["timezone"]}'):
+            lt = f'{dep}/etc/localtime'
+            if os.path.lexists(lt):
+                os.remove(lt)
+            os.symlink(f'../usr/share/zoneinfo/{plan["timezone"]}', lt)
+        copy_wifi(dep)
+        # Hearth's first start offers to import games from Windows (beside) and sets up the rest.
+        os.makedirs(f'{dep}/etc/nimbus', exist_ok=True)
+        with open(f'{dep}/etc/nimbus/installed.json', 'w') as f:
+            json.dump({'mode': plan['mode'], 'at': int(time.time())}, f)
+        relabel(dep, ['/etc', '/var/home'])
+    finally:
+        sh(['umount', f'{dep}/var/home'], check=False)
+        sh(['umount', f'{dep}/var'], check=False)
+
+
+def copy_wifi(dep):
+    """The Wi-Fi networks joined on the USB, so the installed Hearth is online straight away."""
+    src = '/etc/NetworkManager/system-connections'
+    dst = f'{dep}/etc/NetworkManager/system-connections'
+    if not os.path.isdir(src):
+        return
+    os.makedirs(dst, exist_ok=True)
+    for f in glob.glob(f'{src}/*.nmconnection'):
+        out = os.path.join(dst, os.path.basename(f))
+        shutil.copy2(f, out)
+        os.chmod(out, 0o600)
+
+
+def relabel(dep, paths):
+    """SELinux labels for what was written (or logging in fails on the new system)."""
+    fc = f'{dep}/etc/selinux/targeted/contexts/files/file_contexts'
+    if not os.path.exists(fc) or not shutil.which('setfiles'):
+        open(f'{dep}/.autorelabel', 'w').close()   # relabel on first start instead
+        return
+    r = sh(['setfiles', '-F', '-r', dep, fc] + [dep + p for p in paths], check=False)
+    if r.returncode != 0:
+        open(f'{dep}/.autorelabel', 'w').close()
+
+
+# ------------------------------------------------------------------ the whole run
+
+def run(plan):
+    plan = check_plan(plan)
+    disk = plan['disk']
+    info = next((d for d in disks() if d['dev'] == disk), None)
+    if not info:
+        raise Fail('that drive is gone or can\'t be used')
+    if info['live']:
+        raise Fail("that's the USB stick Hearth is running from")
+    if plan.get('firmware', True) and not os.path.isdir('/sys/firmware/efi'):
+        raise Fail('this PC started the USB in legacy (BIOS) mode. Restart, and start the USB in UEFI mode from the boot menu')
+    if plan['mode'] == 'whole' and info['tooSmall']:
+        raise Fail(f'that drive is too small: Hearth needs at least {MIN_DISK // GIB} GB')
+    unmount_all()
+    try:
+        if plan['mode'] == 'whole':
+            esp, boot, root, esp_new = partition_whole(disk)
+        else:
+            esp, boot, root, esp_new = partition_beside(disk, plan['give'])
+        make_filesystems(esp, boot, root, esp_new)
+        dep = deploy(plan['image'], uuid_of(root))
+        add_kargs(image_kargs(dep) + plan['kargs'])
+        bootloader(disk, plan.get('firmware', True))
+        write_fstab(dep, esp, boot, root)
+        setup_system(dep, root, plan)
+        stage('finish', 97, 'Finishing up')
+        sh(['sync'])
+    finally:
+        unmount_all()
+    stage('done', 100, 'Hearth OS is installed')
+    return {'ok': True, 'disk': disk, 'mode': plan['mode'], 'user': plan['user']['name']}
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    if os.geteuid() != 0:
+        print('error: run this as root (pkexec)', flush=True)
+        return 1
+    try:
+        if cmd == 'disks':
+            print(json.dumps({'disks': disks(), 'image': default_image(), 'efi': os.path.isdir('/sys/firmware/efi')}))
+        elif cmd == 'run':
+            print('result: ' + json.dumps(run(json.loads(sys.stdin.read() or '{}'))), flush=True)
+        else:
+            print('error: usage: hearth-install disks | run < plan.json', flush=True)
+            return 1
+    except (Fail, json.JSONDecodeError) as e:
+        print('error: ' + str(e), flush=True)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
