@@ -13,7 +13,7 @@ namespace Nimbus.Host.Mantel;
 /// button on Mantel's taskbar shows Windows' taskbar for a moment to reach them. Everything is put back the
 /// way it was when you leave Mantel.
 /// </summary>
-internal sealed class MantelHost : IDisposable
+public sealed class MantelHost : IDisposable
 {
     private readonly SystemBridge _bridge;
     private readonly CoreWebView2Environment _env;
