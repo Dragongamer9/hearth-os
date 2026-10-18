@@ -87,7 +87,7 @@ class OsInstaller extends EventEmitter {
         this.state.log = [...this.state.log, line].slice(-60);
         const r = parseLine(line);
         if (!r) continue;
-        if (r.stage) this.set({ stage: r.stage.stage, pct: r.stage.pct, text: r.stage.text, left: r.stage.left ?? null, bytes: r.stage.bytes ?? null });
+        if (r.stage) this.set({ stage: r.stage.stage, pct: r.stage.pct, text: r.stage.text, left: r.stage.left ?? null, bytes: r.stage.bytes ?? null, got: r.stage.got ?? null, speed: r.stage.speed ?? null, percent: r.stage.percent ?? null });
         if (r.result) this.state.result = r.result;
         if (r.error) this.state.error = r.error;
       }

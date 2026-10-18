@@ -81,7 +81,7 @@ impl OsInstaller {
                 let Some((kind, v)) = parse_line(&line) else { continue };
                 let mut s = state.lock().unwrap();
                 match kind {
-                    "stage" => { for k in ["stage", "pct", "text"] { s[k] = v[k].clone(); } s["left"] = v["left"].clone(); s["bytes"] = v["bytes"].clone(); push(&s); }
+                    "stage" => { for k in ["stage", "pct", "text"] { s[k] = v[k].clone(); } for k in ["left", "bytes", "got", "speed", "percent"] { s[k] = v[k].clone(); } push(&s); }
                     "result" => s["result"] = v,
                     _ => s["error"] = v,
                 }
