@@ -15,11 +15,11 @@ everything it does; then Hearth OS switches over in one release.
 ## The plan (each step is usable on its own and tested in CI: .github/workflows/rust.yml)
 1. [x] The window, the message channel the screens already use, game art from the disk
 2. [x] Steam library (installed games, play time, art), favorites, hidden, launching Steam games
-3. [ ] Status bar and Quick Access: battery, Wi-Fi, Bluetooth, volume, brightness, power modes
-4. [ ] Settings: Wi-Fi and Bluetooth pages, display, sound, power button, sign-in, updates
-5. [ ] Epic and GOG (legendary, gogdl), Xbox Cloud Gaming, manual games, emulators, game settings
+3. [x] Status bar and Quick Access: battery, Wi-Fi, Bluetooth, volume, brightness, power modes
+4. [~] Settings: Wi-Fi, Bluetooth, sound, power button, sign-in, Hearth OS updates, device info (display modes still to do)
+5. [~] Manual games, emulators, game settings, launching and watching games, ProtonDB and achievements (Epic, GOG, Xbox still to do)
 6. [ ] Game Mode: gamescope focus, the overlay over games, Guide button, performance overlay, pause
-7. [ ] Profiles, parental controls, collections, backup, remote play, themes
+7. [~] Profiles, parental controls, collections, backup, remote play (themes and wallpaper still to do)
 8. [ ] The installer screens (live USB) and the first-start setup
 9. [ ] Switch Hearth OS to the Rust app; remove Electron
 
