@@ -74,6 +74,12 @@ SetPage {
         onToggled: v => page.runAdmin(["autologin", v ? "on" : "off"], "", "autologin", () => page.say(v ? "Hearth will sign you in automatically." : "The login screen will show at start."))
     }
 
+    SetSwitch {
+        icon: "lock"; title: "Lock when waking"; sub: "Desktop Mode asks for your password after sleep. Lock any time with Super+L or the power menu."
+        checked: Settings.lockOnWake
+        onToggled: v => Settings.lockOnWake = v
+    }
+
     SetHeader { text: "Password"; visible: page.canAdmin }
     SetField { id: oldPw; visible: page.canAdmin; placeholder: "Current password"; secret: true }
     SetField { id: newPw; visible: page.canAdmin; placeholder: "New password (at least 4 characters)"; secret: true }

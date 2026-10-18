@@ -10,6 +10,7 @@ PanelWindow {
     property bool shown: false
     property int sel: 0
     readonly property var items: [
+        { icon: "lock", label: "Lock", cmd: ["sh", "-c", "exec quickshell ipc -p \"$NIMBUS_SHARE/desktop/shell\" call lock lock"] },
         { icon: "sleep", label: "Sleep", cmd: ["systemctl", "suspend"] },
         { icon: "restart", label: "Restart", cmd: ["systemctl", "reboot"] },
         { icon: "power", label: "Shut down", cmd: ["systemctl", "poweroff"] },

@@ -52,6 +52,7 @@ ShellRoot {
     SettingsApp { id: settings }
     VolumeOsd {}
     PowerMenu { id: powerMenu }
+    Lock { id: lockScreen }
     LiveWelcome { id: liveWelcome; settingsApp: settings }
     Pad {
         id: pad
@@ -88,6 +89,10 @@ ShellRoot {
         function down(): void { Buttons.volume(-1, false); }
         function mute(): void { Buttons.mute(false); }
         function power(): void { Buttons.power("short", false); }
+    }
+    IpcHandler {
+        target: "lock"
+        function lock(): void { lockScreen.lock(); }
     }
     IpcHandler {
         target: "live"
