@@ -178,6 +178,7 @@ public sealed class SystemBridge : IDisposable
                     host = "Ember (WebView2)",
                     version = typeof(SystemBridge).Assembly.GetName().Version?.ToString(3),
                     session = Program.IsShell,
+                    features = new[] { "desktopMode" },
                     user = Environment.UserName,
                 };
             case "system.info": return SystemInfo.Get();
@@ -366,7 +367,16 @@ public sealed class SystemBridge : IDisposable
                     registered = ShellRegistration.IsNimbus(),
                     value = ShellRegistration.Current(),
                     exe = Environment.ProcessPath,
+                    startMode = Games.StartMode,
+                    desktopMode = (_ui as ShellForm)?.Desktop?.Active ?? false,
                 };
+            case "shell.setStartMode":
+            {
+                var mode = Req(a, "mode");
+                if (mode is not ("game" or "desktop")) throw new ArgumentException("Start mode is game or desktop");
+                Games.StartMode = mode;
+                return await DispatchAsync("shell.status", a);
+            }
             case "shell.register":
                 ShellRegistration.Register(Environment.ProcessPath!);
                 return new { registered = ShellRegistration.IsNimbus() };

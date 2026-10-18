@@ -476,6 +476,7 @@ public sealed class LibraryService : IDisposable
     public string? RunningTitle => _monitor.RunningId is { } id && _games.TryGetValue(id, out var g) ? g.Title : null;
     public DateTime? RunningSince => _monitor.StartedAt;
     public bool OverlayHoldView { get => _store.Read(d => d.OverlayHoldView); set => _store.Update(d => d.OverlayHoldView = value); }
+    public string StartMode { get => _store.Read(d => d.StartMode) ?? "game"; set => _store.Update(d => d.StartMode = value); }
 
     public void Dispose() => _monitor.Dispose();
 }

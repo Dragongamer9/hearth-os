@@ -26,6 +26,13 @@ public static class ShellRegistration
         k.SetValue("Shell", $"\"{exePath}\" --shell", RegistryValueKind.String);
     }
 
+    /// <summary>Writes the Shell value as given (Desktop Mode points it at Explorer for a moment).</summary>
+    public static void SetRaw(string value)
+    {
+        using var k = Registry.CurrentUser.CreateSubKey(KeyPath);
+        k.SetValue("Shell", value, RegistryValueKind.String);
+    }
+
     public static void Unregister()
     {
         using var k = Registry.CurrentUser.OpenSubKey(KeyPath, writable: true);

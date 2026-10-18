@@ -15,6 +15,7 @@ public sealed class ShellForm : Form
     private const string VirtualHost = "nimbus.local";
     private const int HotkeyEscapeHatch = 0x4E01;
     private const int HotkeyOverlay = 0x4E02;
+    private const int HotkeyGameMode = 0x4E03;
 
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(12, 16, 22) };
     private readonly bool _windowed;
@@ -22,6 +23,8 @@ public sealed class ShellForm : Form
     private Input.ControllerBridge? _pad;
     private Overlay.OverlayForm? _overlay;
     private IntPtr _overlayHandle;
+    /// <summary>Desktop Mode (the normal Windows desktop) and the ways back to Game Mode.</summary>
+    public DesktopMode? Desktop { get; private set; }
 
     public ShellForm(bool windowed)
     {
@@ -99,6 +102,14 @@ public sealed class ShellForm : Form
         _pad.UiButton += b => BeginInvoke((MethodInvoker)(() => Post(new { type = "event", name = "pad", data = new { b } })));
         _pad.ControllersChanged += n => BeginInvoke((MethodInvoker)(() => Post(new { type = "event", name = "padHost", data = new { connected = n } })));
         FormClosed += (_, _) => _pad?.Dispose();
+        Desktop = new DesktopMode(this);
+        FormClosed += (_, _) => Desktop?.Dispose();
+        _pad.DesktopMode = () => Desktop?.Active == true;
+        Desktop.Changed += on => Post(new { type = "event", name = "desktopMode", data = new { on } });
+        // As the shell: start on the desktop if that's the choice, or go back to it if Explorer is already the
+        // desktop (Ember restarted after an update or a crash while you were on it).
+        if (Program.IsShell && (Games0().StartMode == "desktop" || DesktopMode.ExplorerShellRunning()))
+            BeginInvoke((MethodInvoker)(() => Desktop.Enter()));
         // A just-installed update that runs for a minute is considered good (no rollback needed).
         _ = Task.Delay(TimeSpan.FromMinutes(1)).ContinueWith(_ => Updates.UpdateService.ConfirmHealthy());
         core.WebMessageReceived += OnWebMessage;
@@ -121,6 +132,7 @@ public sealed class ShellForm : Form
             var overlay = new Overlay.OverlayForm(_system, () => _pad?.Connected ?? 0);
             overlay.HomeRequested += () =>
             {
+                if (Desktop?.Active == true) { Desktop.Leave(); return; }
                 if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
                 TopMost = true; TopMost = false;
                 Activate();
@@ -208,7 +220,8 @@ public sealed class ShellForm : Form
             case "restart": Run("shutdown.exe", "/r /t 0"); break;
             case "shutdown": Run("shutdown.exe", "/s /t 0"); break;
             case "signout": Run("shutdown.exe", "/l"); break;
-            case "desktop": StartExplorer(); break;          // opens a File Explorer window
+            case "desktop": Desktop?.Enter(); break;          // Desktop Mode: the normal Windows desktop
+            case "explorer": StartExplorer(); break;         // just a File Explorer window
         }
     }
 
@@ -230,6 +243,19 @@ public sealed class ShellForm : Form
         Close();
     }
 
+    /// <summary>Back from Desktop Mode: show Ember fullscreen and in front.</summary>
+    public void ShowFullscreen()
+    {
+        Show();
+        if (!_windowed) { FormBorderStyle = FormBorderStyle.None; WindowState = FormWindowState.Normal; WindowState = FormWindowState.Maximized; }
+        else if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+        TopMost = true; TopMost = false;
+        Activate();
+        _web.Focus();
+    }
+
+    private Library.LibraryService Games0() => _system!.Games;
+
     private static void Run(string file, string args) =>
         Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = false, CreateNoWindow = true });
 
@@ -250,18 +276,21 @@ public sealed class ShellForm : Form
         base.OnHandleCreated(e);
         RegisterHotKey(Handle, HotkeyEscapeHatch, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, (uint)Keys.E);
         RegisterHotKey(Handle, HotkeyOverlay, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, (uint)Keys.Q);
+        RegisterHotKey(Handle, HotkeyGameMode, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, (uint)Keys.G);
     }
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
         UnregisterHotKey(Handle, HotkeyEscapeHatch);
         UnregisterHotKey(Handle, HotkeyOverlay);
+        UnregisterHotKey(Handle, HotkeyGameMode);
         base.OnHandleDestroyed(e);
     }
 
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HotkeyEscapeHatch) StartExplorer();
+        if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HotkeyGameMode) Desktop?.Leave();
         if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HotkeyOverlay)
         {
             // In Nimbus itself it opens Quick Access; anywhere else, the overlay.
