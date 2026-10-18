@@ -921,4 +921,15 @@ mod tests {
         assert_eq!(r["ok"], true);
         assert!(b.library.store.list_has("favorites", "steam:1"));
     }
+    #[test]
+    fn answers_everything_the_electron_host_does() {
+        // Every method the Electron host's bridge answers has an answer here too.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let node = std::fs::read_to_string(dir.join("../linux/src/bridge.js")).unwrap();
+        let rust = std::fs::read_to_string(dir.join("src/bridge.rs")).unwrap();
+        let methods = regex::Regex::new(r"case '([a-zA-Z]+\.[a-zA-Z.]+)'").unwrap();
+        let missing: Vec<String> = methods.captures_iter(&node).map(|c| c[1].to_string())
+            .filter(|m| !rust.contains(&format!("\"{m}\" =>")) && !rust.contains(&format!("\"{m}\" |")) && !rust.contains(&format!("| \"{m}\""))).collect();
+        assert!(missing.is_empty(), "not in the Rust host yet: {missing:?}");
+    }
 }
