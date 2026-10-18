@@ -71,14 +71,19 @@ jobs:
           xdotool key q; sleep 3; import -window root shots/quick-access.png || true
           xdotool key Escape; sleep 1; xdotool key m; sleep 2; import -window root shots/menu.png || true
           # From the menu: Library (1 down), Downloads (2), Settings (3)
-          for p in "1 library" "2 downloads" "3 settings"; do set -- $p
+          # (the menu opens on the page you're on: go to its top first)
+          for p in "1 library" "2 downloads" "3 friends" "4 settings"; do set -- $p
             xdotool key Escape; sleep 1; xdotool key m; sleep 1.5
+            for i in $(seq 8); do xdotool key Up; sleep 0.1; done
             for i in $(seq $1); do xdotool key Down; sleep 0.3; done
             xdotool key Return; sleep 3; import -window root shots/$2.png || true
           done
           xdotool key Escape; sleep 1
           # Speed test: the library with 403 games, moving through it.
-          xdotool key Escape; sleep 1; xdotool key m; sleep 1.5; xdotool key Down; sleep 0.3; xdotool key Return; sleep 4
+          xdotool key Escape; sleep 1; xdotool key m; sleep 1.5
+          for i in $(seq 8); do xdotool key Up; sleep 0.1; done
+          xdotool key Down; sleep 0.3; xdotool key Return; sleep 4
+          xdotool key Down; sleep 0.5   # from the tabs into the games
           for i in $(seq 20); do xdotool key Right; sleep 0.15; done
           for i in $(seq 10); do xdotool key Down; sleep 0.15; done
           sleep 1; import -window root shots/library-big.png || true
