@@ -163,6 +163,18 @@ class Bridge {
       case 'browser.status': return { ...(await this.browser.status()), hearth: await hearthBrowser() };
       // Hearth Browser (Hearth's own): open it, or make it the default browser.
       // Remote play: Sunshine (stream from here) and Moonlight (play another PC's games here).
+      // Backup and restore (Settings › System).
+      case 'backup.status': { const b = require('./backup'); const dests = b.destinations(); return { destinations: dests, backups: b.list(dests.map(d => d.path)) }; }
+      case 'backup.create': return require('./backup').create({ dest: req('dest'), signins: !!a.signins, version: require('../package.json').version });
+      case 'backup.restore': {
+        const b = require('./backup');
+        const file = req('file');
+        if (!b.list(b.destinations().map(d => d.path)).some(x => x.file === file)) throw new Error("That backup isn't on a drive Hearth can see anymore");
+        if (L.runningId) throw new Error('Close the game first');
+        const meta = await b.restore(file);
+        setTimeout(() => this.platform.restartApp && this.platform.restartApp(), 1500);   // Hearth reads it all at start
+        return meta;
+      }
       case 'remote.status': return this.remote().status();
       case 'remote.setOn': return this.remote().setOn(!!a.on);
       case 'remote.pair': return this.remote().pair(String(a.pin || ''), a.name);

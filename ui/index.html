@@ -729,6 +729,8 @@ const MOCK = (()=>{
   const push=()=>setTimeout(()=>onSysEvent('status',status()),0);
   const H={
     'sys.status':async()=>status(),
+    'backup.status':async()=>({destinations:[{path:'/run/media/me/USB',label:'SANDISK',removable:true},{path:'~/Backups',label:'Backups folder (on this device)',removable:false}],backups:[{file:'x',name:'hearth-backup-2026-10-18-12-30.tar.gz',bytes:2400000,at:Date.now()-86400000}]}),
+    'backup.create':async()=>({file:'x',bytes:2400000}), 'backup.restore':async()=>({}),
     'remote.status':async()=>({installed:true,on:true,clients:[{name:'Living room TV',uuid:'u1'}],needsLogin:false,addresses:['192.168.1.42'],moonlight:false}),
     'remote.setOn':async()=>({}), 'remote.pair':async()=>true, 'remote.unpair':async()=>true, 'moonlight.install':async()=>true,
     'profiles.setLimits':async()=>({}), 'profiles.setPin':async()=>true, 'profiles.unlock':async()=>true,
@@ -1056,12 +1058,30 @@ function pageSystem(){
   else h += `<button class="row" data-f data-k="sy-signin" data-act="goset" data-tab="signin"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign-in and startup</b><small>Sign in automatically, start in Game or Desktop Mode, password</small></div><div class="rv">›</div></button>`;
   h += shead('Privacy')
     + `<button class="row" data-f data-k="sy-count" data-act="countMe"><div class="rt"><b>Count me in the player count</b><small>${APP} tells Hearth OS's counter it's running about every 10 minutes: a random number made on this device, the edition and the version. No names, games or accounts.</small></div><div class="sw ${counterOn()?'on':''}"></div></button>`;
+  if(LINUX) h += shead('Backup') + `<button class="row" data-f data-k="sy-backup" data-act="backupNow"><span class="ricon">${I.dl}</span><div class="rt"><b>Back up ${APP}</b><small>Settings, profiles, favorites, collections, play time and your own games, to a USB drive or this device</small></div>${BACKUP.busy?'<span class="mini-spin"></span>':'<div class="rv">›</div>'}</button>`
+    + `<button class="row" data-f data-k="sy-restore" data-act="restoreBackup"><span class="ricon">${I.refresh}</span><div class="rt"><b>Restore from a backup</b><small>On a new device, or after a reinstall. ${APP} restarts after.</small></div><div class="rv">›</div></button>`;
   h += shead('Troubleshooting');
   if(feat('restartApp')) h += `<button class="row" data-f data-k="sy-restart" data-act="restartApp"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP}</b><small>Closes and reopens ${APP}. Games keep running.</small></div></button>`;
   h += `<button class="row" data-f data-k="sy-inlog" data-act="inputLog"><div class="rt"><b>Log controller input</b><small>Writes every button press and what it selected to the log, for reporting a jumpy selection. Then use Save logs.</small></div><div class="sw ${INPUT_LOG?'on':''}"></div></button>`;
   if(feat('exportLogs')) h += `<button class="row" data-f data-k="sy-logs" data-act="exportLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs</b><small>Puts ${APP}'s logs in one file in your home folder, to send with a bug report</small></div></button>`;
   h += `<button class="row" data-f data-k="sy-reset" data-act="resetLook"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset appearance</b><small>Layout, text size and top bar back to how they started. Your games and accounts stay.</small></div></button>`;
   return h;
+}
+// ---------- Settings › System › Backup (Linux) ----------
+const BACKUP = {busy:false};
+async function backupNow(){
+  let st; try{ st=await call('backup.status'); }catch(e){ return toast(e.message); }
+  const go=(dest, signins)=>{ BACKUP.busy=true; render(null,true); toast('Backing up…');
+    call('backup.create',{dest:dest.path, signins},10*60000).then(r=>toast(`Backed up to ${dest.label} (${Math.max(1,Math.round(r.bytes/1e6))} MB)${dest.removable?'. Safe to unplug.':''}`)).catch(e=>toast(e.message)).finally(()=>{ BACKUP.busy=false; render(null,true); }); };
+  openSheet({title:'Where to save it?', sub:'A USB drive keeps it safe if this device breaks.', items:st.destinations.map(d=>({label:d.label, icon:d.removable?'dl':'lib', run:()=>setTimeout(()=>openSheet({title:'Include sign-ins?', sub:'Your Epic, GOG and Xbox sign-ins. Anyone with the file could use them, so keep the drive safe.', items:[
+    {label:'No, I\'ll sign in again', icon:'x', run:()=>go(d,false)},
+    {label:'Yes, include them', icon:'lock', run:()=>go(d,true)}]}),250)}))});
+}
+async function restoreBackup(){
+  let st; try{ st=await call('backup.status'); }catch(e){ return toast(e.message); }
+  if(!st.backups.length) return openSheet({title:'No backups found', sub:'Plug in the USB drive with the backup (it\'s in a Hearth Backups folder), then try again.', items:[]});
+  openSheet({title:'Restore which backup?', items:st.backups.slice(0,12).map(b=>({label:`${new Date(b.at).toLocaleString()} · ${Math.max(1,Math.round(b.bytes/1e6))} MB`, icon:'refresh', run:()=>setTimeout(()=>openSheet({title:'Restore this backup?', sub:`Settings, profiles and play data go back to how they were then. What's here now is kept aside, in case. ${APP} restarts.`, items:[
+    {label:'Restore', icon:'refresh', run:()=>call('backup.restore',{file:b.file},10*60000).then(()=>toast(`Restored. ${APP} is restarting…`)).catch(e=>toast(e.message))}]}),250)}))});
 }
 // ---------- Settings › System › Web browser (Aloha, Linux) ----------
 const BROWSER = {s:null};
@@ -2610,6 +2630,8 @@ function act(el){
     case 'gopts': return gameOptions(G(d.id));
     case 'colNew': return colNew(null);
     case 'pinSetup': return pinSetup();
+    case 'backupNow': return backupNow();
+    case 'restoreBackup': return restoreBackup();
     case 'rpToggle': return rpAct('on', async()=>{ const on=!RP.s.on; await call('remote.setOn',{on},60000); toast(on?'Remote play is on. Pair a device to start.':'Remote play is off'); });
     case 'rpPair': return (async()=>{ const pin=await openPrompt({title:'The 4 numbers Moonlight shows', min:4}); if(pin==null) return;
       const name=await openPrompt({title:'Name for this device', value:'Moonlight'}); if(name==null) return;
