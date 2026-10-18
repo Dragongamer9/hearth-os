@@ -125,7 +125,9 @@ class EpicStore {
    * Resolves with the child process.
    */
   async launch(app, options = null) {
-    let r = await tools.run(tools.TOOLS.legendary, ['launch', app, '--json', '--skip-version-check'], { env: ENV, timeoutMs: 60000 });
+    // Offline: straight to legendary's offline launch (the online one would only time out first).
+    let r = require('../util').isOnline() ? await tools.run(tools.TOOLS.legendary, ['launch', app, '--json', '--skip-version-check'], { env: ENV, timeoutMs: 60000 })
+      : { code: 1, out: '' };
     let p = jsonIn(r.out, '{');
     if (!p) {
       // Offline or Epic is down: games that allow it start without the online token.

@@ -68,4 +68,9 @@ function writeJsonAtomic(file, data) {
   fs.renameSync(tmp, file);
 }
 
-module.exports = { DATA_DIR, LOG_PATH, log, run, has, launchDetached, readJson, readText, exists, isDir, writeJsonAtomic };
+// Whether the device is online (kept up to date by main.js): things that would wait on the network skip it.
+let online = true;
+const isOnline = () => online;
+function setOnline(v) { online = !!v; }
+
+module.exports = { DATA_DIR, LOG_PATH, log, run, has, launchDetached, readJson, readText, exists, isDir, writeJsonAtomic, isOnline, setOnline };
