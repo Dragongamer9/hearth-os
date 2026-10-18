@@ -248,6 +248,7 @@ public sealed class ShellForm : Form
         switch (action)
         {
             case "sleep": Application.SetSuspendState(PowerState.Suspend, false, false); break;
+            case "hibernate": Application.SetSuspendState(PowerState.Hibernate, false, false); break;   // Quick Resume games kept
             case "restart": Run("shutdown.exe", "/r /t 0"); break;
             case "shutdown": Run("shutdown.exe", "/s /t 0"); break;
             case "signout": Run("shutdown.exe", "/l"); break;
@@ -263,6 +264,19 @@ public sealed class ShellForm : Form
         updates.BeginInstall(Program.IsShell, _windowed);
         Program.ExitCode = Updates.UpdateService.UpdateExitCode;
         _leaving = true;
+        Close();
+    }
+
+    /// <summary>Starts Ember again after switching profiles (with that person's files and Steam account),
+    /// without asking "Who's playing?" again.</summary>
+    public void RestartForProfile()
+    {
+        try { File.WriteAllText(Profiles.PickedFile, "1"); } catch { }
+        _leaving = true;
+        if (Program.IsShell) { Program.ExitCode = Program.RestartExitCode; Close(); return; }   // the watchdog starts it again
+        var exe = Environment.ProcessPath!;
+        var args = string.Join(" ", Environment.GetCommandLineArgs().Skip(1).Select(x => $"\"{x}\""));
+        Process.Start(new ProcessStartInfo("cmd.exe", $"/c timeout /t 2 /nobreak >nul & start \"\" \"{exe}\" {args}") { CreateNoWindow = true, UseShellExecute = false });
         Close();
     }
 

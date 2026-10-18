@@ -36,6 +36,7 @@ public sealed class LibraryData
     public Dictionary<string, GameStats> Stats { get; set; } = new();
     public bool SteamBackground { get; set; } = true;   // keep Steam running hidden (-silent)
     public bool AutoUpdateCheck { get; set; } = true;   // check GitHub for Nimbus updates
+    public bool QuickResume { get; set; } = true;       // starting another game puts the running one aside (frozen)
     public string ControllerMouse { get; set; } = "steam"; // right stick as mouse: off | steam | always
     public bool OverlayHoldView { get; set; }              // hold View for a second to open the in-game overlay
     public string StartMode { get; set; } = "game";        // as the shell: start in "game" (Ember) or "desktop" (Explorer)
