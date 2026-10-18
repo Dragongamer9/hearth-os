@@ -2441,6 +2441,7 @@ function act(el){
     case 'osiRecheck': return osiCheck();
     case 'osiEdit': return osiEdit(d.v);
     case 'osiTz': return osiTzPick();
+    case 'osiNoPass': OSI.user.nopassword=!OSI.user.nopassword; if(OSI.user.nopassword) OSI.user.password=''; return render('osi-nopass');
     case 'osiStart': return osiStart();
     case 'osiRestart': return call('osinstall.restart').catch(e=>toast(e.message));
     case 'osiAgain': OSI.s=null; OSI.step='review'; return render('osi-go');
@@ -2860,7 +2861,7 @@ function osiBlock(step){
   if(step==='account'){ const u=OSI.user;
     if(!u.full.trim()) return 'Type your name';
     if(!/^[a-z_][a-z0-9_-]{0,31}$/.test(u.name)) return 'The user name can only have small letters, numbers, - and _';
-    if(!u.password) return 'Choose a password'; }
+    if(!u.password && !u.nopassword) return 'Choose a password, or turn on No password'; }
   return '';
 }
 function osiAutoName(full){ return (full||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'').replace(/^[0-9]+/,'').slice(0,20) || 'player'; }
@@ -2941,7 +2942,8 @@ function viewOsInstall(){
     body=`<h1>Your account</h1><p class="lead">For signing in, the lock screen and system changes. Hearth can still sign you in automatically.</p><div class="rows">
       ${row('full','user','Your name', esc(u.full)||'Choose', 'Shown on the lock screen')}
       ${row('name','user','User name', esc(u.name)||'Choose', 'Small letters and numbers, e.g. '+esc(osiAutoName(u.full||'Sam')))}
-      ${row('password','lock','Password', u.password?'•'.repeat(Math.min(12,u.password.length)):'Choose', 'You\'ll need it for system changes')}
+      ${u.nopassword?'':row('password','lock','Password', u.password?'•'.repeat(Math.min(12,u.password.length)):'Choose', 'You\'ll need it for system changes')}
+      <button class="row" data-f data-k="osi-nopass" data-act="osiNoPass"><span class="ricon">${I.lock}</span><div class="rt"><b>No password</b><small>${u.nopassword?'Anyone who picks up this device can use it and make system changes. You can add a password later in Settings › Sign-in.':'Skip the password: signing in and system changes just need Enter'}</small></div><div class="sw ${u.nopassword?'on':''}"></div></button>
       ${row('host','info','Device name', esc(OSI.hostname||osiHost(u)), 'How it shows up on your network')}
       <button class="row" data-f data-k="osi-tz" data-act="osiTz"><span class="ricon">${I.clock||I.info}</span><div class="rt"><b>Time zone</b><small>For the clock</small></div><div class="rv">${esc(OSI.tz.replace(/_/g,' '))} ›</div></button>
       </div><div class="acts">${next()}${back}</div>`;
@@ -2952,7 +2954,7 @@ function viewOsInstall(){
     const line=(t,v)=>`<div class="row"><div class="rt"><b>${t}</b></div><div class="rv">${v}</div></div>`;
     body=`<h1>Ready to install</h1><p class="lead">${OSI.mode==='whole'?`<b>${esc(d.model)} is erased</b> and Hearth OS goes on it.`:`Windows gets ${gb(OSI.give)} smaller and Hearth OS goes next to it.`} The PC asks which one to start after, and Hearth is first.</p><div class="rows">
       ${line('How', OSI.mode==='whole'?'Erase the whole drive':'Next to Windows')}${line('Drive', `${esc(d.model)} · ${gb(d.size)}`)}${OSI.mode==='beside'?line('Room for Hearth', gb(OSI.give)):''}
-      ${line('Account', `${esc(u.full)} (${esc(u.name)})`)}${line('Device name', esc(OSI.hostname||osiHost(u)))}${line('Time zone', esc(OSI.tz.replace(/_/g,' ')))}
+      ${line('Account', `${esc(u.full)} (${esc(u.name)})${u.nopassword?' · no password':''}`)}${line('Device name', esc(OSI.hostname||osiHost(u)))}${line('Time zone', esc(OSI.tz.replace(/_/g,' ')))}
       ${line('Edition', HOSTINFO.edition==='nvidia'?'Nvidia graphics':'AMD and Intel graphics')}
       </div><div class="acts"><button class="play" data-f data-k="osi-go" data-act="osiStart">${I.dl}Install Hearth OS</button>${back}</div>`;
   }

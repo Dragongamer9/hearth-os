@@ -20,7 +20,7 @@ jobs:
           df -h /
       - name: Empty disk
         run: |
-          truncate -s 40G disk.img
+          truncate -s 70G disk.img   # sparse: only what is written takes room
           echo "LOOP=$(sudo losetup -fP --show disk.img)" >> "$GITHUB_ENV"
       - name: Install Hearth OS onto it
         run: |
