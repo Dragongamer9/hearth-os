@@ -132,6 +132,8 @@ public sealed class ShellForm : Form
         // desktop (Ember restarted after an update or a crash while you were on it).
         if (Program.IsShell && (Games0().StartMode == "desktop" || DesktopMode.ExplorerShellRunning()))
             BeginInvoke((MethodInvoker)(() => Desktop.Enter()));
+        // As the shell, Ember starts your startup apps (Explorer would have): once per sign-in, after a moment.
+        if (Program.IsShell) _ = Task.Delay(TimeSpan.FromSeconds(8)).ContinueWith(_ => StartupApps.RunOncePerSignIn());
         // A just-installed update that runs for a minute is considered good (no rollback needed).
         _ = Task.Delay(TimeSpan.FromMinutes(1)).ContinueWith(_ => Updates.UpdateService.ConfirmHealthy());
         core.WebMessageReceived += OnWebMessage;
