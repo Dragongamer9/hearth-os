@@ -729,6 +729,7 @@ const MOCK = (()=>{
   const push=()=>setTimeout(()=>onSysEvent('status',status()),0);
   const H={
     'sys.status':async()=>status(),
+    'desktop.wallpaper':async()=>({wallpaper:''}), 'desktop.setWallpaper':async({value})=>({wallpaper:value}),
     'backup.status':async()=>({destinations:[{path:'/run/media/me/USB',label:'SANDISK',removable:true},{path:'~/Backups',label:'Backups folder (on this device)',removable:false}],backups:[{file:'x',name:'hearth-backup-2026-10-18-12-30.tar.gz',bytes:2400000,at:Date.now()-86400000}]}),
     'backup.create':async()=>({file:'x',bytes:2400000}), 'backup.restore':async()=>({}),
     'remote.status':async()=>({installed:true,on:true,clients:[{name:'Living room TV',uuid:'u1'}],needsLogin:false,addresses:['192.168.1.42'],moonlight:false}),
@@ -890,10 +891,13 @@ function toast(t){ const el=document.createElement('div'); el.className='toast';
 
 // ---------- sounds ----------
 let actx=null;
+// Sound packs (Settings › Appearance): the same moves, a different voice.
+const SOUND_PACKS = {soft:{name:'Soft', type:'sine', f:1, d:1, v:1}, warm:{name:'Warm', type:'triangle', f:.6, d:1.8, v:1.3}, arcade:{name:'Arcade', type:'square', f:1.25, d:.8, v:.35}, glass:{name:'Glass', type:'sine', f:2.1, d:3.2, v:.6}};
 function blip(f=700,d=.035,v=.035){
   if(!S.set.sounds) return;
+  const P=SOUND_PACKS[LOOK.soundPack]||SOUND_PACKS.soft; f*=P.f; d*=P.d; v*=P.v;
   try{ actx = actx || new (window.AudioContext||window.webkitAudioContext)();
-    const o=actx.createOscillator(), g=actx.createGain(); o.type='sine'; o.frequency.value=f;
+    const o=actx.createOscillator(), g=actx.createGain(); o.type=P.type; o.frequency.value=f;
     g.gain.setValueAtTime(v,actx.currentTime); g.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+d);
     o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime+d+.01);
   }catch(e){}
@@ -914,7 +918,7 @@ const HEARTH_MARK = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512
 // =====================================================================
 // Appearance: layout, text size, motion, top bar (kept per device in localStorage)
 // =====================================================================
-const LOOK = {layout:'shelf', textSize:'normal', reduceMotion:false, clock24:false, battPct:true};
+const LOOK = {layout:'shelf', textSize:'normal', reduceMotion:false, clock24:false, battPct:true, soundPack:'soft'};
 try{ Object.assign(LOOK, JSON.parse(localStorage.getItem('nimbus.look')||'{}')); }catch(e){}
 const LAYOUTS = [
   {id:'shelf', name:'Shelf', desc:'Big shelves of your games under the art of the last one you played, with the menu at the side.'},
@@ -1010,9 +1014,36 @@ function updateSpot(id){
 }
 
 // ---------- Settings › Appearance ----------
+// Themes: an accent, a background, a sound pack and (on Hearth OS) the desktop's wallpaper, picked together.
+const THEME_PACKS = [
+  {id:'hearth', name:'Hearth', accent:'#ff9f43', bg:'preset:4', sounds:'warm', wall:''},
+  {id:'midnight', name:'Midnight', accent:'#3fd0b8', bg:'default', sounds:'soft', wall:'anim:aurora'},
+  {id:'arcade', name:'Arcade', accent:'#ff6fae', bg:'preset:2', sounds:'arcade', wall:'anim:lava'},
+  {id:'forest', name:'Forest', accent:'#5fd068', bg:'preset:3', sounds:'soft', wall:'anim:aurora'},
+  {id:'mono', name:'Mono', accent:'#e9eef4', bg:'preset:5', sounds:'glass', wall:''},
+];
+const themeOn = t => PROFILE.accent.toLowerCase()===t.accent && PROFILE.background===t.bg && (LOOK.soundPack||'soft')===t.sounds;
+async function applyTheme(id){
+  const t=THEME_PACKS.find(x=>x.id===id); if(!t) return;
+  LOOK.soundPack=t.sounds; saveLook();
+  await saveProfile({accent:t.accent, background:t.bg}, 'ap-th-'+id);
+  if(LINUX && host) call('desktop.setWallpaper',{value:t.wall}).then(r=>{ DESKWALL.v=r.wallpaper; }).catch(()=>{});
+  blip(660,.05,.05); setTimeout(()=>blip(880,.06,.05),90);
+  toast(`${t.name} theme${LINUX?', on the desktop too':''}`);
+}
+const DESKWALL = {v:null};
+const WALLS = [['','Fireside (moving)'],['anim:lava','Lava (moving)'],['anim:aurora','Aurora (moving)'],['profile','My background picture']];
+function loadDeskWall(){ if(LINUX && host) call('desktop.wallpaper').then(r=>{ DESKWALL.v=/^\//.test(r.wallpaper)?'profile':r.wallpaper; refreshUI(); }).catch(()=>{}); }
+function themeCard(t){
+  const th=THEMES.find(x=>x[0]===t.bg)||THEMES[0], on=themeOn(t);
+  return `<button class="theme ${on?'on':''}" data-f data-k="ap-th-${t.id}" data-act="theme" data-v="${t.id}"><div class="tprev" style="background:linear-gradient(135deg,${th[2]} 0%,${th[2]} 45%,${th[6]} 100%)"><i style="background:${t.accent}"></i></div><small>${t.name}</small></button>`;
+}
 function pageAppearance(){
   const ts=(TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[1];
-  return shead('Home layout')
+  const wl=DESKWALL.v==null?'':(WALLS.find(w=>w[0]===DESKWALL.v)||['','Your picture'])[1];
+  return shead('Themes') + `<div class="opts">${THEME_PACKS.map(themeCard).join('')}</div>`
+    + `<div class="muted" style="margin:-4px 0 14px">An accent color, background and sounds together${LINUX?', and the desktop\'s wallpaper':''}. Change any of them on its own below or in your profile.</div>`
+    + shead('Home layout')
     + `<div class="layouts">${LAYOUTS.map(l=>`<button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
         <div class="lprev">${layoutPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>`).join('')}</div>`
     + shead('Text and motion')
@@ -1023,6 +1054,8 @@ function pageAppearance(){
     + lookRow('battPct','Battery percentage','Next to the battery icon')
     + shead('More')
     + swRow('sounds','Interface sounds','Soft clicks when you move around')
+    + `<button class="row" data-f data-k="ap-sp" data-act="soundPack"><span class="ricon">${I.vol}</span><div class="rt"><b>Sound pack</b><small>How the clicks sound</small></div><div class="rv">${(SOUND_PACKS[LOOK.soundPack]||SOUND_PACKS.soft).name} ›</div></button>`
+    + (LINUX?`<button class="row" data-f data-k="ap-wall" data-act="deskWall"><span class="ricon">${I.display}</span><div class="rt"><b>Desktop wallpaper</b><small>For Mantel, the desktop. Your background picture can go there too.</small></div><div class="rv">${esc(wl)} ›</div></button>`:'')
     + `<button class="row" data-f data-k="ap-prof" data-act="goset" data-tab="profile"><span class="ricon">${I.user}</span><div class="rt"><b>Accent color and background</b><small>In your profile</small></div><div class="rv">›</div></button>`;
 }
 function lookRow(key,label,sub){ return `<button class="row" data-f data-k="ap-${key}" data-act="lookToggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${LOOK[key]?'on':''}"></div></button>`; }
@@ -2675,6 +2708,9 @@ function act(el){
     case 'pfName': return openPrompt({title:'Your name', value:PROFILE.name}).then(v=>{ if(v!=null) saveProfile({name:v},'pf-name'); });
     case 'pfStatus': return openPrompt({title:'Status line (shown under your name)', value:PROFILE.status||''}).then(v=>{ if(v!=null) saveProfile({status:v},'pf-status'); });
     case 'pfAvatar': return saveProfile({avatar:d.v},'pa-'+d.v.replace(':','-'));
+    case 'theme': return applyTheme(d.v);
+    case 'soundPack': return openSheet({title:'Sound pack', items:Object.entries(SOUND_PACKS).map(([k,p])=>({label:p.name, icon:(LOOK.soundPack||'soft')===k?'check':'', run:()=>{ LOOK.soundPack=k; saveLook(); const was=S.set.sounds; S.set.sounds=true; blip(700); setTimeout(()=>blip(940),110); S.set.sounds=was; render('ap-sp'); }}))});
+    case 'deskWall': return openSheet({title:'Desktop wallpaper', items:WALLS.map(([v,l])=>({label:l, icon:DESKWALL.v===v?'check':'', run:()=>call('desktop.setWallpaper',{value:v}).then(r=>{ DESKWALL.v=v==='profile'?'profile':r.wallpaper; toast('Desktop wallpaper changed'); render('ap-wall'); }).catch(e=>toast(e.message))}))});
     case 'pfAccent': return saveProfile({accent:d.v},focused?.dataset.k);
     case 'pfBg': return saveProfile({background:d.v},'pb-'+d.v.replace(':','-'));
     case 'pfPick': return pickProfileImage(d.kind);
@@ -3636,6 +3672,7 @@ function onSettingsTab(t){
   if(t==='signin') loadLogin();
   if(t==='remote') loadRemote();
   if(t==='sources') loadEmu();
+  if(t==='appearance') loadDeskWall();
   if(t==='import') loadImport();
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();
