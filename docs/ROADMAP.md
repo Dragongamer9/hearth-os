@@ -46,6 +46,8 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 ## 0.0.25
 
 - [ ] New live ISOs (AMD/Intel and Nvidia) with Install next to Windows (no ISOs before this)
+- [x] Hearth's own installer instead of Fedora's: screens in the Hearth app (controller) and Mantel (mouse and keyboard), you pick when you click Install
+- [x] Installer test in CI: installs onto a disk image and boots it
 
 ## Not started
 

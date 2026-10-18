@@ -13,24 +13,45 @@ PanelWindow {
     property bool live: false
     property bool shown: false
     property int sel: 0
-    readonly property var items: [
-        { icon: "update", label: "Install next to Windows", sub: "Keep Windows, bring your games over to Hearth" },
-        { icon: "update", label: "Install Hearth", sub: "Puts Hearth on a whole drive (erases it)" },
-        { icon: "wifi", label: "Connect to Wi-Fi", sub: "The installer downloads Hearth, so connect first" },
+    property bool choosing: false   // "Install Hearth OS" picked: with Hearth (controller) or Mantel (mouse/keyboard)?
+    readonly property var mainItems: [
+        { icon: "update", label: "Install Hearth OS", sub: "Next to Windows, or on a whole drive" },
+        { icon: "wifi", label: "Connect to Wi-Fi", sub: "Hearth OS is downloaded while it installs, so connect first" },
         { icon: "pad", label: "Try Game Mode", sub: "Come back here from the Power menu › Switch to desktop" },
-        { icon: "close", label: "Keep exploring", sub: "Install Hearth is also in the app launcher" }
+        { icon: "close", label: "Keep exploring", sub: "Install Hearth OS is also in the app launcher" }
     ]
+    readonly property var chooseItems: [
+        { icon: "pad", label: "Install with Hearth", sub: "Recommended with a controller: fullscreen, big and simple" },
+        { icon: "display", label: "Install with Mantel", sub: "Best with a mouse and keyboard: a window here on the desktop" },
+        { icon: "close", label: "Back", sub: "" }
+    ]
+    readonly property var items: choosing ? chooseItems : mainItems
+    /** Opens the welcome card straight on the "how do you want to install" choice (the launcher's Install). */
+    function choose() { choosing = true; sel = 0; shown = true; }
     function pick(i) {
-        shown = false;
-        if (i === 0) settingsApp.open("install");
-        else if (i === 1) Quickshell.execDetached(["sh", "-c", "command -v liveinst >/dev/null && exec liveinst || exec anaconda-webui"]);
-        else if (i === 2) settingsApp.open("wifi");
-        else if (i === 3) Quickshell.execDetached(["nimbus-mode", "game"]);
+        if (!choosing) {
+            if (i === 0) { choosing = true; sel = 0; return; }
+            shown = false;
+            if (i === 1) settingsApp.open("wifi");
+            else if (i === 2) Quickshell.execDetached(["nimbus-mode", "game"]);
+            return;
+        }
+        if (i === 2) { choosing = false; sel = 0; return; }
+        shown = false; choosing = false;
+        if (i === 0) Quickshell.execDetached(["sh", "-c", 'echo hearth > "${XDG_RUNTIME_DIR:-/tmp}/hearth-open-installer"; exec nimbus-mode game']);
+        else settingsApp.open("install");
     }
+    // Asked for from the Hearth app ("Install with Mantel"): open the installer once Mantel is up.
+    Process {
+        running: true
+        command: ["sh", "-c", 'f="${XDG_RUNTIME_DIR:-/tmp}/hearth-open-installer"; [ "$(cat "$f" 2>/dev/null)" = mantel ] && rm -f "$f" && echo yes']
+        stdout: SplitParser { onRead: l => { if (l.trim() === "yes") { root.shown = false; root.handoff = true; root.settingsApp.open("install"); } } }
+    }
+    property bool handoff: false
     Process {
         running: true
         command: ["test", "-e", "/etc/hearth-live"]
-        onExited: code => { root.live = code === 0; root.shown = root.live; }
+        onExited: code => { root.live = code === 0; root.shown = root.live && !root.handoff; }
     }
 
     visible: shown
@@ -54,7 +75,7 @@ PanelWindow {
             if (e.key === Qt.Key_Down || e.key === Qt.Key_Tab) root.sel = (root.sel + 1) % root.items.length;
             else if (e.key === Qt.Key_Up || e.key === Qt.Key_Backtab) root.sel = (root.sel + root.items.length - 1) % root.items.length;
             else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) root.pick(root.sel);
-            else if (e.key === Qt.Key_Escape) root.shown = false;
+            else if (e.key === Qt.Key_Escape) { if (root.choosing) { root.choosing = false; root.sel = 0; } else root.shown = false; }
             else return;
             e.accepted = true;
         }
@@ -68,8 +89,8 @@ PanelWindow {
                 Image { source: Qt.resolvedUrl("images/hearth-logo.png"); Layout.preferredWidth: 64; Layout.preferredHeight: 64; fillMode: Image.PreserveAspectFit; smooth: true }
                 ColumnLayout {
                     spacing: 2
-                    Text { text: "Welcome to Hearth"; color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.DemiBold }
-                    Text { Layout.fillWidth: true; text: "You're running Hearth from the USB stick. Look around, then install it when you're ready. Games won't run well until it's installed."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                    Text { text: root.choosing ? "How do you want to install?" : "Welcome to Hearth"; color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.DemiBold }
+                    Text { Layout.fillWidth: true; text: root.choosing ? "Both do the same install. Pick the one that suits how you're using this PC." : "You're running Hearth from the USB stick. Look around, then install it when you're ready. Games won't run well until it's installed."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
                 }
             }
             Repeater {
@@ -80,7 +101,7 @@ PanelWindow {
                     required property int index
                     readonly property bool lit: root.sel === index
                     Layout.fillWidth: true
-                    implicitHeight: 64
+                    implicitHeight: it.modelData.sub ? 64 : 48
                     radius: 14
                     color: lit ? Theme.accent : area.containsMouse ? Theme.panel3 : Theme.panel2
                     RowLayout {
@@ -91,7 +112,7 @@ PanelWindow {
                             Layout.fillWidth: true
                             spacing: 2
                             Text { text: it.modelData.label; color: it.lit ? Theme.accentInk : Theme.text; font.family: Theme.font; font.pixelSize: 16; font.weight: Font.DemiBold }
-                            Text { Layout.fillWidth: true; text: it.modelData.sub; color: it.lit ? Theme.accentInk : Theme.muted; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight }
+                            Text { visible: it.modelData.sub !== ""; Layout.fillWidth: true; text: it.modelData.sub; color: it.lit ? Theme.accentInk : Theme.muted; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight }
                         }
                     }
                     MouseArea { id: area; anchors.fill: parent; hoverEnabled: true; onEntered: root.sel = it.index; onClicked: root.pick(it.index) }
