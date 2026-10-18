@@ -70,12 +70,22 @@ cat >/usr/libexec/hearth-installer-session <<'SH'
 #!/usr/bin/bash
 # The Hearth app on its own; it comes back if it closes.
 export XDG_SESSION_TYPE=wayland ELECTRON_OZONE_PLATFORM_HINT=wayland
+# Graphics this USB has no driver for (a brand-new card, or "basic graphics" picked at start): draw in software.
+extra=""
+if grep -qw nomodeset /proc/cmdline || [ ! -e /dev/dri/renderD128 ]; then extra="--disable-gpu"; fi
 while :; do
-  /usr/lib/nimbus/nimbus --ozone-platform=wayland --enable-features=UseOzonePlatform >>"$HOME/hearth-installer.log" 2>&1
+  /usr/lib/nimbus/nimbus --ozone-platform=wayland --enable-features=UseOzonePlatform $extra >>"$HOME/hearth-installer.log" 2>&1
   sleep 1
 done
 SH
 chmod 755 /usr/libexec/hearth-installer-session
+cat >/usr/libexec/hearth-installer-cage <<'SH'
+#!/usr/bin/bash
+# cage draws with the graphics card when it has a driver for it, else in software (still works, just slower).
+if grep -qw nomodeset /proc/cmdline || [ ! -e /dev/dri/renderD128 ]; then export WLR_RENDERER=pixman; fi
+exec /usr/bin/cage -s -d -- /usr/libexec/hearth-installer-session
+SH
+chmod 755 /usr/libexec/hearth-installer-cage
 cat >/etc/systemd/system/hearth-installer.service <<'UNIT'
 [Unit]
 Description=Hearth installer (the Hearth app, full screen)
@@ -93,7 +103,7 @@ StandardInput=tty-fail
 StandardOutput=journal
 UtmpIdentifier=tty1
 UtmpMode=user
-ExecStart=/usr/bin/cage -s -d -- /usr/libexec/hearth-installer-session
+ExecStart=/usr/libexec/hearth-installer-cage
 Restart=always
 RestartSec=1
 [Install]
