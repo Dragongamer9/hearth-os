@@ -222,3 +222,19 @@ test('Steam achievements from Steam\'s own stats files', () => {
   assert.ok(r.list[1].icon.endsWith('/42/bg.jpg')); assert.strictEqual(r.list[1].hidden, true);
   assert.strictEqual(readAchievements(dir, 43, 7), null);
 });
+
+test('pausing freezes a process and unpausing lets it carry on', async () => {
+  const { spawn } = require('node:child_process');
+  const proc = require('../src/library/proc');
+  const fs = require('node:fs');
+  const c = spawn('sleep', ['30']);
+  await new Promise(r => setTimeout(r, 100));
+  const state = () => fs.readFileSync(`/proc/${c.pid}/stat`, 'utf8').split(') ')[1][0];
+  assert.strictEqual(proc.signal([c.pid, 999999999], 'SIGSTOP'), 1);
+  await new Promise(r => setTimeout(r, 100));
+  assert.strictEqual(state(), 'T');
+  proc.signal([c.pid], 'SIGCONT');
+  await new Promise(r => setTimeout(r, 100));
+  assert.notStrictEqual(state(), 'T');
+  assert.strictEqual(await proc.stop([c.pid], 1000), true);
+});
