@@ -1,0 +1,44 @@
+# Hides every release except the newest (or the one you name) by turning it into a draft, and marks that
+# one as "Latest". Nothing is deleted: Releases › a draft › Edit › Publish release brings one back.
+# Copies of Hearth OS / Ember only ever look for releases newer than their own, so hiding old ones is safe.
+# Releases do this by themselves (release.yml); run this by hand to tidy up now.
+name: Hide old releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: 'Release to keep public, e.g. v0.0.17 (empty: the newest version)'
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  tidy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hide old releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: ${{ inputs.keep }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          all=$(gh api --paginate "repos/$REPO/releases?per_page=100" -q '.[] | [.id, .tag_name, .draft, .prerelease] | @tsv')
+          if [ -z "$KEEP" ]; then
+            # Newest full 0.0.x release (v0.3-v0.5 tags are from before the renumbering).
+            KEEP=$(printf '%s\n' "$all" | awk -F'\t' '$3=="false" && $4=="false" && $2 ~ /^v0\.0\.[0-9]+$/ {print $2}' | sort -V | tail -1)
+          fi
+          [ -n "$KEEP" ] || { echo "No release to keep"; exit 1; }
+          echo "Keeping $KEEP"
+          keep_id=$(printf '%s\n' "$all" | awk -F'\t' -v t="$KEEP" '$2==t {print $1}')
+          [ -n "$keep_id" ] || { echo "No release $KEEP"; exit 1; }
+          gh api -X PATCH "repos/$REPO/releases/$keep_id" -F draft=false -f make_latest=true >/dev/null
+          n=0
+          printf '%s\n' "$all" | awk -F'\t' -v t="$KEEP" '$3=="false" && $2!=t {print $1"\t"$2}' > /tmp/hide
+          while IFS=$'\t' read -r id tag; do
+            gh api -X PATCH "repos/$REPO/releases/$id" -F draft=true >/dev/null && { echo "hidden: $tag"; n=$((n+1)); }
+          done < /tmp/hide
+          echo "::notice::Kept $KEEP as the latest release and hid $n older ones (as drafts)."
