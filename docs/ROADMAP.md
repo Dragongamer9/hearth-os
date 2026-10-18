@@ -35,6 +35,11 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Full Mantel for Ember: no Explorer at all, Ember hosts the tray (experimental)
 - [x] Full on-screen keyboard in Mantel (Linux)
 - [ ] Download the installer from inside Ember (needs the ISOs on SourceForge)
+- [x] First-start setup on a fresh Hearth OS (Wi-Fi, store sign-ins, the controller, importing games)
+- [x] Mantel lock screen (Super+L, power menu, on waking)
+- [x] Ember as the shell starts your startup apps
+- [x] External monitor brightness on Windows (DDC/CI)
+- [x] Import games from Lutris
 
 ## 0.0.25
 
@@ -42,10 +47,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Not started
 
-- First-start setup on an installed Hearth OS (Wi-Fi, store sign-ins, controller tour)
-- Mantel lock screen
-- Ember as the shell: startup apps, tray and notifications (Desktop Mode covers them for now)
-- External monitor brightness on Windows (DDC/CI)
+- App pop-up notifications in full Mantel on Windows (Windows only shares them with packaged apps)
 
 ## Waiting on setup
 

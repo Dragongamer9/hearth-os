@@ -53,7 +53,7 @@ const waitFor = async (pred, ms = 15000) => {
 test('bridge: add, launch, watch and record a manual game', async () => {
   const { bridge, library, out } = setup();
   try {
-    assert.deepEqual(await call(bridge, out, 'host.info'), { platform: 'linux' });
+    assert.deepEqual(await call(bridge, out, 'host.info'), { platform: 'linux', setupDone: true });   // setup is only for Hearth, the OS
 
     const added = await call(bridge, out, 'library.addManual');
     assert.equal(added.title, 'tiny');
