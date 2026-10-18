@@ -132,6 +132,17 @@ class EpicStore {
    * Asks legendary how to start the game (with a fresh Epic login token) and starts it with Proton.
    * Resolves with the child process.
    */
+  /** Epic cloud saves for one game: 'down' before playing, 'up' after. {synced:false} when it has none. */
+  async syncSaves(app, direction) {
+    const saves = require('./epic-saves');
+    const p = saves.plan(app, { configDir: CONFIG, prefix: proton.prefixOf('epic', app) });
+    if (!p) return { synced: false };
+    fs.mkdirSync(p.savePath, { recursive: true });
+    const r = await tools.run(tools.TOOLS.legendary, saves.args(p, direction), { env: ENV, timeoutMs: 120000 });
+    log(`epic saves: ${app} ${direction} ${r.code === 0 ? 'ok' : 'failed: ' + tools.problem(r)}`);
+    return { synced: r.code === 0 };
+  }
+
   async launch(app, options = null) {
     // Offline: straight to legendary's offline launch (the online one would only time out first).
     let r = require('../util').isOnline() ? await tools.run(tools.TOOLS.legendary, ['launch', app, '--json', '--skip-version-check'], { env: ENV, timeoutMs: 60000 })
@@ -143,6 +154,8 @@ class EpicStore {
       p = jsonIn(r.out, '{');
       if (!p) throw new Error("Couldn't start the game: " + tools.problem(r));
     }
+    // Newer saves from Epic first (when the game has cloud saves and you haven't turned them off).
+    if (require('../util').isOnline() && !(options && options.cloudSaves === false)) await this.syncSaves(app, 'down').catch(e => log(`epic saves: ${e.message}`));
     const dir = p.game_directory || '';
     const exe = path.join(dir, p.game_executable || '');
     if (!fs.existsSync(exe)) throw new Error(`The game's program is missing (${exe}). Try reinstalling it.`);

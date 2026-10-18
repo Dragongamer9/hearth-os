@@ -47,7 +47,7 @@ test('settings are kept per game, only known keys', () => {
   const data = {};
   const o = new GameOptions({ data, update(fn) { fn(data); } });
   o.set('epic:x', { mangohud: 1, proton: 'GE-Proton', bogus: 'no' });
-  assert.deepStrictEqual(o.get('epic:x'), { proton: 'GE-Proton', args: '', env: '', mangohud: true, gamemode: false, fsr: false, fpsLimit: 0, tdp: 0 });
+  assert.deepStrictEqual(o.get('epic:x'), { proton: 'GE-Proton', args: '', env: '', mangohud: true, gamemode: false, fsr: false, fpsLimit: 0, tdp: 0, cloudSaves: true });
   assert.strictEqual(o.get('other').mangohud, false);
   o.set('epic:x', { fpsLimit: '45', tdp: 999 });
   assert.strictEqual(o.get('epic:x').fpsLimit, 45);
