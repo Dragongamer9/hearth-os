@@ -130,9 +130,18 @@ async function withDialog(fn) {
   try { return await fn(); } finally { comeBack(); }
 }
 
+/** When something was last deliberately put in front (Hearth, an app from the overlay, the game). Closing
+ *  the overlay gives the screen back to what was there before only if nothing was chosen since: otherwise
+ *  that hand-back fired a moment after "Back to Hearth" or "Switch" and pulled the old app back in front. */
+let focusChosenAt = 0;
+const chooseFocus = () => { focusChosenAt = Date.now(); };
+
 /** Back in front, e.g. when a game ends or the Guide button is pressed. */
 function comeBack() {
   if (!win || win.isDestroyed()) return;
+  chooseFocus();
+  // Belt and braces: the overlay never stays up over Hearth.
+  if (overlay && !overlay.isDestroyed() && !overlayOn && overlay.isVisible()) parkOverlay();
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
@@ -142,6 +151,7 @@ function comeBack() {
 
 function resumeGame() {
   if (!library.runningId) return;
+  chooseFocus();
   if (stream.isOpen) { stepAside(); stream.focus(); if (inGamescope()) gamescope.focusWindow(xid(stream.win || win)).catch(() => {}); return; }
   stepAside();
   focusRunningGame();
@@ -156,8 +166,8 @@ function onMessage(e, m) {
     else if (m.type === 'overlay' && m.action === 'close') hideOverlay();
     else if (m.type === 'overlay' && m.action === 'alive') overlayAlive = Date.now();
     // "Back to Hearth" and "Back to game" in the overlay (these were ignored, so the overlay stayed open)
-    else if (m.type === 'overlay' && m.action === 'home') { hideOverlay(); comeBack(); }
-    else if (m.type === 'resume') { hideOverlay(); resumeGame(); }
+    else if (m.type === 'overlay' && m.action === 'home') { chooseFocus(); hideOverlay(); comeBack(); }
+    else if (m.type === 'resume') { chooseFocus(); hideOverlay(); resumeGame(); }
     else if (m.type === 'log') log('overlay: ' + m.text);
     else if (m.type === 'power') { hideOverlay(); power(m.action); }
     return;
@@ -327,12 +337,34 @@ function createOverlay(platform) {
   overlayBridge = new Bridge({ post: m => { if (overlay && !overlay.isDestroyed()) overlay.webContents.send('nimbus:msg', m); }, library, updates, platform });
   setWinAtom(overlay, 'STEAM_OVERLAY', 1).catch(e => { log('overlay: xprop failed, using the old way: ' + e.message); overlay.destroy(); overlay = null; });
   overlay.loadURL('nimbus://app/index.html?overlay=full');
+  // Last line of defence: an overlay that's up while nothing asked for it gets put away.
+  setInterval(() => {
+    if (overlay && !overlay.isDestroyed() && !overlayOn && !osdOverlay && overlay.isVisible()) { log('overlay: up without being open, putting it away'); parkOverlay(); }
+  }, 2000);
+}
+
+/** Out of sight for sure: unmapped, no longer marked as an overlay for gamescope, moved off the screen.
+ *  (Just hiding it wasn't always enough: gamescope sometimes kept showing an overlay window that had been
+ *  hidden, and the overlay looked stuck open over Hearth or the next app.) */
+function parkOverlay() {
+  if (!overlay || overlay.isDestroyed()) return;
+  overlay.hide();
+  setWinAtom(overlay, 'STEAM_INPUT_FOCUS', 0).catch(() => {});
+  setWinAtom(overlay, 'STEAM_OVERLAY', 0).catch(() => {});
+  const b = screen.getPrimaryDisplay().bounds;
+  overlay.setBounds({ x: b.x - b.width - 100, y: b.y, width: b.width, height: b.height });
+}
+function unparkOverlay() {
+  const b = screen.getPrimaryDisplay().bounds;
+  overlay.setBounds(b);
+  setWinAtom(overlay, 'STEAM_OVERLAY', 1).catch(() => {});
 }
 
 let overlayAlive = 0, overlayWatch = null, beforeOverlay = 0;
 function showOverlay() {
   if (!overlay) return false;
   overlayOn = true;
+  unparkOverlay();
   // What was on screen, to give it back the controller when the overlay closes.
   gamescope.cardinals('GAMESCOPE_FOCUSED_WINDOW').then(f => { beforeOverlay = f[0] || 0; }).catch(() => {});
   // The page says it's alive every second while open; silence for 5 s means it froze: reload it, close it.
@@ -364,20 +396,22 @@ function hideOverlay() {
   if (!overlay) return;
   if (!overlayOn && !overlay.isVisible()) return;
   overlayOn = false;
+  osdOverlay = false;
   stopRepeat();
   overlay.webContents.send('nimbus:msg', { type: 'event', name: 'overlay.hidden', data: {} });
-  setWinAtom(overlay, 'STEAM_INPUT_FOCUS', 0).catch(() => {});
-  overlay.hide();
+  parkOverlay();
   clearInterval(overlayWatch);
-  // Belt and braces: if it's somehow still up a moment later, hide it again.
-  setTimeout(() => { if (!overlayOn && overlay && !overlay.isDestroyed() && overlay.isVisible()) overlay.hide(); }, 600);
-  // Give the controller back to what was on screen (gamescope can leave it with nothing in front).
+  // Belt and braces: if it's somehow still up a moment later, put it away again.
+  setTimeout(() => { if (!overlayOn && overlay && !overlay.isDestroyed() && overlay.isVisible()) parkOverlay(); }, 600);
+  // Give the controller back to what was on screen (gamescope can leave it with nothing in front), unless
+  // something else was chosen in the meantime (Back to Hearth, Switch to an app, Back to game).
+  const hidAt = Date.now();
   if (inGamescope() && !(win && win.isVisible() && win.isFocused())) {
     setTimeout(() => {
-      if (overlayOn) return;
+      if (overlayOn || focusChosenAt >= hidAt) return;
       if (beforeOverlay && beforeOverlay !== xid(overlay)) gamescope.focusWindow(beforeOverlay).catch(() => {});
       else if (library.runningId) focusRunningGame();
-    }, 150);
+    }, 350);   // long enough for a Switch / Back to Hearth that follows the close
   }
 }
 
@@ -419,10 +453,10 @@ const hearthInFront = () => win && win.isVisible() && win.isFocused() && !overla
 /** The volume bar: in Hearth when it's in front, else over the game (the overlay, without taking input). */
 function osd(data) {
   if (hearthInFront() || !overlay || !library.runningId) return post({ type: 'event', name: 'osd', data });
-  if (!overlayOn && !osdOverlay) { osdOverlay = true; overlay.showInactive(); }
+  if (!overlayOn && !osdOverlay) { osdOverlay = true; unparkOverlay(); overlay.showInactive(); }
   overlay.webContents.send('nimbus:msg', { type: 'event', name: 'osd', data });
   clearTimeout(osdTimer);
-  osdTimer = setTimeout(() => { if (osdOverlay && !overlayOn) overlay.hide(); osdOverlay = false; }, 1800);
+  osdTimer = setTimeout(() => { if (osdOverlay && !overlayOn) parkOverlay(); osdOverlay = false; }, 1800);
 }
 
 function powerMenu() {
@@ -586,11 +620,13 @@ app.whenReady().then(() => {
           return out;
         },
         focus: async (id, pid) => {
+          chooseFocus();   // before closing the overlay, so it doesn't hand the screen back to the old app
           hideOverlay();
           if (pid === process.pid) return comeBack();
           if (!id && !pid) { stepAside(); return steam.openUri('steam://open/main'); }   // Steam without a window
           stepAside();
           await gamescope.focusWindow(id);
+          chooseFocus();
           setTimeout(() => { if (overlayOn) hideOverlay(); }, 400);
         },
         close: async pid => {
