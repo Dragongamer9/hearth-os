@@ -118,25 +118,28 @@ pub fn focus_app_id(appid: u64) { remove_root("GAMESCOPECTRL_BASELAYER_WINDOW");
 pub fn clear_focus() { remove_root("GAMESCOPECTRL_BASELAYER_WINDOW"); remove_root("GAMESCOPECTRL_BASELAYER_APPID"); }
 
 /// Brings a game to the front once its window exists (games take a while to open one): matching its processes
-/// or its Steam app id. `still` says whether this is still wanted. True when it found one.
-pub fn focus_game(pids: &dyn Fn() -> Vec<u32>, steam_app_id: u64, exclude: &[u64], still: &dyn Fn() -> bool) -> bool {
-    if !available() { return false; }
+/// or its Steam app id, else the window it last had (`known`). Windows of other games (`not_wins`, and the
+/// processes in `exclude`) are never picked. `still` says whether this is still wanted. Its window when found.
+pub fn focus_game(pids: &dyn Fn() -> Vec<u32>, steam_app_id: u64, exclude: &[u64], not_wins: &[u64], known: u64, still: &dyn Fn() -> bool) -> Option<u64> {
+    if !available() { return None; }
     if steam_app_id > 0 { focus_app_id(steam_app_id); }
     for _ in 0..20 {
-        if !still() { return false; }
+        if !still() { return None; }
         let want: Vec<u64> = pids().into_iter().map(u64::from).collect();
-        let wins: Vec<Win> = focusable_windows().into_iter().filter(|w| !exclude.contains(&w.pid)).collect();
+        let wins: Vec<Win> = focusable_windows().into_iter().filter(|w| !exclude.contains(&w.pid) && !not_wins.contains(&w.win)).collect();
         let mut hit = wins.iter().find(|w| want.contains(&w.pid)).or_else(|| if steam_app_id > 0 { wins.iter().find(|w| w.appid == steam_app_id) } else { None });
+        // The window this game had before it was put aside (its processes weren't matched: a launcher's helper).
+        if hit.is_none() && known != 0 { hit = wins.iter().find(|w| w.win == known); }
         // Its processes not matched (some launchers hand the window to a helper): if only one window is left
         // that isn't Steam's, Hearth's or a game put aside, that's it.
         if hit.is_none() && steam_app_id == 0 {
             let rest: Vec<&Win> = wins.iter().filter(|w| w.pid > 0 && !matches!(proc_name(w.pid).as_str(), "steam" | "steamwebhelper")).collect();
             if rest.len() == 1 { hit = rest.first().copied(); }
         }
-        if let Some(h) = hit { if !still() { return false; } focus_window(h.win); crate::bridge::log(&format!("gamescope: game window {} in front", h.win)); return true; }
+        if let Some(h) = hit { if !still() { return None; } focus_window(h.win); crate::bridge::log(&format!("gamescope: game window {} in front", h.win)); return Some(h.win); }
         std::thread::sleep(Duration::from_millis(1500));
     }
-    false
+    None
 }
 
 pub enum Ready { Window(u64), Dialog(u64, String) }
