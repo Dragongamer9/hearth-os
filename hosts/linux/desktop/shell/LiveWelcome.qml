@@ -16,7 +16,7 @@ PanelWindow {
     property bool choosing: false   // "Install Hearth OS" picked: with Hearth (controller) or Mantel (mouse/keyboard)?
     readonly property var mainItems: [
         { icon: "update", label: "Install Hearth OS", sub: "Next to Windows, or on a whole drive" },
-        { icon: "wifi", label: "Connect to Wi-Fi", sub: "Hearth OS is downloaded while it installs, so connect first" },
+        { icon: "wifi", label: "Connect to Wi-Fi", sub: "Optional: Hearth OS installs from this USB stick. Online, it can get the latest update afterwards" },
         { icon: "pad", label: "Try Game Mode", sub: "Come back here from the Power menu › Switch to desktop" },
         { icon: "close", label: "Keep exploring", sub: "Install Hearth OS is also in the app launcher" }
     ]

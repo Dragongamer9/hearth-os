@@ -48,9 +48,15 @@ jobs:
           sudo mkdir -p /mnt/containers /var/lib/containers
           sudo mount --bind /mnt/containers /var/lib/containers
           df -h / /mnt
+          # The exact image (by digest): the live system is made from it, and a copy of it goes on the ISO so
+          # installing needs no download.
+          digest=$(skopeo inspect --format '{{.Digest}}' "docker://ghcr.io/dragongamer9/$IMAGE_NAME:latest")
+          ref="ghcr.io/dragongamer9/$IMAGE_NAME@$digest"
+          echo "::notice title=Image::$ref"
           sudo podman build --pull=newer --cap-add sys_admin --security-opt label=disable \
-            --build-arg IMAGE_NAME="$IMAGE_NAME" \
+            --build-arg IMAGE_NAME="$IMAGE_NAME" --build-arg BASE="$ref" --build-arg IMAGE_REF="$ref" \
             -t localhost/hearth-live:latest -f os/live/Containerfile os/live
+          df -h / /mnt
 
       - name: Make the ISO (Titanoboa)
         id: iso

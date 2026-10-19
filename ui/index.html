@@ -3704,7 +3704,7 @@ function viewLive(){
   return `<div class="setup" style="max-width:760px;margin:8vh auto 0;padding:0 24px"><div class="center"><div class="mark">${HEARTH_MARK}</div></div>
     <h1>Welcome to Hearth OS</h1><p class="lead">${HOSTINFO.installer?'This USB stick installs Hearth OS. The newest Hearth OS is downloaded while it installs, so connect to the internet first.':'You\'re running Hearth from the USB stick. Nothing on this PC changes until you install.'}</p>
     <div class="rows">${HOSTINFO.installer?hearth:S.noPad?mantel+hearth:hearth+mantel}
-      ${row('lv-wifi','wifi','Connect to Wi-Fi','Hearth OS is downloaded while it installs, so connect first','goset','data-tab="wifi"')}
+      ${row('lv-wifi','wifi','Connect to Wi-Fi',HOSTINFO.installer?'Hearth OS is downloaded while it installs, so connect first':'Optional: Hearth OS installs from this USB stick. Online, it can get the latest update afterwards','goset','data-tab="wifi"')}
       ${HOSTINFO.installer?row('lv-off','power','Turn off','Take out the USB stick after','livePower'):row('lv-try','play','Try Hearth first','Install Hearth OS is in Settings whenever you\'re ready','liveTry')}</div></div>`;
 }
 function setupGo(d){
@@ -3769,7 +3769,7 @@ function osiOpen(){
 }
 function osiLoad(){
   call('osinstall.status').then(s=>{ OSI.s=s; if(s.state==='running') OSI.step='run'; render(null,true); }).catch(()=>{});
-  call('osinstall.disks',{},60000).then(r=>{ OSI.disks=r.disks||[]; OSI.image=r.image||''; render(null,true); }).catch(e=>{ OSI.disks=[]; toast(e.message); });
+  call('osinstall.disks',{},60000).then(r=>{ OSI.disks=r.disks||[]; OSI.image=r.image||''; OSI.offline=!!r.offline; render(null,true); }).catch(e=>{ OSI.disks=[]; toast(e.message); });
 }
 function osiCheck(){
   if(OSI.checking) return; OSI.checking=true; OSI.check=null; render(null,true);
@@ -3787,7 +3787,8 @@ function osiGo(d){
   if(i<0){ S.history.length ? goBack() : navigate('home',{},false); return; }
   const next=OSI_STEPS[Math.min(i,OSI_STEPS.length-1)];
   if(d>0){ const why=osiBlock(OSI.step); if(why) return toast(why); }
-  if(next==='online' && S.sys.wifi && S.sys.wifi.ssid && d>0){ OSI.step='online'; return osiGo(1); }   // already online: skip
+  if(next==='online' && ((S.sys.wifi && S.sys.wifi.ssid) || OSI.offline) && d>0){ OSI.step='online'; return osiGo(1); }   // already online, or Hearth OS is on this USB: skip
+  if(next==='online' && OSI.offline && d<0){ OSI.step='online'; return osiGo(-1); }
   OSI.step=next;
   if(next==='online') wifiScan();
   if(next==='drive' && OSI.mode==='beside' && !OSI.check) osiCheck();
