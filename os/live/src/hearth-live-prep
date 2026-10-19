@@ -148,7 +148,8 @@ def check():
         res['problems'].append({'id': 'space', 'text': f"Windows only has room to give {can_give // GIB} GB, and Hearth needs at least {MIN_HEARTH // GIB} GB. Free up space in Windows first (or install Hearth on another drive)."})
     if not res['power']['plugged']:
         res['problems'].append({'id': 'power', 'text': 'Plug in the charger. Resizing a drive on battery is risky if the battery runs out.', 'soft': True})
-    if res['online'] is False:
+    # The full live USB carries Hearth OS (hearth-install's LOCAL_OCI): no internet needed there.
+    if res['online'] is False and not os.path.isfile('/usr/share/hearth/image/index.json'):
         res['problems'].append({'id': 'offline', 'text': 'Connect to the internet: the installer downloads Hearth.', 'soft': True})
     # What would come over (for the summary; the import itself happens in Hearth after installing).
     try:
