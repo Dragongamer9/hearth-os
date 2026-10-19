@@ -16,6 +16,7 @@ SetPage {
     property string phase: "setup"     // setup | confirm | running | done | failed
     property string mode: ""           // beside | whole
     property var drives: null          // hearth-install disks
+    property bool offline: false       // this USB carries Hearth OS itself (the full ISOs): no download
     property string disk: ""
     property var win: null             // the check (beside): {target, problems, suggested}
     property var target: null          // what Hearth goes next to: {kind, name, part, shrink, disk, model}
@@ -78,7 +79,7 @@ SetPage {
     Process {
         id: drivesProc
         command: ["pkexec", page.engine, "disks"]
-        stdout: SplitParser { onRead: l => { l = l.trim(); if (l.startsWith("{")) { try { page.drives = JSON.parse(l).disks; } catch (e) {} } else if (l.startsWith("error: ")) page.error = l.slice(7); } }
+        stdout: SplitParser { onRead: l => { l = l.trim(); if (l.startsWith("{")) { try { const r = JSON.parse(l); page.drives = r.disks; page.offline = !!r.offline; } catch (e) {} } else if (l.startsWith("error: ")) page.error = l.slice(7); } }
     }
     Process {
         id: tzProc
@@ -111,7 +112,7 @@ SetPage {
     Text {
         visible: page.phase === "setup" || page.phase === "confirm"
         Layout.fillWidth: true; wrapMode: Text.WordWrap
-        text: "Hearth OS is downloaded while it installs (about 5 GB), so stay connected to the internet and plugged in. It takes about 10 to 20 minutes."
+        text: page.offline ? "Hearth OS installs from this USB stick, so no internet is needed. Stay plugged in. It takes about 10 to 20 minutes." : "Hearth OS is downloaded while it installs (about 5 GB), so stay connected to the internet and plugged in. It takes about 10 to 20 minutes."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
     }
     // How: next to each system found on the PC (Windows, SteamOS, any Linux), or erase a drive

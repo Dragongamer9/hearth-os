@@ -632,8 +632,31 @@ def rx_bytes(net='/proc/net/dev'):
     return total
 
 
-def download_text(got, total, bps):
-    """'Downloading Hearth OS · 3.2 of 9.6 GB · 12.4 MB/s'"""
+# The full ISOs carry the Hearth OS image itself (an OCI copy, made by .github/workflows/live-iso.yml), so they
+# install without the internet; the small installer USB doesn't, and downloads it.
+LOCAL_OCI = '/usr/share/hearth/image'
+
+
+def local_image(image, oci=LOCAL_OCI):
+    """The copy of `image` on this USB stick, as an image reference ostree reads, or None (not on this USB,
+    or it's the other edition)."""
+    try:
+        with open(oci + '.ref') as f:
+            ref = f.read().strip()
+    except OSError:
+        return None
+    def name(r):   # ghcr.io/dragongamer9/hearth from ...:latest or ...@sha256:...
+        r = r.split('@')[0]
+        return r.rsplit(':', 1)[0] if ':' in r.rsplit('/', 1)[-1] else r
+    if not ref or name(ref) != name(image) or not os.path.isfile(os.path.join(oci, 'index.json')):
+        return None
+    return f'ostree-unverified-image:oci:{oci}:hearth'
+
+
+def download_text(got, total, bps, local=False):
+    """'Downloading Hearth OS · 3.2 of 9.6 GB · 12.4 MB/s' ('Copying Hearth OS from the USB stick' offline)"""
+    if local:
+        return 'Copying Hearth OS from the USB stick' + (f' · {min(got, total) / 1e9:.1f} of {total / 1e9:.1f} GB' if total else '')
     t = 'Downloading Hearth OS'
     if total:
         t += f' · {min(got, total) / 1e9:.1f} of {total / 1e9:.1f} GB'
@@ -643,8 +666,24 @@ def download_text(got, total, bps):
 
 
 def deploy(image, root_uuid):
-    """Downloads Hearth OS onto the drive. Progress from ostree's "Fetching layer" lines."""
-    stage('download', 18, 'Connecting')
+    """Puts Hearth OS on the drive: from this USB stick when it has the image (the full ISOs, no internet needed),
+    otherwise downloaded. Either way the installed system takes its updates from the online image, and its first
+    update only downloads what changed since the USB was made."""
+    src = local_image(image)
+    if src:
+        try:
+            return deploy_from(image, root_uuid, src)
+        except Fail as e:
+            print(f'log: installing from the USB stick failed ({e}); downloading instead', flush=True)
+            for d in glob.glob(f'{TARGET}/ostree') + glob.glob(f'{TARGET}/boot'):
+                shutil.rmtree(d, ignore_errors=True)
+    return deploy_from(image, root_uuid, None)
+
+
+def deploy_from(image, root_uuid, src):
+    """Downloads Hearth OS onto the drive (or copies it from `src`). Progress from ostree's "Fetching layer" lines."""
+    local = src is not None
+    stage('download', 18, 'Preparing' if local else 'Connecting')
     sh(['ostree', 'admin', 'init-fs', '--modern', TARGET])
     sh(['ostree', 'admin', 'stateroot-init', '--sysroot', TARGET, 'default'], check=False).returncode == 0 or \
         sh(['ostree', 'admin', 'os-init', '--sysroot', TARGET, 'default'])
@@ -653,7 +692,7 @@ def deploy(image, root_uuid):
     sh(['ostree', 'config', '--repo', repo, 'set', 'sysroot.readonly', 'true'])
     ref = f'ostree-unverified-registry:{image}'
     cmd = ['ostree', 'container', 'image', 'deploy', '--sysroot', TARGET, '--stateroot', 'default',
-           '--imgref', ref, '--target-imgref', ref,
+           '--imgref', src or ref, '--target-imgref', ref,
            '--karg', f'root=UUID={root_uuid}', '--karg', 'rootflags=subvol=root', '--karg', 'rw']
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     st = {'needed': 0, 'done': 0, 'total': 0, 'unpacking': False}
@@ -664,13 +703,18 @@ def deploy(image, root_uuid):
     # Every second: how much has come in (the network's own count) and how fast, so the screen moves even while
     # one big piece downloads. The layer count is the fallback when the network count isn't there.
     def watch():
-        last_t, last_rx, bps = time.time(), rx_bytes(), 0.0
+        last_t, last_rx, bps = time.time(), (0 if local else rx_bytes()), 0.0
         while p.poll() is None:
             time.sleep(1)
             if st['unpacking']:
                 continue
-            now, rx = time.time(), rx_bytes()
-            got = max(0, rx - rx0)
+            now = time.time()
+            if local:   # nothing comes over the network: the layers copied so far say how far it is
+                rx = int(st['total'] * st['done'] / st['needed']) if st['needed'] else 0
+                got = rx
+            else:
+                rx = rx_bytes()
+                got = max(0, rx - rx0)
             inst = (rx - last_rx) / max(0.001, now - last_t)
             bps = inst if bps == 0 else bps * 0.7 + inst * 0.3   # smoothed, so the number doesn't jump around
             last_t, last_rx = now, rx
@@ -678,7 +722,7 @@ def deploy(image, root_uuid):
             frac_layers = st['done'] / st['needed'] if st['needed'] else 0
             frac = min(0.99, max(frac_layers, got / total if total else 0))
             left = int((total - got) / bps) if total and bps > 50_000 and got < total else None
-            stage('download', 20 + 60 * frac, download_text(got, total, bps), done=st['done'], of=st['needed'], bytes=total,
+            stage('download', 20 + 60 * frac, download_text(got, total, bps, local), done=st['done'], of=st['needed'], bytes=total,
                   got=min(got, total) if total else got, speed=int(bps), left=left, percent=int(frac * 100))
 
     import threading
@@ -691,7 +735,7 @@ def deploy(image, root_uuid):
         n = parse_needed(line)
         if n:
             st['needed'], st['total'] = n
-            stage('download', 20, download_text(0, st['total'], 0), bytes=st['total'], got=0, speed=0, percent=0)
+            stage('download', 20, download_text(0, st['total'], 0, local), bytes=st['total'], got=0, speed=0, percent=0)
         elif re.match(r'Fetching (layer|ostree chunk|ostree commit)', line):
             st['done'] = min(st['done'] + 1, st['needed'] or st['done'] + 1)
         elif re.search(r'Deploying|Staging|Writing|Committing', line):
@@ -990,7 +1034,9 @@ def main(argv):
         return 1
     try:
         if cmd == 'disks':
-            print(json.dumps({'disks': disks(), 'image': default_image(), 'efi': os.path.isdir('/sys/firmware/efi')}))
+            img = default_image()
+            # offline: this USB carries Hearth OS itself (the full ISOs), so installing needs no internet.
+            print(json.dumps({'disks': disks(), 'image': img, 'offline': local_image(img) is not None, 'efi': os.path.isdir('/sys/firmware/efi')}))
         elif cmd == 'check' and len(argv) > 2:
             print(json.dumps(check_linux(argv[2])))
         elif cmd == 'run':
