@@ -95,6 +95,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] A game that was starting or had just started looked frozen after closing Quick Access: Hearth now puts back the game's current window
 - [x] Sliders (volume, brightness) in Quick Access and Settings: press A to change one, A or B when done; moving past one no longer changes it
 - [x] Quick Resume sometimes showed the last game's frozen picture: games put aside are never the one put in front
+- [x] Settings › System › Save logs for a bug report: Hearth's and the system's logs in one file, personal details taken out, saved in the home folder and on a USB drive if one is plugged in
 
 ## 0.0.26 (released)
 
