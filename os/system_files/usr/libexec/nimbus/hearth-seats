@@ -1,0 +1,1009 @@
+#!/usr/bin/python3
+"""hearth-seats: Multi-seat (experimental). One PC runs two to four separate Hearth Game Mode sessions at once,
+one per TV or monitor, each with its own controllers and its own Linux account (own Steam account, Hearth
+profile and saves), like several consoles in one box. See docs/MULTI-SEAT.md for the design.
+
+Run by the Hearth app as the signed-in (main) user; the parts that need root go through
+`pkexec /usr/libexec/nimbus/hearth-admin seats-*`.
+
+  hearth-seats scan                    JSON: graphics cards and their screens, controllers, sound cards, accounts,
+                                       the current set-up
+  hearth-seats plan                    JSON: which kind of multi-seat this PC can do, and a proposed layout
+  hearth-seats setup --seats JSON      set it up (JSON: a layout like plan's "layout"); --start to start it too
+  hearth-seats start | stop            start or stop the other players' screens
+  hearth-seats status                  JSON: what's set up and what's running
+  hearth-seats assign-pad --pad ID --seat N
+                                       move a controller to another player, right away
+  hearth-seats remove [--delete-users] undo everything: back to one player (the extra accounts and their saves are
+                                       kept unless --delete-users)
+
+Used by the system itself (not by the app):
+  hearth-seats session                 an extra player's session (run by hearth-seat@.service as that player)
+  hearth-seats host-check              exit 0 if this Game Mode should host the other players' screens
+  hearth-seats host -- CMD...          run the host (labwc over every screen) with CMD as player 1's Game Mode
+  hearth-seats host-run -- CMD...      inside the host: open each player's window socket, then run CMD
+  hearth-seats gamescope-args          extra gamescope options for this user's Game Mode (may print nothing)
+
+Output: "progress: <0-100> <what>" lines, then one JSON line. Exit 1 with "error: ..." on failure.
+"""
+import array
+import glob
+import json
+import os
+import pwd
+import re
+import shlex
+import signal
+import socket
+import struct
+import subprocess
+import sys
+import time
+
+SYS = '/sys'
+DEV = '/dev'
+CONFIG = '/etc/hearth/seats.json'
+SEAT_RUN = '/run/hearth-seats'
+ADMIN = '/usr/libexec/nimbus/hearth-admin'
+PASSWD = '/etc/passwd'
+GROUP = '/etc/group'
+MAX_SEATS = 4
+PLAYER_RE = re.compile(r'^hearth-p([2-4])$')
+EXIT_HOST_FALLBACK = 3   # host couldn't start: run normal Game Mode instead
+HOST_STATE = os.path.expanduser('~/.local/state/hearth/seat-host.json')
+
+BTN_JOYSTICK, BTN_GAMEPAD = 0x120, 0x130
+
+
+class Fail(Exception):
+    pass
+
+
+def fail(msg):
+    print('error: ' + msg, flush=True)
+    sys.exit(1)
+
+
+def progress(pct, what):
+    print('progress: %d %s' % (max(0, min(100, int(pct))), what), flush=True)
+
+
+class Runner:
+    """Runs commands; tests swap it for a fake."""
+
+    def run(self, cmd, input=None, timeout=60):
+        try:
+            r = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=timeout)
+            return r.returncode, r.stdout, r.stderr
+        except FileNotFoundError:
+            return 127, '', cmd[0] + ': not found'
+        except subprocess.TimeoutExpired:
+            return 124, '', cmd[0] + ': timed out'
+
+    def stream(self, cmd, input=None, on_line=None):
+        """Like run, but hands each output line to on_line as it comes (live progress)."""
+        try:
+            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        except FileNotFoundError:
+            return 127, '', cmd[0] + ': not found'
+        if input is not None:
+            p.stdin.write(input)
+        p.stdin.close()
+        out = []
+        for line in p.stdout:
+            out.append(line)
+            if on_line:
+                on_line(line.rstrip('\n'))
+        err = p.stderr.read()
+        return p.wait(), ''.join(out), err
+
+
+RUNNER = Runner()
+
+
+def read(path, default=''):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def read_bytes(path):
+    try:
+        with open(path, 'rb') as f:
+            return f.read()
+    except OSError:
+        return b''
+
+
+# ---------------------------------------------------------------------------------------------- scanning
+def edid_monitor_name(edid):
+    """The monitor's name from its EDID (descriptor 0xFC), or ''."""
+    if len(edid) < 128:
+        return ''
+    for off in (54, 72, 90, 108):
+        d = edid[off:off + 18]
+        if d[0:3] == b'\0\0\0' and d[3] == 0xFC:
+            return d[5:18].split(b'\n')[0].decode('ascii', 'replace').strip()
+    return ''
+
+
+def pci_address(path):
+    """The PCI address (0000:03:00.0) of the nearest PCI device in a sysfs path, or ''."""
+    found = re.findall(r'/([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7])(?=/|$)', path)
+    return found[-1] if found else ''
+
+
+def scan_gpus():
+    gpus = []
+    for card in sorted(glob.glob(os.path.join(SYS, 'class/drm/card[0-9]*')), key=lambda p: int(re.sub(r'\D', '', os.path.basename(p)) or 0)):
+        name = os.path.basename(card)
+        if not re.fullmatch(r'card\d+', name):
+            continue
+        dev = os.path.realpath(os.path.join(card, 'device'))
+        pci = pci_address(dev)
+        vendor = read(os.path.join(card, 'device/vendor')).replace('0x', '')
+        device = read(os.path.join(card, 'device/device')).replace('0x', '')
+        driver = os.path.basename(os.path.realpath(os.path.join(card, 'device/driver'))) if os.path.exists(os.path.join(card, 'device/driver')) else ''
+        outputs = []
+        for conn in sorted(glob.glob(os.path.join(SYS, 'class/drm', name + '-*'))):
+            cid = os.path.basename(conn)
+            connector = cid[len(name) + 1:]
+            if connector.startswith('Writeback'):
+                continue
+            modes = read(os.path.join(conn, 'modes')).splitlines()
+            outputs.append({
+                'id': cid, 'connector': connector,
+                'connected': read(os.path.join(conn, 'status')) == 'connected',
+                'enabled': read(os.path.join(conn, 'enabled')) == 'enabled',
+                'mode': modes[0].strip() if modes else None,
+                'monitor': edid_monitor_name(read_bytes(os.path.join(conn, 'edid'))) or None,
+                'internal': bool(re.match(r'(eDP|LVDS|DSI)', connector)),
+            })
+        gpus.append({
+            'id': pci or name, 'card': name, 'pci': pci or None, 'vendor': vendor, 'device': device,
+            'vk_device': '%s:%s' % (vendor, device) if vendor and device else None,
+            'driver': driver, 'boot_vga': read(os.path.join(card, 'device/boot_vga')) == '1',
+            'outputs': outputs,
+        })
+    return gpus
+
+
+def has_bits(hexwords, *bits):
+    """Linux capability bitmaps: space-separated hex words, most significant first."""
+    words = [int(w, 16) for w in hexwords.split()] if hexwords.strip() else []
+    words.reverse()
+    out = []
+    for bit in bits:
+        i, b = divmod(bit, 64)
+        out.append(i < len(words) and bool(words[i] >> b & 1))
+    return out
+
+
+def usb_port(path):
+    """The USB port path (1-2 or 1-2.3) a device hangs off, or None."""
+    ports = re.findall(r'/(\d+-\d+(?:\.\d+)*)(?=/|$)', path)
+    return ports[-1] if ports else None
+
+
+def pad_id(uniq, port, phys, bus):
+    """How a controller is recognised again after it reconnects. Plugged in: by its USB port (whatever is
+    plugged into that port, or a hub on it, belongs to the player; drivers like hid-playstation give the input
+    device and the hidraw node different serials over USB). Wireless: by its serial/MAC address."""
+    if port and bus == 'usb':
+        return 'usb:' + port
+    if uniq and re.fullmatch(r'[A-Za-z0-9:._-]{4,64}', uniq):
+        return 'uniq:' + uniq
+    return None   # can't be told apart after it reconnects; not assignable
+
+
+def scan_pads(config=None):
+    """Game controllers (not virtual ones made by Steam or InputPlumber), one entry per physical controller."""
+    pads = {}
+    assigned = {}
+    for s in (config or {}).get('seats', []):
+        for p in s.get('pads', []):
+            assigned[p] = s.get('seat')
+    for ev in sorted(glob.glob(os.path.join(SYS, 'class/input/event[0-9]*'))):
+        inp = os.path.realpath(os.path.join(ev, 'device'))
+        if '/devices/virtual/' in inp:
+            continue
+        joy, pad = has_bits(read(os.path.join(inp, 'capabilities/key')), BTN_JOYSTICK, BTN_GAMEPAD)
+        if not (joy or pad):
+            continue
+        bustype = read(os.path.join(inp, 'id/bustype'))
+        bus = {'0003': 'usb', '0005': 'bluetooth'}.get(bustype, 'other')
+        uniq = read(os.path.join(inp, 'uniq'))
+        port = usb_port(inp)
+        pid = pad_id(uniq, port, read(os.path.join(inp, 'phys')), bus)
+        key = pid or ('event:' + os.path.basename(ev))
+        entry = pads.setdefault(key, {
+            'id': pid, 'name': read(os.path.join(inp, 'name')) or 'Controller', 'bus': bus,
+            'usb_port': port if bus == 'usb' else None, 'uniq': uniq or None,
+            'vendor': read(os.path.join(inp, 'id/vendor')), 'product': read(os.path.join(inp, 'id/product')),
+            'events': [], 'hidraw': [], 'seat': assigned.get(pid, 1) if pid else 1,
+            'assignable': bool(pid),
+        })
+        entry['events'].append(os.path.join(DEV, 'input', os.path.basename(ev)))
+        # The same controller's hidraw node (Steam reads controllers through it): a sibling under the HID device.
+        hid = os.path.dirname(os.path.dirname(inp)) if os.path.basename(os.path.dirname(inp)) == 'input' else ''
+        for h in sorted(glob.glob(os.path.join(hid, 'hidraw', 'hidraw[0-9]*'))) if hid else []:
+            node = os.path.join(DEV, os.path.basename(h))
+            if node not in entry['hidraw']:
+                entry['hidraw'].append(node)
+    return list(pads.values())
+
+
+def scan_audio(gpus):
+    by_slot = {g['pci'].rsplit('.', 1)[0]: g['id'] for g in gpus if g.get('pci')}
+    cards = []
+    for c in sorted(glob.glob(os.path.join(SYS, 'class/sound/card[0-9]*'))):
+        dev = os.path.realpath(os.path.join(c, 'device'))
+        pci = pci_address(dev)
+        cards.append({'card': os.path.basename(c), 'id': read(os.path.join(c, 'id')), 'pci': pci or None,
+                      'gpu': by_slot.get(pci.rsplit('.', 1)[0]) if pci else None})
+    return cards
+
+
+def passwd_entries():
+    out = []
+    for line in read(PASSWD).splitlines():
+        f = line.split(':')
+        if len(f) >= 7 and f[2].isdigit():
+            out.append({'name': f[0], 'uid': int(f[2]), 'gid': int(f[3]), 'home': f[5], 'shell': f[6]})
+    return out
+
+
+def group_members(name):
+    for line in read(GROUP).splitlines():
+        f = line.split(':')
+        if len(f) >= 4 and f[0] == name:
+            return [m for m in f[3].split(',') if m]
+    return []
+
+
+def main_user():
+    """Whoever runs this (the Hearth app runs as the main user)."""
+    try:
+        pw = pwd.getpwuid(os.getuid())
+        return {'name': pw.pw_name, 'uid': pw.pw_uid}
+    except KeyError:
+        return {'name': str(os.getuid()), 'uid': os.getuid()}
+
+
+def scan_users():
+    me = main_user()
+    players = [{'name': e['name'], 'uid': e['uid'], 'home': e['home']} for e in passwd_entries() if PLAYER_RE.match(e['name'])]
+    return {'main': me, 'players': players, 'main_in_input_group': me['name'] in group_members('input')}
+
+
+def logind_seats():
+    rc, out, _ = RUNNER.run(['loginctl', 'list-seats', '--no-legend'], timeout=10)
+    if rc != 0:
+        return []
+    return [line.split()[0] for line in out.splitlines() if line.strip()]
+
+
+def load_config():
+    try:
+        with open(CONFIG) as f:
+            c = json.load(f)
+        return c if isinstance(c, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def scan():
+    config = load_config()
+    gpus = scan_gpus()
+    users = scan_users()
+    warnings = []
+    if users['main_in_input_group']:
+        warnings.append('Your account is in the "input" group, so your games could still see the other players\' '
+                        'controllers. Multi-seat works best without it.')
+    return {'gpus': gpus, 'pads': scan_pads(config), 'audio': scan_audio(gpus), 'logind_seats': logind_seats(),
+            'users': users, 'config': public_config(config), 'warnings': warnings}
+
+
+def public_config(config):
+    if not config:
+        return None
+    return {k: config.get(k) for k in ('version', 'mode', 'enabled', 'main_user', 'seats', 'created_users')}
+
+
+# ---------------------------------------------------------------------------------------------- planning
+def connected_outputs(gpu):
+    return [o for o in gpu['outputs'] if o['connected']]
+
+
+def plan_from(info):
+    gpus, pads = info['gpus'], info['pads']
+    reasons, warnings = [], list(info.get('warnings', []))
+    lit = [g for g in gpus if connected_outputs(g)]
+    total_outputs = sum(len(connected_outputs(g)) for g in gpus)
+    gpu_ok = len(lit) >= 2
+    if gpu_ok:
+        ids = [g['vk_device'] for g in lit]
+        if len(set(ids)) < len(ids):
+            gpu_ok = False
+            reasons.append('Two of the graphics cards are the same model, and Game Mode can\'t tell them apart yet.')
+        else:
+            reasons.append('Each player can have a graphics card of their own (the fastest and most reliable kind).')
+    nested_ok = total_outputs >= 2
+    if nested_ok:
+        reasons.append('There are %d screens connected, so they can be shared out between players.' % total_outputs)
+    if not gpu_ok and not nested_ok:
+        reasons.append('Connect a second TV or monitor to use multi-seat.')
+    mode = 'gpu' if gpu_ok else 'nested' if nested_ok else None
+    layout = None
+    if mode:
+        layout = propose_layout(mode, gpus, pads, info['users']['main']['name'])
+        assignable = [p for p in pads if p.get('assignable')]
+        if len(assignable) < len(layout['seats']):
+            warnings.append('Connect a controller for each player. Controllers can be moved between players at any time.')
+    if any(p for p in pads if not p.get('assignable')):
+        warnings.append('Some controllers have no serial number and aren\'t plugged in by USB, so they always stay with player 1.')
+    return {'possible': {'gpu': gpu_ok, 'nested': nested_ok}, 'recommended': mode, 'reasons': reasons,
+            'warnings': warnings, 'layout': layout}
+
+
+def propose_layout(mode, gpus, pads, main):
+    def rank(g):   # player 1 keeps the screen the PC starts on
+        return (not g['boot_vga'], g['card'])
+    ordered = sorted(gpus, key=rank)
+    if mode == 'gpu':
+        picks = [(g, connected_outputs(g)[0]) for g in ordered if connected_outputs(g)][:MAX_SEATS]
+    else:
+        picks = []
+        for g in ordered:
+            outs = sorted(connected_outputs(g), key=lambda o: (not o['internal'], o['id']))
+            picks += [(g, o) for o in outs]
+        picks = picks[:MAX_SEATS]
+    seats = []
+    assignable = [p for p in pads if p.get('assignable')]
+    for n, (g, o) in enumerate(picks, start=1):
+        seats.append({'seat': n, 'user': main if n == 1 else 'hearth-p%d' % n, 'gpu': g['id'], 'output': o['id'],
+                      'pads': [], 'audio': None})
+    # Player 1 keeps the first controller; the next ones go one each to the other players.
+    for i, p in enumerate(assignable[:len(seats)]):
+        seats[i]['pads'].append(p['id'])
+    return {'mode': mode, 'seats': seats}
+
+
+# ---------------------------------------------------------------------------------------------- root side
+def admin(args, payload=None, timeout=600):
+    """hearth-admin seats-*: through pkexec (or directly when already root). Progress lines are passed on."""
+    cmd = ([ADMIN] if os.geteuid() == 0 else ['pkexec', ADMIN]) + args
+    data = json.dumps(payload) if payload is not None else None
+
+    def live(line):
+        if line.startswith('progress: ') or line.startswith('log: '):
+            print(line, flush=True)
+    if hasattr(RUNNER, 'stream'):
+        rc, out, err = RUNNER.stream(cmd, input=data, on_line=live)
+    else:
+        rc, out, err = RUNNER.run(cmd, input=data, timeout=timeout)
+        for line in out.splitlines():
+            live(line)
+    result = None
+    for line in out.splitlines():
+        if line.startswith('error: '):
+            raise Fail(line[7:])
+        elif line.startswith('{'):
+            try:
+                result = json.loads(line)
+            except ValueError:
+                pass
+    if rc != 0:
+        if rc in (126, 127) and not out:
+            raise Fail('Hearth couldn\'t get permission to change the system (pkexec was cancelled or is missing).')
+        raise Fail((err.strip().splitlines() or ['hearth-admin failed'])[-1])
+    return result or {}
+
+
+def setup(seats_json, start=False):
+    try:
+        layout = json.loads(seats_json)
+    except ValueError:
+        raise Fail('--seats must be JSON like plan\'s "layout"')
+    progress(2, 'Checking the layout')
+    info = scan()
+    check_layout(layout, info)
+    payload = dict(layout, start=bool(start))
+    result = admin(['seats-setup'], payload)
+    return dict(result, restart_game_mode=layout.get('mode') == 'nested' and bool(start))
+
+
+def check_layout(layout, info):
+    """Friendly checks before asking for root (hearth-admin checks everything again, strictly)."""
+    if not isinstance(layout, dict) or layout.get('mode') not in ('gpu', 'nested'):
+        raise Fail('the layout needs a mode: "gpu" (a graphics card per player) or "nested" (one card, several screens)')
+    seats = layout.get('seats')
+    if not isinstance(seats, list) or not 2 <= len(seats) <= MAX_SEATS:
+        raise Fail('choose 2 to %d players' % MAX_SEATS)
+    outputs = {o['id']: (g, o) for g in info['gpus'] for o in g['outputs']}
+    for s in seats:
+        o = outputs.get(s.get('output'))
+        if not o:
+            raise Fail('screen %s isn\'t there any more' % s.get('output'))
+        if not o[1]['connected']:
+            raise Fail('the screen for player %s (%s) isn\'t connected or is turned off' % (s.get('seat'), o[1]['connector']))
+    if seats[0].get('user') != info['users']['main']['name']:
+        raise Fail('player 1 must be you (%s)' % info['users']['main']['name'])
+
+
+def start():
+    c = load_config()
+    if not c:
+        raise Fail('multi-seat isn\'t set up')
+    r = admin(['seats-start'])
+    reset_host_failures()
+    return dict(r, restart_game_mode=c.get('mode') == 'nested')
+
+
+def stop():
+    if not load_config():
+        raise Fail('multi-seat isn\'t set up')
+    mode = load_config().get('mode')
+    r = admin(['seats-stop'])
+    return dict(r, restart_game_mode=mode == 'nested')
+
+
+def assign_pad(pad, seat):
+    c = load_config()
+    if not c:
+        raise Fail('multi-seat isn\'t set up')
+    seats = {s['seat']: s for s in c.get('seats', [])}
+    if seat not in seats:
+        raise Fail('there\'s no player %d' % seat)
+    mapping = {}
+    for s in c['seats']:
+        for p in s.get('pads', []):
+            mapping[p] = s['seat']
+    mapping[pad] = seat
+    return admin(['seats-acl'], {'pads': mapping})
+
+
+def remove(delete_users=False):
+    return admin(['seats-remove'] + (['--delete-users'] if delete_users else []))
+
+
+def unit_state(unit):
+    rc, out, _ = RUNNER.run(['systemctl', 'is-active', unit], timeout=10)
+    return out.strip() or 'unknown'
+
+
+def status():
+    c = load_config()
+    if not c:
+        return {'configured': False, 'enabled': False, 'mode': None, 'seats': [], 'host': None}
+    seats = []
+    for s in c.get('seats', []):
+        e = {'seat': s['seat'], 'user': s['user'], 'output': s.get('output'), 'gpu': s.get('gpu'), 'pads': s.get('pads', [])}
+        if s['seat'] == 1:
+            e['state'] = 'active'
+        else:
+            svc = unit_state('hearth-seat@%s.service' % s['user'])
+            if svc == 'active':
+                e['state'] = 'running'
+            elif svc in ('activating', 'reloading'):
+                e['state'] = 'starting'
+            elif svc == 'failed':
+                e['state'] = 'failed'
+            elif c.get('mode') == 'nested' and c.get('enabled') and unit_state('hearth-seat@%s.path' % s['user']) == 'active':
+                e['state'] = 'waiting'   # for player 1's Game Mode to open its screen
+            else:
+                e['state'] = 'stopped'
+        seats.append(e)
+    host = None
+    if c.get('mode') == 'nested':
+        host = {'running': os.path.exists(os.path.join(SEAT_RUN, 'host.pid')) and pid_alive(read(os.path.join(SEAT_RUN, 'host.pid'))),
+                'paused': host_paused()}
+    return {'configured': True, 'enabled': bool(c.get('enabled')), 'mode': c.get('mode'), 'seats': seats, 'host': host}
+
+
+def pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (ValueError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+
+
+# ---------------------------------------------------------------------------------------------- extra player's session
+def seat_env_file(user):
+    return '/etc/hearth/seats/%s.env' % user
+
+
+def parse_env(text):
+    env = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        k, v = line.split('=', 1)
+        if re.fullmatch(r'[A-Z_][A-Z0-9_]*', k):
+            try:
+                v = shlex.split(v)[0] if v else ''
+            except ValueError:
+                pass
+            env[k] = v
+    return env
+
+
+def session_gamescope_args(env):
+    mode = env.get('HEARTH_SEAT_MODE')
+    args = []
+    if mode == 'gpu':
+        if env.get('HEARTH_SEAT_VK_DEVICE'):
+            args += ['--prefer-vk-device', env['HEARTH_SEAT_VK_DEVICE']]
+        if env.get('HEARTH_SEAT_OUTPUT'):
+            args += ['--prefer-output', env['HEARTH_SEAT_OUTPUT']]
+    elif mode == 'nested':
+        m = re.fullmatch(r'(\d+)x(\d+)', env.get('HEARTH_SEAT_SIZE', ''))
+        if m:
+            args += ['-W', m.group(1), '-H', m.group(2), '-w', m.group(1), '-h', m.group(2)]
+    return args
+
+
+def session(wait=60):
+    """An extra player's Game Mode. Runs as hearth-pN from hearth-seat@hearth-pN.service, in its own logind
+    session (no seat). Sets up the screen, sound and Game Mode options, then hands over to nimbus-session."""
+    me = main_user()['name']
+    m = PLAYER_RE.match(me)
+    if not m:
+        raise Fail('the session is only for the extra players\' accounts')
+    env = dict(os.environ)
+    env.update(parse_env(read(seat_env_file(me))))
+    mode = env.get('HEARTH_SEAT_MODE')
+    env['HEARTH_SEAT'] = m.group(1)
+    env['NIMBUS_START_MODE'] = 'game'
+    env.setdefault('XDG_RUNTIME_DIR', '/run/user/%d' % os.getuid())
+    if not env.get('DBUS_SESSION_BUS_ADDRESS') and os.path.exists(os.path.join(env['XDG_RUNTIME_DIR'], 'bus')):
+        env['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=' + os.path.join(env['XDG_RUNTIME_DIR'], 'bus')
+    if mode == 'gpu':
+        # Our own graphics card, opened directly (it isn't part of any logind seat, so there's no seat to ask).
+        env['LIBSEAT_BACKEND'] = 'noop'
+        env.pop('WAYLAND_DISPLAY', None)
+        env.pop('DISPLAY', None)
+    elif mode == 'nested':
+        sock = os.path.join(SEAT_RUN, me, 'wayland-0')
+        deadline = time.monotonic() + wait
+        while not os.path.exists(sock):
+            if time.monotonic() > deadline:
+                raise Fail('player 1\'s Game Mode didn\'t open this player\'s screen')
+            time.sleep(1)
+        env['WAYLAND_DISPLAY'] = sock
+        env.pop('DISPLAY', None)
+        env.update(parse_env(read(os.path.join(SEAT_RUN, me, 'audio.env'))))
+    else:
+        raise Fail('this player isn\'t set up (no %s)' % seat_env_file(me))
+    # nimbus-session passes these to gamescope (the player's own session.conf could add more).
+    env['NIMBUS_GAMESCOPE_ARGS'] = ' '.join(shlex.quote(a) for a in session_gamescope_args(env))
+    os.execve('/usr/bin/nimbus-session', ['nimbus-session'], env)
+
+
+def gamescope_args():
+    """Extra gamescope options for the main user's own Game Mode: with a graphics card per player, player 1's
+    Game Mode must stay on player 1's card."""
+    c = load_config()
+    if not c or not c.get('enabled') or c.get('mode') != 'gpu':
+        return []
+    me = main_user()['name']
+    s = next((s for s in c.get('seats', []) if s.get('user') == me), None)
+    if not s:
+        return []
+    args = []
+    if s.get('vk_device'):
+        args += ['--prefer-vk-device', s['vk_device']]
+    if s.get('output'):
+        args += ['--prefer-output', s['output'].split('-', 1)[1] if '-' in s['output'] else s['output']]
+    return args
+
+
+# ---------------------------------------------------------------------------------------------- host (one card, several screens)
+def host_state():
+    try:
+        with open(HOST_STATE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_host_state(st):
+    try:
+        os.makedirs(os.path.dirname(HOST_STATE), exist_ok=True)
+        with open(HOST_STATE + '.tmp', 'w') as f:
+            json.dump(st, f)
+        os.replace(HOST_STATE + '.tmp', HOST_STATE)
+    except OSError:
+        pass
+
+
+def host_paused():
+    return host_state().get('failures', 0) >= 2
+
+
+def reset_host_failures():
+    save_host_state({'failures': 0})
+
+
+def host_seats(c, info_gpus=None):
+    """The seats whose screens are connected right now (player 1 first). Fewer than two: no host."""
+    gpus = info_gpus if info_gpus is not None else scan_gpus()
+    connected = {o['id']: o for g in gpus for o in g['outputs'] if o['connected']}
+    return [dict(s, connector=connected[s['output']]['connector'], mode=connected[s['output']]['mode'],
+                 monitor=connected[s['output']]['monitor'])
+            for s in c.get('seats', []) if s.get('output') in connected]
+
+
+def host_check():
+    c = load_config()
+    if not c or not c.get('enabled') or c.get('mode') != 'nested':
+        return False
+    if c.get('main_user') != main_user()['name'] or os.environ.get('HEARTH_SEAT'):
+        return False
+    if host_paused():
+        return False
+    seats = host_seats(c)
+    return len(seats) >= 2 and seats[0]['seat'] == 1
+
+
+def xml_escape(s):
+    return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
+
+def host_rc_xml(seats):
+    """labwc settings for the host: no decorations, no desktop keys, each player's window on their screen.
+    Each player's window connects through its own socket marked with security-context-v1 (engine
+    "hearth-seat", app id "seatN"), which is what the window rules match on."""
+    rules = '\n'.join(
+        '    <windowRule sandboxEngine="hearth-seat" sandboxAppId="seat%d" serverDecoration="no" skipTaskbar="yes">\n'
+        '      <action name="MoveToOutput" output="%s" />\n'
+        '      <action name="Focus" />\n'
+        '    </windowRule>' % (s['seat'], xml_escape(s['connector'])) for s in seats)
+    return ('<?xml version="1.0"?>\n<!-- Hearth multi-seat host, written by hearth-seats; changes are overwritten. -->\n'
+            '<labwc_config>\n  <core><decoration>client</decoration><gap>0</gap></core>\n'
+            '  <keyboard><default /></keyboard>\n  <mouse><default /></mouse>\n'
+            '  <focus><followMouse>no</followMouse></focus>\n'
+            '  <windowRules>\n' + rules + '\n  </windowRules>\n</labwc_config>\n')
+
+
+def host(cmd):
+    """Player 1's Game Mode when the screens are shared out: labwc drives every screen (gamescope can only drive
+    one); player 1's gamescope and each other player's gamescope run in it as fullscreen windows, one per screen.
+    Returns player 1's Game Mode's exit code, or EXIT_HOST_FALLBACK if the host couldn't start."""
+    c = load_config()
+    seats = host_seats(c) if c else []
+    if len(seats) < 2 or not cmd:
+        return EXIT_HOST_FALLBACK
+    run = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+    d = os.path.join(run, 'hearth-seat-host')
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, 'rc.xml'), 'w') as f:
+        f.write(host_rc_xml(seats))
+    with open(os.path.join(d, 'autostart'), 'w') as f:
+        f.write('#!/bin/sh\n# Hearth multi-seat host (written by hearth-seats)\n'
+                'exec python3 %s host-run -- %s\n' % (shlex.quote(os.path.realpath(__file__)), ' '.join(shlex.quote(a) for a in cmd)))
+    open(os.path.join(d, 'environment'), 'w').close()
+    with open(os.path.join(d, 'menu.xml'), 'w') as f:
+        f.write('<?xml version="1.0"?><openbox_menu></openbox_menu>\n')
+    st = host_state()
+    started = time.time()
+    rc = subprocess.call(['labwc', '-C', d])
+    result_file = os.path.join(d, 'result')
+    inner = read(result_file)
+    try:
+        os.remove(result_file)
+    except OSError:
+        pass
+    ok_end = inner.isdigit()
+    # A host that falls over straight away twice in a row is paused (back to normal Game Mode) until
+    # multi-seat is started again, so a broken set-up can never stop player 1 from playing.
+    if not ok_end and time.time() - started < 30:
+        st['failures'] = st.get('failures', 0) + 1
+        save_host_state(st)
+        return EXIT_HOST_FALLBACK
+    save_host_state({'failures': 0})
+    return int(inner) if ok_end else rc
+
+
+# ---- a minimal Wayland client: just enough to make security-context-v1 listeners (no libraries needed)
+class Wayland:
+    def __init__(self, path):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(path)
+        self.next_id = 2
+        self.buf = b''
+        self.globals = {}
+        self.registry = None
+
+    def new_id(self):
+        i = self.next_id
+        self.next_id += 1
+        return i
+
+    @staticmethod
+    def u32(v):
+        return struct.pack('<I', v)
+
+    @staticmethod
+    def string(s):
+        b = s.encode() + b'\0'
+        return struct.pack('<I', len(b)) + b + b'\0' * (-len(b) % 4)
+
+    def send(self, obj, opcode, args=b'', fds=()):
+        msg = struct.pack('<II', obj, ((8 + len(args)) << 16) | opcode) + args
+        if fds:
+            self.sock.sendmsg([msg], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array('i', fds))])
+        else:
+            self.sock.sendall(msg)
+
+    def read_event(self):
+        while True:
+            if len(self.buf) >= 8:
+                obj, word = struct.unpack('<II', self.buf[:8])
+                size, opcode = word >> 16, word & 0xffff
+                if size < 8:
+                    raise Fail('bad message from the compositor')
+                if len(self.buf) >= size:
+                    payload, self.buf = self.buf[8:size], self.buf[size:]
+                    return obj, opcode, payload
+            data, anc, _, _ = self.sock.recvmsg(65536, socket.CMSG_SPACE(16 * 4))
+            for level, kind, fdata in anc:   # no events we read carry fds, but never leak any
+                if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
+                    for fd in array.array('i', fdata[:len(fdata) - len(fdata) % 4]):
+                        os.close(fd)
+            if not data:
+                raise Fail('the compositor closed the connection')
+            self.buf += data
+
+    @staticmethod
+    def parse_string(payload, off):
+        n = struct.unpack_from('<I', payload, off)[0]
+        s = payload[off + 4:off + 4 + n - 1].decode(errors='replace')
+        return s, off + 4 + n + (-n % 4)
+
+    def roundtrip(self):
+        cb = self.new_id()
+        self.send(1, 0, self.u32(cb))                     # wl_display.sync
+        while True:
+            obj, op, payload = self.read_event()
+            if obj == 1 and op == 0:                      # wl_display.error
+                _, code = struct.unpack_from('<II', payload)
+                msg, _ = self.parse_string(payload, 8)
+                raise Fail('the compositor refused (%d): %s' % (code, msg))
+            if obj == self.registry and op == 0:          # wl_registry.global
+                name = struct.unpack_from('<I', payload)[0]
+                iface, off = self.parse_string(payload, 4)
+                self.globals[iface] = (name, struct.unpack_from('<I', payload, off)[0])
+            if obj == cb and op == 0:                     # wl_callback.done
+                return
+
+    def start(self):
+        self.registry = self.new_id()
+        self.send(1, 1, self.u32(self.registry))          # wl_display.get_registry
+        self.roundtrip()
+
+    def bind(self, iface, version):
+        if iface not in self.globals:
+            raise Fail('the compositor doesn\'t offer ' + iface)
+        name, have = self.globals[iface]
+        oid = self.new_id()
+        self.send(self.registry, 0, self.u32(name) + self.string(iface) + self.u32(min(version, have)) + self.u32(oid))
+        return oid
+
+    def security_context(self, manager, listen_fd, close_fd, engine, app_id, instance):
+        ctx = self.new_id()
+        self.send(manager, 1, self.u32(ctx), fds=(listen_fd, close_fd))   # create_listener(new_id, fd, fd)
+        self.send(ctx, 1, self.string(engine))            # set_sandbox_engine
+        self.send(ctx, 2, self.string(app_id))            # set_app_id
+        self.send(ctx, 3, self.string(instance))          # set_instance_id
+        self.send(ctx, 4)                                 # commit
+        return ctx
+
+
+def listen_socket(path, mode=0o660):
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.bind(path)
+    os.chmod(path, mode)
+    s.listen(16)
+    return s
+
+
+def open_seat_sockets(wl, seats, me):
+    """One security-context listener per player. Returns [(path, socket, close_write_fd)]."""
+    manager = wl.bind('wp_security_context_manager_v1', 1)
+    opened = []
+    run = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+    for s in seats:
+        if s['seat'] == 1:
+            path = os.path.join(run, 'hearth-seat1-wayland')
+        else:
+            path = os.path.join(SEAT_RUN, s['user'], 'wayland-0')
+        ls = listen_socket(path)
+        r, w = os.pipe()
+        wl.security_context(manager, ls.fileno(), r, 'hearth-seat', 'seat%d' % s['seat'], s['user'])
+        os.close(r)
+        opened.append((path, ls, w, s))
+    wl.roundtrip()   # any refusal shows up here
+    return opened
+
+
+def pactl_json(args):
+    rc, out, _ = RUNNER.run(['pactl', '-f', 'json'] + args, timeout=10)
+    try:
+        return json.loads(out) if rc == 0 else []
+    except ValueError:
+        return []
+
+
+def pick_sink(sinks, seat):
+    """The sound output on this player's screen: the configured one, else the HDMI/DP output whose port names
+    the screen's monitor (PipeWire adds the monitor's name from the ELD), else none."""
+    if seat.get('audio'):
+        return seat['audio']
+    mon = (seat.get('monitor') or '').lower()
+    if not mon:
+        return None
+    for s in sinks:
+        texts = [s.get('description') or ''] + [p.get('description') or '' for p in s.get('ports', [])]
+        if any(mon in t.lower() for t in texts):
+            return s.get('name')
+    return None
+
+
+def host_audio(seats, me_uid):
+    """Players 2-4 play sound through player 1's sound server (there's one sound card for the screens; two
+    servers fighting over it would break both), each on their own screen's output. Grants them its sockets."""
+    run = os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % me_uid
+    sinks = pactl_json(['list', 'sinks'])
+    for s in seats:
+        sink = pick_sink(sinks, s)
+        if s['seat'] == 1:
+            if sink:
+                RUNNER.run(['pactl', 'set-default-sink', sink], timeout=10)
+            continue
+        u = s['user']
+        RUNNER.run(['setfacl', '-m', 'u:%s:x' % u, run, os.path.join(run, 'pulse')], timeout=10)
+        RUNNER.run(['setfacl', '-m', 'u:%s:rw' % u, os.path.join(run, 'pulse', 'native'), os.path.join(run, 'pipewire-0')], timeout=10)
+        lines = ['PULSE_SERVER=unix:%s' % os.path.join(run, 'pulse', 'native'),
+                 'PIPEWIRE_REMOTE=%s' % os.path.join(run, 'pipewire-0')]
+        if sink:
+            lines += ['PULSE_SINK=%s' % shlex.quote(sink), 'PIPEWIRE_NODE=%s' % shlex.quote(sink)]
+        try:
+            path = os.path.join(SEAT_RUN, u, 'audio.env')
+            with open(path + '.tmp', 'w') as f:
+                f.write('\n'.join(lines) + '\n')
+            os.chmod(path + '.tmp', 0o640)
+            os.replace(path + '.tmp', path)
+        except OSError:
+            pass
+
+
+def revoke_audio(seats, me_uid):
+    run = os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % me_uid
+    for s in seats:
+        if s['seat'] != 1:
+            RUNNER.run(['setfacl', '-x', 'u:%s' % s['user'], run, os.path.join(run, 'pulse'),
+                        os.path.join(run, 'pulse', 'native'), os.path.join(run, 'pipewire-0')], timeout=10)
+
+
+def host_run(cmd):
+    """Inside the host labwc: open each player's socket, share the sound, run player 1's Game Mode, and close
+    the host when it ends (which also ends the other players' sessions: their windows lose their screen)."""
+    run = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+    result_file = os.path.join(run, 'hearth-seat-host', 'result')
+    c = load_config() or {}
+    seats = host_seats(c)
+    me = main_user()
+    opened = []
+    code = None
+    try:
+        wl = Wayland(os.path.join(run, os.environ['WAYLAND_DISPLAY']) if not os.environ.get('WAYLAND_DISPLAY', '').startswith('/') else os.environ['WAYLAND_DISPLAY'])
+        wl.start()
+        opened = open_seat_sockets(wl, seats, me['name'])
+        try:
+            with open(os.path.join(SEAT_RUN, 'host.pid'), 'w') as f:
+                f.write(str(os.getpid()))
+        except OSError:
+            pass
+        host_audio(seats, me['uid'])
+        env = dict(os.environ)
+        env['WAYLAND_DISPLAY'] = opened[0][0]
+        env.pop('LABWC_PID', None)       # nimbus-mode must see Game Mode, not the host
+        env.pop('DISPLAY', None)
+        p = subprocess.Popen(cmd, env=env)
+        signal.signal(signal.SIGTERM, lambda *_: p.terminate())
+        code = p.wait()
+    except (Fail, OSError, KeyError) as e:
+        print('hearth-seats host: ' + str(e), file=sys.stderr, flush=True)
+    finally:
+        for path, ls, w, _ in opened:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            ls.close()
+            os.close(w)
+        revoke_audio(seats, me['uid'])
+        try:
+            os.remove(os.path.join(SEAT_RUN, 'host.pid'))
+        except OSError:
+            pass
+        if code is not None:
+            try:
+                with open(result_file, 'w') as f:
+                    f.write(str(code if code >= 0 else 128 - code))
+            except OSError:
+                pass
+        RUNNER.run(['labwc', '--exit'], timeout=10)
+    return code if code is not None else 1
+
+
+# ---------------------------------------------------------------------------------------------- command line
+def arg(argv, name):
+    if name in argv:
+        i = argv.index(name)
+        if i + 1 < len(argv):
+            return argv[i + 1]
+        raise Fail(name + ' needs a value')
+    return None
+
+
+def after_dashes(argv):
+    return argv[argv.index('--') + 1:] if '--' in argv else []
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    try:
+        if cmd == 'scan':
+            print(json.dumps(scan()))
+        elif cmd == 'plan':
+            print(json.dumps(plan_from(scan())))
+        elif cmd == 'setup':
+            seats = arg(argv, '--seats')
+            if not seats:
+                raise Fail('usage: hearth-seats setup --seats JSON [--start]')
+            print(json.dumps(setup(seats, start='--start' in argv)))
+        elif cmd == 'start':
+            print(json.dumps(start()))
+        elif cmd == 'stop':
+            print(json.dumps(stop()))
+        elif cmd == 'status':
+            print(json.dumps(status()))
+        elif cmd == 'assign-pad':
+            pad, seat = arg(argv, '--pad'), arg(argv, '--seat')
+            if not pad or not (seat or '').isdigit():
+                raise Fail('usage: hearth-seats assign-pad --pad ID --seat N')
+            print(json.dumps(assign_pad(pad, int(seat))))
+        elif cmd == 'remove':
+            print(json.dumps(remove('--delete-users' in argv)))
+        elif cmd == 'session':
+            session()
+        elif cmd == 'host-check':
+            return 0 if host_check() else 1
+        elif cmd == 'host':
+            return host(after_dashes(argv))
+        elif cmd == 'host-run':
+            return host_run(after_dashes(argv))
+        elif cmd == 'gamescope-args':
+            print(' '.join(shlex.quote(a) for a in gamescope_args()))
+        else:
+            raise Fail('usage: hearth-seats scan | plan | setup --seats JSON [--start] | start | stop | status | '
+                       'assign-pad --pad ID --seat N | remove [--delete-users]')
+    except Fail as e:
+        fail(str(e))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

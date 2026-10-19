@@ -56,6 +56,11 @@ dnf5 -y install labwc grim brightnessctl wlr-randr wlsunset python3-evdev \
   qt6ct qt5ct xdg-desktop-portal-wlr xdg-desktop-portal-gtk xprop xwininfo xdotool gnome-keyring cpio rsync
 dnf5 -y copr enable errornointernet/quickshell
 dnf5 -y install quickshell
+# Couch Co-op (Beta Experimental): 7-Zip unpacks the Steam stand-in for Windows games; bubblewrap, fuse-overlayfs and the
+# X tools are usually in Bazzite already (then these are no-ops). Not fatal: Couch Co-op says what's missing.
+dnf5 -y install 7zip || dnf5 -y install p7zip p7zip-plugins || true
+dnf5 -y install fuse-overlayfs bubblewrap xdpyinfo xrandr || true
+chmod 755 /usr/libexec/nimbus/hearth-coop /usr/libexec/nimbus/hearth-seats
 dnf5 -y copr disable errornointernet/quickshell
 
 # ------------------------------------------------------------------ power button

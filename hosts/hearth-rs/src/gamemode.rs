@@ -556,6 +556,14 @@ impl GameMode {
             }
             "closeGame" => { if let Ok(mut b) = self.bridge.lock() { b.library.close_running(); } }
             "comeBack" => { self.hide_overlay(); self.come_back(); }
+            // Couch Co-op: the split screen (a window of the given process) in front, Hearth out of the way.
+            "showPid" => {
+                let pid = a["pid"].as_u64().unwrap_or(0) as u32;
+                if pid == 0 || !self.inside() { return; }
+                self.hide_overlay();
+                self.step_aside();
+                self.run_focus("couch co-op", 300, false, move |still| { gs::focus_game(&|| vec![pid], 0, &[std::process::id() as u64], &[], 0, still); });
+            }
             // Quick Resume: the game picked is running again; put it in front.
             "resumeGame" => { self.hide_overlay(); self.resume_game(); }
             _ => {}
