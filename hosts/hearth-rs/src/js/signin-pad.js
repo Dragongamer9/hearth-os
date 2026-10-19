@@ -101,22 +101,37 @@ function padHeld() {
   if (pads.some(p => p.buttons.some(b => b && b.pressed))) padHeldAt = performance.now();
   return performance.now() - padHeldAt < 300;
 }
+// The controller was used in the last few seconds (Steam and some drivers turn its buttons into mouse clicks and
+// keys a moment later, sometimes after the button is already up).
+let padUsedAt = 0;
+const padActive = () => padHeld() || performance.now() - padUsedAt < 3000;
 for (const type of ['keydown', 'keypress', 'keyup']) {
   window.addEventListener(type, e => {
-    if (performance.now() - ownKeyAt < 250) return;
-    if (padHeld()) { e.preventDefault(); e.stopImmediatePropagation(); }
+    if (!e.isTrusted || performance.now() - ownKeyAt < 250) return;
+    // While the on-screen keyboard is open, or a controller button is held, keys that aren't typing (Enter,
+    // Escape, Space, Tab, arrows) come from the controller, not you: they'd press whatever link has focus.
+    const nav = /^(Enter|Escape| |Spacebar|Tab|Arrow\w+)$/.test(e.key);
+    if (padHeld() || (nav && (kbOpen || padActive()))) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
 }
 // The same for clicks: while a controller button is held, the only clicks that reach
 // the page are the ones this script makes (Steam's desktop controls also turn A and the triggers into mouse
 // clicks, which clicked whatever link was under the pointer while you typed).
 let ownClickAt = 0;
-for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'auxclick', 'dblclick']) {
+// Clicks this script makes aren't "trusted" (they come from the page); real ones are. While you're using the
+// controller (or typing on the on-screen keyboard), real mouse clicks are the controller's buttons turned into
+// clicks by Steam or a driver, landing on whatever is under the system pointer: drop them. Touching the screen
+// still works.
+for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu']) {
   window.addEventListener(type, e => {
-    if (performance.now() - ownClickAt < 400) return;
-    if (padHeld()) { e.preventDefault(); e.stopImmediatePropagation(); }
+    if (!e.isTrusted) return;
+    if (e.pointerType === 'touch' || e.pointerType === 'pen' || (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents)) return;
+    if (performance.now() - lastTouchAt < 800) return;   // the mouse events a tap makes afterwards
+    if (kbOpen || padActive()) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
 }
+let lastTouchAt = 0;
+window.addEventListener('touchstart', () => { lastTouchAt = performance.now(); }, true);
 
 function build() {
   const host = document.createElement('div');
@@ -211,6 +226,7 @@ function poll(now) {
     const ax = i => (Math.abs(p.axes[i] || 0) > DEAD ? p.axes[i] : 0);
     lx += ax(0); ly += ax(1); rx += ax(2); ry += ax(3);
   }
+  if (Object.values(st).some(Boolean) || Math.abs(lx) + Math.abs(ly) + Math.abs(rx) + Math.abs(ry) > 0) padUsedAt = now;
   if (pads.length) {
     cursor.style.display = kbOpen ? 'none' : 'block';
     hint.style.display = 'block';
