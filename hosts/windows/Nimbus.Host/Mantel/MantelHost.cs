@@ -22,6 +22,8 @@ public sealed class MantelHost : IDisposable
     private MantelWindow? _bar, _launcher, _desk, _quick, _power, _radial, _help;
     private IntPtr _beforeRadial;
     private SettingsWindow? _settings;
+    private TasksWindow? _tasks;
+    private FilesWindow? _files;
     private Backdrop? _dim;
     private readonly TrayHost _tray = new();
     private readonly FullShell _full = new();
@@ -46,10 +48,11 @@ public sealed class MantelHost : IDisposable
         _env = env;
         _baseUrl = baseUrl;
         _setup = setup;
-        _bridge.AddListener(json => { if (Active) { _bar?.Post(json); _launcher?.Post(json); _quick?.Post(json); } _settings?.Post(json); });
+        _bridge.AddListener(json => { if (Active) { _bar?.Post(json); _launcher?.Post(json); _quick?.Post(json); } _settings?.Post(json); _tasks?.Post(json); _files?.Post(json); });
         _tick.Tick += (_, _) => Tick();
         _tray.Changed += () => _bar?.BeginInvoke((MethodInvoker)PushTray);
         _full.WinKey += () => _bar?.BeginInvoke((MethodInvoker)ToggleLauncher);
+        _full.TaskManagerKey += () => _bar?.BeginInvoke((MethodInvoker)(() => _ = OpenAppAsync("tasks")));
         _full.VolumeKey += d => _bar?.BeginInvoke((MethodInvoker)(() => VolumeRequested?.Invoke(d)));
         // The screen turned (a handheld held upright) or changed: put the bar on the right edge for its shape.
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => _bar?.BeginInvoke((MethodInvoker)Replace);
@@ -110,6 +113,8 @@ public sealed class MantelHost : IDisposable
         if (Full) { _full.Stop(); _tray.Stop(); _desk?.Hide(); MantelWindow.OwnTray = false; }
         else RestoreWindowsTaskbar();
         _settings?.Hide();
+        _tasks?.Close();
+        _files?.Close();
         Full = false;
     }
 
@@ -145,7 +150,8 @@ public sealed class MantelHost : IDisposable
         {
             if (!Active) return false;
             var fg = Native.GetForegroundWindow();
-            return fg != IntPtr.Zero && Panels.Any(p => p is not null && p.Hwnd == fg);
+            // Hearth's own apps (Task Manager, Files) are moved through with the D-pad and A too, like on Hearth OS.
+            return fg != IntPtr.Zero && (Panels.Any(p => p is not null && p.Hwnd == fg) || _tasks?.Hwnd == fg || _files?.Hwnd == fg);
         }
     }
     private MantelWindow?[] Panels => new[] { _launcher, _quick, _power, _radial, _help };
@@ -277,7 +283,19 @@ public sealed class MantelHost : IDisposable
         switch (action)
         {
             case "apps": _ = PushAppsAsync(from, m.TryGetProperty("refresh", out var r) && r.ValueKind == JsonValueKind.True); break;
-            case "launch": Apps.Launch(Str("id")); HidePanels(); break;
+            case "launch":
+            {
+                var id = Str("id");
+                HidePanels();
+                if (id.StartsWith("hearth:")) _ = OpenAppAsync(id[7..], null);
+                else Apps.Launch(id);
+                break;
+            }
+            case "openApp": HidePanels(); _ = OpenAppAsync(Str("app"), m.TryGetProperty("path", out var op) && op.ValueKind == JsonValueKind.String ? op.GetString() : null); break;
+            case "closeApp":
+                if (Str("app") == "tasks") _tasks?.Close();
+                if (Str("app") == "files") _files?.Close();
+                break;
             case "focus": Apps.Focus(Long("id")); HidePanels(); break;
             case "close": Apps.Close(Long("id")); break;
             case "launcher": ToggleLauncher(); break;
@@ -318,6 +336,45 @@ public sealed class MantelHost : IDisposable
         }
         try { await _settings.OpenAsync(_env, _baseUrl + "mantel-settings.html", _setup, page); }
         catch (Exception ex) { SystemBridge.Log("mantel: settings: " + ex.Message); }
+    }
+
+    /// <summary>Opens one of Hearth's own apps: "tasks" (Hearth Task Manager), "files" (Hearth Files, optionally at
+    /// a folder) or "settings". From the launcher (ids hearth:tasks, hearth:files), a pin, or {type:"mantel",
+    /// action:"openApp", app, path}.</summary>
+    public async Task OpenAppAsync(string app, string? path = null)
+    {
+        try
+        {
+            switch (app)
+            {
+                case "settings": await OpenSettingsAsync(); break;
+                case "tasks":
+                    if (_tasks is null || _tasks.IsDisposed) { _tasks = new TasksWindow(); Wire(_tasks); }
+                    await _tasks.OpenAsync(_env, _baseUrl, _setup, null);
+                    break;
+                case "files":
+                    if (_files is null || _files.IsDisposed) { _files = new FilesWindow(); Wire(_files); }
+                    await _files.OpenAsync(_env, _baseUrl, _setup, string.IsNullOrEmpty(path) ? null : "path=" + Uri.EscapeDataString(path));
+                    break;
+            }
+        }
+        catch (Exception ex) { SystemBridge.Log($"mantel: {app}: {ex.Message}"); }
+    }
+
+    private void Wire(AppWindow w)
+    {
+        w.PageMessage += m =>
+        {
+            var type = m.TryGetProperty("type", out var t) ? t.GetString() : null;
+            if (type == "call") _bridge.Handle(m, w.Post);
+            else if (type == "log") SystemBridge.Log(w.Text + " page: " + (m.TryGetProperty("text", out var x) ? x.GetString() : ""));
+            else if (type == "mantel" && _bar is not null) OnMessage(m, _bar);
+        };
+        w.FormClosed += (_, _) =>
+        {
+            if (ReferenceEquals(_tasks, w)) _tasks = null;
+            if (ReferenceEquals(_files, w)) _files = null;
+        };
     }
 
     /// <summary>What the Hearth menu's items do (Pad.qml's run()).</summary>
@@ -428,6 +485,8 @@ public sealed class MantelHost : IDisposable
         _radial?.Dispose();
         _help?.Dispose();
         _settings?.Dispose();
+        _tasks?.Dispose();
+        _files?.Dispose();
         _dim?.Dispose();
         _tray.Dispose();
         _full.Dispose();

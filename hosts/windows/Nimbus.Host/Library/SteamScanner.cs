@@ -145,7 +145,8 @@ public static class SteamScanner
         return games;
     }
 
-    private static IEnumerable<string> Libraries(string steam)
+    /// <summary>Every Steam library folder (Steam's own and those in libraryfolders.vdf). Also used by Hearth Files.</summary>
+    internal static IEnumerable<string> Libraries(string steam)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { steam };
         yield return steam;

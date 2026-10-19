@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Task Manager</title>
+<!--
+  Hearth Task Manager for Mantel on Windows, like Mantel's on Hearth OS (hosts/linux/desktop/shell/TaskManager.qml):
+  the page list on the left (Apps, Performance, Startup), the page on the right. Works with the mouse, the
+  keyboard and the controller, the same way as Hearth Settings: Up/Down pick a page, Right/Enter go into it,
+  Left/Esc come back, Esc on the list closes. LB/RB (Tab) switch pages. In the Apps page A opens a process's
+  actions, X (or the menu key / Delete) ends it, Y (or Ctrl+F) searches. Hosted by Ember
+  (Mantel/AppWindow.cs, TasksWindow) in WebView2; calls tasks.* (Services/TaskService.cs). Opens in a normal
+  browser too, with sample data.
+-->
+<style>
+:root{
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --danger:#ff5d5d; --ember:#ff8a3d; --flame:#ffd166; --accent:#ff8a3d; --accentInk:#2a1206;
+  --ok:#7ad15a; --cool:#5aa9ff;
+  --quick:140ms;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font:14px/1.3 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer;text-align:left}
+svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+:focus{outline:none}
+.app{display:flex;height:100%}
+nav{width:250px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px;gap:4px}
+@media (max-width:900px){nav{width:200px}}
+.brand{display:flex;align-items:center;gap:10px;margin:6px 6px 14px}
+.brand img{width:30px;height:30px}
+.brand b{font-size:20px;font-weight:600}
+.ni{height:48px;border-radius:10px;display:flex;align-items:center;gap:12px;padding:0 14px;font-size:15px;transition:background var(--quick)}
+.ni:hover{background:var(--panel2)}
+.ni.lit{background:var(--panel3);font-weight:600}
+.ni.lit svg{color:var(--accent)}
+nav.focus .ni.lit{background:var(--accent);color:var(--accentInk)}
+nav.focus .ni.lit svg{color:var(--accentInk)}
+.navsum{margin-top:auto;padding:10px 6px;color:var(--muted);font-size:12px;display:flex;flex-direction:column;gap:4px}
+.navsum b{color:var(--text);font-weight:600}
+.navhint{padding:0 6px;color:var(--muted);font-size:12px}
+main{flex:1;min-width:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent}
+.page{width:min(100% - 48px,980px);margin:24px auto;display:flex;flex-direction:column;gap:8px}
+.page h1{font-size:26px;font-weight:600;margin-bottom:6px;display:flex;align-items:baseline;gap:12px}
+.page h1 small{font-size:13px;font-weight:400;color:var(--muted)}
+.hd{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-top:14px;display:flex;gap:8px}
+.row{min-height:58px;border-radius:12px;background:var(--panel2);border:2px solid transparent;display:flex;align-items:center;gap:14px;padding:10px 16px;width:100%;transition:background var(--quick),border-color var(--quick)}
+button.row:hover{background:var(--panel3)}
+.row.f-on{border-color:var(--accent)}
+.row .ic{width:36px;height:36px;border-radius:10px;background:var(--panel3);display:grid;place-items:center;flex:none;overflow:hidden}
+.row .ic img{width:24px;height:24px}
+.row .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.row .tx b{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .tx b .cnt{color:var(--muted);font-weight:400}
+.row .tx small{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .val{color:var(--muted);font-size:13px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row.dim{opacity:.62}
+.row .lock{color:var(--muted)}
+.row.ending .tx small{color:var(--flame)}
+.num{width:90px;text-align:right;font-variant-numeric:tabular-nums;font-size:14px;flex:none}
+.num.hot{color:var(--flame);font-weight:600}
+.cols{display:flex;align-items:center;gap:14px;padding:4px 18px;color:var(--muted);font-size:12px}
+.cols .grow{flex:1}
+.cols .num{font-size:12px}
+.cols .num b{display:block;color:var(--text);font-size:16px;font-weight:600}
+.sw{width:46px;height:26px;border-radius:13px;background:var(--panel3);position:relative;flex:none;transition:background var(--quick)}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:10px;background:var(--text);transition:left var(--quick),background var(--quick)}
+.sw.on{background:var(--accent)}
+.sw.on::after{left:23px;background:var(--accentInk)}
+.choice{border-radius:12px;background:var(--panel2);border:2px solid transparent;padding:10px 16px;display:flex;align-items:center;gap:14px}
+.choice.f-on{border-color:var(--accent)}
+.choice .t{flex:none;font-weight:600}
+.opts{display:flex;gap:8px;flex-wrap:wrap;flex:1}
+.opt{flex:1;min-width:80px;height:36px;border-radius:10px;background:var(--panel3);text-align:center;font-size:13px}
+.opt.on{background:var(--accent);color:var(--accentInk);font-weight:600}
+.field{display:flex;gap:8px}
+.field input{flex:1;height:44px;border-radius:12px;background:var(--panel2);border:2px solid transparent;padding:0 14px 0 42px;color:var(--text);font-size:15px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a69484' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6'/%3E%3Cpath d='m15 15 5 5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-size:20px;background-position:14px center}
+.field input.f-on,.field input:focus{border-color:var(--accent)}
+.note{color:var(--muted);font-size:13px;padding:4px 2px}
+/* performance */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.card{border-radius:14px;background:var(--panel2);border:2px solid transparent;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card.f-on{border-color:var(--accent)}
+.card.wide{grid-column:1/-1}
+.card .top{display:flex;align-items:baseline;gap:10px}
+.card .top b{font-size:15px;font-weight:600}
+.card .top .big{margin-left:auto;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+.card .sub{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card canvas{width:100%;height:96px;display:block;border-radius:8px;background:var(--bg2)}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px 14px}
+.kv div{display:flex;flex-direction:column;gap:2px}
+.kv small{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.kv span{font-variant-numeric:tabular-nums;font-size:14px}
+.cores{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:6px}
+.core{height:46px;border-radius:6px;background:var(--bg2);position:relative;overflow:hidden}
+.core i{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(0deg,var(--ember),var(--flame));transition:height .4s}
+.core span{position:absolute;left:0;right:0;top:3px;text-align:center;font-size:10px;color:var(--muted)}
+.na{color:var(--muted);font-size:13px}
+/* the action sheet (menus and questions) */
+.shade{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:10}
+.shade[hidden]{display:none}
+.sheet{width:min(420px,calc(100% - 32px));background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:6px;box-shadow:0 20px 60px #000a}
+.sheet h2{font-size:18px;font-weight:600}
+.sheet p{color:var(--muted);font-size:13px;margin-bottom:6px}
+.si{height:46px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;gap:12px;padding:0 14px;font-size:15px;border:2px solid transparent}
+.si.lit{border-color:var(--accent);background:var(--panel3)}
+.si.danger{color:var(--danger)}
+.si[disabled]{opacity:.45;cursor:default}
+.msg{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);border-radius:22px;padding:11px 18px;font-size:14px;opacity:0;transition:opacity var(--quick);pointer-events:none;z-index:20;max-width:calc(100% - 32px)}
+.msg.show{opacity:1}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--panel3);border-top-color:var(--accent);animation:s 1s linear infinite;flex:none}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app"><nav></nav><main><div class="page"></div></main></div>
+<div class="shade" hidden><div class="sheet"></div></div>
+<div class="msg"></div>
+<script>
+'use strict';
+const host = window.chrome && window.chrome.webview ? window.chrome.webview : null;
+const send = m => host ? host.postMessage(m) : null;
+let callId = 0; const pending = {};
+const call = (method, args={}, ms=30000) => host ? new Promise((ok, no) => {
+  const id = ++callId; pending[id] = {ok, no}; send({type:'call', id, method, args});
+  setTimeout(() => { if(pending[id]){ delete pending[id]; no(new Error('That took too long')); } }, ms);
+}) : (MOCK[method] ? Promise.resolve(MOCK[method](args)) : Promise.reject(new Error('preview')));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const I = {
+  apps:'<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
+  perf:'<svg viewBox="0 0 24 24"><path d="M3 13h4l3-7 4 12 3-7h4"/></svg>',
+  startup:'<svg viewBox="0 0 24 24"><path d="M12 3c3.5 2 5.5 5.5 5 10l-2.5 2.5h-5L7 13c-.5-4.5 1.5-8 5-10z"/><circle cx="12" cy="9.5" r="1.6"/><path d="M9.5 15.5 8 20l4-2 4 2-1.5-4.5"/></svg>',
+  lock:'<svg viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>',
+  x:'<svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>',
+  bolt:'<svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>',
+  folder:'<svg viewBox="0 0 24 24"><path d="M3.5 7a2 2 0 0 1 2-2H10l2 2h6.5a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>',
+  gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>',
+  cpu:'<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg>',
+  steam:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="15.5" cy="9.5" r="2.5"/><path d="M3.5 14 9 16.2M13.4 11.4 10.5 15"/><circle cx="9" cy="16.5" r="1.8"/></svg>',
+};
+const gen = name => `<b style="font-size:16px;color:var(--muted)">${esc((name||'?').trim().charAt(0).toUpperCase())}</b>`;
+const icon = (src, name) => src ? `<img src="${esc(src)}" alt="">` : gen(name);
+function bytes(n){ if(n==null||isNaN(n)) return '—'; const u=['B','KB','MB','GB','TB']; let i=0; n=+n; while(n>=1024&&i<u.length-1){ n/=1024; i++; } return (n>=100||i===0?Math.round(n):n.toFixed(1))+' '+u[i]; }
+function duration(sec){ sec=Math.max(0,Math.round(sec)); const d=Math.floor(sec/86400), h=Math.floor(sec%86400/3600), m=Math.floor(sec%3600/60); return d?`${d}d ${h}h ${m}m`:h?`${h}h ${m}m`:`${m}m`; }
+
+// ---------------------------------------------------------------- pages
+const PAGES = [['apps','apps','Apps'],['performance','perf','Performance'],['startup','startup','Startup']];
+const S = {page:'apps', inPage:false, f:0, fkey:null, procs:null, sort:'cpu', q:'', perf:null,
+  hist:{cpu:[], mem:[], gpu:[], bat:[]}, startup:null, steam:null, ending:{}, sheet:null, viaPad:false};
+const KEEP = 60;   // seconds of history in the graphs
+
+function toast(t){ const m=$('.msg'); m.textContent=t; m.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>m.classList.remove('show'), 2600); }
+function renderNav(){
+  const p=S.perf;
+  $('nav').innerHTML = `<div class="brand"><img src="hearth-logo.svg" alt=""><b>Tasks</b></div>`
+    + PAGES.map(([id,ic,l])=>`<button class="ni ${S.page===id?'lit':''}" data-act="page" data-p="${id}">${I[ic]}${l}</button>`).join('')
+    + `<div class="navsum">${p?`<span>CPU <b>${p.cpu.total}%</b></span><span>Memory <b>${bytes(p.memory.used)}</b> of ${bytes(p.memory.total)}</span>${p.gpu.available?`<span>GPU <b>${p.gpu.use}%</b></span>`:''}`:''}</div>`
+    + `<div class="navhint">Ⓐ open  Ⓑ back  LB/RB pages</div>`;
+  $('nav').classList.toggle('focus', !S.inPage);
+}
+function renderNavSum(){ const el=$('.navsum'); if(!el) return; const p=S.perf; if(!p) return;
+  el.innerHTML=`<span>CPU <b>${p.cpu.total}%</b></span><span>Memory <b>${bytes(p.memory.used)}</b> of ${bytes(p.memory.total)}</span>${p.gpu.available?`<span>GPU <b>${p.gpu.use}%</b></span>`:''}`; }
+const sw = on => `<div class="sw ${on?'on':''}"></div>`;
+const hd = t => `<div class="hd">${t}</div>`;
+const note = t => `<div class="note">${t}</div>`;
+
+function renderPage(){
+  const p=S.page, title=(PAGES.find(x=>x[0]===p)||[])[2]||'';
+  let h='';
+  if(p==='apps') h = renderApps(title);
+  else if(p==='performance') h = renderPerfSkeleton(title);
+  else if(p==='startup') h = renderStartup(title);
+  const keepInput = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.search!=null;
+  const caret = keepInput ? document.activeElement.selectionStart : 0;
+  $('.page').innerHTML = h;
+  if(p==='performance') updatePerf();
+  if(keepInput){ const i=$('[data-search]'); if(i){ i.focus(); try{ i.setSelectionRange(caret, caret); }catch(_){} } }
+  focusPaint();
+}
+
+// ---------------------------------------------------------------- Apps
+function sorted(list){
+  const q=S.q.trim().toLowerCase();
+  let l=(list||[]).filter(g=>!q || g.name.toLowerCase().includes(q) || (g.exe||'').toLowerCase().includes(q) || (g.title||'').toLowerCase().includes(q));
+  const by={cpu:(a,b)=>b.cpu-a.cpu||b.memory-a.memory, memory:(a,b)=>b.memory-a.memory, name:(a,b)=>a.name.localeCompare(b.name)}[S.sort];
+  return l.sort(by);
+}
+function procRow(g){
+  const ending=S.ending[g.key];
+  const sub = ending ? 'Asking it to close…' : g.protected ? (g.key==='ember'?'Ember itself':'Part of Windows') + (g.count>1?` · ${g.count} processes`:'') : (g.window && g.title && g.title!==g.name ? g.title : (g.exe||'')+(g.count>1?` · ${g.count} processes`:''));
+  return `<button class="row ${g.protected?'dim':''} ${ending?'ending':''}" data-f data-key="${esc(g.key)}" data-act="proc">
+    <div class="ic">${icon(g.icon, g.name)}</div>
+    <div class="tx"><b>${esc(g.name)}${g.count>1?` <span class="cnt">(${g.count})</span>`:''}</b><small>${esc(sub)}</small></div>
+    ${g.protected?`<span class="lock" title="Protected">${I.lock}</span>`:''}
+    <div class="num ${g.cpu>=25?'hot':''}">${g.cpu.toFixed(1)}%</div><div class="num">${bytes(g.memory)}</div></button>`;
+}
+function renderApps(title){
+  const d=S.procs, p=S.perf;
+  let h=`<h1>${esc(title)}${d?`<small>${d.processCount} processes · ${d.threadCount} threads</small>`:''}</h1>`;
+  h += `<div class="field"><input data-f data-search placeholder="Search apps and processes  (Ⓨ)" spellcheck="false" value="${esc(S.q)}"></div>`;
+  h += `<div class="choice" data-f data-choice="sort"><div class="t">Sort by</div><div class="opts">${[['cpu','CPU'],['memory','Memory'],['name','Name']].map(([v,l])=>`<button class="opt ${S.sort===v?'on':''}" data-act="sort" data-v="${v}">${l}</button>`).join('')}</div></div>`;
+  if(!d) return h + `<div class="row"><span class="spin"></span><div class="tx"><b>Looking at what's running…</b></div></div>`;
+  h += `<div class="cols"><span class="grow"></span><div class="num"><b>${p?p.cpu.total+'%':''}</b>CPU</div><div class="num"><b>${p?p.memory.load+'%':''}</b>Memory</div></div>`;
+  const apps=sorted(d.apps), bg=sorted(d.background);
+  h += hd(`Apps (${apps.length})`) + (apps.map(procRow).join('') || note(S.q?'No apps match.':'No apps with windows are open.'));
+  h += hd(`Background processes (${bg.length})`) + (bg.map(procRow).join('') || note('Nothing matches.'));
+  if(!d.elevated) h += note('Some processes belong to Windows or other users; ending those needs Ember to run as administrator.');
+  return h;
+}
+const findGroup = key => { const d=S.procs; if(!d) return null; return d.apps.concat(d.background).find(g=>g.key===key) || null; };
+function procMenu(g){
+  const items=[];
+  if(g.protected) items.push({label: g.key==='ember' ? 'Ember can\'t end itself here' : 'Windows needs this to keep running', icon:I.lock, disabled:true});
+  else {
+    items.push({label:'End task', icon:I.x, run:()=>endTask(g)});
+    items.push({label:'Force end', icon:I.bolt, danger:true, run:()=>askForce(g, 'It won\'t get the chance to save anything.')});
+  }
+  if(g.path) items.push({label:'Open file location', icon:I.folder, run:()=>send({type:'mantel', action:'openApp', app:'files', path:g.path.replace(/[\\/][^\\/]*$/,'')})});
+  items.push({label:'Cancel', run:closeSheet});
+  openSheet({title:g.name, sub:`${g.count} process${g.count===1?'':'es'} · CPU ${g.cpu.toFixed(1)}% · ${bytes(g.memory)}${g.exe?` · ${g.exe}.exe`:''}`, items});
+}
+async function endTask(g){
+  closeSheet();
+  if(g.protected) return toast(`${g.name} can't be ended here`);
+  try{
+    const r=await call('tasks.end',{pids:g.pids});
+    if(!r.alive){ toast(`${g.name} ended`); return refreshProcs(); }
+    if(!r.closing) return askForce(g, `${g.name} has no window to close.`);
+    S.ending[g.key]=true; renderIfApps(); toast(`Asking ${g.name} to close…`);
+    setTimeout(async () => {
+      delete S.ending[g.key];
+      let alive=true; try{ alive=(await call('tasks.alive',{pids:g.pids})).alive; }catch(_){}
+      if(alive) askForce(g, `${g.name} is still running (it may be waiting for you, or not responding).`);
+      else toast(`${g.name} closed`);
+      refreshProcs();
+    }, 3000);
+  }catch(e){ toast(e.message); }
+}
+function askForce(g, why){
+  openSheet({title:`Force end ${g.name}?`, sub:`${why} Forcing it to end closes it and everything it started right away; anything unsaved is lost.`,
+    items:[{label:'Force end', icon:I.bolt, danger:true, run:()=>forceEnd(g)},{label:'Wait', run:closeSheet}]});
+}
+async function forceEnd(g){
+  closeSheet();
+  try{ const r=await call('tasks.kill',{pids:g.pids}); toast(r.alive?`${g.name} is still shutting down…`:`${g.name} ended`); }
+  catch(e){ toast(e.message); }
+  refreshProcs();
+}
+function renderIfApps(){ if(S.page==='apps' && !S.sheet) renderPage(); }
+async function refreshProcs(){
+  try{ S.procs=await call('tasks.list'); }catch(e){ if(!S.procs) toast(e.message); return; }
+  renderIfApps();
+}
+
+// ---------------------------------------------------------------- Performance
+function renderPerfSkeleton(title){
+  return `<h1>${esc(title)}<small class="uptime"></small></h1>
+  <div class="tiles">
+    <div class="card" data-f data-card="cpu"><div class="top"><b>CPU</b><span class="big" data-v="cpu">–</span></div><div class="sub" data-v="cpuName"></div><canvas data-g="cpu"></canvas></div>
+    <div class="card" data-f data-card="mem"><div class="top"><b>Memory</b><span class="big" data-v="mem">–</span></div><div class="sub" data-v="memSub"></div><canvas data-g="mem"></canvas></div>
+    <div class="card" data-f data-card="gpu"><div class="top"><b>GPU</b><span class="big" data-v="gpu">–</span></div><div class="sub" data-v="gpuName"></div><canvas data-g="gpu"></canvas></div>
+    <div class="card" data-f data-card="bat"><div class="top"><b>Battery</b><span class="big" data-v="bat">–</span></div><div class="sub" data-v="batSub"></div><canvas data-g="bat"></canvas></div>
+    <div class="card wide" data-f><div class="top"><b>Each processor</b><span class="sub" data-v="threads"></span></div><div class="cores"></div></div>
+    <div class="card wide" data-f><div class="top"><b>Memory</b></div><div class="kv" data-v="memKv"></div></div>
+    <div class="card wide" data-f><div class="top"><b>Temperatures and fans</b></div><div data-v="temps" class="na">Looking…</div></div>
+  </div>`;
+}
+const setV = (k, html) => { const el=$(`[data-v="${k}"]`); if(el) el.innerHTML=html; };
+function updatePerf(){
+  const p=S.perf; if(!p || S.page!=='performance' || !$('.tiles')) return;
+  setV('cpu', p.cpu.total+'%');
+  setV('cpuName', esc([p.cpu.name, p.cpu.mhz?`${(p.cpu.mhz/1000).toFixed(2)} GHz base`:''].filter(Boolean).join(' · ')));
+  setV('mem', Math.round(p.memory.used/p.memory.total*100)+'%');
+  setV('memSub', `${bytes(p.memory.used)} of ${bytes(p.memory.total)} in use`);
+  setV('gpu', p.gpu.available ? p.gpu.use+'%' : '—');
+  setV('gpuName', esc((p.gpu.name||'') + (p.gpu.vramUsedGb!=null?` · ${p.gpu.vramUsedGb} GB video memory in use`:'') + (!p.gpu.available?' · use not available':'')));
+  const b=p.battery||{};
+  if(b.present){
+    const w=b.wmi&&b.wmi.watts;
+    setV('bat', (b.pct??'–')+'%');
+    const state = b.charging ? (w>0?`Charging at ${w} W`:'Plugged in') : (w<0?`Using ${Math.abs(w)} W`:'On battery');
+    const left = !b.charging && b.secondsLeft ? ` · ${duration(b.secondsLeft)} left` : '';
+    const health = b.wmi&&b.wmi.fullWh&&b.wmi.designWh ? ` · health ${Math.round(b.wmi.fullWh/b.wmi.designWh*100)}%` : '';
+    setV('batSub', esc(state+left+health));
+  } else { setV('bat','—'); setV('batSub','No battery (plugged in)'); }
+  const up=$('.uptime'); if(up) up.textContent=`Up for ${duration(p.cpu.uptimeSec)}`;
+  setV('threads', `${p.cpu.threads} logical processors`);
+  const cores=$('.cores');
+  if(cores){
+    if(cores.children.length!==p.cpu.cores.length) cores.innerHTML=p.cpu.cores.map((_,i)=>`<div class="core"><i></i><span>${i}</span></div>`).join('');
+    p.cpu.cores.forEach((v,i)=>{ cores.children[i].querySelector('i').style.height=v+'%'; cores.children[i].title=`Processor ${i}: ${v}%`; });
+  }
+  const m=p.memory;
+  setV('memKv', [['In use',bytes(m.used)],['Available',bytes(m.available)],['Total',bytes(m.total)],['Committed',`${bytes(m.committed)} / ${bytes(m.commitLimit)}`],['Load',m.load+'%']]
+    .map(([k,v])=>`<div><small>${k}</small><span>${v}</span></div>`).join(''));
+  setV('temps', p.temps && p.temps.length
+    ? `<div class="kv">${p.temps.map(t=>`<div><small>${esc(t.name)}</small><span>${t.celsius} °C</span></div>`).join('')}<div><small>Fans</small><span class="na">Not available</span></div></div>`
+    : `<span class="na">Not available. Windows only shares temperatures and fan speeds through the PC maker's own software or drivers${S.procs&&!S.procs.elevated?' (or to administrators)':''}.</span>`);
+  drawGraph($('[data-g="cpu"]'), S.hist.cpu, '#ff8a3d', '#ffd166');
+  drawGraph($('[data-g="mem"]'), S.hist.mem, '#5aa9ff', '#9fd0ff');
+  drawGraph($('[data-g="gpu"]'), S.hist.gpu, '#b57bff', '#e0c3ff');
+  drawGraph($('[data-g="bat"]'), S.hist.bat, '#7ad15a', '#c8f0a8');
+}
+// A 60-second graph: newest on the right, 0–100 %.
+function drawGraph(cv, data, c1, c2){
+  if(!cv) return;
+  const dpr=window.devicePixelRatio||1, w=Math.max(1,cv.clientWidth), h=Math.max(1,cv.clientHeight);
+  if(cv.width!==Math.round(w*dpr) || cv.height!==Math.round(h*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
+  const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+  g.strokeStyle='rgba(166,148,132,.14)'; g.lineWidth=1;
+  for(const y of [.25,.5,.75]){ g.beginPath(); g.moveTo(0,Math.round(h*y)+.5); g.lineTo(w,Math.round(h*y)+.5); g.stroke(); }
+  if(!data.length) return;
+  const step=w/(KEEP-1), x0=w-(data.length-1)*step, Y=v=>h-2-(Math.max(0,Math.min(100,v))/100)*(h-4);
+  g.beginPath(); data.forEach((v,i)=>{ const x=x0+i*step; i?g.lineTo(x,Y(v)):g.moveTo(x,Y(v)); });
+  const line=new Path2D(); data.forEach((v,i)=>{ const x=x0+i*step; i?line.lineTo(x,Y(v)):line.moveTo(x,Y(v)); });
+  g.lineTo(w,h); g.lineTo(x0,h); g.closePath();
+  const fill=g.createLinearGradient(0,0,0,h); fill.addColorStop(0,c1+'66'); fill.addColorStop(1,c1+'08'); g.fillStyle=fill; g.fill();
+  const stroke=g.createLinearGradient(0,0,w,0); stroke.addColorStop(0,c1); stroke.addColorStop(1,c2); g.strokeStyle=stroke; g.lineWidth=2; g.stroke(line);
+}
+function pushHist(k, v){ const a=S.hist[k]; a.push(v==null?0:v); while(a.length>KEEP) a.shift(); }
+async function samplePerf(){
+  try{
+    const p=await call('tasks.perf');
+    S.perf=p;
+    pushHist('cpu', p.cpu.total); pushHist('mem', p.memory.used/p.memory.total*100); pushHist('gpu', p.gpu.use);
+    pushHist('bat', p.battery&&p.battery.present ? p.battery.pct : 0);
+    renderNavSum(); updatePerf();
+  }catch(_){}
+}
+
+// ---------------------------------------------------------------- Startup
+function renderStartup(title){
+  let h=`<h1>${esc(title)}</h1>`;
+  const st=S.startup, steam=S.steam;
+  if(steam && steam.installed){
+    h += hd('Ember') + `<button class="row" data-f data-key="steam" data-act="steam"><div class="ic">${I.steam}</div><div class="tx"><b>Keep Steam running in the background</b><small>Steam starts hidden with Ember, so games and downloads start right away</small></div>${sw(steam.on)}</button>`;
+  }
+  h += hd('Apps that start when you sign in');
+  if(!st) return h + `<div class="row"><span class="spin"></span><div class="tx"><b>Loading…</b></div></div>`;
+  const items=st.items.slice().sort((a,b)=>(b.enabled-a.enabled)||a.name.localeCompare(b.name));
+  h += items.map(it => {
+    const sub=[it.description, it.publisher, it.where].filter(Boolean).map(esc).join(' · ');
+    return it.canToggle
+      ? `<button class="row" data-f data-key="${esc(it.id)}" data-act="startup"><div class="ic">${icon(it.icon, it.name)}</div><div class="tx"><b>${esc(it.name)}</b><small>${sub}</small></div><div class="val">${it.enabled?'On':'Off'}</div>${sw(it.enabled)}</button>`
+      : `<div class="row dim" data-f data-key="${esc(it.id)}"><div class="ic">${icon(it.icon, it.name)}</div><div class="tx"><b>${esc(it.name)}</b><small>${sub}</small></div><div class="val">${it.enabled?'On':'Off'} · needs administrator</div>${I.lock}</div>`;
+  }).join('') || note('Nothing starts with Windows.');
+  h += note('Changes take effect the next time you sign in. Turning an app off doesn\'t uninstall it; you can turn it back on here or in Windows\' Task Manager.');
+  return h;
+}
+async function loadStartup(){
+  try{ const r=await call('tasks.startup'); S.startup=r.startup; S.steam=r.steam; }catch(e){ toast(e.message); S.startup=S.startup||{items:[]}; }
+  if(S.page==='startup' && !S.sheet) renderPage();
+}
+
+// ---------------------------------------------------------------- page switching and loading
+function go(p){ S.page=p; S.f=0; S.fkey=null; renderNav(); renderPage(); load(p); }
+function load(p){
+  if(p==='apps') refreshProcs();
+  if(p==='startup') loadStartup();
+  if(p==='performance') samplePerf();
+}
+
+// ---------------------------------------------------------------- the action sheet
+function openSheet(s){
+  S.sheet={...s, f:Math.max(0,s.items.findIndex(i=>!i.disabled))};
+  renderSheet();
+}
+function renderSheet(){
+  const sh=$('.shade');
+  if(!S.sheet){ sh.hidden=true; return; }
+  const s=S.sheet;
+  $('.sheet').innerHTML = `<h2>${esc(s.title)}</h2>${s.sub?`<p>${esc(s.sub)}</p>`:''}`
+    + s.items.map((it,i)=>`<button class="si ${i===s.f?'lit':''} ${it.danger?'danger':''}" data-si="${i}" ${it.disabled?'disabled':''}>${it.icon||''}${esc(it.label)}</button>`).join('');
+  sh.hidden=false;
+}
+function closeSheet(){ S.sheet=null; renderSheet(); renderPage(); }
+function sheetKey(e){
+  const s=S.sheet, n=s.items.length, step=d=>{ let i=s.f; for(let k=0;k<n;k++){ i=(i+d+n)%n; if(!s.items[i].disabled){ s.f=i; break; } } renderSheet(); };
+  switch(e.key){
+    case 'ArrowDown': case 'Tab': e.preventDefault(); return step(e.shiftKey&&e.key==='Tab'?-1:1);
+    case 'ArrowUp': e.preventDefault(); return step(-1);
+    case 'Enter': case ' ': e.preventDefault(); { const it=s.items[s.f]; if(it&&!it.disabled&&it.run) it.run(); } return;
+    case 'Escape': case 'F23': e.preventDefault(); return closeSheet();
+  }
+}
+$('.shade').addEventListener('click', e => {
+  const b=e.target.closest('[data-si]');
+  if(b){ const it=S.sheet&&S.sheet.items[+b.dataset.si]; if(it&&!it.disabled&&it.run) it.run(); return; }
+  if(e.target===$('.shade')) closeSheet();
+});
+$('.shade').addEventListener('mouseover', e => { const b=e.target.closest('[data-si]'); if(b&&S.sheet&&+b.dataset.si!==S.sheet.f&&!b.disabled){ S.sheet.f=+b.dataset.si; renderSheet(); } });
+
+// ---------------------------------------------------------------- actions
+async function act(el){
+  const d=el.dataset;
+  try{ switch(d.act){
+    case 'page': S.inPage=false; return go(d.p);
+    case 'sort': S.sort=d.v; try{ localStorage.setItem('tasks.sort', d.v); }catch(_){} return renderPage();
+    case 'proc': { const g=findGroup(d.key); if(g) procMenu(g); return; }
+    case 'steam': { if(!S.steam) return; const on=!S.steam.on; S.steam.on=on; renderPage(); await call('library.setSteamBackground',{on}); return toast(on?'Steam will keep running in the background':'Steam won\'t be kept running'); }
+    case 'startup': { const it=S.startup&&S.startup.items.find(x=>x.id===d.key); if(!it) return; const on=!it.enabled;
+      await call('tasks.setStartup',{id:it.id, on}); it.enabled=on; renderPage(); return toast(`${it.name} ${on?'will':'won\'t'} start when you sign in`); }
+  } }catch(e){ toast(e.message); }
+}
+function focusSearch(){
+  if(S.page!=='apps') go('apps');
+  S.inPage=true; renderNav();
+  const f=focusables(), i=f.findIndex(x=>x.dataset.search!=null);
+  if(i>=0){ S.f=i; S.fkey=null; focusPaint(); }
+  if(S.viaPad) send({type:'mantel', action:'keyboard'});
+}
+
+// ---------------------------------------------------------------- keyboard and controller
+const focusables = () => $$('.page [data-f]');
+function focusPaint(){
+  $$('.f-on').forEach(x=>x.classList.remove('f-on'));
+  if(!S.inPage) return;
+  const f=focusables(); if(!f.length) return;
+  if(S.fkey!=null){ const i=f.findIndex(x=>x.dataset.key===S.fkey); if(i>=0) S.f=i; }
+  S.f=Math.max(0,Math.min(S.f,f.length-1));
+  const el=f[S.f]; el.classList.add('f-on'); el.scrollIntoView({block:'nearest'});
+  S.fkey = el.dataset.key ?? null;
+  if(el.tagName==='INPUT'){ if(document.activeElement!==el) el.focus(); }
+  else if(document.activeElement && document.activeElement.tagName==='INPUT') document.activeElement.blur();
+}
+function nextPage(d){ const idx=PAGES.findIndex(p=>p[0]===S.page); go(PAGES[(idx+d+PAGES.length)%PAGES.length][0]); }
+document.addEventListener('keydown', e => {
+  if(e.key==='F23'||e.key==='F24') S.viaPad=true;
+  else if(e.key.length===1 && !e.ctrlKey) S.viaPad=false;
+  if(S.sheet) return sheetKey(e);
+  const typing=document.activeElement && document.activeElement.tagName==='INPUT';
+  if((e.key==='f'&&e.ctrlKey) || e.key==='F3' || e.key==='F24'){ e.preventDefault(); return focusSearch(); }
+  if(e.key==='Tab'){ e.preventDefault(); return nextPage(e.shiftKey?-1:1); }
+  if(typing && e.key==='Escape'){ e.preventDefault(); const i=document.activeElement; if(i.value){ i.value=''; S.q=''; return renderPage(); } i.blur(); S.inPage=false; renderNav(); return focusPaint(); }
+  if(typing && e.key==='Enter'){ e.preventDefault(); S.f++; S.fkey=null; return focusPaint(); }
+  if(typing && !['ArrowUp','ArrowDown'].includes(e.key)) return;
+  const idx=PAGES.findIndex(p=>p[0]===S.page);
+  if(!S.inPage){
+    if(e.key==='ArrowDown'){ e.preventDefault(); return go(PAGES[Math.min(PAGES.length-1,idx+1)][0]); }
+    if(e.key==='ArrowUp'){ e.preventDefault(); return go(PAGES[Math.max(0,idx-1)][0]); }
+    if(e.key==='ArrowRight'||e.key==='Enter'||e.key===' '){ e.preventDefault(); S.inPage=true; S.f=0; S.fkey=null; renderNav(); return focusPaint(); }
+    if(e.key==='Escape'){ e.preventDefault(); return send({type:'mantel', action:'closeApp', app:'tasks'}); }
+    return;
+  }
+  const f=focusables(), el=f[S.f];
+  switch(e.key){
+    case 'ArrowDown': e.preventDefault(); S.f=Math.min(f.length-1,S.f+1); S.fkey=null; return focusPaint();
+    case 'ArrowUp': e.preventDefault(); S.f=Math.max(0,S.f-1); S.fkey=null; return focusPaint();
+    case 'PageDown': e.preventDefault(); S.f=Math.min(f.length-1,S.f+8); S.fkey=null; return focusPaint();
+    case 'PageUp': e.preventDefault(); S.f=Math.max(0,S.f-8); S.fkey=null; return focusPaint();
+    case 'Home': e.preventDefault(); S.f=0; S.fkey=null; return focusPaint();
+    case 'End': e.preventDefault(); S.f=f.length-1; S.fkey=null; return focusPaint();
+    case 'ArrowLeft': case 'ArrowRight': {
+      if(!el) return;
+      const dir=e.key==='ArrowLeft'?-1:1;
+      if(el.dataset.choice){ e.preventDefault(); const opts=[...el.querySelectorAll('.opt')], i=opts.findIndex(o=>o.classList.contains('on')), n=opts[Math.max(0,Math.min(opts.length-1,i+dir))]; if(n && n!==opts[i]) n.click(); return; }
+      if(dir<0){ e.preventDefault(); S.inPage=false; renderNav(); return focusPaint(); }
+      return;
+    }
+    case 'Enter': case ' ': if(!el) return; e.preventDefault(); { const a=el.matches('[data-act]')?el:el.querySelector('[data-act]'); if(a) a.click(); } return;
+    case 'F23': case 'ContextMenu': case 'Delete': {   // X: end the focused process (asks first for a process with no window)
+      e.preventDefault();
+      if(!el || el.dataset.act!=='proc') return;
+      const g=findGroup(el.dataset.key); if(!g) return;
+      if(e.key==='ContextMenu') return procMenu(g);
+      return g.protected ? procMenu(g) : endTask(g);
+    }
+    case 'F10': if(e.shiftKey && el && el.dataset.act==='proc'){ e.preventDefault(); const g=findGroup(el.dataset.key); if(g) procMenu(g); } return;
+    case 'Escape': e.preventDefault(); S.inPage=false; renderNav(); return focusPaint();
+  }
+});
+document.addEventListener('input', e => { if(e.target.dataset.search!=null){ S.q=e.target.value; renderPage(); } });
+document.addEventListener('click', e => {
+  if(e.target.closest('.shade')) return;
+  S.viaPad=false;
+  const inp=e.target.closest('[data-search]');
+  if(inp){ const f=focusables(); S.inPage=true; S.f=f.indexOf(inp); S.fkey=null; renderNav(); return focusPaint(); }
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  if(el.closest('.page')){ const f=focusables(), fe=el.closest('[data-f]'), i=f.indexOf(fe); if(i>=0){ S.inPage=true; S.f=i; S.fkey=fe.dataset.key ?? null; renderNav(); focusPaint(); } }
+  act(el);
+});
+document.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const r=e.target.closest('[data-act="proc"]'); if(!r) return;
+  const g=findGroup(r.dataset.key); if(g) procMenu(g);
+});
+addEventListener('resize', () => updatePerf());
+
+// ---------------------------------------------------------------- from Ember
+if(host) host.addEventListener('message', e => {
+  const m=e.data; if(!m||typeof m!=='object') return;
+  if(m.type==='result'){ const p=pending[m.id]; if(!p) return; delete pending[m.id]; m.ok ? p.ok(m.value) : p.no(new Error(m.error)); return; }
+  if(m.type!=='event') return;
+  if(m.name==='profile' && m.data && m.data.accent) setAccent(m.data.accent);
+});
+function setAccent(a){
+  if(!/^#[0-9a-f]{6}$/i.test(a||'')) return;
+  document.documentElement.style.setProperty('--accent',a);
+  const n=parseInt(a.slice(1),16);
+  document.documentElement.style.setProperty('--accentInk',((n>>16&255)*.2126+(n>>8&255)*.7152+(n&255)*.0722)/255>.45?'#2a1206':'#ffffff');
+}
+
+// ---------------------------------------------------------------- preview data
+const rnd = (a,b) => a+Math.random()*(b-a);
+const MOCK = {
+  'tasks.list':()=>({processCount:212, threadCount:2875, handleCount:91000, elevated:false,
+    apps:[{key:'app:steam',name:'Steam',exe:'steam',title:'Steam',pids:[1,2],count:6,cpu:rnd(0,4),memory:420e6,window:true},
+          {key:'app:Discord',name:'Discord',exe:'Discord',title:'#general - Discord',pids:[3],count:5,cpu:rnd(0,3),memory:510e6,window:true},
+          {key:'app:notepad',name:'Notepad',exe:'notepad',title:'notes.txt - Notepad',pids:[4],count:1,cpu:0,memory:22e6,window:true}],
+    background:[{key:'ember',name:'Ember (Hearth OS shell)',exe:'Nimbus',pids:[9],count:7,cpu:rnd(1,3),memory:380e6,protected:true},
+          {key:'bg:svchost',name:'Host Process for Windows Services',exe:'svchost',pids:[10],count:84,cpu:rnd(0,2),memory:610e6,protected:true},
+          {key:'bg:OneDrive',name:'Microsoft OneDrive',exe:'OneDrive',pids:[11],count:1,cpu:0.1,memory:48e6},
+          {key:'bg:RtkAudUService64',name:'Realtek HD Audio Universal Service',exe:'RtkAudUService64',pids:[12],count:1,cpu:0,memory:6e6}]}),
+  'tasks.perf':()=>({cpu:{total:Math.round(rnd(8,35)),cores:Array.from({length:16},()=>Math.round(rnd(0,60))),name:'AMD Ryzen Z1 Extreme',mhz:3300,threads:16,uptimeSec:93784},
+    memory:{total:16e9,used:rnd(7.5e9,8.5e9),available:7.7e9,committed:11e9,commitLimit:24e9,load:51},
+    gpu:{available:true,use:Math.round(rnd(2,40)),vramUsedGb:1.9,name:'AMD Radeon Graphics'},temps:null,
+    battery:{present:true,pct:82,charging:false,plugged:false,secondsLeft:9000,wmi:{watts:-14.2,fullWh:72,designWh:80}}}),
+  'tasks.startup':()=>({steam:{installed:true,on:true},startup:{elevated:false,items:[
+    {id:'hkcu-run|Discord',name:'Discord',publisher:'Discord Inc.',where:'Your account (registry)',enabled:true,canToggle:true},
+    {id:'hkcu-run|Steam',name:'Steam',publisher:'Valve Corporation',where:'Your account (registry)',enabled:false,canToggle:true},
+    {id:'hklm-run|SecurityHealth',name:'SecurityHealth',description:'Windows Security notification icon',publisher:'Microsoft Corporation',where:'All users (registry)',enabled:true,canToggle:false}]}}),
+  'tasks.end':()=>({closing:true,alive:true}), 'tasks.alive':()=>({alive:true}), 'tasks.kill':()=>({alive:false}),
+  'tasks.setStartup':()=>null, 'library.setSteamBackground':()=>null,
+};
+
+try{ const s=localStorage.getItem('tasks.sort'); if(['cpu','memory','name'].includes(s)) S.sort=s; }catch(_){}
+const startPage = new URLSearchParams(location.search).get('page');
+if(startPage && PAGES.some(p=>p[0]===startPage)) S.page=startPage;
+renderNav(); renderPage(); load(S.page);
+samplePerf();
+setInterval(samplePerf, 1000);
+setInterval(() => { if(S.page==='apps' && !document.hidden) refreshProcs(); }, 2000);
+if(host){ send({type:'ready'}); call('profile.get').then(p=>setAccent(p&&p.accent)).catch(()=>{}); }
+</script>
+</body>
+</html>

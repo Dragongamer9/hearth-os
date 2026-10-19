@@ -244,6 +244,9 @@ const gen = name => `<div class="gen">${esc((name||'?').trim().charAt(0).toUpper
 const icon = (src, name, cls='ic') => src ? `<img class="${cls}" src="${src}" alt="">` : gen(name);
 const timeText = d => d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
 
+// Hearth's own apps, listed in the launcher with the installed ones (Ember opens them: Mantel/MantelHost.cs OpenAppAsync).
+const OWN_APPS = [{id:'hearth:files', name:'Hearth Files', icon:'mantel-img/app-files.svg'}, {id:'hearth:tasks', name:'Hearth Task Manager', icon:'mantel-img/app-tasks.svg'}];
+const ownIcon = id => (OWN_APPS.find(a=>a.id===id)||{}).icon;
 const ST = {windows:[], pins:[], apps:null, status:null, tray:{full:false, icons:[]}, wallpaper:'', full:false, mouseOn:false};
 
 // The accent follows the profile (Settings › Profile), like on Hearth OS.
@@ -264,7 +267,7 @@ if(host) host.addEventListener('message', e => {
     case 'mantel.windows': ST.windows=d||[]; if(PART==='bar') renderWins(); break;
     case 'mantel.state': ST.pins=(d&&d.pins)||[]; ST.full=!!(d&&d.full); ST.wallpaper=(d&&d.wallpaper)||''; render(); break;
     case 'mantel.tray': ST.tray=d||{full:false,icons:[]}; if(PART==='bar') renderTray(); break;
-    case 'mantel.apps': ST.apps=d||[]; if(PART==='launcher') renderGrid(); break;
+    case 'mantel.apps': ST.apps=OWN_APPS.concat(d||[]); if(PART==='launcher') renderGrid(); break;
     case 'mantel.opened': opened(); break;
     case 'status': ST.status=d; if(PART==='bar') renderStatus(); if(PART==='quick') renderQuick(); break;
     case 'profile': if(d&&d.accent) setAccent(d.accent); break;
@@ -332,7 +335,7 @@ function renderWins(){
   for(const p of ST.pins){
     const w = wins.find(x => !used.has(x.id) && norm(x.app) && (norm(p.name).includes(norm(x.app)) || norm(p.id).includes(norm(x.app))));
     if(w) used.add(w.id);
-    h += `<button class="bb ${w?'run':''} ${w&&w.active?'active':''}" ${w?`data-act="focus" data-id="${w.id}"`:`data-act="launch" data-app="${esc(p.id)}"`} title="${esc(w?w.title:p.name)}">${icon(w&&w.icon, p.name)}</button>`;
+    h += `<button class="bb ${w?'run':''} ${w&&w.active?'active':''}" ${w?`data-act="focus" data-id="${w.id}"`:`data-act="launch" data-app="${esc(p.id)}"`} title="${esc(w?w.title:p.name)}">${icon((w&&w.icon)||ownIcon(p.id), p.name)}</button>`;
   }
   for(const w of wins) if(!used.has(w.id))
     h += `<button class="bb run ${w.active?'active':''}" data-act="focus" data-id="${w.id}" title="${esc(w.title)}">${icon(w.icon, w.app||w.title)}</button>`;
@@ -598,7 +601,7 @@ document.addEventListener('keydown', e => {
 if(!host){   // browser preview with sample data
   ST.pins=[{id:'a',name:'Steam'},{id:'b',name:'Discord'}];
   ST.windows=[{id:1,title:'Steam',app:'steam',active:true},{id:2,title:'Downloads - File Explorer',app:'explorer'},{id:3,title:'Mods folder',app:'notepad'}];
-  ST.apps=['Steam','Discord','Heroic Games Launcher','File Explorer','Notepad','Settings','Microsoft Edge','Spotify','OBS Studio','Calculator','Paint','Terminal','Photos','Xbox','Task Manager','Snipping Tool'].map((n,i)=>({id:String.fromCharCode(97+i),name:n}));
+  ST.apps=['Steam','Discord','Heroic Games Launcher','File Explorer','Notepad','Settings','Microsoft Edge','Spotify','OBS Studio','Calculator','Paint','Terminal','Photos','Xbox','Task Manager','Snipping Tool'].map((n,i)=>({id:String.fromCharCode(97+i),name:n})); ST.apps=OWN_APPS.concat(ST.apps);
   ST.status={wifi:{available:true,on:true,ssid:'Home'},audio:{volume:60,muted:false},battery:{present:true,pct:82,charging:false},display:{supported:true,brightness:70},powerMode:'balanced'};
   ST.tray={full:true, icons:[{key:'1',tip:'Discord'},{key:'2',tip:'Steam'}]};
   ST.wallpaper=Q.get('wall')||'';
