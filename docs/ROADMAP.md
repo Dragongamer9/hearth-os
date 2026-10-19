@@ -89,6 +89,11 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
+## 0.0.27
+
+- [x] Black screen (with the game still playing) after Quick Access or Quick Resume: games no longer minimize themselves when something else comes in front, and Hearth shows them again if they did
+- [x] A game that was starting or had just started looked frozen after closing Quick Access: Hearth now puts back the game's current window
+
 ## 0.0.26 (released)
 
 - [x] In-game overlay: games keep running while it is open, the game gets no controller input (InputPlumber), and only the Xbox / Guide button opens it

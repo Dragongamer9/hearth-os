@@ -47,6 +47,9 @@ run_game() {
   fi
   # Games get gamescope's Vulkan layer: the frame-rate limit (Quick Access › Performance) works through it.
   export ENABLE_GAMESCOPE_WSI="${ENABLE_GAMESCOPE_WSI:-1}"
+  # Fullscreen games mustn't minimize themselves when Quick Access or Hearth comes in front (that left a black
+  # screen with the game still playing). Steam's own Game Mode sets the same.
+  export SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0
   # SteamOS Manager sets the power limit and power modes on Bazzite (what Steam's Game Mode uses); it normally
   # starts with Steam's session, so start it for Hearth's too.
   systemctl --user start steamos-manager.service >/dev/null 2>&1 || true

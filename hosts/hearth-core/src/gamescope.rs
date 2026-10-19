@@ -100,7 +100,21 @@ pub fn apps(exclude: &[u64]) -> Vec<Value> {
 }
 
 /// Puts one window in front. A Steam app id set earlier would win over it, so that goes first.
-pub fn focus_window(win: u64) { remove_root("GAMESCOPECTRL_BASELAYER_APPID"); let _ = set_root("GAMESCOPECTRL_BASELAYER_WINDOW", win); }
+pub fn focus_window(win: u64) {
+    remove_root("GAMESCOPECTRL_BASELAYER_APPID");
+    let _ = set_root("GAMESCOPECTRL_BASELAYER_WINDOW", win);
+    restore(win);
+}
+/// A game that minimized itself when something else came in front draws nothing (a black screen with sound):
+/// ask for it to be shown again.
+pub fn restore(win: u64) {
+    if win == 0 || !crate::system::has("xdotool") { return; }
+    let w = win.to_string();
+    let _ = crate::system::run_timeout("xdotool", &["windowmap", &w], Duration::from_secs(2));
+    let _ = crate::system::run_timeout("xdotool", &["windowactivate", &w], Duration::from_secs(2));
+}
+/// Is this window still one gamescope can show?
+pub fn still_there(win: u64) -> bool { focusable_windows().iter().any(|w| w.win == win) }
 pub fn focus_app_id(appid: u64) { let _ = set_root("GAMESCOPECTRL_BASELAYER_APPID", appid); }
 pub fn clear_focus() { remove_root("GAMESCOPECTRL_BASELAYER_WINDOW"); remove_root("GAMESCOPECTRL_BASELAYER_APPID"); }
 
