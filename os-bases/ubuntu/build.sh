@@ -71,6 +71,13 @@ if [ -L "$V" ]; then cp --remove-destination "$(readlink -f "$V")" "$V"
 elif [ ! -e "$V" ]; then cp "/boot/vmlinuz-$KVER" "$V"
 fi
 chmod 0644 "$V"
+# Packages that touch the initramfs (Nvidia's firmware, ...) ask for update-initramfs through a dpkg trigger, which
+# then builds one for the build machine's kernel (not in the image) and fails. The real initramfs is built once at
+# the end, so update-initramfs does nothing until then.
+UPD=$(command -v update-initramfs || echo /usr/sbin/update-initramfs)
+dpkg-divert --local --rename --add "$UPD"
+printf '#!/bin/sh\necho "update-initramfs: skipped while the image is built"\nexit 0\n' > "$UPD"
+chmod 755 "$UPD"
 # Firmware. Ubuntu-specific: 26.04 splits linux-firmware into 17 packages; these are the ones PCs and handhelds
 # use (graphics, Wi-Fi/Bluetooth chips, Intel/AMD sound, Cirrus amplifiers for the ROG Ally's speakers live in
 # -misc), without the data-centre ones (Mellanox, Netronome, QLogic, Marvell Prestera). If the split names
@@ -458,6 +465,8 @@ bootupctl backend generate-update-metadata /
 ls -la /usr/lib/bootupd/updates/
 
 # ------------------------------------------------------------------ boot splash and initramfs
+rm -f "$UPD"
+dpkg-divert --local --rename --remove "$UPD"
 if command -v plymouth-set-default-theme >/dev/null; then
   plymouth-set-default-theme hearth
 else
