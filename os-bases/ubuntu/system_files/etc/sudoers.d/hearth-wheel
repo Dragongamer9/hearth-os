@@ -1,0 +1,2 @@
+# Hearth's installer puts the main account in "wheel" (as on Fedora): administrators.
+%wheel ALL=(ALL:ALL) ALL
