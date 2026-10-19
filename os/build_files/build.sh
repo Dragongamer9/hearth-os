@@ -61,6 +61,10 @@ dnf5 -y install quickshell
 dnf5 -y install 7zip || dnf5 -y install p7zip p7zip-plugins || true
 dnf5 -y install fuse-overlayfs bubblewrap xdpyinfo xrandr || true
 chmod 755 /usr/libexec/nimbus/hearth-coop /usr/libexec/nimbus/hearth-seats
+# Move games / Make Hearth bigger (Beta Experimental, docs/MOVE-AND-GROW.md): hearth-space resizes NTFS, ext4 and
+# btrfs and checks the initramfs (lsinitrd). Usually in Bazzite already; hearth-space says what's missing.
+dnf5 -y install ntfsprogs ntfs-3g e2fsprogs btrfs-progs util-linux || true
+chmod 755 /usr/libexec/nimbus/hearth-space
 dnf5 -y copr disable errornointernet/quickshell
 
 # ------------------------------------------------------------------ power button

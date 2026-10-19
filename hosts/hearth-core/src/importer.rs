@@ -18,6 +18,13 @@ fn push(state: &Value, pending: usize) {
     s["pendingEpic"] = json!(pending);
     crate::stores::notify(json!({"type": "event", "name": "import", "data": s}));
 }
+/// Stop for hearth-import: /run/user/<uid>/hearth-import.cancel (it checks for it while copying and checking).
+pub fn cancel_flag() -> std::path::PathBuf {
+    let uid = std::fs::read_to_string("/proc/self/status").ok()
+        .and_then(|s| s.lines().find_map(|l| l.strip_prefix("Uid:").and_then(|v| v.split_whitespace().next().map(str::to_string))))
+        .unwrap_or_else(|| "0".into());
+    std::path::PathBuf::from(format!("/run/user/{uid}/hearth-import.cancel"))
+}
 fn pending_count() -> usize {
     std::fs::read(crate::paths::data_dir().join("library.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .and_then(|d| d["pendingEpicImports"].as_array().map(|a| a.len())).unwrap_or(0)
@@ -68,6 +75,7 @@ impl Importer {
         self.set(json!({"state": "importing", "error": null, "result": null, "speeds": [], "started": crate::library::now_ms(), "mode": mode,
                         "progress": {"overall": 0, "total": 0, "i": 0, "n": n, "name": "", "done": 0, "size": 0, "bps": 0}}));
         let input = format!("{}\n", json!({"mode": mode, "items": keys, "root": root.to_string_lossy()}));
+        let _ = std::fs::remove_file(cancel_flag());
         let (state, pid, cancelled) = (self.state.clone(), self.pid.clone(), self.cancelled.clone());
         std::thread::spawn(move || {
             let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
@@ -128,6 +136,9 @@ impl Importer {
 
     pub fn cancel(&self, pending: usize) -> Value {
         if self.state.lock().unwrap()["state"] == "importing" {
+            // hearth-import runs as root (pkexec), which this app may not be allowed to signal: it also watches
+            // for this file. Either way it finishes or removes the item in progress and reports what's done.
+            let _ = std::fs::write(cancel_flag(), b"");
             if let Some(p) = *self.pid.lock().unwrap() { self.cancelled.store(true, std::sync::atomic::Ordering::SeqCst); let _ = std::process::Command::new("kill").args(["-TERM", &p.to_string()]).status(); }
         }
         self.status(pending)
