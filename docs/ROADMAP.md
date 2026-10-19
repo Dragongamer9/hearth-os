@@ -89,7 +89,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
-## 0.0.28
+## 0.0.28 (released)
 
 - [x] Xbox PC games (experimental): add Xodus Nexus from Settings › Games › Library; Hearth downloads and updates it and puts it in the library
 - [x] Update now works on systems with extra packages installed on top (it updates through rpm-ostree when bootc can't)
