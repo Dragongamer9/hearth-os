@@ -98,7 +98,8 @@ public sealed class ShellForm : Form
         _system.Pad = _pad;
         _pad.MouseChanged += on => BeginInvoke((MethodInvoker)(() =>
         {
-            Input.Osd.Show(on ? "🖱  Controller mouse on" : "Controller mouse off");
+            // Hearth's words while Mantel runs (Pad.qml's toast), Ember's own otherwise.
+            Input.Osd.Show(Input.Osd.HearthStyle ? (on ? "Controller mouse on" : "Controller mouse off") : on ? "🖱  Controller mouse on" : "Controller mouse off");
             Post(new { type = "event", name = "padMouse", data = new { on } });
         }));
         _pad.UiButton += b => BeginInvoke((MethodInvoker)(() => Post(new { type = "event", name = "pad", data = new { b } })));
@@ -114,6 +115,9 @@ public sealed class ShellForm : Form
             c.SetVirtualHostNameToFolderMapping(VirtualHost, www, CoreWebView2HostResourceAccessKind.Allow);
         });
         Nimbus.Host.Mantel.MantelHost.Wallpaper = Games0().MantelWallpaper;
+        Nimbus.Host.Mantel.MantelHost.NightLightOn = Games0().MantelNightLight;
+        Nimbus.Host.Mantel.MantelHost.ReduceMotion = Games0().MantelReduceMotion;
+        _pad.PointerSpeed = Games0().PointerSpeed;
         Mantel.RecoverTaskbar();
         FormClosed += (_, _) => Mantel?.Dispose();
         Mantel.GameModeRequested += () => Desktop?.Leave();
@@ -134,6 +138,11 @@ public sealed class ShellForm : Form
         _pad.MantelPanelInFront = () => Mantel?.PanelInFront ?? false;
         _pad.DesktopGuide += () => BeginInvoke((MethodInvoker)(() => Mantel?.ToggleRadial()));
         _pad.DesktopHelp += () => BeginInvoke((MethodInvoker)(() => Mantel?.ToggleHelp()));
+        // Hearth's on-screen keyboard (Y), and the controller picking its keys while it's up; short messages at the top.
+        _pad.KeyboardOpen = () => Mantel?.KeyboardOpen ?? false;
+        _pad.DesktopKeyboard += () => BeginInvoke((MethodInvoker)(() => Mantel?.ToggleKeyboard()));
+        _pad.KeyboardButton += b => BeginInvoke((MethodInvoker)(() => Mantel?.KeyboardButton(b)));
+        _pad.Toast += t => BeginInvoke((MethodInvoker)(() => Input.Osd.Show(t)));
         Desktop.DesktopLeaving = () => Mantel?.Stop();
         // As the shell: start on the desktop if that's the choice, or go back to it if Explorer is already the
         // desktop (Ember restarted after an update or a crash while you were on it).
