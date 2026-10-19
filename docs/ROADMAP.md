@@ -94,6 +94,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] In-game overlay: games keep running while it is open, the game gets no controller input (InputPlumber), and only the Xbox / Guide button opens it
 - [x] Power limit and power modes work on Bazzite's SteamOS Manager (custom profile), frame-rate limit works in games (gamescope's Vulkan layer)
 - [x] Screenshots: gamescope takes them in Game Mode; Library › Screenshots to look through and delete them
+- [x] Settings condensed: five groups (You, Connections, Device, Games, System) with their pages as tabs
 - [x] Settings › Updates: Update now is back on Hearth OS (and Settings from Mantel, the OS name, controller remapping)
 - [x] Ember: Quick Resume and profiles (Who's playing, own Steam account and sign-ins, parental controls)
 - [x] GOG cloud saves (Hearth and Ember)
