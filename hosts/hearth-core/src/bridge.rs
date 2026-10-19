@@ -16,6 +16,7 @@ pub struct Bridge {
     /// Sends an event to the UI (set by the app; does nothing in tests).
     pub emit: system::bt_scan::Emit,
     pub updates: crate::admin::Updates,
+    pub xodus: crate::xodus::Xodus,
     pub profiles: crate::profiles::Profiles,
     /// The parental-controls PIN unlocks managing profiles for a few minutes.
     pub pin_until: std::time::Instant,
@@ -60,7 +61,7 @@ impl Bridge {
     }
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
         use std::sync::Arc;
-        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), profiles, pin_until: std::time::Instant::now(),
+        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), xodus: crate::xodus::Xodus::new(), profiles, pin_until: std::time::Instant::now(),
                  pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(), guide: crate::guide::Guide::new(),
                  buttons: Arc::new(std::sync::Mutex::new(json!({"devices": [], "problems": ["Only in Game Mode"]}))), host: Arc::new(|_, _| {}),
                  parental_since: 0, parental_warned: false, per_game: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
@@ -575,6 +576,9 @@ impl Bridge {
             "login.password" => { crate::admin::run(&["password"], Some(&format!("{}\n", json!({"old": req("old")?, "new": req("new")?}))), &mut |_| {})?; Ok(json!({"ok": true})) }
             "login.unlock" => Ok(json!({"ok": crate::admin::check_password(a["password"].as_str().unwrap_or(""))})),
             // Settings › Updates (Hearth OS itself)
+            "xodus.status" => Ok(self.xodus.status(true)),
+            "xodus.install" => Ok(self.xodus.install(self.emit.clone())),
+            "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
             "system.update.status" => Ok(self.updates.refresh()),
             "system.update.check" => Ok(self.updates.start(false, self.emit.clone())),
             "system.update.install" => Ok(self.updates.start(true, self.emit.clone())),
@@ -954,7 +958,7 @@ fn shell_install(remove: bool) -> Result<(), String> {
 }
 
 fn features() -> Vec<&'static str> {
-    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs"];
+    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus"];
     if crate::guide::controller_available() { f.push("remap"); }
     f
 }

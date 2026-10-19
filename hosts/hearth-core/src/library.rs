@@ -172,6 +172,8 @@ impl Library {
             counts.insert("xbox".to_string(), list.len().saturating_sub(1));
             for g in list { all.entry(g.id.clone()).or_insert(g); }
         }
+        // Xbox PC games through Xodus Nexus, once you've added it (Settings › Games › Library).
+        if let Some(g) = crate::xodus::game() { counts.insert("xodus".to_string(), 1); all.insert(g.id.clone(), g); }
         let manual = self.manual_games();
         counts.insert("manual".to_string(), manual.len());
         for g in manual { all.entry(g.id.clone()).or_insert(g); }
