@@ -1,7 +1,7 @@
 # Hearth's small installer USB (os/installer): boots into the Hearth app's install screens and downloads Hearth OS
 # while installing, so the ISO is about 2 GB. One ISO for every PC (it installs the Nvidia edition where there's
 # an Nvidia card). Builds the ISO, boots it in a virtual machine and saves screenshots to the ci/installer-shots
-# branch. Uploads to SourceForge only when run by hand with Upload ticked.
+# branch. Uploads to the download site (Cloudflare R2) only when run by hand with Upload ticked.
 name: Hearth installer ISO
 
 on:
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       upload:
-        description: 'Upload the ISO to SourceForge (needs the SF_* secrets)'
+        description: 'Upload the ISO to the download site (Cloudflare R2, as hearth-os-installer.iso)'
         type: boolean
         default: false
       app:
@@ -31,11 +31,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
-      HAVE_SF: ${{ secrets.SF_SSH_KEY != '' && secrets.SF_USER != '' && secrets.SF_PROJECT != '' }}
+      HAVE_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
       APP: ${{ inputs.app || 'rust' }}
       SHOTS: ${{ inputs.app == 'electron' && 'ci/installer-shots-electron' || 'ci/installer-shots' }}
-      SF_USER: ${{ secrets.SF_USER }}
-      SF_PROJECT: ${{ secrets.SF_PROJECT }}
     steps:
       - uses: actions/checkout@v4
       - name: Make room
@@ -142,23 +140,11 @@ jobs:
           git add -f shots
           git commit -qm "Installer ISO screenshots ($GITHUB_RUN_ID)" && git push -f -q origin "HEAD:refs/heads/$SHOTS" || true
 
-      - name: Upload to SourceForge
-        if: env.HAVE_SF == 'true' && inputs.upload
+      - name: Upload to the download site (Cloudflare R2)
+        if: env.HAVE_R2 == 'true' && inputs.upload
         env:
-          SF_SSH_KEY: ${{ secrets.SF_SSH_KEY }}
-          SF_API_KEY: ${{ secrets.SF_API_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           V: ${{ steps.iso.outputs.version }}
-          DIR: ${{ steps.iso.outputs.dir }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$SF_SSH_KEY" > ~/.ssh/sf && chmod 600 ~/.ssh/sf
-          ssh-keyscan -t ed25519,rsa frs.sourceforge.net >> ~/.ssh/known_hosts 2>/dev/null
-          dest="/home/frs/project/$SF_PROJECT/$V"
-          rsync -e "ssh -i $HOME/.ssh/sf -o IdentitiesOnly=yes" --partial --progress -t "$DIR"/hearth-os-*.iso "$DIR"/hearth-os-*.iso.sha256 "$SF_USER@frs.sourceforge.net:$dest/"
-          if [ -n "${SF_API_KEY:-}" ]; then
-            curl -fsS -H 'Accept: application/json' -X PUT \
-              -d default=windows -d default=mac -d default=linux -d default=bsd -d default=solaris -d default=others \
-              -d "api_key=$SF_API_KEY" "https://sourceforge.net/projects/$SF_PROJECT/files/$V/hearth-os-$V-installer.iso" >/dev/null && echo "Set as the default download"
-          fi
-          rm -f ~/.ssh/sf
+        run: tools/r2-upload.sh "${{ steps.iso.outputs.file }}" hearth-os-installer.iso "$V"

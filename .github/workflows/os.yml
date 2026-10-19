@@ -224,8 +224,6 @@ jobs:
     needs: [app, image]
     if: github.event_name == 'workflow_dispatch' && inputs.iso
     runs-on: ubuntu-latest
-    env:
-      HAVE_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
     permissions:
       contents: read
       packages: read
@@ -285,15 +283,3 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
-
-      # The small installer (it downloads Hearth OS while installing) on the download site too.
-      - name: Upload to the download site (Cloudflare R2)
-        if: env.HAVE_R2 == 'true' && github.ref == 'refs/heads/main'
-        env:
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          DIR: ${{ steps.build.outputs.output-directory }}
-        run: |
-          iso=$(find "$DIR" -name '*.iso' | head -1)
-          tools/r2-upload.sh "$iso" "hearth-os-installer.iso" "${{ needs.app.outputs.version || 'latest' }}"
