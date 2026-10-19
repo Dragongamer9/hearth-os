@@ -95,7 +95,7 @@ echo 'steam-installer steam/license note ' | debconf-set-selections
 "${APT[@]}" -t "$BPO" gamescope mangohud mangoapp
 # Debian puts games' programs in /usr/games, which isn't on every PATH (the session, the checks): link them.
 for b in gamescope gamescopereaper gamescopestream gamescopectl mangoapp mangohud; do
-  [ -e "/usr/games/$b" ] && [ ! -e "/usr/bin/$b" ] && ln -s "../games/$b" "/usr/bin/$b"
+  if [ -e "/usr/games/$b" ] && [ ! -e "/usr/bin/$b" ]; then ln -s "../games/$b" "/usr/bin/$b"; fi
 done
 command -v gamescope
 optional gamemode libgamemode0:i386 zenity
