@@ -154,6 +154,7 @@ PORTALS
 # ------------------------------------------------------------------ boot straight into Nimbus
 systemctl enable nimbus-autologin.service
 systemctl enable hearth-greeter-pad.service   # the controller on the login screen
+systemctl enable hearth-boot-first.service   # Hearth stays first in the boot order (other systems put themselves first)
 
 # ------------------------------------------------------------------ boot splash
 # Hearth's Plymouth theme (system_files/usr/share/plymouth/themes/hearth, drawn by os/branding/make-assets.py).

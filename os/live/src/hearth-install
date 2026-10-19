@@ -551,8 +551,12 @@ def shrink_linux(disk, part, give):
     settle(disk)
 
 
+HEARTH_ESP_NAME = 'Hearth EFI'
+
+
 def remove_ours(disk):
-    ours = [p for p in table(disk) if (p.get('name'), (p.get('type') or '').lower()) in (('boot', XBOOTLDR_TYPE), ('hearth', LINUX_TYPE))]
+    ours = [p for p in table(disk) if (p.get('name'), (p.get('type') or '').lower()) in
+            (('boot', XBOOTLDR_TYPE), ('hearth', LINUX_TYPE), (HEARTH_ESP_NAME, ESP_TYPE))]
     if not ours:
         return
     release(disk)
@@ -562,26 +566,27 @@ def remove_ours(disk):
 
 
 def partition_free(disk):
-    """/boot and Hearth in the biggest free space on a drive that has Windows or Linux (and an EFI partition)."""
-    esp = existing_esp(disk)
-    if not esp:
-        raise Fail("this drive has no EFI partition (is the system on it installed in legacy BIOS mode?)")
+    """Hearth's own EFI partition, /boot and Hearth in the biggest free space on a drive that has Windows or
+    Linux. Hearth starts from its own EFI partition, in its own space, not from the other system's: that system
+    (or its updates) can't overwrite or hide Hearth's boot loader, and a Fedora-based system already there
+    (its EFI/fedora folder) can't make the PC start that system instead of Hearth."""
     release(disk)
     regions = free_regions(disk)
     if not regions or regions[0][1] * 512 < MIN_DISK:
         raise Fail("there's no room for Hearth on the drive after making room")
     start, n = regions[0]
     start = (start + 2047) // 2048 * 2048
-    boot_n = BOOT_SIZE // 512
+    esp_n, boot_n = ESP_SIZE // 512, BOOT_SIZE // 512
     sh(['sfdisk', '--append', '--no-reread', '--force', disk],
-       input=f'start={start}, size={boot_n}, type={XBOOTLDR_TYPE}, name="boot"\n'
-             f'start={start + boot_n}, type={LINUX_TYPE}, name="hearth"\n')
+       input=f'start={start}, size={esp_n}, type={ESP_TYPE}, name="{HEARTH_ESP_NAME}"\n'
+             f'start={start + esp_n}, size={boot_n}, type={XBOOTLDR_TYPE}, name="boot"\n'
+             f'start={start + esp_n + boot_n}, type={LINUX_TYPE}, name="hearth"\n')
     settle(disk)
     by_start = {int(p.get('start') or 0): p['node'] for p in table(disk)}
-    boot, root = by_start.get(start), by_start.get(start + boot_n)
-    if not boot or not root:
+    esp, boot, root = by_start.get(start), by_start.get(start + esp_n), by_start.get(start + esp_n + boot_n)
+    if not esp or not boot or not root:
         raise Fail("couldn't find the new partitions")
-    return esp, boot, root, False
+    return esp, boot, root, True
 
 
 # ------------------------------------------------------------------ file systems
@@ -883,17 +888,34 @@ def other_systems_menu():
     return uniq
 
 
+def boot_entries(text):
+    """efibootmgr -v: ({'0003': line, ...}, ['0003', '0000', ...] boot order)."""
+    entries = {m.group(1): m.group(0) for m in re.finditer(r'^Boot([0-9A-Fa-f]{4})\*?\s.*$', text, re.M)}
+    m = re.search(r'^BootOrder:\s*([0-9A-Fa-f,]*)', text, re.M)
+    return entries, [x for x in (m.group(1).split(',') if m else []) if x]
+
+
 def ensure_boot_entry(disk):
-    """A firmware boot entry for Hearth, first in the boot order (bootupd normally adds one)."""
+    """A firmware boot entry for Hearth's own EFI partition, first in the boot order. Old "Hearth OS" entries
+    that point somewhere else go (they'd start another system, or nothing)."""
     if not os.path.isdir('/sys/firmware/efi'):
         return
-    entries = sh(['efibootmgr'], check=False).stdout
-    if re.search(r'Boot\d{4}\*?\s+(Fedora|Hearth)', entries):
-        return
     esp_part = sh(['findmnt', '-no', 'SOURCE', f'{TARGET}/boot/efi']).stdout.strip()
+    partuuid = sh(['blkid', '-s', 'PARTUUID', '-o', 'value', esp_part], check=False).stdout.strip().lower()
     num = re.search(r'(\d+)$', esp_part).group(1)
     loader = '\\EFI\\fedora\\shimx64.efi' if os.path.exists(f'{TARGET}/boot/efi/EFI/fedora/shimx64.efi') else '\\EFI\\fedora\\grubx64.efi'
-    sh(['efibootmgr', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', loader], check=False)
+    entries, order = boot_entries(sh(['efibootmgr', '-v'], check=False).stdout)
+    for n, line in entries.items():
+        if 'Hearth OS' in line and partuuid and partuuid not in line.lower():
+            sh(['efibootmgr', '-q', '-b', n, '-B'], check=False)
+    entries, order = boot_entries(sh(['efibootmgr', '-v'], check=False).stdout)
+    mine = next((n for n, line in entries.items() if partuuid and partuuid in line.lower()), None)
+    if not mine:
+        sh(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', loader], check=False)
+        entries, order = boot_entries(sh(['efibootmgr', '-v'], check=False).stdout)
+        mine = next((n for n, line in entries.items() if partuuid and partuuid in line.lower()), None)
+    if mine:
+        sh(['efibootmgr', '-q', '-o', ','.join([mine] + [x for x in order if x.upper() != mine.upper()])], check=False)
 
 
 # ------------------------------------------------------------------ the new system's settings
