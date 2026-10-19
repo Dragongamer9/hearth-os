@@ -412,8 +412,8 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .sp-acts .sq{background:rgba(255,255,255,.1)}
 
 /* Appearance: layout picker */
-.layouts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:900px}
-.lcard{background:var(--panel);border-radius:var(--r);padding:10px 10px 14px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent}
+.layouts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}.lcard small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lcard{background:var(--panel);border-radius:var(--r);padding:8px 8px 10px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent}
 .lcard.on{border-color:var(--accent)}
 .lcard b{font-size:15px;margin-top:4px;display:flex;align-items:center;gap:8px}
 .lcard b em{font-style:normal;font-size:11px;font-weight:700;color:var(--accentInk);background:var(--accent);border-radius:6px;padding:2px 6px}
@@ -1202,13 +1202,13 @@ function updateSpot(id){
 // Beta: they may change or go away and don't get every update. Everyone can upvote the ones they like; the
 // counts come live from Hearth OS's server (the player counter's), one vote per device.
 
-const XV = {votes:null, mine:{}, timer:null};
+const XV = {votes:null, mine:{}, timer:null, open:false};
 try{ XV.mine = JSON.parse(localStorage.getItem('hearth.xvotes')||'{}')||{}; }catch(e){}
 function loadVotes(){
   if(!host && !LINUX) return;
   fetch(COUNTER.url+'/v1/votes').then(r=>r.json()).then(v=>{ XV.votes=v.counts||{}; if(S.view==='settings'&&S.settingsTab==='appearance') render(null,true); }).catch(()=>{});
 }
-function watchVotes(on){ clearInterval(XV.timer); XV.timer=null; if(on){ loadVotes(); XV.timer=setInterval(()=>{ if(S.view==='settings'&&S.settingsTab==='appearance') loadVotes(); else watchVotes(false); },20000); } }
+function watchVotes(on){ clearInterval(XV.timer); XV.timer=null; if(on){ loadVotes(); XV.timer=setInterval(()=>{ if(S.view==='settings'&&S.settingsTab==='appearance') { if(XV.open) loadVotes(); } else watchVotes(false); },20000); } }
 function vote(id){
   const up=!XV.mine[id]; XV.mine[id]=up; try{ localStorage.setItem('hearth.xvotes', JSON.stringify(XV.mine)); }catch(e){}
   XV.votes=XV.votes||{}; XV.votes[id]=Math.max(0,(XV.votes[id]||0)+(up?1:-1));
@@ -1362,7 +1362,8 @@ function pageAppearance(){
     + shead('Home layout')
     + `<div class="layouts">${LAYOUTS.map(l=>`<button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
         <div class="lprev">${layoutPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>`).join('')}</div>`
-    + shead('Experimental layouts') + xCards()
+    + `<button class="row" data-f data-k="ap-xopen" data-act="xOpen"><span class="ricon">${I.layout}</span><div class="rt"><b>Experimental layouts · beta</b><small>${XLAYOUTS.length} early layouts to try and upvote${isX(LOOK.layout)?` · using ${esc((XLAYOUTS.find(l=>l.id===LOOK.layout)||{}).name||'')}`:''}</small></div><div class="rv">${XV.open?'Hide ▴':'Show ▾'}</div></button>`
+    + (XV.open ? xCards() : '')
     + shead('Text and motion')
     + `<button class="row" data-f data-k="ap-text" data-act="textSize"><span class="ricon">${I.text}</span><div class="rt"><b>Text size</b><small>Makes everything in ${APP} bigger or smaller</small></div><div class="rv">${ts} ›</div></button>`
     + lookRow('reduceMotion','Reduce motion','Turns off animations and smooth scrolling')
@@ -3158,6 +3159,7 @@ function act(el){
     case 'dlClearRecent': DL_DONE.length=0; DLS.recent=[]; return call('downloads.clearRecent').then(()=>render(null,true)).catch(e=>toast(e.message));
     case 'stores': closeAll(); return S.view==='stores' ? null : navigate('stores');
     case 'xvote': return vote(d.v);
+    case 'xOpen': XV.open=!XV.open; if(XV.open) loadVotes(); return render('ap-xopen',true);
     case 'xLib': closeAll(); S.tab=d.tab||'all'; S.lfilter=d.filter||''; S.history=[]; return navigate('library',{},false);
     case 'frPlat': FR.plat=d.v; return render('frp-'+d.v,true);
     case 'frOpen': return frOpen(FR.view&&FR.view[+d.i]);

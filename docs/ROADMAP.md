@@ -108,6 +108,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Fix: the frame-rate limit claimed to work in Desktop Mode
 - [x] Fix: leaving Desktop Mode could show a false "Desktop Mode keeps closing" error in Game Mode
 - [x] Fix: turning off with games kept could be set up without really working (SELinux label on the swap file)
+- [x] Appearance is shorter: experimental layouts fold away behind one row (Show/Hide), and layout cards are smaller
 - [x] Bug finder (tools/ui-nav-check.js): presses every direction from every control on every screen and lists controls the D-pad can't reach
 
 - [x] Xodus Nexus: pick where Xbox games go when adding it (this device, an SD card or a second drive); "Sign in to Xodus Nexus" opens it in Desktop Mode, where the controller types; a password store runs in both modes so its sign-in is remembered
