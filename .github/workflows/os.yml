@@ -10,7 +10,7 @@ name: Hearth OS
 on:
   push:
     branches: [main]
-    paths: ['os/**', 'hosts/linux/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'ui/**', '.github/workflows/os.yml']
+    paths: ['os/**', 'hosts/linux/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearth-browser/**', 'ui/**', '.github/workflows/os.yml']
   pull_request:
     paths: ['os/**', '.github/workflows/os.yml']
   schedule:
