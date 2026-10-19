@@ -1,0 +1,4 @@
+3057 npm exec electron . --browser --no-sandbox
+3070 sh -c electron . --browser --no-sandbox
+3071 node /home/runner/work/hearth-os/hearth-os/hosts/linux/node_modules/.bin/electron . --browser --no-sandbox
+3078 /home/runner/work/hearth-os/hearth-os/hosts/linux/node_modules/electron/dist/electron . --browser --no-sandbox
