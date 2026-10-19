@@ -6,6 +6,7 @@
 // Started by labwc's autostart: quickshell -p <share>/desktop/shell
 // From a terminal or a key binding: quickshell ipc -p <this folder> call <target> <function>
 //   launcher toggle|open|close   quick toggle   keyboard open|close   menu open   settings open|page <name>|close
+//   tasks open|tab <apps|perf|startup>|close|toggle
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -50,6 +51,7 @@ ShellRoot {
     Keyboard { id: keyboard }
     Help { id: help }
     SettingsApp { id: settings }
+    TaskManager { id: tasks }
     VolumeOsd {}
     PowerMenu { id: powerMenu }
     Lock { id: lockScreen }
@@ -57,6 +59,7 @@ ShellRoot {
     Pad {
         id: pad
         settings: settings
+        tasks: tasks
         powerMenu: powerMenu
         liveWelcome: liveWelcome
         launcher: launcher
@@ -111,6 +114,13 @@ ShellRoot {
         function page(name: string): void { settings.open(name); }
         function close(): void { settings.close(); }
         function toggle(): void { settings.toggle(); }
+    }
+    IpcHandler {
+        target: "tasks"
+        function open(): void { tasks.open(""); }
+        function tab(name: string): void { tasks.open(name); }
+        function close(): void { tasks.close(); }
+        function toggle(): void { tasks.toggle(); }
     }
     IpcHandler {
         target: "launcher"
