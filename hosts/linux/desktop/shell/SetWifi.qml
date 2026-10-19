@@ -29,7 +29,8 @@ SetPage {
     }
     function refresh() { radio.running = true; savedProc.running = true; scan.running = true; scanning = true; }
     Component.onCompleted: refresh()
-    Timer { interval: 15000; running: page.visible; repeat: true; onTriggered: page.refresh() }
+    // Not while a password is being typed (the field would be rebuilt under you).
+    Timer { interval: 15000; running: page.visible && page.asking === ""; repeat: true; onTriggered: page.refresh() }
 
     Process {
         id: radio
@@ -39,7 +40,7 @@ SetPage {
     Process {
         id: savedProc
         command: ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"]
-        stdout: StdioCollector { onStreamFinished: page.saved = text.split("\n").map(l => page.fields(l)).filter(f => /wireless/.test(f[1] || "")).map(f => f[0]) }
+        stdout: StdioCollector { onStreamFinished: page.replaceList("saved", text.split("\n").map(l => page.fields(l)).filter(f => /wireless/.test(f[1] || "")).map(f => f[0])) }
     }
     Process {
         id: scan
@@ -54,7 +55,7 @@ SetPage {
                     out.push({ ssid: f[1], signal: parseInt(f[2]) || 0, secure: f[3] !== "" && f[3] !== "--", inUse: f[0] === "*" });
                 }
                 out.sort((a, b) => (b.inUse - a.inUse) || (b.signal - a.signal));
-                page.nets = out;
+                page.replaceList("nets", out);
                 page.scanning = false;
             }
         }
