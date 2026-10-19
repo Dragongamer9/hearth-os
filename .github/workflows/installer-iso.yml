@@ -1,7 +1,9 @@
 # Hearth's small installer USB (os/installer): boots into the Hearth app's install screens and downloads Hearth OS
-# while installing, so the ISO is about 2 GB. One ISO for every PC (it installs the Nvidia edition where there's
-# an Nvidia card). Builds the ISO, boots it in a virtual machine and saves screenshots to the ci/installer-shots
-# branch. Uploads to the download site (Cloudflare R2) only when run by hand with Upload ticked.
+# while installing, so the ISO is about 2 GB. The universal installer, one ISO for every PC: its screens offer
+# Hearth OS on Anatase (recommended, ghcr.io/dragongamer9/hearth-os:latest) or the Beta Experimental editions on
+# Ubuntu, CachyOS and Peppermint (:testing). Builds the ISO, boots it in a virtual machine and saves screenshots
+# to the ci/installer-shots branch. Uploads to the download site (Cloudflare R2, as hearth-os-installer.iso) only
+# when run by hand with Upload ticked.
 name: Hearth installer ISO
 
 on:

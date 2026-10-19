@@ -1,18 +1,21 @@
-# Hearth live ISO: the Hearth image plus what a live USB needs (live initramfs, a live user, the installer).
-# Built by .github/workflows/live-iso.yml, then turned into an ISO by Titanoboa (ublue-os/titanoboa), the way
-# Bazzite builds its live ISO. Not used for installed systems: those run ghcr.io/dragongamer9/hearth itself.
-# IMAGE_NAME: hearth (AMD/Intel) or hearth-nvidia; the installer installs the same one.
-ARG IMAGE_NAME=hearth
-ARG BASE=ghcr.io/dragongamer9/${IMAGE_NAME}:latest
+# Hearth live ISO: Hearth OS on Anatase plus what a live USB needs (live initramfs, a live user, the installer).
+# Built by .github/workflows/live-iso.yml, then turned into an ISO by Titanoboa (ublue-os/titanoboa). One ISO for
+# every PC (Anatase is one image for AMD, Intel and Nvidia graphics). Not used for installed systems: those run
+# ghcr.io/dragongamer9/hearth-os itself.
+# EDITION: which Hearth OS this live USB is (only "anatase"); the installer installs the same one.
+ARG EDITION=anatase
+ARG BASE=ghcr.io/dragongamer9/hearth-os:latest
 FROM ${BASE}
-ARG IMAGE_NAME
+ARG EDITION
 COPY src /src
-RUN --mount=type=cache,target=/var/cache/libdnf5 IMAGE_NAME="${IMAGE_NAME}" /src/build.sh && rm -rf /src
+RUN --mount=type=cache,target=/var/cache/libdnf5 EDITION="${EDITION}" /src/build.sh && rm -rf /src
 # The Hearth OS image itself (exactly the one this live system is made from, compressed as it is on GHCR), so
 # the installer puts Hearth OS on the drive from the USB stick, with no download (hearth-install's LOCAL_OCI).
-# The installed system still takes its updates from GHCR, and its first update only fetches what changed.
+# The installed system still takes its updates from ghcr.io/dragongamer9/hearth-os:latest, and its first update
+# only fetches what changed.
 ARG IMAGE_REF=""
 RUN if [ -n "$IMAGE_REF" ]; then \
+      command -v skopeo >/dev/null || dnf install -y skopeo; \
       mkdir -p /usr/share/hearth && \
       skopeo copy --retry-times 3 "docker://${IMAGE_REF}" "oci:/usr/share/hearth/image:hearth" && \
       echo "${IMAGE_REF}" > /usr/share/hearth/image.ref && du -sh /usr/share/hearth/image; \

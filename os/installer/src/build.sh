@@ -16,11 +16,12 @@ dnf install -y \
   rsms-inter-fonts google-noto-sans-fonts
 
 # ---------------------------------------------------------------- live boot (like the full live USB)
-KVER=$(find /usr/lib/modules -maxdepth 1 -mindepth 1 -type d -printf '%P\n' | head -1)
+KVER=$(ls /usr/lib/modules | sort -V | tail -1)   # the newest kernel (tail reads it all: no SIGPIPE)
+test -n "$KVER"
 # Fedora's small base image has only the core kernel: graphics (amdgpu, i915, nouveau, virtual machines),
 # Wi-Fi, Bluetooth and controller drivers are in kernel-modules. Without them nothing shows on screen.
 dnf install -y "kernel-modules-${KVER}" "kernel-modules-extra-${KVER}" || dnf install -y kernel-modules kernel-modules-extra
-ls "/usr/lib/modules/${KVER}/kernel/drivers/gpu/drm" | head
+ls "/usr/lib/modules/${KVER}/kernel/drivers/gpu/drm"
 # No boot splash on the installer USB: start-up waited for it to close, and the installer screen never came.
 dnf remove -y plymouth || true
 DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
@@ -30,8 +31,9 @@ DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
 # Bazzite (bootupd's copy, or /usr/lib/efi), so take whichever is there.
 dnf install -y shim-x64 grub2-efi-x64
 mkdir -p /boot/efi
-src=$( (ls -d /usr/lib/efi/*/*/EFI /usr/lib/bootupd/updates/EFI 2>/dev/null || true) | head -1)
-[ -n "$src" ] && cp -av "$src" /boot/efi/
+for src in /usr/lib/efi/*/*/EFI /usr/lib/bootupd/updates/EFI; do
+  if [ -d "$src" ]; then cp -av "$src" /boot/efi/; fi
+done
 test -d /boot/efi/EFI/fedora
 mkdir -p /boot/efi/EFI/BOOT
 [ -e /boot/efi/EFI/BOOT/BOOTX64.EFI ] || cp -v /boot/efi/EFI/fedora/shimx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI
@@ -70,7 +72,7 @@ install -Dm755 /live/hearth-install /usr/libexec/nimbus/hearth-install
 install -Dm755 /live/hearth-live-prep /usr/libexec/nimbus/hearth-live-prep
 install -Dm644 /live/branding/hearth-512.png /usr/share/pixmaps/hearth.png
 mkdir -p /usr/share/nimbus && mv /usr/lib/nimbus/hearth-version /usr/share/nimbus/version 2>/dev/null || echo latest > /usr/share/nimbus/version
-echo auto > /etc/hearth-live        # the installer picks the edition for this PC's graphics
+echo installer > /etc/hearth-live   # the small installer: its install screens offer every edition (hearth-install)
 touch /etc/hearth-installer          # the Hearth app shows only the install screens
 echo "Hearth installer" >/etc/system-release
 
