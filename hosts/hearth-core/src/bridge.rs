@@ -218,6 +218,8 @@ impl Bridge {
                 "perfLog": std::env::var_os("HEARTH_PERF_LOG").is_some(),
                 "session": std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false),
                 "user": std::env::var("USER").unwrap_or_default(),
+                // The player counter's id for this device: the same across updates (a hash of the machine id).
+                "deviceId": counter_device_id(),
                 "live": std::path::Path::new("/etc/hearth-live").exists(),
                 "installer": std::path::Path::new("/etc/hearth-installer").exists(),
                 "features": features(), "setupDone": self.setup_done(),
@@ -307,6 +309,16 @@ impl Bridge {
             "art.status" => Ok(crate::artcache::status()),
             // Steam friends: who's online and what they're playing
             "steam.friends" => Ok(crate::friends::list(&self.library.home)),
+            "friends.action" => {
+                let r = crate::friends::action(a["platform"].as_str().unwrap_or(""), a["id"].as_str().unwrap_or(""), a["what"].as_str().unwrap_or(""), a["server"].as_str())?;
+                if let Some(u) = r["open"].as_str() {
+                    // Steam's chat or game in front of Hearth (it's a separate window in Game Mode).
+                    std::process::Command::new("steam").arg(u).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
+                        .spawn().map_err(|e| format!("Couldn't open Steam: {e}"))?;
+                    (self.host)("showSteam", &json!({}));
+                }
+                Ok(r)
+            }
             // Game Mode: frame-rate limit, performance overlay, Quick Access over the game, open apps
             "perf.setFpsLimit" => { let n = crate::gamescope::set_fps_limit(a["fps"].as_f64().unwrap_or(0.0).max(0.0).round() as u64)?; io(self.library.store.update(|d| { d.insert("fpsLimit".into(), json!(n)); }))?; Ok(json!({"fpsLimit": n})) }
             "perf.setOverlay" => { let n = crate::gamescope::set_perf_overlay(a["level"].as_f64().unwrap_or(0.0).max(0.0).round() as u64)?; io(self.library.store.update(|d| { d.insert("perfOverlay".into(), json!(n)); }))?; Ok(json!({"perfOverlay": n})) }
@@ -369,6 +381,7 @@ impl Bridge {
             "app.exportLogs" => export_logs(&self.version),
             "logs.save" => crate::logs::save(&self.version).map(|(p, _)| json!({"path": p.to_string_lossy()})),
             "logs.send" => crate::logs::send(&self.version),
+            "logs.sendToDeveloper" => crate::logs::send_to_developer(&self.version, edition()),
             "game.resetPrefix" => {
                 let id = req("id")?;
                 let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
@@ -880,6 +893,18 @@ fn picked_file() -> std::path::PathBuf { std::path::PathBuf::from(std::env::var(
 pub fn picked() -> bool {
     static P: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *P.get_or_init(|| std::env::args().any(|a| a == "--picked") || std::fs::remove_file(picked_file()).is_ok())
+}
+
+/// The player counter's id: 32 hex characters, the same on every update and reinstall of the app on this device.
+/// From /etc/machine-id, hashed (the machine id itself never leaves the device). The live USB has a new machine
+/// id every boot, so it gets none (the page then uses its own).
+pub fn counter_device_id() -> String {
+    if std::path::Path::new("/etc/hearth-live").exists() { return String::new(); }
+    let mid = std::fs::read_to_string("/etc/machine-id").unwrap_or_default();
+    let mid = mid.trim();
+    if mid.len() < 16 { return String::new(); }
+    let h = sha1_smol::Sha1::from(format!("hearth-counter:{mid}")).digest().to_string();
+    h[..32].to_string()
 }
 
 /// Settings › System › Save logs: Hearth's logs in one file in your home folder, for bug reports.

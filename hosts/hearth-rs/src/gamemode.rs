@@ -492,6 +492,22 @@ impl GameMode {
                     if self.main().map(|w| w.is_visible().unwrap_or(false)).unwrap_or(false) { self.step_aside(); std::thread::sleep(Duration::from_millis(450)); }
                 } else if self.overlay_on.load(Ordering::SeqCst) { self.overlay_look(true, true); }
             }
+            // Steam's chat (or another Steam window) was asked for: Hearth steps aside once it's up.
+            "showSteam" => {
+                if !self.inside() { return; }
+                self.claim();
+                self.hide_overlay();
+                let me = self.clone();
+                std::thread::spawn(move || {
+                    let mine = std::process::id() as u64;
+                    for _ in 0..20 {
+                        std::thread::sleep(Duration::from_millis(700));
+                        let hit = gs::mapped_windows().into_iter().find(|w| w.pid != mine && matches!(std::fs::read_to_string(format!("/proc/{}/comm", w.pid)).unwrap_or_default().trim(), "steam" | "steamwebhelper"));
+                        if let Some(w) = hit { me.step_aside(); me.focus_xid("steam window", w.win, 0, false); return; }
+                    }
+                    log("friends: Steam's window didn't show up");
+                });
+            }
             "closeGame" => { if let Ok(mut b) = self.bridge.lock() { b.library.close_running(); } }
             "comeBack" => { self.hide_overlay(); self.come_back(); }
             // Quick Resume: the game picked is running again; put it in front.
