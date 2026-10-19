@@ -299,6 +299,7 @@ BrowserWin::BrowserWin(const std::vector<std::string>& urls) : start_urls_(urls)
 }
 
 void BrowserWin::OnWindowCreated(CefRefPtr<CefWindow> window) {
+  if (G().selftest) fprintf(stderr, "self-test step: window created\n");
   window_ = window;
   window->SetTitle("Hearth Browser");
   window->SetBackgroundColor(0xFF1C1512);
