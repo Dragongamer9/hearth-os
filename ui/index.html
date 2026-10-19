@@ -717,7 +717,7 @@ if(/[?&]overlay=full/.test(location.search) || (window.nimbusHost && !/[?&]overl
 // ---------- host bridge ----------
 // send(): fire-and-forget message.  call(): request/response, resolves with the host's result.
 // Host pushes: {type:'event', name, data} for status changes, Bluetooth discovery, PIN prompts.
-// Windows hosts the UI in WebView2 (window.chrome.webview); Linux in Electron (window.nimbusHost). Same messages.
+// Windows hosts the UI in WebView2 (window.chrome.webview); Linux in the Rust app (Tauri, WebKitGTK). Same messages.
 const host = window.chrome && window.chrome.webview ? window.chrome.webview : (window.nimbusHost || null);
 // Which platform we're on; host.info fills in the details at boot. Text that names Windows things checks this.
 const HOSTINFO = {platform: window.nimbusHost || /[?&]preview=linux/.test(location.search) ? 'linux' : 'windows', name:null, host:null, session:false};
@@ -1511,7 +1511,7 @@ function browserRows(){
 }
 
 const CREDITS = LINUX
-  ? [['Electron','Runs '+APP+'\'s interface'],['gamescope','Game Mode compositor (Valve)'],['labwc','Window manager behind Mantel, the desktop'],['Quickshell','Mantel\'s taskbar, menus and settings'],
+  ? [['Tauri and WebKitGTK','Run '+APP+'\'s interface'],['Electron','Runs Hearth Browser'],['gamescope','Game Mode compositor (Valve)'],['labwc','Window manager behind Mantel, the desktop'],['Quickshell','Mantel\'s taskbar, menus and settings'],
      ['Bazzite / Universal Blue','The OS Hearth is built on'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)'],['umu-launcher','Runs Windows games with Proton'],['Proton / Wine','Windows compatibility']]
   : [['WebView2','Runs '+APP+'\'s interface (Microsoft Edge)'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)']];
 function pageAbout(){
@@ -1531,7 +1531,7 @@ function pageAbout(){
   if(S.sys.display && S.sys.display.width) h += infoRow('ab-disp','Display', `${S.sys.display.width} × ${S.sys.display.height}${S.sys.display.refreshRate?` at ${S.sys.display.refreshRate} Hz`:''}`);
   if(i.kernel) h += infoRow('ab-kern', LINUX?'Kernel':'Windows version', i.kernel);
   if(i.uptimeSec) h += infoRow('ab-up','Running for', uptimeText(i.uptimeSec));
-  h += infoRow('host','App engine',!host?'Browser preview':LINUX?(HOSTINFO.host||'Electron')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
+  h += infoRow('host','App engine',!host?'Browser preview':LINUX?(HOSTINFO.host||'Hearth')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
   if(COUNTER.stats) h += shead('Hearth OS players') + infoRow('ab-count','Playing right now', `🔥 ${COUNTER.stats.now.toLocaleString()}`) + infoRow('ab-count2','In the last 30 days', COUNTER.stats.month.toLocaleString());
   h += shead('Open source')
     + `<button class="row" data-f data-k="ab-credits" data-act="credits"><span class="ricon">${I.info}</span><div class="rt"><b>Built with</b><small>The open-source projects ${APP} uses</small></div><div class="rv">›</div></button>`
@@ -3619,7 +3619,6 @@ const osiDisk = ()=> (OSI.disks||[]).find(d=>d.dev===OSI.disk);
 /** Systems Hearth can go next to, on every drive: Windows, SteamOS, other Linux. */
 const osiSystems = ()=> (OSI.disks||[]).filter(d=>!d.live).flatMap(d=>(d.systems||[]).map(x=>({...x, disk:d.dev, model:d.model, size:d.size})));
 const osiName = ()=> (OSI.target&&OSI.target.name) || 'Windows';
-const osiUsable = ()=> (OSI.disks||[]).filter(d=>!d.live && !d.tooSmall);
 function osiGo(d){
   const i=OSI_STEPS.indexOf(OSI.step)+d;
   if(i<0){ S.history.length ? goBack() : navigate('home',{},false); return; }

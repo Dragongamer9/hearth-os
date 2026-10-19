@@ -9,6 +9,12 @@ use std::sync::{Arc, Mutex};
 
 const REPO: &str = "Dragongamer9/hearth-os";
 pub const ASSET: &str = "Hearth-linux-x86_64";
+/// The AppImage (for other Linux systems): same name the old Electron app used, so its installs move over.
+pub const ASSET_APPIMAGE: &str = "Nimbus-linux-x86_64.AppImage";
+/// Running as an AppImage: the AppImage file itself ($APPIMAGE), not the program inside it.
+pub fn appimage() -> Option<PathBuf> { std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()) }
+/// Which release file updates this copy.
+pub fn asset() -> &'static str { if appimage().is_some() { ASSET_APPIMAGE } else { ASSET } }
 
 /// 0.4.0 (a release) or 0.4.0-linux.13 (preview 13 on the way to the next one): (numbers, preview)
 pub fn parse_version(v: &str) -> (Vec<u64>, Option<u64>) {
@@ -30,6 +36,37 @@ pub fn newer(a: &str, b: &str) -> bool {
 /// Releases from before Hearth was renumbered to 0.0.x look newer than they are: never offered.
 fn legacy(tag: &str) -> bool { let t = tag.trim_start_matches('v'); t.starts_with("0.3.") || t.starts_with("0.4.") || t.starts_with("0.5.") }
 
+/// After moving from the old Electron app to this one (an AppImage update swaps the file and keeps the
+/// previous one as <AppImage>.old): once this version has run fine for a while, the old Electron AppImage is
+/// archived to ~/.local/share/nimbus/archive (deleted after 30 days) and the Electron app's caches are removed.
+/// Later updates keep their .old as usual (it's what a crashing update rolls back to).
+pub fn tidy_after_move() {
+    let Some(img) = appimage() else { return };
+    let data = crate::paths::data_dir();
+    let marker = data.join("appimage-moved");
+    let archive = data.join("archive");
+    // Archived copies older than 30 days go.
+    for e in std::fs::read_dir(&archive).into_iter().flatten().flatten() {
+        if e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).map(|d| d.as_secs() > 30 * 86400).unwrap_or(false) {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+    if marker.exists() { return; }
+    let old = PathBuf::from(format!("{}.old", img.to_string_lossy()));
+    if old.is_file() {
+        let _ = std::fs::create_dir_all(&archive);
+        let to = archive.join(format!("Nimbus-electron-{}.AppImage", chrono::Local::now().format("%Y-%m-%d")));
+        if std::fs::rename(&old, &to).is_err() { let _ = std::fs::copy(&old, &to).map(|_| std::fs::remove_file(&old)); }
+        crate::bridge::log(&format!("update: the old Electron AppImage is archived at {} (deleted after 30 days)", to.to_string_lossy()));
+    }
+    // The Electron app's browser caches (its settings stay, in case you go back).
+    let cfg = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".config")).join("Nimbus");
+    for c in ["Cache", "Code Cache", "GPUCache", "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "Service Worker/CacheStorage", "Crashpad"] {
+        let _ = std::fs::remove_dir_all(cfg.join(c));
+    }
+    let _ = std::fs::write(&marker, chrono::Local::now().to_rfc3339());
+}
+
 #[derive(Clone)]
 pub struct AppUpdates { pub state: Arc<Mutex<Value>>, current: String }
 
@@ -39,7 +76,7 @@ impl AppUpdates {
     }
     /// The app's own file, when Hearth may replace it (not one that's part of the system).
     pub fn exe() -> Option<PathBuf> {
-        let e = std::env::current_exe().ok()?;
+        let e = appimage().or_else(|| std::env::current_exe().ok())?;
         if e.starts_with("/usr") || e.starts_with("/opt") || e.to_string_lossy().contains("/target/") { return None; }
         let dir = e.parent()?;
         let probe = dir.join(".hearth-write-test");
@@ -79,15 +116,15 @@ impl AppUpdates {
                 let preview_ok = parse_version(&self.current).1.is_some();
                 let best = list.as_array().cloned().unwrap_or_default().into_iter()
                     .filter(|x| x["draft"] != true && !legacy(x["tag_name"].as_str().unwrap_or("")) && (preview_ok || x["prerelease"] != true))
-                    .filter(|x| x["assets"].as_array().map(|a| a.iter().any(|a| a["name"] == ASSET)).unwrap_or(false))
+                    .filter(|x| x["assets"].as_array().map(|a| a.iter().any(|a| a["name"] == asset())).unwrap_or(false))
                     .fold(None::<Value>, |best, x| match &best { Some(b) if !newer(x["tag_name"].as_str().unwrap_or(""), b["tag_name"].as_str().unwrap_or("")) => best, _ => Some(x) });
                 match best {
                     None => Self::set(&self.state, json!({"state": "upToDate", "latest": null, "lastChecked": now}), &self.current),
                     Some(rel) => {
                         let version = rel["tag_name"].as_str().unwrap_or("").trim_start_matches('v').to_string();
                         let assets = rel["assets"].as_array().cloned().unwrap_or_default();
-                        let asset = assets.iter().find(|a| a["name"] == ASSET).cloned().unwrap_or(Value::Null);
-                        let sha = assets.iter().find(|a| a["name"] == format!("{ASSET}.sha256").as_str()).and_then(|a| a["browser_download_url"].as_str().map(str::to_string));
+                        let asset = assets.iter().find(|a| a["name"] == asset()).cloned().unwrap_or(Value::Null);
+                        let sha = assets.iter().find(|a| a["name"] == format!("{}.sha256", self::asset()).as_str()).and_then(|a| a["browser_download_url"].as_str().map(str::to_string));
                         let latest = json!({"version": version, "tag": rel["tag_name"], "notes": rel["body"], "zipUrl": asset["browser_download_url"], "shaUrl": sha,
                                             "size": asset["size"], "published": rel["published_at"]});
                         let state = if newer(&version, &self.current) { "available" } else { "upToDate" };
