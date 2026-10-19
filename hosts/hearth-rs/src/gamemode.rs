@@ -319,7 +319,9 @@ impl GameMode {
     /// Hearth OS: InputPlumber catches the Xbox / Guide button (and only it), and while Quick Access is open hands
     /// every press to Hearth. Reads its presses from D-Bus.
     pub fn start_inputplumber(self: &Arc<Self>) {
-        if !self.inside() || !hearth_core::inputplumber::available() { return; }
+        if !self.inside() { return; }
+        // Hearth OS on Anatase: Handheld Daemon instead of InputPlumber.
+        if !hearth_core::inputplumber::available() { self.start_hhd(); return; }
         hearth_core::inputplumber::guide_only();
         self.ip.store(true, Ordering::SeqCst);
         self.ip_sync();
@@ -361,6 +363,25 @@ impl GameMode {
                     me2.ip_sync();
                     known = now;
                 }
+            }
+        });
+    }
+    /// Hearth OS on Anatase: Handheld Daemon (HHD) runs the built-in controller. Its virtual controller is an ordinary
+    /// one, so the Guide button comes through the controller reader (guide.rs) and opens Quick Access, and while
+    /// it's open Hearth takes the controllers (hold_game). HHD can't hold the Guide press back from the game the
+    /// way InputPlumber does (see docs/BASE-ANATASE.md). Its Quick Access button sends Guide + A: the chord guard
+    /// keeps that A from picking something in Quick Access. HHD may start a little after Hearth: looked for for a minute.
+    fn start_hhd(self: &Arc<Self>) {
+        let me = self.clone();
+        std::thread::spawn(move || {
+            for _ in 0..12 {
+                if hearth_core::hhd::available() {
+                    me.guide.chord_guard.store(true, Ordering::SeqCst);
+                    let what = hearth_core::hhd::request("GET", "/api/v1/state", None).map(|st| hearth_core::hhd::describe(&st)).unwrap_or_default();
+                    log(&format!("hhd: Handheld Daemon runs the controller ({what}); Guide comes from its virtual controller"));
+                    return;
+                }
+                std::thread::sleep(Duration::from_secs(5));
             }
         });
     }
