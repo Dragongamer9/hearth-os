@@ -889,6 +889,8 @@ impl Bridge {
 pub fn log(text: &str) {
     use std::io::Write;
     let f = paths::data_dir().join("bridge.log");
+    // Kept to a few MB: the old one becomes bridge.log.old.
+    if std::fs::metadata(&f).map(|m| m.len() > 4_000_000).unwrap_or(false) { let _ = std::fs::rename(&f, paths::data_dir().join("bridge.log.old")); }
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(f) { let _ = writeln!(file, "{} [rust] {}", now_ms(), text); }
 }
 

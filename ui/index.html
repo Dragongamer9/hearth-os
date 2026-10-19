@@ -3427,27 +3427,36 @@ async function installGame(g){
     startDownloadPoll(true);
   }catch(e){ toast(e.message); }
 }
-let dlTimer=null, dlWatchUntil=0;
+let dlTimer=null, dlWatchUntil=0, dlRunning=false, dlSig='';
 // Polls Steam's install records while anything is downloading (and for a while after an install request,
-// since the download only appears once you confirm Steam's dialog).
+// since the download only appears once you confirm Steam's dialog). One poll at a time: a second request while
+// one was waiting for its answer used to start another chain, and they piled up (dozens of calls a second,
+// redrawing the screen each time, which made the selection jump and Hearth sluggish).
 function startDownloadPoll(expectNew){
   if(expectNew) dlWatchUntil=Date.now()+5*60e3;
-  if(dlTimer) return;
+  if(dlRunning) return;
+  dlRunning=true;
   const tick=async()=>{
     dlTimer=null;
+    let next=10000;
     try{
       const r=await call('library.downloads');
       if(r.speeds) DLS.speeds=r.speeds; if(r.recent) DLS.recent=r.recent;
       const before=new Map(GAMES.map(g=>[g.id,g.state]));
       for(const d of r.active){ const g=G(d.id); if(g) Object.assign(g, fromHost({...d, fav:g.fav, hidden:g.hidden})); else GAMES.push(fromHost(d)); }
+      // Redraw only when something on screen changed.
+      const sig=JSON.stringify([r.active.map(a=>[a.id,a.state,Math.round((a.progress||0)*100),a.bytesDone]), S.view==='downloads'?(r.speeds||[]).slice(-1):0]);
       if(r.changed){
         const finished=[...before].filter(([id,st])=>STATE_LABEL[st] && !r.active.some(a=>a.id===id)).map(([id])=>G(id)).filter(Boolean);
         await loadLibrary(true);
         finished.filter(g=>G(g.id)&&G(g.id).inst).forEach(g=>toast(`${g.title} is ready to play`));
-      } else if(!S.layers.length) render(null,true);
+      } else if(sig!==dlSig && !S.layers.length && ['downloads','library','home','game'].includes(S.view)) render(null,true);
+      dlSig=sig;
       const keep = r.active.length>0 || Date.now()<dlWatchUntil || S.view==='downloads';
-      if(keep) dlTimer=setTimeout(tick, S.view==='downloads' ? 2000 : 3000);
-    }catch(e){ dlTimer=setTimeout(tick, 10000); }
+      if(!keep){ dlRunning=false; return; }
+      next = S.view==='downloads' ? 2000 : 3000;
+    }catch(e){}
+    dlTimer=setTimeout(tick, next);
   };
   dlTimer=setTimeout(tick, 1500);
 }
