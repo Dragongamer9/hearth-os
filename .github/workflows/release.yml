@@ -34,6 +34,20 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "Version: $v"
 
+  # REQUIRED: Hearth's page must load and draw every screen without a script error (one error can leave the
+  # app blank), or nothing is published.
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Hearth's page
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node ui-check.js
+
   windows:
     needs: version
     runs-on: windows-latest
@@ -156,7 +170,7 @@ jobs:
             Hearth-linux-x86_64.sha256
 
   release:
-    needs: [version, windows, linux, rust]
+    needs: [version, windows, linux, rust, ui]
     if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:

@@ -1032,6 +1032,25 @@ function frOpen(f){
   openSheet({title:f.name, sub, items});
 }
 
+// ---------- Screenshots: the ones taken from Quick Access, to look through and delete ----------
+const SH = {list:null, open:-1};
+function loadShots(){ if(!host){ SH.list=[]; return render(null,true); }
+  call('screenshots.list',{},15000).then(r=>{ SH.list=r.list||[]; if(SH.open>=SH.list.length) SH.open=SH.list.length-1; if(S.view==='shots') render(null,true); }).catch(e=>toast(e.message)); }
+function shotWhen(t){ const d=new Date(t); return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' · '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
+function viewShots(){
+  const l=SH.list;
+  if(!l) return note('Loading your screenshots…');
+  if(!l.length) return note('No screenshots yet. During a game, press the Xbox button and choose Take a screenshot.');
+  if(SH.open>=0 && l[SH.open]){ const x=l[SH.open];
+    return `<div class="shotview"><img src="${esc(x.url)}" alt=""><div class="shotbar"><span class="muted">${SH.open+1} of ${l.length} · ${shotWhen(x.time)}</span>
+      <button class="btn sm" data-f data-k="sh-prev" data-act="shotStep" data-v="-1" ${SH.open?'':'disabled'}>‹ Newer</button>
+      <button class="btn sm" data-f data-k="sh-next" data-act="shotStep" data-v="1" ${SH.open<l.length-1?'':'disabled'}>Older ›</button>
+      <button class="btn sm" data-f data-k="sh-del" data-act="shotDel">Delete</button>
+      <button class="btn sm" data-f data-k="sh-back" data-act="shotClose">Back</button></div></div>`; }
+  return `<div class="muted" style="margin:4px 0 16px">${l.length} screenshot${l.length===1?'':'s'} · Pictures › Screenshots › ${APP}</div>
+    <div class="shots">${l.map((x,i)=>`<button class="shot" data-f data-k="sh-${i}" data-act="shotOpen" data-v="${i}"><img src="${esc(x.url)}" alt="" loading="lazy"><small>${shotWhen(x.time)}</small></button>`).join('')}</div>`;
+}
+
 // ---------- Quick Resume (Hearth): games put aside stay frozen in memory and carry on where they were ----------
 const QR = {list:[], on:true, hib:null};
 const qrFeature = () => (HOSTINFO.features||[]).includes('quickResume');
