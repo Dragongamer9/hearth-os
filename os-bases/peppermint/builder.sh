@@ -160,7 +160,7 @@ mkdir -p /output/usr/share/hearth
 owner() {   # the package that owns a library (merged /usr: try both spellings of the path)
   local l="$1" p
   for p in "$l" "$(readlink -f "$l")" "${l#/usr}" "/usr${l}"; do
-    dpkg -S "$p" 2>/dev/null | head -1 | cut -d: -f1 && return 0
+    dpkg -S "$p" 2>/dev/null | sed -n 1p | cut -d: -f1 && return 0
   done
   return 0
 }
