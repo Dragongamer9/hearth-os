@@ -305,11 +305,42 @@ fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: 
     }
 }
 
+/// Every check that Settings › Updates (Game Mode) and Mantel's Settings › Updates (Desktop Mode) depend on.
+/// Prints one line per check; returns the exit code (1 if any failed).
+fn check_update_path() -> i32 {
+    let mut b = Bridge::new(env!("CARGO_PKG_VERSION"));
+    let info = b.handle(&serde_json::json!({"type": "call", "id": 1, "method": "host.info", "args": {}}))
+        .map(|r| r["value"].clone()).unwrap_or_default();
+    let ui = String::from_utf8_lossy(include_bytes!("../../../ui/index.html")).to_string();
+    let exists = |p: &str| std::path::Path::new(p).exists();
+    let qml = std::fs::read_to_string("/usr/share/nimbus/desktop/shell/SetUpdates.qml").unwrap_or_default();
+    let admin = std::fs::read_to_string(hearth_core::admin::HELPER).unwrap_or_default();
+    let checks: Vec<(&str, bool)> = vec![
+        ("Game Mode: Hearth knows it's the OS install (host.info system), so Update now shows", info["system"] == true),
+        ("Game Mode: the Updates page shows Update now for the OS install", ui.contains("if(LINUX && HOSTINFO.system) return pageSystemUpdate();") && ui.contains("data-act=\"sysUpdInstall\"") && ui.contains("case 'sysUpdInstall'")),
+        ("Game Mode: Hearth answers system.update.install", include_str!("../../hearth-core/src/bridge.rs").contains("\"system.update.install\"")),
+        ("hearth-admin is installed", exists(hearth_core::admin::HELPER)),
+        ("hearth-admin can check, show and install updates", ["'update-status'", "'update-check'", "'update'"].iter().all(|c| admin.contains(c))),
+        ("the polkit rule lets the person at the device run hearth-admin", std::fs::read_to_string("/usr/share/polkit-1/rules.d/49-hearth-admin.rules").map(|t| t.contains("/usr/libexec/nimbus/hearth-admin")).unwrap_or(false)),
+        ("pkexec and bootc are installed", hearth_core::system::has("pkexec") && hearth_core::system::has("bootc")),
+        ("Desktop Mode: Mantel's Settings › Updates is installed and runs hearth-admin", qml.contains("/usr/libexec/nimbus/hearth-admin") && qml.contains("\"update\"")),
+        ("Desktop Mode: Hearth Settings opens", exists("/usr/bin/hearth-settings")),
+    ];
+    let mut code = 0;
+    for (name, ok) in checks {
+        if ok { println!("ok: {name}"); } else { println!("::error title=update path::{name}"); code = 1; }
+    }
+    code
+}
+
 fn main() {
     // WebKit's newer GPU path draws a black window on some Nvidia drivers: the older one works everywhere.
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
+    // Release check (os.yml runs it inside each new Hearth OS image, and won't publish one that fails):
+    // Hearth must be able to update itself from Game Mode and from Desktop Mode.
+    if std::env::args().any(|a| a == "--check-update-path") { std::process::exit(check_update_path()); }
     let windowed = std::env::args().any(|a| a == "--windowed");
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

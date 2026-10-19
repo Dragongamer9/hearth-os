@@ -131,6 +131,7 @@ jobs:
           sudo podman image inspect hearth:latest --format '{{len .RootFS.Layers}} layers'
 
       # Every Hearth must be able to update itself, or people get stuck on it: check before publishing.
+      # REQUIRED: a failure here stops the image from being published.
       - name: Check the image can update itself
         run: |
           cat > /tmp/check.sh <<'EOF'
@@ -143,6 +144,10 @@ jobs:
           check "hearth-takeover and its tools are installed" "test -x /usr/libexec/nimbus/hearth-takeover && command -v sfdisk && command -v partx && command -v efibootmgr && command -v btrfs"
           check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
           check "the Hearth app has the Update now button" "grep -aqs system.update.install /usr/lib/nimbus/nimbus || grep -rqs sysUpdInstall /usr/lib/nimbus/resources"
+          check "hearth-admin's Python is valid" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin"
+          # REQUIRED: Hearth updates itself from Game Mode and Desktop Mode (the app checks everything it relies on).
+          echo "--- update path (required) ---"
+          /usr/lib/nimbus/nimbus --check-update-path || fail=1
           check "Hearth Browser is installed" "test -x /usr/lib/hearth-browser/nimbus"
           check "background updates are scheduled" "ls /usr/lib/systemd/system/*.timer /etc/systemd/system/timers.target.wants/ /usr/lib/systemd/system/timers.target.wants/ 2>/dev/null | grep -qE 'uupd|rpm-ostreed-automatic|bootc-fetch-apply-updates'"
           exit $fail
