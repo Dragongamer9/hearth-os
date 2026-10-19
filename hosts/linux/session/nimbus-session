@@ -67,9 +67,25 @@ run_game() {
   export SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0
   # SteamOS Manager sets the power limit and power modes on Bazzite (what Steam's Game Mode uses); it normally
   # starts with Steam's session, so start it for Hearth's too.
-  systemctl --user start steamos-manager.service >/dev/null 2>&1 || true
+  [ -z "$HEARTH_SEAT" ] && { systemctl --user start steamos-manager.service >/dev/null 2>&1 || true; }
+  # Multi-seat (Settings › Multi-seat): with one graphics card and several screens, player 1's Game Mode
+  # shares the screens out (falls back to normal Game Mode by itself, exit code 3); with a card per player,
+  # player 1 stays on its own card.
+  SEATS=/usr/libexec/nimbus/hearth-seats
+  seatargs=""
+  if [ -z "$HEARTH_SEAT" ] && [ -f "$SEATS" ]; then
+    if python3 "$SEATS" host-check 2>/dev/null; then
+      log "multi-seat: hosting the other players' screens"
+      # shellcheck disable=SC2086
+      python3 "$SEATS" host -- gamescope -f $extra $NIMBUS_GAMESCOPE_ARGS -- "$WATCHDOG" "$NIMBUS_APP"
+      rc=$?
+      [ "$rc" -ne 3 ] && return "$rc"
+      log "multi-seat host couldn't start; normal Game Mode"
+    fi
+    seatargs="$(python3 "$SEATS" gamescope-args 2>/dev/null)"
+  fi
   # shellcheck disable=SC2086
-  gamescope -f $extra $NIMBUS_GAMESCOPE_ARGS -- "$WATCHDOG" "$NIMBUS_APP"
+  gamescope -f $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
 }
 
 run_desktop() {
@@ -81,7 +97,7 @@ run_desktop() {
 
 # Button remaps for the built-in controller (Settings › Controller), kept applied for the whole session in
 # both modes: InputPlumber goes back to its default profile when the controller reconnects (after sleep).
-if [ -x "$SHARE/desktop/shell/hearth-controller" ] && have busctl; then
+if [ -z "$HEARTH_SEAT" ] && [ -x "$SHARE/desktop/shell/hearth-controller" ] && have busctl; then
   python3 "$SHARE/desktop/shell/hearth-controller" watch >/dev/null 2>&1 &
   REMAP_PID=$!
   trap 'kill $REMAP_PID 2>/dev/null' EXIT
@@ -92,7 +108,7 @@ fi
 [ -f "$SHARE/desktop/theme/apply.sh" ] && sh "$SHARE/desktop/theme/apply.sh" >/dev/null 2>&1 &
 
 # The power limit you chose last time (a restart resets it on most handhelds).
-[ -x "$SHARE/desktop/shell/hearth-power" ] && (sleep 12; python3 "$SHARE/desktop/shell/hearth-power" restore) >/dev/null 2>&1 &
+[ -z "$HEARTH_SEAT" ] && [ -x "$SHARE/desktop/shell/hearth-power" ] && (sleep 12; python3 "$SHARE/desktop/shell/hearth-power" restore) >/dev/null 2>&1 &
 
 # Aloha Browser, Hearth's web browser: downloaded from alohabrowser.com once (it can't ship in the image),
 # then checked for updates weekly. Settings › System › Web browser can remove it or reinstall it.
@@ -123,6 +139,7 @@ settle() {
   return 0
 }
 reset_controllers() {
+  [ -n "$HEARTH_SEAT" ] && return 0     # multi-seat: InputPlumber is shared, only player 1 resets it
   have busctl || return 0
   for d in $(busctl --system --list tree org.shadowblip.InputPlumber 2>/dev/null | grep -o '/org/shadowblip/InputPlumber/CompositeDevice[0-9]*' | sort -u); do
     busctl --system set-property org.shadowblip.InputPlumber "$d" org.shadowblip.Input.CompositeDevice InterceptMode u 0 >/dev/null 2>&1
@@ -141,6 +158,7 @@ while :; do
   code=$?
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
+  [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game   # extra multi-seat players have Game Mode only
   case "$next" in
     game|desktop) log "switching to $next"; settle "$mode"; log "starting $next mode"; mode="$next" ;;
     *) log "$mode mode ended (code $code), leaving the session"; exit 0 ;;

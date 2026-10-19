@@ -1,0 +1,1621 @@
+#!/usr/bin/python3
+"""hearth-coop: Couch Co-op (experimental). Split-screen for 2-4 players on one screen, each player with their own
+controller and their own copy of the game, even for games that have no split-screen of their own (the idea behind
+PartyDeck and Nucleus Co-op). The copies find each other over the local network inside this PC, like a LAN party.
+
+  hearth-coop check                      what this system has (gamescope, labwc, bwrap, umu-run, Proton...)
+  hearth-coop pads                       controllers you can hand to players
+  hearth-coop wait-button [--timeout S] [--exclude id,...]
+                                         waits for someone to press a face button; prints which controller it was
+  hearth-coop games                      games that can be started in Couch Co-op, and why others can't
+  hearth-coop profiles                   the player names for seats 1-4
+  hearth-coop profile-set --seat N --name NAME
+  hearth-coop gbe-fetch                  downloads the Steam emulator ahead of time (start does it when needed)
+  hearth-coop start --game ID --players N --pads id1,id2[,...] [--layout auto|vertical|horizontal|grid]
+                    [--width W --height H] [--keyboard-seat N] [--exe PATH] [--stagger S] [--dry-run]
+  hearth-coop status                     the running session
+  hearth-coop stop                       stops every copy cleanly and tidies up
+
+Output: "progress: N text" lines (N = 0-100), then one JSON line. Problems: "error: <plain message>", exit 1.
+Layouts: "vertical" = side by side (split by a vertical line), "horizontal" = one above the other, "grid" = 2x2.
+
+How a session runs (see docs/COUCH-COOP.md):
+  * a nested labwc fills the screen (gamescope in Game Mode shows one window: this one);
+  * each player's copy runs in its own nested gamescope (-W/-H = the player's part of the screen), placed by
+    labwc window rules matched on a per-player app id, with a per-launch fallback rule;
+  * each copy runs in bubblewrap with a fresh /dev holding only that player's controller (evdev, js, hidraw),
+    an empty /run/udev, SDL_JOYSTICK_DISABLE_UDEV=1, its own HOME (and Wine prefix), and the real game folder
+    read-only; the game sees a per-player copy-on-write view of its folder (fuse-overlayfs, or a symlink view);
+  * Steam games get the Goldberg Steam emulator (gbe_fork) in that per-player view only, set to LAN.
+Never writes into the real game install or the real Steam folder.
+"""
+import hashlib
+import json
+import os
+import re
+import select
+import shlex
+import shutil
+import signal
+import struct
+import subprocess
+import sys
+import tarfile
+import time
+import urllib.request
+
+# ---------------------------------------------------------------------- constants
+
+# Goldberg Steam emulator, gbe_fork. Pinned: bump the tag (and fill in the sums) on purpose, after testing.
+GBE_REPO = 'Detanup01/gbe_fork'
+GBE_TAG = os.environ.get('HEARTH_COOP_GBE_TAG', 'release-2025_08_17')
+GBE_ASSETS = {'linux': 'emu-linux-release.tar.bz2', 'windows': 'emu-win-release.7z'}
+GBE_SHA256 = {}     # {'linux': '<sha256>', 'windows': '<sha256>'}; checked when present
+GBE_PORT = 47584
+STEAM_ID64_BASE = 76561197960265728
+SEAT_ACCOUNT_BASE = 1000000      # seat n plays as Steam account id 1000000 + n (stable, so saves stay with the seat)
+
+SKIP_APPS = {'228980', '250820', '1070560', '1391110', '1628350', '1493710', '1826330', '2180100', '2348590'}
+SKIP_NAMES = ('steamworks', 'proton', 'steam linux runtime', 'steamvr')
+STEAM_API = {'steam_api.dll', 'steam_api64.dll', 'libsteam_api.so'}
+# Files and folders that mean anti-cheat. Kernel/online anti-cheat refuses several copies and the emulator.
+ANTI_CHEAT = [
+    (re.compile(r'^easyanticheat'), 'EasyAntiCheat'), (re.compile(r'^eac_launcher'), 'EasyAntiCheat'),
+    (re.compile(r'^start_protected_game\.exe$'), 'EasyAntiCheat'),
+    (re.compile(r'^battleye$'), 'BattlEye'), (re.compile(r'^be(client|service|daemon)'), 'BattlEye'),
+    (re.compile(r'^eaanticheat'), 'EA Javelin'), (re.compile(r'^vgk|^vanguard'), 'Riot Vanguard'),
+    (re.compile(r'^gameguard$|^npgamemon'), 'nProtect GameGuard'), (re.compile(r'^xigncode'), 'XIGNCODE3'),
+    (re.compile(r'^pbsvc|^punkbuster$'), 'PunkBuster'), (re.compile(r'^mhyprot'), 'mhyprot'),
+    (re.compile(r'^anticheatexpert|^ace-'), 'Anti-Cheat Expert'), (re.compile(r'^equ8'), 'EQU8'),
+]
+BAD_EXE = re.compile(r'(unins|setup|install|redist|vcredist|vc_redist|dxsetup|directx|dotnet|crash|report|prereq|'
+                     r'easyanticheat|battleye|beservice|updater|patcher|cefprocess|helper|benchmark|dedicated|'
+                     r'server|editor|configtool|settings|touchup|cleanup|vc\d|oalinst|physx|_be$|ue4prereq|'
+                     r'unitycrash|notification|overlay|webview|browser)')
+# Devices a game may need besides controllers (bwrap gets a fresh /dev; these come back in).
+DEV_PASS = ['dri', 'nvidiactl', 'nvidia-modeset', 'nvidia-uvm', 'nvidia-uvm-tools', 'nvidia-caps', 'kfd', 'snd',
+            'ntsync', 'udmabuf', 'dma_heap']
+# Shared, read-mostly things a per-player HOME links back to the real home.
+HOME_LINKS = ['.local/share/Steam', '.steam', '.local/share/umu', '.cache/umu', '.local/share/vulkan',
+              '.config/MangoHud', '.local/share/fonts', '.fonts', '.config/fontconfig', '.icons', '.local/share/icons']
+# Variables of the outer gamescope / Hearth that must not reach the nested session.
+CONTAINER_UNSET = ['GAMESCOPE_WAYLAND_DISPLAY', 'ENABLE_GAMESCOPE_WSI', 'SDL_VIDEODRIVER', 'LABWC_PID',
+                   'STEAM_GAME', 'SteamAppId', 'SteamGameId', 'MANGOHUD', 'MANGOHUD_CONFIGFILE']
+# Variables the nested gamescope needs but the game inside it must not get.
+GAME_UNSET = ['WAYLAND_DISPLAY', 'SDL_VIDEODRIVER', 'SDL_APP_ID', 'SDL_VIDEO_WAYLAND_WMCLASS', 'SDL_VIDEO_X11_WMCLASS']
+IP_TARGET_NAMES = ('Microsoft X-Box 360 pad', 'Microsoft X-Box One', 'Microsoft Xbox', 'Sony Interactive Entertainment',
+                   'Steam Deck', 'Valve Software Steam Deck', 'Nintendo Switch Pro', 'InputPlumber')
+
+EV_KEY, EV_REL, EV_ABS = 1, 2, 3
+BTN_SOUTH, BTN_TRIGGER, BTN_LEFT = 0x130, 0x120, 0x110
+INPUT_PROP_ACCELEROMETER = 6
+EVENT = struct.Struct('llHHi')      # struct input_event (64-bit)
+
+
+class Fail(Exception):
+    pass
+
+
+# ---------------------------------------------------------------------- the outside world (faked in tests)
+
+class Runner:
+    """Every program this helper starts goes through here, so tests can swap in a fake."""
+
+    def which(self, name):
+        return shutil.which(name)
+
+    def run(self, argv, env=None, timeout=20, cwd=None):
+        try:
+            p = subprocess.run(argv, env=env, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                               timeout=timeout)
+            return p.returncode, p.stdout, p.stderr
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return 127, '', str(e)
+
+    def spawn(self, argv, env=None, cwd=None, log=None):
+        out = open(log, 'ab') if log else subprocess.DEVNULL
+        try:
+            p = subprocess.Popen(argv, env=env, cwd=cwd, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                                 start_new_session=True)
+        finally:
+            if log:
+                out.close()
+        return p.pid
+
+    def alive(self, pid):
+        if not pid:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        try:
+            with open('/proc/%d/stat' % pid) as f:
+                return f.read().rsplit(')', 1)[1].split()[0] != 'Z'
+        except (OSError, IndexError):
+            return True
+
+    def killpg(self, pgid, sig):
+        try:
+            os.killpg(pgid, sig)
+            return True
+        except (ProcessLookupError, PermissionError):
+            return False
+
+    def kill(self, pid, sig):
+        try:
+            os.kill(pid, sig)
+            return True
+        except (ProcessLookupError, PermissionError):
+            return False
+
+    def reap(self):
+        """Collects finished children (the container's instances), so they don't linger as zombies."""
+        try:
+            while True:
+                pid, _ = os.waitpid(-1, os.WNOHANG)
+                if pid == 0:
+                    return
+        except ChildProcessError:
+            return
+
+
+class Ctx:
+    def __init__(self, env=None, sys_root='/sys', proc_root='/proc', dev_root='/dev', runner=None, sleep=time.sleep,
+                 urlopen=urllib.request.urlopen, out=None, now=time.time, self_path=None, run_udev='/run/udev'):
+        self.env = dict(os.environ if env is None else env)
+        self.sys_root, self.proc_root, self.dev_root, self.run_udev = sys_root, proc_root, dev_root, run_udev
+        self.runner = runner or Runner()
+        self.sleep, self.urlopen, self.now = sleep, urlopen, now
+        self.out = out or sys.stdout
+        self.self_path = self_path or os.path.realpath(sys.argv[0] if sys.argv and sys.argv[0] else __file__)
+
+    @property
+    def home(self):
+        return self.env.get('HOME') or os.path.expanduser('~')
+
+    @property
+    def data_dir(self):
+        return os.path.join(self.env.get('XDG_DATA_HOME') or os.path.join(self.home, '.local', 'share'), 'nimbus')
+
+    @property
+    def coop_dir(self):
+        return os.path.join(self.data_dir, 'coop')
+
+    @property
+    def runtime_dir(self):
+        return self.env.get('XDG_RUNTIME_DIR') or '/tmp'
+
+    @property
+    def session_file(self):
+        return os.path.join(self.runtime_dir, 'hearth-coop.json')
+
+    def progress(self, n, text):
+        print('progress: %d %s' % (max(0, min(100, int(n))), text), file=self.out, flush=True)
+
+    def emit(self, obj):
+        print(json.dumps(obj), file=self.out, flush=True)
+
+
+# ---------------------------------------------------------------------- small helpers
+
+def read(path, default=''):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+def read_json(path, default=None):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def write_json(path, obj):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp%d' % os.getpid()
+    with open(tmp, 'w') as f:
+        json.dump(obj, f, indent=1)
+    os.replace(tmp, path)
+
+
+def safe_name(s):
+    return re.sub(r'[^A-Za-z0-9._-]', '_', s)[:120] or 'game'
+
+
+def norm(s):
+    return re.sub(r'[^a-z0-9]', '', (s or '').lower())
+
+
+def vdf_parse(text):
+    """Valve's KeyValues text format, enough for appmanifest and libraryfolders."""
+    tokens = re.findall(r'"((?:[^"\\]|\\.)*)"|([{}])', text)
+    root, stack, key = {}, [], None
+    cur = root
+    for s, brace in tokens:
+        if brace == '{':
+            new = {}
+            if key is not None:
+                cur[key] = new
+            stack.append(cur)
+            cur, key = new, None
+        elif brace == '}':
+            cur = stack.pop() if stack else root
+            key = None
+        elif key is None:
+            key = s.replace('\\\\', '\\')
+        else:
+            cur[key] = s.replace('\\\\', '\\')
+            key = None
+    return root
+
+
+def lower_keys(d):
+    return {k.lower(): (lower_keys(v) if isinstance(v, dict) else v) for k, v in d.items()} if isinstance(d, dict) else d
+
+
+def head_bytes(path, n=4096):
+    try:
+        with open(path, 'rb') as f:
+            return f.read(n)
+    except OSError:
+        return b''
+
+
+def elf_bits(path):
+    """32 or 64 for an ELF file, else None."""
+    h = head_bytes(path, 5)
+    return {1: 32, 2: 64}.get(h[4]) if len(h) == 5 and h[:4] == b'\x7fELF' else None
+
+
+def pe_info(path):
+    """(bits, [section names]) for a Windows exe/dll, or (None, [])."""
+    try:
+        with open(path, 'rb') as f:
+            mz = f.read(64)
+            if len(mz) < 64 or mz[:2] != b'MZ':
+                return None, []
+            off = struct.unpack_from('<I', mz, 0x3c)[0]
+            f.seek(off)
+            hdr = f.read(24)
+            if len(hdr) < 24 or hdr[:4] != b'PE\0\0':
+                return None, []
+            machine, nsec = struct.unpack_from('<HH', hdr, 4)
+            opt_size = struct.unpack_from('<H', hdr, 20)[0]
+            f.seek(off + 24 + opt_size)
+            names = []
+            for _ in range(min(nsec, 96)):
+                sec = f.read(40)
+                if len(sec) < 40:
+                    break
+                names.append(sec[:8].rstrip(b'\0').decode('latin-1'))
+            return {0x8664: 64, 0xaa64: 64, 0x14c: 32}.get(machine), names
+    except (OSError, struct.error):
+        return None, []
+
+
+# ---------------------------------------------------------------------- controllers
+
+def parse_bits(s):
+    """A /proc/bus/input/devices bitmap ("7cdb000000000000 0 0 0 0", most significant word first) as a set."""
+    out = set()
+    words = s.split()
+    for i, w in enumerate(reversed(words)):
+        try:
+            v = int(w, 16)
+        except ValueError:
+            continue
+        b = 0
+        while v:
+            if v & 1:
+                out.add(i * 64 + b)
+            v >>= 1
+            b += 1
+    return out
+
+
+def parse_input_devices(text):
+    devs = []
+    for block in re.split(r'\n\s*\n', text.strip()):
+        d = {'handlers': [], 'bits': {}}
+        for line in block.splitlines():
+            if len(line) < 3 or line[1] != ':':
+                continue
+            tag, rest = line[0], line[3:].strip()
+            if tag == 'I':
+                for kv in rest.split():
+                    if '=' in kv:
+                        k, v = kv.split('=', 1)
+                        d[k.lower()] = v.lower()
+            elif tag == 'N':
+                d['name'] = rest.split('=', 1)[1].strip('"') if '=' in rest else rest
+            elif tag in 'PSU' and '=' in rest:
+                k, v = rest.split('=', 1)
+                d[{'P': 'phys', 'S': 'sysfs', 'U': 'uniq'}[tag]] = v
+            elif tag == 'H':
+                d['handlers'] = rest.split('=', 1)[1].split() if '=' in rest else []
+            elif tag == 'B' and '=' in rest:
+                k, v = rest.split('=', 1)
+                d['bits'][k] = parse_bits(v)
+        if d.get('name') is not None:
+            devs.append(d)
+    return devs
+
+
+def is_gamepad(d):
+    name = d.get('name', '').lower()
+    if any(w in name for w in ('motion sensor', 'touchpad', ' imu', 'accelerometer', 'gyro')):
+        return False
+    if INPUT_PROP_ACCELEROMETER in d['bits'].get('PROP', set()):
+        return False
+    keys = d['bits'].get('KEY', set())
+    ev = d['bits'].get('EV', set())
+    has_buttons = BTN_SOUTH in keys or BTN_TRIGGER in keys
+    return (EV_ABS in ev and has_buttons) or any(h.startswith('js') for h in d['handlers'])
+
+
+def is_keyboard(d):
+    keys = d['bits'].get('KEY', set())
+    return EV_KEY in d['bits'].get('EV', set()) and all(k in keys for k in (16, 30, 44, 28)) and not is_gamepad(d)
+
+
+def is_mouse(d):
+    rel = d['bits'].get('REL', set())
+    return EV_REL in d['bits'].get('EV', set()) and 0 in rel and 1 in rel and BTN_LEFT in d['bits'].get('KEY', set())
+
+
+def inputplumber_running(ctx):
+    try:
+        names = os.listdir(ctx.proc_root)
+    except OSError:
+        return False
+    for n in names:
+        if n.isdigit() and read(os.path.join(ctx.proc_root, n, 'comm')).strip() == 'inputplumber':
+            return True
+    return False
+
+
+def _hid_parent(ctx, d):
+    p = os.path.join(ctx.sys_root, d.get('sysfs', '').lstrip('/'), 'device')
+    return os.path.realpath(p) if os.path.exists(p) else None
+
+
+def _hidraw(ctx, d):
+    p = os.path.join(ctx.sys_root, d.get('sysfs', '').lstrip('/'), 'device', 'hidraw')
+    try:
+        return sorted('/dev/' + n for n in os.listdir(p) if n.startswith('hidraw'))
+    except OSError:
+        return []
+
+
+def _usable_node(ctx, node):
+    """Can this user open /dev/input/<node>? InputPlumber hides the controllers it manages (moves or locks them)."""
+    p = os.path.join(ctx.dev_root, 'input', node)
+    return os.path.exists(p) and os.access(p, os.R_OK)
+
+
+def list_pads(ctx):
+    """Controllers, keyboards and mice. Heuristic for InputPlumber (documented in COUCH-COOP.md):
+      * a gamepad under /devices/virtual/ with no Phys, while InputPlumber runs and named like one of its targets
+        (Xbox 360 / Xbox / DualSense / Steam Deck pads, or "InputPlumber..."), is InputPlumber's
+        virtual controller: that's what games should get, so it is a usable pad (kind "inputplumber");
+      * a physical gamepad whose event node InputPlumber has hidden (gone from /dev/input, unreadable, or listed in
+        /dev/inputplumber/sources) is "managed": it is listed under "hidden", not handed to games (its input
+        already reaches the virtual pad);
+      * any other physical gamepad is used as it is (kind "physical"); other virtual pads are kind "virtual".
+    """
+    text = read(os.path.join(ctx.proc_root, 'bus', 'input', 'devices'))
+    devs = parse_input_devices(text)
+    ip = inputplumber_running(ctx)
+    ip_sources = set()
+    try:
+        ip_sources = set(os.listdir(os.path.join(ctx.dev_root, 'inputplumber', 'sources')))
+    except OSError:
+        pass
+    parents = {}
+    for d in devs:
+        par = _hid_parent(ctx, d)
+        if par:
+            parents.setdefault(par, []).append(d)
+    pads, hidden, keyboards, mice = [], [], [], []
+    for d in devs:
+        event = next((h for h in d['handlers'] if re.match(r'^event\d+$', h)), None)
+        if not event:
+            continue
+        if is_gamepad(d):
+            js = next((h for h in d['handlers'] if re.match(r'^js\d+$', h)), None)
+            # uinput/uhid devices live under /devices/virtual; Bluetooth LE pads do too (bluez uses uhid) but have a
+            # Phys (the adapter's address), which InputPlumber's targets don't.
+            virtual = d.get('sysfs', '').startswith('/devices/virtual/') and not d.get('phys')
+            name = d.get('name', 'Controller')
+            if virtual:
+                kind = 'inputplumber' if (name.startswith('InputPlumber') or (ip and name.startswith(IP_TARGET_NAMES))) else 'virtual'
+            else:
+                kind = 'physical'
+            nodes = ['/dev/input/' + event] + (['/dev/input/' + js] if js else [])
+            extra = []
+            par = _hid_parent(ctx, d)
+            for sib in parents.get(par, []) if par else []:
+                if sib is d:
+                    continue
+                for h in sib['handlers']:
+                    if re.match(r'^event\d+$', h):
+                        extra.append('/dev/input/' + h)
+            pad = {'id': event, 'name': name, 'kind': kind,
+                   'label': name + (' (InputPlumber)' if kind == 'inputplumber' else ''),
+                   'vendor': d.get('vendor', ''), 'product': d.get('product', ''), 'bus': d.get('bus', ''),
+                   'uniq': d.get('uniq', ''), 'event': '/dev/input/' + event, 'js': ('/dev/input/' + js) if js else None,
+                   'hidraw': _hidraw(ctx, d), 'extra': sorted(extra), 'nodes': nodes}
+            managed = kind == 'physical' and ip and (event in ip_sources or not _usable_node(ctx, event))
+            if managed:
+                pad['managedBy'] = 'inputplumber'
+                hidden.append(pad)
+            elif not _usable_node(ctx, event):
+                pad['why'] = "Hearth can't read this controller (no permission)."
+                hidden.append(pad)
+            else:
+                pads.append(pad)
+        elif is_keyboard(d):
+            keyboards.append({'id': event, 'name': d.get('name', ''), 'event': '/dev/input/' + event})
+        elif is_mouse(d):
+            mice.append({'id': event, 'name': d.get('name', ''), 'event': '/dev/input/' + event})
+    key = lambda p: int(re.sub(r'\D', '', p['id']) or 0)
+    return {'pads': sorted(pads, key=key), 'hidden': sorted(hidden, key=key), 'keyboards': keyboards, 'mice': mice,
+            'inputplumber': ip}
+
+
+def wait_button(ctx, timeout=10.0, exclude=()):
+    """The first controller (from list_pads) on which a face button / trigger button goes down."""
+    pads = [p for p in list_pads(ctx)['pads'] if p['id'] not in exclude]
+    fds = {}
+    for p in pads:
+        try:
+            fds[os.open(os.path.join(ctx.dev_root, 'input', p['id']), os.O_RDONLY | os.O_NONBLOCK)] = p
+        except OSError:
+            pass
+    if not fds:
+        raise Fail('No controllers to listen to. Connect a controller and try again.')
+    bufs = {fd: b'' for fd in fds}
+    end = ctx.now() + timeout
+    try:
+        while True:
+            left = end - ctx.now()
+            if left <= 0:
+                return None
+            ready, _, _ = select.select(list(fds), [], [], min(left, 0.5))
+            for fd in ready:
+                try:
+                    chunk = os.read(fd, EVENT.size * 64)
+                except BlockingIOError:
+                    continue
+                except OSError:
+                    chunk = b''
+                if not chunk:
+                    continue
+                bufs[fd] += chunk
+                while len(bufs[fd]) >= EVENT.size:
+                    _, _, typ, code, value = EVENT.unpack_from(bufs[fd])
+                    bufs[fd] = bufs[fd][EVENT.size:]
+                    if typ == EV_KEY and value == 1 and (BTN_TRIGGER <= code <= 0x13e):
+                        return fds[fd]
+    finally:
+        for fd in fds:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+# ---------------------------------------------------------------------- games
+
+def steam_root(home):
+    for p in ['.local/share/Steam', '.steam/steam', '.steam/root', '.var/app/com.valvesoftware.Steam/.local/share/Steam',
+              '.var/app/com.valvesoftware.Steam/data/Steam']:
+        full = os.path.join(home, p)
+        if os.path.isdir(os.path.join(full, 'steamapps')):
+            return os.path.realpath(full)
+    return None
+
+
+def steam_libraries(steam):
+    out = [steam]
+    kv = lower_keys(vdf_parse(read(os.path.join(steam, 'steamapps', 'libraryfolders.vdf'))))
+    for _, e in (kv.get('libraryfolders') or {}).items():
+        p = e.get('path') if isinstance(e, dict) else e
+        if p and os.path.isdir(p):
+            rp = os.path.realpath(p)
+            if rp not in out:
+                out.append(rp)
+    return out
+
+
+def steam_games(home):
+    steam = steam_root(home)
+    if not steam:
+        return []
+    games = []
+    for lib in steam_libraries(steam):
+        apps = os.path.join(lib, 'steamapps')
+        try:
+            names = sorted(os.listdir(apps))
+        except OSError:
+            continue
+        for n in names:
+            if not (n.startswith('appmanifest_') and n.endswith('.acf')):
+                continue
+            st = lower_keys(vdf_parse(read(os.path.join(apps, n)))).get('appstate') or {}
+            app, title, inst = st.get('appid', ''), (st.get('name') or '').strip(), st.get('installdir', '')
+            if not app or not title or not inst or app in SKIP_APPS or title.lower().startswith(SKIP_NAMES):
+                continue
+            try:
+                flags = int(st.get('stateflags', '0'))
+            except ValueError:
+                flags = 0
+            d = os.path.join(apps, 'common', inst)
+            if not flags & 4 or not os.path.isdir(d):
+                continue
+            games.append({'id': 'steam:' + app, 'title': title, 'source': 'steam', 'installDir': d, 'exe': None,
+                          'args': '', 'steamAppId': app})
+    return games
+
+
+def epic_games(ctx):
+    recs = read_json(os.path.join(ctx.data_dir, 'legendary', 'installed.json'), {}) or {}
+    out = []
+    for app, e in recs.items():
+        if not isinstance(e, dict) or e.get('is_dlc') or not e.get('install_path') or not os.path.isdir(e['install_path']):
+            continue
+        exe = os.path.join(e['install_path'], e['executable'].replace('\\', '/')) if e.get('executable') else None
+        out.append({'id': 'epic:' + app, 'title': e.get('title') or app, 'source': 'epic', 'installDir': e['install_path'],
+                    'exe': exe, 'args': e.get('launch_parameters') or '', 'steamAppId': None})
+    return out
+
+
+def gog_games(library):
+    out = []
+    for gid, d in (library.get('gogInstalls') or {}).items():
+        if not isinstance(d, str):
+            continue
+        info = read_json(os.path.join(d, 'goggame-%s.info' % gid))
+        if not info:
+            continue
+        tasks = info.get('playTasks') or []
+        task = next((t for t in tasks if t.get('isPrimary')), None) or next((t for t in tasks if t.get('type') == 'FileTask'), None)
+        if not task or not task.get('path'):
+            continue
+        out.append({'id': 'gog:' + gid, 'title': info.get('name') or gid, 'source': 'gog', 'installDir': d,
+                    'exe': os.path.join(d, task['path'].replace('\\', '/')), 'args': task.get('arguments') or '',
+                    'workDir': os.path.join(d, task['workingDir'].replace('\\', '/')) if task.get('workingDir') else None,
+                    'steamAppId': None})
+    return out
+
+
+def manual_games(library):
+    out = []
+    for m in library.get('manual') or []:
+        if not isinstance(m, dict) or not m.get('id') or not m.get('path'):
+            continue
+        out.append({'id': m['id'], 'title': m.get('title') or 'Game', 'source': 'manual',
+                    'installDir': os.path.dirname(m['path']), 'exe': m['path'], 'args': m.get('args') or '',
+                    'steamAppId': None})
+    return out
+
+
+def scan_tree(root, max_depth=5, max_entries=30000):
+    """[(relative path, is_dir)], breadth-limited: enough to find exes, steam_api and anti-cheat quickly."""
+    out, todo = [], [('', 0)]
+    while todo and len(out) < max_entries:
+        rel, depth = todo.pop(0)
+        try:
+            it = sorted(os.scandir(os.path.join(root, rel)), key=lambda e: e.name)
+        except OSError:
+            continue
+        for e in it:
+            r = os.path.join(rel, e.name) if rel else e.name
+            try:
+                is_dir = e.is_dir(follow_symlinks=False)
+            except OSError:
+                continue
+            out.append((r, is_dir))
+            if is_dir and depth + 1 < max_depth:
+                todo.append((r, depth + 1))
+    return out
+
+
+def anti_cheat(tree):
+    found = []
+    for rel, _ in tree:
+        base = os.path.basename(rel).lower()
+        for rx, label in ANTI_CHEAT:
+            if rx.search(base) and label not in found:
+                found.append(label)
+    return found
+
+
+def exe_score(rel, title, size):
+    base = os.path.basename(rel).lower()
+    stem = re.sub(r'\.(exe|x86_64|x86|sh|bin|elf)$', '', base)
+    score = 0
+    if BAD_EXE.search(stem):
+        score -= 100
+    t, s = norm(title), norm(stem.replace('-win64-shipping', '').replace('-linux-shipping', ''))
+    if s and t and (s in t or t in s):
+        score += 50
+    elif s and t and any(len(w) > 3 and w in s for w in re.findall(r'[a-z0-9]+', (title or '').lower())):
+        score += 20
+    if 'shipping' in base:
+        score += 30
+    if 'launcher' in base:
+        score -= 20
+    if 'binaries/win64' in rel.lower() or 'binaries/linux' in rel.lower():
+        score += 15
+    score -= 5 * rel.count('/')
+    score += min(30, size // (20 * 1024 * 1024))
+    return score
+
+
+def guess_exe(root, tree, title):
+    """(path, 'native'|'windows') of the most likely game program in a folder, or (None, None)."""
+    native, win = [], []
+    for rel, is_dir in tree:
+        if is_dir:
+            continue
+        full = os.path.join(root, rel)
+        low = rel.lower()
+        if low.endswith('.exe'):
+            win.append(rel)
+        elif not low.endswith(('.so', '.dll', '.txt', '.json', '.ini', '.cfg', '.pak', '.dat')) and '.so.' not in low:
+            if (low.endswith(('.x86_64', '.x86')) or elf_bits(full)) and os.access(full, os.X_OK):
+                native.append(rel)
+
+    def best(lst):
+        scored = []
+        for r in lst:
+            try:
+                size = os.path.getsize(os.path.join(root, r))
+            except OSError:
+                size = 0
+            scored.append((exe_score(r, title, size), r))
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        return scored[0] if scored and scored[0][0] > -50 else None
+    bn, bw = best(native), best(win)
+    if bn:
+        return os.path.join(root, bn[1]), 'native'
+    if bw:
+        return os.path.join(root, bw[1]), 'windows'
+    return None, None
+
+
+def broad_dirs(home):
+    return {os.path.realpath(p) for p in ('/', '/usr', '/usr/bin', '/usr/local/bin', '/bin', '/opt', '/home', '/var/home',
+                                          '/tmp', home or '/', os.path.join(home or '/', 'Desktop'),
+                                          os.path.join(home or '/', 'Downloads'))}
+
+
+def analyze(game, exe_override=None, home=None):
+    """How a game would run in Couch Co-op, and whether it can."""
+    g = dict(game)
+    root = g['installDir']
+    tree = [] if os.path.realpath(root) in broad_dirs(home) else scan_tree(root)
+    g['antiCheat'] = anti_cheat(tree)
+    g['steamApi'] = [rel for rel, d in tree if not d and os.path.basename(rel).lower() in STEAM_API]
+    exe = exe_override or g.get('exe')
+    guessed = False
+    if not exe:
+        exe, _ = guess_exe(root, tree, g['title'])
+        guessed = bool(exe)
+    g['exe'], g['exeGuessed'] = exe, guessed
+    notes = []
+    why = None
+    if exe and exe.lower().endswith('.exe'):
+        g['run'] = 'windows'
+    elif exe and exe.lower().endswith('.desktop'):
+        g['run'] = None
+        why = "This game starts through a shortcut (.desktop), which Couch Co-op can't split. Add the game's program instead."
+    elif exe:
+        g['run'] = 'native'
+    else:
+        g['run'] = None
+        why = "Couch Co-op couldn't find the game's program in its folder."
+    if exe and not why and not os.path.isfile(exe):
+        why = "The game's program is missing (%s). Is it still installed?" % os.path.basename(exe)
+    if exe and not why and os.path.realpath(root) in broad_dirs(home):
+        why = ("This game's program sits in a shared folder (%s), so Couch Co-op can't give each player their own "
+               "copy. Move the game into a folder of its own.") % root
+    g['launcher'] = {'windows': 'umu', 'native': 'direct'}.get(g['run'])
+    g['needsSteam'] = bool(g['steamApi'])
+    appid = g.get('steamAppId')
+    if not appid:
+        for rel, d in tree:
+            if not d and os.path.basename(rel).lower() == 'steam_appid.txt':
+                appid = read(os.path.join(root, rel)).strip() or None
+                break
+    g['steamAppId'] = appid if appid and appid.isdigit() else None
+    g['usesGoldberg'] = g['needsSteam'] and bool(g['steamAppId'])
+    if g['needsSteam'] and not g['steamAppId']:
+        notes.append("It uses Steam's API but Hearth doesn't know its Steam app id, so it may not start.")
+    drm = None
+    if exe and g['run'] == 'windows' and os.path.isfile(exe):
+        _, secs = pe_info(exe)
+        if '.bind' in secs:
+            drm = 'steamstub'
+    g['drm'] = drm
+    if g['antiCheat'] and not why:
+        why = ("%s uses anti-cheat (%s), which blocks running several copies at once and blocks the Steam emulator. "
+               "It can't be played in Couch Co-op.") % (g['title'], ', '.join(g['antiCheat']))
+    if drm and not why:
+        why = ("%s is wrapped in Steam's copy protection (SteamStub), so it only starts through Steam itself. "
+               "It can't be played in Couch Co-op.") % g['title']
+    if g['source'] == 'epic':
+        notes.append("Epic games that need Epic's online services (most online multiplayer) won't see each other.")
+    if g['source'] == 'gog':
+        notes.append("GOG Galaxy multiplayer doesn't work here; games with LAN play do.")
+    if g['source'] == 'steam' and not g['needsSteam']:
+        notes.append("This Steam game doesn't use Steam's API; it needs its own LAN play to connect the copies.")
+    if g['usesGoldberg']:
+        notes.append('Steam multiplayer is emulated over LAN between the copies (Goldberg).')
+    g['canPlay'] = why is None
+    g['why'] = why
+    g['notes'] = notes
+    return g
+
+
+def library_json(ctx):
+    return read_json(os.path.join(ctx.data_dir, 'library.json'), {}) or {}
+
+
+def all_games(ctx):
+    lib = library_json(ctx)
+    seen, out = set(), []
+    for g in steam_games(ctx.home) + epic_games(ctx) + gog_games(lib) + manual_games(lib):
+        if g['id'] in seen:
+            continue
+        seen.add(g['id'])
+        out.append(g)
+    return out
+
+
+def find_game(ctx, gid):
+    for g in all_games(ctx):
+        if g['id'] == gid:
+            return g
+    raise Fail("Couch Co-op can't find that game (%s). It may have been uninstalled." % gid)
+
+
+# ---------------------------------------------------------------------- system check, Proton, gbe
+
+def find_umu(ctx):
+    p = ctx.runner.which('umu-run')
+    if p:
+        return p
+    p = os.path.join(ctx.data_dir, 'tools', 'umu', 'umu-run')
+    return p if os.path.isfile(p) else None
+
+
+def proton_versions(ctx):
+    found = []
+    steam = steam_root(ctx.home)
+    dirs = []
+    if steam:
+        dirs.append(os.path.join(steam, 'compatibilitytools.d'))
+        for lib in steam_libraries(steam):
+            dirs.append(os.path.join(lib, 'steamapps', 'common'))
+    dirs += [os.path.join(ctx.home, '.local/share/Steam/compatibilitytools.d'), '/usr/share/steam/compatibilitytools.d']
+    seen = set()
+    for d in dirs:
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for n in names:
+            p = os.path.join(d, n)
+            rp = os.path.realpath(p)
+            if rp in seen or not os.path.isfile(os.path.join(p, 'proton')):
+                continue
+            seen.add(rp)
+            found.append({'name': n, 'path': p})
+
+    def rank(v):
+        n = v['name'].lower()
+        family = 2 if ('ge-proton' in n or 'umu-proton' in n) else (1 if n.startswith('proton') and 'experimental' not in n else 0)
+        nums = tuple(int(x) for x in re.findall(r'\d+', n)[:3])
+        return (family, nums)
+    found.sort(key=rank, reverse=True)
+    return found
+
+
+def gbe_dir(ctx):
+    return os.path.join(ctx.coop_dir, 'gbe', safe_name(GBE_TAG))
+
+
+def gbe_find(ctx, filename, bits):
+    """The emulator's copy of steam_api(64).dll / libsteam_api.so for 32 or 64 bit, from the cache."""
+    root = os.path.join(gbe_dir(ctx), 'linux' if filename.endswith('.so') else 'windows')
+    want = {64: ('x64', 'x86_64', '64'), 32: ('x32', 'x86', '32')}[bits]
+    best = None
+    for dp, _, files in os.walk(root):
+        for f in files:
+            if f.lower() != filename.lower():
+                continue
+            rel = os.path.relpath(os.path.join(dp, f), root).lower()
+            parts = rel.split(os.sep)
+            if any(x in rel for x in ('experimental', 'steamclient', 'debug', 'tools')):
+                continue
+            score = (2 if 'regular' in parts else 0) + (1 if any(w in parts for w in want) else 0)
+            if best is None or score > best[0]:
+                best = (score, os.path.join(dp, f))
+    return best[1] if best else None
+
+
+def gbe_cached(ctx):
+    d = gbe_dir(ctx)
+    return {k: os.path.isfile(os.path.join(d, k, '.done')) for k in GBE_ASSETS}
+
+
+def _seven_zip(ctx):
+    for n in ('7z', '7za', '7zz', 'bsdtar'):
+        p = ctx.runner.which(n)
+        if p:
+            return n, p
+    return None, None
+
+
+def safe_extract_tar(path, dest):
+    with tarfile.open(path) as t:
+        base = os.path.realpath(dest)
+        for m in t.getmembers():
+            target = os.path.realpath(os.path.join(dest, m.name))
+            if not (target == base or target.startswith(base + os.sep)) or m.issym() or m.islnk() or m.isdev():
+                raise Fail('The Steam emulator download looks damaged (unsafe file inside).')
+        if hasattr(tarfile, 'data_filter'):
+            t.extractall(dest, filter='data')
+        else:
+            t.extractall(dest)
+
+
+def gbe_fetch(ctx, kinds, base=0, span=30):
+    """Downloads and unpacks gbe_fork (pinned GBE_TAG) into the cache, for 'linux' and/or 'windows' games."""
+    have = gbe_cached(ctx)
+    todo = [k for k in kinds if not have.get(k)]
+    for i, kind in enumerate(todo):
+        asset = GBE_ASSETS[kind]
+        url = 'https://github.com/%s/releases/download/%s/%s' % (GBE_REPO, GBE_TAG, asset)
+        dest = os.path.join(gbe_dir(ctx), kind)
+        shutil.rmtree(dest, ignore_errors=True)
+        os.makedirs(dest, exist_ok=True)
+        arch = os.path.join(gbe_dir(ctx), asset)
+        if kind == 'windows' and not _seven_zip(ctx)[0]:
+            raise Fail('Unpacking the Steam emulator for Windows games needs 7-Zip, which is missing on this system.')
+        ctx.progress(base + span * i / max(1, len(todo)), 'Downloading the Steam emulator (%s games)' % kind.capitalize())
+        h = hashlib.sha256()
+        try:
+            with ctx.urlopen(urllib.request.Request(url, headers={'User-Agent': 'hearth-coop'}), timeout=60) as r, open(arch, 'wb') as f:
+                while True:
+                    chunk = r.read(1 << 16)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+                    f.write(chunk)
+        except Exception as e:  # noqa: BLE001 - any network problem gets the same plain message
+            raise Fail("Couldn't download the Steam emulator (%s). Check your internet connection and try again." % e)
+        want = GBE_SHA256.get(kind)
+        if want and h.hexdigest() != want:
+            os.unlink(arch)
+            raise Fail("The Steam emulator download didn't match what Hearth expects, so it wasn't used.")
+        ctx.progress(base + span * (i + 0.5) / max(1, len(todo)), 'Unpacking the Steam emulator')
+        if kind == 'linux':
+            try:
+                safe_extract_tar(arch, dest)
+            except tarfile.TarError:
+                raise Fail('The Steam emulator download is damaged. Try again.')
+        else:
+            tool, path = _seven_zip(ctx)
+            argv = [path, '-xf', arch, '-C', dest] if tool == 'bsdtar' else [path, 'x', '-y', '-o' + dest, arch]
+            rc, _, err = ctx.runner.run(argv, timeout=300)
+            if rc != 0:
+                raise Fail("Couldn't unpack the Steam emulator (%s)." % (err.strip().splitlines() or ['7-Zip failed'])[-1])
+        try:
+            os.unlink(arch)
+        except OSError:
+            pass
+        with open(os.path.join(dest, '.done'), 'w') as f:
+            json.dump({'tag': GBE_TAG, 'sha256': h.hexdigest(), 'at': int(ctx.now())}, f)
+    return gbe_cached(ctx)
+
+
+def gamescope_has_backend(ctx):
+    rc, out, err = ctx.runner.run(['gamescope', '--help'], timeout=10)
+    return '--backend' in (out + err)
+
+
+def check(ctx):
+    r = ctx.runner
+    tools = {n: r.which(n) for n in ('gamescope', 'labwc', 'bwrap', 'fuse-overlayfs', 'wlr-randr', 'xrandr', 'xdpyinfo')}
+    tools['fusermount'] = r.which('fusermount3') or r.which('fusermount')
+    tools['umu-run'] = find_umu(ctx)
+    tools['7z'] = _seven_zip(ctx)[1]
+    userns = read('/proc/sys/user/max_user_namespaces', '1').strip() != '0'
+    problems = []
+    for n, msg in (('gamescope', 'gamescope is missing.'), ('labwc', 'labwc is missing.'),
+                   ('bwrap', "bubblewrap (bwrap) is missing, so controllers can't be kept apart.")):
+        if not tools[n]:
+            problems.append(msg)
+    if not userns:
+        problems.append('User namespaces are turned off, so bubblewrap can\'t keep controllers apart.')
+    protons = proton_versions(ctx)
+    warnings = []
+    if not tools['umu-run']:
+        warnings.append("umu-run is missing: Windows games can't run in Couch Co-op.")
+    elif not protons:
+        warnings.append('No Proton found yet: play any Windows game once in Hearth, then Windows games work here.')
+    if not tools['fuse-overlayfs']:
+        warnings.append("fuse-overlayfs is missing: games that save into their own folder may fail.")
+    if not tools['7z']:
+        warnings.append("7-Zip is missing: Windows Steam games can't get the Steam emulator.")
+    return {'ready': not problems, 'problems': problems, 'warnings': warnings,
+            'tools': {k: bool(v) for k, v in tools.items()}, 'paths': {k: v for k, v in tools.items() if v},
+            'gamescopeBackend': bool(tools['gamescope']) and gamescope_has_backend(ctx),
+            'userNamespaces': userns, 'proton': protons,
+            'gbe': {'tag': GBE_TAG, 'cached': gbe_cached(ctx)}, 'inputplumber': inputplumber_running(ctx),
+            'maxPlayers': 4, 'experimental': True}
+
+
+# ---------------------------------------------------------------------- profiles
+
+def profiles(ctx):
+    data = read_json(os.path.join(ctx.coop_dir, 'profiles.json'), {}) or {}
+    saved = {p.get('seat'): p for p in data.get('players', []) if isinstance(p, dict)}
+    own = (library_json(ctx).get('profile') or {}).get('name')
+    out = []
+    for seat in range(1, 5):
+        default = own if (seat == 1 and own) else 'Player %d' % seat
+        out.append({'seat': seat, 'name': (saved.get(seat) or {}).get('name') or default})
+    return out
+
+
+def clean_name(name):
+    name = re.sub(r'[\x00-\x1f\x7f\[\]=;"\\]', '', name or '').strip()[:32]
+    if not name:
+        raise Fail('Type a name for the player.')
+    return name
+
+
+def profile_set(ctx, seat, name):
+    if seat not in (1, 2, 3, 4):
+        raise Fail('Seats are 1 to 4.')
+    players = profiles(ctx)
+    players[seat - 1]['name'] = clean_name(name)
+    write_json(os.path.join(ctx.coop_dir, 'profiles.json'), {'players': players})
+    return players
+
+
+# ---------------------------------------------------------------------- layout
+
+def screen_size(ctx, width=None, height=None):
+    if width and height:
+        return int(width), int(height)
+    env = dict(ctx.env)
+    if env.get('DISPLAY'):
+        rc, out, _ = ctx.runner.run(['xrandr', '--current'], env=env, timeout=5)
+        m = re.search(r'current (\d+) x (\d+)', out or '') if rc == 0 else None
+        if m:
+            return int(m.group(1)), int(m.group(2))
+        rc, out, _ = ctx.runner.run(['xdpyinfo'], env=env, timeout=5)
+        m = re.search(r'dimensions:\s+(\d+)x(\d+)', out or '') if rc == 0 else None
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    return 1280, 800
+
+
+def even(n):
+    return max(2, int(n) // 2 * 2)
+
+
+def layout_rects(w, h, n, layout='auto'):
+    """[{x, y, w, h}] per player. Sizes are even (gamescope likes that); 3 players use the 2x2 grid with a gap."""
+    if n < 1 or n > 4:
+        raise Fail('Couch Co-op is for 2 to 4 players.')
+    if n == 1:
+        return [{'x': 0, 'y': 0, 'w': even(w), 'h': even(h)}]
+    if layout not in ('auto', 'vertical', 'horizontal', 'grid'):
+        raise Fail('Unknown layout %r (use auto, vertical, horizontal or grid).' % layout)
+    if n == 2 and layout != 'grid':
+        side = layout == 'vertical' or (layout == 'auto' and w / float(h) >= 1.6 - 1e-9)
+        if side:
+            cw = even(w / 2)
+            return [{'x': 0, 'y': 0, 'w': cw, 'h': even(h)}, {'x': cw, 'y': 0, 'w': cw, 'h': even(h)}]
+        ch = even(h / 2)
+        return [{'x': 0, 'y': 0, 'w': even(w), 'h': ch}, {'x': 0, 'y': ch, 'w': even(w), 'h': ch}]
+    if n > 2 and layout in ('vertical', 'horizontal'):
+        if layout == 'vertical':
+            cw = even(w / n)
+            return [{'x': i * cw, 'y': 0, 'w': cw, 'h': even(h)} for i in range(n)]
+        ch = even(h / n)
+        return [{'x': 0, 'y': i * ch, 'w': even(w), 'h': ch} for i in range(n)]
+    cw, ch = even(w / 2), even(h / 2)
+    cells = [(0, 0), (cw, 0), (0, ch), (cw, ch)]
+    return [{'x': x, 'y': y, 'w': cw, 'h': ch} for x, y in cells[:n]]
+
+
+# ---------------------------------------------------------------------- per-player data
+
+def player_dir(ctx, seat):
+    return os.path.join(ctx.coop_dir, 'players', str(seat))
+
+
+def prepare_home(ctx, seat):
+    """A HOME of the player's own; shared tools (Steam, umu, Proton, Vulkan layers, fonts) link back to the real one."""
+    home = os.path.join(player_dir(ctx, seat), 'home')
+    for sub in ('.local/share', '.config', '.cache', '.local/state', 'Documents'):
+        os.makedirs(os.path.join(home, sub), exist_ok=True)
+    real = ctx.home
+    for rel in HOME_LINKS:
+        src, dst = os.path.join(real, rel), os.path.join(home, rel)
+        if not os.path.exists(src) or os.path.lexists(dst):
+            continue
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        os.symlink(src, dst)
+    return home
+
+
+def build_farm(src, dst):
+    """A per-player view of the game folder made of folders and symlinks (used when fuse-overlayfs is missing).
+    New files land in the view; existing files stay the originals' (read-only inside the sandbox)."""
+    for dp, dirs, files in os.walk(src):
+        rel = os.path.relpath(dp, src)
+        out = dst if rel == '.' else os.path.join(dst, rel)
+        os.makedirs(out, exist_ok=True)
+        for f in files:
+            t = os.path.join(out, f)
+            if not os.path.lexists(t):
+                os.symlink(os.path.join(dp, f), t)
+
+
+def real_copy(link):
+    if os.path.islink(link):
+        src = os.path.realpath(link)
+        os.unlink(link)
+        shutil.copy2(src, link)
+
+
+def mount_view(ctx, seat, game):
+    """The folder the player's copy runs from: a fuse-overlayfs over the real install (writes go to the player's
+    own layer), else a symlink view. Returns {'kind', 'path', 'mounted'}."""
+    base = os.path.join(player_dir(ctx, seat), 'games', safe_name(game['id']))
+    src = game['installDir']
+    fo = ctx.runner.which('fuse-overlayfs')
+    if fo:
+        upper, work, merged = (os.path.join(base, n) for n in ('upper', 'work', 'merged'))
+        for d in (upper, work, merged):
+            os.makedirs(d, exist_ok=True)
+        unmount(ctx, merged, quiet=True)
+        esc = lambda x: x.replace('\\', '\\\\').replace(',', '\\,').replace(':', '\\:')
+        opts = 'lowerdir=%s,upperdir=%s,workdir=%s' % (esc(src), esc(upper), esc(work))
+        rc, _, err = ctx.runner.run([fo, '-o', opts, merged], timeout=30)
+        if rc == 0:
+            return {'kind': 'overlay', 'path': merged, 'mounted': True}
+        sys.stderr.write('hearth-coop: fuse-overlayfs failed (%s); using a symlink view\n' % err.strip())
+    view = os.path.join(base, 'view')
+    build_farm(src, view)
+    return {'kind': 'symlinks', 'path': view, 'mounted': False}
+
+
+def unmount(ctx, path, quiet=False):
+    fm = ctx.runner.which('fusermount3') or ctx.runner.which('fusermount')
+    for argv in ([fm, '-u', '-z', path] if fm else None, ['umount', '-l', path]):
+        if argv and ctx.runner.run(argv, timeout=15)[0] == 0:
+            return True
+    return False
+
+
+def swap_steam_api(ctx, view, game, seat, name):
+    """Puts the emulator's steam_api in place of every copy in the player's view (never the real install), with
+    steam_settings: the player's name, a steam id of their own, LAN only."""
+    done = []
+    for rel in game['steamApi']:
+        target = os.path.join(view, rel)
+        base = os.path.basename(rel).lower()
+        orig = os.path.join(game['installDir'], rel)
+        bits = elf_bits(orig) if base.endswith('.so') else (pe_info(orig)[0] or (64 if '64' in base else 32))
+        src = gbe_find(ctx, os.path.basename(rel), bits or 64)
+        if not src:
+            raise Fail("The Steam emulator download doesn't have %s. Try again after an update." % os.path.basename(rel))
+        if os.path.lexists(target):
+            os.unlink(target)
+        shutil.copy2(src, target)
+        write_steam_settings(os.path.join(os.path.dirname(target), 'steam_settings'), game['steamAppId'], seat, name)
+        done.append(rel)
+    if done and game.get('exe'):
+        exe_dir = os.path.join(view, os.path.relpath(os.path.dirname(game['exe']), game['installDir']))
+        p = os.path.join(exe_dir, 'steam_appid.txt')
+        if os.path.isdir(exe_dir):
+            if os.path.lexists(p):
+                os.unlink(p)
+            with open(p, 'w') as f:
+                f.write(game['steamAppId'] + '\n')
+    return done
+
+
+def write_steam_settings(d, appid, seat, name):
+    os.makedirs(d, exist_ok=True)
+    files = {
+        'steam_appid.txt': appid + '\n',
+        'configs.user.ini': ('[user::general]\naccount_name=%s\naccount_steamid=%d\nlanguage=english\n'
+                             % (name, STEAM_ID64_BASE + SEAT_ACCOUNT_BASE + seat)),
+        'configs.main.ini': ('[main::connectivity]\ndisable_lan_only=0\ndisable_networking=0\nlisten_port=%d\noffline=0\n'
+                             % GBE_PORT),
+        'custom_broadcasts.txt': '127.0.0.1\n',
+        # The older Goldberg file names, for builds that still read them.
+        'force_account_name.txt': name + '\n',
+        'force_steamid.txt': '%d\n' % (STEAM_ID64_BASE + SEAT_ACCOUNT_BASE + seat),
+        'force_listen_port.txt': '%d\n' % GBE_PORT,
+    }
+    for fn, text in files.items():
+        p = os.path.join(d, fn)
+        if os.path.lexists(p):
+            os.unlink(p)
+        with open(p, 'w') as f:
+            f.write(text)
+
+
+# ---------------------------------------------------------------------- building the launch
+
+def dev_nodes(ctx):
+    """Device folders/nodes the sandbox passes through (GPU, sound, ntsync...)."""
+    out = []
+    try:
+        names = sorted(os.listdir(ctx.dev_root))
+    except OSError:
+        return out
+    for n in names:
+        if n in DEV_PASS or n.startswith('nvidia'):
+            out.append('/dev/' + n)
+    return out
+
+
+def bwrap_args(ctx, nodes, protect, cwd):
+    a = ['bwrap', '--dev-bind', '/', '/', '--dev', '/dev']
+    for d in dev_nodes(ctx):
+        a += ['--dev-bind', d, d]
+    a += ['--dir', '/dev/input']
+    for n in nodes:
+        a += ['--dev-bind', n, n]
+    if os.path.isdir(ctx.run_udev):
+        a += ['--tmpfs', '/run/udev']       # libudev then lists no devices: nothing to find the other pads by
+    for p in protect:
+        a += ['--ro-bind', p, p]
+    a += ['--unshare-pid', '--die-with-parent', '--chdir', cwd, '--']
+    return a
+
+
+def split_args(s):
+    try:
+        return shlex.split(s or '')
+    except ValueError:
+        return (s or '').split()
+
+
+def plan_player(ctx, seat, name, pad, rect, game, view, home, tools, keyboard_nodes):
+    rel_exe = os.path.relpath(game['exe'], game['installDir'])
+    exe = os.path.join(view['path'], rel_exe)
+    cwd = os.path.dirname(exe)
+    if game.get('workDir'):
+        cwd = os.path.join(view['path'], os.path.relpath(game['workDir'], game['installDir']))
+    args = split_args(game.get('args'))
+    env = {k: v for k, v in ctx.env.items() if k not in CONTAINER_UNSET}
+    pdir = player_dir(ctx, seat)
+    env.update({
+        'HOME': home, 'XDG_DATA_HOME': os.path.join(home, '.local/share'), 'XDG_CONFIG_HOME': os.path.join(home, '.config'),
+        'XDG_CACHE_HOME': os.path.join(home, '.cache'), 'XDG_STATE_HOME': os.path.join(home, '.local/state'),
+        # SDL: scan /dev/input instead of asking udev (udev would list every controller on the PC).
+        'SDL_JOYSTICK_DISABLE_UDEV': '1',
+        # The nested gamescope opens its window on the nested labwc, with an app id labwc's rules match.
+        'SDL_VIDEODRIVER': 'wayland', 'SDL_APP_ID': 'hearth-coop-p%d' % seat,
+        'SDL_VIDEO_WAYLAND_WMCLASS': 'hearth-coop-p%d' % seat, 'SDL_VIDEO_X11_WMCLASS': 'hearth-coop-p%d' % seat,
+        'HEARTH_COOP_SEAT': str(seat), 'HEARTH_COOP_PLAYER': name,
+    })
+    env.pop('DISPLAY', None)        # the outer gamescope's X server: not for the nested one
+    if game['run'] == 'windows':
+        prefix = os.path.join(pdir, 'prefixes', safe_name(game['id']))
+        os.makedirs(prefix, exist_ok=True)
+        env.update({'WINEPREFIX': prefix, 'PROTONPATH': tools['proton'], 'UMU_RUNTIME_UPDATE': '0',
+                    'GAMEID': ('umu-' + game['steamAppId']) if game.get('steamAppId') and game['source'] == 'steam' else '0',
+                    'STORE': {'steam': 'steam', 'epic': 'egs', 'gog': 'gog'}.get(game['source'], 'none'),
+                    'PROTON_VERB': 'waitforexitandrun'})
+        game_cmd = [tools['umu'], exe] + args
+    else:
+        game_cmd = [exe] + args
+    inner = ['env'] + [x for k in GAME_UNSET for x in ('-u', k)] + game_cmd
+    gs = ['gamescope'] + (['--backend', 'sdl'] if tools['backend'] else []) + \
+         ['-W', str(rect['w']), '-H', str(rect['h']), '-w', str(rect['w']), '-h', str(rect['h']), '--']
+    nodes = list(pad['nodes'] if pad else []) + list(pad.get('extra', []) if pad else []) + \
+        list(pad.get('hidraw', []) if pad else []) + list(keyboard_nodes)
+    protect = [game['installDir']]
+    steam = steam_root(ctx.home)
+    if steam:
+        protect += [p for p in (os.path.join(steam, 'userdata'), os.path.join(steam, 'config')) if os.path.isdir(p)]
+    argv = bwrap_args(ctx, nodes, protect, cwd) + gs + inner
+    return {'seat': seat, 'name': name, 'pad': pad['id'] if pad else 'kbm', 'padName': pad['name'] if pad else 'Keyboard and mouse',
+            'rect': rect, 'appId': 'hearth-coop-p%d' % seat, 'argv': argv, 'env': env, 'cwd': cwd, 'view': view,
+            'home': home, 'prefix': env.get('WINEPREFIX'), 'nodes': nodes, 'keyboard': bool(keyboard_nodes),
+            'pid': None, 'log': os.path.join(pdir, 'last-run.log')}
+
+
+def rc_xml(players, slot=None):
+    """labwc config for the container: no decorations, no gaps, each player's window placed by its app id; the
+    'gamescope*' rule is the fallback for gamescope builds that ignore the app id (rewritten before each launch)."""
+    def rule(ident, r):
+        return ('    <windowRule identifier="%s" serverDecoration="no" skipTaskbar="yes" ignoreFocusRequest="no">\n'
+                '      <action name="SetDecorations" decorations="none" />\n'
+                '      <action name="MoveTo" x="%d" y="%d" />\n'
+                '      <action name="ResizeTo" width="%d" height="%d" />\n'
+                '    </windowRule>\n') % (ident, r['x'], r['y'], r['w'], r['h'])
+    rules = ''.join(rule(p['appId'], p['rect']) for p in players)
+    if slot is not None:
+        rules += rule('gamescope*', slot)
+    return ('<?xml version="1.0"?>\n<labwc_config>\n'
+            '  <core><decoration>server</decoration><gap>0</gap></core>\n'
+            '  <placement><policy>automatic</policy></placement>\n'
+            '  <focus><followMouse>no</followMouse><raiseOnFocus>no</raiseOnFocus></focus>\n'
+            '  <keyboard>\n    <keybind key="W-Escape"><action name="Exit" /></keybind>\n  </keyboard>\n'
+            '  <windowRules>\n%s  </windowRules>\n</labwc_config>\n') % rules
+
+
+def container_env(ctx):
+    env = {k: v for k, v in ctx.env.items() if k not in CONTAINER_UNSET}
+    if ctx.env.get('GAMESCOPE_WAYLAND_DISPLAY') and ctx.env.get('DISPLAY'):
+        # In Game Mode: one X11 window in gamescope (gamescope's own Wayland socket isn't a full desktop).
+        env.pop('WAYLAND_DISPLAY', None)
+        env['WLR_BACKENDS'] = 'x11'
+    env['WLR_NO_HARDWARE_CURSORS'] = '1'
+    return env
+
+
+# ---------------------------------------------------------------------- session
+
+def load_session(ctx):
+    return read_json(ctx.session_file)
+
+
+def save_session(ctx, s):
+    write_json(ctx.session_file, s)
+
+
+def session_alive(ctx, s):
+    if not s:
+        return False
+    r = ctx.runner
+    return r.alive(s.get('labwcPid')) or r.alive(s.get('containerPid')) or any(r.alive(p.get('pid')) for p in s.get('players', []))
+
+
+def cleanup(ctx, s):
+    for p in (s or {}).get('players', []):
+        v = p.get('view') or {}
+        if v.get('mounted'):
+            unmount(ctx, v['path'])
+            v['mounted'] = False
+
+
+def stop_session(ctx, s, grace=5.0):
+    r = ctx.runner
+    groups = [p['pid'] for p in s.get('players', []) if p.get('pid')]
+    others = [x for x in (s.get('containerPid'), s.get('labwcPid')) if x]
+    for g in groups:
+        r.killpg(g, signal.SIGTERM)
+    end = ctx.now() + grace
+    while ctx.now() < end and any(r.alive(g) for g in groups):
+        r.reap()
+        ctx.sleep(0.25)
+    killed = 0
+    for g in groups:
+        if r.alive(g):
+            r.killpg(g, signal.SIGKILL)
+            killed += 1
+    for pid in others:
+        if pid != os.getpid():
+            r.kill(pid, signal.SIGTERM)
+            r.killpg(pid, signal.SIGTERM)
+    end = ctx.now() + grace
+    while ctx.now() < end and any(r.alive(x) for x in others if x != os.getpid()):
+        ctx.sleep(0.25)
+    for pid in others:
+        if pid != os.getpid() and r.alive(pid):
+            r.killpg(pid, signal.SIGKILL)
+            r.kill(pid, signal.SIGKILL)
+    cleanup(ctx, s)
+    try:
+        os.unlink(ctx.session_file)
+    except OSError:
+        pass
+    return {'stopped': True, 'forced': killed}
+
+
+def status(ctx):
+    s = load_session(ctx)
+    if not s:
+        return {'running': False}
+    alive = session_alive(ctx, s)
+    if not alive:
+        cleanup(ctx, s)
+        try:
+            os.unlink(ctx.session_file)
+        except OSError:
+            pass
+        return {'running': False, 'ended': True, 'game': s.get('game')}
+    return {'running': True, 'state': s.get('state'), 'game': s.get('game'), 'startedAt': s.get('startedAt'),
+            'layout': s.get('layout'), 'screen': s.get('screen'), 'containerPid': s.get('containerPid'),
+            'labwcPid': s.get('labwcPid'), 'error': s.get('error'),
+            'players': [{'seat': p['seat'], 'name': p['name'], 'pad': p['pad'], 'padName': p.get('padName'),
+                         'rect': p['rect'], 'pid': p.get('pid'), 'alive': ctx.runner.alive(p.get('pid'))}
+                        for p in s.get('players', [])]}
+
+
+def public_player(p):
+    return {k: p[k] for k in ('seat', 'name', 'pad', 'padName', 'rect', 'appId', 'pid', 'keyboard', 'home', 'prefix') if k in p} | \
+        {'view': p['view']['kind']}
+
+
+def start(ctx, a):
+    players = a['players']
+    if players < 2 or players > 4:
+        raise Fail('Couch Co-op is for 2 to 4 players.')
+    pad_ids = [x.strip() for x in (a.get('pads') or '').split(',') if x.strip()]
+    if len(pad_ids) != players:
+        raise Fail('Pick one controller for each of the %d players.' % players)
+    if len(set(pad_ids)) != len(pad_ids):
+        raise Fail('Each player needs their own controller.')
+    if pad_ids.count('kbm') > 1:
+        raise Fail('Only one player can use the keyboard and mouse.')
+    old = load_session(ctx)
+    if old and session_alive(ctx, old):
+        raise Fail('Couch Co-op is already running. Stop it first.')
+    if old:
+        cleanup(ctx, old)
+    ctx.progress(2, 'Checking this system')
+    r = ctx.runner
+    for tool, msg in (('gamescope', 'gamescope'), ('labwc', 'labwc'), ('bwrap', 'bubblewrap (bwrap)')):
+        if not r.which(tool):
+            raise Fail("Couch Co-op needs %s, which isn't installed." % msg)
+    found = list_pads(ctx)
+    by_id = {p['id']: p for p in found['pads']}
+    chosen = []
+    for pid in pad_ids:
+        if pid == 'kbm':
+            chosen.append(None)
+        elif pid in by_id:
+            chosen.append(by_id[pid])
+        else:
+            raise Fail('A chosen controller (%s) is no longer connected. Pick controllers again.' % pid)
+    ctx.progress(5, 'Looking at the game')
+    game = analyze(find_game(ctx, a['game']), a.get('exe'), ctx.home)
+    if not game['canPlay']:
+        raise Fail(game['why'])
+    tools = {'backend': gamescope_has_backend(ctx), 'umu': None, 'proton': None}
+    if game['run'] == 'windows':
+        tools['umu'] = find_umu(ctx)
+        if not tools['umu']:
+            raise Fail("Windows games need umu-launcher, which isn't installed.")
+        pv = proton_versions(ctx)
+        if not pv:
+            raise Fail('No Proton yet. Start any Windows game once in Hearth (that fetches Proton), then try again.')
+        tools['proton'] = pv[0]['path']
+    if game['usesGoldberg']:
+        kinds = sorted({'linux' if rel.lower().endswith('.so') else 'windows' for rel in game['steamApi']})
+        gbe_fetch(ctx, kinds, base=8, span=25)
+    w, h = screen_size(ctx, a.get('width'), a.get('height'))
+    rects = layout_rects(w, h, players, a.get('layout') or 'auto')
+    names = profiles(ctx)
+    kb_seat = a.get('keyboard_seat', 1)
+    if 'kbm' in pad_ids:
+        kb_seat = pad_ids.index('kbm') + 1
+    kb_nodes = [k['event'] for k in found['keyboards'] + found['mice']]
+    plan = []
+    try:
+        for i in range(players):
+            seat = i + 1
+            ctx.progress(35 + 40 * i / players, 'Getting player %d ready' % seat)
+            name = names[i]['name']
+            home = prepare_home(ctx, seat)
+            view = {'kind': 'direct', 'path': game['installDir'], 'mounted': False}
+            if not a.get('dry_run'):
+                view = mount_view(ctx, seat, game)
+                if view['kind'] == 'symlinks' and game['run'] == 'native':
+                    # Native games find their files from /proc/self/exe, which sees through symlinks: copy the exe.
+                    real_copy(os.path.join(view['path'], os.path.relpath(game['exe'], game['installDir'])))
+                if game['usesGoldberg']:
+                    swap_steam_api(ctx, view['path'], game, seat, name)
+            plan.append(plan_player(ctx, seat, name, chosen[i], rects[i], game, view, home, tools,
+                                    kb_nodes if seat == kb_seat else []))
+    except Exception:
+        cleanup(ctx, {'players': plan})
+        raise
+    # The keyboard player's window opens last, so labwc gives it keyboard focus.
+    order = [p['seat'] for p in plan if not p['keyboard']] + [p['seat'] for p in plan if p['keyboard']]
+    run_dir = os.path.join(ctx.runtime_dir, 'hearth-coop')
+    session = {'state': 'starting', 'startedAt': int(ctx.now() * 1000),
+               'game': {'id': game['id'], 'title': game['title'], 'run': game['run'], 'usesGoldberg': game['usesGoldberg']},
+               'layout': a.get('layout') or 'auto', 'screen': {'w': w, 'h': h}, 'order': order, 'runDir': run_dir,
+               'stagger': a.get('stagger', 4.0), 'players': plan, 'containerPid': None, 'labwcPid': None}
+    if a.get('dry_run'):
+        return {'dryRun': True, 'session': session}
+    os.makedirs(run_dir, exist_ok=True)
+    with open(os.path.join(run_dir, 'rc.xml'), 'w') as f:
+        f.write(rc_xml(plan))
+    with open(os.path.join(run_dir, 'autostart'), 'w') as f:
+        f.write('exec %s %s _container --session %s\n' % (shlex.quote(sys.executable or '/usr/bin/python3'),
+                                                          shlex.quote(ctx.self_path), shlex.quote(ctx.session_file)))
+    save_session(ctx, session)
+    ctx.progress(80, 'Opening the split screen')
+    # From here on only the container writes the session file (it adds labwc's pid and the players' pids).
+    labwc = r.spawn(['labwc', '-C', run_dir], env=container_env(ctx), log=os.path.join(run_dir, 'labwc.log'))
+    session['labwcPid'] = labwc
+    ctx.progress(85, 'Starting the players')
+    end = ctx.now() + 30 + session['stagger'] * players
+    while ctx.now() < end:
+        s = load_session(ctx) or session
+        s['labwcPid'] = s.get('labwcPid') or labwc
+        if s.get('state') == 'running':
+            session = s
+            break
+        if s.get('state') == 'failed' or not r.alive(labwc):
+            stop_session(ctx, s, grace=2)
+            raise Fail(s.get('error') or "The split screen didn't open (labwc stopped). See %s/labwc.log." % run_dir)
+        ctx.sleep(0.5)
+    else:
+        stop_session(ctx, load_session(ctx) or session, grace=2)
+        raise Fail("The players didn't start in time.")
+    ctx.progress(100, 'Playing')
+    return {'started': True, 'game': session['game'], 'screen': session['screen'], 'layout': session['layout'],
+            'labwcPid': session['labwcPid'], 'containerPid': session.get('containerPid'),
+            'players': [public_player(p) for p in session['players']]}
+
+
+def set_output_size(ctx, w, h):
+    rc, out, _ = ctx.runner.run(['wlr-randr'], timeout=5)
+    names = [l.split()[0] for l in (out or '').splitlines() if l and not l[0].isspace()]
+    if names:
+        ctx.runner.run(['wlr-randr', '--output', names[0], '--custom-mode', '%dx%d' % (w, h)], timeout=5)
+
+
+def container(ctx, session_path, poll=1.0):
+    """Runs inside the nested labwc (its autostart): starts each player's copy, waits, tidies up at the end."""
+    s = read_json(session_path)
+    if not s:
+        return 1
+    r = ctx.runner
+    s['containerPid'] = os.getpid()
+    labwc = int(ctx.env.get('LABWC_PID') or s.get('labwcPid') or 0)
+    s['labwcPid'] = labwc or None
+    write_json(session_path, s)
+    stopping = {'now': False}
+
+    def on_term(signum, frame):
+        stopping['now'] = True
+    try:
+        signal.signal(signal.SIGTERM, on_term)
+        signal.signal(signal.SIGHUP, on_term)
+    except ValueError:
+        pass
+    set_output_size(ctx, s['screen']['w'], s['screen']['h'])
+    by_seat = {p['seat']: p for p in s['players']}
+    rc_path = os.path.join(s['runDir'], 'rc.xml')
+    try:
+        for i, seat in enumerate(s['order']):
+            if stopping['now']:
+                break
+            p = by_seat[seat]
+            with open(rc_path, 'w') as f:
+                f.write(rc_xml(s['players'], slot=p['rect']))
+            if labwc:
+                r.kill(labwc, signal.SIGHUP)        # labwc re-reads rc.xml
+            env = dict(p['env'])
+            for k in ('WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR'):     # the nested labwc's socket, not gamescope's
+                if ctx.env.get(k):
+                    env[k] = ctx.env[k]
+            p['pid'] = r.spawn(p['argv'], env=env, cwd=p['cwd'], log=p['log'])
+            write_json(session_path, s)
+            if i < len(s['order']) - 1:
+                ctx.sleep(s.get('stagger', 4.0))
+        s['state'] = 'running'
+        write_json(session_path, s)
+    except Exception as e:  # noqa: BLE001
+        s['state'], s['error'] = 'failed', "A player's game couldn't start: %s" % e
+        write_json(session_path, s)
+    while not stopping['now'] and any(r.alive(p.get('pid')) for p in s['players']):
+        r.reap()
+        ctx.sleep(poll)
+    # Everyone has quit (or Stop was pressed): stop the rest, unmount, close labwc.
+    cur = read_json(session_path) or s
+    cur['containerPid'] = None
+    stop_session(ctx, cur, grace=5)
+    if labwc:
+        r.kill(labwc, signal.SIGTERM)
+    return 0
+
+
+# ---------------------------------------------------------------------- command line
+
+def parse_opts(argv, spec):
+    """--key value / --flag options; spec maps option name to type (int, float, str, bool)."""
+    out, i = {}, 0
+    while i < len(argv):
+        k = argv[i]
+        if not k.startswith('--') or k[2:] not in spec:
+            raise Fail('Unknown option %s.' % k)
+        name, typ = k[2:], spec[k[2:]]
+        if typ is bool:
+            out[name.replace('-', '_')] = True
+            i += 1
+            continue
+        if i + 1 >= len(argv):
+            raise Fail('%s needs a value.' % k)
+        try:
+            out[name.replace('-', '_')] = typ(argv[i + 1])
+        except ValueError:
+            raise Fail('%s: %r is not a valid value.' % (k, argv[i + 1]))
+        i += 2
+    return out
+
+
+def main(argv=None, ctx=None):
+    argv = sys.argv[1:] if argv is None else argv
+    ctx = ctx or Ctx()
+    cmd = argv[0] if argv else ''
+    rest = argv[1:]
+    try:
+        if cmd == 'check':
+            ctx.emit(check(ctx))
+        elif cmd == 'pads':
+            ctx.emit(list_pads(ctx))
+        elif cmd == 'wait-button':
+            o = parse_opts(rest, {'timeout': float, 'exclude': str})
+            p = wait_button(ctx, o.get('timeout', 10.0), [x for x in o.get('exclude', '').split(',') if x])
+            ctx.emit({'pad': p})
+        elif cmd == 'games':
+            games = []
+            lst = all_games(ctx)
+            for i, g in enumerate(lst):
+                ctx.progress(100 * i / max(1, len(lst)), 'Looking at ' + g['title'])
+                games.append(analyze(g, home=ctx.home))
+            games.sort(key=lambda g: (not g['canPlay'], g['title'].lower()))
+            ctx.emit({'games': games})
+        elif cmd == 'profiles':
+            ctx.emit({'players': profiles(ctx)})
+        elif cmd == 'profile-set':
+            o = parse_opts(rest, {'seat': int, 'name': str})
+            ctx.emit({'players': profile_set(ctx, o.get('seat', 0), o.get('name', ''))})
+        elif cmd == 'gbe-fetch':
+            o = parse_opts(rest, {'kind': str})
+            kinds = [o['kind']] if o.get('kind') in GBE_ASSETS else list(GBE_ASSETS)
+            ctx.emit({'tag': GBE_TAG, 'cached': gbe_fetch(ctx, kinds, 0, 100)})
+        elif cmd == 'start':
+            o = parse_opts(rest, {'game': str, 'players': int, 'pads': str, 'layout': str, 'width': int, 'height': int,
+                                  'keyboard-seat': int, 'exe': str, 'stagger': float, 'dry-run': bool})
+            if not o.get('game'):
+                raise Fail('Pick a game first.')
+            o.setdefault('players', len([x for x in o.get('pads', '').split(',') if x]))
+            ctx.emit(start(ctx, o))
+        elif cmd == 'status':
+            ctx.emit(status(ctx))
+        elif cmd == 'stop':
+            s = load_session(ctx)
+            ctx.emit(stop_session(ctx, s) if s else {'stopped': False, 'running': False})
+        elif cmd == '_container':
+            o = parse_opts(rest, {'session': str})
+            return container(ctx, o.get('session') or ctx.session_file)
+        else:
+            raise Fail('usage: hearth-coop check|pads|wait-button|games|profiles|profile-set|gbe-fetch|start|status|stop')
+    except Fail as e:
+        print('error: %s' % e, file=ctx.out, flush=True)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

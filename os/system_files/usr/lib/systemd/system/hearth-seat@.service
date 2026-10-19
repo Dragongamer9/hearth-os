@@ -1,0 +1,38 @@
+# Hearth multi-seat (experimental): an extra player's Game Mode, as that player's own account (%i is
+# hearth-p2, hearth-p3 or hearth-p4). Set up, turned on and off by `hearth-seats` / `hearth-admin seats-*`;
+# see docs/MULTI-SEAT.md.
+#
+# A graphics card per player: enabled directly (starts at boot) and drives that player's card.
+# One card, several screens: started by hearth-seat@%i.path once player 1's Game Mode has opened this
+# player's screen (/run/hearth-seats/%i/wayland-0); the session ends when that screen goes away.
+[Unit]
+Description=Hearth multi-seat: Game Mode for %i
+# Only accounts multi-seat set up (hearth-admin writes this file; nothing else can start one).
+ConditionPathExists=/etc/hearth/seats/%i.env
+After=systemd-user-sessions.service systemd-logind.service display-manager.service
+StartLimitIntervalSec=300
+StartLimitBurst=6
+
+[Service]
+Type=simple
+User=%i
+# Opens a real logind session for the player (no seat: logind can't split a card or a set of screens), which
+# gives it /run/user/UID, its user services and D-Bus, like signing in.
+PAMName=hearth-seat
+EnvironmentFile=/etc/hearth/seats/%i.env
+Environment=XDG_SESSION_TYPE=wayland XDG_SESSION_CLASS=user XDG_SESSION_DESKTOP=nimbus XDG_CURRENT_DESKTOP=Nimbus
+WorkingDirectory=~
+ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-seats session
+Restart=on-failure
+RestartSec=5
+# Ending the session ends everything the player started (Steam, games).
+KillMode=control-group
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hearth-seat-%i
+# Behind player 1: never let a player's game starve the main player's.
+Nice=1
+
+[Install]
+WantedBy=graphical.target
