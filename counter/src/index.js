@@ -5,6 +5,10 @@
 //   GET  /v1/stats  {"now": n, "today": n, "month": n, "kinds": {...}, "updated": ms}
 //                   now = seen in the last 15 minutes, today = 24 hours, month = 30 days.
 //
+//   POST /v1/logs   (text) Settings › System › "Send logs": a bug report's logs (personal details already taken
+//                   out on the device). Answers {"code": "ABCD-EFGH-JK"}; kept 14 days.
+//   GET  /v1/logs/<code>  the logs, as text, for whoever has the code (the person shows it to the developer).
+//
 // Stored per install: the random id, its kind, its version, when it was first and last seen. No IP
 // addresses, names or anything else. Rows not seen for 40 days are deleted every day.
 
@@ -18,6 +22,8 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
     if (url.pathname === '/v1/ping' && req.method === 'POST') return ping(req, env);
     if (url.pathname === '/v1/stats' && req.method === 'GET') return stats(req, env, ctx);
+    if (url.pathname === '/v1/logs' && req.method === 'POST') return putLogs(req, env);
+    if (url.pathname.startsWith('/v1/logs/') && req.method === 'GET') return getLogs(url, env);
     if (url.pathname === '/') return json({ service: 'Hearth OS player counter', stats: '/v1/stats' });
     return json({ error: 'not found' }, 404);
   },
@@ -25,6 +31,7 @@ export default {
   // Daily: forget installs not seen for 40 days.
   async scheduled(_event, env) {
     await env.DB.prepare('DELETE FROM pings WHERE last < ?').bind(Date.now() - 40 * 864e5).run();
+    await env.DB.prepare('DELETE FROM logs WHERE created < ?').bind(Date.now() - 14 * 864e5).run();
   },
 };
 
@@ -65,4 +72,38 @@ async function stats(req, env, ctx) {
   const res = json(out, 200, { 'cache-control': 'public, max-age=60' });
   ctx.waitUntil(cache.put(key, res.clone()));
   return res;
+}
+
+// ---------------------------------------------------------------- bug-report logs
+const MAX_LOG = 1800000;                       // D1 keeps rows up to about 2 MB
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O or 1/I to mix up
+
+function newCode() {
+  const b = new Uint8Array(10); crypto.getRandomValues(b);
+  const c = [...b].map(x => CODE_CHARS[x % CODE_CHARS.length]).join('');
+  return `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}`;
+}
+
+async function putLogs(req, env) {
+  const len = Number(req.headers.get('content-length') || 0);
+  if (len > MAX_LOG) return json({ error: 'too big' }, 413);
+  const body = await req.text();
+  if (!body || body.length > MAX_LOG) return json({ error: body ? 'too big' : 'empty' }, body ? 413 : 400);
+  if (!body.startsWith('Hearth logs')) return json({ error: 'not a Hearth log' }, 400);
+  const ver = String(req.headers.get('x-hearth-version') || '').slice(0, 20).replace(/[^\w.+-]/g, '');
+  const kind = KINDS.has(req.headers.get('x-hearth-kind')) ? req.headers.get('x-hearth-kind') : 'other';
+  // At most 20 a day from everyone together would already be a lot for a beta: refuse floods.
+  const recent = await env.DB.prepare('SELECT COUNT(*) AS n FROM logs WHERE created > ?').bind(Date.now() - 3600e3).first();
+  if (recent && recent.n > 60) return json({ error: 'busy, try again later' }, 429);
+  const code = newCode();
+  await env.DB.prepare('INSERT INTO logs (code, created, version, kind, body) VALUES (?, ?, ?, ?, ?)').bind(code, Date.now(), ver, kind, body).run();
+  return json({ code });
+}
+
+async function getLogs(url, env) {
+  const code = decodeURIComponent(url.pathname.slice('/v1/logs/'.length)).toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{2}$/.test(code)) return json({ error: 'bad code' }, 400);
+  const row = await env.DB.prepare('SELECT body FROM logs WHERE code = ?').bind(code).first();
+  if (!row) return json({ error: 'not found (logs are kept 14 days)' }, 404);
+  return new Response(row.body, { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...CORS } });
 }

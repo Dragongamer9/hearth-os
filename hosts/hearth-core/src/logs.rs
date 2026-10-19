@@ -1,5 +1,7 @@
 //! Settings › System › Send logs: everything useful for a bug report in one text file, with personal details
-//! taken out, saved in the home folder and on any USB drive or SD card that's plugged in. Nothing leaves the device.
+//! taken out, saved in the home folder and on any USB drive or SD card that's plugged in, and (Send) sent to
+//! Hearth OS's own bug-report service (the player counter's server), which answers with a short code: the
+//! person shares the code or link with the developer, who reads the logs with it. Kept there 14 days.
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -89,6 +91,39 @@ pub fn send(version: &str) -> Result<Value, String> {
         }
     }
     Ok(json!({"path": file.to_string_lossy(), "copies": copies}))
+}
+
+/// Hearth OS's bug-report service (the same server as the player counter).
+pub const SERVICE: &str = "https://hearth-counter.game305-cl.workers.dev";
+const MAX_SEND: usize = 1_750_000;
+
+/// Saves (as above) and sends: {path, copies, code, url}. Too-long logs lose your session's journal first, then
+/// their oldest lines.
+pub fn send_to_developer(version: &str, kind: &str) -> Result<Value, String> {
+    let mut out = send(version)?;
+    let path = out["path"].as_str().unwrap_or("").to_string();
+    let mut text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    if text.len() > MAX_SEND {
+        if let Some(i) = text.find("\n===== Your session's journal") { text.truncate(i); text.push_str("\n[your session's journal left out: too long]\n"); }
+    }
+    if text.len() > MAX_SEND {
+        let mut cut = text.len() - MAX_SEND;
+        while !text.is_char_boundary(cut) { cut += 1; }
+        let head_end = text.find("\n===== Hearth log").unwrap_or(0);
+        if cut > head_end { text = format!("{}\n[… older lines left out …]\n{}", &text[..head_end], &text[head_end + (cut - head_end)..]); }
+    }
+    let tmp = std::env::temp_dir().join(format!("hearth-send-{}.txt", std::process::id()));
+    std::fs::write(&tmp, &text).map_err(|e| e.to_string())?;
+    let r = crate::system::run_timeout("curl", &["-sS", "-m", "60", "-X", "POST", "-H", "Content-Type: text/plain; charset=utf-8",
+        "-H", &format!("X-Hearth-Version: {version}"), "-H", &format!("X-Hearth-Kind: {kind}"),
+        "--data-binary", &format!("@{}", tmp.to_string_lossy()), &format!("{SERVICE}/v1/logs")], Duration::from_secs(70));
+    let _ = std::fs::remove_file(&tmp);
+    let reply: Value = r.ok().and_then(|t| serde_json::from_str(t.trim()).ok()).unwrap_or(Value::Null);
+    let code = reply["code"].as_str().ok_or_else(|| format!("Saved to {path}, but sending didn't work{}. Check the internet connection and try again.",
+        reply["error"].as_str().map(|e| format!(" ({e})")).unwrap_or_default()))?;
+    out["code"] = json!(code);
+    out["url"] = json!(format!("{SERVICE}/v1/logs/{code}"));
+    Ok(out)
 }
 
 #[cfg(test)]
