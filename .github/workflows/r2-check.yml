@@ -1,0 +1,29 @@
+# Checks the download site (Cloudflare R2) works: uploads a tiny test file with the R2_* secrets and reads it
+# back from the public address. Manual: Actions › Download site check › Run workflow.
+name: Download site check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload a test file and read it back
+        run: |
+          set -euo pipefail
+          for s in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do [ -n "${!s}" ] || { echo "::error title=r2::the $s secret is missing"; exit 1; }; done
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" AWS_DEFAULT_REGION=auto
+          export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+          echo "hearth $(date -u +%FT%TZ)" > check.txt
+          aws s3 --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" cp check.txt s3://hearth-os/check.txt --content-type text/plain \
+            || { echo "::error title=r2::upload failed: check the token has Object Read & Write on the hearth-os bucket, and the account ID"; exit 1; }
+          sleep 3
+          got=$(curl -fsS https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/check.txt) \
+            || { echo "::error title=r2::uploaded, but the public address doesn't serve it: turn on the r2.dev public access for the bucket"; exit 1; }
+          [ "$got" = "$(cat check.txt)" ] && echo "::notice title=r2::the download site works"

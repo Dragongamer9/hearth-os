@@ -1,12 +1,11 @@
 # Builds the Hearth live ISO: boots from a USB stick into Hearth (Desktop Mode) so you can try it, with a
 # welcome card and an "Install Hearth" installer. Same idea and tool as Bazzite's live ISO (Titanoboa).
 # Manual only (Actions › Hearth live ISO › Run workflow). The ISO is kept as a download on the run for 14 days
-# (GitHub releases can't hold files over 2 GB) and, when the SourceForge secrets are set, uploaded to
-# https://sourceforge.net/projects/<SF_PROJECT>/files/<version>/ (what the website's Download button points at).
-#   Secrets (Settings › Secrets and variables › Actions): SF_USER (your SourceForge user name),
-#   SF_SSH_KEY (private key whose public half is in SourceForge › Account › SSH Settings),
-#   SF_PROJECT (project's short name, e.g. hearth-os), optional SF_API_KEY (makes the new ISO the default download). Installing needs internet: it downloads the current Hearth
-# image, so a fresh install is always up to date.
+# (GitHub releases can't hold files over 2 GB) and uploaded to Hearth's Cloudflare R2 bucket under a fixed name
+# (what the website's Download buttons point at): https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/
+#   hearth-os-live.iso (AMD/Intel), hearth-os-live-nvidia.iso, each with a .sha256, and latest.json.
+#   Secrets (Settings › Secrets and variables › Actions): R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
+# Installing needs internet: it downloads the current Hearth image, so a fresh install is always up to date.
 name: Hearth live ISO
 
 on:
@@ -18,7 +17,7 @@ on:
         options: [amd-intel, nvidia]
         default: amd-intel
       upload:
-        description: 'Upload the ISO to SourceForge (needs the SF_* secrets)'
+        description: 'Upload the ISO to the download site (Cloudflare R2; needs the R2_* secrets)'
         type: boolean
         default: true
 
@@ -31,11 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 300
     env:
-      SF_USER: ${{ secrets.SF_USER }}
-      SF_PROJECT: ${{ secrets.SF_PROJECT }}
       IMAGE_NAME: ${{ inputs.graphics == 'nvidia' && 'hearth-nvidia' || 'hearth' }}
       SUFFIX: ${{ inputs.graphics == 'nvidia' && '-nvidia' || '' }}
-      HAVE_SF: ${{ secrets.SF_SSH_KEY != '' && secrets.SF_USER != '' && secrets.SF_PROJECT != '' }}
+      HAVE_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -84,29 +81,12 @@ jobs:
           compression-level: 0
           retention-days: 14
 
-      - name: Upload to SourceForge
-        if: env.HAVE_SF == 'true' && inputs.upload
+      - name: Upload to the download site (Cloudflare R2)
+        if: env.HAVE_R2 == 'true' && inputs.upload
         env:
-          SF_SSH_KEY: ${{ secrets.SF_SSH_KEY }}
-          SF_API_KEY: ${{ secrets.SF_API_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           V: ${{ steps.iso.outputs.version }}
           DIR: ${{ steps.iso.outputs.dir }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$SF_SSH_KEY" > ~/.ssh/sf && chmod 600 ~/.ssh/sf
-          ssh-keyscan -t ed25519,rsa frs.sourceforge.net >> ~/.ssh/known_hosts 2>/dev/null
-          dest="/home/frs/project/$SF_PROJECT/$V"
-          ssh="ssh -i $HOME/.ssh/sf -o IdentitiesOnly=yes"
-          # rsync makes the version folder; --partial lets a dropped 7 GB upload resume on a re-run.
-          rsync -e "$ssh" --partial --progress -t "$DIR"/hearth-os-*.iso "$DIR"/hearth-os-*.iso.sha256 \
-            "$SF_USER@frs.sourceforge.net:$dest/"
-          echo "Uploaded to https://sourceforge.net/projects/$SF_PROJECT/files/$V/"
-          if [ -n "${SF_API_KEY:-}" ] && [ -z "$SUFFIX" ]; then  # the AMD/Intel ISO is the default download
-            curl -fsS -H 'Accept: application/json' -X PUT \
-              -d default=windows -d default=mac -d default=linux -d default=bsd -d default=solaris -d default=others \
-              -d "api_key=$SF_API_KEY" \
-              "https://sourceforge.net/projects/$SF_PROJECT/files/$V/hearth-os-$V-live$SUFFIX.iso" >/dev/null \
-              && echo "Set as the default download"
-          fi
-          rm -f ~/.ssh/sf
+        run: tools/r2-upload.sh "$DIR/hearth-os-$V-live$SUFFIX.iso" "hearth-os-live$SUFFIX.iso" "$V"
