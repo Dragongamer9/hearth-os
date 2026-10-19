@@ -29,6 +29,8 @@ internal sealed class MantelWindow : Form
     /// <summary>Hearth's on-screen keyboard: docked above the taskbar, never takes the focus from the window you type in.</summary>
     private bool IsKeyboard => Part == MantelPart.Keyboard;
     private int _kbHeight;
+    private DateTime _shownAt = DateTime.MinValue;
+    private bool _retook;
     /// <summary>The window handle, readable from any thread (the controller's).</summary>
     public IntPtr Hwnd { get; private set; }
 
@@ -43,7 +45,19 @@ internal sealed class MantelWindow : Form
         BackColor = Color.FromArgb(28, 21, 18);
         Controls.Add(_web);
         // Clicking anywhere else closes a panel, like on Hearth OS.
-        if (IsPanel) Deactivate += (_, _) => { if (Visible) { Hide(); PanelClosed?.Invoke(); } };
+        // A panel that was just opened can lose the front for a moment while Windows hands it over (mostly when
+        // the controller opened it): take it back instead of closing at once.
+        if (IsPanel) Deactivate += (_, _) =>
+        {
+            if (!Visible) return;
+            if (DateTime.UtcNow - _shownAt < TimeSpan.FromMilliseconds(600) && !_retook)
+            {
+                _retook = true;
+                BeginInvoke((MethodInvoker)(() => { if (Visible) { Native.ForceForeground(Handle); _web.Focus(); } }));
+                return;
+            }
+            Hide(); PanelClosed?.Invoke();
+        };
         SizeChanged += (_, _) => Shape();
     }
 
@@ -181,8 +195,10 @@ internal sealed class MantelWindow : Form
         };
         Bounds = r;
         Shape();
+        _shownAt = DateTime.UtcNow; _retook = false;
         Show();
         Activate();
+        Native.ForceForeground(Handle);
         _web.Focus();
     }
 

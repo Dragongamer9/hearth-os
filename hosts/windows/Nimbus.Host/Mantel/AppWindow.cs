@@ -87,6 +87,7 @@ internal class AppWindow : Form
             if (!string.IsNullOrEmpty(query)) Post(JsonSerializer.Serialize(new { type = "event", name = "mantel.appArgs", data = new { query } }));
         }
         Activate();
+        Native.ForceForeground(Handle);
         Web.Focus();
     }
 

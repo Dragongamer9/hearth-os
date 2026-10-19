@@ -34,6 +34,37 @@ internal static class Native
     [DllImport("user32.dll", EntryPoint = "GetClassLongPtrW")] public static extern IntPtr GetClassLongPtr(IntPtr hWnd, int index);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);
+    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
+    [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+
+    /// <summary>Brings one of Mantel's windows to the front even when the press came from the controller.
+    /// Windows only lets the app you last clicked or typed in take the front; a controller press isn't input
+    /// to Mantel, so a plain SetForegroundWindow fails and the panel closes again at once. Joining the front
+    /// window's input queue for a moment (and an Alt tap, which also lifts the lock) gets around that.</summary>
+    public static void ForceForeground(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero || GetForegroundWindow() == hWnd) return;
+        if (SetForegroundWindow(hWnd) && GetForegroundWindow() == hWnd) return;
+        var fg = GetForegroundWindow();
+        uint fgThread = fg == IntPtr.Zero ? 0 : GetWindowThreadProcessId(fg, out _);
+        uint me = GetCurrentThreadId();
+        bool attached = fgThread != 0 && fgThread != me && AttachThreadInput(me, fgThread, true);
+        try
+        {
+            BringWindowToTop(hWnd);
+            SetForegroundWindow(hWnd);
+            if (GetForegroundWindow() != hWnd)
+            {
+                // Still locked: a synthetic Alt press counts as input to Mantel (Alt held across the switch, so the
+                // other window's menu bar doesn't open).
+                keybd_event(0x12, 0, 0, UIntPtr.Zero);
+                SetForegroundWindow(hWnd);
+                keybd_event(0x12, 0, 2, UIntPtr.Zero);
+            }
+        }
+        finally { if (attached) AttachThreadInput(me, fgThread, false); }
+    }
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out int value, int size);
     [DllImport("kernel32.dll")] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
     [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
