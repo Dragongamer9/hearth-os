@@ -146,7 +146,8 @@ int main(int argc, char* argv[]) {
   s.persist_session_cookies = true;
   s.background_color = 0xFF1C1512;
   s.log_severity = LOGSEVERITY_WARNING;
-  CefString(&s.log_file) = cache + "/hearth-browser.log";
+  if (!G().selftest) CefString(&s.log_file) = cache + "/hearth-browser.log";
+  else s.log_severity = LOGSEVERITY_INFO;
 
   if (!CefInitialize(args, s, app, nullptr)) {
     // Another copy is already running (it got our links through OnAlreadyRunningAppRelaunch), or Chromium failed.

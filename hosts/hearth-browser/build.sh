@@ -36,6 +36,13 @@ strip /tmp/hb/hearth-browser || true
 echo "::notice title=files::$(ls /tmp/hb | tr '\n' ' ')"
 # Does it start, draw its top bar and open its start page? (A virtual screen; no sandbox on the runner.)
 sudo apt-get install -y -qq xvfb >/dev/null
-HOME=$(mktemp -d) xvfb-run -a timeout 90 /tmp/hb/hearth-browser --self-test --no-sandbox --disable-gpu 2>&1 | grep -E "self-test|FATAL|ERROR" | grep -v "Invalid file descriptor to ICU" | head -20 | tee /tmp/selftest.log || true
-grep -q "self-test passed" /tmp/selftest.log || { echo "::error title=browser::self-test didn't pass: $(tr '\n' ' ' < /tmp/selftest.log | cut -c1-400)"; exit 1; }
+set +e
+HOME=$(mktemp -d) xvfb-run -a -s "-screen 0 1280x900x24" timeout 90 /tmp/hb/hearth-browser --self-test --no-sandbox --disable-gpu --use-gl=swiftshader > /tmp/selftest.log 2>&1
+code=$?
+set -e
+grep -E "self-test" /tmp/selftest.log || true
+if ! grep -q "self-test passed" /tmp/selftest.log; then
+  grep -v "ICU data\|^$" /tmp/selftest.log | tail -8 | cut -c1-300 | while IFS= read -r l; do echo "::error title=self-test (exit $code)::${l//%/%25}"; done
+  exit 1
+fi
 tar -C /tmp/hb -cf hearth-browser-cef.tar .
