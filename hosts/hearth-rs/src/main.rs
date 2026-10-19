@@ -274,7 +274,7 @@ fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: 
             .initialization_script(SHIM)
             .build();
         match built {
-            Ok(_) => { let g = gm.clone(); std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(3)); g.arm_overlay(); }); }
+            Ok(w) => { gpu_always(&w); let g = gm.clone(); std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(3)); g.arm_overlay(); }); }
             Err(e) => hearth_core::bridge::log(&format!("overlay: couldn't make its window: {e}")),
         }
     }
@@ -333,9 +333,30 @@ fn check_update_path() -> i32 {
     code
 }
 
+/// An Nvidia graphics card in this PC.
+fn nvidia() -> bool {
+    std::fs::read_dir("/sys/class/drm").into_iter().flatten().flatten()
+        .any(|e| std::fs::read_to_string(e.path().join("device/vendor")).map(|v| v.trim() == "0x10de").unwrap_or(false))
+}
+
+/// Hearth's pages drawn by the graphics card all the time (WebKit otherwise decides page by page, and can fall
+/// back to drawing on the processor, which is what made scrolling the library slow).
+fn gpu_always(w: &tauri::WebviewWindow) {
+    #[cfg(target_os = "linux")]
+    let _ = w.with_webview(|wv| {
+        use webkit2gtk::{SettingsExt, WebViewExt};
+        if let Some(s) = wv.inner().settings() {
+            s.set_hardware_acceleration_policy(webkit2gtk::HardwareAccelerationPolicy::Always);
+            s.set_enable_smooth_scrolling(true);
+        }
+    });
+}
+
 fn main() {
     // WebKit's newer GPU path draws a black window on some Nvidia drivers: the older one works everywhere.
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+    // Only there: on AMD and Intel (the ROG Ally, Steam Deck) it's the fast path, and without it WebKit draws
+    // through a slow copy (a sluggish library, 5 to 10 frames a second).
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() && nvidia() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
     // Release check (os.yml runs it inside each new Hearth OS image, and won't publish one that fails):
@@ -464,6 +485,8 @@ fn main() {
                 .background_color(tauri::window::Color(12, 16, 22, 255))
                 .initialization_script(SHIM)
                 .build()?;
+            gpu_always(&main);
+            hearth_core::bridge::log(&format!("graphics: {} (DMA-BUF renderer {})", if nvidia() { "Nvidia" } else { "AMD/Intel" }, if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some() { "off" } else { "on" }));
             if zoom != 100 { let _ = main.set_zoom(zoom as f64 / 100.0); }
             // As the session there's nothing behind Hearth, so Alt+F4 must not close it by accident.
             main.on_window_event(|e| if let tauri::WindowEvent::CloseRequested { api, .. } = e { if in_session() { api.prevent_close(); } });
