@@ -33,8 +33,9 @@ cp hosts/linux/src/web/chrome.html hosts/linux/src/web/pages.html hosts/linux/sr
 curl -fsSL https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts | grep -E '^0\.0\.0\.0 ' > /tmp/hb/hearth/adblock-hosts.txt || true
 wc -l /tmp/hb/hearth/adblock-hosts.txt
 strip /tmp/hb/hearth-browser || true
+echo "::notice title=files::$(ls /tmp/hb | tr '\n' ' ')"
 # Does it start, draw its top bar and open its start page? (A virtual screen; no sandbox on the runner.)
 sudo apt-get install -y -qq xvfb >/dev/null
-HOME=$(mktemp -d) xvfb-run -a timeout 90 /tmp/hb/hearth-browser --self-test --no-sandbox --disable-gpu 2>&1 | grep -E "self-test|FATAL|ERROR" | head -20 | tee /tmp/selftest.log || true
+HOME=$(mktemp -d) xvfb-run -a timeout 90 /tmp/hb/hearth-browser --self-test --no-sandbox --disable-gpu 2>&1 | grep -E "self-test|FATAL|ERROR" | grep -v "Invalid file descriptor to ICU" | head -20 | tee /tmp/selftest.log || true
 grep -q "self-test passed" /tmp/selftest.log || { echo "::error title=browser::self-test didn't pass: $(tr '\n' ' ' < /tmp/selftest.log | cut -c1-400)"; exit 1; }
 tar -C /tmp/hb -cf hearth-browser-cef.tar .
