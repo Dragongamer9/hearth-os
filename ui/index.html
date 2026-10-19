@@ -226,6 +226,7 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .qtab.on{color:var(--accent);background:var(--panel2)}
 .qtab.focus{color:var(--text)}
 .ctl{padding:12px 12px;border-radius:9px;margin-bottom:6px;background:var(--panel2)}
+.ctl.editing{box-shadow:inset 0 0 0 2px var(--accent)}.ctl.editing .slider b{transform:translate(-50%,-50%) scale(1.35)}.ctl.editing .lab span{color:var(--accent)}
 .ctl .lab{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600;margin-bottom:10px}
 .ctl .lab span{margin-left:auto;color:var(--dim);font-weight:500;font-variant-numeric:tabular-nums}
 .ctl.tg{display:flex;width:100%;align-items:center;gap:10px;font-size:14px;font-weight:600}
@@ -2606,6 +2607,7 @@ const scrollOpts = (el, smooth) => { const shelf = el.closest('.shelf,.news,.tab
 function settleScroll(){ if(focused && document.contains(focused)) focused.scrollIntoView(scrollOpts(focused, false)); }
 function setFocus(el, quiet){
   if(!el) return;
+  if(SLIDE && el!==SLIDE) slideDone();
   if(focused) focused.classList.remove('focus');
   focused=el; el.classList.add('focus');
   el.focus({preventScroll:true});
@@ -2633,7 +2635,8 @@ function gridMove(dir){
 }
 function move(dir){
   if(!focused || !document.contains(focused) || !root().contains(focused)) return setFocus(focusables()[0]);
-  if(focused.dataset.slider && (dir==='left'||dir==='right')) return adjustSlider(focused, dir==='left'?-1:1);
+  // Sliders change only after A picks them (so moving past one doesn't change the volume); up/down leave them.
+  if(SLIDE && SLIDE===focused){ if(dir==='left'||dir==='right') return adjustSlider(focused, dir==='left'?-1:1); slideDone(); }
   const t0=performance.now();
   try { moveNow(dir); } finally { perfLog('move '+dir, t0); }
 }
@@ -2662,6 +2665,9 @@ function moveNow(dir){
   }
   if(best){ setFocus(best); blip(); }
 }
+let SLIDE=null;
+function slideDone(){ if(SLIDE) SLIDE.classList.remove('editing'); SLIDE=null; renderFooter(); }
+function slidePick(el){ if(SLIDE===el) return slideDone(); slideDone(); SLIDE=el; el.classList.add('editing'); blip(620,.04); renderFooter(); }
 function adjustSlider(el, d){
   const k=el.dataset.slider, min=+el.dataset.min, max=+el.dataset.max, st=+el.dataset.step;
   S.set[k]=Math.max(min,Math.min(max,S.set[k]+d*st));
@@ -2679,6 +2685,7 @@ function adjustSlider(el, d){
 // Actions
 // =====================================================================
 function act(el){
+  if(el.dataset.slider) return slidePick(el);
   const a=el.dataset.act, d=el.dataset;
   if(!a) return;
   if(S.locked && !['unlock','pkey','back','sheet'].includes(a)) return;   // locked: only unlocking
@@ -2904,6 +2911,7 @@ function act(el){
   }
 }
 function back(){
+  if(SLIDE){ slideDone(); return blip(420,.04); }
   if(S.locked && !S.layers.includes('prompt')) return;
   if(OVERLAY && S.layers.length<=1) return overlayClose();
   if(S.layers.length && S.layers.at(-1)==='launch' && S.launchWaiting) return launchShow();
@@ -4087,8 +4095,9 @@ function renderFooter(){
   if(top==='launch'){ $('#footer').innerHTML=''; return; }
   const style=promptStyle();
   const h=[];  // [id, label]
-  if(focused?.dataset.slider) h.push(['adjust','Adjust']);
-  h.push(['select','Select'],['back','Back']);
+  if(focused?.dataset.slider){ if(SLIDE===focused) h.push(['adjust','Adjust'],['select','Done']); else h.push(['select','Change']); }
+  else h.push(['select','Select']);
+  h.push(['back','Back']);
   if(top==='prompt') h.push(['del','Delete'],['space','Space'],['done','Done']);
   if(!top && S.view==='library') h.push(['tabs','Tabs'],['stores','Stores']);
   if(top==='qam') h.push(['tabs','Sections']);
