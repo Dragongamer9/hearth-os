@@ -143,10 +143,14 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .sw{width:42px;height:24px;border-radius:12px;background:var(--panel3);position:relative;flex:none;transition:background .2s}
 .sw:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#cfd6de;transition:transform .2s var(--ease)}
 .sw.on{background:var(--accent)} .sw.on:after{transform:translateX(18px);background:#fff}
-.settings{display:grid;grid-template-columns:240px 1fr;gap:22px;margin-top:16px}
-.snav{display:flex;flex-direction:column;gap:4px}
-.snav button{padding:11px 14px;border-radius:8px;color:var(--dim);font-weight:600;display:flex;gap:10px;align-items:center}
+.settings{display:grid;grid-template-columns:270px 1fr;gap:22px;margin-top:16px}
+.snav{display:flex;flex-direction:column;gap:6px}
+.snav button{padding:12px 14px;border-radius:12px;color:var(--dim);display:flex;gap:12px;align-items:center;text-align:left}
 .snav button.on{background:var(--panel2);color:var(--text)}
+.snav .sgi{width:36px;height:36px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none}.snav button.on .sgi{background:var(--accent);color:#fff}
+.snav .sgi svg{width:20px;height:20px}.snav .sgt{display:flex;flex-direction:column;min-width:0}.snav .sgt b{font-weight:700;font-size:15px}
+.snav .sgt small{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.spane{min-width:0;display:flex;flex-direction:column;gap:14px}.stabs{display:flex;gap:8px;flex-wrap:wrap}
 
 /* ---------- overlays ---------- */
 .layer{position:fixed;z-index:20;visibility:hidden;pointer-events:none}
@@ -1523,8 +1527,16 @@ function viewDownloads(){
   return h + '</div>';
 }
 
-const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Battery & power'],
-  ['controller','pad','Controls'],['remote','play','Remote play'],['sources','lib','Library sources'],['import','dl','Import games'],['osinstall','dl','Install Hearth OS'],['switch','dl','Switch to Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
+const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Power'],
+  ['controller','pad','Controls'],['remote','play','Remote play'],['sources','lib','Library'],['import','dl','Import'],['osinstall','dl','Install'],['switch','dl','Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
+// Settings, condensed: five groups on the left, each with its pages as tabs along the top.
+const SGROUPS = [['you','user','You'],['connect','wifi','Connections'],['device','display','Device'],['games','lib','Games'],['system','gear','System']];
+const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',signin:'you',wifi:'connect',bluetooth:'connect',remote:'connect',
+  display:'device',audio:'device',power:'device',controller:'device',sources:'games',import:'games',shell:'system',updates:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
+const stabGroup = k => STAB_GROUP[k]||'system';
+const stabShown = k => STABS.some(x=>x[0]===k) && (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX));
+const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k));
+const SLAST = {};
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
 const note = t => `<div class="note">${t}</div>`;
@@ -2227,7 +2239,8 @@ function shellReturn(){
 }
 
 function viewSettings(){
-  const t=S.settingsTab; let body='';
+  if(!stabShown(S.settingsTab)) S.settingsTab='profile';
+  const t=S.settingsTab, grp=stabGroup(t), tabs=stabsIn(grp); let body='';
   if(t==='wifi') body = pageWifi();
   if(t==='bluetooth') body = pageBluetooth();
   if(t==='display') body = pageDisplay();
@@ -2262,8 +2275,10 @@ function viewSettings(){
     + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
   if(t==='about') body = pageAbout();
   return `<div class="settings">
-    <div class="snav">${STABS.filter(([k])=>k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX)).map(([k,ic,l])=>`<button class="${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${I[ic]}${l}</button>`).join('')}</div>
-    <div class="rows">${body}</div></div>`;
+    <div class="snav">${SGROUPS.map(g=>{ const subs=stabsIn(g[0]); if(!subs.length) return '';
+      return `<button class="${g[0]===grp?'on':''}" data-f data-k="sg-${g[0]}" data-act="sgroup" data-g="${g[0]}"><span class="sgi">${I[g[1]]}</span><span class="sgt"><b>${g[2]}</b><small>${subs.map(x=>x[2]).join(' · ')}</small></span></button>`; }).join('')}</div>
+    <div class="spane">${tabs.length>1?`<div class="stabs">${tabs.map(([k,,l])=>`<button class="chip ${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${l}</button>`).join('')}</div>`:''}
+    <div class="rows">${body}</div></div></div>`;
 }
 
 const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, shots:viewShots, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
@@ -2680,7 +2695,8 @@ function act(el){
     case 'game': closeAll(); return navigate('game',{game:d.id});
     case 'tab': S.tab=d.tab; return render('tab-'+d.tab);
     case 'sort': { const i=SORTS.findIndex(s=>s[0]===S.sort); S.sort=SORTS[(i+1)%SORTS.length][0]; return render('sort'); }
-    case 'stab': S.settingsTab=d.tab; render('st-'+d.tab); return onSettingsTab(d.tab);
+    case 'stab': S.settingsTab=d.tab; SLAST[stabGroup(d.tab)]=d.tab; render('st-'+d.tab); return onSettingsTab(d.tab);
+    case 'sgroup': { const subs=stabsIn(d.g); if(!subs.length) return; const k=(SLAST[d.g]&&subs.some(x=>x[0]===SLAST[d.g]))?SLAST[d.g]:subs[0][0]; S.settingsTab=k; render('sg-'+d.g); return onSettingsTab(k); }
     case 'goset': closeAll(); S.settingsTab=d.tab;
       if(S.view==='settings'){ render('st-'+d.tab); return onSettingsTab(d.tab); }
       return navigate('settings',{focusKey:'st-'+d.tab});
