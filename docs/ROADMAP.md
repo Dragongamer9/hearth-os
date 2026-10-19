@@ -89,13 +89,14 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
-## 0.0.27
+## 0.0.27 (released)
 
 - [x] Black screen (with the game still playing) after Quick Access or Quick Resume: games no longer minimize themselves when something else comes in front, and Hearth shows them again if they did
 - [x] A game that was starting or had just started looked frozen after closing Quick Access: Hearth now puts back the game's current window
 - [x] Sliders (volume, brightness) in Quick Access and Settings: press A to change one, A or B when done; moving past one no longer changes it
 - [x] Quick Resume sometimes showed the last game's frozen picture: games put aside are never the one put in front
 - [x] Settings › System › Save logs for a bug report: Hearth's and the system's logs in one file, personal details taken out, saved in the home folder and on a USB drive if one is plugged in
+- [x] Required release check: every Hearth OS image must be able to update itself from Game Mode and Desktop Mode, or it isn't published
 
 ## 0.0.26 (released)
 
