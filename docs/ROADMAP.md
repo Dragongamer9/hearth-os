@@ -89,6 +89,16 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
+## 0.1.1 (released)
+
+- [x] Couch Co-op (Beta Experimental): split-screen for 2-4 players on one screen, each with their own controller and copy of the game (they find each other like on a LAN; a local Steam stand-in for Steam games); each player presses A to join; games with anti-cheat refused with a plain message
+- [x] Multi-seat (Beta Experimental): a separate Game Mode per screen or TV, each with its own account, controllers, Steam and saves; a graphics card per player, or one card driving several screens; Remove multi-seat undoes everything
+- [x] Fix: Quick Resume showed another game's frozen picture; only the last game put aside came back properly
+- [x] Fix: the power limit didn't change on the ROG Xbox Ally (set through ASUS's firmware attributes now, and a change that didn't take isn't reported as done)
+- [x] Wi-Fi: a short list (your network, saved ones, the strongest) with Show all networks; Desktop Mode's Wi-Fi and Bluetooth pages no longer lose the selection (the controller got stuck) when their lists refresh
+- [x] Fix: Xbox Cloud Gaming's Microsoft sign-in clicked links while you typed with the controller
+- [x] Fix (Ember): Mantel's Hearth menu, Quick Access and launcher opened and closed at once with a controller
+
 ## 0.1.0 (released)
 
 - [x] Fix: the profile button at the bottom of the side menu couldn't be reached with the D-pad (since 0.0.30)
