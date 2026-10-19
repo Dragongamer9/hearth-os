@@ -1,6 +1,7 @@
 #include "browser.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -485,6 +486,16 @@ void BrowserWin::Act(CefRefPtr<CefDictionaryValue> m) {
   Tab* t = Active();
   auto b = t && t->view ? t->view->GetBrowser() : nullptr;
   if (act == "ready") { chrome_ready_ = true; PushAll(); return; }
+  if (act == "selftest" && G().selftest) {
+    bool ok = m->HasKey("ok") && m->GetType("ok") == VTYPE_BOOL && m->GetBool("ok");
+    std::string part = Str(m, "part");
+    printf("self-test %s: %s %s\n", part.c_str(), ok ? "ok" : "FAILED", Str(m, "why").c_str());
+    fflush(stdout);
+    if (!ok) _exit(1);
+    if (part == "chrome") G().selftest_chrome = true; else G().selftest_page = true;
+    if (G().selftest_chrome && G().selftest_page) { printf("self-test passed\n"); fflush(stdout); _exit(0); }
+    return;
+  }
   if (act == "new") { NewTab(Str(m, "url"), true); return; }
   if (act == "select") { Select(Int(m, "id")); return; }
   if (act == "close") { Close(Int(m, "id")); return; }
@@ -633,6 +644,12 @@ void Client::OnLoadingStateChange(CefRefPtr<CefBrowser> browser, bool isLoading,
 void Client::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) {
   // The top bar is up: tell it everything (it also says "ready" itself, in case this came first).
   if (win_ && frame->IsMain() && win_->IsChrome(browser)) { auto m = CefDictionaryValue::Create(); m->SetString("act", "ready"); win_->Act(m); }
+  if (G().selftest && win_ && frame->IsMain()) {
+    if (win_->IsChrome(browser))
+      frame->ExecuteJavaScript("hb.act({act:'selftest', part:'chrome', ok: typeof hb.on === 'function' && !!document.querySelector('.tab')})", frame->GetURL(), 0);
+    else if (std::string(frame->GetURL()).rfind("hearth://start", 0) == 0)
+      frame->ExecuteJavaScript("hearth.get({get:'start'}).then(r => hb.act({act:'selftest', part:'page', ok: !!r && Array.isArray(r.tiles) && r.tiles.length > 0}), e => hb.act({act:'selftest', part:'page', ok:false, why:String(e)}))", frame->GetURL(), 0);
+  }
 }
 void Client::OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, ErrorCode errorCode,
                          const CefString& errorText, const CefString& failedUrl) {
