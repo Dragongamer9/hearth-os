@@ -318,6 +318,19 @@ impl Bridge {
             "import.cancel" => Ok(self.importer.cancel(self.pending_epic().len())),
             "takeover.plan" => self.importer.takeover_plan(self.pending_epic().len()),
             "takeover.run" => self.importer.takeover_run(&a["remove"], a["windowsBoot"] != false, self.pending_epic().len()),
+            // Move (Beta Experimental): copy, check every file, register, then delete the original (hearth-import).
+            "import.move" => self.importer.start(&a["items"], "move", &self.library.install_root(), self.pending_epic().len()),
+            // Make Hearth bigger (Beta Experimental): space from the other systems on Hearth's drive (hearth-space,
+            // docs/MOVE-AND-GROW.md). Looking can take half a minute, so it answers from another thread.
+            "space.status" => { crate::space::answer_later(self.cur_id.clone(), crate::space::status); Ok(json!(DEFERRED)) }
+            "space.grow" => {
+                let (from, gb) = (req("from")?, a["gb"].as_u64().unwrap_or(0));
+                if a["dryRun"] == true {
+                    crate::space::answer_later(self.cur_id.clone(), move || crate::space::plan(&from, gb));
+                    Ok(json!(DEFERRED))
+                } else { crate::space::grow(&from, gb, self.emit.clone()) }
+            }
+            "space.clearJournal" => crate::space::clear_journal(),
             "art.status" => Ok(crate::artcache::status()),
             // Steam friends: who's online and what they're playing
             "steam.friends" => Ok(crate::friends::list(&self.library.home)),
@@ -610,6 +623,17 @@ impl Bridge {
             "xodus.setFolder" => { crate::xodus::set_folder(a["folder"].as_str().unwrap_or(""))?; Ok(self.xodus.status(false)) }
             "xodus.signInDesktop" => { crate::xodus::open_in_desktop()?; Ok(json!({})) }
             "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
+            // Nvidia: how Hearth draws (fast, the default on newer drivers, or compatible if fast draws a black window).
+            "display.nvidiaDrawing" => {
+                let f = crate::paths::config_dir().join("nvidia-drawing");
+                if let Some(v) = a["set"].as_str() {
+                    if !["fast", "compatible", "auto"].contains(&v) { return Err("Unknown choice".into()); }
+                    let _ = std::fs::create_dir_all(crate::paths::config_dir());
+                    if v == "auto" { let _ = std::fs::remove_file(&f); } else { std::fs::write(&f, v).map_err(|e| e.to_string())?; }
+                }
+                let pick = std::fs::read_to_string(&f).unwrap_or_default().trim().to_string();
+                Ok(json!({"pick": if pick.is_empty() { "auto".to_string() } else { pick }, "fast": std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()}))
+            }
             // Couch Co-op: several players on this screen, each with their own controller and copy of the game.
             "coop.check" => crate::multiplay::ask(crate::multiplay::COOP, &["check"]),
             "coop.pads" => crate::multiplay::ask(crate::multiplay::COOP, &["pads"]),
@@ -1068,6 +1092,7 @@ fn features() -> Vec<&'static str> {
     if crate::multiplay::coop_available() { f.push("coop"); }
     if crate::multiplay::seats_available() { f.push("seats"); }
     if std::env::var_os("HEARTH_SEAT").is_some() { f.push("extraSeat"); }
+    if std::path::Path::new("/sys/module/nvidia").exists() { f.push("nvidiaDrawing"); }
     f
 }
 /// "Hearth 0.0.25 (Bazzite)": the system's own name, for About and the top of Settings.
