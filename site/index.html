@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth OS</title>
-<meta name="description" content="Hearth OS: a controller-first gaming system for handhelds and PCs. Game Mode for your whole library, Mantel for the desktop. Built on Bazzite.">
+<meta name="description" content="Hearth OS: a controller-first gaming system for handhelds and PCs. Game Mode for your whole library, Mantel for the desktop. Built on Bazzite today, moving to Anatase.">
 <meta property="og:title" content="Hearth OS">
 <meta property="og:description" content="A controller-first gaming system for handhelds and PCs. Steam, Epic, GOG and Xbox in one library.">
 <meta property="og:image" content="img/game-home.webp">
@@ -143,6 +143,7 @@ footer .legal{flex-basis:100%;font-size:13px;opacity:.85}
   <div class="wrap">
     <a class="brand" href="#"><img src="img/logo.svg" alt="">Hearth OS</a>
     <div class="links">
+      <a href="#next">Coming next</a>
       <a href="#new">What's new</a>
       <a href="#game-mode">Game Mode</a>
       <a href="#mantel">Mantel</a>
@@ -170,11 +171,35 @@ footer .legal{flex-basis:100%;font-size:13px;opacity:.85}
         <a class="btn primary" href="#download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>Download Hearth OS</a>
         <a class="btn ghost" href="https://github.com/Dragongamer9/hearth-os">View the source</a>
       </div>
-      <p class="small">Free and open source. AMD, Intel and Nvidia graphics. Built on Bazzite and Fedora Atomic. Also on Windows 11 as Ember.</p>
+      <p class="small">Free and open source. AMD, Intel and Nvidia graphics. Built on Bazzite today, moving to Anatase. Also on Windows 11 as Ember.</p>
     </div>
     <div class="shot"><img src="img/game-home.webp" width="1280" height="800" alt="Hearth's Game Mode home screen with recent games and news"></div>
   </div>
 </header>
+
+<section id="next" style="padding-bottom:0">
+  <div class="wrap">
+    <span class="eyebrow">Coming next</span>
+    <h2>A new foundation: moving from Bazzite to Anatase</h2>
+    <p class="sub">Hearth OS has been built on Bazzite, and Bazzite got it a long way. But Hearth brings its own Game Mode, desktop and settings, and underneath them Bazzite carries a lot Hearth doesn't use. So Hearth OS is moving to <b>Anatase</b>, a lean, image-based system from people who worked on Bazzite.</p>
+    <p class="sub"><b>Why we're leaving Bazzite:</b></p>
+    <ul class="ticks">
+      <li><b>Too much we don't use.</b> Bazzite ships its own Steam Game Mode setup, KDE desktop, tools and services. Hearth replaces most of them, but they still take space, memory and start-up time on every device.</li>
+      <li><b>Heavier and slower than it should be.</b> The system image is big (an install downloads 8 to 10 GB), updates are larger, and Hearth felt sluggish on top of it, especially on Nvidia.</li>
+      <li><b>Two versions of everything.</b> Bazzite needs a separate image and ISO for Nvidia. Anatase is one image for AMD, Intel and Nvidia, so there's one download for every PC.</li>
+      <li><b>Better handheld support.</b> Anatase uses Handheld Daemon for controllers, gyro, back buttons, fans and power limits, which Hearth can show in its own screens.</li>
+    </ul>
+    <div class="grid">
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/></svg></div>
+        <h3>Hearth OS on Anatase</h3><p>The main Hearth OS from now on. Lighter and faster, one ISO for every graphics card, and Hearth's own screens for everything Handheld Daemon can do. Moving over is a clean install that keeps your games and their saves; you choose when, from Settings › Updates.</p></div>
+      <div class="card"><span class="badge">Beta Experimental</span><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3>Hearth OS on Ubuntu</h3><p>The same Hearth on Ubuntu 26.04 LTS, without snaps, with Handheld Daemon. For people who want Ubuntu's long-term support underneath.</p></div>
+      <div class="card"><span class="badge">Beta Experimental</span><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div>
+        <h3>Hearth OS on CachyOS</h3><p>The same Hearth on CachyOS's performance-tuned packages and kernels (including its handheld kernel), with Handheld Daemon. For people who want every last frame.</p></div>
+    </div>
+    <p class="small" style="margin-top:14px">All three are being built now and aren't ready to download yet. Until the Anatase version is out, today's Hearth OS (on Bazzite) keeps getting updates as usual.</p>
+  </div>
+</section>
 
 <section id="new" style="padding-bottom:0">
   <div class="wrap">
