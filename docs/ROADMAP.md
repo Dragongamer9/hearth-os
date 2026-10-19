@@ -89,7 +89,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
-## 0.1.0 (bug fixes)
+## 0.1.0 (released)
 
 - [x] Fix: the profile button at the bottom of the side menu couldn't be reached with the D-pad (since 0.0.30)
 - [x] Fix: one error in a button press stopped the controller until Hearth restarted (it now keeps working)
