@@ -1,0 +1,83 @@
+# Hearth on Ubuntu (Beta Experimental): Ubuntu 26.04 LTS "Resolute Raccoon", snap-free, made into a bootc image
+# with the Hearth session (Game Mode + Desktop Mode) as what it boots into. Same model as the Bazzite build
+# (os/Containerfile) and the Peppermint build (os-bases/peppermint): one image, updated as a whole with bootc,
+# rolled back as a whole, installed by Hearth's installer. See docs/BASE-UBUNTU.md.
+# Built by .github/workflows/base-ubuntu.yml from the repository root:
+#   podman build -f os-bases/ubuntu/Containerfile -t hearth-ubuntu .
+# os/nimbus-app must hold the Hearth app build (the app artifact unpacked); CI puts it there.
+
+ARG BASE_IMAGE=docker.io/library/ubuntu:26.04
+
+# Files the build script needs, kept out of the final image.
+FROM scratch AS ctx
+COPY os-bases/ubuntu/build.sh /build.sh
+COPY os-bases/ubuntu/system_files /ubuntu_files
+COPY os/system_files /system_files
+COPY os/branding/wallpapers /wallpapers
+COPY os/nimbus-app /nimbus-app
+COPY hosts/linux/session /session
+COPY hosts/linux/desktop /desktop
+
+# ------------------------------------------------------------------ Ubuntu 26.04, set up for a games OS
+# - all four components (Steam, gamescope and Nvidia's driver are in multiverse/restricted) and 32-bit packages
+# - no snaps, ever: snapd is pinned out, so nothing (a transitional deb) can pull it in
+# - the container image's trimming undone (docs and man pages are dropped by dpkg there)
+# - the container image's "ubuntu" account removed: it has uid 1000, which Hearth's installer gives the player
+#   (and nimbus-autologin signs in)
+# - GNU coreutils instead of Ubuntu 26.04's default Rust coreutils (uutils): Hearth's scripts are written and
+#   tested against GNU's (Fedora/Bazzite, Debian). GNU_COREUTILS=0 keeps Ubuntu's default.
+FROM ${BASE_IMAGE} AS base
+ARG GNU_COREUTILS=1
+RUN set -eux; \
+    f=/etc/apt/sources.list.d/ubuntu.sources; \
+    sed -i 's/^Components:.*/Components: main restricted universe multiverse/' "$f"; \
+    cat "$f"; \
+    grep -q multiverse "$f"; \
+    dpkg --add-architecture i386; \
+    rm -f /etc/apt/apt.conf.d/docker-gzip-indexes /etc/apt/apt.conf.d/docker-no-languages /etc/dpkg/dpkg.cfg.d/excludes; \
+    printf 'APT::Install-Recommends "false";\nAPT::Install-Suggests "false";\n' > /etc/apt/apt.conf.d/90-hearth-no-recommends; \
+    mkdir -p /etc/apt/preferences.d; \
+    printf 'Package: snapd\nPin: release *\nPin-Priority: -10\n' > /etc/apt/preferences.d/hearth-no-snap; \
+    if getent passwd ubuntu >/dev/null; then userdel -r ubuntu 2>/dev/null || userdel ubuntu 2>/dev/null || true; fi; \
+    if getent group ubuntu >/dev/null; then groupdel ubuntu; fi; \
+    if getent passwd 1000; then echo "uid 1000 is still taken (above)"; exit 1; fi; \
+    apt-get update -y; \
+    if [ "$GNU_COREUTILS" = "1" ]; then \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-remove-essential coreutils-from-gnu || \
+        echo "warning: couldn't switch to GNU coreutils; keeping Ubuntu's default"; \
+    fi; \
+    ls --version | sed -n 1p; \
+    rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------------ what Ubuntu doesn't package (see builder.sh)
+FROM base AS builder
+COPY os-bases/ubuntu/builder.sh /builder.sh
+RUN --mount=type=tmpfs,dst=/tmp /builder.sh
+
+# ------------------------------------------------------------------ Hearth
+FROM base
+
+COPY --from=builder /output /
+
+ARG NIMBUS_VERSION=0.0.0
+# 1: Nvidia's open driver (Ubuntu's restricted archive: Canonical-signed prebuilt modules) in the same image as
+# AMD/Intel; 0: leave it out.
+ARG NVIDIA=1
+# hwe: Ubuntu's hardware-enablement kernel series (linux-generic-hwe-26.04: follows each new Ubuntu release's
+# kernel, which handhelds need); ga: 26.04's release kernel series (7.0). hwe falls back to ga when the archive
+# doesn't have it.
+ARG KERNEL=hwe
+LABEL org.opencontainers.image.title="Hearth (Ubuntu edition)" \
+      org.opencontainers.image.description="Hearth: Ubuntu 26.04 LTS (snap-free) with a controller-first Game Mode and Desktop Mode (bootc, Beta Experimental)" \
+      org.opencontainers.image.source="https://github.com/Dragongamer9/hearth-os" \
+      org.opencontainers.image.version="${NIMBUS_VERSION}" \
+      containers.bootc=1 \
+      ostree.bootable=1
+
+# No mounts on /var or /root: the end of build.sh replaces them with the bootc layout.
+RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    --mount=type=bind,from=builder,source=/debs,target=/hearth-debs \
+    --mount=type=tmpfs,dst=/tmp \
+    NVIDIA="${NVIDIA}" KERNEL="${KERNEL}" NIMBUS_VERSION="${NIMBUS_VERSION}" /ctx/build.sh
+
+RUN bootc container lint
