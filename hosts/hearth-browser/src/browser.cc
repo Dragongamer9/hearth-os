@@ -518,8 +518,11 @@ void BrowserWin::Act(CefRefPtr<CefDictionaryValue> m) {
     for (auto& d : G().downloads) if (d.id == id) {
       if (act == "downloadCancel") { if (d.cancel) d.cancel->Cancel(); }
       else {
-        std::string target = act == "downloadOpen" ? d.file : d.file.substr(0, d.file.rfind('/'));
-        std::string cmd = "xdg-open '";
+        bool show = act == "downloadShow";
+        std::string target = d.file;
+        // Show in folder: Hearth Files opens the folder with the file picked (xdg-open the folder elsewhere).
+        if (show && access("/usr/bin/hearth-filemanager", X_OK) != 0) target = d.file.substr(0, d.file.rfind('/'));
+        std::string cmd = show && access("/usr/bin/hearth-filemanager", X_OK) == 0 ? "/usr/bin/hearth-filemanager '" : "xdg-open '";
         for (char c : target) { if (c == '\'') cmd += "'\\''"; else cmd += c; }
         cmd += "' >/dev/null 2>&1 &";
         int r = system(cmd.c_str()); (void)r;

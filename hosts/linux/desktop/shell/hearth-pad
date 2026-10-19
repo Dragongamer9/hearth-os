@@ -70,7 +70,7 @@ SNAP = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RI
 KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
                    set(OSK_SPECIAL.values()) |
                    {'KEY_LEFTSHIFT', 'KEY_LEFTCTRL', 'KEY_LEFTALT', 'KEY_LEFTMETA', 'KEY_TAB', 'KEY_ENTER', 'KEY_ESC',
-                    'KEY_BACKSPACE', 'KEY_Q'})
+                    'KEY_BACKSPACE', 'KEY_Q', 'KEY_COMPOSE'})
 
 
 def curve(v):
@@ -271,6 +271,8 @@ class Pad:
             self.tap('KEY_ENTER')
         elif name == 'b':
             self.tap('KEY_ESC')
+        elif name == 'x':
+            self.tap('KEY_COMPOSE')          # the Menu key: the actions menu in Hearth Files
         elif name == 'y':
             self.open_osk()
         elif name == 'menu':

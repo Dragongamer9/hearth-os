@@ -1,0 +1,1094 @@
+#!/usr/bin/python3
+"""hearth-files: the file work behind Hearth Files (FileManager.qml), Desktop Mode's file manager.
+
+  hearth-files list PATH [--hidden]     the folder's entries (PATH may be a file: its folder, with "select")
+  hearth-files places                   Home, the usual folders, games, drives and SD cards, Trash
+  hearth-files mkdir PATH               a new folder
+  hearth-files rename PATH NEWNAME      rename in place
+  hearth-files trash PATH...            move to the Trash (gio trash, or the freedesktop Trash spec)
+  hearth-files restore PATH...          put files in the Trash back where they were
+  hearth-files empty-trash              delete everything in the Trash
+  hearth-files delete PATH...           delete for good (symlinks are removed, never followed)
+  hearth-files copy SRC... DEST         copy into the folder DEST     } print "progress: {json}" lines while
+  hearth-files move SRC... DEST         move into the folder DEST     } working, then the final JSON line
+  hearth-files info PATH                details, with the total size of a folder
+  hearth-files apps PATH                apps that can open it (and which one is the default)
+  hearth-files open PATH [APP_ID]       open with the default app, or with APP_ID (a .desktop id)
+  hearth-files eject PATH               safely remove the USB drive / SD card mounted at PATH
+
+Output is one JSON line; failures print "error: ..." and exit 1. Anything that changes files only works in
+your home folder, on USB drives and SD cards (/run/media/$USER, /media/$USER) and in /tmp; listing,
+reading and copying *from* anywhere is fine. copy/move stop cleanly on SIGTERM (the Cancel button):
+the half-copied item is removed and the final line is {"cancelled": true, ...}.
+"""
+import errno
+import json
+import mimetypes
+import os
+import pwd
+import re
+import shlex
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import time
+import urllib.parse
+
+CHUNK = 4 * 1024 * 1024
+EXTRA_TYPES = {
+    '.mkv': 'video/x-matroska', '.webm': 'video/webm', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime',
+    '.flac': 'audio/flac', '.opus': 'audio/ogg', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.mp3': 'audio/mpeg',
+    '.webp': 'image/webp', '.avif': 'image/avif', '.heic': 'image/heic', '.jxl': 'image/jxl', '.svg': 'image/svg+xml',
+    '.7z': 'application/x-7z-compressed', '.rar': 'application/vnd.rar', '.zst': 'application/zstd',
+    '.xz': 'application/x-xz', '.iso': 'application/x-iso9660-image', '.appimage': 'application/vnd.appimage',
+    '.desktop': 'application/x-desktop', '.exe': 'application/x-ms-dos-executable', '.msi': 'application/x-msi',
+    '.sh': 'application/x-shellscript', '.md': 'text/markdown', '.json': 'application/json', '.log': 'text/plain',
+    '.nsp': 'application/octet-stream', '.xci': 'application/octet-stream', '.rpm': 'application/x-rpm',
+    '.flatpakref': 'application/vnd.flatpak.ref', '.txt': 'text/plain', '.png': 'image/png', '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.pdf': 'application/pdf', '.zip': 'application/zip',
+}
+
+
+class Fail(Exception):
+    pass
+
+
+class Cancelled(Exception):
+    pass
+
+
+# ---------------------------------------------------------------------- where things are
+def home():
+    return os.path.abspath(os.path.expanduser('~'))
+
+
+def user():
+    try:
+        return pwd.getpwuid(os.getuid()).pw_name
+    except KeyError:
+        return os.environ.get('USER', '')
+
+
+def media_bases():
+    """Where removable drives and SD cards get mounted (udisks: /run/media/$USER; some setups /media/$USER)."""
+    u = user()
+    return ['/run/media/' + u, '/media/' + u]
+
+
+def write_roots():
+    roots = []
+    for r in [home()] + media_bases() + ['/tmp']:
+        rr = os.path.realpath(r)
+        if rr not in roots:
+            roots.append(rr)
+    return roots
+
+
+def norm(path):
+    """Absolute path; the folders leading to it resolved, the last part (maybe a symlink) left alone."""
+    p = os.path.abspath(os.path.expanduser(path))
+    if p == '/':
+        return p
+    return os.path.join(os.path.realpath(os.path.dirname(p)), os.path.basename(p))
+
+
+def under(path, root):
+    return path == root or path.startswith(root.rstrip('/') + '/')
+
+
+def allowed(path):
+    p = norm(path)
+    return any(under(p, r) for r in write_roots())
+
+
+def check_writable(path, allow_root=False):
+    """The path we're about to change, if that's allowed; else Fail."""
+    p = norm(path)
+    if not any(under(p, r) for r in write_roots()):
+        raise Fail("Hearth Files only changes things in your home folder, on USB drives and SD cards, and in /tmp")
+    if not allow_root and p in write_roots():
+        raise Fail("That folder can't be changed")
+    return p
+
+
+def lexists(p):
+    try:
+        os.lstat(p)
+        return True
+    except OSError:
+        return False
+
+
+def friendly(e, path=None):
+    """An OSError in plain words."""
+    name = '“' + os.path.basename(path or getattr(e, 'filename', '') or '') + '”'
+    code = getattr(e, 'errno', None)
+    if code in (errno.EACCES, errno.EPERM):
+        return "You don't have permission to change " + name if path else "You don't have permission to do that"
+    if code == errno.ENOENT:
+        return name + " isn't there any more"
+    if code == errno.ENOSPC:
+        return "The drive is full"
+    if code == errno.EROFS:
+        return "This drive is read-only"
+    if code == errno.EFBIG:
+        return name + " is bigger than 4 GB, which this drive's format (FAT32) can't hold"
+    if code == errno.EINVAL:
+        return "This drive can't hold a file named " + name
+    if code == errno.ENOTEMPTY:
+        return name + " isn't empty"
+    if code == errno.EEXIST:
+        return "There's already something called " + name + " here"
+    if code == errno.ENAMETOOLONG:
+        return "That name is too long"
+    if code == errno.EBUSY:
+        return name + " is in use"
+    return (e.strerror or str(e)) + (' (' + name + ')' if path else '')
+
+
+def mime_of(path, isdir=False):
+    if isdir:
+        return 'inode/directory'
+    ext = os.path.splitext(path)[1].lower()
+    if ext in EXTRA_TYPES:
+        return EXTRA_TYPES[ext]
+    t = mimetypes.guess_type(os.path.basename(path), strict=False)[0]
+    return t or 'application/octet-stream'
+
+
+def sniff_mime(path):
+    """The content type GLib would use (looks inside the file), or the guess from the name."""
+    if os.path.isdir(path):
+        return 'inode/directory'
+    if shutil.which('gio'):
+        try:
+            r = subprocess.run(['gio', 'info', '-a', 'standard::content-type', '--', path],
+                               capture_output=True, text=True, timeout=4)
+            m = re.search(r'standard::content-type:\s*(\S+)', r.stdout)
+            if m:
+                return m.group(1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return mime_of(path)
+
+
+def free_space(path):
+    try:
+        s = os.statvfs(path)
+        return s.f_bavail * s.f_frsize, s.f_blocks * s.f_frsize
+    except OSError:
+        return None, None
+
+
+# ---------------------------------------------------------------------- trash
+def home_trash():
+    base = os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share')
+    return os.path.join(base, 'Trash')
+
+
+def trash_info_for(files_path):
+    """(info file, the folder Path= is relative to) for an item inside some Trash's files/ folder."""
+    files_dir = os.path.dirname(files_path)
+    trash = os.path.dirname(files_dir)
+    info = os.path.join(trash, 'info', os.path.basename(files_path) + '.trashinfo')
+    top = None if os.path.realpath(trash) == os.path.realpath(home_trash()) else os.path.dirname(trash)
+    return info, top
+
+
+def read_trash_info(info, top):
+    try:
+        with open(info, encoding='utf-8', errors='surrogateescape') as f:
+            text = f.read()
+    except OSError:
+        return None, None
+    p = re.search(r'^Path=(.*)$', text, re.M)
+    d = re.search(r'^DeletionDate=(.*)$', text, re.M)
+    orig = urllib.parse.unquote(p.group(1).strip(), errors='surrogateescape') if p else None
+    if orig and not orig.startswith('/') and top:
+        orig = os.path.join(top, orig)
+    return orig, (d.group(1).strip() if d else None)
+
+
+def in_trash(path):
+    p = norm(path)
+    parent = os.path.dirname(p)
+    return os.path.basename(parent) == 'files' and (
+        os.path.realpath(os.path.dirname(parent)) == os.path.realpath(home_trash())
+        or os.path.basename(os.path.dirname(parent)).startswith('.Trash'))
+
+
+def mount_point(path):
+    p = os.path.realpath(path)
+    while not os.path.ismount(p) and p != '/':
+        p = os.path.dirname(p)
+    return p
+
+
+def trash_dir_for(p):
+    """The Trash to use for p: your home Trash on the same drive, else the drive's own .Trash-UID."""
+    ht = home_trash()
+    try:
+        os.makedirs(os.path.join(ht, 'files'), exist_ok=True)
+        os.makedirs(os.path.join(ht, 'info'), exist_ok=True)
+        if os.lstat(p).st_dev == os.stat(ht).st_dev:
+            return ht, None
+    except OSError:
+        pass
+    top = mount_point(os.path.dirname(p))
+    t = os.path.join(top, '.Trash-%d' % os.getuid())
+    try:
+        os.makedirs(os.path.join(t, 'files'), mode=0o700, exist_ok=True)
+        os.makedirs(os.path.join(t, 'info'), mode=0o700, exist_ok=True)
+    except OSError:
+        raise Fail("This drive has no Trash. Use Delete permanently instead")
+    return t, top
+
+
+def own_trash(p):
+    t, top = trash_dir_for(p)
+    base = os.path.basename(p)
+    name, n = base, 1
+    while True:
+        info = os.path.join(t, 'info', name + '.trashinfo')
+        try:
+            fd = os.open(info, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            break
+        except FileExistsError:
+            n += 1
+            stem, ext = os.path.splitext(base)
+            name = '%s.%d%s' % (stem, n, ext)
+    rel = os.path.relpath(p, top) if top else p
+    with os.fdopen(fd, 'w') as f:
+        f.write('[Trash Info]\nPath=%s\nDeletionDate=%s\n' % (
+            urllib.parse.quote(rel, errors='surrogateescape'), time.strftime('%Y-%m-%dT%H:%M:%S')))
+    try:
+        os.rename(p, os.path.join(t, 'files', name))
+    except OSError:
+        os.unlink(info)
+        raise
+    return os.path.join(t, 'files', name)
+
+
+def trash(paths):
+    done = []
+    for path in paths:
+        p = check_writable(path)
+        if not lexists(p):
+            raise Fail('“' + os.path.basename(p) + "” isn't there any more")
+        if in_trash(p):
+            raise Fail('“' + os.path.basename(p) + '” is already in the Trash')
+        if shutil.which('gio'):
+            try:
+                r = subprocess.run(['gio', 'trash', '--', p], capture_output=True, text=True, timeout=60)
+                if r.returncode == 0 and not lexists(p):
+                    done.append(p)
+                    continue
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        try:
+            own_trash(p)
+        except OSError as e:
+            raise Fail(friendly(e, p))
+        done.append(p)
+    return {'ok': True, 'trashed': done}
+
+
+def restore(paths):
+    back = []
+    for path in paths:
+        p = norm(path)
+        if not in_trash(p):
+            raise Fail('“' + os.path.basename(p) + "” isn't in the Trash")
+        info, top = trash_info_for(p)
+        orig, _ = read_trash_info(info, top)
+        if not orig:
+            raise Fail("Hearth Files doesn't know where “" + os.path.basename(p) + '” came from')
+        dest = unique(check_writable(orig))
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            os.rename(p, dest)
+        except OSError as e:
+            raise Fail(friendly(e, orig))
+        try:
+            os.unlink(info)
+        except OSError:
+            pass
+        back.append(dest)
+    return {'ok': True, 'restored': back}
+
+
+def empty_trash():
+    t = home_trash()
+    for sub in ('files', 'info', 'expunged'):
+        d = os.path.join(t, sub)
+        if not os.path.isdir(d):
+            continue
+        for name in os.listdir(d):
+            remove(os.path.join(d, name))
+    return {'ok': True}
+
+
+# ---------------------------------------------------------------------- listing
+def entry(path, name):
+    try:
+        lst = os.lstat(path)
+    except OSError:
+        return None
+    link = stat.S_ISLNK(lst.st_mode)
+    st = lst
+    if link:
+        try:
+            st = os.stat(path)
+        except OSError:
+            pass                       # a broken link: shown as the link itself
+    isdir = stat.S_ISDIR(st.st_mode)
+    e = {'name': name, 'path': path, 'dir': isdir, 'size': 0 if isdir else st.st_size, 'mtime': int(st.st_mtime),
+         'mime': mime_of(name, isdir), 'isLink': link, 'hidden': name.startswith('.')}
+    if not isdir and st.st_mode & 0o111 and stat.S_ISREG(st.st_mode):
+        e['exec'] = True
+    return e
+
+
+def list_dir(path, hidden=False):
+    p = os.path.abspath(os.path.expanduser(path or home()))
+    select = None
+    if lexists(p) and not os.path.isdir(p):
+        select = os.path.basename(p)
+        p = os.path.dirname(p)
+    if not os.path.isdir(p):
+        raise Fail("This folder isn't there any more")
+    try:
+        names = os.listdir(p)
+    except PermissionError:
+        raise Fail("You don't have permission to open this folder")
+    except OSError as e:
+        raise Fail(friendly(e))
+    entries = []
+    trash_view = os.path.realpath(p) == os.path.realpath(os.path.join(home_trash(), 'files'))
+    for name in names:
+        if not hidden and name.startswith('.') and name != select:
+            continue
+        e = entry(os.path.join(p, name), name)
+        if not e:
+            continue
+        if trash_view:
+            orig, when = read_trash_info(*trash_info_for(e['path']))
+            e['origPath'] = orig
+            e['deleted'] = when
+        entries.append(e)
+    free, total = free_space(p)
+    out = {'path': p, 'name': os.path.basename(p) or '/', 'parent': os.path.dirname(p) if p != '/' else None,
+           'writable': allowed(p) and os.access(p, os.W_OK), 'trash': trash_view, 'entries': entries,
+           'free': free, 'total': total}
+    if select:
+        out['select'] = select
+    return out
+
+
+def user_dirs():
+    """XDG user folders (~/.config/user-dirs.dirs), e.g. {'DOWNLOAD': '/home/me/Downloads'}."""
+    h = home()
+    cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(h, '.config')
+    out = {}
+    try:
+        with open(os.path.join(cfg, 'user-dirs.dirs'), encoding='utf-8') as f:
+            for line in f:
+                m = re.match(r'\s*XDG_(\w+)_DIR\s*=\s*"(.*)"\s*$', line)
+                if m:
+                    v = m.group(2).replace('$HOME', h)
+                    if not v.startswith('/'):
+                        v = os.path.join(h, v)
+                    out[m.group(1)] = os.path.normpath(v)
+    except OSError:
+        pass
+    return out
+
+
+def steam_libraries():
+    """Steam library folders (each holds steamapps/common), from libraryfolders.vdf."""
+    h = home()
+    libs, seen = [], set()
+    for root in (os.path.join(h, '.local', 'share', 'Steam'), os.path.join(h, '.steam', 'steam'),
+                 os.path.join(h, '.var', 'app', 'com.valvesoftware.Steam', '.local', 'share', 'Steam')):
+        cands = [root]
+        try:
+            with open(os.path.join(root, 'steamapps', 'libraryfolders.vdf'), encoding='utf-8', errors='replace') as f:
+                cands += [m.replace('\\\\', '\\') for m in re.findall(r'"path"\s+"((?:[^"\\]|\\.)*)"', f.read())]
+        except OSError:
+            pass
+        for c in cands:
+            common = os.path.join(c, 'steamapps', 'common')
+            real = os.path.realpath(common)
+            if os.path.isdir(common) and real not in seen:
+                seen.add(real)
+                libs.append(c)
+    return libs
+
+
+def mounts():
+    """{mount point: device} from /proc/mounts."""
+    out = {}
+    try:
+        with open('/proc/mounts') as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    dev = parts[0]
+                    mp = re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), parts[1])
+                    out[mp] = dev
+    except OSError:
+        pass
+    return out
+
+
+def drive_kind(dev):
+    if 'mmcblk' in dev:
+        return 'sd', 'SD card'
+    if dev.startswith('/dev/sd') or dev.startswith('/dev/sr'):
+        return 'usb', 'USB drive'
+    return 'drive', 'Drive'
+
+
+def drives():
+    m = mounts()
+    out = []
+    for base in media_bases():
+        try:
+            names = sorted(os.listdir(base))
+        except OSError:
+            continue
+        for name in names:
+            p = os.path.join(base, name)
+            if not os.path.isdir(p):
+                continue
+            kind, sub = drive_kind(m.get(p, ''))
+            free, total = free_space(p)
+            out.append({'id': 'drive:' + p, 'label': name, 'path': p, 'kind': kind, 'sub': sub, 'section': 'drives',
+                        'free': free, 'total': total, 'removable': True})
+    return out
+
+
+def places():
+    h = home()
+    xdg = user_dirs()
+    free, total = free_space(h)
+    out = [{'id': 'home', 'label': 'Home', 'path': h, 'kind': 'home', 'section': 'places', 'free': free, 'total': total}]
+    for key, label, kind in (('DESKTOP', 'Desktop', 'desktop'), ('DOCUMENTS', 'Documents', 'documents'),
+                             ('DOWNLOAD', 'Downloads', 'downloads'), ('PICTURES', 'Pictures', 'pictures'),
+                             ('VIDEOS', 'Videos', 'videos'), ('MUSIC', 'Music', 'music')):
+        p = xdg.get(key) or os.path.join(h, label)
+        if os.path.isdir(p) and os.path.realpath(p) != os.path.realpath(h):
+            out.append({'id': kind, 'label': label, 'path': p, 'kind': kind, 'section': 'places'})
+            if kind == 'pictures':
+                shots = os.path.join(p, 'Screenshots')
+                if os.path.isdir(shots):
+                    out.append({'id': 'screenshots', 'label': 'Screenshots', 'path': shots, 'kind': 'pictures',
+                                'section': 'places', 'child': True})
+                    hearth = os.path.join(shots, 'Hearth')
+                    if os.path.isdir(hearth):
+                        out.append({'id': 'hearth-shots', 'label': 'Hearth screenshots', 'path': hearth,
+                                    'kind': 'pictures', 'section': 'places', 'child': True})
+    games = os.path.join(h, 'Games')
+    if os.path.isdir(games):
+        out.append({'id': 'games', 'label': 'Games', 'path': games, 'kind': 'games', 'section': 'games'})
+    dl = drives()
+    for i, lib in enumerate(steam_libraries()):
+        label = 'Steam games'
+        on = next((d for d in dl if under(os.path.realpath(lib), os.path.realpath(d['path']))), None)
+        if on:
+            label = 'Steam games (' + on['label'] + ')'
+        elif not under(os.path.realpath(lib), os.path.realpath(h)):
+            label = 'Steam games (' + (os.path.basename(lib.rstrip('/')) or lib) + ')'
+        out.append({'id': 'steam:' + lib, 'label': label, 'path': os.path.join(lib, 'steamapps', 'common'),
+                    'kind': 'games', 'section': 'games'})
+    out += dl
+    tf = os.path.join(home_trash(), 'files')
+    try:
+        count = len(os.listdir(tf))
+    except OSError:
+        count = 0
+    out.append({'id': 'trash', 'label': 'Trash', 'path': tf, 'kind': 'trash', 'section': 'trash', 'count': count})
+    return {'places': out, 'home': h}
+
+
+# ---------------------------------------------------------------------- changing things
+def valid_name(name):
+    if not name or name in ('.', '..') or '/' in name or '\0' in name:
+        raise Fail("That name can't be used")
+    if len(os.fsencode(name)) > 255:
+        raise Fail('That name is too long')
+    return name
+
+
+def mkdir(path):
+    p = check_writable(path)
+    valid_name(os.path.basename(p))
+    try:
+        os.mkdir(p)
+    except OSError as e:
+        raise Fail(friendly(e, p))
+    return {'ok': True, 'path': p}
+
+
+def rename(path, newname):
+    p = check_writable(path)
+    valid_name(newname.strip() if newname.strip() else '')
+    newname = newname.strip()
+    dest = os.path.join(os.path.dirname(p), newname)
+    check_writable(dest)
+    if not lexists(p):
+        raise Fail('“' + os.path.basename(p) + "” isn't there any more")
+    if dest == p:
+        return {'ok': True, 'path': p}
+    if lexists(dest) and not (p.lower() == dest.lower() and os.path.samestat(os.lstat(p), os.lstat(dest))):
+        raise Fail("There's already something called “" + newname + '” here')
+    try:
+        os.rename(p, dest)
+    except OSError as e:
+        raise Fail(friendly(e, p))
+    return {'ok': True, 'path': dest}
+
+
+def remove(p):
+    """Delete p for good. A symlink is removed itself; rmtree never follows links inside folders."""
+    st = os.lstat(p)
+    if stat.S_ISDIR(st.st_mode):
+        def retry(func, path, *_):
+            # Read-only folders inside (e.g. Go module caches, some game files): make them writable, try again.
+            try:
+                os.chmod(os.path.dirname(path), 0o700)
+                if os.path.isdir(path) and not os.path.islink(path):
+                    os.chmod(path, 0o700)
+            except OSError:
+                pass
+            func(path)
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(p, onexc=retry)
+        else:
+            shutil.rmtree(p, onerror=retry)
+    else:
+        os.unlink(p)
+
+
+def delete(paths):
+    gone = []
+    for path in paths:
+        p = check_writable(path)
+        if not lexists(p):
+            continue
+        intrash = in_trash(p)
+        try:
+            remove(p)
+        except OSError as e:
+            raise Fail(friendly(e, p))
+        if intrash:
+            try:
+                os.unlink(trash_info_for(p)[0])
+            except OSError:
+                pass
+        gone.append(p)
+    return {'ok': True, 'deleted': gone}
+
+
+def unique(target):
+    """target, or "name (2).ext", "name (3).ext"... if that's taken."""
+    if not lexists(target):
+        return target
+    d, base = os.path.split(target)
+    stem, ext = (base, '') if os.path.isdir(target) and not os.path.islink(target) else os.path.splitext(base)
+    if stem.startswith('.') and not ext:
+        stem, ext = base, ''
+    m = re.match(r'^(.*) \((\d+)\)$', stem)
+    n = int(m.group(2)) if m else 1
+    stem = m.group(1) if m else stem
+    while True:
+        n += 1
+        t = os.path.join(d, '%s (%d)%s' % (stem, n, ext))
+        if not lexists(t):
+            return t
+
+
+def tree_size(p):
+    """(bytes, files, folders) under p, without following symlinks."""
+    size = files = folders = 0
+    try:
+        st = os.lstat(p)
+    except OSError:
+        return 0, 0, 0
+    if not stat.S_ISDIR(st.st_mode):
+        return st.st_size, 1, 0
+    for root, dirs, fs in os.walk(p, followlinks=False):
+        folders += len(dirs)
+        for name in fs + [d for d in dirs if os.path.islink(os.path.join(root, d))]:
+            try:
+                size += os.lstat(os.path.join(root, name)).st_size
+                files += 1
+            except OSError:
+                pass
+    return size, files, folders
+
+
+class Progress:
+    def __init__(self, total, items):
+        self.total, self.items, self.done = total, items, 0
+        self.start = self.last = time.monotonic()
+        self.last_done, self.speed, self.file, self.item = 0, 0.0, '', 0
+        self.slow = float(os.environ.get('HEARTH_FILES_SLOW') or 0)   # tests only: seconds per chunk
+
+    def tick(self, n, force=False):
+        self.done += n
+        if self.slow:
+            time.sleep(self.slow)
+        now = time.monotonic()
+        if force or now - self.last >= 0.25:
+            dt = max(now - self.last, 1e-3)
+            inst = (self.done - self.last_done) / dt
+            self.speed = inst if not self.speed else self.speed * 0.6 + inst * 0.4
+            self.last, self.last_done = now, self.done
+            print('progress: ' + json.dumps({'done': self.done, 'total': self.total, 'speed': int(self.speed),
+                                             'file': self.file, 'item': self.item, 'items': self.items}), flush=True)
+
+
+def copy_file(src, dst, prog, sync):
+    prog.file = os.path.basename(src)
+    with open(src, 'rb') as fi, open(dst, 'xb') as fo:
+        while True:
+            buf = fi.read(CHUNK)
+            if not buf:
+                break
+            fo.write(buf)
+            prog.tick(len(buf))
+        if sync:
+            fo.flush()
+            os.fsync(fo.fileno())
+    try:
+        shutil.copystat(src, dst)
+    except OSError:
+        pass                            # FAT/exFAT drives can't keep permissions
+
+
+def copy_tree(src, dst, prog, sync):
+    st = os.lstat(src)
+    if stat.S_ISLNK(st.st_mode):
+        os.symlink(os.readlink(src), dst)
+        prog.tick(st.st_size)
+    elif stat.S_ISDIR(st.st_mode):
+        os.mkdir(dst)
+        try:
+            names = os.listdir(src)
+        except OSError as e:
+            raise Fail(friendly(e, src))
+        for name in names:
+            copy_tree(os.path.join(src, name), os.path.join(dst, name), prog, sync)
+        try:
+            shutil.copystat(src, dst, follow_symlinks=False)
+        except OSError:
+            pass
+    elif stat.S_ISREG(st.st_mode):
+        copy_file(src, dst, prog, sync)
+    # sockets, fifos and devices are skipped
+
+
+def same_device(a, b):
+    try:
+        return os.lstat(a).st_dev == os.stat(b).st_dev
+    except OSError:
+        return False
+
+
+def human(n):
+    for unit in ('bytes', 'KB', 'MB', 'GB', 'TB'):
+        if n < 1024 or unit == 'TB':
+            return ('%d %s' % (n, unit)) if unit == 'bytes' else ('%.1f %s' % (n, unit))
+        n /= 1024.0
+
+
+def transfer(srcs, dest, move):
+    d = check_writable(dest, allow_root=True)
+    if not os.path.isdir(d):
+        raise Fail('The place to copy to has to be a folder')
+    if not os.access(d, os.W_OK):
+        raise Fail("You don't have permission to put things in “" + os.path.basename(d) + '”')
+    plan = []                          # (src, target, by_rename, bytes)
+    for s in srcs:
+        src = check_writable(s) if move else norm(s)
+        if not lexists(src):
+            raise Fail('“' + os.path.basename(src) + "” isn't there any more")
+        rs, rd = os.path.realpath(src), os.path.realpath(d)
+        if os.path.isdir(src) and not os.path.islink(src) and under(rd, rs):
+            raise Fail("A folder can't go inside itself")
+        if move and os.path.realpath(os.path.dirname(src)) == rd:
+            continue                   # already there
+        rename_ok = move and same_device(src, d)
+        size = tree_size(src)[0]
+        plan.append([src, os.path.join(d, os.path.basename(src)), rename_ok, size])
+    need = sum(p[3] for p in plan if not p[2])
+    free, _ = free_space(d)
+    if free is not None and need > free:
+        raise Fail('Not enough space: this needs %s and there is %s free' % (human(need), human(free)))
+    prog = Progress(sum(p[3] for p in plan), len(plan))
+    sync = any(under(os.path.realpath(d), os.path.realpath(b)) for b in media_bases())
+    finished, current = [], None
+
+    def stop(*_):
+        raise Cancelled()
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    prog.tick(0, force=True)
+    try:
+        for i, item in enumerate(plan):
+            src, target, by_rename, size = item
+            prog.item = i + 1
+            target = item[1] = unique(target)
+            if by_rename:
+                prog.file = os.path.basename(src)
+                os.rename(src, target)
+                prog.tick(size, force=True)
+            else:
+                current = target
+                copy_tree(src, target, prog, sync)
+                current = None
+                if move:
+                    remove(src)
+            finished.append(target)
+        prog.tick(0, force=True)
+    except Cancelled:
+        if current and lexists(current):
+            try:
+                remove(current)
+            except OSError:
+                pass
+        return {'cancelled': True, 'items': finished}
+    except OSError as e:
+        if current and lexists(current):
+            try:
+                remove(current)
+            except OSError:
+                pass
+        raise Fail(friendly(e, e.filename or current))
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+    return {'ok': True, 'items': finished, 'bytes': prog.total, 'seconds': round(time.monotonic() - prog.start, 2)}
+
+
+# ---------------------------------------------------------------------- details
+def info(path):
+    p = os.path.abspath(os.path.expanduser(path))
+    try:
+        lst = os.lstat(p)
+    except OSError as e:
+        raise Fail(friendly(e, p))
+    link = stat.S_ISLNK(lst.st_mode)
+    try:
+        st = os.stat(p)
+    except OSError:
+        st = lst
+    isdir = stat.S_ISDIR(st.st_mode)
+    if isdir and not link:
+        size, files, folders = tree_size(p)
+    else:
+        size, files, folders = st.st_size, 1, 0
+    try:
+        owner = pwd.getpwuid(st.st_uid).pw_name
+    except KeyError:
+        owner = str(st.st_uid)
+    free, total = free_space(p if isdir else os.path.dirname(p))
+    out = {'name': os.path.basename(p) or '/', 'path': p, 'parent': os.path.dirname(p), 'dir': isdir, 'isLink': link,
+           'size': size, 'files': files, 'folders': folders, 'mtime': int(st.st_mtime), 'atime': int(st.st_atime),
+           'ctime': int(st.st_ctime), 'mime': sniff_mime(p), 'mode': stat.filemode(st.st_mode), 'owner': owner,
+           'writable': allowed(p) and os.access(os.path.dirname(p), os.W_OK), 'free': free, 'total': total}
+    if link:
+        out['target'] = os.readlink(p)
+    if in_trash(p):
+        out['origPath'], out['deleted'] = read_trash_info(*trash_info_for(p))
+    return out
+
+
+# ---------------------------------------------------------------------- apps
+def data_dirs():
+    h = home()
+    dirs = [os.environ.get('XDG_DATA_HOME') or os.path.join(h, '.local', 'share')]
+    dirs += [d for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if d]
+    for f in (os.path.join(h, '.local', 'share', 'flatpak', 'exports', 'share'), '/var/lib/flatpak/exports/share'):
+        if f not in dirs:
+            dirs.append(f)
+    return dirs
+
+
+def parse_desktop(path):
+    out, section = {}, None
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('['):
+                    section = line
+                    continue
+                if section != '[Desktop Entry]' or '=' not in line or line.startswith('#'):
+                    continue
+                k, v = line.split('=', 1)
+                out.setdefault(k.strip(), v.strip())
+    except OSError:
+        return None
+    return out
+
+
+def desktop_entries():
+    """{desktop id: (file, fields)}; earlier data dirs win, like the spec says."""
+    found = {}
+    for d in data_dirs():
+        apps = os.path.join(d, 'applications')
+        for root, _, files in os.walk(apps):
+            for name in files:
+                if not name.endswith('.desktop'):
+                    continue
+                full = os.path.join(root, name)
+                did = os.path.relpath(full, apps).replace('/', '-')
+                if did in found:
+                    continue
+                fields = parse_desktop(full)
+                if fields is not None:
+                    found[did] = (full, fields)
+    return found
+
+
+def usable(fields):
+    if fields.get('Type', 'Application') != 'Application' or not fields.get('Exec'):
+        return False
+    if fields.get('Hidden', '').lower() == 'true':
+        return False
+    te = fields.get('TryExec')
+    if te and not (shutil.which(te) or os.path.exists(te)):
+        return False
+    return True
+
+
+def desktops():
+    return [d.lower() for d in (os.environ.get('XDG_CURRENT_DESKTOP') or '').split(':') if d]
+
+
+def mimeapps_files():
+    h = home()
+    cfg = [os.environ.get('XDG_CONFIG_HOME') or os.path.join(h, '.config')]
+    cfg += [d for d in (os.environ.get('XDG_CONFIG_DIRS') or '/etc/xdg').split(':') if d]
+    dirs = cfg + [os.path.join(d, 'applications') for d in data_dirs()]
+    files = []
+    for d in dirs:
+        for desk in desktops():
+            files.append(os.path.join(d, desk + '-mimeapps.list'))
+        files.append(os.path.join(d, 'mimeapps.list'))
+    return files
+
+
+def mimeapps(mime):
+    """(default ids in order, added ids, removed ids) for mime from every mimeapps.list."""
+    defaults, added, removed = [], [], set()
+    for f in mimeapps_files():
+        section = None
+        try:
+            with open(f, encoding='utf-8', errors='replace') as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line.startswith('['):
+                        section = line
+                    elif '=' in line:
+                        k, v = line.split('=', 1)
+                        if k.strip() != mime:
+                            continue
+                        ids = [x for x in v.strip().split(';') if x]
+                        if section == '[Default Applications]':
+                            defaults += ids
+                        elif section == '[Added Associations]':
+                            added += ids
+                        elif section == '[Removed Associations]':
+                            removed.update(ids)
+        except OSError:
+            continue
+    return defaults, added, removed
+
+
+def apps(path):
+    p = os.path.abspath(os.path.expanduser(path))
+    mime = sniff_mime(p)
+    entries = desktop_entries()
+    defaults, added, removed = mimeapps(mime)
+    major = mime.split('/')[0] + '/*'
+    out, seen = [], set()
+
+    def add(did, fields):
+        if did in seen or did in removed or not usable(fields):
+            return
+        seen.add(did)
+        out.append({'id': did, 'name': fields.get('Name') or did[:-8], 'icon': fields.get('Icon', ''),
+                    'exec': fields.get('Exec', '')})
+
+    default = next((d for d in defaults if d in entries and usable(entries[d][1])), None)
+    if default:
+        add(default, entries[default][1])
+    for did in added:
+        if did in entries:
+            add(did, entries[did][1])
+    for did, (_, fields) in sorted(entries.items(), key=lambda kv: (kv[1][1].get('Name') or kv[0]).lower()):
+        types = [t for t in fields.get('MimeType', '').split(';') if t]
+        hit = mime in types or major in types or (mime.startswith('text/') and 'text/plain' in types)
+        if hit and (fields.get('NoDisplay', '').lower() != 'true'):
+            add(did, fields)
+    for a in out:
+        a['default'] = a['id'] == default
+        del a['exec']
+    return {'mime': mime, 'apps': out, 'default': default}
+
+
+def file_uri(p):
+    return 'file://' + urllib.parse.quote(p, safe="/!$&'()*+,;=:@~-._", errors='surrogateescape')
+
+
+def expand_exec(execline, path, fields=None, desktop_file=''):
+    """argv for a .desktop Exec line opening path (the field codes from the Desktop Entry spec)."""
+    fields = fields or {}
+    try:
+        words = shlex.split(execline)
+    except ValueError:
+        words = execline.split()
+    argv, used = [], False
+    for w in words:
+        if w in ('%f', '%F'):
+            argv.append(path)
+            used = True
+        elif w in ('%u', '%U'):
+            argv.append(file_uri(path))
+            used = True
+        elif w == '%i':
+            if fields.get('Icon'):
+                argv += ['--icon', fields['Icon']]
+        elif w in ('%d', '%D', '%n', '%N', '%v', '%m'):
+            continue
+        else:
+            w = (w.replace('%c', fields.get('Name', '')).replace('%k', desktop_file)
+                 .replace('%f', path).replace('%u', file_uri(path)).replace('%%', '%'))
+            argv.append(w)
+    if not used:
+        argv.append(path)
+    return argv
+
+
+def spawn(argv, cwd=None):
+    try:
+        subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as e:
+        raise Fail("Couldn't start " + os.path.basename(argv[0]) + ': ' + (e.strerror or str(e)))
+
+
+def open_path(path, app_id=None):
+    p = os.path.abspath(os.path.expanduser(path))
+    if not lexists(p):
+        raise Fail('“' + os.path.basename(p) + "” isn't there any more")
+    cwd = p if os.path.isdir(p) else os.path.dirname(p)
+    if app_id:
+        entries = desktop_entries()
+        if app_id not in entries:
+            raise Fail("That app isn't installed any more")
+        full, fields = entries[app_id]
+        spawn(expand_exec(fields['Exec'], p, fields, full), cwd=cwd)
+        return {'ok': True, 'app': app_id}
+    if shutil.which('gio'):
+        try:
+            r = subprocess.run(['gio', 'open', p], capture_output=True, text=True, timeout=20,
+                               start_new_session=True)
+            if r.returncode == 0:
+                return {'ok': True}
+            raise Fail('No app is set up to open this kind of file. Try “Open with…”')
+        except subprocess.TimeoutExpired:
+            return {'ok': True}
+    if shutil.which('xdg-open'):
+        spawn(['xdg-open', p], cwd=cwd)
+        return {'ok': True}
+    raise Fail('No app is set up to open this kind of file. Try “Open with…”')
+
+
+def eject(path):
+    p = norm(path)
+    if not any(under(p, os.path.realpath(b)) and p != os.path.realpath(b) for b in media_bases()):
+        raise Fail('Only USB drives and SD cards can be removed')
+    dev = mounts().get(p)
+    subprocess.run(['sync'], timeout=120)
+    errors = []
+    if dev and shutil.which('udisksctl'):
+        r = subprocess.run(['udisksctl', 'unmount', '-b', dev], capture_output=True, text=True, timeout=60)
+        if r.returncode == 0:
+            # Power the USB drive off too (fine if it can't: SD card readers usually can't).
+            subprocess.run(['udisksctl', 'power-off', '-b', re.sub(r'(p?\d+)$', '', dev) if 'mmcblk' not in dev
+                            else re.sub(r'p\d+$', '', dev)], capture_output=True, timeout=30)
+            return {'ok': True}
+        errors.append((r.stderr or r.stdout).strip())
+    if shutil.which('gio'):
+        r = subprocess.run(['gio', 'mount', '-u', p], capture_output=True, text=True, timeout=60)
+        if r.returncode == 0:
+            return {'ok': True}
+        errors.append((r.stderr or r.stdout).strip())
+    msg = next((e for e in errors if e), '')
+    if 'busy' in msg.lower():
+        raise Fail('Something is still using this drive. Close it and try again')
+    raise Fail("Couldn't remove the drive" + (': ' + msg.splitlines()[-1] if msg else ''))
+
+
+# ---------------------------------------------------------------------- command line
+USAGE = ('usage: hearth-files list PATH [--hidden] | places | mkdir PATH | rename PATH NEWNAME | trash PATH... | '
+         'restore PATH... | empty-trash | delete PATH... | copy SRC... DEST | move SRC... DEST | info PATH | '
+         'apps PATH | open PATH [APP_ID] | eject PATH')
+
+
+def cmd(argv):
+    args = argv[1:]
+    c = args[0] if args else ''
+    rest = args[1:]
+    if c == 'list' and rest:
+        hidden = '--hidden' in rest
+        paths = [a for a in rest if a != '--hidden']
+        out = list_dir(paths[0] if paths else '', hidden)
+    elif c == 'list':
+        out = list_dir('', False)
+    elif c == 'places':
+        out = places()
+    elif c == 'mkdir' and len(rest) == 1:
+        out = mkdir(rest[0])
+    elif c == 'rename' and len(rest) == 2:
+        out = rename(rest[0], rest[1])
+    elif c == 'trash' and rest:
+        out = trash(rest)
+    elif c == 'restore' and rest:
+        out = restore(rest)
+    elif c == 'empty-trash':
+        out = empty_trash()
+    elif c == 'delete' and rest:
+        out = delete(rest)
+    elif c in ('copy', 'move') and len(rest) >= 2:
+        out = transfer(rest[:-1], rest[-1], c == 'move')
+    elif c == 'info' and len(rest) == 1:
+        out = info(rest[0])
+    elif c == 'apps' and len(rest) == 1:
+        out = apps(rest[0])
+    elif c == 'open' and len(rest) in (1, 2):
+        out = open_path(rest[0], rest[1] if len(rest) == 2 else None)
+    elif c == 'eject' and len(rest) == 1:
+        out = eject(rest[0])
+    else:
+        print(USAGE)
+        sys.exit(2)
+    print(json.dumps(out), flush=True)
+
+
+if __name__ == '__main__':
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    try:
+        cmd(sys.argv)
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        print('error: ' + (friendly(e) if isinstance(e, OSError) else str(e)), flush=True)
+        sys.exit(1)

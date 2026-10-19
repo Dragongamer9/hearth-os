@@ -87,7 +87,7 @@ PanelWindow {
                         anchors.centerIn: parent
                         implicitSize: 28
                         // Hearth Settings is part of this shell (its app id is Quickshell's): show the Hearth mark.
-                        source: (task.modelData.title === "Hearth Settings" || task.modelData.title === "Task Manager") ? Qt.resolvedUrl("images/hearth-logo.png")
+                        source: (task.modelData.title === "Hearth Settings" || task.modelData.title === "Task Manager" || task.modelData.title === "Files") ? Qt.resolvedUrl("images/hearth-logo.png")
                             : Quickshell.iconPath(task.entry ? task.entry.icon : task.modelData.appId, "application-x-executable")
                     }
                 }
