@@ -9,11 +9,13 @@
 // the keyboard by itself.
 
 (() => {
-if (window.__hearthPad) return; window.__hearthPad = true;
+if (window.__hearthPad) return;
+if (window.__hearthPadWanted === false) return;   // the Xbox Cloud Gaming window, on a page that isn't a sign-in
+window.__hearthPad = true;
 // In the Rust host there's no Electron to send real input events: clicks, typing and scrolling happen in the
 // page itself, and B leaves through an address the app catches.
 const ipcRenderer = { send(what, p) {
-  if (what === 'signin:cancel') { location.href = 'hearth-signin://cancel'; return; }
+  if (what === 'signin:cancel') { if (window.__hearthPadCancel) window.__hearthPadCancel(); else location.href = 'hearth-signin://cancel'; return; }
   if (what === 'signin:click') {
     const el = document.elementFromPoint(p.x, p.y);
     if (!el) return;

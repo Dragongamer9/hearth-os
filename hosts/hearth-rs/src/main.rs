@@ -85,7 +85,7 @@ fn stream(app: &tauri::AppHandle, open: Option<(&str, &str)>, windowed: bool) {
         .inner_size(1280.0, 800.0)
         .user_agent(EDGE_UA)
         .data_directory(hearth_core::paths::data_dir().join("xcloud-web"))
-        .initialization_script(include_str!("js/stream-exit.js"))
+        .initialization_script(concat!(include_str!("js/stream-exit.js"), "\n", include_str!("js/stream-signin.js"), "\n", include_str!("js/signin-pad.js")))
         .on_navigation(|url| {
             if url.as_str().starts_with("hearth-signin://stream-exit") {
                 let gm = GM.get().cloned();
