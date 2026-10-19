@@ -42,7 +42,7 @@ code=$?
 set -e
 grep -E "self-test" /tmp/selftest.log || true
 if ! grep -q "self-test passed" /tmp/selftest.log; then
-  grep -v "ICU data\|^$" /tmp/selftest.log | tail -8 | cut -c1-300 | while IFS= read -r l; do echo "::error title=self-test (exit $code)::${l//%/%25}"; done
+  grep -v "ICU data\|^$\|dumped core\|breakpoint trap" /tmp/selftest.log | tail -9 | cut -c1-450 | while IFS= read -r l; do echo "::error title=self-test (exit $code)::${l//%/%25}"; done
   exit 1
 fi
 tar -C /tmp/hb -cf hearth-browser-cef.tar .
