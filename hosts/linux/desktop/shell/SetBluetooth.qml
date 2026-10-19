@@ -33,7 +33,7 @@ SetPage {
             onStreamFinished: {
                 const parts = text.split("---"), p = parts[0], c = parts[1];
                 const conn = page.parseDevices(c || "").map(d => d.mac);
-                page.paired = page.parseDevices(p || "").map(d => ({ mac: d.mac, name: d.name, connected: conn.includes(d.mac) }));
+                page.replaceList("paired", page.parseDevices(p || "").map(d => ({ mac: d.mac, name: d.name, connected: conn.includes(d.mac) })));
             }
         }
     }
@@ -43,7 +43,7 @@ SetPage {
         stdout: StdioCollector {
             onStreamFinished: {
                 const known = page.paired.map(d => d.mac);
-                page.found = page.parseDevices(text).filter(d => !known.includes(d.mac) && !/^([0-9A-F]{2}-){5}/i.test(d.name));
+                page.replaceList("found", page.parseDevices(text).filter(d => !known.includes(d.mac) && !/^([0-9A-F]{2}-){5}/i.test(d.name)));
                 page.scanning = false;
             }
         }
