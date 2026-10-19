@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Files</title>
+<!--
+  Hearth Files for Mantel on Windows, like Mantel's file manager on Hearth OS (hosts/linux/desktop/shell/FileManager.qml):
+  places on the left (your folders, game libraries, drives, the Recycle Bin), the folder on the right as a grid
+  or a list. Works with the mouse, the keyboard and the controller the same way as Hearth Settings:
+    places   Up/Down pick a place, Right/Enter go into it, Esc closes
+    files    D-pad / arrows move, A / Enter opens, B / Esc goes up a folder (to the places at the top),
+             X (menu key, Shift+F10, right click) shows what you can do, Y (Ctrl+F) searches, LB/RB (Tab) switch
+             between places and files. Keyboard extras: typing searches the folder, Ctrl+C/X/V, F2 rename, Delete / Shift+Delete,
+             Ctrl+A, Space select, Ctrl+1/2 grid/list, Ctrl+Shift+N new folder, Alt+Enter properties, Backspace back, F5 refresh, Ctrl+H hidden.
+  Hosted by Ember (Mantel/AppWindow.cs, FilesWindow) in WebView2; calls files.* (Services/FileService.cs);
+  thumbnails come from https://hearth-files.local/thumb. Opens in a normal browser too, with sample data.
+-->
+<style>
+:root{
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --danger:#ff5d5d; --ember:#ff8a3d; --flame:#ffd166; --accent:#ff8a3d; --accentInk:#2a1206;
+  --quick:140ms;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font:14px/1.3 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer;text-align:left}
+svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+:focus{outline:none}
+.app{display:flex;height:100%}
+nav{width:250px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 12px;gap:2px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent}
+@media (max-width:900px){nav{width:200px}}
+.brand{display:flex;align-items:center;gap:10px;margin:6px 6px 12px}
+.brand img{width:30px;height:30px}
+.brand b{font-size:20px;font-weight:600}
+.nh{color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin:12px 10px 4px}
+.ni{min-height:42px;border-radius:10px;display:flex;align-items:center;gap:12px;padding:6px 12px;font-size:14px;transition:background var(--quick);width:100%}
+.ni:hover{background:var(--panel2)}
+.ni span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ni small{color:var(--muted);font-size:11px}
+.ni .bar{display:block;height:3px;border-radius:2px;background:var(--panel3);margin-top:4px;overflow:hidden}
+.ni .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--ember),var(--flame))}
+.ni.lit{background:var(--panel3);font-weight:600}
+.ni.lit svg{color:var(--accent)}
+.ni.cur{box-shadow:inset 0 0 0 2px var(--accent)}
+nav.focus .ni.cur{background:var(--accent);color:var(--accentInk);box-shadow:none}
+nav.focus .ni.cur svg,nav.focus .ni.cur small{color:var(--accentInk)}
+nav.focus .ni.cur .bar{background:#0003}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.tb{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex:none;color:var(--text)}
+.tb:hover{background:var(--panel2)}
+.tb[disabled]{opacity:.35;cursor:default}
+.tb.on{background:var(--panel3);color:var(--accent)}
+.crumbs{flex:1;min-width:0;display:flex;align-items:center;gap:2px;overflow:hidden;white-space:nowrap;mask-image:linear-gradient(90deg,transparent,#000 24px)}
+.crumbs.short{mask-image:none}
+.crumbs .cr{height:34px;border-radius:8px;padding:0 10px;font-size:15px;flex:none}
+.crumbs .cr:hover{background:var(--panel2)}
+.crumbs .cr:last-child{font-weight:600}
+.crumbs .sep{color:var(--muted);flex:none}
+.search{width:240px;flex:none;height:38px;border-radius:10px;background:var(--panel2);border:2px solid transparent;padding:0 12px 0 36px;font-size:14px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a69484' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6'/%3E%3Cpath d='m15 15 5 5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-size:18px;background-position:11px center}
+.search:focus{border-color:var(--accent)}
+@media (max-width:860px){.search{width:150px}}
+.files{flex:1;overflow-y:auto;padding:14px 16px 20px;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent;position:relative}
+.files.focus .it.cur{border-color:var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(124px,1fr));gap:8px}
+.it{border-radius:12px;border:2px solid transparent;transition:background var(--quick),border-color var(--quick);position:relative}
+.it:hover{background:var(--panel2)}
+.it.sel{background:var(--panel3)}
+.it.cut{opacity:.5}
+.grid .it{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px 8px;min-width:0}
+.grid .th{width:96px;height:80px;display:grid;place-items:center}
+.grid .th img{max-width:96px;max-height:80px;border-radius:6px;object-fit:contain;box-shadow:0 2px 8px #0006}
+.grid .th img.ico{box-shadow:none;width:56px;height:56px}
+.grid .th svg{width:56px;height:56px;stroke-width:1.2}
+.grid .nm{font-size:13px;text-align:center;width:100%;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;line-height:1.25}
+.it.sel::after{content:"";position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:9px;background:var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232a1206' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/12px no-repeat}
+.list{display:flex;flex-direction:column;gap:2px}
+.lh,.list .it{display:grid;grid-template-columns:36px minmax(0,1fr) 170px 150px 90px;align-items:center;gap:12px;padding:0 12px}
+.list.rec .lh,.list.rec .it{grid-template-columns:36px minmax(0,1fr) minmax(0,1fr) 150px 90px}
+.lh{color:var(--muted);font-size:12px;height:30px;position:sticky;top:-14px;background:var(--bg);z-index:1}
+.lh button{color:var(--muted);font-size:12px}
+.lh button.on{color:var(--text);font-weight:600}
+.list .it{height:44px}
+.list .it.sel::after{top:13px;right:auto;left:-4px;width:14px;height:14px;background-size:9px}
+.list .ti{width:32px;height:32px;display:grid;place-items:center}
+.list .ti img{max-width:32px;max-height:32px;border-radius:4px;object-fit:contain}
+.list .ti svg{width:26px;height:26px;stroke-width:1.5}
+.list .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.list .c{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list .c.r{text-align:right;font-variant-numeric:tabular-nums}
+.k-folder{color:var(--flame)}
+.k-image{color:#7ad15a}.k-video{color:#b57bff}.k-audio{color:#3fd0b8}.k-archive{color:#e5a03b}.k-app{color:#5aa9ff}.k-doc{color:#e8ddd2}.k-file{color:var(--muted)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);height:100%;min-height:200px;text-align:center}
+.empty svg{width:48px;height:48px;stroke-width:1.2}
+.status{display:flex;gap:14px;padding:8px 18px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;background:var(--bg2)}
+.status .hint{margin-left:auto}
+.jobs{display:flex;flex-direction:column;gap:6px;padding:0 16px}
+.jobs:not(:empty){padding:10px 16px;border-top:1px solid var(--line);background:var(--panel)}
+.job{display:flex;align-items:center;gap:14px}
+.job .jt{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.job .jt b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job .jt small{color:var(--muted);font-size:12px}
+.job .pb{height:6px;border-radius:3px;background:var(--panel3);overflow:hidden}
+.job .pb i{display:block;height:100%;background:linear-gradient(90deg,var(--ember),var(--flame));transition:width .25s}
+.btn{height:36px;border-radius:10px;padding:0 16px;background:var(--panel3);font-weight:600;flex:none}
+.btn:hover{background:var(--line)}
+/* sheets: menus, questions, the name box, properties */
+.shade{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:10}
+.shade[hidden]{display:none}
+.sheet{width:min(440px,calc(100% - 32px));max-height:calc(100% - 40px);overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:6px;box-shadow:0 20px 60px #000a;scrollbar-width:thin}
+.sheet h2{font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet p{color:var(--muted);font-size:13px;margin-bottom:6px;word-break:break-word}
+.si{min-height:44px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;gap:12px;padding:0 14px;font-size:15px;border:2px solid transparent;flex:none}
+.si span{flex:1}
+.si kbd{color:var(--muted);font:12px "Segoe UI",system-ui,sans-serif}
+.si.lit{border-color:var(--accent);background:var(--panel3)}
+.si.danger{color:var(--danger)}
+.si[disabled]{opacity:.45;cursor:default}
+.ssep{height:1px;background:var(--line);margin:4px 2px;flex:none}
+.sheet input{height:46px;border-radius:12px;background:var(--panel3);border:2px solid var(--accent);padding:0 14px;font-size:15px;margin:4px 0 8px}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:8px 12px;margin:6px 0 10px;font-size:13px}
+.kv small{color:var(--muted)}
+.kv span{word-break:break-all}
+.msg{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);border-radius:22px;padding:11px 18px;font-size:14px;opacity:0;transition:opacity var(--quick);pointer-events:none;z-index:20;max-width:calc(100% - 32px)}
+.msg.show{opacity:1}
+.spin{width:22px;height:22px;border-radius:50%;border:2px solid var(--panel3);border-top-color:var(--accent);animation:s 1s linear infinite;flex:none}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav></nav>
+  <section class="main">
+    <header class="top">
+      <button class="tb" data-act="back" title="Back (Backspace)"></button>
+      <button class="tb" data-act="up" title="Up a folder (Ⓑ)"></button>
+      <div class="crumbs"></div>
+      <input class="search" placeholder="Search  (Ⓨ)" spellcheck="false">
+      <button class="tb" data-act="view" title="Grid or list"></button>
+      <button class="tb" data-act="menu" title="More (Ⓧ)"></button>
+    </header>
+    <div class="files"></div>
+    <div class="jobs"></div>
+    <footer class="status"></footer>
+  </section>
+</div>
+<div class="shade" hidden><div class="sheet"></div></div>
+<div class="msg"></div>
+<script>
+'use strict';
+const host = window.chrome && window.chrome.webview ? window.chrome.webview : null;
+const send = m => host ? host.postMessage(m) : null;
+let callId = 0; const pending = {};
+const call = (method, args={}, ms=60000) => host ? new Promise((ok, no) => {
+  const id = ++callId; pending[id] = {ok, no}; send({type:'call', id, method, args});
+  setTimeout(() => { if(pending[id]){ delete pending[id]; no(new Error('That took too long')); } }, ms);
+}) : (MOCK[method] ? Promise.resolve(MOCK[method](args)) : Promise.reject(new Error('Not in the preview')));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const sv = d => `<svg viewBox="0 0 24 24">${d}</svg>`;
+const I = {
+  back:sv('<path d="M19 12H5m6-6-6 6 6 6"/>'), up:sv('<path d="M12 19V5m-6 6 6-6 6 6"/>'),
+  grid:sv('<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>'),
+  list:sv('<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>'),
+  more:sv('<circle cx="12" cy="5.5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="18.5" r="1" fill="currentColor"/>'),
+  home:sv('<path d="M4 11 12 4l8 7v8.5a1 1 0 0 1-1 1h-4.5V15h-5v5.5H5a1 1 0 0 1-1-1z"/>'),
+  desktop:sv('<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20h6M12 16.5V20"/>'),
+  doc:sv('<path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4M9 12h6M9 15.5h6"/>'),
+  download:sv('<path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/>'),
+  image:sv('<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 4 4 3-3 4.5 4.5"/>'),
+  video:sv('<rect x="3" y="5.5" width="13" height="13" rx="2"/><path d="m16 10 5-3v10l-5-3"/>'),
+  audio:sv('<path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>'),
+  game:sv('<rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M7.5 10.5v4M5.5 12.5h4M15.5 12h.01M18 14h.01"/>'),
+  drive:sv('<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h.01M11 12h6"/>'),
+  usb:sv('<path d="M9 3.5h6v6H9zM7.5 9.5h9V18a3 3 0 0 1-3 3h-3a3 3 0 0 1-3-3z"/><path d="M11 6h.01M13 6h.01"/>'),
+  network:sv('<rect x="3" y="4" width="18" height="8" rx="2"/><path d="M12 12v4M5 20h14M12 16v4M7 8h.01"/>'),
+  disc:sv('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>'),
+  trash:sv('<path d="M4.5 6.5h15M9 6.5V4.5h6v2M6.5 6.5l1 13.5h9l1-13.5M10 10.5v6M14 10.5v6"/>'),
+  folder:'<svg viewBox="0 0 24 24" class="k-folder"><path d="M3 7a2 2 0 0 1 2-2h4.5l2 2H19a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="currentColor" fill-opacity=".22"/></svg>',
+  archive:sv('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M12 3.5v2m0 2v2m0 2v2m-1.5 2h3v3h-3z"/>'),
+  app:sv('<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M3.5 8.5h17M7 6h.01M9.5 6h.01"/>'),
+  file:sv('<path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4"/>'),
+  open:sv('<path d="M5 12h14m-6-6 6 6-6 6"/>'), cut:sv('<circle cx="6.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/><path d="M8.5 16 18 4M15.5 16 6 4"/>'),
+  copy:sv('<rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5V5.5a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/>'),
+  paste:sv('<rect x="5" y="4.5" width="14" height="16" rx="2"/><path d="M9 4.5V3h6v1.5M9 10h6M9 14h6"/>'),
+  rename:sv('<path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-4-4L4 16z"/>'), info:sv('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'),
+  plus:sv('<path d="M12 5v14M5 12h14"/>'), check:sv('<path d="m5 12.5 4.5 4.5L19 7.5"/>'), eye:sv('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>'),
+  sort:sv('<path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/>'), refresh:sv('<path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.5"/><path d="M20 4v4.5h-4.5"/>'),
+  restore:sv('<path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5"/>'), x:sv('<path d="m6 6 12 12M18 6 6 18"/>'), ext:sv('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'),
+};
+const KIND_ICON = {folder:'folder', image:'image', video:'video', audio:'audio', archive:'archive', app:'app', doc:'doc', file:'file'};
+const kindSvg = k => k==='folder' ? I.folder : `<span class="k-${k}" style="display:contents">${I[KIND_ICON[k]||'file']}</span>`;
+function bytes(n){ if(n==null||isNaN(n)) return ''; const u=['B','KB','MB','GB','TB']; let i=0; n=+n; while(n>=1024&&i<u.length-1){ n/=1024; i++; } return (n>=100||i===0?Math.round(n):n.toFixed(1))+' '+u[i]; }
+const when = ms => ms ? new Date(ms).toLocaleString([], {year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : '';
+const TYPE_NAMES = {folder:'Folder', image:'Picture', video:'Video', audio:'Music', archive:'Archive', app:'App', doc:'Document', file:'File'};
+const typeOf = e => e.dir ? 'Folder' : (e.ext ? e.ext.toUpperCase()+' ' : '') + (TYPE_NAMES[e.kind]||'File').toLowerCase().replace(/^./, c=>e.ext?c:c.toUpperCase());
+
+// ---------------------------------------------------------------- state
+const S = {places:null, navItems:[], navF:0, zone:'files', path:null, name:'', parent:null, recycle:false, entries:[], loading:true, error:null,
+  back:[], fwd:[], f:0, sel:new Set(), anchor:null, view:'grid', sort:'name', desc:false, hidden:false, q:'', found:null,
+  clip:null, jobs:{}, sheet:null, viaPad:false};
+try{ const p=JSON.parse(localStorage.getItem('files.prefs')||'{}'); if(p.view) S.view=p.view; if(p.sort) S.sort=p.sort; S.desc=!!p.desc; S.hidden=!!p.hidden; }catch(_){}
+const savePrefs = () => { try{ localStorage.setItem('files.prefs', JSON.stringify({view:S.view, sort:S.sort, desc:S.desc, hidden:S.hidden})); }catch(_){} };
+function toast(t){ const m=$('.msg'); m.textContent=t; m.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>m.classList.remove('show'), 2800); }
+const plural = (n, w) => `${n} ${w}${n===1?'':'s'}`;
+
+// ---------------------------------------------------------------- places
+function renderNav(){
+  const p=S.places, items=[];
+  let h=`<div class="brand"><img src="hearth-logo.svg" alt=""><b>Files</b></div>`;
+  const btn = (it, extra='') => { items.push(it); const i=items.length-1;
+    return `<button class="ni" data-nav="${i}" title="${esc(it.path==='recycle:'?'Recycle Bin':it.path)}">${I[it.icon]||I.folder}<span>${esc(it.name)}${extra}</span></button>`; };
+  if(p){
+    h += p.folders.map(f=>btn(f)).join('');
+    if(p.games.length) h += `<div class="nh">Games</div>` + p.games.map(g=>btn(g)).join('');
+    if(p.drives.length) h += `<div class="nh">Drives</div>` + p.drives.map(d=>btn(d, d.total?`<small style="display:block">${bytes(d.free)} free of ${bytes(d.total)}</small><span class="bar"><i style="width:${Math.round((1-d.free/d.total)*100)}%"></i></span>`:'')).join('');
+    h += `<div class="nh"></div>` + btn(p.recycle, p.recycle.count?` <small>(${p.recycle.count})</small>`:'');
+  }
+  $('nav').innerHTML = h;
+  S.navItems = items;
+  paintNav();
+}
+// The place the folder is in (the longest path that starts it) is lit; the one picked with the keys has the frame.
+function paintNav(){
+  const path=(S.path||'').toLowerCase();
+  let lit=-1, best=0;
+  S.navItems.forEach((it,i)=>{ const pp=it.path.toLowerCase(); if(path===pp || (path.startsWith(pp.endsWith('\\')?pp:pp+'\\') && pp.length>best)){ if(pp.length>=best){ best=pp.length; lit=i; } } });
+  $$('.ni').forEach((b,i)=>{ b.classList.toggle('lit', i===lit); b.classList.toggle('cur', S.zone==='nav' && i===S.navF); });
+  $('nav').classList.toggle('focus', S.zone==='nav');
+  $('.files').classList.toggle('focus', S.zone==='files');
+  if(S.zone==='nav'){ const c=$(`.ni[data-nav="${S.navF}"]`); if(c) c.scrollIntoView({block:'nearest'}); }
+  S.litNav=lit;
+}
+async function loadPlaces(){
+  try{
+    const p=await call('files.places');
+    const json=JSON.stringify(p);
+    if(json===loadPlaces.last) return; loadPlaces.last=json;
+    S.places=p; renderNav();
+  }catch(e){ if(!S.places) toast(e.message); }
+}
+
+// ---------------------------------------------------------------- the folder
+function visible(){
+  if(S.found) return S.found.entries;
+  const q=S.q.trim().toLowerCase();
+  const list=q ? S.entries.filter(e=>e.name.toLowerCase().includes(q)) : S.entries.slice();
+  const dir=S.desc?-1:1, name=(a,b)=>a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:'base'});
+  const by={
+    name, date:(a,b)=>((S.recycle?(a.deleted||0)-(b.deleted||0):a.modified-b.modified))||name(a,b), size:(a,b)=>(a.size-b.size)||name(a,b),
+    type:(a,b)=>(a.ext||'').localeCompare(b.ext||'')||name(a,b),
+  }[S.sort]||name;
+  return list.sort((a,b)=> (b.dir-a.dir) || dir*by(a,b));
+}
+const SHOW_MAX = 4000;
+function thumb(e, px){
+  if(!host) return kindSvg(e.kind);
+  const real=e.path.startsWith('recycle:') ? e.path.slice(8) : e.path;
+  const isIcon=['exe','lnk','url','msi','appx','msix'].includes(e.ext);
+  if(e.kind==='image' || e.kind==='video' || e.ext==='pdf' || isIcon){
+    const size=Math.round(px*(window.devicePixelRatio||1));
+    return `<img loading="lazy" decoding="async" class="${isIcon?'ico':''}" data-kind="${e.kind}" alt="" src="https://hearth-files.local/thumb?p=${encodeURIComponent(real)}&s=${size}&t=${e.modified||0}${isIcon?'&icon=1':''}">`;
+  }
+  return kindSvg(e.kind);
+}
+// A picture Windows can't make a thumbnail of: its kind's icon instead.
+document.addEventListener('error', e => { const t=e.target; if(t && t.tagName==='IMG' && t.dataset.kind){ const s=document.createElement('span'); s.style.display='contents'; s.innerHTML=kindSvg(t.dataset.kind); t.replaceWith(s); } }, true);
+
+function renderTop(){
+  const back=$('[data-act="back"]'), up=$('[data-act="up"]'), view=$('[data-act="view"]'), more=$('[data-act="menu"]');
+  back.innerHTML=I.back; back.disabled=!S.back.length;
+  up.innerHTML=I.up; up.disabled=!S.parent && !S.found;
+  view.innerHTML=S.view==='grid'?I.list:I.grid; view.title=S.view==='grid'?'Show as a list':'Show as a grid';
+  more.innerHTML=I.more;
+  const cr=crumbs(S.path||'');
+  let h=cr.map((c,i)=>`${i?`<span class="sep">›</span>`:''}<button class="cr" data-act="crumb" data-path="${esc(c.path)}">${esc(c.name)}</button>`).join('');
+  if(S.found) h += `<span class="sep">›</span><button class="cr">Search: “${esc(S.found.query)}”</button>`;
+  const el=$('.crumbs'); el.innerHTML=h;
+  el.classList.toggle('short', el.scrollWidth<=el.clientWidth);
+  el.scrollLeft=el.scrollWidth;
+}
+function crumbs(path){
+  if(!path) return [];
+  if(path==='recycle:') return [{name:'Recycle Bin', path}];
+  const home=S.places&&S.places.home, out=[];
+  let rest=path, acc='';
+  if(home && (path.toLowerCase()===home.toLowerCase() || path.toLowerCase().startsWith(home.toLowerCase()+'\\'))){
+    out.push({name:'Home', path:home}); acc=home; rest=path.slice(home.length);
+  } else if(path.startsWith('\\\\')){
+    const m=path.match(/^\\\\[^\\]+\\[^\\]+\\?/); if(m){ acc=m[0].replace(/\\?$/,'\\'); out.push({name:acc.replace(/\\$/,''), path:acc}); rest=path.slice(m[0].length); }
+  } else {
+    const m=path.match(/^[A-Za-z]:\\?/); if(m){ acc=m[0].slice(0,2)+'\\'; const d=S.places&&S.places.drives.find(x=>x.path.toLowerCase()===acc.toLowerCase()); out.push({name:d?d.name:acc.slice(0,2), path:acc}); rest=path.slice(m[0].length); }
+  }
+  for(const part of rest.split('\\').filter(Boolean)){ acc = acc.endsWith('\\') ? acc+part : acc+'\\'+part; out.push({name:part, path:acc}); }
+  return out;
+}
+function renderFiles(){
+  const box=$('.files');
+  if(S.loading && !S.entries.length){ box.innerHTML=`<div class="empty"><span class="spin"></span>Opening…</div>`; return renderStatus(); }
+  if(S.error && !S.path){ box.innerHTML=`<div class="empty">${I.x}<div>${esc(S.error)}</div></div>`; return renderStatus(); }
+  const list=visible(), shown=list.slice(0, SHOW_MAX);
+  S.f=Math.max(0, Math.min(S.f, shown.length-1));
+  const cutSet = S.clip && S.clip.cut ? new Set(S.clip.paths.map(p=>p.toLowerCase())) : null;
+  const cls = (e,i) => `it ${i===S.f?'cur':''} ${S.sel.has(e.path)?'sel':''} ${cutSet&&cutSet.has(e.path.toLowerCase())?'cut':''}`;
+  let h;
+  if(!shown.length){
+    h=`<div class="empty">${S.recycle?I.trash:S.found||S.q?I.eye:I.folder}<div>${S.recycle?'The Recycle Bin is empty':S.found?'Nothing found':S.q?`Nothing here matches “${esc(S.q)}”`:'This folder is empty'}</div></div>`;
+  } else if(S.view==='grid'){
+    h=`<div class="grid">${shown.map((e,i)=>`<div class="${cls(e,i)}" data-i="${i}" title="${esc(e.name)}${e.original?`\nFrom ${esc(e.original)}`:''}"><div class="th">${thumb(e, 96)}</div><span class="nm">${esc(e.name)}</span></div>`).join('')}</div>`;
+  } else {
+    const col=(k,l,r)=>`<button class="${S.sort===k?'on':''}" data-act="sortBy" data-k="${k}" style="${r?'text-align:right':''}">${l}${S.sort===k?(S.desc?' ↓':' ↑'):''}</button>`;
+    h=`<div class="list ${S.recycle?'rec':''}"><div class="lh"><span></span>${col('name','Name')}${S.recycle?'<span>From</span>':col('date','Modified')}${S.recycle?col('date','Deleted'):col('type','Type')}${col('size','Size',true)}</div>`
+      + shown.map((e,i)=>`<div class="${cls(e,i)}" data-i="${i}" title="${esc(e.path.startsWith('recycle:')?e.original:e.path)}"><div class="ti">${thumb(e, 32)}</div><span class="nm">${esc(e.name)}</span>`
+        + (S.recycle ? `<span class="c">${esc((e.original||'').replace(/\\[^\\]*$/,''))}</span><span class="c">${when(e.deleted)}</span>` : `<span class="c">${when(e.modified)}</span><span class="c">${esc(typeOf(e))}</span>`)
+        + `<span class="c r">${e.dir?'':bytes(e.size)}</span></div>`).join('') + `</div>`;
+  }
+  if(list.length>SHOW_MAX) h += `<div class="empty" style="min-height:60px">Showing the first ${SHOW_MAX} of ${list.length}. Search to find the rest.</div>`;
+  box.innerHTML=h;
+  scrollToCur();
+  renderStatus();
+}
+function scrollToCur(){ const c=$('.files .it.cur'); if(c) c.scrollIntoView({block:'nearest'}); }
+function paintCur(){
+  $$('.files .it').forEach(el=>{ const i=+el.dataset.i, e=visible()[i]; el.classList.toggle('cur', i===S.f); if(e) el.classList.toggle('sel', S.sel.has(e.path)); });
+  scrollToCur(); renderStatus();
+}
+function renderStatus(){
+  const list=visible(), sel=list.filter(e=>S.sel.has(e.path));
+  const parts=[S.loading?'Loading…':plural(list.length,'item')];
+  if(sel.length) parts.push(`${sel.length} selected${sel.some(e=>!e.dir)?` (${bytes(sel.reduce((n,e)=>n+(e.dir?0:e.size),0))})`:''}`);
+  if(S.found && S.found.truncated) parts.push('More results not shown');
+  const d=S.places&&S.path&&S.places.drives.find(x=>S.path.toLowerCase().startsWith(x.path.toLowerCase()));
+  if(d && d.total) parts.push(`${bytes(d.free)} free`);
+  $('.status').innerHTML = parts.map(p=>`<span>${esc(p)}</span>`).join('') + `<span class="hint">Ⓐ open · Ⓑ up · Ⓧ actions · Ⓨ search</span>`;
+}
+function render(){ renderTop(); renderFiles(); paintNav(); }
+
+// Opens a folder. The old one goes on the back list (unless going back or forward).
+async function openFolder(path, opt={}){
+  const {history='push', focusName=null, keepFocus=false} = opt;
+  S.loading=true; renderStatus();
+  const t=++openFolder.n;
+  let r;
+  try{ r=await call('files.list',{path, hidden:S.hidden}); }
+  catch(e){ S.loading=false; if(t===openFolder.n){ toast(e.message); if(!S.path){ S.error=e.message; render(); } else renderStatus(); } return false; }
+  if(t!==openFolder.n) return false;   // a newer one was asked for meanwhile
+  const old=S.path, oldF=S.f;
+  if(old && old!==r.path){
+    if(history==='push'){ S.back.push({path:old, f:oldF}); S.fwd=[]; if(S.back.length>100) S.back.shift(); }
+  }
+  const same = old===r.path;
+  S.path=r.path; S.name=r.name; S.parent=r.parent; S.recycle=!!r.recycle; S.entries=r.entries||[]; S.loading=false; S.error=null;
+  if(!same || !keepFocus){ S.sel.clear(); S.anchor=null; S.q=''; $('.search').value=''; S.found=null; }
+  const list=visible();
+  if(focusName){ const i=list.findIndex(e=>e.name.toLowerCase()===focusName.toLowerCase()); S.f=i>=0?i:0; }
+  else if(opt.f!=null) S.f=opt.f;
+  else if(!same || !keepFocus) S.f=0;
+  if(keepFocus && same){ const keep=new Set(list.map(e=>e.path)); for(const p of [...S.sel]) if(!keep.has(p)) S.sel.delete(p); }
+  render();
+  return true;
+}
+openFolder.n=0;
+const refresh = (focusName) => S.path ? openFolder(S.path, {history:'none', keepFocus:true, focusName}) : null;
+function goUp(){
+  if(S.found){ S.found=null; $('.search').value=''; S.q=''; return render(); }
+  if(S.parent){ const name=S.name; return openFolder(S.parent, {focusName:name}); }
+  S.zone='nav'; S.navF=Math.max(0,S.litNav); paintNav();
+}
+function goBack(){ const b=S.back.pop(); if(!b) return; S.fwd.push({path:S.path, f:S.f}); openFolder(b.path, {history:'none', f:b.f}); }
+function goForward(){ const b=S.fwd.pop(); if(!b) return; S.back.push({path:S.path, f:S.f}); openFolder(b.path, {history:'none', f:b.f}); }
+
+// ---------------------------------------------------------------- what you can do
+const cur = () => visible()[S.f];
+function targets(){ const list=visible(); if(S.sel.size){ const t=list.filter(e=>S.sel.has(e.path)); if(t.length) return t; } const e=list[S.f]; return e?[e]:[]; }
+function activate(e){
+  if(!e) return;
+  if(S.recycle) return menu();
+  if(e.dir) return openFolder(e.path);
+  call('files.open',{path:e.path}).then(()=>toast(`Opening ${e.name}…`)).catch(err=>toast(err.message));
+}
+async function refreshClip(){ try{ const c=await call('files.clipGet'); S.clip=c&&c.paths&&c.paths.length?c:null; }catch(_){ } }
+async function menu(onBackground=false){
+  await refreshClip();
+  const t=onBackground?[]:targets(), one=t.length===1?t[0]:null, items=[], sep=()=>items.push({sep:true});
+  const c=cur();
+  if(S.recycle){
+    if(t.length){
+      items.push({label:'Restore', icon:I.restore, run:()=>restore(t)});
+      items.push({label:'Delete permanently…', icon:I.trash, danger:true, run:()=>confirmDelete(t)});
+      if(c && !onBackground) items.push({label:S.sel.has(c.path)?'Unselect':'Select', icon:I.check, key:'Space', run:()=>{ toggleSel(c); closeSheet(); }});
+      sep();
+    }
+    items.push({label:'Empty the Recycle Bin…', icon:I.trash, danger:true, disabled:!S.entries.length, run:confirmEmpty});
+  } else {
+    if(t.length){
+      if(one) items.push({label:one.dir?'Open':'Open', icon:I.open, key:'Enter', run:()=>{ closeSheet(); activate(one); }});
+      if(one && !one.dir) items.push({label:'Open with…', icon:I.ext, run:()=>{ closeSheet(); call('files.openWith',{path:one.path}).catch(e=>toast(e.message)); }});
+      if(S.found && one) items.push({label:'Show in its folder', icon:I.folder, run:()=>{ closeSheet(); openFolder(one.path.replace(/\\[^\\]*$/,'')||one.path, {focusName:one.name}); }});
+      items.push({label:'Cut', icon:I.cut, key:'Ctrl+X', run:()=>clip(t, true)});
+      items.push({label:'Copy', icon:I.copy, key:'Ctrl+C', run:()=>clip(t, false)});
+    }
+    if(S.clip && !S.found) items.push({label:`Paste ${plural(S.clip.paths.length,'item')}${S.clip.cut?' (move)':''}`, icon:I.paste, key:'Ctrl+V', run:paste});
+    if(one) items.push({label:'Rename…', icon:I.rename, key:'F2', run:()=>rename(one)});
+    if(t.length){
+      items.push({label:'Move to the Recycle Bin', icon:I.trash, key:'Del', run:()=>trash(t)});
+      items.push({label:'Delete permanently…', icon:I.trash, danger:true, key:'Shift+Del', run:()=>confirmDelete(t)});
+    }
+    if(c && !onBackground) items.push({label:S.sel.has(c.path)?'Unselect':'Select', icon:I.check, key:'Space', run:()=>{ toggleSel(c); closeSheet(); }});
+    if(visible().length) items.push({label:'Select all', icon:I.check, key:'Ctrl+A', run:()=>{ selectAll(); closeSheet(); }});
+    if(one) items.push({label:'Properties', icon:I.info, key:'Alt+Enter', run:()=>properties(one)});
+    sep();
+    if(!S.found) items.push({label:'New folder…', icon:I.plus, key:'Ctrl+Shift+N', run:newFolder});
+  }
+  items.push({label:S.view==='grid'?'Show as a list':'Show as a grid', icon:S.view==='grid'?I.list:I.grid, run:()=>{ toggleView(); closeSheet(); }});
+  items.push({label:'Sort by…', icon:I.sort, run:sortMenu});
+  if(!S.recycle) items.push({label:S.hidden?'Hide hidden files':'Show hidden files', icon:I.eye, key:'Ctrl+H', run:()=>{ toggleHidden(); closeSheet(); }});
+  items.push({label:'Refresh', icon:I.refresh, key:'F5', run:()=>{ closeSheet(); refresh(); }});
+  for(const [id,j] of Object.entries(S.jobs)) items.push({label:`Stop ${j.op==='move'?'moving':'copying'}`, icon:I.x, danger:true, run:()=>{ closeSheet(); cancelJob(+id); }});
+  const title = one ? one.name : t.length ? `${t.length} items` : (S.recycle?'Recycle Bin':S.name||'Folder');
+  openSheet({title, sub: one && one.original ? `From ${one.original}` : '', items});
+}
+function sortMenu(){
+  const opts=[['name','Name'],['date',S.recycle?'Date deleted':'Date modified'],['size','Size'],['type','Type']];
+  openSheet({title:'Sort by', items: opts.map(([k,l])=>({label:l+(S.sort===k?(S.desc?'  ↓':'  ↑'):''), icon:S.sort===k?I.check:'', run:()=>{ setSort(k); closeSheet(); }}))
+    .concat([{sep:true},{label:S.desc?'Ascending':'Descending', icon:I.sort, run:()=>{ S.desc=!S.desc; savePrefs(); closeSheet(); renderFiles(); }}])});
+}
+function setSort(k){ if(S.sort===k) S.desc=!S.desc; else { S.sort=k; S.desc=(k==='date'||k==='size'); } savePrefs(); renderFiles(); }
+function toggleView(){ S.view=S.view==='grid'?'list':'grid'; savePrefs(); render(); }
+function toggleHidden(){ S.hidden=!S.hidden; savePrefs(); toast(S.hidden?'Showing hidden files':'Hiding hidden files'); refresh(); }
+function toggleSel(e){ if(!e) return; if(S.sel.has(e.path)) S.sel.delete(e.path); else S.sel.add(e.path); S.anchor=S.f; paintCur(); }
+function selectAll(){ const l=visible(); if(S.sel.size===l.length) S.sel.clear(); else l.forEach(e=>S.sel.add(e.path)); paintCur(); }
+
+async function clip(t, cut){
+  closeSheet();
+  if(S.recycle) return;
+  const paths=t.map(e=>e.path);
+  try{ await call('files.clipSet',{paths, cut}); S.clip={paths, cut}; toast(`${cut?'Cut':'Copied'} ${plural(paths.length,'item')}. Paste with Ctrl+V or Ⓧ › Paste`); renderFiles(); }
+  catch(e){ toast(e.message); }
+}
+async function paste(){
+  closeSheet();
+  if(S.recycle || S.found || !S.path) return toast('Open a folder to paste into');
+  await refreshClip();
+  if(!S.clip) return toast('Nothing to paste');
+  const {paths, cut}=S.clip;
+  try{
+    const r=await call('files.paste',{paths, dest:S.path, move:cut});
+    S.jobs[r.id]={op:cut?'move':'copy', text:'Getting ready…', done:0, total:0, dest:S.path};
+    renderJobs();
+    if(cut){ S.clip=null; call('files.clipClear').catch(()=>{}); }
+  }catch(e){ toast(e.message); }
+}
+async function trash(t){
+  closeSheet();
+  const name=t.length===1?t[0].name:plural(t.length,'item');
+  try{ await call('files.trash',{paths:t.map(e=>e.path)}, 300000); toast(`Moved ${name} to the Recycle Bin`); }
+  catch(e){ toast(e.message); }
+  S.sel.clear(); refresh(); loadPlaces();
+}
+function confirmDelete(t){
+  const name=t.length===1?`“${t[0].name}”`:plural(t.length,'item');
+  openSheet({title:`Delete ${name} permanently?`, sub:'It won\'t go to the Recycle Bin, and it can\'t be undone.', items:[
+    {label:'Delete permanently', icon:I.trash, danger:true, run:async()=>{ closeSheet(); try{ await call('files.delete',{paths:t.map(e=>e.path)}, 600000); toast(`Deleted ${name}`); }catch(e){ toast(e.message); } S.sel.clear(); refresh(); loadPlaces(); }},
+    {label:'Cancel', run:closeSheet}]});
+}
+function confirmEmpty(){
+  openSheet({title:'Empty the Recycle Bin?', sub:`${plural(S.entries.length,'item')} will be deleted for good, on every drive.`, items:[
+    {label:'Empty the Recycle Bin', icon:I.trash, danger:true, run:async()=>{ closeSheet(); try{ await call('files.emptyRecycleBin',{}, 600000); toast('The Recycle Bin is empty'); }catch(e){ toast(e.message); } refresh(); loadPlaces(); }},
+    {label:'Cancel', run:closeSheet}]});
+}
+async function restore(t){
+  closeSheet();
+  try{ const r=await call('files.restore',{paths:t.map(e=>e.path)}, 300000); toast(`Put back ${plural(r.restored,'item')}${r.errors&&r.errors.length?` (${r.errors.length} couldn't be)`:''}`); }
+  catch(e){ toast(e.message); }
+  S.sel.clear(); refresh(); loadPlaces();
+}
+function rename(e){
+  const dot=e.dir?-1:e.name.lastIndexOf('.');
+  ask({title:'Rename', value:e.name, selectTo:dot>0?dot:e.name.length, ok:'Rename', run:async v=>{
+    if(!v.trim() || v===e.name) return;
+    try{ const r=await call('files.rename',{path:e.path, name:v}); S.sel.delete(e.path); await refresh(r.path.replace(/^.*\\/,'')); }
+    catch(err){ toast(err.message); }
+  }});
+}
+function newFolder(){
+  ask({title:'New folder', value:'New folder', ok:'Create', run:async v=>{
+    try{ const r=await call('files.newFolder',{dir:S.path, name:v}); await refresh(r.name); }
+    catch(err){ toast(err.message); }
+  }});
+}
+async function properties(e){
+  closeSheet();
+  if(S.recycle) return;
+  let i;
+  try{ i=await call('files.info',{path:e.path}); }catch(err){ return toast(err.message); }
+  const rows=[['Type',i.type],['Location',i.location],['Size',`${bytes(i.size)}${i.dir?` · ${plural(i.files,'file')}, ${plural(i.folders,'folder')}${i.partial?' (still counting: big folder)':''}`:''}`],
+    ['Created',when(i.created)],['Modified',when(i.modified)],['Opened',when(i.accessed)],['Version',i.version],['Company',i.company],
+    ['Attributes',[i.readOnly&&'Read-only',i.hidden&&'Hidden'].filter(Boolean).join(', ')],
+    ['Drive',i.driveTotal?`${bytes(i.driveFree)} free of ${bytes(i.driveTotal)}`:'']].filter(r=>r[1]);
+  openSheet({title:i.name, body:`<div class="kv">${rows.map(([k,v])=>`<small>${k}</small><span>${esc(v)}</span>`).join('')}</div>`, items:[
+    {label:'More in Windows\' Properties', icon:I.ext, run:()=>{ closeSheet(); call('files.properties',{path:e.path}).catch(err=>toast(err.message)); }},
+    {label:'Close', run:closeSheet}]});
+}
+function cancelJob(id){ call('files.cancel',{id}).catch(()=>{}); if(S.jobs[id]){ S.jobs[id].text='Stopping…'; renderJobs(); } }
+
+// ---------------------------------------------------------------- copies and moves (the bar along the bottom)
+function renderJobs(){
+  const el=$('.jobs');
+  el.innerHTML=Object.entries(S.jobs).map(([id,j])=>{
+    const pct=j.total>0?Math.min(100,j.done/j.total*100):0;
+    const left=j.bytesPerSec>0&&j.total>j.done?Math.round((j.total-j.done)/j.bytesPerSec):null;
+    const detail=j.total>0?`${bytes(j.done)} of ${bytes(j.total)}${j.bytesPerSec?` · ${bytes(j.bytesPerSec)}/s`:''}${left!=null?` · about ${left>90?Math.round(left/60)+' min':left+' s'} left`:''}`:'';
+    return `<div class="job"><div class="jt"><b>${esc(j.text)}</b><div class="pb"><i style="width:${pct.toFixed(1)}%"></i></div><small>${esc(detail)}</small></div><button class="btn" data-act="cancelJob" data-id="${id}">Stop</button></div>`;
+  }).join('');
+}
+function onProgress(d){ const j=S.jobs[d.id]||(S.jobs[d.id]={op:d.op}); Object.assign(j, {done:d.done, total:d.total, bytesPerSec:d.bytesPerSec}); if(j.text!=='Stopping…' && d.current) j.text=d.text; renderJobs(); }
+function onDone(d){
+  delete S.jobs[d.id]; renderJobs();
+  const verb=d.op==='move'?'Moved':'Copied';
+  toast(d.cancelled?`Stopped ${d.op==='move'?'moving':'copying'}`:d.ok?`${verb} ${plural(d.count,'item')}`:`Couldn't finish: ${d.error}`);
+  if(S.path && !S.recycle) refresh();
+  loadPlaces();
+}
+
+// ---------------------------------------------------------------- sheets (menus, questions, the name box)
+function openSheet(s){ S.sheet={...s, f:Math.max(0,s.items.findIndex(i=>!i.disabled&&!i.sep))}; renderSheet(); }
+function ask(o){
+  S.sheet={title:o.title, input:o, f:-1, items:[{label:o.ok, icon:I.check, run:()=>submitAsk()},{label:'Cancel', run:closeSheet}]};
+  renderSheet();
+  const i=$('.sheet input'); i.focus(); try{ i.setSelectionRange(0, o.selectTo ?? o.value.length); }catch(_){}
+  if(S.viaPad) send({type:'mantel', action:'keyboard'});
+}
+function submitAsk(){ const s=S.sheet; if(!s||!s.input) return; const v=$('.sheet input').value; closeSheet(); s.input.run(v); }
+function renderSheet(){
+  const sh=$('.shade');
+  if(!S.sheet){ sh.hidden=true; return; }
+  const s=S.sheet;
+  $('.sheet').innerHTML=`<h2>${esc(s.title)}</h2>${s.sub?`<p>${esc(s.sub)}</p>`:''}${s.body||''}${s.input?`<input spellcheck="false" value="${esc(s.input.value)}">`:''}`
+    + s.items.map((it,i)=>it.sep?`<div class="ssep"></div>`:`<button class="si ${i===s.f?'lit':''} ${it.danger?'danger':''}" data-si="${i}" ${it.disabled?'disabled':''}>${it.icon||''}<span>${esc(it.label)}</span>${it.key?`<kbd>${esc(it.key)}</kbd>`:''}</button>`).join('');
+  sh.hidden=false;
+  const lit=$('.si.lit'), first=s.items.findIndex(x=>!x.sep&&!x.disabled);
+  if(s.f<=first) $('.sheet').scrollTop=0; else if(lit) lit.scrollIntoView({block:'nearest'});
+}
+function closeSheet(){ S.sheet=null; renderSheet(); }
+function sheetKey(e){
+  const s=S.sheet, n=s.items.length, inInput=document.activeElement && document.activeElement.tagName==='INPUT';
+  const ok = i => i>=0 && i<n && !s.items[i].sep && !s.items[i].disabled;
+  const step=d=>{ let i=s.f; for(let k=0;k<n;k++){ i=(i+d+n)%n; if(ok(i)){ s.f=i; break; } } if(inInput) document.activeElement.blur(); renderSheet(); };
+  if(inInput){
+    if(e.key==='Enter'){ e.preventDefault(); return submitAsk(); }
+    if(e.key==='Escape'){ e.preventDefault(); return closeSheet(); }
+    if(e.key==='ArrowDown'||e.key==='Tab'){ e.preventDefault(); s.f=-1; return step(1); }
+    return;
+  }
+  switch(e.key){
+    case 'ArrowDown': case 'Tab': e.preventDefault(); return step(e.shiftKey&&e.key==='Tab'?-1:1);
+    case 'ArrowUp': e.preventDefault(); if(s.input && s.f===s.items.findIndex(x=>!x.sep&&!x.disabled)){ s.f=-1; renderSheet(); const i=$('.sheet input'); if(i) i.focus(); return; } return step(-1);
+    case 'Enter': case ' ': e.preventDefault(); { const it=s.items[s.f]; if(it&&ok(s.f)&&it.run) it.run(); } return;
+    case 'Escape': case 'F23': e.preventDefault(); return closeSheet();
+    case 'F24': if(s.input){ e.preventDefault(); s.f=-1; renderSheet(); const i=$('.sheet input'); if(i) i.focus(); send({type:'mantel', action:'keyboard'}); } return;
+  }
+}
+$('.shade').addEventListener('click', e => {
+  const b=e.target.closest('[data-si]');
+  if(b){ const it=S.sheet&&S.sheet.items[+b.dataset.si]; if(it&&!it.disabled&&it.run) it.run(); return; }
+  if(e.target===$('.shade')) closeSheet();
+});
+$('.shade').addEventListener('mouseover', e => { const b=e.target.closest('[data-si]'); if(b&&S.sheet&&!S.sheet.input&&+b.dataset.si!==S.sheet.f&&!b.disabled){ S.sheet.f=+b.dataset.si; renderSheet(); } });
+
+// ---------------------------------------------------------------- search
+const searchBox = $('.search');
+function focusSearch(){ S.zone='files'; paintNav(); searchBox.focus(); searchBox.select(); if(S.viaPad) send({type:'mantel', action:'keyboard'}); }
+searchBox.addEventListener('input', () => { S.q=searchBox.value; S.found=null; S.f=0; renderFiles(); renderTop(); });
+async function deepSearch(){
+  const q=searchBox.value.trim(); if(!q || !S.path || S.recycle) return;
+  S.loading=true; renderStatus();
+  try{ const r=await call('files.search',{path:S.path, query:q, hidden:S.hidden}, 30000); S.found={query:q, entries:r.entries, truncated:r.truncated}; S.f=0; S.sel.clear(); }
+  catch(e){ toast(e.message); }
+  S.loading=false; searchBox.blur(); render();
+}
+searchBox.addEventListener('keydown', e => {
+  if(S.sheet) return;
+  if(e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); if(e.ctrlKey||S.q===''||visible().length===0||e.shiftKey) return deepSearch(); searchBox.blur(); S.zone='files'; return render(); }
+  if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); if(searchBox.value){ searchBox.value=''; S.q=''; S.found=null; renderFiles(); renderTop(); } searchBox.blur(); return; }
+  if(e.key==='ArrowDown'||e.key==='Tab'){ e.preventDefault(); e.stopPropagation(); searchBox.blur(); S.zone='files'; paintNav(); return; }
+  e.stopPropagation();
+});
+
+// ---------------------------------------------------------------- keyboard and controller
+function gridCols(){
+  if(S.view!=='grid') return 1;
+  const items=$$('.files .it'); if(items.length<2) return 1;
+  const top=items[0].offsetTop; let n=0;
+  for(const it of items){ if(it.offsetTop!==top) break; n++; }
+  return Math.max(1,n);
+}
+function moveTo(i, extend){
+  const n=Math.min(visible().length, SHOW_MAX); if(!n) return;
+  i=Math.max(0, Math.min(n-1, i));
+  if(extend){ if(S.anchor==null) S.anchor=S.f; S.sel.clear(); const l=visible(); for(let k=Math.min(S.anchor,i); k<=Math.max(S.anchor,i); k++) S.sel.add(l[k].path); }
+  else if(!S.sel.size) S.anchor=i;
+  S.f=i; paintCur();
+}
+let navTimer=null;
+function navPick(i, now){
+  S.navF=Math.max(0, Math.min(S.navItems.length-1, i)); paintNav();
+  clearTimeout(navTimer);
+  const it=S.navItems[S.navF]; if(!it) return;
+  // Like Settings: moving through the places opens each one (after a moment, so racing past is cheap).
+  navTimer=setTimeout(()=>{ if(it.path!==S.path) openFolder(it.path); }, now?0:220);
+}
+document.addEventListener('keydown', e => {
+  if(e.key==='F23'||e.key==='F24') S.viaPad=true;
+  else if(e.key.length===1 && !e.ctrlKey && !e.altKey) S.viaPad=false;
+  if(S.sheet) return sheetKey(e);
+  if(document.activeElement===searchBox) return;
+  const k=e.key, ctrl=e.ctrlKey||e.metaKey;
+  // anywhere
+  if((ctrl&&k==='f') || k==='F3' || k==='F24'){ e.preventDefault(); return focusSearch(); }
+  if(k==='Tab'){ e.preventDefault(); S.zone=S.zone==='nav'?'files':'nav'; if(S.zone==='nav') S.navF=Math.max(0,S.litNav); return paintNav(); }
+  if(k==='F5'){ e.preventDefault(); return refresh(); }
+  if(ctrl&&k==='h'){ e.preventDefault(); return toggleHidden(); }
+  if(k==='Backspace'||(e.altKey&&k==='ArrowLeft')||k==='BrowserBack'){ e.preventDefault(); return goBack(); }
+  if((e.altKey&&k==='ArrowRight')||k==='BrowserForward'){ e.preventDefault(); return goForward(); }
+  if(e.altKey&&k==='ArrowUp'){ e.preventDefault(); return goUp(); }
+  if(ctrl&&e.shiftKey&&(k==='N'||k==='n')){ e.preventDefault(); return S.recycle||S.found?null:newFolder(); }
+  if(ctrl&&k==='v'){ e.preventDefault(); return paste(); }
+  if(S.zone==='nav'){
+    switch(k){
+      case 'ArrowDown': e.preventDefault(); return navPick(S.navF+1);
+      case 'ArrowUp': e.preventDefault(); return navPick(S.navF-1);
+      case 'Home': e.preventDefault(); return navPick(0);
+      case 'End': e.preventDefault(); return navPick(S.navItems.length-1);
+      case 'ArrowRight': case 'Enter': case ' ': {
+        e.preventDefault(); clearTimeout(navTimer);
+        const it=S.navItems[S.navF];
+        S.zone='files'; paintNav();
+        if(it && it.path!==S.path) openFolder(it.path);
+        return;
+      }
+      case 'Escape': e.preventDefault(); return send({type:'mantel', action:'closeApp', app:'files'});
+      case 'F23': case 'ContextMenu': e.preventDefault(); S.zone='files'; paintNav(); return menu(true);
+    }
+    return;
+  }
+  // the files
+  const cols=gridCols(), n=Math.min(visible().length, SHOW_MAX), e0=cur();
+  switch(k){
+    case 'ArrowRight': e.preventDefault(); if(S.view==='grid') moveTo(S.f+1, e.shiftKey); return;
+    case 'ArrowLeft':
+      e.preventDefault();
+      if(S.view==='grid' && S.f%cols!==0) return moveTo(S.f-1, e.shiftKey);
+      S.zone='nav'; S.navF=Math.max(0,S.litNav); return paintNav();
+    case 'ArrowDown': e.preventDefault(); if(S.f+cols<n || S.view!=='grid') return moveTo(S.f+cols, e.shiftKey); return moveTo(n-1, e.shiftKey);
+    case 'ArrowUp': e.preventDefault(); if(S.f-cols>=0) return moveTo(S.f-cols, e.shiftKey); if(S.f>0) return moveTo(0, e.shiftKey); return focusSearch();
+    case 'PageDown': e.preventDefault(); return moveTo(S.f+cols*5, e.shiftKey);
+    case 'PageUp': e.preventDefault(); return moveTo(S.f-cols*5, e.shiftKey);
+    case 'Home': e.preventDefault(); return moveTo(0, e.shiftKey);
+    case 'End': e.preventDefault(); return moveTo(n-1, e.shiftKey);
+    case 'Enter':
+      e.preventDefault();
+      if(e.altKey){ if(e0) properties(e0); return; }
+      return activate(e0);
+    case ' ': e.preventDefault(); return toggleSel(e0);
+    case 'Escape':
+      e.preventDefault();
+      if(S.sel.size){ S.sel.clear(); return paintCur(); }
+      return goUp();
+    case 'F23': case 'ContextMenu': e.preventDefault(); return menu();
+    case 'F10': if(e.shiftKey){ e.preventDefault(); return menu(); } return;
+    case 'F2': e.preventDefault(); if(e0 && !S.recycle) rename(e0); return;
+    case 'Delete': {
+      e.preventDefault(); const t=targets(); if(!t.length) return;
+      if(e.shiftKey || S.recycle) return confirmDelete(t);
+      return trash(t);
+    }
+  }
+  if(ctrl && k==='a'){ e.preventDefault(); return selectAll(); }
+  if(ctrl && (k==='c'||k==='x')){ e.preventDefault(); const t=targets(); if(t.length) clip(t, k==='x'); return; }
+  if(ctrl && k==='1'){ e.preventDefault(); if(S.view!=='grid') toggleView(); return; }
+  if(ctrl && k==='2'){ e.preventDefault(); if(S.view!=='list') toggleView(); return; }
+  if(ctrl && k==='r'){ e.preventDefault(); return refresh(); }
+  // Typing searches this folder (like Hearth's on Hearth OS).
+  if(k.length===1 && !ctrl && !e.altKey && k!==' '){
+    e.preventDefault(); S.zone='files'; paintNav();
+    searchBox.focus(); searchBox.value += k; S.q=searchBox.value; S.found=null; S.f=0; renderFiles(); renderTop();
+  }
+});
+// The mouse: click picks (Ctrl adds, Shift picks a range), double click opens, right click shows actions.
+$('.files').addEventListener('mousedown', e => {
+  S.viaPad=false;
+  const el=e.target.closest('.it'); S.zone='files'; paintNav();
+  if(!el){ if(e.button===0 && !e.target.closest('.lh')){ S.sel.clear(); paintCur(); } return; }
+  const i=+el.dataset.i, item=visible()[i]; if(!item) return;
+  if(e.button===2){ if(!S.sel.has(item.path)){ S.sel.clear(); } S.f=i; paintCur(); return; }
+  if(e.button!==0) return;
+  if(e.ctrlKey){ S.f=i; return toggleSel(item); }
+  if(e.shiftKey){ return moveTo(i, true); }
+  S.sel.clear(); S.anchor=i; S.f=i; paintCur();
+});
+$('.files').addEventListener('dblclick', e => { const el=e.target.closest('.it'); if(el) activate(visible()[+el.dataset.i]); });
+document.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if(e.target.closest('.files')) return menu(!e.target.closest('.it'));
+});
+document.addEventListener('mouseup', e => { if(e.button===3){ e.preventDefault(); goBack(); } if(e.button===4){ e.preventDefault(); goForward(); } });
+document.addEventListener('click', e => {
+  if(e.target.closest('.shade')) return;
+  const nb=e.target.closest('[data-nav]');
+  if(nb){ S.viaPad=false; S.zone='nav'; S.navF=+nb.dataset.nav; clearTimeout(navTimer); const it=S.navItems[S.navF]; paintNav(); if(it) openFolder(it.path).then(()=>{ S.zone='files'; paintNav(); }); return; }
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  const d=el.dataset;
+  switch(d.act){
+    case 'back': return goBack();
+    case 'up': return goUp();
+    case 'view': return toggleView();
+    case 'menu': return menu(true);
+    case 'crumb': if(d.path && d.path!==S.path) openFolder(d.path); else if(S.found){ S.found=null; render(); } return;
+    case 'sortBy': return setSort(d.k);
+    case 'cancelJob': return cancelJob(+d.id);
+  }
+});
+addEventListener('resize', () => renderTop());
+
+// ---------------------------------------------------------------- from Ember
+if(host) host.addEventListener('message', e => {
+  const m=e.data; if(!m||typeof m!=='object') return;
+  if(m.type==='result'){ const p=pending[m.id]; if(!p) return; delete pending[m.id]; m.ok ? p.ok(m.value) : p.no(new Error(m.error)); return; }
+  if(m.type!=='event') return;
+  const d=m.data;
+  if(m.name==='files.progress') onProgress(d);
+  else if(m.name==='files.done') onDone(d);
+  else if(m.name==='mantel.appArgs'){ const p=new URLSearchParams((d&&d.query)||'').get('path'); if(p){ S.zone='files'; openFolder(p); } }
+  else if(m.name==='profile' && d && d.accent) setAccent(d.accent);
+});
+function setAccent(a){
+  if(!/^#[0-9a-f]{6}$/i.test(a||'')) return;
+  document.documentElement.style.setProperty('--accent',a);
+  const n=parseInt(a.slice(1),16);
+  document.documentElement.style.setProperty('--accentInk',((n>>16&255)*.2126+(n>>8&255)*.7152+(n&255)*.0722)/255>.45?'#2a1206':'#ffffff');
+}
+
+// ---------------------------------------------------------------- preview data
+const HOME='C:\\Users\\you';
+const mk=(name,dir,kind,size,ext)=>({name, path:HOME+'\\Downloads\\'+name, dir, size:size||0, modified:Date.now()-Math.random()*9e9, ext:ext||'', hidden:false, kind});
+const MOCK = {
+  'files.places':()=>({home:HOME, folders:[{id:'home',name:'Home',path:HOME,icon:'home'},{id:'desktop',name:'Desktop',path:HOME+'\\Desktop',icon:'desktop'},{id:'documents',name:'Documents',path:HOME+'\\Documents',icon:'doc'},
+      {id:'downloads',name:'Downloads',path:HOME+'\\Downloads',icon:'download'},{id:'pictures',name:'Pictures',path:HOME+'\\Pictures',icon:'image'},{id:'videos',name:'Videos',path:HOME+'\\Videos',icon:'video'},{id:'music',name:'Music',path:HOME+'\\Music',icon:'audio'}],
+    games:[{id:'g1',name:'Steam (C:)',path:'C:\\Program Files (x86)\\Steam\\steamapps\\common',icon:'game'},{id:'g2',name:'Steam (D:)',path:'D:\\SteamLibrary\\steamapps\\common',icon:'game'}],
+    drives:[{id:'c',name:'Local disk (C:)',path:'C:\\',icon:'drive',total:512e9,free:180e9},{id:'e',name:'USB drive (E:)',path:'E:\\',icon:'usb',removable:true,total:64e9,free:40e9}],
+    recycle:{id:'recycle',name:'Recycle Bin',path:'recycle:',icon:'trash',count:3}}),
+  'files.list':a=>({path:a.path, name:a.path.split('\\').filter(Boolean).pop()||a.path, parent:a.path.length>3?a.path.replace(/\\[^\\]+\\?$/,'')||'C:\\':null, recycle:a.path==='recycle:',
+    entries:[mk('Mods',true,'folder'),mk('Screenshots',true,'folder'),mk('setup.exe',false,'app',84e6,'exe'),mk('holiday.jpg',false,'image',3.2e6,'jpg'),mk('clip.mp4',false,'video',412e6,'mp4'),
+      mk('notes.txt',false,'doc',2e3,'txt'),mk('soundtrack.flac',false,'audio',38e6,'flac'),mk('backup.zip',false,'archive',1.2e9,'zip'),mk('readme.pdf',false,'doc',220e3,'pdf'),mk('save.dat',false,'file',512e3,'dat')]}),
+  'files.clipGet':()=>({paths:[], cut:false}), 'files.clipSet':()=>null,
+  'files.info':a=>({name:a.path.split('\\').pop(), path:a.path, location:HOME+'\\Downloads', dir:false, type:'File', size:12345, files:0, folders:0, created:Date.now()-9e9, modified:Date.now()-1e9, accessed:Date.now()}),
+};
+
+// ---------------------------------------------------------------- start
+(async () => {
+  render();
+  await loadPlaces();
+  const start=new URLSearchParams(location.search).get('path') || (S.places&&S.places.home) || 'C:\\';
+  await openFolder(start, {history:'none'});
+  if(!S.path && S.places && S.places.home && start!==S.places.home) await openFolder(S.places.home, {history:'none'});
+  setInterval(() => { if(!document.hidden) loadPlaces(); }, 8000);
+})();
+if(host){ send({type:'ready'}); call('profile.get').then(p=>setAccent(p&&p.accent)).catch(()=>{}); }
+</script>
+</body>
+</html>

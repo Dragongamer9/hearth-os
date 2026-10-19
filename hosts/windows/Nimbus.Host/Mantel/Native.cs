@@ -96,6 +96,51 @@ internal static class Native
         catch { return null; }
     }
 
+    /// <summary>A file's thumbnail (photos, videos, PDFs…) or, when it has none, its icon, as PNG bytes, for
+    /// Hearth Files. <paramref name="flags"/>: SIIGBF_* (0 = thumbnail or icon, 4 = icon only, 8 = thumbnail only).</summary>
+    public static byte[]? ShellImagePng(string path, int px, int flags = 0)
+    {
+        try
+        {
+            SHCreateItemFromParsingName(path, IntPtr.Zero, typeof(IShellItemImageFactory).GUID, out var f);
+            if (f.GetImage(new SIZE { cx = px, cy = px }, flags, out var hbm) != 0 || hbm == IntPtr.Zero) return null;
+            try
+            {
+                using var bmp = BitmapWithAlpha(hbm, opaqueIfNoAlpha: true);
+                using var ms = new MemoryStream();
+                bmp.Save(ms, ImageFormat.Png);
+                return ms.ToArray();
+            }
+            finally { DeleteObject(hbm); }
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Image.FromHbitmap drops transparency: copy the 32-bit pixels across instead. Photo thumbnails
+    /// sometimes come with every alpha byte 0; <paramref name="opaqueIfNoAlpha"/> makes those opaque.</summary>
+    private static Bitmap BitmapWithAlpha(IntPtr hbm, bool opaqueIfNoAlpha)
+    {
+        var bmp = BitmapWithAlpha(hbm);
+        if (!opaqueIfNoAlpha) return bmp;
+        var rect = new Rectangle(0, 0, bmp.Width, bmp.Height);
+        var data = bmp.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+        try
+        {
+            int bytes = Math.Abs(data.Stride) * data.Height;
+            var px = new byte[bytes];
+            Marshal.Copy(data.Scan0, px, 0, bytes);
+            bool anyAlpha = false;
+            for (int i = 3; i < bytes; i += 4) if (px[i] != 0) { anyAlpha = true; break; }
+            if (!anyAlpha)
+            {
+                for (int i = 3; i < bytes; i += 4) px[i] = 255;
+                Marshal.Copy(px, 0, data.Scan0, bytes);
+            }
+        }
+        finally { bmp.UnlockBits(data); }
+        return bmp;
+    }
+
     /// <summary>Image.FromHbitmap drops transparency: copy the 32-bit pixels across instead.</summary>
     private static Bitmap BitmapWithAlpha(IntPtr hbm)
     {
