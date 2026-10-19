@@ -1057,6 +1057,8 @@ def run(plan):
         if os.path.isfile(bls):
             sh(['sh', bls, '--boot', f'{TARGET}/boot'])
         bootloader(disk, plan.get('firmware', True), dep)
+        if os.path.isfile(bls):   # again: bootupd may have rewritten /boot/grub2
+            sh(['sh', bls, '--boot', f'{TARGET}/boot'])
         other_systems_menu()
         write_fstab(dep, esp, boot, root)
         setup_system(dep, root, plan)
