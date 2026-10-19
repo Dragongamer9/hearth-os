@@ -120,6 +120,7 @@ int main(int argc, char* argv[]) {
 
   if (argc > 1 && std::string(argv[1]) == "--version") { printf("Hearth Browser %s (Chromium %d)\n", HEARTH_VERSION, CHROME_VERSION_MAJOR); return 0; }
 
+  for (int i = 1; i < argc; i++) if (std::string(argv[i]) == "--self-test") G().selftest = true;
   std::string exe = ExeDir();
   G().res_dir = exe + "/hearth";
   G().version = HEARTH_VERSION;

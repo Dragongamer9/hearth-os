@@ -190,6 +190,8 @@ struct Globals {
   bool adblock = true;
   int blocked = 0;
   std::string res_dir, version;
+  bool selftest = false;           // --self-test: check the top bar and start page work, print the result, quit
+  bool selftest_chrome = false, selftest_page = false;
 };
 Globals& G();
 
