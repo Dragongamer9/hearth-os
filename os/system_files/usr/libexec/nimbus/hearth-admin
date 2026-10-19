@@ -131,6 +131,16 @@ def run_logged(cmd):
 
 
 def update_check():
+    if layered():
+        # rpm-ostree: exit 77 means there's nothing new.
+        r = subprocess.run(['rpm-ostree', 'upgrade', '--check'], capture_output=True, text=True)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                print('log: ' + line.strip()[:300], flush=True)
+        if r.returncode not in (0, 77):
+            fail((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else 'rpm-ostree upgrade --check failed')
+        print(json.dumps(bootc_status()))
+        return
     run_logged(['bootc', 'upgrade', '--check'])
     print(json.dumps(bootc_status()))
 
@@ -220,7 +230,47 @@ def bootc_upgrade_with_progress(lo, hi, stage):
     if p.wait() != 0:
         if re.search(r'lock|another|in progress', last[0], re.I):
             fail('another update is already running (Hearth also updates by itself in the background). Try again in a few minutes.')
-        fail(last[0] or 'bootc upgrade failed')
+        raise UpgradeFailed(last[0] or 'bootc upgrade failed')
+    stage.emit(force=True, phase='install', pct=100.0, desc='System update installed')
+
+
+class UpgradeFailed(Exception):
+    pass
+
+
+def layered():
+    """Packages added on top of the image (rpm-ostree install): bootc refuses to update such a system, so it
+    goes through rpm-ostree, the way Bazzite's own updater does."""
+    try:
+        r = subprocess.run(['rpm-ostree', 'status', '--json', '--booted'], capture_output=True, text=True, timeout=60)
+        d = next((x for x in json.loads(r.stdout).get('deployments', []) if x.get('booted')), {})
+        return bool(d.get('requested-packages') or d.get('requested-local-packages') or d.get('requested-base-removals')
+                    or d.get('requested-base-local-replacements'))
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return False
+
+
+def rpm_ostree_upgrade(stage):
+    """rpm-ostree upgrade: no byte counts, so the steps it prints move the page on."""
+    stage.emit(force=True, phase='download', pct=None, desc='Downloading the system update')
+    p = subprocess.Popen(['rpm-ostree', 'upgrade'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    last = ''
+    for line in p.stdout:
+        line = line.rstrip()
+        if not line:
+            continue
+        last = line
+        print('log: ' + line[:300], flush=True)
+        m = re.search(r'(\d+)/(\d+)', line)
+        if re.search(r'receiving|fetching|downloading|layers?', line, re.I) and m and int(m.group(2)):
+            progress(80.0 * int(m.group(1)) / int(m.group(2)), 'Downloading the system update')
+        elif re.search(r'staging|writing|checking out|deploy', line, re.I):
+            progress(85, 'Installing the update')
+            stage.emit(force=True, phase='install', pct=None, desc='Installing the update')
+    if p.wait() != 0:
+        if re.search(r'lock|another|in progress|busy', last, re.I):
+            fail('another update is already running (Hearth also updates by itself in the background). Try again in a few minutes.')
+        fail(last or 'rpm-ostree upgrade failed')
     stage.emit(force=True, phase='install', pct=100.0, desc='System update installed')
 
 
@@ -259,7 +309,16 @@ def update():
     stage = Stage()
     progress(0, 'Starting')
     print('log: Downloading the system update…', flush=True)
-    bootc_upgrade_with_progress(0, 90, stage)
+    if layered():
+        print('log: This system has extra packages installed on top, so it updates through rpm-ostree', flush=True)
+        rpm_ostree_upgrade(stage)
+    else:
+        try:
+            bootc_upgrade_with_progress(0, 90, stage)
+        except UpgradeFailed as e:
+            # bootc refused (a system managed by rpm-ostree, or bootc not set up for it): the other way.
+            print('log: bootc couldn\'t update this system (%s); trying rpm-ostree' % str(e)[:200], flush=True)
+            rpm_ostree_upgrade(stage)
     if subprocess.run(['sh', '-c', 'command -v flatpak'], capture_output=True).returncode == 0:
         progress(90, 'Updating apps')
         print('log: Updating apps…', flush=True)
