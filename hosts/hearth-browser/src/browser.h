@@ -50,6 +50,10 @@ class BrowserWin : public CefWindowDelegate {
   bool CanClose(CefRefPtr<CefWindow> window) override;
   CefSize GetPreferredSize(CefRefPtr<CefView> view) override { return CefSize(1280, 820); }
   CefSize GetMinimumSize(CefRefPtr<CefView> view) override { return CefSize(560, 400); }
+#if CEF_VERSION_MAJOR >= 125
+  // Alloy style: a window can hold several browser views (the top bar and every tab); Chrome style allows one.
+  cef_runtime_style_t GetWindowRuntimeStyle() override { return CEF_RUNTIME_STYLE_ALLOY; }
+#endif
 
   // Tabs
   Tab* NewTab(const std::string& url, bool focus, int after = 0);
@@ -173,6 +177,9 @@ class Client : public CefClient,
 
   // Browser view (the top bar's size)
   CefSize GetPreferredSize(CefRefPtr<CefView> view) override;
+#if CEF_VERSION_MAJOR >= 125
+  cef_runtime_style_t GetBrowserRuntimeStyle() override { return CEF_RUNTIME_STYLE_ALLOY; }
+#endif
 
  private:
   BrowserWin* win_;
