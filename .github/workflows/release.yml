@@ -117,27 +117,6 @@ jobs:
           for f in desktop/shell/*.qml; do /usr/lib/qt6/bin/qmlformat "$f" >/dev/null || { echo "::error file=hosts/linux/$f::QML syntax error"; /usr/lib/qt6/bin/qmlformat "$f" 2>&1 >/dev/null | head -20; exit 1; }; done
           python3 -m py_compile desktop/shell/hearth-pad desktop/shell/hearth-buttons desktop/shell/hearth-controller desktop/shell/hearth-power desktop/shell/hearth-browser
 
-      - name: Build the AppImage
-        run: |
-          # Builds from linux-host are previews: 0.4.0-linux.<run>, the same number as their pre-release tag,
-          # so the updater can tell them apart.
-          v="${{ needs.version.outputs.version }}"
-          if [ "${{ github.ref }}" = "refs/heads/linux-host" ] && [ "${{ github.event_name }}" = "push" ]; then v="$v-linux.${{ github.run_number }}"; fi
-          npm version "$v" --no-git-tag-version --allow-same-version
-          npm run dist
-          cd dist
-          f=Nimbus-linux-x86_64.AppImage
-          test -f "$f" || { echo "Missing $f"; ls; exit 1; }
-          sha256sum "$f" | cut -d' ' -f1 | tr -d '\n' > "$f.sha256"
-
-      - name: Keep the build
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux
-          path: |
-            hosts/linux/dist/Nimbus-linux-x86_64.AppImage
-            hosts/linux/dist/Nimbus-linux-x86_64.AppImage.sha256
-
   # The Rust app (what Hearth OS runs since 0.0.24): Hearth-linux-x86_64, one file. It updates itself from this
   # release file when it isn't part of the system (on Hearth OS it updates with the system).
   rust:
@@ -162,12 +141,32 @@ jobs:
           cp target/release/hearth ../../Hearth-linux-x86_64
           cd ../..
           sha256sum Hearth-linux-x86_64 | cut -d' ' -f1 | tr -d '\n' > Hearth-linux-x86_64.sha256
+      # The AppImage for other Linux systems, now the Rust app (it was the old Electron app). Same file name, so
+      # the old app's updater moves those installs over; the new app then archives the old one.
+      - name: Build the AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          NO_STRIP: 'true'
+        run: |
+          sudo apt-get install -y -qq file libfuse2t64 >/dev/null 2>&1 || sudo apt-get install -y -qq file >/dev/null
+          npm i -g --no-audit --no-fund @tauri-apps/cli@2 >/dev/null
+          cd hosts/hearth-rs
+          tauri build --bundles appimage --config '{"bundle":{"active":true,"icon":["icons/icon.png"],"category":"Game","shortDescription":"Hearth: your game library with a controller"}}'
+          f=$(ls target/release/bundle/appimage/*.AppImage | head -1)
+          test -f "$f" || { echo "::error::No AppImage was made"; ls -R target/release/bundle || true; exit 1; }
+          cp "$f" ../../Nimbus-linux-x86_64.AppImage
+          cd ../..
+          chmod +x Nimbus-linux-x86_64.AppImage
+          sha256sum Nimbus-linux-x86_64.AppImage | cut -d' ' -f1 | tr -d '\n' > Nimbus-linux-x86_64.AppImage.sha256
+          ls -la Nimbus-linux-x86_64.AppImage
       - uses: actions/upload-artifact@v4
         with:
           name: rust
           path: |
             Hearth-linux-x86_64
             Hearth-linux-x86_64.sha256
+            Nimbus-linux-x86_64.AppImage
+            Nimbus-linux-x86_64.AppImage.sha256
 
   release:
     needs: [version, windows, linux, rust, ui]
@@ -196,28 +195,3 @@ jobs:
           gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
             -q ".[] | select(.draft == false and .tag_name != \"$tag\") | .id" |
             while read -r id; do gh api -X PATCH "repos/${{ github.repository }}/releases/$id" -F draft=true >/dev/null; done
-
-  linux-preview:
-    needs: [version, linux]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/linux-host'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: linux
-          path: builds
-
-      - name: Publish a Linux pre-release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="v${{ needs.version.outputs.version }}-linux.${{ github.run_number }}"
-          notes="Linux preview from the linux-host branch ($(git rev-parse --short HEAD)).
-
-          $(git log -1 --pretty=%B)
-
-          Download Nimbus-linux-x86_64.AppImage, make it executable (chmod +x), and run it with --windowed to try it on your desktop."
-          gh release create "$tag" builds/* --prerelease --target "${{ github.sha }}" \
-            --title "Hearth ${{ needs.version.outputs.version }} for Linux (preview ${{ github.run_number }})" --notes "$notes"

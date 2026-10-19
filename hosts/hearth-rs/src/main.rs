@@ -210,6 +210,8 @@ fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: 
     let (guide, hold) = match bridge.lock() { Ok(b) => (b.guide.clone(), b.library.store.data["holdView"] == true), Err(_) => return };
     let gm = GameMode::new(app.clone(), bridge.clone(), guide.clone(), windowed);
     let _ = GM.set(gm.clone());
+    // Moved from the old Electron AppImage: tidy up once this version has run fine for 5 minutes.
+    std::thread::spawn(|| { std::thread::sleep(std::time::Duration::from_secs(300)); hearth_core::appupdate::tidy_after_move(); });
     // Off the window's thread: talking to InputPlumber can take a few seconds.
     { let g = gm.clone(); std::thread::spawn(move || g.start_inputplumber()); }
     guide.hold_view.store(hold, std::sync::atomic::Ordering::SeqCst);

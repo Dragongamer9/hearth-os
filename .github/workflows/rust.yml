@@ -4,7 +4,7 @@ name: Rust host
 
 on:
   push:
-    branches: [rust-host]
+    branches: [linux-host]
     paths: ['hosts/hearth-core/**', 'hosts/hearth-rs/**', 'ui/**', '.github/workflows/rust.yml']
   workflow_dispatch:
 
