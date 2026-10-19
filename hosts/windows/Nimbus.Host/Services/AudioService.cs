@@ -4,6 +4,8 @@ namespace Nimbus.Host.Services;
 
 public sealed record AudioDevice(string Id, string Name, bool IsDefault);
 public sealed record AudioState(int Volume, bool Muted, List<AudioDevice> Devices);
+/// <summary>The microphone (Hearth Settings › Sound › Microphone): its input volume and the recording devices.</summary>
+public sealed record AudioInput(bool Present, int Volume, List<AudioDevice> Devices);
 
 /// <summary>
 /// Master volume, mute and output-device selection through Windows Core Audio (COM).
@@ -12,17 +14,17 @@ public sealed record AudioState(int Volume, bool Muted, List<AudioDevice> Device
 /// </summary>
 public sealed class AudioService
 {
-    private const int eRender = 0, DEVICE_STATE_ACTIVE = 1, CLSCTX_ALL = 23, STGM_READ = 0;
+    private const int eRender = 0, eCapture = 1, DEVICE_STATE_ACTIVE = 1, CLSCTX_ALL = 23, STGM_READ = 0;
     private static readonly Guid IID_IAudioEndpointVolume = new("5CDF2C82-841E-4546-9722-0CF74078229A");
     private static PropertyKey PKEY_Device_FriendlyName = new(new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 14);
 
     private static IMMDeviceEnumerator Enumerator() => (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
 
-    private static IAudioEndpointVolume? DefaultVolume()
+    private static IAudioEndpointVolume? DefaultVolume(int flow = eRender)
     {
         try
         {
-            Enumerator().GetDefaultAudioEndpoint(eRender, 1 /* eMultimedia */, out var dev);
+            Enumerator().GetDefaultAudioEndpoint(flow, 1 /* eMultimedia */, out var dev);
             var iid = IID_IAudioEndpointVolume;
             dev.Activate(ref iid, CLSCTX_ALL, IntPtr.Zero, out var obj);
             return (IAudioEndpointVolume)obj;
@@ -55,6 +57,23 @@ public sealed class AudioService
         v.SetMute(mute, IntPtr.Zero);
     }
 
+    /// <summary>The default microphone's volume and every active recording device.</summary>
+    public AudioInput GetInput()
+    {
+        var v = DefaultVolume(eCapture);
+        int volume = 0;
+        if (v is not null) { v.GetMasterVolumeLevelScalar(out var level); volume = (int)Math.Round(level * 100); }
+        List<AudioDevice> devices;
+        try { devices = Devices(eCapture); } catch (COMException) { devices = new List<AudioDevice>(); }
+        return new AudioInput(v is not null, volume, devices);
+    }
+
+    public void SetInputVolume(int percent)
+    {
+        var v = DefaultVolume(eCapture) ?? throw new InvalidOperationException("No microphone");
+        v.SetMasterVolumeLevelScalar(Math.Clamp(percent, 0, 100) / 100f, IntPtr.Zero);
+    }
+
     public void SetDefault(string id)
     {
         var policy = (IPolicyConfig)new PolicyConfigComObject();
@@ -62,20 +81,20 @@ public sealed class AudioService
             Marshal.ThrowExceptionForHR(policy.SetDefaultEndpoint(id, role));
     }
 
-    private static List<AudioDevice> Devices()
+    private static List<AudioDevice> Devices(int flow = eRender)
     {
         var list = new List<AudioDevice>();
         var en = Enumerator();
         string? defaultId = null;
-        try { en.GetDefaultAudioEndpoint(eRender, 1, out var def); def.GetId(out defaultId); } catch (COMException) { }
+        try { en.GetDefaultAudioEndpoint(flow, 1, out var def); def.GetId(out defaultId); } catch (COMException) { }
 
-        en.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, out var col);
+        en.EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE, out var col);
         col.GetCount(out var count);
         for (uint i = 0; i < count; i++)
         {
             col.Item(i, out var dev);
             dev.GetId(out var id);
-            list.Add(new AudioDevice(id, FriendlyName(dev) ?? "Audio device", id == defaultId));
+            list.Add(new AudioDevice(id, FriendlyName(dev) ?? (flow == eCapture ? "Microphone" : "Audio device"), id == defaultId));
         }
         return list;
     }

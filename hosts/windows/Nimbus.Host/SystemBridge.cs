@@ -327,6 +327,41 @@ public sealed class SystemBridge : IDisposable
             case "audio.setVolume": _audio.SetVolume(Int(a, "v")); return null;
             case "audio.setMute": _audio.SetMute(Bool(a, "m")); return null;
             case "audio.setDefault": _audio.SetDefault(Req(a, "id")); return _audio.Get();
+            // Hearth Settings › Sound › Microphone
+            case "audio.input": return _audio.GetInput();
+            case "audio.setInputVolume": _audio.SetInputVolume(Int(a, "v")); return null;
+
+            // Hearth Settings (Mantel): Appearance › Night light / Reduce motion, Controller › Pointer speed,
+            // Sign-in › Ask for my password after sleep, Power › Power button. Null values: Windows can't tell.
+            case "desktop.get": return await Task.Run(DesktopSettings);
+            case "desktop.set":
+            {
+                var key = Req(a, "key");
+                JsonElement v = a.TryGetProperty("value", out var vv) ? vv : default;
+                bool On() => v.ValueKind == JsonValueKind.True;
+                var mantel = (_ui as ShellForm)?.Mantel;
+                switch (key)
+                {
+                    case "nightLight":
+                        Games.MantelNightLight = On(); Mantel.MantelHost.NightLightOn = On();
+                        if (!_ui.IsDisposed) _ui.Invoke((MethodInvoker)(() => mantel?.ApplyNightLight()));
+                        break;
+                    case "reduceMotion":
+                        Games.MantelReduceMotion = On(); Mantel.MantelHost.ReduceMotion = On();
+                        if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => mantel?.ApplyReduceMotion()));
+                        break;
+                    case "pointerSpeed":
+                        if (v.ValueKind != JsonValueKind.Number) throw new ArgumentException("Pointer speed is a number");
+                        Games.PointerSpeed = v.GetDouble();
+                        if (Pad is not null) Pad.PointerSpeed = Games.PointerSpeed;
+                        break;
+                    case "lockOnWake": await Task.Run(() => Mantel.WinSettings.SetLockOnWake(On())); break;
+                    case "powerPress": await Task.Run(() => Mantel.WinSettings.SetPowerPress(v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "")); break;
+                    default: throw new ArgumentException("Unknown desktop setting");
+                }
+                return await Task.Run(DesktopSettings);
+            }
+            case "browser.status": return await Task.Run(Mantel.WinSettings.BrowserStatus);
 
             case "display.get": return await _display.GetAsync(_ui);
             case "display.setBrightness": await _display.SetBrightnessAsync(Int(a, "v")); return null;
@@ -579,6 +614,7 @@ public sealed class SystemBridge : IDisposable
                     startMode = Games.StartMode,
                     desktopStyle = Games.DesktopStyle,
                     wallpaper = Games.MantelWallpaper,
+                    pictures = CustomWallpapers(),
                     desktopMode = (_ui as ShellForm)?.Desktop?.Active ?? false,
                 };
             case "shell.setDesktopStyle":
@@ -601,11 +637,31 @@ public sealed class SystemBridge : IDisposable
             case "shell.setWallpaper":
             {
                 var w = Str(a, "name") ?? "";
-                if (w.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(w, "^(hearth-[a-z]+|anim:(fireside|lava|aurora))$")) throw new ArgumentException("Unknown wallpaper");
+                if (w.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(w, "^(hearth-[a-z]+|anim:(fireside|lava|aurora)|custom:[^\\\\/:*?\"<>|]+)$")) throw new ArgumentException("Unknown wallpaper");
+                if (w.StartsWith("custom:") && !File.Exists(Path.Combine(Mantel.MantelHost.CustomWallpaperDir, w[7..]))) throw new ArgumentException("That picture is gone");
                 Games.MantelWallpaper = w;
                 Mantel.MantelHost.Wallpaper = w;
                 if ((_ui as ShellForm)?.Mantel is { Active: true } m) m.ApplyWallpaper();
                 return await DispatchAsync("shell.status", a);
+            }
+            // Hearth Settings › Appearance › Choose a picture…: copied into %LOCALAPPDATA%\Nimbus\wallpapers and used.
+            case "shell.pickWallpaper":
+            {
+                using var dlg = new OpenFileDialog
+                {
+                    Title = "Choose a wallpaper",
+                    Filter = "Pictures (*.jpg;*.jpeg;*.png;*.webp;*.bmp)|*.jpg;*.jpeg;*.png;*.webp;*.bmp",
+                    CheckFileExists = true,
+                    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+                };
+                if (dlg.ShowDialog(_ui.FindForm()) != DialogResult.OK) return null;
+                Directory.CreateDirectory(Mantel.MantelHost.CustomWallpaperDir);
+                var name = string.Concat(Path.GetFileName(dlg.FileName).Split(Path.GetInvalidFileNameChars()));
+                if (name.Length == 0) name = "wallpaper.jpg";
+                var dest = Path.Combine(Mantel.MantelHost.CustomWallpaperDir, name);
+                if (!string.Equals(Path.GetFullPath(dlg.FileName), Path.GetFullPath(dest), StringComparison.OrdinalIgnoreCase)) File.Copy(dlg.FileName, dest, true);
+                using var pick = JsonDocument.Parse(JsonSerializer.Serialize(new { name = "custom:" + name }));
+                return await DispatchAsync("shell.setWallpaper", pick.RootElement.Clone());
             }
             case "switch.status": return await Switch.StatusAsync();
             case "switch.prepare": Switch.Prepare(Int(a, "gb")); return await Switch.StatusAsync();
@@ -642,6 +698,18 @@ public sealed class SystemBridge : IDisposable
 
     /// <summary>Game folders for Hearth Files' places: every Steam library's steamapps\common, and where Ember
     /// installs Epic and GOG games.</summary>
+    /// <summary>The pictures chosen as wallpaper (file names in %LOCALAPPDATA%\Nimbus\wallpapers), A–Z.</summary>
+    private static List<string> CustomWallpapers()
+    {
+        try
+        {
+            if (!Directory.Exists(Mantel.MantelHost.CustomWallpaperDir)) return new List<string>();
+            var ok = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".webp", ".bmp" };
+            return Directory.GetFiles(Mantel.MantelHost.CustomWallpaperDir).Where(f => ok.Contains(Path.GetExtension(f))).Select(f => Path.GetFileName(f)!).OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+        catch { return new List<string>(); }
+    }
+
     private List<string> GameFolders()
     {
         var list = new List<string>();
@@ -653,6 +721,21 @@ public sealed class SystemBridge : IDisposable
         catch { }
         try { var root = Games.Accounts.InstallRoot; if (!string.IsNullOrEmpty(root)) list.Add(root); } catch { }
         return list;
+    }
+
+    /// <summary>What desktop.get returns (Hearth Settings and Quick Access read it).</summary>
+    private object DesktopSettings()
+    {
+        var mantel = (_ui as ShellForm)?.Mantel;
+        return new
+        {
+            nightLight = Games.MantelNightLight,
+            nightAvailable = mantel?.Night.Available ?? true,
+            reduceMotion = Games.MantelReduceMotion,
+            pointerSpeed = Games.PointerSpeed,
+            lockOnWake = Mantel.WinSettings.LockOnWake,
+            powerPress = Mantel.WinSettings.PowerPress,
+        };
     }
 
     private object OverlaySettings() => new
@@ -698,9 +781,13 @@ public sealed class SystemBridge : IDisposable
         int? brightness = null;
         try { brightness = await _display.GetBrightnessAsync(); } catch { }
 
+        object? wired = null;
+        try { wired = Mantel.WinSettings.Wired(); } catch { }
+
         return new
         {
             wifi = new { available = wifiOn is not null, on = wifiOn == true, ssid, bars },
+            wired,
             bt = new { available = btOn is not null, on = btOn == true },
             airplane = _airplane,
             battery = _power.Battery(),

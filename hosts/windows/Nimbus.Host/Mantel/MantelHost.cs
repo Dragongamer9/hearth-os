@@ -19,7 +19,17 @@ public sealed class MantelHost : IDisposable
     private readonly CoreWebView2Environment _env;
     private readonly string _baseUrl;
     private readonly Action<CoreWebView2> _setup;
-    private MantelWindow? _bar, _launcher, _desk, _quick, _power, _radial, _help;
+    private MantelWindow? _bar, _launcher, _desk, _quick, _power, _radial, _help, _keyboard;
+    /// <summary>The window the on-screen keyboard types into (the last one in front that isn't Mantel's own).</summary>
+    private IntPtr _typeTarget;
+    private Task _typing = Task.CompletedTask;
+    /// <summary>Hearth's night light (Settings › Appearance), while Mantel runs.</summary>
+    internal NightLight Night { get; } = new();
+    /// <summary>Settings › Appearance › Night light and Reduce motion (set from Ember's saved settings).</summary>
+    public static bool NightLightOn { get; set; }
+    public static bool ReduceMotion { get; set; }
+    /// <summary>Where pictures you choose as wallpaper are kept (served to the pages as https://hearth-walls.local/).</summary>
+    public static string CustomWallpaperDir { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Nimbus", "wallpapers");
     private IntPtr _beforeRadial;
     private SettingsWindow? _settings;
     private TasksWindow? _tasks;
@@ -85,12 +95,15 @@ public sealed class MantelHost : IDisposable
             _power ??= await Create(MantelPart.Power);
             _radial ??= await Create(MantelPart.Radial);
             _help ??= await Create(MantelPart.Help);
+            _keyboard ??= await Create(MantelPart.Keyboard);
             _dim ??= new Backdrop();
             _dim.Clicked -= HidePanels; _dim.Clicked += HidePanels;
             _bar.Show();
             if (full) { _bar.PlaceManually(); _full.Start(_bar.BarHeight()); }
             else { _bar.EnsureAppBar(); _bar.PlaceAppBar(); }
-            foreach (var w in new[] { _bar, _launcher, _desk, _quick, _power, _radial, _help }) if (w is not null) PushState(w);
+            foreach (var w in new[] { _bar, _launcher, _desk, _quick, _power, _radial, _help, _keyboard }) if (w is not null) PushState(w);
+            Input.Osd.HearthStyle = true;
+            Night.Enabled = NightLightOn;
             PushTray();
             _tick.Start();
             PushWindows(force: true);
@@ -109,6 +122,9 @@ public sealed class MantelHost : IDisposable
         SystemBridge.Log("mantel: stopping");
         _tick.Stop();
         HidePanels();
+        HideKeyboard();
+        Night.Enabled = false;
+        Input.Osd.HearthStyle = false;
         if (_bar is not null) { _bar.RemoveAppBar(); _bar.Hide(); }
         if (Full) { _full.Stop(); _tray.Stop(); _desk?.Hide(); MantelWindow.OwnTray = false; }
         else RestoreWindowsTaskbar();
@@ -133,7 +149,70 @@ public sealed class MantelHost : IDisposable
         HidePanels();
         if (Full) { _bar.PlaceManually(); _full.SetWorkArea(_bar.BarHeight()); _desk?.SendToBack(); }
         else _bar.PlaceAppBar();
+        if (_keyboard is { Visible: true }) ShowKeyboard();
     }
+
+    // ------------------------------------------------------------------ the on-screen keyboard (Keyboard.qml)
+
+    /// <summary>Hearth's on-screen keyboard is up (the controller then picks keys instead of moving the pointer).</summary>
+    public bool KeyboardOpen => Active && _keyboard is { Visible: true };
+
+    /// <summary>Y on the controller, the taskbar's keyboard button, Quick Access or the Hearth menu: Hearth's keyboard
+    /// (Windows' touch keyboard when Mantel isn't running).</summary>
+    public void ToggleKeyboard()
+    {
+        if (!Active || _keyboard is null) { new Thread(Stores.TouchKeyboard.Toggle) { IsBackground = true }.Start(); return; }
+        if (_keyboard.Visible) HideKeyboard(); else ShowKeyboard();
+    }
+
+    private void ShowKeyboard()
+    {
+        if (_keyboard is null) return;
+        var fg = Native.GetForegroundWindow();
+        if (fg != IntPtr.Zero && !IsMantelWindow(fg)) _typeTarget = fg;
+        _keyboard.ShowKeyboard();
+        if (Full && _bar is not null && !MantelWindow.Portrait) _full.SetWorkArea(_bar.BarHeight() + _keyboard.KeyboardHeight);
+        Send(_keyboard, "mantel.opened", new { });
+        // Back to the window you were typing in (showing the keyboard can take the focus on some PCs).
+        if (_typeTarget != IntPtr.Zero && Native.GetForegroundWindow() != _typeTarget) Native.SetForegroundWindow(_typeTarget);
+    }
+
+    private void HideKeyboard()
+    {
+        if (_keyboard is not { Visible: true }) return;
+        _keyboard.HideKeyboard();
+        if (Full && _bar is not null) _full.SetWorkArea(_bar.BarHeight());
+    }
+
+    /// <summary>A controller button while the keyboard is up (the page moves the highlight and picks keys).</summary>
+    public void KeyboardButton(string b) { if (_keyboard is not null) Send(_keyboard, "mantel.kbdButton", new { b }); }
+
+    private bool IsMantelWindow(IntPtr h) =>
+        h != IntPtr.Zero && new[] { _bar, _launcher, _desk, _quick, _power, _radial, _help, _keyboard }.Any(w => w is not null && w.Hwnd == h);
+
+    /// <summary>Types a key from the on-screen keyboard into the window you were in (in order, one after another).</summary>
+    private void TypeKey(string key, string ch, bool shift, bool ctrl, bool alt)
+    {
+        var fg = Native.GetForegroundWindow();
+        bool ours = IsMantelWindow(fg);
+        if (!ours && fg != IntPtr.Zero) _typeTarget = fg;
+        var target = _typeTarget;
+        _typing = _typing.ContinueWith(_ =>
+        {
+            try
+            {
+                if (ours && target != IntPtr.Zero) { Native.SetForegroundWindow(target); Thread.Sleep(40); }
+                KeyTyper.Type(key, ch, shift, ctrl, alt);
+            }
+            catch (Exception ex) { SystemBridge.Log("keyboard: " + ex.Message); }
+        }, TaskScheduler.Default);
+    }
+
+    /// <summary>Settings › Appearance › Night light changed (or Mantel started): warm the screen or not.</summary>
+    public void ApplyNightLight() { if (Active) Night.Enabled = NightLightOn; }
+
+    /// <summary>Settings › Appearance › Reduce motion changed: the desktop's wallpaper stands still (or moves again).</summary>
+    public void ApplyReduceMotion() { foreach (var w in new[] { _desk }) if (w is not null) PushState(w); }
 
     public void ToggleLauncherFromPad() { if (Active) ToggleLauncher(); }
     /// <summary>The power menu (the power button's "menu" choice, or the controller), like PowerMenu.qml.</summary>
@@ -252,6 +331,8 @@ public sealed class MantelHost : IDisposable
     private void Tick()
     {
         if (!Active) return;
+        var fg = Native.GetForegroundWindow();
+        if (fg != IntPtr.Zero && !IsMantelWindow(fg)) _typeTarget = fg;
         if (Full) { _desk?.SendToBack(); PushWindows(); return; }
         // Explorer brings its taskbar back now and then (Start menu, a restart of Explorer): hide it again,
         // except while you're using it (the tray peek, or the Start menu open on top).
@@ -280,6 +361,7 @@ public sealed class MantelHost : IDisposable
         string action = m.GetProperty("action").GetString() ?? "";
         string Str(string k) => m.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
         long Long(string k) => m.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64() : 0;
+        bool Bool(string k) => m.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.True;
         switch (action)
         {
             case "apps": _ = PushAppsAsync(from, m.TryGetProperty("refresh", out var r) && r.ValueKind == JsonValueKind.True); break;
@@ -307,16 +389,25 @@ public sealed class MantelHost : IDisposable
             case "game": HidePanels(); GameModeRequested?.Invoke(); break;
             case "power": HidePanels(); PowerRequested?.Invoke(Str("what")); break;
             case "lock": HidePanels(); Native.LockWorkStation(); break;
-            case "keyboard": HidePanels(); new Thread(Stores.TouchKeyboard.Toggle) { IsBackground = true }.Start(); break;
+            case "keyboard": HidePanels(); ToggleKeyboard(); break;
+            case "keyboardClose": HideKeyboard(); break;
+            case "type": TypeKey(Str("key"), Str("ch"), Bool("shift"), Bool("ctrl"), Bool("alt")); break;
+            case "help": HidePanels(); TogglePanel(_help); break;
             case "nightlight": HidePanels(); Apps.OpenUri("ms-settings:nightlight"); break;
             case "radial": RadialPick(Str("pick")); break;
             case "pin": SetPin(Str("id"), Str("name"), m.TryGetProperty("on", out var on) && on.ValueKind == JsonValueKind.True); break;
             case "settings": HidePanels(); _ = OpenSettingsAsync(Str("page")); break;
             case "windowsSettings": HidePanels(); Apps.Launch("windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"); break;
             case "closeSettings": _settings?.Hide(); break;
-            case "uri": { var u = Str("uri"); if (u.StartsWith("ms-settings:")) Apps.OpenUri(u); break; }
+            case "uri":
+            {
+                // Windows Settings pages, and Aloha Browser's site (Hearth Settings › Web browser › Install).
+                var u = Str("uri");
+                if (u.StartsWith("ms-settings:") || u.StartsWith("https://alohabrowser.com/")) { HidePanels(); Apps.OpenUri(u); }
+                break;
+            }
             case "accent":   // a new accent color: every Mantel window takes it
-                foreach (var w in new[] { _bar, _launcher, _quick, _power, _radial, _help }) if (w is not null) Send(w, "profile", new { accent = Str("accent") });
+                foreach (var w in new[] { _bar, _launcher, _quick, _power, _radial, _help, _keyboard }) if (w is not null) Send(w, "profile", new { accent = Str("accent") });
                 break;
         }
     }
@@ -384,7 +475,7 @@ public sealed class MantelHost : IDisposable
         switch (pick)
         {
             case "apps": ToggleLauncher(); break;
-            case "keyboard": new Thread(Stores.TouchKeyboard.Toggle) { IsBackground = true }.Start(); break;
+            case "keyboard": ToggleKeyboard(); break;
             case "quick": TogglePanel(_quick); break;
             case "close": if (_beforeRadial != IntPtr.Zero) Native.PostMessage(_beforeRadial, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero); break;
             case "game": GameModeRequested?.Invoke(); break;
@@ -437,7 +528,7 @@ public sealed class MantelHost : IDisposable
         catch (Exception ex) { SystemBridge.Log("mantel: save: " + ex.Message); }
     }
 
-    private void PushState(MantelWindow to) => Send(to, "mantel.state", new { pins = Load().Pins, full = Full, wallpaper = Wallpaper });
+    private void PushState(MantelWindow to) => Send(to, "mantel.state", new { pins = Load().Pins, full = Full, wallpaper = Wallpaper, reduceMotion = ReduceMotion });
 
     private void SetPin(string id, string name, bool on)
     {
@@ -466,6 +557,7 @@ public sealed class MantelHost : IDisposable
                 if (Native.SystemParametersInfo(Native.SPI_GETDESKWALLPAPER, (uint)sb.Capacity, sb, 0)) { s.WindowsWallpaper = sb.ToString(); Save(s); }
             }
             string? file = string.IsNullOrEmpty(Wallpaper) ? s.WindowsWallpaper
+                : Wallpaper.StartsWith("custom:") ? Path.Combine(CustomWallpaperDir, Path.GetFileName(Wallpaper[7..]))
                 : Path.Combine(AppContext.BaseDirectory, "wwwroot", "wallpapers", Path.GetFileName(Wallpaper) + ".jpg");
             if (!string.IsNullOrEmpty(file) && (File.Exists(file) || string.IsNullOrEmpty(Wallpaper)))
                 Native.SystemParametersInfo(Native.SPI_SETDESKWALLPAPER, 0, file, Native.SPIF_UPDATEINIFILE | Native.SPIF_SENDCHANGE);
@@ -484,6 +576,8 @@ public sealed class MantelHost : IDisposable
         _power?.Dispose();
         _radial?.Dispose();
         _help?.Dispose();
+        _keyboard?.Dispose();
+        Night.Dispose();
         _settings?.Dispose();
         _tasks?.Dispose();
         _files?.Dispose();

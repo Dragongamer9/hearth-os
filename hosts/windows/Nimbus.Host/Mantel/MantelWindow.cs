@@ -6,7 +6,7 @@ using Microsoft.Web.WebView2.WinForms;
 namespace Nimbus.Host.Mantel;
 
 /// <summary>The pieces of Mantel, each its own window showing mantel.html?part=…</summary>
-public enum MantelPart { Bar, Launcher, Desktop, Quick, Power, Radial, Help }
+public enum MantelPart { Bar, Launcher, Desktop, Quick, Power, Radial, Help, Keyboard }
 
 /// <summary>A Mantel window, shaped and placed like its counterpart on Hearth OS:
 /// the floating rounded taskbar along the bottom (docked as an app bar, or by hand in full Mantel, so
@@ -25,7 +25,10 @@ internal sealed class MantelWindow : Form
     public event Action? PanelClosed;
     public bool Ready { get; private set; }
 
-    private bool IsPanel => Part is not (MantelPart.Bar or MantelPart.Desktop);
+    private bool IsPanel => Part is not (MantelPart.Bar or MantelPart.Desktop or MantelPart.Keyboard);
+    /// <summary>Hearth's on-screen keyboard: docked above the taskbar, never takes the focus from the window you type in.</summary>
+    private bool IsKeyboard => Part == MantelPart.Keyboard;
+    private int _kbHeight;
     /// <summary>The window handle, readable from any thread (the controller's).</summary>
     public IntPtr Hwnd { get; private set; }
 
@@ -44,7 +47,7 @@ internal sealed class MantelWindow : Form
         SizeChanged += (_, _) => Shape();
     }
 
-    protected override bool ShowWithoutActivation => Part is MantelPart.Bar or MantelPart.Desktop;
+    protected override bool ShowWithoutActivation => Part is MantelPart.Bar or MantelPart.Desktop or MantelPart.Keyboard;
 
     protected override CreateParams CreateParams
     {
@@ -52,7 +55,7 @@ internal sealed class MantelWindow : Form
         {
             var cp = base.CreateParams;
             cp.ExStyle |= 0x00000080 /* WS_EX_TOOLWINDOW: not in Alt+Tab or its own taskbar */;
-            if (Part == MantelPart.Desktop) cp.ExStyle |= 0x08000000 /* WS_EX_NOACTIVATE */;
+            if (Part is MantelPart.Desktop or MantelPart.Keyboard) cp.ExStyle |= 0x08000000 /* WS_EX_NOACTIVATE */;
             return cp;
         }
     }
@@ -71,7 +74,7 @@ internal sealed class MantelWindow : Form
         };
         Show();
         await _web.EnsureCoreWebView2Async(env);
-        if (IsPanel) Hide();
+        if (IsPanel || IsKeyboard) Hide();
         var core = _web.CoreWebView2;
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.IsZoomControlEnabled = false;
@@ -79,6 +82,8 @@ internal sealed class MantelWindow : Form
         core.Settings.AreDevToolsEnabled = false;
         core.Settings.AreBrowserAcceleratorKeysEnabled = false;
         setup(core);
+        // Pictures you chose as wallpaper (Hearth Settings › Appearance › Choose a picture…) live outside wwwroot.
+        if (Part == MantelPart.Desktop) MapWallpapers(core);
         core.WebMessageReceived += (_, e) =>
         {
             try { using var doc = JsonDocument.Parse(e.WebMessageAsJson); PageMessage?.Invoke(doc.RootElement.Clone()); }
@@ -90,6 +95,17 @@ internal sealed class MantelWindow : Form
         Shape();
         Hwnd = Handle;
         Ready = true;
+    }
+
+    /// <summary>Serves %LOCALAPPDATA%\Nimbus\wallpapers as https://hearth-walls.local/ (the desktop and Hearth Settings show them).</summary>
+    public static void MapWallpapers(CoreWebView2 core)
+    {
+        try
+        {
+            Directory.CreateDirectory(MantelHost.CustomWallpaperDir);
+            core.SetVirtualHostNameToFolderMapping("hearth-walls.local", MantelHost.CustomWallpaperDir, CoreWebView2HostResourceAccessKind.Allow);
+        }
+        catch (Exception ex) { SystemBridge.Log("mantel: wallpapers folder: " + ex.Message); }
     }
 
     // ------------------------------------------------------------------ shape
@@ -118,6 +134,8 @@ internal sealed class MantelWindow : Form
                 : CreateRoundRectRgn(S(8), S(4), Width - S(8) + 1, Height - S(6) + 1, S(28), S(28)),
             MantelPart.Desktop => IntPtr.Zero,
             MantelPart.Radial => CreateEllipticRgn(0, 0, Width + 1, Height + 1),
+            // Keyboard.qml: 8 in from the sides, 6 from the top, Theme.radius + 4 (18) round
+            MantelPart.Keyboard => CreateRoundRectRgn(S(8), S(6), Width - S(8) + 1, Height + 1, S(36), S(36)),
             _ => CreateRoundRectRgn(0, 0, Width + 1, Height + 1, S(40), S(40)),
         };
         SetWindowRgn(Handle, rgn, true);   // the window owns the region from here on
@@ -168,6 +186,39 @@ internal sealed class MantelWindow : Form
         _web.Focus();
     }
 
+    /// <summary>Shows the on-screen keyboard along the bottom, above the taskbar, as tall as Keyboard.qml's
+    /// (40 % of the screen at most, at least 260 or 22 % of its width). It keeps its space like the taskbar does,
+    /// so maximized windows shrink above it and the field you're typing in stays visible.</summary>
+    public void ShowKeyboard()
+    {
+        var scr = Screen.PrimaryScreen!.Bounds;
+        double k = DeviceDpi / 96.0;
+        _kbHeight = S(Math.Min(scr.Height / k * 0.4, Math.Max(260, scr.Width / k * 0.22)));
+        if (OwnTray) Bounds = KeyboardStrip();
+        else if (!_appBar) RegisterAppBar();
+        else PlaceAppBar();
+        Shape();
+        if (!Visible) Show();
+    }
+
+    public void HideKeyboard()
+    {
+        RemoveAppBar();
+        Hide();
+    }
+
+    /// <summary>The keyboard's space by hand (full Mantel): right above the bar, or along the bottom next to a side bar.</summary>
+    private Rectangle KeyboardStrip()
+    {
+        var scr = Screen.PrimaryScreen!.Bounds;
+        int bar = BarHeight();
+        return Portrait ? new Rectangle(scr.Left + bar, scr.Bottom - _kbHeight, scr.Width - bar, _kbHeight)
+                        : new Rectangle(scr.Left, scr.Bottom - bar - _kbHeight, scr.Width, _kbHeight);
+    }
+
+    /// <summary>The keyboard's height, for the work area in full Mantel (0 when it's hidden).</summary>
+    public int KeyboardHeight => IsKeyboard && Visible ? _kbHeight : 0;
+
     private static Rectangle Center(Rectangle scr, int w, int h) => new(scr.Left + (scr.Width - w) / 2, scr.Top + (scr.Height - h) / 2, w, h);
 
     public void Post(string json)
@@ -194,13 +245,16 @@ internal sealed class MantelWindow : Form
     public void PlaceAppBar()
     {
         if (!_appBar) return;
-        int h = BarHeight();
-        var strip = BarStrip();
+        // The keyboard asks for the bottom edge too: Windows stacks it right above the taskbar.
+        bool side = Portrait && !IsKeyboard;
+        int h = IsKeyboard ? _kbHeight : BarHeight();
+        var scr = Screen.PrimaryScreen!.Bounds;
+        var strip = IsKeyboard ? new Rectangle(scr.Left, scr.Bottom - h, scr.Width, h) : BarStrip();
         var d = Data();
-        d.uEdge = Portrait ? Native.ABE_LEFT : Native.ABE_BOTTOM;
+        d.uEdge = side ? Native.ABE_LEFT : Native.ABE_BOTTOM;
         d.rc = new Native.RECT { Left = strip.Left, Right = strip.Right, Top = strip.Top, Bottom = strip.Bottom };
         Native.SHAppBarMessage(Native.ABM_QUERYPOS, ref d);
-        if (Portrait) d.rc.Right = d.rc.Left + h; else d.rc.Top = d.rc.Bottom - h;
+        if (side) d.rc.Right = d.rc.Left + h; else d.rc.Top = d.rc.Bottom - h;
         Native.SHAppBarMessage(Native.ABM_SETPOS, ref d);
         Bounds = new Rectangle(d.rc.Left, d.rc.Top, d.rc.Right - d.rc.Left, d.rc.Bottom - d.rc.Top);
         Shape();
@@ -217,7 +271,7 @@ internal sealed class MantelWindow : Form
             wp.flags &= ~0x0004u;
             Marshal.StructureToPtr(wp, m.LParam, false);
         }
-        if (Part == MantelPart.Desktop && m.Msg == 0x0021 /* WM_MOUSEACTIVATE */) { m.Result = (IntPtr)3; return; }
+        if ((Part is MantelPart.Desktop or MantelPart.Keyboard) && m.Msg == 0x0021 /* WM_MOUSEACTIVATE */) { m.Result = (IntPtr)3; return; }
         // ABN_POSCHANGED (another app bar or the screen changed): put ours back.
         if (_appBar && m.Msg == CallbackMsg && m.WParam.ToInt32() == 1) PlaceAppBar();
         base.WndProc(ref m);

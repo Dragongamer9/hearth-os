@@ -67,6 +67,19 @@ public sealed class ControllerBridge : IDisposable
     /// <summary>A Mantel panel (launcher, Quick Access, power menu, Hearth menu) is in front: the controller
     /// moves through it (D-pad, A, B) instead of being a mouse.</summary>
     public Func<bool> MantelPanelInFront { get; set; } = () => false;
+    /// <summary>Hearth's on-screen keyboard is up: the D-pad and left stick pick keys, A types, X is backspace, LB shift,
+    /// Menu Enter, B or Y close (like hearth-pad on Hearth OS). RT still clicks, the right stick still moves the pointer.</summary>
+    public Func<bool> KeyboardOpen { get; set; } = () => false;
+    /// <summary>Raised on the bridge thread with a button name (up, down, left, right, a, x, lb, start, b, y) while the keyboard is up.</summary>
+    public event Action<string>? KeyboardButton;
+    /// <summary>Y in Mantel: Hearth's on-screen keyboard (raised on the bridge thread).</summary>
+    public event Action? DesktopKeyboard;
+    /// <summary>A short message for the screen ("Precise pointer on"), raised on the bridge thread.</summary>
+    public event Action<string>? Toast;
+    /// <summary>Hearth Settings › Controller › Pointer speed: 0.4 – 2 (1 = normal).</summary>
+    public double PointerSpeed { get; set; } = 1.0;
+    private bool _precise;
+    private volatile bool _kbNow;
     private bool _viewHeld, _viewUsed, _altHeld;
     private DateTime _viewAt, _altUntil;
     /// <summary>Raised on the bridge thread when the overlay should open or close.</summary>
@@ -92,7 +105,7 @@ public sealed class ControllerBridge : IDisposable
         ushort prev = 0;
         var held = new Dictionary<ushort, (DateTime first, DateTime last)>();
         bool suppressCombo = false;
-        bool leftDown = false, rightDown = false;
+        bool leftDown = false, rightDown = false, middleDown = false;
         double carryX = 0, carryY = 0, carryWheel = 0;
         bool guidePrev = false, viewFired = false;
         DateTime viewSince = DateTime.MaxValue;
@@ -129,6 +142,7 @@ public sealed class ControllerBridge : IDisposable
             {
                 if (leftDown) { Mouse(MOUSEEVENTF_LEFTUP); leftDown = false; }
                 if (rightDown) { Mouse(MOUSEEVENTF_RIGHTUP); rightDown = false; }
+                if (middleDown) { Mouse(MOUSEEVENTF_MIDDLEUP); middleDown = false; }
                 prev = pad.Buttons; held.Clear(); SetMouse(false);
                 continue;
             }
@@ -158,31 +172,56 @@ public sealed class ControllerBridge : IDisposable
             SetMouse(mouse);
 
             ushort buttons = pad.Buttons;
+            // Mantel, like hearth-pad: X / LT right-click, L3 middle-click, R3 precise pointer; the keyboard takes the D-pad.
+            bool mantelDesk = DesktopMode() && MantelActive() && target is not (Target.Ui or Target.Overlay);
+            bool kb = mantelDesk && KeyboardOpen();
+            _kbNow = kb;
             if (mouse)
             {
+                if (mantelDesk && !kb && (buttons & RTHUMB) != 0 && (prev & RTHUMB) == 0)
+                {
+                    _precise = !_precise;
+                    Toast?.Invoke("Precise pointer " + (_precise ? "on" : "off"));
+                }
                 // Right stick → pointer. Curve gives fine control near the center and speed at the edge.
-                carryX += Curve(pad.RX) * MaxSpeed;
-                carryY += -Curve(pad.RY) * MaxSpeed;
+                double speed = MaxSpeed * Math.Clamp(PointerSpeed, 0.2, 3.0) * (_precise && mantelDesk ? 0.3 : 1.0);
+                carryX += Curve(pad.RX) * speed;
+                carryY += -Curve(pad.RY) * speed;
                 int dx = (int)carryX, dy = (int)carryY;
                 carryX -= dx; carryY -= dy;
                 if (dx != 0 || dy != 0) Mouse(MOUSEEVENTF_MOVE, dx, dy);
 
-                // Left stick → scroll wheel.
-                carryWheel += Curve(pad.LY) * 30;
-                int wheel = (int)carryWheel;
-                if (wheel != 0) { carryWheel -= wheel; Mouse(MOUSEEVENTF_WHEEL, data: wheel); }
+                if (kb)
+                {
+                    // The keyboard is up: the left stick picks keys like the D-pad (below), A types.
+                    if (pad.LY > StickDeadzone) buttons |= UP;
+                    if (pad.LY < -StickDeadzone) buttons |= DOWN;
+                    if (pad.LX < -StickDeadzone) buttons |= LEFT;
+                    if (pad.LX > StickDeadzone) buttons |= RIGHT;
+                }
+                else
+                {
+                    // Left stick → scroll wheel.
+                    carryWheel += Curve(pad.LY) * 30;
+                    int wheel = (int)carryWheel;
+                    if (wheel != 0) { carryWheel -= wheel; Mouse(MOUSEEVENTF_WHEEL, data: wheel); }
+                }
 
-                // A or RT = left button (hold to drag), LT = right button.
-                bool left = (buttons & A) != 0 || pad.RT > TriggerPress;
-                bool right = pad.LT > TriggerPress;
+                // A or RT = left button (hold to drag), LT (and X in Mantel) = right button, L3 in Mantel = middle.
+                bool left = (!kb && (buttons & A) != 0) || pad.RT > TriggerPress;
+                bool right = !kb && (pad.LT > TriggerPress || (mantelDesk && (buttons & X) != 0));
+                bool middle = mantelDesk && !kb && (buttons & LTHUMB) != 0;
                 if (left != leftDown) { Mouse(left ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP); leftDown = left; }
                 if (right != rightDown) { Mouse(right ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP); rightDown = right; }
-                buttons &= unchecked((ushort)~A);   // A is the mouse button now
+                if (middle != middleDown) { Mouse(middle ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP); middleDown = middle; }
+                if (!kb) buttons &= unchecked((ushort)~A);   // A is the mouse button now
+                if (mantelDesk && !kb) buttons &= unchecked((ushort)~X);   // and X the right one
             }
             else
             {
                 if (leftDown) { Mouse(MOUSEEVENTF_LEFTUP); leftDown = false; }
                 if (rightDown) { Mouse(MOUSEEVENTF_RIGHTUP); rightDown = false; }
+                if (middleDown) { Mouse(MOUSEEVENTF_MIDDLEUP); middleDown = false; }
                 // Left stick doubles as the D-pad when it isn't scrolling.
                 if (pad.LY > StickDeadzone) buttons |= UP;
                 if (pad.LY < -StickDeadzone) buttons |= DOWN;
@@ -275,12 +314,23 @@ public sealed class ControllerBridge : IDisposable
 
     private const ushort UP = 0x0001, DOWN = 0x0002, LEFT = 0x0004, RIGHT = 0x0008,
                          START = 0x0010, BACK = 0x0020, LB = 0x0100, RB = 0x0200,
-                         GUIDE = 0x0400, A = 0x1000, B = 0x2000, X = 0x4000, Y = 0x8000;
+                         GUIDE = 0x0400, A = 0x1000, B = 0x2000, X = 0x4000, Y = 0x8000,
+                         LTHUMB = 0x0040, RTHUMB = 0x0080;
     private static readonly ushort[] AllButtons = { UP, DOWN, LEFT, RIGHT, LB, RB, A, B, X, Y, START, BACK };
     private static bool IsDirection(ushort b) => b is UP or DOWN or LEFT or RIGHT;
 
     private void Dispatch(ushort b, Target target)
     {
+        // Hearth's on-screen keyboard is up: buttons pick and type keys (KeyboardButton), whatever window is in front.
+        if (_kbNow && target is not (Target.Ui or Target.Overlay or Target.Game))
+        {
+            var key = b switch
+            {
+                UP => "up", DOWN => "down", LEFT => "left", RIGHT => "right", A => "a", X => "x", LB => "lb", START => "start", B => "b", Y => "y", _ => null,
+            };
+            if (key is not null) KeyboardButton?.Invoke(key);
+            return;
+        }
         if (target is Target.Ui or Target.Overlay)
         {
             var name = b switch
@@ -309,7 +359,7 @@ public sealed class ControllerBridge : IDisposable
             }
             switch (b)
             {
-                case Y: ShowKeyboard(); break;
+                case Y: if (MantelActive() && DesktopKeyboard is not null) DesktopKeyboard.Invoke(); else ShowKeyboard(); break;
                 case B: Key(VK_ESCAPE); break;
                 case START: DesktopMenu?.Invoke(); break;   // Mantel's launcher
                 case LB or RB:
@@ -440,7 +490,8 @@ public sealed class ControllerBridge : IDisposable
 
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint MOUSEEVENTF_MOVE = 0x0001, MOUSEEVENTF_LEFTDOWN = 0x0002, MOUSEEVENTF_LEFTUP = 0x0004,
-                       MOUSEEVENTF_RIGHTDOWN = 0x0008, MOUSEEVENTF_RIGHTUP = 0x0010, MOUSEEVENTF_WHEEL = 0x0800;
+                       MOUSEEVENTF_RIGHTDOWN = 0x0008, MOUSEEVENTF_RIGHTUP = 0x0010, MOUSEEVENTF_MIDDLEDOWN = 0x0020, MOUSEEVENTF_MIDDLEUP = 0x0040,
+                       MOUSEEVENTF_WHEEL = 0x0800;
     [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] private static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
