@@ -16,6 +16,11 @@ if [ -x /ctx/nimbus-app/hearth ]; then
     mkdir -p /usr/lib/hearth-browser && cp -a /ctx/nimbus-app/browser/. /usr/lib/hearth-browser/
     if [ -f /usr/lib/hearth-browser/chrome-sandbox ]; then chown root:root /usr/lib/hearth-browser/chrome-sandbox && chmod 4755 /usr/lib/hearth-browser/chrome-sandbox; fi
   fi
+  # Hearth Browser on Chromium (CEF): /usr/bin/hearth-browser uses it when it's there.
+  if [ -x /ctx/nimbus-app/browser-cef/hearth-browser ]; then
+    mkdir -p /usr/lib/hearth-browser-cef && cp -a /ctx/nimbus-app/browser-cef/. /usr/lib/hearth-browser-cef/
+    if [ -f /usr/lib/hearth-browser-cef/chrome-sandbox ]; then chown root:root /usr/lib/hearth-browser-cef/chrome-sandbox && chmod 4755 /usr/lib/hearth-browser-cef/chrome-sandbox; fi
+  fi
 else
   cp -a /ctx/nimbus-app/. /usr/lib/nimbus/
 fi
