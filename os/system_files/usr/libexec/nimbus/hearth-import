@@ -11,6 +11,14 @@ you choose Move, and only ever writes into your own home folder.
                             copies them in (progress as "stage: {json}" lines), then one JSON result line
   hearth-import unmount     unmounts what scan mounted
 
+Move (Beta Experimental, docs/MOVE-AND-GROW.md): each item is copied, then checked file by file against the
+original (every file there, same size, same bytes, read back from the drive), registered (Steam's manifest),
+and only then is the original deleted, with the launcher's own record of it (Steam's appmanifest, Epic's .item,
+Heroic's installed.json entry, Lutris' "installed" mark). Anything that doesn't check out is kept, and the copy
+is removed. Windows' drive is only written to when Windows was fully shut down (no Fast Startup or
+hibernation): otherwise the game is copied and the original stays. Stopping (SIGTERM, or the file
+/run/user/<uid>/hearth-import.cancel) finishes or removes the item in progress, never half of both.
+
 Drives are mounted read-only under /run/hearth-import/. Steam games go into your Steam library with their
 manifest (so Steam sees them as installed and only checks them), plus their Proton data from Linux (local
 saves). Epic and GOG games go into Hearth's games folder; the Hearth app registers them afterwards.
@@ -36,7 +44,8 @@ SKIP_APPS = {'228980', '250820', '1070560', '1391110', '1628350', '1493710', '18
 SKIP_NAMES = ('Steamworks', 'Proton', 'Steam Linux Runtime', 'SteamVR')
 FOLDERS = ['Desktop', 'Documents', 'Downloads', 'Music', 'Pictures', 'Videos']
 SKIP_USERS = {'Public', 'Default', 'Default User', 'All Users', 'defaultuser0', 'WDAGUtilityAccount'}
-current = {'proc': None}
+current = {'proc': None, 'stop': False, 'partial': [], 'critical': False, 'flag': None}
+GIB = 1024 ** 3
 
 
 def fail(msg):
@@ -160,21 +169,28 @@ def drives():
     return out
 
 
+def mount_tries(fs):
+    return {'ntfs': [['-t', 'ntfs3', '-o', 'ro'], ['-t', 'ntfs-3g', '-o', 'ro'], ['-t', 'ntfs3', '-o', 'ro,force']],
+            'btrfs': [['-o', 'ro,subvolid=5'], ['-o', 'ro']]}.get(fs, [['-o', 'ro']])
+
+
 def mount(d):
     """Mount point for a drive: where it's already mounted, or read-only under /run/hearth-import."""
     for m in d['mounts']:
         if os.path.isdir(m):
             return m, None
     target = os.path.join(MNT, d['id'])
+    d['ours'] = True
     if os.path.ismount(target):
         return target, None
     os.makedirs(target, exist_ok=True)
-    tries = {'ntfs': [['-t', 'ntfs3', '-o', 'ro'], ['-t', 'ntfs-3g', '-o', 'ro'], ['-t', 'ntfs3', '-o', 'ro,force']],
-             'btrfs': [['-o', 'ro,subvolid=5'], ['-o', 'ro']]}.get(d['fs'], [['-o', 'ro']])
     err = ''
-    for opts in tries:
+    for opts in mount_tries(d['fs']):
         r = subprocess.run(['mount', *opts, d['dev'], target], capture_output=True, text=True)
         if r.returncode == 0:
+            # Opened only by forcing it (Windows hibernated or with Fast Startup): readable, never written to.
+            d['forced'] = 'force' in opts[-1]
+            d['mountOpts'] = opts
             return target, None
         err = (r.stderr or '').strip()
     if d['fs'] == 'ntfs' and re.search(r'hibernat|dirty|unclean|fast', err, re.I):
@@ -256,6 +272,8 @@ def steam_games(steamapps, drive_id):
             flags = 0
         if appid in SKIP_APPS or not name or not idir or any(name.startswith(p) for p in SKIP_NAMES):
             continue
+        if '/' in idir or '\\' in idir or idir in ('.', '..'):
+            continue   # never a real game folder (and steamapps/common/.. would be the whole library)
         if not flags & 4 or flags & (256 | 1024 | 524288 | 1048576 | 2097152 | 4194304):
             continue   # not fully installed, or Steam is in the middle of updating it
         game = os.path.join(steamapps, 'common', idir)
@@ -268,7 +286,8 @@ def steam_games(steamapps, drive_id):
         compat = os.path.join(steamapps, 'compatdata', appid)
         games.append({'key': f'steam:{drive_id}:{appid}', 'appid': appid, 'name': name, 'size': size or du(game, 60),
                       'path': game, 'manifest': man, 'installdir': idir,
-                      'compat': compat if isdir(compat) else None})
+                      'compat': compat if isdir(compat) else None,
+                      'records': [{'type': 'file', 'path': man}]})
     return games
 
 
@@ -291,7 +310,8 @@ def epic_games(mnt, kind, home_list, all_mounts, drive_id):
             path = windows_path(it['InstallLocation'], mnt, all_mounts)
             if path:
                 out.append({'key': f'epic:{drive_id}:{it["AppName"]}', 'app': it['AppName'], 'name': it.get('DisplayName') or it['AppName'],
-                            'size': int(it.get('InstallSize') or 0) or du(path, 60), 'path': path})
+                            'size': int(it.get('InstallSize') or 0) or du(path, 60), 'path': path,
+                            'records': [{'type': 'file', 'path': os.path.join(mdir, f)}]})
     for h in home_list:   # Heroic (Epic through legendary) on Linux
         for cfg in (os.path.join(h, '.config', 'heroic', 'legendaryConfig', 'legendary', 'installed.json'),
                     os.path.join(h, '.var', 'app', 'com.heroicgameslauncher.hgl', 'config', 'heroic', 'legendaryConfig', 'legendary', 'installed.json'),
@@ -307,7 +327,8 @@ def epic_games(mnt, kind, home_list, all_mounts, drive_id):
                 path = inside(mnt, e.get('install_path') or '')
                 if path and isdir(path) and not any(x['app'] == app for x in out):
                     out.append({'key': f'epic:{drive_id}:{app}', 'app': app, 'name': e.get('title') or app,
-                                'size': int(e.get('install_size') or 0) or du(path, 60), 'path': path})
+                                'size': int(e.get('install_size') or 0) or du(path, 60), 'path': path,
+                                'records': [{'type': 'json-key', 'path': cfg, 'key': app}]})
     return out
 
 
@@ -382,7 +403,8 @@ def lutris_games(mnt, home_list, drive_id):
                 except OSError:
                     pass
                 out.append({'key': f'lutris:{drive_id}:{slug}', 'name': name or slug, 'slug': slug, 'runner': runner or '',
-                            'size': du(path, 60), 'path': path, 'oldDir': directory, 'exe': exe})
+                            'size': du(path, 60), 'path': path, 'oldDir': directory, 'exe': exe,
+                            'records': [{'type': 'lutris', 'path': db, 'slug': slug}]})
     return out
 
 
@@ -533,6 +555,438 @@ def fix_manifest(src, dst, installdir):
         f.write(text)
 
 
+class Stopped(Exception):
+    pass
+
+
+class Keep(Exception):
+    """The copy is good, but the original can't (or mustn't) be deleted: it stays where it was."""
+
+
+class VerifyError(Exception):
+    pass
+
+
+def stop_requested():
+    if current['stop']:
+        return True
+    flag = current.get('flag')
+    if flag and os.path.lexists(flag):
+        current['stop'] = True
+        p = current['proc']
+        if p and p.poll() is None:
+            p.terminate()
+    return current['stop']
+
+
+def same_bytes(a, b, on_bytes=None, chunk=4 * 1024 * 1024):
+    """True if files a and b hold the same bytes. b (the new copy) is read back from the drive, not from memory."""
+    with open(a, 'rb') as fa, open(b, 'rb') as fb:
+        try:
+            os.posix_fadvise(fb.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+        except (AttributeError, OSError):
+            pass
+        while True:
+            if stop_requested():
+                raise Stopped()
+            x, y = fa.read(chunk), fb.read(chunk)
+            if x != y:
+                return False
+            if not x:
+                return True
+            if on_bytes:
+                on_bytes(len(x))
+
+
+def verify_tree(src, dst, on_bytes=None):
+    """Checks that every file and link under src has an identical copy under dst: the same file count, sizes and
+    contents (compared byte for byte). Returns (files, bytes); raises VerifyError with what's wrong."""
+    import stat
+    if not os.path.isdir(dst) or os.path.islink(dst):
+        raise VerifyError("the copy isn't there")
+    files = total = 0
+    for root, dirs, names in os.walk(src, followlinks=False):
+        rel = os.path.relpath(root, src)
+        troot = dst if rel == '.' else os.path.join(dst, rel)
+        if not os.path.isdir(troot) or os.path.islink(troot):
+            raise VerifyError(f'the folder "{rel}" is missing from the copy')
+        entries = names + [d for d in dirs if os.path.islink(os.path.join(root, d))]
+        for name in entries:
+            a, b = os.path.join(root, name), os.path.join(troot, name)
+            what = os.path.normpath(os.path.join(rel, name))
+            st = os.lstat(a)
+            if stat.S_ISLNK(st.st_mode):
+                if not os.path.islink(b) or os.readlink(a) != os.readlink(b):
+                    raise VerifyError(f'the link "{what}" is different in the copy')
+            elif stat.S_ISREG(st.st_mode):
+                try:
+                    tb = os.lstat(b)
+                except OSError:
+                    raise VerifyError(f'"{what}" is missing from the copy')
+                if not stat.S_ISREG(tb.st_mode) or tb.st_size != st.st_size:
+                    raise VerifyError(f'"{what}" has a different size in the copy')
+                if not same_bytes(a, b, on_bytes):
+                    raise VerifyError(f'"{what}" is different in the copy')
+                total += st.st_size
+            else:
+                raise VerifyError(f'"{what}" is a special file that can\'t be copied')
+            files += 1
+    # Count once more from the copy's side: everything that was checked is really there.
+    found = 0
+    for root, dirs, names in os.walk(dst, followlinks=False):
+        rel = os.path.relpath(root, dst)
+        sroot = src if rel == '.' else os.path.join(src, rel)
+        found += sum(1 for n in names + [d for d in dirs if os.path.islink(os.path.join(root, d))]
+                     if os.path.lexists(os.path.join(sroot, n)))
+    if found != files:
+        raise VerifyError(f'the copy has {found} of {files} files')
+    return files, total
+
+
+def owner_mount(path, mounts):
+    """The longest mount point that path is under (which drive a file is on)."""
+    best = None
+    for m in mounts:
+        if m and under(path, m) and (best is None or len(m) > len(best)):
+            best = m
+    return best
+
+
+def is_readonly(mnt):
+    try:
+        return bool(os.statvfs(mnt).f_flag & os.ST_RDONLY)
+    except OSError:
+        return True
+
+
+def ntfs_writable(dev):
+    """(ok, why): whether Windows' NTFS drive may be written to. Never when Windows is hibernated or was shut
+    down with Fast Startup on (its drive is still 'in use' by Windows, and writing to it loses data)."""
+    hint = "Windows wasn't fully shut down (Fast Startup or hibernation), so Hearth only read from it. The copy in Hearth is fine; to free the space, start Windows, hold Shift while choosing Shut down, then move it again"
+    if shutil.which('ntfs-3g.probe'):
+        r = subprocess.run(['ntfs-3g.probe', '--readwrite', dev], capture_output=True, text=True)
+        if r.returncode == 0:
+            return True, ''
+        if r.returncode in (14, 15) or re.search(r'hibernat|unclean|fast', r.stdout + r.stderr, re.I):
+            return False, hint
+        return False, "Windows' drive can't be changed right now (" + ((r.stderr or r.stdout).strip().splitlines() or ['?'])[-1] + ')'
+    if shutil.which('ntfsfix'):
+        r = subprocess.run(['ntfsfix', '-n', dev], capture_output=True, text=True)
+        if re.search(r'hibernat|unclean|fast|dirty', r.stdout + r.stderr, re.I):
+            return False, hint
+        return (r.returncode == 0), ('' if r.returncode == 0 else "Windows' drive needs a check (chkdsk) before Hearth can change it")
+    return False, "Hearth can't check that Windows' drive is safe to change (ntfs-3g is missing), so it only read from it"
+
+
+def make_writable(d, mnt, state):
+    """Makes the drive at mnt writable for deleting, or raises Keep. Drives Hearth opened read-only are opened
+    again for writing (Windows' only after checking it was fully shut down); drives another app opened read-only
+    are left alone."""
+    if mnt in state['rw']:
+        return
+    if not is_readonly(mnt):
+        state['rw'].add(mnt)
+        return
+    if not d.get('ours'):
+        raise Keep("the drive is open read-only in another app, so the original couldn't be deleted")
+    if d.get('forced'):
+        raise Keep("Windows wasn't fully shut down (Fast Startup or hibernation), so Hearth only read from its drive. The copy in Hearth is fine; to free the space, start Windows, hold Shift while choosing Shut down, then move it again")
+    if d['fs'] == 'ntfs':
+        if subprocess.run(['umount', mnt], capture_output=True).returncode != 0:
+            raise Keep("Windows' drive is busy, so the original couldn't be deleted")
+        ok, why = ntfs_writable(d['dev'])
+        mounted = False
+        if ok:
+            for opts in (['-t', 'ntfs3', '-o', 'rw'], ['-t', 'ntfs-3g', '-o', 'rw']):   # never with force
+                if subprocess.run(['mount', *opts, d['dev'], mnt], capture_output=True).returncode == 0:
+                    mounted = True
+                    break
+        if not mounted:
+            for opts in d.get('mountOpts') and [d['mountOpts']] or mount_tries('ntfs'):   # back to read-only
+                if subprocess.run(['mount', *opts, d['dev'], mnt], capture_output=True).returncode == 0:
+                    break
+            raise Keep(why or "Windows' drive couldn't be opened for changes")
+    elif subprocess.run(['mount', '-o', 'remount,rw', mnt], capture_output=True).returncode != 0:
+        raise Keep("the drive couldn't be opened for changes")
+    state['rw'].add(mnt)
+    state['ours'].add(mnt)
+
+
+PROTECTED_NAMES = {'windows', 'users', 'program files', 'program files (x86)', 'programdata', 'steamapps', 'common',
+                   'home', 'var', 'etc', 'usr', 'boot', 'root', '@', '@home', 'deck', 'steam'}
+
+
+def safe_to_delete(path, mnt, protect=()):
+    """Only ever a game's own folder: under the drive, not the drive itself, not a system or home folder, and not
+    a folder that holds something else that matters (a home folder, a Steam library)."""
+    if not path or not mnt or os.path.islink(path) or not os.path.isdir(path):
+        return False
+    real, base = os.path.realpath(path), os.path.realpath(mnt)
+    if real == base or not under(real, base):
+        return False
+    if os.path.basename(real).lower() in PROTECTED_NAMES:
+        return False
+    for p in protect:
+        if p and under(os.path.realpath(p), real):   # path would contain a home folder or a library
+            return False
+    return True
+
+
+def remove_record(rec, state):
+    """A launcher's own record of the game on the old system, so it doesn't list a game that's gone."""
+    p = rec.get('path') or ''
+    if rec['type'] == 'file':
+        if os.path.isfile(p) and not os.path.islink(p):
+            os.remove(p)
+    elif rec['type'] == 'json-key':
+        with open(p, encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, dict) and rec['key'] in data:
+            del data[rec['key']]
+            tmp = p + '.hearth-tmp'
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp, p)
+    elif rec['type'] == 'lutris':
+        con = sqlite3.connect(p)
+        try:
+            con.execute('UPDATE games SET installed = 0 WHERE slug = ?', (rec['slug'],))
+            con.commit()
+        finally:
+            con.close()
+
+
+def remove_original(kind, d, it, drives, state, compat_moved):
+    """Deletes what was moved, after it was copied and checked. Raises Keep when it can't or mustn't."""
+    mounts = [x.get('mount') for x in drives if x.get('mount')]
+    path = it['path']
+    mnt = owner_mount(path, mounts)
+    if not mnt:
+        raise Keep("couldn't tell which drive the original is on")
+    drive = next((x for x in drives if x.get('mount') == mnt), d)
+    # Never a folder that holds a home folder, a drive or another game (a Lutris game "installed" in ~/Games).
+    protect = state['protect'] + [q for q in state.get('paths', []) if os.path.realpath(q) != os.path.realpath(path)]
+    if kind == 'files':
+        if not os.path.isdir(path) or os.path.islink(path) or not under(path, mnt):
+            raise Keep("the folder isn't where it was")
+    elif not safe_to_delete(path, mnt, protect):
+        raise Keep("that folder holds more than this game, so Hearth left it alone")
+    make_writable(drive, mnt, state)
+    records = [r for r in it.get('records') or [] if r.get('path')]
+    for r in records:   # those files are on their own drive (Epic's manifests are on C:, the game may be on D:)
+        rm = owner_mount(r['path'], mounts)
+        if rm and rm != mnt:
+            make_writable(next((x for x in drives if x.get('mount') == rm), d), rm, state)
+    current['critical'] = True   # from here the item is finished even if Stop is pressed
+    try:
+        if kind == 'files':
+            # A personal folder (Documents...) stays, empty: Windows and Linux expect it to be there.
+            for name in listdir(path):
+                if name.lower() == 'desktop.ini':
+                    continue
+                q = os.path.join(path, name)
+                if os.path.isdir(q) and not os.path.islink(q):
+                    shutil.rmtree(q)
+                else:
+                    os.remove(q)
+        else:
+            # Renamed first, so a folder that's half deleted never looks like an installed game.
+            trash = os.path.join(os.path.dirname(path), '.hearth-moved-' + os.path.basename(path))
+            if os.path.lexists(trash):
+                shutil.rmtree(trash, ignore_errors=True)
+            os.rename(path, trash)
+            problems = []
+            for r in records:
+                try:
+                    remove_record(r, state)
+                except (OSError, ValueError, sqlite3.Error) as e:
+                    problems.append(str(e))
+            if compat_moved and it.get('compat') and safe_to_delete(it['compat'], mnt, protect):
+                shutil.rmtree(it['compat'], ignore_errors=True)
+            shutil.rmtree(trash)
+            if problems:
+                print('log: the old launcher still lists it: ' + '; '.join(problems)[:300], flush=True)
+    except OSError as e:
+        raise Keep('the original was only partly deleted (' + str(e) + '). Your copy in Hearth is complete')
+    finally:
+        current['critical'] = False
+        os.sync()
+    return mnt
+
+
+def free_bytes(p):
+    try:
+        st = os.statvfs(p)
+        return st.f_bavail * st.f_frsize
+    except OSError:
+        return 0
+
+
+def remove_partial(paths):
+    for p in paths:
+        try:
+            if os.path.isdir(p) and not os.path.islink(p):
+                shutil.rmtree(p)
+            elif os.path.lexists(p):
+                os.remove(p)
+        except OSError:
+            pass
+
+
+def destination(kind, d, it, user, root, steamapps):
+    if kind == 'steam':
+        return os.path.join(steamapps, 'common', it['installdir'])
+    if kind in ('epic', 'gog'):
+        return os.path.join(root, 'Epic' if kind == 'epic' else 'GOG', os.path.basename(it['path'].rstrip('/')))
+    if kind == 'lutris':
+        return os.path.join(root, 'Lutris', os.path.basename(it['path'].rstrip('/')))
+    return os.path.join(user.pw_dir, it['name'], 'Imported from ' + re.sub(r'[/\\]', '-', d['name']) +
+                        (f' ({it["user"]})' if it.get('user') else ''))
+
+
+def do_items(items, mode, user, root, steamapps, drives):
+    """Copies (or moves) each item. Returns the result for the app."""
+    result = {'done': [], 'skipped': [], 'failed': [], 'kept': [], 'epic': [], 'gog': [], 'lutris': [], 'steam': 0,
+              'mode': mode, 'moved': [], 'freed': []}
+    total = sum(it.get('size') or 0 for _, _, it in items)
+    stage(phase='start', total=total, n=len(items), mode=mode)
+    homes_all = [h for x in drives if x.get('mount') for h in homes(x['mount'])]
+    state = {'rw': set(), 'ours': set(), 'protect': homes_all + [x['mount'] for x in drives if x.get('mount')],
+             'paths': [x['path'] for dr in drives for k in ('steam', 'epic', 'gog', 'lutris', 'files') for x in dr.get(k) or [] if x.get('path')]}
+    freed = {}
+    finished = 0
+    for i, (kind, d, it) in enumerate(items):
+        if stop_requested():
+            break
+        size = it.get('size') or 0
+        name = it['name'] + (f' ({it["user"]})' if kind == 'files' and it.get('user') else '')
+        last = [0.0]
+
+        def progress(done, bps, _i=i, _name=name, _size=size, _kind=kind):
+            now = time.monotonic()
+            if now - last[0] < 0.4:
+                return
+            last[0] = now
+            stop_requested()
+            part = min(done, _size or done)   # moving: copying is the first half of each item, checking the second
+            stage(phase='copy', i=_i, n=len(items), key=it['key'], name=_name, kind=_kind, done=done, size=_size, bps=round(bps),
+                  overall=finished + (part // 2 if mode == 'move' else part), total=total)
+
+        stage(phase='copy', i=i, n=len(items), key=it['key'], name=name, kind=kind, done=0, size=size, bps=0, overall=finished, total=total)
+        dst = destination(kind, d, it, user, root, steamapps)
+        man_dst = os.path.join(steamapps, f'appmanifest_{it["appid"]}.acf') if kind == 'steam' else None
+        if kind == 'steam' and os.path.exists(man_dst):
+            result['skipped'].append({'key': it['key'], 'name': name, 'why': 'already installed in Hearth'})
+            finished += size
+            continue
+        if mode == 'move' and size and free_bytes(os.path.dirname(dst) if os.path.isdir(os.path.dirname(dst)) else user.pw_dir) < size + GIB:
+            result['failed'].append({'key': it['key'], 'name': name, 'why': 'not enough free space in Hearth for it. Nothing was changed'})
+            finished += size
+            continue
+        # What this item creates, removed again if it doesn't finish (Stop, a failed copy or check).
+        cdst = os.path.join(steamapps, 'compatdata', it['appid']) if kind == 'steam' and it.get('compat') else None
+        compat_new = bool(cdst) and not os.path.exists(cdst)
+        current['partial'] = [p for p in ([dst] if not os.path.exists(dst) else []) + ([cdst] if compat_new else [])]
+        try:
+            rsync(it['path'], dst, progress)
+            if compat_new:
+                rsync(it['compat'], cdst, lambda *_: None)
+            if stop_requested():
+                raise Stopped()
+            if mode == 'move':
+                os.sync()
+                checked = [0]
+                vlast = [0.0]
+
+                def on_bytes(n, _i=i, _name=name, _size=size, _kind=kind):
+                    checked[0] += n
+                    now = time.monotonic()
+                    if now - vlast[0] >= 0.4:
+                        vlast[0] = now
+                        stage(phase='verify', i=_i, n=len(items), key=it['key'], name=_name, kind=_kind, done=checked[0], size=_size, bps=0,
+                              overall=finished + (_size + min(checked[0], _size)) // 2, total=total)
+                stage(phase='verify', i=i, n=len(items), key=it['key'], name=name, kind=kind, done=0, size=size, bps=0, overall=finished + size // 2, total=total)
+                verify_tree(it['path'], dst, on_bytes)
+                if compat_new:
+                    verify_tree(it['compat'], cdst)
+            # Registered with its launcher (Steam: the manifest; the others: by the app, from the result).
+            if kind == 'steam':
+                fix_manifest(it['manifest'], man_dst, it['installdir'])
+                current['partial'].append(man_dst)
+                for x in (dst, cdst, man_dst):
+                    if x:
+                        chown_tree(x, user)
+                result['steam'] += 1
+            elif kind in ('epic', 'gog'):
+                chown_tree(dst, user)
+                result[kind].append({'app' if kind == 'epic' else 'id': it['app'] if kind == 'epic' else it['id'], 'name': it['name'], 'path': dst})
+            elif kind == 'lutris':
+                chown_tree(dst, user)
+                exe = it.get('exe')
+                old = (it.get('oldDir') or '').rstrip('/')
+                if exe and old and exe.startswith(old + '/'):
+                    exe = dst + exe[len(old):]           # the program moved with the game folder
+                elif exe and not exe.startswith('/'):
+                    exe = os.path.join(dst, exe)
+                result['lutris'].append({'name': it['name'], 'path': dst, 'exe': exe if exe and os.path.exists(exe) else None})
+            else:
+                chown_tree(dst, user)
+            current['partial'] = []
+            result['done'].append({'key': it['key'], 'name': name, 'kind': kind})
+        except Stopped:
+            remove_partial(current['partial'])
+            current['partial'] = []
+            break
+        except VerifyError as e:
+            remove_partial(current['partial'])
+            current['partial'] = []
+            result['failed'].append({'key': it['key'], 'name': name, 'why': "the copy didn't match the original (" + str(e) + '). The original was kept and the copy removed'})
+            finished += size
+            continue
+        except Exception as e:   # one item failing doesn't stop the rest
+            remove_partial(current['partial'])
+            current['partial'] = []
+            if stop_requested():
+                break
+            result['failed'].append({'key': it['key'], 'name': name, 'why': str(e)})
+            finished += size
+            continue
+        finished += size
+
+        if mode == 'move':
+            stage(phase='delete', i=i, n=len(items), key=it['key'], name=name, kind=kind, done=size, size=size, bps=0, overall=finished, total=total)
+            mnt = owner_mount(it['path'], [x.get('mount') for x in drives if x.get('mount')])
+            before = free_bytes(mnt) if mnt else 0
+            try:
+                mnt = remove_original(kind, d, it, drives, state, compat_new)
+                gained = max(free_bytes(mnt) - before, 0) or size
+                drive = next((x for x in drives if x.get('mount') == mnt), d)
+                f = freed.setdefault(drive['id'], {'drive': drive['id'], 'dev': drive['dev'], 'name': drive.get('name') or drive['dev'], 'bytes': 0})
+                f['bytes'] += gained
+                result['moved'].append({'key': it['key'], 'name': name, 'kind': kind, 'freed': gained, 'drive': drive['id']})
+            except Keep as e:
+                result['kept'].append({'key': it['key'], 'name': name, 'why': str(e)})
+    for mnt in state['rw'] & state['ours']:
+        subprocess.run(['mount', '-o', 'remount,ro', mnt], capture_output=True)
+    result['freed'] = list(freed.values())
+    if current['stop']:
+        result['stopped'] = True
+    stage(phase='done', overall=total if not current['stop'] else finished, total=total)
+    return result
+
+
+def cancel_flag(user):
+    return f'/run/user/{user.pw_uid}/hearth-import.cancel'
+
+
+def clear_flag(path):
+    try:
+        if os.path.lexists(path) and not os.path.isdir(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+
 def run():
     user = caller()
     try:
@@ -546,6 +1000,9 @@ def run():
         fail('nothing to import')
     if not under(root, user.pw_dir):
         fail('the games folder has to be inside your home folder')
+    current['running'] = True
+    current['flag'] = cancel_flag(user)
+    clear_flag(current['flag'])
 
     # Only what a fresh scan finds can be imported (paths never come from the caller).
     found = scan()
@@ -557,89 +1014,9 @@ def run():
                     items.append((kind, d, it))
     if not items:
         fail("the selected items weren't found any more. Scan again")
-    total = sum(it.get('size') or 0 for _, _, it in items)
-    stage(phase='start', total=total, n=len(items))
-
-    steamapps = user_steamapps(user)
-    result = {'done': [], 'skipped': [], 'failed': [], 'kept': [], 'epic': [], 'gog': [], 'lutris': [], 'steam': 0}
-    finished = 0
-    remounted = set()
-    for i, (kind, d, it) in enumerate(items):
-        size = it.get('size') or 0
-        name = it['name'] + (f' ({it["user"]})' if kind == 'files' and it.get('user') else '')
-        last = [0.0]
-
-        def progress(done, bps, _i=i, _name=name, _size=size, _kind=kind):
-            now = time.monotonic()
-            if now - last[0] < 0.4:
-                return
-            last[0] = now
-            stage(phase='copy', i=_i, n=len(items), key=it['key'], name=_name, kind=_kind, done=done, size=_size, bps=round(bps),
-                  overall=finished + min(done, _size or done), total=total)
-
-        stage(phase='copy', i=i, n=len(items), key=it['key'], name=name, kind=kind, done=0, size=size, bps=0, overall=finished, total=total)
-        try:
-            if kind == 'steam':
-                man_dst = os.path.join(steamapps, f'appmanifest_{it["appid"]}.acf')
-                if os.path.exists(man_dst):
-                    result['skipped'].append({'key': it['key'], 'name': name, 'why': 'already installed in Hearth'})
-                    finished += size
-                    continue
-                dst = os.path.join(steamapps, 'common', it['installdir'])
-                rsync(it['path'], dst, progress)
-                if it.get('compat'):
-                    cdst = os.path.join(steamapps, 'compatdata', it['appid'])
-                    if not os.path.exists(cdst):
-                        rsync(it['compat'], cdst, lambda *_: None)
-                fix_manifest(it['manifest'], man_dst, it['installdir'])
-                for x in (dst, os.path.join(steamapps, 'compatdata', it['appid']), man_dst):
-                    chown_tree(x, user)
-                result['steam'] += 1
-            elif kind in ('epic', 'gog'):
-                dst = os.path.join(root, 'Epic' if kind == 'epic' else 'GOG', os.path.basename(it['path'].rstrip('/')))
-                rsync(it['path'], dst, progress)
-                chown_tree(dst, user)
-                result[kind].append({'app' if kind == 'epic' else 'id': it['app'] if kind == 'epic' else it['id'], 'name': it['name'], 'path': dst})
-            elif kind == 'lutris':
-                dst = os.path.join(root, 'Lutris', os.path.basename(it['path'].rstrip('/')))
-                rsync(it['path'], dst, progress)
-                chown_tree(dst, user)
-                exe = it.get('exe')
-                old = (it.get('oldDir') or '').rstrip('/')
-                if exe and old and exe.startswith(old + '/'):
-                    exe = dst + exe[len(old):]           # the program moved with the game folder
-                elif exe and not exe.startswith('/'):
-                    exe = os.path.join(dst, exe)
-                result['lutris'].append({'name': it['name'], 'path': dst, 'exe': exe if exe and os.path.exists(exe) else None})
-            else:
-                dst = os.path.join(user.pw_dir, it['name'], 'Imported from ' + re.sub(r'[/\\]', '-', d['name']) +
-                                   (f' ({it["user"]})' if it.get('user') else ''))
-                rsync(it['path'], dst, progress)
-                chown_tree(dst, user)
-            result['done'].append({'key': it['key'], 'name': name, 'kind': kind})
-        except Exception as e:   # one item failing doesn't stop the rest
-            result['failed'].append({'key': it['key'], 'name': name, 'why': str(e)})
-            finished += size
-            continue
-        finished += size
-
-        if mode == 'move':
-            mnt = d.get('mount')
-            ok = mnt in remounted or subprocess.run(['mount', '-o', 'remount,rw', mnt], capture_output=True).returncode == 0
-            if ok:
-                remounted.add(mnt)
-                try:
-                    shutil.rmtree(it['path'])
-                    if kind == 'steam':
-                        os.remove(it['manifest'])
-                except OSError as e:
-                    result['kept'].append({'key': it['key'], 'name': name, 'why': str(e)})
-            else:
-                result['kept'].append({'key': it['key'], 'name': name, 'why': "the drive couldn't be changed (Windows wasn't fully shut down?)"})
-    for mnt in remounted:
-        subprocess.run(['mount', '-o', 'remount,ro', mnt], capture_output=True)
-    stage(phase='done', overall=total, total=total)
+    result = do_items(items, mode, user, root, user_steamapps(user), found['drives'])
     unmount()
+    clear_flag(current['flag'])
     print(json.dumps(result))
 
 
@@ -655,11 +1032,17 @@ def unmount():
 
 
 def on_term(*_):
+    """Stop: the copy in progress ends, its partial files are removed (the original is never touched), and the
+    result says what finished. A delete that already started finishes first."""
     p = current['proc']
-    if p:
+    if not current.get('running'):   # scanning: just let go of the drives
+        if p:
+            p.terminate()
+        unmount()
+        sys.exit(1)
+    current['stop'] = True
+    if p and p.poll() is None:
         p.terminate()
-    unmount()
-    sys.exit(1)
 
 
 def main(argv):
