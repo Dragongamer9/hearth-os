@@ -806,7 +806,7 @@ def bootloader(disk, firmware, dep=None):
 # Other systems' boot loaders on EFI partitions: "Windows", "SteamOS", ... in Hearth's boot menu.
 KNOWN_LOADERS = [('Microsoft', 'Boot/bootmgfw.efi', 'Windows'), ('steamos', 'steamcl.efi', 'SteamOS')]
 GENERIC_LOADERS = ('shimx64.efi', 'grubx64.efi', 'systemd-bootx64.efi')
-SKIP_DIRS = {'boot', 'fedora', 'debian', 'ubuntu', 'anatase', 'cachyos', 'arch', 'hearth', 'tools', 'linux', 'efi'}
+SKIP_DIRS = {'boot', 'fedora', 'hearth', 'tools', 'linux', 'efi'}
 
 
 def efi_loader(esp_root):
@@ -821,7 +821,7 @@ def efi_loader(esp_root):
     return '\\EFI\\fedora\\grubx64.efi'
 
 
-def find_loaders(esp_root):
+def find_loaders(esp_root, skip=()):
     """[(title, path on the EFI partition)] of other systems' boot loaders under esp_root/EFI."""
     efi = next((os.path.join(esp_root, n) for n in os.listdir(esp_root) if n.lower() == 'efi'), None) if os.path.isdir(esp_root) else None
     if not efi:
@@ -830,7 +830,7 @@ def find_loaders(esp_root):
     dirs = sorted(os.listdir(efi))
     for d in dirs:
         full = os.path.join(efi, d)
-        if not os.path.isdir(full) or d.lower() in SKIP_DIRS:
+        if not os.path.isdir(full) or d.lower() in SKIP_DIRS or d.lower() in skip:
             continue
         hit = None
         for name, rel, title in KNOWN_LOADERS:
@@ -875,7 +875,9 @@ def other_systems_menu():
     for d in esps:
         if d['path'] == mine:
             root = f'{TARGET}/boot/efi'
-            entries += [(t, d['uuid'], p) for t, p in find_loaders(root)]
+            # Hearth's own boot loader folder (EFI/debian on the Debian editions) isn't "another system".
+            own = efi_loader(root).split('\\')[2].lower()
+            entries += [(t, d['uuid'], p) for t, p in find_loaders(root, {own})]
             continue
         mnt = '/run/hearth-install/esp-peek'
         os.makedirs(mnt, exist_ok=True)
