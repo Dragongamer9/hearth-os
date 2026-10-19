@@ -93,6 +93,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Xbox PC games (experimental): add Xodus Nexus from Settings › Games › Library; Hearth downloads and updates it and puts it in the library
 - [x] Update now works on systems with extra packages installed on top (it updates through rpm-ostree when bootc can't)
+- [x] Update now: real download progress when updating through rpm-ostree (size, layers, speed), and "Done" only once the update is really downloaded (if bootc finds nothing but rpm-ostree does, it gets it)
 
 ## 0.0.27 (released)
 

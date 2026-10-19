@@ -250,28 +250,62 @@ def layered():
         return False
 
 
+SIZE_UNITS = {'b': 1, 'kb': 1e3, 'kib': 1024, 'mb': 1e6, 'mib': 1024 ** 2, 'gb': 1e9, 'gib': 1024 ** 3}
+
+
+def size_of(text):
+    """'95.3 MB' -> bytes (0 when there's no size)."""
+    m = re.search(r'([\d.]+)\s*([kKmMgG]i?[bB]|[bB])\b', text)
+    return int(float(m.group(1)) * SIZE_UNITS.get(m.group(2).lower(), 1)) if m else 0
+
+
 def rpm_ostree_upgrade(stage):
-    """rpm-ostree upgrade: no byte counts, so the steps it prints move the page on."""
-    stage.emit(force=True, phase='download', pct=None, desc='Downloading the system update')
+    """rpm-ostree upgrade with real progress: it says how many layers it needs and how big they are, then
+    fetches them one at a time ("Fetching ostree chunk sha256:… (95.3 MB)… done")."""
+    stage.emit(force=True, phase='download', pct=None, desc='Looking for the update')
     p = subprocess.Popen(['rpm-ostree', 'upgrade'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-    last = ''
+    last, total, done, needed, fetched, current = '', 0, 0, 0, 0, 0
     for line in p.stdout:
         line = line.rstrip()
         if not line:
             continue
         last = line
         print('log: ' + line[:300], flush=True)
-        m = re.search(r'(\d+)/(\d+)', line)
-        if re.search(r'receiving|fetching|downloading|layers?', line, re.I) and m and int(m.group(2)):
-            progress(80.0 * int(m.group(1)) / int(m.group(2)), 'Downloading the system update')
-        elif re.search(r'staging|writing|checking out|deploy', line, re.I):
-            progress(85, 'Installing the update')
+        m = re.search(r'layers needed:\s*(\d+)', line, re.I)
+        if m:
+            needed += int(m.group(1))
+            total += size_of(line[m.end():])
+            stage.download(done, total or 1, 'Downloading the system update', layer=0, layers=needed or None)
+            continue
+        if re.search(r'^\s*Fetching', line):
+            done += current            # the one before it finished
+            current = size_of(line)
+            fetched += 1
+            if total:
+                progress(85.0 * done / total, 'Downloading (%.2f of %.2f GB)' % (done / 1e9, total / 1e9))
+                stage.download(done, total, 'Downloading the system update', layer=min(fetched, needed) if needed else None, layers=needed or None)
+            if line.endswith('done'):
+                done += current
+                current = 0
+            continue
+        if re.search(r'staging|writing objects|checking out|deploy|committing', line, re.I):
+            if total:
+                stage.download(total, total, 'Downloaded', layer=needed or None, layers=needed or None)
+            progress(88, 'Installing the update')
             stage.emit(force=True, phase='install', pct=None, desc='Installing the update')
     if p.wait() != 0:
         if re.search(r'lock|another|in progress|busy', last, re.I):
             fail('another update is already running (Hearth also updates by itself in the background). Try again in a few minutes.')
         fail(last or 'rpm-ostree upgrade failed')
     stage.emit(force=True, phase='install', pct=100.0, desc='System update installed')
+
+
+def rpm_ostree_has_update():
+    """rpm-ostree's own look: exit 0 = there's an update, 77 = nothing new."""
+    try:
+        return subprocess.run(['rpm-ostree', 'upgrade', '--check'], capture_output=True, text=True, timeout=300).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def flatpak_update(stage, lo, hi):
@@ -315,6 +349,12 @@ def update():
     else:
         try:
             bootc_upgrade_with_progress(0, 90, stage)
+            # bootc can finish at once saying there's nothing new while rpm-ostree (what the terminal's update
+            # uses) finds one: check nothing was missed, so "Done" really means updated.
+            staged = (bootc_status() or {}).get('staged')
+            if not staged and rpm_ostree_has_update():
+                print('log: bootc found nothing new but there is an update; getting it through rpm-ostree', flush=True)
+                rpm_ostree_upgrade(stage)
         except UpgradeFailed as e:
             # bootc refused (a system managed by rpm-ostree, or bootc not set up for it): the other way.
             print('log: bootc couldn\'t update this system (%s); trying rpm-ostree' % str(e)[:200], flush=True)
