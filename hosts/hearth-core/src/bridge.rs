@@ -590,7 +590,13 @@ impl Bridge {
             "login.unlock" => Ok(json!({"ok": crate::admin::check_password(a["password"].as_str().unwrap_or(""))})),
             // Settings › Updates (Hearth OS itself)
             "xodus.status" => Ok(self.xodus.status(true)),
-            "xodus.install" => Ok(self.xodus.install(self.emit.clone())),
+            "xodus.install" => {
+                if let Some(f) = a["folder"].as_str() { crate::xodus::set_folder(f)?; }
+                Ok(self.xodus.install(self.emit.clone()))
+            }
+            "xodus.places" => Ok(json!(crate::xodus::places())),
+            "xodus.setFolder" => { crate::xodus::set_folder(a["folder"].as_str().unwrap_or(""))?; Ok(self.xodus.status(false)) }
+            "xodus.signInDesktop" => { crate::xodus::open_in_desktop()?; Ok(json!({})) }
             "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
             "system.update.status" => Ok(self.updates.refresh()),
             "system.update.check" => Ok(self.updates.start(false, self.emit.clone())),
