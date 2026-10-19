@@ -1,0 +1,1092 @@
+#!/usr/bin/python3
+"""hearth-tasks: what Mantel's Task Manager shows and does (running apps, performance, startup).
+
+  hearth-tasks list                  JSON: running apps grouped by app, with CPU % and memory
+  hearth-tasks perf                  JSON: one performance sample (CPU, memory, GPU, temperatures, fans, battery)
+  hearth-tasks end PID               ask an app (PID and the processes it started) to close (SIGTERM)
+  hearth-tasks kill PID              force it closed (SIGKILL)
+  hearth-tasks startup               JSON: things that start on their own (services, autostart apps, Steam)
+  hearth-tasks startup-set ID on|off turn one of them on or off
+
+Everything is read from /proc and /sys directly. CPU use needs two samples: the previous one is kept in
+$XDG_RUNTIME_DIR (or the helper waits 250 ms when there's none). Only your own processes are listed or
+signalled, and the parts that keep Hearth's session running (gamescope, labwc, Quickshell, systemd, the
+session scripts, Hearth itself) are marked protected and can't be ended.
+Output is one JSON line; failures print "error: ..." and exit 1.
+"""
+import fnmatch
+import glob
+import json
+import os
+import re
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+PROC = '/proc'
+SYS = '/sys'
+
+# What keeps the session running: never ended from here. Matched against the program's name, the name it
+# was started as, and the script an interpreter runs.
+PROTECTED = {
+    'systemd': 'System services (systemd)', '(sd-pam)': 'System services (systemd)',
+    'gamescope': 'Game Mode screen (gamescope)', 'gamescope-wl': 'Game Mode screen (gamescope)',
+    'gamescopereaper': 'Game Mode screen (gamescope)',
+    'labwc': 'Desktop windows (labwc)', 'quickshell': 'Mantel taskbar and menus', 'qs': 'Mantel taskbar and menus',
+    'nimbus': 'Hearth', 'hearth': 'Hearth', 'nimbus-session': 'Hearth session', 'nimbus-mode': 'Hearth session',
+    'nimbus-watchdog': 'Hearth session', 'autostart': 'Hearth session',
+    'Xwayland': 'Older-app support (Xwayland)',
+    'dbus-daemon': 'App messaging (D-Bus)', 'dbus-broker': 'App messaging (D-Bus)', 'dbus-broker-launch': 'App messaging (D-Bus)',
+    'pipewire': 'Sound (PipeWire)', 'pipewire-pulse': 'Sound (PipeWire)', 'wireplumber': 'Sound (WirePlumber)',
+    'gnome-keyring-daemon': 'Password store', 'mangoapp': 'Performance overlay',
+    'xdg-desktop-portal': 'Desktop portal', 'xdg-desktop-portal-wlr': 'Desktop portal', 'xdg-desktop-portal-gtk': 'Desktop portal',
+    'xdg-document-portal': 'Desktop portal', 'xdg-permission-store': 'Desktop portal',
+    'polkit-gnome-authentication-agent-1': 'Password prompts', 'polkit-kde-authentication-agent-1': 'Password prompts',
+    'lxqt-policykit-agent': 'Password prompts',
+    'kwin_wayland': 'Desktop', 'plasmashell': 'Desktop', 'ksmserver': 'Desktop', 'gnome-shell': 'Desktop',
+    'sddm-helper': 'Sign-in', 'gdm-wayland-session': 'Sign-in', 'login': 'Sign-in',
+}
+INTERPRETERS = {'sh', 'bash', 'dash', 'zsh', 'python', 'python3', 'perl', 'env'}
+# Hearth's own helpers live here (hearth-pad, hearth-buttons, ...).
+SHARE_MARK = '/nimbus/desktop/'
+# Services that keep the desktop, sound, sign-ins or Hearth working: not offered in Startup.
+ESSENTIAL_UNITS = [
+    'dbus', 'dbus-broker', 'pipewire', 'pipewire-pulse', 'wireplumber', 'filter-chain', 'pulseaudio',
+    'xdg-desktop-portal*', 'xdg-document-portal', 'xdg-permission-store', 'xdg-user-dirs', 'gvfs-*', 'at-spi*',
+    'gnome-keyring*', 'gcr-ssh-agent', 'ssh-agent', 'p11-kit*', 'systemd-*', 'grub-boot-success', 'obex',
+    'nimbus*', 'hearth*', 'steamos-*', 'bazzite-*', 'ublue-*', 'inputplumber*', 'gamescope*', 'labwc*',
+    'quickshell*', 'app-*', 'session-*', 'dconf', 'evolution-*', 'tracker-*', 'localsearch-*',
+]
+HEARTH_ID = 'hearth:steamBackground'
+OVERRIDE_MARK = 'X-Hearth-Override=true'
+
+
+class Fail(Exception):
+    pass
+
+
+def read(path, default=None):
+    try:
+        with open(path, 'rb') as f:
+            return f.read().decode('utf-8', 'replace')
+    except OSError:
+        return default
+
+
+def read_int(path):
+    t = read(path)
+    try:
+        return int(t.strip()) if t is not None else None
+    except ValueError:
+        return None
+
+
+def runtime_dir():
+    d = os.environ.get('XDG_RUNTIME_DIR')
+    if d and os.path.isdir(d):
+        return d
+    return '/tmp'
+
+
+def state_path(name):
+    return os.path.join(runtime_dir(), 'hearth-tasks-%d-%s.json' % (os.getuid(), name))
+
+
+def load_state(name):
+    try:
+        with open(state_path(name)) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def save_state(name, data):
+    try:
+        tmp = state_path(name) + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(data, f)
+        os.replace(tmp, state_path(name))
+    except OSError:
+        pass
+
+
+def write_atomic(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------------- /proc parsing
+def parse_stat(text):
+    """/proc/PID/stat: "pid (comm) S ppid ...". The name can hold spaces and ')': split at the last ')'."""
+    a, b = text.find('('), text.rfind(')')
+    if a < 0 or b < a:
+        raise ValueError('bad stat line')
+    rest = text[b + 2:].split()
+    return {'pid': int(text[:a]), 'comm': text[a + 1:b], 'state': rest[0], 'ppid': int(rest[1]),
+            'jiffies': int(rest[11]) + int(rest[12]), 'start': int(rest[19])}
+
+
+def parse_status(text):
+    """/proc/PID/status: the real user id and memory (bytes). Memory is what the process uses itself
+    (anonymous + shared memory), so shared libraries aren't counted again for every process."""
+    out = {'uid': None, 'mem': 0, 'kthread': False}
+    for line in text.splitlines():
+        k, _, v = line.partition(':')
+        v = v.split()
+        if not v:
+            continue
+        if k == 'Uid':
+            out['uid'] = int(v[0])
+        elif k in ('RssAnon', 'RssShmem'):
+            out['mem'] += int(v[0]) * 1024
+        elif k == 'Kthread':
+            out['kthread'] = v[0] == '1'
+    return out
+
+
+def parse_cmdline(raw):
+    return [s for s in raw.split('\0') if s]
+
+
+def parse_cpu_stat(text):
+    """/proc/stat: [(name, total, idle)] for "cpu" then "cpu0", "cpu1", ... (idle includes iowait)."""
+    out = []
+    for line in text.splitlines():
+        if not line.startswith('cpu'):
+            continue
+        f = line.split()
+        nums = [int(x) for x in f[1:]]
+        # guest time is already counted in user/nice
+        total = sum(nums[:8]) if len(nums) >= 8 else sum(nums)
+        idle = nums[3] + (nums[4] if len(nums) > 4 else 0)
+        out.append((f[0], total, idle))
+    return out
+
+
+def busy_percent(prev, cur):
+    """CPU use between two (total, idle) samples, 0-100."""
+    dt = cur[0] - prev[0]
+    if dt <= 0:
+        return 0.0
+    return max(0.0, min(100.0, 100.0 * (dt - (cur[1] - prev[1])) / dt))
+
+
+def parse_meminfo(text):
+    out = {}
+    for line in text.splitlines():
+        k, _, v = line.partition(':')
+        v = v.split()
+        if v and v[0].isdigit():
+            out[k] = int(v[0]) * 1024
+    return out
+
+
+def parse_cgroup_app(text):
+    """The app a process belongs to, from its systemd unit: Flatpak app id or the app-…scope name."""
+    for line in (text or '').splitlines():
+        m = re.search(r'app-flatpak-([A-Za-z0-9._-]+?)-\d+\.scope', line)
+        if m:
+            return 'flatpak', m.group(1)
+        m = re.search(r'/app-(?:[a-z]+-)?([A-Za-z0-9._\\-]+?)(?:@[^/]*)?(?:-\d+)?\.(?:scope|service)$', line)
+        if m:
+            return 'unit', m.group(1).replace('\\x2d', '-')
+    return None, None
+
+
+class Proc:
+    __slots__ = ('pid', 'ppid', 'comm', 'uid', 'mem', 'jiffies', 'start', 'cmd', 'exe', 'kthread', 'root')
+
+    def __init__(self, **kw):
+        for k in self.__slots__:
+            setattr(self, k, kw.get(k))
+
+    @property
+    def key(self):
+        return '%d:%d' % (self.pid, self.start)
+
+
+def scan(root=PROC):
+    """Every process: {pid: Proc}. Processes that end while being read are skipped."""
+    procs = {}
+    try:
+        names = os.listdir(root)
+    except OSError:
+        raise Fail("can't read the process list")
+    for n in names:
+        if not n.isdigit():
+            continue
+        d = os.path.join(root, n)
+        st, status = read(os.path.join(d, 'stat')), read(os.path.join(d, 'status'))
+        if st is None or status is None:
+            continue
+        try:
+            s, u = parse_stat(st), parse_status(status)
+        except (ValueError, IndexError):
+            continue
+        try:
+            exe = os.path.basename(os.readlink(os.path.join(d, 'exe'))).replace(' (deleted)', '')
+        except OSError:
+            exe = ''
+        kthread = u['kthread'] or s['pid'] == 2 or s['ppid'] == 2
+        procs[s['pid']] = Proc(pid=s['pid'], ppid=s['ppid'], comm=s['comm'], uid=u['uid'], mem=u['mem'],
+                               jiffies=s['jiffies'], start=s['start'], kthread=kthread, root=root,
+                               cmd=parse_cmdline(read(os.path.join(d, 'cmdline'), '')), exe=exe)
+    return procs
+
+
+def basename(arg):
+    return re.split(r'[\\/]', arg)[-1] if arg else ''
+
+
+def is_interpreter(p):
+    return bool(p.cmd) and (basename(p.cmd[0]) in INTERPRETERS or p.comm in INTERPRETERS
+                            or (p.exe or '').rstrip('0123456789.') in INTERPRETERS)
+
+
+def script_name(p):
+    """The script an interpreter (sh, python…) runs, or ''."""
+    if not is_interpreter(p):
+        return ''
+    args = p.cmd[1:]
+    if '-c' in args and args.index('-c') + 1 < len(args):          # sh -c "program args…"
+        words = [w for w in args[args.index('-c') + 1].split() if w not in ('exec', 'env') and '=' not in w]
+        return basename(words[0]) if words else ''
+    return basename(next((a for a in args if not a.startswith('-')), ''))
+
+
+def names_of(p):
+    """The names a process goes by: its program, its short name, how it was started, and for scripts
+    (sh, python…) the script itself."""
+    out = [p.exe, p.comm]
+    if p.cmd:
+        out.append(basename(p.cmd[0]))
+        out.append(script_name(p))
+    return [n for n in out if n]
+
+
+def protected_reason(p, guarded=()):
+    """Why a process can't be ended here, or None."""
+    if p.pid == 1:
+        return 'System services (systemd)'
+    if p.pid in guarded:
+        return 'Mantel taskbar and menus'
+    joined = ' '.join(p.cmd)
+    for n in names_of(p):
+        if n in PROTECTED:
+            if n in ('nimbus', 'hearth') and '--browser' in p.cmd:
+                return None   # Hearth Browser is a normal app
+            return PROTECTED[n]
+        if n.startswith('hearth-') and SHARE_MARK in joined:
+            return 'Hearth controller and buttons'
+    if 'nimbus-session' in joined or 'labwc/autostart' in joined:
+        return 'Hearth session'
+    return None
+
+
+def ancestors(procs, pid):
+    out, seen = [], set()
+    while pid in procs and pid not in seen:
+        seen.add(pid)
+        out.append(pid)
+        pid = procs[pid].ppid
+    return out
+
+
+def steam_app_id(p):
+    """A game started by Steam: its launcher process ("reaper SteamLaunch AppId=N -- …")."""
+    if 'SteamLaunch' not in p.cmd:
+        return None
+    for a in p.cmd:
+        if a.startswith('AppId='):
+            return a[6:]
+    return None
+
+
+def windows_exe(p):
+    for a in p.cmd[:3]:
+        if a.lower().endswith('.exe'):
+            n = basename(a)[:-4]
+            if n.lower() not in ('wine', 'wine64', 'wineserver', 'services', 'explorer', 'winedevice', 'plugplay',
+                                 'svchost', 'rpcss', 'tabtip', 'conhost', 'start', 'steam', 'winedbg'):
+                return n
+    return None
+
+
+# ---------------------------------------------------------------------- apps (.desktop files)
+def data_dirs():
+    home = os.path.expanduser('~')
+    user = os.environ.get('XDG_DATA_HOME') or os.path.join(home, '.local', 'share')
+    system = (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':')
+    extra = [os.path.join(user, 'flatpak', 'exports', 'share'), '/var/lib/flatpak/exports/share']
+    out = []
+    for d in [user] + system + extra:
+        if d and d not in out:
+            out.append(d)
+    return out
+
+
+def parse_desktop(text):
+    """The [Desktop Entry] group of a .desktop file as a dict (unlocalized keys only)."""
+    out, group = {}, None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('['):
+            group = line
+            continue
+        if group == '[Desktop Entry]' and '=' in line:
+            k, v = line.split('=', 1)
+            k = k.strip()
+            if '[' not in k:
+                out.setdefault(k, v.strip())
+    return out
+
+
+def exec_names(exec_line):
+    """What an Exec= line starts: program names (and the Flatpak app id) to recognize it by."""
+    try:
+        args = shlex.split(exec_line)
+    except ValueError:
+        args = exec_line.split()
+    args = [a for a in args if not a.startswith('%')]
+    while args and (args[0] == 'env' or re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', args[0])):
+        args.pop(0)
+    if not args:
+        return [], None
+    if basename(args[0]) == 'flatpak' and 'run' in args:
+        rest = [a for a in args[args.index('run') + 1:] if not a.startswith('-')]
+        return [], rest[0] if rest else None
+    first = basename(args[0])
+    names = [first]
+    if first in INTERPRETERS and len(args) > 1:
+        arg = next((a for a in args[1:] if not a.startswith('-')), '')
+        if arg:
+            names.append(basename(arg))
+    return names, None
+
+
+def desktop_index(dirs=None):
+    """{key: {id, name, icon}} where key is a program name, desktop id or window class (lower case)."""
+    dirs = dirs or [os.path.join(d, 'applications') for d in data_dirs()]
+    by = {}
+
+    def put(key, entry, weak=False):
+        key = key.lower()
+        if key and (key not in by or (by[key].get('hidden') and not entry.get('hidden'))):
+            if weak and key in by:
+                return
+            by[key] = entry
+    for d in dirs:
+        for path in sorted(glob.glob(os.path.join(d, '**', '*.desktop'), recursive=True)):
+            de = parse_desktop(read(path, ''))
+            if de.get('Type', 'Application') != 'Application' or not de.get('Name'):
+                continue
+            did = os.path.relpath(path, d)[:-8].replace('/', '-')
+            entry = {'id': did, 'name': de['Name'], 'icon': de.get('Icon', ''),
+                     'hidden': de.get('NoDisplay') == 'true' or de.get('Hidden') == 'true'}
+            put(did, entry)
+            names, flatpak = exec_names(de.get('Exec', ''))
+            if flatpak:
+                put(flatpak, entry)
+            for n in names:
+                if n not in INTERPRETERS:
+                    put(n, entry, weak=True)
+            if de.get('StartupWMClass'):
+                put(de['StartupWMClass'], entry)
+            last = did.split('.')[-1]
+            if last != did:
+                put(last, entry, weak=True)
+    return by
+
+
+def cached_desktop_index():
+    """The index, kept in $XDG_RUNTIME_DIR until an applications folder changes."""
+    dirs = [os.path.join(d, 'applications') for d in data_dirs()]
+    sig = []
+    for d in dirs:
+        try:
+            sig.append([d, os.stat(d).st_mtime])
+        except OSError:
+            pass
+    st = load_state('apps')
+    if st and st.get('sig') == sig:
+        return st['index']
+    idx = desktop_index(dirs)
+    save_state('apps', {'sig': sig, 'index': idx})
+    return idx
+
+
+def steam_libraries():
+    """Steam's library folders (where appmanifest_N.acf files are)."""
+    home = os.path.expanduser('~')
+    roots = [os.path.join(home, '.local/share/Steam'), os.path.join(home, '.steam/steam'),
+             os.path.join(home, '.var/app/com.valvesoftware.Steam/.local/share/Steam')]
+    libs = []
+    for r in roots:
+        lf = read(os.path.join(r, 'steamapps', 'libraryfolders.vdf'))
+        libs.append(os.path.join(r, 'steamapps'))
+        for m in re.finditer(r'"path"\s+"([^"]+)"', lf or ''):
+            libs.append(os.path.join(m.group(1).replace('\\\\', '\\'), 'steamapps'))
+    return libs
+
+
+def steam_name(app_id, libs=None):
+    for lib in libs if libs is not None else steam_libraries():
+        m = re.search(r'"name"\s+"([^"]+)"', read(os.path.join(lib, 'appmanifest_%s.acf' % app_id), '') or '')
+        if m:
+            return m.group(1)
+    return None
+
+
+def lookup_app(p, index):
+    kind, app = parse_cgroup_app(read(os.path.join(p.root, str(p.pid), 'cgroup')))
+    if kind == 'flatpak' and app.lower() in index:
+        return index[app.lower()]
+    for n in names_of(p):
+        n = n.lower()
+        if n in INTERPRETERS:
+            continue
+        if n in index:
+            return index[n]
+    if app and app.lower() in index:
+        return index[app.lower()]
+    return None
+
+
+# ---------------------------------------------------------------------- grouping
+def build_groups(procs, uid, self_pid=None, index=None, game_name=None):
+    """Your processes grouped by the app that started them. An app is a process whose parent is one of the
+    session's own parts (labwc, Quickshell, systemd…) or isn't yours; everything it starts belongs to it.
+    Steam games get their own group. The session's own parts are listed one by one, protected."""
+    index = index or {}
+    own = {pid: p for pid, p in procs.items() if p.uid == uid and not p.kthread}
+    guarded = set(ancestors(procs, self_pid)) if self_pid else set()
+    reasons = {pid: protected_reason(p, guarded) for pid, p in own.items()}
+    infra = {pid for pid, r in reasons.items() if r}
+    roots = {}
+
+    def root_of(pid):
+        path, cur = [], pid
+        while True:
+            if cur in roots:
+                r = roots[cur]
+                break
+            path.append(cur)
+            par = own[cur].ppid
+            if steam_app_id(own[cur]) or par not in own or par in infra or par in path:
+                r = cur
+                break
+            cur = par
+        for x in path:
+            roots[x] = r
+        return r
+
+    members = {}
+    for pid in own:
+        if pid in infra:
+            members[pid] = [pid]
+        else:
+            members.setdefault(root_of(pid), []).append(pid)
+
+    groups = []
+    for root, pids in members.items():
+        rp = own[root]
+        pids.sort()
+        g = {'id': rp.key, 'pid': root, 'pids': pids, 'count': len(pids), 'mem': sum(own[x].mem for x in pids),
+             'name': '', 'icon': '', 'desktop': '', 'appIds': [], 'kind': 'background', 'protected': False, 'why': ''}
+        if root in infra:
+            g.update(kind='system', protected=True, why=reasons[root], name=script_name(rp) or rp.exe or rp.comm)
+            groups.append(g)
+            continue
+        appid = steam_app_id(rp)
+        # The app: the first process in the group with a .desktop file (the group's own first).
+        order = [root] + [x for x in pids if x != root]
+        entry = next((e for e in (lookup_app(own[x], index) for x in order[:40]) if e), None)
+        exe = next((n for n in (windows_exe(own[x]) for x in order) if n), None)
+        if appid:
+            g.update(kind='game', name=(game_name(appid) if game_name else None) or exe or 'Steam game ' + appid,
+                     icon='steam_icon_' + appid, appIds=['steam_app_' + appid])
+        elif entry:
+            g.update(kind='app', name=entry['name'], icon=entry['icon'], desktop=entry['id'])
+        elif exe:
+            g.update(kind='game', name=exe, icon='wine')
+        else:
+            g['name'] = rp.exe or rp.comm or str(root)
+        ids = set(g['appIds'])
+        for x in order[:40]:
+            ids.update(n.lower() for n in names_of(own[x])[:3] if n not in INTERPRETERS)
+        if entry:
+            ids.add(entry['id'].lower())
+        g['appIds'] = sorted(ids)
+        groups.append(g)
+    return groups
+
+
+def cpu_total(root=PROC):
+    st = parse_cpu_stat(read(os.path.join(root, 'stat'), '') or '')
+    if not st:
+        raise Fail("can't read CPU use")
+    return st
+
+
+def add_cpu(groups, procs, prev, cur_total, prev_total):
+    """CPU % of the whole machine (like Windows' Task Manager) for each group, from two samples."""
+    dt = cur_total - prev_total
+    for g in groups:
+        used = 0
+        for pid in g['pids']:
+            p = procs[pid]
+            if p.key in prev:
+                used += max(0, p.jiffies - prev[p.key])
+        g['cpu'] = round(100.0 * used / dt, 1) if dt > 0 else 0.0
+
+
+def list_apps(root=PROC):
+    uid, now = os.getuid(), time.monotonic()
+    st = load_state('list')
+    procs, total = scan(root), cpu_total(root)
+    if not st or not (0.2 <= now - st.get('t', 0) <= 15):
+        st = {'t': now, 'total': total[0][1], 'idle': total[0][2], 'procs': {p.key: p.jiffies for p in procs.values() if p.uid == uid}}
+        time.sleep(0.25)
+        procs, total = scan(root), cpu_total(root)
+        now = time.monotonic()
+    libs = steam_libraries()
+    groups = [g for g in build_groups(procs, uid, os.getpid(), cached_desktop_index(), lambda a: steam_name(a, libs))
+              if g['pid'] != os.getpid()]          # not this helper itself
+    add_cpu(groups, procs, st['procs'], total[0][1], st['total'])
+    save_state('list', {'t': now, 'total': total[0][1], 'idle': total[0][2],
+                        'procs': {p.key: p.jiffies for p in procs.values() if p.uid == uid}})
+    groups.sort(key=lambda g: (-g['mem'], g['name'].lower()))
+    mi = parse_meminfo(read(os.path.join(root, 'meminfo'), '') or '')
+    return {'apps': groups, 'cpu': round(busy_percent((st['total'], st['idle']), total[0][1:]), 1),
+            'mem': {'total': mi.get('MemTotal', 0), 'used': max(0, mi.get('MemTotal', 0) - mi.get('MemAvailable', 0))}}
+
+
+def signal_app(pid, sig, root=PROC):
+    """Sends SIGTERM/SIGKILL to an app: the process and everything in its group (what it started)."""
+    procs = scan(root)
+    p = procs.get(pid)
+    if not p:
+        raise Fail('that app has already closed')
+    if p.uid != os.getuid():
+        raise Fail("that belongs to another user, so it can't be ended here")
+    groups = build_groups(procs, os.getuid(), os.getpid())
+    g = next((g for g in groups if pid in g['pids']), None)
+    if not g or g['protected']:
+        raise Fail("%s keeps Hearth running, so it can't be ended here" % ((g or {}).get('why') or 'this'))
+    done = []
+    for x in g['pids']:
+        try:
+            os.kill(x, sig)
+            done.append(x)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            raise Fail("not allowed to end process %d" % x)
+    return {'pid': pid, 'pids': done, 'signal': 'kill' if sig == signal.SIGKILL else 'term'}
+
+
+# ---------------------------------------------------------------------- performance
+def gpu_vendor(v):
+    return {'0x1002': 'AMD', '0x8086': 'Intel', '0x10de': 'NVIDIA'}.get((v or '').strip().lower(), '')
+
+
+def amd_clock(text):
+    for line in (text or '').splitlines():
+        if line.strip().endswith('*'):
+            m = re.search(r'(\d+)\s*Mhz', line, re.I)
+            if m:
+                return int(m.group(1))
+    return None
+
+
+def sysfs_gpus(sys_root=SYS):
+    out = []
+    for card in sorted(glob.glob(os.path.join(sys_root, 'class/drm/card[0-9]*'))):
+        if '-' in os.path.basename(card):
+            continue
+        dev = os.path.join(card, 'device')
+        vendor = gpu_vendor(read(os.path.join(dev, 'vendor')))
+        if not vendor:
+            continue
+        g = {'card': os.path.basename(card), 'vendor': vendor, 'name': vendor + ' graphics',
+             'busy': read_int(os.path.join(dev, 'gpu_busy_percent')),
+             'vramUsed': read_int(os.path.join(dev, 'mem_info_vram_used')),
+             'vramTotal': read_int(os.path.join(dev, 'mem_info_vram_total')),
+             'gttUsed': read_int(os.path.join(dev, 'mem_info_gtt_used')),
+             'gttTotal': read_int(os.path.join(dev, 'mem_info_gtt_total')),
+             'mhz': amd_clock(read(os.path.join(dev, 'pp_dpm_sclk'))) or read_int(os.path.join(card, 'gt_act_freq_mhz')),
+             'temp': None}
+        product = (read(os.path.join(dev, 'product_name')) or '').strip()
+        if product:
+            g['name'] = product
+        out.append(g)
+    return out
+
+
+def parse_nvidia_smi(text):
+    out = []
+    for line in (text or '').splitlines():
+        f = [x.strip() for x in line.split(',')]
+        if len(f) < 5:
+            continue
+
+        def num(x):
+            try:
+                return float(x)
+            except ValueError:
+                return None
+        used, total = num(f[2]), num(f[3])
+        out.append({'vendor': 'NVIDIA', 'name': f[0], 'busy': num(f[1]),
+                    'vramUsed': int(used * 1048576) if used is not None else None,
+                    'vramTotal': int(total * 1048576) if total is not None else None,
+                    'temp': num(f[4]), 'mhz': None, 'gttUsed': None, 'gttTotal': None})
+    return out
+
+
+def gpus(sys_root=SYS):
+    out = sysfs_gpus(sys_root)
+    if shutil.which('nvidia-smi') and (not out or any(g['vendor'] == 'NVIDIA' for g in out)):
+        try:
+            r = subprocess.run(['nvidia-smi', '--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu',
+                                '--format=csv,noheader,nounits'], capture_output=True, text=True, timeout=3)
+            smi = parse_nvidia_smi(r.stdout) if r.returncode == 0 else []
+            if smi:
+                out = [g for g in out if g['vendor'] != 'NVIDIA'] + smi
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return out
+
+
+CPU_SENSORS = ('k10temp', 'zenpower', 'coretemp', 'cpu_thermal', 'soc_thermal')
+GPU_SENSORS = ('amdgpu', 'radeon', 'nouveau', 'i915', 'xe', 'nvidia')
+
+
+def sensors(sys_root=SYS):
+    """Temperatures and fans from hwmon. Temperatures: [{kind: cpu|gpu|nvme|other, label, c}]."""
+    temps, fans = [], []
+    for h in sorted(glob.glob(os.path.join(sys_root, 'class/hwmon/hwmon*')), key=lambda p: int(re.sub(r'\D', '', os.path.basename(p)) or 0)):
+        name = (read(os.path.join(h, 'name')) or '').strip()
+        kind = 'cpu' if name in CPU_SENSORS else 'gpu' if name in GPU_SENSORS else 'nvme' if name == 'nvme' else 'other'
+        for t in sorted(glob.glob(os.path.join(h, 'temp*_input'))):
+            v = read_int(t)
+            if v is None or v <= -40000 or v >= 150000 or v == 0:
+                continue
+            label = (read(t.replace('_input', '_label')) or '').strip()
+            temps.append({'kind': kind, 'sensor': name, 'label': label or name, 'c': round(v / 1000, 1)})
+        for f in sorted(glob.glob(os.path.join(h, 'fan*_input'))):
+            v = read_int(f)
+            if v is None:
+                continue
+            label = (read(f.replace('_input', '_label')) or '').strip()
+            fans.append({'label': label or (name + ' fan ' + re.sub(r'\D', '', os.path.basename(f))).strip(), 'rpm': v})
+    return temps, fans
+
+
+def summary_temp(temps, kind, prefer):
+    mine = [t for t in temps if t['kind'] == kind]
+    for p in prefer:
+        for t in mine:
+            if t['label'].lower() == p:
+                return t['c']
+    return max((t['c'] for t in mine), default=None)
+
+
+def battery(sys_root=SYS):
+    """The main battery (not a controller's), or None on desktops."""
+    plugged, best = False, None
+    for d in sorted(glob.glob(os.path.join(sys_root, 'class/power_supply/*'))):
+        typ = (read(os.path.join(d, 'type')) or '').strip()
+        if typ in ('Mains', 'USB') and read_int(os.path.join(d, 'online')) == 1:
+            plugged = True
+        if typ != 'Battery' or (read(os.path.join(d, 'scope')) or '').strip() == 'Device':
+            continue
+        pct = read_int(os.path.join(d, 'capacity'))
+        if pct is None:
+            continue
+        status = (read(os.path.join(d, 'status')) or 'Unknown').strip()
+        uw = read_int(os.path.join(d, 'power_now'))
+        if uw is None:
+            ua, uv = read_int(os.path.join(d, 'current_now')), read_int(os.path.join(d, 'voltage_now'))
+            uw = abs(ua) * uv / 1e6 if ua is not None and uv is not None else None
+        watts = round(abs(uw) / 1e6, 1) if uw is not None else None
+        now, full = read_int(os.path.join(d, 'energy_now')), read_int(os.path.join(d, 'energy_full'))
+        if now is None:
+            cn, cf, uv = read_int(os.path.join(d, 'charge_now')), read_int(os.path.join(d, 'charge_full')), read_int(os.path.join(d, 'voltage_now'))
+            if cn is not None and uv:
+                now, full = cn * uv / 1e6, (cf * uv / 1e6 if cf else None)
+        hours = None
+        if watts and watts > 0.3 and now is not None:
+            if status == 'Discharging':
+                hours = round(now / 1e6 / watts, 2)
+            elif status == 'Charging' and full:
+                hours = round(max(0, full - now) / 1e6 / watts, 2)
+        best = best or {'name': os.path.basename(d), 'percent': pct, 'status': status, 'watts': watts, 'hours': hours}
+    if best:
+        best['plugged'] = plugged or best['status'] in ('Charging', 'Full', 'Not charging')
+    return best
+
+
+def cpu_info(root=PROC, sys_root=SYS):
+    name, mhz = '', []
+    for line in (read(os.path.join(root, 'cpuinfo'), '') or '').splitlines():
+        k, _, v = line.partition(':')
+        k = k.strip()
+        if k == 'model name' and not name:
+            name = v.strip()
+        elif k == 'cpu MHz':
+            try:
+                mhz.append(float(v))
+            except ValueError:
+                pass
+    freqs = [read_int(p) for p in glob.glob(os.path.join(sys_root, 'devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq'))]
+    freqs = [f / 1000 for f in freqs if f]
+    vals = freqs or mhz
+    return name, round(sum(vals) / len(vals)) if vals else None
+
+
+def perf(root=PROC, sys_root=SYS):
+    now = time.monotonic()
+    st = load_state('perf')
+    cur = cpu_total(root)
+    if not st or not (0.15 <= now - st.get('t', 0) <= 15) or len(st.get('cpus', [])) != len(cur):
+        prev = cur
+        time.sleep(0.2)
+        cur = cpu_total(root)
+        now = time.monotonic()
+    else:
+        prev = [tuple(x) for x in st['cpus']]
+    save_state('perf', {'t': now, 'cpus': cur})
+    pct = [round(busy_percent(p[1:], c[1:]), 1) for p, c in zip(prev, cur)]
+    name, mhz = cpu_info(root, sys_root)
+    mi = parse_meminfo(read(os.path.join(root, 'meminfo'), '') or '')
+    temps, fans = sensors(sys_root)
+    gl = gpus(sys_root)
+    for g in gl:
+        if g.get('temp') is None and g['vendor'] in ('AMD', 'Intel'):
+            g['temp'] = summary_temp(temps, 'gpu', ('edge', 'junction'))
+    uptime = read(os.path.join(root, 'uptime'), '0') or '0'
+    return {
+        'cpu': {'total': pct[0] if pct else 0, 'cores': pct[1:], 'name': name, 'mhz': mhz,
+                'temp': summary_temp(temps, 'cpu', ('tctl', 'tdie', 'package id 0', 'cpu'))},
+        'mem': {'total': mi.get('MemTotal', 0), 'used': max(0, mi.get('MemTotal', 0) - mi.get('MemAvailable', 0)),
+                'cached': mi.get('Cached', 0)},
+        'swap': {'total': mi.get('SwapTotal', 0), 'used': max(0, mi.get('SwapTotal', 0) - mi.get('SwapFree', 0))},
+        'gpus': gl,
+        'temps': {'cpu': summary_temp(temps, 'cpu', ('tctl', 'tdie', 'package id 0', 'cpu')),
+                  'gpu': next((g['temp'] for g in gl if g.get('temp') is not None), None) or summary_temp(temps, 'gpu', ('edge',)),
+                  'nvme': summary_temp(temps, 'nvme', ('composite',)), 'list': temps},
+        'fans': fans,
+        'battery': battery(sys_root),
+        'uptime': int(float(uptime.split()[0])) if uptime.split() else 0,
+    }
+
+
+# ---------------------------------------------------------------------- startup
+def fnmatch_any(name, patterns):
+    stem = name[:-8] if name.endswith('.service') else name
+    return any(fnmatch.fnmatchcase(stem, p) for p in patterns)
+
+
+def is_essential_unit(unit):
+    return unit.endswith('@.service') or fnmatch_any(unit, ESSENTIAL_UNITS)
+
+
+def parse_unit_files(text):
+    """`systemctl --user list-unit-files --plain --no-legend`: {unit: state}."""
+    out = {}
+    for line in (text or '').splitlines():
+        f = line.split()
+        if len(f) >= 2 and f[0].endswith('.service'):
+            out[f[0]] = f[1]
+    return out
+
+
+def parse_show(text):
+    """`systemctl show -p Id -p Description -p ActiveState a b …`: {id: {Description, ActiveState}}."""
+    out, cur = {}, {}
+    for line in (text or '').splitlines() + ['']:
+        if not line.strip():
+            if cur.get('Id'):
+                out[cur['Id']] = cur
+            cur = {}
+            continue
+        k, _, v = line.partition('=')
+        cur[k] = v
+    return out
+
+
+def systemctl(*args, timeout=15):
+    if not shutil.which('systemctl'):
+        raise Fail('systemctl is missing')
+    r = subprocess.run(['systemctl', '--user', '--no-pager', *args], capture_output=True, text=True, timeout=timeout)
+    return r
+
+
+def turned_off_file():
+    base = os.environ.get('XDG_STATE_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'state')
+    return os.path.join(base, 'nimbus', 'startup-off.json')
+
+
+def turned_off():
+    try:
+        with open(turned_off_file()) as f:
+            v = json.load(f)
+            return v if isinstance(v, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def remember_off(unit, off):
+    units = [u for u in turned_off() if u != unit] + ([unit] if off else [])
+    try:
+        write_atomic(turned_off_file(), json.dumps(units))
+    except OSError:
+        pass
+
+
+def services():
+    """User services that are on (plus the ones turned off here, so they can be turned back on)."""
+    try:
+        r = systemctl('list-unit-files', '--type=service', '--plain', '--no-legend')
+    except (Fail, OSError, subprocess.TimeoutExpired):
+        return []
+    states = parse_unit_files(r.stdout)
+    mine = set(turned_off())
+    units = sorted(u for u, s in states.items() if not is_essential_unit(u) and (s == 'enabled' or u in mine))
+    if not units:
+        return []
+    info = {}
+    try:
+        info = parse_show(systemctl('show', '-p', 'Id', '-p', 'Description', '-p', 'ActiveState', *units).stdout)
+    except (Fail, OSError, subprocess.TimeoutExpired):
+        pass
+    out = []
+    for u in units:
+        i = info.get(u, {})
+        desc = i.get('Description') or u[:-8]
+        out.append({'id': 'service:' + u, 'kind': 'service', 'name': desc, 'sub': u[:-8] + (' · running' if i.get('ActiveState') == 'active' else ''),
+                    'on': states[u] == 'enabled', 'canChange': True})
+    return out
+
+
+def set_service(unit, on):
+    if not unit.endswith('.service') or '/' in unit or is_essential_unit(unit):
+        raise Fail("that service keeps the system working, so it can't be turned off here")
+    if on:
+        state = systemctl('is-enabled', unit).stdout.strip()
+        if state == 'masked':
+            systemctl('unmask', unit)
+        r = systemctl('enable', '--now', unit)
+        if r.returncode != 0:
+            raise Fail((r.stderr.strip().splitlines() or ['could not turn it on'])[-1])
+        remember_off(unit, False)
+        return
+    r = systemctl('disable', '--now', unit)
+    if r.returncode != 0:
+        raise Fail((r.stderr.strip().splitlines() or ['could not turn it off'])[-1])
+    # Turned on for everyone (in /etc): disabling only for you needs a mask.
+    if systemctl('is-enabled', unit).stdout.strip() == 'enabled':
+        r = systemctl('mask', '--now', unit)
+        if r.returncode != 0:
+            raise Fail((r.stderr.strip().splitlines() or ['could not turn it off'])[-1])
+    remember_off(unit, True)
+
+
+def autostart_dirs():
+    home = os.path.expanduser('~')
+    user = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home, '.config'), 'autostart')
+    system = [os.path.join(d, 'autostart') for d in (os.environ.get('XDG_CONFIG_DIRS') or '/etc/xdg').split(':') if d]
+    return user, system
+
+
+def autostart_on(de):
+    return de.get('Hidden', 'false').lower() != 'true' and de.get('X-GNOME-Autostart-enabled', 'true').lower() != 'false'
+
+
+def autostart_entries(user=None, system=None):
+    if user is None:
+        user, system = autostart_dirs()
+    files = {}
+    for d in reversed(system or []):          # the first system folder wins, then yours
+        for p in glob.glob(os.path.join(d, '*.desktop')):
+            files[os.path.basename(p)] = p
+    for p in glob.glob(os.path.join(user, '*.desktop')):
+        files[os.path.basename(p)] = p
+    out = []
+    for fn in sorted(files):
+        de = parse_desktop(read(files[fn], '') or '')
+        if de.get('Type', 'Application') != 'Application':
+            continue
+        sysfile = next((os.path.join(d, fn) for d in (system or []) if os.path.exists(os.path.join(d, fn))), None)
+        name = de.get('Name')
+        if not name and sysfile:
+            name = parse_desktop(read(sysfile, '') or '').get('Name')
+        out.append({'id': 'autostart:' + fn, 'kind': 'autostart', 'name': name or fn[:-8],
+                    'sub': de.get('Comment', '') or ('For everyone' if files[fn] != os.path.join(user, fn) else 'Yours'),
+                    'on': autostart_on(de), 'canChange': True})
+    return out
+
+
+def set_key(text, key, value):
+    """Sets key=value in the [Desktop Entry] group of a .desktop file's text."""
+    lines, group, done, out = text.splitlines(), None, False, []
+    for line in lines:
+        s = line.strip()
+        if s.startswith('['):
+            if group == '[Desktop Entry]' and not done:
+                out.append('%s=%s' % (key, value))
+                done = True
+            group = s
+        elif group == '[Desktop Entry]' and s.split('=', 1)[0].strip() == key:
+            if not done:
+                out.append('%s=%s' % (key, value))
+                done = True
+            continue
+        out.append(line)
+    if not done:
+        if group is None:
+            out.insert(0, '[Desktop Entry]')
+        if group in (None, '[Desktop Entry]'):
+            out.append('%s=%s' % (key, value))
+        else:
+            i = next((i for i, l in enumerate(out) if l.strip() == '[Desktop Entry]'), None)
+            if i is None:
+                out = ['[Desktop Entry]', '%s=%s' % (key, value), ''] + out
+            else:
+                out.insert(i + 1, '%s=%s' % (key, value))
+    return '\n'.join(out) + '\n'
+
+
+def set_autostart(fn, on, user=None, system=None):
+    if user is None:
+        user, system = autostart_dirs()
+    if '/' in fn or not fn.endswith('.desktop'):
+        raise Fail('unknown startup app')
+    mine = os.path.join(user, fn)
+    sysfile = next((os.path.join(d, fn) for d in (system or []) if os.path.exists(os.path.join(d, fn))), None)
+    if os.path.exists(mine):
+        text = read(mine, '') or ''
+        if on and OVERRIDE_MARK in text and sysfile and autostart_on(parse_desktop(read(sysfile, '') or '')):
+            os.remove(mine)           # our own "off" copy: removing it brings back the system's
+            return
+    elif sysfile:
+        text = read(sysfile, '') or ''
+        if on and autostart_on(parse_desktop(text)):
+            return
+        text = set_key(text, 'X-Hearth-Override', 'true')
+    else:
+        raise Fail("that startup app isn't there any more")
+    text = set_key(text, 'Hidden', 'false' if on else 'true')
+    if on and parse_desktop(text).get('X-GNOME-Autostart-enabled', '').lower() == 'false':
+        text = set_key(text, 'X-GNOME-Autostart-enabled', 'true')
+    write_atomic(mine, text)
+
+
+def library_file():
+    base = os.environ.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'share')
+    return os.path.join(base, 'nimbus', 'library.json')
+
+
+def hearth_running(procs=None):
+    """Hearth itself (not Hearth Browser) is open: it keeps library.json in memory and would undo a change."""
+    procs = procs if procs is not None else scan()
+    uid = os.getuid()
+    for p in procs.values():
+        if p.uid == uid and not p.kthread and (p.exe in ('nimbus', 'hearth') or (p.cmd and basename(p.cmd[0]) in ('nimbus', 'hearth'))) and '--browser' not in p.cmd:
+            return True
+    return False
+
+
+def steam_background(path=None):
+    path = path or library_file()
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        v = data.get('steamBackground', True) if isinstance(data, dict) else True
+    except (OSError, ValueError):
+        v = True                 # Hearth's default
+    return v is not False
+
+
+def set_steam_background(on, path=None):
+    path = path or library_file()
+    data = {}
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except ValueError:
+            raise Fail("Hearth's library file is damaged; change this in Hearth instead")
+        if not isinstance(data, dict):
+            raise Fail("Hearth's library file is damaged; change this in Hearth instead")
+    data['steamBackground'] = bool(on)
+    write_atomic(path, json.dumps(data, indent=2))
+
+
+def startup():
+    busy = hearth_running()
+    items = [{'id': HEARTH_ID, 'kind': 'hearth', 'name': 'Keep Steam running in the background',
+              'sub': 'Steam games start faster. Steam uses some memory while it waits.' if not busy
+              else "Hearth is open, so change this in Hearth's own settings.",
+              'on': steam_background(), 'canChange': not busy}]
+    items += autostart_entries()
+    items += services()
+    return {'items': items}
+
+
+def startup_set(item, on):
+    kind, _, name = item.partition(':')
+    if item == HEARTH_ID:
+        if hearth_running():
+            raise Fail("Hearth is open, so change this in Hearth's own settings")
+        set_steam_background(on)
+    elif kind == 'autostart':
+        set_autostart(name, on)
+    elif kind == 'service':
+        set_service(name, on)
+    else:
+        raise Fail('unknown startup item ' + item)
+    return {'id': item, 'on': on}
+
+
+# ---------------------------------------------------------------------- main
+def parse_pid(s):
+    if not s.isdigit() or int(s) <= 1:
+        raise Fail('not a process number: ' + s)
+    return int(s)
+
+
+def cmd(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    if c == 'list' and len(argv) == 2:
+        out = list_apps()
+    elif c == 'perf' and len(argv) == 2:
+        out = perf()
+    elif c == 'end' and len(argv) == 3:
+        out = signal_app(parse_pid(argv[2]), signal.SIGTERM)
+    elif c == 'kill' and len(argv) == 3:
+        out = signal_app(parse_pid(argv[2]), signal.SIGKILL)
+    elif c == 'startup' and len(argv) == 2:
+        out = startup()
+    elif c == 'startup-set' and len(argv) == 4 and argv[3] in ('on', 'off'):
+        out = startup_set(argv[2], argv[3] == 'on')
+    else:
+        print('usage: hearth-tasks list | perf | end PID | kill PID | startup | startup-set ID on|off')
+        sys.exit(2)
+    print(json.dumps(out, separators=(',', ':')))
+
+
+if __name__ == '__main__':
+    try:
+        cmd(sys.argv)
+    except (Fail, OSError, ValueError, subprocess.TimeoutExpired) as e:
+        print('error: ' + str(e))
+        sys.exit(1)
