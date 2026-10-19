@@ -318,19 +318,6 @@ impl Bridge {
             "import.cancel" => Ok(self.importer.cancel(self.pending_epic().len())),
             "takeover.plan" => self.importer.takeover_plan(self.pending_epic().len()),
             "takeover.run" => self.importer.takeover_run(&a["remove"], a["windowsBoot"] != false, self.pending_epic().len()),
-            // Move (Beta Experimental): copy, check every file, register, then delete the original (hearth-import).
-            "import.move" => self.importer.start(&a["items"], "move", &self.library.install_root(), self.pending_epic().len()),
-            // Make Hearth bigger (Beta Experimental): space from the other systems on Hearth's drive (hearth-space,
-            // docs/MOVE-AND-GROW.md). Looking can take half a minute, so it answers from another thread.
-            "space.status" => { crate::space::answer_later(self.cur_id.clone(), crate::space::status); Ok(json!(DEFERRED)) }
-            "space.grow" => {
-                let (from, gb) = (req("from")?, a["gb"].as_u64().unwrap_or(0));
-                if a["dryRun"] == true {
-                    crate::space::answer_later(self.cur_id.clone(), move || crate::space::plan(&from, gb));
-                    Ok(json!(DEFERRED))
-                } else { crate::space::grow(&from, gb, self.emit.clone()) }
-            }
-            "space.clearJournal" => crate::space::clear_journal(),
             "art.status" => Ok(crate::artcache::status()),
             // Steam friends: who's online and what they're playing
             "steam.friends" => Ok(crate::friends::list(&self.library.home)),
