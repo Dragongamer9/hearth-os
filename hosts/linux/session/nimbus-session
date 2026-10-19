@@ -90,6 +90,12 @@ run_game() {
 
 run_desktop() {
   log "desktop mode"
+  # Nvidia: wlroots' hardware cursor doesn't show (or doesn't move) on Nvidia's driver, so the pointer draws in
+  # software there. Same as every wlroots desktop needs on Nvidia.
+  if [ -d /sys/module/nvidia_drm ]; then
+    export WLR_NO_HARDWARE_CURSORS=1
+    log "nvidia: software cursor"
+  fi
   # labwc reads rc.xml, autostart, environment and menu.xml from this folder; your own
   # ~/.config/labwc/rc.xml and autostart are added on top by Nimbus's autostart if they exist.
   labwc -C "$SHARE/desktop/labwc"
