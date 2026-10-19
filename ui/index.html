@@ -1822,13 +1822,24 @@ function pageWifi(){
   const nets=S.sys.nets;
   if(!nets) h += note(S.sys.scanning?'Looking for networks…':'');
   else if(!nets.length) h += note(LINUX ? 'No networks found.' : 'No networks found. On Windows 11 24H2 and later, scanning needs location access for desktop apps (Windows Settings › Privacy & security › Location).');
-  else h += nets.map(n=>{
+  else {
+  // A short list: the network you're on and your saved ones, then the strongest others, up to 6. The rest
+  // fold away behind "Show all networks" (a long list was hard to get through with a controller).
+  const SHORT=6;
+  const first=nets.filter(n=>n.connected||n.saved||S.sys.connecting===n.ssid);
+  const others=nets.filter(n=>!first.includes(n));
+  const shown=S.sys.wifiAll ? first.concat(others) : first.concat(others.slice(0, Math.max(0, SHORT-first.length)));
+  const hidden=nets.length-shown.length;
+  h += shown.map(n=>{
     const right = S.sys.connecting===n.ssid ? '<span class="mini-spin"></span>'
                : n.connected ? '<span class="tag on">Connected</span>'
                : n.secure ? `<span class="rv">${I.lock}</span>` : '';
     const sub=[n.secure?'Secured':'Open network', n.saved&&!n.connected?'Saved':''].filter(Boolean).join(' · ');
     return `<button class="row" data-f data-k="w-${hk(n.ssid)}" data-act="wifiNet" data-ssid="${esc(n.ssid)}"><span class="ricon">${barsIcon(n.bars)}</span><div class="rt"><b>${esc(n.ssid)}</b><small>${sub}</small></div>${right}</button>`;
   }).join('');
+  if(hidden>0 || S.sys.wifiAll && others.length>Math.max(0, SHORT-first.length))
+    h += `<button class="row" data-f data-k="w-all" data-act="wifiAll"><span class="ricon">${I.wifi}</span><div class="rt"><b>${S.sys.wifiAll?'Show fewer networks':`Show all networks (${hidden} more)`}</b></div><span class="rv">${S.sys.wifiAll?'▴':'▾'}</span></button>`;
+  }
   h += `<button class="row" data-f data-k="w-scan" data-act="wifiScan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${S.sys.scanning?'Scanning…':'Scan again'}</b></div></button>`;
   return h;
 }
@@ -2994,6 +3005,7 @@ function act(el){
     case 'radio': return toggleRadio(d.kind);
     case 'wifiNet': return wifiNet(d.ssid);
     case 'wifiScan': return wifiScan(true);
+    case 'wifiAll': S.sys.wifiAll=!S.sys.wifiAll; return render('w-all', true);
     case 'btScan': return btScanToggle();
     case 'btDev': return btDevice(d.id);
     case 'btFound': return btPair(d.id);
@@ -4253,7 +4265,7 @@ function updateStatusBar(){
 }
 
 function onSettingsTab(t){
-  if(t==='wifi') wifiScan();
+  if(t==='wifi'){ S.sys.wifiAll=false; wifiScan(); }
   if(t==='shell') loadShellStatus();
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }

@@ -14,6 +14,20 @@ SetPage {
     property string asking: ""     // the network we're asking a password for
     property string busy: ""
     property string message: ""
+    // A short list (the network you're on, saved ones, then the strongest others, up to 6); the rest behind
+    // "Show all networks". Folds closed again when you leave the page.
+    property bool showAll: false
+    onVisibleChanged: if (!visible) showAll = false
+    readonly property var firstNets: nets.filter(n => n.inUse || saved.includes(n.ssid) || busy === n.ssid)
+    readonly property var otherNets: nets.filter(n => !(n.inUse || saved.includes(n.ssid) || busy === n.ssid))
+    readonly property var shownNets: showAll ? firstNets.concat(otherNets) : firstNets.concat(otherNets.slice(0, Math.max(0, 6 - firstNets.length)))
+    // A short list (the network you're on, saved ones, then the strongest others, up to 6); the rest behind
+    // "Show all networks". Folds closed again when you leave the page.
+    property bool showAll: false
+    onVisibleChanged: if (!visible) showAll = false
+    readonly property var firstNets: nets.filter(n => n.inUse || saved.includes(n.ssid) || busy === n.ssid)
+    readonly property var otherNets: nets.filter(n => !(n.inUse || saved.includes(n.ssid) || busy === n.ssid))
+    readonly property var shownNets: showAll ? firstNets.concat(otherNets) : firstNets.concat(otherNets.slice(0, Math.max(0, 6 - firstNets.length)))
 
     // nmcli -t escapes ':' inside fields as '\:'
     function fields(line) {
@@ -85,7 +99,7 @@ SetPage {
 
     SetHeader { text: page.scanning ? "Networks · looking…" : "Networks"; visible: page.on }
     Repeater {
-        model: page.on ? page.nets : []
+        model: page.on ? page.shownNets : []
         delegate: ColumnLayout {
             id: netItem
             required property var modelData
@@ -112,6 +126,12 @@ SetPage {
                 SetRow { Layout.preferredWidth: 140; Layout.fillWidth: false; title: "Connect"; chevron: false; onActivated: page.connect(netItem.modelData, pw.text) }
             }
         }
+    }
+    SetRow {
+        visible: page.on && (page.showAll ? page.otherNets.length > Math.max(0, 6 - page.firstNets.length) : page.nets.length > page.shownNets.length)
+        icon: "wifi"; chevron: false
+        title: page.showAll ? "Show fewer networks" : "Show all networks (" + (page.nets.length - page.shownNets.length) + " more)"
+        onActivated: page.showAll = !page.showAll
     }
     SetRow { visible: page.on; icon: "restart"; title: "Look again"; chevron: false; onActivated: page.refresh() }
     Text { visible: !page.on; text: "Turn on Wi-Fi to see networks."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
