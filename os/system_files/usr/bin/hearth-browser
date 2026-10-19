@@ -1,7 +1,10 @@
 #!/usr/bin/sh
-# Hearth Browser: Hearth's own web browser (part of the Hearth app; see hosts/linux/src/web).
-# On Wayland (Mantel) it runs natively; anywhere else it uses X11.
+# Hearth Browser: Hearth's own web browser. The Chromium (CEF) build (hosts/hearth-browser) when it's
+# installed; otherwise the Electron one (hosts/linux/src/web). Both keep their data in ~/.config/hearth-browser.
+if [ -x /usr/lib/hearth-browser-cef/hearth-browser ] && [ -z "$HEARTH_BROWSER_ELECTRON" ]; then
+  exec /usr/lib/hearth-browser-cef/hearth-browser "$@"
+fi
+# On Wayland (Mantel) Electron runs natively; anywhere else it uses X11.
 if [ -n "$WAYLAND_DISPLAY" ]; then set -- --ozone-platform=wayland --enable-features=WaylandWindowDecorations "$@"; fi
-# Hearth Browser has its own folder since Hearth became a Rust app; before that it was part of the Hearth app.
 if [ -x /usr/lib/hearth-browser/nimbus ]; then exec /usr/lib/hearth-browser/nimbus --browser "$@"; fi
 exec /usr/lib/nimbus/nimbus --browser "$@"
