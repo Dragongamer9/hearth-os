@@ -95,6 +95,8 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Update now works on systems with extra packages installed on top (it updates through rpm-ostree when bootc can't)
 - [x] Update now: real download progress when updating through rpm-ostree (size, layers, speed), and "Done" only once the update is really downloaded (if bootc finds nothing but rpm-ostree does, it gets it)
 
+- [x] Smoother menus and library on AMD/Intel handhelds: WebKit's fast GPU path is back on (it's only turned off on Nvidia) and pages are always drawn by the graphics card
+
 ## 0.0.27 (released)
 
 - [x] Black screen (with the game still playing) after Quick Access or Quick Resume: games no longer minimize themselves when something else comes in front, and Hearth shows them again if they did

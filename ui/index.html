@@ -22,7 +22,7 @@ h2{font-size:15px;font-weight:600;letter-spacing:.02em;color:var(--dim);text-tra
 /* ---------- focus ---------- */
 [data-f]{outline:none;transition:transform .16s var(--ease),box-shadow .16s var(--ease),background .16s}
 [data-f].focus{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent),0 8px 30px color-mix(in srgb,var(--accent) 18%,transparent)}
-.tile[data-f].focus{transform:scale(1.045);z-index:2}
+.tile[data-f].focus{transform:scale(1.045);z-index:2;will-change:transform}
 
 /* ---------- frame ---------- */
 #app{position:fixed;inset:0;display:grid;grid-template-rows:var(--top) 1fr var(--foot);grid-template-columns:minmax(0,1fr)}
@@ -74,7 +74,7 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .shelf{display:flex;gap:14px;overflow-x:auto;overflow-y:visible;padding:12px 14px 34px;margin:0 -14px;scroll-behavior:smooth;scrollbar-width:none;align-items:flex-end}
 .shelf::-webkit-scrollbar{display:none}
 .home-hero{position:relative;height:clamp(150px,26vh,260px);margin:0 calc(-1*var(--gut)) -70px;overflow:hidden;pointer-events:none}
-.home-hero .art{position:absolute;inset:0;filter:blur(30px) saturate(1.2);opacity:.55;transform:scale(1.2);transition:background .4s}
+.home-hero .art{position:absolute;inset:0;filter:blur(30px) saturate(1.2);opacity:.55;transform:scale(1.2);transition:background .4s;will-change:transform;contain:strict}
 .home-hero:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent,var(--bg))}
 .home-sec{position:relative}
 
@@ -111,7 +111,7 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .ghero .art{position:absolute;inset:0}
 .ghero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,16,22,0) 30%,var(--bg) 100%)}
 .cover .img,.ghero .img,.home-hero .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.home-hero .img{filter:blur(30px) saturate(1.2);opacity:.55;transform:scale(1.2)}
+.home-hero .img{filter:blur(30px) saturate(1.2);opacity:.55;transform:scale(1.2);will-change:transform}
 .glogo-img{position:absolute;left:var(--gut);bottom:24px;z-index:1;max-width:min(46%,520px);max-height:42%;object-fit:contain;object-position:left bottom;filter:drop-shadow(0 4px 24px rgba(0,0,0,.6))}
 .glogo{position:absolute;left:var(--gut);bottom:28px;z-index:1;font-size:clamp(30px,5vw,58px);font-weight:800;letter-spacing:-.01em;text-shadow:0 4px 30px rgba(0,0,0,.6);max-width:70%}
 .gbar{display:flex;align-items:center;gap:12px;padding:0 var(--gut);flex-wrap:wrap}
