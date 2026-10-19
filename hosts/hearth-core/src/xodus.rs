@@ -17,6 +17,43 @@ fn appimage() -> PathBuf { dir().join("Xodus-Nexus.AppImage") }
 /// What the library starts: a small script that runs the AppImage the way it works in gamescope.
 pub fn runner() -> PathBuf { dir().join("run.sh") }
 fn version_file() -> PathBuf { dir().join("version") }
+fn folder_file() -> PathBuf { dir().join("games-folder") }
+/// Where you chose to keep Xbox games (Nexus is pointed at it in its Settings).
+pub fn games_folder() -> Option<String> { std::fs::read_to_string(folder_file()).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) }
+
+/// Places for the games folder: this device, and each USB drive, SD card or second drive that's mounted, with
+/// free space: [{label, path, free}]
+pub fn places() -> Vec<Value> {
+    let free = |p: &std::path::Path| crate::system::run("df", &["-B1", "--output=avail", &p.to_string_lossy()]).ok()
+        .and_then(|o| o.lines().nth(1).and_then(|l| l.trim().parse::<u64>().ok())).unwrap_or(0);
+    let home = crate::paths::home();
+    let mut out = vec![json!({"label": "This device", "path": home.join("Games/Xbox").to_string_lossy(), "free": free(&home)})];
+    let user = std::env::var("USER").unwrap_or_default();
+    for base in [PathBuf::from("/run/media").join(&user), PathBuf::from("/media").join(&user)] {
+        for d in std::fs::read_dir(&base).into_iter().flatten().flatten() {
+            let p = d.path();
+            if !p.is_dir() { continue; }
+            out.push(json!({"label": d.file_name().to_string_lossy(), "path": p.join("Xbox Games").to_string_lossy(), "free": free(&p)}));
+        }
+    }
+    out
+}
+/// Makes the games folder and remembers it.
+pub fn set_folder(path: &str) -> Result<(), String> {
+    let p = std::path::Path::new(path);
+    let home = crate::paths::home();
+    let ok = p.starts_with(&home) || p.starts_with("/run/media") || p.starts_with("/media");
+    if !ok || path.contains("..") { return Err("Pick one of the places offered".into()); }
+    std::fs::create_dir_all(p).map_err(|e| format!("Couldn't make the folder: {e}"))?;
+    std::fs::create_dir_all(dir()).map_err(|e| e.to_string())?;
+    std::fs::write(folder_file(), path).map_err(|e| e.to_string())
+}
+/// Desktop Mode opens Nexus once it starts (its first sign-in, where the controller types).
+pub fn open_in_desktop() -> Result<(), String> {
+    if !installed() { return Err("Add Xodus Nexus first".into()); }
+    let f = PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("hearth-open-after");
+    std::fs::write(f, runner().to_string_lossy().as_bytes()).map_err(|e| e.to_string())
+}
 
 pub fn installed() -> bool { appimage().exists() && runner().exists() }
 pub fn version() -> Option<String> { std::fs::read_to_string(version_file()).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) }
@@ -65,7 +102,7 @@ impl Xodus {
             if look && installed() && now.saturating_sub(c.0) > 6 * 3600 * 1000 { c.0 = now; c.1 = latest().ok().map(|l| l.0); }
             c.1.clone()
         };
-        s["installed"] = json!(installed()); s["version"] = json!(version()); s["project"] = json!(PROJECT);
+        s["installed"] = json!(installed()); s["version"] = json!(version()); s["project"] = json!(PROJECT); s["folder"] = json!(games_folder());
         s["update"] = json!(match (version(), &latest) { (Some(v), Some(l)) if !l.is_empty() && &v != l => Some(l.clone()), _ => None });
         s
     }

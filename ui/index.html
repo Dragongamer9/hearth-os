@@ -1429,6 +1429,15 @@ const hasFeat = f => (HOSTINFO.features||[]).includes(f);
 const XO = {s:null};
 function loadXodus(){ if(host && hasFeat('xodus')) call('xodus.status',{},30000).then(r=>{ XO.s=r; refreshUI(); }).catch(()=>{}); }
 function onXodus(d){ const was=XO.s&&XO.s.busy; XO.s=Object.assign(XO.s||{},d); if(was && !d.busy){ if(d.error) toast(d.error); else { toast('Xodus Nexus is ready: it\'s in your library'); loadLibrary(true,true); } } if(S.view==='settings'&&S.settingsTab==='sources') render(null,true); }
+// Where Xbox games go: picked when adding Nexus (or changed later); Hearth makes the folder.
+async function xodusPick(andInstall){
+  let places=[]; try{ places=await call('xodus.places',{},15000); }catch(e){ return toast(e.message); }
+  const gb=b=>b?` · ${(b/1e9).toFixed(0)} GB free`:'';
+  openSheet({title:'Where should Xbox games go?', sub:'Hearth makes a folder there. Big games need lots of room: an SD card or second drive works too.', items:places.map(p=>({label:`${p.label}${gb(p.free)}`, icon:'dl', run:()=>{
+    const go = andInstall ? call('xodus.install',{folder:p.path},30000) : call('xodus.setFolder',{folder:p.path},15000);
+    go.then(r=>{ XO.s=r; toast(andInstall?'Getting Xodus Nexus…':'Folder set: '+p.path); render(andInstall?'xo-get':'xo-folder',true); }).catch(e=>toast(e.message));
+  }}))});
+}
 function xodusRows(){
   const x=XO.s; let h=shead('Xbox PC games · experimental');
   if(!x) return h+note('Checking…');
@@ -1436,6 +1445,8 @@ function xodusRows(){
   if(!x.installed) return h+`<button class="row" data-f data-k="xo-get" data-act="xodusGet"><span class="ricon">${I.dl}</span><div class="rt"><b>Add Xodus Nexus</b><small>Play Xbox PC and PC Game Pass games installed on this device. An independent, early launcher built on the Xodus project, not made by Microsoft or ${APP}: only a few games work so far.</small></div><div class="rv">＋</div></button>`
     + note('After adding it, open <b>Xbox PC Games (Xodus Nexus)</b> from your library, sign in with your Microsoft account, and get its backend and runtime from its Settings. Sign-in and game downloads use Microsoft\'s servers through Xodus, which Microsoft doesn\'t support.');
   h += `<div class="row"><span class="ricon">${I.lib}</span><div class="rt"><b>Xodus Nexus ${esc(x.version||'')}</b><small>In your library as Xbox PC Games (Xodus Nexus)</small></div></div>`;
+  h += `<button class="row" data-f data-k="xo-sign" data-act="xodusSignIn"><span class="ricon">${I.user}</span><div class="rt"><b>Sign in to Xodus Nexus</b><small>Opens Nexus in Desktop Mode, where the controller works as a keyboard. Sign in with your Microsoft account in its Settings, and get its backend and runtime there. Then come back to Game Mode.</small></div><div class="rv">›</div></button>`;
+  h += `<button class="row" data-f data-k="xo-folder" data-act="xodusFolder"><span class="ricon">${I.dl}</span><div class="rt"><b>Xbox games folder</b><small>${x.folder?`In Nexus's Settings, set where games install to: <code>${esc(x.folder)}</code>`:'Pick where Xbox games go: this device, an SD card or a second drive'}</small></div><div class="rv">${x.folder?'Change ›':'›'}</div></button>`;
   if(x.update) h += `<button class="row" data-f data-k="xo-up" data-act="xodusGet"><span class="ricon">${I.refresh}</span><div class="rt"><b>Update to ${esc(x.update)}</b></div></button>`;
   h += `<button class="row" data-f data-k="xo-rm" data-act="xodusRemove"><span class="ricon">${I.x}</span><div class="rt"><b>Remove Xodus Nexus</b><small>Takes it out of your library. Games it installed stay where Nexus put them.</small></div></button>`;
   return h;
@@ -3160,7 +3171,9 @@ function act(el){
     case 'pfPick': return pickProfileImage(d.kind);
     case 'addManual': return addManual();
     case 'rescan': return loadLibrary(true, true);
-    case 'xodusGet': return call('xodus.install',{},30000).then(r=>{ XO.s=r; render('xo-get',true); }).catch(e=>toast(e.message));
+    case 'xodusGet': return (XO.s&&XO.s.installed) ? call('xodus.install',{},30000).then(r=>{ XO.s=r; render('xo-up',true); }).catch(e=>toast(e.message)) : xodusPick(true);
+    case 'xodusFolder': return xodusPick(false);
+    case 'xodusSignIn': return call('xodus.signInDesktop',{},10000).then(()=>{ toast('Opening Desktop Mode… Nexus opens there in a moment'); setTimeout(()=>power('desktop',true),800); }).catch(e=>toast(e.message));
     case 'xodusRemove': return call('xodus.remove',{},30000).then(r=>{ XO.s=r; toast('Xodus Nexus removed'); loadLibrary(true,true); render('xo-get',true); }).catch(e=>toast(e.message));
     case 'install': return installGame(G(d.id));
     case 'play': return launch(G(d.id));

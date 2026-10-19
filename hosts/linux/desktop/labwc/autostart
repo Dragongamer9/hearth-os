@@ -67,3 +67,10 @@ done
 
 # Your own additions: ~/.config/nimbus/autostart (any executable script).
 [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/autostart" ] && "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/autostart" &
+
+# Hearth asked for an app to open here (Game Mode's "Sign in from Desktop Mode"): only Hearth's own launchers.
+OPEN_AFTER="$RUN/hearth-open-after"
+if [ -f "$OPEN_AFTER" ]; then
+  app=$(head -n1 "$OPEN_AFTER"); rm -f "$OPEN_AFTER"
+  case "$app" in "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/"*) [ -x "$app" ] && (sleep 4; "$app" >/dev/null 2>&1) & ;; esac
+fi
