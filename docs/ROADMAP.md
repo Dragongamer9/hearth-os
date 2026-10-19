@@ -99,6 +99,15 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Fix: in the carousel and other experimental layouts, a background refresh could make Play start the first game instead of the one picked
 - [x] Fix: Shut down's confirmation didn't show in the in-game overlay
 - [x] Fix: Quick Access performance refreshing twice a second; Friends selection moving to another person when the list changes; swapped A/B echo filter; Screenshots opening on the old picture
+- [x] Fix: closing Quick Access while it was still opening could leave the game with no controller input, or input going to the hidden overlay (opening and closing now happen one at a time; the controller service's mode always matches what's on screen)
+- [x] Fix: a quick second Xbox-button press left the game with no controller input
+- [x] Fix: closing Quick Access now goes back to what was on screen (Steam chat, another app), not always the game; the system clock changing could close Quick Access by itself
+- [x] Fix: Update now said "Done" when nothing was downloaded; now it says "already up to date", or the real problem (like another update running); it also checks the way the terminal's update does
+- [x] Fix: an app that couldn't update no longer marks the whole system update as failed
+- [x] Fix: Send logs lost the system journal (long output made it time out); the same affected any long command
+- [x] Fix: the frame-rate limit claimed to work in Desktop Mode
+- [x] Fix: leaving Desktop Mode could show a false "Desktop Mode keeps closing" error in Game Mode
+- [x] Fix: turning off with games kept could be set up without really working (SELinux label on the swap file)
 - [x] Bug finder (tools/ui-nav-check.js): presses every direction from every control on every screen and lists controls the D-pad can't reach
 
 - [x] Xodus Nexus: pick where Xbox games go when adding it (this device, an SD card or a second drive); "Sign in to Xodus Nexus" opens it in Desktop Mode, where the controller types; a password store runs in both modes so its sign-in is remembered

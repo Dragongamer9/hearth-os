@@ -45,6 +45,8 @@ else
     : >"$SHELL_LOG"
     fails=0
     while :; do
+      # Desktop Mode ended (labwc gone): stop watching, or the "keeps closing" fallback would fire in Game Mode.
+      if [ -n "$LABWC_PID" ] && ! kill -0 "$LABWC_PID" 2>/dev/null; then exit 0; fi
       started=$(date +%s)
       quickshell -p "$SHARE/desktop/shell" >>"$SHELL_LOG" 2>&1
       if [ $(($(date +%s) - started)) -lt 20 ]; then fails=$((fails + 1)); else fails=0; fi
