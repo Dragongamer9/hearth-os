@@ -43,7 +43,7 @@ RUN set -eux; \
     if getent passwd 1000; then echo "uid 1000 is still taken (above)"; exit 1; fi; \
     apt-get update -y; \
     if [ "$GNU_COREUTILS" = "1" ]; then \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-remove-essential coreutils-from-gnu || \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-remove-essential coreutils-from-gnu coreutils-from-uutils- || \
         echo "warning: couldn't switch to GNU coreutils; keeping Ubuntu's default"; \
     fi; \
     ls --version | sed -n 1p; \
