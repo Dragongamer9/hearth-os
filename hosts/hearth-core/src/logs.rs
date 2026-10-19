@@ -7,8 +7,6 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Lines kept from the end of each log (the newest part is what matters).
-const TAIL: usize = 4000;
 
 fn tail(text: &str, n: usize) -> String {
     let lines: Vec<&str> = text.lines().collect();
@@ -54,8 +52,18 @@ pub fn report(version: &str) -> String {
     section("About this device", serde_json::to_string_pretty(&info).unwrap_or_default());
     section("OS", std::fs::read_to_string("/etc/os-release").unwrap_or_default());
     section("System version (bootc)", sh("bootc status --format humanreadable || rpm-ostree status"));
-    for (f, name) in [(data.join("bridge.log"), "Hearth log"), (data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log")] {
-        if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, TAIL)); }
+    // Hearth's log: the controller input lines first (the jumping-selection reports), then the newest lines.
+    // Thousands of identical "library.downloads ok" lines from the old Electron app are left out.
+    if let Ok(t) = std::fs::read_to_string(data.join("bridge.log")) {
+        let spam = regex::Regex::new(r"^\d\d:\d\d:\d\d library\.(downloads|get) ok \d+ms$").unwrap();
+        let lines: Vec<&str> = t.lines().filter(|l| !spam.is_match(l)).collect();
+        let input: Vec<&str> = lines.iter().copied().filter(|l| l.contains(" input ")).collect();
+        let keep = |v: &[&str], n: usize| -> String { let skip = v.len().saturating_sub(n); let mut o = if skip > 0 { format!("[… {skip} older lines left out …]\n") } else { String::new() }; o.push_str(&v[skip..].join("\n")); o };
+        if !input.is_empty() { section("Controller input (newest last)", keep(&input, 400)); }
+        section("Hearth log", keep(&lines, 1500));
+    }
+    for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log")] {
+        if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
     section("Memory", sh("free -m; echo; ps -eo rss=,comm= --sort=-rss | head -25 | awk '{printf \"%7.0f MB  %s\\n\", $1/1024, $2}'"));
     section("Games and processes", sh("ps -eo pid,ppid,stat,etime,comm --sort=start_time | tail -60"));
@@ -64,8 +72,8 @@ pub fn report(version: &str) -> String {
     section("gamescope", sh("xprop -root | grep -E '^GAMESCOPE|^GAMESCOPECTRL' | cut -c1-300"));
     section("Bluetooth", sh("bluetoothctl devices; bluetoothctl show | grep -E 'Powered|Discoverable|Pairable'"));
     section("System journal: controllers, power, display (this boot)", sh("journalctl -b --no-pager -n 400 -u inputplumber -u steamos-manager -u powerstation -u bluetooth -u tuned -u tuned-ppd"));
-    section("System journal: errors (this boot)", sh("journalctl -b --no-pager -p err -n 300"));
-    section("Your session's journal (this boot)", sh("journalctl --user -b --no-pager -n 3000"));
+    section("System journal: errors (this boot)", sh("journalctl -b --no-pager -p err -n 200"));
+    section("Your session's journal (this boot)", sh("journalctl --user -b --no-pager -n 800"));
     let user = std::env::var("USER").unwrap_or_default();
     redact(&out, &user, &crate::paths::home().to_string_lossy())
 }
@@ -95,7 +103,7 @@ pub fn send(version: &str) -> Result<Value, String> {
 
 /// Hearth OS's bug-report service (the same server as the player counter).
 pub const SERVICE: &str = "https://hearth-counter.game305-cl.workers.dev";
-const MAX_SEND: usize = 1_750_000;
+const MAX_SEND: usize = 600_000;
 
 /// Saves (as above) and sends: {path, copies, code, url}. Too-long logs lose your session's journal first, then
 /// their oldest lines.
