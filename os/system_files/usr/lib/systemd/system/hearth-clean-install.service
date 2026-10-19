@@ -1,0 +1,24 @@
+# The first start of the new Hearth OS after "Move to a new Hearth OS" on the old (Bazzite-based) Hearth: a clean
+# install that keeps your games (see /usr/libexec/nimbus/hearth-clean-install). Shipped in every Hearth image
+# (os/system_files) but only enabled in the new editions' (os-bases/*/build.sh: Anatase, Ubuntu, CachyOS,
+# Peppermint), and only runs on one of them (they have /usr/share/nimbus/image-info.json; the Bazzite-based image
+# doesn't) when the old system left its plan. Carries on after an interruption; logs to the journal
+# (journalctl -u hearth-clean-install).
+[Unit]
+Description=Hearth: finish the clean install (keep your games, put the rest aside)
+ConditionPathExists=/var/lib/hearth/clean-install.json
+ConditionPathExists=/usr/share/nimbus/image-info.json
+After=local-fs.target systemd-sysusers.service ostree-remount.service
+Before=nimbus-autologin.service display-manager.service systemd-user-sessions.service hhd.service
+RequiresMountsFor=/var /var/home /etc
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/nimbus/hearth-clean-install
+SyslogIdentifier=hearth-clean-install
+# Moving a big home folder can take a while on a slow drive; the login screen waits for it.
+TimeoutStartSec=2h
+
+[Install]
+WantedBy=multi-user.target

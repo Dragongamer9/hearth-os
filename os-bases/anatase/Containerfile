@@ -1,0 +1,42 @@
+# Hearth OS on Anatase: the next Hearth OS. Anatase (Fedora 45, bootc; one image for AMD, Intel and Nvidia, with
+# Handheld Daemon, Valve's gamescope and its own SteamOS Manager) with the Hearth session (Game Mode + Desktop Mode)
+# as what it boots into. Replaces the Bazzite build (os/Containerfile) once it's been tried on devices; until then
+# it's published as ghcr.io/dragongamer9/hearth-os:testing. See docs/BASE-ANATASE.md.
+# Built by .github/workflows/base-anatase.yml from the repository root:
+#   podman build -f os-bases/anatase/Containerfile -t hearth-os .
+# os/nimbus-app must hold the Hearth app build (hearth, browser/, and browser-cef/ if built); CI puts it there.
+
+# i.anatase.org/anatase:stable (also :rolling, :testing), signed by Anatase with cosign.
+ARG BASE_IMAGE=i.anatase.org/anatase:stable
+
+# Files the build script needs, kept out of the final image (the same as os/Containerfile, plus this image's own).
+FROM scratch AS ctx
+COPY os-bases/anatase/build.sh /build.sh
+COPY os-bases/anatase/system_files /anatase_files
+COPY os/system_files /system_files
+COPY os/branding/wallpapers /wallpapers
+COPY os/nimbus-app /nimbus-app
+COPY hosts/linux/session /session
+COPY hosts/linux/desktop /desktop
+
+FROM ${BASE_IMAGE}
+
+ARG NIMBUS_VERSION=0.0.0
+ARG BASE_IMAGE
+LABEL org.opencontainers.image.title="Hearth OS" \
+      org.opencontainers.image.description="Hearth OS: Anatase with a controller-first Game Mode and Desktop Mode" \
+      org.opencontainers.image.source="https://github.com/Dragongamer9/hearth-os" \
+      org.opencontainers.image.version="${NIMBUS_VERSION}" \
+      org.opencontainers.image.base.name="${BASE_IMAGE}" \
+      containers.bootc=1
+
+RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    --mount=type=cache,dst=/var/cache \
+    --mount=type=tmpfs,dst=/tmp \
+    BASE_IMAGE="${BASE_IMAGE}" NIMBUS_VERSION="${NIMBUS_VERSION}" /ctx/build.sh
+
+# /var belongs to the installed system, not the image (Anatase's template does the same; tmpfiles.d recreates
+# what's needed at boot).
+RUN rm -rf /var && mkdir -p /var/tmp
+
+RUN bootc container lint

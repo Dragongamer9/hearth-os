@@ -405,6 +405,9 @@ mkdir -p /etc/X11 && echo /usr/bin/sddm > /etc/X11/default-display-manager
 systemctl enable nimbus-autologin.service
 systemctl enable hearth-greeter-pad.service
 systemctl enable hearth-boot-first.service
+# The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
+# (os/system_files; does nothing without the plan the old system leaves).
+systemctl enable hearth-clean-install.service
 
 # ------------------------------------------------------------------ name
 # /etc/os-release links to /usr/lib/os-release. ID stays ubuntu (VERSION_CODENAME resolute) so tools still

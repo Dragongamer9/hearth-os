@@ -725,7 +725,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -877,6 +877,24 @@ const MOCK = (()=>{
     'controller.set':async({button,to,target})=>{ st.ctl=st.ctl||{map:{},target:''}; if(button!==undefined){ if(!to) delete st.ctl.map[button]; else st.ctl.map[button]=to; } if(target!==undefined) st.ctl.target=target; await wait(300); return MOCK.call('controller.status'); },
     'controller.preset':async()=>{ st.ctl=st.ctl||{map:{},target:''}; Object.assign(st.ctl.map,{South:'East',East:'South',West:'North',North:'West'}); return MOCK.call('controller.status'); },
     'controller.reset':async()=>{ st.ctl={map:{},target:''}; return MOCK.call('controller.status'); },
+    'hhd.status':async()=>{ const v=st.hhd=st.hhd||{'controllers.rog_ally.imu':true,'controllers.rog_ally.controller_mode.uinput.paddles_as':'noob','tdp.unified.fan_full_speed':false,'rgb.handheld.mode.mode':'solid'};
+      return {running:true,controllers:[{key:'rog_ally',name:'ROG Ally',mode:'uinput'}],controls:[
+        {key:'controllers.rog_ally.imu',kind:'bool',value:v['controllers.rog_ally.imu'],group:'controller',label:'Motion controls (gyro)',hint:'Games that support gyro aiming can use it'},
+        {key:'controllers.rog_ally.controller_mode.uinput.paddles_as',kind:'choice',value:v['controllers.rog_ally.controller_mode.uinput.paddles_as'],options:[{id:'steam_input',label:'Steam Input (Elite)'},{id:'noob',label:'Keyboard/Overlay'},{id:'disabled',label:'Disabled'}],group:'controller',label:'Back buttons',hint:'What the extra buttons on the back do'},
+        {key:'tdp.unified.fan_full_speed',kind:'bool',value:v['tdp.unified.fan_full_speed'],group:'fan',label:'Fan at full speed',hint:'Cooler and louder; the power limit still applies'},
+        {key:'rgb.handheld.mode.mode',kind:'choice',value:v['rgb.handheld.mode.mode'],options:[{id:'disabled',label:'Off'},{id:'solid',label:'Solid'},{id:'pulse',label:'Pulse'},{id:'rainbow',label:'Rainbow'}],group:'lights',label:'Lights',hint:'The lights around the sticks'}]}; },
+    'hhd.set':async({key,value})=>{ await MOCK.call('hhd.status'); st.hhd[key]=value; await wait(300); return MOCK.call('hhd.status'); },
+    'newos.status':async()=>clone(st.newos||{eligible:true,published:true,canAdmin:true,image:'ghcr.io/dragongamer9/hearth-os:latest',state:'idle',error:null,editions:[
+      {id:'anatase',label:'Hearth OS on Anatase',about:'The next Hearth OS. A smaller system that starts and updates faster, the same for every PC and handheld.',beta:false,recommended:true,published:true,allowed:true,reason:null,warning:null},
+      {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:null},
+      {id:'cachyos',label:'CachyOS',about:'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:'Secure Boot is on, and Hearth OS on CachyOS can\'t start with it on. Turn Secure Boot off in your PC\'s firmware settings (UEFI) before you restart, or choose another one.'},
+      {id:'peppermint',label:'Peppermint',about:'Hearth OS built on Peppermint OS (Debian). Still being tested: some things may not work yet.',beta:true,recommended:false,published:false,allowed:false,reason:'Not ready yet',warning:null}]}),
+    'newos.move':async({edition})=>{ const label={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Peppermint'}[edition]||'the new Hearth OS';
+      st.newos={eligible:true,published:true,canAdmin:true,state:'moving',edition,label,progress:0.3,line:'Downloading',phases:{download:{pct:30,done:1.2e9,total:4e9,bps:3.1e7,eta:90},install:{pct:0}},stage:{phase:'download'},speeds:[]};
+      setTimeout(()=>{ st.newos={eligible:true,published:true,canAdmin:true,state:'done',edition,label,line:'Restart to start the new Hearth OS.'}; onSysEvent('newOs',clone(st.newos)); },2500); return clone(st.newos); },
+    'oldfiles.status':async()=>clone(st.oldf||{folders:[{name:'.old-hearth-2026-10-19',date:'2026-10-19',daysLeft:27,moved:['Documents','Downloads','Pictures','.config','.local/share/flatpak'],from:'Hearth OS (based on Bazzite)'}]}),
+    'oldfiles.delete':async()=>{ st.oldf={folders:[]}; await wait(400); return clone(st.oldf); },
+    'oldfiles.restore':async({item})=>{ const f=await MOCK.call('oldfiles.status'); f.folders[0].moved=f.folders[0].moved.filter(x=>x!==item); st.oldf=clone(f); return Object.assign(f,{restored:'/home/you/'+item}); },
     'game.options.set':async({id,options})=>{ MOCKOPT[id]=Object.assign(MOCKOPT[id]||{},options); return MOCK.call('game.options.get',{id}); },
     'pad.toggleMouse':async()=>({mouseOn:!PAD.mouseOn}),
     'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}),
@@ -1545,6 +1563,7 @@ function pageSystem(){
     const used=st.totalBytes-st.freeBytes, pct=Math.round(used/st.totalBytes*100);
     h += `<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Storage</b><small>${gb(st.freeBytes)} free of ${gb(st.totalBytes)}</small><div class="storage"><i style="width:${pct}%"></i></div></div><div class="rv">${pct}% used</div></div>`;
   }
+  if(LINUX) h += oldFilesRows();
   const tz=(()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }catch(e){ return ''; } })();
   if(LINUX && ART.s) h += shead('Offline') + `<div class="row" data-f data-k="sy-art"><span class="ricon">${I.dl}</span><div class="rt"><b>Game art on this device</b><small>${ART.s.pictures} pictures (${Math.round(ART.s.bytes/1e6)} MB)${ART.s.waiting?` · ${ART.s.waiting} still downloading`:' · your library looks the same offline'}</small></div></div>`;
   if(LINUX) h += browserRows();
@@ -2167,8 +2186,16 @@ function remapRows(){
   let h = shead('Button mapping', CTL.busy);
   const c=CTL.s;
   if(!c) return h + note('Loading…');
-  if(!c.available) return h + note('Remapping works on Hearth, the OS, with the built-in controller (InputPlumber)'+(c.error?': '+esc(c.error):'.'));
+  if(!c.available) return h + note('Remapping works on Hearth, the OS, with the built-in controller'+(c.error?': '+esc(c.error):'.'));
   const map=c.config.map||{}, type=(c.types||[]).find(t=>t.id===(c.config.target||''))||{label:'Automatic'};
+  // Handheld Daemon (Hearth OS on Anatase): the controller type and the Nintendo layout; no single buttons.
+  if(c.backend==='hhd'){
+    h += note(esc(c.note||'')+(c.devices&&c.devices.length?' ('+esc(c.devices.map(d=>d.name).join(', '))+')':''));
+    h += `<button class="row" data-f data-k="rm-type" data-act="rtype"><span class="ricon">${I.pad}</span><div class="rt"><b>Controller type games see</b><small>${esc(type.sub||'Some games show button prompts to match')}</small></div><div class="rv">${esc(type.label)} ›</div></button>`;
+    h += `<button class="row" data-f data-k="rm-nin" data-act="rpreset" data-v="${c.nintendo?'standard':'nintendo'}"><div class="rt"><b>Nintendo layout</b><small>Swaps A with B, and X with Y</small></div><div class="sw ${c.nintendo?'on':''}"></div></button>`;
+    h += `<button class="row" data-f data-k="rm-reset" data-act="rreset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset the controller</b><small>Back to Handheld Daemon's choice for this device</small></div></button>`;
+    return h;
+  }
   h += note('Changes apply everywhere, in games too'+(c.devices&&c.devices.length?' ('+esc(c.devices.map(d=>d.name).join(', '))+')':'')+'.');
   h += `<button class="row" data-f data-k="rm-type" data-act="rtype"><span class="ricon">${I.pad}</span><div class="rt"><b>Controller type games see</b><small>${esc(type.sub||'Some games show button prompts to match')}</small></div><div class="rv">${esc(type.label)} ›</div></button>`;
   h += c.buttons.map(b=>{ const m=map[b.id]; return `<button class="row" data-f data-k="rm-${b.id}" data-act="remap" data-b="${b.id}"><div class="rt"><b>${esc(b.label)}</b></div><div class="rv" style="${m?'color:var(--accent)':''}">${m?esc(m==='none'?'Off':ctlLabel(m)):'Default'} ›</div></button>`; }).join('');
@@ -2192,6 +2219,34 @@ function remapPick(id){
     {label:'A keyboard key…', icon:'kbd', run:()=>setTimeout(()=>pick(b.label+' types', c.targets.filter(t=>t.kind==='key')),0)},
     {label:'Nothing (turn it off)', icon:'x', run:()=>set('none')},
   ]});
+}
+
+// ---------- Settings › Controls › Handheld Daemon (Hearth OS on Anatase) ----------
+// The few extra controls Handheld Daemon has for this handheld (gyro, back buttons, fan, lights): only what it
+// offers for the device, changed one at a time.
+const HHDS = {s:null, busy:false};
+function loadHhd(){ if(LINUX) call('hhd.status',{},20000).then(r=>{ HHDS.s=r; render(null,true); }).catch(()=>{ HHDS.s=null; }); }
+function hhdRows(){
+  const s=HHDS.s; if(!s || !s.running || !(s.controls||[]).length) return '';
+  const icon={controller:I.pad, fan:I.bolt, lights:I.sun};
+  let h = shead('Handheld Daemon', HHDS.busy);
+  h += s.controls.map((c,i)=>{
+    const k='hhd-'+i, sub=c.hint?`<small>${esc(c.hint)}</small>`:'';
+    if(c.kind==='bool') return `<button class="row" data-f data-k="${k}" data-act="hhdSet" data-i="${i}"><span class="ricon">${icon[c.group]||I.sliders}</span><div class="rt"><b>${esc(c.label)}</b>${sub}</div><div class="sw ${c.value?'on':''}"></div></button>`;
+    const cur=(c.options||[]).find(o=>o.id===c.value)||{label:c.value};
+    return `<button class="row" data-f data-k="${k}" data-act="hhdSet" data-i="${i}"><span class="ricon">${icon[c.group]||I.sliders}</span><div class="rt"><b>${esc(c.label)}</b>${sub}</div><div class="rv">${esc(cur.label)} ›</div></button>`;
+  }).join('');
+  h += note('Handheld Daemon runs the built-in controller, power limit, fan and lights on Hearth OS. Its other settings are in its own app in Desktop Mode.');
+  return h;
+}
+async function hhdSet(i){
+  const c=HHDS.s&&HHDS.s.controls[+i]; if(!c || HHDS.busy) return;
+  const k='hhd-'+i;
+  const go=async v=>{ HHDS.busy=true; render(k,true);
+    try{ HHDS.s=await call('hhd.set',{key:c.key, value:v},30000); toast(c.label+': done'); }catch(e){ toast(e.message); }
+    HHDS.busy=false; render(k,true); };
+  if(c.kind==='bool') return go(!c.value);
+  openSheet({title:c.label, sub:c.hint||'', items:(c.options||[]).map(o=>({label:o.label, icon:o.id===c.value?'check':'', run:()=>go(o.id)}))});
 }
 
 // ---------- Settings › Controls ----------
@@ -2241,6 +2296,7 @@ function pageControls(){
     }
   }
   if(LINUX) h += remapRows();
+  if(LINUX) h += hhdRows();
   h += shead('Keyboard');
   h += (LINUX?KEY_LIST_LINUX:KEY_LIST).map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
   h += note('Mouse and touch: click anything to select it. The buttons in the bottom bar and the top bar do the same as the controller buttons.');
@@ -2342,7 +2398,7 @@ const gbx = b => (b/1e9).toFixed(b>=1e10?1:2)+' GB';
 function timeLeft(s){ if(!(s>0) || !isFinite(s)) return ''; if(s<60) return 'less than a minute left'; const m=Math.round(s/60); return m<60?`${m} min left`:`${Math.floor(m/60)} h ${m%60} min left`; }
 // The three parts of a system update, each with its own bar: downloading the new system (size, speed, time
 // left, a live speed graph), installing it (bootc's steps), then updating apps (Flatpak, one by one).
-function sysUpdCard(u){
+function sysUpdCard(u, o={}){
   const ph=u.phases||{}, d=ph.download||{}, ins=ph.install||{}, ap=ph.apps||{}, cur=(u.stage||{}).phase||'download';
   const ORD=['download','install','apps','done'], stateOf=k=>{ const c=ORD.indexOf(cur), i=ORD.indexOf(k); return i<c?'ok':i===c?'on':''; };
   const pct=x=>x&&x.pct!=null?Math.round(x.pct):null;
@@ -2359,8 +2415,8 @@ function sysUpdCard(u){
   const overall=u.progress!=null?Math.round(u.progress*100):0;
   const pts=u.speeds||[], peak=pts.length?Math.max(...pts.map(p=>p[1])):0, now=pts.length?pts.at(-1)[1]:0;
   const elapsed=u.started?Math.round((Date.now()-u.started)/1000):0;
-  let h=`<div class="su-card"><div class="su-head"><div><b>Updating Hearth OS</b><div class="muted" style="font-size:13px;margin-top:4px">Keep playing; it finishes when you restart${elapsed>5?` · ${elapsed<60?elapsed+' s':Math.floor(elapsed/60)+' min '+(elapsed%60)+' s'} so far`:''}</div></div><div class="pc">${overall}%</div></div>`
-    + row('download',1,'Downloading the update',dSub) + row('install',2,'Installing it',iSub) + row('apps',3,'Updating apps',aSub);
+  let h=`<div class="su-card"><div class="su-head"><div><b>${esc(o.title||'Updating Hearth OS')}</b><div class="muted" style="font-size:13px;margin-top:4px">${esc(o.sub||'Keep playing; it finishes when you restart')}${elapsed>5?` · ${elapsed<60?elapsed+' s':Math.floor(elapsed/60)+' min '+(elapsed%60)+' s'} so far`:''}</div></div><div class="pc">${overall}%</div></div>`
+    + row('download',1,o.noApps?'Downloading the new system':'Downloading the update',dSub) + row('install',2,'Installing it',iSub) + (o.noApps?'':row('apps',3,'Updating apps',aSub));
   if(cur==='download' && pts.length) h+=`<div class="su-speed"><div><div class="big">${fmtSpeed(now).replace(/ (\S+)$/,'<small>$1</small>')}</div><div class="sub">Peak ${fmtSpeed(peak)}</div></div>${speedGraph(pts,'sug')}</div>`;
   return h+'</div>';
 }
@@ -2371,7 +2427,7 @@ function pageSystemUpdate(){
   const st=u.status||{}, v=x=>x&&x.version?x.version:'';
   if(u.state==='updating'){
     h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(v(st.booted))}</b><small>${st.available?`Getting version ${esc(v(st.available))}`:'Getting the newest version'}</small></div></div>`;
-    return h + sysUpdCard(u) + note('Hearth also updates by itself in the background and finishes the next time you restart.');
+    return h + sysUpdCard(u) + note('Hearth also updates by itself in the background and finishes the next time you restart.') + newOsRows();
   }
   const line = u.state==='checking' ? 'Checking for updates…'
     : st.staged ? `Version ${v(st.staged)} is downloaded. Restart to finish.`
@@ -2386,7 +2442,95 @@ function pageSystemUpdate(){
     h += `<button class="row" data-f data-k="su-check" data-act="sysUpdCheck"><span class="ricon">${I.refresh}</span><div class="rt"><b>Check for updates</b></div></button>`;
   }
   h += note('Hearth also updates by itself in the background and finishes the next time you restart.');
+  return h + newOsRows();
+}
+
+// ---------- Settings › Updates › Move to a new Hearth OS (only on the Bazzite-based Hearth OS) ----------
+// Hearth OS moves away from Bazzite as a clean install that keeps your games. You pick which one: Hearth OS on
+// Anatase (recommended) or a Beta Experimental edition (Ubuntu, CachyOS, Peppermint). A choice lights up once its
+// image is published ("Not ready yet" until then). Picking one shows what's kept and what's put aside, then asks
+// once more; hearth-admin move-to-new-os --edition downloads it, and its first start keeps the games and puts
+// everything else aside for 30 days.
+const NEWOS = {s:null, pick:''};
+const NEWOS_KEEPS = [
+  ['Your Steam games and saves','Installed games, their Proton prefixes and shader caches, and your Steam saves and settings. Steam libraries on other drives aren\'t touched.'],
+  ['Games '+APP+' installed','Epic and GOG games, with their Windows (Wine) settings and saves'],
+  ['Heroic and Lutris games','The game folders they installed'],
+  ['Games you added yourself','Their folder in your games folder (or just the game\'s file)'],
+  ['You','Your account and password, device name, Wi-Fi networks, language and time zone']];
+const NEWOS_MOVES = [
+  ['Everything else in your home folder','Documents, downloads, pictures, other apps and their settings, sign-ins (Steam and the stores ask you to sign in again). Moved to a folder named .old-hearth- and the date, not deleted: for 30 days you can restore any of it from Settings › System, then it\'s deleted.'],
+  ['The old system\'s apps and changes','Bazzite\'s preinstalled apps, packages added on top, and changed system settings: back to the new system\'s defaults']];
+function loadNewOs(){ if(LINUX && (!host || (HOSTINFO.system && /^(amd|nvidia)$/.test(HOSTINFO.edition||'')))) call('newos.status',{},90000).then(r=>{ NEWOS.s=r; if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); }).catch(()=>{}); }
+function newOsChoice(id){ return ((NEWOS.s&&NEWOS.s.editions)||[]).find(e=>e.id===id); }
+function newOsRows(){
+  const n=NEWOS.s; if(!n || !n.eligible) return '';
+  let h=shead('Move to a new Hearth OS', n.state==='moving');
+  if(n.state==='moving') return h + sysUpdCard(n,{title:'Getting '+(n.label||'the new Hearth OS'), sub:'Keep playing: nothing changes until you restart', noApps:true});
+  if(n.state==='done') return h + `<div class="row"><span class="ricon">${I.check}</span><div class="rt"><b>${esc(n.label||'The new Hearth OS')} is ready</b><small>Restart to start it. The first start takes a little longer: it keeps your games and puts everything else aside.</small></div></div>`
+    + `<button class="row" data-f data-k="no-restart" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart now</b><small>If something's wrong, the old Hearth OS is still in the boot menu.</small></div></button>`;
+  const pick=NEWOS.pick && newOsChoice(NEWOS.pick);
+  if(pick && pick.allowed) return h + newOsConfirmRows(n, pick);
+  h += `<div class="row" data-f data-k="no-intro"><span class="ricon">${I.dl}</span><div class="rt"><b>Hearth OS is moving away from Bazzite</b><small>Choose the Hearth OS you want next. Moving starts you fresh and keeps your games. You'll see exactly what's kept before anything starts.</small></div></div>`;
+  if(n.error) h += note(esc(n.error));
+  if(!n.editions) return h + note('Checking which ones are ready…');
+  h += n.editions.map(e=>{
+    const right = e.allowed ? (e.recommended?'Recommended ›':'Beta Experimental ›') : e.reason;
+    return `<button class="row" data-f data-k="no-e-${esc(e.id)}" data-act="newOsPick" data-v="${esc(e.id)}"><span class="ricon">${e.allowed?I.dl:I.clock}</span><div class="rt"><b>${esc(e.label)}</b><small>${e.beta?'Beta Experimental. ':''}${esc(e.about)}</small></div><div class="rv" style="${e.allowed?(e.recommended?'color:var(--accent)':''):'opacity:.6'}">${esc(right||'')}</div></button>`;
+  }).join('');
+  if(n.canAdmin===false) return h + note('Moving needs Hearth OS\'s system helper, which is missing here.');
+  return h + note('A choice that isn\'t ready yet lights up here as soon as it\'s released.');
+}
+function newOsConfirmRows(n, e){
+  let h = `<div class="row" data-f data-k="no-c"><span class="ricon">${I.info}</span><div class="rt"><b>Moving to ${esc(e.label)}${e.beta?' (Beta Experimental)':''}</b><small>Here's what happens. Nothing changes until you restart.</small></div></div>`;
+  if(e.warning) h += `<div class="row" data-f data-k="no-warn"><span class="ricon">${I.lock}</span><div class="rt"><b>Turn off Secure Boot first</b><small>${esc(e.warning)}</small></div></div>`;
+  if(e.beta) h += note('Beta Experimental: this one is still being tested, so some things may not work yet. Hearth OS on Anatase is the recommended choice.');
+  h += NEWOS_KEEPS.map(([t,x],i)=>`<div class="row" data-f data-k="no-k${i}"><span class="ricon">${I.check}</span><div class="rt"><b>Kept: ${esc(t)}</b><small>${esc(x)}</small></div></div>`).join('');
+  h += NEWOS_MOVES.map(([t,x],i)=>`<div class="row" data-f data-k="no-m${i}"><span class="ricon">${I.clock}</span><div class="rt"><b>Put aside: ${esc(t)}</b><small>${esc(x)}</small></div></div>`).join('');
+  if(n.canAdmin!==false) h += `<button class="row" data-f data-k="no-go" data-act="newOsGo"><span class="ricon">${I.dl}</span><div class="rt"><b>Move to ${esc(e.label)}</b><small>Downloads it now (a few GB; keep playing). It starts at your next restart.</small></div><div class="rv">›</div></button>`;
+  else h += note('Moving needs Hearth OS\'s system helper, which is missing here.');
+  h += `<button class="row" data-f data-k="no-back" data-act="newOsPick" data-v=""><span class="ricon">${I.dots}</span><div class="rt"><b>Choose a different one</b></div></button>`;
+  return h + note('Want a copy of your files elsewhere first? Back them up to a USB drive in Desktop Mode before you restart.');
+}
+function newOsPick(id){
+  if(!id){ const was=NEWOS.pick; NEWOS.pick=''; return render(was?'no-e-'+was:null,true); }
+  const e=newOsChoice(id); if(!e) return;
+  if(!e.allowed) return toast(e.label+': '+(e.cpuNote||e.reason||'Not ready yet'));
+  NEWOS.pick=id; render('no-c',true);
+}
+function newOsAsk(){
+  const e=newOsChoice(NEWOS.pick); if(!e || !e.allowed) return;
+  openSheet({title:'Move to '+e.label+'?', sub:'Your games stay. Everything else in your home folder is put aside for 30 days, and the system starts fresh at your next restart.'+(e.warning?' Remember to turn off Secure Boot first.':''), items:[
+    {label:'Yes, move to '+e.label, icon:'dl', run:()=>call('newos.move',{edition:e.id},60000).then(r=>{ NEWOS.s=Object.assign({},NEWOS.s||{},r); NEWOS.pick=''; toast('Getting '+e.label+'…'); render(null,true); }).catch(err=>toast(err.message))},
+    {label:'Not now', icon:'x', run:()=>{}}]});
+}
+
+// ---------- Settings › System › Files from the old system (the new Hearth OS) ----------
+const OLDF = {s:null, busy:false, told:false};
+function loadOldFiles(notify){ if(LINUX && (!host || HOSTINFO.edition==='anatase')) call('oldfiles.status',{},20000).then(r=>{ OLDF.s=r;
+  const f=(r&&r.folders||[])[0];
+  if(notify && f && !OLDF.told){ OLDF.told=true; NOTIFS.unshift({i:'dl', t:'Your files from the old Hearth OS are kept for '+f.daysLeft+' more day'+(f.daysLeft===1?'':'s'), s:'Restore a folder or delete them in Settings › System', go:'system'}); updateBadge(); }
+  if(S.view==='settings'&&S.settingsTab==='system') render(null,true); }).catch(()=>{}); }
+function oldFilesRows(){
+  const fs=(OLDF.s&&OLDF.s.folders)||[]; if(!fs.length) return '';
+  let h=shead('Files from the old Hearth OS', OLDF.busy);
+  for(const f of fs){
+    h += `<div class="row"><span class="ricon">${I.clock}</span><div class="rt"><b>~/${esc(f.name)}</b><small>Moved aside on ${esc(f.date)} so the new Hearth OS could start fresh. Deleted by itself in ${f.daysLeft} day${f.daysLeft===1?'':'s'}.</small></div></div>`;
+    if((f.moved||[]).length) h += `<button class="row" data-f data-k="of-r-${hk(f.name)}" data-act="oldRestore" data-n="${esc(f.name)}"><span class="ricon">${I.refresh}</span><div class="rt"><b>Restore a folder</b><small>Puts it back where it was (beside it, if there's something new there now)</small></div><div class="rv">${f.moved.length} ›</div></button>`;
+    h += `<button class="row" data-f data-k="of-d-${hk(f.name)}" data-act="oldDelete" data-n="${esc(f.name)}"><span class="ricon">${I.trash}</span><div class="rt"><b>Delete now</b><small>Frees the space straight away. Your games aren't in there.</small></div></button>`;
+  }
   return h;
+}
+function oldFilesRestore(name){
+  const f=((OLDF.s&&OLDF.s.folders)||[]).find(x=>x.name===name); if(!f) return;
+  openSheet({title:'Restore a folder', sub:'From ~/'+name, items:f.moved.map(it=>({label:it, icon:'refresh', run:()=>{
+    OLDF.busy=true; render(null,true);
+    call('oldfiles.restore',{name, item:it},120000).then(r=>{ OLDF.s=r; toast('Restored to '+(r.restored||it)); }).catch(e=>toast(e.message)).finally(()=>{ OLDF.busy=false; render(null,true); }); }}))});
+}
+function oldFilesDelete(name){
+  openSheet({title:'Delete your old files now?', sub:'~/'+name+' is deleted for good. Your games aren\'t in it.', items:[{label:'Delete', icon:'trash', run:()=>{
+    OLDF.busy=true; render(null,true);
+    call('oldfiles.delete',{name},600000).then(r=>{ OLDF.s=r; toast('Deleted'); }).catch(e=>toast(e.message)).finally(()=>{ OLDF.busy=false; render(null,true); }); }}]});
 }
 
 // ---------- Settings › Import games (Hearth, the OS) ----------
@@ -3284,9 +3428,14 @@ function act(el){
     case 'pbtn': return call('buttons.set',{[d.w]:d.v}).then(r=>{ BTNS.s=r; render('pb-'+d.w+'-'+d.v,true); }).catch(e=>toast(e.message));
     case 'overamp': return call('buttons.set',{overamp:!(BTNS.s&&BTNS.s.overamp)}).then(r=>{ BTNS.s=r; S.sys.audio.max=r.maxVolume; if(S.set.vol>r.maxVolume){ S.set.vol=S.sys.audio.volume=r.maxVolume; } render('a-overamp',true); toast(r.overamp?'Volume can now go up to 150%':'Volume is limited to 100% again'); }).catch(e=>toast(e.message));
     case 'remap': return remapPick(d.b);
+    case 'hhdSet': return hhdSet(d.i);
+    case 'newOsPick': return newOsPick(d.v);
+    case 'newOsGo': return newOsAsk();
+    case 'oldDelete': return oldFilesDelete(d.n);
+    case 'oldRestore': return oldFilesRestore(d.n);
     case 'rtype': { const c=CTL.s; if(!c) return; return openSheet({title:'Controller type games see', sub:'Games may need to be restarted to notice.', items:c.types.map(t=>({label:t.label+(t.sub?' · '+t.sub:''), icon:(c.config.target||'')===t.id?'check':'', run:()=>ctlDo(call('controller.set',{target:t.id},30000),'rm-type')}))}); }
     case 'rpreset': return ctlDo(call('controller.preset',{name:d.v},30000),'rm-nin');
-    case 'rreset': return openSheet({title:'Reset all buttons?', items:[{label:'Reset', icon:'refresh', run:()=>ctlDo(call('controller.reset',{},30000),'rm-reset')}]});
+    case 'rreset': return openSheet({title:CTL.s&&CTL.s.backend==='hhd'?'Reset the controller?':'Reset all buttons?', items:[{label:'Reset', icon:'refresh', run:()=>ctlDo(call('controller.reset',{},30000),'rm-reset')}]});
     case 'dispRes': return dispRes();
     case 'dispHz': return dispHz();
     case 'dispScale': return dispScale();
@@ -4465,6 +4614,7 @@ function onSysEvent(name, data){
   if(name==='bt.pad'){ BTPAD.state=data.state; BTPAD.name=data.name||'the controller'; if(data.state==='paired') toast(`${BTPAD.name} connected`); if(S.view==='pad'||S.view==='setup') render(null,true); return; }
   if(name==='parental.timeup'){ toast("Play time's up for today"); return; }
   if(name==='profiles.switching'){ PROF.switching=data.name; if(S.view!=='profiles') navigate('profiles',{},false); else render(null,true); return; }
+  if(name==='newOs'){ const was=NEWOS.s; NEWOS.s=Object.assign({},was||{},data); if(was&&was.state==='moving'&&data.state!=='moving') toast(data.error?data.error:'The new Hearth OS is ready. Restart to start it.'); if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); return; }
   if(name==='switch'){ if(SW.s) SW.s.job=data.job; if(data.job && data.job.state==='done') loadSwitch(); if(data.job && data.job.state==='error') toast(data.job.error||'That step didn\'t work'); if(S.view==='settings'&&S.settingsTab==='switch') render(null,true); return; }
   if(name==='library.changed'){ if(!OVERLAY) loadLibrary(false); return; }
   if(name==='desktopFailed') return openSheet({title:"Mantel (Desktop Mode) couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});
@@ -4556,7 +4706,7 @@ function onSettingsTab(t){
   if(t==='shell') loadShellStatus();
   if(t==='seats') loadSeats();
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
-  if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
+  if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); loadNewOs(); }
   if(t==='signin') loadLogin();
   if(t==='remote') loadRemote();
   if(t==='sources'){ loadEmu(); loadXodus(); }
@@ -4565,13 +4715,13 @@ function onSettingsTab(t){
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();
   if(t==='system' || t==='about') loadSysInfo();
-  if(t==='system'){ loadBrowser(); loadArtStatus(); }
+  if(t==='system'){ loadBrowser(); loadArtStatus(); loadOldFiles(false); }
   if(t==='about'){ loadCounterStats(); if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();
   if(t==='power' || t==='audio') loadButtons();
-  if(t==='controller') loadRemap();
+  if(t==='controller'){ loadRemap(); loadHhd(); }
   if(t==='audio') call('audio.get').then(r=>{ Object.assign(S.sys.audio,r); S.set.vol=r.volume; refreshUI(); }).catch(e=>toast(e.message));
   if(t==='display') call('display.get').then(r=>{ Object.assign(S.sys.display,r); S.set.bright=r.brightness; refreshUI(); }).catch(e=>toast(e.message));
   if(t==='power') call('power.get').then(r=>{ S.sys.battery={present:r.present,pct:r.pct,charging:r.charging}; S.sys.powerMode=r.mode; S.sys.power=r; refreshUI(); }).catch(e=>toast(e.message));

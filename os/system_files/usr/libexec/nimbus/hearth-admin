@@ -28,11 +28,21 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin space-grow --from DEV|free --gb N [--dry-run]
                                      make Hearth bigger with space from another system (Beta Experimental)
   hearth-admin space-clear-journal   after an interrupted space-grow was looked at
+  hearth-admin move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing]
+                                     a new Hearth OS as a clean install that keeps your games (Bazzite-based
+                                     Hearth only): writes /var/lib/hearth/clean-install.json (what the new
+                                     system's first start keeps, for which account, when), then switches to the
+                                     edition's image (fixed list, NEW_OS_EDITIONS): anatase (the default)
+                                     ghcr.io/dragongamer9/hearth-os:latest (:testing with --testing); ubuntu,
+                                     cachyos, peppermint (Beta Experimental) hearth-<edition>:testing. CachyOS
+                                     needs an x86-64-v3 processor. Download progress like update; the new system
+                                     starts at the next restart
   hearth-admin hibernate-setup       room on the drive (a swap file the size of memory) so the PC can turn
                                      off with Quick Resume games kept, and the boot options to come back to it
 
 Output: progress lines as "log: ...", percentages as "progress: <0-100> <what>", the result as one JSON line. Exit 1 with "error: ..." on failure.
 """
+import glob
 import json
 import os
 import pwd
@@ -196,16 +206,18 @@ class Stage:
                   layer=layer, layers=layers, desc=desc)
 
 
-def bootc_upgrade_with_progress(lo, hi, stage):
-    """bootc upgrade, reporting its download (and then its install steps) as lo..hi percent and as detailed
-    stages (bootc's --progress-fd JSON). Older bootc without that option: plain output, no percentage."""
-    help_text = subprocess.run(['bootc', 'upgrade', '--help'], capture_output=True, text=True).stdout
-    probe = subprocess.run(['bootc', 'upgrade', '--progress-fd', '1', '--check'], capture_output=True, text=True)
-    if '--progress-fd' not in help_text and re.search(r'unexpected argument|unrecognized|unknown option', probe.stderr or '', re.I):
+def bootc_upgrade_with_progress(lo, hi, stage, argv=None):
+    """bootc upgrade (or argv, e.g. bootc switch IMAGE), reporting its download (and then its install steps) as
+    lo..hi percent and as detailed stages (bootc's --progress-fd JSON). Older bootc without that option: plain
+    output, no percentage."""
+    base = argv or ['bootc', 'upgrade']
+    help_text = subprocess.run(base[:2] + ['--help'], capture_output=True, text=True).stdout
+    probe = subprocess.run(['bootc', 'upgrade', '--progress-fd', '1', '--check'], capture_output=True, text=True) if not argv else None
+    if '--progress-fd' not in help_text and (argv or re.search(r'unexpected argument|unrecognized|unknown option', probe.stderr or '', re.I)):
         stage.emit(force=True, phase='download', pct=None, desc='Downloading the system update')
-        return run_logged(['bootc', 'upgrade'])
+        return run_logged(base)
     rfd, wfd = os.pipe()
-    p = subprocess.Popen(['bootc', 'upgrade', '--progress-fd', str(wfd)], pass_fds=(wfd,),
+    p = subprocess.Popen(base[:2] + ['--progress-fd', str(wfd)] + base[2:], pass_fds=(wfd,),
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     os.close(wfd)
     last = ['']
@@ -261,9 +273,16 @@ class UpgradeFailed(Exception):
 BUSY = re.compile(r'\block(ed)?\b|another (transaction|update|operation)|transaction in progress|in progress|busy', re.I)
 
 
+def have_rpm_ostree():
+    """rpm-ostree is there (Bazzite and the other Fedora-based images; not Hearth OS on Debian or Ubuntu)."""
+    return any(os.access(os.path.join(d, 'rpm-ostree'), os.X_OK) for d in os.environ.get('PATH', '/usr/bin:/usr/sbin').split(':') + ['/usr/bin'])
+
+
 def layered():
     """Packages added on top of the image (rpm-ostree install): bootc refuses to update such a system, so it
     goes through rpm-ostree, the way Bazzite's own updater does."""
+    if not have_rpm_ostree():
+        return False
     try:
         r = subprocess.run(['rpm-ostree', 'status', '--json', '--booted'], capture_output=True, text=True, timeout=60)
         d = next((x for x in json.loads(r.stdout).get('deployments', []) if x.get('booted')), {})
@@ -282,11 +301,11 @@ def size_of(text):
     return int(float(m.group(1)) * SIZE_UNITS.get(m.group(2).lower(), 1)) if m else 0
 
 
-def rpm_ostree_upgrade(stage):
-    """rpm-ostree upgrade with real progress: it says how many layers it needs and how big they are, then
-    fetches them one at a time ("Fetching ostree chunk sha256:… (95.3 MB)… done")."""
+def rpm_ostree_upgrade(stage, argv=None):
+    """rpm-ostree upgrade (or argv, e.g. rpm-ostree rebase) with real progress: it says how many layers it needs
+    and how big they are, then fetches them one at a time ("Fetching ostree chunk sha256:… (95.3 MB)… done")."""
     stage.emit(force=True, phase='download', pct=None, desc='Looking for the update')
-    p = subprocess.Popen(['rpm-ostree', 'upgrade'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    p = subprocess.Popen(argv or ['rpm-ostree', 'upgrade'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     last, total, done, needed, fetched, current = '', 0, 0, 0, 0, 0
     for line in p.stdout:
         line = line.rstrip()
@@ -325,7 +344,10 @@ def rpm_ostree_upgrade(stage):
 
 def rpm_ostree_has_update():
     """rpm-ostree's own look: exit 0 = there's an update, 77 = nothing new; anything else (busy: Bazzite's
-    background updater holds the lock, no network) is a problem worth saying, not "nothing new"."""
+    background updater holds the lock, no network) is a problem worth saying, not "nothing new". Without
+    rpm-ostree (other bases): bootc's answer stands, so "nothing new" here."""
+    if not have_rpm_ostree():
+        return False
     try:
         r = subprocess.run(['rpm-ostree', 'upgrade', '--check'], capture_output=True, text=True, timeout=300)
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -347,6 +369,8 @@ def staged_any():
             return True
     except SystemExit:
         pass
+    if not have_rpm_ostree():
+        return False
     try:
         r = subprocess.run(['rpm-ostree', 'status', '--json'], capture_output=True, text=True, timeout=60)
         return any(d.get('staged') for d in json.loads(r.stdout).get('deployments', []))
@@ -401,6 +425,8 @@ def update():
                 print('log: bootc found nothing new but there is an update; getting it through rpm-ostree', flush=True)
                 rpm_ostree_upgrade(stage)
         except UpgradeFailed as e:
+            if not have_rpm_ostree():
+                fail('couldn\'t update: ' + str(e)[:300])
             # bootc refused (a system managed by rpm-ostree, or bootc not set up for it): the other way.
             print('log: bootc couldn\'t update this system (%s); trying rpm-ostree' % str(e)[:200], flush=True)
             rpm_ostree_upgrade(stage)
@@ -493,6 +519,36 @@ def tdp(watts):
 HIBERNATE_FILE = '/var/swap/hearth-hibernate'
 
 
+def kargs_commands(old, want, rpm_ostree=True, ostree=True):
+    """The ways to change the boot options, best first: rpm-ostree (Fedora-based images), then ostree itself
+    (every bootc image has it; bootc has no command for it): set-kargs replaces resume=/resume_offset= in the
+    next boot's options, edit-in-place can only add missing ones (so only when there were none before)."""
+    out = []
+    if rpm_ostree:
+        out.append(['rpm-ostree', 'kargs'] + [f'--delete-if-present={a}' for a in old] + [f'--append-if-missing={a}' for a in want])
+    if ostree:
+        out.append(['ostree', 'admin', 'instutil', 'set-kargs', '--merge'] + [f'--replace={a}' for a in want])
+        if not old:
+            out.append(['ostree', 'admin', 'kargs', 'edit-in-place'] + [f'--append-if-missing={a}' for a in want])
+    return out
+
+
+def set_kargs(old, want):
+    errors = []
+    have_ostree = subprocess.run(['sh', '-c', 'command -v ostree'], capture_output=True).returncode == 0
+    for args in kargs_commands(old, want, rpm_ostree=have_rpm_ostree(), ostree=have_ostree):
+        try:
+            r = subprocess.run(args, capture_output=True, text=True, timeout=300)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            errors.append('%s: %s' % (' '.join(args[:3]), e))
+            continue
+        if r.returncode == 0:
+            print('log: boot options set with ' + ' '.join(args[:4]), flush=True)
+            return
+        errors.append(((r.stderr or r.stdout).strip().splitlines() or [' '.join(args[:3]) + ' failed'])[-1])
+    fail('couldn\'t set the boot options: ' + ('; '.join(errors) or 'neither rpm-ostree nor ostree is installed'))
+
+
 def hibernate_setup():
     """Quick Resume through a power-off: hibernation needs swap on the drive at least as big as memory, and the
     kernel told where it is (resume= and resume_offset=). zram stays the everyday swap (higher priority)."""
@@ -524,9 +580,13 @@ def hibernate_setup():
                 if r.returncode != 0:
                     fail('couldn\'t make the swap file: ' + (r.stderr or r.stdout).strip())
     # SELinux only lets a file be swap with the swap label.
-    subprocess.run(['semanage', 'fcontext', '-a', '-t', 'swapfile_t', HIBERNATE_FILE], capture_output=True)   # kept after a relabel
-    subprocess.run(['restorecon', HIBERNATE_FILE], capture_output=True)
-    subprocess.run(['chcon', '-t', 'swapfile_t', HIBERNATE_FILE], capture_output=True)
+    # (Only where SELinux is: images without its tools skip this.)
+    for c in (['semanage', 'fcontext', '-a', '-t', 'swapfile_t', HIBERNATE_FILE],   # kept after a relabel
+              ['restorecon', HIBERNATE_FILE], ['chcon', '-t', 'swapfile_t', HIBERNATE_FILE]):
+        try:
+            subprocess.run(c, capture_output=True)
+        except OSError:
+            pass
     r = subprocess.run(['swapon', '-p', '1', HIBERNATE_FILE], capture_output=True, text=True)
     if r.returncode != 0 and 'busy' not in (r.stderr or ''):
         fail("couldn't turn on the space for keeping games (" + ((r.stderr or '').strip().splitlines() or ['swapon failed'])[-1] + ')')
@@ -548,10 +608,7 @@ def hibernate_setup():
     old = [a for a in cur if a.startswith('resume=') or a.startswith('resume_offset=')]
     want = [f'resume=UUID={uuid}', f'resume_offset={offset}']
     if sorted(old) != sorted(want):
-        args = ['rpm-ostree', 'kargs'] + [f'--delete-if-present={a}' for a in old] + [f'--append-if-missing={a}' for a in want]
-        r = subprocess.run(args, capture_output=True, text=True)
-        if r.returncode != 0:
-            fail('couldn\'t set the boot options: ' + (r.stderr or r.stdout).strip().splitlines()[-1:][0] if (r.stderr or r.stdout).strip() else 'couldn\'t set the boot options')
+        set_kargs(old, want)
     print(json.dumps({'ok': True, 'gb': gib, 'restart': sorted(old) != sorted(want)}))
 
 
@@ -1106,6 +1163,173 @@ def space(sub, args):
     os.execv(sys.executable, [sys.executable, helper, sub] + args)
 
 
+# ---------------------------------------------------------------------- moving to the new Hearth OS (Anatase)
+NEW_OS_IMAGE = 'ghcr.io/dragongamer9/hearth-os'
+# The editions the old Hearth can move to: edition -> (image, tags it has). Never a free-form image. The Beta
+# Experimental editions only have :testing, so that's what they get with or without --testing.
+NEW_OS_EDITIONS = {
+    'anatase': (NEW_OS_IMAGE, ('latest', 'testing')),
+    'ubuntu': ('ghcr.io/dragongamer9/hearth-ubuntu', ('testing',)),
+    'cachyos': ('ghcr.io/dragongamer9/hearth-cachyos', ('testing',)),
+    'peppermint': ('ghcr.io/dragongamer9/hearth-peppermint', ('testing',)),
+}
+# CachyOS' image is built for x86-64-v3: these processor features (the ones /proc/cpuinfo names) must be there.
+X86_64_V3_FLAGS = ('avx2', 'bmi2', 'fma', 'movbe')
+CLEAN_INSTALL = '/var/lib/hearth/clean-install.json'
+BAZZITE_INFO = '/usr/share/ublue-os/image-info.json'
+# What the new system's first start keeps (hearth-clean-install there does it; this is what the plan says).
+CLEAN_INSTALL_KEEPS = ['steam-library', 'steam-userdata', 'hearth-epic-gog-games', 'wine-prefixes', 'heroic-lutris-games',
+                       'hand-added-games']
+# Where Bazzite keeps the lists of Flatpak apps it puts on every device (the new system takes those off).
+BAZZITE_FLATPAK_LISTS = ['/usr/share/ublue-os/**/flatpak*/*install*', '/usr/share/ublue-os/**/*flatpak*.list',
+                         '/usr/share/ublue-os/**/system-flatpaks*', '/etc/ublue-os/*flatpak*.list']
+APP_ID = re.compile(r'^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){2,}$')
+
+
+def flatpak_ids(text):
+    """App ids from a Flatpak list ("app/org.foo.Bar/x86_64/stable", "org.foo.Bar", "org.foo.Bar//23.08",
+    comments); runtimes and extensions ("runtime/...") left out."""
+    out = []
+    for line in text.splitlines():
+        tok = line.split('#', 1)[0].strip().split()
+        if not tok:
+            continue
+        t = tok[0]
+        if t.startswith('runtime/'):
+            continue
+        if t.startswith('app/'):
+            t = t[4:]
+        t = t.split('/', 1)[0]
+        if APP_ID.match(t) and t not in out:
+            out.append(t)
+    return out
+
+
+def bazzite_flatpaks(patterns=None):
+    ids = []
+    for pat in patterns or BAZZITE_FLATPAK_LISTS:
+        for f in sorted(glob.glob(pat, recursive=True)):
+            try:
+                with open(f, errors='replace') as fh:
+                    ids += [i for i in flatpak_ids(fh.read()) if i not in ids]
+            except OSError:
+                continue
+    return ids
+
+
+def os_name():
+    try:
+        with open('/etc/os-release') as f:
+            for line in f:
+                if line.startswith('PRETTY_NAME='):
+                    return line.split('=', 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return 'Linux'
+
+
+def new_os_image(edition, testing=False):
+    """The image for an edition from the fixed list (None for anything else)."""
+    if edition not in NEW_OS_EDITIONS:
+        return None
+    repo, tags = NEW_OS_EDITIONS[edition]
+    tag = 'testing' if testing or 'latest' not in tags else 'latest'
+    return repo + ':' + tag
+
+
+def move_args(args):
+    """move-to-new-os's options: [--edition NAME] [--testing], each at most once. (edition, testing), or None."""
+    edition, testing, i = 'anatase', False, 0
+    seen = set()
+    while i < len(args):
+        a = args[i]
+        if a in seen:
+            return None
+        seen.add(a)
+        if a == '--testing':
+            testing = True
+            i += 1
+        elif a == '--edition' and i + 1 < len(args) and args[i + 1] in NEW_OS_EDITIONS:
+            edition = args[i + 1]
+            i += 2
+        else:
+            return None
+    return edition, testing
+
+
+def x86_64_v3(cpuinfo):
+    """Every processor in /proc/cpuinfo has the x86-64-v3 features CachyOS' image needs."""
+    flags = [set(line.split(':', 1)[1].split()) for line in cpuinfo.splitlines() if line.split(':', 1)[0].strip() == 'flags' and ':' in line]
+    return bool(flags) and all(all(f in fl for f in X86_64_V3_FLAGS) for fl in flags)
+
+
+def clean_install_plan(user, flatpaks, image, now=None, edition='anatase'):
+    """What the new Hearth OS does at its first start (/var/lib/hearth/clean-install.json, read by
+    hearth-clean-install there): which account, when, and that only games and saves are kept."""
+    return {
+        'version': 1,
+        'user': user.pw_name, 'uid': user.pw_uid, 'home': user.pw_dir,
+        'created': int(now if now is not None else time.time()),
+        'image': image, 'edition': edition, 'from': os_name(),
+        'keep': CLEAN_INSTALL_KEEPS,
+        'removeFlatpaks': flatpaks,
+        'oldFilesDays': 30,
+    }
+
+
+def move_to_new_os(edition='anatase', testing=False):
+    user = caller()
+    if not os.path.exists('/run/ostree-booted'):
+        fail('this only works on Hearth OS')
+    if not os.path.exists(BAZZITE_INFO) or os.path.exists('/usr/share/nimbus/image-info.json'):
+        fail('this Hearth OS is already the new one')
+    if user.pw_uid == 0:
+        fail('run this from your own account')
+    image = new_os_image(edition, testing)
+    if not image:
+        fail('unknown edition')
+    if edition == 'cachyos':
+        try:
+            with open('/proc/cpuinfo') as f:
+                ok = x86_64_v3(f.read())
+        except OSError:
+            ok = False
+        if not ok:
+            fail('Hearth OS on CachyOS needs a newer processor (x86-64-v3: AVX2, BMI2, FMA, MOVBE)')
+    print('log: Moving to ' + image, flush=True)
+    plan = clean_install_plan(user, bazzite_flatpaks(), image, edition=edition)
+    os.makedirs(os.path.dirname(CLEAN_INSTALL), mode=0o755, exist_ok=True)
+    tmp = CLEAN_INSTALL + '.tmp'
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
+        json.dump(plan, f, indent=2)
+    os.replace(tmp, CLEAN_INSTALL)
+    print('log: The new Hearth OS will keep your games and saves; your other files are put aside for 30 days', flush=True)
+    progress(0, 'Getting the new Hearth OS')
+    stage = Stage()
+    try:
+        if layered():
+            # Packages added on top of this system don't come along (it's a clean install): drop them, then move.
+            print('log: Taking off the packages added on top of this system', flush=True)
+            run_logged(['rpm-ostree', 'reset', '--overlays', '--overrides'])
+            rpm_ostree_upgrade(stage, ['rpm-ostree', 'rebase', 'ostree-unverified-registry:' + image])
+        else:
+            bootc_upgrade_with_progress(0, 100, stage, ['bootc', 'switch', image])
+    except (UpgradeFailed, SystemExit) as e:
+        try:
+            os.remove(CLEAN_INSTALL)
+        except OSError:
+            pass
+        if isinstance(e, SystemExit):
+            raise
+        fail("couldn't get the new Hearth OS: " + str(e)[:300])
+    done = 'Done. Restart to start the new Hearth OS.'
+    progress(100, done)
+    stage.emit(force=True, phase='done', pct=100.0, desc=done, staged=True)
+    st = bootc_status()
+    st.update({'moved': True, 'restart': True, 'image': image})
+    print(json.dumps(st))
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
     if cmd == 'tdp-info':
@@ -1130,6 +1354,8 @@ def main(argv):
         tdp(argv[2])
     elif cmd == 'hibernate-setup':
         hibernate_setup()
+    elif cmd == 'move-to-new-os' and move_args(argv[2:]):
+        move_to_new_os(*move_args(argv[2:]))
     elif cmd == 'seats-setup':
         seats_setup()
     elif cmd == 'seats-remove' and len(argv) in (2, 3) and argv[2:] in ([], ['--delete-users']):
@@ -1152,7 +1378,7 @@ def main(argv):
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
         os.execv(sys.executable, [sys.executable, helper, sub])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing]')
 
 
 if __name__ == '__main__':

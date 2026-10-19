@@ -147,6 +147,9 @@ settle() {
 reset_controllers() {
   [ -n "$HEARTH_SEAT" ] && return 0     # multi-seat: InputPlumber is shared, only player 1 resets it
   have busctl || return 0
+  # Only where InputPlumber runs (Bazzite). Hearth OS on Anatase uses Handheld Daemon, which Hearth never puts
+  # in a catching mode, so there's nothing to reset (and no InputPlumber to wake up over D-Bus).
+  busctl --system status org.shadowblip.InputPlumber >/dev/null 2>&1 || return 0
   for d in $(busctl --system --list tree org.shadowblip.InputPlumber 2>/dev/null | grep -o '/org/shadowblip/InputPlumber/CompositeDevice[0-9]*' | sort -u); do
     busctl --system set-property org.shadowblip.InputPlumber "$d" org.shadowblip.Input.CompositeDevice InterceptMode u 0 >/dev/null 2>&1
   done

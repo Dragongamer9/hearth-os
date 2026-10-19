@@ -6,6 +6,23 @@
 set -euo pipefail
 
 CONF=/etc/sddm.conf.d/zzz-nimbus-autologin.conf
+# Plasma Login Manager (Hearth OS on Anatase) instead of SDDM: one file, /etc/plasmalogin.conf, whose [Autologin]
+# section this rewrites (the rest of the file stays). Bazzite has no Plasma Login Manager, so nothing changes there.
+PLM=/etc/plasmalogin.conf
+plm_present() { [[ -e /usr/lib/systemd/system/plasmalogin.service || -e /usr/bin/plasmalogin ]]; }
+# set_plm USER SESSION RELOGIN: replaces (or adds) the [Autologin] section.
+set_plm() {
+  local tmp="$PLM.hearth-tmp"
+  if [[ -f $PLM ]]; then
+    awk 'BEGIN{skip=0} /^\[/{skip=($0=="[Autologin]")} !skip' "$PLM" > "$tmp"
+  else
+    : > "$tmp"
+  fi
+  printf '[Autologin]\nUser=%s\nSession=%s\nRelogin=%s\n' "$1" "$2" "$3" | cat - "$tmp" > "$tmp.2"
+  chmod 644 "$tmp.2"
+  mv "$tmp.2" "$PLM"
+  rm -f "$tmp"
+}
 # /etc/sddm.conf beats every file in sddm.conf.d. The live USB's set-up (livesys) writes an autologin into
 # it for Bazzite's KDE desktop, and Bazzite can too: take that section out, so Hearth's is the one used.
 strip_main_conf() {
@@ -19,12 +36,15 @@ if [[ -f /etc/nimbus/no-autologin ]]; then
   # Empty values override Bazzite's own autologin (into Steam), so the login screen really shows.
   printf '[Autologin]\nUser=\nSession=\nRelogin=false\n' > "$CONF.tmp"
   mv "$CONF.tmp" "$CONF"
+  if plm_present; then set_plm "" "" false; fi
   exit 0
 fi
 # The live USB signs in its "liveuser" (made by livesys at boot); an installed Hearth, the first account.
 if [[ -e /etc/hearth-live ]] && id liveuser >/dev/null 2>&1; then USER_NAME=liveuser
 else USER_NAME=$(id -nu 1000 2>/dev/null) || { echo "nimbus-autologin: no user yet"; exit 0; }
 fi
+
+if plm_present; then set_plm "$USER_NAME" nimbus.desktop true; fi
 
 cat > "$CONF.tmp" <<CONF
 [Autologin]

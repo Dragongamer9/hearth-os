@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """hearth-greeter-pad: the controller works on Hearth's login screen.
 
-While the login screen (sddm-greeter) is up, controller buttons become keys for it: the D-pad and left stick
+While the login screen (sddm-greeter, or Plasma Login Manager's greeter) is up, controller buttons become keys for it: the D-pad and left stick
 are the arrow keys, A is Enter, B is Backspace, Start is Enter, Y clears. Nothing happens at any other time
 (Hearth reads the controller itself once you're signed in). Runs as a system service (hearth-greeter-pad).
 """
@@ -30,7 +30,9 @@ def greeter_up():
             continue
         try:
             with open(f'/proc/{pid}/comm') as f:
-                if f.read().strip().startswith('sddm-greeter'):
+                # SDDM's greeter (Bazzite), or Plasma Login Manager's (Hearth OS on Anatase); /proc's names stop at
+                # 15 characters. Not the login managers themselves: they stay running during the session.
+                if f.read().strip().startswith(('sddm-greeter', 'plasmalogin-gre', 'plasma-login-gr')):
                     return True
         except OSError:
             pass

@@ -79,6 +79,17 @@ pub fn pad_events(buf: &[u8], state: &mut HashMap<&'static str, i32>) -> Vec<(&'
     out
 }
 
+/// Drops presses made while Guide is held (Handheld Daemon's Guide + A chord); Guide itself and every release
+/// still pass. `held` keeps whether Guide is down between reads.
+pub fn chord_filter(events: Vec<(&'static str, bool)>, held: &mut bool) -> Vec<(&'static str, bool)> {
+    let mut out = Vec::new();
+    for (b, down) in events {
+        if b == "guide" { *held = down; out.push((b, down)); }
+        else if !(*held && down) { out.push((b, down)); }
+    }
+    out
+}
+
 /// What the Guide button does: "guide", "view" (View held a second, if turned on) or "hotkey"; and every
 /// button while `buttons` is on (for the overlay).
 pub type OnPress = Arc<dyn Fn(&str) + Send + Sync>;
@@ -94,6 +105,10 @@ pub struct Guide {
     fds: Arc<Mutex<HashMap<String, i32>>>,
     pub hold_view: Arc<AtomicBool>,
     pub buttons: Arc<AtomicBool>,
+    /// Handheld Daemon (Hearth OS on Anatase): its Quick Access button sends Guide + A (Steam's chord for its
+    /// Quick Access menu), so buttons pressed while Guide is held aren't passed on (the A would pick the first
+    /// thing in Quick Access). Off with InputPlumber (Bazzite), where nothing changes.
+    pub chord_guard: Arc<AtomicBool>,
     open: Arc<Mutex<HashMap<String, String>>>,
     problems: Arc<Mutex<HashMap<String, String>>>,
     last_press: Arc<Mutex<u64>>,
@@ -102,7 +117,7 @@ pub struct Guide {
 impl Default for Guide { fn default() -> Self { Self::new() } }
 
 impl Guide {
-    pub fn new() -> Guide { Guide { fds: Arc::default(), hold_view: Arc::default(), buttons: Arc::default(), open: Arc::default(), problems: Arc::default(), last_press: Arc::default() } }
+    pub fn new() -> Guide { Guide { fds: Arc::default(), hold_view: Arc::default(), buttons: Arc::default(), chord_guard: Arc::default(), open: Arc::default(), problems: Arc::default(), last_press: Arc::default() } }
     /// For Settings › Controls: which devices are watched, and when Guide last came through.
     pub fn status(&self) -> Value {
         json!({"devices": self.open.lock().unwrap().values().cloned().collect::<Vec<_>>(),
@@ -144,13 +159,19 @@ impl Guide {
         let mut rest: Vec<u8> = Vec::new();
         let mut state = HashMap::new();
         let view_gen = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let mut guide_held = false;
         loop {
             let n = match f.read(&mut buf) { Ok(0) | Err(_) => break, Ok(n) => n };
             rest.extend_from_slice(&buf[..n]);
             let whole = rest.len() - rest.len() % EVENT_SIZE;
             let chunk: Vec<u8> = rest.drain(..whole).collect();
-            if self.buttons.load(Ordering::SeqCst) { for (b, down) in pad_events(&chunk, &mut state) { on_button(b, down); } }
-            else { pad_events(&chunk, &mut state); }
+            let presses = if self.chord_guard.load(Ordering::SeqCst) {
+                // One record at a time, so a press in the same read as Guide's is judged in order.
+                let mut all = Vec::new();
+                for rec in chunk.chunks_exact(EVENT_SIZE) { all.extend(chord_filter(pad_events(rec, &mut state), &mut guide_held)); }
+                all
+            } else { pad_events(&chunk, &mut state) };
+            if self.buttons.load(Ordering::SeqCst) { for (b, down) in presses { on_button(b, down); } }
             for rec in chunk.chunks_exact(EVENT_SIZE) {
                 let (ty, code, value) = (u16::from_le_bytes([rec[16], rec[17]]), u16::from_le_bytes([rec[18], rec[19]]), i32::from_le_bytes([rec[20], rec[21], rec[22], rec[23]]));
                 if ty != EV_KEY { continue; }
@@ -224,5 +245,16 @@ mod tests {
         let mut st = HashMap::new();
         let mut buf = ev(1, 0x130, 1); buf.extend(ev(3, 17, -1)); buf.extend(ev(3, 17, 0)); buf.extend(ev(3, 0, -30000)); buf.extend(ev(1, 0x130, 2));
         assert_eq!(pad_events(&buf, &mut st), vec![("a", true), ("up", true), ("up", false), ("left", true)]);
+    }
+    #[test]
+    fn handheld_daemon_chord() {
+        // HHD's Quick Access button: Guide down, A down, A up, Guide up. Only Guide (and the releases) pass.
+        let mut held = false;
+        let evs = vec![("guide", true), ("a", true), ("a", false), ("guide", false), ("b", true)];
+        assert_eq!(chord_filter(evs, &mut held), vec![("guide", true), ("a", false), ("guide", false), ("b", true)]);
+        assert!(!held);
+        let mut held = false;
+        assert_eq!(chord_filter(vec![("guide", true)], &mut held), vec![("guide", true)]);
+        assert_eq!(chord_filter(vec![("x", true)], &mut held), Vec::<(&str, bool)>::new());   // across reads
     }
 }

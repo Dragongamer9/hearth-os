@@ -1,0 +1,22 @@
+# Hearth OS on Anatase, only when the image build couldn't install Steam itself (os-bases/anatase/build.sh enables
+# this then): Flathub's Steam (com.valvesoftware.Steam, whose folders Hearth knows), installed as soon as the PC is
+# online, retried every few minutes until it is.
+[Unit]
+Description=Hearth: install Steam (Flathub)
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=!/usr/bin/steam
+ConditionPathExists=!/var/lib/flatpak/app/com.valvesoftware.Steam
+ConditionPathExists=!/etc/hearth/no-steam
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+ExecStart=/usr/bin/flatpak install --system --noninteractive -y flathub com.valvesoftware.Steam
+Restart=on-failure
+RestartSec=300
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

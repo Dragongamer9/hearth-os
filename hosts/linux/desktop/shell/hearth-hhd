@@ -1,0 +1,362 @@
+#!/usr/bin/python3
+"""hearth-hhd: Handheld Daemon (HHD), the controller and power service of Hearth OS on Anatase.
+
+HHD turns a handheld's buttons into the controller games see (and does TDP, fan, RGB). Its local API is a
+small HTTP server: on the socket /run/hhd/api (anyone on the device may use it, no token), and on
+127.0.0.1:5335 (with the token HHD writes to /tmp/hhd/token). Its state is a tree of settings, e.g.
+controllers.rog_ally.controller_mode.mode = uinput | dualsense | hori_steam | xbox_elite, or
+tdp.unified.tdp.mode = balanced | custom, tdp.unified.tdp.custom.tdp = 15; hhd.steamos.tdp_* say whether HHD
+manages the power limit and its range. Events (POST /api/v1/event) change things the way Steam does:
+{"type": "tdp", "tdp": 15} sets the power limit (HHD switches to its custom mode).
+
+Used by hearth-controller (Settings › Controls) and hearth-power (power limit and power mode), and on its own:
+
+  hearth-hhd status            JSON: is HHD running, its controllers, its power limit, and the extra controls
+                               Settings › Controls shows ("Handheld Daemon": gyro, back buttons, fan, lights)
+  hearth-hhd get [KEY ...]     JSON: the whole state flattened to dotted keys, or just these keys
+  hearth-hhd set KEY VALUE     change one of those extra controls (only those: see EXTRAS), then print status
+
+Only the settings in EXTRAS can be changed with "set", and only to a value HHD itself offers for this device
+(its settings tree says which): Hearth never writes anything else into HHD.
+
+Python standard library only. Output is one JSON line; failures print "error: ..." and exit 1.
+"""
+import http.client
+import json
+import os
+import re
+import socket
+import sys
+
+SOCKET = os.environ.get('HEARTH_HHD_SOCKET', '/run/hhd/api')
+PORT = int(os.environ.get('HEARTH_HHD_PORT', '5335'))
+TOKEN_FILES = ['/tmp/hhd/token', os.path.expanduser('~/.config/hhd/token'), os.path.expanduser('~/.config/hhd/.token')]
+TIMEOUT = 6
+
+
+class HhdError(RuntimeError):
+    pass
+
+
+class _UnixConnection(http.client.HTTPConnection):
+    def __init__(self, path, timeout):
+        super().__init__('localhost', timeout=timeout)
+        self.path_ = path
+
+    def connect(self):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(self.timeout)
+        s.connect(self.path_)
+        self.sock = s
+
+
+def _token():
+    for f in TOKEN_FILES:
+        try:
+            with open(f) as fh:
+                t = fh.read().strip()
+            if t:
+                return t
+        except OSError:
+            continue
+    return None
+
+
+def _send(conn, method, path, body, headers):
+    data = None if body is None else json.dumps(body).encode()
+    h = dict(headers)
+    if data is not None:
+        h['Content-Type'] = 'application/json'
+    conn.request(method, path, body=data, headers=h)
+    r = conn.getresponse()
+    raw = r.read()
+    conn.close()
+    if r.status != 200:
+        text = raw.decode(errors='replace').strip().splitlines()
+        raise HhdError('Handheld Daemon answered %d%s' % (r.status, (': ' + text[-1]) if text else ''))
+    if not raw.strip():
+        return {}
+    try:
+        return json.loads(raw)
+    except ValueError:
+        raise HhdError('Handheld Daemon sent something unreadable')
+
+
+def request(method, path, body=None, timeout=TIMEOUT):
+    """One call to HHD's API: the socket first, then the local port (with the token)."""
+    errors = []
+    if os.path.exists(SOCKET):
+        try:
+            return _send(_UnixConnection(SOCKET, timeout), method, path, body, {})
+        except HhdError:
+            raise
+        except (OSError, http.client.HTTPException) as e:
+            errors.append('%s: %s' % (SOCKET, e))
+    token = _token()
+    headers = {'Authorization': 'Bearer ' + token} if token else {}
+    try:
+        return _send(http.client.HTTPConnection('127.0.0.1', PORT, timeout=timeout), method, path, body, headers)
+    except HhdError:
+        raise
+    except (OSError, http.client.HTTPException) as e:
+        errors.append('port %d: %s' % (PORT, e))
+    raise HhdError('Handheld Daemon is not running (' + '; '.join(errors) + ')')
+
+
+def available():
+    """Is Handheld Daemon running here? (Extra multi-seat players leave the shared device service alone.)"""
+    if os.environ.get('HEARTH_SEAT'):
+        return False
+    try:
+        return 'version' in request('GET', '/api/v1/version', timeout=3)
+    except HhdError:
+        return False
+
+
+def state(poll=False):
+    """HHD's settings as they are; poll waits for its next loop (after a change, to see what it made of it)."""
+    return request('GET', '/api/v1/state' + ('?poll' if poll else ''), timeout=TIMEOUT + 4 if poll else TIMEOUT)
+
+
+def settings():
+    return request('GET', '/api/v1/settings')
+
+
+def set_state(changes):
+    """Changes some settings (dotted keys); HHD applies them in its next loop and returns the new state."""
+    return request('POST', '/api/v1/state', changes, timeout=15)
+
+
+def event(ev, wait=True):
+    """Sends an event; with wait, returns the state after HHD handled it."""
+    return request('POST', '/api/v1/event' + ('?result' if wait else ''), ev, timeout=15)
+
+
+def unroll(d, prefix=''):
+    """{'a': {'b': 1}} -> {'a.b': 1} (HHD's own flattening)."""
+    out = {}
+    if isinstance(d, dict):
+        for k, v in d.items():
+            key = '%s.%s' % (prefix, k) if prefix else str(k)
+            if isinstance(v, dict):
+                out.update(unroll(v, key))
+            else:
+                out[key] = v
+    return out
+
+
+# ---------------------------------------------------------------------- controllers
+def controllers(st, sets=None):
+    """The handheld controllers HHD manages: [{key, name, mode, modes, children, nintendo, swapXbox}].
+    key is the part after 'controllers.' (rog_ally, legion_go, handheld...); modes are the emulation types this
+    device offers (from HHD's settings tree), children the options of each."""
+    sets = sets or {}
+    out = []
+    for key, val in sorted((st.get('controllers') or {}).items()):
+        if not isinstance(val, dict) or not isinstance(val.get('controller_mode'), dict):
+            continue
+        dset = ((sets.get('controllers') or {}).get(key) or {})
+        modes_tree = (((dset.get('children') or {}).get('controller_mode') or {}).get('modes') or {})
+        modes = list(modes_tree) or [m for m in val['controller_mode'] if m != 'mode']
+        children = {m: list(((modes_tree.get(m) or {}).get('children') or {})) for m in modes}
+        for m in modes:
+            if not children[m] and isinstance(val['controller_mode'].get(m), dict):
+                children[m] = list(val['controller_mode'][m])
+        out.append({'key': key, 'name': dset.get('title') or key.replace('_', ' ').title(), 'mode': val['controller_mode'].get('mode'),
+                    'modes': modes, 'children': children, 'nintendo': val.get('nintendo_mode'), 'swapXbox': val.get('swap_xbox')})
+    return out
+
+
+# ---------------------------------------------------------------------- power limit and power mode
+def tdp_info(st, sets=None):
+    """HHD's power limit: {status, enabled, min, max, default, mode, watts, driver, modes}. watts is set only in
+    HHD's custom mode (its other modes are platform profiles)."""
+    u = unroll(st)
+    status = u.get('hhd.steamos.tdp_status')
+    out = {'status': status, 'enabled': status == 'enabled' and bool(u.get('hhd.steamos.tdp_max')),
+           'min': u.get('hhd.steamos.tdp_min'), 'max': u.get('hhd.steamos.tdp_max'), 'default': u.get('hhd.steamos.tdp_default'),
+           'mode': None, 'watts': None, 'driver': None, 'modes': []}
+    for k in sorted(u):
+        m = re.match(r'^tdp\.([^.]+)\.tdp\.mode$', k)
+        if m:
+            out['driver'], out['mode'] = m.group(1), u[k]
+            break
+    if out['driver']:
+        w = u.get('tdp.%s.tdp.custom.tdp' % out['driver'])
+        if out['mode'] == 'custom' and isinstance(w, (int, float)):
+            out['watts'] = int(w)
+        tree = (((sets or {}).get('tdp') or {}).get(out['driver']) or {})
+        out['modes'] = list((((tree.get('children') or {}).get('tdp') or {}).get('modes') or {}))
+    return out
+
+
+def set_tdp(watts):
+    """Sets the power limit the way Steam does through HHD; returns the watts HHD now has."""
+    after = event({'type': 'tdp', 'tdp': int(watts)})
+    info = tdp_info(after) if after else tdp_info(state())
+    return info['watts']
+
+
+# Hearth's power modes → HHD's platform-profile modes (the first one this device has).
+MODE_NAMES = {'power-saver': ['low-power', 'quiet'], 'balanced': ['balanced'], 'performance': ['performance']}
+
+
+def hearth_mode(hhd_mode):
+    for ours, theirs in MODE_NAMES.items():
+        if hhd_mode in theirs:
+            return ours
+    return None
+
+
+def set_mode(name):
+    info = tdp_info(state(), settings())
+    if not info['driver']:
+        raise HhdError("Handheld Daemon doesn't manage power modes on this device")
+    pick = next((m for m in MODE_NAMES.get(name, []) if m in info['modes'] or not info['modes']), None)
+    if not pick:
+        raise HhdError('this device has no ' + name + ' mode')
+    set_state({'tdp.%s.tdp.mode' % info['driver']: pick})
+    return pick
+
+
+# ---------------------------------------------------------------------- extra controls (Settings › Controls)
+# The few HHD settings Hearth shows, as patterns over HHD's dotted keys: (pattern, group, label, hint). The
+# value types and choices come from HHD's own settings tree for this device, so nothing is offered that the
+# device doesn't have. Back buttons: only for the emulation mode in use. Lights: the mode only (HHD keeps the
+# colour). Fan: only "full speed" (a fan curve is HHD's to edit).
+EXTRAS = [
+    (r'^controllers\.[^.]+\.imu$', 'controller', 'Motion controls (gyro)', 'Games that support gyro aiming can use it'),
+    (r'^controllers\.[^.]+\.controller_mode\.(?P<mode>[^.]+)\.paddles_as$', 'controller', 'Back buttons', 'What the extra buttons on the back do'),
+    (r'^controllers\.[^.]+\.controller_mode\.(?P<mode>[^.]+)\.noob_mode$', 'controller', 'Back buttons as keyboard', 'Left back button opens the keyboard'),
+    (r'^controllers\.[^.]+\.swap_xbox$', 'controller', 'Swap Guide and Quick Access buttons', 'For a handheld whose Guide button is in an awkward place'),
+    (r'^controllers\.[^.]+\.swap_armory$', 'controller', 'Swap the side buttons with View and Menu', ''),
+    (r'^controllers\.[^.]+\.swap_guide$', 'controller', 'Swap Guide with View and Menu', ''),
+    (r'^tdp\.[^.]+\.fan_full_speed$', 'fan', 'Fan at full speed', 'Cooler and louder; the power limit still applies'),
+    (r'^rgb\.[^.]+\.mode\.mode$', 'lights', 'Lights', 'The lights around the sticks'),
+]
+
+
+def setting_node(sets, key):
+    """The entry in HHD's settings tree for a dotted state key (None when there's none). The first two parts
+    are the section and the plugin's entry; below that, containers have "children" and modes have "modes" (the
+    key "<mode setting>.mode" is the mode choice itself)."""
+    parts = key.split('.')
+    if len(parts) < 3 or not isinstance(sets, dict):
+        return None
+    node = (sets.get(parts[0]) or {}).get(parts[1]) if isinstance(sets.get(parts[0]), dict) else None
+    rest = parts[2:]
+    for i, part in enumerate(rest):
+        if not isinstance(node, dict):
+            return None
+        if node.get('type') == 'mode':
+            if part == 'mode' and i == len(rest) - 1:
+                return node
+            node = (node.get('modes') or {}).get(part)
+        else:
+            node = (node.get('children') or {}).get(part)
+    return node if isinstance(node, dict) else None
+
+
+def _title(v, fallback):
+    if isinstance(v, dict):
+        v = v.get('title')
+    return str(v) if isinstance(v, str) and v.strip() else fallback
+
+
+def control(key, node, value):
+    """One control for the page: bool (a switch) or choice (a list), from the settings tree entry."""
+    t = node.get('type')
+    if t == 'bool' and isinstance(value, bool):
+        return {'key': key, 'kind': 'bool', 'value': value}
+    if t == 'multiple' and isinstance(node.get('options'), dict):
+        opts = [{'id': str(k), 'label': _title(v, str(k))} for k, v in node['options'].items()]
+    elif t == 'mode' and key.endswith('.mode') and isinstance(node.get('modes'), dict):
+        opts = [{'id': str(k), 'label': _title(v, str(k))} for k, v in node['modes'].items()]
+    else:
+        return None
+    if not opts or str(value) not in [o['id'] for o in opts]:
+        return None
+    return {'key': key, 'kind': 'choice', 'value': str(value), 'options': opts}
+
+
+def extras(st, sets):
+    """The extra controls this device has right now (see EXTRAS), in EXTRAS order."""
+    u = unroll(st)
+    out = []
+    for pat, group, label, hint in EXTRAS:
+        for key in sorted(u):
+            m = re.match(pat, key)
+            if not m:
+                continue
+            mode = m.groupdict().get('mode')
+            if mode and u.get(key.split('.controller_mode.')[0] + '.controller_mode.mode') != mode:
+                continue   # back buttons of an emulation mode that isn't in use
+            node = setting_node(sets, key)
+            c = control(key, node, u[key]) if node else None
+            if c:
+                c.update({'group': group, 'label': label, 'hint': hint})
+                out.append(c)
+    return out
+
+
+def parse_value(text):
+    """The command line's VALUE: true/false, or an option id."""
+    t = str(text).strip()
+    if t.lower() in ('true', 'on', '1'):
+        return True
+    if t.lower() in ('false', 'off', '0'):
+        return False
+    return t
+
+
+def check_change(controls, key, value):
+    """Is this a change Hearth may make? Returns the value to send, or raises HhdError."""
+    c = next((x for x in controls if x['key'] == key), None)
+    if not c:
+        raise HhdError("Hearth can't change that setting here")
+    if c['kind'] == 'bool':
+        if not isinstance(value, bool):
+            raise HhdError('that setting is on or off')
+        return value
+    if str(value) not in [o['id'] for o in c['options']]:
+        raise HhdError('not one of the choices for that setting')
+    return str(value)
+
+
+def set_extra(key, value):
+    st, sets = state(), settings()
+    v = check_change(extras(st, sets), key, value)
+    set_state({key: v})
+    return status()
+
+
+def status():
+    if not available():
+        return {'running': False}
+    st, sets = state(), settings()
+    return {'running': True, 'controllers': controllers(st, sets), 'tdp': tdp_info(st, sets), 'controls': extras(st, sets)}
+
+
+def main(argv):
+    cmd, args = (argv[1] if len(argv) > 1 else 'status'), argv[2:]
+    try:
+        if cmd == 'status' and not args:
+            out = status()
+        elif cmd == 'get':
+            u = unroll(state())
+            out = {k: u.get(k) for k in args} if args else u
+        elif cmd == 'set' and len(args) == 2:
+            if not available():
+                raise HhdError('Handheld Daemon is not running')
+            out = set_extra(args[0], parse_value(args[1]))
+        else:
+            print('usage: hearth-hhd status | get [KEY ...] | set KEY VALUE')
+            sys.exit(2)
+    except HhdError as e:
+        print('error: ' + str(e))
+        sys.exit(1)
+    print(json.dumps(out))
+
+
+if __name__ == '__main__':
+    main(sys.argv)

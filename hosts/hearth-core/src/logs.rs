@@ -69,9 +69,10 @@ pub fn report(version: &str) -> String {
     section("Games and processes", sh("ps -eo pid,ppid,stat,etime,comm --sort=start_time | tail -60"));
     section("Power (hearth-power)", sh("python3 /usr/share/nimbus/desktop/shell/hearth-power status"));
     section("Controllers (InputPlumber)", sh("busctl --system --list tree org.shadowblip.InputPlumber | head -40; for d in $(busctl --system --list tree org.shadowblip.InputPlumber | grep -o '/org/shadowblip/InputPlumber/CompositeDevice[0-9]*' | sort -u); do echo \"$d\"; busctl --system get-property org.shadowblip.InputPlumber $d org.shadowblip.Input.CompositeDevice Name InterceptMode ProfileName 2>&1 | sed 's/^/  /'; done"));
+    section("Controllers and power (Handheld Daemon)", crate::hhd::report());
     section("gamescope", sh("xprop -root | grep -E '^GAMESCOPE|^GAMESCOPECTRL' | cut -c1-300"));
     section("Bluetooth", sh("bluetoothctl devices; bluetoothctl show | grep -E 'Powered|Discoverable|Pairable'"));
-    section("System journal: controllers, power, display (this boot)", sh("journalctl -b --no-pager -n 400 -u inputplumber -u steamos-manager -u powerstation -u bluetooth -u tuned -u tuned-ppd"));
+    section("System journal: controllers, power, display (this boot)", sh("journalctl -b --no-pager -n 400 -u inputplumber -u hhd -u steamos-manager -u powerstation -u bluetooth -u tuned -u tuned-ppd"));
     section("System journal: errors (this boot)", sh("journalctl -b --no-pager -p err -n 200"));
     section("Your session's journal (this boot)", sh("journalctl --user -b --no-pager -n 800"));
     let user = std::env::var("USER").unwrap_or_default();

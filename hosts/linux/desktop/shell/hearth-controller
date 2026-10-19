@@ -9,7 +9,13 @@ InputPlumber is what turns the handheld's buttons into the controller games see.
   hearth-controller set BUTTON TO     remap one button ("" = back to default), then apply; prints status
   hearth-controller type TYPE         the controller type games see ("" = automatic), then apply; prints status
   hearth-controller preset nintendo   swap A/B and X/Y, then apply; prints status
+  hearth-controller preset standard   undo that swap, then apply; prints status
   hearth-controller watch     keep it applied (controllers reconnect after sleep, InputPlumber restarts)
+
+On Hearth OS on Anatase the built-in controller belongs to Handheld Daemon (HHD) instead, and when InputPlumber
+isn't running this uses HHD (through desktop/shell/hearth-hhd): the controller type becomes HHD's controller
+emulation and the Nintendo layout its Nintendo mode. HHD can't remap single buttons from outside, so those are
+out of reach (status says backend "hhd", lists no buttons, and has "nintendo": whether that layout is on).
 
 controller.json: {"map": {"<button>": "<button>" | "key:<Key...>[+<Key...>]" | "none"}, "target": "" | "xbox-elite" | ...}
 Buttons and keys are InputPlumber's names (South = A, East = B, West = X, North = Y, LeftPaddle1 = left back
@@ -161,6 +167,156 @@ def device_default_targets(name):
     return ['xbox-elite', 'mouse', 'keyboard']
 
 
+# ---------------------------------------------------------------------- Handheld Daemon (Hearth OS on Anatase)
+_HHD = None
+
+
+def hhd():
+    """desktop/shell/hearth-hhd, loaded on first use (it sits next to this file)."""
+    global _HHD
+    if _HHD is None:
+        import importlib.machinery
+        import importlib.util
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hearth-hhd')
+        loader = importlib.machinery.SourceFileLoader('hearth_hhd', path)
+        spec = importlib.util.spec_from_loader('hearth_hhd', loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        _HHD = mod
+    return _HHD
+
+
+def hhd_running():
+    try:
+        return hhd().available()
+    except (OSError, ImportError, SyntaxError):
+        return False
+
+
+# Hearth's controller types → HHD's emulation modes, the first one this device offers wins (Anatase turns on
+# HHD's Steam Controller emulation, which replaces its Xbox Elite one), with options of that mode.
+HHD_TYPES = {
+    'xbox-series': [('uinput', {})],
+    'xbox-elite': [('xbox_elite', {}), ('uinput', {'paddles_as': 'steam_input'})],
+    'ds5': [('dualsense', {'paddles_as': 'touchpad'})],
+    'ds5-edge': [('dualsense', {'paddles_as': 'steam_input'})],
+    'deck': [('hori_steam', {})],
+}
+NINTENDO = {'South': 'East', 'East': 'South', 'West': 'North', 'North': 'West'}
+HHD_ONE_BUTTON = ("Handheld Daemon runs this controller, and it can't change single buttons from outside. Here you "
+                  "can pick the controller type and the Nintendo layout; more under Handheld Daemon below.")
+
+
+def is_nintendo(m):
+    return all(m.get(k) == v for k, v in NINTENDO.items())
+
+
+def hhd_state_path():
+    base = os.environ.get('XDG_STATE_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'state')
+    return os.path.join(base, 'nimbus', 'hhd-controller.json')
+
+
+def hhd_originals():
+    """HHD's emulation mode per device before Hearth first changed it (what Automatic goes back to)."""
+    try:
+        with open(hhd_state_path()) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def hhd_save_originals(d):
+    p = hhd_state_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p + '.tmp', 'w') as f:
+        json.dump(d, f)
+    os.replace(p + '.tmp', p)
+
+
+def hhd_pick(kind, modes):
+    """(mode, options) for one of Hearth's controller types on a device offering these modes, or None."""
+    return next(((m, x) for m, x in HHD_TYPES.get(kind, []) if m in modes), None)
+
+
+def hhd_types(devs):
+    modes = {m for d in devs for m in d['modes']}
+    out = [('', 'Automatic', "Handheld Daemon's choice for this device")]
+    out += [(i, l, s) for i, l, s in TYPES if i and hhd_pick(i, modes)]
+    return out
+
+
+def hhd_changes(dev, conf, current, original, reset=False):
+    """The HHD settings (dotted keys) that make this device match your settings, leaving out what already does.
+    The Nintendo layout is only touched when it's part of your settings (or on reset), so a choice made in HHD's
+    own settings isn't undone by picking a controller type here."""
+    base = 'controllers.' + dev['key']
+    ch = {}
+    t = conf.get('target') or ''
+    pick = hhd_pick(t, dev['modes']) if t else None
+    if pick:
+        mode, extra = pick
+        ch[base + '.controller_mode.mode'] = mode
+        for k, v in extra.items():
+            if k in dev['children'].get(mode, []):
+                ch['%s.controller_mode.%s.%s' % (base, mode, k)] = v
+    elif not t and original and original in dev['modes']:
+        ch[base + '.controller_mode.mode'] = original
+    m = conf.get('map') or {}
+    if dev.get('nintendo') is not None and (reset or any(k in m for k in NINTENDO)):
+        ch[base + '.nintendo_mode'] = is_nintendo(m)
+    return {k: v for k, v in ch.items() if current.get(k) != v}
+
+
+def hhd_status():
+    h = hhd()
+    st, sets = h.state(), h.settings()
+    devs = h.controllers(st, sets)
+    out = {'available': bool(devs), 'backend': 'hhd', 'config': load_conf(), 'error': None if devs else "Handheld Daemon doesn't manage a controller here",
+           'devices': [{'path': 'hhd:controllers.' + d['key'], 'name': d['name'] + ' (Handheld Daemon)', 'profile': d['mode'] or '', 'capabilities': []} for d in devs]}
+    out.update(choices([]))
+    out['buttons'] = []   # single buttons: not through HHD
+    out['types'] = [{'id': i, 'label': l, 'sub': s} for i, l, s in hhd_types(devs)]
+    out['nintendo'] = any(d.get('nintendo') for d in devs)
+    out['note'] = HHD_ONE_BUTTON
+    return out
+
+
+def hhd_apply(conf=None, forget=False):
+    h = hhd()
+    conf = conf or load_conf()
+    st = h.state()
+    devs = h.controllers(st, h.settings())
+    if not devs:
+        raise RuntimeError("Handheld Daemon doesn't manage a controller here")
+    cur = h.unroll(st)
+    orig = {} if forget else hhd_originals()
+    old = hhd_originals()
+    changes = {}
+    for d in devs:
+        ch = hhd_changes(d, conf, cur, old.get(d['key']) if forget else orig.get(d['key']), reset=forget)
+        if not forget and ch.get('controllers.%s.controller_mode.mode' % d['key']) and d['key'] not in orig and d['mode']:
+            orig[d['key']] = d['mode']   # remember HHD's own choice before the first change
+        changes.update(ch)
+    if orig and not forget:
+        hhd_save_originals(orig)
+    if changes:
+        try:
+            h.set_state(changes)
+        except h.HhdError as e:
+            raise RuntimeError(str(e))
+    if forget:
+        try:
+            os.remove(hhd_state_path())
+        except OSError:
+            pass
+
+
+def use_hhd():
+    """InputPlumber first (Bazzite, unchanged); Handheld Daemon when it runs instead (Anatase)."""
+    return not available() and hhd_running()
+
+
 # ---------------------------------------------------------------------- InputPlumber over D-Bus
 def busctl(*args, timeout=10):
     r = subprocess.run(['busctl', '--system', *args], capture_output=True, text=True, timeout=timeout)
@@ -240,7 +396,13 @@ def status():
         out['devices'] = [info(p) for p in devices()]
         out['available'] = True
     except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
-        out['error'] = str(e).splitlines()[-1] if str(e) else 'InputPlumber is not running'
+        if hhd_running():
+            try:
+                return hhd_status()
+            except Exception as he:   # noqa: BLE001 - say what HHD said rather than crash Settings
+                out['error'] = 'Handheld Daemon: ' + (str(he).splitlines()[-1] if str(he) else 'no answer')
+        else:
+            out['error'] = str(e).splitlines()[-1] if str(e) else 'InputPlumber is not running'
     out.update(choices([c for d in out['devices'] for c in d['capabilities']]))
     return out
 
@@ -250,6 +412,8 @@ def cmd_status():
 
 
 def apply_all():
+    if use_hhd():
+        return hhd_apply()
     conf, base = load_conf(), default_mapping()
     errors = []
     for p in devices():
@@ -267,6 +431,8 @@ def cmd_set(button, to):
         raise RuntimeError('unknown button ' + button)
     if not valid_target(to):
         raise RuntimeError('unknown target ' + to)
+    if use_hhd():
+        raise RuntimeError(HHD_ONE_BUTTON)
     conf = load_conf()
     if not to or to == button:
         conf['map'].pop(button, None)
@@ -278,7 +444,7 @@ def cmd_set(button, to):
 
 
 def cmd_type(kind):
-    if kind and kind not in TARGETS:
+    if kind and kind not in TARGETS and kind not in HHD_TYPES:
         raise RuntimeError('unknown controller type ' + kind)
     conf = load_conf()
     conf['target'] = kind
@@ -288,12 +454,23 @@ def cmd_type(kind):
 
 
 def cmd_preset(name):
-    if name != 'nintendo':
+    if name not in ('nintendo', 'standard'):
         raise RuntimeError('unknown preset ' + name)
     conf = load_conf()
-    conf['map'].update({'South': 'East', 'East': 'South', 'West': 'North', 'North': 'West'})
+    if name == 'nintendo':
+        conf['map'].update(NINTENDO)
+    else:
+        # A, B, X, Y back where they are. Written as "A is A" for the moment of applying, so Handheld Daemon is
+        # told to turn its Nintendo mode off too; those entries are taken out again afterwards.
+        for k, v in NINTENDO.items():
+            if conf['map'].get(k) in (v, None):
+                conf['map'][k] = k
     save_conf(conf)
-    apply_all()
+    try:
+        apply_all()
+    finally:
+        conf['map'] = {k: v for k, v in conf['map'].items() if v != k}
+        save_conf(conf)
     cmd_status()
 
 
@@ -308,6 +485,10 @@ def cmd_reset():
         os.remove(path)
     except OSError:
         pass
+    if use_hhd():
+        hhd_apply({'map': {}, 'target': ''}, forget=True)
+        cmd_status()
+        return
     apply_all()
     cmd_status()
 
@@ -344,7 +525,7 @@ def main(argv):
         elif cmd == 'preset' and len(args) == 1:
             cmd_preset(args[0])
         else:
-            print('usage: hearth-controller status|apply|reset|watch | set BUTTON [TO] | type [TYPE] | preset nintendo')
+            print('usage: hearth-controller status|apply|reset|watch | set BUTTON [TO] | type [TYPE] | preset nintendo|standard')
             sys.exit(2)
     except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
         print('error: ' + (str(e).splitlines()[-1] if str(e) else 'InputPlumber is not running'))

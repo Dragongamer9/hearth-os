@@ -383,6 +383,16 @@ impl Bridge {
             }
             "controller.preset" => crate::guide::controller(&["preset", &req("name")?]),
             "controller.reset" => crate::guide::controller(&["reset"]),
+            // Settings › Controls › Handheld Daemon (Hearth OS on Anatase): gyro, back buttons, fan, lights.
+            "hhd.status" => Ok(crate::hhd::status()),
+            "hhd.set" => crate::hhd::set(&req("key")?, &a["value"]),
+            // Settings › Updates: the new Hearth OS (on Anatase) as a clean install that keeps your games, from the
+            // Bazzite-based one; and on the new one, Settings › System: the files put aside (~/.old-hearth-<date>).
+            "newos.status" => { let id = self.cur_id.clone(); crate::space::answer_later(id, || Ok(crate::newos::status())); Ok(json!(DEFERRED)) }
+            "newos.move" => crate::newos::start(self.emit.clone(), a["edition"].as_str().unwrap_or("anatase"), a["testing"] == true),
+            "oldfiles.status" => Ok(crate::newos::old_files_status()),
+            "oldfiles.delete" => { let (id, name) = (self.cur_id.clone(), req("name")?); crate::space::answer_later(id, move || crate::newos::delete(&name)); Ok(json!(DEFERRED)) }
+            "oldfiles.restore" => crate::newos::restore(&req("name")?, &req("item")?),
             // Web browsers: Aloha (downloaded on the device) and Hearth Browser (Hearth's own)
             "browser.status" => Ok(self.browser_status()),
             "browser.act" => { self.browser_act(&req("action")?)?; Ok(self.browser_status()) }

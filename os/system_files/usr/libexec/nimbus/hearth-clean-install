@@ -1,0 +1,576 @@
+#!/usr/bin/python3
+"""hearth-clean-install: the first start of a new Hearth OS (on Anatase, or the Beta Experimental Ubuntu, CachyOS
+or Peppermint editions) after "Move to a new Hearth OS" (hearth-admin move-to-new-os on the old, Bazzite-based
+Hearth). Makes it a clean install that keeps your games.
+
+Runs once at boot, as root, before the login screen (hearth-clean-install.service, enabled in every new edition's
+image), and only when /var/lib/hearth/clean-install.json exists (written by move-to-new-os: which account, when,
+what's kept) on one of the new editions (/usr/share/nimbus/image-info.json; never on the Bazzite-based system, so
+going back to it from the boot menu before this ran leaves everything as it was).
+Every step is safe to run again: if the PC loses power halfway, the next start carries on where it stopped
+(the steps done are in /var/lib/hearth/clean-install-state.json). Everything it does is logged to the journal
+(journalctl -u hearth-clean-install).
+
+  1. etc   /etc back to the new system's defaults (/usr/etc), except what keeps you signed in, online and
+           booting: accounts and passwords, the drives (fstab, crypttab, LVM), the device name, machine id, time
+           zone, language and keyboard, Wi-Fi networks, SSH host keys, SELinux's store, ostree's remotes and the
+           registry sign-ins bootc uses. Files the new system doesn't have are moved to
+           /var/lib/hearth/old-etc-<date> (not deleted). On the editions that aren't Fedora-based (Ubuntu,
+           CachyOS, Peppermint) the account files start from the new system's own, with your account, its
+           password and groups added (Fedora's system accounts and group numbers don't fit those systems).
+  2. var   Bazzite-only leftovers in /var: its preinstalled Flatpak apps (the list move-to-new-os found), Waydroid's
+           Android images, Bazzite's markers.
+  3. home  In your home folder only your games stay where they are:
+             Steam: steamapps (games, Proton prefixes in compatdata, shader caches) and userdata (saves, settings)
+             Hearth's Epic and GOG games (the install folder's Epic, GOG and Lutris folders and every game folder
+               Hearth's records point to) and their Wine prefixes (~/.local/share/nimbus/prefixes), with the
+               records Hearth needs to find them (legendary's installed.json and metadata; library.json, trimmed
+               to installRoot, gogInstalls and manual)
+             Heroic's and Lutris' game folders (Heroic's ~/Games/Heroic and its installed lists, Lutris' pga.db)
+             ~/.steam's links to the Steam folder (so the new system's Steam finds the games there)
+             games you added to Hearth yourself (their folder under the install folder, or just the file)
+           Everything else is MOVED (not deleted) to ~/.old-hearth-<date>, with a list of what came from where
+           (.hearth-old-files.json). Hearth offers "Delete now" and "Restore a folder" in Settings › System, and
+           deletes it by itself after 30 days. Steam libraries outside your home folder aren't touched.
+  4. done  The plan is renamed to clean-install.done.json, so this never runs again.
+
+  hearth-clean-install [--dry-run] [--root DIR]   (--root: a fake system for tests)
+"""
+import datetime
+import errno
+import filecmp
+import fnmatch
+import json
+import os
+import pwd
+import shutil
+import sqlite3
+import stat
+import subprocess
+import sys
+import time
+
+ROOT = '/'
+PLAN = 'var/lib/hearth/clean-install.json'
+DONE = 'var/lib/hearth/clean-install.done.json'
+STATE = 'var/lib/hearth/clean-install-state.json'
+OLD_HOME_PREFIX = '.old-hearth-'
+MANIFEST = '.hearth-old-files.json'
+KEEP_DAYS = 30
+
+# /etc entries kept as they are (relative to /etc; a folder keeps everything in it; shell patterns allowed).
+KEEP_ETC = [
+    'passwd', 'passwd-', 'group', 'group-', 'shadow', 'shadow-', 'gshadow', 'gshadow-', 'subuid', 'subuid-',
+    'subgid', 'subgid-', '.pwd.lock', 'fstab', 'crypttab', 'hostname', 'machine-id', 'machine-info', 'localtime',
+    'adjtime', 'locale.conf', 'vconsole.conf', 'X11/xorg.conf.d/00-keyboard.conf', 'NetworkManager/system-connections',
+    'ssh/ssh_host_*', 'resolv.conf', 'selinux', 'ostree', 'containers/auth.json', 'lvm', 'mdadm.conf', 'iscsi',
+    '.updated', 'ld.so.cache', 'pki/entitlement',
+]
+# The account files: on the editions that aren't Fedora-based, merged (merge_accounts) instead of kept.
+ACCOUNT_FILES = ('passwd', 'group', 'shadow', 'gshadow')
+ACCOUNT_KEEP = {'passwd', 'passwd-', 'group', 'group-', 'shadow', 'shadow-', 'gshadow', 'gshadow-'}
+# Kept on Fedora-based Anatase, but the new system's own (or none) on the others: ld.so's cache lists Fedora's
+# library folders, and those systems don't use SELinux.
+FEDORA_ONLY_KEEP = {'ld.so.cache', 'selinux'}
+# The editions that aren't Fedora-based (the base in /usr/share/nimbus/image-info.json).
+OTHER_FAMILY = ('ubuntu', 'cachyos', 'peppermint')
+OWN_INFO = 'usr/share/nimbus/image-info.json'
+# Bazzite-only things in /var (relative to /var), removed.
+BAZZITE_VAR = ['lib/waydroid', 'lib/bazzite*', 'lib/ublue-os', 'cache/ublue-os', 'lib/inputplumber']
+
+DRY = False
+
+
+def log(msg):
+    print(('(dry run) ' if DRY else '') + msg, flush=True)
+
+
+def p(*parts):
+    return os.path.join(ROOT, *parts)
+
+
+def read_json(path, default=None):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def write_json(path, data, mode=0o644):
+    if DRY:
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode), 'w') as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
+
+
+def matches(rel, patterns):
+    """rel (a/b/c) is one of the patterns, or inside a folder that is."""
+    parts = rel.split('/')
+    for i in range(1, len(parts) + 1):
+        head = '/'.join(parts[:i])
+        if any(fnmatch.fnmatchcase(head, pat) for pat in patterns):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------- 1. /etc
+def same(a, b):
+    try:
+        sa, sb = os.lstat(a), os.lstat(b)
+    except OSError:
+        return False
+    if stat.S_IFMT(sa.st_mode) != stat.S_IFMT(sb.st_mode):
+        return False
+    if stat.S_ISLNK(sa.st_mode):
+        return os.readlink(a) == os.readlink(b)
+    if stat.S_ISREG(sa.st_mode):
+        return stat.S_IMODE(sa.st_mode) == stat.S_IMODE(sb.st_mode) and filecmp.cmp(a, b, shallow=False)
+    return True
+
+
+def copy_entry(src, dst):
+    if os.path.lexists(dst) and not os.path.isdir(dst) or os.path.islink(dst):
+        os.remove(dst)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    if os.path.islink(src):
+        os.symlink(os.readlink(src), dst)
+    else:
+        shutil.copy2(src, dst, follow_symlinks=False)
+        st = os.lstat(src)
+        os.chown(dst, st.st_uid, st.st_gid, follow_symlinks=False)
+
+
+def plan_etc(etc, usr_etc, keep=KEEP_ETC):
+    """(restore, add_back, set_aside): files in /etc that differ from the defaults, files missing from /etc, and
+    files only /etc has. All relative paths; kept entries aren't in any of them."""
+    restore, aside, add = [], [], []
+    for d, dirs, files in os.walk(etc):
+        reld = os.path.relpath(d, etc)
+        reld = '' if reld == '.' else reld
+        for name in sorted(files) + sorted(x for x in dirs if os.path.islink(os.path.join(d, x))):
+            rel = os.path.join(reld, name) if reld else name
+            if matches(rel, keep):
+                continue
+            ref = os.path.join(usr_etc, rel)
+            if os.path.lexists(ref) and not (os.path.isdir(ref) and not os.path.islink(ref)):
+                if not same(os.path.join(etc, rel), ref):
+                    restore.append(rel)
+            else:
+                aside.append(rel)
+        dirs[:] = sorted(x for x in dirs if not os.path.islink(os.path.join(d, x)) and not matches(os.path.join(reld, x) if reld else x, keep))
+    for d, dirs, files in os.walk(usr_etc):
+        reld = os.path.relpath(d, usr_etc)
+        reld = '' if reld == '.' else reld
+        for name in sorted(files) + sorted(x for x in dirs if os.path.islink(os.path.join(d, x))):
+            rel = os.path.join(reld, name) if reld else name
+            if not matches(rel, keep) and not os.path.lexists(os.path.join(etc, rel)):
+                add.append(rel)
+        dirs[:] = sorted(x for x in dirs if not os.path.islink(os.path.join(d, x)))
+    return restore, add, aside
+
+
+def read_lines(path):
+    try:
+        with open(path) as f:
+            return [line for line in f.read().splitlines() if line.strip()]
+    except OSError:
+        return []
+
+
+def add_members(line, extra, field=3):
+    """A group (or gshadow) line with these people added to its member list."""
+    f = line.split(':')
+    if len(f) <= field:
+        return line
+    have = [m for m in f[field].split(',') if m]
+    f[field] = ','.join(have + [m for m in extra if m not in have])
+    return ':'.join(f)
+
+
+def merge_accounts(etc, usr_etc):
+    """The account files for a system that isn't Fedora-based: the new system's own (its /usr/etc), plus the people
+    from the old /etc (ids 1000-59999) with their passwords, their own groups, and their membership of groups the
+    new system has too (wheel, video, input...). {file name: text}, or None when the new system has no account
+    files of its own (then the old ones are kept as they are)."""
+    old = {f: read_lines(os.path.join(etc, f)) for f in ACCOUNT_FILES}
+    new = {f: read_lines(os.path.join(usr_etc, f)) for f in ACCOUNT_FILES}
+    if not new['passwd'] or not new['group']:
+        return None
+
+    def person(fields, idx):
+        return len(fields) > idx and fields[idx].isdigit() and 1000 <= int(fields[idx]) < 60000
+
+    taken_names = {line.split(':')[0] for line in new['passwd']}
+    taken_ids = {line.split(':')[2] for line in new['passwd'] if line.count(':') >= 2}
+    people = [line for line in old['passwd'] if person(line.split(':'), 2) and line.count(':') >= 6
+              and line.split(':')[0] not in taken_names and line.split(':')[2] not in taken_ids]
+    names = [line.split(':')[0] for line in people]
+    # Which groups each person was in.
+    member_of = {}
+    for line in old['group']:
+        g = line.split(':')
+        if len(g) >= 4:
+            member_of[g[0]] = [m for m in g[3].split(',') if m in names]
+    g_names = {line.split(':')[0] for line in new['group']}
+    g_ids = {line.split(':')[2] for line in new['group'] if line.count(':') >= 2}
+    own_groups = [line for line in old['group'] if person(line.split(':'), 2) and line.split(':')[0] not in g_names
+                  and line.split(':')[2] not in g_ids]
+    own_names = {line.split(':')[0] for line in own_groups}
+    out = {
+        'passwd': new['passwd'] + people,
+        'group': [add_members(line, member_of.get(line.split(':')[0], [])) for line in new['group']] + own_groups,
+        'shadow': new['shadow'] + [line for line in old['shadow'] if line.split(':')[0] in names],
+    }
+    if new['gshadow']:
+        out['gshadow'] = [add_members(line, member_of.get(line.split(':')[0], [])) for line in new['gshadow']] + \
+            [line for line in old['gshadow'] if line.split(':')[0] in own_names]
+    return {k: '\n'.join(v) + '\n' for k, v in out.items()}
+
+
+def write_like(path, text, ref):
+    """Writes path with ref's permissions and owner (shadow is root-only, or root:shadow 640 on Debian)."""
+    tmp = path + '.hearth-tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+    try:
+        st = os.stat(ref)
+        os.chmod(tmp, stat.S_IMODE(st.st_mode))
+        os.chown(tmp, st.st_uid, st.st_gid)
+    except OSError:
+        os.chmod(tmp, 0o600 if 'shadow' in os.path.basename(path) else 0o644)
+    os.replace(tmp, path)
+
+
+def new_base():
+    """The new system's base ("anatase", "ubuntu", ...), from its image info."""
+    info = read_json(p(OWN_INFO), {}) or {}
+    return info.get('base') if isinstance(info, dict) else None
+
+
+def reset_etc(stamp):
+    etc, usr_etc = p('etc'), p('usr', 'etc')
+    if not os.path.isdir(usr_etc):
+        log('etc: no /usr/etc (not an image-based system?), left alone')
+        return
+    keep, accounts = KEEP_ETC, None
+    if new_base() in OTHER_FAMILY:
+        accounts = merge_accounts(etc, usr_etc)
+        drop = FEDORA_ONLY_KEEP | (ACCOUNT_KEEP if accounts else set())
+        keep = [k for k in KEEP_ETC if k not in drop]
+        if accounts:
+            log('etc: accounts from the new system, with ' + ', '.join(
+                line.split(':')[0] for line in accounts['passwd'].splitlines() if line.count(':') >= 6
+                and line.split(':')[2].isdigit() and 1000 <= int(line.split(':')[2]) < 60000) + ' added')
+    restore, add, aside = plan_etc(etc, usr_etc, keep)
+    backup = p('var', 'lib', 'hearth', 'old-etc-' + stamp)
+    log('etc: %d files back to the defaults, %d put back, %d set aside in %s' % (len(restore), len(add), len(aside), backup))
+    for rel in restore + add:
+        log('etc: default ' + rel)
+        if not DRY:
+            if os.path.lexists(os.path.join(etc, rel)):
+                move(os.path.join(etc, rel), os.path.join(backup, rel))
+            copy_entry(os.path.join(usr_etc, rel), os.path.join(etc, rel))
+    for rel in aside:
+        log('etc: set aside ' + rel)
+        if not DRY:
+            move(os.path.join(etc, rel), os.path.join(backup, rel))
+    if not DRY:
+        # Folders emptied above that the new system doesn't have.
+        for d, dirs, files in os.walk(etc, topdown=False):
+            rel = os.path.relpath(d, etc)
+            if rel != '.' and not dirs and not files and not os.path.isdir(os.path.join(usr_etc, rel)) and not matches(rel, keep):
+                try:
+                    os.rmdir(d)
+                except OSError:
+                    pass
+        for name, text in (accounts or {}).items():
+            write_like(os.path.join(etc, name), text, os.path.join(usr_etc, name))
+        if ROOT == '/' and shutil.which('restorecon'):
+            subprocess.run(['restorecon', '-RF', '/etc'], capture_output=True)
+        if ROOT == '/' and accounts:
+            # System accounts the image creates at boot (sysusers ran before this, against the old files), and
+            # ld.so's cache for this system's library folders.
+            for cmd in (['systemd-sysusers'], ['ldconfig']):
+                if shutil.which(cmd[0]):
+                    subprocess.run(cmd, capture_output=True)
+
+
+# ---------------------------------------------------------------------- 2. /var
+def clean_var(plan):
+    for app in plan.get('removeFlatpaks') or []:
+        if not isinstance(app, str) or not app.replace('.', '').replace('_', '').replace('-', '').isalnum():
+            continue
+        if ROOT == '/' and shutil.which('flatpak'):
+            r = subprocess.run(['flatpak', 'info', '--system', app], capture_output=True)
+            if r.returncode == 0:
+                log('var: removing Bazzite\'s Flatpak app ' + app)
+                if not DRY:
+                    subprocess.run(['flatpak', 'uninstall', '--system', '-y', '--noninteractive', app], capture_output=True)
+    if ROOT == '/' and shutil.which('flatpak') and not DRY:
+        subprocess.run(['flatpak', 'uninstall', '--system', '-y', '--noninteractive', '--unused'], capture_output=True)
+    var = p('var')
+    for pat in BAZZITE_VAR:
+        base, name = os.path.split(pat)
+        d = os.path.join(var, base)
+        for n in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+            if fnmatch.fnmatchcase(n, name):
+                log('var: removing ' + os.path.join('/var', base, n))
+                if not DRY:
+                    path = os.path.join(d, n)
+                    if os.path.isdir(path) and not os.path.islink(path):
+                        shutil.rmtree(path, ignore_errors=True)
+                    else:
+                        os.remove(path)
+
+
+# ---------------------------------------------------------------------- 3. home
+def inside(home, path):
+    """path as a folder relative to home, when it's inside it (not home itself), else None."""
+    if not isinstance(path, str) or not path.startswith('/'):
+        return None
+    a, h = os.path.normpath(path), os.path.normpath(home)
+    if a == h or not a.startswith(h + '/'):
+        return None
+    return os.path.relpath(a, h)
+
+
+def steam_roots(home):
+    out = []
+    for rel in ('.local/share/Steam', '.steam/steam', '.steam/debian-installation', '.var/app/com.valvesoftware.Steam/.local/share/Steam',
+                '.var/app/com.valvesoftware.Steam/data/Steam', '.var/app/org.anatase.Steam/data/Steam'):
+        full = os.path.join(home, rel)
+        if os.path.isdir(full) and not os.path.islink(full):
+            out.append(rel)
+    return out
+
+
+def library(home):
+    return read_json(os.path.join(home, '.local/share/nimbus/library.json'), {}) or {}
+
+
+def keep_list(home):
+    """Everything in home that stays where it is (relative paths)."""
+    keep = []
+    roots = steam_roots(home)
+    for root in roots:
+        keep += [root + '/steamapps', root + '/userdata']
+    # ~/.steam/steam and ~/.steam/root: links to the Steam folder, which tell Steam (and Ubuntu's and Debian's
+    # launcher) where it is, so the new system's Steam starts there and finds the games.
+    for link in ('.steam/steam', '.steam/root'):
+        full = os.path.join(home, link)
+        if os.path.islink(full) and inside(os.path.realpath(home), os.path.realpath(full)) in roots:
+            keep.append(link)
+    nimbus = '.local/share/nimbus'
+    keep += [nimbus + '/prefixes', nimbus + '/legendary/installed.json', nimbus + '/legendary/metadata', nimbus + '/library.json']
+    lib = library(home)
+    install_root = lib.get('installRoot') if isinstance(lib.get('installRoot'), str) and lib.get('installRoot') else os.path.join(home, 'Games')
+    for sub in ('Epic', 'GOG', 'Lutris', 'Heroic'):
+        keep.append(inside(home, os.path.join(install_root, sub)))
+    keep.append('Games/Heroic')
+    # Hearth's records: Epic (legendary), GOG, and games added by hand.
+    for e in (read_json(os.path.join(home, nimbus, 'legendary/installed.json'), {}) or {}).values():
+        if isinstance(e, dict):
+            keep.append(inside(home, e.get('install_path')))
+    for d in (lib.get('gogInstalls') or {}).values() if isinstance(lib.get('gogInstalls'), dict) else []:
+        keep.append(inside(home, d))
+    for m in lib.get('manual') or [] if isinstance(lib.get('manual'), list) else []:
+        f = m.get('path') if isinstance(m, dict) else None
+        rel = inside(home, f)
+        if not rel:
+            continue
+        for base in (inside(home, install_root), 'Games'):
+            if base and rel.startswith(base + '/') and rel.count('/') > base.count('/') + 1:
+                rel = '/'.join(rel.split('/')[:base.count('/') + 2])   # the game's own folder there
+                break
+        keep.append(rel)
+    # Heroic: its install lists (Epic through its legendary, GOG, sideloaded), native and Flatpak.
+    for cfg in ('.config/heroic', '.var/app/com.heroicgameslauncher.hgl/config/heroic'):
+        for e in (read_json(os.path.join(home, cfg, 'legendaryConfig/legendary/installed.json'), {}) or {}).values():
+            if isinstance(e, dict):
+                keep.append(inside(home, e.get('install_path')))
+        gog = read_json(os.path.join(home, cfg, 'gog_store/installed.json'), {}) or {}
+        for e in gog.get('installed') or [] if isinstance(gog, dict) else []:
+            if isinstance(e, dict):
+                keep.append(inside(home, e.get('install_path')))
+    # Lutris: the folders of installed games (its database).
+    for db in ('.local/share/lutris/pga.db', '.var/app/net.lutris.Lutris/data/lutris/pga.db'):
+        full = os.path.join(home, db)
+        if not os.path.isfile(full):
+            continue
+        try:
+            con = sqlite3.connect('file:%s?mode=ro' % full, uri=True)
+            try:
+                for (d,) in con.execute('SELECT directory FROM games WHERE installed = 1 AND directory IS NOT NULL'):
+                    keep.append(inside(home, d))
+            finally:
+                con.close()
+        except sqlite3.Error:
+            pass
+    # Only what's there, without duplicates, and no folder inside another kept one.
+    out = []
+    for rel in sorted({os.path.normpath(k) for k in keep if k}):
+        if rel.startswith('..') or rel.split('/')[0].startswith(OLD_HOME_PREFIX):
+            continue
+        if not os.path.lexists(os.path.join(home, rel)):
+            continue
+        if any(rel.startswith(o + '/') for o in out):
+            continue
+        out = [o for o in out if not o.startswith(rel + '/')] + [rel]
+    return sorted(out)
+
+
+def plan_home(home, keep):
+    """What gets moved: the biggest pieces of home that hold nothing kept (relative paths, in order)."""
+    keep = set(keep)
+    holders = set()
+    for k in keep:
+        parts = k.split('/')
+        holders.update('/'.join(parts[:i]) for i in range(1, len(parts)))
+    out = []
+
+    def visit(rel):
+        full = os.path.join(home, rel) if rel else home
+        try:
+            names = sorted(os.listdir(full))
+        except OSError:
+            return
+        for n in names:
+            r = os.path.join(rel, n) if rel else n
+            if not rel and n.startswith(OLD_HOME_PREFIX):
+                continue   # an earlier move's folder
+            if r in keep:
+                continue
+            if r in holders and os.path.isdir(os.path.join(home, r)) and not os.path.islink(os.path.join(home, r)):
+                visit(r)
+            else:
+                out.append(r)
+    visit('')
+    return out
+
+
+def move(src, dst):
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    try:
+        os.rename(src, dst)
+    except OSError as e:
+        if e.errno != errno.EXDEV:   # another file system (a btrfs subvolume): copy, then remove
+            raise
+        shutil.move(src, dst)
+
+
+def trim_library(home, old):
+    """Hearth's library.json, down to what finds the kept games (the whole file is kept in the old folder)."""
+    f = os.path.join(home, '.local/share/nimbus/library.json')
+    lib = read_json(f)
+    if not isinstance(lib, dict):
+        return
+    keep = {k: lib[k] for k in ('installRoot', 'gogInstalls', 'manual') if k in lib}
+    if keep == lib:
+        return
+    log('home: trimming Hearth\'s library.json to the kept games (the whole file is in %s)' % old)
+    if not DRY:
+        dst = os.path.join(old, '.local/share/nimbus/library.json')
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        if not os.path.exists(dst):
+            shutil.copy2(f, dst)
+        st = os.stat(f)
+        write_json(f, keep, mode=0o600)
+        os.chown(f, st.st_uid, st.st_gid)
+
+
+def clean_home(plan, state):
+    user = plan.get('user')
+    try:
+        pw = pwd.getpwnam(user) if ROOT == '/' else None
+    except KeyError:
+        pw = None
+    home = p(plan.get('home', '').lstrip('/')) if ROOT != '/' else (pw.pw_dir if pw else plan.get('home'))
+    if not home or not os.path.isdir(home):
+        log('home: %s has no home folder here; nothing to do' % user)
+        return
+    uid = pw.pw_uid if pw else os.getuid()
+    gid = pw.pw_gid if pw else os.getgid()
+    old = os.path.join(home, OLD_HOME_PREFIX + state['stamp'])
+    keep = keep_list(home)
+    todo = plan_home(home, keep)
+    log('home: keeping %d game folders, moving %d items to %s' % (len(keep), len(todo), old))
+    for k in keep:
+        log('home: keep ' + k)
+    man_file = os.path.join(old, MANIFEST)
+    man = read_json(man_file, None) or {'version': 1, 'user': user, 'created': int(time.time()),
+                                         'deleteAfter': int(time.time()) + KEEP_DAYS * 86400, 'from': plan.get('from'), 'moved': [], 'kept': keep}
+    if not DRY:
+        os.makedirs(old, mode=0o700, exist_ok=True)
+        os.chown(old, uid, gid)
+    for rel in todo:
+        log('home: move ' + rel)
+        if DRY:
+            continue
+        try:
+            move(os.path.join(home, rel), os.path.join(old, rel))
+        except OSError as e:
+            log('home: couldn\'t move %s (%s); left where it is' % (rel, e))
+            continue
+        if rel not in man['moved']:
+            man['moved'].append(rel)
+        # Folders made inside the old folder belong to you too.
+        parent = os.path.dirname(rel)
+        while parent:
+            d = os.path.join(old, parent)
+            try:
+                os.chown(d, os.lstat(os.path.join(home, parent)).st_uid, os.lstat(os.path.join(home, parent)).st_gid)
+            except OSError:
+                os.chown(d, uid, gid)
+            parent = os.path.dirname(parent)
+        write_json(man_file, man, mode=0o600)
+    trim_library(home, old)
+    if not DRY:
+        write_json(man_file, man, mode=0o600)
+        os.chown(man_file, uid, gid)
+
+
+# ---------------------------------------------------------------------- the whole thing
+STEPS = [('etc', lambda plan, st: reset_etc(st['stamp'])), ('var', lambda plan, st: clean_var(plan)), ('home', clean_home)]
+
+
+def main(argv):
+    global ROOT, DRY
+    args = argv[1:]
+    DRY = '--dry-run' in args
+    if '--root' in args:
+        ROOT = args[args.index('--root') + 1]
+    plan = read_json(p(PLAN))
+    if not isinstance(plan, dict):
+        log('no clean-install plan (%s): nothing to do' % p(PLAN))
+        return 0
+    if not os.path.exists(p(OWN_INFO)):
+        # The old (Bazzite-based) system, started again from the boot menu: its files stay as they are.
+        log('not one of the new Hearth OS editions (no /%s): not touching anything' % OWN_INFO)
+        return 0
+    if not plan.get('user'):
+        log('the clean-install plan names no account; not touching anything')
+        return 1
+    state = read_json(p(STATE), None) or {}
+    if not state.get('stamp'):
+        state = {'stamp': datetime.date.today().isoformat(), 'started': int(time.time()), 'done': []}
+        write_json(p(STATE), state)
+    log('clean install for %s (from %s), started %s; done so far: %s' % (plan['user'], plan.get('from') or 'the old system', state['stamp'], ', '.join(state['done']) or 'nothing'))
+    for name, fn in STEPS:
+        if name in state['done']:
+            continue
+        fn(plan, state)
+        if not DRY:
+            state['done'].append(name)
+            write_json(p(STATE), state)
+    if not DRY:
+        os.replace(p(PLAN), p(DONE))
+    log('clean install finished')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
