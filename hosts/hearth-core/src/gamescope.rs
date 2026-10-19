@@ -113,8 +113,6 @@ pub fn restore(win: u64) {
     let _ = crate::system::run_timeout("xdotool", &["windowmap", &w], Duration::from_secs(2));
     let _ = crate::system::run_timeout("xdotool", &["windowactivate", &w], Duration::from_secs(2));
 }
-/// Is this window still one gamescope can show?
-pub fn still_there(win: u64) -> bool { focusable_windows().iter().any(|w| w.win == win) }
 /// By Steam app id; a window pinned earlier (maybe a game put aside, frozen) would win over it, so it goes.
 pub fn focus_app_id(appid: u64) { remove_root("GAMESCOPECTRL_BASELAYER_WINDOW"); let _ = set_root("GAMESCOPECTRL_BASELAYER_APPID", appid); }
 pub fn clear_focus() { remove_root("GAMESCOPECTRL_BASELAYER_WINDOW"); remove_root("GAMESCOPECTRL_BASELAYER_APPID"); }
