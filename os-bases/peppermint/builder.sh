@@ -122,6 +122,12 @@ make -C /src/bootupd install install-grub-static DESTDIR=/output
 test -x /output/usr/bin/bootupctl
 
 # ------------------------------------------------------------------ Quickshell
+# Quickshell needs newer Wayland protocol files than trixie has (ext-background-effect, ...): build them for the
+# build only (they're XML files; nothing ships in the image).
+apt-get install -y --no-install-recommends meson >/dev/null
+git clone --depth 1 --branch 1.46 https://gitlab.freedesktop.org/wayland/wayland-protocols.git /src/wayland-protocols
+meson setup /src/wayland-protocols/build /src/wayland-protocols --prefix=/usr -Dtests=false
+ninja -C /src/wayland-protocols/build install
 fetch quickshell-mirror/quickshell "$QUICKSHELL_REF" quickshell
 cmake -S /src/quickshell -B /src/quickshell/build -G Ninja \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr \
