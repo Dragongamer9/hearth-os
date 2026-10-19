@@ -26,6 +26,22 @@ GOOD = {'mode': 'whole', 'disk': '/dev/nvme0n1', 'user': {'name': 'sam', 'full':
         'hostname': 'Sams-Deck', 'timezone': 'America/Chicago', 'image': 'ghcr.io/dragongamer9/hearth:latest'}
 
 
+class LocalImage(unittest.TestCase):
+    """The full ISOs carry Hearth OS (an OCI copy): installs from it when it's the edition being installed."""
+    def test_matches_edition(self):
+        with tempfile.TemporaryDirectory() as d:
+            oci = os.path.join(d, 'image')
+            self.assertIsNone(H.local_image('ghcr.io/dragongamer9/hearth:latest', oci))     # small installer: none
+            os.makedirs(oci)
+            open(os.path.join(oci, 'index.json'), 'w').write('{}')
+            open(oci + '.ref', 'w').write('ghcr.io/dragongamer9/hearth@sha256:abc\n')
+            self.assertEqual(H.local_image('ghcr.io/dragongamer9/hearth:latest', oci), f'ostree-unverified-image:oci:{oci}:hearth')
+            self.assertIsNone(H.local_image('ghcr.io/dragongamer9/hearth-nvidia:latest', oci))
+
+    def test_local_progress_text(self):
+        self.assertTrue(H.download_text(1e9, 9e9, 0, True).startswith('Copying Hearth OS from the USB stick'))
+
+
 class Plan(unittest.TestCase):
     def test_good_plan(self):
         p = H.check_plan(GOOD)

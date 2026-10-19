@@ -8,3 +8,12 @@ FROM ${BASE}
 ARG IMAGE_NAME
 COPY src /src
 RUN --mount=type=cache,target=/var/cache/libdnf5 IMAGE_NAME="${IMAGE_NAME}" /src/build.sh && rm -rf /src
+# The Hearth OS image itself (exactly the one this live system is made from, compressed as it is on GHCR), so
+# the installer puts Hearth OS on the drive from the USB stick, with no download (hearth-install's LOCAL_OCI).
+# The installed system still takes its updates from GHCR, and its first update only fetches what changed.
+ARG IMAGE_REF=""
+RUN if [ -n "$IMAGE_REF" ]; then \
+      mkdir -p /usr/share/hearth && \
+      skopeo copy --retry-times 3 "docker://${IMAGE_REF}" "oci:/usr/share/hearth/image:hearth" && \
+      echo "${IMAGE_REF}" > /usr/share/hearth/image.ref && du -sh /usr/share/hearth/image; \
+    fi
