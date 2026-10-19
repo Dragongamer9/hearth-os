@@ -599,9 +599,9 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
   bool focus = target_disposition != CEF_WOD_NEW_BACKGROUND_TAB;
   Tab* from = win_->ByBrowser(browser);
   int after = from ? from->id : 0;
-  BrowserWin* w = win_;
-  CefPostTask(TID_UI, base::BindOnce([](BrowserWin* w, std::string url, bool focus, int after) {
-    if (G().windows.count(w)) w->NewTab(url, focus, after);
+  CefRefPtr<BrowserWin> w = win_;
+  CefPostTask(TID_UI, base::BindOnce([](CefRefPtr<BrowserWin> w, std::string url, bool focus, int after) {
+    if (G().windows.count(w.get())) w->NewTab(url, focus, after);
   }, w, url, focus, after));
   return true;
 }
