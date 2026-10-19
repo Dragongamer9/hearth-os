@@ -115,7 +115,8 @@ pub fn restore(win: u64) {
 }
 /// Is this window still one gamescope can show?
 pub fn still_there(win: u64) -> bool { focusable_windows().iter().any(|w| w.win == win) }
-pub fn focus_app_id(appid: u64) { let _ = set_root("GAMESCOPECTRL_BASELAYER_APPID", appid); }
+/// By Steam app id; a window pinned earlier (maybe a game put aside, frozen) would win over it, so it goes.
+pub fn focus_app_id(appid: u64) { remove_root("GAMESCOPECTRL_BASELAYER_WINDOW"); let _ = set_root("GAMESCOPECTRL_BASELAYER_APPID", appid); }
 pub fn clear_focus() { remove_root("GAMESCOPECTRL_BASELAYER_WINDOW"); remove_root("GAMESCOPECTRL_BASELAYER_APPID"); }
 
 /// Brings a game to the front once its window exists (games take a while to open one): matching its processes
@@ -127,7 +128,13 @@ pub fn focus_game(pids: &dyn Fn() -> Vec<u32>, steam_app_id: u64, exclude: &[u64
         if !still() { return false; }
         let want: Vec<u64> = pids().into_iter().map(u64::from).collect();
         let wins: Vec<Win> = focusable_windows().into_iter().filter(|w| !exclude.contains(&w.pid)).collect();
-        let hit = wins.iter().find(|w| want.contains(&w.pid)).or_else(|| if steam_app_id > 0 { wins.iter().find(|w| w.appid == steam_app_id) } else { None });
+        let mut hit = wins.iter().find(|w| want.contains(&w.pid)).or_else(|| if steam_app_id > 0 { wins.iter().find(|w| w.appid == steam_app_id) } else { None });
+        // Its processes not matched (some launchers hand the window to a helper): if only one window is left
+        // that isn't Steam's, Hearth's or a game put aside, that's it.
+        if hit.is_none() && steam_app_id == 0 {
+            let rest: Vec<&Win> = wins.iter().filter(|w| w.pid > 0 && !matches!(proc_name(w.pid).as_str(), "steam" | "steamwebhelper")).collect();
+            if rest.len() == 1 { hit = rest.first().copied(); }
+        }
         if let Some(h) = hit { if !still() { return false; } focus_window(h.win); crate::bridge::log(&format!("gamescope: game window {} in front", h.win)); return true; }
         std::thread::sleep(Duration::from_millis(1500));
     }

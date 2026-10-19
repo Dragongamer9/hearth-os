@@ -443,6 +443,14 @@ impl Library {
         Ok(serde_json::json!({"tracked": true}))
     }
 
+    /// Processes of the games put aside (Quick Resume): their windows stay around, frozen on their last picture,
+    /// and must never be the one put in front for another game.
+    pub fn frozen_pids(&self) -> Vec<u32> {
+        if self.frozen.is_empty() { return vec![]; }
+        let snap = crate::procs::snapshot(std::path::Path::new("/proc"));
+        let running = self.game_pids();
+        self.frozen.iter().flat_map(|f| crate::procs::game_processes(&f.track, &snap, std::process::id())).filter(|p| !running.contains(p)).collect()
+    }
     pub fn game_pids(&self) -> Vec<u32> {
         let Some(r) = &self.running else { return vec![] };
         crate::procs::game_processes(&r.track, &crate::procs::snapshot(std::path::Path::new("/proc")), std::process::id())
