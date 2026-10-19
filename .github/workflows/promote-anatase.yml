@@ -1,0 +1,39 @@
+# Makes the tested Hearth OS on Anatase the published one: copies ghcr.io/dragongamer9/hearth-os:testing (built and
+# checked by base-anatase.yml) to :latest exactly as it is, no rebuild. :latest is what Settings › Updates › Move to
+# a new Hearth OS offers, and what installed Anatase systems update from. Run by hand (Actions › Promote Anatase).
+name: Promote Anatase
+
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: "Tag to publish as :latest"
+        required: true
+        default: testing
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: promote-anatase
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/dragongamer9/hearth-os
+      FROM: ${{ inputs.from }}
+    steps:
+      - name: Copy the image to :latest
+        run: |
+          set -euo pipefail
+          case "$FROM" in testing|testing-*) ;; *) echo "::error title=promote::only testing tags can be promoted"; exit 1;; esac
+          command -v skopeo >/dev/null || { sudo apt-get update -q; sudo apt-get install -y -q skopeo; }
+          echo "${{ secrets.GITHUB_TOKEN }}" | skopeo login ghcr.io -u "${{ github.actor }}" --password-stdin
+          src=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:$FROM")
+          skopeo copy --all --retry-times 3 "docker://$IMAGE:$FROM" "docker://$IMAGE:latest"
+          dst=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:latest")
+          [ "$src" = "$dst" ] || { echo "::error title=promote::latest ($dst) isn't $FROM ($src)"; exit 1; }
+          echo "::notice title=published::$IMAGE:latest = $FROM ($dst)"
