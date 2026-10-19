@@ -49,6 +49,9 @@ pub struct GameMode {
     repeat_gen: AtomicU64,
     last_pad: Mutex<(String, u64)>,
     xids: Mutex<std::collections::HashMap<&'static str, u64>>,
+    /// Each game's window when it was last in front (Quick Resume: the right one comes back, never another
+    /// game's frozen picture).
+    game_wins: Arc<Mutex<std::collections::HashMap<String, u64>>>,
 }
 
 fn now() -> u64 { hearth_core::library::now_ms() }
@@ -61,7 +64,7 @@ impl GameMode {
         Arc::new(GameMode { app, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), ip_lock: Mutex::new(()), overlay_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
             overlay_on: AtomicBool::new(false), osd_on: AtomicBool::new(false), osd_gen: AtomicU64::new(0), look_closed: AtomicBool::new(true),
             before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), launch_busy: AtomicU64::new(0), last_guide: AtomicU64::new(0), b_gen: AtomicU64::new(0),
-            repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()) })
+            repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()), game_wins: Default::default() })
     }
 
     /// In gamescope as the Hearth session (not a window on a desktop).
@@ -123,6 +126,7 @@ impl GameMode {
         let Some((id, _)) = self.running() else { return };
         let bridge = self.bridge.clone();
         let app_id = Self::steam_app(&id);
+        let game_wins = self.game_wins.clone();
         self.run_focus("game", delay_ms, soft, move |still| {
             let pids = || bridge.lock().map(|b| b.library.game_pids()).unwrap_or_default();
             // Never a game put aside (its window shows its last picture, frozen).
@@ -131,7 +135,16 @@ impl GameMode {
             if let Some(cur) = gs::cardinals("GAMESCOPECTRL_BASELAYER_WINDOW", None).first().copied() {
                 if gs::focusable_windows().iter().any(|w| w.win == cur && exclude.contains(&w.pid)) { gs::clear_focus(); }
             }
-            gs::focus_game(&pids, app_id, &exclude, still);
+            // Windows other games had: one of them may be frozen with processes Hearth didn't match.
+            let (known, others) = {
+                let m = game_wins.lock().unwrap();
+                (m.get(&id).copied().unwrap_or(0), m.iter().filter(|(k, _)| **k != id).map(|(_, w)| *w).collect::<Vec<u64>>())
+            };
+            if let Some(w) = gs::focus_game(&pids, app_id, &exclude, &others, known, still) {
+                let mut m = game_wins.lock().unwrap();
+                m.retain(|k, v| *v != w || *k == id);
+                m.insert(id.clone(), w);
+            }
         });
     }
 
@@ -158,7 +171,11 @@ impl GameMode {
             me.launch_gen.fetch_add(1, Ordering::SeqCst);
             me.step_aside();
             match r {
-                Some(gs::Ready::Window(w)) => { log(&format!("launch: {id} is ready (window {w})")); me.focus_xid("game window", w, 0, false); }
+                Some(gs::Ready::Window(w)) => {
+                    log(&format!("launch: {id} is ready (window {w})"));
+                    { let mut m = me.game_wins.lock().unwrap(); m.retain(|_, v| *v != w); m.insert(id.clone(), w); }
+                    me.focus_xid("game window", w, 0, false);
+                }
                 Some(gs::Ready::Dialog(w, t)) => { log(&format!("launch: Steam is asking something (\"{t}\"), showing it")); me.focus_xid("Steam question", w, 0, false); me.focus_running_game(0, false); }
                 None => { log(&format!("launch: {id} didn't open a window in 10 minutes; showing whatever it has")); me.focus_running_game(0, false); }
             }
@@ -206,7 +223,10 @@ impl GameMode {
                 if !self.inside() { self.step_aside(); self.to_main(ev("game.ready", json!({"id": id}))); return; }
                 self.show_game_when_ready(id);
             }
-            "game.exited" | "game.gap" => { self.hide_overlay(); self.come_back(); }
+            "game.exited" | "game.gap" => {
+                if e["name"] == "game.exited" { self.game_wins.lock().unwrap().remove(&id); }
+                self.hide_overlay(); self.come_back();
+            }
             "game.handoff" => if self.inside() { self.show_game_when_ready(id) } else { self.focus_running_game(0, false) },
             _ => {}
         }
