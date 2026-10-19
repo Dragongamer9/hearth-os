@@ -89,6 +89,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
+## 0.0.31 (released)
+
+- [x] Fix: up and down didn't move the selection in 0.0.30 on some controllers (the change that ignored sticks resting off-center is undone)
+
 ## 0.0.30 (released)
 
 - [x] Fix: Shut down in the power menu was skipped when moving down; menus now go item by item
