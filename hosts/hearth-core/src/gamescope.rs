@@ -172,11 +172,11 @@ pub fn wait_for_window(pids: &dyn Fn() -> Vec<u32>, steam_app_id: u64, exclude: 
 /// Frame-rate limit for games (gamescope's own limiter); 0 = none.
 pub fn set_fps_limit(fps: u64) -> Result<u64, String> {
     let n = fps.min(240);
-    if !in_session() || !crate::system::has("xprop") { return Err("The frame-rate limit works in Game Mode.".into()); }
+    if !inside() { return Err("The frame-rate limit works in Game Mode.".into()); }
     set_root("GAMESCOPE_FPS_LIMIT", n)?;
     Ok(n)
 }
-pub fn can_fps_limit() -> bool { in_session() && crate::system::has("xprop") }
+pub fn can_fps_limit() -> bool { inside() }
 
 // ------------------------------------------------------------------ performance overlay (mangoapp)
 // The session starts gamescope with --mangoapp and points MANGOHUD_CONFIGFILE at a file mangoapp watches:
