@@ -204,7 +204,7 @@ jobs:
           check "Nvidia's open kernel module" "find /usr/lib/modules -name 'nvidia.ko*' | grep -q ."
           check "Nvidia's 32-bit libraries" "pacman -Q lib32-nvidia-utils"
           check "pacman's database is in the image (/usr/lib/sysimage)" "test -d /usr/lib/sysimage/lib/pacman/local && pacman -Q systemd"
-          check "system accounts are recreated by sysusers (sddm, ...)" "grep -q '^u sddm ' /usr/lib/sysusers.d/hearth-image.conf && test -f /usr/lib/systemd/system/systemd-sysusers.service.d/hearth.conf"
+          check "system accounts are recreated by sysusers (sddm, ...)" "cat /usr/lib/sysusers.d/*.conf | grep '^u!* *sddm ' >/dev/null && test -s /usr/lib/sysusers.d/hearth-image.conf && test -f /usr/lib/systemd/system/systemd-sysusers.service.d/hearth.conf"
           check "the bootc layout (/ostree, /var/home, empty /var)" "test -L /ostree && test \"\$(readlink /home)\" = var/home && test -z \"\$(ls -A /var)\""
           check "it's called Hearth (CachyOS edition)" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q CachyOS /usr/lib/os-release && grep -q '\"base\": \"cachyos\"' /usr/share/nimbus/image-info.json"
           echo "--- Game Mode and Desktop Mode"
