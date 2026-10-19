@@ -1,6 +1,6 @@
 [package]
 name = "hearth-core"
-version = "0.0.25"
+version = "0.0.26"
 edition = "2021"
 description = "Hearth's host logic without a window: library, stores, system, the UI's message handling"
 license = "MIT"
