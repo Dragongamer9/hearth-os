@@ -39,7 +39,22 @@ pub fn gpu(root: &Path) -> (Option<u64>, Option<f64>) {
             return (busy.trim().parse().ok(), vram);
         }
     }
-    (None, None)
+    nvidia_smi()
+}
+
+/// Nvidia cards don't report their load in /sys: their driver's own tool does (part of the driver).
+fn nvidia_smi() -> (Option<u64>, Option<f64>) {
+    if !Path::new("/sys/module/nvidia").exists() { return (None, None); }
+    let Ok(out) = crate::system::run_timeout("nvidia-smi", &["--query-gpu=utilization.gpu,memory.used", "--format=csv,noheader,nounits"], std::time::Duration::from_secs(2)) else { return (None, None) };
+    parse_nvidia_smi(&out)
+}
+/// "37, 2048" (percent, MiB) -> (37, 2.0 GB)
+pub fn parse_nvidia_smi(out: &str) -> (Option<u64>, Option<f64>) {
+    let line = out.lines().next().unwrap_or("");
+    let mut it = line.split(',').map(str::trim);
+    let busy = it.next().and_then(|s| s.parse::<u64>().ok());
+    let vram = it.next().and_then(|s| s.parse::<f64>().ok()).map(|mib| (mib / 1024.0 * 10.0).round() / 10.0);
+    (busy, vram)
 }
 
 pub fn sample() -> Value {
@@ -52,6 +67,8 @@ pub fn sample() -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reads_nvidia_smi() { assert_eq!(super::parse_nvidia_smi("37, 2048\n"), (Some(37), Some(2.0))); assert_eq!(super::parse_nvidia_smi(""), (None, None)); }
     use super::*;
     #[test]
     fn numbers() {
