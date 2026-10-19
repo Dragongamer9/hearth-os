@@ -64,7 +64,8 @@ KDIRS=(/usr/lib/modules/*/)
 [ "${#KDIRS[@]}" -eq 1 ] || { echo "expected exactly one kernel, found: ${KDIRS[*]}"; exit 1; }
 KVER=$(basename "${KDIRS[0]}")
 # bootc and ostree look for the kernel next to its modules (Debian puts it in /boot, which the image doesn't keep).
-cp "/boot/vmlinuz-$KVER" "/usr/lib/modules/$KVER/vmlinuz"
+# Newer Debian kernels already keep it there (/boot only links to it).
+[ "/boot/vmlinuz-$KVER" -ef "/usr/lib/modules/$KVER/vmlinuz" ] || cp "/boot/vmlinuz-$KVER" "/usr/lib/modules/$KVER/vmlinuz"
 
 "${APT[@]}" \
   ca-certificates curl less nano file sudo locales polkitd pkexec \
