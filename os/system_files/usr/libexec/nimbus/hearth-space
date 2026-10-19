@@ -1,0 +1,1128 @@
+#!/usr/bin/python3
+"""hearth-space: makes Hearth OS bigger with space from the other systems on the same drive (Beta Experimental).
+
+Run as root through hearth-admin (pkexec): `hearth-admin space-status`, `space-grow ...`, `space-clear-journal`.
+See docs/MOVE-AND-GROW.md. The partition steps are the ones Hearth's installer (os/live/src/hearth-install,
+hearth-live-prep) uses to install next to Windows, SteamOS or another Linux, done here from the running Hearth.
+
+  hearth-space status                 JSON: Hearth's file system (size, used, free, its partitions), the other
+                                      systems on Hearth's drive(s): their partition, file system, size, used, the
+                                      smallest they can get, how much each can give, what's in the way. Works
+                                      without root too (then without the exact numbers that need the drive).
+  hearth-space grow --from DEV --gb N [--dry-run]
+                                      shrinks the system on partition DEV by N GB (its file system, then its
+                                      partition, from its end) and gives the space to Hearth: a new partition added
+                                      to Hearth's btrfs file system (btrfs device add). --from free uses free
+                                      (unpartitioned) space on Hearth's drive instead: right after Hearth's own
+                                      partition it grows that partition and the file system in place.
+                                      --dry-run prints the plan and changes nothing.
+                                      Progress as "progress: <0-100> <what>", then one JSON line.
+  hearth-space clear-journal          after an interrupted grow was looked at: allow growing again
+
+Every step is written to /var/lib/hearth/space-grow.json before and after it runs. When a step fails, the steps
+before it are undone in reverse order (the file system grown back, the partition put back as it was). Hearth
+refuses rather than risk data: BitLocker, a Windows that wasn't fully shut down, a drive that needs a check,
+anything mounted, low battery, or a boot set-up it can't confirm all stop it before anything changes.
+Never touched: EFI, Microsoft reserved and recovery partitions, /boot, SteamOS' system partitions, swap.
+"""
+import fcntl
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+MIB = 1024 * 1024
+GIB = 1024 * MIB
+KEEP_FREE = 20 * GIB            # what the other system keeps free after shrinking (updates, page file, saves)
+SAFETY_MIN = 2 * GIB            # on top of the smallest size its own tools report
+MIN_GIVE = 1 * GIB
+MAX_GB = 64 * 1024
+LOW_BATTERY = 50                # on battery below this: refuse
+
+ESP_TYPE = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
+MSR_TYPE = 'e3c9e316-0b5c-4db8-817d-f92df00215ae'
+WINRE_TYPE = 'de94bba4-06d1-4d40-a16a-bfd50179d6ac'
+XBOOTLDR_TYPE = 'bc13c2ff-59e6-4262-a352-b275fd6f7172'
+LINUX_TYPE = '0fc63daf-8483-4772-8e79-3d69d8477de4'
+SWAP_TYPE = '0657fd6d-a4ab-43c4-84e5-0933c84b4f4f'
+STEAMOS_SYSTEM = {'rootfs-A', 'rootfs-B', 'var-A', 'var-B', 'efi-A', 'efi-B', 'esp'}
+NEW_NAME = 'hearth-more'
+SHRINKABLE = ('ntfs', 'ext4', 'btrfs')
+OURS_MOUNTS = ('/run/hearth-import/', '/run/hearth-space/')
+
+JOURNAL = '/var/lib/hearth/space-grow.json'
+LOCK = '/run/hearth-space.lock'
+WORK = '/run/hearth-space'
+POWER_DIR = '/sys/class/power_supply'
+CMDLINE = '/proc/cmdline'
+
+TEXT = {
+    'bitlocker': "{name} is locked with BitLocker. In {name}, turn BitLocker (Device encryption) off and wait for it to finish, then try again.",
+    'fast-startup': "{name} wasn't fully shut down (Fast Startup or hibernation), so its drive can't be changed. Start {name}, hold Shift while you choose Shut down, then try again. Turning off Fast Startup (Control Panel › Power Options) stops this happening.",
+    'needs-check': "{names} drive needs a check first. In {name}, run \"chkdsk C: /f\" in a Terminal as administrator and restart, then try again.",
+    'linux-check': "{names} drive needs a check first. Start {name} once and shut it down normally, then try again.",
+    'fs': "{name} uses {fs}, which Hearth can't make smaller.",
+    'busy': "{names} drive is open in another app ({where}). Close it, then try again.",
+    'multi': "{names} file system spans more than one partition; Hearth only shrinks simple ones.",
+    'room': "{name} doesn't have space to give: it keeps its files plus 20 GB free.",
+    'unreadable': "Hearth couldn't read how full {names} drive is ({why}).",
+    'tools': "A tool Hearth needs for this is missing ({tool}).",
+}
+
+
+def text(key, name='the other system', **kw):
+    return cap(TEXT[key].format(name=name, names=poss(name), **kw))
+
+
+class Fail(Exception):
+    pass
+
+
+# ---------------------------------------------------------------------- running commands (tests replace these)
+
+def run(cmd, input=None, timeout=None):
+    """(exit code, stdout, stderr)."""
+    try:
+        r = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout or '', r.stderr or ''
+    except FileNotFoundError:
+        return 127, '', f'{cmd[0]}: not found'
+    except subprocess.TimeoutExpired:
+        return 124, '', f'{cmd[0]}: took too long'
+
+
+def stream(cmd, input=None, on_line=None):
+    """Runs a long command, calling on_line for each line (and each \\r update). (exit code, last lines)."""
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    if input is not None:
+        p.stdin.write(input)
+        p.stdin.close()
+    buf, tail = '', []
+    while True:
+        ch = p.stdout.read(1)
+        if not ch:
+            break
+        if ch in '\r\n':
+            if buf.strip():
+                tail = (tail + [buf.strip()])[-6:]
+                if on_line:
+                    on_line(buf.strip())
+            buf = ''
+        else:
+            buf += ch
+    return p.wait(), tail
+
+
+RUN = run
+STREAM = stream
+
+
+def sh(cmd, input=None, what=None):
+    code, out, err = RUN(cmd, input)
+    if code != 0:
+        last = ((err or out).strip().splitlines() or [' '.join(cmd) + ' failed'])[-1]
+        raise Fail(f'{what or os.path.basename(cmd[0])}: {last}')
+    return out
+
+
+def have(tool):
+    return shutil.which(tool) is not None
+
+
+def cap(t):
+    return t[:1].upper() + t[1:]
+
+
+def poss(name):
+    """Windows -> Windows', SteamOS -> SteamOS', Fedora -> Fedora's"""
+    return name + ("'" if name.endswith('s') else "'s")
+
+
+def progress(pct, what):
+    print('progress: %d %s' % (max(0, min(100, round(pct))), what), flush=True)
+
+
+def log(text):
+    print('log: ' + text[:300], flush=True)
+
+
+# ---------------------------------------------------------------------- parsing tools' output
+
+def parse_ntfsresize_info(out):
+    """ntfsresize --info: {size, min, problem}. Same reading as hearth-live-prep's ntfs_info."""
+    info = {}
+    m = re.search(r'Current volume size:\s*(\d+) bytes', out)
+    if m:
+        info['size'] = int(m.group(1))
+    m = re.search(r'You might resize at (\d+) bytes', out)
+    if m:
+        info['min'] = int(m.group(1))
+    m = re.search(r'Space in use\s*:\s*\d+ MB \(([\d.]+)%\)', out)
+    if m and info.get('size'):
+        info['used'] = int(info['size'] * float(m.group(1)) / 100)
+    if re.search(r'hibernat|unclean|Windows is (?:hibernated|running)|fast restart', out, re.I):
+        info['problem'] = 'fast-startup'
+    elif re.search(r'bad sector|inconsisten|chkdsk|corrupt', out, re.I):
+        info['problem'] = 'needs-check'
+    return info
+
+
+def parse_dumpe2fs(out):
+    """dumpe2fs -h: {size, used, block, problem}."""
+    vals = {}
+    for line in out.splitlines():
+        k, _, v = line.partition(':')
+        vals[k.strip()] = v.strip()
+    try:
+        block = int(vals.get('Block size') or 0)
+        count = int(vals.get('Block count') or 0)
+        free = int(vals.get('Free blocks') or 0)
+    except ValueError:
+        return {}
+    info = {'block': block, 'size': count * block, 'used': (count - free) * block} if block and count else {}
+    state = vals.get('Filesystem state', '')
+    if state and (state != 'clean' or 'error' in state.lower()):
+        info['problem'] = 'linux-check'
+    return info
+
+
+def parse_resize2fs_min(out, block):
+    m = re.search(r'Estimated minimum size of the filesystem:\s*(\d+)', out)
+    return int(m.group(1)) * block if m and block else None
+
+
+def parse_min_dev_size(out):
+    m = re.search(r'^(\d+)\s+bytes', out.strip(), re.M)
+    return int(m.group(1)) if m else None
+
+
+def parse_btrfs_show(out):
+    """btrfs filesystem show: [(devid, path)] and the file system's UUID."""
+    devs = [(int(m.group(1)), m.group(2)) for m in re.finditer(r'devid\s+(\d+)\s+size.*?path (/dev/\S+)', out)]
+    m = re.search(r'uuid:\s*([0-9a-f-]{36})', out)
+    return devs, (m.group(1) if m else None)
+
+
+def parse_free(text):
+    """sfdisk -F output: [(start_sector, sectors)], biggest first (as hearth-install's parse_free)."""
+    regions = []
+    for line in text.splitlines():
+        m = re.match(r'\s*(\d+)\s+(\d+)\s+(\d+)\s+\d+', line)
+        if m:
+            regions.append((int(m.group(1)), int(m.group(3))))
+    return sorted(regions, key=lambda r: -r[1])
+
+
+def power(base=None):
+    """{'plugged': bool, 'battery': pct or None} (as hearth-live-prep)."""
+    base = base or POWER_DIR
+    ac, battery = None, None
+    def read(p):
+        with open(p) as f:
+            return f.read().strip()
+    for d in sorted(os.listdir(base)) if os.path.isdir(base) else []:
+        p = os.path.join(base, d)
+        try:
+            kind = read(os.path.join(p, 'type'))
+            if kind == 'Mains':
+                ac = (ac or False) or read(os.path.join(p, 'online')) == '1'
+            elif kind == 'Battery':
+                battery = int(read(os.path.join(p, 'capacity')))
+        except (OSError, ValueError):
+            pass
+    return {'plugged': ac if ac is not None else battery is None, 'battery': battery}
+
+
+# ---------------------------------------------------------------------- the math
+
+def keep_size(minimum, used):
+    """The smallest a system's file system may become: its own tool's minimum plus a margin, and never less than
+    what's on it plus 20 GB free."""
+    safety = max(SAFETY_MIN, minimum * 5 // 100)
+    return max(minimum + safety, used + KEEP_FREE)
+
+
+def can_give(size, minimum, used):
+    """How much a file system of `size` can give, in whole GB (GiB)."""
+    return max(0, size - keep_size(minimum, used)) // GIB * GIB
+
+
+def align_up(n, a):
+    return (n + a - 1) // a * a
+
+
+def shrink_geometry(part, fs_size, give, keep, sector):
+    """Where everything goes when the partition {start, size} (sectors) gives `give` bytes from its end:
+    {newFs (bytes), partSectors, newStart, newSectors}. Raises Fail when it doesn't fit."""
+    align = max(1, MIB // sector)
+    usable = min(fs_size, part['size'] * sector)
+    new_fs = (usable - give) // MIB * MIB
+    if give < MIN_GIVE:
+        raise Fail('choose at least 1 GB')
+    if new_fs < keep:
+        raise Fail(f'that leaves too little room: it can give at most {max(0, usable - keep) // GIB} GB')
+    # The partition keeps its start and ends a little after the file system (1 MiB of slack, like the installer).
+    part_sectors = -(-new_fs // sector) + align
+    new_start = align_up(part['start'] + part_sectors, align)
+    old_end = part['start'] + part['size']
+    new_sectors = (old_end - new_start) // align * align
+    if new_sectors * sector < MIN_GIVE:
+        raise Fail('too little space would be left over for Hearth')
+    if part['start'] + part_sectors > new_start or new_start + new_sectors > old_end:
+        raise Fail('the new layout doesn\'t fit (this is a bug: nothing was changed)')
+    return {'newFs': new_fs, 'partSectors': new_start - part['start'], 'newStart': new_start, 'newSectors': new_sectors}
+
+
+# ---------------------------------------------------------------------- what's on the drive
+
+def root_info():
+    """Hearth's own btrfs file system: where it's mounted for resizing (/sysroot on Fedora Atomic), its
+    devices (realpaths) and UUID."""
+    for target in ('/sysroot', '/'):
+        code, out, _ = RUN(['findmnt', '-n', '-o', 'SOURCE,FSTYPE,UUID', target])
+        bits = out.split()
+        if code == 0 and len(bits) >= 2 and bits[1] == 'btrfs':
+            src = re.sub(r'\[.*\]$', '', bits[0])
+            _, show, _ = RUN(['btrfs', 'filesystem', 'show', target])
+            devs, uuid = parse_btrfs_show(show)
+            uuid = uuid or (bits[2] if len(bits) > 2 else None)
+            return {'mount': target, 'devices': [os.path.realpath(p) for _, p in devs] or [os.path.realpath(src)],
+                    'devids': {os.path.realpath(p): i for i, p in devs}, 'uuid': uuid, 'rw': rw_mount(uuid, target)}
+    raise Fail("Hearth's file system wasn't found (expected btrfs at /sysroot)")
+
+
+def rw_mount(uuid, fallback):
+    """A writable mount of Hearth's file system. /sysroot is read-only on Fedora Atomic, and resizing needs write
+    access to the mount it's run on (adding a device and resizing act on the whole file system, whichever
+    subvolume is mounted there): /var/home or /var, which are the same file system, mounted read-write."""
+    code, out, _ = RUN(['findmnt', '-rn', '-t', 'btrfs', '-o', 'TARGET,OPTIONS,UUID'])
+    found = {}
+    for line in out.splitlines():
+        bits = line.split()
+        if len(bits) >= 3 and bits[2] == uuid and bits[1].split(',')[0] == 'rw':
+            found[bits[0].replace('\\x20', ' ')] = True
+    for want in ('/var/home', '/var', '/', '/sysroot'):
+        if want in found:
+            return want
+    return next(iter(found), fallback)
+
+
+def lsblk():
+    return json.loads(sh(['lsblk', '-J', '-b', '-o', 'NAME,PATH,PKNAME,FSTYPE,LABEL,PARTLABEL,PARTTYPE,SIZE,MOUNTPOINTS,TYPE,UUID,RM']))
+
+
+def flatten(tree):
+    out = {}
+
+    def walk(ds):
+        for d in ds:
+            out[os.path.realpath(d['path'])] = d
+            walk(d.get('children') or [])
+    walk(tree.get('blockdevices', []))
+    return out
+
+
+def part_table(disk):
+    return json.loads(sh(['sfdisk', '-J', disk]))['partitiontable']
+
+
+def free_regions(table, sector):
+    """Unpartitioned stretches of a GPT drive from its table: [{start, sectors, after}] (after: the partition
+    right before it)."""
+    align = max(1, MIB // sector)
+    parts = sorted(table.get('partitions', []), key=lambda p: int(p['start']))
+    cursor = int(table.get('firstlba') or 2048)
+    out = []
+    for p in parts:
+        start = int(p['start'])
+        if start - align_up(cursor, align) >= GIB // sector:
+            out.append({'start': align_up(cursor, align), 'sectors': start - align_up(cursor, align)})
+        cursor = max(cursor, start + int(p['size']))
+    last = int(table.get('lastlba') or 0)
+    if last and last + 1 - align_up(cursor, align) >= GIB // sector:
+        n = (last + 1 - align_up(cursor, align)) // align * align
+        out.append({'start': align_up(cursor, align), 'sectors': n})
+    for r in out:
+        prev = [p for p in parts if int(p['start']) + int(p['size']) <= r['start']]
+        r['after'] = os.path.realpath(max(prev, key=lambda p: int(p['start']))['node']) if prev else None
+        r['bytes'] = r['sectors'] * sector
+    return out
+
+
+def classify(p, info, root_devs):
+    """What a partition is: (kind, what). Only kinds 'windows' and 'linux' may ever be shrunk."""
+    ptype = (p.get('type') or '').lower()
+    fs = info.get('fstype') or ''
+    label = info.get('label') or info.get('partlabel') or ''
+    plabel = info.get('partlabel') or p.get('name') or ''
+    mps = [m for m in (info.get('mountpoints') or []) if m]
+    size = int(info.get('size') or 0)
+    node = os.path.realpath(p['node'])
+    if node in root_devs:
+        return 'hearth', "Hearth OS"
+    if ptype == ESP_TYPE or (fs == 'vfat' and any(m in ('/boot/efi', '/efi') for m in mps)):
+        return 'efi', 'Start-up (EFI) partition'
+    if ptype == XBOOTLDR_TYPE or any(m == '/boot' for m in mps):
+        return 'boot', "Hearth's start-up files"
+    if ptype == MSR_TYPE:
+        return 'msr', 'Microsoft reserved'
+    if ptype == WINRE_TYPE or (fs == 'ntfs' and (re.search(r'recovery|winre', label, re.I) or size < 3 * GIB)):
+        return 'recovery', 'Windows recovery'
+    if plabel in STEAMOS_SYSTEM:
+        return 'steamos-system', 'SteamOS system'
+    if fs == 'swap' or ptype == SWAP_TYPE:
+        return 'swap', 'Swap'
+    if fs in ('ntfs', 'BitLocker'):
+        return 'windows', 'Windows'
+    if fs in ('ext4', 'ext3', 'btrfs', 'xfs', 'f2fs', 'crypto_LUKS', 'LVM2_member'):
+        return 'linux', 'Linux'
+    return 'other', 'Other data' + (f' ({fs})' if fs else '')
+
+
+def mounted_where(info):
+    return [m for m in (info.get('mountpoints') or []) if m]
+
+
+def busy_mounts(info):
+    """Mounts that aren't Hearth's own read-only looks (the importer's, this helper's)."""
+    return [m for m in mounted_where(info) if not m.startswith(OURS_MOUNTS)]
+
+
+def with_mount(dev, fs, fn, rw=False):
+    """Runs fn(mountpoint) with dev mounted (read-only unless rw) under /run/hearth-space."""
+    mnt = os.path.join(WORK, 'peek-' + os.path.basename(dev))
+    os.makedirs(mnt, exist_ok=True)
+    opts = 'rw' if rw else ('ro,noload' if fs == 'ext4' else 'ro')
+    tries = [['-t', 'ntfs3', '-o', opts], ['-t', 'ntfs-3g', '-o', opts]] if fs == 'ntfs' else [['-o', opts]]
+    if fs == 'btrfs':
+        tries = [['-o', opts + ',subvolid=5']]
+    err = ''
+    for t in tries:
+        code, _, err = RUN(['mount', *t, dev, mnt])
+        if code == 0:
+            break
+    else:
+        raise Fail("couldn't open it (" + ((err or '').strip().splitlines() or ['mount failed'])[-1] + ')')
+    try:
+        return fn(mnt)
+    finally:
+        RUN(['umount', mnt])
+
+
+def os_name(mnt, fs):
+    """A system's name from inside it (looked at read-only): Windows, SteamOS, or the Linux's own name."""
+    if fs == 'ntfs':
+        return 'Windows' if os.path.isdir(os.path.join(mnt, 'Windows', 'System32')) else 'Windows drive'
+    roots = [mnt] + [os.path.join(mnt, s) for s in ('root', '@', '@root', '@rootfs')]
+    for root in roots:
+        for rel in ('etc/os-release', 'usr/lib/os-release'):
+            f = os.path.join(root, rel)
+            if os.path.isfile(f) and not os.path.islink(f):
+                with open(f, errors='replace') as fh:
+                    rel = fh.read()
+                if re.search(r'^ID="?steamos', rel, re.M):
+                    return 'SteamOS'
+                m = re.search(r'^NAME="?([^"\n]+)', rel, re.M)
+                if m:
+                    return m.group(1)
+    if os.path.isdir(os.path.join(mnt, 'deck')) or os.path.isdir(os.path.join(mnt, 'home', 'deck')):
+        return 'SteamOS'
+    return 'Linux'
+
+
+def fs_facts(dev, fs, info, root):
+    """{size, used, min, name, problem, estimate, why}: what Hearth needs to know to shrink a file system.
+    Needs root for the exact numbers; otherwise (or when it's open in another app) an estimate from what's mounted."""
+    facts = {'name': None, 'problem': None, 'estimate': False}
+    mps = mounted_where(info)
+    if mps or not root:
+        # Already open (the importer's read-only look, or another app): read how full it is, don't touch it.
+        for m in mps:
+            try:
+                st = os.statvfs(m)
+                size = st.f_blocks * st.f_frsize
+                facts.update(size=size, used=size - st.f_bfree * st.f_frsize, estimate=True)
+                facts['min'] = facts['used']
+                facts['name'] = os_name(m, fs)
+                break
+            except OSError:
+                pass
+        if not mps:
+            facts.update(size=int(info.get('size') or 0), used=None, min=None, estimate=True)
+        return facts
+    try:
+        if fs == 'ntfs':
+            code, out, err = RUN(['ntfsresize', '--info', '--force', '--no-progress-bar', dev])
+            n = parse_ntfsresize_info(out + err)
+            facts['problem'] = n.get('problem')
+            if not n.get('size') or not n.get('min'):
+                if not facts['problem']:
+                    facts['why'] = ((out + err).strip().splitlines() or ['ntfsresize failed'])[-1]
+                facts.update(size=int(info.get('size') or 0), used=None, min=None)
+            else:
+                facts.update(size=n['size'], min=n['min'], used=n.get('used', n['min']))
+        elif fs == 'ext4':
+            code, out, err = RUN(['dumpe2fs', '-h', dev])
+            e = parse_dumpe2fs(out)
+            if not e.get('size'):
+                raise Fail(((err or out).strip().splitlines() or ['dumpe2fs failed'])[-1])
+            code, out2, err2 = RUN(['resize2fs', '-P', dev])
+            minimum = parse_resize2fs_min(out2 + err2, e['block'])
+            facts.update(size=e['size'], used=e['used'], min=max(minimum or 0, e['used']), problem=e.get('problem'))
+        elif fs == 'btrfs':
+            def look(mnt):
+                _, show, _ = RUN(['btrfs', 'filesystem', 'show', mnt])
+                devs, _ = parse_btrfs_show(show)
+                st = os.statvfs(mnt)
+                size = st.f_blocks * st.f_frsize
+                code, out, _ = RUN(['btrfs', 'inspect-internal', 'min-dev-size', '--id', str(devs[0][0] if devs else 1), mnt])
+                return {'size': size, 'used': size - st.f_bfree * st.f_frsize, 'min': parse_min_dev_size(out),
+                        'multi': len(devs) > 1, 'name': os_name(mnt, fs), 'devid': devs[0][0] if devs else 1}
+            got = with_mount(dev, fs, look)
+            got['min'] = max(got['min'] or 0, got['used'])
+            facts.update(got)
+        if facts.get('name') is None and fs in ('ntfs', 'ext4') and not facts.get('problem'):
+            try:
+                facts['name'] = with_mount(dev, fs, lambda m: os_name(m, fs))
+            except Fail:
+                pass
+    except Fail as e:
+        facts.update(size=int(info.get('size') or 0), used=None, min=None, why=str(e))
+    return facts
+
+
+def read_journal():
+    try:
+        with open(JOURNAL) as f:
+            j = json.load(f)
+        return j if isinstance(j, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def journal_problem(j):
+    """An earlier grow that stopped half-way (power cut, crash): nothing more until someone looks at it."""
+    if not j or j.get('state') not in ('running', 'stuck'):
+        return None
+    changed = [s for s in j.get('steps', []) if s.get('changes') and s.get('state') in ('started', 'done')]
+    if not changed:
+        return None
+    last = changed[-1]
+    src = j.get('name') or j.get('from') or 'the other system'
+    return {'id': 'unfinished', 'text': f"An earlier \"Make Hearth bigger\" didn't finish (it stopped during: {last.get('what', last['step'])}). "
+            f"Start {src} once and let it check its drive (Windows: chkdsk C: /f), then come back and choose \"I've checked it\". "
+            f"Details are in {JOURNAL}.", 'step': last['step']}
+
+
+def boot_check(root, cmdline=None, initramfs_list=None):
+    """(ok, why): Hearth will still start with its file system on more than one partition. The boot options must
+    find the file system by its UUID (which doesn't change when a partition is added) and the start-up image
+    (initramfs) must wait for all of its partitions (dracut's btrfs support: its udev rules run `btrfs device
+    scan` / `btrfs ready`)."""
+    if cmdline is None:
+        try:
+            with open(CMDLINE) as f:
+                cmdline = f.read()
+        except OSError:
+            cmdline = ''
+    m = re.search(r'(?:^|\s)root=(\S+)', cmdline)
+    if not m:
+        return False, "couldn't read Hearth's boot options"
+    rootarg = m.group(1)
+    if rootarg.startswith('UUID=') and root.get('uuid') and rootarg[5:].lower() != root['uuid'].lower():
+        return False, "Hearth's boot options point at a different file system"
+    if not rootarg.startswith(('UUID=', '/dev/disk/by-uuid/')):
+        return False, "Hearth's boot options don't find its file system by UUID"
+    if initramfs_list is None:
+        initramfs_list = list_initramfs()
+    if initramfs_list is None:
+        return False, "couldn't look inside Hearth's start-up image (lsinitrd) to check it handles this"
+    if not re.search(r'(64|80)-btrfs\.rules|usr/s?bin/btrfs\b', initramfs_list):
+        return False, "Hearth's start-up image has no btrfs device scanning, so it might not find the new partition"
+    return True, ''
+
+
+def list_initramfs():
+    kver = os.uname().release
+    for img in (f'/usr/lib/modules/{kver}/initramfs.img', f'/lib/modules/{kver}/initramfs.img'):
+        if os.path.isfile(img):
+            code, out, _ = RUN(['lsinitrd', img])
+            if code == 0:
+                return out
+    for img in sorted(__import__('glob').glob(f'/boot/ostree/*/initramfs-{kver}.img')):
+        code, out, _ = RUN(['lsinitrd', img])
+        if code == 0:
+            return out
+    return None
+
+
+def import_running():
+    code, _, _ = RUN(['pgrep', '-f', 'hearth-import run'])
+    return code == 0
+
+
+def needed_tools(fs):
+    t = ['sfdisk', 'partx', 'btrfs', 'wipefs']
+    t += {'ntfs': ['ntfsresize', 'ntfsfix'], 'ext4': ['e2fsck', 'resize2fs', 'dumpe2fs'], 'btrfs': []}.get(fs, [])
+    return [x for x in t if not have(x)]
+
+
+def status_data(root=None, tree=None, tables=None, facts=None, pw=None, journal=None, boot=None, is_root=None, importing=None):
+    """Everything the page shows. The arguments are for tests; normally it's all read from the system."""
+    is_root = (os.geteuid() == 0) if is_root is None else is_root
+    root = root or root_info()
+    tree = tree if tree is not None else lsblk()
+    devs = flatten(tree)
+    root_devs = set(root['devices'])
+    disks = []
+    for d in root['devices']:
+        pk = (devs.get(d) or {}).get('pkname')
+        if pk and '/dev/' + pk not in disks:
+            disks.append('/dev/' + pk)
+    if not disks:
+        raise Fail("couldn't tell which drive Hearth is on")
+    if tables is None:
+        tables = {d: part_table(d) for d in disks}
+    pw = pw if pw is not None else power()
+    journal = read_journal() if journal is None else journal
+    if boot is None:
+        boot = boot_check(root) if is_root else (True, '')
+    importing = import_running() if importing is None else importing
+    try:
+        st = os.statvfs(root['mount'])
+        hsize, hfree = st.f_blocks * st.f_frsize, st.f_bavail * st.f_frsize
+    except OSError:
+        hsize = hfree = 0
+    res = {'beta': True, 'limited': not is_root, 'power': pw,
+           'hearth': {'mount': root['mount'], 'uuid': root.get('uuid'), 'devices': sorted(root_devs), 'disks': disks,
+                      'size': hsize, 'used': max(0, hsize - hfree), 'free': hfree},
+           'systems': [], 'free': [], 'parts': [], 'problems': [], 'journal': None}
+    global_blocks = []
+    jp = journal_problem(journal)
+    if jp:
+        res['journal'] = {'state': journal.get('state'), 'from': journal.get('from'), 'error': journal.get('error'), 'step': jp['step']}
+        global_blocks.append(jp)
+    if pw.get('battery') is not None and not pw.get('plugged') and pw['battery'] < LOW_BATTERY:
+        global_blocks.append({'id': 'power', 'text': f"Plug in the charger: the battery is at {pw['battery']}%. Resizing a drive must not be cut off."})
+    if importing:
+        global_blocks.append({'id': 'importing', 'text': 'Wait for the import to finish first.'})
+    warnings = []
+    if not pw.get('plugged'):
+        warnings.append({'id': 'power', 'text': 'Plug in the charger before you start. Resizing a drive takes a while and must not be cut off.'})
+    for disk in disks:
+        table = tables[disk]
+        sector = int(table.get('sectorsize') or 512)
+        gpt = table.get('label') == 'gpt'
+        for p in sorted(table.get('partitions', []), key=lambda x: int(x['start'])):
+            node = os.path.realpath(p['node'])
+            info = devs.get(node, {})
+            kind, what = classify(p, info, root_devs)
+            fs = info.get('fstype') or ''
+            entry = {'dev': node, 'disk': disk, 'num': int(re.search(r'(\d+)$', node).group(1)), 'kind': kind, 'what': what,
+                     'fs': fs, 'label': info.get('label') or info.get('partlabel') or '', 'size': int(p['size']) * sector,
+                     'start': int(p['start']), 'sectors': int(p['size'])}
+            res['parts'].append(entry)
+            if kind not in ('windows', 'linux'):
+                continue
+            # SteamOS: only its big "home" partition (games) is offered; the system partitions never are.
+            if kind == 'linux' and any((x.get('partlabel') or '') in STEAMOS_SYSTEM for x in devs.values() if x.get('pkname') == disk[5:]) \
+                    and (info.get('partlabel') or '') != 'home':
+                continue
+            if entry['size'] < 8 * GIB:
+                continue
+            sysent = {'id': os.path.basename(node), 'dev': node, 'disk': disk, 'kind': kind, 'fs': fs, 'label': entry['label'],
+                      'partSize': entry['size'], 'name': 'Windows' if kind == 'windows' else ('SteamOS' if info.get('partlabel') == 'home' else 'Linux'),
+                      'size': entry['size'], 'used': None, 'min': None, 'keep': None, 'canGive': 0, 'estimate': False,
+                      'blockers': [], 'warnings': []}
+            blocks = sysent['blockers']
+            if fs == 'BitLocker':
+                blocks.append({'id': 'bitlocker', 'text': text('bitlocker', name='Windows')})
+            elif fs not in SHRINKABLE or info.get('type') == 'lvm':
+                blocks.append({'id': 'fs', 'text': text('fs', name=sysent['name'], fs={'crypto_LUKS': 'encryption', 'LVM2_member': 'LVM'}.get(fs, fs or 'an unknown file system'))})
+            else:
+                busy = busy_mounts(info)
+                if busy:
+                    blocks.append({'id': 'busy', 'text': text('busy', name=sysent['name'], where=', '.join(busy))})
+                if isinstance(facts, dict):
+                    f = facts.get(node) or {}
+                else:
+                    f = (facts or fs_facts)(node, fs, info, is_root)
+                if f.get('name'):
+                    sysent['name'] = f['name']
+                sysent['estimate'] = bool(f.get('estimate'))
+                if f.get('size'):
+                    sysent['size'] = f['size']
+                sysent['used'] = f.get('used')
+                if f.get('multi'):
+                    blocks.append({'id': 'multi', 'text': text('multi', name=sysent['name'])})
+                if f.get('problem'):
+                    blocks.append({'id': f['problem'], 'text': text(f['problem'], name=sysent['name'])})
+                if f.get('min') is not None and f.get('used') is not None:
+                    keep = keep_size(f['min'], f['used'])
+                    sysent.update(min=f['min'], keep=keep, canGive=can_give(min(sysent['size'], entry['size']), f['min'], f['used']))
+                    if not f.get('problem') and sysent['canGive'] < MIN_GIVE:
+                        blocks.append({'id': 'room', 'text': text('room', name=sysent['name'])})
+                elif f.get('why') and not f.get('problem'):
+                    blocks.append({'id': 'unreadable', 'text': text('unreadable', name=sysent['name'], why=f['why'])})
+                elif not is_root:
+                    sysent['warnings'].append({'id': 'limited', 'text': 'Exact numbers need the system\'s OK (Hearth asks when you open this page).'})
+                if sysent['estimate'] and not busy and mounted_where(info):
+                    sysent['warnings'].append({'id': 'estimate', 'text': 'Hearth has this drive open for importing; the numbers are estimates until it lets go (it does that by itself when you start).'})
+                missing = needed_tools(fs) if is_root else []
+                if missing:
+                    blocks.append({'id': 'tools', 'text': text('tools', tool=', '.join(missing))})
+                if not gpt:
+                    blocks.append({'id': 'table', 'text': 'Hearth\'s drive uses the old (MBR) partition table; Hearth only changes GPT drives.'})
+                if not boot[0]:
+                    blocks.append({'id': 'boot', 'text': 'Hearth can\'t confirm it would still start afterwards: ' + boot[1] + '.'})
+            sysent['blockers'] = blocks + [b for b in global_blocks]
+            sysent['warnings'] += warnings
+            res['systems'].append(sysent)
+        for r in free_regions(table, sector):
+            r.update(disk=disk, afterHearth=r['after'] in root_devs)
+            # Free space is safe to use even after an interrupted run (that's how its leftover space gets used).
+            fblocks = [b for b in global_blocks if b['id'] != 'unfinished']
+            if not gpt:
+                fblocks.append({'id': 'table', 'text': 'Hearth\'s drive uses the old (MBR) partition table; Hearth only changes GPT drives.'})
+            if not r['afterHearth'] and not boot[0]:
+                fblocks.append({'id': 'boot', 'text': 'Hearth can\'t confirm it would still start afterwards: ' + boot[1] + '.'})
+            r['blockers'] = fblocks
+            r['canGive'] = r['bytes'] // GIB * GIB
+            res['free'].append(r)
+    res['problems'] = global_blocks
+    return res
+
+
+# ---------------------------------------------------------------------- the plan
+
+def plan_grow(st, src, gb, tables, root):
+    """The exact steps for `grow`, from status data. Raises Fail (nothing changed) when it can't be done safely."""
+    if not isinstance(gb, int) or isinstance(gb, bool) or not 1 <= gb <= MAX_GB:
+        raise Fail('choose how many GB (1 or more)')
+    give = gb * GIB
+    if src == 'free':
+        regions = [r for r in st['free'] if not r['blockers']]
+        if not regions:
+            raise Fail('there is no free space on Hearth\'s drive to use' if not st['free'] else st['free'][0]['blockers'][0]['text'])
+        # Right after Hearth's own partition first (grows in place), otherwise the biggest.
+        regions.sort(key=lambda r: (not r['afterHearth'], -r['bytes']))
+        r = regions[0]
+        if give > r['canGive']:
+            raise Fail(f"there's only {r['canGive'] // GIB} GB of free space")
+        table = tables[r['disk']]
+        sector = int(table.get('sectorsize') or 512)
+        align = max(1, MIB // sector)
+        sectors = min(r['sectors'], give // sector // align * align)
+        if r['afterHearth']:
+            part = next(p for p in table['partitions'] if os.path.realpath(p['node']) == r['after'])
+            num = int(re.search(r'(\d+)$', part['node']).group(1))
+            return {'from': 'free', 'name': 'free space', 'method': 'grow-in-place', 'disk': r['disk'], 'sector': sector, 'give': sectors * sector,
+                    'steps': [
+                        {'step': 'grow-part', 'what': "making Hearth's partition bigger", 'changes': True, 'dev': r['after'], 'num': num,
+                         'start': int(part['start']), 'oldSectors': int(part['size']), 'newSectors': int(part['size']) + sectors},
+                        {'step': 'grow-fs', 'what': "growing Hearth's file system", 'changes': True, 'dev': r['after'],
+                         'devid': root['devids'].get(r['after'], 1), 'mount': root.get('rw') or root['mount']},
+                        {'step': 'verify', 'what': 'checking', 'changes': False}]}
+        return {'from': 'free', 'name': 'free space', 'method': 'device-add', 'disk': r['disk'], 'sector': sector, 'give': sectors * sector,
+                'steps': [
+                    {'step': 'new-part', 'what': 'making a new partition for Hearth', 'changes': True, 'disk': r['disk'], 'start': r['start'], 'sectors': sectors},
+                    {'step': 'device-add', 'what': "adding it to Hearth's file system", 'changes': True, 'mount': root.get('rw') or root['mount']},
+                    {'step': 'verify', 'what': 'checking', 'changes': False}]}
+    if not re.fullmatch(r'/dev/[A-Za-z0-9/_-]+', src or ''):
+        raise Fail('choose which system gives the space')
+    real = os.path.realpath(src)
+    part = next((p for p in st['parts'] if p['dev'] == real), None)
+    if part and part['kind'] not in ('windows', 'linux'):
+        raise Fail(f"{part['what']} is never changed")
+    s = next((x for x in st['systems'] if x['dev'] == real), None)
+    if not s:
+        raise Fail("that isn't a system on Hearth's drive that can give space")
+    if s['blockers']:
+        raise Fail(s['blockers'][0]['text'])
+    if s['estimate'] or s['min'] is None:
+        raise Fail(f"Hearth couldn't read exactly how full {s['name']} is")
+    if give > s['canGive']:
+        raise Fail(f"{s['name']} can give at most {s['canGive'] // GIB} GB")
+    table = tables[s['disk']]
+    sector = int(table.get('sectorsize') or 512)
+    tp = next(p for p in table['partitions'] if os.path.realpath(p['node']) == real)
+    geo = shrink_geometry({'start': int(tp['start']), 'size': int(tp['size'])}, s['size'], give, s['keep'], sector)
+    num = int(re.search(r'(\d+)$', real).group(1))
+    steps = [
+        {'step': 'release', 'what': f"letting go of {poss(s['name'])} drive", 'changes': False, 'dev': real},
+        {'step': 'check', 'what': f"checking {poss(s['name'])} drive", 'changes': False, 'dev': real, 'fs': s['fs'], 'newFs': geo['newFs'], 'name': s['name']},
+        {'step': 'shrink-fs', 'what': f"making {poss(s['name'])} file system smaller", 'changes': True, 'dev': real, 'fs': s['fs'],
+         'oldFs': s['size'], 'newFs': geo['newFs']},
+        {'step': 'shrink-part', 'what': f"making {poss(s['name'])} partition smaller", 'changes': True, 'dev': real, 'disk': s['disk'], 'num': num,
+         'start': int(tp['start']), 'oldSectors': int(tp['size']), 'newSectors': geo['partSectors']},
+        {'step': 'new-part', 'what': 'making a new partition for Hearth', 'changes': True, 'disk': s['disk'],
+         'start': geo['newStart'], 'sectors': geo['newSectors']},
+        {'step': 'device-add', 'what': "adding it to Hearth's file system", 'changes': True, 'mount': root.get('rw') or root['mount']},
+        {'step': 'verify', 'what': 'checking', 'changes': False},
+    ]
+    return {'from': real, 'name': s['name'], 'fs': s['fs'], 'method': 'device-add', 'disk': s['disk'], 'sector': sector,
+            'give': geo['newSectors'] * sector, 'steps': steps}
+
+
+# ---------------------------------------------------------------------- doing it
+
+class Journal:
+    """Every step, written down before and after it runs (atomically), so an interrupted run can be understood."""
+
+    def __init__(self, plan, path=None):
+        self.path = path or JOURNAL
+        if os.path.exists(self.path):   # the previous run's record, kept one more time
+            os.replace(self.path, self.path[:-5] + '.prev.json')
+        self.data = {'version': 1, 'started': int(time.time()), 'state': 'running', 'from': plan['from'], 'name': plan.get('name'),
+                     'method': plan['method'], 'give': plan['give'], 'steps': []}
+        self.save()
+
+    def save(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        tmp = self.path + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(self.data, f, indent=1)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, self.path)
+
+    def start(self, step):
+        rec = {k: v for k, v in step.items()}
+        rec.update(state='started', at=int(time.time()))
+        self.data['steps'].append(rec)
+        self.save()
+        return rec
+
+    def done(self, rec, **extra):
+        rec.update(state='done', done=int(time.time()), **extra)
+        self.save()
+
+    def finish(self, state, **extra):
+        self.data.update(state=state, ended=int(time.time()), **extra)
+        self.save()
+
+
+def settle(disk, num=None, add=False):
+    if num is None:
+        RUN(['partx', '-u', disk])
+    else:
+        RUN(['partx', '-a' if add else '-u', '--nr', str(num), disk])
+    RUN(['udevadm', 'settle', '-t', '10'])
+
+
+def node_for_start(disk, start):
+    for p in part_table(disk).get('partitions', []):
+        if int(p['start']) == int(start):
+            return os.path.realpath(p['node']), int(re.search(r'(\d+)$', p['node']).group(1))
+    return None, None
+
+
+def wait_node(dev, seconds=10):
+    for _ in range(seconds * 4):
+        if os.path.exists(dev):
+            return True
+        time.sleep(0.25)
+    return os.path.exists(dev)
+
+
+def ntfs_resize(dev, size, on_pct=None):
+    code, out, err = RUN(['ntfsresize', '--force', '--no-action', '--size', str(size), dev])
+    if code != 0:
+        raise Fail("ntfsresize's test run refused: " + ((err or out).strip().splitlines() or ['?'])[-1])
+
+    def line(l):
+        m = re.search(r'([\d.]+) percent completed', l)
+        if m and on_pct:
+            on_pct(float(m.group(1)))
+    code, tail = STREAM(['ntfsresize', '--force', '--size', str(size), dev], 'y\n', line)   # answers "Proceed? y"
+    if code != 0:
+        raise Fail('ntfsresize: ' + (tail[-1] if tail else 'failed'))
+
+
+def do_check(step):
+    dev, fs = step['dev'], step['fs']
+    if fs == 'ntfs':
+        code, out, err = RUN(['ntfsresize', '--info', '--force', '--no-progress-bar', dev])
+        n = parse_ntfsresize_info(out + err)
+        if n.get('problem'):
+            raise Fail(text(n['problem'], name=step.get('name') or 'Windows'))
+        code, out, err = RUN(['ntfsfix', '-n', dev])
+        if code != 0 or re.search(r'hibernat|unclean|refus', out + err, re.I):
+            raise Fail(text('fast-startup' if re.search(r'hibernat|unclean', out + err, re.I) else 'needs-check', name=step.get('name') or 'Windows'))
+        code, out, err = RUN(['ntfsresize', '--force', '--no-action', '--size', str(step['newFs']), dev])
+        if code != 0:
+            raise Fail("ntfsresize's test run refused: " + ((err or out).strip().splitlines() or ['?'])[-1])
+    elif fs == 'ext4':
+        code, out, err = RUN(['e2fsck', '-f', '-n', dev])
+        if code != 0:
+            raise Fail(text('linux-check', step.get('name') or 'the other system') + ' (e2fsck found problems)')
+        code, out, err = RUN(['e2fsck', '-f', '-p', dev])   # nothing to fix (checked above); marks it checked for resize2fs
+        if code not in (0, 1):
+            raise Fail('e2fsck: ' + ((err or out).strip().splitlines() or ['failed'])[-1])
+    elif fs == 'btrfs':
+        code, out, err = RUN(['btrfs', 'check', '--readonly', dev])
+        if code != 0:
+            raise Fail(text('linux-check', step.get('name') or 'the other system') + ' (btrfs check found problems)')
+    else:
+        raise Fail(f"{fs} can't be made smaller")
+
+
+def shrink_fs(step, on_pct):
+    dev, fs, new = step['dev'], step['fs'], step['newFs']
+    if fs == 'ntfs':
+        ntfs_resize(dev, new, on_pct)
+    elif fs == 'ext4':
+        sh(['resize2fs', dev, f'{new // 1024}K'], what='resize2fs')
+    elif fs == 'btrfs':
+        def go(mnt):
+            _, show, _ = RUN(['btrfs', 'filesystem', 'show', mnt])
+            devs, _ = parse_btrfs_show(show)
+            sh(['btrfs', 'filesystem', 'resize', f'{devs[0][0] if devs else 1}:{new}', mnt], what='btrfs resize')
+        with_mount(dev, fs, go, rw=True)
+
+
+def grow_fs_back(step):
+    dev, fs, old = step['dev'], step['fs'], step['oldFs']
+    if fs == 'ntfs':
+        ntfs_resize(dev, old)
+    elif fs == 'ext4':
+        sh(['resize2fs', dev, f'{old // 1024}K'], what='resize2fs')
+    elif fs == 'btrfs':
+        with_mount(dev, fs, lambda mnt: sh(['btrfs', 'filesystem', 'resize', 'max', mnt], what='btrfs resize'), rw=True)
+
+
+def set_part_size(disk, num, start, sectors):
+    sh(['sfdisk', '--no-reread', '--no-tell-kernel', '--force', '-N', str(num), disk], input=f'start={start}, size={sectors}\n', what='sfdisk')
+    settle(disk, num)
+
+
+def delete_part(disk, num):
+    sh(['sfdisk', '--no-reread', '--no-tell-kernel', '--force', '--delete', disk, str(num)], what='sfdisk')
+    RUN(['partx', '-d', '--nr', str(num), disk])
+
+
+def check_table_unchanged(disk, step):
+    """Before changing a partition: it's still exactly where the plan says (nothing else changed it meanwhile)."""
+    for p in part_table(disk).get('partitions', []):
+        if int(re.search(r'(\d+)$', p['node']).group(1)) == step['num']:
+            if int(p['start']) != step['start'] or int(p['size']) != step['oldSectors']:
+                raise Fail('the partition table changed since Hearth looked at it')
+            return
+    raise Fail('the partition is gone')
+
+
+def region_free(disk, start, sectors):
+    for p in part_table(disk).get('partitions', []):
+        s, n = int(p['start']), int(p['size'])
+        if s < start + sectors and start < s + n:
+            raise Fail('that space is not free any more')
+
+
+def execute(plan, journal, emit=progress):
+    """Runs the plan's steps; on failure undoes the finished ones in reverse order. Returns the result."""
+    done = []     # (step, record) of finished steps that changed something
+    ctx = {}
+    total = len(plan['steps'])
+    try:
+        for i, step in enumerate(plan['steps']):
+            base = 100 * i / total
+            emit(base, cap(step['what']))
+            rec = journal.start(step)
+            kind = step['step']
+            if kind == 'release':
+                info = flatten(lsblk()).get(step['dev'], {})
+                busy = busy_mounts(info)
+                if busy:
+                    raise Fail('the drive is open in another app (' + ', '.join(busy) + ')')
+                for m in mounted_where(info):
+                    sh(['umount', m], what='umount')
+                if mounted_where(flatten(lsblk()).get(step['dev'], {})):
+                    raise Fail("the drive couldn't be let go")
+            elif kind == 'check':
+                do_check(step)
+            elif kind == 'shrink-fs':
+                shrink_fs(step, lambda pct: emit(base + (100 / total) * pct / 100, cap(step['what']) + ' (this can take a while)'))
+            elif kind in ('shrink-part', 'grow-part'):
+                check_table_unchanged(step.get('disk') or plan['disk'], step)
+                set_part_size(step.get('disk') or plan['disk'], step['num'], step['start'], step['newSectors'])
+            elif kind == 'grow-fs':
+                sh(['btrfs', 'filesystem', 'resize', f"{step['devid']}:max", step['mount']], what='btrfs resize')
+            elif kind == 'new-part':
+                region_free(step['disk'], step['start'], step['sectors'])
+                sh(['sfdisk', '--no-reread', '--no-tell-kernel', '--force', '--append', step['disk']],
+                   input=f'start={step["start"]}, size={step["sectors"]}, type={LINUX_TYPE}, name="{NEW_NAME}"\n', what='sfdisk')
+                node, num = node_for_start(step['disk'], step['start'])
+                if not node:
+                    raise Fail("the new partition didn't appear")
+                rec['node'], rec['num'] = node, num
+                ctx['new'] = (node, num, step['disk'])
+                done.append((step, rec))
+                journal.done(rec, node=node, num=num)
+                settle(step['disk'], num, add=True)
+                if not wait_node(node):
+                    raise Fail("the new partition didn't show up")
+                continue
+            elif kind == 'device-add':
+                node = ctx['new'][0]
+                RUN(['wipefs', '-a', node])   # old file system signatures in that space (the end of Windows' drive)
+                sh(['btrfs', 'device', 'add', '-f', node, step['mount']], what='btrfs device add')
+                rec['node'] = node
+            elif kind == 'verify':
+                # Everything is in place by now: what's found here is reported, not undone.
+                _, show, _ = RUN(['btrfs', 'filesystem', 'show', plan.get('mount') or '/sysroot'])
+                if plan['method'] == 'device-add' and ctx.get('new') and ctx['new'][0] not in [os.path.realpath(p) for _, p in parse_btrfs_show(show)[0]]:
+                    ctx.setdefault('warnings', []).append("btrfs doesn't list the new partition yet; restart Hearth and check Settings › Import › Make Hearth bigger")
+            if step['changes']:
+                done.append((step, rec))
+            journal.done(rec)
+    except Exception as e:   # noqa: anything at all: undo what can be undone
+        msg = str(e) if isinstance(e, Fail) else f'{type(e).__name__}: {e}'
+        emit(100, 'Putting things back')
+        undone, stuck = rollback(done, plan, journal)
+        if stuck:
+            journal.finish('stuck', error=msg, undo=stuck)
+            raise Fail(f"{msg}. Hearth couldn't put everything back ({stuck}). Don't change partitions now; "
+                       f"send the logs (Settings › System). The record of what happened is in {JOURNAL}.")
+        journal.finish('rolled-back', error=msg, undone=undone)
+        if any(s['changes'] for s, _ in done):
+            raise Fail(f'{msg}. Everything was put back as it was')
+        raise Fail(f'{msg}. Nothing was changed')
+    journal.finish('done')
+    emit(100, 'Done')
+    return {'ok': True, 'from': plan['from'], 'method': plan['method'], 'gave': plan['give'],
+            'newPart': ctx.get('new', (None,))[0], 'journal': journal.path, 'warnings': ctx.get('warnings', [])}
+
+
+def rollback(done, plan, journal):
+    """Undoes finished steps, newest first. Stops at the first undo that fails (the earlier ones depend on it).
+    Returns (undone step names, what got stuck or '')."""
+    undone = []
+    for step, rec in reversed(done):
+        kind = step['step']
+        try:
+            if kind == 'device-add':
+                return undone, 'the new partition is already part of Hearth'   # never undone automatically
+            if kind == 'new-part':
+                delete_part(step['disk'], rec['num'])
+            elif kind in ('shrink-part', 'grow-part'):
+                set_part_size(step.get('disk') or plan['disk'], step['num'], step['start'], step['oldSectors'])
+            elif kind == 'shrink-fs':
+                grow_fs_back(step)
+            elif kind == 'grow-fs':
+                return undone, "Hearth's file system was already grown"
+            rec['state'] = 'undone'
+            journal.save()
+            undone.append(kind)
+        except Exception as e:   # noqa
+            rec['state'] = 'undo-failed'
+            rec['undoError'] = str(e)
+            journal.save()
+            return undone, f'undoing "{step["what"]}" failed: {e}'
+    return undone, ''
+
+
+# ---------------------------------------------------------------------- commands
+
+def status():
+    print(json.dumps(status_data()))
+
+
+def parse_grow_args(args):
+    src, gb, dry = None, None, False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == '--from' and i + 1 < len(args):
+            src = args[i + 1]
+            i += 2
+        elif a == '--gb' and i + 1 < len(args) and re.fullmatch(r'\d{1,6}', args[i + 1]):
+            gb = int(args[i + 1])
+            i += 2
+        elif a == '--dry-run':
+            dry = True
+            i += 1
+        else:
+            raise Fail('usage: hearth-space grow --from DEV|free --gb N [--dry-run]')
+    if not src or (src != 'free' and not re.fullmatch(r'/dev/[A-Za-z0-9/_-]+', src)):
+        raise Fail('choose which system gives the space (--from /dev/... or --from free)')
+    if gb is None or not 1 <= gb <= MAX_GB:
+        raise Fail('choose how many GB (--gb N)')
+    return src, gb, dry
+
+
+def grow(args):
+    src, gb, dry = parse_grow_args(args)
+    if os.geteuid() != 0:
+        raise Fail('needs root (run through hearth-admin)')
+    os.makedirs(os.path.dirname(LOCK), exist_ok=True)
+    lock = open(LOCK, 'w')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        raise Fail('Hearth is already resizing')
+    progress(0, 'Looking at the drive')
+    root = root_info()
+    st = status_data(root=root)
+    tables = {d: part_table(d) for d in st['hearth']['disks']}
+    if src != 'free':
+        # The importer may have it open read-only: let go, then read exact numbers before planning.
+        info = flatten(lsblk()).get(os.path.realpath(src), {})
+        if mounted_where(info) and not busy_mounts(info) and not dry:
+            for m in mounted_where(info):
+                RUN(['umount', m])
+            st = status_data(root=root, tables=tables)
+    plan = plan_grow(st, src, gb, tables, root)
+    plan['mount'] = root['mount']
+    if dry:
+        print(json.dumps({'dryRun': True, 'plan': plan}))
+        return
+    # From here on nothing stops it half-way: closing the app or a stray signal doesn't cut a resize off.
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, signal.SIG_IGN)
+    journal = Journal(plan)
+    log(f"giving {plan['give'] // GIB} GB from {plan['name']} ({plan['method']})")
+    result = execute(plan, journal)
+    try:
+        s = os.statvfs(root['mount'])
+        result['hearth'] = {'size': s.f_blocks * s.f_frsize, 'free': s.f_bavail * s.f_frsize}
+    except OSError:
+        pass
+    print(json.dumps(result))
+
+
+def clear_journal():
+    if os.geteuid() != 0:
+        raise Fail('needs root (run through hearth-admin)')
+    j = read_journal()
+    if j and j.get('state') in ('running', 'stuck'):
+        os.replace(JOURNAL, JOURNAL.replace('.json', '.%d.json' % int(time.time())))
+    print(json.dumps({'ok': True}))
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    try:
+        if cmd == 'status' and len(argv) == 2:
+            status()
+        elif cmd == 'grow':
+            grow(argv[2:])
+        elif cmd == 'clear-journal' and len(argv) == 2:
+            clear_journal()
+        else:
+            raise Fail('usage: hearth-space status | grow --from DEV|free --gb N [--dry-run] | clear-journal')
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        return 1
+    except (OSError, ValueError, KeyError) as e:
+        print('error: ' + f'{type(e).__name__}: {e}', flush=True)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

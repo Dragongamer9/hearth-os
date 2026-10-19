@@ -178,5 +178,246 @@ class Copying(unittest.TestCase):
         self.assertFalse(self.hi.under('/home/ab', '/home/a'))
 
 
+def fake_rsync(src, dst, on_bytes):
+    """rsync without rsync (it may not be installed where the tests run): copies src/ into dst/."""
+    shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
+    on_bytes(1, 1.0)
+
+
+class Moving(unittest.TestCase):
+    """Move (Beta Experimental): copy, check every byte, register, and only then delete the original."""
+
+    def setUp(self):
+        self.hi = load()
+        self.root = tempfile.mkdtemp()
+        self.mnt = os.path.join(self.root, 'windows')
+        self.sa = os.path.join(self.mnt, 'Program Files (x86)', 'Steam', 'steamapps')
+        manifest(self.sa, '1145360', 'Hades', 'Hades')
+        game = os.path.join(self.sa, 'common', 'Hades')
+        write(os.path.join(game, 'Content', 'big.pak'), 'p' * 50000)
+        write(os.path.join(game, 'Content', 'a.txt'), 'hello')
+        os.symlink('Content/a.txt', os.path.join(game, 'link.txt'))
+        manifest(self.sa, '620', 'Portal 2', 'Portal 2')
+        self.home = os.path.join(self.root, 'home')
+        self.steamapps = os.path.join(self.home, '.local', 'share', 'Steam', 'steamapps')
+        os.makedirs(self.steamapps)
+        self.user = type('U', (), {'pw_dir': self.home, 'pw_uid': os.getuid(), 'pw_gid': os.getgid(), 'pw_name': 'me'})()
+        games = self.hi.steam_games(self.sa, 'sda1')
+        self.drive = {'id': 'sda1', 'dev': '/dev/sda1', 'name': 'Windows', 'fs': 'ntfs', 'mount': self.mnt, 'ours': True,
+                      'steam': games, 'epic': [], 'gog': [], 'lutris': [], 'files': []}
+        self.hades = next(g for g in games if g['appid'] == '1145360')
+        self.portal = next(g for g in games if g['appid'] == '620')
+        self.hi.rsync = fake_rsync
+        self.hi.chown_tree = lambda p, user: None
+        self.writable = []
+        self.hi.make_writable = lambda d, mnt, state: self.writable.append(mnt)
+        self.hi.current.update(stop=False, partial=[], flag=None)
+        self.hi.stage = lambda **kw: None
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def move(self, items, mode='move'):
+        return self.hi.do_items(items, mode, self.user, os.path.join(self.home, 'Games'), self.steamapps, [self.drive])
+
+    def test_move_copies_checks_registers_then_deletes(self):
+        r = self.move([('steam', self.drive, self.hades)])
+        dst = os.path.join(self.steamapps, 'common', 'Hades')
+        with open(os.path.join(dst, 'Content', 'big.pak')) as f:
+            self.assertEqual(f.read(), 'p' * 50000)
+        self.assertTrue(os.path.islink(os.path.join(dst, 'link.txt')))
+        self.assertTrue(os.path.exists(os.path.join(self.steamapps, 'appmanifest_1145360.acf')))
+        self.assertFalse(os.path.exists(self.hades['path']))                                   # original gone
+        self.assertFalse(os.path.exists(self.hades['manifest']))                               # and Steam's record of it
+        self.assertFalse(any(n.startswith('.hearth-moved-') for n in os.listdir(os.path.join(self.sa, 'common'))))
+        self.assertTrue(os.path.exists(self.portal['path']))                                   # other games untouched
+        self.assertEqual([x['name'] for x in r['moved']], ['Hades'])
+        self.assertEqual(r['steam'], 1)
+        self.assertEqual(r['freed'][0]['drive'], 'sda1')
+        self.assertGreater(r['freed'][0]['bytes'], 0)
+        self.assertEqual(self.writable, [self.mnt])
+
+    def test_bad_copy_keeps_the_original_and_removes_the_copy(self):
+        def corrupt(src, dst, on_bytes):
+            fake_rsync(src, dst, on_bytes)
+            p = os.path.join(dst, 'Content', 'big.pak')
+            if os.path.exists(p):
+                with open(p, 'r+') as f:
+                    f.seek(30000)
+                    f.write('X')
+        self.hi.rsync = corrupt
+        r = self.move([('steam', self.drive, self.hades)])
+        self.assertTrue(os.path.exists(os.path.join(self.hades['path'], 'Content', 'big.pak')))
+        self.assertTrue(os.path.exists(self.hades['manifest']))
+        self.assertFalse(os.path.exists(os.path.join(self.steamapps, 'common', 'Hades')))
+        self.assertFalse(os.path.exists(os.path.join(self.steamapps, 'appmanifest_1145360.acf')))   # never registered
+        self.assertEqual(len(r['failed']), 1)
+        self.assertIn("didn't match", r['failed'][0]['why'])
+        self.assertEqual(self.writable, [])
+
+    def test_missing_file_in_copy(self):
+        def lose(src, dst, on_bytes):
+            fake_rsync(src, dst, on_bytes)
+            if os.path.exists(os.path.join(dst, 'Content', 'a.txt')):
+                os.remove(os.path.join(dst, 'Content', 'a.txt'))
+        self.hi.rsync = lose
+        r = self.move([('steam', self.drive, self.hades)])
+        self.assertTrue(os.path.exists(self.hades['path']))
+        self.assertEqual(len(r['failed']), 1)
+
+    def test_stop_during_copy_leaves_original_and_removes_partial(self):
+        def half(src, dst, on_bytes):
+            os.makedirs(os.path.join(dst, 'Content'), exist_ok=True)
+            write(os.path.join(dst, 'Content', 'big.pak'), 'p' * 100)
+            self.hi.current['stop'] = True
+            raise RuntimeError('rsync was stopped')
+        self.hi.rsync = half
+        r = self.move([('steam', self.drive, self.hades), ('steam', self.drive, self.portal)])
+        self.assertTrue(r.get('stopped'))
+        self.assertFalse(os.path.exists(os.path.join(self.steamapps, 'common', 'Hades')))
+        self.assertTrue(os.path.exists(os.path.join(self.hades['path'], 'Content', 'big.pak')))
+        self.assertTrue(os.path.exists(self.hades['manifest']))
+        self.assertFalse(os.path.exists(os.path.join(self.steamapps, 'common', 'Portal 2')))   # the next one never started
+        self.assertEqual(r['done'], [])
+
+    def test_stop_during_check(self):
+        flag = os.path.join(self.root, 'cancel')
+        self.hi.current['flag'] = flag
+        orig = self.hi.same_bytes
+
+        def slow(a, b, on_bytes=None, chunk=4 * 1024 * 1024):
+            write(flag, '')
+            return orig(a, b, on_bytes, chunk)
+        self.hi.same_bytes = slow
+        r = self.move([('steam', self.drive, self.hades)])
+        self.assertTrue(r.get('stopped'))
+        self.assertTrue(os.path.exists(self.hades['path']))
+        self.assertFalse(os.path.exists(os.path.join(self.steamapps, 'common', 'Hades')))
+
+    def test_windows_not_shut_down_keeps_the_original(self):
+        def refuse(d, mnt, state):
+            raise self.hi.Keep("Windows wasn't fully shut down (Fast Startup or hibernation)")
+        self.hi.make_writable = refuse
+        r = self.move([('steam', self.drive, self.hades)])
+        self.assertTrue(os.path.exists(self.hades['path']))
+        self.assertTrue(os.path.exists(self.hades['manifest']))
+        self.assertTrue(os.path.exists(os.path.join(self.steamapps, 'appmanifest_1145360.acf')))   # the copy is good and registered
+        self.assertEqual(len(r['kept']), 1)
+        self.assertIn('Fast Startup', r['kept'][0]['why'])
+        self.assertEqual(r['freed'], [])
+
+    def test_copy_mode_never_deletes(self):
+        r = self.move([('steam', self.drive, self.hades)], mode='copy')
+        self.assertTrue(os.path.exists(self.hades['path']))
+        self.assertEqual(r['moved'], [])
+        self.assertEqual(self.writable, [])
+
+    def test_folder_holding_other_games_is_never_deleted(self):
+        games = os.path.join(self.mnt, 'Games')
+        write(os.path.join(games, 'One', 'one.exe'), 'x')
+        write(os.path.join(games, 'Two', 'two.exe'), 'y')
+        lut = {'key': 'lutris:sda1:all', 'name': 'All', 'slug': 'all', 'size': 2, 'path': games, 'records': []}
+        other = {'key': 'gog:sda1:2', 'id': '2', 'name': 'Two', 'size': 1, 'path': os.path.join(games, 'Two')}
+        self.drive['lutris'], self.drive['gog'] = [lut], [other]
+        r = self.move([('lutris', self.drive, lut)])
+        self.assertTrue(os.path.exists(os.path.join(games, 'Two', 'two.exe')))
+        self.assertEqual(len(r['kept']), 1)
+
+    def test_launcher_records(self):
+        cfg = os.path.join(self.root, 'installed.json')
+        write(cfg, json.dumps({'Sugar': {'title': 'RL'}, 'Other': {}}))
+        self.hi.remove_record({'type': 'json-key', 'path': cfg, 'key': 'Sugar'}, {})
+        with open(cfg) as f:
+            self.assertEqual(json.load(f), {'Other': {}})
+        import sqlite3
+        db = os.path.join(self.root, 'pga.db')
+        con = sqlite3.connect(db)
+        con.execute('CREATE TABLE games (slug TEXT, installed INTEGER)')
+        con.execute("INSERT INTO games VALUES ('a', 1), ('b', 1)")
+        con.commit()
+        con.close()
+        self.hi.remove_record({'type': 'lutris', 'path': db, 'slug': 'a'}, {})
+        con = sqlite3.connect(db)
+        self.assertEqual(sorted(con.execute('SELECT slug, installed FROM games').fetchall()), [('a', 0), ('b', 1)])
+        con.close()
+
+
+class Checking(unittest.TestCase):
+    def setUp(self):
+        self.hi = load()
+        self.hi.current.update(stop=False, flag=None)
+        self.root = tempfile.mkdtemp()
+        self.a, self.b = os.path.join(self.root, 'a'), os.path.join(self.root, 'b')
+        write(os.path.join(self.a, 'x', 'f.bin'), 'abc' * 1000)
+        write(os.path.join(self.a, 'g.txt'), 'g')
+        os.symlink('g.txt', os.path.join(self.a, 'l'))
+        shutil.copytree(self.a, self.b, symlinks=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_identical(self):
+        self.assertEqual(self.hi.verify_tree(self.a, self.b), (3, 3001))
+
+    def test_differences_are_caught(self):
+        V = self.hi.VerifyError
+        with open(os.path.join(self.b, 'x', 'f.bin'), 'w') as f:
+            f.write('abc' * 999 + 'abd')                         # same size, one byte different
+        with self.assertRaisesRegex(V, 'different'):
+            self.hi.verify_tree(self.a, self.b)
+        shutil.rmtree(self.b)
+        shutil.copytree(self.a, self.b, symlinks=True)
+        os.remove(os.path.join(self.b, 'l'))
+        os.symlink('x', os.path.join(self.b, 'l'))
+        with self.assertRaisesRegex(V, 'link'):
+            self.hi.verify_tree(self.a, self.b)
+        shutil.rmtree(self.b)
+        shutil.copytree(self.a, self.b, symlinks=True)
+        with open(os.path.join(self.b, 'g.txt'), 'a') as f:
+            f.write('more')
+        with self.assertRaisesRegex(V, 'size'):
+            self.hi.verify_tree(self.a, self.b)
+        shutil.rmtree(os.path.join(self.b, 'x'))
+        with self.assertRaises(V):
+            self.hi.verify_tree(self.a, self.b)
+
+    @unittest.skipUnless(hasattr(os, 'mkfifo'), 'no fifos here')
+    def test_special_files_refused(self):
+        os.mkfifo(os.path.join(self.a, 'pipe'))
+        with self.assertRaisesRegex(self.hi.VerifyError, 'special'):
+            self.hi.verify_tree(self.a, self.b)
+
+    def test_safe_to_delete(self):
+        hi = self.hi
+        mnt = self.root
+        self.assertTrue(hi.safe_to_delete(self.a, mnt))
+        self.assertFalse(hi.safe_to_delete(mnt, mnt))                                      # the drive itself
+        self.assertFalse(hi.safe_to_delete(os.path.join(self.a, 'l'), mnt))                # a link
+        self.assertFalse(hi.safe_to_delete(self.a, mnt, [os.path.join(self.a, 'x')]))       # holds something protected
+        os.makedirs(os.path.join(mnt, 'Windows'))
+        self.assertFalse(hi.safe_to_delete(os.path.join(mnt, 'Windows'), mnt))
+        self.assertFalse(hi.safe_to_delete(self.a, os.path.join(mnt, 'b')))                # not on that drive
+
+    def test_make_writable_refuses_hibernated_windows(self):
+        hi = self.hi
+        ran = []
+        orig = hi.subprocess.run
+        hi.subprocess.run = lambda *a, **k: ran.append(a) or orig(['true'])
+        hi.is_readonly = lambda m: True
+        try:
+            with self.assertRaisesRegex(hi.Keep, 'Fast Startup'):
+                hi.make_writable({'fs': 'ntfs', 'dev': '/dev/x', 'ours': True, 'forced': True}, self.root, {'rw': set(), 'ours': set()})
+            with self.assertRaisesRegex(hi.Keep, 'another app'):
+                hi.make_writable({'fs': 'ntfs', 'dev': '/dev/x', 'ours': False}, self.root, {'rw': set(), 'ours': set()})
+            self.assertEqual(ran, [])                                                     # never even tried to mount it
+            # A hibernated Windows found by the probe: back to read-only, original kept
+            hi.ntfs_writable = lambda dev: (False, "Windows wasn't fully shut down")
+            with self.assertRaisesRegex(hi.Keep, 'fully shut down'):
+                hi.make_writable({'fs': 'ntfs', 'dev': '/dev/x', 'ours': True, 'mountOpts': ['-t', 'ntfs3', '-o', 'ro']}, self.root, {'rw': set(), 'ours': set()})
+            self.assertFalse(any('rw' in c[0] for c in ran))
+        finally:
+            hi.subprocess.run = orig
+
+
 if __name__ == '__main__':
     unittest.main()

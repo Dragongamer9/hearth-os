@@ -31,6 +31,7 @@ pub mod procs;
 pub mod profile;
 pub mod profiles;
 pub mod remote;
+pub mod space;
 pub mod steam;
 pub mod store;
 pub mod stores;
