@@ -22,6 +22,8 @@ internal sealed class FullShell : IDisposable
     public event Action? WinKey;
     /// <summary>+1 / -1 for the volume keys, 0 for mute.</summary>
     public event Action<int>? VolumeKey;
+    /// <summary>Ctrl+Shift+Esc (Explorer's shortcut for Task Manager): Hearth Task Manager.</summary>
+    public event Action? TaskManagerKey;
 
     public void Start(int barSize)
     {
@@ -80,6 +82,11 @@ internal sealed class FullShell : IDisposable
                 }
             }
             else if (down && _winDown) _winCombo = true;
+            if (vk == 0x1B && down && (GetAsyncKeyState(0x11) & 0x8000) != 0 && (GetAsyncKeyState(0x10) & 0x8000) != 0)
+            {
+                TaskManagerKey?.Invoke();
+                return (IntPtr)1;
+            }
             if (vk is 0xAF or 0xAE or 0xAD)   // volume up / down / mute
             {
                 if (down) VolumeKey?.Invoke(vk == 0xAF ? 1 : vk == 0xAE ? -1 : 0);
@@ -95,6 +102,7 @@ internal sealed class FullShell : IDisposable
     [DllImport("user32.dll")] private static extern bool SystemParametersInfo(uint action, uint param, ref MINIMIZEDMETRICS pv, uint flags);
     [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetWindowsHookEx(int id, HookProc fn, IntPtr mod, uint thread);
     [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hook);
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string? name);
 }

@@ -46,6 +46,10 @@ public sealed class SystemBridge : IDisposable
     private readonly DisplayService _display = new();
     private readonly PowerService _power = new();
     private readonly PerfService _perf = new();
+    /// <summary>Hearth Task Manager (mantel-tasks.html).</summary>
+    private readonly TaskService _tasks = new();
+    /// <summary>Hearth Files (mantel-files.html).</summary>
+    public FileService Files { get; }
     /// <summary>Other pages (the in-game overlay) that also receive events.</summary>
     private readonly List<Action<string>> _listeners = new();
     public void AddListener(Action<string> post) => _listeners.Add(post);
@@ -78,6 +82,7 @@ public sealed class SystemBridge : IDisposable
         _bt.Found += d => Event("bt.found", d);
         _bt.ScanDone += () => Event("bt.scanDone", new { });
         _bt.Pin += (pin, confirm) => Event("bt.pin", new { pin, confirm });
+        Files = new FileService((n, d) => Event(n, d));
 
         Updater = new Nimbus.Host.Updates.UpdateService(() => Games.AutoUpdateCheck);
         Switch = new Nimbus.Host.Switch.SwitchToHearth((n, d) => Event(n, d), Games);
@@ -510,6 +515,39 @@ public sealed class SystemBridge : IDisposable
                 };
             }
 
+            // Hearth Task Manager (mantel-tasks.html)
+            case "tasks.list": return await Task.Run(_tasks.Processes);
+            case "tasks.end": return _tasks.End(Ints(a, "pids"));
+            case "tasks.kill": return await Task.Run(() => _tasks.Kill(Ints(a, "pids")));
+            case "tasks.alive": return new { alive = _tasks.Alive(Ints(a, "pids")) };
+            case "tasks.perf": return await Task.Run(() => _tasks.Performance(_power));
+            case "tasks.startup":
+            {
+                var startup = await Task.Run(_tasks.Startup);
+                return new { startup, steam = new { installed = Library.SteamScanner.SteamPath() is not null, on = Games.SteamBackground } };
+            }
+            case "tasks.setStartup": await Task.Run(() => _tasks.SetStartup(Req(a, "id"), Bool(a, "on"))); return null;
+
+            // Hearth Files (mantel-files.html). The clipboard calls run on the UI thread (they come in on it).
+            case "files.places": return await Task.Run(() => Files.Places(GameFolders()));
+            case "files.list": return await Task.Run(() => Files.List(Req(a, "path"), Bool(a, "hidden")));
+            case "files.search": return await Files.Search(Req(a, "path"), Req(a, "query"), Bool(a, "hidden"));
+            case "files.open": Files.Open(Req(a, "path")); return null;
+            case "files.openWith": Files.OpenWith(Req(a, "path"), Mantel.Native.GetForegroundWindow()); return null;
+            case "files.properties": Files.WindowsProperties(Req(a, "path"), Mantel.Native.GetForegroundWindow()); return null;
+            case "files.info": return await Files.Info(Req(a, "path"));
+            case "files.newFolder": return Files.NewFolder(Req(a, "dir"), Str(a, "name"));
+            case "files.rename": return Files.Rename(Req(a, "path"), Req(a, "name"));
+            case "files.trash": await Files.Trash(Strs(a, "paths")); return null;
+            case "files.delete": await Files.DeleteForever(Strs(a, "paths")); return null;
+            case "files.restore": return await Files.Restore(Strs(a, "paths"));
+            case "files.emptyRecycleBin": await Files.EmptyRecycleBin(); return null;
+            case "files.clipSet": Files.SetClipboard(Strs(a, "paths"), Bool(a, "cut")); return null;
+            case "files.clipGet": return Files.GetClipboard();
+            case "files.clipClear": Files.ClearClipboard(); return null;
+            case "files.paste": return new { id = Files.StartTransfer(Strs(a, "paths"), Req(a, "dest"), Bool(a, "move")) };
+            case "files.cancel": return new { ok = Files.Cancel(Int(a, "id")) };
+
             case "overlay.settings": return OverlaySettings();
             case "overlay.setHoldView":
                 Games.OverlayHoldView = Bool(a, "on");
@@ -602,6 +640,21 @@ public sealed class SystemBridge : IDisposable
         }
     }
 
+    /// <summary>Game folders for Hearth Files' places: every Steam library's steamapps\common, and where Ember
+    /// installs Epic and GOG games.</summary>
+    private List<string> GameFolders()
+    {
+        var list = new List<string>();
+        try
+        {
+            var steam = Library.SteamScanner.SteamPath();
+            if (steam is not null) foreach (var lib in Library.SteamScanner.Libraries(steam)) list.Add(Path.Combine(lib, "steamapps", "common"));
+        }
+        catch { }
+        try { var root = Games.Accounts.InstallRoot; if (!string.IsNullOrEmpty(root)) list.Add(root); } catch { }
+        return list;
+    }
+
     private object OverlaySettings() => new
     {
         holdView = Games.OverlayHoldView,
@@ -664,6 +717,16 @@ public sealed class SystemBridge : IDisposable
 
     private static string Req(JsonElement a, string k) =>
         Str(a, k) ?? throw new ArgumentException($"Missing '{k}'");
+
+    private static int[] Ints(JsonElement a, string k) =>
+        a.ValueKind == JsonValueKind.Object && a.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Array
+            ? v.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.Number).Select(x => (int)x.GetDouble()).ToArray()
+            : Array.Empty<int>();
+
+    private static string[] Strs(JsonElement a, string k) =>
+        a.ValueKind == JsonValueKind.Object && a.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Array
+            ? v.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray()
+            : Array.Empty<string>();
 
     private static bool Bool(JsonElement a, string k) =>
         a.ValueKind == JsonValueKind.Object && a.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.True;

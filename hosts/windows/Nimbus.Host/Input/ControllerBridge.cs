@@ -326,7 +326,7 @@ public sealed class ControllerBridge : IDisposable
         // Other apps: only the controller mouse (if on) acts; no keys are sent to them.
     }
 
-    private const byte VK_MENU = 0x12, VK_F4 = 0x73, VK_LWIN = 0x5B;
+    private const byte VK_MENU = 0x12, VK_F4 = 0x73, VK_LWIN = 0x5B, VK_F23 = 0x86, VK_F24 = 0x87;
     private const byte VK_RETURN = 0x0D, VK_ESCAPE = 0x1B, VK_TAB = 0x09, VK_SHIFT = 0x10,
                        VK_LEFT = 0x25, VK_UP = 0x26, VK_RIGHT = 0x27, VK_DOWN = 0x28;
 
@@ -337,6 +337,10 @@ public sealed class ControllerBridge : IDisposable
         {
             // Y: on-screen keyboard for typing into web pages (sign-in, Steam's login).
             case Y when steam: ShowKeyboard(); break;
+            // Ember's own windows (Hearth Task Manager, Hearth Files): X = actions, Y = search / rename. F23 and F24
+            // are keys no keyboard has, so the pages know they came from the controller (and open the keyboard).
+            case X when target == Target.NimbusDialog: Key(VK_F23); break;
+            case Y when target == Target.NimbusDialog: Key(VK_F24); break;
             case A: Key(VK_RETURN); break;
             case B: Key(VK_ESCAPE); break;
             case START: Key(VK_RETURN); break;
