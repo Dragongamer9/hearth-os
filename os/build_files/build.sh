@@ -36,7 +36,7 @@ install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 
 # Let Nimbus's app menu entry exist for Desktop Mode / Plasma too.
@@ -65,6 +65,22 @@ dnf5 -y copr disable errornointernet/quickshell
 systemctl --global disable steamos-powerbuttond.service 2>/dev/null || true
 
 # ------------------------------------------------------------------ Hearth Settings and the Hearth look
+cat > /usr/share/applications/hearth-files.desktop <<DESKTOP
+[Desktop Entry]
+Name=Files
+GenericName=File Manager
+Comment=Browse, copy and move your files, games, USB drives and SD cards
+Exec=/usr/bin/hearth-filemanager %U
+Icon=hearth
+Type=Application
+Categories=System;FileManager;Utility;
+MimeType=inode/directory;
+Keywords=files;folder;explorer;browse;usb;sd;card;copy;move;
+OnlyShowIn=Nimbus;
+DESKTOP
+# Folders open in Hearth Files in Desktop Mode (XDG_CURRENT_DESKTOP=Nimbus); Plasma keeps Dolphin.
+mkdir -p /etc/xdg
+printf '[Default Applications]\ninode/directory=hearth-files.desktop\n' > /etc/xdg/nimbus-mimeapps.list
 cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
 [Desktop Entry]
 Name=Task Manager

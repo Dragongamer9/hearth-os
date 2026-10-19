@@ -1,0 +1,7 @@
+#!/bin/sh
+# Opens Hearth Files (Desktop Mode's file manager) at a folder, or at a file's folder with it picked; Home
+# with nothing. Without the Hearth desktop running, opens another file manager (never xdg-open: that's us).
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+if command -v quickshell >/dev/null 2>&1 && quickshell ipc -p "$SHELL_DIR" call files open "${1:-$HOME}" >/dev/null 2>&1; then exit 0; fi
+for fm in dolphin nautilus thunar pcmanfm-qt nemo; do command -v "$fm" >/dev/null 2>&1 && exec "$fm" "$@"; done
+exit 1
