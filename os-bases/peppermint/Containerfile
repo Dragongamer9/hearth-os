@@ -1,0 +1,67 @@
+# Hearth on Peppermint OS (Beta Experimental): Debian 13 "trixie" (Peppermint's base) made into a bootc image,
+# with the Hearth session (Game Mode + Desktop Mode) as what it boots into. Same model as the Bazzite build
+# (os/Containerfile): one image, updated as a whole with bootc, rolled back as a whole, installed by Hearth's
+# installer. See docs/BASE-PEPPERMINT.md for what Peppermint contributes and why it's built this way.
+# Built by .github/workflows/base-peppermint.yml from the repository root:
+#   podman build -f os-bases/peppermint/Containerfile -t hearth-peppermint .
+# os/nimbus-app must hold the Hearth app build (the nimbus-app artifact unpacked); CI puts it there.
+
+# Peppermint OS's Debian edition is Debian trixie with Debian's own repositories (Peppermint has no package
+# repository of its own for trixie), so the official Debian image is the base. Peppermint's Devuan edition
+# can't be used: it has no systemd, which bootc and ostree need.
+ARG BASE_IMAGE=docker.io/library/debian:trixie
+
+# Files the build script needs, kept out of the final image.
+FROM scratch AS ctx
+COPY os-bases/peppermint/build.sh /build.sh
+COPY os-bases/peppermint/system_files /peppermint_files
+COPY os/system_files /system_files
+COPY os/branding/wallpapers /wallpapers
+COPY os/nimbus-app /nimbus-app
+COPY hosts/linux/session /session
+COPY hosts/linux/desktop /desktop
+
+# ------------------------------------------------------------------ Debian trixie, set up the way Peppermint has it
+# All of Debian's components (games need contrib and non-free: Steam, gamescope, firmware, Nvidia), trixie-backports
+# (the newer kernel, Mesa and gamescope handhelds need) and 32-bit packages (Steam).
+FROM ${BASE_IMAGE} AS base
+RUN set -eux; \
+    f=/etc/apt/sources.list.d/debian.sources; \
+    sed -i -e 's/^Components: main$/Components: main contrib non-free non-free-firmware/' "$f"; \
+    printf 'Types: deb\nURIs: http://deb.debian.org/debian\nSuites: trixie-backports\nComponents: main contrib non-free non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' \
+      > /etc/apt/sources.list.d/debian-backports.sources; \
+    cat "$f" /etc/apt/sources.list.d/debian-backports.sources; \
+    grep -q 'non-free-firmware' "$f"; \
+    dpkg --add-architecture i386; \
+    rm -f /etc/apt/apt.conf.d/docker-gzip-indexes /etc/apt/apt.conf.d/docker-no-languages; \
+    printf 'APT::Install-Recommends "false";\nAPT::Install-Suggests "false";\n' > /etc/apt/apt.conf.d/90-hearth-no-recommends
+
+# ------------------------------------------------------------------ what Debian doesn't package (see builder.sh)
+FROM base AS builder
+COPY os-bases/peppermint/builder.sh /builder.sh
+RUN --mount=type=tmpfs,dst=/tmp /builder.sh
+
+# ------------------------------------------------------------------ Hearth
+FROM base
+
+COPY --from=builder /output /
+
+ARG NIMBUS_VERSION=0.0.0
+# 1: Nvidia's open driver (from NVIDIA's own Debian 13 repository) in the same image as AMD/Intel; 0: leave it out.
+ARG NVIDIA=1
+# 1: Peppermint's desktop (Xfce) as an extra session on the login screen (Hearth's own session stays the default).
+ARG PEPPERMINT_DESKTOP=1
+LABEL org.opencontainers.image.title="Hearth (Peppermint edition)" \
+      org.opencontainers.image.description="Hearth: Peppermint OS / Debian 13 with a controller-first Game Mode and Desktop Mode (bootc, Beta Experimental)" \
+      org.opencontainers.image.source="https://github.com/Dragongamer9/hearth-os" \
+      org.opencontainers.image.version="${NIMBUS_VERSION}" \
+      containers.bootc=1 \
+      ostree.bootable=1
+
+# No mounts on /var or /root: the end of build.sh replaces them with the bootc layout.
+RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    --mount=type=bind,from=builder,source=/debs,target=/hearth-debs \
+    --mount=type=tmpfs,dst=/tmp \
+    NVIDIA="${NVIDIA}" PEPPERMINT_DESKTOP="${PEPPERMINT_DESKTOP}" NIMBUS_VERSION="${NIMBUS_VERSION}" /ctx/build.sh
+
+RUN bootc container lint
