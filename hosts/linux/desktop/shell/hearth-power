@@ -171,22 +171,33 @@ def tdp_status():
             return {'supported': True, 'watts': int(w), 'min': int(lo or 3), 'max': int(hi), 'via': 'steamos-manager'}
     except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
         pass
+    # ASUS handhelds with the firmware-attributes driver (ROG Ally, ROG Xbox Ally): set directly, with the
+    # device's real range. PowerStation's older ASUS path doesn't work on them (it fails without saying so).
+    info = admin_tdp_info()
+    if info.get('method') == 'firmware':
+        w = info.get('watts') or remembered() or info.get('default')
+        return {'supported': True, 'watts': int(w or 15), 'min': int(info['min']), 'max': int(info['max']), 'via': 'hearth:firmware'}
     try:
         card = ps_card()
         w = getp('system', PS, card, PS_IFACE, 'TDP')
         return {'supported': True, 'watts': round(float(w)), 'min': 5, 'max': 30, 'via': 'powerstation'}
     except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
         pass
-    if os.path.exists(ADMIN):
-        try:
-            r = subprocess.run([ADMIN, 'tdp-info'], capture_output=True, text=True, timeout=10)  # read-only, no root needed
-            info = json.loads(r.stdout.strip().splitlines()[-1])
-            if info.get('method'):
-                w = info.get('watts') or remembered() or info.get('default')
-                return {'supported': True, 'watts': int(w or 15), 'min': int(info['min']), 'max': int(info['max']), 'via': 'hearth:' + info['method']}
-        except (OSError, ValueError, IndexError, KeyError, subprocess.TimeoutExpired):
-            pass
+    if info.get('method'):
+        w = info.get('watts') or remembered() or info.get('default')
+        return {'supported': True, 'watts': int(w or 15), 'min': int(info['min']), 'max': int(info['max']), 'via': 'hearth:' + info['method']}
     return {'supported': False, 'via': None}
+
+
+def admin_tdp_info():
+    """hearth-admin's read-only answer: how this device's power limit can be set ({} when it can't say)."""
+    if not os.path.exists(ADMIN):
+        return {}
+    try:
+        r = subprocess.run([ADMIN, 'tdp-info'], capture_output=True, text=True, timeout=10)  # no root needed
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        return {}
 
 
 def set_tdp(watts):
@@ -211,8 +222,14 @@ def set_tdp(watts):
         except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as e:
             errors.append('SteamOS Manager: ' + str(e))
     try:
+        if st['via'] == 'hearth:firmware':
+            raise Fail('skipped (set directly instead)')
         card = ps_card()
         busctl('system', 'set-property', PS, card, PS_IFACE, 'TDP', 'd', str(w))
+        # PowerStation accepts the value even when it couldn't apply it: check it really changed.
+        got = round(float(getp('system', PS, card, PS_IFACE, 'TDP')))
+        if abs(got - w) > 1:
+            raise Fail('kept %d W' % got)
         remember(w)
         return w
     except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as e:
