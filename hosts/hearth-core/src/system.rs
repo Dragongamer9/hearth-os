@@ -16,19 +16,26 @@ pub fn run_timeout(cmd: &str, args: &[&str], limit: Duration) -> Result<String, 
     let mut child = Command::new(cmd).args(args).env("LC_ALL", "C")
         .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()
         .map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { format!("{cmd} is not installed") } else { e.to_string() })?;
+    // Read its output while it runs: a program printing more than the pipe holds (64 KiB) would otherwise wait
+    // forever for us to read, and be killed as "too long" (long logs, big lists).
+    use std::io::Read;
+    let (mut so, mut se) = (child.stdout.take(), child.stderr.take());
+    let t_out = std::thread::spawn(move || { let mut b = Vec::new(); if let Some(o) = so.as_mut() { let _ = o.read_to_end(&mut b); } b });
+    let t_err = std::thread::spawn(move || { let mut b = Vec::new(); if let Some(e) = se.as_mut() { let _ = e.read_to_end(&mut b); } b });
     let start = std::time::Instant::now();
-    loop {
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if start.elapsed() > limit => { let _ = child.kill(); return Err(format!("{cmd} took too long")); }
+            Ok(Some(st)) => break st,
+            Ok(None) if start.elapsed() > limit => { let _ = child.kill(); let _ = child.wait(); return Err(format!("{cmd} took too long")); }
             Ok(None) => std::thread::sleep(Duration::from_millis(20)),
             Err(e) => return Err(e.to_string()),
         }
-    }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    let text = String::from_utf8_lossy(&out.stdout).into_owned();
-    if out.status.success() { return Ok(text); }
-    let err = String::from_utf8_lossy(&out.stderr).into_owned();
+    };
+    let stdout = t_out.join().unwrap_or_default();
+    let stderr = t_err.join().unwrap_or_default();
+    let text = String::from_utf8_lossy(&stdout).into_owned();
+    if status.success() { return Ok(text); }
+    let err = String::from_utf8_lossy(&stderr).into_owned();
     let last = err.lines().chain(text.lines()).filter(|l| !l.trim().is_empty()).last().unwrap_or("failed").trim();
     Err(last.trim_start_matches("Error: ").to_string())
 }

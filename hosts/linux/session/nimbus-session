@@ -85,6 +85,7 @@ if [ -x "$SHARE/desktop/shell/hearth-controller" ] && have busctl; then
   python3 "$SHARE/desktop/shell/hearth-controller" watch >/dev/null 2>&1 &
   REMAP_PID=$!
   trap 'kill $REMAP_PID 2>/dev/null' EXIT
+  trap 'exit 143' INT TERM HUP   # a signal at logout ends the script through EXIT (so the watcher stops too)
 fi
 
 # Hearth's look for Qt and GTK apps (Bazaar, Dolphin...), in both modes.

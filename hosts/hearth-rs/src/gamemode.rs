@@ -29,6 +29,10 @@ pub struct GameMode {
     pub guide: hearth_core::guide::Guide,
     gen: AtomicU64,
     focus_lock: Mutex<()>,
+    /// One InputPlumber mode change at a time, always the one that fits now (open overlay: catch all; else pass).
+    ip_lock: Mutex<()>,
+    /// Opening and closing the overlay one at a time (a close during a slow open left it half open).
+    overlay_lock: Mutex<()>,
     launch_gen: AtomicU64,
     pub overlay_on: AtomicBool,
     osd_on: AtomicBool,
@@ -53,7 +57,7 @@ fn ev(name: &str, data: Value) -> Value { json!({"type": "event", "name": name, 
 
 impl GameMode {
     pub fn new(app: AppHandle, bridge: Arc<Mutex<Bridge>>, guide: hearth_core::guide::Guide, windowed: bool) -> Arc<GameMode> {
-        Arc::new(GameMode { app, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
+        Arc::new(GameMode { app, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), ip_lock: Mutex::new(()), overlay_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
             overlay_on: AtomicBool::new(false), osd_on: AtomicBool::new(false), osd_gen: AtomicU64::new(0), look_closed: AtomicBool::new(true),
             before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), launch_busy: AtomicU64::new(0), last_guide: AtomicU64::new(0), b_gen: AtomicU64::new(0),
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()) })
@@ -161,6 +165,12 @@ impl GameMode {
         });
     }
 
+    /// A window that's still there and doesn't belong to a game put aside (frozen on its last picture).
+    fn window_ok(&self, win: u64) -> bool {
+        let Some(w) = gs::focusable_windows().into_iter().find(|w| w.win == win) else { return false };
+        let frozen = self.bridge.lock().map(|b| b.library.frozen_pids()).unwrap_or_default();
+        !frozen.contains(&(w.pid as u32))
+    }
     /// Hearth is still showing "starting" for a game that hasn't put its window up yet.
     fn launch_waiting(&self) -> bool { let b = self.launch_busy.load(Ordering::SeqCst); b != 0 && b == self.launch_gen.load(Ordering::SeqCst) }
     /// The game in front again a little later as well: games coming back from a pause (Quick Resume) or a
@@ -243,6 +253,7 @@ impl GameMode {
 
     pub fn show_overlay(self: &Arc<Self>) -> bool {
         if self.overlay().is_none() { return false; }
+        let _o = self.overlay_lock.lock().unwrap();
         self.overlay_on.store(true, Ordering::SeqCst);
         self.osd_on.store(false, Ordering::SeqCst);
         self.claim();   // opening it is a choice too: a hand-back still waiting from the last close is dropped
@@ -255,7 +266,7 @@ impl GameMode {
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_secs(1));
             if !me.overlay_on.load(Ordering::SeqCst) { return; }
-            if now() - me.overlay_alive.load(Ordering::SeqCst) > 5000 {
+            if now().saturating_sub(me.overlay_alive.load(Ordering::SeqCst)) > 5000 {
                 log("overlay: page stopped answering, closing and reloading it");
                 me.hide_overlay();
                 if let Some(o) = me.overlay() { let _ = o.eval("location.reload()"); }
@@ -280,7 +291,7 @@ impl GameMode {
     fn hold_game(&self, on: bool) {
         self.guide.grab(on);
         if self.ip.load(Ordering::SeqCst) {
-            hearth_core::inputplumber::set_mode(if on { hearth_core::inputplumber::MODE_ALWAYS } else { hearth_core::inputplumber::MODE_PASS });
+            let _ = on; self.ip_sync();
         }
     }
 
@@ -289,8 +300,8 @@ impl GameMode {
     pub fn start_inputplumber(self: &Arc<Self>) {
         if !self.inside() || !hearth_core::inputplumber::available() { return; }
         hearth_core::inputplumber::guide_only();
-        hearth_core::inputplumber::set_mode(hearth_core::inputplumber::MODE_PASS);
         self.ip.store(true, Ordering::SeqCst);
+        self.ip_sync();
         log("inputplumber: catching the Guide button for Quick Access");
         let me = self.clone();
         std::thread::spawn(move || loop {
@@ -304,14 +315,14 @@ impl GameMode {
                     if ev == "ui_guide" { if down { let m = me.clone(); std::thread::spawn(move || m.guide_pressed("guide")); } continue; }
                     if me.overlay_on.load(Ordering::SeqCst) { if let Some(b) = hearth_core::inputplumber::button(&ev) { me.overlay_pad(b, down); } }
                     // Caught presses with nothing open (shouldn't happen): give the controller back.
-                    else if down { hearth_core::inputplumber::set_mode(hearth_core::inputplumber::MODE_PASS); }
+                    else if down { me.ip_sync(); }
                 }
             }
             let _ = child.wait();
             std::thread::sleep(Duration::from_secs(2));
             // New controllers (paired later) get the same Guide-only catch.
             hearth_core::inputplumber::guide_only();
-            hearth_core::inputplumber::set_mode(if me.overlay_on.load(Ordering::SeqCst) { hearth_core::inputplumber::MODE_ALWAYS } else { hearth_core::inputplumber::MODE_PASS });
+            me.ip_sync();
         });
         // Controllers that connect later: set them up too, every 10 seconds (cheap).
         let me2 = self.clone();
@@ -322,7 +333,7 @@ impl GameMode {
                 let now = hearth_core::inputplumber::devices();
                 if now != known {
                     hearth_core::inputplumber::guide_only();
-                    hearth_core::inputplumber::set_mode(if me2.overlay_on.load(Ordering::SeqCst) { hearth_core::inputplumber::MODE_ALWAYS } else { hearth_core::inputplumber::MODE_PASS });
+                    me2.ip_sync();
                     known = now;
                 }
             }
@@ -330,7 +341,15 @@ impl GameMode {
     }
     /// Leaving: InputPlumber goes back to normal (or the Guide button would do nothing on the desktop).
     pub fn stop_inputplumber(&self) {
+        let _g = self.ip_lock.lock().unwrap();
         if self.ip.swap(false, Ordering::SeqCst) { hearth_core::inputplumber::set_mode(hearth_core::inputplumber::MODE_NONE); }
+    }
+    /// InputPlumber's mode for what's showing now: Quick Access open catches every press; otherwise only Guide.
+    pub fn ip_sync(&self) {
+        if !self.ip.load(Ordering::SeqCst) { return; }
+        let _g = self.ip_lock.lock().unwrap();
+        let want = if self.overlay_on.load(Ordering::SeqCst) { hearth_core::inputplumber::MODE_ALWAYS } else { hearth_core::inputplumber::MODE_PASS };
+        hearth_core::inputplumber::set_mode(want);
     }
     pub fn reveal_overlay(&self) {
         self.reveal_gen.fetch_add(1, Ordering::SeqCst);
@@ -338,6 +357,7 @@ impl GameMode {
     }
     pub fn hide_overlay(self: &Arc<Self>) {
         if self.overlay().is_none() { return; }
+        let _o = self.overlay_lock.lock().unwrap();
         if !self.overlay_on.load(Ordering::SeqCst) && !self.osd_on.load(Ordering::SeqCst) && self.look_closed.load(Ordering::SeqCst) { return; }
         self.overlay_on.store(false, Ordering::SeqCst);
         self.osd_on.store(false, Ordering::SeqCst);
@@ -357,8 +377,8 @@ impl GameMode {
             // A game that's starting (or just started) may have swapped its splash for its real window while the
             // overlay was open: put back what's there now, not the window from before (that looked frozen).
             if launching { if let Some(x) = self.xid(MAIN_TITLE) { if before == x { self.focus_xid("back to starting screen", x, 200, true); } } }
+            else if before != 0 && Some(before) != self.xid(OVERLAY_TITLE) && Some(before) != self.xid(MAIN_TITLE) && self.window_ok(before) { self.focus_xid("back from the overlay", before, 200, true); }
             else if self.running().is_some() { self.focus_running_game(200, true); self.nudge_game(); }
-            else if before != 0 && Some(before) != self.xid(OVERLAY_TITLE) && gs::still_there(before) { self.focus_xid("back from the overlay", before, 200, true); }
         }
     }
 
@@ -374,7 +394,7 @@ impl GameMode {
         if !down { return; }
         {
             let mut last = self.last_pad.lock().unwrap();
-            if last.0 == b && now() - last.1 < 40 { return; }   // the same press from two devices
+            if last.0 == b && now().saturating_sub(last.1) < 40 { return; }   // the same press from two devices
             *last = (b.to_string(), now());
         }
         if b == "guide" { return; }   // Guide closes it (the press handler)
@@ -395,16 +415,17 @@ impl GameMode {
     pub fn guide_pressed(self: &Arc<Self>, how: &str) {
         // The same press can come from two places (InputPlumber and the controller itself).
         let t = now();
-        if t.saturating_sub(self.last_guide.swap(t, Ordering::SeqCst)) < 400 { return; }
+        // A press ignored as a repeat still made InputPlumber catch everything: put its mode back.
+        if t.saturating_sub(self.last_guide.swap(t, Ordering::SeqCst)) < 400 { self.ip_sync(); return; }
         if self.overlay_on.load(Ordering::SeqCst) { log(&format!("overlay: {how} pressed, closing")); self.hide_overlay(); return; }
         if self.hearth_on_screen() {
             // Hearth's own UI handles Guide itself: InputPlumber caught it, so pass it on and give the controller back.
-            if self.ip.load(Ordering::SeqCst) { hearth_core::inputplumber::set_mode(hearth_core::inputplumber::MODE_PASS); self.to_main(ev("pad", json!({"b": "guide"}))); }
+            if self.ip.load(Ordering::SeqCst) { self.ip_sync(); self.to_main(ev("pad", json!({"b": "guide"}))); }
             return;
         }
         log(&format!("overlay: {how} pressed over another app"));
         if self.show_overlay() { return; }
-        if self.ip.load(Ordering::SeqCst) { hearth_core::inputplumber::set_mode(hearth_core::inputplumber::MODE_PASS); }
+        self.ip_sync();
         self.come_back();
         self.to_main(ev("pad", json!({"b": "guide"})));
     }
@@ -483,7 +504,7 @@ impl GameMode {
                 self.hide_overlay();
                 if pid == std::process::id() as u64 { return self.come_back(); }
                 self.step_aside();
-                if id == 0 && pid == 0 { let _ = std::process::Command::new("steam").arg("steam://open/main").spawn(); return; }
+                if id == 0 && pid == 0 { let _ = std::process::Command::new("steam").arg("steam://open/main").spawn(); return self.host_action_now("showSteam", &json!({})); }
                 self.focus_xid("app", id, 0, false);
             }
             "screenshot" => {

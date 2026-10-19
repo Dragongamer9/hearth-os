@@ -125,7 +125,7 @@ def run_logged(cmd):
             last = line
             print('log: ' + line[:300], flush=True)
     if p.wait() != 0:
-        if re.search(r'lock|another|in progress', last, re.I):
+        if BUSY.search(last):
             fail('another update is already running (Hearth also updates by itself in the background). Try again in a few minutes.')
         fail(last or ' '.join(cmd) + ' failed')
 
@@ -142,6 +142,17 @@ def update_check():
         print(json.dumps(bootc_status()))
         return
     run_logged(['bootc', 'upgrade', '--check'])
+    st = bootc_status()
+    # bootc can miss what rpm-ostree (the terminal's update) finds: ask it too.
+    if not st.get('available') and not st.get('staged'):
+        try:
+            if rpm_ostree_has_update():
+                st['available'] = {'version': 'newer', 'timestamp': None}
+                print('log: rpm-ostree found a newer version', flush=True)
+        except UpgradeFailed as e:
+            print('log: ' + str(e)[:200], flush=True)
+    print(json.dumps(st))
+    return
     print(json.dumps(bootc_status()))
 
 
@@ -181,7 +192,8 @@ def bootc_upgrade_with_progress(lo, hi, stage):
     """bootc upgrade, reporting its download (and then its install steps) as lo..hi percent and as detailed
     stages (bootc's --progress-fd JSON). Older bootc without that option: plain output, no percentage."""
     help_text = subprocess.run(['bootc', 'upgrade', '--help'], capture_output=True, text=True).stdout
-    if '--progress-fd' not in help_text:
+    probe = subprocess.run(['bootc', 'upgrade', '--progress-fd', '1', '--check'], capture_output=True, text=True)
+    if '--progress-fd' not in help_text and re.search(r'unexpected argument|unrecognized|unknown option', probe.stderr or '', re.I):
         stage.emit(force=True, phase='download', pct=None, desc='Downloading the system update')
         return run_logged(['bootc', 'upgrade'])
     rfd, wfd = os.pipe()
@@ -228,7 +240,7 @@ def bootc_upgrade_with_progress(lo, hi, stage):
                            desc=desc, task=task)
     t.join()
     if p.wait() != 0:
-        if re.search(r'lock|another|in progress', last[0], re.I):
+        if BUSY.search(last[0]):
             fail('another update is already running (Hearth also updates by itself in the background). Try again in a few minutes.')
         raise UpgradeFailed(last[0] or 'bootc upgrade failed')
     stage.emit(force=True, phase='install', pct=100.0, desc='System update installed')
@@ -236,6 +248,9 @@ def bootc_upgrade_with_progress(lo, hi, stage):
 
 class UpgradeFailed(Exception):
     pass
+
+
+BUSY = re.compile(r'\block(ed)?\b|another (transaction|update|operation)|transaction in progress|in progress|busy', re.I)
 
 
 def layered():
@@ -294,17 +309,40 @@ def rpm_ostree_upgrade(stage):
             progress(88, 'Installing the update')
             stage.emit(force=True, phase='install', pct=None, desc='Installing the update')
     if p.wait() != 0:
-        if re.search(r'lock|another|in progress|busy', last, re.I):
+        if BUSY.search(last):
             fail('another update is already running (Hearth also updates by itself in the background). Try again in a few minutes.')
         fail(last or 'rpm-ostree upgrade failed')
     stage.emit(force=True, phase='install', pct=100.0, desc='System update installed')
 
 
 def rpm_ostree_has_update():
-    """rpm-ostree's own look: exit 0 = there's an update, 77 = nothing new."""
+    """rpm-ostree's own look: exit 0 = there's an update, 77 = nothing new; anything else (busy: Bazzite's
+    background updater holds the lock, no network) is a problem worth saying, not "nothing new"."""
     try:
-        return subprocess.run(['rpm-ostree', 'upgrade', '--check'], capture_output=True, text=True, timeout=300).returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
+        r = subprocess.run(['rpm-ostree', 'upgrade', '--check'], capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise UpgradeFailed('rpm-ostree didn\'t answer (%s)' % e)
+    if r.returncode == 0:
+        return True
+    if r.returncode == 77:
+        return False
+    last = ((r.stderr or r.stdout).strip().splitlines() or ['rpm-ostree upgrade --check failed'])[-1]
+    if BUSY.search(last):
+        fail('another update is already running (Hearth also updates by itself in the background). Try again in a few minutes.')
+    raise UpgradeFailed(last)
+
+
+def staged_any():
+    """A new version is downloaded and waiting for the restart (bootc's view, or rpm-ostree's)."""
+    try:
+        if (bootc_status() or {}).get('staged'):
+            return True
+    except SystemExit:
+        pass
+    try:
+        r = subprocess.run(['rpm-ostree', 'status', '--json'], capture_output=True, text=True, timeout=60)
+        return any(d.get('staged') for d in json.loads(r.stdout).get('deployments', []))
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return False
 
 
@@ -351,20 +389,26 @@ def update():
             bootc_upgrade_with_progress(0, 90, stage)
             # bootc can finish at once saying there's nothing new while rpm-ostree (what the terminal's update
             # uses) finds one: check nothing was missed, so "Done" really means updated.
-            staged = (bootc_status() or {}).get('staged')
-            if not staged and rpm_ostree_has_update():
+            if not staged_any() and rpm_ostree_has_update():
                 print('log: bootc found nothing new but there is an update; getting it through rpm-ostree', flush=True)
                 rpm_ostree_upgrade(stage)
         except UpgradeFailed as e:
             # bootc refused (a system managed by rpm-ostree, or bootc not set up for it): the other way.
             print('log: bootc couldn\'t update this system (%s); trying rpm-ostree' % str(e)[:200], flush=True)
             rpm_ostree_upgrade(stage)
+    system_new = staged_any()
     if subprocess.run(['sh', '-c', 'command -v flatpak'], capture_output=True).returncode == 0:
         progress(90, 'Updating apps')
         print('log: Updating apps…', flush=True)
-        flatpak_update(stage, 90, 100)
-    progress(100, 'Done')
-    stage.emit(force=True, phase='done', pct=100.0, desc='Done')
+        try:
+            flatpak_update(stage, 90, 100)
+        except SystemExit:
+            # The system part is done: an app that didn't update isn't a failed system update.
+            print('log: some apps couldn\'t be updated; they\'ll be tried again next time', flush=True)
+    # Say what really happened: a new version waiting for the restart, or nothing new.
+    done = 'Done. Restart to finish updating.' if system_new else 'Hearth OS is already up to date.'
+    progress(100, done)
+    stage.emit(force=True, phase='done', pct=100.0, desc=done, staged=system_new)
     print(json.dumps(bootc_status()))
 
 
@@ -471,7 +515,13 @@ def hibernate_setup():
                 r = subprocess.run(c, capture_output=True, text=True)
                 if r.returncode != 0:
                     fail('couldn\'t make the swap file: ' + (r.stderr or r.stdout).strip())
-    subprocess.run(['swapon', '-p', '1', HIBERNATE_FILE], capture_output=True)
+    # SELinux only lets a file be swap with the swap label.
+    subprocess.run(['semanage', 'fcontext', '-a', '-t', 'swapfile_t', HIBERNATE_FILE], capture_output=True)   # kept after a relabel
+    subprocess.run(['restorecon', HIBERNATE_FILE], capture_output=True)
+    subprocess.run(['chcon', '-t', 'swapfile_t', HIBERNATE_FILE], capture_output=True)
+    r = subprocess.run(['swapon', '-p', '1', HIBERNATE_FILE], capture_output=True, text=True)
+    if r.returncode != 0 and 'busy' not in (r.stderr or ''):
+        fail("couldn't turn on the space for keeping games (" + ((r.stderr or '').strip().splitlines() or ['swapon failed'])[-1] + ')')
     fstab = open('/etc/fstab').read() if os.path.exists('/etc/fstab') else ''
     if HIBERNATE_FILE not in fstab:
         with open('/etc/fstab', 'a') as f:
