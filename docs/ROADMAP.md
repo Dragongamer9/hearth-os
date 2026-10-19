@@ -99,6 +99,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Player counter: each device counts once (an id from the device itself, the same after updates), not again after every update
 - [x] Friends: Steam, Xbox and Epic friends together, sorted into Playing, Online, Away and Offline, with a filter per platform; pick a friend to message them (Steam chat), join their server game, play the same game (installed or Xbox Cloud Gaming) or open their profile
 - [x] Send logs to the developer: Settings › System sends the bug-report logs to Hearth OS's own service and shows a short code to share (kept 14 days)
+- [x] Sign-in pages (Xbox, Epic, GOG): typing with the controller no longer clicks things on the page (controller buttons turned into mouse clicks and keys are dropped while you use the controller or the on-screen keyboard; touch still works)
 
 ## 0.0.27 (released)
 
