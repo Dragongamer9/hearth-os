@@ -1,0 +1,59 @@
+#!/usr/bin/python3
+"""hearth-boot-first: at every start, keeps Hearth OS first in the PC's boot order (UEFI), so the PC starts
+Hearth and not another system on the same PC. Another system's updates (Windows Update especially) like to put
+themselves first; Hearth's boot menu still lists them, so nothing is lost. The firmware is only written to when
+something needs changing. Turn it off with: sudo touch /etc/hearth/keep-boot-order
+"""
+import os
+import re
+import subprocess
+import sys
+
+OPT_OUT = '/etc/hearth/keep-boot-order'
+
+
+def run(*cmd):
+    return subprocess.run(cmd, capture_output=True, text=True).stdout
+
+
+def boot_entries(text):
+    entries = {m.group(1).upper(): m.group(0) for m in re.finditer(r'^Boot([0-9A-Fa-f]{4})\*?\s.*$', text, re.M)}
+    m = re.search(r'^BootOrder:\s*([0-9A-Fa-f,]*)', text, re.M)
+    return entries, [x.upper() for x in (m.group(1).split(',') if m else []) if x]
+
+
+def plan(text, partuuid):
+    """(entry to put first or None, new order or None when it's already first)."""
+    entries, order = boot_entries(text)
+    mine = next((n for n, line in entries.items() if partuuid and partuuid in line.lower()), None)
+    if not mine:
+        return None, None
+    if order and order[0] == mine:
+        return mine, None
+    return mine, [mine] + [x for x in order if x != mine]
+
+
+def main():
+    if os.path.exists(OPT_OUT) or not os.path.isdir('/sys/firmware/efi'):
+        return 0
+    esp = run('findmnt', '-no', 'SOURCE', '/boot/efi').strip()
+    if not esp:
+        return 0
+    partuuid = run('blkid', '-s', 'PARTUUID', '-o', 'value', esp).strip().lower()
+    text = run('efibootmgr', '-v')
+    mine, order = plan(text, partuuid)
+    if not mine:
+        # No entry for Hearth's EFI partition at all: make one.
+        disk = '/dev/' + run('lsblk', '-no', 'PKNAME', esp).strip()
+        num = re.search(r'(\d+)$', esp).group(1)
+        loader = '\\EFI\\fedora\\shimx64.efi' if os.path.exists('/boot/efi/EFI/fedora/shimx64.efi') else '\\EFI\\fedora\\grubx64.efi'
+        subprocess.run(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', loader])
+        mine, order = plan(run('efibootmgr', '-v'), partuuid)
+    if mine and order:
+        subprocess.run(['efibootmgr', '-q', '-o', ','.join(order)])
+        print(f'Hearth OS ({mine}) is first in the boot order again')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

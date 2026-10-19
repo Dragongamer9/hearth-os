@@ -26,6 +26,17 @@ GOOD = {'mode': 'whole', 'disk': '/dev/nvme0n1', 'user': {'name': 'sam', 'full':
         'hostname': 'Sams-Deck', 'timezone': 'America/Chicago', 'image': 'ghcr.io/dragongamer9/hearth:latest'}
 
 
+class BootEntries(unittest.TestCase):
+    def test_reads_efibootmgr(self):
+        text = ("BootCurrent: 0001\nBootOrder: 0000,0003,0001\n"
+                "Boot0000* Windows Boot Manager\tHD(1,GPT,aaaa-1111,0x800,0x82000)/File(\\EFI\\Microsoft\\Boot\\bootmgfw.efi)\n"
+                "Boot0003* Hearth OS\tHD(5,GPT,bbbb-2222,0x1000,0x12c000)/File(\\EFI\\fedora\\shimx64.efi)\n")
+        entries, order = H.boot_entries(text)
+        self.assertEqual(order, ['0000', '0003', '0001'])
+        self.assertIn('bbbb-2222', entries['0003'])
+        self.assertIn('Windows', entries['0000'])
+
+
 class LocalImage(unittest.TestCase):
     """The full ISOs carry Hearth OS (an OCI copy): installs from it when it's the edition being installed."""
     def test_matches_edition(self):

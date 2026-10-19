@@ -1,0 +1,14 @@
+[Unit]
+Description=Keep Hearth OS first in the PC's boot order
+ConditionPathExists=/sys/firmware/efi
+ConditionPathExists=!/etc/hearth/keep-boot-order
+ConditionPathExists=!/etc/hearth-live
+After=boot-efi.mount local-fs.target
+RequiresMountsFor=/boot/efi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-boot-first
+
+[Install]
+WantedBy=multi-user.target
