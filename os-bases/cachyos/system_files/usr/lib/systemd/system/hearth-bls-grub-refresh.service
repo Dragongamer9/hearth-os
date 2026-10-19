@@ -1,0 +1,7 @@
+[Unit]
+Description=Hearth: rewrite GRUB's menu after ostree changed the boot entries
+RequiresMountsFor=/boot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-bls-grub

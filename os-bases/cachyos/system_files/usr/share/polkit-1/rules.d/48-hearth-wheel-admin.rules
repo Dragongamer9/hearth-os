@@ -1,0 +1,5 @@
+// Hearth on CachyOS: "wheel" (Hearth's administrators; the installer puts the first account in it) counts as
+// administrators for polkit. Arch's own 50-default.rules says the same; this keeps it true if that ever changes.
+polkit.addAdminRule(function (action, subject) {
+    return ["unix-group:wheel"];
+});
