@@ -387,7 +387,7 @@ ls -la /usr/lib/bootupd/updates/
 
 # ------------------------------------------------------------------ boot splash and initramfs
 plymouth-set-default-theme hearth
-test -d /usr/lib/dracut/modules.d/98ostree || { echo "ostree's dracut module is missing: this image couldn't boot"; exit 1; }
+ls -d /usr/lib/dracut/modules.d/*ostree >/dev/null 2>&1 || { echo "ostree's dracut module is missing: this image couldn't boot"; exit 1; }
 export DRACUT_NO_XATTR=1
 dracut --force --kver "$KVER" "/usr/lib/modules/$KVER/initramfs.img"
 chmod 0600 "/usr/lib/modules/$KVER/initramfs.img"
