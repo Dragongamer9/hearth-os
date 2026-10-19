@@ -35,6 +35,21 @@ have() { command -v "$1" >/dev/null 2>&1; }
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
 can_desktop() { have labwc; }
 
+# Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
+# console nobody can type a password to unlock it: give GNOME Keyring an unlocked default keyring the first
+# time (only when there's no keyring yet), and start it.
+password_store() {
+  have gnome-keyring-daemon || return 0
+  kr="${XDG_DATA_HOME:-$HOME/.local/share}/keyrings"
+  if [ ! -e "$kr/default" ] && ! ls "$kr"/*.keyring >/dev/null 2>&1; then
+    mkdir -p "$kr" && chmod 700 "$kr"
+    printf '[keyring]\ndisplay-name=Hearth\nctime=0\nmtime=0\nlock-on-idle=false\nlock-after=false\n' >"$kr/hearth.keyring"
+    chmod 600 "$kr/hearth.keyring"; printf 'hearth' >"$kr/default"
+  fi
+  eval "$(gnome-keyring-daemon --start --components=secrets 2>/dev/null)" && export GNOME_KEYRING_CONTROL 2>/dev/null
+}
+password_store
+
 run_game() {
   log "game mode"
   # shellcheck disable=SC2086
