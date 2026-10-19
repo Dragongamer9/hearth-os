@@ -54,6 +54,7 @@ pub struct GameMode {
 fn now() -> u64 { hearth_core::library::now_ms() }
 fn log(t: &str) { hearth_core::bridge::log(t); }
 fn ev(name: &str, data: Value) -> Value { json!({"type": "event", "name": name, "data": data}) }
+fn ev_pad(b: &str) -> Value { ev("pad", json!({"b": b})) }
 
 impl GameMode {
     pub fn new(app: AppHandle, bridge: Arc<Mutex<Bridge>>, guide: hearth_core::guide::Guide, windowed: bool) -> Arc<GameMode> {
@@ -314,8 +315,12 @@ impl GameMode {
                     let Some((ev, down)) = hearth_core::inputplumber::parse_event(&line) else { continue };
                     if ev == "ui_guide" { if down { let m = me.clone(); std::thread::spawn(move || m.guide_pressed("guide")); } continue; }
                     if me.overlay_on.load(Ordering::SeqCst) { if let Some(b) = hearth_core::inputplumber::button(&ev) { me.overlay_pad(b, down); } }
-                    // Caught presses with nothing open (shouldn't happen): give the controller back.
-                    else if down { me.ip_sync(); }
+                    // Caught presses with Quick Access closed (the service was left catching everything): give the
+                    // controller back, and don't lose the press: Hearth's own screen gets it.
+                    else if down {
+                        me.ip_sync();
+                        if let Some(b) = hearth_core::inputplumber::button(&ev) { if b != "guide" && me.hearth_on_screen() { me.to_main(ev_pad(b)); } }
+                    }
                 }
             }
             let _ = child.wait();
