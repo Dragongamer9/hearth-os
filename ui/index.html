@@ -4434,7 +4434,9 @@ function mapPad(k){
   return k;
 }
 const PAD_NAMES = {a:'A',b:'B',x:'X',y:'Y',lb:'LB',rb:'RB',start:'Menu (☰)',select:'View (⧉)',guide:'Xbox / Guide',up:'D-pad up',down:'D-pad down',left:'D-pad left',right:'D-pad right'};
+const PAD_AT={};
 function padPressed(k){
+  PAD_AT[k]=performance.now();
   setInput('pad');
   PAD.last=k;
   const t=$('#padTest'); if(t) t.textContent = PAD_NAMES[k]||k;
@@ -4446,12 +4448,16 @@ function hostPad(k){ padPressed(mapPad(k)); }
 const REPEAT = new Set(['up','down','left','right']);
 const held={};
 let padSeen=false;
+const PAD_REST={};   // where each controller's axes rest when first seen
+window.addEventListener('gamepaddisconnected', e=>{ delete PAD_REST[e.gamepad.index]; });
 function pollPads(t){
   // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
   const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
   const st={};
   for(const p of pads){ if(!p) continue;
-    const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
+    const base = PAD_REST[p.index] || (PAD_REST[p.index] = (p.axes||[]).map(v=>v||0));
+    const b=i=>!!(p.buttons[i] && p.buttons[i].pressed);
+    const ax=i=>{ const v=p.axes[i]||0, r=base[i]||0; if(p.mapping!=='standard' && Math.abs(r)>.3) return 0; return Math.abs(r)>.3 ? 0 : v; };
     st.a=st.a||b(0); st.b=st.b||b(1); st.x=st.x||b(2); st.y=st.y||b(3);
     st.lb=st.lb||b(4); st.rb=st.rb||b(5); st.select=st.select||b(8); st.start=st.start||b(9); st.guide=st.guide||b(16);
     st.up=st.up||b(12)||ax(1)<-.55; st.down=st.down||b(13)||ax(1)>.55;
@@ -4460,7 +4466,7 @@ function pollPads(t){
   for(const k of ['a','b','x','y','lb','rb','select','start','guide','up','down','left','right']){
     const on=!!st[k], h=held[k];
     if(on && !h){ held[k]={t0:t,last:t}; padPressed(mapPad(k)); }
-    else if(on && h && REPEAT.has(k) && t-h.t0>340 && t-h.last>85){ h.last=t; input(k); }
+    else if(on && h && REPEAT.has(k) && t-h.t0>400 && t-h.last>110){ h.last=t; PAD_AT[k]=performance.now(); input(k); }
     else if(!on && h) delete held[k];
   }
   requestAnimationFrame(pollPads);
@@ -4506,7 +4512,11 @@ document.addEventListener('keydown', e=>{
   if(KEY_EXTRA[e.key] && !e.ctrlKey && !e.altKey){ e.preventDefault(); setInput('kbd'); return KEY_EXTRA[e.key](); }
   if(e.ctrlKey || e.altKey || e.metaKey) return;
   const k=KEYMAP[e.key]; if(!k) return;
-  e.preventDefault(); setInput('kbd'); input(k);
+  e.preventDefault();
+  // Steam or the controller's driver can also turn a press into a key a moment later (sometimes after the button
+  // is up): the same move from the keyboard within 250 ms of the controller's is that echo, not a second press.
+  if(performance.now()-(PAD_AT[k]||0) < 250 && !e.ctrlKey && !e.altKey){ logInput('key '+e.key+' dropped (echo of the controller)'); return; }
+  setInput('kbd'); input(k);
 });
 document.addEventListener('pointerdown', e=>{ if(e.pointerType==='mouse'||e.pointerType==='pen') setInput('mouse'); else if(e.pointerType==='touch') setInput('mouse'); });
 document.addEventListener('click', e=>{
