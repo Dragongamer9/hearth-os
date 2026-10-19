@@ -81,7 +81,7 @@ fi
 printf "%s\n" "$out" | sed -n 1,3p
 test -x /output/usr/lib/ostree/ostree-prepare-root || test -x /output/usr/libexec/ostree-prepare-root || \
   find /output -name 'ostree-prepare-root*' | grep . >/dev/null
-test -d /output/usr/lib/dracut/modules.d/98ostree
+ls -d /output/usr/lib/dracut/modules.d/*ostree >/dev/null   # 50ostree since ostree 2024; 98ostree before
 
 # Placeholders so dpkg knows these are already provided (flatpak needs libostree-1-1). Held in build.sh, so
 # nothing replaces the newer ostree with trixie's older one.
