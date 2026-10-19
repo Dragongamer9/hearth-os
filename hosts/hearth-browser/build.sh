@@ -35,7 +35,10 @@ wc -l /tmp/hb/hearth/adblock-hosts.txt
 strip /tmp/hb/hearth-browser || true
 echo "::notice title=files::$(ls /tmp/hb | tr '\n' ' ')"
 # Does it start, draw its top bar and open its start page? (A virtual screen; no sandbox on the runner.)
-sudo apt-get install -y -qq xvfb gdb >/dev/null
+sudo apt-get install -y -qq xvfb gdb strace >/dev/null
+echo "::notice title=icu::$(ls -la /tmp/hb | grep -E 'icudtl|libcef|hearth-browser' | tr -s ' ' | tr '\n' ';')"
+HOME=$(mktemp -d) timeout 60 xvfb-run -a strace -f -e trace=openat,open,readlink -o /tmp/strace.log /tmp/hb/hearth-browser --self-test --no-sandbox >/dev/null 2>&1 || true
+grep -E "icudtl|/proc/self/exe" /tmp/strace.log | head -6 | cut -c1-300 | while IFS= read -r l; do echo "::notice title=strace::$l"; done
 set +e
 HOME=$(mktemp -d) xvfb-run -a -s "-screen 0 1280x900x24" timeout 120 gdb -q -batch -ex "handle SIGPIPE nostop noprint" -ex run -ex bt --args /tmp/hb/hearth-browser --self-test --no-sandbox --disable-gpu --use-gl=swiftshader > /tmp/selftest.log 2>&1
 code=$?
