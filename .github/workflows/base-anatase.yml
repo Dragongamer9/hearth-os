@@ -1,0 +1,178 @@
+# Builds Hearth OS on Anatase: the next Hearth OS (Fedora 45, bootc; one image for AMD, Intel and Nvidia, with
+# Handheld Daemon), from os-bases/anatase (see docs/BASE-ANATASE.md). Published as ghcr.io/dragongamer9/hearth-os:testing
+# only. :latest is what the Bazzite-based Hearth OS offers to move to (Settings › Updates); it's never published
+# from here: someone promotes a tried :testing build to :latest by hand.
+# Failures show up as annotations on the run (the end of the failing step's output), so the full log isn't needed.
+name: Hearth OS (Anatase base)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [linux-host]
+    paths: ['os-bases/anatase/**', '.github/workflows/base-anatase.yml']
+
+env:
+  IMAGE: ghcr.io/dragongamer9/hearth-os
+
+concurrency:
+  group: hearth-anatase-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The Rust app and Hearth Browser, built on the runner as in os.yml (Fedora 45's glibc and WebKitGTK are newer
+  # than the runner's, so the app runs there).
+  app:
+    name: Build the Hearth app (Rust) and Hearth Browser
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        id: ver
+        run: |
+          v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-rs
+      - name: Build
+        working-directory: hosts/hearth-rs
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=app::$msg"' ERR
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev >/dev/null
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release
+          mkdir -p /tmp/app && cp target/release/hearth /tmp/app/hearth
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build Hearth Browser
+        working-directory: hosts/linux
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=browser::$msg"' ERR
+          npm install --no-audit --no-fund
+          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm run dist:dir
+          test -x dist/linux-unpacked/nimbus
+          mkdir -p /tmp/app/browser && cp -a dist/linux-unpacked/. /tmp/app/browser/
+          tar -C /tmp/app -cf ../../hearth-app.tar .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-app-anatase
+          path: hearth-app.tar
+
+  # REQUIRED: Hearth's page must load and draw every screen without a script error.
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Hearth's page
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node ui-check.js
+
+  image:
+    name: Build the OS image (hearth-os on Anatase)
+    needs: [app, ui]
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUBLISH: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/linux-host' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room (the image is several GB)
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-app-anatase
+
+      - name: Unpack Hearth into the build context
+        run: |
+          mkdir -p os/nimbus-app
+          tar -C os/nimbus-app -xf hearth-app.tar
+          ls -la os/nimbus-app
+          test -x os/nimbus-app/hearth
+
+      - name: Build
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
+          v="${{ needs.app.outputs.version }}"
+          sudo podman build --pull=newer -f os-bases/anatase/Containerfile --build-arg NIMBUS_VERSION="$v" -t hearth-os:build .
+          # Steam from RPM Fusion didn't work out (Flathub's at first boot instead): a warning, not a failure.
+          sflat=$(grep -o "warning: couldn't install Steam from RPM Fusion.*" /tmp/step.log | tail -1 || true)
+          if [ -n "$sflat" ]; then echo "::warning title=Steam::$sflat"; fi
+
+      # REQUIRED: a failure here stops the image from being published.
+      - name: Check the image
+        run: |
+          cat > /tmp/check.sh <<'EOF'
+          fail=0
+          check() { if sh -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::error title=check::$1"; fail=1; fi; }
+          warn() { if sh -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::warning title=check::$1"; fi; }
+          echo "--- update path (same as os.yml)"
+          check "bootc is installed" "command -v bootc"
+          check "pkexec is installed" "command -v pkexec"
+          check "hearth-admin is installed" "test -x /usr/libexec/nimbus/hearth-admin"
+          check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
+          check "hearth-admin's Python is valid" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin"
+          echo "--- update path (required, the app's own check)"
+          /usr/lib/nimbus/nimbus --check-update-path || fail=1
+          echo "--- the move from the Bazzite-based Hearth OS"
+          check "it says it's the Anatase edition" "grep -q '\"base\": \"anatase\"' /usr/share/nimbus/image-info.json"
+          check "the clean install's first start is installed and enabled" "test -x /usr/libexec/nimbus/hearth-clean-install && python3 -m py_compile /usr/libexec/nimbus/hearth-clean-install && test -L /etc/systemd/system/multi-user.target.wants/hearth-clean-install.service"
+          check "it isn't the Bazzite-based image" "test ! -e /usr/share/ublue-os/image-info.json"
+          echo "--- the Hearth app"
+          check "every library the Hearth app links is installed" "! ldd /usr/lib/nimbus/nimbus | grep -q 'not found'"
+          check "Hearth Browser is installed" "test -x /usr/lib/hearth-browser/nimbus"
+          echo "--- Game Mode and Desktop Mode"
+          check "gamescope is installed" "command -v gamescope"
+          check "labwc is installed" "command -v labwc"
+          check "quickshell is installed and finds its libraries" "command -v quickshell && ! ldd \$(command -v quickshell) | grep -q 'not found'"
+          check "Steam is installed (or installed at first boot)" "command -v steam || test -L /etc/systemd/system/multi-user.target.wants/hearth-steam.service"
+          check "the Hearth session is installed" "test -f /usr/share/wayland-sessions/nimbus.desktop && test -x /usr/bin/nimbus-session && test -x /usr/bin/nimbus-mode && test -d /usr/share/nimbus/desktop/shell"
+          check "it boots into Hearth (nimbus-autologin)" "test -L /etc/systemd/system/multi-user.target.wants/nimbus-autologin.service"
+          check "the tools the session uses" "command -v grim && command -v brightnessctl && command -v wlr-randr && command -v wlsunset && command -v xdotool && python3 -c 'import evdev'"
+          check "the boot splash is Hearth's" "plymouth-set-default-theme | grep -qx hearth"
+          check "it's called Hearth" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q Anatase /usr/lib/os-release"
+          echo "--- Handheld Daemon"
+          check "Handheld Daemon is installed" "command -v hhd && test -f /usr/lib/systemd/system/hhd.service"
+          check "Hearth's Handheld Daemon settings are installed" "test -f /usr/lib/systemd/system/hhd.service.d/zz-hearth.conf && test -x /usr/share/nimbus/desktop/shell/hearth-hhd"
+          warn "Handheld Daemon starts at boot" "systemctl is-enabled hhd.service"
+          warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
+          exit $fail
+          EOF
+          sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-os:build sh /check.sh
+          echo "--- bootc container lint"
+          sudo podman run --rm hearth-os:build bootc container lint 2>&1 | tee /tmp/lint.log || {
+            msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
+
+      # Only :testing (and a dated testing tag). Never :latest.
+      - name: Publish to GitHub Container Registry
+        if: env.PUBLISH == 'true'
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=publish::$msg"' ERR
+          v="${{ needs.app.outputs.version }}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for tag in testing "testing-$v-$(date -u +%Y%m%d)"; do
+            sudo podman push hearth-os:build "$IMAGE:$tag"
+          done
+          echo "::notice title=published::$IMAGE:testing"
