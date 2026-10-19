@@ -1,0 +1,46 @@
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=74 comm="/usr/lib/nimbus/nimbus --windowed" label="containers-default-0.57.4-apparmor1 (enforce)")
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.1' (uid=1000 pid=81 comm="/usr/libexec/xdg-desktop-portal" label="containers-default-0.57.4-apparmor1 (enforce)")
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.1' (uid=1000 pid=81 comm="/usr/libexec/xdg-desktop-portal" label="containers-default-0.57.4-apparmor1 (enforce)")
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fuse: device /dev/fuse not found. Kernel module not loaded?
+error: fuse init failed: Can't mount path /home/tester/.cache/doc
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.531: Document portal fuse mount point unknown: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name :1.3 was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.531: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.1' (uid=1000 pid=81 comm="/usr/libexec/xdg-desktop-portal" label="containers-default-0.57.4-apparmor1 (enforce)")
+
+(xdg-desktop-portal-gtk:100): xdg-desktop-portal-gtk-WARNING **: 05:47:10.552: error: Could not connect: No such file or directory
+
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.4' (uid=1000 pid=100 comm="/usr/libexec/xdg-desktop-portal-gtk" label="containers-default-0.57.4-apparmor1 (enforce)")
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.602: Failed to create RealtimeKit proxy: Could not connect: No such file or directory
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.602: Choosing gtk.portal for org.freedesktop.impl.portal.Settings as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.603: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.604: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.605: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.606: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.607: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.616: Failed to connect to PipeWire: Couldn't connect to PipeWire
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.616: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.616: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:81): xdg-desktop-portal-WARNING **: 05:47:10.617: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=1000 pid=74 comm="/usr/lib/nimbus/nimbus --windowed" label="containers-default-0.57.4-apparmor1 (enforce)")
+dbus-daemon[73]: [session uid=1000 pid=73 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[147]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=148 comm="/usr/libexec/webkit2gtk-4.1/WebKitWebProcess 4 18" label="containers-default-0.57.4-apparmor1 (enforce)")
+dbus-daemon[147]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry

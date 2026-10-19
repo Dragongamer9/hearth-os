@@ -1,0 +1,38 @@
++ dnf5 -y install xorg-x11-server-Xvfb ImageMagick xwd
+Updating and loading repositories:
+ Fedora 44 - x86_64 - Updates Archive   100% |  26.4 MiB/s |  46.9 MiB |  00m02s
+ Fedora 44 - x86_64                     100% |  17.5 MiB/s |  65.8 MiB |  00m04s
+ Copr repo for akmods owned by ublue-os 100% |   6.3 KiB/s |  21.1 KiB |  00m03s
+ Fedora 44 - x86_64 - Updates           100% |   2.6 MiB/s |  13.2 MiB |  00m05s
+Repositories loaded.
+Package "xorg-x11-server-Xvfb-21.1.24-1.fc44.x86_64" is already installed.
+Package "ImageMagick-1:7.1.2.32-1.fc44.x86_64" is already installed.
+
+Package                  Arch   Version           Repository      Size
+Changing reason:
+ ImageMagick             x86_64 1:7.1.2.32-1.fc44 @System     88.0 KiB
+   External User -> User                                              
+Installing:
+ xwd                     x86_64 0:1.0.9-5.fc44    fedora      35.8 KiB
+
+Transaction Summary:
+ Installing:         1 package
+ Changing reason:    1 package
+
+Total size of inbound packages is 26 KiB. Need to download 26 KiB.
+After this operation, 36 KiB extra will be used (install 36 KiB, remove 0 B).
+[1/1] xwd-0:1.0.9-5.fc44.x86_64         100% | 222.6 KiB/s |  26.3 KiB |  00m00s
+--------------------------------------------------------------------------------
+[1/1] Total                             100% | 213.5 KiB/s |  26.3 KiB |  00m00s
+Running transaction
+[1/4] Verify package files              100% |   0.0   B/s |   1.0   B |  00m00s
+[2/4] Prepare transaction               100% |   2.0   B/s |   1.0   B |  00m00s
+[3/4] Installing xwd-0:1.0.9-5.fc44.x86 100% |  28.7 KiB/s |  36.9 KiB |  00m01s
+Complete!
++ id tester
+id: 'tester': no such user
++ useradd -m tester
+Creating mailbox file: No such file or directory
++ cat
++ chmod 755 /tmp/inner.sh
++ setpriv --reuid=tester --regid=tester --init-groups bash /tmp/inner.sh
