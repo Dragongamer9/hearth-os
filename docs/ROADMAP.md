@@ -92,6 +92,13 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 ## 0.1.0 (bug fixes)
 
 - [x] Fix: the profile button at the bottom of the side menu couldn't be reached with the D-pad (since 0.0.30)
+- [x] Fix: one error in a button press stopped the controller until Hearth restarted (it now keeps working)
+- [x] Fix: the D-pad skipped a row of buttons that sits to the side (Power mode, Controls); up/down now goes to the next row
+- [x] Fix: a stick resting near its edge counted as many presses (presses at 55%, lets go below 35%)
+- [x] Fix: volume and brightness sliders dropping out of change mode, or jumping back, when the status refreshed
+- [x] Fix: in the carousel and other experimental layouts, a background refresh could make Play start the first game instead of the one picked
+- [x] Fix: Shut down's confirmation didn't show in the in-game overlay
+- [x] Fix: Quick Access performance refreshing twice a second; Friends selection moving to another person when the list changes; swapped A/B echo filter; Screenshots opening on the old picture
 - [x] Bug finder (tools/ui-nav-check.js): presses every direction from every control on every screen and lists controls the D-pad can't reach
 
 - [x] Xodus Nexus: pick where Xbox games go when adding it (this device, an SD card or a second drive); "Sign in to Xodus Nexus" opens it in Desktop Mode, where the controller types; a password store runs in both modes so its sign-in is remembered
