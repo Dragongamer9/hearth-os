@@ -153,11 +153,19 @@ jobs:
           sudo mkdir -p /mnt/b && sudo mount "$boot" /mnt/b
           sudo cat /mnt/b/grub2/custom.cfg || true
           check "SteamOS in Hearth's boot menu" "sudo grep -q 'chainloader /EFI/steamos/steamcl.efi' /mnt/b/grub2/custom.cfg"
+          # Hearth has its own EFI partition (in its own space); SteamOS's stays as it was.
           sudo mount "${LOOP}p1" /mnt/e
-          check "Hearth's boot loader next to SteamOS's" "sudo test -e /mnt/e/EFI/steamos/steamcl.efi -a -d /mnt/e/EFI/fedora"
-          echo "::notice title=grub reads custom.cfg::$(sudo grep -rl 'custom.cfg' /mnt/b/grub2/grub.cfg /mnt/e/EFI/fedora/grub.cfg 2>/dev/null | tr '\n' ' ')"
+          check "SteamOS's boot loader untouched" "sudo test -e /mnt/e/EFI/steamos/steamcl.efi"
+          check "nothing of Hearth's on SteamOS's EFI partition" "! sudo test -d /mnt/e/EFI/fedora"
+          sudo umount /mnt/e
+          hesp=$(lsblk -lnpo NAME,PARTLABEL "$LOOP" | awk '$2=="Hearth" && $3=="EFI"{print $1}')
+          [ -z "$hesp" ] && hesp=$(sudo sfdisk -J "$LOOP" | python3 -c 'import json,sys; print(next((p["node"] for p in json.load(sys.stdin)["partitiontable"]["partitions"] if p.get("name")=="Hearth EFI"),""))')
+          check "Hearth's own EFI partition" "[ -n '$hesp' ]"
+          sudo mkdir -p /mnt/he && sudo mount "$hesp" /mnt/he
+          check "Hearth's boot loader on its own EFI partition" "sudo test -d /mnt/he/EFI/fedora"
+          echo "::notice title=grub reads custom.cfg::$(sudo grep -rl 'custom.cfg' /mnt/b/grub2/grub.cfg /mnt/he/EFI/fedora/grub.cfg 2>/dev/null | tr '\n' ' ')"
           check "Hearth's boot loader reads custom.cfg" "sudo grep -q 'custom.cfg' /mnt/b/grub2/grub.cfg"
-          sudo umount /mnt/b /mnt/e
+          sudo umount /mnt/b /mnt/he
           [ $ok = 1 ]
       - name: Boot it and wait for the login prompt
         run: |
