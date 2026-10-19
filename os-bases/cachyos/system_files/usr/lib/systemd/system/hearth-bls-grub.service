@@ -1,0 +1,22 @@
+# Hearth on CachyOS (Arch's GRUB has no blscfg): keeps GRUB's menu (/boot/grub2/hearth-bls.cfg) in step with ostree's boot
+# entries. Started at boot (writes the menu once); stopped at shutdown *after* ostree-finalize-staged.service has
+# written the new version's entry (units stop in the reverse of their start order: Before= here), so the next
+# start's menu already has the update in it. See /usr/libexec/nimbus/hearth-bls-grub.
+[Unit]
+Description=Hearth: GRUB menu from ostree's boot entries
+DefaultDependencies=no
+RequiresMountsFor=/boot
+After=local-fs.target
+Before=ostree-finalize-staged.service basic.target final.target
+Conflicts=final.target
+ConditionPathIsDirectory=/boot/loader/entries
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/nimbus/hearth-bls-grub
+ExecStop=/usr/libexec/nimbus/hearth-bls-grub
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,102 @@
+# Hearth on CachyOS (Beta Experimental): CachyOS (Arch, x86-64-v3 packages, the CachyOS kernel) made into a bootc
+# image, with the Hearth session (Game Mode + Desktop Mode) as what it boots into. Same model as the Bazzite build
+# (os/Containerfile): one image, updated as a whole with bootc, rolled back as a whole, installed by Hearth's
+# installer. See docs/BASE-CACHYOS.md for why it's built this way.
+# Built by .github/workflows/base-cachyos.yml from the repository root:
+#   podman build -f os-bases/cachyos/Containerfile -t hearth-cachyos .
+# os/nimbus-app must hold the Hearth app build (the app artifact unpacked); CI puts it there.
+
+# CachyOS's own container image with its x86-64-v3 repositories. Every target supports x86-64-v3: Steam Deck
+# (Zen 2), ROG Ally / Ally X / Xbox Ally (Zen 4, Zen 2), Legion Go / Go S (Zen 4, Zen 3+), MSI Claw (Meteor/Lunar
+# Lake) and desktops from Intel Haswell (2013) / AMD Zen on. For older PCs build with
+# --build-arg BASE_IMAGE=docker.io/cachyos/cachyos:latest (x86-64 baseline repositories) and MARCH=x86-64.
+ARG BASE_IMAGE=docker.io/cachyos/cachyos-v3:latest
+# Not packaged for Arch/CachyOS: built from these releases (the same thing bootcrew's arch-bootc does for bootc).
+ARG BOOTC_REF=v1.17.1
+ARG BOOTUPD_REF=v0.3.2
+
+# Files the build script needs, kept out of the final image.
+FROM scratch AS ctx
+COPY os-bases/cachyos/build.sh /build.sh
+COPY os-bases/cachyos/system_files /cachyos_files
+COPY os/system_files /system_files
+COPY os/branding/wallpapers /wallpapers
+COPY os/nimbus-app /nimbus-app
+COPY hosts/linux/session /session
+COPY hosts/linux/desktop /desktop
+
+# ------------------------------------------------------------------ CachyOS, laid out for an image-based OS
+FROM ${BASE_IMAGE} AS base
+# pacman's database, cache and log move from /var to /usr/lib/sysimage: in a bootc system /var belongs to the
+# machine, not to the image, so the list of installed packages has to live in /usr with the packages (bootcrew's
+# arch-bootc does the same). DownloadUser is dropped: pacman's download sandbox can't switch users inside a
+# container build. NoExtract is dropped so man pages and locales are installed.
+RUN grep "= */var" /etc/pacman.conf | sed "/= *\/var/s/.*=// ; s/ //" | \
+      xargs -n1 sh -c 'mkdir -p "/usr/lib/sysimage/$(dirname $(echo $1 | sed "s@/var/@@"))" && mv -v "$1" "/usr/lib/sysimage/$(echo "$1" | sed "s@/var/@@")" || true' '' && \
+    sed -i -e "/= *\/var/ s/^#//" -e "s@= */var@= /usr/lib/sysimage@g" -e "/DownloadUser/d" /etc/pacman.conf && \
+    sed -i 's/^[[:space:]]*NoExtract/#&/' /etc/pacman.conf && \
+    grep -nE "DBPath|CacheDir|LogFile|^\[" /etc/pacman.conf && \
+    test -d /usr/lib/sysimage/lib/pacman/local
+# Keys first (the image may be older than a key change), then everything up to date, then glibc again so the
+# locales the container image left out are there.
+RUN --mount=type=tmpfs,dst=/tmp \
+    pacman -Sy --noconfirm archlinux-keyring cachyos-keyring && \
+    pacman -Syu --noconfirm && \
+    pacman -S --noconfirm glibc && \
+    pacman -Scc --noconfirm
+
+# ------------------------------------------------------------------ bootc and bootupd, built from source
+# bootc: updates, rollbacks, `bootc status`, what hearth-admin drives. Built without SELinux (Arch has no
+# libselinux), which bootc supports; pre-6.15 only adds a fallback for older kernels (same flags as the Peppermint
+# build). bootupd: what Hearth's installer uses to put the boot loader on the EFI partition.
+# Nothing from this stage (Rust, compilers) ends up in the image, only /output.
+FROM base AS builder
+ARG BOOTC_REF
+ARG BOOTUPD_REF
+RUN pacman -S --noconfirm --needed base-devel git rust clang go-md2man ostree openssl zstd pkgconf glib2 systemd-libs
+# bootc 1.17 needs libostree 2025.3 or newer (its ostree-ext asks for v2025_3).
+RUN v=$(pacman -Q ostree | cut -d' ' -f2 | cut -d- -f1) && echo "ostree $v" && \
+    [ "$(vercmp "$v" 2025.3)" -ge 0 ] || { echo "Arch's ostree $v is older than 2025.3, which bootc needs"; exit 1; }
+RUN --mount=type=tmpfs,dst=/tmp \
+    git clone --depth 1 --branch "${BOOTC_REF}" https://github.com/bootc-dev/bootc /src/bootc && \
+    make -C /src/bootc bin install install-ostree-hooks DESTDIR=/output \
+      CARGO_OPTIONS='--no-default-features --features "install-to-disk pre-6.15"' && \
+    test -x /output/usr/bin/bootc && \
+    ls -d /output/usr/lib/dracut/modules.d/*bootc
+RUN --mount=type=tmpfs,dst=/tmp \
+    git clone --depth 1 --branch "${BOOTUPD_REF}" https://github.com/coreos/bootupd /src/bootupd && \
+    make -C /src/bootupd && \
+    make -C /src/bootupd install install-grub-static DESTDIR=/output && \
+    test -x /output/usr/bin/bootupctl && \
+    test -f /output/usr/lib/bootupd/grub2-static/grub-static-efi.cfg
+
+# ------------------------------------------------------------------ Hearth
+FROM base
+
+COPY --from=builder /output /
+
+# linux-cachyos-deckify: CachyOS's handheld kernel (Steam Deck, ROG Ally, Legion Go, MSI Claw patches on top of
+# linux-cachyos); it runs desktops just as well, so one image serves both. --build-arg KERNEL=linux-cachyos for
+# CachyOS's desktop kernel instead.
+ARG KERNEL=linux-cachyos-deckify
+# 1: Nvidia's open driver in the same image as AMD/Intel (it only loads on an Nvidia card); 0: leave it out.
+ARG NVIDIA=1
+# What the repositories are built for (recorded in /usr/share/nimbus/image-info.json, so an installer can check
+# the CPU): x86-64-v3 with the default BASE_IMAGE, x86-64 with docker.io/cachyos/cachyos.
+ARG MARCH=x86-64-v3
+ARG NIMBUS_VERSION=0.0.0
+LABEL org.opencontainers.image.title="Hearth (CachyOS edition)" \
+      org.opencontainers.image.description="Hearth: CachyOS with a controller-first Game Mode and Desktop Mode (bootc, Beta Experimental)" \
+      org.opencontainers.image.source="https://github.com/Dragongamer9/hearth-os" \
+      org.opencontainers.image.version="${NIMBUS_VERSION}" \
+      containers.bootc=1 \
+      ostree.bootable=1
+
+# The package cache is a build cache, never part of the image. No mounts on /var or /root: the end of build.sh
+# replaces them with the bootc layout.
+RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    --mount=type=cache,dst=/usr/lib/sysimage/cache/pacman \
+    --mount=type=tmpfs,dst=/tmp \
+    KERNEL="${KERNEL}" NVIDIA="${NVIDIA}" MARCH="${MARCH}" NIMBUS_VERSION="${NIMBUS_VERSION}" /ctx/build.sh
+
+RUN bootc container lint

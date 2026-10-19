@@ -1,0 +1,3 @@
+# Hearth's installer puts the main account in "wheel" (as on Fedora): administrators.
+# (Arch's sudo ships with the wheel line commented out.)
+%wheel ALL=(ALL:ALL) ALL
