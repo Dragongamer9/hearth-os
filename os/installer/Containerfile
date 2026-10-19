@@ -1,7 +1,9 @@
 # Hearth's small installer USB: just enough to install Hearth OS. It boots straight into the Hearth app's
 # install screens (Connect a controller, Wi-Fi, Install), and the installer downloads Hearth OS itself while it
-# installs, so the USB stays small (about 2 GB instead of 7). One USB for every PC: it installs the Nvidia
-# edition on PCs with an Nvidia card, the AMD/Intel one on the rest.
+# installs, so the USB stays small (about 2 GB instead of 7). One USB for every PC, and the universal installer:
+# its install screens offer Hearth OS on Anatase (recommended, ghcr.io/dragongamer9/hearth-os:latest, one image for
+# every graphics card) and the Beta Experimental editions on Ubuntu, CachyOS and Peppermint (their :testing images).
+# Its own system is Fedora's small bootable image (not a Hearth OS image), so it stays small.
 # Built by .github/workflows/installer-iso.yml (from the repository's root), made into an ISO by Titanoboa.
 FROM quay.io/fedora/fedora-bootc:43
 # The Hearth app (built by the workflow into os/nimbus-app, from this commit) and the helpers the installer uses.

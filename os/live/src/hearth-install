@@ -19,7 +19,8 @@ The plan:
    "give": 137438953472,                beside only: how much space to take (bytes)
    "user": {"name": "sam", "full": "Sam", "password": "..."},
    "hostname": "sams-deck", "timezone": "America/Chicago",
-   "image": "ghcr.io/dragongamer9/hearth:latest",   optional; defaults to the edition this USB is
+   "edition": "anatase",                optional; which Hearth OS (EDITIONS: anatase, ubuntu, cachyos,
+                                        peppermint); defaults to Hearth OS on Anatase. Never a free-form image
    "firmware": true}                    optional; false skips adding the boot entry (for tests)
 
 How (the same way Fedora's installer puts an atomic system on a drive, without the installer):
@@ -112,39 +113,175 @@ def check_plan(p):
         raise Fail('choose what to install next to')
     if p['mode'] == 'beside' and not (isinstance(p.get('give'), int) and p['give'] >= MIN_DISK):
         raise Fail(f'Hearth needs at least {MIN_DISK // GIB} GB')
-    image = p.get('image') or default_image()
-    if not re.fullmatch(r'[a-z0-9./_:@-]+', image):
-        raise Fail('bad image name')
+    edition = plan_edition(p)
+    image = image_of(edition)
     signin = p.get('signin') if p.get('signin') in ('auto', 'start', 'always') else 'auto'
     if nopass:
         signin = 'auto'   # nothing to ask for
     extra = [k for k in (p.get('kargs') or []) if isinstance(k, str) and re.fullmatch(r'[A-Za-z0-9_.,=:/-]+', k)]
-    return {**p, 'signin': signin, 'kargs': extra, 'hostname': host, 'timezone': tz, 'image': image,
+    return {**p, 'signin': signin, 'kargs': extra, 'hostname': host, 'timezone': tz, 'image': image, 'edition': edition,
             'user': {'name': name, 'full': (u.get('full') or name).replace(':', ' ').strip(),
                      'password': '' if nopass else u['password'], 'nopassword': nopass}}
 
 
-def has_nvidia(sys_pci='/sys/bus/pci/devices'):
-    """An NVIDIA graphics card in this PC (vendor 10de, display class 03xx)."""
-    for dev in glob.glob(f'{sys_pci}/*'):
-        try:
-            if open(f'{dev}/vendor').read().strip() == '0x10de' and open(f'{dev}/class').read().strip().startswith('0x03'):
-                return True
-        except OSError:
-            pass
-    return False
+# ------------------------------------------------------------------ which Hearth OS
+# Every Hearth OS this installer can put on a drive: a fixed table, never a free-form image. Hearth OS on Anatase
+# (one image for AMD, Intel and Nvidia) is the one to install; the others are Beta Experimental editions and have
+# only :testing. The same list as the Hearth app's "Move to a new Hearth OS" (hosts/hearth-core/src/newos.rs).
+EDITIONS = {
+    'anatase': {'image': 'ghcr.io/dragongamer9/hearth-os:latest', 'label': 'Hearth OS on Anatase', 'beta': False,
+                'about': 'The new Hearth OS. Starts and updates fast, the same for every PC and handheld.'},
+    'ubuntu': {'image': 'ghcr.io/dragongamer9/hearth-ubuntu:testing', 'label': 'Ubuntu', 'beta': True,
+               'about': 'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.'},
+    'cachyos': {'image': 'ghcr.io/dragongamer9/hearth-cachyos:testing', 'label': 'CachyOS', 'beta': True,
+                'about': 'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.'},
+    'peppermint': {'image': 'ghcr.io/dragongamer9/hearth-peppermint:testing', 'label': 'Peppermint', 'beta': True,
+                   'about': 'Hearth OS built on Peppermint OS (Debian). Still being tested: some things may not work yet.'},
+}
+DEFAULT_EDITION = 'anatase'
+# CachyOS' image is built for x86-64-v3: every processor in /proc/cpuinfo needs these features.
+X86_64_V3_FLAGS = ('avx2', 'bmi2', 'fma', 'movbe')
+SB_VAR = '/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d0-aa4b-00e098032b8c'
+NO_V3 = "Hearth OS on CachyOS needs a newer processor (x86-64-v3: AVX2, BMI2, FMA and MOVBE). Choose another one."
+SB_CACHYOS = ("Secure Boot is on, and Hearth OS on CachyOS can't start with it on (it has no signed boot loader). "
+              "Turn Secure Boot off in your PC's firmware settings (UEFI) before you restart, or choose another one.")
 
 
-def default_image():
-    """The edition to install: what this USB was built as (hearth or hearth-nvidia), or for the small installer
-    USB ("auto"), the one for this PC's graphics."""
+def image_of(edition=None):
+    """The image of an edition in EDITIONS (default: Hearth OS on Anatase). Fail for anything else."""
+    e = EDITIONS.get(edition or DEFAULT_EDITION)
+    if not e:
+        raise Fail('unknown edition: choose Hearth OS on Anatase, Ubuntu, CachyOS or Peppermint')
+    return e['image']
+
+
+def image(edition=None):
+    """The image to install: the edition's, from the fixed table."""
+    return image_of(edition)
+
+
+def plan_edition(p):
+    """The plan's edition: "edition" (an EDITIONS key), or an "image" that is exactly one of the table's images
+    (older callers). Anything else is refused. CachyOS is refused on a processor without x86-64-v3."""
+    ed, img = p.get('edition'), p.get('image')
+    if ed is not None and (not isinstance(ed, str) or ed not in EDITIONS):
+        raise Fail('unknown edition: choose Hearth OS on Anatase, Ubuntu, CachyOS or Peppermint')
+    if img is not None:
+        by_image = next((k for k, v in EDITIONS.items() if v['image'] == img), None)
+        if not by_image or (ed and ed != by_image):
+            raise Fail('bad image name')
+        ed = by_image
+    ed = ed or DEFAULT_EDITION
+    if ed == 'cachyos' and not cpu_v3():
+        raise Fail(NO_V3)
+    return ed
+
+
+def x86_64_v3(cpuinfo):
+    """Every processor listed in /proc/cpuinfo has the x86-64-v3 features."""
+    flags = [set(line.split(':', 1)[1].split()) for line in cpuinfo.splitlines()
+             if ':' in line and line.split(':', 1)[0].strip() == 'flags']
+    return bool(flags) and all(all(f in fl for f in X86_64_V3_FLAGS) for fl in flags)
+
+
+def cpu_v3(path='/proc/cpuinfo'):
     try:
-        name = open('/etc/hearth-live').read().strip()
+        with open(path) as f:
+            return x86_64_v3(f.read())
+    except OSError:
+        return False
+
+
+def secure_boot(var=SB_VAR):
+    """True/False: Secure Boot is on (the SecureBoot EFI variable: 4 bytes of attributes, then 1 when on, else
+    mokutil's answer). None: couldn't tell (not a UEFI PC)."""
+    try:
+        with open(var, 'rb') as f:
+            b = f.read()
+        if len(b) > 4:
+            return b[4] == 1
+    except OSError:
+        pass
+    if shutil.which('mokutil'):
+        out = sh(['mokutil', '--sb-state'], check=False).stdout.lower()
+        if 'secureboot enabled' in out:
+            return True
+        if 'secureboot disabled' in out:
+            return False
+    return None
+
+
+def edition_warning(edition, sb):
+    """What to tell people before installing this edition. With Secure Boot on only CachyOS can't start: Anatase
+    is signed for Fedora's shim, and Ubuntu and Peppermint bring their own signed shim on a fresh install."""
+    return SB_CACHYOS if edition == 'cachyos' and sb else None
+
+
+def this_usb(path='/etc/hearth-live'):
+    """What this USB was built as: "installer" (the small online installer: every edition) or "anatase" (the
+    full live USB, which carries Hearth OS on Anatase)."""
+    try:
+        with open(path) as f:
+            name = f.read().strip()
     except OSError:
         name = ''
-    if name == 'auto':
-        name = 'hearth-nvidia' if has_nvidia() else 'hearth'
-    return f'ghcr.io/dragongamer9/{name if re.fullmatch(r"hearth(-nvidia)?", name) else "hearth"}:latest'
+    return 'installer' if name in ('auto', 'installer') else 'anatase'
+
+
+def editions_offered(usb=None):
+    """The editions the install screens offer: all of them on the small installer, which downloads what it installs;
+    Hearth OS on Anatase on the full live USB (it's on the stick, so no internet is needed)."""
+    return list(EDITIONS) if (usb or this_usb()) == 'installer' else [DEFAULT_EDITION]
+
+
+def published(img, timeout=6):
+    """Is this image on GitHub's registry? Asked anonymously, the way bootc does. None: couldn't tell (offline)."""
+    import urllib.error
+    import urllib.request
+    repo, tag = img.split('/', 1)[1].rsplit(':', 1)
+    try:
+        with urllib.request.urlopen(f'https://ghcr.io/token?scope=repository:{repo}:pull', timeout=timeout) as r:
+            token = json.load(r)['token']
+        req = urllib.request.Request(f'https://ghcr.io/v2/{repo}/manifests/{tag}', method='HEAD', headers={
+            'Authorization': f'Bearer {token}',
+            'Accept': 'application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, '
+                      'application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json'})
+        with urllib.request.urlopen(req, timeout=timeout):
+            return True
+    except urllib.error.HTTPError as e:
+        return False if e.code in (401, 403, 404) else None
+    except Exception:
+        return None
+
+
+def published_all(offered):
+    """{edition: published?} for the editions offered, asked at once. The live USB's own edition isn't asked."""
+    if offered == [DEFAULT_EDITION]:
+        return {}
+    import threading
+    out = {}
+
+    def ask(k):
+        out[k] = published(EDITIONS[k]['image'])
+    ts = [threading.Thread(target=ask, args=(k,), daemon=True) for k in offered]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    return out
+
+
+def edition_choices(offered, v3, sb, pubs=None):
+    """The picker's rows: [{id, label, about, image, beta, recommended, allowed, reason, warning}]. Not allowed:
+    CachyOS on a processor without x86-64-v3, or an image that isn't published yet (when that could be asked)."""
+    out = []
+    for k in offered:
+        e = EDITIONS[k]
+        reason = NO_V3 if k == 'cachyos' and not v3 else 'Not ready yet' if (pubs or {}).get(k) is False else None
+        out.append({'id': k, 'label': e['label'], 'about': e['about'], 'image': e['image'], 'beta': e['beta'],
+                    'recommended': k == DEFAULT_EDITION, 'allowed': reason is None, 'reason': reason,
+                    'warning': edition_warning(k, sb)})
+    return out
 
 
 # ------------------------------------------------------------------ drives
@@ -637,20 +774,21 @@ def rx_bytes(net='/proc/net/dev'):
     return total
 
 
-# The full ISOs carry the Hearth OS image itself (an OCI copy, made by .github/workflows/live-iso.yml), so they
-# install without the internet; the small installer USB doesn't, and downloads it.
+# The full live ISO carries the Hearth OS on Anatase image itself (an OCI copy, made by
+# .github/workflows/live-iso.yml), so it installs without the internet; the small installer USB doesn't, and
+# downloads the edition picked. Either way the installed system updates from the edition's image in EDITIONS.
 LOCAL_OCI = '/usr/share/hearth/image'
 
 
 def local_image(image, oci=LOCAL_OCI):
     """The copy of `image` on this USB stick, as an image reference ostree reads, or None (not on this USB,
-    or it's the other edition)."""
+    or another edition was picked)."""
     try:
         with open(oci + '.ref') as f:
             ref = f.read().strip()
     except OSError:
         return None
-    def name(r):   # ghcr.io/dragongamer9/hearth from ...:latest or ...@sha256:...
+    def name(r):   # ghcr.io/dragongamer9/hearth-os from ...:latest or ...@sha256:...
         r = r.split('@')[0]
         return r.rsplit(':', 1)[0] if ':' in r.rsplit('/', 1)[-1] else r
     if not ref or name(ref) != name(image) or not os.path.isfile(os.path.join(oci, 'index.json')):
@@ -976,7 +1114,8 @@ def setup_system(dep, root, plan):
         # Hearth's first start offers to import games from Windows (beside) and sets up the rest.
         os.makedirs(f'{dep}/etc/nimbus', exist_ok=True)
         with open(f'{dep}/etc/nimbus/installed.json', 'w') as f:
-            json.dump({'mode': plan['mode'], 'at': int(time.time())}, f)
+            json.dump({'mode': plan['mode'], 'edition': plan.get('edition', DEFAULT_EDITION), 'image': plan.get('image', ''),
+                       'at': int(time.time())}, f)
         relabel(dep, ['/etc', '/var/home'])
     finally:
         sh(['umount', f'{dep}/var/home'], check=False)
@@ -1038,6 +1177,10 @@ def run(plan):
         raise Fail('this PC started the USB in legacy (BIOS) mode. Restart, and start the USB in UEFI mode from the boot menu')
     if plan['mode'] == 'whole' and info['tooSmall']:
         raise Fail(f'that drive is too small: Hearth needs at least {MIN_DISK // GIB} GB')
+    warning = edition_warning(plan['edition'], secure_boot())
+    if warning:
+        print(f'log: {warning}', flush=True)   # a warning, not a stop: Secure Boot can be turned off afterwards
+    print(f"log: installing {EDITIONS[plan['edition']]['label']} ({plan['image']})", flush=True)
     unmount_all()
     try:
         if plan['mode'] == 'whole':
@@ -1067,7 +1210,8 @@ def run(plan):
     finally:
         unmount_all()
     stage('done', 100, 'Hearth OS is installed')
-    return {'ok': True, 'disk': disk, 'mode': plan['mode'], 'user': plan['user']['name']}
+    return {'ok': True, 'disk': disk, 'mode': plan['mode'], 'user': plan['user']['name'], 'edition': plan['edition'],
+            'image': plan['image'], 'warning': warning}
 
 
 def main(argv):
@@ -1077,9 +1221,13 @@ def main(argv):
         return 1
     try:
         if cmd == 'disks':
-            img = default_image()
-            # offline: this USB carries Hearth OS itself (the full ISOs), so installing needs no internet.
-            print(json.dumps({'disks': disks(), 'image': img, 'offline': local_image(img) is not None, 'efi': os.path.isdir('/sys/firmware/efi')}))
+            img = image()
+            sb = secure_boot()
+            # offline: this USB carries Hearth OS itself (the full live USB), so installing needs no internet.
+            # editions: the picker (the small installer offers every edition; the live USB, the one it carries).
+            print(json.dumps({'disks': disks(), 'image': img, 'edition': DEFAULT_EDITION, 'offline': local_image(img) is not None,
+                              'efi': os.path.isdir('/sys/firmware/efi'), 'secureBoot': sb,
+                              'editions': edition_choices(editions_offered(), cpu_v3(), sb, published_all(editions_offered()))}))
         elif cmd == 'check' and len(argv) > 2:
             print(json.dumps(check_linux(argv[2])))
         elif cmd == 'run':

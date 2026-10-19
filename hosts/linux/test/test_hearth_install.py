@@ -23,7 +23,7 @@ def load():
 
 H = load()
 GOOD = {'mode': 'whole', 'disk': '/dev/nvme0n1', 'user': {'name': 'sam', 'full': 'Sam', 'password': 'pw'},
-        'hostname': 'Sams-Deck', 'timezone': 'America/Chicago', 'image': 'ghcr.io/dragongamer9/hearth:latest'}
+        'hostname': 'Sams-Deck', 'timezone': 'America/Chicago', 'edition': 'anatase'}
 
 
 class BootEntries(unittest.TestCase):
@@ -42,12 +42,13 @@ class LocalImage(unittest.TestCase):
     def test_matches_edition(self):
         with tempfile.TemporaryDirectory() as d:
             oci = os.path.join(d, 'image')
-            self.assertIsNone(H.local_image('ghcr.io/dragongamer9/hearth:latest', oci))     # small installer: none
+            self.assertIsNone(H.local_image('ghcr.io/dragongamer9/hearth-os:latest', oci))     # small installer: none
             os.makedirs(oci)
             open(os.path.join(oci, 'index.json'), 'w').write('{}')
-            open(oci + '.ref', 'w').write('ghcr.io/dragongamer9/hearth@sha256:abc\n')
-            self.assertEqual(H.local_image('ghcr.io/dragongamer9/hearth:latest', oci), f'ostree-unverified-image:oci:{oci}:hearth')
-            self.assertIsNone(H.local_image('ghcr.io/dragongamer9/hearth-nvidia:latest', oci))
+            open(oci + '.ref', 'w').write('ghcr.io/dragongamer9/hearth-os@sha256:abc\n')
+            self.assertEqual(H.local_image(H.image('anatase'), oci), f'ostree-unverified-image:oci:{oci}:hearth')
+            self.assertIsNone(H.local_image(H.image('ubuntu'), oci))          # another edition: downloaded
+            self.assertIsNone(H.local_image('ghcr.io/dragongamer9/hearth:latest', oci))   # the old Bazzite image
 
     def test_local_progress_text(self):
         self.assertTrue(H.download_text(1e9, 9e9, 0, True).startswith('Copying Hearth OS from the USB stick'))
@@ -92,8 +93,9 @@ class Plan(unittest.TestCase):
             H.check_plan({**GOOD, 'disk': '/dev/sda; rm -rf /'})
 
     def test_default_image(self):
-        p = H.check_plan({k: v for k, v in GOOD.items() if k != 'image'})
-        self.assertTrue(p['image'].startswith('ghcr.io/dragongamer9/hearth'))
+        p = H.check_plan({k: v for k, v in GOOD.items() if k != 'edition'})
+        self.assertEqual(p['edition'], 'anatase')
+        self.assertEqual(p['image'], 'ghcr.io/dragongamer9/hearth-os:latest')
 
 
 class Parsing(unittest.TestCase):
@@ -212,17 +214,98 @@ class OtherSystems(unittest.TestCase):
 
 
 class Edition(unittest.TestCase):
-    def test_nvidia_card_picks_the_nvidia_edition(self):
+    """Which Hearth OS: a fixed table of four images, Anatase by default, never a free-form image."""
+    def setUp(self):
+        self._v3 = H.cpu_v3
+        H.cpu_v3 = lambda path='/proc/cpuinfo': True
+
+    def tearDown(self):
+        H.cpu_v3 = self._v3
+
+    def test_the_four_images(self):
+        self.assertEqual(H.image(), 'ghcr.io/dragongamer9/hearth-os:latest')
+        self.assertEqual(H.image('anatase'), 'ghcr.io/dragongamer9/hearth-os:latest')
+        self.assertEqual(H.image('ubuntu'), 'ghcr.io/dragongamer9/hearth-ubuntu:testing')
+        self.assertEqual(H.image('cachyos'), 'ghcr.io/dragongamer9/hearth-cachyos:testing')
+        self.assertEqual(H.image('peppermint'), 'ghcr.io/dragongamer9/hearth-peppermint:testing')
+        self.assertEqual(sorted(H.EDITIONS), ['anatase', 'cachyos', 'peppermint', 'ubuntu'])
+        for bad in ('hearth', 'hearth-nvidia', 'bazzite', '../x'):
+            with self.assertRaises(H.Fail, msg=bad):
+                H.image(bad)
+
+    def test_plan_editions(self):
+        for ed in H.EDITIONS:
+            p = H.check_plan({**GOOD, 'edition': ed})
+            self.assertEqual((p['edition'], p['image']), (ed, H.EDITIONS[ed]['image']))
+        with self.assertRaises(H.Fail):
+            H.check_plan({**GOOD, 'edition': 'arch'})
+        with self.assertRaises(H.Fail):
+            H.check_plan({**GOOD, 'edition': ['anatase']})
+
+    def test_never_a_free_form_image(self):
+        base = {k: v for k, v in GOOD.items() if k != 'edition'}
+        # Exactly one of the table's images is still taken (older callers), as that edition.
+        self.assertEqual(H.check_plan({**base, 'image': 'ghcr.io/dragongamer9/hearth-ubuntu:testing'})['edition'], 'ubuntu')
+        for bad in ('ghcr.io/dragongamer9/hearth:latest', 'ghcr.io/dragongamer9/hearth-nvidia:latest',
+                    'ghcr.io/dragongamer9/hearth-ubuntu:latest', 'docker.io/evil/os:latest', 'ghcr.io/dragongamer9/hearth-os@sha256:abc'):
+            with self.assertRaises(H.Fail, msg=bad):
+                H.check_plan({**base, 'image': bad})
+        with self.assertRaises(H.Fail):   # the edition and the image disagree
+            H.check_plan({**GOOD, 'image': 'ghcr.io/dragongamer9/hearth-ubuntu:testing'})
+
+    def test_cachyos_needs_x86_64_v3(self):
+        H.cpu_v3 = lambda path='/proc/cpuinfo': False
+        with self.assertRaises(H.Fail):
+            H.check_plan({**GOOD, 'edition': 'cachyos'})
+        self.assertEqual(H.check_plan({**GOOD, 'edition': 'ubuntu'})['edition'], 'ubuntu')
+        rows = {r['id']: r for r in H.edition_choices(list(H.EDITIONS), False, False)}
+        self.assertFalse(rows['cachyos']['allowed'])
+        self.assertTrue(rows['anatase']['allowed'] and rows['ubuntu']['allowed'] and rows['peppermint']['allowed'])
+
+    def test_reads_cpu_flags(self):
+        v3 = 'processor\t: 0\nflags\t\t: fpu sse2 avx2 bmi2 fma movbe\nprocessor\t: 1\nflags\t\t: fpu avx2 bmi2 fma movbe\n'
+        self.assertTrue(H.x86_64_v3(v3))
+        self.assertFalse(H.x86_64_v3(v3 + 'processor\t: 2\nflags\t\t: fpu sse2 avx\n'))
+        self.assertFalse(H.x86_64_v3(''))
         with tempfile.TemporaryDirectory() as d:
-            def dev(name, vendor, cls):
-                os.makedirs(f'{d}/{name}')
-                with open(f'{d}/{name}/vendor', 'w') as f: f.write(vendor + '\n')
-                with open(f'{d}/{name}/class', 'w') as f: f.write(cls + '\n')
-            dev('0000:00:02.0', '0x8086', '0x030000')      # Intel graphics
-            dev('0000:00:1f.3', '0x10de', '0x040300')      # an Nvidia audio function: not a graphics card
-            self.assertFalse(H.has_nvidia(d))
-            dev('0000:01:00.0', '0x10de', '0x030000')
-            self.assertTrue(H.has_nvidia(d))
+            open(f'{d}/cpuinfo', 'w').write(v3)
+            self.assertTrue(self._v3(f'{d}/cpuinfo'))
+            self.assertFalse(self._v3(f'{d}/missing'))
+
+    def test_secure_boot_warns_for_cachyos_only(self):
+        self.assertIsNotNone(H.edition_warning('cachyos', True))
+        for ed in ('anatase', 'ubuntu', 'peppermint'):
+            self.assertIsNone(H.edition_warning(ed, True), ed)
+        self.assertIsNone(H.edition_warning('cachyos', False))
+        self.assertIsNone(H.edition_warning('cachyos', None))
+        rows = {r['id']: r for r in H.edition_choices(list(H.EDITIONS), True, True)}
+        self.assertTrue(rows['cachyos']['warning'] and rows['cachyos']['allowed'])
+        self.assertIsNone(rows['ubuntu']['warning'])
+        with tempfile.TemporaryDirectory() as d:
+            open(f'{d}/sb', 'wb').write(bytes([6, 0, 0, 0, 1]))
+            self.assertTrue(H.secure_boot(f'{d}/sb'))
+            open(f'{d}/sb', 'wb').write(bytes([6, 0, 0, 0, 0]))
+            self.assertFalse(H.secure_boot(f'{d}/sb'))
+
+    def test_what_each_usb_offers(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = f'{d}/hearth-live'
+            open(f, 'w').write('installer\n')
+            self.assertEqual(H.this_usb(f), 'installer')
+            open(f, 'w').write('auto\n')       # older installer USBs
+            self.assertEqual(H.this_usb(f), 'installer')
+            open(f, 'w').write('anatase\n')
+            self.assertEqual(H.this_usb(f), 'anatase')
+            self.assertEqual(H.this_usb(f'{d}/missing'), 'anatase')
+        self.assertEqual(H.editions_offered('installer'), ['anatase', 'ubuntu', 'cachyos', 'peppermint'])
+        self.assertEqual(H.editions_offered('anatase'), ['anatase'])
+        rows = H.edition_choices(H.editions_offered('installer'), True, False, {'peppermint': False, 'ubuntu': None})
+        self.assertEqual([r['id'] for r in rows if r['recommended']], ['anatase'])
+        self.assertEqual([r['id'] for r in rows if r['beta']], ['ubuntu', 'cachyos', 'peppermint'])
+        by = {r['id']: r for r in rows}
+        self.assertEqual((by['peppermint']['allowed'], by['peppermint']['reason']), (False, 'Not ready yet'))
+        self.assertTrue(by['ubuntu']['allowed'])          # couldn't ask (offline): still allowed
+        self.assertEqual(H.published_all(['anatase']), {})  # the live USB's own: not asked
 
 
 class BootMenu(unittest.TestCase):

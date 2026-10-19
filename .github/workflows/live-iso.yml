@@ -1,23 +1,30 @@
-# Builds the Hearth live ISO: boots from a USB stick into Hearth (Desktop Mode) so you can try it, with a
-# welcome card and an "Install Hearth" installer. Same idea and tool as Bazzite's live ISO (Titanoboa).
+# Builds the Hearth live ISO: boots from a USB stick into Hearth so you can try it, with a welcome card and an
+# "Install Hearth OS" installer. Made from Hearth OS on Anatase (ghcr.io/dragongamer9/hearth-os, by digest): one ISO
+# for every PC (AMD, Intel and Nvidia graphics), with Titanoboa (the tool Bazzite's and Anatase's live ISOs use).
 # Manual only (Actions › Hearth live ISO › Run workflow). The ISO is kept as a download on the run for 14 days
 # (GitHub releases can't hold files over 2 GB) and uploaded to Hearth's Cloudflare R2 bucket under a fixed name
 # (what the website's Download buttons point at): https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/
-#   hearth-os-live.iso (AMD/Intel), hearth-os-live-nvidia.iso, each with a .sha256, and latest.json.
+#   hearth-os-live.iso, with a .sha256, and latest.json.
 #   Secrets (Settings › Secrets and variables › Actions): R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
-# Installing needs internet: it downloads the current Hearth image, so a fresh install is always up to date.
+# Installing needs no internet: the ISO carries the Hearth OS image itself, and the installed system then takes
+# its updates from ghcr.io/dragongamer9/hearth-os:latest.
 name: Hearth live ISO
 
 on:
   workflow_dispatch:
     inputs:
-      graphics:
-        description: 'Which graphics the ISO is for'
+      edition:
+        description: 'Which Hearth OS the ISO is (one ISO for every graphics card)'
         type: choice
-        options: [amd-intel, nvidia]
-        default: amd-intel
+        options: [anatase]
+        default: anatase
+      tag:
+        description: 'Which build of it (latest: the published one; testing: the newest, not promoted yet)'
+        type: choice
+        options: [latest, testing]
+        default: latest
       upload:
-        description: 'Upload the ISO to the download site (Cloudflare R2; needs the R2_* secrets)'
+        description: 'Upload the ISO to the download site (Cloudflare R2, as hearth-os-live.iso; needs the R2_* secrets)'
         type: boolean
         default: true
 
@@ -30,8 +37,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 300
     env:
-      IMAGE_NAME: ${{ inputs.graphics == 'nvidia' && 'hearth-nvidia' || 'hearth' }}
-      SUFFIX: ${{ inputs.graphics == 'nvidia' && '-nvidia' || '' }}
+      EDITION: ${{ inputs.edition || 'anatase' }}
+      IMAGE: ghcr.io/dragongamer9/hearth-os
+      TAG: ${{ inputs.tag || 'latest' }}
       HAVE_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -44,17 +52,19 @@ jobs:
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=live system::$msg"' ERR
+          case "$EDITION" in anatase) ;; *) echo "::error title=edition::unknown edition $EDITION"; exit 1;; esac
+          case "$TAG" in latest|testing) ;; *) echo "::error title=tag::unknown tag $TAG"; exit 1;; esac
           # Container storage on the big disk: the image, the live layer and the squashfs need ~40 GB.
           sudo mkdir -p /mnt/containers /var/lib/containers
           sudo mount --bind /mnt/containers /var/lib/containers
           df -h / /mnt
           # The exact image (by digest): the live system is made from it, and a copy of it goes on the ISO so
-          # installing needs no download.
-          digest=$(skopeo inspect --format '{{.Digest}}' "docker://ghcr.io/dragongamer9/$IMAGE_NAME:latest")
-          ref="ghcr.io/dragongamer9/$IMAGE_NAME@$digest"
-          echo "::notice title=Image::$ref"
+          # installing needs no download. The installed system's updates come from :latest (hearth-install).
+          digest=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:$TAG")
+          ref="$IMAGE@$digest"
+          echo "::notice title=Image::$IMAGE:$TAG = $ref"
           sudo podman build --pull=newer --cap-add sys_admin --security-opt label=disable \
-            --build-arg IMAGE_NAME="$IMAGE_NAME" --build-arg BASE="$ref" --build-arg IMAGE_REF="$ref" \
+            --build-arg EDITION="$EDITION" --build-arg BASE="$ref" --build-arg IMAGE_REF="$ref" \
             -t localhost/hearth-live:latest -f os/live/Containerfile os/live
           df -h / /mnt
 
@@ -71,7 +81,7 @@ jobs:
           iso=$(cd /tmp/titanoboa && sudo TITANOBOA_OUTPUT_DIR="$out" ./main.sh localhost/hearth-live:latest)
           sudo chown -R "$(id -u):$(id -g)" "$out"
           v=$(sudo podman run --rm localhost/hearth-live:latest cat /usr/share/nimbus/version 2>/dev/null || echo latest)
-          f="hearth-os-$v-live$SUFFIX.iso"
+          f="hearth-os-$v-live.iso"
           mv "$iso" "$out/$f"
           (cd "$out" && sha256sum "$f" | tee "$f.sha256")
           ls -lh "$out"
@@ -81,7 +91,7 @@ jobs:
       - name: Keep the ISO as a download on this run
         uses: actions/upload-artifact@v4
         with:
-          name: hearth-os-${{ steps.iso.outputs.version }}-live${{ env.SUFFIX }}
+          name: hearth-os-${{ steps.iso.outputs.version }}-live
           path: ${{ steps.iso.outputs.dir }}
           if-no-files-found: error
           compression-level: 0
@@ -95,4 +105,4 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           V: ${{ steps.iso.outputs.version }}
           DIR: ${{ steps.iso.outputs.dir }}
-        run: tools/r2-upload.sh "$DIR/hearth-os-$V-live$SUFFIX.iso" "hearth-os-live$SUFFIX.iso" "$V"
+        run: tools/r2-upload.sh "$DIR/hearth-os-$V-live.iso" hearth-os-live.iso "$V"

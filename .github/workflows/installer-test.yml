@@ -1,5 +1,6 @@
 # Runs Hearth's installer (os/live/src/hearth-install) for real against an empty 40 GB disk image, inside the
-# Hearth OS image, then checks the result: partitions, Hearth OS deployed, boot loader, boot entry, user.
+# Hearth OS on Anatase image (ghcr.io/dragongamer9/hearth-os:latest, what the live ISO is made from), installing
+# that edition, then checks the result: partitions, Hearth OS deployed, boot loader, boot entry, user.
 name: Installer test
 
 on:
@@ -27,11 +28,22 @@ jobs:
           echo "LOOP=$(sudo losetup -fP --show disk.img)" >> "$GITHUB_ENV"
       - name: Install Hearth OS onto it
         run: |
-          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","image":"ghcr.io/dragongamer9/hearth:latest","firmware":false,"signin":"always","kargs":["console=ttyS0,115200"]}' "$LOOP")
+          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","edition":"anatase","firmware":false,"signin":"always","kargs":["console=ttyS0,115200"]}' "$LOOP")
+          # The live USB's installer tools: os/live/src/build.sh adds the ones the Hearth OS image hasn't got.
+          cat > /tmp/run.sh <<'EOF'
+          need=""
+          ostree container --help >/dev/null 2>&1 || need="$need rpm-ostree"
+          command -v bootupctl >/dev/null || need="$need bootupd"
+          for t in mkfs.vfat:dosfstools mkfs.ext4:e2fsprogs mkfs.btrfs:btrfs-progs efibootmgr:efibootmgr; do
+            command -v "${t%%:*}" >/dev/null || need="$need ${t#*:}"
+          done
+          if [ -n "$need" ]; then echo "log: adding$need (as the live USB does)"; dnf -y -q install $need </dev/null >&2 || true; fi
+          exec /src/hearth-install "$@"
+          EOF
           echo "$plan" | sudo podman run --rm -i --privileged --pid=host --net=host \
-            -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" -e HEARTH_INSTALL_TEST=1 \
-            --security-opt label=disable ghcr.io/dragongamer9/hearth:latest \
-            /src/hearth-install run 2>&1 | tee install.log || true
+            -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" -v /tmp/run.sh:/run.sh:ro -e HEARTH_INSTALL_TEST=1 \
+            --security-opt label=disable ghcr.io/dragongamer9/hearth-os:latest \
+            sh /run.sh run 2>&1 | tee install.log || true
           if ! grep -q '^result: ' install.log; then
             # Logs can't be downloaded from every place this is read: put the end of it on the run page.
             echo "::error title=Install failed::$(tail -n 25 install.log | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\n' '|' | cut -c1-3500)"
@@ -49,8 +61,8 @@ jobs:
           dep=$(sudo sh -c 'ls -d /mnt/h/ostree/deploy/default/deploy/*.0 | head -1')
           check "Hearth OS deployed" "[ -n '$dep' ]"
           check "boot entry" "sudo sh -c 'ls /mnt/h/boot/loader/entries/*.conf' >/dev/null"
-          check "boot loader on the EFI partition" "sudo sh -c 'ls /mnt/h/boot/efi/EFI/fedora/*.efi' >/dev/null"
-          check "grub config" "sudo test -e /mnt/h/boot/grub2/grub.cfg -o -e /mnt/h/boot/efi/EFI/fedora/grub.cfg"
+          check "boot loader on the EFI partition" "sudo sh -c 'ls /mnt/h/boot/efi/EFI/fedora/*.efi || ls /mnt/h/boot/efi/EFI/anatase/*.efi' >/dev/null"
+          check "grub config" "sudo test -e /mnt/h/boot/grub2/grub.cfg -o -e /mnt/h/boot/efi/EFI/fedora/grub.cfg -o -e /mnt/h/boot/efi/EFI/anatase/grub.cfg"
           check "fstab" "sudo grep -q 'subvol=home' $dep/etc/fstab"
           check "user" "sudo grep -q '^tester:' $dep/etc/passwd"
           check "user in wheel" "sudo grep -q '^wheel:.*tester' $dep/etc/group"
@@ -120,7 +132,7 @@ jobs:
       - name: Hearth finds SteamOS
         run: |
           sudo podman run --rm --privileged --pid=host --net=host -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" \
-            -e HEARTH_INSTALL_TEST=1 --security-opt label=disable ghcr.io/dragongamer9/hearth:latest /src/hearth-install disks | tee disks.json
+            -e HEARTH_INSTALL_TEST=1 --security-opt label=disable ghcr.io/dragongamer9/hearth-os:latest /src/hearth-install disks | tee disks.json
           python3 - "$LOOP" <<'PY'
           import json, sys
           d = next(x for x in json.load(open('disks.json'))['disks'] if x['dev'] == sys.argv[1])
@@ -129,13 +141,24 @@ jobs:
           assert s and s[0]['name'] == 'SteamOS' and s[0]['shrink'] == sys.argv[1] + 'p8', s
           PY
           sudo podman run --rm --privileged --pid=host --net=host -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" \
-            -e HEARTH_INSTALL_TEST=1 --security-opt label=disable ghcr.io/dragongamer9/hearth:latest /src/hearth-install check "${LOOP}p8" | tee check.json
+            -e HEARTH_INSTALL_TEST=1 --security-opt label=disable ghcr.io/dragongamer9/hearth-os:latest /src/hearth-install check "${LOOP}p8" | tee check.json
       - name: Install Hearth OS next to it
         run: |
-          plan=$(printf '{"mode":"beside","disk":"%s","part":"%sp8","give":%s,"user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"UTC","image":"ghcr.io/dragongamer9/hearth:latest","firmware":false,"kargs":["console=ttyS0,115200"]}' "$LOOP" "$LOOP" $((70*1024*1024*1024)))
+          plan=$(printf '{"mode":"beside","disk":"%s","part":"%sp8","give":%s,"user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"UTC","edition":"anatase","firmware":false,"kargs":["console=ttyS0,115200"]}' "$LOOP" "$LOOP" $((70*1024*1024*1024)))
+          # The live USB's installer tools: os/live/src/build.sh adds the ones the Hearth OS image hasn't got.
+          cat > /tmp/run.sh <<'EOF'
+          need=""
+          ostree container --help >/dev/null 2>&1 || need="$need rpm-ostree"
+          command -v bootupctl >/dev/null || need="$need bootupd"
+          for t in mkfs.vfat:dosfstools mkfs.ext4:e2fsprogs mkfs.btrfs:btrfs-progs efibootmgr:efibootmgr; do
+            command -v "${t%%:*}" >/dev/null || need="$need ${t#*:}"
+          done
+          if [ -n "$need" ]; then echo "log: adding$need (as the live USB does)"; dnf -y -q install $need </dev/null >&2 || true; fi
+          exec /src/hearth-install "$@"
+          EOF
           echo "$plan" | sudo podman run --rm -i --privileged --pid=host --net=host \
-            -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" -e HEARTH_INSTALL_TEST=1 \
-            --security-opt label=disable ghcr.io/dragongamer9/hearth:latest /src/hearth-install run 2>&1 | tee install.log || true
+            -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" -v /tmp/run.sh:/run.sh:ro -e HEARTH_INSTALL_TEST=1 \
+            --security-opt label=disable ghcr.io/dragongamer9/hearth-os:latest sh /run.sh run 2>&1 | tee install.log || true
           grep -q '^result: ' install.log || { echo "::error title=Install failed::$(tail -n 25 install.log | tr '\n' '|' | cut -c1-3500)"; exit 1; }
       - name: Check SteamOS is fine and both are in the boot menu
         run: |
@@ -156,14 +179,14 @@ jobs:
           # Hearth has its own EFI partition (in its own space); SteamOS's stays as it was.
           sudo mount "${LOOP}p1" /mnt/e
           check "SteamOS's boot loader untouched" "sudo test -e /mnt/e/EFI/steamos/steamcl.efi"
-          check "nothing of Hearth's on SteamOS's EFI partition" "! sudo test -d /mnt/e/EFI/fedora"
+          check "nothing of Hearth's on SteamOS's EFI partition" "! sudo test -d /mnt/e/EFI/fedora && ! sudo test -d /mnt/e/EFI/anatase"
           sudo umount /mnt/e
           hesp=$(lsblk -lnpo NAME,PARTLABEL "$LOOP" | awk '$2=="Hearth" && $3=="EFI"{print $1}')
           [ -z "$hesp" ] && hesp=$(sudo sfdisk -J "$LOOP" | python3 -c 'import json,sys; print(next((p["node"] for p in json.load(sys.stdin)["partitiontable"]["partitions"] if p.get("name")=="Hearth EFI"),""))')
           check "Hearth's own EFI partition" "[ -n '$hesp' ]"
           sudo mkdir -p /mnt/he && sudo mount "$hesp" /mnt/he
-          check "Hearth's boot loader on its own EFI partition" "sudo test -d /mnt/he/EFI/fedora"
-          echo "::notice title=grub reads custom.cfg::$(sudo grep -rl 'custom.cfg' /mnt/b/grub2/grub.cfg /mnt/he/EFI/fedora/grub.cfg 2>/dev/null | tr '\n' ' ')"
+          check "Hearth's boot loader on its own EFI partition" "sudo test -d /mnt/he/EFI/fedora -o -d /mnt/he/EFI/anatase"
+          echo "::notice title=grub reads custom.cfg::$(sudo grep -rl 'custom.cfg' /mnt/b/grub2/grub.cfg /mnt/he/EFI/fedora/grub.cfg /mnt/he/EFI/anatase/grub.cfg 2>/dev/null | tr '\n' ' ')"
           check "Hearth's boot loader reads custom.cfg" "sudo grep -q 'custom.cfg' /mnt/b/grub2/grub.cfg"
           sudo umount /mnt/b /mnt/he
           [ $ok = 1 ]

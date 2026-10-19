@@ -804,7 +804,12 @@ const MOCK = (()=>{
       {dev:'/dev/nvme0n1',size:1e12,model:'Samsung 980 PRO',tran:'nvme',live:false,windows:true,tooSmall:false,parts:[{},{},{},{}],systems:[{kind:'windows',name:'Windows',part:'/dev/nvme0n1p3',shrink:'/dev/nvme0n1p3'}]},
       {dev:'/dev/nvme1n1',size:2e12,model:'WD Black SN850',tran:'nvme',live:false,windows:false,tooSmall:false,parts:[{},{},{},{},{},{},{},{}],systems:[{kind:'linux',name:'SteamOS',part:'/dev/nvme1n1p8',shrink:'/dev/nvme1n1p8'}]},
       {dev:'/dev/sda',size:5e11,model:'Crucial MX500',tran:'sata',live:false,windows:false,tooSmall:false,parts:[]},
-      {dev:'/dev/sdb',size:3.2e10,model:'SanDisk Ultra',tran:'usb',live:true,windows:false,tooSmall:true,parts:[{},{}]}]}; },
+      {dev:'/dev/sdb',size:3.2e10,model:'SanDisk Ultra',tran:'usb',live:true,windows:false,tooSmall:true,parts:[{},{}]}],
+      image:'ghcr.io/dragongamer9/hearth-os:latest', edition:'anatase', offline:false, secureBoot:true, editions:[
+      {id:'anatase',label:'Hearth OS on Anatase',about:'The new Hearth OS. Starts and updates fast, the same for every PC and handheld.',beta:false,recommended:true,allowed:true,reason:null,warning:null},
+      {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:true,reason:null,warning:null},
+      {id:'cachyos',label:'CachyOS',about:'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:true,reason:null,warning:'Secure Boot is on, and Hearth OS on CachyOS can\'t start with it on (it has no signed boot loader). Turn Secure Boot off in your PC\'s firmware settings (UEFI) before you restart, or choose another one.'},
+      {id:'peppermint',label:'Peppermint',about:'Hearth OS built on Peppermint OS (Debian). Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:false,reason:'Not ready yet',warning:null}]}; },
     'osinstall.check':async({part})=>{ await wait(900); return part ? {target:{kind:'linux',name:'SteamOS',part,size:1.9e12,min:6e11,used:5.8e11,freeSpace:0,canGive:1.2e12},problems:[],suggested:512*2**30} : {windows:{size:1e12,min:3.1e11,canGive:6.6e11},target:{kind:'windows',name:'Windows',size:1e12,min:3.1e11,canGive:6.6e11,freeSpace:0},problems:[],games:{count:14,size:4.1e11},suggested:448*2**30}; },
     'osinstall.useMantel':async()=>true,
     'osinstall.start':async()=>{ const steps=[['format',15,'Preparing the drive'],['download',20,'Downloading Hearth OS (4.8 GB)'],['download',46,'Downloading Hearth OS (4.8 GB)'],['download',72,'Downloading Hearth OS (4.8 GB)'],['boot',84,'Setting up starting up'],['user',90,'Creating your account'],['finish',97,'Finishing up']];
@@ -3496,6 +3501,7 @@ function act(el){
     case 'osiMode': if(el.disabled) return; OSI.mode=d.v; OSI.disk=null; OSI.check=null; OSI.target=null;
       if(d.v==='beside'){ const t=osiSystems()[+d.i]; if(!t) return; OSI.target=t; OSI.disk=t.disk; }
       return render('osi-'+d.v+(d.i!=null?'-'+d.i:''));
+    case 'osiEdition': if(el.disabled) return; OSI.edition=d.v; return render('osi-ed-'+d.v);
     case 'osiDisk': OSI.disk=d.v; if(OSI.mode==='beside' && !OSI.check) osiCheck(); return render(null,true);
     case 'osiSize': return osiSizeStep(+d.v);
     case 'osiSizeMax': { const w=OSI.check&&OSI.check.target; if(w){ OSI.give=w.canGive; render('osi-szmax'); } return; }
@@ -4032,11 +4038,18 @@ function viewSetup(){
 }
 
 // ---------- Install Hearth (live USB): Hearth's own installer, controller-first ----------
-// The same engine as Mantel's install window (hearth-install). Steps: how (next to Windows, or a whole drive),
-// which drive and how much room, your account, internet, a last look, then the install itself.
+// The same engine as Mantel's install window (hearth-install). Steps: which Hearth OS (the small installer USB:
+// Hearth OS on Anatase, or a Beta Experimental edition), how (next to Windows, or a whole drive), which drive and
+// how much room, your account, internet, a last look, then the install itself.
 const OSI = {step:'how', disks:null, check:null, checking:false, mode:null, disk:null, give:0, target:null,
-  user:{full:'', name:'', password:''}, hostname:'', tz:'', s:null};
+  user:{full:'', name:'', password:''}, hostname:'', tz:'', s:null, editions:null, edition:'anatase'};
 const OSI_STEPS = ['how','drive','account','online','review','run'];
+/** The steps on this USB: the edition picker first when there's a choice (the small installer USB). */
+const osiSteps = ()=> (HOSTINFO.installer || (OSI.editions||[]).length>1) ? ['edition', ...OSI_STEPS] : OSI_STEPS;
+const osiEdition = ()=> (OSI.editions||[]).find(e=>e.id===OSI.edition);
+const osiEdLabel = ()=> (osiEdition()||{}).label || 'Hearth OS on Anatase';
+/** "Hearth OS" (Anatase, the main one) or "Hearth OS on Ubuntu", for sentences. */
+const osiEdName = ()=> { const l=osiEdLabel(); return /^Hearth OS/.test(l) ? 'Hearth OS' : 'Hearth OS on '+l; };
 const OSI_TZ = ['America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Anchorage','Pacific/Honolulu',
   'America/Toronto','America/Mexico_City','America/Sao_Paulo','Europe/London','Europe/Dublin','Europe/Paris','Europe/Berlin','Europe/Madrid','Europe/Rome',
   'Europe/Warsaw','Europe/Helsinki','Europe/Moscow','Africa/Johannesburg','Asia/Dubai','Asia/Kolkata','Asia/Singapore','Asia/Shanghai','Asia/Tokyo','Asia/Seoul',
@@ -4044,13 +4057,18 @@ const OSI_TZ = ['America/New_York','America/Chicago','America/Denver','America/P
 function osiOpen(){
   if(!S.view || S.view!=='osinstall') navigate('osinstall');
   if(OSI.s && (OSI.s.state==='running'||OSI.s.state==='done')) OSI.step='run';
-  else OSI.step='how';
+  else OSI.step=osiSteps()[0];
   if(!OSI.tz){ try{ const z=Intl.DateTimeFormat().resolvedOptions().timeZone; OSI.tz = z && z!=='Etc/UTC' ? z : 'UTC'; }catch(e){ OSI.tz='UTC'; } }
   osiLoad(); render('osi-0');
 }
 function osiLoad(){
   call('osinstall.status').then(s=>{ OSI.s=s; if(s.state==='running') OSI.step='run'; render(null,true); }).catch(()=>{});
-  call('osinstall.disks',{},60000).then(r=>{ OSI.disks=r.disks||[]; OSI.image=r.image||''; OSI.offline=!!r.offline; render(null,true); }).catch(e=>{ OSI.disks=[]; toast(e.message); });
+  call('osinstall.disks',{},60000).then(r=>{ OSI.disks=r.disks||[]; OSI.image=r.image||''; OSI.offline=!!r.offline;
+    OSI.editions=Array.isArray(r.editions)&&r.editions.length?r.editions:null;
+    if(!osiEdition()) OSI.edition=r.edition||'anatase';
+    if(OSI.step==='how' && !OSI.mode && osiSteps()[0]==='edition') OSI.step='edition';
+    // The picker: the controller starts on the edition that's picked (Anatase), not on Next.
+    if(OSI.step==='edition' && OSI.editions && S.view==='osinstall') render('osi-ed-'+OSI.edition, true); else render(null,true); }).catch(e=>{ OSI.disks=[]; toast(e.message); });
 }
 function osiCheck(){
   if(OSI.checking) return; OSI.checking=true; OSI.check=null; render(null,true);
@@ -4064,18 +4082,20 @@ const osiDisk = ()=> (OSI.disks||[]).find(d=>d.dev===OSI.disk);
 const osiSystems = ()=> (OSI.disks||[]).filter(d=>!d.live).flatMap(d=>(d.systems||[]).map(x=>({...x, disk:d.dev, model:d.model, size:d.size})));
 const osiName = ()=> (OSI.target&&OSI.target.name) || 'Windows';
 function osiGo(d){
-  const i=OSI_STEPS.indexOf(OSI.step)+d;
+  const steps=osiSteps(), i=steps.indexOf(OSI.step)+d;
   if(i<0){ S.history.length ? goBack() : navigate('home',{},false); return; }
-  const next=OSI_STEPS[Math.min(i,OSI_STEPS.length-1)];
+  const next=steps[Math.min(i,steps.length-1)];
   if(d>0){ const why=osiBlock(OSI.step); if(why) return toast(why); }
   if(next==='online' && ((S.sys.wifi && S.sys.wifi.ssid) || OSI.offline) && d>0){ OSI.step='online'; return osiGo(1); }   // already online, or Hearth OS is on this USB: skip
   if(next==='online' && OSI.offline && d<0){ OSI.step='online'; return osiGo(-1); }
   OSI.step=next;
   if(next==='online') wifiScan();
   if(next==='drive' && OSI.mode==='beside' && !OSI.check) osiCheck();
-  render('osi-next');
+  render(next==='edition' && osiEdition() ? 'osi-ed-'+OSI.edition : 'osi-next');
 }
 function osiBlock(step){
+  if(step==='edition'){ if(!OSI.disks) return 'Checking this PC…'; const e=osiEdition();
+    if(OSI.editions && !e) return 'Choose which Hearth OS to install'; if(e && !e.allowed) return e.reason||'That one can\'t be installed on this PC'; }
   if(step==='how' && !OSI.mode) return 'Choose how to install';
   if(step==='drive'){
     if(!OSI.disk) return 'Choose a drive';
@@ -4120,22 +4140,35 @@ function osiSizeStep(dir){
 function osiStart(){
   const d=osiDisk(); if(!d) return;
   const plan={mode:OSI.mode, disk:OSI.disk, user:{...OSI.user}, hostname:OSI.hostname||osiHost(OSI.user), timezone:OSI.tz, signin:OSI.signin||'auto'};
+  if(OSI.editions) plan.edition=OSI.edition||'anatase';   // one of hearth-install's fixed editions, never an image
+  const ed=osiEdition(), warn=ed&&ed.warning ? ' '+ed.warning : '';
   if(OSI.mode==='beside'){ plan.give=OSI.give; if(OSI.target&&OSI.target.kind==='linux') plan.part=OSI.target.shrink||OSI.target.part; }
   const go=()=>call('osinstall.start',{plan},30000).then(s=>{ OSI.s=s; OSI.step='run'; render('osi-run'); }).catch(e=>toast(e.message));
-  if(OSI.mode==='whole') openSheet({title:`Erase ${d.model}?`, sub:`Everything on this ${gb(d.size)} drive is erased for good${(d.systems||[]).length?', including '+d.systems.map(x=>x.name).join(' and '):''}, and Hearth OS goes on it.`, items:[
+  if(OSI.mode==='whole') openSheet({title:`Erase ${d.model}?`, sub:`Everything on this ${gb(d.size)} drive is erased for good${(d.systems||[]).length?', including '+d.systems.map(x=>x.name).join(' and '):''}, and ${osiEdName()} goes on it.${warn}`, items:[
     {label:'Erase it and install Hearth', icon:'trash', run:go}]});
-  else openSheet({title:`Install next to ${osiName()}?`, sub:`${osiName()} gets ${gb(OSI.give)} smaller and Hearth goes in that space. ${osiName()} and its files stay. Keep the device plugged in.`, items:[
+  else openSheet({title:`Install next to ${osiName()}?`, sub:`${osiName()} gets ${gb(OSI.give)} smaller and ${osiEdName()} goes in that space. ${osiName()} and its files stay. Keep the device plugged in.${warn}`, items:[
     {label:'Install Hearth', icon:'dl', run:go}]});
 }
 function onOsInstall(s){ OSI.s=s; if(S.view==='osinstall'){ if(s.state==='running'||s.state==='done'||s.state==='failed') OSI.step='run'; render(null,true); } }
 function viewOsInstall(){
-  const n=OSI_STEPS.indexOf(OSI.step);
-  const dots=`<div style="display:flex;gap:8px;justify-content:center;margin-bottom:26px">${OSI_STEPS.map((_,i)=>`<span style="width:${i===n?26:8}px;height:8px;border-radius:4px;background:${i<=n?'var(--accent)':'var(--panel3)'};transition:width .2s"></span>`).join('')}</div>`;
+  const steps=osiSteps(), n=steps.indexOf(OSI.step);
+  const dots=`<div style="display:flex;gap:8px;justify-content:center;margin-bottom:26px">${steps.map((_,i)=>`<span style="width:${i===n?26:8}px;height:8px;border-radius:4px;background:${i<=n?'var(--accent)':'var(--panel3)'};transition:width .2s"></span>`).join('')}</div>`;
   const next=(label='Next')=>`<button class="play" data-f data-k="osi-next" data-act="osiNext">${label}</button>`;
   const back=`<button class="pill ghost" data-f data-k="osi-back" data-act="osiBack">Back</button>`;
   const choice=(k,ic,title,sub,on,act,extra='')=>`<button class="row ${on?'on':''}" data-f data-k="${k}" data-act="${act}" ${extra}><span class="ricon">${I[ic]||I.info}</span><div class="rt"><b>${title}</b><small>${sub}</small></div><div class="rv">${on?I.check:''}</div></button>`;
   let body='';
-  if(OSI.step==='how'){
+  if(OSI.step==='edition'){
+    // Which Hearth OS: the same choices as Settings › Updates › Move to a new Hearth OS (newOsRows).
+    const eds=OSI.editions||[], sel=osiEdition();
+    const rows = !OSI.disks ? note('Checking this PC…')
+      : !eds.length ? note('This USB stick installs Hearth OS on Anatase.')
+      : eds.map(e=>choice('osi-ed-'+e.id, e.allowed?'dl':'clock', `${esc(e.label)}${e.recommended?' <small style="color:var(--accent)">Recommended</small>':''}`,
+          e.allowed ? `${e.beta?'Beta Experimental. ':''}${esc(e.about||'')}` : esc(e.reason||'Can\'t be installed on this PC'),
+          OSI.edition===e.id, e.allowed?'osiEdition':'noop', `data-v="${esc(e.id)}"${e.allowed?'':' disabled'}`)).join('');
+    body=`<div class="center"><div class="mark">${HEARTH_MARK}</div></div><h1>Which Hearth OS?</h1><p class="lead">Hearth OS on Anatase is the one to install, for every PC and handheld. The others are Beta Experimental: still being tested, so some things may not work yet.</p><div class="rows">${rows}</div>
+      ${sel&&sel.warning?`<div class="note" style="border-color:var(--bad,#e5483b)">${esc(sel.warning)}</div>`:''}<div class="acts">${next()}${back}</div>`;
+  }
+  else if(OSI.step==='how'){
     const sys=osiSystems(), many=new Set(sys.map(x=>x.disk)).size>1;
     const besides = !OSI.disks ? note('Looking for Windows, SteamOS and other systems…')
       : sys.length ? sys.map((x,i)=>{ const on=OSI.mode==='beside'&&OSI.target&&OSI.target.disk===x.disk&&OSI.target.part===x.part;
@@ -4144,7 +4177,7 @@ function viewOsInstall(){
             : `Keep ${esc(x.name)} and its games. Hearth gets space ${esc(x.name)} isn't using. Choose which one to start when the PC turns on.`;
           return choice('osi-beside-'+i, x.kind==='windows'?'shell':'pad', `Install next to ${esc(x.name)}${many?` <small style="color:var(--dim)">(${esc(x.model)})</small>`:''}`, sub, on, 'osiMode', `data-v="beside" data-i="${i}"`); }).join('')
       : choice('osi-beside','shell','Install next to another system','Nothing else was found on this PC (Windows, SteamOS or other Linux)', false,'osiMode','data-v="beside" disabled');
-    body=`<div class="center"><div class="mark">${HEARTH_MARK}</div></div><h1>Install Hearth OS</h1><p class="lead">Hearth downloads the newest Hearth OS while it installs, so keep it connected to the internet and plugged in. It takes about 10 to 20 minutes.</p><div class="rows">
+    body=`<div class="center"><div class="mark">${HEARTH_MARK}</div></div><h1>Install Hearth OS</h1><p class="lead">${OSI.offline?'Hearth OS installs from this USB stick, so no internet is needed. Keep it plugged in.':`Hearth downloads the newest ${esc(osiEdName())} while it installs, so keep it connected to the internet and plugged in.`} It takes about 10 to 20 minutes.</p><div class="rows">
       ${besides}
       ${choice('osi-whole','trash','Erase a drive and install Hearth','Hearth gets the whole drive. Everything on it is erased.', OSI.mode==='whole','osiMode','data-v="whole"')}
       </div><div class="acts">${next()}${back}</div>`;
@@ -4193,7 +4226,7 @@ function viewOsInstall(){
     body=`<h1>Ready to install</h1><p class="lead">${OSI.mode==='whole'?`<b>${esc(d.model)} is erased</b> and Hearth OS goes on it.`:`${esc(osiName())} gets ${gb(OSI.give)} smaller and Hearth OS goes next to it. When the PC starts, Hearth's menu lets you pick Hearth or ${esc(osiName())}.`}</p><div class="rows">
       ${line('How', OSI.mode==='whole'?'Erase the whole drive':'Next to '+esc(osiName()))}${line('Drive', `${esc(d.model)} · ${gb(d.size)}`)}${OSI.mode==='beside'?line('Room for Hearth', gb(OSI.give)):''}
       ${line('Account', `${esc(u.full)} (${esc(u.name)})${u.nopassword?' · no password':''}`)}${u.nopassword?'':line('Ask for my password', OSI_SIGNIN[OSI.signin||'auto'])}${line('Device name', esc(OSI.hostname||osiHost(u)))}${line('Time zone', esc(OSI.tz.replace(/_/g,' ')))}
-      ${line('Edition', /nvidia/.test(OSI.image||'')?'Nvidia graphics':'AMD and Intel graphics')}
+      ${line('Edition', esc(osiEdLabel())+((osiEdition()||{}).beta?' · Beta Experimental':''))}
       </div><div class="acts"><button class="play" data-f data-k="osi-go" data-act="osiStart">${I.dl}Install Hearth OS</button>${back}</div>`;
   }
   else {
