@@ -52,6 +52,7 @@ internal sealed class SettingsWindow : Form
             core.Settings.AreDevToolsEnabled = false;
             core.Settings.AreBrowserAcceleratorKeysEnabled = false;
             setup(core);
+            MantelWindow.MapWallpapers(core);   // thumbnails of the pictures you chose as wallpaper
             core.WebMessageReceived += (_, e) =>
             {
                 try { using var doc = JsonDocument.Parse(e.WebMessageAsJson); PageMessage?.Invoke(doc.RootElement.Clone()); }

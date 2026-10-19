@@ -5,11 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth Settings</title>
 <!--
-  Hearth Settings for Mantel on Windows: the desktop's own settings window, like Mantel's on Hearth OS
-  (hosts/linux/desktop/shell/SettingsApp.qml and its Set*.qml pages): the page list on the left, the page on
-  the right. Works with the mouse, the keyboard and the controller: Up/Down pick a page, Right/Enter go into
-  it, Left/Esc come back, Esc on the list closes. Hosted by Ember (Mantel/MantelHost.cs) in WebView2; uses
-  the same bridge as the main UI. Opens in a normal browser too, with sample data.
+  Hearth Settings for Mantel on Windows: the desktop's own settings window, the same as Mantel's on Hearth OS
+  (hosts/linux/desktop/shell/SettingsApp.qml and its Set*.qml pages): the same pages in the same order, the same
+  rows, words and controls, the page list on the left and the page on the right. Works with the mouse, the
+  keyboard and the controller: Up/Down pick a page, Right/Enter go into it, Up/Down move between controls,
+  Left/Esc come back, Esc on the list closes. Hosted by Ember (Mantel/MantelHost.cs) in WebView2; uses the same
+  bridge as the main UI. Things Windows does differently (or not at all) are listed in docs/MANTEL-PARITY.md;
+  Windows-only settings sit under a "Windows" heading at the end of their page. Opens in a normal browser too,
+  with sample data.
 -->
 <style>
 :root{
@@ -24,73 +27,107 @@ button{background:none;border:0;cursor:pointer;text-align:left}
 svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 :focus{outline:none}
 .app{display:flex;height:100%}
+/* ---- page list (SettingsApp.qml) ---- */
 nav{width:270px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px;gap:4px}
 @media (max-width:900px){nav{width:220px}}
 .brand{display:flex;align-items:center;gap:10px;margin:6px 6px 14px}
 .brand img{width:30px;height:30px}
 .brand b{font-size:20px;font-weight:600}
-.ni{height:48px;border-radius:10px;display:flex;align-items:center;gap:12px;padding:0 14px;font-size:15px;transition:background var(--quick)}
+.navlist{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:4px;scrollbar-width:none}
+.ni{height:48px;flex:none;border-radius:10px;display:flex;align-items:center;gap:12px;padding:0 14px;font-size:15px;transition:background var(--quick)}
 .ni:hover{background:var(--panel2)}
 .ni.lit{background:var(--panel3);font-weight:600}
 .ni.lit svg{color:var(--accent)}
 nav.focus .ni.lit{background:var(--accent);color:var(--accentInk)}
 nav.focus .ni.lit svg{color:var(--accentInk)}
-.navhint{margin-top:auto;padding:0 6px;color:var(--muted);font-size:12px}
-main{flex:1;min-width:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent}
-.page{width:min(100% - 48px,820px);margin:24px auto;display:flex;flex-direction:column;gap:8px}
+.navhint{padding:6px 6px 0;color:var(--muted);font-size:12px}
+/* ---- a page (SetPage.qml): left-aligned, up to 820 wide ---- */
+main{flex:1;min-width:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent;scroll-behavior:smooth}
+.page{width:min(100% - 48px,820px);margin:20px 24px 48px;display:flex;flex-direction:column;gap:8px}
 .page h1{font-size:26px;font-weight:600;margin-bottom:6px}
-.hd{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-top:14px}
-.row{min-height:64px;border-radius:12px;background:var(--panel2);border:2px solid transparent;display:flex;align-items:center;gap:14px;padding:12px 16px;width:100%;transition:background var(--quick),border-color var(--quick)}
-button.row:hover,.row.click:hover{background:var(--panel3)}
-.row.f-on{border-color:var(--accent)}
+.hd{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;margin-top:14px}
+/* SetRow / SetBase */
+.row{min-height:64px;border-radius:12px;background:var(--panel2);border:2px solid transparent;display:flex;align-items:center;gap:14px;padding:10px 16px;width:100%;transition:background var(--quick),border-color var(--quick)}
+button.row:hover{background:var(--panel3)}
+.row.f-on,.choice.f-on,.wall.f-on,.field.f-on{border-color:var(--accent)}
 .row .ic{width:38px;height:38px;border-radius:10px;background:var(--panel3);display:grid;place-items:center;flex:none}
 .row .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.row .tx b{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .tx b{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:pre}
 .row .tx small{font-size:12px;color:var(--muted)}
 .row .val{color:var(--muted);font-size:13px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .chev{color:var(--muted);font-size:20px}
-.row.danger,.row.danger .ic{color:var(--danger)}
+.row.danger .tx b,.row.danger .ic{color:var(--danger)}
+.row.fact{min-height:52px}
+.row.narrow{width:140px;flex:none}
+.row.mid{width:160px;flex:none}
+/* SetSwitch */
 .sw{width:46px;height:26px;border-radius:13px;background:var(--panel3);position:relative;flex:none;transition:background var(--quick)}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:10px;background:var(--text);transition:left var(--quick),background var(--quick)}
 .sw.on{background:var(--accent)}
 .sw.on::after{left:23px;background:var(--accentInk)}
-.slider{min-height:76px}
+/* SetSlider */
+.slider{min-height:76px;padding-right:18px}
+.slider .tx{gap:10px}
 .slider .tx .top{display:flex;justify-content:space-between}
 .slider .tx .top span{color:var(--muted);font-size:13px;font-weight:400}
-.track{position:relative;height:8px;border-radius:4px;background:var(--panel3);margin-top:7px;cursor:pointer}
+.track{position:relative;height:8px;border-radius:4px;background:var(--panel3);cursor:pointer}
 .track::before{content:"";position:absolute;inset:-14px 0}
 .track i{position:absolute;left:0;top:0;bottom:0;min-width:8px;border-radius:4px;background:linear-gradient(90deg,var(--ember),var(--flame))}
-.choice{border-radius:12px;background:var(--panel2);border:2px solid transparent;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
-.choice.f-on{border-color:var(--accent)}
+/* SetChoice */
+.choice{border-radius:12px;background:var(--panel2);border:2px solid transparent;padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;transition:border-color var(--quick)}
 .choice .t b{font-size:15px;font-weight:600}
-.choice .t small{display:block;font-size:12px;color:var(--muted);margin-top:3px}
-.opts{display:flex;gap:8px;flex-wrap:wrap}
-.opt{flex:1;min-width:90px;height:40px;border-radius:10px;background:var(--panel3);text-align:center;font-size:13px}
+.choice .t small{display:block;font-size:12px;color:var(--muted);margin-top:10px}
+.opts{display:flex;gap:8px}
+.opt{flex:1;min-width:0;height:40px;border-radius:10px;background:var(--panel3);text-align:center;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px}
 .opt.on{background:var(--accent);color:var(--accentInk);font-weight:600}
-.field{display:flex;gap:8px}
-.field input{flex:1;height:44px;border-radius:12px;background:var(--panel3);border:2px solid transparent;padding:0 14px;color:var(--text);font-size:15px}
-.field input:focus{border-color:var(--accent)}
-.btn{height:44px;border-radius:12px;padding:0 18px;background:var(--panel3);font-weight:600}
-.btn.primary{background:var(--accent);color:var(--accentInk)}
-.walls{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
-.wall{aspect-ratio:16/10;border-radius:12px;background:center/cover var(--panel3);border:2px solid transparent;position:relative;overflow:hidden}
-.wall.on{border-color:var(--accent)}
-.wall.f-on{outline:2px solid var(--flame);outline-offset:2px}
-.wall span{position:absolute;left:8px;bottom:6px;font-size:12px;font-weight:600;text-shadow:0 1px 4px #000}
-.note{color:var(--muted);font-size:13px;padding:4px 2px}
-.msg{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);border-radius:22px;padding:11px 18px;font-size:14px;opacity:0;transition:opacity var(--quick);pointer-events:none}
+/* SetField */
+.field{height:52px;border-radius:12px;background:var(--panel3);border:2px solid transparent;display:flex;flex:1;transition:border-color var(--quick)}
+.field input{flex:1;min-width:0;background:none;border:0;padding:0 14px;color:var(--text);font-size:15px}
+.field input::placeholder{color:var(--muted)}
+.pwline{display:flex;gap:8px;margin-left:52px;align-items:stretch}
+/* the wallpaper grid (SetAppearance.qml) */
+.walls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.wall{height:130px;border-radius:12px;background:var(--panel2);border:2px solid transparent;padding:4px;transition:border-color var(--quick)}
+.wall:hover{background:var(--panel3)}
+.wall.on{border-color:color-mix(in srgb,var(--accent) 80%,#fff)}
+.wall .pv{position:relative;width:100%;height:100%;border-radius:9px;overflow:hidden;background:#1a110c center/cover no-repeat}
+.wall .pv.fire{background:radial-gradient(ellipse 70% 100% at 50% 115%,#ff8a3d99,transparent 70%),#1a110c}
+.wall .lab{position:absolute;left:0;right:0;bottom:0;height:30px;background:linear-gradient(transparent,#000c);display:flex;align-items:center;padding:0 10px;font-size:12px;font-weight:600;color:#fff;gap:6px}
+.wall .lab span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wall .lab i{font-style:normal;color:var(--flame);font-size:14px;font-weight:700}
+/* text lines, banners, progress */
+.note{color:var(--muted);font-size:13px;padding-left:4px}
+.note.small{font-size:12px;padding-left:0}
+.note.bad{color:var(--danger)}
+.note.good{color:var(--flame)}
+.banner{border-radius:12px;background:color-mix(in srgb,var(--accent) 18%,transparent);border:1px solid var(--accent);padding:14px;display:flex;flex-direction:column;gap:8px}
+.banner b{font-size:15px;font-weight:600}
+.banner .btns{display:flex;gap:8px}
+.prog{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.prog .pl{display:flex;justify-content:space-between;font-size:14px}
+.prog .pl b{color:var(--flame);font-weight:600}
+.bar{position:relative;height:8px;border-radius:4px;background:var(--panel3);overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;min-width:8px;border-radius:4px;background:linear-gradient(90deg,var(--ember),var(--flame));transition:width .3s}
+.bar i.busy{width:30%;animation:busy 1.8s ease-in-out infinite}
+@keyframes busy{0%,100%{left:0}50%{left:70%}}
+.about{display:flex;align-items:center;gap:16px;margin-bottom:10px}
+.about img{width:64px;height:64px}
+.about b{display:block;font-size:22px;font-weight:600}
+.about small{color:var(--muted);font-size:13px}
+.swatch{flex:0 0 52px !important;min-width:52px}
+.msg{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(28,21,18,.92);border:1px solid var(--line);border-radius:22px;height:44px;padding:0 18px;display:flex;align-items:center;font-size:14px;opacity:0;transition:opacity var(--quick);pointer-events:none;z-index:5}
 .msg.show{opacity:1}
-.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--panel3);border-top-color:var(--accent);animation:s 1s linear infinite;flex:none}
-@keyframes s{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 <div class="app"><nav></nav><main><div class="page"></div></main></div>
 <div class="msg"></div>
+<script src="mantel-icons.js"></script>
 <script>
 'use strict';
 const host = window.chrome && window.chrome.webview ? window.chrome.webview : null;
 const send = m => host ? host.postMessage(m) : null;
+const mantel = (action, extra) => send({type:'mantel', action, ...(extra||{})});
 let callId = 0; const pending = {};
 const call = (method, args={}, ms=30000) => host ? new Promise((ok, no) => {
   const id = ++callId; pending[id] = {ok, no}; send({type:'call', id, method, args});
@@ -98,205 +135,348 @@ const call = (method, args={}, ms=30000) => host ? new Promise((ok, no) => {
 }) : (MOCK[method] ? Promise.resolve(MOCK[method](args)) : Promise.reject(new Error('preview')));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
-const I = {
-  wifi:'<svg viewBox="0 0 24 24"><path d="M2.5 9a15 15 0 0 1 19 0M5.5 12.5a10 10 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r=".8" fill="currentColor"/></svg>',
-  bt:'<svg viewBox="0 0 24 24"><path d="m7 7 10 10-5 4V3l5 4L7 17"/></svg>',
-  vol:'<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
-  display:'<svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20h6M12 16.5V20"/></svg>',
-  palette:'<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-1.3-1.2-1.6-1.2-2.7 0-1 .8-1.5 1.8-1.5H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3z"/><circle cx="7.5" cy="11" r="1" fill="currentColor"/><circle cx="10" cy="7" r="1" fill="currentColor"/><circle cx="15" cy="7.5" r="1" fill="currentColor"/></svg>',
-  power:'<svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>',
-  pad:'<svg viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M7.5 10.5v4M5.5 12.5h4M15.5 12h.01M18 14h.01"/></svg>',
-  update:'<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.5"/><path d="M20 4v4.5h-4.5"/></svg>',
-  info:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
-  lock:'<svg viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>',
-  check:'<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
-  sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
-  mouse:'<svg viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="5.5"/><path d="M12 7v3"/></svg>',
-  bat:'<svg viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="17" height="9" rx="2"/><path d="M21.5 10.5v3M5.5 10.5v3M8.5 10.5v3M11.5 10.5v3"/></svg>',
-  dl:'<svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>',
+// Hearth's own icons (the same as Icon.qml draws); a dot if one's missing.
+const I = new Proxy(window.HEARTH_ICONS || {}, {get:(o,k)=>o[k] || o.dot || ''});
+
+// ---------------------------------------------------------------- pages (SettingsApp.qml's list, in its order)
+const PAGES = [['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['sound','vol','Sound'],['display','display','Display'],['appearance','palette','Appearance'],
+  ['power','power','Power'],['controller','pad','Controller'],['signin','user','Sign-in'],['browser','globe','Web browser'],['updates','update','Updates'],['about','info','About']];
+const S = {page:'wifi', inPage:false, f:0, st:null, nets:null, scanning:false, busy:'', asking:'', msg:'', paired:null, found:[], btScan:false, btBusy:'', btMsg:'',
+  audio:null, input:null, display:null, prev:null, countdown:0, power:null, powerError:'', shell:null, desk:null, pad:null, overlay:null, upd:null, sys:null, user:'',
+  profile:null, browser:null, signMsg:'', signBad:false};
+
+function toast(t){ const m=$('.msg'); m.textContent=t; m.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>m.classList.remove('show'), 1800); }
+function renderNav(){
+  $('nav').innerHTML = `<div class="brand"><img src="hearth-logo.svg" alt=""><b>Settings</b></div><div class="navlist">`
+    + PAGES.map(([id,ic,l])=>`<button class="ni ${S.page===id?'lit':''}" data-act="page" data-p="${id}">${I[ic]}${l}</button>`).join('')
+    + `</div><div class="navhint">Ⓐ open  Ⓑ back</div>`;
+  $('nav').classList.toggle('focus', !S.inPage);
+  const lit=$('.ni.lit'); if(lit) lit.scrollIntoView({block:'nearest'});
+}
+
+// ---------------------------------------------------------------- building blocks (Set*.qml)
+// SetRow: icon, title, a line of explanation, a value, and an arrow when it does something (chev:false hides it).
+// Rows that don't do anything (act unset) aren't in the focus order, like interactive:false on Hearth OS.
+const row = o => { const tag=o.act?'button':'div', chev=o.act && o.chev!==false && o.sw==null;
+  return `<${tag} class="row ${o.danger?'danger':''} ${o.cls||''}" ${o.act?`data-f data-act="${o.act}"`:''} ${o.data||''}>${o.icon?`<div class="ic">${I[o.icon]}</div>`:''}<div class="tx"><b>${esc(o.title)}</b>${o.sub?`<small>${esc(o.sub)}</small>`:''}</div>${o.val?`<div class="val">${esc(o.val)}</div>`:''}${o.sw!=null?`<div class="sw ${o.sw?'on':''}"></div>`:''}${chev?'<div class="chev">›</div>':''}</${tag}>`; };
+// SetSlider: frac is 0..1; the value text and what Left/Right does come from SLIDERS.
+const slider = (id, icon, title, frac) => `<div class="row slider" data-f data-slide="${id}"><div class="ic">${I[icon]}</div><div class="tx"><b class="top">${esc(title)}<span>${esc(SLIDERS[id].text(frac))}</span></b><div class="track"><i style="width:${Math.max(0,Math.min(1,frac))*100}%"></i></div></div></div>`;
+// SetChoice: segmented options; Left/Right move between them, Enter takes the next one.
+const choice = (id, title, sub, opts, cur) => `<div class="choice" data-f data-choice="${id}"><div class="t"><b>${esc(title)}</b>${sub?`<small>${esc(sub)}</small>`:''}</div><div class="opts">${opts.map(([v,l,style])=>`<button class="opt ${style?'swatch':''} ${String(v)===String(cur)?'on':''}" data-act="choose" data-id="${id}" data-v="${esc(v)}" ${style?`style="${style}" title="${esc(l)}"`:''}>${style?'':esc(l)}</button>`).join('')}</div></div>`;
+const hd = t => `<div class="hd">${esc(t)}</div>`;
+const note = (t, cls='') => `<div class="note ${cls}">${esc(t)}</div>`;
+const field = (id, placeholder, secret) => `<label class="field" data-f data-field="${id}"><input ${secret?'type="password"':''} placeholder="${esc(placeholder)}" spellcheck="false" data-input="${id}"></label>`;
+const bars = b => b >= 4 ? '▂▄▆█' : b === 3 ? '▂▄▆' : b === 2 ? '▂▄' : '▂';
+const hm = s => { if(!s || s <= 0) return ''; const h=Math.floor(s/3600), m=Math.round((s%3600)/60); return h ? `${h} h ${m} min` : `${m} min`; };
+const progress = (line, frac) => `<div class="prog"><div class="pl"><span>${esc(line)}</span>${frac>=0?`<b>${Math.floor(frac*100)}%</b>`:''}</div><div class="bar"><i class="${frac>=0?'':'busy'}" ${frac>=0?`style="width:${Math.max(0,Math.min(1,frac))*100}%"`:''}></i></div></div>`;
+
+const SLIDERS = {
+  volume:{text:f=>Math.round(f*100)+'%', step:.05, set:f=>{ const v=Math.round(f*100); if(S.audio){ S.audio.volume=v; S.audio.muted=false; } call('audio.setMute',{m:false}).catch(()=>{}); call('audio.setVolume',{v}).catch(()=>{}); }},
+  input:{text:f=>Math.round(f*100)+'%', step:.05, set:f=>{ const v=Math.round(f*100); if(S.input) S.input.volume=v; call('audio.setInputVolume',{v}).catch(e=>toast(e.message)); }},
+  brightness:{text:f=>Math.round(f*100)+'%', step:.05, set:f=>{ const v=Math.max(1,Math.round(f*100)); if(S.display) S.display.brightness=v; call('display.setBrightness',{v}).catch(()=>{}); }},
+  speed:{text:f=>(Math.round((0.4+f*1.6)*10)/10).toFixed(1)+'×', step:.0625, set:f=>{ const v=Math.round((0.4+f*1.6)*10)/10; if(S.desk) S.desk.pointerSpeed=v; call('desktop.set',{key:'pointerSpeed', value:v}).catch(e=>toast(e.message)); }},
 };
 
-// ---------------------------------------------------------------- pages
-const PAGES = [['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['sound','vol','Sound'],['display','display','Display'],['appearance','palette','Appearance'],
-  ['power','power','Power'],['controller','pad','Controller'],['updates','update','Updates'],['about','info','About']];
-const S = {page:'wifi', inPage:false, f:0, st:null, nets:null, scanning:false, connecting:null, pw:null, paired:null, found:[], btScan:false,
-  audio:null, display:null, power:null, shell:null, pad:null, overlay:null, upd:null, sys:null, profile:null};
-
-function toast(t){ const m=$('.msg'); m.textContent=t; m.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>m.classList.remove('show'), 2400); }
-function renderNav(){
-  $('nav').innerHTML = `<div class="brand"><img src="hearth-logo.svg" alt=""><b>Settings</b></div>`
-    + PAGES.map(([id,ic,l])=>`<button class="ni ${S.page===id?'lit':''}" data-act="page" data-p="${id}">${I[ic]}${l}</button>`).join('')
-    + `<div class="navhint">Ⓐ open  Ⓑ back</div>`;
-  $('nav').classList.toggle('focus', !S.inPage);
-}
-const row = (o) => `<${o.act?'button':'div'} class="row ${o.danger?'danger':''}" data-f ${o.act?`data-act="${o.act}"`:''} ${o.data||''}>${o.icon?`<div class="ic">${I[o.icon]||''}</div>`:''}<div class="tx"><b>${esc(o.title)}</b>${o.sub?`<small>${o.sub}</small>`:''}</div>${o.val!=null?`<div class="val">${esc(o.val)}</div>`:''}${o.sw!=null?`<div class="sw ${o.sw?'on':''}"></div>`:''}${o.spin?'<span class="spin"></span>':''}${o.chev?'<div class="chev">›</div>':''}</${o.act?'button':'div'}>`;
-const slider = (id, icon, title, v, max=100, label) => `<div class="row slider" data-f data-slide="${id}" data-max="${max}"><div class="ic">${I[icon]}</div><div class="tx"><b class="top">${esc(title)}<span>${label ?? Math.round(v)+'%'}</span></b><div class="track"><i style="width:${Math.max(0,Math.min(100,v/max*100))}%"></i></div></div></div>`;
-const choice = (id, title, sub, opts, cur) => `<div class="choice" data-f data-choice="${id}"><div class="t"><b>${esc(title)}</b>${sub?`<small>${sub}</small>`:''}</div><div class="opts">${opts.map(([v,l])=>`<button class="opt ${String(v)===String(cur)?'on':''}" data-act="choose" data-id="${id}" data-v="${esc(v)}">${esc(l)}</button>`).join('')}</div></div>`;
-const hd = t => `<div class="hd">${esc(t)}</div>`;
-const note = t => `<div class="note">${t}</div>`;
-
+// ---------------------------------------------------------------- the pages
 function renderPage(){
   const p=S.page, title=(PAGES.find(x=>x[0]===p)||[])[2]||'';
   let h=`<h1>${esc(title)}</h1>`;
   const st=S.st||{};
-  if(p==='wifi'){
-    const w=st.wifi||{};
-    h += row({icon:'wifi', title:'Wi-Fi', sub:w.on?(w.ssid?`Connected to ${esc(w.ssid)}`:'Not connected'):'Off', sw:!!w.on, act:'wifiToggle'});
+  if(p==='wifi'){   // SetWifi.qml
+    const w=st.wifi||{}, inUse=(S.nets||[]).find(n=>n.connected);
+    h += row({icon:'wifi', title:'Wi-Fi', sub:w.on?(inUse?`Connected to ${inUse.ssid}`:w.ssid?`Connected to ${w.ssid}`:'Not connected'):'Off', sw:!!w.on, act:'wifiToggle'});
+    if(S.msg) h += note(S.msg);
     if(w.on){
-      h += hd('Networks') + row({icon:'update', title:S.scanning?'Looking for networks…':'Look again', act:'wifiScan', spin:S.scanning});
+      h += hd(S.scanning?'Networks · looking…':'Networks');
       for(const n of S.nets||[]){
-        const sub = S.connecting===n.ssid ? 'Connecting…' : n.connected ? 'Connected' : n.saved ? 'Saved' : n.secure ? 'Needs a password' : 'Open';
-        h += row({icon:n.secure?'lock':'wifi', title:n.ssid, sub, val:'▂▄▆█'.slice(0, Math.max(1,n.bars||1)), act:'wifiNet', data:`data-ssid="${esc(n.ssid)}"`});
-        if(S.pw===n.ssid) h += `<div class="field"><input type="password" placeholder="Password for ${esc(n.ssid)}" data-f data-pw="${esc(n.ssid)}"><button class="btn primary" data-act="wifiJoin" data-ssid="${esc(n.ssid)}">Connect</button></div>`;
-        if(n.connected && S.open===n.ssid) h += `<div class="field"><button class="btn" data-f data-act="wifiDisconnect">Disconnect</button><button class="btn" data-f data-act="wifiForget" data-ssid="${esc(n.ssid)}">Forget</button></div>`;
+        const sub = n.connected ? 'Connected' : S.busy===n.ssid ? 'Connecting…' : n.saved ? 'Saved' : n.secure ? 'Secured' : 'Open';
+        h += row({icon:'wifi', title:n.ssid, sub, val:bars(n.bars||0)+(n.secure?'  🔒':''), act:'wifiNet', data:`data-ssid="${esc(n.ssid)}"`});
+        if(S.asking===n.ssid) h += `<div class="pwline">${field('pw', 'Password for '+n.ssid, true)}${row({title:'Connect', act:'wifiJoin', chev:false, cls:'narrow', data:`data-ssid="${esc(n.ssid)}"`})}</div>`;
       }
-      if(S.nets && !S.nets.length) h += note('No networks found.');
+      h += row({icon:'restart', title:'Look again', chev:false, act:'wifiScan'});
     }
+    else h += note('Turn on Wi-Fi to see networks.');
   }
-  else if(p==='bluetooth'){
-    const b=st.bt||{};
-    h += row({icon:'bt', title:'Bluetooth', sub:b.on?'On':'Off', sw:!!b.on, act:'btToggle'});
+  else if(p==='bluetooth'){   // SetBluetooth.qml
+    const b=st.bt||{}, paired=S.paired||[], conn=paired.filter(d=>d.connected);
+    h += row({icon:'bt', title:'Bluetooth', sub:b.on?(conn.length?conn.map(d=>d.name).join(', ')+' connected':'On'):'Off', sw:!!b.on, act:'btToggle'});
+    if(S.btMsg) h += note(S.btMsg);
     if(b.on){
-      h += hd('Your devices') + ((S.paired||[]).map(d=>row({icon:'bt', title:d.name, sub:d.connected?'Connected':'Paired', val:'Remove', act:'btUnpair', data:`data-id="${esc(d.id)}"`})).join('') || note(S.paired?'No devices paired yet.':'Loading…'));
-      h += hd('Add a device') + row({icon:'update', title:S.btScan?'Looking for devices… (put yours in pairing mode)':'Look for devices', act:'btScan', spin:S.btScan});
-      h += S.found.map(d=>row({icon:'bt', title:d.name, sub:'Select to pair', act:'btPair', data:`data-id="${esc(d.id)}"`})).join('');
+      h += hd('Your devices');
+      // Windows connects paired devices by itself; selecting one opens Windows' Bluetooth settings to connect or disconnect it.
+      h += paired.map(d=>row({icon:'pad', title:d.name, sub:S.btBusy===d.id?'Working…':d.connected?'Connected · select for Windows\' Bluetooth settings':'Not connected · select for Windows\' Bluetooth settings', val:d.connected?'Connected':'', act:'btDevice', data:`data-id="${esc(d.id)}"`})).join('');
+      if(S.paired && !paired.length) h += note('No devices yet. Put a controller or headphones in pairing mode, then look for devices.');
+      if(!S.paired) h += note('Loading…');
+      h += hd(S.btScan?'New devices · looking…':'New devices');
+      h += row({icon:'bt', title:S.btScan?'Looking for devices…':'Look for devices', sub:'Put the device in pairing mode first', chev:false, act:'btScan'});
+      h += S.found.map(d=>row({icon:'dot', title:d.name, sub:S.btBusy===d.id?'Pairing…':'Select to pair', act:'btPair', data:`data-id="${esc(d.id)}"`})).join('');
+      if(paired.length){
+        h += hd('Manage');
+        h += paired.map(d=>row({icon:'close', danger:true, title:'Forget '+d.name, chev:false, act:'btForget', data:`data-id="${esc(d.id)}"`})).join('');
+      }
     }
   }
-  else if(p==='sound'){
-    const a=S.audio||st.audio;
+  else if(p==='sound'){   // SetSound.qml
+    const a=S.audio||(st.audio?{...st.audio, devices:[]}:null);
     if(!a) h += note('Loading…');
     else {
-      h += slider('volume','vol','Volume', a.muted?0:a.volume);
-      h += row({icon:'vol', title:'Mute', sw:!!a.muted, act:'mute'});
-      if(a.devices&&a.devices.length) h += hd('Output') + a.devices.map(d=>row({icon:'vol', title:d.name, sub:d.isDefault?'In use':'', val:d.isDefault?'✓':'', act:'audioDev', data:`data-id="${esc(d.id)}"`})).join('');
+      h += slider('volume', a.muted?'vol-mute':'vol', 'Volume', a.muted?0:(a.volume||0)/100);
+      h += row({icon:'vol-mute', title:'Mute', sw:!!a.muted, act:'mute'});
+      h += hd('Play sound through');
+      h += (a.devices||[]).map(d=>row({icon:'vol', title:d.name, val:d.isDefault?'In use':'', chev:false, act:'audioDev', data:`data-id="${esc(d.id)}"`})).join('');
+      h += hd('Microphone');
+      const i=S.input;
+      if(i && i.present!==false) h += slider('input', 'mic', 'Input volume', (i.volume||0)/100);
+      if(i) h += (i.devices||[]).map(d=>row({icon:'mic', title:d.name, val:d.isDefault?'In use':'', chev:false, act:'inputDev', data:`data-id="${esc(d.id)}"`})).join('');
     }
   }
-  else if(p==='display'){
+  else if(p==='display'){   // SetDisplay.qml
     const d=S.display;
+    if(S.countdown>0) h += `<div class="banner"><b>Keep these display settings? Going back in ${S.countdown} s</b><div class="btns">${row({title:'Keep', chev:false, act:'dispKeep', cls:'mid'})}${row({title:'Go back', chev:false, act:'dispRevert', cls:'mid'})}</div></div>`;
     if(!d) h += note('Loading…');
     else {
-      if(d.supported) h += slider('brightness','sun','Brightness', d.brightness||0);
-      if(d.modes&&d.modes.length){
-        h += choice('res','Resolution', `Now ${d.width} × ${d.height}`, d.modes.map(m=>[`${m.width}x${m.height}`, `${m.width} × ${m.height}`]), `${d.width}x${d.height}`);
-        const cur=d.modes.find(m=>m.width===d.width&&m.height===d.height);
-        if(cur&&cur.rates&&cur.rates.length>1) h += choice('rate','Refresh rate','', cur.rates.map(r=>[r, r+' Hz']), d.refreshRate);
+      if(d.supported) h += slider('brightness', 'sun', 'Brightness', (d.brightness||0)/100);
+      if(d.scales&&d.scales.length) h += choice('scale','Scale','Makes text and everything else bigger or smaller', d.scales.map(s=>[s, s+'%']), d.scalePercent);
+      const modes=(d.modes||[]).slice().sort((a,b)=>b.width*b.height-a.width*a.height);
+      const cur=modes.find(m=>m.width===d.width&&m.height===d.height);
+      const rates=cur&&cur.rates?[...new Set(cur.rates.map(Math.round))].sort((a,b)=>b-a):[];
+      if(rates.length>1) h += choice('rate','Refresh rate','Higher is smoother; lower saves battery', rates.map(r=>[r, r+' Hz']), Math.round(d.refreshRate||0));
+      if(modes.length){
+        h += hd('Resolution');
+        h += modes.slice(0,10).map((m,i)=>row({icon:'display', chev:false, title:`${m.width} × ${m.height}${i===0?'  (native)':''}`, val:m.width===d.width&&m.height===d.height?'In use':'', act:'dispRes', data:`data-w="${m.width}" data-h="${m.height}"`})).join('');
       }
-      if(d.scales&&d.scales.length) h += choice('scale','Scale', d.scaleRecommended?`${d.scaleRecommended}% is recommended`:'', d.scales.map(s=>[s, s+'%']), d.scalePercent);
     }
   }
-  else if(p==='appearance'){
-    const s=S.shell||{};
+  else if(p==='appearance'){   // SetAppearance.qml
+    const s=S.shell||{}, cur=s.wallpaper||'anim:fireside', dk=S.desk||{};
+    h += hd('Wallpaper') + `<div class="walls">${wallpapers(s).map(([v,l,cls,img])=>`<button class="wall ${cur===v?'on':''}" data-f data-act="wall" data-v="${esc(v)}"><div class="pv ${cls}" ${img?`style="background-image:url('${esc(img)}')"`:''}><div class="lab"><span>${esc(l)}${v.startsWith('anim:')?'  ·  moving':''}</span>${cur===v?'<i>✓</i>':''}</div></div></button>`).join('')}</div>`;
+    h += row({icon:'palette', title:'Choose a picture…', sub:'Any picture on this PC. It\'s kept in Ember\'s folder, so it stays if you move the original.', act:'wallPick'});
+    h += note('Moving wallpapers move in Full Mantel (Windows › Desktop style below); on top of Windows they show as a still picture.', 'small');
+    h += hd('Comfort');
+    h += row({icon:'moon', title:'Night light', sub:dk.nightAvailable===false?'This screen doesn\'t allow it':'Warmer screen from sunset to sunrise', sw:!!dk.nightLight, act:'night'});
+    h += row({icon:'motion', title:'Reduce motion', sub:'A still fireside wallpaper and fewer animations', sw:!!dk.reduceMotion, act:'motion'});
+    h += hd('Windows');
     h += choice('style','Desktop style','Full Mantel is Hearth\'s own desktop with no Explorer; Mantel goes on top of Windows. Changes from the next time you switch to the desktop.',
       [['mantel-full','Full Mantel'],['mantel','Mantel'],['windows','Windows']], s.desktopStyle||'mantel');
-    h += hd('Wallpaper') + `<div class="walls">${[['anim:fireside','Fireside','#1f140e'],['anim:lava','Lava','url(mantel-img/wall-lava.jpg)'],['anim:aurora','Aurora','url(mantel-img/wall-aurora.jpg)'],
-      ...['cabin','lanterns','fox','peaks','embers','bloom','topo','forge'].map(w=>['hearth-'+w, w[0].toUpperCase()+w.slice(1)])]
-      .map(([v,l,c])=>`<button class="wall ${s.wallpaper===v||(!s.wallpaper&&false)?'on':''}" data-f data-act="wall" data-v="${v}" style="background-image:${!c?`url(wallpapers/${v}-thumb.jpg)`:c.startsWith('url')?c:`radial-gradient(ellipse at 50% 110%,#ff8a3d66,transparent 60%),linear-gradient(${c},#0b0807)`}"><span>${l}${c?' (moving)':''}</span></button>`).join('')}</div>`;
-    h += note('Moving wallpapers show in Full Mantel.');
-    h += hd('Accent color') + `<div class="opts" data-f data-choice="accent">${['#ff8a3d','#ffd166','#e5483b','#3fd0b8','#5aa9ff','#b57bff','#7ad15a'].map(c=>`<button class="opt ${(S.profile&&S.profile.accent)===c?'on':''}" data-act="accent" data-v="${c}" style="background:${c};flex:0 0 52px;min-width:52px"></button>`).join('')}</div>`;
+    h += choice('accent','Accent color','Also your profile\'s color in Game Mode', ['#ff8a3d','#ffd166','#e5483b','#3fd0b8','#5aa9ff','#b57bff','#7ad15a'].map(c=>[c, c, `background:${c}`]), (S.profile&&S.profile.accent)||'');
   }
-  else if(p==='power'){
-    const pw=S.power;
+  else if(p==='power'){   // SetPower.qml
+    const pw=S.power, dk=S.desk||{};
     if(!pw) h += note('Loading…');
     else {
-      if(pw.present) h += row({icon:'bat', title:`Battery ${pw.pct ?? ''}%`, sub:pw.charging?'Charging':'On battery'});
-      h += choice('mode','Power mode','The Windows power mode slider', [['efficiency','Battery saver'],['balanced','Balanced'],['performance','Performance']], pw.mode);
-      h += row({icon:'power', title:'More power settings', sub:'Windows Settings › Power', chev:true, act:'uri', data:'data-v="ms-settings:powersleep"'});
+      if(pw.present){
+        const pct=(pw.pct??'')+'%', full=pw.charging && pw.pct>=100;
+        const txt = full ? pct+' · full' : pw.charging ? pct+' · charging' : pct+(pw.secondsLeft>0?' · about '+hm(pw.secondsLeft)+' left':'');
+        h += row({icon:pw.charging?'batt-charging':'batt', title:'Battery', val:txt});
+      }
+      h += choice('mode','Power mode','Battery saver lasts longer; Performance is faster and warmer', [['efficiency','Battery saver'],['balanced','Balanced'],['performance','Performance']], pw.mode);
+      if(S.powerError) h += note(S.powerError, 'small bad');
+      if(dk.powerPress){
+        h += hd('Power button');
+        h += choice('press','Press','A quick press', [['sleep','Sleep'],['shutdown','Shut down'],['nothing','Nothing']], dk.powerPress);
+        h += note('Holding it for several seconds always turns the device off, whatever is set here.', 'small');
+      }
+      h += hd('Turn off or switch');
+      h += row({icon:'pad', title:'Game Mode', sub:'Back to Ember on the full screen', act:'game'});
+      h += row({icon:'sleep', title:'Sleep', act:'pw', data:'data-what="sleep"'});
+      h += row({icon:'restart', title:'Restart', act:'pw', data:'data-what="restart"'});
+      h += row({icon:'power', title:'Shut down', danger:true, act:'pw', data:'data-what="shutdown"'});
+      h += hd('Windows');
+      h += row({icon:'power', title:'More power settings', sub:'Windows Settings › Power', act:'uri', data:'data-v="ms-settings:powersleep"'});
     }
   }
-  else if(p==='controller'){
-    const c=S.pad||{};
-    h += row({icon:'pad', title:c.connected?`${c.connected} controller${c.connected>1?'s':''} connected`:'No controller connected', sub:'Xbox and XInput controllers'});
-    h += choice('mouse','Controller mouse', 'In Desktop Mode the controller is always a mouse. Elsewhere:', [['off','Off'],['steam','In Steam'],['always','Always']], c.mouseMode);
+  else if(p==='controller'){   // SetController.qml
+    const c=S.pad||{}, dk=S.desk||{};
+    h += row({icon:'mouse', title:'Controller mouse', sub:'Right stick moves the pointer, R2 clicks. Turns off by itself while a game is full screen.', sw:!!c.mouseOn, act:'padMouse'});
+    h += slider('speed', 'mouse', 'Pointer speed', ((dk.pointerSpeed||1)-0.4)/1.6);
+    h += hd('Button mapping');
+    h += note('Remapping works on Hearth, the OS, with the built-in controller (InputPlumber).', 'small');
+    h += hd('Help');
+    h += row({icon:'help', title:'Controller buttons', sub:'What each button does in Desktop Mode', act:'help'});
+    h += row({icon:'kbd', title:'On-screen keyboard', sub:'Y on the controller, or here', act:'keyboard'});
+    h += hd('Windows');
+    h += choice('mouse','Controller mouse outside Desktop Mode', 'In Game Mode and over Steam\'s windows', [['off','Off'],['steam','In Steam'],['always','Always']], c.mouseMode);
     if(S.overlay) h += row({icon:'pad', title:'Xbox button opens only Ember', sub:'Turns off the Windows Game Bar on the Xbox button', sw:!S.overlay.gameBarButton, act:'gameBar'});
-    h += row({icon:'info', title:'Controls', sub:'Xbox button: Hearth menu · Menu: apps · Y: keyboard · B: back · LB/RB: switch windows · View + B: close · View: the controls list'});
   }
-  else if(p==='updates'){
+  else if(p==='signin'){   // SetSignin.qml
+    const s=S.shell||{}, dk=S.desk||{};
+    h += choice('start','Start in','What you see after turning on', [['game','Game Mode'],['desktop','Desktop Mode']], s.startMode||'game');
+    if(dk.lockOnWake!=null) h += row({icon:'lock', title:'Ask for my password after sleep', sub:'Locked when it wakes, on the desktop and in Game Mode. Lock any time with Windows+L or the power menu.', sw:!!dk.lockOnWake, act:'lockWake'});
+    h += hd('Password');
+    h += row({icon:'lock', title:'Change password', sub:'In Windows Settings › Accounts › Sign-in options', act:'uri', data:'data-v="ms-settings:signinoptions"'});
+    h += hd('Device name');
+    h += row({icon:'display', title:'Rename', sub:'Now: '+((S.sys&&S.sys.hostname)||'…')+' · in Windows Settings › System › About', act:'uri', data:'data-v="ms-settings:about"'});
+    if(S.signMsg) h += note(S.signMsg, S.signBad?'bad':'good');
+  }
+  else if(p==='browser'){   // SetBrowser.qml
+    const b=S.browser;
+    h += row({icon:'info', title:'Aloha Browser', sub:!b?'Checking…':!b.installed?'Not installed':(b.default?'Your default browser':'Installed, but another browser opens links')+(b.version?' · version '+b.version:'')});
+    if(b && !b.installed) h += row({icon:'update', title:'Install Aloha Browser', sub:'Opens alohabrowser.com, where you get the official Windows installer; then make it the default browser here', act:'uri', data:'data-v="https://alohabrowser.com/"'});
+    if(b && b.installed && !b.default) h += row({icon:'check', title:'Make Aloha the default browser', sub:'Windows asks you to pick it in Settings › Default apps', chev:false, act:'uri', data:'data-v="ms-settings:defaultapps"'});
+    if(b && b.installed) h += row({icon:'close', danger:true, title:'Remove Aloha Browser', sub:'In Windows Settings › Apps', chev:false, act:'uri', data:'data-v="ms-settings:appsfeatures"'});
+  }
+  else if(p==='updates'){   // SetUpdates.qml
     const u=S.upd;
     if(!u) h += note('Loading…');
     else {
-      const line={idle:'Up to date',checking:'Checking…',available:`Version ${u.latest&&u.latest.version} is available`,downloading:'Downloading…',ready:`Version ${u.latest&&u.latest.version} is ready`,error:u.error||'Something went wrong'}[u.state]||u.state;
-      h += row({icon:'update', title:`Ember ${u.current||''}`, sub:esc(line), spin:u.state==='checking'||u.state==='downloading'});
-      if(u.state==='available' && u.canInstallHere) h += row({icon:'dl', title:'Download the update', act:'updDl'});
-      if(u.state==='ready') h += row({icon:'update', title:'Restart Ember to update', sub:'Takes a few seconds', act:'updInstall'});
-      if(!['checking','downloading'].includes(u.state)) h += row({icon:'update', title:'Check for updates', act:'updCheck'});
+      const v=u.latest&&u.latest.version;
+      h += row({icon:'info', title:`Ember ${u.current||''}`, sub:'Running now'});
+      if(u.state==='ready'){
+        h += `<div class="banner"><b>Ember ${esc(v)} is ready. Restart Ember to finish updating.</b></div>`;
+        h += row({icon:'restart', title:'Restart now', act:'updInstall'});
+      }
+      if(u.state==='checking') h += progress('Looking for updates…', -1);
+      if(u.state==='downloading') h += progress('Downloading Ember '+(v||''), u.progress!=null?(u.progress>1?u.progress/100:u.progress):-1);
+      if(u.state==='available' && u.canInstallHere) h += row({icon:'update', title:'Download Ember '+(v||''), sub:'Keeps working while it downloads; finishes when you restart Ember', act:'updDl'});
+      if(!['checking','downloading'].includes(u.state)) h += row({icon:'restart', title:'Look for updates', sub:u.state==='upToDate'||u.state==='idle'&&!v?'Ember is up to date':'', act:'updCheck'});
+      if(u.state==='error' && u.error) h += note(u.error, 'bad');
+      h += hd('Windows');
       h += row({icon:'update', title:'Check automatically', sub:'At startup and every 6 hours', sw:!!u.autoCheck, act:'updAuto'});
     }
   }
-  else if(p==='about'){
-    const i=S.sys||{};
-    h += `<div class="row"><div class="ic"><img src="hearth-logo.svg" style="width:26px" alt=""></div><div class="tx"><b>Ember ${esc((S.upd&&S.upd.current)||'')}</b><small>Hearth OS's shell for Windows 11 · Mantel desktop</small></div></div>`;
-    for(const [k,v] of [['Device',i.device],['Windows',i.osPretty||[i.os,i.osVersion].filter(Boolean).join(' ')],['Processor',i.cpu&&(i.cpu+(i.cores?` · ${i.cores} threads`:''))],['Graphics',i.gpu],['Memory',i.memoryBytes&&Math.round(i.memoryBytes/1e9)+' GB'],['Storage',i.storage&&i.storage.totalBytes&&`${Math.round(i.storage.totalBytes/1e9)} GB (${Math.round(i.storage.freeBytes/1e9)} GB free)`],['Device name',i.hostname]])
-      if(v) h += row({title:k, val:v});
+  else if(p==='about'){   // SetAbout.qml
+    const i=S.sys||{}, ver=(S.upd&&S.upd.current)||'';
+    h += `<div class="about"><img src="hearth-logo.svg" alt=""><div><b>Ember</b><small>${ver?'Version '+esc(ver):''}</small></div></div>`;
+    const gb=b=>Math.round(b/1e9)+' GB';
+    for(const [k,v] of [['Device',i.device],['Name',i.hostname],['Signed in as',S.user],['Processor',i.cpu&&(i.cpu+(i.cores?` (${i.cores} threads)`:''))],['Graphics',i.gpu],['Memory',i.memoryBytes&&gb(i.memoryBytes)],
+      ['Storage',i.storage&&i.storage.totalBytes&&`${gb(i.storage.freeBytes)} free of ${gb(i.storage.totalBytes)}`],['System',i.osPretty||i.os],['Version',i.osVersion],['Kernel',i.kernel],['Desktop',ver?'Mantel · Ember '+ver:'Mantel']])
+      if(v) h += row({title:k, val:v, cls:'fact'});
   }
+  const keepScroll=$('main').scrollTop;
   $('.page').innerHTML = h;
+  $('main').scrollTop = keepScroll;
   focusPaint();
+}
+// The wallpaper grid: the moving ones, then Hearth's pictures (named like on Hearth OS, A–Z by file), then yours.
+const WALL_NAMES = {fireside:'Fireside (still)', embers:'Embers', ridge:'Dusk Ridge', mark:'The Mark', kiln:'Kiln', cat:'Hearth Cat', cabin:'Night Cabin',
+  lanterns:'Lanterns', bloom:'Ember Bloom', peaks:'Low Poly Peaks', forge:'Forge Grid', topo:'Cinder Topo', fox:'Fox Moon'};
+function wallpapers(s){
+  const list=[['anim:fireside','Fireside','fire',''],['anim:lava','Lava','','mantel-img/wall-lava.jpg'],['anim:aurora','Aurora','','mantel-img/wall-aurora.jpg']];
+  for(const id of Object.keys(WALL_NAMES).sort()) list.push(['hearth-'+id, WALL_NAMES[id], '', `wallpapers/hearth-${id}-thumb.jpg`]);
+  for(const f of (s.pictures||[])) list.push(['custom:'+f, f.replace(/\.(jpe?g|png|webp|bmp)$/i,'').replace(/[-_]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()), '', 'https://hearth-walls.local/'+encodeURIComponent(f)]);
+  list.push(['', 'Your Windows wallpaper', '', '']);
+  return list;
 }
 
 // ---------------------------------------------------------------- loading
 function load(p){
   const st=()=>call('sys.status').then(s=>{ S.st=s; renderPage(); }).catch(()=>{});
+  const desk=()=>call('desktop.get').then(d=>{ S.desk=d; renderPage(); }).catch(()=>{});
+  const shell=()=>call('shell.status').then(s=>{ S.shell=s; renderPage(); }).catch(()=>{});
   if(p==='wifi'){ st(); scan(); }
-  if(p==='bluetooth'){ st(); call('bt.paired').then(l=>{ S.paired=l||[]; renderPage(); }).catch(e=>{ S.paired=[]; toast(e.message); renderPage(); }); }
-  if(p==='sound') call('audio.get').then(a=>{ S.audio=a; renderPage(); }).catch(e=>toast(e.message));
+  if(p==='bluetooth'){ st(); call('bt.paired').then(l=>{ S.paired=l||[]; renderPage(); }).catch(e=>{ S.paired=[]; S.btMsg=e.message; renderPage(); }); }
+  if(p==='sound'){ call('audio.get').then(a=>{ S.audio=a; renderPage(); }).catch(e=>toast(e.message)); call('audio.input').then(i=>{ S.input=i; renderPage(); }).catch(()=>{ S.input=null; }); }
   if(p==='display') call('display.get').then(d=>{ S.display=d; renderPage(); }).catch(e=>toast(e.message));
-  if(p==='appearance'){ call('shell.status').then(s=>{ S.shell=s; renderPage(); }).catch(()=>{}); call('profile.get').then(pr=>{ S.profile=pr; renderPage(); }).catch(()=>{}); }
-  if(p==='power') call('power.get').then(pw=>{ S.power=pw; renderPage(); }).catch(e=>toast(e.message));
-  if(p==='controller'){ call('pad.status').then(c=>{ S.pad=c; renderPage(); }).catch(()=>{}); call('overlay.settings').then(o=>{ S.overlay=o; renderPage(); }).catch(()=>{}); }
+  if(p==='appearance'){ shell(); desk(); call('profile.get').then(pr=>{ S.profile=pr; renderPage(); }).catch(()=>{}); }
+  if(p==='power'){ desk(); call('power.get').then(pw=>{ S.power=pw; renderPage(); }).catch(e=>toast(e.message)); }
+  if(p==='controller'){ desk(); call('pad.status').then(c=>{ S.pad=c; renderPage(); }).catch(()=>{}); call('overlay.settings').then(o=>{ S.overlay=o; renderPage(); }).catch(()=>{}); }
+  if(p==='signin'){ shell(); desk(); call('system.info').then(i=>{ S.sys=i; renderPage(); }).catch(()=>{}); }
+  if(p==='browser') call('browser.status').then(b=>{ S.browser=b; renderPage(); }).catch(()=>{ S.browser={installed:false}; renderPage(); });
   if(p==='updates'||p==='about') call('update.status').then(u=>{ S.upd=u; renderPage(); }).catch(()=>{});
-  if(p==='about') call('system.info').then(i=>{ S.sys=i; renderPage(); }).catch(()=>{});
+  if(p==='about'){ call('system.info').then(i=>{ S.sys=i; renderPage(); }).catch(()=>{}); call('host.info').then(h=>{ S.user=(h&&h.user)||''; renderPage(); }).catch(()=>{}); }
 }
 async function scan(){
   if(S.scanning) return; S.scanning=true; renderPage();
-  try{ S.nets=await call('wifi.scan',{},30000); }catch(e){ if(!S.nets) S.nets=[]; toast(e.message); }
+  try{ S.nets=(await call('wifi.scan',{},30000))||[]; S.nets.sort((a,b)=>(b.connected-a.connected)||((b.bars||0)-(a.bars||0))); }catch(e){ if(!S.nets) S.nets=[]; }
   S.scanning=false; renderPage();
 }
-function go(p){ S.page=p; S.f=0; S.pw=null; S.open=null; renderNav(); renderPage(); load(p); }
+// Wi-Fi looks again every 15 seconds and Bluetooth every 8 while their page is open, like on Hearth OS.
+setInterval(()=>{ if(S.page==='wifi' && !S.asking){ call('sys.status').then(s=>{ S.st=s; }).catch(()=>{}); scan(); } }, 15000);
+setInterval(()=>{ if(S.page==='bluetooth' && !S.btScan) call('bt.paired').then(l=>{ S.paired=l||[]; renderPage(); }).catch(()=>{}); }, 8000);
+function go(p){ S.page=p; S.f=0; S.asking=''; S.msg=''; S.btMsg=''; S.signMsg=''; renderNav(); $('main').scrollTop=0; renderPage(); load(p); }
 
 // ---------------------------------------------------------------- actions
 async function act(el){
   const d=el.dataset, st=S.st||{};
   try{ switch(d.act){
     case 'page': S.inPage=false; return go(d.p);
-    case 'wifiToggle': S.st=await call('radios.set',{kind:'wifi', on:!(st.wifi&&st.wifi.on)}); renderPage(); if(S.st.wifi.on) scan(); return;
+    // Wi-Fi
+    case 'wifiToggle': { const on=!(st.wifi&&st.wifi.on); S.st=await call('radios.set',{kind:'wifi', on}); S.msg=on?'Wi-Fi on':'Wi-Fi off'; renderPage(); if(on) scan(); return; }
     case 'wifiScan': return scan();
     case 'wifiNet': { const n=(S.nets||[]).find(x=>x.ssid===d.ssid); if(!n) return;
-      if(n.connected){ S.open=S.open===n.ssid?null:n.ssid; return renderPage(); }
-      if(n.secure && !n.saved){ S.pw=n.ssid; renderPage(); const i=$(`[data-pw="${CSS.escape(n.ssid)}"]`); i&&i.focus(); return; }
+      if(n.connected){ await call('wifi.disconnect'); S.msg='Disconnected from '+n.ssid; return load('wifi'); }
+      if(n.secure && !n.saved){ S.asking=n.ssid; renderPage(); const i=$('[data-input="pw"]'); if(i){ S.f=focusables().indexOf(i.closest('[data-f]')); focusPaint(); } return; }
       return join(n.ssid, null); }
-    case 'wifiJoin': return join(d.ssid, ($(`[data-pw="${CSS.escape(d.ssid)}"]`)||{}).value||'');
-    case 'wifiDisconnect': await call('wifi.disconnect'); toast('Disconnected'); S.open=null; return load('wifi');
-    case 'wifiForget': await call('wifi.forget',{ssid:d.ssid}); toast(`Forgot ${d.ssid}`); S.open=null; return load('wifi');
-    case 'btToggle': S.st=await call('radios.set',{kind:'bt', on:!(st.bt&&st.bt.on)}); return load('bluetooth');
-    case 'btScan': if(S.btScan){ S.btScan=false; renderPage(); return call('bt.scanStop').catch(()=>{}); } S.found=[]; S.btScan=true; renderPage(); return call('bt.scanStart',{seconds:15});
-    case 'btPair': { const dev=S.found.find(x=>x.id===d.id); toast(`Pairing with ${dev?dev.name:'the device'}…`); const r=await call('bt.pair',{id:d.id},60000); toast(r&&r.ok===false?(r.error||'Couldn\'t pair'):'Paired'); S.found=S.found.filter(x=>x.id!==d.id); return load('bluetooth'); }
-    case 'btUnpair': await call('bt.unpair',{id:d.id}); toast('Removed'); return load('bluetooth');
+    case 'wifiJoin': return join(d.ssid, ($('[data-input="pw"]')||{}).value||'');
+    // Bluetooth
+    case 'btToggle': { const on=!(st.bt&&st.bt.on); S.st=await call('radios.set',{kind:'bt', on}); S.btMsg=on?'Bluetooth on':'Bluetooth off'; return load('bluetooth'); }
+    case 'btDevice': return mantel('uri', {uri:'ms-settings:bluetooth'});
+    case 'btScan': if(S.btScan) return; S.found=[]; S.btScan=true; renderPage(); return call('bt.scanStart',{seconds:12}).catch(e=>{ S.btScan=false; S.btMsg=e.message; renderPage(); });
+    case 'btPair': { const dev=S.found.find(x=>x.id===d.id); S.btBusy=d.id; renderPage(); const r=await call('bt.pair',{id:d.id},60000); S.btBusy='';
+      S.btMsg = r&&r.ok===false ? (r.error||'That didn\'t work') : (dev?dev.name:'The device')+' is paired'; S.found=S.found.filter(x=>x.id!==d.id); return load('bluetooth'); }
+    case 'btForget': { const dev=(S.paired||[]).find(x=>x.id===d.id); const r=await call('bt.unpair',{id:d.id}); S.btMsg = r&&r.ok===false ? (r.error||'That didn\'t work') : (dev?dev.name:'The device')+' forgotten'; return load('bluetooth'); }
+    // Sound
     case 'mute': { const a=S.audio; if(!a) return; a.muted=!a.muted; renderPage(); return call('audio.setMute',{m:a.muted}); }
     case 'audioDev': S.audio=await call('audio.setDefault',{id:d.id}); return renderPage();
+    case 'inputDev': await call('audio.setDefault',{id:d.id}); S.input=await call('audio.input'); return renderPage();
+    // Display
+    case 'dispRes': { const w=+d.w, hh=+d.h, m=(S.display.modes||[]).find(x=>x.width===w&&x.height===hh); return applyDisplay({w, h:hh, hz:(m&&m.rates&&Math.max(...m.rates))||60}); }
+    case 'dispKeep': S.countdown=0; S.prev=null; return renderPage();
+    case 'dispRevert': return revertDisplay();
+    // Appearance
     case 'choose': return choose(d.id, d.v);
     case 'wall': S.shell=await call('shell.setWallpaper',{name:d.v}); return renderPage();
-    case 'accent': S.profile=await call('profile.set',{accent:d.v}); send({type:'mantel', action:'accent', accent:d.v}); return renderPage();
+    case 'wallPick': { const s=await call('shell.pickWallpaper',{},120000); if(s) S.shell=s; return renderPage(); }
+    case 'night': case 'motion': { const key=d.act==='night'?'nightLight':'reduceMotion'; const v=!(S.desk&&S.desk[key]); S.desk=await call('desktop.set',{key, value:v}); return renderPage(); }
+    // Controller
+    case 'padMouse': { const r=await call('pad.toggleMouse'); S.pad={...(S.pad||{}), mouseOn:!!(r&&r.mouseOn)}; return renderPage(); }
     case 'gameBar': S.overlay=await call('overlay.setGameBarButton',{on:!S.overlay.gameBarButton}); return renderPage();
-    case 'uri': return send({type:'mantel', action:'uri', uri:d.v});
+    case 'help': return mantel('help');
+    case 'keyboard': return mantel('keyboard');
+    // Sign-in
+    case 'lockWake': { const v=!(S.desk&&S.desk.lockOnWake); S.desk=await call('desktop.set',{key:'lockOnWake', value:v}); S.signMsg=v?'It will ask for your password when it wakes.':'It won\'t ask for your password when it wakes.'; S.signBad=false; return renderPage(); }
+    // Power and the rest
+    case 'game': return mantel('game');
+    case 'pw': return mantel('power', {what:d.what});
+    case 'uri': return mantel('uri', {uri:d.v});
     case 'updCheck': S.upd={...S.upd, state:'checking'}; renderPage(); S.upd=await call('update.check',{},120000); return renderPage();
     case 'updDl': S.upd={...S.upd, state:'downloading'}; renderPage(); S.upd=await call('update.download',{},600000); return renderPage();
     case 'updInstall': return call('update.install');
     case 'updAuto': S.upd=await call('update.setAuto',{on:!S.upd.autoCheck}); return renderPage();
-  } }catch(e){ toast(e.message); }
+  } }catch(e){
+    if(S.page==='wifi') { S.msg=e.message; renderPage(); }
+    else if(S.page==='bluetooth') { S.btMsg=e.message; renderPage(); }
+    else if(S.page==='signin') { S.signMsg=e.message; S.signBad=true; renderPage(); }
+    else toast(e.message);
+  }
 }
 async function join(ssid, password){
-  S.connecting=ssid; S.pw=null; renderPage();
-  try{ const r=await call('wifi.connect',{ssid, password}, 60000); toast(r&&r.ok?`Connected to ${ssid}`:((r&&r.error)||'Couldn\'t connect')); }
-  catch(e){ toast(e.message); }
-  S.connecting=null; load('wifi');
+  S.busy=ssid; S.asking=''; S.msg=''; renderPage();
+  try{ const r=await call('wifi.connect',{ssid, password}, 60000); S.msg = r&&r.ok ? `Connected to ${ssid}` : ((r&&r.error)||'That didn\'t work'); }
+  catch(e){ S.msg=e.message; }
+  S.busy=''; load('wifi');
 }
+// A new display mode or scale is kept only if you say so within 15 seconds (so one the screen can't show fixes itself).
+async function applyDisplay(next){
+  const d=S.display; if(!d) return;
+  if(!S.countdown) S.prev={w:d.width, h:d.height, hz:d.refreshRate, scale:d.scalePercent};
+  try{
+    if(next.scale) S.display=await call('display.setScale',{v:next.scale},30000);
+    else S.display=await call('display.setMode',{w:next.w, h:next.h, hz:next.hz},30000);
+  }catch(e){ toast(e.message); return renderPage(); }
+  S.countdown=15; renderPage();
+  const keep=$('[data-act="dispKeep"]'); if(keep){ S.inPage=true; S.f=focusables().indexOf(keep); renderNav(); focusPaint(); }
+}
+async function revertDisplay(){
+  const p=S.prev; S.countdown=0; S.prev=null;
+  if(p){ try{
+    const d=S.display||{};
+    if(p.scale && p.scale!==d.scalePercent) S.display=await call('display.setScale',{v:p.scale},30000);
+    if(p.w && (p.w!==S.display.width || p.h!==S.display.height || p.hz!==S.display.refreshRate)) S.display=await call('display.setMode',{w:p.w, h:p.h, hz:p.hz},30000);
+  }catch(e){ toast(e.message); } }
+  renderPage();
+}
+setInterval(()=>{ if(S.countdown>0){ S.countdown--; if(S.countdown===0) revertDisplay(); else if(S.page==='display'){ const b=$('.banner b'); if(b) b.textContent=`Keep these display settings? Going back in ${S.countdown} s`; } } }, 1000);
 async function choose(id, v){
   try{
-    if(id==='res'){ const [w,h]=v.split('x').map(Number), m=S.display.modes.find(x=>x.width===w&&x.height===h); S.display=await call('display.setMode',{w,h,hz:(m&&m.rates&&m.rates[0])||60},30000); }
-    else if(id==='rate') S.display=await call('display.setMode',{w:S.display.width,h:S.display.height,hz:+v},30000);
-    else if(id==='scale') S.display=await call('display.setScale',{v:+v},30000);
-    else if(id==='style') S.shell=await call('shell.setDesktopStyle',{style:v});
-    else if(id==='mode'){ await call('power.setMode',{mode:v}); S.power=await call('power.get'); }
+    if(id==='rate'){ const d=S.display, m=(d.modes||[]).find(x=>x.width===d.width&&x.height===d.height); return applyDisplay({w:d.width, h:d.height, hz:+v||(m&&m.rates[0])||60}); }
+    if(id==='scale') return applyDisplay({scale:+v});
+    if(id==='style') S.shell=await call('shell.setDesktopStyle',{style:v});
+    else if(id==='accent'){ S.profile=await call('profile.set',{accent:v}); mantel('accent', {accent:v}); setAccent(v); }
+    else if(id==='mode'){ S.powerError=''; S.power={...S.power, mode:v}; renderPage(); try{ await call('power.setMode',{mode:v}); }catch(e){ S.powerError=e.message; } S.power=await call('power.get'); }
+    else if(id==='press') S.desk=await call('desktop.set',{key:'powerPress', value:v});
     else if(id==='mouse') S.pad=await call('pad.setMouseMode',{mode:v});
+    else if(id==='start') S.shell=await call('shell.setStartMode',{mode:v});
   }catch(e){ toast(e.message); }
   renderPage();
 }
@@ -304,19 +484,20 @@ async function choose(id, v){
 // Sliders: drag on the track, or Left/Right when focused.
 let sliding=null;
 function slideTo(el, frac){
-  const id=el.dataset.slide, v=Math.round(Math.max(0,Math.min(1,frac))*100);
-  el.querySelector('i').style.width=v+'%'; el.querySelector('.top span').textContent=v+'%';
-  clearTimeout(slideTo.t);
-  slideTo.t=setTimeout(()=>{
-    if(id==='volume'){ if(S.audio){ S.audio.volume=v; S.audio.muted=false; } call('audio.setMute',{m:false}).catch(()=>{}); call('audio.setVolume',{v}).catch(()=>{}); }
-    if(id==='brightness'){ if(S.display) S.display.brightness=Math.max(1,v); call('display.setBrightness',{v:Math.max(1,v)}).catch(()=>{}); }
-  }, 40);
+  const id=el.dataset.slide, sl=SLIDERS[id]; if(!sl) return;
+  frac=Math.max(0,Math.min(1,frac));
+  el.dataset.frac=frac;
+  el.querySelector('i').style.width=frac*100+'%'; el.querySelector('.top span').textContent=sl.text(frac);
+  clearTimeout(slideTo.t); slideTo.t=setTimeout(()=>sl.set(frac), 40);
 }
-document.addEventListener('pointerdown', e => { const t=e.target.closest('.track'); if(!t) return; sliding=t.closest('[data-slide]'); t.setPointerCapture(e.pointerId); const r=t.getBoundingClientRect(); slideTo(sliding,(e.clientX-r.left)/r.width); });
+const fracOf = el => el.dataset.frac!=null ? +el.dataset.frac : (parseFloat(el.querySelector('i').style.width)||0)/100;
+document.addEventListener('pointerdown', e => { const t=e.target.closest('.track'); if(!t) return; sliding=t.closest('[data-slide]'); t.setPointerCapture(e.pointerId);
+  const f=focusables(), i=f.indexOf(sliding); if(i>=0){ S.inPage=true; S.f=i; renderNav(); focusPaint(); }
+  const r=t.getBoundingClientRect(); slideTo(sliding,(e.clientX-r.left)/r.width); });
 document.addEventListener('pointermove', e => { if(!sliding) return; const t=sliding.querySelector('.track'), r=t.getBoundingClientRect(); slideTo(sliding,(e.clientX-r.left)/r.width); });
 document.addEventListener('pointerup', () => { sliding=null; });
 
-// ---------------------------------------------------------------- keyboard and controller
+// ---------------------------------------------------------------- keyboard and controller (SetBase.qml's keys)
 const focusables = () => $$('.page [data-f]');
 function focusPaint(){
   $$('.f-on').forEach(x=>x.classList.remove('f-on'));
@@ -324,43 +505,55 @@ function focusPaint(){
   const f=focusables(); if(!f.length) return;
   S.f=Math.max(0,Math.min(S.f,f.length-1));
   const el=f[S.f]; el.classList.add('f-on'); el.scrollIntoView({block:'nearest'});
-  if(el.tagName==='INPUT') el.focus(); else if(document.activeElement && document.activeElement.tagName==='INPUT') document.activeElement.blur();
+  const input=el.querySelector('input');
+  if(input) input.focus(); else if(document.activeElement && document.activeElement.tagName==='INPUT') document.activeElement.blur();
 }
 document.addEventListener('keydown', e => {
   const typing=document.activeElement && document.activeElement.tagName==='INPUT';
-  if(typing && e.key==='Enter'){ const i=document.activeElement; if(i.dataset.pw) join(i.dataset.pw, i.value); return; }
-  if(typing && !['Escape','ArrowUp','ArrowDown'].includes(e.key)) return;
+  if(typing && e.key==='Enter'){ e.preventDefault(); if(document.activeElement.dataset.input==='pw' && S.asking) join(S.asking, document.activeElement.value); return; }
+  if(typing && !['Escape','ArrowUp','ArrowDown','Tab'].includes(e.key)) return;
   const idx=PAGES.findIndex(p=>p[0]===S.page);
   if(!S.inPage){
     if(e.key==='ArrowDown'||e.key==='Tab'&&!e.shiftKey){ e.preventDefault(); return go(PAGES[Math.min(PAGES.length-1,idx+1)][0]); }
     if(e.key==='ArrowUp'||e.key==='Tab'&&e.shiftKey){ e.preventDefault(); return go(PAGES[Math.max(0,idx-1)][0]); }
-    if(e.key==='ArrowRight'||e.key==='Enter'||e.key===' '){ e.preventDefault(); S.inPage=true; S.f=0; renderNav(); return focusPaint(); }
-    if(e.key==='Escape'){ e.preventDefault(); return send({type:'mantel', action:'closeSettings'}); }
+    if(e.key==='ArrowRight'||e.key==='Enter'||e.key===' '){ e.preventDefault(); if(!focusables().length) return; S.inPage=true; S.f=0; renderNav(); return focusPaint(); }
+    if(e.key==='Escape'){ e.preventDefault(); return mantel('closeSettings'); }
     return;
   }
   const f=focusables(), el=f[S.f];
   switch(e.key){
-    case 'ArrowDown': e.preventDefault(); S.f=Math.min(f.length-1,S.f+1); return focusPaint();
+    case 'ArrowDown': case 'Tab': if(e.key==='Tab'&&e.shiftKey){ e.preventDefault(); S.f=Math.max(0,S.f-1); return focusPaint(); } e.preventDefault(); S.f=Math.min(f.length-1,S.f+1); return focusPaint();
     case 'ArrowUp': e.preventDefault(); S.f=Math.max(0,S.f-1); return focusPaint();
     case 'ArrowLeft': case 'ArrowRight': {
       if(!el) return;
       const dir=e.key==='ArrowLeft'?-1:1;
-      if(el.dataset.slide){ e.preventDefault(); const cur=parseFloat(el.querySelector('i').style.width)||0; return slideTo(el,(cur+dir*5)/100); }
-      if(el.dataset.choice){ e.preventDefault(); const opts=[...el.querySelectorAll('.opt')], i=opts.findIndex(o=>o.classList.contains('on')), n=opts[Math.max(0,Math.min(opts.length-1,i+dir))]; if(n && n!==opts[i]) n.click(); return; }
-      if(el.classList.contains('wall')){ e.preventDefault(); S.f=Math.max(0,Math.min(f.length-1,S.f+dir)); return focusPaint(); }
+      if(el.dataset.slide){ e.preventDefault(); return slideTo(el, fracOf(el)+dir*SLIDERS[el.dataset.slide].step); }
+      if(el.dataset.choice){ e.preventDefault(); const opts=[...el.querySelectorAll('.opt')], i=opts.findIndex(o=>o.classList.contains('on')), n=opts[Math.max(0,Math.min(opts.length-1,(i<0?0:i)+dir))]; if(n && n!==opts[i]) n.click(); return; }
       if(dir<0){ e.preventDefault(); S.inPage=false; renderNav(); return focusPaint(); }
       return;
     }
-    case 'Enter': case ' ': if(!el) return; e.preventDefault(); { const a=el.matches('[data-act]')?el:el.querySelector('[data-act]'); if(a) a.click(); } return;
-    case 'Escape': e.preventDefault(); if(typing) document.activeElement.blur(); S.inPage=false; S.pw=null; renderNav(); renderPage(); return;
+    case 'Enter': case ' ': {
+      if(!el) return; e.preventDefault();
+      if(el.dataset.choice){ const opts=[...el.querySelectorAll('.opt')], i=opts.findIndex(o=>o.classList.contains('on')); const n=opts[(i+1)%opts.length]; if(n) n.click(); return; }
+      const a=el.matches('[data-act]')?el:el.querySelector('[data-act]'); if(a) a.click(); return;
+    }
+    case 'Escape': e.preventDefault(); if(typing) document.activeElement.blur(); S.inPage=false; S.asking=''; renderNav(); renderPage(); return;
   }
 });
 document.addEventListener('click', e => {
   const el=e.target.closest('[data-act]'); if(!el) return;
-  if(el.closest('.page')){ const f=focusables(), i=f.indexOf(el.closest('[data-f]')); if(i>=0){ S.inPage=true; S.f=i; renderNav(); } }
+  if(el.closest('.page')){ const f=focusables(), i=f.indexOf(el.closest('[data-f]')); if(i>=0){ S.inPage=true; S.f=i; renderNav(); focusPaint(); } }
   act(el);
 });
+document.addEventListener('focusin', e => { const fl=e.target.closest && e.target.closest('.page [data-f]'); if(fl){ const i=focusables().indexOf(fl); if(i>=0 && (i!==S.f || !S.inPage)){ S.inPage=true; S.f=i; renderNav(); focusPaint(); } } });
 document.addEventListener('contextmenu', e => e.preventDefault());
+
+function setAccent(a){
+  if(!/^#[0-9a-f]{6}$/i.test(a||'')) return;
+  const n=parseInt(a.slice(1),16);
+  document.documentElement.style.setProperty('--accent', a);
+  document.documentElement.style.setProperty('--accentInk', ((n>>16&255)*.2126+(n>>8&255)*.7152+(n&255)*.0722)/255>.45?'#2a1206':'#ffffff');
+}
 
 // ---------------------------------------------------------------- from Ember
 if(host) host.addEventListener('message', e => {
@@ -368,11 +561,12 @@ if(host) host.addEventListener('message', e => {
   if(m.type==='result'){ const p=pending[m.id]; if(!p) return; delete pending[m.id]; m.ok ? p.ok(m.value) : p.no(new Error(m.error)); return; }
   if(m.type!=='event') return;
   const d=m.data;
-  if(m.name==='status'){ S.st=d; if(['wifi','bluetooth'].includes(S.page)) renderPage(); }
-  else if(m.name==='bt.found'){ if(d&&d.name&&!S.found.some(x=>x.id===d.id)&&!(S.paired||[]).some(x=>x.id===d.id)){ S.found.push(d); if(S.page==='bluetooth') renderPage(); } }
+  if(m.name==='status'){ S.st=d; if(['wifi','bluetooth'].includes(S.page) && !(document.activeElement && document.activeElement.tagName==='INPUT')) renderPage(); }
+  else if(m.name==='bt.found'){ if(d&&d.name&&!S.found.some(x=>x.id===d.id)&&!(S.paired||[]).some(x=>x.id===d.id||x.name===d.name)&&!/^([0-9A-F]{2}[-:]){5}/i.test(d.name)){ S.found.push(d); if(S.page==='bluetooth') renderPage(); } }
   else if(m.name==='bt.scanDone'){ S.btScan=false; if(S.page==='bluetooth') renderPage(); }
-  else if(m.name==='bt.pin'){ toast(d.confirm?`Check the device shows ${d.pin}`:`Type ${d.pin} on the device`); if(d.confirm) call('bt.confirmPin',{accept:true}).catch(()=>{}); }
+  else if(m.name==='bt.pin'){ S.btMsg = d.confirm?`Check the device shows ${d.pin}`:`Type ${d.pin} on the device`; if(S.page==='bluetooth') renderPage(); if(d.confirm) call('bt.confirmPin',{accept:true}).catch(()=>{}); }
   else if(m.name==='update'){ S.upd=d; if(['updates','about'].includes(S.page)) renderPage(); }
+  else if(m.name==='profile'){ if(d&&d.accent) setAccent(d.accent); }
   else if(m.name==='mantel.settingsPage'){ if(d&&d.page&&PAGES.some(p=>p[0]===d.page)) go(d.page); }
 });
 
@@ -382,19 +576,23 @@ const MOCK = {
   'wifi.scan':()=>[{ssid:'Home',bars:4,secure:true,saved:true,connected:true},{ssid:'Upstairs',bars:3,secure:true},{ssid:'Coffee Corner',bars:2,secure:false}],
   'bt.paired':()=>[{id:'1',name:'Wireless Controller',connected:true},{id:'2',name:'Earbuds',connected:false}],
   'audio.get':()=>({volume:60,muted:false,devices:[{id:'a',name:'Speakers',isDefault:true},{id:'b',name:'Headphones',isDefault:false}]}),
-  'display.get':()=>({supported:true,brightness:70,width:1920,height:1080,refreshRate:120,modes:[{width:1920,height:1080,rates:[120,60]},{width:1280,height:720,rates:[60]}],scalePercent:125,scaleRecommended:125,scales:[100,125,150]}),
-  'shell.status':()=>({desktopStyle:'mantel-full',wallpaper:'anim:fireside'}),
+  'audio.input':()=>({present:true,volume:80,devices:[{id:'m',name:'Microphone Array',isDefault:true}]}),
+  'display.get':()=>({supported:true,brightness:70,width:1920,height:1080,refreshRate:120,modes:[{width:1920,height:1080,rates:[120,60]},{width:1280,height:720,rates:[60]},{width:1600,height:900,rates:[60]}],scalePercent:125,scaleRecommended:125,scales:[100,125,150,175]}),
+  'shell.status':()=>({desktopStyle:'mantel-full',wallpaper:'anim:fireside',startMode:'game',pictures:[]}),
+  'desktop.get':()=>({nightLight:false,nightAvailable:true,reduceMotion:false,pointerSpeed:1,lockOnWake:true,powerPress:'sleep'}),
   'profile.get':()=>({accent:'#ff8a3d'}),
-  'power.get':()=>({present:true,pct:82,charging:false,mode:'balanced'}),
+  'power.get':()=>({present:true,pct:82,charging:false,mode:'balanced',secondsLeft:12000}),
   'pad.status':()=>({connected:1,mouseMode:'steam',mouseOn:false}),
   'overlay.settings':()=>({gameBarButton:false}),
-  'update.status':()=>({current:'0.0.22',state:'idle',autoCheck:true}),
-  'system.info':()=>({device:'ROG Ally',osPretty:'Windows 11 Home 24H2',cpu:'AMD Ryzen Z1 Extreme',cores:16,gpu:'AMD Radeon Graphics',memoryBytes:16e9,storage:{totalBytes:512e9,freeBytes:301e9},hostname:'ALLY'}),
+  'browser.status':()=>({installed:false,default:false}),
+  'update.status':()=>({current:'0.0.31',state:'upToDate',autoCheck:true}),
+  'host.info':()=>({user:'Dragon'}),
+  'system.info':()=>({device:'ASUS ROG Ally RC71L',osPretty:'Windows 11 Home',osVersion:'24H2 (build 26100)',cpu:'AMD Ryzen Z1 Extreme',cores:16,gpu:'AMD Radeon Graphics',memoryBytes:16e9,storage:{totalBytes:512e9,freeBytes:301e9},hostname:'ALLY',kernel:'Microsoft Windows NT 10.0.26100.0'}),
 };
 const startPage = new URLSearchParams(location.search).get('page');
 if(startPage && PAGES.some(p=>p[0]===startPage)) S.page=startPage;
 renderNav(); renderPage(); load(S.page);
-if(host){ send({type:'ready'}); call('profile.get').then(p=>{ const a=p&&p.accent; if(/^#[0-9a-f]{6}$/i.test(a||'')){ document.documentElement.style.setProperty('--accent',a); const n=parseInt(a.slice(1),16); document.documentElement.style.setProperty('--accentInk',((n>>16&255)*.2126+(n>>8&255)*.7152+(n&255)*.0722)/255>.45?'#2a1206':'#ffffff'); } }).catch(()=>{}); }
+if(host){ send({type:'ready'}); call('profile.get').then(p=>setAccent(p&&p.accent)).catch(()=>{}); }
 </script>
 </body>
 </html>

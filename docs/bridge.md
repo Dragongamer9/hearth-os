@@ -40,7 +40,7 @@ Values are camelCase JSON. "—" means the method returns `null`.
 | Method | Args | Returns |
 |---|---|---|
 | `host.info` | | `{platform:'windows'\|'linux', name, host, version, session, user}` |
-| `sys.status` | | `{wifi:{available,on,ssid,bars}, bt:{available,on}, airplane, battery:{present,pct,charging}, audio:{volume,muted}, display:{supported,brightness}, powerMode}` |
+| `sys.status` | | `{wifi:{available,on,ssid,bars}, bt:{available,on}, airplane, battery:{present,pct,charging}, audio:{volume,muted}, display:{supported,brightness}, powerMode}` (+ `wired:{connected,name}\|null` on Windows) |
 | `radios.set` | `{kind:'wifi'\|'bt', on}` | status |
 | `airplane.set` | `{on}` | status |
 | `wifi.scan` | | `[{ssid, bars, secure, saved, connected}]` |
@@ -56,7 +56,7 @@ Values are camelCase JSON. "—" means the method returns `null`.
 | `display.setBrightness` | `{v}` | — |
 | `display.get` (mode fields, optional) | | `modesSupported, output, resolutions:[{w,h,rates}], current:{w,h,rate}, refresh, scalePct, scales, scaleIsInterface, appliesOnRestart` (Linux; hosts without them show resolution and scale read-only) |
 | `display.setMode` · `display.setScale` | `{w,h,rate}` · `{pct}` | display (mode fields) |
-| `power.get` · `power.setMode` | `{mode:'efficiency'\|'balanced'\|'performance'}` | `{present, pct, charging, mode}` |
+| `power.get` · `power.setMode` | `{mode:'efficiency'\|'balanced'\|'performance'}` | `{present, pct, charging, mode}` (+ `secondsLeft` on Windows, -1 when unknown) |
 | `library.get` | `{rescan?}` | `{games:[Game], sources, counts, runningId, steamBackground}` |
 | `library.setFav` · `library.setHidden` | `{id, on}` | — |
 | `library.setSources` | `{steam, epic, gog, xbox}` | library |
@@ -82,6 +82,10 @@ Values are camelCase JSON. "—" means the method returns `null`.
 | `login.get` (Linux) | | `{canAdmin, autologin, startMode, hostname, user}`; `canAdmin`: Hearth, the OS (root options available) |
 | `login.setAutologin` · `login.setStartMode` · `login.setHostname` | `{on}` · `{mode: game\|desktop}` · `{name}` | login |
 | `login.password` | `{old, new}` | `{ok}`; checks the current password first |
+| `audio.input` · `audio.setInputVolume` (Windows, Mantel's Sound page) | — · `{v}` | `{present, volume, devices:[{id,name,isDefault}]}` · — (`audio.setDefault` also takes a microphone's id) |
+| `desktop.get` · `desktop.set` (Windows, Mantel) | — · `{key: nightLight\|reduceMotion\|pointerSpeed\|lockOnWake\|powerPress, value}` | `{nightLight, nightAvailable, reduceMotion, pointerSpeed, lockOnWake, powerPress}` (`lockOnWake`/`powerPress` null when Windows can't tell) |
+| `browser.status` (Windows, Mantel) | | `{installed, default, version}` for Aloha Browser |
+| `shell.pickWallpaper` (Windows) | | shell status, or `null` if cancelled; `shell.status` has `pictures` (file names) and `shell.setWallpaper` takes `custom:<file>` |
 | `system.update.status` · `.check` · `.install` (Hearth OS) | | `{canAdmin, state: idle\|checking\|updating, line, error, status: {booted, staged, available}}`; check and install return at once and push `systemUpdate` |
 
 **Game** = `{id, title, source, fav, hidden, minutes, lastPlayed, added, sizeBytes, art:{cover,hero,logo,wide}, path, canRemove, installed, state, cloud, progress, bytesDone, bytesTotal, bytesPerSec?}`

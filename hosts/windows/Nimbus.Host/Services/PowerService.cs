@@ -3,7 +3,8 @@ using System.Runtime.InteropServices;
 namespace Nimbus.Host.Services;
 
 public sealed record BatteryState(bool Present, int? Pct, bool Charging);
-public sealed record PowerInfo(bool Present, int? Pct, bool Charging, string Mode);
+/// <summary>SecondsLeft: Windows' estimate of the battery time left (-1 when it has none, e.g. while charging).</summary>
+public sealed record PowerInfo(bool Present, int? Pct, bool Charging, string Mode, int SecondsLeft = -1);
 
 /// <summary>Battery status and the Windows power mode slider (efficiency / balanced / performance).</summary>
 public sealed class PowerService
@@ -47,6 +48,8 @@ public sealed class PowerService
     public PowerInfo Get()
     {
         var b = Battery();
-        return new PowerInfo(b.Present, b.Pct, b.Charging, Mode());
+        int left = -1;
+        try { left = b.Present && !b.Charging ? SystemInformation.PowerStatus.BatteryLifeRemaining : -1; } catch { }
+        return new PowerInfo(b.Present, b.Pct, b.Charging, Mode(), left);
     }
 }

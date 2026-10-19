@@ -540,6 +540,13 @@ public sealed class LibraryService : IDisposable
     public string StartMode { get => _store.Read(d => d.StartMode) ?? "game"; set => _store.Update(d => d.StartMode = value); }
     public string DesktopStyle { get => _store.Read(d => d.DesktopStyle) ?? "mantel"; set => _store.Update(d => d.DesktopStyle = value); }
     public string MantelWallpaper { get => _store.Read(d => d.MantelWallpaper) ?? "anim:fireside"; set => _store.Update(d => d.MantelWallpaper = value); }
+    public bool MantelNightLight { get => _store.Read(d => d.MantelNightLight); set => _store.Update(d => d.MantelNightLight = value); }
+    public bool MantelReduceMotion { get => _store.Read(d => d.MantelReduceMotion); set => _store.Update(d => d.MantelReduceMotion = value); }
+    public double PointerSpeed
+    {
+        get { var v = _store.Read(d => d.PointerSpeed); return v is >= 0.4 and <= 2.0 ? v : 1.0; }
+        set => _store.Update(d => d.PointerSpeed = Math.Clamp(value, 0.4, 2.0));
+    }
 
     public void Dispose() { _monitor.Dispose(); _quick.Dispose(); }
 }

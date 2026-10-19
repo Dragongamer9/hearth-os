@@ -12,7 +12,12 @@
     launcher  the app launcher (search, every app, power)
     quick     Quick Access (volume, brightness, toggles, performance, actions), from the right edge
     power     the power menu
+    radial    the Hearth menu (the Xbox button)
+    help      the controller's controls (a tap of View)
+    keyboard  Hearth's on-screen keyboard (Keyboard.qml), docked above the taskbar
     desktop   full Mantel's desktop: the wallpaper (the Hearth fireside, Lava, Aurora, or a picture)
+  Icons come from Hearth's own set (mantel-icons.js, made from hosts/linux/desktop/shell/icons).
+  What's still different from Hearth OS, and why: docs/MANTEL-PARITY.md.
   Hosted by Ember (Mantel/MantelHost.cs) in WebView2. Windows give each window its rounded shape; this page
   draws what's inside. Calls the same bridge as the main UI ("call"), plus "mantel" messages for windows
   and apps. Opens in a normal browser too, with sample data (add &preview=1 to see the shape).
@@ -38,7 +43,7 @@ html.bar,body.bar{background:var(--bg)}
 .bb.active{background:var(--panel2)}
 .bb.active:hover{background:var(--panel3)}
 .bb.active::after{content:"";position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:16px;height:3px;border-radius:2px;background:var(--accent)}
-.bb.run:not(.active)::after{content:"";position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:5px;height:3px;border-radius:2px;background:var(--muted)}
+.bb.run.pinned:not(.active)::after{content:"";position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:5px;height:3px;border-radius:2px;background:var(--muted)}
 .bb.narrow{min-width:30px;width:30px}
 .bb.wide{padding:0 10px}
 .bb .logo{width:32px;height:32px}
@@ -64,7 +69,7 @@ body.portrait .bb.narrow{width:44px;height:30px}
 body.portrait .bb.wide{padding:0}
 body.portrait .bb .lbl{display:none}
 body.portrait .bb.active::after{bottom:auto;left:1px;top:50%;transform:translateY(-50%);width:3px;height:16px}
-body.portrait .bb.run:not(.active)::after{bottom:auto;left:1px;top:50%;transform:translateY(-50%);width:3px;height:5px}
+body.portrait .bb.run.pinned:not(.active)::after{bottom:auto;left:1px;top:50%;transform:translateY(-50%);width:3px;height:5px}
 body.portrait .clock{margin:6px 0;align-items:center}
 body.portrait .clock b{font-size:13px}
 body.portrait .clock small{display:none}
@@ -103,6 +108,9 @@ body.portrait .gm .gmi{display:block}
 
 /* ---------------- Quick Access (QuickAccess.qml) ---------------- */
 .panel{position:fixed;inset:0;border-radius:20px;background:var(--glass);border:1px solid var(--line);padding:18px;overflow-y:auto;scrollbar-width:none}
+/* slides in from the right edge like Hearth's (Theme.calm, OutCubic) */
+.panel.enter{animation:qin var(--calm) cubic-bezier(.33,1,.68,1)}
+@keyframes qin{from{transform:translateX(calc(100% + 20px))}to{transform:none}}
 .panel::-webkit-scrollbar{display:none}
 .qcol{display:flex;flex-direction:column;gap:16px}
 .qhead{display:flex;align-items:center}
@@ -147,6 +155,10 @@ body.portrait .gm .gmi{display:block}
 /* ---------------- the Hearth menu (RadialMenu.qml): a ring; the window is round ---------------- */
 html.radial,body.radial{background:var(--glass)}
 .ring{position:fixed;inset:0;border-radius:50%;background:var(--glass);border:1px solid var(--line)}
+/* opens with Hearth's pop: scale .85 → 1 (OutBack, Theme.calm) and a quick fade */
+.ring.pop{animation:rpop var(--calm) cubic-bezier(.34,1.56,.64,1),rfade var(--quick) ease-out}
+@keyframes rpop{from{transform:scale(.85)}to{transform:none}}
+@keyframes rfade{from{opacity:0}to{opacity:1}}
 .ring .warm{position:absolute;left:22.5%;top:22.5%;width:55%;height:55%;background:url(mantel-img/ember-glow.png) center/100% 100% no-repeat;opacity:.18}
 .ring .mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vmin;pointer-events:none}
 .ring .mid img{width:16%;height:16%}
@@ -158,10 +170,24 @@ html.radial,body.radial{background:var(--glass)}
 .slot svg{width:42%;height:42%}
 /* ---------------- controls (Help.qml) ---------------- */
 .help{position:fixed;inset:0;border-radius:20px;background:var(--glass);border:1px solid var(--line);padding:24px;display:flex;flex-direction:column;gap:10px}
+.help .hh{display:flex;align-items:center;gap:12px}
+.help .hh img{width:36px;height:36px}
 .help h2{font-size:22px;font-weight:600}
-.help p{color:var(--muted);font-size:13px;margin-bottom:6px}
-.help .pairs{display:grid;grid-template-columns:auto 1fr;gap:9px 24px;font-size:14px}
+.help p{color:var(--muted);font-size:13px}
+.help .pairs{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:14px;margin-top:6px}
 .help .pairs b{color:var(--accent);font-weight:600;white-space:nowrap}
+
+/* ---------------- on-screen keyboard (Keyboard.qml): docked above the taskbar; the window's shape matches .kbox ---------------- */
+html.keyboard,body.keyboard{background:var(--glass)}
+.kbox{position:fixed;top:6px;left:8px;right:8px;bottom:0;border-radius:18px;background:var(--glass);border:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:8px}
+.krow{flex:1;display:flex;gap:8px;min-height:0}
+.key{flex:1 1 0;border-radius:10px;background:var(--panel2);border:2px solid transparent;display:grid;place-items:center;font-weight:500;font-size:var(--kf,18px);transition:border-color 90ms;min-width:0;overflow:hidden;white-space:nowrap}
+.key:active{background:var(--panel3)}
+.key.lit{background:var(--panel3);border-color:var(--accent)}
+.key.on{background:var(--accent);color:var(--accentInk)}
+.kfoot{display:flex;align-items:center;gap:12px;flex:none}
+.kfoot span{flex:1;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kfoot button{color:var(--accent);font-weight:600;font-size:13px;padding:4px 8px;margin:-4px -8px}
 
 /* ---------------- desktop (Wallpaper.qml) ---------------- */
 html.desktop,body.desktop{background:var(--bg)}
@@ -191,9 +217,13 @@ html.desktop,body.desktop{background:var(--bg)}
 @keyframes ribfade{from{opacity:var(--o)}to{opacity:calc(var(--o) * .5)}}
 .ridge{position:absolute;left:0;right:0;bottom:0;height:12vh;background:linear-gradient(180deg,transparent,#0c0607 40%)}
 @media (prefers-reduced-motion:reduce){.spark,.blob,.star,.rib{animation:none}.glow.core{animation:none}}
+/* Settings › Appearance › Reduce motion: the wallpaper stands still, like on Hearth OS */
+body.still .spark,body.still .blob,body.still .star,body.still .rib,body.still .glow{animation:none}
+body.still .spark{display:none}
 </style>
 </head>
 <body>
+<script src="mantel-icons.js"></script>
 <script>
 'use strict';
 const Q = new URLSearchParams(location.search);
@@ -240,14 +270,19 @@ const I = {
   cam:'<svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   help:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>',
 };
+// The same icons as Mantel on Hearth OS (Icon.qml's names); the drawings above stay as a fallback.
+(() => { const H = window.HEARTH_ICONS || {}, alias = {volLow:'vol-low', mute:'vol-mute', bat:'batt', batLow:'batt-low', batChg:'batt-charging'};
+  for(const k of Object.keys(I)){ const h = H[alias[k] || k]; if(h) I[k] = h; } })();
 const gen = name => `<div class="gen">${esc((name||'?').trim().charAt(0).toUpperCase())}</div>`;
 const icon = (src, name, cls='ic') => src ? `<img class="${cls}" src="${src}" alt="">` : gen(name);
 const timeText = d => d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
 
-// Hearth's own apps, listed in the launcher with the installed ones (Ember opens them: Mantel/MantelHost.cs OpenAppAsync).
-const OWN_APPS = [{id:'hearth:files', name:'Hearth Files', icon:'mantel-img/app-files.svg'}, {id:'hearth:tasks', name:'Hearth Task Manager', icon:'mantel-img/app-tasks.svg'}];
+// Hearth's own apps, listed in the launcher with the installed ones under the same names and the Hearth mark,
+// like their .desktop files on Hearth OS (Ember opens them: Mantel/MantelHost.cs OpenAppAsync).
+const OWN_APPS = [{id:'hearth:files', name:'Files', icon:'hearth-logo.svg'}, {id:'hearth:tasks', name:'Task Manager', icon:'hearth-logo.svg'},
+  {id:'hearth:settings', name:'Hearth Settings', icon:'hearth-logo.svg'}];
 const ownIcon = id => (OWN_APPS.find(a=>a.id===id)||{}).icon;
-const ST = {windows:[], pins:[], apps:null, status:null, tray:{full:false, icons:[]}, wallpaper:'', full:false, mouseOn:false};
+const ST = {windows:[], pins:[], apps:null, status:null, tray:{full:false, icons:[]}, wallpaper:'', full:false, mouseOn:false, still:false, desk:null};
 
 // The accent follows the profile (Settings › Profile), like on Hearth OS.
 function setAccent(a){
@@ -265,7 +300,8 @@ if(host) host.addEventListener('message', e => {
   const d = m.data;
   switch(m.name){
     case 'mantel.windows': ST.windows=d||[]; if(PART==='bar') renderWins(); break;
-    case 'mantel.state': ST.pins=(d&&d.pins)||[]; ST.full=!!(d&&d.full); ST.wallpaper=(d&&d.wallpaper)||''; render(); break;
+    case 'mantel.state': ST.pins=(d&&d.pins)||[]; ST.full=!!(d&&d.full); ST.wallpaper=(d&&d.wallpaper)||''; ST.still=!!(d&&d.reduceMotion); render(); break;
+    case 'mantel.kbdButton': if(PART==='keyboard') kbdButton(d&&d.b); break;
     case 'mantel.tray': ST.tray=d||{full:false,icons:[]}; if(PART==='bar') renderTray(); break;
     case 'mantel.apps': ST.apps=OWN_APPS.concat(d||[]); if(PART==='launcher') renderGrid(); break;
     case 'mantel.opened': opened(); break;
@@ -273,19 +309,28 @@ if(host) host.addEventListener('message', e => {
     case 'profile': if(d&&d.accent) setAccent(d.accent); break;
   }
 });
-function render(){ ({bar:renderBar, launcher:renderLauncher, quick:renderQuick, power:renderPower, desktop:renderDesktop, radial:renderRadial, help:renderHelp}[PART]||renderBar)(); }
+function render(){ ({bar:renderBar, launcher:renderLauncher, quick:renderQuick, power:renderPower, desktop:renderDesktop, radial:renderRadial, help:renderHelp, keyboard:renderKeyboard}[PART]||renderBar)(); }
+// Restarts a CSS entrance animation on an element that stays in the page.
+function replay(el, cls){ if(!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+let helpTimer=0;
 function opened(){
   if(PART==='launcher'){ L.query=''; L.cur=0; const i=$('.search input'); if(i){ i.value=''; } renderGrid(); setTimeout(()=>{ const i=$('.search input'); i&&i.focus(); }, 30); if(!ST.apps) mantel('apps'); }
-  if(PART==='quick'){ Qn.r=0; Qn.c=0; refreshStatus(); call('pad.status').then(p=>{ ST.mouseOn=!!p.mouseOn; renderQuick(); }).catch(()=>{}); renderQuick(); }
+  if(PART==='quick'){ Qn.r=0; Qn.c=0; refreshStatus(); refreshDesk(); call('pad.status').then(p=>{ ST.mouseOn=!!p.mouseOn; renderQuick(); }).catch(()=>{}); renderQuick(); replay($('.panel'), 'enter'); }
   if(PART==='power'){ P.sel=0; renderPower(); }
-  if(PART==='radial'){ R.sel=-1; call('pad.status').then(p=>{ ST.mouseOn=!!p.mouseOn; renderRadial(); }).catch(()=>{}); renderRadial(); }
+  if(PART==='radial'){ R.sel=-1; R.keys.clear(); call('pad.status').then(p=>{ ST.mouseOn=!!p.mouseOn; renderRadial(); }).catch(()=>{}); renderRadial(); replay($('.ring'), 'pop'); }
+  // Hearth's controls card closes by itself after 12 seconds.
+  if(PART==='help'){ clearTimeout(helpTimer); helpTimer=setTimeout(()=>mantel('hidePanel'), 12000); }
+  if(PART==='keyboard') renderKeyboard();
 }
+// Night light and the other desktop settings (Hearth Settings › Appearance), for Quick Access.
+const refreshDesk = () => call('desktop.get').then(d => { ST.desk=d||null; if(PART==='quick') renderQuick(); }).catch(()=>{});
 const refreshStatus = () => call('sys.status').then(s => { ST.status=s; if(PART==='bar') renderStatus(); if(PART==='quick') renderQuick(); }).catch(()=>{});
 
 // ================================================================ desktop (Wallpaper.qml)
 let shownWall = null;
 function renderDesktop(){
   const w = ST.wallpaper || 'anim:fireside';
+  document.body.classList.toggle('still', ST.still);
   if(shownWall===w) return;
   shownWall = w;
   if(w==='anim:lava'){
@@ -301,6 +346,8 @@ function renderDesktop(){
     const sparks=Array.from({length:24},(_,i)=>{ const x=25+((i*37)%50), t=6+((i*7)%6), w=((i*53)%60)-30;
       return `<div class="spark" style="left:${x}vw;background:${i%2?'var(--ember)':'var(--flame)'};--t:${t}s;--d:${-((i*1.7)%t).toFixed(1)}s;--w:${w}px"></div>`; }).join('');
     document.body.innerHTML=`<div class="layer fire"><div class="glow wide"></div><div class="glow core"></div>${sparks}</div>`;
+  } else if(w.startsWith('custom:')){   // a picture you chose (kept in %LOCALAPPDATA%\Nimbus\wallpapers, served by Ember)
+    document.body.innerHTML=`<div class="pic" style="background-image:url('https://hearth-walls.local/${esc(encodeURIComponent(w.slice(7)))}')"></div>`;
   } else {
     document.body.innerHTML=`<div class="pic" style="background-image:url('wallpapers/${esc(w)}.jpg')"></div>`;
   }
@@ -335,7 +382,7 @@ function renderWins(){
   for(const p of ST.pins){
     const w = wins.find(x => !used.has(x.id) && norm(x.app) && (norm(p.name).includes(norm(x.app)) || norm(p.id).includes(norm(x.app))));
     if(w) used.add(w.id);
-    h += `<button class="bb ${w?'run':''} ${w&&w.active?'active':''}" ${w?`data-act="focus" data-id="${w.id}"`:`data-act="launch" data-app="${esc(p.id)}"`} title="${esc(w?w.title:p.name)}">${icon((w&&w.icon)||ownIcon(p.id), p.name)}</button>`;
+    h += `<button class="bb pinned ${w?'run':''} ${w&&w.active?'active':''}" ${w?`data-act="focus" data-id="${w.id}"`:`data-act="launch" data-app="${esc(p.id)}"`} title="${esc(w?w.title:p.name)}">${icon((w&&w.icon)||ownIcon(p.id), p.name)}</button>`;
   }
   for(const w of wins) if(!used.has(w.id))
     h += `<button class="bb run ${w.active?'active':''}" data-act="focus" data-id="${w.id}" title="${esc(w.title)}">${icon(w.icon, w.app||w.title)}</button>`;
@@ -350,14 +397,17 @@ function renderTray(){
 function renderStatus(){
   const s = ST.status || {}, a = s.audio, b = s.battery, w = s.wifi || {};
   const v=$('.vol'), n=$('.net'), bt=$('.batt'); if(!v) return;
+  // The same icons at the same points as Bar.qml: muted, over 33 %, the rest low.
   if(a){ const pct=a.volume||0; v.style.display='';
-    v.innerHTML = (a.muted||!pct ? I.mute : pct>33 ? I.vol : I.volLow) + (a.muted ? '' : `<span class="lbl">${pct}%</span>`);
+    v.innerHTML = (a.muted ? I.mute : pct>33 ? I.vol : I.volLow) + (a.muted ? '' : `<span class="lbl">${pct}%</span>`);
     v.title = a.muted ? 'Muted' : `Volume ${pct}%`; }
   else v.style.display='none';
-  n.innerHTML = w.on && w.ssid ? I.wifi : s.wired ? I.wired : w.on ? I.wifi : I.offline;
-  n.title = w.ssid ? 'Connected to '+w.ssid : 'Not connected';
+  // Wired first (like NetworkManager's device order), then Wi-Fi when connected, else offline.
+  const wiredOn = !!(s.wired && (s.wired.connected ?? s.wired === true));
+  n.innerHTML = wiredOn ? I.wired : w.on && w.ssid ? I.wifi : I.offline;
+  n.title = wiredOn ? 'Connected to '+((s.wired&&s.wired.name)||'Ethernet') : w.ssid ? 'Connected to '+w.ssid : 'Not connected';
   if(b && b.present){ bt.style.display='';
-    bt.innerHTML = (b.charging ? I.batChg : (b.pct??100) > 20 ? I.bat : I.batLow) + `<span class="lbl">${b.pct ?? ''}%</span>`;
+    bt.innerHTML = (b.charging ? I.batChg : (b.pct??100) > 60 ? I.bat : I.batLow) + `<span class="lbl">${b.pct ?? ''}%</span>`;
     bt.title = `${b.pct}%${b.charging?', charging':''}`; }
   else bt.style.display='none';
 }
@@ -445,25 +495,31 @@ function renderQuick(){
   const slider=(id,ic,label,v,act)=>`<div class="${f(id)} slider" data-nav="${id}"><div class="sic" ${act?`data-act="${act}"`:''}>${ic}</div><div class="sb"><div class="sr">${label}<small>${Math.round(v)}%</small></div><div class="track" data-slide="${id}"><i style="width:${Math.max(0,Math.min(100,v))}%"></i></div></div></div>`;
   const tog=(id,ic,label,detail,lit,off)=>`<button class="${f(id)} tog ${lit?'lit':''} ${off?'off':''}" data-act="q" data-id="${id}">${ic}<div class="grow"></div><b>${label}</b><small>${detail}</small></button>`;
   const act=(id,ic,label,accent)=>`<button class="${f(id)} act ${accent?'accent':''}" data-act="q" data-id="${id}">${ic}${label}</button>`;
-  document.body.innerHTML = `<div class="panel"><div class="qcol">
-    <div class="qhead"><b>${timeText(new Date())}</b>${b&&b.present?`<span>${b.charging?I.batChg:I.bat}${b.pct}%</span>`:''}</div>
-    ${slider('volume', a&&(a.muted||!a.volume)?I.mute:I.vol, 'Volume', a?(a.muted?0:a.volume):0, 'q-mute')}
+  const dk=ST.desk, nightOk=!dk || dk.nightAvailable!==false, nightOn=!!(dk&&dk.nightLight);
+  let p=$('.panel');   // the panel stays (so its slide-in isn't restarted); only what's inside is redrawn
+  if(!p){ document.body.innerHTML = '<div class="panel"></div>'; p=$('.panel'); }
+  p.innerHTML = `<div class="qcol">
+    <div class="qhead"><b>${timeText(new Date())}</b>${b&&b.present?`<span>${I.bat}${b.pct}%</span>`:''}</div>
+    ${slider('volume', a&&a.muted?I.mute:I.vol, 'Volume', a?(a.muted?0:a.volume):0, 'q-mute')}
     ${s.display&&s.display.supported ? slider('brightness', I.sun, 'Brightness', s.display.brightness||0) : ''}
     <div class="tg3">
-      ${tog('night', I.moon, 'Night light', 'In Windows Settings', false)}
+      ${tog('night', I.moon, 'Night light', nightOk?'Sunset to sunrise':'Not available', nightOn, !nightOk)}
       ${tog('mouse', I.pad, 'Controller mouse', ST.mouseOn?'On':'Off', ST.mouseOn)}
-      ${tog('wifi', I.wifi, 'Wi-Fi', w.on?(w.ssid||'On'):'Off', w.on, !w.available)}
+      ${tog('wifi', I.wifi, 'Wi-Fi', w.on?'On':'Off', w.on, !w.available)}
     </div>
     ${s.powerMode ? `<div class="qlabel">Performance</div><div class="ch3">${POWER_MODES.map(([id,l])=>`<button class="${f(id)} choice ${s.powerMode===id?'lit':''}" data-act="q" data-id="${id}">${l}</button>`).join('')}</div>` : ''}
-    <div class="ac4">${act('settings', I.gear, 'Settings')}${act('keyboard', I.kbd, 'Keyboard')}${act('game', I.pad, 'Game Mode', true)}${act('sleep', I.moon, 'Sleep')}</div>
-  </div></div>`;
+    <div class="ac4">${act('settings', I.gear, 'Settings')}${act('keyboard', I.kbd, 'Keyboard')}${act('game', I.pad, 'Game Mode', true)}${act('sleep', I.sleep, 'Sleep')}</div>
+  </div>`;
 }
 function quickDo(id){
   const s=ST.status||{};
   switch(id){
     case 'volume': return quickDo('q-mute');
     case 'q-mute': if(s.audio){ s.audio.muted=!s.audio.muted; call('audio.setMute',{m:s.audio.muted}).catch(()=>{}); renderQuick(); } return;
-    case 'night': return mantel('nightlight');
+    case 'night': {   // Hearth's own night light (warmer screen from sunset to sunrise); older Embers: Windows' Night light settings
+      const on=!(ST.desk&&ST.desk.nightLight);
+      if(ST.desk){ if(ST.desk.nightAvailable===false) return; ST.desk.nightLight=on; renderQuick(); }
+      return call('desktop.set',{key:'nightLight', value:on}).then(d=>{ if(d) ST.desk=d; renderQuick(); }).catch(()=>mantel('nightlight')); }
     case 'mouse': return call('pad.toggleMouse').then(r=>{ ST.mouseOn=!!r.mouseOn; renderQuick(); }).catch(()=>{});
     case 'wifi': if(s.wifi&&s.wifi.available){ const on=!s.wifi.on; s.wifi.on=on; renderQuick(); call('radios.set',{kind:'wifi', on}).then(st=>{ ST.status=st; renderQuick(); }).catch(()=>{}); } return;
     case 'efficiency': case 'balanced': case 'performance': s.powerMode=id; renderQuick(); return call('power.setMode',{mode:id}).catch(()=>{});
@@ -526,19 +582,37 @@ function powerKey(e){
 document.addEventListener('mouseover', e => { const it=e.target.closest('.pi'); if(it && +it.dataset.i!==P.sel){ P.sel=+it.dataset.i; renderPower(); } });
 
 // ================================================================ the Hearth menu (RadialMenu.qml)
-const R = {sel:-1};
+const R = {sel:-1, keys:new Map()};
 const radialItems = () => [['apps','Apps',I.grid],['keyboard','Keyboard',I.kbd],['quick','Quick Access',I.menu],['close','Close window',I.close],
   ['game','Game Mode',I.pad],['screenshot','Screenshot',I.cam],['mouse',ST.mouseOn?'Controller mouse: on':'Controller mouse: off',I.mouse],['help','Controls',I.help]];
 function renderRadial(){
   const items=radialItems(), lit=R.sel>=0?items[R.sel]:null;
-  document.body.innerHTML = `<div class="ring"><div class="warm"></div>
-    <div class="mid"><img src="hearth-logo.svg" alt=""><b>${esc(lit?lit[1]:'Hearth')}</b><small>D-pad to choose · A select · B close</small></div>
-    ${items.map(([id,l,ic],i)=>{ const a=i/items.length*2*Math.PI, r=36; return `<button class="slot ${i===R.sel?'lit':''}" data-act="rad" data-i="${i}" title="${esc(l)}" style="left:${50+Math.sin(a)*r-8.5}%;top:${50-Math.cos(a)*r-8.5}%">${ic}</button>`; }).join('')}</div>`;
+  let ring=$('.ring');   // built once (so the opening pop isn't restarted), then only the highlight changes
+  if(!ring || ring.querySelectorAll('.slot').length!==items.length){
+    document.body.innerHTML = `<div class="ring"><div class="warm"></div>
+      <div class="mid"><img src="hearth-logo.svg" alt=""><b></b><small>Stick to choose · A select · B close</small></div>
+      ${items.map(([id,l,ic],i)=>{ const a=i/items.length*2*Math.PI, r=36; return `<button class="slot" data-act="rad" data-i="${i}" style="left:${50+Math.sin(a)*r-8.5}%;top:${50-Math.cos(a)*r-8.5}%">${ic}</button>`; }).join('')}</div>`;
+    ring=$('.ring');
+  }
+  ring.querySelector('.mid b').textContent = lit ? lit[1] : 'Hearth';
+  ring.querySelectorAll('.slot').forEach((s,i)=>{ s.classList.toggle('lit', i===R.sel); s.title=items[i][1]; });
 }
 function radialPick(i){ const it=radialItems()[i]; if(it) mantel('radial',{pick:it[0]}); }
+// The stick (or D-pad) points at an item: two directions together (Ember sends them as two quick key taps)
+// pick the one between them, like pointing the stick on Hearth OS.
+const DIRS={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]};
+function radialAim(key){
+  const now=performance.now();
+  for(const [k,t] of [...R.keys]) if(now-t>150 || DIRS[k][0]===-DIRS[key][0] && DIRS[k][1]===-DIRS[key][1]) R.keys.delete(k);
+  R.keys.set(key, now);
+  let x=0, y=0; for(const k of R.keys.keys()){ x+=DIRS[k][0]; y+=DIRS[k][1]; }
+  if(!x && !y) return;
+  const n=radialItems().length, ang=(Math.atan2(x, -y)+2*Math.PI)%(2*Math.PI);
+  R.sel=Math.round(ang/(2*Math.PI/n))%n;
+}
 function radialKey(e){
-  const n=radialItems().length, at={ArrowUp:0,ArrowRight:2,ArrowDown:4,ArrowLeft:6};
-  if(e.key in at) R.sel=at[e.key];
+  const n=radialItems().length;
+  if(e.key in DIRS) radialAim(e.key);
   else if(e.key==='Tab') R.sel=((R.sel<0?0:R.sel)+(e.shiftKey?n-1:1))%n;
   else if(e.key==='Enter'||e.key===' '){ e.preventDefault(); if(R.sel>=0) radialPick(R.sel); return; }
   else if(e.key==='Escape'){ e.preventDefault(); return mantel('hidePanel'); }
@@ -548,15 +622,76 @@ function radialKey(e){
 document.addEventListener('mouseover', e => { if(PART!=='radial') return; const s=e.target.closest('.slot'); if(s && +s.dataset.i!==R.sel){ R.sel=+s.dataset.i; renderRadial(); } });
 
 // ================================================================ controls (Help.qml)
+// Word for word Help.qml's list (Ember's controller does the same: Mantel/../Input/ControllerBridge.cs).
 function renderHelp(){
-  const pairs=[['Right stick','Move the pointer'],['Left stick','Scroll'],['A  /  RT','Click (hold to drag)'],['LT','Right-click'],['B','Back (Esc)'],['Y','On-screen keyboard'],
-    ['D-pad','Arrow keys'],['LB  /  RB','Switch windows'],['Menu ☰','Apps'],['Xbox button','Hearth menu'],['View + D-pad','Snap left / right, maximize, minimize'],['View + B','Close the window'],['View','This list'],['View + Menu','Controller mouse on or off']];
-  document.body.innerHTML = `<div class="help"><h2>Controller controls</h2><p>The controller works like a mouse and keyboard everywhere in Desktop Mode. It pauses while a game is in front.</p>
+  const pairs=[['Right stick','Move the pointer (press it in: precise)'],['Left stick','Scroll'],['A  /  RT','Click (hold to drag)'],['X  /  LT','Right-click'],['B','Back (Esc)'],['Y','On-screen keyboard'],
+    ['D-pad','Arrow keys'],['LB  /  RB','Switch windows'],['Menu ☰','Apps'],['Guide','Hearth menu'],['View + D-pad','Snap left / right, maximize, minimize'],['View + B','Close the window'],['View','This list']];
+  document.body.innerHTML = `<div class="help"><div class="hh"><img src="hearth-logo.svg" alt=""><h2>Controller controls</h2></div>
+    <p>The controller works like a mouse and keyboard everywhere in Desktop Mode. It pauses while a game is fullscreen.</p>
     <div class="pairs">${pairs.map(([k,v])=>`<b>${esc(k)}</b><span>${esc(v)}</span>`).join('')}</div></div>`;
+}
+
+// ================================================================ on-screen keyboard (Keyboard.qml + hearth-pad's layout)
+// A full US layout: every symbol a terminal or a password needs, plus Esc, Tab, Ctrl, Alt, Caps and arrows.
+// Pick keys with the D-pad or left stick, A to type, X backspace, LB shift, Menu (☰) Enter, B or Y close; or tap them.
+// Ember does the typing ({type:'mantel', action:'type'}) into the window you were in.
+const OSK_ROWS = [
+  ['`','1','2','3','4','5','6','7','8','9','0','-','=','bksp'],
+  ['tab','q','w','e','r','t','y','u','i','o','p','[',']','\\'],
+  ['caps','a','s','d','f','g','h','j','k','l',';',"'",'enter'],
+  ['shift','z','x','c','v','b','n','m',',','.','/','up'],
+  ['ctrl','alt','esc','space','left','down','right'],
+];
+const OSK_SHIFTED = {'`':'~','1':'!','2':'@','3':'#','4':'$','5':'%','6':'^','7':'&','8':'*','9':'(','0':')','-':'_','=':'+','[':'{',']':'}','\\':'|',';':':',"'":'"',',':'<','.':'>','/':'?'};
+const OSK_LABELS = {shift:'⇧ Shift', space:'Space', bksp:'⌫', tab:'Tab', enter:'Enter ↵', caps:'Caps', ctrl:'Ctrl', alt:'Alt', esc:'Esc', up:'↑', down:'↓', left:'←', right:'→'};
+const OSK_WIDE = {shift:1.6, space:4.5, bksp:1.5, tab:1.4, enter:1.8, caps:1.6, ctrl:1.3, alt:1.2, esc:1.2};
+const OSK_SPECIAL = new Set(['space','bksp','tab','enter','esc','up','down','left','right']);
+const K = {row:1, col:1, shift:false, caps:false, ctrl:false, alt:false};
+const kLabel = k => OSK_LABELS[k] || (/^[a-z]$/.test(k) ? ((K.shift!==K.caps) ? k.toUpperCase() : k) : (K.shift ? (OSK_SHIFTED[k]||k) : k));
+const kOn = k => (k==='shift'&&K.shift)||(k==='caps'&&K.caps)||(k==='ctrl'&&K.ctrl)||(k==='alt'&&K.alt);
+function renderKeyboard(){
+  if(!$('.kbox')){
+    document.body.innerHTML = `<div class="kbox">${OSK_ROWS.map((r,ri)=>`<div class="krow">${r.map((k,ci)=>`<button class="key" data-act="key" data-r="${ri}" data-c="${ci}" style="flex-grow:${OSK_WIDE[k]||1}"></button>`).join('')}</div>`).join('')}
+      <div class="kfoot"><span>A type · X ⌫ · LB shift · ☰ Enter · B close · Shift, Ctrl and Alt apply to the next key</span><button data-act="kclose">Close</button></div></div>`;
+    new ResizeObserver(kbdFont).observe($('.kbox'));
+  }
+  document.querySelectorAll('.key').forEach(el=>{
+    const k=OSK_ROWS[+el.dataset.r][+el.dataset.c];
+    el.textContent=kLabel(k);
+    el.classList.toggle('on', kOn(k));
+    el.classList.toggle('lit', +el.dataset.r===K.row && +el.dataset.c===K.col);
+  });
+  kbdFont();
+}
+// Font size like Keyboard.qml's: about a third of the key's height, never under 13.
+function kbdFont(){ const k=document.querySelector('.key'); if(k) document.documentElement.style.setProperty('--kf', Math.max(13, Math.min(k.clientHeight*0.36, 26))+'px'); }
+function kbdMove(d){
+  let r=K.row, c=K.col;
+  if(d==='up'||d==='down'){ const last=OSK_ROWS[r].length-1, nr=Math.max(0, Math.min(OSK_ROWS.length-1, r+(d==='down'?1:-1))); c=Math.round((last?c/last:0)*(OSK_ROWS[nr].length-1)); r=nr; }
+  else c=Math.max(0, Math.min(OSK_ROWS[r].length-1, c+(d==='right'?1:-1)));
+  K.row=r; K.col=c; renderKeyboard();
+}
+function kbdKey(k){
+  if(['shift','caps','ctrl','alt'].includes(k)){ K[k]=!K[k]; return renderKeyboard(); }
+  let ch='';
+  if(!OSK_SPECIAL.has(k)) ch = /^[a-z]$/.test(k) ? ((K.shift!==K.caps) ? k.toUpperCase() : k) : (K.shift ? (OSK_SHIFTED[k]||k) : k);
+  mantel('type', {key:k, ch, shift:K.shift, ctrl:K.ctrl, alt:K.alt});
+  if(K.shift||K.ctrl||K.alt){ K.shift=K.ctrl=K.alt=false; renderKeyboard(); }   // one key each
+}
+function kbdButton(b){
+  switch(b){
+    case 'up': case 'down': case 'left': case 'right': return kbdMove(b);
+    case 'a': return kbdKey(OSK_ROWS[K.row][K.col]);
+    case 'x': return mantel('type', {key:'bksp', ch:'', shift:false, ctrl:false, alt:false});
+    case 'lb': return kbdKey('shift');
+    case 'start': return mantel('type', {key:'enter', ch:'', shift:false, ctrl:false, alt:false});
+    case 'b': case 'y': return mantel('keyboardClose');
+  }
 }
 
 // ================================================================ input
 document.addEventListener('click', e => {
+  if(PART==='help'){ mantel('hidePanel'); return; }   // a click anywhere closes the controls, like Help.qml
   const el = e.target.closest('[data-act]'); if(!el) return;
   e.stopPropagation();
   const d = el.dataset;
@@ -577,6 +712,8 @@ document.addEventListener('click', e => {
     case 'q-mute': return quickDo('q-mute');
     case 'pw': return powerPick(+d.i);
     case 'rad': return radialPick(+d.i);
+    case 'key': return kbdKey(OSK_ROWS[+d.r][+d.c]);
+    case 'kclose': return mantel('keyboardClose');
   }
 });
 function trayClick(el, button){
@@ -585,6 +722,8 @@ function trayClick(el, button){
 }
 document.addEventListener('mouseup', e => { const el=e.target.closest('[data-act="trayIcon"]'); if(el && e.button===2) trayClick(el, 'right'); });
 document.addEventListener('contextmenu', e => e.preventDefault());
+// The keyboard never takes the focus from the field you're typing in.
+document.addEventListener('mousedown', e => { if(PART==='keyboard') e.preventDefault(); });
 document.addEventListener('auxclick', e => {   // middle click on a window closes it, like on Hearth OS
   const el = e.target.closest('[data-act="focus"]');
   if(el && e.button===1) mantel('close', {id:+el.dataset.id});
@@ -605,6 +744,7 @@ if(!host){   // browser preview with sample data
   ST.status={wifi:{available:true,on:true,ssid:'Home'},audio:{volume:60,muted:false},battery:{present:true,pct:82,charging:false},display:{supported:true,brightness:70},powerMode:'balanced'};
   ST.tray={full:true, icons:[{key:'1',tip:'Discord'},{key:'2',tip:'Steam'}]};
   ST.wallpaper=Q.get('wall')||'';
+  ST.desk={nightLight:false, nightAvailable:true, reduceMotion:false};
   if(Q.get('preview')){ document.body.style.background='#000'; }
 }
 // An upright screen puts the bar down the side (Ember shapes the window to match).
@@ -617,7 +757,7 @@ if(host){
   call('profile.get').then(p=>setAccent(p&&p.accent)).catch(()=>{});
   if(PART==='bar'){ refreshStatus(); setInterval(refreshStatus, 20000); }
   if(PART==='launcher') mantel('apps');
-  if(PART==='quick') refreshStatus();
+  if(PART==='quick'){ refreshStatus(); refreshDesk(); }
 }
 </script>
 </body>
