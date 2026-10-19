@@ -80,7 +80,7 @@ if ! out=$(/usr/bin/ostree --version 2>&1); then
 fi
 printf "%s\n" "$out" | sed -n 1,3p
 test -x /output/usr/lib/ostree/ostree-prepare-root || test -x /output/usr/libexec/ostree-prepare-root || \
-  find /output -name 'ostree-prepare-root*' | grep -q .
+  find /output -name 'ostree-prepare-root*' | grep . >/dev/null
 test -d /output/usr/lib/dracut/modules.d/98ostree
 
 # Placeholders so dpkg knows these are already provided (flatpak needs libostree-1-1). Held in build.sh, so
@@ -165,7 +165,7 @@ owner() {   # the package that owns a library (merged /usr: try both spellings o
   return 0
 }
 find /output -type f \( -perm -u+x -o -name '*.so*' \) | while read -r f; do
-  file -b "$f" 2>/dev/null | grep -q ELF || continue
+  file -b "$f" 2>/dev/null | grep ELF >/dev/null || continue
   ldd "$f" 2>/dev/null | awk '/=> \//{print $3}'
 done | sort -u | while read -r lib; do owner "$lib"; done | grep -v '^$' | sort -u \
   > /output/usr/share/hearth/builder-runtime-deps.txt

@@ -111,7 +111,7 @@ if [ "$NVIDIA" = "1" ]; then
   if have_pkg nvidia-open; then "${APT[@]}" nvidia-open; else "${APT[@]}" nvidia-kernel-open-dkms nvidia-driver; fi
   dkms autoinstall -k "$KVER" || true
   dkms status
-  find "/usr/lib/modules/$KVER" -name 'nvidia.ko*' | grep -q . || {
+  find "/usr/lib/modules/$KVER" -name 'nvidia.ko*' | grep . >/dev/null || {
     echo "Nvidia's open kernel module didn't build for $KVER (see the DKMS output above)"
     find /var/lib/dkms -name make.log -exec tail -40 {} \; 2>/dev/null || true
     exit 1
