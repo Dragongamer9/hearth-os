@@ -143,6 +143,10 @@ int main(int argc, char* argv[]) {
   std::string sb = exe + "/chrome-sandbox";
   if (stat(sb.c_str(), &st) == 0 && st.st_uid == 0 && (st.st_mode & S_ISUID)) s.no_sandbox = false;
   CefString(&s.root_cache_path) = cache;
+  // Chromium's data files (icudtl.dat, the .pak files, locales) sit next to the program.
+  CefString(&s.resources_dir_path) = exe;
+  CefString(&s.locales_dir_path) = exe + "/locales";
+  CefString(&s.browser_subprocess_path) = exe + "/hearth-browser";
   CefString(&s.cache_path) = cache + "/Default";
   CefString(&s.locale) = "en-US";
   s.persist_session_cookies = true;
