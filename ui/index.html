@@ -970,7 +970,7 @@ function blip(f=700,d=.035,v=.035){
 // =====================================================================
 // Views
 // =====================================================================
-const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',friends:'Friends',shots:'Screenshots',settings:'Settings',stores:'Game stores',gameset:'Game settings'};
+const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',friends:'Friends',shots:'Screenshots',coop:'Couch Co-op (Beta Experimental)',settings:'Settings',stores:'Game stores',gameset:'Game settings'};
 
 // A profile with parental limits sees only the games it's allowed (when a grown-up chose some).
 const allowedList = () => { const s=PROF.s, c=s&&s.hasPin&&s.list.find(p=>p.current); return c&&c.limits&&c.limits.allowed ? c.limits.allowed : null; };
@@ -1105,6 +1105,153 @@ function viewShots(){
       <button class="btn sm" data-f data-k="sh-back" data-act="shotClose">Back</button></div></div>`; }
   return `<div class="muted" style="margin:4px 0 16px">${l.length} screenshot${l.length===1?'':'s'} · Pictures › Screenshots › ${APP}</div>
     <div class="shots">${l.map((x,i)=>`<button class="shot" data-f data-k="sh-${i}" data-act="shotOpen" data-v="${i}"><img src="${esc(x.url)}" alt="" loading="lazy"><small>${shotWhen(x.time)}</small></button>`).join('')}</div>`;
+}
+
+// ---------- Couch Co-op: 2-4 players on this screen, each with their own controller and copy of the game ----------
+// (hearth-coop does the work: docs/COUCH-COOP.md). Each player presses A on their controller to join.
+const CO = {check:null, games:null, players:[], game:null, layout:'auto', busy:null, status:null, waiting:false, timer:null};
+const CO_LAYOUTS = [['auto','Automatic'],['vertical','Side by side'],['horizontal','One above the other'],['grid','Four corners']];
+const coopOn = () => (HOSTINFO.features||[]).includes('coop');
+function loadCoop(){
+  if(!host){ CO.check={ready:true,problems:[],warnings:[]}; CO.games=[]; return render(null,true); }
+  call('coop.check',{},20000).then(r=>{ CO.check=r; if(S.view==='coop') render(null,true); }).catch(e=>{ CO.check={ready:false,problems:[e.message],warnings:[]}; if(S.view==='coop') render(null,true); });
+  call('coop.games',{},30000).then(r=>{ CO.games=r.games||[]; if(S.view==='coop') render(null,true); }).catch(e=>{ CO.games=[]; toast(e.message); });
+  coopPoll();
+}
+function coopPoll(){
+  if(!host) return;
+  call('coop.status',{},10000).then(r=>{
+    const was=CO.status&&CO.status.running; CO.status=r;
+    if(r.running && !CO.timer) CO.timer=setInterval(coopPoll,5000);
+    if(!r.running){ clearInterval(CO.timer); CO.timer=null; if(was){ toast('Couch Co-op ended'); call('coop.stop').catch(()=>{}); } }
+    if(S.view==='coop' && !S.layers.length) render(null,true);
+  }).catch(()=>{});
+}
+function viewCoop(){
+  let h = `<div class="muted" style="margin:4px 0 16px;max-width:760px">Play together on this screen, even games without split-screen: every player gets their own part of the screen, their own controller and their own copy of the game, which find each other like on a network.</div>` + note('<b>Beta Experimental:</b> Couch Co-op is new and hasn\'t been tested on real devices yet. Expect some games not to work, and please send logs (Settings › System) when something goes wrong.');
+  const st=CO.status;
+  if(st&&st.running) return h + shead('Playing now') + `<div class="rows">
+    <button class="row" data-f data-k="co-back" data-act="coop" data-v="back"><span class="ricon">${I.play}</span><div class="rt"><b>Back to ${esc(st.game&&st.game.title||'the game')}</b><small>${(st.players||[]).length} players · Super+Esc on a keyboard also ends it</small></div><div class="rv">›</div></button>
+    <button class="row" data-f data-k="co-stop" data-act="coop" data-v="stop"><span class="ricon">${I.x}</span><div class="rt"><b>Stop Couch Co-op</b><small>Closes every player's copy of the game</small></div></button></div>`;
+  if(CO.busy) return h + note(`<span class="mini-spin"></span> ${esc(CO.busy)}`);
+  const c=CO.check;
+  if(!c) return h + note('Checking what this device has…');
+  if(c.problems&&c.problems.length) h += c.problems.map(p=>note(esc(p))).join('');
+  const g=CO.game&&(CO.games||[]).find(x=>x.id===CO.game);
+  h += shead('Game') + `<div class="rows"><button class="row" data-f data-k="co-game" data-act="coop" data-v="game"><span class="ricon">${I.lib}</span><div class="rt"><b>${g?esc(g.title):'Choose a game'}</b><small>${g?esc([g.usesGoldberg?'Players find each other over a local network (Steam stand-in)':'', ...(g.notes||[])].filter(Boolean).join(' · ')||'Ready'):(CO.games?`${CO.games.filter(x=>x.canPlay).length} games can be played this way`:'Looking at your games…')}</small></div><div class="rv">›</div></button></div>`;
+  h += shead('Players') + `<div class="rows">` + CO.players.map((p,i)=>`<button class="row" data-f data-k="co-p${i}" data-act="coop" data-v="player" data-i="${i}"><span class="ricon">${I.pad}</span><div class="rt"><b>Player ${i+1} · ${esc(p.name||'Player '+(i+1))}</b><small>${esc(p.padName||p.pad)}</small></div><div class="rv">›</div></button>`).join('')
+    + (CO.players.length<4 ? `<button class="row" data-f data-k="co-add" data-act="coop" data-v="add"><span class="ricon">${I.plus||I.user}</span><div class="rt"><b>${CO.waiting?`Player ${CO.players.length+1}: press A on your controller…`:'Add a player'}</b><small>${CO.waiting?'Waiting up to 20 seconds':'Each player presses A on the controller they\'ll use'}</small></div></button>` : '') + `</div>`;
+  h += shead('Screen') + `<div class="rows"><button class="row" data-f data-k="co-layout" data-act="coop" data-v="layout"><span class="ricon">${I.display}</span><div class="rt"><b>${(CO_LAYOUTS.find(x=>x[0]===CO.layout)||CO_LAYOUTS[0])[1]}</b><small>How the screen is shared</small></div><div class="rv">›</div></button></div>`;
+  const ready = g && g.canPlay && CO.players.length>=2 && (!c.problems||!c.problems.length);
+  h += `<div class="acts" style="margin-top:18px"><button class="btn primary" ${ready?'data-f':'disabled'} data-k="co-start" data-act="coop" data-v="start">${I.play} Start Couch Co-op</button></div>`;
+  if(!ready) h += note(!g ? 'Choose a game, then add at least two players.' : CO.players.length<2 ? 'Add at least two players.' : '');
+  if(c.warnings&&c.warnings.length) h += c.warnings.map(w=>note(esc(w))).join('');
+  h += note('Doesn\'t work with games that use anti-cheat. Each copy of the game uses memory and power, so on a handheld lighter games work best.');
+  return h;
+}
+function coopAct(d){
+  const v=d.v;
+  if(v==='back') return call('coop.show').catch(e=>toast(e.message));
+  if(v==='stop') return call('coop.stop',{},20000).then(()=>{ CO.status=null; toast('Couch Co-op stopped'); render(null,true); }).catch(e=>toast(e.message));
+  if(v==='game'){
+    const list=(CO.games||[]); if(!list.length) return toast(CO.games?'No installed games found':'Still looking at your games…');
+    return openSheet({title:'Choose a game', sub:'Games that can\'t be played this way say why.', items:list.slice(0,60).map(x=>({label:x.title+(x.canPlay?'':' (can\'t: '+(x.why||'not supported')+')'), icon:x.canPlay?'play':'x', run:()=>{ if(!x.canPlay) return toast(x.why||'This game can\'t be played in Couch Co-op'); CO.game=x.id; render('co-game',true); }}))});
+  }
+  if(v==='add'){
+    if(CO.waiting) return;
+    if(!host){ CO.players.push({pad:'demo'+CO.players.length, padName:'Controller', name:'Player '+(CO.players.length+1)}); return render('co-add',true); }
+    CO.waiting=true; render('co-add',true);
+    return call('coop.waitButton',{timeout:20, exclude:CO.players.map(p=>p.pad)}).catch(e=>{ CO.waiting=false; toast(e.message); render('co-add',true); });
+  }
+  if(v==='player'){
+    const i=+d.i, p=CO.players[i]; if(!p) return;
+    return openSheet({title:`Player ${i+1}`, sub:p.padName||p.pad, items:[
+      {label:'Change name', icon:'user', run:()=>openPrompt({title:`Name for player ${i+1}`, value:p.name||''}).then(n=>{ if(n==null) return; p.name=n.trim().slice(0,24); if(host) call('coop.setName',{seat:i+1,name:p.name}).catch(()=>{}); render('co-p'+i,true); })},
+      {label:'Remove this player', icon:'x', run:()=>{ CO.players.splice(i,1); render('co-add',true); }}]});
+  }
+  if(v==='layout'){ const i=CO_LAYOUTS.findIndex(x=>x[0]===CO.layout); CO.layout=CO_LAYOUTS[(i+1)%CO_LAYOUTS.length][0]; return render('co-layout',true); }
+  if(v==='start'){
+    if(!host) return toast('Couch Co-op works on Hearth OS');
+    CO.busy='Starting…'; render(null,true);
+    return call('coop.start',{game:CO.game, pads:CO.players.map(p=>p.pad), layout:CO.layout}).catch(e=>{ CO.busy=null; toast(e.message); render(null,true); });
+  }
+}
+function coopEvent(name, data){
+  if(name==='coop.pad.done'){
+    CO.waiting=false;
+    const p=data&&data.pad;
+    if(!p) toast('No button was pressed. Try again.');
+    else if(CO.players.some(x=>x.pad===p.id)) toast('That controller has already joined');
+    else { const n=CO.players.length+1; CO.players.push({pad:p.id, padName:p.label||p.name||'Controller', name:''}); toast(`Player ${n} joined`); }
+    if(host && CO.players.length && !CO.players.some(x=>x.name)) call('coop.profiles').then(r=>{ (r.players||[]).forEach(pp=>{ const x=CO.players[pp.seat-1]; if(x&&!x.name) x.name=pp.name; }); if(S.view==='coop') render(null,true); }).catch(()=>{});
+  } else if(name==='coop.pad.error'){ CO.waiting=false; toast(data.text); }
+  else if(name==='coop.start.progress'){ CO.busy=data.text||'Starting…'; }
+  else if(name==='coop.start.done'){ CO.busy=null; coopPoll(); }
+  else if(name==='coop.start.error'){ CO.busy=null; openSheet({title:'Couch Co-op couldn\'t start', sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]}); }
+  if(S.view==='coop' && !S.layers.length) render(null,true);
+}
+
+// ---------- Multi-seat (Settings): a separate Game Mode on each screen, for other people with their own accounts ----------
+// (hearth-seats: docs/MULTI-SEAT.md)
+const SE = {plan:null, status:null, scan:null, busy:null};
+function loadSeats(){
+  if(!host){ SE.status={configured:false}; SE.plan={possible:{gpu:false,nested:false},reasons:['Multi-seat works on Hearth OS.'],warnings:[]}; return; }
+  call('seats.status',{},15000).then(r=>{ SE.status=r; seatsRedraw(); }).catch(e=>{ SE.status={configured:false,error:e.message}; seatsRedraw(); });
+  call('seats.plan',{},20000).then(r=>{ SE.plan=r; seatsRedraw(); }).catch(e=>{ SE.plan={possible:{},reasons:[e.message],warnings:[]}; seatsRedraw(); });
+  call('seats.scan',{},20000).then(r=>{ SE.scan=r; seatsRedraw(); }).catch(()=>{});
+}
+function seatsRedraw(){ if(S.view==='settings' && S.settingsTab==='seats' && !S.layers.length) render(null,true); }
+const SEAT_MODE = {gpu:'A graphics card for each player', nested:'One graphics card, a screen for each player'};
+const SEAT_STATE = {active:'Playing', running:'On', starting:'Starting', waiting:'Waiting for its screen', stopped:'Off', failed:"Didn't start"};
+function pageSeats(){
+  let h = note('Turn this PC into several consoles: each screen or TV gets its own Game Mode, with its own controllers, Steam account, games and saves. Player 1 is you, as now.') + note('<b>Beta Experimental:</b> multi-seat is new and hasn\'t been tested on real PCs yet. It changes accounts and device settings, so only try it if you\'re comfortable; Remove multi-seat undoes everything. Please send logs (Settings › System) when something goes wrong.');
+  if(SE.busy) return h + note(`<span class="mini-spin"></span> ${esc(SE.busy)}`);
+  const st=SE.status, pl=SE.plan;
+  if(!st || !pl) return h + note('Looking at the screens, graphics cards and controllers…');
+  if(st.configured){
+    h += shead(`Multi-seat · ${esc(SEAT_MODE[st.mode]||st.mode||'')}`);
+    h += `<div class="rows">` + (st.seats||[]).map(s=>`<button class="row" data-f data-k="se-s${s.seat}"><span class="ricon">${I.display}</span><div class="rt"><b>Player ${s.seat} · ${esc(s.user||'')}</b><small>${esc([s.output, (s.pads||[]).length?`${s.pads.length} controller${s.pads.length===1?'':'s'}`:'No controller yet'].filter(Boolean).join(' · '))}</small></div><div class="rv">${esc(SEAT_STATE[s.state]||s.state||'')}</div></button>`).join('');
+    h += `<button class="row" data-f data-k="se-toggle" data-act="seats" data-v="${st.enabled?'stop':'start'}"><span class="ricon">${st.enabled?I.x:I.play}</span><div class="rt"><b>${st.enabled?'Turn multi-seat off for now':'Turn multi-seat on'}</b><small>${st.enabled?'Back to one screen until you turn it on again':'Every screen gets its own Game Mode again'}</small></div></button>`;
+    h += `<button class="row" data-f data-k="se-pad" data-act="seats" data-v="pad"><span class="ricon">${I.pad}</span><div class="rt"><b>Move a controller to another player</b></div><div class="rv">›</div></button>`;
+    h += `<button class="row" data-f data-k="se-remove" data-act="seats" data-v="remove"><span class="ricon">${I.trash||I.x}</span><div class="rt"><b>Remove multi-seat</b><small>Everything back to one screen and one player</small></div></button></div>`;
+    return h;
+  }
+  const can = pl.possible&&(pl.possible.gpu||pl.possible.nested);
+  if(!can) return h + shead('Not possible on this device') + (pl.reasons||[]).map(r=>note(esc(r))).join('') + note('It needs at least two screens (a TV counts) connected, and a controller for each player.');
+  const lay=pl.layout||{};
+  h += shead(`How it would work · ${esc(SEAT_MODE[lay.mode||pl.recommended]||'')}`) + `<div class="rows">` + (lay.seats||[]).map(s=>`<button class="row" data-f data-k="se-p${s.seat}"><span class="ricon">${I.display}</span><div class="rt"><b>Player ${s.seat}${s.seat===1?' (you)':` · new account ${esc(s.user||'')}`}</b><small>${esc([s.output, (s.pads||[]).length?`${s.pads.length} controller${s.pads.length===1?'':'s'}`:'Controllers can be moved over afterwards'].filter(Boolean).join(' · '))}</small></div></button>`).join('') + `</div>`;
+  h += (pl.reasons||[]).map(r=>note(esc(r))).join('') + (pl.warnings||[]).map(w=>note(esc(w))).join('');
+  h += `<div class="acts" style="margin-top:14px"><button class="btn primary" data-f data-k="se-setup" data-act="seats" data-v="setup">Set up multi-seat</button></div>`;
+  return h;
+}
+function seatsAct(d){
+  const v=d.v;
+  if(!host) return toast('Multi-seat works on Hearth OS');
+  if(v==='setup') return openSheet({title:'Set up multi-seat?', sub:'Hearth makes an account for each extra player (their own Steam, games and saves) and gives them their screen and controllers. Your account, games and settings stay as they are, and Remove multi-seat undoes it all.', items:[
+    {label:'Set it up', icon:'check', run:()=>{ SE.busy='Setting up…'; render(null,true); call('seats.setup',{layout:SE.plan.layout, start:true}).catch(e=>{ SE.busy=null; toast(e.message); render(null,true); }); }},
+    {label:'Not now', icon:'x', run:()=>{}}]});
+  if(v==='start'||v==='stop') return call('seats.'+v,{},60000).then(r=>{ toast(v==='start'?'Multi-seat is on':'Multi-seat is off for now'); seatsAfter(r); loadSeats(); }).catch(e=>toast(e.message));
+  if(v==='pad'){
+    const pads=(SE.scan&&SE.scan.pads||[]).filter(p=>p.assignable!==false), seats=(SE.status&&SE.status.seats||[]);
+    if(!pads.length) return toast('No controllers that can be moved (a handheld\'s own controls stay with player 1)');
+    return openSheet({title:'Which controller?', items:pads.map(p=>({label:`${p.name}${p.seat?` (player ${p.seat})`:''}`, icon:'pad', run:()=>setTimeout(()=>openSheet({title:`Give ${p.name} to`, items:seats.map(s=>({label:`Player ${s.seat} · ${s.user||''}`, icon:'user', run:()=>call('seats.assignPad',{pad:p.id, seat:s.seat},30000).then(()=>{ toast(`${p.name} is player ${s.seat}'s now`); loadSeats(); }).catch(e=>toast(e.message))}))}),50)}))});
+  }
+  if(v==='remove') return openSheet({title:'Remove multi-seat?', sub:'Back to one screen and one player. The extra players\' accounts can stay (their Steam sign-in, games and saves are kept for next time) or be deleted.', items:[
+    {label:'Remove, keep their accounts', icon:'check', run:()=>{ SE.busy='Removing…'; render(null,true); call('seats.remove',{deleteUsers:false}).catch(e=>{ SE.busy=null; toast(e.message); }); }},
+    {label:'Remove and delete their accounts', icon:'trash', run:()=>{ SE.busy='Removing…'; render(null,true); call('seats.remove',{deleteUsers:true}).catch(e=>{ SE.busy=null; toast(e.message); }); }},
+    {label:'Cancel', icon:'x', run:()=>{}}]});
+}
+function seatsAfter(r){
+  if(!r) return;
+  if(r.restart) openSheet({title:'Restart to finish', sub:'Each graphics card goes to its player when the device starts.', items:[{label:'Restart now', icon:'restart', run:()=>power('restart',true)},{label:'Later', icon:'x', run:()=>{}}]});
+  else if(r.restart_game_mode) openSheet({title:'Game Mode restarts', sub:'To share the screens out, Game Mode starts again (your games are closed first).', items:[{label:'Restart Game Mode now', icon:'restart', run:()=>power('signout',true)},{label:'Later', icon:'x', run:()=>{}}]});
+}
+function seatsEvent(name, data){
+  if(name==='seats.setup.progress'||name==='seats.remove.progress'){ SE.busy=data.text||SE.busy; }
+  else if(name==='seats.setup.done'){ SE.busy=null; toast('Multi-seat is set up'); seatsAfter(data); loadSeats(); }
+  else if(name==='seats.remove.done'){ SE.busy=null; toast('Multi-seat removed'); seatsAfter(data); loadSeats(); }
+  else if(name==='seats.setup.error'||name==='seats.remove.error'){ SE.busy=null; openSheet({title:name==='seats.setup.error'?'Multi-seat couldn\'t be set up':'Multi-seat couldn\'t be removed', sub:data.text+' Nothing was left half done.', items:[{label:'OK', icon:'check', run:()=>{}}]}); }
+  seatsRedraw();
 }
 
 // ---------- Quick Resume (Hearth): games put aside stay frozen in memory and carry on where they were ----------
@@ -1247,7 +1394,7 @@ const xLabel = g => (S.running===g.id || isFrozen(g)) ? 'Resume' : playable(g) ?
 const xMeta = g => [SOURCES[g.src], g.last?'Played '+ago(g.last).toLowerCase():'', g.hrs?hrs(g.hrs):''].filter(Boolean).join(' · ');
 const xBg = g => `<div class="sp-bg" id="xBg" data-id="${g?esc(g.id):''}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</div>`;
 const xPlay = (g,k='x-play') => `<button class="play" data-f data-k="${k}" data-act="${xAct(g)}" data-id="${esc(g.id)}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>${xLabel(g)}</button>`;
-const xNav = () => `<div class="xnav">${[['library','lib','Library'],['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="xn-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
+const xNav = () => `<div class="xnav">${[['library','lib','Library'],['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="xn-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
 function xDetail(g){ return g ? `<div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div><div class="sp-acts">${xPlay(g)}<button class="sq" data-f data-k="x-more" data-act="game" data-id="${esc(g.id)}" aria-label="Game page">${I.info}</button></div>` : ''; }
 // The game you move to fills the detail and background (layouts that follow the selection).
 function xUpdate(id){
@@ -1793,13 +1940,13 @@ function viewDownloads(){
 }
 
 const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Power'],
-  ['controller','pad','Controls'],['remote','play','Remote play'],['sources','lib','Library'],['import','dl','Import'],['osinstall','dl','Install'],['switch','dl','Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
+  ['controller','pad','Controls'],['remote','play','Remote play'],['sources','lib','Library'],['seats','display','Multi-seat (Beta Experimental)'],['import','dl','Import'],['osinstall','dl','Install'],['switch','dl','Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 // Settings, condensed: five groups on the left, each with its pages as tabs along the top.
 const SGROUPS = [['you','user','You'],['connect','wifi','Connections'],['device','display','Device'],['games','lib','Games'],['system','gear','System']];
 const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',signin:'you',wifi:'connect',bluetooth:'connect',remote:'connect',
-  display:'device',audio:'device',power:'device',controller:'device',sources:'games',import:'games',shell:'system',updates:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
+  display:'device',audio:'device',power:'device',controller:'device',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
 const stabGroup = k => STAB_GROUP[k]||'system';
-const stabShown = k => STABS.some(x=>x[0]===k) && (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:((k!=='signin'&&k!=='import')||LINUX));
+const stabShown = k => STABS.some(x=>x[0]===k) && (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX));
 const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k));
 const SLAST = {};
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
@@ -2518,6 +2665,7 @@ function viewSettings(){
   if(!stabShown(S.settingsTab)) S.settingsTab='profile';
   const t=S.settingsTab, grp=stabGroup(t), tabs=stabsIn(grp); let body='';
   if(t==='wifi') body = pageWifi();
+  if(t==='seats') body = pageSeats();
   if(t==='bluetooth') body = pageBluetooth();
   if(t==='display') body = pageDisplay();
   if(t==='audio') body = pageAudio();
@@ -2558,7 +2706,7 @@ function viewSettings(){
     <div class="rows">${body}</div></div></div>`;
 }
 
-const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, shots:viewShots, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
+const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, shots:viewShots, coop:viewCoop, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 // Timing for the speed test (HEARTH_PERF_LOG=1): how long drawing a page and moving the focus take.
@@ -2602,6 +2750,7 @@ function navigate(view, params={}, push=true){
   if(view==='stores') loadAccounts();
   if(view==='friends') loadFriends();
   if(view==='shots'){ SH.open=-1; loadShots(); }
+  if(view==='coop') loadCoop();
   if(view==='gameset') loadGameSet(S.game);
 }
 function goBack(){
@@ -3005,6 +3154,8 @@ function act(el){
     case 'radio': return toggleRadio(d.kind);
     case 'wifiNet': return wifiNet(d.ssid);
     case 'wifiScan': return wifiScan(true);
+    case 'coop': return coopAct(d);
+    case 'seats': return seatsAct(d);
     case 'wifiAll': S.sys.wifiAll=!S.sys.wifiAll; return render('w-all', true);
     case 'btScan': return btScanToggle();
     case 'btDev': return btDevice(d.id);
@@ -4194,6 +4345,8 @@ function onSysEvent(name, data){
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
   if(name==='friends'){ if(S.view==='friends' && !S.layers.length) loadFriends(); return; }
+  if(name.startsWith('coop.')) return coopEvent(name, data||{});
+  if(name.startsWith('seats.')) return seatsEvent(name, data||{});
   if(name==='quickResume'){ applyQuick(data); if(!OVERLAY && !S.layers.length) render(null,true); else { renderFooter(); if(S.layers.includes('qam')) renderQam(); } return; }
   if(name==='game.paused'){ S.paused=!!data.paused; if(S.layers.includes('qam')) renderQam(); return; }
   if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
@@ -4267,6 +4420,7 @@ function updateStatusBar(){
 function onSettingsTab(t){
   if(t==='wifi'){ S.sys.wifiAll=false; wifiScan(); }
   if(t==='shell') loadShellStatus();
+  if(t==='seats') loadSeats();
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
   if(t==='signin') loadLogin();

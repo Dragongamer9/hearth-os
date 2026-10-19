@@ -18,10 +18,13 @@ fn busctl(args: &[&str]) -> Result<String, String> {
 }
 
 /// Is InputPlumber running on this device?
-pub fn available() -> bool { crate::system::has("busctl") && busctl(&["status", BUS]).is_ok() }
+pub fn available() -> bool { std::env::var_os("HEARTH_SEAT").is_none() && crate::system::has("busctl") && busctl(&["status", BUS]).is_ok() }
 
 /// The combined controllers InputPlumber manages (the built-in one, and paired ones): their D-Bus paths.
 pub fn devices() -> Vec<String> {
+    // Multi-seat: an extra player's Hearth leaves InputPlumber alone (it's shared, and its intercept mode would
+    // catch player 1's built-in controller).
+    if std::env::var_os("HEARTH_SEAT").is_some() { return vec![]; }
     busctl(&["--list", "tree", BUS]).unwrap_or_default().lines().map(str::trim)
         .filter(|l| l.starts_with("/org/shadowblip/InputPlumber/CompositeDevice")).map(str::to_string).collect()
 }

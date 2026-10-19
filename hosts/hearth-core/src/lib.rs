@@ -20,6 +20,7 @@ pub mod inputplumber;
 pub mod logs;
 pub mod xodus;
 pub mod library;
+pub mod multiplay;
 pub mod owned;
 pub mod manual;
 pub mod osinstall;

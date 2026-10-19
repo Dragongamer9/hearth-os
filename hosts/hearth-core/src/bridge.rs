@@ -598,6 +598,66 @@ impl Bridge {
             "xodus.setFolder" => { crate::xodus::set_folder(a["folder"].as_str().unwrap_or(""))?; Ok(self.xodus.status(false)) }
             "xodus.signInDesktop" => { crate::xodus::open_in_desktop()?; Ok(json!({})) }
             "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
+            // Couch Co-op: several players on this screen, each with their own controller and copy of the game.
+            "coop.check" => crate::multiplay::ask(crate::multiplay::COOP, &["check"]),
+            "coop.pads" => crate::multiplay::ask(crate::multiplay::COOP, &["pads"]),
+            "coop.games" => crate::multiplay::ask(crate::multiplay::COOP, &["games"]),
+            "coop.profiles" => crate::multiplay::ask(crate::multiplay::COOP, &["profiles"]),
+            "coop.setName" => {
+                let seat = a["seat"].as_u64().unwrap_or(0).to_string();
+                crate::multiplay::ask(crate::multiplay::COOP, &["profile-set", "--seat", &seat, "--name", a["name"].as_str().unwrap_or("")])
+            }
+            "coop.status" => crate::multiplay::ask(crate::multiplay::COOP, &["status"]),
+            // "Player N, press A": the next controller with a button pressed (as the event coop.pad.done).
+            "coop.waitButton" => {
+                let exclude: Vec<String> = a["exclude"].as_array().map(|l| l.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+                let mut args = vec!["wait-button".to_string(), "--timeout".into(), a["timeout"].as_u64().unwrap_or(20).to_string()];
+                if !exclude.is_empty() { args.push("--exclude".into()); args.push(exclude.join(",")); }
+                crate::multiplay::spawn_job("coop.pad", crate::multiplay::COOP, args, self.emit.clone(), None);
+                Ok(Value::Null)
+            }
+            "coop.start" => {
+                let pads: Vec<String> = a["pads"].as_array().map(|l| l.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+                if pads.len() < 2 { return Err("Couch Co-op needs at least two players.".into()); }
+                let args = vec!["start".to_string(), "--game".into(), req("game")?, "--players".into(), pads.len().to_string(),
+                                "--pads".into(), pads.join(","), "--layout".into(), a["layout"].as_str().unwrap_or("auto").to_string()];
+                let host = self.host.clone();
+                crate::multiplay::spawn_job("coop.start", crate::multiplay::COOP, args, self.emit.clone(), Some(Box::new(move |v: &Value| {
+                    let pid = v["labwcPid"].as_u64().or(v["containerPid"].as_u64()).unwrap_or(0);
+                    host("showPid", &json!({"pid": pid}));
+                })));
+                Ok(Value::Null)
+            }
+            // Back to the split screen from Hearth.
+            "coop.show" => {
+                let st = crate::multiplay::ask(crate::multiplay::COOP, &["status"])?;
+                if st["running"] != true { return Err("Couch Co-op isn't running.".into()); }
+                (self.host)("showPid", &json!({"pid": st["labwcPid"].as_u64().or(st["containerPid"].as_u64()).unwrap_or(0)}));
+                Ok(st)
+            }
+            "coop.stop" => { let r = crate::multiplay::ask(crate::multiplay::COOP, &["stop"])?; (self.host)("comeBack", &Value::Null); Ok(r) }
+            // Multi-seat: a separate Game Mode on each screen, for other people with their own accounts.
+            "seats.scan" => crate::multiplay::ask(crate::multiplay::SEATS, &["scan"]),
+            "seats.plan" => crate::multiplay::ask(crate::multiplay::SEATS, &["plan"]),
+            "seats.status" => crate::multiplay::ask(crate::multiplay::SEATS, &["status"]),
+            "seats.start" => crate::multiplay::ask(crate::multiplay::SEATS, &["start"]),
+            "seats.stop" => crate::multiplay::ask(crate::multiplay::SEATS, &["stop"]),
+            "seats.assignPad" => {
+                let seat = a["seat"].as_u64().unwrap_or(1).to_string();
+                crate::multiplay::ask(crate::multiplay::SEATS, &["assign-pad", "--pad", &req("pad")?, "--seat", &seat])
+            }
+            "seats.setup" => {
+                let mut args = vec!["setup".to_string(), "--seats".into(), a["layout"].to_string()];
+                if a["start"] == true { args.push("--start".into()); }
+                crate::multiplay::spawn_job("seats.setup", crate::multiplay::SEATS, args, self.emit.clone(), None);
+                Ok(Value::Null)
+            }
+            "seats.remove" => {
+                let mut args = vec!["remove".to_string()];
+                if a["deleteUsers"] == true { args.push("--delete-users".into()); }
+                crate::multiplay::spawn_job("seats.remove", crate::multiplay::SEATS, args, self.emit.clone(), None);
+                Ok(Value::Null)
+            }
             "system.update.status" => Ok(self.updates.refresh()),
             "system.update.check" => Ok(self.updates.start(false, self.emit.clone())),
             "system.update.install" => Ok(self.updates.start(true, self.emit.clone())),
@@ -993,6 +1053,9 @@ fn shell_install(remove: bool) -> Result<(), String> {
 fn features() -> Vec<&'static str> {
     let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus"];
     if crate::guide::controller_available() { f.push("remap"); }
+    if crate::multiplay::coop_available() { f.push("coop"); }
+    if crate::multiplay::seats_available() { f.push("seats"); }
+    if std::env::var_os("HEARTH_SEAT").is_some() { f.push("extraSeat"); }
     f
 }
 /// "Hearth 0.0.25 (Bazzite)": the system's own name, for About and the top of Settings.

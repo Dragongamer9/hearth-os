@@ -20,6 +20,9 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      games and files from other drives (see hearth-import)
   hearth-admin takeover-plan|takeover-run
                                      remove other systems from Hearth's drive (see hearth-takeover)
+  hearth-admin seats-setup|seats-remove|seats-acl|seats-start|seats-stop
+                                     multi-seat: several players at once, each on their own screen with their own
+                                     account (see hearth-seats and docs/MULTI-SEAT.md)
   hearth-admin hibernate-setup       room on the drive (a swap file the size of memory) so the PC can turn
                                      off with Quick Resume games kept, and the boot options to come back to it
 
@@ -547,6 +550,525 @@ def hibernate_setup():
     print(json.dumps({'ok': True, 'gb': gib, 'restart': sorted(old) != sorted(want)}))
 
 
+# ---------------------------------------------------------------------- multi-seat (experimental)
+# Root side of /usr/libexec/nimbus/hearth-seats (docs/MULTI-SEAT.md). Everything it does is listed in
+# /etc/hearth/seats.json so seats-remove can undo it, and a failed seats-setup undoes its own steps. Player 1
+# (the person who ran it) is never changed: only the extra players' accounts, devices and units are.
+#
+#   hearth-admin seats-setup            stdin: {"mode": "gpu"|"nested", "seats": [...], "start": bool}
+#   hearth-admin seats-remove [--delete-users]
+#   hearth-admin seats-acl              stdin: {"pads": {"usb:1-2": 2, "uniq:aa:bb:cc:dd:ee:ff": 1}}
+#   hearth-admin seats-start | seats-stop
+SEATS_CONFIG = '/etc/hearth/seats.json'
+SEATS_ENV_DIR = '/etc/hearth/seats'
+SEATS_RULES = '/etc/udev/rules.d/72-hearth-seats.rules'
+SEATS_TMPFILES = '/etc/tmpfiles.d/hearth-seats.conf'
+SEATS_SDDM = '/etc/sddm.conf.d/zzz-hearth-seats.conf'
+SEATS_SYSTEMD_ETC = '/etc/systemd/system'
+SEATS_RUN = '/run/hearth-seats'
+SEATS_SYS = '/sys'
+SEATS_DEV = '/dev'
+SEATS_GROUP_FILE = '/etc/group'
+SEATS_PASSWD_FILE = '/etc/passwd'
+SEATS_PLAYER_GROUPS = ('render', 'gamemode')   # not input, audio, video or wheel: see docs/MULTI-SEAT.md
+SEAT_PLAYER_RE = re.compile(r'^hearth-p([2-4])$')
+SEAT_PAD_RE = re.compile(r'^(usb:[0-9]{1,3}-[0-9]{1,3}(\.[0-9]{1,3}){0,6}|uniq:[A-Za-z0-9:._-]{4,64})$')
+SEAT_OUTPUT_RE = re.compile(r'^(card[0-9]{1,2})-[A-Za-z]+(-[A-Za-z0-9]+){0,4}$')
+SEAT_PCI_RE = re.compile(r'^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$')
+SEAT_SINK_RE = re.compile(r'^[A-Za-z0-9._:+-]{1,200}$')
+
+
+class SeatsError(Exception):
+    pass
+
+
+def seats_run(cmd, input=None):
+    """Commands for the seats section (tests replace it). Returns (code, output)."""
+    try:
+        r = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=120)
+        return r.returncode, (r.stdout + r.stderr).strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, str(e)
+
+
+def seats_must(cmd, what, input=None):
+    code, out = seats_run(cmd, input)
+    if code != 0:
+        raise SeatsError('%s (%s)' % (what, (out.splitlines() or [' '.join(cmd) + ' failed'])[-1][:200]))
+    return out
+
+
+def seats_read(path, default=''):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def seats_load():
+    try:
+        with open(SEATS_CONFIG) as f:
+            c = json.load(f)
+        return c if isinstance(c, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def seats_atomic_write(path, text, mode=0o644):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.hearth-tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def seats_existing_users():
+    names = {}
+    for line in seats_read(SEATS_PASSWD_FILE).splitlines():
+        f = line.split(':')
+        if len(f) >= 7:
+            names[f[0]] = f
+    return names
+
+
+def seats_existing_groups():
+    return {line.split(':')[0] for line in seats_read(SEATS_GROUP_FILE).splitlines() if ':' in line}
+
+
+def seats_card_pci(card):
+    m = re.findall(r'/([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7])(?=/|$)',
+                   os.path.realpath(os.path.join(SEATS_SYS, 'class/drm', card, 'device')))
+    return m[-1] if m else None
+
+
+def seats_gpu_audio(gpu_pci):
+    """The sound functions on the same card as the GPU (its HDMI/DisplayPort sound), as PCI addresses."""
+    slot = gpu_pci.rsplit('.', 1)[0]
+    out = []
+    import glob
+    for c in sorted(glob.glob(os.path.join(SEATS_SYS, 'class/sound/card[0-9]*'))):
+        m = re.findall(r'/([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7])(?=/|$)', os.path.realpath(os.path.join(c, 'device')))
+        if m and m[-1].rsplit('.', 1)[0] == slot and m[-1] != gpu_pci and m[-1] not in out:
+            out.append(m[-1])
+    return out
+
+
+def seats_validate(req, main_user):
+    """The request, checked strictly (this runs as root for anyone in wheel at the device) and filled in from the
+    system itself (the graphics card of each screen, its Vulkan id and sound), never from the request."""
+    if not isinstance(req, dict):
+        raise SeatsError('expected a JSON object')
+    mode = req.get('mode')
+    if mode not in ('gpu', 'nested'):
+        raise SeatsError('mode must be "gpu" or "nested"')
+    seats = req.get('seats')
+    if not isinstance(seats, list) or not 2 <= len(seats) <= 4:
+        raise SeatsError('choose 2 to 4 players')
+    if not all(isinstance(s, dict) and isinstance(s.get('seat'), int) and not isinstance(s.get('seat'), bool) for s in seats) \
+            or sorted(s['seat'] for s in seats) != list(range(1, len(seats) + 1)):
+        raise SeatsError('players must be numbered 1 to %d' % len(seats))
+    out, outputs, gpus, pads_seen = [], set(), set(), set()
+    for s in sorted(seats, key=lambda s: s['seat']):
+        n = s['seat']
+        user = s.get('user')
+        if n == 1:
+            if user != main_user:
+                raise SeatsError('player 1 must be you (%s)' % main_user)
+        elif not isinstance(user, str) or not SEAT_PLAYER_RE.match(user) or user != 'hearth-p%d' % n:
+            raise SeatsError('player %d\'s account must be called hearth-p%d' % (n, n))
+        output = s.get('output')
+        m = SEAT_OUTPUT_RE.match(output) if isinstance(output, str) else None
+        if not m or not os.path.isdir(os.path.join(SEATS_SYS, 'class/drm', output)):
+            raise SeatsError('player %d\'s screen (%s) isn\'t there' % (n, output))
+        if output in outputs:
+            raise SeatsError('two players can\'t share one screen')
+        outputs.add(output)
+        card = m.group(1)
+        gpu = seats_card_pci(card)
+        if not gpu or not SEAT_PCI_RE.match(gpu):
+            raise SeatsError('couldn\'t find the graphics card for %s' % output)
+        entry = {'seat': n, 'user': user, 'output': output, 'card': card, 'gpu': gpu,
+                 'vk_device': '%s:%s' % (seats_read(os.path.join(SEATS_SYS, 'class/drm', card, 'device/vendor')).replace('0x', ''),
+                                         seats_read(os.path.join(SEATS_SYS, 'class/drm', card, 'device/device')).replace('0x', '')),
+                 'size': (seats_read(os.path.join(SEATS_SYS, 'class/drm', output, 'modes')).splitlines() or [''])[0].strip() or None,
+                 'pads': [], 'audio': None, 'audio_pci': []}
+        if not re.fullmatch(r'[0-9a-f]{4}:[0-9a-f]{4}', entry['vk_device']):
+            entry['vk_device'] = None
+        if entry['size'] and not re.fullmatch(r'\d{2,5}x\d{2,5}', entry['size']):
+            entry['size'] = None
+        if mode == 'gpu':
+            if gpu in gpus:
+                raise SeatsError('with a graphics card per player, each player needs a different card')
+            gpus.add(gpu)
+            entry['audio_pci'] = seats_gpu_audio(gpu)
+        pads = s.get('pads') or []
+        if not isinstance(pads, list) or len(pads) > 16:
+            raise SeatsError('pads must be a list')
+        for p in pads:
+            if not isinstance(p, str) or not SEAT_PAD_RE.match(p):
+                raise SeatsError('%r isn\'t a controller Hearth knows how to recognise' % (p,))
+            if p in pads_seen:
+                raise SeatsError('a controller can only belong to one player')
+            pads_seen.add(p)
+            entry['pads'].append(p)
+        audio = s.get('audio')
+        if audio is not None:
+            if not isinstance(audio, str) or not SEAT_SINK_RE.match(audio):
+                raise SeatsError('player %d\'s sound output name isn\'t valid' % n)
+            entry['audio'] = audio
+        out.append(entry)
+    return {'version': 1, 'mode': mode, 'main_user': main_user, 'seats': out, 'start': bool(req.get('start'))}
+
+
+def seats_rules(config):
+    """udev rules giving each extra player's devices to that player only: out of logind's seats (so no session
+    gets them through "uaccess", and no new seat or login screen appears) and an ACL for the player's account."""
+    lines = ['# Hearth multi-seat: written by hearth-admin seats-setup, removed by seats-remove. Don\'t edit.',
+             '# Runs after 71-seat.rules (seat tags) and before 73-seat-late.rules (uaccess ACLs).',
+             'ACTION=="remove", GOTO="hearth_seats_end"']
+    pads = [p for s in config['seats'] if s['seat'] != 1 for p in s.get('pads', [])]
+    if any(p.startswith('uniq:') for p in pads):
+        lines.append('SUBSYSTEM=="hidraw", IMPORT{parent}="HID_UNIQ"')
+    for s in config['seats']:
+        if s['seat'] == 1:
+            continue
+        user = s['user']
+        if not SEAT_PLAYER_RE.match(user):
+            raise SeatsError('bad account name')
+        give = 'ENV{ID_SEAT}="seat-%s", ENV{HEARTH_SEAT_USER}="%s", TAG-="seat", TAG-="master-of-seat", TAG-="uaccess"' % (user, user)
+        lines.append('# player %d (%s)' % (s['seat'], user))
+        for p in s.get('pads', []):
+            if not SEAT_PAD_RE.match(p):
+                raise SeatsError('bad controller id')
+            kind, val = p.split(':', 1)
+            if kind == 'usb':
+                lines.append('SUBSYSTEMS=="usb", KERNELS=="%s", SUBSYSTEM=="input|hidraw", %s' % (val, give))
+            else:
+                lines.append('SUBSYSTEM=="input", ATTRS{uniq}=="%s", %s' % (val, give))
+                lines.append('SUBSYSTEM=="hidraw", ENV{HID_UNIQ}=="%s", %s' % (val, give))
+        if config['mode'] == 'gpu':
+            if not SEAT_PCI_RE.match(s['gpu']):
+                raise SeatsError('bad graphics card address')
+            lines.append('SUBSYSTEM=="drm", KERNEL=="card[0-9]*", KERNELS=="%s", %s' % (s['gpu'], give))
+            for a in s.get('audio_pci', []):
+                if not SEAT_PCI_RE.match(a):
+                    raise SeatsError('bad sound card address')
+                lines.append('SUBSYSTEM=="sound", KERNELS=="%s", %s' % (a, give))
+        lines.append('ENV{HEARTH_SEAT_USER}=="%s", ENV{DEVNAME}=="?*", GROUP:="root", MODE:="0660", '
+                     'RUN+="/usr/bin/setfacl -m u:%s:rw $devnode"' % (user, user))
+    lines.append('LABEL="hearth_seats_end"')
+    return '\n'.join(lines) + '\n'
+
+
+def seats_env(config, s):
+    lines = ['# Hearth multi-seat: player %d (written by hearth-admin)' % s['seat'],
+             'HEARTH_SEAT_MODE=%s' % config['mode'],
+             'HEARTH_SEAT_OUTPUT=%s' % s['output'].split('-', 1)[1],
+             'HEARTH_SEAT_HOST_USER=%s' % config['main_user']]
+    if config['mode'] == 'gpu':
+        lines.append('HEARTH_SEAT_GPU=%s' % s['gpu'])
+        if s.get('vk_device'):
+            lines.append('HEARTH_SEAT_VK_DEVICE=%s' % s['vk_device'])
+    elif s.get('size'):
+        lines.append('HEARTH_SEAT_SIZE=%s' % s['size'])
+    return '\n'.join(lines) + '\n'
+
+
+def seats_tmpfiles(config):
+    main = config['main_user']
+    if not re.fullmatch(r'[a-z_][a-z0-9_.-]{0,31}', main):
+        raise SeatsError('unusual account name for player 1')
+    lines = ['# Hearth multi-seat (written by hearth-admin): where player 1\'s Game Mode opens the other players\' screens',
+             'd %s 0755 %s %s -' % (SEATS_RUN, main, main)]
+    for s in config['seats']:
+        if s['seat'] != 1:
+            lines.append('d %s/%s 2750 %s %s -' % (SEATS_RUN, s['user'], main, s['user']))
+    return '\n'.join(lines) + '\n'
+
+
+def seats_unit(config, s):
+    return 'hearth-seat@%s.%s' % (s['user'], 'path' if config['mode'] == 'nested' else 'service')
+
+
+class SeatsJournal:
+    """What seats-setup has done so far, to undo it if a later step fails."""
+
+    def __init__(self):
+        self.steps = []
+
+    def write(self, path, text, mode=0o644):
+        before = None
+        if os.path.exists(path):
+            with open(path) as f:
+                before = f.read()
+        seats_atomic_write(path, text, mode)
+        self.steps.append(('file', path, before))
+
+    def user(self, name):
+        self.steps.append(('user', name, None))
+
+    def unit(self, name):
+        self.steps.append(('unit', name, None))
+
+    def rollback(self):
+        for kind, what, before in reversed(self.steps):
+            try:
+                if kind == 'file':
+                    if before is None:
+                        os.remove(what)
+                    else:
+                        seats_atomic_write(what, before)
+                elif kind == 'user':
+                    seats_run(['userdel', '-r', what])
+                elif kind == 'unit':
+                    seats_run(['systemctl', 'disable', '--now', what])
+            except OSError:
+                pass
+        seats_run(['udevadm', 'control', '--reload'])
+        seats_run(['systemctl', 'daemon-reload'])
+
+
+def seats_pad_nodes(pad):
+    """(sysfs path, /dev node) of a controller's input and hidraw devices, found right now."""
+    import glob
+    kind, val = pad.split(':', 1)
+    found = []
+    for cls, pattern in (('input', 'event[0-9]*'), ('input', 'js[0-9]*'), ('hidraw', 'hidraw[0-9]*')):
+        for p in sorted(glob.glob(os.path.join(SEATS_SYS, 'class', cls, pattern))):
+            real = os.path.realpath(p)
+            if '/devices/virtual/' in real:
+                continue
+            if kind == 'usb':
+                hit = re.search(r'/%s(\.[0-9]+)*/' % re.escape(val), real) is not None
+            elif cls == 'input':
+                hit = seats_read(os.path.join(real, '..', 'uniq')) == val
+            else:
+                ue = seats_read(os.path.join(real, '..', '..', 'uevent'))
+                hit = ('HID_UNIQ=' + val) in ue.splitlines()
+            if hit:
+                found.append((real, os.path.join(SEATS_DEV, 'input' if cls == 'input' else '', os.path.basename(p)).replace('//', '/')))
+    return found
+
+
+def seats_apply_pads(pads, reconnect=True):
+    """After the rules change: clear the old ACLs, have udev apply the new ones, and reconnect the controllers so
+    games that already had them open let go (they can only be taken away at open time)."""
+    seats_run(['udevadm', 'control', '--reload'])
+    for pad in pads:
+        nodes = seats_pad_nodes(pad)
+        for _, node in nodes:
+            seats_run(['setfacl', '-b', node])
+        if nodes:
+            seats_run(['udevadm', 'trigger', '--action=change'] + [sp for sp, _ in nodes])
+        if not reconnect or not nodes:
+            continue
+        kind, val = pad.split(':', 1)
+        auth = os.path.join(SEATS_SYS, 'bus/usb/devices', val, 'authorized')
+        if kind == 'usb' and os.path.exists(auth):
+            try:
+                write_value(auth, 0)
+                time.sleep(0.5)
+                write_value(auth, 1)
+            except OSError:
+                pass
+        else:
+            sps = [sp for sp, _ in nodes]
+            seats_run(['udevadm', 'trigger', '--action=remove'] + sps)
+            seats_run(['udevadm', 'settle', '--timeout=5'])
+            seats_run(['udevadm', 'trigger', '--action=add'] + sps)
+
+
+def seats_remove_impl(config, delete_users, quiet=False):
+    """Undo everything (also what an older or half-finished set-up left). Best effort: never stops half-way."""
+    import glob
+    import shutil
+    config = config or {}
+    players = sorted({s.get('user') for s in config.get('seats', []) if SEAT_PLAYER_RE.match(str(s.get('user')))} |
+                     {u for u in seats_existing_users() if SEAT_PLAYER_RE.match(u)})
+    units = set()
+    for wants in glob.glob(os.path.join(SEATS_SYSTEMD_ETC, '*.wants', 'hearth-seat@*')):
+        units.add(os.path.basename(wants))
+    for u in players:
+        units.update({'hearth-seat@%s.service' % u, 'hearth-seat@%s.path' % u})
+    if not quiet:
+        progress(10, 'Stopping the other players\' screens')
+    for u in sorted(units):
+        if re.fullmatch(r'hearth-seat@hearth-p[2-4]\.(service|path)', u):
+            seats_run(['systemctl', 'disable', '--now', u])
+    old_pads = [p for s in config.get('seats', []) for p in s.get('pads', []) if SEAT_PAD_RE.match(str(p))]
+    if not quiet:
+        progress(35, 'Giving the controllers back')
+    for path in [SEATS_RULES, SEATS_TMPFILES] + glob.glob(os.path.join(SEATS_ENV_DIR, 'hearth-p*.env')):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    seats_apply_pads(old_pads, reconnect=not quiet)
+    for u in players:
+        for node in glob.glob(os.path.join(SEATS_DEV, 'input', '*')) + glob.glob(os.path.join(SEATS_DEV, 'hidraw*')) + \
+                glob.glob(os.path.join(SEATS_DEV, 'snd', '*')) + glob.glob(os.path.join(SEATS_DEV, 'dri', 'card*')):
+            seats_run(['setfacl', '-x', 'u:' + u, node])
+    shutil.rmtree(SEATS_RUN, ignore_errors=True)
+    seats_run(['systemctl', 'daemon-reload'])
+    removed, kept = [], []
+    created = [u for u in config.get('created_users', []) if SEAT_PLAYER_RE.match(str(u))]
+    if delete_users:
+        if not quiet:
+            progress(60, 'Removing the extra players\' accounts')
+        for u in created:
+            seats_run(['loginctl', 'terminate-user', u])
+            code, _ = seats_run(['userdel', '-r', u])
+            (removed if code == 0 else kept).append(u)
+    kept += [u for u in players if u not in removed and u not in kept]
+    if not kept:
+        try:
+            os.remove(SEATS_SDDM)
+        except OSError:
+            pass
+    if not quiet:
+        try:
+            os.remove(SEATS_CONFIG)
+        except OSError:
+            pass
+    return {'removed_users': removed, 'kept_users': kept, 'restart': config.get('mode') == 'gpu'}
+
+
+def seats_setup():
+    me = caller().pw_name
+    try:
+        req = json.loads(sys.stdin.read() or 'null')
+    except ValueError:
+        fail('expected the layout as JSON on stdin')
+    try:
+        config = seats_validate(req, me)
+    except SeatsError as e:
+        fail(str(e))
+    previous = seats_load()
+    created = list((previous or {}).get('created_users', []))
+    if previous:
+        progress(5, 'Replacing the previous set-up')
+        seats_remove_impl(previous, delete_users=False, quiet=True)
+    j = SeatsJournal()
+    try:
+        progress(15, 'Creating the players\' accounts')
+        users = seats_existing_users()
+        groups = [g for g in SEATS_PLAYER_GROUPS if g in seats_existing_groups()]
+        base = '/var/home' if os.path.isdir('/var/home') else '/home'
+        for s in config['seats'][1:]:
+            u = s['user']
+            if u in users:
+                continue
+            cmd = ['useradd', '--create-home', '--home-dir', os.path.join(base, u), '--comment', 'Hearth Player %d' % s['seat'],
+                   '--shell', '/bin/bash', '--user-group']
+            if groups:
+                cmd += ['--groups', ','.join(groups)]
+            seats_must(cmd + [u], 'couldn\'t create the account for player %d' % s['seat'])
+            j.user(u)
+            created.append(u)
+        progress(35, 'Saving the set-up')
+        for s in config['seats'][1:]:
+            j.write(os.path.join(SEATS_ENV_DIR, s['user'] + '.env'), seats_env(config, s))
+        j.write(SEATS_TMPFILES, seats_tmpfiles(config))
+        # The extra accounts aren't for signing in at the login screen.
+        hidden = sorted({s['user'] for s in config['seats'][1:]} | {u for u in seats_existing_users() if SEAT_PLAYER_RE.match(u)})
+        j.write(SEATS_SDDM, '# Hearth multi-seat: the extra players\' accounts\n[Users]\nHideUsers=%s\n' % ','.join(hidden))
+        progress(50, 'Giving each player their controllers')
+        j.write(SEATS_RULES, seats_rules(config))
+        seats_apply_pads([p for s in config['seats'][1:] for p in s['pads']])
+        progress(70, 'Preparing the screens')
+        seats_must(['systemd-tmpfiles', '--create', SEATS_TMPFILES], 'couldn\'t prepare the players\' screen folders')
+        seats_must(['systemctl', 'daemon-reload'], 'couldn\'t reload systemd')
+        progress(80, 'Turning it on' if config['start'] else 'Setting it up for the next start')
+        for s in config['seats'][1:]:
+            unit = seats_unit(config, s)
+            seats_must(['systemctl', 'enable'] + (['--now'] if config['start'] else []) + [unit],
+                       'couldn\'t turn on player %d\'s session' % s['seat'])
+            j.unit(unit)
+        progress(95, 'Finishing')
+        saved = {k: config[k] for k in ('version', 'mode', 'main_user', 'seats')}
+        saved.update(enabled=config['start'], created_users=sorted(set(created)),
+                     files=[SEATS_RULES, SEATS_TMPFILES, SEATS_SDDM] + [os.path.join(SEATS_ENV_DIR, s['user'] + '.env') for s in config['seats'][1:]],
+                     units=[seats_unit(config, s) for s in config['seats'][1:]])
+        seats_atomic_write(SEATS_CONFIG, json.dumps(saved, indent=1) + '\n')
+    except (SeatsError, OSError) as e:
+        progress(100, 'Undoing the changes')
+        j.rollback()
+        try:
+            os.remove(SEATS_CONFIG)
+        except OSError:
+            pass
+        fail('multi-seat couldn\'t be set up: %s. %s' % (e, 'The earlier multi-seat set-up was turned off; player 1 '
+             'works as normal.' if previous else 'Nothing was changed.'))
+    progress(100, 'Done')
+    print(json.dumps({'ok': True, 'mode': config['mode'], 'seats': saved['seats'], 'enabled': saved['enabled'],
+                      'created_users': saved['created_users'], 'restart': config['mode'] == 'gpu'}))
+
+
+def seats_remove(delete_users):
+    caller()
+    r = seats_remove_impl(seats_load(), delete_users)
+    progress(100, 'Back to one player')
+    print(json.dumps(dict(r, ok=True)))
+
+
+def seats_acl():
+    caller()
+    config = seats_load()
+    if not config:
+        fail('multi-seat isn\'t set up')
+    try:
+        req = json.loads(sys.stdin.read() or 'null')
+        pads = req['pads']
+        if not isinstance(pads, dict) or len(pads) > 32:
+            raise ValueError
+    except (ValueError, KeyError, TypeError):
+        fail('expected {"pads": {"<controller>": <player>, ...}}')
+    numbers = {s['seat'] for s in config['seats']}
+    for p, n in pads.items():
+        if not SEAT_PAD_RE.match(p):
+            fail('%r isn\'t a controller Hearth knows how to recognise' % p)
+        if not isinstance(n, int) or isinstance(n, bool) or n not in numbers:
+            fail('there\'s no player %r' % (n,))
+    before = {p: s['seat'] for s in config['seats'] for p in s.get('pads', [])}
+    for s in config['seats']:
+        s['pads'] = sorted(p for p, n in pads.items() if n == s['seat'])
+    old_rules = seats_read(SEATS_RULES, None)
+    try:
+        seats_atomic_write(SEATS_RULES, seats_rules(config))
+    except (SeatsError, OSError) as e:
+        if old_rules is not None:
+            seats_atomic_write(SEATS_RULES, old_rules + '\n')
+        fail('couldn\'t move the controller: %s' % e)
+    seats_atomic_write(SEATS_CONFIG, json.dumps(config, indent=1) + '\n')
+    changed = sorted(p for p in set(before) | set(pads) if before.get(p, 1) != pads.get(p, 1))
+    seats_apply_pads(changed)
+    print(json.dumps({'ok': True, 'pads': {p: pads.get(p, 1) for p in sorted(set(before) | set(pads))}, 'changed': changed}))
+
+
+def seats_start_stop(on):
+    caller()
+    config = seats_load()
+    if not config:
+        fail('multi-seat isn\'t set up')
+    problems = []
+    for s in config['seats'][1:]:
+        unit = seats_unit(config, s)
+        if not re.fullmatch(r'hearth-seat@hearth-p[2-4]\.(service|path)', unit):
+            continue
+        code, out = seats_run(['systemctl', 'enable' if on else 'disable', '--now', unit])
+        if not on:
+            seats_run(['systemctl', 'stop', 'hearth-seat@%s.service' % s['user']])
+        if code != 0:
+            problems.append('player %d: %s' % (s['seat'], (out.splitlines() or ['failed'])[-1][:200]))
+    config['enabled'] = on
+    seats_atomic_write(SEATS_CONFIG, json.dumps(config, indent=1) + '\n')
+    if problems and on:
+        fail('some players couldn\'t start (%s)' % '; '.join(problems))
+    print(json.dumps({'ok': True, 'enabled': on, 'mode': config['mode']}))
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
     if cmd == 'tdp-info':
@@ -569,6 +1091,14 @@ def main(argv):
         tdp(argv[2])
     elif cmd == 'hibernate-setup':
         hibernate_setup()
+    elif cmd == 'seats-setup':
+        seats_setup()
+    elif cmd == 'seats-remove' and len(argv) in (2, 3) and argv[2:] in ([], ['--delete-users']):
+        seats_remove(argv[2:] == ['--delete-users'])
+    elif cmd == 'seats-acl':
+        seats_acl()
+    elif cmd in ('seats-start', 'seats-stop'):
+        seats_start_stop(cmd == 'seats-start')
     elif cmd in ('import-scan', 'import-run', 'import-unmount', 'takeover-plan', 'takeover-run'):
         # Bringing games and files over from other drives, and removing the old system afterwards: their own
         # scripts, run as root like the rest.
@@ -576,7 +1106,7 @@ def main(argv):
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
         os.execv(sys.executable, [sys.executable, helper, sub])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop')
 
 
 if __name__ == '__main__':
