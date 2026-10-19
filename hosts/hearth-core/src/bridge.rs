@@ -279,7 +279,19 @@ impl Bridge {
             "game.installFirst" => Ok(json!({"ok": self.library.install_first(&req("id")?)})),
             "downloads.clearRecent" => { self.library.clear_recent(); Ok(json!({"ok": true})) }
             "steam.downloads" => { let _ = std::process::Command::new("steam").arg("steam://open/downloads").spawn(); Ok(json!({"ok": true})) }
-            "game.uninstall" => { self.library.uninstall(&req("id")?)?; Ok(self.library.get(false)) }
+            "game.uninstall" => {
+                let id = req("id")?;
+                // Steam games: Steam deletes its own files (it asks to confirm in its window, which comes in front).
+                if let Some(app) = id.strip_prefix("steam:") {
+                    if self.library.running_id().as_deref() == Some(id.as_str()) { return Err("Exit the game first.".into()); }
+                    if app.is_empty() || !app.chars().all(|c| c.is_ascii_digit()) { return Err("That isn't a Steam game.".into()); }
+                    let _ = std::process::Command::new("steam").arg(format!("steam://uninstall/{app}")).spawn();
+                    (self.host)("showSteam", &Value::Null);
+                    return Ok(json!({"steam": true}));
+                }
+                self.library.uninstall(&id)?;
+                Ok(self.library.get(false))
+            }
             // Library › Stores
             "accounts.status" => Ok(self.accounts_status()),
             "accounts.signIn" => {

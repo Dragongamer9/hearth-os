@@ -3269,6 +3269,7 @@ function act(el){
     case 'gsProton': return openSheet({title:'Proton version', sub:'For '+(G(GSET.id)?.title||'this game'), items:GSET.s.protonChoices.map(c=>({label:c.label+(c.sub?' — '+c.sub:''), icon:GSET.s.options.proton===c.id?'check':'', run:()=>saveGameSet({proton:c.id},'gs-proton')}))});
     case 'gsText': { const key=d.key; const title=key==='args'?'Launch options':'Environment variables';
       return openPrompt({title, value:GSET.s.options[key]||''}).then(v=>{ if(v!=null) saveGameSet({[key]:v.trim()}, 'gs-'+key); }); }
+    case 'gsDelete': return uninstallGame(G(GSET.id||S.game));
     case 'gsReset': return openSheet({title:'Reset Proton files?', sub:'Deletes this game\'s Wine prefix. Proton sets it up again the next time you play. Cloud saves are fine; saves stored only in the prefix are lost.', items:[{label:'Reset', icon:'refresh', run:()=>call('game.resetPrefix',{id:GSET.id}).then(()=>toast('Done. The next start sets it up fresh.')).catch(e=>toast(e.message))}]});
     case 'appsRefresh': return loadApps();
     case 'appFocus': if(OVERLAY) overlayClose(); else closeAll();   // close first, so a slow or failed switch can't leave it open
@@ -3497,9 +3498,11 @@ function viewGameSettings(){
   const ingame = shead('While it plays')
     + `<button class="row" data-f data-k="gs-fps" data-act="gsFps"><span class="ricon">${I.perf||I.gear}</span><div class="rt"><b>Frame-rate cap</b><small>Smoother and cooler: caps this game, then goes back to your usual limit</small></div><div class="rv">${o.fpsLimit?o.fpsLimit+' FPS':'Usual'} ›</div></button>`
     + `<button class="row" data-f data-k="gs-tdp" data-act="gsTdp"><span class="ricon">${I.power}</span><div class="rt"><b>Power limit</b><small>More watts for a demanding game, fewer for battery life</small></div><div class="rv">${o.tdp?o.tdp+' W':'Usual'} ›</div></button>`;
-  if(r.kind==='steam') return h+ingame+note(`Steam starts ${esc(g.title)}, so it uses Steam's own settings: in Steam, open the game's Properties to pick a Proton version or add launch options.`)+'</div>';
-  if(r.kind==='emu') return h+ingame+note(`RetroArch plays ${esc(g.title)}. Its own settings (shaders, controls, save states) are in RetroArch's menu: press the left stick and right stick in together while playing.`)+'</div>';
-  if(r.kind==='external') return h+ingame+note(`Heroic starts ${esc(g.title)}, so its settings are in Heroic. Games ${APP} installs itself have their settings here.`)+'</div>';
+  // Deleting the game: last on the page, for every game Hearth (or Steam) can delete.
+  const del = canDelete(g) && !isActive(g) ? shead('Storage') + `<button class="row" data-f data-k="gs-delete" data-act="gsDelete"><span class="ricon">${I.trash}</span><div class="rt"><b>Delete game</b><small>${g.size?`Frees ${esc(typeof g.size==='number'?gbs(g.size):g.size)} · `:''}${g.src==='steam'?'Steam asks to confirm':'You can install it again from your library'}</small></div></button>` : '';
+  if(r.kind==='steam') return h+ingame+del+'</div>'+note(`Steam starts ${esc(g.title)}, so it uses Steam's own settings: in Steam, open the game's Properties to pick a Proton version or add launch options.`);
+  if(r.kind==='emu') return h+ingame+'</div>'+note(`RetroArch plays ${esc(g.title)}. Its own settings (shaders, controls, save states) are in RetroArch's menu: press the left stick and right stick in together while playing.`);
+  if(r.kind==='external') return h+ingame+'</div>'+note(`Heroic starts ${esc(g.title)}, so its settings and Uninstall are in Heroic. Games ${APP} installs itself have their settings here.`);
   if(r.kind==='proton'){
     const cur=r.protonChoices.find(c=>c.id===o.proton) || {label:o.proton?o.proton.split('/').pop():'Default'};
     h += shead('Compatibility')
@@ -3514,6 +3517,7 @@ function viewGameSettings(){
   h += shead('Performance')
     + sw('mangohud','Performance overlay (MangoHud)','Shows FPS, CPU and GPU in the corner of the game')
     + (r.gamemode ? sw('gamemode','GameMode','Asks the system for full performance while the game runs') : '');
+  h += del;
   if(r.canResetPrefix) h += shead('Troubleshooting')
     + `<button class="row" data-f data-k="gs-reset" data-act="gsReset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset Proton files</b><small>Sets up this game's Wine prefix from scratch next time. Fixes broken setups; saves that only live there are lost.</small></div></button>`;
   return h+`</div>`+note('Changes apply the next time you start the game.');
@@ -3527,7 +3531,7 @@ function gameOptions(g){
   items.push(g.hidden ? {label:'Show in library',icon:'lib',run:()=>setHidden(g,false)} : {label:'Hide from library',icon:'x',run:()=>setHidden(g,true)});
   if(g.canRemove) items.push({label:'Remove from '+APP+'',icon:'trash',run:()=>removeGame(g)});
   if(isActive(g) && g.installKind==='nimbus') items.unshift({label:'Cancel download',icon:'x',run:()=>cancelInstall(g)});
-  if(g.inst && g.canUninstall && !isActive(g)) items.push({label:'Uninstall…',icon:'trash',run:()=>uninstallGame(g)});
+  if(g.inst && canDelete(g) && !isActive(g)) items.push({label:'Uninstall…',icon:'trash',run:()=>uninstallGame(g)});
   openSheet({title:g.title, sub:SOURCES[g.src], items});
 }
 function downloadOptions(g){
@@ -3544,13 +3548,18 @@ async function dlCall(method, id, focusKey){
 async function cancelInstall(g){
   try{ await call('game.cancelInstall',{id:g.id}); }catch(e){ toast(e.message); }
 }
+// Games Hearth can delete: the ones it installed (Epic, GOG), and Steam's (Steam does it, after asking).
+const canDelete = g => !!g && g.inst && (g.canUninstall || g.src==='steam');
 function uninstallGame(g){
-  openSheet({title:`Uninstall ${g.title}?`, sub:`Deletes the game's files${g.path?' in '+g.path:''}. Your ${SOURCES[g.src]} account keeps the game, so you can install it again.`,
-    items:[{label:'Yes, uninstall',icon:'trash',run:async()=>{
-      toast(`Uninstalling ${g.title}…`);
-      try{ const lib=await call('game.uninstall',{id:g.id},15*60e3); applyLib(lib); toast(`Uninstalled ${g.title}`); render(null,true); }
+  if(S.running===g.id) return toast(`Exit ${g.title} first`);
+  const steam = g.src==='steam';
+  openSheet({title:`Delete ${g.title}?`, sub: steam ? `Steam deletes the game's files: its window comes up to confirm. Your Steam account keeps the game, so you can install it again. Cloud saves stay in Steam Cloud.`
+                                                 : `Deletes the game's files${g.path?' in '+g.path:''}. Your ${SOURCES[g.src]} account keeps the game, so you can install it again.`,
+    items:[{label:'Yes, delete it',icon:'trash',run:async()=>{
+      toast(steam ? 'Opening Steam to delete it…' : `Deleting ${g.title}…`);
+      try{ const r=await call('game.uninstall',{id:g.id},15*60e3); if(r&&r.steam){ setTimeout(()=>loadLibrary(true,true),20000); return; } applyLib(r); toast(`Deleted ${g.title}`); if(S.view==='gameset') goBack(); render(null,true); }
       catch(e){ toast(e.message); }
-    }}]});
+    }},{label:'Cancel',icon:'x',run:()=>{}}]});
 }
 async function setHidden(g,on){
   g.hidden=on; toast(on?`Hid ${g.title}. Find it under Library › Hidden.`:`${g.title} is back in your library`);
