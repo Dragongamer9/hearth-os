@@ -340,6 +340,8 @@ public sealed class ControllerBridge : IDisposable
             };
             if (name is not null) { if (target == Target.Overlay) OverlayButton?.Invoke(name); else UiButton?.Invoke(name); }
         }
+        // Menu again while Mantel's launcher (or another panel) is up closes it, like on Hearth OS.
+        else if (b == START && target == Target.NimbusDialog && DesktopMode() && MantelActive() && MantelPanelInFront()) DesktopMenu?.Invoke();
         else if (target is Target.Steam or Target.Web or Target.NimbusDialog) Press(b, target);
         // Desktop Mode, like Hearth's Mantel: Y opens the on-screen keyboard, B is Esc, LB/RB switch windows.
         else if (DesktopMode() && target == Target.Other)
