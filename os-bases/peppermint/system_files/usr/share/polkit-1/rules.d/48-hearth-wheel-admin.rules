@@ -1,0 +1,5 @@
+// Hearth on Peppermint/Debian: "wheel" (Hearth's administrators) counts as administrators for polkit too, as
+// Debian's "sudo" group does.
+polkit.addAdminRule(function (action, subject) {
+    return ["unix-group:wheel", "unix-group:sudo"];
+});
