@@ -34,12 +34,12 @@ apt-get update -y
 # libostree-1-1); holding them keeps trixie's older ostree from replacing the one bootc needs.
 dpkg -i /hearth-debs/*.deb
 apt-mark hold libostree-1-1 ostree ostree-boot
-ldconfig
-ostree --version
-bootc --version
 # The libraries the builder's programs (ostree, bootc, bootupd, Quickshell, RyzenAdj, HHD) link against.
 mapfile -t BUILDER_DEPS < <(grep -v -e '^$' -e '^libostree-1-1$' /usr/share/hearth/builder-runtime-deps.txt)
 "${APT[@]}" "${BUILDER_DEPS[@]}"
+ldconfig
+ostree --version
+bootc --version
 
 # ------------------------------------------------------------------ the system: kernel, firmware, boot pieces
 # dracut before the kernel, so the kernel's hooks use it (and not initramfs-tools). Until Hearth's own dracut
