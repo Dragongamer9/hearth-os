@@ -142,7 +142,7 @@ jobs:
         run: |
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
-          trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" -e "^Get:" -e "^Unpacking " -e "^Setting up " -e "^Selecting previously" -e "^Preparing to unpack" -e "^(Reading database" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
+          trap 'sleep 4; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" -e "^Get:" -e "^Unpacking " -e "^Setting up " -e "^Selecting previously" -e "^Preparing to unpack" -e "^(Reading database" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
           v="${{ needs.app.outputs.version }}"
           sudo podman build --pull=newer -f os-bases/ubuntu/Containerfile --build-arg NIMBUS_VERSION="$v" -t hearth-ubuntu:latest .
           # What build.sh couldn't find in the archive (optional packages): a warning, not a failure.

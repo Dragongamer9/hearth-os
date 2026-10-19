@@ -142,7 +142,9 @@ if [ "$NVIDIA" = "1" ]; then
   NV_N=$(apt-cache pkgnames linux-modules-nvidia- | sed -n "s/^linux-modules-nvidia-\([0-9][0-9]*\)-open-${KVER_RE}\$/\1/p" | sort -n | tail -1 || true)
   if [ -n "$NV_N" ]; then
     echo "Nvidia: driver branch $NV_N, Canonical's signed prebuilt module for $KVER"
-    "${APT[@]}" "linux-modules-nvidia-${NV_N}-open-${KVER}"
+    "${APT[@]}" "linux-modules-nvidia-${NV_N}-open-${KVER}" || {
+      echo "installing Nvidia's module failed; dpkg's log:"; tail -n 25 /var/log/apt/term.log 2>/dev/null || true
+      dpkg --audit || true; exit 1; }
   else
     NV_N=$(apt-cache pkgnames nvidia-dkms- | sed -n 's/^nvidia-dkms-\([0-9][0-9]*\)-open$/\1/p' | sort -n | tail -1 || true)
     [ -n "$NV_N" ] || { echo "no Nvidia open driver in the archive"; exit 1; }
