@@ -78,7 +78,7 @@ if ! out=$(/usr/bin/ostree --version 2>&1); then
   ldd /usr/bin/ostree 2>&1 | grep -E "not found|ostree" || true
   exit 1
 fi
-echo "$out" | head -3
+printf "%s\n" "$out" | sed -n 1,3p
 test -x /output/usr/lib/ostree/ostree-prepare-root || test -x /output/usr/libexec/ostree-prepare-root || \
   find /output -name 'ostree-prepare-root*' | grep -q .
 test -d /output/usr/lib/dracut/modules.d/98ostree
