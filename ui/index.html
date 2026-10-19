@@ -1194,6 +1194,22 @@ function pageSystem(){
   return h;
 }
 const LOGS = {busy:false, r:null};
+// ---------- Xbox PC games through Xodus Nexus (experimental, optional) ----------
+const hasFeat = f => (HOSTINFO.features||[]).includes(f);
+const XO = {s:null};
+function loadXodus(){ if(host && hasFeat('xodus')) call('xodus.status',{},30000).then(r=>{ XO.s=r; refreshUI(); }).catch(()=>{}); }
+function onXodus(d){ const was=XO.s&&XO.s.busy; XO.s=Object.assign(XO.s||{},d); if(was && !d.busy){ if(d.error) toast(d.error); else { toast('Xodus Nexus is ready: it\'s in your library'); loadLibrary(true,true); } } if(S.view==='settings'&&S.settingsTab==='sources') render(null,true); }
+function xodusRows(){
+  const x=XO.s; let h=shead('Xbox PC games · experimental');
+  if(!x) return h+note('Checking…');
+  if(x.busy) return h+`<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Getting Xodus Nexus…</b><small>${x.progress!=null?Math.round(x.progress*100)+'%':'Starting'}</small><div class="bar" style="margin-top:8px"><i style="width:${Math.round((x.progress||0)*100)}%"></i></div></div><span class="mini-spin"></span></div>`;
+  if(!x.installed) return h+`<button class="row" data-f data-k="xo-get" data-act="xodusGet"><span class="ricon">${I.dl}</span><div class="rt"><b>Add Xodus Nexus</b><small>Play Xbox PC and PC Game Pass games installed on this device. An independent, early launcher built on the Xodus project, not made by Microsoft or ${APP}: only a few games work so far.</small></div><div class="rv">＋</div></button>`
+    + note('After adding it, open <b>Xbox PC Games (Xodus Nexus)</b> from your library, sign in with your Microsoft account, and get its backend and runtime from its Settings. Sign-in and game downloads use Microsoft\'s servers through Xodus, which Microsoft doesn\'t support.');
+  h += `<div class="row"><span class="ricon">${I.lib}</span><div class="rt"><b>Xodus Nexus ${esc(x.version||'')}</b><small>In your library as Xbox PC Games (Xodus Nexus)</small></div></div>`;
+  if(x.update) h += `<button class="row" data-f data-k="xo-up" data-act="xodusGet"><span class="ricon">${I.refresh}</span><div class="rt"><b>Update to ${esc(x.update)}</b></div></button>`;
+  h += `<button class="row" data-f data-k="xo-rm" data-act="xodusRemove"><span class="ricon">${I.x}</span><div class="rt"><b>Remove Xodus Nexus</b><small>Takes it out of your library. Games it installed stay where Nexus put them.</small></div></button>`;
+  return h;
+}
 // ---------- Settings › Library sources › Emulators (Linux) ----------
 const EMU = {s:null, busy:false};
 function loadEmu(){ if(LINUX) call('emu.status').then(r=>{ EMU.s=r; refreshUI(); }).catch(()=>{}); }
@@ -2268,6 +2284,7 @@ function viewSettings(){
       +swRow('srcGog','GOG',(LINUX?'Your GOG account and games installed by '+APP+' or Heroic':'Your GOG account and games installed by '+APP+', GOG Galaxy or GOG installers')+n('gog'))
       +swRow('srcXbox',LINUX?'Xbox Cloud Gaming':'Xbox / Game Pass',(LINUX?'Stream Game Pass games (needs Game Pass Ultimate)':'PC games installed with the Xbox app, and games you\'ve played on Xbox')+(LINUX&&host?` · ${LIB.counts.xbox??0} cloud games`:n('xbox')))
       +(LINUX?swRow('srcEmu','Emulators','Retro games from your ROMs folder, played with RetroArch'+n('emu'))+emuRows():'')
+      +(LINUX&&hasFeat('xodus')?xodusRows():'')
       +`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`
       +`<button class="row" data-f data-k="s-addexe" data-act="addManual"><div class="rt"><b>Add a game manually</b><small>${LINUX?'A program, AppImage, .desktop file, or Windows .exe (runs with Proton)':'Any .exe or shortcut'}${n('manual')}</small></div><div class="rv">＋</div></button>`
       +`<button class="row" data-f data-k="s-rescan" data-act="rescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${LIB.loading?'Scanning…':'Rescan library'}</b><small>Picks up games you installed or removed</small></div></button>`;
@@ -2899,6 +2916,8 @@ function act(el){
     case 'pfPick': return pickProfileImage(d.kind);
     case 'addManual': return addManual();
     case 'rescan': return loadLibrary(true, true);
+    case 'xodusGet': return call('xodus.install',{},30000).then(r=>{ XO.s=r; render('xo-get',true); }).catch(e=>toast(e.message));
+    case 'xodusRemove': return call('xodus.remove',{},30000).then(r=>{ XO.s=r; toast('Xodus Nexus removed'); loadLibrary(true,true); render('xo-get',true); }).catch(e=>toast(e.message));
     case 'install': return installGame(G(d.id));
     case 'play': return launch(G(d.id));
     case 'quickres': return quickResume(d.id);
@@ -3854,6 +3873,7 @@ async function setSources(){
 function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
   if(name==='systemUpdate') return onSystemUpdate(data);
+  if(name==='xodus') return onXodus(data);
   if(name==='import') return onImport(data);
   if(name==='osInstall') return onOsInstall(data);
   if(name==='lock') return lockNow();
@@ -3948,7 +3968,7 @@ function onSettingsTab(t){
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); }
   if(t==='signin') loadLogin();
   if(t==='remote') loadRemote();
-  if(t==='sources') loadEmu();
+  if(t==='sources'){ loadEmu(); loadXodus(); }
   if(t==='appearance') loadDeskWall();
   if(t==='import') loadImport();
   if(t==='switch') loadSwitch();

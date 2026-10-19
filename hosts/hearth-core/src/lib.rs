@@ -18,6 +18,7 @@ pub mod http;
 pub mod importer;
 pub mod inputplumber;
 pub mod logs;
+pub mod xodus;
 pub mod library;
 pub mod owned;
 pub mod manual;
