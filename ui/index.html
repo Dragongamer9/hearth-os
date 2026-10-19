@@ -517,6 +517,45 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .osi-dl{display:flex;gap:18px;align-items:baseline;margin:0 0 22px;color:var(--dim);font-size:15px}.osi-dl b{font-size:22px;color:var(--text)}
 .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}.shot{display:flex;flex-direction:column;gap:6px;padding:0;background:none;border:0;color:var(--muted);text-align:left;border-radius:12px}.shot img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;background:var(--panel2)}.shot small{padding:0 4px}
 .shotview{display:flex;flex-direction:column;gap:12px;height:calc(100vh - 170px)}.shotview img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:12px;background:#000}.shotbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.shotbar .muted{flex:1}
+.xnote{background:var(--panel);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:var(--r);padding:12px 14px;margin:0 0 12px;color:var(--dim);font-size:14px;line-height:1.45}.xnote b{color:var(--warn);margin-right:6px}
+.xcard{display:flex;flex-direction:column;gap:6px}.xvote{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:var(--panel);font-weight:700;font-size:15px;align-self:flex-start}.xvote svg{width:16px;height:16px;fill:currentColor}.xvote span{font-weight:500;color:var(--dim);font-size:13px}.xvote.on{background:color-mix(in srgb,var(--accent) 22%,var(--panel));color:var(--accent)}
+.xk{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}.xd-title{font-size:clamp(26px,3.4vw,44px);font-weight:700;line-height:1.05}.xd-meta{color:var(--dim);font-size:15px;margin:6px 0 14px}
+.xnav{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.xnav .pill svg{width:18px;height:18px}
+.xc{border-radius:var(--r);flex:none}.xc .cover{width:100%;height:100%}
+.x-car{display:flex;flex-direction:column;align-items:center;gap:18px;padding-top:4vh}.xc-strip{display:flex;gap:18px;align-items:center;justify-content:safe center;overflow-x:auto;width:100%;padding:24px 20px;scrollbar-width:none;min-height:46vh}.xc-strip::-webkit-scrollbar{display:none}
+.xc-strip .xc{width:13vw;aspect-ratio:2/3;opacity:.6;transition:width .18s,opacity .18s}.xc-strip .xc.focus{width:20vw;opacity:1}.xc-info{text-align:center}.xc-info .sp-acts{justify-content:center}
+.x-rows .xr-hero{min-height:34vh;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:10px}
+.x-list{display:flex;gap:0;height:calc(100vh - 140px);margin:0 calc(-1*var(--gut))}.xl-col{width:min(400px,36vw);overflow-y:auto;padding:8px 14px;display:flex;flex-direction:column;gap:4px;background:var(--bg2);border-right:1px solid var(--line)}
+.xl-row{display:flex;align-items:center;gap:12px;padding:8px;border-radius:12px}.xl-row.focus{background:var(--panel3)}.xl-th{width:44px;height:60px;flex:none}.xl-th .cover{width:100%;height:100%}.xl-row .rt b{font-size:16px}.xl-row .rt small{color:var(--dim)}
+.xl-detail{flex:1;position:relative;overflow:hidden}.xl-bg{position:absolute!important;z-index:0}.xl-in{position:absolute;left:4vw;right:4vw;bottom:5vh;z-index:1}
+.x-wall{display:flex;flex-direction:column;gap:14px;padding-bottom:70px}.xw-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.xw-top .xnav{justify-content:flex-start}
+.xw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:12px}.xw-grid .xc{aspect-ratio:2/3}
+.xw-bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:16px;align-items:center;padding:14px var(--gut);background:var(--bg2);border-top:1px solid var(--line);z-index:5}.xw-bar span{color:var(--dim)}
+.x-focus{display:flex;flex-direction:column;align-items:center;gap:22px;padding-top:6vh}.xf-clock{font-size:clamp(70px,11vw,130px);font-weight:300;line-height:1}.xf-date{color:var(--dim);font-size:19px;margin-top:-10px}
+.xf-card{display:flex;align-items:center;gap:22px;padding:16px 22px 16px 16px;border-radius:20px;background:var(--panel)}.xf-th{width:84px;height:112px}.xf-th .cover{width:100%;height:100%}.xf-card .xd-meta{margin-bottom:0}
+.xf-btns{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}.xf-b{width:140px;height:96px;border-radius:18px;background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-weight:600}.xf-b svg{width:26px;height:26px}
+.x-wid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;grid-auto-rows:minmax(150px,auto)}.xw-big{grid-column:span 2;grid-row:span 2;position:relative;border-radius:18px;overflow:hidden;min-height:320px;text-align:left}
+.xw-big .art,.xw-big .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.xw-cap{position:absolute;left:0;right:0;bottom:0;padding:20px;background:linear-gradient(transparent,rgba(6,8,12,.92))}.xw-cap .xd-meta{margin-bottom:0}
+.xw-card{background:var(--panel);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:8px;text-align:left}.xw-line{font-size:14px}.xw-line .ing{color:#7ad15a}.xw-num{font-size:38px;font-weight:700}.xw-qr{display:flex;gap:8px}.xw-qt{width:54px;height:72px}.xw-qt .cover{width:100%;height:100%}
+.xw-strip{grid-column:1/-1;background:var(--panel);border-radius:18px;padding:16px}.xw-strip .shelf{margin-top:8px}
+.x-orbit{position:relative;height:calc(100vh - 150px)}.xo-ring{position:absolute;left:50%;top:50%;width:72vh;height:68vh;transform:translate(-50%,-50%);border:2px dashed var(--line);border-radius:50%}
+.xo-c{position:absolute;width:10vh;height:14vh}.xo-c.focus{transform:scale(1.15)}.xo-mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:30vh;text-align:center}.xo-mid .xd-title{font-size:24px}.xo-mid .sp-acts{justify-content:center}.x-orbit .xnav{position:absolute;right:0;bottom:0;flex-direction:column;align-items:flex-end}
+.x-spines{display:flex;flex-direction:column;gap:22px;padding-top:3vh}.xs-shelf{display:flex;align-items:flex-end;gap:6px;height:56vh;overflow-x:auto;padding:16px 10px 0;border-bottom:10px solid #3a2a1f;scrollbar-width:none}.xs-shelf::-webkit-scrollbar{display:none}
+.xs-sp{flex:none;width:48px;height:92%;border-radius:6px 6px 0 0;background:var(--panel2);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;transition:width .2s}.xs-sp:nth-child(3n){height:86%}.xs-sp:nth-child(4n+1){height:96%}
+.xs-t{writing-mode:vertical-rl;transform:rotate(180deg);font-weight:700;font-size:14px;white-space:nowrap;color:var(--dim)}.xs-cv{display:none;position:absolute;inset:0}.xs-cv .cover{width:100%;height:100%;border-radius:0}
+.xs-sp.focus{width:min(300px,24vw);height:100%}.xs-sp.focus .xs-cv{display:block}.xs-sp.focus .xs-t{display:none}
+.x-mag .xm-mast{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:18px}.xm-mast span{font-family:Georgia,'Times New Roman',serif;font-size:34px;font-weight:700}.xm-mast small{color:var(--dim)}
+.xm-grid{display:grid;grid-template-columns:2fr 1fr;gap:26px}.xm-art{position:relative;width:100%;aspect-ratio:16/8;border-radius:16px;overflow:hidden;margin-bottom:12px;display:block}.xm-art .art,.xm-art .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.xm-h{font-family:Georgia,'Times New Roman',serif;font-size:clamp(30px,3.6vw,46px);font-weight:700;line-height:1.05;margin-top:6px}.xm-side{display:flex;flex-direction:column;gap:12px}.xm-item{display:flex;gap:12px;align-items:center;text-align:left;padding:6px;border-radius:12px}
+.xm-th{width:96px;height:56px;flex:none}.xm-th .cover{width:100%;height:100%}.xm-item b{display:block;font-family:Georgia,'Times New Roman',serif;font-size:18px}.xm-item small{color:var(--dim)}
+.x-dock{position:relative;height:calc(100vh - 150px)}.xk-info{position:absolute;left:0;top:22vh;max-width:60%}.xk-dock{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:12px;padding:12px;border-radius:26px;background:rgba(18,24,33,.88);border:1px solid var(--line);align-items:center;max-width:100%;overflow-x:auto}
+.xk-ic{width:84px;height:84px;border-radius:20px;flex:none}.xk-ic .cover{border-radius:20px}.xk-dock i{width:2px;height:60px;background:var(--line);flex:none}.xk-u{background:var(--panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:600}.xk-u svg{width:24px;height:24px}
+.x-cols{display:flex;flex-direction:column;gap:16px}.xcl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}.xcl{background:var(--panel);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px;text-align:left}
+.xcl-stack{position:relative;height:170px}.xcl-c{position:absolute;top:10px;width:110px;height:150px}.xcl-c .cover{width:100%;height:100%}.xcl-c.s0{left:0;transform:rotate(-6deg)}.xcl-c.s1{left:62px;top:0;z-index:1}.xcl-c.s2{left:124px;transform:rotate(6deg)}.xcl-n{display:flex;justify-content:space-between;align-items:baseline}.xcl-n b{font-size:19px}.xcl-n small{color:var(--dim)}
+.x-jr{display:flex;flex-direction:column;gap:6px}.xj-line{height:2px;background:var(--line);margin:28px 0 -34px}.xj-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
+.xj-d{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}.xj-dot{width:14px;height:14px;border-radius:50%;background:var(--line);border:3px solid var(--bg)}.xj-d.today .xj-dot{background:var(--accent)}.xj-d small{color:var(--dim)}.xj-d.today>small:first-of-type{color:var(--accent)}
+.xj-bar{width:100%;aspect-ratio:2/3}.xj-bar .cover{width:100%;height:100%}.xj-none{width:100%;aspect-ratio:2/3;border-radius:var(--r);border:2px dashed var(--line)}.xj-d b{font-size:14px}
+.xj-now{display:flex;align-items:center;gap:16px;margin-top:20px;padding:16px 20px;border-radius:16px;background:var(--panel)}.xj-now .rt{flex:1}.xj-now small{color:var(--dim)}
 .logcode{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;background:var(--panel2);margin-bottom:6px}.logcode b{font-size:30px;letter-spacing:.12em;color:var(--accent);font-variant-numeric:tabular-nums}.logcode code{font-size:13px;word-break:break-all;color:var(--dim)}
 .frchips{margin:0 0 14px}.frplat{font-size:11px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:2px;background:var(--panel3);color:var(--dim)}.fp-steam{background:#1b2838;color:#66c0f4}.fp-xbox{background:#0e3a12;color:#7ad15a}.fp-epic{background:#2a2a2a;color:#ddd}.frjoin{color:var(--accent);font-weight:700}
 .frav{position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none;margin-right:12px}.frav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.frav i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#56606e;border:2px solid var(--bg)}.frow.on .frav i{background:#5aa9ff}.frow.ing .frav i{background:#7ad15a}.frow.ing small{color:#7ad15a}
@@ -950,11 +989,28 @@ const LAYOUTS = [
   {id:'tiles', name:'Tiles', desc:'A dashboard: your latest game as a big tile, recent games and shortcuts around it, tabs along the top.'},
   {id:'spotlight', name:'Spotlight', desc:'One row of games across the top. Whichever you pick fills the screen, with Play right there.'},
 ];
+const XLAYOUTS = [
+  {id:'x-carousel', name:'Hearthside carousel', desc:'Your games in a carousel, the one you pick big in the middle with Play under it.'},
+  {id:'x-rows', name:'Rows', desc:'Continue playing at the top, then rows of recent, installed and favorite games.'},
+  {id:'x-list', name:'List and detail', desc:'Your games as a list; the one you pick fills the rest of the screen.'},
+  {id:'x-wall', name:'Poster wall', desc:'Every game as a wall of covers, for big libraries.'},
+  {id:'x-focus', name:'Focus (TV)', desc:'A big clock, your last game and a few large buttons. Made for the couch.'},
+  {id:'x-widgets', name:'Widget board', desc:'Your last game plus friends, downloads, battery and Quick Resume at a glance.'},
+  {id:'x-orbit', name:'Orbit', desc:'Games in a ring around the one you picked.'},
+  {id:'x-spines', name:'Game case shelf', desc:'Games standing like cases on a shelf; the one you pick slides out.'},
+  {id:'x-magazine', name:'Magazine', desc:'A front page: one headline game and a column of what\'s new in your library.'},
+  {id:'x-dock', name:'Dock', desc:'Your game fills the screen, with a dock of games along the bottom.'},
+  {id:'x-collections', name:'Collections', desc:'Favorites, your collections, installed and unplayed games as cards.'},
+  {id:'x-journal', name:'Play journal', desc:'Your week of playing as a timeline, with today\'s game ready to resume.'},
+];
+const isX = id => XLAYOUTS.some(l=>l.id===id);
 const TEXT_SIZES = [['small','Small',0.9],['normal','Default',1],['large','Large',1.15],['xl','Extra large',1.3]];
 function applyLook(){
-  if(!LAYOUTS.some(l=>l.id===LOOK.layout)) LOOK.layout='shelf';
+  if(!LAYOUTS.some(l=>l.id===LOOK.layout) && !isX(LOOK.layout)) LOOK.layout='shelf';
   const b=document.body;
-  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id)); b.classList.add('L-'+LOOK.layout);
+  // Experimental layouts use Spotlight's frame (the menu along the top) plus their own class.
+  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id));
+  if(isX(LOOK.layout)){ b.classList.add('L-spotlight','X-'+LOOK.layout); } else b.classList.add('L-'+LOOK.layout);
   b.classList.toggle('reduce-motion', !!LOOK.reduceMotion);
   b.classList.toggle('no-battpct', !LOOK.battPct);
   b.style.zoom = (TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[2];
@@ -1142,6 +1198,137 @@ function updateSpot(id){
   $('#spName').textContent=g.title; $('#spDetail').innerHTML=spotDetail(g);
 }
 
+// ---------- Experimental home layouts (Settings › Appearance › Experimental) ----------
+// Beta: they may change or go away and don't get every update. Everyone can upvote the ones they like; the
+// counts come live from Hearth OS's server (the player counter's), one vote per device.
+
+const XV = {votes:null, mine:{}, timer:null};
+try{ XV.mine = JSON.parse(localStorage.getItem('hearth.xvotes')||'{}')||{}; }catch(e){}
+function loadVotes(){
+  if(!host && !LINUX) return;
+  fetch(COUNTER.url+'/v1/votes').then(r=>r.json()).then(v=>{ XV.votes=v.counts||{}; if(S.view==='settings'&&S.settingsTab==='appearance') render(null,true); }).catch(()=>{});
+}
+function watchVotes(on){ clearInterval(XV.timer); XV.timer=null; if(on){ loadVotes(); XV.timer=setInterval(()=>{ if(S.view==='settings'&&S.settingsTab==='appearance') loadVotes(); else watchVotes(false); },20000); } }
+function vote(id){
+  const up=!XV.mine[id]; XV.mine[id]=up; try{ localStorage.setItem('hearth.xvotes', JSON.stringify(XV.mine)); }catch(e){}
+  XV.votes=XV.votes||{}; XV.votes[id]=Math.max(0,(XV.votes[id]||0)+(up?1:-1));
+  render('xv-'+id,true); blip(up?760:420,.05);
+  fetch(COUNTER.url+'/v1/vote',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:counterId(),layout:id,up})})
+    .then(r=>r.json()).then(v=>{ if(v.counts){ XV.votes=v.counts; render('xv-'+id,true); } }).catch(()=>toast('Couldn\'t send your vote. Check the internet connection.'));
+}
+function xCards(){
+  return `<div class="xnote"><b>Experimental · beta</b> These layouts are early experiments. They may look rough, change or be removed, and they won't always get the fixes and updates the main layouts do. Upvote the ones you'd like to see finished: the counts are everyone's, live.</div>
+    <div class="layouts">${XLAYOUTS.map(l=>`<div class="xcard"><button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
+      <div class="lprev">${xPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>
+      <button class="xvote ${XV.mine[l.id]?'on':''}" data-f data-k="xv-${l.id}" data-act="xvote" data-v="${l.id}" aria-label="Upvote ${esc(l.name)}"><svg viewBox="0 0 24 24"><path d="M12 5l7 8h-4v6H9v-6H5z"/></svg>${XV.votes?(XV.votes[l.id]||0):'…'}<span>${XV.mine[l.id]?'Upvoted':'Upvote'}</span></button></div>`).join('')}</div>`;
+}
+function xPreview(id){
+  const r=(l,t,w,h,x='')=>`<i style="left:${l}%;top:${t}%;width:${w}%;height:${h}%;${x}"></i>`, A='background:var(--accent)', T='background:var(--text)';
+  const P={
+    'x-carousel': r(12,22,10,40)+r(26,16,12,50)+r(42,8,16,64,T)+r(62,16,12,50)+r(78,22,10,40)+r(40,80,20,8,A),
+    'x-rows': r(0,0,100,40,'background:var(--panel2)')+r(6,24,24,8,T)+[0,1,2,3,4].map(i=>r(6+i*18,50,16,16)).join('')+[0,1,2,3,4,5,6].map(i=>r(6+i*13,72,11,22)).join(''),
+    'x-list': [0,1,2,3,4,5].map(i=>r(4,8+i*14,30,10,i?'':A)).join('')+r(38,0,62,55,'background:var(--panel2)')+r(42,62,30,8,T)+r(42,76,14,9,A),
+    'x-wall': [...Array(27)].map((_,i)=>r(4+(i%9)*10.6,10+Math.floor(i/9)*28,9,25,i===10?A:'')).join(''),
+    'x-focus': r(35,18,30,20,T)+r(28,50,44,18,'background:var(--panel2)')+[0,1,2,3,4].map(i=>r(16+i*14,78,12,14)).join(''),
+    'x-widgets': r(4,8,46,56,T)+r(54,8,20,26)+r(77,8,20,26)+r(54,38,20,26)+r(77,38,20,26)+r(4,70,93,24),
+    'x-orbit': r(42,36,16,28,A)+[0,1,2,3,4,5,6,7].map(i=>{ const a=i/8*Math.PI*2; return r(46+Math.cos(a)*30,44+Math.sin(a)*36,8,12); }).join(''),
+    'x-spines': [...Array(14)].map((_,i)=>r(4+i*4.5+(i>6?18:0),20+(i%3)*4,4,60)).join('')+r(36,14,16,70,A),
+    'x-magazine': r(4,6,40,8,T)+r(4,20,60,44,'background:var(--panel2)')+r(4,70,56,10,T)+[0,1,2,3].map(i=>r(70,20+i*18,26,12)).join(''),
+    'x-dock': r(0,0,100,100,'background:var(--panel2)')+r(6,30,36,10,T)+r(6,46,14,8,A)+r(14,78,72,18,'background:var(--bg)'),
+    'x-collections': [0,1,2,3,4,5].map(i=>r(4+(i%3)*32,8+Math.floor(i/3)*46,29,40,i?'':'background:var(--panel2)')).join(''),
+    'x-journal': r(4,40,92,2)+[0,1,2,3,4,5,6].map(i=>r(6+i*13,48,10,[20,30,8,16,40,34,28][i],i===6?A:'')).join(''),
+  };
+  return P[id]||'';
+}
+
+const xOrder = V => spotGames(V);
+const xAct = g => S.running===g.id ? 'resume' : playable(g) ? 'play' : 'game';
+const xLabel = g => (S.running===g.id || isFrozen(g)) ? 'Resume' : playable(g) ? (g.cloud&&!g.inst?'Stream':'Play') : isActive(g) ? dlInfo(g).label : 'Install';
+const xMeta = g => [SOURCES[g.src], g.last?'Played '+ago(g.last).toLowerCase():'', g.hrs?hrs(g.hrs):''].filter(Boolean).join(' · ');
+const xBg = g => `<div class="sp-bg" id="xBg" data-id="${g?esc(g.id):''}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</div>`;
+const xPlay = (g,k='x-play') => `<button class="play" data-f data-k="${k}" data-act="${xAct(g)}" data-id="${esc(g.id)}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>${xLabel(g)}</button>`;
+const xNav = () => `<div class="xnav">${[['library','lib','Library'],['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="xn-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
+function xDetail(g){ return g ? `<div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div><div class="sp-acts">${xPlay(g)}<button class="sq" data-f data-k="x-more" data-act="game" data-id="${esc(g.id)}" aria-label="Game page">${I.info}</button></div>` : ''; }
+// The game you move to fills the detail and background (layouts that follow the selection).
+function xUpdate(id){
+  const g=G(id); if(!g) return;
+  const bg=$('#xBg'); if(bg && bg.dataset.id!==id){ bg.dataset.id=id; bg.innerHTML=`<div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}`; }
+  const d=$('#xDetail'); if(d && d.dataset.id!==id){ d.dataset.id=id; d.innerHTML=xDetail(g); }
+  const n=$('#xName'); if(n) n.textContent=g.title;
+  const m=$('#xMeta'); if(m) m.textContent=xMeta(g);
+}
+const xCover = (g,k,cls='',wide=false) => `<button class="xc ${cls}" data-f data-k="${k}" data-act="${xAct(g)}" data-id="${esc(g.id)}" data-xspot="${esc(g.id)}">${cover(g,{badge:false,wide})}</button>`;
+
+function homeX(V){
+  const L=xOrder(V), g=L[0], id=LOOK.layout;
+  if(id==='x-carousel') return xBg(g)+`<div class="x-car"><div class="xc-strip">${L.map(x=>xCover(x,'xc-'+x.id)).join('')}</div>
+    <div class="xc-info" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>${xNav()}</div>`;
+  if(id==='x-rows'){
+    const rec=V.filter(x=>x.last).sort((a,b)=>b.last-a.last).slice(0,8), inst=V.filter(x=>x.inst).sort((a,b)=>(b.last||0)-(a.last||0)).slice(0,12), fav=V.filter(x=>x.fav).slice(0,12);
+    return xBg(g)+`<div class="x-rows"><div class="xr-hero"><div class="xk">${S.running||QR.list.length?'Continue playing':'Jump back in'}</div><div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div><div class="sp-acts">${xPlay(g,'xr-play')}</div></div>
+      ${rec.length?`<h2>Recently played</h2><div class="shelf">${rec.map(x=>tile(x,'l','xr-r-'+x.id)).join('')}</div>`:''}
+      ${inst.length?`<h2>Installed</h2><div class="shelf">${inst.map(x=>tile(x,'p','xr-i-'+x.id)).join('')}</div>`:''}
+      ${fav.length?`<h2>Favorites</h2><div class="shelf">${fav.map(x=>tile(x,'p','xr-f-'+x.id)).join('')}</div>`:''}</div>`;
+  }
+  if(id==='x-list') return `<div class="x-list"><div class="xl-col">${L.map(x=>`<button class="xl-row" data-f data-k="xl-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}"><div class="xl-th">${cover(x,{badge:false})}</div><div class="rt"><b>${esc(x.title)}</b><small>${esc([SOURCES[x.src], x.last?ago(x.last):''].filter(Boolean).join(' · '))}</small></div></button>`).join('')}
+      <button class="xl-row" data-f data-k="xl-lib" data-act="nav" data-view="library"><div class="rt"><b>All games ›</b></div></button></div>
+    <div class="xl-detail">${xBg(g).replace('sp-bg','sp-bg xl-bg')}<div class="xl-in" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div></div></div>`;
+  if(id==='x-wall'){
+    const all=[...V].sort((a,b)=>(b.last||0)-(a.last||0)||a.title.localeCompare(b.title));
+    return `<div class="x-wall"><div class="xw-top"><button class="pill" data-f data-k="xw-search" data-act="search">${I.search}Search ${all.length} games</button>${xNav()}</div>
+      <div class="xw-grid">${all.map(x=>xCover(x,'xw-'+x.id)).join('')}</div>
+      <div class="xw-bar"><b id="xName">${g?esc(g.title):''}</b><span id="xMeta">${g?esc(xMeta(g)):''}</span></div></div>`;
+  }
+  if(id==='x-focus'){
+    const d=new Date(), t=d.toLocaleTimeString([], LOOK.clock24?{hour:'2-digit',minute:'2-digit',hour12:false}:{hour:'numeric',minute:'2-digit'}).replace(/\s?[AP]M$/i,'');
+    return `<div class="x-focus"><div class="xf-clock">${t}</div><div class="xf-date">${d.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'})}</div>
+      ${g?`<div class="xf-card"><div class="xf-th">${cover(g,{badge:false})}</div><div class="rt"><div class="xk">Jump back in</div><div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div></div>${xPlay(g,'xf-play')}</div>`:''}
+      <div class="xf-btns">${[['library','lib','Library'],['downloads','dl','Downloads'],['friends','user','Friends'],['stores','user','Stores'],['settings','gear','Settings']].filter(([v])=>v!=='friends'||(HOSTINFO.features||[]).includes('friends')).map(([v,ic,l])=>`<button class="xf-b" data-f data-k="xf-${v}" data-act="nav" data-view="${v}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
+  }
+  if(id==='x-widgets'){
+    const dl=GAMES.find(x=>isActive(x)), b=S.sys.battery||{}, fr=FR.s&&FR.s.friends?FR.s.friends.filter(f=>f.state==='ingame'||f.state==='online').slice(0,4):null;
+    if(!FR.s && host && (HOSTINFO.features||[]).includes('friends')) call('steam.friends',{},30000).then(r=>{ FR.s=r; if(S.view==='home') render(null,true); }).catch(()=>{});
+    const added=[...V].sort((a,c)=>c.added-a.added).slice(0,8);
+    return `<div class="x-wid"><button class="xw-big" data-f data-k="xwd-big" data-act="${xAct(g)}" data-id="${esc(g.id)}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}<div class="xw-cap"><div class="xk">Last played</div><div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div></div></button>
+      <button class="xw-card" data-f data-k="xwd-fr" data-act="nav" data-view="friends"><div class="xk">Friends online</div>${fr?(fr.length?fr.map(f=>`<div class="xw-line"><b>${esc(f.name)}</b> <span class="${f.state==='ingame'?'ing':''}">${f.state==='ingame'?'playing '+esc(f.game||''):'online'}</span></div>`).join(''):'<div class="xw-line muted">No one online right now</div>'):'<div class="xw-line muted">Open Friends</div>'}</button>
+      <button class="xw-card" data-f data-k="xwd-dl" data-act="nav" data-view="downloads"><div class="xk">Downloads</div>${dl?`<div class="xw-line"><b>${esc(dl.title)}</b></div><div class="bar"><i style="width:${dlInfo(dl).pct||0}%"></i></div><div class="xw-line muted">${esc(dlInfo(dl).label)}</div>`:'<div class="xw-line muted">Nothing downloading</div>'}</button>
+      <div class="xw-card"><div class="xk">Battery</div><div class="xw-num">${b.present?Math.round(b.pct||0)+'%':'—'}</div><div class="xw-line muted">${b.present?(b.charging?'Charging':'On battery'):'Plugged in'}</div></div>
+      <div class="xw-card"><div class="xk">Quick Resume</div><div class="xw-qr">${QR.list.slice(0,3).map(q=>{ const x=G(q.id); return x?`<button class="xw-qt" data-f data-k="xwd-q-${x.id}" data-act="game" data-id="${esc(x.id)}">${cover(x,{badge:false})}</button>`:''; }).join('')||'<div class="xw-line muted">No games paused</div>'}</div></div>
+      <div class="xw-strip"><div class="xk">Recently added</div><div class="shelf">${added.map(x=>tile(x,'l','xwd-a-'+x.id)).join('')}</div></div></div>`;
+  }
+  if(id==='x-orbit'){
+    const ring=L.slice(0,9);
+    return xBg(g)+`<div class="x-orbit"><div class="xo-ring"></div>${ring.map((x,i)=>{ const a=-Math.PI/2+i/ring.length*Math.PI*2; return `<button class="xc xo-c" style="left:calc(50% + ${Math.cos(a)*36}vh - 5vh);top:calc(50% + ${Math.sin(a)*34}vh - 7vh)" data-f data-k="xo-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}">${cover(x,{badge:false})}</button>`; }).join('')}
+      <div class="xo-mid" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>${xNav()}</div>`;
+  }
+  if(id==='x-spines') return `<div class="x-spines"><div class="xs-shelf">${L.map(x=>`<button class="xs-sp" data-f data-k="xs-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}"><span class="xs-t">${esc(x.title)}</span><div class="xs-cv">${cover(x,{badge:false})}</div></button>`).join('')}</div>
+    <div class="xs-info" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>${xNav()}</div>`;
+  if(id==='x-magazine'){
+    const side=L.slice(1,6), line=x=>isActive(x)?dlInfo(x).label:!x.last?`Added ${ago(x.added).toLowerCase()}, not played yet`:x.hrs?`${hrs(x.hrs)} played`:SOURCES[x.src];
+    return `<div class="x-mag"><div class="xm-mast"><span>The Hearth</span><small>${new Date().toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'})}</small></div>
+      <div class="xm-grid"><div class="xm-lead"><button class="xm-art" data-f data-k="xm-lead" data-act="${xAct(g)}" data-id="${esc(g.id)}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</button>
+        <div class="xk">${g.last?'Pick up where you left off':'Waiting for you'}</div><div class="xm-h">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div><div class="sp-acts">${xPlay(g,'xm-play')}</div></div>
+      <div class="xm-side"><div class="xk">Also in your library</div>${side.map(x=>`<button class="xm-item" data-f data-k="xm-${x.id}" data-act="game" data-id="${esc(x.id)}"><div class="xm-th">${cover(x,{badge:false,wide:true})}</div><div><b>${esc(x.title)}</b><small>${esc(line(x))}</small></div></button>`).join('')}</div></div></div>`;
+  }
+  if(id==='x-dock') return xBg(g)+`<div class="x-dock"><div class="xk-info" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>
+    <div class="xk-dock">${L.slice(0,8).map(x=>xCover(x,'xk-'+x.id,'xk-ic',true)).join('')}<i></i>${[['library','lib','Library'],['friends','user','Friends'],['settings','gear','Settings']].filter(([v])=>v!=='friends'||(HOSTINFO.features||[]).includes('friends')).map(([v,ic,l])=>`<button class="xk-ic xk-u" data-f data-k="xk-${v}" data-act="nav" data-view="${v}" aria-label="${l}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
+  if(id==='x-collections'){
+    const cards=[['fav','','Favorites',V.filter(x=>x.fav)],...COLS.map(c=>['c:'+c.id,'',c.name,V.filter(x=>(x.cols||[]).includes(c.id))]),['all','inst','Installed',V.filter(x=>x.inst)],['all','unplayed','Never played',V.filter(x=>!x.last)],['xbox','','Xbox Cloud Gaming',V.filter(x=>x.cloud)]].filter(c=>c[3].length);
+    return `<div class="x-cols"><div class="xcl-grid">${cards.map(([tab,f,name,gs],i)=>`<button class="xcl" data-f data-k="xcl-${i}" data-act="xLib" data-tab="${esc(tab)}" data-filter="${f}"><div class="xcl-stack">${gs.slice(0,3).map((x,j)=>`<div class="xcl-c s${j}">${cover(x,{badge:false})}</div>`).join('')}</div><div class="xcl-n"><b>${esc(name)}</b><small>${gs.length} game${gs.length===1?'':'s'}</small></div></button>`).join('')}</div>
+      <button class="pill" data-f data-k="xcl-new" data-act="colNew">＋ New collection</button></div>`;
+  }
+  if(id==='x-journal'){
+    const day=864e5, start=new Date(); start.setHours(0,0,0,0);
+    const days=[...Array(7)].map((_,i)=>{ const t0=start.getTime()-(6-i)*day; const gs=V.filter(x=>x.last>=t0&&x.last<t0+day).sort((a,b)=>b.last-a.last); return {t0, gs}; });
+    const week=V.filter(x=>x.last>=start.getTime()-6*day);
+    return `<div class="x-jr"><div class="xk">This week</div><div class="xd-title">${week.length?`${week.length} game${week.length===1?'':'s'} played`:'Nothing played this week yet'}</div>
+      <div class="xj-line"></div><div class="xj-days">${days.map((d,i)=>{ const x=d.gs[0];
+        return `<div class="xj-d ${i===6?'today':''}"><i class="xj-dot"></i><small>${i===6?'Today':new Date(d.t0).toLocaleDateString([], {weekday:'short'})}</small>${x?`<button class="xj-bar" data-f data-k="xj-${i}" data-act="game" data-id="${esc(x.id)}">${cover(x,{badge:false})}</button><b>${esc(x.title)}</b><small>${d.gs.length>1?`+${d.gs.length-1} more`:SOURCES[x.src]}</small>`:'<div class="xj-none"></div><small class="muted">No games</small>'}</div>`; }).join('')}</div>
+      <div class="xj-now"><div class="rt"><b>${esc(g.title)}</b><small>${esc(xMeta(g))}</small></div>${xPlay(g,'xj-play')}</div></div>`;
+  }
+  return '';
+}
+
 // ---------- Settings › Appearance ----------
 // Themes: an accent, a background, a sound pack and (on Hearth OS) the desktop's wallpaper, picked together.
 const THEME_PACKS = [
@@ -1175,6 +1362,7 @@ function pageAppearance(){
     + shead('Home layout')
     + `<div class="layouts">${LAYOUTS.map(l=>`<button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
         <div class="lprev">${layoutPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>`).join('')}</div>`
+    + shead('Experimental layouts') + xCards()
     + shead('Text and motion')
     + `<button class="row" data-f data-k="ap-text" data-act="textSize"><span class="ricon">${I.text}</span><div class="rt"><b>Text size</b><small>Makes everything in ${APP} bigger or smaller</small></div><div class="rv">${ts} ›</div></button>`
     + lookRow('reduceMotion','Reduce motion','Turns off animations and smooth scrolling')
@@ -1345,6 +1533,7 @@ function viewHome(){
       <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:8px">${LIB.loading?'Loading your games…':'No games found yet'}</div>
       ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">${LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':'Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.'}</div>
       <button class="pill" style="display:inline-flex" data-f data-k="h-add" data-act="addManual">＋ Add a game</button>`}</div>`;
+  if(isX(LOOK.layout)) return homeX(V);
   if(LOOK.layout==='tiles') return nowPlayingBanner()+quickShelf()+homeTiles(V);
   if(LOOK.layout==='spotlight') return homeSpotlight(V);
   const recent=V.filter(g=>g.last).sort((a,b)=>b.last-a.last).slice(0,10);
@@ -2679,6 +2868,7 @@ function setFocus(el, quiet){
   lastNav=now;
   el.scrollIntoView(scrollOpts(el, !quiet && !rapid && !LOOK.reduceMotion));
   if(S.view==='home' && el.dataset.spot && !S.layers.length) updateSpot(el.dataset.spot);
+  if(S.view==='home' && el.dataset.xspot && !S.layers.length) xUpdate(el.dataset.xspot);
   if(S.view==='home' && el.dataset.id && !S.layers.length){
     const h=$('#heroArt'), hi=$('#heroImg'), g=G(el.dataset.id);
     if(h&&g&&h.dataset.id!==g.id){ h.dataset.id=g.id; h.setAttribute('style', artBg(g)); if(hi) hi.innerHTML=heroImg(g); }
@@ -2938,6 +3128,8 @@ function act(el){
     case 'dlSteam': return call('steam.downloads').catch(e=>toast(e.message));
     case 'dlClearRecent': DL_DONE.length=0; DLS.recent=[]; return call('downloads.clearRecent').then(()=>render(null,true)).catch(e=>toast(e.message));
     case 'stores': closeAll(); return S.view==='stores' ? null : navigate('stores');
+    case 'xvote': return vote(d.v);
+    case 'xLib': closeAll(); S.tab=d.tab||'all'; S.lfilter=d.filter||''; S.history=[]; return navigate('library',{},false);
     case 'frPlat': FR.plat=d.v; return render('frp-'+d.v,true);
     case 'frOpen': return frOpen(FR.view&&FR.view[+d.i]);
     case 'shots': closeAll(); return S.view==='shots' ? null : navigate('shots');
@@ -4015,7 +4207,7 @@ function onSettingsTab(t){
   if(t==='signin') loadLogin();
   if(t==='remote') loadRemote();
   if(t==='sources'){ loadEmu(); loadXodus(); }
-  if(t==='appearance') loadDeskWall();
+  if(t==='appearance'){ loadDeskWall(); watchVotes(true); }
   if(t==='import') loadImport();
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();
