@@ -23,6 +23,8 @@ endif()
 target_compile_definitions(${CEF_TARGET} PRIVATE HEARTH_VERSION="${HEARTH_VERSION}")
 add_dependencies(${CEF_TARGET} libcef_dll_wrapper)
 target_link_libraries(${CEF_TARGET} libcef_lib libcef_dll_wrapper ${CEF_STANDARD_LIBS})
+# Find libcef.so next to the program (not where it was built).
+set_target_properties(${CEF_TARGET} PROPERTIES INSTALL_RPATH "$ORIGIN" BUILD_WITH_INSTALL_RPATH TRUE)
 
 # Next to the program: CEF's binaries and resources, and Hearth's pages.
 COPY_FILES("${CEF_TARGET}" "${CEF_BINARY_FILES}" "${CEF_BINARY_DIR}" "${CEF_TARGET_OUT_DIR}")
