@@ -1,0 +1,9 @@
+#%PAM-1.0
+# Hearth multi-seat (Ubuntu): sessions for the extra players (hearth-seat@.service). Nobody signs in here with a
+# password: systemd opens the session for the account named in the unit, which only root can start.
+# (The Fedora version includes system-auth, which Ubuntu doesn't have.)
+auth       required     pam_deny.so
+account    required     pam_permit.so
+password   required     pam_deny.so
+session    required     pam_loginuid.so
+@include common-session

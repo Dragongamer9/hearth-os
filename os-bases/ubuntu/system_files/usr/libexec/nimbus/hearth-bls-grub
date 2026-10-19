@@ -1,0 +1,67 @@
+#!/bin/sh
+# Hearth on Ubuntu: turns ostree's boot entries (/boot/loader/entries/*.conf, Boot Loader
+# Specification files) into a GRUB menu at /boot/grub2/hearth-bls.cfg, which bootupd's static grub.cfg sources
+# (system_files/usr/lib/bootupd/grub2-static/configs.d/10_blscfg.cfg).
+#
+# Why: Fedora's GRUB reads those entries itself (its `blscfg` command); Ubuntu's signed GRUB, the one that boots
+# with Secure Boot on through Ubuntu's shim, has no such command. So the menu is written out here whenever the
+# entries change:
+#   - at boot and whenever /boot/loader changes (hearth-bls-grub-refresh.path: `bootc rollback`, kargs changes)
+#   - at shutdown, right after ostree has finalized a staged update (hearth-bls-grub.service's ExecStop)
+#   - by an installer, right after deploying:  hearth-bls-grub --boot /mnt/target/boot
+#
+# The same script and interface as the Peppermint image (os-bases/peppermint), so one installer step serves
+# both. Pure POSIX sh + sed/sort, so it also runs from another system's live USB.
+set -eu
+
+BOOT=/boot
+[ "${1:-}" = "--boot" ] && [ -n "${2:-}" ] && BOOT="$2"
+ENTRIES="$BOOT/loader/entries"
+OUT_DIR="$BOOT/grub2"
+OUT="$OUT_DIR/hearth-bls.cfg"
+
+[ -d "$ENTRIES" ] || { echo "hearth-bls-grub: no $ENTRIES (nothing deployed yet)"; exit 0; }
+mkdir -p "$OUT_DIR"
+TMP="$OUT.tmp.$$"
+trap 'rm -f "$TMP" "$TMP.list"' EXIT
+
+# "version<TAB>file" for each entry; ostree gives the default (newest) deployment the highest version.
+: > "$TMP.list"
+for f in "$ENTRIES"/*.conf; do
+  [ -f "$f" ] || continue
+  v=$(sed -n 's/^version[[:space:]]\{1,\}//p' "$f" | head -1)
+  case "$v" in ''|*[!0-9]*) v=0 ;; esac
+  printf '%s\t%s\n' "$v" "$f" >> "$TMP.list"
+done
+
+quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+TAB=$(printf '\t')
+sort -t "$TAB" -k1,1nr "$TMP.list" | {
+  echo "# Written by hearth-bls-grub from $ENTRIES: don't edit, it's rewritten on every update."
+  echo "set default=0"
+  n=0
+  while IFS="$TAB" read -r _ f; do
+    title=$(sed -n 's/^title[[:space:]]\{1,\}//p' "$f" | head -1)
+    linux=$(sed -n 's/^linux[[:space:]]\{1,\}//p' "$f" | head -1)
+    opts=$(sed -n 's/^options[[:space:]]\{1,\}//p' "$f" | head -1)
+    initrd=$(sed -n 's/^initrd[[:space:]]\{1,\}//p' "$f" | tr '\n' ' ')
+    [ -n "$linux" ] || continue
+    title="${title:-Hearth OS}"
+    if [ "$n" -gt 0 ]; then title="$title (previous version)"; fi
+    id=$(basename "$f" .conf)
+    echo "menuentry $(quote "$title") --class hearth --class gnu-linux --id $(quote "$id") {"
+    echo "  load_video"
+    echo "  set gfxpayload=keep"
+    echo "  linux $linux $opts"
+    if [ -n "$initrd" ]; then echo "  initrd $initrd"; fi
+    echo "}"
+    n=$((n + 1))
+  done
+} > "$TMP"
+
+grep -q '^menuentry' "$TMP" || { echo "hearth-bls-grub: no usable entries in $ENTRIES; keeping the old menu" >&2; exit 1; }
+sync
+mv -f "$TMP" "$OUT"
+sync
+echo "hearth-bls-grub: wrote $(grep -c '^menuentry' "$OUT") entries to $OUT"
