@@ -39,6 +39,7 @@ pub struct GameMode {
     reveal_gen: AtomicU64,
     /// InputPlumber catches the Guide button and, while Quick Access is open, every press (see inputplumber.rs).
     pub ip: AtomicBool,
+    launch_busy: AtomicU64,
     last_guide: AtomicU64,
     b_gen: AtomicU64,
     repeat_gen: AtomicU64,
@@ -54,7 +55,7 @@ impl GameMode {
     pub fn new(app: AppHandle, bridge: Arc<Mutex<Bridge>>, guide: hearth_core::guide::Guide, windowed: bool) -> Arc<GameMode> {
         Arc::new(GameMode { app, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
             overlay_on: AtomicBool::new(false), osd_on: AtomicBool::new(false), osd_gen: AtomicU64::new(0), look_closed: AtomicBool::new(true),
-            before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), last_guide: AtomicU64::new(0), b_gen: AtomicU64::new(0),
+            before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), launch_busy: AtomicU64::new(0), last_guide: AtomicU64::new(0), b_gen: AtomicU64::new(0),
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()) })
     }
 
@@ -139,7 +140,9 @@ impl GameMode {
             let bridge = me.bridge.clone();
             let pids = || bridge.lock().map(|b| b.library.game_pids()).unwrap_or_default();
             let cancelled = || me.launch_gen.load(Ordering::SeqCst) != g || me.bridge.lock().map(|b| b.library.running_id().as_deref() != Some(id.as_str())).unwrap_or(true);
+            me.launch_busy.store(g, Ordering::SeqCst);
             let r = gs::wait_for_window(&pids, app_id, &[std::process::id() as u64], Duration::from_secs(600), &cancelled);
+            let _ = me.launch_busy.compare_exchange(g, 0, Ordering::SeqCst, Ordering::SeqCst);
             if cancelled() { return; }
             me.launch_gen.fetch_add(1, Ordering::SeqCst);
             me.step_aside();
@@ -152,6 +155,14 @@ impl GameMode {
         });
     }
 
+    /// Hearth is still showing "starting" for a game that hasn't put its window up yet.
+    fn launch_waiting(&self) -> bool { let b = self.launch_busy.load(Ordering::SeqCst); b != 0 && b == self.launch_gen.load(Ordering::SeqCst) }
+    /// The game in front again a little later as well: games coming back from a pause (Quick Resume) or a
+    /// minimize take a moment to draw, and the first try can land before their window is ready.
+    fn nudge_game(self: &Arc<Self>) {
+        for ms in [1200u64, 3000] { self.focus_running_game(ms, true); }
+    }
+
     /// Back to the game (Quick Access closed, "Back to game"): un-paused and in front.
     pub fn resume_game(self: &Arc<Self>) {
         let running = self.bridge.lock().map(|mut b| { let id = b.library.running_id(); if id.is_some() { b.library.resume(); } id }).unwrap_or(None);
@@ -161,6 +172,7 @@ impl GameMode {
         self.step_aside();
         if let Some(s) = self.app.get_webview_window("stream") { let _ = s.show(); let _ = s.set_focus(); if let Some(x) = gs::window_named(&s.title().unwrap_or_default()) { self.focus_xid("stream", x, 0, false); } return; }
         self.focus_running_game(0, false);
+        self.nudge_game();
     }
 
     /// The library's events: put the game in front when it starts, Hearth back when it ends.
@@ -244,7 +256,9 @@ impl GameMode {
                 return;
             }
         });
-        if let Some(o) = self.overlay() { let _ = o.show(); let _ = o.set_focus(); }
+        // Not focused: taking the keyboard focus from the game makes some games minimize or stall (a black or
+        // frozen screen after). Its buttons come from the controller readers; gamescope sends touch to it.
+        if let Some(o) = self.overlay() { let _ = o.show(); }
         if let Some(x) = self.xid(OVERLAY_TITLE) { let _ = gs::set_window(x, "STEAM_OVERLAY", 1); let _ = gs::set_window(x, "STEAM_INPUT_FOCUS", 1); }
         // Visible once the page says Quick Access is drawn, or after 300 ms at the latest.
         let r = self.reveal_gen.fetch_add(1, Ordering::SeqCst) + 1;
@@ -333,8 +347,12 @@ impl GameMode {
         // The controller back to what was on screen. Soft: anything chosen meanwhile wins.
         if self.inside() && !self.main().map(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false)).unwrap_or(false) {
             let before = self.before_overlay.load(Ordering::SeqCst);
-            if before != 0 && Some(before) != self.xid(OVERLAY_TITLE) { self.focus_xid("back from the overlay", before, 350, true); }
-            else if self.running().is_some() { self.focus_running_game(350, true); }
+            let launching = self.launch_waiting();
+            // A game that's starting (or just started) may have swapped its splash for its real window while the
+            // overlay was open: put back what's there now, not the window from before (that looked frozen).
+            if launching { if let Some(x) = self.xid(MAIN_TITLE) { if before == x { self.focus_xid("back to starting screen", x, 200, true); } } }
+            else if self.running().is_some() { self.focus_running_game(200, true); self.nudge_game(); }
+            else if before != 0 && Some(before) != self.xid(OVERLAY_TITLE) && gs::still_there(before) { self.focus_xid("back from the overlay", before, 200, true); }
         }
     }
 
