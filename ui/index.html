@@ -1065,7 +1065,7 @@ function viewFriends(){
   FR.view=sorted;
   let i=0;
   const rows=groups.map(([t,fs])=>shead(`${t} · ${fs.length}`)+`<div class="rows fr">${fs.map(f=>{ const k=i++;
-    return `<button class="row frow ${f.state==='ingame'?'ing':f.state==='online'?'on':''}" data-f data-k="fr-${k}" data-act="frOpen" data-i="${k}">
+    return `<button class="row frow ${f.state==='ingame'?'ing':f.state==='online'?'on':''}" data-f data-k="fr-${esc(f.platform)}-${esc(String(f.id))}" data-act="frOpen" data-i="${k}">
     <span class="frav">${f.avatar?`<img src="${esc(f.avatar)}" alt="" loading="lazy">`:`<b>${esc((f.name||'?').charAt(0).toUpperCase())}</b>`}<i></i></span>
     <div class="rt"><b>${esc(f.name)} <span class="frplat fp-${esc(f.platform)}">${esc(FR_PLAT[f.platform]||f.platform)}</span></b><small>${frLine(f)}</small></div>
     ${f.canJoin?'<div class="rv frjoin">Join</div>':f.canMessage?'<div class="rv">›</div>':''}</button>`; }).join('')}</div>`).join('');
@@ -1099,8 +1099,8 @@ function viewShots(){
   if(!l.length) return note('No screenshots yet. During a game, press the Xbox button and choose Take a screenshot.');
   if(SH.open>=0 && l[SH.open]){ const x=l[SH.open];
     return `<div class="shotview"><img src="${esc(x.url)}" alt=""><div class="shotbar"><span class="muted">${SH.open+1} of ${l.length} · ${shotWhen(x.time)}</span>
-      <button class="btn sm" data-f data-k="sh-prev" data-act="shotStep" data-v="-1" ${SH.open?'':'disabled'}>‹ Newer</button>
-      <button class="btn sm" data-f data-k="sh-next" data-act="shotStep" data-v="1" ${SH.open<l.length-1?'':'disabled'}>Older ›</button>
+      <button class="btn sm" ${SH.open?'data-f':''} data-k="sh-prev" data-act="shotStep" data-v="-1" ${SH.open?'':'disabled'}>‹ Newer</button>
+      <button class="btn sm" ${SH.open<l.length-1?'data-f':''} data-k="sh-next" data-act="shotStep" data-v="1" ${SH.open<l.length-1?'':'disabled'}>Older ›</button>
       <button class="btn sm" data-f data-k="sh-del" data-act="shotDel">Delete</button>
       <button class="btn sm" data-f data-k="sh-back" data-act="shotClose">Back</button></div></div>`; }
   return `<div class="muted" style="margin:4px 0 16px">${l.length} screenshot${l.length===1?'':'s'} · Pictures › Screenshots › ${APP}</div>
@@ -1287,7 +1287,7 @@ function homeX(V){
   }
   if(id==='x-widgets'){
     const dl=GAMES.find(x=>isActive(x)), b=S.sys.battery||{}, fr=FR.s&&FR.s.friends?FR.s.friends.filter(f=>f.state==='ingame'||f.state==='online').slice(0,4):null;
-    if(!FR.s && host && (HOSTINFO.features||[]).includes('friends')) call('steam.friends',{},30000).then(r=>{ FR.s=r; if(S.view==='home') render(null,true); }).catch(()=>{});
+    if(!FR.s && !FR.loading && host && (HOSTINFO.features||[]).includes('friends')){ FR.loading=true; call('steam.friends',{},30000).then(r=>{ FR.s=r; if(S.view==='home') render(null,true); }).catch(()=>{}).finally(()=>{ FR.loading=false; }); }
     const added=[...V].sort((a,c)=>c.added-a.added).slice(0,8);
     return `<div class="x-wid"><button class="xw-big" data-f data-k="xwd-big" data-act="${xAct(g)}" data-id="${esc(g.id)}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}<div class="xw-cap"><div class="xk">Last played</div><div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div></div></button>
       <button class="xw-card" data-f data-k="xwd-fr" data-act="nav" data-view="friends"><div class="xk">Friends online</div>${fr?(fr.length?fr.map(f=>`<div class="xw-line"><b>${esc(f.name)}</b> <span class="${f.state==='ingame'?'ing':''}">${f.state==='ingame'?'playing '+esc(f.game||''):'online'}</span></div>`).join(''):'<div class="xw-line muted">No one online right now</div>'):'<div class="xw-line muted">Open Friends</div>'}</button>
@@ -2567,8 +2567,14 @@ function renderNow(focusKey, quiet){
   renderTopNav();
   const inTop = focused && document.contains(focused) && !v.contains(focused) && focused.closest('#top, header, .topbar, #topnav');
   if(!S.layers.length && !(quiet && inTop && !focusKey) && (focusKey || wasInView || !focused || !document.contains(focused))){
-    const el = k && $(`#view [data-k="${k}"]`);
-    if(quiet && el){ if(focused) focused.classList.remove('focus'); focused=el; el.classList.add('focus'); el.focus({preventScroll:true}); }
+    const el = k && $(`#view [data-k="${CSS.escape(k)}"]`);
+    if(quiet && el){
+      const wasSlide = SLIDE && SLIDE===focused;
+      if(focused) focused.classList.remove('focus'); focused=el; el.classList.add('focus'); el.focus({preventScroll:true});
+      if(wasSlide){ SLIDE=el; el.classList.add('editing'); }
+      // Layouts whose details follow the selection: the redrawn page shows the first game again otherwise.
+      if(S.view==='home'){ if(el.dataset.spot) updateSpot(el.dataset.spot); if(el.dataset.xspot) xUpdate(el.dataset.xspot); }
+    }
     else setFocus(el || $('#view [data-f]'), true);
   }
   renderFooter();
@@ -2654,6 +2660,10 @@ function perfBody(){
   return h;
 }
 async function perfTick(){
+  if(PERF.busy) return; PERF.busy=true;
+  try{ await perfTickNow(); } finally { PERF.busy=false; }
+}
+async function perfTickNow(){
   PERF.timer=null;
   const showing = S.layers.includes('qam') && S.qtab==='perf' && (!OVERLAY || OV.shown);
   if(!showing) return;
@@ -2663,7 +2673,7 @@ async function perfTick(){
   }
   PERF.timer=setTimeout(perfTick, 1000);
 }
-function startPerf(){ if(!PERF.timer) PERF.timer=setTimeout(perfTick, 50); }
+function startPerf(){ if(!PERF.timer && !PERF.busy) PERF.timer=setTimeout(perfTick, 50); }
 function applyRunning(r){
   if(!r) return;
   if(r.runningId && S.running!==r.runningId) S.running=r.runningId;
@@ -2929,7 +2939,7 @@ function moveNow(dir){
       main=Math.abs(dx); cross=(b.top<r.bottom && b.bottom>r.top) ? 0 : Math.abs(dy);
     } else {
       if(dir==='up' ? dy>-4 : dy<4) continue;
-      main=Math.abs(dy); cross=(b.left<r.right && b.right>r.left) ? Math.abs(dx)*.25 : Math.abs(dx);
+      main=Math.abs(dy); cross=(b.left<r.right && b.right>r.left) ? Math.abs(dx)*.02 : Math.abs(dx);
     }
     const s=main+cross*3;
     if(s<bs){ bs=s; best=el; }
@@ -2939,9 +2949,10 @@ function moveNow(dir){
 let SLIDE=null;
 function slideDone(){ if(SLIDE) SLIDE.classList.remove('editing'); SLIDE=null; renderFooter(); }
 function slidePick(el){ if(SLIDE===el) return slideDone(); slideDone(); SLIDE=el; el.classList.add('editing'); blip(620,.04); renderFooter(); }
+const SLIDE_AT={};
 function adjustSlider(el, d){
   const k=el.dataset.slider, min=+el.dataset.min, max=+el.dataset.max, st=+el.dataset.step;
-  S.set[k]=Math.max(min,Math.min(max,S.set[k]+d*st));
+  S.set[k]=Math.max(min,Math.min(max,S.set[k]+d*st)); SLIDE_AT[k]=performance.now();
   const pct=(S.set[k]-min)/(max-min)*100;
   el.querySelector('.slider i').style.width=pct+'%'; el.querySelector('.slider b').style.left=pct+'%';
   el.querySelector('.lab span').textContent=S.set[k]+el.dataset.unit;
@@ -2956,6 +2967,7 @@ function adjustSlider(el, d){
 // Actions
 // =====================================================================
 function act(el){
+  if(!el) return;
   if(el.dataset.slider) return slidePick(el);
   const a=el.dataset.act, d=el.dataset;
   if(!a) return;
@@ -3149,7 +3161,7 @@ function act(el){
     case 'xLib': closeAll(); S.tab=d.tab||'all'; S.lfilter=d.filter||''; S.history=[]; return navigate('library',{},false);
     case 'frPlat': FR.plat=d.v; return render('frp-'+d.v,true);
     case 'frOpen': return frOpen(FR.view&&FR.view[+d.i]);
-    case 'shots': closeAll(); return S.view==='shots' ? null : navigate('shots');
+    case 'shots': closeAll(); SH.open=-1; return S.view==='shots' ? null : navigate('shots');
     case 'shotOpen': SH.open=+d.v; return render('sh-back',true);
     case 'shotClose': { const i=SH.open; SH.open=-1; return render('sh-'+Math.max(0,i),true); }
     case 'shotStep': { const n=SH.open+(+d.v); if(!SH.list||n<0||n>=SH.list.length) return; SH.open=n; return render(focused?.dataset.k,true); }
@@ -3212,11 +3224,10 @@ function power(p, sure){
   // which a restart empties): ask first, and offer what keeps them.
   const games = (S.running?1:0) + QR.list.filter(q=>q.id!==S.running).length;
   if(!sure && (p==='shutdown'||p==='restart') && games && qrFeature()){
-    closeAll();
     const items=[{label:p==='shutdown'?'Shut down anyway':'Restart anyway', icon:p==='shutdown'?'power':'restart', run:()=>power(p,true)}];
     if(QR.hib&&QR.hib.supported) items.push({label:'Turn off and keep games', icon:'power', run:()=>power('hibernate',true)});
     items.push({label:'Sleep instead (keeps games)', icon:'moon', run:()=>power('sleep',true)});
-    return setTimeout(()=>openSheet({title:p==='shutdown'?'Shut down?':'Restart?', sub:`${games===1?'1 game is':games+' games are'} open or in Quick Resume. ${p==='shutdown'?'Shutting down':'Restarting'} closes ${games===1?'it':'them'}, and anything not saved in the game is lost.`, items}), 60);
+    return openSheet({title:p==='shutdown'?'Shut down?':'Restart?', sub:`${games===1?'1 game is':games+' games are'} open or in Quick Resume. ${p==='shutdown'?'Shutting down':'Restarting'} closes ${games===1?'it':'them'}, and anything not saved in the game is lost.`, items});
   }
   closeAll();
   const label={hibernate:'Turning off. Your games will be here when you turn it back on…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
@@ -4204,7 +4215,10 @@ function applyStatus(st){
   if(st.display) Object.assign(S.sys.display, st.display);
   if(st.powerMode) S.sys.powerMode=st.powerMode;
   if(S.sys.nets) S.sys.nets.forEach(n=>n.connected = n.ssid===S.sys.wifi.ssid);
-  S.set.vol=S.sys.audio.volume; S.set.bright=S.sys.display.brightness;
+  // A slider you're changing (or changed a moment ago) keeps its value: the status can be older than it.
+  const busy=k=>(SLIDE&&SLIDE.dataset.slider===k) || performance.now()-(SLIDE_AT[k]||0)<2500;
+  if(!busy('vol')) S.set.vol=S.sys.audio.volume;
+  if(!busy('bright')) S.set.bright=S.sys.display.brightness;
   refreshUI();
 }
 function refreshStatus(){ return call('sys.status').then(applyStatus).catch(()=>{}); }
@@ -4465,7 +4479,7 @@ function mapPad(k){
 const PAD_NAMES = {a:'A',b:'B',x:'X',y:'Y',lb:'LB',rb:'RB',start:'Menu (☰)',select:'View (⧉)',guide:'Xbox / Guide',up:'D-pad up',down:'D-pad down',left:'D-pad left',right:'D-pad right'};
 const PAD_AT={};
 function padPressed(k){
-  PAD_AT[k]=performance.now();
+  PAD_AT[k]=performance.now(); PAD_AT[mapPad(k)]=PAD_AT[k];   // swapped A/B or X/Y: the key Steam sends is the physical one
   setInput('pad');
   PAD.last=k;
   const t=$('#padTest'); if(t) t.textContent = PAD_NAMES[k]||k;
@@ -4478,6 +4492,10 @@ const REPEAT = new Set(['up','down','left','right']);
 const held={};
 let padSeen=false;
 function pollPads(t){
+  try{ pollPadsNow(t); } catch(e){ try{ send({type:'log', text:'controller: '+(e&&e.stack||e)}); }catch(_){} }
+  requestAnimationFrame(pollPads);
+}
+function pollPadsNow(t){
   // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
   const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
   const st={};
@@ -4485,8 +4503,9 @@ function pollPads(t){
     const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
     st.a=st.a||b(0); st.b=st.b||b(1); st.x=st.x||b(2); st.y=st.y||b(3);
     st.lb=st.lb||b(4); st.rb=st.rb||b(5); st.select=st.select||b(8); st.start=st.start||b(9); st.guide=st.guide||b(16);
-    st.up=st.up||b(12)||ax(1)<-.55; st.down=st.down||b(13)||ax(1)>.55;
-    st.left=st.left||b(14)||ax(0)<-.55; st.right=st.right||b(15)||ax(0)>.55;
+    const th=k=>held[k]?.35:.55;
+    st.up=st.up||b(12)||ax(1)<-th('up'); st.down=st.down||b(13)||ax(1)>th('down');
+    st.left=st.left||b(14)||ax(0)<-th('left'); st.right=st.right||b(15)||ax(0)>th('right');
   }
   for(const k of ['a','b','x','y','lb','rb','select','start','guide','up','down','left','right']){
     const on=!!st[k], h=held[k];
@@ -4494,7 +4513,6 @@ function pollPads(t){
     else if(on && h && REPEAT.has(k) && t-h.t0>400 && t-h.last>110){ h.last=t; PAD_AT[k]=performance.now(); input(k); }
     else if(!on && h) delete held[k];
   }
-  requestAnimationFrame(pollPads);
 }
 window.addEventListener('gamepadconnected', e=>{ if(!padSeen) toast(`Controller connected: ${e.gamepad.id.split('(')[0].trim()||'Gamepad'}`); padSeen=true; });
 
@@ -4510,7 +4528,7 @@ const KEY_EXTRA = {Home:()=>{ closeAll(); if(S.view!=='home'){ S.history=[]; nav
 const NAV_KEYS=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter',' ','Escape','Backspace','Tab','w','a','s','d']);
 function padHeldNow(){
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
-  return pads.some(p => p.buttons.some(b => b && b.pressed) || p.axes.some(a => Math.abs(a) > .5));
+  return pads.some(p => p.buttons.some(b => b && b.pressed) || (p.mapping==='standard' && p.axes.slice(0,4).some(a => Math.abs(a) > .5)));
 }
 document.addEventListener('keydown', e=>{
   if(NAV_KEYS.has(e.key) && !e.ctrlKey && !e.altKey && padHeldNow()){ logInput('key '+e.key+' dropped (controller held)'); e.preventDefault(); e.stopImmediatePropagation(); return; }
