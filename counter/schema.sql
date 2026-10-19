@@ -16,3 +16,11 @@ CREATE TABLE IF NOT EXISTS logs (
   body TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS logs_created ON logs (created);
+
+-- Upvotes for the experimental home layouts: one per device and layout.
+CREATE TABLE IF NOT EXISTS votes (
+  device TEXT NOT NULL,
+  layout TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (device, layout)
+);

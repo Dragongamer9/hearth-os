@@ -7,6 +7,8 @@
 //
 //   POST /v1/logs   (text) Settings › System › "Send logs": a bug report's logs (personal details already taken
 //                   out on the device). Answers {"code": "ABCD-EFGH-JK"}; kept 14 days.
+//   POST /v1/vote   {"id": "<device id>", "layout": "x-orbit", "up": true}  upvote (or take back) an experimental layout
+//   GET  /v1/votes  {"counts": {"x-orbit": 12, ...}}  everyone's upvotes, live
 //   GET  /v1/logs/<code>  the logs, as text, for whoever has the code (the person shows it to the developer).
 //
 // Stored per install: the random id, its kind, its version, when it was first and last seen. No IP
@@ -23,6 +25,8 @@ export default {
     if (url.pathname === '/v1/ping' && req.method === 'POST') return ping(req, env);
     if (url.pathname === '/v1/stats' && req.method === 'GET') return stats(req, env, ctx);
     if (url.pathname === '/v1/logs' && req.method === 'POST') return putLogs(req, env);
+    if (url.pathname === '/v1/vote' && req.method === 'POST') return putVote(req, env);
+    if (url.pathname === '/v1/votes' && req.method === 'GET') return json({ counts: await voteCounts(env) }, 200, { 'cache-control': 'no-store' });
     if (url.pathname.startsWith('/v1/logs/') && req.method === 'GET') return getLogs(url, env);
     if (url.pathname === '/') return json({ service: 'Hearth OS player counter', stats: '/v1/stats' });
     return json({ error: 'not found' }, 404);
@@ -106,4 +110,23 @@ async function getLogs(url, env) {
   const row = await env.DB.prepare('SELECT body FROM logs WHERE code = ?').bind(code).first();
   if (!row) return json({ error: 'not found (logs are kept 14 days)' }, 404);
   return new Response(row.body, { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...CORS } });
+}
+
+// ---------------------------------------------------------------- layout upvotes
+async function voteCounts(env) {
+  const rows = await env.DB.prepare('SELECT layout, COUNT(*) AS n FROM votes GROUP BY layout').all();
+  const out = {};
+  for (const r of rows.results || []) out[r.layout] = r.n;
+  return out;
+}
+
+async function putVote(req, env) {
+  let b;
+  try { b = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
+  const id = String(b && b.id || ''), layout = String(b && b.layout || '');
+  if (!/^[a-f0-9]{16,64}$/.test(id)) return json({ error: 'bad id' }, 400);
+  if (!/^x-[a-z0-9-]{2,30}$/.test(layout)) return json({ error: 'bad layout' }, 400);
+  if (b.up) await env.DB.prepare('INSERT OR IGNORE INTO votes (device, layout, at) VALUES (?, ?, ?)').bind(id, layout, Date.now()).run();
+  else await env.DB.prepare('DELETE FROM votes WHERE device = ? AND layout = ?').bind(id, layout).run();
+  return json({ ok: true, counts: await voteCounts(env) });
 }
