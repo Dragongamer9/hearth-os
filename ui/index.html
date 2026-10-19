@@ -2910,7 +2910,7 @@ function moveNow(dir){
   if((dir==='up'||dir==='down') && focused.classList.contains('mitem')){
     const items=[...focused.parentElement.querySelectorAll(':scope > .mitem[data-f]')];
     const i=items.indexOf(focused), n=items[i+(dir==='down'?1:-1)];
-    if(i>=0){ if(n){ setFocus(n); blip(); } return; }
+    if(i>=0 && n){ setFocus(n); blip(); return; }
   }
   const g=gridMove(dir);
   if(g && g.hasAttribute('data-f')){ setFocus(g); blip(); return; }
