@@ -1,0 +1,27 @@
+# Hearth Browser (Chromium/CEF) on its own: a quick compile check on the work branch. The OS workflow builds
+# it for the image the same way (hosts/hearth-browser/build.sh).
+name: Hearth Browser
+
+on:
+  push:
+    branches: [linux-host]
+    paths: ['hosts/hearth-browser/**', 'hosts/linux/src/web/**', '.github/workflows/browser.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: hearth-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Hearth Browser (Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: hosts/hearth-browser/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-browser-cef
+          path: hearth-browser-cef.tar
+          retention-days: 7
