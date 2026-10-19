@@ -2895,6 +2895,12 @@ function move(dir){
   try { moveNow(dir); } finally { perfLog('move '+dir, t0); }
 }
 function moveNow(dir){
+  // A menu (power menu, option sheets) goes item by item, so none can be skipped.
+  if((dir==='up'||dir==='down') && focused.classList.contains('mitem')){
+    const items=[...focused.parentElement.querySelectorAll(':scope > .mitem[data-f]')];
+    const i=items.indexOf(focused), n=items[i+(dir==='down'?1:-1)];
+    if(i>=0){ if(n){ setFocus(n); blip(); } return; }
+  }
   const g=gridMove(dir);
   if(g && g.hasAttribute('data-f')){ setFocus(g); blip(); return; }
   settleScroll();
@@ -3188,7 +3194,17 @@ function typeKey(c){
   if(c==='bksp') query=query.slice(0,-1); else if(c==='clear') query=''; else query+=c;
   renderSearch(k);
 }
-function power(p){
+function power(p, sure){
+  // Shutting down or restarting closes games that are running or put aside (Quick Resume keeps them in memory,
+  // which a restart empties): ask first, and offer what keeps them.
+  const games = (S.running?1:0) + QR.list.filter(q=>q.id!==S.running).length;
+  if(!sure && (p==='shutdown'||p==='restart') && games && qrFeature()){
+    closeAll();
+    const items=[{label:p==='shutdown'?'Shut down anyway':'Restart anyway', icon:p==='shutdown'?'power':'restart', run:()=>power(p,true)}];
+    if(QR.hib&&QR.hib.supported) items.push({label:'Turn off and keep games', icon:'power', run:()=>power('hibernate',true)});
+    items.push({label:'Sleep instead (keeps games)', icon:'moon', run:()=>power('sleep',true)});
+    return setTimeout(()=>openSheet({title:p==='shutdown'?'Shut down?':'Restart?', sub:`${games===1?'1 game is':games+' games are'} open or in Quick Resume. ${p==='shutdown'?'Shutting down':'Restarting'} closes ${games===1?'it':'them'}, and anything not saved in the game is lost.`, items}), 60);
+  }
   closeAll();
   const label={hibernate:'Turning off. Your games will be here when you turn it back on…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
   send({type:'power', action:p});
