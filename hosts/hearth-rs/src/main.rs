@@ -342,6 +342,20 @@ fn nvidia() -> bool {
         .any(|e| std::fs::read_to_string(e.path().join("device/vendor")).map(|v| v.trim() == "0x10de").unwrap_or(false))
 }
 
+/// Whether WebKit's fast drawing path can be used on this Nvidia PC. The black window it drew was on older
+/// drivers; from 560 (explicit sync, GBM) it works, and without it Hearth is sluggish (a slow copy every frame).
+/// ~/.config/nimbus/nvidia-drawing says otherwise when it holds "fast" or "compatible" (Settings › Display).
+fn nvidia_dmabuf_ok() -> bool {
+    let pick = std::fs::read_to_string(hearth_core::paths::config_dir().join("nvidia-drawing")).unwrap_or_default();
+    match pick.trim() {
+        "fast" => return true,
+        "compatible" => return false,
+        _ => {}
+    }
+    let v = std::fs::read_to_string("/sys/module/nvidia/version").unwrap_or_default();
+    v.trim().split('.').next().and_then(|m| m.parse::<u32>().ok()).map(|m| m >= 560).unwrap_or(false)
+}
+
 /// Hearth's pages drawn by the graphics card all the time (WebKit otherwise decides page by page, and can fall
 /// back to drawing on the processor, which is what made scrolling the library slow).
 fn gpu_always(w: &tauri::WebviewWindow) {
@@ -359,7 +373,7 @@ fn main() {
     // WebKit's newer GPU path draws a black window on some Nvidia drivers: the older one works everywhere.
     // Only there: on AMD and Intel (the ROG Ally, Steam Deck) it's the fast path, and without it WebKit draws
     // through a slow copy (a sluggish library, 5 to 10 frames a second).
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() && nvidia() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() && nvidia() && !nvidia_dmabuf_ok() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
     // Release check (os.yml runs it inside each new Hearth OS image, and won't publish one that fails):
