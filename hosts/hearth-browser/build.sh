@@ -35,14 +35,16 @@ wc -l /tmp/hb/hearth/adblock-hosts.txt
 strip /tmp/hb/hearth-browser || true
 echo "::notice title=files::$(ls /tmp/hb | tr '\n' ' ')"
 # Does it start, draw its top bar and open its start page? (A virtual screen; no sandbox on the runner.)
-sudo apt-get install -y -qq xvfb >/dev/null
+sudo apt-get install -y -qq xvfb gdb >/dev/null
 set +e
-HOME=$(mktemp -d) xvfb-run -a -s "-screen 0 1280x900x24" timeout 90 /tmp/hb/hearth-browser --self-test --no-sandbox --disable-gpu --use-gl=swiftshader > /tmp/selftest.log 2>&1
+HOME=$(mktemp -d) xvfb-run -a -s "-screen 0 1280x900x24" timeout 120 gdb -q -batch -ex "handle SIGPIPE nostop noprint" -ex run -ex bt --args /tmp/hb/hearth-browser --self-test --no-sandbox --disable-gpu --use-gl=swiftshader > /tmp/selftest.log 2>&1
 code=$?
 set -e
 grep -E "self-test" /tmp/selftest.log || true
 if ! grep -q "self-test passed" /tmp/selftest.log; then
-  grep -v "ICU data\|^$\|dumped core\|breakpoint trap" /tmp/selftest.log | tail -9 | cut -c1-450 | while IFS= read -r l; do echo "::error title=self-test (exit $code)::${l//%/%25}"; done
+  grep "self-test step" /tmp/selftest.log | while IFS= read -r l; do echo "::notice title=self-test::$l"; done
+  grep -E "Check failed|FATAL|signal SIG" /tmp/selftest.log | grep -v "ICU data" | head -5 | cut -c1-450 | while IFS= read -r l; do echo "::error title=self-test (exit $code)::${l//%/%25}"; done
+  grep -E "^#[0-9]+ " /tmp/selftest.log | head -10 | cut -c1-300 | while IFS= read -r l; do echo "::warning title=backtrace::${l//%/%25}"; done
   exit 1
 fi
 tar -C /tmp/hb -cf hearth-browser-cef.tar .

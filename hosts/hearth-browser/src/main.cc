@@ -1,5 +1,6 @@
 // Hearth Browser (Chromium/CEF): program start. Every Chromium process (the browser, page renderers, the GPU
 // process...) starts here; only the browser process gets past CefExecuteProcess.
+#include <cstdio>
 #include <cstdlib>
 #include <regex>
 #include <string>
@@ -91,6 +92,7 @@ class App : public CefApp, public CefBrowserProcessHandler {
     std::vector<std::string> open;
     if (G().store->SettingOn("restoreTabs", true)) open = G().store->Session();
     open.insert(open.end(), urls.begin(), urls.end());
+    if (G().selftest) fprintf(stderr, "self-test step: opening the window\n");
     OpenWindow(open);
   }
 
@@ -149,10 +151,12 @@ int main(int argc, char* argv[]) {
   if (!G().selftest) CefString(&s.log_file) = cache + "/hearth-browser.log";
   else s.log_severity = LOGSEVERITY_INFO;
 
+  if (G().selftest) fprintf(stderr, "self-test step: initializing Chromium\n");
   if (!CefInitialize(args, s, app, nullptr)) {
     // Another copy is already running (it got our links through OnAlreadyRunningAppRelaunch), or Chromium failed.
     return 0;
   }
+  if (G().selftest) fprintf(stderr, "self-test step: running\n");
   CefRunMessageLoop();
   G().store->Flush();
   G().windows.clear();
