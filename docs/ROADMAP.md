@@ -91,6 +91,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## 0.0.30
 
+- [x] Fix: the selection jumping several places in Settings and menus (keys Steam or the controller driver make from a press, arriving after the button is up, no longer count as a second press; a stick or trigger that rests off-center no longer moves the selection by itself; slower repeat when holding a direction)
 - [x] Experimental home layouts (Settings › Appearance › Experimental): 12 new layouts, marked beta, with live upvotes from everyone using Hearth
 
 ## 0.0.29 (released)
