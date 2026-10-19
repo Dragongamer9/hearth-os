@@ -2418,44 +2418,29 @@ function impAll(id){
   const keys=[...dr.steam,...dr.epic,...dr.gog,...(dr.lutris||[]),...dr.files].map(x=>x.key), all=keys.every(k=>IMP.sel.has(k));
   keys.forEach(k=>all?IMP.sel.delete(k):IMP.sel.add(k)); render(null,true);
 }
-function impStart(mode){
-  if(mode) IMP.mode=mode;
+function impStart(){
   const keys=[...IMP.sel]; if(!keys.length) return toast('Pick something to import first');
-  if(IMP.mode==='move') return impMoveAsk(keys);
-  call('import.start',{items:keys, mode:'copy'}).then(onImport).catch(e=>toast(e.message));
-}
-// Move (Beta Experimental): copy, check every file against the original, register it, then delete the original.
-const BETA_X = '<b>Beta Experimental:</b> new and not tested on real devices yet. Back up first.';
-function impMoveAsk(keys){
-  const items=impItems().filter(x=>keys.includes(x.key));
-  const from=[...new Set((IMP.s&&IMP.s.scan?IMP.s.scan.drives:[]).filter(d=>[...d.steam,...d.epic,...d.gog,...(d.lutris||[]),...d.files].some(x=>keys.includes(x.key))).map(d=>d.name))];
-  const what=items.length===1?items[0].name:`${items.length} items`;
-  openSheet({title:`Move ${what} to ${APP}? (Beta Experimental)`,
-    sub:`Each one is copied, every file is checked against the original, and only then deleted from ${from.join(', ')||'the other drive'}. If something doesn't match, the original stays. If Windows wasn't fully shut down, games are copied but the originals stay. Beta Experimental: new and not tested on real devices yet. Back up first.`,
-    items:[{label:'Move them', icon:'check', run:()=>call('import.move',{items:keys}).then(onImport).catch(e=>toast(e.message))},
-           {label:'Copy instead (keep the originals)', icon:'dl', run:()=>{ IMP.mode='copy'; call('import.start',{items:keys, mode:'copy'}).then(onImport).catch(e=>toast(e.message)); }}]});
+  const go=()=>call('import.start',{items:keys, mode:IMP.mode}).then(onImport).catch(e=>toast(e.message));
+  if(IMP.mode==='move') return openSheet({title:'Move these to Hearth?', sub:'After each one is copied and checked, the original is deleted from the other drive. Games and files that are only on that drive will then only be in Hearth.',
+    items:[{label:'Yes, move them', icon:'check', run:go}, {label:'Copy instead (keep the originals)', icon:'dl', run:()=>{ IMP.mode='copy'; go(); }}]});
+  go();
 }
 function impProgress(st){
   const p=st.progress||{}, pct=p.total?Math.min(100,Math.round(100*p.overall/p.total)):0;
   const left=p.bps>0&&p.total?timeLeft((p.total-p.overall)/p.bps):'';
   const pts=st.speeds||[], peak=pts.length?Math.max(...pts.map(x=>x[1])):0;
   const kindName={steam:'Steam game',epic:'Epic game',gog:'GOG game',files:'folder'}[p.kind]||'';
-  const phase={copy:'Copying',verify:'Checking every file',delete:'Deleting the original'}[p.phase]||'Copying';
-  let h=(st.mode==='move'?note(BETA_X):'')+`<div class="su-card"><div class="su-head"><div><b>${st.mode==='move'?'Moving':'Copying'} into Hearth</b><div class="muted" style="font-size:13px;margin-top:4px">${p.total?`${gbx(p.overall||0)} of ${gbx(p.total)}`:'Getting ready…'}${p.bps?' · '+fmtSpeed(p.bps):''}${left?' · '+left:''}</div></div><div class="pc">${pct}%</div></div>
+  let h=`<div class="su-card"><div class="su-head"><div><b>${st.mode==='move'?'Moving':'Copying'} into Hearth</b><div class="muted" style="font-size:13px;margin-top:4px">${p.total?`${gbx(p.overall||0)} of ${gbx(p.total)}`:'Getting ready…'}${p.bps?' · '+fmtSpeed(p.bps):''}${left?' · '+left:''}</div></div><div class="pc">${pct}%</div></div>
     <div class="bar" style="height:8px"><i style="width:${pct}%"></i></div>`;
   if(p.name) h+=`<div class="su-ph on"><div class="n">${(p.i||0)+1}</div><div class="t">${esc(p.name)}</div><div class="p">${p.size?Math.min(100,Math.round(100*(p.done||0)/p.size))+'%':''}</div>
-    <div class="bar"><i style="width:${p.size?Math.min(100,Math.round(100*(p.done||0)/p.size)):0}%"></i></div><div class="s">${st.mode==='move'?phase+' · ':''}${kindName} · ${(p.i||0)+1} of ${p.n||1}${p.size?` · ${gbx(p.done||0)} of ${gbx(p.size)}`:''}</div></div>`;
+    <div class="bar"><i style="width:${p.size?Math.min(100,Math.round(100*(p.done||0)/p.size)):0}%"></i></div><div class="s">${kindName} · ${(p.i||0)+1} of ${p.n||1}${p.size?` · ${gbx(p.done||0)} of ${gbx(p.size)}`:''}</div></div>`;
   if(pts.length) h+=`<div class="su-speed"><div><div class="big">${fmtSpeed(pts.at(-1)[1]).replace(/ (\S+)$/,'<small>$1</small>')}</div><div class="sub">Peak ${fmtSpeed(peak)}</div></div>${speedGraph(pts,'img')}</div>`;
-  return h+`</div><button class="row" data-f data-k="imp-stop" data-act="impStop"><span class="ricon">${I.x}</span><div class="rt"><b>Stop</b><small>${st.mode==='move'?'What already finished stays moved. The one in progress is removed from Hearth and its original kept':'What already finished stays. The one in progress is removed; nothing is deleted from the other drive'}</small></div></button>`;
+  return h+`</div><button class="row" data-f data-k="imp-stop" data-act="impStop"><span class="ricon">${I.x}</span><div class="rt"><b>Stop</b><small>What's already copied stays; nothing is deleted from the other drive</small></div></button>`;
 }
 function impResult(r){
   const done=r.done||[], skipped=r.skipped||[], failed=r.failed||[], kept=r.kept||[];
-  const moved=r.moved||[];
-  let h=`<div class="row"><span class="ricon">${I.check||I.info}</span><div class="rt"><b>${r.mode==='move'?`${moved.length} moved${done.length>moved.length?`, ${done.length-moved.length} copied`:''}`:`${done.length} ${done.length===1?'thing':'things'} imported`}</b><small>${[r.steam?`${r.steam} Steam`:'' , (r.epic||[]).length?`${r.epic.length} Epic`:'', (r.gog||[]).length?`${r.gog.length} GOG`:'', (r.lutris||[]).length?`${r.lutris.length} Lutris`:'', done.filter(x=>x.kind==='files').length?`${done.filter(x=>x.kind==='files').length} folder${done.filter(x=>x.kind==='files').length===1?'':'s'}`:''].filter(Boolean).join(' · ')||'Nothing new'}</small></div></div>`;
-  if(r.stopped) h+=note('Stopped. What finished is in Hearth; the one in progress was removed again and its original is untouched.');
+  let h=`<div class="row"><span class="ricon">${I.check||I.info}</span><div class="rt"><b>${done.length} ${done.length===1?'thing':'things'} imported</b><small>${[r.steam?`${r.steam} Steam`:'' , (r.epic||[]).length?`${r.epic.length} Epic`:'', (r.gog||[]).length?`${r.gog.length} GOG`:'', (r.lutris||[]).length?`${r.lutris.length} Lutris`:'', done.filter(x=>x.kind==='files').length?`${done.filter(x=>x.kind==='files').length} folder${done.filter(x=>x.kind==='files').length===1?'':'s'}`:''].filter(Boolean).join(' · ')||'Nothing new'}</small></div></div>`;
   (r.notes||[]).forEach(n=>h+=note(esc(n)));
-  // Space freed on another system on this PC: offer it to Hearth (Make Hearth bigger).
-  (r.freed||[]).filter(f=>f.bytes>=1e9).forEach(f=>h+=`<button class="row" data-f data-k="spc-offer-${esc(f.drive)}" data-act="spcOffer" data-dev="${esc(f.dev)}"><span class="ricon">${I.dl}</span><div class="rt"><b>${gb(f.bytes)} freed on ${esc(f.name)}. Give it to ${APP}?</b><small>Make ${APP} bigger (Beta Experimental): ${esc(f.name)} gets smaller and ${APP} gets the space</small></div><div class="rv">›</div></button>`);
   if(skipped.length) h+=shead('Skipped')+skipped.map(x=>`<div class="row"><div class="rt"><b>${esc(x.name)}</b><small>${esc(x.why)}</small></div></div>`).join('');
   if(failed.length) h+=shead("Didn't work")+failed.map(x=>`<div class="row"><div class="rt"><b>${esc(x.name)}</b><small>${esc(x.why)}</small></div></div>`).join('');
   if(kept.length) h+=shead('Copied, but the original was kept')+kept.map(x=>`<div class="row"><div class="rt"><b>${esc(x.name)}</b><small>${esc(x.why)}</small></div></div>`).join('');
@@ -2507,7 +2492,6 @@ function pageImport(){
   if(!st) return note('Loading…');
   if(!st.supported) return note('Importing games and files needs Hearth, the OS.');
   if(st.state==='importing') return impProgress(st);
-  if(SPC.job || SPC.result) return pageSpace();   // Make Hearth bigger: running, or just finished
   if(st.state==='takeover' || st.takeoverResult) return pageTakeover(st);
   if(st.result) return impResult(st.result);
   let h='';
@@ -2515,11 +2499,9 @@ function pageImport(){
   if(st.state==='scanning') return h+`<div class="row"><span class="mini-spin"></span><div class="rt"><b>Looking at your drives…</b><small>Opening other drives read-only and finding games and folders. Big drives take a minute.</small></div></div>`;
   if(!st.scan) return h+`<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Bring your games and files</b><small>From Windows, SteamOS (Steam Deck), Bazzite or other Linux, a second drive or an SD card. Steam, Epic and GOG games come over ready to play, without downloading them again, plus your Documents, Pictures and other folders.</small></div></div>`
     + `<button class="row" data-f data-k="imp-scan" data-act="impScan"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look for games and files</b><small>Other drives are only read, never changed</small></div></button>`
-    + (st.error?note(esc(st.error)):'') + pageSpace() + pageTakeover(st);
+    + (st.error?note(esc(st.error)):'') + pageTakeover(st);
   const drives=st.scan.drives||[];
   const row=(it,label)=>`<button class="row" data-f data-k="imp-${esc(it.key)}" data-act="impToggle" data-key="${esc(it.key)}"><div class="rt"><b>${esc(label||it.name)}</b><small>${it.size?gbs(it.size):'Size unknown'}</small></div><div class="sw ${IMP.sel.has(it.key)?'on':''}"></div></button>`;
-  // A game can also be moved on its own (Beta Experimental): copied, checked, then deleted from the other drive.
-  const grow=(it)=>`<div style="display:flex;gap:8px;align-items:stretch"><div style="flex:1;min-width:0;display:flex;flex-direction:column">${row(it)}</div><button class="pill" style="flex:none;padding:0 16px" data-f data-k="impmv-${esc(it.key)}" data-act="impMoveOne" data-key="${esc(it.key)}">${I.dl||''}Move</button></div>`;
   const useful=drives.filter(d=>d.steam.length||d.epic.length||d.gog.length||(d.lutris||[]).length||d.files.length||d.problem);
   if(!useful.length) h+=note('No other drives with games or personal folders were found. Plug in the drive or SD card, then look again.');
   for(const d of useful){
@@ -2527,107 +2509,19 @@ function pageImport(){
     h+=shead(`${esc(d.name)}${d.os&&d.os!==d.name?' · '+esc(d.os):''} · ${gb(d.size)}`);
     if(d.problem){ h+=note('This drive can\'t be read: '+esc(d.problem)+'.'); continue; }
     h+=`<button class="row" data-f data-k="imp-all-${esc(d.id)}" data-act="impAll" data-drive="${esc(d.id)}"><div class="rt"><b>${all?'Unselect everything':'Select everything'} on this drive</b><small>${items.length} item${items.length===1?'':'s'} · ${gbs(items.reduce((a,x)=>a+(x.size||0),0))}</small></div></button>`;
-    if(d.steam.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">STEAM</div>`+d.steam.map(x=>grow(x)).join('');
-    if(d.epic.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">EPIC GAMES</div>`+d.epic.map(x=>grow(x)).join('');
-    if(d.gog.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">GOG</div>`+d.gog.map(x=>grow(x)).join('');
-    if((d.lutris||[]).length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">LUTRIS</div>`+d.lutris.map(x=>grow(x)).join('');
+    if(d.steam.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">STEAM</div>`+d.steam.map(x=>row(x)).join('');
+    if(d.epic.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">EPIC GAMES</div>`+d.epic.map(x=>row(x)).join('');
+    if(d.gog.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">GOG</div>`+d.gog.map(x=>row(x)).join('');
+    if((d.lutris||[]).length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">LUTRIS</div>`+d.lutris.map(x=>row(x)).join('');
     if(d.files.length) h+=`<div class="muted" style="margin:10px 4px 4px;font-size:13px;font-weight:700">YOUR FILES</div>`+d.files.map(x=>row(x, x.name+(x.user?` (${x.user})`:''))).join('');
   }
-  const sel=impItems().filter(x=>IMP.sel.has(x.key)), need=sel.reduce((a,x)=>a+(x.size||0),0), free=st.scan.free||0, tooBig=need>free;
+  const sel=impItems().filter(x=>IMP.sel.has(x.key)), need=sel.reduce((a,x)=>a+(x.size||0),0), free=st.scan.free||0, tooBig=IMP.mode==='copy'&&need>free;
   h+=shead('Import')
-    + `<button class="row" data-f data-k="imp-start" data-act="impStart"><span class="ricon">${I.dl}</span><div class="rt"><b>${sel.length?`Copy ${sel.length} item${sel.length===1?'':'s'}`:'Pick what to bring'}</b><small>${sel.length?`${gbs(need)||'0 GB'} · ${gb(free)} free on Hearth · the other drive keeps everything`:'Turn on the games and folders you want'}${tooBig?' · not enough space':''}</small></div></button>`
-    + `<button class="row" data-f data-k="imp-move" data-act="impMove"><span class="ricon">${I.dl}</span><div class="rt"><b>${sel.length?`Move ${sel.length} item${sel.length===1?'':'s'}`:'Move'} (Beta Experimental)</b><small>Copy, check every file, then delete the original from the other drive. Frees space there that you can give to Hearth${tooBig?' · not enough space':''}</small></div></button>`
+    + `<button class="row" data-f data-k="imp-mode" data-act="impMode"><div class="rt"><b>Delete the originals after copying</b><small>${IMP.mode==='move'?'Move: frees up the other drive. Each original is deleted only after its copy is checked':'Copy: the other drive keeps everything'}</small></div><div class="sw ${IMP.mode==='move'?'on':''}"></div></button>`
+    + `<button class="row" data-f data-k="imp-start" data-act="impStart"><span class="ricon">${I.dl}</span><div class="rt"><b>${sel.length?`Import ${sel.length} item${sel.length===1?'':'s'}`:'Pick what to bring'}</b><small>${sel.length?`${gbs(need)||'0 GB'} · ${gb(free)} free on Hearth`:'Turn on the games and folders you want'}${tooBig?' · not enough space':''}</small></div></button>`
     + `<button class="row" data-f data-k="imp-scan" data-act="impScan"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look again</b></div></button>`
     + note('Steam checks each imported game the first time you start it (a minute, not a download). Epic games need you signed in to Epic. Games that only run on Windows play through Proton, like other Windows games on Hearth.');
-  return h + pageSpace() + pageTakeover(st);
-}
-
-// ---------- Make Hearth bigger (Beta Experimental) ----------
-// After games were moved off Windows, SteamOS or another Linux on this PC: that system gets smaller and Hearth
-// gets the space (hearth-space: shrink its file system and partition, add the space to Hearth's file system).
-const SPC = {s:null, loading:false, err:null, sel:null, gb:0, job:null, result:null, error:null, open:false};
-const GIB = 1024**3;
-const gib = b => Math.floor((b||0)/GIB);
-if(!host) SPC.mock = {beta:true, hearth:{size:213e9, used:160e9, free:53e9, devices:['/dev/nvme0n1p6'], disks:['/dev/nvme0n1']},
-  systems:[{id:'nvme0n1p3', dev:'/dev/nvme0n1p3', name:'Windows', kind:'windows', fs:'ntfs', size:200*GIB, used:86*GIB, min:80*GIB, keep:106*GIB, canGive:94*GIB, blockers:[], warnings:[]}],
-  free:[], problems:[], journal:null, power:{plugged:true, battery:null}};
-function spcLoad(sel){
-  SPC.open=true; SPC.loading=true; SPC.err=null; if(sel) SPC.sel=sel; render(null,true);
-  const p = host ? call('space.status',{},180000) : new Promise(r=>setTimeout(()=>r(JSON.parse(JSON.stringify(SPC.mock))),400));
-  p.then(r=>{ SPC.s=r; SPC.loading=false; spcPick(SPC.sel, true); }).catch(e=>{ SPC.loading=false; SPC.err=e.message; render(null,true); });
-}
-// The sources that can give space: other systems, and free (unpartitioned) space on Hearth's drive.
-function spcSources(){
-  const s=SPC.s; if(!s) return [];
-  return [...(s.systems||[]).map(x=>({...x, key:x.dev})), ...(s.free||[]).map((f,i)=>({key:'free', dev:'free', name:'Free space on the drive', fs:'', size:f.bytes, canGive:f.canGive, blockers:f.blockers||[], warnings:[], free:true, afterHearth:f.afterHearth, idx:i}))]
-    .filter((x,i,a)=>x.key!=='free' || a.findIndex(y=>y.key==='free')===i);
-}
-function spcPick(dev, quiet){
-  const src=spcSources().find(x=>x.key===dev) || spcSources().find(x=>!x.blockers.length && x.canGive>=GIB);
-  SPC.sel=src?src.key:null;
-  if(src){ const max=gib(src.canGive); SPC.gb=Math.max(1, Math.min(max, SPC.gb||Math.min(max, Math.max(1, Math.round(max/2/8)*8)))); }
-  render(null,true);
-}
-function spcStep(d){
-  const src=spcSources().find(x=>x.key===SPC.sel); if(!src) return;
-  const max=gib(src.canGive), step=max>=32?8:1;
-  SPC.gb = d==='max' ? max : Math.max(1, Math.min(max, (d>0 ? Math.floor(SPC.gb/step)*step+step : Math.ceil(SPC.gb/step)*step-step)));
-  render(null,true);
-}
-function spcGo(){
-  const src=spcSources().find(x=>x.key===SPC.sel); if(!src) return toast('Choose where the space comes from');
-  if(src.blockers.length) return toast(src.blockers[0].text);
-  const g=SPC.gb, from=src.free?'the free space on the drive':src.name;
-  const start=()=>{
-    SPC.job={pct:0, text:'Starting', from:src.name, gb:g}; SPC.error=null; SPC.result=null; render(null,true);
-    if(!host){ let p=0; const t=setInterval(()=>{ p+=20; spaceEvent(p<100?'space.grow.progress':'space.grow.done', p<100?{pct:p,text:'Making room'}:{ok:true, gave:g*GIB, hearth:{size:213e9+g*GIB, free:53e9+g*GIB}}); if(p>=100) clearInterval(t); },500); return; }
-    call('space.grow',{from:src.dev, gb:g},30000).catch(e=>{ SPC.job=null; SPC.error=e.message; render(null,true); });
-  };
-  openSheet({title:`Give ${g} GB from ${from} to ${APP}?`, sub:(src.free?`${APP} gets ${g} GB of space nobody uses yet.`:`Back up anything important first. ${src.name} keeps working but gets smaller: ${gb(src.size)} becomes ${gb(src.size-g*GIB)}.`)+' Keep the device plugged in and on until it's done; on a full drive this can take an hour. Beta Experimental: new and not tested on real devices yet. Back up first.',
-    items:[{label:'I've backed up what matters', icon:'check', run:()=>setTimeout(()=>openSheet({title:'Last check: start now?', sub:`${from} → ${APP}: ${g} GB. If anything goes wrong, ${APP} puts back what it changed. Don't turn the device off.`, items:[
-      {label:`Make ${APP} bigger`, icon:'dl', run:start}]}),250)}]});
-}
-function spaceEvent(name, d){
-  if(name==='space.grow.progress'){ SPC.job={...(SPC.job||{}), pct:d.pct||0, text:d.text||''}; }
-  else if(name==='space.grow.done'){ SPC.job=null; SPC.result=d||{ok:true}; SPC.s=null; toast(`${APP} is bigger now`); }
-  else if(name==='space.grow.error'){ SPC.job=null; SPC.error=d.text||'It didn\'t work'; SPC.s=null; toast(SPC.error); }
-  if(S.view==='settings' && S.settingsTab==='import') render(null,true);
-}
-function pageSpace(){
-  if(SPC.job){ const j=SPC.job, pct=Math.max(0,Math.min(100,Math.round(j.pct||0)));
-    return note(BETA_X)+`<div class="su-card"><div class="su-head"><div><b>Making ${APP} bigger</b><div class="muted" style="font-size:13px;margin-top:4px">${esc(j.text||'Working')} · ${j.gb} GB from ${esc(j.from||'')}</div></div><div class="pc">${pct}%</div></div>
-      <div class="bar" style="height:8px"><i style="width:${pct}%"></i></div></div>` + note('Keep the device on and plugged in. This can\'t be stopped half-way: if something goes wrong, '+APP+' puts back what it changed.'); }
-  if(SPC.result){ const r=SPC.result;
-    return `<div class="row"><span class="ricon">${I.check}</span><div class="rt"><b>${APP} is ${gb(r.gave||0)} bigger</b><small>${r.hearth?`${gb(r.hearth.size)} in all · ${gb(r.hearth.free)} free now`:''}</small></div></div>`
-      + ((r.warnings||[]).map(w=>note(esc(w))).join(''))
-      + `<button class="row" data-f data-k="spc-done" data-act="spcDone"><span class="ricon">${I.check}</span><div class="rt"><b>Done</b></div></button>`; }
-  let h=shead(`Make ${APP} bigger (Beta Experimental)`, SPC.loading);
-  if(SPC.error) h+=note(esc(SPC.error));
-  if(!SPC.open || (!SPC.s && !SPC.loading)) return h+(SPC.err?note(esc(SPC.err)):'')+`<button class="row" data-f data-k="spc-load" data-act="spcLoad"><span class="ricon">${I.dl}</span><div class="rt"><b>See how much space ${APP} could get</b><small>After moving games: Windows, SteamOS or another Linux on this PC gets smaller and ${APP} gets the space. Nothing changes until you confirm twice.</small></div><div class="rv">›</div></button>`;
-  if(SPC.loading && !SPC.s) return h+`<div class="row"><span class="mini-spin"></span><div class="rt"><b>Looking at the drive…</b><small>Checking how full each system is. This can take half a minute.</small></div></div>`;
-  const s=SPC.s, hs=s.hearth||{};
-  h+=note(BETA_X+' Back up anything important first. The other system keeps working but gets smaller.');
-  h+=`<div class="row"><span class="ricon">${HEARTH_MARK}</span><div class="rt"><b>${APP}: ${gb(hs.free||0)} free of ${gb(hs.size||0)}</b><small>${(hs.devices||[]).length>1?`On ${hs.devices.length} partitions`:'Its own partition'}${s.limited?' · exact numbers need the system\'s OK':''}</small></div></div>`;
-  if(s.journal) h+=note(esc((s.problems||[]).find(p=>p.id==='unfinished')?.text||'An earlier resize didn\'t finish.'))
-    + `<button class="row" data-f data-k="spc-clear" data-act="spcClear"><span class="ricon">${I.check}</span><div class="rt"><b>I've checked it</b><small>After starting the other system once and letting it check its drive</small></div></button>`;
-  const srcs=spcSources();
-  if(!srcs.length) h+=note(`Nothing else on ${APP}'s drive can give space. Other drives (a second SSD, an SD card) stay separate.`);
-  for(const x of srcs){
-    const max=gib(x.canGive), blocked=x.blockers.length>0, on=SPC.sel===x.key;
-    const info = x.free ? `${gb(x.size)} not used by any system${x.afterHearth?' · right after '+APP:''}`
-      : `${gb(x.size)} · ${x.used!=null?gb(x.used)+' used':'used: unknown'} · ${esc((x.fs||'').toUpperCase())}${x.estimate?' · estimate':''}`;
-    h+=`<button class="row" data-f data-k="spc-${esc(x.key)}" data-act="spcPick" data-dev="${esc(x.key)}"><div class="rt"><b>${esc(x.name)}${blocked?'':` · can give ${max} GB`}</b><small>${info}${blocked?' · '+esc(x.blockers[0].text):''}</small></div><div class="sw ${on&&!blocked?'on':''}"></div></button>`;
-    if(on) (x.warnings||[]).forEach(w=>h+=note(esc(w.text)));
-  }
-  const src=srcs.find(x=>x.key===SPC.sel && !x.blockers.length && x.canGive>=GIB);
-  if(src){
-    const g=SPC.gb;
-    h+=`<div class="row"><div class="rt"><b>Give ${g} GB to ${APP}</b><small>${src.free?'':`${esc(src.name)}: ${gb(src.size)} → ${gb(src.size-g*GIB)} · `}${APP}: ${gb(hs.size||0)} → ${gb((hs.size||0)+g*GIB)}</small></div>
-      <div class="seg" style="max-width:300px"><button data-f data-k="spc-less" data-act="spcStep" data-d="-1">−</button><button data-f data-k="spc-more" data-act="spcStep" data-d="1">+</button><button data-f data-k="spc-max" data-act="spcStep" data-d="max">Max</button></div></div>`;
-    h+=`<button class="row" data-f data-k="spc-go" data-act="spcGo"><span class="ricon">${I.dl}</span><div class="rt"><b>Make ${APP} bigger</b><small>${src.free?'Uses free space on the drive':`${esc(src.name)} gets ${g} GB smaller`}. Asks twice before anything changes.</small></div></button>`;
-  }
-  h+=`<button class="row" data-f data-k="spc-refresh" data-act="spcLoad"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look again</b></div></button>`;
-  return h;
+  return h + pageTakeover(st);
 }
 
 // ---------- Settings › Switch to Hearth OS (Ember on Windows) ----------
