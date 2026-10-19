@@ -47,6 +47,8 @@ grep -E "self-test" /tmp/selftest.log || true
 if ! grep -q "self-test passed" /tmp/selftest.log; then
   grep "self-test step" /tmp/selftest.log | while IFS= read -r l; do echo "::notice title=self-test::$l"; done
   grep -E "Check failed|FATAL|signal SIG" /tmp/selftest.log | grep -v "ICU data" | head -5 | cut -c1-450 | while IFS= read -r l; do echo "::error title=self-test (exit $code)::${l//%/%25}"; done
+  echo "::error title=self-test exit::$code"
+  grep -E ":ERROR:|:WARNING:|:FATAL:|exited|Inferior" /tmp/selftest.log | grep -v "ICU data" | tail -8 | cut -c1-350 | while IFS= read -r l; do echo "::warning title=log::${l//%/%25}"; done
   grep -E "^#[0-9]+ " /tmp/selftest.log | head -10 | cut -c1-300 | while IFS= read -r l; do echo "::warning title=backtrace::${l//%/%25}"; done
   exit 1
 fi
