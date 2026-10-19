@@ -89,7 +89,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
-## 0.0.30
+## 0.0.30 (released)
 
 - [x] Fix: Shut down in the power menu was skipped when moving down; menus now go item by item
 - [x] Shut down and Restart ask first when games are open or in Quick Resume (and offer Turn off and keep games, or Sleep)
