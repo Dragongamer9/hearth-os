@@ -1104,6 +1104,11 @@ fn os_name() -> String {
 fn edition() -> &'static str {
     if std::path::Path::new("/etc/hearth-live").exists() { return "live"; }
     if !system_install() { return "appimage"; }
+    // The non-Bazzite editions (Anatase, Ubuntu, CachyOS, Peppermint) describe themselves here.
+    let own = std::fs::read_to_string("/usr/share/nimbus/image-info.json").ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+    if let Some(base) = own.as_ref().and_then(|v| v["base"].as_str()) {
+        return match base { "anatase" => "anatase", "ubuntu" => "ubuntu", "cachyos" => "cachyos", "peppermint" => "peppermint", _ => "other" };
+    }
     let info = std::fs::read_to_string("/usr/share/ublue-os/image-info.json").unwrap_or_default();
     if info.to_lowercase().contains("nvidia") { "nvidia" } else { "amd" }
 }

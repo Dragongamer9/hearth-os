@@ -806,7 +806,19 @@ def bootloader(disk, firmware, dep=None):
 # Other systems' boot loaders on EFI partitions: "Windows", "SteamOS", ... in Hearth's boot menu.
 KNOWN_LOADERS = [('Microsoft', 'Boot/bootmgfw.efi', 'Windows'), ('steamos', 'steamcl.efi', 'SteamOS')]
 GENERIC_LOADERS = ('shimx64.efi', 'grubx64.efi', 'systemd-bootx64.efi')
-SKIP_DIRS = {'boot', 'fedora', 'hearth', 'tools', 'linux', 'efi'}
+SKIP_DIRS = {'boot', 'fedora', 'debian', 'ubuntu', 'anatase', 'cachyos', 'arch', 'hearth', 'tools', 'linux', 'efi'}
+
+
+def efi_loader(esp_root):
+    """Hearth's boot loader on its EFI partition, as the firmware names it: \\EFI\\<distro>\\shimx64.efi (or grub).
+    Fedora-based Hearth installs EFI/fedora, the Debian and Ubuntu editions EFI/debian or EFI/ubuntu."""
+    efi = next((os.path.join(esp_root, n) for n in os.listdir(esp_root) if n.lower() == 'efi'), None) if os.path.isdir(esp_root) else None
+    for d in ('fedora', 'debian', 'ubuntu', 'anatase', 'cachyos', 'arch'):
+        for f in ('shimx64.efi', 'grubx64.efi'):
+            real = next((os.path.join(efi, n) for n in (os.listdir(efi) if efi else []) if n.lower() == d), None)
+            if real and os.path.isfile(os.path.join(real, f)):
+                return f'\\EFI\\{os.path.basename(real)}\\{f}'
+    return '\\EFI\\fedora\\grubx64.efi'
 
 
 def find_loaders(esp_root):
@@ -903,7 +915,7 @@ def ensure_boot_entry(disk):
     esp_part = sh(['findmnt', '-no', 'SOURCE', f'{TARGET}/boot/efi']).stdout.strip()
     partuuid = sh(['blkid', '-s', 'PARTUUID', '-o', 'value', esp_part], check=False).stdout.strip().lower()
     num = re.search(r'(\d+)$', esp_part).group(1)
-    loader = '\\EFI\\fedora\\shimx64.efi' if os.path.exists(f'{TARGET}/boot/efi/EFI/fedora/shimx64.efi') else '\\EFI\\fedora\\grubx64.efi'
+    loader = efi_loader(f'{TARGET}/boot/efi')
     entries, order = boot_entries(sh(['efibootmgr', '-v'], check=False).stdout)
     for n, line in entries.items():
         if 'Hearth OS' in line and partuuid and partuuid not in line.lower():
@@ -1037,6 +1049,11 @@ def run(plan):
         # Hearth mounts what's in its fstab and nothing else: systemd's automatic partition mounting would pick up
         # another Linux's /home or /var on the same drive (SteamOS marks its partitions that way) and fail.
         add_kargs(image_kargs(dep) + ['systemd.gpt_auto=0', 'rd.systemd.gpt_auto=0'] + plan['kargs'])
+        # Debian- and Ubuntu-based editions: their signed GRUB can't read ostree's boot entries itself, so the
+        # image's helper writes the GRUB menu from them (Fedora-based images don't have, or need, it).
+        bls = f'{dep}/usr/libexec/nimbus/hearth-bls-grub'
+        if os.path.isfile(bls):
+            sh(['sh', bls, '--boot', f'{TARGET}/boot'])
         bootloader(disk, plan.get('firmware', True), dep)
         other_systems_menu()
         write_fstab(dep, esp, boot, root)

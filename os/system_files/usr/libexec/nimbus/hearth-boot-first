@@ -22,6 +22,18 @@ def boot_entries(text):
     return entries, [x.upper() for x in (m.group(1).split(',') if m else []) if x]
 
 
+def efi_loader(esp_root):
+    """\\EFI\\<distro>\\shimx64.efi (or grub) for whichever folder Hearth's boot loader is in."""
+    efi = os.path.join(esp_root, 'EFI')
+    names = os.listdir(efi) if os.path.isdir(efi) else []
+    for d in ('fedora', 'debian', 'ubuntu', 'anatase', 'cachyos', 'arch'):
+        real = next((n for n in names if n.lower() == d), None)
+        for f in ('shimx64.efi', 'grubx64.efi'):
+            if real and os.path.isfile(os.path.join(efi, real, f)):
+                return f'\\EFI\\{real}\\{f}'
+    return '\\EFI\\fedora\\grubx64.efi'
+
+
 def plan(text, partuuid):
     """(entry to put first or None, new order or None when it's already first)."""
     entries, order = boot_entries(text)
@@ -46,7 +58,7 @@ def main():
         # No entry for Hearth's EFI partition at all: make one.
         disk = '/dev/' + run('lsblk', '-no', 'PKNAME', esp).strip()
         num = re.search(r'(\d+)$', esp).group(1)
-        loader = '\\EFI\\fedora\\shimx64.efi' if os.path.exists('/boot/efi/EFI/fedora/shimx64.efi') else '\\EFI\\fedora\\grubx64.efi'
+        loader = efi_loader('/boot/efi')
         subprocess.run(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', loader])
         mine, order = plan(run('efibootmgr', '-v'), partuuid)
     if mine and order:
