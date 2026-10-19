@@ -4477,16 +4477,12 @@ function hostPad(k){ padPressed(mapPad(k)); }
 const REPEAT = new Set(['up','down','left','right']);
 const held={};
 let padSeen=false;
-const PAD_REST={};   // where each controller's axes rest when first seen
-window.addEventListener('gamepaddisconnected', e=>{ delete PAD_REST[e.gamepad.index]; });
 function pollPads(t){
   // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
   const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
   const st={};
   for(const p of pads){ if(!p) continue;
-    const base = PAD_REST[p.index] || (PAD_REST[p.index] = (p.axes||[]).map(v=>v||0));
-    const b=i=>!!(p.buttons[i] && p.buttons[i].pressed);
-    const ax=i=>{ const v=p.axes[i]||0, r=base[i]||0; if(p.mapping!=='standard' && Math.abs(r)>.3) return 0; return Math.abs(r)>.3 ? 0 : v; };
+    const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
     st.a=st.a||b(0); st.b=st.b||b(1); st.x=st.x||b(2); st.y=st.y||b(3);
     st.lb=st.lb||b(4); st.rb=st.rb||b(5); st.select=st.select||b(8); st.start=st.start||b(9); st.guide=st.guide||b(16);
     st.up=st.up||b(12)||ax(1)<-.55; st.down=st.down||b(13)||ax(1)>.55;
