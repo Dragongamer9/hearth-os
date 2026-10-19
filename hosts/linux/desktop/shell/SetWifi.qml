@@ -21,13 +21,6 @@ SetPage {
     readonly property var firstNets: nets.filter(n => n.inUse || saved.includes(n.ssid) || busy === n.ssid)
     readonly property var otherNets: nets.filter(n => !(n.inUse || saved.includes(n.ssid) || busy === n.ssid))
     readonly property var shownNets: showAll ? firstNets.concat(otherNets) : firstNets.concat(otherNets.slice(0, Math.max(0, 6 - firstNets.length)))
-    // A short list (the network you're on, saved ones, then the strongest others, up to 6); the rest behind
-    // "Show all networks". Folds closed again when you leave the page.
-    property bool showAll: false
-    onVisibleChanged: if (!visible) showAll = false
-    readonly property var firstNets: nets.filter(n => n.inUse || saved.includes(n.ssid) || busy === n.ssid)
-    readonly property var otherNets: nets.filter(n => !(n.inUse || saved.includes(n.ssid) || busy === n.ssid))
-    readonly property var shownNets: showAll ? firstNets.concat(otherNets) : firstNets.concat(otherNets.slice(0, Math.max(0, 6 - firstNets.length)))
 
     // nmcli -t escapes ':' inside fields as '\:'
     function fields(line) {
