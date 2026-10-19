@@ -366,6 +366,8 @@ impl Bridge {
             }
             "app.restart" => { (self.emit)(json!({"type": "restart"})); Ok(Value::Null) }
             "app.exportLogs" => export_logs(&self.version),
+            "logs.save" => crate::logs::save(&self.version).map(|(p, _)| json!({"path": p.to_string_lossy()})),
+            "logs.send" => crate::logs::send(&self.version),
             "game.resetPrefix" => {
                 let id = req("id")?;
                 let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
@@ -952,7 +954,7 @@ fn shell_install(remove: bool) -> Result<(), String> {
 }
 
 fn features() -> Vec<&'static str> {
-    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots"];
+    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs"];
     if crate::guide::controller_available() { f.push("remap"); }
     f
 }

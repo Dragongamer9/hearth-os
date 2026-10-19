@@ -1185,10 +1185,15 @@ function pageSystem(){
   h += shead('Troubleshooting');
   if(feat('restartApp')) h += `<button class="row" data-f data-k="sy-restart" data-act="restartApp"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP}</b><small>Closes and reopens ${APP}. Games keep running.</small></div></button>`;
   h += `<button class="row" data-f data-k="sy-inlog" data-act="inputLog"><div class="rt"><b>Log controller input</b><small>Writes every button press and what it selected to the log, for reporting a jumpy selection. Then use Save logs.</small></div><div class="sw ${INPUT_LOG?'on':''}"></div></button>`;
-  if(feat('exportLogs')) h += `<button class="row" data-f data-k="sy-logs" data-act="exportLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs</b><small>Puts ${APP}'s logs in one file in your home folder, to send with a bug report</small></div></button>`;
+  if(feat('sendLogs')){
+    h += `<button class="row" data-f data-k="sy-send" data-act="sendLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs for a bug report</b><small>One file with ${APP}'s and the system's logs, personal details taken out. Saved in your home folder, and on a USB drive or SD card if one is plugged in.</small></div>${LOGS.busy?'<span class="mini-spin"></span>':''}</button>`;
+    if(LOGS.r) h += note(`Saved: <code>${esc(LOGS.r.path)}</code>${(LOGS.r.copies||[]).map(c=>`<br>Copied to: <code>${esc(c)}</code>`).join('')}`);
+  }
+  else if(feat('exportLogs')) h += `<button class="row" data-f data-k="sy-logs" data-act="exportLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs</b><small>Puts ${APP}'s logs in one file in your home folder, to send with a bug report</small></div></button>`;
   h += `<button class="row" data-f data-k="sy-reset" data-act="resetLook"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset appearance</b><small>Layout, text size and top bar back to how they started. Your games and accounts stay.</small></div></button>`;
   return h;
 }
+const LOGS = {busy:false, r:null};
 // ---------- Settings › Library sources › Emulators (Linux) ----------
 const EMU = {s:null, busy:false};
 function loadEmu(){ if(LINUX) call('emu.status').then(r=>{ EMU.s=r; refreshUI(); }).catch(()=>{}); }
@@ -2735,6 +2740,8 @@ function act(el){
     case 'lookToggle': LOOK[d.key]=!LOOK[d.key]; saveLook(); return render('ap-'+d.key);
     case 'textSize': return pickTextSize();
     case 'restartApp': toast('Restarting '+APP+'…'); return call('app.restart').catch(e=>toast(e.message));
+    case 'sendLogs': if(LOGS.busy) return; LOGS.busy=true; LOGS.r=null; render('sy-send',true);
+      return call('logs.send',{},120000).then(r=>{ LOGS.r=r; toast((r.copies||[]).length?'Logs saved to your USB drive too':'Logs saved'); }).catch(e=>toast(e.message)).finally(()=>{ LOGS.busy=false; render('sy-send',true); });
     case 'exportLogs': toast('Saving logs…'); return call('app.exportLogs',{},60000).then(r=>toast(r&&r.path?'Saved to '+r.path:'Saved')).catch(e=>toast(e.message));
     case 'resetLook': Object.assign(LOOK,{layout:'shelf',textSize:'normal',reduceMotion:false,clock24:false,battPct:true}); saveLook(); toast('Appearance reset'); return render('sy-reset');
     case 'credits': return openSheet({title:'Built with', sub:APP+' stands on these open-source projects. Thank you!', items:CREDITS.map(([n,w])=>({label:n+' — '+w, icon:'', run:()=>{}}))});
