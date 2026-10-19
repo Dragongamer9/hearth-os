@@ -68,6 +68,7 @@ internal sealed class SettingsWindow : Form
             if (!string.IsNullOrEmpty(page)) Post(JsonSerializer.Serialize(new { type = "event", name = "mantel.settingsPage", data = new { page } }));
         }
         Activate();
+        Native.ForceForeground(Handle);
         _web.Focus();
     }
 
