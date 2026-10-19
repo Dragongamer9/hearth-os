@@ -120,7 +120,13 @@ impl GameMode {
         let app_id = Self::steam_app(&id);
         self.run_focus("game", delay_ms, soft, move |still| {
             let pids = || bridge.lock().map(|b| b.library.game_pids()).unwrap_or_default();
-            gs::focus_game(&pids, app_id, &[std::process::id() as u64], still);
+            // Never a game put aside (its window shows its last picture, frozen).
+            let mut exclude: Vec<u64> = bridge.lock().map(|b| b.library.frozen_pids()).unwrap_or_default().into_iter().map(u64::from).collect();
+            exclude.push(std::process::id() as u64);
+            if let Some(cur) = gs::cardinals("GAMESCOPECTRL_BASELAYER_WINDOW", None).first().copied() {
+                if gs::focusable_windows().iter().any(|w| w.win == cur && exclude.contains(&w.pid)) { gs::clear_focus(); }
+            }
+            gs::focus_game(&pids, app_id, &exclude, still);
         });
     }
 
