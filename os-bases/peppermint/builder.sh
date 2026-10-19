@@ -40,7 +40,9 @@ apt-get install -y --no-install-recommends \
   libcli11-dev libjemalloc-dev libpipewire-0.3-dev libpam0g-dev libpolkit-agent-1-dev libpolkit-gobject-1-dev \
   libdrm-dev libgbm-dev libegl-dev libvulkan-dev wayland-protocols libwayland-dev libwayland-bin libxcb1-dev \
   extra-cmake-modules \
-  python3 python3-venv python3-pip python3-setuptools python3-wheel
+  python3 python3-venv python3-pip python3-setuptools python3-wheel \
+  clang libclang-dev
+# (clang: bootc's "make install" builds its man pages with default features, whose SELinux bindings need it)
 # Names that may differ between Debian point releases: each on its own, a missing one isn't fatal here (the
 # build that needs it says so).
 # libcomposefs-dev: ostree uses composefs when it's there (the image's root is mounted through it if so).
