@@ -517,6 +517,8 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .osi-dl{display:flex;gap:18px;align-items:baseline;margin:0 0 22px;color:var(--dim);font-size:15px}.osi-dl b{font-size:22px;color:var(--text)}
 .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}.shot{display:flex;flex-direction:column;gap:6px;padding:0;background:none;border:0;color:var(--muted);text-align:left;border-radius:12px}.shot img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;background:var(--panel2)}.shot small{padding:0 4px}
 .shotview{display:flex;flex-direction:column;gap:12px;height:calc(100vh - 170px)}.shotview img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:12px;background:#000}.shotbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.shotbar .muted{flex:1}
+.logcode{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;background:var(--panel2);margin-bottom:6px}.logcode b{font-size:30px;letter-spacing:.12em;color:var(--accent);font-variant-numeric:tabular-nums}.logcode code{font-size:13px;word-break:break-all;color:var(--dim)}
+.frchips{margin:0 0 14px}.frplat{font-size:11px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:2px;background:var(--panel3);color:var(--dim)}.fp-steam{background:#1b2838;color:#66c0f4}.fp-xbox{background:#0e3a12;color:#7ad15a}.fp-epic{background:#2a2a2a;color:#ddd}.frjoin{color:var(--accent);font-weight:700}
 .frav{position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none;margin-right:12px}.frav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.frav i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#56606e;border:2px solid var(--bg)}.frow.on .frav i{background:#5aa9ff}.frow.ing .frav i{background:#7ad15a}.frow.ing small{color:#7ad15a}
 </style>
 </head>
@@ -694,6 +696,8 @@ const OVERLAY = /[?&]overlay/.test(location.search);
 const COUNTER = {url:'https://hearth-counter.game305-cl.workers.dev', stats:null, timer:null};
 function counterOn(){ try{ return localStorage.getItem('nimbus.countMe')!=='0'; }catch(e){ return true; } }
 function counterId(){
+  // The device's own id from the app (the same after every update), when it has one.
+  if(/^[a-f0-9]{32}$/.test(HOSTINFO.deviceId||'')) return HOSTINFO.deviceId;
   let id=null; try{ id=localStorage.getItem('nimbus.counterId'); }catch(e){}
   if(!/^[a-f0-9]{32}$/.test(id||'')){ const b=new Uint8Array(16); crypto.getRandomValues(b); id=[...b].map(x=>x.toString(16).padStart(2,'0')).join(''); try{ localStorage.setItem('nimbus.counterId', id); }catch(e){} }
   return id;
@@ -978,37 +982,54 @@ function layoutPreview(id){
 }
 
 // ---------- Steam friends: who's online and what they're playing ----------
-const FR = {s:null};
-function loadFriends(){ if(!host){ FR.s={signedIn:true,online:2,friends:[{id:'1',name:'Sarah',state:'ingame',game:'Hades II'},{id:'2',name:'Mike',state:'online'},{id:'3',name:'Jo',state:'offline'}]}; return render(null,true); }
+const FR = {s:null, plat:'all'};
+const FR_PLAT = {steam:'Steam', xbox:'Xbox', epic:'Epic'};
+function loadFriends(){ if(!host){ FR.s={signedIn:true,online:3,platforms:[
+    {id:'steam',name:'Steam',signedIn:true,friends:[{id:'1',platform:'steam',name:'Sarah',state:'ingame',game:'Hades II',canMessage:true},{id:'2',platform:'steam',name:'Mike',state:'online',canMessage:true},{id:'3',platform:'steam',name:'Jo',state:'offline',canMessage:true}]},
+    {id:'xbox',name:'Xbox',signedIn:true,friends:[{id:'4',platform:'xbox',name:'PixelPete',state:'ingame',game:'Forza Horizon 5'},{id:'5',platform:'xbox',name:'Nova',state:'offline'}]},
+    {id:'epic',name:'Epic Games',signedIn:false,friends:[]}]};
+    FR.s.friends=FR.s.platforms.flatMap(p=>p.friends); return render(null,true); }
   call('steam.friends',{},30000).then(r=>{ FR.s=r; if(S.view==='friends') render(null,true); }).catch(e=>toast(e.message)); }
+function frPlatforms(s){ return s.platforms || [{id:'steam',name:'Steam',signedIn:s.signedIn,friends:(s.friends||[]).map(f=>({platform:'steam',canMessage:LINUX,...f}))}]; }
+function frLine(f){ return f.state==='ingame'?`Playing ${esc(f.game||'a game')}`:f.state==='online'?'Online':f.state==='away'||f.state==='snooze'?'Away':f.state==='busy'?'Busy':f.state==='unknown'?(f.platform==='epic'?'Epic friend':'Private profile or checking…'):'Offline'; }
 function viewFriends(){
   const s=FR.s;
-  if(!s) return note('Loading your Steam friends…');
-  if(!s.signedIn) return note('Sign in to Steam on this device to see your friends.');
-  if(!s.friends.length) return note('No friends yet, or Steam hasn\'t listed them on this device. Open Steam once and they\'ll show here.');
-  const line=f=>f.state==='ingame'?`Playing ${esc(f.game||'a game')}`:f.state==='online'?'Online':f.state==='away'||f.state==='snooze'?'Away':f.state==='unknown'?'Private profile or checking…':'Offline';
-  return `<div class="muted" style="margin:4px 0 16px">${s.online} online · ${s.friends.length} friends</div><div class="rows fr">${s.friends.map((f,i)=>`<div class="row frow ${f.state==='ingame'?'ing':f.state==='online'?'on':''}" data-f data-k="fr-${i}">
+  if(!s) return note('Loading your friends…');
+  const plats=frPlatforms(s), signed=plats.filter(p=>p.signedIn);
+  if(!signed.length) return note('Sign in to Steam on this device, or to Xbox or Epic under Library › Stores & accounts, to see your friends.');
+  if(FR.plat!=='all' && !signed.some(p=>p.id===FR.plat)) FR.plat='all';
+  const list = FR.plat==='all' ? signed.flatMap(p=>p.friends) : (signed.find(p=>p.id===FR.plat)||{friends:[]}).friends;
+  const on=f=>['ingame','online','away','snooze','busy'].includes(f.state);
+  const chips = signed.length>1 ? `<div class="chips frchips">${[['all','All'],...signed.map(p=>[p.id,FR_PLAT[p.id]||p.name])].map(([k,l])=>{ const fs=k==='all'?signed.flatMap(p=>p.friends):signed.find(p=>p.id===k).friends; const n=fs.filter(on).length;
+      return `<button class="chip ${FR.plat===k?'on':''}" data-f data-k="frp-${k}" data-act="frPlat" data-v="${k}">${l}${n?` · ${n} online`:''}</button>`; }).join('')}</div>` : '';
+  const missing = plats.filter(p=>!p.signedIn && p.id!=='steam').map(p=>p.name);
+  const notes = signed.filter(p=>p.error && (FR.plat==='all'||FR.plat===p.id)).map(p=>note(`${esc(p.name)}: ${esc(p.error)}`)).join('') + signed.filter(p=>p.loading && (FR.plat==='all'||FR.plat===p.id)).map(p=>note(`Loading your ${esc(p.name)} friends…`)).join('');
+  const groups=[['Playing',list.filter(f=>f.state==='ingame')],['Online',list.filter(f=>f.state==='online')],['Away',list.filter(f=>['away','snooze','busy'].includes(f.state))],['Offline',list.filter(f=>!on(f))]].filter(g=>g[1].length);
+  const sorted=[]; groups.forEach(g=>g[1].forEach(f=>sorted.push(f)));
+  FR.view=sorted;
+  let i=0;
+  const rows=groups.map(([t,fs])=>shead(`${t} · ${fs.length}`)+`<div class="rows fr">${fs.map(f=>{ const k=i++;
+    return `<button class="row frow ${f.state==='ingame'?'ing':f.state==='online'?'on':''}" data-f data-k="fr-${k}" data-act="frOpen" data-i="${k}">
     <span class="frav">${f.avatar?`<img src="${esc(f.avatar)}" alt="" loading="lazy">`:`<b>${esc((f.name||'?').charAt(0).toUpperCase())}</b>`}<i></i></span>
-    <div class="rt"><b>${esc(f.name)}</b><small>${line(f)}</small></div></div>`).join('')}</div>`;
+    <div class="rt"><b>${esc(f.name)} <span class="frplat fp-${esc(f.platform)}">${esc(FR_PLAT[f.platform]||f.platform)}</span></b><small>${frLine(f)}</small></div>
+    ${f.canJoin?'<div class="rv frjoin">Join</div>':f.canMessage?'<div class="rv">›</div>':''}</button>`; }).join('')}</div>`).join('');
+  return `<div class="muted" style="margin:4px 0 12px">${s.online} online · ${list.length} friend${list.length===1?'':'s'}${missing.length?` · Add ${missing.join(' and ')} friends by signing in under Stores &amp; accounts`:''}</div>${chips}${notes}${rows||note('No friends here yet.')}`;
 }
-
-// ---------- Screenshots: the ones taken from Quick Access, to look through and delete ----------
-const SH = {list:null, open:-1};
-function loadShots(){ if(!host){ SH.list=[]; return render(null,true); }
-  call('screenshots.list',{},15000).then(r=>{ SH.list=r.list||[]; if(SH.open>=SH.list.length) SH.open=SH.list.length-1; if(S.view==='shots') render(null,true); }).catch(e=>toast(e.message)); }
-function shotWhen(t){ const d=new Date(t); return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' · '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
-function viewShots(){
-  const l=SH.list;
-  if(!l) return note('Loading your screenshots…');
-  if(!l.length) return note('No screenshots yet. During a game, press the Xbox button and choose Take a screenshot.');
-  if(SH.open>=0 && l[SH.open]){ const x=l[SH.open];
-    return `<div class="shotview"><img src="${esc(x.url)}" alt=""><div class="shotbar"><span class="muted">${SH.open+1} of ${l.length} · ${shotWhen(x.time)}</span>
-      <button class="btn sm" data-f data-k="sh-prev" data-act="shotStep" data-v="-1" ${SH.open?'':'disabled'}>‹ Newer</button>
-      <button class="btn sm" data-f data-k="sh-next" data-act="shotStep" data-v="1" ${SH.open<l.length-1?'':'disabled'}>Older ›</button>
-      <button class="btn sm" data-f data-k="sh-del" data-act="shotDel">Delete</button>
-      <button class="btn sm" data-f data-k="sh-back" data-act="shotClose">Back</button></div></div>`; }
-  return `<div class="muted" style="margin:4px 0 16px">${l.length} screenshot${l.length===1?'':'s'} · Pictures › Screenshots › ${APP}</div>
-    <div class="shots">${l.map((x,i)=>`<button class="shot" data-f data-k="sh-${i}" data-act="shotOpen" data-v="${i}"><img src="${esc(x.url)}" alt="" loading="lazy"><small>${shotWhen(x.time)}</small></button>`).join('')}</div>`;
+// A friend picked: what you can do with them.
+function frOpen(f){
+  if(!f) return;
+  const items=[];
+  const local = f.game && GAMES.find(g=>g.installed!==false && (g.title||'').toLowerCase()===f.game.toLowerCase() && !g.cloud);
+  const cloud = f.game && GAMES.find(g=>g.cloud && (g.title||'').toLowerCase()===f.game.toLowerCase());
+  const act = what => call('friends.action',{platform:f.platform,id:f.id,what,server:f.server||null},20000).catch(e=>toast(e.message));
+  if(f.platform==='steam' && f.canJoin) items.push({label:`Join ${f.name}'s game`, icon:'play', run:()=>{ toast(`Joining ${f.name}…`); act('join'); }});
+  if(f.platform==='steam' && f.canMessage!==false && host) items.push({label:`Message ${f.name}`+(f.state==='ingame'&&!f.canJoin?' (join from the chat)':''), icon:'user', run:()=>{ toast('Opening Steam chat…'); act('message'); }});
+  if(local) items.push({label:`Play ${local.title}`, icon:'play', run:()=>navigate('game',{game:local.id})});
+  else if(cloud) items.push({label:`Play ${cloud.title} with Xbox Cloud Gaming`, icon:'play', run:()=>navigate('game',{game:cloud.id})});
+  if(f.platform==='steam' && host) items.push({label:'View Steam profile', icon:'info', run:()=>act('profile')});
+  const sub = f.state==='ingame' ? `Playing ${f.game||'a game'} · ${FR_PLAT[f.platform]||f.platform}` : `${frLine(f)} · ${FR_PLAT[f.platform]||f.platform}`;
+  if(!items.length) return openSheet({title:f.name, sub:sub+(f.platform==='xbox'?' · Messaging Xbox friends from Hearth isn\'t possible yet':f.platform==='epic'?' · Epic doesn\'t share status or chat outside its own apps':''), items:[]});
+  openSheet({title:f.name, sub, items});
 }
 
 // ---------- Quick Resume (Hearth): games put aside stay frozen in memory and carry on where they were ----------
@@ -1187,7 +1208,9 @@ function pageSystem(){
   h += `<button class="row" data-f data-k="sy-inlog" data-act="inputLog"><div class="rt"><b>Log controller input</b><small>Writes every button press and what it selected to the log, for reporting a jumpy selection. Then use Save logs.</small></div><div class="sw ${INPUT_LOG?'on':''}"></div></button>`;
   if(feat('sendLogs')){
     h += `<button class="row" data-f data-k="sy-send" data-act="sendLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs for a bug report</b><small>One file with ${APP}'s and the system's logs, personal details taken out. Saved in your home folder, and on a USB drive or SD card if one is plugged in.</small></div>${LOGS.busy?'<span class="mini-spin"></span>':''}</button>`;
-    if(LOGS.r) h += note(`Saved: <code>${esc(LOGS.r.path)}</code>${(LOGS.r.copies||[]).map(c=>`<br>Copied to: <code>${esc(c)}</code>`).join('')}`);
+    h += `<button class="row" data-f data-k="sy-senddev" data-act="sendLogsDev"><span class="ricon">${I.refresh}</span><div class="rt"><b>Send logs to the developer</b><small>The same file, sent to Hearth OS's bug-report service. You get a short code to share; the logs are kept 14 days, and only someone with the code can read them.</small></div>${LOGS.busyDev?'<span class="mini-spin"></span>':''}</button>`;
+    if(LOGS.r) h += LOGS.r.code ? `<div class="logcode"><small>Sent. Share this code (or the link) with the developer:</small><b>${esc(LOGS.r.code)}</b><code>${esc(LOGS.r.url)}</code></div>`
+      : note(`Saved: <code>${esc(LOGS.r.path)}</code>${(LOGS.r.copies||[]).map(c=>`<br>Copied to: <code>${esc(c)}</code>`).join('')}`);
   }
   else if(feat('exportLogs')) h += `<button class="row" data-f data-k="sy-logs" data-act="exportLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs</b><small>Puts ${APP}'s logs in one file in your home folder, to send with a bug report</small></div></button>`;
   h += `<button class="row" data-f data-k="sy-reset" data-act="resetLook"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset appearance</b><small>Layout, text size and top bar back to how they started. Your games and accounts stay.</small></div></button>`;
@@ -2757,6 +2780,8 @@ function act(el){
     case 'lookToggle': LOOK[d.key]=!LOOK[d.key]; saveLook(); return render('ap-'+d.key);
     case 'textSize': return pickTextSize();
     case 'restartApp': toast('Restarting '+APP+'…'); return call('app.restart').catch(e=>toast(e.message));
+    case 'sendLogsDev': if(LOGS.busyDev) return; LOGS.busyDev=true; LOGS.r=null; render('sy-senddev',true);
+      return call('logs.sendToDeveloper',{},150000).then(r=>{ LOGS.r=r; toast('Logs sent · code '+r.code); }).catch(e=>toast(e.message)).finally(()=>{ LOGS.busyDev=false; render('sy-senddev',true); });
     case 'sendLogs': if(LOGS.busy) return; LOGS.busy=true; LOGS.r=null; render('sy-send',true);
       return call('logs.send',{},120000).then(r=>{ LOGS.r=r; toast((r.copies||[]).length?'Logs saved to your USB drive too':'Logs saved'); }).catch(e=>toast(e.message)).finally(()=>{ LOGS.busy=false; render('sy-send',true); });
     case 'exportLogs': toast('Saving logs…'); return call('app.exportLogs',{},60000).then(r=>toast(r&&r.path?'Saved to '+r.path:'Saved')).catch(e=>toast(e.message));
@@ -2894,6 +2919,8 @@ function act(el){
     case 'dlSteam': return call('steam.downloads').catch(e=>toast(e.message));
     case 'dlClearRecent': DL_DONE.length=0; DLS.recent=[]; return call('downloads.clearRecent').then(()=>render(null,true)).catch(e=>toast(e.message));
     case 'stores': closeAll(); return S.view==='stores' ? null : navigate('stores');
+    case 'frPlat': FR.plat=d.v; return render('frp-'+d.v,true);
+    case 'frOpen': return frOpen(FR.view&&FR.view[+d.i]);
     case 'shots': closeAll(); return S.view==='shots' ? null : navigate('shots');
     case 'shotOpen': SH.open=+d.v; return render('sh-back',true);
     case 'shotClose': { const i=SH.open; SH.open=-1; return render('sh-'+Math.max(0,i),true); }

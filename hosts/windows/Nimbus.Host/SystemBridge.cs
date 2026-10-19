@@ -12,6 +12,22 @@ namespace Nimbus.Host;
 /// </summary>
 public sealed class SystemBridge : IDisposable
 {
+    /// <summary>The player counter's id for this PC: the same on every update and reinstall of Ember (a hash of
+    /// Windows' MachineGuid, so the guid itself never leaves the PC). Empty if Windows doesn't have one.</summary>
+    private static string CounterDeviceId()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine, Microsoft.Win32.RegistryView.Registry64)
+                .OpenSubKey(@"SOFTWARE\Microsoft\Cryptography");
+            var guid = key?.GetValue("MachineGuid") as string;
+            if (string.IsNullOrWhiteSpace(guid)) return "";
+            var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("hearth-counter:" + guid.Trim().ToLowerInvariant()));
+            return Convert.ToHexString(hash, 0, 16).ToLowerInvariant();
+        }
+        catch { return ""; }
+    }
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly Control _ui;
@@ -262,6 +278,7 @@ public sealed class SystemBridge : IDisposable
                     session = Program.IsShell,
                     features = new[] { "desktopMode", "mantel", "quickResume", "profiles", "friends" },
                     user = Environment.UserName,
+                    deviceId = CounterDeviceId(),
                 };
             case "system.info": return SystemInfo.Get();
             case "sys.status": return await StatusAsync();

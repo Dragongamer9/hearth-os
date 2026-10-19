@@ -54,6 +54,37 @@ pub mod epic {
 
     pub fn signed_in() -> bool { config().join("user.json").exists() }
     pub fn display_name() -> Option<String> { read_json(&config().join("user.json"))["displayName"].as_str().map(str::to_string) }
+    /// Your Epic friends (Epic's friends service, signed in with the same account legendary uses). Epic doesn't
+    /// share online status outside its own apps, so they show without one.
+    pub fn friends() -> Result<Vec<Value>, String> {
+        let call = |u: &Value| -> Result<http::Reply, String> {
+            let acct = u["account_id"].as_str().ok_or("Sign in to Epic first.")?;
+            let tok = u["access_token"].as_str().unwrap_or("");
+            http::get(&format!("https://friends-public-service-prod.ol.epicgames.com/friends/api/v1/{acct}/summary"), &[("Authorization", &format!("bearer {tok}"))])
+        };
+        let mut u = read_json(&config().join("user.json"));
+        let mut r = call(&u)?;
+        if r.status == 401 {
+            // An expired sign-in: legendary renews it on any online command.
+            let _ = tools::run(&tools::LEGENDARY, &["status"], &env(), None, None, Some(std::time::Duration::from_secs(60)));
+            u = read_json(&config().join("user.json"));
+            r = call(&u)?;
+        }
+        if !r.ok() { return Err(format!("Epic didn't share your friends ({})", r.status)); }
+        let ids: Vec<String> = r.json()["friends"].as_array().cloned().unwrap_or_default().iter().filter_map(|f| f["accountId"].as_str().map(str::to_string)).collect();
+        let mut names = std::collections::HashMap::new();
+        for chunk in ids.chunks(90) {
+            let q: Vec<String> = chunk.iter().map(|i| format!("accountId={i}")).collect();
+            let tok = u["access_token"].as_str().unwrap_or("");
+            if let Ok(a) = http::get_json(&format!("https://account-public-service-prod.ol.epicgames.com/account/api/public/account?{}", q.join("&")), &[("Authorization", &format!("bearer {tok}"))]) {
+                for x in a.as_array().cloned().unwrap_or_default() {
+                    if let (Some(id), Some(n)) = (x["id"].as_str(), x["displayName"].as_str()) { names.insert(id.to_string(), n.to_string()); }
+                }
+            }
+        }
+        Ok(ids.iter().map(|id| json!({"id": id, "platform": "epic", "name": names.get(id).cloned().unwrap_or_else(|| "Epic friend".into()),
+            "state": "unknown", "canMessage": false, "canJoin": false})).collect())
+    }
 
     fn redirect() -> String { format!("https://www.epicgames.com/id/api/redirect?clientId={CLIENT_ID}&responseType=code") }
     /// The sign-in page. After signing in, Epic shows a small JSON page with a one-time code: the script hands
@@ -485,6 +516,36 @@ pub mod xbox {
         persist(&saved)
     }
     pub fn sign_out() { let _ = std::fs::remove_file(secret()); Owned::remove(CACHE); }
+    /// Xbox Live sign-in for the friends list, kept for 50 minutes (the tokens last longer).
+    fn auth_cached() -> Result<(String, String, String, Option<String>), String> {
+        static A: std::sync::OnceLock<Mutex<Option<(u64, (String, String, String, Option<String>))>>> = std::sync::OnceLock::new();
+        let a = A.get_or_init(Default::default);
+        let now = crate::library::now_ms();
+        if let Some((at, auth)) = a.lock().unwrap().clone() { if now.saturating_sub(at) < 50 * 60_000 { return Ok(auth); } }
+        let mut saved = saved().ok_or("Sign in to Xbox first.")?;
+        let (access, refresh) = msa_token(&[("grant_type", "refresh_token"), ("refresh_token", saved["refreshToken"].as_str().unwrap_or(""))])?;
+        saved["refreshToken"] = json!(refresh);
+        persist(&saved)?;
+        let auth = xsts(&access)?;
+        *a.lock().unwrap() = Some((now, auth.clone()));
+        Ok(auth)
+    }
+    /// Your Xbox friends with what they're doing (Xbox's people hub).
+    pub fn friends() -> Result<Vec<Value>, String> {
+        let auth = auth_cached()?;
+        let j = get("https://peoplehub.xboxlive.com/users/me/people/social/decoration/presencedetail", "5", &auth)?;
+        Ok(j["people"].as_array().cloned().unwrap_or_default().iter().filter(|p| p["isFollowedByCaller"] != false || p["isFollowingCaller"] == true).map(|p| {
+            let details = p["presenceDetails"].as_array().cloned().unwrap_or_default();
+            let game = details.iter().find(|d| d["IsGame"] == true && d["IsPrimary"] != false).or_else(|| details.iter().find(|d| d["IsGame"] == true));
+            let online = p["presenceState"].as_str() == Some("Online");
+            let state = if game.is_some() && online { "ingame" } else if online { "online" } else { "offline" };
+            let name = p["modernGamertag"].as_str().filter(|s| !s.is_empty()).or(p["gamertag"].as_str()).unwrap_or("Xbox friend");
+            let gname = game.and_then(|g| g["PresenceText"].as_str().map(str::to_string)).or_else(|| p["presenceText"].as_str().filter(|_| game.is_some()).map(str::to_string));
+            json!({"id": p["xuid"], "platform": "xbox", "name": name, "avatar": p["displayPicRaw"].as_str().map(|u| crate::artcache::url(&https(u))),
+                   "state": state, "game": gname, "message": p["presenceText"].as_str().filter(|t| !t.is_empty() && *t != "Offline"),
+                   "titleId": game.and_then(|g| g["TitleId"].as_str()), "canMessage": false, "canJoin": false})
+        }).collect())
+    }
     /// Games you've played on Xbox (title history), with Xbox art.
     pub fn refresh_owned() -> Result<Owned, String> {
         let mut saved = saved().ok_or("Sign in to Xbox first.")?;
