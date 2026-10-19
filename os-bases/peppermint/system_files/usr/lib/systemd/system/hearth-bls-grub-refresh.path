@@ -1,0 +1,12 @@
+# ostree swaps /boot/loader (a link to loader.0 or loader.1) whenever the boot entries change while the system
+# runs: `bootc rollback`, kernel argument changes. Rewrite the menu then too, not only at shutdown.
+[Unit]
+Description=Hearth: watch ostree's boot entries
+
+[Path]
+PathChanged=/boot/loader
+PathChanged=/boot/loader/entries
+Unit=hearth-bls-grub-refresh.service
+
+[Install]
+WantedBy=multi-user.target

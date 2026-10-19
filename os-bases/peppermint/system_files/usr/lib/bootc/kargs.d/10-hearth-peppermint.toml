@@ -1,0 +1,4 @@
+# Hearth on Peppermint/Debian: the boot splash, and Nvidia's display driver taking the screen (needed for
+# Wayland, gamescope and the splash on Nvidia; ignored on AMD and Intel).
+kargs = ["quiet", "splash", "loglevel=3", "nvidia-drm.modeset=1", "nvidia-drm.fbdev=1"]
+match-architectures = ["x86_64"]

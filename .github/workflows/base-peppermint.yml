@@ -1,0 +1,241 @@
+# Builds Hearth on Peppermint OS (Beta Experimental): Debian 13 "trixie", Peppermint's base, made into a bootc
+# image with the Hearth session, from os-bases/peppermint (see docs/BASE-PEPPERMINT.md). Published as
+# ghcr.io/dragongamer9/hearth-peppermint:testing (never :latest: this isn't the main Hearth).
+# Failures show up as annotations on the run (the end of the failing step's output), so the full log isn't needed.
+name: Hearth OS (Peppermint base)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [linux-host]
+    paths: ['os-bases/peppermint/**', '.github/workflows/base-peppermint.yml']
+
+env:
+  IMAGE: ghcr.io/dragongamer9/hearth-peppermint
+
+concurrency:
+  group: hearth-peppermint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The Rust app (hosts/hearth-rs), built inside Debian trixie itself rather than on the Ubuntu runner: then it
+  # links exactly the WebKitGTK/GTK/libsoup the image has, and never needs a newer glibc than trixie's 2.41
+  # (ubuntu-latest moves to newer Ubuntu releases, whose glibc trixie doesn't have).
+  app:
+    name: Build the Hearth app (Rust, on Debian trixie)
+    runs-on: ubuntu-latest
+    container: docker.io/library/debian:trixie
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Build tools
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=app (tools)::$msg"' ERR
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            git curl ca-certificates build-essential pkg-config file zstd \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libssl-dev libxdo-dev >/dev/null
+      - uses: actions/checkout@v4
+      - name: Version
+        id: ver
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-rs
+          key: debian-trixie
+      - name: Build
+        working-directory: hosts/hearth-rs
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=app::$msg"' ERR
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release
+          mkdir -p /tmp/app && cp target/release/hearth /tmp/app/hearth
+          echo "--- libraries the app links (all come from Debian trixie)"
+          objdump -p target/release/hearth | grep NEEDED
+          echo "--- newest glibc symbol it needs (trixie has 2.41)"
+          objdump -T target/release/hearth | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-app-peppermint
+          path: hearth-app.tar
+
+  # Hearth Browser is still an Electron app (hosts/linux/src/web): Electron brings its own libraries and asks
+  # little of glibc, so it's built on the runner as in os.yml.
+  browser:
+    name: Build Hearth Browser (Electron)
+    runs-on: ubuntu-latest
+    needs: [app]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build Hearth Browser
+        working-directory: hosts/linux
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=browser::$msg"' ERR
+          npm install --no-audit --no-fund
+          npm version "${{ needs.app.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm run dist:dir
+          test -x dist/linux-unpacked/nimbus
+          mkdir -p /tmp/browser && cp -a dist/linux-unpacked/. /tmp/browser/
+          tar -C /tmp/browser -cf ../../hearth-browser.tar .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-browser-peppermint
+          path: hearth-browser.tar
+
+  image:
+    name: Build the OS image (hearth-peppermint)
+    needs: [app, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUBLISH: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/linux-host' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room (the image is several GB)
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-app-peppermint
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-browser-peppermint
+
+      - name: Unpack Hearth into the build context
+        run: |
+          mkdir -p os/nimbus-app/browser
+          tar -C os/nimbus-app -xf hearth-app.tar
+          tar -C os/nimbus-app/browser -xf hearth-browser.tar
+          ls -la os/nimbus-app
+          test -x os/nimbus-app/hearth
+
+      - name: Build
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" -e "^Get:" -e "^Unpacking " -e "^Setting up " -e "^Selecting previously" -e "^Preparing to unpack" -e "^(Reading database" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
+          v="${{ needs.app.outputs.version }}"
+          sudo podman build --pull=newer -f os-bases/peppermint/Containerfile --build-arg NIMBUS_VERSION="$v" -t hearth-peppermint:latest .
+          # What build.sh couldn't find in the repositories (optional packages): a warning, not a failure.
+          missing=$(grep -o 'Not installed (not in the repositories): .*' /tmp/step.log | tail -1 || true)
+          if [ -n "$missing" ]; then echo "::warning title=optional packages::$missing"; fi
+
+      # Smaller updates: content-based layers (chunkah, what bootcrew uses for its non-Fedora images; rpm-ostree's
+      # rechunker needs an rpm database). Not required: on failure the image is published as built.
+      - name: Rechunk for smaller updates
+        run: |
+          set -o pipefail
+          export CHUNKAH_CONFIG_STR="$(sudo podman inspect hearth-peppermint:latest)"
+          if sudo -E podman run --rm --pull=newer --mount=type=image,src=localhost/hearth-peppermint:latest,target=/chunkah \
+              -e CHUNKAH_CONFIG_STR quay.io/coreos/chunkah build -t localhost/hearth-peppermint:chunked \
+              --label ostree.bootable=1 --label containers.bootc=1 --compressed --max-layers 128 \
+              | sudo podman load; then
+            sudo podman tag localhost/hearth-peppermint:chunked hearth-peppermint:latest
+            sudo podman image inspect hearth-peppermint:latest --format '{{len .RootFS.Layers}} layers'
+          else
+            echo "::warning title=rechunk::Rechunking failed; publishing the image as built (updates download more)"
+          fi
+
+      # REQUIRED: a failure here stops the image from being published.
+      - name: Check the image
+        run: |
+          cat > /tmp/check.sh <<'EOF'
+          fail=0
+          # dpkg's database is in /usr/lib/sysimage/dpkg; tmpfiles links /var/lib/dpkg to it at boot, which a plain
+          # `podman run` doesn't do: link it here the same way.
+          mkdir -p /var/lib && ln -sfn /usr/lib/sysimage/dpkg /var/lib/dpkg
+          check() { if sh -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::error title=check::$1"; fail=1; fi; }
+          warn() { if sh -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::warning title=check::$1"; fi; }
+          echo "--- update path (same as os.yml)"
+          check "bootc is installed" "command -v bootc"
+          check "pkexec is installed" "command -v pkexec"
+          check "hearth-admin is installed" "test -x /usr/libexec/nimbus/hearth-admin"
+          check "hearth-import is installed" "test -x /usr/libexec/nimbus/hearth-import && command -v rsync"
+          check "hearth-takeover and its tools are installed" "test -x /usr/libexec/nimbus/hearth-takeover && command -v sfdisk && command -v partx && command -v efibootmgr && command -v btrfs"
+          check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
+          check "hearth-admin's Python is valid" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin"
+          check "the wheel group exists (installer, sudo and polkit rules use it)" "getent group wheel"
+          check "background updates are scheduled (bootc timer, stage only)" "test -L /etc/systemd/system/timers.target.wants/bootc-fetch-apply-updates.timer && grep -q 'bootc upgrade --quiet' /usr/lib/systemd/system/bootc-fetch-apply-updates.service.d/10-hearth-no-reboot.conf"
+          echo "--- update path (required, the app's own check)"
+          /usr/lib/nimbus/nimbus --check-update-path || fail=1
+          echo "--- the Hearth app runs on Debian trixie"
+          check "every library the Hearth app links is installed" "! ldd /usr/lib/nimbus/nimbus | grep -q 'not found'"
+          check "Hearth Browser is installed" "test -x /usr/lib/hearth-browser/nimbus"
+          warn "every library Hearth Browser links is installed" "! ldd /usr/lib/hearth-browser/nimbus | grep -q 'not found'"
+          echo "--- bootable"
+          check "one kernel with its initramfs in /usr/lib/modules" "test \$(ls /usr/lib/modules/*/vmlinuz | wc -l) = 1 && ls /usr/lib/modules/*/initramfs.img"
+          check "the kernel is trixie-backports' (newer than trixie's 6.12)" "ls /usr/lib/modules | grep -v '^6\\.12\\.'"
+          check "the initramfs mounts ostree deployments (ostree-prepare-root)" "lsinitrd \$(ls /usr/lib/modules/*/initramfs.img) > /tmp/i.txt && grep -q ostree-prepare-root /tmp/i.txt"
+          check "ostree is new enough for bootc (2025.3 or newer)" "ostree --version | grep -Eq \"Version: '?(2025\\.([3-9]|[1-9][0-9])|20(2[6-9]|[3-9][0-9])\\.)\""
+          check "the boot loader for Hearth's installer (signed shim + GRUB for bootupd)" "test -f /usr/lib/bootupd/updates/EFI.json && ls /usr/lib/efi/shim/*/EFI/debian/shimx64.efi && ls /usr/lib/efi/grub2/*/EFI/debian/grubx64.efi"
+          check "GRUB's boot menu comes from ostree's entries (hearth-bls-grub)" "test -x /usr/libexec/nimbus/hearth-bls-grub && grep -q hearth-bls.cfg /usr/lib/bootupd/grub2-static/configs.d/10_blscfg.cfg && test -L /etc/systemd/system/multi-user.target.wants/hearth-bls-grub.service"
+          check "Nvidia's open kernel module" "find /usr/lib/modules -name 'nvidia.ko*' | grep -q ."
+          warn "Nvidia's 32-bit libraries" "dpkg -l 'nvidia-driver-libs:i386' | grep -q '^ii'"
+          check "dpkg's database is in the image (/usr/lib/sysimage)" "test -f /usr/lib/sysimage/dpkg/status && grep -q 'L+ /var/lib/dpkg' /usr/lib/tmpfiles.d/hearth-var.conf"
+          check "system accounts are recreated by sysusers (sddm, ...)" "grep -q '^u sddm ' /usr/lib/sysusers.d/hearth-image.conf"
+          check "the bootc layout (/ostree, /var/home)" "test -L /ostree && test \"\$(readlink /home)\" = var/home"
+          check "it's called Hearth" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q Peppermint /usr/lib/os-release"
+          echo "--- Game Mode and Desktop Mode"
+          check "gamescope is installed" "command -v gamescope"
+          check "gamescope is Valve's (Hearth's Game Mode atoms are in it)" "grep -aq GAMESCOPECTRL_BASELAYER_APPID \$(command -v gamescope) && grep -aq GAMESCOPECTRL_BASELAYER_WINDOW \$(command -v gamescope) && grep -aq GAMESCOPE_FPS_LIMIT \$(command -v gamescope) && grep -aq GAMESCOPECTRL_REQUEST_SCREENSHOT \$(command -v gamescope) && grep -aq mangoapp \$(command -v gamescope)"
+          check "mangoapp is installed (performance overlay)" "command -v mangoapp"
+          check "labwc is installed" "command -v labwc"
+          check "quickshell is installed and finds its libraries" "command -v quickshell && ! ldd \$(command -v quickshell) | grep -q 'not found'"
+          check "Steam is installed" "command -v steam && dpkg -l steam-installer | grep -q '^ii'"
+          check "Steam's 32-bit graphics (Mesa i386)" "dpkg -l 'libgl1-mesa-dri:i386' | grep -q '^ii'"
+          check "the Hearth session is installed" "test -f /usr/share/wayland-sessions/nimbus.desktop && test -x /usr/bin/nimbus-session && test -x /usr/bin/nimbus-mode && test -d /usr/share/nimbus/desktop/shell && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/nimbus.desktop"
+          check "the login screen boots into Hearth (sddm + nimbus-autologin)" "test -L /etc/systemd/system/display-manager.service && readlink /etc/systemd/system/display-manager.service | grep -q sddm && test -L /etc/systemd/system/multi-user.target.wants/nimbus-autologin.service"
+          check "the tools the session uses" "command -v grim && command -v brightnessctl && command -v wlr-randr && command -v wlsunset && command -v xdotool && command -v gnome-keyring-daemon && python3 -c 'import evdev'"
+          check "WebKitGTK 4.1, PipeWire, Bluetooth, NetworkManager, Flatpak" "ls /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0 && command -v pipewire && command -v bluetoothctl && command -v nmcli && command -v flatpak"
+          check "the boot splash is Hearth's" "plymouth-set-default-theme | grep -qx hearth"
+          echo "--- Handheld Daemon"
+          check "Handheld Daemon is installed and its Python modules load" "command -v hhd && test -f /usr/lib/systemd/system/hhd.service && /usr/lib/hhd/bin/python3 -c 'import hhd, adjustor, evdev, yaml, rich, Xlib, serial, pyroute2, gi, dbus'"
+          check "Handheld Daemon starts at boot" "test -L /etc/systemd/system/multi-user.target.wants/hhd.service"
+          check "Handheld Daemon's udev rules are installed" "ls /usr/lib/udev/rules.d/*hhd*.rules"
+          check "power-profiles-daemon only runs when HHD is off" "grep -q 'ConditionPathExists=/etc/hearth/no-hhd' /usr/lib/systemd/system/power-profiles-daemon.service.d/10-hearth-hhd.conf"
+          echo "--- nice to have"
+          warn "Peppermint's desktop (Xfce) is on the login screen" "grep -q 'Peppermint desktop' /usr/share/xsessions/xfce.desktop"
+          warn "acpi_call (Legion Go power limits through HHD)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
+          warn "RyzenAdj is installed" "command -v ryzenadj"
+          exit $fail
+          EOF
+          sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-peppermint:latest sh /check.sh
+          echo "--- bootc container lint"
+          sudo podman run --rm hearth-peppermint:latest bootc container lint 2>&1 | tee /tmp/lint.log || {
+            msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
+
+      - name: Publish to GitHub Container Registry
+        if: env.PUBLISH == 'true'
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=publish::$msg"' ERR
+          v="${{ needs.app.outputs.version }}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for tag in testing "testing-$v-$(date -u +%Y%m%d)"; do
+            sudo podman push hearth-peppermint:latest "$IMAGE:$tag"
+          done
+          echo "::notice title=published::$IMAGE:testing"
