@@ -234,6 +234,7 @@ jobs:
           warn "CachyOS's settings are installed" "pacman -Q cachyos-settings"
           warn "RyzenAdj is installed" "command -v ryzenadj"
           warn "Steam Deck fan control (Deck only)" "pacman -Q jupiter-fan-control"
+          warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
           exit $fail
           EOF
           sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-cachyos:latest sh /check.sh

@@ -5,7 +5,8 @@
 //!
 //! Storage: ~/.config/nimbus/input/<game id>.json, one file per game (this user's own):
 //!   {"version": 1, "layout": "off" | <template id> | "custom", "custom": {layout}, "prefs": {"sensitivity", "gyro"}}
-//! No file means Off: the game's own controller support. The custom layout is kept when you switch to Off or a
+//! No file means Off: the game's own controller support (Beacon's strategy games start with the "Strategy (RTS)"
+//! template instead, see default_layout; choosing Off for them is saved like any choice). The custom layout is kept when you switch to Off or a
 //! template, so switching back doesn't lose your edits.
 //!
 //! Layouts are checked strictly, against the same tables the mapper uses (desktop/shell/input-layouts.json,
@@ -242,11 +243,15 @@ pub fn file_name(id: &str) -> Result<String, String> {
     Ok(out + ".json")
 }
 
-/// A game's saved choice, checked: {"layout", "custom", "prefs"}. Missing or broken files are Off.
+/// The layout a game has before you choose one: Off, or "Strategy (RTS)" for Beacon's strategy games.
+pub fn default_layout(id: &str) -> &'static str { if crate::beacon::rts_by_default(id) && template("rts").is_some() { "rts" } else { "off" } }
+
+/// A game's saved choice, checked: {"layout", "custom", "prefs"}. No file: the game's default (default_layout).
+/// Broken files are Off.
 pub fn load_in(dir: &Path, id: &str) -> Value {
     let off = json!({"layout": "off", "custom": null, "prefs": check_prefs(&Value::Null).unwrap_or(Value::Null)});
     let Ok(name) = file_name(id) else { return off };
-    let Ok(text) = std::fs::read_to_string(dir.join(name)) else { return off };
+    let Ok(text) = std::fs::read_to_string(dir.join(name)) else { return json!({"layout": default_layout(id), "custom": null, "prefs": check_prefs(&Value::Null).unwrap_or(Value::Null)}) };
     let Ok(v) = serde_json::from_str::<Value>(&text) else { return off };
     let custom = if v["custom"].is_object() && validate(&v["custom"]).is_ok() { v["custom"].clone() } else { Value::Null };
     let prefs = check_prefs(&v["prefs"]).unwrap_or_else(|_| check_prefs(&Value::Null).unwrap_or(Value::Null));
@@ -464,7 +469,7 @@ mod tests {
         assert!(keys().contains("SPACE") && keys().contains("LEFTCTRL") && keys().contains("F12") && keys().contains("KP0"));
         assert!(!keys().contains("POWER"));
         let ids: Vec<&str> = tables()["templates"].as_array().unwrap().iter().map(|t| t["id"].as_str().unwrap()).collect();
-        assert_eq!(ids, vec!["shooter", "pointclick", "retro", "mouse"]);
+        assert_eq!(ids, vec!["shooter", "pointclick", "retro", "mouse", "rts"]);
         for id in ids { validate(template(id).unwrap()).unwrap_or_else(|e| panic!("{id}: {e}")); }
         assert_eq!(template("shooter").unwrap()["buttons"]["a"], "key:SPACE");
         assert!(template("nope").is_none());
@@ -502,6 +507,39 @@ mod tests {
         assert!(validate(&json!({"buttons": {"a": "key:LEFTCTRL+C"}})).is_ok());
         assert!(validate(&json!({})).is_ok());
         assert!(validate(&json!("key:A")).is_err());
+    }
+
+    #[test]
+    fn strategy_template_and_beacon_default() {
+        let r = template("rts").unwrap();
+        assert_eq!(r["name"], "Strategy (RTS)");
+        assert_eq!(r["sticks"]["rs"]["mode"], "mouse");
+        assert_eq!(r["buttons"]["rt"]["press"], "mouse:left");
+        assert_eq!(r["buttons"]["lt"]["press"], "mouse:right");
+        assert_eq!([&r["buttons"]["up"], &r["buttons"]["down"], &r["buttons"]["left"], &r["buttons"]["right"]], [&json!("key:UP"), &json!("key:DOWN"), &json!("key:LEFT"), &json!("key:RIGHT")]);
+        assert_eq!(r["buttons"]["lb"], "shift");
+        assert_eq!(r["buttons"]["menu"], "key:ESC");
+        assert_eq!(r["buttons"]["a"], "key:SPACE");
+        assert_eq!(r["buttons"]["rb"], "key:LEFTCTRL");
+        assert_eq!(r["buttons"]["view"], "radial");
+        assert_eq!(r["shift"]["buttons"]["up"], "key:1");
+        assert_eq!(r["shift"]["buttons"]["left"], "key:4");
+        assert_eq!(r["shift"]["buttons"]["y"], "key:LEFTCTRL+1");
+        assert_eq!(r["radial"].as_array().unwrap().len(), 8);
+        // Beacon's strategy games start with it; Off stays possible (and is kept once chosen); others start Off.
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().to_path_buf();
+        assert_eq!(load_in(&dir, "beacon:rotwk")["layout"], "rts");
+        assert_eq!(resolve(&load_in(&dir, "beacon:aotr")).unwrap()["name"], "Strategy (RTS)");
+        assert_eq!(load_in(&dir, "beacon:conquest")["layout"], "off");
+        assert_eq!(load_in(&dir, "steam:1")["layout"], "off");
+        save_in(&dir, "beacon:rotwk", Some("off"), None, None).unwrap();
+        assert_eq!(load_in(&dir, "beacon:rotwk")["layout"], "off");
+        assert!(state_in(&dir, Some("beacon:rotwk"), true, false)["layout"].is_null());
+        assert_eq!(state_in(&dir, Some("beacon:bfme2"), true, false)["layout"]["name"], "Strategy (RTS)");
+        // Changing only the Quick Access settings keeps the default layout.
+        let c = save_in(&dir, "beacon:bfme1", None, None, Some(&json!({"sensitivity": 1.5}))).unwrap();
+        assert_eq!(c["layout"], "rts");
     }
 
     #[test]

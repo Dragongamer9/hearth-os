@@ -87,10 +87,31 @@ def clean(raw):
     return out
 
 
+# Apps on a new user's taskbar, when they're installed: Beacon (BFME and friends; Hearth OS ships it).
+DEFAULT_PINS = ('beacon',)
+
+
+def data_dirs():
+    """Where .desktop files live: $XDG_DATA_HOME, then $XDG_DATA_DIRS (the spec's defaults when unset)."""
+    first = os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share')
+    rest = [d for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if d]
+    return [first] + rest
+
+
+def default_pins():
+    """The DEFAULT_PINS that are installed (have a .desktop file), for a taskbar nobody has changed yet."""
+    return [p for p in DEFAULT_PINS if any(os.path.isfile(os.path.join(d, 'applications', p + '.desktop')) for d in data_dirs())]
+
+
 def load():
     try:
         with open(config_path(), encoding='utf-8') as f:
             return clean(json.load(f))
+    except FileNotFoundError:
+        # A new user: the default pins (only ever here; once the taskbar is saved, your pins are yours).
+        state = clean(None)
+        state['pins'] = default_pins()
+        return state
     except (OSError, ValueError):
         return clean(None)
 
