@@ -1,0 +1,1385 @@
+#!/usr/bin/env python3
+"""hearth-input: Hearth Input, Hearth's own Steam Input. Makes games without controller support playable
+with a controller: while a game with a controller layout is in front, the controller acts as a keyboard and
+mouse (virtual devices through /dev/uinput).
+
+  hearth-input serve            run (Game Mode: started by the session, nimbus-session)
+  hearth-input status           print what the running one is doing (one JSON line)
+  hearth-input validate FILE    check a layout file; prints it back normalized, or "error: ..." (exit 1)
+
+How it fits together
+  * Hearth (hearth-core input_map.rs, hearth-rs gamemode.rs) keeps one connection open to the control
+    socket <runtime dir>/hearth/input.sock and sends, about once a second, a "state": the game that's running,
+    whether it's in front, whether Quick Access is open, and the game's layout (already resolved from its
+    template or custom layout). Nothing else decides what's active.
+  * While a layout is active, every controller the game would see (Handheld Daemon's virtual controller on the
+    HHD editions, InputPlumber's elsewhere, or a plain pad) is grabbed (EVIOCGRAB), so the game doesn't also get
+    it; the layout turns its presses into keys, clicks, scrolling and pointer movement.
+  * The grab is let go, and every key and button released, the moment the layout is off, the game leaves the
+    front, Quick Access opens (Hearth asks and waits for the answer before taking the controller itself), Hearth
+    stops talking for HEARTBEAT seconds, or the Guide button is pressed. Guide is passed to Hearth over the
+    socket (the grab keeps it from Hearth's own reader), so Quick Access still opens.
+  * Controllers someone else holds (EBUSY: HHD's hidden physical pad) are left alone.
+
+The socket is this user's only: its folder is 0700, the socket 0600, and every connection's other end must be
+this user (SO_PEERCRED). One JSON object per line. Commands (each answered with one line, except "state"):
+  state {game, front, overlay, layout, prefs}      what Hearth sees (also subscribes to events)
+  overlay {on}                                     Quick Access opened/closed: answered after the grab changed
+  test {layout, seconds} / test {stop: true}       try a layout for a few seconds, wherever Hearth is
+  status                                           devices, grab, gyro, active layout
+Events to subscribers: {"t": "guide"}, {"t": "osd", "text": ...} (gyro on/off, the radial menu).
+
+Layouts are checked strictly (validate_layout): known controls, keys from input-layouts.json, numbers in
+range, and actions that can only press keys, click, scroll, shift layers, toggle gyro or open the radial menu.
+Nothing in a layout can run a program.
+
+Needs python3-evdev and /dev/uinput (Hearth's udev rule 70-hearth-uinput.rules, the same one hearth-pad uses).
+Exit codes: 2 python3-evdev missing, 3 no access to /dev/uinput, 4 already running.
+"""
+import json
+import math
+import os
+import select
+import signal
+import socket
+import stat
+import struct
+import sys
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+TABLES_FILE = os.path.join(HERE, 'input-layouts.json')
+
+HEARTBEAT = 5.0         # s without a state from Hearth before everything is let go
+GUIDE_SUSPEND = 1.5     # s the controller stays released after Guide (Quick Access is opening)
+PULSE = 0.06            # s a tap holds its key (games that look once a frame miss a press-and-release)
+SCROLL_REPEAT = (0.35, 0.09)   # a held scroll button: first repeat after, then every
+MOUSE_SPEED = 1800.0    # px/s with the stick fully over, sensitivity 1
+SCROLL_SPEED = 10.0     # wheel notches/s with the stick fully over, sensitivity 1
+GYRO_SCALE = 12.0       # px per degree turned, sensitivity 1
+TRIGGER_HYST = 0.05
+STICK_HYST = 0.8        # a stick direction lets go below threshold x this
+DIAG = math.sin(math.radians(22.5))   # 8 equal sectors
+MAX_LINE = 256 * 1024
+MAX_CLIENTS = 6
+TEST_MAX = 60
+
+
+# ---------------------------------------------------------------------- tables
+
+def load_tables(path=TABLES_FILE):
+    with open(path, encoding='utf-8') as f:
+        t = json.load(f)
+    keys = {}
+    for g in t['keys']:
+        for name, label in g['keys']:
+            keys[name] = label
+    t['key_labels'] = keys
+    t['button_ids'] = [b[0] for b in t['buttons']]
+    t['button_labels'] = dict(t['buttons'])
+    t['stick_ids'] = [s[0] for s in t['sticks']]
+    t['mouse_labels'] = dict(t['mouse'])
+    t['scroll_labels'] = dict(t['scroll'])
+    t['template_map'] = {x['id']: x for x in t['templates']}
+    return t
+
+
+TABLES = load_tables()
+LIM = TABLES['limits']
+BUTTONS = TABLES['button_ids']
+STICKS = TABLES['stick_ids']
+TRIGGERS = ('lt', 'rt')
+DPAD = ('up', 'down', 'left', 'right')
+MOUSE_CODES = {'left': 'BTN_LEFT', 'right': 'BTN_RIGHT', 'middle': 'BTN_MIDDLE', 'back': 'BTN_SIDE', 'forward': 'BTN_EXTRA'}
+SCROLL_DIRS = {'up': (120, 0), 'down': (-120, 0), 'left': (0, -120), 'right': (0, 120)}   # (v, h) in 1/120 notches
+ALL_KEY_CODES = ['KEY_' + k for k in TABLES['key_labels']]
+
+
+# ---------------------------------------------------------------------- layouts
+
+class LayoutError(ValueError):
+    pass
+
+
+class Action:
+    """One thing a control does. kind: none | keys | mouse | scroll | shift | gyro | radial."""
+    __slots__ = ('kind', 'codes', 'arg', 'raw')
+
+    def __init__(self, kind, codes=(), arg=None, raw='none'):
+        self.kind, self.codes, self.arg, self.raw = kind, tuple(codes), arg, raw
+
+    def __eq__(self, o):
+        return isinstance(o, Action) and o.raw == self.raw
+
+    def __hash__(self):
+        return hash(self.raw)
+
+    def __repr__(self):
+        return 'Action(%r)' % self.raw
+
+    @property
+    def label(self):
+        return action_label(self.raw)
+
+
+NONE = Action('none')
+# Where an action may be used: base-layer buttons take everything; shift-layer buttons not another shift layer or
+# the radial menu; hold actions, stick directions and radial items only press keys, click or scroll.
+ALLOW = {
+    'button': {'none', 'keys', 'mouse', 'scroll', 'shift', 'gyro', 'radial'},
+    'shift_button': {'none', 'keys', 'mouse', 'scroll', 'gyro'},
+    'simple': {'none', 'keys', 'mouse', 'scroll'},
+    'radial': {'keys', 'mouse', 'scroll'},
+}
+
+
+def parse_action(s, where, path):
+    if not isinstance(s, str) or not s or len(s) > 80:
+        raise LayoutError('%s: should be an action like "key:SPACE"' % path)
+    if s == 'none':
+        a = NONE
+    elif s == 'shift':
+        a = Action('shift', raw=s)
+    elif s == 'radial':
+        a = Action('radial', raw=s)
+    elif s in ('gyro:toggle', 'gyro:hold'):
+        a = Action('gyro', arg=s.split(':')[1], raw=s)
+    elif s.startswith('key:'):
+        names = s[4:].split('+')
+        if not 1 <= len(names) <= LIM['combo_keys']:
+            raise LayoutError('%s: a key combination has 1 to %d keys' % (path, LIM['combo_keys']))
+        if len(set(names)) != len(names):
+            raise LayoutError('%s: the same key twice' % path)
+        for n in names:
+            if n not in TABLES['key_labels']:
+                raise LayoutError('%s: unknown key %r' % (path, n[:20]))
+        a = Action('keys', ['KEY_' + n for n in names], raw=s)
+    elif s.startswith('mouse:') and s[6:] in MOUSE_CODES:
+        a = Action('mouse', [MOUSE_CODES[s[6:]]], raw=s)
+    elif s.startswith('scroll:') and s[7:] in SCROLL_DIRS:
+        a = Action('scroll', arg=SCROLL_DIRS[s[7:]], raw=s)
+    else:
+        raise LayoutError('%s: unknown action %r' % (path, s[:30]))
+    if a.kind not in ALLOW[where]:
+        raise LayoutError('%s: %r can\'t be used here' % (path, s))
+    return a
+
+
+def action_label(raw):
+    if raw == 'none':
+        return 'Nothing'
+    if raw == 'shift':
+        return 'Second set (hold)'
+    if raw == 'radial':
+        return 'Radial menu'
+    if raw == 'gyro:toggle':
+        return 'Gyro aiming on/off'
+    if raw == 'gyro:hold':
+        return 'Gyro aiming (hold)'
+    if raw.startswith('key:'):
+        return ' + '.join(TABLES['key_labels'].get(k, k) for k in raw[4:].split('+'))
+    if raw.startswith('mouse:'):
+        return TABLES['mouse_labels'].get(raw[6:], raw)
+    if raw.startswith('scroll:'):
+        return TABLES['scroll_labels'].get(raw[7:], raw)
+    return raw
+
+
+def _num(v, lim, path, integer=False):
+    lo, hi = LIM[lim]
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        raise LayoutError('%s: should be a number' % path)
+    if integer and int(v) != v:
+        raise LayoutError('%s: should be a whole number' % path)
+    if not lo <= v <= hi:
+        raise LayoutError('%s: should be between %s and %s' % (path, lo, hi))
+    return int(v) if integer else float(v)
+
+
+def _bool(v, path):
+    if not isinstance(v, bool):
+        raise LayoutError('%s: should be true or false' % path)
+    return v
+
+
+def _obj(v, path, allowed):
+    if not isinstance(v, dict):
+        raise LayoutError('%s: should be an object' % path)
+    for k in v:
+        if k not in allowed:
+            raise LayoutError('%s: unknown setting %r' % (path, str(k)[:30]))
+    return v
+
+
+def _button(ctl, v, layer, path):
+    where = 'button' if layer == 'base' else 'shift_button'
+    if isinstance(v, str):
+        v = {'press': v}
+    allowed = {'press', 'hold', 'turbo'} | ({'threshold'} if ctl in TRIGGERS else set())
+    _obj(v, path, allowed)
+    if 'press' not in v:
+        raise LayoutError('%s: needs "press"' % path)
+    b = {'press': parse_action(v['press'], where, path + '.press'), 'hold': None, 'turbo': False, 'threshold': 0.5}
+    if v.get('hold') is not None:
+        b['hold'] = parse_action(v['hold'], 'simple', path + '.hold')
+        if b['press'].kind not in ALLOW['simple']:
+            raise LayoutError('%s: tap and hold work with keys, clicks and scrolling' % path)
+    if 'turbo' in v:
+        b['turbo'] = _bool(v['turbo'], path + '.turbo')
+        if b['turbo'] and (b['hold'] or b['press'].kind not in ('keys', 'mouse')):
+            raise LayoutError('%s: turbo repeats a key or a click (and can\'t be used with hold)' % path)
+    if 'threshold' in v:
+        b['threshold'] = _num(v['threshold'], 'threshold', path + '.threshold')
+    return b
+
+
+STICK_FIELDS = {
+    'none': set(),
+    'keys': {'up', 'down', 'left', 'right', 'threshold'},
+    'mouse': {'sensitivity', 'deadzone', 'outer', 'curve', 'invert_y'},
+    'scroll': {'sensitivity', 'deadzone'},
+}
+
+
+def _stick(v, path):
+    if not isinstance(v, dict) or v.get('mode') not in STICK_FIELDS:
+        raise LayoutError('%s: needs a mode: none, keys, mouse or scroll' % path)
+    mode = v['mode']
+    _obj(v, path, STICK_FIELDS[mode] | {'mode'})
+    s = {'mode': mode}
+    if mode == 'keys':
+        for d in DPAD:
+            s[d] = parse_action(v[d], 'simple', '%s.%s' % (path, d)) if d in v else NONE
+        s['threshold'] = _num(v.get('threshold', 0.5), 'stick_threshold', path + '.threshold')
+    elif mode in ('mouse', 'scroll'):
+        s['sensitivity'] = _num(v.get('sensitivity', 1.0), 'sensitivity', path + '.sensitivity')
+        s['deadzone'] = _num(v.get('deadzone', 0.12), 'deadzone', path + '.deadzone')
+        if mode == 'mouse':
+            s['outer'] = _num(v.get('outer', 0.95), 'outer', path + '.outer')
+            s['curve'] = _num(v.get('curve', 1.8), 'curve', path + '.curve')
+            s['invert_y'] = _bool(v.get('invert_y', False), path + '.invert_y')
+            if s['outer'] < s['deadzone'] + 0.1:
+                raise LayoutError('%s: the outer dead zone must be well past the dead zone' % path)
+    return s
+
+
+def validate_layout(obj):
+    """A layout as Hearth stores it → the normalized form the engine runs. Raises LayoutError."""
+    _obj(obj, 'layout', {'version', 'name', 'base', 'buttons', 'sticks', 'gyro', 'shift', 'radial', 'hold_ms', 'turbo_hz'})
+    if obj.get('version', 1) != 1:
+        raise LayoutError('layout.version: only version 1 is known')
+    name = obj.get('name', 'Custom')
+    if not isinstance(name, str) or not name.strip() or len(name) > LIM['name_len'] or any(ord(c) < 32 for c in name):
+        raise LayoutError('layout.name: up to %d characters' % LIM['name_len'])
+    base = obj.get('base', '')
+    if not isinstance(base, str) or (base and base not in TABLES['template_map']):
+        raise LayoutError('layout.base: unknown template')
+    out = {'name': name, 'base': base, 'buttons': {}, 'sticks': {}, 'shift': {'buttons': {}, 'sticks': {}}}
+    buttons = _obj(obj.get('buttons', {}), 'buttons', set(BUTTONS))
+    for ctl in BUTTONS:
+        out['buttons'][ctl] = _button(ctl, buttons[ctl], 'base', 'buttons.' + ctl) if ctl in buttons else \
+            {'press': NONE, 'hold': None, 'turbo': False, 'threshold': 0.5}
+    sticks = _obj(obj.get('sticks', {}), 'sticks', set(STICKS))
+    for s in STICKS:
+        out['sticks'][s] = _stick(sticks[s], 'sticks.' + s) if s in sticks else {'mode': 'none'}
+    shift = _obj(obj.get('shift', {}), 'shift', {'buttons', 'sticks'})
+    for ctl, v in _obj(shift.get('buttons', {}), 'shift.buttons', set(BUTTONS)).items():
+        out['shift']['buttons'][ctl] = _button(ctl, v, 'shift', 'shift.buttons.' + ctl)
+    for s, v in _obj(shift.get('sticks', {}), 'shift.sticks', set(STICKS)).items():
+        out['shift']['sticks'][s] = _stick(v, 'shift.sticks.' + s)
+    g = _obj(obj.get('gyro', {}), 'gyro', {'sensitivity', 'deadzone', 'invert_x', 'invert_y', 'start_on'})
+    out['gyro'] = {'sensitivity': _num(g.get('sensitivity', 1.0), 'gyro_sensitivity', 'gyro.sensitivity'),
+                   'deadzone': _num(g.get('deadzone', 1.0), 'gyro_deadzone', 'gyro.deadzone'),
+                   'invert_x': _bool(g.get('invert_x', False), 'gyro.invert_x'),
+                   'invert_y': _bool(g.get('invert_y', False), 'gyro.invert_y'),
+                   'start_on': _bool(g.get('start_on', False), 'gyro.start_on')}
+    radial = obj.get('radial', [])
+    if not isinstance(radial, list) or len(radial) > LIM['radial_items']:
+        raise LayoutError('radial: up to %d actions' % LIM['radial_items'])
+    out['radial'] = [parse_action(a, 'radial', 'radial.%d' % i) for i, a in enumerate(radial)]
+    out['hold_ms'] = _num(obj.get('hold_ms', 300), 'hold_ms', 'hold_ms', integer=True)
+    out['turbo_hz'] = _num(obj.get('turbo_hz', 10), 'turbo_hz', 'turbo_hz')
+    return out
+
+
+def validate_prefs(p):
+    """Per-game choices from Quick Access: {sensitivity, gyro}."""
+    if p is None:
+        return {'sensitivity': 1.0, 'gyro': False}
+    _obj(p, 'prefs', {'sensitivity', 'gyro'})
+    return {'sensitivity': _num(p.get('sensitivity', 1.0), 'pref_sensitivity', 'prefs.sensitivity'),
+            'gyro': _bool(p.get('gyro', False), 'prefs.gyro')}
+
+
+def uses_gyro(layout):
+    every = list(layout['buttons'].values()) + list(layout['shift']['buttons'].values())
+    return any(b['press'].kind == 'gyro' for b in every)
+
+
+# ---------------------------------------------------------------------- the mapping engine (no devices)
+
+def stick_curve(mag, deadzone, outer, exponent):
+    """Stick distance from the centre (0..1) → 0..1: nothing in the dead zone, everything past the outer dead
+    zone, a curve between (exponent 1 = straight; higher = finer near the centre)."""
+    if mag <= deadzone:
+        return 0.0
+    t = min(1.0, (mag - deadzone) / max(1e-6, outer - deadzone))
+    return t ** exponent
+
+
+def stick_directions(x, y, threshold, held=()):
+    """A stick as up to two of up/down/left/right (8 equal sectors), once it's pushed past the threshold. A
+    direction already held lets go only below threshold x STICK_HYST (no flicker at the edge)."""
+    mag = math.hypot(x, y)
+    limit = threshold * STICK_HYST if held else threshold
+    if mag < limit or mag == 0:
+        return set()
+    nx, ny = x / mag, y / mag
+    out = set()
+    if nx > DIAG:
+        out.add('right')
+    elif nx < -DIAG:
+        out.add('left')
+    if ny > DIAG:
+        out.add('down')
+    elif ny < -DIAG:
+        out.add('up')
+    return out
+
+
+def radial_index(x, y, n):
+    """A direction (y down) → one of n slots, slot 0 straight up, clockwise."""
+    ang = math.atan2(x, -y) % (2 * math.pi)
+    return int(round(ang / (2 * math.pi / n))) % n
+
+
+DPAD_VECTORS = {'up': (0, -1), 'right': (1, 0), 'down': (0, 1), 'left': (-1, 0)}
+
+
+class Engine:
+    """Runs one layout. `out` has .key(code, down) (KEY_*/BTN_* names), .move(dx, dy), .wheel(v, h) in 1/120
+    notches, and .osd(text). Time is passed in (`now`), so it can be tested without waiting."""
+
+    def __init__(self, out, layout, prefs=None):
+        self.out = out
+        self.L = layout
+        self.prefs = dict(validate_prefs(None), **(prefs or {}))
+        self.refs = {}          # output code → sources holding it
+        self.src_codes = {}     # source → codes it holds, in press order
+        self.held = {}          # button → what its press started
+        self.ignored = set()    # buttons already down when the layout started: ignored until let go
+        self.pulses = []        # (release time, source)
+        self.scroll_next = {}   # source → (next repeat time, action)
+        self.shift_by = set()
+        self.gyro_on = self.L['gyro']['start_on'] or self.prefs['gyro']
+        self.gyro_hold = set()
+        self.radial = None      # {'by': button, 'sel': -1}
+        self.axes = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0, 'lt': 0.0, 'rt': 0.0}
+        self.trig = {'lt': False, 'rt': False}
+        self.stick_held = {}    # (stick, dir) → action
+        self.rate = (0.0, 0.0, 0.0)
+        self.acc = [0.0, 0.0, 0.0, 0.0]
+
+    # ------------------------------------------------------------------ outputs
+    def _down(self, src, codes):
+        for c in codes:
+            s = self.refs.setdefault(c, set())
+            if not s:
+                self.out.key(c, True)
+            s.add(src)
+        self.src_codes.setdefault(src, []).extend(codes)
+
+    def _up(self, src):
+        for c in reversed(self.src_codes.pop(src, [])):
+            s = self.refs.get(c)
+            if s and src in s:
+                s.discard(src)
+                if not s:
+                    self.out.key(c, False)
+        self.scroll_next.pop(src, None)
+
+    def _wheel(self, v, h):
+        self.out.wheel(v, h)
+
+    def press(self, src, act, now):
+        if act.kind in ('keys', 'mouse'):
+            self._down(src, act.codes)
+        elif act.kind == 'scroll':
+            self._wheel(*act.arg)
+            self.scroll_next[src] = (now + SCROLL_REPEAT[0], act)
+
+    def tap(self, src, act, now):
+        """Press now, let go a moment later (tick does)."""
+        self.press(src, act, now)
+        self.scroll_next.pop(src, None)
+        self.pulses.append((now + PULSE, src))
+
+    # ------------------------------------------------------------------ layers
+    @property
+    def shifted(self):
+        return bool(self.shift_by)
+
+    def binding(self, ctl):
+        if self.shifted and ctl in self.L['shift']['buttons']:
+            return self.L['shift']['buttons'][ctl]
+        return self.L['buttons'][ctl]
+
+    def stick_binding(self, s):
+        if self.shifted and s in self.L['shift']['sticks']:
+            return self.L['shift']['sticks'][s]
+        return self.L['sticks'][s]
+
+    @property
+    def gyro_active(self):
+        return self.gyro_on or bool(self.gyro_hold)
+
+    # ------------------------------------------------------------------ input
+    def button(self, name, down, now):
+        if down:
+            if name in self.ignored or name in self.held:
+                return
+            if self.radial and name in DPAD:
+                self._radial_pick(*DPAD_VECTORS[name])
+                self.held[name] = {'kind': 'radialnav'}
+                return
+            b = self.binding(name)
+            act = b['press']
+            if act.kind == 'shift':
+                self.shift_by.add(name)
+                self.held[name] = {'kind': 'shift'}
+            elif act.kind == 'gyro':
+                if act.arg == 'toggle':
+                    self.gyro_on = not self.gyro_on
+                    self.out.osd('Gyro aiming ' + ('on' if self.gyro_active else 'off'))
+                else:
+                    self.gyro_hold.add(name)
+                self.held[name] = {'kind': 'gyro'}
+            elif act.kind == 'radial':
+                self.held[name] = {'kind': 'radial'}
+                if self.L['radial'] and not self.radial:
+                    self.radial = {'by': name, 'sel': -1}
+                    self._release_stick('rs')
+                    self.out.osd('Radial menu: ' + ' · '.join(a.label for a in self.L['radial']))
+            elif b['hold'] is not None:
+                self.held[name] = {'kind': 'holdtap', 't': now, 'b': b, 'phase': 'wait'}
+            elif b['turbo']:
+                self.press(name, act, now)
+                self.held[name] = {'kind': 'turbo', 'act': act, 'on': True, 'next': now + self._turbo_half()}
+            else:
+                self.press(name, act, now)
+                self.held[name] = {'kind': 'plain'}
+            return
+        if name in self.ignored:
+            self.ignored.discard(name)
+            return
+        h = self.held.pop(name, None)
+        if not h:
+            return
+        k = h['kind']
+        if k == 'shift':
+            self.shift_by.discard(name)
+        elif k == 'gyro':
+            self.gyro_hold.discard(name)
+        elif k == 'radial':
+            r = self.radial
+            if r and r['by'] == name:
+                self.radial = None
+                if r['sel'] >= 0:
+                    act = self.L['radial'][r['sel']]
+                    self.tap('radial', act, now)
+                    self.out.osd(act.label)
+        elif k == 'holdtap':
+            if h['phase'] == 'wait':
+                self.tap(name + '#tap', h['b']['press'], now)
+            else:
+                self._up(name + '#hold')
+        elif k in ('turbo', 'plain'):
+            self._up(name)
+
+    def _turbo_half(self):
+        return 0.5 / self.L['turbo_hz']
+
+    def _radial_pick(self, x, y):
+        r = self.radial
+        sel = radial_index(x, y, len(self.L['radial']))
+        if sel != r['sel']:
+            r['sel'] = sel
+            self.out.osd('Radial menu: ' + self.L['radial'][sel].label)
+
+    def set_axes(self, now, lx=0.0, ly=0.0, rx=0.0, ry=0.0, lt=0.0, rt=0.0):
+        self.axes.update(lx=lx, ly=ly, rx=rx, ry=ry, lt=lt, rt=rt)
+        for t in TRIGGERS:
+            thr = self.binding(t)['threshold']
+            v = self.axes[t]
+            pressed = v > thr - TRIGGER_HYST if self.trig[t] else v >= thr
+            if pressed != self.trig[t]:
+                self.trig[t] = pressed
+                self.button(t, pressed, now)
+
+    def gyro(self, gx, gy, gz):
+        """Turning speed in degrees per second around the controller's x, y and z axes."""
+        self.rate = (gx, gy, gz)
+
+    def _release_stick(self, s):
+        for key in [k for k in self.stick_held if k[0] == s]:
+            self._up('%s:%s' % key)
+            del self.stick_held[key]
+
+    def tick(self, now, dt):
+        for t, src in [p for p in self.pulses if p[0] <= now]:
+            self.pulses.remove((t, src))
+            self._up(src)
+        for name, h in list(self.held.items()):
+            if h['kind'] == 'holdtap' and h['phase'] == 'wait' and now - h['t'] >= self.L['hold_ms'] / 1000.0:
+                h['phase'] = 'held'
+                self.press(name + '#hold', h['b']['hold'], now)
+            elif h['kind'] == 'turbo' and now >= h['next']:
+                h['on'] = not h['on']
+                h['next'] = now + self._turbo_half()
+                if h['on']:
+                    self.press(name, h['act'], now)
+                else:
+                    self._up(name)
+        for src, (t, act) in list(self.scroll_next.items()):
+            if now >= t:
+                self._wheel(*act.arg)
+                self.scroll_next[src] = (now + SCROLL_REPEAT[1], act)
+
+        sens = self.prefs['sensitivity']
+        for s, (x, y) in (('ls', (self.axes['lx'], self.axes['ly'])), ('rs', (self.axes['rx'], self.axes['ry']))):
+            if self.radial and s == 'rs':
+                if math.hypot(x, y) > 0.5:
+                    self._radial_pick(x, y)
+                continue
+            b = self.stick_binding(s)
+            mode = b['mode']
+            if mode != 'keys':
+                self._release_stick(s)
+            if mode == 'keys':
+                held_dirs = {d for (st, d) in self.stick_held if st == s}
+                want = stick_directions(x, y, b['threshold'], held_dirs)
+                for d in DPAD:
+                    act = b[d] if d in want else None
+                    cur = self.stick_held.get((s, d))
+                    if cur is not None and cur != act:
+                        self._up('%s:%s' % (s, d))
+                        del self.stick_held[(s, d)]
+                        cur = None
+                    if act is not None and cur is None:
+                        self.stick_held[(s, d)] = act
+                        self.press('%s:%s' % (s, d), act, now)
+            elif mode == 'mouse':
+                mag = math.hypot(x, y)
+                f = stick_curve(mag, b['deadzone'], b['outer'], b['curve'])
+                if f > 0:
+                    speed = MOUSE_SPEED * b['sensitivity'] * sens * f * dt
+                    self.acc[0] += x / mag * speed
+                    self.acc[1] += (y / mag) * speed * (-1 if b['invert_y'] else 1)
+            elif mode == 'scroll':
+                mag = math.hypot(x, y)
+                f = stick_curve(mag, b['deadzone'], 1.0, 1.5)
+                if f > 0:
+                    rate = SCROLL_SPEED * 120 * b['sensitivity'] * f * dt
+                    self.acc[2] += -y / mag * rate
+                    self.acc[3] += x / mag * rate
+
+        if self.gyro_active:
+            g = self.L['gyro']
+            dz = g['deadzone']
+            soft = lambda r: math.copysign(max(0.0, abs(r) - dz), r)
+            gx, gy, _ = self.rate
+            k = GYRO_SCALE * g['sensitivity'] * sens * dt
+            self.acc[0] += -soft(gy) * k * (-1 if g['invert_x'] else 1)
+            self.acc[1] += -soft(gx) * k * (-1 if g['invert_y'] else 1)
+
+        dx, dy = int(self.acc[0]), int(self.acc[1])
+        self.acc[0] -= dx
+        self.acc[1] -= dy
+        if dx or dy:
+            self.out.move(dx, dy)
+        v, h = int(self.acc[2]), int(self.acc[3])
+        self.acc[2] -= v
+        self.acc[3] -= h
+        if v or h:
+            self._wheel(v, h)
+
+    # ------------------------------------------------------------------ starting and stopping
+    def release_all(self):
+        """Every key and button up, nothing half-done (no tap fires)."""
+        for src in list(self.src_codes):
+            self._up(src)
+        self.held.clear()
+        self.pulses.clear()
+        self.scroll_next.clear()
+        self.stick_held.clear()
+        self.shift_by.clear()
+        self.gyro_hold.clear()
+        self.radial = None
+        self.trig = {'lt': False, 'rt': False}
+        self.acc = [0.0, 0.0, 0.0, 0.0]
+
+    def start(self, held_buttons=(), triggers=None):
+        """The layout takes over: buttons already down (the A that started the game) do nothing until let go."""
+        self.release_all()
+        self.ignored = set(held_buttons)
+        for t in TRIGGERS:
+            if triggers and triggers.get(t, 0.0) >= 0.5:
+                self.ignored.add(t)
+                self.trig[t] = True
+
+    def set_prefs(self, prefs):
+        was = self.prefs
+        self.prefs = prefs
+        if prefs['gyro'] != was['gyro']:
+            self.gyro_on = prefs['gyro']
+
+
+# ---------------------------------------------------------------------- when the controller is taken
+
+class Policy:
+    """What should be running right now: a layout (the controller is grabbed) or None (let go)."""
+
+    def __init__(self):
+        self.game = None
+        self.front = False
+        self.overlay = False
+        self.layout = None
+        self.raw = None
+        self.prefs = validate_prefs(None)
+        self.error = None
+        self.last_state = -1e9
+        self.suspend_until = 0.0
+        self.test = None        # (layout, until)
+
+    def state(self, m, now):
+        self.last_state = now
+        g = m.get('game')
+        self.game = g if isinstance(g, str) and 0 < len(g) <= 300 else None
+        self.front = m.get('front') is True
+        self.overlay = m.get('overlay') is True
+        # Checked again only when it changes (the same layout stays the same object: no restart). Prefs on their own
+        # (Quick Access: sensitivity, gyro) update the running layout without restarting it.
+        raw = json.dumps(m.get('layout'), sort_keys=True)
+        if raw != self.raw:
+            self.raw = raw
+            self.error = None
+            try:
+                self.layout = validate_layout(m['layout']) if m.get('layout') is not None else None
+            except LayoutError as e:
+                self.layout, self.error = None, str(e)
+        try:
+            self.prefs = validate_prefs(m.get('prefs'))
+        except LayoutError as e:
+            self.prefs, self.error = validate_prefs(None), str(e)
+
+    def start_test(self, layout, seconds, now):
+        self.test = (validate_layout(layout), now + max(1, min(TEST_MAX, int(seconds))))
+
+    def want(self, now):
+        if self.overlay or now < self.suspend_until:
+            return None
+        if self.test:
+            if now < self.test[1]:
+                return self.test[0]
+            self.test = None
+        if now - self.last_state > HEARTBEAT:
+            return None
+        if self.layout is not None and self.front and self.game:
+            return self.layout
+        return None
+
+    def guide(self, now):
+        self.suspend_until = now + GUIDE_SUSPEND
+        self.test = None
+
+
+# ---------------------------------------------------------------------- devices (python3-evdev)
+
+BTN_NAMES = {   # xpad / HHD's virtual Xbox controller; Sony pads swap X and Y (see device_buttons)
+    'BTN_SOUTH': 'a', 'BTN_EAST': 'b', 'BTN_NORTH': 'x', 'BTN_WEST': 'y', 'BTN_TL': 'lb', 'BTN_TR': 'rb',
+    'BTN_SELECT': 'view', 'BTN_START': 'menu', 'BTN_MODE': 'guide', 'BTN_THUMBL': 'l3', 'BTN_THUMBR': 'r3',
+    'BTN_TL2': 'lt', 'BTN_TR2': 'rt',
+    'BTN_DPAD_UP': 'up', 'BTN_DPAD_DOWN': 'down', 'BTN_DPAD_LEFT': 'left', 'BTN_DPAD_RIGHT': 'right',
+    # xpad's d-pad-as-buttons, then the Elite controller's paddles (upper right, lower right, upper left, lower
+    # left), which Handheld Daemon's Xbox Elite emulation copies.
+    'BTN_TRIGGER_HAPPY1': 'left', 'BTN_TRIGGER_HAPPY2': 'right', 'BTN_TRIGGER_HAPPY3': 'up', 'BTN_TRIGGER_HAPPY4': 'down',
+    'BTN_TRIGGER_HAPPY5': 'r4', 'BTN_TRIGGER_HAPPY6': 'r5', 'BTN_TRIGGER_HAPPY7': 'l4', 'BTN_TRIGGER_HAPPY8': 'l5',
+}
+SONY = 0x054c
+
+
+def device_buttons(e, vendor=0):
+    m = {}
+    for name, ctl in BTN_NAMES.items():
+        code = getattr(e, name, None)
+        if code is not None:
+            m[code] = ctl
+    if vendor == SONY:    # hid-playstation: Triangle (top) is BTN_NORTH, Square (left) BTN_WEST
+        m[e.BTN_NORTH], m[e.BTN_WEST] = 'y', 'x'
+    return m
+
+
+class Pad:
+    """One controller: its buttons and axes, normalized."""
+
+    def __init__(self, dev, e):
+        self.dev, self.e = dev, e
+        self.name = dev.name
+        self.bmap = device_buttons(e, getattr(dev.info, 'vendor', 0))
+        self.btn = {}
+        self.ax = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0, 'lt': 0.0, 'rt': 0.0}
+        self.dig = {'lt': False, 'rt': False}
+        self.info = dict(dev.capabilities(absinfo=True).get(e.EV_ABS, []))
+        self.grabbed = False
+        self.busy = False
+
+    def norm(self, code, value, centered=True):
+        i = self.info.get(code)
+        if not i or i.max == i.min:
+            return 0.0
+        if centered:
+            mid = (i.max + i.min) / 2
+            return max(-1.0, min(1.0, (value - mid) / ((i.max - i.min) / 2)))
+        return max(0.0, min(1.0, (value - i.min) / (i.max - i.min)))
+
+    def handle(self, ev):
+        e = self.e
+        if ev.type == e.EV_KEY and ev.code in self.bmap:
+            name = self.bmap[ev.code]
+            if name in TRIGGERS:
+                self.dig[name] = ev.value != 0
+            else:
+                self.btn[name] = ev.value != 0
+        elif ev.type == e.EV_ABS:
+            c = ev.code
+            sticks = {e.ABS_X: 'lx', e.ABS_Y: 'ly', e.ABS_RX: 'rx', e.ABS_RY: 'ry'}
+            if c in sticks:
+                self.ax[sticks[c]] = self.norm(c, ev.value)
+            elif c in (e.ABS_Z, e.ABS_BRAKE):
+                self.ax['lt'] = self.norm(c, ev.value, centered=False)
+            elif c in (e.ABS_RZ, e.ABS_GAS):
+                self.ax['rt'] = self.norm(c, ev.value, centered=False)
+            elif c == e.ABS_HAT0X:
+                self.btn['left'], self.btn['right'] = ev.value < 0, ev.value > 0
+            elif c == e.ABS_HAT0Y:
+                self.btn['up'], self.btn['down'] = ev.value < 0, ev.value > 0
+
+    def trigger(self, t):
+        return max(self.ax[t], 1.0 if self.dig[t] else 0.0)
+
+    def grab(self, on):
+        """True if it's now as asked. Someone else holding it (EBUSY) marks it busy: left alone."""
+        if on == self.grabbed:
+            return True
+        try:
+            self.dev.grab() if on else self.dev.ungrab()
+        except OSError:
+            if on:
+                self.busy = True
+                return False
+        self.grabbed = on
+        if on:
+            self.busy = False
+        return True
+
+
+class Motion:
+    """A controller's motion sensors (kernel convention: gyro on ABS_RX/RY/RZ, in units per degree/second)."""
+
+    def __init__(self, dev, e):
+        self.dev, self.e = dev, e
+        self.name = dev.name
+        self.res = {}
+        for code, info in dev.capabilities(absinfo=True).get(e.EV_ABS, []):
+            self.res[code] = info.resolution or 1024
+        self.rate = [0.0, 0.0, 0.0]
+
+    def handle(self, ev):
+        e = self.e
+        if ev.type == e.EV_ABS and ev.code in (e.ABS_RX, e.ABS_RY, e.ABS_RZ):
+            self.rate[(e.ABS_RX, e.ABS_RY, e.ABS_RZ).index(ev.code)] = ev.value / self.res.get(ev.code, 1024)
+
+
+def is_gamepad(caps, e, name):
+    return not name.startswith('Hearth ') and e.BTN_SOUTH in caps.get(e.EV_KEY, []) and e.EV_ABS in caps
+
+
+def is_motion(props, caps, e):
+    """Motion sensors: marked as an accelerometer, with turning speeds (gyro) on RX/RY/RZ. caps without absinfo."""
+    return getattr(e, 'INPUT_PROP_ACCELEROMETER', 6) in props and {e.ABS_RX, e.ABS_RY, e.ABS_RZ} <= set(caps.get(e.EV_ABS, []))
+
+
+def pick_motion(motions, pads):
+    """The motion sensors that go with a controller in use: the one named after it, or Handheld Daemon's."""
+    if not motions:
+        return None
+    names = [p.name for p in pads]
+    for m in motions:
+        if any(n and m.name.startswith(n) for n in names):
+            return m
+    for m in motions:
+        if 'Handheld Daemon' in m.name or 'hhd' in m.name.lower():
+            return m
+    return motions[0]
+
+
+class Output:
+    """The virtual keyboard and mouse, made the first time a layout runs."""
+
+    def __init__(self, evdev):
+        e = evdev.ecodes
+        self.e = e
+        rel = [e.REL_X, e.REL_Y, e.REL_WHEEL, e.REL_HWHEEL]
+        self.hires = hasattr(e, 'REL_WHEEL_HI_RES')
+        if self.hires:
+            rel += [e.REL_WHEEL_HI_RES, e.REL_HWHEEL_HI_RES]
+        self.ptr = evdev.UInput({e.EV_KEY: [getattr(e, c) for c in MOUSE_CODES.values()], e.EV_REL: rel},
+                                name='Hearth Input mouse')
+        self.kbd = evdev.UInput({e.EV_KEY: [getattr(e, c) for c in ALL_KEY_CODES if hasattr(e, c)]},
+                                name='Hearth Input keyboard')
+        self.wheel_acc = [0, 0]
+        self.osd_cb = None
+
+    def key(self, code, down):
+        dev = self.ptr if code.startswith('BTN_') else self.kbd
+        c = getattr(self.e, code, None)
+        if c is None:
+            return
+        dev.write(self.e.EV_KEY, c, 1 if down else 0)
+        dev.syn()
+
+    def move(self, dx, dy):
+        e = self.e
+        if dx:
+            self.ptr.write(e.EV_REL, e.REL_X, dx)
+        if dy:
+            self.ptr.write(e.EV_REL, e.REL_Y, dy)
+        self.ptr.syn()
+
+    def wheel(self, v, h):
+        e = self.e
+        for i, (amount, lo, hi) in enumerate(((v, e.REL_WHEEL, getattr(e, 'REL_WHEEL_HI_RES', None)),
+                                              (h, e.REL_HWHEEL, getattr(e, 'REL_HWHEEL_HI_RES', None)))):
+            if not amount:
+                continue
+            if self.hires and hi is not None:
+                self.ptr.write(e.EV_REL, hi, amount)
+            self.wheel_acc[i] += amount
+            notches = int(self.wheel_acc[i] / 120)
+            if notches:
+                self.wheel_acc[i] -= notches * 120
+                self.ptr.write(e.EV_REL, lo, notches)
+        self.ptr.syn()
+
+    def osd(self, text):
+        if self.osd_cb:
+            self.osd_cb(text)
+
+    def close(self):
+        for d in (self.ptr, self.kbd):
+            try:
+                d.close()
+            except OSError:
+                pass
+
+
+# ---------------------------------------------------------------------- the control socket
+
+def runtime_dir():
+    d = '/run/user/%d' % os.getuid()
+    if os.path.isdir(d):
+        return d
+    return os.environ.get('XDG_RUNTIME_DIR') or d
+
+
+def socket_path():
+    return os.path.join(runtime_dir(), 'hearth', 'input.sock')
+
+
+def prepare_dir(d):
+    if not os.path.lexists(d):
+        os.makedirs(d, mode=0o700, exist_ok=True)
+    st = os.lstat(d)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        raise OSError('%s isn\'t a folder of this user\'s' % d)
+    os.chmod(d, 0o700)
+
+
+def peer_uid(sock):
+    try:
+        cred = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i'))
+        return struct.unpack('3i', cred)[1]
+    except (OSError, AttributeError):
+        return None
+
+
+def request(cmd, timeout=1.0):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    s.connect(socket_path())
+    s.sendall((json.dumps(cmd) + '\n').encode())
+    buf = b''
+    while b'\n' not in buf:
+        chunk = s.recv(65536)
+        if not chunk:
+            break
+        buf += chunk
+    s.close()
+    return json.loads(buf.split(b'\n', 1)[0] or b'{}')
+
+
+class Client:
+    def __init__(self, sock):
+        self.sock = sock
+        self.buf = b''
+        self.subscribed = False
+
+    def send(self, obj):
+        try:
+            self.sock.send((json.dumps(obj) + '\n').encode())
+            return True
+        except (BlockingIOError, InterruptedError):
+            return True
+        except OSError:
+            return False
+
+
+LOG = False     # serve() turns it on (tests stay quiet)
+
+
+def log(text):
+    if not LOG:
+        return
+    sys.stderr.write(time.strftime('%F %T ') + text + '\n')
+    sys.stderr.flush()
+
+
+# ---------------------------------------------------------------------- the daemon
+
+class Daemon:
+    def __init__(self, evdev):
+        self.evdev = evdev
+        self.e = evdev.ecodes
+        self.out = None
+        self.policy = Policy()
+        self.pads = {}           # path → Pad
+        self.motions = {}        # path → Motion (only while gyro may be used)
+        self.motion_paths = {}   # motion sensors seen: path → name
+        self.motion_denied = set()
+        self.ignored_paths = set()
+        self.engine = None
+        self.running = None      # the layout the engine runs
+        self.clients = []
+        self.listener = None
+        self.pressed = set()
+        self.last = time.monotonic()
+        self.error = None
+        self.out_retry = 0.0
+
+    # ------------------------------------------------------------------ devices
+    def scan(self):
+        e = self.e
+        seen = set()
+        motions = []
+        for path in self.evdev.list_devices():
+            seen.add(path)
+            if path in self.pads or path in self.ignored_paths:
+                continue
+            if path in self.motion_paths:
+                motions.append(path)
+                continue
+            try:
+                d = self.evdev.InputDevice(path)
+            except OSError:
+                continue
+            try:
+                caps = d.capabilities()
+                if is_gamepad(caps, e, d.name):
+                    p = Pad(d, e)
+                    self.pads[path] = p
+                    if self.engine is not None:
+                        p.grab(True)
+                    log('controller: %s (%s)' % (d.name, path))
+                    continue
+                if is_motion(d.input_props(), d.capabilities(absinfo=False), e):
+                    self.motion_paths[path] = d.name
+                    motions.append(path)
+                    log('motion sensors: %s (%s)' % (d.name, path))
+                else:
+                    self.ignored_paths.add(path)
+            except OSError:
+                pass
+            d.close()
+        for path in [p for p in self.pads if p not in seen]:
+            self._drop(path)
+        self.motion_paths = {p: n for p, n in self.motion_paths.items() if p in seen}
+        self.motion_denied &= seen
+        self.ignored_paths &= seen
+        for path in [p for p in self.motions if p not in seen]:
+            self._close_motion(path)
+
+    def _drop(self, path):
+        p = self.pads.pop(path, None)
+        if p:
+            try:
+                p.dev.close()
+            except OSError:
+                pass
+
+    def _close_motion(self, path):
+        m = self.motions.pop(path, None)
+        if m:
+            try:
+                m.dev.close()
+            except OSError:
+                pass
+
+    def gyro_device(self):
+        """The motion sensors for gyro aiming, opened only while a running layout can use gyro."""
+        want = self.engine is not None and (uses_gyro(self.running) or self.engine.gyro_on)
+        if not want:
+            for path in list(self.motions):
+                self._close_motion(path)
+            return None
+        if not self.motions:
+            for path in self.motion_paths:
+                if path in self.motion_denied:
+                    continue
+                try:
+                    self.motions[path] = Motion(self.evdev.InputDevice(path), self.e)
+                except OSError as err:
+                    self.motion_denied.add(path)
+                    log('motion sensors %s: %s' % (path, err))
+        return pick_motion(list(self.motions.values()), [p for p in self.pads.values() if not p.busy])
+
+    # ------------------------------------------------------------------ what runs
+    def apply(self, now):
+        want = self.policy.want(now)
+        if want is self.running and (want is None or self.engine is not None):
+            if self.engine is not None and self.engine.prefs != self.policy.prefs and not self.policy.test:
+                self.engine.set_prefs(self.policy.prefs)
+            return
+        if self.engine is not None:
+            self.engine.release_all()
+            self.engine = None
+        if want is None:
+            for p in self.pads.values():
+                p.grab(False)
+            self.running = None
+            self.gyro_device()
+            log('layout off')
+            return
+        if self.out is None:
+            if now < self.out_retry:
+                return
+            try:
+                self.out = Output(self.evdev)
+            except Exception as err:     # no uinput (permissions changed, module unloaded): stay out of the way
+                self.error = 'Can\'t make the virtual keyboard and mouse (%s)' % err
+                self.out_retry = now + 10
+                log(self.error)
+                return
+            self.error = None
+            self.out.osd_cb = lambda text: self.broadcast({'t': 'osd', 'text': text})
+        for p in self.pads.values():
+            p.grab(True)
+        self.running = want
+        self.engine = Engine(self.out, want, self.policy.prefs)
+        held = set()
+        trig = {'lt': 0.0, 'rt': 0.0}
+        for p in self.pads.values():
+            if p.busy:
+                continue
+            held |= {b for b, v in p.btn.items() if v and b != 'guide'}
+            for t in TRIGGERS:
+                trig[t] = max(trig[t], p.trigger(t))
+        self.engine.start(held, trig)
+        log('layout on: %s' % want['name'])
+
+    def on_guide(self, now):
+        log('Guide pressed: controller back to Hearth')
+        self.policy.guide(now)
+        self.apply(now)
+        self.broadcast({'t': 'guide'})
+
+    # ------------------------------------------------------------------ the socket
+    def listen(self):
+        path = socket_path()
+        prepare_dir(os.path.dirname(path))
+        if os.path.lexists(path):
+            try:
+                request({'cmd': 'status'}, timeout=0.5)
+                return False        # another one answers
+            except (OSError, ValueError):
+                os.unlink(path)
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        old = os.umask(0o177)
+        try:
+            s.bind(path)
+        finally:
+            os.umask(old)
+        os.chmod(path, 0o600)
+        s.listen(4)
+        s.setblocking(False)
+        self.listener = s
+        return True
+
+    def accept(self):
+        try:
+            c, _ = self.listener.accept()
+        except OSError:
+            return
+        if peer_uid(c) != os.getuid() or len(self.clients) >= MAX_CLIENTS:
+            c.close()
+            return
+        c.setblocking(False)
+        self.clients.append(Client(c))
+
+    def broadcast(self, obj):
+        for c in list(self.clients):
+            if c.subscribed and not c.send(obj):
+                self.close_client(c)
+
+    def close_client(self, c):
+        if c in self.clients:
+            self.clients.remove(c)
+        try:
+            c.sock.close()
+        except OSError:
+            pass
+
+    def read_client(self, c, now):
+        try:
+            chunk = c.sock.recv(65536)
+        except (BlockingIOError, InterruptedError):
+            return
+        except OSError:
+            chunk = b''
+        if not chunk:
+            return self.close_client(c)
+        c.buf += chunk
+        if len(c.buf) > MAX_LINE and b'\n' not in c.buf:
+            return self.close_client(c)
+        while b'\n' in c.buf:
+            line, c.buf = c.buf.split(b'\n', 1)
+            try:
+                m = json.loads(line)
+                if not isinstance(m, dict):
+                    raise ValueError
+            except ValueError:
+                c.send({'ok': False, 'error': 'not JSON'})
+                continue
+            reply = self.command(c, m, now)
+            if reply is not None and not c.send(reply):
+                return self.close_client(c)
+
+    def command(self, c, m, now):
+        cmd = m.get('cmd')
+        if cmd == 'state':
+            c.subscribed = True
+            self.policy.state(m, now)
+            self.apply(now)
+            return None
+        if cmd == 'overlay':
+            self.policy.overlay = m.get('on') is True
+            self.apply(now)
+            return {'ok': True, 'grabbed': self.engine is not None}
+        if cmd == 'test':
+            if m.get('stop'):
+                self.policy.test = None
+                self.apply(now)
+                return {'ok': True}
+            try:
+                self.policy.start_test(m.get('layout'), m.get('seconds', 20), now)
+            except LayoutError as e:
+                return {'ok': False, 'error': str(e)}
+            self.apply(now)
+            return {'ok': True, 'seconds': round(self.policy.test[1] - now) if self.policy.test else 0}
+        if cmd == 'status':
+            return self.status(now)
+        return {'ok': False, 'error': 'unknown command'}
+
+    def status(self, now):
+        p = self.policy
+        names = [n for path, n in self.motion_paths.items() if path not in self.motion_denied]
+        gyro = next((n for n in names if any(n.startswith(x.name) for x in self.pads.values())), names[0] if names else None)
+        return {'ok': True, 'active': self.engine is not None,
+                'layout': self.running['name'] if self.running else None,
+                'game': p.game, 'front': p.front, 'overlay': p.overlay,
+                'test': max(0, round(p.test[1] - now)) if p.test else 0,
+                'connected': now - p.last_state <= HEARTBEAT,
+                'devices': [{'name': x.name, 'grabbed': x.grabbed, 'busy': x.busy} for x in self.pads.values()],
+                'gyro': {'available': gyro is not None, 'device': gyro, 'on': bool(self.engine and self.engine.gyro_active)},
+                'error': p.error or self.error}
+
+    # ------------------------------------------------------------------ the loop
+    def loop(self):
+        e = self.e
+        ppid = os.getppid()
+        next_scan = 0.0
+        while True:
+            now = time.monotonic()
+            if os.getppid() != ppid:
+                log('the session ended')
+                return 0
+            if now >= next_scan:
+                self.scan()
+                next_scan = now + 3
+            self.apply(now)
+            motion = self.gyro_device()
+            fds = {p.dev.fd: ('pad', path, p) for path, p in self.pads.items()}
+            if motion:
+                fds[motion.dev.fd] = ('motion', None, motion)
+            for c in self.clients:
+                fds[c.sock.fileno()] = ('client', None, c)
+            fds[self.listener.fileno()] = ('listen', None, None)
+            try:
+                ready, _, _ = select.select(list(fds), [], [], 0.008 if self.engine else 0.1)
+            except (OSError, ValueError):
+                ready = []
+            now = time.monotonic()
+            guide = False
+            for fd in ready:
+                kind, path, obj = fds[fd]
+                if kind == 'listen':
+                    self.accept()
+                elif kind == 'client':
+                    self.read_client(obj, now)
+                elif kind == 'motion':
+                    try:
+                        for ev in obj.dev.read():
+                            obj.handle(ev)
+                    except (BlockingIOError, InterruptedError):
+                        pass
+                    except OSError:
+                        self._close_motion(next((k for k, v in self.motions.items() if v is obj), None))
+                else:
+                    try:
+                        for ev in obj.dev.read():
+                            obj.handle(ev)
+                            if ev.type == e.EV_KEY and ev.code == e.BTN_MODE and ev.value == 1 and obj.grabbed:
+                                guide = True
+                    except (BlockingIOError, InterruptedError):
+                        pass
+                    except OSError:
+                        self._drop(path)
+            if guide and self.engine is not None:
+                self.on_guide(now)
+            self.feed(now, motion)
+
+    def feed(self, now, motion):
+        """This moment's controller state into the running layout."""
+        live = [p for p in self.pads.values() if p.grabbed and not p.busy]
+        if self.engine is None:
+            self.pressed = set()
+            self.last = now
+            return
+        state = set()
+        for p in live:
+            state |= {b for b, v in p.btn.items() if v and b != 'guide'}
+        for b in sorted(state ^ self.pressed):
+            self.engine.button(b, b in state, now)
+        self.pressed = state
+        clip = lambda v: max(-1.0, min(1.0, v))
+        ax = {k: clip(sum(p.ax[k] for p in live)) for k in ('lx', 'ly', 'rx', 'ry')}
+        self.engine.set_axes(now, lt=max([p.trigger('lt') for p in live] or [0.0]),
+                             rt=max([p.trigger('rt') for p in live] or [0.0]), **ax)
+        if motion:
+            self.engine.gyro(*motion.rate)
+        self.engine.tick(now, min(0.05, now - self.last))
+        self.last = now
+
+    def shutdown(self):
+        if self.engine is not None:
+            self.engine.release_all()
+            self.engine = None
+        for p in self.pads.values():
+            p.grab(False)
+        if self.out:
+            self.out.close()
+        if self.listener:
+            try:
+                os.unlink(socket_path())
+            except OSError:
+                pass
+
+
+def serve():
+    try:
+        import evdev
+    except ImportError:
+        log('python3-evdev is missing')
+        return 2
+    try:
+        probe = os.open('/dev/uinput', os.O_WRONLY)
+        os.close(probe)
+    except OSError as err:
+        log('no access to /dev/uinput (%s)' % err)
+        return 3
+    global LOG
+    LOG = True
+    d = Daemon(evdev)
+    if not d.listen():
+        log('already running')
+        return 4
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    signal.signal(signal.SIGHUP, lambda *_: sys.exit(0))
+    log('ready at %s' % socket_path())
+    try:
+        return d.loop()
+    finally:
+        d.shutdown()
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else 'serve'
+    if cmd == 'serve':
+        return serve()
+    if cmd == 'status':
+        try:
+            print(json.dumps(request({'cmd': 'status'})))
+            return 0
+        except (OSError, ValueError) as err:
+            print('error: Hearth Input isn\'t running (%s)' % err)
+            return 1
+    if cmd == 'validate' and len(argv) > 2:
+        try:
+            with open(argv[2], encoding='utf-8') as f:
+                lay = validate_layout(json.load(f))
+        except (OSError, ValueError) as err:
+            print('error: %s' % err)
+            return 1
+        print(json.dumps(dump_layout(lay)))
+        return 0
+    print(__doc__.split('\n\n')[1])
+    return 1
+
+
+def dump_layout(lay):
+    """The normalized layout back as JSON (actions as their strings)."""
+    def a(x):
+        return x.raw if isinstance(x, Action) else x
+
+    def b(ctl, x):
+        o = {'press': a(x['press'])}
+        if x['hold'] is not None:
+            o['hold'] = a(x['hold'])
+        if x['turbo']:
+            o['turbo'] = True
+        if ctl in TRIGGERS:
+            o['threshold'] = x['threshold']
+        return o
+
+    def s(x):
+        return {k: a(v) for k, v in x.items()}
+    return {'version': 1, 'name': lay['name'], 'base': lay['base'],
+            'buttons': {k: b(k, v) for k, v in lay['buttons'].items()},
+            'sticks': {k: s(v) for k, v in lay['sticks'].items()},
+            'shift': {'buttons': {k: b(k, v) for k, v in lay['shift']['buttons'].items()},
+                      'sticks': {k: s(v) for k, v in lay['shift']['sticks'].items()}},
+            'gyro': lay['gyro'], 'radial': [a(x) for x in lay['radial']],
+            'hold_ms': lay['hold_ms'], 'turbo_hz': lay['turbo_hz']}
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
