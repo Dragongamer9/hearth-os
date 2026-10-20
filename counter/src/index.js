@@ -10,6 +10,9 @@
 //   POST /v1/vote   {"id": "<device id>", "layout": "x-orbit", "up": true}  upvote (or take back) an experimental layout
 //   GET  /v1/votes  {"counts": {"x-orbit": 12, ...}}  everyone's upvotes, live
 //   GET  /v1/logs/<code>  the logs, as text, for whoever has the code (the person shows it to the developer).
+//   Each log sent is also put in the private GitHub repository LOGS_REPO (a file plus an issue with the code,
+//   version, device, the person's note from X-Hearth-Note, and the error lines), once the worker has the secret
+//   LOGS_GITHUB_TOKEN (added by hand in Cloudflare's dashboard). The repository is private: logs name devices.
 //
 // Stored per install: the random id, its kind, its version, when it was first and last seen. No IP
 // addresses, names or anything else. Rows not seen for 40 days are deleted every day.
@@ -24,7 +27,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
     if (url.pathname === '/v1/ping' && req.method === 'POST') return ping(req, env);
     if (url.pathname === '/v1/stats' && req.method === 'GET') return stats(req, env, ctx);
-    if (url.pathname === '/v1/logs' && req.method === 'POST') return putLogs(req, env);
+    if (url.pathname === '/v1/logs' && req.method === 'POST') return putLogs(req, env, ctx);
     if (url.pathname === '/v1/vote' && req.method === 'POST') return putVote(req, env);
     if (url.pathname === '/v1/votes' && req.method === 'GET') return json({ counts: await voteCounts(env) }, 200, { 'cache-control': 'no-store' });
     if (url.pathname.startsWith('/v1/logs/') && req.method === 'GET') return getLogs(url, env);
@@ -88,7 +91,7 @@ function newCode() {
   return `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}`;
 }
 
-async function putLogs(req, env) {
+async function putLogs(req, env, ctx) {
   const len = Number(req.headers.get('content-length') || 0);
   if (len > MAX_LOG) return json({ error: 'too big' }, 413);
   const body = await req.text();
@@ -101,7 +104,55 @@ async function putLogs(req, env) {
   if (recent && recent.n > 60) return json({ error: 'busy, try again later' }, 429);
   const code = newCode();
   await env.DB.prepare('INSERT INTO logs (code, created, version, kind, body) VALUES (?, ?, ?, ?, ?)').bind(code, Date.now(), ver, kind, body).run();
+  let note = '';
+  try { note = decodeURIComponent(req.headers.get('x-hearth-note') || ''); } catch (e) { note = ''; }
+  note = note.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 1000);
+  if (env.LOGS_GITHUB_TOKEN) ctx.waitUntil(toGitHub(env, code, ver, kind, body, note).catch(e => console.log('github: ' + e)));
   return json({ code });
+}
+
+// ---------------------------------------------------------------- logs to the private GitHub repository
+function b64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+async function gh(env, method, path, body) {
+  const r = await fetch('https://api.github.com' + path, { method, body: body ? JSON.stringify(body) : undefined, headers: {
+    authorization: 'Bearer ' + env.LOGS_GITHUB_TOKEN, accept: 'application/vnd.github+json', 'user-agent': 'hearth-counter',
+    'x-github-api-version': '2022-11-28', 'content-type': 'application/json' } });
+  if (!r.ok) throw new Error(method + ' ' + path + ': ' + r.status + ' ' + (await r.text()).slice(0, 300));
+  return r.json();
+}
+// The lines worth reading first: errors, failures, crashes (each once, at most 80).
+export function problemLines(body) {
+  const seen = new Set(), out = [];
+  for (const line of body.split('\n')) {
+    if (!/(error|failed|panic|couldn't|could not|traceback|exception|segfault|denied|not found|timed out)/i.test(line)) continue;
+    const key = line.replace(/^\d{10,}\s*/, '').replace(/\b\d+\b/g, '#').slice(0, 200);
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(line.slice(0, 300));
+    if (out.length >= 80) break;
+  }
+  return out;
+}
+async function toGitHub(env, code, ver, kind, body, note) {
+  const repo = env.LOGS_REPO || 'Dragongamer9/hearth-logs';
+  const day = new Date().toISOString().slice(0, 10);
+  const path = `logs/${day}/${code}.txt`;
+  await gh(env, 'PUT', `/repos/${repo}/contents/${path}`, { message: `Logs ${code} (Hearth ${ver || '?'})`, content: b64(body) });
+  const head = body.split('\n').slice(0, 12).filter(l => l.trim()).join('\n');
+  const device = (body.match(/^Device:\s*(.+)$/m) || [])[1] || kind;
+  const problems = problemLines(body);
+  const title = `${code} · Hearth ${ver || '?'} · ${device.slice(0, 60)}` + (note ? ` · ${note.slice(0, 80)}` : '');
+  const md = [
+    note ? `**What happened:** ${note}` : '_No description given._',
+    '', '```', head, '```',
+    '', `**Full log:** [${path}](https://github.com/${repo}/blob/main/${path}) · also at \`/v1/logs/${code}\` for 14 days`,
+    '', `### Problems found (${problems.length})`, '', '```', problems.join('\n').replace(/```/g, "'''") || '(none matched)', '```',
+  ].join('\n').slice(0, 60000);
+  await gh(env, 'POST', `/repos/${repo}/issues`, { title, body: md, labels: [ver ? 'v' + ver : 'unknown version', kind] });
 }
 
 async function getLogs(url, env) {
