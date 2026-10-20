@@ -1453,7 +1453,7 @@ function homeX(V){
     const d=new Date(), t=d.toLocaleTimeString([], LOOK.clock24?{hour:'2-digit',minute:'2-digit',hour12:false}:{hour:'numeric',minute:'2-digit'}).replace(/\s?[AP]M$/i,'');
     return `<div class="x-focus"><div class="xf-clock">${t}</div><div class="xf-date">${d.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'})}</div>
       ${g?`<div class="xf-card"><div class="xf-th">${cover(g,{badge:false})}</div><div class="rt"><div class="xk">Jump back in</div><div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div></div>${xPlay(g,'xf-play')}</div>`:''}
-      <div class="xf-btns">${[['library','lib','Library'],['downloads','dl','Downloads'],['friends','user','Friends'],['stores','user','Stores'],['settings','gear','Settings']].filter(([v])=>v!=='friends'||(HOSTINFO.features||[]).includes('friends')).map(([v,ic,l])=>`<button class="xf-b" data-f data-k="xf-${v}" data-act="nav" data-view="${v}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
+      <div class="xf-btns">${[['library','lib','Library'],['downloads','dl','Downloads'],['friends','user','Friends'],['coop','pad','Couch Co-op'],['stores','user','Stores'],['settings','gear','Settings']].filter(([v])=>(v!=='friends'||(HOSTINFO.features||[]).includes('friends'))&&(v!=='coop'||coopOn())).map(([v,ic,l])=>`<button class="xf-b" data-f data-k="xf-${v}" data-act="nav" data-view="${v}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
   }
   if(id==='x-widgets'){
     const dl=GAMES.find(x=>isActive(x)), b=S.sys.battery||{}, fr=FR.s&&FR.s.friends?FR.s.friends.filter(f=>f.state==='ingame'||f.state==='online').slice(0,4):null;
@@ -1481,7 +1481,7 @@ function homeX(V){
       <div class="xm-side"><div class="xk">Also in your library</div>${side.map(x=>`<button class="xm-item" data-f data-k="xm-${x.id}" data-act="game" data-id="${esc(x.id)}"><div class="xm-th">${cover(x,{badge:false,wide:true})}</div><div><b>${esc(x.title)}</b><small>${esc(line(x))}</small></div></button>`).join('')}</div></div></div>`;
   }
   if(id==='x-dock') return xBg(g)+`<div class="x-dock"><div class="xk-info" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>
-    <div class="xk-dock">${L.slice(0,8).map(x=>xCover(x,'xk-'+x.id,'xk-ic',true)).join('')}<i></i>${[['library','lib','Library'],['friends','user','Friends'],['settings','gear','Settings']].filter(([v])=>v!=='friends'||(HOSTINFO.features||[]).includes('friends')).map(([v,ic,l])=>`<button class="xk-ic xk-u" data-f data-k="xk-${v}" data-act="nav" data-view="${v}" aria-label="${l}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
+    <div class="xk-dock">${L.slice(0,8).map(x=>xCover(x,'xk-'+x.id,'xk-ic',true)).join('')}<i></i>${[['library','lib','Library'],['friends','user','Friends'],['coop','pad','Couch Co-op'],['settings','gear','Settings']].filter(([v])=>(v!=='friends'||(HOSTINFO.features||[]).includes('friends'))&&(v!=='coop'||coopOn())).map(([v,ic,l])=>`<button class="xk-ic xk-u" data-f data-k="xk-${v}" data-act="nav" data-view="${v}" aria-label="${l}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
   if(id==='x-collections'){
     const cards=[['fav','','Favorites',V.filter(x=>x.fav)],...COLS.map(c=>['c:'+c.id,'',c.name,V.filter(x=>(x.cols||[]).includes(c.id))]),['all','inst','Installed',V.filter(x=>x.inst)],['all','unplayed','Never played',V.filter(x=>!x.last)],['xbox','','Xbox Cloud Gaming',V.filter(x=>x.cloud)]].filter(c=>c[3].length);
     return `<div class="x-cols"><div class="xcl-grid">${cards.map(([tab,f,name,gs],i)=>`<button class="xcl" data-f data-k="xcl-${i}" data-act="xLib" data-tab="${esc(tab)}" data-filter="${f}"><div class="xcl-stack">${gs.slice(0,3).map((x,j)=>`<div class="xcl-c s${j}">${cover(x,{badge:false})}</div>`).join('')}</div><div class="xcl-n"><b>${esc(name)}</b><small>${gs.length} game${gs.length===1?'':'s'}</small></div></button>`).join('')}</div>
@@ -3026,7 +3026,7 @@ function goBack(){
 // Overlays
 // =====================================================================
 function renderMenu(){
-  const items=[['home','home','Home'],['library','lib','Library'],['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),['settings','gear','Settings']];
+  const items=[['home','home','Home'],['library','lib','Library'],['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
   $('#menu').innerHTML = `<div class="brand">${LINUX?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
