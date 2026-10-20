@@ -406,6 +406,19 @@ org.freedesktop.impl.portal.Screenshot=wlr
 org.freedesktop.impl.portal.FileChooser=gtk
 PORTALS
 
+# ------------------------------------------------------------------ Beacon (BFME, Age of the Ring, LOTR: Conquest...)
+# Beacon's release package: `beacon`, the tool Hearth's library talks to (hosts/hearth-core/src/beacon.rs), and
+# `beacon-app`, its window (beacon.desktop: in Mantel's launcher and pinned to its taskbar). See docs/BEACON.md.
+# Optional: when there's no release to download yet, the build says so and carries on.
+BEACON_URL=https://github.com/Dragongamer9/beacon/releases/latest/download
+if [ "$(uname -m)" = x86_64 ] && curl -fsSL --retry 3 -o /tmp/beacon_amd64.deb "$BEACON_URL/beacon_amd64.deb" \
+   && "${APT[@]}" /tmp/beacon_amd64.deb; then
+  echo "Beacon installed"
+else
+  echo "warning: couldn't install Beacon from $BEACON_URL (no release yet?); Hearth works without it"
+fi
+rm -f /tmp/beacon_amd64.deb
+
 # ------------------------------------------------------------------ system settings Bazzite/Fedora came with
 # Hearth's administrators group (the installer puts the first account in it; the polkit rules use it). In
 # /etc/group now (the installer adds the account against the image's /etc) and in sysusers.d for later.

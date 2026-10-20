@@ -27,6 +27,41 @@ const path = require('path');
     await new Promise(r => setTimeout(r, 200));
     imEdit(g.id);
   });
+  // Beacon (BFME, Age of the Ring, LOTR: Conquest): its library tab, a game page with its mod, Play with…, the mod
+  // choice in Game settings, the Strategy (RTS) controller layout it starts with, and its card in Library › Stores.
+  await step('beacon tab', () => {
+    S.layers = []; S.tab = 'beacon'; navigate('library', {}, false);
+    if (!document.querySelector('#view [data-k="tab-beacon"]')) throw new Error('no Beacon tab');
+    if (!document.querySelector('#view [data-k="l-beacon:rotwk"]')) throw new Error("Beacon's games aren't in its tab");
+  });
+  await step('beacon game page', () => {
+    S.layers = []; navigate('game', {game: 'beacon:bfme2'}, false);
+    if (!document.querySelector('#view .gstat') || !/Edain/.test(document.querySelector('#view .gstats').textContent)) throw new Error("the chosen mod isn't shown");
+    if (!document.querySelector('#view [data-k="g-playwith"]')) throw new Error('no Play with…');
+  });
+  await step('beacon play with', () => {
+    beaconPlayWith(G('beacon:aotr'));
+    if (!S.layers.includes('sheet') || !/Age of the Ring/.test(document.body.textContent)) throw new Error('no mod sheet');
+    closeAll();
+  });
+  await step('beacon not set up', () => { S.layers = []; navigate('game', {game: 'beacon:bfme1'}, false); if (!/Set up in Beacon/.test(document.querySelector('#view').textContent)) throw new Error('no set-up button'); });
+  await step('beacon game settings', async () => {
+    S.layers = []; navigate('gameset', {game: 'beacon:rotwk'}, false);
+    await new Promise(r => setTimeout(r, 300));
+    if (!document.querySelector('#view [data-k="gs-mod"]') || !document.querySelector('#view [data-k="gs-beacon"]')) throw new Error('no Mod / Manage mods rows');
+    beaconPickMod(G('beacon:rotwk'), 'gs-mod');
+    if (!S.layers.includes('sheet')) throw new Error('no mod choice');
+    closeAll();
+    imLoadTables(); imLoad('beacon:rotwk', true);
+    await new Promise(r => setTimeout(r, 200));
+    if (IM.games['beacon:rotwk'].layout !== 'rts') throw new Error("Beacon's game doesn't start with Strategy (RTS)");
+    if (IM.games['beacon:conquest'] && IM.games['beacon:conquest'].layout !== 'off') throw new Error('Conquest should start Off');
+  });
+  await step('beacon stores card', async () => {
+    S.layers = []; await loadAccounts(); navigate('stores', {}, false);
+    if (!document.querySelector('#view [data-k="sa-beacon-open"]')) throw new Error('no Beacon card');
+  });
+  await step('beacon leave', () => { S.layers = []; S.tab = 'inst'; navigate('home', {}, false); });
   // Settings › Controls › Handheld Daemon: every section, with advanced settings shown and hidden, a choice list,
   // a slider moved, and a change made (the preview's HHD is a ROG Ally's).
   await step('screen hhd', async () => { S.layers = []; navigate('hhd', {}, false); await new Promise(r => setTimeout(r, 600)); if (!HHDP.schema) throw new Error('Handheld Daemon page has no settings'); });
@@ -87,5 +122,5 @@ const path = require('path');
     for (const e of errors) console.log(`::error title=Hearth page::${e}`);
     process.exit(1);
   }
-  console.log(`ok: Hearth's page loads and draws ${9 + tabs.length + layouts.length} screens (and ${hhdSecs.length * 2} Handheld Daemon sections, and Quick Access › Performance ${perfModes.length} ways) without errors`);
+  console.log(`ok: Hearth's page loads and draws ${9 + tabs.length + layouts.length} screens (and Beacon's tab, game page, mod sheets and Stores card) (and ${hhdSecs.length * 2} Handheld Daemon sections, and Quick Access › Performance ${perfModes.length} ways) without errors`);
 })();
