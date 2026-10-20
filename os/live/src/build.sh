@@ -103,9 +103,10 @@ systemctl enable nimbus-autologin.service
 # Try it. "Install with Mantel" switches to the desktop for a mouse and keyboard.
 mkdir -p /etc/skel/.config/nimbus
 echo 'NIMBUS_START_MODE=game' > /etc/skel/.config/nimbus/session.conf
-# The boot test's virtual PC has no graphics card that gamescope can show on: under the test (hearth.ci) Game Mode
-# runs off-screen (gamescope's headless backend), which still starts Hearth and its page.
-echo 'grep -qw hearth.ci /proc/cmdline 2>/dev/null && NIMBUS_GAMESCOPE_ARGS="--backend headless -W 1280 -H 800 $NIMBUS_GAMESCOPE_ARGS"' >> /etc/skel/.config/nimbus/session.conf
+# The boot test's virtual PC has no graphics card, and gamescope (Game Mode) can't run without one, even off-screen
+# (it needs VK_EXT_physical_device_drm, which software Vulkan hasn't got). Under the test (hearth.ci) the live
+# session starts in Desktop Mode instead, and the test opens Hearth there in a window (hearth-ci-report).
+echo 'grep -qw hearth.ci /proc/cmdline 2>/dev/null && NIMBUS_START_MODE=desktop' >> /etc/skel/.config/nimbus/session.conf
 # The live user may do anything without a password prompt (it's a live USB).
 mkdir -p /etc/polkit-1/rules.d
 cat >/etc/polkit-1/rules.d/10-hearth-live.rules <<'RULE'
@@ -126,11 +127,23 @@ systemctl --global disable podman-auto-update.timer 2>/dev/null || true
 cat >/usr/libexec/nimbus/hearth-ci-report <<'SH'
 #!/usr/bin/bash
 d=/home/liveuser/.local/share/nimbus
+started=""
 for i in $(seq 1 10); do
   sleep 30
+  # Hearth in a window on the live desktop, once the desktop is up (Wayland socket there).
+  if [ -z "$started" ]; then
+    uid=$(id -u liveuser 2>/dev/null); sock=$(ls /run/user/"$uid"/wayland-* 2>/dev/null | grep -v lock | head -1)
+    if [ -n "$uid" ] && [ -n "$sock" ]; then
+      started=1
+      runuser -u liveuser -- env XDG_RUNTIME_DIR=/run/user/"$uid" WAYLAND_DISPLAY="$(basename "$sock")" HOME=/home/liveuser \
+        setsid /usr/bin/nimbus --windowed >>"$d/ci-window.log" 2>&1 < /dev/null &
+      echo "HEARTH-CI opened Hearth in a window on $(basename "$sock")" > /dev/ttyS0
+    fi
+  fi
   {
     echo "HEARTH-CI t=$((i * 30))s"
-    tail -n 40 "$d/session.log" 2>/dev/null | sed 's/^/session: /'
+    tail -n 8 "$d/session.log" 2>/dev/null | sed 's/^/session: /'
+    tail -n 10 "$d/ci-window.log" 2>/dev/null | cut -c1-200 | sed 's/^/window: /'
     grep -E 'graphics:|watchdog|panic' "$d/bridge.log" 2>/dev/null | tail -n 6 | sed 's/^/bridge: /'
     echo "pages: $(grep -c '\[rust\]' "$d/bridge.log" 2>/dev/null) bridge lines"
     systemctl --failed --no-legend --plain 2>/dev/null | sed 's/^/failed: /'
