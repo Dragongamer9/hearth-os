@@ -280,12 +280,12 @@ pub fn signature(home: &Path) -> String {
 pub fn load(home: &Path) -> Snapshot {
     let path_env = std::env::var("PATH").unwrap_or_default();
     let roots = system_flatpak_roots();
-    let sig = signature(home);
-    let mut s = Snapshot { cli: locate_cli(home, &path_env, &roots), app: locate_app(home, &path_env, &roots), sig, ..Default::default() };
+    let mut s = Snapshot { cli: locate_cli(home, &path_env, &roots), app: locate_app(home, &path_env, &roots), sig: signature(home), ..Default::default() };
     let Some(cli) = s.cli.clone() else { return s };
     match run(&cli, &["status".to_string(), "--json".to_string()], Duration::from_secs(20)).and_then(|t| parse_status(&t)) {
         Ok(games) => s.games = games,
-        Err(e) => { crate::bridge::log(&format!("beacon: status: {e}")); s.error = Some(e); return s; }
+        // Taken again after Beacon ran: a Beacon that writes its own files while answering isn't read over and over.
+        Err(e) => { crate::bridge::log(&format!("beacon: status: {e}")); s.error = Some(e); s.sig = signature(home); return s; }
     }
     for g in s.games.iter_mut().filter(|g| g.installed) {
         let Ok(args) = mods_args(&g.id) else { continue };
@@ -294,6 +294,7 @@ pub fn load(home: &Path) -> Snapshot {
             Err(e) => crate::bridge::log(&format!("beacon: mods {}: {e}", g.id)),
         }
     }
+    s.sig = signature(home);
     crate::bridge::log(&format!("beacon: {} games ({} set up) through {}", s.games.len(), s.games.iter().filter(|g| g.installed).count(), cli.via()));
     s
 }
