@@ -408,8 +408,8 @@ Scope {
                                 delegate: Rectangle { required property int index; width: 8; height: 8; radius: 4; color: index === shots.index ? Theme.accent : Theme.panel3 }
                             }
                         }
-                        MouseArea { anchors { left: parent.left; top: parent.top; bottom: parent.bottom }; width: parent.width * 0.3; cursorShape: Qt.PointingHandCursor; onClicked: { shots.forceActiveFocus(); shots.adjusted(-1); } }
-                        MouseArea { anchors { right: parent.right; top: parent.top; bottom: parent.bottom }; width: parent.width * 0.3; cursorShape: Qt.PointingHandCursor; onClicked: { shots.forceActiveFocus(); shots.adjusted(1); } }
+                        MouseArea { anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: parent.width * 0.3; cursorShape: Qt.PointingHandCursor; onClicked: { shots.forceActiveFocus(); shots.adjusted(-1); } }
+                        MouseArea { anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom; width: parent.width * 0.3; cursorShape: Qt.PointingHandCursor; onClicked: { shots.forceActiveFocus(); shots.adjusted(1); } }
                     }
                     SetHeader { visible: store.view === "app" && !!store.detail && (store.detail.description || "") !== ""; text: "About" }
                     // Each paragraph can take focus, so the controller scrolls through long descriptions too.
