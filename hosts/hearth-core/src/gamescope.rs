@@ -167,12 +167,46 @@ pub fn focus_list(front: Option<u32>) -> Vec<u32> {
     v.push(HEARTH_ID);
     v
 }
+/// Handheld Daemon's own number (its overlay window, when Steam isn't running).
+pub const HHD_ID: u32 = 5335;
+/// The list gamescope gets: the numbers asked for, in that order, then every other app gamescope could show
+/// (GAMESCOPE_FOCUSABLE_APPS). Handheld Daemon rewrites the list in gamescope's own order (a game put aside first:
+/// the game you picked popped in and out) whenever an app is missing from it; with all of them there it leaves the
+/// list alone. The others come after Hearth, which always has a window, so they're never the one shown.
+pub fn complete_list(wanted: &[u32], focusable: &[u32]) -> Vec<u32> {
+    let mut v: Vec<u32> = Vec::new();
+    for n in wanted.iter().chain(focusable.iter()) { if *n != 0 && *n != HHD_ID && !v.contains(n) { v.push(*n); } }
+    if v.is_empty() { v.push(HEARTH_ID); }
+    v
+}
+fn focusable_apps() -> Vec<u32> { cardinals("GAMESCOPE_FOCUSABLE_APPS", None).into_iter().filter(|n| *n <= u32::MAX as u64).map(|n| n as u32).collect() }
+/// The numbers Hearth asked for last, in its order (`keep_list` puts them back if something rewrote the list).
+fn wanted() -> &'static std::sync::Mutex<Vec<u32>> {
+    static W: std::sync::OnceLock<std::sync::Mutex<Vec<u32>>> = std::sync::OnceLock::new();
+    W.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
 /// Shows by number (see `focus_list`): any pinned window goes, so gamescope picks among the windows carrying them.
 pub fn focus_ids(ids: &[u32]) {
-    let mut v: Vec<u32> = Vec::new();
-    for n in ids { if *n != 0 && !v.contains(n) { v.push(*n); } }
-    if v.is_empty() { v.push(HEARTH_ID); }
+    let v = complete_list(ids, &focusable_apps());
+    *wanted().lock().unwrap() = ids.iter().copied().filter(|n| *n != 0).collect();
     remove_root(BASELAYER_WINDOW);
+    let _ = set_root_list(BASELAYER_APPID, &v);
+}
+/// Does the list gamescope holds still start with what Hearth asked for, and name every app it could show?
+pub fn list_ok(holds: &[u32], wanted: &[u32], focusable: &[u32]) -> bool {
+    let first = complete_list(wanted, &[]);
+    holds.starts_with(&first) && focusable.iter().all(|n| *n == 0 || *n == HHD_ID || holds.contains(n))
+}
+/// Twice a second (with the window numbers): when another program (Handheld Daemon) rewrote the list in its own
+/// order, or a new app appeared that isn't in it yet, Hearth's order goes back.
+pub fn keep_list() {
+    let want = wanted().lock().unwrap().clone();
+    if want.is_empty() { return; }
+    let holds = requested_ids();
+    let focusable = focusable_apps();
+    if list_ok(&holds, &want, &focusable) { return; }
+    let v = complete_list(&want, &focusable);
+    crate::bridge::log(&format!("gamescope: list was {holds:?}, back to {v:?}"));
     let _ = set_root_list(BASELAYER_APPID, &v);
 }
 /// The app ids asked for now.
@@ -260,7 +294,7 @@ pub fn front_by_id(app_id: u32, win: u64) {
 pub fn focus_game(want: &Want, pids: &dyn Fn() -> Vec<u32>, still: &dyn Fn() -> bool) -> Option<u64> {
     if !available() { return None; }
     // Asked for right away (a window pinned now, like a Steam question, stays in front until it closes).
-    if want.app_id != 0 { let _ = set_root_list(BASELAYER_APPID, &focus_list(Some(want.app_id))); }
+    if want.app_id != 0 { let _ = set_root_list(BASELAYER_APPID, &complete_list(&focus_list(Some(want.app_id)), &focusable_apps())); }
     for _ in 0..20 {
         if !still() { return None; }
         let now = pids();
@@ -481,6 +515,15 @@ mod focus_tests {
         assert_eq!(focus_list(None), vec![HEARTH_ID]);
         assert_eq!(focus_list(Some(0)), vec![HEARTH_ID]);
         assert_eq!(focus_list(Some(HEARTH_ID)), vec![HEARTH_ID]);
+        // Every app gamescope could show is in the list (so Handheld Daemon leaves it alone), after the ones asked for.
+        assert_eq!(complete_list(&[B, HEARTH_ID], &[A, B, HHD_ID, HEARTH_ID]), vec![B, HEARTH_ID, A]);
+        assert_eq!(complete_list(&[HEARTH_ID], &[]), vec![HEARTH_ID]);
+        assert_eq!(complete_list(&[], &[0]), vec![HEARTH_ID]);
+        // Handheld Daemon's rewrite (the frozen game first) isn't kept; Hearth's order with every app is.
+        assert!(!list_ok(&[A, B, HEARTH_ID], &[B, HEARTH_ID], &[A, B, HEARTH_ID]));
+        assert!(list_ok(&[B, HEARTH_ID, A], &[B, HEARTH_ID], &[A, B, HEARTH_ID, HHD_ID]));
+        // A new app gamescope could show, missing from the list: rewritten.
+        assert!(!list_ok(&[B, HEARTH_ID, A], &[B, HEARTH_ID], &[A, B, HEARTH_ID, 0x8000_3000]));
     }
 
     #[test]
