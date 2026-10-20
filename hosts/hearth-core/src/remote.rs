@@ -99,7 +99,7 @@ pub fn pair(pin: &str, name: &str) -> Result<bool, String> {
     Ok(true)
 }
 pub fn unpair(uuid: &str) -> Result<bool, String> { api("POST", "/api/clients/unpair", Some(&json!({"uuid": uuid})), creds()).map(|_| true) }
-pub fn open_moonlight() -> bool { std::process::Command::new("flatpak").args(["run", MOONLIGHT]).spawn().is_ok() }
+pub fn open_moonlight() -> bool { std::process::Command::new("flatpak").args(["run", MOONLIGHT]).spawn().map(crate::procs::detach).is_ok() }
 pub fn install_moonlight() -> Result<bool, String> {
     if !crate::system::has("flatpak") { return Err("Flatpak is needed to install Moonlight".into()); }
     crate::system::run_timeout("flatpak", &["install", "--user", "-y", "--noninteractive", "flathub", MOONLIGHT], std::time::Duration::from_secs(900)).map(|_| true)

@@ -62,6 +62,8 @@ pub fn read_proc(root: &Path, pid: u32) -> Option<Proc> {
     let stat = std::fs::read_to_string(dir.join("stat")).ok()?;
     // "pid (comm with spaces) S ppid ...": the name can contain ')', so split at the last one.
     let close = stat.rfind(')')?;
+    // A process that has ended but wasn't collected yet (a zombie) isn't running: it would keep a game "open" forever.
+    if matches!(stat.get(close + 2..close + 3), Some("Z") | Some("X")) { return None; }
     let comm = stat.find('(').filter(|i| *i < close).map(|i| stat[i + 1..close].to_string()).unwrap_or_default();
     let ppid = stat.get(close + 2..).and_then(|r| r.split(' ').nth(1)).and_then(|s| s.parse().ok()).unwrap_or(0);
     let cmdline: Vec<String> = std::fs::read(dir.join("cmdline")).map(|b| b.split(|c| *c == 0).filter(|s| !s.is_empty()).map(|s| String::from_utf8_lossy(s).into_owned()).collect()).unwrap_or_default();
@@ -193,7 +195,20 @@ pub fn game_processes(track: &Track, procs: &[Proc], me: u32) -> Vec<u32> { game
 pub fn signal(pids: &[u32], sig: &str) -> usize {
     pids.iter().filter(|p| std::process::Command::new("kill").args([&format!("-{sig}"), &p.to_string()]).status().map(|s| s.success()).unwrap_or(false)).count()
 }
-pub fn alive(pid: u32) -> bool { Path::new(&format!("/proc/{pid}")).exists() }
+/// Still running: there, and not a zombie (ended, waiting to be collected).
+pub fn alive(pid: u32) -> bool {
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { return false };
+    let state = stat.rfind(')').and_then(|i| stat.get(i + 2..i + 3)).unwrap_or("");
+    !matches!(state, "Z" | "X")
+}
+
+/// A program Hearth started (a game, its launcher, Steam): collected when it ends, on its own thread, so it never
+/// stays behind as a zombie (which looked like a game that wouldn't close). Returns its process id.
+pub fn detach(mut child: std::process::Child) -> u32 {
+    let pid = child.id();
+    std::thread::spawn(move || { let _ = child.wait(); });
+    pid
+}
 
 /// SIGTERM (and SIGCONT, so a paused game acts on it), then SIGKILL what's left after `grace`.
 pub fn stop(pids: &[u32], grace: std::time::Duration) -> bool {
@@ -233,6 +248,21 @@ mod tests {
         assert_eq!(game_processes(&Track { dirs: vec!["/home/sam/Games/NWN".into()], ..Default::default() }, &procs, 99), vec![20, 21]);
         assert_eq!(game_processes(&Track { dirs: vec!["/home/sam/Games/Thing/".into()], ..Default::default() }, &procs, 99), vec![30]);
         assert_eq!(game_processes(&Track { pid: Some(99), ..Default::default() }, &procs, 99), Vec::<u32>::new());
+    }
+    #[test]
+    fn a_finished_program_isnt_running() {
+        // Not collected yet (a zombie): not alive, not in a snapshot.
+        let child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(!alive(pid));
+        assert!(!snapshot(Path::new("/proc")).iter().any(|p| p.pid == pid));
+        drop(child);
+        // Collected by detach once it ends.
+        let pid = detach(std::process::Command::new("sleep").arg("0.2").spawn().unwrap());
+        assert!(alive(pid));
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        assert!(!Path::new(&format!("/proc/{pid}")).exists());
     }
     #[test]
     fn reads_this_system() {
