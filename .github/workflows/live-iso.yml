@@ -88,6 +88,75 @@ jobs:
           echo "dir=$out" >> "$GITHUB_OUTPUT"
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
+      # A virtual PC boots the new ISO (UEFI-less, kernel from the ISO, plain virtio graphics with no 3D: the
+      # case where WebKit's GBM buffers fail, as on the 0.1.6 USB) and must reach Hearth's screen: Hearth started,
+      # anything that failed recovered, and something drawn. Fails before the upload, so a USB that doesn't come up
+      # never replaces the one on the download site. Screenshots and the serial log are kept on the run.
+      - name: Boot test (Hearth's screen must come up)
+        env:
+          V: ${{ steps.iso.outputs.version }}
+          DIR: ${{ steps.iso.outputs.dir }}
+        run: |
+          set -o pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 xorriso python3-pil >/dev/null
+          iso="$DIR/hearth-os-$V-live.iso"
+          mkdir -p /tmp/boot boot-test
+          xorriso -osirrox on -indev "$iso" -extract /images/pxeboot/vmlinuz /tmp/boot/vmlinuz -extract /images/pxeboot/initrd.img /tmp/boot/initrd.img
+          sudo chmod 644 /tmp/boot/*
+          kvm=""; [ -e /dev/kvm ] && { sudo chmod 666 /dev/kvm; kvm="-enable-kvm -cpu host"; }
+          label=$(xorriso -indev "$iso" -pvd_info 2>/dev/null | sed -n 's/^Volume Id *: *//p' | head -1)
+          echo "::notice title=ISO label::$label"
+          qemu-system-x86_64 -m 6144 -smp 4 $kvm -machine q35 -cdrom "$iso" -kernel /tmp/boot/vmlinuz -initrd /tmp/boot/initrd.img \
+            -append "root=live:CDLABEL=${label:-Hearth-Live} rd.live.image enforcing=0 console=ttyS0,115200 hearth.ci" \
+            -vga none -device virtio-vga -display none -serial file:boot-test/serial.log \
+            -qmp unix:/tmp/qmp.sock,server,nowait -nic user,model=virtio-net-pci &
+          qpid=$!
+          shot() { python3 - "$1" <<'PY'
+          import json, socket, sys
+          s = socket.socket(socket.AF_UNIX); s.connect('/tmp/qmp.sock'); f = s.makefile('rw')
+          f.readline()
+          for c in ({"execute": "qmp_capabilities"}, {"execute": "screendump", "arguments": {"filename": sys.argv[1]}}):
+              f.write(json.dumps(c) + "\n"); f.flush(); f.readline()
+          PY
+          }
+          for i in $(seq 1 84); do
+            sleep 5
+            [ $((i % 12)) -eq 0 ] && shot "boot-test/screen-$((i * 5))s.ppm" || true
+            grep -q HEARTH-CI-END boot-test/serial.log 2>/dev/null && break
+          done
+          shot boot-test/screen-final.ppm || true
+          kill $qpid 2>/dev/null || true
+          tr -d '\r' < boot-test/serial.log | grep -a -E '^(HEARTH-CI|session:|bridge:|pages:|failed:)' > boot-test/report.txt || true
+          tail -n 60 boot-test/report.txt
+          python3 - <<'PY'
+          import glob, sys
+          from PIL import Image
+          problems = []
+          rep = open('boot-test/report.txt', errors='replace').read()
+          last = rep.rsplit('HEARTH-CI t=', 1)[-1] if 'HEARTH-CI t=' in rep else ''
+          if 'HEARTH-CI-END' not in open('boot-test/serial.log', errors='replace').read(): problems.append("the live system didn't finish booting (no report)")
+          if 'graphics:' not in rep: problems.append("Hearth never started (no graphics: line)")
+          if 'Failed to create GBM buffer' in last and 'compatible way' not in rep: problems.append("WebKit's GBM buffers failed and Hearth didn't switch to the compatible way")
+          if 'too many crashes' in rep: problems.append('Hearth kept crashing')
+          for p in sorted(glob.glob('boot-test/*.ppm')):
+              im = Image.open(p).convert('RGB'); im.save(p[:-4] + '.png')
+          final = Image.open('boot-test/screen-final.png').convert('RGB').resize((320, 200))
+          colors = final.getcolors(320 * 200) or []
+          top = max(c for c, _ in colors) / (320 * 200) if colors else 1
+          print(f"final screen: {len(colors)} colours, the commonest covers {top:.0%}")
+          if top > 0.97: problems.append(f'the screen is blank ({top:.0%} one colour)')
+          for p in problems: print('::error title=Boot test::' + p)
+          sys.exit(1 if problems else 0)
+          PY
+
+      - name: Keep the boot test's screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-boot-test
+          path: boot-test
+          if-no-files-found: ignore
+
       - name: Keep the ISO as a download on this run
         uses: actions/upload-artifact@v4
         with:

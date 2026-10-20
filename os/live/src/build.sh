@@ -117,6 +117,38 @@ for s in bootc-fetch-apply-updates.timer rpm-ostreed-automatic.timer uupd.timer 
 done
 systemctl --global disable podman-auto-update.timer 2>/dev/null || true
 
+# Boot test (live-iso.yml boots each new ISO in a virtual PC with "hearth.ci" on the kernel command line): the
+# live session's Hearth logs go to the serial console every 30 seconds for 5 minutes, then HEARTH-CI-END.
+# Does nothing on a normal boot.
+cat >/usr/libexec/nimbus/hearth-ci-report <<'SH'
+#!/usr/bin/bash
+d=/home/liveuser/.local/share/nimbus
+for i in $(seq 1 10); do
+  sleep 30
+  {
+    echo "HEARTH-CI t=$((i * 30))s"
+    tail -n 40 "$d/session.log" 2>/dev/null | sed 's/^/session: /'
+    grep -E 'graphics:|watchdog|panic' "$d/bridge.log" 2>/dev/null | tail -n 6 | sed 's/^/bridge: /'
+    echo "pages: $(grep -c '\[rust\]' "$d/bridge.log" 2>/dev/null) bridge lines"
+    systemctl --failed --no-legend --plain 2>/dev/null | sed 's/^/failed: /'
+  } > /dev/ttyS0 2>&1
+done
+echo "HEARTH-CI-END" > /dev/ttyS0
+SH
+chmod 755 /usr/libexec/nimbus/hearth-ci-report
+cat >/etc/systemd/system/hearth-ci-report.service <<'UNIT'
+[Unit]
+Description=Hearth boot test: the live session's logs on the serial console (only with hearth.ci)
+ConditionKernelCommandLine=hearth.ci
+After=graphical.target
+[Service]
+Type=simple
+ExecStart=/usr/libexec/nimbus/hearth-ci-report
+[Install]
+WantedBy=graphical.target
+UNIT
+systemctl enable hearth-ci-report.service
+
 # ---------------------------------------------------------------- the installer (Hearth's own)
 # The engine (hearth-install) partitions, copies Hearth OS onto the drive with ostree (from the copy on this
 # stick) and sets up the boot loader with bootupd; its screens are in the Hearth app (controller) and Mantel's
