@@ -1,0 +1,228 @@
+#!/usr/bin/python3
+"""hearth-clipboard: clipboard history for Desktop Mode (Clipboard.qml, Super+V), kept by cliphist.
+
+The shell itself runs `wl-paste --watch cliphist store` while history is on (Settings › Clipboard).
+
+  hearth-clipboard status            JSON: are wl-clipboard and cliphist installed
+  hearth-clipboard list              JSON: the most recent items, newest first; pictures as small files to show
+  hearth-clipboard paste ID          put the item back on the clipboard and paste it (Ctrl+V) into the app in front
+  hearth-clipboard copy ID           only put it back on the clipboard
+  hearth-clipboard delete ID         forget one item
+  hearth-clipboard wipe              forget everything
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+CACHE = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache'), 'nimbus', 'clipboard')
+LIMIT = 60
+ID_RE = re.compile(r'^[0-9]{1,12}$')
+# cliphist's preview of a picture: "[[ binary data 12 KiB png 800x600 ]]"
+BINARY_RE = re.compile(r'^\[\[ binary data (.+?) (png|jpeg|jpg|gif|bmp|webp|svg\+xml|[a-z0-9.+/-]+)(?: (\d+)x(\d+))? \]\]$')
+
+
+class Fail(Exception):
+    pass
+
+
+def have():
+    return bool(shutil.which('cliphist')) and bool(shutil.which('wl-copy')) and bool(shutil.which('wl-paste'))
+
+
+def parse_list(text, limit=LIMIT):
+    """cliphist list ("ID<TAB>preview" lines, newest first) -> [{id, text} or {id, image, size, kind}]."""
+    out = []
+    for line in text.splitlines():
+        if '\t' not in line:
+            continue
+        cid, preview = line.split('\t', 1)
+        if not ID_RE.fullmatch(cid.strip()):
+            continue
+        m = BINARY_RE.fullmatch(preview.strip())
+        if m:
+            item = {'id': cid.strip(), 'kind': 'image' if m.group(2) in ('png', 'jpeg', 'jpg', 'gif', 'bmp', 'webp') else 'binary',
+                    'format': m.group(2), 'size': m.group(1), 'dims': ('%sx%s' % (m.group(3), m.group(4))) if m.group(3) else '',
+                    'text': ''}
+        else:
+            item = {'id': cid.strip(), 'kind': 'text', 'text': preview[:400]}
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def cliphist(args, input=None, binary=False, timeout=20):
+    try:
+        r = subprocess.run(['cliphist'] + args, input=input, capture_output=True, timeout=timeout,
+                           text=not binary)
+        return r.returncode, r.stdout
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Fail('cliphist didn\'t answer (%s)' % e)
+
+
+def decode(cid):
+    if not ID_RE.fullmatch(cid or ''):
+        raise Fail('not an item')
+    code, data = cliphist(['decode', cid], binary=True)
+    if code != 0:
+        raise Fail('that item isn\'t in the history any more')
+    return data
+
+
+def thumb(item):
+    """A picture item saved where the shell can show it (once; named by id and size)."""
+    os.makedirs(CACHE, mode=0o700, exist_ok=True)
+    ext = {'jpeg': 'jpg', 'svg+xml': 'svg'}.get(item['format'], item['format'])
+    name = '%s-%s.%s' % (item['id'], hashlib.sha1(item['size'].encode()).hexdigest()[:8], ext)
+    path = os.path.join(CACHE, name)
+    if not os.path.exists(path):
+        try:
+            data = decode(item['id'])
+        except Fail:
+            return ''
+        with open(path + '.tmp', 'wb') as f:
+            f.write(data)
+        os.replace(path + '.tmp', path)
+    return path
+
+
+def tidy(keep):
+    """Pictures for items no longer listed are removed from the cache."""
+    try:
+        for f in os.listdir(CACHE):
+            if f not in keep:
+                os.remove(os.path.join(CACHE, f))
+    except OSError:
+        pass
+
+
+def list_items():
+    if not have():
+        return {'available': False, 'items': []}
+    code, out = cliphist(['list'])
+    items = parse_list(out if code == 0 else '')
+    keep = set()
+    for it in items:
+        if it['kind'] == 'image':
+            it['image'] = thumb(it)
+            keep.add(os.path.basename(it['image']))
+    tidy(keep)
+    return {'available': True, 'items': items}
+
+
+def mime_of(data):
+    if data.startswith(b'\x89PNG'):
+        return 'image/png'
+    if data.startswith(b'\xff\xd8\xff'):
+        return 'image/jpeg'
+    if data.startswith(b'GIF8'):
+        return 'image/gif'
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'image/webp'
+    return None
+
+
+def copy(cid):
+    data = decode(cid)
+    cmd = ['wl-copy']
+    mime = mime_of(data)
+    if mime:
+        cmd += ['--type', mime]
+    try:
+        # wl-copy stays running in the background to serve the clipboard: don't wait on its output.
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        p.stdin.write(data)
+        p.stdin.close()
+        p.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+    except OSError as e:
+        raise Fail('couldn\'t put it on the clipboard (%s)' % e)
+    return {'ok': True, 'id': cid}
+
+
+def press_ctrl_v():
+    """Ctrl+V into the window in front: wtype (Wayland's virtual keyboard), else a short-lived uinput keyboard
+    (python3-evdev; Hearth's controller support already needs /dev/uinput)."""
+    if shutil.which('wtype'):
+        r = subprocess.run(['wtype', '-M', 'ctrl', '-k', 'v', '-m', 'ctrl'], capture_output=True, timeout=5)
+        if r.returncode == 0:
+            return True
+    try:
+        from evdev import UInput, ecodes as e
+        with UInput({e.EV_KEY: [e.KEY_LEFTCTRL, e.KEY_V]}, name='hearth-clipboard-paste') as ui:
+            time.sleep(0.35)       # the compositor picks the new keyboard up
+            for code, val in ((e.KEY_LEFTCTRL, 1), (e.KEY_V, 1), (e.KEY_V, 0), (e.KEY_LEFTCTRL, 0)):
+                ui.write(e.EV_KEY, code, val)
+                ui.syn()
+                time.sleep(0.02)
+            time.sleep(0.1)
+        return True
+    except Exception:
+        return False
+
+
+def paste(cid):
+    copy(cid)
+    time.sleep(0.2)            # the picker has closed and the app in front has the keyboard again
+    pasted = press_ctrl_v()
+    return {'ok': True, 'id': cid, 'pasted': pasted}
+
+
+def delete(cid):
+    if not ID_RE.fullmatch(cid or ''):
+        raise Fail('not an item')
+    code, out = cliphist(['list'])
+    line = next((l for l in out.splitlines() if l.split('\t', 1)[0] == cid), None)
+    if line is None:
+        return {'ok': True, 'id': cid}
+    code, _ = cliphist(['delete'], input=line + '\n')
+    if code != 0:
+        raise Fail('couldn\'t forget that item')
+    return {'ok': True, 'id': cid}
+
+
+def wipe():
+    if not have():
+        return {'ok': True}
+    code, _ = cliphist(['wipe'])
+    if code != 0:
+        raise Fail('couldn\'t clear the history')
+    tidy(set())
+    return {'ok': True}
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    if c == 'status' and not a:
+        out = {'available': have(), 'wtype': bool(shutil.which('wtype'))}
+    elif c == 'list' and not a:
+        out = list_items()
+    elif c == 'paste' and len(a) == 1:
+        out = paste(a[0])
+    elif c == 'copy' and len(a) == 1:
+        out = copy(a[0])
+    elif c == 'delete' and len(a) == 1:
+        out = delete(a[0])
+    elif c == 'wipe' and not a:
+        out = wipe()
+    else:
+        print('usage: hearth-clipboard status | list | paste ID | copy ID | delete ID | wipe')
+        sys.exit(2)
+    print(json.dumps(out), flush=True)
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv)
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)

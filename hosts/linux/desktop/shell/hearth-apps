@@ -1,0 +1,596 @@
+#!/usr/bin/python3
+"""hearth-apps: the work behind Apps (AppStore.qml), Desktop Mode's app store for Flathub, through the flatpak
+command. Apps are installed for you (flatpak --user), the way the rest of Hearth installs Flatpaks (Moonlight,
+emulators); apps that came with the system (--system) are listed, updated and can be removed too.
+
+  hearth-apps status                 JSON: is flatpak there, is Flathub set up, is the catalog downloaded
+  hearth-apps refresh                download Flathub's catalog (appstream); progress lines, then JSON
+  hearth-apps browse featured|CATEGORY
+                                     JSON: apps to show (featured: Flathub's popular apps when flathub.org answers)
+  hearth-apps search QUERY           JSON: apps matching the words
+  hearth-apps app APP_ID             JSON: one app's page (description, screenshots, version, installed or not)
+  hearth-apps installed              JSON: installed apps
+  hearth-apps updates                JSON: apps with an update
+  hearth-apps install APP_ID         install from Flathub; progress lines, then JSON
+  hearth-apps remove APP_ID [--delete-data]
+  hearth-apps update APP_ID|--all    progress lines, then JSON
+Progress lines are "progress: <0-100> <what>"; failures print "error: ..." and exit 1.
+"""
+import gzip
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+import xml.etree.ElementTree as ET
+
+HOME = os.path.expanduser('~')
+DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+CACHE = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache'), 'nimbus', 'apps')
+REMOTE = 'flathub'
+REMOTE_URL = 'https://dl.flathub.org/repo/flathub.flatpakrepo'
+FEATURED_URL = 'https://flathub.org/api/v2/collection/popular?page=1&per_page=60'
+APP_ID = re.compile(r'^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){2,}$')
+LANG = '{http://www.w3.org/XML/1998/namespace}lang'
+CATEGORIES = ['Game', 'AudioVideo', 'Graphics', 'Network', 'Office', 'Development', 'Education', 'Science', 'System', 'Utility']
+# Shown when flathub.org can't be asked for its popular apps (only the ones in the catalog are shown).
+FEATURED_FALLBACK = [
+    'org.mozilla.firefox', 'com.google.Chrome', 'org.videolan.VLC', 'com.spotify.Client', 'com.discordapp.Discord',
+    'com.obsproject.Studio', 'org.libreoffice.LibreOffice', 'org.gimp.GIMP', 'net.lutris.Lutris',
+    'com.heroicgameslauncher.hgl', 'com.usebottles.bottles', 'net.davidotek.pupgui2', 'org.prismlauncher.PrismLauncher',
+    'com.github.tchx84.Flatseal', 'org.kde.kdenlive', 'org.inkscape.Inkscape', 'md.obsidian.Obsidian',
+    'org.signal.Signal', 'dev.vencord.Vesktop', 'io.github.flattool.Warehouse', 'org.telegram.desktop',
+    'com.valvesoftware.Steam', 'org.blender.Blender', 'io.mpv.Mpv',
+]
+DAY = 24 * 3600
+
+
+class Fail(Exception):
+    pass
+
+
+def progress(pct, what):
+    print('progress: %d %s' % (max(0, min(100, int(pct))), what), flush=True)
+
+
+def arch():
+    m = platform.machine()
+    return {'amd64': 'x86_64', 'arm64': 'aarch64'}.get(m, m)
+
+
+def flatpak(args, timeout=120):
+    """(code, output) of flatpak with C-locale output; (127, '') without flatpak."""
+    try:
+        r = subprocess.run(['flatpak'] + args, capture_output=True, text=True, timeout=timeout,
+                           env=dict(os.environ, LC_ALL='C'))
+        return r.returncode, r.stdout + (r.stderr if r.returncode else '')
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+
+
+def check_id(app_id):
+    if not isinstance(app_id, str) or not APP_ID.fullmatch(app_id) or len(app_id) > 255:
+        raise Fail('not an app id')
+    return app_id
+
+
+# ---------------------------------------------------------------------- catalog (Flathub's appstream data)
+def appstream_dirs():
+    a = arch()
+    return [os.path.join(DATA, 'flatpak', 'appstream', REMOTE, a, 'active'),
+            os.path.join('/var/lib/flatpak/appstream', REMOTE, a, 'active')]
+
+
+def appstream_file():
+    """The newest appstream.xml(.gz) there is (yours, or the system's) and its folder."""
+    best = None
+    for d in appstream_dirs():
+        for name in ('appstream.xml.gz', 'appstream.xml'):
+            p = os.path.join(d, name)
+            try:
+                m = os.path.getmtime(p)
+            except OSError:
+                continue
+            if best is None or m > best[2]:
+                best = (p, d, m)
+            break
+    return best
+
+
+def text_of(el):
+    return ''.join(el.itertext()).strip() if el is not None else ''
+
+
+def localized(comp, tag):
+    """The untranslated <tag> of a component (appstream lists translations as extra elements with xml:lang)."""
+    for el in comp.findall(tag):
+        if el.get(LANG) in (None, '', 'C', 'en', 'en_US'):
+            return text_of(el)
+    return ''
+
+
+def description_text(el):
+    """<description> (paragraphs and lists) as plain text."""
+    if el is None:
+        return ''
+    parts = []
+    for child in el:
+        if child.get(LANG) not in (None, '', 'C', 'en', 'en_US'):
+            continue
+        if child.tag == 'p':
+            t = re.sub(r'\s+', ' ', text_of(child))
+            if t:
+                parts.append(t)
+        elif child.tag in ('ul', 'ol'):
+            items = ['• ' + re.sub(r'\s+', ' ', text_of(li)) for li in child.findall('li')
+                     if li.get(LANG) in (None, '', 'C', 'en', 'en_US')]
+            if items:
+                parts.append('\n'.join(items))
+    return '\n\n'.join(parts)
+
+
+def component_info(comp, icon_dir):
+    """One appstream <component> -> (summary for lists, details for the app page), or None for non-apps."""
+    if comp.get('type') not in ('desktop-application', 'desktop', 'console-application'):
+        return None
+    bundle = comp.find('bundle')
+    app_id = ''
+    if bundle is not None and bundle.text and bundle.text.startswith('app/'):
+        app_id = bundle.text.split('/')[1]
+    if not app_id:
+        app_id = re.sub(r'\.desktop$', '', text_of(comp.find('id')))
+    if not APP_ID.fullmatch(app_id or ''):
+        return None
+    icon = ''
+    for size in ('128x128', '64x64'):
+        for el in comp.findall('icon'):
+            if el.get('type') == 'cached' and el.text and '%sx%s' % (el.get('width'), el.get('height')) == size:
+                p = os.path.join(icon_dir, 'icons', size, el.text.strip())
+                if os.path.exists(p):
+                    icon = p
+                    break
+        if icon:
+            break
+    if not icon:
+        el = next((e for e in comp.findall('icon') if e.get('type') == 'remote' and e.text), None)
+        icon = el.text.strip() if el is not None else ''
+    cats = [text_of(c) for c in comp.findall('categories/category')]
+    dev = localized(comp, 'developer_name') or localized(comp.find('developer') if comp.find('developer') is not None else ET.Element('x'), 'name')
+    keywords = [text_of(k) for k in comp.findall('keywords/keyword') if k.get(LANG) in (None, '', 'C', 'en')]
+    summary = {'id': app_id, 'name': localized(comp, 'name') or app_id, 'summary': localized(comp, 'summary'),
+               'icon': icon, 'categories': cats, 'developer': dev, 'keywords': keywords[:12]}
+    shots = []
+    for s in comp.findall('screenshots/screenshot'):
+        imgs = [(int(i.get('width') or 0), i.get('type'), (i.text or '').strip()) for i in s.findall('image') if (i.text or '').strip()]
+        thumbs = sorted([x for x in imgs if x[1] == 'thumbnail' and 500 <= x[0] <= 1300], key=lambda x: x[0])
+        pick = thumbs[-1] if thumbs else next((x for x in imgs if x[1] == 'source'), imgs[0] if imgs else None)
+        if pick and pick[2].startswith('https://'):
+            shots.append(pick[2])
+        if len(shots) >= 6:
+            break
+    rel = comp.find('releases/release')
+    url = next((text_of(u) for u in comp.findall('url') if u.get('type') == 'homepage'), '')
+    details = {'description': description_text(comp.find('description'))[:6000], 'screenshots': shots,
+               'version': rel.get('version', '') if rel is not None else '', 'license': text_of(comp.find('project_license')),
+               'homepage': url,
+               'verified': any(v.get('key') == 'flathub::verification::verified' and text_of(v) == 'true'
+                               for v in comp.findall('custom/value'))}
+    return summary, details
+
+
+def parse_appstream(stream, icon_dir):
+    """Flathub's appstream XML -> ({id: summary}, {id: details}), read one component at a time."""
+    apps, details = {}, {}
+    for event, el in ET.iterparse(stream, events=('end',)):
+        if el.tag != 'component':
+            continue
+        info = component_info(el, icon_dir)
+        el.clear()
+        if info and info[0]['id'] not in apps:
+            apps[info[0]['id']] = info[0]
+            details[info[0]['id']] = info[1]
+    return apps, details
+
+
+def catalog(force=False):
+    """The catalog, from the cache (rebuilt when the appstream file changed)."""
+    src = appstream_file()
+    if not src:
+        return {}, None
+    path, icon_dir, mtime = src
+    cat_file, det_file = os.path.join(CACHE, 'catalog.json'), os.path.join(CACHE, 'details.json')
+    if not force:
+        try:
+            with open(cat_file) as f:
+                c = json.load(f)
+            if c.get('source') == path and c.get('mtime') == mtime and c.get('version') == 2:
+                return c['apps'], det_file
+        except (OSError, ValueError, KeyError):
+            pass
+    opener = gzip.open if path.endswith('.gz') else open
+    with opener(path, 'rb') as f:
+        apps, details = parse_appstream(f, icon_dir)
+    os.makedirs(CACHE, exist_ok=True)
+    for name, obj in ((cat_file, {'version': 2, 'source': path, 'mtime': mtime, 'apps': apps}), (det_file, details)):
+        with open(name + '.tmp', 'w') as f:
+            json.dump(obj, f)
+        os.replace(name + '.tmp', name)
+    return apps, det_file
+
+
+def ensure_remote():
+    """Flathub for your own installs (Hearth installs apps per user)."""
+    code, out = flatpak(['remotes', '--user', '--columns=name'])
+    if code == 0 and REMOTE in out.split():
+        return True
+    code, out = flatpak(['remote-add', '--user', '--if-not-exists', REMOTE, REMOTE_URL], timeout=120)
+    return code == 0
+
+
+def refresh():
+    if not shutil.which('flatpak'):
+        raise Fail('Flatpak isn\'t installed')
+    progress(5, 'Getting Flathub ready')
+    ok = ensure_remote()
+    progress(20, 'Downloading the list of apps')
+    code, out = flatpak(['update', '--appstream', '--user', REMOTE], timeout=600) if ok else (1, '')
+    if code != 0:
+        # Your own Flathub couldn't be set up or reached: the system's catalog, if there is one.
+        flatpak(['update', '--appstream', '--system', REMOTE], timeout=600)
+    progress(70, 'Reading the list of apps')
+    apps, _ = catalog(force=True)
+    if not apps:
+        raise Fail('couldn\'t download Flathub\'s list of apps. Check the internet connection.')
+    progress(100, 'Done')
+    return {'ok': True, 'apps': len(apps)}
+
+
+def catalog_or_refresh():
+    src = appstream_file()
+    if not src or time.time() - src[2] > 7 * DAY:
+        try:
+            refresh()
+        except Fail:
+            if not src:
+                raise
+    return catalog()
+
+
+# ---------------------------------------------------------------------- installed apps and updates
+def parse_columns(text, names):
+    """flatpak's tab-separated --columns output -> [{name: value}] (header lines, if any, skipped)."""
+    out = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        f = line.split('\t')
+        if len(f) == 1:
+            f = re.split(r'\s{2,}', line.strip())
+        row = {n: (f[i].strip() if i < len(f) else '') for i, n in enumerate(names)}
+        if row.get(names[0]) in ('Application ID', 'Application', 'Ref') or not APP_ID.fullmatch(row.get(names[0], '')):
+            continue
+        out.append(row)
+    return out
+
+
+def installed():
+    names = ['id', 'name', 'version', 'installation', 'size', 'origin']
+    code, out = flatpak(['list', '--app', '--columns=application,name,version,installation,size,origin'])
+    rows = parse_columns(out, names) if code == 0 else []
+    return [r for r in rows]
+
+
+def installed_map():
+    return {r['id']: r for r in installed()}
+
+
+def updates():
+    out = []
+    for inst in ('user', 'system'):
+        code, text = flatpak(['remote-ls', '--updates', '--app', '--' + inst, '--columns=application,version,origin'], timeout=180)
+        if code == 0:
+            for r in parse_columns(text, ['id', 'version', 'origin']):
+                r['installation'] = inst
+                if not any(o['id'] == r['id'] and o['installation'] == inst for o in out):
+                    out.append(r)
+    have = installed_map()
+    for r in out:
+        r['name'] = (have.get(r['id']) or {}).get('name') or r['id']
+    return out
+
+
+# ---------------------------------------------------------------------- lists for the app
+def with_state(rows, have=None):
+    have = installed_map() if have is None else have
+    for r in rows:
+        r['installed'] = r['id'] in have
+    return rows
+
+
+def short(a):
+    return {k: a.get(k, '') for k in ('id', 'name', 'summary', 'icon', 'developer')}
+
+
+def featured_ids():
+    cache = os.path.join(CACHE, 'featured.json')
+    try:
+        if time.time() - os.path.getmtime(cache) < DAY:
+            with open(cache) as f:
+                ids = json.load(f)
+            if ids:
+                return ids
+    except (OSError, ValueError):
+        pass
+    try:
+        req = urllib.request.Request(FEATURED_URL, headers={'User-Agent': 'Hearth-Apps/1'})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            data = json.loads(r.read(4 * 1024 * 1024).decode('utf-8', 'replace'))
+        ids = featured_from_api(data)
+    except Exception:
+        ids = []
+    if ids:
+        os.makedirs(CACHE, exist_ok=True)
+        with open(cache, 'w') as f:
+            json.dump(ids, f)
+        return ids
+    return FEATURED_FALLBACK
+
+
+def featured_from_api(data):
+    """App ids from Flathub's API answer: {"hits": [{"app_id": ...}]} (v2 collections) or a plain list."""
+    items = data.get('hits') if isinstance(data, dict) else data
+    out = []
+    for h in items or []:
+        i = h if isinstance(h, str) else (h.get('app_id') or h.get('id') or h.get('flatpakAppId')) if isinstance(h, dict) else None
+        if isinstance(i, str) and APP_ID.fullmatch(i) and i not in out:
+            out.append(i)
+    return out
+
+
+def browse(what):
+    apps, _ = catalog_or_refresh()
+    if what == 'featured':
+        rows = [short(apps[i]) for i in featured_ids() if i in apps][:40]
+    elif what in CATEGORIES:
+        rows = sorted((short(a) for a in apps.values() if what in a['categories']), key=lambda a: a['name'].lower())[:300]
+    else:
+        raise Fail('unknown category')
+    return {'what': what, 'apps': with_state(rows)}
+
+
+def search_score(a, words):
+    name, s = a['name'].lower(), 0
+    hay = ' '.join([a['name'], a['summary'], a['id'], a.get('developer', ''), ' '.join(a.get('keywords', []))]).lower()
+    for w in words:
+        if w not in hay:
+            return 0
+        s += 10 if name.startswith(w) else 5 if w in name else 1
+    return s
+
+
+def search(query, apps=None):
+    words = [w for w in re.split(r'\s+', (query or '').lower().strip()) if w][:8]
+    if not words:
+        return {'query': query, 'apps': []}
+    if apps is None:
+        apps, _ = catalog_or_refresh()
+    scored = sorted(((search_score(a, words), a) for a in apps.values()), key=lambda x: (-x[0], x[1]['name'].lower()))
+    rows = [short(a) for sc, a in scored if sc > 0][:60]
+    return {'query': query, 'apps': with_state(rows)}
+
+
+def app(app_id):
+    check_id(app_id)
+    apps, det_file = catalog()
+    a = dict(apps.get(app_id) or {'id': app_id, 'name': app_id, 'summary': '', 'icon': '', 'developer': '', 'categories': []})
+    try:
+        with open(det_file) as f:
+            a.update(json.load(f).get(app_id) or {})
+    except (OSError, ValueError, TypeError):
+        a.setdefault('description', '')
+        a.setdefault('screenshots', [])
+    have = installed_map().get(app_id)
+    a['installed'] = bool(have)
+    a['installation'] = have['installation'] if have else ''
+    a['installedVersion'] = have['version'] if have else ''
+    a['size'] = have['size'] if have else ''
+    a['inCatalog'] = app_id in apps
+    return a
+
+
+# ---------------------------------------------------------------------- install, remove, update (with progress)
+ANSI = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[()][A-Za-z0-9]')
+
+
+def progress_of(line):
+    """(step, steps, percent) from a line of flatpak's progress ("Installing 2/3… ████▌ 45%  1.2 MB/s"); None
+    parts when not there."""
+    m = re.search(r'\b(\d+)/(\d+)\b', line)
+    p = re.findall(r'(\d{1,3})%', line)
+    step, steps = (int(m.group(1)), int(m.group(2))) if m and 0 < int(m.group(1)) <= int(m.group(2)) <= 500 else (None, None)
+    pct = min(100, int(p[-1])) if p else None
+    return step, steps, pct
+
+
+def run_with_progress(cmd, what):
+    """flatpak in a terminal (so it prints its percentages), turned into progress lines. Returns (code, last error)."""
+    import pty
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.environ.update(LC_ALL='C', TERM='xterm', COLUMNS='120')
+        try:
+            os.execvp(cmd[0], cmd)
+        finally:
+            os._exit(127)
+    buf, last, err, shown = '', None, '', -1
+    step, steps = 1, 1
+    while True:
+        try:
+            data = os.read(fd, 4096)
+        except OSError:
+            break
+        if not data:
+            break
+        buf += ANSI.sub('', data.decode('utf-8', 'replace'))
+        # flatpak's questions (when -y doesn't cover one): take the first choice / yes.
+        if re.search(r'\(0 to abort\)\??:?\s*$', buf):
+            os.write(fd, b'1\n')
+        elif re.search(r'\[Y/n\]:?\s*$', buf):
+            os.write(fd, b'y\n')
+        parts = re.split(r'[\r\n]', buf)
+        buf = parts.pop()
+        for line in parts:
+            line = line.strip()
+            if not line:
+                continue
+            if line.lower().startswith('error:'):
+                err = line[6:].strip()
+            s, n, pct = progress_of(line)
+            if s:
+                step, steps = s, n
+            if pct is not None:
+                total = int(100.0 * ((step - 1) + pct / 100.0) / max(1, steps))
+                if total != shown:
+                    shown = total
+                    progress(total, what + (' (%d of %d)' % (step, steps) if steps > 1 else ''))
+            elif not line.startswith(('ID', 'Arch', 'Branch', 'Remote', 'Download')) and len(line) < 200:
+                last = line
+    _, status = os.waitpid(pid, 0)
+    code = os.waitstatus_to_exitcode(status) if hasattr(os, 'waitstatus_to_exitcode') else (status >> 8)
+    return code, err or (last if code else '')
+
+
+def install(app_id):
+    check_id(app_id)
+    if not shutil.which('flatpak'):
+        raise Fail('Flatpak isn\'t installed')
+    progress(0, 'Getting ready')
+    if not ensure_remote():
+        raise Fail('couldn\'t set up Flathub. Check the internet connection.')
+    code, err = run_with_progress(['flatpak', 'install', '--user', '-y', REMOTE, app_id], 'Installing')
+    if code != 0 and app_id not in installed_map():
+        raise Fail('couldn\'t install it' + (' (%s)' % err if err else ''))
+    progress(100, 'Installed')
+    return {'ok': True, 'id': app_id, 'installed': True}
+
+
+def remove(app_id, delete_data=False):
+    check_id(app_id)
+    have = installed_map().get(app_id)
+    if not have:
+        raise Fail('it isn\'t installed')
+    inst = '--system' if have.get('installation') == 'system' else '--user'
+    progress(10, 'Removing')
+    cmd = ['flatpak', 'uninstall', inst, '-y', '--noninteractive'] + (['--delete-data'] if delete_data else []) + [app_id]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, env=dict(os.environ, LC_ALL='C'))
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Fail('couldn\'t remove it (%s)' % e)
+    if r.returncode != 0 and app_id in installed_map():
+        msg = ((r.stderr or r.stdout).strip().splitlines() or ['flatpak uninstall failed'])[-1]
+        raise Fail('couldn\'t remove it (%s)' % re.sub(r'^error:\s*', '', msg, flags=re.I))
+    if delete_data:
+        # --delete-data needs a newer flatpak: the app's own folder otherwise (only ~/.var/app/<id>, never more).
+        d = os.path.join(HOME, '.var', 'app', app_id)
+        if os.path.isdir(d) and not os.path.islink(d):
+            shutil.rmtree(d, ignore_errors=True)
+    progress(80, 'Tidying up')
+    subprocess.run(['flatpak', 'uninstall', inst, '--unused', '-y', '--noninteractive'], capture_output=True, timeout=600)
+    progress(100, 'Removed')
+    return {'ok': True, 'id': app_id, 'installed': False}
+
+
+def update(target):
+    if not shutil.which('flatpak'):
+        raise Fail('Flatpak isn\'t installed')
+    if target == '--all':
+        progress(0, 'Updating your apps')
+        code, err = run_with_progress(['flatpak', 'update', '--user', '-y'], 'Updating your apps')
+        problems = [err] if code != 0 and err else []
+        code2, err2 = run_with_progress(['flatpak', 'update', '--system', '-y'], 'Updating the system\'s apps')
+        if code2 != 0 and err2:
+            problems.append(err2)
+        if code != 0 and code2 != 0:
+            raise Fail('couldn\'t update' + (' (%s)' % problems[0] if problems else ''))
+        progress(100, 'Up to date')
+        return {'ok': True, 'problems': problems}
+    check_id(target)
+    have = installed_map().get(target)
+    if not have:
+        raise Fail('it isn\'t installed')
+    inst = '--system' if have.get('installation') == 'system' else '--user'
+    code, err = run_with_progress(['flatpak', 'update', inst, '-y', target], 'Updating')
+    if code != 0:
+        raise Fail('couldn\'t update it' + (' (%s)' % err if err else ''))
+    progress(100, 'Updated')
+    return {'ok': True, 'id': target}
+
+
+def enrich(rows):
+    """Icons, summaries and names from the catalog (when it's downloaded) for installed apps and updates."""
+    try:
+        apps, _ = catalog()
+    except (OSError, ValueError, ET.ParseError, EOFError):
+        apps = {}
+    for r in rows:
+        a = apps.get(r['id']) or {}
+        r.setdefault('summary', a.get('summary', ''))
+        r.setdefault('icon', a.get('icon', ''))
+        r.setdefault('developer', a.get('developer', ''))
+        if a.get('name') and (not r.get('name') or r.get('name') == r['id']):
+            r['name'] = a['name']
+        r['installed'] = True
+    return sorted(rows, key=lambda r: (r.get('name') or r['id']).lower())
+
+
+def status():
+    src = appstream_file()
+    have = bool(shutil.which('flatpak'))
+    code, out = flatpak(['remotes', '--columns=name']) if have else (1, '')
+    return {'flatpak': have, 'flathub': REMOTE in out.split(), 'catalog': bool(src),
+            'catalogAge': int(time.time() - src[2]) if src else None, 'categories': CATEGORIES}
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    if c == 'status' and not a:
+        out = status()
+    elif c == 'refresh' and not a:
+        out = refresh()
+    elif c == 'browse' and len(a) == 1:
+        out = browse(a[0])
+    elif c == 'search' and len(a) == 1:
+        out = search(a[0])
+    elif c == 'app' and len(a) == 1:
+        out = app(a[0])
+    elif c == 'installed' and not a:
+        out = {'apps': enrich(installed())}
+    elif c == 'updates' and not a:
+        out = {'apps': enrich(updates())}
+    elif c == 'install' and len(a) == 1:
+        out = install(a[0])
+    elif c == 'remove' and len(a) in (1, 2) and a[1:] in ([], ['--delete-data']):
+        out = remove(a[0], a[1:] == ['--delete-data'])
+    elif c == 'update' and len(a) == 1:
+        out = update(a[0])
+    else:
+        print('usage: hearth-apps status | refresh | browse featured|CATEGORY | search QUERY | app ID | installed | '
+              'updates | install ID | remove ID [--delete-data] | update ID|--all')
+        sys.exit(2)
+    print(json.dumps(out), flush=True)
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv)
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)
+    except (OSError, ET.ParseError, EOFError) as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)

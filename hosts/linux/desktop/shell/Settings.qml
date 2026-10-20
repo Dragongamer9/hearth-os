@@ -13,14 +13,18 @@ Singleton {
     property bool reduceMotion: false    // still wallpaper, fewer animations
     property real pointerSpeed: 1.0      // controller pointer speed, 0.4 – 2
     property bool lockOnWake: false      // lock the screen when the device goes to sleep (Desktop Mode)
+    property bool clock24: false         // taskbar clock: 24-hour ("14:05") instead of 12-hour ("2:05 PM"); Settings › Date & time
+    property bool clipboardHistory: true // keep what you copy for Super+V (cliphist); Settings › Clipboard
     property bool loaded: false
 
-    readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake"]
+    readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake", "clock24", "clipboardHistory"]
     onNightLightChanged: save()
     onWallpaperChanged: save()
     onReduceMotionChanged: save()
     onPointerSpeedChanged: save()
     onLockOnWakeChanged: save()
+    onClock24Changed: save()
+    onClipboardHistoryChanged: save()
     function save() {
         if (!loaded) return;
         const o = {};

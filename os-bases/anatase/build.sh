@@ -86,6 +86,13 @@ dnf5 -y install 7zip || dnf5 -y install p7zip p7zip-plugins || true
 dnf5 -y install fuse-overlayfs bubblewrap xdpyinfo xrandr || true
 dnf5 -y install ntfsprogs ntfs-3g e2fsprogs btrfs-progs util-linux || true
 dnf5 -y install umu-launcher || true
+# Printing (Settings › Printers: CUPS with driverless IPP Everywhere, USB printers through ipp-usb, network printers
+# found with Avahi), clipboard history (Super+V: wl-clipboard, cliphist; wtype pastes) and Flatpak for Apps.
+for p in cups cups-filters ipp-usb avahi nss-mdns wl-clipboard cliphist wtype flatpak; do
+  dnf5 -y install "$p" || echo "warning: $p isn't available"
+done
+systemctl enable cups.socket || true
+systemctl enable avahi-daemon.socket 2>/dev/null || true
 # The move's first start (hearth-clean-install) reads Lutris' database with Python's sqlite3, and the controller
 # on the login screen needs evdev (above).
 python3 -c 'import sqlite3, json'
@@ -173,6 +180,18 @@ Icon=hearth
 Type=Application
 Categories=Settings;
 Keywords=wifi;bluetooth;sound;display;controller;update;
+DESKTOP
+cat > /usr/share/applications/hearth-apps.desktop <<DESKTOP
+[Desktop Entry]
+Name=Apps
+GenericName=App Store
+Comment=Find, install and update apps from Flathub
+Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call apps open
+Icon=hearth
+Type=Application
+Categories=System;PackageManager;
+Keywords=store;software;install;update;flathub;flatpak;
+OnlyShowIn=Nimbus;
 DESKTOP
 cat > /usr/share/applications/hearth-browser.desktop <<DESKTOP
 [Desktop Entry]

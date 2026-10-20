@@ -1,6 +1,9 @@
-// The Hearth taskbar: launcher button, open apps, then tray, volume, network, battery, clock, Quick Access,
-// keyboard and a Game Mode button. A floating rounded bar along the bottom of each screen (down the left
-// side when the screen is upright); windows don't cover it.
+// The Hearth taskbar: launcher button, virtual desktops, pinned and open apps, then tray, volume, network,
+// battery, Quick Access, keyboard, notifications, clock and a Game Mode button. A floating rounded bar along
+// the bottom of each screen (down the left side when the screen is upright); windows don't cover it.
+// Apps: pinned ones stay (DeskState, ~/.config/nimbus/desk.json); windows of the same app share a button.
+// Click focuses (again: minimizes; several windows: the next one), middle-click closes, right-click (X on the
+// controller) for Pin / Unpin, New window, Move to desktop and Close.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -16,6 +19,8 @@ PanelWindow {
     signal launcherRequested()
     signal quickRequested()
     signal keyboardRequested()
+    signal calendarRequested()
+    property var menu: null                // PopMenu, for the right-click menus
 
     // Upright screen (a handheld held vertically, a rotated monitor): the bar goes down the left side.
     readonly property bool portrait: screen && screen.height > screen.width
@@ -28,6 +33,94 @@ PanelWindow {
     color: "transparent"
     WlrLayershell.namespace: "hearth-bar"
     WlrLayershell.layer: WlrLayer.Top
+
+    // ------------------------------------------------------------------ apps on the taskbar
+    // Hearth's own windows (Settings, Files, Task Manager...) are part of this shell: Quickshell's app id.
+    function ownWindow(t) {
+        const a = t.appId || "";
+        return /quickshell/i.test(a) || (a === "" && /^(Hearth Settings|Task Manager|Files|Apps)$/.test(t.title || ""));
+    }
+    // Pinned apps first (in pin order), then the other open apps; each app's windows share one button.
+    readonly property var taskItems: {
+        const out = [], byKey = {};
+        void DesktopEntries.applications.values.length;   // look again once the app list has loaded
+        for (const id of DeskState.pins) {
+            const entry = DesktopEntries.byId(id);
+            if (!entry || byKey[id]) continue;
+            byKey[id] = { key: id, id: id, entry: entry, pinned: true, own: false, windows: [] };
+            out.push(byKey[id]);
+        }
+        for (const t of ToplevelManager.toplevels.values) {
+            const own = ownWindow(t);
+            const entry = own ? null : DesktopEntries.heuristicLookup(t.appId);
+            const key = own ? "own:" + t.title : entry ? entry.id : "app:" + (t.appId || t.title);
+            if (!byKey[key]) {
+                byKey[key] = { key: key, id: entry ? entry.id : "", entry: entry, pinned: false, own: own, windows: [] };
+                out.push(byKey[key]);
+            }
+            byKey[key].windows.push(t);
+        }
+        return out;
+    }
+    function appName(it) {
+        if (it.entry) return it.entry.name;
+        const w = it.windows[0];
+        return w ? (w.title || w.appId) : "";
+    }
+    function focusApp(it) {
+        const ws = it.windows;
+        if (!ws.length) { if (it.entry) it.entry.execute(); return; }
+        const i = ws.findIndex(w => w.activated);
+        if (ws.length === 1) { if (i === 0) ws[0].minimized = true; else ws[0].activate(); }
+        else ws[(i + 1) % ws.length].activate();       // i = -1: the first
+    }
+    // Screen coordinates just outside the bar next to an item, for menus.
+    function menuPoint(item) {
+        const p = item.mapToItem(null, item.width / 2, item.height / 2);
+        if (portrait) return Qt.point(bar.width + 4, p.y - 20);
+        return Qt.point(p.x - 134, (screen ? screen.height : 1080) - bar.height + 2);
+    }
+    // labwc's SendToDesktop through its Super+Alt+number keys (rc.xml), typed with wtype after focusing the window.
+    function moveToDesktop(win, n) {
+        win.activate();
+        mover.command = ["sh", "-c", "sleep 0.25; exec wtype -M logo -M alt -k \"$0\" -m alt -m logo", String(n)];
+        mover.running = true;
+    }
+    Process {
+        id: mover
+        onExited: code => {
+            if (code === 127) SettingsNav.toast("Moving windows needs wtype. The window's title bar menu can move it too");
+        }
+    }
+    function taskMenu(btn, it) {
+        if (!menu) return;
+        const ws = it.windows;
+        const win = ws.find(w => w.activated) || ws[0] || null;
+        const list = [];
+        if (it.entry && !it.own) list.push({ label: ws.length ? "New window" : "Open", icon: "open", run: () => it.entry.execute() });
+        if (it.entry && !it.own) {
+            const pinned = DeskState.isPinned(it.entry.id);
+            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", run: () => DeskState.togglePin(it.entry.id) });
+        }
+        if (win) {
+            const sets = desks.item ? desks.item.sets : [];
+            const count = sets.length > 1 ? sets.length : 4;
+            const sub = [];
+            for (let i = 0; i < count; i++) {
+                const here = sets.length > 1 && sets[i].active;
+                sub.push({ label: (sets.length > 1 && sets[i].name ? sets[i].name : "Desktop " + (i + 1)) + (here ? " (this one)" : ""), enabled: !here, run: () => moveToDesktop(win, i + 1) });
+            }
+            if (list.length) list.push({ separator: true });
+            list.push({ label: "Move to desktop", icon: "desktops", sub: sub });
+            if (!win.maximized) list.push({ label: "Maximize", icon: "window", run: () => { win.activate(); win.maximized = true; } });
+            else list.push({ label: "Restore size", icon: "window", run: () => { win.maximized = false; } });
+            list.push({ separator: true });
+            if (ws.length > 1) list.push({ label: "Close all " + ws.length + " windows", icon: "close", danger: true, run: () => ws.forEach(w => w.close()) });
+            else list.push({ label: "Close window", icon: "close", danger: true, run: () => win.close() });
+        }
+        const p = menuPoint(btn);
+        menu.popup(screen, p.x, p.y, { title: appName(it), above: !portrait }, list);
+    }
 
     Rectangle {
         id: body
@@ -69,26 +162,39 @@ PanelWindow {
                 }
             }
 
+            // Virtual desktops (hidden when there's only one, or labwc / Quickshell can't tell)
+            Loader {
+                id: desks
+                Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+                visible: status === Loader.Ready && !!item && item.wanted
+                source: "DeskSwitcher.qml"
+                onLoaded: item.portrait = Qt.binding(() => bar.portrait)
+            }
+
             Separator {}
 
-            // Open windows
+            // Pinned and open apps
             Repeater {
-                model: ToplevelManager.toplevels
+                model: bar.taskItems
                 delegate: BarButton {
                     id: task
-                    required property Toplevel modelData
-                    readonly property var entry: DesktopEntries.heuristicLookup(modelData.appId)
-                    tip: modelData.title || modelData.appId
-                    active: modelData.activated
-                    // Click: focus it, or minimize it if it's already in front. Middle-click closes.
-                    onClicked: modelData.activated ? (modelData.minimized = true) : modelData.activate()
-                    onMiddleClicked: modelData.close()
+                    required property var modelData
+                    readonly property var wins: modelData.windows
+                    readonly property bool focused: wins.some(w => w.activated)
+                    tip: wins.length > 1 ? bar.appName(modelData) + " (" + wins.length + " windows)"
+                        : wins.length === 1 ? (wins[0].title || bar.appName(modelData)) : bar.appName(modelData)
+                    active: focused
+                    running: wins.length > 0
+                    count: wins.length
+                    onClicked: bar.focusApp(modelData)
+                    onMiddleClicked: { if (wins.length) (wins.find(w => w.activated) || wins[0]).close(); else bar.focusApp(modelData); }
+                    onRightClicked: bar.taskMenu(task, modelData)
                     IconImage {
                         anchors.centerIn: parent
                         implicitSize: 28
-                        // Hearth Settings is part of this shell (its app id is Quickshell's): show the Hearth mark.
-                        source: (task.modelData.title === "Hearth Settings" || task.modelData.title === "Task Manager" || task.modelData.title === "Files") ? Qt.resolvedUrl("images/hearth-logo.png")
-                            : Quickshell.iconPath(task.entry ? task.entry.icon : task.modelData.appId, "application-x-executable")
+                        // Hearth's own windows (Settings, Files, Task Manager) show the Hearth mark.
+                        source: task.modelData.own ? Qt.resolvedUrl("images/hearth-logo.png")
+                            : Quickshell.iconPath(task.modelData.entry ? task.modelData.entry.icon : (task.wins.length ? task.wins[0].appId : ""), "application-x-executable")
                     }
                 }
             }
@@ -102,12 +208,17 @@ PanelWindow {
                     id: tray
                     required property SystemTrayItem modelData
                     narrow: true
-                    tip: modelData.tooltipTitle || modelData.title
-                    onClicked: modelData.activate()
-                    onRightClicked: {
-                        if (!modelData.hasMenu) return modelData.secondaryActivate();
+                    tip: (modelData.tooltipTitle || modelData.title || modelData.id || "")
+                        + (modelData.tooltipDescription ? "\n" + modelData.tooltipDescription.replace(/<[^>]*>/g, "") : "")
+                    // Click opens the app (or its menu, for apps that only have a menu); right-click its menu.
+                    onClicked: { if (modelData.onlyMenu && modelData.hasMenu) showMenu(); else modelData.activate(); }
+                    onMiddleClicked: modelData.secondaryActivate()
+                    onRightClicked: { if (modelData.hasMenu) showMenu(); else modelData.secondaryActivate(); }
+                    onScrolled: delta => modelData.scroll(delta, false)
+                    function showMenu() {
                         const p = tray.mapToItem(null, 0, 0);
-                        modelData.display(bar, p.x, p.y - 8);
+                        if (bar.portrait) modelData.display(bar, p.x + tray.width + 8, p.y);
+                        else modelData.display(bar, p.x, p.y - 8);
                     }
                     IconImage { anchors.centerIn: parent; implicitSize: 20; source: tray.modelData.icon }
                 }
@@ -186,23 +297,41 @@ PanelWindow {
                 Icon { anchors.centerIn: parent; name: "input-keyboard-symbolic"; size: 20 }
             }
 
-            // Clock
-            SystemClock { id: clock; precision: SystemClock.Minutes }
-            Column {
-                Layout.leftMargin: bar.portrait ? 0 : 6
-                Layout.rightMargin: bar.portrait ? 0 : 6
-                Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
-                Text {
-                    anchors.horizontalCenter: bar.portrait ? parent.horizontalCenter : undefined
-                    anchors.right: bar.portrait ? undefined : parent.right
-                    text: bar.portrait ? Qt.formatTime(clock.date, "h:mm") : Qt.formatTime(clock.date, "h:mm AP")
-                    color: Theme.text; font.pixelSize: bar.portrait ? 13 : 14; font.bold: true; font.family: Theme.font
+            // Notifications: the bell (crossed out with Do Not Disturb on), a dot for ones you haven't seen
+            BarButton {
+                tip: DeskState.dnd ? "Do not disturb is on" : DeskState.unseen > 0 ? DeskState.unseen + (DeskState.unseen === 1 ? " new notification" : " new notifications") : "Notifications"
+                onClicked: bar.calendarRequested()
+                onRightClicked: DeskState.setDnd(!DeskState.dnd)
+                Icon { anchors.centerIn: parent; name: DeskState.dnd ? "bell-off" : "bell"; size: 20; color: DeskState.dnd ? Theme.muted : Theme.text }
+                Rectangle {
+                    visible: DeskState.unseen > 0 && !DeskState.dnd
+                    x: parent.width / 2 + 3; y: 8
+                    width: 9; height: 9; radius: 5
+                    color: Theme.accent
+                    border.color: Theme.panel; border.width: 1
                 }
-                Text {
-                    visible: !bar.portrait
-                    anchors.right: parent.right
-                    text: Qt.formatDate(clock.date, "ddd, MMM d")
-                    color: Theme.muted; font.pixelSize: 11; font.family: Theme.font
+            }
+
+            // Clock: click for the calendar and notifications
+            SystemClock { id: clock; precision: SystemClock.Minutes }
+            BarButton {
+                wide: !bar.portrait
+                tip: Qt.formatDate(clock.date, "dddd, MMMM d, yyyy")
+                onClicked: bar.calendarRequested()
+                Column {
+                    anchors.centerIn: parent
+                    Text {
+                        anchors.horizontalCenter: bar.portrait ? parent.horizontalCenter : undefined
+                        anchors.right: bar.portrait ? undefined : parent.right
+                        text: Qt.formatTime(clock.date, Settings.clock24 ? "HH:mm" : bar.portrait ? "h:mm" : "h:mm AP")
+                        color: Theme.text; font.pixelSize: bar.portrait ? 13 : 14; font.bold: true; font.family: Theme.font
+                    }
+                    Text {
+                        visible: !bar.portrait
+                        anchors.right: parent.right
+                        text: Qt.formatDate(clock.date, "ddd, MMM d")
+                        color: Theme.muted; font.pixelSize: 11; font.family: Theme.font
+                    }
                 }
             }
 
@@ -226,6 +355,8 @@ PanelWindow {
         id: btn
         property string tip: ""
         property bool active: false
+        property bool running: false       // an app with windows open (a pinned one may have none)
+        property int count: 0              // how many windows
         property bool narrow: false
         property bool wide: false
         default property alias content: holder.data
@@ -243,14 +374,17 @@ PanelWindow {
             color: area.containsMouse ? Theme.panel3 : btn.active ? Theme.panel2 : "transparent"
         }
         Item { id: holder; anchors.fill: parent }
-        Rectangle { // running-and-focused indicator: under the icon, or beside it on a side bar
-            visible: btn.active
+        Rectangle { // open indicator under the icon (beside it on a side bar): long and lit when in front
+            readonly property int len: btn.active ? 16 : btn.count > 1 ? 10 : 5
+            visible: btn.active || btn.running
             x: bar.portrait ? 1 : (parent.width - width) / 2
             y: bar.portrait ? (parent.height - height) / 2 : parent.height - height - 2
-            width: bar.portrait ? 3 : 16
-            height: bar.portrait ? 16 : 3
+            width: bar.portrait ? 3 : len
+            height: bar.portrait ? len : 3
             radius: 2
-            color: Theme.accent
+            color: btn.active ? Theme.accent : Theme.muted
+            Behavior on width { NumberAnimation { duration: Theme.quick } }
+            Behavior on height { NumberAnimation { duration: Theme.quick } }
         }
         MouseArea {
             id: area

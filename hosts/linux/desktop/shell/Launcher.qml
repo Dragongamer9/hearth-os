@@ -11,7 +11,16 @@ PanelWindow {
     id: root
     property bool shown: false
     signal settingsRequested()
+    // Right-click, press and hold, or the Menu key (X on the controller): Open / Pin to taskbar (shell.qml).
+    signal menuRequested(var entry, real x, real y)
     function toggle() { shown = !shown; }
+    function menuFor(i) {
+        const e = matches[i];
+        const cell = grid.itemAtIndex(i);
+        if (!e) return;
+        const p = cell ? cell.mapToItem(null, cell.width / 2, cell.height / 2) : Qt.point(width / 2, height / 2);
+        menuRequested(e, p.x, p.y);
+    }
 
     visible: shown
     onShownChanged: if (shown) { search.text = ""; grid.currentIndex = 0; search.forceActiveFocus(); }
@@ -74,6 +83,7 @@ PanelWindow {
                     font.family: Theme.font
                     onTextChanged: grid.currentIndex = 0
                     Keys.onEscapePressed: root.shown = false
+                    Keys.onMenuPressed: root.menuFor(grid.currentIndex)
                     Keys.onReturnPressed: root.launch(root.matches[grid.currentIndex])
                     Keys.onEnterPressed: root.launch(root.matches[grid.currentIndex])
                     Keys.onDownPressed: grid.moveCurrentIndexDown()
@@ -133,11 +143,22 @@ PanelWindow {
                             font.family: Theme.font
                         }
                     }
+                    // Pinned to the taskbar
+                    Icon {
+                        visible: DeskState.isPinned(cell.modelData.id)
+                        anchors { top: parent.top; right: parent.right; margins: 12 }
+                        name: "pin"; size: 14; color: Theme.muted
+                    }
                     MouseArea {
                         id: hover
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: root.launch(cell.modelData)
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: mouse => {
+                            if (mouse.button === Qt.RightButton) { grid.currentIndex = cell.index; root.menuFor(cell.index); }
+                            else root.launch(cell.modelData);
+                        }
+                        onPressAndHold: { grid.currentIndex = cell.index; root.menuFor(cell.index); }
                     }
                 }
                 Text {

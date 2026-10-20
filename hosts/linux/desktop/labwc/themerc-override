@@ -26,3 +26,37 @@ osd.border.color: #ff8a3d
 osd.border.width: 1
 osd.label.text.color: #f4ece3
 osd.window-switcher.width: 640
+# Alt+Tab with window previews (labwc 0.9.2+: style-thumbnail; style-classic is the list; older versions read
+# osd.window-switcher.width above).
+osd.window-switcher.style-thumbnail.width.max: 80%
+osd.window-switcher.style-thumbnail.padding: 12
+osd.window-switcher.style-thumbnail.item.width: 280
+osd.window-switcher.style-thumbnail.item.height: 220
+osd.window-switcher.style-thumbnail.item.padding: 8
+osd.window-switcher.style-thumbnail.item.active.border.width: 2
+osd.window-switcher.style-thumbnail.item.active.border.color: #ff8a3d
+osd.window-switcher.style-thumbnail.item.active.bg.color: #33271f
+osd.window-switcher.style-thumbnail.item.icon.size: 48
+osd.window-switcher.style-classic.width: 640
+osd.window-switcher.style-classic.padding: 8
+osd.window-switcher.style-classic.item.padding.x: 12
+osd.window-switcher.style-classic.item.padding.y: 6
+osd.window-switcher.style-classic.item.active.border.width: 2
+osd.window-switcher.style-classic.item.active.border.color: #ff8a3d
+osd.window-switcher.style-classic.item.active.bg.color: #33271f
+osd.window-switcher.style-classic.item.icon.size: 24
+osd.window-switcher.preview.border.width: 2
+osd.window-switcher.preview.border.color: #ff8a3d
+osd.workspace-switcher.boxes.width: 24
+osd.workspace-switcher.boxes.height: 16
+# Where a dragged window will snap: a soft ember glow.
+snapping.overlay.region.bg.enabled: yes
+snapping.overlay.edge.bg.enabled: yes
+snapping.overlay.region.bg.color: #ff8a3d33
+snapping.overlay.edge.bg.color: #ff8a3d33
+snapping.overlay.region.border.color: #ff8a3d
+snapping.overlay.edge.border.color: #ff8a3d
+# Roomier menus (title bar right-click), rounded button hovers.
+menu.items.padding.x: 12
+menu.items.padding.y: 6
+window.button.hover.bg.corner-radius: 6

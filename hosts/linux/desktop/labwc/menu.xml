@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Right-click on the desktop. -->
+<!-- labwc's own menus, in Hearth colors (themerc-override).
+     root-menu: right-click on the desktop when the Hearth shell isn't running (it draws its own desktop menu).
+     client-menu: right-click on a window's title bar or its icon. -->
 <openbox_menu>
   <menu id="root-menu" label="Hearth">
     <item label="Apps"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher toggle'" /></item>
@@ -9,5 +11,38 @@
     <item label="Return to Game Mode"><action name="Execute" command="nimbus-mode game" /></item>
     <item label="Reconfigure"><action name="Reconfigure" /></item>
     <item label="Log out"><action name="Execute" command="nimbus-mode logout" /></item>
+  </menu>
+
+  <menu id="client-send-to" label="Move to desktop">
+    <item label="Desktop 1"><action name="SendToDesktop" to="1" follow="no" /></item>
+    <item label="Desktop 2"><action name="SendToDesktop" to="2" follow="no" /></item>
+    <item label="Desktop 3"><action name="SendToDesktop" to="3" follow="no" /></item>
+    <item label="Desktop 4"><action name="SendToDesktop" to="4" follow="no" /></item>
+    <separator />
+    <item label="Show on every desktop"><action name="ToggleOmnipresent" /></item>
+  </menu>
+
+  <menu id="client-snap" label="Snap">
+    <item label="Left half"><action name="SnapToEdge" direction="left" /></item>
+    <item label="Right half"><action name="SnapToEdge" direction="right" /></item>
+    <item label="Top left quarter"><action name="SnapToRegion" region="top-left" /></item>
+    <item label="Top right quarter"><action name="SnapToRegion" region="top-right" /></item>
+    <item label="Bottom left quarter"><action name="SnapToRegion" region="bottom-left" /></item>
+    <item label="Bottom right quarter"><action name="SnapToRegion" region="bottom-right" /></item>
+    <item label="Middle of the screen"><action name="SnapToRegion" region="center" /></item>
+  </menu>
+
+  <menu id="client-menu" label="Window">
+    <item label="Minimize"><action name="Iconify" /></item>
+    <item label="Maximize or restore"><action name="ToggleMaximize" /></item>
+    <menu id="client-snap" />
+    <item label="Full screen"><action name="ToggleFullscreen" /></item>
+    <separator />
+    <item label="Move"><action name="Move" /></item>
+    <item label="Resize"><action name="Resize" /></item>
+    <item label="Keep on top"><action name="ToggleAlwaysOnTop" /></item>
+    <menu id="client-send-to" />
+    <separator />
+    <item label="Close"><action name="Close" /></item>
   </menu>
 </openbox_menu>
