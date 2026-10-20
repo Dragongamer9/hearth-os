@@ -1,4 +1,5 @@
-# Loads Hearth's login screen (the SDDM theme) in SDDM's test mode, inside the Hearth OS image, and fails if
+# Loads Hearth's login screen (the SDDM theme, used by the editions with SDDM) in SDDM's test mode, in a Fedora
+# container with SDDM (Hearth OS on Anatase uses Plasma Login Manager instead), and fails if
 # QML reports errors. Logs and a screenshot go on the run page.
 name: Login screen test
 
@@ -22,9 +23,9 @@ jobs:
       - name: Run the greeter in test mode
         run: |
           sudo podman run --rm -v "$PWD/os/system_files/usr/share/sddm/themes/hearth:/theme:ro" -v "$PWD:/out" \
-            ghcr.io/dragongamer9/hearth-os:latest bash -c '
+            quay.io/fedora/fedora:43 bash -c '
               set -x
-              dnf5 -y -q install xorg-x11-server-Xvfb xwd ImageMagick >/dev/null 2>&1 || dnf -y -q install xorg-x11-server-Xvfb xwd ImageMagick >/dev/null 2>&1
+              dnf5 -y -q install sddm qt6-qtsvg qt6-qt5compat qt6-qtdeclarative xorg-x11-server-Xvfb xwd ImageMagick >/dev/null 2>&1 || dnf -y -q install sddm xorg-x11-server-Xvfb xwd ImageMagick >/dev/null 2>&1
               G=$(command -v sddm-greeter-qt6 || command -v sddm-greeter || ls /usr/bin/sddm-greeter* 2>/dev/null | head -1)
               echo "greeter: $G" > /out/greeter.log
               Xvfb :9 -screen 0 1280x800x24 & sleep 2
