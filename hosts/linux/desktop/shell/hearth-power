@@ -4,7 +4,8 @@
   hearth-power status          JSON: {"mode": {...}, "tdp": {...}}
   hearth-power mode NAME       power-saver | balanced | performance
   hearth-power tdp WATTS       set the power limit
-  hearth-power restore         put back the last power limit you chose (after a restart)
+  hearth-power restore         put back the last power limit you chose (after a restart; not when Handheld
+                               Daemon manages the limit: it keeps its own)
 
 It tries what the system offers, in this order, and says which one it used ("via"):
   power mode   SteamOS Manager  ->  power-profiles D-Bus (tuned-ppd on Bazzite, Handheld Daemon's
@@ -15,6 +16,8 @@ It tries what the system offers, in this order, and says which one it used ("via
                that doesn't take)  ->  PowerStation  ->
                Hearth's own: hearth-admin through pkexec, which writes the limits itself (ASUS firmware
                attributes, the older asus-nb-wmi files, or ryzenadj on other AMD handhelds)
+While Handheld Daemon runs with a power plugin (a tdp.<plugin>.tdp power mode in its state), the limit is its alone:
+Hearth never falls back to writing it itself (ryzenadj, firmware files, PowerStation), which HHD would undo.
 Output is one JSON line; failures print "error: ..." and exit 1.
 """
 import json
@@ -70,6 +73,18 @@ def hhd_tdp():
     except RuntimeError:
         return {}
     return info if info.get('enabled') else {}
+
+
+def hhd_owns_tdp():
+    """Handheld Daemon runs a power plugin here (it has a power mode), whether or not its limit is ready: then
+    nothing else may write the limit (two writers fight)."""
+    h = hhd()
+    if not h:
+        return False
+    try:
+        return bool(h.tdp_info(h.state()).get('driver'))
+    except RuntimeError:
+        return False
 
 
 def busctl(bus, *args, timeout=6):
@@ -228,6 +243,9 @@ def tdp_status():
     if h:
         w = h.get('watts') or remembered() or h.get('default')
         return {'supported': True, 'watts': int(w or 15), 'min': int(h.get('min') or 3), 'max': int(h['max']), 'via': 'hhd', 'mode': h.get('mode')}
+    if hhd_owns_tdp():
+        # HHD has a power plugin but its limit isn't on (or not ready yet): leave it to HHD.
+        return {'supported': False, 'via': 'hhd', 'reason': "Handheld Daemon manages the power limit on this device"}
     # ASUS handhelds with the firmware-attributes driver (ROG Ally, ROG Xbox Ally): set directly, with the
     # device's real range. PowerStation's older ASUS path doesn't work on them (it fails without saying so).
     info = admin_tdp_info()
@@ -349,7 +367,10 @@ def cmd(argv):
         out = {'tdp': tdp_status()}
     elif c == 'restore':
         w = remembered()
-        out = {'tdp': {'watts': set_tdp(w)} if w else None}
+        if w and (hhd_tdp() or hhd_owns_tdp()):
+            out = {'tdp': None, 'skipped': 'Handheld Daemon keeps its own power limit'}
+        else:
+            out = {'tdp': {'watts': set_tdp(w)} if w else None}
     else:
         print('usage: hearth-power status | mode power-saver|balanced|performance | tdp WATTS | restore')
         sys.exit(2)

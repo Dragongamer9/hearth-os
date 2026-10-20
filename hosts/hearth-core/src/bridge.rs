@@ -41,7 +41,12 @@ pub struct Bridge {
     /// Parental controls and per-game settings while a game plays.
     parental_since: u64,
     parental_warned: bool,
-    per_game: Option<(u64, Option<u32>)>,
+    /// The frame-rate limit to put back when the game with its own cap ends.
+    per_game: Option<u64>,
+    /// Per-game power: the game last seen in front, and what to put back when no game with its own power
+    /// settings is in front ({"hhd": {key: value}} on Handheld Daemon systems, {"watts": n} elsewhere).
+    power_seen: Option<String>,
+    power_back: Option<Value>,
     browser: std::sync::Arc<std::sync::Mutex<Value>>,
     pub app_updates: crate::appupdate::AppUpdates,
     /// The call being answered (calls that answer later, from background work, reply to it themselves).
@@ -69,7 +74,7 @@ impl Bridge {
         Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), xodus: crate::xodus::Xodus::new(), profiles, pin_until: std::time::Instant::now(),
                  pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(), guide: crate::guide::Guide::new(),
                  buttons: Arc::new(std::sync::Mutex::new(json!({"devices": [], "problems": ["Only in Game Mode"]}))), host: Arc::new(|_, _| {}),
-                 parental_since: 0, parental_warned: false, per_game: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
+                 parental_since: 0, parental_warned: false, per_game: None, power_seen: None, power_back: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
                  app_updates: crate::appupdate::AppUpdates::new(version), cur_id: Value::Null }
     }
 
@@ -408,7 +413,15 @@ impl Bridge {
             // hhd.set answers with hhd.status, or with the new state when the page asks for it ("state": true).
             "hhd.settings" => crate::hhd::settings(),
             "hhd.state" => crate::hhd::state(),
-            "hhd.set" => if a["state"] == true { crate::hhd::write(&req("key")?, &a["value"]) } else { crate::hhd::set(&req("key")?, &a["value"]) },
+            // From Quick Access › Performance while a game is in front ("game": true), a power setting is kept for
+            // that game too (see game_power_set).
+            "hhd.set" => {
+                let key = req("key")?;
+                if a["game"] == true && crate::hhd::game_power_key(&key) {
+                    if let Some(id) = self.library.running_id() { return self.game_power_set(&id, &key, &a["value"]); }
+                }
+                if a["state"] == true { crate::hhd::write(&key, &a["value"]) } else { crate::hhd::set(&key, &a["value"]) }
+            }
             // Settings › Updates: the new Hearth OS (on Anatase) as a clean install that keeps your games, from the
             // Bazzite-based one; and on the new one, Settings › System: the files put aside (~/.old-hearth-<date>).
             "newos.status" => { let id = self.cur_id.clone(); crate::space::answer_later(id, || Ok(crate::newos::status())); Ok(json!(DEFERRED)) }
@@ -755,7 +768,15 @@ impl Bridge {
             "perf.stats" => {
                 let mut s = crate::perf::sample();
                 s["quickResume"] = self.library.quick_state();
-                let st = crate::power::status();
+                // The game in front, and whether it keeps its own power settings (Quick Access says so).
+                s["gamePower"] = match self.library.running_id() {
+                    Some(id) => { let o = crate::game_options::get(&self.library.store, &id);
+                        json!({"id": id, "saved": Self::has_game_power(&o), "label": o["powerLabel"], "tdp": o["tdp"]}) }
+                    None => Value::Null,
+                };
+                // Quick Access shows Handheld Daemon's own power settings when it runs ("hhd": true): Hearth's power
+                // mode and limit (hearth-power, a helper run every second otherwise) aren't needed then.
+                let st = if a["hhd"] == true { json!({"mode": {"supported": false}, "tdp": {"supported": false}}) } else { crate::power::status() };
                 s["battery"] = system::battery(std::path::Path::new("/sys/class/power_supply"));
                 s["runningId"] = json!(self.library.running_id()); s["runningSince"] = json!(self.library.running_since());
                 s["canFpsLimit"] = json!(crate::gamescope::can_fps_limit()); s["fpsLimit"] = json!(self.library.store.data["fpsLimit"].as_u64().unwrap_or(0));
@@ -769,6 +790,13 @@ impl Bridge {
                 b["mode"] = st["mode"]["mode"].clone(); b["modes"] = st["mode"]["available"].clone(); b["modeSupported"] = st["mode"]["supported"].clone(); b["tdp"] = st["tdp"].clone(); Ok(b) }
             "power.setMode" => { crate::power::set_mode(&req("mode")?)?; self.dispatch("power.get", &json!({})) }
             "perf.setTdp" => crate::power::set_tdp(a["watts"].as_f64().unwrap_or(0.0).round() as u32),
+            // Quick Access › Performance: the game in front goes back to the usual power settings.
+            "perf.gamePowerForget" => {
+                let id = req("id")?;
+                crate::game_options::set(&mut self.library.store, &id, &json!({"tdp": 0, "hhdPower": {}, "powerLabel": ""}))?;
+                if self.library.running_id().as_deref() == Some(id.as_str()) { self.power_restore(); }
+                Ok(crate::hhd::state().unwrap_or(json!({"running": false})))
+            }
             "bt.paired" => Ok(system::bt_devices::paired()),
             "bt.pair" => Ok(system::bt_devices::pair(&req("id")?)),
             "bt.unpair" => Ok(system::bt_devices::unpair(&req("id")?)),
@@ -875,12 +903,11 @@ impl Bridge {
                     out.extend(self.parental_tick());
                     let id = e["data"]["id"].as_str().unwrap_or("").to_string();
                     let o = crate::game_options::get(&self.library.store, &id);
-                    let (fps, tdp) = (o["fpsLimit"].as_u64().unwrap_or(0), o["tdp"].as_u64().unwrap_or(0) as u32);
-                    if fps > 0 || tdp > 0 {
-                        let mut back = (self.library.store.data["fpsLimit"].as_u64().unwrap_or(0), None);
-                        if fps > 0 && crate::gamescope::in_session() { let _ = crate::gamescope::set_root("GAMESCOPE_FPS_LIMIT", fps); }
-                        if tdp > 0 { let st = crate::power::status(); if st["tdp"]["supported"] == true { back.1 = st["tdp"]["watts"].as_u64().map(|w| w as u32); let _ = crate::power::set_tdp(tdp); } }
-                        log(&format!("game settings: {id} fps {fps} tdp {tdp}"));
+                    let fps = o["fpsLimit"].as_u64().unwrap_or(0);
+                    if fps > 0 {
+                        let back = self.library.store.data["fpsLimit"].as_u64().unwrap_or(0);
+                        if crate::gamescope::in_session() { let _ = crate::gamescope::set_root("GAMESCOPE_FPS_LIMIT", fps); }
+                        log(&format!("game settings: {id} fps {fps}"));
                         self.per_game = Some(back);
                     }
                 }
@@ -891,15 +918,89 @@ impl Bridge {
                         let _ = self.profiles.add_played(&active, mins, chrono::Local::now());
                     }
                     self.parental_since = 0;
-                    if let Some((fps, tdp)) = self.per_game.take() {
+                    if let Some(fps) = self.per_game.take() {
                         if crate::gamescope::in_session() { let _ = crate::gamescope::set_root("GAMESCOPE_FPS_LIMIT", fps); }
-                        if let Some(w) = tdp { let _ = crate::power::set_tdp(w); }
                     }
                 }
                 _ => {}
             }
         }
+        // A game's own power settings go on while it's in front (started, or back from Quick Resume), and what
+        // was there before comes back when it leaves the front.
+        let front = self.library.running_id();
+        if front != self.power_seen {
+            self.power_seen = front.clone();
+            self.game_power_front(front.as_deref());
+        }
         out
+    }
+
+    /// Does this game keep its own power settings (a limit, or Handheld Daemon's settings)?
+    fn has_game_power(o: &Value) -> bool {
+        o["tdp"].as_u64().unwrap_or(0) > 0 || o["hhdPower"].as_object().map(|m| !m.is_empty()).unwrap_or(false)
+    }
+
+    /// A game came to the front (or none is): its power settings on, or the usual ones back. With Handheld
+    /// Daemon running they go through HHD (it owns the power limit; anything else would fight it); elsewhere the
+    /// limit goes through hearth-power, as before.
+    fn game_power_front(&mut self, id: Option<&str>) {
+        let saved = id.map(|i| crate::game_options::get(&self.library.store, i)).filter(Self::has_game_power);
+        let Some(o) = saved else { return self.power_restore() };
+        let id = id.unwrap_or("");
+        let st = crate::hhd::current_state();
+        if !st.is_null() && st["tdp"].is_object() {
+            let changes = crate::hhd::game_changes(&o["hhdPower"], o["tdp"].as_u64().unwrap_or(0), &st);
+            if changes.is_empty() { return; }
+            if self.power_back.is_none() { self.power_back = Some(json!({"hhd": crate::hhd::game_power(&st)})); }
+            match crate::hhd::write_many(&changes, true) {
+                Ok((_, left)) => log(&format!("game power: {id} through Handheld Daemon {}{}", Value::Object(changes.clone()),
+                    if left.is_empty() { String::new() } else { format!(" (left out: {})", left.join("; ")) })),
+                Err(e) => log(&format!("game power: {id}: {e}")),
+            }
+            return;
+        }
+        let w = o["tdp"].as_u64().unwrap_or(0) as u32;
+        if w == 0 { return; }
+        let st = crate::power::status();
+        if st["tdp"]["supported"] != true { return; }
+        if self.power_back.is_none() { self.power_back = st["tdp"]["watts"].as_u64().map(|w| json!({"watts": w})); }
+        match crate::power::set_tdp(w) { Ok(_) => log(&format!("game power: {id} {w} W")), Err(e) => log(&format!("game power: {id}: {e}")) }
+    }
+
+    /// The power settings from before a game's own went on, back (nothing to do when none are kept).
+    fn power_restore(&mut self) {
+        let Some(back) = self.power_back.take() else { return };
+        if let Some(m) = back["hhd"].as_object() {
+            if m.is_empty() { return; }
+            match crate::hhd::write_many(m, true) {
+                Ok(_) => log("game power: the usual settings are back (Handheld Daemon)"),
+                Err(e) => log(&format!("game power: couldn't put the usual settings back: {e}")),
+            }
+        } else if let Some(w) = back["watts"].as_u64() {
+            match crate::power::set_tdp(w as u32) { Ok(_) => log(&format!("game power: back to {w} W")), Err(e) => log(&format!("game power: {e}")) }
+        }
+    }
+
+    /// A Handheld Daemon power setting changed in Quick Access while a game is in front: HHD gets it, and the game
+    /// keeps the power settings now in effect (mode, and the custom limit and boost), which come back whenever it's
+    /// in front again. What was there before the game had its own is kept, to put back when it leaves the front.
+    /// Answers like hhd.set with "state": {running, version, state}, plus the game's kept settings.
+    fn game_power_set(&mut self, id: &str, key: &str, value: &Value) -> Result<Value, String> {
+        if self.power_back.is_none() {
+            let st = crate::hhd::current_state();
+            if !st.is_null() { self.power_back = Some(json!({"hhd": crate::hhd::game_power(&st)})); }
+        }
+        let r = crate::hhd::write(key, value)?;
+        let st = &r["state"];
+        let kept = crate::hhd::game_power(st);
+        let watts = crate::hhd::tdp(st)["watts"].as_f64().map(|w| w.round().max(0.0) as u64).unwrap_or(0);
+        let label = crate::hhd::power_label(&crate::hhd::settings_tree(), st);
+        crate::game_options::set(&mut self.library.store, id, &json!({"hhdPower": kept, "tdp": watts, "powerLabel": label}))?;
+        self.power_seen = Some(id.to_string());
+        log(&format!("game power: {id} keeps {label}"));
+        let mut out = r;
+        out["gamePower"] = json!({"id": id, "saved": true, "label": label, "tdp": watts});
+        Ok(out)
     }
     /// Every 20 seconds while a game plays, for profiles with a daily limit: a warning 5 minutes before the
     /// end, then the game closes.

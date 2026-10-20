@@ -46,10 +46,46 @@ const path = require('path');
   for (const t of tabs) await step('settings ' + t, t => { S.settingsTab = t; navigate('settings', {}, false); }, t);
   const layouts = await page.evaluate(() => [...(typeof LAYOUTS !== 'undefined' ? LAYOUTS : []), ...(typeof XLAYOUTS !== 'undefined' ? XLAYOUTS : [])].map(l => l.id));
   for (const id of layouts) await step('layout ' + id, id => { LOOK.layout = id; saveLook(); S.layers = []; navigate('home', {}, false); }, id);
+  // Quick Access › Performance, as Hearth OS (?preview=linux): with Handheld Daemon (its own power settings in place
+  // of Hearth's), without it (?nohhd: Hearth's power mode and limit, as before), and over a game (the overlay page),
+  // where a power change is kept for the game.
+  const perfModes = [['hhd', 'preview=linux'], ['no hhd', 'preview=linux&nohhd'], ['overlay hhd', 'preview=linux&overlay'], ['overlay no hhd', 'preview=linux&overlay&nohhd']];
+  for (const [name, q] of perfModes) {
+    await page.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?' + q);
+    await page.waitForTimeout(1200);
+    const hhd = !q.includes('nohhd'), overlay = q.includes('overlay');
+    await step(`performance (${name})`, async ([hhd, overlay]) => {
+      if (overlay) { await overlayShown(); S.running = (GAMES.find(g => !g.cloud) || GAMES[0]).id; }   // a game plays (the preview runs none)
+      else { closeAll(); openLayer('qam'); }
+      S.qtab = 'perf'; renderQam(); startPerf();
+      await new Promise(r => setTimeout(r, 1500));
+      const q = document.querySelector('#qam .qbody');
+      const has = sel => !!q.querySelector(sel);
+      if (!has('[data-act="fpsLimit"]') || !has('[data-act="perfOverlay"]')) throw new Error("Hearth's frame-rate limit or overlay is missing");
+      if (hhd) {
+        if (!has('.qhhd [data-key="tdp.unified.tdp.mode"]')) throw new Error("Handheld Daemon's power mode isn't shown");
+        if (has('[data-act="tdp"]') || has('[data-act="perfPower"]')) throw new Error("Hearth's own power controls show next to Handheld Daemon's");
+        if (has('[data-slider="hhd:tdp.unified.fan.manual_edge.st40"]')) throw new Error('a fan curve point shows in Quick Access');
+        if (!overlay !== has('[data-act="hhdOpen"]')) throw new Error('the Handheld Daemon settings button is wrong for this page');
+      } else {
+        if (has('.qhhd')) throw new Error("Handheld Daemon's settings show without it");
+        if (!has('[data-act="tdp"]') || !has('[data-act="perfPower"]')) throw new Error("Hearth's power controls are missing");
+      }
+    }, [hhd, overlay]);
+    if (!hhd) continue;
+    // The custom mode's limit as a slider (moved with the controller), kept for the game when one plays.
+    await step(`performance custom limit (${name})`, async (overlay) => {
+      await hhdWrite('tdp.unified.tdp.mode', 'custom');
+      const el = document.querySelector('#qam [data-slider="hhd:tdp.unified.tdp.custom.tdp"]');
+      if (!el) throw new Error('custom power limit not shown');
+      if (overlay && !(PERF.s.gamePower && PERF.s.gamePower.saved)) throw new Error('the change was not kept for the game');
+      if (overlay && !document.querySelector('#qam [data-act="gamePowerForget"]')) throw new Error('no way back to the usual power settings');
+    }, overlay);
+  }
   await browser.close();
   if (errors.length) {
     for (const e of errors) console.log(`::error title=Hearth page::${e}`);
     process.exit(1);
   }
-  console.log(`ok: Hearth's page loads and draws ${9 + tabs.length + layouts.length} screens (and ${hhdSecs.length * 2} Handheld Daemon sections) without errors`);
+  console.log(`ok: Hearth's page loads and draws ${9 + tabs.length + layouts.length} screens (and ${hhdSecs.length * 2} Handheld Daemon sections, and Quick Access › Performance ${perfModes.length} ways) without errors`);
 })();
