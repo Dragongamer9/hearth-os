@@ -289,6 +289,8 @@ cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Hearth's HHD helper for Settings (added for the Anatase build; executable if this checkout has it).
 if [ -f /usr/share/nimbus/desktop/shell/hearth-hhd ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-hhd; fi
+# Hearth Input (controller layouts for games; python3-evdev and the uinput rule are already in the image).
+if [ -f /usr/share/nimbus/desktop/shell/hearth-input ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-input; fi
 chmod 755 /usr/libexec/nimbus/*
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 # Quick Access over games: Handheld Daemon shows an overlay app over games (its QAM button) and holds the controllers

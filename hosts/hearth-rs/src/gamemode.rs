@@ -335,11 +335,44 @@ impl GameMode {
     /// While the overlay is open the game gets no controller input, and it keeps running: InputPlumber sends every
     /// press to Hearth instead of the game; controllers it doesn't manage are taken by Hearth for the time being.
     fn hold_game(&self, on: bool) {
+        // Hearth Input (a game's controller layout) lets go of the controller before Hearth takes it, and gets it
+        // back only after Hearth has let go (input_map.rs: it answers once it has).
+        if on { hearth_core::input_map::overlay(true); }
         // With HHD's overlay app, HHD holds the controllers (the app asks it to while Quick Access is open).
         if !self.hhd() { self.guide.grab(on); }
         if self.ip.load(Ordering::SeqCst) {
             let _ = on; self.ip_sync();
         }
+        if !on { hearth_core::input_map::overlay(false); }
+    }
+
+    /// Hearth Input: tells the mapper (desktop/shell/hearth-input) which game is running, whether it's in front and
+    /// whether Quick Access is open, so that game's controller layout is on exactly while you're playing it. Guide
+    /// presses it catches (it holds the controller) open Quick Access; its notes (gyro on/off, the radial menu) show
+    /// over the game like the volume bar.
+    pub fn start_input_map(self: &Arc<Self>) {
+        if !self.inside() { return; }
+        let (me, me2) = (self.clone(), self.clone());
+        let last: Arc<Mutex<Option<String>>> = Arc::default();
+        let get: hearth_core::input_map::GetState = Arc::new(move || {
+            // Never waits for the bridge (a library scan can hold it): the last game seen is good enough.
+            let id = match me.bridge.try_lock() {
+                Ok(b) => { let id = b.library.running_id(); *last.lock().unwrap() = id.clone(); id }
+                Err(_) => last.lock().unwrap().clone(),
+            };
+            let overlay = me.overlay_on.load(Ordering::SeqCst);
+            let front = id.is_some() && !overlay && !me.hearth_on_screen();
+            (id, front, overlay)
+        });
+        let on_event: hearth_core::input_map::OnEvent = Arc::new(move |e: Value| match e["t"].as_str() {
+            Some("guide") => { let m = me2.clone(); std::thread::spawn(move || m.guide_pressed("guide")); }
+            Some("osd") => {
+                let text: String = e["text"].as_str().unwrap_or("").chars().take(200).collect();
+                me2.osd(json!({"kind": "msg", "icon": "pad", "text": text, "ms": 1600}));
+            }
+            _ => {}
+        });
+        hearth_core::input_map::start_link(get, on_event);
     }
 
     /// Hearth OS: InputPlumber catches the Xbox / Guide button (and only it), and while Quick Access is open hands

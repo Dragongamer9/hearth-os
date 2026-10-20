@@ -725,7 +725,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'){ S.setupStep=0; navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'&&!i.signin){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -2301,6 +2301,7 @@ function pageControls(){
     }
   }
   if(LINUX) h += remapRows();
+  if(LINUX) h += note('Games without controller support: give the game a Controller layout in its Game settings (game page › ⋯ › Game settings). The controller then acts as a keyboard and mouse in that game only.');
   if(LINUX) h += hhdRows();
   h += shead('Keyboard');
   h += (LINUX?KEY_LIST_LINUX:KEY_LIST).map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
@@ -3167,7 +3168,7 @@ function renderQam(){
       ${LINUX?`<button class="btn" data-f data-k="q-resume" data-act="resume">${I.play}Back to game</button>`:''}
       ${LINUX&&!G(S.running)?.cloud?`<button class="btn" data-f data-k="q-pause" data-act="pauseGame">${S.paused?I.play+'Unpause':I.pause+'Pause'}</button>`:''}
       ${qrFeature()&&QR.on&&!g.cloud?`<button class="btn" data-f data-k="q-aside" data-act="putaside">${I.pause}Put aside (Quick Resume)</button>`:''}
-      <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>${qamQuick()}`
+      <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>${inputQam(g)}${qamQuick()}`
       : (QR.list.length && !OVERLAY) ? `<div class="muted" style="margin-bottom:10px">Nothing running right now.</div>${qamQuick()}`
       : OVERLAY ? `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}` : '<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
   }
@@ -3375,6 +3376,7 @@ function slidePick(el){ if(SLIDE===el) return slideDone(); slideDone(); SLIDE=el
 const SLIDE_AT={};
 function adjustSlider(el, d){
   const k=el.dataset.slider, min=+el.dataset.min, max=+el.dataset.max, st=+el.dataset.step;
+  if(k.startsWith('im:')) return imSlide(el, d);   // Hearth Input's sliders (controller layouts)
   S.set[k]=Math.max(min,Math.min(max,S.set[k]+d*st)); SLIDE_AT[k]=performance.now();
   const pct=(S.set[k]-min)/(max-min)*100;
   el.querySelector('.slider i').style.width=pct+'%'; el.querySelector('.slider b').style.left=pct+'%';
@@ -3433,6 +3435,7 @@ function act(el){
     case 'pbtn': return call('buttons.set',{[d.w]:d.v}).then(r=>{ BTNS.s=r; render('pb-'+d.w+'-'+d.v,true); }).catch(e=>toast(e.message));
     case 'overamp': return call('buttons.set',{overamp:!(BTNS.s&&BTNS.s.overamp)}).then(r=>{ BTNS.s=r; S.sys.audio.max=r.maxVolume; if(S.set.vol>r.maxVolume){ S.set.vol=S.sys.audio.volume=r.maxVolume; } render('a-overamp',true); toast(r.overamp?'Volume can now go up to 150%':'Volume is limited to 100% again'); }).catch(e=>toast(e.message));
     case 'remap': return remapPick(d.b);
+    case 'im': return imAct(el, d);
     case 'hhdSet': return hhdSet(d.i);
     case 'newOsPick': return newOsPick(d.v);
     case 'newOsGo': return newOsAsk();
@@ -3612,6 +3615,7 @@ function act(el){
     case 'shotDel': { const x=SH.list&&SH.list[SH.open]; if(!x) return;
       return call('screenshots.delete',{file:x.file},15000).then(r=>{ SH.list=r.list||[]; if(SH.open>=SH.list.length) SH.open=SH.list.length-1; toast('Screenshot deleted'); render(SH.open>=0?'sh-back':null,true); }).catch(e=>toast(e.message)); }
     case 'accSignIn': return accSignIn(d.s);
+    case 'backToGame': return backToGameMode();
     case 'accSignOut': return accSignOut(d.s);
     case 'accRefresh': return accRefresh(d.s);
     case 'accShow': S.tab=d.s; S.history=[]; return navigate('library',{focusKey:'tab-'+d.s},false);
@@ -3773,7 +3777,7 @@ function viewGameSettings(){
   const sw=(k,label,sub)=>`<button class="row" data-f data-k="gs-${k}" data-act="gsToggle" data-key="${k}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${o[k]?'on':''}"></div></button>`;
   let h=`<h2>${esc(g.title)}</h2><div class="rows">`;
   // For every game, Steam's too: Hearth sets these while it plays.
-  const ingame = shead('While it plays')
+  const ingame = shead('While it plays') + inputRow(g)
     + `<button class="row" data-f data-k="gs-fps" data-act="gsFps"><span class="ricon">${I.perf||I.gear}</span><div class="rt"><b>Frame-rate cap</b><small>Smoother and cooler: caps this game, then goes back to your usual limit</small></div><div class="rv">${o.fpsLimit?o.fpsLimit+' FPS':'Usual'} ›</div></button>`
     + `<button class="row" data-f data-k="gs-tdp" data-act="gsTdp"><span class="ricon">${I.power}</span><div class="rt"><b>Power limit</b><small>More watts for a demanding game, fewer for battery life</small></div><div class="rv">${o.tdp?o.tdp+' W':'Usual'} ›</div></button>`;
   // Deleting the game: last on the page, for every game Hearth (or Steam) can delete.
@@ -3799,6 +3803,456 @@ function viewGameSettings(){
   if(r.canResetPrefix) h += shead('Troubleshooting')
     + `<button class="row" data-f data-k="gs-reset" data-act="gsReset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset Proton files</b><small>Sets up this game's Wine prefix from scratch next time. Fixes broken setups; saves that only live there are lost.</small></div></button>`;
   return h+`</div>`+note('Changes apply the next time you start the game.');
+}
+
+// ---------- Hearth Input: controller layouts (Game settings › Controller layout, Quick Access) ----------
+// A game with a layout gets the controller as a keyboard and mouse while it's in front (desktop/shell/hearth-input
+// does it; hearth-core input_map.rs keeps each game's choice). Off, the default, leaves the game its own controller
+// support. Edits save as you make them, as the game's own layout.
+const IM = {tables:null, games:{}, at:{}, loading:{}, status:null, statusAt:0, draft:null, gid:null, set:'base', test:null, saveT:null, qaGame:null};
+const IM_MOCK = (()=>{
+  const lim = {sensitivity:[0.1,5],deadzone:[0,0.5],outer:[0.5,1],curve:[1,3],threshold:[0.05,0.95],stick_threshold:[0.2,0.9],gyro_sensitivity:[0.1,5],gyro_deadzone:[0,5],hold_ms:[150,1000],turbo_hz:[2,30],pref_sensitivity:[0.25,3],name_len:60,combo_keys:4,radial_items:8};
+  const T = {keys:[{group:'Common',keys:[['SPACE','Space'],['ENTER','Enter'],['ESC','Esc'],['TAB','Tab'],['LEFTSHIFT','Shift'],['LEFTCTRL','Ctrl'],['LEFTALT','Alt']]},
+      {group:'Arrows',keys:[['UP','Up arrow'],['DOWN','Down arrow'],['LEFT','Left arrow'],['RIGHT','Right arrow']]},
+      {group:'Letters',keys:[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(c=>[c,c])},{group:'Numbers',keys:[...'1234567890'].map(c=>[c,c])},{group:'Function keys',keys:[1,2,3,4,5].map(n=>['F'+n,'F'+n])}],
+    mouse:[['left','Left click'],['right','Right click'],['middle','Middle click'],['back','Mouse back'],['forward','Mouse forward']], scroll:[['up','Scroll up'],['down','Scroll down'],['left','Scroll left'],['right','Scroll right']],
+    buttons:[['a','A'],['b','B'],['x','X'],['y','Y'],['lb','LB'],['rb','RB'],['lt','LT (left trigger)'],['rt','RT (right trigger)'],['view','View'],['menu','Menu'],['l3','Left stick press (L3)'],['r3','Right stick press (R3)'],['up','D-pad up'],['down','D-pad down'],['left','D-pad left'],['right','D-pad right'],['l4','Back button L4'],['r4','Back button R4']],
+    sticks:[['ls','Left stick'],['rs','Right stick']], limits:lim,
+    templates:[{id:'shooter',name:'Shooter / action',blurb:'Left stick walks (W A S D), right stick aims the mouse, triggers click',layout:{version:1,name:'Shooter / action',base:'shooter',buttons:{a:'key:SPACE',b:{press:'key:C',hold:'key:LEFTCTRL'},rt:{press:'mouse:left',threshold:0.35},lt:{press:'mouse:right',threshold:0.35},menu:'key:ESC',lb:'key:Q',rb:'key:E'},sticks:{ls:{mode:'keys',up:'key:W',down:'key:S',left:'key:A',right:'key:D',threshold:0.45},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},gyro:{sensitivity:1,deadzone:1},radial:['key:M','key:I'],hold_ms:300,turbo_hz:10}},
+      {id:'mouse',name:'Mouse only',blurb:'The controller is just a mouse',layout:{version:1,name:'Mouse only',base:'mouse',buttons:{a:'mouse:left',b:'mouse:right'},sticks:{ls:{mode:'scroll',sensitivity:1,deadzone:0.15},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},radial:[],hold_ms:300,turbo_hz:10}}]};
+  const store={}, fresh=()=>({layout:'off', custom:null, prefs:{sensitivity:1, gyro:false}}), copy=o=>JSON.parse(JSON.stringify(o));
+  const get=id=>Object.assign({game:id}, copy(store[id]||fresh()));
+  return async (m,a)=>{
+    if(m==='input.tables') return copy(T);
+    if(m==='input.get') return get(a.game);
+    if(m==='input.set'){ const c=store[a.game]||fresh(); if(a.custom) c.custom=copy(a.custom); if(a.layout) c.layout=a.layout; if(a.prefs) Object.assign(c.prefs,a.prefs); store[a.game]=c; return get(a.game); }
+    if(m==='input.status') return {ok:true, active:false, devices:[], gyro:{available:true, device:'Preview motion sensors', on:false}};
+    if(m==='input.test') return a.stop ? {ok:true} : {ok:true, seconds:a.seconds||20};
+    throw new Error('Not available in the browser preview: '+m);
+  };
+})();
+function imCall(m, a={}){ return host ? call(m, a, 15000) : IM_MOCK(m, a); }
+const imLater = f => setTimeout(f, 0);
+function imRedraw(){
+  if(S.layers.includes('qam')) return refreshUI();
+  if(!S.layers.length && (S.view==='gameset' || S.view==='inputmap')) render(null, true);
+}
+function imLoadTables(){
+  if(IM.tables || IM.loadingT) return;
+  IM.loadingT=true;
+  imCall('input.tables').then(t=>{ IM.tables=t; IM.keyLabel={}; for(const g of t.keys) for(const [n,l] of g.keys) IM.keyLabel[n]=l; imRedraw(); }).catch(()=>{}).finally(()=>{ IM.loadingT=false; });
+}
+function imLoad(id, force){
+  if(!id || IM.loading[id] || (!force && IM.games[id] && Date.now()-IM.at[id] < 5000)) return;
+  IM.loading[id]=true;
+  imCall('input.get',{game:id}).then(r=>{ IM.games[id]=r; }).catch(e=>{ IM.games[id]={game:id, layout:'off', custom:null, prefs:{sensitivity:1,gyro:false}, error:e.message}; })
+    .finally(()=>{ IM.at[id]=Date.now(); IM.loading[id]=false; imRedraw(); });
+}
+function imLoadStatus(){
+  if(Date.now()-IM.statusAt < 5000) return;
+  IM.statusAt=Date.now();
+  imCall('input.status').then(s=>{ const was=JSON.stringify(IM.status&&IM.status.gyro); IM.status=s; if(JSON.stringify(s&&s.gyro)!==was) imRedraw(); }).catch(()=>{ IM.status=null; });
+}
+const imPct = v => Math.round(v*100)+'%';
+const imX = v => (+v).toFixed(2).replace(/0$/,'')+'×';
+function imActLabel(raw){
+  if(!raw || raw==='none') return 'Nothing';
+  if(raw==='shift') return 'Second set (hold)';
+  if(raw==='radial') return 'Radial menu';
+  if(raw==='gyro:toggle') return 'Gyro aiming on/off';
+  if(raw==='gyro:hold') return 'Gyro aiming (hold)';
+  const i=raw.indexOf(':'), k=raw.slice(0,i), v=raw.slice(i+1), T=IM.tables||{};
+  if(k==='key') return v.split('+').map(n=>(IM.keyLabel||{})[n]||n).join(' + ');
+  if(k==='mouse') return ((T.mouse||[]).find(m=>m[0]===v)||[0,v])[1];
+  if(k==='scroll') return ((T.scroll||[]).find(m=>m[0]===v)||[0,v])[1];
+  return raw;
+}
+function imChoiceLabel(c){
+  if(!c) return '…';
+  if(c.layout==='off') return 'Off';
+  if(c.layout==='custom') return (c.custom && c.custom.name) || 'Custom';
+  const t=((IM.tables&&IM.tables.templates)||[]).find(t=>t.id===c.layout);
+  return t ? t.name : c.layout;
+}
+const imCtlLabel = id => { const T=IM.tables||{}; const x=[...(T.buttons||[]),...(T.sticks||[])].find(b=>b[0]===id); return x?x[1]:id; };
+
+// Game settings › Controller layout
+function inputRow(g){
+  if(!LINUX || !g || g.cloud) return '';
+  imLoadTables(); imLoad(g.id);
+  const c=IM.games[g.id];
+  const sub = !c ? 'Loading…' : c.layout==='off' ? 'Off: the game uses its own controller support' : 'Acts as a keyboard and mouse while you play';
+  return `<button class="row" data-f data-k="gs-input" data-act="im" data-op="pick" data-id="${esc(g.id)}"><span class="ricon">${I.pad}</span><div class="rt"><b>Controller layout</b><small>${sub}</small></div><div class="rv">${esc(imChoiceLabel(c))} ›</div></button>`;
+}
+function imPick(id){
+  const c=IM.games[id], T=IM.tables;
+  if(!c || !T){ imLoadTables(); imLoad(id, true); return toast('Loading…'); }
+  const set = layout => imSave(id, {layout}, true);
+  const items=[{label:'Off (the game\'s own controller support)', icon:c.layout==='off'?'check':'', run:()=>set('off')}];
+  for(const t of T.templates) items.push({label:t.name, icon:c.layout===t.id?'check':'', run:()=>set(t.id)});
+  if(c.custom) items.push({label:(c.custom.name||'Custom')+' (yours)', icon:c.layout==='custom'?'check':'', run:()=>set('custom')});
+  if(!OVERLAY) items.push({label:c.layout==='off' && !c.custom ? 'Make my own…' : 'Edit…', icon:'sliders', run:()=>imEdit(id)});
+  openSheet({title:'Controller layout', sub:'A layout makes the controller act as a keyboard and mouse in this game, for games without controller support.', items});
+}
+function imSave(id, patch, announce){
+  return imCall('input.set', Object.assign({game:id}, patch)).then(r=>{
+    IM.games[id]=r; IM.at[id]=Date.now();
+    if(announce) toast(r.layout==='off' ? 'Controller layout off' : 'Controller layout: '+imChoiceLabel(r));
+    imRedraw();
+    return r;
+  }).catch(e=>{ toast(e.message); });
+}
+
+// The editor (its own screen)
+function imEdit(id){
+  const c=IM.games[id], T=IM.tables; if(!c || !T) return;
+  const tpl = tid => ((T.templates.find(t=>t.id===tid)||T.templates[0]||{}).layout) || {};
+  let base;
+  if(c.layout==='custom' || (c.layout==='off' && c.custom)) base=c.custom;
+  else {
+    base=JSON.parse(JSON.stringify(tpl(c.layout==='off' ? 'shooter' : c.layout)));
+    base.name=((base.name||'Layout')+' (mine)').slice(0, T.limits.name_len);
+  }
+  IM.draft=JSON.parse(JSON.stringify(base)); IM.gid=id; IM.set='base';
+  IM.statusAt=0; imLoadStatus();
+  navigate('inputmap', {game:id});
+}
+function imChanged(redraw){
+  clearTimeout(IM.saveT);
+  const id=IM.gid, draft=JSON.parse(JSON.stringify(IM.draft));
+  IM.saveT=setTimeout(()=>imSave(id, {layout:'custom', custom:draft}), 350);
+  if(redraw && !S.layers.length && S.view==='inputmap') render(focused && focused.dataset.k, true);
+}
+function imLayer(){ const d=IM.draft; if(IM.set==='shift'){ d.shift=d.shift||{}; return d.shift; } return d; }
+function imB(ctl){ const v=((imLayer().buttons)||{})[ctl]; return v==null ? null : typeof v==='string' ? {press:v} : Object.assign({}, v); }
+function imSetB(ctl, b){
+  const L=imLayer(); L.buttons=L.buttons||{};
+  if(!b) delete L.buttons[ctl];
+  else {
+    const o={press:b.press};
+    if(b.hold) o.hold=b.hold;
+    if(b.turbo) o.turbo=true;
+    if(b.threshold!=null && (ctl==='lt'||ctl==='rt')) o.threshold=b.threshold;
+    L.buttons[ctl] = Object.keys(o).length===1 ? o.press : o;
+  }
+  imChanged(true);
+}
+function imS(s){ const v=((imLayer().sticks)||{})[s]; return v ? Object.assign({}, v) : null; }
+function imSetS(s, v){ const L=imLayer(); L.sticks=L.sticks||{}; if(v) L.sticks[s]=v; else delete L.sticks[s]; imChanged(true); }
+// Sliders and switches name what they change: "ls.sensitivity" (a stick, in the set being edited), "gyro.x", "hold_ms", "qa.sens".
+const IM_SL = {
+  sensitivity:{lim:'sensitivity', step:0.05, def:1, fmt:imX}, deadzone:{lim:'deadzone', step:0.01, def:0.12, fmt:imPct},
+  outer:{lim:'outer', step:0.01, def:0.95, fmt:imPct}, curve:{lim:'curve', step:0.1, def:1.8, fmt:v=>(+v).toFixed(1)},
+  threshold:{lim:'stick_threshold', step:0.05, def:0.5, fmt:imPct},
+  'gyro.sensitivity':{lim:'gyro_sensitivity', step:0.05, def:1, fmt:imX}, 'gyro.deadzone':{lim:'gyro_deadzone', step:0.1, def:1, fmt:v=>(+v).toFixed(1)+'°/s'},
+  hold_ms:{lim:'hold_ms', step:50, def:300, fmt:v=>v+' ms'}, turbo_hz:{lim:'turbo_hz', step:1, def:10, fmt:v=>v+' a second'},
+  'qa.sens':{lim:'pref_sensitivity', step:0.05, def:1, fmt:imX},
+};
+function imGet(p){
+  const [a,b]=p.split('.');
+  if(a==='qa'){ const c=IM.games[IM.qaGame]; return c && c.prefs ? c.prefs.sensitivity : 1; }
+  if(a==='ls' || a==='rs') return (imS(a)||{})[b];
+  if(a==='gyro') return (IM.draft.gyro||{})[b];
+  return IM.draft[a];
+}
+function imSetVal(p, v){
+  const [a,b]=p.split('.');
+  if(a==='qa'){ const c=IM.games[IM.qaGame]; if(!c) return; c.prefs=Object.assign({}, c.prefs, {sensitivity:v}); const id=IM.qaGame; return debounce('imqa', ()=>imSave(id, {prefs:{sensitivity:v}}), 300); }
+  if(a==='ls' || a==='rs'){ const L=imLayer(); L.sticks=L.sticks||{}; L.sticks[a]=Object.assign({mode:'none'}, L.sticks[a], {[b]:v}); return; }
+  if(a==='gyro'){ IM.draft.gyro=Object.assign({}, IM.draft.gyro, {[b]:v}); return; }
+  IM.draft[a]=v;
+}
+function imSpec(p){ return IM_SL[p] || IM_SL[p.split('.').pop()]; }
+function imSlider(p, label){
+  const sp=imSpec(p), [min,max]=IM.tables.limits[sp.lim], v=imGet(p) ?? sp.def, pct=(v-min)/(max-min)*100;
+  return `<div class="ctl" data-f data-k="im-sl-${p}" data-slider="im:${p}" data-min="${min}" data-max="${max}" data-step="${sp.step}" data-unit="">
+    <div class="lab">${esc(label)}<span>${esc(sp.fmt(v))}</span></div><div class="slider"><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div></div>`;
+}
+/** A slider moved (adjustSlider hands the im: ones here). */
+function imSlide(el, d){
+  const p=el.dataset.slider.slice(3), sp=imSpec(p), [min,max]=IM.tables.limits[sp.lim];
+  const cur=imGet(p) ?? sp.def, v=Math.max(min, Math.min(max, Math.round((cur+d*sp.step)/sp.step)*sp.step));
+  const val=+v.toFixed(3), pct=(val-min)/(max-min)*100;
+  imSetVal(p, val);
+  el.querySelector('.slider i').style.width=pct+'%'; el.querySelector('.slider b').style.left=pct+'%';
+  el.querySelector('.lab span').textContent=sp.fmt(val);
+  if(!p.startsWith('qa.')) imChanged(false);
+  blip(500+pct*3,.03);
+}
+function imSwitch(p, label, sub){
+  return `<button class="row" data-f data-k="im-t-${p}" data-act="im" data-op="tog" data-p="${p}"><div class="rt"><b>${esc(label)}</b>${sub?`<small>${esc(sub)}</small>`:''}</div><div class="sw ${imGet(p)?'on':''}"></div></button>`;
+}
+function imBtnRow(ctl, label){
+  const b=imB(ctl), shift=IM.set==='shift';
+  const val = !b ? (shift ? 'Same as main set' : 'Nothing') : imActLabel(b.press)+(b.hold?' · held: '+imActLabel(b.hold):'')+(b.turbo?' · turbo':'');
+  return `<button class="row" data-f data-k="im-b-${ctl}" data-act="im" data-op="btn" data-c="${ctl}"><div class="rt"><b>${esc(label)}</b></div><div class="rv" style="${b&&b.press!=='none'?'color:var(--accent)':''}">${esc(val)} ›</div></button>`;
+}
+function imStickRows(s, label){
+  const st=imS(s), shift=IM.set==='shift', mode=st ? st.mode : (shift ? 'same' : 'none');
+  const keysName = !st ? '' : st.up==='key:W'&&st.left==='key:A'&&st.down==='key:S'&&st.right==='key:D' ? 'Keys: W A S D' : st.up==='key:UP'&&st.left==='key:LEFT' ? 'Keys: arrow keys' : 'Keys';
+  const name={none:'Nothing', keys:keysName, mouse:'Mouse', scroll:'Scrolling', same:'Same as main set'}[mode];
+  const sub = mode==='keys' ? ['up','left','down','right'].map(d=>imActLabel(st[d]||'none')).join(' · ') : mode==='mouse' ? 'Moves the pointer' : mode==='scroll' ? 'Scrolls like a mouse wheel' : '';
+  let h=`<button class="row" data-f data-k="im-s-${s}" data-act="im" data-op="stick" data-c="${s}"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(label)}</b>${sub?`<small>${esc(sub)}</small>`:''}</div><div class="rv" style="color:var(--accent)">${esc(name)} ›</div></button>`;
+  if(mode==='mouse' || mode==='scroll'){
+    h += imSlider(s+'.sensitivity','Sensitivity') + imSlider(s+'.deadzone','Dead zone (ignores small movements)');
+    if(mode==='mouse') h += imSlider(s+'.outer','Outer dead zone (full speed from here)') + imSlider(s+'.curve','Curve (higher: finer near the center)') + imSwitch(s+'.invert_y','Invert up and down');
+  }
+  if(mode==='keys') h += imSlider(s+'.threshold','How far to push before a key goes down');
+  return h;
+}
+function viewInputMap(){
+  const g=G(S.game), T=IM.tables, d=IM.draft;
+  if(!g || !d || IM.gid!==S.game) return note('Open a game\'s Game settings and choose Controller layout › Edit.');
+  if(!T) return note('Loading…');
+  const shift=IM.set==='shift', c=IM.games[g.id];
+  let h=`<h2>${esc(g.title)}</h2><div class="rows">`;
+  h += `<button class="row" data-f data-k="im-name" data-act="im" data-op="name"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(d.name||'Custom')}</b><small>${c&&c.layout==='custom'?'This game\'s layout. Acts as a keyboard and mouse while you play.':'Your changes are saved as this game\'s own layout.'}</small></div><div class="rv">Rename ›</div></button>`;
+  h += `<button class="row" data-f data-k="im-test" data-act="im" data-op="test"><span class="ricon">${I.play}</span><div class="rt"><b>${IM.test?'Stop trying':'Try it (20 seconds)'}</b><small>The controller acts as this layout right here, and the keys and clicks it sends show on screen</small></div></button>`;
+  h += `<button class="row" data-f data-k="im-reset" data-act="im" data-op="reset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Start over from a template</b><small>${esc(d.base ? 'Based on '+((T.templates.find(t=>t.id===d.base)||{}).name||d.base) : 'Shooter, point-and-click, retro or mouse only')}</small></div></button>`;
+  h += `<div class="row"><div class="rt"><b>Editing</b><small>The second set works while a button set to “Second set while held” is held</small></div><div class="seg"><button class="${shift?'':'on'}" data-f data-k="im-set-base" data-act="im" data-op="set" data-v="base">Main set</button><button class="${shift?'on':''}" data-f data-k="im-set-shift" data-act="im" data-op="set" data-v="shift">Second set</button></div></div>`;
+  h += shead(shift ? 'Buttons (second set)' : 'Buttons');
+  h += `<button class="row" data-f data-k="im-dpad" data-act="im" data-op="dpad"><div class="rt"><b>D-pad</b><small>Set all four directions at once</small></div><div class="rv">Arrow keys, W A S D… ›</div></button>`;
+  h += T.buttons.map(([id,l])=>imBtnRow(id,l)).join('');
+  h += shead(shift ? 'Sticks (second set)' : 'Sticks');
+  h += T.sticks.map(([id,l])=>imStickRows(id,l)).join('');
+  if(!shift){
+    h += shead('Gyro aiming');
+    const gy=IM.status && IM.status.gyro;
+    h += note(gy && gy.available ? `Motion sensors found${gy.device?' ('+esc(gy.device)+')':''}. Set a button to “Gyro aiming on/off” or “Gyro aiming while held”, or turn it on in Quick Access while you play.`
+      : IM.status && IM.status.ok ? 'No motion sensors found right now. On a handheld, turn on Motion controls (gyro) in Settings › Controls › Handheld Daemon.'
+      : 'Gyro aiming works in Game Mode, with a controller that has motion sensors.');
+    h += imSlider('gyro.sensitivity','Gyro sensitivity') + imSlider('gyro.deadzone','Gyro dead zone (stops drift)');
+    h += imSwitch('gyro.invert_x','Turn the other way (left and right)') + imSwitch('gyro.invert_y','Turn the other way (up and down)') + imSwitch('gyro.start_on','On from the start','Without pressing a button first');
+    h += shead('Radial menu');
+    const R=d.radial||[], used=Object.values(d.buttons||{}).some(b=>(typeof b==='string'?b:b&&b.press)==='radial');
+    h += note('Extra keys on one button: hold it, point the right stick (or press the D-pad) at a key, and let go.'+(used?'':' Set a button to “Radial menu” to use it.'));
+    const dirs=['Up','Up-right','Right','Down-right','Down','Down-left','Left','Up-left'];
+    h += R.map((a,i)=>`<button class="row" data-f data-k="im-r-${i}" data-act="im" data-op="radial" data-i="${i}"><div class="rt"><b>${dirs[Math.round(i*8/R.length)%8]}</b></div><div class="rv" style="color:var(--accent)">${esc(imActLabel(a))} ›</div></button>`).join('');
+    if(R.length < T.limits.radial_items) h += `<button class="row" data-f data-k="im-r-add" data-act="im" data-op="radial" data-i="-1"><span class="ricon">${I.kbd}</span><div class="rt"><b>Add a key</b></div></button>`;
+    h += shead('Timing');
+    h += imSlider('hold_ms','Hold time (for “something else when held”)') + imSlider('turbo_hz','Turbo speed');
+  }
+  h += '</div>' + note('Saved as you go. The layout is on only while this game is in front: Quick Access, the Guide button and Hearth itself always get the controller back.');
+  return h;
+}
+VIEWS.inputmap = viewInputMap;
+TITLES.inputmap = 'Controller layout';
+
+function imPickAction(title, kinds, done){
+  const T=IM.tables, items=[];
+  if(kinds.includes('key')) items.push({label:'A key…', icon:'kbd', run:()=>imLater(()=>imPickKeys(title, 1).then(k=>k && done('key:'+k.join('+'))))},
+                                       {label:'A key combination…', icon:'kbd', run:()=>imLater(()=>imPickKeys(title+' (together)', T.limits.combo_keys).then(k=>k && done('key:'+k.join('+'))))});
+  if(kinds.includes('mouse')) items.push({label:'A mouse click…', icon:'mouse', run:()=>imLater(()=>openSheet({title, items:T.mouse.map(([id,l])=>({label:l, run:()=>done('mouse:'+id)}))}))});
+  if(kinds.includes('scroll')) items.push({label:'Scrolling…', icon:'mouse', run:()=>imLater(()=>openSheet({title, items:T.scroll.map(([id,l])=>({label:l, run:()=>done('scroll:'+id)}))}))});
+  return items;
+}
+function imBtnMenu(ctl){
+  const label=imCtlLabel(ctl), b=imB(ctl)||{press:'none'}, shift=IM.set==='shift';
+  const simple = p => !p || /^(none$|key:|mouse:|scroll:)/.test(p);
+  const setPress = p => { const nb=Object.assign({}, b, {press:p}); if(!simple(p)){ delete nb.hold; delete nb.turbo; } if(nb.turbo && !/^(key:|mouse:)/.test(p)) delete nb.turbo; imSetB(ctl, nb); };
+  const items=imPickAction(label, ['key','mouse','scroll'], setPress);
+  items.push({label:'Nothing', icon:'x', run:()=>setPress('none')});
+  if(!shift) items.push({label:'Second set while held', icon:'layout', run:()=>setPress('shift')}, {label:'Radial menu of extra keys', icon:'dots', run:()=>setPress('radial')});
+  items.push({label:'Gyro aiming on/off', icon:'pad', run:()=>setPress('gyro:toggle')}, {label:'Gyro aiming while held', icon:'pad', run:()=>setPress('gyro:hold')});
+  if(simple(b.press) && !b.turbo) items.push({label:b.hold ? 'When held: '+imActLabel(b.hold)+'…' : 'Something else when held…', icon:'clock', run:()=>imLater(()=>{
+    const its=imPickAction(label+' when held', ['key','mouse','scroll'], h=>imSetB(ctl, Object.assign({}, imB(ctl)||{press:'none'}, {hold:h, turbo:false})));
+    if(b.hold) its.push({label:'The same when held (no hold action)', icon:'x', run:()=>{ const nb=Object.assign({}, b); delete nb.hold; imSetB(ctl, nb); }});
+    openSheet({title:label+' when held', sub:'A quick press does “'+imActLabel(b.press)+'”; holding it does this instead.', items:its});
+  })});
+  if(/^(key:|mouse:)/.test(b.press) && !b.hold) items.push({label:'Turbo (repeats while held): '+(b.turbo?'on':'off'), icon:'bolt', run:()=>imSetB(ctl, Object.assign({}, b, {turbo:!b.turbo}))});
+  if(ctl==='lt' || ctl==='rt'){
+    const th=b.threshold ?? 0.5;
+    items.push({label:'How far to press: '+imPct(th)+'…', icon:'sliders', run:()=>imLater(()=>openSheet({title:label, sub:'How far the trigger goes down before it counts', items:[0.1,0.25,0.35,0.5,0.75,0.9].map(v=>({label:imPct(v), icon:Math.abs(th-v)<0.001?'check':'', run:()=>imSetB(ctl, Object.assign({}, b, {threshold:v}))}))}))});
+  }
+  if(shift) items.push({label:'Same as main set', icon:'refresh', run:()=>imSetB(ctl, null)});
+  openSheet({title:label, sub:'What should it do?', items});
+}
+const IM_KEYSETS = {wasd:{up:'key:W', down:'key:S', left:'key:A', right:'key:D'}, arrows:{up:'key:UP', down:'key:DOWN', left:'key:LEFT', right:'key:RIGHT'}};
+function imStickMenu(s){
+  const label=imCtlLabel(s), st=imS(s)||{mode:'none'}, shift=IM.set==='shift';
+  const keys = set => imSetS(s, Object.assign({mode:'keys', threshold:st.mode==='keys' && st.threshold || 0.5}, IM_KEYSETS[set]));
+  const items=[{label:'Keys: W A S D', icon:'kbd', run:()=>keys('wasd')}, {label:'Keys: arrow keys', icon:'kbd', run:()=>keys('arrows')},
+    {label:'Keys: choose each direction…', icon:'kbd', run:()=>imLater(()=>imStickDirs(s))},
+    {label:'Mouse (moves the pointer)', icon:'mouse', run:()=>imSetS(s, st.mode==='mouse' ? st : {mode:'mouse', sensitivity:1, deadzone:0.1, outer:0.95, curve:1.8})},
+    {label:'Scrolling', icon:'mouse', run:()=>imSetS(s, st.mode==='scroll' ? st : {mode:'scroll', sensitivity:1, deadzone:0.15})},
+    {label:'Nothing', icon:'x', run:()=>imSetS(s, {mode:'none'})}];
+  if(shift) items.push({label:'Same as main set', icon:'refresh', run:()=>imSetS(s, null)});
+  openSheet({title:label, sub:'What should it do?', items});
+}
+function imStickDirs(s){
+  const st=imS(s), cur=st && st.mode==='keys' ? st : {mode:'keys', threshold:0.5};
+  openSheet({title:imCtlLabel(s), sub:'Pick a direction to change', items:['up','down','left','right'].map(dir=>({label:dir[0].toUpperCase()+dir.slice(1)+': '+imActLabel(cur[dir]||'none'), icon:'kbd', run:()=>imLater(()=>{
+    const its=imPickAction(imCtlLabel(s)+' '+dir, ['key','mouse','scroll'], a=>{ const n=Object.assign({}, imS(s)&&imS(s).mode==='keys' ? imS(s) : cur, {[dir]:a}); imSetS(s, n); });
+    its.push({label:'Nothing', icon:'x', run:()=>{ const n=Object.assign({}, imS(s)&&imS(s).mode==='keys' ? imS(s) : cur); delete n[dir]; imSetS(s, n); }});
+    openSheet({title:imCtlLabel(s)+' '+dir, items:its});
+  })}))});
+}
+function imDpadMenu(){
+  const set = m => { const L=imLayer(); L.buttons=L.buttons||{}; for(const d of ['up','down','left','right']) L.buttons[d]=m[d]; imChanged(true); };
+  openSheet({title:'D-pad', sub:'All four directions at once', items:[
+    {label:'Arrow keys', icon:'kbd', run:()=>set(IM_KEYSETS.arrows)}, {label:'W A S D', icon:'kbd', run:()=>set(IM_KEYSETS.wasd)},
+    {label:'Number keys 1 2 3 4', icon:'kbd', run:()=>set({up:'key:1', right:'key:2', down:'key:3', left:'key:4'})},
+    {label:'Scrolling', icon:'mouse', run:()=>set({up:'scroll:up', down:'scroll:down', left:'scroll:left', right:'scroll:right'})},
+    {label:'Nothing', icon:'x', run:()=>set({up:'none', down:'none', left:'none', right:'none'})}]});
+}
+function imRadial(i){
+  const R=IM.draft.radial=IM.draft.radial||[];
+  const put = a => { if(i<0) R.push(a); else R[i]=a; imChanged(true); };
+  const items=imPickAction(i<0 ? 'Add to the radial menu' : 'Radial menu item', ['key','mouse','scroll'], put);
+  if(i>=0) items.push({label:'Remove it', icon:'trash', run:()=>{ R.splice(i,1); imChanged(true); }});
+  openSheet({title:i<0 ? 'Add to the radial menu' : 'Radial menu item', items});
+}
+function imReset(){
+  openSheet({title:'Start over from a template', sub:'Replaces this layout (its name stays)', items:IM.tables.templates.map(t=>({label:t.name, icon:'', run:()=>{
+    const name=IM.draft.name; IM.draft=JSON.parse(JSON.stringify(t.layout)); IM.draft.name=name||t.name; IM.set='base'; imChanged(true);
+  }}))});
+}
+async function imRename(){
+  const t=await openPrompt({title:'Layout name', value:IM.draft.name||''});
+  if(t && t.trim()){ IM.draft.name=t.trim().slice(0, IM.tables.limits.name_len); imChanged(true); }
+}
+
+// The key picker: an on-screen keyboard (one key, or up to 4 together)
+const IM_KB = [
+  ['ESC','F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12'],
+  ['GRAVE','1','2','3','4','5','6','7','8','9','0','MINUS','EQUAL','BACKSPACE'],
+  ['TAB','Q','W','E','R','T','Y','U','I','O','P','LEFTBRACE','RIGHTBRACE','BACKSLASH'],
+  ['CAPSLOCK','A','S','D','F','G','H','J','K','L','SEMICOLON','APOSTROPHE','ENTER'],
+  ['LEFTSHIFT','Z','X','C','V','B','N','M','COMMA','DOT','SLASH','RIGHTSHIFT'],
+  ['LEFTCTRL','LEFTMETA','LEFTALT','SPACE','RIGHTALT','COMPOSE','RIGHTCTRL'],
+  ['INSERT','DELETE','HOME','END','PAGEUP','PAGEDOWN','UP','DOWN','LEFT','RIGHT'],
+  ['KP0','KP1','KP2','KP3','KP4','KP5','KP6','KP7','KP8','KP9','KPDOT','KPENTER'],
+  ['KPPLUS','KPMINUS','KPASTERISK','KPSLASH','SYSRQ','SCROLLLOCK','PAUSE','NUMLOCK'],
+];
+let IMK=null;
+function imCss(){
+  if($('#imkeys')) return;
+  document.head.insertAdjacentHTML('beforeend', `<style>
+#imkeys{top:0;left:0;right:0;background:var(--panel);padding:18px var(--gut) 16px;transform:translateY(-102%);transition:transform .24s var(--ease),visibility .24s;box-shadow:0 20px 60px rgba(0,0,0,.45);max-height:100vh;overflow-y:auto;scrollbar-width:none}
+#imkeys.open{transform:none}
+#imkeys .osk{margin-top:12px}
+#imkeys .key{width:auto;min-width:clamp(30px,5.4vw,50px);padding:0 8px;font-size:13px;height:40px}
+#imkeys .key.w4{min-width:clamp(140px,24vw,230px)}
+#imtest{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:60;background:var(--panel);border-radius:14px;padding:16px 20px;box-shadow:0 20px 60px rgba(0,0,0,.5);width:min(560px,92vw)}
+#imtest b{display:block;margin-bottom:8px}
+#imtest .imrow{display:flex;gap:10px;font-size:14px;margin:4px 0}#imtest .imrow span:first-child{width:64px;color:var(--dim)}
+#imtest .muted{font-size:12px;margin-top:8px}
+</style>`);
+  const el=document.createElement('section'); el.className='layer'; el.id='imkeys'; document.body.appendChild(el);
+}
+function imPickKeys(title, max){
+  imCss();
+  return new Promise(res=>{ IMK={title, max, picked:[], res, done:false}; openLayer('imkeys'); });
+}
+function renderImKeys(keepK){
+  const k=IMK; if(!k) return;
+  const L=IM.keyLabel||{}, wide={SPACE:'w4', BACKSPACE:'w2', ENTER:'w2', LEFTSHIFT:'w2', RIGHTSHIFT:'w2', TAB:'w2', CAPSLOCK:'w2'};
+  const rows=IM_KB.map(r=>r.filter(n=>L[n]!=null)).filter(r=>r.length);
+  const shown = k.max>1 ? ' · '+(k.picked.length ? k.picked.map(n=>L[n]||n).join(' + ') : 'pick up to '+k.max+' keys, then Done') : '';
+  $('#imkeys').innerHTML = `<div class="ptitle">${esc(k.title)}${esc(shown)}</div>
+    <div class="osk">${rows.map(r=>`<div>${r.map(n=>`<button class="key ${wide[n]||''} ${k.picked.includes(n)?'on':''}" data-f data-k="imk-${n}" data-act="im" data-op="kb" data-v="${n}">${esc(L[n])}</button>`).join('')}</div>`).join('')}
+      <div>${k.max>1?`<button class="key w2" data-f data-k="imk-clear" data-act="im" data-op="kbclear">Clear</button><button class="key w2 go" data-f data-k="imk-done" data-act="im" data-op="kbdone">Done</button>`:''}<button class="key w2" data-f data-k="imk-x" data-act="back">Cancel</button></div></div>`;
+  const el=keepK && $(`#imkeys [data-k="${keepK}"]`); if(el) setFocus(el, true);
+}
+function imKb(n){
+  const k=IMK; if(!k) return;
+  if(k.max===1){ k.done=true; closeLayer(); return k.res([n]); }
+  const i=k.picked.indexOf(n);
+  if(i>=0) k.picked.splice(i,1); else if(k.picked.length<k.max) k.picked.push(n); else toast('Up to '+k.max+' keys together');
+  renderImKeys('imk-'+n);
+}
+function imKbDone(){ const k=IMK; if(!k) return; k.done=true; closeLayer(); k.res(k.picked.length ? k.picked.slice() : null); }
+LAYER_RENDER.imkeys = ()=>renderImKeys();
+LAYER_CLOSE.imkeys = ()=>{ if(IMK && !IMK.done) IMK.res(null); IMK=null; };
+
+// Trying a layout: Hearth Input runs it for a few seconds wherever Hearth is; what it sends shows here (and does
+// nothing else to the page).
+function imTest(){
+  if(IM.test) return imTestStop();
+  imCall('input.test', {layout:IM.draft, seconds:20}).then(r=>imTestStart(r.seconds||20)).catch(e=>toast(e.message));
+}
+function imKeyName(e){ return e.key===' ' ? 'Space' : e.key.length===1 ? e.key.toUpperCase() : e.key.replace(/^Arrow/,'').replace(/^Control$/,'Ctrl').replace(/^Escape$/,'Esc'); }
+function imTestStart(secs){
+  imCss();
+  const t={until:Date.now()+secs*1000, keys:new Set(), click:'', scroll:'', dx:0, dy:0};
+  IM.test=t;
+  const box=document.createElement('div'); box.id='imtest'; document.body.appendChild(box);
+  const mine = e => e.target && e.target.closest && e.target.closest('#imtest button');
+  const swallow = e => { if(mine(e)) return false; e.preventDefault(); e.stopImmediatePropagation(); return true; };
+  t.h = {
+    keydown:e=>{ swallow(e); t.keys.add(imKeyName(e)); imTestDraw(); },
+    keyup:e=>{ swallow(e); t.keys.delete(imKeyName(e)); imTestDraw(); },
+    mousedown:e=>{ if(swallow(e)){ t.click=['Left click','Middle click','Right click','Mouse back','Mouse forward'][e.button]||'Click'; imTestDraw(); } },
+    mouseup:e=>{ if(swallow(e)){ t.click=''; imTestDraw(); } },
+    click:swallow, auxclick:swallow, contextmenu:swallow, dblclick:swallow,
+    mousemove:e=>{ swallow(e); t.dx+=e.movementX||0; t.dy+=e.movementY||0; imTestDraw(); },
+    wheel:e=>{ swallow(e); t.scroll = e.deltaY<0 ? 'Scroll up' : e.deltaY>0 ? 'Scroll down' : e.deltaX<0 ? 'Scroll left' : 'Scroll right'; imTestDraw(); },
+  };
+  for(const [k,f] of Object.entries(t.h)) window.addEventListener(k, f, {capture:true, passive:false});
+  t.timer=setInterval(()=>{
+    if(Date.now()>=t.until) return imTestStop(true);
+    imTestDraw();
+    // The Guide button ends it early (Hearth Input lets go): stop here too.
+    if(host) imCall('input.status').then(s=>{ if(IM.test===t && s && s.ok && !s.test) imTestStop(true); }).catch(()=>{});
+  }, 1000);
+  imTestDraw();
+  if(S.view==='inputmap' && !S.layers.length) render('im-test', true);
+}
+function imTestDraw(){
+  const t=IM.test, box=$('#imtest'); if(!t || !box) return;
+  const left=Math.max(0, Math.ceil((t.until-Date.now())/1000));
+  const arrow=(v,a,b)=>v ? (v<0?a:b)+' '+Math.abs(v) : '';
+  box.innerHTML = `<b>Trying “${esc(IM.draft ? IM.draft.name||'Custom' : '')}” · ${left} s left</b>
+    <div class="imrow"><span>Keys</span><span>${t.keys.size ? esc([...t.keys].join(' + ')) : '—'}</span></div>
+    <div class="imrow"><span>Mouse</span><span>${esc([arrow(t.dx,'←','→'), arrow(t.dy,'↑','↓'), t.click, t.scroll].filter(Boolean).join(' · ') || '—')}</span></div>
+    <div class="muted">The controller sends these instead of its own buttons. Press Guide (the Xbox button) to stop early.</div>
+    <button class="btn sm">Stop</button>`;
+  box.querySelector('button').onclick = ()=>imTestStop();
+}
+function imTestStop(timedOut){
+  const t=IM.test; if(!t) return;
+  clearInterval(t.timer);
+  for(const [k,f] of Object.entries(t.h)) window.removeEventListener(k, f, {capture:true});
+  const box=$('#imtest'); if(box) box.remove();
+  IM.test=null;
+  imCall('input.test', {stop:true}).catch(()=>{});
+  toast(timedOut ? 'Done trying the layout' : 'Stopped trying the layout');
+  if(S.view==='inputmap' && !S.layers.length) render('im-test', true);
+}
+
+// Quick Access › Now playing: the running game's layout, gyro, sensitivity
+function inputQam(g){
+  if(!LINUX || !g || g.cloud) return '';
+  imLoadTables(); imLoad(g.id); imLoadStatus();
+  const c=IM.games[g.id]; if(!c || !IM.tables) return '';
+  IM.qaGame=g.id;
+  let h=`<h3 style="margin-top:16px">Controller layout</h3><button class="btn sm" data-f data-k="q-im" data-act="im" data-op="pick" data-id="${esc(g.id)}">${I.pad}${esc(imChoiceLabel(c))}</button>`;
+  if(c.layout!=='off'){
+    const gy=IM.status && IM.status.gyro, on=!!(c.prefs && c.prefs.gyro);
+    h += `<button class="ctl tg" data-f data-k="q-imgyro" data-act="im" data-op="qaGyro" data-id="${esc(g.id)}" style="margin-top:6px">${I.pad}<span class="tgl">Gyro aiming<small>${gy && gy.available ? 'Tilt the controller to aim' : 'No motion sensors found'}</small></span><div class="sw ${on?'on':''}"></div></button>`;
+    h += imSlider('qa.sens', 'Aiming sensitivity');
+    h += `<div class="muted" style="font-size:12px;margin-top:4px">The controller acts as a keyboard and mouse in this game. While Quick Access is open the controller is ${APP}'s.</div>`;
+  }
+  return h;
+}
+
+function imAct(el, d){
+  switch(d.op){
+    case 'pick': return imPick(d.id);
+    case 'btn': return imBtnMenu(d.c);
+    case 'stick': return imStickMenu(d.c);
+    case 'tog': imSetVal(d.p, !imGet(d.p)); return imChanged(true);
+    case 'set': IM.set=d.v; return render('im-set-'+d.v, true);
+    case 'name': return imRename();
+    case 'test': return imTest();
+    case 'reset': return imReset();
+    case 'dpad': return imDpadMenu();
+    case 'radial': return imRadial(+d.i);
+    case 'kb': return imKb(d.v);
+    case 'kbdone': return imKbDone();
+    case 'kbclear': if(IMK){ IMK.picked=[]; renderImKeys('imk-clear'); } return;
+    case 'qaGyro': { const c=IM.games[d.id]; if(!c) return; const on=!(c.prefs && c.prefs.gyro); return imSave(d.id, {prefs:{gyro:on}}).then(r=>{ if(r) toast('Gyro aiming '+(on?'on':'off')); }); }
+  }
 }
 
 function gameOptions(g){
@@ -3933,6 +4387,7 @@ async function loadAccounts(fromEvent){
     if(changed && host) loadLibrary(true);
     if(S.view==='stores' || S.view==='library') render(null,true);
     else if(S.view==='settings' && S.settingsTab==='profile') render(null,true);
+    deskSignCheck();
   }catch(e){ if(!fromEvent) toast(e.message); }
 }
 // ---------- First start (Hearth OS): Wi-Fi, store accounts, the controller, your games ----------
@@ -4454,7 +4909,7 @@ function viewStores(){
     }
     const b=(act,label,icon,pri)=>`<button class="sbtn ${pri?'pri':''}" data-f data-k="sa-${a.store}-${act}" data-act="${act}" data-s="${a.store}">${icon?I[icon]:''}${label}</button>`;
     let btns='';
-    if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?'Open Steam':'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : ''); }
+    if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?(signInViaDesktop()?'Switch account':'Open Steam'):'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : ''); }
     else if(signing) btns = `<span class="mini-spin"></span>`;
     else if(!a.signedIn) btns = b('accSignIn','Sign in','user',true);
     else btns = b('accShow','Show games','lib',true) + (a.busy?'':b('accRefresh','Refresh list','refresh')) + b('accSignOut','Sign out','x');
@@ -4465,18 +4920,23 @@ function viewStores(){
       ${a.error?`<div class="serr">${esc(a.error)}</div>`:''}
       <div class="sbtns">${btns}</div></div>`;
   }).join('');
+  // A windowed Hearth in Desktop Mode (opened for a sign-in from Game Mode, or from the desktop): the way back.
+  const back = HOSTINFO.session && HOSTINFO.windowed ? `<div class="rows" style="margin-bottom:18px">
+      <button class="row" data-f data-k="sa-back-game" data-act="backToGame"><span class="ricon">${I.pad}</span><div class="rt"><b>Back to Game Mode</b><small>${DESKSIGN.store?`When you've finished signing in to ${STORE_INFO[DESKSIGN.store].name}. `:''}${APP} opens full screen again, with your games.</small></div><div class="rv">›</div></button></div>` : '';
   return `<h2>Game stores &amp; accounts</h2>
+    ${back}
     <div class="stores">${cards}</div>
     <h2>Installing</h2>
     <div class="rows">
       <button class="row" data-f data-k="sa-folder" data-act="accFolder"><span class="ricon">${I.dl}</span><div class="rt"><b>Install folder for Epic and GOG games</b><small>${esc(ACC.root||'—')}</small></div><div class="rv">Change ›</div></button>
-      ${note(LINUX ? `You sign in on each store's own page; ${APP} never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, and run with Proton through <b>umu-launcher</b>; ${APP} downloads them from GitHub the first time they're needed. In the sign-in window, use touch or a mouse; B or Esc cancels.`
+      ${note(LINUX ? `${signInViaDesktop()?'Signing in opens in Desktop Mode, where the keyboard and mouse work normally. ':''}You sign in on each store's own page; ${APP} never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, and run with Proton through <b>umu-launcher</b>; ${APP} downloads them from GitHub the first time they're needed. In the sign-in window, use touch or a mouse; B or Esc cancels.`
         : `You sign in on each store's own page; ${APP} never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, which ${APP} downloads from GitHub the first time you sign in. In the sign-in window, the right stick moves the pointer, A clicks, Y opens a keyboard and B cancels.`)}
     </div>`;
 }
 async function accSignIn(store){
   const info=STORE_INFO[store];
   if(!host) return toast(`Signing in needs the ${APP} app (not the browser preview).`);
+  if(signInViaDesktop()) return accSignInFromGame(store);
   if(store==='steam'){
     try{ await call('accounts.signIn',{store}); toast('Steam is open. Sign in or switch accounts there, then come back to '+APP+'.'); }catch(e){ toast(e.message); }
     return;
@@ -4488,6 +4948,56 @@ async function accSignIn(store){
     if(r && r.ok) toast(`Signed in to ${info.name}. Getting your games…`);
   }catch(e){ toast(e.message); }
   finally{ ACC.signing=null; loadAccounts(); }
+}
+// ---------- Store sign-ins from Game Mode happen in Desktop Mode ----------
+// gamescope shows one window at a time and has no real keyboard focus, so store sign-in pages (and Steam's own
+// window) misbehave there. From Game Mode, Hearth goes to Desktop Mode; the desktop opens Hearth in a window and
+// starts the sign-in (desktop/shell/hearth-signin, hearth-core's signin_handoff), then offers the way back.
+// Signing out needs no window, so it stays here.
+const DESKSIGN = {store:null, base:null, offered:false, timer:null};
+function signInViaDesktop(){ return LINUX && !!host && !!HOSTINFO.gameMode; }
+function accSignInFromGame(store){
+  const info=STORE_INFO[store]; if(!info) return;
+  openSheet({title:`Sign in to ${info.name}`, sub:'Sign-in opens in Desktop Mode, where the keyboard and mouse work normally. '+APP+' brings you back afterwards.',
+    items:[{label:'Go to Desktop Mode', icon:'desk', run:()=>{
+      // First start: carry on from the accounts step when Game Mode opens again.
+      if(S.view==='setup'){ try{ localStorage.setItem('hearth.setupStep', String(SETUP_STEPS.indexOf('accounts'))); }catch(e){} }
+      call('accounts.signInDesktop',{store},10000).then(()=>{ toast(`Opening Desktop Mode… ${info.name} sign-in opens there in a moment`); setTimeout(()=>power('desktop',true),800); }).catch(e=>toast(e.message));
+    }}]});
+}
+function setupResumeStep(){
+  let n=0; try{ n=parseInt(localStorage.getItem('hearth.setupStep')||'0',10)||0; localStorage.removeItem('hearth.setupStep'); }catch(e){}
+  return n>0 && n<SETUP_STEPS.length ? n : 0;
+}
+// "signedIn:name" for a store, to tell when the sign-in has happened (or Steam switched accounts).
+function deskSignState(store){ const a=(ACC.list||[]).find(x=>x.store===store); return a ? `${a.signedIn?1:0}:${a.name||''}` : ''; }
+// In a windowed Hearth (Desktop Mode): the sign-in Game Mode asked for.
+async function deskSignBegin(store){
+  if(!STORE_INFO[store] || !host) return;
+  clearInterval(DESKSIGN.timer);
+  Object.assign(DESKSIGN, {store, base:null, offered:false, timer:null});
+  if(S.layers.length) closeAll();
+  S.history=[];
+  if(S.view!=='stores') navigate('stores',{},false); else render(null,true);
+  await loadAccounts(true);
+  DESKSIGN.base=deskSignState(store);
+  render(null,true);
+  // Steam signs in in its own window and tells nobody: look at its account every few seconds.
+  if(store==='steam') DESKSIGN.timer=setInterval(()=>{ if(DESKSIGN.store!=='steam'||DESKSIGN.offered){ clearInterval(DESKSIGN.timer); return; } loadAccounts(true); }, 4000);
+  accSignIn(store);
+}
+// After each account change: once that store is signed in (or on another account), offer Game Mode.
+function deskSignCheck(){
+  const st=DESKSIGN.store; if(!st || DESKSIGN.offered || DESKSIGN.base===null) return;
+  const a=(ACC.list||[]).find(x=>x.store===st); if(!a || !a.signedIn || deskSignState(st)===DESKSIGN.base) return;
+  DESKSIGN.offered=true; clearInterval(DESKSIGN.timer);
+  const info=STORE_INFO[st];
+  openSheet({title:`Signed in to ${info.name}. Back to Game Mode?`, sub:`Your games from ${info.name} show in the library there.`, noCancel:true,
+    items:[{label:'Back to Game Mode', icon:'pad', run:backToGameMode}, {label:'Stay in Desktop Mode', icon:'x', run:()=>{}}]});
+}
+function backToGameMode(){
+  if(!host) return toast('Switching modes needs the '+APP+' app.');
+  call('session.gameMode',{},10000).then(()=>toast('Going back to Game Mode…')).catch(e=>toast(e.message));
 }
 function accSignOut(store){
   const info=STORE_INFO[store];
@@ -4667,6 +5177,7 @@ function onSysEvent(name, data){
   if(name==='quickResume'){ applyQuick(data); if(!OVERLAY && !S.layers.length) render(null,true); else { renderFooter(); if(S.layers.includes('qam')) renderQam(); } return; }
   if(name==='game.paused'){ S.paused=!!data.paused; if(S.layers.includes('qam')) renderQam(); return; }
   if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
+  if(name==='signinStart') return OVERLAY ? null : deskSignBegin(data&&data.store);
   if(name==='osd') return showOsd(data);
   if(name==='library.art'){ if(!LIB.loading && !OVERLAY) loadLibrary(false); return; }
   if(name==='net'){ S.online=!!data.online; toast(data.online?'Back online':"You're offline. Installed games and your library still work."); return; }

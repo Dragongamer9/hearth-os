@@ -77,3 +77,6 @@ if [ -f "$OPEN_AFTER" ]; then
   app=$(head -n1 "$OPEN_AFTER"); rm -f "$OPEN_AFTER"
   case "$app" in "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/"*) [ -x "$app" ] && (sleep 4; "$app" >/dev/null 2>&1) & ;; esac
 fi
+
+# A store sign-in asked for in Game Mode (Library › Stores): Hearth opens here in a window and starts it.
+[ -f "$SHARE/desktop/shell/hearth-signin" ] && command -v python3 >/dev/null 2>&1 && python3 "$SHARE/desktop/shell/hearth-signin" desktop-start >/dev/null 2>&1 &

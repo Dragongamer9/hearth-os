@@ -1,0 +1,5 @@
+# Hearth Input's gyro aiming (hosts/linux/desktop/shell/hearth-input) reads a controller's motion sensors: the
+# separate "... Motion Sensors" input device the kernel (hid-playstation, hid-nintendo) or Handheld Daemon makes
+# next to the controller. Controllers themselves are already the signed-in user's (systemd's uaccess rule for
+# joysticks); their motion sensors aren't, so let the signed-in user read those too. Read only, nothing else.
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_ACCELEROMETER}=="1", TAG+="uaccess"

@@ -218,6 +218,11 @@ impl Bridge {
                 "system": system_install(),
                 // Opened just for Settings (from Mantel's taskbar).
                 "start": if std::env::args().any(|a| a == "--settings") { json!("settings") } else { Value::Null },
+                // Game Mode (full screen in gamescope): store sign-ins go to Desktop Mode. A windowed Hearth opened there
+                // for one gets --signin <store> and starts it (see signin_handoff).
+                "gameMode": crate::signin_handoff::game_mode(),
+                "windowed": crate::signin_handoff::windowed(),
+                "signin": crate::signin_handoff::signin_arg(),
                 "edition": edition(),
                 // The speed test (CI) asks the screens to time themselves.
                 "perfLog": std::env::var_os("HEARTH_PERF_LOG").is_some(),
@@ -308,6 +313,10 @@ impl Bridge {
                 if store == "steam" { let _ = crate::steam::spawn(&self.library.home, "steam://open/main"); return Ok(json!({"ok": true})); }
                 self.start_sign_in(&store)
             }
+            // Game Mode: the sign-in opens in Desktop Mode (the page switches there right after this).
+            "accounts.signInDesktop" => { crate::signin_handoff::write_request(&req("store")?)?; Ok(json!({"ok": true})) }
+            // A windowed Hearth in Desktop Mode, after a sign-in: back to Game Mode.
+            "session.gameMode" => crate::signin_handoff::back_to_game_mode().map(|_| Value::Null),
             "accounts.signOut" => { crate::stores::sign_out(&req("store")?)?; self.library.scan(); (self.emit)(Bridge::event("accounts.changed", json!({}))); Ok(Value::Null) }
             "accounts.refresh" => {
                 let store = req("store")?;
@@ -767,6 +776,8 @@ impl Bridge {
             "buttons.get" => Ok(self.button_prefs()),
             "buttons.set" => self.set_button_prefs(a),
             "setup.done" => io(self.library.store.update(|d| { d.insert("setupDone".into(), json!(now_ms())); })).map(|_| json!({"ok": true})),
+            // Hearth Input: controller layouts for games without controller support (input_map.rs)
+            m if m.starts_with("input.") => crate::input_map::call(m, a, self.library.running_id()),
             _ => Err(format!("{method} isn't in the Rust version of Hearth yet")),
         }
     }
