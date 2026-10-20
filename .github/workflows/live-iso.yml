@@ -29,7 +29,7 @@ on:
         default: true
 
 permissions:
-  contents: read
+  contents: write
   packages: read
 
 jobs:
@@ -128,6 +128,11 @@ jobs:
           kill $qpid 2>/dev/null || true
           tr -d '\r' < boot-test/serial.log | grep -a -E '^(HEARTH-CI|session:|bridge:|pages:|failed:)' > boot-test/report.txt || true
           tail -n 60 boot-test/report.txt
+          # On the run page too (logs and downloads can't be read from everywhere): the last report, and the
+          # serial console's last lines when there was no report.
+          last=$(awk '/^HEARTH-CI t=/{buf=""} {buf=buf $0 "\n"} END{printf "%s", buf}' boot-test/report.txt | tail -n 45 | cut -c1-200)
+          [ -n "$last" ] || last=$(tr -d '\r' < boot-test/serial.log | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | grep -av '^\s*$' | tail -n 45 | cut -c1-200)
+          echo "::notice title=Boot test report::$(printf '%s' "$last" | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
           python3 - <<'PY'
           import glob, sys
           from PIL import Image
@@ -148,6 +153,16 @@ jobs:
           for p in problems: print('::error title=Boot test::' + p)
           sys.exit(1 if problems else 0)
           PY
+
+      - name: Publish the boot test's screenshots (ci/live-shots)
+        if: always()
+        run: |
+          [ -d boot-test ] || exit 0
+          mkdir -p /tmp/shots && cp boot-test/*.png boot-test/report.txt /tmp/shots/ 2>/dev/null || true
+          cd /tmp/shots && git init -q && git checkout -q -b live-shots
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add -A
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "Live ISO boot test ($GITHUB_RUN_ID)" || exit 0
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/live-shots || true
 
       - name: Keep the boot test's screenshots and logs
         if: always()
