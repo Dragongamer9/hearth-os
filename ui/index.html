@@ -265,7 +265,7 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .key{width:clamp(30px,6.4vw,54px);height:44px;border-radius:7px;background:var(--panel3);display:grid;place-items:center;font-weight:600;font-size:16px;text-align:center}
 .key.w2{width:clamp(70px,13vw,116px)} .key.w4{width:clamp(150px,30vw,250px)}
 .key.go{background:var(--accent);color:var(--accentInk)}
-#launch{inset:0;background:var(--bg);display:grid;place-items:center;opacity:0;transition:opacity .25s,visibility .25s}
+#launch{z-index:19;inset:0;background:var(--bg);display:grid;place-items:center;opacity:0;transition:opacity .25s,visibility .25s}
 #launch.open{opacity:1}
 #launch .img{width:100%;height:100%;object-fit:cover}
 #launch .art{position:absolute;inset:0;filter:blur(40px) brightness(.5);transform:scale(1.2)}
@@ -3688,6 +3688,8 @@ let launchTimer=null;
 function hideLaunch(){
   clearTimeout(launchTimer);
   if(!S.layers.includes('launch')) return;
+  // Quick Access (or a sheet) opened over the starting screen closes with it: the game is coming to the front.
+  while(S.layers.length && S.layers.at(-1)!=='launch') closeLayer();
   S.layers=S.layers.filter(x=>x!=='launch'); $('#launch').classList.remove('open'); focusStack.pop();
   renderFooter();
 }
@@ -5438,7 +5440,14 @@ function logInput(what){ if(INPUT_LOG) send({type:'log', text:`input ${what} | v
 function input(k){
   logInput(k);
   const top=S.layers.at(-1);
-  if(top==='launch') return;
+  if(top==='launch'){
+    // While a game starts: Guide / the Quick Access button open Quick Access over the starting screen (to close
+    // the game, change power or the layout); B or A on "Show it now" stops waiting. Everything else waits.
+    if(k==='select'||k==='guide') return openLayer('qam');
+    if(k==='b' && S.launchWaiting) return launchShow();
+    if(k==='a' && focused && focused.closest('#launch')) return act(focused);
+    return;
+  }
   if(OVERLAY){
     // The overlay is only the Quick Access panel (plus its pop-ups and the text prompt).
     if((k==='select'||k==='guide') && top==='qam') return overlayClose();
