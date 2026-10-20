@@ -101,9 +101,9 @@ python3 -c 'import sqlite3, json'
 # As on the Bazzite-based Hearth OS: Steam installed in the system, its games in ~/.local/share/Steam. Anatase's
 # own Steam isn't relied on (Hearth doesn't know its folders). From RPM Fusion when Anatase doesn't have it.
 if ! rpm -q steam >/dev/null 2>&1; then
-  if dnf5 -y install "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA}.noarch.rpm" \
-                     "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA}.noarch.rpm" \
-     && dnf5 -y install --enablerepo='rpmfusion-nonfree-steam' steam > /tmp/steam-install.log 2>&1; then
+  if { dnf5 -y install "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA}.noarch.rpm" \
+                       "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA}.noarch.rpm" \
+       && dnf5 -y install --enablerepo='rpmfusion-nonfree-steam' steam; } > /tmp/steam-install.log 2>&1; then
     echo "Steam installed from RPM Fusion"
   else
     tail -n 15 /tmp/steam-install.log 2>/dev/null || true
