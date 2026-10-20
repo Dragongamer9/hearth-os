@@ -80,10 +80,22 @@ fn worker() {
     }
 }
 
+/// An address with the characters a URL can't carry as they are (space, quotes, brackets, non-ASCII) percent-encoded;
+/// anything already encoded or legal is left alone.
+pub fn encode_url(u: &str) -> String {
+    let mut out = String::with_capacity(u.len());
+    for b in u.bytes() {
+        if b > 0x20 && b < 0x7f && !b"\"<>\\^`{|}".contains(&b) { out.push(b as char); } else { out.push_str(&format!("%{b:02X}")); }
+    }
+    out
+}
+
 fn download(u: &str, dir: &std::path::Path) -> Result<PathBuf, String> {
     let name = name_of(u);
     let part = dir.join(format!("{name}.part"));
-    let o = std::process::Command::new("curl").args(["-fsSL", "--max-time", "30", "-o"]).arg(&part).args(["-w", "%{content_type}", u]).output().map_err(|e| e.to_string())?;
+    // Epic's art addresses can have spaces and other characters curl refuses ("URL rejected"): sent encoded.
+    let wire = encode_url(u);
+    let o = std::process::Command::new("curl").args(["-fsSL", "--max-time", "30", "-o"]).arg(&part).args(["-w", "%{content_type}", &wire]).output().map_err(|e| e.to_string())?;
     if !o.status.success() { let _ = std::fs::remove_file(&part); return Err(String::from_utf8_lossy(&o.stderr).trim().to_string()); }
     let ty = String::from_utf8_lossy(&o.stdout).split(';').next().unwrap_or("").trim().to_lowercase();
     let from_url = u.split(['?', '#']).next().unwrap_or("").rsplit('.').next().unwrap_or("").to_lowercase();
@@ -117,5 +129,15 @@ mod tests {
         assert_eq!(n.len(), 24);
         assert!(n.chars().all(|c| c.is_ascii_hexdigit()));
         assert_eq!(super::url("/home/x/a.png"), "/home/x/a.png");
+    }
+}
+
+#[cfg(test)]
+mod encode_tests {
+    #[test]
+    fn spaces_and_odd_characters_are_encoded() {
+        assert_eq!(super::encode_url("https://cdn1.epicgames.com/a/EGS_TOEM_S1 (1)_2560x1440-8b"), "https://cdn1.epicgames.com/a/EGS_TOEM_S1%20(1)_2560x1440-8b");
+        assert_eq!(super::encode_url("https://x/a%20b?c=1&d=2"), "https://x/a%20b?c=1&d=2");
+        assert_eq!(super::encode_url("https://x/é"), "https://x/%C3%A9");
     }
 }
