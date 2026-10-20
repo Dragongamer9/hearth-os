@@ -102,6 +102,15 @@ SetPage {
             onActivated: page.run(["reset"])
         }
 
+        // Handheld Daemon's own settings (fan curve, power modes, lights, stick ranges...): Hearth's page for them,
+        // in a window (the same page as Game Mode's Settings › Controls › Handheld Daemon).
+        SetHeader { visible: !!(page.ctl && page.ctl.backend === "hhd"); text: "Handheld Daemon" }
+        SetRow {
+            visible: !!(page.ctl && page.ctl.backend === "hhd")
+            icon: "gear"; title: "Handheld Daemon settings"; sub: "Everything for the built-in controller, power limit, fan and lights. Opens in Hearth."
+            onActivated: { Quickshell.execDetached(["nimbus", "--windowed", "--page", "hhd"]); SettingsNav.toast("Opening Handheld Daemon settings"); }
+        }
+
         SetHeader { text: "Help" }
         SetRow { icon: "help"; title: "Controller buttons"; sub: "What each button does in Desktop Mode"; onActivated: { if (SettingsNav.help) SettingsNav.help.shown = true; } }
         SetRow { icon: "kbd"; title: "On-screen keyboard"; sub: "Y on the controller, or here"; onActivated: { if (page.pad) page.pad.openKeyboard(); } }

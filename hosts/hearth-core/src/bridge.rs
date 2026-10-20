@@ -216,8 +216,9 @@ impl Bridge {
                 "platform": "linux", "name": os_name(), "host": "Hearth (Rust)", "version": self.version,
                 // Part of Hearth, the OS: the app updates with the system (Settings › Updates shows Update now).
                 "system": system_install(),
-                // Opened just for Settings (from Mantel's taskbar).
-                "start": if std::env::args().any(|a| a == "--settings") { json!("settings") } else { Value::Null },
+                // Opened just for Settings (from Mantel's taskbar), or for one of its pages (--page hhd: Handheld
+                // Daemon's settings, from Mantel's Controller page).
+                "start": start_page(&std::env::args().collect::<Vec<_>>()),
                 // Game Mode (full screen in gamescope): store sign-ins go to Desktop Mode. A windowed Hearth opened there
                 // for one gets --signin <store> and starts it (see signin_handoff).
                 "gameMode": crate::signin_handoff::game_mode(),
@@ -400,9 +401,14 @@ impl Bridge {
             }
             "controller.preset" => crate::guide::controller(&["preset", &req("name")?]),
             "controller.reset" => crate::guide::controller(&["reset"]),
-            // Settings › Controls › Handheld Daemon (Hearth OS on Anatase): gyro, back buttons, fan, lights.
+            // Is Handheld Daemon running, its controllers and power limit (Settings › Controls shows the way in).
             "hhd.status" => Ok(crate::hhd::status()),
-            "hhd.set" => crate::hhd::set(&req("key")?, &a["value"]),
+            // Settings › Controls › Handheld Daemon: HHD's whole settings tree with its state, the state alone (the
+            // page keeps current while it's open), and changes to any setting it shows (checked against the tree).
+            // hhd.set answers with hhd.status, or with the new state when the page asks for it ("state": true).
+            "hhd.settings" => crate::hhd::settings(),
+            "hhd.state" => crate::hhd::state(),
+            "hhd.set" => if a["state"] == true { crate::hhd::write(&req("key")?, &a["value"]) } else { crate::hhd::set(&req("key")?, &a["value"]) },
             // Settings › Updates: the new Hearth OS (on Anatase) as a clean install that keeps your games, from the
             // Bazzite-based one; and on the new one, Settings › System: the files put aside (~/.old-hearth-<date>).
             "newos.status" => { let id = self.cur_id.clone(); crate::space::answer_later(id, || Ok(crate::newos::status())); Ok(json!(DEFERRED)) }
@@ -1125,6 +1131,20 @@ fn features() -> Vec<&'static str> {
     if std::path::Path::new("/sys/module/nvidia").exists() { f.push("nvidiaDrawing"); }
     f
 }
+/// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a
+/// page of Settings (only the ones listed here; "hhd" is Settings › Controls › Handheld Daemon). Null: the usual start.
+pub fn start_page(args: &[String]) -> Value {
+    const PAGES: &[&str] = &["hhd", "settings"];
+    let mut start = Value::Null;
+    let mut it = args.iter().skip(1);
+    while let Some(a) = it.next() {
+        let page = if a == "--page" { it.next().map(String::as_str) } else { a.strip_prefix("--page=") };
+        if let Some(p) = page.and_then(|p| PAGES.iter().find(|k| **k == p)) { return json!(p); }
+        if a == "--settings" { start = json!("settings"); }
+    }
+    start
+}
+
 /// "Hearth 0.0.25 (Bazzite)": the system's own name, for About and the top of Settings.
 fn os_name() -> String {
     std::fs::read_to_string("/etc/os-release").ok().and_then(|t| t.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=").map(|v| v.trim_matches('"').to_string())))
@@ -1175,6 +1195,21 @@ mod tests {
         let missing: Vec<String> = methods.captures_iter(&node).map(|c| c[1].to_string())
             .filter(|m| !rust.contains(&format!("\"{m}\" =>")) && !rust.contains(&format!("\"{m}\" |")) && !rust.contains(&format!("| \"{m}\""))).collect();
         assert!(missing.is_empty(), "not in the Rust host yet: {missing:?}");
+    }
+    #[test]
+    fn reads_the_start_page() {
+        let a = |v: &[&str]| start_page(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(a(&["nimbus"]), Value::Null);
+        assert_eq!(a(&["nimbus", "--windowed", "--settings"]), json!("settings"));
+        assert_eq!(a(&["nimbus", "--windowed", "--page", "hhd"]), json!("hhd"));
+        assert_eq!(a(&["nimbus", "--page=hhd", "--windowed"]), json!("hhd"));
+        assert_eq!(a(&["nimbus", "--settings", "--page", "hhd"]), json!("hhd"));
+        // Pages Hearth doesn't know, or none given: the usual start (or Settings, when asked for too).
+        assert_eq!(a(&["nimbus", "--page", "rm -rf"]), Value::Null);
+        assert_eq!(a(&["nimbus", "--page"]), Value::Null);
+        assert_eq!(a(&["nimbus", "--page", "nope", "--settings"]), json!("settings"));
+        // The program's own name is never read as an option.
+        assert_eq!(a(&["--settings"]), Value::Null);
     }
     #[test]
     fn read_only_calls_answer() {

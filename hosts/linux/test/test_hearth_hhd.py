@@ -241,5 +241,100 @@ class Power(unittest.TestCase):
             self.assertIn(('hhd', 12), calls)
 
 
+ROOT = SHELL.parents[3]
+KINDS = {'container', 'mode', 'bool', 'multiple', 'discrete', 'int', 'float', 'action', 'display', 'custom'}
+
+
+class HandheldDaemonPage(unittest.TestCase):
+    """Settings › Controls › Handheld Daemon: Hearth's page for all of HHD's settings (ui/index.html, drawn from
+    HHD's settings tree), its bridge calls (hearth-core), and the ways in (Game Mode's Settings, Quick Access,
+    Mantel's Controller page through `nimbus --windowed --page hhd`)."""
+
+    def setUp(self):
+        self.ui = (ROOT / 'ui' / 'index.html').read_text()
+        self.rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'hhd.rs').read_text()
+        self.bridge = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'bridge.rs').read_text()
+
+    def mock(self):
+        import re
+        m = re.search(r'^const HHD_MOCK = (\{.*\});$', self.ui, re.M)
+        self.assertIsNotNone(m, 'the preview has no Handheld Daemon')
+        return json.loads(m.group(1))
+
+    def walk(self, node, key, out):
+        """Every setting in the tree: (dotted key, entry); a mode's choice is '<key>.mode'."""
+        t = node.get('type')
+        self.assertIn(t, KINDS | {'version'}, key)
+        if t != 'version':   # HHD adds its version entry after the merge, which fills these in for the rest
+            for f in ('tags', 'title'):
+                self.assertIn(f, node, key)
+        if t == 'container':
+            self.assertIsInstance(node['children'], dict, key)
+            for k, v in node['children'].items():
+                self.walk(v, key + '.' + k, out)
+        elif t == 'mode':
+            self.assertIsInstance(node['modes'], dict, key)
+            out.append((key + '.mode', node))
+            for k, v in node['modes'].items():
+                self.assertEqual(v['type'], 'container', key + '.' + k)
+                self.walk(v, key + '.' + k, out)
+        elif t != 'version':
+            out.append((key, node))
+
+    def test_the_preview_has_a_whole_rog_ally(self):
+        m = self.mock()
+        sets, state = m['settings'], m['state']
+        for sec in ('controllers', 'tdp', 'rgb', 'hhd'):
+            self.assertIn(sec, sets)
+        self.assertEqual(sets['hhd']['version']['value'], state['version'])
+        leaves = []
+        for sec, plugins in sets.items():
+            for k, v in plugins.items():
+                self.walk(v, sec + '.' + k, leaves)
+        kinds = {n['type'] for _, n in leaves}
+        for k in ('mode', 'bool', 'multiple', 'discrete', 'int', 'action', 'display'):
+            self.assertIn(k, kinds)   # every kind the page draws is in the preview
+        def val(k):
+            v = state
+            for p in k.split('.'):
+                v = v.get(p) if isinstance(v, dict) else None
+            return v
+        for k, n in leaves:
+            v = val(k)
+            if n['type'] == 'mode':
+                self.assertIn(v, n['modes'], k)
+            elif n['type'] == 'bool' and v is not None:
+                self.assertIsInstance(v, bool, k)
+            elif n['type'] == 'multiple' and v is not None:
+                self.assertIn(v, n['options'], k)
+            elif n['type'] == 'discrete':
+                self.assertIn(v, n['options'], k)
+            elif n['type'] in ('int', 'float') and v is not None:
+                self.assertLessEqual(n['min'], v, k)
+                self.assertLessEqual(v, n['max'], k)
+        # The Ally's power limit as HHD gives it: 5 to 30 W in its custom power mode.
+        tdp = sets['tdp']['unified']['children']['tdp']['modes']['custom']['children']['tdp']
+        self.assertEqual((tdp['min'], tdp['max']), (5, 30))
+
+    def test_page_and_core_leave_out_the_same(self):
+        import re
+        ui = re.search(r"const HHD_SKIP = \[([^\]]*)\]", self.ui).group(1)
+        rs = re.search(r'pub const SKIP_TAGS: &\[&str\] = &\[([^\]]*)\]', self.rs).group(1)
+        self.assertEqual(re.findall(r"'([^']+)'", ui), re.findall(r'"([^"]+)"', rs))
+        self.assertIn('hidden', re.findall(r'"([^"]+)"', rs))
+
+    def test_bridge_calls_and_ways_in(self):
+        for m in ('hhd.settings', 'hhd.state', 'hhd.set', 'hhd.status'):
+            self.assertIn('"%s" =>' % m, self.bridge)
+            self.assertIn("'%s':async" % m, self.ui)   # and the preview answers it
+        self.assertIn('const PAGES: &[&str] = &["hhd"', self.bridge)
+        self.assertIn("i.start==='hhd'", self.ui)
+        qml = (SHELL / 'SetController.qml').read_text()
+        self.assertIn('["nimbus", "--windowed", "--page", "hhd"]', qml)
+        self.assertIn('data-act="hhdOpen"', self.ui)
+        self.assertNotIn('Its other settings are in its own app', self.ui)
+        self.assertIn("navigate('hhd'", (ROOT / 'tools' / 'ui-check.js').read_text())
+
+
 if __name__ == '__main__':
     unittest.main()

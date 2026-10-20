@@ -328,6 +328,8 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .tag.on{color:var(--accent)}
 .mini-spin{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:var(--accent);animation:sp .8s linear infinite;flex:none}
 .note{color:var(--dim);font-size:13px;padding:8px 4px;line-height:1.5}
+.hhd-sub{display:flex;flex-direction:column;gap:8px;margin-left:16px;padding-left:12px;border-left:2px solid var(--panel3)}.hhd-sub:empty{display:none}
+.hhd-h{font-size:14px;font-weight:700;margin:8px 4px 0}
 .row .seg{flex:1;max-width:420px}
 .ctl.tg .tgl{display:flex;flex-direction:column;min-width:0}
 .ctl.tg .tgl small{font-size:12px;color:var(--dim);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -725,7 +727,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&i.start!=='settings'&&!i.signin){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -772,6 +774,9 @@ function onHostMessage(m){
 }
 if(host) host.addEventListener('message', e => onHostMessage(e.data || {}));
 
+// Handheld Daemon on a ROG Ally, for the preview: the settings tree and state HHD 4.1.12 serves there (built from HHD's
+// own settings files: the Ally controller, the unified power driver with its fan curve, the Ally's lights, HHD's own).
+const HHD_MOCK = {"settings":{"tdp":{"unified":{"type":"container","title":"Power Controls","hint":"Power settings for your device.","unit":"","tags":["hide-title"],"default":null,"children":{"tdp":{"type":"mode","title":"Power Mode","hint":"","unit":"","tags":[],"default":"balanced","modes":{"quiet":{"type":"container","title":"Silent","hint":"","unit":"13W","tags":[],"default":null,"children":{}},"balanced":{"type":"container","title":"Performance","hint":"","unit":"17W","tags":[],"default":null,"children":{}},"performance":{"type":"container","title":"Turbo","hint":"","unit":"25W","tags":[],"default":null,"children":{}},"custom":{"type":"container","title":"Custom","hint":"","unit":"→ 30","tags":[],"default":null,"children":{"tdp":{"type":"int","title":"TDP","hint":"Average TDP Target. TDP Boost is recommended for desktop use and does not affect gaming.","unit":"W","tags":[],"default":15,"min":5,"max":30,"step":1,"smin":null,"smax":null},"boost":{"type":"bool","title":"TDP Boost","hint":"Allows the device to temporarily boost by setting appropriate slow and fast TDPs.","unit":"","tags":[],"default":true}}}}},"sys_tdp":{"type":"display","title":" ","hint":"","unit":"","tags":[],"default":null},"fan_full_speed":{"type":"bool","title":"Set Fan to Full Speed","hint":"","unit":"","tags":[],"default":null},"fan":{"type":"mode","title":"Custom Fan Curve","hint":"Allows you to set a custom fan curve and to choose the temperature probe (Edge or Junction). Junction is the peak temperature of the chip: responds faster and prevents throttling. Edge is the temperature of the chip: responds slower and prevents overheating.","unit":"","tags":[],"default":"disabled","modes":{"disabled":{"type":"container","title":"Disabled","hint":"","unit":"","tags":[],"default":null,"children":{}},"manual_edge":{"type":"container","title":"Manual (Edge, Smooth)","hint":"","unit":"","tags":["non-essential"],"default":null,"children":{"info":{"type":"display","title":"","hint":"","unit":"","tags":[],"default":null},"st40":{"type":"int","title":"40C","hint":"","unit":"%","tags":["slim"],"default":45,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st45":{"type":"int","title":"45C","hint":"","unit":"%","tags":["slim"],"default":45,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st50":{"type":"int","title":"50C","hint":"","unit":"%","tags":["slim"],"default":45,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st55":{"type":"int","title":"55C","hint":"","unit":"%","tags":["slim"],"default":45,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st60":{"type":"int","title":"60C","hint":"","unit":"%","tags":["slim"],"default":55,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st65":{"type":"int","title":"65C","hint":"","unit":"%","tags":["slim"],"default":60,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st70":{"type":"int","title":"70C","hint":"","unit":"%","tags":["slim"],"default":70,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st80":{"type":"int","title":"80C","hint":"","unit":"%","tags":["slim"],"default":85,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st90":{"type":"int","title":"90C","hint":"","unit":"%","tags":["slim"],"default":100,"min":0,"max":100,"step":2,"smin":null,"smax":null},"reset":{"type":"action","title":"Reset to Default","hint":"","unit":"","tags":[],"default":null}}},"manual_junction":{"type":"container","title":"Manual (Tctl, Fast)","hint":"","unit":"","tags":["non-essential"],"default":null,"children":{"info":{"type":"display","title":"","hint":"","unit":"","tags":[],"default":null},"st40":{"type":"int","title":"40C","hint":"","unit":"%","tags":["slim"],"default":40,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st50":{"type":"int","title":"50C","hint":"","unit":"%","tags":["slim"],"default":45,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st60":{"type":"int","title":"60C","hint":"","unit":"%","tags":["slim"],"default":50,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st70":{"type":"int","title":"70C","hint":"","unit":"%","tags":["slim"],"default":60,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st80":{"type":"int","title":"80C","hint":"","unit":"%","tags":["slim"],"default":75,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st90":{"type":"int","title":"90C","hint":"","unit":"%","tags":["slim"],"default":90,"min":0,"max":100,"step":2,"smin":null,"smax":null},"st100":{"type":"int","title":"100C","hint":"","unit":"%","tags":["slim"],"default":100,"min":0,"max":100,"step":2,"smin":null,"smax":null},"reset":{"type":"action","title":"Reset to Default","hint":"","unit":"","tags":[],"default":null}}}}}}}},"rgb":{"handheld":{"type":"container","title":"RGB Settings","hint":"","unit":"","tags":["hide-title"],"default":null,"children":{"mode":{"type":"mode","title":"RGB Mode","hint":"","unit":"","tags":[],"default":"solid","modes":{"disabled":{"type":"container","title":"Off","hint":"Turns the LEDs off.","unit":"","tags":["non-essential","rgb","disabled"],"default":null,"children":{}},"solid":{"type":"container","title":"Solid","hint":"Maintains the LEDs at a solid color.","unit":"","tags":["non-essential","rgb","solid"],"default":null,"children":{"hue":{"type":"int","title":"Hue","hint":"","unit":"°","tags":["hue","non-essential","rgb","solid"],"default":30,"min":0,"max":360,"step":5,"smin":null,"smax":null},"saturation":{"type":"int","title":"Saturation","hint":"","unit":"%","tags":["non-essential","rgb","saturation","solid"],"default":100,"min":0,"max":100,"step":10,"smin":null,"smax":null},"brightness":{"type":"int","title":"Brightness","hint":"","unit":"%","tags":["brightness","non-essential","rgb","solid"],"default":50,"min":0,"max":100,"step":10,"smin":null,"smax":null}}},"pulse":{"type":"container","title":"Pulse","hint":"Slowly pulses the LEDs as a prespecified color.","unit":"","tags":["non-essential","rgb","pulse"],"default":null,"children":{"hue":{"type":"int","title":"Hue","hint":"","unit":"°","tags":["hue","non-essential","pulse","rgb"],"default":30,"min":0,"max":360,"step":5,"smin":null,"smax":null},"saturation":{"type":"int","title":"Saturation","hint":"","unit":"%","tags":["non-essential","pulse","rgb","saturation"],"default":100,"min":0,"max":100,"step":10,"smin":null,"smax":null},"brightness":{"type":"int","title":"Brightness","hint":"","unit":"%","tags":["brightness","non-essential","pulse","rgb"],"default":50,"min":0,"max":100,"step":10,"smin":null,"smax":null},"speedd":{"type":"multiple","title":"Speed","hint":"","unit":"","tags":["non-essential","ordinal","pulse","rgb"],"default":"medium","options":{"low":"Low","medium":"Medium","high":"High"}}}},"duality":{"type":"container","title":"Duality","hint":"Alternates between two colors.","unit":"","tags":["non-essential","rgb","duality"],"default":null,"children":{"hue":{"type":"int","title":"Hue","hint":"","unit":"°","tags":["duality","hue","non-essential","rgb"],"default":60,"min":0,"max":360,"step":5,"smin":null,"smax":null},"hue2":{"type":"int","title":"Secondary","hint":"","unit":"°","tags":["duality","hue2","non-essential","rgb"],"default":30,"min":0,"max":360,"step":5,"smin":null,"smax":null},"saturation":{"type":"int","title":"Saturation","hint":"","unit":"%","tags":["duality","non-essential","rgb","saturation"],"default":100,"min":0,"max":100,"step":10,"smin":null,"smax":null},"brightness":{"type":"int","title":"Brightness","hint":"","unit":"%","tags":["brightness","duality","non-essential","rgb"],"default":50,"min":0,"max":100,"step":10,"smin":null,"smax":null},"speedd":{"type":"multiple","title":"Speed","hint":"","unit":"","tags":["duality","non-essential","ordinal","rgb"],"default":"medium","options":{"low":"Low","medium":"Medium","high":"High"}}}},"rainbow":{"type":"container","title":"Rainbow","hint":"Cycles through the different colors.","unit":"","tags":["non-essential","rainbow"],"default":null,"children":{"brightnessd":{"type":"multiple","title":"Brightness","hint":"","unit":"","tags":["non-essential","ordinal","rainbow"],"default":"medium","options":{"low":"Low","medium":"Medium","high":"High"}}}},"spiral":{"type":"container","title":"Spiral","hint":"Creates an RGB spiral around the stick.","unit":"","tags":["non-essential","spiral"],"default":null,"children":{"brightnessd":{"type":"multiple","title":"Brightness","hint":"","unit":"","tags":["non-essential","ordinal","spiral"],"default":"medium","options":{"low":"Low","medium":"Medium","high":"High"}},"speedd":{"type":"multiple","title":"Speed","hint":"","unit":"","tags":["non-essential","ordinal","spiral"],"default":"medium","options":{"low":"Low","medium":"Medium","high":"High"}},"direction":{"type":"multiple","title":"Direction","hint":"","unit":"","tags":["non-essential","ordinal","spiral"],"default":"left","options":{"left":"Left","right":"Right"}}}}}}}}},"controllers":{"rog_ally":{"type":"container","title":"Ally Controller","hint":"Allows for configuring the ROG Ally controllers to a unified output.","unit":"","tags":["lgc"],"default":null,"children":{"controller_mode":{"type":"mode","title":"Controller Emulation","hint":"Emulate different controller types to fuse ROG features.","unit":"","tags":["rog_controller_mode"],"default":"uinput","modes":{"hidden":{"type":"container","title":"Hidden","hint":"Disables the controller. Handheld Daemon overlay will still work in gamemode.","unit":"","tags":["lgc_emulation_disabled"],"default":null,"children":{"info":{"type":"display","title":"","hint":"","unit":"","tags":["non-essential"],"default":"Disables the built-in controller.\nExternal controllers will be slot 1.\nOverlay will still work.\n"},"noob_mode":{"type":"bool","title":"Extra buttons as Keyboard/Overlay","hint":"Makes the left paddle bring up a keyboard and the right paddle bring up the overlay.","unit":"","tags":["non-essential"],"default":true}}},"uinput":{"type":"container","title":"Xbox","hint":"","unit":"","tags":["uinput"],"default":null,"children":{"info":{"type":"display","title":"","hint":"","unit":"","tags":["non-essential"],"default":"Simple Xbox controller. \nUniversal compatibility.\nExtra buttons are shortcuts or Steam Input.\n"},"paddles_as":{"type":"multiple","title":"Extra buttons as","hint":"Changes the behavior of the extra buttons. Left button is Keyboard, right button is Overlay. Or they can be set for Steam Input.","unit":"","tags":["non-essential"],"default":"noob","options":{"steam_input":"Steam Input (Elite)","noob":"Keyboard/Overlay","disabled":"Disabled"}},"nintendo_qam":{"type":"bool","title":"Nintendo QAM Fix","hint":"","unit":"","tags":["advanced","expert"],"default":false}}},"xbox_elite":{"type":"container","title":"Xbox Elite","hint":"","unit":"","tags":["xbox_elite"],"default":null,"children":{"info":{"type":"display","title":"","hint":"","unit":"","tags":["non-essential"],"default":"Extra buttons in Steam Input.\n"}}},"dualsense":{"type":"container","title":"Dualsense","hint":"","unit":"","tags":["lgc_emulation_dualsense","dualsense","non-essential"],"default":null,"children":{"info":{"type":"display","title":"","hint":"","unit":"","tags":["non-essential"],"default":"Touchpad, gyro, and RGB support. Extra buttons are remappable.\n"},"paddles_as":{"type":"multiple","title":"Extra buttons as","hint":"Changes the behavior of the extra buttons. Left button is Keyboard, right button is Overlay. Or they can be left/right touchpad clicks. For the legion go, top buttons are shortcuts, bottom are touchpad clicks.","unit":"","tags":[],"default":"steam_input","options":{"steam_input":"Steam Input (Edge)","noob":"Keyboard/Overlay","touchpad":"Touchpad Clicks","disabled":"Disabled"}},"led_support":{"type":"bool","title":"LED Support","hint":"Passes through the LEDs to the controller, which allows games to control them.","unit":"","tags":[],"default":false},"sync_gyro":{"type":"bool","title":"Gyro Output Sync","hint":"Steam relies on the IMU timestamp for the touchpad as Mouse and `Gyro to Mouse [BETA]`. If the same timestamp is sent in 2 reports, this causes a division by 0 and instability. This option makes it so reports are sent only when there is a new IMU timestamp, effectively limiting the responsiveness of the controller to that of the IMU. This only makes a difference for the Legion Go (125hz), as all the other handhelds are using 400hz by default.","unit":"","tags":[],"default":true},"flip_z":{"type":"bool","title":"Invert Roll Axis","hint":"Inverts the roll (Z) axis compared to a real Dualsense controller. Useful for Steam Input, since you want it to be inverted to look left to right, but an issue in emulators.","unit":"","tags":[],"default":true},"bluetooth_mode":{"type":"bool","title":"Bluetooth Mode","hint":"Emulates the controller in bluetooth mode instead of USB mode. This is the default as it causes less issues with how apps interact with the controller. However, using USB mode can improve LED support (?) in some games. Test and report back!","unit":"","tags":["advanced","expert"],"default":true}}}}},"swap_armory":{"type":"bool","title":"Swap ROG and Menu/View","hint":"Swaps the Armory Crate and Command center buttons with start and select.","unit":"","tags":["non-essential"],"default":false},"imu":{"type":"bool","title":"Motion Support","hint":"Enable gyroscope/accelerometer (IMU) support (.3% background CPU use)","unit":"","tags":[],"default":true},"imu_hz":{"type":"discrete","title":"Motion Hz","hint":"Sets the sampling frequency for the IMU.","unit":"","tags":["non-essential"],"default":200,"options":[100,200,400,800]},"limits":{"type":"mode","title":"Deadzones & Vibration","hint":"Configure joystick and trigger deadzones, vibration intensity.","unit":"","tags":["limits","non-essential"],"default":"default","modes":{"default":{"type":"container","title":"Default","hint":"Uses reasonable values based on hardware.","unit":"","tags":[],"default":null,"children":{}},"manual":{"type":"container","title":"Manual","hint":"Allows for manual configuration of deadzones and vibration intensity.","unit":"","tags":[],"default":null,"children":{"vibration":{"type":"int","title":"Vibration Intensity","hint":"Intensity of the vibration. The higher the value, the stronger the vibration.","unit":"%","tags":[],"default":100,"min":0,"max":100,"step":20,"smin":null,"smax":null},"ls_min":{"type":"int","title":"Left Stick Minimum","hint":"Deadzone for the joystick. The higher the value, the more the joystick needs to be moved before registering.","unit":"%","tags":[],"default":5,"min":0,"max":100,"step":2,"smin":null,"smax":null},"ls_max":{"type":"int","title":"Left Stick Maximum","hint":"Maximum value for joystick. The higher the value, the more the joystick needs to be moved before reaching maximum.","unit":"%","tags":[],"default":64,"min":0,"max":100,"step":2,"smin":null,"smax":null},"rs_min":{"type":"int","title":"Right Stick Minimum","hint":"Deadzone for the joystick. The higher the value, the more the joystick needs to be moved before registering.","unit":"%","tags":[],"default":5,"min":0,"max":100,"step":2,"smin":null,"smax":null},"rs_max":{"type":"int","title":"Right Stick Maximum","hint":"Maximum value for joystick. The higher the value, the more the joystick needs to be moved before reaching maximum.","unit":"%","tags":[],"default":64,"min":0,"max":100,"step":2,"smin":null,"smax":null},"lt_min":{"type":"int","title":"Left Trigger Minimum","hint":"Deadzone for the joystick. The higher the value, the more the joystick needs to be moved before registering.","unit":"%","tags":[],"default":5,"min":0,"max":100,"step":2,"smin":null,"smax":null},"lt_max":{"type":"int","title":"Left Trigger Maximum","hint":"Maximum value for joystick. The higher the value, the more the joystick needs to be moved before reaching maximum.","unit":"%","tags":[],"default":95,"min":0,"max":100,"step":2,"smin":null,"smax":null},"rt_min":{"type":"int","title":"Right Trigger Minimum","hint":"Deadzone for the joystick. The higher the value, the more the joystick needs to be moved before registering.","unit":"%","tags":[],"default":5,"min":0,"max":100,"step":2,"smin":null,"smax":null},"rt_max":{"type":"int","title":"Right Trigger Maximum","hint":"Maximum value for joystick. The higher the value, the more the joystick needs to be moved before reaching maximum.","unit":"%","tags":[],"default":95,"min":0,"max":100,"step":2,"smin":null,"smax":null},"reset":{"type":"action","title":"Reset to Default","hint":"Reset all values to default.","unit":"","tags":[],"default":null}}}}},"select_reboots":{"type":"bool","title":"Hold View to Reboot","hint":"","unit":"","tags":["non-essential"],"default":false},"nintendo_mode":{"type":"bool","title":"Nintendo Mode (A-B Swap)","hint":"Swaps A with B and X with Y.","unit":"","tags":["non-essential"],"default":false},"rgb_boot":{"type":"bool","title":"RGB During Boot","hint":"","unit":"","tags":["advanced"],"default":false},"rgb_charging":{"type":"bool","title":"RGB During Charging Asleep","hint":"","unit":"","tags":["advanced"],"default":false}}}},"gamemode":{"power":{"type":"container","title":"Power","hint":"","unit":"","tags":["non-essential"],"default":null,"children":{"status":{"type":"display","title":"Error","hint":"","unit":"","tags":["error"],"default":null},"hibernate":{"type":"action","title":"Hibernate","hint":"Saves your progress and powers off the device.","unit":"","tags":["verify"],"default":null},"hibernate_auto":{"type":"bool","title":"Hibernate when device asks and at 5%.","hint":"Certain devices wake up to force Windows to hibernate. If Linux does not\nthey cause issues. Detect and hibernate on thermal events and on 5%\nbattery.\n","unit":"","tags":[],"default":true}}},"customization":{"type":"container","title":"Customization","hint":"","unit":"","tags":[],"default":null,"children":{"power_light":{"type":"bool","title":"Power Light (Awake)","hint":"","unit":"","tags":["advanced"],"default":null},"power_light_sleep":{"type":"bool","title":"Power Light (Sleep)","hint":"","unit":"","tags":["advanced"],"default":null}}}},"system":{"display":{"type":"container","title":"System","hint":"Basic display settings. Brightness (and framerate TBD). This pane is meant to replace ","unit":"","tags":["system","non_steamdeck"],"default":null,"children":{"brightness":{"type":"int","title":"Brightness","hint":"Sets the brightness level of a display. Only one display is supported and it is the one that was read.","unit":null,"tags":["display_brightness","non_steamdeck"],"default":null,"min":0,"max":100,"step":null,"smin":null,"smax":null}}}},"hhd":{"settings":{"type":"container","title":"Core Settings","hint":"","unit":"","tags":["non-essential"],"default":null,"children":{"language":{"type":"multiple","title":"Language","hint":"","unit":"","tags":["i18n","non-essential","language"],"default":"system","options":{"system":"System","C":"English","zh_CN":"Simplified Chinese","zh_TW":"Traditional Chinese","pt_BR":"Portugese (Brazil)","ru_RU":"Russian","ko":"Korean"}},"theme":{"type":"multiple","title":"Theme","hint":"Allows changing the theme in the UI. Default is either Diavolo or your distribution's theme.","unit":"","tags":["theme-selector","advanced"],"default":"default","options":{"default":"Default","diavolo":"Diavolo","ocean":"Atlantis","vapor":"Vapor","blood_orange":"Blood Orange"}},"reset":{"type":"action","title":"Reset Settings","hint":"Resets all Handheld Daemon settings to their default values.","unit":"","tags":["reset-button","verify"],"default":null},"version":{"type":"display","title":"Version","hint":"Displays the Handheld Daemon version.","unit":"","tags":["hhd-version-display","text"],"default":null},"version_ui":{"type":"display","title":"UI Version","hint":"Displays the Handheld Daemon version.","unit":"","tags":["hhd-version-display","text"],"default":null},"update_error":{"type":"display","title":"Update Error","hint":"","unit":"","tags":["error","non-essential"],"default":null},"tdp_ready":{"type":"bool","title":"","hint":"","unit":"","tags":["hidden"],"default":null},"tdp_enable":{"type":"bool","title":"Enable TDP Controls","hint":"Enables TDP management by the Handheld Daemon. While enabled, Handheld Daemon will set and maintain the TDP limits set on start-up and during other device changes (ac/dc).\nIf the device crashes, TDP setting will be disabled on next startup.","unit":"","tags":[],"default":false},"rgb":{"type":"bool","title":"Enable RGB support.","hint":"","unit":"","tags":[],"default":true},"powerbuttond":{"type":"bool","title":"Steam Powerbutton Handler","hint":"Enables the Steam Powerbutton handler (responsible for the wink and powerbutton menu).","unit":"","tags":[],"default":true}}},"http":{"type":"container","title":"API Configuration","hint":"Settings for configuring the http endpoint of HHD.","unit":"","tags":["hhd-http","advanced","expert"],"default":null,"children":{"localhost":{"type":"bool","title":"Limit Access to localhost","hint":"Sets the API target to '127.0.0.1' instead '0.0.0.0'.","unit":"","tags":["advanced"],"default":true},"token":{"type":"bool","title":"Use Security token","hint":"Generates a security token in `~/.config/hhd/token` that is required for authentication.","unit":"","tags":["advanced"],"default":true}}},"steamos":{"type":"container","title":"","hint":"","unit":"","tags":["hidden"],"default":null,"children":{"tdp_status":{"type":"multiple","title":"","hint":"","unit":"","tags":["hidden"],"default":null,"options":{"disabled":"","enabled":"","conflict":""}},"tdp_min":{"type":"custom","title":"","hint":"","unit":"","tags":["hidden"],"default":null,"config":null},"tdp_default":{"type":"custom","title":"","hint":"","unit":"","tags":["hidden"],"default":null,"config":null},"tdp_max":{"type":"custom","title":"","hint":"","unit":"","tags":["hidden"],"default":null,"config":null},"tdp_set":{"type":"bool","title":"","hint":"","unit":"","tags":["hidden"],"default":null},"gpu_status":{"type":"multiple","title":"","hint":"","unit":"","tags":["hidden"],"default":null,"options":{"disabled":"","enabled":"","conflict":""}},"gpu_min":{"type":"custom","title":"","hint":"","unit":"","tags":["hidden"],"default":null,"config":null},"gpu_max":{"type":"custom","title":"","hint":"","unit":"","tags":["hidden"],"default":null,"config":null},"gpu_set":{"type":"bool","title":"","hint":"","unit":"","tags":["hidden"],"default":false}}},"version":{"type":"version","tags":["non-essential","advanced","expert","hide"],"value":"a1b2c3d4"}}},"state":{"tdp":{"unified":{"tdp":{"mode":"balanced","custom":{"tdp":15,"boost":true}},"sys_tdp":"17W (Performance)","fan_full_speed":false,"fan":{"mode":"disabled","manual_edge":{"st40":45,"st45":45,"st50":45,"st55":45,"st60":55,"st65":60,"st70":70,"st80":85,"st90":100},"manual_junction":{"st40":40,"st50":45,"st60":50,"st70":60,"st80":75,"st90":90,"st100":100}}}},"rgb":{"handheld":{"mode":{"mode":"solid","solid":{"hue":30,"saturation":100,"brightness":50},"pulse":{"hue":30,"saturation":100,"brightness":50,"speedd":"medium"},"duality":{"hue":60,"hue2":30,"saturation":100,"brightness":50,"speedd":"medium"},"rainbow":{"brightnessd":"medium"},"spiral":{"brightnessd":"medium","speedd":"medium","direction":"left"}}}},"controllers":{"rog_ally":{"controller_mode":{"mode":"uinput","hidden":{"info":"Disables the built-in controller.\nExternal controllers will be slot 1.\nOverlay will still work.\n","noob_mode":true},"uinput":{"info":"Simple Xbox controller. \nUniversal compatibility.\nExtra buttons are shortcuts or Steam Input.\n","paddles_as":"noob","nintendo_qam":false},"xbox_elite":{"info":"Extra buttons in Steam Input.\n"},"dualsense":{"info":"Touchpad, gyro, and RGB support. Extra buttons are remappable.\n","paddles_as":"steam_input","led_support":false,"sync_gyro":true,"flip_z":true,"bluetooth_mode":true}},"swap_armory":false,"imu":true,"imu_hz":200,"limits":{"mode":"default","manual":{"vibration":100,"ls_min":5,"ls_max":64,"rs_min":5,"rs_max":64,"lt_min":5,"lt_max":95,"rt_min":5,"rt_max":95}},"select_reboots":false,"nintendo_mode":false,"rgb_boot":false,"rgb_charging":false}},"gamemode":{"power":{"hibernate_auto":true}},"system":{"display":{"brightness":60}},"hhd":{"settings":{"language":"system","theme":"default","version":"4.1.12","tdp_enable":true,"rgb":true,"powerbuttond":true},"http":{"localhost":true,"token":true},"steamos":{"tdp_status":"enabled","tdp_min":5,"tdp_default":15,"tdp_max":30,"gpu_set":false}},"version":"a1b2c3d4"},"sections":{"tdp":"Power","rgb":"RGB","controllers":"Controller","magic_modules":"Modules","wincontrols":"WinControls","gamemode":"General","updates":"Updates","debug":"Bugreport","shortcuts":"Shortcuts","hhd":"Settings"}};
 // Browser preview: a fake Windows so every settings flow can be tried without the host.
 const MOCK = (()=>{
   const wait = ms => new Promise(r=>setTimeout(r,ms));
@@ -861,7 +866,7 @@ const MOCK = (()=>{
     'power.get':async()=>({...st.battery,mode:st.powerMode,modes:['efficiency','balanced','performance'],modeSupported:true,tdp:{supported:true,watts:st.tdp||15,min:7,max:30}}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
     'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,canOverlay:true,perfOverlay:MOCKPO,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'}}),
-    'perf.setTdp':async({watts})=>{ st.tdp=watts; return {supported:true,watts,min:7,max:30}; },
+    'perf.setTdp':async({watts})=>{ st.tdp=watts; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); S2.tdp.unified.tdp.mode='custom'; S2.tdp.unified.tdp.custom.tdp=watts; return {supported:true,watts,min:7,max:30}; },
     'perf.setFpsLimit':async({fps})=>{ MOCKFPS=fps; return {fpsLimit:fps}; },
     'perf.setOverlay':async({level})=>{ MOCKPO=level; return {perfOverlay:level}; },
     'game.pause':async()=>({paused:true}), 'game.unpause':async()=>({paused:false}),
@@ -888,7 +893,16 @@ const MOCK = (()=>{
         {key:'controllers.rog_ally.controller_mode.uinput.paddles_as',kind:'choice',value:v['controllers.rog_ally.controller_mode.uinput.paddles_as'],options:[{id:'steam_input',label:'Steam Input (Elite)'},{id:'noob',label:'Keyboard/Overlay'},{id:'disabled',label:'Disabled'}],group:'controller',label:'Back buttons',hint:'What the extra buttons on the back do'},
         {key:'tdp.unified.fan_full_speed',kind:'bool',value:v['tdp.unified.fan_full_speed'],group:'fan',label:'Fan at full speed',hint:'Cooler and louder; the power limit still applies'},
         {key:'rgb.handheld.mode.mode',kind:'choice',value:v['rgb.handheld.mode.mode'],options:[{id:'disabled',label:'Off'},{id:'solid',label:'Solid'},{id:'pulse',label:'Pulse'},{id:'rainbow',label:'Rainbow'}],group:'lights',label:'Lights',hint:'The lights around the sticks'}]}; },
-    'hhd.set':async({key,value})=>{ await MOCK.call('hhd.status'); st.hhd[key]=value; await wait(300); return MOCK.call('hhd.status'); },
+    'hhd.set':async({key,value,state})=>{ if(!state){ await MOCK.call('hhd.status'); st.hhd[key]=value; await wait(300); return MOCK.call('hhd.status'); }
+      const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state), p=key.split('.'), last=p.pop();
+      let o=S2; for(const k of p){ if(o[k]==null||typeof o[k]!=='object') o[k]={}; o=o[k]; }
+      await wait(250);
+      if(value===true && /(^|\.)(reset|hibernate|submit|.*_remove)$/.test(key)){ o[last]=true; setTimeout(()=>{ o[last]=false; },1500); }
+      else o[last]=value;
+      if(key==='tdp.unified.tdp.custom.tdp') st.tdp=value;
+      return {running:true, version:S2.version, state:clone(S2)}; },
+    'hhd.settings':async()=>{ const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); await wait(200); return {running:true, version:HHD_MOCK.state.version, schema:JSON.stringify(HHD_MOCK.settings), sections:clone(HHD_MOCK.sections), state:clone(S2)}; },
+    'hhd.state':async()=>{ const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); return {running:true, version:S2.version, state:clone(S2)}; },
     'newos.status':async()=>clone(st.newos||{eligible:true,published:true,canAdmin:true,image:'ghcr.io/dragongamer9/hearth-os:latest',state:'idle',error:null,editions:[
       {id:'anatase',label:'Hearth OS on Anatase',about:'The next Hearth OS. A smaller system that starts and updates faster, the same for every PC and handheld.',beta:false,recommended:true,published:true,allowed:true,reason:null,warning:null},
       {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:null},
@@ -993,7 +1007,7 @@ function blip(f=700,d=.035,v=.035){
 // =====================================================================
 // Views
 // =====================================================================
-const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',friends:'Friends',shots:'Screenshots',coop:'Couch Co-op (Beta Experimental)',settings:'Settings',stores:'Game stores',gameset:'Game settings'};
+const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',friends:'Friends',shots:'Screenshots',coop:'Couch Co-op (Beta Experimental)',settings:'Settings',stores:'Game stores',gameset:'Game settings',hhd:'Handheld Daemon'};
 
 // A profile with parental limits sees only the games it's allowed (when a grown-up chose some).
 const allowedList = () => { const s=PROF.s, c=s&&s.hasPin&&s.list.find(p=>p.current); return c&&c.limits&&c.limits.allowed ? c.limits.allowed : null; };
@@ -2226,32 +2240,224 @@ function remapPick(id){
   ]});
 }
 
-// ---------- Settings › Controls › Handheld Daemon (Hearth OS on Anatase) ----------
-// The few extra controls Handheld Daemon has for this handheld (gyro, back buttons, fan, lights): only what it
-// offers for the device, changed one at a time.
-const HHDS = {s:null, busy:false};
-function loadHhd(){ if(LINUX) call('hhd.status',{},20000).then(r=>{ HHDS.s=r; render(null,true); }).catch(()=>{ HHDS.s=null; }); }
-function hhdRows(){
-  const s=HHDS.s; if(!s || !s.running || !(s.controls||[]).length) return '';
-  const icon={controller:I.pad, fan:I.bolt, lights:I.sun};
-  let h = shead('Handheld Daemon', HHDS.busy);
-  h += s.controls.map((c,i)=>{
-    const k='hhd-'+i, sub=c.hint?`<small>${esc(c.hint)}</small>`:'';
-    if(c.kind==='bool') return `<button class="row" data-f data-k="${k}" data-act="hhdSet" data-i="${i}"><span class="ricon">${icon[c.group]||I.sliders}</span><div class="rt"><b>${esc(c.label)}</b>${sub}</div><div class="sw ${c.value?'on':''}"></div></button>`;
-    const cur=(c.options||[]).find(o=>o.id===c.value)||{label:c.value};
-    return `<button class="row" data-f data-k="${k}" data-act="hhdSet" data-i="${i}"><span class="ricon">${icon[c.group]||I.sliders}</span><div class="rt"><b>${esc(c.label)}</b>${sub}</div><div class="rv">${esc(cur.label)} ›</div></button>`;
-  }).join('');
-  h += note('Handheld Daemon runs the built-in controller, power limit, fan and lights on Hearth OS. Its other settings are in its own app in Desktop Mode.');
+// ---------- Settings › Controls › Handheld Daemon (the Hearth OS editions) ----------
+// Handheld Daemon (HHD) runs the built-in controller, the power limit, the fan and the lights. Its own settings app
+// isn't on these editions: this page is it, drawn from the settings tree HHD serves for this device (hhd.settings),
+// so it has every setting HHD has, with HHD's titles, hints, choices and limits. HHD's sections are tabs; a mode
+// (a choice with settings of its own, like the controller type) shows the settings of the one picked, under it.
+// Switches, choices (a list), numbers (a slider), buttons (actions) and read-only lines; advanced ones behind
+// "Show advanced settings"; hidden ones never. hearth-core checks every change against the same tree.
+// While the page is open it reads HHD's state every 1.5 s, so changes made elsewhere (the power limit in Quick
+// Access, HHD's own shortcuts) show up here.
+const HHDS = {s:null};      // hhd.status: is HHD running (Settings › Controls shows the way in)
+function loadHhd(){ if(LINUX) return call('hhd.status',{},20000).then(r=>{ HHDS.s=r; if(S.view==='settings') render(null,true); }).catch(()=>{ HHDS.s={running:false}; }); }
+function hhdLinkRow(){
+  const s=HHDS.s; if(!s || !s.running) return '';
+  return shead('Handheld Daemon')
+    + `<button class="row" data-f data-k="hhd-open" data-act="hhdOpen"><span class="ricon">${I.sliders}</span><div class="rt"><b>Handheld Daemon settings</b><small>Everything for the built-in controller, power limit, fan and lights</small></div><div class="rv">›</div></button>`;
+}
+const HHDP = {schema:null, version:null, state:{}, sections:{}, sec:null, adv:false, err:null, loading:false, timer:null, polling:false, pending:{}, busy:{}};
+const HHD_SKIP = ['hidden','hhd-update-decky','hhd-version-display-decky','theme-selector'];   // as hearth-core's SKIP_TAGS
+const HHD_KINDS = ['container','mode','bool','multiple','discrete','int','float','action','display','custom'];
+const HHD_FIRST = ['controllers','tdp','rgb'];   // the sections most people want, first; then HHD's order
+const hhdTags = n => Array.isArray(n && n.tags) ? n.tags : [];
+const hhdTitle = (n, k) => { const t = n && typeof n.title==='string' ? n.title.trim() : ''; return t || String(k||'').split('.').pop().replace(/_/g,' ').replace(/^./, c=>c.toUpperCase()); };
+// A value in HHD's state by dotted key (a change on its way to HHD counts already).
+function hv(k){ if(k in HHDP.pending) return HHDP.pending[k]; return k.split('.').reduce((o,p)=>o==null?undefined:o[p], HHDP.state); }
+function hhdShown(n){
+  if(!n || typeof n!=='object' || !HHD_KINDS.includes(n.type)) return false;
+  const t=hhdTags(n);
+  if(t.some(x=>HHD_SKIP.includes(x))) return false;
+  if(!HHDP.adv && (t.includes('advanced') || t.includes('expert'))) return false;
+  if(n.type==='container') return Object.values(n.children||{}).some(hhdShown);
+  if(n.type==='mode') return Object.values(n.modes||{}).some(m=>m && !hhdTags(m).some(x=>HHD_SKIP.includes(x)));
+  return true;
+}
+// The entry for a dotted key, as hearth-core's find(): {n, mode} (mode: the key is a mode's choice), or null.
+function hhdFind(key){
+  const p=String(key).split('.'); if(p.length<3 || !HHDP.schema) return null;
+  let n=(HHDP.schema[p[0]]||{})[p[1]];
+  for(let i=2;i<p.length;i++){
+    if(!n || typeof n!=='object') return null;
+    if(n.type==='mode' && p[i]==='mode' && i===p.length-1) return {n, mode:true};
+    n = n.type==='mode' ? (n.modes||{})[p[i]] : n.type==='container' ? (n.children||{})[p[i]] : null;
+  }
+  return n && !['container','mode'].includes(n.type) ? {n, mode:false} : null;
+}
+function hhdSections(){
+  const S2=HHDP.schema||{};
+  const keys=Object.keys(S2).filter(s=>Object.values(S2[s]||{}).some(hhdShown));
+  return [...HHD_FIRST.filter(k=>keys.includes(k)), ...keys.filter(k=>!HHD_FIRST.includes(k))];
+}
+const hhdSecTitle = s => (HHDP.sections && typeof HHDP.sections[s]==='string' && HHDP.sections[s]) || s.replace(/_/g,' ').replace(/^./, c=>c.toUpperCase());
+function hhdLoad(){
+  if(HHDP.loading) return; HHDP.loading=true;
+  return call('hhd.settings',{},20000).then(r=>{
+    HHDP.loading=false;
+    if(!r || !r.running){ HHDP.schema=null; HHDP.err='off'; }
+    else {
+      HHDP.schema = typeof r.schema==='string' ? JSON.parse(r.schema) : (r.schema||{});
+      HHDP.version=r.version||null; HHDP.state=r.state||{}; HHDP.sections=r.sections||{}; HHDP.err=null;
+    }
+    if(S.view==='hhd') render(null,true);
+  }).catch(e=>{ HHDP.loading=false; HHDP.err=e.message||String(e); if(S.view==='hhd') render(null,true); });
+}
+function hhdApply(r){
+  if(!r || !r.running) return;
+  if(r.version && HHDP.version && r.version!==HHDP.version) return hhdLoad();   // HHD changed its tree: read it again
+  const before=JSON.stringify(HHDP.state); HHDP.state=r.state||{};
+  if(S.view==='hhd' && JSON.stringify(HHDP.state)!==before) render(null,true);
+}
+function hhdStartPoll(){
+  clearInterval(HHDP.timer);
+  HHDP.timer=setInterval(()=>{
+    if(S.view!=='hhd'){ clearInterval(HHDP.timer); HHDP.timer=null; return; }
+    if(HHDP.polling || HHDP.loading || !HHDP.schema) return;
+    HHDP.polling=true;
+    call('hhd.state',{},8000).then(r=>{ HHDP.polling=false; hhdApply(r); }).catch(()=>{ HHDP.polling=false; });
+  }, 1500);
+}
+function hhdOpen(){ closeAll(); S.settingsTab='controller'; navigate('hhd'); }
+const hhdHint = n => n && n.hint ? `<small>${esc(String(n.hint).trim())}</small>` : '';
+const hhdNum = (v, unit) => v==null || v==='' ? '—' : (typeof v==='number' ? String(+v.toFixed(3)) : esc(String(v))) + (unit ? (/^[%°]/.test(unit)?'':' ')+esc(unit) : '');
+function hhdOptLabel(n, id){
+  if(n.type==='mode'){ const m=(n.modes||{})[id]; return m ? hhdTitle(m, id)+(m.unit?` (${m.unit})`:'') : String(id??'—'); }
+  const o=n.options||{}; const l=o[id]; return typeof l==='string' && l ? l : String(id??'—');
+}
+function hhdRow(k, n){
+  const id='hh-'+k, title=esc(hhdTitle(n, k)), t=hhdTags(n), busy=HHDP.busy[k];
+  const right = v => busy ? '<span class="mini-spin"></span>' : v;
+  switch(n.type){
+    case 'bool': return `<button class="row" data-f data-k="${id}" data-act="hhd" data-op="bool" data-key="${esc(k)}"><div class="rt"><b>${title}</b>${hhdHint(n)}</div>${right(`<div class="sw ${hv(k)?'on':''}"></div>`)}</button>`;
+    case 'multiple':
+      if(!Object.keys(n.options||{}).length) return '';
+      return `<button class="row" data-f data-k="${id}" data-act="hhd" data-op="pick" data-key="${esc(k)}"><div class="rt"><b>${title}</b>${hhdHint(n)}</div>${right(`<div class="rv">${esc(hhdOptLabel(n, hv(k)))} ›</div>`)}</button>`;
+    case 'discrete': case 'int': case 'float': {
+      const lim = n.type==='discrete' ? (n.options||[]).length>1 : typeof n.min==='number' && typeof n.max==='number' && n.max>n.min;
+      if(!lim) return `<button class="row" data-f data-k="${id}" data-act="hhd" data-op="num" data-key="${esc(k)}"><div class="rt"><b>${title}</b>${hhdHint(n)}</div>${right(`<div class="rv">${hhdNum(hv(k), n.unit)} ›</div>`)}</button>`;
+      let min, max, step, pos, shown;
+      if(n.type==='discrete'){ const o=n.options; min=0; max=o.length-1; step=1; pos=Math.max(0, o.findIndex(x=>x==hv(k))); shown=hhdNum(o[pos], n.unit); }
+      else { min=n.min; max=n.max; step=+n.step>0 ? +n.step : (n.type==='int' ? 1 : (max-min)/20); const v=hv(k); pos=typeof v==='number' ? Math.max(min, Math.min(max, v)) : min; shown=hhdNum(v, n.unit); }
+      const pct=(pos-min)/(max-min)*100;
+      return `<div class="ctl" data-f data-k="${id}" data-slider="hhd:${esc(k)}" data-min="${min}" data-max="${max}" data-step="${step}" data-unit="">
+        <div class="lab">${title}<span>${shown}</span></div><div class="slider"><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div>${n.hint?`<div class="muted" style="font-size:12px;margin-top:8px">${esc(String(n.hint).trim())}</div>`:''}</div>`;
+    }
+    case 'action': {
+      const running = busy || !!hv(k);
+      return `<button class="row" data-f data-k="${id}" data-act="hhd" data-op="action" data-key="${esc(k)}"><span class="ricon">${I.play}</span><div class="rt"><b>${title}</b>${hhdHint(n)}</div>${running?'<span class="mini-spin"></span>':''}</button>`;
+    }
+    case 'display': {
+      const v=hv(k); if(v==null || v==='' || (typeof v==='object' && !Object.keys(v).length)) return '';
+      const text = typeof v==='object' ? JSON.stringify(v) : String(v), err=t.includes('error');
+      const blank = !n.title || !String(n.title).trim();
+      return `<div class="row" data-f data-k="${id}"><span class="ricon">${err?I.x:I.info}</span><div class="rt">${blank?'':`<b${err?' style="color:var(--danger)"':''}>${title}</b>`}<small style="white-space:pre-line${blank?';font-size:14px;color:var(--text)':''}">${esc(text)}</small></div></div>`;
+    }
+    case 'custom': {
+      const v=hv(k);
+      if(t.includes('dropdown') && v && typeof v==='object' && v.options)
+        return `<button class="row" data-f data-k="${id}" data-act="hhd" data-op="pick" data-key="${esc(k)}"><div class="rt"><b>${title}</b>${hhdHint(n)}</div>${right(`<div class="rv">${esc(v.options[v.value]||v.value||'—')} ›</div>`)}</button>`;
+      if(t.includes('progress') && v && typeof v==='object'){
+        const pct = typeof v.value==='number' ? Math.max(0, Math.min(100, v.value/(v.max||100)*100)) : null;
+        return `<div class="row" data-f data-k="${id}"><div class="rt"><b>${esc(v.text||hhdTitle(n,k))}</b>${pct!=null?`<div class="bar" style="margin-top:8px"><i style="width:${pct}%"></i></div>`:'<small>Working…</small>'}</div></div>`;
+      }
+      if(v!=null && typeof v!=='object' && v!=='') return `<div class="row" data-f data-k="${id}"><div class="rt"><b>${title}</b><small>${esc(String(v))}</small></div></div>`;
+      return '';
+    }
+  }
+  return '';
+}
+function hhdMode(k, n){
+  const cur=hv(k+'.mode'), m=(n.modes||{})[cur];
+  let h = `<button class="row" data-f data-k="hh-${k}.mode" data-act="hhd" data-op="pick" data-key="${esc(k)}.mode"><div class="rt"><b>${esc(hhdTitle(n,k))}</b>${m&&m.hint?`<small>${esc(String(m.hint).trim())}</small>`:hhdHint(n)}</div>${HHDP.busy[k+'.mode']?'<span class="mini-spin"></span>':`<div class="rv">${esc(hhdOptLabel(n, cur))} ›</div>`}</button>`;
+  if(m && hhdShown(m)) h += `<div class="hhd-sub">${hhdKids(k+'.'+cur, m)}</div>`;
   return h;
 }
-async function hhdSet(i){
-  const c=HHDS.s&&HHDS.s.controls[+i]; if(!c || HHDS.busy) return;
-  const k='hhd-'+i;
-  const go=async v=>{ HHDS.busy=true; render(k,true);
-    try{ HHDS.s=await call('hhd.set',{key:c.key, value:v},30000); toast(c.label+': done'); }catch(e){ toast(e.message); }
-    HHDS.busy=false; render(k,true); };
-  if(c.kind==='bool') return go(!c.value);
-  openSheet({title:c.label, sub:c.hint||'', items:(c.options||[]).map(o=>({label:o.label, icon:o.id===c.value?'check':'', run:()=>go(o.id)}))});
+function hhdKids(k, c){
+  return Object.entries(c.children||{}).filter(([,n])=>hhdShown(n)).map(([ck,n])=>{
+    const key=k+'.'+ck;
+    if(n.type==='mode') return hhdMode(key, n);
+    if(n.type==='container') return `${n.title&&!hhdTags(n).includes('hide-title')?`<div class="hhd-h">${esc(hhdTitle(n,ck))}</div>`:''}<div class="hhd-sub">${hhdKids(key, n)}</div>`;
+    return hhdRow(key, n);
+  }).join('');
+}
+function viewHhd(){
+  let h='<div class="rows">';
+  if(!HHDP.schema){
+    h += HHDP.err==='off' ? note('Handheld Daemon isn\'t running, so its settings can\'t be shown. It starts with Hearth OS on handhelds it supports.')
+       : HHDP.err ? note('Couldn\'t read Handheld Daemon\'s settings: '+esc(HHDP.err))
+                    + `<button class="row" data-f data-k="hh-retry" data-act="hhdRetry"><span class="ricon">${I.refresh}</span><div class="rt"><b>Try again</b></div></button>`
+       : note('Loading…');
+    return h+'</div>';
+  }
+  const secs=hhdSections();
+  if(!secs.includes(HHDP.sec)) HHDP.sec=secs[0]||null;
+  h += `<div class="stabs">${secs.map(s=>`<button class="chip ${s===HHDP.sec?'on':''}" data-f data-k="hh-sec-${esc(s)}" data-act="hhd" data-op="sec" data-key="${esc(s)}">${esc(hhdSecTitle(s))}</button>`).join('')}</div>`;
+  const sec=HHDP.schema[HHDP.sec]||{}, conts=Object.entries(sec).filter(([,c])=>hhdShown(c));
+  for(const [ck,c] of conts){
+    const key=HHDP.sec+'.'+ck;
+    const head = conts.length>1 && !hhdTags(c).includes('hide-title') ? hhdTitle(c, ck) : '';
+    if(head) h += shead(esc(head));
+    h += c.type==='container' ? hhdKids(key, c) : c.type==='mode' ? hhdMode(key, c) : hhdRow(key, c);
+  }
+  if(HHDP.sec==='tdp') h += note('The power limit here and in Quick Access › Performance is the same setting: a change in one shows in the other.');
+  h += `<button class="row" data-f data-k="hh-adv" data-act="hhd" data-op="adv"><div class="rt"><b>Show advanced settings</b><small>Settings most people don't need, like extra buttons, stick and trigger ranges, and Handheld Daemon's own options</small></div><div class="sw ${HHDP.adv?'on':''}"></div></button>`;
+  h += note('Handheld Daemon '+(hv('hhd.settings.version')?esc(hv('hhd.settings.version'))+' ':'')+'runs the built-in controller, the power limit, the fan and the lights. Changes apply right away.');
+  return h+'</div>';
+}
+async function hhdWrite(key, value, opts={}){
+  HHDP.busy[key]=true; if(!opts.quiet) render(null,true);
+  try{
+    const r=await call('hhd.set',{key, value, state:true},30000);
+    if(HHDP.pending[key]===value) delete HHDP.pending[key];
+    hhdApply(r);
+    if(opts.done) toast(opts.done);
+  }catch(e){ if(HHDP.pending[key]===value) delete HHDP.pending[key]; toast(e.message||String(e)); }
+  delete HHDP.busy[key];
+  if(S.view==='hhd') render(null,true);
+}
+function hhdAct(op, key){
+  if(op==='sec'){ HHDP.sec=key; return render('hh-sec-'+key, true); }
+  if(op==='adv'){ HHDP.adv=!HHDP.adv; return render('hh-adv', true); }
+  const f=hhdFind(key); if(!f || HHDP.busy[key]) return;
+  const n=f.n, title=hhdTitle(n, key);
+  if(op==='bool'){ const v=!hv(key); HHDP.pending[key]=v; return hhdWrite(key, v); }
+  if(op==='action'){
+    const run=()=>hhdWrite(key, true, {done:title+': done'});
+    if(hhdTags(n).includes('verify')) return openSheet({title:title+'?', sub:n.hint?String(n.hint).trim():'', items:[{label:title, icon:'check', run}]});
+    return run();
+  }
+  if(op==='pick'){
+    const cur=hv(key);
+    let items;
+    if(f.mode) items=Object.entries(n.modes||{}).filter(([,m])=>m && !hhdTags(m).some(x=>HHD_SKIP.includes(x))).map(([id])=>({id, label:hhdOptLabel(n, id)}));
+    else if(n.type==='custom') items=Object.entries((cur&&cur.options)||{}).map(([id,l])=>({id, label:String(l||id)}));
+    else items=Object.keys(n.options||{}).map(id=>({id, label:hhdOptLabel(n, id)}));
+    const now = n.type==='custom' ? cur&&cur.value : cur;
+    return openSheet({title, sub:n.hint?String(n.hint).trim():'', items:items.map(o=>({label:o.label, icon:o.id===now?'check':'', run:()=>{ if(o.id!==now) hhdWrite(key, o.id); }}))});
+  }
+  if(op==='num'){
+    const v=typeof hv(key)==='number' ? hv(key) : 0, st=+n.step>0 ? +n.step : 1;
+    const ok=x=>(typeof n.min!=='number'||x>=n.min) && (typeof n.max!=='number'||x<=n.max);
+    const items=[[st,'Raise'],[-st,'Lower']].map(([d,l])=>[+(v+d).toFixed(6),l]).filter(([x])=>ok(x)).map(([x,l])=>({label:`${l} to ${hhdNum(x,n.unit)}`, run:()=>hhdWrite(key, n.type==='int'?Math.round(x):x)}));
+    return openSheet({title, sub:`Now ${hhdNum(v,n.unit)}`, items});
+  }
+}
+/** A Handheld Daemon slider moved (adjustSlider hands the hhd: ones here); the change goes to HHD a moment after it stops. */
+function hhdSlide(el, d){
+  const sk=el.dataset.slider, key=sk.slice(4), f=hhdFind(key); if(!f) return;
+  const n=f.n, min=+el.dataset.min, max=+el.dataset.max, st=+el.dataset.step;
+  const cur = n.type==='discrete' ? Math.max(0, (n.options||[]).findIndex(x=>x==hv(key))) : (typeof hv(key)==='number' ? hv(key) : min);
+  let pos = d===0 && typeof S.set[sk]==='number' ? S.set[sk] : cur + d*st;
+  delete S.set[sk];
+  pos = Math.max(min, Math.min(max, +(min + Math.round((pos-min)/st)*st).toFixed(6)));
+  const value = n.type==='discrete' ? n.options[pos] : n.type==='int' ? Math.round(pos) : pos;
+  if(value===hv(key)) return;
+  HHDP.pending[key]=value;
+  const pct=(pos-min)/(max-min)*100;
+  el.querySelector('.slider i').style.width=pct+'%'; el.querySelector('.slider b').style.left=pct+'%';
+  el.querySelector('.lab span').innerHTML=hhdNum(value, n.unit);
+  debounce(sk, ()=>hhdWrite(key, value, {quiet:true}), 350);
+  blip(500+pct*3,.03);
 }
 
 // ---------- Settings › Controls ----------
@@ -2280,6 +2486,8 @@ function pageControls(){
   } else h += note('During a game, the Guide (Xbox / Home) button brings '+APP+' back with Quick Access open. In a cloud stream, holding View + Menu leaves the stream.');
   h += pads.length ? pads.map((p,i)=>`<div class="row"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(p.id.split('(')[0].trim()||'Controller')}</b><small>Player ${i+1}</small></div></div>`).join('')
                    : note('No controller detected. Press any button on a connected controller.');
+  // Handheld Daemon's own settings (Hearth OS on handhelds): a page of their own.
+  if(LINUX) h += hhdLinkRow();
   if(!LINUX){
   h += shead('In-game overlay');
   const o=OVS.s;
@@ -2302,7 +2510,6 @@ function pageControls(){
   }
   if(LINUX) h += remapRows();
   if(LINUX) h += note('Games without controller support: give the game a Controller layout in its Game settings (game page › ⋯ › Game settings). The controller then acts as a keyboard and mouse in that game only.');
-  if(LINUX) h += hhdRows();
   h += shead('Keyboard');
   h += (LINUX?KEY_LIST_LINUX:KEY_LIST).map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
   h += note('Mouse and touch: click anything to select it. The buttons in the bottom bar and the top bar do the same as the controller buttons.');
@@ -2969,7 +3176,7 @@ function viewSettings(){
     <div class="rows">${body}</div></div></div>`;
 }
 
-const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, shots:viewShots, coop:viewCoop, settings:viewSettings, stores:viewStores, gameset:viewGameSettings};
+const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, shots:viewShots, coop:viewCoop, settings:viewSettings, stores:viewStores, gameset:viewGameSettings, hhd:viewHhd};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 // Timing for the speed test (HEARTH_PERF_LOG=1): how long drawing a page and moving the focus take.
@@ -3015,6 +3222,7 @@ function navigate(view, params={}, push=true){
   if(view==='shots'){ SH.open=-1; loadShots(); }
   if(view==='coop') loadCoop();
   if(view==='gameset') loadGameSet(S.game);
+  if(view==='hhd'){ hhdLoad(); hhdStartPoll(); }
 }
 function goBack(){
   const h=S.history.pop(); if(!h) return false;
@@ -3076,6 +3284,8 @@ function perfBody(){
       <div class="chips">${choices.map(v=>`<button class="chip ${p.tdp.watts===v?'on':''}" data-f data-k="pt-${v}" data-act="tdp" data-v="${v}">${v} W</button>`).join('')}</div>
       <div class="muted">Lower uses less battery; higher runs demanding games faster.</div></div>`;
   }
+  // Handheld Daemon's whole settings page (fan curve, power modes, lights...): from Hearth itself, not over a game.
+  if(LINUX && !OVERLAY && HHDS.s && HHDS.s.running) h += `<button class="btn sm" data-f data-k="pt-hhd" data-act="hhdOpen">${I.sliders}Handheld Daemon settings</button>`;
   if(p.powerMode){
     h += `<div class="pctl"><div class="lab">${I.bolt}Power</div>
       <div class="chips">${(p.powerModes&&p.powerModes.length?PMODES.filter(([k])=>p.powerModes.includes(k)):PMODES).map(([k,l])=>`<button class="chip ${p.powerMode===k?'on':''}" data-f data-k="pp-${k}" data-act="perfPower" data-v="${k}">${l}</button>`).join('')}</div></div>`;
@@ -3097,7 +3307,7 @@ async function perfTickNow(){
   }
   PERF.timer=setTimeout(perfTick, 1000);
 }
-function startPerf(){ if(!PERF.timer && !PERF.busy) PERF.timer=setTimeout(perfTick, 50); }
+function startPerf(){ if(LINUX && !HHDS.s && !OVERLAY) loadHhd(); if(!PERF.timer && !PERF.busy) PERF.timer=setTimeout(perfTick, 50); }
 function applyRunning(r){
   if(!r) return;
   if(r.runningId && S.running!==r.runningId) S.running=r.runningId;
@@ -3377,6 +3587,7 @@ const SLIDE_AT={};
 function adjustSlider(el, d){
   const k=el.dataset.slider, min=+el.dataset.min, max=+el.dataset.max, st=+el.dataset.step;
   if(k.startsWith('im:')) return imSlide(el, d);   // Hearth Input's sliders (controller layouts)
+  if(k.startsWith('hhd:')) return hhdSlide(el, d);   // Handheld Daemon's settings
   S.set[k]=Math.max(min,Math.min(max,S.set[k]+d*st)); SLIDE_AT[k]=performance.now();
   const pct=(S.set[k]-min)/(max-min)*100;
   el.querySelector('.slider i').style.width=pct+'%'; el.querySelector('.slider b').style.left=pct+'%';
@@ -3436,7 +3647,9 @@ function act(el){
     case 'overamp': return call('buttons.set',{overamp:!(BTNS.s&&BTNS.s.overamp)}).then(r=>{ BTNS.s=r; S.sys.audio.max=r.maxVolume; if(S.set.vol>r.maxVolume){ S.set.vol=S.sys.audio.volume=r.maxVolume; } render('a-overamp',true); toast(r.overamp?'Volume can now go up to 150%':'Volume is limited to 100% again'); }).catch(e=>toast(e.message));
     case 'remap': return remapPick(d.b);
     case 'im': return imAct(el, d);
-    case 'hhdSet': return hhdSet(d.i);
+    case 'hhd': return hhdAct(d.op, d.key);
+    case 'hhdOpen': return hhdOpen();
+    case 'hhdRetry': HHDP.err=null; render(null,true); return hhdLoad();
     case 'newOsPick': return newOsPick(d.v);
     case 'newOsGo': return newOsAsk();
     case 'oldDelete': return oldFilesDelete(d.n);
