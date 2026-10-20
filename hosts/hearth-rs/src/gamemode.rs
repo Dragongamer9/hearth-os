@@ -5,6 +5,12 @@
 //! goes through `run_focus`: one at a time, in order, and the newest request wins (a "soft" request, like the
 //! hand-back after closing the overlay, only happens if nothing else was asked for meanwhile).
 //!
+//! The SteamOS way (hearth_core::appid): every game has a number, and so does Hearth. A thread puts the right number
+//! on every window twice a second (`start_window_ids`: its process's HEARTH_GAME_ID, Steam's reaper, or Hearth's
+//! own); a game comes to the front by asking gamescope for its number then Hearth's, and Hearth by asking for
+//! Hearth's. Windows of games put aside carry their own numbers, which aren't asked for, so they can't come back by
+//! accident. Single windows are pinned only when they aren't a game's (a Steam question, an app, a sign-in page).
+//!
 //! The overlay is a second, see-through window marked as gamescope's overlay (STEAM_OVERLAY). It stays mapped;
 //! opening and closing only change how see-through it is (_NET_WM_WINDOW_OPACITY) and whether it gets input
 //! (STEAM_INPUT_FOCUS). The controller is read here (evdev) and passed to it, since a window gamescope draws on
@@ -15,8 +21,10 @@
 //! controllers for it, and it talks to Hearth over hearth-core's overlay socket (overlay_link.rs). Hearth still
 //! decides when it opens and closes (`hhd`): the same calls below, sent to that app instead of to a window.
 
+use hearth_core::appid::{APPS_ID, HEARTH_ID};
 use hearth_core::bridge::Bridge;
 use hearth_core::gamescope as gs;
+use hearth_core::procs;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -59,6 +67,10 @@ pub struct GameMode {
     game_wins: Arc<Mutex<std::collections::HashMap<String, u64>>>,
     /// Handheld Daemon shows Quick Access over games (its overlay app is Hearth's); no overlay window of Hearth's own.
     pub hhd_overlay: AtomicBool,
+    /// Windows that carry a number other than their process's: Xbox Cloud Gaming's window (one of Hearth's own)
+    /// carries the cloud game's.
+    win_tags: Arc<Mutex<std::collections::HashMap<u64, u32>>>,
+    ids_on: AtomicBool,
 }
 
 fn now() -> u64 { hearth_core::library::now_ms() }
@@ -72,7 +84,7 @@ impl GameMode {
             overlay_on: AtomicBool::new(false), osd_on: AtomicBool::new(false), osd_gen: AtomicU64::new(0), look_closed: AtomicBool::new(true),
             before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), launch_busy: AtomicU64::new(0), last_guide: AtomicU64::new(0), b_gen: AtomicU64::new(0),
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()), game_wins: Default::default(),
-            hhd_overlay: AtomicBool::new(false) });
+            hhd_overlay: AtomicBool::new(false), win_tags: Default::default(), ids_on: AtomicBool::new(false) });
         let hhd = gm.inside() && hearth_core::overlay_link::hhd_hosts_overlay();
         gm.hhd_overlay.store(hhd, Ordering::SeqCst);
         gm
@@ -86,6 +98,7 @@ impl GameMode {
     /// Something to show Quick Access in: HHD's overlay app, connected; or Hearth's overlay window.
     fn overlay_ready(&self) -> bool { if self.hhd() { hearth_core::overlay_link::connected() } else { self.overlay().is_some() } }
 
+    fn cached_xid(&self, title: &'static str) -> Option<u64> { self.xids.lock().ok().and_then(|m| m.get(title).copied()) }
     fn xid(&self, title: &'static str) -> Option<u64> {
         if let Some(x) = self.xids.lock().unwrap().get(title) { return Some(*x); }
         let x = gs::window_named(title)?;
@@ -120,12 +133,20 @@ impl GameMode {
         self.run_focus(label, delay_ms, soft, move |_| gs::focus_window(win));
     }
 
-    /// Hearth back in front (a game ended, Guide was pressed...).
+    /// Hearth back in front (a game ended, Guide was pressed...): Hearth's number.
     pub fn come_back(self: &Arc<Self>) {
         self.claim();
         if !self.overlay_on.load(Ordering::SeqCst) && !self.look_closed.load(Ordering::SeqCst) { self.overlay_look(false, false); }
         if let Some(w) = self.main() { let _ = w.unminimize(); let _ = w.show(); let _ = w.set_focus(); }
-        if let Some(x) = self.xid(MAIN_TITLE) { self.focus_xid("hearth", x, 0, false); }
+        let main = self.xid(MAIN_TITLE);
+        self.run_focus("hearth", 0, false, move |_| {
+            if let Some(x) = main { gs::tag_window(x, HEARTH_ID); }
+            gs::focus_ids(&[HEARTH_ID]);
+            // Without Steam mode, gamescope forgets a window's number when it's shown again, until Hearth puts it
+            // back: pinned as well, until the next choice.
+            if !gs::steam_mode() { if let Some(x) = main { gs::focus_window(x); } }
+            log(&format!("focus: Hearth in front (id {HEARTH_ID})"));
+        });
     }
     pub fn step_aside(&self) { if !self.windowed { if let Some(w) = self.main() { let _ = w.hide(); } } }
 
@@ -135,32 +156,138 @@ impl GameMode {
         Some((r.id.clone(), b.library.game_pids()))
     }
     fn steam_app(id: &str) -> u64 { id.strip_prefix("steam:").and_then(|s| s.parse().ok()).unwrap_or(0) }
+    /// The running game and its number.
+    fn running_app(&self) -> Option<(String, u32)> {
+        let b = self.bridge.lock().ok()?;
+        let r = b.library.running.as_ref()?;
+        Some((r.id.clone(), if r.app_id != 0 { r.app_id } else { hearth_core::appid::steam_app_id(&r.id).unwrap_or(0) }))
+    }
 
-    /// The running game in front: its window, or its Steam app id.
+    /// The running game in front: by its number (gamescope picks its best window), or its window when none carries it.
     pub fn focus_running_game(self: &Arc<Self>, delay_ms: u64, soft: bool) {
-        let Some((id, _)) = self.running() else { return };
+        let Some((id, app_id)) = self.running_app() else { return };
         let bridge = self.bridge.clone();
-        let app_id = Self::steam_app(&id);
         let game_wins = self.game_wins.clone();
         self.run_focus("game", delay_ms, soft, move |still| {
             let pids = || bridge.lock().map(|b| b.library.game_pids()).unwrap_or_default();
-            // Never a game put aside (its window shows its last picture, frozen).
-            let mut exclude: Vec<u64> = bridge.lock().map(|b| b.library.frozen_pids()).unwrap_or_default().into_iter().map(u64::from).collect();
+            // Never a game put aside (its window shows its last picture, frozen): not its processes, not its number.
+            let (frozen, mut other_ids) = bridge.lock().map(|b| (b.library.frozen_pids(), b.library.frozen_ids())).unwrap_or_default();
+            let mut exclude: Vec<u64> = frozen.into_iter().map(u64::from).collect();
             exclude.push(std::process::id() as u64);
-            if let Some(cur) = gs::cardinals("GAMESCOPECTRL_BASELAYER_WINDOW", None).first().copied() {
-                if gs::focusable_windows().iter().any(|w| w.win == cur && exclude.contains(&w.pid)) { gs::clear_focus(); }
+            other_ids.push(HEARTH_ID);
+            // A window pinned earlier that's a frozen game's (or Hearth's) would stay in front over the number: it goes.
+            if let Some(cur) = gs::pinned() {
+                let stale = gs::focusable_windows().iter().any(|w| w.win == cur && (exclude.contains(&w.pid)
+                    || (w.appid != app_id as u64 && w.appid <= u32::MAX as u64 && other_ids.contains(&(w.appid as u32)))));
+                if stale { gs::clear_pin(); }
             }
             // Windows other games had: one of them may be frozen with processes Hearth didn't match.
             let (known, others) = {
                 let m = game_wins.lock().unwrap();
                 (m.get(&id).copied().unwrap_or(0), m.iter().filter(|(k, _)| **k != id).map(|(_, w)| *w).collect::<Vec<u64>>())
             };
-            if let Some(w) = gs::focus_game(&pids, app_id, &exclude, &others, known, still) {
+            log(&format!("focus: {id} (id {app_id}) to the front; games put aside: {:?}", other_ids.iter().filter(|n| **n != HEARTH_ID).collect::<Vec<_>>()));
+            let want = gs::Want { app_id, exclude_pids: &exclude, not_wins: &others, other_ids: &other_ids, known };
+            if let Some(w) = gs::focus_game(&want, &pids, still) {
                 let mut m = game_wins.lock().unwrap();
                 m.retain(|k, v| *v != w || *k == id);
                 m.insert(id.clone(), w);
+            } else if still() {
+                log(&format!("focus: {id} (id {app_id}) has no window to show yet"));
             }
         });
+    }
+
+    /// Every window carries its game's number (hearth_core::appid), checked twice a second: Hearth's own windows get
+    /// Hearth's, a game's get the game's (from its processes: HEARTH_GAME_ID, Steam's reaper, or for a game started
+    /// outside Hearth the library's guesses), and a window gamescope forgot the number of (shown again without
+    /// Steam mode) gets it back. A new window of a program Hearth opened that isn't a game (a browser, Moonlight)
+    /// comes to the front, as it did before. First, gamescope is asked to follow the numbers (take_focus_control).
+    pub fn start_window_ids(self: &Arc<Self>) {
+        if !self.inside() || self.ids_on.swap(true, Ordering::SeqCst) { return; }
+        let me = self.clone();
+        std::thread::spawn(move || {
+            let mine = std::process::id() as u64;
+            let mut seen: std::collections::HashMap<u64, (u64, Option<u32>)> = Default::default();
+            // Hearth's window carries Hearth's number before gamescope is told to follow numbers (or it would show nothing).
+            for _ in 0..40 {
+                me.tag_windows(&mut seen, true);
+                if gs::focusable_windows().iter().any(|w| w.pid == mine && w.appid == HEARTH_ID as u64) { break; }
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            if gs::requested_ids().is_empty() { gs::focus_ids(&[HEARTH_ID]); }
+            for _ in 0..3 {
+                let r = gs::take_focus_control();
+                log(&format!("ids: {r}"));
+                if !r.starts_with("couldn't") { break; }
+                std::thread::sleep(Duration::from_secs(3));
+            }
+            log(&format!("ids: Hearth is id {HEARTH_ID}, apps it opens {APPS_ID}; gamescope in Steam mode: {}", gs::steam_mode()));
+            // Twice a second: without Steam mode a game's window that's mapped again (Wine does it switching modes)
+            // has no number until Hearth puts it back (the screen stays dark for that moment).
+            loop {
+                std::thread::sleep(Duration::from_millis(500));
+                me.tag_windows(&mut seen, false);
+            }
+        });
+    }
+
+    /// One pass of `start_window_ids`. `seen`: window → (its process, the number it should carry).
+    fn tag_windows(self: &Arc<Self>, seen: &mut std::collections::HashMap<u64, (u64, Option<u32>)>, starting: bool) {
+        let wins = gs::focusable_windows();
+        let mine = std::process::id();
+        let root = std::path::Path::new("/proc");
+        let overlay = self.cached_xid(OVERLAY_TITLE);
+        let explicit: std::collections::HashMap<u64, u32> = {
+            let mut m = self.win_tags.lock().unwrap();
+            if !wins.is_empty() { m.retain(|w, _| wins.iter().any(|x| x.win == *w)); }
+            m.clone()
+        };
+        let mut open: Option<Option<Vec<(u32, String, Vec<u32>)>>> = None;
+        let mut new_apps: Vec<u64> = Vec::new();
+        for w in &wins {
+            if Some(w.win) == overlay { continue; }
+            let pid = w.pid;
+            let prev = seen.get(&w.win).cloned().filter(|(p, _)| *p == pid);
+            let want: Option<u32> = if let Some(id) = explicit.get(&w.win) {
+                Some(*id)
+            } else if pid == mine as u64 {
+                Some(HEARTH_ID)
+            } else if pid == 0 || pid >= u32::MAX as u64 {
+                None
+            } else if let Some((_, Some(id))) = prev {
+                Some(id)
+            } else if prev.is_some() {
+                None   // looked at already: not a game's
+            } else {
+                let p = pid as u32;
+                if procs::is_steam_client(&procs::comm(root, p)) { None }
+                else if let Some(id) = procs::owner_of(root, p, mine) { Some(id) }
+                else {
+                    // A game whose processes carry no number (started outside Hearth or by an older one): the guesses.
+                    let games = open.get_or_insert_with(|| self.bridge.try_lock().ok().map(|b| b.library.open_games()));
+                    let Some(games) = games.as_ref() else { continue };   // the library is busy: next time
+                    match games.iter().find(|(id, _, ps)| *id != 0 && ps.contains(&p)) {
+                        Some((id, _, _)) => Some(*id),
+                        None if procs::descends_from(root, p, mine) => { new_apps.push(w.win); Some(APPS_ID) }
+                        None => None,
+                    }
+                }
+            };
+            if let Some(id) = want {
+                if w.appid != id as u64 && gs::tag_window(w.win, id) && prev.map(|(_, d)| d != Some(id)).unwrap_or(true) {
+                    let what = if id == HEARTH_ID { "Hearth".to_string() } else if id == APPS_ID { "an app Hearth opened".to_string() } else { format!("process {pid} {}", procs::comm(root, pid as u32)) };
+                    log(&format!("ids: window {:#x} ({what}) gets id {id}", w.win));
+                }
+            }
+            seen.insert(w.win, (pid, want));
+        }
+        if !wins.is_empty() { seen.retain(|k, _| wins.iter().any(|w| w.win == *k)); }
+        if starting { return; }
+        for win in new_apps {
+            log(&format!("ids: new window {win:#x} of a program Hearth opened: in front"));
+            self.focus_xid("app window", win, 0, false);
+        }
     }
 
     /// Hearth stays in front with its "starting" screen while the game loads, and puts it in front once its
@@ -171,6 +298,7 @@ impl GameMode {
         std::thread::spawn(move || {
             log(&format!("launch: waiting for {id} to open its window"));
             let app_id = Self::steam_app(&id);
+            let app_number = me.running_app().filter(|(rid, _)| *rid == id).map(|(_, n)| n).unwrap_or(0);
             let slow = { let (me, id) = (me.clone(), id.clone()); std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(40));
                 if me.launch_gen.load(Ordering::SeqCst) == g { me.to_main(ev("game.slow", json!({"id": id, "firstRun": app_id == 0}))); }
@@ -180,16 +308,20 @@ impl GameMode {
             let pids = || bridge.lock().map(|b| b.library.game_pids()).unwrap_or_default();
             let cancelled = || me.launch_gen.load(Ordering::SeqCst) != g || me.bridge.lock().map(|b| b.library.running_id().as_deref() != Some(id.as_str())).unwrap_or(true);
             me.launch_busy.store(g, Ordering::SeqCst);
-            let r = gs::wait_for_window(&pids, app_id, &[std::process::id() as u64], Duration::from_secs(600), &cancelled);
+            let r = gs::wait_for_window(app_number, &pids, &[std::process::id() as u64], Duration::from_secs(600), &cancelled);
             let _ = me.launch_busy.compare_exchange(g, 0, Ordering::SeqCst, Ordering::SeqCst);
             if cancelled() { return; }
             me.launch_gen.fetch_add(1, Ordering::SeqCst);
             me.step_aside();
             match r {
                 Some(gs::Ready::Window(w)) => {
-                    log(&format!("launch: {id} is ready (window {w})"));
+                    log(&format!("launch: {id} is ready (window {w:#x}, id {app_number}, {})", procs::describe(&pids())));
                     { let mut m = me.game_wins.lock().unwrap(); m.retain(|_, v| *v != w); m.insert(id.clone(), w); }
-                    me.focus_xid("game window", w, 0, false);
+                    if app_number != 0 {
+                        me.run_focus("game window", 0, false, move |_| { gs::front_by_id(app_number, w); log(&format!("focus: id {app_number} in front (window {w:#x})")); });
+                    } else {
+                        me.focus_xid("game window", w, 0, false);
+                    }
                 }
                 Some(gs::Ready::Dialog(w, t)) => { log(&format!("launch: Steam is asking something (\"{t}\"), showing it")); me.focus_xid("Steam question", w, 0, false); me.focus_running_game(0, false); }
                 None => { log(&format!("launch: {id} didn't open a window in 10 minutes; showing whatever it has")); me.focus_running_game(0, false); }
@@ -201,8 +333,26 @@ impl GameMode {
     /// A window that's still there and doesn't belong to a game put aside (frozen on its last picture).
     fn window_ok(&self, win: u64) -> bool {
         let Some(w) = gs::focusable_windows().into_iter().find(|w| w.win == win) else { return false };
-        let frozen = self.bridge.lock().map(|b| b.library.frozen_pids()).unwrap_or_default();
-        !frozen.contains(&(w.pid as u32))
+        let (frozen, ids) = self.bridge.lock().map(|b| (b.library.frozen_pids(), b.library.frozen_ids())).unwrap_or_default();
+        !frozen.contains(&(w.pid as u32)) && !(w.appid <= u32::MAX as u64 && ids.contains(&(w.appid as u32)))
+    }
+    /// Is this window the running game's (its number, or one of its processes)?
+    fn running_games_window(&self, win: u64) -> bool {
+        let Some((_, app_id)) = self.running_app() else { return false };
+        let Some(w) = gs::focusable_windows().into_iter().find(|w| w.win == win) else { return false };
+        (app_id != 0 && w.appid == app_id as u64) || self.bridge.lock().map(|b| b.library.game_pids().contains(&(w.pid as u32))).unwrap_or(false)
+    }
+    /// Xbox Cloud Gaming's window (one of Hearth's own) carries the cloud game's number, which goes in front.
+    fn focus_stream(self: &Arc<Self>, s: &tauri::WebviewWindow, delay_ms: u64, soft: bool) {
+        let Some(x) = gs::window_named(&s.title().unwrap_or_default()) else { return };
+        let app_id = self.running_app().map(|(_, n)| n).unwrap_or(0);
+        if app_id == 0 { self.focus_xid("stream", x, delay_ms, soft); return; }
+        if let Ok(mut m) = self.win_tags.lock() { m.insert(x, app_id); }
+        self.run_focus("stream", delay_ms, soft, move |_| {
+            gs::tag_window(x, app_id);
+            gs::front_by_id(app_id, x);
+            log(&format!("focus: Xbox Cloud Gaming's window {x:#x} carries id {app_id}; in front"));
+        });
     }
     /// Hearth is still showing "starting" for a game that hasn't put its window up yet.
     fn launch_waiting(&self) -> bool { let b = self.launch_busy.load(Ordering::SeqCst); b != 0 && b == self.launch_gen.load(Ordering::SeqCst) }
@@ -219,7 +369,7 @@ impl GameMode {
         self.launch_gen.fetch_add(1, Ordering::SeqCst);
         self.claim();
         self.step_aside();
-        if let Some(s) = self.app.get_webview_window("stream") { let _ = s.show(); let _ = s.set_focus(); if let Some(x) = gs::window_named(&s.title().unwrap_or_default()) { self.focus_xid("stream", x, 0, false); } return; }
+        if let Some(s) = self.app.get_webview_window("stream") { let _ = s.show(); let _ = s.set_focus(); self.focus_stream(&s, 0, false); return; }
         self.focus_running_game(0, false);
         self.nudge_game();
     }
@@ -232,7 +382,7 @@ impl GameMode {
                 if let Some(s) = self.app.get_webview_window("stream") {
                     self.step_aside();
                     self.to_main(ev("game.ready", json!({"id": id})));
-                    if let Some(x) = gs::window_named(&s.title().unwrap_or_default()) { self.focus_xid("stream", x, 900, true); }
+                    self.focus_stream(&s, 900, true);
                     return;
                 }
                 if !self.inside() { self.step_aside(); self.to_main(ev("game.ready", json!({"id": id}))); return; }
@@ -488,7 +638,10 @@ impl GameMode {
             // A game that's starting (or just started) may have swapped its splash for its real window while the
             // overlay was open: put back what's there now, not the window from before (that looked frozen).
             if launching { if let Some(x) = self.xid(MAIN_TITLE) { if before == x { self.focus_xid("back to starting screen", x, 200, true); } } }
-            else if before != 0 && Some(before) != self.xid(OVERLAY_TITLE) && Some(before) != self.xid(MAIN_TITLE) && self.window_ok(before) { self.focus_xid("back from the overlay", before, 200, true); }
+            else if before != 0 && Some(before) != self.xid(OVERLAY_TITLE) && Some(before) != self.xid(MAIN_TITLE) && self.window_ok(before) {
+                // The game's own window: by its number (its launcher may have handed over meanwhile); another app's: pinned.
+                if self.running_games_window(before) { self.focus_running_game(200, true); self.nudge_game(); } else { self.focus_xid("back from the overlay", before, 200, true); }
+            }
             else if self.running().is_some() { self.focus_running_game(200, true); self.nudge_game(); }
         }
     }
@@ -634,6 +787,8 @@ impl GameMode {
                 if pid == std::process::id() as u64 { return self.come_back(); }
                 self.step_aside();
                 if id == 0 && pid == 0 { let _ = hearth_core::steam::spawn(&hearth_core::paths::home(), "steam://open/main"); return self.host_action_now("showSteam", &json!({})); }
+                // The running game: by its number (gamescope picks its best window); anything else: that window.
+                if self.running_games_window(id) { self.resume_game(); return; }
                 self.focus_xid("app", id, 0, false);
             }
             "screenshot" => {
@@ -676,7 +831,11 @@ impl GameMode {
                 if pid == 0 || !self.inside() { return; }
                 self.hide_overlay();
                 self.step_aside();
-                self.run_focus("couch co-op", 300, false, move |still| { gs::focus_game(&|| vec![pid], 0, &[std::process::id() as u64], &[], 0, still); });
+                self.run_focus("couch co-op", 300, false, move |still| {
+                    let mine = [std::process::id() as u64];
+                    let want = gs::Want { app_id: 0, exclude_pids: &mine, not_wins: &[], other_ids: &[], known: 0 };
+                    gs::focus_game(&want, &|| vec![pid], still);
+                });
             }
             // Quick Resume: the game picked is running again; put it in front.
             "resumeGame" => { self.hide_overlay(); self.resume_game(); }

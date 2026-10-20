@@ -64,8 +64,10 @@ pub fn apply(opts: &Value, cmd: &str, args: Vec<String>, proton: bool) -> (Strin
     (c, a, env)
 }
 
-/// Starts it. Returns the process id when Hearth started a process it can watch.
-pub fn launch(file: &str, extra_args: &str, opts: &Value) -> Result<u32, String> {
+/// Starts it. Returns the process id when Hearth started a process it can watch. `game_id` (appid.rs) goes in its
+/// environment as HEARTH_GAME_ID, so its processes and windows can be told apart from other games'. GAMEID (umu and
+/// Proton's game fixes) stays as it was.
+pub fn launch(file: &str, extra_args: &str, opts: &Value, game_id: u32) -> Result<u32, String> {
     if !Path::new(file).exists() { return Err(format!("File not found: {file}")); }
     let cwd = Path::new(file).parent().map(|p| p.to_path_buf()).unwrap_or_else(|| "/".into());
     let args = split_args(extra_args);
@@ -87,6 +89,8 @@ pub fn launch(file: &str, extra_args: &str, opts: &Value) -> Result<u32, String>
     };
     let (c, a, mut e) = apply(opts, &cmd, argv, proton);
     e.extend(env);
+    if game_id != 0 { e.push(crate::appid::env(game_id)); }
+    crate::bridge::log(&format!("launch: {} with HEARTH_GAME_ID={game_id}", Path::new(file).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
     let child = std::process::Command::new(&c).args(&a).envs(e).current_dir(dir)
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
         .spawn().map_err(|err| if err.kind() == std::io::ErrorKind::PermissionDenied { format!("{} isn't executable. Mark it as executable (chmod +x) and try again", Path::new(file).file_name().unwrap().to_string_lossy()) } else { format!("Couldn't start it: {err}") })?;
