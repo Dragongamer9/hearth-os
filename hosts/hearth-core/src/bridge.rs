@@ -455,7 +455,7 @@ impl Bridge {
             "app.exportLogs" => export_logs(&self.version),
             "logs.save" => crate::logs::save(&self.version).map(|(p, _)| json!({"path": p.to_string_lossy()})),
             "logs.send" => crate::logs::send(&self.version),
-            "logs.sendToDeveloper" => crate::logs::send_to_developer(&self.version, edition()),
+            "logs.sendToDeveloper" => crate::logs::send_to_developer_note(&self.version, edition(), a["note"].as_str().unwrap_or("")),
             "game.resetPrefix" => {
                 let id = req("id")?;
                 let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
