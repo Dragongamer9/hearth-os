@@ -23,7 +23,12 @@ public sealed class StoreAccounts
 
     private static readonly TimeSpan Stale = TimeSpan.FromHours(12);
 
-    public StoreAccounts(LibraryStore store) => _store = store;
+    public StoreAccounts(LibraryStore store)
+    {
+        _store = store;
+        // A store refused its saved sign-in: the Stores page shows "Sign-in expired" with Sign in again.
+        SignInExpiry.Marked += _ => Changed?.Invoke();
+    }
 
     public static string DefaultRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games");
     public string InstallRoot
@@ -50,7 +55,7 @@ public sealed class StoreAccounts
         AccountDto Dto(string s, bool signedIn, string? name, string? avatar, int owned, long fetched, bool tool, string? note)
         {
             lock (_lock) return new AccountDto(s, signedIn, name, avatar, owned, Inst(s), fetched, _busy.Contains(s),
-                                                _errors.TryGetValue(s, out var e) ? e : null, tool, note);
+                                                _errors.TryGetValue(s, out var e) ? e : null, tool, note, SignInExpiry.IsExpired(s), SignInExpiry.ExpiredAt(s));
         }
         var steam = SteamScanner.Account();
         var gog = Gog.Profile();
@@ -79,6 +84,7 @@ public sealed class StoreAccounts
             _ => throw new ArgumentException("Unknown store"),
         };
         if (!ok) return false;
+        SignInExpiry.Clear(store);
         SystemBridge.Log($"accounts: signed in to {store}");
         Changed?.Invoke();
         _ = RefreshAsync(store);     // fetch the game list in the background
@@ -95,6 +101,7 @@ public sealed class StoreAccounts
             default: throw new ArgumentException("Unknown store");
         }
         SetError(store, null);
+        SignInExpiry.Clear(store);
         SystemBridge.Log($"accounts: signed out of {store}");
         Changed?.Invoke();
     }
@@ -115,7 +122,14 @@ public sealed class StoreAccounts
                 _ => Task.CompletedTask,
             });
             SetError(store, null);
+            SignInExpiry.Clear(store);
             SystemBridge.Log($"accounts: {store} list has {OwnedOf(store)?.Games.Count} games");
+        }
+        catch (StoreExpiredException ex)
+        {
+            // Shown as "Sign-in expired" with Sign in again, not as an error.
+            SetError(store, null);
+            SystemBridge.Log($"accounts: {store} refresh FAILED (sign-in expired) {ex.Message}");
         }
         catch (Exception ex)
         {
@@ -133,7 +147,7 @@ public sealed class StoreAccounts
     public void RefreshStale()
     {
         foreach (var s in new[] { "epic", "gog", "xbox" })
-            if (SignedIn(s) && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (OwnedOf(s)?.Fetched ?? 0) > Stale.TotalMilliseconds)
+            if (SignedIn(s) && !SignInExpiry.IsExpired(s) && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (OwnedOf(s)?.Fetched ?? 0) > Stale.TotalMilliseconds)
                 _ = RefreshAsync(s);
     }
 
@@ -202,12 +216,14 @@ public sealed class StoreAccounts
         if (uri.StartsWith("nimbus-epic:"))
         {
             var app = uri["nimbus-epic:".Length..];
+            if (SignInExpiry.IsExpired("epic")) throw new StoreExpiredException("epic");
             if (!Epic.SignedIn) throw new InvalidOperationException("Sign in to Epic Games first (Library › Stores).");
             Installs.Enqueue(new InstallJob { GameId = g.Id, Title = g.Title, Work = (job, ct) => Epic.InstallAsync(job, app, root, ct) });
         }
         else if (uri.StartsWith("nimbus-gog:"))
         {
             var id = uri["nimbus-gog:".Length..];
+            if (SignInExpiry.IsExpired("gog")) throw new StoreExpiredException("gog");
             if (!Gog.SignedIn) throw new InvalidOperationException("Sign in to GOG first (Library › Stores).");
             Installs.Enqueue(new InstallJob
             {

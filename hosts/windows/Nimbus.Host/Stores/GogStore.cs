@@ -84,10 +84,16 @@ public sealed class GogStore
 
             var url = $"https://auth.gog.com/token?client_id={ClientId}&client_secret={ClientSecret}&grant_type=refresh_token" +
                       $"&refresh_token={Uri.EscapeDataString(t["refresh_token"]!.GetValue<string>())}";
+            // No connection throws HttpRequestException here: a passing problem, never an expired sign-in.
             using var resp = await HelperTools.Http.GetAsync(url);
-            if (!resp.IsSuccessStatusCode) throw new InvalidOperationException("Your GOG sign-in expired. Sign in again under Library › Stores.");
             var body = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                if (SignInExpiry.TokenRefused((int)resp.StatusCode, body)) { SignInExpiry.Mark("gog"); throw new StoreExpiredException("gog"); }
+                throw new InvalidOperationException($"GOG didn't renew your sign-in just now (HTTP {(int)resp.StatusCode}). Try again in a little while.");
+            }
             await SaveTokenAsync(body);
+            SignInExpiry.Clear("gog");
             return JsonNode.Parse(body)!["access_token"]!.GetValue<string>();
         }
         finally { _tokenLock.Release(); }

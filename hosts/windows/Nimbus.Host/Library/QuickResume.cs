@@ -39,10 +39,59 @@ public sealed class QuickResume : IDisposable
 
     private void Save() { try { File.WriteAllText(FilePath, JsonSerializer.Serialize(_frozen)); } catch { } }
 
-    /// <summary>Freezes the game and puts it first in the list. Returns entries pushed out (to close).</summary>
-    public List<Entry> Add(string id, string[] dirs)
+    // Anti-cheat that runs with a game (in its folder, or as its service): freezing a game it protects can look like
+    // tampering (a kick, or worse), and its protected processes refuse to be frozen anyway. Lowercase name starts.
+    private static readonly string[] AntiCheatInGame = { "easyanticheat", "eac_launcher", "start_protected_game", "beservice", "battleye", "bedaisy",
+                                                          "eaanticheat", "anticheatexpert", "ace-base", "xigncode", "gameguard", "nprotect", "mhyprot", "vanguard" };
+    // Only the services that run while a protected game runs (not ones that are always on, like Vanguard or FACEIT,
+    // which would stop Quick Resume for every game).
+    private static readonly (string Process, string Name)[] AntiCheatServices =
     {
-        if (GameMonitor.Suspend(dirs, true) == 0) throw new InvalidOperationException("Couldn't put the game aside. It may be running as administrator.");
+        ("EasyAntiCheat", "Easy Anti-Cheat"), ("EasyAntiCheat_EOS", "Easy Anti-Cheat"), ("BEService", "BattlEye"), ("BEService_x64", "BattlEye"),
+        ("EAAntiCheat.GameService", "EA javelin anti-cheat"),
+    };
+
+    /// <summary>The anti-cheat the game seems to run with (by its processes' names), or null.</summary>
+    public static string? AntiCheatOf(string[] dirs)
+    {
+        foreach (var n in GameMonitor.ProcessNames(dirs))
+        {
+            var l = n.ToLowerInvariant();
+            if (AntiCheatInGame.FirstOrDefault(a => l.StartsWith(a)) is { } hit)
+                return hit switch { "beservice" or "battleye" or "bedaisy" => "BattlEye", "eaanticheat" => "EA javelin anti-cheat", "vanguard" => "Riot Vanguard", "xigncode" => "XIGNCODE", "gameguard" or "nprotect" => "GameGuard", _ => "Easy Anti-Cheat" };
+        }
+        foreach (var (proc, name) in AntiCheatServices)
+        {
+            var ps = System.Diagnostics.Process.GetProcessesByName(proc);
+            bool found = ps.Length > 0;
+            foreach (var p in ps) p.Dispose();
+            if (found) return name;
+        }
+        return null;
+    }
+
+    /// <summary>Freezes the game and puts it first in the list. Returns entries pushed out (to close). Refused (with
+    /// the reason) for a game protected by anti-cheat, and for one whose processes Windows won't let Ember freeze
+    /// (running as administrator): those are left running as they were.</summary>
+    public List<Entry> Add(string id, string[] dirs, string? title = null)
+    {
+        var name = title ?? "The game";
+        if (AntiCheatOf(dirs) is { } ac)
+        {
+            SystemBridge.Log($"quick resume: {id} not put aside: {ac} runs");
+            throw new InvalidOperationException($"{name} runs with {ac}, which can treat a frozen game as cheating, so Ember doesn't put it aside. Exit it first (Quick Access › Now playing).");
+        }
+        var (done, failed) = GameMonitor.SuspendAll(dirs, true);
+        if (done == 0 || failed > 0)
+        {
+            // Half frozen is worse than not at all: everything runs again.
+            if (done > 0) GameMonitor.SuspendAll(dirs, false);
+            SystemBridge.Log($"quick resume: {id} not put aside: froze {done}, {failed} refused");
+            throw new InvalidOperationException(done == 0 && failed == 0
+                ? $"Couldn't put {name} aside: its program isn't running anymore."
+                : $"Windows didn't let Ember freeze {name} (it runs as administrator, or it's protected), so it's still running. Exit it first (Quick Access › Now playing).");
+        }
+        SystemBridge.Log($"quick resume: {id} put aside ({done} processes frozen)");
         lock (_lock)
         {
             _frozen.RemoveAll(e => e.Id == id);

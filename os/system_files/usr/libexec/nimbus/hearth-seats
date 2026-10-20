@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 """hearth-seats: Multi-seat (experimental). One PC runs two to four separate Hearth Game Mode sessions at once,
-one per TV or monitor, each with its own controllers and its own Linux account (own Steam account, Hearth
-profile and saves), like several consoles in one box. See docs/MULTI-SEAT.md for the design.
+each with its own controllers and its own Linux account (own Steam account, Hearth profile and saves), like
+several consoles in one box. Each extra player plays on a graphics card of their own, on another screen of
+player 1's card, on part of player 1's screen (split), or streamed to another device (Sunshine/Moonlight).
+See docs/MULTI-SEAT.md for the design.
 
 Run by the Hearth app as the signed-in (main) user; the parts that need root go through
 `pkexec /usr/libexec/nimbus/hearth-admin seats-*`.
@@ -16,6 +18,14 @@ Run by the Hearth app as the signed-in (main) user; the parts that need root go 
                                        move a controller to another player, right away
   hearth-seats remove [--delete-users] undo everything: back to one player (the extra accounts and their saves are
                                        kept unless --delete-users)
+  hearth-seats wait-button [--timeout S] [--exclude id,...]
+                                       "Player N, press A": the controller on which a button goes down
+  hearth-seats stream-info             JSON: each streamed player's name, address, paired devices, waiting devices
+  hearth-seats stream-pair --seat N --pin 1234 [--name NAME]
+                                       pair the device showing that PIN in Moonlight with player N's stream
+  hearth-seats stream-unpair --seat N --uuid UUID
+  hearth-seats audio [--seat N --volume 0-100] [--only-p1 on|off]
+                                       split screen: each player's volume, or only player 1's sound
 
 Used by the system itself (not by the app):
   hearth-seats session                 an extra player's session (run by hearth-seat@.service as that player)
@@ -23,6 +33,8 @@ Used by the system itself (not by the app):
   hearth-seats host -- CMD...          run the host (labwc over every screen) with CMD as player 1's Game Mode
   hearth-seats host-run -- CMD...      inside the host: open each player's window socket, then run CMD
   hearth-seats gamescope-args          extra gamescope options for this user's Game Mode (may print nothing)
+  hearth-seats stream-run              a streamed player's session inside its headless labwc (virtual screen)
+  hearth-seats sunshine                a streamed player's Sunshine (hearth-seat-sunshine.service, a user service)
 
 Output: "progress: <0-100> <what>" lines, then one JSON line. Exit 1 with "error: ..." on failure.
 """
@@ -51,8 +63,24 @@ MAX_SEATS = 4
 PLAYER_RE = re.compile(r'^hearth-p([2-4])$')
 EXIT_HOST_FALLBACK = 3   # host couldn't start: run normal Game Mode instead
 HOST_STATE = os.path.expanduser('~/.local/state/hearth/seat-host.json')
+AUDIO_PREFS = os.path.expanduser('~/.config/hearth/seats-audio.json')   # split screen: volumes (player 1's own)
+HOST_KINDS = ('nested', 'split')   # players whose window player 1's Game Mode hosts
+# Presets (hearth-admin accepts nothing else).
+STREAM_SIZES = ('1280x720', '1280x800', '1920x1080', '2560x1440', '3840x2160')
+STREAM_FPS = (30, 60, 90, 120)
+SPLIT_LAYOUTS = {'columns': 2, 'rows': 2, 'grid': 4}
+# Each region of a split layout, in % of the screen (labwc's <regions>), in region order.
+SPLIT_REGIONS = {'columns': [(0, 0, 50, 100), (50, 0, 50, 100)],
+                 'rows': [(0, 0, 100, 50), (0, 50, 100, 50)],
+                 'grid': [(0, 0, 50, 50), (50, 0, 50, 50), (0, 50, 50, 50), (50, 50, 50, 50)]}
+STREAM_PORT_FIRST = 47989          # Sunshine's default: Remote play (player 1's own Sunshine) keeps it
+SUNSHINE_UNIT = 'hearth-seat-sunshine.service'
+SUNSHINE_DEFAULT_UNITS = ('sunshine.service', 'app-dev.lizardbyte.app.Sunshine.service')
+STREAM_DIR = os.path.expanduser('~/.config/hearth/seat-stream')   # a streamed player's Sunshine settings and pairings
 
 BTN_JOYSTICK, BTN_GAMEPAD = 0x120, 0x130
+EV_KEY = 0x01
+INPUT_EVENT = struct.Struct('llHHi')
 
 
 class Fail(Exception):
@@ -309,12 +337,84 @@ def scan():
 def public_config(config):
     if not config:
         return None
-    return {k: config.get(k) for k in ('version', 'mode', 'enabled', 'main_user', 'seats', 'created_users')}
+    return {k: config.get(k) for k in ('version', 'mode', 'enabled', 'main_user', 'seats', 'split', 'created_users')}
+
+
+def seat_kind(config, s):
+    """gpu, nested, split, stream, or local (player 1 when every other player is streamed). Set-ups from before
+    per-seat modes have one "mode" for everyone."""
+    k = s.get('mode') or (config or {}).get('mode')
+    if s.get('seat') == 1 and k == 'stream':
+        return 'local'
+    return k
+
+
+def config_has(config, *kinds):
+    return any(seat_kind(config, s) in kinds for s in (config or {}).get('seats', []) if s.get('seat') != 1)
+
+
+def hosted(config):
+    """Does player 1's Game Mode host other players' windows (another screen, or part of player 1's)?"""
+    return config_has(config, *HOST_KINDS)
 
 
 # ---------------------------------------------------------------------------------------------- planning
 def connected_outputs(gpu):
     return [o for o in gpu['outputs'] if o['connected']]
+
+
+def have(cmd):
+    return any(os.access(os.path.join(d, cmd), os.X_OK) for d in os.environ.get('PATH', '/usr/bin:/bin').split(':') if d)
+
+
+def stream_support():
+    """(possible, reason). Streaming a player needs Sunshine (installed in the system, not the Flatpak), labwc
+    for the virtual screen, wlr-randr to size it, and a graphics card with a render node."""
+    missing = [c for c in ('sunshine', 'labwc', 'wlr-randr') if not have(c)]
+    if 'sunshine' in missing:
+        return False, 'Streaming a player needs Sunshine, which isn\'t in this edition of Hearth OS yet.'
+    if missing:
+        return False, 'Streaming a player needs %s.' % ' and '.join(missing)
+    if not glob.glob(os.path.join(SYS, 'class/drm', 'renderD[0-9]*')):
+        return False, 'Streaming a player needs a graphics card Hearth can use for video.'
+    return True, None
+
+
+def remote_play_port():
+    """The port family of player 1's own Sunshine (Settings › Remote play), if it was changed from the default."""
+    m = re.search(r'^\s*port\s*=\s*(\d{4,5})\s*$', read(os.path.expanduser('~/.config/sunshine/sunshine.conf')), re.M)
+    return int(m.group(1)) if m else STREAM_PORT_FIRST
+
+
+def stream_port(n):
+    """Player n's Sunshine port family (48989, 49989, 50989; each uses its port -5 to +21), as hearth-admin sets."""
+    return STREAM_PORT_FIRST + 1000 * (n - 1)
+
+
+def split_rects(w, h, layout):
+    """Each region of a split screen as {x, y, w, h} (even sizes), in region order; the same as hearth-admin's."""
+    def ev(v):
+        return max(2, int(v) // 2 * 2)
+    if layout == 'columns':
+        cw = ev(w / 2)
+        r = [(0, 0, cw, ev(h)), (cw, 0, cw, ev(h))]
+    elif layout == 'rows':
+        ch = ev(h / 2)
+        r = [(0, 0, ev(w), ch), (0, ch, ev(w), ch)]
+    else:
+        cw, ch = ev(w / 2), ev(h / 2)
+        r = [(0, 0, cw, ch), (cw, 0, cw, ch), (0, ch, cw, ch), (cw, ch, cw, ch)]
+    return [{'x': x, 'y': y, 'w': rw, 'h': rh} for x, y, rw, rh in r]
+
+
+def default_split_layout(size, players=2):
+    """Side by side on a wide screen, one above the other on a squarer one, four corners for 3-4 players."""
+    m = re.fullmatch(r'(\d+)x(\d+)', size or '')
+    if players > 2:
+        return 'grid'
+    if m and int(m.group(1)) / float(int(m.group(2))) < 1.6 - 1e-9:
+        return 'rows'
+    return 'columns'
 
 
 def plan_from(info):
@@ -333,19 +433,38 @@ def plan_from(info):
     nested_ok = total_outputs >= 2
     if nested_ok:
         reasons.append('There are %d screens connected, so they can be shared out between players.' % total_outputs)
-    if not gpu_ok and not nested_ok:
-        reasons.append('Connect a second TV or monitor to use multi-seat.')
-    mode = 'gpu' if gpu_ok else 'nested' if nested_ok else None
+    split_ok = total_outputs >= 1
+    if split_ok:
+        reasons.append('A TV or monitor can also be split into 2 to 4 parts, a Game Mode in each (Beta Experimental).')
+    stream_ok, why = stream_support()
+    reasons.append('Players can also play on another device (a TV with Moonlight, a phone, a tablet, a laptop), '
+                   'streamed from this PC (Beta Experimental).' if stream_ok else why)
+    if stream_ok:
+        p = remote_play_port()
+        if p != STREAM_PORT_FIRST and any(abs(p - stream_port(n)) <= 30 for n in (2, 3, 4)):
+            warnings.append('Remote play was moved to ports the streamed players use (%d). Set it back to its usual '
+                            'port in Sunshine\'s settings.' % p)
+    if not gpu_ok and not nested_ok and not split_ok:
+        reasons.append('Connect a TV or monitor to use multi-seat.')
+    mode = 'gpu' if gpu_ok else 'nested' if nested_ok else 'split' if split_ok else 'stream' if stream_ok else None
     layout = None
     if mode:
         layout = propose_layout(mode, gpus, pads, info['users']['main']['name'])
         assignable = [p for p in pads if p.get('assignable')]
-        if len(assignable) < len(layout['seats']):
+        local = [s for s in layout['seats'] if s.get('mode') != 'stream']
+        if len(assignable) < len(local):
             warnings.append('Connect a controller for each player. Controllers can be moved between players at any time.')
     if any(p for p in pads if not p.get('assignable')):
         warnings.append('Some controllers have no serial number and aren\'t plugged in by USB, so they always stay with player 1.')
-    return {'possible': {'gpu': gpu_ok, 'nested': nested_ok}, 'recommended': mode, 'reasons': reasons,
-            'warnings': warnings, 'layout': layout}
+    outputs = [{'id': o['id'], 'connector': o['connector'], 'mode': o['mode'], 'monitor': o['monitor'], 'gpu': g['id']}
+               for g in gpus for o in connected_outputs(g)]
+    return {'possible': {'gpu': gpu_ok, 'nested': nested_ok, 'split': split_ok, 'stream': stream_ok},
+            'recommended': mode, 'reasons': reasons, 'warnings': warnings, 'layout': layout, 'outputs': outputs,
+            'presets': {'stream_sizes': list(STREAM_SIZES), 'stream_fps': list(STREAM_FPS),
+                        'split_layouts': dict(SPLIT_LAYOUTS)},
+            'performance': 'Every extra player shares this PC\'s graphics card and processor (and its power limit), so '
+                           'games can run slower for everyone. Each streamed player also needs the graphics card to '
+                           'make their video.'}
 
 
 def propose_layout(mode, gpus, pads, main):
@@ -361,14 +480,32 @@ def propose_layout(mode, gpus, pads, main):
             picks += [(g, o) for o in outs]
         picks = picks[:MAX_SEATS]
     seats = []
+    split = None
+    if mode == 'split' and picks:
+        g, o = picks[0]
+        split = {'layout': default_split_layout(o.get('mode'))}
+        for n in (1, 2):
+            seats.append({'seat': n, 'user': main if n == 1 else 'hearth-p%d' % n, 'mode': 'split', 'gpu': g['id'],
+                          'output': o['id'], 'region': n - 1, 'pads': [], 'audio': None})
+    elif mode == 'stream':
+        seats = [{'seat': 1, 'user': main, 'mode': 'local', 'gpu': picks[0][0]['id'] if picks else None,
+                  'output': picks[0][1]['id'] if picks else None, 'pads': [], 'audio': None},
+                 {'seat': 2, 'user': 'hearth-p2', 'mode': 'stream', 'gpu': None, 'output': None, 'pads': [],
+                  'audio': None, 'stream': {'size': '1920x1080', 'fps': 60}}]
+    else:
+        for n, (g, o) in enumerate(picks, start=1):
+            seats.append({'seat': n, 'user': main if n == 1 else 'hearth-p%d' % n, 'mode': mode, 'gpu': g['id'],
+                          'output': o['id'], 'pads': [], 'audio': None})
+    # Player 1 keeps the first controller; the next ones go one each to the other players (not to streamed ones:
+    # their controllers come from their own device).
     assignable = [p for p in pads if p.get('assignable')]
-    for n, (g, o) in enumerate(picks, start=1):
-        seats.append({'seat': n, 'user': main if n == 1 else 'hearth-p%d' % n, 'gpu': g['id'], 'output': o['id'],
-                      'pads': [], 'audio': None})
-    # Player 1 keeps the first controller; the next ones go one each to the other players.
-    for i, p in enumerate(assignable[:len(seats)]):
-        seats[i]['pads'].append(p['id'])
-    return {'mode': mode, 'seats': seats}
+    local = [s for s in seats if s['mode'] != 'stream']
+    for i, p in enumerate(assignable[:len(local)]):
+        local[i]['pads'].append(p['id'])
+    out = {'mode': mode, 'seats': seats}
+    if split:
+        out['split'] = split
+    return out
 
 
 # ---------------------------------------------------------------------------------------------- root side
@@ -402,33 +539,95 @@ def admin(args, payload=None, timeout=600):
     return result or {}
 
 
+def normalize_layout(layout):
+    """The UI's layout, made consistent before it goes to hearth-admin: every seat says how it plays (older
+    layouts have one "mode"), player 1 matches the others, streamed players have no screen or controllers, and
+    the top-level mode sums it up."""
+    if not isinstance(layout, dict) or not isinstance(layout.get('seats'), list):
+        return layout
+    top = layout.get('mode')
+    seats = []
+    for s in layout['seats']:
+        if not isinstance(s, dict):
+            return layout
+        s = dict(s)
+        if not s.get('mode') and top:
+            s['mode'] = top
+        seats.append(s)
+    extra = {s.get('mode') for s in seats if s.get('seat') != 1}
+    local = extra - {'stream'}
+    for s in seats:
+        if s.get('seat') == 1:
+            if 'gpu' in local:
+                s['mode'] = 'gpu'
+            elif 'split' in local:
+                s['mode'] = 'split'
+            elif local:
+                s['mode'] = 'nested'
+            else:
+                s['mode'] = 'local'
+        if s.get('mode') == 'stream':
+            s['output'] = None
+            s['pads'] = []
+            s.pop('region', None)
+        elif s.get('mode') != 'split':
+            s.pop('region', None)
+    out = dict(layout, seats=seats)
+    out['mode'] = 'gpu' if 'gpu' in local else 'split' if 'split' in local else 'nested' if local else 'stream'
+    if out['mode'] != 'split' and not any(s.get('mode') == 'split' for s in seats):
+        out.pop('split', None)
+    return out
+
+
 def setup(seats_json, start=False):
     try:
         layout = json.loads(seats_json)
     except ValueError:
         raise Fail('--seats must be JSON like plan\'s "layout"')
     progress(2, 'Checking the layout')
+    layout = normalize_layout(layout)
     info = scan()
     check_layout(layout, info)
     payload = dict(layout, start=bool(start))
     result = admin(['seats-setup'], payload)
-    return dict(result, restart_game_mode=layout.get('mode') == 'nested' and bool(start))
+    return dict(result, restart_game_mode=hosted(layout) and bool(start))
 
 
 def check_layout(layout, info):
     """Friendly checks before asking for root (hearth-admin checks everything again, strictly)."""
-    if not isinstance(layout, dict) or layout.get('mode') not in ('gpu', 'nested'):
-        raise Fail('the layout needs a mode: "gpu" (a graphics card per player) or "nested" (one card, several screens)')
+    if not isinstance(layout, dict) or layout.get('mode') not in ('gpu', 'nested', 'split', 'stream'):
+        raise Fail('the layout needs a mode: "gpu" (a graphics card per player), "nested" (one card, several screens), '
+                   '"split" (parts of one screen) or "stream" (streamed to other devices)')
     seats = layout.get('seats')
     if not isinstance(seats, list) or not 2 <= len(seats) <= MAX_SEATS:
         raise Fail('choose 2 to %d players' % MAX_SEATS)
     outputs = {o['id']: (g, o) for g in info['gpus'] for o in g['outputs']}
     for s in seats:
+        kind = seat_kind(layout, s)
+        if kind == 'stream':
+            ok, why = stream_support()
+            if not ok:
+                raise Fail(why)
+            st = s.get('stream') or {}
+            if st.get('size', '1920x1080') not in STREAM_SIZES or st.get('fps', 60) not in STREAM_FPS:
+                raise Fail('choose one of the picture sizes and frame rates for player %s' % s.get('seat'))
+            continue
+        if kind == 'local' and not s.get('output'):
+            continue
         o = outputs.get(s.get('output'))
         if not o:
             raise Fail('screen %s isn\'t there any more' % s.get('output'))
         if not o[1]['connected']:
             raise Fail('the screen for player %s (%s) isn\'t connected or is turned off' % (s.get('seat'), o[1]['connector']))
+    split = [s for s in seats if seat_kind(layout, s) == 'split']
+    if split:
+        lay = (layout.get('split') or {}).get('layout')
+        if lay not in SPLIT_LAYOUTS:
+            raise Fail('choose how to split the screen: side by side, one above the other, or four corners')
+        if len(split) > SPLIT_LAYOUTS[lay]:
+            raise Fail('that screen layout has room for %d players' % SPLIT_LAYOUTS[lay])
+        if len({s.get('region') for s in split}) != len(split):
+            raise Fail('each player on the split screen needs their own part of it')
     if seats[0].get('user') != info['users']['main']['name']:
         raise Fail('player 1 must be you (%s)' % info['users']['main']['name'])
 
@@ -439,15 +638,15 @@ def start():
         raise Fail('multi-seat isn\'t set up')
     r = admin(['seats-start'])
     reset_host_failures()
-    return dict(r, restart_game_mode=c.get('mode') == 'nested')
+    return dict(r, restart_game_mode=hosted(c))
 
 
 def stop():
-    if not load_config():
+    c = load_config()
+    if not c:
         raise Fail('multi-seat isn\'t set up')
-    mode = load_config().get('mode')
     r = admin(['seats-stop'])
-    return dict(r, restart_game_mode=mode == 'nested')
+    return dict(r, restart_game_mode=hosted(c))
 
 
 def assign_pad(pad, seat):
@@ -457,6 +656,8 @@ def assign_pad(pad, seat):
     seats = {s['seat']: s for s in c.get('seats', [])}
     if seat not in seats:
         raise Fail('there\'s no player %d' % seat)
+    if seat_kind(c, seats[seat]) == 'stream':
+        raise Fail('player %d is streamed: their controllers come from their own device' % seat)
     mapping = {}
     for s in c['seats']:
         for p in s.get('pads', []):
@@ -480,7 +681,13 @@ def status():
         return {'configured': False, 'enabled': False, 'mode': None, 'seats': [], 'host': None}
     seats = []
     for s in c.get('seats', []):
-        e = {'seat': s['seat'], 'user': s['user'], 'output': s.get('output'), 'gpu': s.get('gpu'), 'pads': s.get('pads', [])}
+        kind = seat_kind(c, s)
+        e = {'seat': s['seat'], 'user': s['user'], 'mode': kind, 'output': s.get('output'), 'gpu': s.get('gpu'),
+             'pads': s.get('pads', [])}
+        if kind == 'split':
+            e['region'] = s.get('region')
+        if kind == 'stream' and isinstance(s.get('stream'), dict):
+            e['stream'] = {k: s['stream'].get(k) for k in ('size', 'fps', 'port', 'name')}
         if s['seat'] == 1:
             e['state'] = 'active'
         else:
@@ -491,16 +698,17 @@ def status():
                 e['state'] = 'starting'
             elif svc == 'failed':
                 e['state'] = 'failed'
-            elif c.get('mode') == 'nested' and c.get('enabled') and unit_state('hearth-seat@%s.path' % s['user']) == 'active':
+            elif kind in HOST_KINDS and c.get('enabled') and unit_state('hearth-seat@%s.path' % s['user']) == 'active':
                 e['state'] = 'waiting'   # for player 1's Game Mode to open its screen
             else:
                 e['state'] = 'stopped'
         seats.append(e)
     host = None
-    if c.get('mode') == 'nested':
+    if hosted(c):
         host = {'running': os.path.exists(os.path.join(SEAT_RUN, 'host.pid')) and pid_alive(read(os.path.join(SEAT_RUN, 'host.pid'))),
                 'paused': host_paused()}
-    return {'configured': True, 'enabled': bool(c.get('enabled')), 'mode': c.get('mode'), 'seats': seats, 'host': host}
+    return {'configured': True, 'enabled': bool(c.get('enabled')), 'mode': c.get('mode'), 'seats': seats, 'host': host,
+            'split': c.get('split'), 'audio': audio_prefs() if config_has(c, 'split') else None}
 
 
 def pid_alive(pid):
@@ -542,11 +750,67 @@ def session_gamescope_args(env):
             args += ['--prefer-vk-device', env['HEARTH_SEAT_VK_DEVICE']]
         if env.get('HEARTH_SEAT_OUTPUT'):
             args += ['--prefer-output', env['HEARTH_SEAT_OUTPUT']]
-    elif mode == 'nested':
-        m = re.fullmatch(r'(\d+)x(\d+)', env.get('HEARTH_SEAT_SIZE', ''))
+    elif mode in ('nested', 'split'):
+        # The window's size: the whole screen (nested) or this player's part of it (split); games render at it too.
+        m = re.fullmatch(r'(\d{2,5})x(\d{2,5})', env.get('HEARTH_SEAT_SIZE', ''))
         if m:
             args += ['-W', m.group(1), '-H', m.group(2), '-w', m.group(1), '-h', m.group(2)]
+    elif mode == 'stream':
+        args = stream_gamescope_args(env)
     return args
+
+
+def stream_settings(env):
+    """(size "WxH", fps) of a streamed player's virtual screen: presets only, else 1080p60."""
+    size = env.get('HEARTH_SEAT_STREAM_SIZE')
+    fps = env.get('HEARTH_SEAT_STREAM_FPS', '')
+    return (size if size in STREAM_SIZES else '1920x1080',
+            int(fps) if fps.isdigit() and int(fps) in STREAM_FPS else 60)
+
+
+def stream_gamescope_args(env):
+    """gamescope for a streamed player: nested in the virtual screen (headless labwc), at the picture size and
+    frame rate the player chose; games render at that size."""
+    size, fps = stream_settings(env)
+    w, h = size.split('x')
+    args = ['-W', w, '-H', h, '-w', w, '-h', h, '-r', str(fps)]
+    if re.fullmatch(r'[0-9a-f]{4}:[0-9a-f]{4}', env.get('HEARTH_SEAT_VK_DEVICE', '')):
+        args += ['--prefer-vk-device', env['HEARTH_SEAT_VK_DEVICE']]
+    return args
+
+
+def stream_labwc_env(env):
+    """A streamed player's virtual screen: labwc with wlroots' headless backend (one output, no real screen or
+    input devices), rendering on the chosen card. Sunshine captures that output (wlr-screencopy): gamescope's
+    own headless backend has no output Sunshine can capture (no KMS, no screencopy; Sunshine doesn't read
+    gamescope's PipeWire stream directly)."""
+    out = dict(env)
+    out.update(WLR_BACKENDS='headless', WLR_HEADLESS_OUTPUTS='1', WLR_LIBINPUT_NO_DEVICES='1')
+    render = env.get('HEARTH_SEAT_RENDER', '')
+    if re.fullmatch(r'/dev/dri/renderD[0-9]{3}', render):
+        out['WLR_RENDER_DRM_DEVICE'] = render
+    for k in ('WAYLAND_DISPLAY', 'DISPLAY', 'LIBSEAT_BACKEND'):
+        out.pop(k, None)
+    return out
+
+
+def stream_rc_xml():
+    return ('<?xml version="1.0"?>\n<!-- Hearth multi-seat: a streamed player\'s virtual screen (written by hearth-seats). -->\n'
+            '<labwc_config>\n  <core><decoration>client</decoration><gap>0</gap></core>\n'
+            '  <keyboard><default /></keyboard>\n  <mouse><default /></mouse>\n'
+            '  <windowRules>\n    <windowRule identifier="*" serverDecoration="no" skipTaskbar="yes" />\n  </windowRules>\n'
+            '</labwc_config>\n')
+
+
+def write_labwc_dir(d, rc_xml, autostart_cmd):
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, 'rc.xml'), 'w') as f:
+        f.write(rc_xml)
+    with open(os.path.join(d, 'autostart'), 'w') as f:
+        f.write('#!/bin/sh\n# Hearth multi-seat (written by hearth-seats)\nexec %s\n' % ' '.join(shlex.quote(a) for a in autostart_cmd))
+    open(os.path.join(d, 'environment'), 'w').close()
+    with open(os.path.join(d, 'menu.xml'), 'w') as f:
+        f.write('<?xml version="1.0"?><openbox_menu></openbox_menu>\n')
 
 
 def session(wait=60):
@@ -564,12 +828,15 @@ def session(wait=60):
     env.setdefault('XDG_RUNTIME_DIR', '/run/user/%d' % os.getuid())
     if not env.get('DBUS_SESSION_BUS_ADDRESS') and os.path.exists(os.path.join(env['XDG_RUNTIME_DIR'], 'bus')):
         env['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=' + os.path.join(env['XDG_RUNTIME_DIR'], 'bus')
+    # The packaged Sunshine (Remote play is player 1's) never starts for an extra player: it would try
+    # Remote play's ports and capture. Streamed players get their own instance (hearth-seat-sunshine.service).
+    RUNNER.run(['systemctl', '--user', 'mask', '--runtime'] + list(SUNSHINE_DEFAULT_UNITS), timeout=10)
     if mode == 'gpu':
         # Our own graphics card, opened directly (it isn't part of any logind seat, so there's no seat to ask).
         env['LIBSEAT_BACKEND'] = 'noop'
         env.pop('WAYLAND_DISPLAY', None)
         env.pop('DISPLAY', None)
-    elif mode == 'nested':
+    elif mode in ('nested', 'split'):
         sock = os.path.join(SEAT_RUN, me, 'wayland-0')
         deadline = time.monotonic() + wait
         while not os.path.exists(sock):
@@ -579,11 +846,314 @@ def session(wait=60):
         env['WAYLAND_DISPLAY'] = sock
         env.pop('DISPLAY', None)
         env.update(parse_env(read(os.path.join(SEAT_RUN, me, 'audio.env'))))
+    elif mode == 'stream':
+        # The virtual screen first; inside it, stream-run starts Sunshine and this player's Game Mode.
+        d = os.path.join(env['XDG_RUNTIME_DIR'], 'hearth-seat-stream')
+        write_labwc_dir(d, stream_rc_xml(), ['python3', os.path.realpath(__file__), 'stream-run'])
+        os.execvpe('labwc', ['labwc', '-C', d], stream_labwc_env(env))
     else:
         raise Fail('this player isn\'t set up (no %s)' % seat_env_file(me))
     # nimbus-session passes these to gamescope (the player's own session.conf could add more).
     env['NIMBUS_GAMESCOPE_ARGS'] = ' '.join(shlex.quote(a) for a in session_gamescope_args(env))
     os.execve('/usr/bin/nimbus-session', ['nimbus-session'], env)
+
+
+# ---------------------------------------------------------------------------------------------- streamed players
+def headless_output():
+    """The name of the virtual screen's output (HEADLESS-1), from wlr-randr."""
+    rc, out, _ = RUNNER.run(['wlr-randr'], timeout=10)
+    for line in out.splitlines() if rc == 0 else []:
+        if line and not line[0].isspace():
+            name = line.split()[0]
+            if re.fullmatch(r'[A-Za-z0-9_-]{1,32}', name):
+                return name
+    return 'HEADLESS-1'
+
+
+def stream_run():
+    """Inside a streamed player's virtual screen (headless labwc): size it, start their Sunshine, run their Game
+    Mode; when Game Mode ends, stop Sunshine and close the virtual screen (the session then ends)."""
+    me = main_user()['name']
+    m = PLAYER_RE.fullmatch(me)
+    if not m:
+        raise Fail('only for a streamed player\'s account')
+    env = dict(os.environ)
+    env.update(parse_env(read(seat_env_file(me))))
+    if env.get('HEARTH_SEAT_MODE') != 'stream':
+        raise Fail('this player isn\'t streamed')
+    size, fps = stream_settings(env)
+    run = env.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()
+    code = 1
+    try:
+        RUNNER.run(['wlr-randr', '--output', headless_output(), '--custom-mode', '%s@%dHz' % (size, fps)], timeout=15)
+        disp = env.get('WAYLAND_DISPLAY', '')
+        path = disp if disp.startswith('/') else os.path.join(run, disp)
+        d = os.path.join(run, 'hearth-seat-stream')
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'stream.env'), 'w') as f:
+            f.write('WAYLAND_DISPLAY=%s\n' % shlex.quote(path))
+        RUNNER.run(['systemctl', '--user', 'restart', SUNSHINE_UNIT], timeout=30)
+        env['HEARTH_SEAT'] = m.group(1)
+        env['NIMBUS_START_MODE'] = 'game'
+        env['NIMBUS_GAMESCOPE_ARGS'] = ' '.join(shlex.quote(a) for a in stream_gamescope_args(env))
+        env.pop('LABWC_PID', None)      # nimbus-mode must see Game Mode, not the virtual screen
+        env.pop('DISPLAY', None)
+        code = subprocess.call(['/usr/bin/nimbus-session'], env=env)
+    finally:
+        RUNNER.run(['systemctl', '--user', 'stop', SUNSHINE_UNIT], timeout=30)
+        RUNNER.run(['labwc', '--exit'], timeout=10)
+    return code
+
+
+def sunshine_conf(env, home_dir):
+    """This player's own Sunshine: its own port family, name in Moonlight, pairings and certificate, capturing
+    their virtual screen only, controllers only (keyboard and mouse would have nowhere to go: the virtual screen
+    has no input devices), web page reachable from this PC only."""
+    size, fps = stream_settings(env)
+    port = env.get('HEARTH_SEAT_STREAM_PORT', '')
+    name = env.get('HEARTH_SEAT_STREAM_NAME', '')
+    if not port.isdigit() or int(port) not in [stream_port(n) for n in (2, 3, 4)]:
+        raise Fail('this player\'s stream has no port (set it up again)')
+    if not re.fullmatch(r'[A-Za-z0-9-]{1,24} Player [2-4]', name):
+        name = 'Hearth Player %s' % env.get('HEARTH_SEAT', '2')
+    d = home_dir
+    lines = ['# Hearth multi-seat: this player\'s streaming (written by hearth-seats each time it starts; changes are overwritten)',
+             'sunshine_name = %s' % name,
+             'port = %s' % port,
+             'capture = wlr',
+             'output_name = 0',
+             'origin_web_ui_allowed = pc',
+             'upnp = disabled',
+             'keyboard = disabled',
+             'mouse = disabled',
+             'gamepad = auto',
+             'file_state = %s' % os.path.join(d, 'sunshine_state.json'),
+             'credentials_file = %s' % os.path.join(d, 'credentials.json'),
+             'pkey = %s' % os.path.join(d, 'credentials', 'cakey.pem'),
+             'cert = %s' % os.path.join(d, 'credentials', 'cacert.pem'),
+             'file_apps = %s' % os.path.join(d, 'apps.json'),
+             'log_path = %s' % os.path.join(d, 'sunshine.log')]
+    render = env.get('HEARTH_SEAT_RENDER', '')
+    if re.fullmatch(r'/dev/dri/renderD[0-9]{3}', render):
+        lines.append('adapter_name = %s' % render)
+    return '\n'.join(lines) + '\n'
+
+
+def sunshine_apps():
+    """Moonlight shows one thing to start: Hearth (the stream is the player's whole Game Mode)."""
+    return json.dumps({'env': {}, 'apps': [{'name': 'Hearth', 'image-path': 'desktop.png'}]}, indent=1) + '\n'
+
+
+def stream_creds(user):
+    """Sunshine's web login for player N's stream (hearth-admin made it; player 1 and that player can read it)."""
+    try:
+        with open('/etc/hearth/seats/%s.stream.json' % user) as f:
+            c = json.load(f)
+        if isinstance(c.get('user'), str) and isinstance(c.get('pass'), str):
+            return c['user'], c['pass']
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None
+
+
+def sunshine_main():
+    """hearth-seat-sunshine.service (a user service of a streamed player): writes this player's Sunshine settings,
+    sets its login, and runs it on the virtual screen."""
+    me = main_user()['name']
+    if not PLAYER_RE.fullmatch(me):
+        raise Fail('only for a streamed player\'s account')
+    env = dict(os.environ)
+    env.update(parse_env(read(seat_env_file(me))))
+    if env.get('HEARTH_SEAT_MODE') != 'stream':
+        raise Fail('this player isn\'t streamed')
+    exe = next((os.path.join(d, 'sunshine') for d in env.get('PATH', '/usr/bin:/bin').split(':')
+                if d and os.access(os.path.join(d, 'sunshine'), os.X_OK)), None)
+    if not exe:
+        raise Fail('Sunshine isn\'t installed')
+    run = env.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()
+    env.update(parse_env(read(os.path.join(run, 'hearth-seat-stream', 'stream.env'))))
+    os.makedirs(os.path.join(STREAM_DIR, 'credentials'), mode=0o700, exist_ok=True)
+    conf = os.path.join(STREAM_DIR, 'sunshine.conf')
+    with open(conf, 'w') as f:
+        f.write(sunshine_conf(env, STREAM_DIR))
+    with open(os.path.join(STREAM_DIR, 'apps.json'), 'w') as f:
+        f.write(sunshine_apps())
+    creds = stream_creds(me)
+    if creds:
+        RUNNER.run([exe, conf, '--creds', creds[0], creds[1]], timeout=30)
+    os.execve(exe, [exe, conf], env)
+
+
+def sunshine_api(port, method, path, body=None, creds=None, timeout=10):
+    """One call to a streamed player's Sunshine web API on this PC (its own certificate, so not checked).
+    Returns (status, JSON or {})."""
+    import base64
+    import ssl
+    import urllib.error
+    import urllib.request
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    req = urllib.request.Request('https://127.0.0.1:%d%s' % (port + 1, path), method=method,
+                                 data=json.dumps(body).encode() if body is not None else None,
+                                 headers={'Content-Type': 'application/json'})
+    if creds:
+        req.add_header('Authorization', 'Basic ' + base64.b64encode(('%s:%s' % creds).encode()).decode())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+            text = r.read().decode(errors='replace')
+            code = r.status
+    except urllib.error.HTTPError as e:
+        return e.code, {}
+    except (urllib.error.URLError, OSError, ValueError):
+        return 0, {}
+    try:
+        return code, json.loads(text) if text.strip() else {}
+    except ValueError:
+        return code, {}
+
+
+def addresses():
+    rc, out, _ = RUNNER.run(['ip', '-4', '-o', 'addr', 'show', 'scope', 'global'], timeout=10)
+    found = []
+    for line in out.splitlines() if rc == 0 else []:
+        w = line.split()
+        if len(w) >= 4 and not w[1].startswith(('docker', 'veth', 'virbr', 'br-')):
+            a = w[3].split('/')[0]
+            if re.fullmatch(r'[0-9.]{7,15}', a):
+                found.append(a)
+    return found
+
+
+def qr_svg(text):
+    """A QR code (SVG) of the address, when qrencode is installed; else None."""
+    if not have('qrencode'):
+        return None
+    rc, out, _ = RUNNER.run(['qrencode', '-t', 'SVG', '-m', '1', '-o', '-', text], timeout=10)
+    svg = out[out.find('<svg'):] if rc == 0 and '<svg' in out else ''
+    if not svg or re.search(r'<\s*script|on\w+\s*=|javascript:|href', svg, re.I):
+        return None
+    return svg
+
+
+def stream_seats(c):
+    return [s for s in (c or {}).get('seats', []) if s.get('seat') != 1 and seat_kind(c, s) == 'stream' and s.get('stream')]
+
+
+def stream_info():
+    c = load_config()
+    if not c:
+        raise Fail('multi-seat isn\'t set up')
+    addrs = addresses()
+    out = []
+    for s in stream_seats(c):
+        st = s['stream']
+        port = int(st.get('port') or 0)
+        e = {'seat': s['seat'], 'user': s['user'], 'name': st.get('name'), 'port': port, 'size': st.get('size'),
+             'fps': st.get('fps'), 'running': unit_state('hearth-seat@%s.service' % s['user']) == 'active',
+             'clients': [], 'pending': [], 'reachable': False,
+             'addresses': ['%s:%d' % (a, port) for a in addrs], 'qr': None}
+        creds = stream_creds(s['user'])
+        if e['running'] and creds:
+            code, r = sunshine_api(port, 'GET', '/api/clients/list', creds=creds)
+            e['reachable'] = code == 200
+            e['clients'] = [{'name': x.get('name'), 'uuid': x.get('uuid')} for x in (r.get('named_certs') or []) if isinstance(x, dict)]
+            code, r = sunshine_api(port, 'GET', '/api/pin', creds=creds)
+            if code == 200 and isinstance(r.get('pairings'), list):
+                e['pending'] = [{'id': x.get('id'), 'name': x.get('name')} for x in r['pairings'] if isinstance(x, dict)]
+        if e['addresses']:
+            e['qr'] = qr_svg(e['addresses'][0])
+        out.append(e)
+    return {'seats': out}
+
+
+def stream_pair(seat, pin, name=None):
+    """Pairs the device showing `pin` in Moonlight with player `seat`'s stream. Newer Sunshine lists the devices
+    waiting (GET /api/pin) and wants the one meant; older Sunshine takes just the PIN."""
+    if not re.fullmatch(r'[0-9]{4}', pin or ''):
+        raise Fail('The PIN is the 4 numbers Moonlight shows')
+    c = load_config()
+    s = next((x for x in stream_seats(c) if x['seat'] == seat), None)
+    if not s:
+        raise Fail('player %d isn\'t streamed' % seat)
+    creds = stream_creds(s['user'])
+    if not creds:
+        raise Fail('player %d\'s stream has no login (set multi-seat up again)' % seat)
+    name = re.sub(r'[^\w .-]', '', name or '')[:40].strip() or 'Player %d\'s device' % seat
+    port = int(s['stream']['port'])
+    code, r = sunshine_api(port, 'GET', '/api/pin', creds=creds)
+    if code == 0:
+        raise Fail('Player %d\'s stream isn\'t running. Turn multi-seat on, then try again.' % seat)
+    body = {'pin': pin, 'name': name}
+    if code == 200 and isinstance(r.get('pairings'), list):
+        waiting = [x for x in r['pairings'] if isinstance(x, dict) and re.fullmatch(r'[0-9a-fA-F]{32}', str(x.get('id')))]
+        if not waiting:
+            raise Fail('Choose "%s" in Moonlight first: it then shows the PIN.' % s['stream'].get('name'))
+        body['pairing_id'] = waiting[-1]['id']
+    code, r = sunshine_api(port, 'POST', '/api/pin', body, creds=creds, timeout=40)
+    if code == 401:
+        raise Fail('Player %d\'s stream didn\'t accept Hearth\'s login. Restart multi-seat and try again.' % seat)
+    if code != 200 or r.get('status') in (False, 'false'):
+        raise Fail('That PIN didn\'t work. In Moonlight, choose "%s" again for a new one.' % s['stream'].get('name'))
+    return {'ok': True, 'seat': seat}
+
+
+def stream_unpair(seat, uuid):
+    if not re.fullmatch(r'[0-9A-Fa-f-]{1,64}', uuid or ''):
+        raise Fail('that isn\'t a paired device')
+    c = load_config()
+    s = next((x for x in stream_seats(c) if x['seat'] == seat), None)
+    if not s:
+        raise Fail('player %d isn\'t streamed' % seat)
+    code, _ = sunshine_api(int(s['stream']['port']), 'POST', '/api/clients/unpair', {'uuid': uuid}, creds=stream_creds(s['user']))
+    if code != 200:
+        raise Fail('Player %d\'s stream isn\'t running' % seat)
+    return {'ok': True}
+
+
+# ---------------------------------------------------------------------------------------------- "Player N, press A"
+def wait_button(timeout=20.0, exclude=(), now=time.monotonic):
+    """The first controller (from scan_pads) on which a button goes down, or None after `timeout` seconds. Only
+    controllers this account may open are listened to (another player's aren't, and don't need to be)."""
+    import select
+    fds = {}
+    for p in scan_pads(load_config()):
+        if not p.get('assignable') or p['id'] in exclude:
+            continue
+        for ev in p['events']:
+            try:
+                fds[os.open(ev, os.O_RDONLY | os.O_NONBLOCK)] = p
+            except OSError:
+                pass
+    if not fds:
+        raise Fail('No controllers to listen to. Connect a controller and try again.')
+    bufs = {fd: b'' for fd in fds}
+    end = now() + timeout
+    try:
+        while True:
+            left = end - now()
+            if left <= 0:
+                return None
+            ready, _, _ = select.select(list(fds), [], [], min(left, 0.5))
+            for fd in ready:
+                try:
+                    chunk = os.read(fd, INPUT_EVENT.size * 64)
+                except BlockingIOError:
+                    continue
+                except OSError:
+                    chunk = b''
+                bufs[fd] += chunk
+                while len(bufs[fd]) >= INPUT_EVENT.size:
+                    _, _, typ, code, value = INPUT_EVENT.unpack_from(bufs[fd])
+                    bufs[fd] = bufs[fd][INPUT_EVENT.size:]
+                    if typ == EV_KEY and value == 1 and BTN_JOYSTICK <= code <= 0x13e:
+                        return fds[fd]
+    finally:
+        for fd in fds:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
 
 
 def gamescope_args():
@@ -632,17 +1202,18 @@ def reset_host_failures():
 
 
 def host_seats(c, info_gpus=None):
-    """The seats whose screens are connected right now (player 1 first). Fewer than two: no host."""
+    """The players whose window player 1's Game Mode hosts (another screen, or a part of player 1's) and whose
+    screen is connected right now, player 1 first. Fewer than two: no host."""
     gpus = info_gpus if info_gpus is not None else scan_gpus()
     connected = {o['id']: o for g in gpus for o in g['outputs'] if o['connected']}
-    return [dict(s, connector=connected[s['output']]['connector'], mode=connected[s['output']]['mode'],
-                 monitor=connected[s['output']]['monitor'])
-            for s in c.get('seats', []) if s.get('output') in connected]
+    return [dict(s, kind=seat_kind(c, s), connector=connected[s['output']]['connector'],
+                 screen=connected[s['output']]['mode'], monitor=connected[s['output']]['monitor'])
+            for s in c.get('seats', []) if s.get('output') in connected and seat_kind(c, s) in HOST_KINDS]
 
 
 def host_check():
     c = load_config()
-    if not c or not c.get('enabled') or c.get('mode') != 'nested':
+    if not c or not c.get('enabled') or not hosted(c):
         return False
     if c.get('main_user') != main_user()['name'] or os.environ.get('HEARTH_SEAT'):
         return False
@@ -656,41 +1227,64 @@ def xml_escape(s):
     return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
 
-def host_rc_xml(seats):
+def split_region(layout, region):
+    """A split player's part of the screen in % (x, y, w, h), or None."""
+    regions = SPLIT_REGIONS.get(layout) or []
+    return regions[region] if isinstance(region, int) and 0 <= region < len(regions) else None
+
+
+def host_rc_xml(seats, layout=None):
     """labwc settings for the host: no decorations, no desktop keys, each player's window on their screen.
     Each player's window connects through its own socket marked with security-context-v1 (engine
-    "hearth-seat", app id "seatN"), which is what the window rules match on."""
-    rules = '\n'.join(
-        '    <windowRule sandboxEngine="hearth-seat" sandboxAppId="seat%d" serverDecoration="no" skipTaskbar="yes">\n'
-        '      <action name="MoveToOutput" output="%s" />\n'
-        '      <action name="Focus" />\n'
-        '    </windowRule>' % (s['seat'], xml_escape(s['connector'])) for s in seats)
+    "hearth-seat", app id "seatN"), which is what the window rules match on. A player on a split screen gets
+    their part of it: a labwc region in % of that screen (so it fits whatever the screen's position), which the
+    window snaps to once it's on that screen."""
+    rules, regions = [], []
+    for s in seats:
+        acts = ['      <action name="MoveToOutput" output="%s" />' % xml_escape(s['connector'])]
+        r = split_region(layout, s.get('region')) if s.get('kind') == 'split' else None
+        if r:
+            name = 'hearth-seat%d' % s['seat']
+            regions.append('    <region name="%s" x="%d%%" y="%d%%" width="%d%%" height="%d%%" />' % ((name,) + tuple(r)))
+            acts.append('      <action name="SnapToRegion" region="%s" />' % name)
+        if s['seat'] == 1 or not r:
+            acts.append('      <action name="Focus" />')
+        rules.append('    <windowRule sandboxEngine="hearth-seat" sandboxAppId="seat%d" serverDecoration="no" skipTaskbar="yes">\n'
+                     '%s\n    </windowRule>' % (s['seat'], '\n'.join(acts)))
     return ('<?xml version="1.0"?>\n<!-- Hearth multi-seat host, written by hearth-seats; changes are overwritten. -->\n'
             '<labwc_config>\n  <core><decoration>client</decoration><gap>0</gap></core>\n'
             '  <keyboard><default /></keyboard>\n  <mouse><default /></mouse>\n'
             '  <focus><followMouse>no</followMouse></focus>\n'
-            '  <windowRules>\n' + rules + '\n  </windowRules>\n</labwc_config>\n')
+            + ('  <regions>\n' + '\n'.join(regions) + '\n  </regions>\n' if regions else '') +
+            '  <windowRules>\n' + '\n'.join(rules) + '\n  </windowRules>\n</labwc_config>\n')
+
+
+def player1_cmd(cmd, seat1):
+    """Player 1's gamescope command for the host. On a split screen player 1 is a window the size of their part
+    (not fullscreen): '-f' goes, and -W/-H/-w/-h for the part go last among gamescope's options (they win over
+    any from session.conf)."""
+    if not cmd or seat1.get('kind') != 'split':
+        return cmd
+    m = re.fullmatch(r'(\d{2,5})x(\d{2,5})', seat1.get('size') or '')
+    end = cmd.index('--') if '--' in cmd else len(cmd)
+    opts = [a for a in cmd[1:end] if a not in ('-f', '--fullscreen')]
+    size = ['-W', m.group(1), '-H', m.group(2), '-w', m.group(1), '-h', m.group(2)] if m else []
+    return cmd[:1] + opts + size + cmd[end:]
 
 
 def host(cmd):
     """Player 1's Game Mode when the screens are shared out: labwc drives every screen (gamescope can only drive
-    one); player 1's gamescope and each other player's gamescope run in it as fullscreen windows, one per screen.
-    Returns player 1's Game Mode's exit code, or EXIT_HOST_FALLBACK if the host couldn't start."""
+    one); player 1's gamescope and each other player's gamescope run in it as windows: fullscreen, one per
+    screen, or one per part of a split screen. Returns player 1's Game Mode's exit code, or EXIT_HOST_FALLBACK
+    if the host couldn't start."""
     c = load_config()
     seats = host_seats(c) if c else []
     if len(seats) < 2 or not cmd:
         return EXIT_HOST_FALLBACK
     run = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
     d = os.path.join(run, 'hearth-seat-host')
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, 'rc.xml'), 'w') as f:
-        f.write(host_rc_xml(seats))
-    with open(os.path.join(d, 'autostart'), 'w') as f:
-        f.write('#!/bin/sh\n# Hearth multi-seat host (written by hearth-seats)\n'
-                'exec python3 %s host-run -- %s\n' % (shlex.quote(os.path.realpath(__file__)), ' '.join(shlex.quote(a) for a in cmd)))
-    open(os.path.join(d, 'environment'), 'w').close()
-    with open(os.path.join(d, 'menu.xml'), 'w') as f:
-        f.write('<?xml version="1.0"?><openbox_menu></openbox_menu>\n')
+    write_labwc_dir(d, host_rc_xml(seats, (c.get('split') or {}).get('layout')),
+                    ['python3', os.path.realpath(__file__), 'host-run', '--'] + player1_cmd(cmd, seats[0]))
     st = host_state()
     started = time.time()
     rc = subprocess.call(['labwc', '-C', d])
@@ -860,13 +1454,111 @@ def pick_sink(sinks, seat):
     return None
 
 
+SINK_NAME_RE = re.compile(r'^[A-Za-z0-9._:+-]{1,200}$')
+
+
+def audio_prefs():
+    """Split screen sound (player 1's own setting): each player's volume, and whether only player 1's sound plays."""
+    try:
+        with open(AUDIO_PREFS) as f:
+            p = json.load(f)
+    except (OSError, ValueError):
+        p = {}
+    vols = p.get('volumes') if isinstance(p, dict) and isinstance(p.get('volumes'), dict) else {}
+    clean = {}
+    for k, v in vols.items():
+        if k in ('1', '2', '3', '4') and isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100:
+            clean[k] = v
+    return {'volumes': clean, 'only_p1': bool(isinstance(p, dict) and p.get('only_p1') is True)}
+
+
+def save_audio_prefs(p):
+    try:
+        os.makedirs(os.path.dirname(AUDIO_PREFS), exist_ok=True)
+        with open(AUDIO_PREFS + '.tmp', 'w') as f:
+            json.dump(p, f)
+        os.replace(AUDIO_PREFS + '.tmp', AUDIO_PREFS)
+    except OSError:
+        pass
+
+
+def split_sink(seat):
+    return 'hearth-seat%d' % seat
+
+
+def apply_seat_volume(seat, prefs):
+    """A split player's own sound output: their volume, muted when only player 1's sound plays."""
+    sink = split_sink(seat)
+    RUNNER.run(['pactl', 'set-sink-volume', sink, '%d%%' % prefs['volumes'].get(str(seat), 100)], timeout=10)
+    RUNNER.run(['pactl', 'set-sink-mute', sink, '1' if prefs['only_p1'] and seat != 1 else '0'], timeout=10)
+
+
+def audio_cmd(seat=None, volume=None, only_p1=None):
+    """hearth-seats audio: change and apply (right away when the host runs) the split screen's sound."""
+    c = load_config()
+    if not c or not config_has(c, 'split'):
+        raise Fail('this is for a split screen')
+    prefs = audio_prefs()
+    split = [s['seat'] for s in c['seats'] if seat_kind(c, s) == 'split']
+    if seat is not None:
+        if seat not in split:
+            raise Fail('player %d isn\'t on the split screen' % seat)
+        if volume is None or not 0 <= volume <= 100:
+            raise Fail('the volume is 0 to 100')
+        prefs['volumes'][str(seat)] = volume
+    if only_p1 is not None:
+        prefs['only_p1'] = only_p1
+    save_audio_prefs(prefs)
+    if os.path.exists(os.path.join(SEAT_RUN, 'host.pid')):
+        for n in split:
+            apply_seat_volume(n, prefs)
+    return dict(prefs, ok=True)
+
+
+def host_modules_file():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-seat-host', 'audio-modules.json')
+
+
+def split_audio(seats, sinks):
+    """Split screen: every player plays through the same speakers (the screen's), each through a sound output of
+    their own (a PipeWire remap sink on player 1's server) so each has their own volume, or is muted when only
+    player 1's sound plays. Returns {seat: sink}."""
+    split = [s for s in seats if s.get('kind') == 'split']
+    if not split:
+        return {}
+    master = pick_sink(sinks, split[0])
+    if not master:
+        rc, out, _ = RUNNER.run(['pactl', 'get-default-sink'], timeout=10)
+        master = out.strip() if rc == 0 else None
+    if not master or not SINK_NAME_RE.fullmatch(master) or master.startswith('hearth-seat'):
+        return {}
+    prefs = audio_prefs()
+    modules, out_sinks = [], {}
+    for s in split:
+        name = split_sink(s['seat'])
+        rc, out, _ = RUNNER.run(['pactl', 'load-module', 'module-remap-sink', 'sink_name=%s' % name, 'master=%s' % master,
+                                 'sink_properties=device.description=Hearth-Player-%d' % s['seat']], timeout=10)
+        if rc == 0 and out.strip().isdigit():
+            modules.append(out.strip())
+            out_sinks[s['seat']] = name
+            apply_seat_volume(s['seat'], prefs)
+    try:
+        with open(host_modules_file(), 'w') as f:
+            json.dump({'modules': modules, 'master': master}, f)
+    except OSError:
+        pass
+    return out_sinks
+
+
 def host_audio(seats, me_uid):
     """Players 2-4 play sound through player 1's sound server (there's one sound card for the screens; two
-    servers fighting over it would break both), each on their own screen's output. Grants them its sockets."""
+    servers fighting over it would break both), each on their own screen's output (or, on a split screen, their
+    own volume on the shared one). Grants them its sockets."""
     run = os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % me_uid
     sinks = pactl_json(['list', 'sinks'])
+    own = split_audio(seats, sinks)
     for s in seats:
-        sink = pick_sink(sinks, s)
+        sink = own.get(s['seat']) or pick_sink(sinks, s)
         if s['seat'] == 1:
             if sink:
                 RUNNER.run(['pactl', 'set-default-sink', sink], timeout=10)
@@ -894,6 +1586,18 @@ def revoke_audio(seats, me_uid):
         if s['seat'] != 1:
             RUNNER.run(['setfacl', '-x', 'u:%s' % s['user'], run, os.path.join(run, 'pulse'),
                         os.path.join(run, 'pulse', 'native'), os.path.join(run, 'pipewire-0')], timeout=10)
+    # The split screen's own sound outputs go, and player 1's sound goes back to the screen's.
+    try:
+        with open(host_modules_file()) as f:
+            mods = json.load(f)
+        os.remove(host_modules_file())
+    except (OSError, ValueError):
+        return
+    for m in mods.get('modules', []):
+        if str(m).isdigit():
+            RUNNER.run(['pactl', 'unload-module', str(m)], timeout=10)
+    if SINK_NAME_RE.fullmatch(str(mods.get('master') or '')):
+        RUNNER.run(['pactl', 'set-default-sink', mods['master']], timeout=10)
 
 
 def host_run(cmd):
@@ -997,9 +1701,38 @@ def main(argv):
             return host_run(after_dashes(argv))
         elif cmd == 'gamescope-args':
             print(' '.join(shlex.quote(a) for a in gamescope_args()))
+        elif cmd == 'wait-button':
+            t = arg(argv, '--timeout') or '20'
+            if not t.isdigit() or not 1 <= int(t) <= 120:
+                raise Fail('usage: hearth-seats wait-button [--timeout 1-120] [--exclude id,...]')
+            ex = [x for x in (arg(argv, '--exclude') or '').split(',') if x]
+            print(json.dumps({'pad': wait_button(float(t), ex)}))
+        elif cmd == 'stream-info':
+            print(json.dumps(stream_info()))
+        elif cmd == 'stream-pair':
+            seat = arg(argv, '--seat') or ''
+            if not seat.isdigit():
+                raise Fail('usage: hearth-seats stream-pair --seat N --pin 1234 [--name NAME]')
+            print(json.dumps(stream_pair(int(seat), arg(argv, '--pin'), arg(argv, '--name'))))
+        elif cmd == 'stream-unpair':
+            seat = arg(argv, '--seat') or ''
+            if not seat.isdigit():
+                raise Fail('usage: hearth-seats stream-unpair --seat N --uuid UUID')
+            print(json.dumps(stream_unpair(int(seat), arg(argv, '--uuid'))))
+        elif cmd == 'audio':
+            seat, vol, only = arg(argv, '--seat'), arg(argv, '--volume'), arg(argv, '--only-p1')
+            if (seat is not None and not seat.isdigit()) or (vol is not None and not vol.isdigit()) or only not in (None, 'on', 'off'):
+                raise Fail('usage: hearth-seats audio [--seat N --volume 0-100] [--only-p1 on|off]')
+            print(json.dumps(audio_cmd(int(seat) if seat else None, int(vol) if vol else None,
+                                       None if only is None else only == 'on')))
+        elif cmd == 'stream-run':
+            return stream_run()
+        elif cmd == 'sunshine':
+            sunshine_main()
         else:
             raise Fail('usage: hearth-seats scan | plan | setup --seats JSON [--start] | start | stop | status | '
-                       'assign-pad --pad ID --seat N | remove [--delete-users]')
+                       'assign-pad --pad ID --seat N | remove [--delete-users] | wait-button | stream-info | '
+                       'stream-pair --seat N --pin PIN | stream-unpair --seat N --uuid UUID | audio')
     except Fail as e:
         fail(str(e))
     return 0

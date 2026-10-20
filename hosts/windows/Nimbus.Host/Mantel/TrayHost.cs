@@ -31,6 +31,9 @@ internal sealed class TrayHost : IDisposable
     private WndProc? _proc;   // kept alive: Windows calls it
     private ushort _atom;
     public event Action? Changed;
+    /// <summary>A tray icon's balloon notification (NIF_INFO): app name, title, text. Explorer turns these into
+    /// Windows' toasts; with no Explorer, Mantel keeps them in the clock panel's history.</summary>
+    public event Action<string, string, string>? Balloon;
 
     public IReadOnlyList<TrayIcon> Icons { get { lock (_icons) return _icons.Values.Where(i => !i.Hidden).ToList(); } }
 
@@ -126,6 +129,11 @@ internal sealed class TrayHost : IDisposable
                     if ((n.uFlags & NIF_TIP) != 0) icon.Tip = n.szTip ?? "";
                     if ((n.uFlags & NIF_STATE) != 0 && (n.dwStateMask & 1) != 0) icon.Hidden = (n.dwState & 1) != 0;
                     if ((n.uFlags & NIF_ICON) != 0 && n.hIcon != 0) icon.Image = IconPng(new IntPtr(n.hIcon));
+                    if ((n.uFlags & 0x10 /* NIF_INFO */) != 0 && !string.IsNullOrWhiteSpace(n.szInfo))
+                    {
+                        var (app, title, text) = (AppName(icon.Pid, icon.Tip), n.szInfoTitle ?? "", n.szInfo ?? "");
+                        ThreadPool.QueueUserWorkItem(_ => Balloon?.Invoke(app, title, text));
+                    }
                     break;
                 case NIM_DELETE:
                     if (!_icons.Remove(key)) return false;
@@ -139,6 +147,22 @@ internal sealed class TrayHost : IDisposable
         }
         Changed?.Invoke();
         return true;
+    }
+
+    /// <summary>The app behind a tray icon, for its notifications: its program's description, else its tooltip.</summary>
+    private static string AppName(uint pid, string tip)
+    {
+        try
+        {
+            var exe = Native.ProcessPath(pid);
+            if (exe is not null)
+            {
+                var d = System.Diagnostics.FileVersionInfo.GetVersionInfo(exe).FileDescription;
+                return string.IsNullOrWhiteSpace(d) ? Path.GetFileNameWithoutExtension(exe) : d.Trim();
+            }
+        }
+        catch { }
+        return tip.Split('\n')[0];
     }
 
     private static string? IconPng(IntPtr hIcon)

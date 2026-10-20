@@ -3,8 +3,10 @@
 # see docs/MULTI-SEAT.md.
 #
 # A graphics card per player: enabled directly (starts at boot) and drives that player's card.
-# One card, several screens: started by hearth-seat@%i.path once player 1's Game Mode has opened this
-# player's screen (/run/hearth-seats/%i/wayland-0); the session ends when that screen goes away.
+# One card, several screens, or part of one screen (split): started by hearth-seat@%i.path once player 1's
+# Game Mode has opened this player's window (/run/hearth-seats/%i/wayland-0); the session ends when it goes away.
+# Streamed to another device: enabled directly; the session runs a virtual screen (headless labwc) with the
+# player's Game Mode in it, and the player's own Sunshine (hearth-seat-sunshine.service, a user service).
 [Unit]
 Description=Hearth multi-seat: Game Mode for %i
 # Only accounts multi-seat set up (hearth-admin writes this file; nothing else can start one).

@@ -14,6 +14,10 @@ namespace Nimbus.Host.Switch;
 ///   prepare SIZE_GB            turn off Fast Startup and hibernation, shrink C: by SIZE_GB (Windows does that
 ///                              itself, BitLocker or not), leaving free space for Hearth's installer
 ///   writeusb DISK_NUMBER ISO   erase that USB drive and write the Hearth installer onto it
+/// and for Hearth Settings in Mantel (Mantel/WinSystem.cs, through Mantel/Elevated):
+///   ntp on|off                 Windows' "Set time automatically" (W32Time)
+///   time-set YYYY-MM-DDTHH:MM  set the clock by hand
+///   user-remove NAME keep-home|delete-home   remove a local account (and its files)
 /// </summary>
 public static class AdminTasks
 {
@@ -32,6 +36,11 @@ public static class AdminTasks
             {
                 case "prepare": Prepare(int.Parse(rest[0]), Report); break;
                 case "writeusb": WriteUsb(int.Parse(rest[0]), rest[1], Report); break;
+                case "ntp": Ntp(rest[0] == "on", Report); break;
+                case "time-set": TimeSet(rest[0], Report); break;
+                case "user-remove": UserRemove(rest[0], rest[1] == "delete-home", Report); break;
+                // The power limit (Services/TdpService.cs): tdp WATTS [DOWNLOAD_FOLDER]
+                case "tdp": Services.TdpService.RunElevated(rest, Report); break;
                 default: Report("error", 0, "", "Unknown task " + task); return 2;
             }
             return 0;
@@ -129,6 +138,65 @@ public static class AdminTasks
         catch { }
         return false;
     }
+
+    // ------------------------------------------------------------------ Hearth Settings (Mantel)
+
+    private static void Ntp(bool on, Action<string, double, string, string?> report)
+    {
+        using (var k = Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\W32Time\Parameters"))
+            k.SetValue("Type", on ? "NTP" : "NoSync", RegistryValueKind.String);
+        if (on)
+        {
+            RunTool("sc.exe", "config w32time start= auto");
+            RunTool("net.exe", "start w32time");
+            RunTool("w32tm.exe", "/config /update");
+            RunTool("w32tm.exe", "/resync /nowait");
+        }
+        else RunTool("w32tm.exe", "/config /update");
+        report("done", 100, on ? "The clock is set from the internet" : "Automatic time is off", null);
+    }
+
+    private static void TimeSet(string when, Action<string, double, string, string?> report)
+    {
+        if (!DateTime.TryParseExact(when, "yyyy-MM-ddTHH:mm", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var t))
+            throw new ArgumentException("Bad date");
+        var st = new SYSTEMTIME { wYear = (ushort)t.Year, wMonth = (ushort)t.Month, wDay = (ushort)t.Day, wHour = (ushort)t.Hour, wMinute = (ushort)t.Minute };
+        // Twice, as Windows' documentation says (the first call can land on the wrong side of a daylight-saving change).
+        if (!SetLocalTime(ref st) || !SetLocalTime(ref st)) throw new InvalidOperationException("Windows didn't set the clock (error " + Marshal.GetLastWin32Error() + ")");
+        report("done", 100, "Clock set", null);
+    }
+
+    private static void UserRemove(string name, bool deleteHome, Action<string, double, string, string?> report)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,19}$")) throw new ArgumentException("That isn't an account name");
+        if (string.Equals(name, Environment.UserName, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("You can't remove the account you're using");
+        string? sid = null;
+        try { sid = ((System.Security.Principal.SecurityIdentifier)new System.Security.Principal.NTAccount(Environment.MachineName, name).Translate(typeof(System.Security.Principal.SecurityIdentifier))).Value; } catch { }
+        var (code, output) = RunTool("net.exe", $"user \"{name}\" /delete");
+        if (code != 0) throw new InvalidOperationException("Windows didn't remove the account: " + LastLine(output));
+        if (deleteHome && sid is not null)
+        {
+            try
+            {
+                using var q = new System.Management.ManagementObjectSearcher($"SELECT * FROM Win32_UserProfile WHERE SID = '{sid}'");
+                foreach (System.Management.ManagementObject p in q.Get()) using (p) p.Delete();
+            }
+            catch (Exception ex) { throw new InvalidOperationException("The account is removed, but its files couldn't be deleted: " + ex.Message); }
+        }
+        report("done", 100, "Account removed", null);
+    }
+
+    private static (int Code, string Output) RunTool(string file, string args)
+    {
+        using var p = Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })!;
+        string o = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        return (p.ExitCode, o);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SYSTEMTIME { public ushort wYear, wMonth, wDayOfWeek, wDay, wHour, wMinute, wSecond, wMilliseconds; }
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetLocalTime(ref SYSTEMTIME t);
 
     // ------------------------------------------------------------------ helpers
 

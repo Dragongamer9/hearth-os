@@ -1,0 +1,172 @@
+#!/usr/bin/python3
+"""hearth-seat-input: whose virtual controller is this? (Multi-seat, streamed players; docs/MULTI-SEAT.md)
+
+Run by udev (72-hearth-seats.rules, only while a streamed player is set up), as root, for every input or hidraw
+device under /devices/virtual:
+
+  hearth-seat-input claim     (IMPORT{program}) prints HEARTH_SEAT_CLAIM=hearth-pN when a streamed player's
+                              process made the device, HEARTH_SEAT_CLAIM=nobody when two streamed players made
+                              one at the same moment (nobody gets it then), and nothing when it's not theirs
+                              (player 1's own Steam Input or Remote play controllers are left alone)
+  hearth-seat-input forget    (RUN, on remove) forgets a device that went away
+
+A virtual controller (Sunshine's, or Steam Input's) doesn't say who made it: every /dev/uinput or /dev/uhid
+device lands under /devices/virtual, and udev's uaccess would give it to whoever's session is in front (player 1).
+Each such device keeps its own open /dev/uinput or /dev/uhid file in the process that made it, so the streamed
+player whose process has a /dev/uinput or /dev/uhid file open that wasn't open last time is the one who made it.
+The devices of one controller (its hidraw node and its event nodes) share one key and one answer.
+
+Never fails loudly: anything unexpected prints nothing (the device then behaves as without multi-seat).
+"""
+import fcntl
+import json
+import os
+import pwd
+import re
+import sys
+import time
+
+CONFIG = '/etc/hearth/seats.json'
+STATE = '/run/udev/hearth-seats-input.json'
+PROC = '/proc'
+NODES = ('/dev/uinput', '/dev/input/uinput', '/dev/uhid')
+RECENT = 5.0   # seconds a newly opened /dev/uinput or /dev/uhid file waits for its device's event
+PLAYER_RE = re.compile(r'^hearth-p[2-4]$')
+
+
+def stream_users(config):
+    """{uid: account} of the streamed players."""
+    out = {}
+    for s in (config or {}).get('seats', []):
+        mode = s.get('mode') or config.get('mode')
+        if s.get('seat') != 1 and mode == 'stream' and PLAYER_RE.fullmatch(str(s.get('user'))):
+            try:
+                out[pwd.getpwnam(s['user']).pw_uid] = s['user']
+            except KeyError:
+                pass
+    return out
+
+
+def device_key(devpath):
+    """One key per virtual controller: its uhid device (hidraw + event nodes) or its uinput input device."""
+    m = re.search(r'/devices/virtual/misc/uhid/([0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}\.[0-9A-Fa-f]+)(/|$)', devpath or '')
+    if m:
+        return 'uhid:' + m.group(1)
+    m = re.search(r'/devices/virtual/input/(input[0-9]+)(/|$)', devpath or '')
+    if m:
+        return 'uinput:' + m.group(1)
+    return None
+
+
+def open_files(uids, proc=PROC):
+    """[(id, uid)] of every /dev/uinput or /dev/uhid file the streamed players' processes have open. The id has
+    the process's start time, so a reused process number isn't mistaken for the same process."""
+    found = []
+    for pid in os.listdir(proc):
+        if not pid.isdigit():
+            continue
+        base = os.path.join(proc, pid)
+        try:
+            uid = os.stat(base).st_uid
+            if uid not in uids:
+                continue
+            fds = os.listdir(os.path.join(base, 'fd'))
+            with open(os.path.join(base, 'stat')) as f:
+                start = f.read().rsplit(')', 1)[-1].split()[19]
+        except (OSError, IndexError):
+            continue
+        for fd in fds:
+            try:
+                target = os.readlink(os.path.join(base, 'fd', fd))
+            except OSError:
+                continue
+            if target in NODES:
+                found.append(('%s:%s:%s' % (pid, start, fd), uid))
+    return found
+
+
+def load_state(path):
+    try:
+        with open(path) as f:
+            st = json.load(f)
+        if isinstance(st, dict):
+            return st
+    except (OSError, ValueError):
+        pass
+    return {}
+
+
+def decide(state, key, current, users, now):
+    """Who made the device `key`; updates state. current = open_files(), users = {uid: account}.
+
+    Every newly opened /dev/uinput or /dev/uhid file is a device on its way, so it's a "credit" for that player;
+    the next new device that isn't someone's yet uses one up. (Two devices made at once can show up as two new
+    files at the first device's event; the credit carries the second one.) Credits expire after RECENT seconds,
+    so a file opened just to look never claims a later device for long."""
+    claims = state.setdefault('claims', {})
+    seen = set(state.get('seen', []))
+    credit = state.setdefault('credit', {})
+    for fid, uid in current:
+        if fid not in seen and uid in users:
+            credit.setdefault(users[uid], []).append(now)
+    state['seen'] = sorted(fid for fid, _ in current)
+    for u in list(credit):
+        credit[u] = [t for t in credit[u] if now - float(t) <= RECENT and u in users.values()]
+        if not credit[u]:
+            del credit[u]
+    if key in claims:
+        return claims[key]
+    owners = sorted(credit)
+    if not owners:
+        return None     # not a streamed player's (player 1's Steam Input, Remote play...)
+    for u in owners:
+        credit[u].pop(0)
+        if not credit[u]:
+            del credit[u]
+    who = owners[0] if len(owners) == 1 else 'nobody'
+    claims[key] = who
+    return who
+
+
+def forget(state, key, current):
+    state.setdefault('claims', {}).pop(key, None)
+    alive = {fid for fid, _ in current}
+    state['seen'] = sorted(f for f in state.get('seen', []) if f in alive)
+
+
+def main(argv):
+    action = argv[1] if len(argv) > 1 else ''
+    key = device_key(os.environ.get('DEVPATH', ''))
+    if action not in ('claim', 'forget') or not key:
+        return 0
+    try:
+        with open(CONFIG) as f:
+            users = stream_users(json.load(f))
+    except (OSError, ValueError, AttributeError):
+        return 0
+    if not users:
+        return 0
+    try:
+        os.makedirs(os.path.dirname(STATE), exist_ok=True)
+        with open(STATE + '.lock', 'a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)   # udev handles devices in parallel
+            state = load_state(STATE)
+            current = open_files(set(users))
+            if action == 'claim':
+                who = decide(state, key, current, users, time.time())
+            else:
+                who = None
+                forget(state, key, current)
+            with open(STATE + '.tmp', 'w') as f:
+                json.dump(state, f)
+            os.chmod(STATE + '.tmp', 0o600)
+            os.replace(STATE + '.tmp', STATE)
+    except OSError:
+        return 0
+    if who:
+        print('HEARTH_SEAT_CLAIM=%s' % who)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

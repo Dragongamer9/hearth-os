@@ -81,15 +81,26 @@ public static class SteamWindows
             title.Clear();
             GetWindowText(h, title, title.Capacity);
             var t = title.ToString();
-            if (t == "Steam") { ShowWindow(h, SW_HIDE); hidden++; }
-            else if (t.Length > 0 && GetWindowRect(h, out var r) && r.R - r.L > 250 && r.B - r.T > 150)
+            if (t == "Steam" || t.Equals("Friends List", StringComparison.OrdinalIgnoreCase)) { ShowWindow(h, SW_HIDE); hidden++; }
+            else if (IsQuestion(t) && GetWindowRect(h, out var r) && r.R - r.L > 250 && r.B - r.T > 150)
             {
-                // A real Steam dialog (e.g. "Install - <game>"): bring it to the front once so the
-                // controller bridge's keys reach it.
+                // A real Steam dialog (e.g. "Install - <game>", a cloud-save conflict, Steam's sign-in): bring it to
+                // the front once so the controller bridge's keys reach it.
                 lock (Focused) if (Focused.Add(h)) SetForegroundWindow(h);
             }
             return true;
         }, IntPtr.Zero);
         return hidden;
+    }
+
+    /// <summary>A Steam window that may need you while a game starts (a cloud-save conflict, an error, an EULA,
+    /// Install), not Steam's own main, friends, Big Picture or "launching" windows, which stay out of the way and are
+    /// never pulled in front of the game. Same rule as Hearth's gamescope::steam_question.</summary>
+    public static bool IsQuestion(string title)
+    {
+        var t = title.Trim().ToLowerInvariant();
+        bool steamsOwn = t.Length == 0 || t is "steam" or "steamwebhelper" or "steam big picture mode" or "friends list"
+            || t.StartsWith("launching") || t.StartsWith("preparing") || t.StartsWith("updating") || t.StartsWith("steam - updat");
+        return !steamsOwn;
     }
 }

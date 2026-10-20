@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apps</title>
+<!--
+  Apps for Mantel on Windows: the app store window, the same as Apps on Hearth OS (hosts/linux/desktop/shell/AppStore.qml):
+  the same page list (Discover, Search, Installed, Updates, the categories), the same rows and app page (Install, Open,
+  Update, Remove, About, Details, Website), the same keys (Up/Down pick, Right/Enter go in, Left/Esc come back, Esc on
+  the list closes; the controller moves through it too). Hearth OS installs from Flathub; Windows' own package manager,
+  winget, does it here (Mantel/Winget.cs). What's different and why: docs/MANTEL-PARITY.md. Opens in a normal browser
+  with sample data.
+-->
+<style>
+:root{
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --danger:#ff5d5d; --ember:#ff8a3d; --flame:#ffd166; --accent:#ff8a3d; --accentInk:#2a1206;
+  --quick:140ms;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font:14px/1.3 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer;text-align:left}
+svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+:focus{outline:none}
+.app{display:flex;height:100%}
+/* ---- page list (SettingsApp.qml) ---- */
+nav{width:270px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px;gap:4px}
+@media (max-width:900px){nav{width:220px}}
+.brand{display:flex;align-items:center;gap:10px;margin:6px 6px 14px}
+.brand img{width:30px;height:30px}
+.brand b{font-size:20px;font-weight:600}
+.navlist{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:4px;scrollbar-width:none}
+.ni{height:48px;flex:none;border-radius:10px;display:flex;align-items:center;gap:12px;padding:0 14px;font-size:15px;transition:background var(--quick)}
+.ni:hover{background:var(--panel2)}
+.ni.lit{background:var(--panel3);font-weight:600}
+.ni.lit svg{color:var(--accent)}
+nav.focus .ni.lit{background:var(--accent);color:var(--accentInk)}
+nav.focus .ni.lit svg{color:var(--accentInk)}
+.navhint{padding:6px 6px 0;color:var(--muted);font-size:12px}
+/* ---- a page (SetPage.qml): left-aligned, up to 820 wide ---- */
+main{flex:1;min-width:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent;scroll-behavior:smooth}
+.page{width:min(100% - 48px,820px);margin:20px 24px 48px;display:flex;flex-direction:column;gap:8px}
+.page h1{font-size:26px;font-weight:600;margin-bottom:6px}
+.hd{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;margin-top:14px}
+/* SetRow / SetBase */
+.row{min-height:64px;border-radius:12px;background:var(--panel2);border:2px solid transparent;display:flex;align-items:center;gap:14px;padding:10px 16px;width:100%;transition:background var(--quick),border-color var(--quick)}
+button.row:hover{background:var(--panel3)}
+.row.f-on,.choice.f-on,.wall.f-on,.field.f-on{border-color:var(--accent)}
+.row .ic{width:38px;height:38px;border-radius:10px;background:var(--panel3);display:grid;place-items:center;flex:none}
+.row .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.row .tx b{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:pre}
+.row .tx small{font-size:12px;color:var(--muted)}
+.row .val{color:var(--muted);font-size:13px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .chev{color:var(--muted);font-size:20px}
+.row.danger .tx b,.row.danger .ic{color:var(--danger)}
+.row.fact{min-height:52px}
+.row.narrow{width:140px;flex:none}
+.row.mid{width:160px;flex:none}
+/* SetSwitch */
+.sw{width:46px;height:26px;border-radius:13px;background:var(--panel3);position:relative;flex:none;transition:background var(--quick)}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:10px;background:var(--text);transition:left var(--quick),background var(--quick)}
+.sw.on{background:var(--accent)}
+.sw.on::after{left:23px;background:var(--accentInk)}
+/* SetSlider */
+.slider{min-height:76px;padding-right:18px}
+.slider .tx{gap:10px}
+.slider .tx .top{display:flex;justify-content:space-between}
+.slider .tx .top span{color:var(--muted);font-size:13px;font-weight:400}
+.track{position:relative;height:8px;border-radius:4px;background:var(--panel3);cursor:pointer}
+.track::before{content:"";position:absolute;inset:-14px 0}
+.track i{position:absolute;left:0;top:0;bottom:0;min-width:8px;border-radius:4px;background:linear-gradient(90deg,var(--ember),var(--flame))}
+/* SetChoice */
+.choice{border-radius:12px;background:var(--panel2);border:2px solid transparent;padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;transition:border-color var(--quick)}
+.choice .t b{font-size:15px;font-weight:600}
+.choice .t small{display:block;font-size:12px;color:var(--muted);margin-top:10px}
+.opts{display:flex;gap:8px}
+.opt{flex:1;min-width:0;height:40px;border-radius:10px;background:var(--panel3);text-align:center;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px}
+.opt.on{background:var(--accent);color:var(--accentInk);font-weight:600}
+/* SetField */
+.field{height:52px;border-radius:12px;background:var(--panel3);border:2px solid transparent;display:flex;flex:1;transition:border-color var(--quick)}
+.field input{flex:1;min-width:0;background:none;border:0;padding:0 14px;color:var(--text);font-size:15px}
+.field input::placeholder{color:var(--muted)}
+.pwline{display:flex;gap:8px;margin-left:52px;align-items:stretch}
+/* the wallpaper grid (SetAppearance.qml) */
+.walls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.wall{height:130px;border-radius:12px;background:var(--panel2);border:2px solid transparent;padding:4px;transition:border-color var(--quick)}
+.wall:hover{background:var(--panel3)}
+.wall.on{border-color:color-mix(in srgb,var(--accent) 80%,#fff)}
+.wall .pv{position:relative;width:100%;height:100%;border-radius:9px;overflow:hidden;background:#1a110c center/cover no-repeat}
+.wall .pv.fire{background:radial-gradient(ellipse 70% 100% at 50% 115%,#ff8a3d99,transparent 70%),#1a110c}
+.wall .lab{position:absolute;left:0;right:0;bottom:0;height:30px;background:linear-gradient(transparent,#000c);display:flex;align-items:center;padding:0 10px;font-size:12px;font-weight:600;color:#fff;gap:6px}
+.wall .lab span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wall .lab i{font-style:normal;color:var(--flame);font-size:14px;font-weight:700}
+/* text lines, banners, progress */
+.note{color:var(--muted);font-size:13px;padding-left:4px}
+.note.small{font-size:12px;padding-left:0}
+.note.bad{color:var(--danger)}
+.note.good{color:var(--flame)}
+.banner{border-radius:12px;background:color-mix(in srgb,var(--accent) 18%,transparent);border:1px solid var(--accent);padding:14px;display:flex;flex-direction:column;gap:8px}
+.banner b{font-size:15px;font-weight:600}
+.banner .btns{display:flex;gap:8px}
+.prog{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.prog .pl{display:flex;justify-content:space-between;font-size:14px}
+.prog .pl b{color:var(--flame);font-weight:600}
+.bar{position:relative;height:8px;border-radius:4px;background:var(--panel3);overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;min-width:8px;border-radius:4px;background:linear-gradient(90deg,var(--ember),var(--flame));transition:width .3s}
+.bar i.busy{width:30%;animation:busy 1.8s ease-in-out infinite}
+@keyframes busy{0%,100%{left:0}50%{left:70%}}
+.about{display:flex;align-items:center;gap:16px;margin-bottom:10px}
+.about img{width:64px;height:64px}
+.about b{display:block;font-size:22px;font-weight:600}
+.about small{color:var(--muted);font-size:13px}
+.swatch{flex:0 0 52px !important;min-width:52px}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--panel3) center/cover no-repeat;display:grid;place-items:center;font-size:16px;font-weight:600;flex:none}
+.avatar.big{width:56px;height:56px;font-size:20px}
+.btnrow{display:flex;gap:8px;margin-left:52px}
+.btnrow .row{flex:1;min-height:52px}
+.twofield{display:flex;gap:8px}
+.page>.field{flex:none}
+.confirm{margin-left:52px;display:flex;flex-direction:column;gap:8px}
+.confirm p{font-size:14px}
+.msg{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(28,21,18,.92);border:1px solid var(--line);border-radius:22px;height:44px;padding:0 18px;display:flex;align-items:center;font-size:14px;opacity:0;transition:opacity var(--quick);pointer-events:none;z-index:5}
+.msg.show{opacity:1}
+</style>
+<style>
+/* Apps (AppStore.qml): a list row per app, the app's page, the work in progress */
+.brand .st{width:26px;height:26px;color:var(--accent)}
+.brand .st svg{width:26px;height:26px}
+.row.appr{min-height:72px}
+.aic{width:44px;height:44px;flex:none;border-radius:10px;object-fit:contain}
+.aic.gen,.hero .aic.gen{background:var(--panel3);display:grid;place-items:center;font-weight:700;font-size:18px;color:var(--flame)}
+.row .tx b.nm{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .val.up{color:var(--flame)}
+.hero{display:flex;gap:18px;align-items:center;margin-top:8px}
+.hero .aic{width:96px;height:96px;border-radius:20px}
+.hero .aic.gen{font-size:40px}
+.hero b{display:block;font-size:26px;font-weight:600}
+.hero small{display:block;color:var(--muted);font-size:13px;margin:4px 0}
+.hero p{font-size:15px}
+.para{border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45;white-space:pre-wrap;border:2px solid transparent}
+.para.f-on{background:var(--panel2);border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="app"><nav></nav><main><div class="page"></div></main></div>
+<div class="msg"></div>
+<script src="mantel-icons.js"></script>
+<script>
+'use strict';
+const host = window.chrome && window.chrome.webview ? window.chrome.webview : null;
+const send = m => host ? host.postMessage(m) : null;
+const mantel = (action, extra) => send({type:'mantel', action, ...(extra||{})});
+let callId = 0; const pending = {};
+const call = (method, args={}, ms=120000) => host ? new Promise((ok, no) => {
+  const id = ++callId; pending[id] = {ok, no}; send({type:'call', id, method, args});
+  setTimeout(() => { if(pending[id]){ delete pending[id]; no(new Error('That took too long')); } }, ms);
+}) : (MOCK[method] ? new Promise(ok=>setTimeout(()=>ok(MOCK[method](args)), 120)) : Promise.reject(new Error('preview')));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const I = new Proxy(window.HEARTH_ICONS || {}, {get:(o,k)=>o[k] || o.dot || ''});
+
+// ---------------------------------------------------------------- the page list (AppStore.qml's nav)
+const NAV = () => [['featured','store','Discover'],['search','search','Search'],['installed','grid','Installed'],['updates','update','Updates'+(A.updates.length?` (${A.updates.length})`:'')],
+  ['Game','pad','Games'],['AudioVideo','vol','Music & video'],['Graphics','palette','Graphics & photos'],['Network','globe','Internet'],['Office','kbd','Office'],
+  ['Development','gear','Programming'],['Education','info','Learning'],['Science','sun','Science'],['System','display','System'],['Utility','grid','Tools']];
+const TITLES = {featured:'Popular apps', search:'Search', installed:'Installed apps', updates:'Updates'};
+const A = {view:'featured', backTo:'featured', lists:{}, detail:null, status:null, updates:[], busyId:'', busyWhat:'', progress:-1, line:'', message:'', bad:false,
+  confirmRemove:'', seq:0, query:'', loading:'', inPage:false, f:0};
+const navView = () => A.view==='app' ? A.backTo : A.view;
+const titleOf = v => TITLES[v] || (NAV().find(n=>n[0]===v)||[])[2] || '';
+
+function toast(t){ const m=$('.msg'); m.textContent=t; m.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>m.classList.remove('show'), 1800); }
+function say(t, bad){ A.message=t; A.bad=!!bad; render(); }
+function renderNav(){
+  const v=navView();
+  $('nav').innerHTML = `<div class="brand"><span class="st">${I.store}</span><b>Apps</b></div><div class="navlist">`
+    + NAV().map(([id,ic,l])=>`<button class="ni ${v===id?'lit':''}" data-act="nav" data-v="${id}">${I[ic]}${esc(l)}</button>`).join('')
+    + `</div><div class="navhint">Ⓐ open  Ⓑ back</div>`;
+  $('nav').classList.toggle('focus', !A.inPage);
+  const lit=$('.ni.lit'); if(lit) lit.scrollIntoView({block:'nearest'});
+}
+
+// ---------------------------------------------------------------- building blocks (Set*.qml, as in Hearth Settings)
+const row = o => { const tag=o.act?'button':'div';
+  return `<${tag} class="row ${o.danger?'danger':''} ${o.cls||''}" ${o.act?`data-f data-act="${o.act}"`:''} ${o.data||''}>${o.lead||''}${o.icon?`<div class="ic">${I[o.icon]}</div>`:''}<div class="tx"><b class="${o.nm?'nm':''}">${esc(o.title)}</b>${o.sub?`<small>${esc(o.sub)}</small>`:''}</div>${o.val?`<div class="val ${o.up?'up':''}">${esc(o.val)}</div>`:''}${o.act && o.chev!==false?'<div class="chev">›</div>':''}</${tag}>`; };
+const hd = t => `<div class="hd">${esc(t)}</div>`;
+const note = (t, cls='') => `<div class="note ${cls}">${esc(t)}</div>`;
+const appIcon = a => a && a.icon ? `<img class="aic" src="${esc(a.icon)}" alt="">` : `<div class="aic gen">${esc(((a&&a.name)||'?').trim().charAt(0).toUpperCase())}</div>`;
+const pct = () => A.progress>=0 ? Math.round(A.progress*100)+'%' : '';
+const work = () => `<div class="prog"><div class="pl"><span>${esc(A.line || A.busyWhat || 'Working…')}</span>${A.progress>=0?`<b>${pct()}</b>`:''}</div><div class="bar"><i class="${A.progress>=0?'':'busy'}" ${A.progress>=0?`style="width:${Math.max(3, A.progress*100)}%"`:''}></i></div></div>`;
+const hasUpdate = id => A.updates.some(u=>u.id===id);
+
+// ---------------------------------------------------------------- the page
+function render(){
+  renderNav();
+  const v=A.view, cur=v==='app'?[]:(A.lists[v]||[]);
+  let h = v==='app' ? '' : `<h1>${esc(titleOf(v))}</h1>`;
+  if(A.status && !A.status.winget) h += row({icon:'info', title:"winget isn't installed", sub:'Apps uses winget, Windows\' package manager. It comes with "App Installer" from the Microsoft Store.', act:'store'});
+  if(v!=='app'){
+    if(v==='search') h += `<label class="field" data-f data-field="q"><input placeholder="Search for an app: a name, or what it does" spellcheck="false" data-input="q"></label>`;
+    if(A.busyId) h += work();
+    if(v==='updates' && A.updates.length && !A.busyId) h += row({icon:'update', chev:false, title:'Update all', sub:A.updates.length+(A.updates.length===1?' app has':' apps have')+' an update', act:'updateAll'});
+    if(A.message) h += note(A.message, A.bad?'bad':'good');
+    h += cur.map((a,i)=>row({cls:'appr', lead:appIcon(a), title:a.name||a.id, nm:true, sub:a.summary||(a.version?'Version '+a.version:''), act:'open', data:`data-i="${i}"`,
+      val:A.busyId===a.id?pct()||'…':hasUpdate(a.id)?'Update':a.installed?'Installed':'', up:hasUpdate(a.id)})).join('');
+    if(!cur.length) h += note(A.loading===v && !A.lists[v] ? (v==='featured'||v==='search'||v==='installed'||v==='updates'?'Loading…':'Asking winget for the list… The first time takes a minute.')
+      : v==='search' ? (A.query==='' ? 'Type to search.' : `Nothing in winget matches "${A.query}".`)
+      : v==='updates' ? 'Everything is up to date.'
+      : v==='installed' ? 'No apps found.' : 'Nothing here yet.');
+  } else {
+    const d=A.detail;
+    h += row({icon:'back', chev:false, title:'Back', sub:titleOf(A.backTo), act:'back'});
+    if(!d) h += note('Loading…');
+    else {
+      h += `<div class="hero">${appIcon(d)}<div><b>${esc(d.name)}</b>${d.developer?`<small>${esc(d.developer)}</small>`:''}${d.summary?`<p>${esc(d.summary)}</p>`:''}</div></div>`;
+      const busy=A.busyId===d.id;
+      if(busy) h += work();
+      if(A.message) h += note(A.message, A.bad?'bad':'good');
+      if(!d.installed && !busy && d.catalogued!==false) h += row({icon:'update', chev:false, title:'Install', sub:'With winget, for this PC', act:'install'});
+      if(d.installed && !busy) h += row({icon:'check', chev:false, title:'Open', sub:'Version '+(d.installedVersion||d.version||'?'), act:'launch'});
+      if(d.installed && hasUpdate(d.id) && !busy){ const u=A.updates.find(x=>x.id===d.id); h += row({icon:'update', chev:false, title:'Update', sub:u&&u.available?'To version '+u.available:'A newer version is ready', act:'update'}); }
+      if(d.installed && !busy && A.confirmRemove!==d.id) h += row({icon:'trash', danger:true, chev:false, title:'Remove…', act:'confirm'});
+      if(A.confirmRemove===d.id){
+        h += row({danger:true, chev:false, title:'Remove '+d.name, sub:'Its own uninstaller decides what happens to its settings and files', act:'remove'});
+        h += row({chev:false, title:'Cancel', act:'cancel'});
+      }
+      const paras=String(d.description||'').split(/\n\s*\n|\n(?=\S)/).map(x=>x.trim()).filter(x=>x && x!==d.summary);
+      if(paras.length){ h += hd('About'); h += paras.map(p=>`<div class="para" data-f>${esc(p)}</div>`).join(''); }
+      h += row({icon:'info', chev:false, title:'Details', sub:[d.version?'Version '+d.version:'', d.license?'License: '+d.license:'', d.id].filter(x=>x).join(' · '), act:'noop'});
+      if(d.homepage) h += row({icon:'globe', title:'Website', sub:d.homepage, act:'web'});
+    }
+  }
+  const ae=document.activeElement, typing=ae && ae.dataset && ae.dataset.input, caret=typing?ae.selectionStart:0, keep=$('main').scrollTop;
+  $('.page').innerHTML = h;
+  $('main').scrollTop = keep;
+  const q=$('[data-input="q"]'); if(q){ q.value=A.query; if(typing){ q.focus(); try{ q.setSelectionRange(caret, caret); }catch(e){} } }
+  focusPaint();
+}
+
+// ---------------------------------------------------------------- loading
+function setList(v, apps){ A.lists={...A.lists, [v]:apps||[]}; }
+function load(v){
+  const s=++A.seq; A.loading=v; render();
+  const done = r => { if(s===A.seq || v!=='search') { setList(v, r&&r.apps); } if(A.loading===v) A.loading=''; render(); };
+  const fail = e => { if(A.loading===v) A.loading=''; say(e.message, true); };
+  if(v==='installed') call('apps.installed',{},180000).then(done).catch(fail);
+  else if(v==='updates') refreshUpdates(true);
+  else if(v==='search'){ if(A.query) call('apps.search', {q:A.query}).then(r=>{ if(s===A.seq){ setList('search', r&&r.apps); A.loading=''; render(); } }).catch(fail); else { A.loading=''; render(); } }
+  else call('apps.browse', {what:v},180000).then(done).catch(fail);
+}
+function refreshUpdates(show){ call('apps.updates',{},180000).then(r=>{ A.updates=(r&&r.apps)||[]; setList('updates', A.updates); if(A.loading==='updates') A.loading=''; render(); }).catch(e=>{ if(show) say(e.message, true); }); }
+function go(v){ A.view=v; A.confirmRemove=''; A.message=''; A.f=0; $('main').scrollTop=0; load(v); }
+function showApp(id){
+  if(A.view!=='app') A.backTo=A.view;
+  A.detail=null; A.confirmRemove=''; A.message=''; A.view='app'; A.f=0; $('main').scrollTop=0; render();
+  const s=++A.seq;
+  call('apps.app', {id},120000).then(r=>{ if(s===A.seq){ A.detail=r; render(); } }).catch(e=>say(e.message, true));
+}
+function afterChange(id){
+  if(A.detail && A.detail.id===id) call('apps.app', {id}).then(r=>{ if(A.detail && A.detail.id===r.id){ A.detail=r; render(); } }).catch(()=>{});
+  call('apps.installed',{},180000).then(r=>{ setList('installed', r&&r.apps); render(); }).catch(()=>{});
+  refreshUpdates(false);
+  if(!['app','installed','updates'].includes(A.view)) load(A.view);
+}
+function runWork(method, id, what, okText){
+  if(A.busyId) return say('Wait for '+A.busyWhat.toLowerCase()+' to finish.', true);
+  A.busyId=id; A.busyWhat=what; A.progress=-1; A.line=''; A.message=''; render();
+  call(method, {id}, 3600000).then(()=>{ A.busyId=''; toast(okText); say(okText); afterChange(id); })
+    .catch(e=>{ A.busyId=''; say(e.message, true); afterChange(id); });
+}
+
+// ---------------------------------------------------------------- actions
+function act(el){
+  const d=el.dataset, cur=A.lists[A.view]||[], app=A.detail;
+  switch(d.act){
+    case 'nav': A.inPage=false; if(d.v!==A.view) go(d.v); else render(); return;
+    case 'open': { const a=cur[+d.i]; if(a) showApp(a.id); return; }
+    case 'back': go(A.backTo); A.inPage=true; return;
+    case 'install': return runWork('apps.install', app.id, 'Installing '+app.name, app.name+' is installed.');
+    case 'update': return runWork('apps.update', app.id, 'Updating '+app.name, app.name+' is up to date.');
+    case 'updateAll': return runWork('apps.update', '--all', 'Updating everything', 'Your apps are up to date.');
+    case 'confirm': A.confirmRemove=app.id; return render();
+    case 'cancel': A.confirmRemove=''; return render();
+    case 'remove': A.confirmRemove=''; return runWork('apps.remove', app.id, 'Removing '+app.name, app.name+' was removed.');
+    case 'launch': mantel('openByName', {name:app.name}); return toast('Opening '+app.name);
+    case 'web': return mantel('openUrl', {url:app.homepage});
+    case 'store': return mantel('openUrl', {url:'ms-windows-store://pdp/?productid=9NBLGGH4NNS1'});
+  }
+}
+
+// ---------------------------------------------------------------- keyboard and controller (the same as Hearth Settings)
+const focusables = () => $$('.page [data-f]');
+function focusPaint(){
+  $$('.f-on').forEach(x=>x.classList.remove('f-on'));
+  if(!A.inPage) return;
+  const f=focusables(); if(!f.length) return;
+  A.f=Math.max(0, Math.min(A.f, f.length-1));
+  const el=f[A.f]; el.classList.add('f-on'); el.scrollIntoView({block:'nearest'});
+  const input=el.querySelector('input');
+  if(input) input.focus(); else if(document.activeElement && document.activeElement.tagName==='INPUT') document.activeElement.blur();
+}
+document.addEventListener('keydown', e => {
+  const typing=document.activeElement && document.activeElement.tagName==='INPUT';
+  if(typing && e.key==='Enter'){ e.preventDefault(); clearTimeout(searchLater); load('search'); return; }
+  if(typing && !['Escape','ArrowUp','ArrowDown','Tab'].includes(e.key)) return;
+  const nav=NAV(), idx=Math.max(0, nav.findIndex(n=>n[0]===navView()));
+  if(!A.inPage){
+    if(e.key==='ArrowDown'||e.key==='Tab'&&!e.shiftKey){ e.preventDefault(); return go(nav[Math.min(nav.length-1, idx+1)][0]); }
+    if(e.key==='ArrowUp'||e.key==='Tab'&&e.shiftKey){ e.preventDefault(); return go(nav[Math.max(0, idx-1)][0]); }
+    if(e.key==='ArrowRight'||e.key==='Enter'||e.key===' '){ e.preventDefault(); if(A.view==='app' && e.key!=='ArrowRight') go(A.backTo); if(!focusables().length) return; A.inPage=true; A.f=0; renderNav(); return focusPaint(); }
+    if(e.key==='Escape'){ e.preventDefault(); return mantel('closeApp', {app:'apps'}); }
+    return;
+  }
+  const f=focusables(), el=f[A.f];
+  switch(e.key){
+    case 'ArrowDown': case 'Tab': e.preventDefault(); A.f = e.key==='Tab'&&e.shiftKey ? Math.max(0, A.f-1) : Math.min(f.length-1, A.f+1); return focusPaint();
+    case 'ArrowUp': e.preventDefault(); A.f=Math.max(0, A.f-1); return focusPaint();
+    case 'ArrowLeft': e.preventDefault(); A.inPage=false; renderNav(); return focusPaint();
+    case 'Enter': case ' ': if(el && el.matches('[data-act]')){ e.preventDefault(); el.click(); } return;
+    case 'Escape': e.preventDefault(); if(typing) document.activeElement.blur(); A.inPage=false; renderNav(); return focusPaint();
+  }
+});
+document.addEventListener('click', e => {
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  if(el.closest('.page')){ const i=focusables().indexOf(el.closest('[data-f]')); if(i>=0){ A.inPage=true; A.f=i; } }
+  act(el);
+});
+let searchLater=0;
+document.addEventListener('input', e => { if(e.target.dataset.input!=='q') return; A.query=e.target.value.trim(); clearTimeout(searchLater); searchLater=setTimeout(()=>load('search'), 450); });
+document.addEventListener('contextmenu', e => e.preventDefault());
+function setAccent(a){
+  if(!/^#[0-9a-f]{6}$/i.test(a||'')) return;
+  const n=parseInt(a.slice(1),16);
+  document.documentElement.style.setProperty('--accent', a);
+  document.documentElement.style.setProperty('--accentInk', ((n>>16&255)*.2126+(n>>8&255)*.7152+(n&255)*.0722)/255>.45?'#2a1206':'#ffffff');
+}
+
+// ---------------------------------------------------------------- from Ember
+if(host) host.addEventListener('message', e => {
+  const m=e.data; if(!m||typeof m!=='object') return;
+  if(m.type==='result'){ const p=pending[m.id]; if(!p) return; delete pending[m.id]; m.ok ? p.ok(m.value) : p.no(new Error(m.error)); return; }
+  if(m.type!=='event') return;
+  const d=m.data;
+  if(m.name==='apps.progress' && d && d.id===A.busyId){
+    if(d.progress>=0) A.progress=d.progress;
+    if(d.line) A.line=d.line;
+    const pr=$('.prog'); if(pr) pr.outerHTML=work();
+    const v=document.querySelector(`.row.appr .val`); if(v && A.view!=='app') render();
+  }
+  else if(m.name==='profile'){ if(d&&d.accent) setAccent(d.accent); }
+  else if(m.name==='mantel.appArgs'){ const id=new URLSearchParams(d&&d.query||'').get('app'); if(id) showApp(id); }
+});
+
+// ---------------------------------------------------------------- preview data
+const SAMPLE=[{id:'Valve.Steam',name:'Steam',summary:"Valve's game store and launcher",installed:true},{id:'Discord.Discord',name:'Discord',summary:'Voice, video and text chat'},
+  {id:'Mozilla.Firefox',name:'Firefox',summary:'Fast, private web browser',installed:true},{id:'VideoLAN.VLC',name:'VLC media player',summary:'Plays nearly every video and music file'},
+  {id:'OBSProject.OBSStudio',name:'OBS Studio',summary:'Record and stream your screen'}];
+const MOCK = {
+  'apps.status':()=>({winget:true, version:'v1.9.2'}),
+  'apps.browse':()=>({apps:SAMPLE}),
+  'apps.search':a=>({apps:SAMPLE.filter(x=>x.name.toLowerCase().includes(String(a.q).toLowerCase()))}),
+  'apps.installed':()=>({apps:SAMPLE.filter(x=>x.installed).map(x=>({...x, version:'1.0'}))}),
+  'apps.updates':()=>({apps:[{id:'Mozilla.Firefox',name:'Firefox',version:'131.0',available:'132.0.1',installed:true}]}),
+  'apps.app':a=>({id:a.id,name:(SAMPLE.find(x=>x.id===a.id)||{name:a.id}).name,developer:'Mozilla',summary:'Fast, private web browser',description:'Firefox is a free and open-source web browser.\n\nIt blocks trackers by default.',version:'132.0.1',license:'MPL-2.0',homepage:'https://www.mozilla.org/firefox/',installed:true,installedVersion:'131.0',catalogued:true}),
+};
+
+// ---------------------------------------------------------------- start
+const startApp = new URLSearchParams(location.search).get('app');
+call('apps.status').then(s=>{ A.status=s; render(); }).catch(()=>{});
+if(startApp) showApp(startApp); else go('featured');
+refreshUpdates(false);
+if(host){ send({type:'ready'}); call('profile.get').then(p=>setAccent(p&&p.accent)).catch(()=>{}); }
+</script>
+</body>
+</html>

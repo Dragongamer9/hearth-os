@@ -212,6 +212,10 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .sstats{display:flex;gap:18px;flex-wrap:wrap;font-size:13px}
 .sstats span{color:var(--dim)} .sstats b{color:var(--text)}
 .serr{font-size:13px;color:var(--warn);line-height:1.4}
+/* A store sign-in that expired (Sign in again): the card's status, its border, and the bell's badge */
+.scard .sti small.warn{color:var(--warn);font-weight:600}
+.scard.expired{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warn) 55%,transparent)}
+.badge.warn{background:var(--warn);color:#241703}
 .sbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
 .sbtn{padding:10px 16px;border-radius:8px;background:var(--panel3);font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px}
 .sbtn.pri{background:var(--accent);color:var(--accentInk)}
@@ -434,6 +438,11 @@ body.overlay .modal{width:min(380px,92vw)}
 body.L-tiles .topnav,body.L-spotlight .topnav{display:flex}
 body.L-tiles #vtitle,body.L-spotlight #vtitle{display:none}
 body.reduce-motion *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+/* Lighter effects: when the host draws the compatible way (no DMA-BUF: Nvidia RTX 50, basic graphics), big blurs and
+   shadows are drawn without the graphics card's help every frame, which made Hearth sluggish. Same look, flatter. */
+body.lite .home-hero .art,body.lite .home-hero .img,body.lite #launch .art{filter:none!important;opacity:.22;transform:none;will-change:auto}
+body.lite .linfo{backdrop-filter:none;background:var(--panel)}
+body.lite *{box-shadow:none!important;text-shadow:none!important}
 body.no-battpct #battPct{display:none}
 
 /* Tiles: a dashboard — the latest game big, recent ones around it, pins and shortcuts below */
@@ -622,6 +631,213 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .logcode{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;background:var(--panel2);margin-bottom:6px}.logcode b{font-size:30px;letter-spacing:.12em;color:var(--accent);font-variant-numeric:tabular-nums}.logcode code{font-size:13px;word-break:break-all;color:var(--dim)}
 .frchips{margin:0 0 14px}.frplat{font-size:11px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:2px;background:var(--panel3);color:var(--dim)}.fp-steam{background:#1b2838;color:#66c0f4}.fp-xbox{background:#0e3a12;color:#7ad15a}.fp-epic{background:#2a2a2a;color:#ddd}.frjoin{color:var(--accent);font-weight:700}
 .frav{position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none;margin-right:12px}.frav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.frav i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#56606e;border:2px solid var(--bg)}.frow.on .frav i{background:#5aa9ff}.frow.ing .frav i{background:#7ad15a}.frow.ing small{color:#7ad15a}
+/* ===================== Library layouts (Settings › You › Library layout) ===================== */
+/* Shared: status chips, the info bar, the background art, boxes that fill the rest of the screen (.lfit) */
+.lwrap{position:relative}
+.lst{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--panel3);color:var(--dim);white-space:nowrap}
+.lst.inst{color:var(--text);background:rgba(255,255,255,.07)}
+.lst.on,.lst.qr,.lst.dl{background:color-mix(in srgb,var(--accent) 20%,transparent);color:var(--accent)}
+.lst.ni{color:var(--warn);background:color-mix(in srgb,var(--warn) 13%,transparent)}
+.lst.cloud{color:#8fc7ff;background:rgba(143,199,255,.12)}
+.lfav{color:#ffd166;font-style:normal}
+.tile .lfav,.lwc .lfav{position:absolute;right:7px;bottom:7px;z-index:3;font-size:13px;text-shadow:0 1px 6px rgba(0,0,0,.8)}
+.lfit{overflow:hidden;margin-bottom:-36px}
+.lbg{position:fixed;inset:0;z-index:-1;pointer-events:none}
+.lbg .art,.lbg .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity .3s}
+.lbg:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,color-mix(in srgb,var(--bg) 72%,transparent) 0%,color-mix(in srgb,var(--bg) 88%,transparent) 40%,var(--bg) 85%)}
+.linfo{display:flex;align-items:center;gap:14px;min-height:56px;padding:8px 16px 8px 8px;border-radius:14px;background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(12px);box-shadow:0 10px 40px rgba(0,0,0,.45);border:1px solid var(--line)}
+.linfo:empty{display:none}
+.linfo .li-th{width:30px;aspect-ratio:2/3;flex:none}
+.linfo .li-th .cover{width:100%;height:100%;border-radius:4px}
+.linfo .li-th .ct,.linfo .li-th .notinst,.linfo .li-th .dl{display:none}
+.linfo .li-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.linfo .li-t b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.linfo .li-t small{color:var(--dim);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lfloat{position:fixed;left:var(--gut);right:var(--gut);bottom:calc(var(--foot) + 10px);z-index:4}
+.lpadb{padding-bottom:84px}
+.lrow h2{display:flex;align-items:baseline;gap:10px;margin:18px 0 0}
+.lrow h2 span{font-size:12px;color:var(--faint);font-weight:600}
+.ljflash{position:fixed;left:50%;top:50%;z-index:60;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:28px;display:grid;place-items:center;font-size:64px;font-weight:800;background:color-mix(in srgb,var(--panel2) 92%,transparent);box-shadow:0 20px 60px rgba(0,0,0,.5);pointer-events:none;opacity:0}
+.ljflash.on{animation:ljf .7s var(--ease)}
+@keyframes ljf{0%{opacity:0;transform:scale(.9)}15%{opacity:1;transform:scale(1)}70%{opacity:1}100%{opacity:0}}
+
+/* List & details */
+.ll{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,40%);gap:clamp(14px,2vw,28px);min-height:320px}
+.ll-col{overflow-y:auto;overflow-x:hidden;scrollbar-width:none;display:flex;flex-direction:column;gap:2px;padding:2px 8px 24px 4px}
+.ll-col::-webkit-scrollbar{display:none}
+.ll-hd,.ll-row{display:grid;grid-template-columns:40px minmax(0,1fr) 78px 104px 150px;align-items:center;gap:14px}
+.ll-hd{position:sticky;top:0;z-index:3;padding:6px 12px 8px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);background:var(--bg)}
+.ll-row{flex:none;padding:6px 12px;border-radius:var(--r);content-visibility:auto;contain-intrinsic-size:auto 72px}
+.ll-col{container-type:inline-size}
+@container (max-width:640px){.ll-hd,.ll-row{grid-template-columns:40px minmax(0,1fr) 70px 150px}.ll-hd>:nth-child(4),.ll-row>:nth-child(4){display:none}}
+.ll-row.focus{background:var(--panel2)}
+.ll-th{width:40px;aspect-ratio:2/3}
+.ll-th .cover{width:100%;height:100%;border-radius:5px}
+.ll-th .ct,.ll-th .notinst,.ll-th .dl{display:none}
+.ll-t{min-width:0;display:flex;flex-direction:column;gap:3px}
+.ll-t b{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ll-t small,.ll-c{color:var(--dim);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ll-c{font-variant-numeric:tabular-nums}
+.ll-s{display:flex;flex-direction:column;gap:5px;align-items:flex-start;min-width:0}
+.ll-s .bar{width:100%;height:4px}
+.ll-detail{position:relative;border-radius:16px;overflow:hidden;background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.ld-art{position:relative;flex:1 1 40%;min-height:90px}
+.ld-art .art,.ld-art .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ld-art:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 35%,var(--panel) 100%)}
+.ld-body{position:relative;padding:0 clamp(16px,2vw,26px) clamp(14px,2vh,22px);margin-top:-36px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.ld-head{position:relative;min-height:36px;display:flex;align-items:flex-end}
+.ld-title{font-size:clamp(22px,2.3vw,32px);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.6)}
+.ld-logo{max-width:80%;max-height:90px;object-fit:contain;object-position:left bottom;filter:drop-shadow(0 4px 20px rgba(0,0,0,.6))}
+.ld-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ld-body .sp-acts .play{padding:11px 26px;font-size:16px}
+.ld-body .sp-acts .sq{width:44px;height:44px;background:var(--panel2)}
+.ld-about{color:var(--dim);font-size:14px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:0}
+.ld-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px 14px;padding-top:12px;border-top:1px solid var(--line)}
+.ld-stats small{display:block;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+.ld-stats b{display:block;font-size:14px;font-weight:600;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1100px){.ll-hd,.ll-row{grid-template-columns:40px minmax(0,1fr) 72px 132px}.ll-hd>:nth-child(4),.ll-row>.ll-c+.ll-c{display:none}}
+
+/* Shelves */
+.lsh .shelf{padding:12px 14px 30px}
+.lsh .tile .cap{opacity:0}.lsh .tile.focus .cap{opacity:1}
+.lsee{flex:none;align-self:stretch;width:clamp(118px,11vw,150px);border-radius:var(--r);background:var(--panel);border:1px dashed var(--line);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;text-align:center}
+.lsee b{font-size:15px}.lsee small{color:var(--dim);font-size:12px}
+.lsh .grid{margin-top:12px}
+
+/* Compact wall */
+.lw-grid{grid-template-columns:repeat(auto-fill,minmax(clamp(78px,8vw,104px),1fr));gap:12px 10px;padding:4px 44px 90px 4px}
+.lwc{position:relative;aspect-ratio:2/3;border-radius:7px;content-visibility:auto;contain-intrinsic-size:auto 150px}
+.lwc .cover{position:absolute;inset:0;border-radius:7px}
+.lwc .cover .ct{font-size:11px;left:7px;right:7px;bottom:7px}.lwc:has(.lfav) .cover .ct{right:22px}
+.lwc .cover .notinst{font-size:0;padding:0;width:8px;height:8px;border-radius:50%;background:var(--warn);top:6px;left:6px}
+.lwc .cover .dl{left:6px;right:6px;bottom:6px}.lwc .cover .dl span{display:none}
+.lwc .lqr{position:absolute;top:5px;right:5px;width:18px;height:18px;border-radius:50%;background:rgba(10,14,20,.85);color:var(--accent);display:grid;place-items:center;z-index:3}
+.lwc .lqr svg{width:10px;height:10px;fill:currentColor}
+.lwc.focus{transform:scale(1.12);z-index:2}
+.lstrip{position:fixed;right:max(6px,calc(var(--gut) - 30px));top:calc(var(--top) + 60px);bottom:calc(var(--foot) + 84px);z-index:4;display:flex;flex-direction:column;justify-content:space-between;align-items:center;width:30px;padding:6px 0;border-radius:15px;background:color-mix(in srgb,var(--panel) 85%,transparent)}
+.lstrip>*{flex:1 1 0;min-height:0;width:26px;max-height:26px;display:grid;place-items:center;font-size:11px;font-weight:700;border-radius:8px;color:var(--dim)}
+.lstrip span{color:var(--faint);opacity:.45}
+.lstrip .cur{color:var(--accentInk);background:var(--accent)}
+.lstrip button.focus{color:var(--text);background:var(--panel3)}
+
+/* ---- experimental library layouts ---- */
+/* Cover Flow */
+.lx-flow{display:flex;flex-direction:column;justify-content:center;gap:10px}
+.lx-flow .shelf{perspective:1100px;align-items:center;padding:30px 45%;gap:0;flex:none}
+.lfc{flex:none;width:clamp(130px,15vw,210px);aspect-ratio:2/3;margin:0 -22px;transform:rotateY(48deg) scale(.86);transition:transform .28s var(--ease)}
+.lfc .cover{width:100%;height:100%;box-shadow:0 18px 40px rgba(0,0,0,.55);-webkit-box-reflect:below 6px linear-gradient(transparent 70%,rgba(255,255,255,.18))}
+.lfc.focus~.lfc{transform:rotateY(-48deg) scale(.86)}
+.lfc.focus{transform:none;z-index:3;margin:0 24px}
+.lx-flow .linfo{align-self:center;width:min(640px,100%)}
+/* Bookshelf */
+.lx-spines{display:flex;flex-wrap:wrap;gap:30px 5px;padding:150px 6px 100px;background:repeating-linear-gradient(180deg,transparent 0 206px,#3b2a1d 206px 218px,transparent 218px 236px) 0 150px no-repeat}
+.lsp{position:relative;width:36px;height:206px;border-radius:4px 4px 2px 2px;overflow:visible;flex:none;content-visibility:auto;contain-intrinsic-size:36px 206px}
+.lsp .lsp-b{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
+.lsp .lsp-b:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.35),transparent 30%,transparent 70%,rgba(0,0,0,.4))}
+.lsp .lsp-t{position:absolute;inset:8px 0;writing-mode:vertical-rl;transform:rotate(180deg);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:flex-start;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;z-index:1;text-shadow:0 1px 4px rgba(0,0,0,.7)}
+.lsp .lsp-cv{display:none;position:absolute;left:50%;bottom:calc(100% - 30px);width:110px;aspect-ratio:2/3;transform:translateX(-50%);z-index:5}
+.lsp .lsp-cv .cover{width:100%;height:100%;box-shadow:0 14px 40px rgba(0,0,0,.6)}
+.lsp.focus{transform:translateY(-14px);z-index:4;content-visibility:visible}
+.lsp.focus .lsp-cv{display:block}
+/* Timeline */
+.lx-tl .lrow{position:relative;padding-left:30px}
+.lx-tl .lrow:before{content:"";position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--line)}
+.lx-tl .lrow:after{content:"";position:absolute;left:3px;top:24px;width:12px;height:12px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--bg)}
+/* Store towers */
+.lx-tw{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none}
+.ltw{flex:1 0 220px;max-width:320px;display:flex;flex-direction:column;min-height:0;background:var(--panel);border-radius:14px;overflow:hidden}
+.ltw h3{padding:12px 14px 8px;font-size:15px;display:flex;justify-content:space-between;align-items:baseline}
+.ltw h3 small{color:var(--faint);font-size:12px}
+.ltw-l{overflow-y:auto;scrollbar-width:none;padding:2px 8px 12px;display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
+.ltw-r{flex:none;display:flex;align-items:center;gap:10px;padding:6px;border-radius:8px;content-visibility:auto;contain-intrinsic-size:auto 56px}
+.ltw-r.focus{background:var(--panel3)}
+.ltw-r .ll-th{width:30px;flex:none}
+.ltw-r .rt{min-width:0}.ltw-r b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ltw-r small{color:var(--dim);font-size:12px}
+/* Constellations */
+.lx-stars{display:flex;flex-wrap:wrap;gap:24px;justify-content:center;padding:6px 0 100px}
+.lcl{position:relative;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 9%,transparent),transparent 70%)}
+.lcl>b{position:absolute;left:0;right:0;bottom:-20px;text-align:center;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.lstar{position:absolute;width:var(--s);height:var(--s);margin:calc(var(--s)/-2) 0 0 calc(var(--s)/-2);border-radius:50%;background:radial-gradient(circle,#fff 0 30%,hsla(var(--h),90%,75%,.9) 45%,transparent 72%)}
+.lstar.dim{opacity:.55}
+.lstar.focus{box-shadow:0 0 0 2px var(--accent),0 0 22px var(--accent);transform:scale(1.5);z-index:3}
+/* Arcade cabinet */
+.lx-arc{display:flex;flex-direction:column;align-items:center;gap:8px}
+.lcab{flex:1;min-height:0;width:min(760px,92%);display:flex;flex-direction:column;border-radius:22px 22px 10px 10px;background:linear-gradient(180deg,#2a1d3f,#151020);padding:12px 22px 14px;box-shadow:0 0 0 3px #3d2b5c,0 20px 60px rgba(0,0,0,.5)}
+.lcab-m{text-align:center;font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:clamp(14px,1.6vw,20px);padding:6px;border-radius:8px;background:linear-gradient(90deg,#ff5fa2,#ffd166,#5fd0ff);color:#1a1020;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lcab-s{position:relative;flex:1;min-height:60px;margin:10px 0;border-radius:14px;overflow:hidden;border:6px solid #0a0710;box-shadow:inset 0 0 40px rgba(0,0,0,.8)}
+.lcab-s .art,.lcab-s .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.lcab-s:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 2px,transparent 2px 4px)}
+.lcab-s .lcab-t{position:absolute;left:16px;bottom:12px;right:16px;z-index:1;font-size:clamp(18px,2vw,26px);font-weight:800;text-shadow:0 2px 12px #000}
+.lcab-p{display:flex;align-items:center;justify-content:center;gap:12px}
+.lx-arc .shelf{flex:none;width:100%;padding:12px 14px 16px;align-items:center}
+.lx-arc .lwc{width:clamp(56px,5.6vw,76px);flex:none}
+/* Polaroids */
+.lx-pol{grid-template-columns:repeat(auto-fill,minmax(clamp(130px,13vw,170px),1fr));gap:26px 22px;padding:10px 6px 100px}
+.lpo{background:#f3efe6;padding:8px 8px 30px;border-radius:3px;transform:rotate(var(--r));box-shadow:0 10px 26px rgba(0,0,0,.45);content-visibility:auto;contain-intrinsic-size:auto 230px}
+.lpo .cover{aspect-ratio:1;border-radius:1px}
+.lpo .cover .ct,.lpo .cover .src{display:none}
+.lpo small{position:absolute;left:8px;right:8px;bottom:7px;color:#2b2b2b;font:600 14px/1.1 "Segoe Print","Bradley Hand","Comic Neue","Comic Sans MS",cursive;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.lpo.focus{transform:rotate(0) scale(1.08);z-index:2}
+/* Stats board */
+.lx-stats .lsum{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:4px 0 16px}
+.lx-stats .lsum div{background:var(--panel);border-radius:12px;padding:12px 16px}
+.lx-stats .lsum small{color:var(--faint);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.lx-stats .lsum b{display:block;font-size:22px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lsr{display:grid;grid-template-columns:44px 34px minmax(140px,1.2fr) 2fr 80px;align-items:center;gap:14px;padding:6px 12px;border-radius:var(--r);width:100%;content-visibility:auto;contain-intrinsic-size:auto 62px}
+.lsr.focus{background:var(--panel2)}
+.lsr .n{color:var(--faint);font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
+.lsr .ll-th{width:34px}
+.lsr b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.lsr .lbar{height:10px;border-radius:5px;background:var(--panel3);overflow:hidden}
+.lsr .lbar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#fff))}
+.lsr .h{text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+.lx-stats [data-lnav]{display:flex;flex-direction:column;gap:2px}
+/* Rolodex */
+.lx-rx .lrow{display:flex;align-items:center;gap:14px}
+.lrx-card{flex:none;width:clamp(84px,8vw,112px);aspect-ratio:3/4;border-radius:12px;background:linear-gradient(180deg,var(--panel2),var(--panel));display:grid;place-items:center;font-size:clamp(32px,3.6vw,48px);font-weight:800;color:var(--accent);box-shadow:inset 0 -6px 0 rgba(0,0,0,.25);position:relative}
+.lrx-card:before{content:"";position:absolute;left:30%;right:30%;top:8px;height:6px;border-radius:3px;background:var(--bg)}
+.lx-rx .shelf{flex:1;min-width:0;padding:16px 14px 26px}
+.lx-rx .tile.p{width:clamp(132px,11.5vw,172px)}
+/* Honeycomb */
+.lx-hex{padding:8px 0 110px}
+.lhx-r{display:flex;gap:6px}
+.lhx-r+.lhx-r{margin-top:-24px}
+.lhx-r.odd{margin-left:58px}
+.lhx{position:relative;width:110px;height:126px;flex:none;content-visibility:auto;contain-intrinsic-size:110px 126px}
+.lhx,.lhx.focus{box-shadow:none!important}
+.lhx .hxo,.lhx .hxi{position:absolute;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+.lhx .hxo{inset:0;background:var(--accent);opacity:0}
+.lhx .hxi{inset:4px}
+.lhx .hxi .cover{position:absolute;inset:0;border-radius:0}
+.lhx .hxi .ct{font-size:11px;text-align:center;bottom:26px;left:14px;right:14px}
+.lhx .hxi .src,.lhx .hxi .notinst{display:none}
+.lhx.focus{transform:scale(1.12);z-index:2}
+.lhx.focus .hxo{opacity:1}
+/* Hand of cards */
+.lx-deck{display:flex;flex-direction:column;justify-content:space-between}
+.lx-deck .ldh{padding:clamp(10px,4vh,40px) 4px 0;max-width:640px}
+.lx-deck .ldh .ld-title{font-size:clamp(28px,3.4vw,46px)}
+.lx-deck .ldh .xd-meta{color:var(--dim);margin:8px 0 14px}
+.lx-deck .shelf{padding:70px 45% 30px;align-items:flex-end;flex:none}
+.ldk{flex:none;width:clamp(120px,12vw,160px);aspect-ratio:2/3;margin-left:-54px;transform:rotate(var(--r)) translateY(var(--y));transform-origin:50% 120%;transition:transform .22s var(--ease)}
+.ldk:first-child{margin-left:0}
+.ldk .cover{width:100%;height:100%;box-shadow:-8px 10px 24px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.12)}
+.ldk.focus{transform:translateY(-46px) scale(1.08);z-index:5}
+.ldk.focus~.ldk{transform:rotate(calc(var(--r)*-1)) translateY(var(--y))}
+/* Mosaic */
+.lx-mos{display:grid;grid-template-columns:repeat(auto-fill,minmax(clamp(84px,8vw,110px),1fr));grid-auto-rows:clamp(84px,8vw,110px);grid-auto-flow:dense;gap:8px;padding:4px 4px 100px}
+.lmo{position:relative;border-radius:8px;content-visibility:auto;contain-intrinsic-size:auto 110px}
+.lmo .cover{position:absolute;inset:0}
+.lmo.s1 .cover .ct{font-size:11px;left:7px;right:7px;bottom:7px}.lmo.s1 .src,.lmo.s1 .notinst{display:none}
+.lmo.s3{grid-column:span 3;grid-row:span 3}.lmo.s3 .ct{font-size:clamp(20px,2vw,28px)}
+.lmo.s2{grid-column:span 2;grid-row:span 2}
+.lmo.w{grid-column:span 2}
+.lmo.focus{transform:scale(1.05);z-index:2}
+.lmo .lmh{position:absolute;top:8px;left:8px;z-index:2;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px;background:rgba(0,0,0,.55)}
+
+/* Settings: Library layout previews */
+.lprev .lp-a{background:var(--accent)}.lprev .lp-t{background:var(--text)}.lprev .lp-p{background:var(--panel2)}
+body.reduce-motion .lfc,body.reduce-motion .ldk{transition:none}
 </style>
 </head>
 <body>
@@ -753,6 +969,8 @@ const GAMES = [
    beacon:{family:'lotr',short:'Conquest',ready:true,blocker:null,issues:[],mod:null,mods:[]}},
   {id:'beacon:bfme1',title:'The Battle for Middle-earth',src:'beacon',inst:false,fav:false,hrs:0,last:0,size:'—',ach:null,added:0,installKind:'beacon',
    beacon:{family:'bfme',short:'BFME',ready:false,blocker:'Game folder not set',issues:[{level:'error',message:'Game folder not set'}],mod:null,mods:[]}},
+  {id:'beacon:swgb',title:'Star Wars: Galactic Battlegrounds Saga',src:'beacon',inst:true,fav:false,hrs:4.6,last:now-12*D,size:'—',ach:null,added:now-40*D,path:'/home/you/.steam/steam/steamapps/common/Star Wars Galactic Battlegrounds Saga',
+   beacon:{family:'other',short:'SWGB',ready:true,blocker:null,issues:[],edition:'Expanding Fronts',viaSteam:false,mod:null,mods:[]}},
 ];
 const NEWS = [
   {g:'g01',k:'Patch notes',t:'Season 4: Night Circuits',d:'New tracks, a photo mode and handheld performance fixes.'},
@@ -799,7 +1017,7 @@ const LINUX = HOSTINFO.platform==='linux';
 // Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
 const APP = LINUX ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1005,7 +1223,9 @@ const MOCK = (()=>{
     'accounts.status':async()=>({installRoot:'C:\\Users\\Player\\Games', accounts:[
       {store:'steam',signedIn:true,name:'player_one',avatar:null,owned:517,installed:6,fetched:0,busy:false,error:null,toolReady:true},
       {store:'epic',signedIn:true,name:'PlayerOne',avatar:null,owned:142,installed:3,fetched:Date.now()-7.2e6,busy:false,error:null,toolReady:true},
-      {store:'gog',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:false},
+      // ?expired (or MOCKEXP.gog set): GOG refused its saved sign-in (Sign-in expired, Sign in again as geralt).
+      MOCKEXP.gog ? {store:'gog',signedIn:true,name:'geralt',avatar:null,owned:48,installed:3,fetched:Date.now()-2.6e8,busy:false,error:null,toolReady:true,expired:true,expiredAt:MOCKEXP.gog}
+        : {store:'gog',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:false},
       {store:'xbox',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:true}],
       beacon:{installed:true,app:true,via:'native',games:9,setUp:4,error:null}}),
     'profile.get':async()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){} return {name:'Player One',status:null,avatar:'initials',accent:'#3fd0b8',background:'default',customAvatar:null,customBackground:null,storeAvatars:{},...p}; },
@@ -1322,48 +1542,205 @@ function coopEvent(name, data){
   if(S.view==='coop' && !S.layers.length) render(null,true);
 }
 
-// ---------- Multi-seat (Settings): a separate Game Mode on each screen, for other people with their own accounts ----------
-// (hearth-seats: docs/MULTI-SEAT.md)
-const SE = {plan:null, status:null, scan:null, busy:null};
+// ---------- Multi-seat (Settings): a separate Game Mode for each player, with their own account ----------
+// (hearth-seats: docs/MULTI-SEAT.md). Each extra player plays on a graphics card of their own, another screen of this
+// card, part of this screen (split, Beta Experimental) or streamed to another device with Moonlight (Beta Experimental).
+const SE = {plan:null, status:null, scan:null, busy:null, draft:null, waiting:null, stream:null, pairing:null, padNames:{}};
+const SEAT_MODE = {gpu:'A graphics card for each player', nested:'One graphics card, a screen for each player', split:'One screen split into parts', stream:'Players streamed to other devices'};
+const SEAT_KIND = {gpu:'Their own graphics card', nested:'Another screen on this graphics card', split:'Part of this screen', stream:'Streamed to another device', local:'This screen, as always'};
+const SEAT_KIND_BETA = {split:true, stream:true};
+const SEAT_STATE = {active:'Playing', running:'On', starting:'Starting', waiting:'Waiting for its screen', stopped:'Off', failed:"Didn't start"};
+const SPLIT_NAMES = {columns:'Side by side', rows:'One above the other', grid:'Four corners'};
+const SPLIT_CAP = {columns:2, rows:2, grid:4};
+const SPLIT_PCT = {columns:[[0,0,50,100],[50,0,50,100]], rows:[[0,0,100,50],[0,50,100,50]], grid:[[0,0,50,50],[50,0,50,50],[0,50,50,50],[50,50,50,50]]};
+const REGION_NAMES = {columns:['Left half','Right half'], rows:['Top half','Bottom half'], grid:['Top left','Top right','Bottom left','Bottom right']};
+const STREAM_SIZE_NAMES = {'1280x720':'720p','1280x800':'800p (handhelds)','1920x1080':'1080p','2560x1440':'1440p','3840x2160':'4K'};
+const seatBeta = k => SEAT_KIND_BETA[k] ? ' (Beta Experimental)' : '';
+// The preview's made-up PC (no Hearth OS): two screens on one card, two controllers, Sunshine installed.
+function seatsMock(kind){
+  const outputs=[{id:'card0-HDMI-A-1',connector:'HDMI-A-1',mode:'3840x2160',monitor:'LG TV',gpu:'0000:03:00.0'},{id:'card0-DP-1',connector:'DP-1',mode:'1920x1080',monitor:'DELL U2720',gpu:'0000:03:00.0'}];
+  if(kind==='plan') return {possible:{gpu:false,nested:true,split:true,stream:true}, recommended:'nested', reasons:['Preview: made-up screens and controllers.'], warnings:[], outputs,
+    presets:{stream_sizes:Object.keys(STREAM_SIZE_NAMES), stream_fps:[30,60,90,120], split_layouts:SPLIT_CAP},
+    performance:'Every extra player shares this PC\'s graphics card and processor (and its power limit), so games can run slower for everyone. Each streamed player also needs the graphics card to make their video.',
+    layout:{mode:'nested', seats:[{seat:1,user:'you',mode:'nested',output:'card0-HDMI-A-1',pads:['usb:1-2']},{seat:2,user:'hearth-p2',mode:'nested',output:'card0-DP-1',pads:[]}]}};
+  if(kind==='scan') return {pads:[{id:'usb:1-2',name:'Xbox Controller',seat:1,assignable:true},{id:'uniq:aa:bb:cc:dd:ee:ff',name:'DualSense',seat:1,assignable:true}]};
+  if(kind==='configured') return {configured:true, enabled:true, mode:'split', split:{output:'card0-HDMI-A-1',layout:'columns'}, audio:{volumes:{'2':75},only_p1:false}, host:{running:true,paused:false},
+    seats:[{seat:1,user:'you',mode:'split',output:'card0-HDMI-A-1',region:0,pads:['usb:1-2'],state:'active'},{seat:2,user:'hearth-p2',mode:'split',output:'card0-HDMI-A-1',region:1,pads:['uniq:aa:bb:cc:dd:ee:ff'],state:'running'},
+           {seat:3,user:'hearth-p3',mode:'stream',output:null,pads:[],state:'running',stream:{size:'1920x1080',fps:60,port:49989,name:'hearth-pc Player 3'}}]};
+  if(kind==='stream') return {seats:[{seat:3,user:'hearth-p3',name:'hearth-pc Player 3',port:49989,size:'1920x1080',fps:60,running:true,reachable:true,clients:[{name:'Living room TV',uuid:'0123-abcd'}],pending:[{id:'0123456789abcdef0123456789abcdef',name:'Phone'}],addresses:['192.168.1.20:49989'],qr:null}]};
+  return {configured:false};
+}
 function loadSeats(){
-  if(!host){ SE.status={configured:false}; SE.plan={possible:{gpu:false,nested:false},reasons:['Multi-seat works on Hearth OS.'],warnings:[]}; return; }
-  call('seats.status',{},15000).then(r=>{ SE.status=r; seatsRedraw(); }).catch(e=>{ SE.status={configured:false,error:e.message}; seatsRedraw(); });
-  call('seats.plan',{},20000).then(r=>{ SE.plan=r; seatsRedraw(); }).catch(e=>{ SE.plan={possible:{},reasons:[e.message],warnings:[]}; seatsRedraw(); });
+  if(!host){ if(!(SE.status&&SE.status.configured)) SE.status=seatsMock('status'); SE.plan=seatsMock('plan'); SE.scan=seatsMock('scan'); if(SE.status.configured) SE.stream=seatsMock('stream'); return; }
+  call('seats.status',{},15000).then(r=>{ SE.status=r; seatsRedraw();
+    if(r&&r.configured&&(r.seats||[]).some(s=>s.mode==='stream')) call('seats.streamInfo',{},30000).then(i=>{ SE.stream=i; seatsRedraw(); }).catch(()=>{});
+  }).catch(e=>{ SE.status={configured:false,error:e.message}; seatsRedraw(); });
+  call('seats.plan',{},20000).then(r=>{ SE.plan=r; SE.draft=null; seatsRedraw(); }).catch(e=>{ SE.plan={possible:{},reasons:[e.message],warnings:[]}; seatsRedraw(); });
   call('seats.scan',{},20000).then(r=>{ SE.scan=r; seatsRedraw(); }).catch(()=>{});
 }
 function seatsRedraw(){ if(S.view==='settings' && S.settingsTab==='seats' && !S.layers.length) render(null,true); }
-const SEAT_MODE = {gpu:'A graphics card for each player', nested:'One graphics card, a screen for each player'};
-const SEAT_STATE = {active:'Playing', running:'On', starting:'Starting', waiting:'Waiting for its screen', stopped:'Off', failed:"Didn't start"};
+const seatsOutput = id => ((SE.plan&&SE.plan.outputs)||[]).find(o=>o.id===id);
+const seatsOutName = id => { const o=seatsOutput(id); return o ? (o.monitor||o.connector) : (id||''); };
+function seatsPadName(id){ const p=((SE.scan&&SE.scan.pads)||[]).find(x=>x.id===id); return (p&&p.name)||SE.padNames[id]||id; }
+// The set-up being chosen (before Set up): plan's proposal, changed by the player.
+function seatsDraft(){
+  if(!SE.draft && SE.plan && SE.plan.layout){ SE.draft=JSON.parse(JSON.stringify(SE.plan.layout)); if(!SE.draft.split) SE.draft.split={layout:'columns'}; seatsFix(SE.draft); }
+  return SE.draft;
+}
+// Player 1 matches the others; everyone on the split screen shares player 1's screen, a part each; streamed players
+// have no screen or controllers here.
+function seatsFix(d){
+  const s1=d.seats[0], kinds=new Set(d.seats.filter(s=>s.seat!==1).map(s=>s.mode));
+  if(!s1.output){ const o=((SE.plan&&SE.plan.outputs)||[])[0]; if(o) s1.output=o.id; }
+  s1.mode = kinds.has('gpu')?'gpu':kinds.has('split')?'split':kinds.has('nested')?'nested':'local';
+  d.mode = s1.mode==='local'?'stream':s1.mode;
+  const split=d.seats.filter(s=>s.mode==='split');
+  if(split.length){
+    if(split.length>SPLIT_CAP[d.split.layout]) d.split.layout='grid';
+    const used=new Set();
+    split.forEach(s=>{ s.output=s1.output; if(typeof s.region!=='number'||s.region>=SPLIT_CAP[d.split.layout]||used.has(s.region)) s.region=null; else used.add(s.region); });
+    split.forEach(s=>{ if(s.region===null){ let r=0; while(used.has(r)) r++; s.region=r; used.add(r); } });
+  }
+  d.seats.forEach(s=>{ if(s.mode!=='split') delete s.region; if(s.mode==='stream'){ s.output=null; s.pads=[]; s.stream=s.stream||{size:'1920x1080',fps:60}; } else delete s.stream; });
+}
+function seatsSetKind(n, kind){
+  const d=seatsDraft(), s=d&&d.seats.find(x=>x.seat===n); if(!s) return false;
+  const others=d.seats.filter(x=>x.seat!==1&&x.seat!==n).map(x=>x.mode);
+  if((kind==='gpu'&&others.some(k=>k==='nested'||k==='split')) || ((kind==='nested'||kind==='split')&&others.includes('gpu'))){ toast('A graphics card per player can only be mixed with streamed players'); return false; }
+  if(kind==='nested'||kind==='gpu'){
+    const s1=d.seats[0], g1=(seatsOutput(s1.output)||{}).gpu;
+    const taken=new Set(d.seats.filter(x=>x.seat!==n&&x.output).map(x=>x.output));
+    const cards=new Set(d.seats.filter(x=>x.seat!==n&&x.output).map(x=>(seatsOutput(x.output)||{}).gpu));
+    const free=((SE.plan&&SE.plan.outputs)||[]).find(o=>!taken.has(o.id) && (kind==='gpu' ? !cards.has(o.gpu) : o.gpu===g1));
+    if(!free){ toast(kind==='gpu'?'There\'s no other graphics card with a screen connected':'There\'s no free screen on this graphics card. Connect another TV or monitor, or split this screen.'); return false; }
+    s.output=free.id;
+  }
+  s.mode=kind; seatsFix(d); return true;
+}
+function seatsPreview(d){
+  const o=seatsOutput(d.seats[0].output)||{}, m=/^(\d+)x(\d+)$/.exec(o.mode||'')||[0,16,9], lay=d.split.layout;
+  const who=r=>d.seats.find(s=>s.mode==='split'&&s.region===r);
+  return `<div class="se-prev" style="position:relative;width:min(100%,380px);aspect-ratio:${(+m[1]/+m[2]).toFixed(3)};margin:10px 0 4px;border-radius:12px;background:var(--panel);overflow:hidden;border:2px solid color-mix(in srgb,var(--text) 18%,transparent)">`
+    + SPLIT_PCT[lay].map((c,r)=>{ const s=who(r); return `<div style="position:absolute;left:${c[0]}%;top:${c[1]}%;width:${c[2]}%;height:${c[3]}%;box-sizing:border-box;border:1px solid color-mix(in srgb,var(--text) 22%,transparent);display:grid;place-items:center;font-weight:700;${s?`background:color-mix(in srgb,var(--accent) ${s.seat===1?34:18}%,transparent)`:''}">${s?`Player ${s.seat}`:'<span class="muted">Empty</span>'}</div>`; }).join('')
+    + `</div><div class="muted" style="font-size:12px">${esc(o.monitor||o.connector||'This screen')}${o.mode?' · '+esc(o.mode):''}</div>`;
+}
+function seatsWhere(s, split){
+  if(s.mode==='stream') return `${STREAM_SIZE_NAMES[(s.stream||{}).size]||(s.stream||{}).size||''} at ${(s.stream||{}).fps||60} frames a second`;
+  if(s.mode==='split') return `${(REGION_NAMES[(split||{}).layout]||[])[s.region]||'Part'} of ${seatsOutName(s.output)}`;
+  return seatsOutName(s.output);
+}
+function seatsCtlRow(s, live){
+  const w=SE.waiting&&SE.waiting.seat===s.seat, pads=s.pads||[];
+  return `<button class="row" data-f data-k="se-c${s.seat}" data-act="seats" data-v="claim" data-n="${s.seat}"><span class="ricon">${I.pad}</span><div class="rt"><b>${w?`Player ${s.seat}: press A on your controller…`:`Player ${s.seat}'s controller`}</b><small>${w?'Waiting up to 20 seconds':pads.length?esc(pads.map(seatsPadName).join(', '))+(live?' · press to give them another one':' · press to choose another'):'Press, then press A on the controller they\'ll use'}</small></div></button>`;
+}
 function pageSeats(){
-  let h = note('Turn this PC into several consoles: each screen or TV gets its own Game Mode, with its own controllers, Steam account, games and saves. Player 1 is you, as now.') + note('<b>Beta Experimental:</b> multi-seat is new and hasn\'t been tested on real PCs yet. It changes accounts and device settings, so only try it if you\'re comfortable; Remove multi-seat undoes everything. Please send logs (Settings › System) when something goes wrong.');
+  let h = note('Turn this PC into several consoles: each player gets their own Game Mode, with their own controllers, Steam account, games and saves. They can play on another screen, on part of this screen, or on another device in the house, streamed from this PC. Player 1 is you, as now.') + note('<b>Beta Experimental:</b> multi-seat is new and hasn\'t been tested on real PCs yet. It changes accounts and device settings, so only try it if you\'re comfortable; Remove multi-seat undoes everything. Please send logs (Settings › System) when something goes wrong.');
   if(SE.busy) return h + note(`<span class="mini-spin"></span> ${esc(SE.busy)}`);
   const st=SE.status, pl=SE.plan;
   if(!st || !pl) return h + note('Looking at the screens, graphics cards and controllers…');
-  if(st.configured){
-    h += shead(`Multi-seat · ${esc(SEAT_MODE[st.mode]||st.mode||'')}`);
-    h += `<div class="rows">` + (st.seats||[]).map(s=>`<button class="row" data-f data-k="se-s${s.seat}"><span class="ricon">${I.display}</span><div class="rt"><b>Player ${s.seat} · ${esc(s.user||'')}</b><small>${esc([s.output, (s.pads||[]).length?`${s.pads.length} controller${s.pads.length===1?'':'s'}`:'No controller yet'].filter(Boolean).join(' · '))}</small></div><div class="rv">${esc(SEAT_STATE[s.state]||s.state||'')}</div></button>`).join('');
-    h += `<button class="row" data-f data-k="se-toggle" data-act="seats" data-v="${st.enabled?'stop':'start'}"><span class="ricon">${st.enabled?I.x:I.play}</span><div class="rt"><b>${st.enabled?'Turn multi-seat off for now':'Turn multi-seat on'}</b><small>${st.enabled?'Back to one screen until you turn it on again':'Every screen gets its own Game Mode again'}</small></div></button>`;
-    h += `<button class="row" data-f data-k="se-pad" data-act="seats" data-v="pad"><span class="ricon">${I.pad}</span><div class="rt"><b>Move a controller to another player</b></div><div class="rv">›</div></button>`;
-    h += `<button class="row" data-f data-k="se-remove" data-act="seats" data-v="remove"><span class="ricon">${I.trash||I.x}</span><div class="rt"><b>Remove multi-seat</b><small>Everything back to one screen and one player</small></div></button></div>`;
-    return h;
+  if(st.configured) return h + seatsConfigured(st);
+  const pos=pl.possible||{};
+  if(!(pos.gpu||pos.nested||pos.split||pos.stream)) return h + shead('Not possible on this device') + (pl.reasons||[]).map(r=>note(esc(r))).join('') + note('It needs a TV or monitor (or Moonlight on another device), and a controller for each player.');
+  const d=seatsDraft(); if(!d) return h + (pl.reasons||[]).map(r=>note(esc(r))).join('');
+  h += shead('Players') + `<div class="rows">` + d.seats.map(s=>`<button class="row" data-f data-k="se-p${s.seat}" data-act="seats" data-v="player" data-n="${s.seat}"><span class="ricon">${s.mode==='stream'?I.phone:I.display}</span><div class="rt"><b>Player ${s.seat}${s.seat===1?' (you)':` · new account ${esc(s.user||'')}`}</b><small>${esc(SEAT_KIND[s.mode]||'')}${esc(seatBeta(s.mode))} · ${esc(seatsWhere(s,d.split))}</small></div>${s.seat===1?'':'<div class="rv">›</div>'}</button>`
+      + (s.mode==='stream' ? `<button class="row" data-f data-k="se-q${s.seat}" data-act="seats" data-v="picture" data-n="${s.seat}"><span class="ricon">${I.display}</span><div class="rt"><b>Player ${s.seat}'s picture</b><small>Their controllers come from their device</small></div><div class="rv">${esc(seatsWhere(s))}</div></button>` : seatsCtlRow(s,false))).join('')
+    + (d.seats.length<4?`<button class="row" data-f data-k="se-add" data-act="seats" data-v="add"><span class="ricon">${I.plus||I.user}</span><div class="rt"><b>Add a player</b><small>Up to 4 players</small></div></button>`:'') + `</div>`;
+  if(d.seats.some(s=>s.mode==='split')){
+    h += shead('Split screen (Beta Experimental)') + seatsPreview(d) + `<div class="rows"><button class="row" data-f data-k="se-layout" data-act="seats" data-v="layout"><span class="ricon">${I.layout}</span><div class="rt"><b>Layout</b><small>Each player's Game Mode gets one part of the screen</small></div><div class="rv">${esc(SPLIT_NAMES[d.split.layout])}</div></button>`
+      + d.seats.filter(s=>s.mode==='split').map(s=>`<button class="row" data-f data-k="se-r${s.seat}" data-act="seats" data-v="region" data-n="${s.seat}"><span class="ricon">${I.display}</span><div class="rt"><b>Player ${s.seat}'s part</b><small>Press to move them to another part</small></div><div class="rv">${esc(REGION_NAMES[d.split.layout][s.region]||'')}</div></button>`).join('') + `</div>`;
   }
-  const can = pl.possible&&(pl.possible.gpu||pl.possible.nested);
-  if(!can) return h + shead('Not possible on this device') + (pl.reasons||[]).map(r=>note(esc(r))).join('') + note('It needs at least two screens (a TV counts) connected, and a controller for each player.');
-  const lay=pl.layout||{};
-  h += shead(`How it would work · ${esc(SEAT_MODE[lay.mode||pl.recommended]||'')}`) + `<div class="rows">` + (lay.seats||[]).map(s=>`<button class="row" data-f data-k="se-p${s.seat}"><span class="ricon">${I.display}</span><div class="rt"><b>Player ${s.seat}${s.seat===1?' (you)':` · new account ${esc(s.user||'')}`}</b><small>${esc([s.output, (s.pads||[]).length?`${s.pads.length} controller${s.pads.length===1?'':'s'}`:'Controllers can be moved over afterwards'].filter(Boolean).join(' · '))}</small></div></button>`).join('') + `</div>`;
+  if(d.seats.some(s=>s.mode==='stream')) h += note('<b>Streamed players (Beta Experimental):</b> after setting up, open Moonlight on their TV, phone, tablet or laptop and choose this PC\'s "Player N". Hearth then asks you for the 4 numbers Moonlight shows. No extra screen or graphics card is needed.');
+  if(d.seats.length>2 || d.seats.some(s=>s.mode==='stream'||s.mode==='split')) h += note(esc(pl.performance||''));
   h += (pl.reasons||[]).map(r=>note(esc(r))).join('') + (pl.warnings||[]).map(w=>note(esc(w))).join('');
   h += `<div class="acts" style="margin-top:14px"><button class="btn primary" data-f data-k="se-setup" data-act="seats" data-v="setup">Set up multi-seat</button></div>`;
   return h;
 }
+function seatsConfigured(st){
+  let h = shead(`Multi-seat · ${esc(SEAT_MODE[st.mode]||st.mode||'')}`);
+  const info=(SE.stream&&SE.stream.seats)||[];
+  h += `<div class="rows">` + (st.seats||[]).map(s=>`<button class="row" data-f data-k="se-s${s.seat}"><span class="ricon">${s.mode==='stream'?I.phone:I.display}</span><div class="rt"><b>Player ${s.seat} · ${esc(s.user||'')}</b><small>${esc([SEAT_KIND[s.mode]?SEAT_KIND[s.mode]+seatBeta(s.mode):'', s.mode==='stream'?(s.stream&&s.stream.name)||'':seatsWhere(s,st.split), s.mode==='stream'?'':(s.pads||[]).length?`${s.pads.length} controller${s.pads.length===1?'':'s'}`:'No controller yet'].filter(Boolean).join(' · '))}</small></div><div class="rv">${esc(SEAT_STATE[s.state]||s.state||'')}</div></button>`).join('') + `</div>`;
+  const streamed=(st.seats||[]).filter(s=>s.mode==='stream');
+  if(streamed.length){
+    h += shead('Streamed players (Beta Experimental)', SE.pairing);
+    h += `<div class="rows">` + streamed.map(s=>{ const e=info.find(x=>x.seat===s.seat)||{}, nm=e.name||(s.stream&&s.stream.name)||`Player ${s.seat}`;
+      return `<button class="row" data-f data-k="se-pair${s.seat}" data-act="seats" data-v="pair" data-n="${s.seat}"><span class="ricon">${I.phone}</span><div class="rt"><b>Pair a device with player ${s.seat}</b><small>${esc((e.clients||[]).length?'Paired: '+e.clients.map(c=>c.name||'device').join(', '):'No device paired yet')}${(e.pending||[]).length?esc(' · waiting: '+e.pending.map(p=>p.name||'device').join(', ')):''}</small></div><div class="rv">${esc(nm)}</div></button>`; }).join('') + `</div>`;
+    streamed.forEach(s=>{ const e=info.find(x=>x.seat===s.seat)||{}, nm=e.name||(s.stream&&s.stream.name)||`Player ${s.seat}`;
+      h += note(`Open Moonlight on the TV, phone, tablet or laptop and choose <b>${esc(nm)}</b>.${(e.addresses||[]).length?` If it isn't listed, add this PC by its address: <b>${esc(e.addresses[0])}</b>.`:''}${e.running===false?' Player '+s.seat+'\'s stream isn\'t running right now.':''}`)
+        + (e.qr?`<div class="se-qr" style="width:132px;padding:8px;background:#fff;border-radius:10px;margin:6px 0">${e.qr}</div>`:''); });
+    h += note('Their controllers come from their device. Remote play (Settings › Connections) keeps working for your own screen: streamed players use other ports.');
+  }
+  if(st.split && (st.seats||[]).some(s=>s.mode==='split')){
+    const a=st.audio||{volumes:{},only_p1:false};
+    h += shead('Split screen sound') + `<div class="rows"><button class="row" data-f data-k="se-onlyp1" data-act="seats" data-v="onlyp1"><span class="ricon">${I.vol}</span><div class="rt"><b>Whose sound plays</b><small>Everyone plays through the same speakers</small></div><div class="rv">${a.only_p1?'Only player 1':'Everyone'}</div></button>`
+      + (st.seats||[]).filter(s=>s.mode==='split').map(s=>`<button class="row" data-f data-k="se-vol${s.seat}" data-act="seats" data-v="volume" data-n="${s.seat}"><span class="ricon">${a.only_p1&&s.seat!==1?I.mute:I.vol}</span><div class="rt"><b>Player ${s.seat}'s volume</b></div><div class="rv">${(a.volumes||{})[String(s.seat)]??100}%</div></button>`).join('') + `</div>`;
+  }
+  h += `<div class="rows">` + (st.seats||[]).filter(s=>s.mode!=='stream'&&s.seat!==1).map(s=>seatsCtlRow(s,true)).join('');
+  h += `<button class="row" data-f data-k="se-toggle" data-act="seats" data-v="${st.enabled?'stop':'start'}"><span class="ricon">${st.enabled?I.x:I.play}</span><div class="rt"><b>${st.enabled?'Turn multi-seat off for now':'Turn multi-seat on'}</b><small>${st.enabled?'Back to one player until you turn it on again':'Every player gets their own Game Mode again'}</small></div></button>`;
+  h += `<button class="row" data-f data-k="se-pad" data-act="seats" data-v="pad"><span class="ricon">${I.pad}</span><div class="rt"><b>Move a controller to another player</b></div><div class="rv">›</div></button>`;
+  h += `<button class="row" data-f data-k="se-remove" data-act="seats" data-v="remove"><span class="ricon">${I.trash||I.x}</span><div class="rt"><b>Remove multi-seat</b><small>Everything back to one screen and one player</small></div></button></div>`;
+  return h;
+}
 function seatsAct(d){
-  const v=d.v;
+  const v=d.v, n=+d.n;
+  if(v==='claim'){
+    if(SE.waiting) return;
+    const live=!!(SE.status&&SE.status.configured);
+    if(!host){ if(!live){ const dd=seatsDraft(), p=((SE.scan&&SE.scan.pads)||[])[n===1?0:1]; if(dd&&p){ dd.seats.forEach(s=>{ s.pads=(s.pads||[]).filter(x=>x!==p.id); }); const s=dd.seats.find(x=>x.seat===n); if(s) s.pads.push(p.id); } } toast(`Player ${n} has a controller (preview)`); return render('se-c'+n,true); }
+    SE.waiting={seat:n, live}; render('se-c'+n,true);
+    return call('seats.waitButton',{timeout:20}).catch(e=>{ SE.waiting=null; toast(e.message); render('se-c'+n,true); });
+  }
+  if(v==='player'){
+    const dd=seatsDraft(), s=dd&&dd.seats.find(x=>x.seat===n), pos=(SE.plan&&SE.plan.possible)||{};
+    if(!s) return;
+    if(n===1) return toast(s.mode==='local'?'You play on this screen, as always':`You play on ${seatsWhere(s,dd.split)}`);
+    const kinds=['gpu','nested','split','stream'].filter(k=>pos[k]);
+    return openSheet({title:`How does player ${n} play?`, sub:'Each way gives them a whole Game Mode of their own.', items:[
+      ...kinds.map(k=>({label:(s.mode===k?'✓ ':'')+SEAT_KIND[k]+seatBeta(k), icon:k==='stream'?'phone':'display', run:()=>{ if(seatsSetKind(n,k)) render('se-p'+n,true); }})),
+      {label:'Remove this player', icon:'x', run:()=>{ if(dd.seats.length<=2) return toast('Multi-seat needs at least 2 players'); dd.seats.splice(dd.seats.indexOf(s),1); dd.seats.forEach((x,i)=>{ x.seat=i+1; if(i>0) x.user='hearth-p'+(i+1); }); seatsFix(dd); render('se-add',true); }}]});
+  }
+  if(v==='add'){
+    const dd=seatsDraft(), pos=(SE.plan&&SE.plan.possible)||{}; if(!dd||dd.seats.length>=4) return;
+    const m=dd.seats.length+1, splitN=dd.seats.filter(s=>s.mode==='split').length;
+    dd.seats.push({seat:m, user:'hearth-p'+m, mode:'stream', output:null, pads:[]});
+    const want = splitN && splitN<4 ? 'split' : pos.stream ? 'stream' : pos.split ? 'split' : 'nested';
+    if(!seatsSetKind(m, want)){ dd.seats.pop(); seatsFix(dd); }
+    return render('se-p'+m,true);
+  }
+  if(v==='layout'){
+    const dd=seatsDraft(), cnt=dd.seats.filter(s=>s.mode==='split').length, order=['columns','rows','grid'];
+    let i=order.indexOf(dd.split.layout); do { i=(i+1)%order.length; } while(SPLIT_CAP[order[i]]<cnt);
+    dd.split.layout=order[i]; seatsFix(dd); return render('se-layout',true);
+  }
+  if(v==='region'){
+    const dd=seatsDraft(), s=dd.seats.find(x=>x.seat===n); if(!s) return;
+    const next=(s.region+1)%SPLIT_CAP[dd.split.layout], other=dd.seats.find(x=>x!==s&&x.mode==='split'&&x.region===next);
+    if(other) other.region=s.region; s.region=next; return render('se-r'+n,true);
+  }
+  if(v==='picture'){
+    const dd=seatsDraft(), s=dd.seats.find(x=>x.seat===n); if(!s) return;
+    const pr=(SE.plan&&SE.plan.presets)||{};
+    return openSheet({title:`Player ${n}'s picture`, sub:'Pick what their TV or device shows best. Bigger pictures need more from this PC.', items:(pr.stream_sizes||Object.keys(STREAM_SIZE_NAMES)).map(z=>({label:(s.stream.size===z?'✓ ':'')+(STREAM_SIZE_NAMES[z]||z), icon:'display', run:()=>setTimeout(()=>openSheet({title:'Frames a second', sub:'60 suits most TVs; 30 is easier on this PC and the network.', items:(pr.stream_fps||[30,60,90,120]).map(f=>({label:(s.stream.fps===f&&s.stream.size===z?'✓ ':'')+f+' frames a second', icon:'display', run:()=>{ s.stream={size:z,fps:f}; render('se-q'+n,true); }}))}),50)}))});
+  }
+  if(v==='pair'){
+    const e=((SE.stream&&SE.stream.seats)||[]).find(x=>x.seat===n)||{}, nm=e.name||`Player ${n}`;
+    return openSheet({title:`Pair a device with player ${n}`, sub:`Open Moonlight on the TV, phone, tablet or laptop and choose "${nm}"${(e.addresses||[]).length?` (or add this PC by its address: ${e.addresses[0]})`:''}. Moonlight then shows 4 numbers: type them here.`, items:[
+      {label:'Type the 4 numbers Moonlight shows', icon:'kbd', run:()=>setTimeout(()=>openPrompt({title:`PIN for ${nm} (?123 for numbers)`}).then(pin=>{ if(pin==null) return; pin=String(pin).trim(); if(!/^\d{4}$/.test(pin)) return toast('The PIN is the 4 numbers Moonlight shows'); if(!host) return toast('Paired (preview)'); SE.pairing=n; render(null,true); call('seats.pair',{seat:n, pin}).catch(er=>{ SE.pairing=null; toast(er.message); render(null,true); }); }),50)},
+      ...(e.clients||[]).map(c=>({label:`Unpair ${c.name||'a device'}`, icon:'x', run:()=>call('seats.unpair',{seat:n, uuid:c.uuid},20000).then(()=>{ toast('Unpaired'); loadSeats(); }).catch(er=>toast(er.message))})),
+      {label:'Close', icon:'x', run:()=>{}}]});
+  }
   if(!host) return toast('Multi-seat works on Hearth OS');
-  if(v==='setup') return openSheet({title:'Set up multi-seat?', sub:'Hearth makes an account for each extra player (their own Steam, games and saves) and gives them their screen and controllers. Your account, games and settings stay as they are, and Remove multi-seat undoes it all.', items:[
-    {label:'Set it up', icon:'check', run:()=>{ SE.busy='Setting up…'; render(null,true); call('seats.setup',{layout:SE.plan.layout, start:true}).catch(e=>{ SE.busy=null; toast(e.message); render(null,true); }); }},
-    {label:'Not now', icon:'x', run:()=>{}}]});
+  if(v==='setup'){
+    const dd=seatsDraft(); if(!dd) return;
+    const beta=dd.seats.some(s=>SEAT_KIND_BETA[s.mode]);
+    return openSheet({title:'Set up multi-seat?', sub:'Hearth makes an account for each extra player (their own Steam, games and saves) and gives them their screen, part of the screen or stream, and their controllers. Your account, games and settings stay as they are, and Remove multi-seat undoes it all.'+(beta?' Split screens and streamed players are Beta Experimental.':''), items:[
+      {label:'Set it up', icon:'check', run:()=>{ SE.busy='Setting up…'; render(null,true); call('seats.setup',{layout:dd, start:true}).catch(e=>{ SE.busy=null; toast(e.message); render(null,true); }); }},
+      {label:'Not now', icon:'x', run:()=>{}}]});
+  }
+  if(v==='onlyp1'){ const a=(SE.status&&SE.status.audio)||{}; return call('seats.audio',{onlyP1:!a.only_p1},15000).then(r=>{ SE.status.audio=r; render('se-onlyp1',true); }).catch(e=>toast(e.message)); }
+  if(v==='volume') return openSheet({title:`Player ${n}'s volume`, items:[100,75,50,25,0].map(x=>({label:x+'%', icon:x?'vol':'mute', run:()=>call('seats.audio',{seat:n, volume:x},15000).then(r=>{ SE.status.audio=r; render('se-vol'+n,true); }).catch(e=>toast(e.message))}))});
   if(v==='start'||v==='stop') return call('seats.'+v,{},60000).then(r=>{ toast(v==='start'?'Multi-seat is on':'Multi-seat is off for now'); seatsAfter(r); loadSeats(); }).catch(e=>toast(e.message));
   if(v==='pad'){
-    const pads=(SE.scan&&SE.scan.pads||[]).filter(p=>p.assignable!==false), seats=(SE.status&&SE.status.seats||[]);
+    const pads=(SE.scan&&SE.scan.pads||[]).filter(p=>p.assignable!==false), seats=(SE.status&&SE.status.seats||[]).filter(s=>s.mode!=='stream');
     if(!pads.length) return toast('No controllers that can be moved (a handheld\'s own controls stay with player 1)');
     return openSheet({title:'Which controller?', items:pads.map(p=>({label:`${p.name}${p.seat?` (player ${p.seat})`:''}`, icon:'pad', run:()=>setTimeout(()=>openSheet({title:`Give ${p.name} to`, items:seats.map(s=>({label:`Player ${s.seat} · ${s.user||''}`, icon:'user', run:()=>call('seats.assignPad',{pad:p.id, seat:s.seat},30000).then(()=>{ toast(`${p.name} is player ${s.seat}'s now`); loadSeats(); }).catch(e=>toast(e.message))}))}),50)}))});
   }
@@ -1374,14 +1751,24 @@ function seatsAct(d){
 }
 function seatsAfter(r){
   if(!r) return;
+  if((r.warnings||[]).length) toast(r.warnings[0]);
   if(r.restart) openSheet({title:'Restart to finish', sub:'Each graphics card goes to its player when the device starts.', items:[{label:'Restart now', icon:'restart', run:()=>power('restart',true)},{label:'Later', icon:'x', run:()=>{}}]});
   else if(r.restart_game_mode) openSheet({title:'Game Mode restarts', sub:'To share the screens out, Game Mode starts again (your games are closed first).', items:[{label:'Restart Game Mode now', icon:'restart', run:()=>power('signout',true)},{label:'Later', icon:'x', run:()=>{}}]});
 }
 function seatsEvent(name, data){
   if(name==='seats.setup.progress'||name==='seats.remove.progress'){ SE.busy=data.text||SE.busy; }
-  else if(name==='seats.setup.done'){ SE.busy=null; toast('Multi-seat is set up'); seatsAfter(data); loadSeats(); }
-  else if(name==='seats.remove.done'){ SE.busy=null; toast('Multi-seat removed'); seatsAfter(data); loadSeats(); }
+  else if(name==='seats.setup.done'){ SE.busy=null; SE.draft=null; toast('Multi-seat is set up'); seatsAfter(data); loadSeats(); }
+  else if(name==='seats.remove.done'){ SE.busy=null; SE.draft=null; toast('Multi-seat removed'); seatsAfter(data); loadSeats(); }
   else if(name==='seats.setup.error'||name==='seats.remove.error'){ SE.busy=null; openSheet({title:name==='seats.setup.error'?'Multi-seat couldn\'t be set up':'Multi-seat couldn\'t be removed', sub:data.text+' Nothing was left half done.', items:[{label:'OK', icon:'check', run:()=>{}}]}); }
+  else if(name==='seats.pad.done'){
+    const w=SE.waiting, p=data&&data.pad; SE.waiting=null;
+    if(w && !p) toast('No button was pressed. Try again.');
+    else if(w && w.live) call('seats.assignPad',{pad:p.id, seat:w.seat},30000).then(()=>{ toast(`${p.name} is player ${w.seat}'s now`); loadSeats(); }).catch(e=>toast(e.message));
+    else if(w){ const dd=seatsDraft(); if(dd){ dd.seats.forEach(s=>{ s.pads=(s.pads||[]).filter(x=>x!==p.id); }); const s=dd.seats.find(x=>x.seat===w.seat); if(s&&s.mode!=='stream') s.pads.push(p.id); } SE.padNames[p.id]=p.name; toast(`${p.name} is player ${w.seat}'s`); }
+  }
+  else if(name==='seats.pad.error'){ SE.waiting=null; toast(data.text); }
+  else if(name==='seats.pair.done'){ SE.pairing=null; toast('Paired: that device can now play as this player'); loadSeats(); }
+  else if(name==='seats.pair.error'){ SE.pairing=null; openSheet({title:'Pairing didn\'t work', sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]}); }
   seatsRedraw();
 }
 
@@ -1484,9 +1871,9 @@ const XV = {votes:null, mine:{}, timer:null, open:false};
 try{ XV.mine = JSON.parse(localStorage.getItem('hearth.xvotes')||'{}')||{}; }catch(e){}
 function loadVotes(){
   if(!host && !LINUX) return;
-  fetch(COUNTER.url+'/v1/votes').then(r=>r.json()).then(v=>{ XV.votes=v.counts||{}; if(S.view==='settings'&&S.settingsTab==='appearance') render(null,true); }).catch(()=>{});
+  fetch(COUNTER.url+'/v1/votes').then(r=>r.json()).then(v=>{ XV.votes=v.counts||{}; if(S.view==='settings'&&(S.settingsTab==='appearance'||S.settingsTab==='liblook')) render(null,true); }).catch(()=>{});
 }
-function watchVotes(on){ clearInterval(XV.timer); XV.timer=null; if(on){ loadVotes(); XV.timer=setInterval(()=>{ if(S.view==='settings'&&S.settingsTab==='appearance') { if(XV.open) loadVotes(); } else watchVotes(false); },20000); } }
+function watchVotes(on){ clearInterval(XV.timer); XV.timer=null; if(on){ loadVotes(); XV.timer=setInterval(()=>{ if(S.view==='settings'&&(S.settingsTab==='appearance'||S.settingsTab==='liblook')) { if(XV.open||S.settingsTab==='liblook') loadVotes(); } else watchVotes(false); },20000); } }
 function vote(id){
   const up=!XV.mine[id]; XV.mine[id]=up; try{ localStorage.setItem('hearth.xvotes', JSON.stringify(XV.mine)); }catch(e){}
   XV.votes=XV.votes||{}; XV.votes[id]=Math.max(0,(XV.votes[id]||0)+(up?1:-1));
@@ -1695,6 +2082,7 @@ function pageSystem(){
   if(feat('sendLogs')){
     tr += `<button class="row" data-f data-k="sy-send" data-act="sendLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs for a bug report</b><small>One file with ${APP}'s and the system's logs, personal details taken out. Saved in your home folder, and on a USB drive or SD card if one is plugged in.</small></div>${LOGS.busy?'<span class="mini-spin"></span>':''}</button>`;
     tr += `<button class="row" data-f data-k="sy-senddev" data-act="sendLogsDev"><span class="ricon">${I.refresh}</span><div class="rt"><b>Send logs to the developer</b><small>The same file, sent to Hearth OS's bug-report service. You get a short code to share; the logs are kept 14 days, and only someone with the code can read them.</small></div>${LOGS.busyDev?'<span class="mini-spin"></span>':''}</button>`;
+    if(LINUX) tr += `<button class="row" data-f data-k="sy-autorep" data-act="autoReport"><div class="rt"><b>Send a report when ${APP} gets stuck</b><small>If ${APP} stops answering, it frees itself, sends its logs to the developer by itself (at most every 10 minutes) and starts again if it has to.</small></div><div class="sw ${HOSTINFO.autoReport!==false?'on':''}"></div></button>`;
     if(LOGS.r) logs = LOGS.r.code ? `<div class="logcode"><small>Sent. Share this code (or the link) with the developer:</small><b>${esc(LOGS.r.code)}</b><code>${esc(LOGS.r.url)}</code></div>`
       : note(`Saved: <code>${esc(LOGS.r.path)}</code>${(LOGS.r.copies||[]).map(c=>`<br>Copied to: <code>${esc(c)}</code>`).join('')}`);
   }
@@ -1921,14 +2309,333 @@ function viewLibrary(){
     <span class="glyph lbrb">RB</span>
   </div>
   <div class="libmeta"><span>${L.length} game${L.length===1?'':'s'}</span>
-    <div class="lmr"><button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
+    <div class="lmr">${S.tab==='beacon'?beaconLibPills():''}<button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
     ${(HOSTINFO.features||[]).includes('screenshots')?`<button class="pill" data-f data-k="lib-shots" data-act="shots">${I.display}Screenshots</button>`:''}
     ${S.tab.startsWith('c:')?`<button class="pill" data-f data-k="col-edit" data-act="colEdit" data-id="${esc(S.tab.slice(2))}">Edit collection</button>`:`<button class="pill" data-f data-k="col-new" data-act="colNew">+ Collection</button>`}
     <button class="pill ${S.lfilter?'on':''}" data-f data-k="lfilter" data-act="lfilter">Show: ${LFILTERS.find(f=>f[0]===(S.lfilter||''))[1]}</button>
     <button class="pill" data-f data-k="sort" data-act="sort">Sort: ${SORTS.find(s=>s[0]===S.sort)[1]}</button></div></div>
-  ${L.length?`<div class="grid">${L.map(g=>tile(g,'p','l-'+g.id)).join('')}</div>`:`<div class="empty">${LIB.loading?'Loading your games…':
+  ${L.length?libBody(L):`<div class="empty">${LIB.loading?'Loading your games…':
      S.tab.startsWith('c:')&&!S.lfilter?'This collection is empty. Add games from a game\'s ⋯ menu (Add to collection).':S.lfilter?'No games match. Change Show to see more.':STORE_INFO[S.tab]?`Sign in to ${STORE_INFO[S.tab].name} under Stores &amp; accounts to see your games here.`:'Nothing here yet.'}</div>`}`;
 }
+
+// =====================================================================
+// Library layouts (Settings › You › Library layout). Covers is the grid above; List & details, Shelves and
+// Compact wall, plus experimental ones. Every layout shows the same games (libGames: tabs, Show, Sort, hidden and
+// parental limits). The game you move to fills a detail panel / info bar / background in place (lUpdate, like
+// xUpdate on Home), so moving never draws the page again. Keys (data-k) are per game, so Back finds it again.
+// =====================================================================
+const LIB_LAYOUTS = [
+  {id:'covers', name:'Covers', desc:'Big covers in a grid, the classic look.'},
+  {id:'list', name:'List & details', desc:'A fast list with play time and status. The game you pick fills a panel beside it.'},
+  {id:'shelves', name:'Shelves', desc:'Rows like a streaming app: continue playing, recently added, installed, favorites, collections, each store.'},
+  {id:'wall', name:'Compact wall', desc:'Twice as many small covers, an A–Z jump strip and an info bar. For huge libraries.'},
+];
+const XLIB_LAYOUTS = [
+  {id:'x-lib-flow', name:'Cover Flow', desc:'Covers on a turning carousel; the one in the middle faces you.'},
+  {id:'x-lib-spines', name:'Bookshelf', desc:'Games as spines on shelves. The one you pick shows its cover.'},
+  {id:'x-lib-timeline', name:'Timeline', desc:'Grouped by when you last played: today, this week, this month, earlier, never.'},
+  {id:'x-lib-towers', name:'Store towers', desc:'One column per store, side by side.'},
+  {id:'x-lib-stars', name:'Constellations', desc:'Each store a cluster of stars, every star a game. The most played shine brightest.'},
+  {id:'x-lib-arcade', name:'Arcade cabinet', desc:'One game on a big cabinet screen, the rest along a strip below.'},
+  {id:'x-lib-polaroid', name:'Polaroids', desc:'Snapshots scattered on a table, each a little crooked.'},
+  {id:'x-lib-stats', name:'Stats board', desc:'Ranked by play time, with bars. See where the hours went.'},
+  {id:'x-lib-rolodex', name:'Rolodex', desc:'A card for each letter, A to Z, with its games beside it.'},
+  {id:'x-lib-hex', name:'Honeycomb', desc:'Hexagon covers packed like a honeycomb.'},
+  {id:'x-lib-deck', name:'Hand of cards', desc:'Your games fanned out like a hand of cards; the one you pick is lifted out.'},
+  {id:'x-lib-mosaic', name:'Mosaic', desc:'Tiles sized by play time: your most played games are the biggest.'},
+];
+const libLayout = () => { const id=LOOK.libLayout; return LIB_LAYOUTS.some(l=>l.id===id) || XLIB_LAYOUTS.some(l=>l.id===id) ? id : 'covers'; };
+const LST = {row:null};
+const lId = g => esc(g.id);
+const lLetter = g => { const c=((g&&g.title)||'').trim().charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; };
+const lSrc = g => g.system || SOURCES[g.src] || g.src;
+function lStatus(g){
+  if(S.running===g.id) return ['on','Playing now'];
+  if(isFrozen(g)) return ['qr','Quick Resume'];
+  if(isActive(g)) return ['dl',dlInfo(g).label];
+  if(g.cloud && !g.inst) return ['cloud','Cloud'];
+  const sz = g.size && g.size!=='—' ? g.size : '';
+  if(g.inst) return ['inst', sz ? 'Installed · '+sz : 'Installed'];
+  if(g.src==='beacon') return ['ni','Not set up'];
+  return ['ni', sz ? 'Not installed · '+sz : 'Not installed'];
+}
+const lMeta = g => [lSrc(g), g.hrs?hrs(g.hrs):'Not played yet', g.last?'Played '+ago(g.last).toLowerCase():''].filter(Boolean).join(' · ');
+function lAbout(g){
+  if(g.genre) return esc(g.genre)+'.';
+  if(g.cloud) return 'Streams with Xbox Cloud Gaming.';
+  if(g.system) return `A ${esc(g.system)} game from your ROMs folder, played with RetroArch.`;
+  if(g.src==='beacon' && typeof beaconAbout==='function') return beaconAbout(g);
+  if(g.note) return esc(g.note)+'.';
+  return g.inst ? `Installed through ${esc(lSrc(g))}.` : `In your ${esc(lSrc(g))} library.`;
+}
+// Play / Resume / Install, as on the game's page.
+function lPlay(g, k){
+  const run=S.running===g.id, fr=isFrozen(g);
+  const a = run?'resume' : fr?'quickres' : playable(g)?'play' : isActive(g)?'game' : 'install';
+  const l = run||fr ? 'Resume' : playable(g) ? (g.cloud&&!g.inst?'Stream':'Play') : isActive(g) ? dlInfo(g).label : g.src==='beacon' ? 'Set up in Beacon' : 'Install';
+  return `<button class="play${playable(g)||run?'':' install'}" data-f data-k="${k}" data-act="${a}" data-id="${lId(g)}">${playable(g)||run?I.play:I.dl}${esc(l)}</button>`;
+}
+const lQr = g => isFrozen(g) ? `<span class="lqr">${I.play}</span>` : '';
+const lFav = g => g.fav ? '<i class="lfav">★</i>' : '';
+// A game card that tells the layout when it's picked (data-lspot).
+const lTile = (g, kind, k) => `<button class="tile ${kind}${isFrozen(g)?' qr':''}" data-f data-k="${k}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}">
+    ${cover(g,{wide:kind==='l'})}${isFrozen(g)?`<span class="qrb">${I.play}Quick Resume</span>`:''}${lFav(g)}<div class="cap">${esc(g.title)}${g.last?' · '+ago(g.last):''}</div></button>`;
+const lSmall = (g, k, cls='lwc') => `<button class="${cls}" data-f data-k="${k}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}">${cover(g,{badge:false})}${lQr(g)}${lFav(g)}</button>`;
+const lBgInner = g => g ? `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}` : '';
+const lBg = g => `<div class="lbg" id="lBg" data-id="${g?lId(g):''}">${lBgInner(g)}</div>`;
+function lInfo(g){
+  if(!g) return '';
+  const [sc,sl]=lStatus(g);
+  return `<div class="li-th">${cover(g,{badge:false})}</div><div class="li-t"><b>${esc(g.title)}${g.fav?' <i class="lfav">★</i>':''}</b><small>${esc(lMeta(g))}</small></div><span class="lst ${sc}">${esc(sl)}</span>`;
+}
+const lInfoBar = (g, cls='lfloat') => `<div class="linfo ${cls}" id="lInfo" data-id="${g?lId(g):''}">${lInfo(g)}</div>`;
+function lDetail(g){
+  if(!g) return '';
+  const [sc,sl]=lStatus(g);
+  const logo=(g.art&&g.art.logo) ? `<img class="ld-logo" src="${esc(g.art.logo)}" alt="${esc(g.title)}" loading="lazy" onload="this.previousElementSibling&&this.previousElementSibling.remove()" onerror="this.remove()">` : '';
+  const stats=[['Play time',g.hrs?hrs(g.hrs):'—'],['Last played',ago(g.last)],[g.system?'System':'Store',lSrc(g)],['Size',g.size||'—'],...(g.ach?[['Achievements',`${g.ach[0]} of ${g.ach[1]}`]]:[]),...(g.beacon&&g.inst&&typeof beaconModName==='function'?[['Mod',beaconModName(g)]]:[])];
+  return `<div class="ld-art"><div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide','cover'])}</div>
+    <div class="ld-body"><div class="ld-head"><div class="ld-title">${esc(g.title)}</div>${logo}</div>
+      <div class="ld-meta"><span class="lst ${sc}">${esc(sl)}</span>${g.fav?'<span class="lst"><i class="lfav">★</i> Favorite</span>':''}</div>
+      <div class="sp-acts">${lPlay(g,'ld-play')}<button class="sq" data-f data-k="ld-page" data-act="game" data-id="${lId(g)}" aria-label="Game page">${I.info}</button><button class="sq" data-f data-k="ld-opt" data-act="gopts" data-id="${lId(g)}" aria-label="Options">${I.dots}</button></div>
+      <p class="ld-about">${lAbout(g)}</p>
+      <div class="ld-stats">${stats.map(([k,v])=>`<div><small>${k}</small><b>${esc(v)}</b></div>`).join('')}</div></div>`;
+}
+// The picked game fills whatever this layout has: detail panel, info bar, background, cabinet screen, A–Z strip.
+function lUpdate(id){
+  const g=G(id); if(!g) return;
+  if(focused && focused.dataset.lspot===id) LST.row=focused.dataset.k;
+  const d=$('#lDetail'); if(d && d.dataset.id!==id){ d.dataset.id=id; d.innerHTML=lDetail(g); }
+  const n=$('#lInfo'); if(n && n.dataset.id!==id){ n.dataset.id=id; n.innerHTML=lInfo(g); }
+  const b=$('#lBg'); if(b && b.dataset.id!==id){ b.dataset.id=id; b.innerHTML=lBgInner(g); }
+  const s=$('#lScreen'); if(s && s.dataset.id!==id){ s.dataset.id=id; s.innerHTML=`<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lcab-t">${esc(g.title)}</div>`;
+    const m=$('#lMarquee'); if(m) m.textContent=g.title; const p=$('#lPanel'); if(p) p.innerHTML=lCabPanel(g); }
+  const h=$('#lHead'); if(h && h.dataset.id!==id){ h.dataset.id=id; h.innerHTML=lDeckHead(g); }
+  const st=$('#lStrip'); if(st){ const l=lLetter(g); const c=st.querySelector('.cur'); if(!c || c.dataset.v!==l){ if(c) c.classList.remove('cur'); const e=st.querySelector(`[data-v="${l}"]`); if(e) e.classList.add('cur'); } }
+}
+// Called by setFocus for every focus in the Library, before it scrolls.
+function libFocus(el){ lFit(); if(el.dataset.lspot) lUpdate(el.dataset.lspot); }
+// Layouts that fill the rest of the screen (.lfit): sized to what's left under the tabs, so their lists scroll
+// inside and the detail panel stays put. Measured in CSS pixels, so the text size setting is respected.
+function lFit(){
+  const v=$('#view'), box=v && v.querySelector('.lfit'); if(!box) return;
+  let top=0; for(let e=box; e && e!==v && e!==v.offsetParent; e=e.offsetParent) top+=e.offsetTop;
+  top-=v.offsetTop;
+  const h=Math.max(300, v.clientHeight-top-10)+'px';
+  if(box.style.height!==h) box.style.height=h;
+}
+window.addEventListener('resize', ()=>{ if(S.view==='library') debounce('lfit', ()=>{ lFit(); if(focused && document.contains(focused)) focused.scrollIntoView({block:'center',inline:'center'}); }, 120); });
+
+// Fast moves for long lists and rows (like gridMove): along a list/row it's the next one; across, the nearest
+// one in the next row/column. Nothing measured but that row. null = the usual search decides.
+function libMove(dir){
+  const f=focused, p=f && f.parentElement; if(!p) return null;
+  // List & details: right goes to the panel's Play, left from the panel back to the game you were on.
+  if(f.classList.contains('ll-row') && dir==='right') return $('#lDetail [data-f]');
+  if(f.closest('#lDetail') && dir==='left' && !f.previousElementSibling){ const r=LST.row && $(`#view [data-k="${CSS.escape(LST.row)}"]`); if(r) return r; }
+  const nav=p.dataset.lnav; if(!nav) return null;
+  const h=nav==='h', along = h ? (dir==='left'||dir==='right') : (dir==='up'||dir==='down');
+  const fwd = dir==='right'||dir==='down';
+  if(along){
+    let s=f; do{ s = fwd ? s.nextElementSibling : s.previousElementSibling; } while(s && !s.hasAttribute('data-f'));
+    return s;   // null at the end: the usual search (to the header, or nothing)
+  }
+  const grp=p.closest('[data-lgrp]');
+  if(!grp) return !h && (dir==='left'||dir==='right') ? f : null;   // a single full-width list: left/right stay put
+  if((h && (dir==='left'||dir==='right')) || (!h && (dir==='up'||dir==='down'))) return null;
+  let s=grp; do{ s = fwd ? s.nextElementSibling : s.previousElementSibling; } while(s && !s.matches('[data-lgrp]'));
+  if(!s) return null;
+  const box = s.matches('[data-lnav]') ? s : s.querySelector('[data-lnav]');
+  if(!box) return null;
+  const r=f.getBoundingClientRect(), c = h ? r.left+r.width/2 : r.top+r.height/2;
+  let best=null, bd=Infinity;
+  for(const e of box.children){ if(!e.hasAttribute('data-f')) continue;
+    const b=e.getBoundingClientRect(), d=Math.abs((h ? b.left+b.width/2 : b.top+b.height/2) - c);
+    if(d<bd){ bd=d; best=e; } }
+  return best;
+}
+// A–Z: the right stick (or Page Up/Down) jumps a letter; the wall's strip jumps to one. Needs the A–Z sort.
+function lJumpItems(){ return [...document.querySelectorAll('#view [data-lj] > [data-f][data-id]')]; }
+function lFlash(c){
+  if(LOOK.reduceMotion) return;
+  let e=$('#ljFlash'); if(!e){ e=document.createElement('div'); e.id='ljFlash'; e.className='ljflash'; document.body.appendChild(e); }
+  e.textContent=c; e.classList.remove('on'); void e.offsetWidth; e.classList.add('on');
+}
+function lSortAlpha(){
+  if(S.sort==='alpha') return false;
+  S.sort='alpha'; render('sort', true); toast('Sorted A–Z, so you can jump by letter');
+  return true;
+}
+function libJump(d){
+  if(S.view!=='library' || S.layers.length) return;
+  if(lSortAlpha()){ const it=lJumpItems(); if(it[0]) setFocus(it[0]); return; }
+  const it=lJumpItems(); if(!it.length) return;
+  const M=new Map(GAMES.map(g=>[g.id,g])), L=i=>lLetter(M.get(it[i].dataset.id));
+  let i=it.indexOf(focused); if(i<0) i=0;
+  const cur=L(i); let j=i;
+  if(d>0){ while(j<it.length && L(j)===cur) j++; if(j>=it.length) j=it.length-1; }
+  else { let s=i; while(s>0 && L(s-1)===cur) s--;
+    if(s<i) j=s; else { j=Math.max(0,s-1); const P=L(j); while(j>0 && L(j-1)===P) j--; } }
+  setFocus(it[j]); blip(560); lFlash(L(j));
+}
+function lJumpTo(c){
+  lSortAlpha();
+  const it=lJumpItems(); if(!it.length) return;
+  const order='#ABCDEFGHIJKLMNOPQRSTUVWXYZ', want=order.indexOf(c);
+  const M=new Map(GAMES.map(g=>[g.id,g]));
+  const el=it.find(e=>order.indexOf(lLetter(M.get(e.dataset.id)))>=want) || it[it.length-1];
+  setFocus(el); lFlash(c);
+}
+
+// ---------- the layouts ----------
+function lShelfRows(L){
+  const set=new Set(L), rows=[], tab=S.tab;
+  const add=(id,title,list,see,o={})=>{ if(list.length) rows.push({id,title,list,see,max:o.max||40,wide:!!o.wide,total:o.total??list.length}); };
+  const byLast=L.filter(g=>g.last).sort((a,b)=>b.last-a.last);
+  const cont=[...new Set([G(S.running), ...QR.list.map(q=>G(q.id)), ...byLast].filter(g=>g && set.has(g)))].slice(0,12);
+  add('cont','Continue playing',cont,null,{wide:true});
+  const added=L.filter(g=>g.added).sort((a,b)=>b.added-a.added).slice(0,16);
+  if(added.length>2) add('new','Recently added',added,null);
+  if(tab!=='all') return rows;
+  const T=new Set(libTabs().map(t=>t[0]));
+  if(tab!=='inst') add('inst','Installed',L.filter(g=>g.inst||isActive(g)),'inst');
+  add('fav','Favorites',L.filter(g=>g.fav),'fav');
+  COLS.forEach(c=>add('c-'+c.id,c.name,L.filter(g=>(g.cols||[]).includes(c.id)),'c:'+c.id));
+  for(const s of ['steam','epic','gog','xbox','beacon','emu','manual']){
+    const title = s==='xbox' ? (LINUX?'Xbox Cloud Gaming':'Xbox') : s==='manual' ? 'Non-library games' : SOURCES[s];
+    add('s-'+s, title, L.filter(g=>g.src===s), T.has(s)?s:null);
+  }
+  return rows;
+}
+const lRow = (r, body, extra='') => `<section class="lrow" data-lgrp><h2>${esc(r.title)} <span>${r.total}</span></h2><div class="shelf" data-lnav="h">${body}${extra}</div></section>`;
+const LIBL = {
+  covers: L => `<div class="grid" data-lj>${L.map(g=>tile(g,'p','l-'+g.id)).join('')}</div>`,
+  list: L => `<div class="ll lfit"><div class="ll-col" data-lnav="v" data-lj><div class="ll-hd"><span></span><span>Game</span><span>Played</span><span>Last played</span><span>Status</span></div>${L.map(g=>{
+      const [sc,sl]=lStatus(g), a=isActive(g)?dlInfo(g):null;
+      return `<button class="ll-row" data-f data-k="ll-${lId(g)}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}"><div class="ll-th">${cover(g,{badge:false})}</div>
+        <div class="ll-t"><b>${esc(g.title)}${g.fav?' <i class="lfav">★</i>':''}</b><small>${esc(lSrc(g))}</small></div><div class="ll-c">${g.hrs?hrs(g.hrs):'—'}</div><div class="ll-c">${ago(g.last)}</div>
+        <div class="ll-s"><span class="lst ${sc}">${esc(sl)}</span>${a&&a.pct!=null?`<div class="bar"><i style="width:${a.pct}%"></i></div>`:''}</div></button>`; }).join('')}</div>
+    <aside class="ll-detail" id="lDetail" data-id="${L[0]?lId(L[0]):''}">${lDetail(L[0])}</aside></div>`,
+  shelves: L => {
+    const rows=lShelfRows(L), g=(rows[0]&&rows[0].list[0])||L[0];
+    const grid = S.tab!=='all' ? `<section class="lrow"><h2>${esc((libTabs().find(t=>t[0]===S.tab)||[,'All'])[1])} <span>${L.length}</span></h2><div class="grid" data-lj>${L.map(x=>lTile(x,'p','l-'+x.id)).join('')}</div></section>` : '';
+    return lBg(g)+`<div class="lsh">${rows.map(r=>lRow(r, r.list.slice(0,r.max).map(x=>lTile(x, r.wide?'l':'p', `ls-${r.id}-${x.id}`)).join(''),
+      r.see && r.total>r.max ? `<button class="lsee" data-f data-k="ls-${esc(r.id)}-all" data-act="tab" data-tab="${esc(r.see)}"><b>See all</b><small>${r.total} games</small></button>` : '')).join('')}${grid}</div>`;
+  },
+  wall: L => { const have=new Set(L.map(lLetter));
+    return `<div class="grid lw-grid" data-lj>${L.map(g=>lSmall(g,'lw-'+g.id)).join('')}</div>
+      <nav class="lstrip" id="lStrip" aria-label="Jump to a letter">${'#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(c=>have.has(c)?`<button data-f data-k="lj-${c==='#'?'0':c}" data-act="libJump" data-v="${c}">${c}</button>`:`<span data-v="${c}">${c}</span>`).join('')}</nav>
+      ${lInfoBar(L[0])}`; },
+  // ---- experimental ----
+  'x-lib-flow': L => lBg(L[0])+`<div class="lx-flow lfit"><div class="shelf" data-lnav="h" data-lj>${L.map(g=>lSmall(g,'lf-'+g.id,'lfc')).join('')}</div>${lInfoBar(L[0],'')}</div>`,
+  'x-lib-spines': L => `<div class="lx-spines" data-lj>${L.map(g=>`<button class="lsp" data-f data-k="lsp-${lId(g)}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}"><div class="lsp-b" style="${artBg(g)}"></div><span class="lsp-t">${esc(g.title)}</span><div class="lsp-cv">${cover(g,{badge:false})}</div></button>`).join('')}</div>${lInfoBar(L[0])}`,
+  'x-lib-timeline': L => {
+    const t=g=>{ if(!g.last) return 5; const d=(now-g.last)/D; return d<1?0:d<7?1:d<31?2:d<365?3:4; };
+    const names=['Today','This week','This month','This year','Longer ago','Never played'], G6=[[],[],[],[],[],[]];
+    [...L].sort((a,b)=>(b.last||0)-(a.last||0)).forEach(g=>G6[t(g)].push(g));
+    return lBg(L[0])+`<div class="lx-tl lsh">${G6.map((gs,i)=>gs.length?lRow({title:names[i],total:gs.length}, gs.map(g=>lTile(g,'p','ltl-'+g.id)).join('')):'').join('')}</div>`;
+  },
+  'x-lib-towers': L => {
+    const cols=Object.keys(SOURCES).map(s=>[s,L.filter(g=>g.src===s)]).filter(c=>c[1].length);
+    return `<div class="lx-tw lfit">${cols.map(([s,gs])=>`<section class="ltw" data-lgrp><h3>${esc(s==='manual'?'Non-library':SOURCES[s])}<small>${gs.length}</small></h3><div class="ltw-l" data-lnav="v" data-lj>${gs.map(g=>`<button class="ltw-r" data-f data-k="ltw-${lId(g)}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}"><div class="ll-th">${cover(g,{badge:false})}</div><div class="rt"><b>${esc(g.title)}${g.fav?' <i class="lfav">★</i>':''}</b><small>${esc(lStatus(g)[1])}</small></div></button>`).join('')}</div></section>`).join('')}</div>`;
+  },
+  'x-lib-stars': L => {
+    const cols=Object.keys(SOURCES).map(s=>[s,L.filter(g=>g.src===s).sort((a,b)=>(b.hrs||0)-(a.hrs||0))]).filter(c=>c[1].length);
+    const top=[...L].map(g=>g.hrs||0).sort((a,b)=>b-a), q1=top[Math.floor(top.length*.1)]||0, q2=top[Math.floor(top.length*.4)]||0;
+    return `<div class="lx-stars">${cols.map(([s,gs])=>{ const step=gs.length<40?40:26, R=Math.ceil(step*Math.sqrt(gs.length))+30;
+      return `<section class="lcl" style="width:${R*2}px;height:${R*2}px"><b>${esc(s==='manual'?'Non-library':SOURCES[s])} · ${gs.length}</b>${gs.map((g,i)=>{ const r=step*Math.sqrt(i+.5), a=i*2.39996;
+        const sz=(g.hrs||0)>=q1&&g.hrs?20:(g.hrs||0)>=q2&&g.hrs?15:11;
+        return `<button class="lstar${g.hrs?'':' dim'}" style="left:${(R+r*Math.cos(a)).toFixed(1)}px;top:${(R+r*Math.sin(a)).toFixed(1)}px;--s:${sz}px;--h:${hue(g.title)}" data-f data-k="lst-${lId(g)}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}" aria-label="${esc(g.title)}"></button>`; }).join('')}</section>`; }).join('')}</div>${lInfoBar(L[0])}`;
+  },
+  'x-lib-arcade': L => { const g=L[0];
+    return `<div class="lx-arc lfit"><div class="lcab"><div class="lcab-m" id="lMarquee">${g?esc(g.title):''}</div>
+      <div class="lcab-s" id="lScreen" data-id="${g?lId(g):''}">${g?`<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lcab-t">${esc(g.title)}</div>`:''}</div>
+      <div class="lcab-p" id="lPanel">${g?lCabPanel(g):''}</div></div>
+      <div class="shelf" data-lnav="h" data-lj>${L.map(x=>lSmall(x,'la-'+x.id)).join('')}</div></div>`; },
+  'x-lib-polaroid': L => `<div class="grid lx-pol" data-lj>${L.map(g=>`<button class="lpo" style="--r:${(hue(g.title)%9-4)*.8}deg" data-f data-k="lpo-${lId(g)}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}">${cover(g,{badge:false,wide:true})}<small>${esc(g.title)}</small></button>`).join('')}</div>${lInfoBar(L[0])}`,
+  'x-lib-stats': L => {
+    const R=[...L].sort((a,b)=>(b.hrs||0)-(a.hrs||0)||a.title.localeCompare(b.title)), max=(R[0]&&R[0].hrs)||1, tot=R.reduce((s,g)=>s+(g.hrs||0),0);
+    const played=R.filter(g=>g.hrs).length;
+    return `<div class="lx-stats"><div class="lsum"><div><small>Total play time</small><b>${tot?hrs(tot):'—'}</b></div><div><small>Games played</small><b>${played} of ${R.length}</b></div><div><small>Most played</small><b>${R[0]&&R[0].hrs?esc(R[0].title):'—'}</b></div><div><small>Never played</small><b>${R.length-played}</b></div></div>
+      <div data-lnav="v">${R.map((g,i)=>`<button class="lsr" data-f data-k="lsr-${lId(g)}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}"><span class="n">${i+1}</span><div class="ll-th">${cover(g,{badge:false})}</div><b>${esc(g.title)}</b><div class="lbar"><i style="width:${((g.hrs||0)/max*100).toFixed(1)}%"></i></div><span class="h">${g.hrs?hrs(g.hrs):'—'}</span></button>`).join('')}</div></div>`;
+  },
+  'x-lib-rolodex': L => {
+    const by={}; [...L].sort((a,b)=>a.title.localeCompare(b.title)).forEach(g=>{ (by[lLetter(g)]=by[lLetter(g)]||[]).push(g); });
+    return lBg(L[0])+`<div class="lx-rx lsh">${Object.keys(by).sort().map(c=>`<section class="lrow" data-lgrp><div class="lrx-card">${c}</div><div class="shelf" data-lnav="h">${by[c].map(g=>lTile(g,'p','lrx-'+g.id)).join('')}</div></section>`).join('')}</div>`;
+  },
+  'x-lib-hex': L => {
+    const v=$('#view'), w=(v?v.clientWidth:1200)-80, n=Math.max(3,Math.floor((w-58)/116)), rows=[];
+    for(let i=0;i<L.length;i+=n) rows.push(L.slice(i,i+n));
+    return `<div class="lx-hex">${rows.map((r,i)=>`<div class="lhx-r${i%2?' odd':''}" data-lgrp data-lnav="h">${r.map(g=>`<button class="lhx" data-f data-k="lhx-${lId(g)}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}"><i class="hxo"></i><div class="hxi">${cover(g,{badge:false})}</div></button>`).join('')}</div>`).join('')}</div>${lInfoBar(L[0])}`;
+  },
+  'x-lib-deck': L => lBg(L[0])+`<div class="lx-deck lfit"><div class="ldh" id="lHead" data-id="${L[0]?lId(L[0]):''}">${L[0]?lDeckHead(L[0]):''}</div>
+      <div class="shelf" data-lnav="h" data-lj>${L.map((g,i)=>`<button class="ldk" style="--r:${((i%5)-2)*3}deg;--y:${Math.abs((i%5)-2)*6}px" data-f data-k="ldk-${lId(g)}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}">${cover(g,{badge:false})}</button>`).join('')}</div></div>`,
+  'x-lib-mosaic': L => {
+    const rk=[...L].filter(g=>g.hrs).sort((a,b)=>b.hrs-a.hrs), rank=new Map(rk.map((g,i)=>[g.id,i]));
+    const sz=g=>{ const r=rank.get(g.id); return r==null?'s1':r<3?'s3':r<11?'s2':r<25?'w':'s1'; };
+    return `<div class="lx-mos">${L.map(g=>{ const s=sz(g); return `<button class="lmo ${s}" data-f data-k="lmo-${lId(g)}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}">${cover(g,{badge:s!=='s1',wide:s==='w'||s==='s3'})}${s!=='s1'&&g.hrs?`<span class="lmh">${hrs(g.hrs)}</span>`:''}</button>`; }).join('')}</div>${lInfoBar(L[0])}`;
+  },
+};
+const lCabPanel = g => `${lPlay(g,'la-play')}<button class="sq" data-f data-k="la-page" data-act="game" data-id="${lId(g)}" aria-label="Game page">${I.info}</button><span class="lst ${lStatus(g)[0]}">${esc(lStatus(g)[1])}</span>`;
+const lDeckHead = g => `<div class="ld-title">${esc(g.title)}</div><div class="xd-meta">${esc(lMeta(g))}</div><span class="lst ${lStatus(g)[0]}">${esc(lStatus(g)[1])}</span>`;
+// The Library's games in the chosen layout (viewLibrary calls this when there are games to show).
+function libBody(L){
+  const id=libLayout();
+  queueMicrotask(()=>{ if(S.view==='library'){ lFit(); if(focused && focused.closest && focused.closest('.lfit')) focused.scrollIntoView({block:'center',inline:'center'}); } });
+  return `<div class="lwrap lw-${id}">${(LIBL[id]||LIBL.covers)(L)}</div>`;
+}
+
+// ---------- Settings › You › Library layout ----------
+function lPreview(id){
+  const r=(l,t,w,h,c='')=>`<i class="${c}" style="left:${l}%;top:${t}%;width:${w}%;height:${h}%"></i>`;
+  const P={
+    covers: [...Array(12)].map((_,i)=>r(5+(i%6)*15.4,22+Math.floor(i/6)*40,13,34,i===1?'lp-a':'')).join('')+r(5,7,50,6),
+    list: r(5,7,50,6)+[0,1,2,3,4,5,6].map(i=>r(5,20+i*11,50,8,i===1?'lp-a':'')).join('')+r(59,20,36,74,'lp-p')+r(62,60,22,6,'lp-t')+r(62,72,12,8,'lp-a'),
+    shelves: r(0,0,100,100,'glow')+r(5,7,50,6)+[0,1].map(j=>r(5,20+j*40,16,4,'lp-t')+[0,1,2,3,4,5].map(i=>r(5+i*16,27+j*40,14,26,j===0&&i===0?'lp-a':'')).join('')).join(''),
+    wall: [...Array(33)].map((_,i)=>r(4+(i%11)*8,8+Math.floor(i/11)*26,7,23,i===14?'lp-a':'')).join('')+r(94,8,3,74,'lp-p')+r(4,86,88,10,'lp-p'),
+    'x-lib-flow': [-3,-2,-1,1,2,3].map(i=>r(43+i*10+(i>0?6:-6),26,12,42)).join('')+r(41,18,18,56,'lp-a')+r(30,84,40,8,'lp-p'),
+    'x-lib-spines': [...Array(22)].map((_,i)=>r(4+i*4.2,14,3.4,32,i===6?'lp-a':'')).join('')+r(2,47,96,3,'lp-p')+[...Array(18)].map((_,i)=>r(4+i*4.2,56,3.4,32)).join('')+r(2,89,96,3,'lp-p'),
+    'x-lib-timeline': r(3,6,1,90,'lp-p')+[0,1,2].map(j=>r(2,10+j*30,3,6,'lp-a')+[0,1,2,3,4,5].map(i=>r(8+i*14,8+j*30,12,24)).join('')).join(''),
+    'x-lib-towers': [0,1,2,3].map(j=>r(4+j*24,6,22,88,'lp-p')+[0,1,2,3,4].map(i=>r(6+j*24,16+i*14,18,10,j===1&&i===1?'lp-a':'')).join('')).join(''),
+    'x-lib-stars': [[24,40],[62,36],[44,74]].map(([x,y],j)=>[...Array(9)].map((_,i)=>{ const a=i*2.4, d=3.2*Math.sqrt(i+.5); return r(x+d*Math.cos(a)*1.4,y+d*Math.sin(a)*1.9,2.4,4,i===0&&j===0?'lp-a':''); }).join('')).join(''),
+    'x-lib-arcade': r(28,4,44,70,'lp-p')+r(32,8,36,8,'lp-a')+r(32,20,36,40,'lp-t')+r(42,63,16,7,'lp-a')+[...Array(8)].map((_,i)=>r(8+i*11,80,9,16)).join(''),
+    'x-lib-polaroid': [...Array(8)].map((_,i)=>`<i style="left:${6+(i%4)*23}%;top:${10+Math.floor(i/4)*44}%;width:18%;height:36%;background:#e9e4da;transform:rotate(${(i*37%9)-4}deg)"></i>`).join(''),
+    'x-lib-stats': [0,1,2].map(i=>r(4+i*31,6,29,14,'lp-p')).join('')+[90,72,55,40,28,16].map((w,i)=>r(5,28+i*11,8,8)+r(16,30+i*11,w*.8,5,i?'':'lp-a')).join(''),
+    'x-lib-rolodex': [0,1,2].map(j=>r(4,8+j*31,10,26,'lp-p')+[0,1,2,3,4].map(i=>r(18+i*16,8+j*31,14,26,j===0&&i===0?'lp-a':'')).join('')).join(''),
+    'x-lib-hex': [...Array(21)].map((_,i)=>{ const row=Math.floor(i/7), col=i%7; return `<i style="left:${4+col*13+(row%2)*6.5}%;top:${8+row*28}%;width:11%;height:34%;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);border-radius:0;${i===9?'background:var(--accent)':''}"></i>`; }).join(''),
+    'x-lib-deck': r(0,0,100,100,'glow')+r(6,12,40,8,'lp-t')+r(6,26,24,5)+[...Array(7)].map((_,i)=>`<i style="left:${18+i*9}%;top:${i===3?44:54}%;width:13%;height:38%;transform:rotate(${(i-3)*6}deg);${i===3?'background:var(--accent)':''}"></i>`).join(''),
+    'x-lib-mosaic': r(4,6,30,58,'lp-a')+r(36,6,20,28)+r(58,6,20,28)+r(80,6,16,28)+r(36,36,20,28)+r(58,36,38,28)+[...Array(9)].map((_,i)=>r(4+i*10.4,68,9,26)).join(''),
+  };
+  return P[id]||'';
+}
+function lCard(l){
+  const on=libLayout()===l.id;
+  return `<button class="lcard ${on?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="libLayout" data-v="${l.id}"><div class="lprev">${lPreview(l.id)}</div><b>${l.name}${on?'<em>In use</em>':''}</b><small>${l.desc}</small></button>`;
+}
+function pageLibLook(){
+  return shead('Library layout') + `<div class="layouts">${LIB_LAYOUTS.map(lCard).join('')}</div>`
+    + note('How Library shows your games. Tabs (LB / RB), Show and Sort work the same in every layout.')
+    + shead('Experimental') + `<div class="xnote"><b>Beta Experimental</b> Library layouts made for fun. They may look rough, change or be removed. Upvote the ones you'd like to see finished: the counts are everyone's, live.</div>
+      <div class="layouts">${XLIB_LAYOUTS.map(l=>`<div class="xcard">${lCard(l)}<button class="xvote ${XV.mine[l.id]?'on':''}" data-f data-k="xv-${l.id}" data-act="xvote" data-v="${l.id}" aria-label="Upvote ${esc(l.name)}"><svg viewBox="0 0 24 24"><path d="M12 5l7 8h-4v6H9v-6H5z"/></svg>${XV.votes?(XV.votes[l.id]||0):'…'}<span>${XV.mine[l.id]?'Upvoted':'Upvote'}</span></button></div>`).join('')}</div>`;
+}
+
+// Browser preview only: ?stress=300 adds that many made-up games (all stores, downloads, Quick Resume) to try
+// the layouts with a big library. Never with a host.
+(function(){
+  const m=/[?&]stress=(\d+)/.exec(location.search); if(!m || window.nimbusHost) return;
+  const n=Math.min(2000,+m[1]||300), A=['Crimson','Silent','Hollow','Iron','Neon','Lost','Ember','Frost','Golden','Shadow','Quiet','Wild','Paper','Star','Rust','Velvet','Azure','Broken','Little','Last'];
+  const B=['Harbor','Kingdom','Signal','Garden','Circuit','Tides','Legacy','Drift','Forge','Oath','Machine','Valley','Frontier','Lantern','Odyssey','Protocol','Requiem','Sky','Hollow','Arcade'];
+  const SRC=['steam','steam','steam','epic','gog','xbox','emu','beacon','manual'], GEN=['Roguelite','RPG','Racing','Puzzle','Strategy','Shooter','Platformer','Sim','Adventure','Horror'];
+  for(let i=0;i<n;i++){
+    const s=SRC[i%SRC.length], t=`${A[(i*7)%A.length]} ${B[(i*11+Math.floor(i/20))%B.length]}${i>=A.length*B.length/4?' '+(1+Math.floor(i/100)):''}`;
+    const inst=i%3!==0, h=(i*37%100)<35?0:+(((i*53)%4000)/10).toFixed(1);
+    GAMES.push({id:'st'+i, title:t, src:s, inst, fav:i%17===0, hrs:h, last:h?now-((i*13)%400)*D/3:0, size:s==='manual'?'—':((i*29)%900/10+0.5).toFixed(1)+' GB',
+      ach:null, added:now-((i*7)%600)*D, genre:GEN[i%GEN.length], ...(s==='emu'?{system:['SNES','Genesis','PS1','N64'][i%4]}:{}),
+      ...(s==='beacon'?{beacon:{family:['bfme','lotr','other'][i%3],short:'X',ready:inst,blocker:null,issues:[],mod:null,mods:[]}}:{}),
+      ...(i%41===5?{inst:false,state:'downloading',progress:(i%10)/10}:{})});
+  }
+  QR.list.push({id:'st2',frozenAt:now-2*H});
+})();
 
 // ProtonDB rating and achievements, loaded when a game's page opens (Linux).
 const GINFO = {};
@@ -1973,7 +2680,8 @@ function viewGame(){
         ? (running ? `<button class="play" data-f data-k="g-play" data-act="resume" data-id="${esc(g.id)}">${I.play}Resume</button><button class="play install" data-f data-k="g-stop" data-act="exitgame" data-id="${esc(g.id)}">${I.stop}Exit game</button>`
             : isFrozen(g) ? `<button class="play" data-f data-k="g-play" data-act="quickres" data-id="${esc(g.id)}">${I.play}Resume</button><button class="play install" data-f data-k="g-stop" data-act="quickclose" data-id="${esc(g.id)}">${I.stop}Close game</button>`
             : `<button class="play" data-f data-k="g-play" data-act="play" data-id="${esc(g.id)}">${I.play}${g.cloud&&!g.inst?'Stream':'Play'}</button>${beaconMods(g).length?`<button class="play install" data-f data-k="g-playwith" data-act="playWith" data-id="${esc(g.id)}">${I.play}Play with…</button>`:''}`)
-        : `<button class="play install" data-f data-k="g-play" data-act="install" data-id="${esc(g.id)}">${I.dl}${g.src==='beacon'?'Set up in Beacon':'Install'}</button>`}
+        : g.src==='beacon' ? `<button class="play install" data-f data-k="g-play" data-act="bcnSetup" data-id="${esc(g.id)}">${I.dl}Set up</button>`
+        : `<button class="play install" data-f data-k="g-play" data-act="install" data-id="${esc(g.id)}">${I.dl}Install</button>`}
       <button class="sq ${g.fav?'on':''}" data-f data-k="g-fav" data-act="fav" data-id="${esc(g.id)}" aria-label="Favorite">${I.star}</button>
       <button class="sq" data-f data-k="g-opt" data-act="gopts" data-id="${esc(g.id)}" aria-label="Options">${I.dots}</button>
       <div class="gstats">
@@ -1988,7 +2696,7 @@ function viewGame(){
     <div class="gbody">
       <div class="card"><h3>About</h3><div class="muted">${about}</div>
         ${g.path?`<div class="muted" style="margin-top:8px;word-break:break-all">Location: <code>${esc(g.path)}</code></div>`:''}</div>
-      ${side}
+      ${g.src==='beacon'?beaconGameCard(g):''}${side}
     </div>
   </div>`;
 }
@@ -2042,6 +2750,8 @@ function viewDownloads(){
   const recentIds = host ? DLS.recent.map(r=>r.id) : DL_DONE;
   const done=[...new Set([...DL_DONE, ...recentIds])].map(G).filter(g=>g && g.inst).slice(0,8);
   let h = '<div class="dl-wrap">';
+  // A store whose sign-in expired: its downloads can't start until you sign in again (expSignIn).
+  for(const s of ['epic','gog']) if(isExpired(s)) h += `<div class="rows" style="margin-bottom:14px"><button class="row" data-f data-k="dl-exp-${s}" data-act="expSignIn" data-s="${s}"><span class="ricon">${I.user}</span><div class="rt"><b>Your ${storeName(s)} sign-in expired</b><small>Downloads from ${storeName(s)} can't start until you sign in again${accOf(s).name?' as '+esc(accOf(s).name):''}.</small></div><div class="rv">Sign in again ›</div></button></div>`;
   if(cur){
     const g=cur.g, eta=etaText(cur), paused=cur.state==='paused';
     h += `<div class="dl-top">
@@ -2075,11 +2785,11 @@ function viewDownloads(){
   return h + '</div>';
 }
 
-const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display & sound'],['audio','vol','Audio'],['power','bolt','Power'],
+const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['liblook','lib','Library'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display & sound'],['audio','vol','Audio'],['power','bolt','Power'],
   ['controller','pad','Controls'],['remote','play','Remote play'],['sources','lib','Library'],['seats','display','Multi-seat (Beta Experimental)'],['import','dl','Import'],['osinstall','dl','Install'],['switch','dl','Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 // Settings, condensed: five groups on the left, each with its pages as tabs along the top.
 const SGROUPS = [['you','user','You'],['connect','wifi','Connections'],['device','display','Device'],['games','lib','Games'],['system','gear','System']];
-const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',signin:'you',wifi:'connect',bluetooth:'connect',remote:'connect',
+const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',liblook:'you',signin:'you',wifi:'connect',bluetooth:'connect',remote:'connect',
   display:'device',audio:'device',power:'device',controller:'device',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
 const stabGroup = k => STAB_GROUP[k]||'system';
 const stabShown = k => STABS.some(x=>x[0]===k) && k!=='audio' && (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX));
@@ -2626,7 +3336,7 @@ function pageControls(){
     }
   }
   if(LINUX) h += remapRows();
-  if(LINUX) h += tipRow('ctl-layouts', 'Games without controller support', 'Give the game a Controller layout in its Game settings (game page › ⋯ › Game settings). The controller then acts as a keyboard and mouse in that game only.');
+  if(LINUX || hasFeat('hearthInput')) h += tipRow('ctl-layouts','Games without controller support', 'Give the game a Controller layout in its Game settings (game page › ⋯ › Game settings). The controller then acts as a keyboard and mouse in that game only.');
   h += shead('Keyboard');
   h += sgrid((LINUX?KEY_LIST_LINUX:KEY_LIST).map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join(''));
   h += note('Mouse and touch work too: click anything. The buttons in the top and bottom bars do what the controller buttons do.');
@@ -3263,6 +3973,7 @@ function viewSettings(){
   if(t==='signin') body = pageSignin();
   if(t==='system') body = pageSystem();
   if(t==='appearance') body = pageAppearance();
+  if(t==='liblook') body = pageLibLook();
   if(t==='controller') body = pageControls();
   if(t==='sources'){
     const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
@@ -3323,6 +4034,7 @@ function renderNow(focusKey, quiet){
       if(wasSlide){ SLIDE=el; el.classList.add('editing'); }
       // Layouts whose details follow the selection: the redrawn page shows the first game again otherwise.
       if(S.view==='home'){ if(el.dataset.spot) updateSpot(el.dataset.spot); if(el.dataset.xspot) xUpdate(el.dataset.xspot); }
+      if(S.view==='library') libFocus(el);
     }
     else setFocus(el || $('#view [data-f]'), true);
   }
@@ -3546,7 +4258,7 @@ function overlayHidden(){ OV.shown=false; document.body.classList.add('ov-closed
 
 function renderQam(){
   const t=S.qtab; let body='';
-  if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="n-${i}" ${n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
+  if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
   if(t==='quick'){ const w=S.sys.wifi;
     body = `<h3>Quick settings</h3>${S.sys.display.supported?sliderCtl('bright','sun','Brightness'):''}${sliderCtl('vol',S.sys.audio.muted?'mute':'vol','Volume',0,volMax())}
     ${qRadio('wifi','wifi','Wi-Fi', w.on ? (w.ssid||'Not connected') : 'Off')}
@@ -3567,7 +4279,7 @@ function renderQam(){
       ${OVERLAY?'':`<button class="btn" data-f data-k="q-gp" data-act="game" data-id="${g.id}">Game details</button>`}
       ${ovBtns}
       ${LINUX?`<button class="btn" data-f data-k="q-resume" data-act="resume">${I.play}Back to game</button>`:''}
-      ${LINUX&&!G(S.running)?.cloud?`<button class="btn" data-f data-k="q-pause" data-act="pauseGame">${S.paused?I.play+'Unpause':I.pause+'Pause'}</button>`:''}
+      ${(LINUX||hasFeat('pause'))&&!G(S.running)?.cloud?`<button class="btn" data-f data-k="q-pause" data-act="pauseGame">${S.paused?I.play+'Unpause':I.pause+'Pause'}</button>`:''}
       ${qrFeature()&&QR.on&&!g.cloud?`<button class="btn" data-f data-k="q-aside" data-act="putaside">${I.pause}Put aside (Quick Resume)</button>`:''}
       <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>${inputQam(g)}${qamQuick()}`
       : (QR.list.length && !OVERLAY) ? `<div class="muted" style="margin-bottom:10px">Nothing running right now.</div>${qamQuick()}`
@@ -3710,6 +4422,7 @@ function setFocus(el, quiet){
   if(focused) focused.classList.remove('focus');
   focused=el; el.classList.add('focus');
   el.focus({preventScroll:true});
+  if(S.view==='library' && !S.layers.length) libFocus(el);   // Library layouts: fit, and fill the detail panel
   const now=performance.now(), rapid = now-lastNav < 260;
   lastNav=now;
   el.scrollIntoView(scrollOpts(el, !quiet && !rapid && !LOOK.reduceMotion));
@@ -3749,6 +4462,8 @@ function moveNow(dir){
   }
   const g=gridMove(dir);
   if(g && g.hasAttribute('data-f')){ setFocus(g); blip(); return; }
+  const lm = S.view==='library' && !S.layers.length ? libMove(dir) : null;   // Library layouts' lists and rows
+  if(lm){ setFocus(lm); blip(); return; }
   settleScroll();
   // The focused card is drawn a little bigger (scaled from its centre): measure its real box.
   const rr=focused.getBoundingClientRect(), fw=focused.offsetWidth||rr.width, fh=focused.offsetHeight||rr.height;
@@ -3803,6 +4518,7 @@ function act(el){
   if(!a) return;
   if(S.locked && !['unlock','pkey','back','sheet'].includes(a)) return;   // locked: only unlocking
   blip(880,.05,.045);
+  if(a.startsWith('bcn')) return beaconAct(a, d);   // Beacon's screens (Game setup, Mods)
   switch(a){
     case 'unlock': return lockUnlock();
     case 'loginWake': return call('login.setLockOnWake',{on:!(LOGIN.s&&LOGIN.s.lockOnWake)}).then(r=>{ LOGIN.s=r; refreshUI(); toast(r.lockOnWake?'Asks for your password after sleep':'Wakes without asking for a password'); }).catch(e=>toast(e.message));
@@ -3833,6 +4549,7 @@ function act(el){
     case 'audioDev': return setOutput(d.id);
     case 'pmode': return setPowerMode(d.mode);
     case 'countMe': { const on=!counterOn(); try{ localStorage.setItem('nimbus.countMe', on?'1':'0'); }catch(e){} if(on) counterPing(); toast(on?'You\'re in the player count':'You\'re no longer counted'); return render('sy-count',true); }
+    case 'autoReport': return call('logs.setAutoReport',{on:HOSTINFO.autoReport===false}).then(on=>{ HOSTINFO.autoReport=on; toast(on?'Reports sent when it gets stuck':'No reports sent by itself'); render('sy-autorep',true); }).catch(e=>toast(e.message));
     case 'inputLog': INPUT_LOG=!INPUT_LOG; try{ localStorage.setItem('nimbus.inputLog', INPUT_LOG?'1':'0'); }catch(e){} toast(INPUT_LOG?'Logging controller input':'Stopped logging controller input'); return render('sy-inlog',true);
     case 'browser': return call('browser.act',{action:d.v}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'browserRemove': return openSheet({title:'Remove Aloha Browser?', sub:'Your bookmarks and history stay in your home folder.', items:[{label:'Remove', icon:'trash', run:()=>call('browser.act',{action:'remove'}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message))}]});
@@ -3871,7 +4588,7 @@ function act(el){
     case 'sendLogs': if(LOGS.busy) return; LOGS.busy=true; LOGS.r=null; render('sy-send',true);
       return call('logs.send',{},120000).then(r=>{ LOGS.r=r; toast((r.copies||[]).length?'Logs saved to your USB drive too':'Logs saved'); }).catch(e=>toast(e.message)).finally(()=>{ LOGS.busy=false; render('sy-send',true); });
     case 'exportLogs': toast('Saving logs…'); return call('app.exportLogs',{},60000).then(r=>toast(r&&r.path?'Saved to '+r.path:'Saved')).catch(e=>toast(e.message));
-    case 'resetLook': Object.assign(LOOK,{layout:'shelf',textSize:'normal',reduceMotion:false,clock24:false,battPct:true}); saveLook(); toast('Appearance reset'); return render('sy-reset');
+    case 'resetLook': Object.assign(LOOK,{libLayout:'covers',layout:'shelf',textSize:'normal',reduceMotion:false,clock24:false,battPct:true}); saveLook(); toast('Appearance reset'); return render('sy-reset');
     case 'credits': return openSheet({title:'Built with', sub:APP+' stands on these open-source projects. Thank you!', items:CREDITS.map(([n,w])=>({label:n+' — '+w, icon:'', run:()=>{}}))});
     case 'loginAuto': return loginAuto();
     case 'loginStart': return loginStart();
@@ -4025,6 +4742,7 @@ function act(el){
     case 'stores': closeAll(); return S.view==='stores' ? null : navigate('stores');
     case 'xvote': return vote(d.v);
     case 'xOpen': XV.open=!XV.open; if(XV.open) loadVotes(); return render('ap-xopen',true);
+    case 'libJump': return lJumpTo(d.v);
     case 'xLib': closeAll(); S.tab=d.tab||'all'; S.lfilter=d.filter||''; S.history=[]; return navigate('library',{},false);
     case 'frPlat': FR.plat=d.v; return render('frp-'+d.v,true);
     case 'frOpen': return frOpen(FR.view&&FR.view[+d.i]);
@@ -4035,6 +4753,7 @@ function act(el){
     case 'shotDel': { const x=SH.list&&SH.list[SH.open]; if(!x) return;
       return call('screenshots.delete',{file:x.file},15000).then(r=>{ SH.list=r.list||[]; if(SH.open>=SH.list.length) SH.open=SH.list.length-1; toast('Screenshot deleted'); render(SH.open>=0?'sh-back':null,true); }).catch(e=>toast(e.message)); }
     case 'accSignIn': return accSignIn(d.s);
+    case 'expSignIn': return expSignIn(d.s);
     case 'backToGame': return backToGameMode();
     case 'accSignOut': return accSignOut(d.s);
     case 'accRefresh': return accRefresh(d.s);
@@ -4066,7 +4785,7 @@ function act(el){
     case 'pauseGame': return call(S.paused?'game.unpause':'game.pause').then(r=>{ S.paused=!!r.paused; toast(S.paused?'Paused. It uses no power while paused: go back to it to carry on.':'Unpaused'); renderQam(); setFocus($('#qam [data-k="q-pause"]'),true); }).catch(e=>toast(e.message));
     case 'resume': closeAll(); return send({type:'resume'});
     case 'dismiss': NOTIFS.splice(+d.i,1); updateBadge(); renderQam(); return setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true);
-    case 'clearnotifs': NOTIFS=[]; updateBadge(); renderQam(); return setFocus($('#qam [data-f]'),true);
+    case 'clearnotifs': NOTIFS=NOTIFS.filter(n=>n.expired); updateBadge(); renderQam(); return setFocus($('#qam [data-f]'),true);
     case 'key': return typeKey(d.c);
     case 'pwr': return power(d.p);
     case 'launchShow': return launchShow();
@@ -4102,7 +4821,7 @@ function power(p, sure){
   send({type:'power', action:p});
   toast(host?label:label+' (simulated in the browser preview)');
 }
-function updateBadge(){ const b=$('#nbadge'); b.textContent=NOTIFS.length; b.style.display=NOTIFS.length?'':'none'; }
+function updateBadge(){ const b=$('#nbadge'); b.textContent=NOTIFS.length; b.style.display=NOTIFS.length?'':'none'; b.classList.toggle('warn', NOTIFS.some(n=>n.expired)); }
 
 let launchTimer=null;
 function hideLaunch(){
@@ -4140,9 +4859,16 @@ function launch(g, mod){
       launchTimer=setTimeout(()=>{ hideLaunch(); toast(`Started ${g.title}`); }, 2500);
       return;
     }
+    // Started without the store (its sign-in expired): it plays offline; cloud saves and online play wait.
+    if(r && r.expired) toast(`${g.title} is starting offline: your ${storeName(r.expired)} sign-in expired, so cloud saves didn't sync. Sign in again from Notifications.`);
     // Stay on the launch screen until the game's process shows up; stores can take a while.
     launchTimer=setTimeout(()=>{ hideLaunch(); toast(`${g.title} is still starting. The store may be updating it.`); }, 25000);
-  }).catch(e=>{ hideLaunch(); toast(e.message); });
+  }).catch(e=>{
+    hideLaunch();
+    // It needed the store and the store's sign-in expired: say so, with Sign in again.
+    if(STORE_INFO[g.src] && g.src!=='steam' && /sign-in expired/i.test(e.message)){ loadAccounts(true); return expiredSheet(g.src, `${g.title} couldn't start: it needs ${storeName(g.src)} online.`); }
+    toast(e.message);
+  });
 }
 // Hearth (Linux): the game loads behind the starting screen and comes to the front once its window is up
 // ("game.ready"). Until then the screen says what's happening; B or "Show it now" skips the wait.
@@ -4208,8 +4934,17 @@ function viewGameSettings(){
   if(r.kind==='beacon'){
     h += shead('Beacon')
       + (g.inst ? `<button class="row" data-f data-k="gs-mod" data-act="gsMod"><span class="ricon">${I.lib}</span><div class="rt"><b>Mod</b><small>What Play starts with. Saved in Beacon, which shows the same choice.</small></div><div class="rv">${esc(beaconModName(g))} ›</div></button>` : '')
-      + `<button class="row" data-f data-k="gs-beacon" data-act="beaconOpen"><span class="ricon">${I.sliders}</span><div class="rt"><b>Manage mods in Beacon</b><small>Add or remove mods; the game's folder, CD key, resolution and community files</small></div><div class="rv">›</div></button>`;
-    return h+ingame+'</div>'+note(`Beacon starts ${esc(g.title)} with its own Wine or Proton setup, so those settings are in Beacon. ${APP} keeps the controller layout, frame-rate cap and power limit.`);
+      + `<button class="row" data-f data-k="gs-bsetup" data-act="bcnSetup" data-id="${esc(g.id)}"><span class="ricon">${I.sliders}</span><div class="rt"><b>Game setup</b><small>The game's folder, CD key, runner, resolution and community versions</small></div><div class="rv">›</div></button>`
+      + (g.inst ? `<button class="row" data-f data-k="gs-bmods" data-act="bcnMods" data-id="${esc(g.id)}"><span class="ricon">${I.lib}</span><div class="rt"><b>Mods</b><small>Add, remove and find mods</small></div><div class="rv">›</div></button>` : '')
+      + `<button class="row" data-f data-k="gs-beacon" data-act="beaconOpen"><span class="ricon">${I.sliders}</span><div class="rt"><b>Open Beacon</b><small>Beacon's own window, with the same settings</small></div><div class="rv">›</div></button>`;
+    return h+ingame+'</div>'+note(`Beacon starts ${esc(g.title)} with its own Wine or Proton setup: Game setup has those settings. ${APP} keeps the controller layout, frame-rate cap and power limit.`);
+  }
+  // Ember (Windows): the controller layout and power limit while it plays, and cloud saves for games it installed.
+  if(r.kind==='windows'){
+    h += shead('While it plays') + inputRow(g)
+      + (r.tdp ? `<button class="row" data-f data-k="gs-tdp" data-act="gsTdp"><span class="ricon">${I.power}</span><div class="rt"><b>Power limit</b><small>More watts for a demanding game, fewer for battery life. Windows may ask for permission.</small></div><div class="rv">${o.tdp?o.tdp+' W':'Usual'} ›</div></button>` : '');
+    if(r.cloudSaves) h += shead('Saves') + sw('cloudSaves',`${g.src==='gog'?'GOG':'Epic'} cloud saves`,`Newer saves come down from ${g.src==='gog'?'GOG':'Epic'} before you play and go up after, for games that have cloud saves`);
+    return h+del+'</div>'+note(g.src==='steam' ? `Steam starts ${esc(g.title)}, so its other settings are in Steam: open the game's Properties there.` : `Changes apply the next time ${esc(g.title)} comes to the front.`);
   }
   if(r.kind==='steam') return h+ingame+del+'</div>'+note(`Steam starts ${esc(g.title)}, so it uses Steam's own settings: in Steam, open the game's Properties to pick a Proton version or add launch options.`);
   if(r.kind==='emu') return h+ingame+'</div>'+note(`RetroArch plays ${esc(g.title)}. Its own settings (shaders, controls, save states) are in RetroArch's menu: press the left stick and right stick in together while playing.`);
@@ -4309,7 +5044,7 @@ const imCtlLabel = id => { const T=IM.tables||{}; const x=[...(T.buttons||[]),..
 
 // Game settings › Controller layout
 function inputRow(g){
-  if(!LINUX || !g || g.cloud) return '';
+  if(!(LINUX || hasFeat('hearthInput')) || !g || g.cloud) return '';
   imLoadTables(); imLoad(g.id);
   const c=IM.games[g.id];
   const sub = !c ? 'Loading…' : c.layout==='off' ? 'Off: the game uses its own controller support' : 'Acts as a keyboard and mouse while you play';
@@ -4323,7 +5058,7 @@ function imPick(id){
   for(const t of T.templates) items.push({label:t.name, icon:c.layout===t.id?'check':'', run:()=>set(t.id)});
   if(c.custom) items.push({label:(c.custom.name||'Custom')+' (yours)', icon:c.layout==='custom'?'check':'', run:()=>set('custom')});
   if(!OVERLAY) items.push({label:c.layout==='off' && !c.custom ? 'Make my own…' : 'Edit…', icon:'sliders', run:()=>imEdit(id)});
-  openSheet({title:'Controller layout', sub:'A layout makes the controller act as a keyboard and mouse in this game, for games without controller support.', items});
+  openSheet({title:'Controller layout', sub:'A layout makes the controller act as a keyboard and mouse in this game, for games without controller support.'+(LINUX?'':' Windows can\'t hide the controller from the game, so a game that reads controllers sees both.'), items});
 }
 function imSave(id, patch, announce){
   return imCall('input.set', Object.assign({game:id}, patch)).then(r=>{
@@ -4653,7 +5388,7 @@ function imTestStop(timedOut){
 
 // Quick Access › Now playing: the running game's layout, gyro, sensitivity
 function inputQam(g){
-  if(!LINUX || !g || g.cloud) return '';
+  if(!(LINUX || hasFeat('hearthInput')) || !g || g.cloud) return '';
   imLoadTables(); imLoad(g.id); imLoadStatus();
   const c=IM.games[g.id]; if(!c || !IM.tables) return '';
   IM.qaGame=g.id;
@@ -4689,7 +5424,7 @@ function imAct(el, d){
 function gameOptions(g){
   if(!g) return;
   const items=[];
-  if(host && LINUX && !g.cloud) items.push({label:'Game settings',icon:'gear',run:()=>navigate('gameset',{game:g.id})});
+  if(host && (LINUX || hasFeat('gameSettings')) && !g.cloud) items.push({label:'Game settings',icon:'gear',run:()=>navigate('gameset',{game:g.id})});
   items.push({label:'Add to collection…',icon:'lib',run:()=>colPick(g)});
   items.push(g.hidden ? {label:'Show in library',icon:'lib',run:()=>setHidden(g,false)} : {label:'Hide from library',icon:'x',run:()=>setHidden(g,true)});
   if(g.canRemove) items.push({label:'Remove from '+APP+'',icon:'trash',run:()=>removeGame(g)});
@@ -4697,7 +5432,9 @@ function gameOptions(g){
   if(g.inst && canDelete(g) && !isActive(g)) items.push({label:'Uninstall…',icon:'trash',run:()=>uninstallGame(g)});
   if(g.src==='beacon'){
     if(g.inst && beaconMods(g).length) items.unshift({label:'Play with…',icon:'play',run:()=>beaconPlayWith(g)});
-    items.push({label:'Manage mods in Beacon',icon:'sliders',run:()=>beaconOpen()});
+    items.push({label:'Game setup',icon:'sliders',run:()=>beaconSetup(g)});
+    if(g.inst) items.push({label:'Mods',icon:'lib',run:()=>beaconModsPage(g)});
+    items.push({label:'Open Beacon',icon:'sliders',run:()=>beaconOpen()});
   }
   openSheet({title:g.title, sub:SOURCES[g.src], items});
 }
@@ -4711,9 +5448,9 @@ function beaconModName(g, id){
 }
 function beaconAbout(g){
   const b=g.beacon||{}, mods=beaconMods(g);
-  if(!g.inst) return `Beacon knows this game, but it isn't set up yet${b.blocker?` (${esc(b.blocker)})`:''}. Select Set up in Beacon and show Beacon where it's installed; it shows up here when it's ready.`;
+  if(!g.inst) return `Beacon knows this game, but it isn't set up yet${b.blocker?` (${esc(b.blocker)})`:''}. Select Set up to install it or show where it's installed.`;
   let t=`Started by Beacon${b.edition?`, as ${esc(b.edition)}`:''}${b.viaSteam?', through Steam':''}.`;
-  if(b.blocker) t+=` <b>Can't start yet:</b> ${esc(b.blocker)}. Open Beacon to fix it.`;
+  if(b.blocker) t+=` <b>Can't start yet:</b> ${esc(b.blocker)}. Game setup says how to fix it.`;
   else { const w=(b.issues||[]).find(i=>i.level!=='error'); if(w) t+=` Note: ${esc(w.message)}.`; }
   if(mods.length) t+=` Mods in Beacon: ${mods.map(m=>esc(m.name)).join(', ')}.`;
   return t;
@@ -4740,23 +5477,350 @@ function beaconPickMod(g, k){
   openSheet({title:'Mod', sub:`What ${g.title} starts with. Saved in Beacon, which shows the same choice.`, items:[
     ...beaconMods(g).map(m=>({label:m.name+(m.kind==='launcher'?' (its own launcher)':''), icon:m.id===cur?'check':'', run:()=>set(m.id)})),
     {label:'No mod (the base game)', icon:!cur?'check':'', run:()=>set(null)},
-    {label:'Manage mods in Beacon…', icon:'sliders', run:()=>beaconOpen()}]});
+    {label:'Mods…', icon:'sliders', run:()=>beaconModsPage(g)}]});
 }
 // Beacon's own window: full screen in Game Mode, a window in Desktop Mode. Hearth brings it to the front.
 function beaconOpen(){
   if(!host) return toast('Opening Beacon needs the '+APP+' app (not the browser preview).');
   call('beacon.open',{},15000).then(()=>toast('Opening Beacon…')).catch(e=>toast(e.message));
 }
-// Library › Stores: Beacon's card.
+// Library › Stores: Beacon's card. Not installed: how to get it (Hearth OS comes with it).
 function beaconCard(){
   const b=ACC.beacon; if(!b) return '';
-  const st = !b.installed ? 'Not installed' : `${b.setUp} of ${b.games} games set up`;
+  const st = !b.installed ? (b.app?'Needs an update':'Not installed') : `${b.setUp} of ${b.games} games set up`;
   return `<div class="scard" style="--sc:#8a5a1c">
     <div class="shd"><div class="smark">B</div><div class="sti"><b>Beacon</b><small class="${b.installed?'on':''}">${esc(st)}</small></div></div>
-    <div class="sblurb">The Battle for Middle-earth games, Age of the Ring, LOTR: Conquest and other classic strategy games, set up and started by Beacon. ${b.installed?'Their mods and settings are in Beacon.':`Install Beacon to see these games in ${APP}.`}</div>
+    <div class="sblurb">The Battle for Middle-earth games, Age of the Ring, LOTR: Conquest and other classic strategy games, set up and started by Beacon. ${b.installed?`Set them up, change their settings and add mods right here: open a game in Library › Beacon, then Game setup or Mods.`:b.app?`This Beacon doesn't include its command-line tool, which ${APP} needs. Get the latest Beacon from its releases page.`:`Hearth OS comes with Beacon. Elsewhere, get it from Beacon's releases page (<code>github.com/Dragongamer9/beacon/releases</code>): the AppImage, .deb or .rpm. Its games show up here once it's installed.`}</div>
     ${b.error?`<div class="serr">${esc(b.error)}</div>`:''}
-    <div class="sbtns">${b.installed||b.app?`<button class="sbtn pri" data-f data-k="sa-beacon-open" data-act="beaconOpen">${I.play}Open Beacon</button>`:''}${b.installed&&b.games?`<button class="sbtn" data-f data-k="sa-beacon-show" data-act="accShow" data-s="beacon">${I.lib}Show games</button>`:''}</div></div>`;
+    <div class="sbtns">${!b.installed?`<button class="sbtn pri" data-f data-k="sa-beacon-get" data-act="bcnGet">${I.globe}Get Beacon</button>`:''}${b.installed||b.app?`<button class="sbtn ${b.installed?'pri':''}" data-f data-k="sa-beacon-open" data-act="beaconOpen">${I.play}Open Beacon</button>`:''}${b.installed?`<button class="sbtn" data-f data-k="sa-beacon-scan" data-act="bcnJob" data-job="scan">${I.search}Find games</button>`:''}${b.installed&&b.games?`<button class="sbtn" data-f data-k="sa-beacon-show" data-act="accShow" data-s="beacon">${I.lib}Show games</button>`:''}</div></div>`;
 }
+// ---------- Beacon's screens in Hearth: Game setup, Mods, the game's log (Beacon 0.0.6+, hearth-core beacon.rs) ----------
+// Everything Beacon's own window does, here: a Beacon game's page › Game setup / Mods. Each change goes to Beacon
+// (beacon.set, beacon.setKey…) and the answer is the game's details read again; long jobs (Prepare the game, an
+// installer, looking for games or mods) report beacon.progress then beacon.done. One change at a time.
+const BC = {d:{}, err:{}, loading:{}, job:null, log:{}};
+const BC_RELEASES = 'https://github.com/Dragongamer9/beacon/releases';
+const BC_RES = ['1280x720','1280x800','1366x768','1600x900','1920x1080','1920x1200','2560x1440','2560x1600','3840x2160'];
+const bcSlug = g => String((g&&g.id)||g||'').replace(/^beacon:/,'');
+function bcCall(m, a={}, ms=60000){ return host ? call(m, a, ms) : BC_MOCK(m, a); }
+function bcRedraw(k){ if(!S.layers.length && ['bsetup','bmods','blog','game','library','stores'].includes(S.view)) render(k||null, true); }
+function bcLoad(id){
+  BC.loading[id]=true;
+  return bcCall('beacon.details',{id},90000).then(d=>{ BC.d[id]=d; BC.err[id]=null; })
+    .catch(e=>{ BC.err[id]=e.message; }).finally(()=>{ BC.loading[id]=false; bcRedraw(); });
+}
+function beaconSetup(g){ if(!g) return; bcLoad(g.id); navigate('bsetup',{game:g.id}); }
+function beaconModsPage(g){ if(!g) return; bcLoad(g.id); navigate('bmods',{game:g.id}); }
+function beaconGameCard(g){
+  return `<div class="card"><h3>Beacon</h3><div class="muted" style="margin-bottom:10px">${g.inst?'Its settings, CD key, runner and mods':'Install it, or show where it\'s installed'}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="pill" data-f data-k="g-bsetup" data-act="bcnSetup" data-id="${esc(g.id)}">${I.sliders}Game setup</button>${g.inst?`<button class="pill" data-f data-k="g-bmods" data-act="bcnMods" data-id="${esc(g.id)}">${I.lib}Mods</button>`:''}</div></div>`;
+}
+// Library › Beacon: look for games, Beacon's own window.
+function beaconLibPills(){
+  const j=BC.job&&BC.job.job==='scan'?BC.job:null;
+  return `<button class="pill" data-f data-k="lib-bscan" data-act="bcnJob" data-job="scan">${I.search}${j?`Looking for games… ${j.pct||0}%`:'Find games'}</button>`
+    + `<button class="pill" data-f data-k="lib-bopen" data-act="beaconOpen">${I.sliders}Open Beacon</button>`;
+}
+function bcRow(k, act, icon, title, sub, val, extra=''){
+  return `<button class="row" data-f data-k="${k}" data-act="${act}" ${extra}>${icon?`<span class="ricon">${icon}</span>`:''}<div class="rt"><b>${title}</b>${sub?`<small>${sub}</small>`:''}</div>${val!=null?`<div class="rv">${val}</div>`:''}</button>`;
+}
+function bcSw(k, what, title, sub, on){
+  return `<button class="row" data-f data-k="${k}" data-act="bcnSet" data-what="${what}" data-v="${on?'off':'on'}"><div class="rt"><b>${title}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${on?'on':''}"></div></button>`;
+}
+// A long job in progress, at the top of the page it's about.
+function bcJobRow(id){
+  const j=BC.job; if(!j || (id && j.game && j.game!==bcSlug(id))) return '';
+  const pct=Math.max(0,Math.min(100,Math.round(j.pct||0)));
+  return `<div class="su-card" data-f data-k="bc-job" tabindex="-1"><div class="su-head"><div><b>${esc(j.label[0].toUpperCase()+j.label.slice(1))}</b><div class="muted" style="font-size:13px;margin-top:4px">${esc(j.text||'Working')}</div></div><div class="pc">${j.pct==null?'':pct+'%'}</div></div>
+    <div class="bar" style="height:8px"><i style="width:${pct}%"></i></div></div>`;
+}
+function bcErrNote(g){
+  const e=BC.err[g.id]||'';
+  return note(esc(e)+(/newer Beacon|0\.0\.6/.test(e)?` Update Beacon to set games up in ${APP}.`:''))
+    + bcRow('bc-retry','bcnReload',I.refresh,'Try again','Asks Beacon again',null,`data-id="${esc(g.id)}"`)
+    + bcRow('bc-open','beaconOpen',I.sliders,'Open Beacon','Beacon\'s own window','›');
+}
+// What fixes an issue Beacon reports (its own words): [action, button label, extra data].
+function bcFix(st, msg){
+  const m=msg.toLowerCase();
+  if(!st.installed && /folder|not found|install/.test(m)) return ['bcnLocate','Find it',''];
+  if(/cd key/.test(m)) return ['bcnKey','Add key',''];
+  if(/runner|wine|proton/.test(m)) return ['bcnRunner','Choose',''];
+  if(st.requires && /requires|needs|first/.test(m)) return ['bcnReq','Set it up',''];
+  if(/prefix|set up|setup|registry/.test(m)) return ['bcnJob','Prepare','data-job="setup"'];
+  return null;
+}
+function viewBSetup(){
+  const g=G(S.game); if(!g) return note('That game isn\'t in the library anymore.');
+  const d=BC.d[g.id], st=d&&d.status, id=esc(g.id), dk=`data-id="${id}"`;
+  let h=`<h2>${esc(g.title)}</h2>`+bcJobRow(g.id);
+  if(!d) return h+(BC.err[g.id]?`<div class="rows">${bcErrNote(g)}</div>`:note('Asking Beacon…'));
+  if(d.old) return h+note(`This Beacon can start games from ${APP} but not set them up here. Update Beacon to 0.0.6 or later (Library › Stores › Beacon), or use Beacon's own window.`)+`<div class="rows">${bcRow('bc-open','beaconOpen',I.sliders,'Open Beacon','Beacon\'s own window','›')}</div>`;
+  h+='<div class="rows">';
+  const stTitle = st.ready ? 'Ready to play' : st.installed ? 'Needs attention' : 'Not set up yet';
+  h+=`<div class="row"><span class="ricon">${st.ready?I.check:I.info}</span><div class="rt"><b>${stTitle}${BC.loading[g.id]?' <span class="mini-spin"></span>':''}</b><small>${st.path?'In <code>'+esc(st.path)+'</code>':'Beacon doesn\'t know where it\'s installed yet'}</small></div></div>`;
+  (st.issues||[]).forEach((x,i)=>{ const f=bcFix(st,x.message);
+    h+= f ? bcRow('bc-fix-'+i, f[0], x.level==='error'?I.x:I.info, esc(x.message), x.level==='error'?'Stops the game from starting':'A note from Beacon', esc(f[1])+' ›', `${dk} ${f[2]}`)
+          : `<div class="row"><span class="ricon">${x.level==='error'?I.x:I.info}</span><div class="rt"><b>${esc(x.message)}</b><small>${x.level==='error'?'Stops the game from starting':'A note from Beacon'}</small></div></div>`; });
+  if(st.requires){ const r=G('beacon:'+st.requires); if(r && !r.inst) h+=bcRow('bc-req','bcnReq',I.info,`Needs ${esc(r.title)} too`,'Set it up as well: this game uses its files','Set it up ›',dk); }
+  if(!st.installed){
+    h+=shead('Install')
+      + bcRow('bc-install','bcnJob',I.dl,'Install from a disc or download',`Run the game's installer (setup.exe). It installs into Beacon's own Wine setup.`,'Choose ›',`${dk} data-job="install"`)
+      + bcRow('bc-locate','bcnLocate',I.lib,'It\'s already installed','Show Beacon the game\'s folder','Choose ›',dk)
+      + bcRow('bc-scan','bcnJob',I.search,'Find games on this device','Beacon looks in the usual places','›','data-job="scan"');
+  } else {
+    const rc=st.runnerChoice, rn=rc ? ((d.runners||[]).find(r=>r.id===rc)||{name:rc}).name : 'Automatic'+(st.runner?` (${st.runner.name})`:'');
+    h+=shead('Settings');
+    if(st.wantsCdKey) h+=bcRow('bc-key','bcnKey',I.lock,'CD key','From your copy of the game. Only Beacon keeps it.',st.hasCdKey?'Saved ›':'Not saved ›',dk);
+    h+=bcRow('bc-runner','bcnRunner',I.gear,'Runner','The Wine or Proton that runs it',esc(rn)+' ›',dk);
+    if(st.sage) h+=bcRow('bc-res','bcnRes',I.display,'Resolution','What the game draws at',esc(st.resolution||'The game\'s own')+' ›',dk)
+      + bcSw('bc-windowed','windowed','Windowed','Runs in a window instead of full screen',st.windowed);
+    else h+=bcRow('bc-vd','bcnVd',I.display,'Virtual desktop','Keeps an old game in one window of its own. Try it if the game\'s window misbehaves.',(st.virtualDesktop?'On':'Off')+(st.vdChoice==null?' (usual)':'')+' ›',dk);
+    if(st.steamAppid) h+=bcSw('bc-steam','viaSteam','Launch through Steam','For the copy in your Steam library',st.viaSteam);
+    h+=bcRow('bc-args','bcnArgs',I.text,'Extra arguments',st.extraArgs?esc(st.extraArgs):'Passed to the game, like -noshellmap','Edit ›',dk)
+      + bcRow('bc-locate','bcnLocate',I.lib,'Game folder',st.path?esc(st.path):'Not set','Change ›',dk);
+  }
+  const c=d.community;
+  if(st.hasCommunity && c){
+    const act=(c.editions||[]).find(e=>e.active);
+    h+=shead('Community versions');
+    if((c.editions||[]).length) h+=bcRow('bc-edition','bcnEdition',I.star,'Version','Which one Play starts',esc(c.chosen?(act?act.name:c.chosen):'Automatic'+(act?` (${act.name})`:''))+' ›',dk);
+    (c.steps||[]).forEach((s,i)=>{ h+=bcRow('bc-step-'+i,'bcnStep',s.done?I.check:I.dl,esc(s.title),esc(s.detail||''),s.done?'Done ›':(s.action==='link'?'Open ›':'Add files ›'),`${dk} data-i="${i}"`); });
+  }
+  h+=shead('Tools');
+  if(st.installed) h+=bcRow('bc-prepare','bcnJob',I.refresh,'Prepare the game','Sets up its Wine prefix and settings. Play does this too; this shows how it goes.',st.needsSetup?'Needs doing ›':st.needsSetup===false?'Done ›':'›',`${dk} data-job="setup"`);
+  h+=bcRow('bc-patch','bcnJob',I.dl,'Run a patch or installer','An official patch, a mod installer or the game\'s own installer, in the game\'s Wine setup','Choose ›',`${dk} data-job="patch"`);
+  if(st.toolLauncher) h+=bcRow('bc-tool','bcnJob',I.play,`${esc(st.short||g.title)}'s own launcher`,'For its updates and options','Open ›',`${dk} data-job="tool"`);
+  h+=bcRow('bc-log','bcnLog',I.text,'Game log',st.hasLog?'What happened the last time it started':'Nothing yet: it\'s written when the game starts','›',dk);
+  if(st.installed) h+=bcRow('bc-mods','bcnMods',I.lib,'Mods',`${(d.mods&&d.mods.list.length)||0} installed · find and add more`,'›',dk);
+  h+=bcRow('bc-open','beaconOpen',I.sliders,'Open Beacon','Beacon\'s own window: the same settings','›');
+  return h+'</div>'+note(`Beacon starts ${esc(g.title)} and keeps these settings; Beacon's own window shows the same. ${APP}'s Game settings keep the controller layout, frame-rate cap and power limit.`);
+}
+function viewBMods(){
+  const g=G(S.game); if(!g) return note('That game isn\'t in the library anymore.');
+  const d=BC.d[g.id], dk=`data-id="${esc(g.id)}"`;
+  let h=`<h2>${esc(g.title)} · Mods</h2>`+bcJobRow(g.id);
+  if(!d) return h+(BC.err[g.id]?`<div class="rows">${bcErrNote(g)}</div>`:note('Asking Beacon…'));
+  if(d.old) return h+note(`This Beacon can't manage mods from ${APP} yet. Update Beacon to 0.0.6 or later, or use Beacon's own window.`)+`<div class="rows">${bcRow('bc-open','beaconOpen',I.sliders,'Open Beacon','Beacon\'s own window','›')}</div>`;
+  const mods=d.mods.list, sel=d.mods.selected;
+  h+='<div class="rows">';
+  if(g.inst && mods.length) h+=bcRow('bm-playwith','playWith',I.play,'Play with…','A mod for this time only',null,dk);
+  h+=shead('Your mods', BC.loading[g.id]);
+  mods.forEach((m,i)=>{ h+=bcRow('bm-mod-'+i,'bcnMod',m.kind==='launcher'?I.play:I.lib,esc(m.name),(m.kind==='launcher'?'Starts with its own launcher':'Loaded by the game')+(m.linked?' · added from another folder':' · in Beacon\'s mods folder'),m.id===sel?'Play starts with it ›':'›',`${dk} data-i="${i}"`); });
+  if(!mods.length) h+=note('No mods yet. Get one below, then add it here.');
+  h+=bcRow('bm-none','bcnNoMod',sel?'':I.check,'No mod (the base game)','What Play starts when no mod is chosen',!sel?'Play starts with it':null,dk)
+    + bcRow('bm-add','bcnAddMod',I.dl,'Add a mod you downloaded','A .big file, a folder of them, or the mod\'s launcher (.exe)','Choose ›',dk)
+    + bcRow('bm-find','bcnJob',I.search,'Find mods on this device','Beacon looks for mods it knows in the usual places','›','data-job="findMods"');
+  if((d.catalog||[]).length){
+    h+=shead('Mods and patches to get');
+    d.catalog.forEach((c,i)=>{ const inst=c.installed && mods.find(m=>m.id===c.installed);
+      h+=bcRow('bm-cat-'+i,'bcnCat',c.kind==='patch'?I.refresh:c.kind==='game'?I.pad:I.globe,esc(c.name)+(/\(/.test(c.name)?'':c.kind==='patch'?' (patch)':c.kind==='game'?' (standalone)':''),esc(c.blurb||''),inst?`Installed as ${esc(inst.name)} ›`:'Get it ›',`${dk} data-i="${i}"`); });
+  }
+  return h+'</div>'+note(`To get a mod: open its page, download it in Hearth Browser, then Add a mod you downloaded. Play starts with the mod chosen here; Beacon's own window shows the same choice.`);
+}
+function viewBLog(){
+  const g=G(S.game); if(!g) return note('That game isn\'t in the library anymore.');
+  const l=BC.log[g.id];
+  let h=`<h2>${esc(g.title)} · Game log</h2><div class="rows">`+bcRow('bl-refresh','bcnLog',I.refresh,'Refresh',l&&l.path?esc(l.path):'The end of the log Beacon writes when it starts the game',null,`data-id="${esc(g.id)}"`)+'</div>';
+  if(!l) return h+note('Reading the log…');
+  if(l.error) return h+note(esc(l.error));
+  if(!l.exists || !l.lines.length) return h+note('Nothing yet. Beacon writes this log when it prepares or starts the game.');
+  return h+`<div class="card" data-f data-k="bl-text" tabindex="-1" style="white-space:pre-wrap;word-break:break-all;font:12px/1.5 ui-monospace,monospace;max-height:60vh;overflow:auto">${l.lines.map(esc).join('\n')}</div>`;
+}
+VIEWS.bsetup = viewBSetup; TITLES.bsetup = 'Game setup';
+VIEWS.bmods = viewBMods; TITLES.bmods = 'Mods';
+VIEWS.blog = viewBLog; TITLES.blog = 'Game log';
+
+// Changes: each answer is the game's details again.
+function bcApply(id, d, k){ if(d){ BC.d[id]=d; if(d.message) toast(d.message); } bcRedraw(k); }
+function bcSet(id, what, value, k){ return bcCall('beacon.set',{id, what, value},60000).then(d=>bcApply(id,d,k)).catch(e=>toast(e.message)); }
+function bcStart(id, job, extra={}, k){
+  if(BC.job) return toast(`Beacon is still busy (${BC.job.label}). Try again when it's done.`);
+  // A file picker may open first (installers, patches, downloads): it waits for the person.
+  return bcCall('beacon.job', Object.assign({id:id||null, job}, extra), 15*60e3).then(r=>{
+    if(!r) return;   // picker closed
+    BC.job={game:id?bcSlug(id):null, job, pct:0, text:'Starting', label:r.label||'working', k};
+    bcRedraw(k);
+  }).catch(e=>toast(e.message));
+}
+function beaconEvent(name, d){
+  if(name==='beacon.progress'){
+    BC.job=Object.assign(BC.job||{game:d.game||null, job:d.job, label:'working'}, {pct:d.pct==null?(BC.job&&BC.job.pct):d.pct, text:d.text||''});
+  } else if(name==='beacon.done'){
+    BC.job=null;
+    const what={setup:'Prepared', install:'The installer finished', patch:'Done', tool:'The launcher closed', scan:'Done looking', findMods:'Done looking', addFiles:'Files added'}[d.job]||'Done';
+    toast(d.ok ? (d.message||what) : (d.error||'That didn\'t work'));
+    if(d.game) bcLoad('beacon:'+d.game);
+    if(d.job==='scan' || d.job==='findMods' || d.job==='install') Object.keys(BC.d).forEach(id=>{ if(!d.game || id!=='beacon:'+d.game) bcLoad(id); });
+  }
+  bcRedraw();
+}
+function bcPrompt(o){ return openPrompt(o); }
+function beaconAct(a, d){
+  const g=G(d.id), id=d.id, dd=g&&BC.d[g.id], st=dd&&dd.status;
+  switch(a){
+    case 'bcnGet': return bcLink(BC_RELEASES);
+    case 'bcnSetup': return beaconSetup(g);
+    case 'bcnMods': return beaconModsPage(g);
+    case 'bcnReload': return bcLoad(id);
+    case 'bcnReq': { const r=st&&G('beacon:'+st.requires); return r ? beaconSetup(r) : null; }
+    case 'bcnJob': return bcStart(d.job==='scan'||d.job==='findMods' ? null : id, d.job, {}, focused&&focused.dataset.k);
+    case 'bcnLocate': return bcCall('beacon.locate',{id},15*60e3).then(r=>{ if(r) bcApply(id,r,'bc-locate'); }).catch(e=>toast(e.message));
+    case 'bcnLog': S.view==='blog' || navigate('blog',{game:id}); BC.log[id]=BC.log[id]||null;
+      return bcCall('beacon.log',{id},30000).then(l=>{ BC.log[id]=l; }).catch(e=>{ BC.log[id]={error:e.message}; }).finally(()=>bcRedraw('bl-refresh'));
+    case 'bcnSet': return bcSet(id||S.game, d.what, d.v, focused&&focused.dataset.k);
+  }
+  if(!st) return;
+  switch(a){
+    case 'bcnKey': {
+      const ask=()=>bcPrompt({title:`CD key for ${g.title}`, secret:true}).then(v=>{
+        if(v==null) return; const k=v.trim();
+        if(!/^[A-Za-z0-9-]{4,64}$/.test(k)) return toast('A CD key has only letters, numbers and dashes');
+        return bcCall('beacon.setKey',{id, key:k},60000).then(r=>bcApply(id,r,'bc-key')).catch(e=>toast(e.message)); });
+      if(!st.hasCdKey) return ask();
+      return openSheet({title:'CD key', sub:`${g.title} has a saved key. Only Beacon keeps it.`, items:[
+        {label:'Change the key', icon:'lock', run:()=>setTimeout(ask,200)},
+        {label:'Remove the saved key', icon:'trash', run:()=>bcCall('beacon.setKey',{id, clear:true},60000).then(r=>bcApply(id,r,'bc-key')).catch(e=>toast(e.message))}]});
+    }
+    case 'bcnRunner': {
+      const cur=st.runnerChoice||null;
+      return openSheet({title:'Runner', sub:`What runs ${g.title}. Automatic picks the best one Beacon finds.`, items:[
+        {label:'Automatic'+(dd.best?` (${((dd.runners||[]).find(r=>r.id===dd.best)||{name:dd.best}).name})`:''), icon:!cur?'check':'', run:()=>bcSet(id,'runner','auto','bc-runner')},
+        ...(dd.runners||[]).map(r=>({label:r.name+(r.kind?` · ${r.kind==='umu'?'umu':r.kind==='proton'?'Proton':'Wine'}`:''), icon:cur===r.id?'check':'', run:()=>bcSet(id,'runner',r.id,'bc-runner')}))]});
+    }
+    case 'bcnRes': {
+      const scr=`${Math.round(screen.width*(window.devicePixelRatio||1))}x${Math.round(screen.height*(window.devicePixelRatio||1))}`;
+      const list=[...new Set([scr,...BC_RES])].filter(r=>{ const [w,h]=r.split('x').map(Number); return w>=640&&h>=480; });
+      return openSheet({title:'Resolution', sub:`What ${g.title} draws at`, items:[
+        {label:`Match the screen (${scr})`, icon:st.resolution===scr?'check':'display', run:()=>bcSet(id,'resolution',scr,'bc-res')},
+        ...list.filter(r=>r!==scr).map(r=>({label:r.replace('x',' × '), icon:st.resolution===r?'check':'', run:()=>bcSet(id,'resolution',r,'bc-res')})),
+        {label:'The game\'s own setting', icon:!st.resolution?'check':'', run:()=>bcSet(id,'resolution','clear','bc-res')}]});
+    }
+    case 'bcnVd': return openSheet({title:'Virtual desktop', sub:`Runs ${g.title} inside one window of its own`, items:[
+        {label:'On', icon:st.vdChoice===true?'check':'', run:()=>bcSet(id,'virtualDesktop','on','bc-vd')},
+        {label:'Off', icon:st.vdChoice===false?'check':'', run:()=>bcSet(id,'virtualDesktop','off','bc-vd')},
+        {label:`Usual for this game (${st.vdDefault?'on':'off'})`, icon:st.vdChoice==null?'check':'', run:()=>bcSet(id,'virtualDesktop','default','bc-vd')}]});
+    case 'bcnArgs': return bcPrompt({title:'Extra arguments', value:st.extraArgs||''}).then(v=>{ if(v!=null) bcSet(id,'args',v.trim(),'bc-args'); });
+    case 'bcnEdition': { const c=dd.community||{};
+      return openSheet({title:'Version', sub:`Which version of ${g.title} Play starts`, items:[
+        {label:'Automatic (the community version when it\'s installed)', icon:!c.chosen?'check':'', run:()=>bcSet(id,'edition','auto','bc-edition')},
+        ...(c.editions||[]).map(e=>({label:e.name+(e.installed?'':' (not installed yet)'), icon:c.chosen===e.id?'check':'', run:()=>bcSet(id,'edition',e.id,'bc-edition')}))]}); }
+    case 'bcnStep': { const s=((dd.community||{}).steps||[])[+d.i]; if(!s) return;
+      const k='bc-step-'+d.i, items=[];
+      if(s.url) items.push({label:'Open its page', icon:'globe', run:()=>bcLink(s.url)});
+      if(s.action==='installer') items.push({label:'Run the installer you downloaded…', icon:'dl', run:()=>bcStart(id,'addFiles',{step:s.id},k)});
+      if(s.action==='merge'||s.action==='mods'){ items.push({label:'Add the file you downloaded…', icon:'dl', run:()=>bcStart(id,'addFiles',{step:s.id},k)});
+        items.push({label:'Add a folder you downloaded…', icon:'lib', run:()=>bcStart(id,'addFiles',{step:s.id, folder:true},k)}); }
+      return openSheet({title:s.title, sub:(s.detail||'')+(s.done?' Done already.':''), items}); }
+    case 'bcnMod': { const m=dd.mods.list[+d.i]; if(!m) return; const k='bm-mod-'+d.i;
+      const items=[{label:'Play starts with it', icon:dd.mods.selected===m.id?'check':'play', run:()=>bcSelect(g,m.id,k)}];
+      if(g.inst) items.push({label:'Play with it now', icon:'play', run:()=>launch(g,m.id)});
+      if(m.linked) items.push({label:'Remove from Beacon', icon:'trash', run:()=>setTimeout(()=>openSheet({title:`Remove ${m.name}?`, sub:'Beacon forgets it. The files stay where they are.', items:[
+        {label:'Remove', icon:'trash', run:()=>bcCall('beacon.removeMod',{id, mod:m.id},60000).then(r=>bcApply(id,r,'bm-add')).catch(e=>toast(e.message))}]}),200)});
+      return openSheet({title:m.name, sub:m.linked?(m.path||''):'In Beacon\'s mods folder: delete its folder there to remove it.', items}); }
+    case 'bcnNoMod': return bcSelect(g, null, 'bm-none');
+    case 'bcnAddMod': return openSheet({title:'Add a mod', sub:'Choose what you downloaded. Beacon links it from where it is.', items:[
+        {label:'A file (.big or the mod\'s launcher .exe)…', icon:'dl', run:()=>bcAddMod(id,false)},
+        {label:'A folder of .big files…', icon:'lib', run:()=>bcAddMod(id,true)}]});
+    case 'bcnCat': { const c=dd.catalog[+d.i]; if(!c) return; const inst=c.installed && dd.mods.list.find(m=>m.id===c.installed);
+      const items=[];
+      if(c.url) items.push({label:'Open its page in Hearth Browser', icon:'globe', run:()=>bcLink(c.url)});
+      if(c.kind==='patch') items.push({label:'Run the patch you downloaded…', icon:'dl', run:()=>bcStart(id,'patch',{},'bm-cat-'+d.i)});
+      else if(c.kind==='game') items.push({label:'Run the installer you downloaded…', icon:'dl', run:()=>bcStart(id,'patch',{},'bm-cat-'+d.i)});
+      else items.push({label:'Add the mod you downloaded…', icon:'dl', run:()=>bcAddMod(id,false)});
+      if(inst && g.inst) items.push({label:`Play with ${inst.name} now`, icon:'play', run:()=>launch(g,inst.id)});
+      return openSheet({title:c.name, sub:(c.blurb||'')+(inst?` Installed as ${inst.name}.`:''), items}); }
+  }
+}
+function bcAddMod(id, folder){ return bcCall('beacon.addMod',{id, folder, select:false},15*60e3).then(r=>{ if(r) bcApply(id,r,'bm-add'); }).catch(e=>toast(e.message)); }
+function bcSelect(g, mod, k){
+  const p = host ? call('beacon.selectMod',{id:g.id, mod:mod||'@none'},30000).then(x=>{ if(x) Object.assign(g, fromHost(Object.assign({}, x, {fav:g.fav, hidden:g.hidden}))); })
+                 : BC_MOCK('beacon.selectMod',{id:g.id, mod});
+  return p.then(()=>{ toast(mod ? `${g.title} starts with ${beaconModName(g,mod)}` : `${g.title} starts without mods`); return bcLoad(g.id); }).then(()=>bcRedraw(k)).catch(e=>toast(e.message));
+}
+function bcLink(url){
+  if(!host) return toast('Opens in Hearth Browser: '+url);
+  return call('beacon.openLink',{url},15000).then(()=>toast('Opening the page in Hearth Browser…')).catch(e=>toast(e.message));
+}
+
+// The browser preview's Beacon: the games in GAMES, with settings, mods, catalog, community versions and jobs.
+const BC_MOCK = (()=>{
+  const clone=o=>JSON.parse(JSON.stringify(o)), wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const RUN=[{id:'proton:GE-Proton9-20',name:'GE-Proton9-20',kind:'proton'},{id:'umu',name:'umu-launcher (UMU-Proton)',kind:'umu'},{id:'wine:system',name:'System Wine',kind:'wine'}];
+  const MOD='https://www.moddb.com/mods/';
+  const CAT={
+    bfme1:[{id:'patch-1-03',name:'Patch 1.03',kind:'patch',blurb:'The last official update.',url:'https://www.moddb.com/games/the-battle-for-middle-earth/downloads'},{id:'edain-bfme1',name:'Edain Mod (BFME 1)',kind:'mod',blurb:'The Edain team\'s overhaul of the first game.',url:MOD+'edain-mod'}],
+    bfme2:[{id:'edain',name:'Edain Mod',kind:'mod',blurb:'Lore-friendly overhaul with new factions and heroes.',url:MOD+'edain-mod',installed:'bfme2:edain'},{id:'widescreen',name:'Widescreen fix',kind:'patch',blurb:'Proper 16:9 and 16:10 menus.',url:'https://www.moddb.com/games/battle-for-middle-earth-ii/addons'}],
+    rotwk:[{id:'edain',name:'Edain Mod',kind:'mod',blurb:'Lore-friendly overhaul with new factions and heroes.',url:MOD+'edain-mod',installed:'rotwk:edain'},{id:'the-dawnless-days',name:'The Dawnless Days',kind:'mod',blurb:'The War of the Ring before the Fellowship.',url:MOD+'the-dawnless-days',installed:'rotwk:the-dawnless-days'},{id:'aotr-standalone',name:'Age of the Ring (standalone)',kind:'game',blurb:'Runs without RotWK installed.',url:MOD+'the-age-of-the-ring'},{id:'patch-2-02',name:'Patch 2.02',kind:'patch',blurb:'The community patch for RotWK.',url:MOD+'unofficial-202-patch'}],
+    aotr:[{id:'age-of-the-ring-8-4',name:'Age of the Ring 8.4',kind:'mod',blurb:'The latest Age of the Ring.',url:MOD+'the-age-of-the-ring',installed:'aotr:age-of-the-ring-8-4'}],
+    conquest:[], swgb:[]};
+  const ST={}, MODS={}, COMM={swgb:{chosen:null,editions:[{id:'saga',name:'Galactic Battlegrounds Saga',blurb:'The game as it came.',community:false,installed:true,active:false},{id:'expanding-fronts',name:'Expanding Fronts',blurb:'The community expansion: new units, maps and balance.',community:true,installed:true,active:true}],
+    steps:[{id:'expanding-fronts',title:'Expanding Fronts',detail:'Download the full release, then add it here: Beacon puts it under the game\'s Mods folder.',url:'https://www.moddb.com/mods/expanding-fronts',action:'mods',done:true},
+           {id:'ef-patch',title:'Expanding Fronts patch',detail:'The latest patch for Expanding Fronts. Add the file you downloaded; replaced files are backed up first.',url:'https://www.moddb.com/mods/expanding-fronts/downloads',action:'merge',done:false},
+           {id:'forum',title:'Forum and guides',detail:'Help, maps and multiplayer.',url:'https://swgb.heavengames.com/',action:'link',done:false}]}};
+  const st=slug=>{
+    if(!ST[slug]){
+      const g=G('beacon:'+slug)||{inst:false,beacon:{}}, b=g.beacon||{}, sage=(b.family||'bfme')==='bfme';
+      ST[slug]={title:g.title, short:b.short||slug.toUpperCase(), family:b.family||'bfme', installed:!!g.inst, ready:!!g.inst&&!b.blocker, path:g.path||null,
+        issues:clone(b.issues||[]), runner:g.inst?{id:RUN[0].id,name:RUN[0].name}:null, runnerChoice:null, hasCdKey:slug!=='rotwk', wantsCdKey:['bfme1','bfme2','rotwk'].includes(slug),
+        resolution:sage&&g.inst?'1920x1080':null, windowed:false, extraArgs:slug==='rotwk'?'-noshellmap':'', prefixReady:!!g.inst, virtualDesktop:!sage, vdChoice:null, vdDefault:!sage,
+        steamAppid:slug==='swgb'?356500:null, viaSteam:false, edition:slug==='swgb'?'Expanding Fronts':null, selectedMod:b.mod||null, toolLauncher:slug==='aotr', sage,
+        requires:slug==='rotwk'?'bfme2':null, needsSetup:g.inst?slug==='conquest':null, hasLog:!!g.inst, hasCommunity:slug==='swgb'};
+      MODS[slug]=(b.mods||[]).map((m,i)=>({id:m.id,name:m.name,kind:m.kind,path:i?`/home/you/Downloads/${m.name}.big`:`/home/you/.local/share/beacon/mods/${slug}/${m.name}`,linked:i>0}));
+    }
+    return ST[slug];
+  };
+  const details=slug=>{ const s=st(slug), mods=MODS[slug];
+    return clone({game:slug, old:false, status:Object.assign({}, s, {selectedMod:s.selectedMod}), mods:{selected:s.selectedMod, list:mods},
+      catalog:(CAT[slug]||[]).map(c=>Object.assign({installed:null}, c, {installed:mods.some(m=>m.id===c.installed)?c.installed:null})),
+      community:s.hasCommunity?COMM[slug]:null, runners:RUN, best:RUN[0].id, default:null, busy:null}); };
+  const syncGame=slug=>{ const g=G('beacon:'+slug), s=st(slug); if(!g) return;
+    g.inst=s.installed; g.path=s.path; g.beacon=Object.assign({}, g.beacon, {mod:s.selectedMod, ready:s.ready, blocker:s.ready?null:(s.issues.find(i=>i.level==='error')||{}).message||null, issues:s.issues,
+      mods:MODS[slug].map(m=>({id:m.id,name:m.name,kind:m.kind}))}); };
+  const fail=t=>{ throw new Error(t); };
+  const job=(slug, job, steps, after)=>{
+    let i=0; const t=setInterval(()=>{
+      if(i<steps.length){ beaconEvent('beacon.progress',{game:slug,job,pct:steps[i][0],text:steps[i][1]}); i++; return; }
+      clearInterval(t); const msg=after&&after(); beaconEvent('beacon.done',{game:slug,job,ok:true,message:msg||null});
+    }, 600);
+  };
+  return async (m, a)=>{
+    await wait(120);
+    const slug=a.id?String(a.id).replace(/^beacon:/,''):null, s=slug&&st(slug);
+    if(m==='beacon.details') return details(slug);
+    if(m==='beacon.log') return {game:slug, path:`/home/you/.local/share/beacon/logs/${slug}.log`, exists:s.hasLog, lines:s.hasLog?['== beacon setup 2026-10-19 21:04','wine: created the prefix','reg: imported 14 keys',`== beacon launch ${slug} 2026-10-20 18:22`,'0024:fixme:d3d:wined3d_guess_card No card selected','game: started (pid 41822)','game: exited (0)']:[]};
+    if(m==='beacon.set'){
+      const v=a.value;
+      if(a.what==='runner') s.runnerChoice=v==='auto'?null:(RUN.some(r=>r.id===v)?v:fail('Beacon doesn\'t have that runner anymore.'));
+      else if(a.what==='resolution') s.resolution=v==='clear'?null:(/^\d{3,5}x\d{3,5}$/.test(v)?v:fail('Choose a resolution like 1920x1080.'));
+      else if(a.what==='windowed') s.windowed=v==='on'||v===true;
+      else if(a.what==='virtualDesktop'){ s.vdChoice=v==='default'?null:v==='on'; s.virtualDesktop=s.vdChoice==null?s.vdDefault:s.vdChoice; }
+      else if(a.what==='viaSteam') s.viaSteam=v==='on'||v===true;
+      else if(a.what==='args') s.extraArgs=String(v);
+      else if(a.what==='edition'){ const c=COMM[slug]; c.chosen=v==='auto'?null:v; c.editions.forEach(e=>e.active=c.chosen?e.id===c.chosen:e.community); s.edition=(c.editions.find(e=>e.active)||{}).name||null; }
+      return Object.assign(details(slug), {message:'Saved'});
+    }
+    if(m==='beacon.setKey'){ s.hasCdKey=!a.clear; s.issues=s.issues.filter(i=>!/CD key/i.test(i.message)); syncGame(slug); return Object.assign(details(slug), {message:a.clear?'CD key removed':'CD key saved'}); }
+    if(m==='beacon.locate'){ s.installed=true; s.path=s.path||`/home/you/Games/${s.short.replace(/\W/g,'')}`; s.issues=s.issues.filter(i=>i.level!=='error'); s.ready=true; s.runner={id:RUN[0].id,name:RUN[0].name}; s.needsSetup=true; syncGame(slug); return Object.assign(details(slug), {message:`${s.short} folder set`}); }
+    if(m==='beacon.addMod'){ const n=a.folder?'Rise of the Witch-king Reforged':'Widescreen fix', id=`${slug}:${n.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;
+      if(!MODS[slug].some(x=>x.id===id)) MODS[slug].push({id,name:n,kind:'mod',path:`/home/you/Downloads/${n}${a.folder?'':'.big'}`,linked:true}); syncGame(slug); return Object.assign(details(slug), {message:`Added ${n}`}); }
+    if(m==='beacon.removeMod'){ MODS[slug]=MODS[slug].filter(x=>x.id!==a.mod); if(s.selectedMod===a.mod) s.selectedMod=null; syncGame(slug); return Object.assign(details(slug), {message:'Mod removed'}); }
+    if(m==='beacon.selectMod'){ s.selectedMod=a.mod&&a.mod!=='@none'?a.mod:null; syncGame(slug); return true; }
+    if(m==='beacon.job'){
+      const label={setup:'preparing the game',install:'running the installer',patch:'running the patch',tool:'running the game\'s launcher',scan:'looking for games',findMods:'looking for mods',addFiles:'adding the files'}[a.job];
+      if(!label) fail('Hearth can\'t do that with Beacon.');
+      if(a.job==='scan') job(null,'scan',[[10,'Looking in /home/you/Games'],[45,'Looking in /home/you/.steam/steam/steamapps/common'],[80,'Looking in /run/media/you/Games']],()=>'Found 5 games');
+      else if(a.job==='findMods') job(null,'findMods',[[20,'Looking in /home/you/Downloads'],[70,'Looking in /home/you/Games']],()=>'No new mods found');
+      else if(a.job==='setup') job(slug,'setup',[[5,'Checking the game\'s setup'],[20,'Creating the Wine prefix and adding the game\'s registry keys (the first time can take a minute)'],[90,'Writing the game\'s settings']],()=>{ s.needsSetup=false; s.prefixReady=true; s.hasLog=true; s.issues=s.issues.filter(i=>!/prefix/i.test(i.message)); syncGame(slug); return 'Ready to play'; });
+      else if(a.job==='install') job(slug,'install',[[5,'Preparing the game\'s Wine prefix'],[15,'Running setup.exe — follow its window. Some installers work for a long time without showing progress.'],[90,'Looking for newly installed games']],()=>{ s.installed=true; s.ready=true; s.path=`/home/you/.local/share/beacon/prefixes/${slug}/drive_c/Program Files/${s.title}`; s.issues=s.issues.filter(i=>i.level!=='error'); s.runner={id:RUN[0].id,name:RUN[0].name}; s.needsSetup=true; syncGame(slug); return 'setup.exe finished'; });
+      else if(a.job==='addFiles'){ const step=(COMM[slug]||{steps:[]}).steps.find(x=>x.id===a.step)||fail('That setup step can\'t be used.'); job(slug,'addFiles',[[null,'Extracting EF_Patch.zip'],[null,'Copying files into the game folder (anything replaced is backed up first)']],()=>{ step.done=true; return 'Added '+step.title; }); }
+      else job(slug,a.job,[[5,'Preparing the game\'s Wine prefix'],[15,'Running the program — follow its window']],()=>'Done');
+      return {started:true, job:a.job, label};
+    }
+    if(m==='beacon.openLink') return {ok:true};
+    fail('Not available in the browser preview: '+m);
+  };
+})();
 function downloadOptions(g){
   if(!g) return;
   openSheet({title:g.title, sub:`${SOURCES[g.src]} · ${dlInfo(g).label}`, items:[
@@ -4809,6 +5873,10 @@ async function addManual(){
 // ---------- installs and downloads ----------
 async function installGame(g){
   if(!g) return;
+  if(g.src==='beacon') return beaconSetup(g);   // Game setup: install it, or show where it is
+  // The store's sign-in expired: installing needs it, so offer Sign in again instead of failing in the queue.
+  const xs = (g.src==='epic' || g.src==='gog') && isExpired(g.src);
+  if(xs && !g.note) return expiredSheet(g.src, `${g.title} can't install until you do.`);
   if(!host) return toast(`The browser preview can't install games`);
   if(g.note) return toast(`${g.note}. ${APP} can't install it.`);
   try{
@@ -4821,7 +5889,10 @@ async function installGame(g){
     else if(g.installKind==='store') toast(`The Microsoft Store is open. Install ${g.title} there; ${APP} picks it up when it's done.`);
     else toast(`${SOURCES[g.src]}'s install window is open: A installs, B cancels, D-pad moves (or use the right stick as a mouse).`);
     startDownloadPoll(true);
-  }catch(e){ toast(e.message); }
+  }catch(e){
+    if((g.src==='epic' || g.src==='gog') && /sign-in expired/i.test(e.message)){ await loadAccounts(true); return expiredSheet(g.src, `${g.title} can't install until you do.`); }
+    toast(e.message);
+  }
 }
 let dlTimer=null, dlWatchUntil=0, dlRunning=false, dlSig='';
 // Polls Steam's install records while anything is downloading (and for a while after an install request,
@@ -4868,19 +5939,66 @@ const STORE_INFO = {
 // On Linux, Xbox PC games can't be installed; they stream instead (Xbox Cloud Gaming).
 if(LINUX) Object.assign(STORE_INFO.xbox, {blurb:'Your gamertag and the games you\'ve played on Xbox. On Linux, Game Pass games stream with Xbox Cloud Gaming (Library › Xbox).'});
 const ACC = {list:null, root:'', signing:null, sig:''};
+// Browser preview: store → when its sign-in expired (?expired: GOG's, an hour ago). 0: it works.
+const MOCKEXP = {gog: /[?&]expired/.test(location.search) ? Date.now()-3.6e6 : 0};
 async function loadAccounts(fromEvent){
   if(!host && !MOCK) return;
   try{
     const r = await call('accounts.status');
+    const first = ACC.list===null;
     ACC.list=r.accounts||[]; ACC.root=r.installRoot||''; ACC.beacon=r.beacon||null;
     // Reload the library when an account was added/removed or its game list arrived.
     const sig=ACC.list.map(a=>`${a.store}:${a.signedIn?1:0}:${a.fetched}`).join('|');
     const changed = ACC.sig && sig!==ACC.sig; ACC.sig=sig;
     if(changed && host) loadLibrary(true);
-    if(S.view==='stores' || S.view==='library') render(null,true);
+    syncExpired(!first);
+    if(S.view==='stores' || S.view==='library' || S.view==='downloads') render(null,true);
     else if(S.view==='settings' && S.settingsTab==='profile') render(null,true);
     deskSignCheck();
   }catch(e){ if(!fromEvent) toast(e.message); }
+}
+// ---------- Expired store sign-ins ----------
+// A store refused its saved sign-in (hearth-core's stores::expiry, Ember's SignInExpiry): accounts.status says
+// expired. Library › Stores shows "Sign-in expired" with Sign in again; a bell entry stays until it's handled;
+// whatever failed because of it (an install, a start, Downloads) offers the same instead of a dead end.
+// Games already installed keep showing and still start if they work offline.
+const EXPIRED_TOLD = new Set();   // stores whose expiry has been announced (once per expiry)
+const accOf = store => (ACC.list||[]).find(a=>a.store===store);
+const isExpired = store => !!(accOf(store) && accOf(store).expired);
+function storeName(store){ return STORE_INFO[store] ? STORE_INFO[store].name : store; }
+// announce: a toast for an expiry that's new since the last look (not at start: the bell has it then).
+function syncExpired(announce){
+  const list=(ACC.list||[]).filter(a=>a.expired && STORE_INFO[a.store] && a.store!=='steam');
+  const before=NOTIFS.length;
+  NOTIFS=NOTIFS.filter(n=>!n.expired || list.some(a=>a.store===n.expired));
+  for(const s of [...EXPIRED_TOLD]) if(!list.some(a=>a.store===s)) EXPIRED_TOLD.delete(s);
+  let added=false;
+  for(const a of list){
+    if(!NOTIFS.some(n=>n.expired===a.store)){ NOTIFS.unshift({i:'user', t:`Your ${storeName(a.store)} sign-in expired`, s:`Select to sign in again${a.name?' as '+a.name:''}`, expired:a.store}); added=true; }
+    if(!EXPIRED_TOLD.has(a.store)){ EXPIRED_TOLD.add(a.store); if(announce && !OVERLAY) expiredToast(a.store); }
+  }
+  if(added || NOTIFS.length!==before){ updateBadge(); if(S.layers.includes('qam')) renderQam(); }
+}
+function expiredToast(store){ toast(`Your ${storeName(store)} sign-in expired. Open Notifications or Library › Stores to sign in again.`); }
+// The host noticed it just now (hearth-core sends accounts.expired once per expiry).
+function onAccExpired(d){
+  if(!d || !STORE_INFO[d.store]) return;
+  if(!EXPIRED_TOLD.has(d.store)){ EXPIRED_TOLD.add(d.store); expiredToast(d.store); }
+  loadAccounts(true);
+}
+// Sign in again: on the Stores page (Game Mode: through Desktop Mode, as any sign-in from there).
+function expSignIn(store){
+  closeAll();
+  if(S.view!=='stores') navigate('stores');
+  if(store==='steam') return accSignIn('steam');
+  setTimeout(()=>accSignIn(store), 250);
+}
+// What failed because of it says so, with Sign in again. why: what didn't work ("Grimforge didn't install.").
+function expiredSheet(store, why){
+  const a=accOf(store)||{}, n=storeName(store);
+  openSheet({title:`Your ${n} sign-in expired`,
+    sub:`${why?why+' ':''}${n} needs you to sign in again${a.name?' as '+a.name:''} to install games, sync cloud saves and play online. Games you've installed still start if they work offline.`,
+    items:[{label:'Sign in again', icon:'user', run:()=>setTimeout(()=>expSignIn(store),250)}]});
 }
 // ---------- First start (Hearth OS): Wi-Fi, store accounts, the controller, your games ----------
 // Shown once on a fresh install, instead of dropping straight into the library. Skippable at every step;
@@ -5387,12 +6505,15 @@ function viewStores(){
   const cards = ACC.list.map(a=>{
     const info=STORE_INFO[a.store]; if(!info) return '';
     const signing = ACC.signing===a.store;
+    // Expired: the store refused the saved sign-in (Epic's may also read as signed out: legendary forgets it).
+    const expired = !!a.expired && a.store!=='steam' && !signing;
     const status = signing ? 'Signing in… finish in the sign-in window'
+      : expired ? `Sign-in expired${a.name?` · ${a.name}`:''}`
       : a.store==='steam' ? (a.note ? a.note : a.signedIn ? `Signed in as ${a.name}` : 'Not signed in')
       : a.signedIn ? `Signed in${a.name?` as ${a.name}`:''}` : 'Not signed in';
     const av = a.signedIn && a.avatar ? `<div class="avatar md" style="width:48px;height:48px;border-radius:12px"><span>${esc(initials(a.name||info.name))}</span><img src="${esc(a.avatar)}" alt="" onerror="this.remove()"></div>` : '';
     const stats = [];
-    if(a.signedIn || a.store==='steam'){
+    if(a.signedIn || expired || a.store==='steam'){
       if(a.owned) stats.push(`<span><b>${a.owned}</b> games${a.store==='xbox'?' played on PC':''}</span>`);
       stats.push(`<span><b>${a.installed}</b> installed</span>`);
       if(a.busy) stats.push(`<span>Updating game list…</span>`);
@@ -5403,13 +6524,15 @@ function viewStores(){
     let btns='';
     if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?(signInViaDesktop()?'Switch account':'Open Steam'):'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : ''); }
     else if(signing) btns = `<span class="mini-spin"></span>`;
+    else if(expired) btns = b('accSignIn','Sign in again','user',true) + (a.owned||a.installed ? b('accShow','Show games','lib') : '') + b('accSignOut','Sign out','x');
     else if(!a.signedIn) btns = b('accSignIn','Sign in','user',true);
     else btns = b('accShow','Show games','lib',true) + (a.busy?'':b('accRefresh','Refresh list','refresh')) + b('accSignOut','Sign out','x');
-    return `<div class="scard" style="--sc:${info.color}">
-      <div class="shd"><div class="smark">${info.mark}</div><div class="sti"><b>${info.name}</b><small class="${a.signedIn?'on':''}">${esc(status)}</small></div>${av}</div>
+    return `<div class="scard ${expired?'expired':''}" style="--sc:${info.color}">
+      <div class="shd"><div class="smark">${info.mark}</div><div class="sti"><b>${info.name}</b><small class="${expired?'warn':a.signedIn?'on':''}">${esc(status)}</small></div>${av}</div>
       <div class="sblurb">${info.blurb}</div>
       ${stats.length?`<div class="sstats">${stats.join('')}</div>`:''}
-      ${a.error?`<div class="serr">${esc(a.error)}</div>`:''}
+      ${expired?`<div class="serr">${info.name} stopped accepting your sign-in${a.expiredAt?' '+ago(a.expiredAt).toLowerCase():''}. Sign in again${a.name?' as '+esc(a.name):''} to install games, sync cloud saves and play online. Games you've installed still start if they work offline.</div>`
+        : a.error?`<div class="serr">${esc(a.error)}</div>`:''}
       <div class="sbtns">${btns}</div></div>`;
   }).join('');
   // A windowed Hearth in Desktop Mode (opened for a sign-in from Game Mode, or from the desktop): the way back.
@@ -5427,7 +6550,11 @@ function viewStores(){
 }
 async function accSignIn(store){
   const info=STORE_INFO[store];
-  if(!host) return toast(`Signing in needs the ${APP} app (not the browser preview).`);
+  if(!host){
+    // Preview (?expired): signing in again clears the mock's expired sign-in.
+    if(MOCKEXP[store]){ MOCKEXP[store]=0; toast(`Signed in to ${info.name} (preview)`); return loadAccounts(true); }
+    return toast(`Signing in needs the ${APP} app (not the browser preview).`);
+  }
   if(signInViaDesktop()) return accSignInFromGame(store);
   if(store==='steam'){
     try{ await call('accounts.signIn',{store}); toast('Steam is open. Sign in or switch accounts there, then come back to '+APP+'.'); }catch(e){ toast(e.message); }
@@ -5462,7 +6589,7 @@ function setupResumeStep(){
   return n>0 && n<SETUP_STEPS.length ? n : 0;
 }
 // "signedIn:name" for a store, to tell when the sign-in has happened (or Steam switched accounts).
-function deskSignState(store){ const a=(ACC.list||[]).find(x=>x.store===store); return a ? `${a.signedIn?1:0}:${a.name||''}` : ''; }
+function deskSignState(store){ const a=(ACC.list||[]).find(x=>x.store===store); return a ? `${a.signedIn?1:0}:${a.expired?1:0}:${a.name||''}` : ''; }
 // In a windowed Hearth (Desktop Mode): the sign-in Game Mode asked for.
 async function deskSignBegin(store){
   if(!STORE_INFO[store] || !host) return;
@@ -5481,7 +6608,7 @@ async function deskSignBegin(store){
 // After each account change: once that store is signed in (or on another account), offer Game Mode.
 function deskSignCheck(){
   const st=DESKSIGN.store; if(!st || DESKSIGN.offered || DESKSIGN.base===null) return;
-  const a=(ACC.list||[]).find(x=>x.store===st); if(!a || !a.signedIn || deskSignState(st)===DESKSIGN.base) return;
+  const a=(ACC.list||[]).find(x=>x.store===st); if(!a || !a.signedIn || a.expired || deskSignState(st)===DESKSIGN.base) return;
   DESKSIGN.offered=true; clearInterval(DESKSIGN.timer);
   const info=STORE_INFO[st];
   openSheet({title:`Signed in to ${info.name}. Back to Game Mode?`, sub:`Your games from ${info.name} show in the library there.`, noCancel:true,
@@ -5651,6 +6778,7 @@ function onSysEvent(name, data){
   if(name==='profiles.switching'){ PROF.switching=data.name; if(S.view!=='profiles') navigate('profiles',{},false); else render(null,true); return; }
   if(name==='newOs'){ const was=NEWOS.s; NEWOS.s=Object.assign({},was||{},data); if(was&&was.state==='moving'&&data.state!=='moving') toast(data.error?data.error:'The new Hearth OS is ready. Restart to start it.'); if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); return; }
   if(name==='switch'){ if(SW.s) SW.s.job=data.job; if(data.job && data.job.state==='done') loadSwitch(); if(data.job && data.job.state==='error') toast(data.job.error||'That step didn\'t work'); if(S.view==='settings'&&S.settingsTab==='switch') render(null,true); return; }
+  if(name==='watchdog'){ const d=data||{}; if(d.code){ LOGS.r={code:d.code, url:'https://hearth-counter.game305-cl.workers.dev/v1/logs/'+d.code}; NOTIFS.unshift({i:'refresh', t:APP+' got stuck and sent a report', s:'Code '+d.code}); updateBadge(); toast(APP+' got stuck. Report sent: '+d.code); } else toast(APP+' got stuck. It\'s freeing itself.'); return; }
   if(name==='library.changed'){ if(!OVERLAY) loadLibrary(false); return; }
   if(name==='desktopFailed') return openSheet({title:"Mantel (Desktop Mode) couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});
   if(name==='open'){ if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
@@ -5666,9 +6794,11 @@ function onSysEvent(name, data){
   if(name.startsWith('coop.')) return coopEvent(name, data||{});
   if(name.startsWith('seats.')) return seatsEvent(name, data||{});
   if(name.startsWith('space.')) return spaceEvent(name, data||{});
+  if(name.startsWith('beacon.')) return beaconEvent(name, data||{});
   if(name==='quickResume'){ applyQuick(data); if(!OVERLAY && !S.layers.length) render(null,true); else { renderFooter(); if(S.layers.includes('qam')) renderQam(); } return; }
   if(name==='game.paused'){ S.paused=!!data.paused; if(S.layers.includes('qam')) renderQam(); return; }
   if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
+  if(name==='accounts.expired') return OVERLAY ? null : onAccExpired(data);
   if(name==='signinStart') return OVERLAY ? null : deskSignBegin(data&&data.store);
   if(name==='osd') return showOsd(data);
   if(name==='library.art'){ if(!LIB.loading && !OVERLAY) loadLibrary(false); return; }
@@ -5679,7 +6809,10 @@ function onSysEvent(name, data){
   if(name==='overlay.hidden') return overlayHidden();
   if(name==='install.done'){
     const t=data.title||'The game';
+    // Failed because the store's sign-in expired: say so, with Sign in again (not a dead-end error).
+    const xs = data.error && data.error!=='cancelled' ? (data.expired || (()=>{ const s=String(data.id||'').split(':')[0]; return STORE_INFO[s] && (isExpired(s) || /sign-in expired/i.test(data.error)) ? s : null; })()) : null;
     if(data.error==='cancelled') toast(`Cancelled the download of ${t}`);
+    else if(xs && !OVERLAY){ toast(`${t} didn't install: your ${storeName(xs)} sign-in expired`); loadAccounts(true); if(!S.layers.length && !S.running) expiredSheet(xs, `${t} didn't install.`); }
     else if(data.error) toast(`${t} didn't install: ${data.error}`);
     else { if(data.id){ const k=DL_DONE.indexOf(data.id); if(k>=0) DL_DONE.splice(k,1); DL_DONE.unshift(data.id); DL_DONE.length=Math.min(DL_DONE.length,6); }
       toast(`${t} is installed and ready to play`); NOTIFS.unshift({i:'dl', t:`${t} is ready to play`, s:'Installed by '+APP+''}); updateBadge(); }
@@ -5747,6 +6880,7 @@ function onSettingsTab(t){
   if(t==='remote') loadRemote();
   if(t==='sources'){ loadEmu(); loadXodus(); }
   if(t==='appearance'){ loadDeskWall(); watchVotes(true); }
+  if(t==='liblook') watchVotes(true);
   if(t==='import') loadImport();
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();
@@ -5953,6 +7087,7 @@ function input(k){
     case 'y': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (closeAll(), query='', openLayer('search'));
     case 'x': return top==='prompt' ? promptKey(' ') : top==='search' ? typeKey(' ') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
     case 'lb': case 'rb': return shiftTab(k==='lb'?-1:1);
+    case 'rup': case 'rdown': return top ? null : libJump(k==='rup'?-1:1);   // right stick: A–Z jump in the Library
   }
 }
 function shiftTab(d){
@@ -6009,8 +7144,9 @@ function pollPadsNow(t){
     const th=k=>held[k]?.35:.55;
     st.up=st.up||b(12)||ax(1)<-th('up'); st.down=st.down||b(13)||ax(1)>th('down');
     st.left=st.left||b(14)||ax(0)<-th('left'); st.right=st.right||b(15)||ax(0)>th('right');
+    if(p.mapping==='standard'){ st.rup=st.rup||ax(3)<-.6; st.rdown=st.rdown||ax(3)>.6; }   // right stick (Library A–Z jump)
   }
-  for(const k of ['a','b','x','y','lb','rb','select','start','guide','up','down','left','right']){
+  for(const k of ['a','b','x','y','lb','rb','select','start','guide','up','down','left','right','rup','rdown']){
     const on=!!st[k], h=held[k];
     if(on && !h){ held[k]={t0:t,last:t}; padPressed(mapPad(k)); }
     else if(on && h && REPEAT.has(k) && t-h.t0>400 && t-h.last>110){ h.last=t; PAD_AT[k]=performance.now(); input(k); }
@@ -6020,7 +7156,7 @@ function pollPadsNow(t){
 window.addEventListener('gamepadconnected', e=>{ if(!padSeen) toast(`Controller connected: ${e.gamepad.id.split('(')[0].trim()||'Gamepad'}`); padSeen=true; });
 
 const KEYMAP = {ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',Enter:'a',' ':'a',Escape:'b',Backspace:'b',
-  m:'start',M:'start',q:'select',Q:'select','[':'lb',']':'rb','/':'y',f:'x',F:'x',
+  m:'start',M:'start',q:'select',Q:'select','[':'lb',']':'rb',PageUp:'rup',PageDown:'rdown','/':'y',f:'x',F:'x',
   w:'up',W:'up',a:'left',A:'left',s:'down',S:'down',d:'right',D:'right'};
 // Shortcuts that aren't controller buttons
 const KEY_EXTRA = {Home:()=>{ closeAll(); if(S.view!=='home'){ S.history=[]; navigate('home',{},false); } },

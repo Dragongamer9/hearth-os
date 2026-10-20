@@ -54,7 +54,8 @@ pub struct Bridge {
 }
 
 pub type SignInFn = std::sync::Arc<dyn Fn(&crate::stores::SignIn) -> Option<String> + Send + Sync>;
-const DEFERRED: &str = "__deferred";
+/// What a call returns when it's answered later, from a thread (crate::space::answer_later).
+pub const DEFERRED: &str = "__deferred";
 
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
@@ -135,22 +136,32 @@ impl Bridge {
         let mut inst: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         for g in self.library.games.values() { if g.installed { *inst.entry(g.source).or_default() += 1; } }
         let acc = self.library.accounts.lock().unwrap();
-        let base = |s: &str| json!({"store": s, "installed": inst.get(s).copied().unwrap_or(0), "busy": acc.busy.contains(s), "error": acc.errors.get(s)});
+        // expired / expiredAt: the store refused the saved sign-in (stores::expiry); the page offers Sign in again.
+        let base = |s: &str| { let x = crate::stores::expiry::get(s);
+            json!({"store": s, "installed": inst.get(s).copied().unwrap_or(0), "busy": acc.busy.contains(s), "error": acc.errors.get(s),
+                   "expired": x.is_some(), "expiredAt": x.as_ref().map(|x| x["at"].clone())}) };
+        // The name to sign in again as: the account's, or the one last seen (legendary forgets it when Epic refuses).
+        let named = |s: &str, n: Option<String>| -> Option<String> {
+            match n { Some(n) => { crate::stores::expiry::remember_name(s, &n); Some(n) }
+                      None => crate::stores::expiry::get(s).and_then(|x| x["name"].as_str().map(str::to_string)).or_else(|| crate::stores::expiry::known_name(s).filter(|_| crate::stores::expiry::is_expired(s))) } };
         let with = |mut b: Value, extra: Value| { for (k, v) in extra.as_object().cloned().unwrap_or_default() { b[k] = v; } b };
         let owned = |s: &str| { let o = crate::owned::Owned::load(crate::stores::cache_of(s)); (o.games.len(), o.fetched) };
         let (sname, savatar, sinstalled) = self.steam_account();
         let steam_owned = self.library.games.values().filter(|g| g.source == "steam").count();
         let (eo, ef) = owned("epic"); let (go, gf) = owned("gog"); let (xo, xf) = owned("xbox");
         let (gname, gavatar) = crate::stores::gog::profile();
+        let gname = named("gog", gname);
         let xb = crate::stores::xbox::saved().unwrap_or(Value::Null);
+        let ename = named("epic", crate::stores::epic::display_name());
+        let xname = named("xbox", xb["gamertag"].as_str().map(str::to_string));
         let accounts = vec![
             with(base("steam"), json!({"signedIn": sname.is_some(), "name": sname, "avatar": savatar, "owned": steam_owned, "fetched": 0, "toolReady": true,
                 "note": if !sinstalled { Some("Steam isn't installed on this device.") } else if sname.is_none() { Some("Open Steam once to sign in") } else { None }})),
-            with(base("epic"), json!({"signedIn": crate::stores::epic::signed_in(), "name": crate::stores::epic::display_name(), "avatar": null, "owned": eo, "fetched": ef,
+            with(base("epic"), json!({"signedIn": crate::stores::epic::signed_in(), "name": ename, "avatar": null, "owned": eo, "fetched": ef,
                 "toolReady": crate::tools::is_ready(&crate::tools::LEGENDARY), "note": null})),
             with(base("gog"), json!({"signedIn": crate::stores::gog::signed_in(), "name": gname, "avatar": gavatar, "owned": go, "fetched": gf,
                 "toolReady": crate::tools::is_ready(&crate::tools::GOGDL), "note": null})),
-            with(base("xbox"), json!({"signedIn": !xb.is_null(), "name": xb["gamertag"], "avatar": xb["gamerpic"], "owned": xo, "fetched": xf, "toolReady": true, "note": null})),
+            with(base("xbox"), json!({"signedIn": !xb.is_null(), "name": xname, "avatar": xb["gamerpic"], "owned": xo, "fetched": xf, "toolReady": true, "note": null})),
         ];
         let bs = &self.library.beacon;
         let beacon = json!({"installed": bs.cli.is_some(), "app": bs.app.is_some(), "via": bs.cli.as_ref().map(|c| c.via()),
@@ -175,6 +186,7 @@ impl Bridge {
             match crate::stores::finish_sign_in(s, &code) {
                 Ok(()) => {
                     log(&format!("accounts: signed in to {s}"));
+                    crate::stores::expiry::clear(s);
                     crate::stores::notify(Bridge::event("accounts.changed", json!({})));
                     reply(Ok(true));
                     if s == "epic" { crate::stores::notify(json!({"type": "internal", "what": "epicSignedIn"})); }
@@ -221,7 +233,9 @@ impl Bridge {
         let io = |r: std::io::Result<()>| r.map(|_| Value::Null).map_err(|e| e.to_string());
         match method {
             "host.info" => Ok(json!({
-                "platform": "linux", "name": os_name(), "host": "Hearth (Rust)", "version": self.version,
+                "platform": "linux", "name": os_name(), "host": "Hearth (Rust)", "version": self.version, "autoReport": self.auto_report(),
+                // Drawn the compatible way (no DMA-BUF): the page turns its heavy effects down (body.lite).
+                "compatDrawing": std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some(),
                 // Part of Hearth, the OS: the app updates with the system (Settings › Updates shows Update now).
                 "system": system_install(),
                 // Opened just for Settings (from Mantel's taskbar), or for one of its pages (--page hhd: Handheld
@@ -528,6 +542,7 @@ impl Bridge {
             "update.check" => Ok(self.app_updates.check(self.auto_update())),
             "update.download" => Ok(self.app_updates.download(self.auto_update())),
             "update.install" => { self.app_updates.install()?; (self.emit)(json!({"type": "restart"})); Ok(Value::Null) }
+            "logs.setAutoReport" => { let on = a["on"] == true; io(self.library.store.update(|d| { d.insert("autoReportStuck".into(), json!(on)); }))?; crate::watchdog::set_auto_send(on); Ok(json!(on)) }
             "update.setAuto" => { io(self.library.store.update(|d| { d.insert("autoUpdateCheck".into(), json!(a["on"] == true)); }))?; Ok(self.app_updates.status(self.auto_update())) }
             // Settings › Display
             "display.get" => Ok(self.display_get()),
@@ -567,6 +582,9 @@ impl Bridge {
                 self.library.beacon_select_mod(&req("id")?, m)
             }
             "beacon.open" => self.library.beacon_open().map(|_| json!({"ok": true})),
+            // Beacon's screens in Hearth (Game setup, Mods, the Beacon tab): beacon.rs checks everything and runs Beacon
+            // off this thread.
+            m if m.starts_with("beacon.") => { let id = self.cur_id.clone(); crate::beacon::bridge_call(self, m, a, id) }
             "game.options.set" => { let id = req("id")?; crate::game_options::set(&mut self.library.store, &id, &a["options"])?; self.game_options(&id) }
             "game.launch" => {
                 let id = req("id")?;
@@ -579,7 +597,7 @@ impl Bridge {
                 if let Some(url) = r["stream"].as_str() { (self.stream)(Some((url, r["title"].as_str().unwrap_or("Xbox Cloud Gaming")))); }
                 (self.emit)(Bridge::event("quickResume", self.library.quick_state()));
                 if r["resumed"] == true { (self.host)("resumeGame", &Value::Null); }
-                Ok(json!({"tracked": r["tracked"], "resumed": r["resumed"] == true}))
+                Ok(json!({"tracked": r["tracked"], "resumed": r["resumed"] == true, "expired": r["expired"]}))
             }
             // Quick Resume: games put aside stay frozen in memory and carry on where they were
             "game.quickResume" => {
@@ -750,6 +768,37 @@ impl Bridge {
                 if a["deleteUsers"] == true { args.push("--delete-users".into()); }
                 crate::multiplay::spawn_job("seats.remove", crate::multiplay::SEATS, args, self.emit.clone(), None);
                 Ok(Value::Null)
+            }
+            // "Player N, press A on your controller" (as the event seats.pad.done {pad}).
+            "seats.waitButton" => {
+                let exclude: Vec<String> = a["exclude"].as_array().map(|l| l.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+                let mut args = vec!["wait-button".to_string(), "--timeout".into(), a["timeout"].as_u64().unwrap_or(20).clamp(1, 120).to_string()];
+                if !exclude.is_empty() { args.push("--exclude".into()); args.push(exclude.join(",")); }
+                crate::multiplay::spawn_job("seats.pad", crate::multiplay::SEATS, args, self.emit.clone(), None);
+                Ok(Value::Null)
+            }
+            // Streamed players (Beta Experimental): their Sunshine's address, paired devices and Moonlight's PIN.
+            "seats.streamInfo" => crate::multiplay::ask(crate::multiplay::SEATS, &["stream-info"]),
+            "seats.pair" => {
+                // Sunshine holds the answer until Moonlight finishes pairing, so this runs as a job (seats.pair.done).
+                let mut args = vec!["stream-pair".to_string(), "--seat".into(), a["seat"].as_u64().unwrap_or(0).to_string(), "--pin".into(), req("pin")?];
+                if let Some(n) = a["name"].as_str().filter(|n| !n.is_empty()) { args.push("--name".into()); args.push(n.to_string()); }
+                crate::multiplay::spawn_job("seats.pair", crate::multiplay::SEATS, args, self.emit.clone(), None);
+                Ok(Value::Null)
+            }
+            "seats.unpair" => {
+                let seat = a["seat"].as_u64().unwrap_or(0).to_string();
+                crate::multiplay::ask(crate::multiplay::SEATS, &["stream-unpair", "--seat", &seat, "--uuid", &req("uuid")?])
+            }
+            // Split screen sound: a player's volume, or only player 1's sound.
+            "seats.audio" => {
+                let mut args: Vec<String> = vec!["audio".into()];
+                if let (Some(seat), Some(vol)) = (a["seat"].as_u64(), a["volume"].as_u64()) {
+                    args.extend(["--seat".to_string(), seat.to_string(), "--volume".to_string(), vol.min(100).to_string()]);
+                }
+                if let Some(on) = a["onlyP1"].as_bool() { args.extend(["--only-p1".to_string(), if on { "on" } else { "off" }.to_string()]); }
+                let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+                crate::multiplay::ask(crate::multiplay::SEATS, &refs)
             }
             "system.update.status" => Ok(self.updates.refresh()),
             "system.update.check" => Ok(self.updates.start(false, self.emit.clone())),
@@ -1116,6 +1165,10 @@ impl Bridge {
         self.library.scan();
         vec![Bridge::event("library.changed", json!({}))]
     }
+    /// Whether the fail-safe sends a report by itself when Hearth gets stuck (Settings; on unless turned off).
+    pub fn auto_report(&self) -> bool { self.library.store.data["autoReportStuck"] != false }
+    pub fn edition_name() -> &'static str { edition() }
+    pub fn version_str(&self) -> String { self.version.clone() }
     pub fn zoom_pct(&self) -> u32 { self.library.store.data["uiScale"].as_u64().unwrap_or(100) as u32 }
     fn auto_update(&self) -> bool { self.library.store.data["autoUpdateCheck"] != false }
     fn display_get(&self) -> Value {
