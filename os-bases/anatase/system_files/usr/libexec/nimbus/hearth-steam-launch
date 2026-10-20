@@ -1,0 +1,12 @@
+#!/bin/sh
+# Hearth OS on Anatase, when the image has no Steam package: `steam` starts Flathub's Steam (installed at first
+# boot by hearth-steam.service), or Anatase's own Steam Flatpak if that's the one there.
+for id in com.valvesoftware.Steam org.anatase.Steam; do
+  if flatpak info "$id" >/dev/null 2>&1; then exec flatpak run "$id" "$@"; fi
+done
+# Not installed yet: ask for it (it's installed as soon as the PC is online) and say so.
+systemctl start --no-block hearth-steam.service 2>/dev/null || true
+msg="Steam is still being installed. It's downloaded as soon as this PC is online; try again in a few minutes."
+command -v notify-send >/dev/null 2>&1 && notify-send -a Hearth "Steam" "$msg" 2>/dev/null
+echo "$msg" >&2
+exit 1

@@ -5,7 +5,7 @@
 Description=Hearth: install Steam (Flathub)
 Wants=network-online.target
 After=network-online.target
-ConditionPathExists=!/usr/bin/steam
+ConditionPathExists=/usr/share/nimbus/steam-flatpak
 ConditionPathExists=!/var/lib/flatpak/app/com.valvesoftware.Steam
 ConditionPathExists=!/etc/hearth/no-steam
 StartLimitIntervalSec=0
