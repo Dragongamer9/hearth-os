@@ -224,7 +224,7 @@ pub fn known_steam_accounts() -> Vec<Value> { steam_files().and_then(|(_, u)| st
 pub fn stop_steam() {
     let up = || std::process::Command::new("pgrep").args(["-x", "steam"]).output().map(|o| o.status.success()).unwrap_or(false);
     if !up() { return; }
-    let _ = std::process::Command::new("steam").arg("-shutdown").spawn();
+    let _ = crate::steam::spawn(&crate::paths::home(), "-shutdown");
     let t = std::time::Instant::now();
     while t.elapsed().as_secs() < 8 && up() { std::thread::sleep(std::time::Duration::from_millis(300)); }
     if up() { let _ = std::process::Command::new("pkill").args(["-x", "steam"]).status(); std::thread::sleep(std::time::Duration::from_millis(1500)); }

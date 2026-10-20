@@ -600,7 +600,7 @@ impl GameMode {
                 self.hide_overlay();
                 if pid == std::process::id() as u64 { return self.come_back(); }
                 self.step_aside();
-                if id == 0 && pid == 0 { let _ = std::process::Command::new("steam").arg("steam://open/main").spawn(); return self.host_action_now("showSteam", &json!({})); }
+                if id == 0 && pid == 0 { let _ = hearth_core::steam::spawn(&hearth_core::paths::home(), "steam://open/main"); return self.host_action_now("showSteam", &json!({})); }
                 self.focus_xid("app", id, 0, false);
             }
             "screenshot" => {

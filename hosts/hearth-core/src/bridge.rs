@@ -57,6 +57,11 @@ impl Bridge {
         let mut b = Bridge::with(Library::new(store, paths::home()), crate::profiles::Profiles::open(&paths::data_dir()), version);
         // Quick Resume games (and a game that was running) are still there after Hearth restarts.
         b.library.restore_quick();
+        // Steam in the background (Settings › Library, on by default), so games start without Steam's windows.
+        if b.library.store.data["steamBackground"] != false {
+            let home = b.library.home.clone();
+            std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(8)); crate::steam::ensure_running_silent(&home); });
+        }
         b
     }
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
@@ -236,7 +241,11 @@ impl Bridge {
                 }))?;
                 Ok(self.library.get(true))
             }
-            "library.setSteamBackground" => io(self.library.store.update(|d| { d.insert("steamBackground".into(), json!(a["on"] == true)); })),
+            "library.setSteamBackground" => {
+                let on = a["on"] == true;
+                if on { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
+                io(self.library.store.update(|d| { d.insert("steamBackground".into(), json!(on)); }))
+            }
             "library.collection.create" => crate::collections::create(&mut self.library.store, a["name"].as_str().unwrap_or("")),
             "library.collection.rename" => crate::collections::rename(&mut self.library.store, &req("id")?, a["name"].as_str().unwrap_or("")).map(|_| Value::Null),
             "library.collection.remove" => crate::collections::remove(&mut self.library.store, &req("id")?).map(|_| Value::Null),
@@ -278,14 +287,14 @@ impl Bridge {
             "game.resumeInstall" => Ok(json!({"ok": self.library.resume_install(&req("id")?)})),
             "game.installFirst" => Ok(json!({"ok": self.library.install_first(&req("id")?)})),
             "downloads.clearRecent" => { self.library.clear_recent(); Ok(json!({"ok": true})) }
-            "steam.downloads" => { let _ = std::process::Command::new("steam").arg("steam://open/downloads").spawn(); Ok(json!({"ok": true})) }
+            "steam.downloads" => { let _ = crate::steam::spawn(&self.library.home, "steam://open/downloads"); Ok(json!({"ok": true})) }
             "game.uninstall" => {
                 let id = req("id")?;
                 // Steam games: Steam deletes its own files (it asks to confirm in its window, which comes in front).
                 if let Some(app) = id.strip_prefix("steam:") {
                     if self.library.running_id().as_deref() == Some(id.as_str()) { return Err("Exit the game first.".into()); }
                     if app.is_empty() || !app.chars().all(|c| c.is_ascii_digit()) { return Err("That isn't a Steam game.".into()); }
-                    let _ = std::process::Command::new("steam").arg(format!("steam://uninstall/{app}")).spawn();
+                    let _ = crate::steam::spawn(&self.library.home, &format!("steam://uninstall/{app}"));
                     (self.host)("showSteam", &Value::Null);
                     return Ok(json!({"steam": true}));
                 }
@@ -296,7 +305,7 @@ impl Bridge {
             "accounts.status" => Ok(self.accounts_status()),
             "accounts.signIn" => {
                 let store = req("store")?;
-                if store == "steam" { let _ = std::process::Command::new("steam").arg("steam://open/main").spawn(); return Ok(json!({"ok": true})); }
+                if store == "steam" { let _ = crate::steam::spawn(&self.library.home, "steam://open/main"); return Ok(json!({"ok": true})); }
                 self.start_sign_in(&store)
             }
             "accounts.signOut" => { crate::stores::sign_out(&req("store")?)?; self.library.scan(); (self.emit)(Bridge::event("accounts.changed", json!({}))); Ok(Value::Null) }
@@ -338,8 +347,7 @@ impl Bridge {
                 let r = crate::friends::action(a["platform"].as_str().unwrap_or(""), a["id"].as_str().unwrap_or(""), a["what"].as_str().unwrap_or(""), a["server"].as_str())?;
                 if let Some(u) = r["open"].as_str() {
                     // Steam's chat or game in front of Hearth (it's a separate window in Game Mode).
-                    std::process::Command::new("steam").arg(u).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
-                        .spawn().map_err(|e| format!("Couldn't open Steam: {e}"))?;
+                    crate::steam::spawn(&self.library.home, u)?;
                     (self.host)("showSteam", &json!({}));
                 }
                 Ok(r)
@@ -461,7 +469,7 @@ impl Bridge {
                 let before: Vec<String> = crate::profiles::known_steam_accounts().iter().filter_map(|a| a["account"].as_str().map(str::to_lowercase)).collect();
                 crate::profiles::stop_steam();
                 crate::profiles::set_steam_account("");
-                let _ = std::process::Command::new("steam").arg("steam://open/main").spawn();
+                let _ = crate::steam::spawn(&self.library.home, "steam://open/main");
                 // The account that signs in (within 10 minutes) is linked to the profile.
                 std::thread::spawn(move || {
                     for _ in 0..300 {
@@ -971,8 +979,9 @@ impl Bridge {
         let running = std::process::Command::new("pgrep").args(["-x", "steam"]).output().map(|o| o.status.success()).unwrap_or(false);
         if steam_games > 0 && running {
             notes.push("Steam restarted to find the new games. It checks each one before you play.".into());
-            let _ = std::process::Command::new("steam").arg("steam://exit").spawn();
-            std::thread::spawn(|| { std::thread::sleep(std::time::Duration::from_secs(8)); let _ = std::process::Command::new("steam").arg("-silent").spawn(); });
+            let _ = crate::steam::spawn(&self.library.home, "steam://exit");
+            let home = self.library.home.clone();
+            std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(8)); crate::steam::ensure_running_silent(&home); });
         } else if steam_games > 0 { notes.push("Steam checks each game the first time you start it.".into()); }
         self.importer.finish(r, notes);
         self.library.scan();
