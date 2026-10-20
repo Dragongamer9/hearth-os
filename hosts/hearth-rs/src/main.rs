@@ -414,6 +414,13 @@ fn main() {
     // WebKit's newer GPU path draws a black window on some Nvidia drivers: the older one works everywhere.
     // Only there: on AMD and Intel (the ROG Ally, Steam Deck) it's the fast path, and without it WebKit draws
     // through a slow copy (a sluggish library, 5 to 10 frames a second).
+    // Basic graphics (nomodeset), or a PC where the fast way already failed (nimbus-watchdog saw WebKit's "Failed to
+    // create GBM buffer" and wrote ~/.config/nimbus/drawing-fallback): the compatible way, or nothing is drawn.
+    let fallback = hearth_core::paths::config_dir().join("drawing-fallback").exists()
+        || std::fs::read_to_string("/proc/cmdline").map(|c| c.split_whitespace().any(|w| w == "nomodeset")).unwrap_or(false);
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() && fallback {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() && nvidia() && !nvidia_dmabuf_ok() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
