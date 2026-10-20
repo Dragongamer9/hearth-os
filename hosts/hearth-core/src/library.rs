@@ -191,7 +191,9 @@ impl Library {
         if let Some(g) = crate::xodus::game() { counts.insert("xodus".to_string(), 1); all.insert(g.id.clone(), g); }
         // Beacon's games (BFME, Age of the Ring, LOTR: Conquest...), read again when Beacon's files changed.
         if self.store.source_on("beacon") {
-            if !self.beacon_loaded || crate::beacon::signature(&self.home) != self.beacon.sig { self.beacon = crate::beacon::load(&self.home); self.beacon_loaded = true; }
+            // Never waits for Beacon here (its program can take a while, or not answer): the last answer is used and a
+            // new one is read in the background, applied by beacon_tick when it's in.
+            if !self.beacon_loaded || crate::beacon::signature(&self.home) != self.beacon.sig { self.beacon_start(); }
             let list = crate::beacon::library_games(&self.beacon);
             counts.insert("beacon".to_string(), list.iter().filter(|g| g.installed).count());
             for g in list { all.entry(g.id.clone()).or_insert(g); }
@@ -588,14 +590,19 @@ impl Library {
         self.beacon_checked = now;
         use std::sync::atomic::Ordering;
         if self.beacon_busy.load(Ordering::SeqCst) || crate::beacon::signature(&self.home) == self.beacon.sig { return vec![]; }
-        self.beacon_busy.store(true, Ordering::SeqCst);
+        self.beacon_start();
+        vec![]
+    }
+    /// Reads Beacon's games on a thread of its own (once at a time); beacon_tick picks the answer up.
+    fn beacon_start(&mut self) {
+        use std::sync::atomic::Ordering;
+        if self.beacon_busy.swap(true, Ordering::SeqCst) { return; }
         let (home, slot, busy) = (self.home.clone(), self.beacon_next.clone(), self.beacon_busy.clone());
         std::thread::spawn(move || {
             let s = crate::beacon::load(&home);
             *slot.lock().unwrap() = Some(s);
             busy.store(false, Ordering::SeqCst);
         });
-        vec![]
     }
     /// Beacon's games in the library replaced by what Beacon says now.
     pub fn apply_beacon(&mut self) {
@@ -605,7 +612,7 @@ impl Library {
         for g in list { self.games.entry(g.id.clone()).or_insert(g); }
     }
     /// Reads Beacon again now (after Hearth changed something in it).
-    pub fn reload_beacon(&mut self) { self.beacon = crate::beacon::load(&self.home); self.beacon_loaded = true; self.apply_beacon(); }
+    pub fn reload_beacon(&mut self) { self.beacon_start(); }
     /// Opens Beacon's window (full screen in Game Mode).
     pub fn beacon_open(&self) -> Result<(), String> {
         let app = self.beacon.app.clone().ok_or("Beacon's window (beacon-app) isn't installed.")?;
@@ -618,6 +625,9 @@ impl Library {
         if let Some(m) = choice { if !b.mods.iter().any(|x| x.id == m) { return Err("That mod isn't in Beacon anymore.".into()); } }
         let cli = self.beacon.cli.clone().ok_or("Beacon isn't installed anymore.")?;
         crate::beacon::select_mod(&cli, &b.id, choice)?;
+        // Shown at once; Beacon's own answer follows in the background.
+        if let Some(bg) = self.beacon.games.iter_mut().find(|x| x.id == b.id) { bg.selected_mod = choice.map(str::to_string); }
+        self.apply_beacon();
         self.reload_beacon();
         self.games.get(id).map(|g| self.dto(g)).ok_or("That game isn't in the library anymore.".into())
     }
