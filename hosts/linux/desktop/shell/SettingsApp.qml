@@ -23,14 +23,22 @@ Scope {
         { id: "appearance", icon: "palette", label: "Appearance" },
         { id: "power", icon: "power", label: "Power" },
         { id: "controller", icon: "pad", label: "Controller" },
-        { id: "signin", icon: "user", label: "Sign-in" },
+        { id: "keyboard", icon: "kbd", label: "Keyboard" },
+        { id: "printers", icon: "printer", label: "Printers" },
+        { id: "datetime", icon: "clock", label: "Date & time" },
+        { id: "defaults", icon: "grid", label: "Default apps" },
+        { id: "clipboard", icon: "clipboard", label: "Clipboard" },
+        { id: "users", icon: "user", label: "Users" },
+        { id: "signin", icon: "lock", label: "Sign-in" },
         { id: "browser", icon: "globe", label: "Web browser" },
         { id: "updates", icon: "update", label: "Updates" },
         { id: "about", icon: "info", label: "About" }
     ])
     readonly property var files: ({ wifi: "SetWifi.qml", bluetooth: "SetBluetooth.qml", sound: "SetSound.qml", display: "SetDisplay.qml",
         appearance: "SetAppearance.qml", power: "SetPower.qml", controller: "SetController.qml", signin: "SetSignin.qml", browser: "SetBrowser.qml",
-        updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml" })
+        updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml",
+        keyboard: "SetKeyboard.qml", printers: "SetPrinters.qml", datetime: "SetDateTime.qml", defaults: "SetDefaults.qml",
+        clipboard: "SetClipboard.qml", users: "SetUsers.qml" })
 
     function open(p) {
         if (p && files[p]) page = p;
@@ -80,6 +88,8 @@ Scope {
                             currentIndex: Math.max(0, app.pages.findIndex(p => p.id === app.page))
                             highlightMoveDuration: Theme.quick
                             keyNavigationEnabled: false
+                            // More pages than fit on a small screen: keep the picked one in view.
+                            onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
                             function enter() { if (loader.item && loader.item.focusFirst) loader.item.focusFirst(); }
                             Keys.onPressed: e => {
                                 switch (e.key) {

@@ -1,5 +1,7 @@
 // Notification server for Desktop Mode: apps' notifications pop up in the top-right corner
 // and go away after a few seconds. Click one to run its default action; × dismisses it.
+// Past ones are kept for the session in DeskState.history (listed in the clock's panel); Do Not Disturb
+// (DeskState.dnd) keeps them from popping up.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -14,7 +16,13 @@ Scope {
         actionsSupported: true
         imageSupported: true
         bodyMarkupSupported: true
-        onNotification: n => { n.tracked = true; }
+        // Every notification goes into the history (the clock's panel, ClockPanel.qml). With Do Not Disturb on
+        // only urgent ones pop up.
+        onNotification: n => {
+            DeskState.remember(n);
+            if (DeskState.dnd && n.urgency !== NotificationUrgency.Critical) return;
+            n.tracked = true;
+        }
     }
 
     PanelWindow {

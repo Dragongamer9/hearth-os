@@ -274,7 +274,7 @@ def main_user():
 
 def scan_users():
     me = main_user()
-    players = [{'name': e['name'], 'uid': e['uid'], 'home': e['home']} for e in passwd_entries() if PLAYER_RE.match(e['name'])]
+    players = [{'name': e['name'], 'uid': e['uid'], 'home': e['home']} for e in passwd_entries() if PLAYER_RE.fullmatch(e['name'])]
     return {'main': me, 'players': players, 'main_in_input_group': me['name'] in group_members('input')}
 
 
@@ -553,7 +553,7 @@ def session(wait=60):
     """An extra player's Game Mode. Runs as hearth-pN from hearth-seat@hearth-pN.service, in its own logind
     session (no seat). Sets up the screen, sound and Game Mode options, then hands over to nimbus-session."""
     me = main_user()['name']
-    m = PLAYER_RE.match(me)
+    m = PLAYER_RE.fullmatch(me)
     if not m:
         raise Fail('the session is only for the extra players\' accounts')
     env = dict(os.environ)

@@ -231,6 +231,8 @@ optional qt6-svg-plugins qt5ct breeze-icon-theme 7zip gstreamer1.0-plugins-bad g
 optional qt6ct qml6-module-qtquick qml6-module-qtquick-layouts qml6-module-qtquick-particles qml6-module-qtquick-window \
   qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtquick-shapes qml6-module-qtquick-effects \
   qml6-module-qtqml-workerscript qml6-module-qt5compat-graphicaleffects qml6-module-qtquick-dialogs
+# Printing (Settings › Printers: CUPS, driverless IPP Everywhere, ipp-usb, Avahi) and clipboard history (Super+V).
+optional cups cups-filters ipp-usb avahi-daemon libnss-mdns wl-clipboard cliphist wtype
 # A polkit agent for Desktop Mode's password prompts, linked where labwc's autostart looks.
 optional policykit-1-gnome
 if [ -x /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 ]; then
@@ -355,6 +357,18 @@ Type=Application
 Categories=Settings;
 Keywords=wifi;bluetooth;sound;display;controller;update;
 DESKTOP
+cat > /usr/share/applications/hearth-apps.desktop <<DESKTOP
+[Desktop Entry]
+Name=Apps
+GenericName=App Store
+Comment=Find, install and update apps from Flathub
+Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call apps open
+Icon=hearth
+Type=Application
+Categories=System;PackageManager;
+Keywords=store;software;install;update;flathub;flatpak;
+OnlyShowIn=Nimbus;
+DESKTOP
 cat > /usr/share/applications/hearth-browser.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth Browser
@@ -419,6 +433,8 @@ systemctl enable NetworkManager.service bluetooth.service systemd-resolved.servi
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 # power-profiles-daemon only runs when HHD is switched off (its drop-in says so); enabled so it can then.
 systemctl enable power-profiles-daemon.service 2>/dev/null || true
+# Printing starts when something prints (Settings › Printers).
+systemctl enable cups.socket 2>/dev/null || true
 ln -sf /usr/lib/systemd/system/sddm.service /etc/systemd/system/display-manager.service
 mkdir -p /etc/X11 && echo /usr/bin/sddm > /etc/X11/default-display-manager
 

@@ -1,0 +1,820 @@
+#!/usr/bin/python3
+"""hearth-system: what Hearth Settings' Date & time, Keyboard, Default apps, Users and Printers pages read and
+change as you (no root). The parts that need root go through /usr/libexec/nimbus/hearth-admin (pkexec).
+
+  hearth-system time                 JSON: time zone, automatic time, whether it's synced, the time now
+  hearth-system timezones            JSON: every time zone as {zone, region, city, offset}
+  hearth-system keyboard             JSON: your layouts (in order), the switch shortcut, repeat delay and rate
+  hearth-system keyboard-layouts     JSON: every keyboard layout and variant the system knows
+  hearth-system keyboard-set         stdin: {"layouts": [{"layout", "variant"}], "switch": "grp:...", "delay": ms,
+                                     "rate": per second}. Writes ~/.config/labwc/environment (XKB_DEFAULT_*) and
+                                     ~/.config/nimbus/keyboard.json, then asks labwc to reload
+  hearth-system labwc-config         prepare Desktop Mode's labwc folder with your keyboard settings in it
+                                     ($XDG_RUNTIME_DIR/hearth-labwc) and print its path (nimbus-session runs it)
+  hearth-system shortcuts            JSON: Desktop Mode's keyboard shortcuts, from labwc's rc.xml
+  hearth-system defaults             JSON: the default browser, file manager, text editor, image viewer, video and
+                                     music player, and the installed apps that can be each
+  hearth-system default-set KIND APP_ID
+                                     make APP_ID (a .desktop id) the default for KIND (mimeapps.list)
+  hearth-system users                JSON: the accounts on this device, which one is you, who's an administrator
+  hearth-system pictures             JSON: pictures you could use for your account
+  hearth-system picture-set PATH|""  use a picture (PNG or JPEG) for your account ("" removes it)
+  hearth-system printers             JSON: the printers (lpstat), which is the default, and their state
+  hearth-system printer-test NAME    print a test page
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import datetime
+import importlib.machinery
+import importlib.util
+import json
+import os
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+
+sys.dont_write_bytecode = True     # hearth-files and hearth-browser are loaded from here: no .pyc next to them
+HERE = os.path.dirname(os.path.realpath(__file__))
+HOME = os.path.expanduser('~')
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+ADMIN = '/usr/libexec/nimbus/hearth-admin'
+LABWC_DIR = os.path.normpath(os.path.join(HERE, '..', 'labwc'))
+LABWC_ENV = os.path.join(CONFIG, 'labwc', 'environment')
+KEYBOARD_JSON = os.path.join(CONFIG, 'nimbus', 'keyboard.json')
+XKB_RULES = ['/usr/share/X11/xkb/rules/evdev.lst', '/usr/share/X11/xkb/rules/base.lst']
+ZONEINFO = '/usr/share/zoneinfo'
+LAYOUT_RE = re.compile(r'^[a-z][a-z0-9_-]{0,31}$')
+VARIANT_RE = re.compile(r'^[A-Za-z0-9_-]{0,48}$')
+SWITCH_OPTIONS = ['', 'grp:alt_shift_toggle', 'grp:ctrl_shift_toggle', 'grp:win_space_toggle', 'grp:alt_space_toggle',
+                  'grp:caps_toggle']
+REPEAT_DEFAULT = {'delay': 600, 'rate': 25}
+USERNAME_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
+PRINTER_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,126}$')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=30, input=None):
+    """(code, stdout) with C-locale output; (127, '') when the command isn't there."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=input,
+                           env=dict(os.environ, LC_ALL='C'))
+        return r.returncode, r.stdout + (r.stderr if r.returncode else '')
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+
+
+def write_atomic(path, text, mode=0o644):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.hearth-tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def read(path, default=''):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+# ---------------------------------------------------------------------- date and time
+def parse_timedatectl(text):
+    """`timedatectl show` (Key=value lines) -> {timezone, ntp, synced, canNtp}."""
+    kv = {}
+    for line in text.splitlines():
+        if '=' in line:
+            k, v = line.split('=', 1)
+            kv[k.strip()] = v.strip()
+    return {'timezone': kv.get('Timezone', ''), 'ntp': kv.get('NTP') == 'yes',
+            'synced': kv.get('NTPSynchronized') == 'yes', 'canNtp': kv.get('CanNTP', 'yes') == 'yes'}
+
+
+def time_status():
+    code, out = run(['timedatectl', 'show'])
+    st = parse_timedatectl(out) if code == 0 else {'timezone': '', 'ntp': False, 'synced': False, 'canNtp': False}
+    if not st['timezone']:
+        link = os.path.realpath('/etc/localtime')
+        st['timezone'] = link.split('/zoneinfo/', 1)[1] if '/zoneinfo/' in link else 'UTC'
+    st['available'] = code == 0
+    st['now'] = datetime.datetime.now().astimezone().isoformat(timespec='seconds')
+    st['admin'] = os.access(ADMIN, os.X_OK)
+    return st
+
+
+def utc_offset(zone, when=None):
+    """'+05:30' / '-08:00' for a zone now (or '' if the zone can't be read)."""
+    try:
+        from zoneinfo import ZoneInfo
+        off = (when or datetime.datetime.now(datetime.timezone.utc)).astimezone(ZoneInfo(zone)).utcoffset()
+    except Exception:
+        return ''
+    mins = int(off.total_seconds() // 60)
+    sign = '+' if mins >= 0 else '-'
+    return '%s%02d:%02d' % (sign, abs(mins) // 60, abs(mins) % 60)
+
+
+def zone_entry(zone, when=None):
+    parts = zone.split('/')
+    region = parts[0] if len(parts) > 1 else 'Other'
+    city = ' / '.join(p.replace('_', ' ') for p in parts[1:]) if len(parts) > 1 else zone.replace('_', ' ')
+    return {'zone': zone, 'region': region.replace('_', ' '), 'city': city, 'offset': utc_offset(zone, when)}
+
+
+def parse_timezones(text, when=None):
+    """timedatectl list-timezones -> [{zone, region, city, offset}], sorted by region then city."""
+    zones = [z.strip() for z in text.splitlines() if re.fullmatch(r'[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+){0,2}', z.strip())]
+    out = [zone_entry(z, when) for z in dict.fromkeys(zones)]
+    return sorted(out, key=lambda z: (z['region'] == 'Other', z['region'], z['city']))
+
+
+def timezones():
+    code, out = run(['timedatectl', 'list-timezones'])
+    if code != 0 or not out.strip():
+        names = []
+        for region in ('Africa', 'America', 'Antarctica', 'Arctic', 'Asia', 'Atlantic', 'Australia', 'Europe',
+                       'Indian', 'Pacific'):
+            for root, _, files in os.walk(os.path.join(ZONEINFO, region)):
+                names += [os.path.relpath(os.path.join(root, f), ZONEINFO) for f in files]
+        out = '\n'.join(sorted(names) + ['UTC'])
+    return {'zones': parse_timezones(out)}
+
+
+# ---------------------------------------------------------------------- keyboard
+def parse_xkb_lst(text):
+    """evdev.lst -> [{layout, variant, name}] (layouts, then each layout's variants)."""
+    section, layouts, variants = None, [], []
+    for line in text.splitlines():
+        if line.startswith('!'):
+            section = line[1:].strip()
+            continue
+        m = re.match(r'^\s+(\S+)\s+(.*\S)\s*$', line)
+        if not m:
+            continue
+        if section == 'layout':
+            layouts.append({'layout': m.group(1), 'variant': '', 'name': m.group(2)})
+        elif section == 'variant':
+            lay, _, desc = m.group(2).partition(':')
+            if desc:
+                variants.append({'layout': lay.strip(), 'variant': m.group(1), 'name': desc.strip()})
+    out = []
+    for l in sorted(layouts, key=lambda l: l['name'].lower()):
+        out.append(l)
+        out += sorted((v for v in variants if v['layout'] == l['layout']), key=lambda v: v['name'].lower())
+    return out
+
+
+def keyboard_layouts():
+    for f in XKB_RULES:
+        text = read(f)
+        if text:
+            return {'layouts': parse_xkb_lst(text)}
+    return {'layouts': [{'layout': 'us', 'variant': '', 'name': 'English (US)'}]}
+
+
+def parse_env(text):
+    """labwc's environment file -> {KEY: value} (comments and blank lines skipped)."""
+    out = {}
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith('#') or '=' not in s:
+            continue
+        k, v = s.split('=', 1)
+        out[k.strip()] = v.strip().strip('"\'')
+    return out
+
+
+def layouts_from_env(env):
+    lays = [x.strip() for x in env.get('XKB_DEFAULT_LAYOUT', '').split(',')]
+    vars_ = [x.strip() for x in env.get('XKB_DEFAULT_VARIANT', '').split(',')]
+    out = []
+    for i, l in enumerate(lays):
+        if l:
+            out.append({'layout': l, 'variant': vars_[i] if i < len(vars_) else ''})
+    return out
+
+
+def keyboard_status():
+    env = parse_env(read(LABWC_ENV))
+    if not env.get('XKB_DEFAULT_LAYOUT'):
+        # Not set here yet: what the session started with (labwc's own environment file or the system's).
+        env = dict(parse_env(read(os.path.join(LABWC_DIR, 'environment'))), **{k: v for k, v in env.items() if v})
+    lays = layouts_from_env(env) or [{'layout': os.environ.get('XKB_DEFAULT_LAYOUT', 'us').split(',')[0] or 'us', 'variant': ''}]
+    opts = [o for o in env.get('XKB_DEFAULT_OPTIONS', '').split(',') if o]
+    switch = next((o for o in opts if o.startswith('grp:')), '')
+    try:
+        saved = json.loads(read(KEYBOARD_JSON, '{}'))
+    except ValueError:
+        saved = {}
+    names = {(l['layout'], l['variant']): l['name'] for l in keyboard_layouts()['layouts']}
+    for l in lays:
+        l['name'] = names.get((l['layout'], l['variant'])) or names.get((l['layout'], '')) or l['layout']
+    return {'layouts': lays, 'switch': switch, 'switchOptions': SWITCH_OPTIONS,
+            'delay': int(saved.get('delay') or REPEAT_DEFAULT['delay']), 'rate': int(saved.get('rate') or REPEAT_DEFAULT['rate']),
+            'live': bool(os.environ.get('LABWC_PID')), 'configDir': runtime_dir() if os.path.isdir(runtime_dir()) else ''}
+
+
+def keyboard_request(req, known):
+    """Checks keyboard-set's request; returns (layouts, switch, delay, rate) or raises Fail."""
+    if not isinstance(req, dict):
+        raise Fail('expected a JSON object')
+    lays = req.get('layouts')
+    if not isinstance(lays, list) or not 1 <= len(lays) <= 4:
+        raise Fail('choose 1 to 4 layouts')
+    out = []
+    for l in lays:
+        if not isinstance(l, dict):
+            raise Fail('bad layout')
+        lay, var = l.get('layout'), l.get('variant') or ''
+        if not isinstance(lay, str) or not LAYOUT_RE.fullmatch(lay) or not isinstance(var, str) or not VARIANT_RE.fullmatch(var):
+            raise Fail('bad layout name')
+        if known is not None and (lay, var) not in known:
+            raise Fail('unknown layout %s%s' % (lay, ('(' + var + ')') if var else ''))
+        if (lay, var) in [(o['layout'], o['variant']) for o in out]:
+            continue
+        out.append({'layout': lay, 'variant': var})
+    switch = req.get('switch') or ''
+    if switch not in SWITCH_OPTIONS:
+        raise Fail('unknown switch shortcut')
+    try:
+        delay = int(req.get('delay', REPEAT_DEFAULT['delay']))
+        rate = int(req.get('rate', REPEAT_DEFAULT['rate']))
+    except (TypeError, ValueError):
+        raise Fail('delay and rate must be numbers')
+    if not 150 <= delay <= 2000 or not 1 <= rate <= 80:
+        raise Fail('the repeat delay is 150–2000 ms and the rate 1–80 per second')
+    return out, switch, delay, rate
+
+
+def env_text(old, values):
+    """old environment file text with these keys set (each once, in place, or added at the end)."""
+    lines, done = [], set()
+    for line in old.splitlines():
+        s = line.strip()
+        k = s.split('=', 1)[0].strip() if '=' in s and not s.startswith('#') else None
+        if k in values:
+            if k not in done:
+                lines.append('%s=%s' % (k, values[k]))
+                done.add(k)
+            continue
+        lines.append(line)
+    missing = [k for k in values if k not in done]
+    if missing:
+        if lines and lines[-1].strip():
+            lines.append('')
+        lines.append('# Keyboard (Hearth Settings › Keyboard)')
+        lines += ['%s=%s' % (k, values[k]) for k in missing]
+    return '\n'.join(lines) + '\n'
+
+
+def xkb_values(lays, switch, old_options):
+    opts = [o for o in old_options.split(',') if o and not o.startswith('grp:')]
+    if switch and len(lays) > 1:
+        opts.append(switch)
+    return {'XKB_DEFAULT_LAYOUT': ','.join(l['layout'] for l in lays),
+            'XKB_DEFAULT_VARIANT': ','.join(l['variant'] for l in lays) if any(l['variant'] for l in lays) else '',
+            'XKB_DEFAULT_OPTIONS': ','.join(opts)}
+
+
+def rc_with_repeat(text, delay, rate):
+    """labwc rc.xml text with <repeatRate>/<repeatDelay> in <keyboard> (replaced, or added after <keyboard>)."""
+    if not re.search(r'<keyboard\s*>', text):
+        if re.search(r'<keyboard\s*/>', text):
+            text = re.sub(r'<keyboard\s*/>', '<keyboard></keyboard>', text, count=1)
+        else:
+            text = re.sub(r'</labwc_config>', '  <keyboard></keyboard>\n</labwc_config>', text, count=1)
+    for tag, val in (('repeatRate', rate), ('repeatDelay', delay)):
+        if re.search(r'<%s>\s*\d+\s*</%s>' % (tag, tag), text):
+            text = re.sub(r'<%s>\s*\d+\s*</%s>' % (tag, tag), '<%s>%d</%s>' % (tag, val, tag), text)
+        else:
+            text = re.sub(r'(<keyboard\s*>)', r'\1\n    <%s>%d</%s>' % (tag, val, tag), text, count=1)
+    return text
+
+
+def runtime_dir():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
+
+
+def keyboard_saved():
+    try:
+        saved = json.loads(read(KEYBOARD_JSON, '{}'))
+        return int(saved.get('delay') or REPEAT_DEFAULT['delay']), int(saved.get('rate') or REPEAT_DEFAULT['rate'])
+    except (ValueError, TypeError, AttributeError):
+        return REPEAT_DEFAULT['delay'], REPEAT_DEFAULT['rate']
+
+
+def labwc_config(src=None, dest=None):
+    """Desktop Mode's labwc folder with your keyboard settings: Hearth's own files (linked), its environment file
+    with your ~/.config/labwc/environment keyboard lines after it, and its rc.xml with your key repeat."""
+    src = src or LABWC_DIR
+    dest = dest or runtime_dir()
+    os.makedirs(dest, mode=0o700, exist_ok=True)
+    for name in os.listdir(src):
+        if name in ('environment', 'rc.xml'):
+            continue
+        link = os.path.join(dest, name)
+        if os.path.islink(link) or os.path.exists(link):
+            if os.path.islink(link) and os.readlink(link) == os.path.join(src, name):
+                continue
+            os.remove(link)
+        os.symlink(os.path.join(src, name), link)
+    user = parse_env(read(LABWC_ENV))
+    mine = {k: v for k, v in user.items() if k.startswith('XKB_DEFAULT_')}
+    env = read(os.path.join(src, 'environment'))
+    if mine:
+        env = env.rstrip('\n') + '\n\n# Your keyboard (Hearth Settings › Keyboard, ~/.config/labwc/environment)\n' + \
+            ''.join('%s=%s\n' % kv for kv in sorted(mine.items()))
+    write_atomic(os.path.join(dest, 'environment'), env)
+    delay, rate = keyboard_saved()
+    write_atomic(os.path.join(dest, 'rc.xml'), rc_with_repeat(read(os.path.join(src, 'rc.xml')), delay, rate))
+    return dest
+
+
+def keyboard_set(raw):
+    try:
+        req = json.loads(raw or 'null')
+    except ValueError:
+        raise Fail('expected JSON on stdin')
+    known = {(l['layout'], l['variant']) for l in keyboard_layouts()['layouts']}
+    lays, switch, delay, rate = keyboard_request(req, known if len(known) > 1 else None)
+    old = read(LABWC_ENV)
+    values = xkb_values(lays, switch, parse_env(old).get('XKB_DEFAULT_OPTIONS', ''))
+    write_atomic(LABWC_ENV, env_text(old, values))
+    write_atomic(KEYBOARD_JSON, json.dumps({'layouts': lays, 'switch': switch, 'delay': delay, 'rate': rate}, indent=2) + '\n')
+    live = False
+    if os.path.isdir(runtime_dir()):
+        labwc_config()
+        live = True
+    reloaded = False
+    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+        reloaded = run(['labwc', '--reconfigure'])[0] == 0
+    return {'ok': True, 'reloaded': reloaded and live, 'needsSignIn': not (reloaded and live)}
+
+
+# ---------------------------------------------------------------------- keyboard shortcuts (read-only)
+ACTION_WORDS = {
+    'Close': 'Close the window', 'ToggleMaximize': 'Maximize or restore the window', 'Maximize': 'Maximize the window',
+    'Iconify': 'Minimize the window', 'ToggleFullscreen': 'Full screen on or off', 'NextWindow': 'Switch to the next window',
+    'PreviousWindow': 'Switch to the previous window', 'Reconfigure': 'Reload the desktop settings', 'Exit': 'Sign out',
+    'ShowMenu': 'Open the menu', 'ToggleAlwaysOnTop': 'Keep the window on top, or not', 'Move': 'Move the window',
+    'Resize': 'Resize the window', 'Focus': 'Focus the window', 'Raise': 'Bring the window to the front',
+    'ToggleKeybinds': 'Turn keyboard shortcuts off or on', 'ShowDesktop': 'Show the desktop',
+    'ToggleShowDesktop': 'Show the desktop, or the windows again',
+}
+COMMAND_WORDS = [
+    (r'call launcher toggle', 'Open or close the app launcher'), (r'open\.sh terminal', 'Open a terminal'),
+    (r'open\.sh files', 'Open Files'), (r'open\.sh screenshot', 'Take a screenshot'),
+    (r'call tasks toggle', 'Open Task Manager'), (r'call lock lock', 'Lock the screen'),
+    (r'call clipboard toggle', 'Clipboard history'), (r'call settings', 'Open Settings'),
+    (r'call apps', 'Open Apps'), (r'call quick toggle', 'Quick Access'), (r'call power menu', 'Power menu'),
+    (r'nimbus-mode game', 'Go to Game Mode'), (r'nimbus-mode logout', 'Sign out'),
+    (r'buttons up|volume.*\+', 'Volume up'), (r'buttons down|volume.*-', 'Volume down'), (r'buttons mute|set-mute', 'Mute'),
+    (r'buttons power', 'Power button'), (r'brightnessctl set \d+%\+', 'Brightness up'), (r'brightnessctl set \d+%-', 'Brightness down'),
+]
+KEY_WORDS = {'W': 'Super', 'A': 'Alt', 'C': 'Ctrl', 'S': 'Shift', 'H': 'Hyper', 'M': 'Meta', 'Mod3': 'Mod3', 'Mod5': 'AltGr'}
+KEYSYM_WORDS = {
+    'space': 'Space', 'Return': 'Enter', 'Escape': 'Esc', 'Print': 'Print Screen', 'Tab': 'Tab', 'Up': 'Up', 'Down': 'Down',
+    'Left': 'Left', 'Right': 'Right', 'Super_L': 'Super', 'Super_R': 'Super', 'Delete': 'Delete', 'BackSpace': 'Backspace',
+    'XF86AudioRaiseVolume': 'Volume up key', 'XF86AudioLowerVolume': 'Volume down key', 'XF86AudioMute': 'Mute key',
+    'XF86PowerOff': 'Power key', 'XF86MonBrightnessUp': 'Brightness up key', 'XF86MonBrightnessDown': 'Brightness down key',
+}
+# labwc's own shortcuts that <default /> keeps unless rc.xml sets the same key.
+LABWC_DEFAULTS = [('A-Tab', 'Switch to the next window'), ('A-F4', 'Close the window')]
+
+
+def key_words(key):
+    parts = key.split('-')
+    mods, last = parts[:-1], parts[-1]
+    if not last and len(parts) > 1:      # "C--" is Ctrl and minus
+        mods, last = parts[:-2], '-'
+    words = [KEY_WORDS.get(m, m) for m in mods]
+    if last in KEYSYM_WORDS:
+        name = KEYSYM_WORDS[last]
+    elif len(last) == 1:
+        name = last.upper()
+    else:
+        name = re.sub(r'^XF86', '', last)
+    return '+'.join(words + [name])
+
+
+def action_words(action):
+    name = action.get('name', '')
+    if name == 'Execute':
+        cmd = action.get('command') or ''
+        for pat, words in COMMAND_WORDS:
+            if re.search(pat, cmd):
+                return words
+        word = (cmd.split() or [''])[0]
+        return 'Run ' + os.path.basename(word) if word else 'Run a command'
+    if name == 'SnapToEdge':
+        return 'Snap the window to the %s' % {'left': 'left half', 'right': 'right half', 'up': 'top', 'down': 'bottom'}.get(action.get('direction', ''), 'edge')
+    if name == 'MoveToEdge':
+        return 'Move the window to the %s edge' % action.get('direction', '')
+    if name == 'GoToDesktop':
+        return 'Go to desktop %s' % {'left': 'on the left', 'right': 'on the right'}.get(action.get('to', ''), action.get('to', ''))
+    if name == 'SendToDesktop':
+        return 'Move the window to desktop %s' % {'left': 'on the left', 'right': 'on the right'}.get(action.get('to', ''), action.get('to', ''))
+    return ACTION_WORDS.get(name, re.sub(r'(?<!^)([A-Z])', r' \1', name).capitalize())
+
+
+def parse_keybinds(text):
+    """labwc rc.xml -> [{key, keys (plain words), action (plain words)}] in file order, plus labwc's defaults."""
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return []
+    kb = root.find('keyboard')
+    if kb is None:
+        return []
+    out, seen = [], set()
+    for bind in kb.findall('keybind'):
+        key = bind.get('key') or ''
+        actions = []
+        for a in bind.findall('action'):
+            d = dict(a.attrib)
+            for child in a:      # <action name="Execute"><command>...</command></action> is allowed too
+                if child.text and child.tag not in d:
+                    d[child.tag] = child.text.strip()
+            actions.append(d)
+        if not key or not actions:
+            continue
+        seen.add(key)
+        out.append({'key': key, 'keys': key_words(key), 'action': ', then '.join(action_words(a) for a in actions)})
+    if kb.find('default') is not None:
+        out += [{'key': k, 'keys': key_words(k), 'action': w} for k, w in LABWC_DEFAULTS if k not in seen]
+    return out
+
+
+def shortcuts():
+    path = os.path.join(runtime_dir(), 'rc.xml')
+    if not os.path.exists(path):
+        path = os.path.join(LABWC_DIR, 'rc.xml')
+    return {'shortcuts': parse_keybinds(read(path)), 'file': path}
+
+
+# ---------------------------------------------------------------------- default apps
+def load_files_helper():
+    """hearth-files (next to this file): its .desktop and mimeapps.list readers are reused here."""
+    loader = importlib.machinery.SourceFileLoader('hearth_files', os.path.join(HERE, 'hearth-files'))
+    spec = importlib.util.spec_from_loader('hearth_files', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+def load_browser_mimes():
+    try:
+        loader = importlib.machinery.SourceFileLoader('hearth_browser', os.path.join(HERE, 'hearth-browser'))
+        spec = importlib.util.spec_from_loader('hearth_browser', loader)
+        m = importlib.util.module_from_spec(spec)
+        loader.exec_module(m)
+        return list(m.MIME)
+    except Exception:
+        return ['x-scheme-handler/http', 'x-scheme-handler/https', 'text/html', 'application/xhtml+xml']
+
+
+KINDS = [
+    {'kind': 'browser', 'label': 'Web browser', 'category': 'WebBrowser', 'mimes': None},
+    {'kind': 'files', 'label': 'File manager', 'category': 'FileManager', 'mimes': ['inode/directory']},
+    {'kind': 'text', 'label': 'Text editor', 'category': 'TextEditor', 'mimes': ['text/plain']},
+    {'kind': 'image', 'label': 'Image viewer', 'category': 'Viewer', 'mimes': ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff', 'image/svg+xml']},
+    {'kind': 'video', 'label': 'Video player', 'category': 'Video', 'mimes': ['video/mp4', 'video/x-matroska', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/mpeg', 'video/ogg']},
+    {'kind': 'music', 'label': 'Music player', 'category': 'Audio', 'mimes': ['audio/mpeg', 'audio/flac', 'audio/ogg', 'audio/x-wav', 'audio/mp4', 'audio/x-vorbis+ogg', 'audio/opus']},
+]
+
+
+def kind_mimes(k):
+    return k['mimes'] if k['mimes'] is not None else load_browser_mimes()
+
+
+def defaults(hf=None):
+    hf = hf or load_files_helper()
+    entries = hf.desktop_entries()
+    out = []
+    for k in KINDS:
+        mimes = kind_mimes(k)
+        primary = mimes[0] if k['kind'] != 'browser' else 'x-scheme-handler/https'
+        dflt, added, removed = hf.mimeapps(primary)
+        current = next((d for d in dflt if d in entries and hf.usable(entries[d][1])), None)
+        opts = []
+        for did, (_, fields) in entries.items():
+            if not hf.usable(fields) or fields.get('NoDisplay', '').lower() == 'true' or did in removed:
+                continue
+            types = [t for t in fields.get('MimeType', '').split(';') if t]
+            if primary in types or (k['kind'] != 'browser' and any(m in types for m in mimes)):
+                opts.append({'id': did, 'name': fields.get('Name') or did[:-8], 'icon': fields.get('Icon', '')})
+        if current and not any(o['id'] == current for o in opts):
+            f = entries[current][1]
+            opts.append({'id': current, 'name': f.get('Name') or current[:-8], 'icon': f.get('Icon', '')})
+        opts.sort(key=lambda o: o['name'].lower())
+        out.append({'kind': k['kind'], 'label': k['label'], 'current': current, 'options': opts})
+    return {'kinds': out}
+
+
+def mimeapps_with(text, mimes, app_id):
+    """mimeapps.list text with app_id as the default (and an added association) for each mime."""
+    sections, order, cur = {}, [], None
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith('[') and s.endswith(']'):
+            cur = s
+            if cur not in sections:
+                sections[cur] = []
+                order.append(cur)
+            continue
+        if cur is None:
+            cur = ''
+            sections.setdefault('', [])
+            order.insert(0, '')
+        sections[cur].append(line)
+    for sec in ('[Default Applications]', '[Added Associations]'):
+        if sec not in sections:
+            sections[sec] = []
+            order.append(sec)
+    dflt = [l for l in sections['[Default Applications]'] if l.split('=', 1)[0].strip() not in mimes]
+    sections['[Default Applications]'] = dflt + ['%s=%s;' % (m, app_id) for m in mimes]
+    added = []
+    have = {}
+    for l in sections['[Added Associations]']:
+        k = l.split('=', 1)[0].strip()
+        if '=' in l and k in mimes:
+            have[k] = [x for x in l.split('=', 1)[1].strip().split(';') if x and x != app_id]
+        else:
+            added.append(l)
+    sections['[Added Associations]'] = added + ['%s=%s;' % (m, ';'.join([app_id] + have.get(m, []))) for m in mimes]
+    if '[Removed Associations]' in sections:
+        rem = []
+        for l in sections['[Removed Associations]']:
+            k = l.split('=', 1)[0].strip()
+            if '=' in l and k in mimes:
+                ids = [x for x in l.split('=', 1)[1].strip().split(';') if x and x != app_id]
+                if ids:
+                    rem.append('%s=%s;' % (k, ';'.join(ids)))
+            else:
+                rem.append(l)
+        sections['[Removed Associations]'] = rem
+    out = []
+    for sec in order:
+        body = [l for l in sections[sec] if l.strip()]
+        if sec:
+            if out:
+                out.append('')
+            out.append(sec)
+        out += body
+    return '\n'.join(out) + '\n'
+
+
+def default_set(kind, app_id, hf=None):
+    k = next((k for k in KINDS if k['kind'] == kind), None)
+    if not k:
+        raise Fail('unknown kind of app')
+    if not re.fullmatch(r'[A-Za-z0-9_.+-]{1,200}\.desktop', app_id or ''):
+        raise Fail('not an app id')
+    hf = hf or load_files_helper()
+    entries = hf.desktop_entries()
+    if app_id not in entries or not hf.usable(entries[app_id][1]):
+        raise Fail('that app isn\'t installed')
+    mimes = kind_mimes(k)
+    path = os.path.join(CONFIG, 'mimeapps.list')
+    write_atomic(path, mimeapps_with(read(path), mimes, app_id))
+    # A desktop-specific file (~/.config/nimbus-mimeapps.list) would win over mimeapps.list: take these out of it.
+    for desk in hf.desktops():
+        p = os.path.join(CONFIG, desk + '-mimeapps.list')
+        if os.path.exists(p):
+            text = read(p)
+            keep = [l for l in text.splitlines() if l.split('=', 1)[0].strip() not in mimes]
+            if len(keep) != len(text.splitlines()):
+                write_atomic(p, '\n'.join(keep) + '\n')
+    if kind == 'browser' and shutil.which('xdg-settings'):
+        run(['xdg-settings', 'set', 'default-web-browser', app_id], timeout=15)
+    return {'ok': True, 'kind': kind, 'current': app_id}
+
+
+# ---------------------------------------------------------------------- accounts
+def parse_people(passwd_text, group_text):
+    admins = set()
+    for line in group_text.splitlines():
+        f = line.split(':')
+        if len(f) >= 4 and f[0] in ('wheel', 'sudo', 'admin'):
+            admins.update(x for x in f[3].split(',') if x)
+    out = []
+    for line in passwd_text.splitlines():
+        f = line.split(':')
+        if len(f) < 7 or not f[2].isdigit() or not 1000 <= int(f[2]) <= 59999 or f[6].endswith(('nologin', '/false')):
+            continue
+        out.append({'name': f[0], 'uid': int(f[2]), 'fullname': f[4].split(',')[0], 'home': f[5],
+                    'admin': f[0] in admins, 'player': bool(re.match(r'^hearth-p[2-4]$', f[0]))})
+    return out
+
+
+def users():
+    me = pwd.getpwuid(os.getuid()).pw_name
+    out = parse_people(read('/etc/passwd'), read('/etc/group'))
+    for u in out:
+        u['me'] = u['name'] == me
+        pic = ''
+        for p in ([os.path.join(HOME, '.face')] if u['me'] else []) + ['/var/lib/AccountsService/icons/' + u['name']]:
+            if os.path.isfile(p) and os.access(p, os.R_OK):
+                pic = p
+                break
+        u['picture'] = pic
+    out.sort(key=lambda u: (not u['me'], u['player'], u['name']))
+    meinfo = next((u for u in out if u['me']), None)
+    return {'users': out, 'me': me, 'admin': bool(meinfo and meinfo['admin']), 'canAdmin': os.access(ADMIN, os.X_OK)}
+
+
+def picture_kind(data):
+    if data.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    if data.startswith(b'\xff\xd8\xff'):
+        return 'jpeg'
+    return None
+
+
+def pictures():
+    found = []
+    for base in (os.path.join(HOME, 'Pictures'), '/usr/share/pixmaps/faces', '/usr/share/sddm/faces'):
+        for root, dirs, files in os.walk(base):
+            # Pictures and the folders right inside it (not deeper: a big photo library would take long).
+            dirs[:] = sorted(d for d in dirs if not d.startswith('.'))[:20] if root == base else []
+            for f in sorted(files):
+                if f.lower().endswith(('.png', '.jpg', '.jpeg')) and not f.startswith('.'):
+                    p = os.path.join(root, f)
+                    try:
+                        if os.path.getsize(p) <= 5 * 1024 * 1024:
+                            found.append(p)
+                    except OSError:
+                        pass
+                if len(found) >= 48:
+                    return {'pictures': found}
+    return {'pictures': found}
+
+
+def picture_set(path):
+    face = os.path.join(HOME, '.face')
+    data = b''
+    if path:
+        try:
+            with open(path, 'rb') as f:
+                data = f.read(5 * 1024 * 1024 + 1)
+        except OSError as e:
+            raise Fail('couldn\'t read the picture (%s)' % (e.strerror or e))
+        if len(data) > 5 * 1024 * 1024:
+            raise Fail('the picture is too big (up to 5 MB)')
+        if not picture_kind(data):
+            raise Fail('use a PNG or JPEG picture')
+        tmp = face + '.hearth-tmp'
+        with open(tmp, 'wb') as f:
+            f.write(data)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, face)
+        try:
+            shutil.copyfile(face, face + '.icon')
+        except OSError:
+            pass
+    else:
+        for p in (face, face + '.icon'):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+    login = False
+    if os.access(ADMIN, os.X_OK) and shutil.which('pkexec'):
+        try:
+            r = subprocess.run(['pkexec', ADMIN, 'user-picture'], input=data, capture_output=True, timeout=60)
+            login = r.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return {'ok': True, 'picture': face if path else '', 'loginScreen': login}
+
+
+# ---------------------------------------------------------------------- printers
+def parse_lpstat(v_text, d_text, p_text):
+    """lpstat -v, lpstat -d and lpstat -l -p (C locale) -> [{name, uri, default, state, enabled, reason, info,
+    location}]."""
+    printers, order = {}, []
+    for line in v_text.splitlines():
+        m = re.match(r'^device for ([^:]+):\s*(\S+)', line)
+        if m:
+            printers[m.group(1)] = {'name': m.group(1), 'uri': m.group(2), 'default': False, 'state': 'idle',
+                                    'enabled': True, 'reason': '', 'info': '', 'location': ''}
+            order.append(m.group(1))
+    m = re.search(r'system default destination:\s*(\S+)', d_text)
+    dflt = m.group(1) if m else None
+    cur, first = None, False
+    for line in p_text.splitlines():
+        m = re.match(r'^printer (\S+) (?:is )?(idle|now printing|disabled)', line)
+        if m:
+            cur = printers.setdefault(m.group(1), {'name': m.group(1), 'uri': '', 'default': False, 'state': 'idle',
+                                                   'enabled': True, 'reason': '', 'info': '', 'location': ''})
+            if m.group(1) not in order:
+                order.append(m.group(1))
+            st = m.group(2)
+            cur['state'] = 'printing' if st == 'now printing' else 'disabled' if st == 'disabled' else 'idle'
+            cur['enabled'] = st != 'disabled'
+            first = True
+            continue
+        if cur is None:
+            continue
+        s = line.strip()
+        # The line right after "printer X ..." without a "Name:" is the printer's message ("Paused", "Filter failed").
+        if first and s and ':' not in s:
+            cur['reason'] = s
+        first = False
+        if s.startswith('Description:'):
+            cur['info'] = s.split(':', 1)[1].strip()
+        elif s.startswith('Location:'):
+            cur['location'] = s.split(':', 1)[1].strip()
+    for n in order:
+        printers[n]['default'] = n == dflt
+    return [printers[n] for n in order]
+
+
+def printers():
+    have = bool(shutil.which('lpstat'))
+    if not have:
+        return {'cups': False, 'printers': [], 'configTool': bool(shutil.which('system-config-printer')),
+                'canAdmin': os.access(ADMIN, os.X_OK)}
+    cv, v = run(['lpstat', '-v'])
+    cd, d = run(['lpstat', '-d'])
+    cp, p = run(['lpstat', '-l', '-p'])
+    running = not re.search(r'(?i)scheduler is not running|unable to connect|connection refused', v + d + p)
+    return {'cups': running, 'printers': parse_lpstat(v, d, p) if running else [],
+            'configTool': bool(shutil.which('system-config-printer')), 'canAdmin': os.access(ADMIN, os.X_OK)}
+
+
+TESTPAGE = ['/usr/share/cups/data/testprint', '/usr/share/cups/data/default-testpage.pdf', '/usr/share/cups/data/testprint.ps']
+
+
+def printer_test(name):
+    if not PRINTER_NAME_RE.fullmatch(name or ''):
+        raise Fail('not a printer name')
+    page = next((p for p in TESTPAGE if os.path.exists(p)), None)
+    if page:
+        code, out = run(['lp', '-d', name, '-t', 'Hearth test page', page], timeout=60)
+    else:
+        text = 'Hearth test page\n\nIf you can read this, %s works.\n' % name
+        code, out = run(['lp', '-d', name, '-t', 'Hearth test page'], timeout=60, input=text)
+    if code != 0:
+        raise Fail('couldn\'t print (%s)' % ((out.strip().splitlines() or ['lp failed'])[-1]))
+    m = re.search(r'request id is (\S+)', out)
+    return {'ok': True, 'job': m.group(1) if m else ''}
+
+
+# ---------------------------------------------------------------------- command line
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    if c == 'time' and not a:
+        out = time_status()
+    elif c == 'timezones' and not a:
+        out = timezones()
+    elif c == 'keyboard' and not a:
+        out = keyboard_status()
+    elif c == 'keyboard-layouts' and not a:
+        out = keyboard_layouts()
+    elif c == 'keyboard-set' and not a:
+        out = keyboard_set(sys.stdin.read())
+    elif c == 'labwc-config' and not a:
+        print(labwc_config())
+        return
+    elif c == 'shortcuts' and not a:
+        out = shortcuts()
+    elif c == 'defaults' and not a:
+        out = defaults()
+    elif c == 'default-set' and len(a) == 2:
+        out = default_set(a[0], a[1])
+    elif c == 'users' and not a:
+        out = users()
+    elif c == 'pictures' and not a:
+        out = pictures()
+    elif c == 'picture-set' and len(a) == 1:
+        out = picture_set(a[0])
+    elif c == 'printers' and not a:
+        out = printers()
+    elif c == 'printer-test' and len(a) == 1:
+        out = printer_test(a[0])
+    else:
+        print('usage: hearth-system time | timezones | keyboard | keyboard-layouts | keyboard-set | labwc-config | '
+              'shortcuts | defaults | default-set KIND APP_ID | users | pictures | picture-set PATH | printers | '
+              'printer-test NAME')
+        sys.exit(2)
+    print(json.dumps(out), flush=True)
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv)
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)
+    except OSError as e:
+        print('error: ' + (e.strerror or str(e)), flush=True)
+        sys.exit(1)

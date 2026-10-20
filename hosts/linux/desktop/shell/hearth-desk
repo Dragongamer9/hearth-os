@@ -1,0 +1,385 @@
+#!/usr/bin/python3
+"""hearth-desk: what Desktop Mode's taskbar and desktop remember (Bar.qml, Desktop.qml, DeskState.qml).
+
+  hearth-desk state                         the saved settings (pins, desktop icons on/off, Do Not Disturb)
+  hearth-desk pin ID                        keep an app on the taskbar (ID: its .desktop id, e.g. firefox)
+  hearth-desk unpin ID                      take it off again
+  hearth-desk set KEY on|off                desktopIcons | dnd
+  hearth-desk icons COLS ROWS               what's in your Desktop folder, each with its place on a COLS x ROWS grid
+  hearth-desk place NAME COL ROW COLS ROWS  move one desktop icon to a place (swaps with an icon already there)
+  hearth-desk arrange COLS ROWS             line the desktop icons up by name
+  hearth-desk new-folder [NAME]             a new folder on the desktop ("New folder", "New folder 2", ...)
+  hearth-desk launch PATH                   start the app a .desktop launcher on the desktop points to
+
+Kept in $XDG_CONFIG_HOME/nimbus/desk.json (~/.config/nimbus/desk.json). Output is one JSON line; failures
+print "error: ..." and exit 1. File work (rename, Trash, details) goes through hearth-files.
+"""
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shlex
+import signal
+import subprocess
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+MAX_PINS = 40
+DEFAULTS = {'pins': [], 'desktopIcons': True, 'dnd': False, 'icons': {}}
+SWITCHES = ('desktopIcons', 'dnd')
+
+
+class Fail(Exception):
+    pass
+
+
+def files_module():
+    """hearth-files (next to this file), for the Desktop folder's place, file types and .desktop parsing."""
+    path = os.path.join(HERE, 'hearth-files')
+    loader = importlib.machinery.SourceFileLoader('hearth_files', path)
+    spec = importlib.util.spec_from_loader('hearth_files', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+HF = None
+
+
+def hf():
+    global HF
+    if HF is None:
+        HF = files_module()
+    return HF
+
+
+# ---------------------------------------------------------------------- the settings file
+def home():
+    return os.path.abspath(os.path.expanduser('~'))
+
+
+def config_path():
+    cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config')
+    return os.path.join(cfg, 'nimbus', 'desk.json')
+
+
+def clean(raw):
+    """The saved settings with anything odd dropped (hand-edited or from an older Hearth)."""
+    out = {k: (list(v) if isinstance(v, list) else dict(v) if isinstance(v, dict) else v) for k, v in DEFAULTS.items()}
+    if not isinstance(raw, dict):
+        return out
+    pins = []
+    for p in raw.get('pins') or []:
+        if isinstance(p, str) and valid_id(p) and p not in pins:
+            pins.append(p)
+    out['pins'] = pins[:MAX_PINS]
+    for k in SWITCHES:
+        if isinstance(raw.get(k), bool):
+            out[k] = raw[k]
+    icons = {}
+    saved = raw.get('icons') if isinstance(raw.get('icons'), dict) else {}
+    for name, cell in saved.items():
+        if isinstance(name, str) and isinstance(cell, list) and len(cell) == 2 and all(isinstance(c, int) and 0 <= c < 1000 for c in cell):
+            icons[name] = [cell[0], cell[1]]
+    out['icons'] = icons
+    return out
+
+
+def load():
+    try:
+        with open(config_path(), encoding='utf-8') as f:
+            return clean(json.load(f))
+    except (OSError, ValueError):
+        return clean(None)
+
+
+def save(state):
+    path = config_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix='.desk-', suffix='.json', dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(clean(state), f, indent=2, ensure_ascii=False)
+            f.write('\n')
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def public(state):
+    return {'pins': state['pins'], 'desktopIcons': state['desktopIcons'], 'dnd': state['dnd']}
+
+
+# ---------------------------------------------------------------------- taskbar pins
+def valid_id(app_id):
+    return bool(app_id) and len(app_id) <= 255 and '/' not in app_id and '\0' not in app_id and app_id.strip() == app_id
+
+
+def pin(app_id):
+    if not valid_id(app_id):
+        raise Fail("That app can't be pinned")
+    s = load()
+    if app_id not in s['pins']:
+        if len(s['pins']) >= MAX_PINS:
+            raise Fail('The taskbar is full. Unpin an app first')
+        s['pins'].append(app_id)
+        save(s)
+    return public(s)
+
+
+def unpin(app_id):
+    s = load()
+    if app_id in s['pins']:
+        s['pins'].remove(app_id)
+        save(s)
+    return public(s)
+
+
+def set_switch(key, value):
+    if key not in SWITCHES:
+        raise Fail('Unknown setting: ' + key)
+    v = value.lower()
+    if v not in ('on', 'off', 'true', 'false', 'yes', 'no', '1', '0'):
+        raise Fail('Use on or off')
+    s = load()
+    s[key] = v in ('on', 'true', 'yes', '1')
+    save(s)
+    return public(s)
+
+
+# ---------------------------------------------------------------------- desktop icons
+def desktop_dir():
+    """Your Desktop folder (XDG_DESKTOP_DIR, else ~/Desktop). None when it's set to your home folder itself,
+    so the desktop never fills up with everything in Home."""
+    d = hf().user_dirs().get('DESKTOP') or os.path.join(home(), 'Desktop')
+    d = os.path.normpath(d)
+    if os.path.realpath(d) == os.path.realpath(home()):
+        return None
+    return d
+
+
+def desktop_items(d):
+    """Desktop folder entries (no hidden ones): folders first, then by name."""
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return []
+    out = []
+    for name in names:
+        if name.startswith('.'):
+            continue
+        e = hf().entry(os.path.join(d, name), name)
+        if not e:
+            continue
+        if name.endswith('.desktop') and not e['dir']:
+            fields = hf().parse_desktop(e['path']) or {}
+            if fields.get('Type', 'Application') in ('Application', 'Link'):
+                e['label'] = fields.get('Name') or name[:-8]
+                e['icon'] = fields.get('Icon', '')
+                e['launcher'] = True
+        out.append(e)
+    out.sort(key=lambda e: (not e['dir'], e.get('label', e['name']).casefold(), e['name']))
+    return out
+
+
+def cells(cols, rows):
+    """Grid places in reading order for a desktop: down the first column, then the next (top-left first)."""
+    return [(c, r) for c in range(cols) for r in range(rows)]
+
+
+def layout(names, saved, cols, rows):
+    """Place every name on the grid. Saved places inside the grid are kept (the first name wins a clash);
+    the rest take the first free places. Returns ({name: (col, row)}, names that got a new place)."""
+    cols, rows = max(1, cols), max(1, rows)
+    taken, placed, fresh = set(), {}, []
+    for n in names:
+        cell = saved.get(n)
+        if cell and 0 <= cell[0] < cols and 0 <= cell[1] < rows and tuple(cell) not in taken:
+            placed[n] = (cell[0], cell[1])
+            taken.add(placed[n])
+    free = [c for c in cells(cols, rows) if c not in taken]
+    overflow = 0
+    for n in names:
+        if n in placed:
+            continue
+        if free:
+            placed[n] = free.pop(0)
+        else:                                   # more icons than places: stack past the last column
+            placed[n] = (cols + overflow // rows, overflow % rows)
+            overflow += 1
+        if n not in saved:
+            fresh.append(n)
+    return placed, fresh
+
+
+def icons(cols, rows):
+    d = desktop_dir()
+    if not d or not os.path.isdir(d):
+        return {'dir': d, 'exists': False, 'entries': []}
+    items = desktop_items(d)
+    s = load()
+    names = [e['name'] for e in items]
+    placed, fresh = layout(names, s['icons'], cols, rows)
+    # Remember new icons' places (so the next new file doesn't shuffle them) and forget removed files.
+    # A saved place outside today's grid (a smaller screen) is kept for when the screen is big again.
+    gone = [n for n in s['icons'] if n not in placed]
+    if fresh or gone:
+        for n in gone:
+            del s['icons'][n]
+        for n in fresh:
+            s['icons'][n] = list(placed[n])
+        save(s)
+    for e in items:
+        e['col'], e['row'] = placed[e['name']]
+    return {'dir': d, 'exists': True, 'entries': items}
+
+
+def place(name, col, row, cols, rows):
+    d = desktop_dir()
+    if not d or not os.path.isdir(d):
+        raise Fail("There's no Desktop folder")
+    names = [e['name'] for e in desktop_items(d)]
+    if name not in names:
+        raise Fail('“' + name + "” isn't on the desktop any more")
+    col = max(0, min(max(1, cols) - 1, col))
+    row = max(0, min(max(1, rows) - 1, row))
+    s = load()
+    placed, _ = layout(names, s['icons'], cols, rows)
+    old = placed[name]
+    for other, cell in placed.items():
+        if other != name and cell == (col, row):
+            s['icons'][other] = list(old)          # swap
+            break
+    s['icons'][name] = [col, row]
+    save(s)
+    return icons(cols, rows)
+
+
+def arrange(cols, rows):
+    s = load()
+    s['icons'] = {}
+    save(s)
+    return icons(cols, rows)
+
+
+def new_folder(name=''):
+    d = desktop_dir()
+    if not d:
+        raise Fail("Your Desktop folder is set to your home folder, so Hearth doesn't add things there")
+    os.makedirs(d, exist_ok=True)
+    base = (name or 'New folder').strip()
+    hf().valid_name(base)
+    target = os.path.join(d, base)
+    n = 1
+    while hf().lexists(target):
+        n += 1
+        target = os.path.join(d, '%s %d' % (base, n))
+    try:
+        hf().mkdir(target)
+    except hf().Fail as e:
+        raise Fail(str(e))
+    return {'ok': True, 'path': target, 'name': os.path.basename(target)}
+
+
+FIELD_CODES = re.compile(r'%[fFuUdDnNickvm]')
+
+
+def launch_argv(fields):
+    """argv for a launcher's Exec line with no file to open (field codes dropped, %% kept as %)."""
+    ex = fields.get('Exec', '')
+    if not ex:
+        raise Fail("This launcher doesn't say what to start")
+    try:
+        words = shlex.split(ex)
+    except ValueError:
+        raise Fail("This launcher's command can't be read")
+    out = []
+    for w in words:
+        if w in ('%i',) and fields.get('Icon'):
+            out += ['--icon', fields['Icon']]
+            continue
+        w = FIELD_CODES.sub('', w).replace('%%', '%')
+        if w:
+            out.append(w)
+    if not out:
+        raise Fail("This launcher doesn't say what to start")
+    return out
+
+
+def launch(path):
+    p = os.path.abspath(os.path.expanduser(path))
+    fields = hf().parse_desktop(p)
+    if fields is None:
+        raise Fail('“' + os.path.basename(p) + "” isn't there any more")
+    if fields.get('Type') == 'Link' and fields.get('URL'):
+        return hf().open_path(fields['URL']) if os.path.exists(fields['URL']) else _spawn(['xdg-open', fields['URL']])
+    return _spawn(launch_argv(fields), fields.get('Path') or home())
+
+
+def _spawn(argv, cwd=None):
+    try:
+        subprocess.Popen(argv, cwd=cwd if cwd and os.path.isdir(cwd) else home(), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as e:
+        raise Fail("Couldn't start " + os.path.basename(argv[0]) + ': ' + (e.strerror or str(e)))
+    return {'ok': True}
+
+
+# ---------------------------------------------------------------------- command line
+USAGE = ('usage: hearth-desk state | pin ID | unpin ID | set desktopIcons|dnd on|off | icons COLS ROWS | '
+         'place NAME COL ROW COLS ROWS | arrange COLS ROWS | new-folder [NAME] | launch PATH')
+
+
+def num(v):
+    try:
+        n = int(v)
+    except ValueError:
+        raise Fail('Not a number: ' + v)
+    if not 0 <= n < 1000:
+        raise Fail('Out of range: ' + v)
+    return n
+
+
+def cmd(argv):
+    a = argv[1:]
+    c, rest = (a[0] if a else ''), a[1:]
+    if c == 'state' and not rest:
+        out = public(load())
+    elif c == 'pin' and len(rest) == 1:
+        out = pin(rest[0])
+    elif c == 'unpin' and len(rest) == 1:
+        out = unpin(rest[0])
+    elif c == 'set' and len(rest) == 2:
+        out = set_switch(rest[0], rest[1])
+    elif c == 'icons' and len(rest) == 2:
+        out = icons(num(rest[0]), num(rest[1]))
+    elif c == 'place' and len(rest) == 5:
+        out = place(rest[0], num(rest[1]), num(rest[2]), num(rest[3]), num(rest[4]))
+    elif c == 'arrange' and len(rest) == 2:
+        out = arrange(num(rest[0]), num(rest[1]))
+    elif c == 'new-folder' and len(rest) <= 1:
+        out = new_folder(rest[0] if rest else '')
+    elif c == 'launch' and len(rest) == 1:
+        out = launch(rest[0])
+    else:
+        print(USAGE)
+        sys.exit(2)
+    print(json.dumps(out), flush=True)
+
+
+if __name__ == '__main__':
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    try:
+        cmd(sys.argv)
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)
+    except Exception as e:                      # hearth-files' own Fail, OSError, ...
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)

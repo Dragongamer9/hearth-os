@@ -39,6 +39,21 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      starts at the next restart
   hearth-admin hibernate-setup       room on the drive (a swap file the size of memory) so the PC can turn
                                      off with Quick Resume games kept, and the boot options to come back to it
+  hearth-admin timezone ZONE         the time zone (one from timedatectl list-timezones)
+  hearth-admin ntp on|off            set the time from the internet, or not
+  hearth-admin time-set "YYYY-MM-DD HH:MM"
+                                     set the clock by hand (only while automatic time is off)
+  hearth-admin user-add NAME standard|admin
+                                     a new account; stdin: {"password": "...", "fullname": "..."}
+  hearth-admin user-remove NAME keep-home|delete-home
+                                     remove an account (never your own, a system one, or the last administrator)
+  hearth-admin user-picture          your account picture for the login screen; stdin: a PNG or JPEG (empty
+                                     stdin removes it)
+  hearth-admin printer-discover      JSON: printers CUPS can find (network and USB)
+  hearth-admin printer-add NAME URI [--info TEXT]
+                                     add a printer (driverless IPP Everywhere first, then a matching driver)
+  hearth-admin printer-remove NAME   remove a printer
+  hearth-admin printer-default NAME  the printer everyone prints to unless they pick another
 
 Output: progress lines as "log: ...", percentages as "progress: <0-100> <what>", the result as one JSON line. Exit 1 with "error: ..." on failure.
 """
@@ -47,6 +62,7 @@ import json
 import os
 import pwd
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -738,10 +754,10 @@ def seats_validate(req, main_user):
         if n == 1:
             if user != main_user:
                 raise SeatsError('player 1 must be you (%s)' % main_user)
-        elif not isinstance(user, str) or not SEAT_PLAYER_RE.match(user) or user != 'hearth-p%d' % n:
+        elif not isinstance(user, str) or not SEAT_PLAYER_RE.fullmatch(user) or user != 'hearth-p%d' % n:
             raise SeatsError('player %d\'s account must be called hearth-p%d' % (n, n))
         output = s.get('output')
-        m = SEAT_OUTPUT_RE.match(output) if isinstance(output, str) else None
+        m = SEAT_OUTPUT_RE.fullmatch(output) if isinstance(output, str) else None
         if not m or not os.path.isdir(os.path.join(SEATS_SYS, 'class/drm', output)):
             raise SeatsError('player %d\'s screen (%s) isn\'t there' % (n, output))
         if output in outputs:
@@ -749,7 +765,7 @@ def seats_validate(req, main_user):
         outputs.add(output)
         card = m.group(1)
         gpu = seats_card_pci(card)
-        if not gpu or not SEAT_PCI_RE.match(gpu):
+        if not gpu or not SEAT_PCI_RE.fullmatch(gpu):
             raise SeatsError('couldn\'t find the graphics card for %s' % output)
         entry = {'seat': n, 'user': user, 'output': output, 'card': card, 'gpu': gpu,
                  'vk_device': '%s:%s' % (seats_read(os.path.join(SEATS_SYS, 'class/drm', card, 'device/vendor')).replace('0x', ''),
@@ -769,7 +785,7 @@ def seats_validate(req, main_user):
         if not isinstance(pads, list) or len(pads) > 16:
             raise SeatsError('pads must be a list')
         for p in pads:
-            if not isinstance(p, str) or not SEAT_PAD_RE.match(p):
+            if not isinstance(p, str) or not SEAT_PAD_RE.fullmatch(p):
                 raise SeatsError('%r isn\'t a controller Hearth knows how to recognise' % (p,))
             if p in pads_seen:
                 raise SeatsError('a controller can only belong to one player')
@@ -777,7 +793,7 @@ def seats_validate(req, main_user):
             entry['pads'].append(p)
         audio = s.get('audio')
         if audio is not None:
-            if not isinstance(audio, str) or not SEAT_SINK_RE.match(audio):
+            if not isinstance(audio, str) or not SEAT_SINK_RE.fullmatch(audio):
                 raise SeatsError('player %d\'s sound output name isn\'t valid' % n)
             entry['audio'] = audio
         out.append(entry)
@@ -797,12 +813,12 @@ def seats_rules(config):
         if s['seat'] == 1:
             continue
         user = s['user']
-        if not SEAT_PLAYER_RE.match(user):
+        if not SEAT_PLAYER_RE.fullmatch(user):
             raise SeatsError('bad account name')
         give = 'ENV{ID_SEAT}="seat-%s", ENV{HEARTH_SEAT_USER}="%s", TAG-="seat", TAG-="master-of-seat", TAG-="uaccess"' % (user, user)
         lines.append('# player %d (%s)' % (s['seat'], user))
         for p in s.get('pads', []):
-            if not SEAT_PAD_RE.match(p):
+            if not SEAT_PAD_RE.fullmatch(p):
                 raise SeatsError('bad controller id')
             kind, val = p.split(':', 1)
             if kind == 'usb':
@@ -811,11 +827,11 @@ def seats_rules(config):
                 lines.append('SUBSYSTEM=="input", ATTRS{uniq}=="%s", %s' % (val, give))
                 lines.append('SUBSYSTEM=="hidraw", ENV{HID_UNIQ}=="%s", %s' % (val, give))
         if config['mode'] == 'gpu':
-            if not SEAT_PCI_RE.match(s['gpu']):
+            if not SEAT_PCI_RE.fullmatch(s['gpu']):
                 raise SeatsError('bad graphics card address')
             lines.append('SUBSYSTEM=="drm", KERNEL=="card[0-9]*", KERNELS=="%s", %s' % (s['gpu'], give))
             for a in s.get('audio_pci', []):
-                if not SEAT_PCI_RE.match(a):
+                if not SEAT_PCI_RE.fullmatch(a):
                     raise SeatsError('bad sound card address')
                 lines.append('SUBSYSTEM=="sound", KERNELS=="%s", %s' % (a, give))
         lines.append('ENV{HEARTH_SEAT_USER}=="%s", ENV{DEVNAME}=="?*", GROUP:="root", MODE:="0660", '
@@ -947,8 +963,8 @@ def seats_remove_impl(config, delete_users, quiet=False):
     import glob
     import shutil
     config = config or {}
-    players = sorted({s.get('user') for s in config.get('seats', []) if SEAT_PLAYER_RE.match(str(s.get('user')))} |
-                     {u for u in seats_existing_users() if SEAT_PLAYER_RE.match(u)})
+    players = sorted({s.get('user') for s in config.get('seats', []) if SEAT_PLAYER_RE.fullmatch(str(s.get('user')))} |
+                     {u for u in seats_existing_users() if SEAT_PLAYER_RE.fullmatch(u)})
     units = set()
     for wants in glob.glob(os.path.join(SEATS_SYSTEMD_ETC, '*.wants', 'hearth-seat@*')):
         units.add(os.path.basename(wants))
@@ -959,7 +975,7 @@ def seats_remove_impl(config, delete_users, quiet=False):
     for u in sorted(units):
         if re.fullmatch(r'hearth-seat@hearth-p[2-4]\.(service|path)', u):
             seats_run(['systemctl', 'disable', '--now', u])
-    old_pads = [p for s in config.get('seats', []) for p in s.get('pads', []) if SEAT_PAD_RE.match(str(p))]
+    old_pads = [p for s in config.get('seats', []) for p in s.get('pads', []) if SEAT_PAD_RE.fullmatch(str(p))]
     if not quiet:
         progress(35, 'Giving the controllers back')
     for path in [SEATS_RULES, SEATS_TMPFILES] + glob.glob(os.path.join(SEATS_ENV_DIR, 'hearth-p*.env')):
@@ -975,7 +991,7 @@ def seats_remove_impl(config, delete_users, quiet=False):
     shutil.rmtree(SEATS_RUN, ignore_errors=True)
     seats_run(['systemctl', 'daemon-reload'])
     removed, kept = [], []
-    created = [u for u in config.get('created_users', []) if SEAT_PLAYER_RE.match(str(u))]
+    created = [u for u in config.get('created_users', []) if SEAT_PLAYER_RE.fullmatch(str(u))]
     if delete_users:
         if not quiet:
             progress(60, 'Removing the extra players\' accounts')
@@ -1034,7 +1050,7 @@ def seats_setup():
             j.write(os.path.join(SEATS_ENV_DIR, s['user'] + '.env'), seats_env(config, s))
         j.write(SEATS_TMPFILES, seats_tmpfiles(config))
         # The extra accounts aren't for signing in at the login screen.
-        hidden = sorted({s['user'] for s in config['seats'][1:]} | {u for u in seats_existing_users() if SEAT_PLAYER_RE.match(u)})
+        hidden = sorted({s['user'] for s in config['seats'][1:]} | {u for u in seats_existing_users() if SEAT_PLAYER_RE.fullmatch(u)})
         j.write(SEATS_SDDM, '# Hearth multi-seat: the extra players\' accounts\n[Users]\nHideUsers=%s\n' % ','.join(hidden))
         progress(50, 'Giving each player their controllers')
         j.write(SEATS_RULES, seats_rules(config))
@@ -1089,7 +1105,7 @@ def seats_acl():
         fail('expected {"pads": {"<controller>": <player>, ...}}')
     numbers = {s['seat'] for s in config['seats']}
     for p, n in pads.items():
-        if not SEAT_PAD_RE.match(p):
+        if not SEAT_PAD_RE.fullmatch(p):
             fail('%r isn\'t a controller Hearth knows how to recognise' % p)
         if not isinstance(n, int) or isinstance(n, bool) or n not in numbers:
             fail('there\'s no player %r' % (n,))
@@ -1330,6 +1346,410 @@ def move_to_new_os(edition='anatase', testing=False):
     print(json.dumps(st))
 
 
+# ---------------------------------------------------------------------- date and time (Settings › Date & time)
+TIMEZONE_RE = re.compile(r'^[A-Za-z0-9_+-]{1,40}(/[A-Za-z0-9_+-]{1,40}){0,2}$')
+TIME_SET_RE = re.compile(r'^(20[0-9]{2})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):([0-5][0-9])$')
+ZONEINFO = '/usr/share/zoneinfo'
+
+
+def admin_run(cmd, input=None, timeout=120, env=None):
+    """Commands for the date/time, account and printer commands (tests replace it). Returns (code, output)."""
+    try:
+        r = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=timeout,
+                           env=dict(os.environ, LC_ALL='C', **(env or {})))
+        return r.returncode, (r.stdout + r.stderr).strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, str(e)
+
+
+def last_line(out, default):
+    return ((out or '').strip().splitlines() or [default])[-1][:300]
+
+
+def valid_timezone(zone):
+    """A time zone name the system knows: the right shape, and listed by timedatectl (or in the zone files)."""
+    if not isinstance(zone, str) or not TIMEZONE_RE.fullmatch(zone) or '..' in zone:
+        return False
+    code, out = admin_run(['timedatectl', 'list-timezones'], timeout=30)
+    if code == 0 and out:
+        return zone in out.split()
+    return os.path.isfile(os.path.join(ZONEINFO, zone))
+
+
+def timezone(zone):
+    caller()
+    if not valid_timezone(zone):
+        fail('unknown time zone')
+    code, out = admin_run(['timedatectl', 'set-timezone', zone])
+    if code != 0:
+        fail('couldn\'t change the time zone (%s)' % last_line(out, 'timedatectl failed'))
+    print(json.dumps({'ok': True, 'timezone': zone}))
+
+
+def ntp(state):
+    caller()
+    if state not in ('on', 'off'):
+        fail('ntp on|off')
+    code, out = admin_run(['timedatectl', 'set-ntp', 'true' if state == 'on' else 'false'])
+    if code != 0:
+        fail('couldn\'t change automatic time (%s)' % last_line(out, 'timedatectl failed'))
+    print(json.dumps({'ok': True, 'ntp': state == 'on'}))
+
+
+def time_set(value):
+    caller()
+    if not isinstance(value, str) or not TIME_SET_RE.fullmatch(value):
+        fail('use YYYY-MM-DD HH:MM')
+    code, out = admin_run(['timedatectl', 'set-time', value + ':00'])
+    if code != 0:
+        if 'NTP' in out or 'ntp' in out:
+            fail('turn off automatic time first')
+        fail('couldn\'t set the clock (%s)' % last_line(out, 'timedatectl failed'))
+    print(json.dumps({'ok': True, 'time': value}))
+
+
+# ---------------------------------------------------------------------- accounts (Settings › Users)
+# Hearth's administrators are the "wheel" group (the installer puts the first account there; sudo and the
+# polkit rules use it). Account names are checked strictly and only ever passed as single arguments.
+USERNAME_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
+FULLNAME_RE = re.compile(r'^[^\x00-\x1f\x7f:,=]{0,64}$')
+ADMIN_GROUP = 'wheel'
+ADMIN_GROUPS = ('wheel', 'sudo', 'admin')   # any of these counts as an administrator when listing
+PASSWD_FILE = '/etc/passwd'
+GROUP_FILE = '/etc/group'
+ACCOUNTS_DIR = '/var/lib/AccountsService'
+PICTURE_MAX = 5 * 1024 * 1024
+UID_MIN, UID_MAX = 1000, 59999
+
+
+def read_text(path):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def people(passwd_text=None, group_text=None):
+    """The people's accounts (not system ones): [{name, uid, fullname, home, admin, player}]."""
+    passwd_text = read_text(PASSWD_FILE) if passwd_text is None else passwd_text
+    group_text = read_text(GROUP_FILE) if group_text is None else group_text
+    admins = set()
+    for line in group_text.splitlines():
+        f = line.split(':')
+        if len(f) >= 4 and f[0] in ADMIN_GROUPS:
+            admins.update(x for x in f[3].split(',') if x)
+    out = []
+    for line in passwd_text.splitlines():
+        f = line.split(':')
+        if len(f) < 7 or not f[2].isdigit():
+            continue
+        uid = int(f[2])
+        if not UID_MIN <= uid <= UID_MAX or f[6].endswith(('nologin', '/false')):
+            continue
+        out.append({'name': f[0], 'uid': uid, 'fullname': f[4].split(',')[0], 'home': f[5],
+                    'admin': f[0] in admins, 'player': bool(SEAT_PLAYER_RE.fullmatch(f[0]))})
+    return out
+
+
+def group_names(group_text=None):
+    group_text = read_text(GROUP_FILE) if group_text is None else group_text
+    return {line.split(':')[0] for line in group_text.splitlines() if ':' in line}
+
+
+def user_add_request(name, kind, raw):
+    """user-add's input, checked strictly: (name, admin, fullname, password); raises ValueError with the reason."""
+    if not isinstance(name, str) or not USERNAME_RE.fullmatch(name):
+        raise ValueError('account names use small letters, numbers, - and _ (up to 32), starting with a letter or _')
+    if SEAT_PLAYER_RE.fullmatch(name):
+        raise ValueError('that name is kept for multi-seat players')
+    if kind not in ('standard', 'admin'):
+        raise ValueError('the account type is standard or admin')
+    try:
+        req = json.loads(raw or 'null')
+        password_ = req['password']
+        fullname = req.get('fullname', '') or ''
+    except (ValueError, KeyError, TypeError, AttributeError):
+        raise ValueError('expected {"password": ..., "fullname": ...}')
+    if not isinstance(password_, str) or not isinstance(fullname, str):
+        raise ValueError('expected {"password": ..., "fullname": ...}')
+    if len(password_) < 4:
+        raise ValueError('the password needs at least 4 characters')
+    if len(password_) > 512 or '\n' in password_ or '\r' in password_ or '\0' in password_:
+        raise ValueError('the password can\'t contain line breaks')
+    fullname = fullname.strip()
+    if not FULLNAME_RE.fullmatch(fullname):
+        raise ValueError('the full name can be up to 64 characters, without : , or =')
+    return name, kind == 'admin', fullname, password_
+
+
+def user_add(name, kind):
+    caller()
+    try:
+        name, admin, fullname, password_ = user_add_request(name, kind, sys.stdin.readline())
+    except ValueError as e:
+        fail(str(e))
+    if any(p['name'] == name for p in people()) or name in {l.split(':')[0] for l in read_text(PASSWD_FILE).splitlines()}:
+        fail('there\'s already an account called %s' % name)
+    if name in group_names():
+        fail('%s is already used by the system' % name)
+    base = '/var/home' if os.path.isdir('/var/home') else '/home'
+    cmd = ['useradd', '--create-home', '--home-dir', os.path.join(base, name), '--shell', '/bin/bash', '--user-group']
+    if fullname:
+        cmd += ['--comment', fullname]
+    if admin:
+        if ADMIN_GROUP not in group_names():
+            fail('the administrators group (%s) is missing' % ADMIN_GROUP)
+        cmd += ['--groups', ADMIN_GROUP]
+    code, out = admin_run(cmd + ['--', name])
+    if code != 0:
+        fail('couldn\'t create the account (%s)' % last_line(out, 'useradd failed'))
+    code, out = admin_run(['chpasswd'], input='%s:%s\n' % (name, password_))
+    if code != 0:
+        admin_run(['userdel', '-r', '--', name])
+        fail('couldn\'t set the password, so the account wasn\'t kept (%s)' % last_line(out, 'chpasswd failed'))
+    print(json.dumps({'ok': True, 'user': name, 'admin': admin}))
+
+
+def user_remove_check(name, mode, me, accounts):
+    """Why this account can't be removed (None if it can)."""
+    if not isinstance(name, str) or not USERNAME_RE.fullmatch(name):
+        return 'not a valid account name'
+    if mode not in ('keep-home', 'delete-home'):
+        return 'say keep-home or delete-home'
+    if name == me:
+        return 'you can\'t remove the account you\'re using'
+    acct = next((a for a in accounts if a['name'] == name), None)
+    if not acct:
+        return 'there\'s no such account (system accounts can\'t be removed here)'
+    if acct['player']:
+        return 'multi-seat player accounts are removed in Settings › Multi-seat'
+    if acct['admin'] and not any(a['admin'] and a['name'] != name for a in accounts):
+        return 'this is the last administrator'
+    return None
+
+
+def user_remove(name, mode):
+    me = caller().pw_name
+    why = user_remove_check(name, mode, me, people())
+    if why:
+        fail(why)
+    admin_run(['loginctl', 'terminate-user', '--', name], timeout=30)
+    time.sleep(1)
+    cmd = ['userdel'] + (['-r'] if mode == 'delete-home' else []) + ['--', name]
+    code, out = admin_run(cmd)
+    # userdel -r exits 12 when it removed the account but not every file (e.g. no mail spool): still removed.
+    if code not in (0, 12) or any(p['name'] == name for p in people()):
+        if 'currently used' in out or 'logged in' in out:
+            fail('%s is still signed in somewhere. Sign them out and try again' % name)
+        fail('couldn\'t remove the account (%s)' % last_line(out, 'userdel failed'))
+    for path in (os.path.join(ACCOUNTS_DIR, 'icons', name), os.path.join(ACCOUNTS_DIR, 'users', name)):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    print(json.dumps({'ok': True, 'user': name, 'homeDeleted': mode == 'delete-home'}))
+
+
+def picture_kind(data):
+    if data.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    if data.startswith(b'\xff\xd8\xff'):
+        return 'jpeg'
+    return None
+
+
+def accounts_user_file(text, icon):
+    """AccountsService's file for an account with Icon= set (or removed when icon is None), the rest kept."""
+    lines = text.splitlines()
+    if not any(l.strip() == '[User]' for l in lines):
+        lines = ['[User]'] + lines
+    out, in_user, done = [], False, False
+    for l in lines:
+        s = l.strip()
+        if s.startswith('['):
+            if in_user and not done and icon:
+                out.append('Icon=' + icon)
+                done = True
+            in_user = s == '[User]'
+            out.append(l)
+            continue
+        if in_user and s.startswith('Icon='):
+            if icon and not done:
+                out.append('Icon=' + icon)
+                done = True
+            continue
+        out.append(l)
+    if in_user and not done and icon:
+        out.append('Icon=' + icon)
+    return '\n'.join(out) + '\n'
+
+
+def user_picture():
+    me = caller().pw_name
+    if not USERNAME_RE.fullmatch(me):
+        fail('unusual account name')
+    data = sys.stdin.buffer.read(PICTURE_MAX + 1)
+    icons, users = os.path.join(ACCOUNTS_DIR, 'icons'), os.path.join(ACCOUNTS_DIR, 'users')
+    icon = os.path.join(icons, me)
+    if not data:
+        try:
+            os.remove(icon)
+        except OSError:
+            pass
+        icon = None
+    else:
+        if len(data) > PICTURE_MAX:
+            fail('the picture is too big (up to 5 MB)')
+        if not picture_kind(data):
+            fail('use a PNG or JPEG picture')
+        os.makedirs(icons, mode=0o755, exist_ok=True)
+        tmp = icon + '.hearth-tmp'
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+        os.replace(tmp, icon)
+    os.makedirs(users, mode=0o700, exist_ok=True)
+    path = os.path.join(users, me)
+    text = accounts_user_file(read_text(path), icon)
+    tmp = path + '.hearth-tmp'
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        f.write(text)
+    os.replace(tmp, path)
+    print(json.dumps({'ok': True, 'picture': bool(icon)}))
+
+
+# ---------------------------------------------------------------------- printers (Settings › Printers, CUPS)
+PRINTER_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,126}$')
+PRINTER_URI_RE = re.compile(r'^(ipp|ipps|http|https|dnssd|usb|socket|lpd|hp|implicitclass)://'
+                            r'[A-Za-z0-9._~:/?#\[\]@!$&()*+,;=%-]{1,500}$')
+PRINTER_INFO_RE = re.compile(r'^[^\x00-\x1f\x7f]{1,127}$')
+DRIVERLESS_SCHEMES = ('ipp', 'ipps', 'http', 'https', 'dnssd', 'implicitclass')
+
+
+def parse_lpinfo_devices(text):
+    """lpinfo -l -v: the devices that are real printers (have an address), [{uri, cls, info, makeModel, deviceId,
+    location}]. The bare backends ("network socket", "direct usb") are left out."""
+    out, cur = [], None
+    for line in text.splitlines():
+        m = re.match(r'^Device:\s*uri\s*=\s*(\S+)\s*$', line)
+        if m:
+            cur = {'uri': m.group(1), 'cls': '', 'info': '', 'makeModel': '', 'deviceId': '', 'location': ''}
+            out.append(cur)
+            continue
+        m = re.match(r'^\s+(class|info|make-and-model|device-id|location)\s*=\s*(.*?)\s*$', line)
+        if m and cur is not None:
+            key = {'class': 'cls', 'make-and-model': 'makeModel', 'device-id': 'deviceId'}.get(m.group(1), m.group(1))
+            cur[key] = m.group(2)
+    keep = []
+    for d in out:
+        scheme, _, rest = d['uri'].partition('://')
+        if not rest or not PRINTER_URI_RE.fullmatch(d['uri']):
+            continue
+        if d['makeModel'].lower() == 'unknown':
+            d['makeModel'] = ''
+        keep.append(d)
+    return keep
+
+
+def printer_discover():
+    caller()
+    code, out = admin_run(['lpinfo', '-l', '-v', '--timeout', '8', '--exclude-schemes', 'beh,cups-brf,cups-pdf,serial,parallel'], timeout=60)
+    if code != 0 and not out.startswith('Device:'):
+        fail('couldn\'t look for printers (%s). Is CUPS running?' % last_line(out, 'lpinfo failed'))
+    devices = parse_lpinfo_devices(out)
+    # The same printer is often found several ways (dnssd and ipp): keep the dnssd one, the most stable address.
+    seen, unique = set(), []
+    for d in sorted(devices, key=lambda d: (0 if d['uri'].startswith('dnssd://') else 1, d['uri'])):
+        key = (d['info'] or d['makeModel'] or d['uri']).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(d)
+    print(json.dumps({'devices': unique}))
+
+
+def printer_args(args):
+    """printer-add's arguments: NAME URI [--info TEXT]. (name, uri, info) or None."""
+    if len(args) not in (2, 4):
+        return None
+    name, uri = args[0], args[1]
+    info = None
+    if len(args) == 4:
+        if args[2] != '--info' or not PRINTER_INFO_RE.fullmatch(args[3]):
+            return None
+        info = args[3]
+    if not PRINTER_NAME_RE.fullmatch(name) or not PRINTER_URI_RE.fullmatch(uri):
+        return None
+    return name, uri, info
+
+
+def printer_models(uri):
+    """The drivers to try for a printer, best first: driverless IPP Everywhere, cups-filters' driverless PPD,
+    then the first driver CUPS has for the printer's make and model."""
+    out = []
+    scheme = uri.split('://', 1)[0]
+    if scheme in DRIVERLESS_SCHEMES:
+        out.append('everywhere')
+        if shutil.which('driverless'):
+            out.append('driverless:' + uri)
+    code, text = admin_run(['lpinfo', '-l', '-v', '--timeout', '5'], timeout=60)
+    mm = next((d['makeModel'] for d in parse_lpinfo_devices(text) if d['uri'] == uri and d['makeModel']), '')
+    if mm:
+        code, text = admin_run(['lpinfo', '--make-and-model', mm, '-m'], timeout=60)
+        for line in text.splitlines() if code == 0 else []:
+            model = line.split(' ', 1)[0]
+            if model and model not in ('everywhere',) and not model.startswith('driverless:') and model not in out:
+                out.append(model)
+                break
+    return out
+
+
+def printer_add(name, uri, info):
+    caller()
+    errors = []
+    for model in printer_models(uri):
+        cmd = ['lpadmin', '-p', name, '-E', '-v', uri, '-m', model, '-o', 'printer-is-shared=false']
+        if info:
+            cmd += ['-D', info]
+        code, out = admin_run(cmd, timeout=120)
+        if code == 0:
+            admin_run(['cupsenable', name])
+            admin_run(['cupsaccept', name])
+            print(json.dumps({'ok': True, 'name': name, 'model': model}))
+            return
+        errors.append(last_line(out, 'lpadmin failed'))
+    if not errors:
+        fail('no driver found for this printer')
+    fail('couldn\'t add the printer (%s)' % errors[-1])
+
+
+def printer_exists(name):
+    code, out = admin_run(['lpstat', '-v'])
+    return any(l.startswith('device for %s:' % name) for l in out.splitlines())
+
+
+def printer_remove(name):
+    caller()
+    if not PRINTER_NAME_RE.fullmatch(name or '') or not printer_exists(name):
+        fail('there\'s no printer called that')
+    code, out = admin_run(['lpadmin', '-x', name])
+    if code != 0:
+        fail('couldn\'t remove the printer (%s)' % last_line(out, 'lpadmin failed'))
+    print(json.dumps({'ok': True, 'removed': name}))
+
+
+def printer_default(name):
+    caller()
+    if not PRINTER_NAME_RE.fullmatch(name or '') or not printer_exists(name):
+        fail('there\'s no printer called that')
+    code, out = admin_run(['lpadmin', '-d', name])
+    if code != 0:
+        fail('couldn\'t make it the default (%s)' % last_line(out, 'lpadmin failed'))
+    print(json.dumps({'ok': True, 'default': name}))
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
     if cmd == 'tdp-info':
@@ -1371,6 +1791,26 @@ def main(argv):
         space('grow', args)
     elif cmd == 'space-clear-journal' and len(argv) == 2:
         space('clear-journal', [])
+    elif cmd == 'timezone' and len(argv) == 3:
+        timezone(argv[2])
+    elif cmd == 'ntp' and len(argv) == 3:
+        ntp(argv[2])
+    elif cmd == 'time-set' and len(argv) == 3:
+        time_set(argv[2])
+    elif cmd == 'user-add' and len(argv) == 4:
+        user_add(argv[2], argv[3])
+    elif cmd == 'user-remove' and len(argv) == 4:
+        user_remove(argv[2], argv[3])
+    elif cmd == 'user-picture' and len(argv) == 2:
+        user_picture()
+    elif cmd == 'printer-discover' and len(argv) == 2:
+        printer_discover()
+    elif cmd == 'printer-add' and printer_args(argv[2:]):
+        printer_add(*printer_args(argv[2:]))
+    elif cmd == 'printer-remove' and len(argv) == 3:
+        printer_remove(argv[2])
+    elif cmd == 'printer-default' and len(argv) == 3:
+        printer_default(argv[2])
     elif cmd in ('import-scan', 'import-run', 'import-unmount', 'takeover-plan', 'takeover-run'):
         # Bringing games and files over from other drives, and removing the old system afterwards: their own
         # scripts, run as root like the rest.
@@ -1378,7 +1818,7 @@ def main(argv):
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
         os.execv(sys.executable, [sys.executable, helper, sub])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing]')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME')
 
 
 if __name__ == '__main__':
