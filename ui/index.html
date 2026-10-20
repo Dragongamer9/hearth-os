@@ -330,6 +330,14 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .note{color:var(--dim);font-size:13px;padding:8px 4px;line-height:1.5}
 .hhd-sub{display:flex;flex-direction:column;gap:8px;margin-left:16px;padding-left:12px;border-left:2px solid var(--panel3)}.hhd-sub:empty{display:none}
 .hhd-h{font-size:14px;font-weight:700;margin:8px 4px 0}
+.qhhd{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.qhhd .row{background:var(--panel2);padding:10px 12px;gap:10px;border-radius:9px}
+.qhhd .row .rt b{font-size:14px}
+.qhhd .row .rv{max-width:48%;text-align:right}
+.qhhd .ctl{margin-bottom:0}
+.qhhd .hhd-sub{margin-left:6px;padding-left:8px;gap:6px}
+.qhhd .hhd-h{font-size:13px;color:var(--dim);margin:6px 2px 0}
+.qhhd-note{font-size:12px;margin:8px 2px 0}
 .row .seg{flex:1;max-width:420px}
 .ctl.tg .tgl{display:flex;flex-direction:column;min-width:0}
 .ctl.tg .tgl small{font-size:12px;color:var(--dim);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -865,14 +873,16 @@ const MOCK = (()=>{
 
     'power.get':async()=>({...st.battery,mode:st.powerMode,modes:['efficiency','balanced','performance'],modeSupported:true,tdp:{supported:true,watts:st.tdp||15,min:7,max:30}}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
-    'perf.stats':async()=>({cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,canOverlay:true,perfOverlay:MOCKPO,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'}}),
+    'perf.stats':async(a)=>({gamePower:S.running?{id:S.running,saved:!!(MOCKOPT[S.running]&&MOCKOPT[S.running].powerLabel),label:(MOCKOPT[S.running]||{}).powerLabel||'',tdp:(MOCKOPT[S.running]||{}).tdp||0}:null,
+      cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,canOverlay:true,perfOverlay:MOCKPO,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'},
+      ...(a&&a.hhd?{powerMode:null,powerModes:[],tdp:{supported:false}}:{})}),
     'perf.setTdp':async({watts})=>{ st.tdp=watts; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); S2.tdp.unified.tdp.mode='custom'; S2.tdp.unified.tdp.custom.tdp=watts; return {supported:true,watts,min:7,max:30}; },
     'perf.setFpsLimit':async({fps})=>{ MOCKFPS=fps; return {fpsLimit:fps}; },
     'perf.setOverlay':async({level})=>{ MOCKPO=level; return {perfOverlay:level}; },
     'game.pause':async()=>({paused:true}), 'game.unpause':async()=>({paused:false}),
     'apps.list':async()=>[{id:1,pid:10,title:'Ironvale Tactics',app:'Ironvale.exe',game:true,focused:true},{id:2,pid:11,title:'Hearth',hearth:true},{id:3,pid:12,title:'Discord',app:'Discord'},{id:4,pid:13,title:'Steam',app:'steam'}],
     'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
-    'game.options.get':async({id})=>({id,kind:'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
+    'game.options.get':async({id})=>({id,kind:'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false,fpsLimit:0,tdp:0,hhdPower:{},powerLabel:''},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
       protonChoices:[{id:'',label:'Default',sub:'UMU-Proton, the newest, downloaded when needed'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'Community build with extra fixes'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
     'browser.status':async()=>clone(st.br||{available:true,installed:true,default:true,version:'4.9.1.0',checkedAt:Math.floor(Date.now()/1000)-86400,state:'idle'}),
     'browser.act':async({action})=>{ st.br=Object.assign({available:true,installed:true,default:true,version:'4.9.1.0',state:'idle'},st.br||{}); if(action==='remove') st.br.installed=false; if(action==='install'||action==='default'){ st.br.installed=true; st.br.default=true; } return clone(st.br); },
@@ -893,16 +903,24 @@ const MOCK = (()=>{
         {key:'controllers.rog_ally.controller_mode.uinput.paddles_as',kind:'choice',value:v['controllers.rog_ally.controller_mode.uinput.paddles_as'],options:[{id:'steam_input',label:'Steam Input (Elite)'},{id:'noob',label:'Keyboard/Overlay'},{id:'disabled',label:'Disabled'}],group:'controller',label:'Back buttons',hint:'What the extra buttons on the back do'},
         {key:'tdp.unified.fan_full_speed',kind:'bool',value:v['tdp.unified.fan_full_speed'],group:'fan',label:'Fan at full speed',hint:'Cooler and louder; the power limit still applies'},
         {key:'rgb.handheld.mode.mode',kind:'choice',value:v['rgb.handheld.mode.mode'],options:[{id:'disabled',label:'Off'},{id:'solid',label:'Solid'},{id:'pulse',label:'Pulse'},{id:'rainbow',label:'Rainbow'}],group:'lights',label:'Lights',hint:'The lights around the sticks'}]}; },
-    'hhd.set':async({key,value,state})=>{ if(!state){ await MOCK.call('hhd.status'); st.hhd[key]=value; await wait(300); return MOCK.call('hhd.status'); }
+    'perf.gamePowerForget':async({id})=>{ MOCKOPT[id]=Object.assign(MOCKOPT[id]||{},{tdp:0,powerLabel:'',hhdPower:{}}); return MOCK.call('hhd.state'); },
+    'hhd.set':async({key,value,state,game})=>{ if(!MOCKHHD) throw new Error("Handheld Daemon isn't running"); if(!state){ await MOCK.call('hhd.status'); st.hhd[key]=value; await wait(300); return MOCK.call('hhd.status'); }
       const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state), p=key.split('.'), last=p.pop();
       let o=S2; for(const k of p){ if(o[k]==null||typeof o[k]!=='object') o[k]={}; o=o[k]; }
       await wait(250);
       if(value===true && /(^|\.)(reset|hibernate|submit|.*_remove)$/.test(key)){ o[last]=true; setTimeout(()=>{ o[last]=false; },1500); }
       else o[last]=value;
       if(key==='tdp.unified.tdp.custom.tdp') st.tdp=value;
-      return {running:true, version:S2.version, state:clone(S2)}; },
-    'hhd.settings':async()=>{ const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); await wait(200); return {running:true, version:HHD_MOCK.state.version, schema:JSON.stringify(HHD_MOCK.settings), sections:clone(HHD_MOCK.sections), state:clone(S2)}; },
-    'hhd.state':async()=>{ const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); return {running:true, version:S2.version, state:clone(S2)}; },
+      let gamePower;
+      if(game && S.running){
+        const t=S2.tdp.unified.tdp, title={quiet:'Silent',balanced:'Performance',performance:'Turbo',custom:'Custom'}[t.mode]||t.mode;
+        const label=t.mode==='custom'?`${title} · ${t.custom.tdp} W`:title;
+        MOCKOPT[S.running]=Object.assign(MOCKOPT[S.running]||{},{powerLabel:label,tdp:t.mode==='custom'?t.custom.tdp:0,hhdPower:{'tdp.unified.tdp.mode':t.mode,'tdp.unified.tdp.custom.tdp':t.custom.tdp,'tdp.unified.tdp.custom.boost':t.custom.boost}});
+        gamePower={id:S.running,saved:true,label,tdp:MOCKOPT[S.running].tdp};
+      }
+      return {running:true, version:S2.version, state:clone(S2), gamePower}; },
+    'hhd.settings':async()=>{ if(!MOCKHHD) return {running:false}; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); await wait(200); return {running:true, version:HHD_MOCK.state.version, schema:JSON.stringify(HHD_MOCK.settings), sections:clone(HHD_MOCK.sections), state:clone(S2)}; },
+    'hhd.state':async()=>{ if(!MOCKHHD) return {running:false}; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); return {running:true, version:S2.version, state:clone(S2)}; },
     'newos.status':async()=>clone(st.newos||{eligible:true,published:true,canAdmin:true,image:'ghcr.io/dragongamer9/hearth-os:latest',state:'idle',error:null,editions:[
       {id:'anatase',label:'Hearth OS on Anatase',about:'The next Hearth OS. A smaller system that starts and updates faster, the same for every PC and handheld.',beta:false,recommended:true,published:true,allowed:true,reason:null,warning:null},
       {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:null},
@@ -2256,7 +2274,8 @@ function hhdLinkRow(){
   return shead('Handheld Daemon')
     + `<button class="row" data-f data-k="hhd-open" data-act="hhdOpen"><span class="ricon">${I.sliders}</span><div class="rt"><b>Handheld Daemon settings</b><small>Everything for the built-in controller, power limit, fan and lights</small></div><div class="rv">›</div></button>`;
 }
-const HHDP = {schema:null, version:null, state:{}, sections:{}, sec:null, adv:false, err:null, loading:false, timer:null, polling:false, pending:{}, busy:{}};
+const HHDP = {schema:null, version:null, state:{}, sections:{}, sec:null, adv:false, err:null, loading:false, timer:null, polling:false, pending:{}, busy:{},
+  compact:false, kp:'hh-', offAt:0};   // compact, kp: drawing Quick Access's part (see hhdQam)
 const HHD_SKIP = ['hidden','hhd-update-decky','hhd-version-display-decky','theme-selector'];   // as hearth-core's SKIP_TAGS
 const HHD_KINDS = ['container','mode','bool','multiple','discrete','int','float','action','display','custom'];
 const HHD_FIRST = ['controllers','tdp','rgb'];   // the sections most people want, first; then HHD's order
@@ -2269,6 +2288,7 @@ function hhdShown(n){
   const t=hhdTags(n);
   if(t.some(x=>HHD_SKIP.includes(x))) return false;
   if(!HHDP.adv && (t.includes('advanced') || t.includes('expert'))) return false;
+  if(HHDP.compact && t.includes('non-essential')) return false;   // Quick Access: the essentials only (a fan curve's points stay on the page)
   if(n.type==='container') return Object.values(n.children||{}).some(hhdShown);
   if(n.type==='mode') return Object.values(n.modes||{}).some(m=>m && !hhdTags(m).some(x=>HHD_SKIP.includes(x)));
   return true;
@@ -2294,20 +2314,23 @@ function hhdLoad(){
   if(HHDP.loading) return; HHDP.loading=true;
   return call('hhd.settings',{},20000).then(r=>{
     HHDP.loading=false;
-    if(!r || !r.running){ HHDP.schema=null; HHDP.err='off'; }
+    if(!r || !r.running){ HHDP.schema=null; HHDP.err='off'; HHDP.offAt=Date.now(); }
     else {
       HHDP.schema = typeof r.schema==='string' ? JSON.parse(r.schema) : (r.schema||{});
       HHDP.version=r.version||null; HHDP.state=r.state||{}; HHDP.sections=r.sections||{}; HHDP.err=null;
     }
     if(S.view==='hhd') render(null,true);
-  }).catch(e=>{ HHDP.loading=false; HHDP.err=e.message||String(e); if(S.view==='hhd') render(null,true); });
+    qamPerfRedraw();
+  }).catch(e=>{ HHDP.loading=false; HHDP.err=e.message||String(e); if(S.view==='hhd') render(null,true); qamPerfRedraw(); });
 }
 function hhdApply(r){
   if(!r || !r.running) return;
   if(r.version && HHDP.version && r.version!==HHDP.version) return hhdLoad();   // HHD changed its tree: read it again
   const before=JSON.stringify(HHDP.state); HHDP.state=r.state||{};
-  if(S.view==='hhd' && JSON.stringify(HHDP.state)!==before) render(null,true);
+  if(JSON.stringify(HHDP.state)!==before){ if(S.view==='hhd') render(null,true); qamPerfRedraw(); }
 }
+/** Whatever shows Handheld Daemon's settings, drawn again: its page, and Quick Access › Performance. */
+function hhdRedraw(){ if(S.view==='hhd') render(null,true); qamPerfRedraw(); }
 function hhdStartPoll(){
   clearInterval(HHDP.timer);
   HHDP.timer=setInterval(()=>{
@@ -2318,14 +2341,14 @@ function hhdStartPoll(){
   }, 1500);
 }
 function hhdOpen(){ closeAll(); S.settingsTab='controller'; navigate('hhd'); }
-const hhdHint = n => n && n.hint ? `<small>${esc(String(n.hint).trim())}</small>` : '';
+const hhdHint = n => n && n.hint && !HHDP.compact ? `<small>${esc(String(n.hint).trim())}</small>` : '';   // Quick Access: no hints (HHD's are long)
 const hhdNum = (v, unit) => v==null || v==='' ? '—' : (typeof v==='number' ? String(+v.toFixed(3)) : esc(String(v))) + (unit ? (/^[%°]/.test(unit)?'':' ')+esc(unit) : '');
 function hhdOptLabel(n, id){
   if(n.type==='mode'){ const m=(n.modes||{})[id]; return m ? hhdTitle(m, id)+(m.unit?` (${m.unit})`:'') : String(id??'—'); }
   const o=n.options||{}; const l=o[id]; return typeof l==='string' && l ? l : String(id??'—');
 }
 function hhdRow(k, n){
-  const id='hh-'+k, title=esc(hhdTitle(n, k)), t=hhdTags(n), busy=HHDP.busy[k];
+  const id=HHDP.kp+k, title=esc(hhdTitle(n, k)), t=hhdTags(n), busy=HHDP.busy[k];
   const right = v => busy ? '<span class="mini-spin"></span>' : v;
   switch(n.type){
     case 'bool': return `<button class="row" data-f data-k="${id}" data-act="hhd" data-op="bool" data-key="${esc(k)}"><div class="rt"><b>${title}</b>${hhdHint(n)}</div>${right(`<div class="sw ${hv(k)?'on':''}"></div>`)}</button>`;
@@ -2340,7 +2363,7 @@ function hhdRow(k, n){
       else { min=n.min; max=n.max; step=+n.step>0 ? +n.step : (n.type==='int' ? 1 : (max-min)/20); const v=hv(k); pos=typeof v==='number' ? Math.max(min, Math.min(max, v)) : min; shown=hhdNum(v, n.unit); }
       const pct=(pos-min)/(max-min)*100;
       return `<div class="ctl" data-f data-k="${id}" data-slider="hhd:${esc(k)}" data-min="${min}" data-max="${max}" data-step="${step}" data-unit="">
-        <div class="lab">${title}<span>${shown}</span></div><div class="slider"><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div>${n.hint?`<div class="muted" style="font-size:12px;margin-top:8px">${esc(String(n.hint).trim())}</div>`:''}</div>`;
+        <div class="lab">${title}<span>${shown}</span></div><div class="slider"><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div>${n.hint&&!HHDP.compact?`<div class="muted" style="font-size:12px;margin-top:8px">${esc(String(n.hint).trim())}</div>`:''}</div>`;
     }
     case 'action': {
       const running = busy || !!hv(k);
@@ -2368,8 +2391,9 @@ function hhdRow(k, n){
 }
 function hhdMode(k, n){
   const cur=hv(k+'.mode'), m=(n.modes||{})[cur];
-  let h = `<button class="row" data-f data-k="hh-${k}.mode" data-act="hhd" data-op="pick" data-key="${esc(k)}.mode"><div class="rt"><b>${esc(hhdTitle(n,k))}</b>${m&&m.hint?`<small>${esc(String(m.hint).trim())}</small>`:hhdHint(n)}</div>${HHDP.busy[k+'.mode']?'<span class="mini-spin"></span>':`<div class="rv">${esc(hhdOptLabel(n, cur))} ›</div>`}</button>`;
+  let h = `<button class="row" data-f data-k="${HHDP.kp}${k}.mode" data-act="hhd" data-op="pick" data-key="${esc(k)}.mode"><div class="rt"><b>${esc(hhdTitle(n,k))}</b>${m&&m.hint&&!HHDP.compact?`<small>${esc(String(m.hint).trim())}</small>`:hhdHint(n)}</div>${HHDP.busy[k+'.mode']?'<span class="mini-spin"></span>':`<div class="rv">${esc(hhdOptLabel(n, cur))} ›</div>`}</button>`;
   if(m && hhdShown(m)) h += `<div class="hhd-sub">${hhdKids(k+'.'+cur, m)}</div>`;
+  else if(HHDP.compact && m && Object.keys(m.children||{}).length) h += `<div class="muted qhhd-note" style="margin:0 4px 2px">${LINUX&&!OVERLAY?'Its settings are in Handheld Daemon settings, below.':'Its settings are in Settings › Controls › Handheld Daemon.'}</div>`;
   return h;
 }
 function hhdKids(k, c){
@@ -2404,16 +2428,22 @@ function viewHhd(){
   h += note('Handheld Daemon '+(hv('hhd.settings.version')?esc(hv('hhd.settings.version'))+' ':'')+'runs the built-in controller, the power limit, the fan and the lights. Changes apply right away.');
   return h+'</div>';
 }
+// The settings a game keeps (as hearth-core's game_power_key): a power plugin's power mode, and its custom mode's.
+const HHD_GAME_KEY = /^tdp\.[A-Za-z0-9_-]+\.tdp\.(mode|custom\.[A-Za-z0-9_-]+)$/;
 async function hhdWrite(key, value, opts={}){
-  HHDP.busy[key]=true; if(!opts.quiet) render(null,true);
+  HHDP.busy[key]=true; if(!opts.quiet) hhdRedraw();
+  // From Quick Access › Performance while a game plays: the game keeps it (hearth-core puts it back on whenever
+  // the game is in front).
+  const game = qamPerfShowing() && !!S.running && HHD_GAME_KEY.test(key);
   try{
-    const r=await call('hhd.set',{key, value, state:true},30000);
+    const r=await call('hhd.set',{key, value, state:true, game},30000);
     if(HHDP.pending[key]===value) delete HHDP.pending[key];
+    if(r && r.gamePower && PERF.s) PERF.s.gamePower=r.gamePower;
     hhdApply(r);
     if(opts.done) toast(opts.done);
   }catch(e){ if(HHDP.pending[key]===value) delete HHDP.pending[key]; toast(e.message||String(e)); }
   delete HHDP.busy[key];
-  if(S.view==='hhd') render(null,true);
+  hhdRedraw();
 }
 function hhdAct(op, key){
   if(op==='sec'){ HHDP.sec=key; return render('hh-sec-'+key, true); }
@@ -3255,6 +3285,8 @@ function qRadio(kind,ic,label,sub){
 }
 // ---------- live performance (Quick Access › Performance) ----------
 let MOCKFPS=0; const MOCKOPT={};
+// The preview's Handheld Daemon (a ROG Ally's); ?nohhd previews a PC without it (Hearth's own power controls).
+let MOCKHHD = !/[?&]nohhd/.test(location.search);
 const PERF = {s:null, timer:null};
 const FPS_CHOICES = [0,30,40,45,60,90,120];
 const PO_LEVELS = ['Off','FPS','Simple','Detailed','Everything']; let MOCKPO=0;
@@ -3266,6 +3298,10 @@ function perfBody(){
   h += p.gpu!=null ? row('display','GPU', p.gpu+'%', p.gpu, p.vramUsed!=null?`${p.vramUsed} GB video memory`:'') : row('display','GPU','—',null,'Not available on this PC');
   h += row('sliders','Memory', `${p.ramUsed} / ${p.ramTotal} GB`, p.ramTotal?p.ramUsed/p.ramTotal*100:null);
   const b=p.battery; if(b && b.present!==false && b.pct!=null) h += row('bolt','Battery', b.pct+'%'+(b.charging?' ⚡':''), b.pct);
+  // Handheld Daemon systems: its own power settings, in place of Hearth's power mode and limit (one set of controls,
+  // the same as HHD's, so nothing fights it).
+  const hp = hhdPerf();
+  if(hp) h += hhdQamBody() + hhdGameNote(p);
   if(p.canFpsLimit){
     const lim=p.fpsLimit||0;
     h += `<div class="pctl"><div class="lab">${I.display}Frame-rate limit<span style="margin-left:auto">${lim?lim+' FPS':'Off'}</span></div>
@@ -3278,15 +3314,16 @@ function perfBody(){
       <div class="chips">${PO_LEVELS.map((l,i)=>`<button class="chip ${lv===i?'on':''}" data-f data-k="po-${i}" data-act="perfOverlay" data-v="${i}">${l}</button>`).join('')}</div>
       <div class="muted">Shows frame rate, temperatures and more over your game.</div></div>`;
   }
-  if(p.tdp && p.tdp.supported){
+  if(!hp && p.tdp && p.tdp.supported){
     const choices=[5,8,10,12,15,18,20,25,30].filter(v=>v>=p.tdp.min&&v<=p.tdp.max);
     h += `<div class="pctl"><div class="lab">${I.bolt}Power limit (TDP)<span style="margin-left:auto">${p.tdp.watts} W</span></div>
       <div class="chips">${choices.map(v=>`<button class="chip ${p.tdp.watts===v?'on':''}" data-f data-k="pt-${v}" data-act="tdp" data-v="${v}">${v} W</button>`).join('')}</div>
       <div class="muted">Lower uses less battery; higher runs demanding games faster.</div></div>`;
   }
   // Handheld Daemon's whole settings page (fan curve, power modes, lights...): from Hearth itself, not over a game.
-  if(LINUX && !OVERLAY && HHDS.s && HHDS.s.running) h += `<button class="btn sm" data-f data-k="pt-hhd" data-act="hhdOpen">${I.sliders}Handheld Daemon settings</button>`;
-  if(p.powerMode){
+  if(LINUX && !OVERLAY && (hp || (HHDS.s && HHDS.s.running))) h += `<button class="btn sm" data-f data-k="pt-hhd" data-act="hhdOpen"${hp?' style="margin-top:12px"':''}>${I.sliders}Handheld Daemon settings</button>`;
+  else if(hp && OVERLAY) h += `<div class="muted qhhd-note">More (fan curve, lights, the controller): ${APP} › Settings › Controls › Handheld Daemon.</div>`;
+  if(!hp && p.powerMode){
     h += `<div class="pctl"><div class="lab">${I.bolt}Power</div>
       <div class="chips">${(p.powerModes&&p.powerModes.length?PMODES.filter(([k])=>p.powerModes.includes(k)):PMODES).map(([k,l])=>`<button class="chip ${p.powerMode===k?'on':''}" data-f data-k="pp-${k}" data-act="perfPower" data-v="${k}">${l}</button>`).join('')}</div></div>`;
   }
@@ -3301,13 +3338,76 @@ async function perfTickNow(){
   PERF.timer=null;
   const showing = S.layers.includes('qam') && S.qtab==='perf' && (!OVERLAY || OV.shown);
   if(!showing) return;
-  try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); }catch(e){}
-  if(S.layers.includes('qam') && S.qtab==='perf'){
-    const qb=$('#qam .qbody'); if(qb){ const k=focused?.dataset.k; qb.innerHTML=`<h3>Performance</h3>${perfBody()}`; if(k){ const el=$(`#qam [data-k="${k}"]`); if(el) setFocus(el,true); } }
-  }
+  // Is Handheld Daemon here? Found out first, so Hearth's own power controls don't show for a moment before its.
+  if(LINUX && HHDP.loading && !HHDP.schema){ PERF.timer=setTimeout(perfTick, 250); return; }
+  const hp = hhdPerf();
+  try{
+    // With Handheld Daemon, its state too, every second: changes from its own buttons and shortcuts (or its page)
+    // show while Quick Access is open. Not while a change is on its way (the answer brings the new state).
+    const quiet = !HHDP.polling && !Object.keys(HHDP.busy).length && !Object.keys(HHDP.pending).length;
+    const [r, hs] = await Promise.all([call('perf.stats', hp?{hhd:true}:{}), hp && quiet ? call('hhd.state',{},8000).catch(()=>null) : null]);
+    PERF.s=r; applyRunning(r);
+    if(hs && hs.running===false){ HHDP.schema=null; HHDP.err='off'; HHDP.offAt=Date.now(); }   // it stopped: Hearth's own controls
+    else if(hs) hhdApply(hs);
+  }catch(e){}
+  qamPerfRedraw();
   PERF.timer=setTimeout(perfTick, 1000);
 }
-function startPerf(){ if(LINUX && !HHDS.s && !OVERLAY) loadHhd(); if(!PERF.timer && !PERF.busy) PERF.timer=setTimeout(perfTick, 50); }
+function startPerf(){
+  if(LINUX && !HHDS.s && !OVERLAY) loadHhd();
+  // Handheld Daemon's settings tree, for its power settings here (not running: asked again after a minute).
+  if(LINUX && !HHDP.schema && !HHDP.loading && (HHDP.err!=='off' || Date.now()-HHDP.offAt>60000)) hhdLoad();
+  if(!PERF.timer && !PERF.busy) PERF.timer=setTimeout(perfTick, 50);
+}
+function qamPerfShowing(){ return S.layers.includes('qam') && S.qtab==='perf'; }
+/** Quick Access › Performance drawn again in place: the selection (and a slider being moved) stays where it was. */
+function qamPerfRedraw(){
+  if(!qamPerfShowing()) return;
+  const qb=$('#qam .qbody'); if(!qb) return;
+  const inQam = !!(focused && $('#qam').contains(focused));
+  const k = inQam ? focused.dataset.k : null, wasSlide = !!(SLIDE && SLIDE===focused), top=qb.scrollTop;
+  qb.innerHTML=`<h3>Performance</h3>${perfBody()}`; qb.scrollTop=top;
+  if(!inQam) return;
+  const el = k && $(`#qam [data-k="${CSS.escape(k)}"]`);
+  if(!el){ setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); return; }
+  if(wasSlide) SLIDE=null;
+  setFocus(el,true);
+  if(wasSlide){ SLIDE=el; el.classList.add('editing'); renderFooter(); }
+}
+// Quick Access › Performance on Handheld Daemon systems: HHD's own power section ("tdp" in its settings tree: the
+// power mode, the limit with HHD's range, boost, the fan, and whatever else HHD has there for this device), drawn
+// by the Handheld Daemon page's renderer in a compact form: advanced and non-essential settings (a fan curve's
+// points) stay on that page. The same controls work over a game (the overlay) with the controller.
+function hhdQam(fn){
+  const keep={adv:HHDP.adv, compact:HHDP.compact, kp:HHDP.kp};
+  HHDP.adv=false; HHDP.compact=true; HHDP.kp='qh-';
+  try{ return fn(); } finally { Object.assign(HHDP, keep); }
+}
+function hhdQamConts(){
+  const sec=HHDP.schema && HHDP.schema.tdp;
+  if(!sec || typeof sec!=='object') return [];
+  return hhdQam(()=>Object.entries(sec).filter(([,c])=>hhdShown(c)));
+}
+const hhdPerf = () => LINUX && !!HHDP.schema && hhdQamConts().length>0;
+function hhdQamBody(){
+  return hhdQam(()=>{
+    const conts=hhdQamConts(); let h='';
+    for(const [ck,c] of conts){
+      const key='tdp.'+ck, head = conts.length>1 && !hhdTags(c).includes('hide-title') ? hhdTitle(c, ck) : '';
+      if(head) h += `<div class="hhd-h">${esc(head)}</div>`;
+      h += c.type==='container' ? hhdKids(key, c) : c.type==='mode' ? hhdMode(key, c) : hhdRow(key, c);
+    }
+    return `<div class="pctl"><div class="lab">${I.bolt}Power<span style="margin-left:auto;font-size:12px">Handheld Daemon</span></div><div class="qhhd">${h}</div></div>`;
+  });
+}
+/** While a game plays: its power settings are its own (kept from here, back whenever it's in front). */
+function hhdGameNote(p){
+  const gp=p && p.gamePower; if(!gp || !gp.id) return '';
+  const g=G(gp.id), name=g ? esc(g.title) : 'this game';
+  if(!gp.saved) return `<div class="muted qhhd-note">Power changes here are kept for ${name} and come back whenever it's playing.</div>`;
+  return `<div class="muted qhhd-note">${name} keeps its own power settings${gp.label?` (${esc(gp.label)})`:''}: they come back whenever it's playing.</div>
+    <button class="btn sm" data-f data-k="qh-forget" data-act="gamePowerForget" data-id="${esc(gp.id)}" style="margin-top:6px">${I.restart||''}Use the usual power settings for ${name}</button>`;
+}
 function applyRunning(r){
   if(!r) return;
   if(r.runningId && S.running!==r.runningId) S.running=r.runningId;
@@ -3649,6 +3749,10 @@ function act(el){
     case 'im': return imAct(el, d);
     case 'hhd': return hhdAct(d.op, d.key);
     case 'hhdOpen': return hhdOpen();
+    case 'gamePowerForget': return call('perf.gamePowerForget',{id:d.id},30000).then(r=>{
+        if(PERF.s && PERF.s.gamePower) PERF.s.gamePower=Object.assign({}, PERF.s.gamePower, {saved:false, label:'', tdp:0});
+        hhdApply(r); qamPerfRedraw(); toast('Back to the usual power settings');
+      }).catch(e=>toast(e.message));
     case 'hhdRetry': HHDP.err=null; render(null,true); return hhdLoad();
     case 'newOsPick': return newOsPick(d.v);
     case 'newOsGo': return newOsAsk();
@@ -3732,7 +3836,10 @@ function act(el){
     case 'profAsk': return pinCall('profiles.setAsk',{on:!(PROF.s&&PROF.s.askAtStart)}).then(loadProfiles).catch(e=>toast(e.message));
     case 'achAll': { const a=(GINFO[d.id]||{}).achievements; if(!a) return; return openSheet({title:`Achievements · ${a.done} of ${a.total}`, items:a.list.map(x=>({label:`${x.done?'✓ ':''}${x.hidden&&!x.done?'Hidden achievement':x.name}`, icon:x.done?'check':'lock', run:()=>{}}))}); }
     case 'gsFps': return openSheet({title:'Frame-rate cap', sub:'While this game plays', items:[0,30,40,45,60,90,120].map(v=>({label:v?v+' FPS':'Usual (no change)', icon:(GSET.s.options.fpsLimit||0)===v?'check':'', run:()=>saveGameSet({fpsLimit:v},'gs-fps')}))});
-    case 'gsTdp': return openSheet({title:'Power limit', sub:'While this game plays (if this device supports it)', items:[0,8,10,12,15,18,20,25,30].map(v=>({label:v?v+' W':'Usual (no change)', icon:(GSET.s.options.tdp||0)===v?'check':'', run:()=>saveGameSet({tdp:v},'gs-tdp')}))});
+    case 'gsTdp': { const o=GSET.s.options, kept=o.powerLabel||'';
+      return openSheet({title:'Power limit', sub:'While this game plays (if this device supports it)', items:[
+        ...(kept?[{label:kept+' (set in Quick Access)', icon:'check', run:()=>{}}]:[]),
+        ...[0,8,10,12,15,18,20,25,30].map(v=>({label:v?v+' W':'Usual (no change)', icon:!kept&&(o.tdp||0)===v?'check':'', run:()=>saveGameSet({tdp:v},'gs-tdp')}))]}); }
     case 'osiNoPass': OSI.user.nopassword=!OSI.user.nopassword; if(OSI.user.nopassword) OSI.user.password=''; return render('osi-nopass');
     case 'osiStart': return osiStart();
     case 'osiRestart': return call('osinstall.restart').catch(e=>toast(e.message));
@@ -3994,7 +4101,7 @@ function viewGameSettings(){
   // For every game, Steam's too: Hearth sets these while it plays.
   const ingame = shead('While it plays') + inputRow(g)
     + `<button class="row" data-f data-k="gs-fps" data-act="gsFps"><span class="ricon">${I.perf||I.gear}</span><div class="rt"><b>Frame-rate cap</b><small>Smoother and cooler: caps this game, then goes back to your usual limit</small></div><div class="rv">${o.fpsLimit?o.fpsLimit+' FPS':'Usual'} ›</div></button>`
-    + `<button class="row" data-f data-k="gs-tdp" data-act="gsTdp"><span class="ricon">${I.power}</span><div class="rt"><b>Power limit</b><small>More watts for a demanding game, fewer for battery life</small></div><div class="rv">${o.tdp?o.tdp+' W':'Usual'} ›</div></button>`;
+    + `<button class="row" data-f data-k="gs-tdp" data-act="gsTdp"><span class="ricon">${I.power}</span><div class="rt"><b>Power limit</b><small>More watts for a demanding game, fewer for battery life</small></div><div class="rv">${o.powerLabel?esc(o.powerLabel):o.tdp?o.tdp+' W':'Usual'} ›</div></button>`;
   // Deleting the game: last on the page, for every game Hearth (or Steam) can delete.
   const del = canDelete(g) && !isActive(g) ? shead('Storage') + `<button class="row" data-f data-k="gs-delete" data-act="gsDelete"><span class="ricon">${I.trash}</span><div class="rt"><b>Delete game</b><small>${g.size?`Frees ${esc(typeof g.size==='number'?gbs(g.size):g.size)} · `:''}${g.src==='steam'?'Steam asks to confirm':'You can install it again from your library'}</small></div></button>` : '';
   if(r.kind==='steam') return h+ingame+del+'</div>'+note(`Steam starts ${esc(g.title)}, so it uses Steam's own settings: in Steam, open the game's Properties to pick a Proton version or add launch options.`);

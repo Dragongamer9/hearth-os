@@ -1,5 +1,7 @@
 //! Power: the power menu (sleep, restart, turn off, Desktop Mode), and power mode and limit through
 //! hearth-power (the helper Mantel's settings use too). Port of power-control.js and main.js's power().
+//! With Handheld Daemon managing the power limit, hearth-power only goes through HHD (never ryzenadj or the firmware
+//! files), and Quick Access uses HHD's own power settings instead (hhd.rs).
 
 use serde_json::{json, Value};
 use std::path::PathBuf;

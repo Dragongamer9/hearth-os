@@ -12,8 +12,11 @@
 //! before they go to HHD, and only for settings the page shows (never HHD's hidden ones).
 //! Quick Access over games is HHD's overlay app, which on these editions is Hearth's own (overlay_link.rs): HHD's QAM
 //! button opens it, HHD shows it over the game and holds the controllers while it's open.
+//! Quick Access › Performance shows HHD's own power settings (the "tdp" section, drawn by the same page code) in
+//! place of Hearth's power mode and limit, and a game keeps what's picked there while it's in front (see the
+//! per-game power part below and Bridge::game_power_front): one set of controls, HHD's, so nothing fights it.
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::io::{Read, Write};
 use std::time::Duration;
 
@@ -276,6 +279,118 @@ pub fn set(key: &str, value: &Value) -> Result<Value, String> {
     Ok(status())
 }
 
+// ---------------------------------------------------------------- per-game power (Quick Access › Performance)
+// On HHD systems Quick Access › Performance shows HHD's own power settings (the "tdp" section of its tree), and a
+// game remembers the power settings picked there while it's in front: its power mode, and in the custom mode the
+// limit in watts and boost. Hearth puts them on through HHD when the game comes to the front and puts back what was
+// there before when it leaves; it never writes the limit any other way while HHD manages it.
+
+/// One of the settings a game remembers: a power plugin's power mode (tdp.<plugin>.tdp.mode) or a setting of its
+/// custom mode (tdp.<plugin>.tdp.custom.<name>: the limit in watts, boost).
+pub fn game_power_key(k: &str) -> bool {
+    if !valid_key(k) { return false; }
+    let p: Vec<&str> = k.split('.').collect();
+    p[0] == "tdp" && p.len() >= 4 && p[2] == "tdp" && ((p.len() == 4 && p[3] == "mode") || (p.len() == 5 && p[3] == "custom"))
+}
+
+/// A plain value (a number, on/off or a word): the only kind a game keeps.
+fn plain(v: &Value) -> bool { v.is_number() || v.is_boolean() || v.is_string() }
+
+/// Those settings as HHD has them now ({key: value}), for every power plugin with a power mode.
+pub fn game_power(state: &Value) -> Map<String, Value> {
+    let mut out = Map::new();
+    let Some(plugins) = state["tdp"].as_object() else { return out };
+    for (plugin, v) in plugins {
+        let Some(mode) = v["tdp"]["mode"].as_str() else { continue };
+        let key = format!("tdp.{plugin}.tdp.mode");
+        if !game_power_key(&key) { continue; }
+        out.insert(key, json!(mode));
+        if let Some(custom) = v["tdp"]["custom"].as_object() {
+            for (name, x) in custom {
+                let key = format!("tdp.{plugin}.tdp.custom.{name}");
+                if plain(x) && game_power_key(&key) { out.insert(key, x.clone()); }
+            }
+        }
+    }
+    out
+}
+
+/// What to send HHD for a game's saved power: the HHD settings it kept (`saved`), or else its limit in watts
+/// (`watts`, set on the game's page or kept by an older Hearth) as HHD's custom mode with that limit.
+pub fn game_changes(saved: &Value, watts: u64, state: &Value) -> Map<String, Value> {
+    let mut out = Map::new();
+    if let Some(m) = saved.as_object() {
+        for (k, v) in m { if game_power_key(k) && plain(v) { out.insert(k.clone(), v.clone()); } }
+    }
+    if out.is_empty() && watts > 0 {
+        let t = tdp(state);
+        if let Some(d) = t["driver"].as_str().filter(|d| !d.is_empty()) {
+            out.insert(format!("tdp.{d}.tdp.mode"), json!("custom"));
+            out.insert(format!("tdp.{d}.tdp.custom.tdp"), json!(watts));
+        }
+    }
+    out
+}
+
+/// A number brought within the setting's limits (a game's saved limit on a device with a smaller range).
+fn clamped(node: &Value, v: &Value) -> Value {
+    let Some(mut n) = v.as_f64() else { return v.clone() };
+    let kind = node["type"].as_str().unwrap_or("");
+    if kind != "int" && kind != "float" { return v.clone(); }
+    if let Some(min) = node["min"].as_f64() { n = n.max(min); }
+    if let Some(max) = node["max"].as_f64() { n = n.min(max); }
+    if kind == "int" { json!(n.round() as i64) } else { json!(n) }
+}
+
+/// Several settings at once, each checked against HHD's tree as in `write` (numbers brought within limits when
+/// `clamp`), sent to HHD together. Settings this device doesn't have (or doesn't take that value for) are left
+/// out and named in the answer: (HHD's new state, what was left out). Nothing it takes: an error.
+pub fn write_many(changes: &Map<String, Value>, clamp: bool) -> Result<(Value, Vec<String>), String> {
+    if !reachable() { return Err("Handheld Daemon isn't running".into()); }
+    let sets = request_with("GET", "/api/v1/settings", None, Duration::from_secs(8))?;
+    let mut state: Option<Value> = None;
+    let mut send = Map::new();
+    let mut left_out = Vec::new();
+    for (key, value) in changes {
+        if !valid_key(key) { left_out.push(format!("{key}: unknown")); continue; }
+        let Some((node, is_mode)) = find(&sets, key) else { left_out.push(format!("{key}: not on this device")); continue };
+        let current = if node["type"] == "custom" {
+            if state.is_none() { state = Some(request("GET", "/api/v1/state", None)?); }
+            state.as_ref().map(|s| lookup(s, key).clone()).unwrap_or(Value::Null)
+        } else { Value::Null };
+        let value = if clamp { clamped(node, value) } else { value.clone() };
+        match check_value(node, is_mode, &value, &current, key) {
+            Ok(v) => { send.insert(key.clone(), v); }
+            Err(e) => left_out.push(format!("{key}: {e}")),
+        }
+    }
+    if send.is_empty() { return Err(format!("Handheld Daemon takes none of these ({})", left_out.join("; "))); }
+    let st = request_with("POST", "/api/v1/state", Some(&Value::Object(send)), Duration::from_secs(15))?;
+    Ok((st, left_out))
+}
+
+/// A short name for the power settings in effect, for a game's page: the power mode's name (HHD's), with the
+/// limit in its custom mode ("Custom · 15 W"). Empty when HHD has no power mode.
+pub fn power_label(sets: &Value, state: &Value) -> String {
+    let t = tdp(state);
+    let (Some(d), Some(mode)) = (t["driver"].as_str().filter(|d| !d.is_empty()), t["mode"].as_str().filter(|m| !m.is_empty())) else { return String::new() };
+    let title = sets["tdp"][d]["children"]["tdp"]["modes"][mode]["title"].as_str().map(str::trim).filter(|s| !s.is_empty())
+        .map(str::to_string).unwrap_or_else(|| mode.replace('_', " "));
+    match t["watts"].as_f64() { Some(w) => format!("{title} · {} W", show_number(w)), None => title }
+}
+
+/// HHD's settings tree, for power_label (null when it can't be read).
+pub fn settings_tree() -> Value {
+    if !reachable() { return Value::Null; }
+    request_with("GET", "/api/v1/settings", None, Duration::from_secs(8)).unwrap_or(Value::Null)
+}
+
+/// HHD's state now (null when it isn't running or answering).
+pub fn current_state() -> Value {
+    if !reachable() { return Value::Null; }
+    request("GET", "/api/v1/state", None).unwrap_or(Value::Null)
+}
+
 /// For the logs report.
 pub fn report() -> String {
     if !std::path::Path::new(SOCKET).exists() { return "not running (no /run/hhd/api)".into(); }
@@ -450,6 +565,52 @@ mod tests {
                    Ok(json!({"options": {"current": "Current Boot", "previous": "Previous Boot"}, "value": "previous"})));
         assert!(check_value(n, m, &json!("m9"), &cur, "hhd.settings.boot").is_err());
         assert!(check_value(n, m, &json!("current"), &Value::Null, "hhd.settings.boot").is_err());
+    }
+    #[test]
+    fn knows_what_a_game_keeps() {
+        assert!(game_power_key("tdp.unified.tdp.mode"));
+        assert!(game_power_key("tdp.unified.tdp.custom.tdp"));
+        assert!(game_power_key("tdp.asus.tdp.custom.boost"));
+        assert!(!game_power_key("tdp.unified.fan_full_speed"));
+        assert!(!game_power_key("tdp.unified.tdp.balanced.x"));
+        assert!(!game_power_key("tdp.unified.tdp.custom.x.y"));
+        assert!(!game_power_key("tdp.unified.fan.mode"));
+        assert!(!game_power_key("controllers.rog_ally.tdp.mode"));
+        assert!(!game_power_key("tdp.unified.tdp"));
+        let st = json!({"tdp": {"unified": {"tdp": {"mode": "custom", "custom": {"tdp": 17, "boost": true, "odd": {"x": 1}}}, "fan_full_speed": false},
+                                "amd_energy": {"cpu_boost": true}}});
+        let g = game_power(&st);
+        assert_eq!(g.len(), 3);
+        assert_eq!(g["tdp.unified.tdp.mode"], "custom");
+        assert_eq!(g["tdp.unified.tdp.custom.tdp"], 17);
+        assert_eq!(g["tdp.unified.tdp.custom.boost"], true);
+        assert!(game_power(&json!({})).is_empty());
+        // A game's kept settings win; else its watts become HHD's custom mode; nothing kept: nothing to do.
+        let kept = json!({"tdp.unified.tdp.mode": "quiet", "controllers.rog_ally.imu": false});
+        let c = game_changes(&kept, 20, &st);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c["tdp.unified.tdp.mode"], "quiet");
+        let c = game_changes(&json!({}), 12, &st);
+        assert_eq!(c["tdp.unified.tdp.mode"], "custom");
+        assert_eq!(c["tdp.unified.tdp.custom.tdp"], 12);
+        assert!(game_changes(&Value::Null, 0, &st).is_empty());
+        assert!(game_changes(&Value::Null, 12, &json!({})).is_empty());
+    }
+    #[test]
+    fn brings_numbers_within_limits_and_names_the_mode() {
+        let t = tree();
+        let (n, _) = find(&t, "tdp.unified.tdp.custom.tdp").unwrap();
+        assert_eq!(clamped(n, &json!(40)), json!(30));
+        assert_eq!(clamped(n, &json!(3)), json!(5));
+        assert_eq!(clamped(n, &json!(17.4)), json!(17));
+        assert_eq!(clamped(n, &json!("x")), json!("x"));
+        let (b, _) = find(&t, "tdp.unified.tdp.custom.boost").unwrap();
+        assert_eq!(clamped(b, &json!(true)), json!(true));
+        let st = json!({"tdp": {"unified": {"tdp": {"mode": "custom", "custom": {"tdp": 17}}}}});
+        assert_eq!(power_label(&t, &st), "Custom · 17 W");
+        let st = json!({"tdp": {"unified": {"tdp": {"mode": "balanced", "custom": {"tdp": 17}}}}});
+        assert_eq!(power_label(&t, &st), "Performance");
+        assert_eq!(power_label(&t, &json!({})), "");
     }
     #[test]
     fn reads_tags_and_values() {

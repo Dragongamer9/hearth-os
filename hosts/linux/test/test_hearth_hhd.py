@@ -240,6 +240,55 @@ class Power(unittest.TestCase):
             self.assertEqual(hp.set_tdp(12), 12)   # HHD still says 17: its own event then
             self.assertIn(('hhd', 12), calls)
 
+    def fake_hhd(self, state):
+        class FakeHhd:
+            MODE_NAMES = hh.MODE_NAMES
+            tdp_info = staticmethod(hh.tdp_info)
+            hearth_mode = staticmethod(hh.hearth_mode)
+            settings = staticmethod(lambda: SETTINGS)
+        FakeHhd.state = staticmethod(lambda poll=False: state)
+        FakeHhd.set_tdp = staticmethod(lambda w: w)
+        return FakeHhd
+
+    def test_never_writes_the_limit_itself_while_hhd_has_a_power_plugin(self):
+        # HHD runs its power plugin, but its limit isn't on (or not ready yet): no ryzenadj, firmware or PowerStation.
+        state = json.loads(json.dumps(STATE))
+        state['hhd']['steamos']['tdp_status'] = 'disabled'
+        def no(*a, **k):
+            raise AssertionError('Hearth tried to write the power limit itself')
+        def busctl(bus, *args, timeout=6):
+            raise hp.Fail('no SteamOS Manager')
+        with mock.patch.object(hp, 'hhd', lambda: self.fake_hhd(state)), mock.patch.object(hp, 'busctl', busctl), \
+                mock.patch.object(hp, 'admin', no), mock.patch.object(hp, 'admin_tdp_info', no), mock.patch.object(hp, 'ps_card', no):
+            st = hp.tdp_status()
+            self.assertFalse(st['supported'])
+            self.assertEqual(st['via'], 'hhd')
+            with self.assertRaises(hp.Fail):
+                hp.set_tdp(15)
+
+    def test_hhd_without_a_power_plugin_leaves_hearths_own_ways(self):
+        state = {k: v for k, v in STATE.items() if k != 'tdp'}
+        state = json.loads(json.dumps(state))
+        state['hhd']['steamos']['tdp_status'] = 'disabled'
+        def busctl(bus, *args, timeout=6):
+            raise hp.Fail('nothing')
+        with mock.patch.object(hp, 'hhd', lambda: self.fake_hhd(state)), mock.patch.object(hp, 'busctl', busctl), \
+                mock.patch.object(hp, 'admin_tdp_info', lambda: {'method': 'firmware', 'min': 5, 'max': 30, 'watts': 15}), \
+                mock.patch.object(hp, 'remembered', lambda: None):
+            self.assertEqual(hp.tdp_status()['via'], 'hearth:firmware')
+
+    def test_restore_leaves_hhds_own_limit(self):
+        sets = []
+        with mock.patch.object(hp, 'hhd', lambda: self.fake_hhd(STATE)), mock.patch.object(hp, 'remembered', lambda: 22), \
+                mock.patch.object(hp, 'set_tdp', lambda w: sets.append(w) or w), mock.patch('builtins.print') as out:
+            hp.cmd(['hearth-power', 'restore'])
+        self.assertEqual(sets, [])
+        self.assertIn('skipped', out.call_args[0][0])
+        with mock.patch.object(hp, 'hhd', lambda: None), mock.patch.object(hp, 'remembered', lambda: 22), \
+                mock.patch.object(hp, 'set_tdp', lambda w: sets.append(w) or w), mock.patch('builtins.print'):
+            hp.cmd(['hearth-power', 'restore'])
+        self.assertEqual(sets, [22])
+
 
 ROOT = SHELL.parents[3]
 KINDS = {'container', 'mode', 'bool', 'multiple', 'discrete', 'int', 'float', 'action', 'display', 'custom'}
@@ -334,6 +383,24 @@ class HandheldDaemonPage(unittest.TestCase):
         self.assertIn('data-act="hhdOpen"', self.ui)
         self.assertNotIn('Its other settings are in its own app', self.ui)
         self.assertIn("navigate('hhd'", (ROOT / 'tools' / 'ui-check.js').read_text())
+
+    def test_quick_access_performance_uses_hhds_power_settings(self):
+        """Quick Access › Performance on HHD systems: HHD's power section through the same renderer (no second one),
+        Hearth's own power controls only without it, and a game keeps what's picked while it's in front."""
+        self.assertIn('function hhdQamBody()', self.ui)
+        self.assertIn('hhdKids(key, c)', self.ui[self.ui.index('function hhdQamBody()'):])
+        self.assertIn("if(!hp && p.tdp && p.tdp.supported)", self.ui)
+        self.assertIn("if(!hp && p.powerMode)", self.ui)
+        self.assertIn("call('hhd.set',{key, value, state:true, game}", self.ui)
+        self.assertIn('"perf.gamePowerForget" =>', self.bridge)
+        self.assertIn("'perf.gamePowerForget':async", self.ui)
+        self.assertIn('fn game_power_front(', self.bridge)
+        # The settings a game keeps are the same on the page and in hearth-core.
+        import re
+        js = re.compile(re.search(r"const HHD_GAME_KEY = /(.*)/;", self.ui).group(1))
+        for k, ok in [('tdp.unified.tdp.mode', True), ('tdp.asus.tdp.custom.tdp', True), ('tdp.unified.tdp.custom.boost', True),
+                      ('tdp.unified.fan_full_speed', False), ('tdp.unified.tdp.balanced.x', False), ('controllers.rog_ally.imu', False)]:
+            self.assertEqual(bool(js.match(k)), ok, k)
 
 
 if __name__ == '__main__':
