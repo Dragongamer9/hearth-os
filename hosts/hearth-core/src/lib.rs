@@ -5,6 +5,7 @@ pub mod appid;
 pub mod appupdate;
 pub mod artcache;
 pub mod backup;
+pub mod beacon;
 pub mod binkv;
 pub mod bridge;
 pub mod collections;

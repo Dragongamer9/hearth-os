@@ -143,14 +143,14 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .sw{width:42px;height:24px;border-radius:12px;background:var(--panel3);position:relative;flex:none;transition:background .2s}
 .sw:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#cfd6de;transition:transform .2s var(--ease)}
 .sw.on{background:var(--accent)} .sw.on:after{transform:translateX(18px);background:#fff}
-.settings{display:grid;grid-template-columns:270px 1fr;gap:22px;margin-top:16px}
-.snav{display:flex;flex-direction:column;gap:6px}
-.snav button{padding:12px 14px;border-radius:12px;color:var(--dim);display:flex;gap:12px;align-items:center;text-align:left}
+.settings{display:grid;grid-template-columns:clamp(176px,16vw,224px) 1fr;gap:16px;margin-top:8px}
+.snav{display:flex;flex-direction:column;gap:4px;position:sticky;top:0;align-self:start}
+.snav button{padding:8px 10px;border-radius:10px;color:var(--dim);display:flex;gap:10px;align-items:center;text-align:left;min-height:48px}
 .snav button.on{background:var(--panel2);color:var(--text)}
-.snav .sgi{width:36px;height:36px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none}.snav button.on .sgi{background:var(--accent);color:#fff}
-.snav .sgi svg{width:20px;height:20px}.snav .sgt{display:flex;flex-direction:column;min-width:0}.snav .sgt b{font-weight:700;font-size:15px}
-.snav .sgt small{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-.spane{min-width:0;display:flex;flex-direction:column;gap:14px}.stabs{display:flex;gap:8px;flex-wrap:wrap}
+.snav .sgi{width:30px;height:30px;border-radius:8px;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none}.snav button.on .sgi{background:var(--accent);color:#fff}
+.snav .sgi svg{width:18px;height:18px}.snav .sgt{display:flex;flex-direction:column;min-width:0}.snav .sgt b{font-weight:700;font-size:14px}
+.snav .sgt small{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.spane{min-width:0;display:flex;flex-direction:column;gap:8px}.stabs{display:flex;gap:6px;flex-wrap:wrap}
 
 /* ---------- overlays ---------- */
 .layer{position:fixed;z-index:20;visibility:hidden;pointer-events:none}
@@ -338,6 +338,59 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .qhhd .hhd-sub{margin-left:6px;padding-left:8px;gap:6px}
 .qhhd .hhd-h{font-size:13px;color:var(--dim);margin:6px 2px 0}
 .qhhd-note{font-size:12px;margin:8px 2px 0}
+/* Settings and Handheld Daemon pages, compact: rows about 48px high, one line of explanation (the whole of it shows
+   while the row is selected), small section headings, and short toggles two to a line on wide screens (.sgrid). */
+.srows{gap:6px;max-width:940px}
+.srows .row{padding:7px 14px;gap:12px;min-height:48px;border-radius:10px}
+.srows .row .rt b{font-size:15px;line-height:1.3}
+.srows .row .rt small{display:block;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srows .row.focus .rt small{white-space:normal}
+.srows .row .rv{white-space:nowrap;max-width:55%;overflow:hidden;text-overflow:ellipsis;flex:none}
+.srows .row.focus .rv{white-space:normal;text-align:right}
+.srows .ricon{width:30px;height:30px;border-radius:7px}
+.srows .ricon svg{width:18px;height:18px}
+.srows .shead{font-size:11px;margin:10px 4px 0}
+.srows>.shead:first-child,.srows>.stabs+.shead{margin-top:0}
+.srows .note{font-size:12px;padding:2px 4px;line-height:1.4}
+.srows .ctl{margin-bottom:0;padding:9px 14px;border-radius:10px;background:var(--panel)}
+.srows .ctl .lab{margin-bottom:8px}
+.srows .ctl .chint{font-size:12px;color:var(--dim);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srows .ctl.focus .chint{white-space:normal}
+.srows .seg button{padding:7px 0}
+.srows .chips{margin:0}
+.srows .hhd-sub{gap:6px;margin-left:12px;padding-left:10px}
+.srows .hhd-h{font-size:13px;margin:4px 4px 0;color:var(--dim)}
+.srows .storage{height:6px;margin-top:5px}
+.srows .opts{gap:6px;padding:0 2px}
+.srows .layouts{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.srows .lcard{padding:6px 6px 8px;gap:4px}
+.srows .lcard b{font-size:14px;margin-top:2px}
+.srows .lcard small{-webkit-line-clamp:1}
+.srows .lcard.focus small{-webkit-line-clamp:3}
+.srows .about-head{padding:12px 14px;gap:14px}
+.srows .about-head .amark{width:48px;height:48px;border-radius:12px}
+.srows .about-head .amark svg{width:32px;height:32px}
+.srows .about-head h3{font-size:19px}
+.srows .prof{padding:12px 14px}
+.sgrid{display:contents}
+@media (min-width:1100px){
+  .srows{max-width:1080px}
+  .sgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+}
+/* Quick Access › Performance, compact */
+.pstats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:2px}
+.pstats .pstat{margin:0;padding:9px 10px}
+.pstats .pstat .lab{gap:7px;font-size:13px;margin-bottom:6px;min-width:0}
+.pstats .pstat .lab svg{display:none}
+.pstats .pstat .lab span{white-space:nowrap}
+.pstats .pstat .psub{display:block;font-size:11px;color:var(--dim);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pctl{margin-top:10px}
+.pctl .chips{gap:5px;margin:6px 0 2px}
+.pctl .chip{flex:1 0 auto;text-align:center;padding:8px 6px;min-width:36px}
+.pctl>.muted{font-size:12px;line-height:1.35}
+.qhhd .ricon{width:26px;height:26px;border-radius:7px}
+.qhhd .ricon svg{width:16px;height:16px}
+.qhhd .row{min-height:44px}
 .row .seg{flex:1;max-width:420px}
 .ctl.tg .tgl{display:flex;flex-direction:column;min-width:0}
 .ctl.tg .tgl small{font-size:12px;color:var(--dim);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -669,7 +722,7 @@ function barsIcon(n){
 
 // ---------- mock data ----------
 const H = 3600e3, D = 24*H, now = Date.now();
-const SOURCES = {steam:'Steam', epic:'Epic', gog:'GOG', xbox:'Xbox', emu:'Emulators', manual:'Manual'};
+const SOURCES = {steam:'Steam', epic:'Epic', gog:'GOG', xbox:'Xbox', emu:'Emulators', beacon:'Beacon', manual:'Manual'};
 const GAMES = [
   {id:'g01',title:'Starfall Drift',src:'steam',appId:'1000010',inst:true,fav:true,hrs:142.5,last:now-5*H,size:'38.2 GB',ach:[34,50],added:now-200*D,genre:'Arcade racing'},
   {id:'g02',title:'Hollow Pines',src:'gog',inst:true,fav:false,hrs:31.2,last:now-1*D,size:'12.9 GB',ach:[11,40],added:now-30*D,genre:'Survival horror'},
@@ -689,6 +742,17 @@ const GAMES = [
   {id:'g16',title:'Deepwell',src:'xbox',inst:false,fav:false,hrs:1.2,last:now-80*D,size:'30.1 GB',ach:[1,40],added:now-80*D,genre:'Metroidvania'},
   {id:'g17',title:'Comet Kitchen',src:'manual',exe:'D:\\Emu\\ck.exe',inst:true,fav:false,hrs:9.9,last:now-40*D,size:'—',ach:null,added:now-40*D,genre:'Party'},
   {id:'g18',title:'Atlas Below',src:'steam',appId:'1000070',inst:true,fav:false,hrs:0.4,last:now-15*D,size:'71.9 GB',ach:[0,90],added:now-15*D,genre:'Exploration'},
+  // Beacon's games (BFME and friends), as `beacon status --json` and `beacon mods` describe them.
+  {id:'beacon:bfme2',title:'The Battle for Middle-earth II',src:'beacon',inst:true,fav:false,hrs:23.5,last:now-2*D,size:'—',ach:null,added:now-60*D,path:'/home/you/Games/BFME2',
+   beacon:{family:'bfme',short:'BFME II',ready:true,blocker:null,issues:[],mod:'bfme2:edain',mods:[{id:'bfme2:edain',name:'Edain',kind:'launcher'},{id:'bfme2:widescreen',name:'Widescreen',kind:'mod'}]}},
+  {id:'beacon:rotwk',title:'The Rise of the Witch-king',src:'beacon',inst:true,fav:true,hrs:61.2,last:now-8*H,size:'—',ach:null,added:now-60*D,path:'/home/you/Games/RotWK',
+   beacon:{family:'bfme',short:'RotWK',ready:true,blocker:null,issues:[{level:'warn',message:'No CD key saved: online play needs one'}],mod:null,mods:[{id:'rotwk:edain',name:'Edain',kind:'launcher'},{id:'rotwk:the-dawnless-days',name:'The Dawnless Days',kind:'mod'}]}},
+  {id:'beacon:aotr',title:'Age of the Ring',src:'beacon',inst:true,fav:false,hrs:9.1,last:now-5*D,size:'—',ach:null,added:now-20*D,path:'/home/you/Games/AotR',
+   beacon:{family:'bfme',short:'AotR',ready:true,blocker:null,issues:[],mod:'aotr:age-of-the-ring-8-4',mods:[{id:'aotr:age-of-the-ring-8-4',name:'Age of the Ring 8 4',kind:'mod'},{id:'aotr:aotr-reforged-maps',name:'Aotr Reforged Maps',kind:'mod'}]}},
+  {id:'beacon:conquest',title:'The Lord of the Rings: Conquest',src:'beacon',inst:true,fav:false,hrs:2.3,last:now-30*D,size:'—',ach:null,added:now-30*D,path:'/home/you/Games/Conquest',
+   beacon:{family:'lotr',short:'Conquest',ready:true,blocker:null,issues:[],mod:null,mods:[]}},
+  {id:'beacon:bfme1',title:'The Battle for Middle-earth',src:'beacon',inst:false,fav:false,hrs:0,last:0,size:'—',ach:null,added:0,installKind:'beacon',
+   beacon:{family:'bfme',short:'BFME',ready:false,blocker:'Game folder not set',issues:[{level:'error',message:'Game folder not set'}],mod:null,mods:[]}},
 ];
 const NEWS = [
   {g:'g01',k:'Patch notes',t:'Season 4: Night Circuits',d:'New tracks, a photo mode and handheld performance fixes.'},
@@ -720,7 +784,7 @@ const S = {
        nets:null, scanning:false, scannedAt:0, connecting:null,
        paired:null, found:[], btScanning:false, foundDone:false, busy:{}}
 };
-const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['emu','Emulators'],['manual','Non-library'],['hidden','Hidden']];
+const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['emu','Emulators'],['beacon','Beacon'],['manual','Non-library'],['hidden','Hidden']];
 const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settings'],['perf','bolt','Performance'],['now','play','Now playing']];
 if(/[?&]overlay=full/.test(location.search) || (window.nimbusHost && !/[?&]overlay/.test(location.search))) QTABS.splice(3,0,['apps','lib','Open apps']);
 
@@ -882,7 +946,7 @@ const MOCK = (()=>{
     'game.pause':async()=>({paused:true}), 'game.unpause':async()=>({paused:false}),
     'apps.list':async()=>[{id:1,pid:10,title:'Ironvale Tactics',app:'Ironvale.exe',game:true,focused:true},{id:2,pid:11,title:'Hearth',hearth:true},{id:3,pid:12,title:'Discord',app:'Discord'},{id:4,pid:13,title:'Steam',app:'steam'}],
     'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
-    'game.options.get':async({id})=>({id,kind:'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false,fpsLimit:0,tdp:0,hhdPower:{},powerLabel:''},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
+    'game.options.get':async({id})=>({id,kind:(G(id)&&G(id).src==='beacon')?'beacon':'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false,fpsLimit:0,tdp:0,hhdPower:{},powerLabel:''},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
       protonChoices:[{id:'',label:'Default',sub:'UMU-Proton, the newest, downloaded when needed'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'Community build with extra fixes'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
     'browser.status':async()=>clone(st.br||{available:true,installed:true,default:true,version:'4.9.1.0',checkedAt:Math.floor(Date.now()/1000)-86400,state:'idle'}),
     'browser.act':async({action})=>{ st.br=Object.assign({available:true,installed:true,default:true,version:'4.9.1.0',state:'idle'},st.br||{}); if(action==='remove') st.br.installed=false; if(action==='install'||action==='default'){ st.br.installed=true; st.br.default=true; } return clone(st.br); },
@@ -942,7 +1006,8 @@ const MOCK = (()=>{
       {store:'steam',signedIn:true,name:'player_one',avatar:null,owned:517,installed:6,fetched:0,busy:false,error:null,toolReady:true},
       {store:'epic',signedIn:true,name:'PlayerOne',avatar:null,owned:142,installed:3,fetched:Date.now()-7.2e6,busy:false,error:null,toolReady:true},
       {store:'gog',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:false},
-      {store:'xbox',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:true}]}),
+      {store:'xbox',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:true}],
+      beacon:{installed:true,app:true,via:'native',games:9,setUp:4,error:null}}),
     'profile.get':async()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){} return {name:'Player One',status:null,avatar:'initials',accent:'#3fd0b8',background:'default',customAvatar:null,customBackground:null,storeAvatars:{},...p}; },
     'profile.set':async(c)=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){}
       for(const k of ['name','status','avatar','accent','background']) if(c[k]!=null) p[k]=String(c[k]).trim()||null;
@@ -962,12 +1027,23 @@ function hk(s){ let h=5381; for(const c of String(s)) h=((h*33)^c.charCodeAt(0))
 const timers={};
 function debounce(k,fn,ms){ clearTimeout(timers[k]); timers[k]=setTimeout(fn,ms); }
 function artBg(g){
+  if(g.src==='beacon') return beaconBg(g);
   const h=hue(g.title), h2=(h+50)%360, h3=(h+200)%360;
   return `background:
     radial-gradient(120% 80% at 80% 10%, hsla(${h2},80%,60%,.55), transparent 55%),
     radial-gradient(90% 70% at 10% 100%, hsla(${h3},70%,45%,.45), transparent 60%),
     repeating-linear-gradient(${h%180}deg, rgba(255,255,255,.035) 0 2px, transparent 2px 14px),
     linear-gradient(160deg, hsl(${h},55%,30%), hsl(${h2},65%,12%))`;
+}
+// Beacon's games have no art of their own (Beacon ships none): a warm tile in Beacon's colors, a shade per shelf
+// (Battle for Middle-earth, Lord of the Rings, other games). Steam copies (UaW, SWGB) get Steam's art on top.
+function beaconBg(g){
+  const f=(g.beacon&&g.beacon.family)||'bfme', h={bfme:34,lotr:16,other:205}[f]??34, k=hue(g.title)%22;
+  return `background:
+    radial-gradient(90% 70% at 85% 0%, hsla(${h+k},90%,55%,.45), transparent 60%),
+    radial-gradient(80% 60% at 0% 100%, hsla(${h+12},70%,35%,.5), transparent 65%),
+    repeating-linear-gradient(135deg, rgba(255,220,160,.045) 0 2px, transparent 2px 16px),
+    linear-gradient(170deg, hsl(${h},45%,21%), #0f0d0b)`;
 }
 // Real art when the host provides it; the generated gradient stays underneath as the fallback.
 // Tries each kind in order; if an image fails to load, the next one is tried, then the gradient shows.
@@ -1560,23 +1636,22 @@ function pageAppearance(){
   const ts=(TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[1];
   const wl=DESKWALL.v==null?'':(WALLS.find(w=>w[0]===DESKWALL.v)||['','Your picture'])[1];
   return shead('Themes') + `<div class="opts">${THEME_PACKS.map(themeCard).join('')}</div>`
-    + `<div class="muted" style="margin:-4px 0 14px">An accent color, background and sounds together${LINUX?', and the desktop\'s wallpaper':''}. Change any of them on its own below or in your profile.</div>`
+    + note(`An accent color, background and sounds together${LINUX?', and the desktop\'s wallpaper':''}. Change any of them on its own below or in your profile.`)
     + shead('Home layout')
     + `<div class="layouts">${LAYOUTS.map(l=>`<button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
         <div class="lprev">${layoutPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>`).join('')}</div>`
     + `<button class="row" data-f data-k="ap-xopen" data-act="xOpen"><span class="ricon">${I.layout}</span><div class="rt"><b>Experimental layouts · beta</b><small>${XLAYOUTS.length} early layouts to try and upvote${isX(LOOK.layout)?` · using ${esc((XLAYOUTS.find(l=>l.id===LOOK.layout)||{}).name||'')}`:''}</small></div><div class="rv">${XV.open?'Hide ▴':'Show ▾'}</div></button>`
     + (XV.open ? xCards() : '')
-    + shead('Text and motion')
-    + `<button class="row" data-f data-k="ap-text" data-act="textSize"><span class="ricon">${I.text}</span><div class="rt"><b>Text size</b><small>Makes everything in ${APP} bigger or smaller</small></div><div class="rv">${ts} ›</div></button>`
+    + shead('Text, motion and top bar')
+    + sgrid(`<button class="row" data-f data-k="ap-text" data-act="textSize"><span class="ricon">${I.text}</span><div class="rt"><b>Text size</b><small>Makes everything in ${APP} bigger or smaller</small></div><div class="rv">${ts} ›</div></button>`
     + lookRow('reduceMotion','Reduce motion','Turns off animations and smooth scrolling')
-    + shead('Top bar')
     + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM')
-    + lookRow('battPct','Battery percentage','Next to the battery icon')
-    + shead('More')
-    + swRow('sounds','Interface sounds','Soft clicks when you move around')
+    + lookRow('battPct','Battery percentage','Next to the battery icon in the top bar'))
+    + shead('Sounds and colors')
+    + sgrid(swRow('sounds','Interface sounds','Soft clicks when you move around')
     + `<button class="row" data-f data-k="ap-sp" data-act="soundPack"><span class="ricon">${I.vol}</span><div class="rt"><b>Sound pack</b><small>How the clicks sound</small></div><div class="rv">${(SOUND_PACKS[LOOK.soundPack]||SOUND_PACKS.soft).name} ›</div></button>`
     + (LINUX?`<button class="row" data-f data-k="ap-wall" data-act="deskWall"><span class="ricon">${I.display}</span><div class="rt"><b>Desktop wallpaper</b><small>For Mantel, the desktop. Your background picture can go there too.</small></div><div class="rv">${esc(wl)} ›</div></button>`:'')
-    + `<button class="row" data-f data-k="ap-prof" data-act="goset" data-tab="profile"><span class="ricon">${I.user}</span><div class="rt"><b>Accent color and background</b><small>In your profile</small></div><div class="rv">›</div></button>`;
+    + `<button class="row" data-f data-k="ap-prof" data-act="goset" data-tab="profile"><span class="ricon">${I.user}</span><div class="rt"><b>Accent color and background</b><small>In your profile</small></div><div class="rv">›</div></button>`);
 }
 function lookRow(key,label,sub){ return `<button class="row" data-f data-k="ap-${key}" data-act="lookToggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${LOOK[key]?'on':''}"></div></button>`; }
 function pickTextSize(){
@@ -1592,10 +1667,10 @@ function pageSystem(){
   const i=SYSINFO.s||{}, st=i.storage;
   const feat=f=>(HOSTINFO.features||[]).includes(f);
   let h = shead('This device');
-  h += LINUX
+  h += sgrid((LINUX
     ? `<button class="row" data-f data-k="sy-name" data-act="goset" data-tab="signin"><span class="ricon">${I.info}</span><div class="rt"><b>Device name</b><small>Change it in Settings › Sign-in</small></div><div class="rv">${esc(i.hostname||HOSTINFO.name||'')} ›</div></button>`
-    : infoRow('dev','Device name', i.hostname||HOSTINFO.name||'Windows 11 PC');
-  h += infoRow('user','Profile name',PROFILE.name);
+    : infoRow('dev','Device name', i.hostname||HOSTINFO.name||'Windows 11 PC'))
+    + infoRow('user','Profile name',PROFILE.name));
   if(st && st.totalBytes){
     const used=st.totalBytes-st.freeBytes, pct=Math.round(used/st.totalBytes*100);
     h += `<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Storage</b><small>${gb(st.freeBytes)} free of ${gb(st.totalBytes)}</small><div class="storage"><i style="width:${pct}%"></i></div></div><div class="rv">${pct}% used</div></div>`;
@@ -1605,27 +1680,27 @@ function pageSystem(){
   if(LINUX && ART.s) h += shead('Offline') + `<div class="row" data-f data-k="sy-art"><span class="ricon">${I.dl}</span><div class="rt"><b>Game art on this device</b><small>${ART.s.pictures} pictures (${Math.round(ART.s.bytes/1e6)} MB)${ART.s.waiting?` · ${ART.s.waiting} still downloading`:' · your library looks the same offline'}</small></div></div>`;
   if(LINUX) h += browserRows();
   h += shead('Date and time')
-    + infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
-    + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM');
-  h += shead('Startup');
-  if(!LINUX) h += swRow('startOnBoot','Start '+APP+' at sign-in','Registers '+APP+' as the shell for this user');
-  else h += `<button class="row" data-f data-k="sy-signin" data-act="goset" data-tab="signin"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign-in and startup</b><small>Sign in automatically, start in Game or Desktop Mode, password</small></div><div class="rv">›</div></button>`;
-  h += shead('Privacy')
-    + `<button class="row" data-f data-k="sy-count" data-act="countMe"><div class="rt"><b>Count me in the player count</b><small>${APP} tells Hearth OS's counter it's running about every 10 minutes: a random number made on this device, the edition and the version. No names, games or accounts.</small></div><div class="sw ${counterOn()?'on':''}"></div></button>`;
-  if(LINUX) h += shead('Backup') + `<button class="row" data-f data-k="sy-backup" data-act="backupNow"><span class="ricon">${I.dl}</span><div class="rt"><b>Back up ${APP}</b><small>Settings, profiles, favorites, collections, play time and your own games, to a USB drive or this device</small></div>${BACKUP.busy?'<span class="mini-spin"></span>':'<div class="rv">›</div>'}</button>`
-    + `<button class="row" data-f data-k="sy-restore" data-act="restoreBackup"><span class="ricon">${I.refresh}</span><div class="rt"><b>Restore from a backup</b><small>On a new device, or after a reinstall. ${APP} restarts after.</small></div><div class="rv">›</div></button>`;
+    + sgrid(infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
+    + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM'));
+  h += shead('Startup and privacy');
+  h += sgrid((!LINUX ? swRow('startOnBoot','Start '+APP+' at sign-in','Registers '+APP+' as the shell for this user')
+    : `<button class="row" data-f data-k="sy-signin" data-act="goset" data-tab="signin"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign-in and startup</b><small>Sign in automatically, start in Game or Desktop Mode, password</small></div><div class="rv">›</div></button>`)
+    + `<button class="row" data-f data-k="sy-count" data-act="countMe"><div class="rt"><b>Count me in the player count</b><small>${APP} tells Hearth OS's counter it's running about every 10 minutes: a random number made on this device, the edition and the version. No names, games or accounts.</small></div><div class="sw ${counterOn()?'on':''}"></div></button>`);
+  if(LINUX) h += shead('Backup') + sgrid(`<button class="row" data-f data-k="sy-backup" data-act="backupNow"><span class="ricon">${I.dl}</span><div class="rt"><b>Back up ${APP}</b><small>Settings, profiles, favorites, collections, play time and your own games, to a USB drive or this device</small></div>${BACKUP.busy?'<span class="mini-spin"></span>':'<div class="rv">›</div>'}</button>`
+    + `<button class="row" data-f data-k="sy-restore" data-act="restoreBackup"><span class="ricon">${I.refresh}</span><div class="rt"><b>Restore from a backup</b><small>On a new device, or after a reinstall. ${APP} restarts after.</small></div><div class="rv">›</div></button>`);
   h += shead('Troubleshooting');
-  if(feat('restartApp')) h += `<button class="row" data-f data-k="sy-restart" data-act="restartApp"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP}</b><small>Closes and reopens ${APP}. Games keep running.</small></div></button>`;
-  h += `<button class="row" data-f data-k="sy-inlog" data-act="inputLog"><div class="rt"><b>Log controller input</b><small>Writes every button press and what it selected to the log, for reporting a jumpy selection. Then use Save logs.</small></div><div class="sw ${INPUT_LOG?'on':''}"></div></button>`;
+  let tr='', logs='';
+  if(feat('restartApp')) tr += `<button class="row" data-f data-k="sy-restart" data-act="restartApp"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP}</b><small>Closes and reopens ${APP}. Games keep running.</small></div></button>`;
+  tr += `<button class="row" data-f data-k="sy-inlog" data-act="inputLog"><div class="rt"><b>Log controller input</b><small>Writes every button press and what it selected to the log, for reporting a jumpy selection. Then use Save logs.</small></div><div class="sw ${INPUT_LOG?'on':''}"></div></button>`;
   if(feat('sendLogs')){
-    h += `<button class="row" data-f data-k="sy-send" data-act="sendLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs for a bug report</b><small>One file with ${APP}'s and the system's logs, personal details taken out. Saved in your home folder, and on a USB drive or SD card if one is plugged in.</small></div>${LOGS.busy?'<span class="mini-spin"></span>':''}</button>`;
-    h += `<button class="row" data-f data-k="sy-senddev" data-act="sendLogsDev"><span class="ricon">${I.refresh}</span><div class="rt"><b>Send logs to the developer</b><small>The same file, sent to Hearth OS's bug-report service. You get a short code to share; the logs are kept 14 days, and only someone with the code can read them.</small></div>${LOGS.busyDev?'<span class="mini-spin"></span>':''}</button>`;
-    if(LOGS.r) h += LOGS.r.code ? `<div class="logcode"><small>Sent. Share this code (or the link) with the developer:</small><b>${esc(LOGS.r.code)}</b><code>${esc(LOGS.r.url)}</code></div>`
+    tr += `<button class="row" data-f data-k="sy-send" data-act="sendLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs for a bug report</b><small>One file with ${APP}'s and the system's logs, personal details taken out. Saved in your home folder, and on a USB drive or SD card if one is plugged in.</small></div>${LOGS.busy?'<span class="mini-spin"></span>':''}</button>`;
+    tr += `<button class="row" data-f data-k="sy-senddev" data-act="sendLogsDev"><span class="ricon">${I.refresh}</span><div class="rt"><b>Send logs to the developer</b><small>The same file, sent to Hearth OS's bug-report service. You get a short code to share; the logs are kept 14 days, and only someone with the code can read them.</small></div>${LOGS.busyDev?'<span class="mini-spin"></span>':''}</button>`;
+    if(LOGS.r) logs = LOGS.r.code ? `<div class="logcode"><small>Sent. Share this code (or the link) with the developer:</small><b>${esc(LOGS.r.code)}</b><code>${esc(LOGS.r.url)}</code></div>`
       : note(`Saved: <code>${esc(LOGS.r.path)}</code>${(LOGS.r.copies||[]).map(c=>`<br>Copied to: <code>${esc(c)}</code>`).join('')}`);
   }
-  else if(feat('exportLogs')) h += `<button class="row" data-f data-k="sy-logs" data-act="exportLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs</b><small>Puts ${APP}'s logs in one file in your home folder, to send with a bug report</small></div></button>`;
-  h += `<button class="row" data-f data-k="sy-reset" data-act="resetLook"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset appearance</b><small>Layout, text size and top bar back to how they started. Your games and accounts stay.</small></div></button>`;
-  return h;
+  else if(feat('exportLogs')) tr += `<button class="row" data-f data-k="sy-logs" data-act="exportLogs"><span class="ricon">${I.dl}</span><div class="rt"><b>Save logs</b><small>Puts ${APP}'s logs in one file in your home folder, to send with a bug report</small></div></button>`;
+  tr += `<button class="row" data-f data-k="sy-reset" data-act="resetLook"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset appearance</b><small>Layout, text size and top bar back to how they started. Your games and accounts stay.</small></div></button>`;
+  return h + sgrid(tr) + logs;
 }
 const LOGS = {busy:false, r:null};
 // ---------- Xbox PC games through Xodus Nexus (experimental, optional) ----------
@@ -1704,8 +1779,8 @@ function browserRows(){
   if(b.installed){
     h += `<div class="row"><span class="ricon">${I.globe||I.display}</span><div class="rt"><b>Aloha Browser</b><small>${b.default?'Your default browser':'Installed, but another browser opens links'}${b.version?' · version '+esc(b.version):''}${b.checkedAt?' · checked for updates '+ago(b.checkedAt*1000).toLowerCase():''}</small></div></div>`;
     if(!b.default) h += `<button class="row" data-f data-k="br-def" data-act="browser" data-v="default"><div class="rt"><b>Make Aloha the default browser</b></div></button>`;
-    h += `<button class="row" data-f data-k="br-upd" data-act="browser" data-v="update"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look for an update</b><small>Hearth also checks once a week</small></div></button>`;
-    h += `<button class="row" data-f data-k="br-rm" data-act="browserRemove"><span class="ricon">${I.trash}</span><div class="rt"><b>Remove Aloha Browser</b><small>Hearth won't install it again by itself</small></div></button>`;
+    h += sgrid(`<button class="row" data-f data-k="br-upd" data-act="browser" data-v="update"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look for an update</b><small>Hearth also checks once a week</small></div></button>`
+      + `<button class="row" data-f data-k="br-rm" data-act="browserRemove"><span class="ricon">${I.trash}</span><div class="rt"><b>Remove Aloha Browser</b><small>Hearth won't install it again by itself</small></div></button>`);
   } else {
     h += `<button class="row" data-f data-k="br-inst" data-act="browser" data-v="install"><span class="ricon">${I.dl}</span><div class="rt"><b>Install Aloha Browser</b><small>Downloads the official package from alohabrowser.com (about 150 MB) and makes it the default browser</small></div></button>`;
   }
@@ -1724,18 +1799,20 @@ function pageAbout(){
       <div class="muted">${LINUX?(HOSTINFO.system?'Hearth OS, built on Bazzite':'Hearth for Linux'):'Ember, the shell for Windows 11'} · part of Hearth OS</div></div>
       <button class="pill" data-f data-k="ab-upd" data-act="goset" data-tab="updates">${I.refresh}Updates</button></div>`;
   h += shead('This device');
-  if(i.device) h += infoRow('ab-dev','Device', i.device);
-  h += infoRow('ab-os','Operating system', i.osPretty || [i.os,i.osVersion].filter(Boolean).join(' ') || (LINUX?'Linux':'Windows'));
-  if(sysVer) h += infoRow('ab-img','Hearth OS version', sysVer);
-  if(i.cpu) h += infoRow('ab-cpu','Processor', i.cpu + (i.cores?` · ${i.cores} threads`:''));
-  if(i.gpu) h += infoRow('ab-gpu','Graphics', i.gpu);
-  if(i.memoryBytes) h += infoRow('ab-ram','Memory', gb(i.memoryBytes)+' RAM');
-  if(i.storage && i.storage.totalBytes) h += infoRow('ab-disk','Storage', `${gb(i.storage.totalBytes)} (${gb(i.storage.freeBytes)} free)`);
-  if(S.sys.display && S.sys.display.width) h += infoRow('ab-disp','Display', `${S.sys.display.width} × ${S.sys.display.height}${S.sys.display.refreshRate?` at ${S.sys.display.refreshRate} Hz`:''}`);
-  if(i.kernel) h += infoRow('ab-kern', LINUX?'Kernel':'Windows version', i.kernel);
-  if(i.uptimeSec) h += infoRow('ab-up','Running for', uptimeText(i.uptimeSec));
-  h += infoRow('host','App engine',!host?'Browser preview':LINUX?(HOSTINFO.host||'Hearth')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
-  if(COUNTER.stats) h += shead('Hearth OS players') + infoRow('ab-count','Playing right now', `🔥 ${COUNTER.stats.now.toLocaleString()}`) + infoRow('ab-count2','In the last 30 days', COUNTER.stats.month.toLocaleString());
+  let d='';
+  if(i.device) d += infoRow('ab-dev','Device', i.device);
+  d += infoRow('ab-os','Operating system', i.osPretty || [i.os,i.osVersion].filter(Boolean).join(' ') || (LINUX?'Linux':'Windows'));
+  if(sysVer) d += infoRow('ab-img','Hearth OS version', sysVer);
+  if(i.cpu) d += infoRow('ab-cpu','Processor', i.cpu + (i.cores?` · ${i.cores} threads`:''));
+  if(i.gpu) d += infoRow('ab-gpu','Graphics', i.gpu);
+  if(i.memoryBytes) d += infoRow('ab-ram','Memory', gb(i.memoryBytes)+' RAM');
+  if(i.storage && i.storage.totalBytes) d += infoRow('ab-disk','Storage', `${gb(i.storage.totalBytes)} (${gb(i.storage.freeBytes)} free)`);
+  if(S.sys.display && S.sys.display.width) d += infoRow('ab-disp','Display', `${S.sys.display.width} × ${S.sys.display.height}${S.sys.display.refreshRate?` at ${S.sys.display.refreshRate} Hz`:''}`);
+  if(i.kernel) d += infoRow('ab-kern', LINUX?'Kernel':'Windows version', i.kernel);
+  if(i.uptimeSec) d += infoRow('ab-up','Running for', uptimeText(i.uptimeSec));
+  d += infoRow('host','App engine',!host?'Browser preview':LINUX?(HOSTINFO.host||'Hearth')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
+  h += sgrid(d);
+  if(COUNTER.stats) h += shead('Hearth OS players') + sgrid(infoRow('ab-count','Playing right now', `🔥 ${COUNTER.stats.now.toLocaleString()}`) + infoRow('ab-count2','In the last 30 days', COUNTER.stats.month.toLocaleString()));
   h += shead('Open source')
     + `<button class="row" data-f data-k="ab-credits" data-act="credits"><span class="ricon">${I.info}</span><div class="rt"><b>Built with</b><small>The open-source projects ${APP} uses</small></div><div class="rv">›</div></button>`
     + note(`${APP} is part of Hearth OS, a controller-first game library and system. Game names and art belong to their owners.`);
@@ -1791,6 +1868,7 @@ function libGames(){
 function libTabs(){
   const t=LIB_TABS.filter(([k])=>{
     if(k==='hidden') return GAMES.some(g=>g.hidden);
+    if(k==='beacon') return GAMES.some(g=>g.src==='beacon' && !g.hidden);   // only with Beacon installed
     if(host && SOURCES[k]) return GAMES.some(g=>g.src===k && !g.hidden);
     return true;
   });
@@ -1879,6 +1957,7 @@ function viewGame(){
     ? `${esc(g.genre)}. Placeholder description from the browser preview.`
     : g.cloud ? `Streams with Xbox Cloud Gaming. Needs Game Pass Ultimate; sign in with your Xbox account the first time. Hold View + Menu to leave the stream.`
     : g.system ? `A ${esc(g.system)} game from your ROMs folder, played with RetroArch.`
+    : g.src==='beacon' ? beaconAbout(g)
     : g.inst ? `Installed through ${SOURCES[g.src]}.`
     : isActive(g) ? (g.installKind==='nimbus' ? `${APP} is installing this game into your games folder.` : `${SOURCES[g.src]} is installing this game.`)
     : g.note ? `In your ${SOURCES[g.src]} library. ${esc(g.note)}, so ${APP} can't install it.`
@@ -1893,14 +1972,15 @@ function viewGame(){
         : playable(g)
         ? (running ? `<button class="play" data-f data-k="g-play" data-act="resume" data-id="${esc(g.id)}">${I.play}Resume</button><button class="play install" data-f data-k="g-stop" data-act="exitgame" data-id="${esc(g.id)}">${I.stop}Exit game</button>`
             : isFrozen(g) ? `<button class="play" data-f data-k="g-play" data-act="quickres" data-id="${esc(g.id)}">${I.play}Resume</button><button class="play install" data-f data-k="g-stop" data-act="quickclose" data-id="${esc(g.id)}">${I.stop}Close game</button>`
-            : `<button class="play" data-f data-k="g-play" data-act="play" data-id="${esc(g.id)}">${I.play}${g.cloud&&!g.inst?'Stream':'Play'}</button>`)
-        : `<button class="play install" data-f data-k="g-play" data-act="install" data-id="${esc(g.id)}">${I.dl}Install</button>`}
+            : `<button class="play" data-f data-k="g-play" data-act="play" data-id="${esc(g.id)}">${I.play}${g.cloud&&!g.inst?'Stream':'Play'}</button>${beaconMods(g).length?`<button class="play install" data-f data-k="g-playwith" data-act="playWith" data-id="${esc(g.id)}">${I.play}Play with…</button>`:''}`)
+        : `<button class="play install" data-f data-k="g-play" data-act="install" data-id="${esc(g.id)}">${I.dl}${g.src==='beacon'?'Set up in Beacon':'Install'}</button>`}
       <button class="sq ${g.fav?'on':''}" data-f data-k="g-fav" data-act="fav" data-id="${esc(g.id)}" aria-label="Favorite">${I.star}</button>
       <button class="sq" data-f data-k="g-opt" data-act="gopts" data-id="${esc(g.id)}" aria-label="Options">${I.dots}</button>
       <div class="gstats">
         <div class="gstat"><div class="k">Last played</div><div class="v">${ago(g.last)}</div></div>
         <div class="gstat"><div class="k">Play time</div><div class="v">${g.hrs?hrs(g.hrs):'—'}</div></div>
         <div class="gstat"><div class="k">${g.system?'System':'Source'}</div><div class="v">${esc(g.system||SOURCES[g.src])}</div></div>
+        ${g.beacon&&g.inst?`<div class="gstat"><div class="k">Mod</div><div class="v">${esc(beaconModName(g))}</div></div>`:''}
         ${pdb?`<div class="gstat" title="${esc(pdb.text)} · ProtonDB, ${pdb.reports||0} reports"><div class="k">On Linux</div><div class="v"><span class="pdb" style="--c:${PDB_COLORS[pdb.tier]||'#7f8b99'}">${esc(pdb.label)}</span></div></div>`:''}
         <div class="gstat"><div class="k">Size</div><div class="v">${g.size||'—'}</div></div>
       </div>
@@ -1995,19 +2075,23 @@ function viewDownloads(){
   return h + '</div>';
 }
 
-const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display'],['audio','vol','Audio'],['power','bolt','Power'],
+const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display & sound'],['audio','vol','Audio'],['power','bolt','Power'],
   ['controller','pad','Controls'],['remote','play','Remote play'],['sources','lib','Library'],['seats','display','Multi-seat (Beta Experimental)'],['import','dl','Import'],['osinstall','dl','Install'],['switch','dl','Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
 // Settings, condensed: five groups on the left, each with its pages as tabs along the top.
 const SGROUPS = [['you','user','You'],['connect','wifi','Connections'],['device','display','Device'],['games','lib','Games'],['system','gear','System']];
 const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',signin:'you',wifi:'connect',bluetooth:'connect',remote:'connect',
   display:'device',audio:'device',power:'device',controller:'device',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
 const stabGroup = k => STAB_GROUP[k]||'system';
-const stabShown = k => STABS.some(x=>x[0]===k) && (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX));
+const stabShown = k => STABS.some(x=>x[0]===k) && k!=='audio' && (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX));
 const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k));
 const SLAST = {};
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
 const note = t => `<div class="note">${t}</div>`;
+// Settings, compact: short rows two to a line on wide screens (one under the other on narrow ones), and a longer
+// explanation as a row of its own: one line until it's selected, then all of it.
+const sgrid = h => h ? `<div class="sgrid">${h}</div>` : '';
+const tipRow = (k, title, text) => `<div class="row tip" data-f data-k="${k}"><span class="ricon">${I.info}</span><div class="rt"><b>${title}</b><small>${text}</small></div></div>`;
 const shead = (t,spin) => `<div class="shead"><span>${t}</span>${spin?'<span class="mini-spin"></span>':''}</div>`;
 function radioOn(kind){ return kind==='wifi'?S.sys.wifi.on : kind==='bt'?S.sys.bt.on : S.sys.airplane; }
 function radioRow(kind,label,sub){
@@ -2080,17 +2164,17 @@ const NVD = {s:null};
 function pageDisplay(){
   const d=S.sys.display;
   const pick=(k,label,val,act,sub)=>`<button class="row" data-f data-k="s-${k}" data-act="${act}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="rv">${esc(val)} ›</div></button>`;
-  let h = d.supported ? sliderCtl('bright','sun','Brightness') : '';
+  let h = d.supported ? sliderCtl('bright','sun','Brightness') : '', g='';
   if(d.modes && d.modes.length){
-    h += pick('res','Resolution', d.width?`${d.width} × ${d.height}`:d.resolution, 'dispRes', d.width===d.modes[0].width&&d.height===d.modes[0].height?'Native (recommended)':`Native: ${d.modes[0].width} × ${d.modes[0].height}`);
-    h += pick('hz','Refresh rate', d.refreshRate?`${d.refreshRate} Hz`:'—', 'dispHz');
-  } else h += infoRow('res','Resolution',d.resolution||'—');
-  if(d.scales && d.scales.length) h += pick('scale','Scale', (d.scalePercent||'')+'%', 'dispScale', d.scaleRecommended?`Recommended: ${d.scaleRecommended}%`:'');
-  else h += infoRow('scale','Scale',d.scale||'—');
-  if(!d.supported) h += note('Brightness control works on built-in screens (laptops and handhelds). External monitors are not supported yet.');
-  h += note(d.appliesOnRestart ? 'In Game Mode, a new resolution or refresh rate restarts '+APP+' for a moment to apply it.'
-    : 'Resolution and refresh-rate changes switch back by themselves after 15 seconds unless you keep them, in case the screen goes black.');
-  if(d.scaleIsInterface) h += note('Scale here sizes the '+APP+' interface.');
+    g += pick('res','Resolution', d.width?`${d.width} × ${d.height}`:d.resolution, 'dispRes', d.width===d.modes[0].width&&d.height===d.modes[0].height?'Native (recommended)':`Native: ${d.modes[0].width} × ${d.modes[0].height}`);
+    g += pick('hz','Refresh rate', d.refreshRate?`${d.refreshRate} Hz`:'—', 'dispHz');
+  } else g += infoRow('res','Resolution',d.resolution||'—');
+  if(d.scales && d.scales.length) g += pick('scale','Scale', (d.scalePercent||'')+'%', 'dispScale', d.scaleRecommended?`Recommended: ${d.scaleRecommended}%`:'');
+  else g += infoRow('scale','Scale',d.scale||'—');
+  h += sgrid(g);
+  if(!d.supported) h += note('Brightness works on built-in screens (laptops and handhelds), not external monitors yet.');
+  h += note((d.appliesOnRestart ? 'In Game Mode, a new resolution or refresh rate restarts '+APP+' for a moment.'
+    : 'A new resolution or refresh rate switches back after 15 seconds unless you keep it.')+(d.scaleIsInterface?' Scale sizes the '+APP+' interface.':''));
   if((HOSTINFO.features||[]).includes('nvidiaDrawing')){
     const nd=NVD.s, label={auto:'Automatic',fast:'Fast',compatible:'Compatible'}[nd&&nd.pick||'auto'];
     h += shead('Nvidia') + `<button class="row" data-f data-k="s-nvd" data-act="nvDrawing"><div class="rt"><b>How ${APP} draws</b><small>Fast is smooth (newer drivers). Compatible works everywhere but is slower: use it if ${APP} ever shows a black screen. ${nd?(nd.fast?'Drawing fast now.':'Drawing in compatible mode now.'):''}</small></div><div class="rv">${label} ›</div></button>`;
@@ -2170,16 +2254,13 @@ function powerButtonRows(){
 }
 function pageAudio(){
   const a=S.sys.audio;
+  const on=!!(BTNS.s && BTNS.s.overamp);
   let h = sliderCtl('vol','vol','Volume',0,volMax())
-    + `<button class="row" data-f data-k="a-mute" data-act="mute"><span class="ricon">${a.muted?I.mute:I.vol}</span><div class="rt"><b>Mute</b></div><div class="sw ${a.muted?'on':''}"></div></button>`
+    + sgrid(`<button class="row" data-f data-k="a-mute" data-act="mute"><span class="ricon">${a.muted?I.mute:I.vol}</span><div class="rt"><b>Mute</b></div><div class="sw ${a.muted?'on':''}"></div></button>`
+      + (LINUX ? `<button class="row" data-f data-k="a-overamp" data-act="overamp"><span class="ricon">${I.vol}</span><div class="rt"><b>Over-amplification</b><small>Volume up to 150%. Sound can distort, and loud sound can damage speakers or your hearing.</small></div><div class="sw ${on?'on':''}"></div></button>` : ''))
     + shead('Output device');
-  h += a.devices && a.devices.length ? a.devices.map(d=>`<button class="row" data-f data-k="a-${hk(d.id)}" data-act="audioDev" data-id="${esc(d.id)}"><span class="ricon">${I.vol}</span><div class="rt"><b>${esc(d.name)}</b></div>${d.isDefault?`<span class="rv" style="color:var(--accent)">${I.check}</span>`:''}</button>`).join('')
+  h += a.devices && a.devices.length ? sgrid(a.devices.map(d=>`<button class="row" data-f data-k="a-${hk(d.id)}" data-act="audioDev" data-id="${esc(d.id)}"><span class="ricon">${I.vol}</span><div class="rt"><b>${esc(d.name)}</b></div>${d.isDefault?`<span class="rv" style="color:var(--accent)">${I.check}</span>`:''}</button>`).join(''))
        : note('Loading output devices…');
-  if(LINUX){
-    const on=!!(BTNS.s && BTNS.s.overamp);
-    h += shead('Louder than 100%');
-    h += `<button class="row" data-f data-k="a-overamp" data-act="overamp"><span class="ricon">${I.vol}</span><div class="rt"><b>Over-amplification</b><small>Lets the volume go up to 150%. Sound can distort, and loud sound can damage speakers or your hearing.</small></div><div class="sw ${on?'on':''}"></div></button>`;
-  }
   return h;
 }
 const PMODES=[['efficiency','Efficiency'],['balanced','Balanced'],['performance','Performance']];
@@ -2194,8 +2275,8 @@ function pagePower(){
   else h += note('Power modes aren\'t available on this device.');
   if(LINUX && pw.tdp && pw.tdp.supported){
     const t=pw.tdp, choices=[5,8,10,12,15,18,20,22,25,28,30,35].filter(v=>v>=t.min&&v<=t.max);
-    h += `<div class="row"><div class="rt"><b>Power limit (TDP)</b><small>${t.watts} W now · lower uses less battery, higher runs demanding games faster. Kept after a restart.</small></div></div>
-      <div class="chips" style="margin:-4px 0 10px">${choices.map(v=>`<button class="chip ${t.watts===v?'on':''}" data-f data-k="ptd-${v}" data-act="setTdp" data-v="${v}">${v} W</button>`).join('')}</div>`;
+    h += `<div class="row"><div class="rt"><b>Power limit (TDP)</b><small>${t.watts} W now · lower saves battery, higher runs demanding games faster. Kept after a restart.</small></div></div>
+      <div class="chips" style="margin:-2px 0 4px">${choices.map(v=>`<button class="chip ${t.watts===v?'on':''}" data-f data-k="ptd-${v}" data-act="setTdp" data-v="${v}">${v} W</button>`).join('')}</div>`;
   }
   return h + (qrFeature() ? quickResumeRows() : '') + (LINUX ? shead('Power button') + powerButtonRows() : '');
 }
@@ -2229,15 +2310,15 @@ function remapRows(){
   if(c.backend==='hhd'){
     h += note(esc(c.note||'')+(c.devices&&c.devices.length?' ('+esc(c.devices.map(d=>d.name).join(', '))+')':''));
     h += `<button class="row" data-f data-k="rm-type" data-act="rtype"><span class="ricon">${I.pad}</span><div class="rt"><b>Controller type games see</b><small>${esc(type.sub||'Some games show button prompts to match')}</small></div><div class="rv">${esc(type.label)} ›</div></button>`;
-    h += `<button class="row" data-f data-k="rm-nin" data-act="rpreset" data-v="${c.nintendo?'standard':'nintendo'}"><div class="rt"><b>Nintendo layout</b><small>Swaps A with B, and X with Y</small></div><div class="sw ${c.nintendo?'on':''}"></div></button>`;
-    h += `<button class="row" data-f data-k="rm-reset" data-act="rreset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset the controller</b><small>Back to Handheld Daemon's choice for this device</small></div></button>`;
+    h += sgrid(`<button class="row" data-f data-k="rm-nin" data-act="rpreset" data-v="${c.nintendo?'standard':'nintendo'}"><div class="rt"><b>Nintendo layout</b><small>Swaps A with B, and X with Y</small></div><div class="sw ${c.nintendo?'on':''}"></div></button>`
+      + `<button class="row" data-f data-k="rm-reset" data-act="rreset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset the controller</b><small>Back to Handheld Daemon's choice for this device</small></div></button>`);
     return h;
   }
   h += note('Changes apply everywhere, in games too'+(c.devices&&c.devices.length?' ('+esc(c.devices.map(d=>d.name).join(', '))+')':'')+'.');
   h += `<button class="row" data-f data-k="rm-type" data-act="rtype"><span class="ricon">${I.pad}</span><div class="rt"><b>Controller type games see</b><small>${esc(type.sub||'Some games show button prompts to match')}</small></div><div class="rv">${esc(type.label)} ›</div></button>`;
-  h += c.buttons.map(b=>{ const m=map[b.id]; return `<button class="row" data-f data-k="rm-${b.id}" data-act="remap" data-b="${b.id}"><div class="rt"><b>${esc(b.label)}</b></div><div class="rv" style="${m?'color:var(--accent)':''}">${m?esc(m==='none'?'Off':ctlLabel(m)):'Default'} ›</div></button>`; }).join('');
-  h += `<button class="row" data-f data-k="rm-nin" data-act="rpreset" data-v="nintendo"><div class="rt"><b>Nintendo layout</b><small>Swaps A with B, and X with Y</small></div></button>`;
-  h += `<button class="row" data-f data-k="rm-reset" data-act="rreset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset all buttons</b><small>Back to how the controller came</small></div></button>`;
+  h += sgrid(c.buttons.map(b=>{ const m=map[b.id]; return `<button class="row" data-f data-k="rm-${b.id}" data-act="remap" data-b="${b.id}"><div class="rt"><b>${esc(b.label)}</b></div><div class="rv" style="${m?'color:var(--accent)':''}">${m?esc(m==='none'?'Off':ctlLabel(m)):'Default'} ›</div></button>`; }).join(''));
+  h += sgrid(`<button class="row" data-f data-k="rm-nin" data-act="rpreset" data-v="nintendo"><div class="rt"><b>Nintendo layout</b><small>Swaps A with B, and X with Y</small></div></button>`
+    + `<button class="row" data-f data-k="rm-reset" data-act="rreset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset all buttons</b><small>Back to how the controller came</small></div></button>`);
   return h;
 }
 async function ctlDo(p, k){
@@ -2363,7 +2444,7 @@ function hhdRow(k, n){
       else { min=n.min; max=n.max; step=+n.step>0 ? +n.step : (n.type==='int' ? 1 : (max-min)/20); const v=hv(k); pos=typeof v==='number' ? Math.max(min, Math.min(max, v)) : min; shown=hhdNum(v, n.unit); }
       const pct=(pos-min)/(max-min)*100;
       return `<div class="ctl" data-f data-k="${id}" data-slider="hhd:${esc(k)}" data-min="${min}" data-max="${max}" data-step="${step}" data-unit="">
-        <div class="lab">${title}<span>${shown}</span></div><div class="slider"><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div>${n.hint&&!HHDP.compact?`<div class="muted" style="font-size:12px;margin-top:8px">${esc(String(n.hint).trim())}</div>`:''}</div>`;
+        <div class="lab">${title}<span>${shown}</span></div><div class="slider"><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div>${n.hint&&!HHDP.compact?`<div class="muted chint">${esc(String(n.hint).trim())}</div>`:''}</div>`;
     }
     case 'action': {
       const running = busy || !!hv(k);
@@ -2397,15 +2478,21 @@ function hhdMode(k, n){
   return h;
 }
 function hhdKids(k, c){
-  return Object.entries(c.children||{}).filter(([,n])=>hhdShown(n)).map(([ck,n])=>{
+  const items = Object.entries(c.children||{}).filter(([,n])=>hhdShown(n)).map(([ck,n])=>{
     const key=k+'.'+ck;
-    if(n.type==='mode') return hhdMode(key, n);
-    if(n.type==='container') return `${n.title&&!hhdTags(n).includes('hide-title')?`<div class="hhd-h">${esc(hhdTitle(n,ck))}</div>`:''}<div class="hhd-sub">${hhdKids(key, n)}</div>`;
-    return hhdRow(key, n);
-  }).join('');
+    if(n.type==='mode') return [hhdMode(key, n)];
+    if(n.type==='container') return [`${n.title&&!hhdTags(n).includes('hide-title')?`<div class="hhd-h">${esc(hhdTitle(n,ck))}</div>`:''}<div class="hhd-sub">${hhdKids(key, n)}</div>`];
+    return [hhdRow(key, n), n.type==='bool'];
+  });
+  // On the page (not Quick Access): switches next to each other go two to a line on wide screens.
+  let h='', run=[];
+  const flush=()=>{ h += run.length>1 && !HHDP.compact ? sgrid(run.join('')) : run.join(''); run=[]; };
+  for(const [html, sw] of items){ if(sw && html) run.push(html); else { flush(); h += html; } }
+  flush();
+  return h;
 }
 function viewHhd(){
-  let h='<div class="rows">';
+  let h='<div class="rows srows">';
   if(!HHDP.schema){
     h += HHDP.err==='off' ? note('Handheld Daemon isn\'t running, so its settings can\'t be shown. It starts with Hearth OS on handhelds it supports.')
        : HHDP.err ? note('Couldn\'t read Handheld Daemon\'s settings: '+esc(HHDP.err))
@@ -2423,9 +2510,9 @@ function viewHhd(){
     if(head) h += shead(esc(head));
     h += c.type==='container' ? hhdKids(key, c) : c.type==='mode' ? hhdMode(key, c) : hhdRow(key, c);
   }
-  if(HHDP.sec==='tdp') h += note('The power limit here and in Quick Access › Performance is the same setting: a change in one shows in the other.');
+  if(HHDP.sec==='tdp') h += note('The same power settings as in Quick Access › Performance.');
   h += `<button class="row" data-f data-k="hh-adv" data-act="hhd" data-op="adv"><div class="rt"><b>Show advanced settings</b><small>Settings most people don't need, like extra buttons, stick and trigger ranges, and Handheld Daemon's own options</small></div><div class="sw ${HHDP.adv?'on':''}"></div></button>`;
-  h += note('Handheld Daemon '+(hv('hhd.settings.version')?esc(hv('hhd.settings.version'))+' ':'')+'runs the built-in controller, the power limit, the fan and the lights. Changes apply right away.');
+  h += note('Handheld Daemon '+(hv('hhd.settings.version')?esc(hv('hhd.settings.version'))+' ':'')+'runs the built-in controller, power limit, fan and lights. Changes apply right away.');
   return h+'</div>';
 }
 // The settings a game keeps (as hearth-core's game_power_key): a power plugin's power mode, and its custom mode's.
@@ -2503,17 +2590,17 @@ function pageControls(){
     <div class="seg">${[['auto','Automatic'],['pad','Controller'],['kbd','Keyboard']].map(([k,l])=>`<button class="${INPUT.mode===k?'on':''}" data-f data-k="ctl-${k}" data-act="inputMode" data-v="${k}">${l}</button>`).join('')}</div></div>`;
   h += shead('Controllers');
   h += `<div class="row"><span class="ricon">${I.pad}</span><div class="rt"><b>Button test</b><small>Press any button: its name shows here. If it doesn't match the label on your controller, use the swaps below.</small></div><div class="rv" id="padTest" style="font-weight:700;color:var(--text)">${PAD.last?(PAD_NAMES[PAD.last]||PAD.last):'—'}</div></div>`;
-  h += `<button class="row" data-f data-k="ctl-swapab" data-act="padSwap" data-v="AB"><div class="rt"><b>Swap A and B</b></div><div class="sw ${PAD.swapAB?'on':''}"></div></button>`;
-  h += `<button class="row" data-f data-k="ctl-swapxy" data-act="padSwap" data-v="XY"><div class="rt"><b>Swap X and Y</b></div><div class="sw ${PAD.swapXY?'on':''}"></div></button>`;
+  h += sgrid(`<button class="row" data-f data-k="ctl-swapab" data-act="padSwap" data-v="AB"><div class="rt"><b>Swap A and B</b></div><div class="sw ${PAD.swapAB?'on':''}"></div></button>`
+    + `<button class="row" data-f data-k="ctl-swapxy" data-act="padSwap" data-v="XY"><div class="rt"><b>Swap X and Y</b></div><div class="sw ${PAD.swapXY?'on':''}"></div></button>`);
   if(PAD.host) h += note('Xbox-style controllers are read directly by '+APP+' (XInput), so their buttons match their labels.');
   if(!LINUX){
   h += shead('Controller mouse');
   h += `<div class="row"><div class="rt"><b>Right stick as mouse</b><small>${PAD.mouseOn?'On right now':'Off right now'} · View + Menu together turns it on or off any time</small></div>
     <div class="seg">${[['off','Off'],['steam','Steam windows'],['always','Everywhere']].map(([k,l])=>`<button class="${PAD.mouseMode===k?'on':''}" data-f data-k="cm-${k}" data-act="padMouseMode" data-v="${k}">${l}</button>`).join('')}</div></div>`;
-  h += [['Move pointer','Right stick'],['Left click (hold to drag)','A or RT'],['Right click','LT'],['Scroll','Left stick'],['Back / close','B'],['Turn mouse on / off','View + Menu together']]
-        .map(([a,k],i)=>`<div class="row" data-f data-k="cmk-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
+  h += sgrid([['Move pointer','Right stick'],['Left click (hold to drag)','A or RT'],['Right click','LT'],['Scroll','Left stick'],['Back / close','B'],['Turn mouse on / off','View + Menu together']]
+        .map(([a,k],i)=>`<div class="row" data-f data-k="cmk-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join(''));
   h += note('“Steam windows” turns the mouse on by itself while a Steam pop-up (like the Install window) is in front. Games always get the controller to themselves.');
-  } else h += note('During a game, the Guide (Xbox / Home) button brings '+APP+' back with Quick Access open. In a cloud stream, holding View + Menu leaves the stream.');
+  }
   h += pads.length ? pads.map((p,i)=>`<div class="row"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(p.id.split('(')[0].trim()||'Controller')}</b><small>Player ${i+1}</small></div></div>`).join('')
                    : note('No controller detected. Press any button on a connected controller.');
   // Handheld Daemon's own settings (Hearth OS on handhelds): a page of their own.
@@ -2526,23 +2613,23 @@ function pageControls(){
     h += `<button class="row" data-f data-k="ov-gb" data-act="ovGameBar"><div class="rt"><b>Xbox button opens only ${APP}</b><small>${o.gameBarButton?'Right now Windows Game Bar also opens on the Xbox button. Turn this on to stop that.':'Game Bar no longer uses the Xbox button. Turn this off to give it back to Game Bar.'}</small></div><div class="sw ${o.gameBarButton?'':'on'}"></div></button>`;
     h += `<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to open the overlay</b><small>A backup for controllers without an Xbox button. Off by default because some games use a held View (like scoreboards).</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`;
   }
-  h += note('The overlay works over games in borderless or windowed mode, and the fullscreen mode most Windows 10/11 games use. Very old games in true exclusive fullscreen may minimize when it opens.');
+  h += note('Works over borderless, windowed and most fullscreen games. Very old games in exclusive fullscreen may minimize when it opens.');
   } else {
     // Linux: Nimbus comes back over the game with Quick Access open.
     h += shead('Bring up '+APP+' during a game');
     const o=OVS.s, gd=o&&o.guide;
-    h += `<div class="row" data-f data-k="ov-info"><span class="ricon">${I.sliders}</span><div class="rt"><b>Guide (Xbox) button, or Ctrl+Alt+Q</b><small>Quick Access opens over the game: performance, screenshots, Back to game, Exit game.</small></div></div>`;
+    h += `<div class="row" data-f data-k="ov-info"><span class="ricon">${I.sliders}</span><div class="rt"><b>Guide (Xbox / Home) button, or Ctrl+Alt+Q</b><small>${APP} comes back with Quick Access open: performance, screenshots, Back to game, Exit game. In a cloud stream, hold View + Menu to leave the stream.</small></div></div>`;
     if(o){
-      h += `<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to bring up ${APP}</b><small>For controllers whose Guide button doesn't reach ${APP}. Off by default because some games use a held View.</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`;
-      h += `<div class="row" data-f data-k="ov-dev"><div class="rt"><b>Controllers ${APP} watches</b><small>${gd&&gd.devices.length?esc(gd.devices.join(', ')):'None found with a Guide button'}${gd&&gd.lastPress?` · Guide last seen ${ago(gd.lastPress).toLowerCase()}`:''}</small></div></div>`;
+      h += sgrid(`<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to bring up ${APP}</b><small>For controllers whose Guide button doesn't reach ${APP}. Off by default because some games use a held View.</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`
+        + `<div class="row" data-f data-k="ov-dev"><div class="rt"><b>Controllers ${APP} watches</b><small>${gd&&gd.devices.length?esc(gd.devices.join(', ')):'None found with a Guide button'}${gd&&gd.lastPress?` · Guide last seen ${ago(gd.lastPress).toLowerCase()}`:''}</small></div></div>`);
       if(gd && gd.problems && gd.problems.length) h += note('Can\'t read: '+esc(gd.problems.join('; ')));
     }
   }
   if(LINUX) h += remapRows();
-  if(LINUX) h += note('Games without controller support: give the game a Controller layout in its Game settings (game page › ⋯ › Game settings). The controller then acts as a keyboard and mouse in that game only.');
+  if(LINUX) h += tipRow('ctl-layouts', 'Games without controller support', 'Give the game a Controller layout in its Game settings (game page › ⋯ › Game settings). The controller then acts as a keyboard and mouse in that game only.');
   h += shead('Keyboard');
-  h += (LINUX?KEY_LIST_LINUX:KEY_LIST).map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join('');
-  h += note('Mouse and touch: click anything to select it. The buttons in the bottom bar and the top bar do the same as the controller buttons.');
+  h += sgrid((LINUX?KEY_LIST_LINUX:KEY_LIST).map(([a,k],i)=>`<div class="row" data-f data-k="key-${i}"><div class="rt"><b>${a}</b></div><div class="rv">${k}</div></div>`).join(''));
+  h += note('Mouse and touch work too: click anything. The buttons in the top and bottom bars do what the controller buttons do.');
   return h;
 }
 
@@ -2759,8 +2846,8 @@ function oldFilesRows(){
   let h=shead('Files from the old Hearth OS', OLDF.busy);
   for(const f of fs){
     h += `<div class="row"><span class="ricon">${I.clock}</span><div class="rt"><b>~/${esc(f.name)}</b><small>Moved aside on ${esc(f.date)} so the new Hearth OS could start fresh. Deleted by itself in ${f.daysLeft} day${f.daysLeft===1?'':'s'}.</small></div></div>`;
-    if((f.moved||[]).length) h += `<button class="row" data-f data-k="of-r-${hk(f.name)}" data-act="oldRestore" data-n="${esc(f.name)}"><span class="ricon">${I.refresh}</span><div class="rt"><b>Restore a folder</b><small>Puts it back where it was (beside it, if there's something new there now)</small></div><div class="rv">${f.moved.length} ›</div></button>`;
-    h += `<button class="row" data-f data-k="of-d-${hk(f.name)}" data-act="oldDelete" data-n="${esc(f.name)}"><span class="ricon">${I.trash}</span><div class="rt"><b>Delete now</b><small>Frees the space straight away. Your games aren't in there.</small></div></button>`;
+    h += sgrid(((f.moved||[]).length ? `<button class="row" data-f data-k="of-r-${hk(f.name)}" data-act="oldRestore" data-n="${esc(f.name)}"><span class="ricon">${I.refresh}</span><div class="rt"><b>Restore a folder</b><small>Puts it back where it was (beside it, if there's something new there now)</small></div><div class="rv">${f.moved.length} ›</div></button>` : '')
+      + `<button class="row" data-f data-k="of-d-${hk(f.name)}" data-act="oldDelete" data-n="${esc(f.name)}"><span class="ricon">${I.trash}</span><div class="rt"><b>Delete now</b><small>Frees the space straight away. Your games aren't in there.</small></div></button>`);
   }
   return h;
 }
@@ -3162,13 +3249,13 @@ function shellReturn(){
 }
 
 function viewSettings(){
+  if(S.settingsTab==='audio') S.settingsTab='display';   // Audio is part of the Display page (one page for the screen and sound)
   if(!stabShown(S.settingsTab)) S.settingsTab='profile';
   const t=S.settingsTab, grp=stabGroup(t), tabs=stabsIn(grp); let body='';
   if(t==='wifi') body = pageWifi();
   if(t==='seats') body = pageSeats();
   if(t==='bluetooth') body = pageBluetooth();
-  if(t==='display') body = pageDisplay();
-  if(t==='audio') body = pageAudio();
+  if(t==='display') body = pageDisplay() + shead('Sound') + pageAudio();
   if(t==='power') body = pagePower();
   if(t==='profile') body = pageProfile();
   if(t==='profiles') body = pageProfiles();
@@ -3180,16 +3267,18 @@ function viewSettings(){
   if(t==='sources'){
     const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
     const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
-    body = swRow('srcSteam','Steam',(LINUX?'Installed games from Steam':'Installed and owned games from Steam')+n('steam').replace('game','installed game')+owned)
+    body = sgrid(swRow('srcSteam','Steam',(LINUX?'Installed games from Steam':'Installed and owned games from Steam')+n('steam').replace('game','installed game')+owned)
       +swRow('steamBg','Keep Steam running in the background','Starts Steam hidden so games and installs open without its window')
       +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
       +swRow('srcGog','GOG',(LINUX?'Your GOG account and games installed by '+APP+' or Heroic':'Your GOG account and games installed by '+APP+', GOG Galaxy or GOG installers')+n('gog'))
       +swRow('srcXbox',LINUX?'Xbox Cloud Gaming':'Xbox / Game Pass',(LINUX?'Stream Game Pass games (needs Game Pass Ultimate)':'PC games installed with the Xbox app, and games you\'ve played on Xbox')+(LINUX&&host?` · ${LIB.counts.xbox??0} cloud games`:n('xbox')))
-      +(LINUX?swRow('srcEmu','Emulators','Retro games from your ROMs folder, played with RetroArch'+n('emu'))+emuRows():'')
+      +(LINUX?swRow('srcEmu','Emulators','Retro games from your ROMs folder, played with RetroArch'+n('emu')):''))
+      +(LINUX?emuRows():'')
       +(LINUX&&hasFeat('xodus')?xodusRows():'')
-      +`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`
+      +shead('Accounts and more')
+      +sgrid(`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`
       +`<button class="row" data-f data-k="s-addexe" data-act="addManual"><div class="rt"><b>Add a game manually</b><small>${LINUX?'A program, AppImage, .desktop file, or Windows .exe (runs with Proton)':'Any .exe or shortcut'}${n('manual')}</small></div><div class="rv">＋</div></button>`
-      +`<button class="row" data-f data-k="s-rescan" data-act="rescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${LIB.loading?'Scanning…':'Rescan library'}</b><small>Picks up games you installed or removed</small></div></button>`;
+      +`<button class="row" data-f data-k="s-rescan" data-act="rescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${LIB.loading?'Scanning…':'Rescan library'}</b><small>Picks up games you installed or removed</small></div></button>`);
   }
   if(t==='shell') body = pageShell();
   if(t==='updates') body = pageUpdates();
@@ -3203,7 +3292,7 @@ function viewSettings(){
     <div class="snav">${SGROUPS.map(g=>{ const subs=stabsIn(g[0]); if(!subs.length) return '';
       return `<button class="${g[0]===grp?'on':''}" data-f data-k="sg-${g[0]}" data-act="sgroup" data-g="${g[0]}"><span class="sgi">${I[g[1]]}</span><span class="sgt"><b>${g[2]}</b><small>${subs.map(x=>x[2]).join(' · ')}</small></span></button>`; }).join('')}</div>
     <div class="spane">${tabs.length>1?`<div class="stabs">${tabs.map(([k,,l])=>`<button class="chip ${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${l}</button>`).join('')}</div>`:''}
-    <div class="rows">${body}</div></div></div>`;
+    <div class="rows srows">${body}</div></div></div>`;
 }
 
 const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, shots:viewShots, coop:viewCoop, settings:viewSettings, stores:viewStores, gameset:viewGameSettings, hhd:viewHhd};
@@ -3293,11 +3382,13 @@ const PO_LEVELS = ['Off','FPS','Simple','Detailed','Everything']; let MOCKPO=0;
 function perfBody(){
   const p=PERF.s;
   if(!p) return '<div class="muted">Reading…</div>';
-  const row=(ic,label,val,pct,sub)=>`<div class="pstat"><div class="lab">${I[ic]}${label}${sub?` <small>${sub}</small>`:''}<span>${val}</span></div>${pct!=null?`<div class="bar"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></div>`:''}</div>`;
-  let h = row('bolt','CPU', p.cpu+'%', p.cpu);
+  // Two to a line: CPU and GPU, memory and battery (an extra detail, like video memory, under the bar).
+  const row=(ic,label,val,pct,sub)=>`<div class="pstat"><div class="lab">${I[ic]}${label}<span>${val}</span></div>${pct!=null?`<div class="bar"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></div>`:''}${sub?`<small class="psub">${sub}</small>`:''}</div>`;
+  let h = '<div class="pstats">' + row('bolt','CPU', p.cpu+'%', p.cpu);
   h += p.gpu!=null ? row('display','GPU', p.gpu+'%', p.gpu, p.vramUsed!=null?`${p.vramUsed} GB video memory`:'') : row('display','GPU','—',null,'Not available on this PC');
   h += row('sliders','Memory', `${p.ramUsed} / ${p.ramTotal} GB`, p.ramTotal?p.ramUsed/p.ramTotal*100:null);
   const b=p.battery; if(b && b.present!==false && b.pct!=null) h += row('bolt','Battery', b.pct+'%'+(b.charging?' ⚡':''), b.pct);
+  h += '</div>';
   // Handheld Daemon systems: its own power settings, in place of Hearth's power mode and limit (one set of controls,
   // the same as HHD's, so nothing fights it).
   const hp = hhdPerf();
@@ -3663,6 +3754,9 @@ function moveNow(dir){
   const rr=focused.getBoundingClientRect(), fw=focused.offsetWidth||rr.width, fh=focused.offsetHeight||rr.height;
   const cx=rr.left+rr.width/2, cy=rr.top+rr.height/2;
   const r={left:cx-fw/2, right:cx+fw/2, top:cy-fh/2, bottom:cy+fh/2, width:fw, height:fh};
+  // Settings (rows two to a line on wide screens): left/right stays on the same line (the row next to it, not a
+  // wide row above that happens to be closer), and down from a wide row goes to the left one of the two below.
+  const dense = !!focused.closest('.srows');
   let best=null, bs=Infinity;
   for(const el of focusables()){
     if(el===focused) continue;
@@ -3670,10 +3764,10 @@ function moveNow(dir){
     let main, cross;
     if(dir==='left'||dir==='right'){
       if(dir==='left' ? dx>-4 : dx<4) continue;
-      main=Math.abs(dx); cross=(b.top<r.bottom && b.bottom>r.top) ? 0 : Math.abs(dy);
+      main=Math.abs(dx); cross=(b.top<r.bottom && b.bottom>r.top) ? 0 : Math.abs(dy)*(dense?4:1);
     } else {
       if(dir==='up' ? dy>-4 : dy<4) continue;
-      main=Math.abs(dy); cross=(b.left<r.right && b.right>r.left) ? Math.abs(dx)*.02 : Math.abs(dx);
+      main=Math.abs(dy); cross=(b.left<r.right && b.right>r.left) ? Math.abs(dense?b.left-r.left:dx)*.02 : Math.abs(dx);
     }
     const s=main+cross*3;
     if(s<bs){ bs=s; best=el; }
@@ -3895,6 +3989,9 @@ function act(el){
       if(host) call('library.setFav',{id:g.id,on:g.fav}).catch(e=>toast(e.message));
       return render(S.view==='home' ? 'sp-'+g.id : 'g-fav'); }
     case 'gopts': return gameOptions(G(d.id));
+    case 'playWith': return beaconPlayWith(G(d.id));
+    case 'beaconOpen': return beaconOpen();
+    case 'gsMod': return beaconPickMod(G(GSET.id), 'gs-mod');
     case 'colNew': return colNew(null);
     case 'pinSetup': return pinSetup();
     case 'backupNow': return backupNow();
@@ -4013,7 +4110,8 @@ function hideLaunch(){
   S.layers=S.layers.filter(x=>x!=='launch'); $('#launch').classList.remove('open'); focusStack.pop();
   renderFooter();
 }
-function launch(g){
+// mod (Beacon's games, Play with…): a mod id to play with this time, '@none' without mods; left out: Beacon's choice.
+function launch(g, mod){
   if(isFrozen(g)) return quickResume(g.id);
   if(S.running===g.id){ closeAll(); return send({type:'resume'}); }
   let aside=null;
@@ -4026,7 +4124,7 @@ function launch(g){
   }
   if(aside) toast(`${aside.title} is put aside (Quick Resume)`);
   const L=$('#launch');
-  L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">${g.cloud?'Streaming with Xbox Cloud Gaming…':`Starting via ${SOURCES[g.src]}…`}</div></div>`;
+  L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">${g.cloud?'Streaming with Xbox Cloud Gaming…':`Starting via ${SOURCES[g.src]}${mod?(mod==='@none'?' without mods':' with '+esc(beaconModName(g,mod))):''}…`}</div></div>`;
   closeAll();
   focusStack.push({el:focused, k:focused?.dataset.k}); S.layers.push('launch'); L.classList.add('open'); renderFooter();
 
@@ -4034,7 +4132,7 @@ function launch(g){
     launchTimer=setTimeout(()=>{ hideLaunch(); gameStarted(g.id); }, 1700);
     return;
   }
-  call('game.launch',{id:g.id}).then(r=>{
+  call('game.launch',mod?{id:g.id, mod}:{id:g.id}).then(r=>{
     if(r && r.tracked===false){ // shortcut Nimbus can't watch
       launchTimer=setTimeout(()=>{ hideLaunch(); toast(`Started ${g.title}`); }, 2500);
       return;
@@ -4104,6 +4202,12 @@ function viewGameSettings(){
     + `<button class="row" data-f data-k="gs-tdp" data-act="gsTdp"><span class="ricon">${I.power}</span><div class="rt"><b>Power limit</b><small>More watts for a demanding game, fewer for battery life</small></div><div class="rv">${o.powerLabel?esc(o.powerLabel):o.tdp?o.tdp+' W':'Usual'} ›</div></button>`;
   // Deleting the game: last on the page, for every game Hearth (or Steam) can delete.
   const del = canDelete(g) && !isActive(g) ? shead('Storage') + `<button class="row" data-f data-k="gs-delete" data-act="gsDelete"><span class="ricon">${I.trash}</span><div class="rt"><b>Delete game</b><small>${g.size?`Frees ${esc(typeof g.size==='number'?gbs(g.size):g.size)} · `:''}${g.src==='steam'?'Steam asks to confirm':'You can install it again from your library'}</small></div></button>` : '';
+  if(r.kind==='beacon'){
+    h += shead('Beacon')
+      + (g.inst ? `<button class="row" data-f data-k="gs-mod" data-act="gsMod"><span class="ricon">${I.lib}</span><div class="rt"><b>Mod</b><small>What Play starts with. Saved in Beacon, which shows the same choice.</small></div><div class="rv">${esc(beaconModName(g))} ›</div></button>` : '')
+      + `<button class="row" data-f data-k="gs-beacon" data-act="beaconOpen"><span class="ricon">${I.sliders}</span><div class="rt"><b>Manage mods in Beacon</b><small>Add or remove mods; the game's folder, CD key, resolution and community files</small></div><div class="rv">›</div></button>`;
+    return h+ingame+'</div>'+note(`Beacon starts ${esc(g.title)} with its own Wine or Proton setup, so those settings are in Beacon. ${APP} keeps the controller layout, frame-rate cap and power limit.`);
+  }
   if(r.kind==='steam') return h+ingame+del+'</div>'+note(`Steam starts ${esc(g.title)}, so it uses Steam's own settings: in Steam, open the game's Properties to pick a Proton version or add launch options.`);
   if(r.kind==='emu') return h+ingame+'</div>'+note(`RetroArch plays ${esc(g.title)}. Its own settings (shaders, controls, save states) are in RetroArch's menu: press the left stick and right stick in together while playing.`);
   if(r.kind==='external') return h+ingame+'</div>'+note(`Heroic starts ${esc(g.title)}, so its settings and Uninstall are in Heroic. Games ${APP} installs itself have their settings here.`);
@@ -4141,13 +4245,15 @@ const IM_MOCK = (()=>{
     buttons:[['a','A'],['b','B'],['x','X'],['y','Y'],['lb','LB'],['rb','RB'],['lt','LT (left trigger)'],['rt','RT (right trigger)'],['view','View'],['menu','Menu'],['l3','Left stick press (L3)'],['r3','Right stick press (R3)'],['up','D-pad up'],['down','D-pad down'],['left','D-pad left'],['right','D-pad right'],['l4','Back button L4'],['r4','Back button R4']],
     sticks:[['ls','Left stick'],['rs','Right stick']], limits:lim,
     templates:[{id:'shooter',name:'Shooter / action',blurb:'Left stick walks (W A S D), right stick aims the mouse, triggers click',layout:{version:1,name:'Shooter / action',base:'shooter',buttons:{a:'key:SPACE',b:{press:'key:C',hold:'key:LEFTCTRL'},rt:{press:'mouse:left',threshold:0.35},lt:{press:'mouse:right',threshold:0.35},menu:'key:ESC',lb:'key:Q',rb:'key:E'},sticks:{ls:{mode:'keys',up:'key:W',down:'key:S',left:'key:A',right:'key:D',threshold:0.45},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},gyro:{sensitivity:1,deadzone:1},radial:['key:M','key:I'],hold_ms:300,turbo_hz:10}},
+      {id:'rts',name:'Strategy (RTS)',blurb:'For BFME-style games: right stick is the mouse, triggers click, D-pad scrolls the map, hold LB for control groups',layout:{version:1,name:'Strategy (RTS)',base:'rts',buttons:{rt:{press:'mouse:left',threshold:0.3},lt:{press:'mouse:right',threshold:0.3},a:'key:SPACE',b:'key:S',x:'key:Q',y:'key:H',lb:'shift',rb:'key:LEFTCTRL',menu:'key:ESC',view:'radial',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT'},sticks:{ls:{mode:'keys',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT',threshold:0.45},rs:{mode:'mouse',sensitivity:1.2,deadzone:0.1,outer:0.95,curve:2}},shift:{buttons:{up:'key:1',right:'key:2',down:'key:3',left:'key:4',y:'key:LEFTCTRL+1',b:'key:LEFTCTRL+2',a:'key:LEFTCTRL+3',x:'key:LEFTCTRL+4'}},radial:['key:5','key:6','key:7','key:8','key:F1','key:F2','key:F3','key:F4'],hold_ms:300,turbo_hz:10}},
       {id:'mouse',name:'Mouse only',blurb:'The controller is just a mouse',layout:{version:1,name:'Mouse only',base:'mouse',buttons:{a:'mouse:left',b:'mouse:right'},sticks:{ls:{mode:'scroll',sensitivity:1,deadzone:0.15},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},radial:[],hold_ms:300,turbo_hz:10}}]};
-  const store={}, fresh=()=>({layout:'off', custom:null, prefs:{sensitivity:1, gyro:false}}), copy=o=>JSON.parse(JSON.stringify(o));
-  const get=id=>Object.assign({game:id}, copy(store[id]||fresh()));
+  // Beacon's strategy games start with Strategy (RTS), like input_map.rs's default_layout.
+  const store={}, fresh=id=>({layout:/^beacon:/.test(id||'')&&id!=='beacon:conquest'?'rts':'off', custom:null, prefs:{sensitivity:1, gyro:false}}), copy=o=>JSON.parse(JSON.stringify(o));
+  const get=id=>Object.assign({game:id}, copy(store[id]||fresh(id)));
   return async (m,a)=>{
     if(m==='input.tables') return copy(T);
     if(m==='input.get') return get(a.game);
-    if(m==='input.set'){ const c=store[a.game]||fresh(); if(a.custom) c.custom=copy(a.custom); if(a.layout) c.layout=a.layout; if(a.prefs) Object.assign(c.prefs,a.prefs); store[a.game]=c; return get(a.game); }
+    if(m==='input.set'){ const c=store[a.game]||fresh(a.game); if(a.custom) c.custom=copy(a.custom); if(a.layout) c.layout=a.layout; if(a.prefs) Object.assign(c.prefs,a.prefs); store[a.game]=c; return get(a.game); }
     if(m==='input.status') return {ok:true, active:false, devices:[], gyro:{available:true, device:'Preview motion sensors', on:false}};
     if(m==='input.test') return a.stop ? {ok:true} : {ok:true, seconds:a.seconds||20};
     throw new Error('Not available in the browser preview: '+m);
@@ -4330,7 +4436,7 @@ function viewInputMap(){
   let h=`<h2>${esc(g.title)}</h2><div class="rows">`;
   h += `<button class="row" data-f data-k="im-name" data-act="im" data-op="name"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(d.name||'Custom')}</b><small>${c&&c.layout==='custom'?'This game\'s layout. Acts as a keyboard and mouse while you play.':'Your changes are saved as this game\'s own layout.'}</small></div><div class="rv">Rename ›</div></button>`;
   h += `<button class="row" data-f data-k="im-test" data-act="im" data-op="test"><span class="ricon">${I.play}</span><div class="rt"><b>${IM.test?'Stop trying':'Try it (20 seconds)'}</b><small>The controller acts as this layout right here, and the keys and clicks it sends show on screen</small></div></button>`;
-  h += `<button class="row" data-f data-k="im-reset" data-act="im" data-op="reset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Start over from a template</b><small>${esc(d.base ? 'Based on '+((T.templates.find(t=>t.id===d.base)||{}).name||d.base) : 'Shooter, point-and-click, retro or mouse only')}</small></div></button>`;
+  h += `<button class="row" data-f data-k="im-reset" data-act="im" data-op="reset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Start over from a template</b><small>${esc(d.base ? 'Based on '+((T.templates.find(t=>t.id===d.base)||{}).name||d.base) : 'Shooter, point-and-click, retro, strategy (RTS) or mouse only')}</small></div></button>`;
   h += `<div class="row"><div class="rt"><b>Editing</b><small>The second set works while a button set to “Second set while held” is held</small></div><div class="seg"><button class="${shift?'':'on'}" data-f data-k="im-set-base" data-act="im" data-op="set" data-v="base">Main set</button><button class="${shift?'on':''}" data-f data-k="im-set-shift" data-act="im" data-op="set" data-v="shift">Second set</button></div></div>`;
   h += shead(shift ? 'Buttons (second set)' : 'Buttons');
   h += `<button class="row" data-f data-k="im-dpad" data-act="im" data-op="dpad"><div class="rt"><b>D-pad</b><small>Set all four directions at once</small></div><div class="rv">Arrow keys, W A S D… ›</div></button>`;
@@ -4586,7 +4692,67 @@ function gameOptions(g){
   if(g.canRemove) items.push({label:'Remove from '+APP+'',icon:'trash',run:()=>removeGame(g)});
   if(isActive(g) && g.installKind==='nimbus') items.unshift({label:'Cancel download',icon:'x',run:()=>cancelInstall(g)});
   if(g.inst && canDelete(g) && !isActive(g)) items.push({label:'Uninstall…',icon:'trash',run:()=>uninstallGame(g)});
+  if(g.src==='beacon'){
+    if(g.inst && beaconMods(g).length) items.unshift({label:'Play with…',icon:'play',run:()=>beaconPlayWith(g)});
+    items.push({label:'Manage mods in Beacon',icon:'sliders',run:()=>beaconOpen()});
+  }
   openSheet({title:g.title, sub:SOURCES[g.src], items});
+}
+// ---------- Beacon (BFME, Age of the Ring, LOTR: Conquest…): mods, Play with…, Beacon's window ----------
+// Beacon keeps each game's mod (beacon select-mod); Play starts with it, Play with… picks one for this time only.
+const beaconMods = g => (g&&g.beacon&&g.beacon.mods)||[];
+function beaconModName(g, id){
+  const m = id===undefined ? (g.beacon&&g.beacon.mod) : id;
+  if(!m || m==='@none') return 'No mod';
+  const x=beaconMods(g).find(y=>y.id===m); return x?x.name:m;
+}
+function beaconAbout(g){
+  const b=g.beacon||{}, mods=beaconMods(g);
+  if(!g.inst) return `Beacon knows this game, but it isn't set up yet${b.blocker?` (${esc(b.blocker)})`:''}. Select Set up in Beacon and show Beacon where it's installed; it shows up here when it's ready.`;
+  let t=`Started by Beacon${b.edition?`, as ${esc(b.edition)}`:''}${b.viaSteam?', through Steam':''}.`;
+  if(b.blocker) t+=` <b>Can't start yet:</b> ${esc(b.blocker)}. Open Beacon to fix it.`;
+  else { const w=(b.issues||[]).find(i=>i.level!=='error'); if(w) t+=` Note: ${esc(w.message)}.`; }
+  if(mods.length) t+=` Mods in Beacon: ${mods.map(m=>esc(m.name)).join(', ')}.`;
+  return t;
+}
+function beaconPlayWith(g){
+  if(!g) return;
+  const cur=g.beacon&&g.beacon.mod;
+  openSheet({title:'Play with…', sub:`${g.title}, this time only. Game settings › Mod changes what Play starts with.`, items:[
+    ...beaconMods(g).map(m=>({label:m.name+(m.id===cur?' (your choice)':''), icon:'play', run:()=>launch(g, m.id)})),
+    {label:'No mod (the base game)'+(!cur?' (your choice)':''), icon:'play', run:()=>launch(g, '@none')}]});
+}
+function beaconPickMod(g, k){
+  if(!g) return;
+  const cur=g.beacon&&g.beacon.mod;
+  const set=async id=>{
+    try{
+      const d = host ? await call('beacon.selectMod',{id:g.id, mod:id||'@none'},30000) : null;
+      if(d) Object.assign(g, fromHost(Object.assign({}, d, {fav:g.fav, hidden:g.hidden})));
+      else g.beacon=Object.assign({}, g.beacon, {mod:id||null});
+      toast(id ? `${g.title} starts with ${beaconModName(g,id)}` : `${g.title} starts without mods`);
+      render(k||null,true);
+    }catch(e){ toast(e.message); }
+  };
+  openSheet({title:'Mod', sub:`What ${g.title} starts with. Saved in Beacon, which shows the same choice.`, items:[
+    ...beaconMods(g).map(m=>({label:m.name+(m.kind==='launcher'?' (its own launcher)':''), icon:m.id===cur?'check':'', run:()=>set(m.id)})),
+    {label:'No mod (the base game)', icon:!cur?'check':'', run:()=>set(null)},
+    {label:'Manage mods in Beacon…', icon:'sliders', run:()=>beaconOpen()}]});
+}
+// Beacon's own window: full screen in Game Mode, a window in Desktop Mode. Hearth brings it to the front.
+function beaconOpen(){
+  if(!host) return toast('Opening Beacon needs the '+APP+' app (not the browser preview).');
+  call('beacon.open',{},15000).then(()=>toast('Opening Beacon…')).catch(e=>toast(e.message));
+}
+// Library › Stores: Beacon's card.
+function beaconCard(){
+  const b=ACC.beacon; if(!b) return '';
+  const st = !b.installed ? 'Not installed' : `${b.setUp} of ${b.games} games set up`;
+  return `<div class="scard" style="--sc:#8a5a1c">
+    <div class="shd"><div class="smark">B</div><div class="sti"><b>Beacon</b><small class="${b.installed?'on':''}">${esc(st)}</small></div></div>
+    <div class="sblurb">The Battle for Middle-earth games, Age of the Ring, LOTR: Conquest and other classic strategy games, set up and started by Beacon. ${b.installed?'Their mods and settings are in Beacon.':`Install Beacon to see these games in ${APP}.`}</div>
+    ${b.error?`<div class="serr">${esc(b.error)}</div>`:''}
+    <div class="sbtns">${b.installed||b.app?`<button class="sbtn pri" data-f data-k="sa-beacon-open" data-act="beaconOpen">${I.play}Open Beacon</button>`:''}${b.installed&&b.games?`<button class="sbtn" data-f data-k="sa-beacon-show" data-act="accShow" data-s="beacon">${I.lib}Show games</button>`:''}</div></div>`;
 }
 function downloadOptions(g){
   if(!g) return;
@@ -4648,6 +4814,7 @@ async function installGame(g){
       g.state='queued'; toast(`Downloading ${g.title}. Follow it under Downloads.`);
       render(null,true);
     }
+    else if(g.installKind==='beacon') toast(`Beacon is open: show it where ${g.title} is installed. ${APP} picks it up when it's ready.`);
     else if(g.installKind==='store') toast(`The Microsoft Store is open. Install ${g.title} there; ${APP} picks it up when it's done.`);
     else toast(`${SOURCES[g.src]}'s install window is open: A installs, B cancels, D-pad moves (or use the right stick as a mouse).`);
     startDownloadPoll(true);
@@ -4702,7 +4869,7 @@ async function loadAccounts(fromEvent){
   if(!host && !MOCK) return;
   try{
     const r = await call('accounts.status');
-    ACC.list=r.accounts||[]; ACC.root=r.installRoot||'';
+    ACC.list=r.accounts||[]; ACC.root=r.installRoot||''; ACC.beacon=r.beacon||null;
     // Reload the library when an account was added/removed or its game list arrived.
     const sig=ACC.list.map(a=>`${a.store}:${a.signedIn?1:0}:${a.fetched}`).join('|');
     const changed = ACC.sig && sig!==ACC.sig; ACC.sig=sig;
@@ -5247,7 +5414,7 @@ function viewStores(){
       <button class="row" data-f data-k="sa-back-game" data-act="backToGame"><span class="ricon">${I.pad}</span><div class="rt"><b>Back to Game Mode</b><small>${DESKSIGN.store?`When you've finished signing in to ${STORE_INFO[DESKSIGN.store].name}. `:''}${APP} opens full screen again, with your games.</small></div><div class="rv">›</div></button></div>` : '';
   return `<h2>Game stores &amp; accounts</h2>
     ${back}
-    <div class="stores">${cards}</div>
+    <div class="stores">${cards}${beaconCard()}</div>
     <h2>Installing</h2>
     <div class="rows">
       <button class="row" data-f data-k="sa-folder" data-act="accFolder"><span class="ricon">${I.dl}</span><div class="rt"><b>Install folder for Epic and GOG games</b><small>${esc(ACC.root||'—')}</small></div><div class="rv">Change ›</div></button>
@@ -5434,7 +5601,7 @@ function fromHost(d){
           hrs:(d.minutes||0)/60, last:d.lastPlayed||0, added:d.added||0, size:fmtSize(d.sizeBytes),
           ach:null, art:d.art||{}, path:d.path||'', canRemove:!!d.canRemove,
           inst:d.installed!==false, cloud:!!d.cloud, state:d.state||'installed', progress:d.progress, bytesDone:d.bytesDone, bytesTotal:d.bytesTotal, speed:d.bytesPerSec,
-          canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null, system:d.system||null};
+          canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null, system:d.system||null, beacon:d.beacon||null};
 }
 async function loadLibrary(rescan, announce){
   if(!host) return;
@@ -5586,9 +5753,9 @@ function onSettingsTab(t){
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0; render(null,true); }).catch(()=>{});
   if(t==='bluetooth') loadPaired();
-  if(t==='power' || t==='audio') loadButtons();
+  if(t==='power' || t==='audio' || t==='display') loadButtons();
   if(t==='controller'){ loadRemap(); loadHhd(); }
-  if(t==='audio') call('audio.get').then(r=>{ Object.assign(S.sys.audio,r); S.set.vol=r.volume; refreshUI(); }).catch(e=>toast(e.message));
+  if(t==='audio' || t==='display') call('audio.get').then(r=>{ Object.assign(S.sys.audio,r); S.set.vol=r.volume; refreshUI(); }).catch(e=>toast(e.message));
   if(t==='display') call('display.get').then(r=>{ Object.assign(S.sys.display,r); S.set.bright=r.brightness; refreshUI(); }).catch(e=>toast(e.message));
   if(t==='power') call('power.get').then(r=>{ S.sys.battery={present:r.present,pct:r.pct,charging:r.charging}; S.sys.powerMode=r.mode; S.sys.power=r; refreshUI(); }).catch(e=>toast(e.message));
 }

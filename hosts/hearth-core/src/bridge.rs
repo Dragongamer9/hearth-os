@@ -152,7 +152,10 @@ impl Bridge {
                 "toolReady": crate::tools::is_ready(&crate::tools::GOGDL), "note": null})),
             with(base("xbox"), json!({"signedIn": !xb.is_null(), "name": xb["gamertag"], "avatar": xb["gamerpic"], "owned": xo, "fetched": xf, "toolReady": true, "note": null})),
         ];
-        json!({"accounts": accounts, "installRoot": self.library.install_root().to_string_lossy()})
+        let bs = &self.library.beacon;
+        let beacon = json!({"installed": bs.cli.is_some(), "app": bs.app.is_some(), "via": bs.cli.as_ref().map(|c| c.via()),
+            "games": bs.games.len(), "setUp": bs.games.iter().filter(|g| g.installed).count(), "error": bs.error});
+        json!({"accounts": accounts, "installRoot": self.library.install_root().to_string_lossy(), "beacon": beacon})
     }
 
     /// Signs in to a store: the sign-in page opens in its own window, and the answer comes later (this call is
@@ -558,13 +561,21 @@ impl Bridge {
                 Ok(json!({"protondb": crate::gameinfo::protondb(&id, &g.title, g.source), "achievements": ach}))
             }
             "game.options.get" => self.game_options(&req("id")?),
+            // Beacon (beacon.rs): the mod a game starts with (saved in Beacon), and Beacon's own window.
+            "beacon.selectMod" => {
+                let m = a["mod"].as_str().filter(|m| !m.is_empty() && *m != "@none");
+                self.library.beacon_select_mod(&req("id")?, m)
+            }
+            "beacon.open" => self.library.beacon_open().map(|_| json!({"ok": true})),
             "game.options.set" => { let id = req("id")?; crate::game_options::set(&mut self.library.store, &id, &a["options"])?; self.game_options(&id) }
             "game.launch" => {
                 let id = req("id")?;
                 // Parental controls: allowed games and play time a day.
                 let pc = self.profiles.can_play(Some(&id), chrono::Local::now(), 0.0);
                 if pc["ok"] != true { return Err(pc["reason"].as_str().unwrap_or("Not now").to_string()); }
-                let r = self.library.launch(&id)?;
+                // Beacon's games: "mod" plays with that mod this time ("@none": without mods).
+                let m = a["mod"].as_str().map(|m| if m == "@none" { "" } else { m });
+                let r = self.library.launch_with(&id, m)?;
                 if let Some(url) = r["stream"].as_str() { (self.stream)(Some((url, r["title"].as_str().unwrap_or("Xbox Cloud Gaming")))); }
                 (self.emit)(Bridge::event("quickResume", self.library.quick_state()));
                 if r["resumed"] == true { (self.host)("resumeGame", &Value::Null); }
@@ -840,7 +851,7 @@ impl Bridge {
     pub fn game_options(&self, id: &str) -> Result<Value, String> {
         let g = self.library.games.get(id).ok_or("That game isn't in the library anymore.")?;
         let own_proton = (g.source == "epic" || g.source == "gog") && g.can_uninstall;   // installed by Hearth, started with Proton
-        let kind = match g.source { "steam" => "steam", "emu" => "emu", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", _ if own_proton => "proton", _ => "external" };
+        let kind = match g.source { "steam" => "steam", "emu" => "emu", "beacon" => "beacon", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", _ if own_proton => "proton", _ => "external" };
         Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
                   "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
                   "gamemode": system::has("gamemoderun"), "canResetPrefix": own_proton}))

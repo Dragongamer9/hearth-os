@@ -35,6 +35,7 @@ class Base(unittest.TestCase):
         self.desk = os.path.join(self.home, 'Desktop')
         os.makedirs(self.desk)
         os.environ['PATH'] = '/nonexistent'
+        os.environ['XDG_DATA_DIRS'] = os.path.join(self.tmp, 'share')   # no installed apps (default pins)
         self.hd = load(self.home)
 
     def tearDown(self):
@@ -58,6 +59,17 @@ class Base(unittest.TestCase):
 class Pins(Base):
     def test_defaults_without_a_file(self):
         self.assertEqual(self.hd.public(self.hd.load()), {'pins': [], 'desktopIcons': True, 'dnd': False})
+
+    def test_beacon_pinned_for_a_new_user_when_installed(self):
+        share = os.path.join(self.tmp, 'share')
+        os.environ['XDG_DATA_DIRS'] = share
+        os.makedirs(os.path.join(share, 'applications'))
+        with open(os.path.join(share, 'applications', 'beacon.desktop'), 'w', encoding='utf-8') as f:
+            f.write('[Desktop Entry]\nType=Application\nName=Beacon\nExec=beacon-app %U\n')
+        self.assertEqual(self.hd.load()['pins'], ['beacon'])
+        # Once the taskbar is saved, it's yours: unpinned stays unpinned.
+        s = self.hd.load(); s['pins'] = []; self.hd.save(s)
+        self.assertEqual(self.hd.load()['pins'], [])
 
     def test_pin_unpin_kept_in_order(self):
         self.hd.pin('firefox.desktop')

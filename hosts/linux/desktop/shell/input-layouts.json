@@ -78,6 +78,26 @@
          "ls": {"mode": "scroll", "sensitivity": 1.0, "deadzone": 0.15},
          "rs": {"mode": "mouse", "sensitivity": 1.0, "deadzone": 0.1, "outer": 0.95, "curve": 1.8}},
        "gyro": {"sensitivity": 1.0, "deadzone": 1.0},
-       "radial": [], "hold_ms": 300, "turbo_hz": 10}}
+       "radial": [], "hold_ms": 300, "turbo_hz": 10}},
+    {"id": "rts", "name": "Strategy (RTS)", "blurb": "For BFME-style games: right stick is the mouse, triggers click, D-pad scrolls the map, hold LB for control groups",
+     "layout": {"version": 1, "name": "Strategy (RTS)", "base": "rts",
+       "buttons": {
+         "rt": {"press": "mouse:left", "threshold": 0.3}, "lt": {"press": "mouse:right", "threshold": 0.3},
+         "a": "key:SPACE", "b": "key:S", "x": "key:Q", "y": "key:H",
+         "lb": "shift", "rb": "key:LEFTCTRL", "menu": "key:ESC", "view": "radial",
+         "l3": "key:LEFTSHIFT", "r3": "mouse:middle",
+         "up": "key:UP", "down": "key:DOWN", "left": "key:LEFT", "right": "key:RIGHT",
+         "l4": "key:LEFTSHIFT", "r4": "key:LEFTCTRL", "l5": "scroll:down", "r5": "scroll:up"},
+       "sticks": {
+         "ls": {"mode": "keys", "up": "key:UP", "down": "key:DOWN", "left": "key:LEFT", "right": "key:RIGHT", "threshold": 0.45},
+         "rs": {"mode": "mouse", "sensitivity": 1.2, "deadzone": 0.1, "outer": 0.95, "curve": 2.0}},
+       "shift": {
+         "buttons": {
+           "up": "key:1", "right": "key:2", "down": "key:3", "left": "key:4",
+           "y": "key:LEFTCTRL+1", "b": "key:LEFTCTRL+2", "a": "key:LEFTCTRL+3", "x": "key:LEFTCTRL+4",
+           "rt": "scroll:up", "lt": "scroll:down"}},
+       "gyro": {"sensitivity": 0.8, "deadzone": 1.5},
+       "radial": ["key:5", "key:6", "key:7", "key:8", "key:F1", "key:F2", "key:F3", "key:F4"],
+       "hold_ms": 300, "turbo_hz": 10}}
   ]
 }

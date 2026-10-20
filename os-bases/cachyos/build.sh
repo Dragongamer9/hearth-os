@@ -347,6 +347,30 @@ org.freedesktop.impl.portal.Screenshot=wlr
 org.freedesktop.impl.portal.FileChooser=gtk
 PORTALS
 
+# ------------------------------------------------------------------ Beacon (BFME, Age of the Ring, LOTR: Conquest...)
+# Beacon's release package: `beacon`, the tool Hearth's library talks to (hosts/hearth-core/src/beacon.rs), and
+# `beacon-app`, its window (beacon.desktop: in Mantel's launcher and pinned to its taskbar). See docs/BEACON.md.
+# Optional: when there's no release to download yet, the build says so and carries on.
+BEACON_URL=https://github.com/Dragongamer9/beacon/releases/latest/download
+# The tarball holds bin/, share/ (or usr/bin, usr/share, possibly inside one folder): it goes under /usr.
+beacon_tar() {
+  local t; t=$(mktemp -d)
+  curl -fsSL --retry 3 -o "$t/beacon.tar.gz" "$BEACON_URL/beacon-x86_64-linux.tar.gz" || return 1
+  mkdir "$t/x" && tar -xzf "$t/beacon.tar.gz" -C "$t/x" || return 1
+  local root=""
+  for r in "$t/x/usr" "$t/x" "$t"/x/*/usr "$t"/x/*; do
+    if [ -x "$r/bin/beacon" ]; then root="$r"; break; fi
+  done
+  [ -n "$root" ] || { echo "warning: Beacon's tarball has no bin/beacon"; return 1; }
+  cp -a "$root/." /usr/
+  rm -rf "$t"
+}
+if [ "$(uname -m)" = x86_64 ] && beacon_tar; then
+  echo "Beacon installed"
+else
+  echo "warning: couldn't install Beacon from $BEACON_URL (no release yet?); Hearth works without it"
+fi
+
 # ------------------------------------------------------------------ system settings Bazzite/Fedora came with
 # Hearth's administrators group (the installer puts the first account in it; sudo and the polkit rules use it).
 # Arch's filesystem package has it already.

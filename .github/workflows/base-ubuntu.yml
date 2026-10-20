@@ -245,6 +245,7 @@ jobs:
           warn "acpi_call (Legion Go power limits through HHD on older firmware paths)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
           warn "RyzenAdj is installed" "command -v ryzenadj"
           warn "power-profiles-daemon is installed" "test -f /usr/lib/systemd/system/power-profiles-daemon.service"
+          warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
           exit $fail
           EOF
           sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-ubuntu:latest sh /check.sh

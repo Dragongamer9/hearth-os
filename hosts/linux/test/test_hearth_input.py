@@ -61,7 +61,7 @@ def run(e, t0, t1, step=0.01):
 
 class Layouts(unittest.TestCase):
     def test_every_template_is_valid(self):
-        self.assertEqual(set(TEMPLATES), {'shooter', 'pointclick', 'retro', 'mouse'})
+        self.assertEqual(set(TEMPLATES), {'shooter', 'pointclick', 'retro', 'mouse', 'rts'})
         for tid, lay in TEMPLATES.items():
             v = hi.validate_layout(lay)
             self.assertEqual(v['base'], tid)
@@ -79,6 +79,34 @@ class Layouts(unittest.TestCase):
         self.assertEqual(v['sticks']['ls']['mode'], 'keys')
         self.assertEqual([v['sticks']['ls'][d].raw for d in ('up', 'left', 'down', 'right')], ['key:W', 'key:A', 'key:S', 'key:D'])
         self.assertEqual(v['sticks']['rs']['mode'], 'mouse')
+
+    def test_strategy_matches_the_plan(self):
+        v = hi.validate_layout(TEMPLATES['rts'])
+        self.assertEqual(v['name'], 'Strategy (RTS)')
+        b, sb = v['buttons'], v['shift']['buttons']
+        self.assertEqual(v['sticks']['rs']['mode'], 'mouse')
+        self.assertEqual((b['rt']['press'].raw, b['lt']['press'].raw), ('mouse:left', 'mouse:right'))
+        self.assertEqual([b[d]['press'].raw for d in ('up', 'down', 'left', 'right')], ['key:UP', 'key:DOWN', 'key:LEFT', 'key:RIGHT'])
+        self.assertEqual(b['lb']['press'].kind, 'shift')
+        self.assertEqual((b['menu']['press'].raw, b['a']['press'].raw, b['rb']['press'].raw), ('key:ESC', 'key:SPACE', 'key:LEFTCTRL'))
+        self.assertEqual(b['view']['press'].kind, 'radial')
+        self.assertEqual([sb[d]['press'].raw for d in ('up', 'right', 'down', 'left')], ['key:1', 'key:2', 'key:3', 'key:4'])
+        self.assertEqual([sb[f]['press'].raw for f in ('y', 'b', 'a', 'x')], ['key:LEFTCTRL+1', 'key:LEFTCTRL+2', 'key:LEFTCTRL+3', 'key:LEFTCTRL+4'])
+        self.assertEqual(len(v['radial']), 8)
+
+    def test_strategy_control_groups_while_lb_is_held(self):
+        e, out = engine(TEMPLATES['rts'])
+        e.button('up', True, 0.0); e.button('up', False, 0.05)
+        self.assertEqual(out.log[0], ('KEY_UP', True))       # D-pad scrolls the map
+        out.log.clear()
+        e.button('lb', True, 0.1)
+        e.button('up', True, 0.15); e.button('up', False, 0.2)
+        e.button('y', True, 0.25); e.button('y', False, 0.3)
+        e.button('lb', False, 0.35)
+        downs = [c for c, d in out.log if d]
+        self.assertEqual(downs[0], 'KEY_1')                   # LB + D-pad up: select group 1
+        self.assertIn('KEY_LEFTCTRL', downs)                  # LB + Y: Ctrl + 1 (make group 1)
+        self.assertNotIn('KEY_UP', downs)
 
     def bad(self, change, word):
         lay = copy.deepcopy(TEMPLATES['shooter'])

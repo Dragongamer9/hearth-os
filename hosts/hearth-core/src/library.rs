@@ -43,6 +43,8 @@ pub struct Game {
     /// How to install it: nimbus-epic:<app>, nimbus-gog:<id>, steam://install/<id>.
     pub install_uri: Option<String>,
     pub can_uninstall: bool,
+    /// Beacon's games (beacon.rs): what Beacon says about it, its mods.
+    pub beacon: Option<crate::beacon::BeaconGame>,
 }
 
 /// The game that's running: what to watch, and its times (ms since 1970).
@@ -127,6 +129,13 @@ pub struct Library {
     /// Quick Resume: games put aside, newest first.
     pub frozen: Vec<Running>,
     quick_saved: String,
+    /// Beacon (beacon.rs): what it said last; a newer reading made in the background, waiting to be used;
+    /// whether one is being made; when its files were last looked at.
+    pub beacon: crate::beacon::Snapshot,
+    beacon_loaded: bool,
+    beacon_next: Arc<Mutex<Option<crate::beacon::Snapshot>>>,
+    beacon_busy: Arc<std::sync::atomic::AtomicBool>,
+    beacon_checked: u64,
 }
 
 fn norm(s: &str) -> String { s.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect() }
@@ -134,7 +143,8 @@ fn norm(s: &str) -> String { s.to_lowercase().chars().filter(|c| c.is_ascii_alph
 impl Library {
     pub fn new(store: Store, home: PathBuf) -> Library {
         Library { running: None, store, games: BTreeMap::new(), counts: BTreeMap::new(), home, queue: Arc::new(Mutex::new(stores::Queue::new())),
-                  accounts: Arc::new(Mutex::new(stores::AccState::default())), queue_restored: false, steam_bytes: HashMap::new(), speeds: vec![], download_sig: String::new(), frozen: vec![], quick_saved: String::new() }
+                  accounts: Arc::new(Mutex::new(stores::AccState::default())), queue_restored: false, steam_bytes: HashMap::new(), speeds: vec![], download_sig: String::new(), frozen: vec![], quick_saved: String::new(),
+                  beacon: Default::default(), beacon_loaded: false, beacon_next: Arc::new(Mutex::new(None)), beacon_busy: Arc::new(std::sync::atomic::AtomicBool::new(false)), beacon_checked: 0 }
     }
 
     /// Games you added yourself (kept in library.json "manual").
@@ -179,6 +189,13 @@ impl Library {
         }
         // Xbox PC games through Xodus Nexus, once you've added it (Settings › Games › Library).
         if let Some(g) = crate::xodus::game() { counts.insert("xodus".to_string(), 1); all.insert(g.id.clone(), g); }
+        // Beacon's games (BFME, Age of the Ring, LOTR: Conquest...), read again when Beacon's files changed.
+        if self.store.source_on("beacon") {
+            if !self.beacon_loaded || crate::beacon::signature(&self.home) != self.beacon.sig { self.beacon = crate::beacon::load(&self.home); self.beacon_loaded = true; }
+            let list = crate::beacon::library_games(&self.beacon);
+            counts.insert("beacon".to_string(), list.iter().filter(|g| g.installed).count());
+            for g in list { all.entry(g.id.clone()).or_insert(g); }
+        }
         let manual = self.manual_games();
         counts.insert("manual".to_string(), manual.len());
         for g in manual { all.entry(g.id.clone()).or_insert(g); }
@@ -256,6 +273,8 @@ impl Library {
             return Err(match g.note { Some(n) => format!("{n}. Hearth can't install it."), None => "Hearth can't install this game. Install it from its store app.".into() });
         };
         if uri.starts_with("nimbus-") { return self.start_install(id, &g.title, &uri, false); }
+        // Beacon's games are set up in Beacon (its folder, CD key, community files).
+        if uri == "beacon:open" { return self.beacon_open(); }
         steam::spawn(&self.home, &uri)
     }
 
@@ -388,9 +407,14 @@ impl Library {
             "canRemove": g.source == "manual", "installed": g.installed, "state": g.state, "cloud": g.cloud,
             "progress": match (g.bytes_done, g.bytes_total) { (Some(a), Some(b)) if b > 0 => Some((a as f64 / b as f64).min(1.0)), _ => None },
             "bytesDone": g.bytes_done, "bytesTotal": g.bytes_total, "canUninstall": g.can_uninstall, "note": g.note,
-            "installKind": match g.install_uri.as_deref() { None => None, Some(u) if u.starts_with("nimbus-") => Some("nimbus"), Some(u) if u.starts_with("steam:") => Some("steam"), Some(_) => Some("store") },
+            "installKind": match g.install_uri.as_deref() { None => None, Some(u) if u.starts_with("nimbus-") => Some("nimbus"), Some(u) if u.starts_with("steam:") => Some("steam"), Some(u) if u.starts_with("beacon:") => Some("beacon"), Some(_) => Some("store") },
             "system": g.system, "frozen": self.frozen.iter().any(|f| f.id == g.id),
         });
+        if let Some(b) = &g.beacon {
+            out["beacon"] = json!({"family": b.family, "short": b.short, "ready": b.ready, "blocker": b.blocker(), "edition": b.edition, "viaSteam": b.via_steam,
+                "issues": b.issues.iter().map(|(l, m)| json!({"level": l, "message": m})).collect::<Vec<_>>(),
+                "mod": b.selected_mod, "mods": b.mods.iter().map(|m| json!({"id": m.id, "name": m.name, "kind": m.kind})).collect::<Vec<_>>()});
+        }
         // An install Hearth is running shows as a download.
         if let Some(Value::Object(j)) = self.queue.lock().unwrap().state(&g.id) { for (k, v) in j { out[k] = v; } }
         out
@@ -400,7 +424,11 @@ impl Library {
     pub fn running_since(&self) -> Option<u64> { self.running.as_ref().filter(|r| r.started_at > 0).map(|r| r.started_at) }
 
     /// Starts a game. {tracked} says whether Hearth can watch it (it then shows as running).
-    pub fn launch(&mut self, id: &str) -> Result<Value, String> {
+    pub fn launch(&mut self, id: &str) -> Result<Value, String> { self.launch_with(id, None) }
+
+    /// Starts a game. `beacon_mod` (Beacon's games): Some(mod id) to play with that mod this time, Some("") without
+    /// mods, None with the mod chosen in Beacon.
+    pub fn launch_with(&mut self, id: &str, beacon_mod: Option<&str>) -> Result<Value, String> {
         let g = self.games.get(id).cloned().ok_or("That game isn't in the library anymore. Try rescanning.")?;
         // Put aside with Quick Resume: carry on where it was.
         if self.frozen.iter().any(|f| f.id == id) { return self.quick_resume(id).map(|_| json!({"tracked": true, "resumed": true})); }
@@ -455,6 +483,17 @@ impl Library {
                 let pid = if g.source == "epic" { epic::launch(id.trim_start_matches("epic:"), &opts, app_id)? } else { gog::launch(&g, &opts, app_id)? };
                 let dirs = g.install_path.as_ref().map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
                 crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
+            }
+            "beacon" => {
+                let b = g.beacon.clone().ok_or("Hearth doesn't know how to start this game.")?;
+                if let Some(e) = b.blocker() { return Err(format!("{} can't start yet: {e}. Open Beacon to fix it.", g.title)); }
+                let cli = self.beacon.cli.clone().ok_or("Beacon isn't installed anymore.")?;
+                let pid = crate::beacon::launch(&cli, &b, beacon_mod, app_id)?;
+                // Steam copies Beacon starts through Steam (UaW, SWGB): Steam's reaper finds them.
+                let steam = if b.via_steam { b.steam_appid.map(|n| n.to_string()) } else { None };
+                let home = crate::paths::home().to_string_lossy().to_string();
+                let dirs = b.path.clone().filter(|p| p != "/" && p.trim_end_matches('/') != home).map(|p| vec![p]).unwrap_or_default();
+                crate::procs::Track { pid: Some(pid), dirs, steam_app_id: steam, app_id: Some(app_id) }
             }
             _ => return Err("Hearth doesn't know how to start this game.".into()),
         };
@@ -511,7 +550,8 @@ impl Library {
     /// Looks at what's running (every 2 seconds). Returns events for the UI: started, gap, handoff, exited, timeout.
     pub fn tick(&mut self) -> Vec<Value> {
         let before = self.frozen.len();
-        let mut events = self.tick_running();
+        let mut events = self.beacon_tick();
+        events.extend(self.tick_running());
         let mut q = self.quick_tick();
         // The list only goes to the page when it changed.
         if self.frozen.len() == before && q.last().map(|e| e["name"] == "quickResume").unwrap_or(false) { q.pop(); }
@@ -536,6 +576,50 @@ impl Library {
             events.push(json!({"type": "event", "name": "game.handoff", "data": {"id": r.id}}));
         }
         events
+    }
+
+    /// Beacon's files changed (a game set up, a mod added in Beacon's window): read its games again in the
+    /// background, then use them on a later tick and tell the page.
+    fn beacon_tick(&mut self) -> Vec<Value> {
+        let next = self.beacon_next.lock().unwrap().take();
+        if let Some(s) = next { self.beacon = s; self.beacon_loaded = true; self.apply_beacon(); return vec![json!({"type": "event", "name": "library.changed", "data": {}})]; }
+        let now = now_ms();
+        if !self.beacon_loaded || !self.store.source_on("beacon") || now.saturating_sub(self.beacon_checked) < 4000 { return vec![]; }
+        self.beacon_checked = now;
+        use std::sync::atomic::Ordering;
+        if self.beacon_busy.load(Ordering::SeqCst) || crate::beacon::signature(&self.home) == self.beacon.sig { return vec![]; }
+        self.beacon_busy.store(true, Ordering::SeqCst);
+        let (home, slot, busy) = (self.home.clone(), self.beacon_next.clone(), self.beacon_busy.clone());
+        std::thread::spawn(move || {
+            let s = crate::beacon::load(&home);
+            *slot.lock().unwrap() = Some(s);
+            busy.store(false, Ordering::SeqCst);
+        });
+        vec![]
+    }
+    /// Beacon's games in the library replaced by what Beacon says now.
+    pub fn apply_beacon(&mut self) {
+        self.games.retain(|_, g| g.source != "beacon");
+        let list = crate::beacon::library_games(&self.beacon);
+        self.counts.insert("beacon".to_string(), list.iter().filter(|g| g.installed).count());
+        for g in list { self.games.entry(g.id.clone()).or_insert(g); }
+    }
+    /// Reads Beacon again now (after Hearth changed something in it).
+    pub fn reload_beacon(&mut self) { self.beacon = crate::beacon::load(&self.home); self.beacon_loaded = true; self.apply_beacon(); }
+    /// Opens Beacon's window (full screen in Game Mode).
+    pub fn beacon_open(&self) -> Result<(), String> {
+        let app = self.beacon.app.clone().ok_or("Beacon's window (beacon-app) isn't installed.")?;
+        crate::beacon::open_app(&app, crate::signin_handoff::game_mode())
+    }
+    /// The mod a Beacon game starts with (Some(id), or None for no mod), saved in Beacon.
+    pub fn beacon_select_mod(&mut self, id: &str, choice: Option<&str>) -> Result<Value, String> {
+        let g = self.games.get(id).cloned().filter(|g| g.source == "beacon").ok_or("That game isn't in the library anymore.")?;
+        let b = g.beacon.as_ref().ok_or("That game isn't Beacon's.")?;
+        if let Some(m) = choice { if !b.mods.iter().any(|x| x.id == m) { return Err("That mod isn't in Beacon anymore.".into()); } }
+        let cli = self.beacon.cli.clone().ok_or("Beacon isn't installed anymore.")?;
+        crate::beacon::select_mod(&cli, &b.id, choice)?;
+        self.reload_beacon();
+        self.games.get(id).map(|g| self.dto(g)).ok_or("That game isn't in the library anymore.".into())
     }
 
     /// The game is over: play time saved (paused time doesn't count), and the UI told.
