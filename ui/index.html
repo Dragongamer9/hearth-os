@@ -7013,7 +7013,9 @@ async function setPowerMode(mode){
 const INPUT = {last:'kbd', mode:'auto'};
 try{ INPUT.mode = localStorage.getItem('nimbus.inputMode') || 'auto'; }catch(e){}
 function promptStyle(){ return INPUT.mode==='auto' ? INPUT.last : INPUT.mode; }
+let NAV_AT=0;   // when the controller or keyboard last moved the selection (the pointer doesn't take it back right after)
 function setInput(kind){
+  if(kind!=='mouse') NAV_AT=performance.now();
   if(INPUT.last===kind) return;
   INPUT.last=kind;
   document.body.classList.toggle('pad-mode', kind==='pad');
@@ -7212,9 +7214,15 @@ document.addEventListener('click', e=>{
 let lastPtr=null;
 document.addEventListener('pointermove', e=>{
   if(e.pointerType!=='mouse') return;
-  // Ignore tiny jitters; a real mouse movement switches prompts to mouse buttons.
-  if(lastPtr && Math.hypot(e.clientX-lastPtr[0], e.clientY-lastPtr[1])>6) setInput('mouse');
-  lastPtr=[e.clientX,e.clientY];
+  // Only a real movement of the pointer selects what's under it. Not: tiny jitters (a touchscreen, Handheld Daemon's
+  // virtual mouse), the page scrolling under a pointer that's standing still (same spot, new thing under it), or the
+  // moments right after the controller or keyboard moved the selection: each of those made the selection jump back
+  // and forth between where the controller put it and the pointer.
+  const first=!lastPtr, moved=first?0:Math.hypot(e.clientX-lastPtr[0], e.clientY-lastPtr[1]);
+  if(first || moved>6) lastPtr=[e.clientX,e.clientY];
+  if(first || moved<=6) return;
+  if(performance.now()-NAV_AT < 800) return;
+  setInput('mouse');
   const el=e.target.closest('[data-f]');
   if(el && el!==focused && root().contains(el)) { if(focused) focused.classList.remove('focus'); focused=el; el.classList.add('focus'); renderFooter(); }
 });
