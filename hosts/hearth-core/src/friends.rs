@@ -8,7 +8,15 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-struct Status { at: u64, state: String, game: Option<String>, message: Option<String>, avatar: Option<String>, name: Option<String>, server: Option<String>, appid: Option<u64> }
+/// `person`: Steam's profile service answered with a person's profile (Some(true)), or said there's no such person
+/// (Some(false): a group or game community Steam keeps in the same list); None: couldn't tell (offline).
+struct Status { at: u64, state: String, game: Option<String>, message: Option<String>, avatar: Option<String>, name: Option<String>, server: Option<String>, appid: Option<u64>, person: Option<bool> }
+
+/// Is this profile XML a person's profile? Groups and game communities (which Steam keeps in the same friends
+/// list on disk) answer with an error or without a steamID64 and online state.
+pub fn is_person(xml: &str) -> bool {
+    !xml.contains("<error>") && tag(xml, "steamID64").is_some() && tag(xml, "onlineState").is_some()
+}
 
 fn cache() -> &'static Mutex<HashMap<u64, Status>> { static C: OnceLock<Mutex<HashMap<u64, Status>>> = OnceLock::new(); C.get_or_init(Default::default) }
 static FETCHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -42,6 +50,9 @@ fn fetch(id: u64) -> Option<Status> {
     let r = crate::http::get(&format!("https://steamcommunity.com/profiles/{id}/?xml=1"), &[]).ok()?;
     if !r.ok() { return None; }
     let x = &r.text;
+    if !is_person(x) {
+        return Some(Status { at: crate::library::now_ms(), state: "unknown".into(), game: None, message: None, avatar: None, name: None, server: None, appid: None, person: Some(false) });
+    }
     let game = tag(x, "inGameInfo").and_then(|g| tag(&g, "gameName"));
     let state = tag(x, "onlineState").unwrap_or_else(|| "unknown".into());
     let info = tag(x, "inGameInfo").unwrap_or_default();
@@ -49,7 +60,7 @@ fn fetch(id: u64) -> Option<Status> {
     // A game on a server (Counter-Strike, Team Fortress…) can be joined straight away.
     let server = tag(x, "inGameServerIP").filter(|ip| ip.contains(':') && !ip.starts_with("0.0.0.0"));
     Some(Status { at: crate::library::now_ms(), state: if game.is_some() { "ingame".into() } else { state }, game, message: tag(x, "stateMessage").map(|m| m.replace("<br/>", " · ")),
-                  avatar: tag(x, "avatarMedium"), name: tag(x, "steamID"), server, appid })
+                  avatar: tag(x, "avatarMedium"), name: tag(x, "steamID"), server, appid, person: Some(true) })
 }
 
 /// Fetches stale states in the background (a few at a time); the host hears {name:'friends'} when they're in.
@@ -58,7 +69,7 @@ fn refresh(ids: Vec<u64>) {
     std::thread::spawn(move || {
         let chunks: Vec<Vec<u64>> = ids.chunks(ids.len().div_ceil(4).max(1)).map(|c| c.to_vec()).collect();
         let workers: Vec<_> = chunks.into_iter().map(|c| std::thread::spawn(move || for id in c {
-            let st = fetch(id).unwrap_or(Status { at: crate::library::now_ms(), state: "unknown".into(), game: None, message: None, avatar: None, name: None, server: None, appid: None });
+            let st = fetch(id).unwrap_or(Status { at: crate::library::now_ms(), state: "unknown".into(), game: None, message: None, avatar: None, name: None, server: None, appid: None, person: None });
             cache().lock().unwrap().insert(id, st);
         })).collect();
         for w in workers { let _ = w.join(); }
@@ -74,7 +85,8 @@ pub fn steam_list(home: &std::path::Path) -> Value {
     let mut stale = Vec::new();
     let mut out: Vec<Value> = {
         let c = cache().lock().unwrap();
-        friends.iter().map(|(id, name, hash)| {
+        // Groups and game communities Steam keeps in the same list aren't friends: left out once Steam says so.
+        friends.iter().filter(|(id, _, _)| c.get(id).and_then(|s| s.person) != Some(false)).map(|(id, name, hash)| {
             let st = c.get(id);
             if st.map(|s| now.saturating_sub(s.at) > 60_000).unwrap_or(true) { stale.push(*id); }
             let avatar = st.and_then(|s| s.avatar.clone()).or(hash.as_ref().map(|h| format!("https://avatars.steamstatic.com/{h}_medium.jpg")));
@@ -157,5 +169,16 @@ mod tests {
         assert_eq!(super::tag(x, "steamID").as_deref(), Some("Gabe"));
         assert_eq!(super::tag(x, "inGameInfo").and_then(|g| super::tag(&g, "gameName")).as_deref(), Some("Half-Life 3"));
         assert_eq!(super::tag(x, "missing"), None);
+    }
+}
+
+#[cfg(test)]
+mod person_tests {
+    use super::*;
+    #[test]
+    fn groups_arent_friends() {
+        assert!(is_person("<profile><steamID64>76561198000000001</steamID64><steamID><![CDATA[Sam]]></steamID><onlineState>online</onlineState></profile>"));
+        assert!(!is_person("<?xml version=\"1.0\"?><response><error><![CDATA[The specified profile could not be found.]]></error></response>"));
+        assert!(!is_person("<memberList><groupID64>103582791429521408</groupID64></memberList>"));
     }
 }
