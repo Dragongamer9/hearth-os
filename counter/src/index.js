@@ -17,7 +17,7 @@
 // Stored per install: the random id, its kind, its version, when it was first and last seen. No IP
 // addresses, names or anything else. Rows not seen for 40 days are deleted every day.
 
-const KINDS = new Set(['amd', 'nvidia', 'windows', 'appimage', 'live']);
+const KINDS = new Set(['amd', 'nvidia', 'windows', 'appimage', 'live', 'anatase', 'ubuntu', 'cachyos', 'peppermint', 'other']);
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
 const json = (o, status = 200, extra = {}) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', ...CORS, ...extra } });
 
@@ -143,7 +143,7 @@ async function toGitHub(env, code, ver, kind, body, note) {
   const path = `logs/${day}/${code}.txt`;
   await gh(env, 'PUT', `/repos/${repo}/contents/${path}`, { message: `Logs ${code} (Hearth ${ver || '?'})`, content: b64(body) });
   const head = body.split('\n').slice(0, 12).filter(l => l.trim()).join('\n');
-  const device = (body.match(/^Device:\s*(.+)$/m) || [])[1] || kind;
+  const device = (body.match(/"device":\s*"([^"]+)"/) || body.match(/^Device:\s*(.+)$/m) || [])[1] || kind;
   const problems = problemLines(body);
   const title = `${code} · Hearth ${ver || '?'} · ${device.slice(0, 60)}` + (note ? ` · ${note.slice(0, 80)}` : '');
   const md = [
