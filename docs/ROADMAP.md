@@ -89,6 +89,11 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
+## 0.2.1 (released)
+
+- [x] Fix: the selection jumping back and forth when moving with the controller (a touchscreen, Handheld Daemon's virtual mouse or a still pointer took it back)
+- [x] Fix: Epic game art with spaces in its address didn't download
+
 ## 0.2.0 (released)
 
 - [x] Library layouts: Covers, List & details, Shelves, Compact wall, plus 12 Beta Experimental ones (Settings › You › Library)
