@@ -228,6 +228,7 @@ impl GameMode {
             loop {
                 std::thread::sleep(Duration::from_millis(500));
                 me.tag_windows(&mut seen, false);
+                gs::keep_list();
             }
         });
     }
