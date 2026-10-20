@@ -103,6 +103,9 @@ systemctl enable nimbus-autologin.service
 # Try it. "Install with Mantel" switches to the desktop for a mouse and keyboard.
 mkdir -p /etc/skel/.config/nimbus
 echo 'NIMBUS_START_MODE=game' > /etc/skel/.config/nimbus/session.conf
+# The boot test's virtual PC has no graphics card that gamescope can show on: under the test (hearth.ci) Game Mode
+# runs off-screen (gamescope's headless backend), which still starts Hearth and its page.
+echo 'grep -qw hearth.ci /proc/cmdline 2>/dev/null && NIMBUS_GAMESCOPE_ARGS="--backend headless -W 1280 -H 800 $NIMBUS_GAMESCOPE_ARGS"' >> /etc/skel/.config/nimbus/session.conf
 # The live user may do anything without a password prompt (it's a live USB).
 mkdir -p /etc/polkit-1/rules.d
 cat >/etc/polkit-1/rules.d/10-hearth-live.rules <<'RULE'
@@ -131,6 +134,7 @@ for i in $(seq 1 10); do
     grep -E 'graphics:|watchdog|panic' "$d/bridge.log" 2>/dev/null | tail -n 6 | sed 's/^/bridge: /'
     echo "pages: $(grep -c '\[rust\]' "$d/bridge.log" 2>/dev/null) bridge lines"
     systemctl --failed --no-legend --plain 2>/dev/null | sed 's/^/failed: /'
+    journalctl -b --no-pager -o cat 2>/dev/null | grep -ai -E 'gamescope|webkit|GBM' | grep -av hearth-ci | tail -n 12 | cut -c1-200 | sed 's/^/journal: /'
   } > /dev/ttyS0 2>&1
 done
 echo "HEARTH-CI-END" > /dev/ttyS0
