@@ -3,6 +3,8 @@ name = "hearth-counter"
 main = "src/index.js"
 compatibility_date = "2025-06-01"
 workers_dev = true
+# Keep what was added in the Cloudflare dashboard (LOGS_GITHUB_TOKEN): without this, each deploy removed it.
+keep_vars = true
 
 [vars]
 LOGS_REPO = "Dragongamer9/hearth-logs"
