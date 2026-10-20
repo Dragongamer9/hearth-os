@@ -103,11 +103,17 @@ python3 -c 'import sqlite3, json'
 if ! rpm -q steam >/dev/null 2>&1; then
   if dnf5 -y install "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA}.noarch.rpm" \
                      "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA}.noarch.rpm" \
-     && dnf5 -y install steam; then
+     && dnf5 -y install --enablerepo='rpmfusion-nonfree-steam' steam > /tmp/steam-install.log 2>&1; then
     echo "Steam installed from RPM Fusion"
   else
-    # Then Flathub's Steam at the first start (hearth-steam.service; Hearth knows its folders too).
-    echo "warning: couldn't install Steam from RPM Fusion; Flathub's Steam is installed at first boot instead"
+    tail -n 15 /tmp/steam-install.log 2>/dev/null || true
+    # Then Flathub's Steam at the first start (hearth-steam.service; Hearth knows its folders too). Anatase's own
+    # /usr/bin/steam only starts its own Steam Flatpak (org.anatase.Steam), which isn't installed: Hearth's launcher
+    # takes its place and starts whichever Steam there is.
+    echo "warning: couldn't install Steam from RPM Fusion ($(tail -n 1 /tmp/steam-install.log 2>/dev/null | cut -c1-200)); Flathub's Steam is installed at first boot instead"
+    if [ -e /usr/bin/steam ]; then mkdir -p /usr/libexec/nimbus && mv /usr/bin/steam /usr/libexec/nimbus/steam-anatase; fi
+    install -Dm755 /ctx/anatase_files/usr/libexec/nimbus/hearth-steam-launch /usr/bin/steam
+    mkdir -p /usr/share/nimbus && touch /usr/share/nimbus/steam-flatpak
     systemctl enable hearth-steam.service
   fi
   # The repositories aren't left on for the installed system (the image brings updates).

@@ -148,7 +148,7 @@ jobs:
           check "gamescope is installed" "command -v gamescope"
           check "labwc is installed" "command -v labwc"
           check "quickshell is installed and finds its libraries" "command -v quickshell && ! ldd \$(command -v quickshell) | grep -q 'not found'"
-          check "Steam is installed (or installed at first boot)" "command -v steam || test -L /etc/systemd/system/multi-user.target.wants/hearth-steam.service"
+          check "Steam is installed (or installed at first boot, started by Hearth's launcher)" "rpm -q steam || (test -f /usr/share/nimbus/steam-flatpak && grep -q hearth-steam /usr/bin/steam && test -L /etc/systemd/system/multi-user.target.wants/hearth-steam.service)"
           check "the Hearth session is installed" "test -f /usr/share/wayland-sessions/nimbus.desktop && test -x /usr/bin/nimbus-session && test -x /usr/bin/nimbus-mode && test -d /usr/share/nimbus/desktop/shell"
           check "it boots into Hearth (nimbus-autologin)" "test -L /etc/systemd/system/multi-user.target.wants/nimbus-autologin.service"
           check "the tools the session uses" "command -v grim && command -v brightnessctl && command -v wlr-randr && command -v wlsunset && command -v xdotool && python3 -c 'import evdev'"
