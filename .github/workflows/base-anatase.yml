@@ -155,6 +155,8 @@ jobs:
           check "Handheld Daemon is installed" "command -v hhd && test -f /usr/lib/systemd/system/hhd.service"
           check "Hearth's Handheld Daemon settings are installed" "test -f /usr/lib/systemd/system/hhd.service.d/zz-hearth.conf && test -x /usr/share/nimbus/desktop/shell/hearth-hhd"
           warn "Handheld Daemon starts at boot" "systemctl is-enabled hhd.service"
+          check "Hearth's Quick Access is Handheld Daemon's overlay app (hhd-ui and HHD_OVERLAY are hearth-overlay)" "test -x /usr/share/nimbus/desktop/shell/hearth-overlay && test \"\$(readlink -f /usr/bin/hhd-ui)\" = /usr/share/nimbus/desktop/shell/hearth-overlay && grep -qx 'Environment=HHD_OVERLAY=/usr/share/nimbus/desktop/shell/hearth-overlay' /usr/lib/systemd/system/hhd.service.d/zz-hearth-overlay.conf && /usr/bin/hhd-ui --version | grep -q '^Hearth Quick Access'"
+          check "the overlay app's Electron, page and code are installed (Hearth Browser's Electron)" "test -x /usr/lib/hearth-browser/nimbus && test -f /usr/lib/hearth-browser/resources/ui/index.html && { test -f /usr/lib/hearth-browser/resources/app/src/overlay/main.js || grep -aq HEARTH_HHD_OVERLAY /usr/lib/hearth-browser/resources/app.asar; }"
           warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
           exit $fail
           EOF

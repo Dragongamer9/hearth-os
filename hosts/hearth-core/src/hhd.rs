@@ -6,6 +6,8 @@
 //! Settings › Controls and the power limit go through desktop/shell/hearth-controller and hearth-power (Python),
 //! which use the same API; Settings › Controls › Handheld Daemon (gyro, back buttons, fan, lights) through
 //! desktop/shell/hearth-hhd, which only changes the few settings it lists, to values HHD offers for the device.
+//! Quick Access over games is HHD's overlay app, which on these editions is Hearth's own (overlay_link.rs): HHD's QAM
+//! button opens it, HHD shows it over the game and holds the controllers while it's open.
 
 use serde_json::{json, Value};
 use std::io::{Read, Write};

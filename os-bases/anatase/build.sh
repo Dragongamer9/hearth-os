@@ -117,6 +117,21 @@ else
   echo "warning: Handheld Daemon (hhd.service) isn't in this Anatase image; built-in controllers fall back to plain evdev"
 fi
 
+# ------------------------------------------------------------------ Quick Access over games: Handheld Daemon's overlay
+# HHD shows an overlay app over games (its QAM button) and holds the controllers for it. Here that app is Hearth's own
+# Quick Access (desktop/shell/hearth-overlay: hosts/linux/src/overlay in Hearth Browser's Electron), installed as
+# hhd-ui, and HHD_OVERLAY points at it so it wins over any other hhd-ui (HHD's own, if Anatase brings it).
+if rpm -q hhd-ui >/dev/null 2>&1; then rpm -e --nodeps hhd-ui || true; fi
+rm -f /usr/bin/hhd-ui.AppImage /usr/bin/hhd-ui-dbg
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-overlay
+ln -sfn /usr/share/nimbus/desktop/shell/hearth-overlay /usr/bin/hhd-ui
+mkdir -p /usr/lib/systemd/system/hhd.service.d
+cat > /usr/lib/systemd/system/hhd.service.d/zz-hearth-overlay.conf <<'CONF'
+# Hearth: Handheld Daemon's overlay app is Hearth's Quick Access (see os-bases/*/build.sh).
+[Service]
+Environment=HHD_OVERLAY=/usr/share/nimbus/desktop/shell/hearth-overlay
+CONF
+
 # ------------------------------------------------------------------ power button
 # Hearth handles the power button in its session (Settings › Power button), not Steam's helper.
 systemctl --global disable steamos-powerbuttond.service 2>/dev/null || true

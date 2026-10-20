@@ -34,13 +34,21 @@ InputPlumber.
 
 - **Handheld Daemon instead of InputPlumber.** HHD turns the handheld's buttons into an ordinary virtual
   controller, so the Guide button reaches Hearth like any controller's and opens Quick Access. HHD can't hold the
-  Guide press back from the game the way InputPlumber does. HHD's own Quick Access button sends Guide + A; Hearth
-  drops the A (`guide.rs` chord guard) so it doesn't pick something. The controller type and Nintendo layout in
+  Guide press back from the game the way InputPlumber does. Without an overlay app HHD's Quick Access button sends Guide + A; Hearth
+  drops the A (`guide.rs` chord guard) so it doesn't pick something (with Hearth's overlay app, below, it opens Quick Access). The controller type and Nintendo layout in
   Settings › Controls, the power limit, power modes, and Settings › Controls › Handheld Daemon (gyro, back
   buttons, fan, lights) all go through HHD's local API. On Bazzite none of this runs: every HHD path checks that
   HHD is there first, and InputPlumber and the existing power-limit paths are used as before.
 - **HHD's updater and Game Mode autologin are off** (`hhd.service.d/zz-hearth.conf`): Hearth updates the system
   itself, and `nimbus-autologin` signs into Hearth's session.
+- **Quick Access over games is HHD's overlay app, and that app is Hearth's** (all HHD editions): build.sh links
+  `desktop/shell/hearth-overlay` as `/usr/bin/hhd-ui` and points `HHD_OVERLAY` at it
+  (`hhd.service.d/zz-hearth-overlay.conf`). It runs Hearth's Quick Access page in Hearth Browser's Electron
+  (`hosts/linux/src/overlay`, GPU-composited like hhd-ui), speaks HHD's stdin/stdout protocol (`cmd:`/`action:` in,
+  `stat:`/`grab:` out) and talks to Hearth over `$XDG_RUNTIME_DIR/hearth/overlay.sock` (`overlay_link.rs`; this user
+  only). HHD shows it over the game and holds the controllers while it's open; its QAM button opens it, Guide still
+  opens it through Hearth. Hearth then doesn't make its own WebKit overlay window. In Desktop Mode HHD's QAM button
+  opens Mantel's Quick Access. Bazzite doesn't install it and keeps Hearth's own overlay.
 - **Plasma Login Manager.** `nimbus-autologin` writes the `[Autologin]` section of `/etc/plasmalogin.conf` when
   Plasma Login Manager is installed, and `hearth-greeter-pad` recognises its greeter.
 - **Which edition this is** is in `/usr/share/nimbus/image-info.json` (`{"base": "anatase", ...}`), read by

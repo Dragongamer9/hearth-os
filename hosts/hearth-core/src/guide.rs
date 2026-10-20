@@ -105,9 +105,11 @@ pub struct Guide {
     fds: Arc<Mutex<HashMap<String, i32>>>,
     pub hold_view: Arc<AtomicBool>,
     pub buttons: Arc<AtomicBool>,
-    /// Handheld Daemon (Hearth OS on Anatase): its Quick Access button sends Guide + A (Steam's chord for its
-    /// Quick Access menu), so buttons pressed while Guide is held aren't passed on (the A would pick the first
-    /// thing in Quick Access). Off with InputPlumber (Bazzite), where nothing changes.
+    /// Handheld Daemon (the HHD editions): without an overlay app its Quick Access button sends Guide + A (Steam's
+    /// chord for its Quick Access menu), so buttons pressed while Guide is held aren't passed on (the A would pick
+    /// the first thing in Quick Access). With Hearth's overlay app installed as HHD's (overlay_link.rs) that button
+    /// opens Quick Access through the app instead, and Guide still comes through here. Off with InputPlumber
+    /// (Bazzite), where nothing changes.
     pub chord_guard: Arc<AtomicBool>,
     open: Arc<Mutex<HashMap<String, String>>>,
     problems: Arc<Mutex<HashMap<String, String>>>,
