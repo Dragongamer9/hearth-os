@@ -633,13 +633,29 @@ def hibernate_setup():
 # /etc/hearth/seats.json so seats-remove can undo it, and a failed seats-setup undoes its own steps. Player 1
 # (the person who ran it) is never changed: only the extra players' accounts, devices and units are.
 #
-#   hearth-admin seats-setup            stdin: {"mode": "gpu"|"nested", "seats": [...], "start": bool}
+#   hearth-admin seats-setup            stdin: {"mode": "gpu"|"nested"|"split"|"stream", "seats": [...],
+#                                       "split": {"layout": "columns"|"rows"|"grid"}, "start": bool}
+#                                       (each seat may have its own "mode"; see seats_validate)
 #   hearth-admin seats-remove [--delete-users]
 #   hearth-admin seats-acl              stdin: {"pads": {"usb:1-2": 2, "uniq:aa:bb:cc:dd:ee:ff": 1}}
 #   hearth-admin seats-start | seats-stop
 SEATS_CONFIG = '/etc/hearth/seats.json'
 SEATS_ENV_DIR = '/etc/hearth/seats'
 SEATS_RULES = '/etc/udev/rules.d/72-hearth-seats.rules'
+# Streamed players (Beta Experimental): /dev/uinput and /dev/uhid for their Sunshine. After 73-seat-late.rules,
+# because udev's uaccess step there resets a node's user ACLs.
+SEATS_STREAM_RULES = '/etc/udev/rules.d/74-hearth-seats-stream.rules'
+SEATS_MODULES = '/etc/modules-load.d/hearth-seats-stream.conf'
+SEATS_INPUT_STATE = '/run/udev/hearth-seats-input.json'   # hearth-seat-input's record of whose virtual controller is whose
+SEATS_HOSTNAME_FILE = '/etc/hostname'
+SEAT_INPUT_HELPER = '/usr/libexec/nimbus/hearth-seat-input'
+SEAT_MODES = ('gpu', 'nested', 'split', 'stream')
+# Presets only (nothing free-form reaches a file or a command line).
+SEAT_STREAM_SIZES = ('1280x720', '1280x800', '1920x1080', '2560x1440', '3840x2160')
+SEAT_STREAM_FPS = (30, 60, 90, 120)
+SEAT_SPLIT_LAYOUTS = {'columns': 2, 'rows': 2, 'grid': 4}   # side by side, one above the other, 2x2
+SEAT_STREAM_PORT_FIRST = 47989   # Sunshine's own default, which Remote play (player 1's Sunshine) keeps
+SEAT_RENDER_RE = re.compile(r'^renderD[0-9]{3}$')
 SEATS_TMPFILES = '/etc/tmpfiles.d/hearth-seats.conf'
 SEATS_SDDM = '/etc/sddm.conf.d/zzz-hearth-seats.conf'
 SEATS_SYSTEMD_ETC = '/etc/systemd/system'
@@ -733,57 +749,231 @@ def seats_gpu_audio(gpu_pci):
     return out
 
 
+def seats_kind(config, s):
+    """How a seat plays: gpu, nested, split, stream, or (player 1 with only streamed players) local. Set-ups from
+    before per-seat modes have one "mode" for everyone."""
+    k = s.get('mode') or config.get('mode')
+    if s.get('seat') == 1 and k == 'stream':
+        return 'local'
+    return k
+
+
+def seats_has(config, *kinds):
+    return any(seats_kind(config, s) in kinds for s in config.get('seats', []) if s.get('seat') != 1)
+
+
+def seats_stream_port(n):
+    """Sunshine's port family for player n's stream: 48989, 49989, 50989 (each uses its port -5 to +21). Fixed, so
+    they never meet Remote play's (Sunshine's default 47989) or each other."""
+    return SEAT_STREAM_PORT_FIRST + 1000 * (n - 1)
+
+
+def seats_stream_ports(config):
+    """The ports a streamed player's Moonlight needs (firewall): HTTPS -5, HTTP +0, RTSP +21 (TCP); video +9,
+    control +10, audio +11 (UDP). The web page (+1) stays local."""
+    out = []
+    for s in config.get('seats', []):
+        if seats_kind(config, s) == 'stream' and s.get('stream'):
+            b = s['stream']['port']
+            if b not in [seats_stream_port(n) for n in (2, 3, 4)]:
+                raise SeatsError('bad stream port')
+            out += ['%d/tcp' % (b - 5), '%d/tcp' % b, '%d/tcp' % (b + 21)] + ['%d/udp' % (b + o) for o in (9, 10, 11)]
+    return out
+
+
+def seats_split_rects(w, h, layout):
+    """Each region of a split screen (x, y, w, h), in region order. Even sizes (gamescope likes them)."""
+    def ev(v):
+        return max(2, int(v) // 2 * 2)
+    if layout == 'columns':
+        cw = ev(w / 2)
+        return [(0, 0, cw, ev(h)), (cw, 0, cw, ev(h))]
+    if layout == 'rows':
+        ch = ev(h / 2)
+        return [(0, 0, ev(w), ch), (0, ch, ev(w), ch)]
+    if layout == 'grid':
+        cw, ch = ev(w / 2), ev(h / 2)
+        return [(0, 0, cw, ch), (cw, 0, cw, ch), (0, ch, cw, ch), (cw, ch, cw, ch)]
+    raise SeatsError('the screen layout must be side by side, one above the other, or four corners')
+
+
+def seats_pc_name():
+    """This PC's name for Moonlight's list ("<name> Player 2"): letters, digits and dashes only."""
+    import socket
+    name = seats_read(SEATS_HOSTNAME_FILE).split('.')[0] or socket.gethostname().split('.')[0]
+    name = re.sub(r'[^A-Za-z0-9-]', '', name)[:24]
+    return name or 'Hearth'
+
+
+def seats_render_node(pci):
+    """The render node (renderD128) of the graphics card at a PCI address, or None."""
+    import glob
+    for r in sorted(glob.glob(os.path.join(SEATS_SYS, 'class/drm', 'renderD[0-9]*'))):
+        name = os.path.basename(r)
+        if SEAT_RENDER_RE.fullmatch(name) and seats_card_pci(name) == pci:
+            return name
+    return None
+
+
+def seats_stream_gpu(wanted):
+    """The graphics card a streamed player's games and video encoding use: the one asked for (a PCI address that
+    has a render node), else the card the PC starts on, else the first with a render node."""
+    import glob
+    cards = []
+    for c in sorted(glob.glob(os.path.join(SEATS_SYS, 'class/drm', 'card[0-9]*'))):
+        name = os.path.basename(c)
+        if re.fullmatch(r'card[0-9]{1,2}', name):
+            pci = seats_card_pci(name)
+            if pci and SEAT_PCI_RE.fullmatch(pci) and seats_render_node(pci):
+                cards.append((seats_read(os.path.join(c, 'device/boot_vga')) != '1', name, pci))
+    if wanted is not None:
+        if not isinstance(wanted, str) or not SEAT_PCI_RE.fullmatch(wanted) or wanted not in [c[2] for c in cards]:
+            raise SeatsError('that graphics card can\'t be used for streaming')
+        return next(c for c in cards if c[2] == wanted)[1:]
+    if not cards:
+        raise SeatsError('streaming needs a graphics card with a render node')
+    return sorted(cards)[0][1:]
+
+
+def seats_card_vk(card):
+    vk = '%s:%s' % (seats_read(os.path.join(SEATS_SYS, 'class/drm', card, 'device/vendor')).replace('0x', ''),
+                    seats_read(os.path.join(SEATS_SYS, 'class/drm', card, 'device/device')).replace('0x', ''))
+    return vk if re.fullmatch(r'[0-9a-f]{4}:[0-9a-f]{4}', vk) else None
+
+
 def seats_validate(req, main_user):
     """The request, checked strictly (this runs as root for anyone in wheel at the device) and filled in from the
-    system itself (the graphics card of each screen, its Vulkan id and sound), never from the request."""
+    system itself (the graphics card of each screen, its Vulkan id and sound, a split region's size, a stream's
+    ports and name), never from the request.
+
+    Each player plays one way ("mode", per seat; a set-up without per-seat modes uses the top-level one):
+      gpu     a graphics card of their own (all local extra players then have one)
+      nested  another screen on player 1's card (player 1's Game Mode hosts it)
+      split   part of player 1's screen (player 1 is part of it too); can be mixed with nested
+      stream  streamed to another device with Sunshine/Moonlight; can be mixed with any of the others (1-3)
+    Player 1 is gpu, nested or split to match, or "local" (as always) when every other player is streamed."""
     if not isinstance(req, dict):
         raise SeatsError('expected a JSON object')
-    mode = req.get('mode')
-    if mode not in ('gpu', 'nested'):
-        raise SeatsError('mode must be "gpu" or "nested"')
+    top = req.get('mode')
+    if top is not None and top not in SEAT_MODES:
+        raise SeatsError('mode must be "gpu", "nested", "split" or "stream"')
     seats = req.get('seats')
     if not isinstance(seats, list) or not 2 <= len(seats) <= 4:
         raise SeatsError('choose 2 to 4 players')
     if not all(isinstance(s, dict) and isinstance(s.get('seat'), int) and not isinstance(s.get('seat'), bool) for s in seats) \
             or sorted(s['seat'] for s in seats) != list(range(1, len(seats) + 1)):
         raise SeatsError('players must be numbered 1 to %d' % len(seats))
+    seats = sorted(seats, key=lambda s: s['seat'])
+    # How each player plays, and whether the mix makes sense.
+    kinds = {}
+    for s in seats:
+        k = s.get('mode', top)
+        if s['seat'] == 1:
+            k = k if k in ('gpu', 'nested', 'split') else 'local' if k in (None, 'stream', 'local') else k
+            if k not in ('gpu', 'nested', 'split', 'local'):
+                raise SeatsError('player 1 plays here: on their own card, a screen of this card, or part of a split screen')
+        elif k not in SEAT_MODES:
+            raise SeatsError('player %d needs a way to play (their own graphics card, another screen, part of this '
+                             'screen, or streamed)' % s['seat'])
+        kinds[s['seat']] = k
+    extra = {kinds[n] for n in kinds if n != 1}
+    local = extra - {'stream'}
+    streamed = [n for n in kinds if kinds[n] == 'stream']
+    if 'gpu' in local:
+        if local != {'gpu'} or kinds[1] != 'gpu':
+            raise SeatsError('a graphics card per player can only be mixed with streamed players')
+    elif local:
+        if kinds[1] not in ('nested', 'split'):
+            raise SeatsError('player 1 must use a screen on the same graphics card')
+        if 'split' in local and kinds[1] != 'split':
+            raise SeatsError('player 1 must be part of the split screen')
+        if kinds[1] == 'split' and 'split' not in local:
+            raise SeatsError('a split screen needs at least two players on it')
+    elif kinds[1] != 'local':
+        raise SeatsError('with only streamed players, player 1 plays as always')
+    if len(streamed) > 3:
+        raise SeatsError('at most 3 players can be streamed')
+    norm = 'gpu' if 'gpu' in local else 'split' if 'split' in local else 'nested' if local else 'stream'
+    # The split screen: one output, a layout preset, one region per player on it.
+    split = None
+    split_seats = [s for s in seats if kinds[s['seat']] == 'split']
+    if split_seats:
+        sreq = req.get('split') if isinstance(req.get('split'), dict) else {}
+        layout = sreq.get('layout')
+        if layout not in SEAT_SPLIT_LAYOUTS:
+            raise SeatsError('the screen layout must be side by side, one above the other, or four corners')
+        if not 2 <= len(split_seats) <= SEAT_SPLIT_LAYOUTS[layout]:
+            raise SeatsError('that screen layout has room for %d players' % SEAT_SPLIT_LAYOUTS[layout])
+        regions = [s.get('region') for s in split_seats]
+        if not all(isinstance(r, int) and not isinstance(r, bool) and 0 <= r < SEAT_SPLIT_LAYOUTS[layout] for r in regions) \
+                or len(set(regions)) != len(regions):
+            raise SeatsError('each player on the split screen needs their own part of it')
+        if len({s.get('output') for s in split_seats}) != 1:
+            raise SeatsError('everyone on the split screen must use the same screen')
+        split = {'output': split_seats[0].get('output'), 'layout': layout}
     out, outputs, gpus, pads_seen = [], set(), set(), set()
-    for s in sorted(seats, key=lambda s: s['seat']):
-        n = s['seat']
+    for s in seats:
+        n, k = s['seat'], kinds[s['seat']]
         user = s.get('user')
         if n == 1:
             if user != main_user:
                 raise SeatsError('player 1 must be you (%s)' % main_user)
         elif not isinstance(user, str) or not SEAT_PLAYER_RE.fullmatch(user) or user != 'hearth-p%d' % n:
             raise SeatsError('player %d\'s account must be called hearth-p%d' % (n, n))
+        entry = {'seat': n, 'user': user, 'mode': k, 'output': None, 'card': None, 'gpu': None, 'vk_device': None,
+                 'size': None, 'pads': [], 'audio': None, 'audio_pci': []}
         output = s.get('output')
-        m = SEAT_OUTPUT_RE.fullmatch(output) if isinstance(output, str) else None
-        if not m or not os.path.isdir(os.path.join(SEATS_SYS, 'class/drm', output)):
-            raise SeatsError('player %d\'s screen (%s) isn\'t there' % (n, output))
-        if output in outputs:
-            raise SeatsError('two players can\'t share one screen')
-        outputs.add(output)
-        card = m.group(1)
-        gpu = seats_card_pci(card)
-        if not gpu or not SEAT_PCI_RE.fullmatch(gpu):
-            raise SeatsError('couldn\'t find the graphics card for %s' % output)
-        entry = {'seat': n, 'user': user, 'output': output, 'card': card, 'gpu': gpu,
-                 'vk_device': '%s:%s' % (seats_read(os.path.join(SEATS_SYS, 'class/drm', card, 'device/vendor')).replace('0x', ''),
-                                         seats_read(os.path.join(SEATS_SYS, 'class/drm', card, 'device/device')).replace('0x', '')),
-                 'size': (seats_read(os.path.join(SEATS_SYS, 'class/drm', output, 'modes')).splitlines() or [''])[0].strip() or None,
-                 'pads': [], 'audio': None, 'audio_pci': []}
-        if not re.fullmatch(r'[0-9a-f]{4}:[0-9a-f]{4}', entry['vk_device']):
-            entry['vk_device'] = None
-        if entry['size'] and not re.fullmatch(r'\d{2,5}x\d{2,5}', entry['size']):
-            entry['size'] = None
-        if mode == 'gpu':
-            if gpu in gpus:
-                raise SeatsError('with a graphics card per player, each player needs a different card')
-            gpus.add(gpu)
-            entry['audio_pci'] = seats_gpu_audio(gpu)
+        if k == 'stream':
+            if output is not None:
+                raise SeatsError('player %d is streamed, so they don\'t use a screen here' % n)
+            st = s.get('stream') if isinstance(s.get('stream'), dict) else {}
+            size, fps = st.get('size', '1920x1080'), st.get('fps', 60)
+            if size not in SEAT_STREAM_SIZES:
+                raise SeatsError('player %d\'s picture size must be one of %s' % (n, ', '.join(SEAT_STREAM_SIZES)))
+            if isinstance(fps, bool) or fps not in SEAT_STREAM_FPS:
+                raise SeatsError('player %d\'s frame rate must be 30, 60, 90 or 120' % n)
+            card, gpu = seats_stream_gpu(st.get('gpu'))
+            render = seats_render_node(gpu)
+            entry.update(card=card, gpu=gpu, vk_device=seats_card_vk(card), size=size,
+                         stream={'size': size, 'fps': fps, 'port': seats_stream_port(n),
+                                 'name': '%s Player %d' % (seats_pc_name(), n), 'render': render})
+        elif k == 'local' and output is None:
+            pass
+        else:
+            m = SEAT_OUTPUT_RE.fullmatch(output) if isinstance(output, str) else None
+            if not m or not os.path.isdir(os.path.join(SEATS_SYS, 'class/drm', output)):
+                raise SeatsError('player %d\'s screen (%s) isn\'t there' % (n, output))
+            if k == 'split':
+                if split and output != split['output']:
+                    raise SeatsError('everyone on the split screen must use the same screen')
+            elif output in outputs or (split and output == split['output']):
+                raise SeatsError('two players can\'t share one screen')
+            outputs.add(output)
+            card = m.group(1)
+            gpu = seats_card_pci(card)
+            if not gpu or not SEAT_PCI_RE.fullmatch(gpu):
+                raise SeatsError('couldn\'t find the graphics card for %s' % output)
+            size = (seats_read(os.path.join(SEATS_SYS, 'class/drm', output, 'modes')).splitlines() or [''])[0].strip() or None
+            if size and not re.fullmatch(r'\d{2,5}x\d{2,5}', size):
+                size = None
+            entry.update(output=output, card=card, gpu=gpu, vk_device=seats_card_vk(card), size=size)
+            if k == 'gpu':
+                if gpu in gpus:
+                    raise SeatsError('with a graphics card per player, each player needs a different card')
+                gpus.add(gpu)
+                entry['audio_pci'] = seats_gpu_audio(gpu)
+            if k == 'split':
+                if not size:
+                    raise SeatsError('couldn\'t read the size of the split screen (%s)' % output)
+                w, h = (int(v) for v in size.split('x'))
+                x, y, rw, rh = seats_split_rects(w, h, split['layout'])[s['region']]
+                entry.update(region=s['region'], rect={'x': x, 'y': y, 'w': rw, 'h': rh}, screen_size=size,
+                             size='%dx%d' % (rw, rh))
         pads = s.get('pads') or []
         if not isinstance(pads, list) or len(pads) > 16:
             raise SeatsError('pads must be a list')
+        if pads and k == 'stream':
+            raise SeatsError('player %d is streamed: their controllers come from their device' % n)
         for p in pads:
             if not isinstance(p, str) or not SEAT_PAD_RE.fullmatch(p):
                 raise SeatsError('%r isn\'t a controller Hearth knows how to recognise' % (p,))
@@ -793,19 +983,31 @@ def seats_validate(req, main_user):
             entry['pads'].append(p)
         audio = s.get('audio')
         if audio is not None:
-            if not isinstance(audio, str) or not SEAT_SINK_RE.fullmatch(audio):
+            if k == 'stream' or not isinstance(audio, str) or not SEAT_SINK_RE.fullmatch(audio):
                 raise SeatsError('player %d\'s sound output name isn\'t valid' % n)
             entry['audio'] = audio
         out.append(entry)
-    return {'version': 1, 'mode': mode, 'main_user': main_user, 'seats': out, 'start': bool(req.get('start'))}
+    return {'version': 2, 'mode': norm, 'main_user': main_user, 'seats': out, 'split': split,
+            'start': bool(req.get('start'))}
 
 
 def seats_rules(config):
     """udev rules giving each extra player's devices to that player only: out of logind's seats (so no session
     gets them through "uaccess", and no new seat or login screen appears) and an ACL for the player's account."""
     lines = ['# Hearth multi-seat: written by hearth-admin seats-setup, removed by seats-remove. Don\'t edit.',
-             '# Runs after 71-seat.rules (seat tags) and before 73-seat-late.rules (uaccess ACLs).',
-             'ACTION=="remove", GOTO="hearth_seats_end"']
+             '# Runs after 71-seat.rules (seat tags) and before 73-seat-late.rules (uaccess ACLs).']
+    streamed = seats_has(config, 'stream')
+    if streamed:
+        # Streamed players' virtual controllers (made by their Sunshine, or their Steam, through uinput/uhid) live
+        # under /devices/virtual like everyone's: hearth-seat-input tells whose they are (which streamed player's
+        # process just opened /dev/uinput or /dev/uhid), and forgets them when they go.
+        lines.append('ACTION=="remove", SUBSYSTEM=="input|hidraw", DEVPATH=="/devices/virtual/*", '
+                     'RUN+="%s forget"' % SEAT_INPUT_HELPER)
+    lines.append('ACTION=="remove", GOTO="hearth_seats_end"')
+    if streamed:
+        lines.append('SUBSYSTEM=="input|hidraw", DEVPATH=="/devices/virtual/*", IMPORT{program}="%s claim"' % SEAT_INPUT_HELPER)
+        # Two streamed players' controllers appearing at the very same moment: nobody gets it (not player 1 either).
+        lines.append('ENV{HEARTH_SEAT_CLAIM}=="nobody", TAG-="uaccess", GROUP:="root", MODE:="0600"')
     pads = [p for s in config['seats'] if s['seat'] != 1 for p in s.get('pads', [])]
     if any(p.startswith('uniq:') for p in pads):
         lines.append('SUBSYSTEM=="hidraw", IMPORT{parent}="HID_UNIQ"')
@@ -817,6 +1019,8 @@ def seats_rules(config):
             raise SeatsError('bad account name')
         give = 'ENV{ID_SEAT}="seat-%s", ENV{HEARTH_SEAT_USER}="%s", TAG-="seat", TAG-="master-of-seat", TAG-="uaccess"' % (user, user)
         lines.append('# player %d (%s)' % (s['seat'], user))
+        if seats_kind(config, s) == 'stream':
+            lines.append('ENV{HEARTH_SEAT_CLAIM}=="%s", %s' % (user, give))
         for p in s.get('pads', []):
             if not SEAT_PAD_RE.fullmatch(p):
                 raise SeatsError('bad controller id')
@@ -826,7 +1030,7 @@ def seats_rules(config):
             else:
                 lines.append('SUBSYSTEM=="input", ATTRS{uniq}=="%s", %s' % (val, give))
                 lines.append('SUBSYSTEM=="hidraw", ENV{HID_UNIQ}=="%s", %s' % (val, give))
-        if config['mode'] == 'gpu':
+        if seats_kind(config, s) == 'gpu':
             if not SEAT_PCI_RE.fullmatch(s['gpu']):
                 raise SeatsError('bad graphics card address')
             lines.append('SUBSYSTEM=="drm", KERNEL=="card[0-9]*", KERNELS=="%s", %s' % (s['gpu'], give))
@@ -841,16 +1045,31 @@ def seats_rules(config):
 
 
 def seats_env(config, s):
+    kind = seats_kind(config, s)
     lines = ['# Hearth multi-seat: player %d (written by hearth-admin)' % s['seat'],
-             'HEARTH_SEAT_MODE=%s' % config['mode'],
-             'HEARTH_SEAT_OUTPUT=%s' % s['output'].split('-', 1)[1],
-             'HEARTH_SEAT_HOST_USER=%s' % config['main_user']]
-    if config['mode'] == 'gpu':
+             'HEARTH_SEAT_MODE=%s' % kind]
+    if s.get('output'):
+        lines.append('HEARTH_SEAT_OUTPUT=%s' % s['output'].split('-', 1)[1])
+    lines.append('HEARTH_SEAT_HOST_USER=%s' % config['main_user'])
+    if kind == 'gpu':
         lines.append('HEARTH_SEAT_GPU=%s' % s['gpu'])
+        if s.get('vk_device'):
+            lines.append('HEARTH_SEAT_VK_DEVICE=%s' % s['vk_device'])
+    elif kind == 'stream':
+        st = s['stream']
+        # Everything here was checked against the presets (seats_validate); the name is letters, digits, dashes and spaces.
+        if st['size'] not in SEAT_STREAM_SIZES or st['fps'] not in SEAT_STREAM_FPS or not SEAT_RENDER_RE.fullmatch(str(st.get('render'))) \
+                or not re.fullmatch(r'[A-Za-z0-9-]{1,24} Player [2-4]', st['name']):
+            raise SeatsError('bad stream settings')
+        lines += ['HEARTH_SEAT_STREAM_SIZE=%s' % st['size'], 'HEARTH_SEAT_STREAM_FPS=%d' % st['fps'],
+                  'HEARTH_SEAT_STREAM_PORT=%d' % st['port'], 'HEARTH_SEAT_STREAM_NAME="%s"' % st['name'],
+                  'HEARTH_SEAT_RENDER=/dev/dri/%s' % st['render'], 'HEARTH_SEAT_GPU=%s' % s['gpu']]
         if s.get('vk_device'):
             lines.append('HEARTH_SEAT_VK_DEVICE=%s' % s['vk_device'])
     elif s.get('size'):
         lines.append('HEARTH_SEAT_SIZE=%s' % s['size'])
+        if kind == 'split':
+            lines.append('HEARTH_SEAT_WINDOWED=1')   # a region of the screen, not the whole screen
     return '\n'.join(lines) + '\n'
 
 
@@ -861,13 +1080,49 @@ def seats_tmpfiles(config):
     lines = ['# Hearth multi-seat (written by hearth-admin): where player 1\'s Game Mode opens the other players\' screens',
              'd %s 0755 %s %s -' % (SEATS_RUN, main, main)]
     for s in config['seats']:
-        if s['seat'] != 1:
+        if s['seat'] != 1 and seats_kind(config, s) in ('nested', 'split'):
             lines.append('d %s/%s 2750 %s %s -' % (SEATS_RUN, s['user'], main, s['user']))
     return '\n'.join(lines) + '\n'
 
 
 def seats_unit(config, s):
-    return 'hearth-seat@%s.%s' % (s['user'], 'path' if config['mode'] == 'nested' else 'service')
+    """Players on a screen of player 1's card start when player 1's Game Mode opens their window (the .path);
+    the others (their own card, or streamed) start with the PC."""
+    return 'hearth-seat@%s.%s' % (s['user'], 'path' if seats_kind(config, s) in ('nested', 'split') else 'service')
+
+
+def seats_stream_rules(config):
+    """/dev/uinput and /dev/uhid for the streamed players' accounts (their Sunshine makes the virtual controllers
+    there). After 73-seat-late.rules: udev's uaccess step resets a node's user ACLs, so these must come later."""
+    users = [s['user'] for s in config['seats'] if s['seat'] != 1 and seats_kind(config, s) == 'stream']
+    lines = ['# Hearth multi-seat, streamed players: written by hearth-admin seats-setup, removed by seats-remove.']
+    for u in users:
+        if not SEAT_PLAYER_RE.fullmatch(u):
+            raise SeatsError('bad account name')
+        lines.append('KERNEL=="uinput|uhid", SUBSYSTEM=="misc", RUN+="/usr/bin/setfacl -m u:%s:rw $devnode"' % u)
+    return '\n'.join(lines) + '\n'
+
+
+def seats_stream_creds_file(user):
+    return os.path.join(SEATS_ENV_DIR, user + '.stream.json')
+
+
+def seats_chown(path, owner, group):
+    """Owner and group by name (tests replace this)."""
+    import grp
+    os.chown(path, pwd.getpwnam(owner).pw_uid, grp.getgrnam(group).gr_gid)
+
+
+def seats_firewall(ports, add):
+    """Opens (or closes) the streamed players' ports when firewalld runs. False if it doesn't or refused."""
+    if not ports:
+        return True
+    code, _ = seats_run(['firewall-cmd', '--state'])
+    if code != 0:
+        return False
+    flags = [('--add-port=' if add else '--remove-port=') + p for p in ports]
+    ok = seats_run(['firewall-cmd'] + flags)[0] == 0
+    return seats_run(['firewall-cmd', '--permanent'] + flags)[0] == 0 and ok
 
 
 class SeatsJournal:
@@ -890,6 +1145,9 @@ class SeatsJournal:
     def unit(self, name):
         self.steps.append(('unit', name, None))
 
+    def firewall(self, ports):
+        self.steps.append(('firewall', list(ports), None))
+
     def rollback(self):
         for kind, what, before in reversed(self.steps):
             try:
@@ -897,11 +1155,13 @@ class SeatsJournal:
                     if before is None:
                         os.remove(what)
                     else:
-                        seats_atomic_write(what, before)
+                        seats_atomic_write(what, before, 0o600 if what.endswith('.stream.json') else 0o644)
                 elif kind == 'user':
                     seats_run(['userdel', '-r', what])
                 elif kind == 'unit':
                     seats_run(['systemctl', 'disable', '--now', what])
+                elif kind == 'firewall':
+                    seats_firewall(what, False)
             except OSError:
                 pass
         seats_run(['udevadm', 'control', '--reload'])
@@ -978,7 +1238,12 @@ def seats_remove_impl(config, delete_users, quiet=False):
     old_pads = [p for s in config.get('seats', []) for p in s.get('pads', []) if SEAT_PAD_RE.fullmatch(str(p))]
     if not quiet:
         progress(35, 'Giving the controllers back')
-    for path in [SEATS_RULES, SEATS_TMPFILES] + glob.glob(os.path.join(SEATS_ENV_DIR, 'hearth-p*.env')):
+    # Streamed players' open ports (only the ones the set-up opened, as recorded).
+    fw = [p for p in config.get('firewall_ports', []) if re.fullmatch(r'[0-9]{4,5}/(tcp|udp)', str(p))]
+    if fw:
+        seats_firewall(fw, False)
+    for path in [SEATS_RULES, SEATS_STREAM_RULES, SEATS_MODULES, SEATS_TMPFILES, SEATS_INPUT_STATE] + \
+            glob.glob(os.path.join(SEATS_ENV_DIR, 'hearth-p*.env')) + glob.glob(os.path.join(SEATS_ENV_DIR, 'hearth-p*.stream.json')):
         try:
             os.remove(path)
         except OSError:
@@ -986,7 +1251,8 @@ def seats_remove_impl(config, delete_users, quiet=False):
     seats_apply_pads(old_pads, reconnect=not quiet)
     for u in players:
         for node in glob.glob(os.path.join(SEATS_DEV, 'input', '*')) + glob.glob(os.path.join(SEATS_DEV, 'hidraw*')) + \
-                glob.glob(os.path.join(SEATS_DEV, 'snd', '*')) + glob.glob(os.path.join(SEATS_DEV, 'dri', 'card*')):
+                glob.glob(os.path.join(SEATS_DEV, 'snd', '*')) + glob.glob(os.path.join(SEATS_DEV, 'dri', 'card*')) + \
+                [n for n in (os.path.join(SEATS_DEV, 'uinput'), os.path.join(SEATS_DEV, 'uhid')) if os.path.exists(n)]:
             seats_run(['setfacl', '-x', 'u:' + u, node])
     shutil.rmtree(SEATS_RUN, ignore_errors=True)
     seats_run(['systemctl', 'daemon-reload'])
@@ -1010,7 +1276,7 @@ def seats_remove_impl(config, delete_users, quiet=False):
             os.remove(SEATS_CONFIG)
         except OSError:
             pass
-    return {'removed_users': removed, 'kept_users': kept, 'restart': config.get('mode') == 'gpu'}
+    return {'removed_users': removed, 'kept_users': kept, 'restart': seats_has(config, 'gpu') if config.get('seats') else False}
 
 
 def seats_setup():
@@ -1029,6 +1295,7 @@ def seats_setup():
         progress(5, 'Replacing the previous set-up')
         seats_remove_impl(previous, delete_users=False, quiet=True)
     j = SeatsJournal()
+    firewall_ports = []
     try:
         progress(15, 'Creating the players\' accounts')
         users = seats_existing_users()
@@ -1054,6 +1321,27 @@ def seats_setup():
         j.write(SEATS_SDDM, '# Hearth multi-seat: the extra players\' accounts\n[Users]\nHideUsers=%s\n' % ','.join(hidden))
         progress(50, 'Giving each player their controllers')
         j.write(SEATS_RULES, seats_rules(config))
+        streamed = [s for s in config['seats'][1:] if s['mode'] == 'stream']
+        if streamed:
+            progress(55, 'Preparing streaming')
+            j.write(SEATS_STREAM_RULES, seats_stream_rules(config))
+            j.write(SEATS_MODULES, '# Hearth multi-seat: streamed players\' virtual controllers\nuinput\nuhid\n')
+            import secrets
+            for s in streamed:
+                # Sunshine's web login for this player's stream: Hearth (player 1) pairs devices with it.
+                path = seats_stream_creds_file(s['user'])
+                j.write(path, json.dumps({'user': 'hearth', 'pass': secrets.token_hex(16)}) + '\n', 0o600)
+                seats_chown(path, config['main_user'], s['user'])
+                os.chmod(path, 0o640)
+            for mod in ('uinput', 'uhid'):
+                seats_run(['modprobe', mod])
+            seats_run(['udevadm', 'control', '--reload'])
+            seats_run(['udevadm', 'trigger', '--action=change', '--subsystem-match=misc', '--sysname-match=uinput',
+                       '--sysname-match=uhid'])
+            ports = seats_stream_ports(config)
+            if seats_firewall(ports, True):
+                j.firewall(ports)
+                firewall_ports = ports
         seats_apply_pads([p for s in config['seats'][1:] for p in s['pads']])
         progress(70, 'Preparing the screens')
         seats_must(['systemd-tmpfiles', '--create', SEATS_TMPFILES], 'couldn\'t prepare the players\' screen folders')
@@ -1065,12 +1353,14 @@ def seats_setup():
                        'couldn\'t turn on player %d\'s session' % s['seat'])
             j.unit(unit)
         progress(95, 'Finishing')
-        saved = {k: config[k] for k in ('version', 'mode', 'main_user', 'seats')}
+        saved = {k: config[k] for k in ('version', 'mode', 'main_user', 'seats', 'split')}
+        stream_files = [SEATS_STREAM_RULES, SEATS_MODULES] + [seats_stream_creds_file(s['user']) for s in config['seats'][1:]
+                                                              if s['mode'] == 'stream'] if seats_has(config, 'stream') else []
         saved.update(enabled=config['start'], created_users=sorted(set(created)),
-                     files=[SEATS_RULES, SEATS_TMPFILES, SEATS_SDDM] + [os.path.join(SEATS_ENV_DIR, s['user'] + '.env') for s in config['seats'][1:]],
-                     units=[seats_unit(config, s) for s in config['seats'][1:]])
+                     files=[SEATS_RULES, SEATS_TMPFILES, SEATS_SDDM] + [os.path.join(SEATS_ENV_DIR, s['user'] + '.env') for s in config['seats'][1:]] + stream_files,
+                     units=[seats_unit(config, s) for s in config['seats'][1:]], firewall_ports=firewall_ports)
         seats_atomic_write(SEATS_CONFIG, json.dumps(saved, indent=1) + '\n')
-    except (SeatsError, OSError) as e:
+    except (SeatsError, OSError, LookupError) as e:
         progress(100, 'Undoing the changes')
         j.rollback()
         try:
@@ -1080,8 +1370,14 @@ def seats_setup():
         fail('multi-seat couldn\'t be set up: %s. %s' % (e, 'The earlier multi-seat set-up was turned off; player 1 '
              'works as normal.' if previous else 'Nothing was changed.'))
     progress(100, 'Done')
-    print(json.dumps({'ok': True, 'mode': config['mode'], 'seats': saved['seats'], 'enabled': saved['enabled'],
-                      'created_users': saved['created_users'], 'restart': config['mode'] == 'gpu'}))
+    warnings = []
+    if seats_has(config, 'stream') and not firewall_ports:
+        code, _ = seats_run(['firewall-cmd', '--state'])
+        if code == 0:
+            warnings.append('The firewall didn\'t open the streaming ports, so other devices may not find this PC.')
+    print(json.dumps({'ok': True, 'mode': config['mode'], 'seats': saved['seats'], 'split': saved['split'],
+                      'enabled': saved['enabled'], 'created_users': saved['created_users'],
+                      'restart': seats_has(config, 'gpu'), 'warnings': warnings}))
 
 
 def seats_remove(delete_users):
@@ -1109,6 +1405,8 @@ def seats_acl():
             fail('%r isn\'t a controller Hearth knows how to recognise' % p)
         if not isinstance(n, int) or isinstance(n, bool) or n not in numbers:
             fail('there\'s no player %r' % (n,))
+        if n != 1 and seats_kind(config, next(s for s in config['seats'] if s['seat'] == n)) == 'stream':
+            fail('player %d is streamed: their controllers come from their own device' % n)
     before = {p: s['seat'] for s in config['seats'] for p in s.get('pads', [])}
     for s in config['seats']:
         s['pads'] = sorted(p for p, n in pads.items() if n == s['seat'])

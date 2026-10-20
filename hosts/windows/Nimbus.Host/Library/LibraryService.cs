@@ -9,10 +9,11 @@ public sealed record GameDto(
     int Minutes, long LastPlayed, long Added, long? SizeBytes,
     Dictionary<string, string> Art, string? Path, bool CanRemove,
     bool Installed, string State, double? Progress, long? BytesDone, long? BytesTotal, long? BytesPerSec = null,
-    bool CanUninstall = false, string? Note = null, string? InstallKind = null);
+    bool CanUninstall = false, string? Note = null, string? InstallKind = null,
+    List<string>? Cols = null, object? Beacon = null, bool Frozen = false);
 
 public sealed record LibraryDto(List<GameDto> Games, Dictionary<string, bool> Sources, Dictionary<string, int> Counts,
-                                string? RunningId, bool SteamBackground, object? QuickResume = null);
+                                string? RunningId, bool SteamBackground, object? QuickResume = null, List<object>? Collections = null);
 
 public sealed record DownloadsDto(List<GameDto> Active, bool Changed);
 
@@ -45,12 +46,13 @@ public sealed class LibraryService : IDisposable
             var title = _games.TryGetValue(id, out var g) ? g.Title : id;
             InstallFinished?.Invoke(id, title, error);
         };
-        _monitor.Started += id => GameStarted?.Invoke(id);
+        _monitor.Started += id => { SaveRunning(); GameStarted?.Invoke(id); };
         _quick.Changed += closedForRoom => QuickChanged?.Invoke(closedForRoom is { } id && _games.TryGetValue(id, out var cg)
             ? $"Closed {cg.Title} to make room in memory (Quick Resume)" : null);
         _monitor.StartTimedOut += id => GameStartTimedOut?.Invoke(id);
         _monitor.Exited += (id, minutes) =>
         {
+            SaveRunning();
             _store.Update(d =>
             {
                 if (!d.Stats.TryGetValue(id, out var s)) d.Stats[id] = s = new GameStats();
@@ -58,10 +60,48 @@ public sealed class LibraryService : IDisposable
                 s.Minutes += minutes;
             });
             if (_games.TryGetValue(id, out var g)) GameExited?.Invoke(ToDto(g));
+            bool cloud = Options(id).CloudSaves;
             // GOG cloud saves go up once the game has closed.
-            if (GogDir(id) is { } gd)
+            if (cloud && GogDir(id) is { } gd)
                 _ = Task.Run(async () => { try { await Accounts.Gog.SyncSavesAsync(id["gog:".Length..], gd, "up"); } catch (Exception ex) { SystemBridge.Log("gog saves: " + ex.Message); } });
+            // Epic cloud saves too, for games Ember installed (legendary knows their save folders).
+            if (cloud && g is { LaunchVia: "legendary" })
+                _ = Task.Run(async () => { try { await Accounts.Epic.SyncSavesAsync(id["epic:".Length..], "up"); } catch (Exception ex) { SystemBridge.Log("epic saves: " + ex.Message); } });
         };
+        RestoreRunning();
+    }
+
+    // ------------------------------------------------------------------ the running game, across restarts
+    //
+    // Like Hearth's restore_quick: if Ember restarts (an update, a crash, switching back from Desktop Mode) while
+    // a game plays, it carries on watching it instead of forgetting it. Quick Resume's own list is kept by QuickResume.
+
+    internal sealed record RunningRecord(string Id, string[] Dirs, long StartedAt);
+    private static string RunningFile => Path.Combine(Stores.HelperTools.DataDir, "running-game.json");
+
+    private void SaveRunning()
+    {
+        try
+        {
+            var id = _monitor.RunningId;
+            var dirs = _monitor.RunningDirs;
+            if (id is null || dirs.Length == 0 || _monitor.StartedAt is not { } t) { File.Delete(RunningFile); return; }
+            File.WriteAllText(RunningFile, System.Text.Json.JsonSerializer.Serialize(new RunningRecord(id, dirs, Time.Ms(t))));
+        }
+        catch { }
+    }
+
+    private void RestoreRunning()
+    {
+        try
+        {
+            if (!File.Exists(RunningFile)) return;
+            var r = System.Text.Json.JsonSerializer.Deserialize<RunningRecord>(File.ReadAllText(RunningFile));
+            if (r is null || r.Dirs.Length == 0 || _quick.Has(r.Id) || GameMonitor.ProcessIds(r.Dirs).Count == 0) { File.Delete(RunningFile); return; }
+            _monitor.Adopt(r.Id, r.Dirs, DateTimeOffset.FromUnixTimeMilliseconds(r.StartedAt).UtcDateTime);
+            SystemBridge.Log($"game {r.Id} still running after Ember restarted: watching it again");
+        }
+        catch (Exception ex) { SystemBridge.Log("running game: " + ex.Message); }
     }
 
     // ------------------------------------------------------------------ scanning
@@ -76,7 +116,8 @@ public sealed class LibraryService : IDisposable
             _counts,
             _monitor.RunningId,
             _store.Read(d => d.SteamBackground),
-            QuickState());
+            QuickState(),
+            _store.Read(d => d.Collections.Select(c => (object)new { id = c.Id, name = c.Name, games = c.Games.ToList() }).ToList()));
     }
 
     private async Task ScanAsync()
@@ -95,6 +136,8 @@ public sealed class LibraryService : IDisposable
                 ["gog"] = On("gog") ? Task.Run(() => Accounts.Installed("gog").Concat(GogScanner.Scan()).ToList()) : Task.FromResult(new List<Game>()),
                 ["xbox"] = On("xbox") ? Task.Run(XboxScanner.Scan) : Task.FromResult(new List<Game>()),
                 ["manual"] = Task.Run(ManualGames),
+                // Beacon (BFME and friends), when its Windows version is installed: through beacon.exe.
+                ["beacon"] = On("beacon") ? Task.Run(Beacon.Scan) : Task.FromResult(new List<Game>()),
             };
             var counts = new Dictionary<string, int>();
             var all = new Dictionary<string, Game>();
@@ -154,8 +197,9 @@ public sealed class LibraryService : IDisposable
 
     private GameDto ToDto(Game g)
     {
-        var (fav, hidden, stats) = _store.Read(d => (d.Favorites.Contains(g.Id), d.Hidden.Contains(g.Id),
-                                                     d.Stats.TryGetValue(g.Id, out var s) ? s : null));
+        var (fav, hidden, stats, cols) = _store.Read(d => (d.Favorites.Contains(g.Id), d.Hidden.Contains(g.Id),
+                                                     d.Stats.TryGetValue(g.Id, out var s) ? s : null,
+                                                     d.Collections.Where(c => c.Games.Contains(g.Id)).Select(c => c.Id).ToList()));
         // Steam counts its own play time; for other stores Nimbus's numbers are the only ones.
         int minutes = Math.Max(g.StoreMinutes, stats?.Minutes ?? 0);
         long last = Math.Max(g.StoreLastPlayed, stats?.LastPlayed ?? 0);
@@ -164,11 +208,13 @@ public sealed class LibraryService : IDisposable
             ? kv.Value : $"https://{ArtHost}/{Uri.EscapeDataString(g.Id)}/{kv.Key}");
         var installKind = g.InstallUri is null ? null
             : g.InstallUri.StartsWith("nimbus-") ? "nimbus"
-            : g.InstallUri.StartsWith("steam:") ? "steam" : "store";
+            : g.InstallUri.StartsWith("steam:") ? "steam"
+            : g.InstallUri.StartsWith("beacon:") ? "beacon" : "store";
         var dto = new GameDto(g.Id, g.Title, g.Source, fav, hidden, minutes, last, g.Added, g.SizeBytes, art,
                               g.Installed ? g.InstallPath : null, g.Source == "manual",
                               g.Installed, g.State, g.Progress, g.BytesDone, g.BytesTotal,
-                              CanUninstall: g.CanUninstall, Note: g.Note, InstallKind: installKind);
+                              CanUninstall: g.CanUninstall, Note: g.Note, InstallKind: installKind,
+                              Cols: cols, Beacon: g.BeaconInfo, Frozen: _quick.Has(g.Id));
         // An install Nimbus is running shows as a download.
         if (Accounts.Installs.Get(g.Id) is { } job)
             dto = dto with { State = job.State, Progress = job.Progress, BytesDone = job.BytesDone, BytesTotal = job.BytesTotal, BytesPerSec = job.Speed };
@@ -179,6 +225,7 @@ public sealed class LibraryService : IDisposable
     public string? ArtFile(string id, string kind)
     {
         if (id == "profile") return ProfileFile(kind);
+        if (id == "shot") return Screenshots.File(kind);   // Library › Screenshots
         return _games.TryGetValue(id, out var g) && g.Art.TryGetValue(kind, out var f) && !f.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? f : null;
     }
 
@@ -281,6 +328,8 @@ public sealed class LibraryService : IDisposable
             Accounts.StartInstall(g);   // Epic / GOG: Nimbus downloads it itself
             return;
         }
+        // Beacon's games are set up in Beacon (its folder, CD key, community files).
+        if (g.InstallUri == "beacon:open") { Beacon.OpenApp(); return; }
         if (g.Source == "steam" && SteamBackground)
         {
             await SteamScanner.EnsureRunningSilentAsync();
@@ -355,7 +404,7 @@ public sealed class LibraryService : IDisposable
     // ------------------------------------------------------------------ launching
 
     /// <summary>Starts the game. Returns false when Nimbus can't watch its process (it then won't show as running).</summary>
-    public async Task<bool> LaunchAsync(string id)
+    public async Task<bool> LaunchAsync(string id, string? beaconMod = null)
     {
         if (!_games.TryGetValue(id, out var g)) throw new InvalidOperationException("That game isn't in the library anymore. Try rescanning.");
         // Put aside with Quick Resume: carry on where it was.
@@ -374,8 +423,16 @@ public sealed class LibraryService : IDisposable
             SteamWindows.HideMainFor(20);
         }
 
-        if (g.LaunchVia == "legendary")
+        if (g.BeaconGame is { } bg)
         {
+            // Beacon's games: through beacon.exe, with the mod picked (or Beacon's saved choice).
+            Beacon.Launch(bg, beaconMod);
+        }
+        else if (g.LaunchVia == "legendary")
+        {
+            // Epic cloud saves come down first (games that have them; Game settings can turn it off).
+            if (Options(g.Id).CloudSaves)
+                try { await Accounts.Epic.SyncSavesAsync(g.Id["epic:".Length..], "down"); } catch (Exception ex) { SystemBridge.Log("epic saves: " + ex.Message); }
             await Accounts.Epic.LaunchAsync(g.Id["epic:".Length..]);
         }
         else if (g.XboxFamily is not null)
@@ -395,7 +452,7 @@ public sealed class LibraryService : IDisposable
         {
             if (!File.Exists(g.Exe)) throw new InvalidOperationException($"File not found: {g.Exe}");
             // GOG cloud saves come down first, for GOG games Ember installed.
-            if (GogDir(g.Id) is { } gd)
+            if (GogDir(g.Id) is { } gd && Options(g.Id).CloudSaves)
                 try { await Accounts.Gog.SyncSavesAsync(g.Id["gog:".Length..], gd, "down"); } catch (Exception ex) { SystemBridge.Log("gog saves: " + ex.Message); }
             Process.Start(new ProcessStartInfo(g.Exe, g.Args ?? "")
             {
@@ -428,9 +485,13 @@ public sealed class LibraryService : IDisposable
     /// <summary>The running game goes aside: frozen where it is. Play time so far is saved now.</summary>
     public async Task PutAsideAsync()
     {
+        var title = RunningTitle;
         var d = _monitor.Detach() ?? throw new InvalidOperationException("No game is running.");
-        try { var over = _quick.Add(d.Id, d.Dirs); foreach (var e in over) await GameMonitor.CloseDirsAsync(e.Dirs); }
-        catch { _monitor.Resume(d.Id, d.Dirs); throw; }
+        List<QuickResume.Entry> over;
+        try { over = _quick.Add(d.Id, d.Dirs, title); }
+        catch { _monitor.Adopt(d.Id, d.Dirs, d.Started); throw; }   // not frozen: still the running game, same play time
+        SaveRunning();
+        foreach (var e in over) await GameMonitor.CloseDirsAsync(e.Dirs);
         var minutes = (int)Math.Round((DateTime.UtcNow - d.Started).TotalMinutes);
         _store.Update(x =>
         {
@@ -447,10 +508,94 @@ public sealed class LibraryService : IDisposable
         if (_monitor.RunningId is not null) await PutAsideAsync();
         var e = _quick.Take(id);
         _monitor.Resume(e.Id, e.Dirs);
+        SaveRunning();
         GameMonitor.FocusWindow(e.Dirs);
     }
 
     public Task QuickCloseAsync(string id) => _quick.CloseAsync(id);
+    public bool IsFrozen(string id) => _quick.Has(id);
+
+    /// <summary>Quick Access › Pause: the running game frozen in place (still the game in front, unlike Quick
+    /// Resume); Unpause carries on. Refused for games with anti-cheat, like Quick Resume.</summary>
+    public bool Pause(bool on)
+    {
+        var dirs = _monitor.RunningDirs;
+        if (dirs.Length == 0) throw new InvalidOperationException("No game is running.");
+        if (!on) { GameMonitor.SuspendAll(dirs, false); return false; }
+        if (QuickResume.AntiCheatOf(dirs) is { } ac) throw new InvalidOperationException($"{RunningTitle ?? "This game"} runs with {ac}, which can treat a frozen game as cheating, so Ember doesn't pause it.");
+        var (done, failed) = GameMonitor.SuspendAll(dirs, true);
+        if (done == 0 || failed > 0)
+        {
+            if (done > 0) GameMonitor.SuspendAll(dirs, false);
+            throw new InvalidOperationException("Windows didn't let Ember pause this game (it runs as administrator, or it's protected).");
+        }
+        return true;
+    }
+
+    // ------------------------------------------------------------------ collections (Library tabs of your own)
+
+    private const int MaxCollections = 30;
+    private static string CleanName(string name) { var t = (name ?? "").Trim(); return t.Length > 40 ? t[..40] : t; }
+
+    public object CollectionCreate(string name)
+    {
+        var clean = CleanName(name);
+        if (clean.Length == 0) throw new InvalidOperationException("Give the collection a name");
+        CollectionData? made = null;
+        _store.Update(d =>
+        {
+            if (d.Collections.Count >= MaxCollections) throw new InvalidOperationException($"Ember has room for {MaxCollections} collections");
+            if (d.Collections.Any(c => string.Equals(c.Name, clean, StringComparison.CurrentCultureIgnoreCase))) throw new InvalidOperationException($"There's already a collection called {clean}");
+            made = new CollectionData { Id = "c" + (DateTime.UtcNow.Ticks % 0xffff_ffff_ffffL).ToString("x"), Name = clean };
+            d.Collections.Add(made);
+        });
+        return new { id = made!.Id, name = made.Name, games = new List<string>() };
+    }
+
+    public void CollectionRename(string id, string name)
+    {
+        var clean = CleanName(name);
+        if (clean.Length == 0) throw new InvalidOperationException("Give the collection a name");
+        _store.Update(d => (d.Collections.FirstOrDefault(c => c.Id == id) ?? throw new InvalidOperationException("No such collection")).Name = clean);
+    }
+
+    public void CollectionRemove(string id) => _store.Update(d => d.Collections.RemoveAll(c => c.Id == id));
+
+    public void CollectionSet(string id, string game, bool on) => _store.Update(d =>
+    {
+        var c = d.Collections.FirstOrDefault(x => x.Id == id) ?? throw new InvalidOperationException("No such collection");
+        c.Games.RemoveAll(x => x == game);
+        if (on && game.Length > 0) c.Games.Add(game);
+    });
+
+    // ------------------------------------------------------------------ per-game settings
+
+    public GameOptionsData Options(string id) => _store.Read(d => d.GameOptions.TryGetValue(id, out var o)
+        ? new GameOptionsData { Tdp = o.Tdp, CloudSaves = o.CloudSaves } : new GameOptionsData());
+
+    public void SetOptions(string id, int? tdp, bool? cloudSaves) => _store.Update(d =>
+    {
+        if (!d.GameOptions.TryGetValue(id, out var o)) d.GameOptions[id] = o = new GameOptionsData();
+        if (tdp is { } t) o.Tdp = Math.Clamp(t, 0, 120);
+        if (cloudSaves is { } c) o.CloudSaves = c;
+    });
+
+    public Game? Find(string id) => _games.TryGetValue(id, out var g) ? g : null;
+    public int TdpWatts { get => _store.Read(d => d.TdpWatts); set => _store.Update(d => d.TdpWatts = value); }
+
+    // ------------------------------------------------------------------ Beacon
+
+    /// <summary>Game settings › Mod: the mod a Beacon game starts with (kept in Beacon), then the list again.</summary>
+    public async Task<GameDto> BeaconSelectModAsync(string id, string? mod)
+    {
+        var g = Find(id) ?? throw new InvalidOperationException("That game isn't in the library anymore.");
+        if (g.BeaconGame is not { } bg) throw new InvalidOperationException("That isn't one of Beacon's games.");
+        await Task.Run(() => Beacon.SelectMod(bg, mod));
+        await ScanAsync();
+        return Find(id) is { } now ? ToDto(now) : throw new InvalidOperationException("That game isn't in the library anymore.");
+    }
+
+    public IEnumerable<Game> AllGames => _games.Values;
 
     // ------------------------------------------------------------------ Nimbus-run installs (Epic, GOG)
 
@@ -534,6 +679,8 @@ public sealed class LibraryService : IDisposable
         return Profile();
     }
     public string? RunningId => _monitor.RunningId;
+    /// <summary>The running game's folders (Hearth Input checks the window in front against them).</summary>
+    public string[] RunningDirs => _monitor.RunningDirs;
     public string? RunningTitle => _monitor.RunningId is { } id && _games.TryGetValue(id, out var g) ? g.Title : null;
     public DateTime? RunningSince => _monitor.StartedAt;
     public bool OverlayHoldView { get => _store.Read(d => d.OverlayHoldView); set => _store.Update(d => d.OverlayHoldView = value); }

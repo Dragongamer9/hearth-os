@@ -62,6 +62,16 @@ internal static class KeyTyper
         Send(list);
     }
 
+    /// <summary>A shortcut: the keys pressed in order and let go in reverse (e.g. Windows+Tab for Task View, or
+    /// Windows+arrows, which full Mantel handles itself).</summary>
+    public static void Combo(params byte[] vks)
+    {
+        var list = new List<INPUT>();
+        foreach (var vk in vks) list.Add(Key(vk, false));
+        for (int i = vks.Length - 1; i >= 0; i--) list.Add(Key(vks[i], true));
+        Send(list);
+    }
+
     private static INPUT Key(byte vk, bool up)
     {
         uint flags = up ? KEYEVENTF_KEYUP : 0;

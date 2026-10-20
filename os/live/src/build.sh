@@ -33,6 +33,10 @@ if [ -e /usr/share/wayland-sessions/plasma.desktop ] || [ -e /usr/share/xsession
   fi
 fi
 systemctl enable livesys.service livesys-late.service
+# livesys puts Fedora's own "Install to Hard Drive" (Anaconda's liveinst) on the desktop: Hearth has its own installer.
+rm -f /usr/share/applications/liveinst.desktop /etc/xdg/autostart/liveinst-setup.desktop
+mkdir -p /etc/systemd/system/livesys-late.service.d
+printf '[Service]\nExecStartPost=-/usr/bin/sh -c "rm -f /home/liveuser/Desktop/liveinst.desktop /home/liveuser/Desktop/*nstall*ard*rive*.desktop"\n' > /etc/systemd/system/livesys-late.service.d/no-liveinst.conf
 
 # Titanoboa needs the cdboot EFI binary and the EFI tree under /boot/efi. On Fedora 45's bootc images the EFI
 # files are under /usr/lib/efi/<package>/<version>/EFI (or bootupd's copy); take whichever is there.

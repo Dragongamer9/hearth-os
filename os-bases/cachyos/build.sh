@@ -371,6 +371,31 @@ else
   echo "warning: couldn't install Beacon from $BEACON_URL (no release yet?); Hearth works without it"
 fi
 
+# ------------------------------------------------------------------ Sunshine (Multi-seat's streamed players, Remote play)
+# Settings › Multi-seat can stream an extra player's own Game Mode to Moonlight on a TV, phone, tablet or laptop (one
+# Sunshine per streamed player, see docs/MULTI-SEAT.md); Settings › Remote play uses it too. CachyOS's repositories
+# when they have it, else LizardByte's own pacman repository (prebuilt, with CUDA), added only for this install.
+# Optional: without it Hearth says streaming isn't available.
+sunshine_lizardbyte() {
+  cp /etc/pacman.conf /tmp/pacman.conf.hearth
+  printf '\n[lizardbyte]\nSigLevel = Optional\nServer = https://github.com/LizardByte/pacman-repo/releases/latest/download\n' >> /etc/pacman.conf
+  local ok=1
+  pacman -Sy && "${PAC[@]}" lizardbyte/sunshine && ok=0
+  cp /tmp/pacman.conf.hearth /etc/pacman.conf && rm -f /tmp/pacman.conf.hearth
+  pacman -Sy || true
+  return "$ok"
+}
+if [ "$(uname -m)" = x86_64 ] && { { have_pkg sunshine && "${PAC[@]}" sunshine; } || sunshine_lizardbyte; }; then
+  echo "Sunshine installed"
+else
+  echo "warning: couldn't install Sunshine; streamed multi-seat players and Remote play show as unavailable"
+  OPTIONAL_MISSING+=("sunshine")
+fi
+# The streamed players' address as a QR code in Settings (optional), and the udev helper that gives each streamed
+# player their own virtual controllers (copied in with system_files; executable to be sure).
+optional qrencode
+chmod 755 /usr/libexec/nimbus/hearth-seat-input 2>/dev/null || true
+
 # ------------------------------------------------------------------ system settings Bazzite/Fedora came with
 # Hearth's administrators group (the installer puts the first account in it; sudo and the polkit rules use it).
 # Arch's filesystem package has it already.

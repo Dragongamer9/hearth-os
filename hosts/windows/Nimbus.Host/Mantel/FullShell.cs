@@ -9,7 +9,9 @@ namespace Nimbus.Host.Mantel;
 /// - the space the taskbar keeps (the "work area", so maximized windows stop above Mantel's taskbar),
 /// - minimized windows go away instead of stacking up as little title bars in the corner,
 /// - the Windows key opens Mantel's launcher (alone; Win+E, Win+R and other shortcuts still go to Windows),
-/// - the volume keys work (Explorer is what normally handles them) and show Mantel's volume bar.
+/// - the volume keys work (Explorer is what normally handles them) and show Mantel's volume bar,
+/// - Windows+Left/Right snap the window in front to half the screen and Windows+Up/Down maximize, restore or
+///   minimize it (Explorer handles these shortcuts too; dragging a window to an edge still snaps by itself).
 /// Everything is put back when Mantel stops.
 /// </summary>
 internal sealed class FullShell : IDisposable
@@ -81,7 +83,17 @@ internal sealed class FullShell : IDisposable
                     if (!_winCombo) { WinKey?.Invoke(); return (IntPtr)1; }
                 }
             }
-            else if (down && _winDown) _winCombo = true;
+            else if (down && _winDown)
+            {
+                _winCombo = true;
+                // Windows+arrows (alone, without Ctrl or Shift): snap like Explorer would.
+                if (vk is >= 0x25 and <= 0x28 && (GetAsyncKeyState(0x11) & 0x8000) == 0 && (GetAsyncKeyState(0x10) & 0x8000) == 0)
+                {
+                    var fg = Native.GetForegroundWindow();
+                    ThreadPool.QueueUserWorkItem(_ => Snap(fg, vk));
+                    return (IntPtr)1;
+                }
+            }
             if (vk == 0x1B && down && (GetAsyncKeyState(0x11) & 0x8000) != 0 && (GetAsyncKeyState(0x10) & 0x8000) != 0)
             {
                 TaskManagerKey?.Invoke();
@@ -95,6 +107,37 @@ internal sealed class FullShell : IDisposable
         }
         return CallNextHookEx(_hook, code, wParam, lParam);
     }
+
+    /// <summary>Windows+Left/Right: the left or right half of the work area (beside Mantel's taskbar); Up: maximize;
+    /// Down: restore a maximized window, else minimize it. Windows' invisible resize borders are allowed for.</summary>
+    private static void Snap(IntPtr h, int vk)
+    {
+        try
+        {
+            if (h == IntPtr.Zero || (Native.GetWindowLong(h, Native.GWL_EXSTYLE) & Native.WS_EX_TOOLWINDOW) != 0) return;
+            if (Native.GetWindowLong(h, -16 /* GWL_STYLE */) is int style && (style & 0x00040000 /* WS_THICKFRAME */) == 0 && vk is 0x25 or 0x27) return;
+            switch (vk)
+            {
+                case 0x26: Native.ShowWindow(h, 3 /* SW_MAXIMIZE */); return;
+                case 0x28: Native.ShowWindow(h, IsZoomed(h) ? Native.SW_RESTORE : Native.SW_MINIMIZE); return;
+            }
+            if (IsZoomed(h)) Native.ShowWindow(h, Native.SW_RESTORE);
+            var wa = Screen.FromHandle(h).WorkingArea;
+            var half = vk == 0x25 ? new Rectangle(wa.Left, wa.Top, wa.Width / 2, wa.Height) : new Rectangle(wa.Left + wa.Width / 2, wa.Top, wa.Width - wa.Width / 2, wa.Height);
+            // GetWindowRect includes the invisible borders; the visible frame is DWM's extended frame bounds.
+            GetWindowRect(h, out var outer);
+            int l = 0, t = 0, r = 0, b = 0;
+            if (DwmGetWindowAttribute(h, 9 /* DWMWA_EXTENDED_FRAME_BOUNDS */, out var frame, Marshal.SizeOf<Native.RECT>()) == 0)
+            { l = frame.Left - outer.Left; t = frame.Top - outer.Top; r = outer.Right - frame.Right; b = outer.Bottom - frame.Bottom; }
+            SetWindowPos(h, IntPtr.Zero, half.Left - l, half.Top - t, half.Width + l + r, half.Height + t + b, 0x0004 /* NOZORDER */ | 0x0010 /* NOACTIVATE */ | 0x4000 /* ASYNCWINDOWPOS */);
+        }
+        catch { }
+    }
+
+    [DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out Native.RECT r);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr h, int attr, out Native.RECT value, int size);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MINIMIZEDMETRICS { public int cbSize, iWidth, iHorzGap, iVertGap, iArrange; }

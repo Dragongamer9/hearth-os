@@ -42,13 +42,14 @@ import subprocess
 import sys
 import tarfile
 import time
+import urllib.error
 import urllib.request
 
 # ---------------------------------------------------------------------- constants
 
 # Goldberg Steam emulator, gbe_fork. Pinned: bump the tag (and fill in the sums) on purpose, after testing.
 GBE_REPO = 'Detanup01/gbe_fork'
-GBE_TAG = os.environ.get('HEARTH_COOP_GBE_TAG', 'release-2025_08_17')
+GBE_TAG = os.environ.get('HEARTH_COOP_GBE_TAG', 'release-2026_09_27')
 GBE_ASSETS = {'linux': 'emu-linux-release.tar.bz2', 'windows': 'emu-win-release.7z'}
 GBE_SHA256 = {}     # {'linux': '<sha256>', 'windows': '<sha256>'}; checked when present
 GBE_PORT = 47584
@@ -879,6 +880,24 @@ def safe_extract_tar(path, dest):
             t.extractall(dest)
 
 
+def gbe_latest_url(ctx, kind):
+    """The newest gbe_fork release's archive for 'linux' or 'windows' games: used when the pinned release is gone
+    (gbe_fork deletes old releases; 0.1.9's pin answered 404 and Couch Co-op couldn't start)."""
+    api = 'https://api.github.com/repos/%s/releases/latest' % GBE_REPO
+    req = urllib.request.Request(api, headers={'User-Agent': 'hearth-coop', 'Accept': 'application/vnd.github+json'})
+    with ctx.urlopen(req, timeout=30) as r:
+        rel = json.loads(r.read().decode('utf-8', 'replace'))
+    assets = [a for a in rel.get('assets', []) if isinstance(a, dict) and a.get('browser_download_url', '').startswith('https://github.com/')]
+    exact = [a for a in assets if a.get('name') == GBE_ASSETS[kind]]
+    if not exact:
+        word, ext = ('linux', ('.tar.bz2', '.tar.gz', '.tar.xz')) if kind == 'linux' else ('win', ('.7z',))
+        exact = [a for a in assets if word in a.get('name', '').lower() and a.get('name', '').lower().endswith(ext)
+                 and 'debug' not in a.get('name', '').lower()]
+    if not exact:
+        raise Fail("Couldn't find the Steam emulator for %s games in its newest release." % kind.capitalize())
+    return exact[0]['browser_download_url'], rel.get('tag_name', 'latest')
+
+
 def gbe_fetch(ctx, kinds, base=0, span=30):
     """Downloads and unpacks gbe_fork (pinned GBE_TAG) into the cache, for 'linux' and/or 'windows' games."""
     have = gbe_cached(ctx)
@@ -894,17 +913,31 @@ def gbe_fetch(ctx, kinds, base=0, span=30):
             raise Fail('Unpacking the Steam emulator for Windows games needs 7-Zip, which is missing on this system.')
         ctx.progress(base + span * i / max(1, len(todo)), 'Downloading the Steam emulator (%s games)' % kind.capitalize())
         h = hashlib.sha256()
-        try:
-            with ctx.urlopen(urllib.request.Request(url, headers={'User-Agent': 'hearth-coop'}), timeout=60) as r, open(arch, 'wb') as f:
+        tag = GBE_TAG
+
+        def download(u):
+            with ctx.urlopen(urllib.request.Request(u, headers={'User-Agent': 'hearth-coop'}), timeout=60) as r, open(arch, 'wb') as f:
                 while True:
                     chunk = r.read(1 << 16)
                     if not chunk:
                         break
                     h.update(chunk)
                     f.write(chunk)
+        try:
+            try:
+                download(url)
+            except urllib.error.HTTPError as e:
+                if e.code != 404:
+                    raise
+                # The pinned release was deleted: the newest one instead (no pinned checksum for it).
+                url, tag = gbe_latest_url(ctx, kind)
+                h = hashlib.sha256()
+                download(url)
+        except Fail:
+            raise
         except Exception as e:  # noqa: BLE001 - any network problem gets the same plain message
             raise Fail("Couldn't download the Steam emulator (%s). Check your internet connection and try again." % e)
-        want = GBE_SHA256.get(kind)
+        want = GBE_SHA256.get(kind) if tag == GBE_TAG else None
         if want and h.hexdigest() != want:
             os.unlink(arch)
             raise Fail("The Steam emulator download didn't match what Hearth expects, so it wasn't used.")
@@ -925,7 +958,7 @@ def gbe_fetch(ctx, kinds, base=0, span=30):
         except OSError:
             pass
         with open(os.path.join(dest, '.done'), 'w') as f:
-            json.dump({'tag': GBE_TAG, 'sha256': h.hexdigest(), 'at': int(ctx.now())}, f)
+            json.dump({'tag': tag, 'sha256': h.hexdigest(), 'at': int(ctx.now())}, f)
     return gbe_cached(ctx)
 
 

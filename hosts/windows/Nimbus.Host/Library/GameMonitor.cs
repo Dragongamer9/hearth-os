@@ -63,10 +63,33 @@ public sealed class GameMonitor : IDisposable
     }
 
     /// <summary>Quick Resume: watches a game that's already running again (it was put aside), counting from now.</summary>
-    public void Resume(string id, string[] dirs)
+    public void Resume(string id, string[] dirs) => Adopt(id, dirs, DateTime.UtcNow);
+
+    /// <summary>Watches a game that's already running, started at <paramref name="startedUtc"/> (after Ember
+    /// restarted while it played, or back from Quick Resume).</summary>
+    public void Adopt(string id, string[] dirs, DateTime startedUtc)
     {
-        lock (_lock) { _id = id; _dirs = dirs; _launchedAt = DateTime.UtcNow; _startedAt = DateTime.UtcNow; _misses = 0; }
+        lock (_lock) { _id = id; _dirs = dirs; _launchedAt = DateTime.UtcNow; _startedAt = startedUtc; _misses = 0; }
         _timer.Change(PollEvery, PollEvery);
+    }
+
+    /// <summary>The running game's folders (empty when nothing runs).</summary>
+    public string[] RunningDirs { get { lock (_lock) return _startedAt is null ? Array.Empty<string>() : _dirs; } }
+
+    /// <summary>Is this process one of the game's (its exe is under one of the folders)?</summary>
+    public static bool IsUnder(int pid, string[] dirs)
+    {
+        if (dirs.Length == 0 || pid <= 4) return false;
+        var path = ImagePath(pid);
+        return path is not null && dirs.Any(d => path.StartsWith(d, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>The exe file names of a game's processes (for spotting anti-cheat before freezing it).</summary>
+    public static List<string> ProcessNames(string[] dirs)
+    {
+        var l = new List<string>();
+        foreach (var p in MatchingProcesses(dirs)) { try { l.Add(Path.GetFileName(ImagePath(p.Id) ?? "")); } catch { } p.Dispose(); }
+        return l;
     }
 
     private void Poll()
@@ -134,16 +157,20 @@ public sealed class GameMonitor : IDisposable
     [DllImport("ntdll.dll")] private static extern int NtSuspendProcess(IntPtr h);
     [DllImport("ntdll.dll")] private static extern int NtResumeProcess(IntPtr h);
     /// <summary>Freezes (or unfreezes) every process of the game. Returns how many it could.</summary>
-    public static int Suspend(string[] dirs, bool freeze)
+    public static int Suspend(string[] dirs, bool freeze) => SuspendAll(dirs, freeze).Done;
+
+    /// <summary>Freezes (or unfreezes) every process of the game: (how many it could, how many it couldn't: a
+    /// process running as administrator, or one protected by anti-cheat, can't be opened or refuses).</summary>
+    public static (int Done, int Failed) SuspendAll(string[] dirs, bool freeze)
     {
-        int n = 0;
+        int n = 0, failed = 0;
         foreach (var pid in ProcessIds(dirs))
         {
             var h = OpenProcess(PROCESS_SUSPEND_RESUME, false, pid);
-            if (h == IntPtr.Zero) continue;   // e.g. running as administrator
-            try { if ((freeze ? NtSuspendProcess(h) : NtResumeProcess(h)) == 0) n++; } finally { CloseHandle(h); }
+            if (h == IntPtr.Zero) { failed++; continue; }
+            try { if ((freeze ? NtSuspendProcess(h) : NtResumeProcess(h)) == 0) n++; else failed++; } finally { CloseHandle(h); }
         }
-        return n;
+        return (n, failed);
     }
 
     /// <summary>Closes a game that's frozen: it runs again for a moment so it can close properly.</summary>

@@ -65,13 +65,19 @@ pub mod epic {
             let tok = u["access_token"].as_str().unwrap_or("");
             http::get(&format!("https://friends-public-service-prod.ol.epicgames.com/friends/api/v1/{acct}/summary"), &[("Authorization", &format!("bearer {tok}"))])
         };
+        if super::expiry::is_expired("epic") { return Err(super::expiry::message("epic")); }
         let mut u = read_json(&config().join("user.json"));
         let mut r = call(&u)?;
         if r.status == 401 {
-            // An expired sign-in: legendary renews it on any online command.
-            let _ = tools::run(&tools::LEGENDARY, &["status"], &env(), None, None, Some(std::time::Duration::from_secs(60)));
+            // An old token: legendary renews it on any online command.
+            let b = before();
+            if let Ok(o) = tools::run(&tools::LEGENDARY, &["status"], &env(), None, None, Some(std::time::Duration::from_secs(60))) {
+                if check(&o, &b) { return Err(super::expiry::message("epic")); }
+            }
             u = read_json(&config().join("user.json"));
             r = call(&u)?;
+            // Still refused with a freshly renewed token: Epic doesn't accept this sign-in anymore.
+            if r.status == 401 && b.0 { super::expiry::mark("epic", b.1); return Err(super::expiry::message("epic")); }
         }
         if !r.ok() { return Err(format!("Epic didn't share your friends ({})", r.status)); }
         let ids: Vec<String> = r.json()["friends"].as_array().cloned().unwrap_or_default().iter().filter_map(|f| f["accountId"].as_str().map(str::to_string)).collect();
@@ -87,6 +93,16 @@ pub mod epic {
         }
         Ok(ids.iter().map(|id| json!({"id": id, "platform": "epic", "name": names.get(id).cloned().unwrap_or_else(|| "Epic friend".into()),
             "state": "unknown", "canMessage": false, "canJoin": false})).collect())
+    }
+
+    /// Who is signed in before an online legendary command: (signed in, name). legendary deletes user.json when
+    /// Epic refuses the saved sign-in, so the name is read first.
+    fn before() -> (bool, Option<String>) { (signed_in(), display_name()) }
+    /// After an online legendary command: marks the sign-in expired when Epic refused it (see expiry).
+    fn check(r: &Output, (had, name): &(bool, Option<String>)) -> bool {
+        let refused = *had && super::expiry::legendary_refused(&format!("{}\n{}", r.err, r.out), !signed_in());
+        if refused { super::expiry::mark("epic", name.clone()); }
+        refused
     }
 
     fn redirect() -> String { format!("https://www.epicgames.com/id/api/redirect?clientId={CLIENT_ID}&responseType=code") }
@@ -112,7 +128,9 @@ pub mod epic {
     }
     /// Your Epic library, with art.
     pub fn refresh_owned() -> Result<Owned, String> {
+        let b = before();
         let r = tools::run(&tools::LEGENDARY, &["list", "--json"], &env(), None, None, Some(std::time::Duration::from_secs(240)))?;
+        if check(&r, &b) { return Err(super::expiry::message("epic")); }
         let list = json_in(&r.out, '[').filter(|_| r.code == 0).ok_or_else(|| format!("Couldn't get your Epic library: {}", tools::problem(&r)))?;
         let mut o = Owned { fetched: crate::library::now_ms(), games: vec![] };
         for g in list.as_array().cloned().unwrap_or_default() {
@@ -154,9 +172,13 @@ pub mod epic {
         let base = root.join("Epic");
         std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
         let j = job.clone();
+        let b = before();
         let r = tools::run(&tools::LEGENDARY, &["-y", "install", app, "--base-path", &base.to_string_lossy(), "--skip-sdl", "--skip-dlcs", "--platform", "Windows"], &env(),
             Some(Arc::new(move |l: &str| j.lock().unwrap().read_line(l, false))), Some(cancel), None)?;
-        if !installed(&Owned::default()).iter().any(|g| g.id == format!("epic:{app}")) { return Err(format!("Epic install failed: {}", tools::problem(&r))); }
+        if !installed(&Owned::default()).iter().any(|g| g.id == format!("epic:{app}")) {
+            if check(&r, &b) { return Err(super::expiry::message("epic")); }
+            return Err(format!("Epic install failed: {}", tools::problem(&r)));
+        }
         Ok(())
     }
     /// Registers a game copied from another drive (Settings › Import games).
@@ -174,15 +196,20 @@ pub mod epic {
     /// Asks legendary how to start the game (with a fresh Epic token) and starts it with Proton.
     pub fn launch(app: &str, opts: &Value, game_id: u32) -> Result<u32, String> {
         let t = Some(std::time::Duration::from_secs(60));
+        let b = before();
         let mut r: Output = tools::run(&tools::LEGENDARY, &["launch", app, "--json", "--skip-version-check"], &env(), None, None, t)?;
         let mut p = json_in(&r.out, '{');
+        let mut expired = false;
         if p.is_none() {
-            // Offline, or Epic is down: games that allow it start without the online token.
+            // An expired sign-in is noted (Library › Stores offers Sign in again); the game still tries to start.
+            expired = check(&r, &b);
+            // Offline, Epic is down, or the sign-in expired: games that allow it start without the online token.
             r = tools::run(&tools::LEGENDARY, &["launch", app, "--json", "--offline", "--skip-version-check"], &env(), None, None, t)?;
             p = json_in(&r.out, '{');
         }
-        let p = p.ok_or_else(|| format!("Couldn't start the game: {}", tools::problem(&r)))?;
-        if opts["cloudSaves"] != false { let _ = sync_saves(app, "down"); }
+        let p = p.ok_or_else(|| if expired || super::expiry::is_expired("epic") { format!("{} This game needs Epic online to start.", super::expiry::message("epic")) }
+            else { format!("Couldn't start the game: {}", tools::problem(&r)) })?;
+        if opts["cloudSaves"] != false && !super::expiry::is_expired("epic") { let _ = sync_saves(app, "down"); }
         let dir = p["game_directory"].as_str().unwrap_or("");
         let exe = Path::new(dir).join(p["game_executable"].as_str().unwrap_or(""));
         if !exe.is_file() { return Err(format!("The game's program is missing ({}). Try reinstalling it.", exe.display())); }
@@ -202,7 +229,9 @@ pub mod epic {
         let Some(save) = super::save_path(&tpl, &prefix_of("epic", app), inst["install_path"].as_str(), account.as_deref()) else { return Ok(false) };
         std::fs::create_dir_all(&save).map_err(|e| e.to_string())?;
         let flag = if direction == "down" { "--skip-upload" } else { "--skip-download" };
+        let b = before();
         let r = tools::run(&tools::LEGENDARY, &["-y", "sync-saves", app, "--save-path", &save.to_string_lossy(), flag], &env(), None, None, Some(std::time::Duration::from_secs(120)))?;
+        if r.code != 0 && check(&r, &b) { return Err(super::expiry::message("epic")); }
         crate::bridge::log(&format!("epic saves: {app} {direction} {}", if r.code == 0 { "ok".into() } else { tools::problem(&r) }));
         Ok(r.code == 0)
     }
@@ -271,19 +300,47 @@ pub mod gog {
     }
     pub fn sign_out() { let _ = std::fs::remove_file(auth()); let _ = std::fs::remove_file(dir().join("profile.json")); Owned::remove(CACHE); }
     /// A valid access token, refreshed when it has expired.
-    pub fn token() -> Result<String, String> {
-        let all = read_json(&auth());
-        let t = &all[CLIENT_ID];
-        if !t.is_object() { return Err("Sign in to GOG first.".into()); }
-        let now = crate::library::now_ms() as f64 / 1000.0;
-        if now < t["loginTime"].as_f64().unwrap_or(0.0) + t["expires_in"].as_f64().unwrap_or(0.0) - 120.0 { return Ok(t["access_token"].as_str().unwrap_or("").to_string()); }
-        let url = format!("https://auth.gog.com/token?client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}&grant_type=refresh_token&refresh_token={}", http::urlencode(t["refresh_token"].as_str().unwrap_or("")));
-        let body = http::get_json(&url, &[]).map_err(|_| "Your GOG sign-in expired. Sign in again under Library › Stores.".to_string())?;
-        let tok = body["access_token"].as_str().unwrap_or("").to_string();
-        save_token(body)?;
-        Ok(tok)
+    pub fn token() -> Result<String, String> { token_with(false) }
+    /// `renew`: refresh even if the saved token should still be good (GOG answered 401 to it).
+    /// One refresh at a time: GOG replaces the refresh token, so two at once would make the second look refused.
+    fn token_with(renew: bool) -> Result<String, String> {
+        static ONE: Mutex<()> = Mutex::new(());
+        let _one = ONE.lock().unwrap_or_else(|p| p.into_inner());
+        let mut used = String::new();
+        for _ in 0..2 {
+            let all = read_json(&auth());
+            let t = &all[CLIENT_ID];
+            if !t.is_object() { return Err("Sign in to GOG first.".into()); }
+            let refresh = t["refresh_token"].as_str().unwrap_or("").to_string();
+            let now = crate::library::now_ms() as f64 / 1000.0;
+            let fresh = now < t["loginTime"].as_f64().unwrap_or(0.0) + t["expires_in"].as_f64().unwrap_or(0.0) - 120.0;
+            // (Renewing: unless someone else (gogdl, the other Hearth) already renewed it since the 401.)
+            if fresh && (!renew || (!used.is_empty() && refresh != used)) { return Ok(t["access_token"].as_str().unwrap_or("").to_string()); }
+            if !used.is_empty() && refresh == used { break; }
+            let url = format!("https://auth.gog.com/token?client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}&grant_type=refresh_token&refresh_token={}", http::urlencode(&refresh));
+            let r = http::get(&url, &[]).map_err(|e| format!("Couldn't reach GOG to renew your sign-in ({e}). Check the connection and try again."))?;
+            let body = r.json();
+            if r.ok() && body["access_token"].is_string() {
+                let tok = body["access_token"].as_str().unwrap_or("").to_string();
+                save_token(body)?;
+                super::expiry::clear("gog");
+                return Ok(tok);
+            }
+            if !super::expiry::token_refused(r.status, &r.text) { return Err(format!("GOG didn't renew your sign-in just now (HTTP {}). Try again in a little while.", r.status)); }
+            // Refused. If gogdl (or the other Hearth) renewed it in the meantime with the same token, use theirs.
+            used = refresh;
+        }
+        super::expiry::mark("gog", profile().0);
+        Err(super::expiry::message("gog"))
     }
-    fn api(url: &str) -> Result<Value, String> { let t = token()?; http::get_json(url, &[("Authorization", &format!("Bearer {t}"))]) }
+    fn api(url: &str) -> Result<Value, String> {
+        let get = |t: &str| http::get(url, &[("Authorization", &format!("Bearer {t}"))]);
+        let mut r = get(&token()?)?;
+        // GOG no longer takes a token that hasn't run out: renew it once (a refused renewal marks it expired).
+        if r.status == 401 { r = get(&token_with(true)?)?; }
+        if !r.ok() { return Err(format!("HTTP {}", r.status)); }
+        Ok(r.json())
+    }
     pub fn load_profile() {
         if let Ok(u) = api("https://embed.gog.com/userData.json") {
             let av = &u["avatars"];
@@ -354,7 +411,7 @@ pub mod gog {
     pub fn launch(g: &crate::library::Game, opts: &Value, game_id: u32) -> Result<u32, String> {
         let id = g.id.trim_start_matches("gog:");
         // Cloud saves come down first (games with GOG cloud saves).
-        if opts["cloudSaves"] != false {
+        if opts["cloudSaves"] != false && !super::expiry::is_expired("gog") {
             if let Some(dir) = g.install_path.as_ref() { if let Err(e) = sync_saves(id, dir, "down") { crate::bridge::log(&format!("gog saves: {e}")); } }
         }
         let args = crate::manual::split_args(&g.args);
@@ -466,14 +523,45 @@ pub mod xbox {
             done: |u| if u.to_lowercase().starts_with(REDIRECT) { Some(http::query_param(u, "code").unwrap_or_default()) } else { None },
             script: None }
     }
-    fn msa_token(form: &[(&str, &str)]) -> Result<(String, String), String> {
+    /// Microsoft's token endpoint: (access, refresh), or (refused, what to say). `refused`: Microsoft turned the
+    /// code or refresh token down (see expiry::token_refused); otherwise it's a passing problem.
+    fn msa_token(form: &[(&str, &str)]) -> Result<(String, String), (bool, String)> {
         let mut body: Vec<String> = form.iter().map(|(k, v)| format!("{k}={}", http::urlencode(v))).collect();
         for (k, v) in [("client_id", CLIENT_ID), ("redirect_uri", REDIRECT), ("scope", SCOPE)] { body.push(format!("{k}={}", http::urlencode(v))); }
-        let r = http::post("https://login.live.com/oauth20_token.srf", &body.join("&"), &[("Content-Type", "application/x-www-form-urlencoded")])?;
+        let r = http::post("https://login.live.com/oauth20_token.srf", &body.join("&"), &[("Content-Type", "application/x-www-form-urlencoded")])
+            .map_err(|e| (false, format!("Couldn't reach Microsoft to sign in ({e}). Check the connection and try again.")))?;
         let j = r.json();
         match (j["access_token"].as_str(), j["refresh_token"].as_str()) {
             (Some(a), Some(rf)) if r.ok() => Ok((a.into(), rf.into())),
-            _ => Err(format!("Your Microsoft sign-in expired. Sign in again under Library › Stores. {}", j["error_description"].as_str().unwrap_or(""))),
+            _ if super::expiry::token_refused(r.status, &r.text) => Err((true, j["error_description"].as_str().unwrap_or("").to_string())),
+            _ => Err((false, format!("Microsoft didn't answer the sign-in just now (HTTP {}). Try again in a little while.", r.status))),
+        }
+    }
+    /// A fresh Microsoft account token from the saved sign-in, with the new refresh token saved (Microsoft
+    /// replaces it each time). One at a time, so two renewals at once can't make the second look refused.
+    /// A refusal marks the sign-in expired. Returns (access token, the saved sign-in).
+    fn renew() -> Result<(String, Value), String> {
+        static ONE: Mutex<()> = Mutex::new(());
+        let _one = ONE.lock().unwrap_or_else(|p| p.into_inner());
+        let mut tried = String::new();
+        loop {
+            let mut saved = saved().ok_or("Sign in to Xbox first.")?;
+            let rt = saved["refreshToken"].as_str().unwrap_or("").to_string();
+            // Refused, and nobody (the other Hearth) has saved a newer one since: expired.
+            if rt == tried {
+                super::expiry::mark("xbox", saved["gamertag"].as_str().map(str::to_string));
+                return Err(super::expiry::message("xbox"));
+            }
+            match msa_token(&[("grant_type", "refresh_token"), ("refresh_token", &rt)]) {
+                Ok((access, refresh)) => {
+                    saved["refreshToken"] = json!(refresh);
+                    persist(&saved)?;
+                    super::expiry::clear("xbox");
+                    return Ok((access, saved));
+                }
+                Err((true, why)) => { crate::bridge::log(&format!("xbox: Microsoft refused the saved sign-in: {why}")); tried = rt; }
+                Err((false, e)) => return Err(e),
+            }
         }
     }
     /// Microsoft account token → Xbox user token → Xbox Live (XSTS): (uhs, token, xuid, gamertag)
@@ -512,7 +600,8 @@ pub mod xbox {
         }
     }
     pub fn finish_sign_in(code: &str) -> Result<(), String> {
-        let (access, refresh) = msa_token(&[("grant_type", "authorization_code"), ("code", code)])?;
+        let (access, refresh) = msa_token(&[("grant_type", "authorization_code"), ("code", code)])
+            .map_err(|(refused, e)| if refused { "Microsoft didn't accept the sign-in. Try again.".to_string() } else { e })?;
         let auth = xsts(&access)?;
         let mut saved = json!({"refreshToken": refresh, "xuid": auth.2, "gamertag": auth.3});
         profile(&mut saved, &auth);
@@ -525,10 +614,9 @@ pub mod xbox {
         let a = A.get_or_init(Default::default);
         let now = crate::library::now_ms();
         if let Some((at, auth)) = a.lock().unwrap().clone() { if now.saturating_sub(at) < 50 * 60_000 { return Ok(auth); } }
-        let mut saved = saved().ok_or("Sign in to Xbox first.")?;
-        let (access, refresh) = msa_token(&[("grant_type", "refresh_token"), ("refresh_token", saved["refreshToken"].as_str().unwrap_or(""))])?;
-        saved["refreshToken"] = json!(refresh);
-        persist(&saved)?;
+        // The friends list asks often: with an expired sign-in it waits for Sign in again (or a working refresh).
+        if super::expiry::is_expired("xbox") { return Err(super::expiry::message("xbox")); }
+        let (access, _) = renew()?;
         let auth = xsts(&access)?;
         *a.lock().unwrap() = Some((now, auth.clone()));
         Ok(auth)
@@ -551,12 +639,9 @@ pub mod xbox {
     }
     /// Games you've played on Xbox (title history), with Xbox art.
     pub fn refresh_owned() -> Result<Owned, String> {
-        let mut saved = saved().ok_or("Sign in to Xbox first.")?;
-        let (access, refresh) = msa_token(&[("grant_type", "refresh_token"), ("refresh_token", saved["refreshToken"].as_str().unwrap_or(""))])?;
-        saved["refreshToken"] = json!(refresh);   // Microsoft rotates refresh tokens
+        let (access, mut saved) = renew()?;   // Microsoft rotates refresh tokens
         let auth = xsts(&access)?;
-        if saved["gamerpic"].is_null() { profile(&mut saved, &auth); }
-        persist(&saved)?;
+        if saved["gamerpic"].is_null() { profile(&mut saved, &auth); persist(&saved)?; }
         let j = get(&format!("https://titlehub.xboxlive.com/users/xuid({})/titles/titlehistory/decoration/image,detail?maxItems=1000", auth.2), "2", &auth)?;
         let mut o = Owned { fetched: crate::library::now_ms(), games: vec![] };
         for t in j["titles"].as_array().cloned().unwrap_or_default() {
@@ -797,6 +882,7 @@ pub fn finish_sign_in(s: &str, code: &str) -> Result<(), String> {
 }
 pub fn sign_out(s: &str) -> Result<(), String> {
     match s { "epic" => epic::sign_out(), "gog" => gog::sign_out(), "xbox" => xbox::sign_out(), _ => return Err("Unknown store".into()) }
+    expiry::clear(s);
     crate::bridge::log(&format!("accounts: signed out of {s}"));
     Ok(())
 }
@@ -815,7 +901,9 @@ pub fn refresh(s: &'static str, acc: Arc<Mutex<AccState>>, reply: Value) {
         let mut a = acc.lock().unwrap();
         a.busy.remove(s);
         match r {
-            Ok(o) => { a.errors.remove(s); crate::bridge::log(&format!("accounts: {s} list has {} games", o.games.len())); }
+            Ok(o) => { a.errors.remove(s); expiry::clear(s); crate::bridge::log(&format!("accounts: {s} list has {} games", o.games.len())); }
+            // An expired sign-in shows as that (with Sign in again), not as an error.
+            Err(e) if expiry::is_expired(s) => { crate::bridge::log(&format!("accounts: {s} refresh FAILED (sign-in expired) {e}")); a.errors.remove(s); }
             Err(e) => { crate::bridge::log(&format!("accounts: {s} refresh FAILED {e}")); a.errors.insert(s.to_string(), e); }
         }
         drop(a);
@@ -826,7 +914,117 @@ pub fn refresh(s: &'static str, acc: Arc<Mutex<AccState>>, reply: Value) {
 /// At startup: lists older than 12 hours are fetched again.
 pub fn refresh_stale(acc: &Arc<Mutex<AccState>>) {
     for s in STORES {
-        if signed_in(s) && crate::library::now_ms().saturating_sub(Owned::load(cache_of(s)).fetched) > 12 * 3600 * 1000 { refresh(s, acc.clone(), Value::Null); }
+        if signed_in(s) && !expiry::is_expired(s) && crate::library::now_ms().saturating_sub(Owned::load(cache_of(s)).fetched) > 12 * 3600 * 1000 { refresh(s, acc.clone(), Value::Null); }
+    }
+}
+
+// ------------------------------------------------------------------ expired sign-ins
+
+/// A store sign-in that stopped working: the store refused the saved sign-in (its refresh token was revoked or
+/// ran out), as opposed to a passing problem (no connection, the store down, slow or rate-limiting). Library ›
+/// Stores shows "Sign-in expired" with Sign in again, and the page hears `accounts.expired` once per expiry.
+/// Kept in accounts/expired.json (per profile, like the sign-ins themselves) until the next sign-in, a working
+/// refresh, or signing out. The rule that matters most: a network outage never marks a sign-in as expired.
+pub mod expiry {
+    use super::*;
+
+    /// OAuth `error` codes that mean the saved sign-in is no good anymore (RFC 6749 §5.2, and Microsoft's).
+    const DEAD: [&str; 6] = ["invalid_grant", "invalid_token", "unauthorized_client", "interaction_required", "login_required", "consent_required"];
+
+    fn oauth_error(body: &str) -> Option<String> {
+        serde_json::from_str::<Value>(body).ok().and_then(|j| j["error"].as_str().map(|e| e.trim().to_lowercase()))
+    }
+
+    /// A token endpoint's answer to renewing a sign-in (auth.gog.com/token, login.live.com/oauth20_token.srf).
+    /// Only a clear refusal counts: 400/401/403 naming one of the codes above, or a bare 401. No answer (status 0),
+    /// timeouts, rate limits, server errors, and a 400/403 without such a code (a captive portal or a proxy can
+    /// send those) are temporary. So is a 401 that names some other code ("temporarily_unavailable").
+    pub fn token_refused(status: u16, body: &str) -> bool {
+        match (status, oauth_error(body)) {
+            (400 | 401 | 403, Some(e)) => DEAD.contains(&e.as_str()),
+            (401, None) => true,
+            _ => false,
+        }
+    }
+
+    /// legendary's output after an online command. legendary says so when Epic refused the saved sign-in
+    /// ("Stored credentials are no longer valid! Please login again.") and only then deletes user.json; "Login
+    /// failed, cannot continue!" alone is also what it prints without a connection, so that counts only when
+    /// user.json went away during the command. Any sign of a network problem wins.
+    pub fn legendary_refused(out: &str, user_file_gone: bool) -> bool {
+        let t = out.to_lowercase();
+        const NETWORK: [&str; 10] = ["http request for login failed", "connectionerror", "connection error", "connection aborted", "timed out", "timeout",
+            "max retries exceeded", "name or service not known", "temporary failure in name resolution", "please try again later"];
+        if NETWORK.iter().any(|n| t.contains(n)) { return false; }
+        const DEAD_EPIC: [&str; 6] = ["stored credentials are no longer valid", "no saved credentials", "please login again", "please log in again",
+            "invalid_refresh_token", "errors.com.epicgames.account.auth_token"];
+        DEAD_EPIC.iter().any(|d| t.contains(d)) || (user_file_gone && t.contains("login failed"))
+    }
+
+    pub fn label(store: &str) -> &'static str { match store { "epic" => "Epic Games", "gog" => "GOG", "xbox" => "Microsoft (Xbox)", _ => "store" } }
+    /// What a call that failed because of it says.
+    pub fn message(store: &str) -> String { format!("Your {} sign-in expired. Sign in again under Library › Stores.", label(store)) }
+
+    fn file() -> PathBuf { data().join("accounts/expired.json") }
+    static LOCK: Mutex<()> = Mutex::new(());
+    fn load() -> Value { let v = read_json(&file()); if v.is_object() { v } else { json!({}) } }
+    fn save(v: &Value) { let _ = crate::paths::write_atomic(&file(), v.to_string().as_bytes()); }
+
+    /// The record for a store ({at, name}), when its sign-in has expired.
+    pub fn get(store: &str) -> Option<Value> { let e = load()["expired"][store].clone(); if e.is_object() { Some(e) } else { None } }
+    pub fn is_expired(store: &str) -> bool { get(store).is_some() }
+    /// The account name last seen for a store (for "Sign in again as <name>" after legendary deleted user.json).
+    pub fn known_name(store: &str) -> Option<String> { load()["names"][store].as_str().map(str::to_string) }
+
+    /// Marks it in `v` (the file's contents). None when it was already marked: one notice per expiry.
+    pub fn apply_mark(v: &mut Value, store: &str, name: Option<String>, now: u64) -> Option<Value> {
+        if v["expired"][store].is_object() { return None; }
+        let name = name.or_else(|| v["names"][store].as_str().map(str::to_string));
+        if !v["expired"].is_object() { v["expired"] = json!({}); }
+        let rec = json!({"at": now, "name": name});
+        v["expired"][store] = rec.clone();
+        Some(rec)
+    }
+    /// Clears it in `v`. Whether there was anything to clear.
+    pub fn apply_clear(v: &mut Value, store: &str) -> bool {
+        v.get_mut("expired").and_then(|e| e.as_object_mut()).map(|e| e.remove(store).is_some()).unwrap_or(false)
+    }
+
+    /// The store refused the saved sign-in. The first time (per expiry) it's logged and the page hears
+    /// `accounts.expired` {store, name, at}, then `accounts.changed`. Returns whether it was new.
+    pub fn mark(store: &str, name: Option<String>) -> bool {
+        let rec = {
+            let _one = LOCK.lock().unwrap_or_else(|p| p.into_inner());
+            let mut v = load();
+            let Some(rec) = apply_mark(&mut v, store, name, crate::library::now_ms()) else { return false };
+            save(&v);
+            rec
+        };
+        crate::bridge::log(&format!("accounts: {store} sign-in EXPIRED (the store refused the saved sign-in)"));
+        notify(json!({"type": "event", "name": "accounts.expired", "data": {"store": store, "name": rec["name"], "at": rec["at"]}}));
+        notify(json!({"type": "event", "name": "accounts.changed", "data": {}}));
+        true
+    }
+    /// Signed in again, signed out, or the store answered with the saved sign-in after all.
+    pub fn clear(store: &str) -> bool {
+        let _one = LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let mut v = load();
+        if !apply_clear(&mut v, store) { return false; }
+        save(&v);
+        drop(_one);
+        crate::bridge::log(&format!("accounts: {store} sign-in works again"));
+        notify(json!({"type": "event", "name": "accounts.changed", "data": {}}));
+        true
+    }
+    /// Remembers the account's name (written only when it changes).
+    pub fn remember_name(store: &str, name: &str) {
+        if name.is_empty() { return; }
+        let _one = LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let mut v = load();
+        if v["names"][store].as_str() == Some(name) { return; }
+        if !v["names"].is_object() { v["names"] = json!({}); }
+        v["names"][store] = json!(name);
+        save(&v);
     }
 }
 
@@ -879,5 +1077,56 @@ mod tests {
         assert_eq!(gog::resolve("<?INSTALL?>/saves", p, i).unwrap(), PathBuf::from("/games/Witcher/saves"));
         assert_eq!(gog::resolve("%Documents%\\The Witcher 3\\gamesaves", p, i).unwrap(), PathBuf::from("/p/gog-1/drive_c/users/steamuser/Documents/The Witcher 3/gamesaves"));
         assert!(gog::resolve("%Mystery%/x", p, i).is_none());
+    }
+    #[test]
+    fn expired_token_replies() {
+        // The store refused the saved sign-in: expired.
+        assert!(expiry::token_refused(400, r#"{"error":"invalid_grant","error_description":"The refresh token is invalid."}"#));
+        assert!(expiry::token_refused(400, r#"{"error":"invalid_grant","error_description":"AADSTS70008: The refresh token has expired due to inactivity."}"#));
+        assert!(expiry::token_refused(401, r#"{"error":"invalid_token"}"#));
+        assert!(expiry::token_refused(400, r#"{"error":"interaction_required"}"#));
+        assert!(expiry::token_refused(403, r#"{"error":"unauthorized_client"}"#));
+        assert!(expiry::token_refused(401, ""));
+        assert!(expiry::token_refused(401, "Unauthorized"));
+        // Passing problems: never expired.
+        assert!(!expiry::token_refused(0, ""));                                     // no connection (curl got nothing)
+        assert!(!expiry::token_refused(500, r#"{"error":"invalid_grant"}"#));       // the store is broken, not the sign-in
+        assert!(!expiry::token_refused(502, "<html>Bad Gateway</html>"));
+        assert!(!expiry::token_refused(503, ""));
+        assert!(!expiry::token_refused(504, ""));
+        assert!(!expiry::token_refused(429, r#"{"error":"too_many_requests"}"#));
+        assert!(!expiry::token_refused(408, ""));
+        assert!(!expiry::token_refused(511, "<html>Sign in to the Wi-Fi</html>"));  // captive portal
+        assert!(!expiry::token_refused(403, "<html>Access denied</html>"));         // a proxy or firewall page
+        assert!(!expiry::token_refused(400, "<html>Bad request</html>"));
+        assert!(!expiry::token_refused(400, r#"{"error":"invalid_request"}"#));
+        assert!(!expiry::token_refused(401, r#"{"error":"temporarily_unavailable"}"#));
+        assert!(!expiry::token_refused(200, r#"{"access_token":"a","refresh_token":"b"}"#));
+    }
+    #[test]
+    fn expired_legendary_output() {
+        assert!(expiry::legendary_refused("[Core] ERROR: Stored credentials are no longer valid! Please login again.\n[cli] ERROR: Login failed, cannot continue!", false));
+        assert!(expiry::legendary_refused("[Core] ERROR: errors.com.epicgames.account.auth_token.invalid_refresh_token", false));
+        // legendary deleted user.json during the command: it only does that when Epic refused the sign-in.
+        assert!(expiry::legendary_refused("[cli] ERROR: Login failed, cannot continue!", true));
+        // Without a connection: never expired, even if user.json is missing.
+        assert!(!expiry::legendary_refused("[cli] ERROR: Login failed, cannot continue!", false));
+        assert!(!expiry::legendary_refused("[Core] ERROR: HTTP request for login failed: ConnectionError(MaxRetryError(\"HTTPSConnectionPool(host='account-public-service-prod03.ol.epicgames.com', port=443): Max retries exceeded\")), please try again later.\n[cli] ERROR: Login failed, cannot continue!", true));
+        assert!(!expiry::legendary_refused("requests.exceptions.ReadTimeout: HTTPSConnectionPool(...): Read timed out. (read timeout=10)", false));
+        assert!(!expiry::legendary_refused("[cli] INFO: Game is up to date", false));
+        assert!(!expiry::legendary_refused("", false));
+    }
+    #[test]
+    fn expiry_is_noticed_once() {
+        let mut v = json!({"names": {"gog": "geralt"}});
+        let rec = expiry::apply_mark(&mut v, "gog", None, 1000).expect("first time");
+        assert_eq!(rec, json!({"at": 1000, "name": "geralt"}));               // the remembered name
+        assert!(expiry::apply_mark(&mut v, "gog", Some("x".into()), 2000).is_none());   // no second notice
+        assert_eq!(v["expired"]["gog"]["at"], 1000);
+        assert_eq!(expiry::apply_mark(&mut v, "xbox", Some("Tag".into()), 3000).unwrap()["name"], "Tag");
+        assert!(expiry::apply_clear(&mut v, "gog"));
+        assert!(!expiry::apply_clear(&mut v, "gog"));
+        assert!(expiry::apply_mark(&mut v, "gog", None, 4000).is_some());      // a later expiry is noticed again
+        assert!(!expiry::apply_clear(&mut json!({}), "epic"));
     }
 }

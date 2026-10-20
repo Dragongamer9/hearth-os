@@ -50,7 +50,7 @@ sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nim
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh
 find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
-chmod 755 /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper /usr/bin/hearth-browser
+chmod 755 /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper /usr/bin/hearth-browser /usr/bin/hearth-send-logs
 chmod 755 /usr/libexec/nimbus/*
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 # Which Hearth this is (the Bazzite build has /usr/share/ublue-os/image-info.json for the same; the other editions
@@ -132,6 +132,32 @@ if [ "$(uname -m)" = x86_64 ] && dnf5 -y install "$BEACON_URL/beacon.x86_64.rpm"
 else
   echo "warning: couldn't install Beacon from $BEACON_URL (no release yet?); Hearth works without it"
 fi
+
+# ------------------------------------------------------------------ Sunshine (Multi-seat's streamed players, Remote play)
+# Settings › Multi-seat can stream an extra player's own Game Mode to Moonlight on a TV, phone, tablet or laptop (one
+# Sunshine per streamed player, see docs/MULTI-SEAT.md); Settings › Remote play uses it too. LizardByte's COPR
+# (the package is "Sunshine"), else the release's Fedora RPM. Optional: without it Hearth says streaming isn't available.
+if ! rpm -q Sunshine >/dev/null 2>&1 && ! rpm -q sunshine >/dev/null 2>&1; then
+  if dnf5 -y copr enable lizardbyte/stable && dnf5 -y install Sunshine; then
+    echo "Sunshine installed (LizardByte COPR)"
+  elif dnf5 -y copr enable lizardbyte/beta && dnf5 -y install Sunshine; then
+    echo "Sunshine installed (LizardByte beta COPR)"
+  else
+    SUNSHINE_RPM="$(curl -fsSL --retry 3 https://api.github.com/repos/LizardByte/Sunshine/releases/latest 2>/dev/null \
+      | python3 -c 'import json, re, sys; print(next((a["browser_download_url"] for a in json.load(sys.stdin).get("assets", []) if re.search(r"\.fc" + sys.argv[1] + r"\.x86_64\.rpm$", a["name"])), ""))' "$FEDORA" 2>/dev/null || true)"
+    if [ "$(uname -m)" = x86_64 ] && [ -n "$SUNSHINE_RPM" ] && dnf5 -y install "$SUNSHINE_RPM"; then
+      echo "Sunshine installed ($SUNSHINE_RPM)"
+    else
+      echo "warning: couldn't install Sunshine; streamed multi-seat players and Remote play show as unavailable"
+    fi
+  fi
+  dnf5 -y copr disable lizardbyte/stable >/dev/null 2>&1 || true
+  dnf5 -y copr disable lizardbyte/beta >/dev/null 2>&1 || true
+fi
+# The streamed players' address as a QR code in Settings (optional), and the udev helper that gives each streamed
+# player their own virtual controllers (copied in with system_files; executable to be sure).
+dnf5 -y install qrencode || echo "warning: qrencode isn't available (Settings shows the address without a QR code)"
+chmod 755 /usr/libexec/nimbus/hearth-seat-input 2>/dev/null || true
 
 # ------------------------------------------------------------------ Handheld Daemon
 # Anatase has it; Hearth's drop-in (hhd.service.d/zz-hearth.conf) turns off its updater and its Game Mode autologin.

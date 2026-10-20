@@ -68,11 +68,15 @@ run_game() {
   # SteamOS Manager sets the power limit and power modes on Bazzite (what Steam's Game Mode uses); it normally
   # starts with Steam's session, so start it for Hearth's too.
   [ -z "$HEARTH_SEAT" ] && { systemctl --user start steamos-manager.service >/dev/null 2>&1 || true; }
-  # Multi-seat (Settings › Multi-seat): with one graphics card and several screens, player 1's Game Mode
-  # shares the screens out (falls back to normal Game Mode by itself, exit code 3); with a card per player,
+  # Multi-seat (Settings › Multi-seat): with one graphics card and several screens, or one screen split into
+  # parts, player 1's Game Mode shares them out (falls back to normal Game Mode by itself, exit code 3; on a split
+  # screen hearth-seats makes player 1's gamescope a window the size of its part); with a card per player,
   # player 1 stays on its own card.
   SEATS=/usr/libexec/nimbus/hearth-seats
   seatargs=""
+  # Fullscreen, except an extra player on part of a split screen (their window is the size of their part).
+  full="-f"
+  [ -n "$HEARTH_SEAT" ] && [ -n "$HEARTH_SEAT_WINDOWED" ] && full=""
   if [ -z "$HEARTH_SEAT" ] && [ -f "$SEATS" ]; then
     if python3 "$SEATS" host-check 2>/dev/null; then
       log "multi-seat: hosting the other players' screens"
@@ -85,7 +89,7 @@ run_game() {
     seatargs="$(python3 "$SEATS" gamescope-args 2>/dev/null)"
   fi
   # shellcheck disable=SC2086
-  gamescope -f $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
+  gamescope $full $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
 }
 
 run_desktop() {

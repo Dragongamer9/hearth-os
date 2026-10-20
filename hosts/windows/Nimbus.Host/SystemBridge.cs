@@ -57,8 +57,15 @@ public sealed class SystemBridge : IDisposable
     public Nimbus.Host.Updates.UpdateService Updater { get; }
     /// <summary>Settings › Switch to Hearth OS.</summary>
     public Nimbus.Host.Switch.SwitchToHearth Switch { get; }
-    /// <summary>Set by the window once the controller bridge is running.</summary>
-    public Input.ControllerBridge? Pad { get; set; }
+    /// <summary>Set by the window once the controller bridge is running (Hearth Input rides on it).</summary>
+    public Input.ControllerBridge? Pad
+    {
+        get => _pad;
+        set { _pad = value; if (value is not null) value.Mapper = _gm.Input; }
+    }
+    private Input.ControllerBridge? _pad;
+    /// <summary>Game Mode's newer parts (bug reports, collections, per-game settings and power, Hearth Input, Beacon).</summary>
+    private readonly GameModeBridge _gm;
     private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 6 * 60 * 60 * 1000 };
     private readonly System.Windows.Forms.Timer _statusDebounce = new() { Interval = 400 };
     private readonly System.Windows.Forms.Timer _batteryPoll = new() { Interval = 30_000 };
@@ -83,6 +90,7 @@ public sealed class SystemBridge : IDisposable
         _bt.ScanDone += () => Event("bt.scanDone", new { });
         _bt.Pin += (pin, confirm) => Event("bt.pin", new { pin, confirm });
         Files = new FileService((n, d) => Event(n, d));
+        _gm = new GameModeBridge(this, ui);
 
         Updater = new Nimbus.Host.Updates.UpdateService(() => Games.AutoUpdateCheck);
         Switch = new Nimbus.Host.Switch.SwitchToHearth((n, d) => Event(n, d), Games);
@@ -112,6 +120,7 @@ public sealed class SystemBridge : IDisposable
             Log($"game exited {g.Id}");
             Event("game.exited", g);
             StopPlayClock();
+            if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(async () => await _gm.PowerRestoreAsync()));
             if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)BringShellToFront);
         };
     }
@@ -162,9 +171,21 @@ public sealed class SystemBridge : IDisposable
     // bridge.log next to the exe: one line per call (method, time, result size or error). No passwords.
     private static readonly object LogLock = new();
     private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "bridge.log");
+    /// <summary>Where bridge.log is (bug reports read it).</summary>
+    public static string LogFile => LogPath;
+    private static int _logWrites;
     public static void Log(string line)
     {
-        try { lock (LogLock) File.AppendAllText(LogPath, $"{DateTime.Now:HH:mm:ss.fff} {line}{Environment.NewLine}"); }
+        try
+        {
+            lock (LogLock)
+            {
+                // Kept to a few MB, like Hearth's: the old one becomes bridge.log.old (checked now and then).
+                if (_logWrites++ % 500 == 0 && File.Exists(LogPath) && new FileInfo(LogPath).Length > 4_000_000)
+                    File.Move(LogPath, LogPath + ".old", overwrite: true);
+                File.AppendAllText(LogPath, $"{DateTime.Now:HH:mm:ss.fff} {line}{Environment.NewLine}");
+            }
+        }
         catch { /* logging is best effort */ }
     }
     private static string Summarize(object? v) => v switch
@@ -281,7 +302,11 @@ public sealed class SystemBridge : IDisposable
                     host = "Ember (WebView2)",
                     version = typeof(SystemBridge).Assembly.GetName().Version?.ToString(3),
                     session = Program.IsShell,
-                    features = new[] { "desktopMode", "mantel", "quickResume", "profiles", "friends" },
+                    // Game Mode parts Ember has (docs/EMBER-PARITY.md). Not "coop", "seats" (Windows can't split one
+                    // PC between players without third-party tools) or the Linux-only ones (remap through
+                    // InputPlumber, Handheld Daemon, xodus, Nvidia drawing).
+                    features = new[] { "desktopMode", "mantel", "quickResume", "profiles", "friends", "restartApp", "sendLogs", "exportLogs",
+                                       "screenshots", "gameSettings", "hearthInput", "collections", "pause" },
                     user = Environment.UserName,
                     deviceId = CounterDeviceId(),
                 };
@@ -403,10 +428,14 @@ public sealed class SystemBridge : IDisposable
             case "library.remove": await Games.RemoveManualAsync(Req(a, "id")); return null;
             case "game.launch":
             {
-                CheckCanPlay(Req(a, "id"));
-                var tracked = await Games.LaunchAsync(Req(a, "id"));
+                var id = Req(a, "id");
+                CheckCanPlay(id);
+                bool resumed = Games.IsFrozen(id);
+                // Beacon's games: "mod" plays with that mod this time ("@none": without mods).
+                var tracked = await Games.LaunchAsync(id, Str(a, "mod"));
                 Event("quickResume", Games.QuickState());
-                return new { tracked };
+                _ = _gm.PowerFrontAsync(id);   // its own power limit, if it has one (may ask Windows' permission)
+                return new { tracked, resumed };
             }
             // Quick Resume: games put aside stay frozen and carry on where they were
             case "game.quickResume":
@@ -414,9 +443,11 @@ public sealed class SystemBridge : IDisposable
                 await Games.QuickResumeAsync(Req(a, "id"));
                 MinimizeShell();
                 Event("quickResume", Games.QuickState());
+                _ = _gm.PowerFrontAsync(Req(a, "id"));
                 return Games.QuickState();
             case "game.putAside":
                 await Games.PutAsideAsync();
+                _ = _gm.PowerRestoreAsync();
                 if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)BringShellToFront);
                 Event("quickResume", Games.QuickState());
                 return Games.QuickState();
@@ -478,9 +509,25 @@ public sealed class SystemBridge : IDisposable
             case "library.setSteamBackground": await Games.SetSteamBackgroundAsync(Bool(a, "on")); return null;
             case "game.close": return new { ok = await Games.CloseRunningAsync() };
             case "game.cancelInstall": return new { ok = Games.CancelInstall(Req(a, "id")) };
-            case "game.uninstall": await Games.UninstallAsync(Req(a, "id")); return await Games.GetAsync(false);
+            case "game.uninstall":
+            {
+                var id = Req(a, "id");
+                // Steam games: Steam deletes its own files (it asks to confirm in its window, which comes in front).
+                if (id.StartsWith("steam:"))
+                {
+                    var app = id["steam:".Length..];
+                    if (Games.RunningId == id) throw new InvalidOperationException("Exit the game first.");
+                    if (app.Length == 0 || !app.All(char.IsAsciiDigit)) throw new InvalidOperationException("That isn't a Steam game.");
+                    Library.SteamWindows.StopHiding();
+                    Library.SteamWindows.AllowSteamToFocus();
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("steam://uninstall/" + app) { UseShellExecute = true })?.Dispose();
+                    return new { steam = true };
+                }
+                await Games.UninstallAsync(id);
+                return await Games.GetAsync(false);
+            }
 
-            case "accounts.status": return new { accounts = Games.AccountsStatus(), installRoot = Games.Accounts.InstallRoot };
+            case "accounts.status": return new { accounts = Games.AccountsStatus(), installRoot = Games.Accounts.InstallRoot, beacon = await Task.Run(() => Library.Beacon.StatusCard(Games.AllGames.ToList())) };
             case "accounts.signIn":
             {
                 var store = Req(a, "store");
@@ -547,6 +594,13 @@ public sealed class SystemBridge : IDisposable
                     runningId = Games.RunningId,
                     runningSince = since is { } t ? new DateTimeOffset(DateTime.SpecifyKind(t, DateTimeKind.Utc)).ToUnixTimeMilliseconds() : (long?)null,
                     quickResume = Games.QuickState(),
+                    // Quick Access › Performance: Windows' power mode, the power limit (AMD handhelds), and whether the
+                    // game in front keeps its own limit.
+                    powerMode = _power.Mode(),
+                    powerModes = new[] { "efficiency", "balanced", "performance" },
+                    tdp = await Task.Run(_gm.Tdp.Status),
+                    gamePower = _gm.GamePower(),
+                    canFpsLimit = false, canOverlay = false,
                 };
             }
 
@@ -692,7 +746,12 @@ public sealed class SystemBridge : IDisposable
                 _ui.BeginInvoke((MethodInvoker)(() => (_ui as ShellForm)?.ReturnToDesktop()));
                 return null;
 
-            default: throw new NotSupportedException($"Unknown method: {method}");
+            default:
+                // Bug reports, collections, per-game settings and power, Hearth Input, Beacon (GameModeBridge.cs).
+                if (GameModeBridge.Handles(method)) return await _gm.DispatchAsync(method, a);
+                // Mantel's taskbar, desktop, newer Settings pages, clipboard history and Apps (Mantel/DeskBridge.cs).
+                if (Mantel.DeskBridge.Handles(method)) return await Mantel.DeskBridge.DispatchAsync(method, a, Event);
+                throw new NotSupportedException($"Unknown method: {method}");
         }
     }
 

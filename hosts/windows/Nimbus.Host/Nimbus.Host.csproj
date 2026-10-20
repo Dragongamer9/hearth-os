@@ -26,6 +26,11 @@
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.0" />
   </ItemGroup>
 
+  <!-- Hearth Input's shared tables (keys, controls, limits, templates), the same file Hearth OS uses -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\linux\desktop\shell\input-layouts.json" LogicalName="input-layouts.json" />
+  </ItemGroup>
+
   <!-- Copy the web UI next to the exe as wwwroot/ -->
   <ItemGroup>
     <Content Include="..\..\..\ui\**\*.*" LinkBase="wwwroot">

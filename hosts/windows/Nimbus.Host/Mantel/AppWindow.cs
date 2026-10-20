@@ -108,6 +108,13 @@ internal sealed class TasksWindow : AppWindow
     public TasksWindow() : base(Title, "mantel-tasks.html", 1080, 720) { }
 }
 
+/// <summary>Apps (mantel-apps.html): Mantel's app store, backed by winget (Mantel/Winget.cs), like AppStore.qml on Hearth OS.</summary>
+internal sealed class AppsWindow : AppWindow
+{
+    public const string Title = "Apps";
+    public AppsWindow() : base(Title, "mantel-apps.html", 1100, 720) { }
+}
+
 /// <summary>Hearth Files (mantel-files.html). Pictures, videos and apps get their thumbnails or icons from Windows'
 /// shell, served to the page from https://hearth-files.local/thumb?p=&lt;path&gt;&amp;s=&lt;size&gt; (PNG).</summary>
 internal sealed class FilesWindow : AppWindow
@@ -118,7 +125,11 @@ internal sealed class FilesWindow : AppWindow
 
     public FilesWindow() : base(Title, "mantel-files.html", 1180, 760) { }
 
-    protected override void Setup(CoreWebView2Environment env, CoreWebView2 core)
+    protected override void Setup(CoreWebView2Environment env, CoreWebView2 core) => ServeThumbs(env, core);
+
+    /// <summary>Serves https://hearth-files.local/thumb?p=…&amp;s=… (thumbnails, or icons with icon=1) to a page: Hearth
+    /// Files, and full Mantel's desktop icons (shortcuts show their target's icon).</summary>
+    public static void ServeThumbs(CoreWebView2Environment env, CoreWebView2 core)
     {
         core.AddWebResourceRequestedFilter($"https://{ThumbHost}/*", CoreWebView2WebResourceContext.Image);
         core.WebResourceRequested += async (_, e) =>

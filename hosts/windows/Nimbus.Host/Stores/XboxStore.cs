@@ -80,18 +80,26 @@ public sealed class XboxStore
 
     private void Persist() { if (_saved is not null) SecureStore.Save("xbox", JsonSerializer.Serialize(_saved)); }
 
-    private async Task<(string Access, string Refresh)> MsaTokenAsync(Dictionary<string, string> form)
+    /// <summary>renewing: from the saved refresh token, where a refusal means the sign-in expired (SignInExpiry);
+    /// otherwise it's a new sign-in's code. No connection throws HttpRequestException: never an expiry.</summary>
+    private async Task<(string Access, string Refresh)> MsaTokenAsync(Dictionary<string, string> form, bool renewing = false)
     {
         form["client_id"] = ClientId;
         form["redirect_uri"] = Redirect;
         form["scope"] = Scope;
         using var resp = await HelperTools.Http.PostAsync("https://login.live.com/oauth20_token.srf", new FormUrlEncodedContent(form));
         var body = await resp.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(body);
-        var access = doc.RootElement.Str("access_token"); var refresh = doc.RootElement.Str("refresh_token");
+        JsonDocument? doc = null;
+        try { doc = JsonDocument.Parse(body); } catch (JsonException) { }   // a captive portal's page, say
+        using var parsed = doc;
+        var access = doc?.RootElement.Str("access_token"); var refresh = doc?.RootElement.Str("refresh_token");
         if (!resp.IsSuccessStatusCode || access is null || refresh is null)
-            throw new InvalidOperationException("Your Microsoft sign-in expired. Sign in again under Library › Stores. " +
-                                                (doc.RootElement.Str("error_description") ?? ""));
+        {
+            var status = (int)resp.StatusCode;
+            if (renewing && SignInExpiry.TokenRefused(status, body)) { SignInExpiry.Mark("xbox"); throw new StoreExpiredException("xbox"); }
+            throw new InvalidOperationException(renewing ? $"Microsoft didn't renew your sign-in just now (HTTP {status}). Try again in a little while."
+                : "Microsoft didn't accept the sign-in. Try again. " + (doc?.RootElement.Str("error_description") ?? ""));
+        }
         return (access, refresh);
     }
 
@@ -157,9 +165,10 @@ public sealed class XboxStore
         try
         {
             if (_xsts is { } y && y.NotAfter > DateTimeOffset.UtcNow.AddMinutes(5)) return;
-            var tokens = await MsaTokenAsync(new() { ["grant_type"] = "refresh_token", ["refresh_token"] = _saved.RefreshToken });
+            var tokens = await MsaTokenAsync(new() { ["grant_type"] = "refresh_token", ["refresh_token"] = _saved.RefreshToken }, renewing: true);
             _saved.RefreshToken = tokens.Refresh;   // Microsoft rotates refresh tokens
             Persist();
+            SignInExpiry.Clear("xbox");
             await XstsAsync(tokens.Access);
         }
         finally { _lock.Release(); }

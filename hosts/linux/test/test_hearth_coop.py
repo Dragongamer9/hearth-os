@@ -573,6 +573,24 @@ class Gbe(Base):
             hc.GBE_SHA256.clear()
             hc.GBE_SHA256.update(old)
 
+    def test_pinned_release_gone_uses_newest(self):
+        import urllib.error
+        tar = self.linux_tar()
+        urls = []
+
+        def urlopen(req, timeout=None):
+            urls.append(req.full_url)
+            if '/releases/download/%s/' % hc.GBE_TAG in req.full_url:
+                raise urllib.error.HTTPError(req.full_url, 404, 'Not Found', {}, None)
+            if req.full_url.endswith('/releases/latest'):
+                return FakeResponse(json.dumps({'tag_name': 'release-new', 'assets': [
+                    {'name': 'emu-linux-release.tar.bz2', 'browser_download_url': 'https://github.com/x/y/releases/download/release-new/emu-linux-release.tar.bz2'},
+                    {'name': 'emu-win-release.7z', 'browser_download_url': 'https://github.com/x/y/releases/download/release-new/emu-win-release.7z'}]}).encode())
+            return FakeResponse(tar)
+        self.ctx.urlopen = urlopen
+        self.assertEqual(hc.gbe_fetch(self.ctx, ['linux']), {'linux': True, 'windows': False})
+        self.assertTrue(urls[-1].endswith('release-new/emu-linux-release.tar.bz2'), urls)
+
     def test_network_error_is_plain(self):
         def boom(req, timeout=None):
             raise OSError('Network is unreachable')

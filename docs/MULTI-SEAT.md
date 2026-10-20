@@ -1,8 +1,15 @@
 # Multi-seat (experimental)
 
-One PC runs two to four completely separate Hearth Game Mode sessions at the same time, one per TV or
-monitor. Each player has their own controllers and their own Linux account, so their own Steam account,
-Hearth profile and saves. It works like several consoles in one box.
+One PC runs two to four completely separate Hearth Game Mode sessions at the same time. Each player has their
+own controllers and their own Linux account, so their own Steam account, Hearth profile and saves. It works like
+several consoles in one box. Each extra player plays in one of four ways (they can be mixed, see "Mixing"):
+
+| Way to play (Settings wording) | `mode` | Beta Experimental |
+|---|---|---|
+| Their own graphics card | `gpu` | (the whole feature is) |
+| Another screen on this graphics card | `nested` | |
+| Part of this screen (split screen) | `split` | yes, on top |
+| Streamed to another device (Moonlight) | `stream` | yes, on top |
 
 This is a different feature from Couch Co-op (`hearth-coop`), which splits one screen so several people can
 play one game together. Multi-seat gives each player a whole Hearth of their own.
@@ -14,13 +21,19 @@ play one game together. Multi-seat gives each player a whole Hearth of their own
 | An extra player's session | `os/system_files/usr/lib/systemd/system/hearth-seat@.service` (instance = `hearth-p2`, `hearth-p3`, `hearth-p4`) |
 | Start it when player 1 opens that player's screen | `os/system_files/usr/lib/systemd/system/hearth-seat@.path` |
 | PAM service for those sessions | `os/system_files/etc/pam.d/hearth-seat` |
-| Tests | `hosts/linux/test/test_hearth_seats.py` |
+| A streamed player's Sunshine (user service) | `os/system_files/usr/lib/systemd/user/hearth-seat-sunshine.service` |
+| Whose virtual controller is it (udev helper, streamed players) | `os/system_files/usr/libexec/nimbus/hearth-seat-input` |
+| Settings › Games › Multi-seat (Beta Experimental) | `ui/index.html` (`seats` tab), bridge `seats.*` in `hosts/hearth-core/src/bridge.rs` |
+| Tests | `hosts/linux/test/test_hearth_seats.py`, the Multi-seat steps in `tools/ui-check.js` |
 
 Files written at set-up time (all listed in `/etc/hearth/seats.json` and removed by `seats-remove`):
 `/etc/hearth/seats/hearth-pN.env`, `/etc/udev/rules.d/72-hearth-seats.rules`, `/etc/tmpfiles.d/hearth-seats.conf`,
-`/etc/sddm.conf.d/zzz-hearth-seats.conf`, plus the `hearth-pN` accounts and the enabled units.
+`/etc/sddm.conf.d/zzz-hearth-seats.conf`, plus the `hearth-pN` accounts and the enabled units. With streamed
+players also `/etc/udev/rules.d/74-hearth-seats-stream.rules`, `/etc/modules-load.d/hearth-seats-stream.conf`,
+`/etc/hearth/seats/hearth-pN.stream.json` (their Sunshine's web login) and the firewall ports it opened
+(`firewall_ports`). At run time: `/run/udev/hearth-seats-input.json` (hearth-seat-input's record).
 
-## The two kinds of hardware
+## The kinds of hardware
 
 ### a. A graphics card per player (`"mode": "gpu"`)
 
@@ -72,12 +85,123 @@ only one screen. So player 1's Game Mode turns into the **host**:
 or extends a single kiosk app. sway would also work (`[pid=…]` rules and IPC), but it isn't in the image.
 labwc is already installed for Desktop Mode, and it supports security-context-v1 and sandbox window rules.
 
+### c. One screen split into parts (`"mode": "split"`, Beta Experimental)
+
+One TV or monitor is divided into 2-4 parts, one whole Game Mode in each: side by side (`columns`), one above the
+other (`rows`) or four corners (`grid`, 2-4 players). It's like Couch Co-op's split screen, but each part is an
+independent Hearth with its own account, controllers, games and saves. It reuses the nested host:
+
+1. Player 1 is always on the split screen (the UI puts player 1 in the first part; the parts can be swapped).
+   `nimbus-session` runs `hearth-seats host -- gamescope -f …` as for nested; `host` sees that player 1 is a split
+   player and rewrites the command (`player1_cmd`): `-f` goes, and `-W/-H/-w/-h` = player 1's part go last among
+   gamescope's options (so they win over `session.conf`).
+2. The generated `rc.xml` gets a labwc `<regions>` entry per split player, in % of the screen
+   (`<region name="hearth-seat2" x="50%" y="0%" width="50%" height="100%" />`), and their window rule does
+   `MoveToOutput` (the split screen) then `SnapToRegion` (their part), no decorations. Percent regions fit the screen
+   wherever labwc places it among the outputs.
+3. Each split player's session (`hearth-seat@hearth-pN.path` → `.service`, as nested) runs gamescope nested with
+   `-W/-H/-w/-h` = their part (root works the size out from the screen's mode: `seats_split_rects`, even sizes), so
+   games render at the part's size. `HEARTH_SEAT_WINDOWED=1` in their env file makes `nimbus-session` leave out `-f`.
+4. Split can be mixed with `nested` (e.g. the TV split for players 1-2, a monitor for player 3): one host, some
+   windows fullscreen on their screen, some snapped to a part.
+
+**Input:** as nested: each player's controllers go to their account by the udev rules and ACLs.
+
+**Sound:** everyone plays through the same speakers (the screen's). host-run makes a PipeWire remap sink per split
+player on player 1's server (`module-remap-sink sink_name=hearth-seatN master=<the screen's sink>`), points each
+player at theirs (`PULSE_SINK`/`PIPEWIRE_NODE` in `audio.env`; player 1's default sink), and sets its volume, or mutes
+players 2-4 when "only player 1's sound" is on. Those settings are player 1's own (`~/.config/hearth/seats-audio.json`,
+`hearth-seats audio`), applied right away while the host runs; no root needed. The sinks are unloaded and player 1's
+default sink restored when the host ends.
+
+**Lifecycle:** adding or removing players re-lays out the parts in the set-up screen (a third player switches to
+four corners). Changing the set-up later is "set up again" (it replaces the old one, accounts kept); Remove
+multi-seat puts everything back.
+
+### d. Streamed to another device (`"mode": "stream"`, Beta Experimental)
+
+An extra player plays on a TV or streaming stick with Moonlight, a phone, a tablet or a laptop. The PC streams that
+player's own Game Mode to it; no extra screen or graphics card. 1-3 streamed players, mixable with any other kind.
+
+* **The virtual screen.** The player's session (`hearth-seat@hearth-pN.service`, enabled directly: it doesn't wait
+  for player 1) runs **labwc with wlroots' headless backend** (`WLR_BACKENDS=headless`, `WLR_HEADLESS_OUTPUTS=1`,
+  `WLR_LIBINPUT_NO_DEVICES=1`, `WLR_RENDER_DRM_DEVICE=` the chosen card's render node). Inside it, `hearth-seats
+  stream-run` sizes the output with `wlr-randr --output HEADLESS-1 --custom-mode 1920x1080@60Hz` (the player's
+  preset), starts their Sunshine, then runs their Game Mode: gamescope nested at `-W/-H/-w/-h <size> -r <fps>`
+  (`--prefer-vk-device` the chosen card).
+
+  **Why not gamescope's own headless backend** (`gamescope --backend headless -W … -H … -r …`, which gamescope
+  3.16 has: the output size comes from `-W/-H`, the refresh from `-r`)? Sunshine has no way to capture it: there's no
+  KMS output (kms), gamescope offers no wlr-screencopy (wlr), there's no portal backend for it (portal), and Sunshine
+  doesn't read gamescope's PipeWire stream (the `Video/Source` node Steam uses) directly. A headless wlroots output
+  is what Sunshine's `wlr` capture is made for (Sunshine's docs mention capturing virtual/headless outputs), so the
+  headless part is labwc's, with gamescope nested in it as everywhere else in multi-seat.
+* **Sunshine, one per streamed player**, as that player's user service `hearth-seat-sunshine.service` (it runs
+  `hearth-seats sunshine`, which refuses any account that isn't a streamed player). Its settings are written at
+  every start to `~hearth-pN/.config/hearth/seat-stream/sunshine.conf`: `sunshine_name = <PC name> Player N`,
+  `port = ` the player's fixed family, `capture = wlr`, `output_name = 0`, `origin_web_ui_allowed = pc`,
+  `upnp = disabled`, `keyboard = disabled`, `mouse = disabled` (the virtual screen has no input devices; controllers
+  only), its own `file_state`, `credentials_file`, `pkey`/`cert`, `file_apps` (one app: "Hearth") and `log_path`, and
+  `adapter_name` = the render node. So each has its own pairings and certificate. Its web login comes from
+  `/etc/hearth/seats/hearth-pN.stream.json` (random, made by `seats-setup`, owner player 1, group `hearth-pN`,
+  mode 0640) and is set each start with `sunshine <conf> --creds`.
+* **Ports.** Player N's family is `47989 + 1000 × (N-1)`: 48989, 49989, 50989. Sunshine uses port −5 to +21 of it
+  (HTTPS −5, HTTP 0, web +1, video +9, control +10, audio +11, RTSP +21), so 48984-49010, 49984-50010 and
+  50984-51010. Fixed, never from the request; never Remote play's 47984-48010. With firewalld running, `seats-setup`
+  opens the ones Moonlight needs (TCP −5, 0, +21; UDP +9, +10, +11), runtime and permanent, records them, and
+  `seats-remove` (or a failed set-up) closes them. The web page (+1) stays local (`origin_web_ui_allowed = pc`).
+* **Pairing in Hearth** (player 1's Settings › Multi-seat): "Open Moonlight on the TV, phone, tablet or laptop and
+  choose *<PC name> Player 2*" (Moonlight finds it through Avahi; the address `IP:port` is shown to add it by hand,
+  and a QR code of it when `qrencode` is installed). Moonlight shows a 4-digit PIN; the player types it in Hearth.
+  `hearth-seats stream-pair` calls that Sunshine's local API with its login: newer Sunshine lists the devices
+  waiting (`GET /api/pin` → `pairings`) and wants `{"pairing_id", "pin", "name"}`; older Sunshine takes
+  `{"pin", "name"}`. Paired devices are listed (`/api/clients/list`) and can be unpaired.
+* **Controllers come from the client.** Sunshine makes virtual controllers: uhid devices (newer Sunshine,
+  libvirtualhid: a hidraw node plus event nodes under `/devices/virtual/misc/uhid/…`) or uinput devices (older,
+  inputtino: `/devices/virtual/input/inputN`). A virtual device doesn't say who made it, and udev's uaccess would
+  give it to whoever is in front (player 1). So:
+  * the streamed players' accounts get `rw` on `/dev/uinput` and `/dev/uhid` (74-hearth-seats-stream.rules, after
+    73-seat-late.rules because udev's uaccess step resets a node's user ACLs; `uinput`/`uhid` load at boot);
+  * 72-hearth-seats.rules runs `hearth-seat-input claim` (IMPORT) for every input/hidraw device under
+    `/devices/virtual`. Each virtual device keeps its own open `/dev/uinput` or `/dev/uhid` file in the process that
+    made it, so the streamed player whose process has such a file open that wasn't open last time made it (a
+    "credit"; credits expire after 5 s). The device then gets that player's `ID_SEAT`/`HEARTH_SEAT_USER`, loses
+    `uaccess`, and gets their ACL, like a real controller. One controller's nodes share one key (its uhid device or
+    its `inputN`), so they all go to the same player. Two streamed players making one at the same instant: nobody
+    gets it (`HEARTH_SEAT_CLAIM=nobody`, no ACL). Nobody streamed made it (player 1's Steam Input, Remote play): left
+    alone. `forget` on remove;
+  * the same goes for the virtual controllers the streamed player's own Steam makes (Steam Input works for them).
+* **Sound** comes from the player's own PipeWire (their user session; Sunshine makes its virtual sink there).
+* **Coexistence with Remote play** (Settings › Connections › Remote play, player 1's own Sunshine, `remote.rs`):
+  different port families; the seat's Sunshine captures only its own virtual screen (`capture = wlr` on the
+  labwc socket; it can't reach player 1's compositor); each extra player's session masks the packaged
+  `sunshine.service`/`app-dev.lizardbyte.app.Sunshine.service` for itself (`--runtime`), so it never starts a
+  second default-port Sunshine. `plan` warns if Remote play was moved onto a streamed player's ports.
+* **Packages.** The editions (Anatase, Ubuntu, CachyOS, Peppermint) install Sunshine in their `build.sh`
+  (LizardByte's COPR or the release RPM; the archive or LizardByte's .deb; CachyOS's repo or LizardByte's pacman
+  repo) and `qrencode`, never failing the build. Without Sunshine (or labwc/wlr-randr/a render node) `plan` says
+  `possible.stream: false` with the reason, and the UI doesn't offer it. The Flatpak Sunshine isn't used.
+
+### Mixing
+
+* Streamed players mix with anything (they don't use a screen here).
+* `nested` and `split` mix (one host); player 1 is on the split screen when there is one.
+* `gpu` doesn't mix with `nested`/`split` (a card per player vs. player 1's host), only with streamed players.
+* With only streamed players, player 1's mode is `local`: Game Mode as always, no host.
+
+The per-seat `mode` is in the layout and in `seats.json` (version 2). Version-1 set-ups (one top-level `mode`)
+still work: a seat without `mode` takes the top-level one.
+
 ### Which one does `plan` choose?
 
 * `gpu` when at least two cards each have a connected screen and the cards are different models. gamescope
   picks its card by `VID:PID`, so it can't tell two identical cards apart.
 * Otherwise `nested` when at least two screens are connected in total.
-* Otherwise none ("Connect a second TV or monitor").
+* Otherwise `split` when one screen is connected (two players side by side, or one above the other on a squarer
+  screen).
+* Otherwise `stream` when streaming is possible, else none ("Connect a TV or monitor").
+
+`possible` lists all four, and the set-up screen lets each extra player pick any possible way.
 
 ## Controllers and other devices
 
@@ -164,7 +288,10 @@ authenticate service users), `account` is `pam_permit`, and `session` uses `pam_
 
 `hearth-seats session` (runs as the player) loads the env file, then:
 * `gpu`: `LIBSEAT_BACKEND=noop`, no `WAYLAND_DISPLAY`/`DISPLAY`;
-* `nested`: waits for the socket, sets `WAYLAND_DISPLAY` to it and loads `audio.env`.
+* `nested`, `split`: waits for the socket, sets `WAYLAND_DISPLAY` to it and loads `audio.env`;
+* `stream`: writes the virtual screen's labwc config (`$XDG_RUNTIME_DIR/hearth-seat-stream/`) and execs headless
+  labwc, whose autostart runs `hearth-seats stream-run` (size the output, start Sunshine, run Game Mode; stop
+  Sunshine and close labwc when Game Mode ends).
 
 It then sets `HEARTH_SEAT=N`, `NIMBUS_START_MODE=game` and `NIMBUS_GAMESCOPE_ARGS` (`--prefer-vk-device`/`--prefer-output`,
 or `-W/-H/-w/-h`) and execs `/usr/bin/nimbus-session`. The player's Game Mode is the normal one.
@@ -212,9 +339,10 @@ problem: `error: <plain message>`, exit 1.
 ```
 (`config` is the saved set-up, the same as in `/etc/hearth/seats.json`, without the internal fields.)
 
-`hearth-seats plan`
+`hearth-seats plan` (also `outputs`: the connected screens; `presets`: the stream sizes, frame rates and split
+layouts; `performance`: the warning text)
 ```json
-{"possible": {"gpu": false, "nested": true}, "recommended": "nested",
+{"possible": {"gpu": false, "nested": true, "split": true, "stream": true}, "recommended": "nested",
  "reasons": ["There are 2 screens connected, so they can be shared out between players."],
  "warnings": [],
  "layout": {"mode": "nested", "seats": [
@@ -223,7 +351,20 @@ problem: `error: <plain message>`, exit 1.
 ```
 
 `hearth-seats setup --seats '<layout JSON>' [--start]`: the layout is `plan`'s `layout`, edited by the UI.
-`gpu` is ignored: the root side works it out from the screen. `audio` is an optional PipeWire sink name.
+`gpu` is ignored: the root side works it out from the screen. `audio` is an optional PipeWire sink name. Each seat
+has a `mode`; split seats have `region` (0-3, in the order of `seats_split_rects`) and the layout has
+`"split": {"layout": "columns"|"rows"|"grid"}`; stream seats have `"stream": {"size": "1920x1080", "fps": 60}`
+(sizes 1280x720, 1280x800, 1920x1080, 2560x1440, 3840x2160; 30/60/90/120 fps; optional `"gpu": "<PCI address>"`)
+and no `output` or `pads`. `normalize_layout` makes player 1 and the top-level `mode` match before it's sent.
+Example (TV split for two, a third player streamed):
+```json
+{"mode": "split", "split": {"layout": "columns"}, "seats": [
+  {"seat": 1, "user": "bob", "mode": "split", "output": "card0-HDMI-A-1", "region": 0, "pads": ["usb:1-2"]},
+  {"seat": 2, "user": "hearth-p2", "mode": "split", "output": "card0-HDMI-A-1", "region": 1, "pads": ["uniq:aa:bb:cc:dd:ee:ff"]},
+  {"seat": 3, "user": "hearth-p3", "mode": "stream", "stream": {"size": "1920x1080", "fps": 60}}]}
+```
+The answer's seats then carry what root worked out: a split seat's `rect`, `size` (its part) and `screen_size`; a
+stream seat's `stream.port`, `stream.name` and `stream.render`. `warnings` says if the firewall didn't open the ports.
 ```json
 {"ok": true, "mode": "nested", "enabled": true, "created_users": ["hearth-p2"], "restart": false,
  "restart_game_mode": true,
@@ -245,13 +386,31 @@ problem: `error: <plain message>`, exit 1.
 `state`: `active` (player 1), `running`, `starting`, `waiting` (for player 1's Game Mode to open the screen),
 `stopped`, `failed`. `host` is `null` with a card per player.
 
+`hearth-seats status` also gives each seat's `mode` (and `region` / `stream`), the `split` settings and, with a
+split screen, `audio` (`{"volumes": {"2": 75}, "only_p1": false}`).
+
+`hearth-seats wait-button [--timeout S] [--exclude id,…]`: "Player N, press A": `{"pad": {…scan's pad…}}` or
+`{"pad": null}` after the timeout. Only controllers player 1's account may open are listened to.
+
+`hearth-seats stream-info`: per streamed player `{"seat", "user", "name", "port", "size", "fps", "running",
+"reachable", "clients": [{"name", "uuid"}], "pending": [{"id", "name"}], "addresses": ["192.168.1.20:48989"], "qr"}`.
+
+`hearth-seats stream-pair --seat N --pin 1234 [--name NAME]` → `{"ok": true}`; `stream-unpair --seat N --uuid U`.
+
+`hearth-seats audio [--seat N --volume 0-100] [--only-p1 on|off]` → the split screen's sound settings.
+
+Bridge: `seats.waitButton` (event `seats.pad.done`), `seats.streamInfo`, `seats.pair` (event `seats.pair.done`:
+Sunshine answers when Moonlight finishes), `seats.unpair`, `seats.audio`.
+
 `hearth-seats assign-pad --pad usb:1-2 --seat 2`:
 `{"ok": true, "pads": {"usb:1-2": 2, "uniq:…": 1}, "changed": ["usb:1-2"]}`
 
 `hearth-seats remove [--delete-users]`:
 `{"ok": true, "removed_users": [], "kept_users": ["hearth-p2"], "restart": false}`
 
-Root side (stdin JSON, same messages): `hearth-admin seats-setup` (`{"mode", "seats", "start"}`),
+Root side (stdin JSON, same messages): `hearth-admin seats-setup` (`{"mode", "seats", "split", "start"}`; strict:
+presets only, ports and names worked out by root, nothing free-form reaches a file or command; every step journaled
+and undone on failure, firewall ports included),
 `seats-remove [--delete-users]`, `seats-acl` (`{"pads": {"<pad id>": <player>}}`), `seats-start`, `seats-stop`.
 
 ## Integration still needed (outside this feature's files)
@@ -263,6 +422,8 @@ In `run_game`, replace the final `gamescope …` line with:
 ```sh
   SEATS=/usr/libexec/nimbus/hearth-seats
   seatargs=""
+  full="-f"   # an extra player on part of a split screen is a window the size of its part
+  [ -n "$HEARTH_SEAT" ] && [ -n "$HEARTH_SEAT_WINDOWED" ] && full=""
   if [ -z "$HEARTH_SEAT" ] && [ -f "$SEATS" ]; then
     # Multi-seat with one card and several screens: share the screens out (falls back to normal by itself).
     if python3 "$SEATS" host-check 2>/dev/null; then
@@ -277,8 +438,9 @@ In `run_game`, replace the final `gamescope …` line with:
     seatargs="$(python3 "$SEATS" gamescope-args 2>/dev/null)"
   fi
   # shellcheck disable=SC2086
-  gamescope -f $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
+  gamescope $full $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
 ```
+(This is in `nimbus-session` now.)
 
 The extra players (`HEARTH_SEAT` set) must leave system-wide things to player 1:
 
@@ -310,6 +472,39 @@ install -Dm644 /ctx/../docs/MULTI-SEAT.md /usr/share/doc/hearth/MULTI-SEAT.md   
 ```
 
 ## Limitations and what needs testing on real hardware
+
+### Split screen and streamed players (Beta Experimental)
+
+* **labwc regions.** The split parts need labwc's `<regions>` and the `SnapToRegion` action in window rules (labwc
+  0.7+). If a labwc ignores them, split players' windows land at their own size wherever labwc places them.
+* **Split screen focus and keyboard.** Controllers go to each player by ACL, so focus doesn't matter for them; a
+  keyboard goes to the focused window (player 1's).
+* **Split sound** relies on PipeWire's `module-remap-sink` (pipewire-pulse) and games honouring `PULSE_SINK`.
+* **Streamed players: controllers only.** Sunshine's keyboard and mouse are off (the virtual screen has no input
+  devices). Touch on phones isn't passed on either.
+* **Whose virtual controller.** hearth-seat-input attributes by "who just opened /dev/uinput or /dev/uhid". If player 1's
+  Steam makes a virtual controller in the same instant as a streamed player's Sunshine makes one, they can swap (rare).
+  Streamed players' accounts can open /dev/uinput, so a program they run could make an input device (a keyboard)
+  that player 1's session would then see (fine for a household; the same as Steam needs).
+* **Sunshine binary capabilities.** Some packages give `sunshine` `cap_sys_admin` (for KMS capture). The seats'
+  Sunshine is told `capture = wlr`, but a capable binary could capture any screen if its settings were changed.
+* **Encoder sessions.** Each streamed player is one video encode; consumer Nvidia cards limit concurrent NVENC
+  sessions, and 4K60 per player is heavy. Players share the PC's power limit: games slow down for everyone.
+* **Sunshine's API** changed over versions (pairing with `pairing_id` in newer ones); both are handled, but only
+  what's in the code was checked against Sunshine's source, not on a device.
+
+What to test: (5) split on one 4K TV: columns, rows, grid with 3 and 4 players; each window in its part, no
+decorations, gamescope rendering at the part's size; each player's controllers only in their part (`getfacl`);
+per-player volume and "only player 1"; removing a player and setting up again; Remove multi-seat. Then split + a
+nested second screen. (6) Streamed: 1 player to a Moonlight TV/stick (Android TV, Fire TV), a phone and a laptop at
+720p60/1080p60/4K60; pairing with the PIN from Hearth on a newer and an older Sunshine; the controller in Moonlight
+working in that player's Hearth and Steam (and not in player 1's: `getfacl /dev/input/eventN /dev/hidrawN` of the
+"Wireless Controller"/virtual pad); sound on the device; 2-3 streamed players at once (each pairing separately,
+controllers not crossing); Remote play turned on at the same time (both reachable, no port clash); a streamed
+player plus split screen on one PC; firewalld on and off; Remove multi-seat closes the ports. Hardware: an AMD
+iGPU laptop (VAAPI), an AMD dGPU, an Nvidia card (NVENC session limits).
+
+### The original modes
 
 * **Steam Input's virtual controllers for players 2-4.** Steam makes them through `/dev/uinput`, which only
   the active session (player 1) may open. Even if the extra players could open it, the virtual devices appear

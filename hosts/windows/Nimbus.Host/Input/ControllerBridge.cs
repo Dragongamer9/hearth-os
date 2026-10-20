@@ -35,6 +35,8 @@ public sealed class ControllerBridge : IDisposable
 
     /// <summary>"off", "steam" or "always".</summary>
     public string MouseMode { get; set; } = "steam";
+    /// <summary>Hearth Input (controller layouts for games without controller support), set by SystemBridge.</summary>
+    public HearthInput? Mapper { get; set; }
     /// <summary>Set by View + Menu: null = follow MouseMode, true/false = forced on/off until toggled again.</summary>
     private bool? _mouseOverride;
     public bool MouseActive { get; private set; }
@@ -67,6 +69,8 @@ public sealed class ControllerBridge : IDisposable
     /// <summary>A Mantel panel (launcher, Quick Access, power menu, Hearth menu) is in front: the controller
     /// moves through it (D-pad, A, B) instead of being a mouse.</summary>
     public Func<bool> MantelPanelInFront { get; set; } = () => false;
+    /// <summary>Full Mantel's desktop window (its icons): the controller treats it like any app's window.</summary>
+    public Func<IntPtr, bool> MantelDesktopWindow { get; set; } = _ => false;
     /// <summary>Hearth's on-screen keyboard is up: the D-pad and left stick pick keys, A types, X is backspace, LB shift,
     /// Menu Enter, B or Y close (like hearth-pad on Hearth OS). RT still clicks, the right stick still moves the pointer.</summary>
     public Func<bool> KeyboardOpen { get; set; } = () => false;
@@ -115,12 +119,13 @@ public sealed class ControllerBridge : IDisposable
             Thread.Sleep(10);
             var pad = ReadPad(out int connected);
             if (connected != _connected) { _connected = connected; ControllersChanged?.Invoke(connected); }
-            if (connected == 0) { prev = 0; held.Clear(); SetMouse(false); continue; }
+            if (connected == 0) { prev = 0; held.Clear(); SetMouse(false); Mapper?.Release(); continue; }
 
             var target = CurrentTarget();
 
             // Xbox button: Quick Access in the Nimbus UI, the overlay everywhere else.
             bool guide = (pad.Buttons & GUIDE) != 0;
+            bool guideEdge = guide && !guidePrev;
             if (guide && !guidePrev)
             {
                 if (target == Target.Ui) UiButton?.Invoke("guide");
@@ -137,6 +142,28 @@ public sealed class ControllerBridge : IDisposable
                 if (!viewFired && DateTime.UtcNow - viewSince > TimeSpan.FromSeconds(1)) { viewFired = true; OverlayToggle?.Invoke(); }
             }
             else { viewSince = DateTime.MaxValue; viewFired = false; }
+
+            // Hearth Input: while the running game (with a controller layout) is in front, or a layout is being
+            // tried, the controller is a keyboard and mouse and nothing else here acts on it.
+            if (Mapper is { } mapper)
+            {
+                bool mapped;
+                try
+                {
+                    mapped = mapper.Feed(pad.Buttons, pad.LT, pad.RT, pad.LX, pad.LY, pad.RX, pad.RY,
+                        gameFront: target == Target.Game && mapper.IsGameWindow(GetForegroundWindow()),
+                        emberFront: target == Target.Ui, overlayFront: target == Target.Overlay, guidePressed: guideEdge);
+                }
+                catch (Exception ex) { mapped = false; SystemBridge.Log("input: " + ex.Message); }
+                if (mapped)
+                {
+                    if (leftDown) { Mouse(MOUSEEVENTF_LEFTUP); leftDown = false; }
+                    if (rightDown) { Mouse(MOUSEEVENTF_RIGHTUP); rightDown = false; }
+                    if (middleDown) { Mouse(MOUSEEVENTF_MIDDLEUP); middleDown = false; }
+                    prev = pad.Buttons; held.Clear(); SetMouse(false);
+                    continue;
+                }
+            }
 
             if (target == Target.Game)
             {
@@ -293,7 +320,7 @@ public sealed class ControllerBridge : IDisposable
         if (_gameRunning()) return Target.Game;                          // games get the controller to themselves
         if (fg == IntPtr.Zero) return Target.Other;
         GetWindowThreadProcessId(fg, out var pid);
-        if (pid == (uint)Environment.ProcessId) return Stores.SignInWindow.IsSignInWindow(fg) ? Target.Web : Target.NimbusDialog;
+        if (pid == (uint)Environment.ProcessId) return Stores.SignInWindow.IsSignInWindow(fg) ? Target.Web : MantelDesktopWindow(fg) ? Target.Other : Target.NimbusDialog;
         if (IsSteam(pid)) return Target.Steam;
         return Target.Other;
     }
@@ -499,5 +526,5 @@ public sealed class ControllerBridge : IDisposable
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
 
-    public void Dispose() => _stop = true;
+    public void Dispose() { _stop = true; Mapper?.Release(); }
 }

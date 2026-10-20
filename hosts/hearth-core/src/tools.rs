@@ -25,6 +25,7 @@ pub fn ensure(t: &Tool) -> Result<String, String> {
     if let Some(s) = t.system { if crate::system::has(s) { return Ok(s.to_string()); } }
     let dst = path_of(t);
     if dst.exists() { return Ok(dst.to_string_lossy().into()); }
+    crate::watchdog::long_task();
     let _one = DOWNLOADING.lock().unwrap_or_else(|p| p.into_inner());
     if dst.exists() { return Ok(dst.to_string_lossy().into()); }
     std::fs::create_dir_all(dir()).map_err(|e| e.to_string())?;
