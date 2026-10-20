@@ -29,5 +29,6 @@ jobs:
             echo "exit: $?"
           done
           SH
-          sudo podman run --rm -v /tmp/p.sh:/p.sh:ro ghcr.io/dragongamer9/hearth-os:latest bash /p.sh 2>&1 | tee out.txt
-          echo "::notice title=probe::$(tail -n 90 out.txt | cut -c1-220 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
+          sudo podman pull -q ghcr.io/dragongamer9/hearth-os:latest >/dev/null
+          sudo podman run --rm -v /tmp/p.sh:/p.sh:ro ghcr.io/dragongamer9/hearth-os:latest bash /p.sh 2>&1 | grep -v "^Copying\|signatures\|Trying to pull" | tee out.txt
+          echo "::notice title=probe::$(tail -n 50 out.txt | cut -c1-160 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
