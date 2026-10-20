@@ -4,6 +4,11 @@ name: Player counter
 
 on:
   workflow_dispatch:
+    inputs:
+      reset:
+        description: 'Reset the player counts (type "reset" to clear every device seen; logs and votes stay)'
+        required: false
+        default: ''
   push:
     branches: [main, linux-host]
     paths: ['counter/**', '.github/workflows/counter.yml']
@@ -44,6 +49,10 @@ jobs:
           sed -i "s/FILLED_IN_BY_CI/$id/" wrangler.toml
           step "Create table" $W d1 execute hearth-counter --remote --yes --file schema.sql
           step "Deploy worker" $W deploy
+          if [ "${{ inputs.reset }}" = reset ]; then
+            step "Reset player counts" $W d1 execute hearth-counter --remote --yes --command "DELETE FROM pings"
+            echo "::notice title=Reset::Player counts cleared (devices count again from their next check-in, about every 10 minutes)"
+          fi
           url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' /tmp/out.log | head -1)
           echo "::notice::Counter is at $url (stats: $url/v1/stats)"
           sleep 5; [ -n "$url" ] && echo "::notice::Stats: $(curl -fsS "$url/v1/stats")"

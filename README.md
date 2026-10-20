@@ -1,222 +1,121 @@
-# Hearth OS
+<p align="center">
+  <img src="site/img/logo.svg" width="96" alt="Hearth OS logo">
+</p>
 
-A controller-first game library and system modeled on SteamOS. One shared UI, two products:
+<h1 align="center">Hearth OS</h1>
 
-- **Hearth**: the Linux side, both an installable OS built on Bazzite and an app/session for any distro. `hosts/linux/`, `os/`
-  - **Game Mode**: the fullscreen library in gamescope.
-  - **Mantel**: Hearth's desktop (labwc + Quickshell), with its own settings app. `hosts/linux/desktop/`
-- **Ember**: the Windows 11 shell (replaces Explorer). `hosts/windows/`
+<p align="center">
+  <b>Your whole library, by the fire.</b><br>
+  A controller-first gaming system for handhelds and PCs: Steam, Epic, GOG and Xbox Cloud Gaming in one library you drive with a gamepad, and a full desktop one button away.
+</p>
 
-Website: <https://dragongamer9.github.io/hearth-os/> (source in `site/`). Installer ISOs (coming soon): <https://sourceforge.net/projects/hearth-os/files/>.
+<p align="center">
+  <a href="https://dragongamer9.github.io/hearth-os/"><b>Website</b></a> ·
+  <a href="https://dragongamer9.github.io/hearth-os/#download"><b>Download</b></a> ·
+  <a href="https://github.com/Dragongamer9/hearth-os/releases"><b>Releases</b></a> ·
+  <a href="docs/ROADMAP.md"><b>Roadmap</b></a> ·
+  <a href="https://github.com/Dragongamer9/hearth-os/issues"><b>Report a problem</b></a>
+</p>
 
-The project used to be called Nimbus. Internal names (program files, data folders like `~/.config/nimbus`,
-release file names) stay "Nimbus" so existing installs keep updating.
+<p align="center">
+  <a href="https://github.com/Dragongamer9/hearth-os/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Dragongamer9/hearth-os?label=release&color=f08a3c"></a>
+  <img alt="Status: beta" src="https://img.shields.io/badge/status-beta-e8a33d">
+  <img alt="Built on Anatase" src="https://img.shields.io/badge/built%20on-Anatase%20(Fedora)-3c6df0">
+  <img alt="Also on Windows 11" src="https://img.shields.io/badge/also%20on-Windows%2011%20(Ember)-555">
+</p>
 
-```
-hearth-os/
-  ui/index.html              Whole UI (HTML/CSS/JS, mock library). Shared by every host; runs in any browser.
-  docs/                      bridge.md (the message contract between the UI and a host), ROADMAP.md
-  hosts/windows/Nimbus.Host/ .NET 8 WinForms + WebView2 host (fullscreen, bridge, escape hatch)
-    SystemBridge.cs          Request/response API the settings pages call
-    Services/                Wi-Fi, Bluetooth, radios, audio, brightness, power
-  hosts/linux/               Electron host, run inside gamescope (see hosts/linux/README.md)
-  scripts/windows/           Build, run and install helpers for Windows (.cmd)
-  tools/restore-explorer.ps1 Puts explorer.exe back if the shell ever breaks
-  site/                      The website (GitHub Pages, .github/workflows/site.yml)
-  os/                        Hearth OS image (bootc, on Bazzite) and the live ISO (os/live)
-```
+<p align="center">
+  <img src="site/img/game-home.webp" width="840" alt="Hearth's Game Mode home screen">
+</p>
 
-**Hearth (Linux):** see [hosts/linux/README.md](hosts/linux/README.md) for the app and session, and [os/README.md](os/README.md)
-for the OS. The rest of this file is about Ember (Windows).
+> **Beta.** Hearth OS and Ember are still being built and aren't ready to be your everyday system yet. Updates come out often and install themselves from Settings › Updates. Keep a backup of anything important.
 
-## Try the prototype (no build)
+## What's in it
 
-Open `ui/index.html` in Edge or Chrome. Plug in an Xbox-style controller and press any button.
-
-| Action | Controller | Keyboard |
-|---|---|---|
-| Move | D-pad / left stick | Arrow keys |
-| Select | A | Enter / Space |
-| Back | B | Esc / Backspace |
-| Main menu | Start (☰) | M |
-| Quick Access | View (⧉) | Q |
-| Search + on-screen keyboard | Y | / |
-| Switch tabs (Library, Quick Access) | LB / RB | [ / ] |
-| Favorite (game page) | X | — |
-
-Touch and mouse work too. Sliders in Quick Access adjust with left/right while focused.
-
-## Run inside the host (Windows)
-
-Needs the .NET 8 SDK. The WebView2 runtime ships with Windows 11.
-
-```powershell
-cd hosts\windows\Nimbus.Host
-dotnet run -- --windowed      # dev: normal window
-dotnet run                    # fullscreen, like the real shell
-```
-
-The UI detects the host via `window.chrome.webview` (on Linux, `window.nimbusHost`) and sends messages to it. The full contract is in [docs/bridge.md](docs/bridge.md).
-
-| Message | Host does today |
+| | |
 |---|---|
-| `launch` (steam) | `steam://rungameid/<appId>` |
-| `launch` (manual) | starts the .exe and reports `gameExited` |
-| `power` | sleep / restart / shut down / start `explorer.exe` |
-| `exitGame` | closes a tracked manual game |
-| `call` | system settings API, see below |
-| `setting`, `install`, `ready` | stubbed; wired in milestone 2 |
+| 🎮 **Game Mode** | One library for Steam, Epic, GOG, Xbox Cloud Gaming, emulators and your own games. Install, play and uninstall Epic and GOG games without their launchers. Quick Resume keeps several games paused in memory, the way SteamOS and Xbox do. |
+| 🕹️ **Hearth Input** | Play games that have no controller support: per-game controller layouts turn the controller into a keyboard and mouse, with ready-made layouts for shooters, strategy and retro games, gyro aiming and back paddles. *(Beta Experimental)* |
+| 🖥️ **Mantel** | A real desktop, still in reach of your thumbs: pinned apps, window snapping, Alt+Tab, virtual desktops, desktop icons, an Apps store for Flathub, clipboard history and full settings. |
+| ⚡ **Handhelds** | Built on Anatase with Handheld Daemon: every controller, gyro, power, fan and light setting inside Hearth, and Quick Access over games for power, frame rate and more. ROG Ally, Legion Go, Steam Deck and most desktops and laptops. |
+| 🛋️ **Play together** | Couch Co-op splits one screen for 2–4 players, even in games without split-screen; Multi-seat gives each screen its own Game Mode. *(Beta Experimental)* |
+| 🏰 **Beacon** | [Beacon](https://github.com/Dragongamer9/beacon), the launcher for Battle for Middle-earth, Age of the Ring, LOTR: Conquest and other classics, built right into the library with its mods. |
+| 🔄 **Looks after itself** | An image-based system: the whole OS updates as one piece in the background, and a bad update is undone by picking the previous entry at start. |
 
-**Escape hatch:** `Ctrl+Alt+Shift+E` always starts File Explorer while Ember runs. `Ctrl+Shift+Esc` (Task Manager) is always available from Windows.
+<p align="center">
+  <img src="site/img/game-library.webp" width="410" alt="The library">
+  <img src="site/img/mantel-cabin.webp" width="410" alt="Mantel, Hearth's desktop">
+</p>
 
-See **Using Ember as your shell** below.
+## Editions
 
-## System settings
-
-Settings › Wi-Fi, Bluetooth, Display, Audio, Battery & power, plus the Quick Access toggles, are real in the host.
-In the browser they run against a built-in fake Windows (try a wrong password: anything under 8 characters, or `wrongpass`).
-
-| Area | Methods | Windows API |
+| Edition | Base | Status |
 |---|---|---|
-| Radios | `radios.set`, `airplane.set` | `Windows.Devices.Radios` (airplane mode is emulated: radios off, restored after) |
-| Wi-Fi | `wifi.scan`, `wifi.connect`, `wifi.disconnect`, `wifi.forget` | `Windows.Devices.WiFi`; forget uses `netsh wlan delete profile` |
-| Bluetooth | `bt.paired`, `bt.scanStart/Stop`, `bt.pair`, `bt.confirmPin`, `bt.unpair` | `Windows.Devices.Enumeration` pairing (Classic + LE) |
-| Audio | `audio.get`, `audio.setVolume`, `audio.setMute`, `audio.setDefault` | Core Audio COM; default device via `IPolicyConfig` (undocumented, stable) |
-| Display | `display.get`, `display.setBrightness` | WMI `WmiMonitorBrightness` (built-in screens only) |
-| Power | `power.get`, `power.setMode`, battery in `sys.status` | `SystemInformation.PowerStatus`, power-mode overlay in `powrprof.dll` |
+| **Hearth OS** | [Anatase](https://anatase.org) (Fedora, image-based), one image for AMD, Intel and Nvidia | Main edition |
+| Hearth OS on Ubuntu | Ubuntu 26.04 LTS, without snaps | Beta Experimental |
+| Hearth OS on CachyOS | CachyOS, performance-tuned (needs a 2015-or-newer CPU, Secure Boot off) | Beta Experimental |
+| Hearth OS on Peppermint | Peppermint OS on Debian 13 | Beta Experimental |
+| **Ember** | Windows 11 (replaces Explorer, or runs on top of it) | Beta |
 
-The host also pushes `status` events when radios, network or battery change.
+Hearth OS on Bazzite is archived: 0.1.3 was its last update, and it moves to the new Hearth OS from Settings › Updates.
 
-**Known Windows requirements and limits**
-- Wi-Fi scanning needs *Settings › Privacy & security › Location › Let desktop apps access your location* (Windows 11 24H2+). Ember shows that message if access is denied.
-- Bluetooth devices can't be force-connected or disconnected through public APIs; Ember pairs and removes them, and paired devices auto-connect when switched on. PIN-match pairing asks you to confirm in the UI.
-- External-monitor brightness (DDC/CI) isn't implemented yet.
-- Power mode only applies while the Balanced power plan is active.
+## Get it
 
-## Game library
+- **ISO (offline installer, one for every graphics card):** coming soon on the [website](https://dragongamer9.github.io/hearth-os/#download).
+- **Already on Bazzite, Bluefin, Aurora or Fedora Atomic?** Switch with one command, then restart *(Beta Experimental)*:
+  ```sh
+  sudo bootc switch ghcr.io/dragongamer9/hearth-os:latest
+  ```
+  Going back: pick the previous entry in the boot menu, or `sudo bootc rollback`.
+- **On Hearth OS on Bazzite:** Settings › Updates › Move to a new Hearth OS.
+- **Ember for Windows 11** (PowerShell):
+  ```powershell
+  irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex
+  ```
+- **Hearth app on another Linux:** the [AppImage](https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-linux-x86_64.AppImage).
 
-The host scans installed games at startup and on *Settings › Library sources › Rescan library*:
+## Try the interface in a browser
 
-| Store | Where it looks | Launches with | Art |
-|---|---|---|---|
-| Steam | `libraryfolders.vdf` → `appmanifest_*.acf`; play time from the signed-in user's `localconfig.vdf` | `steam://rungameid/<id>` | Custom grid images, then Steam's `appcache/librarycache` |
-| Epic | `ProgramData\Epic\EpicGamesLauncher\Data\Manifests\*.item` | `com.epicgames.launcher://apps/...?action=launch` | Generated |
-| GOG | `HKLM\SOFTWARE\GOG.com\Games` (32-bit view) | The game's exe | Generated |
-| Xbox / Game Pass | Store packages with a `MicrosoftGame.config` | `AppListEntry.LaunchAsync()` | `ShellVisuals` images from the config |
-| Manual | Added with the file picker | The .exe / shortcut | Generated |
-
-Ember's own data (favorites, hidden games, manual games, play stats, enabled stores) is in `%LOCALAPPDATA%\Nimbus\library.json`.
-Art is served to the UI from `https://nimbus-art.local/<id>/<cover|hero|logo|wide>`.
-
-**Running games:** after launch, Ember watches for any process whose exe is inside the game's folder. That is how it knows the game started (even through Steam/Epic) and when it closed. *Stop* asks the game to close, then force-closes it after ~6 s. When the game exits, Ember records play time and comes back to the front. Verified on a real PC with a Steam game: started detected after Steam's hand-off, closed in ~1 s.
-
-`tools/TestGame` + `scripts/windows/build-testgame.cmd` build a tiny stand-in game for testing on PCs without any installed games.
-
-## Owned games, installs and Steam in the background
-
-- **Owned Steam games** come from Steam's binary caches: `appcache/packageinfo.vdf` (packages this account has licenses for, minus package 0) joined with `appcache/appinfo.vdf` (name, type, OS, release state, art paths). Only released Windows games are listed. No Web API key or sign-in needed. Parser: `Library/SteamCache.cs` (appinfo v27–v29, packageinfo v27–v28).
-- **Art for uninstalled games** uses the exact CDN paths Steam records (`store_item_assets/steam/apps/<id>/<hash>/library_capsule.jpg` etc.). If an image fails, the UI tries the next one, then a gradient.
-- **Install** runs `steam://install/<id>`. Steam always shows its small Install dialog; that confirmation can't be skipped.
-- **Downloads**: state and progress come from each `appmanifest_*.acf` (`StateFlags`, `BytesDownloaded/BytesToDownload`). Steam only writes those at checkpoints, so between checkpoints Ember estimates progress from the PC's received network bytes and shows the speed. The UI polls `library.downloads` every 3 s while something is installing, reloads the library when a download finishes, and shows "ready to play".
-- **Steam in the background** (*Settings › Library sources*, on by default): Ember starts `steam.exe -silent` at startup and before Steam launches/installs, and hides Steam's main window (title exactly "Steam") for a short while afterwards. Other Steam windows, like the Install dialog, are left alone, and the tray icon still opens Steam.
-
-## In-game overlay
-
-Press the **Xbox button** (or **Ctrl+Alt+Q**) during a game: a Quick Access panel slides in from the right over the game, with quick settings, live performance (CPU, GPU, video memory, RAM, battery), Now playing (play time, screenshot, controller mouse, Back to Ember, Exit game) and notifications. B, the Xbox button or clicking the game closes it. In the Ember UI itself the Xbox button opens Quick Access.
-
-- It's an ordinary always-on-top window: nothing is injected into games, so anti-cheat has nothing to object to. It shows over borderless/windowed games and the "fullscreen optimized" mode most games use on Windows 10/11; very old exclusive-fullscreen games may minimize when it opens.
-- Windows Game Bar also opens on the Xbox button by default. **Settings › Controls › Xbox button opens only Ember** turns that off (`HKCU\Software\Microsoft\GameBar\UseNexusForGameBarEnabled`). **Hold View to open the overlay** is an optional backup.
-- Screenshots go to `Pictures\Screenshots\Nimbus`.
-- The Xbox button is read with XInput's long-standing undocumented `XInputGetStateEx` (ordinal 100).
-
-## Store accounts: Epic, GOG and Xbox (Library › Stores)
-
-Open **Library › Stores & accounts** (X on a controller, F on a keyboard) to sign in. Each store's own sign-in page opens in a full-screen window; you type your password there, and Ember only picks up the one-time code the store hands back. In that window the controller mouse turns on by itself, Y opens an on-screen keyboard and B cancels.
-
-| Store | What you get | How |
-|---|---|---|
-| **Epic Games** | Your whole Epic library; install, launch and uninstall **without the Epic Games Launcher** | [legendary](https://github.com/legendary-gl/legendary) 0.21.1 (open source, GPLv3) |
-| **GOG** | Your whole GOG library with covers; install, launch and uninstall **without GOG Galaxy** | GOG's web API for sign-in and the list, [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl) 1.3.0 (from Heroic, GPLv3) for downloads |
-| **Xbox** | Gamertag and gamerpic; the PC games you've played on Xbox, with Xbox art | Microsoft account → Xbox Live sign-in. Install opens the Microsoft Store, since Microsoft only lets the Store / Xbox app install these games |
-| **Steam** | Already built in | Signs in through Steam itself ("Open Steam") |
-
-- legendary and gogdl are separate programs, downloaded from their GitHub releases the first time you sign in, checked against a pinned SHA-256, and kept in `%LOCALAPPDATA%\Nimbus\tools`. They are not part of Nimbus.
-- These are unofficial integrations (the same approach Heroic and Playnite use). Stores can change their APIs.
-- Sign-ins are stored per Windows user: Epic in `%LOCALAPPDATA%\Nimbus\legendary`, GOG in `%LOCALAPPDATA%\Nimbus\gog`, Xbox's token encrypted with Windows DPAPI in `%LOCALAPPDATA%\Nimbus\accounts`.
-- Epic and GOG games install to `%USERPROFILE%\Games\Epic` and `\GOG` by default (change it on the Stores page). Downloads run one at a time and show in **Downloads**, where you can cancel them; starting again resumes. Epic games' one-time prerequisites (e.g. Visual C++ runtimes) run after the install, like the Epic launcher does.
-- Game lists refresh in the background every 12 hours, or with **Refresh list**.
-
-## Profile
-
-**Settings › Profile**: your name, a status line, a picture (initials, 12 built-in pictures, your Xbox/Steam/GOG picture once signed in, or any image file), an accent color, and a background theme (Midnight, Slate, Plum, Forest, Ember, Black, or your own picture). The picture shows in the top bar and the menu.
-
-Debug helpers: `bridge.log` next to `Nimbus.exe` logs every bridge call and UI image failures; **Ctrl+Shift+D** logs the focused game's art state. `scripts/windows/rebuild-and-run.cmd` builds and relaunches in one click.
-
-## Install on any PC
-
-Open PowerShell and run:
-
-```powershell
-irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex
-```
-
-or double-click `scripts/windows/install-nimbus.cmd`. It installs the .NET 8 Desktop Runtime if missing, downloads the latest release, checks its SHA-256, installs it to `%LOCALAPPDATA%\Nimbus\app`, saves the undo script, and makes Ember your shell (add `-NoShell` to skip that). `scripts/windows/install-shell.cmd` does the same from a local build, for development.
-
-## Using Ember as your shell
-
-1. Run **`scripts/windows/install-shell.cmd`**. It publishes a Release build to `%LOCALAPPDATA%\Nimbus\app`, copies the undo script to `%USERPROFILE%\nimbus-restore.cmd`, and sets
-   `HKCU\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\Shell` = `"...\Nimbus.exe" --shell`.
-   This affects **your account only**; other accounts and Safe Mode keep Explorer. If the build fails, nothing is changed.
-2. Sign out and back in. Windows starts Ember instead of the taskbar and desktop.
-
-**Getting back to Explorer**
-- In Ember: *Settings › Shell › Return to the Windows desktop* (now and at every sign-in).
-- Any time: **Ctrl+Alt+Shift+E** opens a File Explorer window.
-- From a black screen: **Ctrl+Shift+Esc** → *Run new task* → `%USERPROFILE%\nimbus-restore.cmd`.
-- Safe Mode always uses Explorer.
-
-**Safety built in**
-- With `--shell`, Ember runs as a small watchdog plus the real UI. If the UI crashes it is restarted; 3 crashes within 2 minutes → Explorer is started instead.
-- If WebView2 can't start, Ember starts Explorer rather than leaving a black screen.
-- Alt+F4 doesn't close Ember in shell mode. *Power › Sign out / Restart / Shut down* work as usual.
-
-**Not handled yet in shell mode:** apps in your Startup folder and Run keys (Explorer normally starts them), the system tray, and notifications from other apps.
-
-## Updates
-
-Ember updates itself from GitHub Releases of **Dragongamer9/hearth-os**.
-
-- *Settings › Updates* shows the version, checks GitHub (also automatically at startup and every 6 hours), downloads the new build, verifies its SHA-256, and *Restart Ember to update* swaps it in.
-- The swap happens after Ember exits (`%LOCALAPPDATA%\Nimbus\updates\apply-update.cmd`): `app` → `app.old`, new build → `app`, then Ember restarts (as the shell if it was the shell).
-- If the new version crashes 3 times within 2 minutes, the watchdog swaps `app.old` back automatically. After a minute of running fine, the update counts as good.
-- Only the installed copy (`%LOCALAPPDATA%\Nimbus\app`) updates; a development build from this folder doesn't.
-
-**Publishing an update:** raise `<Version>` in `hosts/windows/Nimbus.Host/Nimbus.Host.csproj` (e.g. 0.3.0 → 0.3.1) and push to `main`. The *Build and release* workflow (`.github/workflows/release.yml`) builds on Windows and Linux, packages `Nimbus-win-x64.zip` and `Nimbus-linux-x86_64.AppImage` (each with a `.sha256`), creates tag `v0.3.1` and publishes the release; the commit message becomes the release notes. Every Ember PC then sees it. Pushes that don't change the version are only built, as a compile check.
-
-## Controls
-
-Ember works with a controller, a keyboard, or a mouse/touch, and switches its on-screen prompts to whatever you used last (*Settings › Controls* can pin them). Prompts in the bottom bar are clickable, and the top bar has Back, Search, Quick Access and Notifications buttons.
+Open `ui/index.html` in Chrome or Edge: it runs against a built-in demo library. Plug in an Xbox-style controller and press any button, or use the keyboard.
 
 | Action | Controller | Keyboard |
 |---|---|---|
-| Move | D-pad / left stick | Arrows or W A S D |
+| Move | D-pad / left stick | Arrow keys or W A S D |
 | Select | A | Enter / Space |
 | Back | B | Esc / Backspace |
 | Main menu | Start (☰) | M |
 | Quick Access | View (⧉) | Q |
 | Search | Y | / |
 | Switch tabs | LB / RB | Tab / Shift+Tab, [ ] |
-| Favorite | X | F |
-| Home | | Home |
-| Controls page | | F1 |
+
+## For developers
+
+```
+hearth-os/
+  ui/index.html            The whole interface (HTML/CSS/JS), shared by every host; runs in any browser
+  hosts/hearth-core/       Rust: the library, stores, Quick Resume, Handheld Daemon, power, settings bridge
+  hosts/hearth-rs/         Rust: the Linux app (Tauri v2), Game Mode inside gamescope
+  hosts/linux/             Linux session, Mantel (labwc + Quickshell) and helpers; the Electron app (overlay)
+  hosts/hearth-browser/    Hearth Browser
+  hosts/windows/           Ember: .NET 8 + WebView2 host
+  os/                      Shared system files, the live ISO (os/live) and the small installer (os/installer)
+  os-bases/                The editions: anatase, ubuntu, cachyos, peppermint (bootc images)
+  site/                    The website (GitHub Pages)
+  docs/                    Design notes and guides
+```
+
+- **The bridge** between the interface and a host: [docs/bridge.md](docs/bridge.md)
+- **Linux app and session:** [hosts/linux/README.md](hosts/linux/README.md) · **the OS:** [os/README.md](os/README.md) · **Rust host:** [docs/RUST.md](docs/RUST.md)
+- **Editions:** [Anatase](docs/BASE-ANATASE.md) · [Ubuntu](docs/BASE-UBUNTU.md) · [CachyOS](docs/BASE-CACHYOS.md) · [Peppermint](docs/BASE-PEPPERMINT.md)
+- **Features:** [Couch Co-op](docs/COUCH-COOP.md) · [Multi-seat](docs/MULTI-SEAT.md) · [Moving games and growing Hearth](docs/MOVE-AND-GROW.md) · [Beacon](docs/BEACON.md) · [Mantel](docs/MANTEL-PARITY.md)
+- **Ember (Windows):** [docs/EMBER.md](docs/EMBER.md)
+
+Every push is built and tested on GitHub Actions; a version bump on `main` is a release, and it only ships if it can update itself.
+
+The project used to be called Nimbus. Internal names (program files, data folders like `~/.config/nimbus`, release file names) stay "Nimbus" so existing installs keep updating.
 
 ## License
 
 No license: all rights reserved. The source is public to read, but it may not be copied, modified or redistributed without permission.
 
-## Next milestones
-
-1. ~~Real library~~ ✅ done (incl. owned Steam games, installs, download progress). Owned games for Epic, GOG and Xbox ✅ (store accounts). Still to do: art for manual games (e.g. SteamGridDB), Game Pass catalog, cloud saves.
-2. ~~Shell mode~~ ✅ first version. Still to do: run Startup/Run-key apps, a tray replacement, other apps' notifications.
-3. **More system controls:** external-monitor brightness (DDC/CI), TDP via vendor tools, volume-change notifications.
-4. ~~Guide button overlay~~ ✅ first version. Still to do: FPS counter (PresentMon-style ETW), blocking game input while the overlay is open.
+Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft, Universal Blue or the Anatase project. Steam, Epic Games, GOG and Xbox are trademarks of their owners.
