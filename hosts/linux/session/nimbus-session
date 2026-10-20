@@ -161,6 +161,22 @@ reset_controllers() {
   done
 }
 
+# Hearth Input (Game Mode): a game's controller layout makes the controller a keyboard and mouse while that game
+# is in front (desktop/shell/hearth-input). Hearth tells it what to do over a socket only this user can open; it
+# lets go of the controller by itself if Hearth stops talking, and ends when this script does. Not for extra
+# multi-seat players (its virtual keyboard and mouse would land on player 1's seat).
+INPUT_PID=""
+input_start() {
+  [ -z "$HEARTH_SEAT" ] && [ -f "$SHARE/desktop/shell/hearth-input" ] && have python3 || return 0
+  python3 "$SHARE/desktop/shell/hearth-input" serve >>"$(dirname "$LOG")/input.log" 2>&1 &
+  INPUT_PID=$!
+}
+input_stop() {
+  [ -n "$INPUT_PID" ] && kill "$INPUT_PID" 2>/dev/null
+  INPUT_PID=""
+  return 0
+}
+
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
 rm -f "$NEXT"
@@ -169,8 +185,7 @@ while :; do
   if [ "$mode" = game ] && ! can_game; then log "game mode unavailable (gamescope or Nimbus missing)"; mode=desktop; fi
   if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc missing)"; can_game && mode=game || exit 1; fi
 
-  if [ "$mode" = game ]; then run_game; else run_desktop; fi
-  code=$?
+  if [ "$mode" = game ]; then input_start; run_game; code=$?; input_stop; else run_desktop; code=$?; fi
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
   [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game   # extra multi-seat players have Game Mode only

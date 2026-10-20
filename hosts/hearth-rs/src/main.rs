@@ -56,7 +56,8 @@ fn sign_in(app: &tauri::AppHandle, page: &hearth_core::stores::SignIn) -> Option
         .title(page.title)
         .inner_size(900.0, 760.0)
         .center()
-        .fullscreen(in_session())
+        // Full screen in Game Mode; in Desktop Mode (a windowed Hearth) an ordinary window.
+        .fullscreen(in_session() && !hearth_core::signin_handoff::windowed())
         .incognito(true)
         .initialization_script(&script)
         .on_navigation(move |url| {
@@ -229,6 +230,8 @@ fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: 
     std::thread::spawn(|| { std::thread::sleep(std::time::Duration::from_secs(300)); hearth_core::appupdate::tidy_after_move(); });
     // Off the window's thread: talking to InputPlumber can take a few seconds.
     { let g = gm.clone(); std::thread::spawn(move || g.start_inputplumber()); }
+    // Hearth Input: each game's controller layout (keyboard and mouse from the controller) while it's in front.
+    gm.start_input_map();
     guide.hold_view.store(hold, std::sync::atomic::Ordering::SeqCst);
     let (g1, g2) = (gm.clone(), gm.clone());
     guide.start(Arc::new(move |how: &str| { let (gm, how) = (g1.clone(), how.to_string()); std::thread::spawn(move || gm.guide_pressed(&how)); }),
@@ -535,8 +538,21 @@ fn main() {
             gpu_always(&main);
             hearth_core::bridge::log(&format!("graphics: {} (DMA-BUF renderer {})", if nvidia() { "Nvidia" } else { "AMD/Intel" }, if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some() { "off" } else { "on" }));
             if zoom != 100 { let _ = main.set_zoom(zoom as f64 / 100.0); }
-            // As the session there's nothing behind Hearth, so Alt+F4 must not close it by accident.
-            main.on_window_event(|e| if let tauri::WindowEvent::CloseRequested { api, .. } = e { if in_session() { api.prevent_close(); } });
+            // As the session there's nothing behind Hearth, so Alt+F4 must not close it by accident. (A windowed Hearth
+            // in Desktop Mode is also in the session, and closes like any window.)
+            main.on_window_event(move |e| if let tauri::WindowEvent::CloseRequested { api, .. } = e { if in_session() && !windowed { api.prevent_close(); } });
+            // A windowed Hearth that's open in Desktop Mode: a store sign-in asked for in Game Mode is handed to it
+            // (desktop/shell/hearth-signin) instead of opening a second Hearth.
+            if windowed {
+                let h = app.handle().clone();
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    let Some(store) = hearth_core::signin_handoff::take_route() else { continue };
+                    hearth_core::bridge::log(&format!("accounts: {store} sign-in handed to this window"));
+                    if let Some(w) = h.get_webview_window("main") { let _ = w.unminimize(); let _ = w.show(); let _ = w.set_focus(); }
+                    let _ = h.emit_to("main", "nimbus:msg", Bridge::event("signinStart", serde_json::json!({"store": store})));
+                });
+            }
             start_game_mode(app.handle().clone(), app.state::<Host>().0.clone(), windowed);
             Ok(())
         })

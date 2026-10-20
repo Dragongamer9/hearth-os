@@ -1,0 +1,83 @@
+{
+  "_about": "Hearth Input's shared tables: the keys a layout may press, the controls it may map, the allowed ranges and the built-in templates. Read by desktop/shell/hearth-input (the mapper) and compiled into hearth-core (input_map.rs), so both check layouts the same way. Key names are the kernel's KEY_* names without the prefix.",
+  "version": 1,
+  "keys": [
+    {"group": "Common", "keys": [["SPACE", "Space"], ["ENTER", "Enter"], ["ESC", "Esc"], ["TAB", "Tab"], ["BACKSPACE", "Backspace"], ["LEFTSHIFT", "Shift"], ["LEFTCTRL", "Ctrl"], ["LEFTALT", "Alt"], ["RIGHTSHIFT", "Right Shift"], ["RIGHTCTRL", "Right Ctrl"], ["RIGHTALT", "Right Alt"], ["LEFTMETA", "Super"], ["CAPSLOCK", "Caps Lock"], ["COMPOSE", "Menu key"]]},
+    {"group": "Arrows and navigation", "keys": [["UP", "Up arrow"], ["DOWN", "Down arrow"], ["LEFT", "Left arrow"], ["RIGHT", "Right arrow"], ["INSERT", "Insert"], ["DELETE", "Delete"], ["HOME", "Home"], ["END", "End"], ["PAGEUP", "Page Up"], ["PAGEDOWN", "Page Down"], ["PAUSE", "Pause"], ["SCROLLLOCK", "Scroll Lock"], ["NUMLOCK", "Num Lock"], ["SYSRQ", "Print Screen"]]},
+    {"group": "Letters", "keys": [["A", "A"], ["B", "B"], ["C", "C"], ["D", "D"], ["E", "E"], ["F", "F"], ["G", "G"], ["H", "H"], ["I", "I"], ["J", "J"], ["K", "K"], ["L", "L"], ["M", "M"], ["N", "N"], ["O", "O"], ["P", "P"], ["Q", "Q"], ["R", "R"], ["S", "S"], ["T", "T"], ["U", "U"], ["V", "V"], ["W", "W"], ["X", "X"], ["Y", "Y"], ["Z", "Z"]]},
+    {"group": "Numbers", "keys": [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"], ["6", "6"], ["7", "7"], ["8", "8"], ["9", "9"], ["0", "0"]]},
+    {"group": "Function keys", "keys": [["F1", "F1"], ["F2", "F2"], ["F3", "F3"], ["F4", "F4"], ["F5", "F5"], ["F6", "F6"], ["F7", "F7"], ["F8", "F8"], ["F9", "F9"], ["F10", "F10"], ["F11", "F11"], ["F12", "F12"]]},
+    {"group": "Symbols", "keys": [["MINUS", "-"], ["EQUAL", "="], ["LEFTBRACE", "["], ["RIGHTBRACE", "]"], ["BACKSLASH", "\\"], ["SEMICOLON", ";"], ["APOSTROPHE", "'"], ["GRAVE", "`"], ["COMMA", ","], ["DOT", "."], ["SLASH", "/"]]},
+    {"group": "Number pad", "keys": [["KP0", "Pad 0"], ["KP1", "Pad 1"], ["KP2", "Pad 2"], ["KP3", "Pad 3"], ["KP4", "Pad 4"], ["KP5", "Pad 5"], ["KP6", "Pad 6"], ["KP7", "Pad 7"], ["KP8", "Pad 8"], ["KP9", "Pad 9"], ["KPDOT", "Pad ."], ["KPENTER", "Pad Enter"], ["KPPLUS", "Pad +"], ["KPMINUS", "Pad -"], ["KPASTERISK", "Pad *"], ["KPSLASH", "Pad /"]]}
+  ],
+  "mouse": [["left", "Left click"], ["right", "Right click"], ["middle", "Middle click"], ["back", "Mouse back"], ["forward", "Mouse forward"]],
+  "scroll": [["up", "Scroll up"], ["down", "Scroll down"], ["left", "Scroll left"], ["right", "Scroll right"]],
+  "buttons": [["a", "A"], ["b", "B"], ["x", "X"], ["y", "Y"], ["lb", "LB"], ["rb", "RB"], ["lt", "LT (left trigger)"], ["rt", "RT (right trigger)"], ["view", "View"], ["menu", "Menu"], ["l3", "Left stick press (L3)"], ["r3", "Right stick press (R3)"], ["up", "D-pad up"], ["down", "D-pad down"], ["left", "D-pad left"], ["right", "D-pad right"], ["l4", "Back button L4"], ["r4", "Back button R4"], ["l5", "Back button L5"], ["r5", "Back button R5"]],
+  "sticks": [["ls", "Left stick"], ["rs", "Right stick"]],
+  "limits": {
+    "sensitivity": [0.1, 5.0],
+    "deadzone": [0.0, 0.5],
+    "outer": [0.5, 1.0],
+    "curve": [1.0, 3.0],
+    "threshold": [0.05, 0.95],
+    "stick_threshold": [0.2, 0.9],
+    "gyro_sensitivity": [0.1, 5.0],
+    "gyro_deadzone": [0.0, 5.0],
+    "hold_ms": [150, 1000],
+    "turbo_hz": [2, 30],
+    "pref_sensitivity": [0.25, 3.0],
+    "name_len": 60,
+    "combo_keys": 4,
+    "radial_items": 8
+  },
+  "templates": [
+    {"id": "shooter", "name": "Shooter / action", "blurb": "Left stick walks (W A S D), right stick aims the mouse, triggers click",
+     "layout": {"version": 1, "name": "Shooter / action", "base": "shooter",
+       "buttons": {
+         "a": "key:SPACE", "b": {"press": "key:C", "hold": "key:LEFTCTRL"}, "x": {"press": "key:R", "hold": "key:E"},
+         "y": {"press": "key:F", "hold": "key:TAB"}, "lb": "key:Q", "rb": "key:E",
+         "lt": {"press": "mouse:right", "threshold": 0.35}, "rt": {"press": "mouse:left", "threshold": 0.35},
+         "menu": "key:ESC", "view": {"press": "key:TAB", "hold": "key:M"}, "l3": "key:LEFTSHIFT", "r3": "key:V",
+         "up": "key:1", "right": "key:2", "down": "key:3", "left": "key:4",
+         "l4": "key:LEFTSHIFT", "r4": "key:G", "l5": "key:Z", "r5": "radial"},
+       "sticks": {
+         "ls": {"mode": "keys", "up": "key:W", "down": "key:S", "left": "key:A", "right": "key:D", "threshold": 0.45},
+         "rs": {"mode": "mouse", "sensitivity": 1.0, "deadzone": 0.1, "outer": 0.95, "curve": 1.8}},
+       "gyro": {"sensitivity": 1.0, "deadzone": 1.0},
+       "radial": ["key:5", "key:6", "key:7", "key:8", "key:M", "key:I", "key:J", "key:F5"],
+       "hold_ms": 300, "turbo_hz": 10}},
+    {"id": "pointclick", "name": "Point-and-click / strategy", "blurb": "Right stick moves the pointer, A clicks, left stick pans with the arrow keys",
+     "layout": {"version": 1, "name": "Point-and-click / strategy", "base": "pointclick",
+       "buttons": {
+         "a": "mouse:left", "b": "mouse:right", "x": "key:SPACE", "y": "key:I", "lb": "key:LEFTCTRL", "rb": "key:LEFTSHIFT",
+         "lt": "mouse:right", "rt": "mouse:left", "menu": "key:ESC", "view": "key:TAB", "l3": "mouse:middle", "r3": "key:F5",
+         "up": "scroll:up", "down": "scroll:down", "left": "key:Q", "right": "key:E"},
+       "sticks": {
+         "ls": {"mode": "keys", "up": "key:UP", "down": "key:DOWN", "left": "key:LEFT", "right": "key:RIGHT", "threshold": 0.5},
+         "rs": {"mode": "mouse", "sensitivity": 1.2, "deadzone": 0.12, "outer": 0.95, "curve": 2.0}},
+       "gyro": {"sensitivity": 0.8, "deadzone": 1.5},
+       "radial": [], "hold_ms": 300, "turbo_hz": 10}},
+    {"id": "retro", "name": "Retro / arrow keys", "blurb": "D-pad and left stick are the arrow keys; A, B, X, Y are Z, X, Ctrl, Alt",
+     "layout": {"version": 1, "name": "Retro / arrow keys", "base": "retro",
+       "buttons": {
+         "a": "key:Z", "b": "key:X", "x": "key:LEFTCTRL", "y": "key:LEFTALT", "lb": "key:PAGEUP", "rb": "key:PAGEDOWN",
+         "lt": "key:LEFTSHIFT", "rt": "key:SPACE", "menu": "key:ENTER", "view": "key:ESC",
+         "up": "key:UP", "down": "key:DOWN", "left": "key:LEFT", "right": "key:RIGHT"},
+       "sticks": {
+         "ls": {"mode": "keys", "up": "key:UP", "down": "key:DOWN", "left": "key:LEFT", "right": "key:RIGHT", "threshold": 0.5},
+         "rs": {"mode": "none"}},
+       "gyro": {"sensitivity": 1.0, "deadzone": 1.0},
+       "radial": [], "hold_ms": 300, "turbo_hz": 10}},
+    {"id": "mouse", "name": "Mouse only", "blurb": "The controller is just a mouse: right stick points, left stick scrolls",
+     "layout": {"version": 1, "name": "Mouse only", "base": "mouse",
+       "buttons": {
+         "a": "mouse:left", "b": "mouse:right", "x": "mouse:middle", "rt": "mouse:left", "lt": "mouse:right",
+         "lb": "mouse:back", "rb": "mouse:forward", "l3": "mouse:middle",
+         "up": "scroll:up", "down": "scroll:down", "left": "scroll:left", "right": "scroll:right"},
+       "sticks": {
+         "ls": {"mode": "scroll", "sensitivity": 1.0, "deadzone": 0.15},
+         "rs": {"mode": "mouse", "sensitivity": 1.0, "deadzone": 0.1, "outer": 0.95, "curve": 1.8}},
+       "gyro": {"sensitivity": 1.0, "deadzone": 1.0},
+       "radial": [], "hold_ms": 300, "turbo_hz": 10}}
+  ]
+}
