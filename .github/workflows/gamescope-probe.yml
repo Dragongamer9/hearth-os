@@ -1,0 +1,33 @@
+# Starts gamescope off-screen (headless backend, software Vulkan) inside the published Hearth OS image and shows its
+# output on the run page: what the offline USB's boot test needs to run Game Mode in a virtual PC with no 3D.
+name: gamescope probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Make room
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+      - name: gamescope --backend headless in the image
+        run: |
+          cat > /tmp/p.sh <<'SH'
+          useradd -m t 2>/dev/null
+          mkdir -p /tmp/r && chown t /tmp/r && chmod 700 /tmp/r
+          echo "== vulkan devices"; ls /usr/share/vulkan/icd.d/ 2>&1
+          echo "== gamescope"; gamescope --version 2>&1 | head -3
+          for args in "--backend headless -W 1280 -H 800" "--backend headless -W 1280 -H 800 --prefer-vk-device 10005:0"; do
+            echo "== gamescope $args"
+            su t -c "XDG_RUNTIME_DIR=/tmp/r timeout 25 gamescope $args -- sh -c 'echo DISPLAY=\$DISPLAY; sleep 8; echo inner-done'" 2>&1 | tail -n 40
+            echo "exit: $?"
+          done
+          SH
+          sudo podman run --rm -v /tmp/p.sh:/p.sh:ro ghcr.io/dragongamer9/hearth-os:latest bash /p.sh 2>&1 | tee out.txt
+          echo "::notice title=probe::$(tail -n 90 out.txt | cut -c1-220 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
