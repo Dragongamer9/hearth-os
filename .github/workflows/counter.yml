@@ -55,4 +55,4 @@ jobs:
           fi
           url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' /tmp/out.log | head -1)
           echo "::notice::Counter is at $url (stats: $url/v1/stats)"
-          sleep 5; [ -n "$url" ] && echo "::notice::Stats: $(curl -fsS "$url/v1/stats")"
+          if [ -n "$url" ]; then sleep 5; echo "::notice::Stats: $(curl -fsS "$url/v1/stats" || echo unavailable)"; fi
