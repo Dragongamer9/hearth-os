@@ -89,6 +89,19 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
+## 0.2.0 (released)
+
+- [x] Library layouts: Covers, List & details, Shelves, Compact wall, plus 12 Beta Experimental ones (Settings › You › Library)
+- [x] Beacon inside Hearth: Game setup (install, locate, CD key, runner, resolution, community versions, patches, logs) and Mods pages; Beacon 0.0.6 with a Windows version
+- [x] Fail-safe: a stuck Hearth frees itself, sends a report and restarts if it has to; `hearth-send-logs` from a terminal
+- [x] Lighter effects when drawing the compatible way (Nvidia RTX 50); graphics memory shown right (built-in and Nvidia)
+- [x] Multi-seat: streamed seats and split-screen seats
+- [x] Sign in again when Epic, GOG or Xbox sign-ins expire
+- [x] Couch Co-op: the Steam emulator follows its newest release when the pinned one is gone
+- [x] Bug reports reach GitHub (the copy goes up as plain text; dashboard settings kept on deploy)
+- [x] Ember: Game Mode catch-up (Hearth Input, power limit, bug reports, Beacon, screenshots) and Mantel matching Hearth OS's, with pinning
+- [x] Offline USB: boot test before upload
+
 ## 0.1.9 (released)
 
 - [x] Fix: a blank screen with only the pointer where the graphics driver can't give Hearth its fast drawing buffers (GBM): Hearth starts again the compatible way and remembers it; basic graphics uses it from the start
