@@ -35,6 +35,8 @@ struct Host(Arc<Mutex<Bridge>>);
 /// Game Mode's window handling (what's in front, the overlay), made once the app is up.
 static GM: std::sync::OnceLock<Arc<GameMode>> = std::sync::OnceLock::new();
 fn in_session() -> bool { hearth_core::gamescope::in_session() }
+/// A windowed Hearth (Desktop Mode, or another Linux desktop): its windows are ordinary desktop windows.
+fn desktop_window() -> bool { hearth_core::signin_handoff::windowed() || !in_session() }
 
 /// Where a sign-in window's answer goes (one sign-in at a time): the code, or None when it was closed.
 static SIGNIN: Mutex<Option<std::sync::mpsc::Sender<Option<String>>>> = Mutex::new(None);
@@ -50,8 +52,10 @@ fn sign_in(app: &tauri::AppHandle, page: &hearth_core::stores::SignIn) -> Option
     *SIGNIN.lock().unwrap() = Some(tx);
     if let Some(old) = app.get_webview_window("signin") { let _ = old.destroy(); }
     let done = page.done;
-    // Works with just a controller: a pointer, an on-screen keyboard, B to cancel.
-    let script = format!("{}\n{}", include_str!("js/signin-pad.js"), page.script.unwrap_or(""));
+    // In Game Mode it works with just a controller: a pointer, an on-screen keyboard, B to cancel. In Desktop Mode
+    // (a windowed Hearth) there's a real mouse and keyboard, and the controller already moves the desktop's pointer.
+    let pad = if desktop_window() { "" } else { include_str!("js/signin-pad.js") };
+    let script = format!("{}\n{}", pad, page.script.unwrap_or(""));
     let b = WebviewWindowBuilder::new(app, "signin", WebviewUrl::External(page.url.parse().ok()?))
         .title(page.title)
         .inner_size(900.0, 760.0)
@@ -86,7 +90,8 @@ fn stream(app: &tauri::AppHandle, open: Option<(&str, &str)>, windowed: bool) {
         .inner_size(1280.0, 800.0)
         .user_agent(EDGE_UA)
         .data_directory(hearth_core::paths::data_dir().join("xcloud-web"))
-        .initialization_script(concat!(include_str!("js/stream-exit.js"), "\n", include_str!("js/stream-signin.js"), "\n", include_str!("js/signin-pad.js")))
+        .initialization_script(if windowed { concat!(include_str!("js/stream-exit.js"), "\n", include_str!("js/stream-signin.js")) }
+            else { concat!(include_str!("js/stream-exit.js"), "\n", include_str!("js/stream-signin.js"), "\n", include_str!("js/signin-pad.js")) })
         .on_navigation(|url| {
             if url.as_str().starts_with("hearth-signin://stream-exit") {
                 let gm = GM.get().cloned();
