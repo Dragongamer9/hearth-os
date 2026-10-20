@@ -10,10 +10,38 @@ APP="$1"
 LOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/session.log"
 mkdir -p "$(dirname "$LOG")"
 crashes=""
+# Hearth's screen is drawn by WebKit, normally through GBM buffers from the graphics driver (fast). Where the driver
+# can't make them ("Failed to create GBM buffer ... Invalid argument": basic graphics, some live USB boots), WebKit
+# draws nothing and only the background and the pointer show. Seen within Hearth's first 40 seconds, Hearth is
+# started again the compatible way (WEBKIT_DISABLE_DMABUF_RENDERER), and this PC remembers it (FLAG; Settings ›
+# Display can take it back).
+FLAG="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/drawing-fallback"
+if [ -f "$FLAG" ] || grep -qw nomodeset /proc/cmdline 2>/dev/null; then export WEBKIT_DISABLE_DMABUF_RENDERER=1; fi
 
 while :; do
-  "$APP" --session --ozone-platform=x11 >>"$LOG" 2>&1
+  start=0; [ -f "$LOG" ] && start=$(wc -c <"$LOG")
+  "$APP" --session --ozone-platform=x11 >>"$LOG" 2>&1 &
+  pid=$!
+  chk=""
+  if [ -z "$WEBKIT_DISABLE_DMABUF_RENDERER" ]; then
+    (
+      i=0
+      while [ $i -lt 40 ] && kill -0 "$pid" 2>/dev/null; do
+        if tail -c +"$((start + 1))" "$LOG" 2>/dev/null | grep -q "Failed to create GBM buffer"; then
+          mkdir -p "$(dirname "$FLAG")" && echo "$(date) GBM buffers failed" >"$FLAG"
+          echo "$(date) Hearth can't draw the fast way here (GBM); starting it again the compatible way" >>"$LOG"
+          kill -TERM "$pid"; sleep 4; kill -KILL "$pid" 2>/dev/null
+          exit 0
+        fi
+        sleep 1; i=$((i + 1))
+      done
+    ) &
+    chk=$!
+  fi
+  wait "$pid"
   code=$?
+  [ -n "$chk" ] && kill "$chk" 2>/dev/null
+  if [ -z "$WEBKIT_DISABLE_DMABUF_RENDERER" ] && [ -f "$FLAG" ]; then export WEBKIT_DISABLE_DMABUF_RENDERER=1; continue; fi
   now=$(date +%s)
   case $code in
     0)
