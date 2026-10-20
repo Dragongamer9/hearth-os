@@ -111,6 +111,9 @@ echo 'NIMBUS_START_MODE=game' > /etc/skel/.config/nimbus/session.conf
 # (it needs VK_EXT_physical_device_drm, which software Vulkan hasn't got). Under the test (hearth.ci) the live
 # session starts in Desktop Mode instead, and the test opens Hearth there in a window (hearth-ci-report).
 echo 'grep -qw hearth.ci /proc/cmdline 2>/dev/null && NIMBUS_START_MODE=desktop' >> /etc/skel/.config/nimbus/session.conf
+# The live USB opens straight into Hearth's installer (Game Mode's Install Hearth OS screens); Back from it leaves you in
+# Hearth to look around first. (Not under the boot test, which checks Hearth itself in Desktop Mode.)
+echo 'grep -qw hearth.ci /proc/cmdline 2>/dev/null || echo hearth > "${XDG_RUNTIME_DIR:-/tmp}/hearth-open-installer"' >> /etc/skel/.config/nimbus/session.conf
 # The live user may do anything without a password prompt (it's a live USB).
 mkdir -p /etc/polkit-1/rules.d
 cat >/etc/polkit-1/rules.d/10-hearth-live.rules <<'RULE'
