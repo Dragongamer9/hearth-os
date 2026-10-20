@@ -89,7 +89,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
-## 0.1.4
+## 0.1.4 (released)
 
 - [x] Hearth OS on Bazzite is archived: 0.1.3 was its last update (os.yml only runs by hand now). Releases publish Hearth OS on Anatase (ghcr.io/dragongamer9/hearth-os:latest); the Ubuntu, CachyOS and Peppermint editions get every release as :testing
 - [x] Quick Access over games through Handheld Daemon's overlay (HHD editions): drawn by Chromium, the game doesn't see the controller while it's open
