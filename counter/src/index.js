@@ -30,6 +30,7 @@ export default {
     if (url.pathname === '/v1/logs' && req.method === 'POST') return putLogs(req, env, ctx);
     if (url.pathname === '/v1/vote' && req.method === 'POST') return putVote(req, env);
     if (url.pathname === '/v1/votes' && req.method === 'GET') return json({ counts: await voteCounts(env) }, 200, { 'cache-control': 'no-store' });
+    if (url.pathname === '/v1/github-errors' && req.method === 'GET') return ghErrors(env);
     if (url.pathname.startsWith('/v1/logs/') && req.method === 'GET') return getLogs(url, env);
     if (url.pathname === '/') return json({ service: 'Hearth OS player counter', stats: '/v1/stats' });
     return json({ error: 'not found' }, 404);
@@ -107,7 +108,7 @@ async function putLogs(req, env, ctx) {
   let note = '';
   try { note = decodeURIComponent(req.headers.get('x-hearth-note') || ''); } catch (e) { note = ''; }
   note = note.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 1000);
-  if (env.LOGS_GITHUB_TOKEN) ctx.waitUntil(toGitHub(env, code, ver, kind, body, note).catch(e => console.log('github: ' + e)));
+  if (env.LOGS_GITHUB_TOKEN) ctx.waitUntil(toGitHub(env, code, ver, kind, body, note).catch(e => ghFailed(env, code, e)));
   return json({ code });
 }
 
@@ -137,11 +138,40 @@ export function problemLines(body) {
   }
   return out;
 }
+// Why a copy didn't reach GitHub (GitHub's answer, never the token), for GET /v1/github-errors.
+async function ghFailed(env, code, e) {
+  const msg = String(e && e.message || e).slice(0, 500);
+  console.log('github: ' + msg);
+  try {
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS gh_errors (code TEXT, created INTEGER, error TEXT)').run();
+    await env.DB.prepare('INSERT INTO gh_errors (code, created, error) VALUES (?, ?, ?)').bind(code, Date.now(), msg).run();
+  } catch (x) { console.log('github error not kept: ' + x); }
+}
+async function ghErrors(env) {
+  try {
+    const r = await env.DB.prepare('SELECT code, created, error FROM gh_errors ORDER BY created DESC LIMIT 10').all();
+    return json({ errors: r.results || [] }, 200, { 'cache-control': 'no-store' });
+  } catch (e) { return json({ errors: [] }, 200, { 'cache-control': 'no-store' }); }
+}
+
+// The log file goes up as a Git blob in plain text (no base64: that took too long for big logs), then a commit.
+async function putFile(env, repo, path, text, message) {
+  const blob = await gh(env, 'POST', `/repos/${repo}/git/blobs`, { content: text, encoding: 'utf-8' });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const ref = await gh(env, 'GET', `/repos/${repo}/git/ref/heads/main`);
+    const parent = await gh(env, 'GET', `/repos/${repo}/git/commits/${ref.object.sha}`);
+    const tree = await gh(env, 'POST', `/repos/${repo}/git/trees`, { base_tree: parent.tree.sha, tree: [{ path, mode: '100644', type: 'blob', sha: blob.sha }] });
+    const commit = await gh(env, 'POST', `/repos/${repo}/git/commits`, { message, tree: tree.sha, parents: [ref.object.sha] });
+    try { await gh(env, 'PATCH', `/repos/${repo}/git/refs/heads/main`, { sha: commit.sha }); return; }
+    catch (e) { if (attempt === 2) throw e; }   // someone else committed in between: again on top of theirs
+  }
+}
+
 async function toGitHub(env, code, ver, kind, body, note) {
   const repo = env.LOGS_REPO || 'Dragongamer9/hearth-logs';
   const day = new Date().toISOString().slice(0, 10);
   const path = `logs/${day}/${code}.txt`;
-  await gh(env, 'PUT', `/repos/${repo}/contents/${path}`, { message: `Logs ${code} (Hearth ${ver || '?'})`, content: b64(body) });
+  await putFile(env, repo, path, body, `Logs ${code} (Hearth ${ver || '?'})`);
   const head = body.split('\n').slice(0, 12).filter(l => l.trim()).join('\n');
   const device = (body.match(/"device":\s*"([^"]+)"/) || body.match(/^Device:\s*(.+)$/m) || [])[1] || kind;
   const problems = problemLines(body);
