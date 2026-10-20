@@ -1,6 +1,8 @@
 'use strict';
 // Hearth Browser runs from this same app: `nimbus --browser [url]` (see web/main.js).
 if (process.argv.includes('--browser')) { require('./web/main'); return; }
+// Hearth's Quick Access as Handheld Daemon's overlay (HHD editions): `nimbus --hhd-overlay` (see overlay/main.js).
+if (process.argv.includes('--hhd-overlay')) { require('./overlay/main'); return; }
 // Nimbus for Linux: hosts the shared web UI (../../ui) in a fullscreen Electron window.
 // Inside the "Nimbus" login session it runs in gamescope (see session/); started from a desktop
 // with --windowed it runs in a normal window for development.

@@ -26,6 +26,7 @@ pub mod owned;
 pub mod manual;
 pub mod newos;
 pub mod osinstall;
+pub mod overlay_link;
 pub mod paths;
 pub mod perf;
 pub mod power;

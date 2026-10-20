@@ -232,6 +232,19 @@ chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/op
 find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
 chmod 755 /usr/libexec/nimbus/*
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
+# Quick Access over games: Handheld Daemon shows an overlay app over games (its QAM button) and holds the controllers
+# for it. Here that app is Hearth's own Quick Access (desktop/shell/hearth-overlay: hosts/linux/src/overlay in Hearth
+# Browser's Electron), installed as hhd-ui, and HHD_OVERLAY points at it so it wins over any other hhd-ui.
+if pacman -Q hhd-ui >/dev/null 2>&1; then pacman -Rdd --noconfirm hhd-ui || true; fi
+rm -f /usr/bin/hhd-ui.AppImage /usr/bin/hhd-ui-dbg
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-overlay
+ln -sfn /usr/share/nimbus/desktop/shell/hearth-overlay /usr/bin/hhd-ui
+mkdir -p /usr/lib/systemd/system/hhd.service.d
+cat > /usr/lib/systemd/system/hhd.service.d/zz-hearth-overlay.conf <<'CONF'
+# Hearth: Handheld Daemon's overlay app is Hearth's Quick Access (see os-bases/*/build.sh).
+[Service]
+Environment=HHD_OVERLAY=/usr/share/nimbus/desktop/shell/hearth-overlay
+CONF
 # Which Hearth this is (the Bazzite build has /usr/share/ublue-os/image-info.json for the same; Hearth's edition()
 # reads "base"). "march": what the packages need from the CPU, for an installer to check.
 cat > /usr/share/nimbus/image-info.json <<INFO

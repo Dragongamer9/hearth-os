@@ -122,12 +122,27 @@ fn stream(app: &tauri::AppHandle, open: Option<(&str, &str)>, windowed: bool) {
     }
 }
 
-/// A message from a page (Hearth's window or the overlay): handled off the window's thread (scanning the
-/// library can take a moment). Replies go back to the window that asked.
+/// To one window. "overlay" is also Handheld Daemon's overlay app on the HHD editions (Quick Access over games),
+/// reached through hearth-core's overlay socket (nothing happens there when it isn't connected).
+fn send_to(app: &tauri::AppHandle, label: &str, v: serde_json::Value) {
+    if label == "overlay" { hearth_core::overlay_link::send(&v); }
+    let _ = app.emit_to(label, "nimbus:msg", v);
+}
+/// To every window, and to HHD's overlay app when it's connected.
+fn emit_all(app: &tauri::AppHandle, v: serde_json::Value) {
+    hearth_core::overlay_link::send(&v);
+    let _ = app.emit("nimbus:msg", v);
+}
+
+/// A message from a page (Hearth's window or the overlay).
 #[tauri::command]
 async fn nimbus_msg(app: tauri::AppHandle, window: tauri::WebviewWindow, host: tauri::State<'_, Host>, msg: serde_json::Value) -> Result<(), String> {
-    let bridge = host.0.clone();
-    let label = window.label().to_string();
+    page_msg(app, host.0.clone(), window.label().to_string(), msg).await
+}
+
+/// A message from a page: Hearth's window, the overlay window, or HHD's overlay app (as "overlay", through the overlay
+/// socket). Handled off the window's thread (scanning the library can take a moment). Replies go back to whoever asked.
+async fn page_msg(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, label: String, msg: serde_json::Value) -> Result<(), String> {
     let ty = msg["type"].as_str().unwrap_or("").to_string();
     // Window things: the overlay opening and closing, back to the game.
     if let Some(gm) = GM.get() {
@@ -141,7 +156,7 @@ async fn nimbus_msg(app: tauri::AppHandle, window: tauri::WebviewWindow, host: t
             return Ok(());
         }
     }
-    if ty == "ready" { let _ = app.emit_to(label.as_str(), "nimbus:msg", Bridge::event("padHost", serde_json::json!({"connected": 0}))); return Ok(()); }
+    if ty == "ready" { send_to(&app, &label, Bridge::event("padHost", serde_json::json!({"connected": 0}))); return Ok(()); }
     let (reply, quit) = tauri::async_runtime::spawn_blocking(move || {
         let mut b = match bridge.lock() { Ok(b) => b, Err(p) => p.into_inner() };
         if msg["type"] == "call" { (b.handle(&msg), false) } else { (None, b.other(&msg)) }
@@ -149,7 +164,7 @@ async fn nimbus_msg(app: tauri::AppHandle, window: tauri::WebviewWindow, host: t
     .await
     .map_err(|e| e.to_string())?;
     if let Some(r) = reply {
-        app.emit_to(label.as_str(), "nimbus:msg", r).map_err(|e| e.to_string())?;
+        send_to(&app, &label, r);
     }
     if quit {
         app.exit(0);   // the Hearth session starts Desktop Mode, or ends, when Hearth closes
@@ -260,8 +275,23 @@ fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: 
             }
         });
     }
+    // Quick Access over a running game on the Handheld Daemon editions: HHD's overlay app is Hearth's (hosts/linux/src/
+    // overlay, in Chromium); HHD shows it over the game, and it talks to Hearth through the overlay socket. If the socket
+    // can't be opened, Hearth's own overlay window instead.
+    if gm.hhd() {
+        let (h, b, g) = (app.clone(), bridge.clone(), gm.clone());
+        let on_msg: hearth_core::overlay_link::OnMessage = Arc::new(move |m: serde_json::Value| { tauri::async_runtime::spawn(page_msg(h.clone(), b.clone(), "overlay".to_string(), m)); });
+        let on_connect: hearth_core::overlay_link::OnConnect = Arc::new(move || { let g = g.clone(); std::thread::spawn(move || g.overlay_app_connected()); });
+        match hearth_core::overlay_link::start(on_msg, on_connect) {
+            Ok(p) => hearth_core::bridge::log(&format!("overlay: Handheld Daemon shows Quick Access over games; its overlay app talks to Hearth at {}", p.display())),
+            Err(e) => {
+                hearth_core::bridge::log(&format!("overlay: couldn't open the overlay socket ({e}); using Hearth's own overlay window"));
+                gm.hhd_overlay.store(false, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+    }
     // Quick Access over a running game: a see-through window gamescope draws on top.
-    if gm.overlay_available() {
+    if gm.overlay_available() && !gm.hhd() {
         let size = app.primary_monitor().ok().flatten().map(|m| { let s = m.size(); let f = m.scale_factor(); (s.width as f64 / f, s.height as f64 / f) }).unwrap_or((1280.0, 800.0));
         let built = WebviewWindowBuilder::new(&app, "overlay", WebviewUrl::App("index.html?overlay=full".into()))
             .title(gamemode::OVERLAY_TITLE)
@@ -290,7 +320,7 @@ fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: 
             let _ = std::fs::remove_file(&f);
             hearth_core::bridge::log(&format!("desktop mode failed: {text}"));
             let t: String = text.trim().chars().take(1500).collect();
-            let _ = h.emit("nimbus:msg", Bridge::event("desktopFailed", serde_json::json!({"text": t})));
+            emit_all(&h, Bridge::event("desktopFailed", serde_json::json!({"text": t})));
         }
     });
     // Updates to the app: looked for 20 seconds after starting, then every 6 hours (when turned on).
@@ -417,7 +447,7 @@ fn main() {
                             let (br, h) = (br.clone(), h.clone());
                             std::thread::spawn(move || {
                                 let out = match br.lock() { Ok(mut b) => b.internal(&v), Err(p) => p.into_inner().internal(&v) };
-                                for e in out { let _ = h.emit("nimbus:msg", e); }
+                                for e in out { emit_all(&h, e); }
                             });
                             return;
                         }
@@ -433,7 +463,7 @@ fn main() {
                             std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(1500)); h2.restart(); });
                             return;
                         }
-                        let _ = h.emit("nimbus:msg", v);
+                        emit_all(&h, v);
                     });
                     hearth_core::stores::set_notify(emit.clone());
                     b.emit = emit;
@@ -478,12 +508,12 @@ fn main() {
                             }
                             Err(_) => (vec![], vec![]),
                         };
-                        for e in &events { let _ = h.emit("nimbus:msg", e.clone()); }
+                        for e in &events { emit_all(&h, e.clone()); }
                         if let Some(gm) = GM.get() { for e in &events { gm.on_library_event(e); } }
                         for e in extra {
                             match (GM.get(), e["name"].as_str()) {
                                 (Some(gm), Some("osd")) => gm.osd(e["data"].clone()),
-                                _ => { let _ = h.emit("nimbus:msg", e); }
+                                _ => { emit_all(&h, e); }
                             }
                         }
                     }
@@ -492,7 +522,7 @@ fn main() {
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_secs(30));
                 let max = bridge.lock().map(|b| b.max_volume()).unwrap_or(100);
-                let _ = handle.emit("nimbus:msg", Bridge::event("status", hearth_core::system::status(max)));
+                emit_all(&handle, Bridge::event("status", hearth_core::system::status(max)));
             });
             let zoom = app.state::<Host>().0.lock().map(|b| b.zoom_pct()).unwrap_or(100);
             let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

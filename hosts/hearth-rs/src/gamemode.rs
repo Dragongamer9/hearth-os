@@ -9,6 +9,11 @@
 //! opening and closing only change how see-through it is (_NET_WM_WINDOW_OPACITY) and whether it gets input
 //! (STEAM_INPUT_FOCUS). The controller is read here (evdev) and passed to it, since a window gamescope draws on
 //! top doesn't reliably get the controller through the web view.
+//!
+//! On the Handheld Daemon editions (Anatase, Ubuntu, CachyOS, Peppermint) that window isn't made: HHD's overlay app
+//! is Hearth's Quick Access (hosts/linux/src/overlay, in Chromium), HHD shows it over the game and holds the
+//! controllers for it, and it talks to Hearth over hearth-core's overlay socket (overlay_link.rs). Hearth still
+//! decides when it opens and closes (`hhd`): the same calls below, sent to that app instead of to a window.
 
 use hearth_core::bridge::Bridge;
 use hearth_core::gamescope as gs;
@@ -52,6 +57,8 @@ pub struct GameMode {
     /// Each game's window when it was last in front (Quick Resume: the right one comes back, never another
     /// game's frozen picture).
     game_wins: Arc<Mutex<std::collections::HashMap<String, u64>>>,
+    /// Handheld Daemon shows Quick Access over games (its overlay app is Hearth's); no overlay window of Hearth's own.
+    pub hhd_overlay: AtomicBool,
 }
 
 fn now() -> u64 { hearth_core::library::now_ms() }
@@ -61,15 +68,23 @@ fn ev_pad(b: &str) -> Value { ev("pad", json!({"b": b})) }
 
 impl GameMode {
     pub fn new(app: AppHandle, bridge: Arc<Mutex<Bridge>>, guide: hearth_core::guide::Guide, windowed: bool) -> Arc<GameMode> {
-        Arc::new(GameMode { app, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), ip_lock: Mutex::new(()), overlay_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
+        let gm = Arc::new(GameMode { app, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), ip_lock: Mutex::new(()), overlay_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
             overlay_on: AtomicBool::new(false), osd_on: AtomicBool::new(false), osd_gen: AtomicU64::new(0), look_closed: AtomicBool::new(true),
             before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), launch_busy: AtomicU64::new(0), last_guide: AtomicU64::new(0), b_gen: AtomicU64::new(0),
-            repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()), game_wins: Default::default() })
+            repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()), game_wins: Default::default(),
+            hhd_overlay: AtomicBool::new(false) });
+        let hhd = gm.inside() && hearth_core::overlay_link::hhd_hosts_overlay();
+        gm.hhd_overlay.store(hhd, Ordering::SeqCst);
+        gm
     }
 
     /// In gamescope as the Hearth session (not a window on a desktop).
     pub fn inside(&self) -> bool { gs::in_session() && !self.windowed && gs::available() }
     pub fn overlay_available(&self) -> bool { self.inside() }
+    /// Handheld Daemon's overlay app is Quick Access over games (HHD editions), not Hearth's own overlay window.
+    pub fn hhd(&self) -> bool { self.hhd_overlay.load(Ordering::SeqCst) }
+    /// Something to show Quick Access in: HHD's overlay app, connected; or Hearth's overlay window.
+    fn overlay_ready(&self) -> bool { if self.hhd() { hearth_core::overlay_link::connected() } else { self.overlay().is_some() } }
 
     fn xid(&self, title: &'static str) -> Option<u64> {
         if let Some(x) = self.xids.lock().unwrap().get(title) { return Some(*x); }
@@ -80,7 +95,7 @@ impl GameMode {
     fn main(&self) -> Option<tauri::WebviewWindow> { self.app.get_webview_window("main") }
     fn overlay(&self) -> Option<tauri::WebviewWindow> { self.app.get_webview_window("overlay") }
     fn to_main(&self, v: Value) { let _ = self.app.emit_to("main", "nimbus:msg", v); }
-    fn to_overlay(&self, v: Value) { let _ = self.app.emit_to("overlay", "nimbus:msg", v); }
+    fn to_overlay(&self, v: Value) { hearth_core::overlay_link::send(&v); let _ = self.app.emit_to("overlay", "nimbus:msg", v); }
 
     // ------------------------------------------------------------------ what's in front
 
@@ -257,6 +272,8 @@ impl GameMode {
 
     pub fn overlay_look(&self, visible: bool, input: bool) {
         self.look_closed.store(!visible, Ordering::SeqCst);
+        // HHD shows and hides its overlay app itself (the app tells it what's open).
+        if self.hhd() { return; }
         if let Some(x) = self.xid(OVERLAY_TITLE) {
             let _ = gs::set_window(x, "_NET_WM_WINDOW_OPACITY", if visible { OPAQUE } else { 0 });
             let _ = gs::set_window(x, "STEAM_INPUT_FOCUS", if input { 1 } else { 0 });
@@ -273,7 +290,7 @@ impl GameMode {
     }
 
     pub fn show_overlay(self: &Arc<Self>) -> bool {
-        if self.overlay().is_none() { return false; }
+        if !self.overlay_ready() { return false; }
         let _o = self.overlay_lock.lock().unwrap();
         self.overlay_on.store(true, Ordering::SeqCst);
         self.osd_on.store(false, Ordering::SeqCst);
@@ -290,10 +307,18 @@ impl GameMode {
             if now().saturating_sub(me.overlay_alive.load(Ordering::SeqCst)) > 5000 {
                 log("overlay: page stopped answering, closing and reloading it");
                 me.hide_overlay();
-                if let Some(o) = me.overlay() { let _ = o.eval("location.reload()"); }
+                if me.hhd() { hearth_core::overlay_link::send(&json!({"type": "overlay-host", "what": "reload"})); }
+                else if let Some(o) = me.overlay() { let _ = o.eval("location.reload()"); }
                 return;
             }
         });
+        // HHD's overlay app: it tells HHD to show it and hold the controllers when it hears overlay.shown, and HHD
+        // hands it the controller's presses.
+        if self.hhd() {
+            self.to_overlay(ev("padHost", json!({"connected": 1})));
+            self.to_overlay(ev("overlay.shown", json!({})));
+            return true;
+        }
         // Not focused: taking the keyboard focus from the game makes some games minimize or stall (a black or
         // frozen screen after). Its buttons come from the controller readers; gamescope sends touch to it.
         if let Some(o) = self.overlay() { let _ = o.show(); }
@@ -310,7 +335,8 @@ impl GameMode {
     /// While the overlay is open the game gets no controller input, and it keeps running: InputPlumber sends every
     /// press to Hearth instead of the game; controllers it doesn't manage are taken by Hearth for the time being.
     fn hold_game(&self, on: bool) {
-        self.guide.grab(on);
+        // With HHD's overlay app, HHD holds the controllers (the app asks it to while Quick Access is open).
+        if !self.hhd() { self.guide.grab(on); }
         if self.ip.load(Ordering::SeqCst) {
             let _ = on; self.ip_sync();
         }
@@ -366,11 +392,13 @@ impl GameMode {
             }
         });
     }
-    /// Hearth OS on Anatase: Handheld Daemon (HHD) runs the built-in controller. Its virtual controller is an ordinary
-    /// one, so the Guide button comes through the controller reader (guide.rs) and opens Quick Access, and while
-    /// it's open Hearth takes the controllers (hold_game). HHD can't hold the Guide press back from the game the
-    /// way InputPlumber does (see docs/BASE-ANATASE.md). Its Quick Access button sends Guide + A: the chord guard
-    /// keeps that A from picking something in Quick Access. HHD may start a little after Hearth: looked for for a minute.
+    /// Hearth OS on Anatase (and the other HHD editions): Handheld Daemon (HHD) runs the built-in controller. Its
+    /// virtual controller is an ordinary one, so the Guide button comes through the controller reader (guide.rs) and
+    /// opens Quick Access. HHD can't hold the Guide press back from the game the way InputPlumber does (see
+    /// docs/BASE-ANATASE.md). Where HHD's overlay app is Hearth's (hhd()), HHD shows Quick Access and holds the
+    /// controllers while it's open, and its QAM button opens it too (hhd_open); without it, HHD's QAM button sends
+    /// Guide + A, and the chord guard keeps that A from picking something in Quick Access. HHD may start a little
+    /// after Hearth: looked for for a minute.
     fn start_hhd(self: &Arc<Self>) {
         let me = self.clone();
         std::thread::spawn(move || {
@@ -402,9 +430,13 @@ impl GameMode {
         if self.overlay_on.load(Ordering::SeqCst) && self.look_closed.load(Ordering::SeqCst) { self.overlay_look(true, true); }
     }
     pub fn hide_overlay(self: &Arc<Self>) {
-        if self.overlay().is_none() { return; }
+        if !self.hhd() && self.overlay().is_none() { return; }
         let _o = self.overlay_lock.lock().unwrap();
-        if !self.overlay_on.load(Ordering::SeqCst) && !self.osd_on.load(Ordering::SeqCst) && self.look_closed.load(Ordering::SeqCst) { return; }
+        if !self.overlay_on.load(Ordering::SeqCst) && !self.osd_on.load(Ordering::SeqCst) && self.look_closed.load(Ordering::SeqCst) {
+            // Already closed here: HHD's overlay app may think otherwise (it asked to close, or it just started).
+            if self.hhd() { self.to_overlay(ev("overlay.hidden", json!({}))); }
+            return;
+        }
         self.overlay_on.store(false, Ordering::SeqCst);
         self.osd_on.store(false, Ordering::SeqCst);
         self.reveal_gen.fetch_add(1, Ordering::SeqCst);
@@ -476,9 +508,26 @@ impl GameMode {
         self.to_main(ev("pad", json!({"b": "guide"})));
     }
 
+    /// Handheld Daemon's QAM button (its overlay app asks): Quick Access, like Guide. Over a game it opens there; with
+    /// Hearth in front, Hearth's own Quick Access opens (as Guide does). Already open: the app is told again (it may
+    /// have restarted). Closing goes through the page's own close (from_overlay).
+    pub fn hhd_open(self: &Arc<Self>) {
+        if self.overlay_on.load(Ordering::SeqCst) { self.to_overlay(ev("overlay.shown", json!({}))); return; }
+        if self.hearth_on_screen() { self.to_main(ev("pad", json!({"b": "guide"}))); return; }
+        log("overlay: Handheld Daemon's Quick Access button pressed over another app");
+        if self.show_overlay() { return; }
+        self.come_back();
+        self.to_main(ev("pad", json!({"b": "guide"})));
+    }
+    /// HHD (re)started its overlay app: it starts closed, so Hearth's idea of it does too.
+    pub fn overlay_app_connected(self: &Arc<Self>) {
+        log("overlay: Handheld Daemon's overlay app connected");
+        if self.overlay_on.load(Ordering::SeqCst) { self.hide_overlay(); }
+    }
+
     /// The volume bar: in Hearth when it's in front, else over the game (the overlay, without taking input).
     pub fn osd(self: &Arc<Self>, data: Value) {
-        if self.hearth_in_front() || self.overlay().is_none() || self.running().is_none() { self.to_main(ev("osd", data)); return; }
+        if self.hearth_in_front() || !self.overlay_ready() || self.running().is_none() { self.to_main(ev("osd", data)); return; }
         if !self.overlay_on.load(Ordering::SeqCst) && !self.osd_on.load(Ordering::SeqCst) { self.osd_on.store(true, Ordering::SeqCst); self.overlay_look(true, false); }
         let ms = data["ms"].as_u64().unwrap_or(1800);
         self.to_overlay(ev("osd", data));
@@ -525,6 +574,7 @@ impl GameMode {
             ("overlay", "alive") => self.overlay_alive.store(now(), Ordering::SeqCst),
             ("overlay", "painted") => self.reveal_overlay(),
             ("overlay", "home") => { self.claim(); self.hide_overlay(); self.come_back(); }
+            ("hhd", "open") => self.hhd_open(),
             ("resume", _) => { self.claim(); self.hide_overlay(); self.resume_game(); }
             ("power", _) => { self.hide_overlay(); return false; }   // handled like the main window's
             _ => return false,
@@ -554,6 +604,16 @@ impl GameMode {
                 self.focus_xid("app", id, 0, false);
             }
             "screenshot" => {
+                // HHD's overlay app: see-through for the picture, then back.
+                if self.hhd() {
+                    if self.overlay_on.load(Ordering::SeqCst) {
+                        let opacity: u64 = if a["before"] == true { 0 } else { 1 };
+                        hearth_core::overlay_link::send(&json!({"type": "overlay-host", "what": "opacity", "value": opacity}));
+                        if a["before"] == true { std::thread::sleep(Duration::from_millis(450)); }
+                    }
+                    if a["before"] == true && self.main().map(|w| w.is_visible().unwrap_or(false)).unwrap_or(false) { self.step_aside(); std::thread::sleep(Duration::from_millis(450)); }
+                    return;
+                }
                 if a["before"] == true {
                     if self.overlay_on.load(Ordering::SeqCst) { self.overlay_look(false, false); std::thread::sleep(Duration::from_millis(450)); }
                     if self.main().map(|w| w.is_visible().unwrap_or(false)).unwrap_or(false) { self.step_aside(); std::thread::sleep(Duration::from_millis(450)); }

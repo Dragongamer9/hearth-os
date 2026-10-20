@@ -1,0 +1,48 @@
+#!/bin/sh
+# hearth-overlay: Hearth's Quick Access as Handheld Daemon's overlay app. The HHD editions of Hearth OS (Anatase,
+# Ubuntu, CachyOS, Peppermint) install it as /usr/bin/hhd-ui and point HHD_OVERLAY at it, so HHD starts it the way it
+# starts its own hhd-ui (hhd/plugins/overlay/overlay.py). The Bazzite build doesn't: it keeps Hearth's own overlay.
+#   Game Mode (gamescope, STEAM_OVERLAY=1): Hearth's Quick Access page in Chromium (Hearth Browser's Electron,
+#     `nimbus --hhd-overlay`, hosts/linux/src/overlay), talking to the running Hearth app.
+#   Desktop Mode (HHD_MANAGED=1): no window of its own: HHD's QAM button opens Mantel's Quick Access.
+#   --version: the version HHD shows for its overlay (HHD runs this as root when it starts: nothing else happens).
+# HHD starts it with only HOME, DISPLAY, PATH and STEAM_OVERLAY or HHD_MANAGED (and XAUTHORITY).
+APP="${HEARTH_OVERLAY_ELECTRON:-/usr/lib/hearth-browser/nimbus}"
+SHARE="${NIMBUS_SHARE:-/usr/share/nimbus}"
+
+case "${1:-}" in
+  --version|-v)
+    v=$(cat "$SHARE/version" 2>/dev/null || true)
+    echo "Hearth Quick Access ${v:-0.0.0}"
+    exit 0 ;;
+esac
+
+uid=$(id -u)
+if [ "$uid" = 0 ]; then
+  echo "hearth-overlay: runs as the signed-in user, not root" >&2
+  exit 1
+fi
+# The user's runtime folder: where Hearth's overlay socket is (and what Chromium expects).
+if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$uid" ]; then
+  XDG_RUNTIME_DIR="/run/user/$uid"
+  export XDG_RUNTIME_DIR
+fi
+
+if [ -z "${STEAM_OVERLAY:-}" ] && [ -n "${HHD_MANAGED:-}" ]; then
+  # Desktop Mode. HHD writes "cmd:..." lines; the first press of a double press (open_qam_if_closed) is left out so
+  # a double press doesn't open and close it again.
+  while IFS= read -r line; do
+    case "$line" in
+      cmd:open_qam|cmd:open_expanded|cmd:open_overlay)
+        quickshell ipc -p "$SHARE/desktop/shell" call quick toggle >/dev/null 2>&1 \
+          || echo "hearth-overlay: Mantel's Quick Access didn't answer" >&2 ;;
+    esac
+  done
+  exit 0
+fi
+
+if [ ! -x "$APP" ]; then
+  echo "hearth-overlay: $APP is missing (Hearth Browser's Electron)" >&2
+  exit 1
+fi
+exec "$APP" --hhd-overlay "$@"
