@@ -4,6 +4,9 @@ main = "src/index.js"
 compatibility_date = "2025-06-01"
 workers_dev = true
 
+[vars]
+LOGS_REPO = "Dragongamer9/hearth-logs"
+
 [triggers]
 crons = ["17 4 * * *"]
 

@@ -108,7 +108,20 @@ const MAX_SEND: usize = 600_000;
 
 /// Saves (as above) and sends: {path, copies, code, url}. Too-long logs lose your session's journal first, then
 /// their oldest lines.
-pub fn send_to_developer(version: &str, kind: &str) -> Result<Value, String> {
+/// A note for an HTTP header: printable ASCII kept, everything else percent-encoded (UTF-8), at most 1000 bytes in.
+pub fn header_note(note: &str) -> String {
+    let mut n = note.trim().to_string();
+    if n.len() > 1000 { let mut c = 1000; while !n.is_char_boundary(c) { c -= 1; } n.truncate(c); }
+    let mut out = String::new();
+    for b in n.bytes() {
+        if b.is_ascii_alphanumeric() || b" -_.~!*'()".contains(&b) { out.push(b as char); } else { out.push_str(&format!("%{b:02X}")); }
+    }
+    out
+}
+
+pub fn send_to_developer(version: &str, kind: &str) -> Result<Value, String> { send_to_developer_note(version, kind, "") }
+/// The same, with the person's note ("What happened?"): it goes with the logs as X-Hearth-Note.
+pub fn send_to_developer_note(version: &str, kind: &str, note: &str) -> Result<Value, String> {
     let mut out = send(version)?;
     let path = out["path"].as_str().unwrap_or("").to_string();
     let mut text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
@@ -123,9 +136,15 @@ pub fn send_to_developer(version: &str, kind: &str) -> Result<Value, String> {
     }
     let tmp = std::env::temp_dir().join(format!("hearth-send-{}.txt", std::process::id()));
     std::fs::write(&tmp, &text).map_err(|e| e.to_string())?;
-    let r = crate::system::run_timeout("curl", &["-sS", "-m", "60", "-X", "POST", "-H", "Content-Type: text/plain; charset=utf-8",
-        "-H", &format!("X-Hearth-Version: {version}"), "-H", &format!("X-Hearth-Kind: {kind}"),
-        "--data-binary", &format!("@{}", tmp.to_string_lossy()), &format!("{SERVICE}/v1/logs")], Duration::from_secs(70));
+    let note_h = format!("X-Hearth-Note: {}", header_note(note));
+    let ver_h = format!("X-Hearth-Version: {version}");
+    let kind_h = format!("X-Hearth-Kind: {kind}");
+    let data = format!("@{}", tmp.to_string_lossy());
+    let url = format!("{SERVICE}/v1/logs");
+    let mut args: Vec<&str> = vec!["-sS", "-m", "60", "-X", "POST", "-H", "Content-Type: text/plain; charset=utf-8", "-H", &ver_h, "-H", &kind_h];
+    if !note.trim().is_empty() { args.push("-H"); args.push(&note_h); }
+    args.extend(["--data-binary", &data, &url]);
+    let r = crate::system::run_timeout("curl", &args, Duration::from_secs(70));
     let _ = std::fs::remove_file(&tmp);
     let reply: Value = r.ok().and_then(|t| serde_json::from_str(t.trim()).ok()).unwrap_or(Value::Null);
     let code = reply["code"].as_str().ok_or_else(|| format!("Saved to {path}, but sending didn't work{}. Check the internet connection and try again.",
@@ -138,6 +157,14 @@ pub fn send_to_developer(version: &str, kind: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn notes_fit_in_a_header() {
+        assert_eq!(header_note("  Game froze  "), "Game froze");
+        assert_eq!(header_note("a\nb"), "a%0Ab");
+        assert_eq!(header_note("é"), "%C3%A9");
+        assert_eq!(header_note("x: y"), "x%3A y");
+        assert!(header_note(&"é".repeat(800)).len() <= 3000);
+    }
     #[test]
     fn takes_out_personal_details() {
         let t = redact("home /home/sam/x refresh_token=abcdef123456 mail sam.smith@gmail.com id 76561198012345678 Bearer abcdefghijkl sam logged in, ssid: CasaWifi",

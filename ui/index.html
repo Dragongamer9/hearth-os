@@ -3863,8 +3863,11 @@ function act(el){
     case 'lookToggle': LOOK[d.key]=!LOOK[d.key]; saveLook(); return render('ap-'+d.key);
     case 'textSize': return pickTextSize();
     case 'restartApp': toast('Restarting '+APP+'…'); return call('app.restart').catch(e=>toast(e.message));
-    case 'sendLogsDev': if(LOGS.busyDev) return; LOGS.busyDev=true; LOGS.r=null; render('sy-senddev',true);
-      return call('logs.sendToDeveloper',{},150000).then(r=>{ LOGS.r=r; toast('Logs sent · code '+r.code); }).catch(e=>toast(e.message)).finally(()=>{ LOGS.busyDev=false; render('sy-senddev',true); });
+    case 'sendLogsDev': if(LOGS.busyDev) return;
+      // A short note first (optional): it becomes the bug report's title.
+      return openPrompt({title:'What happened?', value:''}).then(note=>{ if(note==null) return;
+      LOGS.busyDev=true; LOGS.r=null; render('sy-senddev',true);
+      return call('logs.sendToDeveloper',{note:String(note).trim().slice(0,1000)},150000).then(r=>{ LOGS.r=r; toast('Logs sent · code '+r.code); }).catch(e=>toast(e.message)).finally(()=>{ LOGS.busyDev=false; render('sy-senddev',true); }) });
     case 'sendLogs': if(LOGS.busy) return; LOGS.busy=true; LOGS.r=null; render('sy-send',true);
       return call('logs.send',{},120000).then(r=>{ LOGS.r=r; toast((r.copies||[]).length?'Logs saved to your USB drive too':'Logs saved'); }).catch(e=>toast(e.message)).finally(()=>{ LOGS.busy=false; render('sy-send',true); });
     case 'exportLogs': toast('Saving logs…'); return call('app.exportLogs',{},60000).then(r=>toast(r&&r.path?'Saved to '+r.path:'Saved')).catch(e=>toast(e.message));
