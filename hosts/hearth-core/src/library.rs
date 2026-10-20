@@ -261,7 +261,8 @@ impl Library {
             let uri = g.install_uri.clone().or(e["uri"].as_str().map(str::to_string)).unwrap_or_default();
             match self.start_install(id, &g.title, &uri, e["paused"] == true) {
                 Ok(()) => {
-                    if let Some(j) = self.queue.lock().unwrap().get(id) { let mut j = j.lock().unwrap(); j.bytes_done = e["bytesDone"].as_u64(); j.bytes_total = e["bytesTotal"].as_u64(); j.progress = e["progress"].as_f64(); }
+                    let job = self.queue.lock().unwrap().get(id);
+                    if let Some(j) = job { let mut j = j.lock().unwrap(); j.bytes_done = e["bytesDone"].as_u64(); j.bytes_total = e["bytesTotal"].as_u64(); j.progress = e["progress"].as_f64(); }
                     crate::bridge::log(&format!("install {id}: back in the queue after a restart"));
                 }
                 Err(err) => crate::bridge::log(&format!("install {id}: couldn't restore: {err}")),
@@ -348,7 +349,9 @@ impl Library {
         let changed = sig != self.download_sig;
         self.download_sig = sig;
         let mut active: Vec<Value> = self.games.values().filter(|g| !["installed", "notInstalled", "cloud"].contains(&g.state)).map(|g| self.dto(g)).collect();
-        for id in self.queue.lock().unwrap().ids() {
+        // The queue's ids first, then the queue let go: dto() asks the queue again (holding it here waited forever).
+        let queued = self.queue.lock().unwrap().ids();
+        for id in queued {
             if let Some(g) = self.games.get(&id) { if !active.iter().any(|a| a["id"] == id.as_str()) { active.push(self.dto(g)); } }
         }
         let now = now_ms();
@@ -837,6 +840,18 @@ impl Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn downloads_with_a_queued_store_game_answers() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut lib = Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf());
+        let g = stores::game("gog:1".into(), "A GOG game", "gog", "", None, vec![], false);
+        lib.games.insert(g.id.clone(), g);
+        lib.queue.lock().unwrap().add(stores::Job { game_id: "gog:1".into(), title: "A GOG game".into(), uri: "nimbus-gog:1".into(), state: "queued".into(), ..Default::default() }).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || { let d = lib.downloads(); let _ = tx.send(d); });
+        let d = rx.recv_timeout(std::time::Duration::from_secs(10)).expect("downloads() waited on itself");
+        assert!(d.to_string().contains("gog:1"));
+    }
     #[test]
     fn local_pictures_get_hearths_address() {
         assert_eq!(art_url("/home/sam/a b/620p.png"), "nimbus-art://file//home/sam/a%20b/620p.png");
