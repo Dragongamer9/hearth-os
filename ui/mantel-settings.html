@@ -115,6 +115,14 @@ button.row:hover{background:var(--panel3)}
 .about b{display:block;font-size:22px;font-weight:600}
 .about small{color:var(--muted);font-size:13px}
 .swatch{flex:0 0 52px !important;min-width:52px}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--panel3) center/cover no-repeat;display:grid;place-items:center;font-size:16px;font-weight:600;flex:none}
+.avatar.big{width:56px;height:56px;font-size:20px}
+.btnrow{display:flex;gap:8px;margin-left:52px}
+.btnrow .row{flex:1;min-height:52px}
+.twofield{display:flex;gap:8px}
+.page>.field{flex:none}
+.confirm{margin-left:52px;display:flex;flex-direction:column;gap:8px}
+.confirm p{font-size:14px}
 .msg{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(28,21,18,.92);border:1px solid var(--line);border-radius:22px;height:44px;padding:0 18px;display:flex;align-items:center;font-size:14px;opacity:0;transition:opacity var(--quick);pointer-events:none;z-index:5}
 .msg.show{opacity:1}
 </style>
@@ -140,10 +148,18 @@ const I = new Proxy(window.HEARTH_ICONS || {}, {get:(o,k)=>o[k] || o.dot || ''})
 
 // ---------------------------------------------------------------- pages (SettingsApp.qml's list, in its order)
 const PAGES = [['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['sound','vol','Sound'],['display','display','Display'],['appearance','palette','Appearance'],
-  ['power','power','Power'],['controller','pad','Controller'],['signin','user','Sign-in'],['browser','globe','Web browser'],['updates','update','Updates'],['about','info','About']];
+  ['power','power','Power'],['controller','pad','Controller'],['keyboard','kbd','Keyboard'],['printers','printer','Printers'],['datetime','clock','Date & time'],
+  ['defaults','grid','Default apps'],['clipboard','clipboard','Clipboard'],['users','user','Users'],['signin','lock','Sign-in'],['browser','globe','Web browser'],['updates','update','Updates'],['about','info','About']];
 const S = {page:'wifi', inPage:false, f:0, st:null, nets:null, scanning:false, busy:'', asking:'', msg:'', paired:null, found:[], btScan:false, btBusy:'', btMsg:'',
   audio:null, input:null, display:null, prev:null, countdown:0, power:null, powerError:'', shell:null, desk:null, pad:null, overlay:null, upd:null, sys:null, user:'',
-  profile:null, browser:null, signMsg:'', signBad:false};
+  profile:null, browser:null, signMsg:'', signBad:false,
+  // Date & time, Keyboard, Default apps, Users, Printers, Clipboard (SetDateTime.qml … SetClipboard.qml)
+  pm:null, inputs:{}, busyWhat:'', tm:null, zones:[], region:'', mantel:null, kb:null, kbAll:[], kbShort:[], kbPicked:-1,
+  defaults:null, users:null, usPicked:'', usConfirm:'', printers:null, prPicked:'', prConfirm:'', clip:null, clipConfirm:false};
+// A result line under the page's first rows (each page's "message" on Hearth OS).
+const say = (text, bad) => { S.pm={page:S.page, text, bad:!!bad}; renderPage(); };
+const pageMsg = () => S.pm && S.pm.page===S.page && S.pm.text ? note(S.pm.text, S.pm.bad?'bad':'good') : '';
+const inputVal = id => (S.inputs[id]||'');
 
 function toast(t){ const m=$('.msg'); m.textContent=t; m.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>m.classList.remove('show'), 1800); }
 function renderNav(){
@@ -174,6 +190,8 @@ const SLIDERS = {
   volume:{text:f=>Math.round(f*100)+'%', step:.05, set:f=>{ const v=Math.round(f*100); if(S.audio){ S.audio.volume=v; S.audio.muted=false; } call('audio.setMute',{m:false}).catch(()=>{}); call('audio.setVolume',{v}).catch(()=>{}); }},
   input:{text:f=>Math.round(f*100)+'%', step:.05, set:f=>{ const v=Math.round(f*100); if(S.input) S.input.volume=v; call('audio.setInputVolume',{v}).catch(e=>toast(e.message)); }},
   brightness:{text:f=>Math.round(f*100)+'%', step:.05, set:f=>{ const v=Math.max(1,Math.round(f*100)); if(S.display) S.display.brightness=v; call('display.setBrightness',{v}).catch(()=>{}); }},
+  kdelay:{text:f=>(250+Math.round(f*3)*250)+' ms', step:1/3, set:f=>{ if(S.kb){ S.kb.delay=250+Math.round(f*3)*250; kbSoon(); } }},
+  krate:{text:f=>Math.round(2.5+f*27.5)+' per second', step:1/31, set:f=>{ if(S.kb){ S.kb.rate=Math.round(2.5+f*27.5); kbSoon(); } }},
   speed:{text:f=>(Math.round((0.4+f*1.6)*10)/10).toFixed(1)+'×', step:.0625, set:f=>{ const v=Math.round((0.4+f*1.6)*10)/10; if(S.desk) S.desk.pointerSpeed=v; call('desktop.set',{key:'pointerSpeed', value:v}).catch(e=>toast(e.message)); }},
 };
 
@@ -298,6 +316,127 @@ function renderPage(){
     h += choice('mouse','Controller mouse outside Desktop Mode', 'In Game Mode and over Steam\'s windows', [['off','Off'],['steam','In Steam'],['always','Always']], c.mouseMode);
     if(S.overlay) h += row({icon:'pad', title:'Xbox button opens only Ember', sub:'Turns off the Windows Game Bar on the Xbox button', sw:!S.overlay.gameBarButton, act:'gameBar'});
   }
+  else if(p==='keyboard'){   // SetKeyboard.qml
+    const k=S.kb;
+    if(!k) h += note('Loading…');
+    else {
+      const sw=(KB_SWITCH.find(c=>c[0]===k.switch)||[,'the shortcut below'])[1];
+      h += hd('Layouts'+(S.busyWhat==='kb'?' · saving…':''));
+      k.layouts.forEach((l,i)=>{
+        h += row({icon:'kbd', title:l.name||l.tip, sub:i===0?'Used when Windows starts':'Switch to it with '+sw+' or Windows+Space', val:S.kbPicked===i?'':i===0?'First':'', act:'kbPick', data:`data-i="${i}"`});
+        if(S.kbPicked===i) h += `<div class="btnrow">${i>0?row({title:'Move up', chev:false, act:'kbMove', data:`data-i="${i}" data-d="-1"`}):''}${i<k.layouts.length-1?row({title:'Move down', chev:false, act:'kbMove', data:`data-i="${i}" data-d="1"`}):''}${k.layouts.length>1?row({title:'Remove', danger:true, chev:false, act:'kbRemove', data:`data-i="${i}"`}):''}</div>`;
+      });
+      h += field('kbAdd', 'Add a layout: type a language or country');
+      const q=inputVal('kbAdd').trim().toLowerCase();
+      if(q) for(const l of S.kbAll.filter(l=>(l.name+' '+l.tip).toLowerCase().includes(q) && !k.layouts.some(x=>x.tip.toLowerCase()===l.tip.toLowerCase())).slice(0,30))
+        h += row({icon:'kbd', title:l.name, sub:l.tip, val:'Add', chev:false, act:'kbAdd', data:`data-tip="${esc(l.tip)}" data-name="${esc(l.name)}"`});
+      if(k.layouts.length>1) h += choice('kbSwitch', 'Switch layouts with', 'Press it to go to the next layout. Windows+Space always works too', KB_SWITCH, k.switch);
+      h += hd('Typing');
+      h += slider('kdelay', 'kbd', 'Wait before a held key repeats', ((k.delay||500)-250)/750);
+      h += slider('krate', 'kbd', 'Repeat speed', ((k.rate||30)-2.5)/27.5);
+      h += field('kbTry', 'Try typing here');
+      h += pageMsg();
+      if(S.kbShort.length){ h += hd('Keyboard shortcuts'); h += S.kbShort.map(x=>row({title:x.keys, sub:x.action})).join(''); }
+      h += hd('Windows');
+      h += row({icon:'kbd', title:'More keyboard settings', sub:'Windows Settings › Time & language › Typing', act:'uri', data:'data-v="ms-settings:typing"'});
+    }
+  }
+  else if(p==='printers'){   // SetPrinters.qml
+    const st=S.printers;
+    if(!st) h += note('Loading…');
+    else {
+      if(!st.cups) h += row({icon:'info', title:"The printing service isn't running", sub:"Windows' Print Spooler is stopped. It starts by itself when something prints; if this stays, restart the PC."});
+      if(st.printers.length) h += hd('My printers');
+      for(const pr of st.printers){
+        const kind=pr.usb?'USB':pr.network?'Network':'';
+        const state=(pr.state==='printing'?'Printing':pr.state==='offline'?'Offline':'Ready')+(pr.location?' · '+pr.location:'')+(kind?' · '+kind:'');
+        h += row({icon:'printer', title:pr.info||pr.name, sub:state, val:pr.default?'Default':'', act:'prPick', data:`data-n="${esc(pr.name)}"`});
+        if(S.prPicked===pr.name){
+          h += `<div class="confirm">`;
+          h += row({icon:'printer', chev:false, title:S.busyWhat==='test'?'Sending…':'Print a test page', act:'prTest', data:`data-n="${esc(pr.name)}"`});
+          if(!pr.default) h += row({icon:'check', chev:false, title:'Make it the default', act:'prDefault', data:`data-n="${esc(pr.name)}"`});
+          if(S.prConfirm!==pr.name) h += row({icon:'trash', danger:true, chev:false, title:'Remove this printer…', act:'prConfirm', data:`data-n="${esc(pr.name)}"`});
+          else { h += row({icon:'trash', danger:true, chev:false, title:S.busyWhat==='remove'?'Removing…':'Yes, remove '+(pr.info||pr.name), act:'prRemove', data:`data-n="${esc(pr.name)}"`}); h += row({title:'Cancel', chev:false, act:'prCancel'}); }
+          h += `</div>`;
+        }
+      }
+      if(st.cups && !st.printers.length) h += note('No printers yet.');
+      h += hd('Add a printer');
+      h += row({icon:'search', title:'Add a printer or scanner', sub:'Windows looks on your network and over USB (Settings › Bluetooth & devices › Printers & scanners)', act:'uri', data:'data-v="ms-settings:printers"'});
+      h += pageMsg();
+    }
+  }
+  else if(p==='datetime'){   // SetDateTime.qml
+    const t=S.tm, c24=!!(S.mantel&&S.mantel.clock24);
+    h += row({icon:'clock', title:t?tmNow(t, c24):'…', sub:t?(t.zoneName+(t.ntp?' · set from the internet':' · set by hand')):'Checking…'});
+    h += choice('clock24', 'Clock', 'How the taskbar shows the time', [['false','12-hour (2:05 PM)'],['true','24-hour (14:05)']], String(c24));
+    if(t && t.canNtp) h += row({icon:'restart', title:'Set the time automatically', sub:S.busyWhat==='ntp'?'Saving…':"Uses the internet to keep the clock right (Windows asks for an administrator's OK)", sw:!!t.ntp, act:'tmNtp'});
+    if(t && !t.ntp){
+      h += hd('Set the clock');
+      h += `<div class="twofield">${field('tmDate', 'Date, like 2026-10-20')}${field('tmTime', 'Time, like 14:05')}</div>`;
+      h += row({icon:'check', chev:false, title:S.busyWhat==='time'?'Setting…':'Set the clock', sub:'Date as year-month-day, time in 24-hour form', act:'tmSet'});
+    }
+    h += pageMsg();
+    h += hd('Time zone'+(S.busyWhat==='zone'?' · saving…':''));
+    h += field('tz', 'Search for a city, region or UTC offset');
+    const q=inputVal('tz').trim().toLowerCase(), zones=S.zones||[];
+    const inUse = z => t && t.timezone===z.zone ? 'In use' : '';
+    if(q){
+      const m=zones.filter(z=>(z.city+' '+z.region+' '+z.zone+' utc'+z.offset).toLowerCase().includes(q)).slice(0,40);
+      h += m.map(z=>row({icon:'globe', chev:false, title:z.city, sub:z.region+' · UTC'+z.offset, val:inUse(z), act:'tmZone', data:`data-z="${esc(z.zone)}"`})).join('');
+      if(!m.length) h += note(`No time zone matches "${inputVal('tz')}"`);
+    } else if(S.region){
+      h += row({icon:'back', chev:false, title:'All regions', sub:S.region, act:'tmRegion', data:'data-r=""'});
+      h += zones.filter(z=>z.region===S.region).map(z=>row({icon:'clock', chev:false, title:z.city, sub:'UTC'+z.offset, val:inUse(z), act:'tmZone', data:`data-z="${esc(z.zone)}"`})).join('');
+    } else {
+      const regions=[...new Set(zones.map(z=>z.region))];
+      h += regions.map(r=>row({icon:'globe', title:r, val:t && t.region===r ? 'In use' : zones.filter(z=>z.region===r).length+' places', act:'tmRegion', data:`data-r="${esc(r)}"`})).join('');
+      if(!zones.length) h += note('Loading…');
+    }
+    h += hd('Windows');
+    h += row({icon:'clock', title:'More date and time settings', sub:'Windows Settings › Time & language › Date & time', act:'uri', data:'data-v="ms-settings:dateandtime"'});
+  }
+  else if(p==='defaults'){   // SetDefaults.qml
+    const d=S.defaults, icons={browser:'globe', files:'grid', text:'kbd', image:'palette', video:'display', music:'vol'};
+    if(!d) h += note('Looking at your apps…');
+    else {
+      h += d.kinds.map(k=>row({icon:icons[k.kind]||'grid', title:k.label, sub:k.current||'None chosen', val:'Change in Windows', act:'uri', data:'data-v="ms-settings:defaultapps"'})).join('');
+      h += note('Windows asks you to pick default apps yourself, in its own Settings › Apps › Default apps, so each row opens that page.', 'small');
+    }
+  }
+  else if(p==='clipboard'){   // SetClipboard.qml
+    const c=S.clip;
+    h += row({icon:'clipboard', title:'Keep clipboard history', sub:!c?'Checking…':c.policy?'Your organization turned clipboard history off on this PC':'Open it from the launcher (Clipboard history) or with Windows+V. Kept on this PC only, by Windows.', sw:!!(c&&c.enabled), act:'cbToggle'});
+    if(c && c.available) h += row({icon:'clipboard', title:'Open clipboard history', sub:'Clipboard history in the launcher', act:'cbOpen'});
+    if(c && c.available && !S.clipConfirm) h += row({icon:'trash', chev:false, title:'Clear clipboard history…', act:'cbConfirm'});
+    if(S.clipConfirm) h += `<div class="btnrow" style="margin-left:0">${row({title:'Yes, clear it', danger:true, chev:false, act:'cbClear'})}${row({title:'Cancel', chev:false, act:'cbCancel'})}</div>`;
+    h += pageMsg();
+    h += note("Pinned items stay when you clear (Windows keeps them). Passwords copied from password managers that mark them as secret aren't kept.", 'small');
+  }
+  else if(p==='users'){   // SetUsers.qml
+    const st=S.users, me=st&&st.users.find(u=>u.me), canManage=!!(st&&st.admin);
+    const av = (u, big) => `<div class="avatar ${big?'big':''}" ${u.picture?`style="background-image:url('${esc(u.picture)}')"`:''}>${u.picture?'':esc((u.fullname||u.name).charAt(0).toUpperCase())}</div>`;
+    if(!st) h += note('Loading…');
+    else {
+      if(me) h += `<div class="row" style="min-height:84px">${av(me, true)}<div class="tx"><b>${esc(me.fullname||me.name)}</b><small>${esc(me.name)} · ${me.admin?'Administrator':'Standard account'}</small></div></div>`;
+      h += row({icon:'cam', title:'Change my picture', sub:'Shown here and on the sign-in screen (Windows Settings › Accounts › Your info)', act:'uri', data:'data-v="ms-settings:yourinfo"'});
+      h += hd('My password');
+      h += row({icon:'lock', title:'Change my password', sub:'Windows Settings › Accounts › Sign-in options', act:'uri', data:'data-v="ms-settings:signinoptions"'});
+      h += pageMsg();
+      h += hd('Accounts on this device');
+      for(const u of st.users){
+        const removable=canManage && !u.me;
+        h += `<${removable?'button':'div'} class="row" ${removable?`data-f data-act="usPick" data-n="${esc(u.name)}"`:''}>${av(u)}<div class="tx"><b>${esc((u.fullname||u.name)+(u.me?'  (you)':''))}</b><small>${esc(u.name)} · ${u.admin?'Administrator':'Standard account'}</small></div>${removable?'<div class="chev">›</div>':''}</${removable?'button':'div'}>`;
+        if(S.usPicked===u.name && S.usConfirm!==u.name) h += `<div class="confirm">${row({icon:'trash', danger:true, chev:false, title:'Remove this account…', act:'usConfirm', data:`data-n="${esc(u.name)}"`})}</div>`;
+        if(S.usConfirm===u.name) h += `<div class="confirm"><p>Remove ${esc(u.name)}? They won't be able to sign in any more.</p>
+          ${row({title:S.busyWhat==='remove'?'Removing…':'Remove, but keep their files', sub:'Their folder stays ('+u.home+')', chev:false, act:'usRemove', data:`data-n="${esc(u.name)}" data-del="0"`})}
+          ${row({title:'Remove and delete their files', sub:'Their folder, games and saves are deleted for good', danger:true, chev:false, act:'usRemove', data:`data-n="${esc(u.name)}" data-del="1"`})}
+          ${row({title:'Cancel', chev:false, act:'usCancel'})}</div>`;
+      }
+      if(canManage){ h += hd('Add an account'); h += row({icon:'user', title:'Add account', sub:'Windows Settings › Accounts › Other users (a Microsoft account, or one just for this PC)', act:'uri', data:'data-v="ms-settings:otherusers"'}); }
+      else h += note('Only administrators can add or remove accounts.');
+    }
+  }
   else if(p==='signin'){   // SetSignin.qml
     const s=S.shell||{}, dk=S.desk||{};
     h += choice('start','Start in','What you see after turning on', [['game','Game Mode'],['desktop','Desktop Mode']], s.startMode||'game');
@@ -342,9 +481,11 @@ function renderPage(){
       ['Storage',i.storage&&i.storage.totalBytes&&`${gb(i.storage.freeBytes)} free of ${gb(i.storage.totalBytes)}`],['System',i.osPretty||i.os],['Version',i.osVersion],['Kernel',i.kernel],['Desktop',ver?'Mantel · Ember '+ver:'Mantel']])
       if(v) h += row({title:k, val:v, cls:'fact'});
   }
-  const keepScroll=$('main').scrollTop;
+  const keepScroll=$('main').scrollTop, ae=document.activeElement, typingIn=ae && ae.dataset && ae.dataset.input, caret=typingIn ? ae.selectionStart : 0;
   $('.page').innerHTML = h;
   $('main').scrollTop = keepScroll;
+  for(const i of $$('.page [data-input]')) if(S.inputs[i.dataset.input]!=null && i.dataset.input!=='pw') i.value=S.inputs[i.dataset.input];
+  if(typingIn){ const i=$(`.page [data-input="${typingIn}"]`); if(i){ i.focus(); try{ i.setSelectionRange(caret, caret); }catch(e){} } }
   focusPaint();
 }
 // The wallpaper grid: the moving ones, then Hearth's pictures (named like on Hearth OS, A–Z by file), then yours.
@@ -356,6 +497,28 @@ function wallpapers(s){
   for(const f of (s.pictures||[])) list.push(['custom:'+f, f.replace(/\.(jpe?g|png|webp|bmp)$/i,'').replace(/[-_]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()), '', 'https://hearth-walls.local/'+encodeURIComponent(f)]);
   list.push(['', 'Your Windows wallpaper', '', '']);
   return list;
+}
+
+// Date & time: "2026-10-19T19:40:27-07:00" → the time and date as they are in the chosen zone (not this page's).
+function tmNow(t, c24){
+  const m=String(t.now||'').match(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)/); if(!m) return '';
+  const hh=+m[4], time = c24 ? m[4]+':'+m[5] : ((hh+11)%12+1)+':'+m[5]+(hh<12?' AM':' PM');
+  return time+' · '+new Date(+m[1], +m[2]-1, +m[3]).toLocaleDateString([], {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+}
+const KB_SWITCH = [['','None'],['alt_shift','Alt+Shift'],['ctrl_shift','Ctrl+Shift']];
+// Keyboard: changes are saved together (sliders once they stop).
+function kbSave(){
+  const k=S.kb; if(!k) return;
+  S.busyWhat='kb'; renderPage();
+  call('keyboard.set', {layouts:k.layouts.map(l=>l.tip), switch:k.switch, delay:k.delay, rate:k.rate}, 120000)
+    .then(r=>{ S.kb=r; S.busyWhat=''; say('Saved and in use.'); }).catch(e=>{ S.busyWhat=''; say(e.message, true); load('keyboard'); });
+}
+function kbSoon(){ clearTimeout(kbSoon.t); kbSoon.t=setTimeout(kbSave, 900); }
+// Settings that ask Windows for an administrator's OK, or take a while: "Saving…" while they run.
+async function busy(what, fn, ok){
+  S.busyWhat=what; renderPage();
+  try{ await fn(); S.busyWhat=''; if(ok) say(ok); else renderPage(); }
+  catch(e){ S.busyWhat=''; say(e.message, true); }
 }
 
 // ---------------------------------------------------------------- loading
@@ -373,6 +536,12 @@ function load(p){
   if(p==='signin'){ shell(); desk(); call('system.info').then(i=>{ S.sys=i; renderPage(); }).catch(()=>{}); }
   if(p==='browser') call('browser.status').then(b=>{ S.browser=b; renderPage(); }).catch(()=>{ S.browser={installed:false}; renderPage(); });
   if(p==='updates'||p==='about') call('update.status').then(u=>{ S.upd=u; renderPage(); }).catch(()=>{});
+  if(p==='keyboard'){ call('keyboard.get',{},60000).then(k=>{ S.kb=k; renderPage(); }).catch(e=>say(e.message, true)); call('keyboard.layouts').then(r=>{ S.kbAll=(r&&r.layouts)||[]; renderPage(); }).catch(()=>{}); call('keyboard.shortcuts').then(r=>{ S.kbShort=(r&&r.shortcuts)||[]; renderPage(); }).catch(()=>{}); }
+  if(p==='printers') call('printers.get').then(r=>{ S.printers=r; renderPage(); }).catch(e=>say(e.message, true));
+  if(p==='datetime'){ call('time.get').then(t=>{ S.tm=t; renderPage(); }).catch(()=>{}); call('time.zones').then(r=>{ S.zones=(r&&r.zones)||[]; renderPage(); }).catch(()=>{}); call('desk.get').then(d=>{ S.mantel=d; renderPage(); }).catch(()=>{}); }
+  if(p==='defaults') call('defaults.get').then(d=>{ S.defaults=d; renderPage(); }).catch(e=>say(e.message, true));
+  if(p==='users') call('users.get').then(u=>{ S.users=u; renderPage(); }).catch(e=>say(e.message, true));
+  if(p==='clipboard') call('clipboard.status').then(c=>{ S.clip=c; renderPage(); }).catch(()=>{ S.clip={available:false}; renderPage(); });
   if(p==='about'){ call('system.info').then(i=>{ S.sys=i; renderPage(); }).catch(()=>{}); call('host.info').then(h=>{ S.user=(h&&h.user)||''; renderPage(); }).catch(()=>{}); }
 }
 async function scan(){
@@ -382,8 +551,11 @@ async function scan(){
 }
 // Wi-Fi looks again every 15 seconds and Bluetooth every 8 while their page is open, like on Hearth OS.
 setInterval(()=>{ if(S.page==='wifi' && !S.asking){ call('sys.status').then(s=>{ S.st=s; }).catch(()=>{}); scan(); } }, 15000);
+// Date & time looks again every 20 seconds, Printers every 15, like their pages on Hearth OS.
+setInterval(()=>{ if(S.page==='datetime' && !S.busyWhat) call('time.get').then(t=>{ S.tm=t; renderPage(); }).catch(()=>{}); }, 20000);
+setInterval(()=>{ if(S.page==='printers' && !S.busyWhat) call('printers.get').then(r=>{ S.printers=r; renderPage(); }).catch(()=>{}); }, 15000);
 setInterval(()=>{ if(S.page==='bluetooth' && !S.btScan) call('bt.paired').then(l=>{ S.paired=l||[]; renderPage(); }).catch(()=>{}); }, 8000);
-function go(p){ S.page=p; S.f=0; S.asking=''; S.msg=''; S.btMsg=''; S.signMsg=''; renderNav(); $('main').scrollTop=0; renderPage(); load(p); }
+function go(p){ S.page=p; S.f=0; S.asking=''; S.msg=''; S.btMsg=''; S.signMsg=''; S.pm=null; S.region=''; S.kbPicked=-1; S.usPicked=''; S.usConfirm=''; S.prPicked=''; S.prConfirm=''; S.clipConfirm=false; renderNav(); $('main').scrollTop=0; renderPage(); load(p); }
 
 // ---------------------------------------------------------------- actions
 async function act(el){
@@ -425,6 +597,43 @@ async function act(el){
     case 'keyboard': return mantel('keyboard');
     // Sign-in
     case 'lockWake': { const v=!(S.desk&&S.desk.lockOnWake); S.desk=await call('desktop.set',{key:'lockOnWake', value:v}); S.signMsg=v?'It will ask for your password when it wakes.':'It won\'t ask for your password when it wakes.'; S.signBad=false; return renderPage(); }
+    // Keyboard
+    case 'kbPick': S.kbPicked = S.kbPicked===+d.i ? -1 : +d.i; return renderPage();
+    case 'kbMove': { const i=+d.i, j=i+(+d.d), l=S.kb.layouts.slice(); if(j<0||j>=l.length) return; [l[i],l[j]]=[l[j],l[i]]; S.kb.layouts=l; S.kbPicked=-1; kbSave(); return; }
+    case 'kbRemove': S.kb.layouts=S.kb.layouts.filter((x,i)=>i!==+d.i); S.kbPicked=-1; S.f=0; return kbSave();
+    case 'kbAdd': if(S.kb.layouts.length>=4) return say('Up to 4 layouts.', true); S.kb.layouts=S.kb.layouts.concat([{tip:d.tip, name:d.name}]); S.inputs.kbAdd=''; return kbSave();
+    // Printers
+    case 'prPick': S.prPicked = S.prPicked===d.n ? '' : d.n; S.prConfirm=''; return renderPage();
+    case 'prTest': return busy('test', ()=>call('printers.test', {name:d.n}, 60000), 'Test page sent to '+d.n+'.');
+    case 'prDefault': return busy('default', async ()=>{ S.printers=await call('printers.default', {name:d.n}); }, d.n+' is now the default printer.');
+    case 'prConfirm': S.prConfirm=d.n; return renderPage();
+    case 'prCancel': S.prConfirm=''; return renderPage();
+    case 'prRemove': return busy('remove', async ()=>{ S.printers=await call('printers.remove', {name:d.n}, 60000); S.prPicked=''; S.prConfirm=''; }, 'Printer removed.');
+    // Date & time
+    case 'tmNtp': { const on=!(S.tm&&S.tm.ntp); return busy('ntp', async ()=>{ S.tm=await call('time.setNtp', {on}, 180000); }, on?'The clock will be set from the internet.':'Automatic time is off.'); }
+    case 'tmSet': {
+      const dt=inputVal('tmDate').trim(), tt=inputVal('tmTime').trim().replace(/^(\d):/, '0$1:');
+      if(!/^\d{4}-\d\d-\d\d$/.test(dt)) return say('Type the date like 2026-10-20.', true);
+      if(!/^\d\d:\d\d$/.test(tt)) return say('Type the time like 14:05.', true);
+      return busy('time', async ()=>{ S.tm=await call('time.set', {when:dt+' '+tt}, 180000); S.inputs.tmDate=''; S.inputs.tmTime=''; }, 'Clock set.');
+    }
+    case 'tmRegion': { const was=S.region; S.region=d.r||''; renderPage(); const f=focusables(); if(S.region){ S.f=Math.max(0, f.findIndex(x=>x.dataset.act==='tmRegion')); } else { const i=f.findIndex(x=>x.dataset.r===was); S.f=i>=0?i:S.f; } return focusPaint(); }
+    case 'tmZone': {
+      const z=(S.zones||[]).find(x=>x.zone===d.z); if(!z || (S.tm && S.tm.timezone===z.zone)) return;
+      return busy('zone', async ()=>{ S.tm=await call('time.setZone', {zone:z.zone}, 60000); S.inputs.tz=''; S.region=''; }, 'Time zone set to '+z.city+'.');
+    }
+    // Clipboard
+    case 'cbToggle': { const on=!(S.clip&&S.clip.enabled); S.clip=await call('clipboard.set', {on}); return say(on?'Clipboard history is on.':"Clipboard history is off. What's already kept stays until you clear it."); }
+    case 'cbOpen': return mantel('openApp', {app:'clipboard'});
+    case 'cbConfirm': S.clipConfirm=true; return renderPage();
+    case 'cbCancel': S.clipConfirm=false; return renderPage();
+    case 'cbClear': await call('clipboard.clear'); S.clipConfirm=false; return say('Clipboard history cleared.');
+    // Users
+    case 'usPick': S.usPicked = S.usPicked===d.n ? '' : d.n; S.usConfirm=''; return renderPage();
+    case 'usConfirm': S.usConfirm=d.n; return renderPage();
+    case 'usCancel': S.usConfirm=''; return renderPage();
+    case 'usRemove': { const del=d.del==='1', n=d.n; return busy('remove', async ()=>{ S.users=await call('users.remove', {name:n, deleteFiles:del}, 300000); S.usPicked=''; S.usConfirm=''; },
+      del ? n+' and their files were removed.' : n+' was removed. Their files are still there.'); }
     // Power and the rest
     case 'game': return mantel('game');
     case 'pw': return mantel('power', {what:d.what});
@@ -477,6 +686,8 @@ async function choose(id, v){
     else if(id==='press') S.desk=await call('desktop.set',{key:'powerPress', value:v});
     else if(id==='mouse') S.pad=await call('pad.setMouseMode',{mode:v});
     else if(id==='start') S.shell=await call('shell.setStartMode',{mode:v});
+    else if(id==='clock24') S.mantel=await call('desk.set',{key:'clock24', value:v==='true'});
+    else if(id==='kbSwitch'){ if(S.kb){ S.kb.switch=v; return kbSave(); } }
   }catch(e){ toast(e.message); }
   renderPage();
 }
@@ -510,7 +721,14 @@ function focusPaint(){
 }
 document.addEventListener('keydown', e => {
   const typing=document.activeElement && document.activeElement.tagName==='INPUT';
-  if(typing && e.key==='Enter'){ e.preventDefault(); if(document.activeElement.dataset.input==='pw' && S.asking) join(S.asking, document.activeElement.value); return; }
+  if(typing && e.key==='Enter'){
+    e.preventDefault();
+    const id=document.activeElement.dataset.input;
+    if(id==='pw' && S.asking) join(S.asking, document.activeElement.value);
+    else if(id==='tmDate'){ const t=$('[data-input="tmTime"]'); if(t){ S.f=focusables().indexOf(t.closest('[data-f]')); focusPaint(); } }
+    else if(id==='tmTime'){ const b=$('[data-act="tmSet"]'); if(b) b.click(); }
+    return;
+  }
   if(typing && !['Escape','ArrowUp','ArrowDown','Tab'].includes(e.key)) return;
   const idx=PAGES.findIndex(p=>p[0]===S.page);
   if(!S.inPage){
@@ -544,6 +762,12 @@ document.addEventListener('click', e => {
   const el=e.target.closest('[data-act]'); if(!el) return;
   if(el.closest('.page')){ const f=focusables(), i=f.indexOf(el.closest('[data-f]')); if(i>=0){ S.inPage=true; S.f=i; renderNav(); focusPaint(); } }
   act(el);
+});
+const LIVE = new Set(['tz', 'kbAdd']);
+document.addEventListener('input', e => {
+  const id=e.target.dataset && e.target.dataset.input; if(!id) return;
+  S.inputs[id]=e.target.value;
+  if(LIVE.has(id)){ clearTimeout(LIVE.t); LIVE.t=setTimeout(renderPage, 150); }
 });
 document.addEventListener('focusin', e => { const fl=e.target.closest && e.target.closest('.page [data-f]'); if(fl){ const i=focusables().indexOf(fl); if(i>=0 && (i!==S.f || !S.inPage)){ S.inPage=true; S.f=i; renderNav(); focusPaint(); } } });
 document.addEventListener('contextmenu', e => e.preventDefault());
@@ -586,6 +810,16 @@ const MOCK = {
   'overlay.settings':()=>({gameBarButton:false}),
   'browser.status':()=>({installed:false,default:false}),
   'update.status':()=>({current:'0.0.31',state:'upToDate',autoCheck:true}),
+  'keyboard.get':()=>({layouts:[{tip:'0409:00000409',name:'English (United States) · US'},{tip:'0407:00000407',name:'German (Germany) · German'}],switch:'alt_shift',delay:500,rate:30}),
+  'keyboard.layouts':()=>({layouts:[{tip:'040C:0000040C',name:'French (France) · French'},{tip:'0410:00000410',name:'Italian (Italy) · Italian'},{tip:'0409:00020409',name:'English (United States) · United States-International'}]}),
+  'keyboard.shortcuts':()=>({shortcuts:[{keys:'Windows',action:'Open or close the app launcher'},{keys:'Alt+Tab',action:'Switch to the next window'},{keys:'Windows+Left / Right',action:'Snap the window to the left or right half'}]}),
+  'printers.get':()=>({cups:true,canAdmin:true,printers:[{name:'HP OfficeJet 8020',info:'HP OfficeJet 8020',default:true,state:'idle',location:'Office',network:true},{name:'Microsoft Print to PDF',info:'Microsoft Print to PDF',default:false,state:'idle'}]}),
+  'time.get':()=>({now:'2026-10-20T21:41:00-07:00',timezone:'Pacific Standard Time',zoneName:'Pacific Time (US & Canada)',region:'America',offset:'-07:00',ntp:true,canNtp:true,available:true}),
+  'time.zones':()=>({zones:[{zone:'Pacific Standard Time',region:'America',city:'Pacific Time (US & Canada)',offset:'-07:00'},{zone:'Eastern Standard Time',region:'America',city:'Eastern Time (US & Canada)',offset:'-04:00'},{zone:'W. Europe Standard Time',region:'Europe',city:'Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna',offset:'+02:00'},{zone:'Tokyo Standard Time',region:'Asia',city:'Osaka, Sapporo, Tokyo',offset:'+09:00'}]}),
+  'desk.get':()=>({pins:[],desktopIcons:true,dnd:false,clock24:false}),
+  'defaults.get':()=>({kinds:[{kind:'browser',label:'Web browser',current:'Firefox'},{kind:'files',label:'Files',current:'File Explorer'},{kind:'text',label:'Text editor',current:'Notepad'},{kind:'image',label:'Pictures',current:'Photos'},{kind:'video',label:'Videos',current:'Media Player'},{kind:'music',label:'Music',current:'Media Player'}]}),
+  'users.get':()=>({canAdmin:true,admin:true,users:[{name:'Dragon',fullname:'Dragon',admin:true,me:true,home:'C:\\Users\\Dragon'},{name:'Kid',fullname:'Little One',admin:false,me:false,home:'C:\\Users\\Kid'}]}),
+  'clipboard.status':()=>({available:true,enabled:true,policy:false}),
   'host.info':()=>({user:'Dragon'}),
   'system.info':()=>({device:'ASUS ROG Ally RC71L',osPretty:'Windows 11 Home',osVersion:'24H2 (build 26100)',cpu:'AMD Ryzen Z1 Extreme',cores:16,gpu:'AMD Radeon Graphics',memoryBytes:16e9,storage:{totalBytes:512e9,freeBytes:301e9},hostname:'ALLY',kernel:'Microsoft Windows NT 10.0.26100.0'}),
 };

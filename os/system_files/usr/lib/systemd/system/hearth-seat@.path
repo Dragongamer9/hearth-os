@@ -1,5 +1,5 @@
-# Hearth multi-seat (experimental), one card with several screens: start player %i's Game Mode when
-# player 1's Game Mode opens their screen (see hearth-seat@.service and docs/MULTI-SEAT.md).
+# Hearth multi-seat (experimental), one card with several screens or one screen split into parts: start player
+# %i's Game Mode when player 1's Game Mode opens their window (see hearth-seat@.service and docs/MULTI-SEAT.md).
 [Unit]
 Description=Hearth multi-seat: wait for %i's screen
 ConditionPathExists=/etc/hearth/seats/%i.env

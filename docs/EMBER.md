@@ -102,6 +102,15 @@ Press the **Xbox button** (or **Ctrl+Alt+Q**) during a game: a Quick Access pane
 - Screenshots go to `Pictures\Screenshots\Nimbus`.
 - The Xbox button is read with XInput's long-standing undocumented `XInputGetStateEx` (ordinal 100).
 
+## Game Mode features shared with Hearth OS
+
+Ember answers the same bridge calls as Hearth OS for collections, Game settings (controller layout, power limit, cloud
+saves), Hearth Input (controller → keyboard and mouse for games without controller support), Quick Resume (refused,
+with the reason, for games with anti-cheat), Pause, the per-game power limit on AMD handhelds (RyzenAdj, through
+Windows' permission prompt), Library › Screenshots, Steam's Delete and Downloads, bug reports (Settings › System ›
+Send logs to the developer) and Beacon's games (once a Windows Beacon is installed). The feature-by-feature comparison,
+and what Windows can't do (Couch Co-op, Multi-seat, gyro aiming), is in [EMBER-PARITY.md](EMBER-PARITY.md).
+
 ## Store accounts: Epic, GOG and Xbox (Library › Stores)
 
 Open **Library › Stores & accounts** (X on a controller, F on a keyboard) to sign in. Each store's own sign-in page opens in a full-screen window; you type your password there, and Ember only picks up the one-time code the store hands back. In that window the controller mouse turns on by itself, Y opens an on-screen keyboard and B cancels.

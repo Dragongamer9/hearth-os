@@ -1,0 +1,13 @@
+# Hearth multi-seat (Beta Experimental): a streamed player's own Sunshine, as that player's user service. Started
+# and stopped by `hearth-seats stream-run` inside the player's virtual screen; it refuses to run for any account
+# that isn't a streamed player (so it never clashes with player 1's Remote play). See docs/MULTI-SEAT.md.
+[Unit]
+Description=Hearth multi-seat: streaming this player's Game Mode (Sunshine)
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-seats sunshine
+Restart=on-failure
+RestartSec=3

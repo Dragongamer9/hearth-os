@@ -1,0 +1,9 @@
+#!/bin/sh
+# Sends Hearth's logs to the developer from a terminal (the same as Settings › System › Send logs to the developer)
+# and prints the code to share. Anything after the command is sent as "What happened?":
+#   hearth-send-logs the screen stays blank after the logo
+if [ -x /usr/bin/nimbus ]; then exec /usr/bin/nimbus --send-logs "$@"; fi
+# No Hearth app here: the system journal on its own.
+echo "Sending the system's logs…"
+{ echo "Hearth logs · $(date '+%F %H:%M') · no Hearth app"; echo; cat "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/session.log" 2>/dev/null | tail -n 400; journalctl -b --no-pager | tail -n 3000; } \
+  | curl -sS -m 60 -H "X-Hearth-Kind: other" --data-binary @- https://hearth-counter.game305-cl.workers.dev/v1/logs; echo

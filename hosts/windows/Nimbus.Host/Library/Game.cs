@@ -32,6 +32,9 @@ public sealed class Game
     public bool CanUninstall { get; init; }
     /// <summary>Shown on the game page, e.g. why it can't be installed from Nimbus.</summary>
     public string? Note { get; init; }
+    /// <summary>Beacon's games: what the UI's "beacon" field shows (family, mods, issues...), and Beacon's game id.</summary>
+    public object? BeaconInfo { get; init; }
+    public string? BeaconGame { get; init; }
 
     // Install state. Installed games have State "installed"; Steam can also report
     // "downloading", "queued", "paused", "updating"; owned-but-not-installed games are "notInstalled".

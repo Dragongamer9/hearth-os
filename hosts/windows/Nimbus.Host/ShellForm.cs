@@ -136,6 +136,7 @@ public sealed class ShellForm : Form
         // controls, and Mantel's panels are moved through with the D-pad and A instead of the mouse.
         _pad.MantelActive = () => Mantel?.Active ?? false;
         _pad.MantelPanelInFront = () => Mantel?.PanelInFront ?? false;
+        _pad.MantelDesktopWindow = h => Mantel?.IsDesktopWindow(h) ?? false;
         _pad.DesktopGuide += () => BeginInvoke((MethodInvoker)(() => Mantel?.ToggleRadial()));
         _pad.DesktopHelp += () => BeginInvoke((MethodInvoker)(() => Mantel?.ToggleHelp()));
         // Hearth's on-screen keyboard (Y), and the controller picking its keys while it's up; short messages at the top.

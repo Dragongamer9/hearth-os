@@ -173,6 +173,18 @@ public sealed class EpicStore
         if (Installed().Any(g => g.Id == "epic:" + appName)) throw new InvalidOperationException("Couldn't uninstall: " + r.Problem());
     }
 
+    /// <summary>Epic cloud saves for a game Ember installed: "down" before playing, "up" after (like hearth-core's
+    /// epic::sync_saves). On Windows legendary finds the save folder itself from the game's metadata; games without
+    /// cloud saves are skipped by legendary. Returns whether legendary said it worked.</summary>
+    public async Task<bool> SyncSavesAsync(string appName, string direction)
+    {
+        if (!SignedIn) return false;
+        var flag = direction == "down" ? "--skip-upload" : "--skip-download";
+        var r = await HelperTools.RunAsync(HelperTools.Legendary, new[] { "-y", "sync-saves", appName, flag }, Env, timeout: TimeSpan.FromMinutes(2));
+        SystemBridge.Log($"epic saves: {appName} {direction} {(r.ExitCode == 0 ? "ok" : r.Problem())}");
+        return r.ExitCode == 0;
+    }
+
     /// <summary>Asks legendary how to start the game (with a fresh Epic login token) and starts it directly, so Nimbus can watch it.</summary>
     public async Task LaunchAsync(string appName)
     {

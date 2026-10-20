@@ -275,7 +275,11 @@ impl Library {
         let Some(uri) = g.install_uri.clone() else {
             return Err(match g.note { Some(n) => format!("{n}. Hearth can't install it."), None => "Hearth can't install this game. Install it from its store app.".into() });
         };
-        if uri.starts_with("nimbus-") { return self.start_install(id, &g.title, &uri, false); }
+        if uri.starts_with("nimbus-") {
+            // An expired sign-in: say so now (the page offers Sign in again) instead of failing in the queue.
+            if stores::expiry::is_expired(g.source) { return Err(stores::expiry::message(g.source)); }
+            return self.start_install(id, &g.title, &uri, false);
+        }
         // Beacon's games are set up in Beacon (its folder, CD key, community files).
         if uri == "beacon:open" { return self.beacon_open(); }
         steam::spawn(&self.home, &uri)
@@ -304,7 +308,10 @@ impl Library {
         self.save_queue();
         let title = self.games.get(id).map(|g| g.title.clone()).unwrap_or_else(|| id.to_string());
         if error.is_none() { self.record_installed(id); self.scan(); }
-        json!({"id": id, "title": title, "error": error})
+        // Failed because the store's sign-in expired: the page offers Sign in again with the error.
+        let source = id.split_once(':').map(|x| x.0).unwrap_or("");
+        let expired = error.filter(|e| *e != "cancelled").and(Some(source)).filter(|s| stores::expiry::is_expired(s));
+        json!({"id": id, "title": title, "error": error, "expired": expired})
     }
 
     pub fn uninstall(&mut self, id: &str) -> Result<(), String> {
@@ -491,7 +498,7 @@ impl Library {
             }
             "beacon" => {
                 let b = g.beacon.clone().ok_or("Hearth doesn't know how to start this game.")?;
-                if let Some(e) = b.blocker() { return Err(format!("{} can't start yet: {e}. Open Beacon to fix it.", g.title)); }
+                if let Some(e) = b.blocker() { return Err(format!("{} can't start yet: {e}. Game setup (on its page) says how to fix it.", g.title)); }
                 let cli = self.beacon.cli.clone().ok_or("Beacon isn't installed anymore.")?;
                 let pid = crate::beacon::launch(&cli, &b, beacon_mod, app_id)?;
                 // Steam copies Beacon starts through Steam (UaW, SWGB): Steam's reaper finds them.
@@ -508,7 +515,9 @@ impl Library {
             _ => "started".to_string(),
         }));
         self.running = Some(Running { id: id.to_string(), track, launched_at: now_ms(), started_at: 0, gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0, app_id });
-        Ok(serde_json::json!({"tracked": true}))
+        // Started without the store (its sign-in expired): the page says cloud saves and online play wait for Sign in again.
+        let expired = matches!(g.source, "epic" | "gog") && stores::expiry::is_expired(g.source);
+        Ok(serde_json::json!({"tracked": true, "expired": if expired { Some(g.source) } else { None }}))
     }
 
     /// The number for a library id (appid.rs): Steam games keep their Steam app id; everything else gets one of
@@ -616,6 +625,9 @@ impl Library {
     }
     /// Reads Beacon again now (after Hearth changed something in it).
     pub fn reload_beacon(&mut self) { self.beacon_start(); }
+    /// Where a reading of Beacon made elsewhere goes (beacon::refresh, after Game setup changed something): used by
+    /// the next beacon_tick, like the background reading.
+    pub fn beacon_slot(&self) -> Arc<Mutex<Option<crate::beacon::Snapshot>>> { self.beacon_next.clone() }
     /// Opens Beacon's window (full screen in Game Mode).
     pub fn beacon_open(&self) -> Result<(), String> {
         let app = self.beacon.app.clone().ok_or("Beacon's window (beacon-app) isn't installed.")?;

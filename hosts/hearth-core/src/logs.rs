@@ -122,6 +122,11 @@ pub fn header_note(note: &str) -> String {
 pub fn send_to_developer(version: &str, kind: &str) -> Result<Value, String> { send_to_developer_note(version, kind, "") }
 /// The same, with the person's note ("What happened?"): it goes with the logs as X-Hearth-Note.
 pub fn send_to_developer_note(version: &str, kind: &str, note: &str) -> Result<Value, String> {
+    crate::watchdog::long_task();   // asked for from the page: up to a minute on purpose
+    send_report(version, kind, note)
+}
+/// The same, from the fail-safe's own thread (which mustn't mark the stuck request as slow on purpose).
+pub fn send_report(version: &str, kind: &str, note: &str) -> Result<Value, String> {
     let mut out = send(version)?;
     let path = out["path"].as_str().unwrap_or("").to_string();
     let mut text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;

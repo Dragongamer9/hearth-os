@@ -6,7 +6,7 @@ using Microsoft.Web.WebView2.WinForms;
 namespace Nimbus.Host.Mantel;
 
 /// <summary>The pieces of Mantel, each its own window showing mantel.html?part=…</summary>
-public enum MantelPart { Bar, Launcher, Desktop, Quick, Power, Radial, Help, Keyboard }
+public enum MantelPart { Bar, Launcher, Desktop, Quick, Power, Radial, Help, Keyboard, Menu, Clock, Clip, Dialog }
 
 /// <summary>A Mantel window, shaped and placed like its counterpart on Hearth OS:
 /// the floating rounded taskbar along the bottom (docked as an app bar, or by hand in full Mantel, so
@@ -26,6 +26,12 @@ internal sealed class MantelWindow : Form
     public bool Ready { get; private set; }
 
     private bool IsPanel => Part is not (MantelPart.Bar or MantelPart.Desktop or MantelPart.Keyboard);
+    /// <summary>The window being activated when this one lost the front (WM_ACTIVATE's lParam).</summary>
+    private IntPtr _activating;
+    /// <summary>Windows a panel stays open under (Mantel's menu and dialog), set by MantelHost.</summary>
+    public static Func<IntPtr, bool>? KeepOpenFor { get; set; }
+    /// <summary>Full Mantel's desktop takes the keyboard when you click it (for its icons: arrows, Enter, F2, Delete).</summary>
+    public static bool DesktopTakesKeys { get; set; }
     /// <summary>Hearth's on-screen keyboard: docked above the taskbar, never takes the focus from the window you type in.</summary>
     private bool IsKeyboard => Part == MantelPart.Keyboard;
     private int _kbHeight;
@@ -50,6 +56,9 @@ internal sealed class MantelWindow : Form
         if (IsPanel) Deactivate += (_, _) =>
         {
             if (!Visible) return;
+            // A right-click menu or a small dialog opened from this panel (the launcher's Pin to taskbar): stay open
+            // underneath it, like Hearth's PopMenu over the launcher.
+            if (_activating != IntPtr.Zero && KeepOpenFor?.Invoke(_activating) == true) return;
             if (DateTime.UtcNow - _shownAt < TimeSpan.FromMilliseconds(600) && !_retook)
             {
                 _retook = true;
@@ -69,7 +78,9 @@ internal sealed class MantelWindow : Form
         {
             var cp = base.CreateParams;
             cp.ExStyle |= 0x00000080 /* WS_EX_TOOLWINDOW: not in Alt+Tab or its own taskbar */;
-            if (Part is MantelPart.Desktop or MantelPart.Keyboard) cp.ExStyle |= 0x08000000 /* WS_EX_NOACTIVATE */;
+            // The taskbar never takes the front from the app you're in (so clicking the app in front minimizes it, and the
+            // on-screen keyboard keeps typing where you were), like the keyboard; the desktop only when its icons need keys.
+            if (Part is MantelPart.Keyboard or MantelPart.Bar || (Part == MantelPart.Desktop && !DesktopTakesKeys)) cp.ExStyle |= 0x08000000 /* WS_EX_NOACTIVATE */;
             return cp;
         }
     }
@@ -97,7 +108,7 @@ internal sealed class MantelWindow : Form
         core.Settings.AreBrowserAcceleratorKeysEnabled = false;
         setup(core);
         // Pictures you chose as wallpaper (Hearth Settings › Appearance › Choose a picture…) live outside wwwroot.
-        if (Part == MantelPart.Desktop) MapWallpapers(core);
+        if (Part == MantelPart.Desktop) { MapWallpapers(core); FilesWindow.ServeThumbs(env, core); }   // desktop icons: files' icons and thumbnails
         core.WebMessageReceived += (_, e) =>
         {
             try { using var doc = JsonDocument.Parse(e.WebMessageAsJson); PageMessage?.Invoke(doc.RootElement.Clone()); }
@@ -150,6 +161,8 @@ internal sealed class MantelWindow : Form
             MantelPart.Radial => CreateEllipticRgn(0, 0, Width + 1, Height + 1),
             // Keyboard.qml: 8 in from the sides, 6 from the top, Theme.radius + 4 (18) round
             MantelPart.Keyboard => CreateRoundRectRgn(S(8), S(6), Width - S(8) + 1, Height + 1, S(36), S(36)),
+            // PopMenu.qml: Theme.radius (14)
+            MantelPart.Menu => CreateRoundRectRgn(0, 0, Width + 1, Height + 1, S(28), S(28)),
             _ => CreateRoundRectRgn(0, 0, Width + 1, Height + 1, S(40), S(40)),
         };
         SetWindowRgn(Handle, rgn, true);   // the window owns the region from here on
@@ -191,6 +204,8 @@ internal sealed class MantelWindow : Form
                                               Math.Min(S(400), scr.Width - S(32)), scr.Height - S(12) - S(72)),
             MantelPart.Radial => Center(scr, (int)(Math.Min(scr.Width, scr.Height) * 0.62), (int)(Math.Min(scr.Width, scr.Height) * 0.62)),
             MantelPart.Help => Center(scr, Math.Min(scr.Width - S(48), S(640)), Math.Min(scr.Height - S(48), S(520))),
+            // Clipboard.qml: 640 × 620 at most, in the middle
+            MantelPart.Clip => Center(scr, Math.Min(scr.Width - S(48), S(640)), Math.Min(scr.Height - S(96), S(620))),
             _ => Center(scr, S(360), S(430)),
         };
         Bounds = r;
@@ -201,6 +216,32 @@ internal sealed class MantelWindow : Form
         Native.ForceForeground(Handle);
         _web.Focus();
     }
+
+    /// <summary>Shows a panel at a place the caller worked out (menus, the clock's panel, dialogs), in screen pixels.</summary>
+    public void ShowAt(Rectangle r, bool activate = true)
+    {
+        Bounds = r;
+        Shape();
+        _shownAt = DateTime.UtcNow; _retook = false;
+        if (!Visible) Show();
+        if (!activate) return;
+        Activate();
+        Native.ForceForeground(Handle);
+        _web.Focus();
+    }
+
+    /// <summary>Gives the front back to a panel that's still open (after its menu closed).</summary>
+    public void Refocus()
+    {
+        if (!Visible) return;
+        _shownAt = DateTime.UtcNow; _retook = false;
+        Activate();
+        Native.ForceForeground(Handle);
+        _web.Focus();
+    }
+
+    /// <summary>CSS pixels to screen pixels for this window.</summary>
+    public int Px(double css) => S(css);
 
     /// <summary>Shows the on-screen keyboard along the bottom, above the taskbar, as tall as Keyboard.qml's
     /// (40 % of the screen at most, at least 260 or 22 % of its width). It keeps its space like the taskbar does,
@@ -287,7 +328,8 @@ internal sealed class MantelWindow : Form
             wp.flags &= ~0x0004u;
             Marshal.StructureToPtr(wp, m.LParam, false);
         }
-        if ((Part is MantelPart.Desktop or MantelPart.Keyboard) && m.Msg == 0x0021 /* WM_MOUSEACTIVATE */) { m.Result = (IntPtr)3; return; }
+        if ((Part is MantelPart.Keyboard or MantelPart.Bar || (Part == MantelPart.Desktop && !DesktopTakesKeys)) && m.Msg == 0x0021 /* WM_MOUSEACTIVATE */) { m.Result = (IntPtr)3; return; }
+        if (m.Msg == 0x0006 /* WM_ACTIVATE */) _activating = (m.WParam.ToInt64() & 0xFFFF) == 0 ? m.LParam : IntPtr.Zero;
         // ABN_POSCHANGED (another app bar or the screen changed): put ours back.
         if (_appBar && m.Msg == CallbackMsg && m.WParam.ToInt32() == 1) PlaceAppBar();
         base.WndProc(ref m);

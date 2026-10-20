@@ -361,6 +361,31 @@ else
 fi
 rm -f /tmp/beacon_amd64.deb
 
+# ------------------------------------------------------------------ Sunshine (Multi-seat's streamed players, Remote play)
+# Settings › Multi-seat can stream an extra player's own Game Mode to Moonlight on a TV, phone, tablet or laptop (one
+# Sunshine per streamed player, see docs/MULTI-SEAT.md); Settings › Remote play uses it too. The archive's package
+# when there is one, else the .deb LizardByte builds for this release (sunshine_<version>-1+<distro><version>_amd64.deb).
+# Optional: without it Hearth says streaming isn't available.
+sunshine_deb() {
+  local want url
+  want="$(. /etc/os-release && echo "${ID}${VERSION_ID}")"
+  url="$(curl -fsSL --retry 3 https://api.github.com/repos/LizardByte/Sunshine/releases/latest \
+    | python3 -c 'import json, re, sys; w = re.escape(sys.argv[1]); print(next((a["browser_download_url"] for a in json.load(sys.stdin).get("assets", []) if re.search(w + r"_amd64\.deb$", a["name"]) or re.search(w + r".*amd64\.deb$", a["name"].replace("-", ""))), ""))' "$want")" || return 1
+  [ -n "$url" ] || return 1
+  curl -fsSL --retry 3 -o /tmp/sunshine.deb "$url" && "${APT[@]}" /tmp/sunshine.deb
+}
+if [ "$(uname -m)" = x86_64 ] && { { have_pkg sunshine && "${APT[@]}" sunshine; } || sunshine_deb; }; then
+  echo "Sunshine installed"
+else
+  echo "warning: couldn't install Sunshine; streamed multi-seat players and Remote play show as unavailable"
+  OPTIONAL_MISSING+=("sunshine")
+fi
+rm -f /tmp/sunshine.deb
+# The streamed players' address as a QR code in Settings (optional), and the udev helper that gives each streamed
+# player their own virtual controllers (copied in with system_files; executable to be sure).
+optional qrencode
+chmod 755 /usr/libexec/nimbus/hearth-seat-input 2>/dev/null || true
+
 # ------------------------------------------------------------------ system settings Bazzite/Fedora came with
 # Hearth's administrators group (the installer puts the first account in it; the polkit rules use it). In
 # /etc/group now (the installer adds the account against the image's /etc) and in sysusers.d for later.

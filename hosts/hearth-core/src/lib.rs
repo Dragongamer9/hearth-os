@@ -46,3 +46,4 @@ pub mod system;
 pub mod sysinfo;
 pub mod tools;
 pub mod vdf;
+pub mod watchdog;

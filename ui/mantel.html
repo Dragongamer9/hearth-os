@@ -15,7 +15,12 @@
     radial    the Hearth menu (the Xbox button)
     help      the controller's controls (a tap of View)
     keyboard  Hearth's on-screen keyboard (Keyboard.qml), docked above the taskbar
-    desktop   full Mantel's desktop: the wallpaper (the Hearth fireside, Lava, Aurora, or a picture)
+    desktop   full Mantel's desktop: the wallpaper (the Hearth fireside, Lava, Aurora, or a picture) and the
+              desktop icons (Desktop.qml: your Desktop folder and the Public desktop)
+    menu      Hearth's right-click menu (PopMenu.qml), for the taskbar, the launcher and the desktop
+    clock     the clock's panel (ClockPanel.qml): notifications, Do Not Disturb and the calendar
+    clip      clipboard history (Clipboard.qml), from Windows' own history
+    dialog    the desktop's small questions and details (DeskDialog.qml): rename, new folder, properties
   Icons come from Hearth's own set (mantel-icons.js, made from hosts/linux/desktop/shell/icons).
   What's still different from Hearth OS, and why: docs/MANTEL-PARITY.md.
   Hosted by Ember (Mantel/MantelHost.cs) in WebView2. Windows give each window its rounded shape; this page
@@ -42,8 +47,9 @@ html.bar,body.bar{background:var(--bg)}
 .bb:hover{background:var(--panel3)}
 .bb.active{background:var(--panel2)}
 .bb.active:hover{background:var(--panel3)}
-.bb.active::after{content:"";position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:16px;height:3px;border-radius:2px;background:var(--accent)}
-.bb.run.pinned:not(.active)::after{content:"";position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:5px;height:3px;border-radius:2px;background:var(--muted)}
+.bb.run::after,.bb.active::after{content:"";position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:5px;height:3px;border-radius:2px;background:var(--muted);transition:width var(--quick),height var(--quick)}
+.bb.run.many::after{width:10px}
+.bb.active::after{width:16px;background:var(--accent)}
 .bb.narrow{min-width:30px;width:30px}
 .bb.wide{padding:0 10px}
 .bb .logo{width:32px;height:32px}
@@ -56,9 +62,20 @@ html.bar,body.bar{background:var(--bg)}
 .wins{display:flex;gap:6px;align-items:center;min-width:0;overflow:hidden}
 .fill{flex:1;min-width:0}
 .ticons{display:flex;gap:6px;align-items:center}
-.clock{display:flex;flex-direction:column;align-items:flex-end;margin:0 6px;line-height:1.2;flex:none;cursor:default}
-.clock b{font-size:14px;font-weight:700}
-.clock small{font-size:11px;color:var(--muted)}
+.bclock{height:44px;border-radius:10px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;padding:0 10px;line-height:1.2;flex:none;transition:background var(--quick)}
+.bclock:hover{background:var(--panel3)}
+/* virtual desktops (DeskSwitcher.qml): one small button per desktop, the one you're on lit */
+.desks{display:flex;gap:3px;padding:4px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);flex:none}
+.desks:empty{display:none}
+.dk{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:12px;color:var(--muted);transition:background var(--quick)}
+.dk:hover{background:var(--panel3)}
+.dk.on{background:var(--accent);color:var(--accentInk);font-weight:700}
+body.portrait .desks{flex-direction:column}
+/* the notifications bell: a dot for ones you haven't seen */
+.bell .dot{position:absolute;left:calc(50% + 3px);top:8px;width:9px;height:9px;border-radius:5px;background:var(--accent);border:1px solid var(--panel)}
+.bell.dnd svg{color:var(--muted)}
+.bclock b{font-size:14px;font-weight:700}
+.bclock small{font-size:11px;color:var(--muted)}
 .gm{height:36px;border-radius:10px;padding:0 14px;background:var(--accent);color:var(--accentInk);font-weight:700;font-size:13px;flex:none;transition:filter var(--quick)}
 .gm:hover{filter:brightness(1.12)}
 /* upright screen: the bar runs down the left side (6 in from the left, 4 from the right, 8 top and bottom) */
@@ -68,11 +85,12 @@ body.portrait .sep{width:28px;height:1px}
 body.portrait .bb.narrow{width:44px;height:30px}
 body.portrait .bb.wide{padding:0}
 body.portrait .bb .lbl{display:none}
-body.portrait .bb.active::after{bottom:auto;left:1px;top:50%;transform:translateY(-50%);width:3px;height:16px}
-body.portrait .bb.run.pinned:not(.active)::after{bottom:auto;left:1px;top:50%;transform:translateY(-50%);width:3px;height:5px}
-body.portrait .clock{margin:6px 0;align-items:center}
-body.portrait .clock b{font-size:13px}
-body.portrait .clock small{display:none}
+body.portrait .bb.run::after,body.portrait .bb.active::after{bottom:auto;left:1px;top:50%;transform:translateY(-50%);width:3px;height:5px}
+body.portrait .bb.run.many::after{width:3px;height:10px}
+body.portrait .bb.active::after{width:3px;height:16px}
+body.portrait .bclock{padding:0;width:44px;align-items:center}
+body.portrait .bclock b{font-size:13px}
+body.portrait .bclock small{display:none}
 body.portrait .gm{width:44px;height:44px;padding:0;display:grid;place-items:center}
 body.portrait .gm .gmt{display:none}
 .gm .gmi{display:none}
@@ -91,11 +109,9 @@ body.portrait .gm .gmi{display:block}
 .cell img,.cell .gen{width:48px;height:48px}
 .cell .gen{border-radius:12px;font-size:20px}
 .cell span{font-size:12px;text-align:center;line-height:1.25;max-height:2.5em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;width:100%}
-.cell .pin{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:var(--muted);opacity:0}
-.cell .pin svg{width:14px;height:14px}
-.cell:hover .pin,.cell.cur .pin,.cell.pinned .pin{opacity:1}
-.cell.pinned .pin{color:var(--accent)}
-.cell .pin:hover{background:var(--panel3);color:var(--flame)}
+/* pinned to the taskbar (Launcher.qml: a small muted pin in the corner) */
+.cell .pinmark{position:absolute;top:12px;right:12px;width:14px;height:14px;color:var(--muted);display:grid;place-items:center}
+.cell .pinmark svg{width:14px;height:14px}
 .none{grid-column:1/-1;align-self:center;text-align:center;color:var(--muted);font-size:14px;padding-top:120px}
 .acts{display:flex;gap:8px;align-items:center;flex:none}
 .ab{height:40px;border-radius:10px;padding:0 16px;background:var(--panel2);font-size:13px;transition:background var(--quick)}
@@ -220,6 +236,136 @@ html.desktop,body.desktop{background:var(--bg)}
 /* Settings › Appearance › Reduce motion: the wallpaper stands still, like on Hearth OS */
 body.still .spark,body.still .blob,body.still .star,body.still .rib,body.still .glow{animation:none}
 body.still .spark{display:none}
+
+/* ---------------- right-click menu (PopMenu.qml): the window is the card ---------------- */
+html.menu,body.menu{background:var(--glass)}
+.pm{position:fixed;inset:0;border-radius:14px;background:var(--glass);border:1px solid var(--line);padding:6px;display:flex;flex-direction:column;overflow:hidden}
+.pm.pop{animation:pmin var(--quick) cubic-bezier(.33,1,.68,1)}
+.pm.above{transform-origin:bottom center}
+@keyframes pmin{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.pm .pt{height:26px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden}
+.pm .pt span{overflow:hidden;text-overflow:ellipsis}
+.pm .pt button{color:var(--muted);display:grid;place-items:center;margin:-8px 0 -8px -8px;padding:8px}
+.pm .pt svg{width:14px;height:14px}
+.pm .ps{height:9px;flex:none;position:relative}
+.pm .ps::after{content:"";position:absolute;left:8px;right:8px;top:4px;height:1px;background:var(--line)}
+.pm .pi2{height:40px;flex:none;border-radius:10px;display:flex;align-items:center;gap:10px;padding:0 12px;font-size:14px;text-align:left;width:100%}
+.pm .pi2 svg{width:18px;height:18px}
+.pm .pi2 .lab{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm .pi2 .ic{width:18px;height:18px;flex:none;display:grid;place-items:center}
+.pm .pi2.danger .ic{color:var(--accent)}
+.pm .pi2 .chk{color:var(--accent)}
+.pm .pi2 .fw{color:var(--muted)}
+.pm .pi2 .fw svg{width:14px;height:14px}
+.pm .pi2.off{opacity:.45;cursor:default}
+.pm .pi2.lit{background:var(--accent);color:var(--accentInk)}
+.pm .pi2.lit .ic,.pm .pi2.lit .chk,.pm .pi2.lit .fw{color:var(--accentInk)}
+
+/* ---------------- the clock's panel (ClockPanel.qml) ---------------- */
+html.clock,body.clock{background:var(--glass)}
+.cp{position:fixed;inset:0;border-radius:20px;background:var(--glass);border:1px solid var(--line);overflow:hidden}
+.cp.enter{animation:cpin var(--calm) cubic-bezier(.33,1,.68,1)}
+@keyframes cpin{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+.cpin{padding:18px;display:flex;flex-direction:column;gap:14px}
+.cph{display:flex;align-items:center;gap:8px}
+.cph b{flex:1;font-size:17px;font-weight:600}
+.chip{min-height:34px;border-radius:10px;background:var(--panel2);border:2px solid transparent;display:flex;align-items:center;gap:10px;padding:0 12px;font-size:13px;text-align:left;transition:background var(--quick)}
+.chip:hover{background:var(--panel3)}
+.chip.nav{border-color:var(--accent)}
+.chip.big{min-height:56px;width:100%}
+.chip.lit{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.chip.lit>svg{color:var(--accent)}
+.chip .ct{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.chip .ct b{font-weight:600}
+.chip .ct small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .sw2{width:40px;height:22px;border-radius:11px;background:var(--panel3);position:relative;flex:none;transition:background var(--quick)}
+.chip .sw2::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:8px;background:var(--muted);transition:left var(--quick),background var(--quick)}
+.chip.lit .sw2{background:var(--accent)}
+.chip.lit .sw2::after{left:21px;background:var(--accentInk)}
+.nlist{display:flex;flex-direction:column;gap:8px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent}
+.note2{border-radius:12px;background:var(--panel2);border:2px solid transparent;padding:10px;display:flex;gap:10px;align-items:flex-start;transition:background var(--quick)}
+.note2:hover{background:var(--panel3)}
+.note2.nav{border-color:var(--accent)}
+.note2 img{width:32px;height:32px;flex:none}
+.note2 .nt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.note2 .nm{display:flex;gap:6px;font-size:11px;color:var(--muted)}
+.note2 .nm span:first-child{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note2 .ns{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note2 .nb{font-size:12px;opacity:.85;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;word-break:break-word}
+.note2 .nx{font-size:18px;color:var(--muted);line-height:1;padding:0 2px}
+.note2 .nx:hover,.note2.nav .nx{color:var(--text)}
+.empty{color:var(--muted);font-size:13px}
+.hr{height:1px;background:var(--line);flex:none}
+.cal{border-radius:12px;border:2px solid transparent;padding:10px;display:flex;flex-direction:column;gap:10px}
+.cal.nav{border-color:var(--accent)}
+.cal .today{color:var(--accent);font-size:14px;font-weight:600}
+.cal .mh{display:flex;align-items:center;gap:6px}
+.cal .mh b{flex:1;font-size:16px;font-weight:600}
+.rb{width:34px;height:34px;border-radius:17px;background:var(--panel2);display:grid;place-items:center;transition:background var(--quick)}
+.rb:hover{background:var(--panel3)}
+.rb svg{width:16px;height:16px}
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.days .wd{text-align:center;color:var(--muted);font-size:12px}
+.days .d{height:36px;display:grid;place-items:center;font-size:13px}
+.days .d span{width:34px;height:34px;border-radius:17px;display:grid;place-items:center}
+.days .d.out{color:var(--muted);opacity:.55}
+.days .d.now span{background:var(--accent);color:var(--accentInk);font-weight:700;border:1px solid color-mix(in srgb,var(--accent) 80%,#fff)}
+
+/* ---------------- clipboard history (Clipboard.qml) ---------------- */
+.cb{position:fixed;inset:0;border-radius:20px;background:var(--panel);border:1px solid var(--line);padding:20px;display:flex;flex-direction:column;gap:12px}
+.cbh{display:flex;align-items:center;gap:10px;flex:none}
+.cbh svg{width:22px;height:22px}
+.cbh b{flex:1;font-size:19px;font-weight:600}
+.cbh small{color:var(--muted);font-size:12px}
+.clist{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent;position:relative}
+.ci{flex:none;min-height:52px;max-height:84px;border-radius:12px;background:var(--bg2);border:2px solid transparent;display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;cursor:pointer;transition:background var(--quick)}
+.ci:hover{background:var(--panel2)}
+.ci.lit{background:var(--panel3);border-color:var(--accent)}
+.ci.img{height:112px;max-height:none;padding:8px 10px 8px 14px}
+.ci .ctx{flex:1;min-width:0;font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;padding:8px 0}
+.ci img{max-width:min(240px,100% - 160px);max-height:100%;object-fit:contain;object-position:left}
+.ci .cpic{flex:1;color:var(--muted);font-size:12px;text-align:right}
+.ci .del{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--muted);visibility:hidden;flex:none}
+.ci .del svg{width:16px;height:16px}
+.ci:hover .del,.ci.lit .del{visibility:visible}
+.ci .del:hover{background:var(--panel3)}
+.cclear{flex:none;height:54px;margin-top:2px;border-radius:12px;border:2px solid var(--line);display:grid;place-items:center;font-size:14px;transition:background var(--quick)}
+.cclear:hover{background:var(--panel2)}
+.cclear.lit{background:var(--panel3);border-color:var(--accent)}
+.cclear.warn{color:var(--danger)}
+.cnone{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:14px;padding:0 20px}
+
+/* ---------------- the desktop's dialogs (DeskDialog.qml) ---------------- */
+html.dialog,body.dialog{background:var(--glass)}
+.dg{position:fixed;inset:0;border-radius:20px;background:var(--glass);border:1px solid var(--line);overflow:hidden}
+.dgin{padding:22px;display:flex;flex-direction:column;gap:14px}
+.dg h3{font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dbox{height:46px;border-radius:12px;background:var(--bg2);border:1px solid var(--line);display:flex;padding:0 14px}
+.dbox.on{border-color:var(--accent)}
+.dbox input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font:inherit;font-size:16px}
+.dbox input::selection{background:var(--accent);color:var(--accentInk)}
+.dhint{color:var(--muted);font-size:12px}
+.dinfo{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:14px}
+.dinfo span:nth-child(odd){color:var(--muted);white-space:nowrap}
+.dinfo span:nth-child(even){word-break:break-all}
+.dbtns{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.db{height:42px;border-radius:10px;padding:0 18px;background:var(--panel2);border:2px solid transparent;font-size:14px;transition:background var(--quick)}
+.db:hover{background:var(--panel3)}
+.db.lit{border-color:var(--accent)}
+.db.primary{background:var(--accent);color:var(--accentInk);font-weight:700}
+.db.primary:hover{filter:brightness(1.12)}
+.db.primary.lit{border-color:var(--text)}
+
+/* ---------------- desktop icons (Desktop.qml) ---------------- */
+#icons{position:fixed;inset:0;z-index:1}
+.di{position:absolute;width:96px;height:104px;border-radius:12px;border:1px solid transparent;cursor:default;touch-action:none}
+.di:hover{background:rgba(255,255,255,.08)}
+.di.sel{background:color-mix(in srgb,var(--accent) 28%,transparent);border-color:var(--accent)}
+.di.drag{opacity:.85;z-index:10;transition:none}
+.di .dpic{position:absolute;top:8px;left:50%;margin-left:-26px;width:52px;height:52px;display:grid;place-items:center}
+.di .dpic img{max-width:52px;max-height:52px;object-fit:contain;pointer-events:none}
+.di .dpic svg{width:44px;height:44px;color:var(--text)}
+.di .dl{position:absolute;top:66px;left:4px;right:4px;text-align:center;color:#fff;font-size:12px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;text-shadow:1px 1px 0 #000c,0 0 3px #0008}
 </style>
 </head>
 <body>
@@ -273,16 +419,23 @@ const I = {
 // The same icons as Mantel on Hearth OS (Icon.qml's names); the drawings above stay as a fallback.
 (() => { const H = window.HEARTH_ICONS || {}, alias = {volLow:'vol-low', mute:'vol-mute', bat:'batt', batLow:'batt-low', batChg:'batt-charging'};
   for(const k of Object.keys(I)){ const h = H[alias[k] || k]; if(h) I[k] = h; } })();
+// Any icon of Hearth's set by its Icon.qml name (bell, pin, desktops, trash…).
+const IC = n => (window.HEARTH_ICONS || {})[n] || I[n] || '';
 const gen = name => `<div class="gen">${esc((name||'?').trim().charAt(0).toUpperCase())}</div>`;
 const icon = (src, name, cls='ic') => src ? `<img class="${cls}" src="${src}" alt="">` : gen(name);
-const timeText = d => d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+const timeText = d => ST.clock24 ? d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hourCycle:'h23'}) : d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit', hourCycle:'h12'});
 
 // Hearth's own apps, listed in the launcher with the installed ones under the same names and the Hearth mark,
 // like their .desktop files on Hearth OS (Ember opens them: Mantel/MantelHost.cs OpenAppAsync).
+// Apps (the app store) and Clipboard history are Hearth's too: Super+V opens the history on Hearth OS, but Windows+V is
+// Windows' own picker, so Hearth's is here (and in Settings › Clipboard).
 const OWN_APPS = [{id:'hearth:files', name:'Files', icon:'hearth-logo.svg'}, {id:'hearth:tasks', name:'Task Manager', icon:'hearth-logo.svg'},
-  {id:'hearth:settings', name:'Hearth Settings', icon:'hearth-logo.svg'}];
+  {id:'hearth:settings', name:'Hearth Settings', icon:'hearth-logo.svg'}, {id:'hearth:apps', name:'Apps', icon:'hearth-logo.svg'},
+  {id:'hearth:clipboard', name:'Clipboard history', icon:'hearth-logo.svg'}];
 const ownIcon = id => (OWN_APPS.find(a=>a.id===id)||{}).icon;
-const ST = {windows:[], pins:[], apps:null, status:null, tray:{full:false, icons:[]}, wallpaper:'', full:false, mouseOn:false, still:false, desk:null};
+const ST = {windows:[], pins:[], apps:null, status:null, tray:{full:false, icons:[]}, wallpaper:'', full:false, mouseOn:false, still:false, desk:null,
+  desks:[], notes:{history:[], unseen:0, dnd:false}, dnd:false, clock24:false, desktopIcons:true};
+const same = (a, b) => String(a||'').toLowerCase() === String(b||'').toLowerCase();
 
 // The accent follows the profile (Settings › Profile), like on Hearth OS.
 function setAccent(a){
@@ -300,7 +453,15 @@ if(host) host.addEventListener('message', e => {
   const d = m.data;
   switch(m.name){
     case 'mantel.windows': ST.windows=d||[]; if(PART==='bar') renderWins(); break;
-    case 'mantel.state': ST.pins=(d&&d.pins)||[]; ST.full=!!(d&&d.full); ST.wallpaper=(d&&d.wallpaper)||''; ST.still=!!(d&&d.reduceMotion); render(); break;
+    case 'mantel.state': ST.pins=(d&&d.pins)||[]; ST.full=!!(d&&d.full); ST.wallpaper=(d&&d.wallpaper)||''; ST.still=!!(d&&d.reduceMotion);
+      ST.dnd=!!(d&&d.dnd); ST.clock24=!!(d&&d.clock24); ST.desktopIcons=!(d&&d.desktopIcons===false); render(); break;
+    case 'mantel.desks': ST.desks=d||[]; if(PART==='bar') renderDesks(); break;
+    case 'mantel.notes': ST.notes=d||{history:[],unseen:0,dnd:false}; ST.dnd=!!ST.notes.dnd; if(PART==='bar') renderBell(); if(PART==='clock') renderClock(); break;
+    case 'mantel.menu': if(PART==='menu') openMenu(d); break;
+    case 'mantel.menuPick': { const f=MENU_RUN[d&&d.id]; MENU_RUN={}; if(f) setTimeout(f, 0); break; }
+    case 'mantel.dialog': if(PART==='dialog') openDialog(d); break;
+    case 'mantel.dialogDone': { const f=DIALOG_CB[d&&d.req]; delete DIALOG_CB[d&&d.req]; if(f && d.ok) f(d.value); break; }
+    case 'mantel.deskChanged': if(PART==='desktop') refreshIcons(); break;
     case 'mantel.kbdButton': if(PART==='keyboard') kbdButton(d&&d.b); break;
     case 'mantel.tray': ST.tray=d||{full:false,icons:[]}; if(PART==='bar') renderTray(); break;
     case 'mantel.apps': ST.apps=OWN_APPS.concat(d||[]); if(PART==='launcher') renderGrid(); break;
@@ -309,7 +470,8 @@ if(host) host.addEventListener('message', e => {
     case 'profile': if(d&&d.accent) setAccent(d.accent); break;
   }
 });
-function render(){ ({bar:renderBar, launcher:renderLauncher, quick:renderQuick, power:renderPower, desktop:renderDesktop, radial:renderRadial, help:renderHelp, keyboard:renderKeyboard}[PART]||renderBar)(); }
+function render(){ ({bar:renderBar, launcher:renderLauncher, quick:renderQuick, power:renderPower, desktop:renderDesktop, radial:renderRadial, help:renderHelp, keyboard:renderKeyboard,
+  menu:renderMenu, clock:renderClock, clip:renderClip, dialog:renderDialog}[PART]||renderBar)(); }
 // Restarts a CSS entrance animation on an element that stays in the page.
 function replay(el, cls){ if(!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
 let helpTimer=0;
@@ -321,6 +483,8 @@ function opened(){
   // Hearth's controls card closes by itself after 12 seconds.
   if(PART==='help'){ clearTimeout(helpTimer); helpTimer=setTimeout(()=>mantel('hidePanel'), 12000); }
   if(PART==='keyboard') renderKeyboard();
+  if(PART==='clock'){ CK.nav=-1; const t=new Date(); CK.month=new Date(t.getFullYear(), t.getMonth(), 1); renderClock(); replay($('.cp'), 'enter'); call('notify.seen').catch(()=>{}); }
+  if(PART==='clip'){ CB.cur=0; CB.confirm=false; refreshClip(); }
 }
 // Night light and the other desktop settings (Hearth Settings › Appearance), for Quick Access.
 const refreshDesk = () => call('desktop.get').then(d => { ST.desk=d||null; if(PART==='quick') renderQuick(); }).catch(()=>{});
@@ -329,35 +493,227 @@ const refreshStatus = () => call('sys.status').then(s => { ST.status=s; if(PART=
 // ================================================================ desktop (Wallpaper.qml)
 let shownWall = null;
 function renderDesktop(){
+  if(!$('#wall')){ document.body.innerHTML='<div id="wall"></div><div id="icons"></div>'; setupIcons(); }
+  renderWall();
+  refreshIcons();
+}
+function renderWall(){
   const w = ST.wallpaper || 'anim:fireside';
   document.body.classList.toggle('still', ST.still);
   if(shownWall===w) return;
   shownWall = w;
+  const wall = $('#wall');
   if(w==='anim:lava'){
     const blobs=[['red',.22,.62,.62,.10,.08,23],['orange',.52,.34,.55,-.12,.10,29],['gold',.74,.66,.58,-.08,-.12,31],['plum',.80,.22,.40,-.10,.06,26],['orange',.30,.20,.36,.12,.10,34],['red',.58,.90,.44,.06,-.12,27]];
-    document.body.innerHTML=`<div class="layer lava">${blobs.map(([c,x,y,s,dx,dy,t])=>{ const size=`calc(100vh * ${s*1.6})`;
+    wall.innerHTML=`<div class="layer lava">${blobs.map(([c,x,y,s,dx,dy,t])=>{ const size=`calc(100vh * ${s*1.6})`;
       return `<div class="blob" style="background-image:url(mantel-img/blob-${c}.png);width:${size};height:${size};left:calc(${x*100}vw - ${size} / 2);top:calc(${y*100}vh - ${size} / 2);--dx:${dx*100}vw;--dy:${dy*100}vh;--t:${t*3}s;--s:${t*1.8}s"></div>`; }).join('')}</div>`;
   } else if(w==='anim:aurora'){
     const stars=Array.from({length:90},(_,i)=>{ const rx=(i*0.6180339)%1, ry=(i*0.3819660*1.7)%1, sz=2+(i%3);
       return `<div class="star" style="left:${rx*100}vw;top:${ry*85}vh;width:${sz}px;height:${sz}px;--o:${(0.3+(i%5)*0.12).toFixed(2)};--t:${(1.8+(i%7)*0.3).toFixed(1)}s;--d:${((i*397)%4000)/1000}s"></div>`; }).join('');
     const ribs=[['a',.20,40,.75],['b',.30,52,.55],['c',.38,46,.6]].map(([k,y,t,o])=>`<div class="rib" style="background-image:url(mantel-img/aurora-${k}.png);top:${y*100}vh;--t:${t}s;--o:${o}"></div>`).join('');
-    document.body.innerHTML=`<div class="layer aurora">${stars}${ribs}<div class="ridge"></div></div>`;
+    wall.innerHTML=`<div class="layer aurora">${stars}${ribs}<div class="ridge"></div></div>`;
   } else if(w.startsWith('anim:')){   // the Hearth fireside (Hearth OS's default)
     const sparks=Array.from({length:24},(_,i)=>{ const x=25+((i*37)%50), t=6+((i*7)%6), w=((i*53)%60)-30;
       return `<div class="spark" style="left:${x}vw;background:${i%2?'var(--ember)':'var(--flame)'};--t:${t}s;--d:${-((i*1.7)%t).toFixed(1)}s;--w:${w}px"></div>`; }).join('');
-    document.body.innerHTML=`<div class="layer fire"><div class="glow wide"></div><div class="glow core"></div>${sparks}</div>`;
+    wall.innerHTML=`<div class="layer fire"><div class="glow wide"></div><div class="glow core"></div>${sparks}</div>`;
   } else if(w.startsWith('custom:')){   // a picture you chose (kept in %LOCALAPPDATA%\Nimbus\wallpapers, served by Ember)
-    document.body.innerHTML=`<div class="pic" style="background-image:url('https://hearth-walls.local/${esc(encodeURIComponent(w.slice(7)))}')"></div>`;
+    wall.innerHTML=`<div class="pic" style="background-image:url('https://hearth-walls.local/${esc(encodeURIComponent(w.slice(7)))}')"></div>`;
   } else {
-    document.body.innerHTML=`<div class="pic" style="background-image:url('wallpapers/${esc(w)}.jpg')"></div>`;
+    wall.innerHTML=`<div class="pic" style="background-image:url('wallpapers/${esc(w)}.jpg')"></div>`;
   }
 }
+
+
+// ---------------------------------------------------------------- desktop icons (Desktop.qml, full Mantel)
+// Your Desktop folder and the Public desktop. Click selects, click again or double-click opens, drag to move (the
+// place is remembered), right-click or press and hold for Open, Show in Files, Rename, Move to the Recycle Bin and
+// Properties. Keyboard: arrows, Enter opens, F2 renames, Delete, the Menu key (or Shift+F10) for the menu,
+// Ctrl+Shift+N a new folder. The background has its own menu. Over Explorer, Windows draws its own desktop instead.
+const DK = {entries:[], dir:'', sel:'', seq:0, drag:null, press:null};
+const CELL_W=104, CELL_H=112, BAR=60;
+const deskArea = () => { const p=innerHeight>innerWidth; const x=p?BAR+10:12, y=12; return {x, y, w:innerWidth-x-12, h:innerHeight-y-(p?12:BAR+10)}; };
+const deskGrid = () => { const a=deskArea(); return {cols:Math.max(1,Math.floor(a.w/CELL_W)), rows:Math.max(1,Math.floor(a.h/CELL_H))}; };
+const iconsOn = () => ST.full && ST.desktopIcons;
+function refreshIcons(){
+  if(PART!=='desktop') return;
+  if(!iconsOn()){ DK.entries=[]; return renderIcons(); }
+  const n=++DK.seq, g=deskGrid();
+  call('desk.icons', g).then(r=>{ if(n!==DK.seq || DK.drag) return; DK.dir=(r&&r.dir)||''; DK.entries=(r&&r.entries)||[]; if(DK.sel && !DK.entries.some(e=>e.name===DK.sel)) DK.sel=''; renderIcons(); })
+    .catch(()=>{ if(!host){ renderIcons(); } });
+}
+const thumbUrl = (e, s) => `https://hearth-files.local/thumb?p=${encodeURIComponent(e.path)}&s=${s}${/\.(png|jpe?g|gif|webp|bmp)$/i.test(e.name)?'':'&icon=1'}`;
+function renderIcons(){
+  const el=$('#icons'); if(!el) return;
+  const a=deskArea();
+  el.innerHTML = (iconsOn()?DK.entries:[]).map(e=>`<div class="di ${DK.sel===e.name?'sel':''}" data-name="${esc(e.name)}" style="left:${a.x+e.col*CELL_W+4}px;top:${a.y+e.row*CELL_H+4}px">
+    <div class="dpic">${host?`<img src="${thumbUrl(e, 96)}" alt="" onerror="this.outerHTML=IC('${e.dir?'folder':'file'}')">`:IC(e.dir?'folder':'file')}</div><div class="dl">${esc(e.label||e.name)}</div></div>`).join('');
+}
+const entryOf = name => DK.entries.find(e=>e.name===name) || null;
+function deskSelect(name){ DK.sel=name||''; document.querySelectorAll('.di').forEach(d=>d.classList.toggle('sel', d.dataset.name===DK.sel)); }
+const toast = t => mantel('toast', {text:t});
+function deskOpen(e){
+  if(!e) return;
+  if(e.dir) return mantel('openApp', {app:'files', path:e.path});
+  call('files.open', {path:e.path}).catch(err=>toast(err.message));
+}
+function deskRename(e){
+  if(!e) return;
+  ask('Rename “'+(e.label||e.name)+'”', e.name, 'Rename', v=>{
+    if(v===e.name) return;
+    call('files.rename', {path:e.path, name:v}).then(r=>{
+      const nn=(r&&r.path?r.path.split('\\').pop():v); DK.sel=nn;
+      const g=deskGrid(); return call('desk.place', {name:nn, col:e.col, row:e.row, cols:g.cols, rows:g.rows});
+    }).then(()=>refreshIcons()).catch(err=>toast(err.message));
+  });
+}
+function deskTrash(e){
+  if(!e) return;
+  call('files.trash', {paths:[e.path]}).then(()=>{ toast('Moved “'+(e.label||e.name)+'” to the Recycle Bin'); refreshIcons(); }).catch(err=>toast(err.message));
+}
+const human = n => { const u=['bytes','KB','MB','GB','TB']; let i=0; n=+n||0; while(n>=1024 && i<u.length-1){ n/=1024; i++; } return (i===0?n:n.toFixed(n<10?1:0))+' '+u[i]; };
+function deskProps(e){
+  if(!e) return;
+  call('files.info', {path:e.path}).then(r=>{
+    const rows=[['Kind', e.launcher?'Shortcut':r.dir?'Folder':(r.type||'File')], ['Size', human(r.size)+(r.dir?` (${r.files} files, ${r.folders} folders${r.partial?', still counting':''})`:'')],
+      ['Where', r.location||''], ['Changed', new Date(r.modified).toLocaleString([], {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'})]];
+    if(r.company) rows.push(['Made by', r.company]);
+    if(r.version) rows.push(['Version', r.version]);
+    if(r.readOnly || r.hidden) rows.push(['Attributes', [r.readOnly?'Read-only':'', r.hidden?'Hidden':''].filter(x=>x).join(', ')]);
+    if(e.public) rows.push(['Shown for', 'Everyone on this PC (Public desktop)']);
+    info(e.label||e.name, rows);
+  }).catch(err=>toast(err.message));
+}
+function deskNewFolder(){
+  ask('New folder on the desktop', 'New folder', 'Create', v=>{
+    call('desk.newFolder', {name:v}).then(r=>{ if(!ST.desktopIcons) toast('Made “'+r.name+'” in your Desktop folder'); DK.sel=r.name; refreshIcons(); }).catch(err=>toast(err.message));
+  });
+}
+function itemMenu(e, x, y){
+  deskSelect(e.name);
+  showMenu(x, y, {title:e.label||e.name}, [
+    {label:'Open', icon:'open', run:()=>deskOpen(e)},
+    {label:'Show in Files', icon:'folder', run:()=>mantel('openApp', {app:'files', path:e.path.replace(/\\[^\\]*$/, '')})},
+    {separator:true},
+    {label:'Rename', icon:'edit', run:()=>deskRename(e)},
+    {label:'Move to the Recycle Bin', icon:'trash', danger:true, run:()=>deskTrash(e)},
+    {separator:true},
+    {label:'Properties', icon:'info', run:()=>deskProps(e)}]);
+}
+function backgroundMenu(x, y){
+  deskSelect('');
+  const list=[{label:'New folder', icon:'plus', run:deskNewFolder}, {separator:true},
+    {label:'Change wallpaper', icon:'palette', run:()=>mantel('settings', {page:'appearance'})},
+    {label:'Display settings', icon:'display', run:()=>mantel('settings', {page:'display'})},
+    {label:'Open Files', icon:'folder', run:()=>mantel('openApp', {app:'files', path:DK.dir||''})}, {separator:true}];
+  if(iconsOn() && DK.entries.length>1) list.push({label:'Line up icons by name', icon:'grid', run:()=>{ const g=deskGrid(); call('desk.arrange', g).then(()=>refreshIcons()).catch(()=>{}); }});
+  list.push({label:'Show desktop icons', checked:ST.desktopIcons, run:()=>{ ST.desktopIcons=!ST.desktopIcons; call('desk.set', {key:'desktopIcons', value:ST.desktopIcons}).catch(()=>{}); refreshIcons(); }});
+  showMenu(x, y, {title:'Desktop'}, list);
+}
+function deskStep(dc, dr){
+  if(!DK.entries.length) return;
+  const cur=entryOf(DK.sel);
+  if(!cur) return deskSelect(DK.entries.slice().sort((a,b)=>a.col-b.col||a.row-b.row)[0].name);
+  let best=null, bestD=1e9;
+  for(const e of DK.entries){
+    if(e===cur) continue;
+    const ddc=e.col-cur.col, ddr=e.row-cur.row;
+    if((dc && Math.sign(ddc)!==dc) || (dr && Math.sign(ddr)!==dr)) continue;
+    const d = dc ? Math.abs(ddc)*10+Math.abs(ddr)*11 : Math.abs(ddr)*10+Math.abs(ddc)*11;
+    if(d<bestD){ bestD=d; best=e; }
+  }
+  if(best) deskSelect(best.name);
+}
+function deskKey(e){
+  const cur=entryOf(DK.sel);
+  if(e.key==='ContextMenu' || (e.key==='F10' && e.shiftKey)){
+    e.preventDefault();
+    if(cur){ const a=deskArea(); itemMenu(cur, a.x+cur.col*CELL_W+CELL_W/2, a.y+cur.row*CELL_H+CELL_H/2); } else backgroundMenu(innerWidth/2, innerHeight/2);
+    return;
+  }
+  if(e.key.toLowerCase()==='n' && e.ctrlKey && e.shiftKey){ e.preventDefault(); return deskNewFolder(); }
+  switch(e.key){
+    case 'ArrowLeft': deskStep(-1,0); break; case 'ArrowRight': deskStep(1,0); break;
+    case 'ArrowUp': deskStep(0,-1); break; case 'ArrowDown': deskStep(0,1); break;
+    case 'Enter': deskOpen(cur); break; case 'F2': deskRename(cur); break; case 'Delete': deskTrash(cur); break;
+    case 'Escape': deskSelect(''); break;
+    default: return;
+  }
+  e.preventDefault();
+}
+// Pointer: press selects; a move past 8 px drags; letting go puts it in the nearest place; a press held for half a
+// second without moving opens the menu (touch).
+function setupIcons(){
+  const el=$('#icons');
+  el.addEventListener('pointerdown', e=>{
+    const t=e.target.closest('.di'), name=t?t.dataset.name:'';
+    const wasSel = !!t && DK.sel===name;
+    if(e.button===2) return;
+    deskSelect(name);
+    DK.press={x:e.clientX, y:e.clientY, t, name, wasSel, moved:false, timer:setTimeout(()=>{ if(DK.press && !DK.press.moved){ const p=DK.press; DK.press=null; if(p.t) itemMenu(entryOf(p.name), p.x, p.y); else backgroundMenu(p.x, p.y); } }, 500)};
+    if(t) t.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener('pointermove', e=>{
+    const p=DK.press; if(!p) return;
+    if(!p.moved && Math.hypot(e.clientX-p.x, e.clientY-p.y) > 8){ p.moved=true; clearTimeout(p.timer); if(p.t){ DK.drag=p; p.ox=parseFloat(p.t.style.left); p.oy=parseFloat(p.t.style.top); p.t.classList.add('drag'); } }
+    if(p.moved && p.t){ p.t.style.left=Math.max(0, Math.min(innerWidth-96, p.ox+e.clientX-p.x))+'px'; p.t.style.top=Math.max(0, Math.min(innerHeight-104, p.oy+e.clientY-p.y))+'px'; }
+  });
+  const up = e=>{
+    const p=DK.press; DK.press=null; if(!p) return;
+    clearTimeout(p.timer);
+    if(p.moved && p.t){
+      const a=deskArea(), g=deskGrid();
+      const col=Math.max(0, Math.min(g.cols-1, Math.round((parseFloat(p.t.style.left)-4-a.x)/CELL_W)));
+      const row=Math.max(0, Math.min(g.rows-1, Math.round((parseFloat(p.t.style.top)-4-a.y)/CELL_H)));
+      call('desk.place', {name:p.name, col, row, cols:g.cols, rows:g.rows}).catch(err=>toast(err.message)).finally(()=>{ DK.drag=null; refreshIcons(); });
+      if(!host){ const en=entryOf(p.name); if(en){ en.col=col; en.row=row; } DK.drag=null; renderIcons(); }
+      return;
+    }
+    if(e.type==='pointerup' && p.t && p.wasSel) deskOpen(entryOf(p.name));
+  };
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('dblclick', e=>{ const t=e.target.closest('.di'); if(t) deskOpen(entryOf(t.dataset.name)); });
+  el.addEventListener('contextmenu', e=>{
+    e.preventDefault();
+    if(DK.press){ clearTimeout(DK.press.timer); DK.press=null; }
+    const t=e.target.closest('.di');
+    if(t) itemMenu(entryOf(t.dataset.name), e.clientX, e.clientY); else backgroundMenu(e.clientX, e.clientY);
+  });
+  addEventListener('resize', ()=>{ clearTimeout(setupIcons.t); setupIcons.t=setTimeout(refreshIcons, 200); });
+}
+
+// ================================================================ shared: right-click menus and dialogs
+// The menu is its own window (part=menu, PopMenu.qml's look); the page that opens it keeps what each item does and
+// hears back which one was chosen (mantel.menuPick). Items: {label, icon, run, danger, enabled:false, checked, sub:[…]}
+// or {separator:true}.
+let MENU_RUN = {}, MENU_SEQ = 0;
+function wireItems(list){
+  return list.map(it=>{
+    if(it.separator) return {separator:true};
+    const id='m'+(++MENU_SEQ); if(it.run) MENU_RUN[id]=it.run;
+    return {id, label:it.label, icon:it.icon||'', danger:!!it.danger, enabled:it.enabled!==false, checked:it.checked, sub:it.sub?wireItems(it.sub):undefined};
+  });
+}
+const menuHeight = (title, items) => 12 + (title?26:0) + items.reduce((h,it)=>h+(it.separator?9:40), 0);
+// (x, y): where in this window (CSS pixels), or on the screen (screen pixels) with screenPx.
+function showMenu(x, y, opts, list, screenPx){
+  MENU_RUN={};
+  const items=wireItems(list), dpr=window.devicePixelRatio||1;
+  if(!screenPx){ x=Math.round((window.screenX+x)*dpr); y=Math.round((window.screenY+y)*dpr); }
+  mantel('menu', {x, y, above:!!(opts&&opts.above), title:(opts&&opts.title)||'', items, h:menuHeight(opts&&opts.title, items)});
+  if(!host) window.lastMenu={x, y, opts, items};
+}
+// The desktop's small questions and details (part=dialog, DeskDialog.qml's look).
+let DIALOG_CB = {}, DIALOG_SEQ = 0;
+function ask(title, value, ok, cb){ const req=++DIALOG_SEQ; DIALOG_CB[req]=cb; mantel('dialog', {mode:'ask', title, value, ok, req}); }
+function info(title, rows){ mantel('dialog', {mode:'info', title, rows, req:++DIALOG_SEQ}); }
 
 // ================================================================ taskbar (Bar.qml)
 function renderBar(){
   if(!$('.barbox')){
     document.body.innerHTML = `<div class="barbox">
       <button class="bb" data-act="launcher" title="Apps (Windows key)"><img class="logo" src="hearth-logo.svg" alt=""></button>
+      <div class="desks" title="Desktops"></div>
       <div class="sep"></div>
       <div class="wins"></div>
       <div class="fill"></div>
@@ -368,25 +724,91 @@ function renderBar(){
       <button class="bb wide batt" data-act="quick" title="Battery"></button>
       <button class="bb" data-act="quick" title="Quick Access">${I.menu}</button>
       <button class="bb" data-act="keyboard" title="Keyboard">${I.kbd}</button>
-      <div class="clock"><b></b><small></small></div>
+      <button class="bb bell" data-act="clock" data-menu="bell"></button>
+      <button class="bclock" data-act="clock"><b></b><small></small></button>
       <button class="gm" data-act="game" title="Back to Game Mode"><span class="gmt">Game Mode</span><span class="gmi">${I.pad}</span></button></div>`;
     $('.vol').addEventListener('wheel', e => { e.preventDefault(); volumeBy(e.deltaY < 0 ? 5 : -5); }, {passive:false});
+    // Scrolling over the desktops steps through them, like DeskSwitcher.qml.
+    $('.desks').addEventListener('wheel', e => { e.preventDefault(); const i=ST.desks.findIndex(d=>d.active); if(i>=0) goDesk(Math.max(0, Math.min(ST.desks.length-1, i+(e.deltaY>0?1:-1)))); }, {passive:false});
   }
-  renderWins(); renderTray(); renderStatus(); tickClock();
+  renderDesks(); renderWins(); renderTray(); renderStatus(); renderBell(); tickClock();
 }
-// Pinned apps (lit when one of their windows is open), then every other open window.
+// Virtual desktops: hidden when there's only one (or Windows doesn't say).
+function renderDesks(){
+  const el=$('.desks'); if(!el) return;
+  el.innerHTML = ST.desks.length>1 ? ST.desks.map((d,i)=>`<button class="dk ${d.active?'on':''}" data-act="desk" data-i="${i}" title="${esc(d.name)}">${i+1}</button>`).join('') : '';
+}
+function goDesk(i){ const d=ST.desks[i]; if(!d || d.active) return; ST.desks.forEach((x,k)=>x.active=k===i); renderDesks(); call('vdesk.switch', {index:i}).then(r=>{ if(r&&r.desks){ ST.desks=r.desks; renderDesks(); } }).catch(()=>{}); }
+// The bell: crossed out with Do Not Disturb on, a dot for notifications you haven't seen.
+function renderBell(){
+  const b=$('.bell'); if(!b) return;
+  const n=ST.notes.unseen||0, dnd=ST.dnd;
+  b.classList.toggle('dnd', dnd);
+  b.innerHTML = IC(dnd?'bell-off':'bell') + (n>0 && !dnd ? '<i class="dot"></i>' : '');
+  b.title = dnd ? 'Do not disturb is on' : n>0 ? n+(n===1?' new notification':' new notifications') : 'Notifications';
+}
+// Pinned apps first (in pin order), then the other open apps; each app's windows share one button (Bar.qml's taskItems).
+function taskItems(){
+  const out=[], byKey={};
+  for(const p of ST.pins){
+    const k=String(p.id).toLowerCase(); if(byKey[k]) continue;
+    out.push(byKey[k]={key:k, id:p.id, name:p.name, icon:p.icon||ownIcon(p.id), pinned:true, own:String(p.id).startsWith('hearth:'), windows:[]});
+  }
+  for(const w of ST.windows){
+    const k=String(w.key||('win:'+w.id)).toLowerCase();
+    if(!byKey[k]) out.push(byKey[k]={key:k, id:w.pinId||'', name:w.name||w.app||w.title, icon:w.icon, pinned:false, own:!!w.own, windows:[]});
+    const it=byKey[k]; it.windows.push(w); if(!it.icon) it.icon=w.icon;
+  }
+  return out;
+}
+let TASKS=[];
 function renderWins(){
   const el=$('.wins'); if(!el) return;
-  const wins = ST.windows.slice(), used = new Set(), norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  let h = '';
-  for(const p of ST.pins){
-    const w = wins.find(x => !used.has(x.id) && norm(x.app) && (norm(p.name).includes(norm(x.app)) || norm(p.id).includes(norm(x.app))));
-    if(w) used.add(w.id);
-    h += `<button class="bb pinned ${w?'run':''} ${w&&w.active?'active':''}" ${w?`data-act="focus" data-id="${w.id}"`:`data-act="launch" data-app="${esc(p.id)}"`} title="${esc(w?w.title:p.name)}">${icon((w&&w.icon)||ownIcon(p.id), p.name)}</button>`;
+  TASKS=taskItems();
+  el.innerHTML = TASKS.map((it,i)=>{
+    const ws=it.windows, focused=ws.some(w=>w.active);
+    const tip = ws.length>1 ? `${it.name} (${ws.length} windows)` : ws.length===1 ? (ws[0].title||it.name) : it.name;
+    return `<button class="bb ${it.pinned?'pinned':''} ${ws.length?'run':''} ${ws.length>1?'many':''} ${focused?'active':''}" data-act="task" data-i="${i}" title="${esc(tip)}">${icon(it.icon, it.name)}</button>`;
+  }).join('');
+}
+// Click: open it (no windows), focus it (in front again: minimize), or with several windows the next one.
+function focusApp(it){
+  const ws=it.windows;
+  if(!ws.length){ if(it.id) mantel('launch', {id:it.id}); return; }
+  const i=ws.findIndex(w=>w.active);
+  if(ws.length===1) mantel('focus', {id:ws[0].id, min:!!ws[0].active && !ws[0].minimized});
+  else mantel('activate', {id:ws[(i+1)%ws.length].id});
+}
+// Screen pixels just outside the bar next to a button, for its menu (Bar.qml's menuPoint).
+function menuPoint(btn){
+  const r=btn.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  if(document.body.classList.contains('portrait')) return {x:Math.round((window.screenX+innerWidth+4)*dpr), y:Math.round((window.screenY+r.top+r.height/2-20)*dpr), above:false};
+  return {x:Math.round((window.screenX+r.left+r.width/2-134)*dpr), y:Math.round((window.screenY+4)*dpr), above:true};
+}
+// Right-click (X on the controller) on an app: Open / New window, Pin to / Unpin from taskbar, Move to desktop,
+// Maximize / Restore size, Close window / Close all.
+function taskMenu(btn, it){
+  const ws=it.windows, win=ws.find(w=>w.active)||ws[0]||null, list=[];
+  if(it.id && !it.own) list.push({label:ws.length?'New window':'Open', icon:'open', run:()=>mantel('launch', {id:it.id})});
+  if(it.id && (!it.own || it.pinned)){
+    const pinned=ST.pins.some(p=>same(p.id, it.id));
+    list.push({label:pinned?'Unpin from taskbar':'Pin to taskbar', icon:pinned?'unpin':'pin', run:()=>mantel('pin', {id:it.id, name:it.name, on:!pinned})});
   }
-  for(const w of wins) if(!used.has(w.id))
-    h += `<button class="bb run ${w.active?'active':''}" data-act="focus" data-id="${w.id}" title="${esc(w.title)}">${icon(w.icon, w.app||w.title)}</button>`;
-  el.innerHTML = h;
+  if(win){
+    if(list.length) list.push({separator:true});
+    if(ST.desks.length>1){
+      const sub=ST.desks.map((d,i)=>({label:d.name+(d.active?' (this one)':''), enabled:!d.active, run:()=>call('vdesk.move', {window:win.id, desk:d.id}).then(r=>{ if(r && !r.ok && r.error) mantel('toast', {text:r.error}); }).catch(()=>{})}));
+      list.push({label:'Move to desktop', icon:'desktops', sub});
+    }
+    if(!win.maximized) list.push({label:'Maximize', icon:'window', run:()=>mantel('maximize', {id:win.id, on:true})});
+    else list.push({label:'Restore size', icon:'window', run:()=>mantel('maximize', {id:win.id, on:false})});
+    list.push({separator:true});
+    if(ws.length>1) list.push({label:'Close all '+ws.length+' windows', icon:'close', danger:true, run:()=>ws.forEach(w=>mantel('close', {id:w.id}))});
+    else list.push({label:'Close window', icon:'close', danger:true, run:()=>mantel('close', {id:win.id})});
+  }
+  if(!list.length) return;
+  const p=menuPoint(btn);
+  showMenu(p.x, p.y, {title:it.name, above:p.above}, list, true);
 }
 // Full Mantel shows the apps' tray icons itself; on top of Explorer, ^ shows Windows' own tray for a moment.
 function renderTray(){
@@ -412,10 +834,12 @@ function renderStatus(){
   else bt.style.display='none';
 }
 function tickClock(){
-  const c=$('.clock'); if(!c) return;
+  const c=$('.bclock'); if(!c) return;
   const now=new Date();
-  c.querySelector('b').textContent = document.body.classList.contains('portrait') ? now.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}).replace(/\s?[AP]M$/i,'') : timeText(now);
+  c.querySelector('b').textContent = ST.clock24 ? now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hourCycle:'h23'})
+    : document.body.classList.contains('portrait') ? now.toLocaleTimeString([], {hour:'numeric', minute:'2-digit', hourCycle:'h12'}).replace(/\s?[AP]M$/i,'') : timeText(now);
   c.querySelector('small').textContent = now.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
+  c.title = now.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric', year:'numeric'});
 }
 function volumeBy(d){
   const a=ST.status&&ST.status.audio; if(!a) return;
@@ -457,15 +881,29 @@ function renderGrid(){
   const g=$('.grid'); if(!g) return;
   g.style.gridTemplateColumns = `repeat(${cols()}, 1fr)`;
   if(!ST.apps){ g.innerHTML = `<div class="loading"><span class="spin"></span>Finding your apps…</div>`; return; }
-  const list=matches(), pinned=new Set(ST.pins.map(p=>p.id));
+  const list=matches(), pinned=new Set(ST.pins.map(p=>String(p.id).toLowerCase()));
   L.cur=Math.max(0, Math.min(L.cur, list.length-1));
-  g.innerHTML = list.length ? list.map((a,i)=>`<div class="cell ${i===L.cur?'cur':''} ${pinned.has(a.id)?'pinned':''}" data-act="launch" data-app="${esc(a.id)}" data-i="${i}" title="${esc(a.name)}">${icon(a.icon, a.name, '')}<span>${esc(a.name)}</span>
-      <button class="pin" data-act="pin" data-app="${esc(a.id)}" data-name="${esc(a.name)}" data-on="${pinned.has(a.id)?0:1}" title="${pinned.has(a.id)?'Unpin from':'Pin to'} the taskbar">${I.pin}</button></div>`).join('')
+  g.innerHTML = list.length ? list.map((a,i)=>`<div class="cell ${i===L.cur?'cur':''}" data-act="launch" data-app="${esc(a.id)}" data-i="${i}" title="${esc(a.name)}">${icon(a.icon, a.name, '')}<span>${esc(a.name)}</span>
+      ${pinned.has(String(a.id).toLowerCase())?`<i class="pinmark" title="Pinned to the taskbar">${IC('pin')}</i>`:''}</div>`).join('')
     : `<div class="none">No apps match "${esc(L.query)}"</div>`;
   const c=g.querySelector('.cell.cur'); if(c) c.scrollIntoView({block:'nearest'});
 }
+// Right-click, press and hold, or the Menu key (X on the controller): Open / Pin to taskbar (shell.qml's launcher menu).
+function launcherMenu(i){
+  const a=matches()[i]; if(!a) return;
+  L.cur=i; renderGrid();
+  const c=$('.cell.cur'), r=c?c.getBoundingClientRect():{left:innerWidth/2, top:innerHeight/2, width:0, height:0};
+  const pinned=ST.pins.some(p=>same(p.id, a.id));
+  showMenu(r.left+r.width/2, r.top+r.height/2, {title:a.name}, [
+    {label:'Open', icon:'open', run:()=>mantel('launch', {id:a.id})},
+    {label:pinned?'Unpin from taskbar':'Pin to taskbar', icon:pinned?'unpin':'pin', run:()=>{
+      // Shown at once (Ember saves it and tells every window).
+      ST.pins = pinned ? ST.pins.filter(p=>!same(p.id, a.id)) : ST.pins.concat([{id:a.id, name:a.name, icon:a.icon}]); renderGrid();
+      mantel('pin', {id:a.id, name:a.name, on:!pinned}); }}]);
+}
 function launcherKey(e){
   const list=matches(), n=cols();
+  if(e.key==='ContextMenu' || e.key==='F23' || (e.key==='F10' && e.shiftKey)){ e.preventDefault(); return launcherMenu(L.cur); }
   const go=i=>{ L.cur=Math.max(0, Math.min(list.length-1, i)); renderGrid(); };
   switch(e.key){
     case 'Escape': e.preventDefault(); if(L.query){ L.query=''; $('.search input').value=''; go(0); } else mantel('hidePanel'); return;
@@ -689,9 +1127,210 @@ function kbdButton(b){
   }
 }
 
+// ================================================================ the right-click menu (PopMenu.qml)
+// Mouse: hover and click (a click elsewhere closes it). Keyboard and controller: Up/Down, Enter (A) chooses, Right
+// opens a submenu, Left / Esc (B) goes back, then closes.
+const PM = {stack:[], sel:-1, above:false};
+const pmLevel = () => PM.stack[PM.stack.length-1] || {title:'', items:[]};
+const pmUsable = i => { const it=pmLevel().items[i]; return !!it && !it.separator && it.enabled!==false; };
+function openMenu(d){ PM.stack=[{title:(d&&d.title)||'', items:(d&&d.items)||[]}]; PM.sel=-1; renderMenu(true); }
+function renderMenu(pop){
+  const lv=pmLevel();
+  let el=$('.pm'); if(!el){ document.body.innerHTML='<div class="pm"></div>'; el=$('.pm'); }
+  el.innerHTML = (lv.title?`<div class="pt">${PM.stack.length>1?`<button data-act="pmBack" title="Back">${IC('back')}</button>`:''}<span>${esc(lv.title)}</span></div>`:'')
+    + lv.items.map((it,i)=>it.separator ? '<div class="ps"></div>'
+      : `<button class="pi2 ${i===PM.sel?'lit':''} ${it.danger?'danger':''} ${it.enabled===false?'off':''}" data-act="pmPick" data-i="${i}">
+          <span class="ic">${it.checked===true?`<span class="chk">${IC('check')}</span>`:it.checked===undefined && it.icon?IC(it.icon):''}</span>
+          <span class="lab">${esc(it.label)}</span>${it.sub?`<span class="fw">${IC('forward')}</span>`:''}</button>`).join('');
+  if(pop) replay(el, 'pop');
+}
+function pmMove(d){
+  const n=pmLevel().items.length; if(!n) return;
+  let i = PM.sel<0 ? (d>0?-1:0) : PM.sel;
+  for(let k=0;k<n;k++){ i=(i+d+n)%n; if(pmUsable(i)){ PM.sel=i; return renderMenu(); } }
+}
+function pmFit(){ const lv=pmLevel(); mantel('menuFit', {h:menuHeight(lv.title, lv.items)}); }
+function pmPick(i){
+  if(!pmUsable(i)) return;
+  const it=pmLevel().items[i];
+  if(it.sub){ PM.stack.push({title:it.label, items:it.sub}); PM.sel=-1; pmMove(1); pmFit(); return; }
+  mantel('menuPick', {id:it.id});
+}
+function pmBack(){ if(PM.stack.length>1){ PM.stack.pop(); PM.sel=-1; pmMove(1); pmFit(); } else mantel('menuClose'); }
+function menuKey(e){
+  switch(e.key){
+    case 'ArrowUp': pmMove(-1); break;
+    case 'ArrowDown': case 'Tab': pmMove(e.shiftKey && e.key==='Tab' ? -1 : 1); break;
+    case 'ArrowRight': if(PM.sel>=0 && pmLevel().items[PM.sel].sub) pmPick(PM.sel); break;
+    case 'ArrowLeft': case 'Backspace': case 'Escape': pmBack(); break;
+    case 'Enter': case ' ': if(PM.sel<0) pmMove(1); else pmPick(PM.sel); break;
+    case 'ContextMenu': case 'F23': mantel('menuClose'); break;
+    default: return;
+  }
+  e.preventDefault();
+}
+document.addEventListener('mouseover', e => { if(PART!=='menu') return; const b=e.target.closest('.pi2'); if(b && !b.classList.contains('off') && +b.dataset.i!==PM.sel){ PM.sel=+b.dataset.i; renderMenu(); } });
+
+// ================================================================ the clock's panel (ClockPanel.qml)
+// Notifications you missed (Clear all, Do Not Disturb) above a month calendar with today marked. Keyboard and
+// controller: Up/Down move, Enter (A) chooses, Left/Right (or Page Up/Down) change the month on the calendar, Esc (B) closes.
+const CK = {nav:-1, month:new Date(new Date().getFullYear(), new Date().getMonth(), 1)};
+const ckHistory = () => ST.notes.history || [];
+const ckCalRow = () => 2 + ckHistory().length;
+function firstDay(){ try{ const w=new Intl.Locale(navigator.language).weekInfo || new Intl.Locale(navigator.language).getWeekInfo(); return (w.firstDay||7)%7; }catch(e){ return 0; } }
+function ckWhen(t){
+  const s=Math.floor((Date.now()-t)/1000);
+  if(s<60) return 'Just now';
+  if(s<3600) return Math.floor(s/60)+' min ago';
+  return timeText(new Date(t));
+}
+function renderClock(){
+  const h=ckHistory(), cal=ckCalRow(), dnd=ST.dnd, m=CK.month, now=new Date(), fd=firstDay();
+  let el=$('.cp'); if(!el){ document.body.innerHTML='<div class="cp"><div class="cpin"></div></div>'; el=$('.cp'); }
+  const lead=(new Date(m.getFullYear(), m.getMonth(), 1).getDay()-fd+7)%7;
+  const days=Array.from({length:42}, (_,i)=>new Date(m.getFullYear(), m.getMonth(), 1-lead+i));
+  const wd=Array.from({length:7}, (_,i)=>new Date(2024, 0, 7+((fd+i)%7)).toLocaleDateString([], {weekday:'narrow'}));
+  const listMax=Math.max(120, Math.round((screen.availHeight||800)*0.42));
+  el.querySelector('.cpin').innerHTML = `
+    <div class="cph"><b>Notifications</b>${h.length?`<button class="chip ${CK.nav===1?'nav':''}" data-act="ck" data-i="1">Clear all</button>`:''}</div>
+    <button class="chip big ${dnd?'lit':''} ${CK.nav===0?'nav':''}" data-act="ck" data-i="0">${IC(dnd?'bell-off':'bell')}<span class="ct"><b>Do not disturb</b><small>${dnd?'On: notifications wait here quietly':'Off'}</small></span><span class="sw2"></span></button>
+    ${h.length?`<div class="nlist" style="max-height:${listMax}px">${h.map((n,i)=>`<div class="note2 ${CK.nav===i+2?'nav':''}" data-i="${i+2}">
+        ${n.icon?`<img src="${esc(n.icon)}" alt="">`:''}<div class="nt"><div class="nm"><span>${esc(n.app)}</span><span>${esc(ckWhen(n.time))}</span></div>
+        ${n.summary?`<div class="ns">${esc(n.summary)}</div>`:''}${n.body?`<div class="nb">${esc(n.body)}</div>`:''}</div>
+        <button class="nx" data-act="ckForget" data-key="${n.key}" title="Dismiss">×</button></div>`).join('')}</div>`:'<div class="empty">No notifications</div>'}
+    <div class="hr"></div>
+    <div class="cal ${CK.nav===cal?'nav':''}">
+      <div class="today">${esc(now.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'}))}</div>
+      <div class="mh"><b>${esc(m.toLocaleDateString([], {month:'long', year:'numeric'}))}</b><button class="rb" data-act="ckMonth" data-d="-1" title="Previous month">${IC('back')}</button><button class="rb" data-act="ckMonth" data-d="1" title="Next month">${IC('forward')}</button></div>
+      <div class="days">${wd.map(x=>`<div class="wd">${esc(x)}</div>`).join('')}${days.map(d=>`<div class="d ${d.getMonth()!==m.getMonth()?'out':''} ${d.toDateString()===now.toDateString()?'now':''}"><span>${d.getDate()}</span></div>`).join('')}</div>
+    </div>`;
+  const lit=el.querySelector('.note2.nav'); if(lit) lit.scrollIntoView({block:'nearest'});
+  // The window is as tall as what's in it (Ember places it above the clock).
+  requestAnimationFrame(()=>mantel('clockFit', {h:Math.ceil(el.querySelector('.cpin').scrollHeight)+2}));
+}
+function ckShift(d){ CK.month=new Date(CK.month.getFullYear(), CK.month.getMonth()+d, 1); renderClock(); }
+function ckActivate(i){
+  const h=ckHistory(), cal=ckCalRow();
+  if(i===0){ ST.dnd=!ST.dnd; ST.notes.dnd=ST.dnd; renderClock(); call('desk.set', {key:'dnd', value:ST.dnd}).catch(()=>{}); }
+  else if(i===1){ ST.notes.history=[]; CK.nav=0; renderClock(); call('notify.clear').catch(()=>{}); }
+  else if(i===cal){ const t=new Date(); CK.month=new Date(t.getFullYear(), t.getMonth(), 1); renderClock(); }
+  else if(i>=2 && h[i-2]){ const k=h[i-2].key; ST.notes.history=h.filter(n=>n.key!==k); CK.nav=Math.min(CK.nav, ckCalRow()-1); renderClock(); call('notify.forget', {key:k}).catch(()=>{}); }
+}
+function clockKey(e){
+  const cal=ckCalRow(), none=ckHistory().length===0;
+  switch(e.key){
+    case 'Escape': mantel('hidePanel'); break;
+    case 'ArrowUp': CK.nav = CK.nav<0 ? cal : Math.max(0, CK.nav-1); if(none && CK.nav===1) CK.nav=0; renderClock(); break;
+    case 'ArrowDown': case 'Tab': CK.nav = CK.nav<0 ? 0 : Math.min(cal, CK.nav+1); if(none && CK.nav===1) CK.nav=cal; renderClock(); break;
+    case 'ArrowLeft': if(CK.nav===cal || CK.nav<0) ckShift(-1); else if(CK.nav===1){ CK.nav=0; renderClock(); } break;
+    case 'ArrowRight': if(CK.nav===cal || CK.nav<0) ckShift(1); else if(CK.nav===0 && !none){ CK.nav=1; renderClock(); } break;
+    case 'PageUp': ckShift(-1); break;
+    case 'PageDown': ckShift(1); break;
+    case 'Enter': case ' ': if(CK.nav>=0) ckActivate(CK.nav); break;
+    default: return;
+  }
+  e.preventDefault();
+}
+
+// ================================================================ clipboard history (Clipboard.qml)
+// Click an item or press A / Enter to paste it into the app you were in; X (or Delete) forgets one, and "Clear all" at the
+// end forgets everything (press it twice); B / Esc closes. Windows keeps the history (Settings › Clipboard turns it on).
+const CB = {items:[], cur:0, confirm:false, loading:false, state:null};
+function refreshClip(){
+  CB.loading=true; renderClip();
+  call('clipboard.list').then(r=>{ CB.state=r||{}; CB.items=(r&&r.items)||[]; }).catch(()=>{ CB.state={available:false}; CB.items=[]; })
+    .finally(()=>{ CB.loading=false; CB.cur=Math.min(CB.cur, Math.max(0, CB.items.length-1)); renderClip(); });
+}
+function renderClip(){
+  let el=$('.cb');
+  if(!el){ document.body.innerHTML=`<div class="cb"><div class="cbh">${IC('clipboard')}<b>Clipboard history</b><small>Ⓐ paste  Ⓧ forget  Ⓑ close</small></div><div class="clist"></div></div>`; el=$('.cb'); }
+  const st=CB.state||{}, last=CB.items.length;
+  const empty = st.policy ? 'Your organization turned clipboard history off on this PC.'
+    : st.available===false ? "Windows' clipboard history isn't available here."
+    : CB.loading && !last ? 'Loading…'
+    : st.enabled===false ? 'Clipboard history is off. Turn it on in Settings › Clipboard.'
+    : st.denied ? "Windows didn't let Ember read the clipboard history."
+    : 'Nothing copied yet. Copy some text or a picture and it shows up here.';
+  el.querySelector('.clist').innerHTML = CB.items.map((it,i)=>`<div class="ci ${it.kind==='image'?'img':''} ${i===CB.cur?'lit':''}" data-act="clipPaste" data-i="${i}">
+      ${it.kind==='image'?`<img src="${esc(it.image||'')}" alt=""><span class="cpic">Picture${it.dims?' · '+esc(it.dims):''}</span>`
+        :`<span class="ctx">${esc(it.kind==='binary'?`Something copied (${it.format||'data'})`:String(it.text||'').replace(/\s+/g,' ').trim())}</span>`}
+      <button class="del" data-act="clipForget" data-i="${i}" title="Forget">${IC('close')}</button></div>`).join('')
+    + (last?`<button class="cclear ${CB.cur===last?'lit':''} ${CB.confirm?'warn':''}" data-act="clipClear">${CB.confirm?'Clear everything? Press again to clear':'Clear all'}</button>`:`<div class="cnone">${esc(empty)}</div>`);
+  const lit=el.querySelector('.ci.lit, .cclear.lit'); if(lit) lit.scrollIntoView({block:'nearest'});
+}
+function clipForget(i){ const it=CB.items[i]; if(!it) return; CB.items=CB.items.filter((x,k)=>k!==i); CB.cur=Math.min(CB.cur, CB.items.length); renderClip(); call('clipboard.delete', {id:it.id}).catch(()=>{}); }
+function clipClear(){ if(!CB.confirm){ CB.confirm=true; CB.cur=CB.items.length; return renderClip(); } CB.confirm=false; CB.items=[]; CB.cur=0; renderClip(); call('clipboard.clear').catch(()=>{}); }
+function clipPaste(i){ const it=CB.items[i]; if(it) mantel('clipPaste', {id:it.id}); }
+function clipKey(e){
+  const last=CB.items.length;
+  switch(e.key){
+    case 'ArrowDown': case 'Tab': if(e.key==='Tab' && e.shiftKey){ CB.cur=Math.max(0, CB.cur-1); } else CB.cur=Math.min(last, CB.cur+1); CB.confirm=false; break;
+    case 'ArrowUp': CB.cur=Math.max(0, CB.cur-1); CB.confirm=false; break;
+    case 'Home': CB.cur=0; break;
+    case 'End': CB.cur=last; break;
+    case 'Enter': case ' ': if(CB.cur>=last) clipClear(); else clipPaste(CB.cur); e.preventDefault(); return;
+    case 'Delete': case 'ContextMenu': case 'x': case 'X': case 'F23': if(CB.cur<last) clipForget(CB.cur); e.preventDefault(); return;
+    case 'Escape': mantel('hidePanel'); break;
+    default: return;
+  }
+  e.preventDefault(); renderClip();
+}
+
+// ================================================================ the desktop's dialogs (DeskDialog.qml)
+// ask: a text box with OK / Cancel; info: a card of details. Enter (A) is OK, Esc (B) cancels, Tab / arrows move between
+// the box and the buttons; Y on the controller opens the keyboard.
+const DG = {mode:'ask', title:'', ok:'OK', rows:[], req:0, focus:0};
+function openDialog(d){
+  DG.mode=d.mode==='info'?'info':'ask'; DG.title=d.title||''; DG.ok=d.ok||'OK'; DG.rows=d.rows||[]; DG.req=d.req||0; DG.focus=0;
+  renderDialog();
+  const i=$('.dbox input');
+  if(i){ i.value=d.value||''; const dot=i.value.lastIndexOf('.'); setTimeout(()=>{ i.focus(); i.setSelectionRange(0, dot>0?dot:i.value.length); }, 30); }
+}
+function renderDialog(){
+  let el=$('.dg'); if(!el){ document.body.innerHTML='<div class="dg"><div class="dgin"></div></div>'; el=$('.dg'); }
+  const keep=$('.dbox input') ? $('.dbox input').value : null;
+  el.querySelector('.dgin').innerHTML = `<h3>${esc(DG.title)}</h3>`
+    + (DG.mode==='ask' ? `<label class="dbox ${DG.focus===0?'on':''}"><input spellcheck="false" aria-label="${esc(DG.title)}"></label><div class="dhint">Controller: Y opens the keyboard</div>`
+      : `<div class="dinfo">${DG.rows.map(([k,v])=>`<span>${esc(k)}</span><span>${esc(v)}</span>`).join('')}</div>`)
+    + `<div class="dbtns">${DG.mode==='ask'?`<button class="db ${DG.focus===2?'lit':''}" data-act="dgCancel">Cancel</button>`:''}<button class="db primary ${DG.mode==='info'||DG.focus===1?'lit':''}" data-act="dgOk">${esc(DG.mode==='ask'?DG.ok:'Close')}</button></div>`;
+  const i=$('.dbox input');
+  if(i){ if(keep!==null) i.value=keep; i.addEventListener('focus', ()=>{ DG.focus=0; $('.dbox').classList.add('on'); }); }
+  requestAnimationFrame(()=>mantel('dialogFit', {h:Math.ceil(el.querySelector('.dgin').scrollHeight)+2}));
+}
+function dgAccept(){
+  if(DG.mode==='ask'){ const v=($('.dbox input')||{}).value||''; if(!v.trim()) return; mantel('dialogDone', {req:DG.req, value:v.trim(), ok:true}); }
+  else mantel('dialogDone', {req:DG.req, value:'', ok:false});
+}
+function dgCancel(){ mantel('dialogDone', {req:DG.req, value:'', ok:false}); }
+function dialogKey(e){
+  const typing=document.activeElement && document.activeElement.tagName==='INPUT';
+  switch(e.key){
+    case 'Escape': dgCancel(); break;
+    case 'Enter': if(DG.mode==='ask' && DG.focus===2) dgCancel(); else dgAccept(); break;
+    case ' ': if(typing) return; if(DG.mode==='ask' && DG.focus===2) dgCancel(); else dgAccept(); break;
+    case 'Tab': case 'ArrowDown': case 'ArrowRight':
+      if(typing && e.key==='ArrowRight') return;
+      if(DG.mode==='ask'){ DG.focus=Math.min(2, DG.focus+1); if(typing) document.activeElement.blur(); updateDgFocus(); } break;
+    case 'ArrowUp': case 'ArrowLeft':
+      if(typing) return;
+      if(DG.mode==='ask'){ DG.focus=Math.max(0, DG.focus-1); updateDgFocus(); } break;
+    case 'F24': mantel('keyboard'); break;   // Y on the controller
+    default: return;
+  }
+  e.preventDefault();
+}
+function updateDgFocus(){
+  const b=$('.dbox'), btns=document.querySelectorAll('.db');
+  if(b) b.classList.toggle('on', DG.focus===0);
+  if(btns.length===2){ btns[0].classList.toggle('lit', DG.focus===2); btns[1].classList.toggle('lit', DG.focus===1); }
+  if(DG.focus===0){ const i=$('.dbox input'); if(i) i.focus(); }
+}
+
 // ================================================================ input
+let HOLD = null;   // press and hold (touch): the menu instead of a click
 document.addEventListener('click', e => {
   if(PART==='help'){ mantel('hidePanel'); return; }   // a click anywhere closes the controls, like Help.qml
+  if(HOLD && HOLD.fired){ HOLD=null; e.stopPropagation(); return; }
   const el = e.target.closest('[data-act]'); if(!el) return;
   e.stopPropagation();
   const d = el.dataset;
@@ -700,13 +1339,15 @@ document.addEventListener('click', e => {
     case 'tray': return mantel('tray');
     case 'quick': return mantel('quick');
     case 'keyboard': return mantel('keyboard');
+    case 'clock': return mantel('clock');
     case 'mute': { const a=ST.status&&ST.status.audio; if(a){ a.muted=!a.muted; renderStatus(); call('audio.setMute',{m:a.muted}).catch(()=>{}); } return; }
     case 'game': return mantel('game');
     case 'settings': return mantel('settings');
     case 'power': return mantel('power', {what:d.what});
     case 'focus': return mantel('focus', {id:+d.id});
+    case 'task': { const it=TASKS[+d.i]; if(it) focusApp(it); return; }
+    case 'desk': return goDesk(+d.i);
     case 'launch': return mantel('launch', {id:d.app});
-    case 'pin': return mantel('pin', {id:d.app, name:d.name, on:d.on==='1'});
     case 'trayIcon': return trayClick(el, e.detail>=2 ? 'double' : 'left');
     case 'q': { const rows=navRows(); rows.forEach((r,ri)=>{ const ci=r.indexOf(d.id); if(ci>=0){ Qn.r=ri; Qn.c=ci; } }); return quickDo(d.id); }
     case 'q-mute': return quickDo('q-mute');
@@ -714,50 +1355,101 @@ document.addEventListener('click', e => {
     case 'rad': return radialPick(+d.i);
     case 'key': return kbdKey(OSK_ROWS[+d.r][+d.c]);
     case 'kclose': return mantel('keyboardClose');
+    case 'pmPick': return pmPick(+d.i);
+    case 'pmBack': return pmBack();
+    case 'ck': CK.nav=+d.i; return ckActivate(+d.i);
+    case 'ckForget': { const h=ckHistory(), i=h.findIndex(n=>String(n.key)===d.key); if(i>=0) ckActivate(i+2); return; }
+    case 'ckMonth': return ckShift(+d.d);
+    case 'clipPaste': return clipPaste(+d.i);
+    case 'clipForget': return clipForget(+d.i);
+    case 'clipClear': CB.cur=CB.items.length; return clipClear();
+    case 'dgOk': return dgAccept();
+    case 'dgCancel': return dgCancel();
   }
 });
+// A click outside the menu card (there's nothing outside: the window is the card) or anywhere else closes it (Ember).
 function trayClick(el, button){
   const r=el.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
   mantel('trayClick', {key:el.dataset.key, button, x:Math.round((window.screenX+r.left+r.width/2)*dpr), y:Math.round((window.screenY+r.top)*dpr)});
 }
-document.addEventListener('mouseup', e => { const el=e.target.closest('[data-act="trayIcon"]'); if(el && e.button===2) trayClick(el, 'right'); });
-document.addEventListener('contextmenu', e => e.preventDefault());
+// Right-click (X on the controller): the tray icon's own menu, an app's menu on the taskbar, the launcher's Open / Pin
+// menu, and Do Not Disturb on the bell (like Bar.qml).
+function secondary(e, el){
+  if(el.dataset.act==='trayIcon') return trayClick(el, 'right');
+  if(el.dataset.act==='task'){ const it=TASKS[+el.dataset.i]; if(it) taskMenu(el, it); return; }
+  if(el.dataset.menu==='bell'){ ST.dnd=!ST.dnd; renderBell(); call('desk.set', {key:'dnd', value:ST.dnd}).catch(()=>{}); return; }
+  if(PART==='launcher' && el.classList.contains('cell')) return launcherMenu(+el.dataset.i);
+}
+document.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if(PART==='desktop') return;   // the desktop has its own (setupIcons)
+  const el=e.target.closest('[data-act]'); if(el) secondary(e, el);
+});
+document.addEventListener('pointerdown', e => {
+  if(PART==='bar'){ const a=e.target.closest('[data-act]'); mantel('barTouch', {what:a?a.dataset.act:''}); }
+  if(e.button!==0 || !['bar','launcher'].includes(PART)) return;
+  const el=e.target.closest('[data-act="task"], .cell'); if(!el) return;
+  const h = HOLD = {x:e.clientX, y:e.clientY, fired:false, timer:setTimeout(()=>{ if(HOLD===h){ h.fired=true; secondary(e, el); } }, 500)};
+});
+document.addEventListener('pointermove', e => { if(HOLD && !HOLD.fired && Math.hypot(e.clientX-HOLD.x, e.clientY-HOLD.y)>8){ clearTimeout(HOLD.timer); HOLD=null; } });
+document.addEventListener('pointerup', () => { if(HOLD && !HOLD.fired){ clearTimeout(HOLD.timer); HOLD=null; } });
 // The keyboard never takes the focus from the field you're typing in.
 document.addEventListener('mousedown', e => { if(PART==='keyboard') e.preventDefault(); });
-document.addEventListener('auxclick', e => {   // middle click on a window closes it, like on Hearth OS
-  const el = e.target.closest('[data-act="focus"]');
-  if(el && e.button===1) mantel('close', {id:+el.dataset.id});
+document.addEventListener('auxclick', e => {   // middle click on an app closes its window, like on Hearth OS; on a tray icon, its middle click
+  if(e.button!==1) return;
+  const t=e.target.closest('[data-act="task"]');
+  if(t){ const it=TASKS[+t.dataset.i]; if(!it) return; const ws=it.windows; if(ws.length) mantel('close', {id:(ws.find(w=>w.active)||ws[0]).id}); else focusApp(it); return; }
+  const tr=e.target.closest('[data-act="trayIcon"]'); if(tr) trayClick(tr, 'middle');
 });
 document.addEventListener('keydown', e => {
   if(PART==='launcher') return launcherKey(e);
   if(PART==='quick') return quickKey(e);
   if(PART==='power') return powerKey(e);
   if(PART==='radial') return radialKey(e);
+  if(PART==='menu') return menuKey(e);
+  if(PART==='clock') return clockKey(e);
+  if(PART==='clip') return clipKey(e);
+  if(PART==='dialog') return dialogKey(e);
+  if(PART==='desktop') return deskKey(e);
   if(PART==='help' && ['Escape','Enter',' '].includes(e.key)){ e.preventDefault(); mantel('hidePanel'); }
 });
 
 // ================================================================ start
 if(!host){   // browser preview with sample data
-  ST.pins=[{id:'a',name:'Steam'},{id:'b',name:'Discord'}];
-  ST.windows=[{id:1,title:'Steam',app:'steam',active:true},{id:2,title:'Downloads - File Explorer',app:'explorer'},{id:3,title:'Mods folder',app:'notepad'}];
-  ST.apps=['Steam','Discord','Heroic Games Launcher','File Explorer','Notepad','Settings','Microsoft Edge','Spotify','OBS Studio','Calculator','Paint','Terminal','Photos','Xbox','Task Manager','Snipping Tool'].map((n,i)=>({id:String.fromCharCode(97+i),name:n})); ST.apps=OWN_APPS.concat(ST.apps);
+  ST.pins=[{id:'steam',name:'Steam'},{id:'discord',name:'Discord'},{id:'hearth:files',name:'Files',icon:'hearth-logo.svg'}];
+  ST.windows=[{id:1,title:'Steam',app:'steam',key:'steam',pinId:'steam',name:'Steam',active:true},{id:2,title:'Downloads - File Explorer',app:'explorer',key:'explorer',pinId:'explorer',name:'File Explorer'},
+    {id:3,title:'Mods folder - File Explorer',app:'explorer',key:'explorer',pinId:'explorer',name:'File Explorer'},{id:4,title:'Notes.txt - Notepad',app:'notepad',key:'notepad',pinId:'notepad',name:'Notepad'}];
+  ST.apps=['Steam','Discord','Heroic Games Launcher','File Explorer','Notepad','Settings','Microsoft Edge','Spotify','OBS Studio','Calculator','Paint','Terminal','Photos','Xbox','Task Manager','Snipping Tool'].map(n=>({id:n.toLowerCase().replace(/ /g,''),name:n})); ST.apps=OWN_APPS.concat(ST.apps);
   ST.status={wifi:{available:true,on:true,ssid:'Home'},audio:{volume:60,muted:false},battery:{present:true,pct:82,charging:false},display:{supported:true,brightness:70},powerMode:'balanced'};
   ST.tray={full:true, icons:[{key:'1',tip:'Discord'},{key:'2',tip:'Steam'}]};
   ST.wallpaper=Q.get('wall')||'';
   ST.desk={nightLight:false, nightAvailable:true, reduceMotion:false};
+  ST.desks=[{id:'a',name:'Desktop 1',active:true},{id:'b',name:'Desktop 2',active:false},{id:'c',name:'Desktop 3',active:false}];
+  const t=Date.now();
+  ST.notes={unseen:2, dnd:false, history:[{key:3,app:'Ember',summary:'Hollow Knight is installed',body:'',time:t-30e3},{key:2,app:'Discord',summary:'Lyra',body:'are we still on for tonight? I set up the server and the mods',time:t-25*60e3},
+    {key:1,app:'Ember',summary:'Ember 0.1.7 is ready',body:'Restart Ember to finish updating.',time:t-3*3600e3}]};
+  ST.full = PART==='desktop';
+  if(PART==='desktop') setTimeout(()=>{ DK.dir='C:\\Users\\you\\Desktop'; DK.entries=[{name:'Games',label:'Games',dir:true,col:0,row:0,path:'C:\\Users\\you\\Desktop\\Games'},{name:'Steam.lnk',label:'Steam',launcher:true,col:0,row:1,path:'x'},
+    {name:'Beacon.lnk',label:'Beacon',launcher:true,col:0,row:2,path:'x'},{name:'notes.txt',label:'notes.txt',col:0,row:3,path:'x'},{name:'screenshot.png',label:'screenshot.png',col:1,row:0,path:'x'}]; DK.sel='Steam.lnk'; renderIcons(); }, 50);
+  if(PART==='clip'){ CB.state={available:true, enabled:true}; CB.items=[{id:'1',kind:'text',text:'https://github.com/Dragongamer9/nimbus'},{id:'2',kind:'text',text:'Ember is the Windows edition of Hearth: Game Mode and Mantel, the desktop, on Windows 11.'},{id:'3',kind:'image',image:'hearth-logo.svg',dims:'512 × 512'},{id:'4',kind:'binary',format:'HTML Format'}]; }
+  if(PART==='menu') setTimeout(()=>openMenu({title:'File Explorer', items:wireItems([{label:'New window',icon:'open'},{label:'Pin to taskbar',icon:'pin'},{separator:true},
+    {label:'Move to desktop',icon:'desktops',sub:[{label:'Desktop 1 (this one)',enabled:false},{label:'Desktop 2'}]},{label:'Maximize',icon:'window'},{separator:true},{label:'Close all 2 windows',icon:'close',danger:true}])}), 0);
+  if(PART==='dialog') setTimeout(()=>openDialog(Q.get('mode')==='info' ? {mode:'info', title:'notes.txt', rows:[['Kind','Text Document'],['Size','2.1 KB'],['Where','C:\\Users\\you\\Desktop'],['Changed','Oct 20, 2026, 9:41 PM']]}
+    : {mode:'ask', title:'Rename “notes.txt”', value:'notes.txt', ok:'Rename', req:1}), 0);
   if(Q.get('preview')){ document.body.style.background='#000'; }
 }
 // An upright screen puts the bar down the side (Ember shapes the window to match).
 function orient(){ if(PART!=='bar') return; const p=innerHeight>innerWidth; if(p!==document.body.classList.contains('portrait')){ document.body.classList.toggle('portrait', p); tickClock(); } }
 addEventListener('resize', orient); orient();
 render();
-setInterval(()=>{ if(PART==='bar') tickClock(); if(PART==='quick') { const b=$('.qhead b'); if(b) b.textContent=timeText(new Date()); } }, 15000);
+setInterval(()=>{ if(PART==='bar') tickClock(); if(PART==='quick') { const b=$('.qhead b'); if(b) b.textContent=timeText(new Date()); } if(PART==='clock' && host) renderClock(); }, 15000);
 if(host){
   send({type:'ready'});
   call('profile.get').then(p=>setAccent(p&&p.accent)).catch(()=>{});
   if(PART==='bar'){ refreshStatus(); setInterval(refreshStatus, 20000); }
   if(PART==='launcher') mantel('apps');
   if(PART==='quick'){ refreshStatus(); refreshDesk(); }
+  if(PART==='clock' || PART==='bar') call('notify.list').then(n=>{ if(n){ ST.notes=n; ST.dnd=!!n.dnd; if(PART==='bar') renderBell(); else renderClock(); } }).catch(()=>{});
 }
 </script>
 </body>

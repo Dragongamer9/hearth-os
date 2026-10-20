@@ -8,12 +8,15 @@ public sealed class InstallJob
 {
     public required string GameId { get; init; }      // "epic:Fortnite", "gog:1207658924"
     public required string Title { get; init; }
-    public string State { get; set; } = "queued";     // queued | downloading | installing
+    public string State { get; set; } = "queued";     // queued | downloading | installing | paused
     public double? Progress { get; set; }
     public long? BytesDone { get; set; }
     public long? BytesTotal { get; set; }
     public long Speed { get; set; }
-    internal CancellationTokenSource Cts { get; } = new();
+    internal CancellationTokenSource Cts { get; set; } = new();
+    /// <summary>Stopped on purpose (Pause, or another download started first): kept in the queue, not finished.
+    /// The value is the state it goes back to: "paused" or "queued".</summary>
+    internal string? StopTo { get; set; }
     internal Func<InstallJob, CancellationToken, Task> Work { get; init; } = (_, _) => Task.CompletedTask;
 
     // ---- progress lines from legendary / gogdl (both log in the same style) ----
@@ -72,14 +75,66 @@ public sealed class InstallQueue
     public bool Cancel(string id)
     {
         InstallJob? job;
+        bool waiting;
         lock (_lock)
         {
             job = _jobs.FirstOrDefault(j => j.GameId == id);
             if (job is null) return false;
-            if (job.State == "queued") _jobs.Remove(job);
+            waiting = job.State is "queued" or "paused";
+            if (waiting) _jobs.Remove(job);
+            job.StopTo = null;
         }
         job.Cts.Cancel();
-        if (job.State == "queued") Finished?.Invoke(id, "cancelled");
+        if (waiting) Finished?.Invoke(id, "cancelled");
+        return true;
+    }
+
+    /// <summary>Downloads › Pause: stops the download, keeping what it got (legendary and gogdl carry on from there).</summary>
+    public bool Pause(string id)
+    {
+        InstallJob? job;
+        lock (_lock)
+        {
+            job = _jobs.FirstOrDefault(j => j.GameId == id);
+            if (job is null) return false;
+            if (job.State == "paused") return true;
+            if (job.State == "queued") { job.State = "paused"; return true; }
+            job.StopTo = "paused";
+        }
+        job.Cts.Cancel();
+        return true;
+    }
+
+    /// <summary>Downloads › Resume: back in the queue (it starts when it's its turn).</summary>
+    public bool Resume(string id)
+    {
+        lock (_lock)
+        {
+            var job = _jobs.FirstOrDefault(j => j.GameId == id);
+            if (job is null) return false;
+            if (job.State == "paused") job.State = "queued";
+            if (_running) return true;
+            _running = true;
+        }
+        _ = Task.Run(PumpAsync);
+        return true;
+    }
+
+    /// <summary>Downloads › Start now: first in the queue; the download that was running waits its turn again.</summary>
+    public bool First(string id)
+    {
+        InstallJob? running = null;
+        lock (_lock)
+        {
+            var job = _jobs.FirstOrDefault(j => j.GameId == id);
+            if (job is null) return false;
+            _jobs.Remove(job);
+            _jobs.Insert(0, job);
+            if (job.State == "paused") job.State = "queued";
+            running = _jobs.FirstOrDefault(j => j != job && j.State is "downloading" or "installing");
+            if (running is not null) running.StopTo = "queued";
+        }
+        running?.Cts.Cancel();
         return true;
     }
 
@@ -90,7 +145,7 @@ public sealed class InstallQueue
             InstallJob? job;
             lock (_lock)
             {
-                job = _jobs.FirstOrDefault();
+                job = _jobs.FirstOrDefault(j => j.State != "paused");
                 if (job is null) { _running = false; return; }
             }
             string? error = null;
@@ -101,7 +156,18 @@ public sealed class InstallQueue
             }
             catch (OperationCanceledException) { error = "cancelled"; }
             catch (Exception ex) { error = ex.Message; SystemBridge.Log($"install {job.GameId} FAILED {ex.Message}"); }
-            lock (_lock) _jobs.Remove(job);
+            lock (_lock)
+            {
+                // Paused, or waiting its turn again: stays in the queue with a fresh token.
+                if (error == "cancelled" && job.StopTo is { } back && _jobs.Contains(job))
+                {
+                    job.State = back; job.StopTo = null; job.Speed = 0;
+                    job.Cts.Dispose(); job.Cts = new CancellationTokenSource();
+                    SystemBridge.Log($"install {job.GameId}: {back}");
+                    continue;
+                }
+                _jobs.Remove(job);
+            }
             SystemBridge.Log($"install {job.GameId} finished: {error ?? "ok"}");
             try { Finished?.Invoke(job.GameId, error); } catch { }
         }

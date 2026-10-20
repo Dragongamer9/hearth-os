@@ -28,9 +28,27 @@ public sealed class ProfileData
     public long ImageStamp { get; set; }               // changes when a custom picture changes (cache busting)
 }
 
+/// <summary>A collection: your own group of games, shown as a Library tab (like hearth-core's collections.rs).</summary>
+public sealed class CollectionData
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public List<string> Games { get; set; } = new();
+}
+
+/// <summary>Per-game settings (game page › Game settings), the Windows part of hearth-core's game_options.rs.</summary>
+public sealed class GameOptionsData
+{
+    public int Tdp { get; set; }                       // power limit in watts while it plays (0 = the usual)
+    public bool CloudSaves { get; set; } = true;       // Epic / GOG cloud saves for games Ember installed
+}
+
 public sealed class LibraryData
 {
     public HashSet<string> Favorites { get; set; } = new();
+    public List<CollectionData> Collections { get; set; } = new();
+    public Dictionary<string, GameOptionsData> GameOptions { get; set; } = new();
+    public int TdpWatts { get; set; }                   // the power limit Ember last set (0 = never set one)
     public HashSet<string> Hidden { get; set; } = new();
     public List<ManualGame> Manual { get; set; } = new();
     public Dictionary<string, GameStats> Stats { get; set; } = new();

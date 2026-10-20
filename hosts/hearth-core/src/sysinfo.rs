@@ -26,7 +26,23 @@ pub fn gpus(root: &Path) -> Vec<String> {
         let named = read(root, &format!("{dev}/product_name"));
         let name = if !named.is_empty() { named } else { match vendor.as_str() { "0x1002" => "AMD".into(), "0x10de" => "NVIDIA".into(), "0x8086" => "Intel".into(), v => v.into() } };
         let vram: u64 = read(root, &format!("{dev}/mem_info_vram_total")).parse().unwrap_or(0);
-        let label = if vram > 0 { format!("{name} ({} GB)", (vram as f64 / 1073741824.0).round()) } else { name };
+        let gtt: u64 = read(root, &format!("{dev}/mem_info_gtt_total")).parse().unwrap_or(0);
+        let gb = |b: u64| { let g = b as f64 / 1073741824.0; if g < 10.0 { format!("{:.1}", (g * 2.0).round() / 2.0).trim_end_matches(".0").to_string() } else { format!("{:.0}", g) } };
+        let label = if vram > 0 && gtt > vram * 2 {
+            // A graphics chip in the processor (ROG Ally, Steam Deck, most laptops): the "video memory" is only the
+            // slice set aside at start; it uses the PC's own memory as it needs (up to the shared amount).
+            format!("{name} ({} GB set aside + up to {} GB shared)", gb(vram), gb(gtt))
+        } else if vram > 0 { format!("{name} ({} GB)", gb(vram)) }
+        else if vendor == "0x10de" && root == Path::new("/") {
+            // Nvidia's own driver says nothing in sysfs: nvidia-smi does (name and memory).
+            match crate::system::run_timeout("nvidia-smi", &["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"], std::time::Duration::from_secs(3)) {
+                Ok(t) => t.lines().next().and_then(|l| l.rsplit_once(',')).map(|(n, mib)| match mib.trim().parse::<f64>() {
+                    Ok(m) => format!("{} ({:.0} GB)", n.trim(), m / 1024.0),
+                    Err(_) => n.trim().to_string(),
+                }).unwrap_or(name),
+                Err(_) => name,
+            }
+        } else { name };
         if !out.contains(&label) { out.push(label); }
     }
     out
@@ -74,5 +90,11 @@ mod tests {
         assert_eq!(i["device"], "ASUS ROG Ally RC71L");
         assert_eq!(i["cpu"], "AMD Ryzen Z1 Extreme"); assert_eq!(i["cores"], 2);
         assert_eq!(i["gpu"], "AMD (4 GB), GeForce RTX 4070");
+        // A chip in the processor: a small slice set aside, the rest shared with the PC's memory.
+        let d2 = tempfile::tempdir().unwrap();
+        let put2 = |f: &str, v: &str| { let p = d2.path().join(f); std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, v).unwrap(); };
+        put2("sys/class/drm/card0/device/vendor", "0x1002\n"); put2("sys/class/drm/card0/device/mem_info_vram_total", "1073741824");
+        put2("sys/class/drm/card0/device/mem_info_gtt_total", "8589934592");
+        assert_eq!(gpus(d2.path()), vec!["AMD (1 GB set aside + up to 8 GB shared)".to_string()]);
     }
 }

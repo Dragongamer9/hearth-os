@@ -165,7 +165,11 @@ async fn page_msg(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, label: Stri
     if ty == "ready" { send_to(&app, &label, Bridge::event("padHost", serde_json::json!({"connected": 0}))); return Ok(()); }
     let (reply, quit) = tauri::async_runtime::spawn_blocking(move || {
         let mut b = match bridge.lock() { Ok(b) => b, Err(p) => p.into_inner() };
-        if msg["type"] == "call" { (b.handle(&msg), false) } else { (None, b.other(&msg)) }
+        // The fail-safe watches what holds the bridge (hearth_core::watchdog).
+        let n = hearth_core::watchdog::enter(msg["method"].as_str().or(msg["type"].as_str()).unwrap_or("?"));
+        let r = if msg["type"] == "call" { (b.handle(&msg), false) } else { (None, b.other(&msg)) };
+        hearth_core::watchdog::leave(n);
+        r
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -427,6 +431,16 @@ fn main() {
     // Release check (os.yml runs it inside each new Hearth OS image, and won't publish one that fails):
     // Hearth must be able to update itself from Game Mode and from Desktop Mode.
     if std::env::args().any(|a| a == "--check-update-path") { std::process::exit(check_update_path()); }
+    // hearth-send-logs (a terminal, e.g. when Hearth's screen won't come up): the same logs as Settings › System ›
+    // Send logs to the developer, with an optional note; prints the code. No window is opened.
+    if std::env::args().nth(1).as_deref() == Some("--send-logs") {
+        let note = std::env::args().skip(2).collect::<Vec<_>>().join(" ");
+        println!("Sending Hearth's logs…");
+        match hearth_core::logs::send_report(env!("CARGO_PKG_VERSION"), Bridge::edition_name(), &note) {
+            Ok(r) => { println!("Sent. Your code: {}\n{}", r["code"].as_str().unwrap_or("?"), r["url"].as_str().unwrap_or("")); std::process::exit(0); }
+            Err(e) => { eprintln!("{e}"); std::process::exit(1); }
+        }
+    }
     let windowed = std::env::args().any(|a| a == "--windowed");
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -508,6 +522,16 @@ fn main() {
                     b.host = Arc::new(|what: &str, a: &serde_json::Value| { if let Some(gm) = GM.get() { gm.host_action(what, a); } });
                 }
             }
+            // The fail-safe: Hearth stuck on something gets it stopped, a report sent, and if need be a restart.
+            {
+                let (version, auto) = match bridge.lock() { Ok(b) => (b.version.clone(), b.auto_report()), Err(_) => (String::new(), true) };
+                hearth_core::watchdog::set_auto_send(auto);
+                let h = handle.clone();
+                let h2 = handle.clone();
+                hearth_core::watchdog::start(version, Bridge::edition_name(),
+                    Arc::new(move |v: serde_json::Value| emit_all(&h, v)),
+                    Arc::new(move || if in_session() { h2.exit(75) } else { h2.restart() }));
+            }
             // The running game, every 2 seconds: started, closed, handed off to the real game (launchers).
             {
                 let h = handle.clone();
@@ -519,9 +543,11 @@ fn main() {
                         n += 1;
                         let (events, extra) = match b.lock() {
                             Ok(mut br) => {
+                                let w = hearth_core::watchdog::enter("library.tick");
                                 let ev = br.library.tick();
                                 let mut extra = br.after_events(&ev);
                                 if n % 10 == 0 { extra.extend(br.parental_tick()); }   // every 20 seconds
+                                hearth_core::watchdog::leave(w);
                                 (ev, extra)
                             }
                             Err(_) => (vec![], vec![]),
