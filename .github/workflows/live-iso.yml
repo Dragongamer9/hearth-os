@@ -126,7 +126,7 @@ jobs:
           done
           shot boot-test/screen-final.ppm || true
           kill $qpid 2>/dev/null || true
-          tr -d '\r' < boot-test/serial.log | grep -a -E '^(HEARTH-CI|session:|bridge:|pages:|failed:|journal:)' > boot-test/report.txt || true
+          tr -d '\r' < boot-test/serial.log | grep -a -E '^(HEARTH-CI|session:|window:|bridge:|pages:|failed:|journal:)' > boot-test/report.txt || true
           tail -n 60 boot-test/report.txt
           # On the run page too (logs and downloads can't be read from everywhere): the last report, and the
           # serial console's last lines when there was no report.
@@ -143,15 +143,15 @@ jobs:
           if 'graphics:' not in rep: problems.append("Hearth never started (no graphics: line)")
           if 'Failed to create GBM buffer' in last and 'compatible way' not in rep: problems.append("WebKit's GBM buffers failed and Hearth didn't switch to the compatible way")
           if 'too many crashes' in rep: problems.append('Hearth kept crashing')
-          if last.count('mode ended (code') >= 3: problems.append('Game Mode keeps ending (gamescope or Hearth quits right away)')
+          if last.count('mode ended (code') >= 3: problems.append('the session keeps ending right away')
           for p in sorted(glob.glob('boot-test/*.ppm')):
               im = Image.open(p).convert('RGB'); im.save(p[:-4] + '.png')
           final = Image.open('boot-test/screen-final.png').convert('RGB').resize((320, 200))
           colors = final.getcolors(320 * 200) or []
           top = max(c for c, _ in colors) / (320 * 200) if colors else 1
           print(f"final screen: {len(colors)} colours, the commonest covers {top:.0%}")
-          # Game Mode runs off-screen under the test (no graphics card for gamescope), so the virtual screen stays
-          # as the login screen left it: kept for a look, not judged.
+          # Desktop Mode with Hearth in a window (Game Mode needs a real graphics card): must not be one flat colour.
+          if top > 0.97: problems.append(f'the screen is blank ({top:.0%} one colour)')
           for p in problems: print('::error title=Boot test::' + p)
           sys.exit(1 if problems else 0)
           PY
