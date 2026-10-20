@@ -98,7 +98,13 @@ run_desktop() {
   fi
   # labwc reads rc.xml, autostart, environment and menu.xml from this folder; your own
   # ~/.config/labwc/rc.xml and autostart are added on top by Nimbus's autostart if they exist.
-  labwc -C "$SHARE/desktop/labwc"
+  # Your keyboard layouts and key repeat (Settings › Keyboard): Hearth's labwc files with yours on top, in $XDG_RUNTIME_DIR.
+  CONF="$SHARE/desktop/labwc"
+  if [ -f "$SHARE/desktop/shell/hearth-system" ] && have python3; then
+    CONF="$(python3 "$SHARE/desktop/shell/hearth-system" labwc-config 2>/dev/null)" || CONF="$SHARE/desktop/labwc"
+    [ -f "$CONF/rc.xml" ] || CONF="$SHARE/desktop/labwc"
+  fi
+  labwc -C "$CONF"
 }
 
 # Button remaps for the built-in controller (Settings › Controller), kept applied for the whole session in

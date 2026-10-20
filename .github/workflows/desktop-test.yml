@@ -59,6 +59,10 @@ jobs:
           done
           ipc settings close
           ipc power menu; grim "shots/$n-power-menu.png" || true; ipc power close
+          # Taskbar & desktop: a folder and a file on the desktop, its right-click menu, the clock's panel
+          mkdir -p "$HOME/Desktop/Projects" && echo hi > "$HOME/Desktop/notes.txt"; sleep 4
+          ipc desktop menu; grim "shots/$((n+1))-desktop-menu.png" || true; ipc desktop close
+          ipc calendar open; grim "shots/$((n+2))-calendar.png" || true; ipc calendar close
           cp "$LOG" shots/nimbus-shell.log 2>/dev/null || true
           ls "$XDG_RUNTIME_DIR" > shots/runtime-dir.txt
           pgrep -af "quickshell|/qs( |$)" > shots/quickshell-running.txt || echo "not running" > shots/quickshell-running.txt

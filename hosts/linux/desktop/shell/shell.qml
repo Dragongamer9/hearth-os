@@ -7,6 +7,7 @@
 // From a terminal or a key binding: quickshell ipc -p <this folder> call <target> <function>
 //   launcher toggle|open|close   quick toggle   keyboard open|close   menu open   settings open|page <name>|close
 //   tasks open|tab <apps|perf|startup>|close|toggle   files open <path>|home|toggle|close
+//   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -19,11 +20,22 @@ ShellRoot {
             Scope {
                 required property ShellScreen modelData
                 Wallpaper { screen: modelData }
+                // Desktop icons (main screen) and the desktop's right-click menu.
+                Desktop {
+                    screen: modelData
+                    primary: modelData === Quickshell.screens[0]
+                    menu: popMenu
+                    dialog: deskDialog
+                    settingsApp: settings
+                    filesApp: files
+                }
                 Bar {
                     screen: modelData
+                    menu: popMenu
                     onLauncherRequested: launcher.toggle()
                     onQuickRequested: quick.toggle()
                     onKeyboardRequested: keyboard.open ? pad.closeKeyboard() : pad.openKeyboard()
+                    onCalendarRequested: calendar.toggle(modelData, portrait)
                 }
                 EdgeSwipes {
                     screen: modelData
@@ -37,7 +49,23 @@ ShellRoot {
         }
     }
 
-    Launcher { id: launcher; onSettingsRequested: settings.open("") }
+    Launcher {
+        id: launcher
+        onSettingsRequested: settings.open("")
+        onMenuRequested: (entry, x, y) => {
+            const pinned = DeskState.isPinned(entry.id);
+            popMenu.popup(launcher.screen, x, y, { title: entry.name }, [
+                { label: "Open", icon: "open", run: () => launcher.launch(entry) },
+                { label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", run: () => DeskState.togglePin(entry.id) }
+            ]);
+        }
+    }
+    // ---- Taskbar & desktop: right-click menus, the desktop's small dialogs, the clock's calendar and notifications.
+    PopMenu { id: popMenu }
+    DeskDialog { id: deskDialog }
+    ClockPanel { id: calendar }
+    Binding { target: DeskState; property: "overlayShown"; value: popMenu.shown || deskDialog.shown || calendar.shown }
+    // ---- end taskbar & desktop
     Notifications {}
     QuickAccess {
         id: quick
@@ -51,6 +79,10 @@ ShellRoot {
     Keyboard { id: keyboard }
     Help { id: help }
     SettingsApp { id: settings }
+    // ---- Apps (Flathub store) and clipboard history (Super+V); their IPC targets "apps" and "clipboard" are inside.
+    AppStore { id: appStore }
+    Clipboard { id: clipboardHistory }
+    // ---- end Apps / clipboard
     TaskManager { id: tasks }
     FileManager { id: files }
     VolumeOsd {}
@@ -154,5 +186,23 @@ ShellRoot {
         target: "menu"
         function open(): void { pad.openMenu(); }
         function close(): void { radial.open = false; }
+    }
+    // ---- taskbar & desktop
+    IpcHandler {
+        target: "calendar"
+        function toggle(): void { calendar.toggle(Quickshell.screens[0], false); }
+        function open(): void { calendar.open(Quickshell.screens[0], false); }
+        function close(): void { calendar.close(); }
+    }
+    IpcHandler {
+        target: "notifications"
+        function dnd(state: string): void { DeskState.setDnd(state === "toggle" ? !DeskState.dnd : state === "on"); }
+        function clear(): void { DeskState.clearHistory(); }
+    }
+    IpcHandler {
+        target: "desktop"
+        function menu(): void { if (DeskState.mainDesktop) DeskState.mainDesktop.backgroundMenu(DeskState.mainDesktop.width / 2, DeskState.mainDesktop.height / 3); }
+        function icons(state: string): void { DeskState.setDesktopIcons(state === "toggle" ? !DeskState.desktopIcons : state === "on"); }
+        function close(): void { popMenu.close(); deskDialog.cancel(); }
     }
 }

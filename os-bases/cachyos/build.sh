@@ -181,6 +181,8 @@ QUICKSHELL=$(first_of quickshell quickshell-git) || { echo "quickshell isn't in 
   webkit2gtk-4.1 gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav \
   gtk3 nss libcups alsa-lib libxss at-spi2-core
 optional qt6ct qt5ct gst-plugin-pipewire qt6-5compat
+# Printing (Settings › Printers: CUPS, driverless IPP Everywhere, ipp-usb, Avahi) and clipboard history (Super+V).
+optional cups cups-filters ipp-usb avahi nss-mdns wl-clipboard cliphist wtype
 
 # ------------------------------------------------------------------ the login screen (SDDM, as on Bazzite)
 # nimbus-autologin writes SDDM's autologin; the Hearth theme (os/system_files) is Qt 6, as Arch's SDDM is. SDDM's
@@ -299,6 +301,18 @@ Type=Application
 Categories=Settings;
 Keywords=wifi;bluetooth;sound;display;controller;update;
 DESKTOP
+cat > /usr/share/applications/hearth-apps.desktop <<DESKTOP
+[Desktop Entry]
+Name=Apps
+GenericName=App Store
+Comment=Find, install and update apps from Flathub
+Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call apps open
+Icon=hearth
+Type=Application
+Categories=System;PackageManager;
+Keywords=store;software;install;update;flathub;flatpak;
+OnlyShowIn=Nimbus;
+DESKTOP
 cat > /usr/share/applications/hearth-browser.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth Browser
@@ -356,6 +370,9 @@ systemctl enable NetworkManager.service bluetooth.service systemd-resolved.servi
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 # power-profiles-daemon only runs when HHD is switched off (its drop-in says so); enabled so it can then.
 systemctl enable power-profiles-daemon.service
+# Printing starts when something prints (Settings › Printers); Avahi finds network printers.
+systemctl enable cups.socket 2>/dev/null || true
+systemctl enable avahi-daemon.service 2>/dev/null || true
 # SDDM is the display manager.
 ln -sf /usr/lib/systemd/system/sddm.service /etc/systemd/system/display-manager.service
 # CachyOS's sched_ext scheduler loader: scx_lavd (what CachyOS's handheld edition uses), in its automatic mode.
