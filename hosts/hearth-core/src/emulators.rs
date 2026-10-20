@@ -132,13 +132,16 @@ pub fn find_core(sys: &System, dirs: &[PathBuf]) -> Option<PathBuf> {
     sys.cores.iter().flat_map(|c| dirs.iter().map(move |d| d.join(format!("{c}_libretro.so")))).find(|f| f.exists())
 }
 
-pub fn launch(rom: &str, system_key: &str, home: &Path) -> Result<u32, String> {
+/// `game_id` (appid.rs) goes in RetroArch's environment as HEARTH_GAME_ID (its processes and windows are the game's).
+pub fn launch(rom: &str, system_key: &str, home: &Path, game_id: u32) -> Result<u32, String> {
     let (cmd, pre, cores) = retroarch(home).ok_or("Emulated games play with RetroArch. Install it in Settings › Library sources › Emulators.")?;
     let sys = SYSTEMS.iter().find(|s| s.dirs[0] == system_key).ok_or("Unknown system")?;
     let core = find_core(sys, &cores).ok_or(format!("RetroArch needs a {} core: open RetroArch › Online Updater › Core Downloader and get {}.", sys.name, sys.cores[0].replace('_', " ")))?;
     if !Path::new(rom).exists() { return Err(format!("The game file is gone: {rom}")); }
     let mut args = pre; args.extend(["-f".into(), "-L".into(), core.to_string_lossy().to_string(), rom.into()]);
-    std::process::Command::new(cmd).args(args).current_dir(Path::new(rom).parent().unwrap_or(Path::new("/")))
+    let mut c = std::process::Command::new(cmd);
+    if game_id != 0 { let (k, v) = crate::appid::env(game_id); c.env(k, v); }
+    c.args(args).current_dir(Path::new(rom).parent().unwrap_or(Path::new("/")))
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
         .spawn().map(|c| c.id()).map_err(|e| e.to_string())
 }

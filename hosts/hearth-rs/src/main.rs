@@ -232,6 +232,9 @@ fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: 
     { let g = gm.clone(); std::thread::spawn(move || g.start_inputplumber()); }
     // Hearth Input: each game's controller layout (keyboard and mouse from the controller) while it's in front.
     gm.start_input_map();
+    // Every window carries its game's number (or Hearth's), and gamescope follows them (Quick Resume shows the
+    // game asked for, never another one's frozen picture).
+    gm.start_window_ids();
     guide.hold_view.store(hold, std::sync::atomic::Ordering::SeqCst);
     let (g1, g2) = (gm.clone(), gm.clone());
     guide.start(Arc::new(move |how: &str| { let (gm, how) = (g1.clone(), how.to_string()); std::thread::spawn(move || gm.guide_pressed(&how)); }),

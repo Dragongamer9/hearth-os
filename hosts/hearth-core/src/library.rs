@@ -59,22 +59,27 @@ pub struct Running {
     pub cloud: bool,
     /// Quick Resume: when it was put aside (frozen, kept in memory), or 0.
     pub frozen_at: u64,
+    /// Its number (appid.rs): what its processes and windows carry, and what gamescope is asked to show.
+    pub app_id: u32,
 }
 
 /// Quick Resume, like Xbox's: games put aside stay frozen in memory (no processor or graphics use) and carry on
 /// where they were. At most this many; putting aside one more closes the oldest, as does running low on memory.
 pub const QUICK_RESUME_MAX: usize = 5;
 fn quick_file() -> PathBuf { PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("hearth-quick-resume.json") }
-fn pids_of(track: &crate::procs::Track) -> Vec<u32> { crate::procs::game_processes(track, &crate::procs::snapshot(std::path::Path::new("/proc")), std::process::id()) }
+fn proc_root() -> &'static std::path::Path { std::path::Path::new("/proc") }
+fn pids_of(track: &crate::procs::Track) -> Vec<u32> { crate::procs::game_processes(track, &crate::procs::snapshot(proc_root()), std::process::id()) }
 fn rec(r: &Running) -> Value {
-    json!({"id": r.id, "pid": r.track.pid, "dirs": r.track.dirs, "steamAppId": r.track.steam_app_id, "launchedAt": r.launched_at, "startedAt": r.started_at,
+    json!({"id": r.id, "pid": r.track.pid, "dirs": r.track.dirs, "steamAppId": r.track.steam_app_id, "appId": r.app_id, "launchedAt": r.launched_at, "startedAt": r.started_at,
            "pausedAt": r.paused_at, "pausedMs": r.paused_ms, "frozenAt": r.frozen_at})
 }
 fn from_rec(v: &Value) -> Option<Running> {
+    let app_id = v["appId"].as_u64().filter(|n| *n > 0 && *n <= u32::MAX as u64).map(|n| n as u32);
     let track = crate::procs::Track { pid: v["pid"].as_u64().map(|p| p as u32), dirs: v["dirs"].as_array().map(|a| a.iter().filter_map(|d| d.as_str().map(str::to_string)).collect()).unwrap_or_default(),
-        steam_app_id: v["steamAppId"].as_str().map(str::to_string) };
+        steam_app_id: v["steamAppId"].as_str().map(str::to_string), app_id };
     Some(Running { id: v["id"].as_str()?.to_string(), track, launched_at: v["launchedAt"].as_u64().unwrap_or(0), started_at: v["startedAt"].as_u64().unwrap_or(0), gone_since: 0,
-        paused_at: v["pausedAt"].as_u64().unwrap_or(0), paused_ms: v["pausedMs"].as_u64().unwrap_or(0), closing: false, cloud: false, frozen_at: v["frozenAt"].as_u64().unwrap_or(0) })
+        paused_at: v["pausedAt"].as_u64().unwrap_or(0), paused_ms: v["pausedMs"].as_u64().unwrap_or(0), closing: false, cloud: false, frozen_at: v["frozenAt"].as_u64().unwrap_or(0),
+        app_id: app_id.unwrap_or(0) })
 }
 
 const EXIT_GRACE_MS: u64 = 10_000;     // a launcher closing and the game starting a moment later is still one game
@@ -404,9 +409,12 @@ impl Library {
             if !self.quick_resume_on() { return Err("Another game is already running".into()); }
             self.freeze_running()?;
         }
+        // Its number: in its processes' environment, on its windows, and what gamescope is asked to show.
+        let app_id = self.app_id(id);
         if g.cloud {
-            // The host opens the stream window; Hearth counts it as running from now.
-            self.running = Some(Running { id: id.to_string(), track: Default::default(), launched_at: now_ms(), started_at: now_ms(), gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: true, frozen_at: 0 });
+            // The host opens the stream window (it gets this number); Hearth counts it as running from now.
+            crate::bridge::log(&format!("launch: {id} as id {app_id} (Xbox Cloud Gaming's window)"));
+            self.running = Some(Running { id: id.to_string(), track: Default::default(), launched_at: now_ms(), started_at: now_ms(), gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: true, frozen_at: 0, app_id });
             return Ok(json!({"tracked": true, "stream": g.stream_url, "title": g.title}));
         }
         if !g.installed { return Err(format!("{} isn't installed yet.", g.title)); }
@@ -425,46 +433,79 @@ impl Library {
                         if let Err(e) = steam::spawn(&home, &uri) { crate::bridge::log(&format!("steam: {e}")); }
                     });
                 }
-                crate::procs::Track { steam_app_id: Some(id.trim_start_matches("steam:").to_string()), ..Default::default() }
+                crate::procs::Track { steam_app_id: Some(id.trim_start_matches("steam:").to_string()), app_id: Some(app_id), ..Default::default() }
             }
             "manual" => {
                 let exe = g.exe.clone().unwrap_or_default();
                 let opts = crate::game_options::get(&self.store, id);
-                let pid = crate::manual::launch(&exe, &g.args, &opts)?;
+                let pid = crate::manual::launch(&exe, &g.args, &opts, app_id)?;
                 // Its folder too (games that hand off to another program), unless that folder is too broad to mean anything.
                 let dir = std::path::Path::new(&exe).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
                 let home = crate::paths::home().to_string_lossy().to_string();
                 let broad = ["/", "/usr/bin", "/usr/local/bin", "/bin", "/opt", home.as_str()].contains(&dir.as_str()) || exe.ends_with(".desktop");
-                crate::procs::Track { pid: Some(pid), dirs: if broad { vec![] } else { vec![dir] }, ..Default::default() }
+                crate::procs::Track { pid: Some(pid), dirs: if broad { vec![] } else { vec![dir] }, app_id: Some(app_id), ..Default::default() }
             }
             "emu" => {
-                let pid = crate::emulators::launch(g.exe.as_deref().unwrap_or(""), g.system_key.unwrap_or(""), &self.home)?;
-                crate::procs::Track { pid: Some(pid), ..Default::default() }
+                let pid = crate::emulators::launch(g.exe.as_deref().unwrap_or(""), g.system_key.unwrap_or(""), &self.home, app_id)?;
+                crate::procs::Track { pid: Some(pid), app_id: Some(app_id), ..Default::default() }
             }
             "epic" | "gog" if g.can_uninstall => {
                 // Installed by Hearth: started directly with Proton, so Hearth can watch it.
                 let opts = crate::game_options::get(&self.store, id);
-                let pid = if g.source == "epic" { epic::launch(id.trim_start_matches("epic:"), &opts)? } else { gog::launch(&g, &opts)? };
+                let pid = if g.source == "epic" { epic::launch(id.trim_start_matches("epic:"), &opts, app_id)? } else { gog::launch(&g, &opts, app_id)? };
                 let dirs = g.install_path.as_ref().map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
-                crate::procs::Track { pid: Some(pid), dirs, ..Default::default() }
+                crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
             }
             _ => return Err("Hearth doesn't know how to start this game.".into()),
         };
-        self.running = Some(Running { id: id.to_string(), track, launched_at: now_ms(), started_at: 0, gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0 });
+        crate::bridge::log(&format!("launch: {id} as id {app_id} ({}, {})", g.source, match (track.pid, &track.steam_app_id) {
+            (Some(p), _) => format!("started process {p} with HEARTH_GAME_ID={app_id}"),
+            (None, Some(s)) => format!("started by Steam, found by its reaper AppId={s}"),
+            _ => "started".to_string(),
+        }));
+        self.running = Some(Running { id: id.to_string(), track, launched_at: now_ms(), started_at: 0, gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0, app_id });
         Ok(serde_json::json!({"tracked": true}))
+    }
+
+    /// The number for a library id (appid.rs): Steam games keep their Steam app id; everything else gets one of
+    /// Hearth's, handed out once and kept in library.json "appIds".
+    pub fn app_id(&mut self, id: &str) -> u32 {
+        let known = self.store.data["appIds"].as_object().cloned().unwrap_or_default();
+        let (n, new) = crate::appid::assign(&known, id);
+        if new {
+            let key = id.to_string();
+            let _ = self.store.update(|d| {
+                let m = d.entry("appIds").or_insert(json!({}));
+                if !m.is_object() { *m = json!({}); }
+                if let Some(o) = m.as_object_mut() { o.insert(key, json!(n)); }
+            });
+            crate::bridge::log(&format!("ids: {id} gets id {n}"));
+        }
+        n
+    }
+    /// The running game's number.
+    pub fn running_app_id(&self) -> Option<u32> { self.running.as_ref().map(|r| r.app_id).filter(|n| *n != 0) }
+    /// The numbers of the games put aside (their windows must never be shown for another game).
+    pub fn frozen_ids(&self) -> Vec<u32> { self.frozen.iter().map(|f| f.app_id).filter(|n| *n != 0).collect() }
+    /// Every game that's open, running or put aside: (number, library id, its processes), from one look at /proc.
+    pub fn open_games(&self) -> Vec<(u32, String, Vec<u32>)> {
+        let snap = crate::procs::snapshot(proc_root());
+        let me = std::process::id();
+        self.running.iter().chain(self.frozen.iter()).filter(|r| !r.cloud).map(|r| (r.app_id, r.id.clone(), crate::procs::game_processes(&r.track, &snap, me))).collect()
     }
 
     /// Processes of the games put aside (Quick Resume): their windows stay around, frozen on their last picture,
     /// and must never be the one put in front for another game.
     pub fn frozen_pids(&self) -> Vec<u32> {
         if self.frozen.is_empty() { return vec![]; }
-        let snap = crate::procs::snapshot(std::path::Path::new("/proc"));
-        let running = self.game_pids();
-        self.frozen.iter().flat_map(|f| crate::procs::game_processes(&f.track, &snap, std::process::id())).filter(|p| !running.contains(p)).collect()
+        let snap = crate::procs::snapshot(proc_root());
+        let me = std::process::id();
+        let running = self.running.as_ref().map(|r| crate::procs::game_processes(&r.track, &snap, me)).unwrap_or_default();
+        self.frozen.iter().flat_map(|f| crate::procs::game_processes(&f.track, &snap, me)).filter(|p| !running.contains(p)).collect()
     }
     pub fn game_pids(&self) -> Vec<u32> {
         let Some(r) = &self.running else { return vec![] };
-        crate::procs::game_processes(&r.track, &crate::procs::snapshot(std::path::Path::new("/proc")), std::process::id())
+        crate::procs::game_processes(&r.track, &crate::procs::snapshot(proc_root()), std::process::id())
     }
 
     /// Looks at what's running (every 2 seconds). Returns events for the UI: started, gap, handoff, exited, timeout.
@@ -545,13 +586,17 @@ impl Library {
         let r = self.running.as_ref().ok_or("No game is running.")?;
         if r.cloud { return Err("Close Xbox Cloud Gaming first: cloud games can't be put aside.".into()); }
         if r.started_at == 0 { return Err(format!("{} is still starting. Wait a moment, then try again.", self.games.get(&r.id).map(|g| g.title.as_str()).unwrap_or("The game"))); }
-        let pids = self.game_pids();
-        if pids.is_empty() || crate::procs::signal(&pids, "STOP") == 0 { return Err("Couldn't put the game aside.".into()); }
+        let (pids, how) = crate::procs::game_processes_how(&r.track, &crate::procs::snapshot(proc_root()), std::process::id());
+        let stopped = if pids.is_empty() { 0 } else { crate::procs::signal(&pids, "STOP") };
+        if stopped == 0 {
+            crate::bridge::log(&format!("quick resume: couldn't put {} (id {}) aside: {} found by {how}, none paused", r.id, r.app_id, crate::procs::describe(&pids)));
+            return Err("Couldn't put the game aside.".into());
+        }
         let mut r = self.running.take().unwrap();
         let now = now_ms();
         if r.paused_at == 0 { r.paused_at = now; }
         r.frozen_at = now; r.gone_since = 0; r.closing = false;
-        crate::bridge::log(&format!("quick resume: {} put aside", r.id));
+        crate::bridge::log(&format!("quick resume: {} (id {}) put aside: froze {} found by {how} ({stopped} paused)", r.id, r.app_id, crate::procs::describe(&pids)));
         self.frozen.insert(0, r);
         while self.frozen.len() > QUICK_RESUME_MAX { let old = self.frozen.pop().unwrap(); self.close_frozen_entry(old); }
         self.save_quick();
@@ -564,11 +609,19 @@ impl Library {
         if self.running.is_some() { self.freeze_running()?; }
         let pos = self.frozen.iter().position(|f| f.id == id).unwrap_or(pos);
         let mut r = self.frozen.remove(pos);
-        crate::procs::signal(&pids_of(&r.track), "CONT");
+        let snap = crate::procs::snapshot(proc_root());
+        let me = std::process::id();
+        let (mut pids, how) = crate::procs::game_processes_how(&r.track, &snap, me);
+        // Never another game's: whatever the other games put aside (or running) own stays as it is.
+        let others: std::collections::HashSet<u32> = self.frozen.iter().chain(self.running.iter()).flat_map(|o| crate::procs::game_processes(&o.track, &snap, me)).collect();
+        let before = pids.len();
+        pids.retain(|p| !others.contains(p));
+        let thawed = crate::procs::signal(&pids, "CONT");
         let now = now_ms();
         if r.paused_at > 0 { r.paused_ms += now.saturating_sub(r.paused_at); r.paused_at = 0; }
         r.frozen_at = 0;
-        crate::bridge::log(&format!("quick resume: back to {id}"));
+        crate::bridge::log(&format!("quick resume: back to {id} (id {}): thawed {} found by {how} ({thawed} resumed){}", r.app_id, crate::procs::describe(&pids),
+            if before > pids.len() { format!(", {} left alone (other games')", before - pids.len()) } else { String::new() }));
         self.running = Some(r);
         self.save_quick();
         Ok(())
@@ -584,6 +637,7 @@ impl Library {
     }
     fn close_frozen_entry(&mut self, r: Running) -> Value {
         let pids = pids_of(&r.track);
+        crate::bridge::log(&format!("quick resume: closing {} (id {}): {}", r.id, r.app_id, crate::procs::describe(&pids)));
         crate::procs::signal(&pids, "CONT");   // stopped processes only act on "please close" once they run again
         crate::procs::stop(&pids, std::time::Duration::from_secs(5));
         crate::bridge::log(&format!("quick resume: closed {}", r.id));
@@ -603,14 +657,27 @@ impl Library {
         let t = v.to_string();
         if t != self.quick_saved { let _ = std::fs::write(quick_file(), &t); self.quick_saved = t; }
     }
+    /// Saved by an older Hearth: no number yet (its processes don't carry one either, so the guesses find them).
+    fn numbered(&mut self, mut r: Running) -> Running {
+        if r.app_id == 0 { r.app_id = self.app_id(&r.id); }
+        if r.track.app_id.is_none() && !r.cloud { r.track.app_id = Some(r.app_id); }
+        r
+    }
     /// After Hearth starts again: the games that are still there.
     pub fn restore_quick(&mut self) {
         let Some(v) = std::fs::read(quick_file()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { return };
         if self.running.is_none() {
-            if let Some(r) = from_rec(&v["running"]).filter(|r| !pids_of(&r.track).is_empty()) { crate::bridge::log(&format!("quick resume: {} still running after a restart", r.id)); self.running = Some(r); }
+            if let Some(r) = from_rec(&v["running"]) {
+                let r = self.numbered(r);
+                if !pids_of(&r.track).is_empty() { crate::bridge::log(&format!("quick resume: {} (id {}) still running after a restart", r.id, r.app_id)); self.running = Some(r); }
+            }
         }
         for f in v["frozen"].as_array().cloned().unwrap_or_default() {
-            if let Some(r) = from_rec(&f).filter(|r| !pids_of(&r.track).is_empty() && !self.frozen.iter().any(|x| x.id == r.id)) { self.frozen.push(r); }
+            let Some(r) = from_rec(&f) else { continue };
+            let r = self.numbered(r);
+            if pids_of(&r.track).is_empty() || self.frozen.iter().any(|x| x.id == r.id) { continue; }
+            crate::bridge::log(&format!("quick resume: {} (id {}) still put aside after a restart", r.id, r.app_id));
+            self.frozen.push(r);
         }
         self.save_quick();
     }
@@ -642,7 +709,7 @@ impl Library {
 
     pub fn close_running(&mut self) -> bool {
         let pids = self.game_pids();
-        match self.running.as_mut() { Some(r) => r.closing = true, None => return true }
+        match self.running.as_mut() { Some(r) => { r.closing = true; crate::bridge::log(&format!("close: {} (id {}): {}", r.id, r.app_id, crate::procs::describe(&pids))); } None => return true }
         crate::procs::stop(&pids, std::time::Duration::from_secs(5))
     }
     pub fn pause(&mut self) -> Result<bool, String> {
@@ -689,7 +756,7 @@ mod tests {
         let state = |pid: u32| std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default().split(") ").nth(1).and_then(|r| r.chars().next()).unwrap_or('?');
         let mut a = std::process::Command::new("sleep").arg("60").spawn().unwrap();
         let mut b = std::process::Command::new("sleep").arg("60").spawn().unwrap();
-        let run = |id: &str, pid: u32| Running { id: id.into(), track: crate::procs::Track { pid: Some(pid), ..Default::default() }, launched_at: 1, started_at: now_ms(), gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0 };
+        let run = |id: &str, pid: u32| Running { id: id.into(), track: crate::procs::Track { pid: Some(pid), ..Default::default() }, launched_at: 1, started_at: now_ms(), gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0, app_id: 0 };
         lib.running = Some(run("manual:a", a.id()));
         lib.freeze_running().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -712,6 +779,40 @@ mod tests {
         lib.close_frozen("manual:b").unwrap();
         assert!(lib.frozen.is_empty());
         let _ = b.wait();
+
+        // By number: two games whose processes carry HEARTH_GAME_ID (one with children, like a launcher or Wine),
+        // neither tracked by process id. Putting one aside and going back never touches the other's processes.
+        let (ida, idb) = (lib.app_id("manual:launcher-game"), lib.app_id("emu:snes-game"));
+        assert!(ida != idb && !crate::appid::is_steam(ida) && !crate::appid::is_steam(idb));
+        assert_eq!(lib.app_id("manual:launcher-game"), ida);   // stable
+        let mut ga = std::process::Command::new("sh").args(["-c", "sleep 60 & sleep 60 & wait"]).env(crate::appid::ENV, ida.to_string()).spawn().unwrap();
+        let mut gb = std::process::Command::new("sleep").arg("60").env(crate::appid::ENV, idb.to_string()).spawn().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let me = std::process::id();
+        let by_id = |id: &str, n: u32| Running { id: id.into(), track: crate::procs::Track { app_id: Some(n), ..Default::default() }, launched_at: 1, started_at: now_ms(), gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0, app_id: n };
+        let snap = crate::procs::snapshot(std::path::Path::new("/proc"));
+        let pa = crate::procs::game_processes(&crate::procs::Track { app_id: Some(ida), ..Default::default() }, &snap, me);
+        let pb = crate::procs::game_processes(&crate::procs::Track { app_id: Some(idb), ..Default::default() }, &snap, me);
+        assert_eq!(pa.len(), 3, "{pa:?}");
+        assert!(pa.contains(&ga.id()));
+        assert_eq!(pb, vec![gb.id()]);
+        lib.running = Some(by_id("manual:launcher-game", ida));
+        lib.freeze_running().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        for p in &pa { assert_eq!(state(*p), 'T'); }
+        assert_ne!(state(gb.id()), 'T');
+        lib.running = Some(by_id("emu:snes-game", idb));
+        lib.quick_resume("manual:launcher-game").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        for p in &pa { assert_ne!(state(*p), 'T'); }
+        assert_eq!(state(gb.id()), 'T');
+        assert_eq!(lib.running_app_id(), Some(ida));
+        assert_eq!(lib.frozen_ids(), vec![idb]);
+        assert_eq!(lib.frozen_pids(), vec![gb.id()]);
+        assert_eq!(lib.game_pids(), pa);
+        crate::procs::signal(&pa, "KILL");
+        crate::procs::signal(&[gb.id()], "KILL");
+        let _ = ga.wait(); let _ = gb.wait();
         let _ = a.kill(); let _ = a.wait();
     }
 }

@@ -25,7 +25,9 @@ pub fn prefix_of(store: &str, id: &str) -> PathBuf {
 }
 
 /// Starts a Windows game with Proton through umu-run, in its own Wine prefix. Returns the process id.
-pub fn proton_launch(store: &str, id: &str, exe: &str, args: Vec<String>, cwd: &Path, env: Vec<(String, String)>, opts: &Value) -> Result<u32, String> {
+/// `game_id` (appid.rs) goes in as HEARTH_GAME_ID: umu passes it on to Proton and Wine untouched (it rewrites
+/// SteamGameId and SteamAppId from GAMEID, which is why those aren't used), so every process of the game carries it.
+pub fn proton_launch(store: &str, id: &str, exe: &str, args: Vec<String>, cwd: &Path, env: Vec<(String, String)>, opts: &Value, game_id: u32) -> Result<u32, String> {
     let umu = tools::ensure(&tools::UMU)?;
     let prefix = prefix_of(store, id);
     std::fs::create_dir_all(&prefix).map_err(|e| e.to_string())?;
@@ -36,7 +38,8 @@ pub fn proton_launch(store: &str, id: &str, exe: &str, args: Vec<String>, cwd: &
     e.push(("GAMEID".into(), std::env::var("NIMBUS_GAMEID").unwrap_or_else(|_| "0".into())));
     e.push(("STORE".into(), match store { "epic" => "egs", "gog" => "gog", _ => "none" }.into()));
     e.push(("PROTON_VERB".into(), "waitforexitandrun".into()));
-    crate::bridge::log(&format!("proton: {store}:{id} {exe}"));
+    if game_id != 0 { e.push(crate::appid::env(game_id)); }
+    crate::bridge::log(&format!("proton: {store}:{id} {exe} (HEARTH_GAME_ID={game_id})"));
     std::process::Command::new(cmd).args(argv).envs(e).current_dir(cwd)
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
         .spawn().map(|c| c.id()).map_err(|err| format!("Couldn't start the game: {err}"))
@@ -169,7 +172,7 @@ pub mod epic {
         Ok(())
     }
     /// Asks legendary how to start the game (with a fresh Epic token) and starts it with Proton.
-    pub fn launch(app: &str, opts: &Value) -> Result<u32, String> {
+    pub fn launch(app: &str, opts: &Value, game_id: u32) -> Result<u32, String> {
         let t = Some(std::time::Duration::from_secs(60));
         let mut r: Output = tools::run(&tools::LEGENDARY, &["launch", app, "--json", "--skip-version-check"], &env(), None, None, t)?;
         let mut p = json_in(&r.out, '{');
@@ -187,7 +190,7 @@ pub mod epic {
         for k in ["game_parameters", "user_parameters", "egl_parameters"] { for a in p[k].as_array().cloned().unwrap_or_default() { if let Some(s) = a.as_str() { args.push(s.to_string()); } } }
         let env: Vec<(String, String)> = p["environment"].as_object().map(|o| o.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect()).unwrap_or_default();
         let cwd = p["working_directory"].as_str().filter(|s| !s.is_empty()).unwrap_or(dir);
-        super::proton_launch("epic", app, &exe.to_string_lossy(), args, Path::new(cwd), env, opts)
+        super::proton_launch("epic", app, &exe.to_string_lossy(), args, Path::new(cwd), env, opts, game_id)
     }
     /// Epic cloud saves: "down" before playing, "up" after (games with cloud saves).
     pub fn sync_saves(app: &str, direction: &str) -> Result<bool, String> {
@@ -348,7 +351,7 @@ pub mod gog {
         let found = std::fs::read_dir(&base).ok().into_iter().flatten().flatten().map(|e| e.path()).find(|d| d.join(format!("goggame-{id}.info")).exists());
         found.map(|d| d.to_string_lossy().to_string()).ok_or_else(|| format!("GOG install failed: {}", tools::problem(&r)))
     }
-    pub fn launch(g: &crate::library::Game, opts: &Value) -> Result<u32, String> {
+    pub fn launch(g: &crate::library::Game, opts: &Value, game_id: u32) -> Result<u32, String> {
         let id = g.id.trim_start_matches("gog:");
         // Cloud saves come down first (games with GOG cloud saves).
         if opts["cloudSaves"] != false {
@@ -356,7 +359,7 @@ pub mod gog {
         }
         let args = crate::manual::split_args(&g.args);
         let cwd = g.work_dir.clone().unwrap_or_else(|| "/".into());
-        super::proton_launch("gog", id, g.exe.as_deref().unwrap_or(""), args, &cwd, vec![], opts)
+        super::proton_launch("gog", id, g.exe.as_deref().unwrap_or(""), args, &cwd, vec![], opts, game_id)
     }
 
     /// Where a GOG game keeps its saves, from GOG's own settings for it (the same ones GOG Galaxy uses):
