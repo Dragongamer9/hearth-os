@@ -237,6 +237,8 @@ jobs:
           echo "--- Handheld Daemon"
           check "Handheld Daemon is installed and its Python modules load" "command -v hhd && test -f /usr/lib/systemd/system/hhd.service && /usr/lib/hhd/bin/python3 -c 'import hhd, adjustor, evdev, yaml, rich, Xlib, serial, pyroute2, gi, dbus'"
           check "Handheld Daemon starts at boot" "test -L /etc/systemd/system/multi-user.target.wants/hhd.service"
+          check "Hearth's Quick Access is Handheld Daemon's overlay app (hhd-ui and HHD_OVERLAY are hearth-overlay)" "test -x /usr/share/nimbus/desktop/shell/hearth-overlay && test \"\$(readlink -f /usr/bin/hhd-ui)\" = /usr/share/nimbus/desktop/shell/hearth-overlay && grep -qx 'Environment=HHD_OVERLAY=/usr/share/nimbus/desktop/shell/hearth-overlay' /usr/lib/systemd/system/hhd.service.d/zz-hearth-overlay.conf && /usr/bin/hhd-ui --version | grep -q '^Hearth Quick Access'"
+          check "the overlay app's Electron, page and code are installed (Hearth Browser's Electron)" "test -x /usr/lib/hearth-browser/nimbus && test -f /usr/lib/hearth-browser/resources/ui/index.html && { test -f /usr/lib/hearth-browser/resources/app/src/overlay/main.js || grep -aq HEARTH_HHD_OVERLAY /usr/lib/hearth-browser/resources/app.asar; }"
           check "Handheld Daemon's udev rules are installed" "ls /usr/lib/udev/rules.d/*hhd*.rules"
           check "power-profiles-daemon only runs when HHD is off" "grep -q 'ConditionPathExists=/etc/hearth/no-hhd' /usr/lib/systemd/system/power-profiles-daemon.service.d/10-hearth-hhd.conf"
           echo "--- nice to have"
