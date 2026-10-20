@@ -42,7 +42,7 @@ pub fn proton_launch(store: &str, id: &str, exe: &str, args: Vec<String>, cwd: &
     crate::bridge::log(&format!("proton: {store}:{id} {exe} (HEARTH_GAME_ID={game_id})"));
     std::process::Command::new(cmd).args(argv).envs(e).current_dir(cwd)
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
-        .spawn().map(|c| c.id()).map_err(|err| format!("Couldn't start the game: {err}"))
+        .spawn().map(crate::procs::detach).map_err(|err| format!("Couldn't start the game: {err}"))
 }
 pub fn remove_prefix(store: &str, id: &str) { let p = prefix_of(store, id); if p.starts_with(data().join("prefixes")) { let _ = std::fs::remove_dir_all(p); } }
 

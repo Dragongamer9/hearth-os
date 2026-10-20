@@ -262,7 +262,7 @@ pub fn client_installed(home: &Path) -> bool {
 pub fn spawn(home: &Path, arg: &str) -> Result<(), String> {
     let (cmd, args) = command(home, arg);
     std::process::Command::new(&cmd).args(&args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
-        .spawn().map(|_| ()).map_err(|e| format!("Couldn't start Steam: {e}"))
+        .spawn().map(|c| { crate::procs::detach(c); }).map_err(|e| format!("Couldn't start Steam: {e}"))
 }
 
 /// Is the Steam client running (native or the Flatpak's)?

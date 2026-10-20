@@ -143,7 +143,7 @@ pub fn launch(rom: &str, system_key: &str, home: &Path, game_id: u32) -> Result<
     if game_id != 0 { let (k, v) = crate::appid::env(game_id); c.env(k, v); }
     c.args(args).current_dir(Path::new(rom).parent().unwrap_or(Path::new("/")))
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
-        .spawn().map(|c| c.id()).map_err(|e| e.to_string())
+        .spawn().map(crate::procs::detach).map_err(|e| e.to_string())
 }
 
 pub fn status(home: &Path) -> Value {
