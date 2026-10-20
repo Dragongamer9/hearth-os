@@ -251,8 +251,7 @@ impl Library {
             return Err(match g.note { Some(n) => format!("{n}. Hearth can't install it."), None => "Hearth can't install this game. Install it from its store app.".into() });
         };
         if uri.starts_with("nimbus-") { return self.start_install(id, &g.title, &uri, false); }
-        std::process::Command::new("steam").arg(&uri).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
-            .spawn().map(|_| ()).map_err(|e| format!("Couldn't open Steam: {e}"))
+        steam::spawn(&self.home, &uri)
     }
 
     /// (found, removed now): a waiting download is removed at once.
@@ -414,8 +413,18 @@ impl Library {
         let track = match g.source {
             "steam" => {
                 let uri = g.launch_uri.clone().unwrap_or_default();
-                std::process::Command::new("steam").arg(&uri).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
-                    .spawn().map_err(|e| format!("Couldn't start Steam: {e}"))?;
+                // Started cold by the game's URL, Steam shows its update and main windows over everything.
+                // Started hidden first (-silent), it only starts the game.
+                if steam::is_running() {
+                    steam::spawn(&self.home, &uri)?;
+                } else {
+                    if !steam::client_installed(&self.home) { return Err("Couldn't start Steam: it isn't installed.".into()); }
+                    let home = self.home.clone();
+                    std::thread::spawn(move || {
+                        steam::ensure_running_silent(&home);
+                        if let Err(e) = steam::spawn(&home, &uri) { crate::bridge::log(&format!("steam: {e}")); }
+                    });
+                }
                 crate::procs::Track { steam_app_id: Some(id.trim_start_matches("steam:").to_string()), ..Default::default() }
             }
             "manual" => {

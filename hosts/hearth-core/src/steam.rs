@@ -234,3 +234,68 @@ mod tests {
         assert!(p2.art.iter().any(|(k, v)| *k == "hero" && v.starts_with("https://")));
     }
 }
+
+// ------------------------------------------------------------------ running Steam (port of steam.js)
+
+fn flatpak_installed(home: &Path) -> bool {
+    Path::new("/var/lib/flatpak/app").join(FLATPAK_ID).is_dir() || home.join(".local/share/flatpak/app").join(FLATPAK_ID).is_dir()
+}
+
+/// How to hand Steam a steam:// URL or an option (-silent): the native client, the Flatpak's, or the desktop's
+/// URL handler. The Flatpak when that's where Steam keeps its data (or the only Steam there is).
+pub fn command(home: &Path, arg: &str) -> (String, Vec<String>) {
+    let flatpak_data = steam_path(home).map(|p| p.to_string_lossy().contains(&format!(".var/app/{FLATPAK_ID}"))).unwrap_or(false);
+    let native = crate::system::has("steam");
+    let flatpak = crate::system::has("flatpak") && (flatpak_data || flatpak_installed(home));
+    if native && !flatpak_data { return ("steam".into(), vec![arg.into()]); }
+    if flatpak { return ("flatpak".into(), vec!["run".into(), FLATPAK_ID.into(), arg.into()]); }
+    if native { return ("steam".into(), vec![arg.into()]); }
+    ("xdg-open".into(), vec![arg.into()])
+}
+
+/// Is Steam here at all (data, the native client or the Flatpak)?
+pub fn client_installed(home: &Path) -> bool {
+    steam_path(home).is_some() || crate::system::has("steam") || flatpak_installed(home)
+}
+
+/// Hands Steam a URL or option, detached (no output kept).
+pub fn spawn(home: &Path, arg: &str) -> Result<(), String> {
+    let (cmd, args) = command(home, arg);
+    std::process::Command::new(&cmd).args(&args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
+        .spawn().map(|_| ()).map_err(|e| format!("Couldn't start Steam: {e}"))
+}
+
+/// Is the Steam client running (native or the Flatpak's)?
+pub fn is_running() -> bool {
+    let Ok(dir) = std::fs::read_dir("/proc") else { return false };
+    dir.flatten().any(|e| {
+        let name = e.file_name();
+        let n = name.to_string_lossy();
+        n.chars().all(|c| c.is_ascii_digit()) && matches!(std::fs::read_to_string(e.path().join("comm")).unwrap_or_default().trim(), "steam" | "steamwebhelper")
+    })
+}
+
+/// Starts Steam hidden (-silent: no window, only its background part) if it isn't running, and waits until it's
+/// up, so a game started next comes straight up instead of Steam's update and main windows. Blocks up to ~35 s:
+/// call it off the UI thread.
+pub fn ensure_running_silent(home: &Path) {
+    if is_running() || !client_installed(home) { return; }
+    crate::bridge::log("steam: starting it in the background (-silent)");
+    if spawn(home, "-silent").is_err() { return; }
+    for _ in 0..60 {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        if is_running() { std::thread::sleep(std::time::Duration::from_secs(3)); return; }
+    }
+}
+
+#[cfg(test)]
+mod run_tests {
+    use super::*;
+    #[test]
+    fn hands_steam_its_argument() {
+        let home = std::env::temp_dir().join(format!("hearth-steam-cmd-{}", std::process::id()));
+        let (cmd, args) = command(&home, "steam://rungameid/10");
+        assert!(["steam", "flatpak", "xdg-open"].contains(&cmd.as_str()));
+        assert_eq!(args.last().map(String::as_str), Some("steam://rungameid/10"));
+    }
+}

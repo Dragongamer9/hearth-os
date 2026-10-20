@@ -144,6 +144,15 @@ pub fn focus_game(pids: &dyn Fn() -> Vec<u32>, steam_app_id: u64, exclude: &[u64
 
 pub enum Ready { Window(u64), Dialog(u64, String) }
 
+/// A Steam window that may need you while a game starts (a cloud-save conflict, an error, an EULA), not Steam's
+/// own main, friends or "launching" windows, which Hearth keeps out of the way.
+pub fn steam_question(title: &str) -> bool {
+    let t = title.trim().to_lowercase();
+    let steams_own = t.is_empty() || t == "steam" || t == "steamwebhelper" || t == "steam big picture mode" || t == "friends list"
+        || t.starts_with("launching") || t.starts_with("preparing") || t.starts_with("updating") || t.starts_with("steam - updat");
+    !steams_own
+}
+
 /// Waits until a game (or its launcher) has a real window up while Hearth shows its "starting" screen: a window
 /// of the game's processes (or with its Steam app id), at least 640x360, seen twice in a row. A Steam window
 /// that stays up a few seconds while the game shows nothing may need you (a cloud-save question): Dialog.
@@ -160,7 +169,7 @@ pub fn wait_for_window(pids: &dyn Fn() -> Vec<u32>, steam_app_id: u64, exclude: 
         match game { Some(g) if g.win == last => return Some(Ready::Window(g.win)), Some(g) => last = g.win, None => last = 0 }
         for w in &wins {
             let name = proc_name(w.pid);
-            if (name == "steam" || name == "steamwebhelper") && w.w >= 480 && w.h >= 240 && !want.contains(&w.pid) {
+            if (name == "steam" || name == "steamwebhelper") && w.w >= 480 && w.h >= 240 && !want.contains(&w.pid) && steam_question(&w.title) {
                 let seen = *steam_seen.entry(w.win).or_insert_with(Instant::now);
                 if game.is_none() && seen.elapsed() > Duration::from_millis(3500) && start.elapsed() > Duration::from_secs(5) { return Some(Ready::Dialog(w.win, w.title.clone())); }
             }
@@ -281,5 +290,15 @@ mod tests {
         assert!(parse_cardinals("GAMESCOPE_FOCUSED_WINDOW:  not found.").is_empty());
         let kids = parse_children("     0x400002 \"Hearth\": (\"hearth\" \"Hearth\")  1280x800+0+0  +0+0\n     0x400010 (has no name): ()  10x10+0+0  +0+0\n");
         assert_eq!(kids, vec![(0x400002, "Hearth".to_string(), 1280, 800)]);
+    }
+}
+
+#[cfg(test)]
+mod steam_window_tests {
+    use super::steam_question;
+    #[test]
+    fn only_steam_questions_come_in_front() {
+        for t in ["Steam", "Friends List", "Launching...", "Preparing to launch Portal 2...", "Steam - Updating", "Steam Big Picture Mode", ""] { assert!(!steam_question(t), "{t}"); }
+        for t in ["Steam Cloud Sync Conflict", "Sign in to Steam", "Steam - Error", "Install - Portal 2"] { assert!(steam_question(t), "{t}"); }
     }
 }
