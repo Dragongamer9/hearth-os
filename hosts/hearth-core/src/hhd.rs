@@ -33,6 +33,20 @@ pub fn parse_response(raw: &str) -> Option<(u16, String)> {
 
 /// One request to HHD's API over its socket: the answer's text, as HHD wrote it.
 pub fn request_text(method: &str, path: &str, body: Option<&Value>, timeout: Duration) -> Result<String, String> {
+    if slow() { return Err("Handheld Daemon isn't answering right now".into()); }
+    let r = request_once(method, path, body, timeout);
+    if matches!(&r, Err(e) if e.contains("timed out") || e.contains("Resource temporarily unavailable") || e.contains("would block")) { mark_slow(); }
+    r
+}
+
+/// When HHD last didn't answer in time (ms since 1970): for 20 s after that, Hearth doesn't ask it again, so a stuck
+/// daemon costs one wait, not one per call (Quick Access asks every second).
+static SLOW_SINCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
+fn slow() -> bool { let t = SLOW_SINCE.load(std::sync::atomic::Ordering::SeqCst); t != 0 && now_ms().saturating_sub(t) < 20_000 }
+fn mark_slow() { crate::bridge::log("hhd: didn't answer in time; not asking again for 20 s"); SLOW_SINCE.store(now_ms(), std::sync::atomic::Ordering::SeqCst); }
+
+fn request_once(method: &str, path: &str, body: Option<&Value>, timeout: Duration) -> Result<String, String> {
     let mut s = std::os::unix::net::UnixStream::connect(SOCKET).map_err(|e| format!("Handheld Daemon isn't answering ({e})"))?;
     let _ = s.set_read_timeout(Some(timeout));
     let _ = s.set_write_timeout(Some(Duration::from_secs(5)));
@@ -92,11 +106,18 @@ pub fn describe(state: &Value) -> String {
 pub fn helper(args: &[&str]) -> Result<Value, String> {
     let helper = crate::paths::desktop_dir().join("shell/hearth-hhd");
     if !helper.exists() { return Err("Handheld Daemon settings need Hearth, the OS.".into()); }
-    let out = std::process::Command::new("python3").arg(&helper).args(args).output().map_err(|e| e.to_string())?;
-    let text = String::from_utf8_lossy(&out.stdout);
+    // Never waited on for long: a Handheld Daemon that stops answering mustn't hold up the rest of Hearth.
+    if slow() { return Err("Handheld Daemon isn't answering right now".into()); }
+    let mut argv: Vec<String> = vec![helper.to_string_lossy().to_string()];
+    argv.extend(args.iter().map(|a| a.to_string()));
+    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+    let text = match crate::system::run_timeout("python3", &argv, Duration::from_secs(10)) {
+        Ok(t) => t,
+        Err(e) if e.ends_with("took too long") => { mark_slow(); return Err("Handheld Daemon didn't answer in time".into()); }
+        Err(e) => return Err(e.strip_prefix("error: ").unwrap_or(&e).to_string()),
+    };
     let last = text.trim().lines().last().unwrap_or("").to_string();
     if let Some(e) = last.strip_prefix("error: ") { return Err(e.to_string()); }
-    if !out.status.success() { return Err(format!("hearth-hhd failed ({})", out.status)); }
     serde_json::from_str(&last).map_err(|_| "Unexpected answer from hearth-hhd".to_string())
 }
 
