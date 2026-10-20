@@ -7,8 +7,8 @@ name: Hearth OS (Peppermint base)
 on:
   workflow_dispatch:
   push:
-    branches: [linux-host]
-    paths: ['os-bases/peppermint/**', '.github/workflows/base-peppermint.yml']
+    branches: [linux-host, main]
+    paths: ['os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'ui/**', '.github/workflows/base-peppermint.yml']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -109,7 +109,7 @@ jobs:
       contents: read
       packages: write
     env:
-      PUBLISH: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/linux-host' }}
+      PUBLISH: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
 

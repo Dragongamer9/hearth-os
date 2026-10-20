@@ -1,3 +1,7 @@
+# ARCHIVED (October 2026, after 0.1.3): Hearth OS on Bazzite is no longer built or updated. Hearth OS is now built
+# on Anatase (base-anatase.yml, ghcr.io/dragongamer9/hearth-os); Bazzite installs move over from Settings ›
+# Updates › Move to a new Hearth OS (0.1.3). Kept for reference; it only runs by hand, with "archived" typed in.
+#
 # Builds Hearth, the Linux OS: Bazzite (deck edition) with the Hearth session (the Nimbus UI) installed and booted into.
 # - Pushes to main that touch the OS, the Linux host or the UI, a weekly rebuild (to pick up Bazzite's
 #   updates), or a manual run: build the images and publish them as ghcr.io/dragongamer9/hearth (AMD and
@@ -5,18 +9,15 @@
 # - Manual run with "Build the installer ISO" ticked: also build the installer and keep it as a download
 #   on the run (GitHub releases can't hold files over 2 GB).
 # The image is signed when the SIGNING_SECRET repository secret holds a Cosign private key.
-name: Hearth OS
+name: Hearth OS on Bazzite (archived)
 
 on:
-  push:
-    branches: [main]
-    paths: ['os/**', 'hosts/linux/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearth-browser/**', 'ui/**', '.github/workflows/os.yml']
-  pull_request:
-    paths: ['os/**', '.github/workflows/os.yml']
-  schedule:
-    - cron: '20 9 * * 1'   # Mondays: rebuild on Bazzite's latest
   workflow_dispatch:
     inputs:
+      confirm:
+        description: 'This build is archived. Type "archived" to build (and publish) it anyway'
+        required: true
+        default: ''
       iso:
         description: Build the installer ISO
         type: boolean
@@ -31,6 +32,7 @@ concurrency:
 
 jobs:
   app:
+    if: inputs.confirm == 'archived'
     name: Build the Hearth app (Rust)
     runs-on: ubuntu-latest
     outputs:
