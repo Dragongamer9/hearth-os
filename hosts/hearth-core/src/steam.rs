@@ -192,11 +192,22 @@ fn millis(t: std::io::Result<std::time::SystemTime>) -> u64 {
 }
 
 /// Installed games, and games Steam is installing, downloading or updating.
-pub fn scan(home: &Path) -> Vec<SteamGame> {
+/// Installed Steam games. Only with more than one Hearth profile are they narrowed to the signed-in account's
+/// (each profile has its own Steam account); with one profile every installed game shows, as before 0.2.3.
+pub fn scan(home: &Path) -> Vec<SteamGame> { scan_with(home, several_profiles()) }
+
+/// More than one Hearth profile (profiles.json in Hearth's data folder).
+fn several_profiles() -> bool {
+    let f = crate::paths::data_dir().join("profiles.json");
+    std::fs::read(f).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v["list"].as_array().map(|l| l.len() > 1)).unwrap_or(false)
+}
+
+pub fn scan_with(home: &Path, per_account: bool) -> Vec<SteamGame> {
     let mut games = Vec::new();
     let Some(steam) = steam_path(home) else { return games };
     let (grid, stats) = user_data(&steam);
-    let me = signed_in_id64(&steam);
+    let me = if per_account { signed_in_id64(&steam) } else { None };
     let cache = steam.join("appcache/librarycache");
     for lib in libraries(&steam) {
         let apps = lib.join("steamapps");
@@ -261,16 +272,19 @@ mod tests {
         assert!(p2.art.iter().any(|(k, v)| *k == "hero" && v.starts_with("https://")));
         // One account: its games all show, whoever installed them.
         put(&steam.join("steamapps/appmanifest_70.acf"), r#""AppState" { "appid" "70" "name" "Half-Life" "installdir" "Half-Life" "StateFlags" "4" "LastOwner" "76561197960265730" }"#);
-        assert_eq!(scan(home.path()).len(), 3);
+        assert_eq!(scan_with(home.path(), true).len(), 3);
         // Two accounts (two profiles): another account's install isn't sam's; sam's own and what sam has played are.
         put(&steam.join("userdata/2/config/localconfig.vdf"), r#""UserLocalConfigStore" { }"#);
-        let ids: Vec<String> = scan(home.path()).into_iter().map(|g| g.app_id).collect();
+        let ids: Vec<String> = scan_with(home.path(), true).into_iter().map(|g| g.app_id).collect();
+        // One Hearth profile: every installed game, whoever installed it.
+        assert_eq!(scan_with(home.path(), false).len(), 3);
         assert!(!ids.contains(&"70".to_string()) && ids.contains(&"620".to_string()) && ids.contains(&"400".to_string()), "{ids:?}");
         assert_eq!(signed_in_id64(&steam), Some(76561197960265729));
         // A profile that hasn't signed in yet: no account marked, none of these are its games.
         put(&steam.join("config/loginusers.vdf"), r#""users" { "76561197960265729" { "AccountName" "sam" "MostRecent" "0" } }"#);
         assert_eq!(signed_in_id64(&steam), Some(0));
-        assert!(scan(home.path()).is_empty());
+        assert!(scan_with(home.path(), true).is_empty());
+        assert_eq!(scan_with(home.path(), false).len(), 3, "a single profile still sees them");
     }
     #[test]
     fn whose_games() {
