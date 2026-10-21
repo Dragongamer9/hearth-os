@@ -72,10 +72,24 @@ async function stats(req, env, ctx) {
             SUM(CASE WHEN last > ?3 THEN 1 ELSE 0 END) AS month
      FROM pings GROUP BY kind`
   ).bind(now - 15 * 60e3, now - 864e5, now - 30 * 864e5).all();
-  const out = { now: 0, today: 0, month: 0, kinds: {}, updated: now };
+  const out = { now: 0, today: 0, month: 0, kinds: {}, versions: {}, updated: now };
   for (const r of rows.results || []) {
     out.now += r.now || 0; out.today += r.today || 0; out.month += r.month || 0;
     out.kinds[r.kind] = { now: r.now || 0, today: r.today || 0, month: r.month || 0 };
+  }
+  // The same per version (how many have updated after each release), and per version and edition.
+  const vrows = await env.DB.prepare(
+    `SELECT version, kind,
+            SUM(CASE WHEN last > ?1 THEN 1 ELSE 0 END) AS now,
+            SUM(CASE WHEN last > ?2 THEN 1 ELSE 0 END) AS today,
+            SUM(CASE WHEN last > ?3 THEN 1 ELSE 0 END) AS month
+     FROM pings WHERE last > ?3 GROUP BY version, kind`
+  ).bind(now - 15 * 60e3, now - 864e5, now - 30 * 864e5).all();
+  for (const r of vrows.results || []) {
+    const v = r.version || 'unknown';
+    const e = out.versions[v] || (out.versions[v] = { now: 0, today: 0, month: 0, kinds: {} });
+    e.now += r.now || 0; e.today += r.today || 0; e.month += r.month || 0;
+    e.kinds[r.kind] = { now: r.now || 0, today: r.today || 0, month: r.month || 0 };
   }
   const res = json(out, 200, { 'cache-control': 'public, max-age=60' });
   ctx.waitUntil(cache.put(key, res.clone()));
