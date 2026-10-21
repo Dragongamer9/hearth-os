@@ -1,0 +1,9 @@
+#!/bin/sh
+# Steam's "Switch to Desktop" (and the Desktop/Game Mode choices Steam offers with -steamos3), for Hearth OS's
+# "Steam Game Mode" (Settings › System › Game Mode): asks Hearth's session for Desktop Mode (or Game Mode) and
+# closes Steam's Game Mode. With the Steam Flatpak, Steam reaches this through flatpak-spawn --host (the small
+# steamos-session-select in ~/.local/share/nimbus/steam-bin that nimbus-session puts on the Flatpak's PATH).
+case "$1" in
+  gamescope*|game*) exec nimbus-mode game ;;
+  *) exec nimbus-mode desktop ;;
+esac
