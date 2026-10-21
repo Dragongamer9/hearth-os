@@ -5,6 +5,12 @@ name: Installer test
 
 on:
   workflow_dispatch:
+    inputs:
+      edition:
+        description: 'Which edition to install (anatase, or a Beta Experimental one: ubuntu, cachyos, peppermint)'
+        type: choice
+        options: [anatase, ubuntu, cachyos, peppermint]
+        default: anatase
   push:
     branches: [linux-host, main]
     paths: ['os/live/src/hearth-install', '.github/workflows/installer-test.yml']
@@ -28,7 +34,7 @@ jobs:
           echo "LOOP=$(sudo losetup -fP --show disk.img)" >> "$GITHUB_ENV"
       - name: Install Hearth OS onto it
         run: |
-          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","edition":"anatase","firmware":false,"signin":"always","kargs":["console=ttyS0,115200"]}' "$LOOP")
+          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","edition":"%s","firmware":false,"signin":"always","kargs":["console=ttyS0,115200"]}' "$LOOP" "${{ inputs.edition || 'anatase' }}")
           # The live USB's installer tools: os/live/src/build.sh adds the ones the Hearth OS image hasn't got.
           cat > /tmp/run.sh <<'EOF'
           need=""
