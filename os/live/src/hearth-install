@@ -1125,7 +1125,9 @@ def setup_system(dep, root, plan):
             # No password: signing in, the lock screen and system changes just need Enter (pam_unix nullok).
             sh(['usermod', '-R', dep, '-p', '', u['name']])
         else:
-            sh(['chpasswd', '-R', dep], input=f'{u["name"]}:{u["password"]}\n')
+            # Hashed here and set as is: the new system's PAM isn't involved (Debian's and Ubuntu's chpasswd
+            # refused "password not changed" when run against another root).
+            sh(['usermod', '-R', dep, '-p', password_hash(u['password']), u['name']])
         with open(f'{dep}/etc/hostname', 'w') as f:
             f.write(plan['hostname'] + '\n')
         if os.path.exists(f'{dep}/usr/share/zoneinfo/{plan["timezone"]}'):
@@ -1176,15 +1178,49 @@ def copy_wifi(dep):
         os.chmod(out, 0o600)
 
 
+def password_hash(password):
+    """SHA-512 crypt ($6$...) of a password, made with openssl (no stdin echo, never on a command line)."""
+    r = sh(['openssl', 'passwd', '-6', '-stdin'], input=password + '\n')
+    h = r.stdout.strip()
+    if not h.startswith('$6$'):
+        raise Fail("couldn't set the password")
+    return h
+
+
+def selinux_on(dep):
+    """Whether the new system uses SELinux (Fedora-based Anatase does; Ubuntu, Peppermint and CachyOS don't)."""
+    try:
+        text = open(f'{dep}/etc/selinux/config').read()
+    except OSError:
+        return False
+    m = re.search(r'^\s*SELINUX\s*=\s*(\w+)', text, re.M)
+    return bool(m) and m.group(1).lower() != 'disabled'
+
+
+def mark_autorelabel(dep):
+    """Relabel on first start instead. The deployment's own root is immutable (ostree), so /etc holds the mark
+    (selinux-autorelabel reads /.autorelabel, which an ostree system links from /etc); never fatal."""
+    for f in (f'{dep}/etc/.autorelabel', f'{dep}/.autorelabel'):
+        try:
+            open(f, 'w').close()
+            return True
+        except OSError:
+            continue
+    return False
+
+
 def relabel(dep, paths):
-    """SELinux labels for what was written (or logging in fails on the new system)."""
+    """SELinux labels for what was written (or logging in fails on the new system). Nothing on a system
+    without SELinux."""
+    if not selinux_on(dep):
+        return
     fc = f'{dep}/etc/selinux/targeted/contexts/files/file_contexts'
     if not os.path.exists(fc) or not shutil.which('setfiles'):
-        open(f'{dep}/.autorelabel', 'w').close()   # relabel on first start instead
+        mark_autorelabel(dep)
         return
     r = sh(['setfiles', '-F', '-r', dep, fc] + [dep + p for p in paths], check=False)
     if r.returncode != 0:
-        open(f'{dep}/.autorelabel', 'w').close()
+        mark_autorelabel(dep)
 
 
 # ------------------------------------------------------------------ the whole run

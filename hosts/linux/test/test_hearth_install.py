@@ -98,6 +98,36 @@ class EspAfterBootupd(unittest.TestCase):
         self.assertEqual(made[made.index('-p') + 1], '1')
 
 
+class TargetSystems(unittest.TestCase):
+    def test_selinux_only_where_the_new_system_has_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(H.selinux_on(d), 'no /etc/selinux (Ubuntu, Peppermint, CachyOS)')
+            os.makedirs(f'{d}/etc/selinux')
+            open(f'{d}/etc/selinux/config', 'w').write('SELINUX=disabled\n')
+            self.assertFalse(H.selinux_on(d))
+            open(f'{d}/etc/selinux/config', 'w').write('# x\nSELINUX=enforcing\nSELINUXTYPE=targeted\n')
+            self.assertTrue(H.selinux_on(d))
+
+    def test_no_relabel_mark_without_selinux(self):
+        with tempfile.TemporaryDirectory() as d:
+            H.relabel(d, ['/etc'])
+            self.assertFalse(os.path.exists(f'{d}/.autorelabel') or os.path.exists(f'{d}/etc/.autorelabel'))
+
+    def test_relabel_mark_goes_in_etc(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(f'{d}/etc/selinux')
+            open(f'{d}/etc/selinux/config', 'w').write('SELINUX=enforcing\n')
+            H.relabel(d, ['/etc'])    # no file_contexts: relabel at first start
+            self.assertTrue(os.path.exists(f'{d}/etc/.autorelabel'))
+
+    def test_password_hash(self):
+        import shutil
+        if not shutil.which('openssl'):
+            self.skipTest('no openssl here')
+        h = H.password_hash('hearth')
+        self.assertTrue(h.startswith('$6$') and 'hearth' not in h)
+
+
 class Plan(unittest.TestCase):
     def test_good_plan(self):
         p = H.check_plan(GOOD)

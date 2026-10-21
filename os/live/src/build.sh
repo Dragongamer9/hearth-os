@@ -177,7 +177,7 @@ systemctl enable hearth-ci-report.service
 # The engine (hearth-install) partitions, copies Hearth OS onto the drive with ostree (from the copy on this
 # stick) and sets up the boot loader with bootupd; its screens are in the Hearth app (controller) and Mantel's
 # Settings (mouse/keyboard). "Install next to Windows" shrinks Windows' NTFS drive first (hearth-live-prep).
-dnf install -y ntfsprogs dosfstools e2fsprogs btrfs-progs efibootmgr
+dnf install -y ntfsprogs dosfstools e2fsprogs btrfs-progs efibootmgr openssl
 # `ostree container image deploy` (rpm-ostree provides it on Fedora) and bootupd: an image without them gets them.
 if ! ostree container --help >/dev/null 2>&1; then dnf install -y rpm-ostree; fi
 ostree container image deploy --help >/dev/null
