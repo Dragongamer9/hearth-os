@@ -54,6 +54,50 @@ class LocalImage(unittest.TestCase):
         self.assertTrue(H.download_text(1e9, 9e9, 0, True).startswith('Copying Hearth OS from the USB stick'))
 
 
+class EspAfterBootupd(unittest.TestCase):
+    """bootupctl --device mounts the EFI partition itself and unmounts it: nothing is at TARGET/boot/efi
+    afterwards. The boot entry and the boot menu use the partition partitioning made, never findmnt (which
+    failed the whole install on real PCs, after the boot loader was in place)."""
+
+    def setUp(self):
+        self.calls = []
+        self.orig = (H.sh, H.os.path.isdir, H.efi_loader)
+
+        class R:
+            def __init__(self, out=''):
+                self.stdout, self.stderr, self.returncode = out, '', 0
+
+        def fake_sh(cmd, check=True, input=None, **kw):
+            self.calls.append(cmd)
+            if cmd[0] == 'findmnt':
+                raise AssertionError('findmnt asked: %s' % cmd)
+            if cmd[0] == 'blkid':
+                return R('aaaa-1111\n')
+            if cmd[:2] == ['efibootmgr', '-v']:
+                made = any(c[:3] == ['efibootmgr', '-q', '-c'] for c in self.calls)
+                return R('BootOrder: 0001\nBoot0001* UEFI Misc\n' + ('Boot0002* Hearth OS HD(1,GPT,aaaa-1111)\n' if made else ''))
+            return R()
+        H.sh = fake_sh
+        H.os.path.isdir = lambda p: True if p == '/sys/firmware/efi' else self.orig[1](p)
+        H.efi_loader = lambda root: '\\EFI\\fedora\\shimx64.efi'
+
+    def tearDown(self):
+        H.sh, H.os.path.isdir, H.efi_loader = self.orig
+
+    def test_boot_entry_from_the_known_partition(self):
+        H.ensure_boot_entry('/dev/vda', '/dev/vda1')
+        made = [c for c in self.calls if c[:3] == ['efibootmgr', '-q', '-c']]
+        self.assertEqual(len(made), 1)
+        self.assertEqual(made[0][made[0].index('-d') + 1], '/dev/vda')
+        self.assertEqual(made[0][made[0].index('-p') + 1], '1')
+        self.assertIn(['efibootmgr', '-q', '-o', '0002,0001'], self.calls)
+
+    def test_nvme_partition_number(self):
+        H.ensure_boot_entry('/dev/nvme0n1', '/dev/nvme0n1p1')
+        made = [c for c in self.calls if c[:3] == ['efibootmgr', '-q', '-c']][0]
+        self.assertEqual(made[made.index('-p') + 1], '1')
+
+
 class Plan(unittest.TestCase):
     def test_good_plan(self):
         p = H.check_plan(GOOD)

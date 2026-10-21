@@ -69,6 +69,25 @@ if [ -x /usr/lib/nimbus/hearth ]; then mv /usr/lib/nimbus/hearth /usr/lib/nimbus
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 [ -f /usr/lib/nimbus/chrome-sandbox ] && chown root:root /usr/lib/nimbus/chrome-sandbox && chmod 4755 /usr/lib/nimbus/chrome-sandbox
 install -Dm755 /live/hearth-install /usr/libexec/nimbus/hearth-install
+# CI's end-to-end test: installs by itself only with hearth.autoinstall AND hearth.ci on the kernel command line
+# (never from a menu entry), reporting on the serial console (hearth-autoinstall).
+install -Dm755 /live/hearth-autoinstall /usr/libexec/nimbus/hearth-autoinstall
+cat >/etc/systemd/system/hearth-autoinstall.service <<'UNIT'
+[Unit]
+Description=Hearth: automatic install (CI end-to-end test only)
+ConditionKernelCommandLine=hearth.autoinstall
+ConditionKernelCommandLine=hearth.ci
+Wants=network-online.target systemd-udev-settle.service
+After=network-online.target systemd-udev-settle.service multi-user.target
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-autoinstall
+StandardOutput=journal+console
+TimeoutStartSec=4h
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl enable hearth-autoinstall.service
 install -Dm755 /live/hearth-live-prep /usr/libexec/nimbus/hearth-live-prep
 install -Dm644 /live/branding/hearth-512.png /usr/share/pixmaps/hearth.png
 mkdir -p /usr/share/nimbus && mv /usr/lib/nimbus/hearth-version /usr/share/nimbus/version 2>/dev/null || echo latest > /usr/share/nimbus/version

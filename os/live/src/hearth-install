@@ -930,7 +930,17 @@ def add_kargs(kargs):
             open(entry, 'w').write(text)
 
 
-def bootloader(disk, firmware, dep=None):
+def remount_esp(esp, mnt=None):
+    """Hearth's EFI partition back at TARGET/boot/efi: bootupctl --device mounts it somewhere of its own and
+    unmounts it again, so after it nothing is there (asking findmnt for it then failed the whole install, after
+    the boot loader was already in place, leaving no user account, fstab or time zone)."""
+    mnt = mnt or f'{TARGET}/boot/efi'
+    os.makedirs(mnt, exist_ok=True)
+    if not os.path.ismount(mnt):
+        sh(['mount', '-o', 'umask=0077', esp, mnt])
+
+
+def bootloader(disk, firmware, dep=None, esp=None):
     stage('boot', 84, 'Setting up starting up')
     # UEFI only (Hearth's PCs and Windows next to it all start that way); --auto would also try BIOS on some.
     cmd = ['bootupctl', 'backend', 'install', '--component', 'EFI', '--with-static-configs', '--write-uuid', '--device', disk]
@@ -947,8 +957,10 @@ def bootloader(disk, firmware, dep=None):
             r = sh(cmd + [TARGET], check=False)
     if r.returncode != 0:
         raise Fail('setting up the boot loader failed: ' + ((r.stderr or r.stdout).strip().splitlines() or ['?'])[-1])
+    if esp:
+        remount_esp(esp)
     if firmware:
-        ensure_boot_entry(disk)
+        ensure_boot_entry(disk, esp)
 
 
 # Other systems' boot loaders on EFI partitions: "Windows", "SteamOS", ... in Hearth's boot menu.
@@ -1006,11 +1018,11 @@ def menu_text(entries):
     return '\n'.join(out) + '\n'
 
 
-def other_systems_menu():
+def other_systems_menu(esp=None):
     """Adds Windows, SteamOS and other systems to Hearth's boot menu (custom.cfg, which Hearth's boot loader
-    reads), and shows the menu at start when there are any."""
+    reads), and shows the menu at start when there are any. `esp`: Hearth's own EFI partition."""
     entries = []
-    mine = sh(['findmnt', '-no', 'SOURCE', f'{TARGET}/boot/efi'], check=False).stdout.strip()
+    mine = esp or sh(['findmnt', '-no', 'SOURCE', f'{TARGET}/boot/efi'], check=False).stdout.strip()
     # Every EFI partition on every drive, from the partition tables themselves (fresh after the changes).
     esps = []
     for name in json.loads(sh(['lsblk', '-J', '-d', '-o', 'PATH,TYPE']).stdout).get('blockdevices', []):
@@ -1057,12 +1069,14 @@ def boot_entries(text):
     return entries, [x for x in (m.group(1).split(',') if m else []) if x]
 
 
-def ensure_boot_entry(disk):
-    """A firmware boot entry for Hearth's own EFI partition, first in the boot order. Old "Hearth OS" entries
-    that point somewhere else go (they'd start another system, or nothing)."""
+def ensure_boot_entry(disk, esp=None):
+    """A firmware boot entry for Hearth's own EFI partition (`esp`, known from partitioning), first in the boot
+    order. Old "Hearth OS" entries that point somewhere else go (they'd start another system, or nothing)."""
     if not os.path.isdir('/sys/firmware/efi'):
         return
-    esp_part = sh(['findmnt', '-no', 'SOURCE', f'{TARGET}/boot/efi']).stdout.strip()
+    esp_part = esp or sh(['findmnt', '-no', 'SOURCE', f'{TARGET}/boot/efi'], check=False).stdout.strip()
+    if not esp_part or not re.search(r'\d+$', esp_part):
+        raise Fail("couldn't tell which EFI partition Hearth's boot loader is on")
     partuuid = sh(['blkid', '-s', 'PARTUUID', '-o', 'value', esp_part], check=False).stdout.strip().lower()
     num = re.search(r'(\d+)$', esp_part).group(1)
     loader = efi_loader(f'{TARGET}/boot/efi')
@@ -1209,10 +1223,10 @@ def run(plan):
         bls = f'{dep}/usr/libexec/nimbus/hearth-bls-grub'
         if os.path.isfile(bls):
             sh(['sh', bls, '--boot', f'{TARGET}/boot'])
-        bootloader(disk, plan.get('firmware', True), dep)
+        bootloader(disk, plan.get('firmware', True), dep, esp)
         if os.path.isfile(bls):   # again: bootupd may have rewritten /boot/grub2
             sh(['sh', bls, '--boot', f'{TARGET}/boot'])
-        other_systems_menu()
+        other_systems_menu(esp)
         write_fstab(dep, esp, boot, root)
         setup_system(dep, root, plan)
         stage('finish', 97, 'Finishing up')

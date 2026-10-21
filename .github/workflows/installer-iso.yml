@@ -23,6 +23,10 @@ on:
         type: choice
         options: [installer, ubuntu, cachyos, peppermint]
         default: installer
+      e2e:
+        description: 'End-to-end test before uploading: install from the ISO in a virtual PC, then start the installed system'
+        type: boolean
+        default: true
       app:
         description: 'Which Hearth app the USB carries'
         type: choice
@@ -157,6 +161,26 @@ jobs:
           git rm -rfq --cached . >/dev/null
           git add -f shots
           git commit -qm "Installer ISO screenshots ($GITHUB_RUN_ID)" && git push -f -q origin "HEAD:refs/heads/$SHOTS" || true
+
+      # End-to-end: the ISO installs Hearth OS onto a blank disk by itself and the installed system starts from
+      # that disk (tools/e2e-iso.sh). Nothing is uploaded unless this passes.
+      - name: End-to-end install test (install from the ISO, then start from the disk)
+        id: e2e
+        if: inputs.e2e != false
+        timeout-minutes: 200
+        env:
+          ISO: ${{ steps.iso.outputs.file }}
+        run: |
+          label=$(xorriso -indev "$ISO" -pvd_info 2>/dev/null | sed -n 's/^Volume Id *: *//p' | head -1)
+          bash tools/e2e-iso.sh "$ISO" "${label:-Hearth-Install}" "${{ env.ED == 'installer' && 'anatase' || env.ED }}" e2e
+      - name: Publish the end-to-end test's screenshots and serial logs (ci/e2e-${{ env.ED }})
+        if: always() && steps.e2e.outcome != 'skipped' && steps.e2e.outcome != ''
+        run: |
+          [ -d e2e ] || exit 0
+          mkdir -p /tmp/e2e-pub && cp -r e2e/. /tmp/e2e-pub/ && cd /tmp/e2e-pub && git init -q && git checkout -q -b e2e
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add -A
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "E2E install test ($GITHUB_RUN_ID)" || exit 0
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/e2e-${{ env.ED }} || true
 
       - name: Upload to the download site (Cloudflare R2)
         if: env.HAVE_R2 == 'true' && inputs.upload
