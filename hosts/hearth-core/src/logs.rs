@@ -62,7 +62,7 @@ pub fn report(version: &str) -> String {
         if !input.is_empty() { section("Controller input (newest last)", keep(&input, 400)); }
         section("Hearth log", keep(&lines, 1500));
     }
-    for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log")] {
+    for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
     section("Memory", sh("free -m; echo; ps -eo rss=,comm= --sort=-rss | head -25 | awk '{printf \"%7.0f MB  %s\\n\", $1/1024, $2}'"));

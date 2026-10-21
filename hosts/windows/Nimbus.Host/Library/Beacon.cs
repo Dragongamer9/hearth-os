@@ -16,7 +16,8 @@ namespace Nimbus.Host.Library;
 ///   beacon.exe launch &lt;game&gt; [--mod=&lt;id&gt;|--vanilla] --wait
 ///   beacon-app.exe [--fullscreen]                    Beacon's window
 ///
-/// Where they're looked for: an absolute folder on PATH, then %LOCALAPPDATA%\Programs\Beacon (and its bin folder),
+/// Where they're looked for: an absolute folder on PATH, then %LOCALAPPDATA%\Beacon (Beacon's installer),
+/// %LOCALAPPDATA%\Programs\Beacon (and its bin folder),
 /// then %ProgramFiles%\Beacon. Windows file names ignore case, so the window can't also be called beacon.exe next to
 /// the tool: the Windows Beacon is expected to ship the window as beacon-app.exe (or the tool in bin\). Nothing is
 /// listed when beacon.exe isn't found.
@@ -45,6 +46,8 @@ public static class Beacon
         foreach (var d in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             if (Path.IsPathFullyQualified(d)) yield return d;
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        // Beacon's own Windows installer (NSIS, per user) puts it in %LOCALAPPDATA%\Beacon; its MSI in Program Files.
+        yield return Path.Combine(local, "Beacon");
         yield return Path.Combine(local, "Programs", "Beacon");
         yield return Path.Combine(local, "Programs", "Beacon", "bin");
         yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Beacon");

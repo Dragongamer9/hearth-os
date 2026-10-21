@@ -93,6 +93,8 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Fix: the selection jumping back and forth when moving with the controller (a touchscreen, Handheld Daemon's virtual mouse or a still pointer took it back)
 - [x] Fix: Epic game art with spaces in its address didn't download
+- [x] Ember finds Beacon where Beacon's Windows installer puts it
+- [x] Desktop Mode's controller helper keeps a note of what it sees (in bug reports)
 
 ## 0.2.0 (released)
 
