@@ -60,7 +60,45 @@ password_store() {
 }
 password_store
 
+# What Game Mode runs (Settings › Sign-in › Game Mode, in Hearth or in Desktop Mode's Settings): "hearth", or
+# "steam" for Steam's own Game Mode. Read each time Game Mode starts, so a change applies at the next start.
+game_shell() {
+  v="$(sed -n 's/^[[:space:]]*NIMBUS_GAME_SHELL=["'"'"']*\([a-z]*\).*/\1/p' "$CONF/session.conf" 2>/dev/null | tail -1)"
+  [ "$v" = steam ] && echo steam || echo hearth
+}
+# Steam, and how its Game Mode is told apart: "native <cmd>" (a Steam package: SteamOS's -steamos3, whose "Switch
+# to Desktop" runs Hearth's steamos-session-select) or "flatpak <cmd>" (Flathub's: that can't reach programs
+# outside its sandbox, so no -steamos3, and Big Picture's "Exit Steam" goes to Desktop Mode).
+steam_cmd() {
+  for id in com.valvesoftware.Steam org.anatase.Steam; do
+    if flatpak info "$id" >/dev/null 2>&1; then echo "flatpak flatpak run $id"; return; fi
+  done
+  if [ -x /usr/bin/steam ] && ! grep -q 'flatpak run' /usr/bin/steam 2>/dev/null; then echo "native /usr/bin/steam"; fi
+}
+
+# Steam's own Game Mode, the way SteamOS runs it: Big Picture fullscreen in gamescope's Steam mode (-e). Its
+# "Switch to Desktop" (steamos-session-select, Hearth's) or exiting Steam goes to Desktop Mode; turning off or
+# restarting from Steam's power menu does that.
+run_steam_game() {
+  sc="$(steam_cmd)"
+  if [ -z "$sc" ]; then log "steam game mode: Steam isn't installed; Hearth's Game Mode instead"; return 1; fi
+  kind="${sc%% *}"; sc="${sc#* }"
+  if [ "$kind" = native ]; then flags="-gamepadui -steamos3 -steampal -steamdeck"; else flags="-gamepadui"; fi
+  log "game mode: Steam's own (Big Picture, $kind Steam)"
+  export STEAM_GAMESCOPE_HAS_TEARING_SUPPORT=1 STEAM_MULTIPLE_XWAYLANDS=1 STEAM_USE_MANGOAPP=1 SRT_URLOPEN_PREFER_STEAM=1
+  # shellcheck disable=SC2086
+  gamescope -e -f $NIMBUS_GAMESCOPE_ARGS -- $sc $flags
+  rc=$?
+  # Steam closed without asking for a mode: Desktop Mode (that's what "Exit" and "Switch to Desktop" mean here).
+  [ -s "$NEXT" ] || echo desktop >"$NEXT"
+  return "$rc"
+}
+
 run_game() {
+  if [ -z "$HEARTH_SEAT" ] && [ "$(game_shell)" = steam ]; then
+    run_steam_game && return 0
+    [ -s "$NEXT" ] && return 0
+  fi
   log "game mode"
   # shellcheck disable=SC2086
   # Performance overlay (Quick Access › Performance): mangoapp draws it and reloads this file when Hearth writes it.
