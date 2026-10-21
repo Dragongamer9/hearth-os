@@ -40,8 +40,20 @@ pub fn tag_for(e: &Edition, testing: bool) -> &'static str { if testing { "testi
 pub fn image_of(e: &Edition, testing: bool) -> String { format!("ghcr.io/{}:{}", e.repo, tag_for(e, testing)) }
 
 /// The Bazzite-based Hearth OS (the one the move is for): Bazzite's image info, not a newer edition's own.
+/// This system's edition (its image info's "base"), when it's one of the new editions.
+pub fn current_at(root: &Path) -> Option<&'static str> {
+    let v: Value = std::fs::read(root.join(OWN_INFO.trim_start_matches('/'))).ok().and_then(|b| serde_json::from_slice(&b).ok())?;
+    let base = v["base"].as_str()?;
+    EDITIONS.iter().find(|e| e.id == base).map(|e| e.id)
+}
+pub fn current() -> Option<&'static str> { current_at(Path::new("/")) }
+
+/// Whether a move is offered: from the Bazzite-based Hearth to any edition, or from one edition to another
+/// ("Switch edition": the same clean install that keeps your games).
 pub fn eligible_at(root: &Path) -> bool {
-    root.join("run/ostree-booted").exists() && root.join(BAZZITE_INFO.trim_start_matches('/')).exists() && !root.join(OWN_INFO.trim_start_matches('/')).exists()
+    if !root.join("run/ostree-booted").exists() { return false; }
+    let own = root.join(OWN_INFO.trim_start_matches('/')).exists();
+    (root.join(BAZZITE_INFO.trim_start_matches('/')).exists() && !own) || current_at(root).is_some()
 }
 pub fn eligible() -> bool { eligible_at(Path::new("/")) }
 
@@ -104,13 +116,19 @@ pub fn secure_boot() -> Option<bool> {
 /// One choice for the picker: whether it can be picked now, and if not, why ("Not ready yet": its image isn't
 /// published; CachyOS on a processor without x86-64-v3); a warning to show before moving (Secure Boot is on and
 /// the edition's kernel isn't signed for Fedora's boot loader, which the move keeps).
-pub fn choice(e: &Edition, published: Option<bool>, v3: bool, secure_boot: Option<bool>) -> Value {
+pub fn choice(e: &Edition, published: Option<bool>, v3: bool, secure_boot: Option<bool>) -> Value { choice_from(e, published, v3, secure_boot, None) }
+
+/// `from`: the edition this system is (switching editions), or None (the Bazzite-based Hearth, Fedora's boot loader).
+pub fn choice_from(e: &Edition, published: Option<bool>, v3: bool, secure_boot: Option<bool>, from: Option<&str>) -> Value {
     let cpu_ok = e.id != "cachyos" || v3;
     let reason = if !cpu_ok { Some("Needs a newer processor") }
         else { match published { Some(true) => None, Some(false) => Some("Not ready yet"), None => Some("Couldn't check (no connection?)") } };
     // Moving keeps this system's (Fedora's) boot loader, which with Secure Boot on only starts Fedora-signed
     // kernels: Ubuntu's and Debian's are signed by their own keys, and CachyOS's aren't signed at all.
-    let warning = if e.id != "anatase" && secure_boot == Some(true) {
+    // Switching from an edition that isn't Fedora-based keeps that edition's boot loader, which with Secure Boot on
+    // doesn't start another family's kernels either.
+    let other_loader = from.map(|f| f != "anatase").unwrap_or(false);
+    let warning = if (e.id != "anatase" || other_loader) && secure_boot == Some(true) {
         Some(if e.id == "cachyos" {
             "Secure Boot is on, and Hearth OS on CachyOS can't start with it on. Turn Secure Boot off in your PC's firmware settings (UEFI) before you restart, or choose another one."
         } else {
@@ -126,6 +144,9 @@ pub fn choice(e: &Edition, published: Option<bool>, v3: bool, secure_boot: Optio
 fn progress_status() -> Value {
     let mut s = state().lock().unwrap().clone();
     s["eligible"] = json!(eligible());
+    // Switching editions (this is already one of them): which one it is, so it isn't offered.
+    s["current"] = json!(current());
+    s["switch"] = json!(current().is_some());
     s["image"] = json!(IMAGE);
     s["canAdmin"] = json!(crate::admin::can_admin());
     s
@@ -141,7 +162,8 @@ pub fn status() -> Value {
     });
     let (v3, sb) = (cpu_v3(), secure_boot());
     s["published"] = json!(pubs[0]);
-    s["editions"] = Value::Array(EDITIONS.iter().zip(pubs).map(|(e, p)| choice(e, p, v3, sb)).collect());
+    let cur = current();
+    s["editions"] = Value::Array(EDITIONS.iter().zip(pubs).filter(|(e, _)| Some(e.id) != cur).map(|(e, p)| choice_from(e, p, v3, sb, cur)).collect());
     s
 }
 
@@ -169,8 +191,9 @@ pub fn admin_args(e: &Edition, testing: bool) -> Vec<&'static str> {
 /// Starts the move to `edition` (download and stage the new system) in the background; `emit` gets every change
 /// as the event "newOs". The new system starts at the next restart.
 pub fn start(emit: crate::system::bt_scan::Emit, edition_id: &str, testing: bool) -> Result<Value, String> {
-    if !eligible() { return Err("This Hearth OS is already the new one.".into()); }
+    if !eligible() { return Err("Hearth OS can't switch from here.".into()); }
     let e = edition(edition_id).ok_or("Unknown choice")?;
+    if current() == Some(e.id) { return Err(format!("This is already {}.", e.label)); }
     if e.id == "cachyos" && !cpu_v3() { return Err("Hearth OS on CachyOS needs a newer processor.".into()); }
     if published_cached(e.repo, tag_for(e, testing)) == Some(false) { return Err(format!("{} isn't ready yet.", e.label)); }
     {
@@ -404,7 +427,7 @@ Platform is in Setup Mode
         assert_eq!(secure_boot_efivar(&[6, 0]), None);
     }
     #[test]
-    fn only_the_bazzite_based_system_moves() {
+    fn who_can_move() {
         let root = tempfile::tempdir().unwrap();
         assert!(!eligible_at(root.path()));
         std::fs::create_dir_all(root.path().join("run")).unwrap();
@@ -414,6 +437,18 @@ Platform is in Setup Mode
         assert!(eligible_at(root.path()));
         std::fs::create_dir_all(root.path().join("usr/share/nimbus")).unwrap();
         std::fs::write(root.path().join("usr/share/nimbus/image-info.json"), "{\"base\": \"anatase\"}").unwrap();
+        // An edition switches to another edition.
+        assert!(eligible_at(root.path()));
+        assert_eq!(current_at(root.path()), Some("anatase"));
+        std::fs::write(root.path().join("usr/share/nimbus/image-info.json"), "{\"base\": \"other\"}").unwrap();
         assert!(!eligible_at(root.path()));
+        assert_eq!(current_at(root.path()), None);
+    }
+    #[test]
+    fn switching_back_from_ubuntu_warns_about_secure_boot() {
+        let a = edition("anatase").unwrap();
+        assert!(choice_from(a, Some(true), true, Some(true), Some("ubuntu"))["warning"].is_string());
+        assert!(choice_from(a, Some(true), true, Some(true), Some("anatase"))["warning"].is_null());
+        assert!(choice_from(a, Some(true), true, Some(false), Some("ubuntu"))["warning"].is_null());
     }
 }

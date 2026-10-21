@@ -1577,7 +1577,17 @@ def x86_64_v3(cpuinfo):
     return bool(flags) and all(all(f in fl for f in X86_64_V3_FLAGS) for fl in flags)
 
 
-def clean_install_plan(user, flatpaks, image, now=None, edition='anatase'):
+def own_edition(info='/usr/share/nimbus/image-info.json'):
+    """This system's edition ("anatase", "ubuntu", "cachyos", "peppermint"), or None on the Bazzite-based Hearth."""
+    try:
+        with open(info) as f:
+            base = json.load(f).get('base')
+    except (OSError, ValueError, AttributeError):
+        return None
+    return base if base in NEW_OS_EDITIONS else None
+
+
+def clean_install_plan(user, flatpaks, image, now=None, edition='anatase', from_edition=None):
     """What the new Hearth OS does at its first start (/var/lib/hearth/clean-install.json, read by
     hearth-clean-install there): which account, when, and that only games and saves are kept."""
     return {
@@ -1585,6 +1595,9 @@ def clean_install_plan(user, flatpaks, image, now=None, edition='anatase'):
         'user': user.pw_name, 'uid': user.pw_uid, 'home': user.pw_dir,
         'created': int(now if now is not None else time.time()),
         'image': image, 'edition': edition, 'from': os_name(),
+        # Which system it came from: "bazzite", or an edition (switching editions; the account files are then
+        # rebuilt for the new one whenever the two aren't the same family).
+        'fromEdition': from_edition or 'bazzite',
         'keep': CLEAN_INSTALL_KEEPS,
         'removeFlatpaks': flatpaks,
         'oldFilesDays': 30,
@@ -1595,8 +1608,13 @@ def move_to_new_os(edition='anatase', testing=False):
     user = caller()
     if not os.path.exists('/run/ostree-booted'):
         fail('this only works on Hearth OS')
-    if not os.path.exists(BAZZITE_INFO) or os.path.exists('/usr/share/nimbus/image-info.json'):
-        fail('this Hearth OS is already the new one')
+    # From the Bazzite-based Hearth to any edition, or from one edition to another (Settings › Updates › Switch
+    # edition): the same clean install that keeps games and saves.
+    current = own_edition()
+    if current is None and not os.path.exists(BAZZITE_INFO):
+        fail('this only works on Hearth OS')
+    if current == edition:
+        fail('this is already that edition of Hearth OS')
     if user.pw_uid == 0:
         fail('run this from your own account')
     image = new_os_image(edition, testing)
@@ -1611,7 +1629,7 @@ def move_to_new_os(edition='anatase', testing=False):
         if not ok:
             fail('Hearth OS on CachyOS needs a newer processor (x86-64-v3: AVX2, BMI2, FMA, MOVBE)')
     print('log: Moving to ' + image, flush=True)
-    plan = clean_install_plan(user, bazzite_flatpaks(), image, edition=edition)
+    plan = clean_install_plan(user, bazzite_flatpaks() if current is None else [], image, edition=edition, from_edition=current)
     os.makedirs(os.path.dirname(CLEAN_INSTALL), mode=0o755, exist_ok=True)
     tmp = CLEAN_INSTALL + '.tmp'
     with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:

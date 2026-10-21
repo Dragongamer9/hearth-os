@@ -270,6 +270,16 @@ class OtherEditions(unittest.TestCase):
         self.assertEqual(slurp(os.path.join(root, 'etc/ld.so.cache')), 'fedora')
 
 
+class SwitchEditions(unittest.TestCase):
+    def test_which_moves_rebuild_the_accounts(self):
+        self.assertFalse(ci.foreign_accounts('anatase', 'bazzite'), 'Bazzite to Anatase: both Fedora')
+        self.assertFalse(ci.foreign_accounts('anatase', None))
+        self.assertTrue(ci.foreign_accounts('ubuntu', 'bazzite'))
+        self.assertTrue(ci.foreign_accounts('anatase', 'ubuntu'), 'Ubuntu to Anatase: Ubuntu\'s accounts don\'t fit Fedora')
+        self.assertTrue(ci.foreign_accounts('peppermint', 'cachyos'))
+        self.assertTrue(ci.foreign_accounts('cachyos', 'anatase'))
+
+
 class Admin(unittest.TestCase):
     def test_editions(self):
         self.assertEqual(ha.new_os_image('anatase'), 'ghcr.io/dragongamer9/hearth-os:latest')
@@ -308,6 +318,17 @@ class Admin(unittest.TestCase):
         self.assertEqual(p['edition'], 'anatase')
         self.assertEqual(ha.clean_install_plan(user, [], 'x', now=1, edition='ubuntu')['edition'], 'ubuntu')
         self.assertEqual(p['removeFlatpaks'], ['org.mozilla.firefox'])
+        self.assertEqual(p['fromEdition'], 'bazzite')
+        self.assertEqual(ha.clean_install_plan(user, [], 'x', now=1, edition='cachyos', from_edition='anatase')['fromEdition'], 'anatase')
+
+    def test_own_edition(self):
+        d = tempfile.mkdtemp()
+        f = os.path.join(d, 'image-info.json')
+        self.assertIsNone(ha.own_edition(f), 'the Bazzite-based Hearth has none')
+        write(f, '{"base": "ubuntu"}')
+        self.assertEqual(ha.own_edition(f), 'ubuntu')
+        write(f, '{"base": "something"}')
+        self.assertIsNone(ha.own_edition(f))
 
     def test_boot_options_fall_back_to_ostree(self):
         old, want = ['resume=UUID=a', 'resume_offset=1'], ['resume=UUID=b', 'resume_offset=2']

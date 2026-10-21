@@ -251,13 +251,22 @@ def new_base():
     return info.get('base') if isinstance(info, dict) else None
 
 
-def reset_etc(stamp):
+def foreign_accounts(new, old):
+    """Whether the account files are rebuilt for the new system (its own, plus your account): when the new system
+    isn't Fedora-based, or when it came from another edition of a different family (Ubuntu to Anatase, CachyOS to
+    Peppermint...). From the Bazzite-based Hearth to Anatase (both Fedora) they're kept as they are."""
+    if new in OTHER_FAMILY:
+        return True
+    return bool(old) and old not in ('bazzite', new) and old in OTHER_FAMILY
+
+
+def reset_etc(stamp, from_edition=None):
     etc, usr_etc = p('etc'), p('usr', 'etc')
     if not os.path.isdir(usr_etc):
         log('etc: no /usr/etc (not an image-based system?), left alone')
         return
     keep, accounts = KEEP_ETC, None
-    if new_base() in OTHER_FAMILY:
+    if foreign_accounts(new_base(), from_edition):
         accounts = merge_accounts(etc, usr_etc)
         drop = FEDORA_ONLY_KEEP | (ACCOUNT_KEEP if accounts else set())
         keep = [k for k in KEEP_ETC if k not in drop]
@@ -534,7 +543,7 @@ def clean_home(plan, state):
 
 
 # ---------------------------------------------------------------------- the whole thing
-STEPS = [('etc', lambda plan, st: reset_etc(st['stamp'])), ('var', lambda plan, st: clean_var(plan)), ('home', clean_home)]
+STEPS = [('etc', lambda plan, st: reset_etc(st['stamp'], plan.get('fromEdition'))), ('var', lambda plan, st: clean_var(plan)), ('home', clean_home)]
 
 
 def main(argv):
