@@ -98,6 +98,15 @@ pub fn report(version: &str) -> String {
     for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
+    // The installer USB: the install screens' own log and the installer session's log (a report sent from there may
+    // come from another account, so the installer user's files are read directly).
+    if Path::new("/etc/hearth-live").exists() {
+        for (f, name) in [("/var/home/liveuser/.local/share/nimbus/bridge.log", "Installer: Hearth log"), ("/var/home/liveuser/hearth-installer.log", "Installer: session log"),
+                          ("/home/liveuser/.local/share/nimbus/bridge.log", "Installer: Hearth log"), ("/home/liveuser/hearth-installer.log", "Installer: session log")] {
+            if f.starts_with("/home/") && Path::new("/var/home/liveuser").exists() { continue; }
+            if let Ok(t) = std::fs::read_to_string(f) { section(name, tail(&t, 600)); }
+        }
+    }
     // Multi-seat: how it's set up and what the split-screen host did (labwc's version and warnings, its rules).
     if Path::new(crate::multiplay::SEATS).exists() && (data.join("seat-host.log").exists() || Path::new("/etc/hearth/seats.json").exists() || run.join("hearth-seat-host").exists()) {
         let host_log = std::fs::read_to_string(data.join("seat-host.log")).map(|t| tail(&t, 200)).unwrap_or_else(|_| "(none yet)".into());
