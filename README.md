@@ -56,7 +56,7 @@
 | Hearth OS on CachyOS | CachyOS, performance-tuned (needs a 2015-or-newer CPU, Secure Boot off) | Beta Experimental |
 | Hearth OS on Peppermint | Peppermint OS on Debian 13 | Beta Experimental |
 | **Ember** | Windows 11 (replaces Explorer, or runs on top of it) | Beta |
-| Hearth for Android | An app (and, if you like, your home screen) on Android 8.0+ phones, handhelds and TVs | First version, Beta Experimental |
+| Hearth for Android | An app on Android 8.0+ phones, handhelds and TVs | **Archived** (on hold; the code stays in `hosts/android`) |
 
 Hearth OS on Bazzite is archived: 0.1.3 was its last update, and it moves to the new Hearth OS from Settings › Updates.
 
@@ -74,7 +74,7 @@ Hearth OS on Bazzite is archived: 0.1.3 was its last update, and it moves to the
   irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex
   ```
 - **Hearth app on another Linux:** the [AppImage](https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-linux-x86_64.AppImage).
-- **Hearth for Android** *(first version, Beta Experimental)*: no store release yet. The APK is built by the [Android workflow](.github/workflows/android.yml): open its latest run, download **hearth-android-&lt;version&gt;**, and install the APK inside. Your installed games and emulators, RetroArch with your ROMs folder, and the controller work; [docs/ANDROID.md](docs/ANDROID.md) has what works and how to use it as your home screen.
+- **Hearth for Android** *(archived)*: on hold while the focus is Hearth OS and Ember. The code stays in `hosts/android` ([docs/ANDROID.md](docs/ANDROID.md)); its build only runs by hand. The last APK is on the v0.2.2 release.
 
 ## Try the interface in a browser
 
