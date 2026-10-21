@@ -29,14 +29,15 @@ use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use crate::winhost::WindowHost;
 
 pub const MAIN_TITLE: &str = "Hearth";
 pub const OVERLAY_TITLE: &str = "Hearth Overlay";
 const OPAQUE: u64 = 4294967295;
 
 pub struct GameMode {
-    pub app: AppHandle,
+    /// Hearth's windows: Tauri's (WebKit), or the Electron window's (Chromium) through the core channel (winhost.rs).
+    pub host: Arc<dyn WindowHost>,
     pub bridge: Arc<Mutex<Bridge>>,
     pub windowed: bool,
     pub guide: hearth_core::guide::Guide,
@@ -79,8 +80,8 @@ fn ev(name: &str, data: Value) -> Value { json!({"type": "event", "name": name, 
 fn ev_pad(b: &str) -> Value { ev("pad", json!({"b": b})) }
 
 impl GameMode {
-    pub fn new(app: AppHandle, bridge: Arc<Mutex<Bridge>>, guide: hearth_core::guide::Guide, windowed: bool) -> Arc<GameMode> {
-        let gm = Arc::new(GameMode { app, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), ip_lock: Mutex::new(()), overlay_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
+    pub fn new(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, guide: hearth_core::guide::Guide, windowed: bool) -> Arc<GameMode> {
+        let gm = Arc::new(GameMode { host, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), ip_lock: Mutex::new(()), overlay_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
             overlay_on: AtomicBool::new(false), osd_on: AtomicBool::new(false), osd_gen: AtomicU64::new(0), look_closed: AtomicBool::new(true),
             before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), launch_busy: AtomicU64::new(0), last_guide: AtomicU64::new(0), b_gen: AtomicU64::new(0),
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()), game_wins: Default::default(),
@@ -96,7 +97,7 @@ impl GameMode {
     /// Handheld Daemon's overlay app is Quick Access over games (HHD editions), not Hearth's own overlay window.
     pub fn hhd(&self) -> bool { self.hhd_overlay.load(Ordering::SeqCst) }
     /// Something to show Quick Access in: HHD's overlay app, connected; or Hearth's overlay window.
-    fn overlay_ready(&self) -> bool { if self.hhd() { hearth_core::overlay_link::connected() } else { self.overlay().is_some() } }
+    fn overlay_ready(&self) -> bool { if self.hhd() { hearth_core::overlay_link::connected() } else { self.has_overlay() } }
 
     fn cached_xid(&self, title: &'static str) -> Option<u64> { self.xids.lock().ok().and_then(|m| m.get(title).copied()) }
     fn xid(&self, title: &'static str) -> Option<u64> {
@@ -105,10 +106,12 @@ impl GameMode {
         self.xids.lock().unwrap().insert(title, x);
         Some(x)
     }
-    fn main(&self) -> Option<tauri::WebviewWindow> { self.app.get_webview_window("main") }
-    fn overlay(&self) -> Option<tauri::WebviewWindow> { self.app.get_webview_window("overlay") }
-    fn to_main(&self, v: Value) { let _ = self.app.emit_to("main", "nimbus:msg", v); }
-    fn to_overlay(&self, v: Value) { hearth_core::overlay_link::send(&v); let _ = self.app.emit_to("overlay", "nimbus:msg", v); }
+    /// Hearth's own window is there and shown (not hidden for a game).
+    fn main_visible(&self) -> bool { self.host.exists("main") && self.host.is_visible("main") }
+    fn main_focused(&self) -> bool { self.main_visible() && self.host.is_focused("main") }
+    fn has_overlay(&self) -> bool { self.host.exists("overlay") }
+    pub fn to_main(&self, v: Value) { self.host.emit_to("main", v); }
+    fn to_overlay(&self, v: Value) { hearth_core::overlay_link::send(&v); self.host.emit_to("overlay", v); }
 
     // ------------------------------------------------------------------ what's in front
 
@@ -137,7 +140,7 @@ impl GameMode {
     pub fn come_back(self: &Arc<Self>) {
         self.claim();
         if !self.overlay_on.load(Ordering::SeqCst) && !self.look_closed.load(Ordering::SeqCst) { self.overlay_look(false, false); }
-        if let Some(w) = self.main() { let _ = w.unminimize(); let _ = w.show(); let _ = w.set_focus(); }
+        if self.host.exists("main") { self.host.unminimize("main"); self.host.show("main"); self.host.focus("main"); }
         let main = self.xid(MAIN_TITLE);
         self.run_focus("hearth", 0, false, move |_| {
             if let Some(x) = main { gs::tag_window(x, HEARTH_ID); }
@@ -148,7 +151,7 @@ impl GameMode {
             log(&format!("focus: Hearth in front (id {HEARTH_ID})"));
         });
     }
-    pub fn step_aside(&self) { if !self.windowed { if let Some(w) = self.main() { let _ = w.hide(); } } }
+    pub fn step_aside(&self) { if !self.windowed && self.host.exists("main") { self.host.hide("main"); } }
 
     fn running(&self) -> Option<(String, Vec<u32>)> {
         let b = self.bridge.lock().ok()?;
@@ -344,8 +347,8 @@ impl GameMode {
         (app_id != 0 && w.appid == app_id as u64) || self.bridge.lock().map(|b| b.library.game_pids().contains(&(w.pid as u32))).unwrap_or(false)
     }
     /// Xbox Cloud Gaming's window (one of Hearth's own) carries the cloud game's number, which goes in front.
-    fn focus_stream(self: &Arc<Self>, s: &tauri::WebviewWindow, delay_ms: u64, soft: bool) {
-        let Some(x) = gs::window_named(&s.title().unwrap_or_default()) else { return };
+    fn focus_stream(self: &Arc<Self>, delay_ms: u64, soft: bool) {
+        let Some(x) = gs::window_named(&self.host.title("stream").unwrap_or_default()) else { return };
         let app_id = self.running_app().map(|(_, n)| n).unwrap_or(0);
         if app_id == 0 { self.focus_xid("stream", x, delay_ms, soft); return; }
         if let Ok(mut m) = self.win_tags.lock() { m.insert(x, app_id); }
@@ -370,7 +373,7 @@ impl GameMode {
         self.launch_gen.fetch_add(1, Ordering::SeqCst);
         self.claim();
         self.step_aside();
-        if let Some(s) = self.app.get_webview_window("stream") { let _ = s.show(); let _ = s.set_focus(); self.focus_stream(&s, 0, false); return; }
+        if self.host.exists("stream") { self.host.show("stream"); self.host.focus("stream"); self.focus_stream(0, false); return; }
         self.focus_running_game(0, false);
         self.nudge_game();
     }
@@ -380,10 +383,10 @@ impl GameMode {
         let id = e["data"]["id"].as_str().unwrap_or("").to_string();
         match e["name"].as_str().unwrap_or("") {
             "game.started" => {
-                if let Some(s) = self.app.get_webview_window("stream") {
+                if self.host.exists("stream") {
                     self.step_aside();
                     self.to_main(ev("game.ready", json!({"id": id})));
-                    self.focus_stream(&s, 900, true);
+                    self.focus_stream(900, true);
                     return;
                 }
                 if !self.inside() { self.step_aside(); self.to_main(ev("game.ready", json!({"id": id}))); return; }
@@ -400,12 +403,11 @@ impl GameMode {
 
     /// Is Hearth's own window the one on screen?
     fn hearth_on_screen(&self) -> bool {
-        let Some(w) = self.main() else { return false };
-        if !w.is_visible().unwrap_or(false) { return false; }
-        if !self.inside() { return w.is_focused().unwrap_or(false); }
-        match (gs::focused(), self.xid(MAIN_TITLE)) { (Some(f), Some(m)) => f == m, _ => w.is_focused().unwrap_or(false) }
+        if !self.main_visible() { return false; }
+        if !self.inside() { return self.host.is_focused("main"); }
+        match (gs::focused(), self.xid(MAIN_TITLE)) { (Some(f), Some(m)) => f == m, _ => self.host.is_focused("main") }
     }
-    pub fn hearth_in_front(&self) -> bool { self.main().map(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false)).unwrap_or(false) && !self.overlay_on.load(Ordering::SeqCst) }
+    pub fn hearth_in_front(&self) -> bool { self.main_focused() && !self.overlay_on.load(Ordering::SeqCst) }
 
     /// Another Hearth window (a sign-in page) in front in gamescope.
     pub fn to_front(self: &Arc<Self>, title: &str) {
@@ -432,8 +434,8 @@ impl GameMode {
     }
     /// On screen, see-through, marked as gamescope's overlay, not taking input: ready to open at once.
     pub fn arm_overlay(&self) {
-        let Some(o) = self.overlay() else { return };
-        let _ = o.show();
+        if !self.has_overlay() { return; }
+        self.host.show("overlay");
         // The window manager needs a moment to give it an X window.
         for _ in 0..20 { if self.xid(OVERLAY_TITLE).is_some() { break; } std::thread::sleep(Duration::from_millis(150)); }
         self.overlay_look(false, false);
@@ -459,7 +461,7 @@ impl GameMode {
                 log("overlay: page stopped answering, closing and reloading it");
                 me.hide_overlay();
                 if me.hhd() { hearth_core::overlay_link::send(&json!({"type": "overlay-host", "what": "reload"})); }
-                else if let Some(o) = me.overlay() { let _ = o.eval("location.reload()"); }
+                else if me.has_overlay() { me.host.eval("overlay", "location.reload()"); }
                 return;
             }
         });
@@ -472,7 +474,7 @@ impl GameMode {
         }
         // Not focused: taking the keyboard focus from the game makes some games minimize or stall (a black or
         // frozen screen after). Its buttons come from the controller readers; gamescope sends touch to it.
-        if let Some(o) = self.overlay() { let _ = o.show(); }
+        if self.has_overlay() { self.host.show("overlay"); }
         if let Some(x) = self.xid(OVERLAY_TITLE) { let _ = gs::set_window(x, "STEAM_OVERLAY", 1); let _ = gs::set_window(x, "STEAM_INPUT_FOCUS", 1); }
         // Visible once the page says Quick Access is drawn, or after 300 ms at the latest.
         let r = self.reveal_gen.fetch_add(1, Ordering::SeqCst) + 1;
@@ -614,7 +616,7 @@ impl GameMode {
         if self.overlay_on.load(Ordering::SeqCst) && self.look_closed.load(Ordering::SeqCst) { self.overlay_look(true, true); }
     }
     pub fn hide_overlay(self: &Arc<Self>) {
-        if !self.hhd() && self.overlay().is_none() { return; }
+        if !self.hhd() && !self.has_overlay() { return; }
         let _o = self.overlay_lock.lock().unwrap();
         if !self.overlay_on.load(Ordering::SeqCst) && !self.osd_on.load(Ordering::SeqCst) && self.look_closed.load(Ordering::SeqCst) {
             // Already closed here: HHD's overlay app may think otherwise (it asked to close, or it just started).
@@ -634,7 +636,7 @@ impl GameMode {
         let me = self.clone();
         std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(500)); if !me.overlay_on.load(Ordering::SeqCst) && !me.osd_on.load(Ordering::SeqCst) { me.overlay_look(false, false); } });
         // The controller back to what was on screen. Soft: anything chosen meanwhile wins.
-        if self.inside() && !self.main().map(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false)).unwrap_or(false) {
+        if self.inside() && !self.main_focused() {
             let before = self.before_overlay.load(Ordering::SeqCst);
             let launching = self.launch_waiting();
             // A game that's starting (or just started) may have swapped its splash for its real window while the
@@ -827,12 +829,12 @@ impl GameMode {
                         hearth_core::overlay_link::send(&json!({"type": "overlay-host", "what": "opacity", "value": opacity}));
                         if a["before"] == true { std::thread::sleep(Duration::from_millis(450)); }
                     }
-                    if a["before"] == true && self.main().map(|w| w.is_visible().unwrap_or(false)).unwrap_or(false) { self.step_aside(); std::thread::sleep(Duration::from_millis(450)); }
+                    if a["before"] == true && self.main_visible() { self.step_aside(); std::thread::sleep(Duration::from_millis(450)); }
                     return;
                 }
                 if a["before"] == true {
                     if self.overlay_on.load(Ordering::SeqCst) { self.overlay_look(false, false); std::thread::sleep(Duration::from_millis(450)); }
-                    if self.main().map(|w| w.is_visible().unwrap_or(false)).unwrap_or(false) { self.step_aside(); std::thread::sleep(Duration::from_millis(450)); }
+                    if self.main_visible() { self.step_aside(); std::thread::sleep(Duration::from_millis(450)); }
                 } else if self.overlay_on.load(Ordering::SeqCst) { self.overlay_look(true, true); }
             }
             // Steam's chat (or another Steam window) was asked for: Hearth steps aside once it's up.

@@ -10,3 +10,5 @@ __pycache__/
 
 # Hearth OS files that go to /usr/bin
 !os/system_files/usr/bin/
+hosts/electron/node_modules/
+hosts/electron/dist/

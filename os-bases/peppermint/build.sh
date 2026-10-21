@@ -207,6 +207,11 @@ if [ -x /ctx/nimbus-app/hearth ]; then
     mkdir -p /usr/lib/hearth-browser && cp -a /ctx/nimbus-app/browser/. /usr/lib/hearth-browser/
     if [ -f /usr/lib/hearth-browser/chrome-sandbox ]; then chown root:root /usr/lib/hearth-browser/chrome-sandbox && chmod 4755 /usr/lib/hearth-browser/chrome-sandbox; fi
   fi
+  # Hearth drawn by Chromium (hosts/electron): the `nimbus` program starts it on Nvidia graphics (docs/RENDERERS.md).
+  if [ -x /ctx/nimbus-app/electron/hearth-electron ]; then
+    mkdir -p /usr/lib/hearth-electron && cp -a /ctx/nimbus-app/electron/. /usr/lib/hearth-electron/
+    if [ -f /usr/lib/hearth-electron/chrome-sandbox ]; then chown root:root /usr/lib/hearth-electron/chrome-sandbox && chmod 4755 /usr/lib/hearth-electron/chrome-sandbox; fi
+  fi
   # Hearth Browser on Chromium (CEF): /usr/bin/hearth-browser uses it when it's there.
   if [ -x /ctx/nimbus-app/browser-cef/hearth-browser ]; then
     mkdir -p /usr/lib/hearth-browser-cef && cp -a /ctx/nimbus-app/browser-cef/. /usr/lib/hearth-browser-cef/

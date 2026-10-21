@@ -38,6 +38,7 @@ pub mod procs;
 pub mod profile;
 pub mod profiles;
 pub mod remote;
+pub mod renderer;
 pub mod signin_handoff;
 pub mod space;
 pub mod steam;

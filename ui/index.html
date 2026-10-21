@@ -2899,6 +2899,7 @@ function pageBluetooth(){
   return h;
 }
 const NVD = {s:null};
+const RND = {s:null};
 function pageDisplay(){
   const d=S.sys.display;
   const pick=(k,label,val,act,sub)=>`<button class="row" data-f data-k="s-${k}" data-act="${act}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="rv">${esc(val)} ›</div></button>`;
@@ -2917,6 +2918,12 @@ function pageDisplay(){
     const nd=NVD.s, label={auto:'Automatic',fast:'Fast',compatible:'Compatible'}[nd&&nd.pick||'auto'];
     h += shead('Nvidia') + `<button class="row" data-f data-k="s-nvd" data-act="nvDrawing"><div class="rt"><b>How ${APP} draws</b><small>Fast is smooth (newer drivers). Compatible works everywhere but is slower: use it if ${APP} ever shows a black screen. ${nd?(nd.fast?'Drawing fast now.':'Drawing in compatible mode now.'):''}</small></div><div class="rv">${label} ›</div></button>`;
     if(!NVD.s && host) call('display.nvidiaDrawing').then(r=>{ NVD.s=r; if(S.view==='settings') render(null,true); }).catch(()=>{});
+  }
+  // Which engine draws Hearth (Chromium through Hearth's Electron window app, or WebKit): docs/RENDERERS.md.
+  if((HOSTINFO.features||[]).includes('renderer')){
+    const r=RND.s, names={auto:'Automatic',webkit:'WebKit',chromium:'Chromium'}, running=r?r.running:(HOSTINFO.renderer||'webkit');
+    h += shead('Drawing engine') + `<button class="row" data-f data-k="s-rnd" data-act="rndPick"><div class="rt"><b>Drawing engine</b><small>Automatic uses Chromium on Nvidia graphics (smoother there) and WebKit everywhere else. Drawing with ${running==='chromium'?'Chromium':'WebKit'} now.</small></div><div class="rv">${names[r&&r.pick||'auto']} ›</div></button>`;
+    if(!RND.s && host) call('display.renderer').then(x=>{ RND.s=x; if(S.view==='settings') render(null,true); }).catch(()=>{});
   }
   return h;
 }
@@ -5290,6 +5297,7 @@ function act(el){
     case 'gsProton': return openSheet({title:'Proton version', sub:'For '+(G(GSET.id)?.title||'this game'), items:GSET.s.protonChoices.map(c=>({label:c.label+(c.sub?' — '+c.sub:''), icon:GSET.s.options.proton===c.id?'check':'', run:()=>saveGameSet({proton:c.id},'gs-proton')}))});
     case 'gsText': { const key=d.key; const title=key==='args'?'Launch options':'Environment variables';
       return openPrompt({title, value:GSET.s.options[key]||''}).then(v=>{ if(v!=null) saveGameSet({[key]:v.trim()}, 'gs-'+key); }); }
+    case 'rndPick': return openSheet({title:'Drawing engine', sub:`${APP} restarts to change it.`, items:[['auto','Automatic','Chromium on Nvidia, WebKit elsewhere'],['chromium','Chromium','Smoother on Nvidia graphics'],['webkit','WebKit','Lighter; the usual one on AMD and Intel']].map(([v,l,sb])=>({label:`${l} · ${sb}`, icon:'display', run:()=>call('display.renderer',{set:v}).then(r=>{ RND.s=r; toast(`Restarting ${APP}…`); setTimeout(()=>call('app.restart').catch(()=>{}),600); }).catch(e=>toast(e.message))}))});
     case 'nvDrawing': return openSheet({title:`How ${APP} draws on Nvidia`, sub:`${APP} restarts to change it.`, items:[['auto','Automatic','Fast on newer drivers'],['fast','Fast','Smooth menus and library'],['compatible','Compatible','Slower; for a black screen']].map(([v,l,s])=>({label:`${l} · ${s}`, icon:'display', run:()=>call('display.nvidiaDrawing',{set:v}).then(r=>{ NVD.s=r; toast(`Restarting ${APP}…`); setTimeout(()=>call('app.restart').catch(()=>{}),600); }).catch(e=>toast(e.message))}))});
     case 'gsDelete': return uninstallGame(G(GSET.id||S.game));
     case 'gsReset': return openSheet({title:'Reset Proton files?', sub:'Deletes this game\'s Wine prefix. Proton sets it up again the next time you play. Cloud saves are fine; saves stored only in the prefix are lost.', items:[{label:'Reset', icon:'refresh', run:()=>call('game.resetPrefix',{id:GSET.id}).then(()=>toast('Done. The next start sets it up fresh.')).catch(e=>toast(e.message))}]});

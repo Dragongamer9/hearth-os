@@ -235,7 +235,9 @@ impl Bridge {
             "host.info" => Ok(json!({
                 "platform": "linux", "name": os_name(), "host": "Hearth (Rust)", "version": self.version, "autoReport": self.auto_report(),
                 // Drawn the compatible way (no DMA-BUF): the page turns its heavy effects down (body.lite).
-                "compatDrawing": std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some(),
+                "compatDrawing": std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some() && std::env::var("HEARTH_RENDERER_RUNNING").as_deref() != Ok("chromium"),
+                // The engine drawing these screens: "webkit" (Tauri) or "chromium" (the Electron window app).
+                "renderer": if std::env::var("HEARTH_RENDERER_RUNNING").as_deref() == Ok("chromium") { "chromium" } else { "webkit" },
                 // Multi-seat window: Hearth passes this player's controller on itself (the page doesn't read it).
                 "seatPads": crate::multiplay::seat_hosted(),
                 // Part of Hearth, the OS: the app updates with the system (Settings › Updates shows Update now).
@@ -708,6 +710,11 @@ impl Bridge {
             "xodus.setFolder" => { crate::xodus::set_folder(a["folder"].as_str().unwrap_or(""))?; Ok(self.xodus.status(false)) }
             "xodus.signInDesktop" => { crate::xodus::open_in_desktop()?; Ok(json!({})) }
             "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
+            // Which engine draws Hearth: Chromium (the Electron window app; automatic on Nvidia) or WebKit (renderer.rs).
+            "display.renderer" => {
+                if let Some(v) = a["set"].as_str() { crate::renderer::set(v)?; }
+                Ok(crate::renderer::status())
+            }
             // Nvidia: how Hearth draws (fast, the default on newer drivers, or compatible if fast draws a black window).
             "display.nvidiaDrawing" => {
                 let f = crate::paths::config_dir().join("nvidia-drawing");
@@ -1304,6 +1311,7 @@ fn features() -> Vec<&'static str> {
     if crate::multiplay::seats_available() { f.push("seats"); }
     if std::env::var_os("HEARTH_SEAT").is_some() { f.push("extraSeat"); }
     if std::path::Path::new("/sys/module/nvidia").exists() { f.push("nvidiaDrawing"); }
+    if std::path::Path::new(crate::renderer::ELECTRON_APP).is_file() { f.push("renderer"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a

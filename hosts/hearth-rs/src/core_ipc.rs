@@ -1,0 +1,43 @@
+//! `hearth --core-stdio`: Hearth without a window of its own, for Hearth's Electron window app (hosts/electron), which
+//! draws the screens with Chromium. Everything else is the usual Hearth (main.rs `start_core`, Game Mode); the window
+//! app and this process talk over standard input and output (the channel is described in winhost.rs).
+
+use crate::winhost::{parse, IpcHost, WindowHost};
+use hearth_core::bridge::Bridge;
+use serde_json::json;
+use std::io::BufRead;
+use std::sync::{Arc, Mutex};
+
+/// Runs until the window app goes away (standard input closes). Returns the exit code.
+pub fn run(windowed: bool) -> i32 {
+    // host.info says which engine draws Hearth (Settings › Display › Drawing engine shows it).
+    std::env::set_var("HEARTH_RENDERER_RUNNING", "chromium");
+    let host = Arc::new(IpcHost::new(Box::new(std::io::stdout())));
+    let dynh: Arc<dyn WindowHost> = host.clone();
+    let bridge = Arc::new(Mutex::new(Bridge::new(env!("CARGO_PKG_VERSION"))));
+    crate::start_core(dynh.clone(), bridge.clone(), windowed);
+    hearth_core::bridge::log("renderer: Chromium (Hearth's Electron window app draws, this core does the rest)");
+    let mut ok_noted = false;
+    for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+        let Some(v) = parse(&line) else { continue };
+        match v["t"].as_str().unwrap_or("") {
+            "page" => {
+                let label = v["win"].as_str().unwrap_or("main").to_string();
+                let msg = v["msg"].clone();
+                // The main page came up: Chromium works on this PC (two failed starts in a row go back to WebKit).
+                if !ok_noted && label == "main" && msg["type"] == "ready" { ok_noted = true; hearth_core::renderer::note_chromium_ok(); }
+                let (h, b) = (dynh.clone(), bridge.clone());
+                std::thread::spawn(move || crate::page_msg(&h, b, label, msg));
+            }
+            "art" => {
+                let r = crate::art_path(v["uri"].as_str().unwrap_or(""));
+                host.send(json!({"t": "art", "id": v["id"], "path": r.as_ref().map(|x| x.0.clone()), "mime": r.map(|x| x.1)}));
+            }
+            "stream.closed" => hearth_core::stores::notify(json!({"type": "internal", "what": "streamClosed"})),
+            _ => { host.incoming(&v); }
+        }
+    }
+    // The window app is gone (it closed, or crashed): leave too, putting the controller service back to normal.
+    if let Some(gm) = crate::GM.get() { gm.stop_inputplumber(); }
+    0
+}
