@@ -93,6 +93,12 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - Hearth for Android (and Hearth Linux on Android): archived 2026-10-21; focus is Hearth OS and Ember. Code in `hosts/android`, build by hand only.
 
+## 0.2.4 (released)
+
+- [x] Multi-seat: every player's controller works in Hearth whichever window is active (Hearth reads it itself)
+- [x] Multi-seat split screen: no title bars, each player's window placed in its part even where labwc's sandbox rules don't match
+- [x] Bug reports: crash dumps shortened so Hearth's log always fits; a Multi-seat section (set-up, host log, window rules)
+
 ## 0.2.3 (released)
 
 - [x] BFME games installed by the All-in-One launcher start (they run in the launcher's Wine setup, with its registry and CD key; they sat on the splash screen before) (Beacon 0.0.8)
