@@ -128,42 +128,55 @@ class TargetSystems(unittest.TestCase):
         self.assertTrue(h.startswith('$6$') and 'hearth' not in h)
 
 
-class AccountTool(unittest.TestCase):
-    def test_falls_back_to_the_new_systems_own_tool(self):
-        calls = []
+class Account(unittest.TestCase):
+    """The account is written into the new system's files directly (useradd --root failed from the small
+    installer, chroot found no useradd, chpasswd hit the new system's PAM)."""
 
-        class R:
-            def __init__(self, code, err=''):
-                self.returncode, self.stdout, self.stderr = code, '', err
-        orig = H.sh
+    def make(self, d, debian=False):
+        os.makedirs(f'{d}/etc/skel')
+        open(f'{d}/etc/skel/.bashrc', 'w').write('# hi\n')
+        os.makedirs(f'{d}/usr/bin'); open(f'{d}/usr/bin/bash', 'w').close()
+        open(f'{d}/etc/passwd', 'w').write('root:x:0:0:root:/root:/bin/bash\nnobody:x:65534:65534::/:/sbin/nologin\nold:x:1000:1000::/var/home/old:/bin/bash\n')
+        open(f'{d}/etc/group', 'w').write('root:x:0:\n' + ('sudo:x:27:\n' if debian else 'wheel:x:10:old\n') + 'old:x:1000:\nweird:x:1001:\n')
+        open(f'{d}/etc/shadow', 'w').write('root:*:1:0:99999:7:::\n')
+        open(f'{d}/etc/gshadow', 'w').write('root:::\n' + ('sudo:!::\n' if debian else 'wheel:!::old\n'))
+        open(f'{d}/etc/subuid', 'w').write('old:524288:65536\n')
+        os.makedirs(f'{d}/var/home')
 
-        def fake(cmd, check=True, input=None, **kw):
-            calls.append(cmd)
-            if cmd[:2] == ['useradd', '-R']:
-                return R(10, 'useradd: failure while writing changes to /etc/passwd')
-            return R(0)
-        H.sh = fake
+    def test_fedora_like(self):
+        if os.geteuid() != 0:
+            orig = H.os.lchown
+            H.os.lchown = lambda *a: None
         try:
             with tempfile.TemporaryDirectory() as d:
-                H.account_tool(d, ['useradd', '-m', 'tester'])
+                self.make(d)
+                uid = H.add_account(d, 'tester', 'Tester: T', '$6$abc$def')
+                self.assertEqual(uid, 1002, 'the first id free as a user and as a group')
+                self.assertIn('tester:x:1002:1002:Tester  T:/var/home/tester:/bin/bash', open(f'{d}/etc/passwd').read())
+                g = open(f'{d}/etc/group').read()
+                self.assertIn('wheel:x:10:old,tester', g)
+                self.assertIn('tester:x:1002:', g)
+                self.assertRegex(open(f'{d}/etc/shadow').read(), r'tester:\$6\$abc\$def:\d+:0:99999:7:::')
+                self.assertIn('wheel:!::old,tester', open(f'{d}/etc/gshadow').read())
+                self.assertIn('tester:589824:65536', open(f'{d}/etc/subuid').read())
+                self.assertTrue(os.path.exists(f'{d}/var/home/tester/.bashrc'))
+                with self.assertRaises(H.Fail):
+                    H.add_account(d, 'tester', 'Again', '')
         finally:
-            H.sh = orig
-        self.assertEqual(calls[0][:3], ['useradd', '-R', d])
-        self.assertIn(['chroot', d, 'useradd', '-m', 'tester'], calls)
-        self.assertTrue(any(c[:2] == ['umount', '-l'] for c in calls), 'the binds come off again')
+            if os.geteuid() != 0:
+                H.os.lchown = orig
 
-    def test_root_option_first(self):
-        calls = []
-
-        class R:
-            returncode, stdout, stderr = 0, '', ''
-        orig = H.sh
-        H.sh = lambda cmd, check=True, input=None, **kw: (calls.append(cmd), R())[1]
+    def test_debian_like_uses_sudo(self):
+        orig = H.os.lchown
+        H.os.lchown = lambda *a: None
         try:
-            H.account_tool('/x', ['usermod', '-p', 'h', 'tester'])
+            with tempfile.TemporaryDirectory() as d:
+                self.make(d, debian=True)
+                H.add_account(d, 'sam', 'Sam', '')
+                self.assertIn('sudo:x:27:sam', open(f'{d}/etc/group').read())
+                self.assertIn('sam::', open(f'{d}/etc/shadow').read(), 'no password: empty field')
         finally:
-            H.sh = orig
-        self.assertEqual(calls, [['usermod', '-R', '/x', '-p', 'h', 'tester']])
+            H.os.lchown = orig
 
 
 class Plan(unittest.TestCase):
