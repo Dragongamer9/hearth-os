@@ -98,6 +98,13 @@ pub fn report(version: &str) -> String {
     for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
+    // Multi-seat: how it's set up and what the split-screen host did (labwc's version and warnings, its rules).
+    if Path::new(crate::multiplay::SEATS).exists() && (data.join("seat-host.log").exists() || Path::new("/etc/hearth/seats.json").exists() || run.join("hearth-seat-host").exists()) {
+        let host_log = std::fs::read_to_string(data.join("seat-host.log")).map(|t| tail(&t, 200)).unwrap_or_else(|_| "(none yet)".into());
+        let rules = std::fs::read_to_string(run.join("hearth-seat-host/rc.xml")).unwrap_or_else(|_| "(not running)".into());
+        section("Multi-seat", format!("{}\n\nSplit-screen host log:\n{}\n\nHost window rules:\n{}",
+            cap(&sh(&format!("{} status", crate::multiplay::SEATS)), 8000), host_log, cap(&rules, 6000)));
+    }
     section("Memory", sh("free -m; echo; ps -eo rss=,comm= --sort=-rss | head -25 | awk '{printf \"%7.0f MB  %s\\n\", $1/1024, $2}'"));
     section("Games and processes", sh("ps -eo pid,ppid,stat,etime,comm --sort=start_time | tail -60"));
     section("Power (hearth-power)", sh("python3 /usr/share/nimbus/desktop/shell/hearth-power status"));

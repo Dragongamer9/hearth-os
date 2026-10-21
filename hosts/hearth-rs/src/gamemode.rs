@@ -626,7 +626,8 @@ impl GameMode {
         self.reveal_gen.fetch_add(1, Ordering::SeqCst);
         self.repeat_gen.fetch_add(1, Ordering::SeqCst);
         self.b_gen.fetch_add(1, Ordering::SeqCst);
-        self.guide.buttons.store(false, Ordering::SeqCst);
+        // Multi-seat: the controller keeps coming through Hearth (seat_pad).
+        self.guide.buttons.store(hearth_core::multiplay::seat_hosted(), Ordering::SeqCst);
         self.hold_game(false);
         self.to_overlay(ev("overlay.hidden", json!({})));
         self.overlay_look(false, false);
@@ -644,6 +645,32 @@ impl GameMode {
                 if self.running_games_window(before) { self.focus_running_game(200, true); self.nudge_game(); } else { self.focus_xid("back from the overlay", before, 200, true); }
             }
             else if self.running().is_some() { self.focus_running_game(200, true); self.nudge_game(); }
+        }
+    }
+
+    /// Multi-seat: this player's controller for Hearth's page, read here (the host gives input to one window at a
+    /// time, and the web view only reads the controller in that one). Only while Hearth is what this player sees
+    /// (not a game, not the overlay); with repeat on held directions. Guide goes through guide_pressed as always.
+    pub fn seat_pad(self: &Arc<Self>, b: &str, down: bool) {
+        if !hearth_core::multiplay::seat_hosted() || self.overlay_on.load(Ordering::SeqCst) || b == "guide" { return; }
+        let rg = self.repeat_gen.fetch_add(1, Ordering::SeqCst) + 1;
+        if !down { return; }
+        if !self.hearth_on_screen() { return; }
+        {
+            let mut last = self.last_pad.lock().unwrap();
+            if last.0 == b && now().saturating_sub(last.1) < 40 { return; }   // the same press from two devices
+            *last = (b.to_string(), now());
+        }
+        self.to_main(ev_pad(b));
+        if ["up", "down", "left", "right"].contains(&b) {
+            let (me, b) = (self.clone(), b.to_string());
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(340));
+                while me.repeat_gen.load(Ordering::SeqCst) == rg && !me.overlay_on.load(Ordering::SeqCst) {
+                    me.to_main(ev_pad(&b));
+                    std::thread::sleep(Duration::from_millis(85));
+                }
+            });
         }
     }
 
