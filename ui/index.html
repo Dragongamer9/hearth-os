@@ -5862,7 +5862,11 @@ function bcPrompt(o){ return openPrompt(o); }
 function beaconAct(a, d){
   const g=G(d.id), id=d.id, dd=g&&BC.d[g.id], st=dd&&dd.status;
   switch(a){
-    case 'bcnGet': return bcLink(BC_RELEASES);
+    case 'bcnGet':
+      // Ember installs Beacon itself (its official Windows installer, silently); elsewhere the releases page.
+      if(feat('beaconInstall')){ if(S.bcnInstalling) return; S.bcnInstalling=true; toast('Installing Beacon…');
+        return call('beacon.install',{},600000).then(()=>{ S.bcnInstalling=false; toast('Beacon is installed'); loadAccounts(); loadLibrary(false); }).catch(e=>{ S.bcnInstalling=false; toast(e.message); }); }
+      return bcLink(BC_RELEASES);
     case 'bcnSetup': return beaconSetup(g);
     case 'bcnMods': return beaconModsPage(g);
     case 'bcnReload': return bcLoad(id);
