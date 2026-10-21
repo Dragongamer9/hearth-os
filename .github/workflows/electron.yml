@@ -1,0 +1,40 @@
+# Hearth's Chromium window (hosts/electron): its tests and an unpacked build, kept as a download on the run. The OS
+# images build it themselves (base-*.yml); this checks it on its own, quickly. See docs/RENDERERS.md.
+name: Hearth on Chromium (Electron window)
+
+on:
+  push:
+    branches: [linux-host, wip-electron]
+    paths: ['hosts/electron/**', 'ui/**', 'hosts/hearth-rs/src/js/**', '.github/workflows/electron.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test and build
+        working-directory: hosts/electron
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=electron window::$msg"' ERR
+          for f in src/*.js; do node --check "$f"; done
+          npm install --no-audit --no-fund
+          npm test
+          npm run dist:dir
+          test -x dist/linux-unpacked/hearth-electron
+          test -f dist/linux-unpacked/resources/ui/index.html
+          test -f dist/linux-unpacked/resources/js/signin-pad.js
+          echo "::notice title=Electron window::$(du -sh dist/linux-unpacked | cut -f1) unpacked"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-electron
+          path: hosts/electron/dist/linux-unpacked
+          retention-days: 7
