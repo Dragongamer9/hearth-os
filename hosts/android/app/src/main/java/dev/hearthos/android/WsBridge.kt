@@ -67,7 +67,7 @@ class WsBridge(
         s.tcpNoDelay = true
         val input = BufferedInputStream(s.getInputStream(), 65536)
         val out = BufferedOutputStream(s.getOutputStream(), 65536 + 16)
-        val head = WsHandshake.readHead(input) ?: return
+        val head = WsHandshake.readHead(input) ?: run { log("ws: a connection closed before its handshake"); return }
         val req = WsHandshake.parse(head)
         val why = if (req == null) "bad request" else WsHandshake.check(req, token, origin)
         if (why != null) {
