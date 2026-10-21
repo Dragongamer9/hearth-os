@@ -10,7 +10,7 @@ dnf install -y \
   gtk3 nss alsa-lib libXScrnSaver libxkbcommon at-spi2-atk cups-libs libdrm mesa-libgbm \
   NetworkManager NetworkManager-wifi wpa_supplicant bluez polkit pciutils usbutils \
   ntfsprogs ntfs-3g dosfstools e2fsprogs btrfs-progs xfsprogs lvm2 efibootmgr policycoreutils shadow-utils \
-  rpm-ostree bootupd \
+  rpm-ostree bootupd openssl \
   linux-firmware amd-gpu-firmware intel-gpu-firmware nvidia-gpu-firmware iwlwifi-mvm-firmware iwlwifi-dvm-firmware \
   atheros-firmware realtek-firmware mt7xxx-firmware brcmfmac-firmware \
   rsms-inter-fonts google-noto-sans-fonts
