@@ -1,0 +1,128 @@
+#!/usr/bin/python3
+"""hearth-autoinstall: the installer USB installing Hearth OS by itself, for CI's end-to-end test only.
+
+Runs (hearth-autoinstall.service) only when the kernel command line has BOTH `hearth.autoinstall` and `hearth.ci`
+(the test adds them; no menu entry does). It runs the same engine the install screens use
+(/usr/libexec/nimbus/hearth-install run) with a fixed plan: the whole of the only empty disk, user "tester",
+password "hearth", the boot entry written to the firmware (OVMF's NVRAM in the test), the serial console on. Every
+line the engine prints goes to the serial console as "HEARTH-AI: <line>", then HEARTH-AUTOINSTALL-OK or
+HEARTH-AUTOINSTALL-FAIL <why>, and the machine powers off.
+
+`hearth.autoinstall=<edition>` picks the edition (anatase, ubuntu, cachyos, peppermint); bare `hearth.autoinstall`
+installs the one this USB carries (or Anatase on the small installer).
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+
+ENGINE = '/usr/libexec/nimbus/hearth-install'
+EDITIONS = ('anatase', 'ubuntu', 'cachyos', 'peppermint')
+
+
+def cmdline_flags(text):
+    """{name: value or True} from a kernel command line."""
+    out = {}
+    for word in text.split():
+        k, _, v = word.partition('=')
+        out[k] = v if _ else True
+    return out
+
+
+def wanted(flags):
+    """None (don't run) unless both hearth.autoinstall and hearth.ci are set; else the edition ('' = the USB's own)."""
+    if 'hearth.autoinstall' not in flags or 'hearth.ci' not in flags:
+        return None
+    v = flags['hearth.autoinstall']
+    return v if isinstance(v, str) and v in EDITIONS else ''
+
+
+def pick_disk(disks):
+    """The disk to install on: the biggest one the engine offers (the test machine has only the blank one)."""
+    ok = [d for d in disks if isinstance(d, dict) and d.get('dev') and not d.get('live') and not d.get('tooSmall')]
+    if not ok:
+        return None
+    return max(ok, key=lambda d: d.get('size') or 0)['dev']
+
+
+def plan_for(disk, edition):
+    p = {'mode': 'whole', 'disk': disk, 'user': {'name': 'tester', 'full': 'Tester', 'password': 'hearth'},
+         'hostname': 'hearth-e2e', 'timezone': 'UTC', 'firmware': True, 'signin': 'always',
+         'kargs': ['console=tty0', 'console=ttyS0,115200', 'systemd.show_status=1']}
+    if edition:
+        p['edition'] = edition
+    return p
+
+
+def say(line, tty):
+    msg = line.rstrip('\n')
+    try:
+        tty.write(msg + '\n')
+        tty.flush()
+    except OSError:
+        pass
+    print(msg, flush=True)
+
+
+def main():
+    try:
+        flags = cmdline_flags(open('/proc/cmdline').read())
+    except OSError:
+        return 0
+    edition = wanted(flags)
+    if edition is None:
+        return 0
+    try:
+        tty = open('/dev/ttyS0', 'w')
+    except OSError:
+        tty = open(os.devnull, 'w')
+    say('HEARTH-AI: automatic install starting (edition: %s)' % (edition or 'this USB\'s'), tty)
+    ok, why = False, 'nothing ran'
+    try:
+        # The engine's disk list (it leaves the USB stick itself out), a few tries while devices settle.
+        disks = []
+        for _ in range(20):
+            r = subprocess.run([ENGINE, 'disks'], capture_output=True, text=True, timeout=120)
+            try:
+                info = json.loads(r.stdout.strip().splitlines()[-1])
+                disks = info.get('disks', [])
+                say('HEARTH-AI: offline=%s edition=%s disks=%s' % (info.get('offline'), info.get('edition'),
+                    [(d.get('dev'), d.get('size'), d.get('live')) for d in disks]), tty)
+            except (ValueError, IndexError):
+                say('HEARTH-AI: disks: ' + (r.stdout + r.stderr).strip()[-500:], tty)
+            if disks:
+                break
+            time.sleep(3)
+        disk = pick_disk(disks)
+        if not disk:
+            why = 'no disk to install on'
+        else:
+            p = subprocess.Popen([ENGINE, 'run'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            p.stdin.write(json.dumps(plan_for(disk, edition)))
+            p.stdin.close()
+            last_stage, result, error = 0.0, None, None
+            for line in p.stdout:
+                if line.startswith('stage: '):
+                    # Progress ticks: one every 30 s is plenty on the serial log.
+                    if time.monotonic() - last_stage < 30:
+                        continue
+                    last_stage = time.monotonic()
+                if line.startswith('result: '):
+                    result = line
+                if line.startswith('error: '):
+                    error = line[7:].strip()
+                say('HEARTH-AI: ' + line, tty)
+            code = p.wait()
+            ok = code == 0 and result is not None
+            why = error or ('the engine exited with %d' % code)
+    except Exception as e:   # anything at all: report it, never hang
+        why = '%s: %s' % (type(e).__name__, e)
+    say('HEARTH-AUTOINSTALL-OK' if ok else 'HEARTH-AUTOINSTALL-FAIL ' + why, tty)
+    time.sleep(3)
+    subprocess.run(['systemctl', 'poweroff'])
+    return 0 if ok else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
