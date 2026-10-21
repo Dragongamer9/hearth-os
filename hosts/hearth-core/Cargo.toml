@@ -3,7 +3,7 @@ name = "hearth-core"
 version = "0.2.2"
 edition = "2021"
 description = "Hearth's host logic without a window: library, stores, system, the UI's message handling"
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
