@@ -32,6 +32,16 @@ export XDG_CURRENT_DESKTOP=Nimbus XDG_SESSION_DESKTOP=nimbus
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# Which Game Mode (Settings › System › Game Mode, also in Desktop Mode's Settings): Hearth's own (the default),
+# or Steam's own Game Mode (Steam's Big Picture in gamescope, the way SteamOS runs it). A file holding "steam" or
+# "hearth". Extra multi-seat players always get Hearth's.
+GAME_MODE_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode"
+STEAM_FLATPAK=com.valvesoftware.Steam
+steam_flatpak() { have flatpak && { [ -d "/var/lib/flatpak/app/$STEAM_FLATPAK" ] || [ -d "$HOME/.local/share/flatpak/app/$STEAM_FLATPAK" ]; }; }
+steam_game_mode() {
+  [ -z "$HEARTH_SEAT" ] && [ "$(cat "$GAME_MODE_FILE" 2>/dev/null)" = steam ] && have gamescope && { steam_flatpak || have steam; }
+}
+
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
 can_desktop() { have labwc; }
 
@@ -60,6 +70,7 @@ run_game() {
     echo no_display >"$MANGOHUD_CONFIGFILE"
     extra="--mangoapp"
   fi
+  if steam_game_mode; then run_steam_game; return $?; fi
   # Multi-seat: no performance overlay. mangoapp reads every process using the graphics card, the other players'
   # too (their own accounts: "Permission denied" on /proc/<pid>/fdinfo), and crashed over and over.
   [ -n "$HEARTH_SEAT" ] && extra=""
@@ -93,6 +104,37 @@ run_game() {
   fi
   # shellcheck disable=SC2086
   gamescope $full $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
+}
+
+# Steam's own Game Mode. Steam's "Switch to Desktop" runs steamos-session-select (Hearth's asks this session for
+# Desktop Mode); the Flatpak reaches it through flatpak-spawn --host. Holding View + Menu for 3 seconds also goes
+# to Desktop Mode (hearth-steam-exit), and if Steam closes by itself the session goes to Desktop Mode rather than
+# ending (so there's always a way back to Hearth's settings).
+run_steam_game() {
+  log "game mode: Steam's own (Big Picture)"
+  if steam_flatpak; then
+    bin="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/steam-bin"
+    mkdir -p "$bin"
+    printf '#!/bin/sh\nexec flatpak-spawn --host /usr/bin/steamos-session-select "$@"\n' >"$bin/steamos-session-select"
+    chmod 755 "$bin/steamos-session-select"
+    flatpak override --user --talk-name=org.freedesktop.Flatpak --filesystem="$bin:ro" \
+      --env=PATH="$bin:/app/bin:/app/utils/bin:/usr/bin" "$STEAM_FLATPAK" >/dev/null 2>&1
+    set -- flatpak run "$STEAM_FLATPAK"
+  else
+    set -- steam
+  fi
+  exitpid=""
+  if [ -f "$SHARE/desktop/shell/hearth-steam-exit" ] && have python3; then
+    python3 "$SHARE/desktop/shell/hearth-steam-exit" >/dev/null 2>&1 &
+    exitpid=$!
+  fi
+  rm -f "$NEXT"
+  # shellcheck disable=SC2086
+  gamescope -e -f $extra $NIMBUS_GAMESCOPE_ARGS -- "$@" -gamepadui -steamos3 -steampal
+  rc=$?
+  [ -n "$exitpid" ] && kill "$exitpid" 2>/dev/null
+  [ -f "$NEXT" ] || { log "Steam's Game Mode ended; Desktop Mode next"; echo desktop >"$NEXT"; }
+  return $rc
 }
 
 run_desktop() {

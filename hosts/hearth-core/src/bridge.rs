@@ -711,6 +711,19 @@ impl Bridge {
             "xodus.signInDesktop" => { crate::xodus::open_in_desktop()?; Ok(json!({})) }
             "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
             // Which engine draws Hearth: Chromium (the Electron window app; automatic on Nvidia) or WebKit (renderer.rs).
+            // Which Game Mode the session runs (nimbus-session): Hearth's own, or Steam's own Game Mode (Big Picture
+            // in gamescope). Takes effect the next time Game Mode starts.
+            "system.gameMode" => {
+                let f = crate::paths::config_dir().join("game-mode");
+                if let Some(v) = a["set"].as_str() {
+                    if !["hearth", "steam"].contains(&v) { return Err("Unknown choice".into()); }
+                    if let Some(d) = f.parent() { let _ = std::fs::create_dir_all(d); }
+                    std::fs::write(&f, v).map_err(|e| e.to_string())?;
+                    log(&format!("game mode: {v} from the next start of Game Mode"));
+                }
+                let cur = std::fs::read_to_string(&f).map(|t| t.trim().to_string()).unwrap_or_default();
+                Ok(json!({"mode": if cur == "steam" { "steam" } else { "hearth" }, "steam": crate::steam::client_installed(&self.library.home)}))
+            }
             "display.renderer" => {
                 if let Some(v) = a["set"].as_str() { crate::renderer::set(v)?; }
                 Ok(crate::renderer::status())
