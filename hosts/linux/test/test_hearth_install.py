@@ -297,6 +297,13 @@ class Edition(unittest.TestCase):
             open(f, 'w').write('anatase\n')
             self.assertEqual(H.this_usb(f), 'anatase')
             self.assertEqual(H.this_usb(f'{d}/missing'), 'anatase')
+            open(f, 'w').write('ubuntu\n')        # the Ubuntu offline installer
+            self.assertEqual(H.this_usb(f), 'ubuntu')
+            open(f, 'w').write('something\n')
+            self.assertEqual(H.this_usb(f), 'anatase')
+        self.assertEqual(H.editions_offered('ubuntu'), ['ubuntu'])
+        self.assertEqual((H.usb_edition('ubuntu'), H.usb_edition('installer'), H.usb_edition('anatase')), ('ubuntu', 'anatase', 'anatase'))
+        self.assertEqual(H.published_all(['peppermint']), {}, 'an offline USB has its edition with it')
         self.assertEqual(H.editions_offered('installer'), ['anatase', 'ubuntu', 'cachyos', 'peppermint'])
         self.assertEqual(H.editions_offered('anatase'), ['anatase'])
         rows = H.edition_choices(H.editions_offered('installer'), True, False, {'peppermint': False, 'ubuntu': None})

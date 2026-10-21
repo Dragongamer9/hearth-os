@@ -18,6 +18,11 @@ on:
         description: 'Upload the ISO to the download site (Cloudflare R2, as hearth-os-installer.iso)'
         type: boolean
         default: false
+      edition:
+        description: 'installer: the small online installer (every edition). An edition: its offline installer (the installer plus that edition, no internet needed)'
+        type: choice
+        options: [installer, ubuntu, cachyos, peppermint]
+        default: installer
       app:
         description: 'Which Hearth app the USB carries'
         type: choice
@@ -35,7 +40,8 @@ jobs:
     env:
       HAVE_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
       APP: ${{ inputs.app || 'rust' }}
-      SHOTS: ${{ inputs.app == 'electron' && 'ci/installer-shots-electron' || 'ci/installer-shots' }}
+      ED: ${{ inputs.edition || 'installer' }}
+      SHOTS: ${{ inputs.app == 'electron' && 'ci/installer-shots-electron' || 'ci/installer-shots' }}${{ inputs.edition && inputs.edition != 'installer' && format('-{0}', inputs.edition) || '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Make room
@@ -77,7 +83,17 @@ jobs:
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=installer system::$msg"' ERR
           sudo mkdir -p /mnt/containers /var/lib/containers
           sudo mount --bind /mnt/containers /var/lib/containers
+          ref=""
+          if [ "$ED" != installer ]; then
+            # The edition's image, as the installer's table names it (hearth-install EDITIONS), pinned by digest.
+            img=$(grep -oP "^    '$ED': \{'image': '\K[^']+" os/live/src/hearth-install)
+            [ -n "$img" ] || { echo "::error title=Offline installer::no image for $ED in hearth-install"; exit 1; }
+            digest=$(skopeo inspect --retry-times 3 --format '{{.Digest}}' "docker://$img")
+            ref="${img%:*}@$digest"
+            echo "::notice title=Offline installer::$ED carries $img ($ref)"
+          fi
           sudo podman build --pull=newer --cap-add sys_admin --security-opt label=disable \
+            --build-arg EDITION="$ED" --build-arg IMAGE_REF="$ref" \
             -t localhost/hearth-installer:latest -f os/installer/Containerfile .
 
       - name: Make the ISO (Titanoboa)
@@ -93,7 +109,7 @@ jobs:
           iso=$(cd /tmp/titanoboa && sudo TITANOBOA_OUTPUT_DIR="$out" ./main.sh localhost/hearth-installer:latest)
           sudo chown -R "$(id -u):$(id -g)" "$out"
           v=$(sudo podman run --rm localhost/hearth-installer:latest cat /usr/share/nimbus/version 2>/dev/null || echo latest)
-          f="hearth-os-$v-installer.iso"
+          if [ "$ED" = installer ]; then f="hearth-os-$v-installer.iso"; else f="hearth-os-$v-$ED-offline.iso"; fi
           mv "$iso" "$out/$f"
           (cd "$out" && sha256sum "$f" | tee "$f.sha256")
           ls -lh "$out"
@@ -103,7 +119,7 @@ jobs:
       - name: Keep the ISO as a download on this run
         uses: actions/upload-artifact@v4
         with:
-          name: hearth-os-${{ steps.iso.outputs.version }}-installer
+          name: hearth-os-${{ steps.iso.outputs.version }}-${{ env.ED == 'installer' && 'installer' || format('{0}-offline', env.ED) }}
           path: ${{ steps.iso.outputs.dir }}
           if-no-files-found: error
           compression-level: 0
@@ -149,4 +165,6 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           V: ${{ steps.iso.outputs.version }}
-        run: tools/r2-upload.sh "${{ steps.iso.outputs.file }}" hearth-os-installer.iso "$V"
+        run: |
+          if [ "$ED" = installer ]; then name=hearth-os-installer.iso; else name="hearth-os-$ED.iso"; fi
+          tools/r2-upload.sh "${{ steps.iso.outputs.file }}" "$name" "$V"
