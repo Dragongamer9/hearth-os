@@ -17,7 +17,7 @@ internal sealed class GameModeBridge
         "logs.save", "logs.send", "logs.sendToDeveloper", "app.exportLogs", "app.restart",
         "library.collection.create", "library.collection.rename", "library.collection.remove", "library.collection.set",
         "game.options.get", "game.options.set", "perf.setTdp", "perf.gamePowerForget",
-        "beacon.selectMod", "beacon.open", "game.pause", "game.unpause",
+        "beacon.selectMod", "beacon.open", "beacon.install", "game.pause", "game.unpause",
         "steam.downloads", "downloads.clearRecent", "screenshots.list", "screenshots.delete", "friends.action",
         "game.pauseInstall", "game.resumeInstall", "game.installFirst",
     };
@@ -126,6 +126,7 @@ internal sealed class GameModeBridge
                 return await Games.BeaconSelectModAsync(Req(a, "id"), mod is null or "@none" ? null : mod);
             }
             case "beacon.open": await Task.Run(Beacon.OpenApp); return new { ok = true };
+            case "beacon.install": await Beacon.InstallAsync(); await Games.GetAsync(true); return new { ok = true };
 
             // ------------------------------------------------ Quick Access › Now playing: Pause
             case "game.pause":
