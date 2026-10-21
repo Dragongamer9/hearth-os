@@ -3436,7 +3436,6 @@ function pageSignin(){
   if(L.canAdmin) h += `<button class="row" data-f data-k="li-auto" data-act="loginAuto"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign in automatically</b><small>${L.autologin?'Starts straight into '+APP+' when you turn it on, like a console':'Shows the login screen when you turn it on'}</small></div><div class="sw ${L.autologin?'on':''}"></div></button>`;
   h += `<button class="row" data-f data-k="li-wake" data-act="loginWake"><span class="ricon">${I.lock}</span><div class="rt"><b>Ask for my password after sleep</b><small>${L.lockOnWake?'Locked when it wakes up, in Game Mode and on the desktop':'Wakes straight back to where you were'}</small></div><div class="sw ${L.lockOnWake?'on':''}"></div></button>`;
   h += `<button class="row" data-f data-k="li-start" data-act="loginStart"><span class="ricon">${I.desk}</span><div class="rt"><b>Start in</b><small>What you see after signing in</small></div><div class="rv">${mode} ›</div></button>`;
-  h += `<button class="row" data-f data-k="li-shell" data-act="loginShell"><span class="ricon">${I.pad}</span><div class="rt"><b>Game Mode</b><small>${L.gameShell==='steam'?'Steam\'s own Game Mode (Big Picture), like a Steam Deck':APP+' (Beta): your whole library, every store'}</small></div><div class="rv">${L.gameShell==='steam'?'Steam':APP} ›</div></button>`;
   if(L.canAdmin){
     h += `<button class="row" data-f data-k="li-pass" data-act="loginPass"><span class="ricon">${I.lock}</span><div class="rt"><b>Change password</b><small>For the account <b>${esc(L.user)}</b>: the login screen, admin tasks and remote access</small></div><div class="rv">›</div></button>`;
     h += `<button class="row" data-f data-k="li-host" data-act="loginHost"><span class="ricon">${I.info}</span><div class="rt"><b>Device name</b><small>How this PC shows up on your network and to other devices</small></div><div class="rv">${esc(L.hostname)} ›</div></button>`;
@@ -3454,16 +3453,6 @@ function loginStart(){
   openSheet({title:'Start in', sub:'What you see after signing in', items:[
     {label:'Game Mode', icon:cur!=='desktop'?'check':'', run:()=>pick('game')},
     {label:'Desktop Mode', icon:cur==='desktop'?'check':'', run:()=>pick('desktop')}]});
-}
-function loginShell(){
-  const L=LOGIN.s||{}, cur=L.gameShell||'hearth';
-  const pick=shell=>call('login.setGameShell',{shell}).then(r=>{ LOGIN.s=r; refreshUI();
-    openSheet({title:(shell==='steam'?'Steam\'s Game Mode':APP)+' is set', sub:'It starts the next time Game Mode starts. Switch now?', items:[
-      {label:'Switch now', icon:'restart', run:()=>call('login.restartGameMode').catch(e=>toast(e.message))},
-      {label:'Later', icon:'x', run:()=>{}}]}); }).catch(e=>toast(e.message));
-  openSheet({title:'Game Mode', sub:'What Game Mode runs. Desktop Mode stays the same, and you can change this back here or in Desktop Mode\'s Settings › Sign-in.', items:[
-    {label:APP+' (Beta)', icon:cur==='hearth'?'check':'', run:()=>pick('hearth')},
-    {label:'Steam\'s Game Mode'+(L.steamInstalled===false?' (install Steam first)':''), icon:cur==='steam'?'check':'', run:()=>L.steamInstalled===false?toast('Install Steam first (Library › Stores › Steam)'):pick('steam')}]});
 }
 async function loginPass(){
   const old=await openPrompt({title:'Current password', secret:true}); if(old==null) return;
@@ -5224,7 +5213,6 @@ function act(el){
     case 'credits': return openSheet({title:'Built with', sub:APP+' stands on these open-source projects. Thank you!', items:CREDITS.map(([n,w])=>({label:n+' — '+w, icon:'', run:()=>{}}))});
     case 'loginAuto': return loginAuto();
     case 'loginStart': return loginStart();
-    case 'loginShell': return loginShell();
     case 'loginPass': return loginPass();
     case 'loginHost': return loginHost();
     case 'sysUpdCheck': return call('system.update.check').then(onSystemUpdate).catch(e=>toast(e.message));

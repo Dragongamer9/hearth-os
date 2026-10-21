@@ -37,8 +37,6 @@ ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session
 install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
-# Steam's "Switch to Desktop" (its own Game Mode, Settings › Sign-in › Game Mode) unless the system already has one.
-[ -e /usr/bin/steamos-session-select ] || install -Dm755 /ctx/session/steamos-session-select /usr/bin/steamos-session-select
 install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop

@@ -14,14 +14,13 @@ SetPage {
     property bool canAdmin: false
     property bool autologin: true
     property string startMode: "game"
-    property string gameShell: "hearth"
     property string hostname: ""
     property string busy: ""
     property string message: ""
     property bool messageBad: false
 
     function say(t, bad) { message = t; messageBad = !!bad; }
-    function load() { info.running = true; shellInfo.running = true; }
+    function load() { info.running = true; }
     Component.onCompleted: load()
     Process {
         id: info
@@ -34,12 +33,6 @@ SetPage {
                 const m = text.match(/^mode=(game|desktop)$/m); page.startMode = m ? m[1] : "game";
             }
         }
-    }
-    // What Game Mode runs (NIMBUS_GAME_SHELL in session.conf): Hearth, or Steam's own Game Mode.
-    Process {
-        id: shellInfo
-        command: ["sh", "-c", "grep -o 'NIMBUS_GAME_SHELL=[\"a-z]*' \"$0\" 2>/dev/null | tail -1", page.conf]
-        stdout: StdioCollector { onStreamFinished: page.gameShell = /steam/.test(text) ? "steam" : "hearth" }
     }
     Process {
         id: admin
@@ -68,18 +61,6 @@ SetPage {
         Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$0")"; touch "$0"; if grep -q "^[[:space:]]*NIMBUS_START_MODE=" "$0"; then sed -i "s/^[[:space:]]*NIMBUS_START_MODE=.*/NIMBUS_START_MODE=$1/" "$0"; else echo "NIMBUS_START_MODE=$1" >> "$0"; fi', conf, m]);
     }
 
-    function setGameShell(v) {
-        gameShell = v;
-        Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$0")"; touch "$0"; if grep -q "^[[:space:]]*NIMBUS_GAME_SHELL=" "$0"; then sed -i "s/^[[:space:]]*NIMBUS_GAME_SHELL=.*/NIMBUS_GAME_SHELL=$1/" "$0"; else echo "NIMBUS_GAME_SHELL=$1" >> "$0"; fi', conf, v]);
-        say(v === "steam" ? "Game Mode will be Steam's own (Big Picture). To come back here: Big Picture's power menu › Exit Steam (or Switch to Desktop)."
-                          : "Game Mode will be Hearth.");
-    }
-    SetChoice {
-        title: "Game Mode"; sub: "What Game Mode runs: Hearth (Beta), or Steam's own Game Mode like a Steam Deck"
-        options: [{ value: "hearth", label: "Hearth" }, { value: "steam", label: "Steam" }]
-        current: page.gameShell
-        onChosen: v => page.setGameShell(v)
-    }
     SetChoice {
         title: "Start in"; sub: "What you see after turning on"
         options: [{ value: "game", label: "Game Mode" }, { value: "desktop", label: "Desktop Mode" }]
