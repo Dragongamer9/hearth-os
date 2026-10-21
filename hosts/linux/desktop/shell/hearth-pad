@@ -399,6 +399,8 @@ class Pad:
     def command(self, m):
         c = m.get('cmd')
         if c == 'pause':
+            if bool(m.get('on')) != self.fs_pause:
+                note('paused: a fullscreen window is in front' if m.get('on') else 'resumed')
             self.fs_pause = bool(m.get('on'))
             if self.paused and self.mode == 'desk':
                 self.release_all()
@@ -554,17 +556,55 @@ def gamepads(evdev, known):
     return found
 
 
+PAD_LOG = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'nimbus', 'pad.log')
+
+
+def note(text):
+    """A line in ~/.local/share/nimbus/pad.log (kept across sessions, in bug reports): what the controller helper
+    sees and why it isn't working, which the desktop's own log (in /run) loses when Desktop Mode closes."""
+    try:
+        os.makedirs(os.path.dirname(PAD_LOG), exist_ok=True)
+        if os.path.exists(PAD_LOG) and os.path.getsize(PAD_LOG) > 200_000:
+            os.replace(PAD_LOG, PAD_LOG + '.old')
+        with open(PAD_LOG, 'a') as f:
+            f.write('%s %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), text))
+    except OSError:
+        pass
+
+
+def describe_inputs(evdev):
+    """Every input device: name, whether it's readable, whether it looks like a controller."""
+    e = evdev.ecodes
+    out = []
+    for path in sorted(os.listdir('/dev/input')) if os.path.isdir('/dev/input') else []:
+        if not path.startswith('event'):
+            continue
+        full = os.path.join('/dev/input', path)
+        try:
+            d = evdev.InputDevice(full)
+            caps = d.capabilities()
+            pad = e.BTN_SOUTH in caps.get(e.EV_KEY, []) and e.EV_ABS in caps
+            out.append('%s %r%s' % (path, d.name, ' (controller)' if pad else ''))
+            d.close()
+        except OSError as err:
+            out.append('%s not readable (%s)' % (path, err.strerror or err))
+    return out
+
+
 def main():
     try:
         import evdev
     except ImportError:
+        note('python3-evdev is missing: no controller support')
         emit({'t': 'error', 'text': 'Controller support needs python3-evdev.'})
         return 2
     try:
         out = Output(evdev)
     except (OSError, evdev.UInputError) as err:
+        note('no access to /dev/uinput: %s' % err)
         emit({'t': 'error', 'text': 'Controller support needs access to /dev/uinput (%s).' % err})
         return 3
+    note('started; input devices: ' + '; '.join(describe_inputs(evdev)))
     e = evdev.ecodes
     bmap = button_map(e)
     pad = Pad(out)
@@ -580,7 +620,10 @@ def main():
     while True:
         now = time.monotonic()
         if now >= next_scan:
+            before = set(pads)
             pads = gamepads(evdev, pads)
+            if set(pads) != before:
+                note('controllers: ' + (', '.join('%s %r' % (p, c.dev.name) for p, c in pads.items()) or 'none'))
             next_scan = now + 3
         fds = {c.dev.fd: (p, c) for p, c in pads.items()}
         try:
