@@ -696,13 +696,6 @@ impl Bridge {
             "login.get" => Ok(crate::admin::login()),
             "login.setAutologin" => { crate::admin::run(&["autologin", if a["on"] == true { "on" } else { "off" }], None, &mut |_| {})?; Ok(crate::admin::login()) }
             "login.setStartMode" => crate::admin::set_start_mode(&req("mode")?),
-            "login.setGameShell" => crate::admin::set_game_shell(&req("shell")?),
-            // Game Mode starts again now with the choice (the session reads it each time Game Mode starts).
-            "login.restartGameMode" => {
-                if !crate::gamescope::in_session() { return Err("This works in Hearth OS's own session.".into()); }
-                std::process::Command::new("nimbus-mode").arg("game").spawn().map_err(|e| e.to_string())?;
-                Ok(json!({"ok": true}))
-            }
             "login.setLockOnWake" => crate::admin::set_lock_on_wake(a["on"] == true),
             "login.setHostname" => { crate::admin::run(&["hostname", req("name")?.trim()], None, &mut |_| {})?; Ok(crate::admin::login()) }
             "login.password" => { crate::admin::run(&["password"], Some(&format!("{}\n", json!({"old": req("old")?, "new": req("new")?}))), &mut |_| {})?; Ok(json!({"ok": true})) }
