@@ -20,6 +20,11 @@ In:  pause {on} (a fullscreen app is in front), keys {on} (a menu with keyboard 
      A is Enter, B is Esc), osk {open}, type {key} (a key tapped on the on-screen keyboard),
      mouse {on} (controller mouse on/off), radial {open}.
 Exit codes: 2 python3-evdev missing, 3 no access to /dev/uinput (the shell doesn't restart those).
+
+--game: Game Mode's controller mouse (started by Hearth, hearth-core padmouse.rs). Only the mouse: right stick,
+A / RT click, X / LT right-click, L3 middle-click, left stick scroll, B Esc, D-pad arrows, R3 precise. Guide, Menu,
+View, LB/RB and Y do nothing here (they're the game's and Hearth's). View + Menu together turns it off: it says
+mouse {on: false} and exits. Hearth sends pause {on} while it or its Quick Access is in front.
 """
 import json
 import math
@@ -85,8 +90,10 @@ def curve(v):
 class Pad:
     """What the controller does, without any device code (so it can be tested)."""
 
-    def __init__(self, out):
+    def __init__(self, out, game=False):
         self.out = out             # .move(dx, dy) .wheel(v, h) .press(name, down) .send(obj)
+        self.game = game           # --game: Game Mode's controller mouse, nothing else
+        self.done = False          # --game: turned off with View + Menu
         self.mode = 'desk'         # desk | radial | osk
         self.fs_pause = False      # a fullscreen app (a game) is in front
         self.user_off = False      # turned off from the menu
@@ -212,6 +219,8 @@ class Pad:
         else:
             self.held.pop(name, None)
 
+        if self.game:
+            return self.game_button(name, down, now)
         if name == 'guide':
             if down:
                 self.close_radial() if self.mode == 'radial' else self.open_radial()
@@ -226,6 +235,29 @@ class Pad:
         if self.keys_ctx:
             return self.keys_button(name, down)
         return self.desk_button(name, down, now)
+
+    def game_button(self, name, down, now):
+        if down and name in ('view', 'menu') and 'view' in self.held and 'menu' in self.held:
+            self.release_all()
+            self.done = True
+            self.out.send({'t': 'mouse', 'on': False})
+            return
+        if self.paused:
+            return
+        if name in ('a', 'rt'):
+            return self.mouse('BTN_LEFT', name, down)
+        if name in ('x', 'lt'):
+            return self.mouse('BTN_RIGHT', name, down)
+        if name == 'l3':
+            return self.mouse('BTN_MIDDLE', name, down)
+        if name in ARROWS:
+            return self.hold_key(ARROWS[name], down)
+        if not down:
+            return
+        if name == 'b':
+            self.tap('KEY_ESC')
+        elif name == 'r3':
+            self.precise = not self.precise
 
     def radial_button(self, name, down, now):
         if not down:
@@ -607,7 +639,10 @@ def main():
     note('started; input devices: ' + '; '.join(describe_inputs(evdev)))
     e = evdev.ecodes
     bmap = button_map(e)
-    pad = Pad(out)
+    game = '--game' in sys.argv[1:]
+    pad = Pad(out, game=game)
+    if game:
+        note('Game Mode controller mouse')
     pads = {}
     pressed = set()
     names = ('a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'view', 'menu', 'guide', 'l3', 'r3',
@@ -668,6 +703,8 @@ def main():
         pad.axes(*(clip(sum(c.ax[k] for c in pads.values())) for k in ('lx', 'ly', 'rx', 'ry')))
         pad.tick(now, min(0.05, now - last))
         last = now
+        if pad.done:
+            return 0
 
 
 if __name__ == '__main__':

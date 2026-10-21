@@ -233,7 +233,36 @@ pub fn stop_steam() {
 pub fn set_steam_account(account: &str) {
     let Some((reg, users)) = steam_files() else { return };
     if let Some(reg) = reg { if let Ok(t) = std::fs::read_to_string(&reg) { let _ = std::fs::write(&reg, steam_registry_text(&t, account)); } }
-    if !account.is_empty() { if let Ok(t) = std::fs::read_to_string(&users) { let _ = std::fs::write(&users, steam_login_users_text(&t, account)); } }
+    // Empty: no account marked either, so Hearth doesn't show the last person's Steam games (steam::signed_in_id64).
+    if let Ok(t) = std::fs::read_to_string(&users) { let _ = std::fs::write(&users, steam_login_users_text(&t, account)); }
+}
+
+/// The Steam account signed in now (the one Steam signs in as by itself): registry.vdf's AutoLoginUser, else the
+/// most recent in loginusers.vdf.
+pub fn signed_in_account(registry: &str, login_users: &str) -> Option<String> {
+    let auto = regex::Regex::new(r#""AutoLoginUser"\s+"([^"]*)""#).unwrap().captures(registry).map(|c| c[1].trim().to_string()).filter(|a| !a.is_empty());
+    auto.or_else(|| {
+        let block = regex::Regex::new(r#""\d{17}"\s*\{([^{}]*)\}"#).unwrap();
+        block.captures_iter(login_users).find(|c| regex::Regex::new(r#""MostRecent"\s+"1""#).unwrap().is_match(&c[1]))
+            .and_then(|c| regex::Regex::new(r#""AccountName"\s+"([^"]*)""#).unwrap().captures(&c[1]).map(|m| m[1].to_string()))
+    })
+}
+pub fn current_steam_account() -> Option<String> {
+    let (reg, users) = steam_files()?;
+    let r = reg.and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+    signed_in_account(&r, &std::fs::read_to_string(users).unwrap_or_default())
+}
+
+/// Leaving a profile: the Steam account it used stays its own. A profile without a linked account keeps the one
+/// signed in now, unless another profile already has it (then that one's sign-in is left alone). Returns the account
+/// linked, if it changed.
+pub fn keep_steam_account(list: &[Value], leaving: &str, signed_in: Option<&str>) -> Option<String> {
+    let acc = signed_in?.trim();
+    if acc.is_empty() { return None; }
+    let me = list.iter().find(|p| p["id"] == leaving)?;
+    if me["steam"].as_str().map(|s| !s.is_empty()).unwrap_or(false) { return None; }
+    let taken = list.iter().any(|p| p["id"] != leaving && p["steam"].as_str().map(|s| s.eq_ignore_ascii_case(acc)).unwrap_or(false));
+    if taken { None } else { Some(acc.to_string()) }
 }
 
 pub fn steam_accounts(login_users: &str) -> Vec<Value> {
@@ -254,6 +283,18 @@ mod tests {
         assert_eq!(a.len(), 2);
         assert!(out.contains("\"AccountName\"\t\t\"sam\"\n\t\t\"MostRecent\"\t\t\"0\""));
         assert!(out.contains("\"MostRecent\"\t\t\"1\"\n\t\t\"AllowAutoLogin\"\t\t\"1\""));
+    }
+    #[test]
+    fn each_profile_keeps_its_steam_account() {
+        let users = "\"users\"\n{\n\t\"76561190000000001\"\n\t{\n\t\t\"AccountName\"\t\t\"sam\"\n\t\t\"MostRecent\"\t\t\"1\"\n\t}\n}\n";
+        assert_eq!(signed_in_account("", users).as_deref(), Some("sam"));
+        assert_eq!(signed_in_account("\"AutoLoginUser\"\t\t\"kim\"", users).as_deref(), Some("kim"));
+        assert_eq!(signed_in_account("\"AutoLoginUser\"\t\t\"\"", "").as_deref(), None);
+        let list = vec![json!({"id": "main", "steam": null}), json!({"id": "kid", "steam": "kim"}), json!({"id": "new", "steam": null})];
+        assert_eq!(keep_steam_account(&list, "main", Some("sam")).as_deref(), Some("sam"), "main keeps what it signed in with");
+        assert_eq!(keep_steam_account(&list, "main", Some("Kim")), None, "kim is the kid's");
+        assert_eq!(keep_steam_account(&list, "kid", Some("sam")), None, "the kid already has one");
+        assert_eq!(keep_steam_account(&list, "main", None), None);
     }
     #[test]
     fn parental_controls() {
