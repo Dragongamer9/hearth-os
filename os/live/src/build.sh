@@ -184,6 +184,25 @@ ostree container image deploy --help >/dev/null
 if ! command -v bootupctl >/dev/null; then dnf install -y bootupd; fi
 install -Dm755 /src/hearth-live-prep /usr/libexec/nimbus/hearth-live-prep
 install -Dm755 /src/hearth-install /usr/libexec/nimbus/hearth-install
+# CI's end-to-end test: installs by itself only with hearth.autoinstall AND hearth.ci on the kernel command line
+# (never from a menu entry), reporting on the serial console (hearth-autoinstall).
+install -Dm755 /src/hearth-autoinstall /usr/libexec/nimbus/hearth-autoinstall
+cat >/etc/systemd/system/hearth-autoinstall.service <<'UNIT'
+[Unit]
+Description=Hearth: automatic install (CI end-to-end test only)
+ConditionKernelCommandLine=hearth.autoinstall
+ConditionKernelCommandLine=hearth.ci
+Wants=network-online.target systemd-udev-settle.service
+After=network-online.target systemd-udev-settle.service multi-user.target
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-autoinstall
+StandardOutput=journal+console
+TimeoutStartSec=4h
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl enable hearth-autoinstall.service
 source /etc/os-release
 echo "Hearth release ${VERSION_ID}" >/etc/system-release
 # "Install Hearth OS" in the app launcher: the welcome card's "how do you want to install" choice.
