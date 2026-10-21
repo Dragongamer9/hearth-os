@@ -171,7 +171,7 @@ def plan_edition(p):
         if not by_image or (ed and ed != by_image):
             raise Fail('bad image name')
         ed = by_image
-    ed = ed or DEFAULT_EDITION
+    ed = ed or usb_edition()
     if ed == 'cachyos' and not cpu_v3():
         raise Fail(NO_V3)
     return ed
@@ -218,20 +218,30 @@ def edition_warning(edition, sb):
 
 
 def this_usb(path='/etc/hearth-live'):
-    """What this USB was built as: "installer" (the small online installer: every edition) or "anatase" (the
-    full live USB, which carries Hearth OS on Anatase)."""
+    """What this USB was built as: "installer" (the small online installer: every edition), or the edition it
+    carries for installing offline: "anatase" (the full live USB) or "ubuntu", "cachyos", "peppermint" (the offline
+    installers: the small installer plus that edition's image on the stick)."""
     try:
         with open(path) as f:
             name = f.read().strip()
     except OSError:
         name = ''
-    return 'installer' if name in ('auto', 'installer') else 'anatase'
+    if name in ('auto', 'installer'):
+        return 'installer'
+    return name if name in EDITIONS else DEFAULT_EDITION
+
+
+def usb_edition(usb=None):
+    """The edition this USB installs when none is picked: the one it carries, or Hearth OS on Anatase."""
+    u = usb or this_usb()
+    return DEFAULT_EDITION if u == 'installer' else u
 
 
 def editions_offered(usb=None):
     """The editions the install screens offer: all of them on the small installer, which downloads what it installs;
-    Hearth OS on Anatase on the full live USB (it's on the stick, so no internet is needed)."""
-    return list(EDITIONS) if (usb or this_usb()) == 'installer' else [DEFAULT_EDITION]
+    on an offline USB, the one it carries (it's on the stick, so no internet is needed)."""
+    u = usb or this_usb()
+    return list(EDITIONS) if u == 'installer' else [u]
 
 
 def published(img, timeout=6):
@@ -255,8 +265,8 @@ def published(img, timeout=6):
 
 
 def published_all(offered):
-    """{edition: published?} for the editions offered, asked at once. The live USB's own edition isn't asked."""
-    if offered == [DEFAULT_EDITION]:
+    """{edition: published?} for the editions offered, asked at once. An offline USB's own edition isn't asked."""
+    if len(offered) == 1:
         return {}
     import threading
     out = {}
@@ -1221,11 +1231,11 @@ def main(argv):
         return 1
     try:
         if cmd == 'disks':
-            img = image()
+            img = image(usb_edition())
             sb = secure_boot()
             # offline: this USB carries Hearth OS itself (the full live USB), so installing needs no internet.
             # editions: the picker (the small installer offers every edition; the live USB, the one it carries).
-            print(json.dumps({'disks': disks(), 'image': img, 'edition': DEFAULT_EDITION, 'offline': local_image(img) is not None,
+            print(json.dumps({'disks': disks(), 'image': img, 'edition': usb_edition(), 'offline': local_image(img) is not None,
                               'efi': os.path.isdir('/sys/firmware/efi'), 'secureBoot': sb,
                               'editions': edition_choices(editions_offered(), cpu_v3(), sb, published_all(editions_offered()))}))
         elif cmd == 'check' and len(argv) > 2:

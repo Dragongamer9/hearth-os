@@ -12,3 +12,18 @@ COPY os/system_files/usr/libexec/nimbus/hearth-import /usr/libexec/nimbus/hearth
 COPY os/installer/src /src
 COPY os/live/src /live
 RUN --mount=type=cache,target=/var/cache/libdnf5 /src/build.sh && rm -rf /src /live
+# The offline installers (EDITION ubuntu, cachyos or peppermint): the same USB plus that edition's image (exactly
+# IMAGE_REF, compressed as it is on GHCR), so it installs that edition with no internet (hearth-install's LOCAL_OCI,
+# /etc/hearth-live names the edition). The installed system still updates from the edition's own image.
+ARG EDITION=installer
+ARG IMAGE_REF=""
+RUN if [ "$EDITION" != installer ] && [ -n "$IMAGE_REF" ]; then \
+      case "$EDITION" in ubuntu|cachyos|peppermint|anatase) ;; *) echo "unknown edition $EDITION"; exit 1;; esac; \
+      command -v skopeo >/dev/null || dnf install -y skopeo; \
+      mkdir -p /usr/share/hearth && \
+      skopeo copy --retry-times 3 "docker://${IMAGE_REF}" "oci:/usr/share/hearth/image:hearth" && \
+      echo "${IMAGE_REF}" > /usr/share/hearth/image.ref && \
+      echo "$EDITION" > /etc/hearth-live && \
+      echo "Hearth OS offline installer ($EDITION)" > /etc/system-release && \
+      du -sh /usr/share/hearth/image && dnf clean all -q; \
+    fi
