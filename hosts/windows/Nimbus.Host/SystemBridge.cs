@@ -305,7 +305,7 @@ public sealed class SystemBridge : IDisposable
                     // Game Mode parts Ember has (docs/EMBER-PARITY.md). Not "coop", "seats" (Windows can't split one
                     // PC between players without third-party tools) or the Linux-only ones (remap through
                     // InputPlumber, Handheld Daemon, xodus, Nvidia drawing).
-                    features = new[] { "desktopMode", "mantel", "quickResume", "profiles", "friends", "restartApp", "sendLogs", "exportLogs",
+                    features = new[] { "beaconInstall", "desktopMode", "mantel", "quickResume", "profiles", "friends", "restartApp", "sendLogs", "exportLogs",
                                        "screenshots", "gameSettings", "hearthInput", "collections", "pause" },
                     user = Environment.UserName,
                     deviceId = CounterDeviceId(),
