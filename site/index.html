@@ -105,7 +105,8 @@ h1 .fire{display:block;background:linear-gradient(100deg,var(--flame) 5%,var(--e
 .runs li::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--ember)}
 
 /* sections */
-section{padding:72px 0;position:relative}
+section{padding:56px 0;position:relative}
+section.tight{padding:44px 0}
 .tint{background:linear-gradient(180deg,var(--bg2),var(--bg));border-top:1px solid var(--line)}
 .kicker{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--ember);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
 h2{font-size:clamp(28px,3.4vw,42px);letter-spacing:-.035em;font-weight:800;text-wrap:balance}
@@ -130,14 +131,11 @@ h2{font-size:clamp(28px,3.4vw,42px);letter-spacing:-.035em;font-weight:800;text-
 .card p{color:var(--muted);font-size:14.5px}
 
 /* what's new */
-.news{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:14px}
-.news .card.hot{grid-row:span 2;display:flex;flex-direction:column;background:radial-gradient(120% 90% at 100% 0%,rgba(255,138,61,.2),transparent 60%),linear-gradient(180deg,#22170f,#18110d);border-color:rgba(255,138,61,.4);padding:0;overflow:hidden}
-.news .hot .txt{padding:20px 20px 16px}
-.news .hot h3{font-size:21px;margin-top:10px}
-.news .hot img{border-top:1px solid var(--line);margin-top:auto}
-.also{grid-column:2/-1;font-size:14px;color:var(--muted)}
-.also b{color:var(--soft)}
-.votes{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--muted)}
+.strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.strip .card{padding:16px}.strip h3{font-size:15px;margin:10px 0 4px}.strip p{font-size:13.5px}
+.links2{font-size:14px;color:var(--muted)}
+details.rel{margin-top:16px}
+.votes{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--muted)}
 .votes[hidden]{display:none}
 .votes span{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--soft)}
 .votes span b{color:var(--flame);margin-left:4px}
@@ -151,7 +149,7 @@ details.rel summary:hover .rt{color:var(--flame)}
 .rt small{font-weight:400;font-size:13.5px;color:var(--muted);margin-left:8px}
 .chev{width:16px;height:16px;color:var(--muted);transition:transform .2s}
 details.rel[open] .chev{transform:rotate(180deg);color:var(--ember)}
-.rel-body{padding:0 2px 18px;color:var(--muted);font-size:14.5px;max-width:62em}
+.rel-body{padding:0 2px 16px;color:var(--muted);font-size:14px;max-width:70em}
 .rel-body p+p{margin-top:8px}
 .log-title{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin:36px 0 8px}
 .log-title h3{font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
@@ -184,7 +182,7 @@ details.rel[open] .chev{transform:rotate(180deg);color:var(--ember)}
 
 /* mantel */
 .mantel>*,.hero .wrap>*{min-width:0}
-.mantel{display:grid;grid-template-columns:1.1fr 1fr;gap:44px;align-items:center}
+.mantel{display:grid;grid-template-columns:.9fr 1.1fr;gap:36px;align-items:center;margin:40px 0 28px}
 .shots2{position:relative;padding:0 0 12% 12%}
 .shots2 img{border-radius:12px;box-shadow:0 0 0 1px #4d3b30,0 30px 60px -20px rgba(0,0,0,.85)}
 .shots2 .back{position:absolute;left:0;top:-8%;width:70%;opacity:.6}
@@ -195,49 +193,53 @@ details.rel[open] .chev{transform:rotate(180deg);color:var(--ember)}
 .walls img{width:96px;flex:none;border-radius:8px;border:1px solid var(--line);aspect-ratio:16/10;object-fit:cover}
 
 /* features */
-.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.feat .card{display:flex;gap:14px;padding:16px}
+.feat{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.feat .card{display:flex;gap:12px;padding:14px}
 .feat .card h3{margin:0 0 3px;font-size:15.5px}
-.feat .card p{font-size:14px}
+.feat .card p{font-size:13.5px}
 
 /* editions */
-.eds{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:12px}
+.edgrid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start}
+.eds{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.eds .why{grid-column:1/-1;margin-top:4px}
+.ed{padding:16px}.ed h3{margin:0;font-size:16px}.ed p{margin-top:6px;font-size:14px}
 .ed{display:flex;flex-direction:column}
 .ed.main{background:radial-gradient(120% 100% at 0% 0%,rgba(255,138,61,.18),transparent 60%),linear-gradient(180deg,#22170f,#18110d);border-color:rgba(255,138,61,.42)}
 .ed .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .ed dl{margin:14px 0 0;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px}
 .ed dt{color:var(--muted)}.ed dd{margin:0;color:var(--soft)}
-.why{margin-top:16px}
+.why{margin-top:14px}
+.facts h3{margin:0 0 10px;font-size:16px}
+.facts dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13.5px}
+.facts dt{color:var(--muted)}.facts dd{margin:0;color:var(--soft)}
 .why summary{cursor:pointer;color:var(--flame);font-weight:600;font-size:14.5px}
 .why ul{margin:12px 0 0;padding-left:18px;color:var(--muted);font-size:14.5px;display:grid;gap:6px;max-width:62em}
 .archived{color:var(--muted);font-size:14px;margin-top:14px;max-width:62em}
 
 /* download */
 .dl{background:radial-gradient(70% 60% at 50% 0%,rgba(255,138,61,.12),transparent 70%),var(--bg)}
-.dlgrid{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+.dlgrid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px}
 .dlcard{display:flex;flex-direction:column}
-.dlcard.main{grid-row:span 3;background:radial-gradient(120% 80% at 100% 0%,rgba(255,138,61,.22),transparent 60%),linear-gradient(180deg,#23170f,#18110d);border-color:rgba(255,138,61,.45);padding:26px}
-.dlcard.main h3{font-size:24px;margin-top:14px}
+.dlcard.main{background:radial-gradient(120% 80% at 100% 0%,rgba(255,138,61,.22),transparent 60%),linear-gradient(180deg,#23170f,#18110d);border-color:rgba(255,138,61,.45);padding:26px}
+.dlcard.main h3{font-size:19px}
 .dlcard .top{display:flex;align-items:center;gap:10px}
 .dlcard .ctas{margin-top:16px}
 .dlcard.main .ctas .btn{flex:1 1 220px}
 .dlcard .note2{font-size:13px;color:var(--muted);margin-top:12px}
-.dlcard.main .shot{margin-top:auto;padding-top:20px}
-.dlcard.main .shot img{border-radius:10px;border:1px solid var(--line2)}
 .cmd{position:relative;margin-top:12px}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b0705;border:1px solid var(--line);border-radius:10px;padding:11px 74px 11px 13px;margin:0;color:#f1dcc4}
 pre code{background:none;border:0;padding:0;font-size:12.5px}
 .copy-btn{position:absolute;top:7px;right:7px;font:600 12px Inter,sans-serif;color:var(--soft);background:var(--panel2);border:1px solid var(--line2);border-radius:7px;padding:4px 9px;cursor:pointer}
 .copy-btn:hover{color:var(--text)}
 .copy-btn[hidden]{display:none}
-.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;list-style:none;padding:0;margin:14px 0 0;counter-reset:s}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:12px;list-style:none;padding:0;margin:14px 0 0;counter-reset:s}
 .steps li{counter-increment:s;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px 14px 50px;position:relative;font-size:14px;color:var(--muted)}
 .steps li::before{content:counter(s);position:absolute;left:14px;top:13px;width:24px;height:24px;border-radius:50%;background:rgba(255,138,61,.15);color:var(--ember);font-weight:800;font-size:13px;display:grid;place-items:center}
 .steps b{display:block;color:var(--soft);margin-bottom:2px}
-.h3row{font-size:19px;margin:44px 0 6px}
+.h3row{font-size:18px;margin:32px 0 6px}
 .switch{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
 .small{font-size:13px;color:var(--muted)}
-.note{display:flex;gap:14px;align-items:flex-start;margin-top:40px;padding:18px 20px;border-radius:var(--r);background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.3);color:var(--soft);font-size:14.5px}
+.note{display:flex;gap:14px;align-items:flex-start;margin-top:24px;padding:18px 20px;border-radius:var(--r);background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.3);color:var(--soft);font-size:14.5px}
 
 /* faq */
 .faq{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
@@ -258,8 +260,8 @@ footer .brand{margin-right:auto}
   .shade{background:linear-gradient(180deg,rgba(17,11,8,.85),rgba(17,11,8,.6) 45%,rgba(17,11,8,.15))}
   .hero .wrap{grid-template-columns:1fr;gap:40px}
   .hero-copy{text-align:center}.runs{justify-content:center}.hero .pills,.hero .ctas{justify-content:center}.lead,.fine{margin-left:auto;margin-right:auto}
-  .news{grid-template-columns:1fr 1fr}.news .card.hot{grid-column:1/-1;grid-row:auto}.also{grid-column:1/-1}
-  .eds{grid-template-columns:1fr 1fr}.ed.main{grid-column:1/-1}
+  .strip{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .edgrid{grid-template-columns:1fr}
   .feat,.ticks{grid-template-columns:1fr 1fr}
   .mantel{grid-template-columns:1fr}
   .dlgrid{grid-template-columns:1fr}.dlcard.main{grid-row:auto}
@@ -271,13 +273,12 @@ footer .brand{margin-right:auto}
   body{font-size:15px}
   section{padding:52px 0}
   .hero{padding:40px 0 24px}
-  .news,.eds,.feat,.ticks,.mantel .ticks,.switch,.faq,.steps{grid-template-columns:1fr}
+  .strip,.eds,.feat,.ticks,.switch,.faq,.steps{grid-template-columns:1fr}
   .device{padding:3.4% 12%;transform:none}
   .stage{animation:none}
   .shade{background:linear-gradient(180deg,rgba(17,11,8,.88),rgba(17,11,8,.72) 50%,rgba(17,11,8,.2))}
   .hero{padding-bottom:120px}
   .float{display:none}
-  .dlcard.main .shot{display:none}
   .slide figcaption{position:static;margin-top:10px;max-width:none}
   .nav-btn{top:38%}
   nav .links a.gh span{display:none}
@@ -368,57 +369,26 @@ footer .brand{margin-right:auto}
 
 <main id="main">
 
-<section id="new-020" class="tint">
+<section id="new-020" class="tint tight">
   <div class="wrap">
     <div class="head split">
-      <div><span class="kicker">New in 0.2.0 · now 0.2.2</span>
-        <h2>16 library layouts, Beacon built in, and a Hearth that looks after itself</h2></div>
+      <div><span class="kicker">New in 0.2 · now 0.2.2</span>
+        <h2>16 library layouts, Beacon built in, a Hearth that looks after itself</h2></div>
+      <p class="links2"><a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a> · <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">Roadmap</a></p>
     </div>
-    <div class="news">
-      <div class="card hot">
-        <div class="txt">
-          <div class="ic"><svg class="ico"><use href="#i-grid"/></svg></div>
-          <h3>Pick how your library looks</h3>
-          <p>Covers, List &amp; details, Shelves or Compact wall under Settings › You › Library, plus 12 <b>Beta Experimental</b> layouts to try and vote on.</p>
-          <p class="votes" id="votes" hidden>Most wanted right now:</p>
-        </div>
-        <img src="img/game-library-shelves.webp" width="1280" height="800" alt="The Shelves library layout: continue playing and recently added rows" loading="lazy">
-      </div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-flag"/></svg></div>
-        <h3><a href="https://github.com/Dragongamer9/beacon">Beacon</a>, built in</h3>
-        <p>Set games up, enter CD keys, choose how they run and manage mods without leaving Game Mode. Beacon has a Windows version too.</p></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-heal"/></svg></div>
-        <h3>Looks after itself</h3>
-        <p>Hearth frees itself and sends a report if it gets stuck, and turns heavy effects down where the graphics driver needs it. Send logs with <code>hearth-send-logs</code>.</p></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-users"/></svg></div>
-        <h3>Play together, better</h3>
-        <p>Streamed and split-screen multi-seat, and Couch Co-op fixed.</p></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-win"/></svg></div>
-        <h3>Ember caught up</h3>
-        <p>Ember for Windows matches Hearth OS again, Mantel included.</p></div>
-      <p class="also"><b>Also:</b> sign in again when an Epic, GOG or Xbox sign-in expires, and graphics memory shown correctly.</p>
+    <div class="strip">
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-grid"/></svg></div><div><h3>16 library layouts</h3><p>Covers, List &amp; details, Shelves, Compact wall, plus 12 <b>Beta Experimental</b> ones to vote on.</p><p class="votes" id="votes" hidden>Most wanted:</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-flag"/></svg></div><div><h3><a href="https://github.com/Dragongamer9/beacon">Beacon</a> built in</h3><p>Set up games, CD keys and mods in Game Mode. Beacon for Windows too, and Ember installs it.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-heal"/></svg></div><div><h3>Fail-safe</h3><p>Hearth frees itself and sends a report if it gets stuck; logs with <code>hearth-send-logs</code>.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-users"/></svg></div><div><h3>Couch Co-op fixed</h3><p>Plus streamed and split-screen multi-seat, and sign-in again when a store sign-in expires.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-usb"/></svg></div><div><h3>ISOs open the installer</h3><p>Both ISOs boot straight into Hearth's installer; the offline USB lets you look around first.</p></div></div>
     </div>
-
-    <div class="log-title"><h3 id="log-h">Earlier releases</h3><a href="https://github.com/Dragongamer9/hearth-os/releases">All release notes on GitHub</a></div>
-    <details class="rel" id="new-015">
-      <summary><span class="ver">0.1.5–0.1.9</span><span class="rt">Controller layouts, a real desktop, Quick Resume that works<small>Hearth Input, Mantel, Handheld Daemon</small></span><svg class="ico chev"><use href="#i-chev"/></svg></summary>
+    <details class="rel" id="releases">
+      <summary><span class="ver">0.1.x</span><span class="rt">Earlier releases<small>Hearth Input, Mantel, Couch Co-op, Hearth Browser</small></span><svg class="ico chev"><use href="#i-chev"/></svg></summary>
       <div class="rel-body">
-        <p><b>Hearth Input</b> <span class="badge">Beta Experimental</span>: a game's controller layout turns the controller into a keyboard and mouse, with ready-made layouts for shooters, strategy and retro games, tap and hold, a second set of buttons, gyro aiming and back paddles. <b>Quick Resume</b> gives every game its own number, the way SteamOS does. <b>Every Handheld Daemon setting</b> (controller mode, gyro, back buttons, power, fan, lights) inside Hearth, with smoother Quick Access over games.</p>
-        <p><b>Mantel</b> became a full desktop: pinned apps, window snapping, Alt+Tab, four desktops, desktop icons, a calendar and notification history, new Settings, an Apps store for Flathub and clipboard history on Super+V. Store sign-ins open on the desktop; Steam stays out of sight; Couch Co-op is in the main menu.</p>
-        <p><b>0.1.6</b> added Beacon (Battle for Middle-earth, Age of the Ring and more, with mods) and per-game power. <b>0.1.7–0.1.8</b> fixed “The system didn't respond in time” while GOG or Epic games downloaded. <b>0.1.9</b> fixed a blank screen with only the pointer on some PCs and the USB stick.</p>
-      </div>
-    </details>
-    <details class="rel" id="new">
-      <summary><span class="ver">0.1.1</span><span class="rt">Play together, on one screen or many<small>Couch Co-op, Multi-seat and fixes</small></span><svg class="ico chev"><use href="#i-chev"/></svg></summary>
-      <div class="rel-body">
-        <p><b>Couch Co-op</b> <span class="badge">Beta Experimental</span>: split-screen for 2 to 4 players, even in games without it. Each player gets part of the screen, their own controller and their own copy of the game, which find each other like on a local network. Games with anti-cheat aren't supported. <b>Multi-seat</b> <span class="badge">Beta Experimental</span>: one PC, several consoles, each screen with its own Game Mode, controllers, Steam account and saves.</p>
-        <p>Fixes: Quick Resume brings back the game you picked, the power limit works on the ROG Xbox Ally, a shorter Wi-Fi list, steadier Xbox Cloud Gaming sign-in, and Ember's panels stay open with a controller.</p>
-      </div>
-    </details>
-    <details class="rel" id="new-010">
-      <summary><span class="ver">0.1.0</span><span class="rt">Hearth OS 0.1.0<small>Hearth Browser on Chromium, Task Manager, Files</small></span><svg class="ico chev"><use href="#i-chev"/></svg></summary>
-      <div class="rel-body">
-        <p><b>Hearth Browser</b> moved to Chromium with your bookmarks, history and settings, and ads and trackers blocked. A <b>Task Manager</b> (Ctrl+Shift+Esc) with live graphs, temperatures and start-up apps, and <b>Files</b> for folders, games, USB drives and SD cards, all with a controller. Ember's Mantel now matches Hearth OS's. Steadier controls, and updates that show real progress and must prove they can update themselves before release.</p>
+        <p id="new-015"><b>0.1.5–0.1.9:</b> Hearth Input <span class="badge">Beta Experimental</span> (a controller layout plays keyboard-and-mouse games, with gyro and back paddles), Quick Resume with a number per game like SteamOS, every Handheld Daemon setting inside Hearth, and Mantel as a full desktop (snapping, Alt+Tab, four desktops, Flathub Apps store, clipboard history). Beacon arrived in 0.1.6; later fixes for downloads freezing Game Mode and a blank screen on some PCs.</p>
+        <p id="new"><b>0.1.1:</b> Couch Co-op <span class="badge">Beta Experimental</span>, split-screen for 2 to 4 players even in games without it (not with anti-cheat), and Multi-seat <span class="badge">Beta Experimental</span>, one PC as several consoles. Plus Quick Resume, power limit and Wi-Fi fixes.</p>
+        <p id="new-010"><b>0.1.0:</b> Hearth Browser on Chromium with ads blocked, a Task Manager and Files app made for a controller, Ember's Mantel matching Hearth OS, steadier controls and self-testing updates.</p>
       </div>
     </details>
   </div>
@@ -426,11 +396,9 @@ footer .brand{margin-right:auto}
 
 <section id="game-mode">
   <div class="wrap">
-    <div class="head split">
-      <div><span class="kicker">Game Mode</span>
-        <h2>Made for a controller from the first screen</h2>
-        <p class="sub">Fullscreen in gamescope, the compositor SteamOS uses. D-pad, sticks and face buttons everywhere, with an on-screen keyboard when you need to type.</p></div>
-    </div>
+    <div class="head"><span class="kicker">Game Mode</span>
+      <h2>Made for a controller from the first screen</h2>
+      <p class="sub">Fullscreen in gamescope, the compositor SteamOS uses. Steam, Epic, GOG, Xbox Cloud Gaming, Xbox PC games, Beacon and your own games in one library; Epic and GOG install without their launchers.</p></div>
     <div class="tabs" role="tablist" aria-label="Screenshots" id="tabs"></div>
     <div class="gallery">
       <div class="track" id="track">
@@ -457,177 +425,160 @@ footer .brand{margin-right:auto}
       <button class="nav-btn next" type="button" aria-label="Next screenshot" id="next-shot"><svg class="ico"><use href="#i-right"/></svg></button>
     </div>
     <ul class="ticks">
-      <li><b>Quick Resume, like an Xbox.</b> Up to five games stay paused in memory.</li>
-      <li><b>Cloud saves</b> for Epic and GOG, and your Steam friends list.</li>
-      <li><b>Profiles for the household</b>, with optional PIN and parental controls.</li>
-      <li><b>Works offline.</b> Game art is saved on the device.</li>
+      <li><b>Quick Resume</b>: up to five games paused in memory.</li>
+      <li><b>Cloud saves</b> for Epic and GOG; your Steam friends list.</li>
+      <li><b>Profiles</b> with optional PIN and parental controls.</li>
+      <li><b>Works offline</b>: game art is saved on the device.</li>
       <li><b>Hearth Input</b> plays games with no controller support.</li>
-      <li><b>Nothing injected.</b> The overlay is an ordinary window, so anti-cheat has nothing to object to.</li>
+      <li><b>Nothing injected</b>: anti-cheat has nothing to object to.</li>
     </ul>
-    <div class="stores"><span class="chip">Steam</span><span class="chip">Epic Games</span><span class="chip">GOG</span><span class="chip">Xbox Cloud Gaming</span><span class="chip">Xbox PC games (Xodus Nexus)</span><span class="chip">Beacon</span><span class="chip">Your own games</span></div>
   </div>
 </section>
 
-<section id="mantel" class="tint">
-  <div class="wrap mantel">
-    <div class="shots2">
-      <img class="back" src="img/mantel-lanterns.webp" width="1600" height="900" alt="" loading="lazy">
-      <img class="front" src="img/mantel-cabin.webp" width="1600" height="900" alt="The Mantel desktop with a Hearth wallpaper and taskbar" loading="lazy">
-    </div>
-    <div>
-      <span class="kicker">Mantel</span>
-      <h2>A real desktop, still in reach of your thumbs</h2>
-      <p class="sub">Switch to Mantel for browsing, mods and files, then hop back with one button. No logging out.</p>
-      <ul class="ticks">
-        <li><b>Its own Settings</b> for Wi-Fi, sound, display, power and updates.</li>
-        <li><b>Controller as mouse and keyboard</b> everywhere.</li>
-        <li><b>Hearth Browser</b> on Chromium, ads blocked.</li>
-        <li><b>Task Manager and Files</b>, made for a controller.</li>
-        <li><b>Lock and login screens</b> you can use with a pad, or skip.</li>
-        <li><b>On Windows too</b>: Ember's Mantel is the same desktop.</li>
-      </ul>
-      <div class="walls" aria-label="Some of the wallpapers made for Hearth">
-        <img src="img/wall-lanterns.webp" width="640" height="360" alt="Lanterns wallpaper" loading="lazy">
-        <img src="img/wall-fox.webp" width="640" height="360" alt="Fox wallpaper" loading="lazy">
-        <img src="img/wall-peaks.webp" width="640" height="360" alt="Peaks wallpaper" loading="lazy">
-        <img src="img/wall-bloom.webp" width="640" height="360" alt="Bloom wallpaper" loading="lazy">
-        <img src="img/wall-forge.webp" width="640" height="360" alt="Forge wallpaper" loading="lazy">
-        <img src="img/wall-topo.webp" width="640" height="360" alt="Topographic wallpaper" loading="lazy">
-        <img src="img/wall-cat.webp" width="640" height="360" alt="Cat wallpaper" loading="lazy">
-        <img src="img/wall-cabin.webp" width="640" height="360" alt="Cabin wallpaper" loading="lazy">
+<section id="features" class="tint">
+  <span id="mantel" class="anchor"></span>
+  <div class="wrap">
+    <div class="head"><span class="kicker">Mantel and under the hood</span>
+      <h2>A real desktop one button away, on a system that looks after itself</h2></div>
+    <div class="mantel">
+      <div class="shots2">
+        <img class="back" src="img/mantel-lanterns.webp" width="1600" height="900" alt="" loading="lazy">
+        <img class="front" src="img/mantel-cabin.webp" width="1600" height="900" alt="The Mantel desktop with a Hearth wallpaper and taskbar" loading="lazy">
+      </div>
+      <div>
+        <p class="sub" style="margin-top:0"><b>Mantel</b> is Hearth's desktop for browsing, mods and files. Hop over and back with one button, no logging out. Its own Settings, the controller as mouse and keyboard, Hearth Browser, Task Manager and Files, lock and login screens you can use with a pad (or skip), and the same desktop on Windows as Ember.</p>
+        <div class="walls" aria-label="Some of the wallpapers made for Hearth">
+          <img src="img/wall-lanterns.webp" width="640" height="360" alt="Lanterns wallpaper" loading="lazy">
+          <img src="img/wall-fox.webp" width="640" height="360" alt="Fox wallpaper" loading="lazy">
+          <img src="img/wall-peaks.webp" width="640" height="360" alt="Peaks wallpaper" loading="lazy">
+          <img src="img/wall-bloom.webp" width="640" height="360" alt="Bloom wallpaper" loading="lazy">
+          <img src="img/wall-forge.webp" width="640" height="360" alt="Forge wallpaper" loading="lazy">
+          <img src="img/wall-topo.webp" width="640" height="360" alt="Topographic wallpaper" loading="lazy">
+          <img src="img/wall-cat.webp" width="640" height="360" alt="Cat wallpaper" loading="lazy">
+          <img src="img/wall-cabin.webp" width="640" height="360" alt="Cabin wallpaper" loading="lazy">
+        </div>
       </div>
     </div>
-  </div>
-</section>
-
-<section id="features">
-  <div class="wrap">
-    <div class="head"><span class="kicker">Under the hood</span>
-      <h2>A system that looks after itself</h2>
-      <p class="sub">Image-based: the whole OS updates as one piece, and if something goes wrong you boot the previous version.</p></div>
     <div class="feat">
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-undo"/></svg></div><div><h3>Updates that roll back</h3><p>Updates land in the background; a bad one is undone by picking the previous boot entry.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-pad"/></svg></div><div><h3>Handhelds and desktops</h3><p>Handheld Daemon for Ally, Legion Go and Deck; one image for AMD, Intel and Nvidia.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-bolt"/></svg></div><div><h3>Your power, your call</h3><p>Power mode, watt limit and frame cap, system-wide or per game.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-sliders"/></svg></div><div><h3>Remap your controller</h3><p>Change what each button does and save layouts in Settings.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-key"/></svg></div><div><h3>Sign in your way</h3><p>Each store's own sign-in, with on-screen keyboard and controller mouse.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-layers"/></svg></div><div><h3>Nothing injected</h3><p>The overlay is a normal window on top. Anti-cheat stays happy.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-disk"/></svg></div><div><h3>Its own installer</h3><p>Next to Windows or on a whole drive; brings Steam, Epic, GOG and Lutris games over.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-undo"/></svg></div><div><h3>Updates that roll back</h3><p>Image-based: a bad update is undone from the boot menu.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-pad"/></svg></div><div><h3>Handhelds and desktops</h3><p>Handheld Daemon; one image for AMD, Intel, Nvidia.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-bolt"/></svg></div><div><h3>Your power, your call</h3><p>Power mode, watt limit, frame cap, per game.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-sliders"/></svg></div><div><h3>Remap your controller</h3><p>Change any button and save layouts.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-key"/></svg></div><div><h3>Sign in your way</h3><p>Each store's own sign-in, with on-screen keyboard.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-disk"/></svg></div><div><h3>Its own installer</h3><p>Next to Windows or whole drive; brings your games over.</p></div></div>
       <div class="card"><div class="ic"><svg class="ico"><use href="#i-lock"/></svg></div><div><h3>Password or not</h3><p>Sign in like a console, or ask at start and after sleep.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-globe"/></svg></div><div><h3>Hearth Browser</h3><p>Chromium in Hearth's look; bookmarks and history stay on your device.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-globe"/></svg></div><div><h3>Hearth Browser</h3><p>Chromium in Hearth's look, ads and trackers blocked.</p></div></div>
     </div>
   </div>
 </section>
 
-<section id="next" class="tint">
+<section id="next">
   <div class="wrap">
     <div class="head"><span class="kicker">Editions</span>
-      <h2>Built on Anatase, with three Beta Experimental bases</h2>
-      <p class="sub">Hearth OS moved from Bazzite to <b>Anatase</b>, a lean, image-based system from people who worked on Bazzite: lighter, faster, and one ISO for every graphics card.</p></div>
-    <div class="eds" aria-label="Editions">
-      <div class="card ed main">
-        <div class="top"><div class="ic"><svg class="ico"><use href="#i-chip"/></svg></div><span class="badge solid">Main edition</span></div>
-        <h3>Hearth OS on Anatase</h3>
-        <p>Hearth's own screens for everything Handheld Daemon can do. Moving over from Bazzite is a clean install that keeps your games and saves; you choose when, in Settings › Updates.</p>
-        <dl><dt>Base</dt><dd>Anatase, image-based</dd><dt>Graphics</dt><dd>One ISO for AMD, Intel and Nvidia</dd><dt>Handhelds</dt><dd>Handheld Daemon</dd></dl>
+      <h2>Built on Anatase, with three Beta Experimental bases</h2></div>
+    <div class="edgrid">
+      <div class="eds" aria-label="Editions">
+        <div class="card ed main"><div class="top"><h3>Hearth OS on Anatase</h3><span class="badge solid">Main</span></div>
+          <p>Lean, image-based, from people who worked on Bazzite. One ISO for AMD, Intel and Nvidia, Handheld Daemon built in.</p></div>
+        <div class="card ed"><div class="top"><h3>On Ubuntu</h3><span class="badge">Beta Experimental</span></div><p>Ubuntu 26.04 LTS, without snaps.</p></div>
+        <div class="card ed"><div class="top"><h3>On CachyOS</h3><span class="badge">Beta Experimental</span></div><p>Performance-tuned kernels; needs a 2015+ CPU, Secure Boot off.</p></div>
+        <div class="card ed"><div class="top"><h3>On Peppermint</h3><span class="badge">Beta Experimental</span></div><p>Peppermint OS on Debian 13.</p></div>
+        <details class="why">
+          <summary>Why Hearth left Bazzite, and moving from Hearth OS on Bazzite</summary>
+          <ul>
+            <li><b>Too much it doesn't use:</b> Bazzite's Game Mode setup, KDE, tools and services cost space, memory and start-up time.</li>
+            <li><b>Heavier than it should be:</b> 8 to 10 GB installs, bigger updates, sluggish on Nvidia.</li>
+            <li><b>Two of everything:</b> a separate Nvidia image and ISO; Anatase is one for every PC.</li>
+            <li><b>Better handhelds:</b> Handheld Daemon, shown in Hearth's own screens.</li>
+            <li>Hearth OS on Bazzite is archived (0.1.3 was its last update). Move from Settings › Updates › Move to a new Hearth OS; games and saves stay. All editions install from the small installer, Anatase also from the offline USB.</li>
+          </ul>
+        </details>
       </div>
-      <div class="card ed"><div class="top"><div class="ic"><svg class="ico"><use href="#i-chip"/></svg></div><span class="badge">Beta Experimental</span></div>
-        <h3>On Ubuntu</h3><p>Ubuntu 26.04 LTS, without snaps, for long-term support underneath.</p></div>
-      <div class="card ed"><div class="top"><div class="ic"><svg class="ico"><use href="#i-bolt"/></svg></div><span class="badge">Beta Experimental</span></div>
-        <h3>On CachyOS</h3><p>Performance-tuned packages and kernels, incl. its handheld kernel. Needs a 2015-or-newer CPU, Secure Boot off.</p></div>
-      <div class="card ed"><div class="top"><div class="ic"><svg class="ico"><use href="#i-chip"/></svg></div><span class="badge">Beta Experimental</span></div>
-        <h3>On Peppermint</h3><p>Peppermint OS on Debian 13. Light and plain, Debian's steady base.</p></div>
+      <div class="card facts" id="glance">
+        <h3>At a glance</h3>
+        <dl>
+          <dt>Based on</dt><dd>Anatase (Fedora 44/45, bootc image); editions on Ubuntu 26.04, CachyOS, Peppermint (Debian 13), Beta Experimental</dd>
+          <dt>Architecture</dt><dd>x86-64</dd>
+          <dt>Desktop</dt><dd>Game Mode (gamescope) + Mantel (labwc + Quickshell)</dd>
+          <dt>Packages</dt><dd>Image-based (bootc) updates, Flatpak</dd>
+          <dt>Init</dt><dd>systemd</dd>
+          <dt>Category</dt><dd>Gaming, handheld</dd>
+          <dt>Status</dt><dd>Beta</dd>
+          <dt>Latest release</dt><dd>0.2.2 (2026-10-20) · <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a> · <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">Roadmap</a></dd>
+          <dt>License</dt><dd>Free and open source · <a href="https://github.com/Dragongamer9/hearth-os">Source</a></dd>
+        </dl>
+      </div>
     </div>
-    <details class="why">
-      <summary>Why Hearth left Bazzite</summary>
-      <ul>
-        <li><b>Too much it doesn't use.</b> Bazzite's Steam Game Mode setup, KDE desktop, tools and services take space, memory and start-up time, though Hearth replaces most of them.</li>
-        <li><b>Heavier than it should be.</b> An install downloads 8 to 10 GB, updates are bigger, and Hearth felt sluggish on top, especially on Nvidia.</li>
-        <li><b>Two of everything.</b> Bazzite needs a separate Nvidia image and ISO; Anatase is one for every PC.</li>
-        <li><b>Better handheld support.</b> Handheld Daemon covers controllers, gyro, back buttons, fans and power limits, shown in Hearth's own screens.</li>
-      </ul>
-    </details>
-    <p class="archived">All four install from the <a href="#download">small installer</a> (Anatase also from the offline USB). Hearth OS on Bazzite is archived: 0.1.3 was its last update. Move to the new Hearth OS from Settings › Updates › Move to a new Hearth OS; your games and saves stay.</p>
   </div>
 </section>
 
-<section id="download" class="dl">
+<section id="download" class="dl tint">
   <div class="wrap">
     <div class="head"><span class="kicker">Download</span>
       <h2>Get Hearth OS 0.2.2</h2>
-      <p class="sub">Both ISOs boot straight into Hearth's installer; the offline USB also lets you look around first. Already on Bazzite or Fedora Atomic? <a href="#switch">Switch with one command</a>.</p></div>
+      <p class="sub">Handhelds and PCs with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics. Already on Bazzite or Fedora Atomic? <a href="#switch">Switch with one command</a>.</p></div>
     <div class="dlgrid">
       <div class="card dlcard main">
-        <div class="top"><div class="ic"><svg class="ico"><use href="#i-usb"/></svg></div><span class="badge solid">Beta</span></div>
-        <h3>Hearth OS on Anatase (ISO)</h3>
-        <p>For handhelds, desktops and laptops with AMD, Intel or Nvidia graphics. Installing erases the drive you pick, or goes next to Windows.</p>
+        <div class="top"><div class="ic"><svg class="ico"><use href="#i-usb"/></svg></div><h3 style="margin:0">Hearth OS on Anatase (ISO)</h3><span class="badge solid">Beta</span></div>
+        <p style="margin-top:10px">Installing erases the drive you pick, or goes next to Windows. The offline USB has everything and installs without internet; the small installer downloads while it installs and offers every edition.</p>
         <div class="ctas">
           <a class="btn primary" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso"><svg class="ico"><use href="#i-down"/></svg>Offline USB <small>about 9 GB</small></a>
           <a class="btn ghost" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso"><svg class="ico"><use href="#i-down"/></svg>Small installer <small>1.6 GB</small></a>
         </div>
-        <p class="note2">The offline USB carries everything and installs without internet. The small installer downloads Hearth OS while it installs and lets you pick the edition. Steam Deck, ROG Ally, Legion Go and most PCs; Nvidia GeForce GTX 16 series, RTX 20 series and newer.</p>
-        <div class="shot"><img src="img/game-library.webp" width="1280" height="800" alt="" loading="lazy"></div>
-      </div>
-      <div class="card dlcard">
-        <div class="top"><div class="ic"><svg class="ico"><use href="#i-chip"/></svg></div><h3 style="margin:0">Other editions</h3><span class="badge">Beta Experimental</span></div>
-        <p style="margin-top:10px">Ubuntu 26.04 LTS, CachyOS or Peppermint, each with Handheld Daemon. Not tested on real devices yet. The small installer asks which one you want.</p>
-        <div class="ctas"><a class="btn ghost" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso"><svg class="ico"><use href="#i-down"/></svg>Small installer (pick the edition)</a></div>
+        <p class="note2">SHA-256: <a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso.sha256">offline USB</a> · <a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso.sha256">small installer</a></p>
+        <details class="why">
+          <summary>Installing from the ISO</summary>
+          <ol class="steps">
+            <li><b>Write it to a USB stick</b>16 GB or more, with Fedora Media Writer or balenaEtcher.</li>
+            <li><b>Boot from the USB</b>Boot menu: often F12, F11 or F8. ROG Ally: hold Volume Down at power-on.</li>
+            <li><b>Try it out</b>The live system starts in Hearth with a welcome card. Nothing changes yet.</li>
+            <li><b>Choose Install Hearth</b>Pick a drive and restart when it's done.</li>
+          </ol>
+        </details>
       </div>
       <div class="card dlcard">
         <div class="top"><div class="ic"><svg class="ico"><use href="#i-win"/></svg></div><h3 style="margin:0">Ember for Windows 11</h3><span class="badge solid">Beta</span></div>
-        <p style="margin-top:10px">The same library as a Windows shell, with Mantel in place of the taskbar and desktop (or on top). Switch back to Explorer any time. Paste into PowerShell:</p>
+        <p style="margin-top:8px">The same library as a Windows shell, with Mantel. Switch back to Explorer any time. In PowerShell:</p>
         <div class="cmd"><pre><code id="ember-cmd">irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex</code></pre><button class="copy-btn" type="button" data-copy="ember-cmd" hidden>Copy</button></div>
-        <div class="ctas"><a class="btn ghost" href="https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-win-x64.zip"><svg class="ico"><use href="#i-down"/></svg>Download the .zip</a></div>
-      </div>
-      <div class="card dlcard">
-        <div class="top"><div class="ic"><svg class="ico"><use href="#i-term"/></svg></div><h3 style="margin:0">Hearth app for other Linux</h3><span class="badge solid">Beta</span></div>
-        <p style="margin-top:10px">Hearth's Game Mode as an AppImage, to try on the Linux you already have.</p>
-        <div class="ctas"><a class="btn ghost" href="https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-linux-x86_64.AppImage"><svg class="ico"><use href="#i-down"/></svg>Linux AppImage</a></div>
+        <div class="ctas">
+          <a class="btn ghost" href="https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-win-x64.zip"><svg class="ico"><use href="#i-down"/></svg>Ember .zip</a>
+          <a class="btn ghost" href="https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-linux-x86_64.AppImage"><svg class="ico"><use href="#i-term"/></svg>Linux AppImage</a>
+        </div>
+        <p class="note2">The AppImage is Hearth's Game Mode, to try on the Linux you already have.</p>
       </div>
     </div>
 
-    <h3 class="h3row">Installing from the ISO</h3>
-    <ol class="steps">
-      <li><b>Write it to a USB stick</b>16 GB or more, with Fedora Media Writer or balenaEtcher.</li>
-      <li><b>Boot from the USB</b>Boot menu: often F12, F11 or F8. ROG Ally: hold Volume Down at power-on.</li>
-      <li><b>Try it out</b>The live system starts in Hearth with a welcome card. Nothing changes yet.</li>
-      <li><b>Choose Install Hearth</b>Pick a drive and restart when it's done.</li>
-    </ol>
-
-    <h3 class="h3row" id="switch">Switching from Bazzite, Fedora Atomic or another image-based system</h3>
-    <p class="sub" style="margin-top:4px">On Bazzite, Bluefin, Aurora, Silverblue or Kinoite? Switch to Hearth OS on Anatase with one command, no USB stick. Your account and files stay, and the old system stays in the boot menu. <b>Beta Experimental:</b> back up anything important first.</p>
+    <h3 class="h3row" id="switch">Switch from Bazzite, Fedora Atomic or another image-based system</h3>
+    <p class="small">Bazzite, Bluefin, Aurora, Silverblue or Kinoite switch with one command, no USB stick. Your account and files stay, and the old system stays in the boot menu. <b>Beta Experimental:</b> back up first. Ubuntu, CachyOS and Peppermint can't be switched to; use the small installer.</p>
     <div class="switch">
       <div class="card">
         <h3 style="margin-top:0">From Hearth OS on Bazzite</h3>
-        <p>Open <b>Settings › Updates › Move to a new Hearth OS</b> and pick Anatase. It keeps your games, their saves and your Steam, Epic and GOG libraries, and puts the rest of your home folder aside for 30 days. Or in a terminal in Desktop Mode:</p>
+        <p>Settings › Updates › <b>Move to a new Hearth OS</b> keeps your games, saves and store libraries (the rest of home is set aside for 30 days). Or in Desktop Mode:</p>
         <div class="cmd"><pre><code id="switch-hearth">pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os</code></pre><button class="copy-btn" type="button" data-copy="switch-hearth" hidden>Copy</button></div>
       </div>
       <div class="card">
         <h3 style="margin-top:0">From Bazzite, Bluefin, Aurora or Fedora Atomic</h3>
-        <p>In a terminal, then restart:</p>
         <div class="cmd"><pre><code id="switch-bootc">sudo bootc switch ghcr.io/dragongamer9/hearth-os:latest</code></pre><button class="copy-btn" type="button" data-copy="switch-bootc" hidden>Copy</button></div>
-        <p class="small" style="margin-top:10px">Older system without bootc:</p>
-        <div class="cmd"><pre><code id="switch-ostree">sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/dragongamer9/hearth-os:latest</code></pre><button class="copy-btn" type="button" data-copy="switch-ostree" hidden>Copy</button></div>
-        <p class="small" style="margin-top:10px">Changed your mind? Pick the previous boot entry, or run <code>sudo bootc rollback</code> and restart.</p>
+        <details class="why"><summary>Older system without bootc, or going back</summary>
+          <div class="cmd"><pre><code id="switch-ostree">sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/dragongamer9/hearth-os:latest</code></pre><button class="copy-btn" type="button" data-copy="switch-ostree" hidden>Copy</button></div>
+          <p class="small" style="margin-top:8px">To go back, pick the previous boot entry or run <code>sudo bootc rollback</code>. Hearth OS updates itself from Settings › Updates.</p>
+        </details>
       </div>
     </div>
-    <p class="small" style="margin-top:12px">Hearth OS updates itself from then on (Settings › Updates). Ubuntu, CachyOS and Peppermint are a different base, so they install from the small installer instead.</p>
 
     <div class="note" id="beta"><div class="ic" aria-hidden="true"><svg class="ico"><use href="#i-warn"/></svg></div>
-      <div><b>This is a beta.</b> Hearth OS and Ember are still being built and aren't ready for everyday use. Things will break now and then. If you use it as your main system anyway, thank you, and please be patient: updates come out almost daily and install themselves from Settings › Updates. Keep a backup of anything important, and <a href="https://github.com/Dragongamer9/hearth-os/issues">tell us what breaks</a>.</div></div>
+      <div><b>This is a beta.</b> Hearth OS and Ember aren't ready for everyday use yet and things will break now and then. Updates come out almost daily and install themselves. Keep a backup, and <a href="https://github.com/Dragongamer9/hearth-os/issues">tell us what breaks</a>.</div></div>
   </div>
 </section>
 
-<section id="faq" class="tint">
+<section id="faq" class="tight">
   <div class="wrap">
-    <div class="head"><span class="kicker">FAQ</span><h2>Questions and requirements</h2></div>
+    <div class="head"><span class="kicker">FAQ</span><h2>Questions</h2></div>
     <div class="faq">
-      <details><summary>What hardware does it need?</summary><p>Steam Deck, ROG Ally, Legion Go and most desktops and laptops with AMD, Intel or Nvidia graphics (Nvidia: GeForce GTX 16 series, RTX 20 series and newer). A USB stick of 16 GB or more to install. The CachyOS edition needs a 2015-or-newer CPU and Secure Boot off.</p></details>
-      <details><summary>Will installing erase my drive?</summary><p>It erases the drive you pick, or installs next to Windows. Afterwards Hearth offers to bring your Steam, Epic, GOG and Lutris games over.</p></details>
-      <details><summary>Offline USB or small installer?</summary><p>The offline USB (about 9 GB) has everything, installs without internet and lets you try Hearth first. The small installer (1.6 GB) downloads Hearth OS while it installs and offers every edition.</p></details>
+      <details><summary>What hardware does it need?</summary><p>Steam Deck, ROG Ally, Legion Go and most x86-64 desktops and laptops with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics, and a 16 GB USB stick. CachyOS needs a 2015-or-newer CPU and Secure Boot off.</p></details>
       <details><summary>Can I go back?</summary><p>Yes. Updates and switches keep the previous system in the boot menu; pick it, or run <code>sudo bootc rollback</code>.</p></details>
-      <details><summary>Does it work with anti-cheat games?</summary><p>The overlay is an ordinary window, nothing is injected into games. Couch Co-op doesn't support games with anti-cheat.</p></details>
-      <details><summary>Something broke. How do I report it?</summary><p>Send logs from Settings › System, or from a terminal with <code>hearth-send-logs</code>, and <a href="https://github.com/Dragongamer9/hearth-os/issues">open an issue</a>.</p></details>
+      <details><summary>Does it work with anti-cheat games?</summary><p>Nothing is injected into games; the overlay is an ordinary window. Couch Co-op doesn't support anti-cheat games.</p></details>
+      <details><summary>Something broke. How do I report it?</summary><p>Send logs from Settings › System or with <code>hearth-send-logs</code>, and <a href="https://github.com/Dragongamer9/hearth-os/issues">open an issue</a>.</p></details>
     </div>
   </div>
 </section>
@@ -639,6 +590,7 @@ footer .brand{margin-right:auto}
     <a class="brand" href="#"><img src="img/logo.svg" alt="">Hearth OS</a>
     <a href="https://github.com/Dragongamer9/hearth-os">Source code</a>
     <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a>
+    <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">Roadmap</a>
     <a href="https://github.com/Dragongamer9/beacon">Beacon</a>
     <a href="https://github.com/Dragongamer9/hearth-os/issues">Report a problem</a>
     <a href="https://anatase.org">Built on Anatase</a>
@@ -717,7 +669,7 @@ function countUp(n, fn){ if(RM){ fn(n); return; } var t0=performance.now(); (fun
   function ember(p){ p.x=ox+rnd(540,900)*S; p.y=oy+rnd(780,830)*S; p.vx=rnd(-.6,.6)*S; p.vy=-rnd(1.2,3)*S; p.l=0; p.m=rnd(120,320); p.r=rnd(1.2,2.6)*S*2; p.p=rnd(0,6); return p; }
   function step(d){
     t+=d; var mid=ox+720*S, i, p;
-    while(F.length<N) F.push(flame({})); while(E.length<NE) E.push(ember({}));
+    while(F.length<N){ var q=flame({}); q.l=Math.random()*q.m; F.push(q); } while(E.length<NE) E.push(ember({}));
     for(i=0;i<F.length;i++){ p=F[i]; p.l+=d; if(p.l>p.m){ flame(p); p.l=Math.random()*10; continue; }
       p.vx+=((mid-p.x)*.0016+Math.sin(t*.09+p.y*.03)*.12*S)*d; p.x+=p.vx*d; p.y+=p.vy*d; }
     for(i=0;i<E.length;i++){ p=E[i]; p.l+=d; if(p.l>p.m||p.y<0){ ember(p); continue; }
@@ -751,7 +703,7 @@ function countUp(n, fn){ if(RM){ fn(n); return; } var t0=performance.now(); (fun
 (function(){
   if(RM) return;
   var io=new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } }); },{threshold:.12, rootMargin:'0px 0px -40px 0px'});
-  document.querySelectorAll('main .head, main .card, main .ticks li, .steps li, .faq details, details.rel, .shots2, .walls, .stores, .gallery, .tabs, .note').forEach(function(el){
+  document.querySelectorAll('main .head, main .card, main .ticks li, .faq details, details.rel, .shots2, .walls, .stores, .gallery, .tabs, .note').forEach(function(el){
     var sib=el.parentNode?[].indexOf.call(el.parentNode.children,el):0; el.style.setProperty('--d',(Math.min(sib,5)*.07)+'s'); el.classList.add('rv'); io.observe(el); });
   if(!matchMedia('(hover:hover) and (pointer:fine)').matches) return;
   var hero=document.querySelector('.hero'), dev=document.querySelector('.device'), pend=0, px=0, py=0;
@@ -762,12 +714,12 @@ function countUp(n, fn){ if(RM){ fn(n); return; } var t0=performance.now(); (fun
     k.style.setProperty('--mx',(e.clientX-r.left)+'px'); k.style.setProperty('--my',(e.clientY-r.top)+'px'); },{passive:true});
 })();
 
-// Open an older release when its link (#new, #new-010, #new-015) is followed.
+// Open the fold-out around a followed link (#new, #new-010, #new-015).
 (function(){
   function openHash(){
     var id=location.hash.slice(1); if(!id) return;
     var d=document.getElementById(id);
-    if(d && d.tagName==='DETAILS'){ d.open=true; d.scrollIntoView(); }
+    var box=d&&d.closest&&d.closest('details'); if(box){ box.open=true; d.scrollIntoView(); }
   }
   window.addEventListener('hashchange', openHash); openHash();
 })();
