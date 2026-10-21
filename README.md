@@ -56,6 +56,7 @@
 | Hearth OS on CachyOS | CachyOS, performance-tuned (needs a 2015-or-newer CPU, Secure Boot off) | Beta Experimental |
 | Hearth OS on Peppermint | Peppermint OS on Debian 13 | Beta Experimental |
 | **Ember** | Windows 11 (replaces Explorer, or runs on top of it) | Beta |
+| Hearth for Android | An app (and, if you like, your home screen) on Android 8.0+ phones, handhelds and TVs | First version, Beta Experimental |
 
 Hearth OS on Bazzite is archived: 0.1.3 was its last update, and it moves to the new Hearth OS from Settings › Updates.
 
@@ -73,6 +74,7 @@ Hearth OS on Bazzite is archived: 0.1.3 was its last update, and it moves to the
   irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex
   ```
 - **Hearth app on another Linux:** the [AppImage](https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-linux-x86_64.AppImage).
+- **Hearth for Android** *(first version, Beta Experimental)*: no store release yet. The APK is built by the [Android workflow](.github/workflows/android.yml): open its latest run, download **hearth-android-&lt;version&gt;**, and install the APK inside. Your installed games and emulators, RetroArch with your ROMs folder, and the controller work; [docs/ANDROID.md](docs/ANDROID.md) has what works and how to use it as your home screen.
 
 ## Try the interface in a browser
 
@@ -98,6 +100,7 @@ hearth-os/
   hosts/linux/             Linux session, Mantel (labwc + Quickshell) and helpers; the Electron app (overlay)
   hosts/hearth-browser/    Hearth Browser
   hosts/windows/           Ember: .NET 8 + WebView2 host
+  hosts/android/           Hearth for Android: Kotlin + WebView host
   os/                      Shared system files, the live ISO (os/live) and the small installer (os/installer)
   os-bases/                The editions: anatase, ubuntu, cachyos, peppermint (bootc images)
   site/                    The website (GitHub Pages)
@@ -109,6 +112,7 @@ hearth-os/
 - **Editions:** [Anatase](docs/BASE-ANATASE.md) · [Ubuntu](docs/BASE-UBUNTU.md) · [CachyOS](docs/BASE-CACHYOS.md) · [Peppermint](docs/BASE-PEPPERMINT.md)
 - **Features:** [Couch Co-op](docs/COUCH-COOP.md) · [Multi-seat](docs/MULTI-SEAT.md) · [Moving games and growing Hearth](docs/MOVE-AND-GROW.md) · [Beacon](docs/BEACON.md) · [Mantel](docs/MANTEL-PARITY.md)
 - **Ember (Windows):** [docs/EMBER.md](docs/EMBER.md)
+- **Hearth for Android:** [docs/ANDROID.md](docs/ANDROID.md)
 
 Every push is built and tested on GitHub Actions; a version bump on `main` is a release, and it only ships if it can update itself.
 

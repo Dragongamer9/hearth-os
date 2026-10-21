@@ -1,0 +1,111 @@
+# Hearth for Android (hosts/android): unit tests, then the debug and release APKs, uploaded as the
+# hearth-android-<version> artifact. The release APK is signed with the repository's key when the ANDROID_KEYSTORE_*
+# secrets exist, otherwise with the build's debug key (it still installs; updates need the same key every time).
+# No release or publishing yet: install the APK from the run's artifacts (docs/ANDROID.md).
+name: Android
+
+on:
+  push:
+    branches: [android, linux-host, main]
+    paths: ['hosts/android/**', 'ui/**', 'hosts/hearth-rs/Cargo.toml', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The Gradle version the app builds with (hosts/android/gradle/wrapper/gradle-wrapper.properties says the same).
+  # CI installs it itself, so no wrapper jar is kept in git.
+  GRADLE_VERSION: '8.14.3'
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: hosts/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-35 build-tools;35.0.0 platform-tools'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+      - name: Version
+        id: v
+        run: |
+          v=$(grep -m1 -E '^version *=' ../hearth-rs/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          [ -n "$v" ] || v=0.2.1
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Hearth for Android::version $v"
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # Only the key file's path goes to the next steps; the passwords come straight from the secrets there.
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            printf %s "$KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/hearth-release.jks" \
+              || { echo "::error title=Signing key::ANDROID_KEYSTORE_B64 isn't valid base64"; exit 1; }
+            echo "HEARTH_KEYSTORE=$RUNNER_TEMP/hearth-release.jks" >> "$GITHUB_ENV"
+            echo "::notice title=Signing::release APK signed with the repository's key"
+          else
+            echo "::notice title=Signing::no ANDROID_KEYSTORE_* secrets: the release APK is signed with the debug key"
+          fi
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          if ! gradle --no-daemon --stacktrace testDebugUnitTest 2>&1 | tee test.log; then
+            echo "::error title=Android unit tests::$( (grep -E -A8 '^e: |FAILED|What went wrong|AssertionError|Exception' test.log | head -60; echo ===; tail -25 test.log) | tr '\n' '|' | cut -c1-3900)"
+            exit 1
+          fi
+          echo "::notice title=Android unit tests::$(grep -h -o 'tests="[0-9]*"[^>]*failures="[0-9]*"' app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | sed -E 's/tests="([0-9]+)".*failures="([0-9]+)"/\1 tests, \2 failed/' | tr '\n' ' ')"
+      - name: Build the APKs
+        env:
+          HEARTH_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          HEARTH_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          HEARTH_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          if ! gradle --no-daemon --stacktrace assembleDebug assembleRelease 2>&1 | tee build.log; then
+            echo "::error title=Android build failed::$( (grep -E -A8 '^e: |error:|FAILED|What went wrong' build.log | head -60; echo ===; tail -25 build.log) | tr '\n' '|' | cut -c1-3900)"
+            exit 1
+          fi
+          mkdir -p out
+          v='${{ steps.v.outputs.version }}'
+          cp app/build/outputs/apk/debug/app-debug.apk "out/hearth-android-$v-debug.apk"
+          cp app/build/outputs/apk/release/app-release.apk "out/hearth-android-$v.apk"
+          # The page went in: the APK must hold Hearth's page (assets/ui/index.html).
+          unzip -l "out/hearth-android-$v.apk" | grep -q 'assets/ui/index.html' || { echo "::error title=APK::Hearth's page (assets/ui/index.html) isn't in the APK"; exit 1; }
+          echo "::notice title=APK size::$(du -h "out/hearth-android-$v.apk" | cut -f1) (release), $(du -h "out/hearth-android-$v-debug.apk" | cut -f1) (debug)"
+      - name: Lint (reported, never fails the build)
+        continue-on-error: true
+        run: |
+          gradle --no-daemon lintDebug > lint.log 2>&1 || echo "::warning title=Android lint::$(tail -15 lint.log | tr '\n' '|' | cut -c1-1500)"
+          f=app/build/reports/lint-results-debug.txt
+          [ -f "$f" ] && echo "::notice title=Android lint::$(tail -1 "$f")" || true
+      - name: Forget the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/hearth-release.jks"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-android-${{ steps.v.outputs.version }}
+          path: hosts/android/out/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: hearth-android-reports
+          path: |
+            hosts/android/*.log
+            hosts/android/app/build/reports/
+          if-no-files-found: ignore
