@@ -293,13 +293,20 @@ const path = require('path');
         {id: 'android:com.example.notes', title: 'Notes', source: 'manual', installed: true, state: 'installed', art: {}, added: now - 9 * day, cols: []},
         {id: 'emu:snes:Super Mario World (USA).sfc', title: 'Super Mario World', source: 'emu', system: 'Super Nintendo', installed: true, state: 'installed', art: {}, added: now - 2 * day, cols: []}];
       const R = {
-        'host.info': {platform: 'android', name: 'Test Phone', host: 'Hearth (Android)', version: '0.2.1', edition: 'android', features: ['android', 'sendLogs'], setupDone: true, live: false, isDefaultHome: false},
+        'host.info': {platform: 'android', name: 'Test Phone', host: 'Hearth (Android)', version: '0.2.1', edition: 'android', features: ['android', 'sendLogs', 'linux'], setupDone: true, live: false, isDefaultHome: false},
         'sys.status': {wifi: {available: true, on: true, ssid: 'Wi-Fi', bars: 3}, bt: {available: true, on: false}, airplane: false, battery: {present: true, pct: 64, charging: true}, audio: {volume: 40, muted: false}, display: {supported: false}},
         'library.get': {games, sources: {}, collections: [], counts: {android: 2, manual: 1, emu: 1}, runningId: null},
         'profile.get': {name: 'Test Phone', status: null, avatar: 'initials', accent: '#3fd0b8', background: 'default', customAvatar: null, customBackground: null, storeAvatars: {}},
         'android.status': {showAll: true, home: {isDefault: false}, roms: {folder: 'Internal storage › ROMs', count: 1, systems: [{dir: 'snes', name: 'Super Nintendo', count: 1}]}, retroarch: {pkg: 'com.retroarch'}, pads: [{name: 'Xbox Wireless Controller'}]},
         'android.apps': [{id: 'com.example.notes', title: 'Notes'}],
         'android.openSettings': {ok: true},
+        'android.openUrl': {ok: true},
+        // Hearth Linux (LinuxEnv.kt): installed, nothing running.
+        'linux.status': {installed: true, sizeBytes: 4.3e8, distro: 'Debian 13 (trixie)', version: 'Debian 13.1', running: false, jobs: [], busy: null, x11App: false, x11Running: false, supported: true, unsupported: null, freeBytes: 6e10, needBytes: 1.5e9, sdcard: false, error: null},
+        'linux.run': {job: 'j1'},
+        'linux.apt': {job: 'j2'},
+        'linux.stop': {ok: true},
+        'linux.openX11': {ok: false, needApp: true, url: 'https://github.com/termux/termux-x11/releases', text: 'Install Termux:X11 (com.termux.x11) to see Linux apps.'},
         'audio.get': {volume: 40, muted: false, max: 100, devices: []},
         'display.get': {supported: false, width: 2400, height: 1080, refreshRate: 120, resolution: '2400 × 1080'},
         'power.get': {present: true, pct: 64, charging: true, mode: null, modes: [], modeSupported: false},
@@ -347,10 +354,11 @@ const path = require('path');
       closeAll();
     });
     const shown = await ap.evaluate(() => STABS.map(t => t[0]).filter(stabShown));
-    const want = ['profile', 'appearance', 'liblook', 'wifi', 'bluetooth', 'display', 'power', 'controller', 'sources', 'system', 'about'];
+    const want = ['profile', 'appearance', 'liblook', 'wifi', 'bluetooth', 'display', 'power', 'controller', 'sources', 'linux', 'system', 'about'];
     if (JSON.stringify(shown) !== JSON.stringify(want)) errors.push(`android settings: shows ${shown.join(', ')}`);
     const rows = {wifi: ['an-wset', 'an-air'], bluetooth: ['an-bt'], display: ['q-vol', 'a-mute', 'an-disp', 'an-sound'], power: ['s-batt', 'an-batt'],
-      controller: ['s-an-pad0', 'an-pair'], sources: ['an-all', 's-addexe', 's-rescan', 'an-roms', 's-an-ra', 'an-romsx'], system: ['an-home', 'an-apps', 'sy-send', 'sy-senddev'], about: ['s-host']};
+      controller: ['s-an-pad0', 'an-pair'], sources: ['an-all', 's-addexe', 's-rescan', 'an-roms', 's-an-ra', 'an-romsx'], system: ['an-home', 'an-apps', 'sy-send', 'sy-senddev'], about: ['s-host'],
+      linux: ['s-lx-ver', 's-lx-size', 'lx-run', 'lx-root', 'lx-pkg', 'lx-upg', 'lx-x11', 'lx-reset', 'lx-remove']};
     for (const t of shown) {
       await astep('settings ' + t, t => { S.layers = []; S.settingsTab = t; navigate('settings', {}, false); onSettingsTab(t); }, t);
       await ap.waitForTimeout(150);
@@ -376,10 +384,78 @@ const path = require('path');
       closeAll();
     });
     await astep('quick access', () => { S.layers = []; openLayer('qam'); S.qtab = 'quick'; renderQam(); closeAll(); });
+    // Hearth Linux: a command with its output, the install's progress, Termux:X11 missing, a bad package name.
+    await astep('linux command', async () => {
+      S.layers = []; S.settingsTab = 'linux'; navigate('settings', {}, false); onSettingsTab('linux'); await new Promise(r => setTimeout(r, 60));
+      window.openPrompt = async () => 'uname -a';
+      await lxAct('run'); await new Promise(r => setTimeout(r, 30));
+      if (LX.job !== 'j1') throw new Error('no job: ' + LX.job);
+      onHostMessage({type: 'event', name: 'linux.output', data: {job: 'j1', lines: ['Linux localhost 6.6.0-hearth aarch64 GNU/Linux']}});
+      if (!/aarch64/.test(document.querySelector('#lxout').textContent)) throw new Error('no output shown');
+      if (!document.querySelector('#view [data-k="lx-stop"]')) throw new Error('no Stop');
+      onHostMessage({type: 'event', name: 'linux.exit', data: {job: 'j1', kind: 'run', code: 0}});
+      if (LX.job) throw new Error('the job is still running');
+    });
+    await astep('linux install progress', async () => {
+      const st = JSON.parse(JSON.stringify(LX.s));
+      LX.s.installed = false; render(null, true);
+      if (!document.querySelector('#view [data-k="lx-install"]')) throw new Error('no Install');
+      onHostMessage({type: 'event', name: 'linux.progress', data: {kind: 'install', pct: 42, text: 'Downloading Linux… 50 MB of 118 MB'}});
+      render(null, true);
+      if (!document.querySelector('#lxbar') || document.querySelector('#lxbar').style.width !== '42%') throw new Error('no progress bar');
+      if (!document.querySelector('#view [data-k="lx-cancel"]')) throw new Error('no Cancel');
+      onHostMessage({type: 'event', name: 'linux.progress', data: {kind: 'install', pct: 60, text: 'Unpacking'}});
+      if (document.querySelector('#lxbar').style.width !== '60%') throw new Error('the bar did not move');
+      onHostMessage({type: 'event', name: 'linux.done', data: {kind: 'install', ok: true, text: 'Linux is ready', status: st}});
+      if (!document.querySelector('#view [data-k="lx-run"]')) throw new Error('not installed after done');
+    });
+    await astep('linux termux:x11 missing', async () => {
+      window.openPrompt = async () => 'xterm';
+      await lxAct('x11'); await new Promise(r => setTimeout(r, 30));
+      if (!S.layers.includes('sheet') || !/Termux:X11/.test(document.querySelector('#sheetBox').textContent)) throw new Error('no Termux:X11 sheet');
+      closeAll();
+    });
+    await astep('linux packages', async () => {
+      const before = window.__calls.filter(m => m === 'linux.apt').length;
+      window.openPrompt = async () => 'vim; rm -rf';
+      await lxAct('pkg');
+      if (window.__calls.filter(m => m === 'linux.apt').length !== before) throw new Error('a bad package name went to the host');
+      window.openPrompt = async () => 'vim git';
+      await lxAct('pkg'); await new Promise(r => setTimeout(r, 30));
+      if (LX.job !== 'j2') throw new Error('apt did not start');
+    });
+    await astep('linux remove asks first', () => { lxAct('remove'); if (!S.layers.includes('sheet')) throw new Error('no confirmation'); closeAll(); });
     await astep('controller from the host', () => { onHostMessage({type: 'event', name: 'padHost', data: {connected: 1}}); onHostMessage({type: 'event', name: 'pad', data: {b: 'down'}}); onHostMessage({type: 'event', name: 'pad', data: {b: 'b'}}); });
     const asked = await ap.evaluate(() => [...new Set(window.__calls)]);
-    for (const m of ['host.info', 'library.get', 'android.status', 'android.openSettings', 'android.apps']) if (!asked.includes(m)) errors.push(`android: never called ${m}`);
+    for (const m of ['host.info', 'library.get', 'android.status', 'android.openSettings', 'android.apps', 'linux.status', 'linux.run', 'linux.apt', 'linux.openX11']) if (!asked.includes(m)) errors.push(`android: never called ${m}`);
     await ap.close();
+  }
+  // Hearth Linux in the browser preview (?preview=android, no app): the pretend Linux installs and runs a command.
+  {
+    const lp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    lp.on('pageerror', e => errors.push('linux preview: ' + e.message));
+    await lp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=android');
+    await lp.waitForTimeout(800);
+    const lstep = async (what, fn) => {
+      androidSteps.push('preview ' + what);
+      try { await lp.evaluate(fn); } catch (e) { errors.push(`linux preview ${what}: ${e.message.split('\n')[0]}`); }
+    };
+    await lstep('tab', async () => {
+      if (!ANDROID || !lxOn()) throw new Error('not the Android preview');
+      S.layers = []; S.settingsTab = 'linux'; navigate('settings', {}, false); onSettingsTab('linux');
+      await new Promise(r => setTimeout(r, 300));
+      if (!document.querySelector('#view [data-k="lx-install"]')) throw new Error('no Install');
+    });
+    await lstep('install', async () => {
+      await lxAct('install'); await new Promise(r => setTimeout(r, 1700));
+      if (!LX.s.installed || !document.querySelector('#view [data-k="lx-run"]')) throw new Error('did not install');
+    });
+    await lstep('run', async () => {
+      window.openPrompt = async () => 'uname -a';
+      await lxAct('run'); await new Promise(r => setTimeout(r, 600));
+      if (!/aarch64/.test(LX.out.join('\n'))) throw new Error('no output: ' + LX.out.join(' | '));
+    });
+    await lp.close();
   }
   await browser.close();
   if (errors.length) {

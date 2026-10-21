@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Bluetooth on/off, on Android 11 and older (newer Android needs no permission for that). -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <!-- Hearth Linux (Beta Experimental): keeps Linux programs running while Hearth is in the background (a foreground
+         service with a notification, only while something runs). See docs/ANDROID-LINUX.md. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
@@ -31,6 +35,8 @@
         <package android:name="com.retroarch" />
         <package android:name="com.retroarch.aarch64" />
         <package android:name="com.retroarch.ra32" />
+        <!-- Termux:X11, which shows Hearth Linux's programs (Settings › System › Linux). -->
+        <package android:name="com.termux.x11" />
     </queries>
 
     <application
@@ -66,5 +72,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Hearth Linux: runs while Linux programs (PRoot) or the Termux:X11 display server run, so Android doesn't
+             freeze or close them when Hearth isn't in front. LinuxEnv starts and stops it. -->
+        <service
+            android:name=".LinuxService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs a Linux environment (PRoot) the user started, and its programs, while the app is in the background" />
+        </service>
     </application>
 </manifest>

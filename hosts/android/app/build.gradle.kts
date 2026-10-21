@@ -65,6 +65,11 @@ android {
     }
 
     testOptions { unitTests.isReturnDefaultValues = false }
+
+    // Hearth Linux: PRoot is in jniLibs (lib/<abi>/libproot.so…, fetched by CI, see docs/ANDROID-LINUX.md) and must
+    // be a real file in the app's native library folder: Android 10+ runs programs only from there, never from the
+    // app's data. So the libraries are unpacked at install (extractNativeLibs=true) instead of staying in the APK.
+    packaging { jniLibs { useLegacyPackaging = true } }
 }
 
 kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
@@ -104,6 +109,8 @@ androidComponents {
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.webkit:webkit:1.12.1")
+    // Unpacking the Linux download (.tar.xz). XZ for Java: 0BSD, no other dependencies.
+    implementation("org.tukaani:xz:1.10")
 
     testImplementation("junit:junit:4.13.2")
     // org.json is part of Android, but only as stubs in plain JVM unit tests: the real one for those.
