@@ -85,7 +85,8 @@ class Bridge(private val act: MainActivity) {
                     reply(id, false, null, e.message ?: e.toString())
                 }
             }
-            "ready" -> { pageReady = true; Logs.log("page ready"); padsChanged() }
+            // A (re)loaded page starts in Hearth's own controller mode (the desktop's view turns raw mode on itself).
+            "ready" -> { pageReady = true; Logs.log("page ready"); main.post { act.setRawPad(false) }; padsChanged() }
             "log" -> Logs.log("page: " + msg.optString("text").take(4000))
             "power" -> power(msg.optString("action"))
             "resume" -> resume()
@@ -168,7 +169,10 @@ class Bridge(private val act: MainActivity) {
             DEFERRED
         }
         // Hearth Linux (Beta Experimental): LinuxEnv answers at once; long jobs report with linux.* events.
-        "linux.status", "linux.install", "linux.run", "linux.apt", "linux.stop", "linux.openX11", "linux.trustX11", "linux.reset", "linux.remove" -> linux.call(method, a)
+        "linux.status", "linux.install", "linux.run", "linux.apt", "linux.stop", "linux.openX11", "linux.trustX11", "linux.reset", "linux.remove",
+        "linux.desktop.status", "linux.desktop.install", "linux.desktop.start", "linux.desktop.stop" -> linux.call(method, a)
+        // The Linux desktop's view: controller buttons as presses and releases, and the sticks' positions (padAxes).
+        "pad.raw" -> { val on = a.optBoolean("on"); main.post { act.setRawPad(on) }; JSONObject().put("on", on) }
         "android.roms.forget" -> { romsTree()?.let { releaseTree(it) }; store.update { it.remove("roms") }; romList = null; androidStatus() }
         else -> throw Exception("That isn't in Hearth for Android yet")
     }
@@ -394,6 +398,15 @@ class Bridge(private val act: MainActivity) {
     /** A controller button for the page (the same "pad" event the Linux host sends). */
     fun pad(button: String) = event("pad", JSONObject().put("b", button))
 
+    /** Raw mode (the Linux desktop's view): a button going down (repeat: a held direction's repeat) or up. */
+    fun padRaw(button: String, down: Boolean, repeat: Boolean = false) =
+        event("pad", JSONObject().put("b", button).put("down", down).apply { if (repeat) put("repeat", true) })
+
+    /** Raw mode: where the sticks and triggers are (-1…1, triggers 0…1). */
+    fun padAxes(lx: Float, ly: Float, rx: Float, ry: Float, lt: Float, rt: Float) =
+        event("padAxes", JSONObject().put("lx", r2(lx)).put("ly", r2(ly)).put("rx", r2(rx)).put("ry", r2(ry)).put("lt", r2(lt)).put("rt", r2(rt)))
+    private fun r2(v: Float): Double = Math.round(v * 100) / 100.0
+
     /** Controllers came or went: Hearth reads them itself, so the page doesn't also read them (padHost). */
     fun padsChanged() = exec.execute { event("padHost", JSONObject().put("connected", dev.controllers().length())) }
 
@@ -436,6 +449,6 @@ class Bridge(private val act: MainActivity) {
     companion object {
         private val DEFERRED = Any()
         /** What the page may show (HOSTINFO.features). */
-        val FEATURES = listOf("android", "sendLogs", "linux")
+        val FEATURES = listOf("android", "sendLogs", "linux", "linuxDesktop")
     }
 }

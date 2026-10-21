@@ -43,6 +43,11 @@ class MainActivity : Activity() {
     private val repeater = Repeater()
     private val keyRepeatAt = HashMap<String, Long>()
     private var inputListener: InputManager.InputDeviceListener? = null
+    /** The Linux desktop's view is open (the page asks, pad.raw): buttons go to the page as presses and releases,
+     *  the sticks and triggers as positions (padAxes), the hat (some controllers' d-pad) as d-pad buttons. */
+    private var rawPad = false
+    private val rawHat = HashSet<String>()
+    private var lastAxes = FloatArray(6) { Float.NaN }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -189,10 +194,20 @@ class MainActivity : Activity() {
         val fromPad = e.isFromSource(InputDevice.SOURCE_GAMEPAD) || e.isFromSource(InputDevice.SOURCE_JOYSTICK) ||
             (e.isFromSource(InputDevice.SOURCE_DPAD) && !e.isFromSource(InputDevice.SOURCE_KEYBOARD))
         val name = when {
-            code == KeyEvent.KEYCODE_BACK -> "b"
+            code == KeyEvent.KEYCODE_BACK -> if (rawPad && !fromPad) "back" else "b"
             fromPad || KeyEvent.isGamepadButton(code) -> Pad.buttonName(code)
             else -> null
         } ?: return super.dispatchKeyEvent(e)
+        if (rawPad) {
+            val now = SystemClock.uptimeMillis()
+            when (e.action) {
+                KeyEvent.ACTION_DOWN ->
+                    if (e.repeatCount == 0) { keyRepeatAt[name] = now; bridge.padRaw(name, true) }
+                    else if (name in Pad.DIRECTIONS && now - (keyRepeatAt[name] ?: 0L) >= 110) { keyRepeatAt[name] = now; bridge.padRaw(name, true, repeat = true) }
+                KeyEvent.ACTION_UP -> bridge.padRaw(name, false)
+            }
+            return true
+        }
         if (e.action == KeyEvent.ACTION_DOWN) {
             val now = SystemClock.uptimeMillis()
             if (e.repeatCount == 0) { keyRepeatAt[name] = now; bridge.pad(name) }
@@ -204,6 +219,7 @@ class MainActivity : Activity() {
     /** Sticks and the hat: directions with the page's key repeat (Repeater). */
     override fun dispatchGenericMotionEvent(e: MotionEvent): Boolean {
         if (e.isFromSource(InputDevice.SOURCE_JOYSTICK) && e.action == MotionEvent.ACTION_MOVE) {
+            if (rawPad) { rawMotion(e); return true }
             val dirs = Pad.directions(e.getAxisValue(MotionEvent.AXIS_X), e.getAxisValue(MotionEvent.AXIS_Y),
                 e.getAxisValue(MotionEvent.AXIS_HAT_X), e.getAxisValue(MotionEvent.AXIS_HAT_Y), e.getAxisValue(MotionEvent.AXIS_RZ), repeater.holding)
             for (k in repeater.update(dirs, SystemClock.uptimeMillis())) bridge.pad(k)
@@ -212,6 +228,34 @@ class MainActivity : Activity() {
             return true
         }
         return super.dispatchGenericMotionEvent(e)
+    }
+
+    /** Raw mode: the hat as d-pad presses/releases; the sticks and triggers to the page when they moved. */
+    private fun rawMotion(e: MotionEvent) {
+        val hx = e.getAxisValue(MotionEvent.AXIS_HAT_X)
+        val hy = e.getAxisValue(MotionEvent.AXIS_HAT_Y)
+        val hat = HashSet<String>()
+        if (hy < -0.5f) hat.add("up")
+        if (hy > 0.5f) hat.add("down")
+        if (hx < -0.5f) hat.add("left")
+        if (hx > 0.5f) hat.add("right")
+        for (k in hat) if (k !in rawHat) bridge.padRaw(k, true)
+        for (k in rawHat) if (k !in hat) bridge.padRaw(k, false)
+        rawHat.clear(); rawHat.addAll(hat)
+        val v = floatArrayOf(e.getAxisValue(MotionEvent.AXIS_X), e.getAxisValue(MotionEvent.AXIS_Y),
+            e.getAxisValue(MotionEvent.AXIS_Z), e.getAxisValue(MotionEvent.AXIS_RZ),
+            maxOf(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE)),
+            maxOf(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS)))
+        val moved = v.indices.any { i -> lastAxes[i].isNaN() || Math.abs(v[i] - lastAxes[i]) >= 0.02f || ((v[i] == 0f) != (lastAxes[i] == 0f)) }
+        if (moved) { lastAxes = v; bridge.padAxes(v[0], v[1], v[2], v[3], v[4], v[5]) }
+    }
+
+    fun setRawPad(on: Boolean) {
+        if (rawPad == on) return
+        rawPad = on
+        repeater.clear(); main.removeCallbacks(tick)
+        rawHat.clear(); keyRepeatAt.clear(); lastAxes = FloatArray(6) { Float.NaN }
+        Logs.log("controller: ${if (on) "Linux desktop mode (raw)" else "Hearth mode"}")
     }
 
     private val tick: Runnable = object : Runnable {

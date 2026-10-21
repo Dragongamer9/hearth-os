@@ -20,6 +20,10 @@ import java.io.FileOutputStream
 import java.io.FilterInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.Socket
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -39,7 +43,8 @@ import javax.net.ssl.HttpsURLConnection
  * native library folder, never from its data folder.
  *
  * The page's calls (linux.*) answer at once; long work runs on [work] and reports with events: linux.progress
- * {kind, pct, text}, linux.output {job, lines}, linux.exit {job, kind, code}, linux.done {kind, ok, error?, status}.
+ * {kind, pct, text}, linux.output {job, lines}, linux.exit {job, kind, code}, linux.done {kind, ok, error?, status},
+ * linux.x11 {ok, job?, kind, error?} (Termux:X11 started or not), linux.desktop {state, mode, …} (the desktop).
  * One install/apt job at a time; commands from the page run as argv (`/bin/sh -lc <cmd>` inside the Linux, the
  * user's own Linux), never through a shell on Android's side.
  */
@@ -86,6 +91,10 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
         "linux.trustX11" -> { confirm(a); trustX11(a.optString("signer", "")) }
         "linux.reset" -> { confirm(a); install(true) }
         "linux.remove" -> { confirm(a); remove() }
+        "linux.desktop.status" -> desktopStatus()
+        "linux.desktop.install" -> desktopInstall()
+        "linux.desktop.start" -> desktopStart(a)
+        "linux.desktop.stop" -> desktopStop()
         else -> throw Exception("That isn't in Hearth for Android yet")
     }
 
@@ -108,6 +117,7 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
             .put("busy", if (b == null) JSONObject.NULL else JSONObject().put("kind", b.kind).put("pct", b.pct).put("text", b.text))
             .put("x11App", x11Info() != null)
             .put("x11Running", x11?.isAlive == true)
+            .put("desktopRunning", desk != null)
             .put("supported", unsupported() == null)
             .put("unsupported", unsupported() ?: JSONObject.NULL)
             .put("freeBytes", freeBytes())
@@ -373,7 +383,8 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
     }
 
     /** Starts [cmd] (`/bin/sh -lc` inside the Linux) as a job: its output streams as linux.output, then linux.exit. */
-    private fun startJob(kind: String, cmd: String, root: Boolean, timeoutSec: Int, extraEnv: Map<String, String> = emptyMap(), after: ((Int) -> Unit)? = null): String {
+    private fun startJob(kind: String, cmd: String, root: Boolean, timeoutSec: Int, extraEnv: Map<String, String> = emptyMap(),
+                         onLine: ((String) -> Boolean)? = null, after: ((Int) -> Unit)? = null): String {
         if (jobs.size >= 6) throw Exception("Too many commands running: stop one first")
         val id = "j" + nextJob.getAndIncrement()
         val p = process(listOf("/bin/sh", "-lc", cmd), root, extraEnv)
@@ -388,6 +399,7 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
             try {
                 p.inputStream.bufferedReader().useLines { seq ->
                     for (l in seq) {
+                        if (onLine != null && !onLine(l)) continue          // a line the job's owner took (progress)
                         buf.add(l.take(2000))
                         if (buf.size >= 100 || System.currentTimeMillis() - lastFlush > 120) { output(id, buf); lastFlush = System.currentTimeMillis() }
                     }
@@ -424,7 +436,7 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
         val b = start("apt")
         progress(b, 0, "apt-get ${argv.drop(argv.indexOf(action).coerceAtLeast(0)).joinToString(" ").take(100)}")
         return try {
-            val id = startJob("apt", cmd, root = true, timeoutSec = 0, extraEnv = mapOf("DEBIAN_FRONTEND" to "noninteractive")) { code ->
+            val id = startJob("apt", cmd, root = true, timeoutSec = 0, extraEnv = mapOf("DEBIAN_FRONTEND" to "noninteractive")) { code: Int ->
                 done(b, code == 0, if (code == 0) "Done" else "apt-get stopped with code $code")
             }
             JSONObject().put("job", id)
@@ -438,6 +450,11 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
 
     private fun stop(job: String): JSONObject {
         val b = busy.get()
+        // The desktop's install is an apt job: cancelling it stops apt-get (and the busy state ends with the job).
+        if (b != null && b.kind == "desktop" && (job == "desktop" || job.isEmpty())) {
+            jobs.values.filter { it.kind == "desktop-install" }.forEach { stopProcess(it.process) }
+            return JSONObject().put("ok", true)
+        }
         if (b != null && (job == b.kind || job.isEmpty() && b.kind != "apt")) { b.cancel = true; return JSONObject().put("ok", true) }
         val j = jobs[job] ?: throw Exception("That command isn't running anymore")
         stopProcess(j.process)
@@ -445,6 +462,7 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
     }
 
     private fun stopAll() {
+        desk?.let { endDesktop(it) }
         jobs.values.forEach { stopProcess(it.process) }
         x11?.let { stopProcess(it) }; x11 = null
     }
@@ -501,7 +519,16 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
      */
     private fun openX11(a: JSONObject): JSONObject {
         if (!installed()) throw Exception("Install Linux first")
-        val ai = x11Info() ?: return JSONObject().put("ok", false).put("needApp", true).put("url", X11_URL)
+        val cmd = LinuxInput.command(a.optString("cmd", "").ifBlank { "xterm" })
+        x11Needs(cmd, checkProgram = true)?.let { return it }
+        x11Launch("x11", cmd)
+        return JSONObject().put("ok", true).put("starting", true)
+    }
+
+    /** What stops Termux:X11 from showing [cmd] (the app missing, not allowed yet, packages missing) as the page's
+     *  answer, or null when it can start. */
+    private fun x11Needs(cmd: String, checkProgram: Boolean): JSONObject? {
+        x11Info() ?: return JSONObject().put("ok", false).put("needApp", true).put("url", X11_URL)
             .put("text", "Install Termux:X11 (com.termux.x11) to see Linux apps. Termux itself isn't needed.")
         val signer = x11Signer() ?: throw Exception("Couldn't read who signed Termux:X11, so Hearth won't run it.")
         val trusted = runCatching { x11Trust.readText().trim() }.getOrNull()
@@ -509,42 +536,258 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
             return JSONObject().put("ok", false).put("needTrust", true).put("signer", signer).put("changed", trusted != null)
                 .put("text", (if (trusted != null) "Termux:X11 is now signed by someone else than the one you allowed (it was replaced). " else "") +
                     "To show Linux apps, Hearth runs Termux:X11's display code inside itself, with Hearth's permissions. Only allow it if you installed Termux:X11 yourself from its official page (github.com/termux/termux-x11 or F-Droid). Signer: ${signer.take(16)}…")
-        val cmd = LinuxInput.command(a.optString("cmd", "").ifBlank { "xterm" })
         // What's missing first: the X keyboard data (xkb-data), and the program itself when it's a plain name that
         // isn't in the Linux yet (xterm by default), offered as a package of the same name.
         val need = ArrayList<String>()
         if (!File(rootfs, "usr/share/X11/xkb").isDirectory) need += "xkb-data"
         val prog = cmd.substringBefore(' ')
-        if (LinuxInput.isPackageName(prog) && listOf("usr/bin", "bin", "usr/local/bin", "usr/games", "usr/sbin").none { File(rootfs, "$it/$prog").exists() || Files.isSymbolicLink(File(rootfs, "$it/$prog").toPath()) }) need += prog
+        if (checkProgram && LinuxInput.isPackageName(prog) && !inPath(prog)) need += prog
         if (need.isNotEmpty())
             return JSONObject().put("ok", false).put("needPackages", JSONArray(need))
                 .put("text", "Install these packages first: ${need.joinToString(" ")}" + (if ("xkb-data" in need) " (xkb-data is the keyboard data every X app needs)" else ""))
-        val socket = File(rootfs, "tmp/.X11-unix/X0")
-        if (x11?.isAlive != true) {
-            runCatching { socket.delete(); File(rootfs, "tmp/.X0-lock").delete() }
-            val pb = ProcessBuilder("/system/bin/app_process", "-Xnoimage-dex2oat", "/", "--nice-name=hearth-x11", X11_ENTRY, ":0")
-                .redirectErrorStream(true).directory(File(rootfs, "tmp"))
-            val env = pb.environment()
-            env.keys.filter { it.startsWith("LD_") || it == "CLASSPATH" }.forEach { env.remove(it) }
-            env["CLASSPATH"] = ai.sourceDir
-            env["TMPDIR"] = File(rootfs, "tmp").path
-            env["XKB_CONFIG_ROOT"] = File(rootfs, "usr/share/X11/xkb").path
-            val p = pb.start()
-            x11 = p
-            keepAlive()
-            work.execute {
-                runCatching { p.inputStream.bufferedReader().useLines { s -> s.forEach { Logs.log("x11: " + it.take(300)) } } }
-                Logs.log("x11: server exited ${runCatching { p.waitFor() }.getOrDefault(-1)}")
-                if (x11 === p) x11 = null
-                keepAlive()
+        return null
+    }
+
+    private fun inPath(prog: String) = listOf("usr/bin", "bin", "usr/local/bin", "usr/games", "usr/sbin")
+        .any { File(rootfs, "$it/$prog").exists() || Files.isSymbolicLink(File(rootfs, "$it/$prog").toPath()) }
+
+    /**
+     * Starts Termux:X11's server (once), brings Termux:X11 to the front, waits (up to 15 s) for its display and then
+     * runs [cmd] on it as job [kind]. All of it on [work], never on the bridge's thread: the page hears linux.x11
+     * {ok, job, kind} or {ok:false, error, kind}. [then] gets the job (or null when it didn't start).
+     */
+    private fun x11Launch(kind: String, cmd: String, then: ((String?) -> Unit)? = null) {
+        val ai = x11Info() ?: throw Exception("Termux:X11 isn't installed")
+        work.execute {
+            try {
+                val socket = File(rootfs, "tmp/.X11-unix/X0")
+                if (x11?.isAlive != true) {
+                    runCatching { socket.delete(); File(rootfs, "tmp/.X0-lock").delete() }
+                    val pb = ProcessBuilder("/system/bin/app_process", "-Xnoimage-dex2oat", "/", "--nice-name=hearth-x11", X11_ENTRY, ":0")
+                        .redirectErrorStream(true).directory(File(rootfs, "tmp"))
+                    val env = pb.environment()
+                    env.keys.filter { it.startsWith("LD_") || it == "CLASSPATH" }.forEach { env.remove(it) }
+                    env["CLASSPATH"] = ai.sourceDir
+                    env["TMPDIR"] = File(rootfs, "tmp").path
+                    env["XKB_CONFIG_ROOT"] = File(rootfs, "usr/share/X11/xkb").path
+                    val p = pb.start()
+                    x11 = p
+                    keepAlive()
+                    work.execute {
+                        runCatching { p.inputStream.bufferedReader().useLines { s -> s.forEach { Logs.log("x11: " + it.take(300)) } } }
+                        Logs.log("x11: server exited ${runCatching { p.waitFor() }.getOrDefault(-1)}")
+                        if (x11 === p) x11 = null
+                        keepAlive()
+                    }
+                }
+                startActivity(Intent().setComponent(ComponentName(X11_PACKAGE, "$X11_PACKAGE.MainActivity")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                val until = System.currentTimeMillis() + 15_000
+                while (!socket.exists() && System.currentTimeMillis() < until && x11?.isAlive == true) Thread.sleep(250)
+                if (!socket.exists()) throw Exception("Termux:X11's display didn't start. Open Termux:X11 once on its own, then try again (Settings › System › Save logs has the details).")
+                val id = startJob(kind, cmd, root = false, timeoutSec = 0, extraEnv = mapOf("DISPLAY" to ":0"), after = { code -> x11JobEnded(kind, code) })
+                then?.invoke(id)
+                emit("linux.x11", JSONObject().put("ok", true).put("job", id).put("kind", kind))
+            } catch (e: Exception) {
+                Logs.log("x11: $kind didn't start: ${e.message}")
+                then?.invoke(null)
+                emit("linux.x11", JSONObject().put("ok", false).put("kind", kind).put("error", e.message ?: e.toString()))
             }
         }
-        startActivity(Intent().setComponent(ComponentName(X11_PACKAGE, "$X11_PACKAGE.MainActivity")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        val until = System.currentTimeMillis() + 15_000
-        while (!socket.exists() && System.currentTimeMillis() < until && x11?.isAlive == true) Thread.sleep(250)
-        if (!socket.exists()) throw Exception("Termux:X11's display didn't start. Open Termux:X11 once on its own, then try again (Settings › System › Save logs has the details).")
-        val id = startJob("x11", cmd, root = false, timeoutSec = 0, extraEnv = mapOf("DISPLAY" to ":0"))
-        return JSONObject().put("ok", true).put("job", id)
+    }
+
+    /** A job on Termux:X11 ended: when it was the desktop's session, the desktop is over. */
+    private fun x11JobEnded(kind: String, code: Int) {
+        if (kind != "desktop") return
+        val d = desk
+        if (d != null && d.mode == "x11" && d.job != null && !jobs.containsKey(d.job!!)) desk = null
+        emit("linux.desktop", JSONObject().put("state", "stopped").put("mode", "x11").put("code", code))
+    }
+
+    // ================================================================ the Linux desktop (stage 2)
+    /**
+     * XFCE, shown one of two ways (the person's choice is remembered): "hearth" (default) runs TigerVNC's Xvnc in the
+     * Linux and shows it in Hearth's own page with noVNC, through [WsBridge]; "x11" shows the session in Termux:X11.
+     * One desktop at a time. Events: linux.desktop {state: 'ready'|'stopped'|'failed', mode, …}.
+     */
+    private class Desk(val mode: String, val width: Int, val height: Int, val vncPort: Int, val password: String,
+                       val token: String, val ws: WsBridge?) {
+        @Volatile var job: String? = null
+        @Volatile var ready = false
+        @Volatile var stopping = false
+    }
+    @Volatile private var desk: Desk? = null
+    private val deskModeFile get() = File(base, "desktop-mode")
+    private val loopback: InetAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+
+    /** The packages the desktop still needs (empty: it can start). A program can be a link (Debian's alternatives:
+     *  /usr/bin/Xvnc → /etc/alternatives/Xvnc, which only resolves inside the Linux). */
+    private fun desktopMissing(): List<String> = DesktopPlan.NEEDS
+        .filter { (path, _) -> val f = File(rootfs, path); !(f.exists() || Files.isSymbolicLink(f.toPath())) }
+        .map { it.second }.distinct()
+
+    private fun savedMode(): String = runCatching { deskModeFile.readText().trim() }.getOrNull()?.takeIf { it in DesktopPlan.MODES } ?: "hearth"
+
+    private fun desktopStatus(): JSONObject {
+        val ok = installed()
+        val missing = if (ok) desktopMissing() else DesktopPlan.NEEDS.map { it.second }.distinct()
+        val d = desk
+        val o = JSONObject().put("linux", ok).put("installed", ok && missing.isEmpty()).put("missing", JSONArray(missing))
+            .put("packages", JSONArray(DesktopPlan.PACKAGES)).put("mode", savedMode()).put("x11App", x11Info() != null)
+            .put("installing", busy.get()?.kind == "desktop")
+            .put("running", d != null).put("method", d?.mode ?: JSONObject.NULL).put("ready", d?.ready == true)
+        if (d != null && d.mode == "hearth") o.put("width", d.width).put("height", d.height)
+        return o
+    }
+
+    /** One apt job (as root) with the desktop's packages; its progress comes from apt's status lines. */
+    private fun desktopInstall(): JSONObject {
+        if (!installed()) throw Exception("Install Linux first")
+        val b = start("desktop")
+        progress(b, 1, "Getting the package lists…")
+        return try {
+            val id = startJob("desktop-install", DesktopPlan.installCommand(), root = true, timeoutSec = 0,
+                extraEnv = mapOf("DEBIAN_FRONTEND" to "noninteractive"),
+                onLine = { line ->
+                    val st = AptStatus.parse(line)
+                    if (st != null) { progress(b, AptStatus.overall(st).coerceIn(b.pct, 99), st.text.take(120).ifEmpty { b.text }); false }
+                    else { if (b.pct < 5 && line.isNotBlank()) progress(b, b.pct, line.take(120)); true }
+                },
+                after = { code ->
+                    sizeCache = -1
+                    val missing = desktopMissing()
+                    val ok = code == 0 && missing.isEmpty()
+                    if (ok) progress(b, 100, "The Linux desktop is installed")
+                    done(b, ok, when {
+                        ok -> "The Linux desktop is installed"
+                        code == 0 -> "apt finished, but ${missing.joinToString(" ")} is still missing"
+                        else -> "apt-get stopped with code $code"
+                    })
+                })
+            JSONObject().put("started", true).put("job", id)
+        } catch (e: Exception) { busy.compareAndSet(b, null); keepAlive(); throw e }
+    }
+
+    private fun desktopStart(a: JSONObject): JSONObject {
+        if (!installed()) throw Exception("Install Linux first")
+        unsupported()?.let { throw Exception(it) }
+        val mode = DesktopPlan.mode(a.optString("mode", "").ifBlank { savedMode() })
+        val size = if (mode == "hearth") DesktopPlan.geometry(a.optInt("width", 0), a.optInt("height", 0)) else null
+        val missing = desktopMissing()
+        if (missing.isNotEmpty()) return JSONObject().put("ok", false).put("needInstall", true).put("missing", JSONArray(missing))
+            .put("text", "The Linux desktop needs these packages first: ${missing.joinToString(" ")}")
+        if (busy.get()?.kind == "desktop") throw Exception("The desktop is still being installed")
+        base.mkdirs(); deskModeFile.writeText(mode)
+        desk?.let { d ->
+            if (d.mode == mode && !d.stopping) {
+                if (mode == "x11") work.execute { runCatching { startActivity(Intent().setComponent(ComponentName(X11_PACKAGE, "$X11_PACKAGE.MainActivity")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+                return connectInfo(d)
+            }
+            endDesktop(d)
+        }
+        return if (mode == "hearth") startHearthDesktop(size!!.first, size.second) else startX11Desktop()
+    }
+
+    private fun connectInfo(d: Desk): JSONObject {
+        val o = JSONObject().put("ok", true).put("mode", d.mode).put("running", true).put("ready", d.ready)
+        if (d.mode == "hearth") o.put("port", d.ws!!.port).put("token", d.token).put("password", d.password).put("width", d.width).put("height", d.height)
+        return o
+    }
+
+    private fun startHearthDesktop(w: Int, h: Int): JSONObject {
+        val vncPort = ServerSocket(0, 1, loopback).use { it.localPort }
+        val password = VncPassword.random()
+        writePasswd(password)
+        val token = WsHandshake.token()
+        val ws = WsBridge(token, WsBridge.PAGE_ORIGIN, { Socket().apply { connect(InetSocketAddress(loopback, vncPort), 2000) } }, { Logs.log("desktop: $it") }).start()
+        val d = Desk("hearth", w, h, vncPort, password, token, ws)
+        desk = d
+        try {
+            d.job = startJob("desktop", DesktopPlan.script(w, h, vncPort), root = false, timeoutSec = 0,
+                extraEnv = mapOf("TERM" to "xterm-256color"),
+                onLine = { line -> Logs.log("desktop: " + line.take(300)); true },
+                after = { code -> desktopEnded(d, code) })
+        } catch (e: Exception) { ws.stop(); if (desk === d) desk = null; throw e }
+        work.execute { waitForVnc(d) }
+        Logs.log("desktop: starting ${w}x$h, VNC on 127.0.0.1:$vncPort, WebSocket on 127.0.0.1:${ws.port}")
+        return connectInfo(d)
+    }
+
+    /** The password file Xvnc reads (-rfbauth): the random password of this start, as `vncpasswd -f` writes it. */
+    private fun writePasswd(password: String) {
+        val f = inRoot(DesktopPlan.PASSWD) ?: throw Exception("Couldn't write the desktop's password (a link is in the way)")
+        val dir = f.parentFile!!
+        if (Files.isSymbolicLink(dir.toPath())) throw Exception("Couldn't write the desktop's password (a link is in the way)")
+        dir.mkdirs()
+        Files.deleteIfExists(f.toPath())
+        FileOutputStream(f).use { it.write(VncPassword.file(password)) }
+        runCatching { Os.chmod(f.path, 0b110_000_000); Os.chmod(dir.path, 0b111_000_000) }
+    }
+
+    /** Ready when Xvnc answers on its port with "RFB 003.00x" (up to 45 s: the first start of XFCE is slow). */
+    private fun waitForVnc(d: Desk) {
+        val until = System.currentTimeMillis() + 45_000
+        while (System.currentTimeMillis() < until) {
+            if (desk !== d || d.stopping) return
+            val answered = runCatching {
+                Socket().use { s ->
+                    s.connect(InetSocketAddress(loopback, d.vncPort), 500)
+                    s.soTimeout = 2000
+                    val b = ByteArray(4); var got = 0
+                    while (got < 4) { val n = s.getInputStream().read(b, got, 4 - got); if (n < 0) break; got += n }
+                    got == 4 && String(b, Charsets.US_ASCII) == "RFB "
+                }
+            }.getOrDefault(false)
+            if (answered) {
+                if (desk === d && !d.ready) {
+                    d.ready = true
+                    Logs.log("desktop: ready")
+                    emit("linux.desktop", connectInfo(d).put("state", "ready"))
+                }
+                return
+            }
+            Thread.sleep(300)
+        }
+        if (desk === d && !d.ready) {
+            Logs.log("desktop: Xvnc didn't answer in 45 s")
+            endDesktop(d)
+            emit("linux.desktop", JSONObject().put("state", "failed").put("mode", "hearth")
+                .put("error", "The desktop didn't start (Xvnc didn't answer). Settings › System › Save logs has the details."))
+        }
+    }
+
+    private fun desktopEnded(d: Desk, code: Int) {
+        d.ws?.stop()
+        if (desk === d) desk = null
+        runCatching { inRoot(DesktopPlan.PASSWD)?.let { Files.deleteIfExists(it.toPath()) } }
+        Logs.log("desktop: ended ($code)")
+        emit("linux.desktop", JSONObject().put("state", "stopped").put("mode", d.mode).put("code", code))
+    }
+
+    private fun startX11Desktop(): JSONObject {
+        x11Needs(DesktopPlan.SESSION, checkProgram = false)?.let { return it }
+        val d = Desk("x11", 0, 0, 0, "", "", null)
+        desk = d
+        try {
+            x11Launch("desktop", DesktopPlan.SESSION) { id ->
+                if (id == null) { if (desk === d) desk = null }
+                else { d.job = id; d.ready = true; if (desk !== d || d.stopping) jobs[id]?.let { stopProcess(it.process) } }
+            }
+        } catch (e: Exception) { if (desk === d) desk = null; throw e }
+        return JSONObject().put("ok", true).put("mode", "x11").put("starting", true)
+    }
+
+    private fun endDesktop(d: Desk) {
+        d.stopping = true
+        d.ws?.stop()
+        d.job?.let { id -> jobs[id]?.let { stopProcess(it.process) } }
+        if (desk === d) desk = null
+    }
+
+    private fun desktopStop(): JSONObject {
+        val d = desk ?: return JSONObject().put("ok", true).put("running", false)
+        endDesktop(d)
+        Logs.log("desktop: stopped from Hearth")
+        return JSONObject().put("ok", true).put("running", false)
     }
 
     // ================================================================ staying alive in the background

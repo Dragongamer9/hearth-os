@@ -67,6 +67,12 @@ jobs:
         run: |
           ./fetch-proot.sh
           echo "::notice title=PRoot::$(ls app/src/main/jniLibs/*/libproot.so | wc -l) ABIs, green-green-avk/proot v0.15_release (build-proot-android 01f83b8)"
+      # Hearth Linux stage 2: noVNC (the Linux desktop's viewer in Hearth's page) goes into the APK's assets
+      # (assets/ui/novnc), from a pinned tag checked against its commit and a SHA-256 over the files taken.
+      - name: noVNC for the Linux desktop
+        run: |
+          ./fetch-novnc.sh
+          echo "::notice title=noVNC::$(find app/src/main/assets/ui/novnc -type f | wc -l) files, noVNC v1.7.0 (63107bd)"
       - name: Unit tests
         run: |
           set -o pipefail
@@ -92,10 +98,18 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "out/hearth-android-$v.apk"
           # The page went in: the APK must hold Hearth's page (assets/ui/index.html).
           unzip -l "out/hearth-android-$v.apk" | grep -q 'assets/ui/index.html' || { echo "::error title=APK::Hearth's page (assets/ui/index.html) isn't in the APK"; exit 1; }
-          # Hearth Linux: PRoot and its loader, and PRoot's license, must be in the APK.
-          for f in lib/arm64-v8a/libproot.so lib/arm64-v8a/libproot-loader.so assets/licenses/proot-COPYING.txt; do
+          # Hearth Linux: PRoot and its loader, and PRoot's license, must be in the APK; and for the Linux desktop,
+          # noVNC (its entry point, its WebSocket, its zlib) with its licenses.
+          for f in lib/arm64-v8a/libproot.so lib/arm64-v8a/libproot-loader.so assets/licenses/proot-COPYING.txt \
+                   assets/ui/novnc/core/rfb.js assets/ui/novnc/core/websock.js assets/ui/novnc/core/crypto/des.js \
+                   assets/ui/novnc/vendor/pako/lib/zlib/inflate.js assets/licenses/noVNC-LICENSE.txt assets/licenses/MPL-2.0.txt \
+                   assets/licenses/pako-LICENSE.txt; do
             unzip -l "out/hearth-android-$v.apk" | grep -q "$f" || { echo "::error title=APK::$f isn't in the APK"; exit 1; }
           done
+          # Every noVNC file fetched made it in (the page imports them as ES modules: one missing breaks the desktop).
+          want=$(cd app/src/main/assets && find ui/novnc -type f | wc -l)
+          got=$(unzip -l "out/hearth-android-$v.apk" | grep -cE ' assets/ui/novnc/.*[^/]$' || true)
+          [ "$got" -eq "$want" ] || { echo "::error title=APK::$got of $want noVNC files are in the APK"; exit 1; }
           echo "::notice title=APK size::$(du -h "out/hearth-android-$v.apk" | cut -f1) (release), $(du -h "out/hearth-android-$v-debug.apk" | cut -f1) (debug)"
       - name: Lint (reported, never fails the build)
         continue-on-error: true
