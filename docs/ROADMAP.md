@@ -97,6 +97,12 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.2.8 (released)
+
+- [x] Game Mode: Hearth's own or Steam's own Game Mode (Big Picture), in Settings › System and Desktop Mode's Settings › Power
+- [x] Installer fixes: the firmware boot entry, the account (written directly), CachyOS without SELinux; every ISO tested end to end (install, then start) before it's uploaded
+- [x] Steam games: every installed game shows again with one profile
+
 ## 0.2.7 (released)
 
 - [x] Hearth on Nvidia through Chromium: the same Hearth core with an Electron (Chromium) window on Nvidia graphics, chosen at start (WebKit's DMA-BUF drawing fails on RTX 50 cards); Settings › Display › Drawing engine; back to WebKit after two failed starts
