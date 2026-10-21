@@ -35,6 +35,35 @@ pub fn write_start_mode(text: &str, mode: &str) -> String {
     }
 }
 
+/// NIMBUS_GAME_SHELL from session.conf: what Game Mode runs, "hearth" (Hearth) or "steam" (Steam's own Game
+/// Mode, Big Picture fullscreen in gamescope, the way SteamOS does it).
+pub fn read_game_shell(text: &str) -> &'static str {
+    for l in text.lines() {
+        let v = l.trim().strip_prefix("NIMBUS_GAME_SHELL=").map(|v| v.trim_matches(|c| c == '"' || c == '\''));
+        if v == Some("steam") { return "steam"; }
+        if v == Some("hearth") { return "hearth"; }
+    }
+    "hearth"
+}
+/// Sets NIMBUS_GAME_SHELL, keeping everything else in the file.
+pub fn write_game_shell(text: &str, shell: &str) -> String {
+    let line = format!("NIMBUS_GAME_SHELL={shell}");
+    if text.lines().any(|l| l.trim_start().starts_with("NIMBUS_GAME_SHELL=")) {
+        let mut out: Vec<String> = text.lines().map(|l| if l.trim_start().starts_with("NIMBUS_GAME_SHELL=") { line.clone() } else { l.to_string() }).collect();
+        out.push(String::new());
+        out.join("\n")
+    } else {
+        format!("{}{}{line}\n", text, if !text.is_empty() && !text.ends_with('\n') { "\n" } else { "" })
+    }
+}
+pub fn set_game_shell(shell: &str) -> Result<Value, String> {
+    if shell != "hearth" && shell != "steam" { return Err("Game Mode is Hearth or Steam".into()); }
+    let f = session_conf();
+    let text = std::fs::read_to_string(&f).unwrap_or_default();
+    crate::paths::write_atomic(&f, write_game_shell(&text, shell).as_bytes()).map_err(|e| e.to_string())?;
+    Ok(login())
+}
+
 /// hearth-admin's output: the last JSON line is the answer; "error: ..." is a failure.
 pub fn parse_helper(out: &str) -> Result<Value, String> {
     let lines: Vec<&str> = out.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
@@ -72,6 +101,9 @@ pub fn login() -> Value {
         "canAdmin": can_admin(),
         "autologin": if can_admin() { json!(!Path::new(NO_AUTOLOGIN).exists()) } else { Value::Null },
         "startMode": read_start_mode(&std::fs::read_to_string(session_conf()).unwrap_or_default()),
+        "gameShell": read_game_shell(&std::fs::read_to_string(session_conf()).unwrap_or_default()),
+        // Steam's Game Mode needs Steam (the Flatpak, or a native one).
+        "steamInstalled": crate::steam::client_installed(&crate::paths::home()),
         "hostname": std::fs::read_to_string("/proc/sys/kernel/hostname").map(|s| s.trim().to_string()).unwrap_or_default(),
         "user": std::env::var("USER").unwrap_or_default(),
         "lockOnWake": read_json(&desktop_json())["lockOnWake"] == true,
@@ -157,6 +189,17 @@ impl Updates {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn game_shell_setting() {
+        assert_eq!(super::read_game_shell(""), "hearth");
+        assert_eq!(super::read_game_shell("NIMBUS_START_MODE=game\nNIMBUS_GAME_SHELL=\"steam\"\n"), "steam");
+        let t = super::write_game_shell("NIMBUS_START_MODE=desktop\n", "steam");
+        assert!(t.contains("NIMBUS_START_MODE=desktop") && t.contains("NIMBUS_GAME_SHELL=steam"), "{t}");
+        let t2 = super::write_game_shell(&t, "hearth");
+        assert_eq!(super::read_game_shell(&t2), "hearth");
+        assert_eq!(t2.matches("NIMBUS_GAME_SHELL").count(), 1);
+    }
+
     use super::*;
     #[test]
     fn start_mode_file() {
