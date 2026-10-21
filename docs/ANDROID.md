@@ -1,3 +1,5 @@
+> **Archived (2026-10-21).** Hearth for Android is on hold; the focus is Hearth OS and Ember. The code and these notes stay for reference; the Android workflow only runs by hand (type "archived"). The last published APK is on the v0.2.2 release.
+
 # Hearth for Android
 
 Hearth's library and controller interface as an Android app: the same page as Hearth OS and Ember (`ui/index.html`), in a full-screen WebView, with a small Kotlin host (`hosts/android`). It can also be your home screen, so a handheld or TV box starts straight into your games. This first version (0.2.1) is **Beta Experimental**.

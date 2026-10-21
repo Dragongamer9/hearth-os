@@ -1,14 +1,18 @@
+# ARCHIVED (2026-10-21): Hearth for Android is on hold; the focus is Hearth OS and Ember. Kept for reference; it only
+# runs by hand, with "archived" typed in. The last published APK is on the v0.2.2 release.
 # Hearth for Android (hosts/android): unit tests, then the debug and release APKs, uploaded as the
 # hearth-android-<version> artifact. The release APK is signed with the repository's key when the ANDROID_KEYSTORE_*
 # secrets exist, otherwise with the build's debug key (it still installs; updates need the same key every time).
 # On main the release APK is added to that version's GitHub Release (Hearth-android.apk); elsewhere it's an artifact.
-name: Android
+name: Android (archived)
 
 on:
-  push:
-    branches: [android, linux-host, main]
-    paths: ['hosts/android/**', 'ui/**', 'hosts/hearth-rs/Cargo.toml', '.github/workflows/android.yml']
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Hearth for Android is archived. Type "archived" to build it anyway'
+        required: true
+        default: ''
 
 permissions:
   contents: write
@@ -20,6 +24,7 @@ env:
 
 jobs:
   android:
+    if: inputs.confirm == 'archived'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
