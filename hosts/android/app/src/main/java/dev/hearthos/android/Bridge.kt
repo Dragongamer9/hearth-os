@@ -168,7 +168,7 @@ class Bridge(private val act: MainActivity) {
             DEFERRED
         }
         // Hearth Linux (Beta Experimental): LinuxEnv answers at once; long jobs report with linux.* events.
-        "linux.status", "linux.install", "linux.run", "linux.apt", "linux.stop", "linux.openX11", "linux.reset", "linux.remove" -> linux.call(method, a)
+        "linux.status", "linux.install", "linux.run", "linux.apt", "linux.stop", "linux.openX11", "linux.trustX11", "linux.reset", "linux.remove" -> linux.call(method, a)
         "android.roms.forget" -> { romsTree()?.let { releaseTree(it) }; store.update { it.remove("roms") }; romList = null; androidStatus() }
         else -> throw Exception("That isn't in Hearth for Android yet")
     }
