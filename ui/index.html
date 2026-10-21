@@ -938,7 +938,7 @@ function barsIcon(n){
 
 // ---------- mock data ----------
 const H = 3600e3, D = 24*H, now = Date.now();
-const SOURCES = {steam:'Steam', epic:'Epic', gog:'GOG', xbox:'Xbox', emu:'Emulators', beacon:'Beacon', manual:'Manual'};
+const SOURCES = {steam:'Steam', epic:'Epic', gog:'GOG', xbox:'Xbox', emu:'Emulators', beacon:'Beacon', manual:'Manual', android:'Android'};
 const GAMES = [
   {id:'g01',title:'Starfall Drift',src:'steam',appId:'1000010',inst:true,fav:true,hrs:142.5,last:now-5*H,size:'38.2 GB',ach:[34,50],added:now-200*D,genre:'Arcade racing'},
   {id:'g02',title:'Hollow Pines',src:'gog',inst:true,fav:false,hrs:31.2,last:now-1*D,size:'12.9 GB',ach:[11,40],added:now-30*D,genre:'Survival horror'},
@@ -1004,18 +1004,23 @@ const S = {
 };
 const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['emu','Emulators'],['beacon','Beacon'],['manual','Non-library'],['hidden','Hidden']];
 const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settings'],['perf','bolt','Performance'],['now','play','Now playing']];
-if(/[?&]overlay=full/.test(location.search) || (window.nimbusHost && !/[?&]overlay/.test(location.search))) QTABS.splice(3,0,['apps','lib','Open apps']);
+if(/[?&]overlay=full/.test(location.search) || (window.nimbusHost && window.nimbusHost.platform!=='android' && !/[?&]overlay/.test(location.search))) QTABS.splice(3,0,['apps','lib','Open apps']);
 
 // ---------- host bridge ----------
 // send(): fire-and-forget message.  call(): request/response, resolves with the host's result.
 // Host pushes: {type:'event', name, data} for status changes, Bluetooth discovery, PIN prompts.
-// Windows hosts the UI in WebView2 (window.chrome.webview); Linux in the Rust app (Tauri, WebKitGTK). Same messages.
+// Windows hosts the UI in WebView2 (window.chrome.webview); Linux in the Rust app (Tauri, WebKitGTK); Android in its
+// WebView (hosts/android: window.nimbusHost with platform 'android'). Same messages.
 const host = window.chrome && window.chrome.webview ? window.chrome.webview : (window.nimbusHost || null);
 // Which platform we're on; host.info fills in the details at boot. Text that names Windows things checks this.
-const HOSTINFO = {platform: window.nimbusHost || /[?&]preview=linux/.test(location.search) ? 'linux' : 'windows', name:null, host:null, session:false};
+const HOSTINFO = {platform: window.nimbusHost && window.nimbusHost.platform==='android' ? 'android' : window.nimbusHost || /[?&]preview=linux/.test(location.search) ? 'linux' : 'windows', name:null, host:null, session:false};
 const LINUX = HOSTINFO.platform==='linux';
-// Product names: Hearth on Linux (the OS and its session), Ember on Windows (the shell). One UI for both.
-const APP = LINUX ? 'Hearth' : 'Ember';
+// Hearth for Android (hosts/android): Android runs the device (Wi-Fi, Bluetooth, the screen), so Settings shows
+// only what the app does and opens Android's own pages for the rest (androidPage below).
+const ANDROID = HOSTINFO.platform==='android';
+if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','Android']); const i=QTABS.findIndex(q=>q[0]==='perf'); if(i>=0) QTABS.splice(i,1); }
+// Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
+const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
 function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
@@ -1370,7 +1375,7 @@ function applyLook(){
 function saveLook(){ try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} applyLook(); }
 function renderTopNav(){
   const n=$('#topnav'); if(!n) return;
-  const items=[['home','Home'],['library','Library'],['downloads','Downloads'],['settings','Settings']];
+  const items=[['home','Home'],['library','Library'],...(ANDROID?[]:[['downloads','Downloads']]),['settings','Settings']];
   const html = items.map(([v,l])=>`<button class="${S.view===v?'cur':''}" data-f data-k="tn-${v}" data-act="nav" data-view="${v}">${l}</button>`).join('');
   // Only rebuild when it changed: Settings refreshes often (battery, Wi-Fi), and rebuilding these buttons
   // under the selection threw it back to the first setting (Profile), so Home/Library/Downloads couldn't be reached.
@@ -2070,7 +2075,7 @@ function pageSystem(){
     + sgrid(infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
     + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM'));
   h += shead('Startup and privacy');
-  h += sgrid((!LINUX ? swRow('startOnBoot','Start '+APP+' at sign-in','Registers '+APP+' as the shell for this user')
+  h += sgrid((ANDROID ? '' : !LINUX ? swRow('startOnBoot','Start '+APP+' at sign-in','Registers '+APP+' as the shell for this user')
     : `<button class="row" data-f data-k="sy-signin" data-act="goset" data-tab="signin"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign-in and startup</b><small>Sign in automatically, start in Game or Desktop Mode, password</small></div><div class="rv">›</div></button>`)
     + `<button class="row" data-f data-k="sy-count" data-act="countMe"><div class="rt"><b>Count me in the player count</b><small>${APP} tells Hearth OS's counter it's running about every 10 minutes: a random number made on this device, the edition and the version. No names, games or accounts.</small></div><div class="sw ${counterOn()?'on':''}"></div></button>`);
   if(LINUX) h += shead('Backup') + sgrid(`<button class="row" data-f data-k="sy-backup" data-act="backupNow"><span class="ricon">${I.dl}</span><div class="rt"><b>Back up ${APP}</b><small>Settings, profiles, favorites, collections, play time and your own games, to a USB drive or this device</small></div>${BACKUP.busy?'<span class="mini-spin"></span>':'<div class="rv">›</div>'}</button>`
@@ -2181,15 +2186,15 @@ const CREDITS = LINUX
      ['Bazzite / Universal Blue','The OS Hearth is built on'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)'],['umu-launcher','Runs Windows games with Proton'],['Proton / Wine','Windows compatibility']]
   : [['WebView2','Runs '+APP+'\'s interface (Microsoft Edge)'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)']];
 function pageAbout(){
-  const i=SYSINFO.s||{}, ver=UPD.status ? UPD.status.current : (host?'…':'Browser preview');
+  const i=SYSINFO.s||{}, ver=UPD.status ? UPD.status.current : (host?(ANDROID&&HOSTINFO.version||'…'):'Browser preview');
   const sysVer = LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted ? SYSUPD.s.status.booted.version : '';
-  let h = `<div class="about-head"><div class="amark">${LINUX?HEARTH_MARK:I.shell}</div><div style="flex:1"><h3>${APP} ${esc(ver||'')}</h3>
-      <div class="muted">${LINUX?(HOSTINFO.system?'Hearth OS, built on Bazzite':'Hearth for Linux'):'Ember, the shell for Windows 11'} · part of Hearth OS</div></div>
-      <button class="pill" data-f data-k="ab-upd" data-act="goset" data-tab="updates">${I.refresh}Updates</button></div>`;
+  let h = `<div class="about-head"><div class="amark">${LINUX||ANDROID?HEARTH_MARK:I.shell}</div><div style="flex:1"><h3>${APP} ${esc(ver||'')}</h3>
+      <div class="muted">${LINUX?(HOSTINFO.system?'Hearth OS, built on Bazzite':'Hearth for Linux'):ANDROID?'Hearth for Android':'Ember, the shell for Windows 11'} · part of Hearth OS</div></div>
+      ${ANDROID?'':`<button class="pill" data-f data-k="ab-upd" data-act="goset" data-tab="updates">${I.refresh}Updates</button>`}</div>`;
   h += shead('This device');
   let d='';
   if(i.device) d += infoRow('ab-dev','Device', i.device);
-  d += infoRow('ab-os','Operating system', i.osPretty || [i.os,i.osVersion].filter(Boolean).join(' ') || (LINUX?'Linux':'Windows'));
+  d += infoRow('ab-os','Operating system', i.osPretty || [i.os,i.osVersion].filter(Boolean).join(' ') || (LINUX?'Linux':ANDROID?'Android':'Windows'));
   if(sysVer) d += infoRow('ab-img','Hearth OS version', sysVer);
   if(i.cpu) d += infoRow('ab-cpu','Processor', i.cpu + (i.cores?` · ${i.cores} threads`:''));
   if(i.gpu) d += infoRow('ab-gpu','Graphics', i.gpu);
@@ -2198,7 +2203,7 @@ function pageAbout(){
   if(S.sys.display && S.sys.display.width) d += infoRow('ab-disp','Display', `${S.sys.display.width} × ${S.sys.display.height}${S.sys.display.refreshRate?` at ${S.sys.display.refreshRate} Hz`:''}`);
   if(i.kernel) d += infoRow('ab-kern', LINUX?'Kernel':'Windows version', i.kernel);
   if(i.uptimeSec) d += infoRow('ab-up','Running for', uptimeText(i.uptimeSec));
-  d += infoRow('host','App engine',!host?'Browser preview':LINUX?(HOSTINFO.host||'Hearth')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
+  d += infoRow('host','App engine',!host?'Browser preview':ANDROID?(HOSTINFO.host||'Hearth (Android)')+' · Android WebView':LINUX?(HOSTINFO.host||'Hearth')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
   h += sgrid(d);
   if(COUNTER.stats) h += shead('Hearth OS players') + sgrid(infoRow('ab-count','Playing right now', `🔥 ${COUNTER.stats.now.toLocaleString()}`) + infoRow('ab-count2','In the last 30 days', COUNTER.stats.month.toLocaleString()));
   h += shead('Open source')
@@ -2211,7 +2216,7 @@ function viewHome(){
   const V=visible().filter(g=>g.inst || isActive(g) || (g.cloud && (g.last || g.fav)));
   if(!V.length) return `<div class="empty" style="padding-top:18vh">
       <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:8px">${LIB.loading?'Loading your games…':'No games found yet'}</div>
-      ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">${LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':'Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.'}</div>
+      ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">${LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':ANDROID?'Install a game or an emulator on this device, choose your ROMs folder in Settings › Games, or add an app yourself.':'Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.'}</div>
       <button class="pill" style="display:inline-flex" data-f data-k="h-add" data-act="addManual">＋ Add a game</button>`}</div>`;
   if(isX(LOOK.layout)) return homeX(V);
   if(LOOK.layout==='tiles') return nowPlayingBanner()+quickShelf()+homeTiles(V);
@@ -2792,7 +2797,7 @@ const SGROUPS = [['you','user','You'],['connect','wifi','Connections'],['device'
 const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',liblook:'you',signin:'you',wifi:'connect',bluetooth:'connect',remote:'connect',
   display:'device',audio:'device',power:'device',controller:'device',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
 const stabGroup = k => STAB_GROUP[k]||'system';
-const stabShown = k => STABS.some(x=>x[0]===k) && k!=='audio' && (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX));
+const stabShown = k => STABS.some(x=>x[0]===k) && k!=='audio' && (ANDROID ? ANDROID_TABS.includes(k) : (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX)));
 const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k));
 const SLAST = {};
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
@@ -3958,6 +3963,59 @@ function shellReturn(){
     items:[{label:'Yes, switch back to Explorer',icon:'check',run:()=>call('shell.returnToDesktop').catch(e=>toast(e.message))}]});
 }
 
+// ---------- Hearth for Android (hosts/android) ----------
+// Android runs the device itself (and apps can't switch Wi-Fi or Bluetooth since Android 10), so these pages show
+// what Hearth knows and open Android's own settings for the rest. android.status: {showAll, home:{isDefault},
+// roms:{folder, count, systems:[{dir,name,count}]}, retroarch:{pkg}|null, pads:[{name}]}.
+const AND = {s:null};
+const ANDROID_TABS = ['profile','appearance','liblook','wifi','bluetooth','display','power','controller','sources','system','about'];
+function andOpen(page, id){ return call('android.openSettings', id ? {page, id} : {page}).catch(e=>toast(e.message)); }
+function loadAnd(){ if(host) call('android.status').then(r=>{ AND.s=r; refreshUI(); }).catch(()=>{}); }
+const andRow = (k, icon, title, sub, page) => `<button class="row" data-f data-k="${k}" data-act="andOpen" data-page="${page}"><span class="ricon">${I[icon]||I.gear}</span><div class="rt"><b>${title}</b>${sub?`<small>${sub}</small>`:''}</div><div class="rv">›</div></button>`;
+async function andAddApp(){
+  let apps=[]; try{ apps=await call('android.apps',{},60000); }catch(e){ return toast(e.message); }
+  if(!apps.length) return toast('Every app on this device is already in your library');
+  openSheet({title:'Add an app to your library', sub:'Apps Hearth didn\'t list as games', items:apps.map(a=>({label:a.title, icon:'lib', run:async()=>{
+    try{ const dto=await call('library.addManual',{id:a.id}); if(!dto) return; const old=G(dto.id); if(old) Object.assign(old, fromHost(dto)); else GAMES.push(fromHost(dto)); toast(`Added ${dto.title}`); render(null,true); }catch(e){ toast(e.message); } }}))});
+}
+function androidPage(t, body){
+  const a=AND.s||{}, w=S.sys.wifi, b=S.sys.battery;
+  if(t==='wifi') return sgrid(infoRow('an-wifi','Wi-Fi', !w.on ? 'Off' : w.ssid ? 'Connected · '+w.ssid : 'Not connected')
+    + andRow('an-wset','wifi','Wi-Fi settings','Networks and passwords, in Android\'s settings','wifi')
+    + andRow('an-air','plane','Airplane mode','In Android\'s settings','airplane'));
+  if(t==='bluetooth') return sgrid(andRow('an-bt','bt','Bluetooth settings','Pair a controller or headphones in Android\'s settings','bluetooth'))
+    + note('To pair a controller, put it in pairing mode (Xbox: hold the pair button; PlayStation: hold Share and the PS button; Switch Pro: hold the sync button), then pick it in the list Android shows.');
+  if(t==='display') return sliderCtl('vol','vol','Volume',0,100)
+    + sgrid(`<button class="row" data-f data-k="a-mute" data-act="mute"><span class="ricon">${S.sys.audio.muted?I.mute:I.vol}</span><div class="rt"><b>Mute</b></div><div class="sw ${S.sys.audio.muted?'on':''}"></div></button>`
+      + andRow('an-disp','display','Display settings','Brightness, screen timeout and text size','display')
+      + andRow('an-sound','vol','Sound settings','Ringtone, notification and other volumes','sound'));
+  if(t==='power') return sgrid(infoRow('batt','Battery', !b||b.pct==null ? '—' : `${b.pct}% · ${b.charging?'Charging':'On battery'}`)
+    + andRow('an-batt','bolt','Battery settings','Battery saver and usage','battery'));
+  if(t==='controller'){
+    const pads=a.pads||[];
+    return shead('Controllers') + sgrid((pads.length ? pads.map((p,i)=>infoRow('an-pad'+i, p.name||'Controller', 'Connected')).join('') : infoRow('an-pad','Controllers','None connected'))
+      + andRow('an-pair','bt','Pair a controller','In Android\'s Bluetooth settings','bluetooth'))
+      + note('A selects, B goes back, Menu (Start) opens the menu, View (Select) or the Guide button opens Quick Access, LB and RB switch tabs. USB and Bluetooth controllers both work.');
+  }
+  if(t==='sources'){
+    const r=a.roms||{}, ra=a.retroarch;
+    let h = shead('Android apps') + sgrid(
+      `<button class="row" data-f data-k="an-all" data-act="andShowAll"><div class="rt"><b>Show all apps</b><small>Every app on this device in your library (under Non-library), not just games and emulators</small></div><div class="sw ${a.showAll?'on':''}"></div></button>`
+      + `<button class="row" data-f data-k="s-addexe" data-act="addManual"><div class="rt"><b>Add an app</b><small>Put any app in your library as a game</small></div><div class="rv">＋</div></button>`
+      + `<button class="row" data-f data-k="s-rescan" data-act="rescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${LIB.loading?'Scanning…':'Rescan library'}</b><small>Picks up apps you installed or removed</small></div></button>`);
+    h += shead('Emulators') + sgrid(
+      `<button class="row" data-f data-k="an-roms" data-act="andRoms"><span class="ricon">${I.lib}</span><div class="rt"><b>ROMs folder</b><small>${r.folder ? esc(r.folder)+` · ${r.count||0} game${r.count===1?'':'s'}` : 'Choose the folder with your games: one folder per system (snes, gba, psx…), like ES-DE and EmuDeck'}</small></div><div class="rv">${r.folder?'Change ›':'›'}</div></button>`
+      + infoRow('an-ra','RetroArch', ra ? 'Installed' : 'Not installed')
+      + (r.folder ? `<button class="row" data-f data-k="an-romsx" data-act="andRomsForget"><span class="ricon">${I.x}</span><div class="rt"><b>Forget the ROMs folder</b><small>Takes its games out of your library. The files stay.</small></div></button>` : ''));
+    if(r.systems && r.systems.length) h += note(r.systems.filter(x=>x.count).map(x=>`${esc(x.name)}: ${x.count}`).join(' · ') || 'No games found in the system folders yet.');
+    h += note(ra ? 'Games play in RetroArch with the core for their system (get cores in RetroArch › Online Updater › Core Downloader). Systems without a core open in the emulator you pick.' : 'Install RetroArch from your app store to play ROMs right from Hearth. Without it, a ROM opens in the emulator you pick.');
+    return h;
+  }
+  if(t==='system') return shead('Home app') + sgrid(andRow('an-home','home', a.home&&a.home.isDefault ? 'Hearth is your home app' : 'Use Hearth as your home app', 'The Home button opens Hearth. Change it back in Android\'s settings at any time.', 'home')
+    + andRow('an-apps','gear','Android settings','Everything else on this device','settings')) + body;
+  return body;
+}
+
 function viewSettings(){
   if(S.settingsTab==='audio') S.settingsTab='display';   // Audio is part of the Display page (one page for the screen and sound)
   if(!stabShown(S.settingsTab)) S.settingsTab='profile';
@@ -3999,6 +4057,7 @@ function viewSettings(){
     + `<button class="row" data-f data-k="osi-open" data-act="osiChoose"><span class="ricon">${I.dl}</span><div class="rt"><b>Install Hearth OS on this PC</b><small>Next to Windows, or on a whole drive. About 10 to 20 minutes, with internet.</small></div><div class="rv">›</div></button>`
     + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
   if(t==='about') body = pageAbout();
+  if(ANDROID) body = androidPage(t, body);
   return `<div class="settings">
     <div class="snav">${SGROUPS.map(g=>{ const subs=stabsIn(g[0]); if(!subs.length) return '';
       return `<button class="${g[0]===grp?'on':''}" data-f data-k="sg-${g[0]}" data-act="sgroup" data-g="${g[0]}"><span class="sgi">${I[g[1]]}</span><span class="sgt"><b>${g[2]}</b><small>${subs.map(x=>x[2]).join(' · ')}</small></span></button>`; }).join('')}</div>
@@ -4065,8 +4124,8 @@ function goBack(){
 // Overlays
 // =====================================================================
 function renderMenu(){
-  const items=[['home','home','Home'],['library','lib','Library'],['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
-  $('#menu').innerHTML = `<div class="brand">${LINUX?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
+  const items=[['home','home','Home'],['library','lib','Library'],...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
+  $('#menu').innerHTML = `<div class="brand">${LINUX||ANDROID?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
     <button class="mitem" data-f data-k="m-power" data-act="power">${I.power}Power</button>
@@ -4294,6 +4353,9 @@ function qamQuick(){
     <div class="muted" style="font-size:12px;margin-top:4px">Put-aside games stay frozen where you left them. ${QR.hib&&QR.hib.supported?'They\'re kept when you choose Turn off and keep games.':'Sleep keeps them; turning off closes them.'}</div>`;
 }
 function renderPower(){
+  // Android: the system's own power menu (hold the power button) sleeps and turns off; Hearth can only step aside.
+  if(ANDROID){ $('#powerBox').innerHTML = `<h3>Power</h3><button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}Leave ${APP}</button>
+    <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`; return; }
   $('#powerBox').innerHTML = `<h3>Power</h3>
     <button class="mitem" data-f data-k="p-sleep" data-act="pwr" data-p="sleep">${I.moon}Sleep</button>
     <button class="mitem" data-f data-k="p-restart" data-act="pwr" data-p="restart">${I.restart}Restart</button>
@@ -4788,6 +4850,10 @@ function act(el){
     case 'clearnotifs': NOTIFS=NOTIFS.filter(n=>n.expired); updateBadge(); renderQam(); return setFocus($('#qam [data-f]'),true);
     case 'key': return typeKey(d.c);
     case 'pwr': return power(d.p);
+    case 'andOpen': return andOpen(d.page);
+    case 'andShowAll': return call('android.setShowAll',{on:!(AND.s&&AND.s.showAll)}).then(r=>{ AND.s=r; render('an-all',true); }).catch(e=>toast(e.message));
+    case 'andRoms': toast('Pick your ROMs folder'); return call('android.roms.pick',{},600000).then(r=>{ if(r){ AND.s=r; toast('ROMs folder set'); loadLibrary(true,true); } render('an-roms',true); }).catch(e=>toast(e.message));
+    case 'andRomsForget': return call('android.roms.forget').then(r=>{ AND.s=r; loadLibrary(true); render('an-roms',true); }).catch(e=>toast(e.message));
     case 'launchShow': return launchShow();
     case 'toast': return toast(d.text);
   }
@@ -5428,6 +5494,7 @@ function gameOptions(g){
   items.push({label:'Add to collection…',icon:'lib',run:()=>colPick(g)});
   items.push(g.hidden ? {label:'Show in library',icon:'lib',run:()=>setHidden(g,false)} : {label:'Hide from library',icon:'x',run:()=>setHidden(g,true)});
   if(g.canRemove) items.push({label:'Remove from '+APP+'',icon:'trash',run:()=>removeGame(g)});
+  if(ANDROID && g.src!=='emu') items.push({label:'App info',icon:'info',run:()=>andOpen('app', g.id)});
   if(isActive(g) && g.installKind==='nimbus') items.unshift({label:'Cancel download',icon:'x',run:()=>cancelInstall(g)});
   if(g.inst && canDelete(g) && !isActive(g)) items.push({label:'Uninstall…',icon:'trash',run:()=>uninstallGame(g)});
   if(g.src==='beacon'){
@@ -5860,6 +5927,7 @@ async function removeGame(g){
   if(S.view==='game'){ if(!goBack()) navigate('library',{},false); } else render(null,true);
 }
 async function addManual(){
+  if(ANDROID) return andAddApp();
   if(!host) return toast('Adding games needs the '+APP+' app (not the browser preview).');
   try{
     const dto=await call('library.addManual',{},600000); // waits while the file picker is open
@@ -6885,6 +6953,7 @@ function onSettingsTab(t){
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();
   if(t==='system' || t==='about') loadSysInfo();
+  if(ANDROID && (t==='sources' || t==='system' || t==='controller')) loadAnd();
   if(t==='system'){ loadBrowser(); loadArtStatus(); loadOldFiles(false); }
   if(t==='about'){ loadCounterStats(); if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
@@ -6898,6 +6967,7 @@ function onSettingsTab(t){
 }
 
 async function toggleRadio(kind){
+  if(ANDROID) return andOpen(kind==='air'?'airplane':kind==='bt'?'bluetooth':'wifi');   // apps can't switch radios on Android 10+
   if(S.sys.busy[kind]) return;
   S.sys.busy[kind]=true; refreshUI();
   try{

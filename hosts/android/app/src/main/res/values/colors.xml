@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The page's own background (--bg in ui/index.html), so nothing flashes white while it loads. -->
+    <color name="hearth_bg">#0C1016</color>
+</resources>

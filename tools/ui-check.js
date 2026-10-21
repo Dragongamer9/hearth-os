@@ -277,10 +277,114 @@ const path = require('path');
       if (overlay && !document.querySelector('#qam [data-act="gamePowerForget"]')) throw new Error('no way back to the usual power settings');
     }, overlay);
   }
+  // Hearth for Android (hosts/android): the page with a pretend Android host (window.nimbusHost, platform 'android',
+  // answering like Bridge.kt): only the Settings pages Android has, its own rows there, no Downloads, the Android
+  // library tab, the Android power menu and "Add an app".
+  const androidSteps = [];
+  {
+    const ap = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    ap.on('pageerror', e => errors.push('android: ' + e.message));
+    ap.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|net::ERR/.test(m.text())) errors.push('android console: ' + m.text()); });
+    await ap.addInitScript(() => {
+      const day = 864e5, now = Date.now(), L = [];
+      const games = [
+        {id: 'android:com.retroarch', title: 'RetroArch', source: 'android', installed: true, state: 'installed', art: {}, minutes: 30, lastPlayed: now - day, added: now - 5 * day, cols: []},
+        {id: 'android:com.example.racer', title: 'Racer', source: 'android', installed: true, state: 'installed', art: {}, minutes: 0, lastPlayed: 0, added: now - day, cols: [], canRemove: true},
+        {id: 'android:com.example.notes', title: 'Notes', source: 'manual', installed: true, state: 'installed', art: {}, added: now - 9 * day, cols: []},
+        {id: 'emu:snes:Super Mario World (USA).sfc', title: 'Super Mario World', source: 'emu', system: 'Super Nintendo', installed: true, state: 'installed', art: {}, added: now - 2 * day, cols: []}];
+      const R = {
+        'host.info': {platform: 'android', name: 'Test Phone', host: 'Hearth (Android)', version: '0.2.1', edition: 'android', features: ['android', 'sendLogs'], setupDone: true, live: false, isDefaultHome: false},
+        'sys.status': {wifi: {available: true, on: true, ssid: 'Wi-Fi', bars: 3}, bt: {available: true, on: false}, airplane: false, battery: {present: true, pct: 64, charging: true}, audio: {volume: 40, muted: false}, display: {supported: false}},
+        'library.get': {games, sources: {}, collections: [], counts: {android: 2, manual: 1, emu: 1}, runningId: null},
+        'profile.get': {name: 'Test Phone', status: null, avatar: 'initials', accent: '#3fd0b8', background: 'default', customAvatar: null, customBackground: null, storeAvatars: {}},
+        'android.status': {showAll: true, home: {isDefault: false}, roms: {folder: 'Internal storage › ROMs', count: 1, systems: [{dir: 'snes', name: 'Super Nintendo', count: 1}]}, retroarch: {pkg: 'com.retroarch'}, pads: [{name: 'Xbox Wireless Controller'}]},
+        'android.apps': [{id: 'com.example.notes', title: 'Notes'}],
+        'android.openSettings': {ok: true},
+        'audio.get': {volume: 40, muted: false, max: 100, devices: []},
+        'display.get': {supported: false, width: 2400, height: 1080, refreshRate: 120, resolution: '2400 × 1080'},
+        'power.get': {present: true, pct: 64, charging: true, mode: null, modes: [], modeSupported: false},
+        'system.info': {device: 'Test Phone', hostname: 'Test Phone', os: 'Android', osVersion: '15', osPretty: 'Android 15 (API 35)', cpu: 'Test SoC', cores: 8, memoryBytes: 8e9, storage: {totalBytes: 128e9, freeBytes: 64e9}, uptimeSec: 3600},
+        'pad.status': {connected: 1, mouseMode: false, mouseOn: false}};
+      window.__calls = [];
+      window.nimbusHost = {platform: 'android',
+        postMessage(m) {
+          if (m.type !== 'call') return;
+          window.__calls.push(m.method);
+          const r = m.method in R ? {type: 'result', id: m.id, ok: true, value: JSON.parse(JSON.stringify(R[m.method]))} : {type: 'result', id: m.id, ok: false, error: "That isn't in Hearth for Android yet"};
+          setTimeout(() => L.forEach(f => f({data: r})), 5);
+        },
+        addEventListener(t, f) { if (t === 'message') L.push(f); }};
+    });
+    await ap.goto('file://' + path.resolve(__dirname, '../ui/index.html'));
+    await ap.waitForTimeout(1500);
+    const astep = async (what, fn, arg) => {
+      androidSteps.push(what);
+      try { await ap.evaluate(fn, arg); await ap.waitForTimeout(200); }
+      catch (e) { errors.push(`android ${what}: ${e.message.split('\n')[0]}`); }
+    };
+    await astep('platform', () => {
+      if (!ANDROID || LINUX || APP !== 'Hearth') throw new Error(`not Android: ${HOSTINFO.platform} ${APP}`);
+      if (QTABS.some(q => q[0] === 'perf' || q[0] === 'apps')) throw new Error('Quick Access has Performance or Open apps');
+      if (GAMES.length !== 4) throw new Error(`the library has ${GAMES.length} games, not 4`);
+    });
+    await astep('menu', () => {
+      S.layers = []; openLayer('menu');
+      if (document.querySelector('#menu [data-k="m-downloads"]')) throw new Error('Downloads is in the menu');
+      if (document.querySelector('#topnav [data-k="tn-downloads"]')) throw new Error('Downloads is in the top bar');
+      closeAll();
+    });
+    for (const v of ['home', 'library']) await astep('screen ' + v, v => { S.layers = []; navigate(v, {}, false); }, v);
+    await astep('library tab', () => {
+      S.layers = []; S.tab = 'android'; navigate('library', {}, false);
+      if (!document.querySelector('#view [data-k="tab-android"]')) throw new Error('no Android tab');
+      if (!document.querySelector('#view [data-k="tab-emu"]')) throw new Error('no Emulators tab');
+    });
+    await astep('game page', () => { S.layers = []; navigate('game', {game: 'android:com.retroarch'}, false); if (!document.querySelector('#view [data-k="g-play"]')) throw new Error('no Play'); });
+    await astep('game options', () => {
+      gameOptions(G('android:com.racer') || G('android:com.example.racer'));
+      const t = document.querySelector('#sheetBox').textContent;
+      if (!/App info/.test(t) || !/Remove from Hearth/.test(t) || /Game settings/.test(t)) throw new Error('the options are wrong: ' + t.slice(0, 200));
+      closeAll();
+    });
+    const shown = await ap.evaluate(() => STABS.map(t => t[0]).filter(stabShown));
+    const want = ['profile', 'appearance', 'liblook', 'wifi', 'bluetooth', 'display', 'power', 'controller', 'sources', 'system', 'about'];
+    if (JSON.stringify(shown) !== JSON.stringify(want)) errors.push(`android settings: shows ${shown.join(', ')}`);
+    const rows = {wifi: ['an-wset', 'an-air'], bluetooth: ['an-bt'], display: ['q-vol', 'a-mute', 'an-disp', 'an-sound'], power: ['s-batt', 'an-batt'],
+      controller: ['s-an-pad0', 'an-pair'], sources: ['an-all', 's-addexe', 's-rescan', 'an-roms', 's-an-ra', 'an-romsx'], system: ['an-home', 'an-apps', 'sy-send', 'sy-senddev'], about: ['s-host']};
+    for (const t of shown) {
+      await astep('settings ' + t, t => { S.layers = []; S.settingsTab = t; navigate('settings', {}, false); onSettingsTab(t); }, t);
+      await ap.waitForTimeout(150);
+      await astep('settings ' + t + ' rows', ([t, keys]) => {
+        render(null, true);
+        const miss = keys.filter(k => !document.querySelector(`#view [data-k="${k}"]`));
+        if (miss.length) throw new Error('missing ' + miss.join(', '));
+        if (t === 'system' && document.querySelector('#view [data-k="s-startOnBoot"]')) throw new Error("Windows' shell switch is on Android's System page");
+      }, [t, rows[t] || []]);
+    }
+    await astep('open a settings page', async () => {
+      S.layers = []; S.settingsTab = 'system'; navigate('settings', {}, false); await new Promise(r => setTimeout(r, 50));
+      act(document.querySelector('#view [data-k="an-home"]'));
+    });
+    await astep('power menu', () => {
+      S.layers = []; navigate('home', {}, false); openLayer('power');
+      if (!document.querySelector('#powerBox [data-k="p-desktop"]') || document.querySelector('#powerBox [data-k="p-shutdown"]')) throw new Error('not the Android power menu');
+      closeAll();
+    });
+    await astep('add an app', async () => {
+      await addManual(); await new Promise(r => setTimeout(r, 100));
+      if (!S.layers.includes('sheet') || !/Notes/.test(document.querySelector('#sheetBox').textContent)) throw new Error('no app list');
+      closeAll();
+    });
+    await astep('quick access', () => { S.layers = []; openLayer('qam'); S.qtab = 'quick'; renderQam(); closeAll(); });
+    await astep('controller from the host', () => { onHostMessage({type: 'event', name: 'padHost', data: {connected: 1}}); onHostMessage({type: 'event', name: 'pad', data: {b: 'down'}}); onHostMessage({type: 'event', name: 'pad', data: {b: 'b'}}); });
+    const asked = await ap.evaluate(() => [...new Set(window.__calls)]);
+    for (const m of ['host.info', 'library.get', 'android.status', 'android.openSettings', 'android.apps']) if (!asked.includes(m)) errors.push(`android: never called ${m}`);
+    await ap.close();
+  }
   await browser.close();
   if (errors.length) {
     for (const e of errors) console.log(`::error title=Hearth page::${e}`);
     process.exit(1);
   }
-  console.log(`ok: Hearth's page loads and draws ${9 + tabs.length + layouts.length + libLayouts.length} screens (and Beacon's tab, game page, Game setup, Mods, log, jobs, mod sheets and Stores card, and an expired store sign-in) (and ${hhdSecs.length * 2} Handheld Daemon sections, and Quick Access › Performance ${perfModes.length} ways) without errors`);
+  console.log(`ok: Hearth's page loads and draws ${9 + tabs.length + layouts.length + libLayouts.length} screens (and Beacon's tab, game page, Game setup, Mods, log, jobs, mod sheets and Stores card, and an expired store sign-in) (and ${hhdSecs.length * 2} Handheld Daemon sections, and Quick Access › Performance ${perfModes.length} ways) (and Hearth for Android: ${androidSteps.length} steps) without errors`);
 })();
