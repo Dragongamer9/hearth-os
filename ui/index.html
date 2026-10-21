@@ -6177,6 +6177,7 @@ function viewBSetup(){
   if(st.requires){ const r=G('beacon:'+st.requires); if(r && !r.inst) h+=bcRow('bc-req','bcnReq',I.info,`Needs ${esc(r.title)} too`,'Set it up as well: this game uses its files','Set it up ›',dk); }
   if(!st.installed){
     h+=shead('Install')
+      + (['bfme1','bfme2','rotwk'].includes(bcSlug(g.id)) ? bcRow('bc-aio','bcnJob',I.dl,'Install with the All-in-One launcher',`Opens the BFME Foundation's launcher: pick ${esc(st.short||g.title)} there and press Install. Beacon closes it and adds the game when it's done.`,'Install ›',`${dk} data-job="aioGet"`) : '')
       + bcRow('bc-install','bcnJob',I.dl,'Install from a disc or download',`Run the game's installer (setup.exe). It installs into Beacon's own Wine setup.`,'Choose ›',`${dk} data-job="install"`)
       + bcRow('bc-locate','bcnLocate',I.lib,'It\'s already installed','Show Beacon the game\'s folder','Choose ›',dk)
       + bcRow('bc-scan','bcnJob',I.search,'Find games on this device','Beacon looks in the usual places','›','data-job="scan"');
@@ -6260,10 +6261,11 @@ function beaconEvent(name, d){
     BC.job=Object.assign(BC.job||{game:d.game||null, job:d.job, label:'working'}, {pct:d.pct==null?(BC.job&&BC.job.pct):d.pct, text:d.text||''});
   } else if(name==='beacon.done'){
     BC.job=null;
-    const what={setup:'Prepared', install:'The installer finished', patch:'Done', tool:'The launcher closed', scan:'Done looking', findMods:'Done looking', addFiles:'Files added'}[d.job]||'Done';
+    const what={setup:'Prepared', install:'The installer finished', patch:'Done', tool:'The launcher closed', scan:'Done looking', findMods:'Done looking', addFiles:'Files added', aioGet:'Installed'}[d.job]||'Done';
     toast(d.ok ? (d.message||what) : (d.error||'That didn\'t work'));
+    if(d.job==='aioGet' && d.ok && d.ready) loadLibrary(false);
     if(d.game) bcLoad('beacon:'+d.game);
-    if(d.job==='scan' || d.job==='findMods' || d.job==='install') Object.keys(BC.d).forEach(id=>{ if(!d.game || id!=='beacon:'+d.game) bcLoad(id); });
+    if(d.job==='scan' || d.job==='findMods' || d.job==='install' || d.job==='aioGet') Object.keys(BC.d).forEach(id=>{ if(!d.game || id!=='beacon:'+d.game) bcLoad(id); });
   }
   bcRedraw();
 }
@@ -6423,12 +6425,13 @@ const BC_MOCK = (()=>{
     if(m==='beacon.removeMod'){ MODS[slug]=MODS[slug].filter(x=>x.id!==a.mod); if(s.selectedMod===a.mod) s.selectedMod=null; syncGame(slug); return Object.assign(details(slug), {message:'Mod removed'}); }
     if(m==='beacon.selectMod'){ s.selectedMod=a.mod&&a.mod!=='@none'?a.mod:null; syncGame(slug); return true; }
     if(m==='beacon.job'){
-      const label={setup:'preparing the game',install:'running the installer',patch:'running the patch',tool:'running the game\'s launcher',scan:'looking for games',findMods:'looking for mods',addFiles:'adding the files'}[a.job];
+      const label={setup:'preparing the game',install:'running the installer',patch:'running the patch',tool:'running the game\'s launcher',scan:'looking for games',findMods:'looking for mods',addFiles:'adding the files',aioGet:'installing through the All-in-One launcher'}[a.job];
       if(!label) fail('Hearth can\'t do that with Beacon.');
       if(a.job==='scan') job(null,'scan',[[10,'Looking in /home/you/Games'],[45,'Looking in /home/you/.steam/steam/steamapps/common'],[80,'Looking in /run/media/you/Games']],()=>'Found 5 games');
       else if(a.job==='findMods') job(null,'findMods',[[20,'Looking in /home/you/Downloads'],[70,'Looking in /home/you/Games']],()=>'No new mods found');
       else if(a.job==='setup') job(slug,'setup',[[5,'Checking the game\'s setup'],[20,'Creating the Wine prefix and adding the game\'s registry keys (the first time can take a minute)'],[90,'Writing the game\'s settings']],()=>{ s.needsSetup=false; s.prefixReady=true; s.hasLog=true; s.issues=s.issues.filter(i=>!/prefix/i.test(i.message)); syncGame(slug); return 'Ready to play'; });
       else if(a.job==='install') job(slug,'install',[[5,'Preparing the game\'s Wine prefix'],[15,'Running setup.exe — follow its window. Some installers work for a long time without showing progress.'],[90,'Looking for newly installed games']],()=>{ s.installed=true; s.ready=true; s.path=`/home/you/.local/share/beacon/prefixes/${slug}/drive_c/Program Files/${s.title}`; s.issues=s.issues.filter(i=>i.level!=='error'); s.runner={id:RUN[0].id,name:RUN[0].name}; s.needsSetup=true; syncGame(slug); return 'setup.exe finished'; });
+      else if(a.job==='aioGet') job(slug,'aioGet',[[null,`Opening the All-in-One launcher: choose ${s.title} there and press Install`],[null,`The launcher is downloading ${s.title}`],[99,'Closing the launcher']],()=>{ s.installed=true; s.ready=true; s.path=`/home/you/.local/share/beacon/prefixes/aio-launcher/pfx/drive_c/${{bfme1:'BFME1',bfme2:'BFME2',rotwk:'RotWK'}[slug]}`; s.issues=s.issues.filter(i=>i.level!=='error'); s.runner={id:RUN[0].id,name:RUN[0].name}; syncGame(slug); return `${s.title} is installed`; });
       else if(a.job==='addFiles'){ const step=(COMM[slug]||{steps:[]}).steps.find(x=>x.id===a.step)||fail('That setup step can\'t be used.'); job(slug,'addFiles',[[null,'Extracting EF_Patch.zip'],[null,'Copying files into the game folder (anything replaced is backed up first)']],()=>{ step.done=true; return 'Added '+step.title; }); }
       else job(slug,a.job,[[5,'Preparing the game\'s Wine prefix'],[15,'Running the program — follow its window']],()=>'Done');
       return {started:true, job:a.job, label};

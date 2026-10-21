@@ -16,7 +16,7 @@
 //! Beacon's JSON commands (`beacon --json …`, README "For Hearth / scripting"): status, mods, catalog, community,
 //! runners and log to read; set-path, set-key (the CD key on stdin, never on the command line), set-runner,
 //! resolution, windowed, edition, virtual-desktop, via-steam, args, add-mod, remove-mod to change things; scan,
-//! find-mods, setup, run and add-files as long jobs with progress lines. Every value is checked here first
+//! find-mods, setup, run, add-files and (Beacon 0.0.8+) aio-launcher get as long jobs with progress lines. Every value is checked here first
 //! (bridge_call); every Beacon process has a time limit; Hearth changes one thing in Beacon at a time (Busy), off
 //! the bridge thread, then reads Beacon again in the background (refresh → Library::beacon_tick).
 //!
@@ -41,6 +41,38 @@ const STEAM_IDS: [(&str, u32); 2] = [("uaw", 10430), ("swgb", 356500)];
 const MAX_MODS: usize = 200;
 
 pub fn known_game(id: &str) -> bool { GAMES.contains(&id) }
+/// The games the BFME All-in-One launcher installs.
+pub const AIO_GAMES: [&str; 3] = ["bfme1", "bfme2", "rotwk"];
+/// Jobs that open a window of their own (an installer, a game's launcher, the All-in-One launcher): in Game Mode
+/// that window is put in front while the job runs (show_job_windows), or it would sit behind Hearth.
+pub fn job_has_window(job: &str) -> bool { matches!(job, "install" | "patch" | "tool" | "addFiles" | "aioGet") }
+
+/// Game Mode: while a Beacon job runs, the windows its processes open are pinned in front (gamescope only shows
+/// what it's asked for, and nobody asks for a Wine installer). Hearth comes back when the job is done.
+fn show_job_windows(stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    use std::sync::atomic::Ordering;
+    if !crate::gamescope::inside() { return; }
+    std::thread::spawn(move || {
+        let proc_root = Path::new("/proc");
+        let mut ours: Option<u64> = None;
+        while !stop.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(1000));
+            let jobs = job_pids();
+            let wins = crate::gamescope::focusable_windows();
+            if ours.map(|w| wins.iter().any(|x| x.win == w)).unwrap_or(false) { continue; }
+            let pick = wins.iter().rev().find(|w| w.pid > 0 && w.pid < u32::MAX as u64
+                && jobs.iter().any(|j| crate::procs::descends_from(proc_root, w.pid as u32, *j)));
+            if let Some(w) = pick {
+                crate::bridge::log(&format!("beacon: showing the job's window 0x{:x} (process {})", w.win, w.pid));
+                crate::gamescope::focus_window(w.win);
+                ours = Some(w.win);
+            } else if ours.take().is_some() && crate::gamescope::pinned().is_some() {
+                crate::gamescope::clear_pin();
+            }
+        }
+        if ours.is_some() && crate::gamescope::pinned() == ours { crate::gamescope::clear_pin(); }
+    });
+}
 
 /// A mod id as Beacon makes them ("rotwk:edain": the game, then the mod's name as lowercase letters, digits and
 /// dashes), checked before it goes on a command line: letters, digits and . _ : - only, not starting with a dash.
@@ -591,6 +623,14 @@ pub fn job_args(job: &str, game: Option<&str>, file: Option<&str>, step: Option<
         "tool" => (vec!["run".into(), g()?, "--tool".into()], PROGRAM_LIMIT),
         "scan" => { let mut a = vec!["scan".to_string()]; if let Some(d) = file { a.push(d.to_string()); } (a, SCAN_LIMIT) }
         "findMods" => (vec!["find-mods".into()], SCAN_LIMIT),
+        // BFME, BFME II and RotWK through the BFME Foundation's All-in-One launcher (Beacon 0.0.8+): Beacon opens
+        // it, waits while the player installs the game there, then closes it and adds the game. Beacon never
+        // downloads the game itself; the launcher does.
+        "aioGet" => {
+            let g = g()?;
+            if !AIO_GAMES.contains(&g.as_str()) { return Err("Only BFME, BFME II and RotWK come from the All-in-One launcher.".into()); }
+            (vec!["aio-launcher".into(), "get".into(), g], PROGRAM_LIMIT)
+        }
         "addFiles" => {
             let s = step.filter(|s| valid_slug(s)).ok_or("That setup step can't be used.")?;
             (vec!["add-files".into(), g()?, s.to_string(), f()?], PROGRAM_LIMIT)
@@ -604,7 +644,7 @@ pub fn job_label(job: &str) -> &'static str {
     match job {
         "setup" => "preparing the game", "install" => "running the installer", "patch" => "running the patch",
         "tool" => "running the game's launcher", "scan" => "looking for games", "findMods" => "looking for mods",
-        "addFiles" => "adding the files", _ => "working",
+        "addFiles" => "adding the files", "aioGet" => "installing through the All-in-One launcher", _ => "working",
     }
 }
 
@@ -855,10 +895,13 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, repl
             let ev = |name: &str, data: Value| json!({"type": "event", "name": name, "data": data});
             crate::stores::notify(ev("beacon.progress", json!({"game": game, "job": job, "pct": 0, "text": "Starting"})));
             let (g2, job2) = (game.clone(), job.clone());
+            let stop_showing = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            if job_has_window(&job) { show_job_windows(stop_showing.clone()); }
             std::thread::spawn(move || {
                 let r = run_json(&cli, &args, None, limit, true, &mut |pct: Option<u64>, t: &str| {
                     crate::stores::notify(ev("beacon.progress", json!({"game": g2, "job": job2, "pct": pct, "text": t})));
                 });
+                stop_showing.store(true, std::sync::atomic::Ordering::SeqCst);
                 drop(busy);
                 crate::stores::notify(ev("beacon.progress", json!({"game": g2, "job": job2, "pct": 98, "text": "Reading Beacon's games again"})));
                 refresh(&home, &slot);
@@ -866,7 +909,8 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, repl
                     Ok(v) => {
                         crate::bridge::log(&format!("beacon: {job2}: done"));
                         json!({"game": g2, "job": job2, "ok": true, "message": text(&v["message"], 200),
-                               "found": v["found"].as_array().map(|f| f.len()), "added": v["added"].as_array().map(|f| f.len()), "installed": v["installed"].as_bool()})
+                               "found": v["found"].as_array().map(|f| f.len()), "added": v["added"].as_array().map(|f| f.len()), "installed": v["installed"].as_bool(),
+                               "ready": v["ready"].as_bool()})
                     }
                     Err(e) => {
                         crate::bridge::log(&format!("beacon: {job2}: {e}"));
@@ -1089,6 +1133,10 @@ mod tests {
         assert_eq!((a, l), (vec!["setup".to_string(), "bfme2".into()], SETUP_LIMIT));
         assert_eq!(job_args("install", Some("conquest"), Some("/m/setup.exe"), None).unwrap().0, vec!["run", "conquest", "/m/setup.exe"]);
         assert_eq!(job_args("tool", Some("aotr"), None, None).unwrap().0, vec!["run", "aotr", "--tool"]);
+        assert_eq!(job_args("aioGet", Some("bfme1"), None, None).unwrap().0, vec!["aio-launcher", "get", "bfme1"]);
+        assert!(job_args("aioGet", Some("uaw"), None, None).is_err(), "only the launcher's games");
+        assert!(job_args("aioGet", None, None, None).is_err());
+        assert!(job_has_window("aioGet") && job_has_window("install") && !job_has_window("scan") && !job_has_window("setup"));
         assert_eq!(job_args("scan", None, None, None).unwrap().0, vec!["scan"]);
         assert_eq!(job_args("findMods", None, None, None).unwrap().0, vec!["find-mods"]);
         assert_eq!(job_args("addFiles", Some("swgb"), Some("/d/EF.zip"), Some("expanding-fronts")).unwrap().0, vec!["add-files", "swgb", "expanding-fronts", "/d/EF.zip"]);
