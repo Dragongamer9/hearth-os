@@ -89,6 +89,12 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Epic cloud saves for games Hearth installs
 - [ ] More stores (itch.io, Amazon)
 
+## 0.2.2 (released)
+
+- [x] Hearth for Android (Beta Experimental): Android games and emulators in Hearth's library, RetroArch ROMs, controller, home app; the APK on every release
+- [x] Hearth Linux on Android, stage 1: Debian arm64 under PRoot (Settings › System › Linux), apps shown through Termux:X11 (allowed once)
+- [x] Ember installs Beacon (Library › Stores › Get Beacon, and in Ember's installer)
+
 ## 0.2.1 (released)
 
 - [x] Fix: the selection jumping back and forth when moving with the controller (a touchscreen, Handheld Daemon's virtual mouse or a still pointer took it back)
