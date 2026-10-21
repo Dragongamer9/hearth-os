@@ -11,7 +11,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'ui/**', '.github/workflows/base-anatase.yml']
+    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -53,6 +53,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Build Hearth's Chromium window (Electron, hosts/electron; used on Nvidia, docs/RENDERERS.md)
+        working-directory: hosts/electron
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=electron window::$msg"' ERR
+          npm install --no-audit --no-fund
+          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm test
+          npm run dist:dir
+          test -x dist/linux-unpacked/hearth-electron
+          mkdir -p /tmp/app/electron && cp -a dist/linux-unpacked/. /tmp/app/electron/
       - name: Build Hearth Browser
         working-directory: hosts/linux
         run: |
