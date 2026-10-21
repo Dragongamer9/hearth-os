@@ -35,6 +35,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -1120,14 +1121,10 @@ def setup_system(dep, root, plan):
     sh(['mount', '-o', 'subvol=home,compress=zstd:1', root, f'{dep}/var/home'])
     try:
         u = plan['user']
-        account_tool(dep, ['useradd', '-m', '-d', f'/var/home/{u["name"]}', '-G', 'wheel', '-c', u['full'], '-s', '/bin/bash', u['name']])
-        if u.get('nopassword'):
-            # No password: signing in, the lock screen and system changes just need Enter (pam_unix nullok).
-            account_tool(dep, ['usermod', '-p', '', u['name']])
-        else:
-            # Hashed here and set as is: the new system's PAM isn't involved (Debian's and Ubuntu's chpasswd
-            # refused "password not changed" when run against another root, and so did Anatase's from the USB).
-            account_tool(dep, ['usermod', '-p', password_hash(u['password']), u['name']])
+        # The account written straight into the new system's files (no useradd/chpasswd: the USB's tools
+        # failed against another root, and the new system's PAM refused passwords). No password: signing in,
+        # the lock screen and system changes just need Enter (pam_unix nullok).
+        add_account(dep, u['name'], u['full'], '' if u.get('nopassword') else password_hash(u['password']))
         with open(f'{dep}/etc/hostname', 'w') as f:
             f.write(plan['hostname'] + '\n')
         if os.path.exists(f'{dep}/usr/share/zoneinfo/{plan["timezone"]}'):
@@ -1178,25 +1175,95 @@ def copy_wifi(dep):
         os.chmod(out, 0o600)
 
 
-def account_tool(dep, cmd):
-    """useradd/usermod on the new system: the USB's own tool with --root first; if that fails (the small
-    installer's Fedora useradd: "failure while writing changes to /etc/passwd"), the new system's own tool,
-    run inside it (chroot, with /dev and /proc), which also follows its own rules (login.defs, groups)."""
-    r = sh([cmd[0], '-R', dep] + cmd[1:], check=False)
-    if r.returncode == 0:
-        return r
-    first = ((r.stderr or r.stdout or '').strip().splitlines() or ['?'])[-1]
-    print(f"log: {cmd[0]} --root: {first}; using the new system's own {cmd[0]}", flush=True)
-    mounted = []
+def read_lines(path):
     try:
-        for d in ('dev', 'proc'):
-            os.makedirs(f'{dep}/{d}', exist_ok=True)
-            if not os.path.ismount(f'{dep}/{d}') and sh(['mount', '--bind', f'/{d}', f'{dep}/{d}'], check=False).returncode == 0:
-                mounted.append(f'{dep}/{d}')
-        return sh(['chroot', dep] + cmd)
-    finally:
-        for m in reversed(mounted):
-            sh(['umount', '-l', m], check=False)
+        with open(path) as f:
+            return f.read().splitlines()
+    except OSError:
+        return None
+
+
+def write_lines(path, lines, mode):
+    """Rewrites an account file in place of the old one, keeping its permissions and owner."""
+    try:
+        st = os.stat(path)
+        mode, uid, gid = stat.S_IMODE(st.st_mode), st.st_uid, st.st_gid
+    except OSError:
+        uid = gid = 0
+    tmp = path + '.hearth-new'
+    with open(tmp, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+    os.chmod(tmp, mode)
+    os.chown(tmp, uid, gid)
+    os.replace(tmp, path)
+
+
+def account_lines(passwd, group, name, full, shell):
+    """(uid, passwd line, group line) for a new person: the first id from 1000 that is free as a user and as a
+    group, and a group of their own with the same number."""
+    used = {int(l.split(':')[2]) for l in passwd if l.count(':') >= 6 and l.split(':')[2].isdigit()}
+    used |= {int(l.split(':')[2]) for l in group if l.count(':') >= 3 and l.split(':')[2].isdigit()}
+    if any(l.split(':')[0] == name for l in passwd):
+        raise Fail(f'"{name}" is already a user on the new system: pick another user name')
+    uid = next(i for i in range(1000, 60000) if i not in used)
+    full = full.replace(':', ' ').replace('\n', ' ')
+    return uid, f'{name}:x:{uid}:{uid}:{full}:/var/home/{name}:{shell}', f'{name}:x:{uid}:'
+
+
+def with_member(lines, group, name):
+    """The group file with `name` added to `group` (if that group is there). Returns (lines, added?)."""
+    out, added = [], False
+    for l in lines:
+        f = l.split(':')
+        if len(f) >= 4 and f[0] == group:
+            members = [m for m in f[3].split(',') if m]
+            if name not in members:
+                members.append(name)
+            f[3] = ','.join(members)
+            l, added = ':'.join(f), True
+        out.append(l)
+    return out, added
+
+
+def add_account(dep, name, full, pw_hash):
+    """The person's account, written into the new system's own files: passwd, group, shadow, gshadow,
+    subuid/subgid (containers), in wheel (or sudo) for admin rights; their home folder from /etc/skel."""
+    etc = f'{dep}/etc'
+    passwd, group = read_lines(f'{etc}/passwd'), read_lines(f'{etc}/group')
+    shadow, gshadow = read_lines(f'{etc}/shadow'), read_lines(f'{etc}/gshadow')
+    if passwd is None or group is None or shadow is None:
+        raise Fail("the new system's account files are missing")
+    shell = '/bin/bash' if os.path.exists(f'{dep}/usr/bin/bash') or os.path.exists(f'{dep}/bin/bash') else '/bin/sh'
+    uid, pline, gline = account_lines(passwd, group, name, full, shell)
+    admin = next((g for g in ('wheel', 'sudo') if any(l.split(':')[0] == g for l in group)), None)
+    group = group + [gline]
+    if admin:
+        group, _ = with_member(group, admin, name)
+    days = int(time.time() // 86400)
+    write_lines(f'{etc}/passwd', passwd + [pline], 0o644)
+    write_lines(f'{etc}/group', group, 0o644)
+    write_lines(f'{etc}/shadow', shadow + [f'{name}:{pw_hash}:{days}:0:99999:7:::'], 0o000)
+    if gshadow is not None:
+        gs = gshadow + [f'{name}:!::']
+        if admin:
+            gs, _ = with_member(gs, admin, name)
+        write_lines(f'{etc}/gshadow', gs, 0o000)
+    for sub in ('subuid', 'subgid'):
+        lines = read_lines(f'{etc}/{sub}')
+        if lines is not None and not any(l.split(':')[0] == name for l in lines):
+            starts = [int(l.split(':')[1]) + int(l.split(':')[2]) for l in lines if l.count(':') == 2 and l.split(':')[1].isdigit() and l.split(':')[2].isdigit()]
+            write_lines(f'{etc}/{sub}', lines + [f'{name}:{max(starts + [524288])}:65536'], 0o644)
+    home = f'{dep}/var/home/{name}'
+    if not os.path.exists(home):
+        if os.path.isdir(f'{etc}/skel'):
+            shutil.copytree(f'{etc}/skel', home, symlinks=True)
+        else:
+            os.makedirs(home)
+    for d, dirs, files in os.walk(home):
+        for x in [d] + [os.path.join(d, f) for f in dirs + files]:
+            os.lchown(x, uid, uid)
+    os.chmod(home, 0o700)
+    return uid
 
 
 def password_hash(password):
