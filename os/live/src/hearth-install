@@ -1120,14 +1120,14 @@ def setup_system(dep, root, plan):
     sh(['mount', '-o', 'subvol=home,compress=zstd:1', root, f'{dep}/var/home'])
     try:
         u = plan['user']
-        sh(['useradd', '-R', dep, '-m', '-d', f'/var/home/{u["name"]}', '-G', 'wheel', '-c', u['full'], '-s', '/bin/bash', u['name']])
+        account_tool(dep, ['useradd', '-m', '-d', f'/var/home/{u["name"]}', '-G', 'wheel', '-c', u['full'], '-s', '/bin/bash', u['name']])
         if u.get('nopassword'):
             # No password: signing in, the lock screen and system changes just need Enter (pam_unix nullok).
-            sh(['usermod', '-R', dep, '-p', '', u['name']])
+            account_tool(dep, ['usermod', '-p', '', u['name']])
         else:
             # Hashed here and set as is: the new system's PAM isn't involved (Debian's and Ubuntu's chpasswd
-            # refused "password not changed" when run against another root).
-            sh(['usermod', '-R', dep, '-p', password_hash(u['password']), u['name']])
+            # refused "password not changed" when run against another root, and so did Anatase's from the USB).
+            account_tool(dep, ['usermod', '-p', password_hash(u['password']), u['name']])
         with open(f'{dep}/etc/hostname', 'w') as f:
             f.write(plan['hostname'] + '\n')
         if os.path.exists(f'{dep}/usr/share/zoneinfo/{plan["timezone"]}'):
@@ -1176,6 +1176,27 @@ def copy_wifi(dep):
         out = os.path.join(dst, os.path.basename(f))
         shutil.copy2(f, out)
         os.chmod(out, 0o600)
+
+
+def account_tool(dep, cmd):
+    """useradd/usermod on the new system: the USB's own tool with --root first; if that fails (the small
+    installer's Fedora useradd: "failure while writing changes to /etc/passwd"), the new system's own tool,
+    run inside it (chroot, with /dev and /proc), which also follows its own rules (login.defs, groups)."""
+    r = sh([cmd[0], '-R', dep] + cmd[1:], check=False)
+    if r.returncode == 0:
+        return r
+    first = ((r.stderr or r.stdout or '').strip().splitlines() or ['?'])[-1]
+    print(f"log: {cmd[0]} --root: {first}; using the new system's own {cmd[0]}", flush=True)
+    mounted = []
+    try:
+        for d in ('dev', 'proc'):
+            os.makedirs(f'{dep}/{d}', exist_ok=True)
+            if not os.path.ismount(f'{dep}/{d}') and sh(['mount', '--bind', f'/{d}', f'{dep}/{d}'], check=False).returncode == 0:
+                mounted.append(f'{dep}/{d}')
+        return sh(['chroot', dep] + cmd)
+    finally:
+        for m in reversed(mounted):
+            sh(['umount', '-l', m], check=False)
 
 
 def password_hash(password):
