@@ -93,6 +93,14 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - Hearth for Android (and Hearth Linux on Android): archived 2026-10-21; focus is Hearth OS and Ember. Code in `hosts/android`, build by hand only.
 
+## 0.2.6 (released)
+
+- [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
+
+## Next: Hearth on Nvidia through Chromium
+
+- [ ] The same Hearth core with an Electron (Chromium) window on Nvidia graphics, chosen at start (WebKit's DMA-BUF drawing fails on RTX 50 cards)
+
 ## 0.2.5 (released)
 
 - [x] Switch edition (Settings › Updates): from one edition to another (Anatase, Ubuntu, CachyOS, Peppermint), keeping your games
