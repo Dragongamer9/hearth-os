@@ -252,7 +252,9 @@ fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: 
     guide.hold_view.store(hold, std::sync::atomic::Ordering::SeqCst);
     let (g1, g2) = (gm.clone(), gm.clone());
     guide.start(Arc::new(move |how: &str| { let (gm, how) = (g1.clone(), how.to_string()); std::thread::spawn(move || gm.guide_pressed(&how)); }),
-                Arc::new(move |b: &str, down: bool| g2.overlay_pad(b, down)));
+                Arc::new(move |b: &str, down: bool| { g2.overlay_pad(b, down); g2.seat_pad(b, down); }));
+    // Multi-seat window: every button comes through Hearth, not only while the overlay is open (see seat_pad).
+    if hearth_core::multiplay::seat_hosted() { guide.buttons.store(true, std::sync::atomic::Ordering::SeqCst); }
     if in_session() && !windowed {
         let g3 = gm.clone();
         let devices = bridge.lock().map(|b| b.buttons.clone()).ok();
