@@ -333,6 +333,26 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .mini-spin{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:var(--accent);animation:sp .8s linear infinite;flex:none}
 .note{color:var(--dim);font-size:13px;padding:8px 4px;line-height:1.5}
 /* Hearth Linux's output (Settings › System › Linux on Android) */
+/* The Linux desktop inside Hearth (Android, Hearth Linux stage 2): noVNC's screen, Hearth's own pointer over it, a slim
+   bar of keys at the top (hidden until Guide/View or Back). Layers (the keyboard prompt, sheets) go above it. */
+#desk{position:fixed;inset:0;z-index:30;background:#000;display:none;touch-action:none;user-select:none;-webkit-user-select:none}
+#desk.open{display:block}
+#deskScreen{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#deskTouch{position:absolute;inset:0;z-index:2;touch-action:none}
+#deskCursor{position:absolute;left:0;top:0;width:20px;height:20px;z-index:3;pointer-events:none;transform:translate(-99px,-99px);filter:drop-shadow(0 1px 2px rgba(0,0,0,.9))}
+#deskMsg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;display:none;flex-direction:column;align-items:center;gap:14px;max-width:min(520px,90vw);padding:22px 26px;border-radius:16px;background:color-mix(in srgb,var(--panel) 94%,transparent);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+#deskMsg.show{display:flex}
+#deskMsg .dm-btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+#deskBar{position:absolute;top:0;left:0;right:0;z-index:5;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:color-mix(in srgb,var(--panel) 92%,transparent);box-shadow:0 8px 30px rgba(0,0,0,.45);transform:translateY(-110%);transition:transform .18s var(--ease)}
+#deskBar.show{transform:none}
+#deskBar .dk{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:9px;background:var(--panel2);color:var(--text);font:600 13px/1 inherit;border:0}
+#deskBar .dk svg{width:16px;height:16px}
+#deskBar .dk.on{background:var(--accent);color:#fff}
+#deskBar .dk.cur{box-shadow:0 0 0 2px var(--accent)}
+#deskBar .dk-sp{flex:1}
+#deskBar .dk-hint{color:var(--dim);font-size:12px;padding:0 6px}
+body.desk-open .layer{z-index:36}
+body.desk-open .scrim{z-index:34}
 .lxout{margin:0;padding:12px 14px;background:var(--panel);border-radius:var(--r);font:12px/1.45 ui-monospace,'Cascadia Mono',Menlo,Consolas,monospace;color:var(--text);white-space:pre-wrap;word-break:break-all;max-height:300px;overflow:auto;grid-column:1/-1}
 .hhd-sub{display:flex;flex-direction:column;gap:8px;margin-left:16px;padding-left:12px;border-left:2px solid var(--panel3)}.hhd-sub:empty{display:none}
 .hhd-h{font-size:14px;font-weight:700;margin:8px 4px 0}
@@ -873,6 +893,7 @@ body.reduce-motion .lfc,body.reduce-motion .ldk{transition:none}
 <section class="layer" id="sheet"><div class="modal" id="sheetBox"></div></section>
 <section class="layer" id="prompt"></section>
 <section class="layer" id="launch"></section>
+<div id="desk" aria-label="Linux desktop"><div id="deskScreen"></div><div id="deskTouch"></div><svg id="deskCursor" viewBox="0 0 20 20"><path d="M2 1l14 9.5-6.2.9 3.6 6.7-2.4 1.3-3.6-6.8L2 17z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg><div id="deskMsg"></div><div id="deskBar"></div></div>
 <div id="toasts"></div>
 
 <script>
@@ -4040,11 +4061,26 @@ function onLinuxEvent(name, d){
     if(bar && txt){ bar.style.width=(d.pct||0)+'%'; txt.textContent=`${d.pct||0}% · ${d.text||''}`; } else if(here) render(null,true);
     return;
   }
+  if(name==='linux.desktop'){
+    if(DESK.s){ DESK.s.running = d.state==='ready'; DESK.s.ready = d.state==='ready'; if(d.state==='ready') DESK.s.method=d.mode; }
+    if(d.state==='ready' && d.mode==='hearth' && DESK.open){ deskSetConn(d); if(!DESK.rfb) deskConnect(); }
+    else if(d.state==='stopped' && DESK.open && !DESK.closing && d.mode==='hearth'){ deskDropRfb(); deskProblem('The Linux desktop stopped.', true); }
+    else if(d.state==='failed'){ if(DESK.open) deskProblem(d.error||'The desktop didn\'t start.', true); else toast(d.error||'The desktop didn\'t start'); }
+    if(d.state!=='ready') loadDesktop(); else if(here) render(null,true);
+    return;
+  }
+  if(name==='linux.x11'){
+    if(d.kind==='desktop'){ toast(d.ok ? 'The desktop is in Termux:X11' : (d.error||'Termux:X11 didn\'t start')); loadDesktop(); return; }
+    if(d.ok && d.job){ LX.job=d.job; LX.out=[]; lxOut(['[Termux:X11] $ '+LX.x11]); if(here) render('lx-stop',true); }
+    else if(!d.ok) toast(d.error||'Termux:X11 didn\'t start');
+    return;
+  }
   if(name==='linux.output'){ if(d.job===LX.job || (LX.s&&LX.s.busy&&d.job===LX.s.busy.kind)) lxOut(d.lines||[]); return; }
   if(name==='linux.exit'){ if(d.job===LX.job){ lxOut([`[done, exit code ${d.code}]`]); LX.job=null; } loadLinux(); return; }
   if(name==='linux.done'){
     if(d.status) LX.s=d.status; else if(LX.s) LX.s.busy=null;
     toast(d.ok ? (d.text||'Done') : (d.error||'That didn\'t work'));
+    if(d.kind==='desktop'){ if(DESK.s) DESK.s.installing=false; loadDesktop(); }
     if(here) render(null,true);
   }
 }
@@ -4070,7 +4106,7 @@ async function lxAct(v){
   }
   if(v==='x11'){
     const cmd=await openPrompt({title:'Linux app to show in Termux:X11', value:LX.x11}); if(cmd==null||!cmd.trim()) return;
-    LX.x11=cmd; toast('Starting Termux:X11…');
+    LX.x11=cmd;
     try{
       const r=await lxCall('linux.openX11',{cmd}, 60000);
       if(r && r.needApp) return openSheet({title:'Termux:X11 is needed', sub:r.text||'', items:[{label:'Get Termux:X11', icon:'dl', run:()=>lxLink(r.url)}]});
@@ -4078,9 +4114,15 @@ async function lxAct(v){
         {label:'Allow Termux:X11', icon:'check', run:()=>lxCall('linux.trustX11',{signer:r.signer, confirm:true}).then(()=>{ toast('Termux:X11 allowed. Open it again.'); }).catch(fail)}]});
       if(r && r.needPackages) return openSheet({title:'One more package', sub:r.text||'', items:[{label:'Install '+r.needPackages.join(' '), icon:'dl', run:()=>lxApt('install', r.needPackages)}]});
       if(r && r.job){ LX.job=r.job; LX.out=[]; lxOut(['[Termux:X11] $ '+cmd]); render('lx-stop',true); }
+      else if(r && r.starting) toast('Starting Termux:X11…');
     }catch(e){ fail(e); }
     return;
   }
+  if(v==='desk') return deskOpen();
+  if(v==='dmode') return openSheet({title:'Show the Linux desktop', sub:'In Hearth: right here, with the controller as mouse and keyboard. In Termux:X11: in the Termux:X11 app (installed on its own).', items:[
+    {label:'In Hearth (recommended)', icon:'display', run:()=>deskSetMode('hearth')},
+    {label:'In Termux:X11', icon:'desk', run:()=>deskSetMode('x11')}]});
+  if(v==='dstop') return lxCall('linux.desktop.stop').then(()=>{ toast('Linux desktop stopped'); if(DESK.s) DESK.s.running=false; loadDesktop(); render(null,true); }).catch(fail);
   if(v==='reset') return openSheet({title:'Reset Linux?', sub:'Linux starts over as it was installed: the programs you installed and every file in it are deleted.', items:[
     {label:'Yes, reset Linux', icon:'refresh', run:()=>lxCall('linux.reset',{confirm:true}).then(()=>{ LX.out=[]; if(LX.s) LX.s.busy={kind:'reset',pct:0,text:'Starting…'}; render(null,true); }).catch(fail)}]});
   if(v==='remove') return openSheet({title:'Remove Linux?', sub:'Deletes the Linux system, everything in it and the saved download. Hearth stays as it is.', items:[
@@ -4090,6 +4132,19 @@ function lxApt(action, packages){
   return lxCall('linux.apt',{action, packages}).then(r=>{ LX.job=r.job; LX.out=[]; lxOut(['# apt-get '+action+(packages.length?' '+packages.join(' '):'')]); if(LX.s) LX.s.busy={kind:'apt',pct:0,text:'apt-get '+action}; render('lx-stop',true); }).catch(e=>toast(e.message));
 }
 function lxLink(url){ if(!host) return toast(url); return call('android.openUrl',{url}).catch(()=>toast(url)); }
+// Settings › System › Linux: the Linux desktop's rows (install with progress, open, where it shows, stop).
+function deskRows(b){
+  const ds=DESK.s; if(host && !hasFeat('linuxDesktop')) return '';
+  if(b && b.kind==='desktop') return shead('Installing the Linux desktop', true) + `<div class="row" data-f data-k="lx-dprog"><span class="ricon">${I.dl}</span><div class="rt"><b>XFCE</b><small id="lxbusy">${b.pct||0}% · ${esc(b.text||'')}</small><div class="bar" style="margin-top:8px"><i id="lxbar" style="width:${b.pct||0}%"></i></div></div></div>`
+    + sgrid(lxRow('lx-cancel','cancel','x','Cancel','Stops apt; what\'s installed stays',' '));
+  if(!ds) return shead('Linux desktop') + sgrid(infoRow('lx-dst','Linux desktop','Checking…'));
+  const mode=deskMode(), where = mode==='x11' ? 'In Termux:X11' : 'In Hearth';
+  let r = lxRow('lx-desk','desk','desk', ds.installed ? (ds.running ? 'Open the Linux desktop' : 'Linux desktop') : 'Install the Linux desktop',
+    ds.installed ? (ds.running ? `Running ${ds.method==='x11'?'in Termux:X11':'in Hearth'}` : 'XFCE, with the controller as mouse and keyboard') : 'XFCE and a terminal, in one install', ds.installed ? '›' : '＋');
+  if(ds.installed) r += lxRow('lx-dmode','dmode','display','Show it', where, ' ');
+  if(ds.running) r += lxRow('lx-dstop','dstop','stop','Stop the desktop','Closes XFCE and everything open in it',' ');
+  return shead('Linux desktop') + sgrid(r);
+}
 const lxRow = (k, v, icon, title, sub, right) => `<button class="row" data-f data-k="${k}" data-act="lx" data-v="${v}">${icon?`<span class="ricon">${I[icon]||I.gear}</span>`:''}<div class="rt"><b>${title}</b>${sub?`<small>${sub}</small>`:''}</div><div class="rv">${right||'›'}</div></button>`;
 function linuxPage(){
   const s=LX.s, beta=note('<b>Beta Experimental:</b> a real Debian Linux (ARM64) inside Hearth, without root, run by PRoot. It\'s new and hasn\'t been tested on many devices: expect rough edges, and please send logs (Settings › System) when something goes wrong.');
@@ -4097,7 +4152,7 @@ function linuxPage(){
   if(!s.supported) return beta + sgrid(infoRow('lx-st','Linux','Not available on this device')) + note(esc(s.unsupported||''));
   let h=beta;
   const b=s.busy;
-  if(b && b.kind!=='apt'){
+  if(b && b.kind!=='apt' && b.kind!=='desktop'){
     h += shead(b.kind==='reset'?'Resetting Linux':'Installing Linux', true) + `<div class="row" data-f data-k="lx-prog"><span class="ricon">${I.dl}</span><div class="rt"><b>${esc(s.distro||'Linux')}</b><small id="lxbusy">${b.pct||0}% · ${esc(b.text||'')}</small><div class="bar" style="margin-top:8px"><i id="lxbar" style="width:${b.pct||0}%"></i></div></div></div>`
       + sgrid(lxRow('lx-cancel','cancel','x','Cancel','What\'s downloaded is kept for next time',' '));
   } else if(!s.installed){
@@ -4106,6 +4161,7 @@ function linuxPage(){
       + (s.error ? note('Last try: '+esc(s.error)) : '');
   } else {
     h += shead('Linux') + sgrid(infoRow('lx-ver','System', s.version||s.distro||'Linux') + infoRow('lx-size','Size on this device', gbs(s.sizeBytes)||'—'));
+    h += deskRows(b);
     h += shead('Use it') + sgrid(
       lxRow('lx-run','run','shell','Run a command','As the user hearth, like a terminal (one command at a time)')
       + lxRow('lx-root','root','lock','Run a command as root','For system changes')
@@ -4118,13 +4174,14 @@ function linuxPage(){
     h += shead('Start over') + sgrid(lxRow('lx-reset','reset','refresh','Reset Linux','A fresh Linux as it was installed (uses the saved download)')
       + lxRow('lx-remove','remove','trash','Remove Linux','Deletes it and frees the space'));
   }
-  h += note('Linux runs with PRoot (GNU GPL 2.0), a separate program that comes with Hearth; its source: github.com/green-green-avk/proot (v0.15_release). Linux apps show in Termux:X11 for now; no GPU acceleration yet.');
+  h += note('Linux runs with PRoot (GNU GPL 2.0), a separate program that comes with Hearth; its source: github.com/green-green-avk/proot (v0.15_release). The desktop inside Hearth is shown with noVNC (MPL 2.0, github.com/novnc/noVNC v1.7.0). No GPU acceleration yet: the desktop and its apps draw in software.');
   return h;
 }
 // The preview (no app): Linux pretends to install and run, so the page can be tried in a browser (?preview=android).
 const LX_MOCK = (()=>{
   let st={installed:false, sizeBytes:0, distro:'Debian 13 (trixie)', version:'trixie-aarch64-pd-v4.29.0', running:false, jobs:[], busy:null, x11App:false, x11Running:false, supported:true, unsupported:null, freeBytes:40e9, needBytes:1.5e9, sdcard:false, error:null};
   let n=0;
+  const desk={linux:true, installed:false, missing:['xfce4','dbus-x11','tigervnc-standalone-server'], packages:['xfce4','xfce4-terminal','dbus-x11','tigervnc-standalone-server','xkb-data'], mode:'hearth', x11App:false, installing:false, running:false, method:null, ready:false};
   const clone=o=>JSON.parse(JSON.stringify(o)), wait=ms=>new Promise(r=>setTimeout(r,ms));
   const ev=(name,data,ms)=>setTimeout(()=>onSysEvent(name,data),ms);
   const job=(kind, lines, after)=>{ const id='j'+(++n); lines.forEach((l,i)=>ev('linux.output',{job:id,lines:[l]},120*(i+1))); ev('linux.exit',{job:id,kind,code:0},120*(lines.length+1)); if(after) setTimeout(after,120*(lines.length+1)); return {job:id}; };
@@ -4145,10 +4202,361 @@ const LX_MOCK = (()=>{
     if(m==='linux.apt'){ if(st.busy) throw new Error('Hearth Linux is busy'); st.busy={kind:'apt',pct:0,text:'apt-get '+a.action};
       return job('apt', ['Reading package lists...', 'Building dependency tree...', ...(a.packages||[]).map(p=>`Setting up ${p} ...`)], ()=>{ st.busy=null; st.sizeBytes+=2e7; onSysEvent('linux.done',{kind:'apt',ok:true,text:'Done',status:clone(st)}); }); }
     if(m==='linux.openX11') return st.x11App ? job('x11',['[x11] started']) : {ok:false, needApp:true, url:'https://github.com/termux/termux-x11/releases', text:'Install Termux:X11 (com.termux.x11) to see Linux apps. Termux itself isn\'t needed.'};
-    if(m==='linux.remove'){ if(!a.confirm) throw new Error('Confirm first'); st.installed=false; st.sizeBytes=0; return clone(st); }
+    if(m==='linux.remove'){ if(!a.confirm) throw new Error('Confirm first'); st.installed=false; st.sizeBytes=0; desk.installed=false; desk.running=false; return clone(st); }
+    // The Linux desktop: installs with progress, then "runs" (the page draws a pretend desktop, DeskPreviewRFB).
+    if(m==='linux.desktop.status') return clone(desk);
+    if(m==='linux.desktop.install'){ if(st.busy) throw new Error('Hearth Linux is busy'); st.busy={kind:'desktop',pct:1,text:'Getting the package lists…'}; desk.installing=true;
+      [[20,'Retrieving file 40 of 210'],[50,'Retrieving file 210 of 210'],[75,'Installing xfce4-panel (arm64)'],[99,'Running dpkg']].forEach(([pct,text],i)=>ev('linux.progress',{kind:'desktop',pct,text},200*(i+1)));
+      setTimeout(()=>{ st.busy=null; desk.installing=false; desk.installed=true; desk.missing=[]; st.sizeBytes+=1.2e9; onSysEvent('linux.done',{kind:'desktop',ok:true,text:'The Linux desktop is installed',status:clone(st)}); }, 1100);
+      return job('desktop-install', ['Reading package lists...', 'Setting up xfce4 (4.20) ...']); }
+    if(m==='linux.desktop.start'){
+      if(!desk.installed) return {ok:false, needInstall:true, missing:desk.missing, text:'The Linux desktop needs these packages first'};
+      if(a.mode==='x11') return st.x11App ? {ok:true, mode:'x11', starting:true} : {ok:false, needApp:true, url:'https://github.com/termux/termux-x11/releases', text:'Install Termux:X11 (com.termux.x11) to see Linux apps.'};
+      const w=Math.max(640, Math.round((a.width||1920)/1.5/8)*8), h=Math.max(360, Math.round((a.height||1200)/1.5/2)*2);
+      desk.running=true; desk.method='hearth'; desk.ready=true; desk.mode='hearth'; desk.width=w; desk.height=h;
+      return {ok:true, mode:'hearth', running:true, ready:true, port:5999, token:'preview', password:'preview', width:w, height:h};
+    }
+    if(m==='linux.desktop.stop'){ desk.running=false; desk.ready=false; desk.method=null; return {ok:true, running:false}; }
     throw new Error("That isn't in Hearth for Android yet");
   };
 })();
+
+// ---------- The Linux desktop (Hearth Linux stage 2; LinuxEnv.kt desktop*, WsBridge.kt, docs/ANDROID-LINUX.md) ----------
+// XFCE in the Linux, shown inside Hearth (noVNC on Xvnc, through the host's tokened WebSocket) or in Termux:X11.
+// linux.desktop.status: {linux, installed, missing, packages, mode, x11App, installing, running, method, ready, width?, height?}
+// linux.desktop.start {mode, width, height}: hearth → {ok, mode, running, ready, port, token, password, width, height};
+//   x11 → {ok, mode, starting} (then a linux.x11 event); or {ok:false, needInstall|needApp|needTrust|needPackages, text}.
+// Events: linux.desktop {state:'ready'|'stopped'|'failed', …}. While the view is open the host sends the controller
+// raw (pad.raw): pad {b, down, repeat?} and padAxes {lx, ly, rx, ry, lt, rt}, and Hearth's own navigation stays still.
+const DESK = {s:null, open:false, rfb:null, RFB:null, conn:null, w:1280, h:800, x:640, y:400, mask:0, ax:{}, held:{}, heldAt:{}, rep:{},
+  poll:{}, bar:false, barI:0, mods:{}, raf:0, last:0, moveT:0, scrollAt:0, tries:0, closing:false, msg:'', trig:{}};
+const XK = {Escape:0xff1b, Tab:0xff09, Return:0xff0d, BackSpace:0xff08, Delete:0xffff, left:0xff51, up:0xff52, right:0xff53, down:0xff54,
+  Control_L:0xffe3, Alt_L:0xffe9, Super_L:0xffeb, F1:0xffbe};
+const DESK_DEAD = .18;
+const deskActive = () => DESK.open && !S.layers.length;
+function deskMode(){ let m=''; try{ m=localStorage.getItem('hearth.deskMode')||''; }catch(e){} return m==='x11'||m==='hearth' ? m : (DESK.s&&DESK.s.mode)||'hearth'; }
+function deskSetMode(m){ try{ localStorage.setItem('hearth.deskMode', m); }catch(e){} if(DESK.s) DESK.s.mode=m; render(null,true); toast(m==='x11'?'The desktop opens in Termux:X11':'The desktop opens in Hearth'); }
+function loadDesktop(){ if(lxOn() && (!host || hasFeat('linuxDesktop'))) lxCall('linux.desktop.status').then(r=>{ DESK.s=r; if(S.view==='settings'&&S.settingsTab==='linux') render(null,true); }).catch(()=>{}); }
+// The screen in device pixels, landscape when the window is (the host picks the desktop's size from it).
+function deskScreenSize(){
+  const d=window.devicePixelRatio||1, a=Math.round(screen.width*d), b=Math.round(screen.height*d), land=innerWidth>=innerHeight;
+  return {width: land?Math.max(a,b):Math.min(a,b), height: land?Math.min(a,b):Math.max(a,b)};
+}
+function deskInstallSheet(ds){
+  const pk=(ds&&ds.packages)||['xfce4','xfce4-terminal','dbus-x11','tigervnc-standalone-server','xkb-data'];
+  return openSheet({title:'Install the Linux desktop?', sub:`XFCE, a full desktop for Linux, with a terminal. Hearth installs ${pk.join(', ')} in one go (about 400 MB to download, 1.2 GB on the device). You can keep using Hearth meanwhile.`,
+    items:[{label:'Install the desktop', icon:'dl', run:deskInstall}]});
+}
+function deskInstall(){
+  return lxCall('linux.desktop.install').then(r=>{ LX.job=r.job; LX.out=[]; lxOut(['# apt-get install '+((DESK.s&&DESK.s.packages)||[]).join(' ')]);
+    if(LX.s) LX.s.busy={kind:'desktop',pct:1,text:'Getting the package lists…'}; if(DESK.s) DESK.s.installing=true; render('lx-cancel',true); }).catch(e=>toast(e.message));
+}
+// What the host says is missing before the desktop can start: offered as sheets.
+function deskNeeds(r){
+  if(!r) return;
+  if(r.needInstall) return deskInstallSheet(DESK.s);
+  if(r.needApp) return openSheet({title:'Termux:X11 is needed', sub:(r.text||'')+' Or show the desktop in Hearth instead.', items:[{label:'Get Termux:X11', icon:'dl', run:()=>lxLink(r.url)}, {label:'Show it in Hearth', icon:'display', run:()=>{ deskSetMode('hearth'); deskOpen(); }}]});
+  if(r.needTrust) return openSheet({title:r.changed?'Termux:X11 was replaced':'Allow Termux:X11?', sub:r.text||'', items:[
+    {label:'Allow Termux:X11', icon:'check', run:()=>lxCall('linux.trustX11',{signer:r.signer, confirm:true}).then(()=>{ toast('Termux:X11 allowed'); deskOpen(); }).catch(e=>toast(e.message))}]});
+  if(r.needPackages) return openSheet({title:'One more package', sub:r.text||'', items:[{label:'Install '+r.needPackages.join(' '), icon:'dl', run:()=>lxApt('install', r.needPackages)}]});
+  if(r.text) toast(r.text);
+}
+async function deskOpen(){
+  let ds=DESK.s;
+  try{ ds=DESK.s=await lxCall('linux.desktop.status'); }catch(e){ if(!ds) return toast(e.message); }
+  if(ds.installing) return toast('The desktop is still being installed');
+  if(!ds.installed) return deskInstallSheet(ds);
+  const mode=deskMode();
+  if(mode==='x11'){
+    try{ const r=await lxCall('linux.desktop.start',{mode:'x11'}, 30000); if(r && r.ok===false) return deskNeeds(r); toast(r&&r.running?'The desktop is in Termux:X11':'Starting the desktop in Termux:X11…'); }
+    catch(e){ toast(e.message); }
+    return;
+  }
+  deskShow();
+  deskMsg('Starting the desktop…');
+  try{
+    const r=await lxCall('linux.desktop.start',{mode:'hearth', ...deskScreenSize()}, 30000);
+    if(!r || r.ok===false){ deskClose(); return deskNeeds(r); }
+    deskSetConn(r);
+    if(r.ready) deskConnect(); else deskMsg('Starting the desktop… The first start takes a while.');
+  }catch(e){ deskClose(); toast(e.message); }
+}
+function deskSetConn(r){
+  const first=!DESK.conn || DESK.conn.width!==r.width || DESK.conn.height!==r.height;
+  DESK.conn={port:r.port, token:r.token, password:r.password, width:r.width, height:r.height};
+  if(r.width) DESK.w=r.width; if(r.height) DESK.h=r.height;
+  if(first){ DESK.x=DESK.w/2; DESK.y=DESK.h/2; }
+}
+function deskShow(){
+  if(DESK.open) return;
+  closeAll();
+  DESK.open=true; DESK.tries=0; DESK.bar=false; DESK.mask=0; DESK.held={}; DESK.poll={}; DESK.ax={}; DESK.mods={}; DESK.trig={};
+  document.body.classList.add('desk-open'); $('#desk').classList.add('open'); deskTouchInit();
+  if(focused) focused.classList.remove('focus');
+  if(host) call('pad.raw',{on:true}).catch(()=>{});
+  deskRenderBar();
+  if(!DESK.raf) DESK.raf=requestAnimationFrame(deskTick);
+}
+// Back to Hearth (the desktop keeps running unless [stop]).
+function deskClose(stop){
+  if(!DESK.open && !stop) return;
+  deskReleaseAll();
+  DESK.closing=true; deskDropRfb(); DESK.closing=false;
+  DESK.open=false; DESK.bar=false;
+  if(DESK.raf){ cancelAnimationFrame(DESK.raf); DESK.raf=0; }
+  document.body.classList.remove('desk-open'); $('#desk').classList.remove('open'); deskMsg('');
+  if(host) call('pad.raw',{on:false}).catch(()=>{});
+  if(stop){ DESK.conn=null; lxCall('linux.desktop.stop').then(()=>{ toast('Linux desktop stopped'); loadDesktop(); }).catch(e=>toast(e.message)); }
+  else loadDesktop();
+  if(focused) focused.classList.add('focus'); else setFocus($('#view [data-f]'),true);
+  renderFooter();
+}
+function deskDropRfb(){ const r=DESK.rfb; DESK.rfb=null; if(r){ r.__dropped=true; try{ r.disconnect(); }catch(e){} } }
+// Connects noVNC to the host's WebSocket (ws://127.0.0.1:<port>/<token>, Xvnc's random password).
+async function deskConnect(){
+  const c=DESK.conn; if(!c || !DESK.open) return;
+  deskMsg(DESK.tries ? 'Connecting to the desktop again…' : 'Connecting to the desktop…');
+  if(!DESK.RFB){
+    try{ DESK.RFB = window.HearthRFB || (!host ? DeskPreviewRFB : (await import('./novnc/core/rfb.js')).default); }
+    catch(e){ send({type:'log', text:'desktop: noVNC: '+e}); return deskProblem('noVNC (the desktop viewer) is missing from this build of Hearth.', false); }
+  }
+  if(!DESK.open || DESK.conn!==c) return;
+  deskDropRfb();
+  let rfb;
+  try{ rfb=new DESK.RFB($('#deskScreen'), `ws://127.0.0.1:${c.port}/${c.token}`, {credentials:{password:c.password}, shared:true}); }
+  catch(e){ return deskProblem('Couldn\'t show the desktop: '+e.message, true); }
+  DESK.rfb=rfb;
+  try{ rfb.scaleViewport=true; rfb.resizeSession=false; rfb.focusOnClick=false; rfb.showDotCursor=false; rfb.background='#000'; rfb.qualityLevel=9; rfb.compressionLevel=0; }catch(e){}
+  rfb.addEventListener('connect', ()=>{ if(DESK.rfb!==rfb) return; DESK.tries=0; deskMsg('');
+    if(rfb._fbWidth>0){ DESK.w=rfb._fbWidth; DESK.h=rfb._fbHeight; }
+    try{ rfb.focus({preventScroll:true}); }catch(e){} deskPointer(); });
+  rfb.addEventListener('disconnect', e=>{ if(rfb.__dropped || DESK.rfb!==rfb) return; DESK.rfb=null; deskLost(!!(e.detail&&e.detail.clean)); });
+  rfb.addEventListener('credentialsrequired', ()=>{ try{ rfb.sendCredentials({password:c.password}); }catch(e){} });
+  rfb.addEventListener('securityfailure', e=>{ const d=e.detail||{}; send({type:'log', text:'desktop: security failure '+(d.status||'')+' '+(d.reason||'')}); });
+}
+// The connection went: the desktop still running → connect again (backing off), stopped → say so.
+async function deskLost(){
+  if(!DESK.open || DESK.closing) return;
+  DESK.tries++;
+  if(DESK.tries>12) return deskProblem('Lost the connection to the desktop.', true);
+  deskMsg('Connecting to the desktop again…');
+  let st=null; try{ st=await lxCall('linux.desktop.status'); DESK.s=st; }catch(e){}
+  if(!DESK.open) return;
+  if(st && (!st.running || st.method!=='hearth')) return deskProblem('The Linux desktop stopped.', true);
+  setTimeout(()=>{ if(DESK.open && !DESK.rfb) deskConnect(); }, Math.min(400*DESK.tries, 3000));
+}
+function deskProblem(text, again){
+  deskMsg(text, [...(again?[['Start it again','again']]:[]), ['Back to Hearth','back']]);
+}
+function deskMsg(text, btns){
+  const el=$('#deskMsg'); if(!el) return; DESK.msg=text||'';
+  el.classList.toggle('show', !!text);
+  el.innerHTML = text ? `<div>${esc(text)}</div>${btns&&btns.length?`<div class="dm-btns">${btns.map(([l,v],i)=>`<button class="btn${i?'':' primary'}" data-act="desk" data-v="${v}">${esc(l)}</button>`).join('')}</div>`:''}` : '';
+  DESK.msgBtns=btns||null;
+}
+// ---- pointer, buttons and keys (to Xvnc through noVNC) ----
+function deskPointer(){
+  DESK.x=Math.max(0, Math.min(DESK.w-1, DESK.x)); DESK.y=Math.max(0, Math.min(DESK.h-1, DESK.y));
+  deskDrawCursor();
+  const r=DESK.rfb; if(!r) return;
+  const x=Math.round(DESK.x), y=Math.round(DESK.y);
+  // noVNC has no public pointer call: the pinned version's RFB.messages.pointerEvent on its socket (framebuffer
+  // coordinates). The tests' stand-in has sendPointer.
+  try{
+    if(typeof r.sendPointer==='function') r.sendPointer(x, y, DESK.mask);
+    else if(DESK.RFB && DESK.RFB.messages && r._sock && r._rfbConnectionState==='connected') DESK.RFB.messages.pointerEvent(r._sock, x, y, DESK.mask);
+  }catch(e){}
+}
+// Where the desktop is on the page: noVNC's canvas (scaled to fit), or the desktop's size fitted to the view.
+function deskRect(){
+  const cv=$('#deskScreen canvas');
+  if(cv && cv.width>0){ const b=cv.getBoundingClientRect(); if(b.width>0) return {left:b.left, top:b.top, scale:b.width/cv.width}; }
+  const b=$('#desk').getBoundingClientRect(), sc=Math.min(b.width/DESK.w, b.height/DESK.h)||1;
+  return {left:b.left+(b.width-DESK.w*sc)/2, top:b.top+(b.height-DESK.h*sc)/2, scale:sc};
+}
+function deskDrawCursor(){ const c=$('#deskCursor'); if(!c) return; const r=deskRect(); c.style.transform=`translate(${(r.left+DESK.x*r.scale).toFixed(1)}px,${(r.top+DESK.y*r.scale).toFixed(1)}px)`; }
+function deskMouse(bit, down){ DESK.mask = down ? (DESK.mask|bit) : (DESK.mask&~bit); deskPointer(); }
+function deskWheel(dir){ const bit=dir<0?8:16; DESK.mask|=bit; deskPointer(); DESK.mask&=~bit; deskPointer(); }
+function deskSendKey(sym, down){ const r=DESK.rfb; if(!r) return; try{ r.sendKey(sym, null, down); }catch(e){} }
+// A key going down or up; a key going up lets go of Ctrl/Alt/Super held from the bar (they apply to one key).
+function deskKey(sym, down){
+  deskSendKey(sym, down);
+  if(down===false && ![XK.Control_L, XK.Alt_L, XK.Super_L].includes(sym)) deskModsUp();
+}
+function deskTap(sym){ deskKey(sym, true); deskKey(sym, false); }
+function deskCombo(syms){ syms.forEach(s=>deskSendKey(s, true)); [...syms].reverse().forEach(s=>deskSendKey(s, false)); deskModsUp(); }
+function deskModsUp(){ let any=false; for(const k of Object.keys(DESK.mods)) if(DESK.mods[k]){ DESK.mods[k]=false; deskSendKey(XK[k], false); any=true; } if(any) deskRenderBar(); }
+function deskType(text){
+  for(const ch of String(text)){
+    const c=ch.codePointAt(0);
+    if(ch==='\n') { deskSendKey(XK.Return, true); deskSendKey(XK.Return, false); continue; }
+    if(c<0x20 || c===0x7f) continue;
+    const sym = (c<=0x7e || (c>=0xa0 && c<=0xff)) ? c : 0x01000000 + c;   // Latin-1 keysyms are the code; the rest Unicode
+    deskSendKey(sym, true); deskSendKey(sym, false);
+  }
+  deskModsUp();
+}
+async function deskKeyboard(){
+  deskReleaseAll();
+  const t=await openPrompt({title:'Type into Linux', value:''});
+  if(t) deskType(t);
+  if(DESK.rfb) try{ DESK.rfb.focus({preventScroll:true}); }catch(e){}
+}
+function deskReleaseAll(){
+  for(const k of ['up','down','left','right']) if(DESK.held[k]) deskSendKey(XK[k], false);
+  if(DESK.held.x) deskSendKey(XK.Escape, false);
+  if(DESK.trig.rt) deskSendKey(XK.Return, false);
+  if(DESK.trig.lt) deskSendKey(XK.BackSpace, false);
+  DESK.held={}; DESK.poll={}; DESK.trig={};
+  if(DESK.mask){ DESK.mask=0; deskPointer(); }
+  deskModsUp();
+}
+// A controller button (raw: down true/false; an older host without raw sends presses only: a quick press and release).
+function deskPadEvent(d){
+  const k=d.b; if(!k) return;
+  if(d.down===undefined){ deskButton(k, true); setTimeout(()=>deskButton(k, false), 60); return; }
+  deskButton(k, !!d.down, !!d.repeat);
+}
+function deskButton(k, down, repeat){
+  if(DESK.msg && DESK.msgBtns){ if(down) deskMsgPad(k); return; }
+  if(DESK.bar){ if(down && !repeat) deskBarPad(k); return; }
+  if(repeat) return;                                   // held keys repeat here (deskTick), not from the host
+  if(!!DESK.held[k]===down) return;
+  DESK.held[k]=down; if(down) DESK.heldAt[k]=performance.now();
+  switch(k){
+    case 'a': return deskMouse(1, down);                // left button (hold to drag)
+    case 'b': return deskMouse(4, down);                // right button
+    case 'x': return deskKey(XK.Escape, down);
+    case 'y': if(down){ DESK.held.y=false; deskKeyboard(); } return;
+    case 'lb': case 'rb': if(down){ deskWheel(k==='lb'?-1:1); DESK.scrollAt=performance.now()+320; } return;
+    case 'up': case 'down': case 'left': case 'right': DESK.rep[k]=0; return deskKey(XK[k], down);
+    case 'lt': return deskKey(XK.BackSpace, down);
+    case 'rt': return deskKey(XK.Return, down);
+    case 'start': if(down) deskCombo([XK.Alt_L, XK.F1]); return;      // XFCE's Applications menu
+    case 'select': case 'guide': case 'back': if(down){ DESK.held[k]=false; deskBarToggle(); } return;
+  }
+}
+function deskAxes(d){ DESK.ax={lx:+d.lx||0, ly:+d.ly||0, rx:+d.rx||0, ry:+d.ry||0, lt:+d.lt||0, rt:+d.rt||0}; }
+// Every frame while the view is open: the stick moves the pointer (faster the further and the longer it's held),
+// held LB/RB keep scrolling, held d-pad directions repeat, the triggers press Backspace / Enter.
+function deskTick(t){
+  if(!DESK.open){ DESK.raf=0; return; }
+  DESK.raf=requestAnimationFrame(deskTick);
+  const dt=Math.min(.05, Math.max(0, (t-(DESK.last||t))/1000)); DESK.last=t;
+  if(DESK.bar || S.layers.length || (DESK.msg && DESK.msgBtns)) return;
+  const a=DESK.ax;
+  let vx=a.rx||0, vy=a.ry||0;
+  if(Math.hypot(a.lx||0, a.ly||0) > Math.hypot(vx, vy)){ vx=a.lx||0; vy=a.ly||0; }
+  const m=Math.min(1, Math.hypot(vx, vy));
+  if(m>DESK_DEAD){
+    DESK.moveT+=dt;
+    const speed = Math.max(DESK.w, DESK.h)*.6 * Math.pow((m-DESK_DEAD)/(1-DESK_DEAD), 1.7) * Math.min(2.4, 1+DESK.moveT*1.4);
+    const len=Math.hypot(vx, vy)||1;
+    DESK.x += vx/len*speed*dt; DESK.y += vy/len*speed*dt;
+    deskPointer();
+  } else DESK.moveT=0;
+  for(const k of ['lb','rb']) if(DESK.held[k] && t>DESK.scrollAt){ deskWheel(k==='lb'?-1:1); DESK.scrollAt=t+90; }
+  for(const k of ['up','down','left','right']) if(DESK.held[k] && t-DESK.heldAt[k]>400 && t-(DESK.rep[k]||0)>45){ DESK.rep[k]=t; deskSendKey(XK[k], true); }
+  for(const k of ['lt','rt']){ const v=a[k]||0, on=DESK.trig[k]; if(!on && v>.6){ DESK.trig[k]=true; deskButton(k, true); } else if(on && v<.35){ DESK.trig[k]=false; deskButton(k, false); } }
+}
+// ---- the bar (Guide / View / Back): keys a controller doesn't have, the keyboard, back to Hearth, stop ----
+const DESK_BAR = [['kbd','kbd','Keyboard'],['Control_L','','Ctrl'],['Alt_L','','Alt'],['Super_L','','Super'],['Escape','','Esc'],['Tab','','Tab'],['Return','','Enter'],['BackSpace','','⌫'],['sp'],['stop','stop','Stop desktop'],['home','home','Back to Hearth']];
+const deskBarItems = () => DESK_BAR.filter(b=>b[0]!=='sp');
+function deskRenderBar(){
+  const el=$('#deskBar'); if(!el) return;
+  const items=deskBarItems(), cur=items[DESK.barI] && items[DESK.barI][0];
+  el.classList.toggle('show', DESK.bar);
+  el.innerHTML = DESK_BAR.map(b=>b[0]==='sp' ? '<span class="dk-sp"></span><span class="dk-hint">B closes this bar</span>'
+    : `<button class="dk${DESK.mods[b[0]]?' on':''}${DESK.bar&&b[0]===cur?' cur':''}" data-act="desk" data-v="key" data-k="dk-${b[0]}" data-key="${b[0]}">${b[1]&&I[b[1]]?I[b[1]]:''}${esc(b[2])}</button>`).join('');
+}
+function deskBarToggle(on){ DESK.bar = on===undefined ? !DESK.bar : !!on; if(DESK.bar){ deskReleaseAll(); DESK.barI=Math.max(0, deskBarItems().findIndex(b=>b[0]==='kbd')); } deskRenderBar(); }
+function deskBarPad(k){
+  const n=deskBarItems().length;
+  if(k==='left'||k==='up'){ DESK.barI=(DESK.barI-1+n)%n; return deskRenderBar(); }
+  if(k==='right'||k==='down'){ DESK.barI=(DESK.barI+1)%n; return deskRenderBar(); }
+  if(k==='a') return deskBarKey(deskBarItems()[DESK.barI][0]);
+  if(k==='y') return deskBarKey('kbd');
+  if(k==='b'||k==='select'||k==='guide'||k==='back') return deskBarToggle(false);
+}
+function deskBarKey(key){
+  if(key==='home') return deskClose(false);
+  if(key==='stop') return deskClose(true);
+  if(key==='kbd'){ deskBarToggle(false); return deskKeyboard(); }
+  if(['Control_L','Alt_L','Super_L'].includes(key)){
+    // Ctrl/Alt held for the next key; Super alone is a tap (XFCE: the menu on some setups), or held for the next key.
+    DESK.mods[key]=!DESK.mods[key]; deskSendKey(XK[key], DESK.mods[key]); return deskRenderBar();
+  }
+  if(XK[key]){ deskTap(XK[key]); deskRenderBar(); }
+}
+function deskMsgPad(k){
+  const b=DESK.msgBtns||[];
+  if(k==='a' && b[0]) return deskMsgAct(b[0][1]);
+  if(k==='b'||k==='guide'||k==='select'||k==='back') return deskMsgAct(b.length>1 ? b[b.length-1][1] : 'back');
+}
+function deskMsgAct(v){ deskMsg(''); if(v==='again'){ DESK.tries=0; DESK.conn=null; deskOpenAgain(); } else deskClose(false); }
+async function deskOpenAgain(){ deskClose(false); await deskOpen(); }
+function deskAct(el){
+  const v=el.dataset.v;
+  if(v==='key') return deskBarKey(el.dataset.key);
+  if(v==='again'||v==='back') return deskMsgAct(v);
+}
+// ---- touch (a touchpad: drag moves the pointer, tap clicks, tap-and-drag drags, two fingers scroll, a two-finger
+// tap is a right click) and a real mouse (where it points) ----
+const DT = {pts:new Map(), start:0, moved:0, two:null, lastTap:0, drag:false, multi:false};
+function deskTouchInit(){
+  const el=$('#deskTouch'); if(!el || el.__init) return; el.__init=true;
+  const bit=b=>b===2?4:b===1?2:1;
+  const abs=e=>{ const r=deskRect(); DESK.x=(e.clientX-r.left)/r.scale; DESK.y=(e.clientY-r.top)/r.scale; };
+  el.addEventListener('pointerdown', e=>{
+    e.preventDefault(); try{ el.setPointerCapture(e.pointerId); }catch(_){}
+    if(DESK.bar) deskBarToggle(false);
+    if(e.pointerType==='mouse'){ abs(e); deskMouse(bit(e.button), true); return; }
+    DT.pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    const now=performance.now();
+    if(DT.pts.size===1){ DT.start=now; DT.moved=0; DT.multi=false; DT.drag = now-DT.lastTap<300; if(DT.drag) deskMouse(1, true); }
+    else if(DT.pts.size===2){ DT.multi=true; DT.two={start:now, moved:0, acc:0}; if(DT.drag){ deskMouse(1, false); DT.drag=false; } }
+  });
+  el.addEventListener('pointermove', e=>{
+    if(e.pointerType==='mouse'){ abs(e); deskPointer(); return; }
+    const p=DT.pts.get(e.pointerId); if(!p) return;
+    const dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY;
+    if(DT.two){ DT.two.moved+=Math.abs(dy)+Math.abs(dx); DT.two.acc+=dy/2; while(Math.abs(DT.two.acc)>=22){ const s=Math.sign(DT.two.acc); deskWheel(s>0?-1:1); DT.two.acc-=s*22; } return; }
+    if(DT.multi) return;
+    DT.moved+=Math.abs(dx)+Math.abs(dy);
+    const k=1.25/deskRect().scale;
+    DESK.x+=dx*k; DESK.y+=dy*k; deskPointer();
+  });
+  const up=e=>{
+    if(e.pointerType==='mouse'){ deskMouse(bit(e.button), false); return; }
+    if(!DT.pts.delete(e.pointerId)) return;
+    const now=performance.now();
+    if(DT.two){ if(!DT.pts.size){ if(DT.two.moved<14 && now-DT.two.start<400){ deskMouse(4, true); deskMouse(4, false); } DT.two=null; } return; }
+    if(DT.pts.size || DT.multi){ if(!DT.pts.size) DT.multi=false; return; }
+    if(DT.drag){ deskMouse(1, false); DT.drag=false; DT.lastTap=0; return; }
+    if(DT.moved<10 && now-DT.start<280){ deskMouse(1, true); deskMouse(1, false); DT.lastTap=now; }
+  };
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('wheel', e=>{ e.preventDefault(); if(e.deltaY) deskWheel(e.deltaY<0?-1:1); }, {passive:false});
+}
+// The browser preview (no app): a pretend desktop drawn on a canvas, taking keys and the pointer like noVNC would.
+class DeskPreviewRFB extends EventTarget {
+  constructor(target, url, opts){
+    super(); this.url=url; this.opts=opts; this.keys=[]; this.pointer=[];
+    const c=this.canvas=document.createElement('canvas'); c.width=DESK.w; c.height=DESK.h;
+    c.style.cssText='max-width:100%;max-height:100%;aspect-ratio:'+DESK.w+'/'+DESK.h;
+    const g=c.getContext('2d');
+    if(g){ const gr=g.createLinearGradient(0,0,DESK.w,DESK.h); gr.addColorStop(0,'#1d3557'); gr.addColorStop(1,'#457b9d'); g.fillStyle=gr; g.fillRect(0,0,DESK.w,DESK.h);
+      g.fillStyle='rgba(0,0,0,.55)'; g.fillRect(0,0,DESK.w,28); g.fillStyle='#fff'; g.font='14px sans-serif'; g.fillText('Applications   (Linux desktop preview)', 10, 19); }
+    target.appendChild(c);
+    setTimeout(()=>this.dispatchEvent(new CustomEvent('connect',{detail:{}})), 50);
+  }
+  sendKey(sym, code, down){ this.keys.push([sym, down]); }
+  sendPointer(x, y, mask){ this.pointer.push([x, y, mask]); }
+  sendCredentials(){}
+  focus(){} blur(){}
+  disconnect(){ this.canvas.remove(); this.dispatchEvent(new CustomEvent('disconnect',{detail:{clean:true}})); }
+}
 
 function viewSettings(){
   if(S.settingsTab==='audio') S.settingsTab='display';   // Audio is part of the Display page (one page for the screen and sound)
@@ -4987,6 +5395,7 @@ function act(el){
     case 'pwr': return power(d.p);
     case 'andOpen': return andOpen(d.page);
     case 'lx': return lxAct(d.v);
+    case 'desk': return deskAct(el);
     case 'andShowAll': return call('android.setShowAll',{on:!(AND.s&&AND.s.showAll)}).then(r=>{ AND.s=r; render('an-all',true); }).catch(e=>toast(e.message));
     case 'andRoms': toast('Pick your ROMs folder'); return call('android.roms.pick',{},600000).then(r=>{ if(r){ AND.s=r; toast('ROMs folder set'); loadLibrary(true,true); } render('an-roms',true); }).catch(e=>toast(e.message));
     case 'andRomsForget': return call('android.roms.forget').then(r=>{ AND.s=r; loadLibrary(true); render('an-roms',true); }).catch(e=>toast(e.message));
@@ -6995,7 +7404,12 @@ function onSysEvent(name, data){
   if(name==='game.ready') return gameReady(data.id);
   if(name==='game.slow') return gameSlow(data);
   if(name==='update') return OVERLAY ? null : onUpdate(data);
-  if(name==='pad') return hostPad(data.b);
+  if(name==='pad'){
+    if(deskActive()) return deskPadEvent(data);         // the Linux desktop's view takes the controller
+    if(data.down===false) return;                        // raw mode (the desktop under a prompt): presses only
+    return hostPad(data.b);
+  }
+  if(name==='padAxes'){ if(DESK.open) deskAxes(data); return; }
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
@@ -7095,7 +7509,7 @@ function onSettingsTab(t){
   if(t==='profiles') loadProfiles();
   if(t==='system' || t==='about') loadSysInfo();
   if(ANDROID && (t==='sources' || t==='system' || t==='controller')) loadAnd();
-  if(t==='linux' && lxOn()) loadLinux();
+  if(t==='linux' && lxOn()){ loadLinux(); loadDesktop(); }
   if(t==='system'){ loadBrowser(); loadArtStatus(); loadOldFiles(false); }
   if(t==='about'){ loadCounterStats(); if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
@@ -7350,6 +7764,7 @@ function pollPads(t){
 function pollPadsNow(t){
   // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
   const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
+  if(deskActive()) return deskPollPads(pads);
   const st={};
   for(const p of pads){ if(!p) continue;
     const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
@@ -7365,6 +7780,23 @@ function pollPadsNow(t){
     if(on && !h){ held[k]={t0:t,last:t}; padPressed(mapPad(k)); }
     else if(on && h && REPEAT.has(k) && t-h.t0>400 && t-h.last>110){ h.last=t; PAD_AT[k]=performance.now(); input(k); }
     else if(!on && h) delete held[k];
+  }
+}
+// The Linux desktop's view with a controller the page reads itself (no host controller): presses, releases, sticks.
+function deskPollPads(pads){
+  const st={}, ax={lx:0,ly:0,rx:0,ry:0,lt:0,rt:0}; let any=false;
+  for(const p of pads){ if(!p) continue; any=true;
+    const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), v=i=>p.axes[i]||0;
+    st.a=st.a||b(0); st.b=st.b||b(1); st.x=st.x||b(2); st.y=st.y||b(3); st.lb=st.lb||b(4); st.rb=st.rb||b(5);
+    st.select=st.select||b(8); st.start=st.start||b(9); st.guide=st.guide||b(16);
+    st.up=st.up||b(12); st.down=st.down||b(13); st.left=st.left||b(14); st.right=st.right||b(15);
+    for(const [k,i] of [['lx',0],['ly',1],['rx',2],['ry',3]]) if(Math.abs(v(i))>Math.abs(ax[k])) ax[k]=v(i);
+    ax.lt=Math.max(ax.lt, p.buttons[6]?p.buttons[6].value||0:0); ax.rt=Math.max(ax.rt, p.buttons[7]?p.buttons[7].value||0:0);
+  }
+  if(!any) return;
+  deskAxes(ax);
+  for(const k of ['a','b','x','y','lb','rb','select','start','guide','up','down','left','right']){
+    const on=!!st[k]; if(on!==!!DESK.poll[k]){ DESK.poll[k]=on; deskButton(mapPad(k), on); }
   }
 }
 window.addEventListener('gamepadconnected', e=>{ if(!padSeen) toast(`Controller connected: ${e.gamepad.id.split('(')[0].trim()||'Gamepad'}`); padSeen=true; });
@@ -7384,6 +7816,7 @@ function padHeldNow(){
   return pads.some(p => p.buttons.some(b => b && b.pressed) || (p.mapping==='standard' && p.axes.slice(0,4).some(a => Math.abs(a) > .5)));
 }
 document.addEventListener('keydown', e=>{
+  if(deskActive()){ if(DESK.rfb && document.activeElement && document.activeElement.tagName!=='CANVAS') try{ DESK.rfb.focus({preventScroll:true}); }catch(_){} return; }
   if(NAV_KEYS.has(e.key) && !e.ctrlKey && !e.altKey && padHeldNow()){ logInput('key '+e.key+' dropped (controller held)'); e.preventDefault(); e.stopImmediatePropagation(); return; }
   if(INPUT_LOG && NAV_KEYS.has(e.key)) logInput('key '+e.key);
   // Debug: Ctrl+Shift+D writes the focused/open game's art and image load state to bridge.log

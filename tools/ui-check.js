@@ -293,7 +293,7 @@ const path = require('path');
         {id: 'android:com.example.notes', title: 'Notes', source: 'manual', installed: true, state: 'installed', art: {}, added: now - 9 * day, cols: []},
         {id: 'emu:snes:Super Mario World (USA).sfc', title: 'Super Mario World', source: 'emu', system: 'Super Nintendo', installed: true, state: 'installed', art: {}, added: now - 2 * day, cols: []}];
       const R = {
-        'host.info': {platform: 'android', name: 'Test Phone', host: 'Hearth (Android)', version: '0.2.1', edition: 'android', features: ['android', 'sendLogs', 'linux'], setupDone: true, live: false, isDefaultHome: false},
+        'host.info': {platform: 'android', name: 'Test Phone', host: 'Hearth (Android)', version: '0.2.1', edition: 'android', features: ['android', 'sendLogs', 'linux', 'linuxDesktop'], setupDone: true, live: false, isDefaultHome: false},
         'sys.status': {wifi: {available: true, on: true, ssid: 'Wi-Fi', bars: 3}, bt: {available: true, on: false}, airplane: false, battery: {present: true, pct: 64, charging: true}, audio: {volume: 40, muted: false}, display: {supported: false}},
         'library.get': {games, sources: {}, collections: [], counts: {android: 2, manual: 1, emu: 1}, runningId: null},
         'profile.get': {name: 'Test Phone', status: null, avatar: 'initials', accent: '#3fd0b8', background: 'default', customAvatar: null, customBackground: null, storeAvatars: {}},
@@ -311,19 +311,32 @@ const path = require('path');
         'display.get': {supported: false, width: 2400, height: 1080, refreshRate: 120, resolution: '2400 × 1080'},
         'power.get': {present: true, pct: 64, charging: true, mode: null, modes: [], modeSupported: false},
         'system.info': {device: 'Test Phone', hostname: 'Test Phone', os: 'Android', osVersion: '15', osPretty: 'Android 15 (API 35)', cpu: 'Test SoC', cores: 8, memoryBytes: 8e9, storage: {totalBytes: 128e9, freeBytes: 64e9}, uptimeSec: 3600},
-        'pad.status': {connected: 1, mouseMode: false, mouseOn: false}};
+        'pad.status': {connected: 1, mouseMode: false, mouseOn: false},
+        // The Linux desktop (stage 2): installed, not running; Hearth mode answers with its WebSocket and password.
+        'linux.desktop.status': () => window.__desk,
+        'linux.desktop.install': {started: true, job: 'j3'},
+        'linux.desktop.start': a => a.mode === 'x11' ? {ok: false, needApp: true, url: 'https://github.com/termux/termux-x11/releases', text: 'Install Termux:X11.'}
+          : {ok: true, mode: 'hearth', running: true, ready: false, port: 41234, token: 'abc123', password: 'pw123456', width: 1280, height: 800},
+        'linux.desktop.stop': {ok: true, running: false},
+        'linux.trustX11': {ok: true},
+        'pad.raw': a => ({on: !!a.on})};
+      window.__desk = {linux: true, installed: true, missing: [], packages: ['xfce4', 'xfce4-terminal', 'dbus-x11', 'tigervnc-standalone-server', 'xkb-data'], mode: 'hearth', x11App: false, installing: false, running: false, method: null, ready: false};
+      window.__args = [];
       window.__calls = [];
       window.nimbusHost = {platform: 'android',
         postMessage(m) {
           if (m.type !== 'call') return;
           window.__calls.push(m.method);
-          const r = m.method in R ? {type: 'result', id: m.id, ok: true, value: JSON.parse(JSON.stringify(R[m.method]))} : {type: 'result', id: m.id, ok: false, error: "That isn't in Hearth for Android yet"};
+          window.__args.push([m.method, m.args || {}]);
+          const v = typeof R[m.method] === 'function' ? R[m.method](m.args || {}) : R[m.method];
+          const r = m.method in R ? {type: 'result', id: m.id, ok: true, value: JSON.parse(JSON.stringify(v))} : {type: 'result', id: m.id, ok: false, error: "That isn't in Hearth for Android yet"};
           setTimeout(() => L.forEach(f => f({data: r})), 5);
         },
         addEventListener(t, f) { if (t === 'message') L.push(f); }};
     });
     await ap.goto('file://' + path.resolve(__dirname, '../ui/index.html'));
     await ap.waitForTimeout(1500);
+    await ap.evaluate(() => { window.__openPrompt = openPrompt; });
     const astep = async (what, fn, arg) => {
       androidSteps.push(what);
       try { await ap.evaluate(fn, arg); await ap.waitForTimeout(200); }
@@ -424,10 +437,184 @@ const path = require('path');
       await lxAct('pkg'); await new Promise(r => setTimeout(r, 30));
       if (LX.job !== 'j2') throw new Error('apt did not start');
     });
+    // The Linux desktop inside Hearth (stage 2): install with progress, the full-screen view with a stand-in for noVNC's
+    // RFB, the controller as pointer and keys (and Hearth's own navigation standing still meanwhile), Hearth's keyboard,
+    // the bar, touch, reconnecting, back to Hearth, stopping, Termux:X11 missing, the desktop stopping by itself.
+    await astep('desktop rows', async () => {
+      S.layers = []; S.settingsTab = 'linux'; navigate('settings', {}, false); onSettingsTab('linux'); await new Promise(r => setTimeout(r, 120));
+      for (const k of ['lx-desk', 'lx-dmode']) if (!document.querySelector(`#view [data-k="${k}"]`)) throw new Error('no ' + k);
+    });
+    await astep('desktop install', async () => {
+      window.__desk.installed = false; window.__desk.missing = ['xfce4', 'tigervnc-standalone-server'];
+      await lxAct('desk');
+      if (!S.layers.includes('sheet') || !/tigervnc-standalone-server/.test(document.querySelector('#sheetBox').textContent)) throw new Error('no install sheet');
+      sheetPick(0); await new Promise(r => setTimeout(r, 60));
+      if (!window.__calls.includes('linux.desktop.install')) throw new Error('install not asked');
+      if (!LX.s.busy || LX.s.busy.kind !== 'desktop') throw new Error('not busy installing');
+      onHostMessage({type: 'event', name: 'linux.progress', data: {kind: 'desktop', pct: 37, text: 'Retrieving file 9 of 200'}});
+      render(null, true);
+      if (!document.querySelector('#view [data-k="lx-dprog"]') || document.querySelector('#lxbar').style.width !== '37%') throw new Error('no desktop progress');
+      if (!document.querySelector('#view [data-k="lx-cancel"]')) throw new Error('no Cancel');
+      onHostMessage({type: 'event', name: 'linux.progress', data: {kind: 'desktop', pct: 64, text: 'Installing xfce4-panel'}});
+      if (document.querySelector('#lxbar').style.width !== '64%') throw new Error('the bar did not move');
+      window.__desk.installed = true; window.__desk.missing = [];
+      const st = JSON.parse(JSON.stringify(LX.s)); st.busy = null;
+      onHostMessage({type: 'event', name: 'linux.done', data: {kind: 'desktop', ok: true, text: 'The Linux desktop is installed', status: st}});
+      await new Promise(r => setTimeout(r, 80));
+      if (document.querySelector('#view [data-k="lx-dprog"]') || !/Linux desktop/.test(document.querySelector('#view [data-k="lx-desk"]').textContent)) throw new Error('still installing');
+    });
+    await astep('desktop opens', async () => {
+      window.__rfbs = [];
+      window.HearthRFB = class extends EventTarget {
+        constructor(t, url, o) { super(); this.url = url; this.opts = o; this.keys = []; this.pointer = []; window.__rfbs.push(this); setTimeout(() => this.dispatchEvent(new CustomEvent('connect', {detail: {}})), 20); }
+        sendKey(s, c, d) { if (d === undefined) { this.keys.push([s, true]); this.keys.push([s, false]); } else this.keys.push([s, d]); }
+        sendPointer(x, y, m) { this.pointer.push([x, y, m]); }
+        sendCredentials() {} focus() {} blur() {}
+        disconnect() { this.dispatchEvent(new CustomEvent('disconnect', {detail: {clean: true}})); }
+      };
+      window.__args = [];
+      await deskOpen();
+      if (!DESK.open || !document.querySelector('#desk.open')) throw new Error('the view did not open');
+      const start = window.__args.find(a => a[0] === 'linux.desktop.start');
+      if (!start || start[1].mode !== 'hearth' || !(start[1].width > 0) || !(start[1].height > 0)) throw new Error('bad start: ' + JSON.stringify(start));
+      if (!window.__args.some(a => a[0] === 'pad.raw' && a[1].on === true)) throw new Error('controller not switched to raw');
+      if (window.__rfbs.length) throw new Error('connected before the desktop was ready');
+      if (!/Starting/.test(document.querySelector('#deskMsg').textContent)) throw new Error('no starting message');
+      onHostMessage({type: 'event', name: 'linux.desktop', data: {state: 'ready', mode: 'hearth', port: 41234, token: 'abc123', password: 'pw123456', width: 1280, height: 800, ok: true, running: true, ready: true}});
+      await new Promise(r => setTimeout(r, 120));
+      const rfb = window.__rfbs[0];
+      if (!rfb || rfb.url !== 'ws://127.0.0.1:41234/abc123' || rfb.opts.credentials.password !== 'pw123456') throw new Error('noVNC not connected right: ' + (rfb && rfb.url));
+      if (document.querySelector('#deskMsg').classList.contains('show')) throw new Error('the message stayed');
+    });
+    await astep('desktop controller: keys, not navigation', async () => {
+      const rfb = window.__rfbs[0], view = S.view, k0 = focused && focused.dataset.k; rfb.keys = [];
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'down', down: true}});
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'down', down: false}});
+      if (S.view !== view || S.layers.length || (focused && focused.dataset.k) !== k0) throw new Error("Hearth's navigation moved");
+      if (JSON.stringify(rfb.keys) !== JSON.stringify([[0xff54, true], [0xff54, false]])) throw new Error('no Down arrow: ' + JSON.stringify(rfb.keys));
+      rfb.keys = [];
+      for (const [b, d] of [['x', true], ['x', false], ['start', true], ['start', false]]) onHostMessage({type: 'event', name: 'pad', data: {b, down: d}});
+      if (JSON.stringify(rfb.keys) !== JSON.stringify([[0xff1b, true], [0xff1b, false], [0xffe9, true], [0xffbe, true], [0xffbe, false], [0xffe9, false]])) throw new Error('X/Start keys: ' + JSON.stringify(rfb.keys));
+    });
+    await astep('desktop controller: pointer', async () => {
+      const rfb = window.__rfbs[0]; rfb.pointer = [];
+      const x0 = DESK.x;
+      onHostMessage({type: 'event', name: 'padAxes', data: {lx: 0, ly: 0, rx: 1, ry: 0, lt: 0, rt: 0}});
+      await new Promise(r => setTimeout(r, 300));
+      onHostMessage({type: 'event', name: 'padAxes', data: {lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 0}});
+      if (!(DESK.x > x0 + 40)) throw new Error(`the pointer did not move (${x0} → ${DESK.x})`);
+      if (!rfb.pointer.length || rfb.pointer[rfb.pointer.length - 1][0] !== Math.round(DESK.x)) throw new Error('pointer not sent');
+      const x1 = DESK.x; await new Promise(r => setTimeout(r, 150));
+      if (DESK.x !== x1) throw new Error('the pointer kept moving');
+      rfb.pointer = [];
+      const masks = () => rfb.pointer.map(p => p[2]);
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'a', down: true}});
+      if (masks().at(-1) !== 1) throw new Error('A is not the left button');
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'a', down: false}});
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'b', down: true}});
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'b', down: false}});
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'rb', down: true}});
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'rb', down: false}});
+      if (JSON.stringify(masks()) !== JSON.stringify([1, 0, 4, 0, 16, 0])) throw new Error('buttons: ' + JSON.stringify(masks()));
+      rfb.keys = [];
+      onHostMessage({type: 'event', name: 'padAxes', data: {lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 1}});
+      await new Promise(r => setTimeout(r, 60));
+      onHostMessage({type: 'event', name: 'padAxes', data: {lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 0}});
+      await new Promise(r => setTimeout(r, 60));
+      if (JSON.stringify(rfb.keys) !== JSON.stringify([[0xff0d, true], [0xff0d, false]])) throw new Error('RT is not Enter: ' + JSON.stringify(rfb.keys));
+    });
+    await astep('desktop keyboard', async () => {
+      window.openPrompt = window.__openPrompt;           // earlier steps put a stand-in there
+      const rfb = window.__rfbs[0]; rfb.keys = [];
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'y', down: true}});
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'y', down: false}});
+      await new Promise(r => setTimeout(r, 30));
+      if (!S.layers.includes('prompt') || getComputedStyle(document.querySelector('#prompt')).zIndex <= getComputedStyle(document.querySelector('#desk')).zIndex) throw new Error("Hearth's keyboard isn't over the desktop: " + S.layers.join() + ' ' + getComputedStyle(document.querySelector('#prompt')).zIndex + ' ' + DESK.open);
+      // The prompt has the controller now (raw presses work there; releases are ignored).
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'right', down: true}});
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'right', down: false}});
+      if (rfb.keys.length) throw new Error('keys reached Linux while typing');
+      prompt.text = 'ls -lé'; promptSubmit(); await new Promise(r => setTimeout(r, 60));
+      const want = [...'ls -l'].map(c => c.charCodeAt(0)).concat([0xe9]).flatMap(c => [[c, true], [c, false]]);
+      if (JSON.stringify(rfb.keys) !== JSON.stringify(want)) throw new Error('typed: ' + JSON.stringify(rfb.keys));
+    });
+    await astep('desktop bar', async () => {
+      const rfb = window.__rfbs[0]; rfb.keys = [];
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'guide', down: true}});
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'guide', down: false}});
+      if (!DESK.bar || !document.querySelector('#deskBar.show')) throw new Error('no bar');
+      for (const k of ['dk-kbd', 'dk-Control_L', 'dk-Alt_L', 'dk-Super_L', 'dk-Escape', 'dk-Tab', 'dk-stop', 'dk-home']) if (!document.querySelector(`#deskBar [data-k="${k}"]`)) throw new Error('no ' + k);
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'right', down: true}});
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'a', down: true}});
+      if (!DESK.mods.Control_L || !document.querySelector('#deskBar [data-k="dk-Control_L"].on')) throw new Error('Ctrl not held');
+      act(document.querySelector('#deskBar [data-k="dk-Tab"]'));
+      if (JSON.stringify(rfb.keys) !== JSON.stringify([[0xffe3, true], [0xff09, true], [0xff09, false], [0xffe3, false]])) throw new Error('Ctrl+Tab: ' + JSON.stringify(rfb.keys));
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'b', down: true}});
+      if (DESK.bar) throw new Error('B did not close the bar');
+      rfb.pointer = [];
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'b', down: false}});
+      if (rfb.pointer.length) throw new Error("closing the bar's B clicked");
+    });
+    await astep('desktop touch', async () => {
+      const rfb = window.__rfbs[0], el = document.querySelector('#deskTouch');
+      const pe = (type, id, x, y) => el.dispatchEvent(new PointerEvent(type, {pointerId: id, pointerType: 'touch', clientX: x, clientY: y, bubbles: true, cancelable: true, isPrimary: id === 1}));
+      rfb.pointer = [];
+      pe('pointerdown', 1, 300, 300); pe('pointerup', 1, 300, 300);
+      if (JSON.stringify(rfb.pointer.map(p => p[2])) !== '[1,0]') throw new Error('tap: ' + JSON.stringify(rfb.pointer));
+      await new Promise(r => setTimeout(r, 350));
+      rfb.pointer = []; const x0 = DESK.x;
+      pe('pointerdown', 1, 300, 300); pe('pointermove', 1, 360, 300); pe('pointermove', 1, 420, 300); pe('pointerup', 1, 420, 300);
+      if (!(DESK.x > x0 + 50) || rfb.pointer.some(p => p[2])) throw new Error('drag did not move the pointer (or clicked)');
+      await new Promise(r => setTimeout(r, 350));
+      rfb.pointer = [];
+      pe('pointerdown', 1, 300, 300); pe('pointerdown', 2, 360, 300); pe('pointerup', 1, 300, 300); pe('pointerup', 2, 360, 300);
+      if (JSON.stringify(rfb.pointer.map(p => p[2])) !== '[4,0]') throw new Error('two-finger tap: ' + JSON.stringify(rfb.pointer));
+      rfb.pointer = [];
+      pe('pointerdown', 1, 300, 300); pe('pointerdown', 2, 360, 300); pe('pointermove', 1, 300, 360); pe('pointermove', 2, 360, 360); pe('pointerup', 1, 300, 360); pe('pointerup', 2, 360, 360);
+      if (!rfb.pointer.some(p => p[2] === 8)) throw new Error('two-finger scroll: ' + JSON.stringify(rfb.pointer));
+    });
+    await astep('desktop reconnects', async () => {
+      window.__desk.running = true; window.__desk.method = 'hearth';
+      const n = window.__rfbs.length;
+      window.__rfbs[n - 1].dispatchEvent(new CustomEvent('disconnect', {detail: {clean: false}}));
+      await new Promise(r => setTimeout(r, 700));
+      if (window.__rfbs.length !== n + 1 || window.__rfbs[n].url !== 'ws://127.0.0.1:41234/abc123') throw new Error('did not connect again');
+    });
+    await astep('desktop back to Hearth', async () => {
+      window.__args = [];
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'select', down: true}});
+      act(document.querySelector('#deskBar [data-k="dk-home"]'));
+      if (DESK.open || document.querySelector('#desk.open')) throw new Error('still open');
+      if (!window.__args.some(a => a[0] === 'pad.raw' && a[1].on === false)) throw new Error('controller still raw');
+      if (window.__calls.filter(m => m === 'linux.desktop.stop').length) throw new Error('Back to Hearth stopped the desktop');
+      const k0 = focused && focused.dataset.k;
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'down'}});
+      if ((focused && focused.dataset.k) === k0) throw new Error("Hearth's navigation didn't come back");
+    });
+    await astep('desktop stops by itself', async () => {
+      await deskOpen();
+      onHostMessage({type: 'event', name: 'linux.desktop', data: {state: 'ready', mode: 'hearth', port: 41234, token: 'abc123', password: 'pw123456', width: 1280, height: 800}});
+      await new Promise(r => setTimeout(r, 80));
+      onHostMessage({type: 'event', name: 'linux.desktop', data: {state: 'stopped', mode: 'hearth', code: 0}});
+      if (!/stopped/.test(document.querySelector('#deskMsg').textContent)) throw new Error('no stopped message');
+      onHostMessage({type: 'event', name: 'pad', data: {b: 'b', down: true}});
+      if (DESK.open) throw new Error('B did not go back to Hearth');
+    });
+    await astep('desktop stop from the bar', async () => {
+      await deskOpen();
+      deskBarToggle(true); act(document.querySelector('#deskBar [data-k="dk-stop"]'));
+      await new Promise(r => setTimeout(r, 30));
+      if (DESK.open || !window.__calls.includes('linux.desktop.stop')) throw new Error('not stopped');
+    });
+    await astep('desktop in termux:x11 (missing)', async () => {
+      deskSetMode('x11'); await deskOpen(); await new Promise(r => setTimeout(r, 30));
+      if (DESK.open || !S.layers.includes('sheet') || !/Termux:X11/.test(document.querySelector('#sheetBox').textContent)) throw new Error('no Termux:X11 sheet');
+      closeAll(); deskSetMode('hearth');
+    });
     await astep('linux remove asks first', () => { lxAct('remove'); if (!S.layers.includes('sheet')) throw new Error('no confirmation'); closeAll(); });
     await astep('controller from the host', () => { onHostMessage({type: 'event', name: 'padHost', data: {connected: 1}}); onHostMessage({type: 'event', name: 'pad', data: {b: 'down'}}); onHostMessage({type: 'event', name: 'pad', data: {b: 'b'}}); });
     const asked = await ap.evaluate(() => [...new Set(window.__calls)]);
-    for (const m of ['host.info', 'library.get', 'android.status', 'android.openSettings', 'android.apps', 'linux.status', 'linux.run', 'linux.apt', 'linux.openX11']) if (!asked.includes(m)) errors.push(`android: never called ${m}`);
+    for (const m of ['host.info', 'library.get', 'android.status', 'android.openSettings', 'android.apps', 'linux.status', 'linux.run', 'linux.apt', 'linux.openX11', 'linux.desktop.status', 'linux.desktop.install', 'linux.desktop.start', 'linux.desktop.stop', 'pad.raw']) if (!asked.includes(m)) errors.push(`android: never called ${m}`);
     await ap.close();
   }
   // Hearth Linux in the browser preview (?preview=android, no app): the pretend Linux installs and runs a command.
@@ -454,6 +641,18 @@ const path = require('path');
       window.openPrompt = async () => 'uname -a';
       await lxAct('run'); await new Promise(r => setTimeout(r, 600));
       if (!/aarch64/.test(LX.out.join('\n'))) throw new Error('no output: ' + LX.out.join(' | '));
+    });
+    await lstep('desktop', async () => {
+      await lxAct('desk'); await new Promise(r => setTimeout(r, 30));
+      if (!S.layers.includes('sheet')) throw new Error('no install sheet');
+      sheetPick(0); await new Promise(r => setTimeout(r, 1600));
+      if (!DESK.s || !DESK.s.installed) throw new Error('the desktop did not install');
+      await deskOpen(); await new Promise(r => setTimeout(r, 150));
+      if (!(DESK.rfb instanceof DeskPreviewRFB) || !document.querySelector('#deskScreen canvas')) throw new Error('no pretend desktop');
+      onSysEvent('pad', {b: 'a'}); await new Promise(r => setTimeout(r, 120));
+      if (JSON.stringify(DESK.rfb.pointer.map(p => p[2]).slice(-2)) !== '[1,0]') throw new Error('A did not click: ' + JSON.stringify(DESK.rfb.pointer));
+      deskClose(true); await new Promise(r => setTimeout(r, 150));
+      if (DESK.open || DESK.s.running) throw new Error('did not stop');
     });
     await lp.close();
   }
