@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""hearth-steam-exit: a way out of Steam's own Game Mode with just a controller (Hearth OS, Settings › System ›
+Game Mode › Steam). Holding View and Menu together for 3 seconds goes to Desktop Mode (nimbus-mode desktop),
+in case Steam's own "Switch to Desktop" can't reach Hearth's session. Started and stopped by nimbus-session.
+Reads the controllers through python3-evdev; nothing else is done with them (no grab: Steam keeps them).
+"""
+import os
+import select
+import subprocess
+import sys
+import time
+
+HOLD = 3.0
+
+
+def main():
+    try:
+        import evdev
+    except ImportError:
+        return 2
+    e = evdev.ecodes
+    view, menu = e.BTN_SELECT, e.BTN_START
+    pads, held, since, next_scan = {}, {}, None, 0.0
+    while True:
+        now = time.monotonic()
+        if now >= next_scan:
+            for path in evdev.list_devices():
+                if path in pads:
+                    continue
+                try:
+                    d = evdev.InputDevice(path)
+                except OSError:
+                    continue
+                keys = d.capabilities().get(e.EV_KEY, [])
+                if view in keys and menu in keys and not d.name.startswith('Hearth '):
+                    pads[path] = d
+                else:
+                    d.close()
+            next_scan = now + 3
+        fds = {d.fd: p for p, d in pads.items()}
+        try:
+            ready, _, _ = select.select(list(fds), [], [], 0.25)
+        except (OSError, ValueError):
+            ready = []
+        for fd in ready:
+            p = fds[fd]
+            try:
+                for ev in pads[p].read():
+                    if ev.type == e.EV_KEY and ev.code in (view, menu):
+                        held.setdefault(p, set())
+                        (held[p].add if ev.value else held[p].discard)(ev.code)
+            except OSError:
+                pads.pop(p, None)
+                held.pop(p, None)
+        both = any(s >= {view, menu} for s in held.values())
+        since = (since or time.monotonic()) if both else None
+        if since and time.monotonic() - since >= HOLD:
+            subprocess.call(['nimbus-mode', 'desktop'])
+            return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
