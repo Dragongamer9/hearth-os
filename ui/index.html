@@ -4074,6 +4074,8 @@ async function lxAct(v){
     try{
       const r=await lxCall('linux.openX11',{cmd}, 60000);
       if(r && r.needApp) return openSheet({title:'Termux:X11 is needed', sub:r.text||'', items:[{label:'Get Termux:X11', icon:'dl', run:()=>lxLink(r.url)}]});
+      if(r && r.needTrust) return openSheet({title:r.changed?'Termux:X11 was replaced':'Allow Termux:X11?', sub:r.text||'', items:[
+        {label:'Allow Termux:X11', icon:'check', run:()=>lxCall('linux.trustX11',{signer:r.signer, confirm:true}).then(()=>{ toast('Termux:X11 allowed. Open it again.'); }).catch(fail)}]});
       if(r && r.needPackages) return openSheet({title:'One more package', sub:r.text||'', items:[{label:'Install '+r.needPackages.join(' '), icon:'dl', run:()=>lxApt('install', r.needPackages)}]});
       if(r && r.job){ LX.job=r.job; LX.out=[]; lxOut(['[Termux:X11] $ '+cmd]); render('lx-stop',true); }
     }catch(e){ fail(e); }

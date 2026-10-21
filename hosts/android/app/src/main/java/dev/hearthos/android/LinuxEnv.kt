@@ -83,6 +83,7 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
         "linux.apt" -> apt(a)
         "linux.stop" -> stop(a.optString("job", ""))
         "linux.openX11" -> openX11(a)
+        "linux.trustX11" -> { confirm(a); trustX11(a.optString("signer", "")) }
         "linux.reset" -> { confirm(a); install(true) }
         "linux.remove" -> { confirm(a); remove() }
         else -> throw Exception("That isn't in Hearth for Android yet")
@@ -460,6 +461,32 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
     }
 
     // ================================================================ Termux:X11
+    /** The SHA-256 of the certificate the installed Termux:X11 is signed with (lowercase hex), or null. */
+    private fun x11Signer(): String? = runCatching {
+        val pm = ctx.packageManager
+        val certs: List<ByteArray> = if (Build.VERSION.SDK_INT >= 28) {
+            val info = pm.getPackageInfo(X11_PACKAGE, PackageManager.GET_SIGNING_CERTIFICATES)
+            val si = info.signingInfo ?: return@runCatching null
+            (if (si.hasMultipleSigners()) si.apkContentsSigners else si.signingCertificateHistory)?.map { it.toByteArray() } ?: emptyList()
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageInfo(X11_PACKAGE, PackageManager.GET_SIGNATURES).signatures?.map { it.toByteArray() } ?: emptyList()
+        }
+        val first = certs.firstOrNull() ?: return@runCatching null
+        java.security.MessageDigest.getInstance("SHA-256").digest(first).joinToString("") { "%02x".format(it) }
+    }.getOrNull()
+
+    /** Termux:X11's code runs inside Hearth (its X server), so the person allows it once; the signer they allowed is
+     *  remembered, and a Termux:X11 signed by someone else (replaced, or an impostor under the same name) asks again. */
+    private val x11Trust get() = File(base, "x11-trusted-signer")
+    private fun trustX11(signer: String): JSONObject {
+        val now = x11Signer() ?: throw Exception("Termux:X11 isn't installed")
+        if (signer != now) throw Exception("Termux:X11 changed while you were deciding. Try again.")
+        base.mkdirs(); x11Trust.writeText(now)
+        Logs.log("x11: Termux:X11 allowed (signer ${now.take(16)}…)")
+        return JSONObject().put("ok", true)
+    }
+
     private fun x11Info() = runCatching {
         @Suppress("DEPRECATION")
         ctx.packageManager.getApplicationInfo(X11_PACKAGE, 0)
@@ -476,6 +503,12 @@ class LinuxEnv private constructor(private val ctx: Context, private val version
         if (!installed()) throw Exception("Install Linux first")
         val ai = x11Info() ?: return JSONObject().put("ok", false).put("needApp", true).put("url", X11_URL)
             .put("text", "Install Termux:X11 (com.termux.x11) to see Linux apps. Termux itself isn't needed.")
+        val signer = x11Signer() ?: throw Exception("Couldn't read who signed Termux:X11, so Hearth won't run it.")
+        val trusted = runCatching { x11Trust.readText().trim() }.getOrNull()
+        if (trusted != signer)
+            return JSONObject().put("ok", false).put("needTrust", true).put("signer", signer).put("changed", trusted != null)
+                .put("text", (if (trusted != null) "Termux:X11 is now signed by someone else than the one you allowed (it was replaced). " else "") +
+                    "To show Linux apps, Hearth runs Termux:X11's display code inside itself, with Hearth's permissions. Only allow it if you installed Termux:X11 yourself from its official page (github.com/termux/termux-x11 or F-Droid). Signer: ${signer.take(16)}…")
         val cmd = LinuxInput.command(a.optString("cmd", "").ifBlank { "xterm" })
         // What's missing first: the X keyboard data (xkb-data), and the program itself when it's a plain name that
         // isn't in the Linux yet (xterm by default), offered as a package of the same name.
