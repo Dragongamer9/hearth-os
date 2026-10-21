@@ -74,6 +74,18 @@ timeout /t 5 >nul
         Set-ItemProperty $winlogon -Name Shell -Value "`"$app\Nimbus.exe`" --shell"
     }
 
+    # Beacon (Battle for Middle-earth and more) comes with Ember: its own installer, per user and silent. Ember's
+    # Library › Stores › Get Beacon does the same later; a failure here doesn't stop Ember's install.
+    if (-not (Test-Path (Join-Path $env:LOCALAPPDATA 'Beacon\beacon.exe'))) {
+        try {
+            Step "Installing Beacon"
+            $bsetup = Join-Path $env:TEMP 'Beacon-x64-setup.exe'
+            Invoke-WebRequest -UseBasicParsing 'https://github.com/Dragongamer9/beacon/releases/latest/download/Beacon-x64-setup.exe' -OutFile $bsetup
+            Start-Process $bsetup -ArgumentList '/S' -Wait
+            Remove-Item $bsetup -ErrorAction SilentlyContinue
+        } catch { Write-Host "Beacon wasn't installed ($($_.Exception.Message)). Get it later from Library > Stores." -ForegroundColor Yellow }
+    }
+
     Write-Host ""
     Write-Host "Ember $($rel.tag_name) is installed." -ForegroundColor Green
     if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) {
