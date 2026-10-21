@@ -1,8 +1,8 @@
 {
   "name": "nimbus-linux",
   "productName": "Nimbus",
-  "license": "GPL-3.0-or-later",
   "version": "0.2.2",
+  "license": "GPL-3.0-or-later",
   "description": "Hearth OS for Linux: the SteamOS-style UI hosted in Electron, run inside gamescope",
   "main": "src/main.js",
   "author": "Dragongamer9",
