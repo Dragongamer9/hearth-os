@@ -243,6 +243,44 @@ public static class Beacon
         Process.Start(psi)?.Dispose();
     }
 
+    /// <summary>Beacon's own Windows installer (latest release, from Beacon's GitHub), run silently: Beacon isn't part of
+    /// Ember's update, so Library › Stores › Get Beacon installs it. Per user (NSIS /S), into %LOCALAPPDATA%\Beacon.</summary>
+    public const string InstallerUrl = "https://github.com/Dragongamer9/beacon/releases/latest/download/Beacon-x64-setup.exe";
+    public static async Task InstallAsync()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), "Beacon-x64-setup-" + Environment.ProcessId + ".exe");
+        try
+        {
+            SystemBridge.Log("beacon: downloading its installer");
+            using (var resp = await Nimbus.Host.Stores.HelperTools.Http.GetAsync(InstallerUrl, HttpCompletionOption.ResponseHeadersRead))
+            {
+                resp.EnsureSuccessStatusCode();
+                if (resp.RequestMessage?.RequestUri is { Scheme: not "https" }) throw new InvalidOperationException("Beacon's download didn't come over a secure connection.");
+                await using var src = await resp.Content.ReadAsStreamAsync();
+                await using var dst = File.Create(tmp);
+                var buf = new byte[1 << 16]; long total = 0; int n;
+                while ((n = await src.ReadAsync(buf)) > 0)
+                {
+                    total += n;
+                    if (total > 300L << 20) throw new InvalidOperationException("Beacon's installer is unexpectedly large.");
+                    await dst.WriteAsync(buf.AsMemory(0, n));
+                }
+            }
+            var head = new byte[2];
+            await using (var f = File.OpenRead(tmp)) { if (f.Length < (1 << 20) || await f.ReadAsync(head) != 2 || head[0] != (byte)'M' || head[1] != (byte)'Z') throw new InvalidOperationException("That download isn't Beacon's installer."); }
+            SystemBridge.Log("beacon: running its installer");
+            var psi = new ProcessStartInfo(tmp) { UseShellExecute = false };
+            psi.ArgumentList.Add("/S");
+            using var p = Process.Start(psi) ?? throw new InvalidOperationException("Beacon's installer didn't start.");
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+            await p.WaitForExitAsync(cts.Token);
+            if (p.ExitCode != 0) throw new InvalidOperationException($"Beacon's installer stopped (code {p.ExitCode}).");
+            if (Cli() is null) throw new InvalidOperationException("Beacon's installer finished, but beacon.exe isn't where Ember looks for it.");
+            SystemBridge.Log("beacon: installed");
+        }
+        finally { try { File.Delete(tmp); } catch { } }
+    }
+
     /// <summary>For Library › Stores (the "beacon" card), like hearth-core's accounts_status.</summary>
     public static object StatusCard(IEnumerable<Game> library)
     {
