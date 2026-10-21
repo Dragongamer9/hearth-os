@@ -112,8 +112,8 @@ jobs:
           tag="v$V"
           for i in $(seq 1 40); do gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && break; sleep 30; done
           if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "::warning title=No release::$tag isn't released yet; the APK stays an artifact"; exit 0; fi
-          cp "hosts/android/out/hearth-android-$V.apk" hosts/android/out/Hearth-android.apk
-          gh release upload "$tag" "hosts/android/out/hearth-android-$V.apk" hosts/android/out/Hearth-android.apk --clobber --repo "$GITHUB_REPOSITORY"
+          cp "out/hearth-android-$V.apk" out/Hearth-android.apk
+          gh release upload "$tag" "out/hearth-android-$V.apk" out/Hearth-android.apk --clobber --repo "$GITHUB_REPOSITORY"
           echo "::notice title=Released::https://github.com/$GITHUB_REPOSITORY/releases/latest/download/Hearth-android.apk"
       - uses: actions/upload-artifact@v4
         if: failure()
