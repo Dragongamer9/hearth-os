@@ -60,6 +60,9 @@ run_game() {
     echo no_display >"$MANGOHUD_CONFIGFILE"
     extra="--mangoapp"
   fi
+  # Multi-seat: no performance overlay. mangoapp reads every process using the graphics card, the other players'
+  # too (their own accounts: "Permission denied" on /proc/<pid>/fdinfo), and crashed over and over.
+  [ -n "$HEARTH_SEAT" ] && extra=""
   # Games get gamescope's Vulkan layer: the frame-rate limit (Quick Access › Performance) works through it.
   export ENABLE_GAMESCOPE_WSI="${ENABLE_GAMESCOPE_WSI:-1}"
   # Fullscreen games mustn't minimize themselves when Quick Access or Hearth comes in front (that left a black
@@ -81,7 +84,7 @@ run_game() {
     if python3 "$SEATS" host-check 2>/dev/null; then
       log "multi-seat: hosting the other players' screens"
       # shellcheck disable=SC2086
-      python3 "$SEATS" host -- gamescope -f $extra $NIMBUS_GAMESCOPE_ARGS -- "$WATCHDOG" "$NIMBUS_APP"
+      python3 "$SEATS" host -- gamescope -f $NIMBUS_GAMESCOPE_ARGS -- "$WATCHDOG" "$NIMBUS_APP"
       rc=$?
       [ "$rc" -ne 3 ] && return "$rc"
       log "multi-seat host couldn't start; normal Game Mode"
