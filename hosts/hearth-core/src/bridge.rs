@@ -236,6 +236,8 @@ impl Bridge {
                 "platform": "linux", "name": os_name(), "host": "Hearth (Rust)", "version": self.version, "autoReport": self.auto_report(),
                 // Drawn the compatible way (no DMA-BUF): the page turns its heavy effects down (body.lite).
                 "compatDrawing": std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some(),
+                // Multi-seat window: Hearth passes this player's controller on itself (the page doesn't read it).
+                "seatPads": crate::multiplay::seat_hosted(),
                 // Part of Hearth, the OS: the app updates with the system (Settings › Updates shows Update now).
                 "system": system_install(),
                 // Opened just for Settings (from Mantel's taskbar), or for one of its pages (--page hhd: Handheld

@@ -1150,6 +1150,10 @@ class SplitAndStreamUser(SeatsBase):
         self.assertNotIn('SnapToRegion', rule3)
         self.assertIn('output="DP-1"', rule3)
         self.assertNotIn('<regions>', self.hs.host_rc_xml([{'seat': 1, 'connector': 'HDMI-A-1'}, {'seat': 2, 'connector': 'DP-1'}]))
+        # Without labwc's sandbox rules: no title bars on any window, and each placed in the free part.
+        self.assertIn('<windowRule identifier="*" serverDecoration="no" skipTaskbar="yes" />', xml)
+        self.assertLess(xml.index('identifier="*"'), xml.index('sandboxAppId="seat1"'))
+        self.assertIn('<placement><policy>automatic</policy></placement>', xml)
 
     def test_player1_cmd(self):
         cmd = ['gamescope', '-f', '--mangoapp', '-W', '1280', '--', '/usr/libexec/nimbus/nimbus-watchdog', '/usr/bin/nimbus', '-f']

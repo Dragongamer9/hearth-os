@@ -12,6 +12,10 @@ pub const COOP: &str = "/usr/libexec/nimbus/hearth-coop";
 pub const SEATS: &str = "/usr/libexec/nimbus/hearth-seats";
 
 pub fn coop_available() -> bool { Path::new(COOP).exists() && std::env::var_os("HEARTH_SEAT").is_none() }
+/// Multi-seat, a window of the split-screen host (player 1's, or another player's on the same card): the host
+/// gives only one window input at a time, and the web view only reads the controller in that one, so Hearth reads
+/// this player's controllers itself (hearth-seats sets HEARTH_SEAT_HOSTED).
+pub fn seat_hosted() -> bool { std::env::var_os("HEARTH_SEAT_HOSTED").is_some() }
 pub fn seats_available() -> bool { Path::new(SEATS).exists() && std::env::var_os("HEARTH_SEAT").is_none() }
 
 /// "progress: 40 Starting player 2" → (40, "Starting player 2")

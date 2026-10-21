@@ -63,6 +63,7 @@ MAX_SEATS = 4
 PLAYER_RE = re.compile(r'^hearth-p([2-4])$')
 EXIT_HOST_FALLBACK = 3   # host couldn't start: run normal Game Mode instead
 HOST_STATE = os.path.expanduser('~/.local/state/hearth/seat-host.json')
+HOST_LOG = os.path.expanduser('~/.local/share/nimbus/seat-host.log')   # the split-screen host's log (in bug reports)
 AUDIO_PREFS = os.path.expanduser('~/.config/hearth/seats-audio.json')   # split screen: volumes (player 1's own)
 HOST_KINDS = ('nested', 'split')   # players whose window player 1's Game Mode hosts
 # Presets (hearth-admin accepts nothing else).
@@ -845,6 +846,7 @@ def session(wait=60):
             time.sleep(1)
         env['WAYLAND_DISPLAY'] = sock
         env.pop('DISPLAY', None)
+        env['HEARTH_SEAT_HOSTED'] = '1'  # a window of player 1's host: Hearth reads this player's controllers itself
         env.update(parse_env(read(os.path.join(SEAT_RUN, me, 'audio.env'))))
     elif mode == 'stream':
         # The virtual screen first; inside it, stream-run starts Sunshine and this player's Game Mode.
@@ -1238,8 +1240,13 @@ def host_rc_xml(seats, layout=None):
     Each player's window connects through its own socket marked with security-context-v1 (engine
     "hearth-seat", app id "seatN"), which is what the window rules match on. A player on a split screen gets
     their part of it: a labwc region in % of that screen (so it fits whatever the screen's position), which the
-    window snaps to once it's on that screen."""
-    rules, regions = [], []
+    window snaps to once it's on that screen.
+
+    Not every labwc matches those sandbox rules (seen on the ROG Ally: each player got a title bar and wasn't
+    fitted to their part), so two things work without them too: a rule for every window takes the title bars off
+    (the host only ever shows players' windows), and automatic placement puts each window, already the size of its
+    part, in the free part of the screen (player 1's opens first, so it takes the first part)."""
+    rules, regions = ['    <windowRule identifier="*" serverDecoration="no" skipTaskbar="yes" />'], []
     for s in seats:
         acts = ['      <action name="MoveToOutput" output="%s" />' % xml_escape(s['connector'])]
         r = split_region(layout, s.get('region')) if s.get('kind') == 'split' else None
@@ -1255,6 +1262,7 @@ def host_rc_xml(seats, layout=None):
             '<labwc_config>\n  <core><decoration>client</decoration><gap>0</gap></core>\n'
             '  <keyboard><default /></keyboard>\n  <mouse><default /></mouse>\n'
             '  <focus><followMouse>no</followMouse></focus>\n'
+            '  <placement><policy>automatic</policy></placement>\n'
             + ('  <regions>\n' + '\n'.join(regions) + '\n  </regions>\n' if regions else '') +
             '  <windowRules>\n' + '\n'.join(rules) + '\n  </windowRules>\n</labwc_config>\n')
 
@@ -1287,7 +1295,20 @@ def host(cmd):
                     ['python3', os.path.realpath(__file__), 'host-run', '--'] + player1_cmd(cmd, seats[0]))
     st = host_state()
     started = time.time()
-    rc = subprocess.call(['labwc', '-C', d])
+    # The host's own log (labwc's warnings, e.g. window rules it doesn't understand), for bug reports.
+    log_path = HOST_LOG
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        log = open(log_path, 'w')
+        _, ver, _ = RUNNER.run(['labwc', '--version'], timeout=10)
+        log.write('%s hearth-seats host: %s; %d players: %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), (ver or '?').strip(), len(seats),
+                  ', '.join('%d %s on %s%s' % (x['seat'], x.get('kind'), x.get('connector'), ' part %s' % x.get('region') if x.get('kind') == 'split' else '') for x in seats)))
+        log.flush()
+    except OSError:
+        log = None
+    rc = subprocess.call(['labwc', '-C', d], stdout=log or subprocess.DEVNULL, stderr=log or subprocess.DEVNULL)
+    if log:
+        log.close()
     result_file = os.path.join(d, 'result')
     inner = read(result_file)
     try:
@@ -1624,6 +1645,7 @@ def host_run(cmd):
         env['WAYLAND_DISPLAY'] = opened[0][0]
         env.pop('LABWC_PID', None)       # nimbus-mode must see Game Mode, not the host
         env.pop('DISPLAY', None)
+        env['HEARTH_SEAT_HOSTED'] = '1'  # Hearth reads the controllers itself (the host gives only one window input)
         p = subprocess.Popen(cmd, env=env)
         signal.signal(signal.SIGTERM, lambda *_: p.terminate())
         code = p.wait()

@@ -112,6 +112,9 @@ pub struct Guide {
     /// (Bazzite), where nothing changes.
     pub chord_guard: Arc<AtomicBool>,
     open: Arc<Mutex<HashMap<String, String>>>,
+    /// Grabbed now (the overlay is open). Not the same as `buttons`: in multi-seat every button is passed on
+    /// while nothing is grabbed (games still get the controller).
+    grabbed: Arc<AtomicBool>,
     problems: Arc<Mutex<HashMap<String, String>>>,
     last_press: Arc<Mutex<u64>>,
 }
@@ -119,7 +122,7 @@ pub struct Guide {
 impl Default for Guide { fn default() -> Self { Self::new() } }
 
 impl Guide {
-    pub fn new() -> Guide { Guide { fds: Arc::default(), hold_view: Arc::default(), buttons: Arc::default(), chord_guard: Arc::default(), open: Arc::default(), problems: Arc::default(), last_press: Arc::default() } }
+    pub fn new() -> Guide { Guide { fds: Arc::default(), hold_view: Arc::default(), buttons: Arc::default(), chord_guard: Arc::default(), open: Arc::default(), grabbed: Arc::default(), problems: Arc::default(), last_press: Arc::default() } }
     /// For Settings › Controls: which devices are watched, and when Guide last came through.
     pub fn status(&self) -> Value {
         json!({"devices": self.open.lock().unwrap().values().cloned().collect::<Vec<_>>(),
@@ -128,6 +131,7 @@ impl Guide {
     pub fn connected(&self) -> usize { self.open.lock().unwrap().len() }
     /// Only Hearth gets the controllers' input (on), or everyone again (off).
     pub fn grab(&self, on: bool) {
+        self.grabbed.store(on, Ordering::SeqCst);
         for fd in self.fds.lock().unwrap().values() { unsafe { ioctl(*fd, EVIOCGRAB, if on { 1i32 } else { 0i32 }); } }
     }
     pub fn fire(&self, how: &str, on_press: &OnPress) { *self.last_press.lock().unwrap() = crate::library::now_ms(); on_press(how); }
@@ -156,7 +160,7 @@ impl Guide {
         use std::os::unix::io::AsRawFd;
         self.fds.lock().unwrap().insert(path.to_string(), f.as_raw_fd());
         // A controller plugged in while the overlay is open is grabbed straight away.
-        if self.buttons.load(Ordering::SeqCst) { unsafe { ioctl(f.as_raw_fd(), EVIOCGRAB, 1i32); } }
+        if self.grabbed.load(Ordering::SeqCst) { unsafe { ioctl(f.as_raw_fd(), EVIOCGRAB, 1i32); } }
         let mut buf = [0u8; EVENT_SIZE * 64];
         let mut rest: Vec<u8> = Vec::new();
         let mut state = HashMap::new();
