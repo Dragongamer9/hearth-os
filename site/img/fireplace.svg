@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMax slice">
+  <!-- Inside a fireplace: brick back wall, stone jambs and arch, a hearth slab, andirons and logs.
+       The fire itself is drawn live on a canvas above this (site/index.html); this is the still scene it lights. -->
+  <defs>
+    <pattern id="brick" width="96" height="40" patternUnits="userSpaceOnUse">
+      <rect width="96" height="40" fill="#120906"/>
+      <rect x="2" y="2" width="92" height="17" rx="2" fill="#3a1d12"/>
+      <rect x="-46" y="22" width="92" height="16" rx="2" fill="#341a10"/>
+      <rect x="50" y="22" width="92" height="16" rx="2" fill="#2e170e"/>
+      <rect x="6" y="5" width="40" height="3" rx="1.5" fill="#4a271a" opacity=".6"/>
+      <rect x="56" y="26" width="30" height="3" rx="1.5" fill="#43231a" opacity=".5"/>
+    </pattern>
+    <radialGradient id="lit" cx="720" cy="860" r="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb35c" stop-opacity=".55"/>
+      <stop offset=".35" stop-color="#e2562a" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="soot" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#050302" stop-opacity=".97"/>
+      <stop offset=".55" stop-color="#050302" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#050302" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2a201b"/><stop offset=".7" stop-color="#3d2f27"/><stop offset="1" stop-color="#1a1310"/>
+    </linearGradient>
+    <linearGradient id="stoneR" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#2a201b"/><stop offset=".7" stop-color="#3d2f27"/><stop offset="1" stop-color="#1a1310"/>
+    </linearGradient>
+    <linearGradient id="slab" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5a3a28"/><stop offset=".15" stop-color="#2c1d15"/><stop offset="1" stop-color="#140d0a"/>
+    </linearGradient>
+    <linearGradient id="log" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a2216"/><stop offset=".5" stop-color="#22130c"/><stop offset="1" stop-color="#0d0705"/>
+    </linearGradient>
+    <radialGradient id="end" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#ffcf7a"/><stop offset=".45" stop-color="#e2642a"/><stop offset=".8" stop-color="#5a2412"/><stop offset="1" stop-color="#2a140c"/>
+    </radialGradient>
+    <linearGradient id="coal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff9a3d"/><stop offset="1" stop-color="#7a1e0c"/>
+    </linearGradient>
+  </defs>
+
+  <!-- back wall -->
+  <rect width="1440" height="900" fill="url(#brick)"/>
+  <rect width="1440" height="900" fill="url(#lit)"/>
+  <rect width="1440" height="620" fill="url(#soot)"/>
+
+  <!-- stone jambs and the arch's shoulders -->
+  <path d="M0 0 H300 C200 40 150 120 140 230 V900 H0 Z" fill="url(#stone)"/>
+  <path d="M1440 0 H1140 C1240 40 1290 120 1300 230 V900 H1440 Z" fill="url(#stoneR)"/>
+  <g fill="none" stroke="#120b08" stroke-width="5" opacity=".9">
+    <path d="M0 190 H150 M0 380 H140 M0 570 H140 M0 760 H140 M70 190 V380 M40 380 V570 M90 570 V760 M50 760 V900 M190 70 L120 40 M230 30 L180 0"/>
+    <path d="M1440 190 H1290 M1440 380 H1300 M1440 570 H1300 M1440 760 H1300 M1370 190 V380 M1400 380 V570 M1350 570 V760 M1390 760 V900 M1250 70 L1320 40 M1210 30 L1260 0"/>
+  </g>
+  <path d="M140 230 V900" stroke="#ff9a4a" stroke-opacity=".18" stroke-width="3"/>
+  <path d="M1300 230 V900" stroke="#ff9a4a" stroke-opacity=".18" stroke-width="3"/>
+
+  <!-- hearth slab -->
+  <rect x="0" y="858" width="1440" height="42" fill="url(#slab)"/>
+  <rect x="0" y="858" width="1440" height="2" fill="#ffb35c" opacity=".35"/>
+
+  <!-- glowing coal bed -->
+  <ellipse cx="720" cy="852" rx="300" ry="16" fill="url(#coal)" opacity=".85"/>
+  <g fill="#ffd27a" opacity=".8">
+    <circle cx="560" cy="850" r="4"/><circle cx="610" cy="855" r="3"/><circle cx="700" cy="849" r="5"/><circle cx="790" cy="854" r="3"/><circle cx="860" cy="850" r="4"/><circle cx="660" cy="857" r="2.5"/>
+  </g>
+
+  <!-- andirons -->
+  <g fill="#0b0705" stroke="#3a2a20" stroke-width="2">
+    <path d="M470 858 V770 a14 14 0 1 1 20 0 V858 Z"/><path d="M950 858 V770 a14 14 0 1 1 20 0 V858 Z"/>
+    <rect x="455" y="846" width="50" height="12" rx="4"/><rect x="935" y="846" width="50" height="12" rx="4"/>
+  </g>
+
+  <!-- logs -->
+  <g>
+    <rect x="500" y="812" width="440" height="40" rx="20" fill="url(#log)"/>
+    <ellipse cx="940" cy="832" rx="14" ry="20" fill="url(#end)"/>
+    <g transform="rotate(-9 720 800)">
+      <rect x="540" y="782" width="380" height="34" rx="17" fill="url(#log)"/>
+      <ellipse cx="540" cy="799" rx="12" ry="17" fill="url(#end)"/>
+    </g>
+    <g transform="rotate(7 760 790)">
+      <rect x="610" y="776" width="320" height="30" rx="15" fill="url(#log)"/>
+      <ellipse cx="930" cy="791" rx="11" ry="15" fill="url(#end)"/>
+    </g>
+    <path d="M560 830 q40 -6 80 2 M700 826 q50 -8 100 0 M640 800 q30 -5 70 0" stroke="#ff7a2a" stroke-width="3" fill="none" stroke-linecap="round" opacity=".75"/>
+  </g>
+</svg>
