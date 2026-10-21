@@ -12,3 +12,5 @@ gradle/wrapper/gradle-wrapper.jar
 # Signing (CI writes it from secrets and deletes it)
 *.jks
 *.keystore
+# PRoot binaries: CI fetches them (pinned, checksummed) before building; never kept in git. See docs/ANDROID-LINUX.md
+app/src/main/jniLibs/

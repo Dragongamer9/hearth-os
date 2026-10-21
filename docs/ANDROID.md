@@ -13,6 +13,7 @@ Hearth's library and controller interface as an Android app: the same page as He
 | **Controller** | USB and Bluetooth controllers: A select, B back (Back on the phone too), Start menu, View/Select and Guide Quick Access, LB/RB tabs, d-pad and both sticks (right stick jumps A–Z in the library). A keyboard and touch work as well. |
 | **Device** | Battery and Wi-Fi in the top bar; volume and mute in Quick Access and Settings › Device; Wi-Fi, Bluetooth, airplane mode, display, sound and battery rows open Android's own settings (apps can't switch those themselves since Android 10). |
 | **Home screen** | Settings › System › **Use Hearth as your home app** opens Android's default-home choice. Home then opens Hearth's Home. |
+| **Linux (Beta Experimental)** | Settings › System › **Linux**: a real Debian Linux (ARM64) inside Hearth, without root (PRoot): install it, run commands, install packages, show Linux apps in Termux:X11. See [ANDROID-LINUX.md](ANDROID-LINUX.md). |
 | **Logs** | Settings › System › **Save logs** (a file in `Android/data/dev.hearthos.android/files/`) and **Send logs to the developer** (Hearth OS's bug-report service; you get a code to share). |
 
 Not in this version (the page hides it on Android): store accounts and installs (Steam, Epic, GOG, Xbox), Downloads, Quick Resume, performance and power settings, Hearth Input layouts, Couch Co-op, Multi-seat, updates from inside Hearth, your own profile pictures, the in-game overlay. Quick Access opens over Hearth itself, not over a game.
@@ -39,6 +40,7 @@ Settings › System › **Use Hearth as your home app** (or Android's Settings �
 | Network state, Wi-Fi state | Wi-Fi on/off and signal in the top bar |
 | Bluetooth (Android 11 and older only) | Bluetooth on/off in Quick Access |
 | ROMs folder (chosen by you) | Reading your ROMs; nothing else on the storage |
+| Foreground service (special use) | Only while Hearth Linux runs something: keeps Linux programs running while Hearth is in the background (a "Hearth Linux is running" notification) |
 
 No location, no storage-wide access, no usage access. Because of that the Wi-Fi network's name shows as "Wi-Fi", and Hearth can't see a game still running in the background (it counts the game as over when Hearth is in front again). Hearth sees apps that have a launcher icon (Android 11 package visibility, no QUERY_ALL_PACKAGES).
 
@@ -67,12 +69,18 @@ hosts/android/
     DeviceStatus.kt   battery, Wi-Fi, volume, display, device info, controllers
     Pad.kt            controller buttons and sticks to the page's button names
     Logs.kt           Hearth's log and the bug report
+    LinuxEnv.kt       Hearth Linux: install, run, apt, Termux:X11 (ANDROID-LINUX.md)
+    LinuxLogic.kt     its pure parts: pinned sources, tar reader, PRoot argv, /proc stand-ins (unit-tested)
+    LinuxService.kt   the foreground service that keeps Linux programs running
+  app/src/main/assets/licenses/   PRoot's and talloc's licenses, and where the binaries come from
+  app/src/main/jniLibs/           PRoot (fetch-proot.sh; not in git)
+  fetch-proot.sh                  puts the pinned, checksummed PRoot builds into jniLibs
   app/src/test/...    unit tests (game detection, ROM rules, store, controller, logs)
 ```
 
 The page is served from `https://appassets.androidplatform.net/ui/index.html` by androidx.webkit's `WebViewAssetLoader`, so it's a normal https page (fetch and localStorage work). Before the page's own script, Hearth puts a shim at the top of `<head>` (like `hosts/hearth-rs`'s SHIM) that makes `window.nimbusHost` with `platform: 'android'`: its `postMessage` goes to the `HearthAndroid` JavaScript interface, and the host answers with `evaluateJavascript("window.__hearthRecv(...)")`. The messages are the same as everywhere ([bridge.md](bridge.md)). On screens under 1000 dp wide (phones, most handhelds) the page is laid out 1280 px wide and scaled to fit.
 
-The page knows it's on Android from the shim (`ANDROID` in `ui/index.html`, next to `LINUX`): Settings shows only Profile, Appearance, Library, Wi-Fi, Bluetooth, Display & sound, Power, Controls, Games › Library, System and About, with Android's rows (`androidPage`); no Downloads; an **Android** library tab; the Power menu is just Leave Hearth.
+The page knows it's on Android from the shim (`ANDROID` in `ui/index.html`, next to `LINUX`): Settings shows only Profile, Appearance, Library, Wi-Fi, Bluetooth, Display & sound, Power, Controls, Games › Library, Linux (when the host has the `linux` feature), System and About, with Android's rows (`androidPage`); no Downloads; an **Android** library tab; the Power menu is just Leave Hearth.
 
 Controller input: Hearth reads controller KeyEvents and joystick MotionEvents itself and sends the page `pad` events (as the Linux host does), with the page's repeat timing for held directions; it also tells the page `padHost` so the page doesn't read the same controller through the Gamepad API.
 
@@ -80,7 +88,7 @@ Controller input: Hearth reads controller KeyEvents and joystick MotionEvents it
 
 | Method | Answer |
 |---|---|
-| `host.info` | `{platform:'android', host:'Hearth (Android)', name, version, edition:'android', features:['android','sendLogs'], deviceId, setupDone:true, isDefaultHome}` |
+| `host.info` | `{platform:'android', host:'Hearth (Android)', name, version, edition:'android', features:['android','sendLogs','linux'], deviceId, setupDone:true, isDefaultHome}` |
 | `sys.status`, `audio.get`, `audio.setVolume {v}`, `audio.setMute {m}`, `display.get`, `power.get`, `system.info`, `pad.status` | The device, in the other hosts' shapes (brightness unsupported) |
 | `radios.set`, `airplane.set` | Open Android's Wi-Fi / Bluetooth / airplane settings |
 | `library.get {rescan}` | `{games:[dto], collections, counts:{android, manual, emu}, runningId}`; app ids `android:<package>`, ROM ids `emu:<system>:<path>` |
@@ -92,6 +100,8 @@ Controller input: Hearth reads controller KeyEvents and joystick MotionEvents it
 | `android.openSettings {page, id?}` | `wifi`, `bluetooth`, `display`, `sound`, `battery`, `airplane`, `home`, `app` (App info), `settings` |
 | `android.apps` | Apps not in the library, for Add an app |
 | `android.setShowAll {on}`, `android.roms.pick` (waits for the folder picker), `android.roms.forget` | Settings › Games |
+| `android.openUrl {url}` | Opens an https link in the browser |
+| `linux.status`, `linux.install`, `linux.run`, `linux.apt`, `linux.stop`, `linux.openX11`, `linux.reset`, `linux.remove` | Hearth Linux; events `linux.progress`, `linux.output`, `linux.exit`, `linux.done`. See [ANDROID-LINUX.md](ANDROID-LINUX.md) |
 
 Anything else answers "That isn't in Hearth for Android yet". Events: `status` (every 30 s and when Hearth is back in front), `pad`, `padHost`, `game.started`, `game.exited`, `library.changed`, `open` (Home pressed).
 
@@ -102,6 +112,7 @@ You need JDK 17 and the Android SDK (platform 35). The Gradle wrapper's jar isn'
 ```sh
 cd hosts/android
 gradle wrapper --gradle-version 8.14.3
+./fetch-proot.sh          # PRoot for Hearth Linux (pinned, checksummed; optional: without it the Linux tab says it's missing)
 ./gradlew testDebugUnitTest assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -110,7 +121,7 @@ Or open `hosts/android` in Android Studio. Debug builds are `dev.hearthos.androi
 
 ### CI
 
-`.github/workflows/android.yml` runs on pushes to `android`, `linux-host` and `main` that touch `hosts/android/**` or `ui/**` (and by hand): JDK 17, the Android SDK (android-actions/setup-android), Gradle 8.14.3 (gradle/actions/setup-gradle, so no wrapper jar is needed), then the unit tests, `assembleDebug` and `assembleRelease`, and lint (reported, never failing the build). The APKs are uploaded as **hearth-android-&lt;version&gt;**. A failing step puts its error lines in an annotation on the run page. There's no release or publish step yet.
+`.github/workflows/android.yml` runs on pushes to `android`, `linux-host` and `main` that touch `hosts/android/**` or `ui/**` (and by hand): JDK 17, the Android SDK (android-actions/setup-android), Gradle 8.14.3 (gradle/actions/setup-gradle, so no wrapper jar is needed), then PRoot for Hearth Linux (`fetch-proot.sh`: pinned downloads, SHA-256 checked, a mismatch fails the build), the unit tests, `assembleDebug` and `assembleRelease` (the APK must contain PRoot and its license), and lint (reported, never failing the build). The APKs are uploaded as **hearth-android-&lt;version&gt;**. A failing step puts its error lines in an annotation on the run page. There's no release or publish step yet.
 
 **Signing.** With the repository secrets `ANDROID_KEYSTORE_B64` (the keystore, base64), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`, the release APK is signed with that key; without them, with the build's debug key (it installs, but every CI machine has a different debug key, so an update may need an uninstall first). Make a key once with:
 
@@ -119,7 +130,7 @@ keytool -genkeypair -v -keystore hearth-release.jks -alias hearth -keyalg RSA -k
 base64 -w0 hearth-release.jks   # → ANDROID_KEYSTORE_B64
 ```
 
-`tools/ui-check.js` also checks the page as Hearth for Android (a pretend Android host): the Settings pages, the Android rows, the library tab, the Power menu and Add an app.
+`tools/ui-check.js` also checks the page as Hearth for Android (a pretend Android host): the Settings pages, the Android rows, the library tab, the Power menu, Add an app and the Linux tab (also in the browser preview, `ui/index.html?preview=android`, with a pretend Linux).
 
 ## What's next
 

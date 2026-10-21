@@ -61,6 +61,12 @@ jobs:
           else
             echo "::notice title=Signing::no ANDROID_KEYSTORE_* secrets: the release APK is signed with the debug key"
           fi
+      # Hearth Linux: PRoot goes into the APK as native libraries (jniLibs), from pinned downloads checked by SHA-256.
+      # A mismatch stops the build with an annotation. See docs/ANDROID-LINUX.md.
+      - name: PRoot for Hearth Linux
+        run: |
+          ./fetch-proot.sh
+          echo "::notice title=PRoot::$(ls app/src/main/jniLibs/*/libproot.so | wc -l) ABIs, green-green-avk/proot v0.15_release (build-proot-android 01f83b8)"
       - name: Unit tests
         run: |
           set -o pipefail
@@ -86,6 +92,10 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "out/hearth-android-$v.apk"
           # The page went in: the APK must hold Hearth's page (assets/ui/index.html).
           unzip -l "out/hearth-android-$v.apk" | grep -q 'assets/ui/index.html' || { echo "::error title=APK::Hearth's page (assets/ui/index.html) isn't in the APK"; exit 1; }
+          # Hearth Linux: PRoot and its loader, and PRoot's license, must be in the APK.
+          for f in lib/arm64-v8a/libproot.so lib/arm64-v8a/libproot-loader.so assets/licenses/proot-COPYING.txt; do
+            unzip -l "out/hearth-android-$v.apk" | grep -q "$f" || { echo "::error title=APK::$f isn't in the APK"; exit 1; }
+          done
           echo "::notice title=APK size::$(du -h "out/hearth-android-$v.apk" | cut -f1) (release), $(du -h "out/hearth-android-$v-debug.apk" | cut -f1) (debug)"
       - name: Lint (reported, never fails the build)
         continue-on-error: true
