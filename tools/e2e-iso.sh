@@ -49,13 +49,14 @@ start=$(date +%s); n=0
 while kill -0 $q 2>/dev/null; do
   sleep 20; n=$((n + 1))
   [ $((n % 15)) -eq 0 ] && shot "install-$((n * 20))s"
-  grep -q 'HEARTH-AUTOINSTALL-' "$OUT/install-serial.log" 2>/dev/null && { sleep 15; break; }
+  grep -aq 'HEARTH-AUTOINSTALL-' "$OUT/install-serial.log" 2>/dev/null && { sleep 15; break; }
   [ $(( $(date +%s) - start )) -gt "$INSTALL_LIMIT" ] && { shot install-timeout; break; }
 done
 kill $q 2>/dev/null; sleep 2; kill -9 $q 2>/dev/null; wait $q 2>/dev/null
 ser=$(tr -d '\r' < "$OUT/install-serial.log" 2>/dev/null)
 ai=$(echo "$ser" | grep -a 'HEARTH-AI: ' | grep -av 'HEARTH-AI: stage: ' | tail -40)
-if echo "$ser" | grep -aq 'HEARTH-AUTOINSTALL-OK'; then
+# (No "echo | grep -q" under pipefail: grep stopping early makes echo fail, and the whole test with it.)
+if grep -aq 'HEARTH-AUTOINSTALL-OK' <<<"$ser"; then
   note "install: OK in $(( $(date +%s) - start )) s"
   ann notice "Installed (${ED:-the USB own edition}) in $(( $(date +%s) - start )) s. Last lines: $(echo "$ai" | tail -8)"
 else
@@ -77,11 +78,11 @@ start=$(date +%s); ok=0; n=0
 while kill -0 $q 2>/dev/null; do
   sleep 15; n=$((n + 1))
   [ $((n % 4)) -eq 0 ] && shot "boot-$((n * 15))s"
-  if tr -d '\r' < "$OUT/boot-serial.log" 2>/dev/null | grep -aqE 'Reached target .*(Graphical Interface|Multi-User System)|hearth-e2e login:'; then
+  if grep -aqE 'Reached target .*(Graphical Interface|Multi-User System)|hearth-e2e login:' "$OUT/boot-serial.log" 2>/dev/null; then
     sleep 45; shot booted; ok=1; break
   fi
   # The installed system may not talk on the serial console at all (its boot loader and kernel draw on the
-  # screen): then a bright, detailed picture that stays put for a minute (a login screen, Hearth) counts.
+  # screen): then a detailed picture that stays put for a minute (a login screen, Hearth) counts.
   if [ $((n % 4)) -eq 0 ] && [ $(( $(date +%s) - start )) -gt 150 ]; then
     shot screen-now
     if [ -f "$OUT/screen-now.png" ] && [ -f "$work/screen-prev.png" ] && python3 - "$work/screen-prev.png" "$OUT/screen-now.png" <<'PY'
@@ -91,8 +92,8 @@ a, b = (Image.open(x).convert('L').resize((320, 200)) for x in sys.argv[1:3])
 st = ImageStat.Stat(b)
 diff = ImageStat.Stat(ImageChops.difference(a, b)).mean[0]
 colors = len(set(b.getdata()))
-# Firmware and boot loader screens are dark text on black; a desktop or login screen is bright and detailed.
-sys.exit(0 if st.mean[0] > 35 and colors > 60 and diff < 3 else 1)
+# Firmware and boot loader screens are text on black (a few shades); a desktop or login screen has many.
+sys.exit(0 if colors > 120 and st.stddev[0] > 10 and diff < 3 else 1)
 PY
     then cp "$OUT/screen-now.png" "$OUT/booted.png"; ok=2; break; fi
     [ -f "$OUT/screen-now.png" ] && cp "$OUT/screen-now.png" "$work/screen-prev.png"

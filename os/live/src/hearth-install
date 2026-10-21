@@ -1063,6 +1063,12 @@ def other_systems_menu(esp=None):
     return uniq
 
 
+def entry_label(line):
+    """'Boot0001* Hearth OS\tHD(...)' (or two spaces before the path) -> 'Hearth OS'."""
+    m = re.match(r'^Boot[0-9A-Fa-f]{4}\*?\s+(.*?)(?:\t|\s{2,}|\s+(?:HD|PciRoot|VenHw|FvVol|BBS)\(|$)', line)
+    return m.group(1).strip() if m else ''
+
+
 def boot_entries(text):
     """efibootmgr -v: ({'0003': line, ...}, ['0003', '0000', ...] boot order)."""
     entries = {m.group(1): m.group(0) for m in re.finditer(r'^Boot([0-9A-Fa-f]{4})\*?\s.*$', text, re.M)}
@@ -1087,6 +1093,12 @@ def ensure_boot_entry(disk, esp=None):
             sh(['efibootmgr', '-q', '-b', n, '-B'], check=False)
     entries, order = boot_entries(sh(['efibootmgr', '-v'], check=False).stdout)
     mine = next((n for n, line in entries.items() if partuuid and partuuid in line.lower()), None)
+    # bootupd names the entry after the system it runs on: the USB ("Hearth installer", "Hearth OS offline
+    # installer (peppermint)"). The firmware's boot menu should say Hearth OS.
+    if mine and entry_label(entries[mine]) != 'Hearth OS':
+        sh(['efibootmgr', '-q', '-b', mine, '-B'], check=False)
+        entries, order = boot_entries(sh(['efibootmgr', '-v'], check=False).stdout)
+        mine = None
     if not mine:
         sh(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', loader], check=False)
         entries, order = boot_entries(sh(['efibootmgr', '-v'], check=False).stdout)

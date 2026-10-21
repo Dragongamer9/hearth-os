@@ -92,6 +92,31 @@ class EspAfterBootupd(unittest.TestCase):
         self.assertEqual(made[0][made[0].index('-p') + 1], '1')
         self.assertIn(['efibootmgr', '-q', '-o', '0002,0001'], self.calls)
 
+    def test_entry_named_after_the_usb_is_renamed(self):
+        made_first = []
+        orig_sh = H.sh
+
+        def fake(cmd, check=True, input=None, **kw):
+            if cmd[:2] == ['efibootmgr', '-v'] and not any(c[:3] == ['efibootmgr', '-q', '-B'] or c[:4] == ['efibootmgr', '-q', '-b', '0003'] for c in self.calls):
+                self.calls.append(cmd)
+                class R: stdout, stderr, returncode = 'BootOrder: 0003\nBoot0003* Hearth OS offline installer (peppermint)\tHD(1,GPT,aaaa-1111)/\\EFI\\debian\\shimx64.efi\n', '', 0
+                return R()
+            return orig_sh(cmd, check, input, **kw)
+        H.sh = fake
+        try:
+            H.ensure_boot_entry('/dev/vda', '/dev/vda1')
+        finally:
+            H.sh = orig_sh
+        self.assertIn(['efibootmgr', '-q', '-b', '0003', '-B'], self.calls)
+        made = [c for c in self.calls if c[:3] == ['efibootmgr', '-q', '-c']]
+        self.assertEqual(made[0][made[0].index('-L') + 1], 'Hearth OS')
+
+    def test_labels(self):
+        self.assertEqual(H.entry_label('Boot0001* Hearth OS\tHD(1,GPT,x)/\\EFI\\fedora\\shimx64.efi'), 'Hearth OS')
+        self.assertEqual(H.entry_label('Boot0002* Windows Boot Manager  HD(1,GPT,y)'), 'Windows Boot Manager')
+        self.assertEqual(H.entry_label('Boot0003* Hearth installer HD(1,GPT,z)'), 'Hearth installer')
+        self.assertEqual(H.entry_label('Boot0004* UEFI Misc'), 'UEFI Misc')
+
     def test_nvme_partition_number(self):
         H.ensure_boot_entry('/dev/nvme0n1', '/dev/nvme0n1p1')
         made = [c for c in self.calls if c[:3] == ['efibootmgr', '-q', '-c']][0]
