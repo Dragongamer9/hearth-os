@@ -1,0 +1,14 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+# Made by `gradle wrapper` (CI doesn't need them; see docs/ANDROID.md)
+gradlew
+gradlew.bat
+gradle/wrapper/gradle-wrapper.jar
+# Signing (CI writes it from secrets and deletes it)
+*.jks
+*.keystore

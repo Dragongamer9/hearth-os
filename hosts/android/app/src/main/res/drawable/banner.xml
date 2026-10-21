@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android TV's banner (320 x 180). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp" android:viewportWidth="320" android:viewportHeight="180">
+    <path android:pathData="M0,0 H320 V180 H0 Z" android:fillColor="#0C1016" />
+    <group android:scaleX="0.28" android:scaleY="0.28" android:translateX="88.3" android:translateY="8.8">
+        <path android:pathData="M112,432 V252 A144,144 0 0,1 400,252 V432" android:strokeColor="#EADCCB" android:strokeWidth="30" android:strokeLineCap="round" android:fillColor="#00000000" />
+        <path android:pathData="M76,462 H436" android:strokeColor="#EADCCB" android:strokeWidth="26" android:strokeLineCap="round" android:fillColor="#00000000" />
+        <path android:pathData="M256,168 C298,222 340,262 340,332 C340,386 302,422 256,422 C210,422 172,386 172,332 C172,294 190,266 212,244 C210,276 222,298 242,306 C232,258 236,212 256,168 Z" android:fillColor="#FF8A3D" />
+        <path android:pathData="M258,284 C280,314 300,338 300,368 C300,394 282,412 258,412 C234,412 216,394 216,368 C216,340 238,316 258,284 Z" android:fillColor="#FFD27A" />
+    </group>
+</vector>

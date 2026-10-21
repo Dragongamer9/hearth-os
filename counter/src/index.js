@@ -17,7 +17,7 @@
 // Stored per install: the random id, its kind, its version, when it was first and last seen. No IP
 // addresses, names or anything else. Rows not seen for 40 days are deleted every day.
 
-const KINDS = new Set(['amd', 'nvidia', 'windows', 'appimage', 'live', 'anatase', 'ubuntu', 'cachyos', 'peppermint', 'other']);
+const KINDS = new Set(['amd', 'nvidia', 'windows', 'appimage', 'live', 'anatase', 'ubuntu', 'cachyos', 'peppermint', 'android', 'other']);
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
 const json = (o, status = 200, extra = {}) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', ...CORS, ...extra } });
 

@@ -8,6 +8,7 @@ and to the browser-preview `MOCK` in the UI.
 |---|---|---|
 | Windows | `window.chrome.webview` (WebView2) | `hosts/windows/Nimbus.Host/SystemBridge.cs`, `ShellForm.cs` |
 | Linux | `window.nimbusHost` (Electron preload, same API) | `hosts/linux/src/bridge.js`, `main.js` |
+| Android | `window.nimbusHost` with `platform: 'android'` (a shim over the WebView's `HearthAndroid` interface); a subset, see [ANDROID.md](ANDROID.md) | `hosts/android/app/src/main/java/dev/hearthos/android/Bridge.kt`, `MainActivity.kt` |
 | Browser preview | none, the UI uses its built-in `MOCK` | `ui/index.html` |
 
 Both channels have the same shape: `postMessage(obj)` and `addEventListener('message', e => e.data)`.
