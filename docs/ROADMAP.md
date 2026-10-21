@@ -93,6 +93,12 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - Hearth for Android (and Hearth Linux on Android): archived 2026-10-21; focus is Hearth OS and Ember. Code in `hosts/android`, build by hand only.
 
+## 0.2.5 (released)
+
+- [x] Switch edition (Settings › Updates): from one edition to another (Anatase, Ubuntu, CachyOS, Peppermint), keeping your games
+- [x] Multi-seat: no performance overlay (it crashed over and over reading the other players' processes)
+- [x] Offline installers for Ubuntu, CachyOS and Peppermint (the small installer plus that edition)
+
 ## 0.2.4 (released)
 
 - [x] Multi-seat: every player's controller works in Hearth whichever window is active (Hearth reads it itself)
