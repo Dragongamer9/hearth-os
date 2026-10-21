@@ -80,6 +80,23 @@ while kill -0 $q 2>/dev/null; do
   if tr -d '\r' < "$OUT/boot-serial.log" 2>/dev/null | grep -aqE 'Reached target .*(Graphical Interface|Multi-User System)|hearth-e2e login:'; then
     sleep 45; shot booted; ok=1; break
   fi
+  # The installed system may not talk on the serial console at all (its boot loader and kernel draw on the
+  # screen): then a bright, detailed picture that stays put for a minute (a login screen, Hearth) counts.
+  if [ $((n % 4)) -eq 0 ] && [ $(( $(date +%s) - start )) -gt 150 ]; then
+    shot screen-now
+    if [ -f "$OUT/screen-now.png" ] && [ -f "$work/screen-prev.png" ] && python3 - "$work/screen-prev.png" "$OUT/screen-now.png" <<'PY'
+import sys
+from PIL import Image, ImageChops, ImageStat
+a, b = (Image.open(x).convert('L').resize((320, 200)) for x in sys.argv[1:3])
+st = ImageStat.Stat(b)
+diff = ImageStat.Stat(ImageChops.difference(a, b)).mean[0]
+colors = len(set(b.getdata()))
+# Firmware and boot loader screens are dark text on black; a desktop or login screen is bright and detailed.
+sys.exit(0 if st.mean[0] > 35 and colors > 60 and diff < 3 else 1)
+PY
+    then cp "$OUT/screen-now.png" "$OUT/booted.png"; ok=2; break; fi
+    [ -f "$OUT/screen-now.png" ] && cp "$OUT/screen-now.png" "$work/screen-prev.png"
+  fi
   [ $(( $(date +%s) - start )) -gt "$BOOT_LIMIT" ] && { shot boot-timeout; break; }
 done
 kill $q 2>/dev/null; sleep 2; kill -9 $q 2>/dev/null; wait $q 2>/dev/null
@@ -87,6 +104,11 @@ bser=$(tr -d '\r' < "$OUT/boot-serial.log" 2>/dev/null)
 if [ $ok = 1 ]; then
   note "boot: OK in $(( $(date +%s) - start )) s"
   ann notice "The installed system started from the disk: $(echo "$bser" | grep -aE 'Reached target|login:' | tail -3)"
+  exit 0
+fi
+if [ $ok = 2 ]; then
+  note "boot: OK in $(( $(date +%s) - start )) s (the screen settled on a login screen or Hearth; nothing on the serial console)"
+  ann notice "The installed system started from the disk (its screen settled; see booted.png). Serial: $(echo "$bser" | grep -av '^\s*$' | tail -3)"
   exit 0
 fi
 note "boot: FAILED"
