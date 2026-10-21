@@ -17,6 +17,18 @@ talloc 2.1.14 (statically linked into PRoot)
   License: GNU Lesser General Public License, version 3 or later (LGPL-3.0.txt,
   GPL-3.0.txt). Source: https://download.samba.org/pub/talloc/talloc-2.1.14.tar.gz
 
+noVNC 1.7.0 (assets/ui/novnc/core, the Linux desktop inside Hearth)
+  The VNC client Hearth's page shows the Linux desktop with. Used as is,
+  unmodified (fetched by fetch-novnc.sh: tag v1.7.0, commit
+  63107bd06d9e1f6136ff21aeda8cd62cbf0d433e).
+  License: Mozilla Public License 2.0 (MPL-2.0.txt; noVNC-LICENSE.txt lists
+  what's under which license). core/crypto/des.js keeps its own BSD-style
+  notice in the file. Copyright The noVNC authors.
+  Source: https://github.com/novnc/noVNC/tree/v1.7.0
+
+pako (assets/ui/novnc/vendor/pako, part of noVNC: zlib for VNC's encodings)
+  License: MIT (pako-LICENSE.txt). Copyright (C) 2014-2016 Vitaly Puzrin.
+
 XZ for Java (org.tukaani:xz), used to unpack the Linux download
   License: BSD Zero Clause (0BSD) / public domain. https://tukaani.org/xz/java.html
 

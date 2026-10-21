@@ -14,3 +14,5 @@ gradle/wrapper/gradle-wrapper.jar
 *.keystore
 # PRoot binaries: CI fetches them (pinned, checksummed) before building; never kept in git. See docs/ANDROID-LINUX.md
 app/src/main/jniLibs/
+# noVNC: CI fetches it (pinned, checked) before building (fetch-novnc.sh); never kept in git. See docs/ANDROID-LINUX.md
+app/src/main/assets/ui/novnc/
