@@ -128,6 +128,44 @@ class TargetSystems(unittest.TestCase):
         self.assertTrue(h.startswith('$6$') and 'hearth' not in h)
 
 
+class AccountTool(unittest.TestCase):
+    def test_falls_back_to_the_new_systems_own_tool(self):
+        calls = []
+
+        class R:
+            def __init__(self, code, err=''):
+                self.returncode, self.stdout, self.stderr = code, '', err
+        orig = H.sh
+
+        def fake(cmd, check=True, input=None, **kw):
+            calls.append(cmd)
+            if cmd[:2] == ['useradd', '-R']:
+                return R(10, 'useradd: failure while writing changes to /etc/passwd')
+            return R(0)
+        H.sh = fake
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                H.account_tool(d, ['useradd', '-m', 'tester'])
+        finally:
+            H.sh = orig
+        self.assertEqual(calls[0][:3], ['useradd', '-R', d])
+        self.assertIn(['chroot', d, 'useradd', '-m', 'tester'], calls)
+        self.assertTrue(any(c[:2] == ['umount', '-l'] for c in calls), 'the binds come off again')
+
+    def test_root_option_first(self):
+        calls = []
+
+        class R:
+            returncode, stdout, stderr = 0, '', ''
+        orig = H.sh
+        H.sh = lambda cmd, check=True, input=None, **kw: (calls.append(cmd), R())[1]
+        try:
+            H.account_tool('/x', ['usermod', '-p', 'h', 'tester'])
+        finally:
+            H.sh = orig
+        self.assertEqual(calls, [['usermod', '-R', '/x', '-p', 'h', 'tester']])
+
+
 class Plan(unittest.TestCase):
     def test_good_plan(self):
         p = H.check_plan(GOOD)
