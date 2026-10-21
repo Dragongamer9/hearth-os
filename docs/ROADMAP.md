@@ -97,9 +97,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
-## Next: Hearth on Nvidia through Chromium
+## 0.2.7 (released)
 
-- [ ] The same Hearth core with an Electron (Chromium) window on Nvidia graphics, chosen at start (WebKit's DMA-BUF drawing fails on RTX 50 cards)
+- [x] Hearth on Nvidia through Chromium: the same Hearth core with an Electron (Chromium) window on Nvidia graphics, chosen at start (WebKit's DMA-BUF drawing fails on RTX 50 cards); Settings › Display › Drawing engine; back to WebKit after two failed starts
+- [x] Installer: its messages in Hearth's log, and the installer's logs in bug reports sent from the USB
 
 ## 0.2.5 (released)
 
