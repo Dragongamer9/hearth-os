@@ -78,6 +78,8 @@ impl OsInstaller {
         let push = |s: &Value| { let mut s = s.clone(); s["available"] = json!(true); crate::stores::notify(json!({"type": "event", "name": "osInstall", "data": s})); };
         let read = |r: Box<dyn std::io::Read + Send>, state: Arc<Mutex<Value>>| std::thread::spawn(move || {
             for line in std::io::BufReader::new(r).lines().map_while(Result::ok) {
+                // Everything the installer says goes in Hearth's log (in bug reports), except the progress ticks.
+                if !line.starts_with("stage: ") && !line.trim().is_empty() { crate::bridge::log(&format!("osinstall: {}", line.chars().take(600).collect::<String>())); }
                 let Some((kind, v)) = parse_line(&line) else { continue };
                 let mut s = state.lock().unwrap();
                 match kind {
