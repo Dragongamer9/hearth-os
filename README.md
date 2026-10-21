@@ -120,6 +120,8 @@ The project used to be called Nimbus. Internal names (program files, data folder
 
 ## License
 
-No license: all rights reserved. The source is public to read, but it may not be copied, modified or redistributed without permission.
+Hearth OS (including Ember, Mantel and Hearth's apps) is free software, licensed under the **GNU General Public License v3.0 or later** ([LICENSE](LICENSE)). You may use, study, share and change it; if you share a changed version, it must stay under the same license with its source available.
+
+Parts that come from other projects keep their own licenses (for example the Linux base images, gamescope, Handheld Daemon, and the libraries the apps are built with).
 
 Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft, Universal Blue or the Anatase project. Steam, Epic Games, GOG and Xbox are trademarks of their owners.
