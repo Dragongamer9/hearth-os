@@ -1,6 +1,6 @@
 [package]
 name = "hearth"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 description = "Hearth: the controller-first game library and Game Mode for Hearth OS (Rust host)"
 license = "GPL-3.0-or-later"
