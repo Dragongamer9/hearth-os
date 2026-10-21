@@ -40,6 +40,7 @@ class Bridge(private val act: MainActivity) {
     val art = IconArt(act)
     private val roms = RomFolder(act)
     private val dev = DeviceStatus(act)
+    private val linux = LinuxEnv.get(act, version).also { l -> l.emit = { n, d -> event(n, d) }; l.startActivity = { start(it) } }
     private val exec = Executors.newSingleThreadExecutor { r -> Thread(r, "hearth-bridge") }
     private val main = Handler(Looper.getMainLooper())
 
@@ -157,6 +158,7 @@ class Bridge(private val act: MainActivity) {
 
         "android.status" -> androidStatus()
         "android.openSettings" -> { openSettings(req(a, "page"), a.optString("id", "")); JSONObject().put("ok", true) }
+        "android.openUrl" -> { openUrl(req(a, "url")); JSONObject().put("ok", true) }
         "android.apps" -> JSONArray(otherApps().map { JSONObject().put("id", it.pkg).put("title", it.title) })
         "android.setShowAll" -> { store.update { it.put("showAll", a.optBoolean("on")) }; event("library.changed", JSONObject()); androidStatus() }
         "android.roms.pick" -> {
@@ -165,6 +167,8 @@ class Bridge(private val act: MainActivity) {
             main.post { act.pickFolder() }
             DEFERRED
         }
+        // Hearth Linux (Beta Experimental): LinuxEnv answers at once; long jobs report with linux.* events.
+        "linux.status", "linux.install", "linux.run", "linux.apt", "linux.stop", "linux.openX11", "linux.reset", "linux.remove" -> linux.call(method, a)
         "android.roms.forget" -> { romsTree()?.let { releaseTree(it) }; store.update { it.remove("roms") }; romList = null; androidStatus() }
         else -> throw Exception("That isn't in Hearth for Android yet")
     }
@@ -330,6 +334,13 @@ class Bridge(private val act: MainActivity) {
         throw Exception("This device doesn't have that settings page.")
     }
 
+    /** A web page in the browser (https only: the page links to things like Termux:X11's releases). */
+    private fun openUrl(url: String) {
+        val u = Uri.parse(url)
+        if (u.scheme != "https" || u.host.isNullOrEmpty() || url.length > 2000) throw Exception("Only https links open from Hearth")
+        start(Intent(Intent.ACTION_VIEW, u).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
     @Suppress("DEPRECATION")
     fun isDefaultHome(): Boolean = try {
         val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
@@ -394,6 +405,7 @@ class Bridge(private val act: MainActivity) {
         i.put("hearth", version).put("webview", runCatching { WebViewCompat.getCurrentWebViewPackage(act)?.versionName }.getOrNull() ?: "?")
         i.put("controllers", dev.controllers()).put("retroarch", roms.retroArch(apps) ?: "no").put("defaultHome", isDefaultHome())
         i.put("library", JSONObject().put("apps", appList?.size ?: -1).put("games", appList?.count { it.game } ?: -1).put("roms", romList?.size ?: -1))
+        runCatching { i.put("linux", linux.status()) }
         return i
     }
 
@@ -424,6 +436,6 @@ class Bridge(private val act: MainActivity) {
     companion object {
         private val DEFERRED = Any()
         /** What the page may show (HOSTINFO.features). */
-        val FEATURES = listOf("android", "sendLogs")
+        val FEATURES = listOf("android", "sendLogs", "linux")
     }
 }

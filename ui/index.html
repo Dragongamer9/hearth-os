@@ -332,6 +332,8 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .tag.on{color:var(--accent)}
 .mini-spin{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:var(--accent);animation:sp .8s linear infinite;flex:none}
 .note{color:var(--dim);font-size:13px;padding:8px 4px;line-height:1.5}
+/* Hearth Linux's output (Settings › System › Linux on Android) */
+.lxout{margin:0;padding:12px 14px;background:var(--panel);border-radius:var(--r);font:12px/1.45 ui-monospace,'Cascadia Mono',Menlo,Consolas,monospace;color:var(--text);white-space:pre-wrap;word-break:break-all;max-height:300px;overflow:auto;grid-column:1/-1}
 .hhd-sub{display:flex;flex-direction:column;gap:8px;margin-left:16px;padding-left:12px;border-left:2px solid var(--panel3)}.hhd-sub:empty{display:none}
 .hhd-h{font-size:14px;font-weight:700;margin:8px 4px 0}
 .qhhd{display:flex;flex-direction:column;gap:6px;margin-top:8px}
@@ -1013,7 +1015,7 @@ if(/[?&]overlay=full/.test(location.search) || (window.nimbusHost && window.nimb
 // WebView (hosts/android: window.nimbusHost with platform 'android'). Same messages.
 const host = window.chrome && window.chrome.webview ? window.chrome.webview : (window.nimbusHost || null);
 // Which platform we're on; host.info fills in the details at boot. Text that names Windows things checks this.
-const HOSTINFO = {platform: window.nimbusHost && window.nimbusHost.platform==='android' ? 'android' : window.nimbusHost || /[?&]preview=linux/.test(location.search) ? 'linux' : 'windows', name:null, host:null, session:false};
+const HOSTINFO = {platform: (window.nimbusHost && window.nimbusHost.platform==='android') || (!window.nimbusHost && /[?&]preview=android/.test(location.search)) ? 'android' : window.nimbusHost || /[?&]preview=linux/.test(location.search) ? 'linux' : 'windows', name:null, host:null, session:false};
 const LINUX = HOSTINFO.platform==='linux';
 // Hearth for Android (hosts/android): Android runs the device (Wi-Fi, Bluetooth, the screen), so Settings shows
 // only what the app does and opens Android's own pages for the rest (androidPage below).
@@ -2791,13 +2793,13 @@ function viewDownloads(){
 }
 
 const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['liblook','lib','Library'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display & sound'],['audio','vol','Audio'],['power','bolt','Power'],
-  ['controller','pad','Controls'],['remote','play','Remote play'],['sources','lib','Library'],['seats','display','Multi-seat (Beta Experimental)'],['import','dl','Import'],['osinstall','dl','Install'],['switch','dl','Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['system','gear','System'],['about','info','About']];
+  ['controller','pad','Controls'],['remote','play','Remote play'],['sources','lib','Library'],['seats','display','Multi-seat (Beta Experimental)'],['import','dl','Import'],['osinstall','dl','Install'],['switch','dl','Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['linux','shell','Linux (Beta Experimental)'],['system','gear','System'],['about','info','About']];
 // Settings, condensed: five groups on the left, each with its pages as tabs along the top.
 const SGROUPS = [['you','user','You'],['connect','wifi','Connections'],['device','display','Device'],['games','lib','Games'],['system','gear','System']];
 const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',liblook:'you',signin:'you',wifi:'connect',bluetooth:'connect',remote:'connect',
-  display:'device',audio:'device',power:'device',controller:'device',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
+  display:'device',audio:'device',power:'device',controller:'device',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',linux:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
 const stabGroup = k => STAB_GROUP[k]||'system';
-const stabShown = k => STABS.some(x=>x[0]===k) && k!=='audio' && (ANDROID ? ANDROID_TABS.includes(k) : (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX)));
+const stabShown = k => STABS.some(x=>x[0]===k) && k!=='audio' && (ANDROID ? ANDROID_TABS.includes(k) && (k!=='linux'||lxOn()) : k==='linux' ? false : (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX)));
 const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k));
 const SLAST = {};
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
@@ -3968,7 +3970,7 @@ function shellReturn(){
 // what Hearth knows and open Android's own settings for the rest. android.status: {showAll, home:{isDefault},
 // roms:{folder, count, systems:[{dir,name,count}]}, retroarch:{pkg}|null, pads:[{name}]}.
 const AND = {s:null};
-const ANDROID_TABS = ['profile','appearance','liblook','wifi','bluetooth','display','power','controller','sources','system','about'];
+const ANDROID_TABS = ['profile','appearance','liblook','wifi','bluetooth','display','power','controller','sources','linux','system','about'];
 function andOpen(page, id){ return call('android.openSettings', id ? {page, id} : {page}).catch(e=>toast(e.message)); }
 function loadAnd(){ if(host) call('android.status').then(r=>{ AND.s=r; refreshUI(); }).catch(()=>{}); }
 const andRow = (k, icon, title, sub, page) => `<button class="row" data-f data-k="${k}" data-act="andOpen" data-page="${page}"><span class="ricon">${I[icon]||I.gear}</span><div class="rt"><b>${title}</b>${sub?`<small>${sub}</small>`:''}</div><div class="rv">›</div></button>`;
@@ -4016,6 +4018,136 @@ function androidPage(t, body){
   return body;
 }
 
+// ---------- Hearth Linux on Android (Beta Experimental; hosts/android LinuxEnv.kt, docs/ANDROID-LINUX.md) ----------
+// A Debian Linux inside Hearth, run by PRoot (no root needed). linux.status: {installed, sizeBytes, distro, version,
+// running, jobs, busy:{kind,pct,text}|null, x11App, supported, unsupported, freeBytes, error}. Long jobs report with
+// events: linux.progress {kind,pct,text}, linux.output {job,lines}, linux.exit {job,kind,code}, linux.done {kind,ok,error,status}.
+const LX = {s:null, out:[], job:null, cmd:'', x11:'xterm'};
+const LX_MAX = 200;                       // output lines kept
+const LX_PKG = /^[a-z0-9][a-z0-9+.-]*$/;
+const lxOn = () => ANDROID && (!host || hasFeat('linux'));
+function lxCall(m, a={}, ms=30000){ return host ? call(m, a, ms) : LX_MOCK(m, a); }
+function loadLinux(){ lxCall('linux.status').then(r=>{ LX.s=r; if(S.view==='settings'&&S.settingsTab==='linux') render(null,true); }).catch(()=>{}); }
+function lxOut(lines){
+  LX.out.push(...lines.map(l=>String(l))); if(LX.out.length>LX_MAX) LX.out.splice(0, LX.out.length-LX_MAX);
+  const el=$('#lxout'); if(el){ el.textContent=LX.out.join('\n'); el.scrollTop=el.scrollHeight; }
+}
+function onLinuxEvent(name, d){
+  const here = S.view==='settings' && S.settingsTab==='linux';
+  if(name==='linux.progress'){
+    if(LX.s) LX.s.busy={kind:d.kind, pct:d.pct, text:d.text||''};
+    const bar=$('#lxbar'), txt=$('#lxbusy');
+    if(bar && txt){ bar.style.width=(d.pct||0)+'%'; txt.textContent=`${d.pct||0}% · ${d.text||''}`; } else if(here) render(null,true);
+    return;
+  }
+  if(name==='linux.output'){ if(d.job===LX.job || (LX.s&&LX.s.busy&&d.job===LX.s.busy.kind)) lxOut(d.lines||[]); return; }
+  if(name==='linux.exit'){ if(d.job===LX.job){ lxOut([`[done, exit code ${d.code}]`]); LX.job=null; } loadLinux(); return; }
+  if(name==='linux.done'){
+    if(d.status) LX.s=d.status; else if(LX.s) LX.s.busy=null;
+    toast(d.ok ? (d.text||'Done') : (d.error||'That didn\'t work'));
+    if(here) render(null,true);
+  }
+}
+async function lxAct(v){
+  const s=LX.s||{};
+  const fail = e => toast(e.message);
+  if(v==='install') return lxCall('linux.install').then(()=>{ LX.out=[]; s.busy={kind:'install',pct:0,text:'Starting…'}; render('lx-cancel',true); }).catch(fail);
+  if(v==='cancel') return lxCall('linux.stop',{job:(s.busy&&s.busy.kind)||''}).then(()=>toast('Stopping…')).catch(fail);
+  if(v==='stop') return LX.job ? lxCall('linux.stop',{job:LX.job}).catch(fail) : null;
+  if(v==='run' || v==='root'){
+    const cmd=await openPrompt({title:v==='root'?'Run a command as root':'Run a command in Linux', value:LX.cmd}); if(cmd==null||!cmd.trim()) return;
+    LX.cmd=cmd;
+    return lxCall('linux.run',{cmd, root:v==='root'}).then(r=>{ LX.job=r.job; LX.out=[]; lxOut([(v==='root'?'# ':'$ ')+cmd]); render('lx-stop',true); }).catch(fail);
+  }
+  if(v==='pkg' || v==='upg'){
+    let packages=[];
+    if(v==='pkg'){
+      const t=await openPrompt({title:'Packages to install (names, with spaces between)', value:''}); if(t==null||!t.trim()) return;
+      packages=t.split(/[\s,]+/).filter(Boolean);
+      const bad=packages.find(p=>!LX_PKG.test(p)); if(bad) return toast(`"${bad}" isn't a package name (lower case letters, digits, + . -)`);
+    }
+    return lxApt(v==='pkg'?'install':'upgrade', packages);
+  }
+  if(v==='x11'){
+    const cmd=await openPrompt({title:'Linux app to show in Termux:X11', value:LX.x11}); if(cmd==null||!cmd.trim()) return;
+    LX.x11=cmd; toast('Starting Termux:X11…');
+    try{
+      const r=await lxCall('linux.openX11',{cmd}, 60000);
+      if(r && r.needApp) return openSheet({title:'Termux:X11 is needed', sub:r.text||'', items:[{label:'Get Termux:X11', icon:'dl', run:()=>lxLink(r.url)}]});
+      if(r && r.needPackages) return openSheet({title:'One more package', sub:r.text||'', items:[{label:'Install '+r.needPackages.join(' '), icon:'dl', run:()=>lxApt('install', r.needPackages)}]});
+      if(r && r.job){ LX.job=r.job; LX.out=[]; lxOut(['[Termux:X11] $ '+cmd]); render('lx-stop',true); }
+    }catch(e){ fail(e); }
+    return;
+  }
+  if(v==='reset') return openSheet({title:'Reset Linux?', sub:'Linux starts over as it was installed: the programs you installed and every file in it are deleted.', items:[
+    {label:'Yes, reset Linux', icon:'refresh', run:()=>lxCall('linux.reset',{confirm:true}).then(()=>{ LX.out=[]; if(LX.s) LX.s.busy={kind:'reset',pct:0,text:'Starting…'}; render(null,true); }).catch(fail)}]});
+  if(v==='remove') return openSheet({title:'Remove Linux?', sub:'Deletes the Linux system, everything in it and the saved download. Hearth stays as it is.', items:[
+    {label:'Yes, remove Linux', icon:'trash', run:()=>lxCall('linux.remove',{confirm:true},120000).then(r=>{ LX.s=r; LX.out=[]; LX.job=null; toast('Linux removed'); render(null,true); }).catch(fail)}]});
+}
+function lxApt(action, packages){
+  return lxCall('linux.apt',{action, packages}).then(r=>{ LX.job=r.job; LX.out=[]; lxOut(['# apt-get '+action+(packages.length?' '+packages.join(' '):'')]); if(LX.s) LX.s.busy={kind:'apt',pct:0,text:'apt-get '+action}; render('lx-stop',true); }).catch(e=>toast(e.message));
+}
+function lxLink(url){ if(!host) return toast(url); return call('android.openUrl',{url}).catch(()=>toast(url)); }
+const lxRow = (k, v, icon, title, sub, right) => `<button class="row" data-f data-k="${k}" data-act="lx" data-v="${v}">${icon?`<span class="ricon">${I[icon]||I.gear}</span>`:''}<div class="rt"><b>${title}</b>${sub?`<small>${sub}</small>`:''}</div><div class="rv">${right||'›'}</div></button>`;
+function linuxPage(){
+  const s=LX.s, beta=note('<b>Beta Experimental:</b> a real Debian Linux (ARM64) inside Hearth, without root, run by PRoot. It\'s new and hasn\'t been tested on many devices: expect rough edges, and please send logs (Settings › System) when something goes wrong.');
+  if(!s) return beta + sgrid(infoRow('lx-st','Linux','Checking…'));
+  if(!s.supported) return beta + sgrid(infoRow('lx-st','Linux','Not available on this device')) + note(esc(s.unsupported||''));
+  let h=beta;
+  const b=s.busy;
+  if(b && b.kind!=='apt'){
+    h += shead(b.kind==='reset'?'Resetting Linux':'Installing Linux', true) + `<div class="row" data-f data-k="lx-prog"><span class="ricon">${I.dl}</span><div class="rt"><b>${esc(s.distro||'Linux')}</b><small id="lxbusy">${b.pct||0}% · ${esc(b.text||'')}</small><div class="bar" style="margin-top:8px"><i id="lxbar" style="width:${b.pct||0}%"></i></div></div></div>`
+      + sgrid(lxRow('lx-cancel','cancel','x','Cancel','What\'s downloaded is kept for next time',' '));
+  } else if(!s.installed){
+    h += shead('Linux') + sgrid(lxRow('lx-install','install','dl','Install Linux',`${esc(s.distro||'Debian')}, downloaded once from Termux's proot-distro and checked`,'＋'))
+      + note(s.freeBytes>0 ? `${gbs(s.freeBytes)} free on this device; Linux needs about ${gbs(s.needBytes||1.5e9)}.` : '')
+      + (s.error ? note('Last try: '+esc(s.error)) : '');
+  } else {
+    h += shead('Linux') + sgrid(infoRow('lx-ver','System', s.version||s.distro||'Linux') + infoRow('lx-size','Size on this device', gbs(s.sizeBytes)||'—'));
+    h += shead('Use it') + sgrid(
+      lxRow('lx-run','run','shell','Run a command','As the user hearth, like a terminal (one command at a time)')
+      + lxRow('lx-root','root','lock','Run a command as root','For system changes')
+      + lxRow('lx-pkg','pkg','dl', b&&b.kind==='apt'?'Installing…':'Install packages','apt-get install: vim, git, python3, build-essential…', '＋')
+      + lxRow('lx-upg','upg','refresh','Update everything','apt-get upgrade')
+      + lxRow('lx-x11','x11','display','Open in Termux:X11', s.x11App ? 'Shows a Linux app (xterm, a desktop…) in the Termux:X11 app' : 'Needs the Termux:X11 app (Termux itself isn\'t needed)'));
+    h += shead('Output', !!LX.job) + `<pre class="lxout" id="lxout">${esc(LX.out.join('\n'))||'Commands you run show their output here.'}</pre>`
+      + (LX.job ? sgrid(lxRow('lx-stop','stop','stop','Stop','Stops the command and everything it started',' ')) : '');
+    if(s.sdcard===false) h += note('Your shared storage isn\'t in Linux: Hearth doesn\'t have All files access. Linux has its own files only.');
+    h += shead('Start over') + sgrid(lxRow('lx-reset','reset','refresh','Reset Linux','A fresh Linux as it was installed (uses the saved download)')
+      + lxRow('lx-remove','remove','trash','Remove Linux','Deletes it and frees the space'));
+  }
+  h += note('Linux runs with PRoot (GNU GPL 2.0), a separate program that comes with Hearth; its source: github.com/green-green-avk/proot (v0.15_release). Linux apps show in Termux:X11 for now; no GPU acceleration yet.');
+  return h;
+}
+// The preview (no app): Linux pretends to install and run, so the page can be tried in a browser (?preview=android).
+const LX_MOCK = (()=>{
+  let st={installed:false, sizeBytes:0, distro:'Debian 13 (trixie)', version:'trixie-aarch64-pd-v4.29.0', running:false, jobs:[], busy:null, x11App:false, x11Running:false, supported:true, unsupported:null, freeBytes:40e9, needBytes:1.5e9, sdcard:false, error:null};
+  let n=0;
+  const clone=o=>JSON.parse(JSON.stringify(o)), wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const ev=(name,data,ms)=>setTimeout(()=>onSysEvent(name,data),ms);
+  const job=(kind, lines, after)=>{ const id='j'+(++n); lines.forEach((l,i)=>ev('linux.output',{job:id,lines:[l]},120*(i+1))); ev('linux.exit',{job:id,kind,code:0},120*(lines.length+1)); if(after) setTimeout(after,120*(lines.length+1)); return {job:id}; };
+  return async (m, a={})=>{
+    await wait(80);
+    if(m==='linux.status') return clone(st);
+    if(m==='linux.install' || m==='linux.reset'){
+      if(m==='linux.reset' && !a.confirm) throw new Error('Confirm first');
+      if(st.busy) throw new Error('Hearth Linux is busy');
+      const kind=m==='linux.reset'?'reset':'install'; st.busy={kind,pct:0,text:'Starting…'};
+      [[10,'Downloading Linux… 12 MB of 118 MB'],[44,'Downloading Linux… 118 MB of 118 MB'],[60,'Unpacking Linux… 4120 files'],[86,'Setting up…'],[95,'Get:1 http://deb.debian.org/debian trixie InRelease']].forEach(([pct,text],i)=>ev('linux.progress',{kind,pct,text},200*(i+1)));
+      setTimeout(()=>{ st.busy=null; st.installed=true; st.sizeBytes=4.3e8; st.version='Debian 13.1'; onSysEvent('linux.done',{kind,ok:true,text:'Linux is ready',status:clone(st)}); }, 1300);
+      return {started:true, job:kind};
+    }
+    if(m==='linux.stop'){ if(st.busy&&a.job===st.busy.kind){ st.busy=null; ev('linux.done',{kind:a.job,ok:false,error:'Cancelled',status:clone(st)},100); } return {ok:true}; }
+    if(!st.installed && m!=='linux.remove') throw new Error('Install Linux first');
+    if(m==='linux.run') return job('run', a.root ? ['root'] : ['Linux preview 6.6.0-hearth aarch64 GNU/Linux', 'hearth']);
+    if(m==='linux.apt'){ if(st.busy) throw new Error('Hearth Linux is busy'); st.busy={kind:'apt',pct:0,text:'apt-get '+a.action};
+      return job('apt', ['Reading package lists...', 'Building dependency tree...', ...(a.packages||[]).map(p=>`Setting up ${p} ...`)], ()=>{ st.busy=null; st.sizeBytes+=2e7; onSysEvent('linux.done',{kind:'apt',ok:true,text:'Done',status:clone(st)}); }); }
+    if(m==='linux.openX11') return st.x11App ? job('x11',['[x11] started']) : {ok:false, needApp:true, url:'https://github.com/termux/termux-x11/releases', text:'Install Termux:X11 (com.termux.x11) to see Linux apps. Termux itself isn\'t needed.'};
+    if(m==='linux.remove'){ if(!a.confirm) throw new Error('Confirm first'); st.installed=false; st.sizeBytes=0; return clone(st); }
+    throw new Error("That isn't in Hearth for Android yet");
+  };
+})();
+
 function viewSettings(){
   if(S.settingsTab==='audio') S.settingsTab='display';   // Audio is part of the Display page (one page for the screen and sound)
   if(!stabShown(S.settingsTab)) S.settingsTab='profile';
@@ -4057,6 +4189,7 @@ function viewSettings(){
     + `<button class="row" data-f data-k="osi-open" data-act="osiChoose"><span class="ricon">${I.dl}</span><div class="rt"><b>Install Hearth OS on this PC</b><small>Next to Windows, or on a whole drive. About 10 to 20 minutes, with internet.</small></div><div class="rv">›</div></button>`
     + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
   if(t==='about') body = pageAbout();
+  if(t==='linux') body = linuxPage();
   if(ANDROID) body = androidPage(t, body);
   return `<div class="settings">
     <div class="snav">${SGROUPS.map(g=>{ const subs=stabsIn(g[0]); if(!subs.length) return '';
@@ -4851,6 +4984,7 @@ function act(el){
     case 'key': return typeKey(d.c);
     case 'pwr': return power(d.p);
     case 'andOpen': return andOpen(d.page);
+    case 'lx': return lxAct(d.v);
     case 'andShowAll': return call('android.setShowAll',{on:!(AND.s&&AND.s.showAll)}).then(r=>{ AND.s=r; render('an-all',true); }).catch(e=>toast(e.message));
     case 'andRoms': toast('Pick your ROMs folder'); return call('android.roms.pick',{},600000).then(r=>{ if(r){ AND.s=r; toast('ROMs folder set'); loadLibrary(true,true); } render('an-roms',true); }).catch(e=>toast(e.message));
     case 'andRomsForget': return call('android.roms.forget').then(r=>{ AND.s=r; loadLibrary(true); render('an-roms',true); }).catch(e=>toast(e.message));
@@ -6835,6 +6969,7 @@ async function setSources(){
 // =====================================================================
 function onSysEvent(name, data){
   if(name==='status') return applyStatus(data);
+  if(name.startsWith('linux.')) return onLinuxEvent(name, data);
   if(name==='systemUpdate') return onSystemUpdate(data);
   if(name==='xodus') return onXodus(data);
   if(name==='import') return onImport(data);
@@ -6954,6 +7089,7 @@ function onSettingsTab(t){
   if(t==='profiles') loadProfiles();
   if(t==='system' || t==='about') loadSysInfo();
   if(ANDROID && (t==='sources' || t==='system' || t==='controller')) loadAnd();
+  if(t==='linux' && lxOn()) loadLinux();
   if(t==='system'){ loadBrowser(); loadArtStatus(); loadOldFiles(false); }
   if(t==='about'){ loadCounterStats(); if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
