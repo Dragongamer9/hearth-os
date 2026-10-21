@@ -93,6 +93,14 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - Hearth for Android (and Hearth Linux on Android): archived 2026-10-21; focus is Hearth OS and Ember. Code in `hosts/android`, build by hand only.
 
+## 0.2.3 (released)
+
+- [x] BFME games installed by the All-in-One launcher start (they run in the launcher's Wine setup, with its registry and CD key; they sat on the splash screen before) (Beacon 0.0.8)
+- [x] Install with the All-in-One launcher: Beacon opens it, waits while you install the game there, closes it and adds the game
+- [x] Game Mode shows the windows Beacon's installers and launchers open
+- [x] Controller mouse in Game Mode (Quick Access › Controller mouse; View + Menu turns it off)
+- [x] Profiles keep their own Steam account, and each sees only its account's Steam games
+
 ## 0.2.2 (released)
 
 - [x] Hearth for Android (Beta Experimental): Android games and emulators in Hearth's library, RetroArch ROMs, controller, home app; the APK on every release
