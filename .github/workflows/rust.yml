@@ -47,6 +47,16 @@ jobs:
           cargo build --release 2>&1 | tee build.log || { echo "::error title=Build failed::$(grep -E '^(error|warning: unused)' -A6 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           ls -l target/release/hearth
           echo "::notice title=App size::$(du -h target/release/hearth | cut -f1) (the Electron app is about 250 MB)"
+      - name: Test the app, and its windowless core for the Chromium window (docs/RENDERERS.md)
+        working-directory: hosts/hearth-rs
+        run: |
+          set -o pipefail
+          cargo test --release 2>&1 | tee test.log || { echo "::error title=hearth-rs tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 test.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          # The channel end to end: a page's call in, its reply out (winhost.rs), as the Electron window app does it.
+          out=$( (printf '%s\n' '{"t":"page","win":"main","msg":{"type":"call","id":1,"method":"host.info","args":{}}}'; sleep 5) | timeout 25 target/release/hearth --core-stdio 2>/dev/null | head -c 200000 || true)
+          echo "$out" | grep -q '"t":"msg"' || { echo "::error title=core-stdio::no reply on the channel: $(echo "$out" | head -c 1500 | tr '\n' '|')"; exit 1; }
+          echo "$out" | grep -q '"renderer":"chromium"' || { echo "::error title=core-stdio::host.info didn't say Chromium draws: $(echo "$out" | head -c 1500 | tr '\n' '|')"; exit 1; }
+          echo "::notice title=core-stdio::the windowless core answered host.info over the channel"
       - name: Run it once and take screenshots
         working-directory: hosts/hearth-rs
         run: |
