@@ -411,8 +411,10 @@ impl Bridge {
                 std::process::Command::new("kill").args(["-TERM", &pid.to_string()]).status().map_err(|e| format!("Couldn't close it: {e}"))?;
                 Ok(json!({"ok": true}))
             }
-            "pad.status" => Ok(json!({"connected": 0, "mouseMode": "off", "mouseOn": false})),
-            "pad.setMouseMode" => Err("Controller mouse is not available on Linux yet".into()),
+            // Game Mode's controller mouse (padmouse.rs): Quick Access › Controller mouse, or View + Menu.
+            "pad.status" => Ok(json!({"connected": 0, "mouseMode": "off", "mouseOn": crate::padmouse::is_on()})),
+            "pad.toggleMouse" => Ok(json!({"mouseOn": crate::padmouse::toggle()?})),
+            "pad.setMouseMode" => Err("On Hearth OS the controller mouse is in Quick Access (or View + Menu together).".into()),
             // Settings › Controls: remapping (InputPlumber)
             "controller.status" => crate::guide::controller(&["status"]),
             "controller.set" => {
@@ -502,6 +504,12 @@ impl Bridge {
                 log(&format!("profiles: switching to {}", to["name"]));
                 (self.emit)(Bridge::event("profiles.switching", json!({"name": to["name"]})));
                 crate::profiles::stop_steam();
+                // The Steam account this profile used stays its own (Steam writes its files as it closes, so read after).
+                let leaving = self.profiles.active();
+                if let Some(acc) = crate::profiles::keep_steam_account(&self.profiles.list(), &leaving, crate::profiles::current_steam_account().as_deref()) {
+                    if self.profiles.update(&leaving, &json!({"steam": acc})).is_ok() { log(&format!("profiles: {leaving} keeps Steam account {acc}")); }
+                }
+                // Theirs, or Steam's own sign-in for a profile that hasn't signed in yet (that account becomes theirs).
                 crate::profiles::set_steam_account(to["steam"].as_str().unwrap_or(""));
                 self.profiles.switch_to(&id)?;
                 let _ = std::fs::write(picked_file(), "1");

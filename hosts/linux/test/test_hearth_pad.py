@@ -45,6 +45,45 @@ def press(pad, name, t=0.0, hold=0.05):
     pad.button(name, False, t + hold)
 
 
+class GameMode(unittest.TestCase):
+    """--game: Game Mode's controller mouse (Quick Access › Controller mouse)."""
+
+    def make(self):
+        out = Out()
+        return hp.Pad(out, game=True), out
+
+    def test_only_the_mouse(self):
+        pad, out = self.make()
+        press(pad, 'a')
+        press(pad, 'lt')
+        press(pad, 'b')
+        self.assertEqual(out.log, [('BTN_LEFT', True), ('BTN_LEFT', False), ('BTN_RIGHT', True), ('BTN_RIGHT', False),
+                                   ('KEY_ESC', True), ('KEY_ESC', False)])
+        for name in ('guide', 'menu', 'y', 'lb', 'rb', 'view'):
+            press(pad, name)
+        self.assertEqual(len(out.log), 6, 'Guide, Menu, Y, LB/RB and View are left to the game and Hearth')
+        self.assertEqual(pad.mode, 'desk')
+        self.assertEqual(out.sent, [])
+        pad.axes(0, 0, 1.0, 0)
+        pad.tick(1.0, 0.05)
+        self.assertGreater(out.moved[0], 0)
+
+    def test_paused_while_hearth_is_in_front(self):
+        pad, out = self.make()
+        pad.command({'cmd': 'pause', 'on': True})
+        press(pad, 'a')
+        pad.axes(0, 0, 1.0, 0)
+        pad.tick(1.0, 0.05)
+        self.assertEqual((out.log, out.moved), ([], [0, 0]))
+
+    def test_view_and_menu_turn_it_off(self):
+        pad, out = self.make()
+        pad.button('view', True, 0)
+        pad.button('menu', True, 0.05)
+        self.assertTrue(pad.done)
+        self.assertEqual(out.sent, [{'t': 'mouse', 'on': False}])
+
+
 class Desktop(unittest.TestCase):
     def test_a_clicks_and_drags(self):
         pad, out = make()

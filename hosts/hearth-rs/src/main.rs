@@ -234,6 +234,11 @@ fn art(uri: &str) -> Response<Vec<u8>> {
 fn start_game_mode(app: tauri::AppHandle, bridge: Arc<Mutex<Bridge>>, windowed: bool) {
     let (guide, hold) = match bridge.lock() { Ok(b) => (b.guide.clone(), b.library.store.data["holdView"] == true), Err(_) => return };
     let gm = GameMode::new(app.clone(), bridge.clone(), guide.clone(), windowed);
+    {
+        // The controller mouse pauses while Hearth or its Quick Access is in front (the controller is Hearth's then).
+        let gm2 = gm.clone();
+        hearth_core::padmouse::set_pause_probe(std::sync::Arc::new(move || gm2.overlay_on.load(std::sync::atomic::Ordering::SeqCst) || gm2.hearth_in_front()));
+    }
     let _ = GM.set(gm.clone());
     // Moved from the old Electron AppImage: tidy up once this version has run fine for 5 minutes.
     std::thread::spawn(|| { std::thread::sleep(std::time::Duration::from_secs(300)); hearth_core::appupdate::tidy_after_move(); });

@@ -405,7 +405,7 @@ impl GameMode {
         if !self.inside() { return w.is_focused().unwrap_or(false); }
         match (gs::focused(), self.xid(MAIN_TITLE)) { (Some(f), Some(m)) => f == m, _ => w.is_focused().unwrap_or(false) }
     }
-    fn hearth_in_front(&self) -> bool { self.main().map(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false)).unwrap_or(false) && !self.overlay_on.load(Ordering::SeqCst) }
+    pub fn hearth_in_front(&self) -> bool { self.main().map(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false)).unwrap_or(false) && !self.overlay_on.load(Ordering::SeqCst) }
 
     /// Another Hearth window (a sign-in page) in front in gamescope.
     pub fn to_front(self: &Arc<Self>, title: &str) {

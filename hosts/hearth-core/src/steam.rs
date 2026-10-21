@@ -84,6 +84,30 @@ pub fn account_dir(steam: &Path) -> Option<PathBuf> {
 }
 pub const ID64_BASE: u64 = STEAM_ID64_BASE;
 
+/// The signed-in Steam account's SteamID64, when this Steam has more than one account (with one, every game is its).
+/// Each Hearth profile signs Steam in as its own account (profiles.rs), so this is the profile's account.
+/// `Some(0)`: no account is marked to sign in (a profile that hasn't signed in to Steam yet): none of the installed
+/// games are its own.
+pub fn signed_in_id64(steam: &Path) -> Option<u64> {
+    let users = std::fs::read_dir(steam.join("userdata")).ok()?.flatten()
+        .filter(|e| e.file_name().to_string_lossy().parse::<u64>().map(|n| n > 0).unwrap_or(false)).count();
+    if users == 0 { return None; }
+    let login = vdf::load(&steam.join("config/loginusers.vdf"))?;
+    let recent = login.obj(&["users"]).and_then(|u| u.iter().find(|(_, x)| x.str(&["MostRecent"]) == Some("1")).and_then(|(id, _)| id.parse::<u64>().ok()));
+    match recent {
+        Some(_) if users < 2 => None,
+        Some(id) => Some(id),
+        None => Some(0),
+    }
+}
+
+/// Whether an installed Steam game belongs in the signed-in account's library: everything when there's one account;
+/// otherwise games that account installed (the manifest's LastOwner), or has played or launched (its localconfig
+/// lists it), or that no account is named for. A game another profile's account installed stays out of yours.
+pub fn mine(me: Option<u64>, owner: u64, in_my_config: bool) -> bool {
+    match me { None => true, Some(0) => false, Some(m) => owner == 0 || owner == m || in_my_config }
+}
+
 /// The most recent Steam user's folder (userdata/<account id>): its grid art and play stats.
 pub fn user_data(steam: &Path) -> (Option<PathBuf>, HashMap<String, (u64, u64)>) {
     let mut stats = HashMap::new();
@@ -172,6 +196,7 @@ pub fn scan(home: &Path) -> Vec<SteamGame> {
     let mut games = Vec::new();
     let Some(steam) = steam_path(home) else { return games };
     let (grid, stats) = user_data(&steam);
+    let me = signed_in_id64(&steam);
     let cache = steam.join("appcache/librarycache");
     for lib in libraries(&steam) {
         let apps = lib.join("steamapps");
@@ -184,6 +209,8 @@ pub fn scan(home: &Path) -> Vec<SteamGame> {
             let name = kv.str(&["AppState", "name"]).unwrap_or("").trim().to_string();
             let dir_name = kv.str(&["AppState", "installdir"]).unwrap_or("").to_string();
             if app_id.is_empty() || name.is_empty() || dir_name.is_empty() || skip(&app_id, &name) { continue; }
+            let owner = kv.str(&["AppState", "LastOwner"]).and_then(|o| o.parse::<u64>().ok()).unwrap_or(0);
+            if !mine(me, owner, stats.contains_key(&app_id)) { continue; }
             let dir = apps.join("common").join(&dir_name);
             let flags = kv.num(&["AppState", "StateFlags"]);
             let size = kv.num(&["AppState", "SizeOnDisk"]).max(0) as u64;
@@ -232,6 +259,25 @@ mod tests {
         assert_eq!((p2.installed, p2.minutes, p2.last_played, p2.size_bytes), (true, 90, 1_700_000_000_000, Some(12000)));
         assert!(p2.art.iter().any(|(k, v)| *k == "cover" && v.ends_with("grid/620p.png")));
         assert!(p2.art.iter().any(|(k, v)| *k == "hero" && v.starts_with("https://")));
+        // One account: its games all show, whoever installed them.
+        put(&steam.join("steamapps/appmanifest_70.acf"), r#""AppState" { "appid" "70" "name" "Half-Life" "installdir" "Half-Life" "StateFlags" "4" "LastOwner" "76561197960265730" }"#);
+        assert_eq!(scan(home.path()).len(), 3);
+        // Two accounts (two profiles): another account's install isn't sam's; sam's own and what sam has played are.
+        put(&steam.join("userdata/2/config/localconfig.vdf"), r#""UserLocalConfigStore" { }"#);
+        let ids: Vec<String> = scan(home.path()).into_iter().map(|g| g.app_id).collect();
+        assert!(!ids.contains(&"70".to_string()) && ids.contains(&"620".to_string()) && ids.contains(&"400".to_string()), "{ids:?}");
+        assert_eq!(signed_in_id64(&steam), Some(76561197960265729));
+        // A profile that hasn't signed in yet: no account marked, none of these are its games.
+        put(&steam.join("config/loginusers.vdf"), r#""users" { "76561197960265729" { "AccountName" "sam" "MostRecent" "0" } }"#);
+        assert_eq!(signed_in_id64(&steam), Some(0));
+        assert!(scan(home.path()).is_empty());
+    }
+    #[test]
+    fn whose_games() {
+        assert!(mine(None, 5, false));
+        assert!(mine(Some(5), 5, false) && mine(Some(5), 0, false) && mine(Some(5), 6, true));
+        assert!(!mine(Some(5), 6, false));
+        assert!(!mine(Some(0), 0, true), "nobody signed in");
     }
 }
 

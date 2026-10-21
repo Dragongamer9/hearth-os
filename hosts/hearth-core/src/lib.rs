@@ -26,6 +26,7 @@ pub mod xodus;
 pub mod library;
 pub mod multiplay;
 pub mod owned;
+pub mod padmouse;
 pub mod manual;
 pub mod newos;
 pub mod osinstall;
