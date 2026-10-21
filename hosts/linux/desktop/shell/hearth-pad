@@ -579,6 +579,13 @@ def gamepads(evdev, known):
             d.close()
             continue
         found[path] = Controller(d, e)
+        # Is another program holding it for itself (EVIOCGRAB: Steam does with some controllers)? Then nothing it
+        # sends reaches us. Asked by trying a grab and letting go at once.
+        try:
+            d.grab()
+            d.ungrab()
+        except OSError as err:
+            note('%s %r is held by another program (%s): its buttons don\'t reach the desktop. Is Steam open?' % (path, d.name, err.strerror or err))
     for path, c in known.items():
         if path not in found:
             try:
@@ -640,6 +647,13 @@ def main():
     e = evdev.ecodes
     bmap = button_map(e)
     game = '--game' in sys.argv[1:]
+    stats = {'events': 0, 'moved': 0, 'since': time.monotonic()}
+    real_move = out.move
+
+    def counted_move(dx, dy):
+        stats['moved'] += abs(dx) + abs(dy)
+        real_move(dx, dy)
+    out.move = counted_move
     pad = Pad(out, game=game)
     if game:
         note('Game Mode controller mouse')
@@ -684,6 +698,7 @@ def main():
             path, c = fds[fd]
             try:
                 for ev in c.dev.read():
+                    stats['events'] += 1
                     c.handle(ev, bmap)
             except (BlockingIOError, InterruptedError):
                 pass
@@ -703,6 +718,12 @@ def main():
         pad.axes(*(clip(sum(c.ax[k] for c in pads.values())) for k in ('lx', 'ly', 'rx', 'ry')))
         pad.tick(now, min(0.05, now - last))
         last = now
+        # Every 30 s with input: what came in and what the pointer did (why "the mouse doesn't move" shows in logs).
+        if now - stats['since'] >= 30:
+            if stats['events']:
+                note('last 30 s: %d controller events, pointer moved %d px%s%s' % (stats['events'], stats['moved'],
+                     ', paused (a fullscreen window)' if pad.fs_pause else '', ', turned off' if pad.user_off else ''))
+            stats.update(events=0, moved=0, since=now)
         if pad.done:
             return 0
 
