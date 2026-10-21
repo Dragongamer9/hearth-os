@@ -3529,17 +3529,19 @@ const NEWOS_KEEPS = [
 const NEWOS_MOVES = [
   ['Everything else in your home folder','Documents, downloads, pictures, other apps and their settings, sign-ins (Steam and the stores ask you to sign in again). Moved to a folder named .old-hearth- and the date, not deleted: for 30 days you can restore any of it from Settings › System, then it\'s deleted.'],
   ['The old system\'s apps and changes','Bazzite\'s preinstalled apps, packages added on top, and changed system settings: back to the new system\'s defaults']];
-function loadNewOs(){ if(LINUX && (!host || (HOSTINFO.system && /^(amd|nvidia)$/.test(HOSTINFO.edition||'')))) call('newos.status',{},90000).then(r=>{ NEWOS.s=r; if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); }).catch(()=>{}); }
+function loadNewOs(){ if(LINUX && (!host || (HOSTINFO.system && /^(amd|nvidia|anatase|ubuntu|cachyos|peppermint)$/.test(HOSTINFO.edition||'')))) call('newos.status',{},90000).then(r=>{ NEWOS.s=r; if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); }).catch(()=>{}); }
 function newOsChoice(id){ return ((NEWOS.s&&NEWOS.s.editions)||[]).find(e=>e.id===id); }
 function newOsRows(){
   const n=NEWOS.s; if(!n || !n.eligible) return '';
-  let h=shead('Move to a new Hearth OS', n.state==='moving');
+  const sw=!!n.switch, curLabel={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Peppermint'}[n.current]||'this edition';
+  let h=shead(sw?'Switch edition':'Move to a new Hearth OS', n.state==='moving');
   if(n.state==='moving') return h + sysUpdCard(n,{title:'Getting '+(n.label||'the new Hearth OS'), sub:'Keep playing: nothing changes until you restart', noApps:true});
   if(n.state==='done') return h + `<div class="row"><span class="ricon">${I.check}</span><div class="rt"><b>${esc(n.label||'The new Hearth OS')} is ready</b><small>Restart to start it. The first start takes a little longer: it keeps your games and puts everything else aside.</small></div></div>`
     + `<button class="row" data-f data-k="no-restart" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart now</b><small>If something's wrong, the old Hearth OS is still in the boot menu.</small></div></button>`;
   const pick=NEWOS.pick && newOsChoice(NEWOS.pick);
   if(pick && pick.allowed) return h + newOsConfirmRows(n, pick);
-  h += `<div class="row" data-f data-k="no-intro"><span class="ricon">${I.dl}</span><div class="rt"><b>Hearth OS is moving away from Bazzite</b><small>Choose the Hearth OS you want next. Moving starts you fresh and keeps your games. You'll see exactly what's kept before anything starts.</small></div></div>`;
+  h += sw ? `<div class="row" data-f data-k="no-intro"><span class="ricon">${I.dl}</span><div class="rt"><b>You're on ${esc(curLabel)}</b><small>Switch to another edition of Hearth OS. Switching starts you fresh and keeps your games. You'll see exactly what's kept before anything starts, and ${esc(curLabel)} stays in the boot menu.</small></div></div>`
+    : `<div class="row" data-f data-k="no-intro"><span class="ricon">${I.dl}</span><div class="rt"><b>Hearth OS is moving away from Bazzite</b><small>Choose the Hearth OS you want next. Moving starts you fresh and keeps your games. You'll see exactly what's kept before anything starts.</small></div></div>`;
   if(n.error) h += note(esc(n.error));
   if(!n.editions) return h + note('Checking which ones are ready…');
   h += n.editions.map(e=>{
