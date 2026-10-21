@@ -243,8 +243,9 @@ pub fn signed_in_account(registry: &str, login_users: &str) -> Option<String> {
     let auto = regex::Regex::new(r#""AutoLoginUser"\s+"([^"]*)""#).unwrap().captures(registry).map(|c| c[1].trim().to_string()).filter(|a| !a.is_empty());
     auto.or_else(|| {
         let block = regex::Regex::new(r#""\d{17}"\s*\{([^{}]*)\}"#).unwrap();
-        block.captures_iter(login_users).find(|c| regex::Regex::new(r#""MostRecent"\s+"1""#).unwrap().is_match(&c[1]))
-            .and_then(|c| regex::Regex::new(r#""AccountName"\s+"([^"]*)""#).unwrap().captures(&c[1]).map(|m| m[1].to_string()))
+        let found = block.captures_iter(login_users).find(|c| regex::Regex::new(r#""MostRecent"\s+"1""#).unwrap().is_match(&c[1]))
+            .and_then(|c| regex::Regex::new(r#""AccountName"\s+"([^"]*)""#).unwrap().captures(&c[1]).map(|m| m[1].to_string()));
+        found
     })
 }
 pub fn current_steam_account() -> Option<String> {
