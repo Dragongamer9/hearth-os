@@ -67,6 +67,10 @@ class MainActivity : Activity() {
         val s = web.settings
         s.javaScriptEnabled = true
         s.domStorageEnabled = true
+        // The Linux desktop view connects to Hearth's own WebSocket bridge on ws://127.0.0.1 (tokened, local only).
+        // WebView's default refuses any ws:// from Hearth's https page ("mixed content"), unlike desktop Chrome, so
+        // the desktop never appeared. The page itself only loads its own assets and https art.
+        s.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         s.mediaPlaybackRequiresUserGesture = false   // the interface's clicks (Web Audio)
         s.allowFileAccess = false
         s.allowContentAccess = false

@@ -76,6 +76,7 @@ class WsBridge(
             return
         }
         out.write(WsHandshake.accept(req!!).toByteArray(Charsets.ISO_8859_1)); out.flush()
+        log("ws: the desktop view connected")
         s.soTimeout = 0
         val lock = Any()
         fun send(opcode: Int, payload: ByteArray) = synchronized(lock) { out.write(WsProto.encode(opcode, payload)); out.flush() }
