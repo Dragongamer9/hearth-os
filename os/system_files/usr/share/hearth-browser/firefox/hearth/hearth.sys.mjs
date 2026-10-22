@@ -194,7 +194,7 @@ class Keyboard {
     // Keys: always Ctrl+Alt+K (open/close); the rest only while the keyboard is open. Caught on the window first
     // (capturing, in Firefox's system group), so they never reach the web page or Firefox's own shortcuts.
     this.onKey = e => this.key(e);
-    win.addEventListener("keydown", this.onKey, { capture: true, mozSystemGroup: true });
+    this.win.addEventListener("keydown", this.onKey, { capture: true, mozSystemGroup: true });
     this.render();
   }
 
