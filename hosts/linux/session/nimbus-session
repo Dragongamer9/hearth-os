@@ -120,11 +120,25 @@ run_desktop() {
 
 # Button remaps for the built-in controller (Settings › Controller), kept applied for the whole session in
 # both modes: InputPlumber goes back to its default profile when the controller reconnects (after sleep).
+BG_PIDS=""
 if [ -z "$HEARTH_SEAT" ] && [ -x "$SHARE/desktop/shell/hearth-controller" ] && have busctl; then
   python3 "$SHARE/desktop/shell/hearth-controller" watch >/dev/null 2>&1 &
-  REMAP_PID=$!
-  trap 'kill $REMAP_PID 2>/dev/null' EXIT
-  trap 'exit 143' INT TERM HUP   # a signal at logout ends the script through EXIT (so the watcher stops too)
+  BG_PIDS="$BG_PIDS $!"
+fi
+
+# The power button is Hearth's while this session runs (Settings › Power button: sleep, the power menu...).
+# Without this the system's own default (logind: shut down) acts on the same press, before Hearth can.
+# Bazzite set that in its image; Hearth's own editions don't, so the session asks for it: only while Hearth
+# runs, so at the sign-in screen, or if Hearth is gone, the button works the usual way. Holding the button
+# for several seconds still turns the device off (that's the firmware's).
+if [ -z "$HEARTH_SEAT" ] && have systemd-inhibit; then
+  systemd-inhibit --what=handle-power-key:handle-suspend-key --who="Hearth" \
+    --why="Hearth handles the power button (Settings › Power button)" --mode=block sleep infinity >/dev/null 2>&1 &
+  BG_PIDS="$BG_PIDS $!"
+fi
+if [ -n "$BG_PIDS" ]; then
+  trap 'kill $BG_PIDS 2>/dev/null' EXIT
+  trap 'exit 143' INT TERM HUP   # a signal at logout ends the script through EXIT (so the helpers stop too)
 fi
 
 # Hearth's look for Qt and GTK apps (Bazaar, Dolphin...), in both modes.
