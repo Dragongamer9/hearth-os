@@ -255,8 +255,20 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 #power.open .modal{transform:none;opacity:1}
 .modal h3{margin-bottom:14px}
 .modal .mitem{font-size:15px}
-#search{top:0;left:0;right:0;background:var(--panel);padding:20px var(--gut) 18px;transform:translateY(-102%);transition:transform .24s var(--ease),visibility .24s;box-shadow:0 20px 60px rgba(0,0,0,.45)}
-#search.open{transform:none}
+#search,#prompt{inset:0;display:flex;flex-direction:column;background:rgba(6,8,12,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:0;opacity:0;transition:opacity .2s var(--ease),visibility .2s}
+#search.open,#prompt.open{opacity:1}
+.kbtop{background:var(--panel);padding:20px var(--gut) 16px;box-shadow:0 14px 40px rgba(0,0,0,.35)}
+/* The on-screen keyboard (Game Mode), laid out like SteamOS's: docked at the bottom, full width, big keys. */
+.kb{margin-top:auto;background:#15171c;border-radius:18px 18px 0 0;padding:12px max(12px,calc(var(--gut) - 8px)) 14px;display:flex;flex-direction:column;gap:7px;box-shadow:0 -18px 50px rgba(0,0,0,.5);transform:translateY(30px);transition:transform .22s var(--ease)}
+.open .kb{transform:none}
+.kbrow{display:flex;gap:7px}
+.kb .key{flex:1 1 0;width:auto;min-width:0;height:clamp(44px,7.2vh,58px);border-radius:10px;background:#2b2f37;color:#eef1f6;font-size:clamp(16px,2.1vw,21px);font-weight:600;position:relative;box-shadow:inset 0 -2px 0 rgba(0,0,0,.25)}
+.kb .key.mod{background:#21242b;color:#b8bfcc;font-size:clamp(14px,1.7vw,17px)}
+.kb .key.w15{flex-grow:1.5} .kb .key.w6{flex-grow:6}
+.kb .key.go{background:var(--accent);color:var(--accentInk)}
+.kb .key.on{background:#eef1f6;color:#15171c}
+.kb .key .kg{position:absolute;top:4px;right:6px;font-size:10px;font-weight:700;opacity:.55;letter-spacing:.02em}
+.kb .key:active{transform:translateY(1px)}
 .sfield{display:flex;align-items:center;gap:12px;background:var(--bg2);border-radius:10px;padding:14px 16px;font-size:18px;min-height:54px}
 .sfield .q:empty:before{content:attr(data-ph);color:var(--faint)}
 .sfield .q.mono{letter-spacing:.14em}
@@ -446,9 +458,7 @@ body.overlay .modal{width:min(380px,92vw)}
 .pstat .lab small{color:var(--dim);font-weight:500}
 .btn.sm{margin-top:6px;padding:10px 14px}
 #sheet.open .modal{transform:none;opacity:1}
-#prompt{top:0;left:0;right:0;background:var(--panel);padding:20px var(--gut) 18px;transform:translateY(-102%);transition:transform .24s var(--ease),visibility .24s;box-shadow:0 20px 60px rgba(0,0,0,.45)}
-#prompt.open{transform:none}
-#prompt .osk{margin-top:16px}
+
 .ptitle{font-weight:600;margin-bottom:12px}
 .key.on{background:var(--text);color:var(--bg)}
 
@@ -4919,13 +4929,57 @@ function renderPower(){
 }
 let query='';
 const OSK=['1234567890','qwertyuiop','asdfghjkl','zxcvbnm'];
+// ---------- the on-screen keyboard (Game Mode), laid out like SteamOS's ----------
+// Docked at the bottom, full width: a number row with backspace, Enter at the end of the middle row, Shift on both
+// sides (tap once for one capital, twice for caps lock), &123 for symbols, a wide Space and ← → to move the caret.
+// Controller shortcuts, shown on the keys: Y backspace, X space, LB shift, RB symbols, ☰ Done, B closes.
+const KB_LETTERS=[['1','2','3','4','5','6','7','8','9','0','bksp'],['q','w','e','r','t','y','u','i','o','p'],['a','s','d','f','g','h','j','k','l','enter'],['shift','z','x','c','v','b','n','m',',','.','shift2'],['sym','@','space','left','right','done']];
+const KB_SYMS=[['1','2','3','4','5','6','7','8','9','0','bksp'],['!','@','#','$','%','^','&','*','(',')'],['-','_','=','+','[',']','{','}',';','enter'],['shift',"'",'"','/','\\','|','~','`',':','?','shift2'],['sym','.','space','left','right','done']];
+const KB_SPECIAL={bksp:'⌫',enter:'↵',shift:'⇧',shift2:'⇧',sym:'&123',space:'Space',left:'←',right:'→',done:'Done'};
+const KB_WIDE={bksp:'w15',enter:'w15',shift:'w15',shift2:'w15',sym:'w15',space:'w6',done:'w15 go'};
+function kbGlyph(c){
+  const st=promptStyle(); if(st!=='pad') return '';
+  return {bksp:'Y',space:'X',shift:'LB',sym:'RB',done:'☰'}[c]||'';
+}
+function kbHTML(t, pre, actName){
+  const up=(t.shift||t.caps)&&!t.sym;
+  return `<div class="kb">${(t.sym?KB_SYMS:KB_LETTERS).map((r,ri)=>`<div class="kbrow">${r.map((c,ci)=>{
+    const sp=Object.prototype.hasOwnProperty.call(KB_SPECIAL,c);
+    const ch=up?c.toUpperCase():c;
+    const lab=sp?(c==='sym'&&t.sym?'ABC':c==='enter'&&t.enterLabel?t.enterLabel:KB_SPECIAL[c]):ch;
+    const on=(c==='shift'||c==='shift2')&&(t.shift||t.caps);
+    const g=kbGlyph(c);
+    return `<button class="key ${sp?'mod':''} ${KB_WIDE[c]||''} ${on?'on':''}" data-f data-k="${pre}-${ri}-${ci}" data-act="${actName}" data-c="${esc(sp?c:ch)}">${esc(lab)}${g?`<small class="kg">${g}</small>`:''}</button>`;
+  }).join('')}</div>`).join('')}</div>`;
+}
+// One key on a {text, caret, shift, caps, sym} target. Returns 'enter' or 'done' when those were pressed.
+function kbEdit(t, c){
+  if(t.caret==null||t.caret>t.text.length) t.caret=t.text.length;
+  switch(c){
+    case 'bksp': if(t.caret>0){ t.text=t.text.slice(0,t.caret-1)+t.text.slice(t.caret); t.caret--; } return;
+    case 'left': t.caret=Math.max(0,t.caret-1); return;
+    case 'right': t.caret=Math.min(t.text.length,t.caret+1); return;
+    case 'shift': case 'shift2': if(t.caps) t.caps=false; else if(t.shift){ t.shift=false; t.caps=true; } else t.shift=true; return;
+    case 'sym': t.sym=!t.sym; return;
+    case 'enter': case 'done': return c;
+    case 'space': c=' '; break;
+  }
+  t.text=t.text.slice(0,t.caret)+c+t.text.slice(t.caret); t.caret+=c.length; if(t.shift) t.shift=false;
+}
+// The text field with the caret where it is (dots for a hidden password).
+function kbField(t, icon, ph, secret, show){
+  const v=x=>secret&&!show?'•'.repeat(x.length):esc(x), c=Math.min(t.caret??t.text.length, t.text.length);
+  return t.text ? `<span class="q ${secret&&!show?'mono':''}">${v(t.text.slice(0,c))}</span><span class="caret"></span><span class="q ${secret&&!show?'mono':''}">${v(t.text.slice(c))}</span>`
+                : `<span class="q" data-ph="${esc(ph)}"></span><span class="caret"></span>`;
+}
+const SKB={shift:false,caps:false,sym:false,caret:null};
 function renderSearch(keepKey){
   const q=query.toLowerCase().trim();
   const res = q ? GAMES.filter(g=>g.title.toLowerCase().includes(q)).slice(0,8) : [];
-  $('#search').innerHTML = `<div class="sfield">${I.search}<span class="q" data-ph="Search your library">${esc(query)}</span><span class="caret"></span></div>
-    <div class="sres">${res.map(g=>`<button class="row" data-f data-k="sr-${g.id}" data-act="game" data-id="${g.id}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('') || `<div class="muted" style="padding:16px 4px">${q?'No matches':'Type with the keyboard below, or a physical keyboard.'}</div>`}</div>
-    <div class="osk">${OSK.map(r=>`<div>${[...r].map(c=>`<button class="key" data-f data-k="k-${c}" data-act="key" data-c="${c}">${c}</button>`).join('')}</div>`).join('')}
-      <div><button class="key w2" data-f data-k="k-clear" data-act="key" data-c="clear">Clear</button><button class="key w4" data-f data-k="k-space" data-act="key" data-c=" ">Space</button><button class="key w2" data-f data-k="k-bksp" data-act="key" data-c="bksp">⌫</button><button class="key w2 go" data-f data-k="k-done" data-act="back">Done</button></div></div>`;
+  const t=Object.assign(SKB,{text:query});
+  $('#search').innerHTML = `<div class="kbtop"><div class="sfield">${I.search}${kbField(t,'','Search your library')}</div>
+    <div class="sres">${res.map(g=>`<button class="row" data-f data-k="sr-${g.id}" data-act="game" data-id="${g.id}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('') || `<div class="muted" style="padding:16px 4px">${q?'No matches':'Type with the keyboard below, or a real keyboard'}</div>`}</div></div>
+    ${kbHTML(Object.assign(t,{enterLabel:'Search'}),'sk','key')}`;
   if(keepKey){ const el=$(`#search [data-k="${keepKey}"]`); if(el) setFocus(el,true); }
 }
 
@@ -4943,26 +4997,20 @@ function sheetPick(i){ const it=sheet && sheet.items[i]; if(!it) return; sheet.p
 // ---------- text prompt with on-screen keyboard (passwords etc.) ----------
 let prompt=null;
 const OSK_SYM=['1234567890','!@#$%^&*()','-_=+[]{};:',"'\",.?/\\|~`"];
-function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',shift:false,sym:false,show:!o.secret,res,done:false}; openLayer('prompt','pk-1-0'); }); }
+function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',caret:null,shift:false,caps:false,sym:false,show:!o.secret,res,done:false}; openLayer('prompt','pk-1-0'); }); }
 function renderPrompt(keepK){
   const p=prompt; if(!p) return;
-  const rows=(p.sym?OSK_SYM:OSK).map(r=>p.shift&&!p.sym?r.toUpperCase():r);
-  const shown = p.show ? esc(p.text) : '•'.repeat(p.text.length);
-  $('#prompt').innerHTML = `<div class="ptitle">${esc(p.title)}</div>
-    <div class="sfield">${p.secret?I.lock:I.kbd}<span class="q ${p.show?'':'mono'}" data-ph="${p.secret?'Password':'Type here'}">${shown}</span><span class="caret"></span>
-      ${p.secret?`<button class="pill" style="margin-left:auto" data-f data-k="pk-show" data-act="pkey" data-c="show">${p.show?'Hide':'Show'}</button>`:''}</div>
-    <div class="osk">${rows.map((r,ri)=>`<div>${[...r].map((c,ci)=>`<button class="key" data-f data-k="pk-${ri}-${ci}" data-act="pkey" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>`).join('')}
-      <div><button class="key w2 ${p.shift?'on':''}" data-f data-k="pk-shift" data-act="pkey" data-c="shift">⇧</button><button class="key w2" data-f data-k="pk-sym" data-act="pkey" data-c="sym">${p.sym?'abc':'?123'}</button><button class="key w4" data-f data-k="pk-sp" data-act="pkey" data-c=" ">Space</button><button class="key w2" data-f data-k="pk-bk" data-act="pkey" data-c="bksp">⌫</button><button class="key w2 go" data-f data-k="pk-done" data-act="pkey" data-c="done">Done</button></div></div>`;
+  $('#prompt').innerHTML = `<div class="kbtop"><div class="ptitle">${esc(p.title)}</div>
+    <div class="sfield">${p.secret?I.lock:I.kbd}${kbField(p,'',p.secret?'Password':'Type here',p.secret,p.show)}
+      ${p.secret?`<button class="pill" style="margin-left:auto" data-f data-k="pk-show" data-act="pkey" data-c="show">${p.show?'Hide':'Show'}</button>`:''}</div></div>
+    ${kbHTML(Object.assign(p,{enterLabel:'Done'}),'pk','pkey')}`;
   if(keepK){ const el=$(`#prompt [data-k="${keepK}"]`); if(el) setFocus(el,true); }
 }
 function promptKey(c){
   const p=prompt; if(!p) return;
-  if(c==='done') return promptSubmit();
-  if(c==='bksp') p.text=p.text.slice(0,-1);
-  else if(c==='shift') p.shift=!p.shift;
-  else if(c==='sym') p.sym=!p.sym;
-  else if(c==='show') p.show=!p.show;
-  else { p.text+=c; p.shift=false; }
+  if(c==='show'){ p.show=!p.show; return renderPrompt(focused?.dataset.k); }
+  const r=kbEdit(p,c);
+  if(r==='done'||r==='enter') return promptSubmit();
   renderPrompt(focused?.dataset.k);
 }
 function promptSubmit(){
@@ -5424,7 +5472,11 @@ function back(){
 }
 function typeKey(c){
   const k=focused?.dataset.k;
-  if(c==='bksp') query=query.slice(0,-1); else if(c==='clear') query=''; else query+=c;
+  if(c==='clear'){ query=''; SKB.caret=0; return renderSearch(k); }
+  const t=Object.assign(SKB,{text:query});
+  const r=kbEdit(t,c); query=t.text;
+  if(r==='done') return back();
+  if(r==='enter'){ const first=$('#search .sres [data-f]'); if(first) return act(first); return; }
   renderSearch(k);
 }
 function power(p, sure){
@@ -7677,7 +7729,7 @@ function renderFooter(){
   if(focused?.dataset.slider){ if(SLIDE===focused) h.push(['adjust','Adjust'],['select','Done']); else h.push(['select','Change']); }
   else h.push(['select','Select']);
   h.push(['back','Back']);
-  if(top==='prompt') h.push(['del','Delete'],['space','Space'],['done','Done']);
+  if(top==='prompt'||top==='search') h.push(['del','Delete'],['space','Space'],['done','Done']);
   if(!top && S.view==='library') h.push(['tabs','Tabs'],['stores','Stores']);
   if(top==='qam') h.push(['tabs','Sections']);
   if(!top) h.push(['search','Search'],['menu','Menu'],['qam','Quick Access']);
@@ -7723,11 +7775,14 @@ function input(k){
     case 'up': case 'down': case 'left': case 'right': return move(k);
     case 'a': return focused && act(focused);
     case 'b': return back();
-    case 'start': return top==='prompt' ? promptSubmit() : toggleLayer('menu');
+    case 'start': return top==='prompt' ? promptSubmit() : top==='search' ? back() : toggleLayer('menu');
     case 'select': case 'guide': return top==='prompt'||top==='sheet' ? null : toggleLayer('qam');
     case 'y': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (closeAll(), query='', openLayer('search'));
-    case 'x': return top==='prompt' ? promptKey(' ') : top==='search' ? typeKey(' ') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
-    case 'lb': case 'rb': return shiftTab(k==='lb'?-1:1);
+    case 'x': return top==='prompt' ? promptKey('space') : top==='search' ? typeKey('space') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
+    case 'lb': case 'rb':
+      if(top==='prompt') return promptKey(k==='lb'?'shift':'sym');
+      if(top==='search') return typeKey(k==='lb'?'shift':'sym');
+      return shiftTab(k==='lb'?-1:1);
     case 'rup': case 'rdown': return top ? null : libJump(k==='rup'?-1:1);   // right stick: A–Z jump in the Library
   }
 }
@@ -7843,12 +7898,13 @@ document.addEventListener('keydown', e=>{
   if(S.layers.at(-1)==='prompt' && prompt){
     if(e.key==='Enter'){ e.preventDefault(); return promptSubmit(); }
     if(e.key==='Escape'){ e.preventDefault(); return back(); }
-    if(e.key==='Backspace'){ e.preventDefault(); prompt.text=prompt.text.slice(0,-1); return renderPrompt(focused?.dataset.k); }
-    if(e.key.length===1 && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); prompt.text+=e.key; return renderPrompt(focused?.dataset.k); }
+    if(e.key==='Backspace'){ e.preventDefault(); return promptKey('bksp'); }
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){ e.preventDefault(); return promptKey(e.key==='ArrowLeft'?'left':'right'); }
+    if(e.key.length===1 && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); kbEdit(prompt, e.key); return renderPrompt(focused?.dataset.k); }
   }
   if(S.layers.at(-1)==='search'){
-    if(e.key.length===1 && /[\w\- ]/.test(e.key) && !e.ctrlKey && !e.metaKey){ e.preventDefault(); query+=e.key; return renderSearch(focused?.dataset.k); }
-    if(e.key==='Backspace'){ e.preventDefault(); if(query){ query=query.slice(0,-1); return renderSearch(focused?.dataset.k);} return back(); }
+    if(e.key.length===1 && /[\w\- ]/.test(e.key) && !e.ctrlKey && !e.metaKey){ e.preventDefault(); return typeKey(e.key===' '?'space':e.key); }
+    if(e.key==='Backspace'){ e.preventDefault(); if(query) return typeKey('bksp'); return back(); }
   }
   if(e.key==='Tab'){ e.preventDefault(); setInput('kbd'); return input(e.shiftKey?'lb':'rb'); }
   if(KEY_EXTRA[e.key] && !e.ctrlKey && !e.altKey){ e.preventDefault(); setInput('kbd'); return KEY_EXTRA[e.key](); }
