@@ -469,7 +469,7 @@ mod tests {
         assert!(keys().contains("SPACE") && keys().contains("LEFTCTRL") && keys().contains("F12") && keys().contains("KP0"));
         assert!(!keys().contains("POWER"));
         let ids: Vec<&str> = tables()["templates"].as_array().unwrap().iter().map(|t| t["id"].as_str().unwrap()).collect();
-        assert_eq!(ids, vec!["shooter", "pointclick", "retro", "mouse", "rts"]);
+        assert_eq!(ids, vec!["shooter", "pointclick", "retro", "mouse", "rts", "browser"]);
         for id in ids { validate(template(id).unwrap()).unwrap_or_else(|e| panic!("{id}: {e}")); }
         assert_eq!(template("shooter").unwrap()["buttons"]["a"], "key:SPACE");
         assert!(template("nope").is_none());
