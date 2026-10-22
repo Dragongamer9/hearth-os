@@ -13,6 +13,9 @@
 // Hearth decides what a press opens (its own screen when Hearth is in front, Quick Access over a game otherwise):
 // an open goes to Hearth as {type:'hhd', action:'open'}, and the page opens when Hearth answers overlay.shown;
 // overlay.hidden closes it. A close goes to Hearth as the page's own close ({type:'overlay', action:'close'}).
+// A press while Hearth isn't connected (HHD just restarted this app, or Hearth is restarting) isn't lost: it goes to
+// Hearth when it connects, if that's within PENDING_MS, marked late (Hearth ignores one it caused itself by asking
+// HHD to start this app).
 
 const OPEN = new Set(['qam', 'expanded']);
 const STATES = new Set(['closed', 'qam', 'expanded', 'notification']);
@@ -24,6 +27,7 @@ const GRAB_EVERY = 2000;
 // Xbox + B shortcut asks for it too).
 const TOGGLE_GUARD = 600;
 const OSD_MS = 1800;
+const PENDING_MS = 10000;
 
 const ev = (name, data) => ({ type: 'event', name, data });
 
@@ -48,6 +52,7 @@ class OverlayProtocol {
     this.grabTimer = null;
     this.osdTimer = null;
     this.peeking = false;
+    this.pending = null;   // {kind, at}: an open asked for while Hearth wasn't connected
   }
 
   get isOpen() { return OPEN.has(this.state); }
@@ -94,13 +99,23 @@ class OverlayProtocol {
 
   open(kind) {
     this.want = kind;
-    if (this.connected()) this.toHearth({ type: 'hhd', action: 'open', how: kind });
+    if (this.connected()) { this.pending = null; this.toHearth({ type: 'hhd', action: 'open', how: kind }); }
+    else this.pending = { kind, at: this.now() };
+  }
+  /** Hearth (re)connected: an open asked for meanwhile goes to it now (late). */
+  hearthConnected() {
+    const p = this.pending;
+    this.pending = null;
+    if (!p || this.now() - p.at > PENDING_MS || !this.connected()) return;
+    this.want = p.kind;
+    this.toHearth({ type: 'hhd', action: 'open', how: p.kind, late: true });
   }
   toggleClose() {
     if (this.now() - this.openedAt < TOGGLE_GUARD) return;
     this.close();
   }
   close() {
+    this.pending = null;
     // Without Hearth there's no one to answer overlay.hidden: close here.
     if (!this.connected()) return this.setState('closed');
     this.toHearth({ type: 'overlay', action: 'close' });
@@ -176,4 +191,4 @@ class OverlayProtocol {
   }
 }
 
-module.exports = { OverlayProtocol, padFor, ACTIONS, GRAB_EVERY, TOGGLE_GUARD };
+module.exports = { OverlayProtocol, padFor, ACTIONS, GRAB_EVERY, TOGGLE_GUARD, PENDING_MS };

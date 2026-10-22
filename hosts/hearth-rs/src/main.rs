@@ -218,6 +218,27 @@ async fn nimbus_msg(window: tauri::WebviewWindow, host: tauri::State<'_, Host>, 
 
 /// This process's window host, once it's made.
 pub(crate) static HOST: std::sync::OnceLock<Arc<dyn WindowHost>> = std::sync::OnceLock::new();
+/// The WebKit app (Tauri), whose built-in copy of Hearth's screens HHD's overlay app is given (overlay_hello).
+static UI_APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+/// What HHD's overlay app is told when it connects: this Hearth's version and where its screens come from, so Quick
+/// Access over games is the page this Hearth draws. WebKit: Hearth gives the files itself (ui_file_for); Chromium
+/// (the Electron window app draws): that app's folder.
+fn overlay_hello() -> serde_json::Value {
+    let mut h = serde_json::json!({"type": "overlay-host", "what": "hello", "version": env!("CARGO_PKG_VERSION")});
+    if UI_APP.get().is_some() { h["ui"] = serde_json::json!("hearth"); }
+    else {
+        let app = std::env::var("HEARTH_ELECTRON_APP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from(hearth_core::renderer::ELECTRON_APP));
+        if let Some(dir) = app.parent().map(|d| d.join("resources").join("ui")).filter(|d| d.join("index.html").is_file()) { h["uiDir"] = serde_json::json!(dir.to_string_lossy()); }
+    }
+    h
+}
+/// One file of the WebKit app's built-in screens, for HHD's overlay app.
+fn ui_file_for(path: &str) -> Option<(Vec<u8>, String)> {
+    let app = UI_APP.get()?;
+    let a = app.asset_resolver().get(path.to_string())?;
+    Some((a.bytes().to_vec(), a.mime_type().to_string()))
+}
 
 /// A message from a page: Hearth's window, the overlay window, or HHD's overlay app (as "overlay", through the overlay
 /// socket). Run off the window's thread (scanning the library can take a moment). Replies go back to whoever asked.
@@ -227,11 +248,16 @@ pub(crate) fn page_msg(host: &Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, l
     if let Some(gm) = GM.get() {
         if label == "overlay" && ty != "call" && ty != "log" {
             if gm.from_overlay(&msg) { return; }
+        } else if ty == "overlay" && msg["action"] == "open" {
+            // Hearth's starting screen asks for Quick Access: the overlay over it (gamemode.rs open_from_hearth).
+            gm.open_from_hearth();
+            return;
         } else if ty == "resume" {
             gm.resume_game();
             return;
         }
     }
+    if ty == "overlay" && msg["action"] == "open" { send_to(host, &label, Bridge::event("overlay.unavailable", serde_json::json!({}))); return; }
     if ty == "ready" { send_to(host, &label, Bridge::event("padHost", serde_json::json!({"connected": 0}))); return; }
     let (reply, quit) = {
         let mut b = match bridge.lock() { Ok(b) => b, Err(p) => p.into_inner() };
@@ -526,10 +552,18 @@ fn start_game_mode(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, window
     // can't be opened, Hearth's own overlay window instead.
     if gm.hhd() {
         let (h, b, g) = (host.clone(), bridge.clone(), gm.clone());
-        let on_msg: hearth_core::overlay_link::OnMessage = Arc::new(move |m: serde_json::Value| { let (h, b) = (h.clone(), b.clone()); std::thread::spawn(move || page_msg(&h, b, "overlay".to_string(), m)); });
+        let on_msg: hearth_core::overlay_link::OnMessage = Arc::new(move |m: serde_json::Value| {
+            // A file of Hearth's screens for the page (never through the bridge).
+            if m["type"] == "ui-file" { std::thread::spawn(move || hearth_core::overlay_link::send(&hearth_core::overlay_link::ui_file(&m, &ui_file_for))); return; }
+            let (h, b) = (h.clone(), b.clone()); std::thread::spawn(move || page_msg(&h, b, "overlay".to_string(), m));
+        });
+        hearth_core::overlay_link::set_hello(&overlay_hello());
         let on_connect: hearth_core::overlay_link::OnConnect = Arc::new(move || { let g = g.clone(); std::thread::spawn(move || g.overlay_app_connected()); });
         match hearth_core::overlay_link::start(on_msg, on_connect) {
-            Ok(p) => hearth_core::bridge::log(&format!("overlay: Handheld Daemon shows Quick Access over games; its overlay app talks to Hearth at {}", p.display())),
+            Ok(p) => {
+                hearth_core::bridge::log(&format!("overlay: Handheld Daemon shows Quick Access over games; its overlay app talks to Hearth at {}", p.display()));
+                gm.start_overlay_keeper();
+            }
             Err(e) => {
                 hearth_core::bridge::log(&format!("overlay: couldn't open the overlay socket ({e}); using Hearth's own overlay window"));
                 gm.hhd_overlay.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -707,6 +741,7 @@ fn main() {
             // As the session there's nothing behind Hearth, so Alt+F4 must not close it by accident. (A windowed Hearth
             // in Desktop Mode is also in the session, and closes like any window.)
             main.on_window_event(move |e| if let tauri::WindowEvent::CloseRequested { api, .. } = e { if in_session() && !windowed { api.prevent_close(); } });
+            let _ = UI_APP.set(app.handle().clone());
             start_core(Arc::new(TauriHost { app: app.handle().clone() }), bridge, windowed);
             Ok(())
         })
