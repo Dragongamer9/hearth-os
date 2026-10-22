@@ -148,30 +148,31 @@ EXPERIMENT = r"""
     const e = new window.KeyboardEvent("", { key, code, keyCode });
     tip.keydown(e); tip.keyup(e);
   };
-  // 1: a new keyset with a reserved key and a command element
-  const cs = document.createXULElement("commandset"); const cmd = document.createXULElement("command"); cmd.id = "t-cmd1";
-  cmd.addEventListener("command", () => out.newKeyset = true); cs.appendChild(cmd); document.documentElement.appendChild(cs);
-  const ks = document.createXULElement("keyset"); const k = document.createXULElement("key");
-  k.setAttribute("keycode", "VK_F13"); k.setAttribute("command", "t-cmd1"); k.setAttribute("reserved", "true"); ks.appendChild(k);
+  const cs = document.createXULElement("commandset"); document.documentElement.appendChild(cs);
+  const ks = document.createXULElement("keyset");
+  const mk = (id, attrs) => { const c = document.createXULElement("command"); c.id = "x-" + id; c.addEventListener("command", () => out[id] = (out[id] || 0) + 1); cs.appendChild(c);
+    const k = document.createXULElement("key"); for (const [a, v] of Object.entries(attrs)) k.setAttribute(a, v); k.setAttribute("command", "x-" + id); k.setAttribute("reserved", "true"); ks.appendChild(k); };
+  mk("f13", { keycode: "VK_F13" });
+  mk("down", { keycode: "VK_DOWN" });
+  mk("pagedown", { keycode: "VK_PAGE_DOWN" });
+  mk("ctrlDown", { keycode: "VK_DOWN", modifiers: "accel" });
+  mk("key_q", { key: "q" });
   document.documentElement.appendChild(ks);
-  send("F13", "F13", 124);
-  // 2: a key added to mainKeyset, then mainKeyset put back in (the usual trick)
-  const mk = document.getElementById("mainKeyset");
-  const k2 = document.createXULElement("key"); k2.setAttribute("keycode", "VK_F14"); k2.setAttribute("reserved", "true"); k2.setAttribute("oncommand", "void 0");
-  k2.addEventListener("command", () => out.mainKeyset = true); mk.appendChild(k2); mk.parentNode.insertBefore(mk, mk.nextSibling);
-  send("F14", "F14", 125);
-  // 3: listeners on the window: default group, system group (capture)
-  window.addEventListener("keydown", e => { if (e.key === "F15") out.capture = (out.capture || 0) + 1; }, true);
-  window.addEventListener("keydown", e => { if (e.key === "F15") out.systemCapture = (out.systemCapture || 0) + 1; }, { capture: true, mozSystemGroup: true });
-  send("F15", "F15", 126);
-  // 4: a key with disabled removed later
-  const cmd3 = document.createXULElement("command"); cmd3.id = "t-cmd3"; cmd3.addEventListener("command", () => out.wasDisabled = true); cs.appendChild(cmd3);
-  const ks3 = document.createXULElement("keyset"); const k3 = document.createXULElement("key");
-  k3.setAttribute("keycode", "VK_F16"); k3.setAttribute("command", "t-cmd3"); k3.setAttribute("reserved", "true"); k3.setAttribute("disabled", "true"); ks3.appendChild(k3);
-  document.documentElement.appendChild(ks3);
-  k3.removeAttribute("disabled");
-  send("F16", "F16", 127);
+  send("F13", "F13", 124); send("ArrowDown", "ArrowDown", 40); send("PageDown", "PageDown", 34);
+  { const tip = Components.classes["@mozilla.org/text-input-processor;1"].createInstance(Components.interfaces.nsITextInputProcessor); tip.beginInputTransaction(window, () => true);
+    const c = new window.KeyboardEvent("", { key: "Control", code: "ControlLeft", keyCode: 17 }); tip.keydown(c); const d = new window.KeyboardEvent("", { key: "ArrowDown", code: "ArrowDown", keyCode: 40 }); tip.keydown(d); tip.keyup(d); tip.keyup(c); }
+  send("q", "KeyQ", 81);
+  ks.remove();
+  // A system-group capture listener that stops "z": does the page still get it?
+  const seen = [];
+  const stop = e => { if (e.key === "z") { seen.push([e.type, e.eventPhase, e.defaultPrevented]); e.preventDefault(); e.stopPropagation(); } };
+  window.addEventListener("keydown", stop, { capture: true, mozSystemGroup: true });
+  window.addEventListener("keypress", stop, { capture: true, mozSystemGroup: true });
+  send("z", "KeyZ", 90);
   await new Promise(r => setTimeout(r, 500));
+  window.removeEventListener("keydown", stop, { capture: true, mozSystemGroup: true });
+  window.removeEventListener("keypress", stop, { capture: true, mozSystemGroup: true });
+  out.stopZ = seen;
   return out;
 """
 
@@ -246,6 +247,9 @@ def run_mode(ff, out, mode, extras, port):
         m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); return true;')
         exp = m.js(EXPERIMENT)
         report['key-experiment'] = exp
+        m.context('content')
+        exp['page'] = m.js('const i = document.getElementById("i"); const v = i.value; i.value = ""; return v;')
+        m.context('chrome')
         print('::notice title=keys experiment %s::%s' % (mode, json.dumps(exp)), flush=True)
         m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); '
              'const { HearthBrowser } = ChromeUtils.importESModule("resource://hearth/hearth.sys.mjs"); '
