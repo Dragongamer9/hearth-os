@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
-const { OverlayProtocol, padFor, GRAB_EVERY } = require('../src/overlay/protocol');
+const { OverlayProtocol, padFor, GRAB_EVERY, PENDING_MS } = require('../src/overlay/protocol');
 const { HearthLink, socketPath, splitLines } = require('../src/overlay/link');
 const { artFile } = require('../src/overlay/art');
 
@@ -142,6 +142,25 @@ test('without Hearth: no open, and anything open closes here', () => {
   r.connected = true; r.shown(); r.clear();
   r.p.disconnected();   // Hearth went away while open
   assert.deepStrictEqual(r.out, ['stat:closed', 'grab:disable']);
+});
+
+test('a press while Hearth is away goes to it, late, when it connects (not if it was long ago, or closed again)', () => {
+  const r = rig({ connected: false });
+  r.p.line('cmd:open_qam');
+  assert.deepStrictEqual(r.hearth, []);
+  r.connected = true; r.p.hearthConnected();
+  assert.deepStrictEqual(r.hearth, [{ ...OPEN, late: true }]);
+  r.p.hearthConnected();   // only once
+  assert.strictEqual(r.hearth.length, 1);
+  r.clear(); r.connected = false;
+  r.p.line('cmd:open_expanded');
+  r.advance(PENDING_MS + 1);
+  r.connected = true; r.p.hearthConnected();
+  assert.deepStrictEqual(r.hearth, []);   // too long ago
+  r.connected = false;
+  r.p.line('cmd:open_qam'); r.p.line('cmd:close');
+  r.connected = true; r.p.hearthConnected();
+  assert.deepStrictEqual(r.hearth, []);   // closed again meanwhile
 });
 
 test('the volume bar shows over the game without taking the controller, then hides', () => {
