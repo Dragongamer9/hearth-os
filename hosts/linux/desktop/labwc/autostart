@@ -37,6 +37,15 @@ RUN="${XDG_RUNTIME_DIR:-/tmp}"
 SHELL_LOG="$RUN/nimbus-shell.log"
 give_up() {
   { echo "$1"; echo; tail -n 12 "$SHELL_LOG" 2>/dev/null; } >"$RUN/nimbus-desktop-failed"
+  # Game Mode couldn't start a moment ago (the session fell back to here): asking for it again would only come
+  # straight back to Desktop Mode and fail again, restarting it about once a minute. Stay, and say why (the
+  # desktop's right-click menu still switches modes and logs out).
+  if [ -n "$(find "$RUN/nimbus-game-unavailable" -mmin -10 2>/dev/null)" ]; then
+    msg="$1 Game Mode can't start either (gamescope or the Hearth app is missing), so you're staying in Desktop Mode. Right-click the desktop for a menu."
+    ( notify-send -u critical "Hearth" "$msg" 2>/dev/null || zenity --error --title=Hearth --text="$msg" 2>/dev/null \
+      || kdialog --title Hearth --error "$msg" 2>/dev/null ) >/dev/null 2>&1 &
+    return 0
+  fi
   nimbus-mode game
 }
 if [ ! -f "$SHARE/desktop/shell/shell.qml" ]; then
