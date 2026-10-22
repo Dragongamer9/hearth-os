@@ -16,6 +16,10 @@ on:
         description: Download the pinned xterm.js files and font into ui/vendor and commit them
         type: boolean
         default: false
+      shots:
+        description: Put small copies of the Linux screenshots on the run as notices
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -110,12 +114,28 @@ jobs:
           xwininfo -root -tree | grep -i terminal | head -3 | sed 's/^/::notice title=Window::/' || true
           pkill -f 'target/release/hearth-terminal' || true
           echo "::notice title=App output::$(tail -c 1200 run.log | tr '\n' '|')"
-      # Small copies of the screenshots right in the log too (for looking at them without the artifact).
-      - name: Screenshots in the log
-        if: always()
+      # Started by hand with "shots": small copies of a few screenshots as notices on the run (base64 JPEG in pieces),
+      # for looking at them where the artifact can't be downloaded.
+      - name: Screenshot typed as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
         run: |
-          for f in shots/*.png; do [ -f "$f" ] || continue
-            echo "SHOT $(basename "$f" .png) $(convert "$f" -resize 960x -quality 65 jpg:- | base64 -w0)"; done
+          f=shots/typed.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 720x -quality 50 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT typed $i::$part"; done
+      - name: Screenshot split as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/split.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 720x -quality 50 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT split $i::$part"; done
+      - name: Screenshot menu as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/menu.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 720x -quality 50 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT menu $i::$part"; done
+      - name: Screenshot settings as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/settings.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 720x -quality 50 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT settings $i::$part"; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
