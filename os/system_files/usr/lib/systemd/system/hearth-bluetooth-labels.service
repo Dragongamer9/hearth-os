@@ -1,0 +1,17 @@
+# Bluetooth's pairings (/var/lib/bluetooth) with the right SELinux labels before bluetoothd starts. A system moved from
+# an edition without SELinux, or files copied in by hand, leave them unlabelled: bluetoothd then can't read a paired
+# controller's keys ("Unable to load key file ... Permission denied") and it won't connect. The folder is small.
+[Unit]
+Description=Hearth: Bluetooth pairings readable (SELinux labels)
+ConditionSecurity=selinux
+ConditionPathIsDirectory=/var/lib/bluetooth
+DefaultDependencies=no
+After=local-fs.target hearth-clean-install.service
+Before=bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/sbin/restorecon -RF /var/lib/bluetooth
+
+[Install]
+WantedBy=bluetooth.service
