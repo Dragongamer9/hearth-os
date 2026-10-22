@@ -260,7 +260,7 @@ PanelWindow {
                             let k = "", n = "";
                             for (const line of text.split("\n")) {
                                 const f = line.split(":");
-                                if (f[1] === "connected" && (f[0] === "wifi" || f[0] === "ethernet") && !k) { k = f[0]; n = f.slice(2).join(":"); }
+                                if (f[1] === "connected" && (f[0] === "wifi" || f[0] === "ethernet") && !k) { k = f[0]; n = f.slice(2).join(":").replace(/\\(.)/g, "$1"); }   // nmcli -t puts a backslash before ":" in names
                             }
                             net.kind = k; net.name = n;
                         }
