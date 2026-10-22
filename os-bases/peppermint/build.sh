@@ -223,6 +223,9 @@ fi
 test -x /usr/lib/nimbus/nimbus
 if [ -f /usr/lib/nimbus/chrome-sandbox ]; then chown root:root /usr/lib/nimbus/chrome-sandbox && chmod 4755 /usr/lib/nimbus/chrome-sandbox; fi
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
+# ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
+if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
+# ---- end hearthfetch
 # CI builds the app in a debian:trixie container, so every library it links must be here under the same name.
 if ldd /usr/lib/nimbus/nimbus | grep "not found"; then
   echo "The Hearth app needs libraries this image doesn't have (above)"; exit 1

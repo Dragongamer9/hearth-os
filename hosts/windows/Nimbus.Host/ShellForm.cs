@@ -113,6 +113,9 @@ public sealed class ShellForm : Form
         Mantel = new Nimbus.Host.Mantel.MantelHost(_system, env, $"https://{VirtualHost}/", c =>
         {
             c.SetVirtualHostNameToFolderMapping(VirtualHost, www, CoreWebView2HostResourceAccessKind.Allow);
+            // Game covers for the launcher's Games section, served like Hearth's (https://nimbus-art.local/{id}/{kind}).
+            c.AddWebResourceRequestedFilter($"https://{Library.LibraryService.ArtHost}/*", CoreWebView2WebResourceContext.Image);
+            c.WebResourceRequested += (_, e) => ServeArt(env, e);
         });
         Nimbus.Host.Mantel.MantelHost.Wallpaper = Games0().MantelWallpaper;
         Nimbus.Host.Mantel.MantelHost.NightLightOn = Games0().MantelNightLight;
