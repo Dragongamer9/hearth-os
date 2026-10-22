@@ -730,6 +730,16 @@ class Pad:
         self.ax = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0, 'lt': 0.0, 'rt': 0.0}
         self.dig = {'lt': False, 'rt': False}
         self.info = dict(dev.capabilities(absinfo=True).get(e.EV_ABS, []))
+        # Most drivers (xpad, hid-playstation, Handheld Daemon) put the right stick on RX/RY and the triggers on
+        # Z/RZ. hid-generic (an Xbox controller over Bluetooth without xpadneo, 8BitDo and other pads in
+        # DirectInput mode) has no RX/RY: the right stick is on Z/RZ and the triggers, if any, on BRAKE/GAS. Read as
+        # triggers, that stick held a click down from its first move (its centre is half way).
+        if e.ABS_RX not in self.info and e.ABS_RY not in self.info and e.ABS_Z in self.info and e.ABS_RZ in self.info:
+            self.sticks = {e.ABS_X: 'lx', e.ABS_Y: 'ly', e.ABS_Z: 'rx', e.ABS_RZ: 'ry'}
+            self.triggers = {e.ABS_BRAKE: 'lt', e.ABS_GAS: 'rt'}
+        else:
+            self.sticks = {e.ABS_X: 'lx', e.ABS_Y: 'ly', e.ABS_RX: 'rx', e.ABS_RY: 'ry'}
+            self.triggers = {e.ABS_Z: 'lt', e.ABS_BRAKE: 'lt', e.ABS_RZ: 'rt', e.ABS_GAS: 'rt'}
         self.grabbed = False
         self.busy = False
 
@@ -752,13 +762,10 @@ class Pad:
                 self.btn[name] = ev.value != 0
         elif ev.type == e.EV_ABS:
             c = ev.code
-            sticks = {e.ABS_X: 'lx', e.ABS_Y: 'ly', e.ABS_RX: 'rx', e.ABS_RY: 'ry'}
-            if c in sticks:
-                self.ax[sticks[c]] = self.norm(c, ev.value)
-            elif c in (e.ABS_Z, e.ABS_BRAKE):
-                self.ax['lt'] = self.norm(c, ev.value, centered=False)
-            elif c in (e.ABS_RZ, e.ABS_GAS):
-                self.ax['rt'] = self.norm(c, ev.value, centered=False)
+            if c in self.sticks:
+                self.ax[self.sticks[c]] = self.norm(c, ev.value)
+            elif c in self.triggers:
+                self.ax[self.triggers[c]] = self.norm(c, ev.value, centered=False)
             elif c == e.ABS_HAT0X:
                 self.btn['left'], self.btn['right'] = ev.value < 0, ev.value > 0
             elif c == e.ABS_HAT0Y:
