@@ -59,6 +59,11 @@ fn sh(cmd: &str) -> String {
 pub fn redact(text: &str, user: &str, home: &str) -> String {
     let mut t = text.to_string();
     if home.len() > 1 { t = t.replace(home, "~"); }
+    // The same home folder by its other name (/home/me and /var/home/me are one folder on the image-based
+    // editions): for short user names the word rule below doesn't apply, and the name was left in the paths.
+    if !user.is_empty() {
+        if let Ok(r) = regex::Regex::new(&format!(r"(?:/var)?/home/{}\b", regex::escape(user))) { t = r.replace_all(&t, "~").to_string(); }
+    }
     let rules: [(&str, &str); 6] = [
         (r#"(?i)("?(?:access_token|refresh_token|id_token|token|password|passwd|psk|secret|cookie|authorization|session_?id|code)"?\s*[:=]\s*"?)[^\s",&}]{4,}"#, "$1[removed]"),
         (r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}", "$1[removed]"),
@@ -262,6 +267,8 @@ mod tests {
         assert!(!t.contains("abcdef123456") && !t.contains("gmail") && !t.contains("76561198012345678") && !t.contains("abcdefghijkl") && !t.contains("CasaWifi"), "{t}");
         assert!(t.contains("[user] logged in"), "{t}");
         assert_eq!(tail("a\nb\nc", 2), "[… 1 older lines left out …]\nb\nc");
+        let t = redact("steam at /home/jo/.steam and /var/home/jo/Games, not /home/joan", "jo", "/var/home/jo");
+        assert_eq!(t, "steam at ~/.steam and ~/Games, not /home/joan");
     }
     #[test]
     fn crash_dumps_shortened() {

@@ -82,6 +82,9 @@ impl Profiles {
     pub fn remove(&mut self, id: &str) -> Result<(), String> {
         if id == self.active() { return Err("Switch to another profile before removing this one".into()); }
         if self.list().len() <= 1 { return Err("There has to be one profile".into()); }
+        // Only a profile in the list: its folder is profiles/<id>, and an id like "." or "../x" named another folder
+        // (every other profile's files, or worse) to delete.
+        if self.find(id).is_none() { return Err("No such profile".into()); }
         self.data["list"].as_array_mut().unwrap().retain(|p| p["id"] != id);
         let _ = std::fs::remove_dir_all(self.stash(id));
         self.save()
@@ -296,6 +299,19 @@ mod tests {
         assert_eq!(keep_steam_account(&list, "main", Some("Kim")), None, "kim is the kid's");
         assert_eq!(keep_steam_account(&list, "kid", Some("sam")), None, "the kid already has one");
         assert_eq!(keep_steam_account(&list, "main", None), None);
+    }
+    #[test]
+    fn removes_only_profiles_in_the_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut ps = Profiles::open(dir.path());
+        let kid = ps.create("Kim", None).unwrap();
+        let kid_dir = dir.path().join("profiles").join(kid["id"].as_str().unwrap());
+        assert!(kid_dir.join("library.json").exists());
+        assert!(ps.remove(".").is_err());
+        assert!(ps.remove("../profiles").is_err());
+        assert!(kid_dir.join("library.json").exists(), "another profile's files were deleted");
+        ps.remove(kid["id"].as_str().unwrap()).unwrap();
+        assert!(!kid_dir.exists());
     }
     #[test]
     fn parental_controls() {
