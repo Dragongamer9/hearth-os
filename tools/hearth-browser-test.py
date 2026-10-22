@@ -140,6 +140,41 @@ CHROME_KEY = r'''
   return { key, open: kb.isOpen, r: kb.r, c: kb.c, heard: kb.heard.slice(-4), focus: String(document.activeElement && document.activeElement.localName) };
 '''
 
+EXPERIMENT = r"""
+  const out = {};
+  const send = (key, code, keyCode) => {
+    const tip = Components.classes["@mozilla.org/text-input-processor;1"].createInstance(Components.interfaces.nsITextInputProcessor);
+    tip.beginInputTransaction(window, () => true);
+    const e = new window.KeyboardEvent("", { key, code, keyCode });
+    tip.keydown(e); tip.keyup(e);
+  };
+  // 1: a new keyset with a reserved key and a command element
+  const cs = document.createXULElement("commandset"); const cmd = document.createXULElement("command"); cmd.id = "t-cmd1";
+  cmd.addEventListener("command", () => out.newKeyset = true); cs.appendChild(cmd); document.documentElement.appendChild(cs);
+  const ks = document.createXULElement("keyset"); const k = document.createXULElement("key");
+  k.setAttribute("keycode", "VK_F8"); k.setAttribute("command", "t-cmd1"); k.setAttribute("reserved", "true"); ks.appendChild(k);
+  document.documentElement.appendChild(ks);
+  send("F8", "F8", 119);
+  // 2: a key added to mainKeyset, then mainKeyset put back in (the usual trick)
+  const mk = document.getElementById("mainKeyset");
+  const k2 = document.createXULElement("key"); k2.setAttribute("keycode", "VK_F7"); k2.setAttribute("reserved", "true"); k2.setAttribute("oncommand", "void 0");
+  k2.addEventListener("command", () => out.mainKeyset = true); mk.appendChild(k2); mk.parentNode.insertBefore(mk, mk.nextSibling);
+  send("F7", "F7", 118);
+  // 3: listeners on the window: default group, system group (capture)
+  window.addEventListener("keydown", e => { if (e.key === "F6") out.capture = (out.capture || 0) + 1; }, true);
+  window.addEventListener("keydown", e => { if (e.key === "F6") out.systemCapture = (out.systemCapture || 0) + 1; }, { capture: true, mozSystemGroup: true });
+  send("F6", "F6", 117);
+  // 4: a key with disabled removed later
+  const cmd3 = document.createXULElement("command"); cmd3.id = "t-cmd3"; cmd3.addEventListener("command", () => out.wasDisabled = true); cs.appendChild(cmd3);
+  const ks3 = document.createXULElement("keyset"); const k3 = document.createXULElement("key");
+  k3.setAttribute("keycode", "VK_F9"); k3.setAttribute("command", "t-cmd3"); k3.setAttribute("reserved", "true"); k3.setAttribute("disabled", "true"); ks3.appendChild(k3);
+  document.documentElement.appendChild(ks3);
+  k3.removeAttribute("disabled");
+  send("F9", "F9", 120);
+  await new Promise(r => setTimeout(r, 500));
+  return out;
+"""
+
 PAGE = 'data:text/html;charset=utf-8,' + ('<title>Typing</title><body style="background:%23222;color:%23eee;font:24px sans-serif">'
                                           '<p>Typed with Hearth Browser\'s keyboard:</p><input id="i" style="font-size:28px;width:80%25"></body>')
 
@@ -208,6 +243,10 @@ def run_mode(ff, out, mode, extras, port):
         m.cmd('WebDriver:Navigate', {'url': PAGE})
         m.js('document.getElementById("i").focus(); return true;')
         m.context('chrome')
+        m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); return true;')
+        exp = m.js(EXPERIMENT)
+        report['key-experiment'] = exp
+        print('::notice title=keys experiment %s::%s' % (mode, json.dumps(exp)), flush=True)
         m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); '
              'const { HearthBrowser } = ChromeUtils.importESModule("resource://hearth/hearth.sys.mjs"); '
              'const kb = HearthBrowser.keyboardOf(window); kb.layout = "abc"; kb.r = 1; kb.c = 0; kb.open(); kb.render(); return kb.isOpen;')
