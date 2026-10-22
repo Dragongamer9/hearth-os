@@ -8,6 +8,8 @@ public sealed class RadioService
     private bool _accessChecked;
     private bool _allowed;
     private readonly HashSet<string> _hooked = new();
+    // The radios whose StateChanged is listened to, kept: once a radio object is collected, its event stops coming.
+    private readonly List<Radio> _watched = new();
 
     /// <summary>Raised (on a background thread) when any radio changes state.</summary>
     public event Action? Changed;
@@ -26,7 +28,10 @@ public sealed class RadioService
         foreach (var r in radios)
         {
             if (_hooked.Add($"{r.Kind}:{r.Name}"))
+            {
                 r.StateChanged += (_, _) => Changed?.Invoke();
+                _watched.Add(r);
+            }
         }
         return radios;
     }
