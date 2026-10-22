@@ -28,9 +28,9 @@
   </div>
 </nav>
 <div class="wrap layout">
-  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html" class="cur" aria-current="page">Using Hearth</a><div class="sub"><a href="#modes">Game Mode and Desktop Mode</a><a href="#controller">Controller</a><a href="#keyboard">The on-screen keyboard</a><a href="#power">The power button</a><a href="#display">Display and performance</a><a href="#profiles">Profiles and stores</a><a href="#logs">Sending logs</a></div><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
+  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html" class="cur" aria-current="page">Using Hearth</a><div class="sub"><a href="#modes">Game Mode and Desktop Mode</a><a href="#controller">Controller</a><a href="#keyboard">The on-screen keyboard</a><a href="#power">The power button</a><a href="#display">Display and performance</a><a href="#profiles">Profiles and stores</a><a href="#apps">Hearth's own apps</a><a href="#logs">Sending logs</a></div><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
   <main id="main">
-    <div class="crumb"><span>Docs · for Hearth OS 0.3.1</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="ubuntu">Ubuntu (Ubuntu)</option><option value="cachyos">CachyOS (Arch)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
+    <div class="crumb"><span>Docs · for Hearth OS 0.4.0</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="ubuntu">Ubuntu (Ubuntu)</option><option value="cachyos">CachyOS (Arch)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
     <h1>Using Hearth</h1>
     <p class="lead">Game Mode, the desktop, the controller and keyboard, the power button, and sending logs.</p>
 
@@ -84,6 +84,16 @@ Holding the button for several seconds always turns the device off.</p>
 <li>Each Hearth profile can sign in to its own Steam account. With more than one profile, each sees its own Steam games.</li>
 <li>Stores are signed in to from <b>Settings › Game stores</b>. Beacon (the Battle for Middle-earth launcher) is built in.</li>
 </ul>
+
+</section><section><h2 id="apps">Hearth's own apps</h2>
+<p>On Hearth OS and on Windows (Ember), from Desktop Mode's app menu or the Start menu:</p>
+<ul>
+<li><b>Hearth Browser</b>: real Firefox with Hearth's look. Google sign-in, streaming video and uBlock Origin work. In Game Mode it opens full screen with bigger buttons and an on-screen keyboard (it opens by itself when you pick the address bar; or the Keyboard button, or Ctrl+Alt+K).</li>
+<li><b>Terminal</b>: tabs, split view (Ctrl+Shift+D), find (Ctrl+Shift+F), themes, and a quick-keys bar and on-screen keyboard for controllers. Your shell on Linux; PowerShell, Command Prompt or WSL on Windows.</li>
+<li><b>Disks</b>: your drives and their health, formatting USB drives and SD cards, partitions, and <b>Use for games</b> (a drive or SD card as a Steam library in one step). It won't touch the drive the system runs from.</li>
+<li><b>hearthfetch</b>: type it in the Terminal for a summary of your system.</li>
+</ul>
+<p>Desktop Mode's app drawer has a <b>Games</b> tab with your installed games; on Windows it also has a <b>Windows</b> tab with the built-in programs.</p>
 
 </section><section><h2 id="logs">Sending logs</h2>
 <p>When something goes wrong, <b>Settings › System › Send logs to the developer</b>. You get a short code (like
