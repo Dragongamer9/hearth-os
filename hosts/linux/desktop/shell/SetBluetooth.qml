@@ -54,6 +54,8 @@ SetPage {
         stdout: StdioCollector { id: actOut }
         onExited: code => { page.busy = ""; page.message = code === 0 ? action.okText : (actOut.text.trim().split("\n").pop() || "That didn't work"); page.refresh(); }
     }
+    // Every bluetoothctl action has a --timeout: without one, "pair" waits for ever when the device never answers
+    // (or asks for a code nobody can type here), and the row stays on "Pairing…" until Settings is closed.
     function run(cmd, okText) { action.okText = okText; action.command = ["sh", "-c", cmd]; action.running = true; }
 
     SetSwitch {
@@ -72,7 +74,7 @@ SetPage {
             title: modelData.name
             sub: page.busy === modelData.mac ? "Working…" : modelData.connected ? "Connected · select to disconnect" : "Not connected · select to connect"
             value: modelData.connected ? "Connected" : ""
-            onActivated: { page.busy = modelData.mac; page.run("bluetoothctl " + (modelData.connected ? "disconnect " : "connect ") + modelData.mac, modelData.name + (modelData.connected ? " disconnected" : " connected")); }
+            onActivated: { page.busy = modelData.mac; page.run("bluetoothctl --timeout 20 " + (modelData.connected ? "disconnect " : "connect ") + modelData.mac, modelData.name + (modelData.connected ? " disconnected" : " connected")); }
         }
     }
     Text { visible: page.on && !page.paired.length; text: "No devices yet. Put a controller or headphones in pairing mode, then look for devices."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true }
@@ -88,7 +90,7 @@ SetPage {
         delegate: SetRow {
             required property var modelData
             icon: "dot"; title: modelData.name; sub: page.busy === modelData.mac ? "Pairing…" : "Select to pair"
-            onActivated: { page.busy = modelData.mac; page.run(`bluetoothctl pair ${modelData.mac} && bluetoothctl trust ${modelData.mac} && bluetoothctl connect ${modelData.mac}`, modelData.name + " is paired"); }
+            onActivated: { page.busy = modelData.mac; page.run(`bluetoothctl --timeout 40 pair ${modelData.mac} && bluetoothctl --timeout 10 trust ${modelData.mac} && bluetoothctl --timeout 20 connect ${modelData.mac}`, modelData.name + " is paired"); }
         }
     }
     SetHeader { text: "Manage"; visible: page.on && page.paired.length > 0 }

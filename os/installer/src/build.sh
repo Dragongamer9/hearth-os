@@ -171,11 +171,13 @@ WantedBy=graphical.target
 UNIT
 systemctl enable hearth-installer.service
 # A minute after start, what the installer screen is doing goes to the serial port (for the CI boot test;
-# real PCs have nothing listening there).
+# real PCs have nothing listening there, so it only runs in a virtual machine: on a PC the write failed and the unit
+# showed up as failed in every log).
 cat >/etc/systemd/system/hearth-installer-report.service <<'UNIT'
 [Unit]
 Description=Hearth installer: report for the boot test
 After=hearth-installer.service
+ConditionVirtualization=vm
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/bash -c 'sleep 60; { echo "=== hearth report"; ls -l /dev/dri; cat /proc/fb; lsmod | grep -E "^(drm|bochs|virtio_gpu|simpledrm|amdgpu|i915|nouveau)" ; journalctl -b -u hearth-installer --no-pager | tail -40; tail -40 /home/liveuser/hearth-installer.log; echo "=== end"; } >/dev/ttyS0 2>&1'

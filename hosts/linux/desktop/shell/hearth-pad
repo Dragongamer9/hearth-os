@@ -583,11 +583,20 @@ def gamepads(evdev, known):
             d = evdev.InputDevice(path)
         except OSError:
             continue
-        caps = d.capabilities()
-        if d.name.startswith('Hearth ') or e.BTN_SOUTH not in caps.get(e.EV_KEY, []) or e.EV_ABS not in caps:
-            d.close()
+        try:
+            # A device unplugged between opening and asking (a controller switching off) answers ENODEV: skip it
+            # instead of the whole helper stopping (no more controller on the desktop).
+            caps = d.capabilities()
+            if d.name.startswith('Hearth ') or e.BTN_SOUTH not in caps.get(e.EV_KEY, []) or e.EV_ABS not in caps:
+                d.close()
+                continue
+            found[path] = Controller(d, e)
+        except OSError:
+            try:
+                d.close()
+            except OSError:
+                pass
             continue
-        found[path] = Controller(d, e)
         # Is another program holding it for itself (EVIOCGRAB: Steam does with some controllers)? Then nothing it
         # sends reaches us. Asked by trying a grab and letting go at once.
         try:
@@ -713,6 +722,10 @@ def main():
                 pass
             except OSError:          # unplugged
                 pads.pop(path, None)
+                try:
+                    c.dev.close()
+                except OSError:
+                    pass
         now = time.monotonic()
         state = set()
         for c in pads.values():

@@ -1,4 +1,4 @@
-# Accounts in the groups Hearth's settings need (screen brightness on Debian and Ubuntu); see hearth-groups.
+# Accounts in the groups Hearth needs (screen brightness on Debian and Ubuntu, the system log); see hearth-groups.
 [Unit]
 Description=Hearth: account groups (screen brightness)
 Before=display-manager.service systemd-user-sessions.service
