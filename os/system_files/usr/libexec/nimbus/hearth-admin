@@ -425,30 +425,57 @@ def flatpak_update(stage, lo, hi):
     stage.emit(force=True, phase='apps', pct=100.0, n=total, total=total, desc='Apps updated')
 
 
+PODMAN_DIR = '/run/hearth-podman'
+
+
+def podman_unpacked():
+    """podman without changing the system: its packages unpacked into /run (gone at the next restart) and put on
+    PATH for bootc. For Debian and Ubuntu, where /usr can't be made writable for apt."""
+    root = os.path.join(PODMAN_DIR, 'root')
+    if not os.path.exists(os.path.join(root, 'usr/bin/podman')):
+        os.makedirs(PODMAN_DIR, mode=0o755, exist_ok=True)
+        subprocess.run(['apt-get', 'update'], capture_output=True, text=True, timeout=600)
+        r = subprocess.run(['apt-get', 'download', 'podman', 'libsubid5', 'conmon', 'crun', 'netavark'],
+                           cwd=PODMAN_DIR, capture_output=True, text=True, timeout=900)
+        if r.returncode != 0:
+            print('log: apt-get download: ' + (r.stderr or r.stdout).strip()[-200:], flush=True)
+            return False
+        for deb in glob.glob(os.path.join(PODMAN_DIR, '*.deb')):
+            subprocess.run(['dpkg', '-x', deb, root], capture_output=True, timeout=300)
+    if not os.path.exists(os.path.join(root, 'usr/bin/podman')):
+        return False
+    os.environ['PATH'] = os.path.join(root, 'usr/bin') + ':' + os.environ.get('PATH', '/usr/bin:/usr/sbin')
+    libs = [d for d in glob.glob(os.path.join(root, 'usr/lib/*-linux-gnu')) if os.path.isdir(d)]
+    if libs:
+        os.environ['LD_LIBRARY_PATH'] = ':'.join(libs + [x for x in [os.environ.get('LD_LIBRARY_PATH')] if x])
+    return True
+
+
 def ensure_podman():
     """bootc keeps images in podman's storage, so bootc upgrade and bootc switch need podman ("podman executable
     not found in PATH"). Peppermint, Ubuntu and CachyOS images up to 0.3.0 shipped without it: until the update
-    that brings it, it's added for now on a writable /usr (bootc usr-overlay; gone at the next restart, by which
-    time the new system is ready)."""
+    that brings it, it's added just for this run: on a writable /usr (bootc usr-overlay) through apt or pacman,
+    or else (Debian and Ubuntu, where apt can't write its database) unpacked into /run. Either is gone at the next
+    restart, by which time the new system is ready."""
     if shutil.which('podman') or not os.path.exists('/run/ostree-booted'):
         return
-    if shutil.which('apt-get'):
-        steps = [['apt-get', 'update'], ['apt-get', 'install', '-y', '--no-install-recommends', 'podman']]
-    elif shutil.which('pacman'):
-        steps = [['pacman', '-Sy', '--noconfirm', '--needed', 'podman']]
-    else:
-        return
     print('log: Adding podman for now (bootc needs it; the next version has it built in)', flush=True)
+    env = {**os.environ, 'DEBIAN_FRONTEND': 'noninteractive'}
     try:
-        r = subprocess.run(['bootc', 'usr-overlay'], capture_output=True, text=True, timeout=120)
-        if r.returncode != 0 and 'already' not in (r.stderr + r.stdout).lower():
-            print('log: bootc usr-overlay: ' + (r.stderr or r.stdout).strip()[-200:], flush=True)
-            return
-        for cmd in steps:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=900, env={**os.environ, 'DEBIAN_FRONTEND': 'noninteractive'})
-            if r.returncode != 0:
-                print('log: ' + ' '.join(cmd[:2]) + ': ' + (r.stderr or r.stdout).strip()[-200:], flush=True)
+        subprocess.run(['bootc', 'usr-overlay'], capture_output=True, text=True, timeout=120)
+        if shutil.which('apt-get'):
+            r = subprocess.run(['apt-get', 'install', '-y', '--no-install-recommends', 'podman'], capture_output=True, text=True, timeout=900, env=env)
+            if r.returncode == 0 and shutil.which('podman'):
                 return
+            print('log: apt-get install podman: ' + (r.stderr or r.stdout).strip()[-200:], flush=True)
+            if podman_unpacked():
+                print('log: podman unpacked for this run', flush=True)
+            else:
+                print('log: couldn\'t get podman', flush=True)
+        elif shutil.which('pacman'):
+            r = subprocess.run(['pacman', '-Sy', '--noconfirm', '--needed', 'podman'], capture_output=True, text=True, timeout=900)
+            if r.returncode != 0:
+                print('log: pacman: ' + (r.stderr or r.stdout).strip()[-200:], flush=True)
     except (OSError, subprocess.TimeoutExpired) as e:
         print('log: couldn\'t add podman: %s' % e, flush=True)
 
