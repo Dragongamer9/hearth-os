@@ -51,7 +51,7 @@ done
 # ------------------------------------------------------------------ the system: kernel, firmware, boot pieces
 # dracut is named so pacman doesn't pick mkinitcpio for the kernel's "initramfs" dependency. ostree's libraries
 # come first: bootc (from the builder stage) links against them.
-"${PAC[@]}" ostree composefs skopeo
+"${PAC[@]}" ostree composefs skopeo podman
 bootc --version
 "${PAC[@]}" base dracut "$KERNEL" "$KERNEL-headers" linux-firmware amd-ucode intel-ucode \
   grub efibootmgr \
@@ -566,3 +566,7 @@ ln -sT ../var/usrlocal /usr/local
   echo "d /var/roothome 0700 root root -"
   echo "d /run/media 0755 root root -"
 } > /usr/lib/tmpfiles.d/bootc-base-dirs.conf
+
+# bootc keeps images in podman's storage (imgstorage): without podman, updates and Switch edition fail
+# ("podman executable not found in PATH"). Peppermint 0.3.0 shipped without it.
+command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and bootc switch need it"; exit 1; }

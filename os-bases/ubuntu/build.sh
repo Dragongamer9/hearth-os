@@ -96,7 +96,7 @@ optional firmware-sof-signed amd64-microcode intel-microcode wireless-regdb
 "${APT[@]}" \
   ca-certificates curl less nano file locales polkitd pkexec \
   util-linux fdisk parted gdisk efibootmgr btrfs-progs e2fsprogs xfsprogs dosfstools ntfs-3g exfatprogs \
-  rsync cpio zstd skopeo pciutils usbutils lsof procps psmisc \
+  rsync cpio zstd skopeo podman pciutils usbutils lsof procps psmisc \
   network-manager wpasupplicant iw bluez openssh-client \
   pipewire pipewire-pulse pipewire-alsa wireplumber libspa-0.2-bluetooth alsa-utils \
   upower udisks2 flatpak xdg-user-dirs xdg-utils \
@@ -623,3 +623,7 @@ ln -sT ../var/usrlocal /usr/local
   echo "d /var/roothome 0700 root root -"
   echo "d /run/media 0755 root root -"
 } > /usr/lib/tmpfiles.d/bootc-base-dirs.conf
+
+# bootc keeps images in podman's storage (imgstorage): without podman, updates and Switch edition fail
+# ("podman executable not found in PATH"). Peppermint 0.3.0 shipped without it.
+command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and bootc switch need it"; exit 1; }
