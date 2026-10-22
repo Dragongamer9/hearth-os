@@ -152,25 +152,25 @@ EXPERIMENT = r"""
   const cs = document.createXULElement("commandset"); const cmd = document.createXULElement("command"); cmd.id = "t-cmd1";
   cmd.addEventListener("command", () => out.newKeyset = true); cs.appendChild(cmd); document.documentElement.appendChild(cs);
   const ks = document.createXULElement("keyset"); const k = document.createXULElement("key");
-  k.setAttribute("keycode", "VK_F8"); k.setAttribute("command", "t-cmd1"); k.setAttribute("reserved", "true"); ks.appendChild(k);
+  k.setAttribute("keycode", "VK_F13"); k.setAttribute("command", "t-cmd1"); k.setAttribute("reserved", "true"); ks.appendChild(k);
   document.documentElement.appendChild(ks);
-  send("F8", "F8", 119);
+  send("F13", "F13", 124);
   // 2: a key added to mainKeyset, then mainKeyset put back in (the usual trick)
   const mk = document.getElementById("mainKeyset");
-  const k2 = document.createXULElement("key"); k2.setAttribute("keycode", "VK_F7"); k2.setAttribute("reserved", "true"); k2.setAttribute("oncommand", "void 0");
+  const k2 = document.createXULElement("key"); k2.setAttribute("keycode", "VK_F14"); k2.setAttribute("reserved", "true"); k2.setAttribute("oncommand", "void 0");
   k2.addEventListener("command", () => out.mainKeyset = true); mk.appendChild(k2); mk.parentNode.insertBefore(mk, mk.nextSibling);
-  send("F7", "F7", 118);
+  send("F14", "F14", 125);
   // 3: listeners on the window: default group, system group (capture)
-  window.addEventListener("keydown", e => { if (e.key === "F6") out.capture = (out.capture || 0) + 1; }, true);
-  window.addEventListener("keydown", e => { if (e.key === "F6") out.systemCapture = (out.systemCapture || 0) + 1; }, { capture: true, mozSystemGroup: true });
-  send("F6", "F6", 117);
+  window.addEventListener("keydown", e => { if (e.key === "F15") out.capture = (out.capture || 0) + 1; }, true);
+  window.addEventListener("keydown", e => { if (e.key === "F15") out.systemCapture = (out.systemCapture || 0) + 1; }, { capture: true, mozSystemGroup: true });
+  send("F15", "F15", 126);
   // 4: a key with disabled removed later
   const cmd3 = document.createXULElement("command"); cmd3.id = "t-cmd3"; cmd3.addEventListener("command", () => out.wasDisabled = true); cs.appendChild(cmd3);
   const ks3 = document.createXULElement("keyset"); const k3 = document.createXULElement("key");
-  k3.setAttribute("keycode", "VK_F9"); k3.setAttribute("command", "t-cmd3"); k3.setAttribute("reserved", "true"); k3.setAttribute("disabled", "true"); ks3.appendChild(k3);
+  k3.setAttribute("keycode", "VK_F16"); k3.setAttribute("command", "t-cmd3"); k3.setAttribute("reserved", "true"); k3.setAttribute("disabled", "true"); ks3.appendChild(k3);
   document.documentElement.appendChild(ks3);
   k3.removeAttribute("disabled");
-  send("F9", "F9", 120);
+  send("F16", "F16", 127);
   await new Promise(r => setTimeout(r, 500));
   return out;
 """
