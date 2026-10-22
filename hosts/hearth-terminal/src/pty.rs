@@ -34,7 +34,10 @@ pub enum Event {
 
 pub struct Pty {
     master: Mutex<Box<dyn MasterPty + Send>>,
-    writer: Mutex<Box<dyn Write + Send>>,
+    /// Typed text goes to a thread of its own that writes it: a program that isn't reading (a paste while
+    /// `sleep` runs) fills the terminal's buffer, and the write then waits; done on the window's thread, that
+    /// froze the whole window, every tab with it.
+    writer: Mutex<mpsc::Sender<Vec<u8>>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     pid: Option<u32>,
     exited: Arc<AtomicBool>,
@@ -73,7 +76,13 @@ impl Pty {
         let pid = child.process_id();
         let killer = child.clone_killer();
         let mut reader = pair.master.try_clone_reader().context("couldn't read from the terminal")?;
-        let writer = pair.master.take_writer().context("couldn't write to the terminal")?;
+        let mut writer = pair.master.take_writer().context("couldn't write to the terminal")?;
+        let (write_tx, write_rx) = mpsc::channel::<Vec<u8>>();
+        std::thread::Builder::new().name("pty-write".into()).spawn(move || {
+            for data in write_rx {
+                if writer.write_all(&data).and_then(|_| writer.flush()).is_err() { break; }
+            }
+        })?;
 
         let on_event = Arc::new(on_event);
         let exited = Arc::new(AtomicBool::new(false));
@@ -117,19 +126,19 @@ impl Pty {
 
         Ok(Pty {
             master: Mutex::new(pair.master),
-            writer: Mutex::new(writer),
+            writer: Mutex::new(write_tx),
             killer: Mutex::new(killer),
             pid,
             exited,
         })
     }
 
-    /// Types into the terminal (keys, pasted text, escape sequences).
+    /// Types into the terminal (keys, pasted text, escape sequences). Returns at once; the text is written in
+    /// order as the program takes it.
     pub fn write(&self, data: &[u8]) -> Result<()> {
-        let mut w = self.writer.lock().unwrap();
-        w.write_all(data)?;
-        w.flush()?;
-        Ok(())
+        if data.is_empty() { return Ok(()); }
+        self.writer.lock().unwrap_or_else(|e| e.into_inner()).send(data.to_vec())
+            .map_err(|_| anyhow::anyhow!("the terminal is closed"))
     }
 
     /// The terminal changed size: the shell and the programs in it are told (SIGWINCH / ConPTY resize).

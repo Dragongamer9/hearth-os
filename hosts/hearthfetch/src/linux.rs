@@ -161,6 +161,8 @@ fn terminal(shell: Option<&str>) -> Option<String> {
 
 fn pretty_terminal(n: &str) -> String {
     match n {
+        // Hearth OS's own terminal: TERM_PROGRAM=HearthTerminal, process name hearth-terminal.
+        "HearthTerminal" | "hearth-terminal" => "Hearth Terminal".into(),
         "konsole" => "Konsole".into(),
         "gnome-terminal-" | "gnome-terminal-server" | "gnome-terminal" => "GNOME Terminal".into(),
         "ptyxis-agent" | "ptyxis" => "Ptyxis".into(),

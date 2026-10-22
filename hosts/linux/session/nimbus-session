@@ -26,6 +26,9 @@ mkdir -p "$(dirname "$LOG")"
 [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 2000000 ] && mv -f "$LOG" "$LOG.old"
 log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
 
+# gamescope options given to this session by whoever started it (an extra multi-seat player's window size, frame
+# rate and graphics card come from hearth-seats this way): kept, with session.conf's on top, every Game Mode start.
+ENV_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS"
 [ -f "$CONF/session.conf" ] && . "$CONF/session.conf"
 [ -z "$NIMBUS_APP" ] && [ -f "$CONF/app-path" ] && NIMBUS_APP="$(cat "$CONF/app-path")"
 [ -z "$NIMBUS_APP" ] && [ -x /usr/bin/nimbus ] && NIMBUS_APP=/usr/bin/nimbus
@@ -57,11 +60,14 @@ password_store() {
 password_store
 
 SESSION_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/session.conf"
+# gamescope's screen mode options with their values (-W 1920, --nested-refresh=60, -r 59.94...), for sed -E.
+MODE_ARGS_RE='(^|[[:space:]"])(-[WHr][[:space:]]+|--(output-width|output-height|nested-refresh)[=[:space:]]+)[^[:space:]"]+'
+has_mode_args() { printf ' %s\n' "$1" | grep -Eq "$MODE_ARGS_RE"; }
 run_game() {
   log "game mode"
   # Settings › Display writes gamescope's options (resolution, refresh rate) here: read again every time, so a new
   # mode applies when Game Mode restarts (it used to apply only after signing out).
-  NIMBUS_GAMESCOPE_ARGS=""
+  NIMBUS_GAMESCOPE_ARGS="$ENV_GAMESCOPE_ARGS"
   # shellcheck source=/dev/null
   [ -f "$SESSION_CONF" ] && . "$SESSION_CONF"
   # shellcheck disable=SC2086
@@ -115,23 +121,30 @@ run_game() {
     fi
     seatargs="$(python3 "$SEATS" gamescope-args 2>/dev/null)"
   fi
-  gs_started=$(date +%s)
-  # shellcheck disable=SC2086
-  gamescope $full $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
-  gs_rc=$?
-  # A screen mode gamescope can't start with (-W/-H/-r from Settings › Display) mustn't leave the PC stuck: after
-  # two failures within seconds, those options go and Game Mode starts at the screen's own mode.
-  if [ "$gs_rc" -ne 0 ] && [ $(( $(date +%s) - gs_started )) -lt 20 ] && echo " $NIMBUS_GAMESCOPE_ARGS" | grep -Eq '[[:space:]]-(W|H|r)[[:space:]]'; then
-    GS_FAILS=$(( ${GS_FAILS:-0} + 1 ))
-    if [ "$GS_FAILS" -ge 2 ] && [ -f "$SESSION_CONF" ]; then
-      sed -i -E '/^NIMBUS_GAMESCOPE_ARGS=/ s/(^|[ "])-(W|H|r)[[:space:]]+[0-9]+/\1/g' "$SESSION_CONF"
-      rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display-pending.json"
+  # A screen mode gamescope can't start with (-W/-H/-r from Settings › Display) mustn't leave the PC stuck: it's
+  # tried once more, and after two failures within seconds those options go and Game Mode starts at the screen's
+  # own mode. (Ending the session after the first failure sent the PC back to the sign-in screen, or round and
+  # round with automatic sign-in, without ever getting here twice.) Not for an extra multi-seat player: their
+  # window size comes from hearth-seats.
+  gs_fails=0
+  while :; do
+    gs_started=$(date +%s)
+    # shellcheck disable=SC2086
+    gamescope $full $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
+    gs_rc=$?
+    [ "$gs_rc" -ne 0 ] && [ $(( $(date +%s) - gs_started )) -lt 20 ] && [ -z "$HEARTH_SEAT" ] && [ ! -s "$NEXT" ] && has_mode_args "$NIMBUS_GAMESCOPE_ARGS" || break
+    gs_fails=$((gs_fails + 1))
+    if [ "$gs_fails" -ge 2 ]; then
       log "gamescope couldn't start with the chosen screen mode ($NIMBUS_GAMESCOPE_ARGS); back to the screen's own mode"
-      GS_FAILS=0
+      [ -f "$SESSION_CONF" ] && sed -i -E "/^[[:space:]]*(export[[:space:]]+)?NIMBUS_GAMESCOPE_ARGS=/ s/$MODE_ARGS_RE/\\1/g" "$SESSION_CONF"
+      rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display-pending.json"
+      NIMBUS_GAMESCOPE_ARGS="$(printf ' %s' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")"
+      # Options that still name a mode (not ones Hearth wrote) aren't tried over and over.
+      has_mode_args "$NIMBUS_GAMESCOPE_ARGS" && break
+    else
+      log "gamescope ended right away (code $gs_rc) with the chosen screen mode; trying once more"
     fi
-  else
-    GS_FAILS=0
-  fi
+  done
   return "$gs_rc"
 }
 
