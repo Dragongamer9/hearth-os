@@ -160,10 +160,11 @@ jobs:
 
       - name: Check the session scripts and Desktop Mode files
         run: |
-          shellcheck -S warning session/nimbus-session session/nimbus-mode session/nimbus-watchdog session/install-session.sh desktop/labwc/autostart desktop/open.sh
+          # Problems as annotations on the run (readable without the log).
+          shellcheck -S warning -f gcc session/nimbus-session session/nimbus-mode session/nimbus-watchdog session/install-session.sh desktop/labwc/autostart desktop/open.sh > /tmp/sc.txt || { sed 's/^/::error title=shellcheck::/' /tmp/sc.txt | head -20; exit 1; }
           python3 -c "import xml.dom.minidom as m; [m.parse(f) for f in ['desktop/labwc/rc.xml', 'desktop/labwc/menu.xml']]"
           sudo apt-get install -y -qq qt6-declarative-dev-tools >/dev/null
-          for f in desktop/shell/*.qml; do /usr/lib/qt6/bin/qmlformat "$f" >/dev/null || { echo "::error file=hosts/linux/$f::QML syntax error"; /usr/lib/qt6/bin/qmlformat "$f" 2>&1 >/dev/null | head -20; exit 1; }; done
+          for f in desktop/shell/*.qml; do /usr/lib/qt6/bin/qmlformat "$f" >/dev/null 2>/tmp/qml.txt || { echo "::error file=hosts/linux/$f,title=QML syntax error::$(head -5 /tmp/qml.txt | tr '\n' ' ')"; exit 1; }; done
           python3 -m py_compile desktop/shell/hearth-pad desktop/shell/hearth-buttons desktop/shell/hearth-controller desktop/shell/hearth-power desktop/shell/hearth-browser desktop/shell/hearth-tasks desktop/shell/hearth-files ../../os/system_files/usr/libexec/nimbus/hearth-coop ../../os/system_files/usr/libexec/nimbus/hearth-seats ../../os/system_files/usr/libexec/nimbus/hearth-admin
 
   # The Rust app (what Hearth OS runs since 0.0.24): Hearth-linux-x86_64, one file. It updates itself from this

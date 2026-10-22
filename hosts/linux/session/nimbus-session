@@ -109,8 +109,8 @@ run_game() {
     fi
     seatargs="$(python3 "$SEATS" gamescope-args 2>/dev/null)"
   fi
-  # shellcheck disable=SC2086
   gs_started=$(date +%s)
+  # shellcheck disable=SC2086
   gamescope $full $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
   gs_rc=$?
   # A screen mode gamescope can't start with (-W/-H/-r from Settings › Display) mustn't leave the PC stuck: after
