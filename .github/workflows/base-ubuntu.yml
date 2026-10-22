@@ -6,6 +6,11 @@ name: Hearth OS (Ubuntu base)
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the image (off: build and check it only, e.g. to test a branch before merging)'
+        type: boolean
+        default: true
   push:
     branches: [linux-host, main]
     paths: ['os-bases/ubuntu/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-ubuntu.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**']
@@ -146,7 +151,7 @@ jobs:
       contents: read
       packages: write
     env:
-      PUBLISH: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main' }}
+      PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && (github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main')) }}
     steps:
       - uses: actions/checkout@v4
 

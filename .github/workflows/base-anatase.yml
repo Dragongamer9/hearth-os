@@ -7,6 +7,11 @@ name: Hearth OS (Anatase base)
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the image (off: build and check it only, e.g. to test a branch before merging)'
+        type: boolean
+        default: true
   # linux-host: test images (:testing). main (a release): also :latest, what Hearth OS on Anatase updates from and
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
@@ -123,7 +128,7 @@ jobs:
       contents: read
       packages: write
     env:
-      PUBLISH: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main' }}
+      PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && (github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main')) }}
       RELEASE: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     steps:
       - uses: actions/checkout@v4

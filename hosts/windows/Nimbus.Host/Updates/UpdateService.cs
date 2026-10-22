@@ -223,6 +223,10 @@ public sealed class UpdateService
             ")",
             $"taskkill /im Nimbus.exe /f {NUL} 2>&1",
             ":gone",
+            // Hearth's other programs in the same folder (Terminal, Disks, hearthfetch) would keep it locked.
+            $"taskkill /im hearth-terminal.exe /f {NUL} 2>&1",
+            $"taskkill /im hearth-disks.exe /f {NUL} 2>&1",
+            $"taskkill /im hearthfetch.exe /f {NUL} 2>&1",
             $"if exist \"%APP%.old\" rmdir /s /q \"%APP%.old\"",
             // Files can stay locked for a moment after exit; retry the move.
             "for /l %%i in (1,1,10) do (",
@@ -271,6 +275,8 @@ public sealed class UpdateService
             "@echo off",
             $"timeout /t 2 {NUL}",
             $"taskkill /im Nimbus.exe /f {NUL} 2>&1",
+            $"taskkill /im hearth-terminal.exe /f {NUL} 2>&1",
+            $"taskkill /im hearth-disks.exe /f {NUL} 2>&1",
             $"set APP={app}",
             "if exist \"%APP%.bad\" rmdir /s /q \"%APP%.bad\"",
             "move \"%APP%\" \"%APP%.bad\"",
