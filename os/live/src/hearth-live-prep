@@ -213,7 +213,13 @@ def shrink(give):
     print('progress: 92 Updating the partition table', flush=True)
     disk = '/dev/' + win['pkname']
     num = re.search(r'(\d+)$', dev).group(1)
-    sectors = math.ceil(new_size / 512) + 2048   # a little slack past the file system's end
+    # In the drive's own sectors (sfdisk's unit): 4096 bytes on NVMe drives formatted with 4K sectors, not 512.
+    try:
+        with open('/sys/class/block/%s/queue/logical_block_size' % win['pkname']) as f:
+            ss = int(f.read().strip()) or 512
+    except (OSError, ValueError):
+        ss = 512
+    sectors = math.ceil(new_size / ss) + 1024 * 1024 // ss   # a little slack (1 MiB) past the file system's end
     sh(['sfdisk', '--no-reread', '--force', '-N', num, disk], input=f', {sectors}\n')
     sh(['partx', '-u', '--nr', num, disk], check=False)
     print('progress: 100 Done', flush=True)
