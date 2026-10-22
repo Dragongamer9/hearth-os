@@ -158,6 +158,9 @@ impl Library {
         }).collect()
     }
 
+    /// A scan that starts nothing: no download is put back in the queue (`hearth --list-games`, desktop_games.rs).
+    pub fn scan_quietly(&mut self) { self.queue_restored = true; self.scan(); }
+
     pub fn scan(&mut self) {
         let mut all = BTreeMap::new();
         let mut counts = BTreeMap::new();
