@@ -238,6 +238,21 @@ class OtherEditions(unittest.TestCase):
         # No account files of its own: nothing to merge (the old ones are kept).
         self.assertIsNone(ci.merge_accounts(os.path.join(root, 'etc'), os.path.join(root, 'nothing')))
 
+    def test_person_keeps_their_id(self):
+        # The new system has an account of its own with the person's id (1000): the person keeps the id (their files
+        # belong to it) and can still sign in; the new system's account and its unused group are left out.
+        root = self.system()
+        write(os.path.join(root, 'usr/etc/passwd'), self.NEW['passwd'] + 'ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash\n')
+        write(os.path.join(root, 'usr/etc/group'), self.NEW['group'] + 'ubuntu:x:1000:\n')
+        write(os.path.join(root, 'usr/etc/shadow'), self.NEW['shadow'] + 'ubuntu::20000:0:99999:7:::\n')
+        write(os.path.join(root, 'usr/etc/gshadow'), self.NEW['gshadow'] + 'ubuntu:!::\n')
+        m = ci.merge_accounts(os.path.join(root, 'etc'), os.path.join(root, 'usr/etc'))
+        self.assertEqual(m['passwd'], self.NEW['passwd'] + 'sam:x:1000:1000:Sam:/var/home/sam:/bin/bash\n')
+        self.assertEqual(m['shadow'], self.NEW['shadow'] + 'sam:$6$hash:19000:0:99999:7:::\n')
+        self.assertEqual(m['group'], 'root:x:0:\nwheel:x:27:sam\nvideo:x:44:sam\nsddm:x:115:\nsam:x:1000:\n')
+        self.assertNotIn('ubuntu', m['gshadow'])
+        self.assertIn('sam:!::', m['gshadow'])
+
     def test_reset_on_ubuntu(self):
         root = self.system()
         write(os.path.join(root, 'usr/share/nimbus/image-info.json'), json.dumps({'base': 'ubuntu'}))
