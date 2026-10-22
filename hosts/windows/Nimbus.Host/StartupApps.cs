@@ -53,7 +53,10 @@ public static class StartupApps
         foreach (var hive in new[] { Registry.CurrentUser, Registry.LocalMachine })
         {
             foreach (var e in RegistryEntries(hive, Run, "Run")) yield return e;
-            foreach (var e in RegistryEntries(hive, RunOnce, null, deleteAfter: hive == Registry.CurrentUser)) yield return e;
+            // RunOnce entries are removed as they're started, so they run once. The PC's own (HKLM) can only be removed
+            // with administrator rights; like Explorer, Ember leaves them for an administrator's sign-in then (opening the
+            // key for writing fails) instead of starting them again at every sign-in.
+            foreach (var e in RegistryEntries(hive, RunOnce, null, deleteAfter: true)) yield return e;
         }
         // 32-bit programs put theirs in the PC's 32-bit Run key, which Explorer starts too (Task Manager's switch: Run32).
         foreach (var e in RegistryEntries(Registry.LocalMachine, Run32, "Run32")) yield return e;

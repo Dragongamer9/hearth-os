@@ -128,6 +128,7 @@ public sealed class GogStore
     {
         if (Profile().Name is null) await LoadProfileAsync();
         var list = new List<OwnedGame>();
+        var seen = new HashSet<string>();   // a game can turn up on two pages when the library changes while it's read
         for (int page = 1, pages = 1; page <= pages && page <= 100; page++)
         {
             using var doc = await GetAsync($"https://embed.gog.com/account/getFilteredProducts?mediaType=1&sortBy=title&page={page}");
@@ -138,6 +139,7 @@ public sealed class GogStore
                 if (!p.Obj("worksOn").True("Windows")) continue;
                 if (!p.TryGetProperty("id", out var idEl)) continue;
                 var id = idEl.ToString();
+                if (!seen.Add(id)) continue;
                 var o = new OwnedGame { Id = id, Title = p.Str("title") ?? id };
                 if (p.Str("image") is { } img) { o.Art["wide"] = J.Https(img) + "_product_card_v2_mobile_slider_639.jpg"; o.Art["hero"] = o.Art["wide"]; }
                 list.Add(o);
@@ -145,7 +147,8 @@ public sealed class GogStore
         }
 
         // Better art (vertical covers, backgrounds) from GOG's game database; kept between refreshes.
-        var old = Owned.Games.ToDictionary(g => g.Id);
+        var old = new Dictionary<string, OwnedGame>();
+        foreach (var g in Owned.Games) old.TryAdd(g.Id, g);   // a list saved with a game twice must not stop every refresh
         using var gate = new SemaphoreSlim(6);
         await Task.WhenAll(list.Select(async o =>
         {

@@ -131,12 +131,22 @@ public sealed class ControllerBridge : IDisposable
         bool guidePrev = false, viewFired = false;
         DateTime viewSince = DateTime.MaxValue;
 
+        // Mouse buttons the controller holds down, and the Alt held for LB/RB window switching, let go: when the
+        // controller goes away or a game takes it, nothing would let go of them later (a stuck drag, a stuck Alt).
+        void LetGo()
+        {
+            if (leftDown) { Mouse(MOUSEEVENTF_LEFTUP); leftDown = false; }
+            if (rightDown) { Mouse(MOUSEEVENTF_RIGHTUP); rightDown = false; }
+            if (middleDown) { Mouse(MOUSEEVENTF_MIDDLEUP); middleDown = false; }
+            if (_altHeld) { keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); _altHeld = false; }
+        }
+
         while (!_stop)
         {
             Thread.Sleep(10);
             var pad = ReadPad(out int connected);
             if (connected != _connected) { _connected = connected; ControllersChanged?.Invoke(connected); }
-            if (connected == 0) { prev = 0; held.Clear(); SetMouse(false); Mapper?.Release(); continue; }
+            if (connected == 0) { LetGo(); prev = 0; held.Clear(); SetMouse(false); Mapper?.Release(); continue; }
 
             var target = CurrentTarget();
 
@@ -174,9 +184,7 @@ public sealed class ControllerBridge : IDisposable
                 catch (Exception ex) { mapped = false; SystemBridge.Log("input: " + ex.Message); }
                 if (mapped)
                 {
-                    if (leftDown) { Mouse(MOUSEEVENTF_LEFTUP); leftDown = false; }
-                    if (rightDown) { Mouse(MOUSEEVENTF_RIGHTUP); rightDown = false; }
-                    if (middleDown) { Mouse(MOUSEEVENTF_MIDDLEUP); middleDown = false; }
+                    LetGo();
                     prev = pad.Buttons; held.Clear(); SetMouse(false);
                     continue;
                 }
@@ -184,9 +192,7 @@ public sealed class ControllerBridge : IDisposable
 
             if (target == Target.Game)
             {
-                if (leftDown) { Mouse(MOUSEEVENTF_LEFTUP); leftDown = false; }
-                if (rightDown) { Mouse(MOUSEEVENTF_RIGHTUP); rightDown = false; }
-                if (middleDown) { Mouse(MOUSEEVENTF_MIDDLEUP); middleDown = false; }
+                LetGo();
                 prev = pad.Buttons; held.Clear(); SetMouse(false);
                 continue;
             }
