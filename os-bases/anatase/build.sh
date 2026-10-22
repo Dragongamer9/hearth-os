@@ -393,7 +393,9 @@ if [ "$NV_HELPERS" = 1 ]; then
     echo "Nvidia: session freezing during sleep turned off (Anatase's packages didn't)"
   fi
 else
-  echo "warning: Nvidia's sleep helpers (nvidia-suspend/hibernate/resume.service) aren't in this Anatase image; on Nvidia, keeping games through turning off relies on the driver's own suspend notifiers"
+  # Anatase's driver has none (checked in CI): it saves the graphics memory itself from the kernel's suspend
+  # notifications, and Anatase already sets PreserveVideoMemoryAllocations=1 with /var/tmp.
+  echo "Nvidia's sleep helpers (nvidia-suspend/hibernate/resume.service) aren't in this image: the driver handles sleep and hibernation itself"
 fi
 
 # ------------------------------------------------------------------ boot splash
