@@ -236,9 +236,16 @@ jobs:
           fi
           echo "--- the Hearth app runs on Ubuntu 26.04"
           check "every library the Hearth app links is installed" "! ldd /usr/lib/nimbus/nimbus | grep -q 'not found'"
-          check "Hearth Browser is installed" "test -x /usr/lib/hearth-browser/nimbus"
+          check "the Electron build (Quick Access) is installed" "test -x /usr/lib/hearth-browser/nimbus"
+          # Hearth Browser: Mozilla's Firefox with Hearth's parts (os/system_files/usr/share/hearth-browser).
+          check "Hearth Browser is installed (Firefox with Hearth's parts)" "test -x /usr/bin/hearth-browser && test -x /usr/lib/hearth-browser/firefox/firefox && test -f /usr/lib/hearth-browser/firefox/hearth.cfg && test -f /usr/lib/hearth-browser/firefox/defaults/pref/autoconfig.js && test -f /usr/lib/hearth-browser/firefox/hearth/hearth.sys.mjs"
+          check "Hearth Browser's policies are valid and leave updates to the image" "python3 -c 'import json, sys; p = json.load(open(\"/usr/lib/hearth-browser/firefox/distribution/policies.json\"))[\"policies\"]; sys.exit(0 if p.get(\"DisableAppUpdate\") is True and \"ExtensionSettings\" in p else 1)'"
+          check "every library Hearth Browser's Firefox links is installed" "! ldd /usr/lib/hearth-browser/firefox/libxul.so | grep -q 'not found'"
+          check "hearth-browser answers (--hearth-status)" "HOME=/tmp /usr/bin/hearth-browser --hearth-status | grep -q '\"installed\": true'"
+          warn "Hearth Browser's Firefox runs (--version)" "HOME=/tmp /usr/lib/hearth-browser/firefox/firefox --version | grep -q 'Mozilla Firefox'"
+          check "the old Chromium (CEF) Hearth Browser is gone" "test ! -e /usr/lib/hearth-browser-cef"
+          warn "every library the Electron build (Quick Access) links is installed" "! ldd /usr/lib/hearth-browser/nimbus | grep -q 'not found'"
           check "hearthfetch is installed and runs" "test -x /usr/bin/hearthfetch && /usr/bin/hearthfetch --no-logo | grep -q Hearth"
-          warn "every library Hearth Browser links is installed" "! ldd /usr/lib/hearth-browser/nimbus | grep -q 'not found'"
           echo "--- bootable"
           check "one kernel with its initramfs in /usr/lib/modules" "test \$(ls /usr/lib/modules/*/vmlinuz | wc -l) = 1 && ls /usr/lib/modules/*/initramfs.img"
           check "the kernel is Ubuntu's generic 7.0 or newer" "ls /usr/lib/modules | grep -Eq '^([7-9]|[1-9][0-9])\\.[0-9]+\\.[0-9]+-[0-9]+-generic\$'"

@@ -147,9 +147,8 @@ fi
 # The power limit you chose last time (a restart resets it on most handhelds).
 [ -z "$HEARTH_SEAT" ] && [ -x "$SHARE/desktop/shell/hearth-power" ] && (sleep 12; python3 "$SHARE/desktop/shell/hearth-power" restore) >/dev/null 2>&1 &
 
-# Aloha Browser, Hearth's web browser: downloaded from alohabrowser.com once (it can't ship in the image),
-# then checked for updates weekly. Settings › System › Web browser can remove it or reinstall it.
-# (Not on the live USB: it would download into memory.)
+# Aloha Browser, an optional extra (Hearth's own browser is Hearth Browser, Firefox, in the image): when you've
+# installed it from Settings › Web browser, it's checked for updates weekly. (Not on the live USB.)
 [ -x "$SHARE/desktop/shell/hearth-browser" ] && [ ! -e /etc/hearth-live ] && (sleep 45; python3 "$SHARE/desktop/shell/hearth-browser" ensure) >>"$(dirname "$LOG")/browser.log" 2>&1 &
 
 # Between modes: apps started in one mode belong to its display, which is gone once the mode ends. Steam

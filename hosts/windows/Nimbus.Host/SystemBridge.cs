@@ -387,6 +387,25 @@ public sealed class SystemBridge : IDisposable
                 return await Task.Run(DesktopSettings);
             }
             case "browser.status": return await Task.Run(Mantel.WinSettings.BrowserStatus);
+            // Hearth Browser (Services/HearthBrowser.cs): open (a page in) it, setting it up first if needed.
+            case "browser.hearth":
+            {
+                Services.HearthBrowser.Changed ??= () => Event("browser", Mantel.WinSettings.BrowserStatus());
+                var url = Str(a, "url");
+                if (url is not null && !Services.HearthBrowser.ValidUrl(url)) throw new ArgumentException("That link can't be opened.");
+                bool game = !(Pad?.DesktopMode() ?? false);
+                switch (Str(a, "action"))
+                {
+                    case "open" when Services.HearthBrowser.Exe() is not null:
+                        await Task.Run(() => Services.HearthBrowser.Open(url, game));
+                        break;
+                    case "open":
+                        _ = Services.HearthBrowser.SetupAsync().ContinueWith(_ => { try { if (Services.HearthBrowser.Exe() is not null) Services.HearthBrowser.Open(url, game); } catch (Exception ex) { Log("hearth browser: " + ex.Message); } });
+                        break;
+                    case "setup": _ = Services.HearthBrowser.SetupAsync(); break;
+                }
+                return await Task.Run(Mantel.WinSettings.BrowserStatus);
+            }
 
             case "display.get": return await _display.GetAsync(_ui);
             case "display.setBrightness": await _display.SetBrightnessAsync(Int(a, "v")); return null;

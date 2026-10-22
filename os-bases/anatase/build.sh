@@ -25,7 +25,7 @@ if [ -x /ctx/nimbus-app/hearth ]; then
   # The Rust app (hosts/hearth-rs): one file, drawn by the system's WebKit.
   install -Dm755 /ctx/nimbus-app/hearth /usr/lib/nimbus/nimbus
   dnf5 -y install webkit2gtk4.1
-  # Hearth Browser (still Electron) in its own folder.
+  # Hearth Browser's Electron build (hosts/linux): the Quick Access overlay app, and the old browser.
   if [ -d /ctx/nimbus-app/browser ]; then
     mkdir -p /usr/lib/hearth-browser && cp -a /ctx/nimbus-app/browser/. /usr/lib/hearth-browser/
     if [ -f /usr/lib/hearth-browser/chrome-sandbox ]; then chown root:root /usr/lib/hearth-browser/chrome-sandbox && chmod 4755 /usr/lib/hearth-browser/chrome-sandbox; fi
@@ -34,11 +34,6 @@ if [ -x /ctx/nimbus-app/hearth ]; then
   if [ -x /ctx/nimbus-app/electron/hearth-electron ]; then
     mkdir -p /usr/lib/hearth-electron && cp -a /ctx/nimbus-app/electron/. /usr/lib/hearth-electron/
     if [ -f /usr/lib/hearth-electron/chrome-sandbox ]; then chown root:root /usr/lib/hearth-electron/chrome-sandbox && chmod 4755 /usr/lib/hearth-electron/chrome-sandbox; fi
-  fi
-  # Hearth Browser on Chromium (CEF): /usr/bin/hearth-browser uses it when it's there.
-  if [ -x /ctx/nimbus-app/browser-cef/hearth-browser ]; then
-    mkdir -p /usr/lib/hearth-browser-cef && cp -a /ctx/nimbus-app/browser-cef/. /usr/lib/hearth-browser-cef/
-    if [ -f /usr/lib/hearth-browser-cef/chrome-sandbox ]; then chown root:root /usr/lib/hearth-browser-cef/chrome-sandbox && chmod 4755 /usr/lib/hearth-browser-cef/chrome-sandbox; fi
   fi
 else
   cp -a /ctx/nimbus-app/. /usr/lib/nimbus/
@@ -279,20 +274,35 @@ cat > /usr/share/applications/hearth-browser.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth Browser
 GenericName=Web Browser
-Comment=Browse the web
+Comment=Browse the web: Firefox with Hearth's settings
 Exec=/usr/bin/hearth-browser %U
-Icon=hearth
+Icon=hearth-browser
 Type=Application
 Categories=Network;WebBrowser;
 MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
-StartupWMClass=Hearth Browser
-Actions=new-window;
-Keywords=web;internet;browser;
+StartupWMClass=hearth-browser
+StartupNotify=true
+Actions=new-window;private-window;
+Keywords=web;internet;browser;firefox;
 
 [Desktop Action new-window]
 Name=New window
 Exec=/usr/bin/hearth-browser
+
+[Desktop Action private-window]
+Name=New private window
+Exec=/usr/bin/hearth-browser --private-window
 DESKTOP
+# ------------------------------------------------------------------ Hearth Browser (Firefox)
+# Hearth Browser is Mozilla's Firefox, unchanged, with Hearth's settings (os/system_files/usr/share/hearth-browser):
+# install-firefox puts the newest release, checked against Mozilla's signed SHA256SUMS, in
+# /usr/lib/hearth-browser/firefox and adds Hearth's parts (policies, look, start page, on-screen keyboard). It updates
+# with the image (Firefox's own updater is off). /usr/bin/hearth-browser starts it with its own profile. The Electron
+# build in /usr/lib/hearth-browser stays: it's the Quick Access overlay app (hearth-overlay).
+python3 /usr/share/hearth-browser/install-firefox /usr/lib/hearth-browser/firefox
+chmod 755 /usr/bin/hearth-browser /usr/share/hearth-browser/install-firefox
+# Links open in it in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), unless you pick another browser.
+printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hearth-browser.desktop\ntext/html=hearth-browser.desktop\napplication/xhtml+xml=hearth-browser.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
 install -Dm644 /usr/share/nimbus/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
 declare -A WALL=([fireside]="Fireside" [embers]="Embers" [ridge]="Dusk Ridge" [mark]="The Mark" [kiln]="Kiln"
   [cat]="Hearth Cat" [cabin]="Night Cabin" [lanterns]="Lanterns" [bloom]="Ember Bloom" [peaks]="Low Poly Peaks"

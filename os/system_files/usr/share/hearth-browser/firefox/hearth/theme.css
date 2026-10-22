@@ -1,0 +1,122 @@
+/* Hearth Browser's look: Firefox's dark theme in Hearth's ember palette (desktop/shell/Theme.qml), and the
+ * on-screen keyboard. Registered by hearth.sys.mjs as a user style sheet, so it applies to Firefox's window only
+ * (the @-moz-document below) and never to web pages. */
+
+@-moz-document url("chrome://browser/content/browser.xhtml") {
+  :root {
+    --hearth-bg: #0f0b09;
+    --hearth-bg2: #17110e;
+    --hearth-panel: #1c1512;
+    --hearth-panel2: #261d18;
+    --hearth-panel3: #33271f;
+    --hearth-line: #3b2e26;
+    --hearth-text: #f4ece3;
+    --hearth-muted: #a69484;
+    --hearth-accent: var(--hearth-user-accent, #ff8a3d);
+    --hearth-ink: #2a1206;
+
+    --toolbox-bgcolor: var(--hearth-bg) !important;
+    --toolbox-bgcolor-inactive: var(--hearth-bg) !important;
+    --toolbox-textcolor: var(--hearth-text) !important;
+    --toolbox-textcolor-inactive: var(--hearth-muted) !important;
+    --lwt-accent-color: var(--hearth-bg) !important;
+    --lwt-accent-color-inactive: var(--hearth-bg) !important;
+    --lwt-text-color: var(--hearth-text) !important;
+    --toolbar-bgcolor: var(--hearth-panel) !important;
+    --toolbar-color: var(--hearth-text) !important;
+    --toolbar-field-background-color: var(--hearth-bg2) !important;
+    --toolbar-field-color: var(--hearth-text) !important;
+    --toolbar-field-border-color: var(--hearth-line) !important;
+    --toolbar-field-focus-background-color: var(--hearth-bg) !important;
+    --toolbar-field-focus-color: var(--hearth-text) !important;
+    --toolbar-field-focus-border-color: var(--hearth-accent) !important;
+    --tab-selected-bgcolor: var(--hearth-panel2) !important;
+    --tab-selected-textcolor: var(--hearth-text) !important;
+    --tab-hover-background-color: var(--hearth-panel) !important;
+    --tab-loading-fill: var(--hearth-accent) !important;
+    --focus-outline-color: var(--hearth-accent) !important;
+    --toolbarbutton-icon-fill-attention: var(--hearth-accent) !important;
+    --arrowpanel-background: var(--hearth-panel) !important;
+    --arrowpanel-color: var(--hearth-text) !important;
+    --arrowpanel-border-color: var(--hearth-line) !important;
+    --panel-separator-color: var(--hearth-line) !important;
+    --urlbarView-highlight-background: var(--hearth-accent) !important;
+    --urlbarView-highlight-color: var(--hearth-ink) !important;
+    --urlbar-box-bgcolor: var(--hearth-panel2) !important;
+    --button-primary-bgcolor: var(--hearth-accent) !important;
+    --button-primary-color: var(--hearth-ink) !important;
+    --sidebar-background-color: var(--hearth-panel) !important;
+    --sidebar-text-color: var(--hearth-text) !important;
+    --lwt-sidebar-background-color: var(--hearth-panel) !important;
+    --lwt-sidebar-text-color: var(--hearth-text) !important;
+  }
+
+  /* The tab you're on: a thin ember line on top, as in Hearth's own tabs. */
+  .tabbrowser-tab[selected] .tab-background {
+    box-shadow: inset 0 2px 0 var(--hearth-accent), 0 0 4px rgba(0, 0, 0, .4) !important;
+  }
+  #nav-bar {
+    border-top: none !important;
+    box-shadow: none !important;
+  }
+  #urlbar[focused] > #urlbar-background {
+    outline: 2px solid var(--hearth-accent) !important;
+  }
+
+  #hearth-keyboard-button {
+    list-style-image: url("resource://hearth/keyboard.svg");
+  }
+  #hearth-keyboard-button[checked] > .toolbarbutton-icon {
+    background-color: var(--hearth-accent) !important;
+    fill: var(--hearth-ink) !important;
+  }
+
+  /* The on-screen keyboard, under the page. */
+  #hearth-osk {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px 12px;
+    background: var(--hearth-bg2);
+    border-top: 1px solid var(--hearth-line);
+    color: var(--hearth-text);
+    font: message-box;
+    font-size: 17px;
+    user-select: none;
+    -moz-user-focus: ignore;
+  }
+  #hearth-osk[hidden] {
+    display: none;
+  }
+  #hearth-osk .hearth-row {
+    display: flex;
+    gap: 6px;
+  }
+  #hearth-osk .hearth-key {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: var(--hearth-panel2);
+    border: 2px solid transparent;
+  }
+  #hearth-osk .hearth-key-wide {
+    background: var(--hearth-panel3);
+    color: var(--hearth-muted);
+  }
+  #hearth-osk .hearth-key:hover {
+    background: var(--hearth-panel3);
+  }
+  #hearth-osk .hearth-key:active,
+  #hearth-osk .hearth-key.hearth-on {
+    background: var(--hearth-accent);
+    color: var(--hearth-ink);
+  }
+  #hearth-osk .hearth-key.hearth-picked {
+    border-color: var(--hearth-accent);
+    color: var(--hearth-text);
+  }
+}

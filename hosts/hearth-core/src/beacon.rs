@@ -765,8 +765,8 @@ pub fn log_tail(cli: &Exe, game: &str) -> Result<Value, String> {
 /// Opens a web page (a mod's page, Beacon's releases) in Hearth Browser, or the default browser elsewhere.
 pub fn open_link(url: &str) -> Result<(), String> {
     if !valid_link(url) { return Err("That link can't be opened.".into()); }
-    let (prog, args): (&str, Vec<&str>) = if Path::new("/usr/bin/hearth-browser").exists() { ("/usr/bin/hearth-browser", vec![url]) } else { ("xdg-open", vec![url]) };
-    std::process::Command::new(prog).args(&args).current_dir(crate::paths::home())
+    if crate::hearth_browser::available() { return crate::hearth_browser::open(Some(url)); }
+    std::process::Command::new("xdg-open").arg(url).current_dir(crate::paths::home())
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
         .spawn().map(crate::procs::detach).map(|_| ()).map_err(|e| format!("Couldn't open the page: {e}"))
 }

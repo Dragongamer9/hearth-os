@@ -17,6 +17,7 @@ pub mod game_options;
 pub mod gameinfo;
 pub mod gamescope;
 pub mod guide;
+pub mod hearth_browser;
 pub mod hhd;
 pub mod http;
 pub mod importer;

@@ -1,0 +1,34 @@
+/* Hearth Browser with bigger buttons and text (Game Mode, or "Bigger buttons" in Hearth's settings): on top of
+ * Firefox's own touch density, roomier tabs and address bar, and big keyboard keys for a 7" screen. */
+
+@-moz-document url("chrome://browser/content/browser.xhtml") {
+  :root {
+    --tab-min-height: 48px !important;
+    --toolbarbutton-inner-padding: 12px !important;
+  }
+  #urlbar-input,
+  .urlbarView-row {
+    font-size: 1.2em !important;
+  }
+  .tab-label {
+    font-size: 1.1em !important;
+  }
+  #nav-bar {
+    padding-block: 4px !important;
+  }
+  #hearth-osk {
+    font-size: 22px;
+    gap: 8px;
+    padding: 12px 16px 16px;
+  }
+  #hearth-osk .hearth-row {
+    gap: 8px;
+  }
+  #hearth-osk .hearth-key {
+    min-height: 58px;
+    border-radius: 12px;
+  }
+  #hearth-osk .hearth-key.hearth-picked {
+    border-width: 3px;
+  }
+}

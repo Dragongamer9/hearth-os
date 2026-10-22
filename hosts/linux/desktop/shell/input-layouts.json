@@ -98,6 +98,21 @@
            "rt": "scroll:up", "lt": "scroll:down"}},
        "gyro": {"sensitivity": 0.8, "deadzone": 1.5},
        "radial": ["key:5", "key:6", "key:7", "key:8", "key:F1", "key:F2", "key:F3", "key:F4"],
+       "hold_ms": 300, "turbo_hz": 10}},
+    {"id": "browser", "name": "Web browser",
+     "blurb": "For Hearth Browser: D-pad moves between links, A opens, B goes back, right stick points, Y the keyboard",
+     "layout": {"version": 1, "name": "Web browser", "base": "browser",
+       "buttons": {
+         "a": "key:ENTER", "b": "key:LEFTALT+LEFT", "x": "key:LEFTCTRL+L", "y": "key:LEFTCTRL+LEFTALT+K",
+         "lb": "key:LEFTCTRL+LEFTSHIFT+TAB", "rb": "key:LEFTCTRL+TAB",
+         "lt": {"press": "mouse:right", "threshold": 0.35}, "rt": {"press": "mouse:left", "threshold": 0.35},
+         "menu": "key:LEFTCTRL+T", "view": "key:F5", "l3": "mouse:middle", "r3": "key:ESC",
+         "up": "key:LEFTSHIFT+TAB", "down": "key:TAB", "left": "key:LEFT", "right": "key:RIGHT"},
+       "sticks": {
+         "ls": {"mode": "scroll", "sensitivity": 1.0, "deadzone": 0.15},
+         "rs": {"mode": "mouse", "sensitivity": 1.0, "deadzone": 0.1, "outer": 0.95, "curve": 1.8}},
+       "gyro": {"sensitivity": 1.0, "deadzone": 1.0},
+       "radial": [],
        "hold_ms": 300, "turbo_hz": 10}}
   ]
 }

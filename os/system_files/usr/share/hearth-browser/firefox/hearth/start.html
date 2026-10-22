@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- Hearth Browser's start page: the home page and every new tab (set by hearth.sys.mjs). Everything is in this
+     file, so it opens instantly and offline. Big targets in a plain order, so Tab / Shift+Tab (the D-pad with a
+     controller) walks through them and Enter (A) opens one. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>New tab</title>
+<link rel="icon" href="hearth-logo.svg">
+<style>
+  :root {
+    --bg: #0f0b09; --bg2: #17110e; --panel: #1c1512; --panel2: #261d18; --panel3: #33271f; --line: #3b2e26;
+    --text: #f4ece3; --muted: #a69484; --accent: var(--hearth-user-accent, #ff8a3d); --ink: #2a1206;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: radial-gradient(ellipse at 50% 120%, rgba(255, 138, 61, .16), transparent 60%), var(--bg);
+    color: var(--text);
+    font: 18px/1.4 system-ui, "Noto Sans", "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: clamp(24px, 8vh, 96px) 16px 32px;
+  }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+  header img { width: 56px; height: 56px; }
+  header h1 { font-size: 30px; font-weight: 600; margin: 0; letter-spacing: .2px; }
+  form { width: min(720px, 100%); display: flex; gap: 10px; margin-bottom: 36px; }
+  input[type=search] {
+    flex: 1; min-width: 0; height: 60px; padding: 0 22px; border-radius: 30px;
+    border: 2px solid var(--line); background: var(--bg2); color: var(--text); font: inherit; font-size: 20px;
+  }
+  input[type=search]::placeholder { color: var(--muted); }
+  input[type=search]:focus { outline: none; border-color: var(--accent); }
+  button {
+    height: 60px; padding: 0 26px; border-radius: 30px; border: 0; background: var(--accent); color: var(--ink);
+    font: inherit; font-weight: 600; font-size: 19px; cursor: pointer;
+  }
+  button:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+  nav { width: min(960px, 100%); display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+  nav a {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    min-height: 128px; padding: 16px 10px; border-radius: 16px; background: var(--panel); border: 2px solid var(--line);
+    color: var(--text); text-decoration: none; font-size: 17px; text-align: center;
+  }
+  nav a:hover { background: var(--panel2); }
+  nav a:focus-visible { outline: none; border-color: var(--accent); background: var(--panel2); }
+  nav a b {
+    width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center;
+    font-size: 24px; font-weight: 700; color: #fff; background: var(--c, var(--panel3));
+  }
+  footer { margin-top: auto; padding-top: 36px; color: var(--muted); font-size: 15px; text-align: center; }
+  @media (max-width: 520px) {
+    form { flex-direction: column; }
+    nav { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <img src="hearth-logo.svg" alt="">
+  <h1>Hearth Browser</h1>
+</header>
+<form action="https://www.google.com/search" method="get" role="search">
+  <input type="search" name="q" placeholder="Search the web or type an address" aria-label="Search the web" autocomplete="off">
+  <button type="submit">Search</button>
+</form>
+<nav aria-label="Sites">
+  <a href="https://www.youtube.com/"><b style="--c:#d93025">▶</b>YouTube</a>
+  <a href="https://www.google.com/"><b style="--c:#3b6fd8">G</b>Google</a>
+  <a href="https://mail.google.com/"><b style="--c:#c5221f">M</b>Gmail</a>
+  <a href="https://www.twitch.tv/"><b style="--c:#7c4ddb">T</b>Twitch</a>
+  <a href="https://www.netflix.com/"><b style="--c:#b20710">N</b>Netflix</a>
+  <a href="https://www.xbox.com/play"><b style="--c:#107c10">X</b>Xbox Cloud Gaming</a>
+  <a href="https://store.steampowered.com/"><b style="--c:#1b2838">S</b>Steam Store</a>
+  <a href="https://www.reddit.com/"><b style="--c:#ff4500">R</b>Reddit</a>
+  <a href="https://en.wikipedia.org/"><b style="--c:#54595d">W</b>Wikipedia</a>
+  <a href="https://hearthos.fun/"><b style="--c:#ff8a3d">H</b>Hearth OS</a>
+</nav>
+<footer>Built on Firefox. With a controller: the Keyboard button in the toolbar types.</footer>
+<script>
+  // A typed address goes to the address, anything else to the search.
+  document.querySelector('form').addEventListener('submit', e => {
+    const q = e.target.q.value.trim();
+    if (/^(https?:\/\/)?[\w-]+(\.[\w-]+)+(:\d+)?(\/\S*)?$/i.test(q) && !/\s/.test(q)) {
+      e.preventDefault();
+      location.href = /^https?:\/\//i.test(q) ? q : 'https://' + q;
+    }
+  });
+</script>
+</body>
+</html>
