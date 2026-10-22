@@ -180,9 +180,10 @@ jobs:
           # -e: the page starts the command (so this checks WebView2, the page and ConPTY together).
           $out = Join-Path $env:RUNNER_TEMP 'ran.txt'
           $bat = Join-Path $env:RUNNER_TEMP 'ran.cmd'
-          Set-Content -Encoding ascii $bat "@cd > `"$out`"`r`n@ping -n 30 127.0.0.1 > nul"
+          Set-Content -Encoding ascii $bat "@cd > `"$out`"`r`n@ping -n 100 127.0.0.1 > nul"
           $p = Start-Process -PassThru target/release/hearth-terminal.exe -ArgumentList '--cwd', $env:RUNNER_TEMP, '-e', $bat
-          for ($i = 0; $i -lt 40 -and -not (Test-Path $out); $i++) { Start-Sleep 1 }
+          # WebView2's first start on a busy runner can take a while: up to 90 s.
+          for ($i = 0; $i -lt 90 -and -not (Test-Path $out); $i++) { Start-Sleep 1 }
           New-Item -ItemType Directory -Force shots | Out-Null
           try {
             Add-Type -AssemblyName System.Windows.Forms, System.Drawing
