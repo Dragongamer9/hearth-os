@@ -2,7 +2,7 @@
 // Hearth's own installer, the Hearth app's side: talks to /usr/libexec/nimbus/hearth-install (the engine,
 // shared with Mantel's install window) through pkexec. Only on the live USB.
 //   disks()       the drives Hearth can go on
-//   check(part)   next to Windows (no part) or the Linux on `part` (SteamOS, ...): how much room it can give,
+//   check(part, disk) next to Windows (no part; the one on `disk`, the chosen drive) or the Linux on `part` (SteamOS, ...): how much room it can give,
 //                 what's in the way; the result's `target` describes it either way
 //   start(plan)   installs; progress comes as 'changed' events ({state, stage, pct, text, ...})
 //   restart()     restarts into the installed Hearth
@@ -61,13 +61,15 @@ class OsInstaller extends EventEmitter {
     return this.helper(ENGINE, ['disks']);
   }
 
-  async check(part = null) {
+  async check(part = null, disk = null) {
     if (!this.available) throw new Error('The installer is on the Hearth USB stick.');
     if (part) {
       if (!/^\/dev\/[\w/-]+$/.test(part)) throw new Error('Unknown partition');
       return this.helper(ENGINE, ['check', part]);
     }
-    const r = await this.helper(PREP, ['check']);
+    // The Windows on the chosen drive (the one Hearth goes next to), not the biggest one on any drive.
+    if (disk && !/^\/dev\/[\w/-]+$/.test(disk)) throw new Error('Unknown drive');
+    const r = await this.helper(PREP, disk ? ['check', disk] : ['check']);
     return { ...r, target: r.windows ? { ...r.windows, kind: 'windows', name: 'Windows', part: r.windows.dev } : null };
   }
 
