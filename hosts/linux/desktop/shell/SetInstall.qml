@@ -66,9 +66,12 @@ SetPage {
         out.push({ value: max * gib, label: "All it can (" + max + " GB)" });
         return out;
     }
+    // Picking another system while one is being checked: check again for that one when this finishes (the first
+    // one's answer was shown for the second, with its room and problems).
+    property bool recheck: false
     function check() {
-        if (checkProc.running) return;
         win = null; checking = true;
+        if (checkProc.running) { recheck = true; return; }
         checkProc.running = true;
     }
     function start() {
@@ -96,8 +99,8 @@ SetPage {
     Process {
         id: checkProc
         command: page.target && page.target.kind === "linux" ? ["pkexec", page.engine, "check", page.target.shrink || page.target.part] : ["pkexec", page.prep, "check", page.disk]
-        stdout: SplitParser { onRead: l => { l = l.trim(); if (l.startsWith("{")) { try { const r = JSON.parse(l); if (!r.target && r.windows) r.target = Object.assign({ kind: "windows", name: "Windows", freeSpace: 0 }, r.windows); page.win = r; page.give = r.suggested || 0; } catch (e) {} } else if (l.startsWith("error: ")) page.win = { problems: [{ id: "error", text: l.slice(7) }] }; } }
-        onExited: page.checking = false
+        stdout: SplitParser { onRead: l => { if (page.recheck) return; l = l.trim(); if (l.startsWith("{")) { try { const r = JSON.parse(l); if (!r.target && r.windows) r.target = Object.assign({ kind: "windows", name: "Windows", freeSpace: 0 }, r.windows); page.win = r; page.give = r.suggested || 0; } catch (e) {} } else if (l.startsWith("error: ")) page.win = { problems: [{ id: "error", text: l.slice(7) }] }; } }
+        onExited: { if (page.recheck) { page.recheck = false; Qt.callLater(() => checkProc.running = true); } else page.checking = false; }
     }
     Process {
         id: runProc

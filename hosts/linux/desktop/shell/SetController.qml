@@ -21,8 +21,11 @@ SetPage {
     function label(id) { const t = ctl ? ctl.targets.find(x => x.id === id) : null; return t ? t.label : id; }
     function mapped(id) { return ctl && ctl.config && ctl.config.map ? (ctl.config.map[id] || "") : ""; }
     function typeLabel() { const t = ctl ? ctl.types.find(x => x.id === (ctl.config.target || "")) : null; return t ? t.label : "Automatic"; }
+    // One at a time; changes made while one runs (or while the page is still reading the status) wait their turn.
+    // They were dropped: a button or controller type picked in the first moments, or two quick changes, didn't stick.
+    property var queue: []
     function run(args) {
-        if (proc.running) return;
+        if (proc.running) { queue = queue.concat([args]); return; }
         busy = args[0] !== "status";
         proc.command = ["python3", helper].concat(args);
         proc.running = true;
@@ -32,6 +35,7 @@ SetPage {
     Component.onCompleted: run(["status"])
     Process {
         id: proc
+        onExited: if (page.queue.length) { const a = page.queue[0]; page.queue = page.queue.slice(1); Qt.callLater(() => page.run(a)); }
         stdout: StdioCollector {
             onStreamFinished: {
                 const line = text.trim().split("\n").pop() || "";

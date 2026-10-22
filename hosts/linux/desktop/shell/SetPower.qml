@@ -27,7 +27,7 @@ SetPage {
     Process {
         id: pw
         property var next: null
-        onExited: if (next) { const a = next; next = null; page.power(a); }
+        onExited: if (next) { const a = next; next = null; Qt.callLater(() => page.power(a)); }
         stdout: StdioCollector {
             onStreamFinished: {
                 const line = text.trim().split("\n").pop() || "";
