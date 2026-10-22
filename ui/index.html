@@ -1210,7 +1210,8 @@ const MOCK = (()=>{
     'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
     'game.options.get':async({id})=>({id,kind:(G(id)&&G(id).src==='beacon')?'beacon':'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false,fpsLimit:0,tdp:0,hhdPower:{},powerLabel:''},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
       protonChoices:[{id:'',label:'Default',sub:'UMU-Proton, the newest, downloaded when needed'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'Community build with extra fixes'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
-    'browser.status':async()=>clone(st.br||{available:true,installed:true,default:true,version:'4.9.1.0',checkedAt:Math.floor(Date.now()/1000)-86400,state:'idle'}),
+    'browser.status':async()=>clone(st.br||{available:true,installed:true,default:true,version:'4.9.1.0',checkedAt:Math.floor(Date.now()/1000)-86400,state:'idle',hearth:{available:true,installed:true,own:true,default:false,version:'150.0'}}),
+    'browser.hearth':async()=>clone(st.br||{available:true,installed:false,state:'idle',hearth:{available:true,installed:true,own:true,default:true,version:'150.0'}}),
     'browser.act':async({action})=>{ st.br=Object.assign({available:true,installed:true,default:true,version:'4.9.1.0',state:'idle'},st.br||{}); if(action==='remove') st.br.installed=false; if(action==='install'||action==='default'){ st.br.installed=true; st.br.default=true; } return clone(st.br); },
     'buttons.get':async()=>clone(Object.assign({press:'sleep',hold:'menu',overamp:false},st.btn||{},{maxVolume:st.btn&&st.btn.overamp?150:100,watching:{devices:['Power Button','AT Translated Set 2 keyboard'],problems:[]}})),
     'buttons.set':async(o)=>{ st.btn=Object.assign({press:'sleep',hold:'menu',overamp:false},st.btn||{},o); if(!st.btn.overamp&&st.audio.volume>100) st.audio.volume=100; return MOCK.call('buttons.get'); },
@@ -2136,7 +2137,7 @@ function pageSystem(){
   if(LINUX) h += oldFilesRows();
   const tz=(()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }catch(e){ return ''; } })();
   if(LINUX && ART.s) h += shead('Offline') + `<div class="row" data-f data-k="sy-art"><span class="ricon">${I.dl}</span><div class="rt"><b>Game art on this device</b><small>${ART.s.pictures} pictures (${Math.round(ART.s.bytes/1e6)} MB)${ART.s.waiting?` · ${ART.s.waiting} still downloading`:' · your library looks the same offline'}</small></div></div>`;
-  if(LINUX) h += browserRows();
+  if(LINUX || WINHOST) h += browserRows();
   h += shead('Date and time')
     + sgrid(infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
     + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM'));
@@ -2214,21 +2215,34 @@ async function restoreBackup(){
   openSheet({title:'Restore which backup?', items:st.backups.slice(0,12).map(b=>({label:`${new Date(b.at).toLocaleString()} · ${Math.max(1,Math.round(b.bytes/1e6))} MB`, icon:'refresh', run:()=>setTimeout(()=>openSheet({title:'Restore this backup?', sub:`Settings, profiles and play data go back to how they were then. What's here now is kept aside, in case. ${APP} restarts.`, items:[
     {label:'Restore', icon:'refresh', run:()=>call('backup.restore',{file:b.file},10*60000).then(()=>toast(`Restored. ${APP} is restarting…`)).catch(e=>toast(e.message))}]}),250)}))});
 }
-// ---------- Settings › System › Web browser (Aloha, Linux) ----------
+// ---------- Settings › System › Web browser: Hearth Browser (Firefox), and Aloha (optional, Linux) ----------
 const BROWSER = {s:null};
 const ART = {s:null};
+// Ember (Windows): Hearth Browser too (hosts/windows/Nimbus.Host/Services/HearthBrowser.cs).
+const WINHOST = !!host && !LINUX && !ANDROID;
 function loadArtStatus(){ if(LINUX && host) call('art.status').then(r=>{ ART.s=r; refreshUI(); }).catch(()=>{}); }
-function loadBrowser(){ if(LINUX) call('browser.status').then(r=>{ BROWSER.s=r; refreshUI(); }).catch(()=>{}); }
+function loadBrowser(){ if(LINUX || WINHOST) call('browser.status').then(r=>{ BROWSER.s=r; refreshUI(); }).catch(()=>{}); }
 function browserRows(){
   const b=BROWSER.s;
   let h = shead('Web browser');
   if(!b) return h + note('Loading…');
   if(b.available===false && !(b.hearth&&b.hearth.available)) return h + note('The web browser is set up on Hearth, the OS.');
-  if(b.hearth && b.hearth.available){
-    h += `<button class="row" data-f data-k="br-hb" data-act="hearthBrowser" data-v="open"><span class="ricon">${I.globe||I.display}</span><div class="rt"><b>Hearth Browser</b><small>${b.hearth.default?'Your default browser':'Hearth\'s own web browser: tabs, bookmarks, history, downloads'}</small></div><div class="rv">Open ›</div></button>`;
-    if(!b.hearth.default) h += `<button class="row" data-f data-k="br-hbdef" data-act="hearthBrowser" data-v="default"><div class="rt"><b>Make Hearth Browser the default</b><small>Links from other apps open in it</small></div></button>`;
+  const hb=b.hearth;
+  if(hb && hb.available){
+    if(hb.state && hb.state!=='idle'){
+      const pct = hb.progress!=null ? Math.round(hb.progress*100) : null;
+      h += `<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Setting up Hearth Browser…</b><small>${esc(hb.line||'')}</small>${pct!=null?`<div class="storage"><i style="width:${pct}%"></i></div>`:''}</div><div class="rv">${pct!=null?pct+'%':''}</div></div>`;
+    } else {
+      const about = hb.installed===false ? 'Built on Firefox. The first time, it downloads Firefox from Mozilla (about 80 MB)'
+        : (hb.default?'Your default browser · ':'')+'Built on Firefox'+(hb.version?' '+esc(hb.version):'')+': Google sign-in, Netflix and add-ons work';
+      h += `<button class="row" data-f data-k="br-hb" data-act="hearthBrowser" data-v="open"><span class="ricon">${I.globe||I.display}</span><div class="rt"><b>Hearth Browser</b><small>${about}</small></div><div class="rv">Open ›</div></button>`;
+      if(LINUX && !hb.default) h += `<button class="row" data-f data-k="br-hbdef" data-act="hearthBrowser" data-v="default"><div class="rt"><b>Make Hearth Browser the default</b><small>Links from other apps open in it</small></div></button>`;
+      if(WINHOST && hb.installed && hb.own===false) h += `<button class="row" data-f data-k="br-hbown" data-act="hearthBrowser" data-v="setup"><div class="rt"><b>Give Hearth Browser its own Firefox</b><small>For now it uses the Firefox you installed. Its own copy brings Hearth's settings and leaves yours alone</small></div></button>`;
+      if(hb.error) h += note('Last try didn\'t work: '+esc(hb.error));
+    }
   }
-  if(b.available===false) return h;
+  if(!LINUX || b.available===false) return h;
+  h += shead('Aloha Browser (optional)');
   const busy = b.state && b.state!=='idle';
   if(busy){
     const pct = b.progress!=null ? Math.round(b.progress*100) : null;
@@ -2248,9 +2262,9 @@ function browserRows(){
 }
 
 const CREDITS = LINUX
-  ? [['Tauri and WebKitGTK','Run '+APP+'\'s interface'],['Electron','Runs Hearth Browser'],['gamescope','Game Mode compositor (Valve)'],['labwc','Window manager behind Mantel, the desktop'],['Quickshell','Mantel\'s taskbar, menus and settings'],
+  ? [['Tauri and WebKitGTK','Run '+APP+'\'s interface'],['Firefox','Runs Hearth Browser (Mozilla)'],['Electron','Runs Quick Access'],['gamescope','Game Mode compositor (Valve)'],['labwc','Window manager behind Mantel, the desktop'],['Quickshell','Mantel\'s taskbar, menus and settings'],
      ['Bazzite / Universal Blue','The OS Hearth is built on'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)'],['umu-launcher','Runs Windows games with Proton'],['Proton / Wine','Windows compatibility']]
-  : [['WebView2','Runs '+APP+'\'s interface (Microsoft Edge)'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)']];
+  : [['WebView2','Runs '+APP+'\'s interface (Microsoft Edge)'],['Firefox','Runs Hearth Browser (Mozilla)'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)']];
 function pageAbout(){
   const i=SYSINFO.s||{}, ver=UPD.status ? UPD.status.current : (host?(ANDROID&&HOSTINFO.version||'…'):'Browser preview');
   const sysVer = LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted ? SYSUPD.s.status.booted.version : '';
@@ -5338,7 +5352,9 @@ function act(el){
     case 'osiEdit': return osiEdit(d.v);
     case 'osiTz': return osiTzPick();
     case 'osiSignin': return osiSigninPick();
-    case 'hearthBrowser': return call('browser.hearth',{action:d.v}).then(r=>{ if(r&&r.hearth){ BROWSER.s=r; refreshUI(); if(d.v==='default') toast('Hearth Browser is your default browser'); } }).catch(e=>toast(e.message));
+    case 'hearthBrowser':
+      if(d.v==='open') toast(BROWSER.s&&BROWSER.s.hearth&&BROWSER.s.hearth.installed===false?'Setting up Hearth Browser…':'Opening Hearth Browser…');
+      return call('browser.hearth',{action:d.v},60000).then(r=>{ if(r&&r.hearth){ BROWSER.s=r; refreshUI(); if(d.v==='default') toast('Hearth Browser is your default browser'); } }).catch(e=>toast(e.message));
     case 'profPick': return profPick(d.id);
     case 'profAdd': return profAdd();
     case 'profEdit': return profEdit(d.id);

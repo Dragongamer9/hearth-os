@@ -1,0 +1,170 @@
+# Hearth Browser (Mozilla's Firefox with Hearth's parts, os/system_files/usr/share/hearth-browser) on Linux and on
+# Windows, put together the way Hearth OS images and Ember do it, then tried: policies, start-up script, look, start
+# page, the on-screen keyboard typing into a page, Game Mode's full-screen window, Google's sign-in page, uBlock
+# Origin and Widevine (tools/hearth-browser-test.py, through Firefox's Marionette). Screenshots are kept on the run.
+# It doesn't publish anything. The images themselves (os-bases/*/build.sh runs install-firefox) are checked by
+# base-*.yml.
+name: Hearth Browser
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [apps-browser, linux-host, main]
+    paths:
+      - 'os/system_files/usr/share/hearth-browser/**'
+      - 'os/system_files/usr/bin/hearth-browser'
+      - 'tools/hearth-browser-test.py'
+      - 'hosts/windows/Nimbus.Host/Services/HearthBrowser.cs'
+      - '.github/workflows/hearth-browser.yml'
+
+concurrency:
+  group: hearth-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (as on Hearth OS)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Put Firefox together with Hearth's parts (install-firefox, as the images do)
+        run: |
+          python3 os/system_files/usr/share/hearth-browser/install-firefox --latest
+          python3 os/system_files/usr/share/hearth-browser/install-firefox "$RUNNER_TEMP/hb/firefox" | tee install.log
+          grep -q "signed by Mozilla" install.log || { echo "::error title=install-firefox::Mozilla's signature on SHA256SUMS wasn't checked"; exit 1; }
+          F="$RUNNER_TEMP/hb/firefox"
+          test -x "$F/firefox" && test -f "$F/hearth.cfg" && test -f "$F/defaults/pref/autoconfig.js" && test -f "$F/hearth/hearth.sys.mjs" && test -f "$F/hearth/start.html"
+          python3 -c 'import json, sys; p = json.load(open(sys.argv[1]))["policies"]; assert p["DisableAppUpdate"] is True and "uBlock0@raymondhill.net" in p["ExtensionSettings"], p' "$F/distribution/policies.json"
+          "$F/firefox" --version
+          cat "$F/hearth-firefox.json"
+
+      - name: The hearth-browser command
+        env:
+          HEARTH_FIREFOX_DIR: ${{ runner.temp }}/hb/firefox
+        run: |
+          python3 -m py_compile os/system_files/usr/bin/hearth-browser
+          export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
+          os/system_files/usr/bin/hearth-browser --hearth-status | tee status.json
+          python3 -c 'import json; s = json.load(open("status.json")); assert s["installed"] and s["version"] and s["layout"] == "auto", s'
+          os/system_files/usr/bin/hearth-browser --hearth-layout big | grep -q '"layout": "big"'
+          os/system_files/usr/bin/hearth-browser --hearth-layout auto >/dev/null
+
+      - name: Headless screenshots (firefox --screenshot)
+        run: |
+          mkdir -p shots
+          F="$RUNNER_TEMP/hb/firefox/firefox"
+          "$F" --headless --profile "$(mktemp -d)" --window-size 1280,800 --screenshot "$PWD/shots/screenshot-start.png" "file://$RUNNER_TEMP/hb/firefox/hearth/start.html"
+          HEARTH_BROWSER_BIG=1 HEARTH_BROWSER_SCALE=1.5 "$F" --headless --profile "$(mktemp -d)" --window-size 1920,1080 --screenshot "$PWD/shots/screenshot-start-big.png" "file://$RUNNER_TEMP/hb/firefox/hearth/start.html"
+          "$F" --headless --profile "$(mktemp -d)" --window-size 1280,900 --screenshot "$PWD/shots/screenshot-google.png" https://accounts.google.com/ || echo "::warning title=screenshot::Google's page didn't load"
+          ls -la shots
+
+      - name: Try it (policies, keyboard, Game Mode, Google sign-in, uBlock Origin, Widevine)
+        run: python3 tools/hearth-browser-test.py --firefox "$RUNNER_TEMP/hb/firefox/firefox" --out shots --extras
+
+      - name: A real window, started by hearth-browser as in Game Mode (X11 class, full screen, keys from a keyboard)
+        env:
+          HEARTH_FIREFOX_DIR: ${{ runner.temp }}/hb/firefox
+        run: |
+          sudo apt-get install -y -qq xvfb x11-utils xdotool imagemagick >/dev/null
+          export HOME="$RUNNER_TEMP/home2"; mkdir -p "$HOME"
+          Xvfb :7 -screen 0 1920x1080x24 >/dev/null 2>&1 & sleep 2
+          export DISPLAY=:7
+          page='data:text/html;charset=utf-8,<title>Typing</title><body style="background:%23222;color:%23eee;font:24px sans-serif"><input id="i" autofocus style="font-size:28px;width:80%25"></body>'
+          # GAMESCOPE_WAYLAND_DISPLAY: what tells hearth-browser it's in Game Mode.
+          GAMESCOPE_WAYLAND_DISPLAY=gamescope-0 os/system_files/usr/bin/hearth-browser --marionette "$page" > shots/xvfb-firefox.log 2>&1 &
+          for i in $(seq 1 40); do win=$(xdotool search --class hearth-browser 2>/dev/null | tail -1); [ -n "$win" ] && break; sleep 1; done
+          test -n "$win" || { echo "::error title=window::no window with class hearth-browser"; xwininfo -root -tree | head -40; exit 1; }
+          sleep 8
+          xprop -id "$win" WM_CLASS | tee shots/xvfb-wm-class.txt
+          grep -q '"hearth-browser", "hearth-browser"' shots/xvfb-wm-class.txt || { echo "::error title=WM_CLASS::$(cat shots/xvfb-wm-class.txt)"; exit 1; }
+          xwininfo -id "$win" | tee shots/xvfb-window.txt
+          w=$(awk '/Width:/{print $2}' shots/xvfb-window.txt); h=$(awk '/Height:/{print $2}' shots/xvfb-window.txt)
+          [ "$w" -ge 1900 ] && [ "$h" -ge 1000 ] || echo "::error title=Game Mode window::not full screen (${w}x${h})"
+          import -window root shots/xvfb-game-1.png
+          xdotool windowfocus --sync "$win" || true
+          xdotool key --delay 300 ctrl+alt+k; sleep 1
+          xdotool key --delay 300 Down Return Return; sleep 1
+          import -window root shots/xvfb-game-2-keyboard.png
+          python3 - <<'PY'
+          import importlib.util, sys, time
+          spec = importlib.util.spec_from_file_location('t', 'tools/hearth-browser-test.py'); t = importlib.util.module_from_spec(spec); spec.loader.exec_module(t)
+          m = t.Marionette(2828)
+          m.cmd('WebDriver:NewSession', {'capabilities': {'alwaysMatch': {}}})
+          v = m.js('return document.getElementById("i").value;')
+          print('typed with real keys through the on-screen keyboard:', repr(v))
+          if v != 'aa':
+              print('::error title=keyboard (real keys)::expected "aa", got %r' % v); sys.exit(1)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-browser-linux
+          path: shots
+          retention-days: 14
+
+  windows:
+    name: Windows (as in Ember)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build Ember (as release.yml)
+        shell: pwsh
+        run: |
+          dotnet publish hosts/windows/Nimbus.Host/Nimbus.Host.csproj -c Release -r win-x64 --self-contained false -p:Platform=x64 -o out -nologo
+          foreach ($f in 'out/Nimbus.exe', 'out/hearth-browser/hearth.cfg', 'out/hearth-browser/distribution/policies.json', 'out/hearth-browser/hearth/hearth.sys.mjs', 'out/hearth-browser/defaults/pref/autoconfig.js') {
+            if (-not (Test-Path $f)) { throw "Missing $f in the published output" }
+          }
+
+      - name: Ember sets up Hearth Browser (Nimbus.exe --browser --setup-only)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath out/Nimbus.exe -ArgumentList '--browser', '--setup-only' -Wait -PassThru
+          $root = Join-Path $env:LOCALAPPDATA 'Nimbus\HearthBrowser'
+          if (Test-Path "$root\setup.log") { Get-Content "$root\setup.log" }
+          if ($p.ExitCode -ne 0) { throw "Setup failed (exit $($p.ExitCode))" }
+          foreach ($f in 'firefox\firefox.exe', 'firefox\hearth.cfg', 'firefox\distribution\policies.json', 'firefox\hearth\start.html', 'firefox\hearth-firefox.json') {
+            if (-not (Test-Path (Join-Path $root $f))) { throw "Missing $f" }
+          }
+          Get-Content "$root\firefox\hearth-firefox.json"
+          if (-not (Select-String -Path "$root\setup.log" -Pattern 'signed by Mozilla' -Quiet)) { throw "The installer's signature wasn't checked" }
+          if (Select-String -Path "$root\setup.log" -Pattern "running Mozilla's installer" -Quiet) { Write-Output "::warning title=unpack::tar couldn't unpack the installer; Mozilla's installer was used" }
+          $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'Hearth Browser.lnk'
+          if (-not (Test-Path $lnk)) { Write-Output "::warning title=shortcut::no Start menu shortcut" }
+
+      - name: Try it (policies, keyboard, Game Mode, Google sign-in, uBlock Origin, Widevine)
+        shell: pwsh
+        run: python tools/hearth-browser-test.py --firefox "$env:LOCALAPPDATA\Nimbus\HearthBrowser\firefox\firefox.exe" --out shots --extras
+
+      - name: Ember opens it (Nimbus.exe --browser --game URL)
+        shell: pwsh
+        run: |
+          Start-Process -FilePath out/Nimbus.exe -ArgumentList '--browser', '--game', 'https://example.com/'
+          Start-Sleep -Seconds 25
+          $procs = Get-CimInstance Win32_Process -Filter "Name='firefox.exe'" | Where-Object { $_.CommandLine -match 'HearthBrowser\\profile' }
+          $procs | Select-Object ProcessId, CommandLine | Format-List | Out-String -Width 400 | Write-Output
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          New-Item -ItemType Directory -Force shots | Out-Null
+          $bmp.Save("shots/windows-ember-open.png")
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $procs) { throw "Hearth Browser didn't start with its profile" }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-browser-windows
+          path: shots
+          retention-days: 14

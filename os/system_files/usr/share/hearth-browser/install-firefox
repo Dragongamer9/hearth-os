@@ -1,0 +1,225 @@
+#!/usr/bin/python3
+"""install-firefox: puts Mozilla's Firefox (Linux, x86-64) in a folder and adds Hearth Browser's parts to it.
+
+Hearth OS images run it once at build time (os-bases/*/build.sh), into /usr/lib/hearth-browser/firefox: Firefox
+then updates with Hearth OS. CI (.github/workflows/hearth-browser.yml) uses it too.
+
+  install-firefox DEST           the newest Firefox release (or $HEARTH_FIREFOX_VERSION), checked, into DEST
+  install-firefox --apply DEST   only (re)add Hearth's parts to the Firefox already in DEST
+  install-firefox --latest       print the newest Firefox release's version
+
+Firefox itself is Mozilla's, unchanged (so Google sign-in, protected video and add-ons work as in any Firefox).
+It's checked against Mozilla's SHA256SUMS, and that list against Mozilla's signature when gpg or gpgv is there
+(signed by Mozilla's release key, MOZILLA_KEY below). Hearth's parts are the firefox folder next to this file
+(policies, the start-up script, the look, the start page), copied over Firefox's folder; on Hearth OS the
+built-in updater is turned off too (DisableAppUpdate), because the image brings each new Firefox.
+"""
+import base64
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.request
+
+ARCHIVE = 'https://archive.mozilla.org/pub/firefox/releases'
+VERSIONS = 'https://product-details.mozilla.org/1.0/firefox_versions.json'
+# Mozilla Software Releases <release@mozilla.com>: the key that signs every release's SHA256SUMS.
+MOZILLA_KEY = '14F26682D0916CDD81E37B6D61B7B526D98F0353'
+HERE = os.path.dirname(os.path.realpath(__file__))
+PARTS = os.path.join(HERE, 'firefox')
+
+
+class Fail(Exception):
+    pass
+
+
+def say(msg):
+    print('install-firefox: ' + msg, flush=True)
+
+
+def fetch(url, dest=None, tries=4):
+    """The bytes at url (or saved to dest), a few tries with a pause between."""
+    last = None
+    for i in range(tries):
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS-image-build'})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                if dest is None:
+                    return r.read()
+                with open(dest, 'wb') as f:
+                    shutil.copyfileobj(r, f, 1 << 20)
+                return dest
+        except OSError as e:
+            last = e
+            time.sleep(3 * (i + 1))
+    raise Fail("couldn't download %s (%s)" % (url, last))
+
+
+def latest():
+    v = json.loads(fetch(VERSIONS)).get('LATEST_FIREFOX_VERSION', '')
+    if not v:
+        raise Fail("Mozilla's list of versions has no LATEST_FIREFOX_VERSION")
+    return v
+
+
+def dearmor(text):
+    """An ASCII-armored OpenPGP key → the binary key gpgv reads as a keyring."""
+    out, body, inside, past_headers = b'', [], False, False
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith('-----BEGIN PGP'):
+            inside, past_headers, body = True, False, []
+        elif line.startswith('-----END PGP'):
+            out += base64.b64decode(''.join(body))
+            inside = False
+        elif inside:
+            if not past_headers:
+                if line == '':
+                    past_headers = True
+                elif ':' not in line:
+                    past_headers = True
+                    body.append(line)
+            elif not line.startswith('='):
+                body.append(line)
+    return out
+
+
+def check_signature(sums, asc, key):
+    """Mozilla's signature on SHA256SUMS. True when checked, False when there's no gpg/gpgv; Fail when it's wrong."""
+    gpgv, gpg = shutil.which('gpgv'), shutil.which('gpg')
+    if not gpgv and not gpg:
+        say("no gpg or gpgv here: SHA256SUMS is trusted because it came from archive.mozilla.org over HTTPS")
+        return False
+    with tempfile.TemporaryDirectory(prefix='hearth-ff-gpg-') as t:
+        ring = os.path.join(t, 'mozilla.gpg')
+        with open(ring, 'wb') as f:
+            f.write(dearmor(key.decode('ascii', 'replace')))
+        files = []
+        for name, data in (('SHA256SUMS', sums), ('SHA256SUMS.asc', asc)):
+            files.append(os.path.join(t, name))
+            with open(files[-1], 'wb') as f:
+                f.write(data)
+        if gpgv:
+            cmd = [gpgv, '--homedir', t, '--keyring', ring, '--status-fd', '1', files[1], files[0]]
+        else:
+            cmd = [gpg, '--batch', '--homedir', t, '--no-default-keyring', '--keyring', ring, '--status-fd', '1',
+                   '--verify', files[1], files[0]]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    for line in r.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[1] == 'VALIDSIG':
+            if MOZILLA_KEY in (parts[2].upper(), parts[-1].upper()):
+                say('SHA256SUMS is signed by Mozilla (%s)' % parts[2])
+                return True
+            raise Fail('SHA256SUMS is signed by an unexpected key: ' + parts[2])
+    raise Fail("Mozilla's signature on SHA256SUMS doesn't check out:\n" + (r.stdout + r.stderr)[-1500:])
+
+
+def expected_sha256(sums, name):
+    for line in sums.decode('utf-8', 'replace').splitlines():
+        h, _, f = line.strip().partition(' ')
+        if f.strip().lstrip('*') == name:
+            return h.lower()
+    raise Fail('SHA256SUMS has no line for ' + name)
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for block in iter(lambda: f.read(1 << 20), b''):
+            h.update(block)
+    return h.hexdigest()
+
+
+def apply(dest):
+    """Hearth's parts over Firefox's folder; on Linux, no built-in updater (the image updates Firefox)."""
+    if not os.path.isfile(os.path.join(dest, 'firefox')):
+        raise Fail('no Firefox in ' + dest)
+    shutil.copytree(PARTS, dest, dirs_exist_ok=True)
+    pol_path = os.path.join(dest, 'distribution', 'policies.json')
+    with open(pol_path) as f:
+        pol = json.load(f)
+    pol['policies']['DisableAppUpdate'] = True
+    with open(pol_path, 'w') as f:
+        json.dump(pol, f, indent=2)
+        f.write('\n')
+    for root, dirs, files in os.walk(dest):
+        for d in dirs:
+            os.chmod(os.path.join(root, d), 0o755)
+    say("Hearth's parts are in " + dest)
+
+
+def install(dest, version=None):
+    version = version or os.environ.get('HEARTH_FIREFOX_VERSION') or latest()
+    name = 'linux-x86_64/en-US/firefox-%s.tar.xz' % version
+    base = '%s/%s/' % (ARCHIVE, version)
+    say('Firefox %s from %s' % (version, base))
+    parent = os.path.dirname(os.path.abspath(dest))
+    os.makedirs(parent, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='hearth-ff-', dir=parent) as t:
+        sums = fetch(base + 'SHA256SUMS')
+        try:
+            signed = check_signature(sums, fetch(base + 'SHA256SUMS.asc'), fetch(base + 'KEY'))
+        except Fail as e:
+            if 'doesn' in str(e) or 'unexpected' in str(e):
+                raise
+            say('the signature could not be fetched (%s); going by SHA256SUMS over HTTPS' % e)
+            signed = False
+        want = expected_sha256(sums, name)
+        tarball = fetch(base + name, os.path.join(t, 'firefox.tar.xz'))
+        got = sha256(tarball)
+        if got != want:
+            raise Fail('the download is not what Mozilla published (%s, expected %s)' % (got, want))
+        say('download checked (sha256 %s)' % got)
+        unpacked = os.path.join(t, 'unpacked')
+        os.makedirs(unpacked)
+
+        def root_owned(member, path):
+            if hasattr(tarfile, 'tar_filter'):
+                member = tarfile.tar_filter(member, path)
+            return member.replace(uid=0, gid=0, uname='root', gname='root', deep=False) if hasattr(member, 'replace') else member
+
+        with tarfile.open(tarball, 'r:xz') as tar:
+            if hasattr(tarfile, 'tar_filter'):
+                tar.extractall(unpacked, filter=root_owned)
+            else:
+                tar.extractall(unpacked)
+        new = os.path.join(unpacked, 'firefox')
+        if not os.path.isfile(os.path.join(new, 'firefox')):
+            raise Fail("the download has no firefox program")
+        with open(os.path.join(new, 'hearth-firefox.json'), 'w') as f:
+            json.dump({'version': version, 'sha256': got, 'signed': signed, 'source': base + name,
+                       'installedAt': int(time.time())}, f, indent=2)
+        old = None
+        if os.path.exists(dest):
+            old = os.path.join(t, 'old')
+            os.rename(dest, old)
+        os.rename(new, dest)
+    apply(dest)
+    say('Firefox %s installed in %s' % (version, dest))
+
+
+def main(argv):
+    if len(argv) == 2 and argv[1] == '--latest':
+        print(latest())
+    elif len(argv) == 3 and argv[1] == '--apply':
+        apply(argv[2])
+    elif len(argv) == 2 and not argv[1].startswith('-'):
+        install(argv[1])
+    else:
+        print(__doc__.strip().split('\n\n')[1])
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main(sys.argv))
+    except (Fail, OSError, tarfile.TarError, ValueError) as e:
+        print('install-firefox: error: %s' % e, file=sys.stderr)
+        sys.exit(1)

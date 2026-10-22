@@ -1,17 +1,19 @@
 #!/usr/bin/python3
-"""hearth-browser: Aloha Browser as Hearth's web browser.
+"""hearth-browser (this helper): Aloha Browser, an optional extra browser on Hearth OS.
 
-Aloha is closed-source and only offers .deb/.rpm packages, so it can't ship inside Hearth's image. Instead
-this downloads Aloha's official RPM from alohabrowser.com on the device, unpacks it into your home folder
-(nothing is installed system-wide, so Hearth's updates stay small) and makes it the default browser.
+Hearth's own browser is Hearth Browser (Firefox with Hearth's settings, /usr/bin/hearth-browser, part of the image).
+Aloha is there for those who want it: it's closed-source and only offers .deb/.rpm packages, so it can't ship
+inside Hearth's image. This downloads Aloha's official RPM from alohabrowser.com on the device when you ask for it
+(Settings › Web browser), unpacks it into your home folder (nothing is installed system-wide, so Hearth's updates
+stay small) and makes it the default browser.
 
   hearth-browser status      JSON: installed, default, version, when it last looked for an update
   hearth-browser install     download and install (or reinstall) the newest Aloha, and make it the default
   hearth-browser update      install a newer Aloha if alohabrowser.com has one
   hearth-browser default     make Aloha the default browser
   hearth-browser remove      uninstall it (and stop installing it by itself)
-  hearth-browser ensure      what the session runs: install if it was never installed or removed, otherwise
-                             look for an update once a week
+  hearth-browser ensure      what the session runs: when it's installed, look for an update once a week (it's
+                             no longer installed by itself: Hearth Browser is the browser that comes with Hearth)
 Progress lines "progress: <0-100> <what>", then one JSON line; failures print "error: ..." and exit 1.
 """
 import glob
@@ -292,10 +294,7 @@ def main(argv):
         remove()
     elif c == 'ensure':
         st = load_state()
-        if not os.path.exists(LAUNCHER):
-            if not st.get('removed'):
-                install()
-        elif time.time() - (st.get('checkedAt') or 0) > WEEK:
+        if os.path.exists(LAUNCHER) and time.time() - (st.get('checkedAt') or 0) > WEEK:
             update()
     else:
         print('usage: hearth-browser status|install|update|default|remove|ensure')
