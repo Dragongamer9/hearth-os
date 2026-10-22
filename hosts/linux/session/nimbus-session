@@ -229,8 +229,10 @@ settle() {
   fi
   pkill -KILL -u "$(id -u)" -x gamescope 2>/dev/null; pkill -KILL -u "$(id -u)" -x gamescope-wl 2>/dev/null
   pkill -KILL -u "$(id -u)" -x labwc 2>/dev/null
-  # Desktop Mode's controller helpers, if any outlived their mode.
+  # Desktop Mode's controller and button helpers, if any outlived their mode (Quickshell ended by a signal
+  # leaves its children running: hearth-buttons then polled the keys in the next mode, one more each switch).
   pkill -TERM -u "$(id -u)" -f 'desktop/shell/hearth-pad' 2>/dev/null; pkill -TERM -u "$(id -u)" -x quickshell 2>/dev/null
+  pkill -TERM -u "$(id -u)" -f 'desktop/shell/hearth-buttons' 2>/dev/null
   # The controller service back to normal: Hearth (Game Mode) asks it to catch the Xbox button, and a mode that
   # ended without tidying up (closed by force) could leave it catching every button, so nothing but the Xbox
   # button worked in the next mode.
