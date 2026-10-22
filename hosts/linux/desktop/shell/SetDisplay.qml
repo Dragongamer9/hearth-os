@@ -14,6 +14,8 @@ SetPage {
     property var cur: null        // {width, height, refresh}
     property var prev: null       // what to go back to if not confirmed
     property int countdown: 0
+    property var want: null       // the mode just asked for, checked when wlr-randr answers
+    property string problem: ""   // the screen didn't take it
     property int brightness: -1
 
     readonly property var resolutions: {
@@ -36,6 +38,13 @@ SetPage {
                     page.out = outs[0] || null;
                     const m = page.out ? page.out.modes.find(x => x.current) : null;
                     page.cur = m ? { width: m.width, height: m.height, refresh: m.refresh } : null;
+                    // Did the screen really switch? (wlr-randr can refuse quietly.)
+                    if (page.want && m) {
+                        const ok = m.width === page.want.w && m.height === page.want.h && Math.round(m.refresh) === Math.round(page.want.r);
+                        if (!ok) { page.problem = `The screen stayed at ${m.width} × ${m.height}, ${Math.round(m.refresh)} Hz: it didn't accept ${page.want.w} × ${page.want.h} at ${Math.round(page.want.r)} Hz.`; page.countdown = 0; }
+                        else page.problem = "";
+                        page.want = null;
+                    }
                 } catch (e) { page.out = null; }
             }
         }
@@ -50,12 +59,22 @@ SetPage {
         if (!out) return;
         prev = { mode: modeArg(cur.width, cur.height, cur.refresh), scale: out.scale };
         const args = ["wlr-randr", "--output", out.name];
-        if (w) args.push("--mode", modeArg(w, h, r));
+        if (w) {
+            // The screen's exact rate (e.g. 143.981), not the rounded one shown on the button: wlr-randr only
+            // switches to a mode the screen lists.
+            const exact = out.modes.find(x => x.width === w && x.height === h && Math.round(x.refresh) === Math.round(r));
+            const rate = exact ? exact.refresh : r;
+            args.push("--mode", modeArg(w, h, rate));
+            want = { w: w, h: h, r: rate };
+        }
         if (scale) args.push("--scale", String(scale));
-        Quickshell.execDetached(args);
+        problem = "";
+        applyProc.command = args;
+        applyProc.running = true;
         countdown = 15;
-        Qt.callLater(load);
     }
+    // wlr-randr runs, then the screen is read back to see what it's really showing.
+    Process { id: applyProc; onExited: (code) => { if (code !== 0 && page.want) { page.problem = "The screen didn't accept that mode."; page.countdown = 0; page.want = null; } Qt.callLater(page.load); } }
     function keep() {
         countdown = 0;
         const m = out.modes.find(x => x.current) || { width: cur.width, height: cur.height, refresh: cur.refresh };
@@ -121,6 +140,7 @@ SetPage {
         }
     }
     Text { visible: !page.out; text: "Display settings work in Desktop Mode (wlr-randr)."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+    Text { visible: page.problem !== ""; text: page.problem; color: "#ff9b8f"; wrapMode: Text.Wrap; Layout.fillWidth: true; font.family: Theme.font; font.pixelSize: 14 }
 
     // Nvidia: how Game Mode's Hearth app draws (the same choice as its Settings › Display). Here too, so a
     // black Game Mode screen can be fixed from Desktop Mode.

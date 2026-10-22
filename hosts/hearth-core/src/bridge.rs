@@ -571,12 +571,15 @@ impl Bridge {
                 if crate::display::set_mode(w, h, hz, self.zoom_pct())? {
                     // New gamescope options take effect when Game Mode starts again.
                     let mut d = self.display_get(); d["restarting"] = json!(true);
-                    let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
-                    if in_session { let _ = std::fs::write(std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("nimbus-next"), "game\n"); }
-                    let emit = self.emit.clone();
-                    std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(600)); emit(json!({"type": if in_session { "quit" } else { "restart" }})); });
+                    self.restart_game_mode();
                     return Ok(d);
                 }
+                Ok(self.display_get())
+            }
+            // A new Game Mode mode on trial: keep it, or go back now (Game Mode restarts).
+            "display.keep" => { crate::display::keep(); Ok(self.display_get()) }
+            "display.revert" => {
+                if crate::display::revert() { self.restart_game_mode(); }
                 Ok(self.display_get())
             }
             "display.setScale" => {
@@ -1195,6 +1198,14 @@ impl Bridge {
     pub fn version_str(&self) -> String { self.version.clone() }
     pub fn zoom_pct(&self) -> u32 { self.library.store.data["uiScale"].as_u64().unwrap_or(100) as u32 }
     fn auto_update(&self) -> bool { self.library.store.data["autoUpdateCheck"] != false }
+    /// Game Mode starts again (gamescope with its new options): the session's next round is Game Mode, and Hearth
+    /// leaves (outside the session, Hearth restarts itself).
+    pub fn restart_game_mode(&self) {
+        let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
+        if in_session { let _ = std::fs::write(std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("nimbus-next"), "game\n"); }
+        let emit = self.emit.clone();
+        std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(600)); emit(json!({"type": if in_session { "quit" } else { "restart" }})); });
+    }
     fn display_get(&self) -> Value {
         let mut d = crate::display::get(self.zoom_pct());
         let b = system::brightness();
