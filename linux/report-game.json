@@ -16,18 +16,19 @@
       "UserMessaging",
       "FirefoxHome",
       "FirefoxSuggest",
-      "ExtensionSettings"
+      "ExtensionSettings",
+      "DisableAppUpdate"
     ],
     "hearth": {
-      "start": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
+      "start": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
       "game": true,
       "big": true,
       "scale": 1.5
     },
     "prefs": {
-      "hearth.started": 1792664096,
+      "hearth.started": 1792664177,
       "hearth.keyboard.ready": true,
-      "browser.startup.homepage": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
+      "browser.startup.homepage": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
       "media.eme.enabled": true,
       "toolkit.legacyUserProfileCustomizations.stylesheets": true,
       "datareporting.healthreport.uploadEnabled": false,
@@ -37,8 +38,8 @@
       "browser.link.open_newwindow.restriction": 0,
       "extensions.activeThemeID": "firefox-compact-dark@mozilla.org"
     },
-    "newTab": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
-    "keyboardButton": false,
+    "newTab": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
+    "keyboardButton": true,
     "keyboard": true,
     "window": [
       1280,
@@ -46,14 +47,30 @@
       1280,
       720
     ],
-    "errors": [
-      "[JavaScript Error: \"Hearth Browser (keyboard button): Error: Failed to load resource:///modules/CustomizableUI.sys.mjs\" {file: \"resource://hearth/hearth.sys.mjs\" line: 34}]\nreport@resource://hearth/hearth.sys.mjs:34:12\nkeyboardButton@resource://hearth/hearth.sys.mjs:366:23\nstart@resource://hearth/hearth.sys.mjs:417:3\n@hearth.cfg:10:68\n@hearth.cfg:14:3\n"
-    ]
+    "errors": []
   },
   "window": [
     1280,
     720,
     1280,
     720
+  ],
+  "keys": [
+    {
+      "key": "ArrowDown",
+      "open": true,
+      "r": 1,
+      "c": 0,
+      "heard": [],
+      "focus": "browser"
+    },
+    {
+      "key": "Enter",
+      "open": true,
+      "r": 1,
+      "c": 0,
+      "heard": [],
+      "focus": "browser"
+    }
   ]
 }
