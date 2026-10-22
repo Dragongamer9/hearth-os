@@ -63,7 +63,8 @@ fn sign_in(app: &tauri::AppHandle, page: &hearth_core::stores::SignIn) -> Option
     // In Game Mode it works with just a controller: a pointer, an on-screen keyboard, B to cancel. In Desktop Mode
     // (a windowed Hearth) there's a real mouse and keyboard, and the controller already moves the desktop's pointer.
     let pad = if desktop_window() { "" } else { include_str!("js/signin-pad.js") };
-    let script = format!("{}\n{}", pad, page.script.unwrap_or(""));
+    // The page itself never sees the controller (Epic's and Microsoft's react to it on their own: random clicks).
+    let script = format!("{}\n{}\n{}", include_str!("js/signin-nogamepad.js"), pad, page.script.unwrap_or(""));
     let b = WebviewWindowBuilder::new(app, "signin", WebviewUrl::External(page.url.parse().ok()?))
         .title(page.title)
         .inner_size(900.0, 760.0)
