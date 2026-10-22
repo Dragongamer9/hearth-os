@@ -774,7 +774,14 @@ impl GameMode {
                 let what = prefs[if m["press"] == "long" { "hold" } else { "press" }].as_str().unwrap_or("sleep").to_string();
                 log(&format!("power button: {} press → {what}", m["press"]));
                 match what.as_str() {
-                    "sleep" | "shutdown" => { let _ = hearth_core::power::action(&what, gs::in_session()); }
+                    "sleep" => { let _ = hearth_core::power::action(&what, gs::in_session()); }
+                    // Quick Resume games are kept through turning off when the PC can (the power menu's Shut down too).
+                    "shutdown" => {
+                        let keep = self.bridge.lock().map(|b| b.library.games_to_keep()).unwrap_or(false);
+                        let verb = hearth_core::power::shutdown_verb(keep);
+                        log(&format!("power button: turning off ({verb})"));
+                        let _ = hearth_core::power::action(verb, gs::in_session());
+                    }
                     "menu" => self.power_menu(),
                     _ => {}
                 }

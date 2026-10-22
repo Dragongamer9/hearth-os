@@ -137,6 +137,14 @@ pub fn report(version: &str) -> String {
     section("Memory", sh("free -m; echo; ps -eo rss=,comm= --sort=-rss | head -25 | awk '{printf \"%7.0f MB  %s\\n\", $1/1024, $2}'"));
     section("Games and processes", sh("ps -eo pid,ppid,stat,etime,comm --sort=start_time | tail -60"));
     section("Power (hearth-power)", sh(&format!("python3 '{}' status", crate::paths::desktop_dir().join("shell/hearth-power").display())));
+    // Keeping Quick Resume games through turning off and restarting (hibernation): whether it's available and why
+    // not (power.hibernateStatus, with what it looked at), Nvidia's sleep helpers, and the last hibernations.
+    section("Quick Resume through turning off (hibernation)", format!("{}\n\n{}",
+        serde_json::to_string_pretty(&crate::power::hibernate_status()).unwrap_or_default(),
+        sh("cat /proc/swaps; echo; tr ' ' '\\n' </proc/cmdline | grep -E '^(resume|resume_offset|nvidia)'; echo; ls /run/systemd/sleep.conf.d 2>/dev/null; \
+            systemctl is-enabled nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>&1 | paste -sd' '; \
+            journalctl -b -1 --no-pager -n 30 -u systemd-hibernate.service -u nvidia-hibernate.service 2>/dev/null | tail -30; \
+            journalctl -b --no-pager -n 40 -u systemd-hibernate.service -u nvidia-hibernate.service -u nvidia-resume.service -u systemd-hibernate-resume.service 2>/dev/null | tail -40")));
     section("Controllers (InputPlumber)", sh("busctl --system --list tree org.shadowblip.InputPlumber | head -40; for d in $(busctl --system --list tree org.shadowblip.InputPlumber | grep -o '/org/shadowblip/InputPlumber/CompositeDevice[0-9]*' | sort -u); do echo \"$d\"; busctl --system get-property org.shadowblip.InputPlumber $d org.shadowblip.Input.CompositeDevice Name InterceptMode ProfileName 2>&1 | sed 's/^/  /'; done"));
     section("Controllers and power (Handheld Daemon)", crate::hhd::report());
     section("gamescope", sh("xprop -root | grep -E '^GAMESCOPE|^GAMESCOPECTRL' | cut -c1-300"));

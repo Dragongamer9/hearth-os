@@ -356,6 +356,46 @@ systemctl enable hearth-bluetooth-labels.service  # Bluetooth pairings readable 
 # (os/system_files; does nothing without the plan the old system leaves).
 systemctl enable hearth-clean-install.service
 
+# ------------------------------------------------------------------ Quick Resume through turning off and restarting
+# Quick Resume keeps games through Shut down and Restart by hibernating (hearth-admin hibernate-setup makes the room,
+# hibernate-reboot restarts with them kept; the sleep hook hearth-restart-keep comes from os/system_files).
+chmod 755 /usr/lib/systemd/system-sleep/hearth-restart-keep
+# Nvidia: the driver must save the graphics card's memory before the PC turns off (PreserveVideoMemoryAllocations),
+# to a folder on the drive with room for it (/var/tmp; /tmp is in memory), and its helpers must run around sleep and
+# hibernation, or the picture comes back black or broken (RTX desktops). Written before the boot image (dracut,
+# below) so the setting is in it too. Harmless without an Nvidia card (the module never loads).
+echo "Nvidia power management Anatase brings: $(grep -rhs 'NVreg_PreserveVideoMemoryAllocations\|NVreg_TemporaryFilePath\|NVreg_UseKernelSuspendNotifiers' /usr/lib/modprobe.d /etc/modprobe.d | tr '\n' ' ')"
+mkdir -p /usr/lib/modprobe.d
+cat > /usr/lib/modprobe.d/zz-hearth-nvidia-power.conf <<'CONF'
+# Hearth: Quick Resume keeps games through sleep and turning off (hibernation). Nvidia's driver saves the graphics
+# card's memory first, to the drive (/var/tmp: /tmp is in memory and lost when the PC turns off).
+options nvidia NVreg_PreserveVideoMemoryAllocations=1 NVreg_TemporaryFilePath=/var/tmp
+CONF
+NV_HELPERS=0
+for s in nvidia-suspend nvidia-resume nvidia-hibernate nvidia-suspend-then-hibernate; do
+  if [ -f "/usr/lib/systemd/system/$s.service" ]; then
+    echo "$s.service: $(systemctl is-enabled "$s.service" 2>&1 || true) in Anatase"
+    mkdir -p "/usr/lib/systemd/system/$s.service.d"
+    printf '[Unit]\nConditionPathExists=/proc/driver/nvidia\n' > "/usr/lib/systemd/system/$s.service.d/10-hearth-only-nvidia.conf"
+    systemctl enable "$s.service" || true
+    NV_HELPERS=1
+  fi
+done
+if [ "$NV_HELPERS" = 1 ]; then
+  # systemd 256 and later freeze the session before sleeping, which Nvidia's helpers can't work with (a black screen
+  # after waking). Nvidia's own packages turn that off; done here too when Anatase's don't. Hearth's put-aside games
+  # are paused with SIGSTOP, which this doesn't touch.
+  if ! grep -rqs SYSTEMD_SLEEP_FREEZE_USER_SESSIONS /usr/lib/systemd/system/systemd-suspend.service.d /usr/lib/systemd/system/systemd-hibernate.service.d; then
+    for u in systemd-suspend systemd-hibernate systemd-hybrid-sleep systemd-suspend-then-hibernate; do
+      mkdir -p "/usr/lib/systemd/system/$u.service.d"
+      printf '# Hearth: Nvidia helpers need the session running while they save the graphics memory.\n[Service]\nEnvironment="SYSTEMD_SLEEP_FREEZE_USER_SESSIONS=false"\n' > "/usr/lib/systemd/system/$u.service.d/10-hearth-nvidia.conf"
+    done
+    echo "Nvidia: session freezing during sleep turned off (Anatase's packages didn't)"
+  fi
+else
+  echo "warning: Nvidia's sleep helpers (nvidia-suspend/hibernate/resume.service) aren't in this Anatase image; on Nvidia, keeping games through turning off relies on the driver's own suspend notifiers"
+fi
+
 # ------------------------------------------------------------------ boot splash
 dnf5 -y install plymouth-plugin-script
 plymouth-set-default-theme hearth
