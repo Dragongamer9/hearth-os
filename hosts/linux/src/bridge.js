@@ -349,7 +349,7 @@ class Bridge {
       case 'profiles.setLimits': return this.platform.profiles.setLimits(req('id'), { ...('minutesPerDay' in a ? { minutesPerDay: a.minutesPerDay } : {}), ...('allowed' in a ? { allowed: a.allowed } : {}) });
       case 'osinstall.status': return this.osInstaller.status();
       case 'osinstall.disks': return this.osInstaller.disks();
-      case 'osinstall.check': return this.osInstaller.check(typeof a.part === 'string' ? a.part : null);
+      case 'osinstall.check': return this.osInstaller.check(typeof a.part === 'string' ? a.part : null, typeof a.disk === 'string' ? a.disk : null);
       case 'osinstall.start': return this.osInstaller.start(a.plan || {});
       case 'osinstall.restart': return this.osInstaller.restart();
       // "Install with Mantel": Mantel opens its install window when it starts (the UI then switches to Desktop Mode).
