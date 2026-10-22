@@ -25,13 +25,15 @@ else:
     print('error: no such picture: ' + arg)
     sys.exit(1)
 try:
-    with open(path) as f:
+    with open(path, encoding='utf-8') as f:
         conf = json.load(f)
 except (OSError, ValueError):
     conf = {}
 conf['wallpaper'] = value
 os.makedirs(os.path.dirname(path), exist_ok=True)
-with open(path + '.tmp', 'w') as f:
-    json.dump(conf, f, indent=2)
+# Written as UTF-8, not \u escapes: Settings › Appearance reads the chosen picture's path from this file as
+# text, and "Café.jpg" written as "Caf\u00e9.jpg" wasn't found there (the picture went missing from the list).
+with open(path + '.tmp', 'w', encoding='utf-8') as f:
+    json.dump(conf, f, indent=2, ensure_ascii=False)
     f.write('\n')
 os.replace(path + '.tmp', path)
