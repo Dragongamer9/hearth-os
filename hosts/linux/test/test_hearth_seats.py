@@ -505,6 +505,22 @@ class AdminCalls(SeatsBase):
                 self.hs.assign_pad('usb:1-2', 3)
         self.assertEqual(json.loads(self.runner.calls[-1][1]), {'pads': {'usb:1-2': 2, 'uniq:aa:bb:cc:dd:ee:ff': 2}})
 
+    def test_removing_a_shared_screen_restarts_game_mode(self):
+        # Player 1's Game Mode is still inside the host (on a split screen, a window the size of its part).
+        self.runner.answers = {'pkexec': (0, '{"ok": true, "restart": false}\n', '')}
+        with mock.patch('os.geteuid', return_value=1000):
+            write(self.hs.CONFIG, json.dumps({'enabled': True, 'mode': 'split', 'seats': [
+                {'seat': 1, 'user': 'bob', 'mode': 'split'}, {'seat': 2, 'user': 'hearth-p2', 'mode': 'split'}]}))
+            self.assertTrue(self.hs.remove()['restart_game_mode'])
+            write(self.hs.CONFIG, json.dumps({'enabled': False, 'mode': 'split', 'seats': [
+                {'seat': 1, 'user': 'bob', 'mode': 'split'}, {'seat': 2, 'user': 'hearth-p2', 'mode': 'split'}]}))
+            self.assertFalse(self.hs.remove()['restart_game_mode'])   # turned off: Game Mode is already normal
+            write(self.hs.CONFIG, json.dumps({'enabled': True, 'mode': 'gpu', 'seats': [
+                {'seat': 1, 'user': 'bob', 'mode': 'gpu'}, {'seat': 2, 'user': 'hearth-p2', 'mode': 'gpu'}]}))
+            self.assertFalse(self.hs.remove()['restart_game_mode'])
+            os.remove(self.hs.CONFIG)
+            self.assertFalse(self.hs.remove()['restart_game_mode'])
+
     def test_check_layout_friendly_errors(self):
         standard_sys(self.hs.SYS)
         info = self.hs.scan()
