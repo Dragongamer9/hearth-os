@@ -208,6 +208,8 @@ jobs:
           warn "Handheld Daemon starts at boot" "systemctl is-enabled hhd.service"
           check "Hearth's Quick Access is Handheld Daemon's overlay app (hhd-ui and HHD_OVERLAY are hearth-overlay)" "test -x /usr/share/nimbus/desktop/shell/hearth-overlay && test \"\$(readlink -f /usr/bin/hhd-ui)\" = /usr/share/nimbus/desktop/shell/hearth-overlay && grep -qx 'Environment=HHD_OVERLAY=/usr/share/nimbus/desktop/shell/hearth-overlay' /usr/lib/systemd/system/hhd.service.d/zz-hearth-overlay.conf && /usr/bin/hhd-ui --version | grep -q '^Hearth Quick Access'"
           check "the overlay app's Electron, page and code are installed (Hearth Browser's Electron)" "test -x /usr/lib/hearth-browser/nimbus && test -f /usr/lib/hearth-browser/resources/ui/index.html && { test -f /usr/lib/hearth-browser/resources/app/src/overlay/main.js || grep -aq HEARTH_HHD_OVERLAY /usr/lib/hearth-browser/resources/app.asar; }"
+          # bughunt: GLib programs (the desktop portal, WebKit, the accessibility bus) abort without compiled GSettings schemas.
+          check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
           warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
           exit $fail
