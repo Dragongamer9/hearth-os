@@ -3932,11 +3932,17 @@ const SW = {s:null};
 if(!host) SW.s={uefi:true,fastStartup:true,free:3.1e11,size:9.9e11,plugged:true,games:23,gameBytes:6.4e11,gpu:'AMD Radeon RX 7800 XT',edition:'amd-intel',isoUrl:'',isoPage:'https://dragongamer9.github.io/hearth-os/#download',iso:null,isoSize:0,usb:[{disk:2,name:'SanDisk Ultra',size:3.2e10,bigEnough:true}],job:null};
 function loadSwitch(){ if(host && !LINUX) call('switch.status',{},60000).then(r=>{ SW.s=r; if(S.view==='settings'&&S.settingsTab==='switch') render(null,true); }).catch(e=>toast(e.message)); }
 function swPrep(){
-  const s=SW.s, maxGb=Math.floor((s.free-20e9)/1e9);
-  if(maxGb<64) return toast('Windows needs at least 84 GB free for this (64 GB for Hearth, 20 GB left for Windows). Free up space first.');
+  // Sizes in GiB, as Windows' diskpart shrinks C: (the choices said GB, so 64 took 68.7 GB and Windows kept less
+  // than the 20 it was promised).
+  const s=SW.s, maxGb=swMaxGib(s), L=g=>`${g} GiB (${Math.round(g*GIB/1e9)} GB)`;
+  if(maxGb<64) return toast(`Windows needs at least ${swNeedText()} free for this (69 GB for Hearth, 21 GB left for Windows). Free up space first.`);
   const opts=[64,128,256,512,1024].filter(g=>g<=maxGb);
-  openSheet({title:'How much space for Hearth?', sub:`Taken from C:, which keeps the rest (${gb(s.free)} free now). Games you bring over need room too.`, items:opts.map(g=>({label:g+' GB'+(g*1e9>=s.gameBytes+64e9&&!opts.some(x=>x<g&&x*1e9>=s.gameBytes+64e9)?' (fits your games)':''), icon:'dl', run:()=>setTimeout(()=>openSheet({title:`Shrink Windows by ${g} GB?`, sub:'Windows makes the room itself; your files stay. Fast Startup is turned off so Hearth can reach the drive safely. Windows asks for your OK next.', items:[{label:'Make room', icon:'check', run:()=>call('switch.prepare',{gb:g},60000).then(r=>{ SW.s=r; render(null,true); }).catch(e=>toast(e.message))}]}),250)}))});
+  const fits=g=>g*GIB>=(s.gameBytes||0)+64*GIB;
+  openSheet({title:'How much space for Hearth?', sub:`Taken from C:, which keeps the rest (${gb(s.free)} free now). Games you bring over need room too.`, items:opts.map(g=>({label:L(g)+(fits(g)&&!opts.some(x=>x<g&&fits(x))?' (fits your games)':''), icon:'dl', run:()=>setTimeout(()=>openSheet({title:`Shrink Windows by ${L(g)}?`, sub:'Windows makes the room itself; your files stay. Fast Startup is turned off so Hearth can reach the drive safely. Windows asks for your OK next.', items:[{label:'Make room', icon:'check', run:()=>call('switch.prepare',{gb:g},60000).then(r=>{ SW.s=r; render(null,true); }).catch(e=>toast(e.message))}]}),250)}))});
 }
+// Hearth gets whole GiB from C:, and Windows keeps 20 GiB.
+const swMaxGib = s => Math.floor(((s&&s.free)||0)/GIB - 20);
+const swNeedText = () => `${Math.ceil(84*GIB/1e9)} GB (84 GiB)`;
 function swUsb(disk,name){
   openSheet({title:`Erase ${name}?`, sub:'Everything on this USB drive is erased and replaced with the Hearth installer. Windows asks for your OK next.', items:[
     {label:'Erase it and write the installer', icon:'trash', run:()=>call('switch.writeUsb',{disk},60000).then(r=>{ SW.s=r; render(null,true); }).catch(e=>toast(e.message))}]});
@@ -3953,7 +3959,7 @@ function pageSwitch(){
   h+=shead('This PC');
   const ok=(t,sub,good)=>`<div class="row"><span class="ricon">${good?I.check:I.info}</span><div class="rt"><b>${t}</b><small>${sub}</small></div></div>`;
   h+=ok(s.uefi?'Starts with UEFI':'Starts in legacy (BIOS) mode', s.uefi?'Hearth can install next to Windows':'Hearth needs UEFI. Switch the PC to UEFI in its firmware settings, or install on a separate drive', s.uefi);
-  h+=ok(`${gb(s.free)} free on C:`, s.free>=84e9?`Up to ${Math.floor((s.free-20e9)/1e9)} GB can go to Hearth`:'Hearth needs 64 GB, plus 20 GB left for Windows', s.free>=84e9);
+  h+=ok(`${gb(s.free)} free on C:`, swMaxGib(s)>=64?`Up to ${swMaxGib(s)} GiB (${Math.floor(swMaxGib(s)*GIB/1e9)} GB) can go to Hearth`:`Hearth needs 69 GB (64 GiB), plus 21 GB (20 GiB) left for Windows: ${swNeedText()} free`, swMaxGib(s)>=64);
   h+=ok(`${s.games} installed game${s.games===1?'':'s'}`, s.games?`${gb(s.gameBytes)} · Hearth brings them over after installing`:'Nothing to bring over', true);
   if(s.gpu) h+=ok(s.gpu, `Uses the ${s.edition==='nvidia'?'Nvidia':'AMD / Intel'} edition of Hearth OS`, true);
   if(!s.plugged) h+=ok('Plug in the charger', 'Changing drives on battery is risky if it runs out', false);
