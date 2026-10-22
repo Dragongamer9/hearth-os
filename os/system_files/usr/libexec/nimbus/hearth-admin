@@ -287,6 +287,30 @@ class UpgradeFailed(Exception):
 
 
 BUSY = re.compile(r'\block(ed)?\b|another (transaction|update|operation)|transaction in progress|in progress|busy', re.I)
+# A download that failed because the connection dropped for a moment (DNS, a reset): worth trying again.
+NETWORK = re.compile(r'name resolution|no such host|dial tcp|connection (reset|refused|closed)|i/o timeout|timed out|'
+                     r'tls handshake|network is unreachable|no route to host|unexpected eof', re.I)
+
+
+def failure_text(e):
+    """bootc's last line for people: without its own "error: " (Hearth adds one), and in plain words when the
+    connection dropped."""
+    text = re.sub(r'^(error:\s*)+', '', str(e).strip(), flags=re.I)
+    if NETWORK.search(text):
+        return 'the internet connection dropped while downloading. Check the connection and try again'
+    return text[:300]
+
+
+def with_retries(fn, tries=3, wait=10):
+    """fn(), again (up to `tries` times, waiting longer each time) while it fails on a dropped connection."""
+    for attempt in range(tries):
+        try:
+            return fn()
+        except UpgradeFailed as e:
+            if attempt + 1 >= tries or not NETWORK.search(str(e)):
+                raise
+            print('log: The connection dropped (%s); trying again in %d s' % (str(e)[-160:], wait * (attempt + 1)), flush=True)
+            time.sleep(wait * (attempt + 1))
 
 
 def have_rpm_ostree():
@@ -491,7 +515,7 @@ def update():
         rpm_ostree_upgrade(stage)
     else:
         try:
-            bootc_upgrade_with_progress(0, 90, stage)
+            with_retries(lambda: bootc_upgrade_with_progress(0, 90, stage))
             # bootc can finish at once saying there's nothing new while rpm-ostree (what the terminal's update
             # uses) finds one: check nothing was missed, so "Done" really means updated.
             if not staged_any() and rpm_ostree_has_update():
@@ -499,7 +523,7 @@ def update():
                 rpm_ostree_upgrade(stage)
         except UpgradeFailed as e:
             if not have_rpm_ostree():
-                fail('couldn\'t update: ' + str(e)[:300])
+                fail('couldn\'t update: ' + failure_text(e))
             # bootc refused (a system managed by rpm-ostree, or bootc not set up for it): the other way.
             print('log: bootc couldn\'t update this system (%s); trying rpm-ostree' % str(e)[:200], flush=True)
             rpm_ostree_upgrade(stage)
@@ -1687,11 +1711,13 @@ def move_to_new_os(edition='anatase', testing=False):
             fail('Hearth OS on CachyOS needs a newer processor (x86-64-v3: AVX2, BMI2, FMA, MOVBE)')
     print('log: Moving to ' + image, flush=True)
     plan = clean_install_plan(user, bazzite_flatpaks() if current is None else [], image, edition=edition, from_edition=current)
-    os.makedirs(os.path.dirname(CLEAN_INSTALL), mode=0o755, exist_ok=True)
-    tmp = CLEAN_INSTALL + '.tmp'
-    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
-        json.dump(plan, f, indent=2)
-    os.replace(tmp, CLEAN_INSTALL)
+    # A plan left from a switch that didn't finish goes now; this one is written only once the new system is
+    # really there (/var is shared by both systems: written before, a switch stopped halfway left a plan that the
+    # old system could act on at its next start).
+    try:
+        os.remove(CLEAN_INSTALL)
+    except OSError:
+        pass
     print('log: The new Hearth OS will keep your games and saves; your other files are put aside for 30 days', flush=True)
     progress(0, 'Getting the new Hearth OS')
     ensure_podman()
@@ -1703,15 +1729,14 @@ def move_to_new_os(edition='anatase', testing=False):
             run_logged(['rpm-ostree', 'reset', '--overlays', '--overrides'])
             rpm_ostree_upgrade(stage, ['rpm-ostree', 'rebase', 'ostree-unverified-registry:' + image])
         else:
-            bootc_upgrade_with_progress(0, 100, stage, ['bootc', 'switch', image])
-    except (UpgradeFailed, SystemExit) as e:
-        try:
-            os.remove(CLEAN_INSTALL)
-        except OSError:
-            pass
-        if isinstance(e, SystemExit):
-            raise
-        fail("couldn't get the new Hearth OS: " + str(e)[:300])
+            with_retries(lambda: bootc_upgrade_with_progress(0, 100, stage, ['bootc', 'switch', image]))
+    except UpgradeFailed as e:
+        fail("couldn't get the new Hearth OS: " + failure_text(e))
+    os.makedirs(os.path.dirname(CLEAN_INSTALL), mode=0o755, exist_ok=True)
+    tmp = CLEAN_INSTALL + '.tmp'
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
+        json.dump(plan, f, indent=2)
+    os.replace(tmp, CLEAN_INSTALL)
     done = 'Done. Restart to start the new Hearth OS.'
     progress(100, done)
     stage.emit(force=True, phase='done', pct=100.0, desc=done, staged=True)
