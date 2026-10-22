@@ -41,6 +41,13 @@ steam_flatpak() { have flatpak && { [ -d "/var/lib/flatpak/app/$STEAM_FLATPAK" ]
 # Steam's Game Mode that didn't end cleanly last time (stuck, then forced off): this start is Hearth's Game Mode,
 # so a broken Steam Game Mode can never lock you out. The choice stays; Settings shows the note.
 STEAM_RUNNING_MARK="${XDG_STATE_HOME:-$HOME/.local/state}/nimbus/steam-game-mode-running"
+# Once, from 0.2.9: Steam's Game Mode set in 0.2.8 (which could leave you stuck: its Switch to Desktop, Wi-Fi and
+# power didn't work) goes back to Hearth's. Choose it again in Settings to try the fixed one.
+STEAM_RESET_MARK="${XDG_STATE_HOME:-$HOME/.local/state}/nimbus/steam-game-mode-reset-029"
+if [ ! -e "$STEAM_RESET_MARK" ]; then
+  if [ "$(cat "$GAME_MODE_FILE" 2>/dev/null)" = steam ]; then echo hearth >"$GAME_MODE_FILE"; log "Steam's Game Mode from 0.2.8 set back to Hearth's (once)"; fi
+  mkdir -p "$(dirname "$STEAM_RESET_MARK")"; : >"$STEAM_RESET_MARK"
+fi
 steam_game_mode() {
   [ -z "$HEARTH_SEAT" ] && [ "$(cat "$GAME_MODE_FILE" 2>/dev/null)" = steam ] && have gamescope && { steam_flatpak || have steam; } || return 1
   if [ -e "$STEAM_RUNNING_MARK" ]; then
