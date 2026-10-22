@@ -1,7 +1,12 @@
 //! Resolution, refresh rate and scale (Settings › Display). Port of hosts/linux/src/display.js. Which tool does
 //! the work depends on where Hearth runs:
-//!   gamescope (Game Mode)       modes from the kernel; applied as gamescope options when Game Mode restarts;
-//!                               scale is Hearth's own interface zoom
+//!   gamescope (Game Mode)       an external screen's real modes from gamescope (GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL),
+//!                               else the kernel's sizes; a new mode is a gamescope option (-W -H -r: gamescope picks
+//!                               that exact mode when it starts, or falls back to the screen's own), applied by
+//!                               restarting Game Mode, and switched back by itself unless you keep it (a screen that
+//!                               can't show it stays black: 20 seconds later it's back as it was). The built-in
+//!                               screen's refresh rate changes on the spot (GAMESCOPE_DYNAMIC_REFRESH, as SteamOS
+//!                               does). Scale is Hearth's own interface zoom
 //!   kde       (Plasma)          kscreen-doctor; Plasma remembers the settings itself
 //!   wlr       (labwc, Sway...)  wlr-randr; saved to ~/.config/nimbus/display.sh, which Desktop Mode runs at start
 //!   xrandr    (X11 desktops)    xrandr; scale is Hearth's interface zoom
@@ -106,6 +111,22 @@ pub fn drm_modes(root: &Path) -> Option<(String, Vec<(u32, u32)>)> {
     None
 }
 
+/// gamescope's list of an external screen's modes: "1920x1080@60 1920x1080@144 3840x2160@60 ...".
+pub fn parse_gamescope_modes(text: &str) -> Vec<Mode> {
+    text.split_whitespace().filter_map(|t| {
+        let (wh, r) = t.split_once('@')?;
+        let (w, h) = wh.split_once('x')?;
+        Some(mode(w.parse().ok()?, h.parse().ok()?, r.parse::<f64>().ok()?))
+    }).filter(|m| m.w > 0 && m.h > 0 && m.rate > 0.0).collect()
+}
+
+/// The external screen's modes as gamescope sees them (empty on the built-in screen or outside Game Mode).
+fn gamescope_external_modes() -> Vec<Mode> {
+    if !crate::gamescope::inside() { return vec![]; }
+    if crate::gamescope::cardinals("GAMESCOPE_DISPLAY_IS_EXTERNAL", None).first().copied() != Some(1) { return vec![]; }
+    parse_gamescope_modes(&crate::gamescope::root_str("GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL"))
+}
+
 /// NIMBUS_GAMESCOPE_ARGS in session.conf: read it, or set our own options in it (keeping everything else).
 pub fn gamescope_args_text(text: &str, set: Option<&str>) -> (String, String) {
     let re = regex::Regex::new(r#"(?m)^NIMBUS_GAMESCOPE_ARGS="([^"]*)""#).unwrap();
@@ -136,11 +157,25 @@ pub fn read(backend: &str, zoom: u32) -> Option<Screen> {
         "gamescope" => {
             let drm = drm_modes(Path::new("/sys/class/drm"));
             let args = gamescope_args(None);
+            let external = gamescope_external_modes();
+            if !external.is_empty() {
+                // The screen's own modes: only these can be picked. What's showing is the chosen one if it's in the
+                // list (gamescope then picked exactly it), else the screen's own first mode.
+                let first = (external[0].w, external[0].h, external[0].rate);
+                let chosen = match (flag(&args, "W"), flag(&args, "H"), flag(&args, "r")) {
+                    (Some(w), Some(h), Some(r)) => external.iter().find(|m| m.w == w && m.h == h && m.rate.round() as u32 == r).map(|m| (m.w, m.h, m.rate)),
+                    _ => None,
+                };
+                return Some(Screen { output: drm.map(|d| d.0).unwrap_or("screen".into()), current: Some(chosen.unwrap_or(first)), preferred: Some((first.0, first.1)), modes: external, scale: zoom });
+            }
             let native = drm.as_ref().map(|d| d.1[0]).unwrap_or((1280, 800));
             let (w, h) = (flag(&args, "W").unwrap_or(native.0), flag(&args, "H").unwrap_or(native.1));
-            let rate = flag(&args, "r").unwrap_or(60) as f64;
+            let dynamic = crate::gamescope::cardinals("GAMESCOPE_DYNAMIC_REFRESH", None).first().copied().filter(|r| *r > 0);
+            let rate = dynamic.or(flag(&args, "r").map(|r| r as u64)).unwrap_or(60) as f64;
             let sizes = drm.as_ref().map(|d| d.1.clone()).unwrap_or(vec![(w, h)]);
-            let modes = sizes.iter().flat_map(|&(w, h)| COMMON_RATES.iter().map(move |&r| mode(w, h, r))).collect();
+            // The built-in screen: its own size only, at the usual handheld rates (gamescope's display scripts know
+            // which the panel can do and use the nearest).
+            let modes = sizes.iter().take(1).flat_map(|&(w, h)| COMMON_RATES.iter().filter(|r| **r >= 40.0 && **r <= 120.0).map(move |&r| mode(w, h, r))).collect();
             Some(Screen { output: drm.map(|d| d.0).unwrap_or("screen".into()), modes, current: Some((w, h, rate)), preferred: Some(sizes[0]), scale: zoom })
         }
         _ => None,
@@ -171,7 +206,8 @@ pub fn get(zoom: u32) -> Value {
     }).collect();
     json!({"resolution": format!("{w} × {h}"), "scale": format!("{pct}%"), "width": w, "height": h, "refreshRate": rate.round() as u32,
            "modes": modes, "scalePercent": pct, "scaleRecommended": 100, "scales": SCALES,
-           "backend": backend, "scaleIsInterface": zoom_scale, "appliesOnRestart": backend == "gamescope"})
+           "backend": backend, "scaleIsInterface": zoom_scale, "appliesOnRestart": backend == "gamescope" && !gamescope_external_modes().is_empty(),
+           "pending": backend == "gamescope" && pending()})
 }
 
 /// Changes the mode. Returns true when Game Mode has to restart for it (gamescope).
@@ -188,9 +224,63 @@ pub fn set_mode(w: u32, h: u32, rate: f64, zoom: u32) -> Result<bool, String> {
             save_wlr(&d.output, "mode", &spec);
         }
         "xrandr" => { crate::system::run("xrandr", &["--output", &d.output, "--mode", &format!("{}x{}", m.w, m.h), "--rate", &m.rate.to_string()])?; }
-        _ => { gamescope_args(Some(&format!("-W {} -H {} -r {}", m.w, m.h, m.rate.round()))); return Ok(true); }
+        _ => {
+            let external = gamescope_external_modes();
+            if external.is_empty() {
+                // The built-in screen: the refresh rate changes on the spot, as on SteamOS. No restart, no -r.
+                crate::gamescope::set_root("GAMESCOPE_DYNAMIC_REFRESH", m.rate.round() as u64)?;
+                gamescope_args(Some(""));
+                return Ok(false);
+            }
+            if !external.iter().any(|x| x.w == m.w && x.h == m.h && x.rate.round() == m.rate.round()) {
+                return Err(format!("This screen can't show {} × {} at {} Hz", m.w, m.h, m.rate.round()));
+            }
+            let before = gamescope_args(None);
+            gamescope_args(Some(&format!("-W {} -H {} -r {}", m.w, m.h, m.rate.round())));
+            pending_save(&before);
+            return Ok(true);
+        }
     }
     Ok(false)
+}
+
+// ------------------------------------------------------------------ keep or switch back (Game Mode)
+
+fn pending_file() -> std::path::PathBuf { crate::paths::config_dir().join("display-pending.json") }
+
+/// A new Game Mode mode is on trial: the options before it, to go back to.
+fn pending_save(before: &str) {
+    let _ = std::fs::write(pending_file(), json!({"before": before, "at": crate::library::now_ms()}).to_string());
+}
+
+/// Whether a new mode is waiting for "Keep" (display.get shows it; the UI asks).
+pub fn pending() -> bool { pending_file().exists() }
+
+/// "Keep these display settings".
+pub fn keep() { let _ = std::fs::remove_file(pending_file()); }
+
+/// Back to the options before the trial. Returns true when there was one (Game Mode then restarts).
+pub fn revert() -> bool {
+    let Some(before) = std::fs::read(pending_file()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v["before"].as_str().map(str::to_string)) else { return false };
+    let file = crate::admin::session_conf();
+    let text = std::fs::read_to_string(&file).unwrap_or_default();
+    // Put back exactly what was there (our own options removed first, then the old ones of them added back).
+    let old_ours: Vec<String> = regex::Regex::new(r"(^|\s)-(W|H|r)\s+\S+").unwrap().find_iter(&before).map(|m| m.as_str().trim().to_string()).collect();
+    let (_, out) = gamescope_args_text(&text, Some(&old_ours.join(" ")));
+    let _ = std::fs::write(&file, out);
+    keep();
+    crate::bridge::log(&format!("display: the new mode wasn't kept; back to \"{}\"", before));
+    true
+}
+
+/// Started with Game Mode: a mode on trial that isn't kept within 20 seconds is switched back (`restart` then
+/// restarts Game Mode). A screen that can't show the mode stays black, and this brings it back by itself.
+pub fn watch_pending(restart: std::sync::Arc<dyn Fn() + Send + Sync>) {
+    if !pending() { return; }
+    std::thread::spawn(move || {
+        for _ in 0..40 { std::thread::sleep(std::time::Duration::from_millis(500)); if !pending() { return; } }
+        if revert() { restart(); }
+    });
 }
 
 /// Sets the scale. Returns Some(percent) when it's Hearth's own interface zoom (the host applies it).
@@ -228,6 +318,13 @@ fn save_wlr(output: &str, key: &str, value: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn gamescope_mode_list() {
+        let m = parse_gamescope_modes("3840x2160@60 1920x1080@144 1920x1080@60 junk 0x0@60");
+        assert_eq!(m.len(), 3);
+        assert_eq!((m[1].w, m[1].h, m[1].rate), (1920, 1080, 144.0));
+        assert!(parse_gamescope_modes("").is_empty());
+    }
     #[test]
     fn reads_the_tools() {
         let x = parse_xrandr("Screen 0: minimum 8 x 8\nHDMI-1 connected primary 1920x1080+0+0\n   1920x1080     60.00*+  59.94    50.00\n   1280x720      60.00\nDP-1 disconnected\n").unwrap();

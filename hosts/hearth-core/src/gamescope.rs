@@ -49,6 +49,11 @@ fn str_prop(win: u64, name: &str) -> String {
     let out = xprop(&["-id", &win.to_string(), name]);
     out.split_once("= \"").map(|(_, r)| r.trim_end().trim_end_matches('"').to_string()).unwrap_or_default()
 }
+/// A text property on the root window (e.g. GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL), empty when it isn't there.
+pub fn root_str(name: &str) -> String {
+    let out = xprop(&["-root", name]);
+    out.split_once("= \"").map(|(_, r)| r.trim_end().trim_end_matches('"').to_string()).unwrap_or_default()
+}
 pub fn set_root(name: &str, v: u64) -> Result<(), String> { crate::system::run_timeout("xprop", &["-root", "-f", name, "32c", "-set", name, &v.to_string()], Duration::from_secs(3)).map(|_| ()) }
 pub fn remove_root(name: &str) { let _ = crate::system::run_timeout("xprop", &["-root", "-remove", name], Duration::from_secs(3)); }
 pub fn set_window(win: u64, name: &str, v: u64) -> Result<(), String> {

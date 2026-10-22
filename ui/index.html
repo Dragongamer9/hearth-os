@@ -8010,6 +8010,25 @@ updateBadge();
 render();
 applyLook();
 loadHostInfo();
+// Game Mode came back with a new display mode on trial (Settings › Display): keep it, or it switches back by itself
+// after 20 seconds (Hearth does that even if this screen can't be seen).
+function checkDisplayTrial(){
+  if(!host) return;
+  call('display.get').then(d=>{
+    if(!d || !d.pending) return;
+    Object.assign(S.sys.display,d);
+    let left=18;
+    const sub=()=>`${d.width} × ${d.height} at ${d.refreshRate} Hz. Switching back in ${left} seconds…`;
+    openSheet({title:'Keep these display settings?', sub:sub(), noCancel:true,
+      items:[{label:'Keep changes',icon:'check',run:()=>{ clearInterval(dispRevert); dispRevert=null; call('display.keep').catch(()=>{}); toast('Display settings saved'); }},
+             {label:'Switch back',icon:'restart',run:()=>{ clearInterval(dispRevert); dispRevert=null; toast('Switching back…'); call('display.revert').catch(e=>toast(e.message)); }}]});
+    clearInterval(dispRevert);
+    dispRevert=setInterval(()=>{ left--;
+      if(left<=0){ clearInterval(dispRevert); dispRevert=null; if(S.layers.at(-1)==='sheet' && sheet && sheet.title.startsWith('Keep these')){ sheet.picked=true; closeLayer(); } toast('Switching back…'); return; }
+      if(sheet && sheet.title.startsWith('Keep these')){ sheet.sub=sub(); const el=$('#sheetBox .muted'); if(el) el.textContent=sheet.sub; } },1000);
+  }).catch(()=>{});
+}
+setTimeout(checkDisplayTrial, 1500);
 refreshStatus();
 if(OVERLAY){ document.body.classList.add('overlay','ov-closed'); NOTIFS=[]; }
 if(/[?&]overlay=full/.test(location.search)){ document.documentElement.classList.add('ovfull'); document.body.classList.add('ovfull'); }
