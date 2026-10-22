@@ -1033,7 +1033,7 @@ const S = {
   view:'home', game:null, tab:'inst', sort:'recent', settingsTab:'wifi', qtab:'quick',
   history:[], layers:[], running:null,
   set:{bright:70,vol:55,sounds:true,tdp:15,fps:'60',overlay:0,
-       srcSteam:true,srcEpic:true,srcGog:true,srcXbox:true,srcEmu:true,steamBg:true,startOnBoot:true,escapeHatch:true},
+       srcSteam:true,srcEpic:true,srcGog:true,srcXbox:true,srcEmu:true,steamBg:true,steamOnDemand:true,startOnBoot:true,escapeHatch:true},
   // Live system state, filled from the host (or the browser mock)
   sys:{wifi:{available:true,on:false,ssid:null,bars:0}, bt:{available:true,on:false}, airplane:false,
        battery:null, audio:{volume:55,muted:false,devices:[]}, display:{supported:true,brightness:70,resolution:'',scale:''},
@@ -1330,7 +1330,8 @@ const isActive = g => !!STATE_LABEL[g.state];
 const playable = g => g.inst || g.cloud;
 function dlInfo(g){
   const pct = g.progress!=null ? Math.round(g.progress*100) : null;
-  return {pct, label: STATE_LABEL[g.state] + (pct!=null && g.state!=='queued' ? ` ${pct}%` : '')};
+  // Steam downloads say what Steam is doing ("Verifying", "Waiting for Steam", "Stopped: …").
+  return {pct, label: (g.stage || STATE_LABEL[g.state]) + (pct!=null && g.state!=='queued' && !/^Stopped/.test(g.stage||'') ? ` ${pct}%` : '')};
 }
 function cover(g, opts={}){
   const kinds = opts.wide ? ['wide','hero','cover'] : ['cover','wide'];
@@ -2754,6 +2755,7 @@ function viewGame(){
     : isActive(g) ? (g.installKind==='nimbus' ? `${APP} is installing this game into your games folder.` : `${SOURCES[g.src]} is installing this game.`)
     : g.note ? `In your ${SOURCES[g.src]} library. ${esc(g.note)}, so ${APP} can't install it.`
     : g.installKind==='nimbus' ? `In your ${SOURCES[g.src]} library. Select Install and ${APP} downloads it${ACC.root?` to <code>${esc(ACC.root)}${LINUX?'/':'\\'}${g.src==='epic'?'Epic':'GOG'}</code>`:''}, no launcher needed.`
+    : g.installKind==='steam' && host ? `In your Steam library. Select Install and Steam downloads it in the background${ACC.steamLib?` to <code>${esc(ACC.steamLib)}</code>`:''}, without opening its window. Follow it under Downloads.`
     : g.installKind==='store' ? `You've played this on Xbox. Select Install to get it from the Microsoft Store (Game Pass games also install from the Xbox app).`
     : `In your ${SOURCES[g.src]} library. Select Install and ${SOURCES[g.src]} will ask where to put it.`;
   return `<div class="gpage">
@@ -2820,7 +2822,10 @@ function speedGraph(pts=DLS.speeds, gid='dlg'){
 const ours = it => !host || it.g.installKind==='nimbus';   // downloads Hearth runs itself (Epic, GOG) can be paused
 function dlButtons(it, big){
   const g=it.g, id=esc(g.id), paused=it.state==='paused';
-  if(!ours(it)) return big ? `<button class="pill ghost" data-f data-k="dc-steam" data-act="dlSteam">${I.display} Manage in Steam</button><button class="pill ghost" data-f data-k="dc-info" data-act="game" data-id="${id}">${I.info} Game details</button>` : '';
+  // A Steam install Steam hasn't taken up yet can be cancelled here; after that it's Steam's (Manage in Steam).
+  const waiting = g.src==='steam' && g.stage==='Waiting for Steam';
+  if(!ours(it)) return big ? `${waiting?`<button class="pill ghost" data-f data-k="dc-x" data-act="dlCancel" data-id="${id}">${I.x} Cancel</button>`:''}<button class="pill ghost" data-f data-k="dc-steam" data-act="dlSteam">${I.display} Manage in Steam</button><button class="pill ghost" data-f data-k="dc-info" data-act="game" data-id="${id}">${I.info} Game details</button>`
+    : waiting ? `<button class="ib" data-f data-k="dq-x-${id}" data-act="dlCancel" data-id="${id}" aria-label="Cancel">${I.x}</button>` : '';
   if(big) return `${paused?`<button class="pill" data-f data-k="dc-pp" data-act="dlResume" data-id="${id}">${I.play} Resume</button>`:`<button class="pill" data-f data-k="dc-pp" data-act="dlPause" data-id="${id}">${I.pause} Pause</button>`}
     <button class="pill ghost" data-f data-k="dc-x" data-act="dlCancel" data-id="${id}">${I.x} Cancel</button>`;
   return `<button class="ib" data-f data-k="dq-first-${id}" data-act="dlFirst" data-id="${id}" aria-label="Start now">${I.up}</button>
@@ -2865,7 +2870,7 @@ function viewDownloads(){
         <button class="pill" data-f data-k="dd-${g.id}" data-act="play" data-id="${esc(g.id)}">${I.play} Play</button></div>`).join('')}`;
   if(!items.length && !done.length) h += `<div class="empty"><div class="muted" style="margin-bottom:16px">Nothing is downloading. Find a game to install in your library.</div>
       <button class="pill" style="display:inline-flex" data-f data-k="d-lib" data-act="nav" data-view="library">${I.lib} Library</button></div>`;
-  if(host && items.some(i=>i.g.src==='steam')) h += note('Steam runs its own downloads: pause or reorder them in Steam (Manage in Steam).');
+  if(host && items.some(i=>i.g.src==='steam')) h += note('Steam downloads its games in the background, without its window. To pause or reorder them, use Manage in Steam.');
   if(host && items.some(i=>i.g.installKind==='nimbus')) h += note('Epic and GOG games download one at a time. Paused downloads keep what they have and carry on from there, also after a restart.');
   return h + '</div>';
 }
@@ -4644,8 +4649,8 @@ function viewSettings(){
   if(t==='sources'){
     const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
     const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
-    body = sgrid(swRow('srcSteam','Steam',(LINUX?'Installed games from Steam':'Installed and owned games from Steam')+n('steam').replace('game','installed game')+owned)
-      +swRow('steamBg','Keep Steam running in the background','Starts Steam hidden so games and installs open without its window')
+    body = sgrid(swRow('srcSteam','Steam','Your Steam games: installed ones, and the ones you own'+n('steam').replace('game','installed game')+owned)
+      +swRow('steamOnDemand','Start Steam only when needed','Steam starts hidden when you play, install or message a friend, and closes again when nothing needs it. Off: it runs all the time, hidden')
       +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
       +swRow('srcGog','GOG',(LINUX?'Your GOG account and games installed by '+APP+' or Heroic':'Your GOG account and games installed by '+APP+', GOG Galaxy or GOG installers')+n('gog'))
       +swRow('srcXbox',LINUX?'Xbox Cloud Gaming':'Xbox / Game Pass',(LINUX?'Stream Game Pass games (needs Game Pass Ultimate)':'PC games installed with the Xbox app, and games you\'ve played on Xbox')+(LINUX&&host?` · ${LIB.counts.xbox??0} cloud games`:n('xbox')))
@@ -5413,6 +5418,7 @@ function act(el){
     case 'toggle': S.set[d.key]=!S.set[d.key];
       if(host && /^src/.test(d.key)) setSources();
       else if(host && d.key==='steamBg') call('library.setSteamBackground',{on:S.set.steamBg}).catch(e=>toast(e.message));
+      else if(host && d.key==='steamOnDemand') call('library.setSteamOnDemand',{on:S.set.steamOnDemand}).catch(e=>toast(e.message));
       else send({type:'setting',key:d.key,value:S.set[d.key]});
       if(S.layers.includes('qam')){ renderQam(); setFocus($(`#qam [data-k="q-${d.key}"]`),true); } else render('s-'+d.key);
       return;
@@ -5471,6 +5477,9 @@ function act(el){
     case 'accRefresh': return accRefresh(d.s);
     case 'accShow': S.tab=d.s; S.history=[]; return navigate('library',{focusKey:'tab-'+d.s},false);
     case 'accFolder': return pickInstallFolder();
+    case 'steamShow': return call('steam.showWindow').catch(e=>toast(e.message));
+    case 'steamSignCancel': return call('steam.signInCancel').then(()=>loadAccounts(true)).catch(e=>toast(e.message));
+    case 'steamLib': return pickSteamLibrary();
     case 'pfName': return openPrompt({title:'Your name', value:PROFILE.name}).then(v=>{ if(v!=null) saveProfile({name:v},'pf-name'); });
     case 'pfStatus': return openPrompt({title:'Status line (shown under your name)', value:PROFILE.status||''}).then(v=>{ if(v!=null) saveProfile({status:v},'pf-status'); });
     case 'pfAvatar': return saveProfile({avatar:d.v},'pa-'+d.v.replace(':','-'));
@@ -5660,7 +5669,7 @@ function viewGameSettings(){
     + `<button class="row" data-f data-k="gs-fps" data-act="gsFps"><span class="ricon">${I.perf||I.gear}</span><div class="rt"><b>Frame-rate cap</b><small>Smoother and cooler: caps this game, then goes back to your usual limit</small></div><div class="rv">${o.fpsLimit?o.fpsLimit+' FPS':'Usual'} ›</div></button>`
     + `<button class="row" data-f data-k="gs-tdp" data-act="gsTdp"><span class="ricon">${I.power}</span><div class="rt"><b>Power limit</b><small>More watts for a demanding game, fewer for battery life</small></div><div class="rv">${o.powerLabel?esc(o.powerLabel):o.tdp?o.tdp+' W':'Usual'} ›</div></button>`;
   // Deleting the game: last on the page, for every game Hearth (or Steam) can delete.
-  const del = canDelete(g) && !isActive(g) ? shead('Storage') + `<button class="row" data-f data-k="gs-delete" data-act="gsDelete"><span class="ricon">${I.trash}</span><div class="rt"><b>Delete game</b><small>${g.size?`Frees ${esc(typeof g.size==='number'?gbs(g.size):g.size)} · `:''}${g.src==='steam'?'Steam asks to confirm':'You can install it again from your library'}</small></div></button>` : '';
+  const del = canDelete(g) && !isActive(g) ? shead('Storage') + `<button class="row" data-f data-k="gs-delete" data-act="gsDelete"><span class="ricon">${I.trash}</span><div class="rt"><b>Delete game</b><small>${g.size?`Frees ${esc(typeof g.size==='number'?gbs(g.size):g.size)} · `:''}${g.src==='steam'?'Steam closes for a moment if it\'s open':'You can install it again from your library'}</small></div></button>` : '';
   if(r.kind==='beacon'){
     h += shead('Beacon')
       + (g.inst ? `<button class="row" data-f data-k="gs-mod" data-act="gsMod"><span class="ricon">${I.lib}</span><div class="rt"><b>Mod</b><small>What Play starts with. Saved in Beacon, which shows the same choice.</small></div><div class="rv">${esc(beaconModName(g))} ›</div></button>` : '')
@@ -6573,16 +6582,16 @@ async function dlCall(method, id, focusKey){
 async function cancelInstall(g){
   try{ await call('game.cancelInstall',{id:g.id}); }catch(e){ toast(e.message); }
 }
-// Games Hearth can delete: the ones it installed (Epic, GOG), and Steam's (Steam does it, after asking).
+// Games Hearth can delete: the ones it installed (Epic, GOG), and Steam's (from their Steam library, after this asks).
 const canDelete = g => !!g && g.inst && (g.canUninstall || g.src==='steam');
 function uninstallGame(g){
   if(S.running===g.id) return toast(`Exit ${g.title} first`);
   const steam = g.src==='steam';
-  openSheet({title:`Delete ${g.title}?`, sub: steam ? `Steam deletes the game's files: its window comes up to confirm. Your Steam account keeps the game, so you can install it again. Cloud saves stay in Steam Cloud.`
+  openSheet({title:`Delete ${g.title}?`, sub: steam ? `Deletes the game's files${g.path?' in '+g.path:''}. If Steam is open, it closes for a moment first. Your Steam account keeps the game, so you can install it again. Cloud saves stay in Steam Cloud.`
                                                  : `Deletes the game's files${g.path?' in '+g.path:''}. Your ${SOURCES[g.src]} account keeps the game, so you can install it again.`,
     items:[{label:'Yes, delete it',icon:'trash',run:async()=>{
-      toast(steam ? 'Opening Steam to delete it…' : `Deleting ${g.title}…`);
-      try{ const r=await call('game.uninstall',{id:g.id},15*60e3); if(r&&r.steam){ setTimeout(()=>loadLibrary(true,true),20000); return; } applyLib(r); toast(`Deleted ${g.title}`); if(S.view==='gameset') goBack(); render(null,true); }
+      toast(`Deleting ${g.title}…`);
+      try{ const r=await call('game.uninstall',{id:g.id},15*60e3); if(r&&r.steam){ await loadLibrary(true); toast(`Deleted ${g.title}`); if(S.view==='gameset') goBack(); render(null,true); return; } applyLib(r); toast(`Deleted ${g.title}`); if(S.view==='gameset') goBack(); render(null,true); }
       catch(e){ toast(e.message); }
     }},{label:'Cancel',icon:'x',run:()=>{}}]});
 }
@@ -6619,8 +6628,14 @@ async function installGame(g){
   if(!host) return toast(`The browser preview can't install games`);
   if(g.note) return toast(`${g.note}. ${APP} can't install it.`);
   try{
-    await call('game.install',{id:g.id},60000);
-    if(g.installKind==='nimbus'){
+    const r = await call('game.install',{id:g.id},60000);
+    if(r && r.silent){
+      // Steam, without its window (docs/STEAM.md): it waits for a download Steam is busy with, or starts now.
+      g.state='queued'; g.stage='Waiting for Steam';
+      toast(r.waiting ? `${g.title} is queued. Steam starts it when its current download or game is done.` : `Steam is downloading ${g.title} in the background. Follow it under Downloads.`);
+      render(null,true);
+    }
+    else if(g.installKind==='nimbus'){
       g.state='queued'; toast(`Downloading ${g.title}. Follow it under Downloads.`);
       render(null,true);
     }
@@ -6669,7 +6684,7 @@ function startDownloadPoll(expectNew){
 
 // ---------- game stores & accounts (Library › Stores) ----------
 const STORE_INFO = {
-  steam:{name:'Steam', color:'#1f4a73', mark:'S', blurb:'Steam signs in through its own window. '+APP+' keeps Steam running quietly in the background for installs and launches.'},
+  steam:{name:'Steam', color:'#1f4a73', mark:'S', blurb:'Steam signs in through its own window. '+APP+' runs Steam hidden: it installs, updates and starts your Steam games without showing Steam.'},
   epic:{name:'Epic Games', color:'#3a3d44', mark:'E', blurb:'Your Epic library, installed and launched without the Epic Games Launcher.'},
   gog:{name:'GOG', color:'#7a35b0', mark:'G', blurb:'Your GOG library, installed and launched without GOG Galaxy.'},
   xbox:{name:'Xbox', color:'#16801a', mark:'X', blurb:'Your gamertag and the PC games you\'ve played on Xbox. Microsoft only lets the Xbox app and Microsoft Store install these games, so Install opens the Store.'},
@@ -6686,6 +6701,7 @@ async function loadAccounts(fromEvent){
     const r = await call('accounts.status');
     const first = ACC.list===null;
     ACC.list=r.accounts||[]; ACC.root=r.installRoot||''; ACC.beacon=r.beacon||null;
+    ACC.steamLib=((ACC.list.find(a=>a.store==='steam')||{}).library)||'';
     // Reload the library when an account was added/removed or its game list arrived.
     const sig=ACC.list.map(a=>`${a.store}:${a.signedIn?1:0}:${a.fetched}`).join('|');
     const changed = ACC.sig && sig!==ACC.sig; ACC.sig=sig;
@@ -7246,7 +7262,8 @@ function viewStores(){
     const signing = ACC.signing===a.store;
     // Expired: the store refused the saved sign-in (Epic's may also read as signed out: legendary forgets it).
     const expired = !!a.expired && a.store!=='steam' && !signing;
-    const status = signing ? 'Signing in… finish in the sign-in window'
+    const ssign = a.store==='steam' && a.signing;
+    const status = ssign ? 'Signing in… finish in Steam\'s window' : signing ? 'Signing in… finish in the sign-in window'
       : expired ? `Sign-in expired${a.name?` · ${a.name}`:''}`
       : a.store==='steam' ? (a.note ? a.note : a.signedIn ? `Signed in as ${a.name}` : 'Not signed in')
       : a.signedIn ? `Signed in${a.name?` as ${a.name}`:''}` : 'Not signed in';
@@ -7261,7 +7278,8 @@ function viewStores(){
     }
     const b=(act,label,icon,pri)=>`<button class="sbtn ${pri?'pri':''}" data-f data-k="sa-${a.store}-${act}" data-act="${act}" data-s="${a.store}">${icon?I[icon]:''}${label}</button>`;
     let btns='';
-    if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?(signInViaDesktop()?'Switch account':'Open Steam'):'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : ''); }
+    if(a.store==='steam' && ssign) btns = b('steamShow','Show Steam\'s window','display',true) + b('steamSignCancel','Cancel','x');
+    else if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?'Switch account':'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : '') + (a.signedIn && !a.busy ? b('accRefresh','Refresh list','refresh') : ''); }
     else if(signing) btns = `<span class="mini-spin"></span>`;
     else if(expired) btns = b('accSignIn','Sign in again','user',true) + (a.owned||a.installed ? b('accShow','Show games','lib') : '') + b('accSignOut','Sign out','x');
     else if(!a.signedIn) btns = b('accSignIn','Sign in','user',true);
@@ -7270,6 +7288,8 @@ function viewStores(){
       <div class="shd"><div class="smark">${info.mark}</div><div class="sti"><b>${info.name}</b><small class="${expired?'warn':a.signedIn?'on':''}">${esc(status)}</small></div>${av}</div>
       <div class="sblurb">${info.blurb}</div>
       ${stats.length?`<div class="sstats">${stats.join('')}</div>`:''}
+      ${a.hint?`<div class="sblurb">${esc(a.hint)}</div>`:''}
+      ${ssign?`<div class="sblurb">Steam's sign-in window is in front. Scan its QR code with the Steam app on your phone, or type your account name and password (a keyboard helps). Press the Guide button to come back here; ${APP} notices by itself when you're signed in.</div>`:''}
       ${expired?`<div class="serr">${info.name} stopped accepting your sign-in${a.expiredAt?' '+ago(a.expiredAt).toLowerCase():''}. Sign in again${a.name?' as '+esc(a.name):''} to install games, sync cloud saves and play online. Games you've installed still start if they work offline.</div>`
         : a.error?`<div class="serr">${esc(a.error)}</div>`:''}
       <div class="sbtns">${btns}</div></div>`;
@@ -7283,6 +7303,7 @@ function viewStores(){
     <h2>Installing</h2>
     <div class="rows">
       <button class="row" data-f data-k="sa-folder" data-act="accFolder"><span class="ricon">${I.dl}</span><div class="rt"><b>Install folder for Epic and GOG games</b><small>${esc(ACC.root||'—')}</small></div><div class="rv">Change ›</div></button>
+      ${ACC.steamLib ? `<button class="row" data-f data-k="sa-steamlib" data-act="steamLib"><span class="ricon">${I.dl}</span><div class="rt"><b>Steam library for new Steam games</b><small>${esc(ACC.steamLib)}</small></div><div class="rv">Change ›</div></button>` : ''}
       ${note(LINUX ? `${signInViaDesktop()?'Signing in opens in Desktop Mode, where the keyboard and mouse work normally. ':''}You sign in on each store's own page; ${APP} never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, and run with Proton through <b>umu-launcher</b>; ${APP} downloads them from GitHub the first time they're needed. In the sign-in window, use touch or a mouse; B or Esc cancels.`
         : `You sign in on each store's own page; ${APP} never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, which ${APP} downloads from GitHub the first time you sign in. In the sign-in window, the right stick moves the pointer, A clicks, Y opens a keyboard and B cancels.`)}
     </div>`;
@@ -7294,6 +7315,7 @@ async function accSignIn(store){
     if(MOCKEXP[store]){ MOCKEXP[store]=0; toast(`Signed in to ${info.name} (preview)`); return loadAccounts(true); }
     return toast(`Signing in needs the ${APP} app (not the browser preview).`);
   }
+  if(store==='steam') return steamSignIn();
   if(signInViaDesktop()) return accSignInFromGame(store);
   if(store==='steam'){
     try{ await call('accounts.signIn',{store}); toast('Steam is open. Sign in or switch accounts there, then come back to '+APP+'.'); }catch(e){ toast(e.message); }
@@ -7365,9 +7387,31 @@ function accSignOut(store){
       loadAccounts(); if(host) loadLibrary(true);
     }}]});
 }
+// Steam signs in in its own window, brought in front (also in Game Mode); Hearth never signs in itself and only
+// reads Steam's files to notice when it's done (steam.signedIn). Desktop Mode stays an option in Game Mode.
+function steamSignIn(){
+  const start = async()=>{
+    try{ await call('accounts.signIn',{store:'steam'},90000); toast(`Steam's sign-in window is coming up. ${APP} comes back when you're signed in.`); loadAccounts(true); }
+    catch(e){ toast(e.message); }
+  };
+  if(!signInViaDesktop()) return start();
+  openSheet({title:'Sign in to Steam', sub:`Steam's own sign-in window comes up in front. The easiest way: scan its QR code with the Steam app on your phone. Typing your name and password works too, best with a keyboard. Press the Guide button to come back to ${APP}.`,
+    items:[{label:'Sign in here', icon:'user', run:start},
+           {label:'Use Desktop Mode instead', icon:'desk', run:()=>accSignInFromGame('steam')}]});
+}
 async function accRefresh(store){
   try{ const p=call('accounts.refresh',{store},10*60e3); setTimeout(()=>loadAccounts(true),300); await p; }catch(e){ toast(e.message); }
   loadAccounts();
+}
+// Which Steam library new Steam games install to (Steam's own libraries; add one in Disks › Use for games).
+async function pickSteamLibrary(){
+  if(!host) return;
+  try{
+    const r=await call('steam.libraries');
+    openSheet({title:'Steam library for new games', sub:'Steam games you install from '+APP+' go here. Add a drive as a Steam library in Disks (Use for games).',
+      items:(r.list||[]).map(l=>({label:`${l.chosen?'✓ ':''}${l.path}${l.free!=null?` · ${gbs(l.free)} free`:''}`, icon:'dl',
+        run:()=>call('steam.setLibrary',{path:l.path}).then(()=>{ ACC.steamLib=l.path; toast('New Steam games go to '+l.path); render('sa-steamlib'); }).catch(e=>toast(e.message))}))});
+  }catch(e){ toast(e.message); }
 }
 async function pickInstallFolder(){
   if(!host) return toast('Choosing a folder needs the '+APP+' app.');
@@ -7470,7 +7514,7 @@ function fromHost(d){
           hrs:(d.minutes||0)/60, last:d.lastPlayed||0, added:d.added||0, size:fmtSize(d.sizeBytes),
           ach:null, art:d.art||{}, path:d.path||'', canRemove:!!d.canRemove,
           inst:d.installed!==false, cloud:!!d.cloud, state:d.state||'installed', progress:d.progress, bytesDone:d.bytesDone, bytesTotal:d.bytesTotal, speed:d.bytesPerSec,
-          canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null, system:d.system||null, beacon:d.beacon||null};
+          canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null, system:d.system||null, beacon:d.beacon||null, stage:d.stage||null};
 }
 async function loadLibrary(rescan, announce){
   if(!host) return;
@@ -7482,6 +7526,7 @@ async function loadLibrary(rescan, announce){
     if(lib.runningId) S.running=lib.runningId;
     if(lib.quickResume) applyQuick({list:lib.quickResume.list, on:lib.quickResume.on});
     S.set.steamBg = lib.steamBackground!==false;
+    S.set.steamOnDemand = lib.steamOnDemand!==false;
     if(GAMES.some(isActive)) startDownloadPoll();
     if(announce) toast(`Found ${GAMES.length} game${GAMES.length===1?'':'s'}`);
   }catch(e){ toast("Couldn't load your library: "+e.message); }
@@ -7543,6 +7588,8 @@ function onSysEvent(name, data){
   if(name==='quickResume'){ applyQuick(data); if(!OVERLAY && !S.layers.length) render(null,true); else { renderFooter(); if(S.layers.includes('qam')) renderQam(); } return; }
   if(name==='game.paused'){ S.paused=!!data.paused; if(S.layers.includes('qam')) renderQam(); return; }
   if(name==='accounts.changed') return OVERLAY ? null : loadAccounts(true);
+  if(name==='steam.signedIn'){ if(OVERLAY) return; toast(`Signed in to Steam${data&&data.name?' as '+data.name:''}. Getting your games…`); loadAccounts(true); return loadLibrary(true); }
+  if(name==='steam.window'){ if(OVERLAY) return; if(data&&data.text) toast(data.text); return; }
   if(name==='accounts.expired') return OVERLAY ? null : onAccExpired(data);
   if(name==='signinStart') return OVERLAY ? null : deskSignBegin(data&&data.store);
   if(name==='play') return OVERLAY ? null : playFromDesktop(data&&data.id);
