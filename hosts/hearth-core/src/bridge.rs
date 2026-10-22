@@ -67,10 +67,16 @@ impl Bridge {
         let mut b = Bridge::with(Library::new(store, paths::home()), crate::profiles::Profiles::open(&paths::data_dir()), version);
         // Quick Resume games (and a game that was running) are still there after Hearth restarts.
         b.library.restore_quick();
-        // Steam in the background (Settings › Library, on by default), so games start without Steam's windows.
-        if b.library.store.data["steamBackground"] != false {
+        // Steam: with "Start Steam only when needed" (Settings › Library, on by default) it starts hidden when you
+        // play, install or use its features (steam_ctl.rs). Turned off: started hidden now and kept running, as before.
+        if !b.library.steam_on_demand() && b.library.store.data["steamBackground"] != false {
             let home = b.library.home.clone();
             std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(8)); crate::steam::ensure_running_silent(&home); });
+        }
+        // The Steam games on your account (steam_owned.rs), fetched again when older than 12 hours.
+        if b.library.store.source_on("steam") {
+            let home = b.library.home.clone();
+            std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(20)); crate::steam_owned::refresh(&home, false); });
         }
         b
     }
@@ -121,6 +127,16 @@ impl Bridge {
                 }
             }
             "epicSignedIn" => self.importer.finish_pending_epic(self.pending_epic()),
+            // Steam's own sign-in window finished (steam_ctl::watch_sign_in saw Steam write its account list).
+            "steamSignedIn" => {
+                (self.host)("comeBack", &Value::Null);
+                let (name, _, _) = self.steam_account();
+                crate::steam_owned::refresh(&self.library.home, true);
+                self.library.scan();
+                out.push(Bridge::event("steam.signedIn", json!({"name": name})));
+                out.push(Bridge::event("accounts.changed", json!({})));
+                out.push(Bridge::event("library.changed", json!({})));
+            }
             "streamClosed" => if self.library.running.as_ref().map(|r| r.cloud).unwrap_or(false) { out.push(self.library.exited()); },
             _ => {}
         }
@@ -146,6 +162,16 @@ impl Bridge {
         }
     }
 
+    /// Opens a steam:// address (Steam started hidden first when it isn't running), then brings Steam's window in
+    /// front in Game Mode. Off the bridge's thread: starting Steam takes a while.
+    fn open_steam(&self, url: &str) {
+        let (home, host, url) = (self.library.home.clone(), self.host.clone(), url.to_string());
+        std::thread::spawn(move || {
+            if let Err(e) = crate::steam_ctl::open_url(&home, &url) { log(&format!("steam: {e}")); return; }
+            host("showSteam", &json!({"wait": 45}));
+        });
+    }
+
     /// What Library › Stores shows.
     fn accounts_status(&self) -> Value {
         let mut inst: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
@@ -163,6 +189,12 @@ impl Bridge {
         let owned = |s: &str| { let o = crate::owned::Owned::load(crate::stores::cache_of(s)); (o.games.len(), o.fetched) };
         let (sname, savatar, sinstalled) = self.steam_account();
         let steam_owned = self.library.games.values().filter(|g| g.source == "steam").count();
+        let so = crate::steam_owned::load_current(&self.library.home).unwrap_or(json!({}));
+        let (s_hint, s_error) = match so["problem"].as_str() {
+            Some("private") => (Some(crate::steam_owned::PRIVATE_NOTE.to_string()), None),
+            Some(p) => (None, Some(format!("Couldn't get your Steam games list: {p}"))),
+            None => (None, None),
+        };
         let (eo, ef) = owned("epic"); let (go, gf) = owned("gog"); let (xo, xf) = owned("xbox");
         let (gname, gavatar) = crate::stores::gog::profile();
         let gname = named("gog", gname);
@@ -170,8 +202,10 @@ impl Bridge {
         let ename = named("epic", crate::stores::epic::display_name());
         let xname = named("xbox", xb["gamertag"].as_str().map(str::to_string));
         let accounts = vec![
-            with(base("steam"), json!({"signedIn": sname.is_some(), "name": sname, "avatar": savatar, "owned": steam_owned, "fetched": 0, "toolReady": true,
-                "note": if !sinstalled { Some("Steam isn't installed on this device.") } else if sname.is_none() { Some("Open Steam once to sign in") } else { None }})),
+            with(base("steam"), json!({"signedIn": sname.is_some(), "name": sname, "avatar": savatar, "owned": steam_owned, "fetched": so["fetched"].as_u64().unwrap_or(0), "toolReady": true,
+                "busy": crate::steam_owned::busy(), "signing": crate::steam_ctl::signing_in(), "hint": s_hint, "error": s_error,
+                "library": self.library.steam_library().map(|l| l.to_string_lossy().to_string()),
+                "note": if !sinstalled { Some("Steam isn't installed on this device.") } else if sname.is_none() { Some("Not signed in") } else { None }})),
             with(base("epic"), json!({"signedIn": crate::stores::epic::signed_in(), "name": ename, "avatar": null, "owned": eo, "fetched": ef,
                 "toolReady": crate::tools::is_ready(&crate::tools::LEGENDARY), "note": null})),
             with(base("gog"), json!({"signedIn": crate::stores::gog::signed_in(), "name": gname, "avatar": gavatar, "owned": go, "fetched": gf,
@@ -299,6 +333,12 @@ impl Bridge {
                 }))?;
                 Ok(self.library.get(true))
             }
+            "library.setSteamOnDemand" => {
+                let on = a["on"] == true;
+                // Off: Steam runs all the time again (started now, hidden).
+                if !on { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
+                io(self.library.store.update(|d| { d.insert("steamOnDemand".into(), json!(on)); }))
+            }
             "library.setSteamBackground" => {
                 let on = a["on"] == true;
                 if on { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
@@ -335,9 +375,20 @@ impl Bridge {
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
             // Downloads and installs (Epic and GOG through Hearth; Steam's in Steam)
             "library.downloads" => Ok(self.library.downloads()),
-            "game.install" => self.library.install(&req("id")?).map(|_| Value::Null),
+            "game.install" => {
+                let id = req("id")?;
+                // Steam games install without Steam's dialog (steam_ctl.rs): {silent, waiting}.
+                if id.starts_with("steam:") { return self.library.install_steam(&id); }
+                self.library.install(&id).map(|_| Value::Null)
+            }
             "game.cancelInstall" => {
                 let id = req("id")?;
+                if let Some(app) = id.strip_prefix("steam:").and_then(|a| a.parse::<u32>().ok()) {
+                    if !crate::steam_ctl::cancel_pending(app) { return Err("Steam is downloading it already: cancel it in Steam (Manage in Steam).".into()); }
+                    self.library.scan();
+                    (self.emit)(Bridge::event("library.changed", json!({})));
+                    return Ok(json!({"ok": true}));
+                }
                 let (ok, removed) = self.library.cancel_install(&id);
                 if removed { (self.emit)(Bridge::event("install.done", self.library.install_done(&id, Some("cancelled"), None))); }
                 Ok(json!({"ok": ok}))
@@ -346,16 +397,41 @@ impl Bridge {
             "game.resumeInstall" => Ok(json!({"ok": self.library.resume_install(&req("id")?)})),
             "game.installFirst" => Ok(json!({"ok": self.library.install_first(&req("id")?)})),
             "downloads.clearRecent" => { self.library.clear_recent(); Ok(json!({"ok": true})) }
-            "steam.downloads" => { let _ = crate::steam::spawn(&self.library.home, "steam://open/downloads"); Ok(json!({"ok": true})) }
+            "steam.downloads" => { self.open_steam("steam://open/downloads"); Ok(json!({"ok": true})) }
+            // Steam's window in front again (during a sign-in, after coming back to Hearth).
+            "steam.showWindow" => { (self.host)("showSteam", &json!({"wait": 30})); Ok(json!({"ok": true})) }
+            "steam.signInCancel" => { crate::steam_ctl::cancel_sign_in(); (self.host)("comeBack", &Value::Null); Ok(json!({"ok": true})) }
+            // Where Steam games install: Steam's libraries, and the one picked.
+            "steam.libraries" => {
+                let steam = crate::steam::steam_path(&self.library.home).ok_or("Steam isn't set up yet. Open Steam once, then try again.")?;
+                let chosen = self.library.steam_library().unwrap_or_default();
+                Ok(json!({"list": crate::steam_ctl::libraries_dto(&steam, &chosen), "chosen": chosen.to_string_lossy()}))
+            }
+            "steam.setLibrary" => {
+                let path = req("path")?;
+                let steam = crate::steam::steam_path(&self.library.home).ok_or("Steam isn't set up yet.")?;
+                if !crate::steam::libraries(&steam).iter().any(|l| l.to_string_lossy() == path) { return Err("That folder isn't a Steam library.".into()); }
+                io(self.library.store.update(|d| { d.insert("steamLibrary".into(), json!(path)); }))?;
+                Ok(json!({"chosen": path}))
+            }
             "game.uninstall" => {
                 let id = req("id")?;
-                // Steam games: Steam deletes its own files (it asks to confirm in its window, which comes in front).
+                // Steam games: deleted without Steam's dialog once Hearth's own confirmation was given (steam_ctl::uninstall:
+                // never while Steam works on the game or it runs, only inside its Steam library). Answered later: Steam
+                // may have to close first.
                 if let Some(app) = id.strip_prefix("steam:") {
-                    if self.library.running_id().as_deref() == Some(id.as_str()) { return Err("Exit the game first.".into()); }
-                    if app.is_empty() || !app.chars().all(|c| c.is_ascii_digit()) { return Err("That isn't a Steam game.".into()); }
-                    let _ = crate::steam::spawn(&self.library.home, &format!("steam://uninstall/{app}"));
-                    (self.host)("showSteam", &Value::Null);
-                    return Ok(json!({"steam": true}));
+                    if self.library.running_id().as_deref() == Some(id.as_str()) || self.library.frozen.iter().any(|f| f.id == id) { return Err("Exit the game first.".into()); }
+                    let app: u32 = app.parse().map_err(|_| "That isn't a Steam game.".to_string())?;
+                    let title = self.library.games.get(&id).map(|g| g.title.clone()).unwrap_or_else(|| "the game".into());
+                    let (home, on_demand) = (self.library.home.clone(), self.library.steam_on_demand());
+                    crate::space::answer_later(self.cur_id.clone(), move || {
+                        let was_running = crate::steam_ctl::uninstall(&home, app, &title)?;
+                        // Steam was closed for it: back hidden, unless it only runs when needed.
+                        if was_running && !on_demand { crate::steam::ensure_running_silent(&home); }
+                        crate::stores::notify(json!({"type": "internal", "what": "rescan", "reply": null}));
+                        Ok(json!({"steam": true, "silent": true}))
+                    });
+                    return Ok(json!(DEFERRED));
                 }
                 self.library.uninstall(&id)?;
                 Ok(self.library.get(false))
@@ -364,7 +440,14 @@ impl Bridge {
             "accounts.status" => Ok(self.accounts_status()),
             "accounts.signIn" => {
                 let store = req("store")?;
-                if store == "steam" { let _ = crate::steam::spawn(&self.library.home, "steam://open/main"); return Ok(json!({"ok": true})); }
+                // Steam: its own sign-in window, in front; Hearth only watches Steam's files to see when it's done
+                // (steam_ctl::watch_sign_in). Hearth never signs in itself.
+                if store == "steam" {
+                    if !crate::steam::client_installed(&self.library.home) { return Err("Steam isn't installed on this device.".into()); }
+                    crate::steam_ctl::watch_sign_in(&self.library.home);
+                    self.open_steam("steam://open/main");
+                    return Ok(json!({"ok": true, "watching": true}));
+                }
                 self.start_sign_in(&store)
             }
             // Game Mode: the sign-in opens in Desktop Mode (the page switches there right after this).
@@ -374,6 +457,7 @@ impl Bridge {
             "accounts.signOut" => { crate::stores::sign_out(&req("store")?)?; self.library.scan(); (self.emit)(Bridge::event("accounts.changed", json!({}))); Ok(Value::Null) }
             "accounts.refresh" => {
                 let store = req("store")?;
+                if store == "steam" { crate::steam_owned::refresh(&self.library.home, true); return Ok(json!({"ok": true})); }
                 let s = crate::stores::STORES.into_iter().find(|x| *x == store).ok_or("Unknown store")?;
                 crate::stores::refresh(s, self.library.accounts.clone(), json!({"id": self.cur_id, "to": self.cur_label}));
                 Ok(json!(DEFERRED))
@@ -408,9 +492,9 @@ impl Bridge {
             "friends.action" => {
                 let r = crate::friends::action(a["platform"].as_str().unwrap_or(""), a["id"].as_str().unwrap_or(""), a["what"].as_str().unwrap_or(""), a["server"].as_str())?;
                 if let Some(u) = r["open"].as_str() {
-                    // Steam's chat or game in front of Hearth (it's a separate window in Game Mode).
-                    crate::steam::spawn(&self.library.home, u)?;
-                    (self.host)("showSteam", &json!({}));
+                    // Steam's chat or game in front of Hearth (it's a separate window in Game Mode), Steam started
+                    // hidden first if it isn't running.
+                    self.open_steam(u);
                 }
                 Ok(r)
             }
@@ -1030,6 +1114,8 @@ impl Bridge {
         let mut out = Vec::new();
         for e in events {
             match e["name"].as_str().unwrap_or("") {
+                // Steam's window is needed (its install window after a silent install didn't start): in front.
+                "steam.window" => (self.host)("showSteam", &json!({"wait": 30})),
                 "game.started" => {
                     self.parental_since = now_ms(); self.parental_warned = false;
                     out.extend(self.parental_tick());

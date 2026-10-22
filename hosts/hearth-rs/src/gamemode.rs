@@ -843,11 +843,13 @@ impl GameMode {
                 self.claim();
                 self.hide_overlay();
                 let me = self.clone();
+                // {wait: seconds}: Steam may still be starting (hidden) when its window is asked for.
+                let tries = (a["wait"].as_u64().unwrap_or(14).min(300) * 10 / 7).max(20);
                 std::thread::spawn(move || {
                     let mine = std::process::id() as u64;
-                    for _ in 0..20 {
+                    for _ in 0..tries {
                         std::thread::sleep(Duration::from_millis(700));
-                        let hit = gs::mapped_windows().into_iter().find(|w| w.pid != mine && matches!(std::fs::read_to_string(format!("/proc/{}/comm", w.pid)).unwrap_or_default().trim(), "steam" | "steamwebhelper"));
+                        let hit = gs::mapped_windows().into_iter().find(|w| w.pid != mine && w.w >= 300 && w.h >= 200 && matches!(std::fs::read_to_string(format!("/proc/{}/comm", w.pid)).unwrap_or_default().trim(), "steam" | "steamwebhelper"));
                         if let Some(w) = hit { me.step_aside(); me.focus_xid("steam window", w.win, 0, false); return; }
                     }
                     log("friends: Steam's window didn't show up");

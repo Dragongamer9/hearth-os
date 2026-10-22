@@ -139,9 +139,8 @@ internal sealed class GameModeBridge
 
             // ------------------------------------------------ Downloads, Screenshots, Friends
             case "steam.downloads":
-                SteamWindows.StopHiding();
-                SteamWindows.AllowSteamToFocus();
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("steam://open/downloads") { UseShellExecute = true })?.Dispose();
+                // Steam started hidden first if it isn't running ("Start Steam only when needed").
+                await SteamControl.OpenUrlAsync("steam://open/downloads");
                 return new { ok = true };
             case "downloads.clearRecent": return new { ok = true };   // Ember keeps no list of finished downloads
             // Downloads Ember runs itself (Epic, GOG): pause, resume, start now.
@@ -165,9 +164,7 @@ internal sealed class GameModeBridge
                     "profile" when id.Length > 0 && id.All(char.IsAsciiDigit) => "steam://url/SteamIDPage/" + id,
                     _ => throw new InvalidOperationException("That isn't possible for this friend yet."),
                 };
-                SteamWindows.StopHiding();
-                SteamWindows.AllowSteamToFocus();
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
+                await SteamControl.OpenUrlAsync(url);
                 return new { open = url };
             }
         }

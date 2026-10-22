@@ -145,6 +145,37 @@ public static class SteamScanner
         return games;
     }
 
+    /// <summary>
+    /// Games on your account from your public Steam Community games page (SteamControl's cached list), for the ones
+    /// Steam's local caches don't list. Shown with an Install button.
+    /// </summary>
+    public static List<Game> ScanCommunity(IReadOnlySet<string> knownIds)
+    {
+        var games = new List<Game>();
+        var steam = SteamPath();
+        if (steam is null) return games;
+        var (gridDir, stats) = UserData(steam);
+        var cache = Path.Combine(steam, "appcache", "librarycache");
+        if (SteamControl.LoadOwned()["games"] is not System.Text.Json.Nodes.JsonArray list) return games;
+        foreach (var x in list)
+        {
+            var appId = x?["id"]?.ToString();
+            if (string.IsNullOrEmpty(appId) || !appId.All(char.IsAsciiDigit) || knownIds.Contains("steam:" + appId) || SkipAppIds.Contains(appId)) continue;
+            var title = x!["title"]?.ToString() ?? appId;
+            if (SkipPrefixes.Any(pre => title.StartsWith(pre, StringComparison.OrdinalIgnoreCase))) continue;
+            stats.TryGetValue(appId, out var st);
+            var g = new Game
+            {
+                Id = "steam:" + appId, Title = title, Source = "steam",
+                StoreMinutes = Math.Max(st.Minutes, (int)SteamControl.Num(x["minutes"])), StoreLastPlayed = Math.Max(st.LastPlayed, SteamControl.Num(x["lastPlayed"])),
+                LaunchUri = "steam://rungameid/" + appId, InstallUri = "steam://install/" + appId, Installed = false, State = "notInstalled",
+            };
+            FindArt(g, appId, gridDir, cache);
+            games.Add(g);
+        }
+        return games;
+    }
+
     /// <summary>Every Steam library folder (Steam's own and those in libraryfolders.vdf). Also used by Hearth Files.</summary>
     internal static IEnumerable<string> Libraries(string steam)
     {
@@ -243,7 +274,7 @@ public static class SteamScanner
         return (Directory.Exists(grid) ? grid : null, stats);
     }
 
-    private static void FindArt(Game g, string appId, string? grid, string cache, bool cdnFallback = true)
+    internal static void FindArt(Game g, string appId, string? grid, string cache, bool cdnFallback = true)
     {
         // Custom art the user set in Steam (grid folder) wins over Steam's defaults.
         void Pick(string kind, string[] gridNames, string legacyName, string cachePattern)

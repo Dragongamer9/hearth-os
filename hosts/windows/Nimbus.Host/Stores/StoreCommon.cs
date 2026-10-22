@@ -42,7 +42,8 @@ public sealed class OwnedCache
 /// the page shows "Sign-in expired" with Sign in again.</summary>
 public sealed record AccountDto(
     string Store, bool SignedIn, string? Name, string? Avatar, int Owned, int Installed,
-    long Fetched, bool Busy, string? Error, bool ToolReady, string? Note, bool Expired = false, long? ExpiredAt = null);
+    long Fetched, bool Busy, string? Error, bool ToolReady, string? Note, bool Expired = false, long? ExpiredAt = null,
+    string? Hint = null, bool Signing = false, string? Library = null);
 
 /// <summary>
 /// Store sign-ins that stopped working: the store refused the saved sign-in (its refresh token was revoked or ran

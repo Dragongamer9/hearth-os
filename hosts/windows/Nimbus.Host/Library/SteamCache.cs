@@ -12,7 +12,7 @@ namespace Nimbus.Host.Library;
 public static class SteamCache
 {
     /// <summary>Assets: kind (cover/hero/logo/wide) → path under Steam's store_item_assets CDN folder for this app.</summary>
-    public sealed record AppInfo(uint AppId, string Name, string Type, string? OsList, string? ReleaseState, Dictionary<string, string> Assets);
+    public sealed record AppInfo(uint AppId, string Name, string Type, string? OsList, string? ReleaseState, Dictionary<string, string> Assets, string? InstallDir = null);
 
     public static Dictionary<uint, AppInfo> ReadAppInfo(string path)
     {
@@ -58,7 +58,8 @@ public static class SteamCache
                     var type = common.GetValueOrDefault("type") as string;
                     if (name is not null && type is not null)
                         result[appId] = new AppInfo(appId, name.Trim(), type, common.GetValueOrDefault("oslist") as string,
-                                                    common.GetValueOrDefault("releasestate") as string, Assets(common));
+                                                    common.GetValueOrDefault("releasestate") as string, Assets(common),
+                                                    Child(info, "config")?.GetValueOrDefault("installdir") as string);
                 }
             }
             catch { /* skip a malformed entry */ }

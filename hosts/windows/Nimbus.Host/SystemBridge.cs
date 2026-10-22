@@ -107,6 +107,21 @@ public sealed class SystemBridge : IDisposable
         Games.InstallFinished += (id, title, error) => Event("install.done", new { id, title, error });
         _parentalTimer.Tick += (_, _) => ParentalTick();
         Library.Friends.Changed += () => Event("friends", new { });
+        // Steam run hidden by Ember (Library/SteamControl.cs, docs/STEAM.md).
+        Library.SteamControl.Event += (name, data) =>
+        {
+            switch (name)
+            {
+                case "rescan": _ = Task.Run(async () => { try { await Games.RescanAsync(); } catch { } Event("library.changed", new { }); }); break;
+                case "accounts": Event("accounts.changed", new { }); break;
+                case "steam.signedIn":
+                    // Steam's own sign-in window finished: Ember comes back in front.
+                    if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)BringShellToFront);
+                    Event(name, data ?? new { });
+                    break;
+                default: Event(name, data ?? new { }); break;
+            }
+        };
 
         Games.GameStarted += id => { Log($"game started {id}"); Event("game.started", new { id }); StartPlayClock(); };
         Games.QuickChanged += msg =>
@@ -544,24 +559,46 @@ public sealed class SystemBridge : IDisposable
             }
             // Turned off with the games kept: Windows' hibernation, when it's turned on.
             case "power.hibernateStatus": return Hibernation.Status();
-            case "game.install": await Games.InstallAsync(Req(a, "id")); return null;
+            case "game.install":
+            {
+                var id = Req(a, "id");
+                // Steam games install without Steam's dialog (SteamControl): {silent, waiting}.
+                if (id.StartsWith("steam:") && Library.SteamScanner.SteamPath() is not null) return await Games.InstallSteamAsync(id);
+                await Games.InstallAsync(id); return null;
+            }
+            case "library.setSteamOnDemand": await Games.SetSteamOnDemandAsync(Bool(a, "on")); return null;
+            // Where Steam games install, and Steam's window in front again (during a sign-in).
+            case "steam.libraries": return Games.SteamLibraries();
+            case "steam.setLibrary": { var p = Req(a, "path"); Games.SetSteamLibrary(p); return new { chosen = p }; }
+            case "steam.showWindow": await Library.SteamControl.OpenUrlAsync("steam://open/main"); Library.SteamWindows.HideMainFor(10); return new { ok = true };
+            case "steam.signInCancel":
+                Library.SteamControl.CancelSignIn();
+                if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)BringShellToFront);
+                return new { ok = true };
             case "library.downloads": return await Games.DownloadsAsync();
             case "library.setSteamBackground": await Games.SetSteamBackgroundAsync(Bool(a, "on")); return null;
             case "game.close": return new { ok = await Games.CloseRunningAsync() };
-            case "game.cancelInstall": return new { ok = Games.CancelInstall(Req(a, "id")) };
+            case "game.cancelInstall":
+            {
+                var id = Req(a, "id");
+                if (id.StartsWith("steam:") && uint.TryParse(id["steam:".Length..], out var app))
+                {
+                    if (!Library.SteamControl.CancelPending(app)) throw new InvalidOperationException("Steam is downloading it already: cancel it in Steam (Manage in Steam).");
+                    await Games.RescanAsync();
+                    Event("library.changed", new { });
+                    return new { ok = true };
+                }
+                return new { ok = Games.CancelInstall(id) };
+            }
             case "game.uninstall":
             {
                 var id = Req(a, "id");
-                // Steam games: Steam deletes its own files (it asks to confirm in its window, which comes in front).
+                // Steam games: deleted without Steam's dialog once Ember's own confirmation was given (SteamControl:
+                // never while Steam works on the game or it runs, only inside its Steam library; Steam closes first).
                 if (id.StartsWith("steam:"))
                 {
-                    var app = id["steam:".Length..];
-                    if (Games.RunningId == id) throw new InvalidOperationException("Exit the game first.");
-                    if (app.Length == 0 || !app.All(char.IsAsciiDigit)) throw new InvalidOperationException("That isn't a Steam game.");
-                    Library.SteamWindows.StopHiding();
-                    Library.SteamWindows.AllowSteamToFocus();
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("steam://uninstall/" + app) { UseShellExecute = true })?.Dispose();
-                    return new { steam = true };
+                    await Games.UninstallSteamAsync(id);
+                    return new { steam = true, silent = true };
                 }
                 await Games.UninstallAsync(id);
                 return await Games.GetAsync(false);
@@ -573,16 +610,25 @@ public sealed class SystemBridge : IDisposable
                 var store = Req(a, "store");
                 if (store == "steam")
                 {
-                    // Steam signs in through its own window.
-                    Library.SteamWindows.StopHiding();
-                    Library.SteamWindows.AllowSteamToFocus();
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("steam://open/main") { UseShellExecute = true })?.Dispose();
-                    return new { ok = true };
+                    // Steam signs in through its own window, in front; Ember only reads Steam's files to notice when it's
+                    // done (SteamControl.WatchSignIn). Ember never signs in itself.
+                    if (Library.SteamScanner.SteamPath() is null) throw new InvalidOperationException("Steam isn't installed on this PC.");
+                    bool signedIn = Library.SteamControl.CurrentId64() is not null;
+                    Library.SteamControl.WatchSignIn();
+                    await Library.SteamControl.OpenUrlAsync("steam://open/main");
+                    // Not signed in: Steam's sign-in window comes in front (Steam's main window stays away).
+                    if (!signedIn) Library.SteamWindows.HideMainFor(60);
+                    return new { ok = true, watching = true };
                 }
                 return new { ok = await Games.Accounts.SignInAsync(store, _ui.FindForm()) };
             }
             case "accounts.signOut": await Games.Accounts.SignOutAsync(Req(a, "store")); return null;
-            case "accounts.refresh": await Games.Accounts.RefreshAsync(Req(a, "store")); return null;
+            case "accounts.refresh":
+            {
+                var store = Req(a, "store");
+                if (store == "steam") { Library.SteamControl.RefreshOwned(true); return new { ok = true }; }
+                await Games.Accounts.RefreshAsync(store); return null;
+            }
             case "accounts.pickFolder":
             {
                 using var dlg = new FolderBrowserDialog
@@ -655,7 +701,7 @@ public sealed class SystemBridge : IDisposable
             case "tasks.startup":
             {
                 var startup = await Task.Run(_tasks.Startup);
-                return new { startup, steam = new { installed = Library.SteamScanner.SteamPath() is not null, on = Games.SteamBackground } };
+                return new { startup, steam = new { installed = Library.SteamScanner.SteamPath() is not null, on = Games.SteamStartsWithEmber } };
             }
             case "tasks.setStartup": await Task.Run(() => _tasks.SetStartup(Req(a, "id"), Bool(a, "on"))); return null;
 
