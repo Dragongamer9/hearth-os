@@ -82,8 +82,11 @@ fn stuck_helpers() -> Vec<(u32, String)> {
 
 /// Kept across restarts: when a report last went out, and the restarts lately.
 fn state_file() -> std::path::PathBuf { crate::paths::data_dir().join("watchdog.json") }
-fn state() -> Value { std::fs::read_to_string(state_file()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(json!({})) }
-fn save_state(v: &Value) { let _ = std::fs::write(state_file(), v.to_string()); }
+/// Always an object: anything else in the file (a damaged one) made the fail-safe's own thread panic when it noted a
+/// report or a restart, and with it the fail-safe was gone until Hearth started again.
+fn parse_state(text: &str) -> Value { serde_json::from_str::<Value>(text).ok().filter(|v| v.is_object()).unwrap_or(json!({})) }
+fn state() -> Value { parse_state(&std::fs::read_to_string(state_file()).unwrap_or_default()) }
+fn save_state(v: &Value) { let _ = crate::paths::write_atomic(&state_file(), v.to_string().as_bytes()); }
 
 /// Whether another automatic report may go out now (one every 10 minutes).
 pub fn may_report(st: &Value, now: u64) -> bool { now.saturating_sub(st["lastReport"].as_u64().unwrap_or(0)) > 10 * 60_000 }
@@ -176,6 +179,15 @@ mod tests {
         assert!(!may_report(&json!({"lastReport": now - 60_000}), now));
         assert!(may_restart(&json!({"restarts": [now - 20 * 60_000, now - 60_000]}), now));
         assert!(!may_restart(&json!({"restarts": [now - 120_000, now - 60_000]}), now));
+    }
+    #[test]
+    fn a_damaged_state_file_reads_as_empty() {
+        for t in ["", "[1, 2]", "7", "\"x\"", "{\"lastReport\": 5"] {
+            let mut st = parse_state(t);
+            st["lastReport"] = json!(1);   // panicked on anything but an object
+            assert_eq!(st["lastReport"], 1);
+        }
+        assert_eq!(parse_state(r#"{"restarts": [1]}"#)["restarts"], json!([1]));
     }
     #[test]
     fn marks_what_is_busy() {

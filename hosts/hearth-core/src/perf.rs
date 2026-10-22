@@ -42,11 +42,32 @@ pub fn gpu(root: &Path) -> (Option<u64>, Option<f64>) {
     nvidia_smi()
 }
 
-/// Nvidia cards don't report their load in /sys: their driver's own tool does (part of the driver).
+/// Nvidia cards don't report their load in /sys: their driver's own tool does (part of the driver). Quick Access
+/// asks every second with the bridge held, and nvidia-smi takes from a fraction of a second to its 2 s limit (the
+/// card waking up): asked there, every other request waited on it. So it runs in the background, one at a time,
+/// and the last answer is what's shown (nothing until the first one is in).
 fn nvidia_smi() -> (Option<u64>, Option<f64>) {
     if !Path::new("/sys/module/nvidia").exists() { return (None, None); }
+    nvidia_cached(ask_nvidia_smi)
+}
+fn ask_nvidia_smi() -> (Option<u64>, Option<f64>) {
     let Ok(out) = crate::system::run_timeout("nvidia-smi", &["--query-gpu=utilization.gpu,memory.used", "--format=csv,noheader,nounits"], std::time::Duration::from_secs(2)) else { return (None, None) };
     parse_nvidia_smi(&out)
+}
+type Gpu = (Option<u64>, Option<f64>);
+static NVIDIA: Mutex<Gpu> = Mutex::new((None, None));
+static NVIDIA_ASKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// The last answer, with a new one asked for in the background unless one is on its way already. Never waits.
+fn nvidia_cached(ask: fn() -> Gpu) -> Gpu {
+    use std::sync::atomic::Ordering;
+    if !NVIDIA_ASKING.swap(true, Ordering::SeqCst) {
+        std::thread::spawn(move || {
+            let v = ask();
+            *NVIDIA.lock().unwrap_or_else(|p| p.into_inner()) = v;
+            NVIDIA_ASKING.store(false, Ordering::SeqCst);
+        });
+    }
+    *NVIDIA.lock().unwrap_or_else(|p| p.into_inner())
 }
 /// "37, 2048" (percent, MiB) -> (37, 2.0 GB)
 pub fn parse_nvidia_smi(out: &str) -> (Option<u64>, Option<f64>) {
@@ -69,6 +90,17 @@ pub fn sample() -> Value {
 mod tests {
     #[test]
     fn reads_nvidia_smi() { assert_eq!(super::parse_nvidia_smi("37, 2048\n"), (Some(37), Some(2.0))); assert_eq!(super::parse_nvidia_smi(""), (None, None)); }
+    fn slow_smi() -> super::Gpu { std::thread::sleep(std::time::Duration::from_millis(400)); (Some(50), Some(1.0)) }
+    #[test]
+    fn nvidia_numbers_never_hold_up_a_request() {
+        let t = std::time::Instant::now();
+        assert_eq!(super::nvidia_cached(slow_smi), (None, None));
+        assert_eq!(super::nvidia_cached(slow_smi), (None, None));
+        assert!(t.elapsed() < std::time::Duration::from_millis(200), "waited for nvidia-smi");
+        let mut got = (None, None);
+        for _ in 0..50 { got = super::nvidia_cached(slow_smi); if got.0.is_some() { break; } std::thread::sleep(std::time::Duration::from_millis(50)); }
+        assert_eq!(got, (Some(50), Some(1.0)));
+    }
     use super::*;
     #[test]
     fn numbers() {
