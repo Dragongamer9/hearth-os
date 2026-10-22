@@ -636,7 +636,8 @@ def partition_beside(disk, give):
         stage('shrink', 14, 'Using the free space next to Windows')
         return partition_free(disk)
     stage('shrink', 0, 'Checking Windows')
-    p = subprocess.Popen([PREP, 'shrink', str(give)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    # The Windows on this drive (hearth-live-prep would otherwise pick the biggest Windows on any drive).
+    p = subprocess.Popen([PREP, 'shrink', str(give), disk], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     last = ''
     for line in p.stdout:
         line = line.strip()
