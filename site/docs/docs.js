@@ -83,16 +83,17 @@
       el.classList.toggle('ed-off', off);
       if(off && el.tagName === 'SECTION') hidden++;
     });
-    Array.prototype.forEach.call(document.querySelectorAll('.picker button'), function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-pick') === ed ? 'true' : 'false'); });
+    var sel = document.querySelector('.picker select'); if(sel){ sel.value = ed; sel.parentNode.classList.toggle('on', ed !== 'all'); }
     var show = document.querySelector('.edshow');
     if(show){
       show.hidden = ed === 'all';
-      if(ed !== 'all') show.innerHTML = 'Showing what applies to <b>' + NAMES[ed] + '</b>' + (hidden ? ' (' + hidden + ' section' + (hidden > 1 ? 's' : '') + ' for other editions hidden)' : '') + '. <button type="button">Show everything</button>';
+      show.hidden = ed === 'all' || !hidden;
+      if(ed !== 'all' && hidden) show.innerHTML = hidden + ' section' + (hidden > 1 ? 's' : '') + ' for other editions hidden · <button type="button">show all</button>';
       var b = show.querySelector('button'); if(b) b.onclick = function(){ pick('all'); };
     }
   }
   function pick(ed){ store('hearth.docs.ed', ed === 'all' ? null : ed); applyEdition(ed); if(typeof follow === 'function') follow(); }
-  Array.prototype.forEach.call(document.querySelectorAll('.picker button'), function(b){ b.addEventListener('click', function(){ pick(b.getAttribute('data-pick')); }); });
+  var selEl = document.querySelector('.picker select'); if(selEl) selEl.addEventListener('change', function(){ pick(selEl.value); });
   applyEdition(chosen());
 
   // The section list follows the reading position: the last heading above the top of the screen.
