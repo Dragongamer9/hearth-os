@@ -388,6 +388,8 @@ function fillScreen(win) {
   const fit = () => {
     try {
       if (win.closed || win.fullScreen) return;
+      // Windows: maximized (Windows keeps its own edges right); gamescope has no window manager, so the size itself.
+      if (Services.appinfo.OS === "WINNT") { if (win.windowState !== win.STATE_MAXIMIZED) win.maximize(); return; }
       if (win.outerWidth >= win.screen.width && win.outerHeight >= win.screen.height) return;
       win.moveTo(0, 0);
       win.resizeTo(win.screen.width, win.screen.height);
