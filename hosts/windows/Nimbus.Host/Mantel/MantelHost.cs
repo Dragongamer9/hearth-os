@@ -498,10 +498,15 @@ public sealed partial class MantelHost : IDisposable
         foreach (var h in TaskbarWindows()) Native.ShowWindow(h, Native.SW_HIDE);
     }
 
-    private void RestoreWindowsTaskbar()
+    /// <summary>Gives Windows' taskbar its setting back. False when Explorer isn't running: the setting is kept (on disk
+    /// too) and put back the next time Explorer's taskbar is there.</summary>
+    private bool RestoreWindowsTaskbar()
     {
         var main = Native.FindWindow("Shell_TrayWnd", null);
-        if (main != IntPtr.Zero && _savedTaskbarState is int st)
+        // No Explorer (Ember as the shell, after a power cut in Mantel), or full Mantel's own tray window: nothing to
+        // give the setting to now. Forgetting it here would leave Windows' taskbar on auto-hide for good.
+        if (main == IntPtr.Zero || !DesktopMode.ExplorerShellRunning()) return false;
+        if (_savedTaskbarState is int st)
         {
             var d = new Native.APPBARDATA { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.APPBARDATA>(), hWnd = main, lParam = new IntPtr(st) };
             Native.SHAppBarMessage(Native.ABM_SETSTATE, ref d);
@@ -509,6 +514,7 @@ public sealed partial class MantelHost : IDisposable
         _savedTaskbarState = null;
         MantelState.Update(s => s.TaskbarState = null, notify: false);
         foreach (var h in TaskbarWindows()) Native.ShowWindow(h, Native.SW_SHOWNA);
+        return true;
     }
 
     /// <summary>At Ember's start: if Mantel was running when Ember last stopped (a crash, a power cut),
@@ -517,7 +523,11 @@ public sealed partial class MantelHost : IDisposable
     {
         try { FullShell.Recover(); } catch (Exception ex) { SystemBridge.Log("mantel: full: " + ex.Message); }
         var s = MantelState.Load();
-        if (s.TaskbarState is int st) { _savedTaskbarState = st; RestoreWindowsTaskbar(); SystemBridge.Log("mantel: put Windows' taskbar back after an unclean stop"); }
+        if (s.TaskbarState is int st && !Active)
+        {
+            _savedTaskbarState = st;
+            if (RestoreWindowsTaskbar()) SystemBridge.Log("mantel: put Windows' taskbar back after an unclean stop");
+        }
     }
 
     /// <summary>The tray button: Windows' taskbar (with its tray icons) for ten seconds.</summary>

@@ -152,7 +152,7 @@ public sealed class XboxStore
         var xui = x.Obj("DisplayClaims").Arr("xui").FirstOrDefault();
         var token = x.Str("Token"); var uhs = xui.Str("uhs"); var xuid = xui.Str("xid");
         if (token is null || uhs is null || xuid is null) throw new InvalidOperationException("Xbox Live sign-in failed (no profile in the response).");
-        var notAfter = DateTimeOffset.TryParse(x.Str("NotAfter"), out var na) ? na : DateTimeOffset.UtcNow.AddHours(4);
+        var notAfter = DateTimeOffset.TryParse(x.Str("NotAfter"), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var na) ? na : DateTimeOffset.UtcNow.AddHours(4);
         _xsts = (uhs, token, xuid, notAfter);
         if (_saved is not null) { _saved.Xuid = xuid; _saved.Gamertag ??= xui.Str("gtg"); }
     }
