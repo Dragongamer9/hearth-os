@@ -6893,7 +6893,7 @@ function osiLoad(){
 function osiCheck(){
   if(OSI.checking) return; OSI.checking=true; OSI.check=null; render(null,true);
   const t=OSI.target;
-  call('osinstall.check',{part:t&&t.kind==='linux'?(t.shrink||t.part):null},180000).then(r=>{ OSI.check=r; OSI.give = r.suggested || r.target&&r.target.canGive || 0; })
+  call('osinstall.check',{part:t&&t.kind==='linux'?(t.shrink||t.part):null, disk:OSI.disk||null},180000).then(r=>{ OSI.check=r; OSI.give = r.suggested || r.target&&r.target.canGive || 0; })
     .catch(e=>{ OSI.check={problems:[{id:'error',text:e.message}]}; })
     .finally(()=>{ OSI.checking=false; render(null,true); });
 }
