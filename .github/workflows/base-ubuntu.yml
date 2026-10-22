@@ -293,6 +293,8 @@ jobs:
           check "the overlay app's Electron, page and code are installed (Hearth Browser's Electron)" "test -x /usr/lib/hearth-browser/nimbus && test -f /usr/lib/hearth-browser/resources/ui/index.html && { test -f /usr/lib/hearth-browser/resources/app/src/overlay/main.js || grep -aq HEARTH_HHD_OVERLAY /usr/lib/hearth-browser/resources/app.asar; }"
           check "Handheld Daemon's udev rules are installed" "ls /usr/lib/udev/rules.d/*hhd*.rules"
           check "power-profiles-daemon only runs when HHD is off" "grep -q 'ConditionPathExists=/etc/hearth/no-hhd' /usr/lib/systemd/system/power-profiles-daemon.service.d/10-hearth-hhd.conf"
+          # bughunt: GLib programs (the desktop portal, WebKit, the accessibility bus) abort without compiled GSettings schemas.
+          check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
           echo "--- nice to have"
           warn "acpi_call (Legion Go power limits through HHD on older firmware paths)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
           warn "RyzenAdj is installed" "command -v ryzenadj"
