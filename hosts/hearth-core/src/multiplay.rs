@@ -30,6 +30,10 @@ pub fn run(helper: &str, args: &[&str], on_progress: &mut dyn FnMut(u64, &str)) 
     if !Path::new(helper).exists() { return Err("This needs Hearth OS.".into()); }
     let mut child = Command::new("python3").arg(helper).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn().map_err(|e| e.to_string())?;
+    // Its error output is read at the same time: read only at the end, a helper that wrote more of it than a pipe
+    // holds (64 KiB: a long traceback, chatty tools it runs) waited for us forever, and we for it, with the page's
+    // requests held up behind.
+    let err_reader = child.stderr.take().map(|mut e| std::thread::spawn(move || { let mut b = Vec::new(); let _ = std::io::Read::read_to_end(&mut e, &mut b); b }));
     let mut out = String::new();
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
@@ -37,10 +41,11 @@ pub fn run(helper: &str, args: &[&str], on_progress: &mut dyn FnMut(u64, &str)) 
             out.push_str(&line); out.push('\n');
         }
     }
-    let o = child.wait_with_output().map_err(|e| e.to_string())?;
+    let status = child.wait().map_err(|e| e.to_string())?;
+    let stderr = err_reader.and_then(|t| t.join().ok()).unwrap_or_default();
     let parsed = crate::admin::parse_helper(&out)?;
-    if !o.status.success() && parsed.is_null() {
-        return Err(String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("It didn't work.").to_string());
+    if !status.success() && parsed.is_null() {
+        return Err(String::from_utf8_lossy(&stderr).lines().last().unwrap_or("It didn't work.").to_string());
     }
     Ok(parsed)
 }
@@ -78,5 +83,15 @@ mod tests {
         assert_eq!(parse_progress("progress: 40 Starting player 2"), Some((40, "Starting player 2".into())));
         assert_eq!(parse_progress("progress: 100"), Some((100, String::new())));
         assert_eq!(parse_progress("{\"ok\":true}"), None);
+        // A helper with a lot to say on its error output still answers.
+        let d = tempfile::tempdir().unwrap();
+        let h = d.path().join("helper");
+        std::fs::write(&h, "import sys\nsys.stderr.write('x' * 300000)\nprint('progress: 50 half')\nprint('{\"ok\": true}')\n").unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let hs = h.to_string_lossy().to_string();
+        std::thread::spawn(move || { let mut seen = 0; let r = run(&hs, &[], &mut |n, _| seen = n); let _ = tx.send((r, seen)); });
+        let (r, seen) = rx.recv_timeout(std::time::Duration::from_secs(20)).expect("the helper and Hearth waited on each other");
+        assert_eq!(r.unwrap()["ok"], true);
+        assert_eq!(seen, 50);
     }
 }
