@@ -183,7 +183,8 @@ public sealed class ShellForm : Form
                 TopMost = true; TopMost = false;
                 Activate();
             };
-            await overlay.InitAsync(env, $"https://{VirtualHost}/index.html?overlay=1", c =>
+            // The same Quick Access page as Hearth OS's overlay over games (?overlay=full), not the older overlay mode.
+            await overlay.InitAsync(env, $"https://{VirtualHost}/index.html?overlay=full", c =>
             {
                 c.SetVirtualHostNameToFolderMapping(VirtualHost, www, CoreWebView2HostResourceAccessKind.Allow);
                 c.AddWebResourceRequestedFilter($"https://{Library.LibraryService.ArtHost}/*", CoreWebView2WebResourceContext.Image);
