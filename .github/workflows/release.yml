@@ -71,6 +71,22 @@ jobs:
           -p:Version=${{ needs.version.outputs.version }}
           -o out -nologo
 
+      # Hearth Disks (hosts/hearth-disks), the disk manager: in Ember's package as hearth-disks.exe (its Start menu
+      # entry: install-nimbus.ps1 and DisksShortcut.cs). Not fatal: without it Ember is still released.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-disks
+      - name: Build Hearth Disks
+        continue-on-error: true
+        shell: pwsh
+        working-directory: hosts/hearth-disks
+        run: |
+          (Get-Content Cargo.toml) -replace '^version = ".*"', 'version = "${{ needs.version.outputs.version }}"' | Set-Content Cargo.toml
+          cargo build --release
+          if ($LASTEXITCODE -ne 0) { Write-Output "::warning title=Hearth Disks::it didn't build, so Ember is packaged without it"; exit 1 }
+          Copy-Item target/release/hearth-disks.exe ../../out/hearth-disks.exe
+
       - name: Check the package
         shell: pwsh
         run: |

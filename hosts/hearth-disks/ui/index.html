@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disks</title>
+<style>
+/* Hearth's ember palette (hosts/linux/desktop/shell/Theme.qml). */
+:root {
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --faint:#6f6055; --ember:#ff8a3d; --flame:#ffd166; --danger:#ff5d5d; --good:#6fd08c;
+  --ink:#2a1206; --r:14px; --gut:clamp(14px,2.4vw,36px); --ease:cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
+body { font:400 clamp(15px, .9vw + 7px, 24px)/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; overflow:hidden;
+  background:radial-gradient(1200px 700px at 85% -10%, #2a170d 0%, transparent 60%), var(--bg); user-select:none; -webkit-user-select:none; }
+button, input { font:inherit; color:inherit; }
+.app { display:grid; grid-template-rows:auto 1fr auto; height:100%; }
+header { display:flex; align-items:center; gap:.8em; padding:.7em var(--gut) .5em; }
+header h1 { font-size:1.35em; margin:0; font-weight:650; letter-spacing:.01em; }
+header .sub { color:var(--muted); font-size:.85em; }
+header .spacer { flex:1; }
+main { display:grid; grid-template-columns:minmax(15em, 22em) 1fr; gap:var(--gut); padding:0 var(--gut) .6em; min-height:0; }
+footer { display:flex; gap:1.4em; padding:.45em var(--gut) .7em; color:var(--muted); font-size:.8em; flex-wrap:wrap; }
+footer b { display:inline-grid; place-items:center; min-width:1.6em; height:1.6em; border-radius:50%; background:var(--panel3); color:var(--text); margin-right:.35em; font-size:.85em; }
+.scroll { overflow:auto; min-height:0; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; padding:4px; }
+
+/* Focus: one clear ember ring, the same for mouse, keyboard, controller and touch. */
+.f { outline:none; cursor:pointer; transition:transform .14s var(--ease), box-shadow .14s var(--ease), background .14s; }
+.f:focus, .f.focus { box-shadow:0 0 0 3px var(--ember), 0 0 22px rgba(255,138,61,.35); }
+.f:active { transform:scale(.985); }
+
+.drives { display:flex; flex-direction:column; gap:.6em; }
+.drive { display:grid; grid-template-columns:2.4em 1fr; gap:.2em .8em; align-items:center; text-align:left; width:100%;
+  padding:.75em .9em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); }
+.drive.sel { background:var(--panel2); border-color:#5a3f2c; }
+.drive .ico { grid-row:span 2; width:2.4em; height:2.4em; border-radius:10px; display:grid; place-items:center; background:var(--panel3); color:var(--ember); }
+.drive .ico svg { width:1.4em; height:1.4em; }
+.drive .n { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.drive .m { color:var(--muted); font-size:.82em; display:flex; gap:.5em; align-items:center; flex-wrap:wrap; }
+.dot { width:.62em; height:.62em; border-radius:50%; display:inline-block; background:var(--faint); flex:none; }
+.dot.good { background:var(--good); } .dot.warn { background:var(--flame); } .dot.bad { background:var(--danger); }
+.badge { font-size:.72em; padding:.12em .55em; border-radius:99px; background:rgba(255,138,61,.16); color:var(--ember); white-space:nowrap; }
+
+.detail { display:grid; grid-template-rows:auto auto 1fr; gap:.8em; min-height:0; }
+.dhead { display:flex; flex-wrap:wrap; align-items:flex-end; gap:.4em 1.2em; }
+.dhead h2 { margin:0; font-size:1.25em; font-weight:650; }
+.dhead .facts { color:var(--muted); font-size:.85em; display:flex; gap:.4em 1.1em; flex-wrap:wrap; }
+.health { display:inline-flex; align-items:center; gap:.4em; }
+.acts { display:flex; flex-wrap:wrap; gap:.5em; }
+.btn { padding:.55em 1em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); min-height:2.6em; }
+.btn.danger { color:#ffb3a1; border-color:#5c2a22; background:#2a1512; }
+.btn.primary { background:var(--ember); color:var(--ink); border-color:transparent; font-weight:650; }
+.btn.primary.danger { background:var(--danger); color:#2a0606; }
+.btn[disabled] { opacity:.45; pointer-events:none; }
+
+.map { display:flex; height:3.4em; border-radius:12px; overflow:hidden; background:var(--bg2); border:1px solid var(--line); gap:2px; padding:2px; }
+.seg { position:relative; min-width:6px; border-radius:8px; overflow:hidden; display:flex; align-items:flex-end; padding:.2em .45em; font-size:.72em; color:rgba(0,0,0,.78); font-weight:600; white-space:nowrap; }
+.seg .use { position:absolute; inset:0 auto 0 0; background:rgba(0,0,0,.22); }
+.seg span { position:relative; overflow:hidden; text-overflow:ellipsis; }
+.seg.sel { box-shadow:inset 0 0 0 3px var(--text); }
+.k-hearth { background:var(--ember); } .k-windows { background:#4aa3ff; } .k-efi, .k-boot, .k-msr, .k-recovery, .k-steamos { background:#9a8fb8; }
+.k-steam { background:#66c0f4; } .k-linux { background:#9bd36a; } .k-data { background:var(--flame); } .k-swap { background:#b07cff; }
+.k-encrypted { background:#e0a96d; } .k-extended { background:#5d5048; } .k-unknown { background:#8a7a6c; }
+.k-free { background:repeating-linear-gradient(135deg, #2b211b 0 8px, #241b16 8px 16px); color:var(--muted); }
+
+.parts { display:flex; flex-direction:column; gap:.45em; }
+.part { display:grid; grid-template-columns:.9em 1fr auto; gap:.15em .8em; align-items:center; text-align:left; width:100%; padding:.6em .85em; border-radius:12px;
+  background:var(--panel); border:1px solid var(--line); }
+.part .sw { width:.9em; height:2.2em; border-radius:5px; grid-row:span 2; }
+.part .t { font-weight:600; display:flex; gap:.5em; align-items:center; min-width:0; }
+.part .t em { font-style:normal; color:var(--muted); font-weight:400; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.part .s { color:var(--muted); font-size:.8em; display:flex; gap:.4em 1em; flex-wrap:wrap; }
+.part .size { grid-row:span 2; text-align:right; font-variant-numeric:tabular-nums; }
+.part .bar { height:.35em; width:6em; border-radius:9px; background:var(--panel3); overflow:hidden; margin-top:.25em; margin-left:auto; }
+.part .bar i { display:block; height:100%; background:var(--ember); }
+.part.sel { background:var(--panel2); border-color:#5a3f2c; }
+.lock { color:var(--muted); font-size:.75em; }
+
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:.8em 1em; }
+.panel h3 { margin:0 0 .4em; font-size:1em; }
+.kv { display:grid; grid-template-columns:auto 1fr; gap:.15em 1em; font-size:.85em; }
+.kv dt { color:var(--muted); } .kv dd { margin:0; overflow-wrap:anywhere; }
+.empty { color:var(--muted); padding:2em 0; text-align:center; }
+
+/* Dialogs. */
+.veil { position:fixed; inset:0; background:rgba(8,5,4,.72); display:grid; place-items:center; padding:var(--gut); z-index:10; backdrop-filter:blur(3px); }
+.dlg { width:min(44em, 100%); max-height:100%; overflow:auto; background:var(--panel); border:1px solid #4a372b; border-radius:18px; padding:1.1em 1.3em; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+.dlg h2 { margin:0 0 .6em; font-size:1.2em; }
+.dlg .warn { margin:.4em 0; color:var(--flame); font-size:.9em; }
+.lose { margin:.7em 0; padding:.7em .9em; border-radius:12px; background:#2a1210; border:1px solid #6a2a22; }
+.lose b { color:var(--danger); }
+.lose ul { margin:.35em 0 0; padding-left:1.2em; }
+.refuse { padding:.8em 1em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); }
+.field { margin:.8em 0; }
+.field > label { display:block; color:var(--muted); font-size:.85em; margin-bottom:.35em; }
+.chips { display:flex; flex-wrap:wrap; gap:.5em; }
+.chip { padding:.5em .9em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); text-align:left; max-width:100%; }
+.chip small { display:block; color:var(--muted); font-size:.75em; }
+.chip.on { border-color:var(--ember); background:#3a2416; }
+.inp { width:100%; padding:.6em .8em; border-radius:12px; border:1px solid var(--line); background:var(--bg2); }
+.inp:focus { border-color:var(--ember); }
+.range { width:100%; accent-color:var(--ember); }
+.row { display:flex; gap:.6em; justify-content:flex-end; margin-top:1em; flex-wrap:wrap; }
+.osk { display:grid; grid-template-columns:repeat(10, 1fr); gap:.3em; margin-top:.5em; }
+.osk button { padding:.45em 0; border-radius:9px; background:var(--panel3); border:1px solid var(--line); }
+.osk .wide { grid-column:span 2; }
+.prog { height:.6em; border-radius:9px; background:var(--panel3); overflow:hidden; margin:.8em 0 .3em; }
+.prog i { display:block; height:100%; width:30%; background:linear-gradient(90deg, var(--ember), var(--flame)); border-radius:9px; }
+.prog.spin i { animation:slide 1.3s var(--ease) infinite; }
+@keyframes slide { 0% { transform:translateX(-100%); } 100% { transform:translateX(340%); } }
+.msg { color:var(--muted); }
+.ok { color:var(--good); } .bad { color:var(--danger); }
+@media (max-width: 760px) { main { grid-template-columns:1fr; overflow:auto; } .drives { flex-direction:row; overflow:auto; } .drive { min-width:15em; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Disks</h1>
+    <span class="sub" id="sub"></span>
+    <span class="spacer"></span>
+    <button class="btn f" id="refresh" data-act="refresh">Look again</button>
+  </header>
+  <main>
+    <div class="scroll"><div class="drives" id="drives"></div></div>
+    <section class="detail" id="detail"></section>
+  </main>
+  <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>Y</b>Look again</span><span id="hint"></span></footer>
+</div>
+<div id="layer"></div>
+<script>
+'use strict';
+const T = window.__TAURI__;
+const invoke = T ? T.core.invoke : demoInvoke;
+const listen = T ? T.event.listen : () => {};
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const human = b => { if (b == null) return ''; const u = ['bytes','KB','MB','GB','TB','PB']; let v = b, i = 0; while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; }
+  return i === 0 ? `${b} bytes` : `${v >= 100 ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, '')} ${u[i]}`; };
+const ICONS = {
+  nvme: '<path d="M3 8h18v8H3z M6 8v8 M9 11h6v2H9z" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+  ssd: '<rect x="4" y="3" width="16" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 7h8M8 11h8" stroke="currentColor" stroke-width="1.8"/>',
+  hdd: '<rect x="4" y="3" width="16" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="11" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="18" r="1" fill="currentColor"/>',
+  usb: '<path d="M8 3h8v6H8z M6 9h12v12H6z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 5h1M13 5h1" stroke="currentColor" stroke-width="1.8"/>',
+  sd: '<path d="M7 3h8l4 4v14H7z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 6v3M13 6v3M16 8v1" stroke="currentColor" stroke-width="1.8"/>',
+  optical: '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2" fill="currentColor"/>',
+  image: '<path d="M6 3h9l3 3v15H6z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="13" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+};
+ICONS.other = ICONS.ssd;
+
+const S = { host: 'linux', drives: [], sel: null, part: null, busy: false, pad: false };
+let lastJson = '';
+
+async function load(keepFocus = true) {
+  try {
+    const r = await invoke('list');
+    S.host = r.host; S.busy = r.busy;
+    const json = JSON.stringify(r.drives);
+    if (json === lastJson && keepFocus) return;
+    lastJson = json;
+    S.drives = r.drives;
+    if (!S.drives.find(d => d.id === S.sel)) S.sel = S.drives[0]?.id ?? null;
+    const d = drive();
+    if (d && !d.partitions.find(p => p.id === S.part)) S.part = null;
+    render();
+  } catch (e) {
+    $('#detail').innerHTML = `<div class="empty">${esc(e)}</div>`;
+  }
+}
+const drive = () => S.drives.find(d => d.id === S.sel);
+const sysName = () => S.host === 'windows' ? 'Windows' : 'Hearth OS';
+
+function render() {
+  const focusId = document.activeElement?.dataset?.key;
+  $('#sub').textContent = S.drives.length ? `${S.drives.length} drive${S.drives.length > 1 ? 's' : ''}` : '';
+  $('#drives').innerHTML = S.drives.map(d => `
+    <button class="drive f ${d.id === S.sel ? 'sel' : ''}" data-key="drive:${esc(d.id)}" data-drive="${esc(d.id)}">
+      <span class="ico"><svg viewBox="0 0 24 24">${ICONS[d.kind] || ICONS.other}</svg></span>
+      <span class="n">${esc(name(d))}</span>
+      <span class="m"><span class="dot ${esc(d.health.state)}"></span>${esc(human(d.size))} · ${esc(d.connection)}${d.system ? ` <span class="badge">${sysName()} is here</span>` : ''}</span>
+    </button>`).join('') || `<div class="empty">No drives found.</div>`;
+  renderDetail();
+  const back = focusId && document.querySelector(`[data-key="${CSS.escape(focusId)}"]`);
+  if (back) back.focus({ preventScroll: true });
+  else if (!document.activeElement || document.activeElement === document.body) document.querySelector('.drive.sel')?.focus();
+}
+
+function name(d) {
+  const m = (d.model || '').trim(), v = (d.vendor || '').trim();
+  if (m && v && !m.toLowerCase().startsWith(v.toLowerCase())) return `${v} ${m}`;
+  return m || v || ({ usb: 'USB drive', sd: 'SD card', image: 'Disk image', optical: 'Disc drive' }[d.kind] || 'Drive');
+}
+function partTitle(p) { return p.kind === 'free' ? 'Free space' : p.what; }
+
+function renderDetail() {
+  const d = drive();
+  const el = $('#detail');
+  if (!d) { el.innerHTML = '<div class="empty">Plug in a USB drive or SD card to see it here.</div>'; return; }
+  const h = d.health;
+  const healthBits = [h.tempC != null ? `${Math.round(h.tempC)}°C` : '', h.powerOnHours ? `${h.powerOnHours.toLocaleString()} hours on` : '', h.wearPct != null ? `${h.wearPct}% worn` : ''].filter(Boolean).join(' · ');
+  const total = d.size || d.partitions.reduce((a, p) => a + p.size, 0) || 1;
+  const p = d.partitions.find(x => x.id === S.part);
+  el.innerHTML = `
+    <div>
+      <div class="dhead">
+        <h2>${esc(name(d))}</h2>
+        <div class="facts"><span>${esc(human(d.size))}</span><span>${esc(d.connection)}</span>
+          <span class="health"><span class="dot ${esc(h.state)}"></span>${esc(h.text)}${healthBits ? ` · ${esc(healthBits)}` : ''}</span>
+          ${d.device ? `<span>${esc(d.device)}</span>` : ''}</div>
+      </div>
+      ${d.system ? `<div class="lock" style="margin-top:.35em">${sysName()} runs from this drive. Its own partitions can't be changed here.</div>` : ''}
+      ${h.details?.length ? `<div class="warn" style="color:var(--flame);font-size:.85em;margin-top:.3em">${h.details.map(esc).join(' · ')}</div>` : ''}
+      <div class="acts" style="margin-top:.6em">${d.actions.map(a => `<button class="btn f ${a.danger ? 'danger' : ''}" data-key="dact:${esc(a.id)}" data-act="${esc(a.id)}" data-target="${esc(d.id)}">${esc(a.label)}</button>`).join('')}</div>
+    </div>
+    <div class="map" aria-label="Partition map">${d.partitions.map(x => {
+      const w = Math.max(x.size / total * 100, .6);
+      const used = x.used != null && x.size ? Math.min(100, x.used / (x.used + (x.free ?? 0) || x.size) * 100) : 0;
+      return `<div class="seg k-${esc(x.kind)} ${x.id === S.part ? 'sel' : ''}" style="flex:${w} 1 0" title="${esc(partTitle(x))} · ${esc(human(x.size))}">${used ? `<i class="use" style="width:${used}%"></i>` : ''}<span>${w > 7 ? esc(x.label || partTitle(x)) : ''}</span></div>`; }).join('')}</div>
+    <div class="scroll" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(14em, 20em);gap:.8em;align-items:start">
+      <div class="parts">${d.partitions.map(x => partRow(x)).join('') || '<div class="empty">Nothing on it yet: no partitions.</div>'}</div>
+      <div class="panel">${p ? partPanel(d, p) : drivePanel(d)}</div>
+    </div>`;
+}
+
+function partRow(x) {
+  const usedPct = x.used != null && (x.used + (x.free ?? 0)) > 0 ? Math.round(x.used / (x.used + x.free) * 100) : null;
+  const sub = [x.kind !== 'free' && x.fs ? x.fs : '', x.mountPoints?.[0] || (x.letter ? `${x.letter}:` : ''), usedPct != null ? `${human(x.free)} free` : ''].filter(Boolean);
+  return `<button class="part f ${x.id === S.part ? 'sel' : ''}" data-key="part:${esc(x.id)}" data-part="${esc(x.id)}">
+    <span class="sw k-${esc(x.kind)}"></span>
+    <span class="t">${esc(partTitle(x))}${x.label && x.kind !== 'free' ? ` <em>“${esc(x.label)}”</em>` : ''}${x.system ? ' <span class="lock">🔒</span>' : ''}</span>
+    <span class="size">${esc(human(x.size))}${usedPct != null ? `<span class="bar"><i style="width:${usedPct}%"></i></span>` : ''}</span>
+    <span class="s">${sub.map(esc).join('<span>·</span>') || '&nbsp;'}</span>
+  </button>`;
+}
+
+function drivePanel(d) {
+  return `<h3>About this drive</h3><dl class="kv">
+    <dt>Size</dt><dd>${esc(human(d.size))}</dd>
+    <dt>Connection</dt><dd>${esc(d.connection)}</dd>
+    <dt>Health</dt><dd>${esc(d.health.text)}</dd>
+    ${d.serial ? `<dt>Serial</dt><dd>${esc(d.serial)}</dd>` : ''}
+    <dt>Layout</dt><dd>${esc({ gpt: 'GPT', dos: 'MBR' }[d.table] || 'None')}</dd>
+    ${d.readOnly ? '<dt>Note</dt><dd>Read-only: it can\'t be changed</dd>' : ''}
+  </dl><p class="msg" style="font-size:.8em;margin:.6em 0 0">Choose a partition to see what's on it and what you can do.</p>`;
+}
+
+function partPanel(d, p) {
+  const kv = (k, v) => v ? `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>` : '';
+  return `<h3>${esc(partTitle(p))}</h3><dl class="kv">
+    ${kv('Name', p.label)}${kv('Size', human(p.size))}${kv('Format', p.fs)}
+    ${p.used != null ? kv('Used', `${human(p.used)} (${human(p.free)} free)`) : ''}
+    ${kv('Mounted at', (p.mountPoints || []).join(', '))}${kv('Device', p.device)}${kv('ID', p.uuid)}
+  </dl>
+  ${p.system ? `<p class="lock">${sysName()} uses this partition, so it's kept as it is.</p>` : p.protected && d.system ? `<p class="lock">Your PC needs this to start up, so it's kept as it is.</p>` : ''}
+  <div class="acts" style="margin-top:.7em">${p.actions.map(a => `<button class="btn f ${a.danger ? 'danger' : ''}" data-key="pact:${esc(a.id)}" data-act="${esc(a.id)}" data-target="${esc(p.id)}">${esc(a.label)}</button>`).join('') || '<span class="msg">Nothing to do here.</span>'}</div>`;
+}
+
+// ---------------------------------------------------------------- choosing things
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  if ($('#layer').firstChild && !b.closest('#layer')) return;
+  if (b.dataset.drive) { S.sel = b.dataset.drive; S.part = null; render(); $(`[data-key="drive:${CSS.escape(b.dataset.drive)}"]`)?.focus(); if (S.pad) setTimeout(() => (document.querySelector('.part.f') || document.querySelector('[data-key^="dact:"]'))?.focus(), 0); }
+  else if (b.dataset.part) { S.part = b.dataset.part; renderDetail(); const first = document.querySelector('[data-key^="pact:"]'); (S.pad && first ? first : $(`[data-key="part:${CSS.escape(b.dataset.part)}"]`))?.focus(); }
+  else if (b.dataset.act === 'refresh') { lastJson = ''; load(); }
+  else if (b.dataset.act && b.dataset.target) openAction(b.dataset.act, b.dataset.target);
+});
+
+function back() {
+  if (oskTarget) { closeOsk(); return; }
+  const dlg = $('#layer').firstChild;
+  if (dlg) { if (!dlg.dataset.locked) closeDialog(); return; }
+  const a = document.activeElement;
+  if (a?.dataset.key?.startsWith('pact:')) { $(`[data-key="part:${CSS.escape(S.part)}"]`)?.focus(); return; }
+  if (a?.dataset.part || a?.dataset.key?.startsWith('dact:')) { S.part = null; renderDetail(); $('.drive.sel')?.focus(); return; }
+}
+
+// ---------------------------------------------------------------- dialogs
+let current = null;   // {action, target, plan, fs, label, size, typed}
+function showDialog(html, locked = false) {
+  $('#layer').innerHTML = `<div class="veil"><div class="dlg" role="dialog">${html}</div></div>`;
+  if (locked) $('#layer').firstChild.dataset.locked = '1';
+  const first = $('#layer [data-autofocus]') || $('#layer .f');
+  first?.focus();
+}
+function closeDialog() { $('#layer').innerHTML = ''; current = null; oskTarget = null; const k = lastFocus; setTimeout(() => (k && document.querySelector(`[data-key="${CSS.escape(k)}"]`) || $('.drive.sel'))?.focus(), 0); }
+let lastFocus = null;
+
+async function openAction(action, target) {
+  lastFocus = document.activeElement?.dataset?.key || null;
+  if (action === 'open') { runAction(action, target, {}); return; }
+  showDialog(`<h2>One moment</h2><div class="prog spin"><i></i></div>`, true);
+  let plan;
+  try { plan = await invoke('plan', { action, id: target }); }
+  catch (e) { return showResult(false, e); }
+  current = { action, target, plan, fs: plan.fsChoices?.[0]?.id || '', label: plan.labelDefault || '', size: plan.maxSize || 0, typed: '' };
+  drawPlan();
+}
+
+function drawPlan() {
+  const { plan } = current;
+  if (plan.refuse) {
+    showDialog(`<h2>${esc(plan.title || 'Not here')}</h2><div class="refuse">${esc(plan.refuse)}</div><div class="row"><button class="btn primary f" data-dlg="close" data-autofocus>OK</button></div>`);
+    return;
+  }
+  const fs = plan.fsChoices?.length ? `<div class="field"><label>Format</label><div class="chips">${plan.fsChoices.map(c => `<button class="chip f ${c.id === current.fs ? 'on' : ''}" data-fs="${esc(c.id)}">${esc(c.label)}<small>${esc(c.note)}</small></button>`).join('')}</div></div>` : '';
+  const label = plan.askLabel ? `<div class="field"><label for="lbl">Name</label><input class="inp f" id="lbl" data-osk="label" maxlength="32" value="${esc(current.label)}" spellcheck="false" autocomplete="off"></div>` : '';
+  const size = plan.maxSize ? `<div class="field"><label for="sz">Size: <span id="szv">${esc(human(current.size))}</span> of ${esc(human(plan.maxSize))}</label><input type="range" class="range f" id="sz" min="1" max="100" step="1" value="100"></div>` : '';
+  const lose = plan.lose?.length ? `<div class="lose"><b>This will be erased for good:</b><ul>${plan.lose.map(l => `<li>${esc(l)}</li>`).join('')}</ul></div>` : '';
+  const typed = plan.typed ? `<div class="field"><label for="typed">To go ahead, type <b>${esc(plan.typed)}</b></label><input class="inp f" id="typed" data-osk="typed" maxlength="12" value="" spellcheck="false" autocomplete="off" autocapitalize="characters"></div>` : '';
+  showDialog(`<h2>${esc(plan.title)}</h2>${(plan.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}${lose}${fs}${label}${size}${typed}
+    <div class="row"><button class="btn f" data-dlg="close" ${plan.danger ? 'data-autofocus' : ''}>Cancel</button><button class="btn primary f ${plan.danger ? 'danger' : ''}" data-dlg="go" id="go" ${plan.danger ? '' : 'data-autofocus'}>${esc(plan.confirm || 'OK')}</button></div>`);
+  updateGo();
+}
+
+function updateGo() {
+  const go = $('#go'); if (!go || !current) return;
+  go.disabled = !!(current.plan.typed && current.typed.trim().toUpperCase() !== current.plan.typed);
+}
+
+$('#layer').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.fs) { current.fs = b.dataset.fs; $('#layer').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); }
+  else if (b.dataset.dlg === 'close') closeDialog();
+  else if (b.dataset.dlg === 'go') { if (!b.disabled) runAction(current.action, current.target, { fs: current.fs, label: current.label, size: current.size === current.plan.maxSize ? 0 : current.size, typed: current.typed }); }
+  else if (b.dataset.key) oskPress(b.dataset.key);
+});
+$('#layer').addEventListener('input', e => {
+  if (!current) return;
+  if (e.target.id === 'lbl') current.label = e.target.value;
+  if (e.target.id === 'typed') { current.typed = e.target.value; updateGo(); }
+  if (e.target.id === 'sz') { const max = current.plan.maxSize; const v = Number(e.target.value); current.size = v >= 100 ? max : Math.max(32 * 1048576, Math.floor(max * v / 100 / 1048576) * 1048576); $('#szv').textContent = human(current.size); }
+});
+
+// The on-screen keyboard, for typing with a controller.
+let oskTarget = null;
+const OSK = 'QWERTYUIOP ASDFGHJKL- ZXCVBNM_ 1234567890'.split(' ');
+function openOsk(input) {
+  oskTarget = input;
+  const rows = OSK.map(r => [...r].map(c => `<button class="f" data-key="${c}">${c}</button>`).join('')).join('');
+  input.insertAdjacentHTML('afterend', `<div class="osk" id="osk">${rows}<button class="f wide" data-key="space">Space</button><button class="f wide" data-key="back">⌫</button><button class="f wide" data-key="lower">abc</button><button class="f wide" data-key="done">Done</button></div>`);
+  $('#osk .f').focus();
+}
+function closeOsk() { const t = oskTarget; $('#osk')?.remove(); oskTarget = null; t?.focus(); }
+let lower = false;
+function oskPress(k) {
+  const t = oskTarget; if (!t) return;
+  if (k === 'done') return closeOsk();
+  if (k === 'lower') { lower = !lower; document.querySelectorAll('#osk [data-key]').forEach(b => { if (b.dataset.key.length === 1) b.textContent = lower ? b.dataset.key.toLowerCase() : b.dataset.key; }); return; }
+  if (k === 'back') t.value = t.value.slice(0, -1);
+  else if (t.value.length < (t.maxLength > 0 ? t.maxLength : 64)) t.value += k === 'space' ? ' ' : (lower ? k.toLowerCase() : k);
+  t.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// Running, progress, and the result.
+let progressDialog = false;
+async function runAction(action, target, opts) {
+  try {
+    await invoke('run', { action, id: target, opts });
+    if (action === 'open') return;
+    progressDialog = true;
+    showDialog(`<h2>${esc(current?.plan?.title || 'Working')}</h2><div class="prog spin" id="pg"><i></i></div><div class="msg" id="pgt">Starting</div><p class="msg" style="font-size:.8em">Keep the drive plugged in until this finishes.</p>`, true);
+  } catch (e) { showResult(false, e); }
+}
+listen('disks://progress', ev => {
+  if (!progressDialog) return;
+  const { text, pct } = ev.payload; const pg = $('#pg'), t = $('#pgt');
+  if (t && text) t.textContent = text;
+  if (pg) { if (pct != null) { pg.classList.remove('spin'); pg.firstChild.style.width = `${Math.round(pct * 100)}%`; } else if (!pg.classList.contains('spin') && pct == null) { /* keep the last bar */ } }
+});
+listen('disks://done', ev => {
+  const r = ev.payload;
+  if (r.action === 'open') { if (!r.ok) showResult(false, r.error); return; }
+  progressDialog = false;
+  showResult(r.ok, r.ok ? r.message : r.error);
+  lastJson = ''; load(false);
+});
+function showResult(ok, text) {
+  showDialog(`<h2 class="${ok ? 'ok' : 'bad'}">${ok ? 'Done' : 'That didn\'t work'}</h2><p>${esc(text || (ok ? 'Done.' : 'Something went wrong.'))}</p><div class="row"><button class="btn primary f" data-dlg="close" data-autofocus>OK</button></div>`);
+}
+
+// ---------------------------------------------------------------- moving around: D-pad, stick, arrow keys
+function focusables() {
+  const root = $('#layer').firstChild || document;
+  return [...root.querySelectorAll('.f')].filter(el => !el.disabled && el.offsetParent !== null);
+}
+function move(dir) {
+  const cur = document.activeElement;
+  if (cur?.type === 'range' && (dir === 'left' || dir === 'right')) { cur.value = Number(cur.value) + (dir === 'right' ? 5 : -5); cur.dispatchEvent(new Event('input', { bubbles: true })); return; }
+  const all = focusables(); if (!all.length) return;
+  if (!cur || !all.includes(cur)) { all[0].focus(); return; }
+  const a = cur.getBoundingClientRect(); const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+  let best = null, bestScore = Infinity;
+  for (const el of all) {
+    if (el === cur) continue;
+    const b = el.getBoundingClientRect(); const bx = b.left + b.width / 2, by = b.top + b.height / 2;
+    const dx = bx - ax, dy = by - ay;
+    const ok = dir === 'left' ? b.right <= a.left + 4 : dir === 'right' ? b.left >= a.right - 4 : dir === 'up' ? b.bottom <= a.top + 4 : b.top >= a.bottom - 4;
+    if (!ok) continue;
+    const main = dir === 'left' || dir === 'right' ? Math.abs(dx) : Math.abs(dy);
+    const cross = dir === 'left' || dir === 'right' ? Math.abs(dy) : Math.abs(dx);
+    const score = main + cross * 2.2;
+    if (score < bestScore) { bestScore = score; best = el; }
+  }
+  if (best) { best.focus(); best.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+}
+function choose() {
+  const el = document.activeElement;
+  if (!el || el === document.body) { focusables()[0]?.focus(); return; }
+  if (el.dataset.osk && S.pad) { if (!oskTarget) openOsk(el); return; }
+  if (el.tagName === 'BUTTON') el.click();
+}
+document.addEventListener('keydown', e => {
+  S.pad = false;
+  const typing = e.target.tagName === 'INPUT' && e.target.type !== 'range';
+  const k = e.key;
+  if (k === 'Escape' || (k === 'Backspace' && !typing)) { e.preventDefault(); back(); return; }
+  if (typing && (k === 'ArrowLeft' || k === 'ArrowRight')) return;
+  const dirs = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  if (dirs[k]) { e.preventDefault(); move(dirs[k]); return; }
+  if (k === 'Enter' && typing) { e.preventDefault(); move('down'); return; }
+  if (k === 'F5') { e.preventDefault(); lastJson = ''; load(); }
+});
+document.addEventListener('focusin', e => {
+  // Choosing a partition with the D-pad shows its details without opening anything.
+  const el = e.target;
+  if (el.dataset?.part && el.dataset.part !== S.part && !$('#layer').firstChild && S.pad) { S.part = el.dataset.part; renderDetail(); $(`[data-key="part:${CSS.escape(S.part)}"]`)?.focus({ preventScroll: true }); }
+});
+
+// Controllers (the standard mapping): D-pad or left stick moves, A chooses, B goes back, Y looks again.
+const held = {}; let lastPadMove = 0;
+function pad() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const now = performance.now();
+  const state = { up: false, down: false, left: false, right: false, a: false, b: false, y: false };
+  for (const g of pads) {
+    const bt = i => g.buttons[i]?.pressed;
+    const ax = g.axes[0] || 0, ay = g.axes[1] || 0;
+    state.up ||= bt(12) || ay < -.6; state.down ||= bt(13) || ay > .6; state.left ||= bt(14) || ax < -.6; state.right ||= bt(15) || ax > .6;
+    state.a ||= bt(0); state.b ||= bt(1); state.y ||= bt(3);
+  }
+  for (const [k, on] of Object.entries(state)) {
+    if (!on) { held[k] = 0; continue; }
+    const first = !held[k];
+    const repeat = held[k] && now - held[k] > 380 && now - lastPadMove > 110;
+    if (first) held[k] = now;
+    if (!(first || (repeat && ['up','down','left','right'].includes(k)))) continue;
+    S.pad = true; lastPadMove = now;
+    if (k === 'a') choose(); else if (k === 'b') back(); else if (k === 'y') { if (!$('#layer').firstChild) { lastJson = ''; load(); } }
+    else move(k);
+  }
+  requestAnimationFrame(pad);
+}
+requestAnimationFrame(pad);
+window.addEventListener('gamepadconnected', () => { $('#hint').textContent = 'Controller connected'; });
+
+// Drives come and go: look again every few seconds while nothing is open (less often on Windows, where looking
+// runs PowerShell), and whenever the window comes back to the front.
+(function tick() { setTimeout(async () => { if (!$('#layer').firstChild && document.visibilityState === 'visible') await load(); tick(); }, S.host === 'windows' ? 8000 : 3000); })();
+window.addEventListener('focus', () => { if (!$('#layer').firstChild) load(); });
+load(false).then(() => $('.drive.sel')?.focus());
+
+// ---------------------------------------------------------------- without the app (opening the page in a browser): sample drives
+function demoInvoke(cmd, args) {
+  const G = 1 << 30;
+  const acts = (...ids) => ids.map(([id, label, danger]) => ({ id, label, danger: !!danger }));
+  const part = o => Object.assign({ id: '', device: '', number: 0, offset: 0, size: 0, fs: '', label: '', uuid: '', used: null, free: null, mountPoints: [], partType: '', partName: '', kind: 'data', what: 'Files', system: false, protected: false, mounted: false, mountable: true, steamLibrary: false, letter: '', actions: [] }, o);
+  const drives = [
+    { id: 'nvme', block: '', device: '/dev/nvme0n1', vendor: '', model: 'Samsung SSD 980 PRO 1TB', serial: 'S5GXNF0R', size: 1000 * G, kind: 'nvme', connection: 'Inside, NVMe', removable: false, canEject: false, canPowerOff: false, readOnly: false, table: 'gpt', system: true,
+      health: { state: 'good', text: 'Healthy', tempC: 39.8, powerOnHours: 1234, wearPct: 3, details: [] }, actions: [],
+      partitions: [
+        part({ id: 'p1', device: '/dev/nvme0n1p1', size: G / 2, fs: 'vfat', kind: 'efi', what: 'EFI boot', protected: true, actions: acts(['mount', 'Mount']) }),
+        part({ id: 'p2', device: '/dev/nvme0n1p2', size: G, fs: 'ext4', kind: 'boot', what: 'Hearth OS start-up files', system: true, mounted: true, mountPoints: ['/boot'], actions: acts(['open', 'Open files']) }),
+        part({ id: 'p3', device: '/dev/nvme0n1p3', size: 500 * G, fs: 'btrfs', label: 'hearth', kind: 'hearth', what: 'Hearth OS', system: true, mounted: true, mountPoints: ['/sysroot'], used: 120 * G, free: 380 * G, actions: acts(['open', 'Open files']) }),
+        part({ id: 'f1', size: 98 * G, kind: 'free', what: 'Free space', mountable: false, actions: acts(['create', 'Make a partition here'], ['games', 'Use for games']) }),
+        part({ id: 'p5', device: '/dev/nvme0n1p5', size: 400 * G, fs: 'ext4', label: 'Games', kind: 'steam', what: 'Steam library', mounted: true, mountPoints: ['/var/mnt/games-Games'], used: 250 * G, free: 150 * G, steamLibrary: true,
+          actions: acts(['open', 'Open files'], ['unmount', 'Unmount'], ['rename', 'Rename'], ['check', 'Check for problems'], ['repair', 'Repair'], ['format', 'Format', 1], ['delete', 'Delete partition', 1]) }),
+      ] },
+    { id: 'sd', block: '', device: '/dev/mmcblk0', vendor: '', model: 'SD64G', serial: '', size: 64 * G, kind: 'sd', connection: 'SD card slot', removable: true, canEject: false, canPowerOff: false, readOnly: false, table: 'dos', system: false,
+      health: { state: 'unknown', text: 'Health not reported', details: [] }, actions: acts(['eject', 'Safely remove'], ['games', 'Use for games', 1], ['format_drive', 'Format SD card', 1]),
+      partitions: [part({ id: 's1', device: '/dev/mmcblk0p1', size: 64 * G, fs: 'exfat', label: 'SWITCH', mounted: true, mountPoints: ['/run/media/you/SWITCH'], used: 10 * G, free: 54 * G,
+        actions: acts(['open', 'Open files'], ['unmount', 'Unmount'], ['games', 'Use for games', 1], ['rename', 'Rename'], ['check', 'Check for problems'], ['repair', 'Repair'], ['format', 'Format', 1], ['delete', 'Delete partition', 1]) })] },
+  ];
+  if (cmd === 'list') return Promise.resolve({ host: 'linux', busy: false, drives });
+  if (cmd === 'plan') return Promise.resolve(args.action === 'format_drive'
+    ? { action: 'format_drive', title: 'Format SD64G (68.7 GB)', refuse: null, typed: null, lose: ['Everything on "SWITCH" (Files, 68.7 GB): 10.7 GB of files'], warn: ['The whole drive becomes one partition.'], confirm: 'Erase and format', danger: true,
+        fsChoices: [{ id: 'exfat', label: 'exFAT', note: 'For sharing: works with Windows, Mac, Steam Deck, consoles and cameras' }, { id: 'ext4', label: 'ext4', note: 'Best for games and files on Hearth OS' }], askLabel: true, labelDefault: 'SWITCH', maxSize: 0 }
+    : { action: args.action, title: 'Format "Games" (Steam library, 429 GB)', refuse: null, typed: 'ERASE', lose: ['Everything on "Games" (Steam library, 429 GB): 268 GB of files, with the games on it'], warn: ['This is the drive Hearth OS runs from. Only "Games" is changed; Hearth OS itself isn\'t touched.'], confirm: 'Erase and format', danger: true,
+        fsChoices: [{ id: 'exfat', label: 'exFAT', note: 'For sharing' }, { id: 'ext4', label: 'ext4', note: 'Best for games and files on Hearth OS' }], askLabel: true, labelDefault: 'Games', maxSize: 0 });
+  if (cmd === 'run') return Promise.reject('This is a preview: open Disks to make changes.');
+  return Promise.reject('unknown');
+}
+</script>
+</body>
+</html>
