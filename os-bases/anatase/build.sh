@@ -46,6 +46,27 @@ fi
 test -x /usr/lib/nimbus/nimbus
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 
+# ------------------------------------------------------------------ Hearth Disks (hosts/hearth-disks)
+# The disk manager, built with the app (base-anatase.yml). udisks2 (all its changes go through it) and the tools it formats with.
+dnf5 -y install udisks2 exfatprogs dosfstools || true
+command -v udisksctl >/dev/null || echo "warning: udisks2 is missing, so Disks can't change drives"
+if [ -x /ctx/nimbus-app/hearth-disks ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-disks /usr/bin/hearth-disks
+  if ldd /usr/bin/hearth-disks | grep "not found"; then echo "warning: Disks is missing the libraries above"; fi
+  install -d /usr/share/applications
+  cat > /usr/share/applications/hearth-disks.desktop <<DESKTOP
+[Desktop Entry]
+Name=Disks
+GenericName=Disk Manager
+Comment=See your drives and their health, format USB drives and SD cards, and set up drives for games
+Exec=/usr/bin/hearth-disks
+Icon=hearth
+Type=Application
+Categories=System;Utility;
+Keywords=disk;drive;partition;format;usb;sd;card;mount;eject;storage;steam;library;
+DESKTOP
+fi
+
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session
 install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode

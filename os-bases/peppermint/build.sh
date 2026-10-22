@@ -223,6 +223,26 @@ fi
 test -x /usr/lib/nimbus/nimbus
 if [ -f /usr/lib/nimbus/chrome-sandbox ]; then chown root:root /usr/lib/nimbus/chrome-sandbox && chmod 4755 /usr/lib/nimbus/chrome-sandbox; fi
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
+
+# ------------------------------------------------------------------ Hearth Disks (hosts/hearth-disks)
+# The disk manager, built with the app (base-peppermint.yml). udisks2 does all its changes (installed with the base packages above).
+command -v udisksctl >/dev/null || echo "warning: udisks2 is missing, so Disks can't change drives"
+if [ -x /ctx/nimbus-app/hearth-disks ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-disks /usr/bin/hearth-disks
+  if ldd /usr/bin/hearth-disks | grep "not found"; then echo "warning: Disks is missing the libraries above"; fi
+  install -d /usr/share/applications
+  cat > /usr/share/applications/hearth-disks.desktop <<DESKTOP
+[Desktop Entry]
+Name=Disks
+GenericName=Disk Manager
+Comment=See your drives and their health, format USB drives and SD cards, and set up drives for games
+Exec=/usr/bin/hearth-disks
+Icon=hearth
+Type=Application
+Categories=System;Utility;
+Keywords=disk;drive;partition;format;usb;sd;card;mount;eject;storage;steam;library;
+DESKTOP
+fi
 # CI builds the app in a debian:trixie container, so every library it links must be here under the same name.
 if ldd /usr/lib/nimbus/nimbus | grep "not found"; then
   echo "The Hearth app needs libraries this image doesn't have (above)"; exit 1

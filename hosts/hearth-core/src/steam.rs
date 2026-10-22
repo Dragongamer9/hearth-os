@@ -68,6 +68,68 @@ pub fn libraries(steam: &Path) -> Vec<PathBuf> {
     out
 }
 
+// ------------------------------------------------------------------ adding a library (Hearth Disks' "Use for games")
+
+fn vdf_quote(s: &str) -> String { s.replace('\\', "\\\\").replace('"', "\\\"") }
+
+/// One library entry in libraryfolders.vdf's own layout (what Steam writes for a new library).
+fn library_entry(key: u64, path: &str, contentid: u64) -> String {
+    format!("\t\"{key}\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t\t\"label\"\t\t\"\"\n\t\t\"contentid\"\t\t\"{contentid}\"\n\t\t\"totalsize\"\t\t\"0\"\n\t\t\"update_clean_bytes_tally\"\t\t\"0\"\n\t\t\"time_last_update_verified\"\t\t\"0\"\n\t\t\"apps\"\n\t\t{{\n\t\t}}\n\t}}\n", vdf_quote(path))
+}
+
+/// libraryfolders.vdf with one more library at `path`, the rest kept as it was. None when it's already there.
+/// No file yet (Steam never ran with libraries): a new one with Steam's own folder first, as Steam makes it.
+pub fn with_library(existing: Option<&str>, steam: &Path, path: &Path, contentid: u64) -> Option<String> {
+    let want = path.to_string_lossy().trim_end_matches('/').to_string();
+    let Some(text) = existing.filter(|t| t.contains('}')) else {
+        return Some(format!("\"libraryfolders\"\n{{\n{}{}}}\n", library_entry(0, &steam.to_string_lossy(), contentid ^ 1), library_entry(1, &want, contentid)));
+    };
+    let kv = vdf::parse(text);
+    let mut next = 0u64;
+    if let Some(items) = kv.obj(&["libraryfolders"]) {
+        for (key, entry) in items {
+            let p = match entry { Kv::Obj(_) => entry.str(&["path"]).map(str::to_string), Kv::Str(s) => Some(s.clone()) };
+            if p.map(|p| p.trim_end_matches('/') == want).unwrap_or(false) { return None; }
+            if let Ok(n) = key.parse::<u64>() { next = next.max(n + 1); }
+        }
+    }
+    // The new entry goes in before the file's last closing brace (the end of "libraryfolders").
+    let end = text.rfind('}')?;
+    let mut out = text[..end].trim_end_matches(['\t', ' ']).to_string();
+    if !out.ends_with('\n') { out.push('\n'); }
+    out.push_str(&library_entry(next, &want, contentid));
+    out.push_str(&text[end..]);
+    Some(out)
+}
+
+/// Makes `folder` a Steam library: its steamapps folder and libraryfolder.vdf, then an entry in Steam's
+/// libraryfolders.vdf. Steam rewrites that file when it closes, so a running Steam is closed first and started
+/// again (hidden) afterwards. Returns whether Steam was restarted. Blocks up to ~40 s: call it off the UI thread.
+pub fn add_library(home: &Path, folder: &Path) -> Result<bool, String> {
+    let steam = steam_path(home).ok_or("Steam isn't set up yet. Open Steam once, then try again.")?;
+    std::fs::create_dir_all(folder.join("steamapps")).map_err(|e| format!("Couldn't make the games folder there ({e})."))?;
+    let mut id = [0u8; 8];
+    let _ = getrandom::getrandom(&mut id);
+    let contentid = u64::from_le_bytes(id) >> 1;
+    let marker = folder.join("libraryfolder.vdf");
+    if !marker.exists() {
+        let text = format!("\"libraryfolder\"\n{{\n\t\"contentid\"\t\t\"{contentid}\"\n\t\"label\"\t\t\"\"\n}}\n");
+        std::fs::write(&marker, text).map_err(|e| format!("Couldn't write to the drive ({e})."))?;
+    }
+    let file = steam.join("steamapps/libraryfolders.vdf");
+    let existing = std::fs::read_to_string(&file).ok();
+    let Some(text) = with_library(existing.as_deref(), &steam, folder, contentid) else { return Ok(false) };
+    let was_running = is_running();
+    if was_running {
+        let _ = spawn(home, "-shutdown");
+        for _ in 0..60 { if !is_running() { break; } std::thread::sleep(std::time::Duration::from_millis(500)); }
+        if is_running() { return Err("Steam didn't close. Close Steam, then try again.".into()); }
+    }
+    crate::paths::write_atomic(&file, text.as_bytes()).map_err(|e| format!("Couldn't update Steam's list of libraries ({e})."))?;
+    if was_running { let _ = spawn(home, "-silent"); }
+    Ok(was_running)
+}
+
 /// The signed-in (most recent) Steam user's folder: userdata/<account id>.
 pub fn account_dir(steam: &Path) -> Option<PathBuf> {
     let userdata = steam.join("userdata");
@@ -345,6 +407,26 @@ pub fn ensure_running_silent(home: &Path) {
     for _ in 0..60 {
         std::thread::sleep(std::time::Duration::from_millis(500));
         if is_running() { std::thread::sleep(std::time::Duration::from_secs(3)); return; }
+    }
+}
+
+#[cfg(test)]
+mod library_tests {
+    use super::*;
+    #[test]
+    fn adds_a_library_once() {
+        let steam = Path::new("/home/sam/.local/share/Steam");
+        let old = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"/home/sam/.local/share/Steam\"\n\t}\n\t\"3\"\n\t{\n\t\t\"path\"\t\t\"/mnt/old\"\n\t}\n}\n";
+        let new = with_library(Some(old), steam, Path::new("/var/mnt/games-sd/SteamLibrary"), 42).unwrap();
+        let kv = vdf::parse(&new);
+        assert_eq!(kv.str(&["libraryfolders", "4", "path"]), Some("/var/mnt/games-sd/SteamLibrary"));
+        assert_eq!(kv.str(&["libraryfolders", "3", "path"]), Some("/mnt/old"));
+        assert_eq!(kv.str(&["libraryfolders", "4", "contentid"]), Some("42"));
+        assert!(with_library(Some(&new), steam, Path::new("/var/mnt/games-sd/SteamLibrary/"), 7).is_none());
+        let fresh = with_library(None, steam, Path::new("/run/media/sam/SD"), 9).unwrap();
+        let kv = vdf::parse(&fresh);
+        assert_eq!(kv.str(&["libraryfolders", "0", "path"]), Some("/home/sam/.local/share/Steam"));
+        assert_eq!(kv.str(&["libraryfolders", "1", "path"]), Some("/run/media/sam/SD"));
     }
 }
 
