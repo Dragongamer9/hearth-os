@@ -89,6 +89,14 @@ pub fn set_mode(mode: &str) -> Result<(), String> {
     call(&["mode", p]).map(|_| ())
 }
 pub fn set_tdp(watts: u32) -> Result<Value, String> { call(&["tdp", &watts.to_string()])?; Ok(status()["tdp"].clone()) }
+/// The power limit you chose, set again (`hearth-power restore`): many handhelds (ryzenadj on the ROG Ally) go back
+/// to their own limit after sleep. Nothing to do (Ok(None)) for an extra multi-seat player (hearth-power refuses),
+/// without the helper, or with no limit chosen.
+pub fn restore() -> Result<Option<Value>, String> {
+    if std::env::var_os("HEARTH_SEAT").is_some_and(|s| !s.is_empty()) || !helper().exists() { return Ok(None); }
+    let r = call(&["restore"])?;
+    Ok(Some(r["tdp"].clone()).filter(|t| !t.is_null()))
+}
 
 /// What the power menu asked for. Returns true when Hearth should close (switching to the desktop, signing out).
 pub fn action(what: &str, in_session: bool) -> Result<bool, String> {
