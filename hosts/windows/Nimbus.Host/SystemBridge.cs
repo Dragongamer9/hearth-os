@@ -255,6 +255,8 @@ public sealed class SystemBridge : IDisposable
         if (_ui.IsDisposed) return;
         OnUi((() =>
         {
+            // Another game was playing (put aside with Quick Resume to start this one): its time counts too.
+            if (_playSince is not null) Profiles.AddPlayed(Profiles.Active, SessionMinutes);
             _playSince = DateTime.UtcNow; _playWarned = false;
             if (Profiles.Restricted(Profiles.Active)) { _parentalTimer.Start(); ParentalTick(); }
         }));
@@ -488,6 +490,7 @@ public sealed class SystemBridge : IDisposable
                 bool resumed = Games.IsFrozen(id);
                 // Beacon's games: "mod" plays with that mod this time ("@none": without mods).
                 var tracked = await Games.LaunchAsync(id, Str(a, "mod"));
+                if (resumed) StartPlayClock();   // back from Quick Resume: no "started" event, the clock runs again
                 Event("quickResume", Games.QuickState());
                 _ = _gm.PowerFrontAsync(id);   // its own power limit, if it has one (may ask Windows' permission)
                 return new { tracked, resumed };
@@ -496,12 +499,14 @@ public sealed class SystemBridge : IDisposable
             case "game.quickResume":
                 CheckCanPlay(Req(a, "id"));
                 await Games.QuickResumeAsync(Req(a, "id"));
+                StartPlayClock();
                 MinimizeShell();
                 Event("quickResume", Games.QuickState());
                 _ = _gm.PowerFrontAsync(Req(a, "id"));
                 return Games.QuickState();
             case "game.putAside":
                 await Games.PutAsideAsync();
+                StopPlayClock();   // frozen: no play time (and no closing it when time's up) until it's back
                 _ = _gm.PowerRestoreAsync();
                 OnUi((MethodInvoker)BringShellToFront);
                 Event("quickResume", Games.QuickState());
