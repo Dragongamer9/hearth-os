@@ -144,7 +144,8 @@ fn gamescope_args(set: Option<&str>) -> String {
     let file = crate::admin::session_conf();
     let text = std::fs::read_to_string(&file).unwrap_or_default();
     let (args, out) = gamescope_args_text(&text, set);
-    if set.is_some() { let _ = std::fs::create_dir_all(file.parent().unwrap()); let _ = std::fs::write(&file, out); }
+    // All at once: the session reads this file when Game Mode starts, right after a change restarts it.
+    if set.is_some() { let _ = crate::paths::write_atomic(&file, out.as_bytes()); }
     args
 }
 fn flag(args: &str, f: &str) -> Option<u32> { regex::Regex::new(&format!(r"-{f}\s+(\d+)")).unwrap().captures(args).and_then(|c| c[1].parse().ok()) }
@@ -267,7 +268,7 @@ pub fn revert() -> bool {
     // Put back exactly what was there (our own options removed first, then the old ones of them added back).
     let old_ours: Vec<String> = regex::Regex::new(r"(^|\s)-(W|H|r)\s+\S+").unwrap().find_iter(&before).map(|m| m.as_str().trim().to_string()).collect();
     let (_, out) = gamescope_args_text(&text, Some(&old_ours.join(" ")));
-    let _ = std::fs::write(&file, out);
+    let _ = crate::paths::write_atomic(&file, out.as_bytes());
     keep();
     crate::bridge::log(&format!("display: the new mode wasn't kept; back to \"{}\"", before));
     true

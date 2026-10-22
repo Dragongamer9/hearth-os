@@ -250,7 +250,8 @@ fn percent_decode(s: &str) -> String {
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+            // Bytes, not &s[..]: a '%' before a non-ASCII letter in a file name cut the letter in half and panicked.
+            if let Some(v) = hearth_core::http::hex_byte(b[i + 1], b[i + 2]) {
                 out.push(v);
                 i += 3;
                 continue;

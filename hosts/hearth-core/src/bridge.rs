@@ -221,7 +221,15 @@ impl Bridge {
         let method = msg["method"].as_str().unwrap_or("");
         let args = if msg["args"].is_object() { msg["args"].clone() } else { json!({}) };
         self.cur_id = id.clone();
-        Some(match self.dispatch(method, &args) {
+        // A request that panics (bad data somewhere) still gets an answer. Caught here, with the bridge still held,
+        // its lock isn't poisoned: before, the page waited forever, the fail-safe saw "stuck" (killing helpers,
+        // sending a report, restarting Hearth), and Game Mode's own uses of the bridge failed until then.
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.dispatch(method, &args))).unwrap_or_else(|p| {
+            let why = p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default();
+            log(&format!("{method}: panicked: {why}"));
+            Err("Something went wrong in Hearth. Try again; if it keeps happening, send the logs (Settings › System).".to_string())
+        });
+        Some(match r {
             Ok(Value::String(s)) if s == DEFERRED => return None,
             Ok(value) => json!({"type": "result", "id": id, "ok": true, "value": value}),
             Err(error) => json!({"type": "result", "id": id, "ok": false, "error": error}),
@@ -695,8 +703,10 @@ impl Bridge {
                 Ok(system::status(self.max_volume()))
             }
             "airplane.set" => { system::set_airplane(a["on"].as_bool().unwrap_or(false))?; Ok(system::status(self.max_volume())) }
-            "wifi.scan" => system::wifi::scan(),
-            "wifi.connect" => Ok(system::wifi::connect(&req("ssid")?, a["password"].as_str().filter(|p| !p.is_empty()))),
+            // Scanning (up to 30 s) and connecting (up to 45 s) take long on purpose: the fail-safe stopping nmcli at
+            // 15 s made slow networks fail to connect.
+            "wifi.scan" => { crate::watchdog::long_task(); system::wifi::scan() }
+            "wifi.connect" => { let ssid = req("ssid")?; crate::watchdog::long_task(); Ok(system::wifi::connect(&ssid, a["password"].as_str().filter(|p| !p.is_empty()))) }
             "wifi.disconnect" => system::wifi::disconnect().map(|_| Value::Null),
             "wifi.forget" => system::wifi::forget(&req("ssid")?).map(|_| Value::Null),
             "audio.setVolume" => system::audio::set_volume(a["v"].as_f64().unwrap_or(0.0).round().max(0.0) as u32, self.max_volume()).map(|_| Value::Null),
@@ -863,7 +873,7 @@ impl Bridge {
                 };
                 // Quick Access shows Handheld Daemon's own power settings when it runs ("hhd": true): Hearth's power
                 // mode and limit (hearth-power, a helper run every second otherwise) aren't needed then.
-                let st = if a["hhd"] == true { json!({"mode": {"supported": false}, "tdp": {"supported": false}}) } else { crate::power::status() };
+                let st = if a["hhd"] == true { json!({"mode": {"supported": false}, "tdp": {"supported": false}}) } else { crate::power::status_cached() };
                 s["battery"] = system::battery(std::path::Path::new("/sys/class/power_supply"));
                 s["runningId"] = json!(self.library.running_id()); s["runningSince"] = json!(self.library.running_since());
                 s["canFpsLimit"] = json!(crate::gamescope::can_fps_limit()); s["fpsLimit"] = json!(self.library.store.data["fpsLimit"].as_u64().unwrap_or(0));
@@ -885,7 +895,9 @@ impl Bridge {
                 Ok(crate::hhd::state().unwrap_or(json!({"running": false})))
             }
             "bt.paired" => Ok(system::bt_devices::paired()),
-            "bt.pair" => Ok(system::bt_devices::pair(&req("id")?)),
+            // Pairing waits for the controller on purpose (up to a minute): the fail-safe mustn't stop bluetoothctl
+            // halfway (the pairing then always failed) or report Hearth as stuck.
+            "bt.pair" => { let id = req("id")?; crate::watchdog::long_task(); Ok(system::bt_devices::pair(&id)) }
             "bt.unpair" => Ok(system::bt_devices::unpair(&req("id")?)),
             "bt.confirmPin" => Ok(Value::Null),
             "bt.scanStart" => {
@@ -1254,17 +1266,28 @@ fn export_logs(version: &str) -> Result<Value, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let data = paths::data_dir();
     let run = std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into()));
+    let mut files: Vec<(&str, String)> = Vec::new();
     for (from, name) in [(data.join("bridge.log"), "bridge.log"), (data.join("session.log"), "session.log"), (run.join("nimbus-shell.log"), "desktop-shell.log"), ("/etc/os-release".into(), "os-release.txt")] {
-        let _ = std::fs::copy(from, dir.join(name));
+        if let Ok(b) = std::fs::read(from) { files.push((name, String::from_utf8_lossy(&b).into_owned())); }
     }
     let mut info = crate::sysinfo::info(std::path::Path::new("/")); info["version"] = json!(version); info["host"] = json!("rust");
-    let _ = std::fs::write(dir.join("about.json"), serde_json::to_string_pretty(&info).unwrap());
-    let _ = std::process::Command::new("sh").args(["-c", "bootc status 2>/dev/null > \"$0/bootc-status.txt\"; journalctl --user -b -n 3000 --no-pager > \"$0/journal-user.txt\" 2>/dev/null; true"]).arg(&dir).status();
+    files.push(("about.json", serde_json::to_string_pretty(&info).unwrap_or_default()));
+    let limit = std::time::Duration::from_secs(15);
+    files.push(("bootc-status.txt", system::run_timeout("bootc", &["status"], limit).unwrap_or_default()));
+    files.push(("journal-user.txt", system::run_timeout("journalctl", &["--user", "-b", "-n", "3000", "--no-pager"], limit).unwrap_or_default()));
+    let user = std::env::var("USER").unwrap_or_default();
+    write_redacted(&dir, &files, &user, &paths::home().to_string_lossy());
     let out = paths::home().join(format!("Hearth-logs-{stamp}.tar.gz"));
     let ok = std::process::Command::new("tar").arg("-czf").arg(&out).arg("-C").arg(&dir).arg(".").status().map(|s| s.success()).unwrap_or(false);
     let _ = std::fs::remove_dir_all(&dir);
     if !ok { return Err("Couldn't save the logs".into()); }
     Ok(json!({"path": out.to_string_lossy()}))
+}
+
+/// The files for "Save logs", with personal details taken out the same way as Send logs (they were copied as they
+/// were: sign-in tokens, e-mail addresses, the user name and home folder).
+fn write_redacted(dir: &std::path::Path, files: &[(&str, String)], user: &str, home: &str) {
+    for (name, text) in files { let _ = std::fs::write(dir.join(name), crate::logs::redact(text, user, home)); }
 }
 
 fn value_text(v: &Value) -> String { match v { Value::String(s) => s.clone(), Value::Null => String::new(), other => other.to_string() } }
@@ -1385,6 +1408,26 @@ mod tests {
         let r = b.handle(&json!({"type":"call","id":9,"method":"library.setFav","args":{"id":"steam:1","on":true}})).unwrap();
         assert_eq!(r["ok"], true);
         assert!(b.library.store.list_has("favorites", "steam:1"));
+    }
+    #[test]
+    fn saved_logs_leave_out_personal_details() {
+        let dir = tempfile::tempdir().unwrap();
+        write_redacted(dir.path(), &[("bridge.log", "12:00:00 gog: refresh_token=abcdef123456 for sam.smith@gmail.com in /home/sam/Games".to_string())], "sam", "/home/sam");
+        let t = std::fs::read_to_string(dir.path().join("bridge.log")).unwrap();
+        assert!(!t.contains("abcdef123456") && !t.contains("gmail") && !t.contains("/home/sam"), "{t}");
+    }
+    #[test]
+    fn a_request_that_panics_still_gets_an_answer() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut b = Bridge::with(Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), crate::profiles::Profiles::open(dir.path()), "0.0.23");
+        // A damaged library.json ("manual" isn't a list) made adding a game panic.
+        b.library.store.data["manual"] = json!(5);
+        let file = dir.path().join("game.sh");
+        std::fs::write(&file, "#!/bin/sh\n").unwrap();
+        let r = b.handle(&json!({"type":"call","id":1,"method":"library.addManual","args":{"path": file.to_string_lossy()}})).unwrap();
+        assert_eq!(r["id"], 1);
+        let r = b.handle(&json!({"type":"call","id":2,"method":"library.setFav","args":{"id":"steam:1","on":true}})).unwrap();
+        assert_eq!(r["ok"], true);
     }
     #[test]
     fn answers_everything_the_electron_host_does() {
