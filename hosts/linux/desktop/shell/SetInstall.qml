@@ -56,6 +56,13 @@ SetPage {
         const out = [];
         const steps = [64, 128, 256, 512, 1024];
         for (let i = 0; i < steps.length; i++) if (steps[i] < max) out.push({ value: steps[i] * gib, label: steps[i] + " GB" });
+        // The suggested size (room for the games found) is picked at first: it needs a button of its own, or no
+        // button showed as chosen.
+        const sug = win.suggested || 0;
+        if (sug >= 64 * gib && sug < max * gib && !out.some(o => o.value === sug)) {
+            out.push({ value: sug, label: Math.round(sug / gib) + " GB" });
+            out.sort((a, b) => a.value - b.value);
+        }
         out.push({ value: max * gib, label: "All it can (" + max + " GB)" });
         return out;
     }
@@ -88,7 +95,7 @@ SetPage {
     }
     Process {
         id: checkProc
-        command: page.target && page.target.kind === "linux" ? ["pkexec", page.engine, "check", page.target.shrink || page.target.part] : ["pkexec", page.prep, "check"]
+        command: page.target && page.target.kind === "linux" ? ["pkexec", page.engine, "check", page.target.shrink || page.target.part] : ["pkexec", page.prep, "check", page.disk]
         stdout: SplitParser { onRead: l => { l = l.trim(); if (l.startsWith("{")) { try { const r = JSON.parse(l); if (!r.target && r.windows) r.target = Object.assign({ kind: "windows", name: "Windows", freeSpace: 0 }, r.windows); page.win = r; page.give = r.suggested || 0; } catch (e) {} } else if (l.startsWith("error: ")) page.win = { problems: [{ id: "error", text: l.slice(7) }] }; } }
         onExited: page.checking = false
     }
