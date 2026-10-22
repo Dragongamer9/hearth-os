@@ -88,8 +88,10 @@ mod platform {
         for line in listed.lines().map(str::trim) {
             if line.is_empty() || line.starts_with('#') || !Path::new(line).exists() { continue; }
             let base = Path::new(line).file_name().and_then(|b| b.to_str()).unwrap_or("").to_string();
-            // nologin and the like aren't shells you can type into; /usr/bin and /bin copies are the same shell.
-            if base.is_empty() || base.contains("nologin") || base == "false" || base == "git-shell" || !seen.insert(base.clone()) { continue; }
+            // nologin and the like aren't shells you can type into, tmux and screen aren't shells, and rbash is a
+            // locked-down bash; /usr/bin and /bin copies are the same shell.
+            let skip = ["false", "git-shell", "rbash", "tmux", "screen", "sudosh"];
+            if base.is_empty() || base.contains("nologin") || skip.contains(&base.as_str()) || !seen.insert(base.clone()) { continue; }
             out.push(shell(&base, line, false));
         }
         if out.is_empty() { out.push(fallback()); }
