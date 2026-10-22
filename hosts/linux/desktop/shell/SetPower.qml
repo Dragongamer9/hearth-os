@@ -92,27 +92,8 @@ SetPage {
             : "The power button can't be read right now" + (Buttons.problems.length ? ": " + Buttons.problems.join("; ") : ".")
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
-    // Which Game Mode the session runs (nimbus-session reads ~/.config/nimbus/game-mode): Hearth's own, or Steam's
-    // own Game Mode (Big Picture). The same choice as Hearth's Settings › System › Game Mode.
-    property string gameMode: "hearth"
-    FileView {
-        id: gameModeFile
-        path: Quickshell.env("HOME") + "/.config/nimbus/game-mode"
-        watchChanges: true
-        onFileChanged: reload()
-        onLoaded: page.gameMode = text().trim() === "steam" ? "steam" : "hearth"
-    }
-    SetHeader { text: "Game Mode" }
-    SetChoice {
-        title: "Which Game Mode"
-        sub: page.gameMode === "steam" ? "Steam's own Game Mode (Big Picture, like SteamOS). To come back here: Steam's Switch to Desktop, or hold View and Menu for 3 seconds."
-            : "Hearth's Game Mode: your whole library and Hearth's menus."
-        options: [{ value: "hearth", label: "Hearth" }, { value: "steam", label: "Steam (Experimental)" }]
-        current: page.gameMode
-        onChosen: v => { page.gameMode = v; Quickshell.execDetached(["sh", "-c", "mkdir -p \"$HOME/.config/nimbus\" && printf %s \"$1\" > \"$HOME/.config/nimbus/game-mode\"", "sh", v]); }
-    }
     SetHeader { text: "Turn off or switch" }
-    SetRow { icon: "pad"; title: "Game Mode"; sub: page.gameMode === "steam" ? "Steam's Game Mode on the full screen" : "Back to Hearth on the full screen"; onActivated: Quickshell.execDetached(["nimbus-mode", "game"]) }
+    SetRow { icon: "pad"; title: "Game Mode"; sub: "Back to Hearth on the full screen"; onActivated: Quickshell.execDetached(["nimbus-mode", "game"]) }
     SetRow { icon: "sleep"; title: "Sleep"; onActivated: Quickshell.execDetached(["systemctl", "suspend"]) }
     SetRow { icon: "restart"; title: "Restart"; onActivated: Quickshell.execDetached(["systemctl", "reboot"]) }
     SetRow { icon: "power"; title: "Shut down"; danger: true; onActivated: Quickshell.execDetached(["systemctl", "poweroff"]) }
