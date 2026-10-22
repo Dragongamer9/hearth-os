@@ -290,10 +290,12 @@ class Power {
       const dir = path.join(this.root, n);
       if ((readText(path.join(dir, 'type')) || '').trim() !== 'Battery') continue;
       if ((readText(path.join(dir, 'scope')) || '').trim() === 'Device') continue; // controller/mouse batteries
-      const pct = +(readText(path.join(dir, 'capacity')) || '').trim();
+      const cap = (readText(path.join(dir, 'capacity')) || '').trim();
+      const pct = +cap;
       const status = (readText(path.join(dir, 'status')) || '').trim();
-      if (!Number.isFinite(pct)) continue;
-      return { present: true, pct, charging: status === 'Charging' || status === 'Full' };
+      if (!cap || !Number.isFinite(pct)) continue;
+      // "Not charging": plugged in but held below full (a charge limit, like the ROG Ally's 80 %), not "on battery".
+      return { present: true, pct, charging: status === 'Charging' || status === 'Full' || status === 'Not charging' };
     }
     return { present: false, pct: 0, charging: false };
   }
