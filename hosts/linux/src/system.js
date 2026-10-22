@@ -52,9 +52,20 @@ class Wifi {
     return a ? { ssid: a[1] || null, bars: bars(+a[2]) } : { ssid: null, bars: 0 };
   }
 
+  /** The saved Wi-Fi connections: Map of network name (the connection's own SSID, so a renamed connection still
+   *  counts) to its connections' UUIDs. */
   async saved() {
-    const rows = nmLines(await run('nmcli', ['-t', '-f', 'NAME,TYPE', 'connection', 'show']));
-    return new Set(rows.filter(r => /wireless/.test(r[1])).map(r => r[0]));
+    const rows = nmLines(await run('nmcli', ['-t', '-f', 'NAME,UUID,TYPE', 'connection', 'show']));
+    const out = new Map();
+    for (const [name, uuid, type] of rows) {
+      if (!/wireless/.test(type || '') || !uuid) continue;
+      let ssid = '';
+      // -g escapes '\\' and ':' like -t does.
+      try { ssid = (await run('nmcli', ['--escape', 'yes', '-g', '802-11-wireless.ssid', 'connection', 'show', 'uuid', uuid])).replace(/[\r\n]+$/, '').replace(/\\(.)/g, '$1'); } catch { /* the name stands in */ }
+      ssid = ssid || name;
+      out.set(ssid, [...(out.get(ssid) || []), uuid]);
+    }
+    return out;
   }
 
   async scan() {
@@ -74,7 +85,7 @@ class Wifi {
   async connect(ssid, password) {
     try {
       const saved = await this.saved();
-      if (saved.has(ssid) && !password) await run('nmcli', ['connection', 'up', 'id', ssid], { timeout: 45000 });
+      if (saved.has(ssid) && !password) await run('nmcli', ['connection', 'up', 'uuid', saved.get(ssid)[0]], { timeout: 45000 });
       else await run('nmcli', ['device', 'wifi', 'connect', ssid, ...(password ? ['password', password] : [])], { timeout: 45000 });
       return { ok: true };
     } catch (e) {
@@ -84,7 +95,11 @@ class Wifi {
   }
 
   async disconnect() { const d = await this.device(); if (d) await run('nmcli', ['device', 'disconnect', d.name]); }
-  async forget(ssid) { await run('nmcli', ['connection', 'delete', 'id', ssid]); }
+  async forget(ssid) {
+    const uuids = (await this.saved()).get(ssid);
+    if (!uuids) return run('nmcli', ['connection', 'delete', 'id', ssid]);
+    for (const u of uuids) await run('nmcli', ['connection', 'delete', 'uuid', u]);
+  }
 }
 
 // ------------------------------------------------------------------ Bluetooth
