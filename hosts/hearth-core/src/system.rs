@@ -35,10 +35,19 @@ pub fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
     run_timeout(cmd, args, Duration::from_secs(15))
 }
 
-pub fn run_timeout(cmd: &str, args: &[&str], limit: Duration) -> Result<String, String> {
+pub fn run_timeout(cmd: &str, args: &[&str], limit: Duration) -> Result<String, String> { run_input(cmd, args, None, limit) }
+
+/// The same, with `input` on the program's standard input (then closed): for secrets, which never go on a command
+/// line (any program of the same user can read those).
+pub fn run_input(cmd: &str, args: &[&str], input: Option<&str>, limit: Duration) -> Result<String, String> {
     let mut child = Command::new(cmd).args(args).env("LC_ALL", "C")
+        .stdin(if input.is_some() { std::process::Stdio::piped() } else { std::process::Stdio::null() })
         .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()
         .map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { format!("{cmd} is not installed") } else { e.to_string() })?;
+    if let (Some(text), Some(mut si)) = (input, child.stdin.take()) {
+        use std::io::Write;
+        let _ = si.write_all(text.as_bytes());
+    }
     // Read its output while it runs: a program printing more than the pipe holds (64 KiB) would otherwise wait
     // forever for us to read, and be killed as "too long" (long logs, big lists).
     use std::io::Read;
@@ -137,9 +146,8 @@ pub mod wifi {
         let r = if saved().iter().any(|s| s == ssid) && password.is_none() {
             run_timeout("nmcli", &["connection", "up", "id", ssid], Duration::from_secs(45))
         } else {
-            let mut args = vec!["device", "wifi", "connect", ssid];
-            if let Some(p) = password { args.push("password"); args.push(p); }
-            run_timeout("nmcli", &args, Duration::from_secs(45))
+            // The password goes to nmcli's own prompt (--ask) on its standard input, never on its command line.
+            run_input("nmcli", &connect_args(ssid, password.is_some()), password.map(|p| format!("{p}\n")).as_deref(), Duration::from_secs(45))
         };
         match r {
             Ok(_) => json!({"ok": true}),
@@ -149,6 +157,12 @@ pub mod wifi {
                 json!({"ok": false, "error": msg})
             }
         }
+    }
+    /// nmcli's arguments for joining a network; with a password, nmcli asks for it (and reads it from its input).
+    pub fn connect_args(ssid: &str, has_password: bool) -> Vec<&str> {
+        let mut a = if has_password { vec!["--ask"] } else { vec![] };
+        a.extend(["device", "wifi", "connect", ssid]);
+        a
     }
     pub fn disconnect() -> Result<(), String> { if let Some((d, _)) = device() { run("nmcli", &["device", "disconnect", &d])?; } Ok(()) }
     pub fn forget(ssid: &str) -> Result<(), String> { if !valid_ssid(ssid) { return Err("That network's name can't be used.".into()); } run("nmcli", &["connection", "delete", "id", ssid]).map(|_| ()) }
@@ -504,6 +518,12 @@ mod tests {
         assert!(take_turn(&WIFI_BUSY).is_none());
         drop(t);
         assert!(take_turn(&WIFI_BUSY).is_some());
+    }
+    #[test]
+    fn wifi_password_never_on_the_command_line() {
+        assert_eq!(wifi::connect_args("Casa", true), vec!["--ask", "device", "wifi", "connect", "Casa"]);
+        assert_eq!(wifi::connect_args("Casa", false), vec!["device", "wifi", "connect", "Casa"]);
+        assert_eq!(run_input("sh", &["-c", "read p; echo got:$p"], Some("hunter2\n"), Duration::from_secs(5)).unwrap().trim(), "got:hunter2");
     }
     #[test]
     fn errors_say_what_went_wrong() {

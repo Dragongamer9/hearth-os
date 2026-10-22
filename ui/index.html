@@ -7664,7 +7664,7 @@ async function wifiScan(force){
   if(S.sys.scanning || !S.sys.wifi.on) return;
   if(!force && S.sys.nets && Date.now()-S.sys.scannedAt < 20000) return;
   S.sys.scanning=true; refreshUI();
-  try{ S.sys.nets = await call('wifi.scan'); S.sys.scannedAt=Date.now(); }
+  try{ S.sys.nets = await call('wifi.scan',{},60000); S.sys.scannedAt=Date.now(); }
   catch(e){ toast(e.message); if(!S.sys.nets) S.sys.nets=[]; }
   finally{ S.sys.scanning=false; refreshUI(); }
 }
