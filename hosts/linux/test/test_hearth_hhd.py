@@ -318,6 +318,23 @@ class Power(unittest.TestCase):
             hp.cmd(['hearth-power', 'restore'])
         self.assertEqual(sets, [22])
 
+    def test_extra_multi_seat_player_leaves_the_power_settings_to_player_1(self):
+        def no(*a, **k):
+            raise AssertionError('an extra player changed or asked about the whole PC\'s power settings')
+        with mock.patch.dict(os.environ, {'HEARTH_SEAT': '2'}), mock.patch.object(hp, 'busctl', no), \
+                mock.patch.object(hp, 'hhd', no), mock.patch.object(hp, 'admin', no), mock.patch.object(hp, 'set_tdp', no), \
+                mock.patch.object(hp, 'set_mode', no), mock.patch.object(hp, 'remembered', lambda: 22), \
+                mock.patch('builtins.print') as out:
+            hp.cmd(['hearth-power', 'status'])
+            st = json.loads(out.call_args[0][0])
+            self.assertFalse(st['mode']['supported'])
+            self.assertFalse(st['tdp']['supported'])
+            hp.cmd(['hearth-power', 'restore'])
+            self.assertIn('skipped', out.call_args[0][0])
+            for args in (['tdp', '15'], ['mode', 'performance']):
+                with self.assertRaises(hp.Fail):
+                    hp.cmd(['hearth-power'] + args)
+
 
 ROOT = SHELL.parents[3]
 KINDS = {'container', 'mode', 'bool', 'multiple', 'discrete', 'int', 'float', 'action', 'display', 'custom'}
