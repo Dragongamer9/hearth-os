@@ -45,6 +45,8 @@ pub struct Game {
     pub can_uninstall: bool,
     /// Beacon's games (beacon.rs): what Beacon says about it, its mods.
     pub beacon: Option<crate::beacon::BeaconGame>,
+    /// Steam downloads: what Steam is doing now ("Verifying", "Waiting for Steam", "Stopped: Disk write failure").
+    pub stage: Option<String>,
 }
 
 /// The game that's running: what to watch, and its times (ms since 1970).
@@ -219,6 +221,24 @@ impl Library {
                 all.insert(id, g);
             }
         }
+        // Steam games on your account that aren't installed (steam_owned.rs): shown with an Install button.
+        if self.store.source_on("steam") {
+            if let (Some(steam_dir), Some(o)) = (steam::steam_path(&self.home), crate::steam_owned::load_current(&self.home)) {
+                let (grid, _) = steam::user_data(&steam_dir);
+                let cache = steam_dir.join("appcache/librarycache");
+                let list = o["games"].as_array().cloned().unwrap_or_default();
+                counts.insert("steamOwned".to_string(), list.len());
+                for x in list {
+                    let Some(app) = x["id"].as_str().filter(|a| !a.is_empty() && a.chars().all(|c| c.is_ascii_digit())) else { continue };
+                    let id = format!("steam:{app}");
+                    if all.contains_key(&id) { continue; }
+                    all.insert(id.clone(), Game { id, title: x["title"].as_str().unwrap_or(app).to_string(), source: "steam", installed: false, state: "notInstalled",
+                        store_minutes: x["minutes"].as_u64().unwrap_or(0), store_last_played: x["lastPlayed"].as_u64().unwrap_or(0),
+                        art: steam::find_art(app, grid.as_deref(), &cache), launch_uri: Some(format!("steam://rungameid/{app}")),
+                        install_uri: Some(format!("steam://install/{app}")), ..Default::default() });
+                }
+            }
+        }
         // Cloud games you've played on Xbox: when you last played them.
         if stores::signed_in("xbox") {
             let played: HashMap<String, u64> = Owned::load(stores::xbox::CACHE).games.iter().map(|o| (norm(o["title"].as_str().unwrap_or("")), o["lastPlayed"].as_u64().unwrap_or(0))).collect();
@@ -226,6 +246,7 @@ impl Library {
         }
         self.games = all;
         self.counts = counts;
+        self.steam_stages(None);
         if !self.queue_restored { self.queue_restored = true; self.restore_queue(); }
         self.download_sig = self.signature();
     }
@@ -286,6 +307,42 @@ impl Library {
         // Beacon's games are set up in Beacon (its folder, CD key, community files).
         if uri == "beacon:open" { return self.beacon_open(); }
         steam::spawn(&self.home, &uri)
+    }
+
+    /// The Steam library new Steam games go to (steam_ctl::choose_library).
+    pub fn steam_library(&self) -> Option<PathBuf> {
+        let steam = steam::steam_path(&self.home)?;
+        let chosen = self.store.data["steamLibrary"].as_str().map(PathBuf::from);
+        crate::steam_ctl::choose_library(&steam::libraries(&steam), chosen.as_deref(), &self.install_root())
+    }
+
+    /// Installs a Steam game without Steam's dialog (steam_ctl::install): {silent, waiting}.
+    pub fn install_steam(&mut self, id: &str) -> Result<Value, String> {
+        let g = self.games.get(id).cloned().ok_or("That game isn't in the library anymore.")?;
+        if g.installed { return Err(format!("{} is already installed.", g.title)); }
+        let app: u32 = id.strip_prefix("steam:").and_then(|a| a.parse().ok()).ok_or("That isn't a Steam game.")?;
+        if !steam::client_installed(&self.home) { return Err("Steam isn't installed on this device.".into()); }
+        let lib = self.steam_library().ok_or("Steam isn't set up yet. Open Steam once, then try again.")?;
+        let r = crate::steam_ctl::install(&self.home, app, &g.title, &lib)?;
+        if let Some(x) = self.games.get_mut(id) { x.state = "queued"; x.stage = Some("Waiting for Steam".into()); }
+        Ok(r)
+    }
+
+    /// Steam downloads: what Steam is doing (its content log), and installs waiting for Steam to take them up.
+    /// `log`: the content log already read (downloads() reads it for the speed too).
+    fn steam_stages(&mut self, log: Option<&crate::steam_ctl::ContentLog>) {
+        let read;
+        let log = match log { Some(l) => l, None => { read = steam::steam_path(&self.home).map(|s| crate::steam_ctl::content_log(&s).0).unwrap_or_default(); &read } };
+        let pending = crate::steam_ctl::pending_ids();
+        for g in self.games.values_mut().filter(|g| g.source == "steam") {
+            g.stage = None;
+            let Some(app) = g.id.strip_prefix("steam:").and_then(|a| a.parse::<u32>().ok()) else { continue };
+            if pending.contains(&app) && !g.installed { g.state = "queued"; g.stage = Some("Waiting for Steam".into()); continue; }
+            if ["installed", "notInstalled"].contains(&g.state) { continue; }
+            if let Some((stage, reason)) = log.apps.get(&app) {
+                g.stage = match reason { Some(r) => Some(format!("Stopped: {r}")), None if !stage.is_empty() => Some(stage.clone()), None => None };
+            }
+        }
     }
 
     /// (found, removed now): a waiting download is removed at once.
@@ -355,6 +412,8 @@ impl Library {
             self.games.retain(|id, g| g.source != "steam" || ["installed", "notInstalled"].contains(&g.state) || fresh.contains(id));
             for m in manifests { self.games.insert(m.id.clone(), m); }
         }
+        let (clog, clog_fresh) = if self.store.source_on("steam") { steam::steam_path(&self.home).map(|s| crate::steam_ctl::content_log(&s)).unwrap_or_default() } else { Default::default() };
+        self.steam_stages(Some(&clog));
         let sig = self.signature();
         let changed = sig != self.download_sig;
         self.download_sig = sig;
@@ -365,8 +424,10 @@ impl Library {
             if let Some(g) = self.games.get(&id) { if !active.iter().any(|a| a["id"] == id.as_str()) { active.push(self.dto(g)); } }
         }
         let now = now_ms();
+        let mut clog_used = false;
         for a in active.iter_mut() {
             if a["source"] != "steam" { continue; }
+            if clog_used && a["state"] == "downloading" { a["bytesPerSec"] = json!(0); continue; }
             let (Some(id), Some(bytes)) = (a["id"].as_str().map(str::to_string), a["bytesDone"].as_u64()) else { continue };
             let prev = self.steam_bytes.get(&id).copied();
             let mut bps = 0;
@@ -375,6 +436,8 @@ impl Library {
                 Some((t, b, old)) if bytes == b && now - t <= 20000 => bps = old,
                 _ => { self.steam_bytes.insert(id.clone(), (now, bytes, bps)); }
             }
+            // Steam writes its byte counts now and then; its log says the speed as it goes.
+            if bps == 0 && clog_fresh && a["state"] == "downloading" { bps = clog.rate.unwrap_or(0); clog_used = true; }
             a["bytesPerSec"] = json!(bps);
         }
         let gone: Vec<String> = self.steam_bytes.keys().filter(|id| !active.iter().any(|a| a["id"] == id.as_str())).cloned().collect();
@@ -423,7 +486,7 @@ impl Library {
             "progress": match (g.bytes_done, g.bytes_total) { (Some(a), Some(b)) if b > 0 => Some((a as f64 / b as f64).min(1.0)), _ => None },
             "bytesDone": g.bytes_done, "bytesTotal": g.bytes_total, "canUninstall": g.can_uninstall, "note": g.note,
             "installKind": match g.install_uri.as_deref() { None => None, Some(u) if u.starts_with("nimbus-") => Some("nimbus"), Some(u) if u.starts_with("steam:") => Some("steam"), Some(u) if u.starts_with("beacon:") => Some("beacon"), Some(_) => Some("store") },
-            "system": g.system, "frozen": self.frozen.iter().any(|f| f.id == g.id),
+            "system": g.system, "frozen": self.frozen.iter().any(|f| f.id == g.id), "stage": g.stage,
         });
         if let Some(b) = &g.beacon {
             out["beacon"] = json!({"family": b.family, "short": b.short, "ready": b.ready, "blocker": b.blocker(), "edition": b.edition, "viaSteam": b.via_steam,
@@ -464,6 +527,7 @@ impl Library {
         let track = match g.source {
             "steam" => {
                 let uri = g.launch_uri.clone().unwrap_or_default();
+                crate::steam_ctl::touch();
                 // Started cold by the game's URL, Steam shows its update and main windows over everything.
                 // Started hidden first (-silent), it only starts the game.
                 if steam::is_running() {
@@ -568,6 +632,11 @@ impl Library {
     pub fn tick(&mut self) -> Vec<Value> {
         let before = self.frozen.len();
         let mut events = self.beacon_tick();
+        // Steam: installs it should take up, and closing it when nothing needs it ("Start Steam only when needed").
+        if self.store.source_on("steam") {
+            let steam_game = self.running.iter().chain(self.frozen.iter()).any(|r| r.id.starts_with("steam:") || r.track.steam_app_id.is_some());
+            events.extend(crate::steam_ctl::tick(&self.home, self.steam_on_demand(), steam_game));
+        }
         events.extend(self.tick_running());
         let mut q = self.quick_tick();
         // The list only goes to the page when it changed.
@@ -841,6 +910,9 @@ impl Library {
         true
     }
 
+    /// "Start Steam only when needed" (Settings › Library, on by default).
+    pub fn steam_on_demand(&self) -> bool { self.store.data["steamOnDemand"] != false }
+
     pub fn get(&mut self, rescan: bool) -> Value {
         if rescan || self.games.is_empty() { self.scan(); }
         let mut games: Vec<Value> = self.games.values().map(|g| self.dto(g)).collect();
@@ -848,7 +920,7 @@ impl Library {
         let collections: Vec<Value> = self.store.data["collections"].as_array().map(|a| a.iter()
             .map(|c| json!({"id": c["id"], "name": c["name"], "count": c["games"].as_array().map(|g| g.len()).unwrap_or(0)})).collect()).unwrap_or_default();
         json!({ "games": games, "sources": self.store.data["sources"], "collections": collections, "counts": self.counts,
-                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "quickResume": self.quick_state() })
+                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "quickResume": self.quick_state() })
     }
 }
 
