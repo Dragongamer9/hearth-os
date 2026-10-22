@@ -9,10 +9,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// hearth-power where the rest of Hearth finds its helpers (paths::desktop_dir, which also follows NIMBUS_SHARE):
-/// outside the Hearth session it looked only in /usr/share/nimbus, so a copy with its desktop files elsewhere had
-/// no power settings while hearth-hhd and the others worked.
-fn helper() -> PathBuf { crate::paths::desktop_dir().join("shell/hearth-power") }
+fn helper() -> PathBuf {
+    let share = std::env::var_os("NIMBUS_SHARE").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/usr/share/nimbus"));
+    share.join("desktop/shell/hearth-power")
+}
 
 fn call(args: &[&str]) -> Result<Value, String> { call_within(args, Duration::from_secs(30)) }
 fn call_within(args: &[&str], limit: Duration) -> Result<Value, String> {
