@@ -6,7 +6,8 @@ Run as root (pkexec; the live user is allowed). Installed only on the live USB.
   hearth-live-prep check        JSON: the Windows partition (size, free space, how small it can get), what's
                                 in the way (BitLocker, Fast Startup / hibernation, on battery, no internet),
                                 and the games and folders on it (the same scan Hearth's importer uses)
-  hearth-live-prep shrink BYTES make BYTES of free space after Windows for Hearth: shrink the NTFS file system
+  hearth-live-prep shrink BYTES [DISK]
+                                make BYTES of free space after Windows for Hearth: shrink the NTFS file system
                                 (ntfsresize, which moves data out of the way), then the partition. Progress
                                 lines as "progress: <0-100> <what>", then a JSON line.
 
@@ -51,14 +52,16 @@ def importer():
     return m
 
 
-def windows_partition():
-    """The NTFS partition with Windows on it (biggest one with \\Windows\\System32), or a BitLocker one."""
+def windows_partition(disk=None):
+    """The NTFS partition with Windows on it (biggest one with \\Windows\\System32), or a BitLocker one. With
+    `disk`, only on that drive: on a PC with two drives the installer shrinks the Windows on the drive it installs
+    to, never another drive's."""
     tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'NAME,PATH,PKNAME,FSTYPE,LABEL,SIZE,MOUNTPOINTS,TYPE']).stdout)
     cands, locked = [], []
 
     def walk(ds):
         for d in ds:
-            if d.get('type') == 'part':
+            if d.get('type') == 'part' and (not disk or d.get('pkname') == os.path.basename(disk)):
                 if d.get('fstype') == 'ntfs':
                     cands.append(d)
                 elif d.get('fstype') == 'BitLocker':
@@ -167,8 +170,8 @@ def check():
     print(json.dumps(res))
 
 
-def shrink(give):
-    win, _ = windows_partition()
+def shrink(give, disk=None):
+    win, _ = windows_partition(disk)
     if not win:
         fail('Windows was not found')
     dev = win['path']
@@ -213,7 +216,13 @@ def shrink(give):
     print('progress: 92 Updating the partition table', flush=True)
     disk = '/dev/' + win['pkname']
     num = re.search(r'(\d+)$', dev).group(1)
-    sectors = math.ceil(new_size / 512) + 2048   # a little slack past the file system's end
+    # In the drive's own sectors (sfdisk's unit): 4096 bytes on NVMe drives formatted with 4K sectors, not 512.
+    try:
+        with open('/sys/class/block/%s/queue/logical_block_size' % win['pkname']) as f:
+            ss = int(f.read().strip()) or 512
+    except (OSError, ValueError):
+        ss = 512
+    sectors = math.ceil(new_size / ss) + 1024 * 1024 // ss   # a little slack (1 MiB) past the file system's end
     sh(['sfdisk', '--no-reread', '--force', '-N', num, disk], input=f', {sectors}\n')
     sh(['partx', '-u', '--nr', num, disk], check=False)
     print('progress: 100 Done', flush=True)
@@ -227,10 +236,11 @@ def main(argv):
     try:
         if cmd == 'check':
             check()
-        elif cmd == 'shrink' and len(argv) == 3 and argv[2].isdigit():
-            shrink(int(argv[2]))
+        elif cmd == 'shrink' and len(argv) in (3, 4) and argv[2].isdigit() and \
+                (len(argv) == 3 or re.fullmatch(r'/dev/[A-Za-z0-9/_-]+', argv[3])):
+            shrink(int(argv[2]), argv[3] if len(argv) == 4 else None)
         else:
-            fail('usage: hearth-live-prep check | shrink BYTES')
+            fail('usage: hearth-live-prep check | shrink BYTES [DISK]')
     except RuntimeError as e:
         fail(str(e))
 

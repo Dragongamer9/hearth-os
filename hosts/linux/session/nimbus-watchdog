@@ -18,7 +18,22 @@ crashes=""
 FLAG="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/drawing-fallback"
 if [ -f "$FLAG" ] || grep -qw nomodeset /proc/cmdline 2>/dev/null; then export WEBKIT_DISABLE_DMABUF_RENDERER=1; fi
 
+# Game Mode's display for programs D-Bus and systemd start on demand (the desktop portal, notifications): without it
+# xdg-desktop-portal-gtk failed with "cannot open display", apps waiting on the portal hung for up to two minutes
+# (Peppermint), and systemd stopped trying ("start-limit-hit"), so file pickers stayed broken in Desktop Mode too.
+# This runs inside gamescope, so DISPLAY is gamescope's. WAYLAND_DISPLAY is emptied: Desktop Mode's is gone now, and
+# an empty one makes GTK use DISPLAY. The portals' earlier failures are forgotten so they start again.
+if [ -n "$DISPLAY" ] && command -v dbus-update-activation-environment >/dev/null 2>&1; then
+  vars="DISPLAY WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE"
+  [ -n "$XAUTHORITY" ] && vars="$vars XAUTHORITY"
+  # shellcheck disable=SC2086
+  WAYLAND_DISPLAY="" dbus-update-activation-environment --systemd $vars >/dev/null 2>&1
+  systemctl --user reset-failed xdg-desktop-portal.service xdg-desktop-portal-gtk.service >/dev/null 2>&1
+fi
+
 while :; do
+  # Hearth's output goes here for the whole sign-in: a long one (or a chatty crash loop) would grow it without end.
+  [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 8000000 ] && mv -f "$LOG" "$LOG.old"
   start=0; [ -f "$LOG" ] && start=$(wc -c <"$LOG")
   "$APP" --session --ozone-platform=x11 >>"$LOG" 2>&1 &
   pid=$!

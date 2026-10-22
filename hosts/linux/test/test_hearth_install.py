@@ -263,6 +263,32 @@ class Parsing(unittest.TestCase):
         self.assertEqual(H.parse_free(out)[0], (600000000, 419430400))
         self.assertEqual(len(H.parse_free(out)), 2)
 
+    def test_4k_sector_drive(self):
+        # An NVMe drive formatted with 4096-byte sectors: sfdisk counts in those, so Hearth's partitions are sized
+        # and placed in them (they used to come out 8 times too big, and too little free space was seen).
+        from unittest import mock
+        sent = []
+
+        def sh(cmd, check=True, input=None, **kw):
+            sent.append((cmd, input))
+
+            class R:
+                stdout, stderr, returncode = '', '', 0
+            return R
+        ss = 4096
+        start = 256 * 300000   # 1 MiB aligned
+        parts = [{'node': '/dev/nvme0n1p1', 'start': 256}, {'node': '/dev/nvme0n1p5', 'start': start},
+                 {'node': '/dev/nvme0n1p6', 'start': start + H.ESP_SIZE // ss},
+                 {'node': '/dev/nvme0n1p7', 'start': start + (H.ESP_SIZE + H.BOOT_SIZE) // ss}]
+        with mock.patch.object(H, 'sh', sh), mock.patch.object(H, 'sector_size', lambda d: ss), \
+                mock.patch.object(H, 'free_regions', lambda d: [(start - 100, 100 * GIB // ss)]), \
+                mock.patch.object(H, 'release', lambda d: None), mock.patch.object(H, 'settle', lambda d: None), \
+                mock.patch.object(H, 'table', lambda d: parts):
+            self.assertEqual(H.partition_free('/dev/nvme0n1'), ('/dev/nvme0n1p5', '/dev/nvme0n1p6', '/dev/nvme0n1p7', True))
+            layout = sent[-1][1]
+            self.assertIn('start=%d, size=%d,' % (start, H.ESP_SIZE // ss), layout)
+            self.assertEqual(start % (H.MIB // ss), 0)
+
     def test_layers_needed(self):
         self.assertEqual(H.parse_needed('layers already present: 3; layers needed: 62 (4.1 GB)'), (62, 4100000000))
         self.assertEqual(H.parse_needed('layers needed: 5 (812 MB)'), (5, 812000000))
@@ -498,3 +524,56 @@ class DownloadProgress(unittest.TestCase):
     def test_says_how_much_and_how_fast(self):
         self.assertEqual(H.download_text(3_200_000_000, 9_600_000_000, 12_400_000), 'Downloading Hearth OS · 3.2 of 9.6 GB · 12.4 MB/s')
         self.assertEqual(H.download_text(0, 0, 0), 'Downloading Hearth OS')
+
+
+def load_boot_first():
+    p = pathlib.Path(__file__).resolve().parents[3] / 'os' / 'system_files' / 'usr' / 'libexec' / 'nimbus' / 'hearth-boot-first'
+    loader = importlib.machinery.SourceFileLoader('hearth_boot_first', str(p))
+    m = importlib.util.module_from_spec(importlib.util.spec_from_loader('hearth_boot_first', loader))
+    loader.exec_module(m)
+    return m
+
+
+class BootFirst(unittest.TestCase):
+    """hearth-boot-first (every start): keeps Hearth first, without piling up boot entries."""
+    LOADER = '\\EFI\\fedora\\shimx64.efi'
+
+    def test_found_by_partition(self):
+        bf = load_boot_first()
+        t = ('BootOrder: 0000,0003\nBoot0000* Windows Boot Manager\tHD(1,GPT,aaaa,0x800,0x32000)/\\EFI\\Microsoft\\Boot\\bootmgfw.efi\n'
+             'Boot0003* Hearth OS\tHD(5,GPT,BBBB-1,0x1,0x2)/\\EFI\\fedora\\shimx64.efi\n')
+        self.assertEqual(bf.plan(t, 'bbbb-1', self.LOADER), ('0003', ['0003', '0000']))
+
+    def test_rewritten_entry_isnt_made_again(self):
+        # The firmware kept the entry but dropped the partition's id: it's still Hearth's (no new one each start).
+        bf = load_boot_first()
+        t = ('BootOrder: 0003,0000\nBoot0000* Windows Boot Manager\tHD(1,GPT,aaaa)/\\EFI\\Microsoft\\Boot\\bootmgfw.efi\n'
+             'Boot0003* Hearth OS\tVenHw(99e275e7-75a0-4b37-a2e6-c5385e6c00cb)/File(\\EFI\\fedora\\shimx64.efi)\n')
+        self.assertEqual(bf.plan(t, 'bbbb-1', self.LOADER), ('0003', None))
+        # Another system's "Hearth OS"-less entry with the same loader isn't taken for Hearth's.
+        t2 = 'BootOrder: 0002\nBoot0002* Fedora\tHD(2,GPT,cccc)/\\EFI\\fedora\\shimx64.efi\n'
+        self.assertEqual(bf.plan(t2, 'bbbb-1', self.LOADER), (None, None))
+
+    def test_no_efibootmgr_changes_nothing(self):
+        from unittest import mock
+        bf = load_boot_first()
+        with mock.patch.object(bf.os.path, 'isdir', lambda p: True), mock.patch.object(bf.os.path, 'exists', lambda p: False), \
+                mock.patch.object(bf.shutil, 'which', lambda n: None), mock.patch('builtins.print'):
+            self.assertEqual(bf.main(), 0)
+
+
+class GrubFolder(unittest.TestCase):
+    """custom.cfg (Windows, SteamOS... in Hearth's boot menu) goes where the edition's GRUB menu reads it."""
+
+    def test_where_custom_cfg_goes(self):
+        with tempfile.TemporaryDirectory() as boot:
+            # Nothing there yet: bootupd's layout (all editions).
+            self.assertEqual(H.grub_dir(boot), os.path.join(boot, 'grub2'))
+            os.makedirs(os.path.join(boot, 'grub'))
+            open(os.path.join(boot, 'grub', 'grub.cfg'), 'w').close()
+            # A distribution-style GRUB (grub/grub.cfg only): there.
+            self.assertEqual(H.grub_dir(boot), os.path.join(boot, 'grub'))
+            os.makedirs(os.path.join(boot, 'grub2'))
+            open(os.path.join(boot, 'grub2', 'grub.cfg'), 'w').close()
+            # bootupd's static menu (Fedora's, Debian's, Ubuntu's and Arch's GRUB alike) wins.
+            self.assertEqual(H.grub_dir(boot), os.path.join(boot, 'grub2'))

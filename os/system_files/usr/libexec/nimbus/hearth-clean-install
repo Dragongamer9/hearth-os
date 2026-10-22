@@ -566,6 +566,11 @@ def main(argv):
         # The old (Bazzite-based) system, started again from the boot menu: its files stay as they are.
         log('not one of the new Hearth OS editions (no /%s): not touching anything' % OWN_INFO)
         return 0
+    if plan.get('edition') and new_base() != plan['edition']:
+        # Another edition than the one the plan is for: the old system, started again from the boot menu (or a
+        # switch that never finished). Its files stay as they are; the plan waits for the system it's for.
+        log('this is %s, not %s, which the clean-install plan is for: not touching anything' % (new_base() or 'another system', plan['edition']))
+        return 0
     if not plan.get('user'):
         log('the clean-install plan names no account; not touching anything')
         return 1
