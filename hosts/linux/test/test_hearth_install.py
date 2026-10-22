@@ -215,6 +215,29 @@ class Plan(unittest.TestCase):
             with self.assertRaises(H.Fail, msg=name):
                 H.check_plan({**GOOD, 'user': {'name': name, 'password': 'pw'}})
 
+    def test_system_group_names_refused(self):
+        for name in ('video', 'audio', 'input', 'render', 'sudo'):
+            with self.assertRaises(H.Fail, msg=name):
+                H.check_plan({**GOOD, 'user': {'name': name, 'password': 'pw'}})
+
+    def test_device_name_from_a_user_name_with_underscore(self):
+        self.assertEqual(H.check_plan({**GOOD, 'hostname': 'sam_r-hearth'})['hostname'], 'sam-r-hearth')
+        self.assertEqual(H.check_plan({**GOOD, 'hostname': '_'})['hostname'], 'hearth')
+
+    def test_reachable_asks_again_then_gives_up(self):
+        calls = []
+        orig = (H.published, H.time.sleep)
+        try:
+            H.time.sleep = lambda s: None
+            H.published = lambda img: calls.append(img)
+            self.assertIsNone(H.reachable('ghcr.io/x/y:latest'))
+            self.assertEqual(len(calls), 3)
+            answers = [None, True]
+            H.published = lambda img: answers.pop(0)
+            self.assertTrue(H.reachable('ghcr.io/x/y:latest'))
+        finally:
+            H.published, H.time.sleep = orig
+
     def test_needs_password(self):
         with self.assertRaises(H.Fail):
             H.check_plan({**GOOD, 'user': {'name': 'sam', 'password': ''}})
