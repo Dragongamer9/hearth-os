@@ -652,6 +652,53 @@ class Daemon(unittest.TestCase):
         self.assertEqual((m[e.BTN_NORTH], m[e.BTN_WEST]), ('y', 'x'))
         self.assertEqual(hi.device_buttons(e)[e.BTN_TRIGGER_HAPPY5], 'r4')
 
+    def test_right_stick_on_z_without_rx(self):
+        # hid-generic (an Xbox controller over Bluetooth without xpadneo): right stick Z/RZ, triggers BRAKE/GAS.
+        class Bt(Dev):
+            def capabilities(self, absinfo=True):
+                return {E.EV_KEY: [E.BTN_SOUTH], E.EV_ABS: [(c, Abs(0, 65535)) for c in (0, 1, 2, 5)] + [(9, Abs(0, 1023)), (10, Abs(0, 1023))]}
+        p = hi.Pad(Bt(), E())
+        p.handle(Ev(E.EV_ABS, E.ABS_Z, 65535))
+        p.handle(Ev(E.EV_ABS, E.ABS_RZ, 32768))
+        self.assertEqual((p.ax['rx'], round(p.ax['ry'], 3), p.trigger('lt'), p.trigger('rt')), (1.0, 0.0, 0.0, 0.0))
+        p.handle(Ev(E.EV_ABS, E.ABS_BRAKE, 1023))
+        self.assertEqual(p.trigger('lt'), 1.0)
+        x = hi.Pad(Dev(), E())                    # xpad: Z is the left trigger
+        x.handle(Ev(E.EV_ABS, E.ABS_Z, 255))
+        x.handle(Ev(E.EV_ABS, E.ABS_RX, 32767))
+        self.assertEqual((x.trigger('lt'), x.ax['rx']), (1.0, 1.0))
+
+    def test_a_controller_on_a_reused_node_is_found(self):
+        class Kbd(Dev):
+            def capabilities(self, absinfo=True):
+                return {E.EV_KEY: [E().KEY_A]}
+
+            def input_props(self):
+                return []
+        path = '/dev/input/event9'
+        nodes, ids = {path: Kbd('Some Keyboard')}, {path: 'input1'}
+
+        class Evdev(FakeEvdev):
+            @staticmethod
+            def list_devices():
+                return list(nodes)
+
+            @staticmethod
+            def InputDevice(p):
+                return nodes[p]
+        old = hi.node_id
+        hi.node_id = lambda p: ids.get(p)
+        try:
+            d = hi.Daemon(Evdev)
+            d.scan()
+            self.assertIn(path, d.ignored_paths)
+            nodes[path], ids[path] = Dev(), 'input2'   # the keyboard went, a controller got its node number
+            d.scan()
+            self.assertIn(path, d.pads)
+            self.assertNotIn(path, d.ignored_paths)
+        finally:
+            hi.node_id = old
+
     def test_motion_detection(self):
         e = E()
         self.assertTrue(hi.is_motion([6], {e.EV_ABS: [0, 1, 2, 3, 4, 5]}, e))
