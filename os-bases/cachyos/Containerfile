@@ -30,11 +30,14 @@ FROM ${BASE_IMAGE} AS base
 # pacman's database, cache and log move from /var to /usr/lib/sysimage: in a bootc system /var belongs to the
 # machine, not to the image, so the list of installed packages has to live in /usr with the packages (bootcrew's
 # arch-bootc does the same). DownloadUser is dropped: pacman's download sandbox can't switch users inside a
-# container build. NoExtract is dropped so man pages and locales are installed.
+# container build. NoExtract is dropped so man pages and locales are installed. DisableSandboxNetwork: pacman 7.1
+# refuses to run install scripts when it can't cut them off from the network, and a container build can't do that
+# ("could not isolate the network ... refusing to run /usr/bin/bash").
 RUN grep "= */var" /etc/pacman.conf | sed "/= *\/var/s/.*=// ; s/ //" | \
       xargs -n1 sh -c 'mkdir -p "/usr/lib/sysimage/$(dirname $(echo $1 | sed "s@/var/@@"))" && mv -v "$1" "/usr/lib/sysimage/$(echo "$1" | sed "s@/var/@@")" || true' '' && \
     sed -i -e "/= *\/var/ s/^#//" -e "s@= */var@= /usr/lib/sysimage@g" -e "/DownloadUser/d" /etc/pacman.conf && \
     sed -i 's/^[[:space:]]*NoExtract/#&/' /etc/pacman.conf && \
+    { grep -q "^DisableSandboxNetwork" /etc/pacman.conf || sed -i "/^\[options\]/a DisableSandboxNetwork" /etc/pacman.conf; } && \
     grep -nE "DBPath|CacheDir|LogFile|^\[" /etc/pacman.conf && \
     test -d /usr/lib/sysimage/lib/pacman/local
 # Keys first (the image may be older than a key change), then everything up to date, then glibc again so the
