@@ -24,7 +24,21 @@ The code lives in `hosts/hearth-core/src`:
 | `steam_ctl.rs` | Silent installs and uninstalls, download progress, Steam only when needed, sign-in watching |
 | `library.rs`, `bridge.rs` | Wiring into the library, the Downloads page and the UI's calls |
 
-Ember (Windows) has its own Steam code in C# (`hosts/windows/Nimbus.Host/Library/Steam*.cs`) and is unchanged.
+Ember (Windows) does the same in C#: `hosts/windows/Nimbus.Host/Library/SteamControl.cs` (owned games from the
+Community page, install records, progress, uninstall, Steam only when needed, sign-in watching), wired into
+`LibraryService.cs`, `SystemBridge.cs` and `GameModeBridge.cs`, with the same UI calls and settings
+(`library.setSteamOnDemand`, `steam.libraries`, `steam.setLibrary`, `steam.showWindow`, `steam.signInCancel`).
+The differences on Windows:
+
+- Steam's folder comes from the registry (`HKCU\Software\Valve\Steam\SteamPath`), `registry.vdf`'s
+  `AutoLoginUser` is the registry value of the same name, and a running Steam game is Steam's own `RunningAppID`
+  registry value (there's no reaper process).
+- Owned games come from Steam's local caches (`packageinfo.vdf` + `appinfo.vdf`, as before) **and** the Community
+  page, merged.
+- Steam's windows: its main window is kept hidden while it starts (`SteamWindows.HideMainFor`); its sign-in and
+  install windows are brought in front. Ember comes back in front when the sign-in is done.
+- Hearth Task Manager's "Steam starts with Ember" is the opposite of "Start Steam only when needed".
+- There are no Proton prefixes to keep; everything else about uninstalling is the same.
 
 ## 1. Owned games that aren't installed
 
