@@ -33,6 +33,8 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         // hearthfetch (Ember's bin folder) on your PATH: CliPath.cs.
         _ = Task.Run(CliPath.Ensure);
+        // Hearth Disks' Start menu entry (DisksShortcut.cs), off the start-up path.
+        Task.Run(DisksShortcut.Ensure);
 
         if (shell)
         {
