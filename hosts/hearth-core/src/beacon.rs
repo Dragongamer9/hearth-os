@@ -519,8 +519,13 @@ pub fn run_json(exe: &Exe, args: &[String], stdin: Option<&str>, limit: Duration
         }
     };
     untrack(pid);
-    // What's still in the pipe.
-    while let Ok(line) = rx.recv_timeout(Duration::from_millis(300)) { keep(line, &mut result, &mut text_out, &mut *on_progress); }
+    // What's still in the pipe: 3 s at most (a program Beacon started that keeps the pipe open and keeps printing
+    // would otherwise keep this going for as long as it runs).
+    let drain_until = std::time::Instant::now() + Duration::from_secs(3);
+    while std::time::Instant::now() < drain_until {
+        let Ok(line) = rx.recv_timeout(Duration::from_millis(300)) else { break };
+        keep(line, &mut result, &mut text_out, &mut *on_progress);
+    }
     match answer(result, &text_out) {
         Some(r) => r,
         None => {
