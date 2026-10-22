@@ -3,7 +3,10 @@
 SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
 
 # Let portals (screen sharing, file pickers) and D-Bus-started apps see this session.
-dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE NIMBUS_SHARE NIMBUS_APP >/dev/null 2>&1 &
+# DISPLAY too (Xwayland's; Game Mode's gamescope display is gone by now), and the portals' failures from Game Mode
+# are forgotten, or systemd wouldn't start them again for a while ("start-limit-hit").
+{ dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE NIMBUS_SHARE NIMBUS_APP
+  systemctl --user reset-failed xdg-desktop-portal.service xdg-desktop-portal-gtk.service; } >/dev/null 2>&1 &
 
 # Resolution, refresh rate and scale chosen in Settings › Display. Until you choose, small sharp screens
 # (handhelds, high-DPI laptops) get a comfortable scale so text and buttons are big enough to touch.
