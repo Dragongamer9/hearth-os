@@ -8,6 +8,11 @@ case "$1" in
   terminal)   first "$TERMINAL" hearth-terminal foot alacritty kitty wezterm konsole gnome-terminal xfce4-terminal xterm ;;
   files)      first "/usr/bin/hearth-filemanager" 'xdg-open "$HOME"' dolphin nautilus thunar pcmanfm-qt pcmanfm nemo ;;
   screenshot) dir="$(xdg-user-dir PICTURES 2>/dev/null || echo "$HOME/Pictures")/Screenshots"; mkdir -p "$dir"
-              SHOT="$dir/Screenshot $(date '+%F %H-%M-%S').png"; export SHOT
-              first 'grim "$SHOT"' "spectacle -b -n" ;;
+              # Two in the same second get " (2)", " (3)"...: the name is taken (noclobber creates it only if it's
+              # free) before grim writes, so the second one can't overwrite the first.
+              base="$dir/Screenshot $(date '+%F %H-%M-%S')"; SHOT="$base.png"; n=1
+              while ! (set -C; : >"$SHOT") 2>/dev/null && [ "$n" -lt 100 ]; do n=$((n + 1)); SHOT="$base ($n).png"; done
+              export SHOT
+              command -v grim >/dev/null 2>&1 || rm -f "$SHOT"   # spectacle names its own files
+              first 'grim "$SHOT" || rm -f "$SHOT"' "spectacle -b -n" ;;
 esac
