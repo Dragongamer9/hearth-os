@@ -306,3 +306,7 @@ sed -i \
   /usr/lib/os-release
 
 dnf5 clean all
+
+# bootc keeps images in podman's storage (imgstorage): without podman, updates and Switch edition fail
+# ("podman executable not found in PATH"). Peppermint 0.3.0 shipped without it.
+command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and bootc switch need it"; exit 1; }
