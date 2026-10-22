@@ -445,6 +445,7 @@ def podman_unpacked():
     if not os.path.exists(os.path.join(root, 'usr/bin/podman')):
         return False
     os.environ['PATH'] = os.path.join(root, 'usr/bin') + ':' + os.environ.get('PATH', '/usr/bin:/usr/sbin')
+    os.environ['CONTAINERS_HELPER_BINARY_DIR'] = os.path.join(root, 'usr/lib/podman')   # netavark, conmon
     libs = [d for d in glob.glob(os.path.join(root, 'usr/lib/*-linux-gnu')) if os.path.isdir(d)]
     if libs:
         os.environ['LD_LIBRARY_PATH'] = ':'.join(libs + [x for x in [os.environ.get('LD_LIBRARY_PATH')] if x])
