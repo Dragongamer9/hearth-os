@@ -215,6 +215,7 @@ fn shell_and_terminal() -> (Option<String>, Option<String>) {
                 "windowsterminal" | "openconsole" => "Windows Terminal".into(),
                 "explorer" | "nimbus" | "conhost" => "Windows Console".into(),
                 "code" => "Visual Studio Code".into(),
+                "hearth-terminal" => "Hearth Terminal".into(),
                 _ => name,
             });
             break;
@@ -222,6 +223,7 @@ fn shell_and_terminal() -> (Option<String>, Option<String>) {
         cur = Some(p.1);
     }
     if std::env::var_os("WT_SESSION").is_some() { terminal = Some("Windows Terminal".into()); }
+    if std::env::var("TERM_PROGRAM").as_deref() == Ok("HearthTerminal") { terminal = Some("Hearth Terminal".into()); }
     (shell, terminal)
 }
 
