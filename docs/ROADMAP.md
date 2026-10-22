@@ -99,6 +99,8 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## 0.5.1 (released)
 
+- [x] Quick Resume keeps your games through Restart and Shut down, not just sleep: one switch, the power menu says which actions keep your games, and "Shut down and close games" / "Restart and close games" really close them; Settings says plainly why if this PC can't keep them yet, with Set up right there (Linux; on Windows, Shut down keeps them)
+- [x] Quick Access over games is always the new overlay: also while a game or Steam is starting, and while Handheld Daemon restarts it (no more falling back to the older Quick Access); Ember uses the same new overlay, Open apps included
 - [x] Updates: an app (Flatpak) that can't be updated no longer marks the whole system update as failed; it still says "Restart to finish updating"
 - [x] Remove the old system (after moving from Windows or another Linux): Hearth now gets the freed space, and another Linux's swap partition can be removed
 - [x] First start after switching edition: your account always gets its groups (video, logs)
