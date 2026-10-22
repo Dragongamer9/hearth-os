@@ -137,3 +137,15 @@ footer .brand{margin-right:auto;font-size:15px}
 .ask .msg b{color:var(--flame);font-size:15px;letter-spacing:.04em}
 .ask .msg.err{color:#ff9b8f}
 @media (max-width:600px){ .ask .row2{grid-template-columns:1fr} }
+
+/* edition picker: what doesn't apply to the chosen edition is hidden (docs.js) */
+.picker{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-8px 0 22px;padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.picker .pl{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 6px 0 4px}
+.picker button{font:inherit;font-size:14px;font-weight:600;color:var(--soft);background:transparent;border:1px solid transparent;border-radius:999px;padding:5px 12px;cursor:pointer;min-height:34px}
+.picker button small{font-weight:500;color:var(--muted);font-size:12px;margin-left:2px}
+.picker button:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.picker button[aria-pressed="true"]{background:var(--ember);color:var(--ink);border-color:var(--ember)}
+.picker button[aria-pressed="true"] small{color:rgba(42,18,6,.7)}
+.edshow{font-size:13.5px;color:var(--muted);margin:-12px 0 18px}
+.edshow button{font:inherit;color:var(--flame);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.ed-off{display:none!important}

@@ -27,36 +27,38 @@
   </div>
 </nav>
 <div class="wrap layout">
-  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html" class="cur" aria-current="page">Installing</a><div class="sub"><a href="#download">Downloads</a><a href="#usb">Making the USB stick</a><a href="#boot">Starting from the USB</a><a href="#installing">Installing</a><a href="#first">The first start</a><a href="#from-other">Coming from Bazzite or Fedora Atomic</a></div><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="troubleshooting.html">Troubleshooting</a></div></aside>
+  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html" class="cur" aria-current="page">Installing</a><div class="sub"><a href="#download">Downloads</a><a href="#usb">Making the USB stick</a><a href="#boot">Starting from the USB</a><a href="#installing">Installing</a><a href="#first">The first start</a><a href="#from-other" data-ed="anatase">Coming from Bazzite or Fedora Atomic</a></div><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="troubleshooting.html">Troubleshooting</a></div></aside>
   <main id="main">
     <div class="crumb">Docs · for Hearth OS 0.3.1</div>
     <h1>Installing</h1>
     <p class="lead">Download Hearth OS, write it to a USB stick, and install it on its own drive or next to Windows.</p>
+    <div class="picker" role="group" aria-label="Your edition"><span class="pl">Your edition</span><button type="button" data-pick="all">All editions</button><button type="button" data-pick="anatase">Anatase <small>Fedora</small></button><button type="button" data-pick="ubuntu">Ubuntu <small>Ubuntu</small></button><button type="button" data-pick="cachyos">CachyOS <small>Arch</small></button><button type="button" data-pick="peppermint">Peppermint <small>Debian</small></button></div>
+    <p class="edshow" hidden></p>
 
-<h2 id="download">Downloads</h2>
+<section><h2 id="download">Downloads</h2>
 <p>Pick one. The <b>offline</b> USBs carry the whole system and install without internet. The small installer
 downloads the system while it installs, and offers every edition.</p>
 <div class="tbl"><table>
 <tr><th>Download</th><th>Size</th><th>Internet while installing</th></tr>
-<tr><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso">Anatase, offline USB</a> (recommended)</td><td>about 9 GB</td><td>Not needed. Try it before installing.</td></tr>
+<tr class="ed" data-ed="anatase"><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso">Anatase, offline USB</a> (recommended)</td><td>about 9 GB</td><td>Not needed. Try it before installing.</td></tr>
 <tr><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso">Small installer</a> (every edition)</td><td>1.6 GB</td><td>Needed</td></tr>
-<tr><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-ubuntu.iso">Ubuntu, offline</a></td><td>about 4.4 GB</td><td>Not needed</td></tr>
-<tr><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-cachyos.iso">CachyOS, offline</a></td><td>about 5.2 GB</td><td>Not needed</td></tr>
-<tr><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso">Peppermint, offline</a></td><td>about 4.3 GB</td><td>Not needed</td></tr>
+<tr class="ed" data-ed="ubuntu"><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-ubuntu.iso">Ubuntu, offline</a></td><td>about 4.4 GB</td><td>Not needed</td></tr>
+<tr class="ed" data-ed="cachyos"><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-cachyos.iso">CachyOS, offline</a></td><td>about 5.2 GB</td><td>Not needed</td></tr>
+<tr class="ed" data-ed="peppermint"><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso">Peppermint, offline</a></td><td>about 4.3 GB</td><td>Not needed</td></tr>
 </table></div>
 <p>To check a download wasn't damaged, compare its checksum (a <code>.sha256</code> file sits next to each ISO, for example
 <a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso.sha256">hearth-os-live.iso.sha256</a>). On Linux:</p>
 <div class="cmd" data-cmd="sha256-check"><pre><code>sha256sum hearth-os-live.iso</code></pre></div>
 <p>The result should match the text in the <code>.sha256</code> file.</p>
 
-<h2 id="usb">Making the USB stick</h2>
+</section><section><h2 id="usb">Making the USB stick</h2>
 <ol class="steps">
 <li><b>Get a USB writer.</b> <a href="https://flathub.org/apps/org.fedoraproject.MediaWriter">Fedora Media Writer</a> or
 <a href="https://etcher.balena.io/">balenaEtcher</a>, on Windows, macOS or Linux.</li>
 <li><b>Write the ISO to the stick.</b> Choose "custom image" or "flash from file", pick the ISO, pick the stick. Everything on the stick is erased.</li>
 </ol>
 
-<h2 id="boot">Starting from the USB</h2>
+</section><section><h2 id="boot">Starting from the USB</h2>
 <ol class="steps">
 <li><b>Plug in the stick and turn the device on</b> while pressing its boot-menu key: often <b>F12</b>, <b>F11</b> or <b>F8</b> on PCs.
 On a <b>ROG Ally</b>: hold <b>Volume Down</b> while pressing power.</li>
@@ -64,7 +66,7 @@ On a <b>ROG Ally</b>: hold <b>Volume Down</b> while pressing power.</li>
 <li><b>Try it out.</b> The offline Anatase USB starts Hearth straight away with a welcome card. Nothing on the drive changes until you choose to install.</li>
 </ol>
 
-<h2 id="installing">Installing</h2>
+</section><section><h2 id="installing">Installing</h2>
 <ol class="steps">
 <li><b>Choose Install Hearth</b> (on the welcome card, or the installer that opens on its own).</li>
 <li><b>Pick where it goes:</b> a whole drive (everything on it is erased), or <b>next to Windows</b> if there's space.</li>
@@ -74,19 +76,20 @@ On a <b>ROG Ally</b>: hold <b>Volume Down</b> while pressing power.</li>
 <div class="note"><p>Every ISO is tested before it's published: it's installed on a virtual PC and the installed system has to start.
 If an install fails on your hardware, <a href="troubleshooting.html#logs">send the installer log</a>: the installer saves one.</p></div>
 
-<h2 id="first">The first start</h2>
+</section><section><h2 id="first">The first start</h2>
 <ul>
 <li>Hearth starts in Game Mode. Sign in to Steam and your other stores from <b>Settings › Game stores</b>.</li>
-<li><b>Anatase:</b> Steam installs itself the first time the device is online, so after an offline install it appears a few minutes after you connect.</li>
+<li class="ed" data-ed="anatase">Steam installs itself (from Flathub) the first time the device is online, so after an offline install it appears a few minutes after you connect.</li>
+<li class="ed" data-ed="ubuntu cachyos peppermint">Steam is already installed (from the edition's own packages).</li>
 <li>An installed system starts at the version the ISO was made with, and <a href="updates.html">updates itself</a> to the newest one once it's online.</li>
 </ul>
 
-<h2 id="from-other">Coming from Bazzite or Fedora Atomic</h2>
+</section><section class="ed" data-ed="anatase"><h2 id="from-other">Coming from Bazzite or Fedora Atomic</h2>
 <p>Bazzite, Bluefin, Aurora, Silverblue and Kinoite can move to Hearth OS without a USB stick; your account and files stay.
 From the Bazzite-based Hearth OS, use <b>Settings › Updates › Move to a new Hearth OS</b>, or in Desktop Mode:</p>
 <div class="cmd" data-cmd="move-from-bazzite"><pre><code>pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os</code></pre></div>
 <div class="note warn"><p>Beta Experimental: back up anything important first.</p></div>
-
+</section>
 <div class="pager"><a href="index.html">← Overview</a><a href="updates.html">Updates and editions →</a></div>
   </main>
 </div>

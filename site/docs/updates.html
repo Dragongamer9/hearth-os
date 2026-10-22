@@ -32,8 +32,10 @@
     <div class="crumb">Docs · for Hearth OS 0.3.1</div>
     <h1>Updates and editions</h1>
     <p class="lead">Hearth OS updates itself in one piece. Here is how that works, how to go back, and how to switch edition.</p>
+    <div class="picker" role="group" aria-label="Your edition"><span class="pl">Your edition</span><button type="button" data-pick="all">All editions</button><button type="button" data-pick="anatase">Anatase <small>Fedora</small></button><button type="button" data-pick="ubuntu">Ubuntu <small>Ubuntu</small></button><button type="button" data-pick="cachyos">CachyOS <small>Arch</small></button><button type="button" data-pick="peppermint">Peppermint <small>Debian</small></button></div>
+    <p class="edshow" hidden></p>
 
-<h2 id="how">How updates work</h2>
+<section><h2 id="how">How updates work</h2>
 <ul>
 <li>Hearth checks for updates when it starts and every 6 hours (<b>Settings › Updates › Check automatically</b>).</li>
 <li>An update downloads in the background while you play. It's used <b>the next time you restart</b>.</li>
@@ -43,7 +45,7 @@
 <p>From a terminal in Desktop Mode, the same update:</p>
 <div class="cmd" data-cmd="update-now"><pre><code>pkexec /usr/libexec/nimbus/hearth-admin update</code></pre></div>
 
-<h2 id="rollback">Going back to the last version</h2>
+</section><section><h2 id="rollback">Going back to the last version</h2>
 <p>If a new version has a problem, go back to the one before it.</p>
 <h3>From the boot menu</h3>
 <p>Restart, and in the boot menu pick the second <b>Hearth OS</b> entry (the older version). On a handheld, the boot menu
@@ -53,7 +55,7 @@ can be moved with the D-pad or volume buttons.</p>
 <div class="cmd" data-cmd="rollback"><pre><code>sudo bootc rollback</code></pre></div>
 <p>Then restart. The next update moves you forward again.</p>
 
-<h2 id="switch">Switching edition</h2>
+</section><section><h2 id="switch">Switching edition</h2>
 <p>Move between Anatase, Ubuntu, CachyOS and Peppermint without a USB stick: <b>Settings › Updates › Switch edition</b>.</p>
 <ul>
 <li><b>Kept:</b> your account, your games, saves and store libraries (Steam, Epic, GOG...).</li>
@@ -61,17 +63,17 @@ can be moved with the D-pad or volume buttons.</p>
 so you can copy back anything you need. After 30 days it's deleted.</li>
 <li>The new edition downloads in the background (about 3 GB), then starts at the next restart. Before anything starts you see exactly what's kept.</li>
 </ul>
-<div class="note warn"><p><b>Peppermint, Ubuntu or CachyOS installed from 0.3.0 or earlier:</b> switching edition (and updating) fails with
+<div class="note warn ed" data-ed="ubuntu cachyos peppermint"><p><b>Installed from 0.3.0 or earlier:</b> switching edition (and updating) fails with
 "podman executable not found in PATH". See <a href="troubleshooting.html#podman">the fix</a>.</p></div>
 <h3>Switching from a terminal</h3>
 <p>The same switch as the Settings button. Change <code>ubuntu</code> to <code>anatase</code>, <code>cachyos</code> or <code>peppermint</code>:</p>
 <div class="cmd" data-cmd="switch-edition"><pre><code>pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os --edition ubuntu</code></pre></div>
 <p>When it says <b>Done. Restart to start the new Hearth OS.</b>, restart.</p>
 
-<h2 id="versions">Versions</h2>
+</section><section><h2 id="versions">Versions</h2>
 <p>What changed in each version: <a href="https://github.com/Dragongamer9/hearth-os/releases">release notes</a> and the
 <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">roadmap</a>.</p>
-
+</section>
 <div class="pager"><a href="install.html">← Installing</a><a href="using.html">Using Hearth →</a></div>
   </main>
 </div>
