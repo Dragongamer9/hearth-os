@@ -1,0 +1,5 @@
+# Screen brightness (brightnessctl, Settings › Display, Quick Access, the brightness keys) for the video group.
+# Fedora's brightnessctl goes through logind and needs none of this; Debian's and Ubuntu's write the file
+# directly, so the signed-in user needs write access. hearth-groups puts every account in video at start-up.
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chgrp video /sys/class/backlight/%k/brightness", RUN+="/bin/chmod g+w /sys/class/backlight/%k/brightness"
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*kbd_backlight*", RUN+="/bin/chgrp video /sys/class/leds/%k/brightness", RUN+="/bin/chmod g+w /sys/class/leds/%k/brightness"

@@ -84,7 +84,7 @@ pub fn report(version: &str) -> String {
     let mut section = |title: &str, body: String| { out.push_str(&format!("\n===== {title} =====\n{}\n", body.trim_end())); };
     section("About this device", serde_json::to_string_pretty(&info).unwrap_or_default());
     section("OS", std::fs::read_to_string("/etc/os-release").unwrap_or_default());
-    section("System version (bootc)", sh("bootc status --format humanreadable || rpm-ostree status"));
+    section("System version (bootc)", sh("{ bootc status --format humanreadable || bootc status || rpm-ostree status; } 2>&1; ls /ostree/deploy/*/deploy 2>&1 | head -8"));
     // Hearth's log: the controller input lines first (the jumping-selection reports), then the newest lines.
     // Thousands of identical "library.downloads ok" lines from the old Electron app are left out.
     if let Ok(t) = std::fs::read_to_string(data.join("bridge.log")) {

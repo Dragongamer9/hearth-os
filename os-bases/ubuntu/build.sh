@@ -487,6 +487,7 @@ mkdir -p /etc/X11 && echo /usr/bin/sddm > /etc/X11/default-display-manager
 systemctl enable nimbus-autologin.service
 systemctl enable hearth-greeter-pad.service
 systemctl enable hearth-boot-first.service
+systemctl enable hearth-groups.service        # accounts in video (screen brightness)
 # The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
 # (os/system_files; does nothing without the plan the old system leaves).
 systemctl enable hearth-clean-install.service

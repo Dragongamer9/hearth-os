@@ -1,0 +1,13 @@
+#!/bin/sh
+# Every account (uid 1000 and up) in the groups Hearth's settings need, whatever made the account: the
+# installer, the first-boot setup, or moving from another edition (the account files come from the old system).
+#   video: screen brightness where brightnessctl writes the file itself (Debian, Ubuntu).
+# Runs at start-up, before anyone signs in, so it applies to that sign-in.
+for g in video; do
+  getent group "$g" >/dev/null || continue
+  getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /(nologin|false)$/ {print $1}' | while read -r u; do
+    id -nG "$u" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" && continue
+    if command -v usermod >/dev/null; then usermod -aG "$g" "$u"; else gpasswd -a "$u" "$g"; fi && echo "hearth-groups: $u added to $g"
+  done
+done
+exit 0
