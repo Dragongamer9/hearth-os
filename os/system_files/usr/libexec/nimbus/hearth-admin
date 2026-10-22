@@ -425,10 +425,39 @@ def flatpak_update(stage, lo, hi):
     stage.emit(force=True, phase='apps', pct=100.0, n=total, total=total, desc='Apps updated')
 
 
+def ensure_podman():
+    """bootc keeps images in podman's storage, so bootc upgrade and bootc switch need podman ("podman executable
+    not found in PATH"). Peppermint, Ubuntu and CachyOS images up to 0.3.0 shipped without it: until the update
+    that brings it, it's added for now on a writable /usr (bootc usr-overlay; gone at the next restart, by which
+    time the new system is ready)."""
+    if shutil.which('podman') or not os.path.exists('/run/ostree-booted'):
+        return
+    if shutil.which('apt-get'):
+        steps = [['apt-get', 'update'], ['apt-get', 'install', '-y', '--no-install-recommends', 'podman']]
+    elif shutil.which('pacman'):
+        steps = [['pacman', '-Sy', '--noconfirm', '--needed', 'podman']]
+    else:
+        return
+    print('log: Adding podman for now (bootc needs it; the next version has it built in)', flush=True)
+    try:
+        r = subprocess.run(['bootc', 'usr-overlay'], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0 and 'already' not in (r.stderr + r.stdout).lower():
+            print('log: bootc usr-overlay: ' + (r.stderr or r.stdout).strip()[-200:], flush=True)
+            return
+        for cmd in steps:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=900, env={**os.environ, 'DEBIAN_FRONTEND': 'noninteractive'})
+            if r.returncode != 0:
+                print('log: ' + ' '.join(cmd[:2]) + ': ' + (r.stderr or r.stdout).strip()[-200:], flush=True)
+                return
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print('log: couldn\'t add podman: %s' % e, flush=True)
+
+
 def update():
     stage = Stage()
     progress(0, 'Starting')
     print('log: Downloading the system update…', flush=True)
+    ensure_podman()
     if layered():
         print('log: This system has extra packages installed on top, so it updates through rpm-ostree', flush=True)
         rpm_ostree_upgrade(stage)
@@ -1637,6 +1666,7 @@ def move_to_new_os(edition='anatase', testing=False):
     os.replace(tmp, CLEAN_INSTALL)
     print('log: The new Hearth OS will keep your games and saves; your other files are put aside for 30 days', flush=True)
     progress(0, 'Getting the new Hearth OS')
+    ensure_podman()
     stage = Stage()
     try:
         if layered():
