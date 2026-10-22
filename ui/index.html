@@ -448,6 +448,8 @@ body.overlay #qam{position:fixed;inset:0;width:100%;transform:none;transition:no
 html.ovfull,html.ovfull body{background:transparent!important}
 body.ovfull:before{content:"";position:fixed;inset:0;background:rgba(0,0,0,.35)}
 body.overlay.ovfull #qam{left:auto;width:min(440px,92vw);box-shadow:-20px 0 60px rgba(0,0,0,.5)}
+/* the overlay window is only the panel's width (Ember's, beside the game): the panel fills it, nothing to dim */
+@media (max-width:520px){body.ovfull:before{display:none}body.overlay.ovfull #qam{left:0;width:100%;box-shadow:none}}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px}
 .chip{padding:8px 12px;border-radius:16px;background:var(--panel2);font-size:13px;font-weight:600}
 .chip.on{background:var(--accent);color:var(--accentInk)}
@@ -5683,6 +5685,10 @@ function gameSlow(d){
   box.insertAdjacentHTML('beforeend', `<div class="hint">${d.firstRun?'The first start of a Windows game sets up Proton and can take a few minutes. It comes to the front by itself when it\'s ready.':'Still starting. It comes to the front by itself when it\'s ready.'}</div><button class="btn" data-f data-k="l-show" data-act="launchShow">Show it now</button>`);
   setFocus($('#launch [data-k="l-show"]'));
 }
+function launchQam(){
+  if(host && !OVERLAY && (HOSTINFO.features||[]).includes('overlayOverLaunch')) return send({type:'overlay', action:'open'});
+  openLayer('qam');
+}
 function launchShow(){ S.launchWaiting=null; hideLaunch(); send({type:'resume'}); }
 function gameReady(id){
   if(S.launchWaiting!==id) return;
@@ -7666,6 +7672,7 @@ function onSysEvent(name, data){
   if(name==='library.art'){ if(!LIB.loading && !OVERLAY) loadLibrary(false); return; }
   if(name==='net'){ S.online=!!data.online; toast(data.online?'Back online':"You're offline. Installed games and your library still work."); return; }
   if(name==='browser'){ BROWSER.s=data; if(S.view==='settings' && S.settingsTab==='system') render(null,true); if(data && data.error && data.state==='idle') toast(data.error); return; }
+  if(name==='overlay.unavailable'){ if(!OVERLAY && S.layers.at(-1)==='launch'){ send({type:'log', text:'overlay: none to show Quick Access in over the starting screen; using this window\'s'}); openLayer('qam'); } return; }
   if(name==='power.menu'){ if(OVERLAY && OV.busy){ OV.wantPower=true; return; } if(S.layers.at(-1)!=='power'){ if(!OVERLAY) closeAll(); openLayer('power'); } return; }
   if(name==='overlay.shown') return overlayShown();
   if(name==='overlay.hidden') return overlayHidden();
@@ -7934,7 +7941,9 @@ function input(k){
   if(top==='launch'){
     // While a game starts: Guide / the Quick Access button open Quick Access over the starting screen (to close
     // the game, change power or the layout); B or A on "Show it now" stops waiting. Everything else waits.
-    if(k==='select'||k==='guide') return openLayer('qam');
+    // In Game Mode that's the overlay, the same Quick Access as over the game (Hearth answers overlay.unavailable
+    // when there's none, and this window's own panel opens instead).
+    if(k==='select'||k==='guide') return launchQam();
     if(k==='b' && S.launchWaiting) return launchShow();
     if(k==='a' && focused && focused.closest('#launch')) return act(focused);
     return;

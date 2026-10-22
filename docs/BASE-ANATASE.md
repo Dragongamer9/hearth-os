@@ -49,6 +49,13 @@ InputPlumber.
   only). HHD shows it over the game and holds the controllers while it's open; its QAM button opens it, Guide still
   opens it through Hearth. Hearth then doesn't make its own WebKit overlay window. In Desktop Mode HHD's QAM button
   opens Mantel's Quick Access. Bazzite doesn't install it and keeps Hearth's own overlay.
+  The page it draws is the running Hearth's (Hearth's hello on the socket: the WebKit app serves its built-in copy
+  over the socket, the Electron window app names its folder), not the copy in the image's Electron package. It is
+  also Quick Access on Hearth's starting screen while a game or Steam loads. When HHD has stopped the app (its
+  window handling hits an error, e.g. while windows it watches come and go), a Guide/QAM press waits for it (3 s,
+  9 s once Hearth has asked HHD to start it through `POST /api/v1/event {"type":"special","event":"overlay"}`)
+  instead of showing the main window's Quick Access, and Hearth asks HHD to start it after 6 s away anyway (at most
+  3 times in 10 minutes). The main window's panel is a last resort, logged `overlay: LAST RESORT`.
 - **Plasma Login Manager.** `nimbus-autologin` writes the `[Autologin]` section of `/etc/plasmalogin.conf` when
   Plasma Login Manager is installed, and `hearth-greeter-pad` recognises its greeter.
 - **Which edition this is** is in `/usr/share/nimbus/image-info.json` (`{"base": "anatase", ...}`), read by
