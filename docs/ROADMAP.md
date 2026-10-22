@@ -97,6 +97,17 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.4.0 (released)
+
+- [x] Hearth Browser is real Firefox: Google sign-in, streaming video (DRM) and uBlock Origin work, Hearth's look, big buttons and an on-screen keyboard in Game Mode (Linux and Windows)
+- [x] Hearth Terminal: Hearth's own terminal with tabs, split view, find, themes and a quick-keys bar for controllers (Linux and Windows)
+- [x] Hearth Disks: drives and their health, format USB drives and SD cards, partitions, Use for games (Linux and Windows)
+- [x] hearthfetch: Hearth's own system summary for the terminal (Linux and Windows)
+- [x] App drawer: a Games tab with your installed games (Desktop Mode and Ember), and a Windows tab with the built-in programs (Ember)
+- [x] Hearth Input (controller layouts): the controller is taken over again after Handheld Daemon or InputPlumber re-make it (it did nothing before), and Bluetooth Xbox / DirectInput pads' right stick works; its activity is in the logs
+- [x] Switch edition and updates without podman: it's unpacked for that run when apt can't install it
+- [x] Logs: Nvidia's numbers only on devices with Nvidia's driver running
+
 ## 0.3.1 (released)
 
 - [x] Switch edition and updates on Peppermint, Ubuntu and CachyOS: podman in the images (bootc needs it); systems without it get it for that run
