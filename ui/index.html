@@ -2755,7 +2755,7 @@ function viewGame(){
     : isActive(g) ? (g.installKind==='nimbus' ? `${APP} is installing this game into your games folder.` : `${SOURCES[g.src]} is installing this game.`)
     : g.note ? `In your ${SOURCES[g.src]} library. ${esc(g.note)}, so ${APP} can't install it.`
     : g.installKind==='nimbus' ? `In your ${SOURCES[g.src]} library. Select Install and ${APP} downloads it${ACC.root?` to <code>${esc(ACC.root)}${LINUX?'/':'\\'}${g.src==='epic'?'Epic':'GOG'}</code>`:''}, no launcher needed.`
-    : g.installKind==='steam' && LINUX && host ? `In your Steam library. Select Install and Steam downloads it in the background${ACC.steamLib?` to <code>${esc(ACC.steamLib)}</code>`:''}, without opening its window. Follow it under Downloads.`
+    : g.installKind==='steam' && host ? `In your Steam library. Select Install and Steam downloads it in the background${ACC.steamLib?` to <code>${esc(ACC.steamLib)}</code>`:''}, without opening its window. Follow it under Downloads.`
     : g.installKind==='store' ? `You've played this on Xbox. Select Install to get it from the Microsoft Store (Game Pass games also install from the Xbox app).`
     : `In your ${SOURCES[g.src]} library. Select Install and ${SOURCES[g.src]} will ask where to put it.`;
   return `<div class="gpage">
@@ -4649,9 +4649,8 @@ function viewSettings(){
   if(t==='sources'){
     const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
     const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
-    body = sgrid(swRow('srcSteam','Steam',(LINUX?'Your Steam games: installed ones, and the rest when your profile\'s game details are public':'Installed and owned games from Steam')+n('steam').replace('game','installed game')+owned)
-      +(LINUX?swRow('steamOnDemand','Start Steam only when needed','Steam starts hidden when you play, install or message a friend, and closes again when nothing needs it. Off: it runs all the time, hidden')
-             :swRow('steamBg','Keep Steam running in the background','Starts Steam hidden so games and installs open without its window'))
+    body = sgrid(swRow('srcSteam','Steam','Your Steam games: installed ones, and the ones you own'+n('steam').replace('game','installed game')+owned)
+      +swRow('steamOnDemand','Start Steam only when needed','Steam starts hidden when you play, install or message a friend, and closes again when nothing needs it. Off: it runs all the time, hidden')
       +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
       +swRow('srcGog','GOG',(LINUX?'Your GOG account and games installed by '+APP+' or Heroic':'Your GOG account and games installed by '+APP+', GOG Galaxy or GOG installers')+n('gog'))
       +swRow('srcXbox',LINUX?'Xbox Cloud Gaming':'Xbox / Game Pass',(LINUX?'Stream Game Pass games (needs Game Pass Ultimate)':'PC games installed with the Xbox app, and games you\'ve played on Xbox')+(LINUX&&host?` · ${LIB.counts.xbox??0} cloud games`:n('xbox')))
@@ -7280,7 +7279,7 @@ function viewStores(){
     const b=(act,label,icon,pri)=>`<button class="sbtn ${pri?'pri':''}" data-f data-k="sa-${a.store}-${act}" data-act="${act}" data-s="${a.store}">${icon?I[icon]:''}${label}</button>`;
     let btns='';
     if(a.store==='steam' && ssign) btns = b('steamShow','Show Steam\'s window','display',true) + b('steamSignCancel','Cancel','x');
-    else if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?'Switch account':'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : '') + (a.signedIn && !a.busy && LINUX ? b('accRefresh','Refresh list','refresh') : ''); }
+    else if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?'Switch account':'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : '') + (a.signedIn && !a.busy ? b('accRefresh','Refresh list','refresh') : ''); }
     else if(signing) btns = `<span class="mini-spin"></span>`;
     else if(expired) btns = b('accSignIn','Sign in again','user',true) + (a.owned||a.installed ? b('accShow','Show games','lib') : '') + b('accSignOut','Sign out','x');
     else if(!a.signedIn) btns = b('accSignIn','Sign in','user',true);
@@ -7304,7 +7303,7 @@ function viewStores(){
     <h2>Installing</h2>
     <div class="rows">
       <button class="row" data-f data-k="sa-folder" data-act="accFolder"><span class="ricon">${I.dl}</span><div class="rt"><b>Install folder for Epic and GOG games</b><small>${esc(ACC.root||'—')}</small></div><div class="rv">Change ›</div></button>
-      ${LINUX && ACC.steamLib ? `<button class="row" data-f data-k="sa-steamlib" data-act="steamLib"><span class="ricon">${I.dl}</span><div class="rt"><b>Steam library for new Steam games</b><small>${esc(ACC.steamLib)}</small></div><div class="rv">Change ›</div></button>` : ''}
+      ${ACC.steamLib ? `<button class="row" data-f data-k="sa-steamlib" data-act="steamLib"><span class="ricon">${I.dl}</span><div class="rt"><b>Steam library for new Steam games</b><small>${esc(ACC.steamLib)}</small></div><div class="rv">Change ›</div></button>` : ''}
       ${note(LINUX ? `${signInViaDesktop()?'Signing in opens in Desktop Mode, where the keyboard and mouse work normally. ':''}You sign in on each store's own page; ${APP} never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, and run with Proton through <b>umu-launcher</b>; ${APP} downloads them from GitHub the first time they're needed. In the sign-in window, use touch or a mouse; B or Esc cancels.`
         : `You sign in on each store's own page; ${APP} never sees your password. Epic and GOG games install without their launchers using the open-source tools <b>legendary</b> and <b>gogdl</b>, which ${APP} downloads from GitHub the first time you sign in. In the sign-in window, the right stick moves the pointer, A clicks, Y opens a keyboard and B cancels.`)}
     </div>`;
@@ -7316,7 +7315,7 @@ async function accSignIn(store){
     if(MOCKEXP[store]){ MOCKEXP[store]=0; toast(`Signed in to ${info.name} (preview)`); return loadAccounts(true); }
     return toast(`Signing in needs the ${APP} app (not the browser preview).`);
   }
-  if(store==='steam' && LINUX) return steamSignIn();
+  if(store==='steam') return steamSignIn();
   if(signInViaDesktop()) return accSignInFromGame(store);
   if(store==='steam'){
     try{ await call('accounts.signIn',{store}); toast('Steam is open. Sign in or switch accounts there, then come back to '+APP+'.'); }catch(e){ toast(e.message); }
@@ -7392,7 +7391,7 @@ function accSignOut(store){
 // reads Steam's files to notice when it's done (steam.signedIn). Desktop Mode stays an option in Game Mode.
 function steamSignIn(){
   const start = async()=>{
-    try{ await call('accounts.signIn',{store:'steam'},20000); toast(`Steam's sign-in window is coming up. ${APP} comes back when you're signed in.`); loadAccounts(true); }
+    try{ await call('accounts.signIn',{store:'steam'},90000); toast(`Steam's sign-in window is coming up. ${APP} comes back when you're signed in.`); loadAccounts(true); }
     catch(e){ toast(e.message); }
   };
   if(!signInViaDesktop()) return start();
