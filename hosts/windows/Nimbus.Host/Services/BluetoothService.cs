@@ -74,7 +74,8 @@ public sealed class BluetoothService : IDisposable
         w.Stopped += (_, _) => ScanDone?.Invoke();
         _watcher = w;
         w.Start();
-        _stopTimer = new System.Threading.Timer(_ => StopScan(), null, Math.Clamp(seconds, 5, 60) * 1000, Timeout.Infinite);
+        // On a timer thread: an error stopping the watcher (it stopped by itself just then) must not end Ember.
+        _stopTimer = new System.Threading.Timer(_ => { try { StopScan(); } catch (Exception ex) { SystemBridge.Log("bt: stop scan: " + ex.Message); } }, null, Math.Clamp(seconds, 5, 60) * 1000, Timeout.Infinite);
     }
 
     public void StopScan()
@@ -117,6 +118,13 @@ public sealed class BluetoothService : IDisposable
 
     private async void OnPairingRequested(DeviceInformationCustomPairing sender, DevicePairingRequestedEventArgs e)
     {
+        // async void on Windows' thread: an error here (the device went away mid-way) would end Ember.
+        try { await AnswerPairingAsync(e); }
+        catch (Exception ex) { SystemBridge.Log("bt: pairing: " + ex.Message); }
+    }
+
+    private async Task AnswerPairingAsync(DevicePairingRequestedEventArgs e)
+    {
         switch (e.PairingKind)
         {
             case DevicePairingKinds.ConfirmOnly:
@@ -131,12 +139,15 @@ public sealed class BluetoothService : IDisposable
             case DevicePairingKinds.ConfirmPinMatch:
                 // Ask the user in the UI; Windows waits on the deferral until we answer.
                 var deferral = e.GetDeferral();
-                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                _pinConfirm = tcs;
-                Pin?.Invoke(e.Pin, true);
-                var answered = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(60)));
-                if (answered == tcs.Task && tcs.Task.Result) e.Accept();
-                deferral.Complete();
+                try
+                {
+                    var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _pinConfirm = tcs;
+                    Pin?.Invoke(e.Pin, true);
+                    var answered = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(60)));
+                    if (answered == tcs.Task && tcs.Task.Result) e.Accept();
+                }
+                finally { deferral.Complete(); }   // always, or Windows keeps waiting
                 break;
         }
     }

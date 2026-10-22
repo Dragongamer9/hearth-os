@@ -102,7 +102,7 @@ public sealed class SystemBridge : IDisposable
         _accountsDebounce.Tick += (_, _) => { _accountsDebounce.Stop(); Event("accounts.changed", new { }); };
         Games.Accounts.Changed += () =>
         {
-            if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => { _accountsDebounce.Stop(); _accountsDebounce.Start(); }));
+            OnUi((MethodInvoker)(() => { _accountsDebounce.Stop(); _accountsDebounce.Start(); }));
         };
         Games.InstallFinished += (id, title, error) => Event("install.done", new { id, title, error });
         _parentalTimer.Tick += (_, _) => ParentalTick();
@@ -120,8 +120,8 @@ public sealed class SystemBridge : IDisposable
             Log($"game exited {g.Id}");
             Event("game.exited", g);
             StopPlayClock();
-            if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(async () => await _gm.PowerRestoreAsync()));
-            if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)BringShellToFront);
+            OnUi((MethodInvoker)(async () => await _gm.PowerRestoreAsync()));
+            OnUi((MethodInvoker)BringShellToFront);
         };
     }
 
@@ -213,7 +213,7 @@ public sealed class SystemBridge : IDisposable
         var json = JsonSerializer.Serialize(msg, Json);
         if (_ui.IsDisposed) return;
         var target = to ?? _postJson;
-        if (_ui.InvokeRequired) _ui.BeginInvoke((MethodInvoker)(() => target(json)));
+        if (_ui.InvokeRequired) OnUi(() => target(json));
         else target(json);
     }
 
@@ -238,7 +238,7 @@ public sealed class SystemBridge : IDisposable
     private void StartPlayClock()
     {
         if (_ui.IsDisposed) return;
-        _ui.BeginInvoke((MethodInvoker)(() =>
+        OnUi((() =>
         {
             _playSince = DateTime.UtcNow; _playWarned = false;
             if (Profiles.Restricted(Profiles.Active)) { _parentalTimer.Start(); ParentalTick(); }
@@ -247,7 +247,7 @@ public sealed class SystemBridge : IDisposable
     private void StopPlayClock()
     {
         if (_ui.IsDisposed) return;
-        _ui.BeginInvoke((MethodInvoker)(() =>
+        OnUi((() =>
         {
             _parentalTimer.Stop();
             if (_playSince is not null) Profiles.AddPlayed(Profiles.Active, SessionMinutes);
@@ -265,7 +265,8 @@ public sealed class SystemBridge : IDisposable
             Event("parental.timeup", new { });
             Event("osd", new { kind = "msg", icon = "clock", text = "Play time's up for today. The game is closing.", ms = 6000 });
             await Task.Delay(5000);
-            await Games.CloseRunningAsync();
+            try { await Games.CloseRunningAsync(); }
+            catch (Exception ex) { Log("parental: couldn't close the game: " + ex.Message); }   // async void: never throw
         }
         else if (left <= 5 && !_playWarned)
         {
@@ -280,20 +281,27 @@ public sealed class SystemBridge : IDisposable
     }
 
     /// <summary>Gets Ember out of the way so the game picked from Quick Resume is in front.</summary>
-    private void MinimizeShell() { if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => { if (_ui.FindForm() is { } f) f.WindowState = FormWindowState.Minimized; })); }
+    private void MinimizeShell() { OnUi((MethodInvoker)(() => { if (_ui.FindForm() is { } f) f.WindowState = FormWindowState.Minimized; })); }
 
     public void Event(string name, object data)
     {
         var json = JsonSerializer.Serialize(new { type = "event", name, data }, Json);
         void Send() { _postJson(json); foreach (var l in _listeners) { try { l(json); } catch { } } }
         if (_ui.IsDisposed) return;
-        if (_ui.InvokeRequired) _ui.BeginInvoke((MethodInvoker)Send); else Send();
+        if (_ui.InvokeRequired) OnUi(Send); else Send();
+    }
+
+    /// <summary>Runs on the window's thread. Events come from background threads (radios, the network, games); while
+    /// Ember closes the window can go away between the check and the call, which would end Ember from that thread.</summary>
+    private void OnUi(MethodInvoker run)
+    {
+        try { if (!_ui.IsDisposed) _ui.BeginInvoke(run); }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
     }
 
     private void StatusChangedSoon()
     {
-        if (_ui.IsDisposed) return;
-        _ui.BeginInvoke((MethodInvoker)(() => { _statusDebounce.Stop(); _statusDebounce.Start(); }));
+        OnUi(() => { _statusDebounce.Stop(); _statusDebounce.Start(); });
     }
 
     private async Task PushStatusAsync()
@@ -386,7 +394,7 @@ public sealed class SystemBridge : IDisposable
                         break;
                     case "reduceMotion":
                         Games.MantelReduceMotion = On(); Mantel.MantelHost.ReduceMotion = On();
-                        if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => mantel?.ApplyReduceMotion()));
+                        OnUi((MethodInvoker)(() => mantel?.ApplyReduceMotion()));
                         break;
                     case "pointerSpeed":
                         if (v.ValueKind != JsonValueKind.Number) throw new ArgumentException("Pointer speed is a number");
@@ -480,7 +488,7 @@ public sealed class SystemBridge : IDisposable
             case "game.putAside":
                 await Games.PutAsideAsync();
                 _ = _gm.PowerRestoreAsync();
-                if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)BringShellToFront);
+                OnUi((MethodInvoker)BringShellToFront);
                 Event("quickResume", Games.QuickState());
                 return Games.QuickState();
             case "game.quickClose":
@@ -506,7 +514,7 @@ public sealed class SystemBridge : IDisposable
                 if (Games.RunningId is not null) throw new InvalidOperationException("Close the game first");
                 Event("profiles.switching", new { name = Profiles.NameOf(id) });
                 await Task.Run(() => Profiles.SwitchTo(id, false));
-                if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => (_ui as ShellForm)?.RestartForProfile()));
+                OnUi((MethodInvoker)(() => (_ui as ShellForm)?.RestartForProfile()));
                 return true;
             }
             case "profiles.addSteam":
@@ -516,7 +524,7 @@ public sealed class SystemBridge : IDisposable
                 var before = Profiles.SteamAccounts().Select(x => x.account.ToLowerInvariant()).ToHashSet();
                 await Task.Run(() => { Profiles.StopSteam(); Profiles.SetSteamAccount(""); });
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("steam://open/main") { UseShellExecute = true });
-                if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => _ui.FindForm()!.WindowState = FormWindowState.Minimized));
+                OnUi((MethodInvoker)(() => _ui.FindForm()!.WindowState = FormWindowState.Minimized));
                 // The account that signs in (within 10 minutes) is linked to the profile.
                 _ = Task.Run(async () =>
                 {
@@ -528,7 +536,7 @@ public sealed class SystemBridge : IDisposable
                         try { Profiles.Update(id, null, null, now, true); } catch { }
                         Log($"profiles: linked Steam account {now}");
                         Event("profiles.changed", new { });
-                        if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)BringShellToFront);
+                        OnUi((MethodInvoker)BringShellToFront);
                         return;
                     }
                 });
@@ -605,7 +613,9 @@ public sealed class SystemBridge : IDisposable
 
             case "update.status": return Updater.Status();
             case "update.check": return await Updater.CheckAsync();
-            case "update.download": _ = Updater.DownloadAsync(); return Updater.Status();
+            case "update.download":
+                _ = Updater.DownloadAsync().ContinueWith(t => { if (t.Exception is { } ex) { Log("update download: " + ex.InnerException?.Message); Event("update", Updater.Status() with { State = "error", Error = "Update download failed: " + ex.InnerException?.Message }); } });
+                return Updater.Status();
             case "update.install":
                 _ui.BeginInvoke((MethodInvoker)(() =>
                 {

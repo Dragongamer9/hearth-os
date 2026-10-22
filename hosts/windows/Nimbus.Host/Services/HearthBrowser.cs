@@ -178,8 +178,12 @@ internal static class HearthBrowser
     }
 
     /// <summary>The newest Firefox from Mozilla, checked, unpacked into HearthBrowser\firefox, with Hearth's parts.</summary>
-    public static async Task InstallAsync()
+    public static async Task InstallAsync(bool onlyIfMissing = false)
     {
+        // One setup at a time across Ember and `Nimbus.exe --browser` (each would delete the other's download).
+        Report("setup", 0.01, "Getting ready");
+        using var held = await SetupLock.TakeAsync();
+        if (onlyIfMissing && File.Exists(OwnExe)) return;   // the other one just set it up
         Directory.CreateDirectory(Root);
         Report("setup", 0.01, "Checking Mozilla's site");
         var version = Environment.GetEnvironmentVariable("HEARTH_FIREFOX_VERSION") is { Length: > 0 } v ? v : await LatestAsync();
@@ -445,7 +449,7 @@ internal static class HearthBrowser
         {
             if (!File.Exists(OwnExe))
             {
-                try { InstallAsync().GetAwaiter().GetResult(); }
+                try { InstallAsync(onlyIfMissing: true).GetAwaiter().GetResult(); }
                 catch (Exception ex) when (!setupOnly && SystemExe() is not null) { Log("setup failed, using the installed Firefox: " + ex.Message); }
             }
             else ApplyParts();
@@ -458,6 +462,38 @@ internal static class HearthBrowser
             Log("failed: " + ex);
             return 1;
         }
+    }
+
+    /// <summary>A named mutex shared by every copy of Ember on this account. A mutex belongs to the thread that took
+    /// it, so it's held on a thread of its own while the (async) setup runs; if that copy of Ember ends, Windows
+    /// frees it.</summary>
+    private sealed class SetupLock : IDisposable
+    {
+        private readonly ManualResetEventSlim _done = new();
+        private SetupLock() { }
+
+        public static Task<SetupLock> TakeAsync()
+        {
+            var l = new SetupLock();
+            var got = new TaskCompletionSource<SetupLock>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var t = new Thread(() =>
+            {
+                try
+                {
+                    using var m = new Mutex(false, @"Local\EmberHearthBrowserSetup");
+                    try { if (!m.WaitOne(TimeSpan.FromMinutes(30))) { got.TrySetException(new TimeoutException("Another Hearth Browser setup is still running.")); return; } }
+                    catch (AbandonedMutexException) { }   // the other copy ended mid-way: ours now
+                    got.TrySetResult(l);
+                    l._done.Wait();
+                    m.ReleaseMutex();
+                }
+                catch (Exception ex) { got.TrySetException(ex); }
+            }) { IsBackground = true, Name = "Hearth Browser setup lock" };
+            t.Start();
+            return got.Task;
+        }
+
+        public void Dispose() => _done.Set();
     }
 
     private static void Log(string line)
