@@ -1,0 +1,9 @@
+[3017] Sandbox: CanCreateUserNamespace() unshare(CLONE_NEWPID): EPERM
+*** You are running in headless mode.
+Missing chrome or resource URL: resource:///modules/CustomizableUI.sys.mjs
+[GFX1-]: RenderCompositorSWGL failed mapping default framebuffer, no dt
+Exiting due to channel error.
+Exiting due to channel error.
+Exiting due to channel error.
+Exiting due to channel error.
+Exiting due to channel error.
