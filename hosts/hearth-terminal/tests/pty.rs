@@ -50,6 +50,8 @@ impl Session {
         Session { pty, rx, raw: String::new(), exited: None }
     }
 
+    // The shell's prompt ("$ ") can land at the start of an output line when the command was typed before the
+    // first prompt appeared, so the checks look at how lines end.
     fn send(&self, s: &str) { self.pty.write(s.as_bytes()).expect("typing works"); }
 
     /// Reads output until `done` says the plain text is complete. Answers ConPTY's cursor question on the way
@@ -94,7 +96,7 @@ fn resize_reaches_the_shell() {
         });
     } else {
         s.send("stty size\r");
-        s.until("`40 100` from stty", |t| t.lines().any(|l| l.trim() == "40 100"));
+        s.until("`40 100` from stty", |t| t.lines().any(|l| l.trim_end().ends_with("40 100") && !l.contains("stty")));
     }
 }
 
@@ -133,7 +135,7 @@ fn utf8_and_colors_pass_through() {
 fn cwd_follows_the_shell() {
     let mut s = Session::start(80, 24);
     s.send("cd /tmp && echo moved''here\r");
-    s.until("the cd", |t| t.lines().any(|l| l.trim_end() == "movedhere"));
+    s.until("the cd", |t| t.lines().any(|l| l.trim_end().ends_with("movedhere") && !l.contains("moved'")));
     let cwd = s.pty.cwd().expect("the shell's folder");
     assert_eq!(cwd.canonicalize().unwrap(), std::path::Path::new("/tmp").canonicalize().unwrap());
 }
