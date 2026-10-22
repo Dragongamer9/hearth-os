@@ -9,8 +9,9 @@ for g in video systemd-journal; do
   getent group "$g" >/dev/null || continue
   getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /(nologin|false)$/ {print $1}' | while read -r u; do
     id -nG "$u" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" && continue
-    # Multi-seat's extra players (hearth-p2..4) don't get to read the system's log.
-    case "$g:$u" in systemd-journal:hearth-p[0-9]*) continue ;; esac
+    # Never multi-seat's extra players (hearth-p2..4): video would let them open every graphics card, the other
+    # players' too (docs/MULTI-SEAT.md, "Supplementary groups"), and the system's log isn't theirs to read.
+    case "$u" in hearth-p[0-9]*) continue ;; esac
     if command -v usermod >/dev/null; then usermod -aG "$g" "$u"; else gpasswd -a "$u" "$g"; fi && echo "hearth-groups: $u added to $g"
   done
 done
