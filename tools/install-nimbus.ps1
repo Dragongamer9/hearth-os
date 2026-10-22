@@ -65,6 +65,17 @@ try {
             Set-ItemProperty 'HKCU:\Environment' -Name Path -Type ExpandString -Value ((@($cur -split ';' | Where-Object { $_ }) + $bin) -join ';')
         }
     }
+    # Hearth Terminal comes in the package: a Start menu entry for it (Ember keeps it up to date from then on).
+    $term = Join-Path $app 'hearth-terminal.exe'
+    if (Test-Path $term) {
+        try {
+            $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'Hearth Terminal.lnk'
+            $sc = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+            $sc.TargetPath = $term; $sc.WorkingDirectory = $env:USERPROFILE; $sc.IconLocation = "$term,0"
+            $sc.Description = 'Hearth Terminal: PowerShell, Command Prompt and WSL'
+            $sc.Save()
+        } catch { Write-Host "No Start menu entry for Hearth Terminal ($($_.Exception.Message))." -ForegroundColor Yellow }
+    }
 
     # Safety net first: an undo script that's easy to run from Task Manager.
     $restore = @"
