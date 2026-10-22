@@ -98,7 +98,7 @@ hearth-os/
   hosts/hearth-core/       Rust: the library, stores, Quick Resume, Handheld Daemon, power, settings bridge
   hosts/hearth-rs/         Rust: the Linux app (Tauri v2), Game Mode inside gamescope
   hosts/linux/             Linux session, Mantel (labwc + Quickshell) and helpers; the Electron app (overlay)
-  hosts/hearth-browser/    Hearth Browser
+  os/system_files/usr/share/hearth-browser/  Hearth Browser: Mozilla's Firefox with Hearth's settings (Linux and Windows)
   hosts/windows/           Ember: .NET 8 + WebView2 host
   hosts/android/           Hearth for Android: Kotlin + WebView host
   os/                      Shared system files, the live ISO (os/live) and the small installer (os/installer)

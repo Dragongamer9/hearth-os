@@ -448,7 +448,17 @@ function renderPage(){
     if(S.signMsg) h += note(S.signMsg, S.signBad?'bad':'good');
   }
   else if(p==='browser'){   // SetBrowser.qml
-    const b=S.browser;
+    const b=S.browser, hb=b&&b.hearth;
+    // Hearth Browser: Firefox with Hearth's settings (Services/HearthBrowser.cs), set up the first time it opens.
+    h += hd('Hearth Browser');
+    if(!hb) h += note('Checking…');
+    else if(hb.state && hb.state!=='idle') h += row({icon:'update', title:'Setting up Hearth Browser…', sub:(hb.line||'Working')+(hb.progress!=null?' · '+Math.round(hb.progress*100)+'%':''), chev:false});
+    else {
+      h += row({icon:'globe', title:'Open Hearth Browser', sub:hb.installed ? 'Built on Firefox'+(hb.version?' '+hb.version:'')+': Google sign-in, Netflix and add-ons work' : 'Built on Firefox. The first time, it downloads Firefox from Mozilla (about 80 MB)', act:'hbOpen'});
+      if(hb.installed && !hb.own) h += row({icon:'update', title:'Give Hearth Browser its own Firefox', sub:'For now it uses the Firefox you installed. Its own copy brings Hearth\'s settings and leaves yours alone', chev:false, act:'hbSetup'});
+      if(hb.error) h += note('Last try didn\'t work: '+hb.error, 'bad');
+    }
+    h += hd('Aloha Browser (optional)');
     h += row({icon:'info', title:'Aloha Browser', sub:!b?'Checking…':!b.installed?'Not installed':(b.default?'Your default browser':'Installed, but another browser opens links')+(b.version?' · version '+b.version:'')});
     if(b && !b.installed) h += row({icon:'update', title:'Install Aloha Browser', sub:'Opens alohabrowser.com, where you get the official Windows installer; then make it the default browser here', act:'uri', data:'data-v="https://alohabrowser.com/"'});
     if(b && b.installed && !b.default) h += row({icon:'check', title:'Make Aloha the default browser', sub:'Windows asks you to pick it in Settings › Default apps', chev:false, act:'uri', data:'data-v="ms-settings:defaultapps"'});
@@ -638,6 +648,8 @@ async function act(el){
     case 'game': return mantel('game');
     case 'pw': return mantel('power', {what:d.what});
     case 'uri': return mantel('uri', {uri:d.v});
+    case 'hbOpen': S.browser=await call('browser.hearth',{action:'open'},60000); return renderPage();
+    case 'hbSetup': S.browser=await call('browser.hearth',{action:'setup'}); return renderPage();
     case 'updCheck': S.upd={...S.upd, state:'checking'}; renderPage(); S.upd=await call('update.check',{},120000); return renderPage();
     case 'updDl': S.upd={...S.upd, state:'downloading'}; renderPage(); S.upd=await call('update.download',{},600000); return renderPage();
     case 'updInstall': return call('update.install');
@@ -790,6 +802,7 @@ if(host) host.addEventListener('message', e => {
   else if(m.name==='bt.scanDone'){ S.btScan=false; if(S.page==='bluetooth') renderPage(); }
   else if(m.name==='bt.pin'){ S.btMsg = d.confirm?`Check the device shows ${d.pin}`:`Type ${d.pin} on the device`; if(S.page==='bluetooth') renderPage(); if(d.confirm) call('bt.confirmPin',{accept:true}).catch(()=>{}); }
   else if(m.name==='update'){ S.upd=d; if(['updates','about'].includes(S.page)) renderPage(); }
+  else if(m.name==='browser'){ S.browser=d; if(S.page==='browser') renderPage(); }
   else if(m.name==='profile'){ if(d&&d.accent) setAccent(d.accent); }
   else if(m.name==='mantel.settingsPage'){ if(d&&d.page&&PAGES.some(p=>p[0]===d.page)) go(d.page); }
 });
@@ -808,7 +821,8 @@ const MOCK = {
   'power.get':()=>({present:true,pct:82,charging:false,mode:'balanced',secondsLeft:12000}),
   'pad.status':()=>({connected:1,mouseMode:'steam',mouseOn:false}),
   'overlay.settings':()=>({gameBarButton:false}),
-  'browser.status':()=>({installed:false,default:false}),
+  'browser.status':()=>({installed:false,default:false,hearth:{available:true,installed:true,own:true,version:'150.0',state:'idle'}}),
+  'browser.hearth':()=>({installed:false,default:false,hearth:{available:true,installed:true,own:true,version:'150.0',state:'idle'}}),
   'update.status':()=>({current:'0.0.31',state:'upToDate',autoCheck:true}),
   'keyboard.get':()=>({layouts:[{tip:'0409:00000409',name:'English (United States) · US'},{tip:'0407:00000407',name:'German (Germany) · German'}],switch:'alt_shift',delay:500,rate:30}),
   'keyboard.layouts':()=>({layouts:[{tip:'040C:0000040C',name:'French (France) · French'},{tip:'0410:00000410',name:'Italian (Italy) · Italian'},{tip:'0409:00020409',name:'English (United States) · United States-International'}]}),

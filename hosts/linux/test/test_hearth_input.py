@@ -61,7 +61,7 @@ def run(e, t0, t1, step=0.01):
 
 class Layouts(unittest.TestCase):
     def test_every_template_is_valid(self):
-        self.assertEqual(set(TEMPLATES), {'shooter', 'pointclick', 'retro', 'mouse', 'rts'})
+        self.assertEqual(set(TEMPLATES), {'shooter', 'pointclick', 'retro', 'mouse', 'rts', 'browser'})
         for tid, lay in TEMPLATES.items():
             v = hi.validate_layout(lay)
             self.assertEqual(v['base'], tid)

@@ -32,6 +32,15 @@
     <EmbeddedResource Include="..\..\linux\desktop\shell\input-layouts.json" LogicalName="input-layouts.json" />
   </ItemGroup>
 
+  <!-- Hearth Browser's parts for Firefox (policies, start-up script, look, start page), shared with Hearth OS:
+       copied next to the exe as hearth-browser/ (Services/HearthBrowser.cs puts them over Ember's Firefox) -->
+  <ItemGroup>
+    <Content Include="..\..\..\os\system_files\usr\share\hearth-browser\firefox\**\*.*" LinkBase="hearth-browser">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
   <!-- Copy the web UI next to the exe as wwwroot/ -->
   <ItemGroup>
     <Content Include="..\..\..\ui\**\*.*" LinkBase="wwwroot">
