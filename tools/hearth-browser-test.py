@@ -256,6 +256,18 @@ def run_mode(ff, out, mode, extras, port):
                 steps.append(m.js(CHROME_KEY, 'Enter', 'Enter', 13, False))
             else:
                 steps.append(m.js(CHROME_KEY, *key))
+        diag = m.js('''
+          const { HearthBrowser } = ChromeUtils.importESModule("resource://hearth/hearth.sys.mjs");
+          const kb = HearthBrowser.keyboardOf(window);
+          const before = kb.heard.length;
+          document.getElementById("hearth-osk-cmd-down").doCommand();
+          await new Promise(r => setTimeout(r, 300));
+          return { osk: document.querySelectorAll("#hearth-osk").length, keysets: document.querySelectorAll("#hearth-osk-keys").length,
+                   cmds: document.querySelectorAll("[id^=hearth-osk-cmd]").length,
+                   keys: [...document.querySelectorAll("#hearth-osk-keys key")].map(k => [k.getAttribute("keycode") || k.getAttribute("key"), k.getAttribute("modifiers"), k.getAttribute("disabled"), k.getAttribute("command"), k.getAttribute("reserved")]),
+                   heardByDoCommand: kb.heard.length - before, r: kb.r, c: kb.c, same: kb.box === document.getElementById("hearth-osk") };
+        ''')
+        print('::notice title=keyboard diag %s::%s' % (mode, json.dumps(diag)), flush=True)
         report['keys'] = steps
         print('keys:', steps, flush=True)
         m.context('content')
