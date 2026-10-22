@@ -1,0 +1,71 @@
+# hearthfetch (hosts/hearthfetch): tests it, builds it and runs it on Linux and Windows, printing what it shows in
+# the log (plain, in colour, and as JSON). It reaches Hearth OS through the base-*.yml image builds and Ember
+# through release.yml's windows job; this only checks it.
+name: hearthfetch
+
+on:
+  push:
+    branches: [main, linux-host, apps-fetch]
+    paths: ['hosts/hearthfetch/**', '.github/workflows/hearthfetch.yml']
+  pull_request:
+    paths: ['hosts/hearthfetch/**']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: hosts/hearthfetch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearthfetch
+      - name: Test
+        run: cargo test
+      - name: Build
+        run: cargo build --release
+      - name: Run it
+        run: |
+          set -e
+          exe=target/release/hearthfetch
+          [ -f "$exe.exe" ] && exe="$exe.exe"
+          ls -l "$exe"
+          echo "=== hearthfetch (the log isn't a terminal: plain)"
+          "$exe" --time
+          echo "=== hearthfetch --color always"
+          "$exe" --color always
+          echo "=== hearthfetch --color 256 --no-logo"
+          "$exe" --color 256 --no-logo
+          echo "=== hearthfetch --json"
+          "$exe" --json | tee out.json
+          PY=$(command -v python3 || command -v python); [ "$RUNNER_OS" = Windows ] && PY=python
+          "$PY" -c "import json; d=json.load(open('out.json')); assert d.get('os') and d.get('memory') and d.get('cpu'), d; print('JSON ok:', d['os'])"
+          "$exe" --version
+          "$exe" --help >/dev/null
+          if "$exe" --nonsense 2>/dev/null; then echo "::error::an unknown option should fail"; exit 1; fi
+          # Fast: well under 100 ms (best of five, so a cold disk cache doesn't count).
+          best=999999
+          for i in 1 2 3 4 5; do
+            ms=$("$exe" --time 2>&1 >/dev/null | grep -o '[0-9]*')
+            [ "$ms" -lt "$best" ] && best=$ms
+          done
+          echo "::notice title=hearthfetch on ${{ matrix.os }}::best of five runs: ${best} ms"
+          [ "$best" -lt 100 ] || { echo "::error::hearthfetch took ${best} ms"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearthfetch-${{ matrix.os }}
+          path: |
+            hosts/hearthfetch/target/release/hearthfetch
+            hosts/hearthfetch/target/release/hearthfetch.exe
+          if-no-files-found: ignore
