@@ -139,3 +139,16 @@ fn cwd_follows_the_shell() {
     let cwd = s.pty.cwd().expect("the shell's folder");
     assert_eq!(cwd.canonicalize().unwrap(), std::path::Path::new("/tmp").canonicalize().unwrap());
 }
+
+#[cfg(unix)]
+#[test]
+fn typing_never_waits_for_a_busy_program() {
+    let s = Session::start(80, 24);
+    s.send("sleep 5\r");
+    // Far more than the terminal holds while nothing reads it: this used to wait for `sleep` (the window froze).
+    let started = Instant::now();
+    for _ in 0..64 { s.pty.write(&[b'#'; 4096]).expect("typing works"); }
+    assert!(started.elapsed() < Duration::from_secs(2), "typing waited {:?}", started.elapsed());
+    s.pty.write(b"\x03").expect("typing works");
+    let _ = s.rx.recv_timeout(Duration::from_millis(100));
+}

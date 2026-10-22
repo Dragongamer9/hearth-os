@@ -124,8 +124,11 @@ pub fn parse_gamescope_modes(text: &str) -> Vec<Mode> {
 fn gamescope_external_modes() -> Vec<Mode> {
     if !crate::gamescope::inside() { return vec![]; }
     if crate::gamescope::cardinals("GAMESCOPE_DISPLAY_IS_EXTERNAL", None).first().copied() != Some(1) { return vec![]; }
-    parse_gamescope_modes(&crate::gamescope::root_str("GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL"))
+    pickable_external(parse_gamescope_modes(&crate::gamescope::root_str("GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL")))
 }
+/// gamescope lists every mode the screen has, but never starts with a 4096 × 2160 one (its blocklist: many TVs list
+/// them and can't really show them); picked, Game Mode came back at another mode while Settings showed that one.
+pub fn pickable_external(modes: Vec<Mode>) -> Vec<Mode> { modes.into_iter().filter(|m| (m.w, m.h) != (4096, 2160)).collect() }
 
 /// NIMBUS_GAMESCOPE_ARGS in session.conf: read it, or set our own options in it (keeping everything else).
 pub fn gamescope_args_text(text: &str, set: Option<&str>) -> (String, String) {
@@ -147,6 +150,10 @@ fn gamescope_args(set: Option<&str>) -> String {
     // All at once: the session reads this file when Game Mode starts, right after a change restarts it.
     if set.is_some() { let _ = crate::paths::write_atomic(&file, out.as_bytes()); }
     args
+}
+/// The -W/-H options in gamescope's options, as they are ("-W 1280 -H 800"), without -r.
+pub fn size_flags(args: &str) -> String {
+    regex::Regex::new(r"(^|\s)-(W|H)\s+\S+").unwrap().find_iter(args).map(|m| m.as_str().trim().to_string()).collect::<Vec<_>>().join(" ")
 }
 fn flag(args: &str, f: &str) -> Option<u32> { regex::Regex::new(&format!(r"-{f}\s+(\d+)")).unwrap().captures(args).and_then(|c| c[1].parse().ok()) }
 
@@ -230,7 +237,9 @@ pub fn set_mode(w: u32, h: u32, rate: f64, zoom: u32) -> Result<bool, String> {
             if external.is_empty() {
                 // The built-in screen: the refresh rate changes on the spot, as on SteamOS. No restart, no -r.
                 crate::gamescope::set_root("GAMESCOPE_DYNAMIC_REFRESH", m.rate.round() as u64)?;
-                gamescope_args(Some(""));
+                // Only -r goes: a resolution set in session.conf (-W/-H) stays.
+                let args = gamescope_args(None);
+                gamescope_args(Some(&size_flags(&args)));
                 return Ok(false);
             }
             if !external.iter().any(|x| x.w == m.w && x.h == m.h && x.rate.round() == m.rate.round()) {
@@ -251,6 +260,9 @@ fn pending_file() -> std::path::PathBuf { crate::paths::config_dir().join("displ
 
 /// A new Game Mode mode is on trial: the options before it, to go back to.
 fn pending_save(before: &str) {
+    // A second change while one is still on trial goes back to the options before both (not to the one on trial,
+    // which may be the mode the screen can't show).
+    if pending_before().is_some() { return; }
     let _ = std::fs::write(pending_file(), json!({"before": before, "at": crate::library::now_ms()}).to_string());
 }
 
@@ -261,8 +273,11 @@ pub fn pending() -> bool { pending_file().exists() }
 pub fn keep() { let _ = std::fs::remove_file(pending_file()); }
 
 /// Back to the options before the trial. Returns true when there was one (Game Mode then restarts).
+fn pending_before() -> Option<String> {
+    std::fs::read(pending_file()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v["before"].as_str().map(str::to_string))
+}
 pub fn revert() -> bool {
-    let Some(before) = std::fs::read(pending_file()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v["before"].as_str().map(str::to_string)) else { return false };
+    let Some(before) = pending_before() else { return false };
     let file = crate::admin::session_conf();
     let text = std::fs::read_to_string(&file).unwrap_or_default();
     // Put back exactly what was there (our own options removed first, then the old ones of them added back).
@@ -277,7 +292,9 @@ pub fn revert() -> bool {
 /// Started with Game Mode: a mode on trial that isn't kept within 20 seconds is switched back (`restart` then
 /// restarts Game Mode). A screen that can't show the mode stays black, and this brings it back by itself.
 pub fn watch_pending(restart: std::sync::Arc<dyn Fn() + Send + Sync>) {
-    if !pending() { return; }
+    // Only in Game Mode: a Hearth window in Desktop Mode switching it back would end that window and send the
+    // session to Game Mode. The trial waits for Game Mode's next start.
+    if !pending() || !crate::gamescope::inside() { return; }
     std::thread::spawn(move || {
         for _ in 0..40 { std::thread::sleep(std::time::Duration::from_millis(500)); if !pending() { return; } }
         if revert() { restart(); }
@@ -342,5 +359,17 @@ mod tests {
         assert!(text.starts_with("NIMBUS_START=game\n") && text.contains(&format!("\"{args}\"")));
         let (_, t2) = gamescope_args_text("A=1", Some("-W 800 -H 600 -r 60"));
         assert_eq!(t2, "A=1\nNIMBUS_GAMESCOPE_ARGS=\"-W 800 -H 600 -r 60\"\n");
+    }
+    #[test]
+    fn refresh_change_keeps_the_size() {
+        assert_eq!(size_flags("--adaptive-sync -W 1280 -H 800 -r 60"), "-W 1280 -H 800");
+        assert_eq!(size_flags("-r 90"), "");
+        let (args, _) = gamescope_args_text("NIMBUS_GAMESCOPE_ARGS=\"--adaptive-sync -W 1280 -H 800 -r 60\"\n", Some(&size_flags("--adaptive-sync -W 1280 -H 800 -r 60")));
+        assert_eq!(args, "--adaptive-sync -W 1280 -H 800");
+    }
+    #[test]
+    fn blocklisted_modes_left_out() {
+        let m = pickable_external(parse_gamescope_modes("4096x2160@60 3840x2160@60 4096x2160@30 1920x1080@120"));
+        assert_eq!(m.iter().map(|m| (m.w, m.h)).collect::<Vec<_>>(), vec![(3840, 2160), (1920, 1080)]);
     }
 }
