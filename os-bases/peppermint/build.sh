@@ -447,9 +447,13 @@ rm -f /tmp/beacon_amd64.deb
 # Optional: without it Hearth says streaming isn't available.
 sunshine_deb() {
   local want url
+  # LizardByte names its Debian packages by codename (sunshine_<version>-1+debiantrixie_amd64.deb: the release field is
+  # "1+<distro><docker tag>", and Debian's tags are codenames), Ubuntu's by number (+ubuntu26.04). Only "debian13" was
+  # looked for, so Peppermint never found its package.
   want="$(. /etc/os-release && echo "${ID}${VERSION_ID}")"
+  want2="$(. /etc/os-release && if [ -n "${VERSION_CODENAME:-}" ]; then echo "${ID}${VERSION_CODENAME}"; fi)"
   url="$(curl -fsSL --retry 3 https://api.github.com/repos/LizardByte/Sunshine/releases/latest \
-    | python3 -c 'import json, re, sys; w = re.escape(sys.argv[1]); print(next((a["browser_download_url"] for a in json.load(sys.stdin).get("assets", []) if re.search(w + r"_amd64\.deb$", a["name"]) or re.search(w + r".*amd64\.deb$", a["name"].replace("-", ""))), ""))' "$want")" || return 1
+    | python3 -c 'import json, re, sys; ws = [re.escape(w) for w in sys.argv[1:] if w]; assets = json.load(sys.stdin).get("assets", []); print(next((a["browser_download_url"] for w in ws for a in assets if re.search(w + r"_amd64\.deb$", a["name"]) or re.search(w + r".*amd64\.deb$", a["name"].replace("-", ""))), ""))' "$want" "$want2")" || return 1
   [ -n "$url" ] || return 1
   curl -fsSL --retry 3 -o /tmp/sunshine.deb "$url" && "${APT[@]}" /tmp/sunshine.deb
 }
