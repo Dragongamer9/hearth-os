@@ -81,7 +81,8 @@ SetPage {
         countdown = 0;
         const m = out.modes.find(x => x.current) || { width: cur.width, height: cur.height, refresh: cur.refresh };
         const line = `wlr-randr --output '${out.name}' --mode '${modeArg(m.width, m.height, m.refresh)}' --scale ${out.scale}`;
-        Quickshell.execDetached(["sh", "-c", 'mkdir -p "$HOME/.config/nimbus" && printf \'#!/bin/sh\\n# Written by Hearth Settings › Display\\n%s\\n\' "$1" > "$HOME/.config/nimbus/display.sh" && chmod +x "$HOME/.config/nimbus/display.sh"', "sh", line]);
+        // The other screens' lines are kept: Keep on one screen used to forget what was chosen for the others.
+        Quickshell.execDetached(["sh", "-c", 'f="$HOME/.config/nimbus/display.sh"; mkdir -p "$HOME/.config/nimbus" && { printf \'#!/bin/sh\\n# Written by Hearth Settings › Display\\n\'; [ -f "$f" ] && grep "^wlr-randr " "$f" | grep -vF -- "--output \'$2\' "; printf \'%s\\n\' "$1"; } > "$f.tmp" && chmod +x "$f.tmp" && mv -f "$f.tmp" "$f"', "sh", line, out.name]);
     }
     function revert() {
         countdown = 0;
