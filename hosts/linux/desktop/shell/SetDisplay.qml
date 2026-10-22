@@ -56,8 +56,10 @@ SetPage {
     }
     function modeArg(w, h, r) { return `${w}x${h}@${r.toFixed ? r.toFixed(3) : r}Hz`; }
     function apply(w, h, r, scale) {
-        if (!out) return;
-        prev = { mode: modeArg(cur.width, cur.height, cur.refresh), scale: out.scale };
+        if (!out || !cur) return;
+        // A second change while one is waiting for Keep goes back to what was there before both, not to the
+        // one waiting (it may be the mode the screen can't show).
+        if (countdown === 0) prev = { mode: modeArg(cur.width, cur.height, cur.refresh), scale: out.scale };
         const args = ["wlr-randr", "--output", out.name];
         if (w) {
             // The screen's exact rate (e.g. 143.981), not the rounded one shown on the button: wlr-randr only

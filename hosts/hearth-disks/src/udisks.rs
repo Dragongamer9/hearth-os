@@ -25,6 +25,8 @@ pub struct Ctx<'a> {
     pub steam: &'a dyn Fn(&[String]) -> bool,
     /// (used, free) bytes of what's mounted at a place.
     pub usage: &'a dyn Fn(&str) -> Option<(u64, u64)>,
+    /// The devices a device is made from, by kernel name ("dm-1" → ["nvme0n1p3"]: /sys/class/block/*/slaves).
+    pub slaves: &'a dyn Fn(&str) -> Vec<String>,
 }
 
 type Ifaces<'a> = &'a serde_json::Map<String, Value>;
@@ -44,6 +46,8 @@ fn obj_path(v: Option<&Value>, k: &str) -> Option<String> { Some(s(v, k)).filter
 struct Blk {
     path: String,
     device: String,
+    /// The kernel's name for it ("nvme0n1p3", "dm-0").
+    kname: String,
     size: u64,
     drive: Option<String>,
     fs: String,
@@ -74,6 +78,7 @@ fn blocks(objs: &serde_json::Map<String, Value>) -> BTreeMap<String, Blk> {
         out.insert(path.clone(), Blk {
             path: path.clone(),
             device: dev,
+            kname: s(Some(bl), "Device").rsplit('/').next().unwrap_or("").to_string(),
             size: u(Some(bl), "Size"),
             drive: obj_path(Some(bl), "Drive"),
             fs: s(Some(bl), "IdType"),
@@ -197,6 +202,16 @@ pub fn parse(objs: &Value, ctx: &Ctx) -> Vec<Drive> {
         }
     }
     let is_root = |b: &Blk| root.as_ref().map(|r| !r.is_empty() && *r == b.uuid).unwrap_or(false);
+    // Partitions the running system is built on through LVM or RAID (/ on a logical volume, maybe inside LUKS):
+    // nothing on the partition itself says so, so they're found from the system's own devices downwards.
+    let mut held = std::collections::HashSet::new();
+    let mut todo: Vec<String> = bl.values()
+        .filter(|b| b.part.is_none() && (is_root(b) || b.swap_active || b.mounts.iter().any(|m| is_system_mount(m))))
+        .map(|b| b.kname.clone()).filter(|k| !k.is_empty()).collect();
+    while let Some(k) = todo.pop() {
+        if held.len() > 256 { break; }
+        for sl in (ctx.slaves)(&k) { if held.insert(sl.clone()) { todo.push(sl); } }
+    }
 
     let mut drives = vec![];
     // Real drives.
@@ -216,7 +231,7 @@ pub fn parse(objs: &Value, ctx: &Ctx) -> Vec<Drive> {
             health: health(o), ..Default::default()
         };
         if drive.size == 0 && kind != "optical" { continue; }   // an empty card reader
-        drive.partitions = partitions_of(&bl, whole, &drive, &is_root, ctx);
+        drive.partitions = partitions_of(&bl, whole, &drive, &is_root, &held, ctx);
         model::finish(&mut drive);
         drives.push(drive);
     }
@@ -229,7 +244,7 @@ pub fn parse(objs: &Value, ctx: &Ctx) -> Vec<Drive> {
             table: b.table.clone().unwrap_or_default(), health: Health { state: "unknown".into(), text: "A file on another drive".into(), ..Default::default() },
             ..Default::default()
         };
-        drive.partitions = partitions_of(&bl, b, &drive, &is_root, ctx);
+        drive.partitions = partitions_of(&bl, b, &drive, &is_root, &held, ctx);
         model::finish(&mut drive);
         drives.push(drive);
     }
@@ -238,13 +253,13 @@ pub fn parse(objs: &Value, ctx: &Ctx) -> Vec<Drive> {
     drives
 }
 
-fn partitions_of(bl: &BTreeMap<String, Blk>, whole: &Blk, _drive: &Drive, is_root: &dyn Fn(&Blk) -> bool, ctx: &Ctx) -> Vec<Partition> {
+fn partitions_of(bl: &BTreeMap<String, Blk>, whole: &Blk, _drive: &Drive, is_root: &dyn Fn(&Blk) -> bool, held: &std::collections::HashSet<String>, ctx: &Ctx) -> Vec<Partition> {
     let mut members: Vec<&Blk> = bl.values().filter(|b| b.part.as_ref().map(|p| p.0 == whole.path).unwrap_or(false)).collect();
     // A file system on the whole drive (no partition table: many USB sticks): one partition that is the drive.
     if members.is_empty() && whole.table.is_none() && (whole.has_fs || !whole.fs.is_empty()) { members.push(whole); }
     members.sort_by_key(|b| b.part.as_ref().map(|p| p.2).unwrap_or(0));
     let has_msr = members.iter().any(|b| b.part.as_ref().map(|p| p.4 == model::MSR_TYPE).unwrap_or(false));
-    let on_system_drive = members.iter().any(|b| is_root(b) || b.mounts.iter().any(|m| is_system_mount(m)));
+    let on_system_drive = members.iter().any(|b| is_root(b) || held.contains(&b.kname) || b.mounts.iter().any(|m| is_system_mount(m)));
     members.iter().map(|b| {
         let (number, offset, size, ptype, pname, container) = match &b.part {
             Some(p) => (p.1, p.2, p.3, p.4.clone(), p.5.clone(), p.6),
@@ -256,7 +271,7 @@ fn partitions_of(bl: &BTreeMap<String, Blk>, whole: &Blk, _drive: &Drive, is_roo
             drive_has_msr: has_msr, steam, on_system_drive, host: "linux" };
         let (mut kind, mut what) = classify(&facts);
         if container { kind = "extended"; what = "Extended (holds more partitions)".into(); }
-        let system = root || b.swap_active || b.mounts.iter().any(|m| is_system_mount(m));
+        let system = root || b.swap_active || held.contains(&b.kname) || b.mounts.iter().any(|m| is_system_mount(m));
         let (used, free) = match b.mounts.first().and_then(|m| (ctx.usage)(m)) { Some((u, f)) => (Some(u), Some(f)), None => (None, None) };
         Partition {
             id: b.path.clone(), device: b.device.clone(), number, offset, size: if size > 0 { size } else { b.size },
@@ -359,7 +374,7 @@ pub mod tests {
     pub fn ctx_usage(m: &str) -> Option<(u64, u64)> { if m == "/run/media/sam/SWITCH" { Some((10 << 30, 50 << 30)) } else { None } }
 
     fn drives() -> Vec<Drive> {
-        let ctx = Ctx { uid: 1000, steam: &ctx_steam, usage: &ctx_usage };
+        let ctx = Ctx { uid: 1000, steam: &ctx_steam, usage: &ctx_usage, slaves: &|_: &str| vec![] };
         let mut d = parse(&sample(), &ctx);
         crate::safety::annotate(&mut d, "linux");
         d
@@ -456,12 +471,41 @@ pub mod tests {
             "/b/dm0": {BLOCK: {"Device": "/dev/dm-0", "Size": 499 * gib, "Drive": "/", "IdType": "btrfs", "IdUsage": "filesystem", "IdUUID": "root", "CryptoBackingDevice": "/b/sda1"},
                        FILESYSTEM: {"MountPoints": ["/", "/home"]}}
         });
-        let ctx = Ctx { uid: 1000, steam: &|_: &[String]| false, usage: &|_: &str| None };
+        let ctx = Ctx { uid: 1000, steam: &|_: &[String]| false, usage: &|_: &str| None, slaves: &|_: &str| vec![] };
         let d = parse(&v, &ctx);
         assert_eq!(d.len(), 1);
         assert_eq!((d[0].kind.as_str(), d[0].connection.as_str()), ("hdd", "Inside, hard drive"));
         assert!(d[0].system);
         assert_eq!(d[0].partitions[0].kind, "hearth");
         assert!(d[0].partitions[0].system);
+    }
+
+    #[test]
+    fn root_on_lvm_inside_luks() {
+        // / on a logical volume, in LUKS, on sda2: sda2 is the running system though nothing on it says so.
+        let gib: u64 = 1 << 30;
+        let v = json!({
+            "/d": {DRIVE: {"Model": "WD Blue", "Size": 500 * gib, "RotationRate": 0}},
+            "/b/sda": {BLOCK: {"Device": "/dev/sda", "Size": 500 * gib, "Drive": "/d"}, TABLE: {"Type": "gpt"}},
+            "/b/sda1": {BLOCK: {"Device": "/dev/sda1", "Size": 100 * gib, "Drive": "/d", "IdType": "ext4", "IdUsage": "filesystem", "IdUUID": "data"},
+                        PARTITION: {"Table": "/b/sda", "Number": 1, "Offset": 1u64 << 20, "Size": 100 * gib, "Type": model::LINUX_TYPE}, FILESYSTEM: {"MountPoints": []}},
+            "/b/sda2": {BLOCK: {"Device": "/dev/sda2", "Size": 399 * gib, "Drive": "/d", "IdType": "crypto_LUKS", "IdUsage": "crypto", "IdUUID": "luks"},
+                        PARTITION: {"Table": "/b/sda", "Number": 2, "Offset": 101 * gib, "Size": 399 * gib, "Type": model::LINUX_TYPE},
+                        ENCRYPTED: {"CleartextDevice": "/b/dm0"}},
+            "/b/dm0": {BLOCK: {"Device": "/dev/dm-0", "PreferredDevice": "/dev/mapper/luks-x", "Size": 399 * gib, "Drive": "/", "IdType": "LVM2_member", "IdUsage": "raid", "CryptoBackingDevice": "/b/sda2"}},
+            "/b/dm1": {BLOCK: {"Device": "/dev/dm-1", "PreferredDevice": "/dev/vg/root", "Size": 300 * gib, "Drive": "/", "IdType": "ext4", "IdUsage": "filesystem", "IdUUID": "root"},
+                       FILESYSTEM: {"MountPoints": ["/"]}}
+        });
+        let slaves = |k: &str| match k { "dm-1" => vec!["dm-0".to_string()], "dm-0" => vec!["sda2".to_string()], _ => vec![] };
+        let ctx = Ctx { uid: 1000, steam: &|_: &[String]| false, usage: &|_: &str| None, slaves: &slaves };
+        let mut d = parse(&v, &ctx);
+        crate::safety::annotate(&mut d, "linux");
+        assert!(d[0].system);
+        let sda2 = d[0].partitions.iter().find(|p| p.device == "/dev/sda2").unwrap();
+        assert!(sda2.system);
+        for a in ["format", "delete"] { assert!(crate::safety::plan(a, &d[0], Some(sda2), "linux").refuse.is_some(), "{a}"); }
+        let sda1 = d[0].partitions.iter().find(|p| p.device == "/dev/sda1").unwrap();
+        assert!(!sda1.system);
+        assert!(crate::safety::plan("format_drive", &d[0], None, "linux").refuse.is_some());
     }
 }
