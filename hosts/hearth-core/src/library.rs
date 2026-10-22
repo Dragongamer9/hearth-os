@@ -745,7 +745,7 @@ impl Library {
             }
         }
         if r.started_at > 0 {
-            let paused = r.paused_ms + if r.paused_at > 0 { now_ms() - r.paused_at } else { 0 };
+            let paused = r.paused_ms.saturating_add(if r.paused_at > 0 { now_ms().saturating_sub(r.paused_at) } else { 0 });
             let minutes = ((now_ms().saturating_sub(r.started_at).saturating_sub(paused)) as f64 / 60000.0).round() as u64;
             let id = r.id.clone();
             let _ = self.store.update(|d| {
@@ -904,7 +904,9 @@ impl Library {
         let pids = self.game_pids();
         let Some(r) = self.running.as_mut().filter(|r| r.paused_at > 0) else { return false };
         crate::procs::signal(&pids, "CONT");
-        r.paused_ms += now_ms() - r.paused_at;
+        // The clock set back while paused (time sync after waking) wrapped this to millions of years: the session's play
+        // time was lost.
+        r.paused_ms = r.paused_ms.saturating_add(now_ms().saturating_sub(r.paused_at));
         r.paused_at = 0;
         true
     }
@@ -937,6 +939,16 @@ mod tests {
         std::thread::spawn(move || { let d = lib.downloads(); let _ = tx.send(d); });
         let d = rx.recv_timeout(std::time::Duration::from_secs(10)).expect("downloads() waited on itself");
         assert!(d.to_string().contains("gog:1"));
+    }
+    #[test]
+    fn a_clock_set_back_while_paused_doesnt_lose_the_play_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut lib = Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf());
+        // Paused "an hour from now": the clock went back an hour since (a time sync after waking).
+        lib.running = Some(Running { id: "manual:x".into(), track: Default::default(), launched_at: 1, started_at: 1, gone_since: 0, paused_at: now_ms() + 3_600_000,
+                                     paused_ms: 5, closing: false, cloud: true, frozen_at: 0, app_id: 0 });
+        assert!(lib.resume());
+        assert_eq!(lib.running.as_ref().unwrap().paused_ms, 5);
     }
     #[test]
     fn local_pictures_get_hearths_address() {

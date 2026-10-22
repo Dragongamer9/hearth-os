@@ -8,7 +8,8 @@ use std::path::Path;
 const DAY_MS: u64 = 86_400_000;
 
 fn cache_file() -> std::path::PathBuf { crate::paths::data_dir().join("cache/game-info.json") }
-fn load() -> Value { std::fs::read(cache_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(json!({})) }
+/// Always an object (adding to anything else, from a damaged file, panicked).
+fn load() -> Value { std::fs::read(cache_file()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).filter(|v| v.is_object()).unwrap_or(json!({})) }
 fn keep(k: &str, mut v: Value) -> Value {
     let mut c = load();
     v["at"] = json!(crate::library::now_ms());
@@ -16,7 +17,13 @@ fn keep(k: &str, mut v: Value) -> Value {
     let _ = crate::paths::write_atomic(&cache_file(), c.to_string().as_bytes());
     v
 }
-fn fresh(k: &str, days: u64) -> Option<Value> { let e = load()[k].clone(); if e.is_object() && crate::library::now_ms() - e["at"].as_u64().unwrap_or(0) < days * DAY_MS { Some(e) } else { None } }
+fn fresh(k: &str, days: u64) -> Option<Value> { let e = load()[k].clone(); if is_fresh(&e, crate::library::now_ms(), days) { Some(e) } else { None } }
+/// Kept less than `days` ago. One kept "in the future" (the clock was set back since, as on a handheld whose clock
+/// starts wrong) counts as old: the subtraction overflowed there.
+fn is_fresh(e: &Value, now: u64, days: u64) -> bool {
+    let at = e["at"].as_u64().unwrap_or(0);
+    e.is_object() && at <= now && now - at < days * DAY_MS
+}
 
 fn get_json(url: &str) -> Result<(u16, Value), String> {
     let out = crate::system::run("curl", &["-s", "-m", "10", "-A", "Hearth", "-w", "\n%{http_code}", url])?;
@@ -110,5 +117,13 @@ mod tests {
     fn names_match_across_stores() {
         assert_eq!(norm("The Witcher® 3: Wild Hunt – Game of the Year Edition"), "witcher 3 wild hunt");
         assert_eq!(norm("DOOM (2016)"), "doom 2016");
+    }
+    #[test]
+    fn cached_answers_from_a_clock_set_back_are_old() {
+        let now = 100 * DAY_MS;
+        assert!(is_fresh(&json!({"at": now - DAY_MS}), now, 3));
+        assert!(!is_fresh(&json!({"at": now - 4 * DAY_MS}), now, 3));
+        assert!(!is_fresh(&json!({"at": now + 1000}), now, 3));
+        assert!(!is_fresh(&Value::Null, now, 3));
     }
 }
