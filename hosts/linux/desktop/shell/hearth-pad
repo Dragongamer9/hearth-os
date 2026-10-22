@@ -533,6 +533,16 @@ class Controller:
         self.info = {}
         for code, info in dev.capabilities(absinfo=True).get(e.EV_ABS, []):
             self.info[code] = info
+        # Most drivers (xpad, xpadneo, hid-playstation, Handheld Daemon) put the right stick on RX/RY and the triggers
+        # on Z/RZ. An Xbox controller over Bluetooth without xpadneo (hid-generic), and 8BitDo or other pads in
+        # DirectInput mode, have no RX/RY: the right stick is on Z/RZ and the triggers on BRAKE/GAS. Read the usual
+        # way, the right stick (the pointer) never moved and counted as the triggers instead.
+        if e.ABS_RX not in self.info and e.ABS_RY not in self.info and e.ABS_Z in self.info and e.ABS_RZ in self.info:
+            self.sticks = {e.ABS_X: 'lx', e.ABS_Y: 'ly', e.ABS_Z: 'rx', e.ABS_RZ: 'ry'}
+            self.triggers = {e.ABS_BRAKE: 'lt', e.ABS_GAS: 'rt'}
+        else:
+            self.sticks = {e.ABS_X: 'lx', e.ABS_Y: 'ly', e.ABS_RX: 'rx', e.ABS_RY: 'ry'}
+            self.triggers = {e.ABS_Z: 'lt', e.ABS_BRAKE: 'lt', e.ABS_RZ: 'rt', e.ABS_GAS: 'rt'}
 
     def norm(self, code, value, centered=True):
         i = self.info.get(code)
@@ -549,11 +559,10 @@ class Controller:
             self.btn[bmap[ev.code]] = ev.value != 0
         elif ev.type == e.EV_ABS:
             c = ev.code
-            sticks = {e.ABS_X: 'lx', e.ABS_Y: 'ly', e.ABS_RX: 'rx', e.ABS_RY: 'ry'}
-            if c in sticks:
-                self.ax[sticks[c]] = self.norm(c, ev.value)
-            elif c in (e.ABS_Z, e.ABS_BRAKE, e.ABS_RZ, e.ABS_GAS):
-                name = 'lt' if c in (e.ABS_Z, e.ABS_BRAKE) else 'rt'
+            if c in self.sticks:
+                self.ax[self.sticks[c]] = self.norm(c, ev.value)
+            elif c in self.triggers:
+                name = self.triggers[c]
                 v = self.norm(c, ev.value, centered=False)
                 was = self.btn.get(name + '_axis', False)
                 self.btn[name + '_axis'] = v > (0.4 if was else 0.55)

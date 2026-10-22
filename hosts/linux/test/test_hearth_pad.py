@@ -313,3 +313,49 @@ class Keyboard(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BluetoothStickTest(unittest.TestCase):
+    """An Xbox controller over Bluetooth without xpadneo (hid-generic) has its right stick on Z/RZ and its
+    triggers on BRAKE/GAS: the right stick must move the pointer, not press the triggers."""
+
+    class E:
+        EV_KEY, EV_ABS = 1, 3
+        ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_GAS, ABS_BRAKE, ABS_HAT0X, ABS_HAT0Y = 0, 1, 2, 3, 4, 5, 9, 10, 16, 17
+
+    class Info:
+        def __init__(self, lo, hi):
+            self.min, self.max = lo, hi
+
+    class Dev:
+        def __init__(self, codes):
+            self.codes = codes
+
+        def capabilities(self, absinfo=True):
+            return {3: [(c, BluetoothStickTest.Info(lo, hi)) for c, (lo, hi) in self.codes.items()]}
+
+    class Ev:
+        def __init__(self, t, c, v):
+            self.type, self.code, self.value = t, c, v
+
+    def make(self, codes):
+        return hp.Controller(self.Dev(codes), self.E)
+
+    def test_bluetooth_right_stick(self):
+        e = self.E
+        c = self.make({e.ABS_X: (0, 65535), e.ABS_Y: (0, 65535), e.ABS_Z: (0, 65535), e.ABS_RZ: (0, 65535),
+                       e.ABS_BRAKE: (0, 1023), e.ABS_GAS: (0, 1023)})
+        c.handle(self.Ev(e.EV_ABS, e.ABS_Z, 65535), {})
+        self.assertGreater(c.ax['rx'], 0.9)
+        self.assertFalse(c.btn.get('lt_axis') or c.btn.get('rt_axis'))
+        c.handle(self.Ev(e.EV_ABS, e.ABS_GAS, 1023), {})
+        self.assertTrue(c.btn.get('rt_axis'))
+
+    def test_usual_layout_unchanged(self):
+        e = self.E
+        c = self.make({e.ABS_X: (-32768, 32767), e.ABS_Y: (-32768, 32767), e.ABS_RX: (-32768, 32767), e.ABS_RY: (-32768, 32767),
+                       e.ABS_Z: (0, 255), e.ABS_RZ: (0, 255)})
+        c.handle(self.Ev(e.EV_ABS, e.ABS_RX, 32767), {})
+        self.assertGreater(c.ax['rx'], 0.9)
+        c.handle(self.Ev(e.EV_ABS, e.ABS_Z, 255), {})
+        self.assertTrue(c.btn.get('lt_axis'))

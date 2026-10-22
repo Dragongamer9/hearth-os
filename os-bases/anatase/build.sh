@@ -44,6 +44,15 @@ ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
 # ---- end hearthfetch
 
+# ------------------------------------------------------------------ SVG icons for GTK (librsvg's gdk-pixbuf loader)
+# Without it GTK can't draw an SVG icon and aborts the whole program the first time it needs one (Hearth's Game Mode
+# crashed over and over on CachyOS: "image-missing.svg: Unrecognized image file format"). The loaders list is
+# rebuilt so the SVG loader is in it.
+dnf5 -y install librsvg2 gdk-pixbuf2
+for q in /usr/bin/gdk-pixbuf-query-loaders /usr/bin/gdk-pixbuf-query-loaders-64 /usr/lib/*/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders; do
+  [ -x "$q" ] && { "$q" --update-cache || true; break; }
+done
+
 # ---- Hearth Terminal (hosts/hearth-terminal): built by CI next to the Hearth app (base-*.yml) and carried in
 # os/nimbus-app. Mantel opens it for its terminal (desktop/open.sh); its menu entry (hearth-terminal.desktop) and
 # Mantel's xdg-terminal-exec list come from os/system_files. Any other terminal stays as the fallback.

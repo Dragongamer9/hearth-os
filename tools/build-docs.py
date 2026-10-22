@@ -27,6 +27,7 @@ SECTION_EDS = {
     'podman': 'ubuntu cachyos peppermint',
     'brightness': 'ubuntu peppermint',
     'boot-text': 'anatase',
+    'crash-loop': 'cachyos',
     'from-other': 'anatase',
 }
 
@@ -406,6 +407,15 @@ Update, then restart once. Or, right away (then restart):</p>
 Steam's own Game Mode was an option in 0.2.8 and 0.2.9. If a device is stuck in it: with a USB keyboard press
 <b>Ctrl + Alt + F3</b>, sign in, and run (then restart):</p>
 {cmd('fix-steam-mode', 'echo hearth > ~/.config/nimbus/game-mode && sudo reboot')}
+
+{h2('pad-mouse', 'The controller mouse doesn\'t move the pointer')}
+<p><span class="ver">Xbox controller over Bluetooth · 0.3.1 and earlier</span> <span class="ver fixed">Fixed in 0.4.0</span>
+The right stick of an Xbox controller connected by Bluetooth wasn't read. Update; until then, a USB cable works.</p>
+
+{h2('crash-loop', 'Game Mode keeps restarting (CachyOS)')}
+<p><span class="ver">CachyOS · 0.3.1 and earlier</span> <span class="ver fixed">Fixed in 0.4.0</span>
+A missing icon loader made Game Mode crash and restart every few seconds, most often with multi-seat on. Switch to Desktop Mode
+(or turn multi-seat off in Settings) and update.</p>
 
 {h2('nvidia', 'Game Mode feels slow on Nvidia')}
 <p>Check <b>Settings › Display › Drawing engine</b> is <b>Chromium</b> (the default on Nvidia since 0.2.6), and update.</p>
