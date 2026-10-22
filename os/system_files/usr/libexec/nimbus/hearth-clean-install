@@ -205,9 +205,40 @@ def merge_accounts(etc, usr_etc):
         return len(fields) > idx and fields[idx].isdigit() and 1000 <= int(fields[idx]) < 60000
 
     taken_names = {line.split(':')[0] for line in new['passwd']}
+    people = [line for line in old['passwd'] if person(line.split(':'), 2) and line.count(':') >= 6]
+    for line in people:
+        if line.split(':')[0] in taken_names:
+            log('etc: WARNING: the new system has its own account named %s, which is used instead of yours' % line.split(':')[0])
+    people = [line for line in people if line.split(':')[0] not in taken_names]
+    # A person whose id the new system already gives one of its own accounts (one in the same 1000-59999 range):
+    # the person keeps it, since their home folder's files belong to that id, and the new system's account is
+    # left out (said loudly in the log). Before, the person was the one left out and couldn't sign in.
+    their_ids = {line.split(':')[2]: line.split(':')[0] for line in people}
+    clash = {}
+    for line in new['passwd']:
+        f = line.split(':')
+        if len(f) > 2 and f[2] in their_ids:
+            clash[f[0]] = f
+            log('etc: WARNING: the new system\'s account %s (id %s) is left out: %s has that id and keeps it'
+                % (f[0], f[2], their_ids[f[2]]))
+    if clash:
+        new['passwd'] = [line for line in new['passwd'] if line.split(':')[0] not in clash]
+        new['shadow'] = [line for line in new['shadow'] if line.split(':')[0] not in clash]
+        # Its own group too (same name), when nothing else in the new system uses it.
+        primary = {line.split(':')[3] for line in new['passwd'] if line.count(':') >= 3}
+        own_ids = {line.split(':')[2] for line in old['group'] if person(line.split(':'), 2)}
+        drop_groups = set()
+        for line in new['group']:
+            g = line.split(':')
+            if len(g) >= 4 and g[0] in clash and g[2] in own_ids and g[2] not in primary and not [m for m in g[3].split(',') if m]:
+                drop_groups.add(g[0])
+        new['group'] = [line for line in new['group'] if line.split(':')[0] not in drop_groups]
+        new['gshadow'] = [line for line in new['gshadow'] if line.split(':')[0] not in drop_groups]
     taken_ids = {line.split(':')[2] for line in new['passwd'] if line.count(':') >= 2}
-    people = [line for line in old['passwd'] if person(line.split(':'), 2) and line.count(':') >= 6
-              and line.split(':')[0] not in taken_names and line.split(':')[2] not in taken_ids]
+    for line in people:
+        if line.split(':')[2] in taken_ids:
+            log('etc: WARNING: %s couldn\'t be added: the new system already uses id %s' % (line.split(':')[0], line.split(':')[2]))
+    people = [line for line in people if line.split(':')[2] not in taken_ids]
     names = [line.split(':')[0] for line in people]
     # Which groups each person was in.
     member_of = {}
@@ -220,6 +251,10 @@ def merge_accounts(etc, usr_etc):
     own_groups = [line for line in old['group'] if person(line.split(':'), 2) and line.split(':')[0] not in g_names
                   and line.split(':')[2] not in g_ids]
     own_names = {line.split(':')[0] for line in own_groups}
+    for line in old['group']:
+        g = line.split(':')
+        if g[0] in names and g[0] not in own_names and g[0] not in g_names:
+            log('etc: WARNING: %s\'s own group (id %s) couldn\'t be kept: the new system uses that id' % (g[0], g[2] if len(g) > 2 else '?'))
     out = {
         'passwd': new['passwd'] + people,
         'group': [add_members(line, member_of.get(line.split(':')[0], [])) for line in new['group']] + own_groups,
