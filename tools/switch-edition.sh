@@ -10,5 +10,5 @@ echo "Getting podman (only for this switch)..."
 apt-get download podman libsubid5 conmon crun netavark >/dev/null
 for f in *.deb; do dpkg -x "$f" root; done
 echo "Switching to $ed..."
-sudo env PKEXEC_UID="$(id -u)" PATH="$d/root/usr/bin:$PATH" LD_LIBRARY_PATH="$d/root/usr/lib/x86_64-linux-gnu" \
+sudo env PKEXEC_UID="$(id -u)" CONTAINERS_HELPER_BINARY_DIR="$d/root/usr/lib/podman" PATH="$d/root/usr/bin:$PATH" LD_LIBRARY_PATH="$d/root/usr/lib/x86_64-linux-gnu" \
   /usr/libexec/nimbus/hearth-admin move-to-new-os --edition "$ed"
