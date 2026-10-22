@@ -17,6 +17,10 @@ on:
       - 'hosts/windows/Nimbus.Host/Services/HearthBrowser.cs'
       - '.github/workflows/hearth-browser.yml'
 
+# Screenshots also go to the ci/hearth-browser-shots branch, like the other tests' (easier to look at than a zip).
+permissions:
+  contents: write
+
 concurrency:
   group: hearth-browser-${{ github.ref }}
   cancel-in-progress: true
@@ -98,6 +102,16 @@ jobs:
               print('::error title=keyboard (real keys)::expected "aa", got %r' % v); sys.exit(1)
           PY
 
+      - name: Publish screenshots to a branch
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p pub/linux && cp -r shots/. pub/linux/ 2>/dev/null || true
+          cd pub && git init -q -b ci/hearth-browser-shots
+          git fetch -q --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/hearth-browser-shots 2>/dev/null && git reset -q --soft FETCH_HEAD || true
+          git add -A linux && git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Browser linux ${GITHUB_SHA::7}" || exit 0
+          for i in 1 2 3; do git push -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:ci/hearth-browser-shots && break; sleep $((i*5)); git fetch -q --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/hearth-browser-shots && git rebase -q FETCH_HEAD || true; done
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -161,6 +175,16 @@ jobs:
           $bmp.Save("shots/windows-ember-open.png")
           Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force
           if (-not $procs) { throw "Hearth Browser didn't start with its profile" }
+
+      - name: Publish screenshots to a branch
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p pub/windows && cp -r shots/. pub/windows/ 2>/dev/null || true
+          cd pub && git init -q -b ci/hearth-browser-shots
+          git fetch -q --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/hearth-browser-shots 2>/dev/null && git reset -q --soft FETCH_HEAD || true
+          git add -A windows && git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Browser windows ${GITHUB_SHA::7}" || exit 0
+          for i in 1 2 3; do git push -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:ci/hearth-browser-shots && break; sleep $((i*5)); git fetch -q --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/hearth-browser-shots && git rebase -q FETCH_HEAD || true; done
 
       - uses: actions/upload-artifact@v4
         if: always()

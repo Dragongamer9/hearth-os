@@ -31,6 +31,8 @@ warnings = []
 
 def ok(cond, what, required=True):
     print(('ok: ' if cond else ('FAIL: ' if required else 'warning: ')) + what, flush=True)
+    if not cond and os.environ.get('GITHUB_ACTIONS'):
+        print('::%s title=Hearth Browser::%s' % ('error' if required else 'warning', what.replace('\n', ' ')[:900]), flush=True)
     if not cond:
         (failures if required else warnings).append(what)
     return cond
@@ -163,6 +165,8 @@ def run_mode(ff, out, mode, extras, port):
         info = m.js(CHROME_INFO, timeout=60)
         report['chrome'] = info
         print(json.dumps(info, indent=2), flush=True)
+        if os.environ.get('GITHUB_ACTIONS'):
+            print('::notice title=Hearth Browser %s::%s' % (mode, json.dumps(info)[:3000]), flush=True)
         ok(info.get('policies') is True, '[%s] Hearth\'s policies are active' % mode)
         for name in ('DisableTelemetry', 'EncryptedMediaExtensions', 'ExtensionSettings', 'DisableProfileImport', 'UserMessaging'):
             ok(name in (info.get('active') or []), '[%s] policy %s is applied' % (mode, name))
