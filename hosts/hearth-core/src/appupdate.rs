@@ -147,9 +147,10 @@ impl AppUpdates {
             let target = PathBuf::from(format!("{}.new", exe.to_string_lossy()));
             let url = latest["zipUrl"].as_str().unwrap_or("").to_string();
             let total = latest["size"].as_u64().unwrap_or(0);
-            let mut child = match std::process::Command::new("curl").args(["-fsSL", "--retry", "3", "-o"]).arg(&target).arg(&url).spawn() {
+            let mut child = match std::process::Command::new("curl").args(["-fsSL", "--retry", "3", "--speed-limit", "1024", "--speed-time", "60", "-o"]).arg(&target).arg(&url).spawn() {
                 Ok(c) => c, Err(e) => { Self::set(&state, json!({"state": "error", "error": format!("Update failed: {e}"), "progress": null}), &current); return; }
             };
+            // A stalled download (under 1 KB/s for a minute) stops instead of showing "downloading" forever.
             let ok = loop {
                 if let Ok(Some(s)) = child.try_wait() { break s.success(); }
                 std::thread::sleep(std::time::Duration::from_millis(500));
@@ -158,9 +159,11 @@ impl AppUpdates {
             let fail = |msg: String| { let _ = std::fs::remove_file(&target); Self::set(&state, json!({"state": "error", "error": format!("Update failed: {msg}"), "progress": null}), &current); };
             if !ok { return fail("the download didn't finish".into()); }
             if let Some(sha_url) = latest["shaUrl"].as_str() {
-                let want = crate::http::get(sha_url, &[]).map(|r| r.text.split_whitespace().next().unwrap_or("").to_lowercase()).unwrap_or_default();
+                let want = crate::http::get(sha_url, &[]).ok().filter(|r| r.ok()).map(|r| r.text.split_whitespace().next().unwrap_or("").to_lowercase()).unwrap_or_default();
+                // Not checked is not installed: a checksum that couldn't be fetched used to let the file through.
+                if want.is_empty() { return fail("couldn't check the download (no connection to its checksum)".into()); }
                 let got = crate::system::run("sha256sum", &[&target.to_string_lossy()]).map(|o| o.split_whitespace().next().unwrap_or("").to_string()).unwrap_or_default();
-                if !want.is_empty() && want != got { return fail("the download is damaged (checksum mismatch)".into()); }
+                if want != got { return fail("the download is damaged (checksum mismatch)".into()); }
             }
             let _ = crate::system::run("chmod", &["755", &target.to_string_lossy()]);
             Self::set(&state, json!({"state": "ready", "progress": 1, "ready": target.to_string_lossy()}), &current);

@@ -80,7 +80,13 @@ pub fn set_on(on: bool) -> Result<Value, String> {
     let u = unit().ok_or("Sunshine isn't on this system. It comes with Hearth OS.")?;
     crate::system::run_timeout("systemctl", &["--user", if on { "enable" } else { "disable" }, "--now", u], std::time::Duration::from_secs(30))?;
     if on {
-        for _ in 0..30 { if matches!(api("GET", "/api/clients/list", None, None), Ok(_)) || matches!(api("GET", "/api/clients/list", None, None), Err(ref e) if e == "AUTH") { break; } std::thread::sleep(std::time::Duration::from_millis(500)); }
+        // Waits for Sunshine's web API (answering, or asking for a login), 15 s at most: one look each round (it
+        // asked twice, and with an 8 s limit per look this could hold the bridge for minutes).
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        while std::time::Instant::now() < until {
+            match api("GET", "/api/clients/list", None, None) { Ok(_) => break, Err(e) if e == "AUTH" => break, Err(_) => {} }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
         ensure_login();
     }
     Ok(status())

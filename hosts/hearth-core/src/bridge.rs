@@ -99,8 +99,13 @@ impl Bridge {
             "queueChanged" => self.library.save_queue(),
             "importDone" => out.extend(self.import_done(&v["result"])),
             "epicImported" => {
-                let left = v["left"].clone();
-                let _ = self.library.store.update(|d| { d.insert("pendingEpicImports".into(), left); });
+                let arr = |k: &str| v[k].as_array().cloned().unwrap_or_default();
+                let tried = arr("tried");
+                let now = crate::importer::pending_after(&self.pending_epic(), &tried, &arr("left"));
+                let fresh: Vec<Value> = now.iter().filter(|g| !tried.contains(g)).cloned().collect();
+                let _ = self.library.store.update(|d| { d.insert("pendingEpicImports".into(), json!(now)); });
+                // Added while that round ran: their turn now.
+                if !fresh.is_empty() { self.importer.finish_pending_epic(fresh); }
                 if v["done"].as_u64().unwrap_or(0) > 0 { self.library.scan(); out.push(Bridge::event("library.changed", json!({}))); }
             }
             "importOffer" => {

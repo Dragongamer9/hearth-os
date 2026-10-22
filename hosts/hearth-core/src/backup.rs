@@ -93,7 +93,9 @@ pub fn info(file: &Path) -> Result<Value, String> {
 /// Puts a backup back; what it replaces is kept in data/before-restore/<time>/ first. Hearth restarts after.
 pub fn restore(file: &Path, data_dir: &Path, conf_dir: &Path, stamp: &str) -> Result<Value, String> {
     let meta = info(file)?;
-    let tmp = std::env::temp_dir().join(format!("hearth-restore-{}", std::process::id()));
+    // Unpacked next to the data folder, not in /tmp: /tmp is a separate (memory) file system on most editions, where
+    // moving the files in failed ("Invalid cross-device link") after the first file had already been put aside.
+    let tmp = data_dir.with_file_name(format!(".hearth-restore-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
     let r = (|| {
@@ -104,8 +106,8 @@ pub fn restore(file: &Path, data_dir: &Path, conf_dir: &Path, stamp: &str) -> Re
             std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
             for e in rd.flatten() {
                 let dst = to.join(e.file_name());
-                if dst.exists() { std::fs::create_dir_all(keep_dir).map_err(|e| e.to_string())?; std::fs::rename(&dst, keep_dir.join(e.file_name())).map_err(|e| e.to_string())?; }
-                std::fs::rename(e.path(), &dst).map_err(|e| e.to_string())?;
+                if dst.exists() { std::fs::create_dir_all(keep_dir).map_err(|e| e.to_string())?; move_path(&dst, &keep_dir.join(e.file_name()))?; }
+                move_path(&e.path(), &dst)?;
             }
             Ok(())
         };
@@ -115,6 +117,14 @@ pub fn restore(file: &Path, data_dir: &Path, conf_dir: &Path, stamp: &str) -> Re
     })();
     let _ = std::fs::remove_dir_all(&tmp);
     r
+}
+
+/// Moves a file or folder: a rename, or a copy then delete when it's on another file system (the config folder
+/// can be elsewhere).
+fn move_path(from: &Path, to: &Path) -> Result<(), String> {
+    if std::fs::rename(from, to).is_ok() { return Ok(()); }
+    crate::system::run_timeout("cp", &["-a", "--", &from.to_string_lossy(), &to.to_string_lossy()], std::time::Duration::from_secs(600))?;
+    if from.is_dir() { std::fs::remove_dir_all(from) } else { std::fs::remove_file(from) }.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
