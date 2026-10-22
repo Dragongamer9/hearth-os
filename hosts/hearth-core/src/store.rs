@@ -47,9 +47,42 @@ impl Store {
     }
 }
 
+/// `d[k]` as an object: made one when it's missing, or when a damaged or foreign file has something else there
+/// (adding play time or a game's settings panicked on that). Saved repaired with the change.
+pub fn object_in<'a>(d: &'a mut Map<String, Value>, k: &str) -> &'a mut Map<String, Value> {
+    let v = d.entry(k).or_insert(json!({}));
+    if !v.is_object() { *v = json!({}); }
+    v.as_object_mut().expect("just made an object")
+}
+/// `d[k]` as a list, the same way.
+pub fn array_in<'a>(d: &'a mut Map<String, Value>, k: &str) -> &'a mut Vec<Value> {
+    let v = d.entry(k).or_insert(json!([]));
+    if !v.is_array() { *v = json!([]); }
+    v.as_array_mut().expect("just made a list")
+}
+/// `m[k]` as an object (one game's entry in a map of games), the same way.
+pub fn object_at<'a>(m: &'a mut Map<String, Value>, k: String, empty: Value) -> &'a mut Value {
+    let v = m.entry(k).or_insert(empty.clone());
+    if !v.is_object() { *v = empty; }
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn repairs_what_isnt_the_right_kind() {
+        let mut d = Map::new();
+        d.insert("stats".into(), json!(null)); d.insert("manual".into(), json!(5));
+        object_in(&mut d, "stats").insert("a".into(), json!(1));
+        array_in(&mut d, "manual").push(json!("x"));
+        object_in(&mut d, "new");
+        assert_eq!(Value::Object(d.clone()), json!({"stats": {"a": 1}, "manual": ["x"], "new": {}}));
+        let s = object_in(&mut d, "stats");
+        s.insert("g".into(), json!(7));
+        object_at(s, "g".into(), json!({"minutes": 0}))["minutes"] = json!(3);
+        assert_eq!(d["stats"]["g"], json!({"minutes": 3}));
+    }
     #[test]
     fn keeps_what_it_does_not_know() {
         let dir = tempfile::tempdir().unwrap();

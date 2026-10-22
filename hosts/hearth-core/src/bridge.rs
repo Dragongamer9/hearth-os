@@ -59,6 +59,7 @@ pub struct Bridge {
 pub type SignInFn = std::sync::Arc<dyn Fn(&crate::stores::SignIn) -> Option<String> + Send + Sync>;
 /// What a call returns when it's answered later, from a thread (crate::space::answer_later).
 pub const DEFERRED: &str = "__deferred";
+const WIFI_BUSY_TEXT: &str = "Wi-Fi is already busy (looking for networks or connecting). Try again in a moment.";
 
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
@@ -380,12 +381,11 @@ impl Bridge {
             "import.move" => self.importer.start(&a["items"], "move", &self.library.install_root(), self.pending_epic().len()),
             // Make Hearth bigger (Beta Experimental): space from the other systems on Hearth's drive (hearth-space,
             // docs/MOVE-AND-GROW.md). Looking can take half a minute, so it answers from another thread.
-            "space.status" => { crate::space::answer_later(self.cur_id.clone(), crate::space::status); Ok(json!(DEFERRED)) }
+            "space.status" => self.later(crate::space::status),
             "space.grow" => {
                 let (from, gb) = (req("from")?, a["gb"].as_u64().unwrap_or(0));
                 if a["dryRun"] == true {
-                    crate::space::answer_later(self.cur_id.clone(), move || crate::space::plan(&from, gb));
-                    Ok(json!(DEFERRED))
+                    self.later(move || crate::space::plan(&from, gb))
                 } else { crate::space::grow(&from, gb, self.emit.clone()) }
             }
             "space.clearJournal" => crate::space::clear_journal(),
@@ -460,10 +460,10 @@ impl Bridge {
             }
             // Settings › Updates: the new Hearth OS (on Anatase) as a clean install that keeps your games, from the
             // Bazzite-based one; and on the new one, Settings › System: the files put aside (~/.old-hearth-<date>).
-            "newos.status" => { let id = self.cur_id.clone(); crate::space::answer_later(id, || Ok(crate::newos::status())); Ok(json!(DEFERRED)) }
+            "newos.status" => self.later(|| Ok(crate::newos::status())),
             "newos.move" => crate::newos::start(self.emit.clone(), a["edition"].as_str().unwrap_or("anatase"), a["testing"] == true),
             "oldfiles.status" => Ok(crate::newos::old_files_status()),
-            "oldfiles.delete" => { let (id, name) = (self.cur_id.clone(), req("name")?); crate::space::answer_later(id, move || crate::newos::delete(&name)); Ok(json!(DEFERRED)) }
+            "oldfiles.delete" => { let name = req("name")?; self.later(move || crate::newos::delete(&name)) }
             "oldfiles.restore" => crate::newos::restore(&req("name")?, &req("item")?),
             // Web browsers: Hearth Browser (Hearth's own: Firefox, hearth_browser.rs) and Aloha (optional, downloaded
             // on the device)
@@ -684,7 +684,7 @@ impl Bridge {
                 if !std::path::Path::new(&file).exists() { return Err(format!("File not found: {file}")); }
                 let id = format!("manual:{:012x}", crate::library::now_ms() * 1000 + (std::process::id() as u64 % 1000));
                 let m = json!({"id": id, "title": crate::manual::title_for(&file), "path": file, "added": crate::library::now_ms()});
-                io(self.library.store.update(|d| { d.entry("manual").or_insert(json!([])).as_array_mut().unwrap().push(m); }))?;
+                io(self.library.store.update(|d| { crate::store::array_in(d, "manual").push(m); }))?;
                 self.library.scan();
                 self.library.games.get(&id).map(|g| self.library.dto(g)).ok_or("Couldn't add it".into())
             }
@@ -708,10 +708,11 @@ impl Bridge {
             "airplane.set" => { system::set_airplane(a["on"].as_bool().unwrap_or(false))?; Ok(system::status(self.max_volume())) }
             // Scanning (up to 30 s) and connecting (up to 45 s) run off the bridge and answer when done: under it, every
             // other request waited, and the fail-safe stopped nmcli at 15 s (slow networks never connected).
-            "wifi.scan" => self.later(system::wifi::scan),
+            "wifi.scan" => { let t = system::take_turn(&system::WIFI_BUSY).ok_or(WIFI_BUSY_TEXT)?; self.later(move || { let _t = t; system::wifi::scan() }) }
             "wifi.connect" => {
                 let (ssid, pw) = (req("ssid")?, a["password"].as_str().filter(|p| !p.is_empty()).map(str::to_string));
-                self.later(move || Ok(system::wifi::connect(&ssid, pw.as_deref())))
+                let t = system::take_turn(&system::WIFI_BUSY).ok_or(WIFI_BUSY_TEXT)?;
+                self.later(move || { let _t = t; Ok(system::wifi::connect(&ssid, pw.as_deref())) })
             }
             "wifi.disconnect" => system::wifi::disconnect().map(|_| Value::Null),
             "wifi.forget" => system::wifi::forget(&req("ssid")?).map(|_| Value::Null),
@@ -907,7 +908,11 @@ impl Bridge {
             "bt.paired" => Ok(system::bt_devices::paired()),
             // Pairing waits for the controller (up to a minute): it runs off the bridge and answers when done. Under
             // the bridge, every other request waited, and the fail-safe stopped bluetoothctl at 15 s mid-pairing.
-            "bt.pair" => { let id = req("id")?; self.later(move || Ok(system::bt_devices::pair(&id))) }
+            "bt.pair" => {
+                let id = req("id")?;
+                let t = system::take_turn(&system::BT_BUSY).ok_or("A Bluetooth device is already pairing. Try again when it's done.")?;
+                self.later(move || { let _t = t; Ok(system::bt_devices::pair(&id)) })
+            }
             "bt.unpair" => Ok(system::bt_devices::unpair(&req("id")?)),
             "bt.confirmPin" => Ok(Value::Null),
             "bt.scanStart" => {
@@ -1177,16 +1182,14 @@ impl Bridge {
         let gog = list("gog");
         if !gog.is_empty() {
             let _ = self.library.store.update(|d| {
-                let m = d.entry("gogInstalls").or_insert(json!({}));
-                if let Some(o) = m.as_object_mut() { for g in &gog { if let (Some(id), Some(p)) = (g["id"].as_str().map(str::to_string).or(g["id"].as_u64().map(|n| n.to_string())), g["path"].as_str()) { o.insert(id, json!(p)); } } }
+                { let o = crate::store::object_in(d, "gogInstalls"); for g in &gog { if let (Some(id), Some(p)) = (g["id"].as_str().map(str::to_string).or(g["id"].as_u64().map(|n| n.to_string())), g["path"].as_str()) { o.insert(id, json!(p)); } } }
             });
         }
         let lutris = list("lutris");
         if !lutris.is_empty() {
             let missing: Vec<String> = lutris.iter().filter(|g| g["exe"].as_str().map(str::is_empty).unwrap_or(true)).filter_map(|g| g["name"].as_str().map(str::to_string)).collect();
             let _ = self.library.store.update(|d| {
-                let m = d.entry("manual").or_insert(json!([]));
-                let Some(arr) = m.as_array_mut() else { return };
+                let arr = crate::store::array_in(d, "manual");
                 for (i, g) in lutris.iter().enumerate() {
                     let Some(exe) = g["exe"].as_str().filter(|e| !e.is_empty()) else { continue };
                     if arr.iter().any(|x| x["path"] == exe) { continue; }
@@ -1451,6 +1454,9 @@ mod tests {
         std::fs::write(&file, "#!/bin/sh\n").unwrap();
         let r = b.handle(&json!({"type":"call","id":1,"method":"library.addManual","args":{"path": file.to_string_lossy()}})).unwrap();
         assert_eq!(r["id"], 1);
+        // And now it's repaired instead: the game goes in a fresh list.
+        assert_eq!(r["ok"], true, "{r}");
+        assert_eq!(b.library.store.data["manual"].as_array().map(|a| a.len()), Some(1));
         let r = b.handle(&json!({"type":"call","id":2,"method":"library.setFav","args":{"id":"steam:1","on":true}})).unwrap();
         assert_eq!(r["ok"], true);
     }

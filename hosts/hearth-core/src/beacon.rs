@@ -789,6 +789,8 @@ fn change(cli: &Exe, home: &Path, slot: &std::sync::Arc<std::sync::Mutex<Option<
 pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, reply_to: Value) -> Result<Value, String> {
     use std::sync::Arc;
     let later = crate::bridge::DEFERRED;
+    // Answers go back to the window that asked only (each window numbers its own requests).
+    let to = Some(br.cur_label.clone());
     if method == "beacon.openLink" {
         open_link(a["url"].as_str().unwrap_or(""))?;
         return Ok(json!({"ok": true}));
@@ -800,12 +802,12 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, repl
     match method {
         "beacon.details" => {
             let g = page_game(&a["id"])?;
-            crate::space::answer_later(reply_to, move || details(&cli, &g));
+            crate::space::answer_later_to(reply_to, to, move || details(&cli, &g));
             Ok(json!(later))
         }
         "beacon.log" => {
             let g = page_game(&a["id"])?;
-            crate::space::answer_later(reply_to, move || log_tail(&cli, &g));
+            crate::space::answer_later_to(reply_to, to, move || log_tail(&cli, &g));
             Ok(json!(later))
         }
         "beacon.set" => {
@@ -813,7 +815,7 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, repl
             let what = a["what"].as_str().unwrap_or("").to_string();
             let args = set_args(&g, &what, &a["value"])?;
             crate::bridge::log(&format!("beacon: {} {g}", args[0]));
-            crate::space::answer_later(reply_to, move || {
+            crate::space::answer_later_to(reply_to, to, move || {
                 // A runner must be one Beacon has.
                 if what == "runner" && args[2] != "auto" {
                     let rs = run_json(&cli, &args_of(&["runners"]), None, READ_LIMIT, false, &mut quiet)?;
@@ -833,7 +835,7 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, repl
             if clear { args.push("--clear".into()); }
             // The key itself is never logged and never on the command line: it goes to Beacon's stdin.
             crate::bridge::log(&format!("beacon: set-key {g}{}", if clear { " --clear" } else { "" }));
-            crate::space::answer_later(reply_to, move || change(&cli, &home, &slot, &g, &args, key.as_deref()));
+            crate::space::answer_later_to(reply_to, to, move || change(&cli, &home, &slot, &g, &args, key.as_deref()));
             Ok(json!(later))
         }
         "beacon.locate" => {
@@ -844,7 +846,7 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, repl
             let dir = existing_path(&dir, true)?;
             crate::bridge::log(&format!("beacon: set-path {g}"));
             let args = vec!["set-path".to_string(), g.clone(), dir];
-            crate::space::answer_later(reply_to, move || change(&cli, &home, &slot, &g, &args, None));
+            crate::space::answer_later_to(reply_to, to, move || change(&cli, &home, &slot, &g, &args, None));
             Ok(json!(later))
         }
         "beacon.addMod" => {
@@ -858,7 +860,7 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, repl
             let mut args = vec!["add-mod".to_string(), g.clone(), p];
             if a["select"] == true { args.push("--select".into()); }
             crate::bridge::log(&format!("beacon: add-mod {g}"));
-            crate::space::answer_later(reply_to, move || change(&cli, &home, &slot, &g, &args, None));
+            crate::space::answer_later_to(reply_to, to, move || change(&cli, &home, &slot, &g, &args, None));
             Ok(json!(later))
         }
         "beacon.removeMod" => {
@@ -866,7 +868,7 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, repl
             let m = a["mod"].as_str().filter(|m| valid_mod_id(m) && m.starts_with(&format!("{g}:"))).ok_or("That mod's name can't be used.")?.to_string();
             crate::bridge::log(&format!("beacon: remove-mod {m}"));
             let args = vec!["remove-mod".to_string(), m];
-            crate::space::answer_later(reply_to, move || change(&cli, &home, &slot, &g, &args, None));
+            crate::space::answer_later_to(reply_to, to, move || change(&cli, &home, &slot, &g, &args, None));
             Ok(json!(later))
         }
         "beacon.job" => {
