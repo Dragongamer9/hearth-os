@@ -1385,6 +1385,55 @@ class SplitAndStreamUser(SeatsBase):
             self.hs.wait_button(0.1, exclude=['usb:1-2', 'uniq:aa:bb:cc:dd:ee:ff'])
 
 
+# ---------------------------------------------------------------------------------------------- nimbus-session
+SESSION = pathlib.Path(__file__).resolve().parents[1] / 'session' / 'nimbus-session'
+
+
+class ExtraPlayerSession(unittest.TestCase):
+    """nimbus-session run as an extra player (HEARTH_SEAT set), with a gamescope that only writes down its options."""
+
+    def run_session(self, conf, env_args):
+        import shutil
+        import subprocess
+        sh = shutil.which('sh')
+        with tempfile.TemporaryDirectory() as d:
+            stubs = os.path.join(d, 'bin')
+            os.makedirs(stubs)
+            for name, body in (('gamescope', 'printf "%s\\n" "$*" >>"$GS_LOG"\n'), ('gnome-keyring-daemon', ''),
+                               ('labwc', 'echo labwc >>"$GS_LOG"\n'), ('app', '')):
+                write(os.path.join(stubs, name), '#!%s\n%s' % (sh, body))
+                os.chmod(os.path.join(stubs, name), 0o755)
+            home = os.path.join(d, 'home')
+            write(os.path.join(home, '.config', 'nimbus', 'session.conf'), conf)
+            os.makedirs(os.path.join(d, 'run'))
+            log = os.path.join(d, 'gamescope.log')
+            env = {'PATH': stubs + ':/usr/bin:/bin', 'HOME': home, 'XDG_RUNTIME_DIR': os.path.join(d, 'run'),
+                   'NIMBUS_SHARE': os.path.join(d, 'share'), 'NIMBUS_APP': os.path.join(stubs, 'app'), 'GS_LOG': log,
+                   'HEARTH_SEAT': '2', 'NIMBUS_START_MODE': 'game', 'NIMBUS_GAMESCOPE_ARGS': env_args}
+            subprocess.run([sh, str(SESSION)], env=env, timeout=30, check=True, capture_output=True)
+            return slurp(log).splitlines()
+
+    def test_own_display_settings_dont_replace_the_seat_options(self):
+        lines = self.run_session('NIMBUS_GAMESCOPE_ARGS="--adaptive-sync -W 1920 -H 1080 -r 60"\n',
+                                 '--prefer-vk-device 1002:73bf --prefer-output HDMI-A-1')
+        self.assertEqual(len(lines), 1)
+        self.assertIn('--adaptive-sync -W 1920 -H 1080 -r 60 --prefer-vk-device 1002:73bf --prefer-output HDMI-A-1 --',
+                      lines[0])
+
+    def test_window_size_comes_last(self):
+        lines = self.run_session('NIMBUS_GAMESCOPE_ARGS="-W 1920 -H 1080"\n', '-W 960 -H 1080 -w 960 -h 1080')
+        self.assertIn('-W 1920 -H 1080 -W 960 -H 1080 -w 960 -h 1080 --', lines[0])
+
+    def test_no_session_conf_options(self):
+        lines = self.run_session('', '-W 960 -H 1080')
+        self.assertIn(' -W 960 -H 1080 --', lines[0])
+
+    def test_desktop_start_mode_is_game_mode_for_extra_players(self):
+        lines = self.run_session('NIMBUS_START_MODE=desktop\n', '-W 960 -H 1080')
+        self.assertNotIn('labwc', lines)
+        self.assertEqual(len(lines), 1)
+
+
 # ---------------------------------------------------------------------------------------------- hearth-seat-input
 class SeatInput(unittest.TestCase):
     def setUp(self):
