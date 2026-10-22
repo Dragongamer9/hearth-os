@@ -337,6 +337,16 @@ Holding the button for several seconds always turns the device off.</p>
 <li>Stores are signed in to from <b>Settings › Game stores</b>. Beacon (the Battle for Middle-earth launcher) is built in.</li>
 </ul>
 
+{h2('apps', "Hearth's own apps")}
+<p>On Hearth OS and on Windows (Ember), from Desktop Mode's app menu or the Start menu:</p>
+<ul>
+<li><b>Hearth Browser</b>: real Firefox with Hearth's look. Google sign-in, streaming video and uBlock Origin work. In Game Mode it opens full screen with bigger buttons and an on-screen keyboard (it opens by itself when you pick the address bar; or the Keyboard button, or Ctrl+Alt+K).</li>
+<li><b>Terminal</b>: tabs, split view (Ctrl+Shift+D), find (Ctrl+Shift+F), themes, and a quick-keys bar and on-screen keyboard for controllers. Your shell on Linux; PowerShell, Command Prompt or WSL on Windows.</li>
+<li><b>Disks</b>: your drives and their health, formatting USB drives and SD cards, partitions, and <b>Use for games</b> (a drive or SD card as a Steam library in one step). It won't touch the drive the system runs from.</li>
+<li><b>hearthfetch</b>: type it in the Terminal for a summary of your system.</li>
+</ul>
+<p>Desktop Mode's app drawer has a <b>Games</b> tab with your installed games; on Windows it also has a <b>Windows</b> tab with the built-in programs.</p>
+
 {h2('logs', 'Sending logs')}
 <p>When something goes wrong, <b>Settings › System › Send logs to the developer</b>. You get a short code (like
 <code>ABCD-EFGH-JK</code>): share it when you report the problem. Logs are kept 14 days, personal details are taken out
