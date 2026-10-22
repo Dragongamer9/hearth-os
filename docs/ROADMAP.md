@@ -97,6 +97,12 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.3.0
+
+- [x] Game Mode keyboard: the selected key lights up, like SteamOS's
+- [x] Power button: does what Settings › Power button says (Sleep no longer shuts down: the system leaves the button to Hearth while it runs)
+- [x] Anatase: the Hearth boot splash instead of start-up and shut-down text
+
 ## 0.2.10 (released)
 
 - [x] Steam's Game Mode taken out: Game Mode is always Hearth's (the old choice is cleared at the next start)
