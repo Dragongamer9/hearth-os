@@ -27,6 +27,12 @@ const path = require('path');
     await new Promise(r => setTimeout(r, 200));
     imEdit(g.id);
   });
+  // A tap or click on one of its sliders sets the value it points at (it did nothing).
+  await step('controller layout slider tap', () => {
+    const el = document.querySelector('#view [data-slider="im:rs.sensitivity"]'); if (!el) throw new Error('no sensitivity slider');
+    S.set['im:rs.sensitivity'] = 2; adjustSlider(el, 0);
+    if (imGet('rs.sensitivity') !== 2 || 'im:rs.sensitivity' in S.set) throw new Error('the tap was ignored: ' + imGet('rs.sensitivity'));
+  });
   // Beacon (BFME, Age of the Ring, LOTR: Conquest): its library tab, a game page with its mod, Play with…, the mod
   // choice in Game settings, the Strategy (RTS) controller layout it starts with, and its card in Library › Stores.
   await step('beacon tab', () => {
@@ -241,6 +247,62 @@ const path = require('path');
     if (S.view !== 'library' || !focused || focused.dataset.k !== k) throw new Error("Back from the game's page didn't find the game");
   }, id);
   await step('library layout leave', () => { LOOK.libLayout = 'covers'; saveLook(); S.layers = []; navigate('home', {}, false); });
+  // Home's Game case shelf: down from a spine reaches Play under the shelf (it went along the spines before).
+  await step('game case shelf reaches Play', () => {
+    LOOK.layout = 'x-spines'; saveLook(); S.layers = []; navigate('home', {}, false);
+    setFocus(document.querySelector('#view .xs-sp')); move('down');
+    const k = focused && focused.dataset.k;
+    LOOK.layout = 'shelf'; saveLook(); navigate('home', {}, false);
+    if (!k || k.startsWith('xs-')) throw new Error('down stayed on the shelf: ' + k);
+  });
+  // "Played …" follows the clock, not the moment the page loaded (Hearth stays open for days).
+  await step('played days ago, days later', () => {
+    const real = Date.now, t = real() - 60000;
+    Date.now = () => real() + 3 * 864e5;
+    let r; try { r = ago(t); } finally { Date.now = real; }
+    if (r !== '3 days ago') throw new Error('a game played 3 days ago says ' + r);
+    if (hrs(59.7 / 60) !== '1.0 hrs' || hrs(9.97) !== '10 hrs' || hrs(0.5) !== '30 min') throw new Error('play time: ' + [hrs(59.7 / 60), hrs(9.97), hrs(0.5)]);
+    if (gb(6e8) !== '600 MB' || gb(512e9) !== '512 GB') throw new Error('sizes: ' + gb(6e8));
+  });
+  // A collection's name is shown as text in Library's tabs, never read as HTML.
+  await step('collection name is text', () => {
+    const name = '<img src=x onerror="window.__xss=1">Mine';
+    COLS.push({id: 'cx', name}); S.layers = []; S.tab = 'all'; navigate('library', {}, false);
+    const tab = document.querySelector('#view [data-k="tab-c:cx"]'), bad = !!document.querySelector('#view .tabs img');
+    COLS = COLS.filter(c => c.id !== 'cx'); navigate('home', {}, false);
+    if (!tab || tab.textContent !== name || bad) throw new Error('the name went in as HTML');
+  });
+  // Search, for a profile with parental limits: only the games it's allowed (and the Hidden tab too).
+  await step('search with parental limits', () => {
+    const was = PROF.s, hid = G('g02').hidden;
+    PROF.s = {hasPin: true, list: [{id: 'k', current: true, limits: {allowed: ['g01']}}]};
+    G('g02').hidden = true;
+    closeAll(); openLayer('search'); query = 'o'; renderSearch();
+    const ids = [...document.querySelectorAll('#search .sres [data-id]')].map(e => e.dataset.id);
+    S.tab = 'hidden'; const hidden = libGames().map(g => g.id);
+    closeAll(); PROF.s = was; G('g02').hidden = hid; S.tab = 'inst';
+    if (ids.some(i => i !== 'g01')) throw new Error('search found ' + ids.join(', '));
+    if (hidden.length) throw new Error('the Hidden tab shows ' + hidden.join(', '));
+  });
+  // Starting a game while one that isn't in the library runs (Quick Resume off): a message, not a script error.
+  await step('start while an unknown game runs', () => {
+    const was = S.running; S.running = 'steam:999999';
+    try { launch(G('g01')); } finally { S.running = was; closeAll(); }
+  });
+  // Game settings that can't be read: a message with Try again (it said "Loading…" for good).
+  await step('game settings not read', async () => {
+    const orig = MOCK.call;
+    MOCK.call = (m, a) => m === 'game.options.get' ? Promise.reject(new Error('No answer')) : orig(m, a);
+    try {
+      S.layers = []; navigate('gameset', {game: 'g01'}, false);
+      await new Promise(r => setTimeout(r, 100));
+      if (!document.querySelector('#view [data-k="gs-retry"]')) throw new Error('no Try again');
+    } finally { MOCK.call = orig; }
+    act(document.querySelector('#view [data-k="gs-retry"]'));
+    await new Promise(r => setTimeout(r, 150));
+    if (!document.querySelector('#view [data-k="gs-fps"]')) throw new Error('Try again did not load the settings');
+    navigate('home', {}, false);
+  });
   // Quick Access › Performance, as Hearth OS (?preview=linux): with Handheld Daemon (its own power settings in place
   // of Hearth's), without it (?nohhd: Hearth's power mode and limit, as before), and over a game (the overlay page),
   // where a power change is kept for the game.
