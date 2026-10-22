@@ -14,7 +14,7 @@ namespace Nimbus.Host.Mantel;
 /// button on Mantel's taskbar shows Windows' taskbar for a moment to reach them. Everything is put back the
 /// way it was when you leave Mantel.
 /// </summary>
-public sealed class MantelHost : IDisposable
+public sealed partial class MantelHost : IDisposable
 {
     private readonly SystemBridge _bridge;
     private readonly CoreWebView2Environment _env;
@@ -608,11 +608,16 @@ public sealed class MantelHost : IDisposable
         switch (action)
         {
             case "apps": _ = PushAppsAsync(from, Bool("refresh")); break;
+            // The launcher's Games and Windows sections (MantelGames.cs).
+            case "games": _ = PushGamesAsync(from); break;
+            case "windowsApps": _ = PushWindowsAppsAsync(from); break;
+            case "playGame": HidePanels(); PlayGame(Str("id")); break;
             case "launch":
             {
                 var id = Str("id");
                 HidePanels();
                 if (id.StartsWith("hearth:")) _ = OpenAppAsync(id[7..], null);
+                else if (id.StartsWith("ms-settings:")) Apps.OpenUri(id);   // the Windows section's Settings without its app id
                 else Apps.Launch(id);
                 break;
             }
