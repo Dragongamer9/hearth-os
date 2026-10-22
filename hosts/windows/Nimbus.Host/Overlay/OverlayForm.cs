@@ -1,5 +1,7 @@
 using System.Drawing.Imaging;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -11,7 +13,8 @@ namespace Nimbus.Host.Overlay;
 /// The in-game overlay: a Quick Access panel that slides in from the right edge over whatever is running.
 /// It's a normal always-on-top window (no code in the game), so it shows over borderless and windowed games
 /// and the "fullscreen optimized" mode most games use on Windows 10/11.
-/// The page is the same index.html in overlay mode (?overlay).
+/// The page is the same index.html as Hearth OS's overlay over games (?overlay=full): the same Quick Access, tabs and
+/// behaviour everywhere (Open apps included, answered here); in a window the panel's width it fills the window.
 /// </summary>
 public sealed class OverlayForm : Form
 {
@@ -107,7 +110,9 @@ public sealed class OverlayForm : Form
             {
                 case "ready": Event("padHost", new { connected = _controllers() }); break;
                 case "call":
-                    if (m.GetProperty("method").GetString() == "overlay.screenshot") _ = ScreenshotAsync(m.GetProperty("id").GetInt32());
+                    var method = m.GetProperty("method").GetString();
+                    if (method == "overlay.screenshot") _ = ScreenshotAsync(m.GetProperty("id").GetInt32());
+                    else if (method is "apps.list" or "apps.focus" or "apps.close") _ = AppsAsync(method, m.Clone());
                     else _bridge.Handle(m.Clone(), Post);
                     break;
                 case "overlay":
@@ -161,6 +166,108 @@ public sealed class OverlayForm : Form
         Event("overlay.hidden", new { });
         Hide();
         if (restoreFocus && _prevForeground != IntPtr.Zero && IsWindow(_prevForeground)) SetForegroundWindow(_prevForeground);
+    }
+
+    // ------------------------------------------------------------------ Quick Access › Open apps
+
+    /// <summary>The page's apps.* calls: the windows you could Alt+Tab to, switched to or closed from Quick Access
+    /// (as on Hearth OS). Ember itself is first; the running game's windows are marked.</summary>
+    private async Task AppsAsync(string method, JsonElement m)
+    {
+        int id = m.GetProperty("id").GetInt32();
+        var args = m.TryGetProperty("args", out var a) && a.ValueKind == JsonValueKind.Object ? a : default;
+        object? value = null; string? error = null;
+        try
+        {
+            switch (method)
+            {
+                case "apps.list": value = ListApps(); break;
+                case "apps.focus":
+                {
+                    long win = Num(args, "id"); int pid = (int)Num(args, "pid");
+                    HideOverlay(restoreFocus: false);
+                    if (pid == Environment.ProcessId || win == 0) { HomeRequested?.Invoke(); break; }
+                    var h = new IntPtr(win);
+                    if (!IsWindow(h)) throw new InvalidOperationException("That window has closed.");
+                    if (IsIconic(h)) ShowWindow(h, 9 /* SW_RESTORE */);
+                    ForceForeground(h);
+                    break;
+                }
+                case "apps.close":
+                {
+                    int pid = (int)Num(args, "pid");
+                    if (pid == 0 || pid == Environment.ProcessId) throw new InvalidOperationException("Ember can't close itself here.");
+                    if (IsGame(pid)) { value = new { ok = await _bridge.Games.CloseRunningAsync() }; break; }
+                    foreach (var w in TopWindows().Where(w => w.Pid == pid)) PostMessage(w.Handle, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
+                    value = new { ok = true };
+                    break;
+                }
+            }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        Post(JsonSerializer.Serialize(error is null
+            ? new { type = "result", id, ok = true, value, error = (string?)null }
+            : new { type = "result", id, ok = false, value = (object?)null, error = (string?)error },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+    }
+
+    private static long Num(JsonElement args, string name) =>
+        args.ValueKind == JsonValueKind.Object && args.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n) ? n : 0;
+
+    private List<object> ListApps()
+    {
+        var list = new List<object>();
+        bool anyFocused = false;
+        foreach (var w in TopWindows())
+        {
+            if (w.Pid == Environment.ProcessId) continue;
+            bool focused = w.Handle == _prevForeground;
+            anyFocused |= focused;
+            list.Add(new { id = w.Handle.ToInt64(), pid = w.Pid, title = w.Title, app = ProcessName(w.Pid), hearth = false, game = IsGame(w.Pid), focused });
+        }
+        list.Insert(0, new { id = 0L, pid = Environment.ProcessId, title = "Ember", app = "ember", hearth = true, game = false, focused = !anyFocused });
+        return list;
+    }
+
+    private static string ProcessName(int pid)
+    {
+        try { using var p = Process.GetProcessById(pid); return p.ProcessName; } catch { return ""; }
+    }
+
+    /// <summary>Is this process the running game's (its program is in the game's folder)?</summary>
+    private bool IsGame(int pid)
+    {
+        var dirs = _bridge.Games.RunningDirs;
+        if (dirs.Length == 0) return false;
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            var exe = p.MainModule?.FileName;
+            return exe is not null && dirs.Any(d => !string.IsNullOrEmpty(d) && exe.StartsWith(d.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase));
+        }
+        catch { return false; }   // another user's or an elevated process: not ours to read
+    }
+
+    private readonly record struct TopWindow(IntPtr Handle, int Pid, string Title);
+
+    /// <summary>Windows the taskbar shows: visible, unowned, not tool windows or cloaked (other desktops, UWP ghosts).</summary>
+    private static List<TopWindow> TopWindows()
+    {
+        var found = new List<TopWindow>();
+        EnumWindows((h, _) =>
+        {
+            if (!IsWindowVisible(h) || GetWindow(h, 4 /* GW_OWNER */) != IntPtr.Zero) return true;
+            if ((GetWindowLongPtr(h, -20 /* GWL_EXSTYLE */).ToInt64() & 0x80 /* WS_EX_TOOLWINDOW */) != 0) return true;
+            if (DwmGetWindowAttribute(h, 14 /* DWMWA_CLOAKED */, out int cloaked, sizeof(int)) == 0 && cloaked != 0) return true;
+            int len = GetWindowTextLength(h);
+            if (len <= 0) return true;
+            var sb = new StringBuilder(len + 1);
+            GetWindowText(h, sb, sb.Capacity);
+            GetWindowThreadProcessId(h, out uint pid);
+            found.Add(new TopWindow(h, (int)pid, sb.ToString()));
+            return true;
+        }, IntPtr.Zero);
+        return found;
     }
 
     // ------------------------------------------------------------------ screenshot
@@ -247,6 +354,17 @@ public sealed class OverlayForm : Form
     [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
     [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int cmd);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int max);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextLength(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out int value, int size);
 }
 
 /// <summary>Windows' "Open Game Bar using this button on a controller" setting (per user).</summary>
