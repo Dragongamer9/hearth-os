@@ -28,6 +28,13 @@ if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$uid" ]; then
   export XDG_RUNTIME_DIR
 fi
 
+# HHD passes no session bus either ("Failed to connect to the bus: Could not parse server address" over and over):
+# the user's bus is in the runtime folder.
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/bus" ]; then
+  DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+  export DBUS_SESSION_BUS_ADDRESS
+fi
+
 if [ -z "${STEAM_OVERLAY:-}" ] && [ -n "${HHD_MANAGED:-}" ]; then
   # Desktop Mode. HHD writes "cmd:..." lines; the first press of a double press (open_qam_if_closed) is left out so
   # a double press doesn't open and close it again.

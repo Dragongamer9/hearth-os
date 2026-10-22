@@ -277,6 +277,35 @@ class Power(unittest.TestCase):
                 mock.patch.object(hp, 'remembered', lambda: None):
             self.assertEqual(hp.tdp_status()['via'], 'hearth:firmware')
 
+    def test_status_skips_dbus_names_nobody_runs(self):
+        # A desktop PC: HHD runs without a power plugin, power-profiles-daemon is held back by its drop-in, no
+        # SteamOS Manager or PowerStation. Asking any of those names would wait for D-Bus activation to time out.
+        asked = []
+
+        def busctl(bus, *args, timeout=6):
+            if 'list' in args:
+                return 'org.freedesktop.systemd1 1 systemd root :1.1 init.scope - -\n' if bus == 'system' else ''
+            asked.append((bus,) + args)
+            raise AssertionError('asked a D-Bus name nobody holds: %r' % (args,))
+        state = json.loads(json.dumps({k: v for k, v in STATE.items() if k != 'tdp'}))
+        state['hhd']['steamos']['tdp_status'] = 'disabled'
+        with mock.patch.object(hp, 'hhd', lambda: self.fake_hhd(state)), mock.patch.object(hp, 'busctl', busctl), \
+                mock.patch.object(hp, '_NAMES', {}), mock.patch.object(hp.shutil, 'which', lambda n: '/usr/bin/' + n), \
+                mock.patch.object(hp, 'admin_tdp_info', lambda: {}), \
+                mock.patch.object(hp.subprocess, 'run', lambda *a, **k: (_ for _ in ()).throw(AssertionError('ran %r' % (a,)))):
+            self.assertFalse(hp.mode_status()['supported'])
+            self.assertEqual(hp.tdp_status(), {'supported': False, 'via': None})
+        self.assertEqual(asked, [])
+
+    def test_remembered_limit_is_kept_in_range(self):
+        state = json.loads(json.dumps(STATE))
+        state['tdp']['unified']['tdp']['custom'].pop('tdp')
+        state['hhd']['steamos']['tdp_max'] = 20
+        with mock.patch.object(hp, 'hhd', lambda: self.fake_hhd(state)), mock.patch.object(hp, 'busctl', lambda *a, **k: (_ for _ in ()).throw(hp.Fail('no'))), \
+                mock.patch.object(hp, 'remembered', lambda: 30):
+            st = hp.tdp_status()
+        self.assertEqual((st['watts'], st['max']), (20, 20))
+
     def test_restore_leaves_hhds_own_limit(self):
         sets = []
         with mock.patch.object(hp, 'hhd', lambda: self.fake_hhd(STATE)), mock.patch.object(hp, 'remembered', lambda: 22), \

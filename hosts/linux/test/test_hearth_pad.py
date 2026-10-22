@@ -359,3 +359,34 @@ class BluetoothStickTest(unittest.TestCase):
         self.assertGreater(c.ax['rx'], 0.9)
         c.handle(self.Ev(e.EV_ABS, e.ABS_Z, 255), {})
         self.assertTrue(c.btn.get('lt_axis'))
+
+
+class HotplugTest(unittest.TestCase):
+    """A device that goes away between being opened and being asked what it is (ENODEV) is skipped, not fatal."""
+
+    def test_device_gone_while_scanning(self):
+        class E:
+            EV_KEY, EV_ABS, BTN_SOUTH = 1, 3, 0x130
+
+        class Gone:
+            name = 'Wireless Controller'
+            closed = False
+
+            def __init__(self, path):
+                pass
+
+            def capabilities(self, absinfo=True):
+                raise OSError(19, 'No such device')
+
+            def close(self):
+                Gone.closed = True
+
+        class Evdev:
+            ecodes = E
+            InputDevice = Gone
+
+            @staticmethod
+            def list_devices():
+                return ['/dev/input/event9']
+        self.assertEqual(hp.gamepads(Evdev, {}), {})
+        self.assertTrue(Gone.closed)

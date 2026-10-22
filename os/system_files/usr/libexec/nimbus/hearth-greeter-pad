@@ -46,7 +46,11 @@ def pads():
             d = evdev.InputDevice(path)
         except OSError:
             continue
-        caps = d.capabilities()
+        try:
+            caps = d.capabilities()
+        except OSError:      # unplugged between opening and asking
+            d.close()
+            continue
         if e.BTN_SOUTH in caps.get(e.EV_KEY, []) and e.EV_ABS in caps:
             out.append(d)
         else:
@@ -85,7 +89,17 @@ def main():
             try:
                 events = list(d.read())
             except OSError:
+                # Unplugged (or switched off): let go of every key, or one held at that moment would keep
+                # repeating on the login screen.
                 devices.remove(d)
+                for key in set(KEYS.values()) | set(HAT.values()):
+                    tap(key, False)
+                for k in [k for k in stick if k[0] == d.path]:
+                    stick.pop(k)
+                try:
+                    d.close()
+                except OSError:
+                    pass
                 continue
             for ev in events:
                 if ev.type == e.EV_KEY and ev.code in KEYS and ev.value in (0, 1):
@@ -95,7 +109,10 @@ def main():
                         if axis == ev.code:
                             tap(key, ev.value == v)
                 elif ev.type == e.EV_ABS and ev.code in (e.ABS_X, e.ABS_Y):
-                    info = d.absinfo(ev.code)
+                    try:
+                        info = d.absinfo(ev.code)
+                    except OSError:
+                        continue
                     mid, span = (info.max + info.min) / 2, (info.max - info.min) / 2 or 1
                     v = (ev.value - mid) / span
                     key = None

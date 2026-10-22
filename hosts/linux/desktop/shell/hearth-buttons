@@ -100,6 +100,23 @@ def wanted(caps):
     return bool(keys & set(WATCH)) and not any(BTN_GAMEPAD <= k < BTN_GAMEPAD + 16 for k in keys)
 
 
+UDEV_DATA = '/run/udev/data'
+
+
+def meant_to_be_readable(path, udev_data=UDEV_DATA):
+    """Is this one of the devices Hearth's udev rule lets the signed-in user read (a few keys: not a full keyboard,
+    not a controller)? Only those count as a problem when they can't be opened: keyboards, mice and controllers
+    are never readable here, and listing every one of them ("event3: no permission; event4: ...") buried the one
+    that mattered. True when udev's record can't be read (then it might be)."""
+    try:
+        rdev = os.stat(path).st_rdev
+        with open(os.path.join(udev_data, 'c%d:%d' % (os.major(rdev), os.minor(rdev)))) as f:
+            props = dict(l[2:].rstrip('\n').split('=', 1) for l in f if l.startswith('E:') and '=' in l)
+    except (OSError, ValueError):
+        return True
+    return props.get('ID_INPUT_KEY') == '1' and props.get('ID_INPUT_KEYBOARD') != '1' and props.get('ID_INPUT_JOYSTICK') != '1'
+
+
 def main():
     try:
         import evdev
@@ -120,7 +137,8 @@ def main():
             try:
                 d = evdev.InputDevice(path)
             except PermissionError:
-                problems[path] = 'no permission'
+                if meant_to_be_readable(path):
+                    problems[path] = 'no permission'
                 continue
             except OSError:
                 continue

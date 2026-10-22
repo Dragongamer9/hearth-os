@@ -122,9 +122,22 @@ if [ "$NVIDIA" = "1" ]; then
     find /var/lib/dkms -name make.log -exec tail -40 {} \; 2>/dev/null || true
     exit 1
   }
-  # 32-bit Nvidia libraries (older 32-bit games through Steam). Not fatal: they must come from the same driver
-  # release as the 64-bit ones, and NVIDIA's repository doesn't always carry them.
-  "${APT[@]}" nvidia-driver-libs:i386 || OPTIONAL_MISSING+=("nvidia-driver-libs:i386")
+  # 32-bit Nvidia libraries (bughunt): Steam's own 32-bit parts and 32-bit games need them. Without them glvnd
+  # falls back to Mesa's 32-bit GL, which can't drive an Nvidia card ("failed to load driver: nvidia-drm"). They
+  # must be the same driver release as the 64-bit ones (they talk to the same kernel module), so that version is
+  # asked for by name. Debian's own 32-bit ones are an older release (550) and would be worse than none, so there's
+  # no fallback to them. If NVIDIA's repository has no 32-bit build of this release, the image is still built (64-bit
+  # games and Steam's 64-bit parts work), with a warning in the build and in the image check.
+  NV_VER=$(dpkg-query -W -f='${Version}' nvidia-driver-libs 2>/dev/null || true)
+  if [ -n "$NV_VER" ]; then
+    "${APT[@]}" "nvidia-driver-libs:i386=$NV_VER" || true
+  else
+    "${APT[@]}" nvidia-driver-libs:i386 || true
+  fi
+  if ! ls /usr/lib/i386-linux-gnu/libGLX_nvidia.so.0 >/dev/null 2>&1; then
+    echo "::warning::Nvidia's 32-bit libraries (nvidia-driver-libs:i386${NV_VER:+ $NV_VER}) aren't in NVIDIA's repository: 32-bit games and Steam's 32-bit parts fall back to Mesa on Nvidia"
+    OPTIONAL_MISSING+=("nvidia-driver-libs:i386${NV_VER:+=$NV_VER}")
+  fi
   # Nvidia's suspend helpers only where an Nvidia driver is loaded.
   for s in nvidia-suspend nvidia-resume nvidia-hibernate nvidia-suspend-then-hibernate; do
     if [ -f "/usr/lib/systemd/system/$s.service" ]; then
