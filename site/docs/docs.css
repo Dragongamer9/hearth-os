@@ -150,3 +150,4 @@ footer .brand{margin-right:auto;font-size:15px}
 .edshow button{font:inherit;color:var(--flame);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .ed-off{display:none!important}
 @media (max-width:600px){ .edshow{text-align:left} }
+.cnt{margin-left:auto;font-weight:500;font-size:13px;color:var(--muted)}

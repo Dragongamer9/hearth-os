@@ -350,7 +350,7 @@ footer .brand{margin-right:auto}
       <p class="lead">A controller-first system for handhelds and PCs. Steam, Epic, GOG and Xbox in one library you drive with a gamepad, and a full desktop, Mantel, one button away.</p>
       <div class="ctas">
         <a class="btn primary" href="#download"><svg class="ico"><use href="#i-down"/></svg>Download Hearth OS</a>
-        <a class="btn ghost" href="https://github.com/Dragongamer9/hearth-os">View the source</a>
+        <a class="btn ghost" href="docs/">Read the docs</a>
       </div>
       <p class="fine">Free and open source. AMD, Intel and Nvidia graphics. Built on Anatase, with Ubuntu, CachyOS and Peppermint editions. Also on Windows 11 as Ember.</p>
       <ul class="runs" aria-label="Runs on">
@@ -375,11 +375,11 @@ footer .brand{margin-right:auto}
     <div class="head split">
       <div><span class="kicker">New in 0.2 · now 0.3.1</span>
         <h2>16 library layouts, Beacon built in, a Hearth that looks after itself</h2></div>
-      <p class="links2"><a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a> · <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">Roadmap</a></p>
+      <p class="links2"><a href="docs/releases.html">Release notes</a> · <a href="docs/releases.html#next">Coming next</a></p>
     </div>
     <div class="strip">
       <div class="card"><div class="ic"><svg class="ico"><use href="#i-grid"/></svg></div><div><h3>16 library layouts</h3><p>Covers, List &amp; details, Shelves, Compact wall, plus 12 <b>Beta Experimental</b> ones to vote on.</p><p class="votes" id="votes" hidden>Most wanted:</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-flag"/></svg></div><div><h3><a href="https://github.com/Dragongamer9/beacon">Beacon</a> built in</h3><p>Set up games, CD keys and mods in Game Mode. Beacon for Windows too, and Ember installs it.</p></div></div>
+      <div class="card"><div class="ic"><svg class="ico"><use href="#i-flag"/></svg></div><div><h3>Beacon built in</h3><p>Set up games, CD keys and mods in Game Mode. Beacon for Windows too, and Ember installs it.</p></div></div>
       <div class="card"><div class="ic"><svg class="ico"><use href="#i-heal"/></svg></div><div><h3>Fail-safe</h3><p>Hearth frees itself and sends a report if it gets stuck; logs with <code>hearth-send-logs</code>.</p></div></div>
       <div class="card"><div class="ic"><svg class="ico"><use href="#i-users"/></svg></div><div><h3>Couch Co-op fixed</h3><p>Plus streamed and split-screen multi-seat, and sign-in again when a store sign-in expires.</p></div></div>
       <div class="card"><div class="ic"><svg class="ico"><use href="#i-usb"/></svg></div><div><h3>ISOs open the installer</h3><p>Both ISOs boot straight into Hearth's installer; the offline USB lets you look around first.</p></div></div>
@@ -505,8 +505,8 @@ footer .brand{margin-right:auto}
           <dt>Init</dt><dd>systemd</dd>
           <dt>Category</dt><dd>Gaming, handheld</dd>
           <dt>Status</dt><dd>Beta</dd>
-          <dt>Latest release</dt><dd>0.3.1 (2026-10-21) · <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a> · <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">Roadmap</a></dd>
-          <dt>License</dt><dd>Free and open source (<a href="https://github.com/Dragongamer9/hearth-os/blob/main/LICENSE">GPL-3.0</a>) · <a href="https://github.com/Dragongamer9/hearth-os">Source</a></dd>
+          <dt>Latest release</dt><dd>0.3.1 (2026-10-21) · <a href="docs/releases.html">Release notes</a> · <a href="docs/releases.html#next">Coming next</a></dd>
+          <dt>License</dt><dd>Free and open source (GPL-3.0)</dd>
         </dl>
       </div>
     </div>
@@ -568,7 +568,7 @@ footer .brand{margin-right:auto}
     </div>
 
     <div class="note" id="beta"><div class="ic" aria-hidden="true"><svg class="ico"><use href="#i-warn"/></svg></div>
-      <div><b>This is a beta.</b> Hearth OS and Ember aren't ready for everyday use yet and things will break now and then. Updates come out almost daily and install themselves. Keep a backup, and <a href="https://github.com/Dragongamer9/hearth-os/issues">tell us what breaks</a>.</div></div>
+      <div><b>This is a beta.</b> Hearth OS and Ember aren't ready for everyday use yet and things will break now and then. Updates come out almost daily and install themselves. Keep a backup, and <a href="docs/troubleshooting.html#ask">tell us what breaks</a>.</div></div>
   </div>
 </section>
 
@@ -579,7 +579,7 @@ footer .brand{margin-right:auto}
       <details><summary>What hardware does it need?</summary><p>Steam Deck, ROG Ally, Legion Go and most x86-64 desktops and laptops with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics, and a 16 GB USB stick. CachyOS needs a 2015-or-newer CPU and Secure Boot off.</p></details>
       <details><summary>Can I go back?</summary><p>Yes. Updates and switches keep the previous system in the boot menu; pick it, or run <code>sudo bootc rollback</code>.</p></details>
       <details><summary>Does it work with anti-cheat games?</summary><p>Nothing is injected into games; the overlay is an ordinary window. Couch Co-op doesn't support anti-cheat games.</p></details>
-      <details><summary>Something broke. How do I report it?</summary><p>Send logs from Settings › System or with <code>hearth-send-logs</code>, and <a href="https://github.com/Dragongamer9/hearth-os/issues">open an issue</a>.</p></details>
+      <details><summary>Something broke. How do I report it?</summary><p>Send logs from Settings › System or with <code>hearth-send-logs</code>, and <a href="docs/troubleshooting.html#ask">tell us what happened</a>.</p></details>
     </div>
   </div>
 </section>
@@ -591,11 +591,10 @@ footer .brand{margin-right:auto}
     <a class="brand" href="#"><img src="img/logo.svg" alt="">Hearth OS</a>
     <a href="docs/">Documentation</a>
     <a href="docs/troubleshooting.html">Troubleshooting</a>
-    <a href="https://github.com/Dragongamer9/hearth-os">Source code</a>
-    <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a>
-    <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">Roadmap</a>
-    <a href="https://github.com/Dragongamer9/beacon">Beacon</a>
-    <a href="https://github.com/Dragongamer9/hearth-os/issues">Report a problem</a>
+    <a href="docs/requests.html">Requests</a>
+    <a href="docs/releases.html">Release notes</a>
+    <a href="docs/releases.html#next">Coming next</a>
+    <a href="docs/troubleshooting.html#ask">Report a problem</a>
     <a href="https://anatase.org">Built on Anatase</a>
     <p class="legal">Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft or Universal Blue.
       Steam, Epic Games, GOG and Xbox are trademarks of their owners. Games and cover art in the screenshots are invented placeholders made for this site.</p>
