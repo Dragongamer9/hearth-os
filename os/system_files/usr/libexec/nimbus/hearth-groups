@@ -15,4 +15,11 @@ for g in video systemd-journal; do
     if command -v usermod >/dev/null; then usermod -aG "$g" "$u"; else gpasswd -a "$u" "$g"; fi && echo "hearth-groups: $u added to $g"
   done
 done
+# ...and taken out again where an earlier version put them in.
+for g in video systemd-journal; do
+  getent passwd | awk -F: '$1 ~ /^hearth-p[0-9]+$/ {print $1}' | while read -r u; do
+    id -nG "$u" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" || continue
+    gpasswd -d "$u" "$g" >/dev/null && echo "hearth-groups: $u taken out of $g"
+  done
+done
 exit 0
