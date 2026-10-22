@@ -58,7 +58,7 @@ jobs:
           best=999999
           for i in 1 2 3 4 5; do
             ms=$("$exe" --time 2>&1 >/dev/null | grep -o '[0-9]*')
-            [ "$ms" -lt "$best" ] && best=$ms
+            if [ "$ms" -lt "$best" ]; then best=$ms; fi
           done
           echo "::notice title=hearthfetch on ${{ matrix.os }}::best of five runs: ${best} ms"
           [ "$best" -lt 100 ] || { echo "::error::hearthfetch took ${best} ms"; exit 1; }
