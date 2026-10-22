@@ -27,7 +27,7 @@ mkdir -p "$(dirname "$LOG")"
 log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
 
 # gamescope options given to this session by whoever started it (an extra multi-seat player's window size, frame
-# rate and graphics card come from hearth-seats this way): kept, with session.conf's on top, every Game Mode start.
+# rate and graphics card come from hearth-seats this way): kept, after session.conf's, every Game Mode start.
 ENV_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS"
 [ -f "$CONF/session.conf" ] && . "$CONF/session.conf"
 [ -z "$NIMBUS_APP" ] && [ -f "$CONF/app-path" ] && NIMBUS_APP="$(cat "$CONF/app-path")"
@@ -72,8 +72,13 @@ run_game() {
   # Settings › Display writes gamescope's options (resolution, refresh rate) here: read again every time, so a new
   # mode applies when Game Mode restarts (it used to apply only after signing out).
   NIMBUS_GAMESCOPE_ARGS="$ENV_GAMESCOPE_ARGS"
+  # An extra multi-seat player's own options (Settings › Display writes -W/-H/-r there too) are added to the ones
+  # hearth-seats gave, which come last so their window size and graphics card win: session.conf replacing them
+  # put player 2 on the wrong card or at the whole screen's size over the others' parts.
+  [ -n "$HEARTH_SEAT" ] && NIMBUS_GAMESCOPE_ARGS=""
   # shellcheck source=/dev/null
   [ -f "$SESSION_CONF" ] && . "$SESSION_CONF"
+  [ -n "$HEARTH_SEAT" ] && [ -n "$ENV_GAMESCOPE_ARGS" ] && NIMBUS_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS $ENV_GAMESCOPE_ARGS"
   # shellcheck disable=SC2086
   # Performance overlay (Quick Access › Performance): mangoapp draws it and reloads this file when Hearth writes it.
   extra=""
@@ -261,6 +266,8 @@ input_stop() {
 
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
+# Extra multi-seat players have Game Mode only, even when their session.conf says to start in Desktop Mode.
+[ -n "$HEARTH_SEAT" ] && mode=game
 rm -f "$NEXT"
 while :; do
   # Fall back to whichever mode can run.
