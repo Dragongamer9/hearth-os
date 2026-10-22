@@ -161,6 +161,8 @@ jobs:
       # REQUIRED: a failure here stops the image from being published.
       - name: Check the image
         run: |
+          # pipefail: without it `bootc container lint | tee` below always passed, even when lint failed.
+          set -o pipefail
           cat > /tmp/check.sh <<'EOF'
           fail=0
           check() { if sh -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::error title=check::$1"; fail=1; fi; }
