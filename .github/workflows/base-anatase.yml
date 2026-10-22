@@ -11,7 +11,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml']
+    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -50,6 +50,9 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
           cargo build --release
           mkdir -p /tmp/app && cp target/release/hearth /tmp/app/hearth
+          # ---- hearthfetch (hosts/hearthfetch): /usr/bin/hearthfetch, Hearth OS's system summary for the terminal.
+          (cd ../hearthfetch && sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml && cargo build --release && cp target/release/hearthfetch /tmp/app/hearthfetch)
+          # ---- end hearthfetch
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -156,6 +159,7 @@ jobs:
           echo "--- the Hearth app"
           check "every library the Hearth app links is installed" "! ldd /usr/lib/nimbus/nimbus | grep -q 'not found'"
           check "Hearth Browser is installed" "test -x /usr/lib/hearth-browser/nimbus"
+          check "hearthfetch is installed and runs" "test -x /usr/bin/hearthfetch && /usr/bin/hearthfetch --no-logo | grep -q Hearth"
           echo "--- Game Mode and Desktop Mode"
           check "gamescope is installed" "command -v gamescope"
           check "labwc is installed" "command -v labwc"

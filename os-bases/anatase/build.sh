@@ -45,6 +45,9 @@ else
 fi
 test -x /usr/lib/nimbus/nimbus
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
+# ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
+if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
+# ---- end hearthfetch
 
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session

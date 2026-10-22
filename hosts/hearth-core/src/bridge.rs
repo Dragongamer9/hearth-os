@@ -250,6 +250,8 @@ impl Bridge {
                 "gameMode": crate::signin_handoff::game_mode(),
                 "windowed": crate::signin_handoff::windowed(),
                 "signin": crate::signin_handoff::signin_arg(),
+                // Opened from Mantel's Games section with --play <id>: the page plays that game (desktop_games.rs).
+                "play": crate::desktop_games::play_arg(),
                 "edition": edition(),
                 // The speed test (CI) asks the screens to time themselves.
                 "perfLog": std::env::var_os("HEARTH_PERF_LOG").is_some(),

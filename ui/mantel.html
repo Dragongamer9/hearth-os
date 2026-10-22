@@ -113,6 +113,18 @@ body.portrait .gm .gmi{display:block}
 .cell .pinmark{position:absolute;top:12px;right:12px;width:14px;height:14px;color:var(--muted);display:grid;place-items:center}
 .cell .pinmark svg{width:14px;height:14px}
 .none{grid-column:1/-1;align-self:center;text-align:center;color:var(--muted);font-size:14px;padding-top:120px}
+/* the launcher's sections (Apps, Games, Windows): lit when shown, ringed when the D-pad is on them */
+.ltabs{display:flex;gap:8px;align-items:center;flex:none}
+.ltab{height:38px;border-radius:10px;padding:0 18px;background:var(--panel2);font-size:14px;transition:background var(--quick)}
+.ltab:hover{background:var(--panel3)}
+.ltab.on{background:var(--accent);color:var(--accentInk);font-weight:700}
+.ltabs.nav .ltab.on{box-shadow:0 0 0 2px var(--text)}
+.ltabs .hint{margin-left:auto;color:var(--muted);font-size:12px}
+.grid.nav .cell.cur{border-color:var(--line)}
+/* a game: its cover (its first letter until the picture is in, or without one) */
+.cell.game{height:236px}
+.cell.game .cover{width:120px;height:168px;border-radius:10px;background:var(--panel3);display:grid;place-items:center;color:var(--muted);font-size:40px;overflow:hidden;flex:none;position:relative}
+.cell.game .cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .acts{display:flex;gap:8px;align-items:center;flex:none}
 .ab{height:40px;border-radius:10px;padding:0 16px;background:var(--panel2);font-size:13px;transition:background var(--quick)}
 .ab:hover{background:var(--panel3)}
@@ -433,7 +445,7 @@ const OWN_APPS = [{id:'hearth:files', name:'Files', icon:'hearth-logo.svg'}, {id
   {id:'hearth:settings', name:'Hearth Settings', icon:'hearth-logo.svg'}, {id:'hearth:apps', name:'Apps', icon:'hearth-logo.svg'},
   {id:'hearth:clipboard', name:'Clipboard history', icon:'hearth-logo.svg'}];
 const ownIcon = id => (OWN_APPS.find(a=>a.id===id)||{}).icon;
-const ST = {windows:[], pins:[], apps:null, status:null, tray:{full:false, icons:[]}, wallpaper:'', full:false, mouseOn:false, still:false, desk:null,
+const ST = {windows:[], pins:[], apps:null, games:null, winApps:null, status:null, tray:{full:false, icons:[]}, wallpaper:'', full:false, mouseOn:false, still:false, desk:null,
   desks:[], notes:{history:[], unseen:0, dnd:false}, dnd:false, clock24:false, desktopIcons:true};
 const same = (a, b) => String(a||'').toLowerCase() === String(b||'').toLowerCase();
 
@@ -465,6 +477,9 @@ if(host) host.addEventListener('message', e => {
     case 'mantel.kbdButton': if(PART==='keyboard') kbdButton(d&&d.b); break;
     case 'mantel.tray': ST.tray=d||{full:false,icons:[]}; if(PART==='bar') renderTray(); break;
     case 'mantel.apps': ST.apps=OWN_APPS.concat(d||[]); if(PART==='launcher') renderGrid(); break;
+    // The launcher's Games section (Ember's library: installed games) and Windows section (Windows' own programs).
+    case 'mantel.games': ST.games=d||[]; if(PART==='launcher') renderGrid(); break;
+    case 'mantel.windowsApps': ST.winApps=d||[]; if(PART==='launcher') renderGrid(); break;
     case 'mantel.opened': opened(); break;
     case 'status': ST.status=d; if(PART==='bar') renderStatus(); if(PART==='quick') renderQuick(); break;
     case 'profile': if(d&&d.accent) setAccent(d.accent); break;
@@ -476,7 +491,7 @@ function render(){ ({bar:renderBar, launcher:renderLauncher, quick:renderQuick, 
 function replay(el, cls){ if(!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
 let helpTimer=0;
 function opened(){
-  if(PART==='launcher'){ L.query=''; L.cur=0; const i=$('.search input'); if(i){ i.value=''; } renderGrid(); setTimeout(()=>{ const i=$('.search input'); i&&i.focus(); }, 30); if(!ST.apps) mantel('apps'); }
+  if(PART==='launcher'){ L.query=''; L.cur=0; L.onTabs=false; const i=$('.search input'); if(i){ i.value=''; } renderTabs(); renderGrid(); setTimeout(()=>{ const i=$('.search input'); i&&i.focus(); }, 30); if(!ST.apps) mantel('apps'); mantel('games'); if(!ST.winApps) mantel('windowsApps'); }
   if(PART==='quick'){ Qn.r=0; Qn.c=0; refreshStatus(); refreshDesk(); call('pad.status').then(p=>{ ST.mouseOn=!!p.mouseOn; renderQuick(); }).catch(()=>{}); renderQuick(); replay($('.panel'), 'enter'); }
   if(PART==='power'){ P.sel=0; renderPower(); }
   if(PART==='radial'){ R.sel=-1; R.keys.clear(); call('pad.status').then(p=>{ ST.mouseOn=!!p.mouseOn; renderRadial(); }).catch(()=>{}); renderRadial(); replay($('.ring'), 'pop'); }
@@ -849,10 +864,35 @@ function volumeBy(d){
 }
 
 // ================================================================ launcher (Launcher.qml)
-const L = {query:'', cur:0};
+const L = {query:'', cur:0, tab:'apps', onTabs:false};
+// The launcher's sections: every app, your installed games (they start through Ember's library, like Hearth's Play
+// button), and the programs that come with Windows. Tab / Shift+Tab switch, or up from the top row to the buttons
+// and left / right (the D-pad).
+const LTABS = [['apps','Apps'],['games','Games'],['windows','Windows']];
+function renderTabs(){
+  const t=$('.ltabs'); if(!t) return;
+  t.classList.toggle('nav', L.onTabs);
+  t.innerHTML = LTABS.map(([k,n])=>`<button class="ltab ${L.tab===k?'on':''}" data-act="ltab" data-tab="${k}">${n}</button>`).join('')
+    + `<span class="hint">${L.onTabs?'◀ ▶ switch · ▼ back to the list':'Tab switches'}</span>`;
+  const i=$('.search input'); if(i) i.placeholder = L.tab==='games' ? 'Search games' : L.tab==='windows' ? 'Search Windows programs' : 'Search apps';
+  const g=$('.grid'); if(g) g.classList.toggle('nav', L.onTabs);
+}
+function setLTab(t){
+  if(!LTABS.some(x=>x[0]===t) || L.tab===t) return;
+  L.tab=t; L.cur=0; renderTabs(); renderGrid();
+  if(t==='games') mantel('games');
+  if(t==='windows' && !ST.winApps) mantel('windowsApps');
+}
+function nextLTab(d){ const i=LTABS.findIndex(x=>x[0]===L.tab); setLTab(LTABS[(i+d+LTABS.length)%LTABS.length][0]); }
+// Opens what the launcher shows at i: an app, or a game (played through Ember's library).
+function launchAt(i){
+  const a=matches()[i]; if(!a) return;
+  if(L.tab==='games') mantel('playGame', {id:a.id}); else mantel('launch', {id:a.id});
+}
 function renderLauncher(){
   if(!$('.box')){
     document.body.innerHTML = `<div class="box">
+      <div class="ltabs"></div>
       <div class="search"><input placeholder="Search apps" spellcheck="false" aria-label="Search apps"></div>
       <div class="grid"></div>
       <div class="acts">
@@ -869,23 +909,28 @@ function renderLauncher(){
     input.addEventListener('blur', () => $('.search').classList.remove('focus'));
     new ResizeObserver(() => renderGrid()).observe($('.grid'));
   }
+  renderTabs();
   renderGrid();
 }
+function source(){ return L.tab==='games' ? ST.games : L.tab==='windows' ? ST.winApps : ST.apps; }
 function matches(){
-  const all=(ST.apps||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const all=(source()||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
   const q=L.query.trim().toLowerCase(); if(!q) return all;
   return all.filter(a=>a.name.toLowerCase().includes(q)).sort((a,b)=>(b.name.toLowerCase().startsWith(q))-(a.name.toLowerCase().startsWith(q)));
 }
-function cols(){ const g=$('.grid'); return Math.max(1, Math.floor(((g&&g.clientWidth)||800) / 120)); }
+function cols(){ const g=$('.grid'); return Math.max(1, Math.floor(((g&&g.clientWidth)||800) / (L.tab==='games' ? 150 : 120))); }
 function renderGrid(){
   const g=$('.grid'); if(!g) return;
   g.style.gridTemplateColumns = `repeat(${cols()}, 1fr)`;
-  if(!ST.apps){ g.innerHTML = `<div class="loading"><span class="spin"></span>Finding your apps…</div>`; return; }
+  const what = L.tab==='games' ? 'games' : L.tab==='windows' ? 'programs' : 'apps';
+  if(!source()){ g.innerHTML = `<div class="loading"><span class="spin"></span>Finding your ${what}…</div>`; return; }
   const list=matches(), pinned=new Set(ST.pins.map(p=>String(p.id).toLowerCase()));
   L.cur=Math.max(0, Math.min(L.cur, list.length-1));
-  g.innerHTML = list.length ? list.map((a,i)=>`<div class="cell ${i===L.cur?'cur':''}" data-act="launch" data-app="${esc(a.id)}" data-i="${i}" title="${esc(a.name)}">${icon(a.icon, a.name, '')}<span>${esc(a.name)}</span>
-      ${pinned.has(String(a.id).toLowerCase())?`<i class="pinmark" title="Pinned to the taskbar">${IC('pin')}</i>`:''}</div>`).join('')
-    : `<div class="none">No apps match "${esc(L.query)}"</div>`;
+  const empty = L.query ? `No ${what} match "${esc(L.query)}"` : L.tab==='games' ? 'No games installed yet. Games you install in Hearth show up here.' : `No ${what}`;
+  g.innerHTML = !list.length ? `<div class="none">${empty}</div>` : L.tab==='games'
+    ? list.map((a,i)=>`<div class="cell game ${i===L.cur?'cur':''}" data-act="play" data-game="${esc(a.id)}" data-i="${i}" title="${esc(a.name)}"><div class="cover">${esc((a.name||'?').trim().charAt(0).toUpperCase())}${a.cover?`<img src="${esc(a.cover)}" alt="" loading="lazy" onerror="this.remove()">`:''}</div><span>${esc(a.name)}</span></div>`).join('')
+    : list.map((a,i)=>`<div class="cell ${i===L.cur?'cur':''}" data-act="launch" data-app="${esc(a.id)}" data-i="${i}" title="${esc(a.name)}">${icon(a.icon, a.name, '')}<span>${esc(a.name)}</span>
+      ${pinned.has(String(a.id).toLowerCase())?`<i class="pinmark" title="Pinned to the taskbar">${IC('pin')}</i>`:''}</div>`).join('');
   const c=g.querySelector('.cell.cur'); if(c) c.scrollIntoView({block:'nearest'});
 }
 // Right-click, press and hold, or the Menu key (X on the controller): Open / Pin to taskbar (shell.qml's launcher menu).
@@ -893,6 +938,7 @@ function launcherMenu(i){
   const a=matches()[i]; if(!a) return;
   L.cur=i; renderGrid();
   const c=$('.cell.cur'), r=c?c.getBoundingClientRect():{left:innerWidth/2, top:innerHeight/2, width:0, height:0};
+  if(L.tab==='games') return showMenu(r.left+r.width/2, r.top+r.height/2, {title:a.name}, [{label:'Play', icon:'pad', run:()=>mantel('playGame', {id:a.id})}]);
   const pinned=ST.pins.some(p=>same(p.id, a.id));
   showMenu(r.left+r.width/2, r.top+r.height/2, {title:a.name}, [
     {label:'Open', icon:'open', run:()=>mantel('launch', {id:a.id})},
@@ -905,11 +951,23 @@ function launcherKey(e){
   const list=matches(), n=cols();
   if(e.key==='ContextMenu' || e.key==='F23' || (e.key==='F10' && e.shiftKey)){ e.preventDefault(); return launcherMenu(L.cur); }
   const go=i=>{ L.cur=Math.max(0, Math.min(list.length-1, i)); renderGrid(); };
+  const tabs=on=>{ L.onTabs=on; renderTabs(); };
+  if(e.key==='Tab'){ e.preventDefault(); return nextLTab(e.shiftKey ? -1 : 1); }
+  // On the section buttons: left / right switch, down (or Enter, B) goes back to the list.
+  if(L.onTabs){
+    switch(e.key){
+      case 'ArrowLeft': e.preventDefault(); return nextLTab(-1);
+      case 'ArrowRight': e.preventDefault(); return nextLTab(1);
+      case 'ArrowDown': case 'Enter': case 'Escape': e.preventDefault(); return tabs(false);
+      case 'ArrowUp': e.preventDefault(); return;
+    }
+    tabs(false);
+  }
   switch(e.key){
     case 'Escape': e.preventDefault(); if(L.query){ L.query=''; $('.search input').value=''; go(0); } else mantel('hidePanel'); return;
-    case 'Enter': e.preventDefault(); if(list[L.cur]) mantel('launch',{id:list[L.cur].id}); return;
+    case 'Enter': e.preventDefault(); launchAt(L.cur); return;
     case 'ArrowDown': e.preventDefault(); return go(L.cur+n);
-    case 'ArrowUp': e.preventDefault(); return go(L.cur-n);
+    case 'ArrowUp': e.preventDefault(); if(L.cur<n) return tabs(true); return go(L.cur-n);
     case 'ArrowRight': { const i=$('.search input'); if(i.selectionStart===i.value.length){ e.preventDefault(); go(L.cur+1); } return; }
     case 'ArrowLeft': { const i=$('.search input'); if(!i.value){ e.preventDefault(); go(L.cur-1); } return; }
   }
@@ -1348,6 +1406,8 @@ document.addEventListener('click', e => {
     case 'task': { const it=TASKS[+d.i]; if(it) focusApp(it); return; }
     case 'desk': return goDesk(+d.i);
     case 'launch': return mantel('launch', {id:d.app});
+    case 'play': return mantel('playGame', {id:d.game});
+    case 'ltab': L.onTabs=false; setLTab(d.tab); { const i=$('.search input'); if(i) i.focus(); } return;
     case 'trayIcon': return trayClick(el, e.detail>=2 ? 'double' : 'left');
     case 'q': { const rows=navRows(); rows.forEach((r,ri)=>{ const ci=r.indexOf(d.id); if(ci>=0){ Qn.r=ri; Qn.c=ci; } }); return quickDo(d.id); }
     case 'q-mute': return quickDo('q-mute');
@@ -1420,6 +1480,9 @@ if(!host){   // browser preview with sample data
   ST.windows=[{id:1,title:'Steam',app:'steam',key:'steam',pinId:'steam',name:'Steam',active:true},{id:2,title:'Downloads - File Explorer',app:'explorer',key:'explorer',pinId:'explorer',name:'File Explorer'},
     {id:3,title:'Mods folder - File Explorer',app:'explorer',key:'explorer',pinId:'explorer',name:'File Explorer'},{id:4,title:'Notes.txt - Notepad',app:'notepad',key:'notepad',pinId:'notepad',name:'Notepad'}];
   ST.apps=['Steam','Discord','Heroic Games Launcher','File Explorer','Notepad','Settings','Microsoft Edge','Spotify','OBS Studio','Calculator','Paint','Terminal','Photos','Xbox','Task Manager','Snipping Tool'].map(n=>({id:n.toLowerCase().replace(/ /g,''),name:n})); ST.apps=OWN_APPS.concat(ST.apps);
+  ST.games=['Dota 2','Celeste','Hades','The Battle for Middle-earth II','Forza Horizon 5'].map((n,i)=>({id:'steam:'+(i+1),name:n}));
+  ST.winApps=['File Explorer','Settings','Control Panel','Task Manager','Notepad','Paint','Calculator','Command Prompt'].map(n=>({id:n,name:n}));
+  if(['apps','games','windows'].includes(Q.get('tab'))) L.tab=Q.get('tab');
   ST.status={wifi:{available:true,on:true,ssid:'Home'},audio:{volume:60,muted:false},battery:{present:true,pct:82,charging:false},display:{supported:true,brightness:70},powerMode:'balanced'};
   ST.tray={full:true, icons:[{key:'1',tip:'Discord'},{key:'2',tip:'Steam'}]};
   ST.wallpaper=Q.get('wall')||'';
