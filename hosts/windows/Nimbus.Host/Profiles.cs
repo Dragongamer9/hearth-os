@@ -184,16 +184,38 @@ public sealed class Profiles
     };
 
     // ---------------------------------------------------------------- switching
-    private static void MovePath(string src, string dst)
+    /// <summary>Moves a file or folder, trying again for a moment if something holds it. Returns false when there's
+    /// nothing to move.</summary>
+    private static bool MovePath(string src, string dst)
     {
-        if (!File.Exists(src) && !Directory.Exists(src)) return;
+        if (!File.Exists(src) && !Directory.Exists(src)) return false;
         Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
         try { if (Directory.Exists(dst)) Directory.Delete(dst, true); else if (File.Exists(dst)) File.Delete(dst); } catch { }
-        if (Directory.Exists(src)) Directory.Move(src, dst); else File.Move(src, dst);
+        for (int i = 0; ; i++)
+        {
+            try { if (Directory.Exists(src)) Directory.Move(src, dst); else File.Move(src, dst); return true; }
+            catch (IOException) when (i < 5) { Thread.Sleep(300); }
+            catch (UnauthorizedAccessException) when (i < 5) { Thread.Sleep(300); }
+        }
+    }
+
+    /// <summary>The first file under this path that another program has open (so it can't be moved), or null.</summary>
+    private static string? LockedFile(string path)
+    {
+        IEnumerable<string> files = File.Exists(path) ? new[] { path }
+            : Directory.Exists(path) ? Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories) : Array.Empty<string>();
+        foreach (var f in files)
+        {
+            try { using var _ = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.None); }
+            catch (FileNotFoundException) { }
+            catch (Exception) { return f; }
+        }
+        return null;
     }
 
     /// <summary>Puts the current person's files away and brings out the other's, with Steam signed in as theirs.
-    /// Ember restarts afterwards.</summary>
+    /// Ember restarts afterwards. All or nothing: if a file can't be moved, everything moved so far goes back and the
+    /// profile stays as it was.</summary>
     public JsonObject SwitchTo(string id, bool gameRunning)
     {
         var to = Find(id) ?? throw new InvalidOperationException("No such profile");
@@ -202,29 +224,57 @@ public sealed class Profiles
         var from = Active;
         if (id == from) return (JsonObject)to.DeepClone();
         SystemBridge.Log($"profiles: switching to {(string?)to["name"] ?? id}");
-        StopSteam();
-        SetSteamAccount((string?)to["steam"] ?? "");
-        // Your own added games come along to every profile.
-        var lib = Path.Combine(_dir, "library.json");
-        JsonArray manual = new();
-        try { manual = (JsonNode.Parse(File.ReadAllText(lib))?["Manual"] as JsonArray)?.DeepClone() as JsonArray ?? new(); } catch { }
         var away = Stash(from);
-        try { Directory.Delete(away, true); } catch { }
-        Directory.CreateDirectory(away);
-        foreach (var rel in Own) MovePath(Path.Combine(_dir, rel), Path.Combine(away, rel));
         var back = Stash(id);
-        foreach (var rel in Own) MovePath(Path.Combine(back, rel), Path.Combine(_dir, rel));
+        var lib = Path.Combine(_dir, "library.json");
+        // From here until Ember restarts, its library isn't saved over the next person's (LibraryStore.PauseSaves).
+        Library.LibraryStore.PauseSaves();
+        var moved = new List<(string From, string To)>();
+        try
+        {
+            // Nothing is moved while another program holds one of the files.
+            foreach (var rel in Own)
+                if ((LockedFile(Path.Combine(_dir, rel)) ?? LockedFile(Path.Combine(back, rel))) is { } busy)
+                    throw new InvalidOperationException($"Another program is using {Path.GetFileName(busy)}. Close it and try again.");
+            StopSteam();
+            SetSteamAccount((string?)to["steam"] ?? "");
+            // Your own added games come along to every profile.
+            JsonArray manual = new();
+            try { manual = (JsonNode.Parse(File.ReadAllText(lib))?["Manual"] as JsonArray)?.DeepClone() as JsonArray ?? new(); } catch { }
+            try { Directory.Delete(away, true); } catch { }
+            Directory.CreateDirectory(away);
+            foreach (var rel in Own)
+                if (MovePath(Path.Combine(_dir, rel), Path.Combine(away, rel))) moved.Add((Path.Combine(_dir, rel), Path.Combine(away, rel)));
+            foreach (var rel in Own)
+                if (MovePath(Path.Combine(back, rel), Path.Combine(_dir, rel))) moved.Add((Path.Combine(back, rel), Path.Combine(_dir, rel)));
+            JsonObject d;
+            try { d = JsonNode.Parse(File.ReadAllText(lib)) as JsonObject ?? new(); } catch { d = new(); }
+            var mine = d["Manual"] as JsonArray ?? new JsonArray();
+            foreach (var g in manual) if (!mine.Any(m => (string?)m?["Id"] == (string?)g?["Id"])) mine.Add(g!.DeepClone());
+            d["Manual"] = mine.DeepClone();
+            if (d["Profile"] is null) d["Profile"] = new JsonObject { ["Name"] = (string?)to["name"], ["Accent"] = (string?)to["color"] ?? "#3fd0b8" };
+            File.WriteAllText(lib, d.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            _data["active"] = id;
+            Save();
+        }
+        catch (Exception ex)
+        {
+            SystemBridge.Log($"profiles: switch to {id} FAILED ({ex.Message}); putting back {moved.Count} moved item(s)");
+            _data["active"] = from;
+            // Back in the opposite order: the next person's files to their stash first, then the current person's.
+            for (int i = moved.Count - 1; i >= 0; i--)
+            {
+                try { MovePath(moved[i].To, moved[i].From); }
+                catch (Exception undo) { SystemBridge.Log($"profiles: couldn't put back {moved[i].From}: {undo.Message}"); }
+            }
+            try { SetSteamAccount((string?)Find(from)?["steam"] ?? ""); } catch { }
+            try { Save(); } catch { }
+            Library.LibraryStore.ResumeSaves();
+            throw ex is InvalidOperationException ? ex : new InvalidOperationException("Couldn't switch profiles: " + ex.Message);
+        }
         try { Directory.Delete(back, true); } catch { }
         foreach (var rel in Caches) try { File.Delete(Path.Combine(_dir, rel)); } catch { }
-        JsonObject d;
-        try { d = JsonNode.Parse(File.ReadAllText(lib)) as JsonObject ?? new(); } catch { d = new(); }
-        var mine = d["Manual"] as JsonArray ?? new JsonArray();
-        foreach (var g in manual) if (!mine.Any(m => (string?)m?["Id"] == (string?)g?["Id"])) mine.Add(g!.DeepClone());
-        d["Manual"] = mine.DeepClone();
-        if (d["Profile"] is null) d["Profile"] = new JsonObject { ["Name"] = (string?)to["name"], ["Accent"] = (string?)to["color"] ?? "#3fd0b8" };
-        File.WriteAllText(lib, d.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        _data["active"] = id;
-        Save();
+        SystemBridge.Log($"profiles: switched from {from} to {id} ({moved.Count} item(s) moved)");
         return (JsonObject)to.DeepClone();
     }
 

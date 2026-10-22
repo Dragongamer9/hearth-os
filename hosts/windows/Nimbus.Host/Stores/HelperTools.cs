@@ -121,8 +121,10 @@ public static class HelperTools
         using var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var outSb = new StringBuilder(); var errSb = new StringBuilder();
         var outDone = new TaskCompletionSource(); var errDone = new TaskCompletionSource();
-        p.OutputDataReceived += (_, e) => { if (e.Data is null) outDone.TrySetResult(); else { lock (outSb) outSb.AppendLine(e.Data); onLine?.Invoke(e.Data); } };
-        p.ErrorDataReceived += (_, e) => { if (e.Data is null) errDone.TrySetResult(); else { lock (errSb) errSb.AppendLine(e.Data); onLine?.Invoke(e.Data); } };
+        // These run on a thread-pool thread: an error in onLine (an odd progress line it can't read) would end Ember.
+        void Line(string l) { try { onLine?.Invoke(l); } catch (Exception ex) { SystemBridge.Log($"{t.Name}: line not read: {ex.Message}"); } }
+        p.OutputDataReceived += (_, e) => { if (e.Data is null) outDone.TrySetResult(); else { lock (outSb) outSb.AppendLine(e.Data); Line(e.Data); } };
+        p.ErrorDataReceived += (_, e) => { if (e.Data is null) errDone.TrySetResult(); else { lock (errSb) errSb.AppendLine(e.Data); Line(e.Data); } };
         p.Start();
         p.StandardInput.Close();   // nothing will ever answer a prompt: make it fail instead of hang
         p.BeginOutputReadLine();

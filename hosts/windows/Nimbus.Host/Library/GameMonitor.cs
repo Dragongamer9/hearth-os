@@ -31,7 +31,8 @@ public sealed class GameMonitor : IDisposable
     /// <summary>When the running game started (UTC), or null.</summary>
     public DateTime? StartedAt { get { lock (_lock) return _startedAt; } }
 
-    public GameMonitor() => _timer = new System.Threading.Timer(_ => Poll(), null, Timeout.Infinite, Timeout.Infinite);
+    // On a timer thread an error would end Ember (saving play time can fail while antivirus holds the file): logged instead.
+    public GameMonitor() => _timer = new System.Threading.Timer(_ => { try { Poll(); } catch (Exception ex) { SystemBridge.Log("game monitor: " + ex); } }, null, Timeout.Infinite, Timeout.Infinite);
 
     public void Track(string id, IEnumerable<string> dirs)
     {
