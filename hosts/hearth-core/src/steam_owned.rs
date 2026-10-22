@@ -135,11 +135,15 @@ pub fn appinfo(path: &Path, wanted: &HashSet<u32>) -> HashMap<u32, AppInfo> {
     // Each app: id, size of the rest, then state, last update, token, text checksum, change number, (28+) data
     // checksum, then its binary KeyValues.
     let head = 4 + 4 + 8 + 20 + 4 + if version >= 28 { 20 } else { 0 };
+    let file_len = f.metadata().map(|m| m.len()).unwrap_or(0);
     loop {
         let Some(id) = u32_at(&mut f) else { break };
         if id == 0 { break; }
         let Some(size) = u32_at(&mut f) else { break };
         let start = f.stream_position().unwrap_or(0);
+        // An entry can't be bigger than what's left of the file: a damaged size (up to 4 GB) was allocated as it was.
+        let left = file_len.saturating_sub(start);
+        if size as u64 > left { break; }
         if wanted.contains(&id) && size as usize > head {
             let mut buf = vec![0u8; size as usize];
             if f.read_exact(&mut buf).is_err() { break; }
@@ -314,5 +318,12 @@ mod tests {
             assert_eq!(appinfo(&p, &both)[&10].installdir, "Half-Life");
         }
         assert!(appinfo(Path::new("/nonexistent/appinfo.vdf"), &[1u32].into_iter().collect()).is_empty());
+        // A damaged entry size (bigger than the file) ends the reading instead of allocating it.
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("appinfo.vdf");
+        let mut f = appinfo_file(27);
+        f[12..16].copy_from_slice(&u32::MAX.to_le_bytes());
+        std::fs::write(&p, f).unwrap();
+        assert!(appinfo(&p, &[10u32].into_iter().collect()).is_empty());
     }
 }
