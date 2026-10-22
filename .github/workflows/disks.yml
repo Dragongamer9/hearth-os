@@ -1,0 +1,120 @@
+# Hearth Disks (hosts/hearth-disks), the disk manager for Hearth OS and Ember: built and tested on Linux and
+# Windows. Linux also runs it against a real disk image through udisks2 (tests/loop_device.rs) and takes a
+# screenshot of its window. Release builds of it are made by base-*.yml (the Linux images) and release.yml (Ember).
+name: Hearth Disks
+
+on:
+  push:
+    branches: [apps-disks, main, linux-host]
+    paths: ['hosts/hearth-disks/**', 'hosts/hearth-core/**', '.github/workflows/disks.yml']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-disks
+      - name: WebKit and GTK, udisks2 and the file system tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            udisks2 exfatprogs dosfstools ntfs-3g btrfs-progs e2fsprogs xvfb imagemagick dbus-x11 xdotool >/dev/null
+      - name: Test the Steam library code it shares with Hearth (hearth-core)
+        working-directory: hosts/hearth-core
+        run: cargo test steam 2>&1 | tail -15
+      - name: Unit tests (udisks objects, PowerShell JSON, what's the running system, what's allowed)
+        working-directory: hosts/hearth-disks
+        run: |
+          set -o pipefail
+          cargo test --lib 2>&1 | tee test.log || { echo "::error title=unit tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 test.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        working-directory: hosts/hearth-disks
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          ls -l target/release/hearth-disks
+          echo "::notice title=size::$(du -h target/release/hearth-disks | cut -f1)"
+      - name: Against a disk image through udisks2
+        working-directory: hosts/hearth-disks
+        run: |
+          set -o pipefail
+          # The runner has no desktop session for polkit to ask in: let the runner's account use udisks2 (CI only).
+          sudo tee /etc/polkit-1/rules.d/50-hearth-disks-ci.rules >/dev/null <<'RULE'
+          polkit.addRule(function (action, subject) {
+              if (action.id.indexOf("org.freedesktop.udisks2.") == 0 && subject.user == "runner") return polkit.Result.YES;
+          });
+          RULE
+          sudo systemctl restart polkit || true
+          sudo systemctl start udisks2
+          # The runner's kernel keeps exFAT in its extra modules.
+          sudo modprobe exfat 2>/dev/null || { sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" >/dev/null && sudo modprobe exfat; } || echo "::warning::no exFAT in this kernel"
+          truncate -s 256M "$RUNNER_TEMP/disk.img"
+          out=$(udisksctl loop-setup --no-user-interaction -f "$RUNNER_TEMP/disk.img")
+          echo "$out"
+          dev=$(echo "$out" | grep -o '/dev/loop[0-9]*' | head -1)
+          test -n "$dev"
+          ./target/release/hearth-disks --list > list.json; head -60 list.json
+          HEARTH_DISKS_LOOP="$dev" cargo test --release --test loop_device -- --nocapture 2>&1 | tee loop.log \
+            || { echo "::error title=disk image test::$(grep -E '(panicked|failed|error)' -A6 loop.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=disk image test::listed, formatted, mounted, renamed, checked, partitioned, set up for games and removed a disk image through udisks2"
+      - name: Screenshot of the window
+        working-directory: hosts/hearth-disks
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          # A disk image to show next to the runner's own drive.
+          truncate -s 1G "$RUNNER_TEMP/shot.img"
+          udisksctl loop-setup --no-user-interaction -f "$RUNNER_TEMP/shot.img" || true
+          ./target/release/hearth-disks > run.log 2>&1 &
+          sleep 8
+          import -window root shots/disks.png || true
+          w=$(xdotool search --name '^Disks$' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true
+          xdotool key Down; sleep 1; xdotool key Right; sleep 1; xdotool key Down; sleep 1
+          import -window root shots/disks-partition.png || true
+          pkill -f target/release/hearth-disks || true
+          echo "::notice title=App output::$(tail -c 1500 run.log | tr '\n' '|')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-disks-linux
+          path: |
+            hosts/hearth-disks/target/release/hearth-disks
+            hosts/hearth-disks/shots
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-disks
+      - name: Unit tests (and the real PowerShell listing of the runner's disks)
+        working-directory: hosts/hearth-disks
+        shell: pwsh
+        run: |
+          cargo test --lib -- --nocapture 2>&1 | Tee-Object -FilePath test.log
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Write-Output "::notice title=unit tests::$((Select-String -Path test.log -Pattern '^test result').Line -join ' ')"
+      - name: Build
+        working-directory: hosts/hearth-disks
+        shell: pwsh
+        run: |
+          cargo build --release
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-Item target/release/hearth-disks.exe | Format-List Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-disks-windows
+          path: hosts/hearth-disks/target/release/hearth-disks.exe

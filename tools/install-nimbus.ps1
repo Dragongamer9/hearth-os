@@ -76,6 +76,17 @@ try {
             $sc.Save()
         } catch { Write-Host "No Start menu entry for Hearth Terminal ($($_.Exception.Message))." -ForegroundColor Yellow }
     }
+    # Hearth Disks (the disk manager) comes inside Ember's package: its Start menu entry. Ember keeps it up to date
+    # after updates (DisksShortcut.cs).
+    $disks = Join-Path $app 'hearth-disks.exe'
+    if (Test-Path $disks) {
+        try {
+            $sc = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'Hearth Disks.lnk'))
+            $sc.TargetPath = $disks; $sc.WorkingDirectory = $app; $sc.IconLocation = "$disks,0"
+            $sc.Description = 'See your drives and their health, format USB drives and SD cards, and set up drives for games'
+            $sc.Save()
+        } catch { Write-Host "The Start menu entry for Hearth Disks wasn't made ($($_.Exception.Message))." -ForegroundColor Yellow }
+    }
 
     # Safety net first: an undo script that's easy to run from Task Manager.
     $restore = @"
