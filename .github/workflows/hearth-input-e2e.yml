@@ -5,7 +5,7 @@ name: Hearth Input e2e
 
 on:
   push:
-    branches: [main, linux-host]
+    branches: [main, linux-host, input-e2e]   # input-e2e: where this test was built (dispatch needs it on main first)
     paths:
       - 'hosts/linux/desktop/shell/hearth-input*'
       - 'hosts/linux/desktop/shell/input-layouts.json'
