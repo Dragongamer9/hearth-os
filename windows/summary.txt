@@ -1,10 +1,10 @@
 failed:
-[desktop] a key reaches the page ({'value': '', 'active': 'i', 'focus': False}; chrome {'active': True, 'activeWin': 'chrome://browser/content/browser.xhtml', 'focused': 'main', 'hasFocus': True, 'abc': '1', 'bc': 1})
+[desktop] a key reaches the page ({'value': '', 'active': 'i', 'focus': False}; chrome {'active': True, 'activeWin': 'chrome://browser/content/browser.xhtml', 'focused': 'main', 'hasFocus': True, 'abc': '2', 'bc': 2})
 [desktop] keyboard: Down then Enter types "a" into the page (got ''; [{'key': 'ArrowDown', 'open': True, 'r': 2, 'c': 0, 'heard': ['down'], 'focus': 'browser'}, {'key': 'Enter', 'open': True, 'r': 2, 'c': 0, 'heard': ['down', 'press'], 'focus': 'browser'}])
 [desktop] keyboard: typing letters, a space, @ and Backspace (got '')
 [desktop] keyboard: Esc closes it
 [desktop] with the keyboard closed, keys reach the page (got '')
-[game] a key reaches the page ({'value': '', 'active': 'i', 'focus': False}; chrome {'active': True, 'activeWin': 'chrome://browser/content/browser.xhtml', 'focused': 'main', 'hasFocus': True, 'abc': '1', 'bc': 1})
+[game] a key reaches the page ({'value': '', 'active': 'i', 'focus': False}; chrome {'active': True, 'activeWin': 'chrome://browser/content/browser.xhtml', 'focused': 'main', 'hasFocus': True, 'abc': '2', 'bc': 2})
 [game] keyboard: Down then Enter types "a" into the page (got ''; [{'key': 'ArrowDown', 'open': True, 'r': 2, 'c': 0, 'heard': ['down'], 'focus': 'browser'}, {'key': 'Enter', 'open': True, 'r': 2, 'c': 0, 'heard': ['down', 'press'], 'focus': 'browser'}])
 [game] keyboard: typing letters, a space, @ and Backspace (got '')
 [game] keyboard: Esc closes it
