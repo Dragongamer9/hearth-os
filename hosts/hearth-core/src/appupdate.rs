@@ -158,7 +158,9 @@ impl AppUpdates {
             };
             let fail = |msg: String| { let _ = std::fs::remove_file(&target); Self::set(&state, json!({"state": "error", "error": format!("Update failed: {msg}"), "progress": null}), &current); };
             if !ok { return fail("the download didn't finish".into()); }
-            if let Some(sha_url) = latest["shaUrl"].as_str() {
+            // A release without its checksum file isn't installed either (it used to go in unchecked).
+            let Some(sha_url) = latest["shaUrl"].as_str() else { return fail("this release has no checksum to check the download against".into()) };
+            {
                 let want = crate::http::get(sha_url, &[]).ok().filter(|r| r.ok()).map(|r| r.text.split_whitespace().next().unwrap_or("").to_lowercase()).unwrap_or_default();
                 // Not checked is not installed: a checksum that couldn't be fetched used to let the file through.
                 if want.is_empty() { return fail("couldn't check the download (no connection to its checksum)".into()); }
@@ -176,6 +178,9 @@ impl AppUpdates {
         let ready = self.state.lock().unwrap()["ready"].as_str().map(PathBuf::from).ok_or("No update is ready")?;
         let exe = Self::exe().ok_or("No update is ready")?;
         std::fs::copy(&exe, format!("{}.old", exe.to_string_lossy())).map_err(|e| e.to_string())?;
+        // The new program on the drive before it takes the old one's name: a power cut right after the restart could
+        // otherwise leave Hearth an empty file.
+        std::fs::File::open(&ready).and_then(|f| f.sync_all()).map_err(|e| e.to_string())?;
         std::fs::rename(&ready, &exe).map_err(|e| e.to_string())?;
         crate::bridge::log(&format!("update: installed {}", self.state.lock().unwrap()["latest"]["version"]));
         Ok(())
