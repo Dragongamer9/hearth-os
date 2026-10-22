@@ -451,7 +451,9 @@ pub mod gog {
         ];
         let mut out = loc.replace('\\', "/");
         for (k, v) in map.iter() {
-            if let Some(i) = out.to_lowercase().find(&k.to_lowercase()) { out.replace_range(i..i + k.len(), &v.to_string_lossy()); }
+            // ASCII lowercasing keeps every byte where it was, so the place found is the place in `out` (to_lowercase
+            // moved them after letters like İ, and the replace then cut a character in half: a panic).
+            if let Some(i) = out.to_ascii_lowercase().find(&k.to_ascii_lowercase()) { out.replace_range(i..i + k.len(), &v.to_string_lossy()); }
         }
         if out.contains('%') || out.contains("<?") { return None; }
         Some(PathBuf::from(out))
@@ -1078,6 +1080,11 @@ mod tests {
         assert_eq!(gog::resolve("<?INSTALL?>/saves", p, i).unwrap(), PathBuf::from("/games/Witcher/saves"));
         assert_eq!(gog::resolve("%Documents%\\The Witcher 3\\gamesaves", p, i).unwrap(), PathBuf::from("/p/gog-1/drive_c/users/steamuser/Documents/The Witcher 3/gamesaves"));
         assert!(gog::resolve("%Mystery%/x", p, i).is_none());
+        // Letters whose lowercase is longer (İ) before a placeholder: the placeholder is still the one replaced.
+        assert_eq!(gog::resolve("İstanbul/%AppData%/x", p, i).unwrap(), PathBuf::from("İstanbul/p/gog-1/drive_c/users/steamuser/AppData/Roaming/x"));
+        assert_eq!(gog::resolve("%AppData%/İİ/x", p, i).unwrap(), PathBuf::from("/p/gog-1/drive_c/users/steamuser/AppData/Roaming/İİ/x"));
+        assert_eq!(gog::resolve("<?INSTALL?>/%appdata%", Path::new("/p/gog-1"), Path::new("/games/İİİ")).unwrap(),
+                   PathBuf::from("/games/İİİ//p/gog-1/drive_c/users/steamuser/AppData/Roaming"));
     }
     #[test]
     fn expired_token_replies() {

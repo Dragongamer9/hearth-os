@@ -21,15 +21,23 @@ impl<'a> Reader<'a> {
     }
 }
 
+/// How deep objects go before the file counts as damaged. Steam's files nest a handful of levels; a file of zeros
+/// (what a power cut can leave) is one object inside the next all the way down, and reading it ran out of stack and
+/// took Hearth down (opening a game's page read its achievements file).
+const MAX_DEPTH: usize = 64;
+
 /// One object; `keys` is appinfo's key table (newer versions store keys as indexes into it).
-pub fn read(r: &mut Reader, keys: Option<&[String]>) -> Option<Value> {
+pub fn read(r: &mut Reader, keys: Option<&[String]>) -> Option<Value> { read_at(r, keys, 0) }
+
+fn read_at(r: &mut Reader, keys: Option<&[String]>, depth: usize) -> Option<Value> {
+    if depth > MAX_DEPTH { return None; }
     let mut d = Map::new();
     loop {
         let t = *r.b.get(r.i)?; r.i += 1;
         if t == 0x08 { return Some(Value::Object(d)); }
         let key = match keys { Some(k) => { let n = r.i32()?; k.get(n as usize).cloned().unwrap_or_else(|| n.to_string()) } None => r.cstr()? };
         let v = match t {
-            0x00 => read(r, keys)?,
+            0x00 => read_at(r, keys, depth + 1)?,
             0x01 => json!(r.cstr()?),
             0x02 => json!(r.i32()?),
             0x03 => json!(r.f32()?),
@@ -54,5 +62,14 @@ mod tests {
         b.push(0x08); b.push(0x08);
         assert_eq!(read(&mut Reader::new(&b), None).unwrap(), json!({"620": {"name": "Portal 2", "data": 5}}));
         assert!(read(&mut Reader::new(&[0x01, b'x']), None).is_none());
+    }
+    #[test]
+    fn a_file_of_zeros_is_damaged_not_a_crash() {
+        assert!(read(&mut Reader::new(&vec![0u8; 4 << 20]), None).is_none());
+        // Real nesting still reads.
+        let mut b = Vec::new();
+        for _ in 0..10 { b.push(0x00); b.extend(b"k\0"); }
+        b.extend(std::iter::repeat(0x08).take(11));
+        assert!(read(&mut Reader::new(&b), None).is_some());
     }
 }
