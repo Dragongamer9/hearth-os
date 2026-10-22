@@ -16,6 +16,10 @@ pub fn run(windowed: bool) -> i32 {
     let dynh: Arc<dyn WindowHost> = host.clone();
     let bridge = Arc::new(Mutex::new(Bridge::new(env!("CARGO_PKG_VERSION"))));
     crate::start_core(dynh.clone(), bridge.clone(), windowed);
+    // Settings › Display › size, as the WebKit window starts with it (main.rs): the window app applies it once the
+    // page is there.
+    let zoom = bridge.lock().map(|b| b.zoom_pct()).unwrap_or(100);
+    if zoom != 100 { dynh.zoom(zoom); }
     hearth_core::bridge::log("renderer: Chromium (Hearth's Electron window app draws, this core does the rest)");
     let mut ok_noted = false;
     for line in std::io::stdin().lock().lines().map_while(Result::ok) {

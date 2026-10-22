@@ -47,6 +47,10 @@ function send(obj) { if (core && core.stdin.writable) core.stdin.write(ch.line(o
 
 function startCore() {
   core = spawn(CORE, ch.coreArgs(ARGS), { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, HEARTH_RENDERER_RUNNING: 'chromium' } });
+  // Hearth's core missing or not startable: say so and leave (the session's watchdog takes over), rather than an
+  // error box over an empty window. Writing to a core that just died (EPIPE) mustn't do that either.
+  core.on('error', e => { log('core: ' + e.message); if (!leaving) { leaving = true; app.exit(1); } });
+  core.stdin.on('error', e => log('core input: ' + e.message));
   core.stdout.setEncoding('utf8');
   core.stdout.on('data', ch.lineReader(l => { const m = ch.parse(l); if (m) fromCore(m); }));
   core.on('exit', code => {
@@ -82,7 +86,7 @@ function act(m) {
     case 'destroy': if (w) w.destroy(); break;
     case 'exit': leaving = true; app.exit(Number(m.code) || 0); break;
     case 'restart': restart(); break;
-    case 'zoom': if (wins.main && !wins.main.isDestroyed()) wins.main.webContents.setZoomFactor((Number(m.pct) || 100) / 100); break;
+    case 'zoom': { const p = Number(m.pct); zoomPct = p > 0 && p <= 500 ? p : 100; applyZoom(); break; }
     case 'overlay.create': makeOverlay(); break;
     case 'hotkey':
       // Ctrl+Alt+Q, the keyboard's Guide button.
@@ -91,7 +95,7 @@ function act(m) {
     case 'stream.open': openStream(m); break;
     case 'stream.close': if (wins.stream && !wins.stream.isDestroyed()) wins.stream.destroy(); break;
     case 'signin.open': openSignIn(m); break;
-    case 'signin.close': if (wins.signin && !wins.signin.isDestroyed()) { signinClosing = true; wins.signin.destroy(); } break;
+    case 'signin.close': closeSignIn(); break;
   }
 }
 
@@ -142,15 +146,20 @@ function pageWindow(label, opts, query) {
   w.on('page-title-updated', e => e.preventDefault());
   w.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('nimbus://')) e.preventDefault(); });
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  w.webContents.on('render-process-gone', (_e, d) => { log(label + ': page gone (' + d.reason + '), reloading'); if (!w.isDestroyed()) w.loadURL('nimbus://app/index.html' + (query || '')); });
+  w.webContents.on('render-process-gone', (_e, d) => { log(label + ': page gone (' + d.reason + '), reloading'); if (!w.isDestroyed()) w.loadURL('nimbus://app/index.html' + (query || '')).catch(() => {}); });
   track(label, w);
-  w.loadURL('nimbus://app/index.html' + (query || ''));
+  w.loadURL('nimbus://app/index.html' + (query || '')).catch(e => log(label + ': ' + e.message));
   return w;
 }
+
+// Settings › Display › size (the core sends it at start, before the page is there, and on every change).
+let zoomPct = 100;
+function applyZoom() { if (wins.main && !wins.main.isDestroyed()) wins.main.webContents.setZoomFactor(zoomPct / 100); }
 
 function makeMain() {
   const w = pageWindow('main', { title: MAIN_TITLE, show: false, fullscreen: !WINDOWED, frame: WINDOWED, width: 1280, height: 800 });
   w.once('ready-to-show', () => w.show());
+  w.webContents.on('did-finish-load', applyZoom);
   // As the session there's nothing behind Hearth, so Alt+F4 must not close it by accident.
   w.on('close', e => { if (!leaving && IN_SESSION && !WINDOWED) e.preventDefault(); });
   w.on('closed', () => { if (!leaving) { leaving = true; app.exit(0); } });
@@ -164,10 +173,11 @@ function makeOverlay() {
 }
 
 // A store's sign-in page: the core decides from each address whether it's done (winhost.rs signin_outcome).
-let signinClosing = false;
+// A window the core closed itself is marked, so its 'closed' (which can come after the next one has opened) isn't
+// taken for you closing the next sign-in.
+function closeSignIn() { const w = wins.signin; if (w && !w.isDestroyed()) { w.hearthClosedByCore = true; w.destroy(); } }
 function openSignIn(m) {
-  if (wins.signin && !wins.signin.isDestroyed()) { signinClosing = true; wins.signin.destroy(); }
-  signinClosing = false;
+  closeSignIn();
   const w = new BrowserWindow({
     title: m.title || 'Sign in', backgroundColor: '#0c1016', fullscreen: !!m.fullscreen, width: 900, height: 760, autoHideMenuBar: true,
     // A fresh browser profile each time: nothing from one sign-in is left for the next.
@@ -176,21 +186,23 @@ function openSignIn(m) {
   w.on('page-title-updated', e => e.preventDefault());
   const inject = (m.pad ? script('signin-pad.js') : '') + '\n' + (m.script || '');
   const nav = url => send({ t: 'signin.nav', url });
-  w.webContents.on('will-navigate', (_e, url) => nav(url));
-  w.webContents.on('will-redirect', (_e, url) => nav(url));
+  // hearth-signin://done or cancel: the core's answer, not a page (Chromium would show an error page for it).
+  const own = url => String(url).startsWith('hearth-signin:');
+  w.webContents.on('will-navigate', (e, url) => { if (own(url)) e.preventDefault(); nav(url); });
+  w.webContents.on('will-redirect', (e, url) => { if (own(url)) e.preventDefault(); nav(url); });
   w.webContents.on('did-navigate', (_e, url) => nav(url));
   w.webContents.on('did-navigate-in-page', (_e, url) => nav(url));
   w.webContents.on('dom-ready', () => { if (inject.trim()) w.webContents.executeJavaScript(inject).catch(() => {}); });
-  w.webContents.setWindowOpenHandler(({ url }) => { nav(url); w.loadURL(url); return { action: 'deny' }; });
-  w.on('closed', () => { if (!signinClosing) send({ t: 'signin.closed' }); });
+  w.webContents.setWindowOpenHandler(({ url }) => { nav(url); if (!own(url)) w.loadURL(url).catch(() => {}); return { action: 'deny' }; });
+  w.on('closed', () => { if (!w.hearthClosedByCore) send({ t: 'signin.closed' }); });
   track('signin', w);
-  w.loadURL(m.url);
+  w.loadURL(String(m.url || '')).catch(e => log('sign-in page: ' + e.message));
 }
 
 // Xbox Cloud Gaming, full screen, with its own sign-in kept between games.
 function openStream(m) {
   const old = wins.stream && !wins.stream.isDestroyed() ? wins.stream : null;
-  if (old) { old.loadURL(m.url); old.focus(); return; }
+  if (old) { old.loadURL(m.url).catch(e => log('stream: ' + e.message)); old.focus(); return; }
   const w = new BrowserWindow({
     title: m.title || 'Xbox Cloud Gaming', backgroundColor: '#000000', fullscreen: !m.windowed, width: 1280, height: 800, autoHideMenuBar: true,
     webPreferences: { partition: 'persist:xcloud', contextIsolation: true, sandbox: true, backgroundThrottling: false },
@@ -203,7 +215,7 @@ function openStream(m) {
   w.webContents.setWindowOpenHandler(({ url }) => { if (url.startsWith('hearth-signin://stream-exit')) send({ t: 'stream.exit' }); return { action: 'deny' }; });
   w.on('closed', () => send({ t: 'stream.closed' }));
   track('stream', w);
-  w.loadURL(m.url);
+  w.loadURL(m.url).catch(e => log('stream: ' + e.message));
 }
 
 // ------------------------------------------------------------------ pages, pictures
@@ -211,9 +223,11 @@ function serveFiles() {
   // Hearth's page and its files.
   protocol.handle('nimbus', req => {
     const u = new URL(req.url);
-    const rel = decodeURIComponent(u.pathname).replace(/^\/+/, '') || 'index.html';
+    let rel;
+    try { rel = decodeURIComponent(u.pathname).replace(/^\/+/, '') || 'index.html'; } catch { return new Response('', { status: 404 }); }
     const file = path.normalize(path.join(UI, rel));
-    if (!file.startsWith(UI)) return new Response('', { status: 404 });
+    // Inside the ui folder only (a bare startsWith also let ../ui-something/ through).
+    if (!file.startsWith(path.join(UI, path.sep))) return new Response('', { status: 404 });
     return fs.promises.readFile(file).then(b => new Response(b, { headers: { 'content-type': mime(file) } }))
       .catch(() => new Response('', { status: 404 }));
   });
