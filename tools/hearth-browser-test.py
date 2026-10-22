@@ -135,7 +135,9 @@ CHROME_KEY = r'''
   tip.keydown(e); tip.keyup(e);
   if (alt) tip.keyup(altKey);
   await new Promise(r => setTimeout(r, 400));
-  return "sent";
+  const { HearthBrowser } = ChromeUtils.importESModule("resource://hearth/hearth.sys.mjs");
+  const kb = HearthBrowser.keyboardOf(window);
+  return { key, open: kb.isOpen, r: kb.r, c: kb.c, heard: kb.heard.slice(-4), focus: String(document.activeElement && document.activeElement.localName) };
 '''
 
 PAGE = 'data:text/html;charset=utf-8,' + ('<title>Typing</title><body style="background:%23222;color:%23eee;font:24px sans-serif">'
@@ -215,9 +217,11 @@ def run_mode(ff, out, mode, extras, port):
                 steps.append(m.js(CHROME_KEY, 'Enter', 'Enter', 13, False))
             else:
                 steps.append(m.js(CHROME_KEY, *key))
+        report['keys'] = steps
+        print('keys:', steps, flush=True)
         m.context('content')
         v1 = m.js('return document.getElementById("i").value;')
-        ok(v1 == 'a', '[%s] keyboard: Down then Enter types "a" into the page (got %r)' % (mode, v1))
+        ok(v1 == 'a', '[%s] keyboard: Down then Enter types "a" into the page (got %r; %s)' % (mode, v1, steps))
         m.context('chrome')
         m.js(CHROME_KEY, 'ArrowLeft', 'ArrowLeft', 37, True)
         m.context('content')
