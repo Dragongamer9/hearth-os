@@ -60,7 +60,7 @@ jobs:
           echo "$out"
           dev=$(echo "$out" | grep -o '/dev/loop[0-9]*' | head -1)
           test -n "$dev"
-          ./target/release/hearth-disks --list | head -60
+          ./target/release/hearth-disks --list > list.json; head -60 list.json
           HEARTH_DISKS_LOOP="$dev" cargo test --release --test loop_device -- --nocapture 2>&1 | tee loop.log \
             || { echo "::error title=disk image test::$(grep -E '(panicked|failed|error)' -A6 loop.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=disk image test::listed, formatted, mounted, renamed, checked, partitioned, set up for games and removed a disk image through udisks2"
