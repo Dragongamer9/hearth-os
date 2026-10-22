@@ -51,6 +51,9 @@ pub struct Bridge {
     pub app_updates: crate::appupdate::AppUpdates,
     /// The call being answered (calls that answer later, from background work, reply to it themselves).
     cur_id: Value,
+    /// Which window sent the request in hand ("main", "overlay"): an answer given later goes back to it only (each
+    /// window numbers its own requests, so the other one could take it for one of its own).
+    pub cur_label: String,
 }
 
 pub type SignInFn = std::sync::Arc<dyn Fn(&crate::stores::SignIn) -> Option<String> + Send + Sync>;
@@ -76,7 +79,7 @@ impl Bridge {
                  pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(), guide: crate::guide::Guide::new(),
                  buttons: Arc::new(std::sync::Mutex::new(json!({"devices": [], "problems": ["Only in Game Mode"]}))), host: Arc::new(|_, _| {}),
                  parental_since: 0, parental_warned: false, per_game: None, power_seen: None, power_back: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
-                 app_updates: crate::appupdate::AppUpdates::new(version), cur_id: Value::Null }
+                 app_updates: crate::appupdate::AppUpdates::new(version), cur_id: Value::Null, cur_label: "main".into() }
     }
 
     /// Messages from the host's own background work: {type:'internal', what, ...}. Returns what to send the page.
@@ -705,11 +708,10 @@ impl Bridge {
             "airplane.set" => { system::set_airplane(a["on"].as_bool().unwrap_or(false))?; Ok(system::status(self.max_volume())) }
             // Scanning (up to 30 s) and connecting (up to 45 s) run off the bridge and answer when done: under it, every
             // other request waited, and the fail-safe stopped nmcli at 15 s (slow networks never connected).
-            "wifi.scan" => { crate::space::answer_later(self.cur_id.clone(), system::wifi::scan); Ok(json!(DEFERRED)) }
+            "wifi.scan" => self.later(system::wifi::scan),
             "wifi.connect" => {
                 let (ssid, pw) = (req("ssid")?, a["password"].as_str().filter(|p| !p.is_empty()).map(str::to_string));
-                crate::space::answer_later(self.cur_id.clone(), move || Ok(system::wifi::connect(&ssid, pw.as_deref())));
-                Ok(json!(DEFERRED))
+                self.later(move || Ok(system::wifi::connect(&ssid, pw.as_deref())))
             }
             "wifi.disconnect" => system::wifi::disconnect().map(|_| Value::Null),
             "wifi.forget" => system::wifi::forget(&req("ssid")?).map(|_| Value::Null),
@@ -892,10 +894,9 @@ impl Bridge {
             "power.get" => Ok(power_get(crate::power::status_cached())),
             "power.setMode" => {
                 let mode = req("mode")?;
-                crate::space::answer_later(self.cur_id.clone(), move || { crate::power::set_mode(&mode)?; Ok(power_get(crate::power::status())) });
-                Ok(json!(DEFERRED))
+                self.later(move || { crate::power::set_mode(&mode)?; Ok(power_get(crate::power::status())) })
             }
-            "perf.setTdp" => { let w = a["watts"].as_f64().unwrap_or(0.0).round().max(0.0) as u32; crate::space::answer_later(self.cur_id.clone(), move || crate::power::set_tdp(w)); Ok(json!(DEFERRED)) }
+            "perf.setTdp" => { let w = a["watts"].as_f64().unwrap_or(0.0).round().max(0.0) as u32; self.later(move || crate::power::set_tdp(w)) }
             // Quick Access › Performance: the game in front goes back to the usual power settings.
             "perf.gamePowerForget" => {
                 let id = req("id")?;
@@ -906,7 +907,7 @@ impl Bridge {
             "bt.paired" => Ok(system::bt_devices::paired()),
             // Pairing waits for the controller (up to a minute): it runs off the bridge and answers when done. Under
             // the bridge, every other request waited, and the fail-safe stopped bluetoothctl at 15 s mid-pairing.
-            "bt.pair" => { let id = req("id")?; crate::space::answer_later(self.cur_id.clone(), move || Ok(system::bt_devices::pair(&id))); Ok(json!(DEFERRED)) }
+            "bt.pair" => { let id = req("id")?; self.later(move || Ok(system::bt_devices::pair(&id))) }
             "bt.unpair" => Ok(system::bt_devices::unpair(&req("id")?)),
             "bt.confirmPin" => Ok(Value::Null),
             "bt.scanStart" => {
@@ -952,6 +953,11 @@ impl Bridge {
         Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
                   "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
                   "gamemode": system::has("gamemoderun"), "canResetPrefix": own_proton}))
+    }
+    /// Runs `f` on its own thread and answers the request in hand with its result then (to the window that asked).
+    fn later(&self, f: impl FnOnce() -> Result<Value, String> + Send + 'static) -> Result<Value, String> {
+        crate::space::answer_later_to(self.cur_id.clone(), Some(self.cur_label.clone()), f);
+        Ok(json!(DEFERRED))
     }
     fn need_pin(&self) -> Result<(), String> {
         if self.profiles.has_pin() && std::time::Instant::now() >= self.pin_until { Err("Enter the PIN first".into()) } else { Ok(()) }
