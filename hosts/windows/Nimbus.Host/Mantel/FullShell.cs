@@ -69,6 +69,9 @@ internal sealed class FullShell : IDisposable
     // The Windows key on its own (pressed and let go with nothing else) toggles the launcher.
     private IntPtr KeyboardHook(int code, IntPtr wParam, IntPtr lParam)
     {
+        // Our own key events (see below) go straight on.
+        if (code >= 0 && Marshal.ReadIntPtr(lParam, 16 /* KBDLLHOOKSTRUCT.dwExtraInfo */) == (IntPtr)OwnKeysTag)
+            return CallNextHookEx(_hook, code, wParam, lParam);
         if (code >= 0)
         {
             int vk = Marshal.ReadInt32(lParam);
@@ -80,7 +83,17 @@ internal sealed class FullShell : IDisposable
                 if (up)
                 {
                     _winDown = false;
-                    if (!_winCombo) { WinKey?.Invoke(); return (IntPtr)1; }
+                    if (!_winCombo)
+                    {
+                        WinKey?.Invoke();
+                        // Windows still has to see the key go up, or it stays held for it: every key typed after it
+                        // would be a Windows shortcut (L would lock the PC). A key that does nothing goes first, so
+                        // the Start menu (when Explorer runs) takes it as a shortcut and doesn't open.
+                        keybd_event(0xE8, 0, 0, OwnKeys);
+                        keybd_event(0xE8, 0, 0x0002 /* KEYUP */, OwnKeys);
+                        keybd_event((byte)vk, 0, 0x0001 /* EXTENDEDKEY */ | 0x0002 /* KEYUP */, OwnKeys);
+                        return (IntPtr)1;
+                    }
                 }
             }
             else if (down && _winDown)
@@ -134,6 +147,10 @@ internal sealed class FullShell : IDisposable
         catch { }
     }
 
+    /// <summary>Marks the key events FullShell sends itself (in dwExtraInfo).</summary>
+    private const int OwnKeysTag = 0x454D4252;
+    private static readonly UIntPtr OwnKeys = (UIntPtr)(uint)OwnKeysTag;
+    [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr h);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out Native.RECT r);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
