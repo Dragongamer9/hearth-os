@@ -1,0 +1,91 @@
+{
+  "mode": "game",
+  "chrome": {
+    "version": "158.0.1",
+    "policies": true,
+    "active": [
+      "DisableTelemetry",
+      "DisableFirefoxStudies",
+      "DontCheckDefaultBrowser",
+      "DisableDefaultBrowserAgent",
+      "DisableProfileImport",
+      "NoDefaultBookmarks",
+      "OverrideFirstRunPage",
+      "OverridePostUpdatePage",
+      "EncryptedMediaExtensions",
+      "UserMessaging",
+      "FirefoxHome",
+      "FirefoxSuggest",
+      "ExtensionSettings",
+      "DisableAppUpdate"
+    ],
+    "hearth": {
+      "start": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
+      "game": true,
+      "big": true,
+      "scale": 1.5
+    },
+    "prefs": {
+      "hearth.started": 1792665621,
+      "hearth.keyboard.ready": true,
+      "browser.startup.homepage": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
+      "media.eme.enabled": true,
+      "toolkit.legacyUserProfileCustomizations.stylesheets": true,
+      "datareporting.healthreport.uploadEnabled": false,
+      "app.update.enabled": null,
+      "browser.uidensity": 2,
+      "layout.css.devPixelsPerPx": "1.5",
+      "browser.link.open_newwindow.restriction": 0,
+      "extensions.activeThemeID": "firefox-compact-dark@mozilla.org"
+    },
+    "newTab": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
+    "keyboardButton": true,
+    "keyboard": true,
+    "window": [
+      1280,
+      720,
+      1280,
+      720
+    ],
+    "errors": []
+  },
+  "window": [
+    1280,
+    720,
+    1280,
+    720
+  ],
+  "key-experiment": {
+    "f13": 1,
+    "down": 1,
+    "pagedown": 1,
+    "ctrlDown": 1,
+    "key_q": 1,
+    "stopZ": [
+      [
+        "keydown",
+        1,
+        false
+      ]
+    ],
+    "page": ""
+  },
+  "keys": [
+    {
+      "key": "ArrowDown",
+      "open": true,
+      "r": 1,
+      "c": 0,
+      "heard": [],
+      "focus": "browser"
+    },
+    {
+      "key": "Enter",
+      "open": true,
+      "r": 1,
+      "c": 0,
+      "heard": [],
+      "focus": "browser"
+    }
+  ]
+}
