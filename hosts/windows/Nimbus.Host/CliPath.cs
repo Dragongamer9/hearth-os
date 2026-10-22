@@ -30,10 +30,13 @@ internal static class CliPath
             // Your account's PATH (new terminals).
             using var key = Registry.CurrentUser.OpenSubKey("Environment", writable: true);
             if (key is null) return;
+            var kind = key.GetValueNames().Contains("Path", StringComparer.OrdinalIgnoreCase) ? key.GetValueKind("Path") : RegistryValueKind.ExpandString;
+            // A PATH stored some other way (not text) is left alone: reading it as empty and writing it back would
+            // wipe every folder on it.
+            if (kind is not (RegistryValueKind.String or RegistryValueKind.ExpandString)) { SystemBridge.Log("hearthfetch: your PATH isn't stored as text, left as it is"); return; }
             var raw = key.GetValue("Path", "", RegistryValueOptions.DoNotExpandEnvironmentNames) as string ?? "";
             var parts = raw.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
             if (parts.Any(Same)) return;
-            var kind = key.GetValueNames().Contains("Path", StringComparer.OrdinalIgnoreCase) ? key.GetValueKind("Path") : RegistryValueKind.ExpandString;
             parts.Add(bin);
             key.SetValue("Path", string.Join(";", parts), kind == RegistryValueKind.String ? RegistryValueKind.String : RegistryValueKind.ExpandString);
             // Tell the desktop the environment changed (terminals opened from Explorer then see it).

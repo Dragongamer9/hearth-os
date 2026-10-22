@@ -13,6 +13,7 @@ namespace Nimbus.Host;
 public static class StartupApps
 {
     private const string Run = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string Run32 = @"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run";
     private const string RunOnce = @"Software\Microsoft\Windows\CurrentVersion\RunOnce";
     private const string Approved = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\";
 
@@ -54,6 +55,8 @@ public static class StartupApps
             foreach (var e in RegistryEntries(hive, Run, "Run")) yield return e;
             foreach (var e in RegistryEntries(hive, RunOnce, null, deleteAfter: hive == Registry.CurrentUser)) yield return e;
         }
+        // 32-bit programs put theirs in the PC's 32-bit Run key, which Explorer starts too (Task Manager's switch: Run32).
+        foreach (var e in RegistryEntries(Registry.LocalMachine, Run32, "Run32")) yield return e;
         foreach (var (folder, approvedKey, hive) in new[]
         {
             (Environment.GetFolderPath(Environment.SpecialFolder.Startup), "StartupFolder", Registry.CurrentUser),
@@ -83,7 +86,8 @@ public static class StartupApps
                 if (k.GetValue(name) is not string cmd || string.IsNullOrWhiteSpace(cmd)) continue;
                 if (approvedKey is not null && !Enabled(hive, approvedKey, name)) continue;
                 list.Add((name, cmd));
-                if (deleteAfter && !name.StartsWith('!')) { try { k.DeleteValue(name); } catch { } }
+                // RunOnce entries run once: "!name" ones only differ in when Explorer deletes them (after they ran).
+                if (deleteAfter) { try { k.DeleteValue(name); } catch { } }
             }
         }
         catch { }

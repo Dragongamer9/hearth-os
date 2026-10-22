@@ -43,10 +43,16 @@ public sealed class DesktopMode : IDisposable
             _signal = new EventWaitHandle(false, EventResetMode.AutoReset, SignalName);
             _signalThread = new Thread(() =>
             {
-                while (!_stop)
+                // Ember closing can dispose the handle or the window between two waits; that ends the thread
+                // instead of taking Ember down with an error (which the watchdog would take for a crash).
+                try
                 {
-                    if (_signal.WaitOne(500) && !_stop) _ui.BeginInvoke((MethodInvoker)(() => Leave()));
+                    while (!_stop)
+                    {
+                        if (_signal.WaitOne(500) && !_stop && !_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(() => Leave()));
+                    }
                 }
+                catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
             }) { IsBackground = true, Name = "Ember game mode signal" };
             _signalThread.Start();
         }

@@ -101,11 +101,24 @@ public sealed class LibraryStore
         lock (_lock)
         {
             change(Data);
-            var tmp = _path + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(Data, Json));
-            File.Move(tmp, _path, overwrite: true);
+            lock (SaveGate)
+            {
+                if (_paused) return;   // a profile switch is under way: library.json is the next person's now
+                var tmp = _path + ".tmp";
+                File.WriteAllText(tmp, JsonSerializer.Serialize(Data, Json));
+                File.Move(tmp, _path, overwrite: true);
+            }
         }
     }
+
+    // A profile switch (Profiles.SwitchTo) moves library.json away and brings the next person's; Ember restarts after
+    // it. A save in between (a game ending, a store list arriving) would write this person's library over theirs, so
+    // saves stop for the switch. When this returns, no save is half done.
+    private static readonly object SaveGate = new();
+    private static bool _paused;
+    public static void PauseSaves() { lock (SaveGate) _paused = true; }
+    /// <summary>The switch didn't happen: saving carries on.</summary>
+    public static void ResumeSaves() { lock (SaveGate) _paused = false; }
 
     public T Read<T>(Func<LibraryData, T> read)
     {

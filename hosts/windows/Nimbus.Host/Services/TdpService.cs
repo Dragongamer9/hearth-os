@@ -258,7 +258,9 @@ public sealed class TdpService
     {
         using var p = Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true });
         if (p is null) throw new InvalidOperationException("Couldn't run " + file);
-        p.StandardOutput.ReadToEnd(); p.StandardError.ReadToEnd();
+        // Both at once: reading one to the end first can wait forever while the program waits for the other to be read.
+        var err = p.StandardError.ReadToEndAsync();
+        p.StandardOutput.ReadToEnd(); err.GetAwaiter().GetResult();
         p.WaitForExit();
         if (p.ExitCode != 0) throw new InvalidOperationException($"{file} failed ({p.ExitCode})");
     }

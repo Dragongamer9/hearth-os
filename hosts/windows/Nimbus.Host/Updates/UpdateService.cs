@@ -72,6 +72,8 @@ public sealed class UpdateService
     public async Task<UpdateStatus> CheckAsync()
     {
         if (State is "downloading") return Status();
+        // A downloaded update stays ready to install through a check (the timer checks every few hours).
+        bool wasReady = State == "ready" && _stagedDir is not null && Directory.Exists(_stagedDir);
         Set("checking");
         try
         {
@@ -109,12 +111,13 @@ public sealed class UpdateService
                 ? DateTimeOffset.Parse(p.GetString()!) : null;
             Latest = new UpdateInfo(tag.TrimStart('v', 'V'), tag, r.TryGetProperty("body", out var b) ? b.GetString() : null, zip, sha, size, published);
 
-            if (State == "ready" && _stagedDir is not null && Directory.Exists(_stagedDir)) Set("ready", 1);
+            if (wasReady) Set("ready", 1);
             else Set(IsNewer(Latest.Version, CurrentVersion) ? "available" : "upToDate");
         }
         catch (Exception ex)
         {
-            Set("error", error: "Couldn't check for updates: " + Short(ex));
+            if (wasReady) Set("ready", 1);
+            else Set("error", error: "Couldn't check for updates: " + Short(ex));
         }
         return Status();
     }
@@ -140,7 +143,8 @@ public sealed class UpdateService
     public async Task DownloadAsync()
     {
         if (Latest is null || State is "downloading" or "ready") return;
-        if (!RunningFromInstall) throw new InvalidOperationException("This copy of Ember is a development build. Updates install to the copy set up by install-shell.cmd.");
+        // Started without waiting (update.download), so a problem is shown through the state, never thrown.
+        if (!RunningFromInstall) { Set("error", error: "This copy of Ember is a development build. Updates install to the copy set up by install-shell.cmd."); return; }
         var info = Latest;
         Set("downloading", 0);
         try
@@ -208,13 +212,16 @@ public sealed class UpdateService
         var script = Path.Combine(UpdatesDir, "apply-update.cmd");
         var log = Path.Combine(UpdatesDir, "apply-update.log");
         string NUL = ">" + "nul";
+        // The folders reach the script as environment variables, not written into it: cmd reads a script in the
+        // console's code page, so a user name with letters outside it (José, Łukasz) would come out garbled, and
+        // characters like & % ^ would be taken as commands. Expanded variables are used as they are.
         File.WriteAllText(script, string.Join("\r\n", new[]
         {
             "@echo off",
             "rem Written by Nimbus to install an update. Safe to delete.",
-            $"set APP={app}",
-            $"set NEW={_stagedDir}",
-            $"set LOG={log}",
+            "set \"APP=%EMBER_UPDATE_APP%\"",
+            "set \"NEW=%EMBER_UPDATE_NEW%\"",
+            "set \"LOG=%EMBER_UPDATE_LOG%\"",
             "echo %DATE% %TIME% applying update > \"%LOG%\"",
             // Wait up to 30 s for every Nimbus process (UI and watchdog) to exit.
             "for /l %%i in (1,1,30) do (",
@@ -235,6 +242,11 @@ public sealed class UpdateService
             $"  timeout /t 1 {NUL}",
             ")",
             ":moved",
+            // Still locked: keep the version that's there (moving the new one now would put it inside it).
+            "if exist \"%APP%\" (",
+            "  echo couldn't move the old version, keeping it >> \"%LOG%\"",
+            "  goto launch",
+            ")",
             $"move \"%NEW%\" \"%APP%\" >> \"%LOG%\" 2>&1",
             "if not exist \"%APP%\\Nimbus.exe\" (",
             "  echo new version missing, rolling back >> \"%LOG%\"",
@@ -243,11 +255,16 @@ public sealed class UpdateService
             ") else (",
             $"  echo updated > \"%APP%\\just-updated\"",
             ")",
+            ":launch",
             "echo done >> \"%LOG%\"",
             $"start \"\" \"%APP%\\Nimbus.exe\" {args}",
             "",
         }));
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{script}\"") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Root });
+        var psi = Script(script);
+        psi.Environment["EMBER_UPDATE_APP"] = app;
+        psi.Environment["EMBER_UPDATE_NEW"] = _stagedDir;
+        psi.Environment["EMBER_UPDATE_LOG"] = log;
+        Process.Start(psi)?.Dispose();
     }
 
     // ------------------------------------------------------------------ rollback support
@@ -277,18 +294,25 @@ public sealed class UpdateService
             $"taskkill /im Nimbus.exe /f {NUL} 2>&1",
             $"taskkill /im hearth-terminal.exe /f {NUL} 2>&1",
             $"taskkill /im hearth-disks.exe /f {NUL} 2>&1",
-            $"set APP={app}",
+            "set \"APP=%EMBER_UPDATE_APP%\"",
             "if exist \"%APP%.bad\" rmdir /s /q \"%APP%.bad\"",
             "move \"%APP%\" \"%APP%.bad\"",
             "move \"%APP%.old\" \"%APP%\"",
             $"start \"\" \"%APP%\\Nimbus.exe\" {(asShell ? "--shell" : "")}",
             "",
         }));
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{script}\"") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Root });
+        var psi = Script(script);
+        psi.Environment["EMBER_UPDATE_APP"] = app;
+        Process.Start(psi)?.Dispose();
         return true;
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /// <summary>Runs a script with cmd. The doubled quotes matter: cmd /c takes off the outer pair, so the path stays
+    /// quoted even when it has spaces or characters like &amp; in it (a user name).</summary>
+    private static ProcessStartInfo Script(string script) =>
+        new("cmd.exe", $"/d /c \"\"{script}\"\"") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Root };
 
     private static HttpClient CreateHttp()
     {
