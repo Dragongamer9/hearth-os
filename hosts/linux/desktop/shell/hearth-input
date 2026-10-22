@@ -374,6 +374,9 @@ class Engine:
         self.gyro_on = self.L['gyro']['start_on'] or self.prefs['gyro']
         self.gyro_hold = set()
         self.radial = None      # {'by': button, 'sel': -1}
+        # The right stick after the radial menu closes: it does nothing until it's back in the middle, so letting go
+        # of the button with the stick still pushed (how a radial menu is used) doesn't then move the pointer.
+        self.rs_wait_center = False
         self.axes = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0, 'lt': 0.0, 'rt': 0.0}
         self.trig = {'lt': False, 'rt': False}
         self.stick_held = {}    # (stick, dir) → action
@@ -484,6 +487,7 @@ class Engine:
             r = self.radial
             if r and r['by'] == name:
                 self.radial = None
+                self.rs_wait_center = True
                 if r['sel'] >= 0:
                     act = self.L['radial'][r['sel']]
                     self.tap('radial', act, now)
@@ -551,6 +555,10 @@ class Engine:
                 if math.hypot(x, y) > 0.5:
                     self._radial_pick(x, y)
                 continue
+            if s == 'rs' and self.rs_wait_center:
+                if math.hypot(x, y) > 0.25:
+                    continue
+                self.rs_wait_center = False
             b = self.stick_binding(s)
             mode = b['mode']
             if mode != 'keys':

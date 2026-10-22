@@ -344,6 +344,20 @@ class Buttons(unittest.TestCase):
         e.button('down', False, 1.05)
         e.button('r5', False, 1.1)
         self.assertEqual(out.log, [('KEY_M', True)])
+        # Let go of the button with the stick still pushed: the pointer doesn't move until the stick is back in
+        # the middle, then it moves as usual.
+        out.moved = [0, 0]
+        e.button('r5', True, 2.0)
+        e.set_axes(2.05, rx=1.0, ry=0.0)
+        e.tick(2.05, 0.01)
+        e.button('r5', False, 2.1)
+        run(e, 2.1, 2.4)
+        self.assertEqual(out.moved, [0, 0])
+        e.set_axes(2.4, rx=0.0, ry=0.0)
+        e.tick(2.41, 0.01)
+        e.set_axes(2.42, rx=1.0, ry=0.0)
+        run(e, 2.42, 2.6)
+        self.assertGreater(out.moved[0], 0)
         self.assertEqual(hi.radial_index(0, -1, 8), 0)
         self.assertEqual(hi.radial_index(-1, 0, 8), 6)
         self.assertEqual(hi.radial_index(0, 1, 3), 2 if round(3 / 2) == 2 else 1)
