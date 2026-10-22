@@ -16,8 +16,11 @@ case "$1" in
       # If an app keeps the desktop from closing, close it anyway so the switch can't hang.
       pid="$LABWC_PID"; setsid sh -c "sleep 4; kill -0 $pid 2>/dev/null && kill -KILL $pid" >/dev/null 2>&1 </dev/null &
     else
-      # In Game Mode, Nimbus quits itself after writing the file; this is the fallback for scripts.
-      pkill -TERM -x gamescope 2>/dev/null || pkill -TERM -f gamescope-wl 2>/dev/null
+      # In Game Mode, Nimbus quits itself after writing the file; this is the fallback for scripts. Run from
+      # somewhere that didn't inherit LABWC_PID (an SSH login, a systemd user service, an app started over
+      # D-Bus) while Desktop Mode is up, it's this user's labwc that has to end, or the switch never happens.
+      pkill -TERM -x gamescope 2>/dev/null || pkill -TERM -f gamescope-wl 2>/dev/null \
+        || pkill -TERM -u "$(id -u)" -x labwc 2>/dev/null
     fi ;;
   *) echo "usage: nimbus-mode game|desktop|logout|current" >&2; exit 2 ;;
 esac
