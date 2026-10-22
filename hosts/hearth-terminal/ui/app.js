@@ -199,17 +199,22 @@ async function startShell(pane) {
   const { term } = pane;
   const ch = new T.core.Channel();
   ch.onmessage = m => {
+    if (pane.closed) return;
     if (m.t === 'data') term.write(m.d);
     else if (m.t === 'exit') ended(pane, m.code);
   };
   try {
-    pane.id = await invoke('pty_spawn', {
+    const id = await invoke('pty_spawn', {
       shell: pane.shell || S.shell || null,
       cwd: pane.cwd || null,
       command: pane.command || null,
       cols: term.cols, rows: term.rows, events: ch,
     });
+    // Closed while the shell was starting: it mustn't run on unseen.
+    if (pane.closed) { invoke('pty_close', { id }).catch(() => {}); return; }
+    pane.id = id;
   } catch (e) {
+    if (pane.closed) return;
     term.write(`\x1b[31mCouldn't start ${pane.command ? pane.command.join(' ') : 'the shell'}:\x1b[0m ${e}\r\n\r\nPress Enter to close.`);
     pane.ended = true;
     pane.failedToStart = true;
@@ -250,6 +255,8 @@ function ctrlOf(c) {
 }
 
 function ended(pane, code) {
+  // The shell is gone, but its terminal stays open until it's closed (on Windows, its console host too).
+  if (pane.id) invoke('pty_close', { id: pane.id }).catch(() => {});
   pane.id = 0;
   // A shell that ends normally closes its tab, as you'd expect from typing `exit`. A command (-e) or a shell
   // that failed stays, so you can read what happened.
@@ -269,6 +276,7 @@ async function restart(pane) {
 
 function closePane(pane) {
   const tab = pane.tab;
+  pane.closed = true;
   if (pane.id) invoke('pty_close', { id: pane.id }).catch(() => {});
   pane.id = 0;
   pane.term.dispose();
@@ -308,6 +316,7 @@ async function newTab(opts = {}) {
 
 function closeTab(tab) {
   for (const p of [...tab.panes]) {
+    p.closed = true;
     if (p.id) invoke('pty_close', { id: p.id }).catch(() => {});
     p.term.dispose();
   }
