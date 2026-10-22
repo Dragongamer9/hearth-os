@@ -297,6 +297,15 @@ class Power(unittest.TestCase):
             self.assertEqual(hp.tdp_status(), {'supported': False, 'via': None})
         self.assertEqual(asked, [])
 
+    def test_remembered_limit_is_kept_in_range(self):
+        state = json.loads(json.dumps(STATE))
+        state['tdp']['unified']['tdp']['custom'].pop('tdp')
+        state['hhd']['steamos']['tdp_max'] = 20
+        with mock.patch.object(hp, 'hhd', lambda: self.fake_hhd(state)), mock.patch.object(hp, 'busctl', lambda *a, **k: (_ for _ in ()).throw(hp.Fail('no'))), \
+                mock.patch.object(hp, 'remembered', lambda: 30):
+            st = hp.tdp_status()
+        self.assertEqual((st['watts'], st['max']), (20, 20))
+
     def test_restore_leaves_hhds_own_limit(self):
         sets = []
         with mock.patch.object(hp, 'hhd', lambda: self.fake_hhd(STATE)), mock.patch.object(hp, 'remembered', lambda: 22), \

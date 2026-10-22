@@ -260,6 +260,12 @@ def admin(*args):
     return {}
 
 
+def clamp(w, lo, hi):
+    """The limit to show, inside the device's range: a remembered limit can come from another device or edition
+    (30 W on a handheld whose range ends at 20), and the slider can't show a value outside its range."""
+    return max(lo, min(hi, int(w or 15)))
+
+
 def tdp_status():
     iface = SOM[0] + '.TdpLimit1'
     try:
@@ -276,7 +282,8 @@ def tdp_status():
     h = hhd_tdp()
     if h:
         w = h.get('watts') or remembered() or h.get('default')
-        return {'supported': True, 'watts': int(w or 15), 'min': int(h.get('min') or 3), 'max': int(h['max']), 'via': 'hhd', 'mode': h.get('mode')}
+        lo, hi = int(h.get('min') or 3), int(h['max'])
+        return {'supported': True, 'watts': clamp(w, lo, hi), 'min': lo, 'max': hi, 'via': 'hhd', 'mode': h.get('mode')}
     if hhd_owns_tdp():
         # HHD has a power plugin but its limit isn't on (or not ready yet): leave it to HHD.
         return {'supported': False, 'via': 'hhd', 'reason': "Handheld Daemon manages the power limit on this device"}
@@ -285,7 +292,7 @@ def tdp_status():
     info = admin_tdp_info()
     if info.get('method') == 'firmware':
         w = info.get('watts') or remembered() or info.get('default')
-        return {'supported': True, 'watts': int(w or 15), 'min': int(info['min']), 'max': int(info['max']), 'via': 'hearth:firmware'}
+        return {'supported': True, 'watts': clamp(w, int(info['min']), int(info['max'])), 'min': int(info['min']), 'max': int(info['max']), 'via': 'hearth:firmware'}
     try:
         card = ps_card()
         w = getp('system', PS, card, PS_IFACE, 'TDP')
@@ -294,7 +301,7 @@ def tdp_status():
         pass
     if info.get('method'):
         w = info.get('watts') or remembered() or info.get('default')
-        return {'supported': True, 'watts': int(w or 15), 'min': int(info['min']), 'max': int(info['max']), 'via': 'hearth:' + info['method']}
+        return {'supported': True, 'watts': clamp(w, int(info['min']), int(info['max'])), 'min': int(info['min']), 'max': int(info['max']), 'via': 'hearth:' + info['method']}
     return {'supported': False, 'via': None}
 
 
