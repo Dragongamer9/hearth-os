@@ -13,7 +13,7 @@ const SKIP_PREFIXES: &[&str] = &["steamworks", "proton", "steam linux runtime", 
 const FULLY_INSTALLED: i64 = 4;
 const UPDATE_PAUSED: i64 = 512;
 const BUSY: i64 = 256 | 1024 | 524288 | 1048576 | 2097152 | 4194304;
-const CDN: &str = "https://cdn.cloudflare.steamstatic.com/steam/apps/";
+pub const CDN: &str = "https://cdn.cloudflare.steamstatic.com/steam/apps/";
 const FLATPAK_ID: &str = "com.valvesoftware.Steam";
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -244,7 +244,15 @@ pub fn find_art(app_id: &str, grid: Option<&Path>, cache: &Path) -> Vec<(&'stati
     art
 }
 
-fn skip(app_id: &str, name: &str) -> bool {
+/// What the library shows for a manifest's StateFlags: installed, updating, paused, downloading or queued.
+pub fn app_state(flags: i64) -> (bool, &'static str) {
+    let installed = flags & FULLY_INSTALLED != 0;
+    let state = if installed { if flags & BUSY != 0 && flags & UPDATE_PAUSED == 0 { "updating" } else { "installed" } }
+        else if flags & UPDATE_PAUSED != 0 { "paused" } else if flags & BUSY != 0 { "downloading" } else { "queued" };
+    (installed, state)
+}
+
+pub fn skip(app_id: &str, name: &str) -> bool {
     let low = name.to_lowercase();
     SKIP_APP_IDS.contains(&app_id) || SKIP_PREFIXES.iter().any(|p| low.starts_with(p))
 }
@@ -289,9 +297,7 @@ pub fn scan_with(home: &Path, per_account: bool) -> Vec<SteamGame> {
             let size = kv.num(&["AppState", "SizeOnDisk"]).max(0) as u64;
             let to_dl = kv.num(&["AppState", "BytesToDownload"]).max(0) as u64;
             let dl = kv.num(&["AppState", "BytesDownloaded"]).max(0) as u64;
-            let installed = flags & FULLY_INSTALLED != 0;
-            let state = if installed { if flags & BUSY != 0 { "updating" } else { "installed" } }
-                else if flags & UPDATE_PAUSED != 0 { "paused" } else if flags & BUSY != 0 { "downloading" } else { "queued" };
+            let (installed, state) = app_state(flags);
             let (minutes, last) = stats.get(&app_id).cloned().unwrap_or((0, 0));
             let manifest = e.path();
             let meta = std::fs::metadata(if dir.is_dir() { &dir } else { &manifest }).ok();
@@ -401,9 +407,12 @@ pub fn is_running() -> bool {
 /// up, so a game started next comes straight up instead of Steam's update and main windows. Blocks up to ~35 s:
 /// call it off the UI thread.
 pub fn ensure_running_silent(home: &Path) {
+    crate::steam_ctl::touch();
     if is_running() || !client_installed(home) { return; }
     crate::bridge::log("steam: starting it in the background (-silent)");
     if spawn(home, "-silent").is_err() { return; }
+    // Started by Hearth: Hearth may close it again once nothing needs it (steam_ctl, "Start Steam only when needed").
+    crate::steam_ctl::started_by_hearth();
     for _ in 0..60 {
         std::thread::sleep(std::time::Duration::from_millis(500));
         if is_running() { std::thread::sleep(std::time::Duration::from_secs(3)); return; }

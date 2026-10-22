@@ -44,6 +44,8 @@ pub mod renderer;
 pub mod signin_handoff;
 pub mod space;
 pub mod steam;
+pub mod steam_ctl;
+pub mod steam_owned;
 pub mod store;
 pub mod stores;
 pub mod system;
