@@ -108,7 +108,7 @@ public sealed class UpdateService
             if (zip is null) { Latest = null; Set("upToDate"); return Status(); }
 
             DateTimeOffset? published = r.TryGetProperty("published_at", out var p) && p.ValueKind == JsonValueKind.String
-                ? DateTimeOffset.Parse(p.GetString()!) : null;
+                ? DateTimeOffset.Parse(p.GetString()!, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal) : null;
             Latest = new UpdateInfo(tag.TrimStart('v', 'V'), tag, r.TryGetProperty("body", out var b) ? b.GetString() : null, zip, sha, size, published);
 
             if (wasReady) Set("ready", 1);
