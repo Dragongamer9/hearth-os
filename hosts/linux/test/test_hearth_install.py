@@ -271,6 +271,28 @@ class Plan(unittest.TestCase):
         self.assertEqual(p['image'], 'ghcr.io/dragongamer9/hearth-os:latest')
 
 
+class CloseVolumes(unittest.TestCase):
+    def test_innermost_first_and_only_volumes(self):
+        calls = []
+
+        class R:
+            def __init__(self, out=''):
+                self.stdout, self.returncode = out, 0
+        tree = 'sda disk\nsda1 part\nsda2 part\nsda3 part\nluks-1 crypt\nvg-root lvm\nvg-home lvm\n'
+
+        def fake(cmd, check=True, input=None, **kw):
+            calls.append(cmd)
+            return R(tree if cmd[0] == 'lsblk' else '')
+        orig = (H.sh, H.shutil.which)
+        try:
+            H.sh, H.shutil.which = fake, lambda n: '/usr/sbin/' + n
+            H.close_volumes('/dev/sda')
+        finally:
+            H.sh, H.shutil.which = orig
+        removed = [c[-1] for c in calls if c[0] == 'dmsetup']
+        self.assertEqual(removed, ['vg-home', 'vg-root', 'luks-1'])
+
+
 class Parsing(unittest.TestCase):
     def test_part_path(self):
         self.assertEqual(H.part_path('/dev/sda', 3), '/dev/sda3')
