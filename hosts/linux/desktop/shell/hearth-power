@@ -43,6 +43,7 @@ class Fail(Exception):
 
 
 _HHD = None
+_HHD_UP = None
 
 
 def hhd():
@@ -60,7 +61,11 @@ def hhd():
             _HHD = mod
         except (OSError, ImportError, SyntaxError):
             _HHD = False
-    return _HHD if _HHD and _HHD.available() else None
+    # Asked once per run: each question can take seconds when HHD is slow, and status asks several times.
+    global _HHD_UP
+    if _HHD_UP is None:
+        _HHD_UP = bool(_HHD and _HHD.available())
+    return _HHD if _HHD_UP else None
 
 
 def hhd_tdp():
@@ -96,6 +101,24 @@ def busctl(bus, *args, timeout=6):
     return r.stdout
 
 
+_NAMES = {}
+
+
+def running(bus, name):
+    """Does someone hold this D-Bus name now? (True when busctl can't say.) Asking a name nobody holds makes D-Bus
+    start its service, and when that service can't start the call waits for its whole timeout: power-profiles-daemon
+    is held back while Handheld Daemon runs (its drop-in's condition), so on a desktop PC, where HHD has no power
+    plugin, each power-profiles question used to hang for seconds and status took over 15 s. So names that aren't
+    running are skipped."""
+    if bus not in _NAMES:
+        try:
+            out = busctl(bus, '--acquired', '--no-legend', 'list', timeout=4)
+            _NAMES[bus] = {l.split()[0] for l in out.splitlines() if l.strip()}
+        except (Fail, OSError, subprocess.TimeoutExpired):
+            _NAMES[bus] = None
+    return _NAMES[bus] is None or name in _NAMES[bus]
+
+
 def getp(bus, svc, path, iface, name):
     return json.loads(busctl(bus, '--json=short', 'get-property', svc, path, iface, name))['data']
 
@@ -124,6 +147,8 @@ def remembered():
 
 # ---------------------------------------------------------------------- power mode
 def som_mode():
+    if not running('user', SOM[0]):
+        raise Fail('SteamOS Manager is not running')
     iface = SOM[0] + '.PerformanceProfile1'
     active = getp('user', SOM[0], SOM[1], iface, 'PerformanceProfile')
     avail = getp('user', SOM[0], SOM[1], iface, 'AvailablePerformanceProfiles')
@@ -141,13 +166,16 @@ def mode_status():
     except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
         pass
     for svc, path, iface in PP:
+        if not running('system', svc):
+            continue
         try:
             active = getp('system', svc, path, iface, 'ActiveProfile')
             profiles = [p['Profile']['data'] for p in getp('system', svc, path, iface, 'Profiles')]
             return {'supported': True, 'active': active, 'available': [m for m in MODES if m in profiles] or profiles, 'via': 'power-profiles'}
         except (Fail, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
             continue
-    if shutil.which('powerprofilesctl'):
+    # powerprofilesctl asks the same D-Bus service (and would hang the same way when nobody runs it).
+    if shutil.which('powerprofilesctl') and any(running('system', svc) for svc, _, _ in PP):
         try:
             active = subprocess.run(['powerprofilesctl', 'get'], capture_output=True, text=True, timeout=5).stdout.strip()
             if active:
@@ -173,12 +201,14 @@ def set_mode(name):
     if st['via'] == 'power-profiles':
         errors = []
         for svc, path, iface in PP:
+            if not running('system', svc):
+                continue
             try:
                 busctl('system', 'set-property', svc, path, iface, 'ActiveProfile', 's', name)
                 return
             except (Fail, subprocess.TimeoutExpired) as e:
                 errors.append(str(e))
-        raise Fail(errors[0])
+        raise Fail(errors[0] if errors else 'the power-profiles service stopped')
     if st['via'] == 'powerprofilesctl':
         r = subprocess.run(['powerprofilesctl', 'set', name], capture_output=True, text=True, timeout=10)
         if r.returncode != 0:
@@ -201,6 +231,8 @@ def set_mode(name):
 
 # ---------------------------------------------------------------------- power limit
 def ps_card():
+    if not running('system', PS):
+        raise Fail('PowerStation is not running')
     tree = busctl('system', '--list', 'tree', PS, timeout=4)
     for p in (l.strip() for l in tree.splitlines()):
         if p.startswith('/org/shadowblip/Performance/GPU/card') and p.rsplit('card', 1)[-1].isdigit():
@@ -231,6 +263,8 @@ def admin(*args):
 def tdp_status():
     iface = SOM[0] + '.TdpLimit1'
     try:
+        if not running('user', SOM[0]):
+            raise Fail('SteamOS Manager is not running')
         w = getp('user', SOM[0], SOM[1], iface, 'TdpLimit')
         lo = getp('user', SOM[0], SOM[1], iface, 'TdpLimitMin')
         hi = getp('user', SOM[0], SOM[1], iface, 'TdpLimitMax')
@@ -267,6 +301,8 @@ def tdp_status():
 def som_tdp_settable():
     """SteamOS Manager is running and has the power-limit interface (on Anatase it passes changes on to Handheld
     Daemon, though it can't say the current limit)."""
+    if not running('user', SOM[0]):
+        return False
     try:
         busctl('user', 'introspect', SOM[0], SOM[1], SOM[0] + '.TdpLimit1', timeout=4)
         return True
