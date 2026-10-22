@@ -9,9 +9,15 @@
 // in Chromium, GPU-composited on a see-through window like hhd-ui, which is what makes it smooth; the page's calls
 // and events go to the running Hearth app over its overlay socket (link.js), so it can do everything the old
 // overlay window could. The protocol itself is in protocol.js.
+//
+// The page is the one the running Hearth app draws, not this package's copy: Hearth may be newer (or older) than the
+// image (an app-path override, an AppImage). When Hearth connects it says where its screens come from (hello):
+// served by Hearth itself over the socket (the WebKit app's built-in copy), or a folder (the Electron window app's).
+// This package's own copy (UI_DIR) is only for a Hearth too old to say, or a file Hearth can't give.
 
 const { app, BrowserWindow, ipcMain, protocol, net, screen, Menu } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
 const readline = require('node:readline');
 const { pathToFileURL } = require('node:url');
 const { OverlayProtocol } = require('./protocol');
@@ -22,6 +28,10 @@ const { artFile } = require('./art');
 console.log = (...a) => console.error(...a);
 console.info = console.log;
 process.stdout.on('error', () => {});
+// Nothing in here may end the app: HHD only starts it again later (or on the next QAM press), and until then Quick
+// Access has nowhere to open. A slip is logged (HHD's log) and the app carries on.
+process.on('uncaughtException', e => console.error(`overlay: ${e && e.stack || e}`));
+process.on('unhandledRejection', e => console.error(`overlay: ${e && e.stack || e}`));
 
 // HHD finds its overlay window by WM_CLASS; Electron names it after the app.
 app.setName('dev.hhd.hhd-ui');
@@ -38,6 +48,14 @@ const UI_DIR = app.isPackaged ? path.join(process.resourcesPath, 'ui') : path.jo
 const PAGE = 'nimbus://app/index.html?overlay=full';
 const BLANK = 'data:text/html,<html style="background:transparent"></html>';
 const TITLE = 'Hearth Overlay';   // Hearth leaves its own windows out of Quick Access's open apps by this name
+const HELLO_WAIT = 1500;          // how long a connecting Hearth gets to say where its screens are
+const FILE_WAIT = 5000;           // one file from Hearth
+
+/** Where the page's files come from: {mode:'hearth'} (asked of Hearth), {mode:'dir', dir} or {mode:'own'} (UI_DIR). */
+let uiSrc = { mode: 'own' };
+let helloTimer = null;
+const files = new Map();   // id → {done(reply|null)}: files asked of Hearth
+let fileId = 0;
 
 let win = null;
 /** Loads a page in the window (a newer load cancelling this one isn't an error). */
@@ -52,17 +70,53 @@ const proto = new OverlayProtocol({
   toPage,
   connected: () => link.connected,
   onHost: msg => {
+    if (msg.what === 'hello') return hello(msg);
     if (msg.what === 'opacity') proto.peek(!msg.value);   // Take a screenshot: a picture of just the game
     if (!win || win.isDestroyed()) return;
     if (msg.what === 'reload') load(PAGE);
   },
 });
 
-function serveUi(req) {
+/** Hearth said where its screens come from: the page is loaded from there. */
+function hello(msg) {
+  if (helloTimer) { clearTimeout(helloTimer); helloTimer = null; }
+  const dir = typeof msg.uiDir === 'string' && path.isAbsolute(msg.uiDir) ? path.normalize(msg.uiDir) : null;
+  uiSrc = msg.ui === 'hearth' ? { mode: 'hearth' } : dir ? { mode: 'dir', dir } : { mode: 'own' };
+  console.error(`overlay: Hearth ${msg.version || ''} connected; its screens come from ${uiSrc.mode === 'hearth' ? 'Hearth itself' : uiSrc.mode === 'dir' ? uiSrc.dir : 'this app'}`);
+  load(PAGE);
+}
+function fileFrom(dir, rel) {
+  const file = path.normalize(path.join(dir, rel));
+  if (!file.startsWith(dir + path.sep)) return null;
+  return file;
+}
+function ownFile(rel) {
+  const file = fileFrom(UI_DIR, rel);
+  return file ? net.fetch(pathToFileURL(file).toString()) : new Response('Not found', { status: 404 });
+}
+/** One file of Hearth's screens, asked of Hearth over the socket (null: it couldn't give it). */
+function askHearth(rel) {
+  return new Promise(done => {
+    const id = ++fileId;
+    const t = setTimeout(() => { files.delete(id); done(null); }, FILE_WAIT);
+    files.set(id, { done: r => { clearTimeout(t); files.delete(id); done(r); } });
+    if (!link.send({ type: 'ui-file', id, path: rel.replace(/^\/+/, '') })) files.get(id).done(null);
+  });
+}
+function dropFiles() { for (const f of [...files.values()]) f.done(null); }
+async function serveUi(req) {
   const rel = decodeURIComponent(new URL(req.url).pathname);
-  const file = path.normalize(path.join(UI_DIR, rel));
-  if (!file.startsWith(UI_DIR + path.sep)) return new Response('Not found', { status: 404 });
-  return net.fetch(pathToFileURL(file).toString());
+  if (uiSrc.mode === 'dir') {
+    const file = fileFrom(uiSrc.dir, rel);
+    if (file && fs.existsSync(file)) return net.fetch(pathToFileURL(file).toString());
+  } else if (uiSrc.mode === 'hearth') {
+    const r = await askHearth(rel);
+    if (r && r.ok && typeof r.data === 'string') {
+      return new Response(Buffer.from(r.data, 'base64'), { status: 200, headers: { 'content-type': r.mime || 'application/octet-stream', 'cache-control': 'no-store' } });
+    }
+    console.error(`overlay: Hearth didn't give ${rel}${r && r.error ? ` (${r.error})` : ''}; using this app's copy`);
+  }
+  return ownFile(rel);
 }
 function serveArt(req) {
   const file = artFile(req.url);
@@ -96,10 +150,28 @@ function start() {
     if (!link.send(msg) && msg.type === 'call') toPage({ type: 'result', id: msg.id, ok: false, error: "Hearth isn't running" });
   });
 
-  // Hearth: the page is (re)loaded each time it connects, so it starts from Hearth's current state.
-  link.on('connect', () => { console.error('overlay: connected to Hearth'); proto.disconnected(); load(PAGE); });
-  link.on('disconnect', () => { console.error('overlay: Hearth went away'); proto.disconnected(); load(BLANK); });
-  link.on('message', msg => proto.fromHearth(msg));
+  // Hearth: the page is (re)loaded each time it connects, so it starts from Hearth's current state (and Hearth's
+  // version of it: once Hearth has said where its screens are, or after HELLO_WAIT for a Hearth that doesn't say).
+  // Hearth going away (it restarted) isn't the end: the link keeps trying and the page comes back with it.
+  link.on('connect', () => {
+    console.error('overlay: connected to Hearth');
+    proto.disconnected();
+    uiSrc = { mode: 'own' };
+    if (helloTimer) clearTimeout(helloTimer);
+    helloTimer = setTimeout(() => { helloTimer = null; console.error("overlay: Hearth didn't say where its screens are; using this app's copy"); load(PAGE); }, HELLO_WAIT);
+    proto.hearthConnected();
+  });
+  link.on('disconnect', () => {
+    console.error('overlay: Hearth went away; waiting for it to come back');
+    if (helloTimer) { clearTimeout(helloTimer); helloTimer = null; }
+    dropFiles();
+    proto.disconnected();
+    load(BLANK);
+  });
+  link.on('message', msg => {
+    if (msg && msg.type === 'ui-file') { const f = files.get(msg.id); if (f) f.done(msg); return; }
+    proto.fromHearth(msg);
+  });
   link.start();
 
   // HHD.

@@ -20,6 +20,11 @@
 //! is Hearth's Quick Access (hosts/linux/src/overlay, in Chromium), HHD shows it over the game and holds the
 //! controllers for it, and it talks to Hearth over hearth-core's overlay socket (overlay_link.rs). Hearth still
 //! decides when it opens and closes (`hhd`): the same calls below, sent to that app instead of to a window.
+//!
+//! Quick Access over a game is always that overlay (Hearth's `?overlay=full` page), never the main window's panel:
+//! also on Hearth's starting screen while a game or Steam loads (`open_from_hearth`), and while HHD is starting its
+//! overlay app again (Hearth waits for it and asks HHD to start it: `open_or_wait`). Hearth's own Quick Access
+//! over the game is only a last resort, logged as such, when the overlay can't be shown at all.
 
 use hearth_core::appid::{APPS_ID, HEARTH_ID};
 use hearth_core::bridge::Bridge;
@@ -34,6 +39,10 @@ use crate::winhost::WindowHost;
 pub const MAIN_TITLE: &str = "Hearth";
 pub const OVERLAY_TITLE: &str = "Hearth Overlay";
 const OPAQUE: u64 = 4294967295;
+/// How long a Quick Access press waits for Handheld Daemon's overlay app to connect again: by itself (it reconnects
+/// within a second when it's running), and after asking HHD to start it (Chromium starting up, HHD finding it).
+const APP_WAIT_MS: u64 = 3000;
+const APP_RESTART_WAIT_MS: u64 = 9000;
 
 pub struct GameMode {
     /// Hearth's windows: Tauri's (WebKit), or the Electron window's (Chromium) through the core channel (winhost.rs).
@@ -72,6 +81,16 @@ pub struct GameMode {
     /// carries the cloud game's.
     win_tags: Arc<Mutex<std::collections::HashMap<u64, u32>>>,
     ids_on: AtomicBool,
+    /// Quick Access was opened over Hearth's own starting screen (a game or Steam loading): it closes when the game
+    /// comes up, and closing it leaves Hearth in front.
+    over_launch: AtomicBool,
+    /// A press waiting for HHD's overlay app to connect (its number; 0: none), and the last number given out.
+    waiting: AtomicU64,
+    wait_gen: AtomicU64,
+    /// When a press that waited opened Quick Access in the app that just connected (it isn't closed as stale).
+    opened_after_wait: AtomicU64,
+    /// When Hearth last asked HHD to start the app on its own (not for a press): the open HHD sends it along is ignored.
+    keeper_poked_at: AtomicU64,
 }
 
 fn now() -> u64 { hearth_core::library::now_ms() }
@@ -85,7 +104,9 @@ impl GameMode {
             overlay_on: AtomicBool::new(false), osd_on: AtomicBool::new(false), osd_gen: AtomicU64::new(0), look_closed: AtomicBool::new(true),
             before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), launch_busy: AtomicU64::new(0), last_guide: AtomicU64::new(0), b_gen: AtomicU64::new(0),
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()), game_wins: Default::default(),
-            hhd_overlay: AtomicBool::new(false), win_tags: Default::default(), ids_on: AtomicBool::new(false) });
+            hhd_overlay: AtomicBool::new(false), win_tags: Default::default(), ids_on: AtomicBool::new(false),
+            over_launch: AtomicBool::new(false), waiting: AtomicU64::new(0), wait_gen: AtomicU64::new(0), opened_after_wait: AtomicU64::new(0),
+            keeper_poked_at: AtomicU64::new(0) });
         let hhd = gm.inside() && hearth_core::overlay_link::hhd_hosts_overlay();
         gm.hhd_overlay.store(hhd, Ordering::SeqCst);
         gm
@@ -316,6 +337,8 @@ impl GameMode {
             let _ = me.launch_busy.compare_exchange(g, 0, Ordering::SeqCst, Ordering::SeqCst);
             if cancelled() { return; }
             me.launch_gen.fetch_add(1, Ordering::SeqCst);
+            // Quick Access opened over the starting screen closes as the game comes up (as it did in Hearth's window).
+            if me.over_launch.load(Ordering::SeqCst) && me.overlay_on.load(Ordering::SeqCst) { log("overlay: the game came up; closing Quick Access opened while it started"); me.hide_overlay(); }
             me.step_aside();
             match r {
                 Some(gs::Ready::Window(w)) => {
@@ -621,9 +644,11 @@ impl GameMode {
         if !self.overlay_on.load(Ordering::SeqCst) && !self.osd_on.load(Ordering::SeqCst) && self.look_closed.load(Ordering::SeqCst) {
             // Already closed here: HHD's overlay app may think otherwise (it asked to close, or it just started).
             if self.hhd() { self.to_overlay(ev("overlay.hidden", json!({}))); }
+            self.over_launch.store(false, Ordering::SeqCst);
             return;
         }
         self.overlay_on.store(false, Ordering::SeqCst);
+        let from_launch = self.over_launch.swap(false, Ordering::SeqCst);
         self.osd_on.store(false, Ordering::SeqCst);
         self.reveal_gen.fetch_add(1, Ordering::SeqCst);
         self.repeat_gen.fetch_add(1, Ordering::SeqCst);
@@ -635,8 +660,9 @@ impl GameMode {
         self.overlay_look(false, false);
         let me = self.clone();
         std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(500)); if !me.overlay_on.load(Ordering::SeqCst) && !me.osd_on.load(Ordering::SeqCst) { me.overlay_look(false, false); } });
-        // The controller back to what was on screen. Soft: anything chosen meanwhile wins.
-        if self.inside() && !self.main_focused() {
+        // The controller back to what was on screen. Soft: anything chosen meanwhile wins. Opened over Hearth's
+        // starting screen: Hearth was on screen, and stays (the game isn't up yet).
+        if self.inside() && !from_launch && !self.main_focused() {
             let before = self.before_overlay.load(Ordering::SeqCst);
             let launching = self.launch_waiting();
             // A game that's starting (or just started) may have swapped its splash for its real window while the
@@ -712,32 +738,141 @@ impl GameMode {
         // A press ignored as a repeat still made InputPlumber catch everything: put its mode back.
         if t.saturating_sub(self.last_guide.swap(t, Ordering::SeqCst)) < 400 { self.ip_sync(); return; }
         if self.overlay_on.load(Ordering::SeqCst) { log(&format!("overlay: {how} pressed, closing")); self.hide_overlay(); return; }
+        // Pressed again while waiting for HHD's overlay app: you changed your mind.
+        if self.waiting.swap(0, Ordering::SeqCst) != 0 { log(&format!("overlay: {how} pressed again while waiting for Handheld Daemon's overlay app; not opening")); self.ip_sync(); return; }
         if self.hearth_on_screen() {
             // Hearth's own UI handles Guide itself: InputPlumber caught it, so pass it on and give the controller back.
             if self.ip.load(Ordering::SeqCst) { self.ip_sync(); self.to_main(ev("pad", json!({"b": "guide"}))); }
             return;
         }
         log(&format!("overlay: {how} pressed over another app"));
+        self.open_or_wait(&format!("{how} pressed"), |me| {
+            me.ip_sync();
+            me.come_back();
+            me.to_main(ev("pad", json!({"b": "guide"})));
+        });
+    }
+
+    /// Quick Access over what's on screen. With Handheld Daemon's overlay app not connected (HHD stopped it and is
+    /// starting it again, or Hearth just restarted), the press waits for it, up to APP_WAIT_MS, and HHD is asked to
+    /// start it (then up to APP_RESTART_WAIT_MS): the main window's Quick Access, which isn't the overlay and doesn't
+    /// behave like it over a game, is not shown for a moment's disconnection. `fallback` runs only when the overlay
+    /// really couldn't be shown, and that's logged loudly.
+    fn open_or_wait(self: &Arc<Self>, what: &str, fallback: impl FnOnce(&Arc<GameMode>) + Send + 'static) {
         if self.show_overlay() { return; }
+        if !self.hhd() {
+            log(&format!("overlay: LAST RESORT ({what}): Hearth's overlay window isn't there; showing Hearth's own Quick Access instead"));
+            fallback(self);
+            return;
+        }
         self.ip_sync();
-        self.come_back();
-        self.to_main(ev("pad", json!({"b": "guide"})));
+        let g = self.wait_gen.fetch_add(1, Ordering::SeqCst) + 1;
+        self.waiting.store(g, Ordering::SeqCst);
+        log(&format!("overlay: {what}, but Handheld Daemon's overlay app isn't connected; waiting for it"));
+        let me = self.clone();
+        let what = what.to_string();
+        std::thread::spawn(move || {
+            let start = now();
+            let mut limit = APP_WAIT_MS;
+            let mut asked = false;
+            let mut seen = 0u64;
+            loop {
+                std::thread::sleep(Duration::from_millis(100));
+                if me.waiting.load(Ordering::SeqCst) != g { return; }   // pressed again, or a newer press waits
+                // Opened meanwhile (HHD's own press reached Hearth through the app once it was back).
+                if me.overlay_on.load(Ordering::SeqCst) { let _ = me.waiting.compare_exchange(g, 0, Ordering::SeqCst, Ordering::SeqCst); return; }
+                let t = now().saturating_sub(start);
+                if hearth_core::overlay_link::connected() {
+                    // A moment for the app's own start (it begins closed, and Hearth's idea of it does too).
+                    if seen == 0 { seen = now(); }
+                    if now().saturating_sub(seen) >= 300 {
+                        if me.waiting.compare_exchange(g, 0, Ordering::SeqCst, Ordering::SeqCst).is_err() { return; }
+                        me.opened_after_wait.store(now(), Ordering::SeqCst);
+                        if me.show_overlay() { log(&format!("overlay: Handheld Daemon's overlay app is back after {t} ms; Quick Access open ({what})")); return; }
+                        break;
+                    }
+                } else { seen = 0; }
+                if !asked && t >= 500 {
+                    asked = true;
+                    match hearth_core::hhd::start_overlay_app() {
+                        Ok(()) => { limit = APP_RESTART_WAIT_MS; log("overlay: asked Handheld Daemon to start its overlay app"); }
+                        Err(e) => log(&format!("overlay: couldn't ask Handheld Daemon to start its overlay app: {e}")),
+                    }
+                }
+                if now().saturating_sub(start) >= limit {
+                    if me.waiting.compare_exchange(g, 0, Ordering::SeqCst, Ordering::SeqCst).is_err() { return; }
+                    break;
+                }
+            }
+            log(&format!("overlay: LAST RESORT ({what}): Handheld Daemon's overlay app didn't come back in {} s; showing Hearth's own Quick Access instead. Why it isn't running is in HHD's log (journalctl -u 'hhd@*')", now().saturating_sub(start) / 1000));
+            fallback(&me);
+        });
+    }
+
+    /// Hearth's own screen asked for Quick Access (Guide or the Quick Access button on the starting screen, while a
+    /// game or Steam is loading behind it): the overlay, the same Quick Access as over the game, not the main
+    /// window's panel. The page opens its own only if Hearth answers overlay.unavailable (no overlay here at all).
+    pub fn open_from_hearth(self: &Arc<Self>) {
+        if !self.overlay_available() { self.to_main(ev("overlay.unavailable", json!({}))); return; }
+        if self.overlay_on.load(Ordering::SeqCst) || self.waiting.load(Ordering::SeqCst) != 0 { return; }
+        log("overlay: Quick Access asked for on Hearth's starting screen (a game or Steam is loading)");
+        self.over_launch.store(true, Ordering::SeqCst);
+        self.open_or_wait("Quick Access on the starting screen", |me| {
+            me.over_launch.store(false, Ordering::SeqCst);
+            me.to_main(ev("overlay.unavailable", json!({})));
+        });
+    }
+
+    /// Handheld Daemon's overlay app away for a while (HHD stopped it after an error in its window handling and only
+    /// starts it again on its next settings pass): HHD is asked to start it now, so Quick Access is ready before the
+    /// next press. At most every 30 s and 3 times in 10 minutes, so an app that can't start isn't asked for forever.
+    pub fn start_overlay_keeper(self: &Arc<Self>) {
+        let me = self.clone();
+        std::thread::spawn(move || {
+            let mut away_since = 0u64;
+            let mut asked: Vec<u64> = Vec::new();
+            loop {
+                std::thread::sleep(Duration::from_secs(1));
+                if !me.hhd() { return; }
+                if hearth_core::overlay_link::connected() { away_since = 0; continue; }
+                let t = now();
+                if away_since == 0 { away_since = t; continue; }
+                if t.saturating_sub(away_since) < 6000 || me.waiting.load(Ordering::SeqCst) != 0 { continue; }
+                asked.retain(|a| t.saturating_sub(*a) < 600_000);
+                if asked.len() >= 3 || asked.last().map(|a| t.saturating_sub(*a) < 30_000).unwrap_or(false) { continue; }
+                asked.push(t);
+                me.keeper_poked_at.store(t, Ordering::SeqCst);
+                match hearth_core::hhd::start_overlay_app() {
+                    Ok(()) => log(&format!("overlay: Handheld Daemon's overlay app has been away for {} s; asked HHD to start it again", t.saturating_sub(away_since) / 1000)),
+                    Err(e) => log(&format!("overlay: Handheld Daemon's overlay app is away and HHD couldn't be asked to start it: {e}")),
+                }
+            }
+        });
     }
 
     /// Handheld Daemon's QAM button (its overlay app asks): Quick Access, like Guide. Over a game it opens there; with
     /// Hearth in front, Hearth's own Quick Access opens (as Guide does). Already open: the app is told again (it may
     /// have restarted). Closing goes through the page's own close (from_overlay).
-    pub fn hhd_open(self: &Arc<Self>) {
+    /// `late`: pressed while the app wasn't connected, passed on now that it is. One that came with Hearth's own request
+    /// to HHD to start the app (start_overlay_keeper: HHD sends an open along) isn't a press, and is ignored.
+    pub fn hhd_open(self: &Arc<Self>, late: bool) {
+        if late && now().saturating_sub(self.keeper_poked_at.load(Ordering::SeqCst)) < 20_000 && self.waiting.load(Ordering::SeqCst) == 0 {
+            log("overlay: Handheld Daemon's overlay app started (Hearth asked for it); not opening");
+            return;
+        }
         if self.overlay_on.load(Ordering::SeqCst) { self.to_overlay(ev("overlay.shown", json!({}))); return; }
         if self.hearth_on_screen() { self.to_main(ev("pad", json!({"b": "guide"}))); return; }
         log("overlay: Handheld Daemon's Quick Access button pressed over another app");
-        if self.show_overlay() { return; }
-        self.come_back();
-        self.to_main(ev("pad", json!({"b": "guide"})));
+        self.open_or_wait("Handheld Daemon's Quick Access button pressed", |me| {
+            me.come_back();
+            me.to_main(ev("pad", json!({"b": "guide"})));
+        });
     }
-    /// HHD (re)started its overlay app: it starts closed, so Hearth's idea of it does too.
+    /// HHD (re)started its overlay app: it starts closed, so Hearth's idea of it does too (unless a press that was
+    /// waiting for it has just opened Quick Access in it).
     pub fn overlay_app_connected(self: &Arc<Self>) {
         log("overlay: Handheld Daemon's overlay app connected");
+        if self.waiting.load(Ordering::SeqCst) != 0 || now().saturating_sub(self.opened_after_wait.load(Ordering::SeqCst)) < 3000 { return; }
         if self.overlay_on.load(Ordering::SeqCst) { self.hide_overlay(); }
     }
 
@@ -797,7 +932,17 @@ impl GameMode {
             ("overlay", "alive") => self.overlay_alive.store(now(), Ordering::SeqCst),
             ("overlay", "painted") => self.reveal_overlay(),
             ("overlay", "home") => { self.claim(); self.hide_overlay(); self.come_back(); }
-            ("hhd", "open") => self.hhd_open(),
+            ("hhd", "open") => self.hhd_open(m["late"] == true),
+            // The page (re)loaded: HHD's overlay app loads it each time it connects, maybe after Quick Access was
+            // opened (a press that waited for the app): it's told again, and gets its 5 s to answer from now.
+            ("ready", _) => {
+                if self.hhd() && self.overlay_on.load(Ordering::SeqCst) {
+                    self.overlay_alive.store(now(), Ordering::SeqCst);
+                    self.to_overlay(ev("padHost", json!({"connected": 1})));
+                    self.to_overlay(ev("overlay.shown", json!({})));
+                }
+                return false;
+            }
             ("resume", _) => { self.claim(); self.hide_overlay(); self.resume_game(); }
             ("power", _) => { self.hide_overlay(); return false; }   // handled like the main window's
             _ => return false,

@@ -1477,6 +1477,8 @@ fn shell_install(remove: bool) -> Result<(), String> {
 
 fn features() -> Vec<&'static str> {
     let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus"];
+    // Quick Access on the starting screen (a game or Steam loading) is the overlay, as over the game (gamemode.rs).
+    f.push("overlayOverLaunch");
     if crate::guide::controller_available() { f.push("remap"); }
     if crate::multiplay::coop_available() { f.push("coop"); }
     if crate::multiplay::seats_available() { f.push("seats"); }
