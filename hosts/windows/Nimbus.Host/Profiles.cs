@@ -16,7 +16,8 @@ namespace Nimbus.Host;
 /// </summary>
 public sealed class Profiles
 {
-    private static readonly string[] Own = { "library.json", "profile", "accounts", @"legendary\user.json", @"gog\auth.json" };
+    // The GOG account's name and picture (profile.json) and its cloud-save times (saves.json) belong with its sign-in.
+    private static readonly string[] Own = { "library.json", "profile", "accounts", @"legendary\user.json", @"gog\auth.json", @"gog\profile.json", @"gog\saves.json" };
     private static readonly string[] Caches = { @"cache\epic-owned.json", @"cache\gog-owned.json", @"cache\xbox-titles.json" };
     private static readonly string[] Colors = { "#ff8a3d", "#3fd0b8", "#5aa9ff", "#b57bff", "#ffd166", "#e5483b", "#7ad15a" };
 
