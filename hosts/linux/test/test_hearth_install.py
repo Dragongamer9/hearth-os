@@ -560,3 +560,20 @@ class BootFirst(unittest.TestCase):
         with mock.patch.object(bf.os.path, 'isdir', lambda p: True), mock.patch.object(bf.os.path, 'exists', lambda p: False), \
                 mock.patch.object(bf.shutil, 'which', lambda n: None), mock.patch('builtins.print'):
             self.assertEqual(bf.main(), 0)
+
+
+class GrubFolder(unittest.TestCase):
+    """custom.cfg (Windows, SteamOS... in Hearth's boot menu) goes where the edition's GRUB menu reads it."""
+
+    def test_where_custom_cfg_goes(self):
+        with tempfile.TemporaryDirectory() as boot:
+            # Nothing there yet: bootupd's layout (all editions).
+            self.assertEqual(H.grub_dir(boot), os.path.join(boot, 'grub2'))
+            os.makedirs(os.path.join(boot, 'grub'))
+            open(os.path.join(boot, 'grub', 'grub.cfg'), 'w').close()
+            # A distribution-style GRUB (grub/grub.cfg only): there.
+            self.assertEqual(H.grub_dir(boot), os.path.join(boot, 'grub'))
+            os.makedirs(os.path.join(boot, 'grub2'))
+            open(os.path.join(boot, 'grub2', 'grub.cfg'), 'w').close()
+            # bootupd's static menu (Fedora's, Debian's, Ubuntu's and Arch's GRUB alike) wins.
+            self.assertEqual(H.grub_dir(boot), os.path.join(boot, 'grub2'))

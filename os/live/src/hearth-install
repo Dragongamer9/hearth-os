@@ -1070,14 +1070,29 @@ def other_systems_menu(esp=None):
             seen.add((e[1], e[2])); uniq.append(e)
     if not uniq:
         return []
-    grub = f'{TARGET}/boot/grub2'
+    grub = grub_dir(f'{TARGET}/boot')
     os.makedirs(grub, exist_ok=True)
     with open(f'{grub}/custom.cfg', 'w') as f:
         f.write(menu_text(uniq))
     env = f'{grub}/grubenv'
-    if os.path.exists(env) and shutil.which('grub2-editenv'):
-        sh(['grub2-editenv', env, 'unset', 'menu_auto_hide'], check=False)   # show the menu: there's a choice
+    editenv = shutil.which('grub2-editenv') or shutil.which('grub-editenv')
+    if os.path.exists(env) and editenv:
+        sh([editenv, env, 'unset', 'menu_auto_hide'], check=False)   # show the menu: there's a choice
     return uniq
+
+
+def grub_dir(boot):
+    """The folder of the GRUB menu that starts this system, where custom.cfg is read ($prefix/custom.cfg).
+    Every edition boots through bootupd's static GRUB config, whatever its GRUB (Fedora's, Debian's and Ubuntu's
+    signed one, Arch's): its EFI part looks for <boot>/grub2 (then <boot>/boot/grub2) and its 41_custom.cfg sources
+    custom.cfg from there. Only a /boot with a menu in grub/ and none in grub2/ (a GRUB set up the distribution's
+    usual way, not by bootupd) uses grub/."""
+    for d in ('grub2', 'boot/grub2'):
+        if os.path.isfile(os.path.join(boot, d, 'grub.cfg')):
+            return os.path.join(boot, d)
+    if os.path.isfile(os.path.join(boot, 'grub', 'grub.cfg')):
+        return os.path.join(boot, 'grub')
+    return os.path.join(boot, 'grub2')
 
 
 def entry_label(line):
