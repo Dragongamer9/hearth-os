@@ -31,6 +31,8 @@ internal static class Program
 
         IsShell = shell;
         ApplicationConfiguration.Initialize();
+        // Hearth Disks' Start menu entry (DisksShortcut.cs), off the start-up path.
+        Task.Run(DisksShortcut.Ensure);
 
         if (shell)
         {
