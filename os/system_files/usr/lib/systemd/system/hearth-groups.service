@@ -2,7 +2,9 @@
 [Unit]
 Description=Hearth: account groups (screen brightness)
 Before=display-manager.service systemd-user-sessions.service
-After=local-fs.target
+# After the clean install of a move from another edition, which rewrites the account files (and brings the
+# accounts this has to add): never both changing /etc/group at once.
+After=local-fs.target hearth-clean-install.service
 
 [Service]
 Type=oneshot
