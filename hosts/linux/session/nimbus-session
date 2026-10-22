@@ -60,6 +60,7 @@ run_game() {
   # Settings › Display writes gamescope's options (resolution, refresh rate) here: read again every time, so a new
   # mode applies when Game Mode restarts (it used to apply only after signing out).
   NIMBUS_GAMESCOPE_ARGS=""
+  # shellcheck source=/dev/null
   [ -f "$SESSION_CONF" ] && . "$SESSION_CONF"
   # shellcheck disable=SC2086
   # Performance overlay (Quick Access › Performance): mangoapp draws it and reloads this file when Hearth writes it.
