@@ -97,6 +97,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.2.9 (released)
+
+- [x] Steam's Game Mode (Experimental): the Flatpak may reach Wi-Fi, power, Bluetooth and SteamOS Manager; one that didn't end cleanly falls back to Hearth's at the next start; set back to Hearth's once after 0.2.8
+
 ## 0.2.8 (released)
 
 - [x] Game Mode: Hearth's own or Steam's own Game Mode (Big Picture), in Settings › System and Desktop Mode's Settings › Power
