@@ -191,7 +191,20 @@ jobs:
         run: |
           v="${{ needs.version.outputs.version }}"
           tag="v$v"
-          if gh release view "$tag" >/dev/null 2>&1; then echo "Release $tag already exists; nothing to publish."; exit 0; fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # A hidden draft with this number on another commit is from earlier numbering (0.3.0 existed on
+            # Oct 16 before the versions were reset): renamed out of the way (nothing deleted) and the tag moved here.
+            draft=$(gh release view "$tag" --json isDraft -q .isDraft)
+            tagsha=$(gh api "repos/${{ github.repository }}/git/refs/tags/$tag" -q .object.sha 2>/dev/null || true)
+            if [ "$draft" = true ] && [ -n "$tagsha" ] && [ "$tagsha" != "${{ github.sha }}" ]; then
+              old="$tag-old-$(gh release view "$tag" --json createdAt -q '.createdAt[0:10]')"
+              echo "::notice title=old release::An old hidden draft had $tag; renamed to $old"
+              gh release edit "$tag" --tag "$old" --title "(old numbering) $old"
+              gh api -X PATCH "repos/${{ github.repository }}/git/refs/tags/$tag" -f sha="${{ github.sha }}" -F force=true >/dev/null
+            else
+              echo "Release $tag already exists; nothing to publish."; exit 0
+            fi
+          fi
           notes="$(git log -1 --pretty=%B)"
           gh release create "$tag" builds/* --target "${{ github.sha }}" --latest \
             --title "Hearth OS $v (Hearth for Linux, Ember for Windows)" --notes "$notes"
