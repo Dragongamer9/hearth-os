@@ -80,3 +80,27 @@ class Volume(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Problems(unittest.TestCase):
+    """Only the devices Hearth's udev rule is meant to open count as "no permission" problems."""
+
+    def check(self, props):
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            node = os.path.join(d, 'event3')
+            open(node, 'w').close()
+            rdev = os.stat(node).st_rdev
+            with open(os.path.join(d, 'c%d:%d' % (os.major(rdev), os.minor(rdev))), 'w') as f:
+                f.write('I:123\n' + ''.join('E:%s=%s\n' % kv for kv in props.items()))
+            return hb.meant_to_be_readable(node, d)
+
+    def test_keyboards_mice_and_controllers_arent_problems(self):
+        self.assertFalse(self.check({'ID_INPUT': '1', 'ID_INPUT_KEY': '1', 'ID_INPUT_KEYBOARD': '1'}))
+        self.assertFalse(self.check({'ID_INPUT': '1', 'ID_INPUT_MOUSE': '1'}))
+        self.assertFalse(self.check({'ID_INPUT': '1', 'ID_INPUT_KEY': '1', 'ID_INPUT_JOYSTICK': '1'}))
+
+    def test_power_button_is(self):
+        self.assertTrue(self.check({'ID_INPUT': '1', 'ID_INPUT_KEY': '1'}))
+        self.assertTrue(hb.meant_to_be_readable('/nonexistent/event9', '/nonexistent'))
