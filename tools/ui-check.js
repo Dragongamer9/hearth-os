@@ -284,6 +284,24 @@ const path = require('path');
     if (ids.some(i => i !== 'g01')) throw new Error('search found ' + ids.join(', '));
     if (hidden.length) throw new Error('the Hidden tab shows ' + hidden.join(', '));
   });
+  // Search with a real keyboard: any character a title has (' : & . accents), not only letters and digits.
+  await step('search types punctuation', () => {
+    closeAll(); query = ''; openLayer('search');
+    for (const k of ["'", ':', '&', 'é']) document.dispatchEvent(new KeyboardEvent('keydown', {key: k, bubbles: true, cancelable: true}));
+    const q = query; closeAll();
+    if (q !== "':&é") throw new Error('typed ' + JSON.stringify(q));
+  });
+  // The lock screen's and the Focus layout's big clocks keep time (they kept the time they were drawn at).
+  await step('big clocks keep time', () => {
+    S.layers = []; S.view = 'lock'; render(null, true);
+    document.querySelector('#view .lk-time').textContent = 'old'; tick();
+    const lock = document.querySelector('#view .lk-time').textContent;
+    LOOK.layout = 'x-focus'; saveLook(); S.view = 'home'; render(null, true);
+    document.querySelector('#view .xf-clock').textContent = 'old'; tick();
+    const focus = document.querySelector('#view .xf-clock').textContent;
+    LOOK.layout = 'shelf'; saveLook(); navigate('home', {}, false);
+    if (lock === 'old' || focus === 'old') throw new Error(`lock ${lock}, focus ${focus}`);
+  });
   // Starting a game while one that isn't in the library runs (Quick Resume off): a message, not a script error.
   await step('start while an unknown game runs', () => {
     const was = S.running; S.running = 'steam:999999';
