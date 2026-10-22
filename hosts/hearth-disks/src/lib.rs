@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn finds_things() {
-        let d = crate::udisks::parse(&crate::udisks::tests::sample(), &crate::udisks::Ctx { uid: 1000, steam: &|_: &[String]| false, usage: &|_: &str| None });
+        let d = crate::udisks::parse(&crate::udisks::tests::sample(), &crate::udisks::Ctx { uid: 1000, steam: &|_: &[String]| false, usage: &|_: &str| None, slaves: &|_: &str| vec![] });
         let (drive, part) = super::find(&d, "/org/freedesktop/UDisks2/block_devices/mmcblk0p1").unwrap();
         assert_eq!(drive.kind, "sd");
         assert_eq!(part.unwrap().label, "SWITCH");
