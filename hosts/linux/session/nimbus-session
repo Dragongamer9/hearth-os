@@ -34,6 +34,10 @@ ENV_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS"
 [ -z "$NIMBUS_APP" ] && [ -x /usr/bin/nimbus ] && NIMBUS_APP=/usr/bin/nimbus
 export NIMBUS_SESSION=1 NIMBUS_APP NIMBUS_SHARE="$SHARE"
 export XDG_CURRENT_DESKTOP=Nimbus XDG_SESSION_DESKTOP=nimbus
+# gamescope reuses a mode saved in GAMESCOPE_MODE_SAVE_FILE (set by some Steam sessions) whenever -W/-H/-r are
+# absent or don't match, so a switch back to "the screen's own mode" could land on an old saved 144 Hz instead.
+# Hearth keeps its mode in session.conf, so gamescope's own save is turned off.
+unset GAMESCOPE_MODE_SAVE_FILE
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
