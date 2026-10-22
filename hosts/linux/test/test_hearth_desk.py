@@ -242,6 +242,7 @@ class Icons(Base):
         self.assertEqual(self.hd.launch_argv({'Exec': 'steam %U -silent'}), ['steam', '-silent'])
         self.assertEqual(self.hd.launch_argv({'Exec': 'app --icon-arg %i', 'Icon': 'x'}), ['app', '--icon-arg', '--icon', 'x'])
         self.assertEqual(self.hd.launch_argv({'Exec': '"/opt/My App/run" --pct=100%%'}), ['/opt/My App/run', '--pct=100%'])
+        self.assertEqual(self.hd.launch_argv({'Exec': 'printf 100%%foo'}), ['printf', '100%foo'])
         with self.assertRaises(self.hd.Fail):
             self.hd.launch_argv({'Exec': '%U'})
         with self.assertRaises(self.hd.Fail):

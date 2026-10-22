@@ -308,7 +308,7 @@ def new_folder(name=''):
     return {'ok': True, 'path': target, 'name': os.path.basename(target)}
 
 
-FIELD_CODES = re.compile(r'%[fFuUdDnNickvm]')
+FIELD_CODES = re.compile(r'%[fFuUdDnNickvm%]')
 
 
 def launch_argv(fields):
@@ -325,7 +325,7 @@ def launch_argv(fields):
         if w in ('%i',) and fields.get('Icon'):
             out += ['--icon', fields['Icon']]
             continue
-        w = FIELD_CODES.sub('', w).replace('%%', '%')
+        w = FIELD_CODES.sub(lambda m: '%' if m.group(0) == '%%' else '', w)   # one pass: "100%%foo" is "100%foo"
         if w:
             out.append(w)
     if not out:
