@@ -17,10 +17,17 @@ SetPage {
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-power").toString().replace(/^file:\/\//, ""))
 
     // Power mode and power limit through hearth-power (the same as Hearth's Game Mode settings).
-    function power(args) { if (!pw.running) { pw.command = ["python3", helper].concat(args); pw.running = true; } }
+    // One at a time; one asked for while another runs goes next (it was dropped: a power limit picked while the
+    // page was still reading the status never got set, and a failed change never showed the real mode again).
+    function power(args) {
+        if (pw.running) { pw.next = args; return; }
+        pw.command = ["python3", helper].concat(args); pw.running = true;
+    }
     Component.onCompleted: power(["status"])
     Process {
         id: pw
+        property var next: null
+        onExited: if (next) { const a = next; next = null; Qt.callLater(() => page.power(a)); }
         stdout: StdioCollector {
             onStreamFinished: {
                 const line = text.trim().split("\n").pop() || "";
