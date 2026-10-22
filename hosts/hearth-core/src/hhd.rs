@@ -77,6 +77,14 @@ pub fn available() -> bool {
     std::env::var_os("HEARTH_SEAT").is_none() && std::path::Path::new(SOCKET).exists() && request("GET", "/api/v1/version", None).is_ok()
 }
 
+/// Gets HHD to start its overlay app (Hearth's Quick Access) if it isn't running: the same event its own Quick Access
+/// shortcut sends ({type:special, event:overlay}), which (re)starts the app when it has stopped and tells it to open.
+/// HHD otherwise only starts it again on its next settings pass, which can take many seconds (it stops the app when
+/// its window handling hits an error, e.g. while windows it watches come and go).
+pub fn start_overlay_app() -> Result<(), String> {
+    request_text("POST", "/api/v1/event", Some(&json!({"type": "special", "event": "overlay"})), Duration::from_secs(3)).map(|_| ())
+}
+
 /// The handheld controllers in HHD's state: (device key, emulation mode), e.g. ("rog_ally", "uinput").
 pub fn controllers(state: &Value) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = state["controllers"].as_object().map(|o| o.iter()
