@@ -43,6 +43,9 @@ import time
 MIB = 1024 * 1024
 GIB = 1024 * MIB
 MIN_DISK = 64 * GIB
+# MIN_DISK as drives are sold (1 GB = 1000^3 bytes) and as the system counts (GiB): 64 GiB is 68.7 GB, so a drive
+# sold as "64 GB" is too small, and saying "64 GB" made it look like it should fit.
+NEED = f'{-(-MIN_DISK // 10**9)} GB ({MIN_DISK // GIB} GiB)'
 ESP_SIZE = 600 * MIB
 BOOT_SIZE = 2 * GIB
 ESP_TYPE = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
@@ -120,7 +123,7 @@ def check_plan(p):
     if p.get('part') and not re.fullmatch(r'/dev/[A-Za-z0-9/_-]+', p['part']):
         raise Fail('choose what to install next to')
     if p['mode'] == 'beside' and not (isinstance(p.get('give'), int) and p['give'] >= MIN_DISK):
-        raise Fail(f'Hearth needs at least {MIN_DISK // GIB} GB')
+        raise Fail(f'Hearth needs at least {NEED}')
     edition = plan_edition(p)
     image = image_of(edition)
     signin = p.get('signin') if p.get('signin') in ('auto', 'start', 'always') else 'auto'
@@ -546,7 +549,7 @@ def check_linux(part):
     if not shrinkable:
         if target['freeSpace'] < MIN_DISK:
             why = 'is encrypted' if fs == 'crypto_LUKS' else 'uses LVM' if sysinfo and part.startswith('/dev/mapper/') else f"uses {fs or 'a file system'}"
-            problems.append({'id': 'fs', 'text': f"{name} {why}, which Hearth can't make smaller. Make {MIN_DISK // GIB} GB or more of free (unpartitioned) space on that drive in {name} first, or install on another drive."})
+            problems.append({'id': 'fs', 'text': f"{name} {why}, which Hearth can't make smaller. Make {NEED} or more of free (unpartitioned) space on that drive in {name} first, or install on another drive."})
     else:
         if any(m for m in (info.get('mountpoints') or []) if m):
             release(disk)
@@ -559,7 +562,7 @@ def check_linux(part):
         problems.append({'id': 'esp', 'text': f'{name} on this drive starts the old way (legacy BIOS). Hearth needs UEFI.'})
     give = max(target['canGive'], target['freeSpace'])   # free space already there, or what shrinking gives
     if not problems and give < MIN_DISK:
-        problems.append({'id': 'room', 'text': f"{name} doesn't have room to give: Hearth needs {MIN_DISK // GIB} GB and {name} can give {give // GIB} GB. Free up space in {name}, or install on another drive."})
+        problems.append({'id': 'room', 'text': f"{name} doesn't have room to give: Hearth needs {NEED} and {name} can give {give // GIB} GiB. Free up space in {name}, or install on another drive."})
     suggested = min(give, max(MIN_DISK, give // 2 // (16 * GIB) * (16 * GIB)))
     return {'target': {**target, 'canGive': give}, 'problems': problems, 'suggested': suggested}
 
@@ -1405,7 +1408,7 @@ def run(plan):
     if plan.get('firmware', True) and not os.path.isdir('/sys/firmware/efi'):
         raise Fail('this PC started the USB in legacy (BIOS) mode. Restart, and start the USB in UEFI mode from the boot menu')
     if plan['mode'] == 'whole' and info['tooSmall']:
-        raise Fail(f'that drive is too small: Hearth needs at least {MIN_DISK // GIB} GB')
+        raise Fail(f'that drive is too small: Hearth needs at least {NEED}')
     warning = edition_warning(plan['edition'], secure_boot())
     if warning:
         print(f'log: {warning}', flush=True)   # a warning, not a stop: Secure Boot can be turned off afterwards
