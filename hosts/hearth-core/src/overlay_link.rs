@@ -7,6 +7,9 @@
 //! Only this user: the folder is 0700, the socket 0600, and every connection's other end is checked (SO_PEERCRED) to
 //! be this user. Nothing on the network. Bazzite (InputPlumber, no HHD) doesn't install the app as hhd-ui, so none
 //! of this runs there and Hearth keeps its own overlay window.
+//! The first line to every connection is Hearth's hello ({type:'overlay-host', what:'hello', ...}, set_hello): which
+//! Hearth this is and where its screens come from, so the app draws the page this Hearth draws (ui_file below), not
+//! the copy in its own package, which can be older or newer.
 
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -36,6 +39,39 @@ pub type OnConnect = Arc<dyn Fn() + Send + Sync>;
 
 /// The overlay app's connections: (id, its outgoing queue).
 static CLIENTS: Mutex<Vec<(u64, SyncSender<String>)>> = Mutex::new(Vec::new());
+/// The first line every connection gets (set_hello).
+static HELLO: Mutex<Option<String>> = Mutex::new(None);
+
+/// What a connecting overlay app is told first: which Hearth, and where its screens come from ("ui": "hearth" when
+/// Hearth serves them itself through ui_file, or "uiDir": a folder).
+pub fn set_hello(v: &Value) { *HELLO.lock().unwrap_or_else(|p| p.into_inner()) = Some(v.to_string()); }
+
+/// Base64 (standard alphabet, padded): files for the overlay app go inside a JSON line.
+pub fn b64(data: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for c in data.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        out.push(A[(n >> 18) as usize & 63] as char);
+        out.push(A[(n >> 12) as usize & 63] as char);
+        out.push(if c.len() > 1 { A[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if c.len() > 2 { A[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+
+/// A file of Hearth's screens the overlay app asked for ({type:'ui-file', id, path}): the answer it gets. `get` reads
+/// one (bytes, media type) by its path inside the screens' folder; nothing outside it is asked for.
+pub fn ui_file(m: &Value, get: &dyn Fn(&str) -> Option<(Vec<u8>, String)>) -> Value {
+    let id = m["id"].clone();
+    let path = m["path"].as_str().unwrap_or("").trim_start_matches('/');
+    let bad = path.is_empty() || path.contains('\\') || path.split('/').any(|p| p.is_empty() || p == "." || p == "..");
+    if bad { return serde_json::json!({"type": "ui-file", "id": id, "ok": false, "error": "not one of Hearth's files"}); }
+    match get(path) {
+        Some((bytes, mime)) => serde_json::json!({"type": "ui-file", "id": id, "ok": true, "mime": mime, "data": b64(&bytes)}),
+        None => serde_json::json!({"type": "ui-file", "id": id, "ok": false, "error": "not found"}),
+    }
+}
 
 pub fn uid() -> u32 { unsafe { getuid() } }
 
@@ -128,6 +164,7 @@ pub fn start(on_message: OnMessage, on_connect: OnConnect) -> Result<PathBuf, St
 fn serve(id: u64, s: UnixStream, on_message: OnMessage, on_connect: OnConnect) {
     let Ok(mut writer) = s.try_clone() else { return };
     let (tx, rx) = sync_channel::<String>(QUEUE);
+    if let Some(h) = HELLO.lock().unwrap_or_else(|p| p.into_inner()).clone() { let _ = tx.try_send(h); }
     CLIENTS.lock().unwrap_or_else(|p| p.into_inner()).push((id, tx));
     // Writes on their own thread, so whoever sends (maybe holding the bridge) never waits on the app.
     std::thread::spawn(move || {
@@ -177,6 +214,30 @@ mod tests {
         std::fs::write(&other, "x").unwrap();
         assert!(!is_hearth_overlay(&other));
         assert!(!is_hearth_overlay(&d.path().join("missing")));
+    }
+
+    #[test]
+    fn base64_as_everyone_else() {
+        assert_eq!(b64(b""), "");
+        assert_eq!(b64(b"f"), "Zg==");
+        assert_eq!(b64(b"fo"), "Zm8=");
+        assert_eq!(b64(b"foo"), "Zm9v");
+        assert_eq!(b64(b"foobar"), "Zm9vYmFy");
+        assert_eq!(b64(&[0xff, 0xfe, 0x00, 0x10]), "//4AEA==");
+    }
+
+    #[test]
+    fn gives_only_hearths_own_files() {
+        let get = |p: &str| if p == "index.html" { Some((b"<html>".to_vec(), "text/html".to_string())) } else { None };
+        let r = ui_file(&serde_json::json!({"id": 3, "path": "/index.html"}), &get);
+        assert_eq!(r["ok"], true);
+        assert_eq!(r["id"], 3);
+        assert_eq!(r["data"], "PGh0bWw+");
+        assert_eq!(r["mime"], "text/html");
+        assert_eq!(ui_file(&serde_json::json!({"id": 4, "path": "missing.js"}), &get)["ok"], false);
+        for p in ["../etc/passwd", "a/../../b", "", "a//b", "./index.html", "a\\..\\b"] {
+            assert_eq!(ui_file(&serde_json::json!({"id": 5, "path": p}), &get)["ok"], false, "{p}");
+        }
     }
 
     #[test]
