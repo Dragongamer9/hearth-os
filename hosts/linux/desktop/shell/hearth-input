@@ -807,6 +807,17 @@ class Motion:
             self.rate[(e.ABS_RX, e.ABS_RY, e.ABS_RZ).index(ev.code)] = ev.value / self.res.get(ev.code, 1024)
 
 
+def node_id(path):
+    """Which device an event node is now. Node numbers are handed out again as soon as a device goes (Handheld
+    Daemon and InputPlumber re-make their devices when they start or switch modes); the sysfs input device behind
+    it (inputN, never reused) and the node's inode aren't."""
+    try:
+        ino = os.stat(path).st_ino
+    except OSError:
+        ino = None
+    return os.path.realpath('/sys/class/input/%s/device' % os.path.basename(path)), ino
+
+
 def is_gamepad(caps, e, name):
     return not name.startswith('Hearth ') and e.BTN_SOUTH in caps.get(e.EV_KEY, []) and e.EV_ABS in caps
 
@@ -974,6 +985,7 @@ class Daemon:
         self.motion_paths = {}   # motion sensors seen: path → name
         self.motion_denied = set()
         self.ignored_paths = set()
+        self.node_ids = {}       # path → node_id, for the ignored and motion sensor paths
         self.engine = None
         self.running = None      # the layout the engine runs
         self.clients = []
@@ -990,7 +1002,17 @@ class Daemon:
         motions = []
         for path in self.evdev.list_devices():
             seen.add(path)
-            if path in self.pads or path in self.ignored_paths:
+            if path in self.pads:
+                continue
+            nid = node_id(path)
+            if path in self.node_ids and self.node_ids[path] != nid:
+                # Another device on a node number looked at before (a controller where a keyboard was): look again.
+                self.ignored_paths.discard(path)
+                self.motion_paths.pop(path, None)
+                self.motion_denied.discard(path)
+                self._close_motion(path)
+                del self.node_ids[path]
+            if path in self.ignored_paths:
                 continue
             if path in self.motion_paths:
                 motions.append(path)
@@ -1014,6 +1036,7 @@ class Daemon:
                     log('motion sensors: %s (%s)' % (d.name, path))
                 else:
                     self.ignored_paths.add(path)
+                self.node_ids[path] = nid
             except OSError:
                 pass
             d.close()
@@ -1022,6 +1045,7 @@ class Daemon:
         self.motion_paths = {p: n for p, n in self.motion_paths.items() if p in seen}
         self.motion_denied &= seen
         self.ignored_paths &= seen
+        self.node_ids = {p: n for p, n in self.node_ids.items() if p in seen}
         for path in [p for p in self.motions if p not in seen]:
             self._close_motion(path)
 

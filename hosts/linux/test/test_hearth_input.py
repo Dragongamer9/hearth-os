@@ -668,6 +668,37 @@ class Daemon(unittest.TestCase):
         x.handle(Ev(E.EV_ABS, E.ABS_RX, 32767))
         self.assertEqual((x.trigger('lt'), x.ax['rx']), (1.0, 1.0))
 
+    def test_a_controller_on_a_reused_node_is_found(self):
+        class Kbd(Dev):
+            def capabilities(self, absinfo=True):
+                return {E.EV_KEY: [E().KEY_A]}
+
+            def input_props(self):
+                return []
+        path = '/dev/input/event9'
+        nodes, ids = {path: Kbd('Some Keyboard')}, {path: 'input1'}
+
+        class Evdev(FakeEvdev):
+            @staticmethod
+            def list_devices():
+                return list(nodes)
+
+            @staticmethod
+            def InputDevice(p):
+                return nodes[p]
+        old = hi.node_id
+        hi.node_id = lambda p: ids.get(p)
+        try:
+            d = hi.Daemon(Evdev)
+            d.scan()
+            self.assertIn(path, d.ignored_paths)
+            nodes[path], ids[path] = Dev(), 'input2'   # the keyboard went, a controller got its node number
+            d.scan()
+            self.assertIn(path, d.pads)
+            self.assertNotIn(path, d.ignored_paths)
+        finally:
+            hi.node_id = old
+
     def test_motion_detection(self):
         e = E()
         self.assertTrue(hi.is_motion([6], {e.EV_ABS: [0, 1, 2, 3, 4, 5]}, e))
