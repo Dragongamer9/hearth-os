@@ -603,6 +603,22 @@ def release(disk):
                     sh(['umount', '-R', m.strip()], check=False)
 
 
+def close_volumes(disk):
+    """Volumes open on the drive's partitions (LVM, which this USB turns on by itself at start, and opened encrypted
+    ones), closed, the innermost first. Only before erasing the whole drive: while they're open the drive is busy,
+    and writing its new partition table failed ("Device or resource busy") with the old one already wiped. Nothing
+    on them is changed: closing one only takes it off this USB (the drive is erased next anyway)."""
+    if not shutil.which('dmsetup'):
+        return
+    rows = sh(['lsblk', '-nro', 'NAME,TYPE', disk], check=False).stdout.splitlines()
+    done = set()
+    for line in reversed(rows):   # lsblk lists a volume after what it's on: backwards is innermost first
+        bits = line.split()
+        if len(bits) == 2 and bits[1] in ('lvm', 'crypt') and bits[0] not in done:
+            done.add(bits[0])
+            sh(['dmsetup', 'remove', '--retry', bits[0]], check=False)
+
+
 def settle(disk):
     sh(['partx', '-u', disk], check=False)
     sh(['udevadm', 'settle', '-t', '10'], check=False)
@@ -614,6 +630,7 @@ def settle(disk):
 def partition_whole(disk):
     """GPT with EFI, /boot and Hearth. Returns (esp, boot, root, esp_is_new)."""
     release(disk)
+    close_volumes(disk)
     stage('disk', 1, 'Erasing the drive')
     sh(['wipefs', '-a', disk])
     ss = sector_size(disk)
