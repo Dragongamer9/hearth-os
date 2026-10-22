@@ -193,7 +193,7 @@ pub fn game_processes_how(track: &Track, procs: &[Proc], me: u32) -> (Vec<u32>, 
 pub fn game_processes(track: &Track, procs: &[Proc], me: u32) -> Vec<u32> { game_processes_how(track, procs, me).0 }
 
 pub fn signal(pids: &[u32], sig: &str) -> usize {
-    pids.iter().filter(|p| std::process::Command::new("kill").args([&format!("-{sig}"), &p.to_string()]).status().map(|s| s.success()).unwrap_or(false)).count()
+    pids.iter().filter(|p| std::process::Command::new("kill").args([&format!("-{sig}"), &p.to_string()]).stderr(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false)).count()
 }
 /// Still running: there, and not a zombie (ended, waiting to be collected).
 pub fn alive(pid: u32) -> bool {

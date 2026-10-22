@@ -10,8 +10,11 @@ use std::sync::{Mutex, OnceLock};
 
 const EXTS: [&str; 6] = ["jpg", "png", "webp", "jpeg", "gif", "avif"];
 const WORKERS: usize = 3;
+/// Pictures the web says aren't there (404) aren't asked for again for a week, across restarts (every start asked
+/// again for the same missing pictures).
+const MISSING_FOR_MS: u64 = 7 * 24 * 3600 * 1000;
 
-struct Cache { dir: PathBuf, index: HashMap<String, PathBuf>, queue: VecDeque<String>, queued: HashSet<String>, failed: HashMap<String, u64>, active: usize, last_changed: u64 }
+struct Cache { dir: PathBuf, index: HashMap<String, PathBuf>, queue: VecDeque<String>, queued: HashSet<String>, failed: HashMap<String, u64>, missing: HashMap<String, u64>, active: usize, last_changed: u64 }
 
 fn cache() -> &'static Mutex<Cache> {
     static C: OnceLock<Mutex<Cache>> = OnceLock::new();
@@ -24,11 +27,17 @@ fn cache() -> &'static Mutex<Cache> {
             let (Some(stem), Some(ext)) = (p.file_stem().map(|s| s.to_string_lossy().to_string()), p.extension().map(|s| s.to_string_lossy().to_lowercase())) else { continue };
             if EXTS.contains(&ext.as_str()) { index.insert(stem, p); }
         }
-        Mutex::new(Cache { dir, index, queue: VecDeque::new(), queued: HashSet::new(), failed: HashMap::new(), active: 0, last_changed: 0 })
+        let saved: HashMap<String, u64> = std::fs::read(dir.join("missing.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        let missing = still_missing(saved, crate::library::now_ms());
+        Mutex::new(Cache { dir, index, queue: VecDeque::new(), queued: HashSet::new(), failed: HashMap::new(), missing, active: 0, last_changed: 0 })
     })
 }
 
 pub fn name_of(url: &str) -> String { let mut h = sha1_smol::Sha1::new(); h.update(url.as_bytes()); h.digest().to_string()[..24].to_string() }
+/// The pictures found missing in the last week (older ones are tried again).
+fn still_missing(saved: HashMap<String, u64>, now: u64) -> HashMap<String, u64> { saved.into_iter().filter(|(_, t)| now.saturating_sub(*t) < MISSING_FOR_MS).collect() }
+/// curl -f's answer for a picture that isn't there.
+fn not_there(err: &str) -> bool { err.contains("error: 404") || err.contains("error: 410") }
 fn remote(u: &str) -> bool { let l = u.to_ascii_lowercase(); l.starts_with("http://") || l.starts_with("https://") }
 
 /// The cached file behind nimbus-art://cache/<name>.
@@ -44,7 +53,8 @@ pub fn url(u: &str) -> String {
     let mut c = cache().lock().unwrap();
     if c.index.contains_key(&name) { return format!("nimbus-art://cache/{name}"); }
     let now = crate::library::now_ms();
-    let recently_failed = c.failed.get(u).map(|t| now.saturating_sub(*t) < 6 * 3600 * 1000).unwrap_or(false);
+    let recently_failed = c.failed.get(u).map(|t| now.saturating_sub(*t) < 6 * 3600 * 1000).unwrap_or(false)
+        || c.missing.get(u).map(|t| now.saturating_sub(*t) < MISSING_FOR_MS).unwrap_or(false);
     if !recently_failed && !c.queued.contains(u) && !cfg!(test) {
         c.queued.insert(u.to_string());
         c.queue.push_back(u.to_string());
@@ -74,6 +84,10 @@ fn worker() {
             }
             Err(e) => {
                 c.failed.insert(u.clone(), crate::library::now_ms());
+                if not_there(&e) {
+                    c.missing.insert(u.clone(), crate::library::now_ms());
+                    let _ = crate::paths::write_atomic(&c.dir.join("missing.json"), serde_json::to_string(&c.missing).unwrap_or_default().as_bytes());
+                }
                 if !e.contains("resolve") && !e.contains("connect") { crate::bridge::log(&format!("art cache: {u}: {e}")); }
             }
         }
@@ -129,6 +143,15 @@ mod tests {
         assert_eq!(n.len(), 24);
         assert!(n.chars().all(|c| c.is_ascii_hexdigit()));
         assert_eq!(super::url("/home/x/a.png"), "/home/x/a.png");
+    }
+    #[test]
+    fn missing_pictures_are_remembered_for_a_week() {
+        assert!(super::not_there("curl: (22) The requested URL returned error: 404"));
+        assert!(!super::not_there("curl: (6) Could not resolve host: x"));
+        let now = 30 * 24 * 3600 * 1000;
+        let saved = std::collections::HashMap::from([("a".to_string(), now - 1000), ("b".to_string(), now - super::MISSING_FOR_MS - 1)]);
+        let kept = super::still_missing(saved, now);
+        assert!(kept.contains_key("a") && !kept.contains_key("b"));
     }
 }
 

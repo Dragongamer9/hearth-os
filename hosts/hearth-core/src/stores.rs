@@ -690,8 +690,9 @@ pub mod xcloud {
         for x in sigl.as_array().cloned().unwrap_or_default() { if let Some(id) = x["id"].as_str() { if !ids.iter().any(|i| i == id) { ids.push(id.into()); } } }
         let mut games = Vec::new();
         for chunk in ids.chunks(50) {
-            let r = http::post(&format!("{BASE}/v3/products?market={market}&language={language}&hydration=RemoteHighSapphire0"), &json!({"Products": chunk}).to_string(),
-                &[("Content-Type", "application/json"), ("ms-cv", "cv"), ("calling-app-name", "Nimbus"), ("calling-app-version", "1")])?;
+            // A minute per part (in the background): the catalog is big, and 30 s cut slow connections off halfway.
+            let r = http::request("POST", &format!("{BASE}/v3/products?market={market}&language={language}&hydration=RemoteHighSapphire0"),
+                &[("Content-Type", "application/json"), ("ms-cv", "cv"), ("calling-app-name", "Nimbus"), ("calling-app-version", "1")], Some(&json!({"Products": chunk}).to_string()), 60)?;
             for (id, p) in r.json()["Products"].as_object().cloned().unwrap_or_default() {
                 let Some(title) = p["ProductTitle"].as_str() else { continue };
                 if p["XCloudOfferings"].is_object() && p["XCloudOfferings"]["CLOUDGAMING"].is_null() { continue; }

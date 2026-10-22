@@ -36,7 +36,12 @@ pub fn run_timeout(cmd: &str, args: &[&str], limit: Duration) -> Result<String, 
     let text = String::from_utf8_lossy(&stdout).into_owned();
     if status.success() { return Ok(text); }
     let err = String::from_utf8_lossy(&stderr).into_owned();
-    let last = err.lines().chain(text.lines()).filter(|l| !l.trim().is_empty()).last().unwrap_or("failed").trim();
+    // A helper's own "error: ..." line first, then the last line on stderr, and only then the last line it printed.
+    // (Its output's last line first lost curl's real error behind its "-w" status code: "No connection (200)".)
+    let last_line = |t: &str| t.lines().filter(|l| !l.trim().is_empty()).last().map(str::to_string);
+    let said = text.lines().filter(|l| l.trim_start().starts_with("error: ")).last().map(str::to_string);
+    let last = said.or_else(|| last_line(&err)).or_else(|| last_line(&text)).unwrap_or_else(|| "failed".into());
+    let last = last.trim();
     Err(last.trim_start_matches("Error: ").to_string())
 }
 
@@ -459,6 +464,12 @@ pub fn status(max_volume: u32) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn errors_say_what_went_wrong() {
+        assert_eq!(run_timeout("sh", &["-c", "echo 'curl: (28) Operation timed out' >&2; printf 'body\\n200'; exit 28"], Duration::from_secs(5)).unwrap_err(), "curl: (28) Operation timed out");
+        assert_eq!(run_timeout("sh", &["-c", "echo only-stdout; exit 1"], Duration::from_secs(5)).unwrap_err(), "only-stdout");
+        assert_eq!(run_timeout("sh", &["-c", "echo 'a warning' >&2; echo 'error: no such device'; exit 1"], Duration::from_secs(5)).unwrap_err(), "error: no such device");
+    }
     #[test]
     fn reads_nmcli() {
         assert_eq!(nm_fields(r"yes:My\:Net:80"), vec!["yes", "My:Net", "80"]);

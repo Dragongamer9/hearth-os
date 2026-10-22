@@ -703,10 +703,14 @@ impl Bridge {
                 Ok(system::status(self.max_volume()))
             }
             "airplane.set" => { system::set_airplane(a["on"].as_bool().unwrap_or(false))?; Ok(system::status(self.max_volume())) }
-            // Scanning (up to 30 s) and connecting (up to 45 s) take long on purpose: the fail-safe stopping nmcli at
-            // 15 s made slow networks fail to connect.
-            "wifi.scan" => { crate::watchdog::long_task(); system::wifi::scan() }
-            "wifi.connect" => { let ssid = req("ssid")?; crate::watchdog::long_task(); Ok(system::wifi::connect(&ssid, a["password"].as_str().filter(|p| !p.is_empty()))) }
+            // Scanning (up to 30 s) and connecting (up to 45 s) run off the bridge and answer when done: under it, every
+            // other request waited, and the fail-safe stopped nmcli at 15 s (slow networks never connected).
+            "wifi.scan" => { crate::space::answer_later(self.cur_id.clone(), system::wifi::scan); Ok(json!(DEFERRED)) }
+            "wifi.connect" => {
+                let (ssid, pw) = (req("ssid")?, a["password"].as_str().filter(|p| !p.is_empty()).map(str::to_string));
+                crate::space::answer_later(self.cur_id.clone(), move || Ok(system::wifi::connect(&ssid, pw.as_deref())));
+                Ok(json!(DEFERRED))
+            }
             "wifi.disconnect" => system::wifi::disconnect().map(|_| Value::Null),
             "wifi.forget" => system::wifi::forget(&req("ssid")?).map(|_| Value::Null),
             "audio.setVolume" => system::audio::set_volume(a["v"].as_f64().unwrap_or(0.0).round().max(0.0) as u32, self.max_volume()).map(|_| Value::Null),
@@ -883,10 +887,15 @@ impl Bridge {
                 Ok(s)
             }
             "system.info" => Ok(crate::sysinfo::info(std::path::Path::new("/"))),
-            "power.get" => { let st = crate::power::status(); let mut b = system::battery(std::path::Path::new("/sys/class/power_supply"));
-                b["mode"] = st["mode"]["mode"].clone(); b["modes"] = st["mode"]["available"].clone(); b["modeSupported"] = st["mode"]["supported"].clone(); b["tdp"] = st["tdp"].clone(); Ok(b) }
-            "power.setMode" => { crate::power::set_mode(&req("mode")?)?; self.dispatch("power.get", &json!({})) }
-            "perf.setTdp" => crate::power::set_tdp(a["watts"].as_f64().unwrap_or(0.0).round() as u32),
+            // hearth-power can take seconds: what it said last answers at once, and changing the mode runs off the
+            // bridge (every other request waited for it, and the fail-safe saw Hearth as stuck).
+            "power.get" => Ok(power_get(crate::power::status_cached())),
+            "power.setMode" => {
+                let mode = req("mode")?;
+                crate::space::answer_later(self.cur_id.clone(), move || { crate::power::set_mode(&mode)?; Ok(power_get(crate::power::status())) });
+                Ok(json!(DEFERRED))
+            }
+            "perf.setTdp" => { let w = a["watts"].as_f64().unwrap_or(0.0).round().max(0.0) as u32; crate::space::answer_later(self.cur_id.clone(), move || crate::power::set_tdp(w)); Ok(json!(DEFERRED)) }
             // Quick Access › Performance: the game in front goes back to the usual power settings.
             "perf.gamePowerForget" => {
                 let id = req("id")?;
@@ -895,9 +904,9 @@ impl Bridge {
                 Ok(crate::hhd::state().unwrap_or(json!({"running": false})))
             }
             "bt.paired" => Ok(system::bt_devices::paired()),
-            // Pairing waits for the controller on purpose (up to a minute): the fail-safe mustn't stop bluetoothctl
-            // halfway (the pairing then always failed) or report Hearth as stuck.
-            "bt.pair" => { let id = req("id")?; crate::watchdog::long_task(); Ok(system::bt_devices::pair(&id)) }
+            // Pairing waits for the controller (up to a minute): it runs off the bridge and answers when done. Under
+            // the bridge, every other request waited, and the fail-safe stopped bluetoothctl at 15 s mid-pairing.
+            "bt.pair" => { let id = req("id")?; crate::space::answer_later(self.cur_id.clone(), move || Ok(system::bt_devices::pair(&id))); Ok(json!(DEFERRED)) }
             "bt.unpair" => Ok(system::bt_devices::unpair(&req("id")?)),
             "bt.confirmPin" => Ok(Value::Null),
             "bt.scanStart" => {
@@ -1235,7 +1244,10 @@ pub fn log(text: &str) {
     let f = paths::data_dir().join("bridge.log");
     // Kept to a few MB: the old one becomes bridge.log.old.
     if std::fs::metadata(&f).map(|m| m.len() > 4_000_000).unwrap_or(false) { let _ = std::fs::rename(&f, paths::data_dir().join("bridge.log.old")); }
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(f) { let _ = writeln!(file, "{} [rust] {}", now_ms(), text); }
+    // One write per line: writeln! on a file writes the pieces separately, and lines from several threads (and the
+    // other processes writing this log) came out mixed up.
+    let line = format!("{} [rust] {}\n", now_ms(), text);
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(f) { let _ = file.write_all(line.as_bytes()); }
 }
 
 fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
@@ -1282,6 +1294,13 @@ fn export_logs(version: &str) -> Result<Value, String> {
     let _ = std::fs::remove_dir_all(&dir);
     if !ok { return Err("Couldn't save the logs".into()); }
     Ok(json!({"path": out.to_string_lossy()}))
+}
+
+/// power.get's answer: the battery, with the power mode and limit from hearth-power's answer `st`.
+fn power_get(st: Value) -> Value {
+    let mut b = system::battery(std::path::Path::new("/sys/class/power_supply"));
+    b["mode"] = st["mode"]["mode"].clone(); b["modes"] = st["mode"]["available"].clone(); b["modeSupported"] = st["mode"]["supported"].clone(); b["tdp"] = st["tdp"].clone();
+    b
 }
 
 /// The files for "Save logs", with personal details taken out the same way as Send logs (they were copied as they

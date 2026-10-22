@@ -52,6 +52,9 @@ pub fn is_helper(cmdline: &str) -> bool {
     let prog = first.rsplit('/').next().unwrap_or(first);
     // Python helpers: the script's name is the second word.
     let script = c.split_whitespace().nth(1).map(|s| s.rsplit('/').next().unwrap_or(s)).unwrap_or("");
+    // "gdbus monitor" runs all along (sleep and wake, InputPlumber's presses) and is never what a request waits on:
+    // stopping it left lock-after-sleep dead until Hearth restarted.
+    if prog == "gdbus" && script == "monitor" { return false; }
     HELPERS.iter().any(|h| {
         if h.contains(' ') { c.contains(h) && prog == h.split(' ').next().unwrap() }
         else { prog == *h || (prog.starts_with("python") && script == *h) }
@@ -163,6 +166,8 @@ mod tests {
         assert!(!is_helper(""));
         assert!(is_helper("/usr/bin/flatpak run --command=beacon io.github.dragongamer9.Beacon status --json"));
         assert!(!is_helper("curl -sS https://example.com"));
+        assert!(is_helper("gdbus call --system --dest org.freedesktop.login1"));
+        assert!(!is_helper("gdbus monitor --system --dest org.freedesktop.login1 --object-path /org/freedesktop/login1"));
     }
     #[test]
     fn limits() {
