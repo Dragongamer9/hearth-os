@@ -131,6 +131,8 @@ public sealed class ShellForm : Form
         {
             var style = Games0().DesktopStyle;
             if (style.StartsWith("mantel") && Mantel is not null) await Mantel.StartAsync(full: style == "mantel-full");
+            // Windows' own desktop: its taskbar's setting back, if Mantel couldn't give it back before (no Explorer then).
+            else Mantel?.RecoverTaskbar();
         };
         _pad.DesktopMenu += () => BeginInvoke((MethodInvoker)(() => Mantel?.ToggleLauncherFromPad()));
         // The volume keys in full Mantel: Hearth's volume bar at the top of the screen.
