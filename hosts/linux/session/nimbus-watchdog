@@ -32,6 +32,8 @@ if [ -n "$DISPLAY" ] && command -v dbus-update-activation-environment >/dev/null
 fi
 
 while :; do
+  # Hearth's output goes here for the whole sign-in: a long one (or a chatty crash loop) would grow it without end.
+  [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 8000000 ] && mv -f "$LOG" "$LOG.old"
   start=0; [ -f "$LOG" ] && start=$(wc -c <"$LOG")
   "$APP" --session --ozone-platform=x11 >>"$LOG" 2>&1 &
   pid=$!

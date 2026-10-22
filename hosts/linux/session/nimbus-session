@@ -22,6 +22,8 @@ RUN="${XDG_RUNTIME_DIR:-/tmp}"
 NEXT="$RUN/nimbus-next"
 LOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/session.log"
 mkdir -p "$(dirname "$LOG")"
+# One sign-in's worth of history is plenty: over 2 MB, the log becomes session.log.old (the one before is dropped).
+[ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 2000000 ] && mv -f "$LOG" "$LOG.old"
 log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
 
 [ -f "$CONF/session.conf" ] && . "$CONF/session.conf"
