@@ -149,7 +149,7 @@ def check(disk=None):
     elif info.get('problem') == 'needs-check':
         res['problems'].append({'id': 'needs-check', 'text': "Windows' drive needs a check first. In Windows, run \"chkdsk C: /f\" in a Terminal as administrator, restart, then try again."})
     elif can_give < MIN_HEARTH:
-        res['problems'].append({'id': 'space', 'text': f"Windows only has room to give {can_give // GIB} GB, and Hearth needs at least {MIN_HEARTH // GIB} GB. Free up space in Windows first (or install Hearth on another drive)."})
+        res['problems'].append({'id': 'space', 'text': f"Windows only has room to give {can_give // GIB} GiB, and Hearth needs at least {-(-MIN_HEARTH // 10**9)} GB ({MIN_HEARTH // GIB} GiB). Free up space in Windows first (or install Hearth on another drive)."})
     if not res['power']['plugged']:
         res['problems'].append({'id': 'power', 'text': 'Plug in the charger. Resizing a drive on battery is risky if the battery runs out.', 'soft': True})
     # The full live USB carries Hearth OS (hearth-install's LOCAL_OCI): no internet needed there.
