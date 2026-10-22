@@ -668,7 +668,11 @@ def assign_pad(pad, seat):
 
 
 def remove(delete_users=False):
-    return admin(['seats-remove'] + (['--delete-users'] if delete_users else []))
+    # Player 1's Game Mode still runs inside the host (on a split screen, a window the size of their part) until
+    # it starts again, as after stop.
+    c = load_config()
+    r = admin(['seats-remove'] + (['--delete-users'] if delete_users else []))
+    return dict(r, restart_game_mode=bool(c and c.get('enabled') and hosted(c) and not r.get('restart')))
 
 
 def unit_state(unit):
