@@ -131,10 +131,16 @@ public sealed class QuickResume : IDisposable
     private struct MemoryStatus { public uint Length, Load; public ulong TotalPhys, AvailPhys, TotalPage, AvailPage, TotalVirtual, AvailVirtual, AvailExtended; }
     [DllImport("kernel32.dll")] private static extern bool GlobalMemoryStatusEx(ref MemoryStatus m);
 
+    // Closing a game for room takes up to several seconds, longer than the timer's period: a second tick meanwhile
+    // would see memory still low and close the next game too. One tick at a time.
+    private int _ticking;
+
     private async void Tick()
     {
+        if (Interlocked.Exchange(ref _ticking, 1) == 1) return;
         try { await TickAsync(); }
         catch (Exception ex) { SystemBridge.Log("quick resume: " + ex.Message); }
+        finally { Volatile.Write(ref _ticking, 0); }
     }
 
     private async Task TickAsync()
