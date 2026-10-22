@@ -16,19 +16,18 @@
       "UserMessaging",
       "FirefoxHome",
       "FirefoxSuggest",
-      "ExtensionSettings",
-      "DisableAppUpdate"
+      "ExtensionSettings"
     ],
     "hearth": {
-      "start": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
+      "start": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
       "game": false,
       "big": false,
       "scale": 0
     },
     "prefs": {
-      "hearth.started": 1792664153,
+      "hearth.started": 1792664203,
       "hearth.keyboard.ready": true,
-      "browser.startup.homepage": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
+      "browser.startup.homepage": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
       "media.eme.enabled": true,
       "toolkit.legacyUserProfileCustomizations.stylesheets": true,
       "datareporting.healthreport.uploadEnabled": false,
@@ -38,7 +37,7 @@
       "browser.link.open_newwindow.restriction": 2,
       "extensions.activeThemeID": "firefox-compact-dark@mozilla.org"
     },
-    "newTab": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
+    "newTab": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
     "keyboardButton": true,
     "keyboard": true,
     "window": [
