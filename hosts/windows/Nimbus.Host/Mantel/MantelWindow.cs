@@ -111,6 +111,7 @@ internal sealed class MantelWindow : Form
         if (Part == MantelPart.Desktop) { MapWallpapers(core); FilesWindow.ServeThumbs(env, core); }   // desktop icons: files' icons and thumbnails
         core.WebMessageReceived += (_, e) =>
         {
+            if (!SystemBridge.FromOwnPage(e.Source)) return;   // only Ember's own pages
             try { using var doc = JsonDocument.Parse(e.WebMessageAsJson); PageMessage?.Invoke(doc.RootElement.Clone()); }
             catch (Exception ex) { SystemBridge.Log("mantel message: " + ex.Message); }
         };

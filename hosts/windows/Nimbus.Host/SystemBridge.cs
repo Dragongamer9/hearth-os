@@ -148,12 +148,25 @@ public sealed class SystemBridge : IDisposable
 
     // ------------------------------------------------------------- plumbing
 
+    /// <summary>Is a page message from Ember's own pages (https://nimbus.local/)? Calls can delete files, end
+    /// processes and change the Windows shell, so a page from anywhere else (one that somehow got into Ember's
+    /// windows) is never listened to.</summary>
+    public static bool FromOwnPage(string? source) =>
+        Uri.TryCreate(source, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps
+        && string.Equals(u.Host, "nimbus.local", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Handles a call from a page. <paramref name="reply"/>: where the result goes (default: the main UI).</summary>
     public async void Handle(JsonElement m, Action<string>? reply = null)
     {
-        int id = m.GetProperty("id").GetInt32();
-        string method = m.GetProperty("method").GetString() ?? "";
-        JsonElement args = m.TryGetProperty("args", out var a) ? a : default;
+        // async void: a malformed call must not throw from here (that ends Ember when it isn't the shell).
+        int id; string method; JsonElement args;
+        try
+        {
+            id = m.GetProperty("id").GetInt32();
+            method = m.GetProperty("method").GetString() ?? "";
+            args = m.TryGetProperty("args", out var a) ? a : default;
+        }
+        catch (Exception ex) { Log("bad call from a page: " + ex.Message); return; }
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {

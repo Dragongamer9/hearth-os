@@ -75,6 +75,7 @@ internal class AppWindow : Form
             Setup(env, core);
             core.WebMessageReceived += (_, e) =>
             {
+                if (!SystemBridge.FromOwnPage(e.Source)) return;   // only Ember's own pages
                 try { using var doc = JsonDocument.Parse(e.WebMessageAsJson); PageMessage?.Invoke(doc.RootElement.Clone()); }
                 catch (Exception ex) { SystemBridge.Log(Text + " message: " + ex.Message); }
             };

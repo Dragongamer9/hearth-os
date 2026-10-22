@@ -79,10 +79,20 @@ public static class AdminTasks
         }
 
         report("running", 30, $"Shrinking Windows' drive by {sizeGb} GB (this can take several minutes)", null);
+        long before = DriveSize();
         var outp = Diskpart($"select volume C\r\nshrink desired={sizeGb * 1024L} minimum={sizeGb * 1024L}\r\n");
-        if (!System.Text.RegularExpressions.Regex.IsMatch(outp, @"successfully shrunk|reduced the volume", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        // diskpart's words are in Windows' language, so the drive getting smaller counts too (otherwise a German or
+        // French Windows says it failed after it worked, and trying again would shrink it a second time).
+        bool shrunk = before > 0 && before - DriveSize() >= sizeGb * 1024L * 1024 * 1024 * 99 / 100;
+        if (!shrunk && !System.Text.RegularExpressions.Regex.IsMatch(outp, @"successfully shrunk|reduced the volume", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
             throw new InvalidOperationException("Windows couldn't shrink its drive: " + LastLine(outp));
         report("done", 100, $"Made {sizeGb} GB of room for Hearth", null);
+    }
+
+    /// <summary>The size of Windows' drive (C:) in bytes, or 0 when it can't be read.</summary>
+    private static long DriveSize()
+    {
+        try { return new DriveInfo("C").TotalSize; } catch { return 0; }
     }
 
     // ------------------------------------------------------------------ write the installer USB

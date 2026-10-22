@@ -230,6 +230,7 @@ public sealed class ShellForm : Form
 
     private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        if (!SystemBridge.FromOwnPage(e.Source)) { SystemBridge.Log("ignored a message from " + e.Source); return; }
         try
         {
             using var doc = JsonDocument.Parse(e.WebMessageAsJson);
