@@ -37,6 +37,11 @@ pub fn query_param(url: &str, key: &str) -> Option<String> {
     let q = url.split_once('?')?.1.split('#').next()?;
     q.split('&').find_map(|kv| { let (k, v) = kv.split_once('=').unwrap_or((kv, "")); if k == key { Some(urldecode(v)) } else { None } })
 }
+/// Two hex digits ("2F") as their byte.
+pub fn hex_byte(hi: u8, lo: u8) -> Option<u8> {
+    let d = |c: u8| (c as char).to_digit(16);
+    Some((d(hi)? * 16 + d(lo)?) as u8)
+}
 pub fn urldecode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::new();
@@ -44,7 +49,8 @@ pub fn urldecode(s: &str) -> String {
     while i < b.len() {
         match b[i] {
             b'+' => { out.push(b' '); i += 1; }
-            b'%' if i + 2 < b.len() => { match u8::from_str_radix(&s[i + 1..i + 3], 16) { Ok(v) => { out.push(v); i += 3; } Err(_) => { out.push(b'%'); i += 1; } } }
+            // Bytes, not &s[..]: a '%' before a non-ASCII letter ("%aé") cut the letter in half and panicked.
+            b'%' if i + 2 < b.len() => { match hex_byte(b[i + 1], b[i + 2]) { Some(v) => { out.push(v); i += 3; } None => { out.push(b'%'); i += 1; } } }
             c => { out.push(c); i += 1; }
         }
     }
@@ -59,5 +65,7 @@ mod tests {
         assert_eq!(query_param("https://embed.gog.com/on_login_success?origin=client&code=ab%2Fc+d", "code").as_deref(), Some("ab/c d"));
         assert_eq!(query_param("https://x/?a=1", "b"), None);
         assert_eq!(urlencode("a b/c"), "a%20b%2Fc");
+        assert_eq!(urldecode("%aé%zz%+1"), "%aé%zz%+1");
+        assert_eq!(urldecode("%C3%A9"), "é");
     }
 }
