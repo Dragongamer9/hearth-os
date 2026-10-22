@@ -263,6 +263,32 @@ class Parsing(unittest.TestCase):
         self.assertEqual(H.parse_free(out)[0], (600000000, 419430400))
         self.assertEqual(len(H.parse_free(out)), 2)
 
+    def test_4k_sector_drive(self):
+        # An NVMe drive formatted with 4096-byte sectors: sfdisk counts in those, so Hearth's partitions are sized
+        # and placed in them (they used to come out 8 times too big, and too little free space was seen).
+        from unittest import mock
+        sent = []
+
+        def sh(cmd, check=True, input=None, **kw):
+            sent.append((cmd, input))
+
+            class R:
+                stdout, stderr, returncode = '', '', 0
+            return R
+        ss = 4096
+        start = 256 * 300000   # 1 MiB aligned
+        parts = [{'node': '/dev/nvme0n1p1', 'start': 256}, {'node': '/dev/nvme0n1p5', 'start': start},
+                 {'node': '/dev/nvme0n1p6', 'start': start + H.ESP_SIZE // ss},
+                 {'node': '/dev/nvme0n1p7', 'start': start + (H.ESP_SIZE + H.BOOT_SIZE) // ss}]
+        with mock.patch.object(H, 'sh', sh), mock.patch.object(H, 'sector_size', lambda d: ss), \
+                mock.patch.object(H, 'free_regions', lambda d: [(start - 100, 100 * GIB // ss)]), \
+                mock.patch.object(H, 'release', lambda d: None), mock.patch.object(H, 'settle', lambda d: None), \
+                mock.patch.object(H, 'table', lambda d: parts):
+            self.assertEqual(H.partition_free('/dev/nvme0n1'), ('/dev/nvme0n1p5', '/dev/nvme0n1p6', '/dev/nvme0n1p7', True))
+            layout = sent[-1][1]
+            self.assertIn('start=%d, size=%d,' % (start, H.ESP_SIZE // ss), layout)
+            self.assertEqual(start % (H.MIB // ss), 0)
+
     def test_layers_needed(self):
         self.assertEqual(H.parse_needed('layers already present: 3; layers needed: 62 (4.1 GB)'), (62, 4100000000))
         self.assertEqual(H.parse_needed('layers needed: 5 (812 MB)'), (5, 812000000))
