@@ -417,6 +417,12 @@ The right stick of an Xbox controller connected by Bluetooth wasn't read. Update
 A missing icon loader made Game Mode crash and restart every few seconds, most often with multi-seat on. Switch to Desktop Mode
 (or turn multi-seat off in Settings) and update.</p>
 
+{h2('display-stuck', 'Stuck after changing the resolution or refresh rate')}
+<p><span class="ver">0.3.1 and earlier</span> <span class="ver fixed">Fixed in 0.4.0</span>
+In Game Mode, a mode the screen can't show could leave it black or flickering. With a USB keyboard press <b>Ctrl + Alt + F3</b>, sign in, and run (it restarts):</p>
+{cmd('fix-display-mode', "sed -i '/^NIMBUS_GAMESCOPE_ARGS=/d' ~/.config/nimbus/session.conf && sudo reboot")}
+<p>From 0.4.0, a new mode switches back by itself after 20 seconds unless you choose <b>Keep</b>.</p>
+
 {h2('nvidia', 'Game Mode feels slow on Nvidia')}
 <p>Check <b>Settings › Display › Drawing engine</b> is <b>Chromium</b> (the default on Nvidia since 0.2.6), and update.</p>
 

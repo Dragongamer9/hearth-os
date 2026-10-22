@@ -107,6 +107,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Hearth Input (controller layouts): the controller is taken over again after Handheld Daemon or InputPlumber re-make it (it did nothing before), and Bluetooth Xbox / DirectInput pads' right stick works; its activity is in the logs
 - [x] Switch edition and updates without podman: it's unpacked for that run when apt can't install it
 - [x] Logs: Nvidia's numbers only on devices with Nvidia's driver running
+- [x] Display: resolution and refresh rate really change. Game Mode offers only the modes the screen has, applies a new one when it restarts, and switches back by itself after 20 seconds unless you keep it (a mode the screen can't show no longer leaves it stuck); the built-in screen's refresh rate changes on the spot. Desktop Mode asks for the screen's exact rate and says when the screen refuses
 - [x] Controller mouse with an Xbox controller over Bluetooth (Desktop Mode and Game Mode): the right stick moves the pointer again (it never moved)
 - [x] CachyOS: Game Mode no longer crashes over and over (GTK's SVG icon loader was missing); a multi-seat host that crashes on start falls back to normal Game Mode after three tries
 
