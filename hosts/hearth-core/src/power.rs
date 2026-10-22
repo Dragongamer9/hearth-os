@@ -136,7 +136,9 @@ pub struct NvFacts {
     /// Free space there and the card's memory, in KiB (None: couldn't tell).
     pub temp_free_kb: Option<u64>,
     pub vram_kb: Option<u64>,
-    /// nvidia-hibernate.service is turned on (or the driver does it itself: UseKernelSuspendNotifiers).
+    /// nvidia-hibernate.service is installed, and turned on. Newer drivers (Anatase's) don't ship it: they save
+    /// the memory themselves from the kernel's own suspend notifications (UseKernelSuspendNotifiers).
+    pub helper_installed: bool,
     pub hibernate_service: bool,
     pub kernel_notifiers: bool,
 }
@@ -186,7 +188,7 @@ pub fn verdict(f: &HibFacts) -> (bool, bool, &'static str, String) {
                 return (false, false, "nvidia-space", format!("Not enough free space on the drive for the graphics card's memory: it needs about {} GB free, and {} GB is. Free up some space to keep games through restarts and turning off.", gb(vram), free / 1048576));
             }
         }
-        if !nv.hibernate_service && !nv.kernel_notifiers {
+        if nv.helper_installed && !nv.hibernate_service && !nv.kernel_notifiers {
             return (false, false, "nvidia-helper", "Nvidia's helper for turning off with memory saved (nvidia-hibernate) isn't turned on, so the picture would come back black. Update Hearth OS, then restart.".into());
         }
     }
@@ -228,10 +230,11 @@ fn nvidia_facts() -> Option<NvFacts> {
     let temp_free_kb = crate::system::run("df", &["-Pk", dir.as_str()]).ok().and_then(|o| df_free_kb(&o));
     let vram_kb = crate::system::run("nvidia-smi", &["--query-gpu=memory.total", "--format=csv,noheader,nounits"]).ok()
         .map(|o| o.lines().filter_map(|l| l.trim().parse::<u64>().ok()).sum::<u64>() * 1024).filter(|k| *k > 0);
+    let helper_installed = ["/usr/lib/systemd/system/nvidia-hibernate.service", "/etc/systemd/system/nvidia-hibernate.service"].iter().any(|p| std::path::Path::new(p).exists());
     let hibernate_service = ["/etc/systemd/system/systemd-hibernate.service.wants/nvidia-hibernate.service", "/usr/lib/systemd/system/systemd-hibernate.service.wants/nvidia-hibernate.service"]
         .iter().any(|p| std::path::Path::new(p).exists())
         || crate::system::run("systemctl", &["is-enabled", "nvidia-hibernate.service"]).map(|o| o.trim() == "enabled").unwrap_or(false);
-    Some(NvFacts { preserve, temp_path, temp_free_kb, vram_kb, hibernate_service, kernel_notifiers })
+    Some(NvFacts { preserve, temp_path, temp_free_kb, vram_kb, helper_installed, hibernate_service, kernel_notifiers })
 }
 
 pub fn facts() -> HibFacts {
@@ -258,7 +261,7 @@ pub fn status_of(f: &HibFacts) -> Value {
     let (supported, can_set_up, code, reason) = verdict(f);
     let restart_keep = supported && f.can_admin && f.disk_modes.split_whitespace().any(|m| m.trim_matches(|c: char| c == '[' || c == ']') == "reboot");
     let nv = f.nvidia.as_ref().map(|n| json!({"preserveVideoMemory": n.preserve, "temporaryFilePath": n.temp_path, "freeKB": n.temp_free_kb, "videoMemoryKB": n.vram_kb,
-        "hibernateHelper": n.hibernate_service, "kernelSuspendNotifiers": n.kernel_notifiers}));
+        "hibernateHelperInstalled": n.helper_installed, "hibernateHelper": n.hibernate_service, "kernelSuspendNotifiers": n.kernel_notifiers}));
     json!({"supported": supported, "canSetUp": can_set_up, "restartKeep": restart_keep, "code": if code.is_empty() { Value::Null } else { json!(code) },
            "reason": if reason.is_empty() { Value::Null } else { json!(reason) }, "memoryGB": (f.mem_kb as f64 / 1048576.0).round(),
            "details": {"powerState": f.state, "hibernateModes": f.disk_modes, "lockdown": f.lockdown, "memoryKB": f.mem_kb, "driveSwapKB": f.disk_swap_kb,
@@ -362,13 +365,15 @@ mod tests {
     }
     #[test]
     fn nvidia_needs_its_memory_saved_on_the_drive() {
-        let good = NvFacts { preserve: Some(true), temp_path: "/var/tmp".into(), temp_free_kb: Some(100 * 1048576), vram_kb: Some(12 * 1048576), hibernate_service: true, kernel_notifiers: false };
+        let good = NvFacts { preserve: Some(true), temp_path: "/var/tmp".into(), temp_free_kb: Some(100 * 1048576), vram_kb: Some(12 * 1048576), helper_installed: true, hibernate_service: true, kernel_notifiers: false };
         let mut f = ready(); f.nvidia = Some(good.clone()); assert!(verdict(&f).0);
         let mut f = ready(); f.nvidia = Some(NvFacts { preserve: Some(false), ..good.clone() }); assert_eq!(verdict(&f).2, "nvidia-memory");
         let mut f = ready(); f.nvidia = Some(NvFacts { temp_path: String::new(), ..good.clone() }); assert_eq!(verdict(&f).2, "nvidia-folder");
         let mut f = ready(); f.nvidia = Some(NvFacts { temp_free_kb: Some(4 * 1048576), ..good.clone() }); assert_eq!(verdict(&f).2, "nvidia-space");
         let mut f = ready(); f.nvidia = Some(NvFacts { hibernate_service: false, ..good.clone() }); assert_eq!(verdict(&f).2, "nvidia-helper");
         let mut f = ready(); f.nvidia = Some(NvFacts { hibernate_service: false, kernel_notifiers: true, ..good.clone() }); assert!(verdict(&f).0);
+        // A driver without the helper at all (Anatase's) does it from the kernel's notifications.
+        let mut f = ready(); f.nvidia = Some(NvFacts { helper_installed: false, hibernate_service: false, ..good.clone() }); assert!(verdict(&f).0);
         // Can't read the driver's settings: not held against it.
         let mut f = ready(); f.nvidia = Some(NvFacts { preserve: None, temp_free_kb: None, ..good }); assert!(verdict(&f).0);
     }
