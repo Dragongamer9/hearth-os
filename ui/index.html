@@ -1061,7 +1061,7 @@ if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','A
 // Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
 const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{}); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1851,6 +1851,23 @@ function seatsEvent(name, data){
 const QR = {list:[], on:true, hib:null};
 const qrFeature = () => (HOSTINFO.features||[]).includes('quickResume');
 const isFrozen = g => !!g && QR.list.some(q=>q.id===g.id);
+// Quick Resume is one feature: games put aside (and the one running) stay through sleep, and through Shut down and
+// Restart too when the PC can save memory to the drive (hibernation; power.hibernateStatus). Shut down then
+// hibernates and turns off, Restart hibernates and restarts (restartKeep: Linux only; Windows can't).
+const qrGames = () => (S.running?1:0) + QR.list.filter(q=>q.id!==S.running).length;
+const qrKeeps = () => qrFeature() && QR.on && !!(QR.hib&&QR.hib.supported);
+const qrKeepsRestart = () => qrKeeps() && !!QR.hib.restartKeep;
+function loadHib(){
+  if(!host || QR.hibBusy) return;
+  QR.hibBusy=true;
+  const was=JSON.stringify(QR.hib&&[QR.hib.supported,QR.hib.restartKeep,QR.hib.reason]);
+  call('power.hibernateStatus').then(r=>{ QR.hib=r; }).catch(()=>{ if(!QR.hib) QR.hib={supported:false}; }).finally(()=>{
+    QR.hibBusy=false; QR.hibAt=Date.now();
+    if(JSON.stringify(QR.hib&&[QR.hib.supported,QR.hib.restartKeep,QR.hib.reason])===was) return;
+    if(S.view==='settings') render(null,true);
+    if(S.layers.includes('power')) renderPower();
+  });
+}
 function applyQuick(d){
   if(!d) return;
   QR.list = Array.isArray(d.list) ? d.list : []; QR.on = d.on!==false;
@@ -3099,19 +3116,23 @@ function pagePower(){
   return h + (qrFeature() ? quickResumeRows() : '') + (LINUX ? shead('Power button') + powerButtonRows() : '');
 }
 function quickResumeRows(){
-  if(host && !QR.hib) call('power.hibernateStatus').then(r=>{ QR.hib=r; if(S.view==='settings') render(null,true); }).catch(()=>{ QR.hib={supported:false}; });
+  if(host && !QR.hib) loadHib();
   const hb=QR.hib;
   let h = shead('Quick Resume');
   h += `<button class="row" data-f data-k="qr-on" data-act="qrToggle"><div class="rt"><b>Quick Resume</b><small>Starting another game puts the one you're playing aside, frozen where you left it, like on Xbox. Up to 5 games; the oldest closes when memory runs low.</small></div><div class="sw ${QR.on?'on':''}"></div></button>`;
-  if(!hb) return h + note('Checking whether games can be kept when the PC turns off…');
-  if(hb.supported) return h + note('Turn off and keep games (in the power menu while games are open) saves everything to the drive and brings it back when you turn it on.');
-  h += note(esc(hb.reason||'Sleep keeps your games; turning off closes them.'));
-  if(hb.canSetUp) h += `<button class="row" data-f data-k="qr-hib" data-act="hibSetup"><div class="rt"><b>Keep games when the PC turns off</b><small>Uses about ${hb.memoryGB||''} GB of the drive. Takes effect after a restart.</small></div><div class="rv">Set up ›</div></button>`;
+  if(!QR.on) return h + note('Off: starting a game closes the one you were playing, and turning off or restarting closes your games.');
+  if(!hb) return h + note('Checking whether games can be kept through restarts and turning off…');
+  if(hb.supported) return h + note(hb.restartKeep
+    ? 'Your games are kept through sleep, Restart and Shut down: everything is saved to the drive and comes back where you left it. To really close them, use Shut down and close games in the power menu.'
+    : (LINUX ? 'Your games are kept through sleep and Shut down (saved to the drive, back where you left them when you turn it on). Restart closes them. To really close them, use Shut down and close games in the power menu.'
+             : 'Your games are kept through sleep and Shut down (Windows saves them to the drive and brings them back when you turn it on). Windows can\'t restart with them kept, so Restart closes them. To really close them, use Shut down and close games in the power menu.'));
+  h += note(esc(hb.reason||'Your games are kept through sleep only: turning off or restarting closes them.'));
+  if(hb.canSetUp) h += `<button class="row" data-f data-k="qr-hib" data-act="hibSetup"><div class="rt"><b>Keep games through restarts and turning off</b><small>Sets aside about ${hb.memoryGB||''} GB of the drive. Takes effect after a restart.</small></div><div class="rv">Set up ›</div></button>`;
   return h;
 }
 function hibSetup(){
   toast('Setting it up…');
-  call('power.hibernateSetup',{},300000).then(r=>{ QR.hib=r; toast(r.supported?'Done: games are kept when the PC turns off':'Done. Restart the PC to finish.'); render(null,true); }).catch(e=>toast(e.message));
+  call('power.hibernateSetup',{},300000).then(r=>{ QR.hib=r; toast(r.supported?'Done: Quick Resume keeps your games through restarts and turning off':'Done. Restart the PC to finish.'); render(null,true); }).catch(e=>toast(e.message));
 }
 
 // ---------- Settings › Controller › Button mapping (InputPlumber, Linux) ----------
@@ -4981,7 +5002,7 @@ function qamQuick(){
   const L=QR.list.map(q=>G(q.id)).filter(Boolean);
   if(!L.length) return '';
   return `<h3 style="margin-top:16px">Quick Resume</h3>${L.map(g=>`<div class="qrrow"><button class="btn" data-f data-k="q-qr-${esc(g.id)}" data-act="quickres" data-id="${esc(g.id)}">${I.play}${esc(g.title)}</button><button class="btn sm danger" data-f data-k="q-qrx-${esc(g.id)}" data-act="quickclose" data-id="${esc(g.id)}" aria-label="Close ${esc(g.title)}">${I.stop}</button></div>`).join('')}
-    <div class="muted" style="font-size:12px;margin-top:4px">Put-aside games stay frozen where you left them. ${QR.hib&&QR.hib.supported?'They\'re kept when you choose Turn off and keep games.':'Sleep keeps them; turning off closes them.'}</div>`;
+    <div class="muted" style="font-size:12px;margin-top:4px">Put-aside games stay frozen where you left them. ${!qrKeeps()?'Sleep keeps them; turning off closes them.':qrKeepsRestart()?'They\'re kept through sleep, Restart and Shut down.':'They\'re kept through sleep and Shut down; Restart closes them.'}</div>`;
 }
 function renderPower(){
   // Android: the system's own power menu (hold the power button) sleeps and turns off; Hearth can only step aside.
@@ -4991,11 +5012,17 @@ function renderPower(){
   // their screen dark until multi-seat was started again.
   if(hasFeat('extraSeat')){ $('#powerBox').innerHTML = `<h3>Power</h3><div class="muted" style="font-size:13px;margin:4px 0 10px">Player 1 puts this PC to sleep and turns it off.</div>
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`; return; }
+  // Quick Resume games: Restart and Shut down keep them when the PC can (said on the item); "and close games"
+  // really closes everything.
+  if(qrFeature() && host && (!QR.hibAt || Date.now()-QR.hibAt>60000)) loadHib();
+  const games=qrFeature()?qrGames():0, keep=games&&qrKeeps(), keepR=games&&qrKeepsRestart();
+  const tag=t=>`<small style="margin-left:auto;opacity:.6;font-size:12px">${t}</small>`;
   $('#powerBox').innerHTML = `<h3>Power</h3>
-    <button class="mitem" data-f data-k="p-sleep" data-act="pwr" data-p="sleep">${I.moon}Sleep</button>
-    <button class="mitem" data-f data-k="p-restart" data-act="pwr" data-p="restart">${I.restart}Restart</button>
-    ${(S.running||QR.list.length)&&QR.hib&&QR.hib.supported?`<button class="mitem" data-f data-k="p-hib" data-act="pwr" data-p="hibernate">${I.power}Turn off and keep games</button>`:''}
-    <button class="mitem" data-f data-k="p-shutdown" data-act="pwr" data-p="shutdown">${I.power}Shut down${(S.running||QR.list.length)&&qrFeature()?'<small style="margin-left:auto;opacity:.6;font-size:12px">closes your games</small>':''}</button>
+    <button class="mitem" data-f data-k="p-sleep" data-act="pwr" data-p="sleep">${I.moon}Sleep${games?tag('keeps your games'):''}</button>
+    <button class="mitem" data-f data-k="p-restart" data-act="pwr" data-p="restart">${I.restart}Restart${games?tag(keepR?'keeps your games':'closes your games'):''}</button>
+    <button class="mitem" data-f data-k="p-shutdown" data-act="pwr" data-p="shutdown">${I.power}Shut down${games?tag(keep?'keeps your games':'closes your games'):''}</button>
+    ${keep?`<button class="mitem" data-f data-k="p-shutdown-close" data-act="pwr" data-p="shutdown" data-sure="1">${I.power}Shut down and close games</button>`:''}
+    ${keepR?`<button class="mitem" data-f data-k="p-restart-close" data-act="pwr" data-p="restart" data-sure="1">${I.restart}Restart and close games</button>`:''}
     <button class="mitem" data-f data-k="p-signout" data-act="pwr" data-p="signout">${I.user}Sign out</button>
     <button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}${LINUX?'Switch to desktop':'Desktop Mode'}</button>
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`;
@@ -5538,7 +5565,7 @@ function act(el){
     case 'dismiss': NOTIFS.splice(+d.i,1); updateBadge(); renderQam(); return setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true);
     case 'clearnotifs': NOTIFS=NOTIFS.filter(n=>n.expired); updateBadge(); renderQam(); return setFocus($('#qam [data-f]'),true);
     case 'key': return typeKey(d.c);
-    case 'pwr': return power(d.p);
+    case 'pwr': return power(d.p, d.sure==='1');
     case 'andOpen': return andOpen(d.page);
     case 'lx': return lxAct(d.v);
     case 'desk': return deskAct(el);
@@ -5568,17 +5595,20 @@ function typeKey(c){
   renderSearch(k);
 }
 function power(p, sure){
-  // Shutting down or restarting closes games that are running or put aside (Quick Resume keeps them in memory,
-  // which a restart empties): ask first, and offer what keeps them.
-  const games = (S.running?1:0) + QR.list.filter(q=>q.id!==S.running).length;
-  if(!sure && (p==='shutdown'||p==='restart') && games && qrFeature()){
+  // Quick Resume keeps games through Shut down and Restart when the PC can (hibernation: Shut down saves them to the
+  // drive and turns off, Restart saves them and restarts). `sure`: really shut down or restart (closes them).
+  const games = qrFeature() ? qrGames() : 0;
+  if(!sure && games && p==='shutdown' && qrKeeps()) p='hibernate';
+  else if(!sure && games && p==='restart' && qrKeepsRestart()) p='hibernateRestart';
+  else if(!sure && (p==='shutdown'||p==='restart') && games){
+    // Can't keep them this way: ask first, and offer what keeps them.
     const items=[{label:p==='shutdown'?'Shut down anyway':'Restart anyway', icon:p==='shutdown'?'power':'restart', run:()=>power(p,true)}];
-    if(QR.hib&&QR.hib.supported) items.push({label:'Turn off and keep games', icon:'power', run:()=>power('hibernate',true)});
+    if(p==='restart' && qrKeeps()) items.push({label:'Shut down instead (keeps games)', icon:'power', run:()=>power('hibernate',true)});
     items.push({label:'Sleep instead (keeps games)', icon:'moon', run:()=>power('sleep',true)});
     return openSheet({title:p==='shutdown'?'Shut down?':'Restart?', sub:`${games===1?'1 game is':games+' games are'} open or in Quick Resume. ${p==='shutdown'?'Shutting down':'Restarting'} closes ${games===1?'it':'them'}, and anything not saved in the game is lost.`, items});
   }
   closeAll();
-  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
+  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',hibernateRestart:'Restarting. Your games will be here when it starts again…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
   send({type:'power', action:p});
   toast(host?label:label+' (simulated in the browser preview)');
 }

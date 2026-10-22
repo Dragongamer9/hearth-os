@@ -1,0 +1,10 @@
+#!/bin/sh
+# Hearth: Restart and keep games (hearth-admin hibernate-reboot) asks for one hibernation that restarts the PC with
+# a runtime sleep.conf drop-in. It's kept in memory across the hibernation, so it's removed as soon as the PC is
+# back (or the hibernation failed): the next "Turn off and keep games" turns the PC off again.
+# systemd-sleep calls this with "pre"/"post" and the operation; it has read its settings before "pre".
+if [ "$1" = post ]; then
+  rm -f /run/systemd/sleep.conf.d/50-hearth-restart-keep.conf
+  systemctl stop hearth-restart-keep-cleanup.timer >/dev/null 2>&1 || true
+fi
+exit 0

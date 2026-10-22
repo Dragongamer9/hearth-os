@@ -59,7 +59,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## 0.0.25 (released)
 
-- [x] Quick Resume, like Xbox: starting another game puts the one you're playing aside, frozen where you left it (up to 5); kept through Sleep and Hearth restarting, and through turning off where the PC allows it
+- [x] Quick Resume, like Xbox: starting another game puts the one you're playing aside, frozen where you left it (up to 5); kept through Sleep and Hearth restarting, and through Shut down and Restart where the PC allows it (one switch: with games open, Shut down and Restart hibernate and come back to them; Shut down and close games really closes them)
 - [x] Library is fast again in the Rust app (covers load in the background, off-screen tiles aren't drawn)
 - [x] Xbox Series controllers pair over Bluetooth
 - [x] Installer download shows percent, GB, speed and time left, every second

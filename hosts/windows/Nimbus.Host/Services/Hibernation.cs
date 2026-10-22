@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Nimbus.Host.Services;
 
-/// <summary>Can Windows turn off with everything kept (hibernation)? For Quick Resume's "Turn off and keep games".</summary>
+/// <summary>Can Windows turn off with everything kept (hibernation)? Quick Resume's Shut down then hibernates when games are open.</summary>
 public static class Hibernation
 {
     [StructLayout(LayoutKind.Sequential)]
@@ -23,9 +23,10 @@ public static class Hibernation
     {
         try
         {
-            if (GetPwrCapabilities(out var c) && c.S4 && c.HiberFilePresent) return new { supported = true, canSetUp = false, reason = (string?)null };
-            return new { supported = false, canSetUp = false, reason = (string?)"Hibernation is off in Windows. Turn it on (powercfg /hibernate on as administrator) to keep Quick Resume games when the PC turns off." };
+            // restartKeep is always false: Windows has no "hibernate, then restart", so Restart closes the games.
+            if (GetPwrCapabilities(out var c) && c.S4 && c.HiberFilePresent) return new { supported = true, canSetUp = false, restartKeep = false, reason = (string?)null };
+            return new { supported = false, canSetUp = false, restartKeep = false, reason = (string?)"Quick Resume keeps your games through sleep only: hibernation is off in Windows. Turn it on (powercfg /hibernate on, as administrator) and Shut down keeps them too." };
         }
-        catch { return new { supported = false, canSetUp = false, reason = (string?)null }; }
+        catch { return new { supported = false, canSetUp = false, restartKeep = false, reason = (string?)null }; }
     }
 }
