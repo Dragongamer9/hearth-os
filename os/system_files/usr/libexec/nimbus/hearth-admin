@@ -127,9 +127,13 @@ def password():
     print(json.dumps({'ok': True}))
 
 
-def bootc_status():
+def bootc_status(quiet=False):
+    """bootc's view of the versions. quiet: None when bootc can't say, instead of failing (an "error: " line
+    anywhere in the output makes the app report the whole command as failed)."""
     r = subprocess.run(['bootc', 'status', '--format', 'json'], capture_output=True, text=True)
     if r.returncode != 0:
+        if quiet:
+            return None
         fail(r.stderr.strip() or 'bootc status failed')
     st = json.loads(r.stdout).get('status') or {}
 
@@ -405,9 +409,9 @@ def rpm_ostree_has_update():
 def staged_any():
     """A new version is downloaded and waiting for the restart (bootc's view, or rpm-ostree's)."""
     try:
-        if (bootc_status() or {}).get('staged'):
+        if (bootc_status(quiet=True) or {}).get('staged'):
             return True
-    except SystemExit:
+    except (OSError, ValueError):
         pass
     if not have_rpm_ostree():
         return False
@@ -445,7 +449,7 @@ def flatpak_update(stage, lo, hi):
             stage.emit(force=True, phase='apps', pct=round(100.0 * (n - 1) / total, 1), n=n, total=total,
                        desc='Updating %s' % m.group(1))
     if p.wait() != 0:
-        fail(last or 'flatpak update failed')
+        raise UpgradeFailed(last or 'flatpak update failed')
     stage.emit(force=True, phase='apps', pct=100.0, n=total, total=total, desc='Apps updated')
 
 
@@ -533,9 +537,10 @@ def update():
         print('log: Updating apps…', flush=True)
         try:
             flatpak_update(stage, 90, 100)
-        except SystemExit:
-            # The system part is done: an app that didn't update isn't a failed system update.
-            print('log: some apps couldn\'t be updated; they\'ll be tried again next time', flush=True)
+        except (UpgradeFailed, OSError) as e:
+            # The system part is done: an app that didn't update isn't a failed system update. (Not fail(): its
+            # "error: " line would make the app report the whole update as failed.)
+            print('log: some apps couldn\'t be updated (%s); they\'ll be tried again next time' % str(e)[:200], flush=True)
     # Say what really happened: a new version waiting for the restart, or nothing new.
     done = 'Done. Restart to finish updating.' if system_new else 'Hearth OS is already up to date.'
     progress(100, done)

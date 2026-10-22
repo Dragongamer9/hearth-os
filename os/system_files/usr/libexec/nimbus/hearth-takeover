@@ -56,6 +56,22 @@ def root_mount():
     fail("Hearth's file system wasn't found (expected btrfs at /sysroot)")
 
 
+def rw_mount(target):
+    """A writable mount of Hearth's file system for resizing it. /sysroot is read-only on Fedora Atomic and bootc
+    images, and btrfs refuses to resize through a read-only mount; /var/home or /var are the same file system,
+    mounted read-write (resizing acts on the whole file system, whichever subvolume is mounted there)."""
+    uuid = sh(['findmnt', '-n', '-o', 'UUID', target], check=False).strip()
+    found = set()
+    for line in sh(['findmnt', '-rn', '-t', 'btrfs', '-o', 'TARGET,OPTIONS,UUID'], check=False).splitlines():
+        bits = line.split()
+        if uuid and len(bits) >= 3 and bits[2] == uuid and bits[1].split(',')[0] == 'rw':
+            found.add(bits[0].replace('\\x20', ' '))
+    for want in ('/var/home', '/var', '/', '/sysroot'):
+        if want in found:
+            return want
+    return next(iter(sorted(found)), target)
+
+
 def btrfs_devices(mnt):
     out = sh(['btrfs', 'filesystem', 'show', mnt], check=False)
     return [os.path.realpath(m) for m in re.findall(r'path (/dev/\S+)', out)]
@@ -190,11 +206,13 @@ def run():
             fail(d + " can't be removed (it's Hearth's own, or not on Hearth's drive)")
     # Let go of drives the importer opened, and anything else mounted from them (a file manager).
     for d in remove:
+        # A swap partition (another Linux's, which systemd turns on by itself when it's on the start-up drive)
+        # shows as "[SWAP]" here: turned off first, or it always counted as in use.
+        sh(['swapoff', d], check=False)
         for m in mounts_of(d):
             sh(['umount', m], check=False)
         if mounts_of(d):
             fail(f'{d} is still in use (open in another app?). Close it and try again')
-        sh(['swapoff', d], check=False)
 
     disk = p['disk']
     steps = ['erase', 'boot', 'grow']
@@ -221,7 +239,7 @@ def run():
     stage(phase='grow', step=2, steps=len(steps), desc='Giving the space to Hearth')
     p2 = plan_data()
     grow, add = what_grows(p2, [])
-    mnt, _ = root_mount()
+    mnt = rw_mount(root_mount()[0])
     grown = added = 0
     for r in grow:
         part = next(x for x in p2['parts'] if x['dev'] == r['after'])
