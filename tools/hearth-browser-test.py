@@ -220,8 +220,11 @@ def run_mode(ff, out, mode, extras, port):
         m.js(CHROME_KEY, 'w', 'KeyW', 87, False)
         m.context('content')
         v0 = m.js('const i = document.getElementById("i"); const v = i.value; i.value = ""; return {value: v, active: document.activeElement && document.activeElement.id, focus: document.hasFocus()};')
-        ok(v0.get('value') == 'w', '[%s] a key reaches the page (%s)' % (mode, v0))
         m.context('chrome')
+        fs = m.js('return {active: Services.focus.activeWindow === window, activeWin: String(Services.focus.activeWindow && Services.focus.activeWindow.location), '
+                  'focused: String(Services.focus.focusedElement && Services.focus.focusedElement.localName), hasFocus: document.hasFocus(), '
+                  'abc: String(Services.focus.activeBrowsingContext && Services.focus.activeBrowsingContext.id), bc: window.browsingContext.id};')
+        ok(v0.get('value') == 'w', '[%s] a key reaches the page (%s; chrome %s)' % (mode, v0, fs))
         m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); '
              'const { HearthBrowser } = ChromeUtils.importESModule("resource://hearth/hearth.sys.mjs"); '
              'const kb = HearthBrowser.keyboardOf(window); kb.layout = "abc"; kb.r = 1; kb.c = 0; kb.open(); kb.render(); return kb.isOpen;')
