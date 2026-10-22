@@ -21,7 +21,8 @@ fn plain(s: &str) -> String {
     while let Some(c) = it.next() {
         if c != '\x1b' { if c != '\r' { out.push(c); } continue; }
         match it.next() {
-            Some('[') => { while let Some(n) = it.next() { if ('@'..='~').contains(&n) { break; } } }
+            // ConPTY moves the cursor to the next line instead of sending a new line: count that as one.
+            Some('[') => { while let Some(n) = it.next() { if ('@'..='~').contains(&n) { if n == 'H' || n == 'f' { out.push('\n'); } break; } } }
             Some(']') => {
                 while let Some(n) = it.next() {
                     if n == '\x07' { break; }
@@ -123,7 +124,7 @@ fn utf8_and_colors_pass_through() {
     let mut s = Session::start(80, 24);
     // A check mark (three bytes) and a 24-bit color: both arrive intact.
     s.send("printf '\\342\\234\\223 \\033[38;2;255;138;61mok\\033[0m\\n'\r");
-    s.until("the check mark", |t| t.lines().any(|l| l.trim_end() == "✓ ok"));
+    s.until("the check mark", |t| t.lines().any(|l| l.trim_end().ends_with("✓ ok") && !l.contains("printf")));
     assert!(s.raw.contains("\x1b[38;2;255;138;61m"));
 }
 
