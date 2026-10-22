@@ -302,6 +302,17 @@ const path = require('path');
     LOOK.layout = 'shelf'; saveLook(); navigate('home', {}, false);
     if (lock === 'old' || focus === 'old') throw new Error(`lock ${lock}, focus ${focus}`);
   });
+  // Ember › Switch to Hearth OS: the sizes are GiB, as diskpart shrinks C:, and Windows keeps 20 GiB.
+  await step('switch sizes in GiB', () => {
+    const was = SW.s.free;
+    try {
+      SW.s.free = 84e9; closeAll(); swPrep();
+      if (S.layers.includes('sheet')) throw new Error('84 GB free offered a size (Windows would keep under 20 GiB)');
+      SW.s.free = 85 * 2 ** 30; swPrep();
+      const t = document.querySelector('#sheetBox').textContent;
+      if (!/64 GiB \(69 GB\)/.test(t) || /128 GiB/.test(t)) throw new Error('sizes: ' + t.slice(0, 160));
+    } finally { SW.s.free = was; closeAll(); }
+  });
   // Starting a game while one that isn't in the library runs (Quick Resume off): a message, not a script error.
   await step('start while an unknown game runs', () => {
     const was = S.running; S.running = 'steam:999999';
