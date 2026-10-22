@@ -68,6 +68,7 @@ jobs:
         run: python3 tools/hearth-browser-test.py --firefox "$RUNNER_TEMP/hb/firefox/firefox" --out shots --extras
 
       - name: A real window, started by hearth-browser as in Game Mode (X11 class, full screen, keys from a keyboard)
+        if: always()
         env:
           HEARTH_FIREFOX_DIR: ${{ runner.temp }}/hb/firefox
         run: |
