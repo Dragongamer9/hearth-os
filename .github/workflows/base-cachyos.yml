@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/cachyos/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-cachyos.yml']
+    paths: ['os-bases/cachyos/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-cachyos.yml', 'hosts/hearth-terminal/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-cachyos
@@ -65,6 +65,10 @@ jobs:
           # ---- hearthfetch (hosts/hearthfetch): /usr/bin/hearthfetch, Hearth OS's system summary for the terminal.
           (cd ../hearthfetch && sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml && cargo build --release && cp target/release/hearthfetch /tmp/app/hearthfetch)
           # ---- end hearthfetch
+          # Hearth Terminal (hosts/hearth-terminal), built the same way and carried along in hearth-app.tar; build.sh
+          # installs it as /usr/bin/hearth-terminal. If it doesn't build, the image keeps its other terminals.
+          if (cd ../hearth-terminal && cargo build --release); then cp ../hearth-terminal/target/release/hearth-terminal /tmp/app/hearth-terminal
+          else echo "::warning title=Hearth Terminal::didn't build; this image goes without it"; fi
           echo "--- libraries the app links (all come from CachyOS)"
           objdump -p target/release/hearth | grep NEEDED
           if ldd target/release/hearth | grep 'not found'; then echo "missing libraries (above)"; false; fi

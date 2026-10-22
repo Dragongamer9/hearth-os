@@ -1,0 +1,3 @@
+# Mantel's terminals for xdg-terminal-exec (apps that open "in a terminal"): Hearth Terminal first, foot if it isn't there.
+hearth-terminal.desktop
+foot.desktop
