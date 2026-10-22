@@ -66,6 +66,13 @@ test('Desktop Mode keeps wlr-randr changes in display.sh', () => {
   m.saveWlr('DP-1', { scale: '1.25' });
   const sh = fs.readFileSync(path.join(tmp, 'nimbus', 'display.sh'), 'utf8');
   assert.match(sh, /wlr-randr --output 'DP-1' --mode '2560x1440@164.958Hz' --scale 1.25/);
+  // A line Desktop Mode's Settings › Display wrote for another screen stays.
+  fs.writeFileSync(path.join(tmp, 'nimbus', 'display.sh'), sh + "wlr-randr --output 'HDMI-A-1' --mode '1920x1080@60.000Hz' --scale 1\n");
+  m.saveWlr('DP-1', { scale: '1.5' });
+  const sh2 = fs.readFileSync(path.join(tmp, 'nimbus', 'display.sh'), 'utf8');
+  assert.match(sh2, /wlr-randr --output 'HDMI-A-1' --mode '1920x1080@60.000Hz' --scale 1\n/);
+  assert.match(sh2, /wlr-randr --output 'DP-1' --mode '2560x1440@164.958Hz' --scale 1.5\n/);
+  assert.equal(sh2.split("'DP-1'").length, 2);
 });
 
 test('updater picks the newest preview that has an AppImage', async () => {

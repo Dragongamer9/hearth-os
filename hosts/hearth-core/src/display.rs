@@ -318,19 +318,30 @@ pub fn set_scale(pct: u32, zoom: u32) -> Result<Option<u32>, String> {
 }
 
 /// Desktop Mode (labwc) forgets wlr-randr changes on restart: they're kept in a script its autostart runs.
+/// display.sh itself is what's kept (Desktop Mode's own Settings › Display writes it too): only this screen's line
+/// changes, every other line stays as it was.
 fn save_wlr(output: &str, key: &str, value: &str) {
     let conf = crate::paths::config_dir();
-    let file = conf.join("display.json");
-    let mut saved: Value = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice(&b).ok()).filter(Value::is_object).unwrap_or(json!({}));
-    if !saved[output].is_object() { saved[output] = json!({}); }
-    saved[output][key] = json!(value);
-    let _ = std::fs::create_dir_all(&conf);
-    let _ = std::fs::write(&file, serde_json::to_string_pretty(&saved).unwrap());
-    let lines: Vec<String> = saved.as_object().unwrap().iter().map(|(o, c)| format!("wlr-randr --output '{o}'{}{}",
-        c["mode"].as_str().map(|m| format!(" --mode '{m}'")).unwrap_or_default(), c["scale"].as_str().map(|s| format!(" --scale {s}")).unwrap_or_default())).collect();
     let sh = conf.join("display.sh");
-    let _ = std::fs::write(&sh, format!("#!/bin/sh\n# Written by Hearth › Settings › Display\n{}\n", lines.join("\n")));
+    let text = display_sh_text(&std::fs::read_to_string(&sh).unwrap_or_default(), output, key, value);
+    let _ = std::fs::create_dir_all(&conf);
+    let _ = crate::paths::write_atomic(&sh, text.as_bytes());
     let _ = crate::system::run("chmod", &["755", &sh.to_string_lossy()]);
+}
+
+/// display.sh with `output`'s mode or scale set: its other setting and the other screens' lines are kept.
+pub fn display_sh_text(old: &str, output: &str, key: &str, value: &str) -> String {
+    let ours = format!("wlr-randr --output '{output}'");
+    let mine = |l: &str| l == ours || l.starts_with(&format!("{ours} "));
+    let prev = old.lines().find(|l| mine(l)).unwrap_or("");
+    let grab = |re: &str| regex::Regex::new(re).unwrap().captures(prev).map(|c| c[1].to_string());
+    let mut mode = grab(r"--mode '([^']*)'");
+    let mut scale = grab(r"--scale (\S+)");
+    if key == "mode" { mode = Some(value.to_string()) } else { scale = Some(value.to_string()) }
+    let line = format!("{ours}{}{}", mode.map(|m| format!(" --mode '{m}'")).unwrap_or_default(), scale.map(|s| format!(" --scale {s}")).unwrap_or_default());
+    let mut lines: Vec<String> = old.lines().filter(|l| l.starts_with("wlr-randr ") && !mine(l)).map(str::to_string).collect();
+    lines.push(line);
+    format!("#!/bin/sh\n# Written by Hearth › Settings › Display\n{}\n", lines.join("\n"))
 }
 
 #[cfg(test)]
@@ -371,5 +382,19 @@ mod tests {
     fn blocklisted_modes_left_out() {
         let m = pickable_external(parse_gamescope_modes("4096x2160@60 3840x2160@60 4096x2160@30 1920x1080@120"));
         assert_eq!(m.iter().map(|m| (m.w, m.h)).collect::<Vec<_>>(), vec![(3840, 2160), (1920, 1080)]);
+    }
+    #[test]
+    fn display_sh_keeps_other_screens() {
+        // A line Desktop Mode's Settings › Display wrote for another screen, and one for this screen.
+        let old = "#!/bin/sh\n# Written by Hearth Settings › Display\nwlr-randr --output 'HDMI-A-1' --mode '1920x1080@60.000Hz' --scale 1\nwlr-randr --output 'DP-1' --mode '2560x1440@59.951Hz' --scale 1.5\n";
+        let t = display_sh_text(old, "DP-1", "mode", "2560x1440@164.958Hz");
+        assert!(t.contains("wlr-randr --output 'HDMI-A-1' --mode '1920x1080@60.000Hz' --scale 1\n"));
+        assert!(t.contains("wlr-randr --output 'DP-1' --mode '2560x1440@164.958Hz' --scale 1.5\n"));
+        assert_eq!(t.matches("'DP-1'").count(), 1);
+        let t = display_sh_text(&t, "DP-1", "scale", "1.25");
+        assert!(t.contains("wlr-randr --output 'DP-1' --mode '2560x1440@164.958Hz' --scale 1.25\n") && t.contains("'HDMI-A-1'"));
+        // DP-1 isn't a prefix match for DP-10.
+        let t = display_sh_text("wlr-randr --output 'DP-10' --scale 2\n", "DP-1", "scale", "1");
+        assert!(t.contains("'DP-10' --scale 2\n") && t.contains("'DP-1' --scale 1\n") && t.starts_with("#!/bin/sh\n"));
     }
 }
