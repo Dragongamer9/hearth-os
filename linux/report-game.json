@@ -27,7 +27,7 @@
       "scale": 1.5
     },
     "prefs": {
-      "hearth.started": 1792679350,
+      "hearth.started": 1792699767,
       "hearth.keyboard.ready": true,
       "browser.startup.homepage": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
       "media.eme.enabled": true,
@@ -80,7 +80,7 @@
     }
   ],
   "google": {
-    "url": "https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&followup=https://accounts.google.com/&passive=1209600&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S1629744027:1792679359593311",
+    "url": "https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&followup=https://accounts.google.com/&passive=1209600&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S2132081405:1792699775544699",
     "title": "Sign in - Google Accounts",
     "text": "Loading\nSign in\nUse your Google Account\nEmail or phone\nForgot email?\nNot your computer? Use a Private Window to sign in. Learn more about using Guest mode\nNext\nCreate account\nEnglish (United States)\nHelp\nPrivacy\nTerms"
   }
