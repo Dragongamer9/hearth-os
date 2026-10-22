@@ -1,5 +1,5 @@
 {
-  "mode": "desktop",
+  "mode": "game",
   "chrome": {
     "version": "158.0.1",
     "policies": true,
@@ -16,39 +16,44 @@
       "UserMessaging",
       "FirefoxHome",
       "FirefoxSuggest",
-      "ExtensionSettings",
-      "DisableAppUpdate"
+      "ExtensionSettings"
     ],
     "hearth": {
-      "start": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
-      "game": false,
-      "big": false,
-      "scale": 0
+      "start": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
+      "game": true,
+      "big": true,
+      "scale": 1.5
     },
     "prefs": {
-      "hearth.started": 1792665936,
+      "hearth.started": 1792666020,
       "hearth.keyboard.ready": true,
-      "browser.startup.homepage": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
+      "browser.startup.homepage": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
       "media.eme.enabled": true,
       "toolkit.legacyUserProfileCustomizations.stylesheets": true,
       "datareporting.healthreport.uploadEnabled": false,
       "app.update.enabled": null,
-      "browser.uidensity": 0,
-      "layout.css.devPixelsPerPx": "-1.0",
-      "browser.link.open_newwindow.restriction": 2,
+      "browser.uidensity": 2,
+      "layout.css.devPixelsPerPx": "1.5",
+      "browser.link.open_newwindow.restriction": 0,
       "extensions.activeThemeID": "firefox-compact-dark@mozilla.org"
     },
-    "newTab": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
+    "newTab": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
     "keyboardButton": true,
     "keyboard": true,
     "window": [
       1280,
-      800,
+      720,
       1280,
-      800
+      720
     ],
     "errors": []
   },
+  "window": [
+    1280,
+    720,
+    1280,
+    720
+  ],
   "key-experiment": {
     "f13": 1,
     "down": 1,
@@ -88,18 +93,8 @@
     }
   ],
   "google": {
-    "url": "https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&followup=https://accounts.google.com/&passive=1209600&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S805805686:1792665943005460",
+    "url": "https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&followup=https://accounts.google.com/&passive=1209600&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S-516827647:1792666032989218",
     "title": "Sign in - Google Accounts",
     "text": "Loading\nSign in\nUse your Google Account\nEmail or phone\nForgot email?\nNot your computer? Use a Private Window to sign in. Learn more about using Guest mode\nNext\nCreate account\nEnglish (United States)\nHelp\nPrivacy\nTerms"
-  },
-  "drm-before-download": "widevine available",
-  "ublock": {
-    "name": "uBlock Origin",
-    "version": "1.75.0",
-    "active": true
-  },
-  "widevine": {
-    "result": "{\"status\":\"too-frequent-no-check\"}",
-    "version": "4.10.3050.0"
   }
 }
