@@ -672,7 +672,17 @@ def copy_file(src, dst, prog, sync):
 def copy_tree(src, dst, prog, sync):
     st = os.lstat(src)
     if stat.S_ISLNK(st.st_mode):
-        os.symlink(os.readlink(src), dst)
+        try:
+            os.symlink(os.readlink(src), dst)
+        except OSError as e:
+            # FAT32 and exFAT drives (most USB sticks and SD cards) can't hold links: the file a link points to
+            # is copied in its place, and a link to a folder (or to nothing) is left out, instead of the whole
+            # copy failing with "You don't have permission".
+            if e.errno not in (errno.EPERM, errno.EOPNOTSUPP, errno.ENOSYS) or lexists(dst):
+                raise
+            if os.path.isfile(src):
+                copy_file(src, dst, prog, sync)
+                return
         prog.tick(st.st_size)
     elif stat.S_ISDIR(st.st_mode):
         os.mkdir(dst)
@@ -744,9 +754,15 @@ def transfer(srcs, dest, move):
             target = item[1] = unique(target)
             if by_rename:
                 prog.file = os.path.basename(src)
-                os.rename(src, target)
-                prog.tick(size, force=True)
-            else:
+                try:
+                    os.rename(src, target)
+                    prog.tick(size, force=True)
+                except OSError as e:
+                    # The same drive mounted in two places (a bind mount): it can't be renamed across, so copy.
+                    if e.errno != errno.EXDEV:
+                        raise
+                    by_rename = False
+            if not by_rename:
                 current = target
                 copy_tree(src, target, prog, sync)
                 current = None
