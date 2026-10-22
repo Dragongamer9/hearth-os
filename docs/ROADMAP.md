@@ -97,6 +97,14 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.5.1 (released)
+
+- [x] Updates: an app (Flatpak) that can't be updated no longer marks the whole system update as failed; it still says "Restart to finish updating"
+- [x] Remove the old system (after moving from Windows or another Linux): Hearth now gets the freed space, and another Linux's swap partition can be removed
+- [x] First start after switching edition: your account always gets its groups (video, logs)
+- [x] Epic and Xbox sign-in: the controller no longer clicks random things on the sign-in page (the page reacted to the controller by itself, alongside Hearth's pointer)
+- [x] Anatase: paired Bluetooth controllers connect again when their pairing files had lost their security labels (fixed by itself at every start)
+
 ## 0.5.0 (released)
 
 - [x] Steam like GOG and Epic: owned games show with Install, and Steam games install and uninstall from Hearth without Steam's windows (progress in Downloads); Steam starts only when it's needed and closes itself after 10 idle minutes; signing in is Steam's own window (Linux and Windows)
