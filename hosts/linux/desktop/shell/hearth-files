@@ -672,7 +672,17 @@ def copy_file(src, dst, prog, sync):
 def copy_tree(src, dst, prog, sync):
     st = os.lstat(src)
     if stat.S_ISLNK(st.st_mode):
-        os.symlink(os.readlink(src), dst)
+        try:
+            os.symlink(os.readlink(src), dst)
+        except OSError as e:
+            # FAT32 and exFAT drives (most USB sticks and SD cards) can't hold links: the file a link points to
+            # is copied in its place, and a link to a folder (or to nothing) is left out, instead of the whole
+            # copy failing with "You don't have permission".
+            if e.errno not in (errno.EPERM, errno.EOPNOTSUPP, errno.ENOSYS) or lexists(dst):
+                raise
+            if os.path.isfile(src):
+                copy_file(src, dst, prog, sync)
+                return
         prog.tick(st.st_size)
     elif stat.S_ISDIR(st.st_mode):
         os.mkdir(dst)
@@ -744,9 +754,15 @@ def transfer(srcs, dest, move):
             target = item[1] = unique(target)
             if by_rename:
                 prog.file = os.path.basename(src)
-                os.rename(src, target)
-                prog.tick(size, force=True)
-            else:
+                try:
+                    os.rename(src, target)
+                    prog.tick(size, force=True)
+                except OSError as e:
+                    # The same drive mounted in two places (a bind mount): it can't be renamed across, so copy.
+                    if e.errno != errno.EXDEV:
+                        raise
+                    by_rename = False
+            if not by_rename:
                 current = target
                 copy_tree(src, target, prog, sync)
                 current = None
@@ -946,6 +962,9 @@ def file_uri(p):
     return 'file://' + urllib.parse.quote(p, safe="/!$&'()*+,;=:@~-._", errors='surrogateescape')
 
 
+FIELD_CODE = re.compile(r'%(.)', re.S)
+
+
 def expand_exec(execline, path, fields=None, desktop_file=''):
     """argv for a .desktop Exec line opening path (the field codes from the Desktop Entry spec)."""
     fields = fields or {}
@@ -967,9 +986,21 @@ def expand_exec(execline, path, fields=None, desktop_file=''):
         elif w in ('%d', '%D', '%n', '%N', '%v', '%m'):
             continue
         else:
-            w = (w.replace('%c', fields.get('Name', '')).replace('%k', desktop_file)
-                 .replace('%f', path).replace('%u', file_uri(path)).replace('%%', '%'))
-            argv.append(w)
+            # One pass, left to right: "%%" is a plain %, and what's put in (a file name with "%u" or "%%"
+            # in it) is never read again as a field code. A file put inside a word ("--file=%f") counts.
+            def code(m):
+                nonlocal used
+                c = m.group(1)
+                if c == '%':
+                    return '%'
+                if c in 'fF':
+                    used = True
+                    return path
+                if c in 'uU':
+                    used = True
+                    return file_uri(path)
+                return {'c': fields.get('Name', ''), 'k': desktop_file}.get(c, '')
+            argv.append(FIELD_CODE.sub(code, w))
     if not used:
         argv.append(path)
     return argv
