@@ -156,7 +156,7 @@ def run_mode(ff, out, mode, extras, port):
     if game:
         env.update({'HEARTH_BROWSER_GAME': '1', 'HEARTH_BROWSER_BIG': '1', 'HEARTH_BROWSER_SCALE': '1.5'})
     log = open(os.path.join(out, 'firefox-%s.log' % mode), 'w')
-    proc = subprocess.Popen([ff, '--headless', '--marionette', '--no-remote', '--profile', prof], env=env, stdout=log, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen([ff, '--headless', '--marionette', '-remote-allow-system-access', '--no-remote', '--profile', prof], env=env, stdout=log, stderr=subprocess.STDOUT)
     report = {'mode': mode}
     try:
         m = Marionette(port)
