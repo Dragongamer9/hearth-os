@@ -346,10 +346,17 @@ class Keyboard {
   }
 }
 
-const boards = new WeakMap();
+// One keyboard per window, found by the window's number (the same window can reach here through different
+// wrappers, so not by the object).
+const boards = new Map();
 function keyboardOf(win) {
-  let k = boards.get(win);
-  if (!k) { k = new Keyboard(win); boards.set(win, k); }
+  const id = win.docShell.outerWindowID;
+  let k = boards.get(id);
+  if (!k) {
+    k = new Keyboard(win);
+    boards.set(id, k);
+    win.addEventListener("unload", () => boards.delete(id), { once: true });
+  }
   return k;
 }
 
