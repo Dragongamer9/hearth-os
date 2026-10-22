@@ -78,7 +78,9 @@ pub fn launch(file: &str, extra_args: &str, opts: &Value, game_id: u32) -> Resul
         let mut v = exec_argv(exec);
         if v.is_empty() { return Err("That .desktop file has no Exec line".into()); }
         let c = v.remove(0); v.extend(args);
-        (c, v, vec![], d.get("Path").map(|p| p.into()).unwrap_or(cwd), false)
+        // "Path=" left empty (common in hand-made and exported .desktop files) means no folder of its own: starting
+        // in "" failed with "No such file or directory".
+        (c, v, vec![], d.get("Path").map(|p| p.trim()).filter(|p| !p.is_empty()).map(|p| p.into()).unwrap_or(cwd), false)
     } else if low.ends_with(".exe") {
         let mut v = vec![file.to_string()]; v.extend(args);
         if crate::system::has("umu-run") { ("umu-run".to_string(), v, vec![("GAMEID".to_string(), std::env::var("GAMEID").unwrap_or_else(|_| "umu-default".into()))], cwd, true) }
@@ -109,5 +111,12 @@ mod tests {
         let (c, a, e) = apply(&json!({"args": "-skipintro \"-w 1\"", "mangohud": true, "proton": "GE-Proton", "fsr": true}), "umu-run", vec!["g.exe".into()], true);
         assert_eq!(c, "umu-run"); assert_eq!(a, vec!["g.exe", "-skipintro", "-w 1"]);
         assert!(e.contains(&("PROTONPATH".into(), "GE-Proton".into())) && e.contains(&("MANGOHUD".into(), "1".into())) && e.contains(&("WINE_FULLSCREEN_FSR".into(), "1".into())));
+    }
+    #[test]
+    fn a_desktop_file_with_an_empty_path_starts() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("game.desktop");
+        std::fs::write(&f, "[Desktop Entry]\nName=Game\nExec=true %U\nPath=\n").unwrap();
+        assert!(launch(&f.to_string_lossy(), "", &json!({}), 0).is_ok());
     }
 }
