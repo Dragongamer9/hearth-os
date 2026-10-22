@@ -56,6 +56,16 @@ try {
     Move-Item "$app.new" $app
     Remove-Item $tmp -Force
 
+    # hearthfetch (Hearth's system summary for the terminal) is in Ember's bin folder: put it on your PATH (your
+    # account only), so `hearthfetch` works in any new terminal. Ember does the same when it starts (CliPath.cs).
+    $bin = Join-Path $app 'bin'
+    if (Test-Path (Join-Path $bin 'hearthfetch.exe')) {
+        $cur = (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+        if (@($cur -split ';') -notcontains $bin) {
+            Set-ItemProperty 'HKCU:\Environment' -Name Path -Type ExpandString -Value ((@($cur -split ';' | Where-Object { $_ }) + $bin) -join ';')
+        }
+    }
+
     # Safety net first: an undo script that's easy to run from Task Manager.
     $restore = @"
 @echo off
