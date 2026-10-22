@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth OS docs</title>
+<meta name="description" content="Everything about installing, updating and using Hearth OS, and what to do when something goes wrong.">
+<meta name="theme-color" content="#120c09">
+<link rel="icon" href="../img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<nav class="top" aria-label="Main">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="">Hearth OS <span>Docs</span></a>
+    <div class="links">
+      <a href="../">Home</a>
+      <a class="keep" href="troubleshooting.html">Help</a>
+      <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a>
+      <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
+      <a class="cta" href="../#download">Download</a>
+    </div>
+  </div>
+</nav>
+<div class="wrap layout">
+  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html" class="cur" aria-current="page">Overview</a><div class="sub"><a href="#what">What Hearth OS is</a><a href="#editions">Editions</a><a href="#needs">What you need</a></div><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="troubleshooting.html">Troubleshooting</a></div></aside>
+  <main id="main">
+    <div class="crumb">Docs · for Hearth OS 0.3.1</div>
+    <h1>Hearth OS documentation</h1>
+    <p class="lead">Everything about installing, updating and using Hearth OS, and what to do when something goes wrong.</p>
+
+<div class="cards">
+  <a href="install.html"><b>Installing</b><span>Downloads, making the USB stick, installing next to Windows or on its own.</span></a>
+  <a href="updates.html"><b>Updates and editions</b><span>How updates work, going back to the last version, switching edition.</span></a>
+  <a href="using.html"><b>Using Hearth</b><span>Game Mode, the desktop (Mantel), the keyboard, the power button, sending logs.</span></a>
+  <a href="troubleshooting.html"><b>Troubleshooting</b><span>Fixes for known problems, how to get unstuck, and how to tell us.</span></a>
+</div>
+<h2 id="what">What Hearth OS is</h2>
+<p>Hearth OS is a controller-first gaming system for handhelds and PCs. It starts in <b>Game Mode</b>, a console-style
+screen with Steam, Epic, GOG, Xbox and your other games in one library, and has a full desktop called <b>Mantel</b> one
+button away (<b>Desktop Mode</b>).</p>
+<p>It's <b>image-based</b>: the whole system is one tested image that updates in one piece, in the background.
+An update can't half-install, and the version you had before stays on the drive so you can go back to it.</p>
+<div class="note"><p>Hearth OS is in <b>beta</b>. It works for everyday play, but expect rough edges. When something breaks,
+<a href="troubleshooting.html#logs">send a log</a> and it gets looked at.</p></div>
+
+<h2 id="editions">Editions</h2>
+<p>Hearth looks and works the same on every edition. What changes is the Linux underneath it.</p>
+<div class="tbl"><table>
+<tr><th>Edition</th><th>Built on</th><th>Status</th><th>Good for</th></tr>
+<tr><td><b>Anatase</b></td><td>Fedora (Anatase)</td><td>Recommended</td><td>Everyone. The most tested edition, with the best hardware support.</td></tr>
+<tr><td><b>Ubuntu</b></td><td>Ubuntu 26.04</td><td>Beta Experimental</td><td>People who know Ubuntu, or need Ubuntu packages.</td></tr>
+<tr><td><b>CachyOS</b></td><td>CachyOS (Arch)</td><td>Beta Experimental</td><td>Newer processors (x86-64-v3: AVX2). Tuned kernel, handheld patches.</td></tr>
+<tr><td><b>Peppermint</b></td><td>Debian 13</td><td>Beta Experimental</td><td>People who prefer Debian's slower, steady pace.</td></tr>
+</table></div>
+<p>You can <a href="updates.html#switch">switch edition</a> later without a USB stick. Your games and saves come along.</p>
+
+<h2 id="needs">What you need</h2>
+<ul>
+<li>A 64-bit PC or handheld (x86-64) with AMD, Intel or Nvidia graphics (Nvidia GTX 16 / RTX 20 or newer).</li>
+<li>For installing: a USB stick of 16 GB or more, and a drive of 64 GB or more.</li>
+<li>CachyOS only: a processor from about 2015 or newer (x86-64-v3).</li>
+</ul>
+<p>Tested on the ASUS ROG Ally and Xbox Ally, and desktop PCs with AMD and Nvidia graphics.</p>
+
+<div class="pager"><span></span><a href="install.html">Installing →</a></div>
+  </main>
+</div>
+<footer>
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="" width="22" height="22">Hearth OS</a>
+    <a href="https://github.com/Dragongamer9/hearth-os">Source code</a>
+    <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a>
+    <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">Roadmap</a>
+    <a href="troubleshooting.html#ask">Report a problem</a>
+  </div>
+</footer>
+<script src="docs.js" defer></script>
+</body>
+</html>
