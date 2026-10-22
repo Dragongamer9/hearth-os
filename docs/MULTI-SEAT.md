@@ -294,7 +294,9 @@ authenticate service users), `account` is `pam_permit`, and `session` uses `pam_
   Sunshine and close labwc when Game Mode ends).
 
 It then sets `HEARTH_SEAT=N`, `NIMBUS_START_MODE=game` and `NIMBUS_GAMESCOPE_ARGS` (`--prefer-vk-device`/`--prefer-output`,
-or `-W/-H/-w/-h`) and execs `/usr/bin/nimbus-session`. The player's Game Mode is the normal one.
+or `-W/-H/-w/-h`) and execs `/usr/bin/nimbus-session`. The player's Game Mode is the normal one. nimbus-session
+puts these options after the player's own `session.conf` ones (so their window size and card win over a screen
+mode picked in their Settings › Display), and always starts an extra player in Game Mode.
 
 ## Never breaking player 1
 
@@ -453,6 +455,8 @@ The extra players (`HEARTH_SEAT` set) must leave system-wide things to player 1:
   the hearth-power restore line
 # in the loop, before "case $next": extra players have Game Mode only
   [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game
+# and before the loop (session.conf's NIMBUS_START_MODE=desktop doesn't apply to them):
+  [ -n "$HEARTH_SEAT" ] && mode=game
 ```
 
 ### Rust app (hearth-core)
@@ -460,7 +464,9 @@ The extra players (`HEARTH_SEAT` set) must leave system-wide things to player 1:
 * `inputplumber.rs`: do nothing when `HEARTH_SEAT` is set. Its intercept mode is system-wide, so player 2's
   Quick Access would otherwise catch player 1's built-in controller.
 * `power.rs` (TDP) and anything that calls `hearth-admin`: hide them when `HEARTH_SEAT` is set (the extra
-  accounts aren't in wheel, so pkexec would fail anyway).
+  accounts aren't in wheel, so pkexec would fail anyway). `hearth-power` itself answers "not supported" to an
+  extra player and refuses to change the power mode or limit, so neither Quick Access nor a game's own limit
+  changes the whole PC's under player 1.
 
 ### build.sh
 
