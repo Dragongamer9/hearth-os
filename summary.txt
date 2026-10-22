@@ -1,0 +1,4 @@
+install: /mnt/installer-out/hearth-os-0.3.1-peppermint-offline.iso (label Hearth-Install, edition peppermint), disk /tmp/tmp.j3d1oeLTcF/disk.img
+install: OK in 277 s
+boot: from the disk
+boot: OK in 249 s (the screen settled on a login screen or Hearth; nothing on the serial console)
