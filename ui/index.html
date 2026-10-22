@@ -1088,7 +1088,8 @@ function startCounter(){
   COUNTER.timer = setInterval(counterPing, 10*60e3);
 }
 function loadCounterStats(){
-  fetch(COUNTER.url+'/v1/stats').then(r=>r.json()).then(j=>{ COUNTER.stats=j; refreshUI(); }).catch(()=>{});
+  // Only a real answer: drawing About with anything else (an error from the server) threw and left the page as it was.
+  fetch(COUNTER.url+'/v1/stats').then(r=>r.json()).then(j=>{ if(j && typeof j.now==='number' && typeof j.month==='number'){ COUNTER.stats=j; refreshUI(); } }).catch(()=>{});
 }
 const pending = new Map(); let rid = 0;
 function send(msg){ if(host) host.postMessage(msg); else console.log('[bridge:mock]', msg); }
@@ -1346,8 +1347,9 @@ function tile(g, kind='p', key=''){
   return `<button class="tile ${kind}" data-f data-k="${key||'t-'+g.id}" data-act="game" data-id="${esc(g.id)}">
     ${cover(g,{wide:kind==='l'})}<div class="cap">${esc(g.title)}${g.last?' · '+ago(g.last):''}</div></button>`;
 }
-function ago(t){ if(!t) return 'Never'; const d=(now-t)/D; if(d<1) return 'Today'; if(d<2) return 'Yesterday'; if(d<7) return Math.floor(d)+' days ago'; if(d<30) return Math.floor(d/7)+' wk ago'; if(d<365) return Math.floor(d/30)+' mo ago'; const y=Math.floor(d/365); return y+(y===1?' year ago':' years ago'); }
-function hrs(h){ return h<1 ? Math.round(h*60)+' min' : (h<10? h.toFixed(1): Math.round(h))+' hrs'; }
+function ago(t){ if(!t) return 'Never'; const d=(Date.now()-t)/D; if(d<1) return 'Today'; if(d<2) return 'Yesterday'; if(d<7) return Math.floor(d)+' days ago'; if(d<30) return Math.floor(d/7)+' wk ago'; if(d<365) return Math.floor(d/30)+' mo ago'; const y=Math.floor(d/365); return y+(y===1?' year ago':' years ago'); }
+// Play time: "59 min", then "1.0 hrs" (59.7 minutes said "60 min", and 9.97 hours "10.0 hrs").
+function hrs(h){ const m=Math.round(h*60); return m<60 ? m+' min' : (h<9.95 ? h.toFixed(1) : Math.round(h))+' hrs'; }
 function toast(t){ const el=document.createElement('div'); el.className='toast'; el.textContent=t; $('#toasts').appendChild(el); setTimeout(()=>el.remove(),3200); }
 
 // ---------- sounds ----------
@@ -1818,8 +1820,8 @@ function seatsAct(d){
     return openSheet({title:'Which controller?', items:pads.map(p=>({label:`${p.name}${p.seat?` (player ${p.seat})`:''}`, icon:'pad', run:()=>setTimeout(()=>openSheet({title:`Give ${p.name} to`, items:seats.map(s=>({label:`Player ${s.seat} · ${s.user||''}`, icon:'user', run:()=>call('seats.assignPad',{pad:p.id, seat:s.seat},30000).then(()=>{ toast(`${p.name} is player ${s.seat}'s now`); loadSeats(); }).catch(e=>toast(e.message))}))}),50)}))});
   }
   if(v==='remove') return openSheet({title:'Remove multi-seat?', sub:'Back to one screen and one player. The extra players\' accounts can stay (their Steam sign-in, games and saves are kept for next time) or be deleted.', items:[
-    {label:'Remove, keep their accounts', icon:'check', run:()=>{ SE.busy='Removing…'; render(null,true); call('seats.remove',{deleteUsers:false}).catch(e=>{ SE.busy=null; toast(e.message); }); }},
-    {label:'Remove and delete their accounts', icon:'trash', run:()=>{ SE.busy='Removing…'; render(null,true); call('seats.remove',{deleteUsers:true}).catch(e=>{ SE.busy=null; toast(e.message); }); }},
+    {label:'Remove, keep their accounts', icon:'check', run:()=>{ SE.busy='Removing…'; render(null,true); call('seats.remove',{deleteUsers:false}).catch(e=>{ SE.busy=null; toast(e.message); seatsRedraw(); }); }},
+    {label:'Remove and delete their accounts', icon:'trash', run:()=>{ SE.busy='Removing…'; render(null,true); call('seats.remove',{deleteUsers:true}).catch(e=>{ SE.busy=null; toast(e.message); seatsRedraw(); }); }},
     {label:'Cancel', icon:'x', run:()=>{}}]});
 }
 function seatsAfter(r){
@@ -2039,7 +2041,7 @@ function homeX(V){
     return xBg(g)+`<div class="x-orbit"><div class="xo-ring"></div>${ring.map((x,i)=>{ const a=-Math.PI/2+i/ring.length*Math.PI*2; return `<button class="xc xo-c" style="left:calc(50% + ${Math.cos(a)*36}vh - 5vh);top:calc(50% + ${Math.sin(a)*34}vh - 7vh)" data-f data-k="xo-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}">${cover(x,{badge:false})}</button>`; }).join('')}
       <div class="xo-mid" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>${xNav()}</div>`;
   }
-  if(id==='x-spines') return `<div class="x-spines"><div class="xs-shelf">${L.map(x=>`<button class="xs-sp" data-f data-k="xs-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}"><span class="xs-t">${esc(x.title)}</span><div class="xs-cv">${cover(x,{badge:false})}</div></button>`).join('')}</div>
+  if(id==='x-spines') return `<div class="x-spines"><div class="xs-shelf" data-row>${L.map(x=>`<button class="xs-sp" data-f data-k="xs-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}"><span class="xs-t">${esc(x.title)}</span><div class="xs-cv">${cover(x,{badge:false})}</div></button>`).join('')}</div>
     <div class="xs-info" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>${xNav()}</div>`;
   if(id==='x-magazine'){
     const side=L.slice(1,6), line=x=>isActive(x)?dlInfo(x).label:!x.last?`Added ${ago(x.added).toLowerCase()}, not played yet`:x.hrs?`${hrs(x.hrs)} played`:SOURCES[x.src];
@@ -2121,7 +2123,8 @@ function pickTextSize(){
 // ---------- Settings › System and › About ----------
 const SYSINFO = {s:null};
 function loadSysInfo(){ call('system.info').then(r=>{ SYSINFO.s=r; refreshUI(); }).catch(()=>{}); }
-const gb = b => b>=1e12 ? (b/1e12).toFixed(1)+' TB' : Math.round(b/1e9)+' GB';
+// Under 1 GB in MB: a nearly full drive said "0 GB free".
+const gb = b => b>=1e12 ? (b/1e12).toFixed(1)+' TB' : b>0 && b<1e9 ? Math.max(1,Math.round(b/1e6))+' MB' : Math.round(b/1e9)+' GB';
 function uptimeText(s){ const d=Math.floor(s/86400), h=Math.floor(s%86400/3600), m=Math.floor(s%3600/60); return (d?d+' d ':'')+(d||h?h+' h ':'')+m+' min'; }
 function pageSystem(){
   const i=SYSINFO.s||{}, st=i.storage;
@@ -2203,6 +2206,7 @@ function emuRows(){
 // ---------- Settings › System › Backup (Linux) ----------
 const BACKUP = {busy:false};
 async function backupNow(){
+  if(BACKUP.busy) return toast('Still backing up…');
   let st; try{ st=await call('backup.status'); }catch(e){ return toast(e.message); }
   const go=(dest, signins)=>{ BACKUP.busy=true; render(null,true); toast('Backing up…');
     call('backup.create',{dest:dest.path, signins},10*60000).then(r=>toast(`Backed up to ${dest.label} (${Math.max(1,Math.round(r.bytes/1e6))} MB)${dest.removable?'. Safe to unplug.':''}`)).catch(e=>toast(e.message)).finally(()=>{ BACKUP.busy=false; render(null,true); }); };
@@ -2266,11 +2270,14 @@ const CREDITS = LINUX
   ? [['Tauri and WebKitGTK','Run '+APP+'\'s interface'],['Firefox','Runs Hearth Browser (Mozilla)'],['Electron','Runs Quick Access'],['gamescope','Game Mode compositor (Valve)'],['labwc','Window manager behind Mantel, the desktop'],['Quickshell','Mantel\'s taskbar, menus and settings'],
      ['Bazzite / Universal Blue','The OS Hearth is built on'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)'],['umu-launcher','Runs Windows games with Proton'],['Proton / Wine','Windows compatibility']]
   : [['WebView2','Runs '+APP+'\'s interface (Microsoft Edge)'],['Firefox','Runs Hearth Browser (Mozilla)'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)']];
+// Which Hearth OS this is (host.info's edition): only the amd and nvidia editions are built on Bazzite.
+const onBazzite = () => /^(amd|nvidia)$/.test(HOSTINFO.edition||'');
+function osEditionName(){ return {anatase:'Hearth OS on Anatase', ubuntu:'Hearth OS on Ubuntu', cachyos:'Hearth OS on CachyOS', peppermint:'Hearth OS on Peppermint', live:'Hearth OS, from the USB stick'}[HOSTINFO.edition] || (onBazzite()?'Hearth OS, built on Bazzite':'Hearth OS'); }
 function pageAbout(){
   const i=SYSINFO.s||{}, ver=UPD.status ? UPD.status.current : (host?(ANDROID&&HOSTINFO.version||'…'):'Browser preview');
   const sysVer = LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted ? SYSUPD.s.status.booted.version : '';
   let h = `<div class="about-head"><div class="amark">${LINUX||ANDROID?HEARTH_MARK:I.shell}</div><div style="flex:1"><h3>${APP} ${esc(ver||'')}</h3>
-      <div class="muted">${LINUX?(HOSTINFO.system?'Hearth OS, built on Bazzite':'Hearth for Linux'):ANDROID?'Hearth for Android':'Ember, the shell for Windows 11'} · part of Hearth OS</div></div>
+      <div class="muted">${LINUX?(HOSTINFO.system?osEditionName():'Hearth for Linux'):ANDROID?'Hearth for Android':'Ember, the shell for Windows 11'} · part of Hearth OS</div></div>
       ${ANDROID?'':`<button class="pill" data-f data-k="ab-upd" data-act="goset" data-tab="updates">${I.refresh}Updates</button>`}</div>`;
   h += shead('This device');
   let d='';
@@ -2323,7 +2330,8 @@ function viewHome(){
 
 function libGames(){
   const t=S.tab;
-  let L = t==='hidden' ? GAMES.filter(g=>g.hidden) : visible();
+  const allow=allowedList();
+  let L = t==='hidden' ? GAMES.filter(g=>g.hidden && (!allow || allow.includes(g.id))) : visible();
   if(t.startsWith('c:')) L=L.filter(g=>(g.cols||[]).includes(t.slice(2)));
   const f=S.lfilter||'';
   if(f==='inst') L=L.filter(g=>g.inst||isActive(g)); else if(f==='notinst') L=L.filter(g=>!g.inst&&!isActive(g));
@@ -2391,7 +2399,7 @@ function viewLibrary(){
   const L=libGames();
   return `<div class="libhead">
     <span class="glyph lbrb">LB</span>
-    <div class="tabs">${libTabs().map(([k,l])=>`<button class="tab ${S.tab===k?'on':''}" data-f data-k="tab-${k}" data-act="tab" data-tab="${k}">${l}</button>`).join('')}</div>
+    <div class="tabs">${libTabs().map(([k,l])=>`<button class="tab ${S.tab===k?'on':''}" data-f data-k="tab-${esc(k)}" data-act="tab" data-tab="${esc(k)}">${esc(l)}</button>`).join('')}</div>
     <span class="glyph lbrb">RB</span>
   </div>
   <div class="libmeta"><span>${L.length} game${L.length===1?'':'s'}</span>
@@ -2616,7 +2624,7 @@ const LIBL = {
   'x-lib-flow': L => lBg(L[0])+`<div class="lx-flow lfit"><div class="shelf" data-lnav="h" data-lj>${L.map(g=>lSmall(g,'lf-'+g.id,'lfc')).join('')}</div>${lInfoBar(L[0],'')}</div>`,
   'x-lib-spines': L => `<div class="lx-spines" data-lj>${L.map(g=>`<button class="lsp" data-f data-k="lsp-${lId(g)}" data-act="game" data-id="${lId(g)}" data-lspot="${lId(g)}"><div class="lsp-b" style="${artBg(g)}"></div><span class="lsp-t">${esc(g.title)}</span><div class="lsp-cv">${cover(g,{badge:false})}</div></button>`).join('')}</div>${lInfoBar(L[0])}`,
   'x-lib-timeline': L => {
-    const t=g=>{ if(!g.last) return 5; const d=(now-g.last)/D; return d<1?0:d<7?1:d<31?2:d<365?3:4; };
+    const t=g=>{ if(!g.last) return 5; const d=(Date.now()-g.last)/D; return d<1?0:d<7?1:d<31?2:d<365?3:4; };
     const names=['Today','This week','This month','This year','Longer ago','Never played'], G6=[[],[],[],[],[],[]];
     [...L].sort((a,b)=>(b.last||0)-(a.last||0)).forEach(g=>G6[t(g)].push(g));
     return lBg(L[0])+`<div class="lx-tl lsh">${G6.map((gs,i)=>gs.length?lRow({title:names[i],total:gs.length}, gs.map(g=>lTile(g,'p','ltl-'+g.id)).join('')):'').join('')}</div>`;
@@ -5027,12 +5035,14 @@ function kbField(t, icon, ph, secret, show){
 const SKB={shift:false,caps:false,sym:false,caret:null};
 function renderSearch(keepKey){
   const q=query.toLowerCase().trim();
-  const res = q ? GAMES.filter(g=>g.title.toLowerCase().includes(q)).slice(0,8) : [];
+  // A profile with parental limits finds only the games it's allowed (as everywhere else).
+  const a=allowedList();
+  const res = q ? GAMES.filter(g=>(!a || a.includes(g.id)) && (g.title||'').toLowerCase().includes(q)).slice(0,8) : [];
   const t=Object.assign(SKB,{text:query});
   $('#search').innerHTML = `<div class="kbtop"><div class="sfield">${I.search}${kbField(t,'','Search your library')}</div>
-    <div class="sres">${res.map(g=>`<button class="row" data-f data-k="sr-${g.id}" data-act="game" data-id="${g.id}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('') || `<div class="muted" style="padding:16px 4px">${q?'No matches':'Type with the keyboard below, or a real keyboard'}</div>`}</div></div>
+    <div class="sres">${res.map(g=>`<button class="row" data-f data-k="sr-${esc(g.id)}" data-act="game" data-id="${esc(g.id)}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('') || `<div class="muted" style="padding:16px 4px">${q?'No matches':'Type with the keyboard below, or a real keyboard'}</div>`}</div></div>
     ${kbHTML(Object.assign(t,{enterLabel:'Search'}),'sk','key')}`;
-  if(keepKey){ const el=$(`#search [data-k="${keepKey}"]`); if(el) setFocus(el,true); }
+  if(keepKey){ const el=$(`#search [data-k="${CSS.escape(keepKey)}"]`); if(el) setFocus(el,true); }
 }
 
 // ---------- action sheet (small option menu) ----------
@@ -5186,9 +5196,12 @@ function moveNow(dir){
   // Settings (rows two to a line on wide screens): left/right stays on the same line (the row next to it, not a
   // wide row above that happens to be closer), and down from a wide row goes to the left one of the two below.
   const dense = !!focused.closest('.srows');
+  // A row of items of different heights (the Game case shelf's spines): up and down leave the row. Measured, the
+  // next spine looked lower than the one picked, so down went along the row and Play under it was never reached.
+  const row = (dir==='up'||dir==='down') && focused.parentElement && focused.parentElement.hasAttribute('data-row') ? focused.parentElement : null;
   let best=null, bs=Infinity;
   for(const el of focusables()){
-    if(el===focused) continue;
+    if(el===focused || (row && row.contains(el))) continue;
     const b=el.getBoundingClientRect(), x=b.left+b.width/2, y=b.top+b.height/2, dx=x-cx, dy=y-cy;
     let main, cross;
     if(dir==='left'||dir==='right'){
@@ -5303,7 +5316,7 @@ function act(el){
       return call('logs.send',{},120000).then(r=>{ LOGS.r=r; toast((r.copies||[]).length?'Logs saved to your USB drive too':'Logs saved'); }).catch(e=>toast(e.message)).finally(()=>{ LOGS.busy=false; render('sy-send',true); });
     case 'exportLogs': toast('Saving logs…'); return call('app.exportLogs',{},60000).then(r=>toast(r&&r.path?'Saved to '+r.path:'Saved')).catch(e=>toast(e.message));
     case 'resetLook': Object.assign(LOOK,{libLayout:'covers',layout:'shelf',textSize:'normal',reduceMotion:false,clock24:false,battPct:true}); saveLook(); toast('Appearance reset'); return render('sy-reset');
-    case 'credits': return openSheet({title:'Built with', sub:APP+' stands on these open-source projects. Thank you!', items:CREDITS.map(([n,w])=>({label:n+' — '+w, icon:'', run:()=>{}}))});
+    case 'credits': return openSheet({title:'Built with', sub:APP+' stands on these open-source projects. Thank you!', items:CREDITS.filter(([n])=>!/^Bazzite/.test(n) || onBazzite()).map(([n,w])=>({label:n+' — '+w, icon:'', run:()=>{}}))});
     case 'loginAuto': return loginAuto();
     case 'loginStart': return loginStart();
     case 'loginPass': return loginPass();
@@ -5395,6 +5408,7 @@ function act(el){
     case 'pkey': return promptKey(d.c);
     case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); if(d.tab==='apps') loadApps(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
     case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
+    case 'gsRetry': loadGameSet(S.game); return render(null,true);
     case 'gsToggle': return saveGameSet({[d.key]:!GSET.s.options[d.key]}, 'gs-'+d.key);
     case 'gsProton': return openSheet({title:'Proton version', sub:'For '+(G(GSET.id)?.title||'this game'), items:GSET.s.protonChoices.map(c=>({label:c.label+(c.sub?' — '+c.sub:''), icon:GSET.s.options.proton===c.id?'check':'', run:()=>saveGameSet({proton:c.id},'gs-proton')}))});
     case 'gsText': { const key=d.key; const title=key==='args'?'Launch options':'Environment variables';
@@ -5423,8 +5437,9 @@ function act(el){
       if(S.layers.includes('qam')){ renderQam(); setFocus($(`#qam [data-k="q-${d.key}"]`),true); } else render('s-'+d.key);
       return;
     case 'fps': S.set.fps=d.v; send({type:'setting',key:'fps',value:d.v}); renderQam(); return setFocus($(`#qam [data-k="q-fps-${d.v}"]`),true);
-    case 'fav': { const g=G(d.id); g.fav=!g.fav; toast(g.fav?`Added ${g.title} to Favorites`:`Removed from Favorites`);
-      if(host) call('library.setFav',{id:g.id,on:g.fav}).catch(e=>toast(e.message));
+    case 'fav': { const g=G(d.id); if(!g) return; const on=!g.fav; g.fav=on; toast(on?`Added ${g.title} to Favorites`:`Removed from Favorites`);
+      // Not saved: the star goes back to how it was (it came back after a restart otherwise).
+      if(host) call('library.setFav',{id:g.id,on}).catch(e=>{ if(g.fav===on){ g.fav=!on; if(!S.layers.length) render(null,true); } toast(e.message); });
       return render(S.view==='home' ? 'sp-'+g.id : 'g-fav'); }
     case 'gopts': return gameOptions(G(d.id));
     case 'playWith': return beaconPlayWith(G(d.id));
@@ -5433,7 +5448,7 @@ function act(el){
     case 'colNew': return colNew(null);
     case 'pinSetup': return pinSetup();
     case 'backupNow': return backupNow();
-    case 'emuInstall': EMU.busy=true; render(null,true); toast('Installing RetroArch. This takes a few minutes.');
+    case 'emuInstall': if(EMU.busy) return; EMU.busy=true; render(null,true); toast('Installing RetroArch. This takes a few minutes.');
       return call('emu.install',{},20*60000).then(()=>{ toast('RetroArch is installed'); loadEmu(); }).catch(e=>toast(e.message)).finally(()=>{ EMU.busy=false; render(null,true); });
     case 'emuFolders': return EMU.s&&EMU.s.roots.length
       ? openSheet({title:'System folders', sub:'Put each game in its system\'s folder, then Rescan library.', items:[...EMU.s.systems.map(s=>({label:`${s.dir}  ·  ${s.name}`, icon:'', run:()=>{}})), {label:'Make any missing folders', icon:'lib', run:()=>call('emu.makeFolders').then(()=>toast('Folders ready')).catch(e=>toast(e.message))}]})
@@ -5571,7 +5586,7 @@ function launch(g, mod){
   if(S.running && S.running!==g.id){
     const cur=G(S.running);
     // Quick Resume: the game that's running is put aside (frozen where it is) and this one starts.
-    if(!qrFeature() || !QR.on){ toast(`Exit ${cur.title} first (Quick Access → Now playing)`); return; }
+    if(!qrFeature() || !QR.on){ toast(`Exit ${cur?cur.title:'the game that\'s running'} first (Quick Access → Now playing)`); return; }
     if(cur && cur.cloud){ toast(`Close ${cur.title} first: cloud games can't be put aside`); return; }
     aside=cur;
   }
@@ -5653,14 +5668,15 @@ async function exitGame(){
 }
 
 // ---------- Game settings (game page › ⋯ › Game settings) ----------
-const GSET = {id:null, s:null};
-function loadGameSet(id){ GSET.id=id; GSET.s=null; call('game.options.get',{id}).then(r=>{ if(GSET.id===id){ GSET.s=r; if(S.view==='gameset' && !S.layers.length) render(null,true); } }).catch(e=>toast(e.message)); }
+const GSET = {id:null, s:null, err:null};
+// Not read (the host said no, or didn't answer): the page says so with Try again, instead of "Loading…" for good.
+function loadGameSet(id){ GSET.id=id; GSET.s=null; GSET.err=null; call('game.options.get',{id}).then(r=>{ if(GSET.id===id){ GSET.s=r; if(S.view==='gameset' && !S.layers.length) render(null,true); } }).catch(e=>{ if(GSET.id===id){ GSET.err=e.message; if(S.view==='gameset' && !S.layers.length) render(null,true); } toast(e.message); }); }
 function saveGameSet(patch, k){
   return call('game.options.set',{id:GSET.id, options:patch}).then(r=>{ GSET.s=r; render(k,true); }).catch(e=>toast(e.message));
 }
 function viewGameSettings(){
   const g=G(S.game); if(!g) return note('That game isn\'t in the library anymore.');
-  const r=GSET.s; if(!r) return `<h2>${esc(g.title)}</h2>`+note('Loading…');
+  const r=GSET.s; if(!r) return `<h2>${esc(g.title)}</h2>`+(GSET.err ? note('Couldn\'t read this game\'s settings: '+esc(GSET.err))+`<div class="rows"><button class="row" data-f data-k="gs-retry" data-act="gsRetry"><span class="ricon">${I.refresh}</span><div class="rt"><b>Try again</b></div></button></div>` : note('Loading…'));
   const o=r.options;
   const sw=(k,label,sub)=>`<button class="row" data-f data-k="gs-${k}" data-act="gsToggle" data-key="${k}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${o[k]?'on':''}"></div></button>`;
   let h=`<h2>${esc(g.title)}</h2><div class="rows">`;
@@ -5876,7 +5892,10 @@ function imSlider(p, label){
 /** A slider moved (adjustSlider hands the im: ones here). */
 function imSlide(el, d){
   const p=el.dataset.slider.slice(3), sp=imSpec(p), [min,max]=IM.tables.limits[sp.lim];
-  const cur=imGet(p) ?? sp.def, v=Math.max(min, Math.min(max, Math.round((cur+d*sp.step)/sp.step)*sp.step));
+  // d 0: a click or tap on the slider, which put the value it points at in S.set (as for Handheld Daemon's sliders).
+  const sk=el.dataset.slider, cur=imGet(p) ?? sp.def, want = d===0 && typeof S.set[sk]==='number' ? S.set[sk] : cur+d*sp.step;
+  delete S.set[sk];
+  const v=Math.max(min, Math.min(max, Math.round(want/sp.step)*sp.step));
   const val=+v.toFixed(3), pct=(val-min)/(max-min)*100;
   imSetVal(p, val);
   el.querySelector('.slider i').style.width=pct+'%'; el.querySelector('.slider b').style.left=pct+'%';
@@ -6597,7 +6616,7 @@ function uninstallGame(g){
 }
 async function setHidden(g,on){
   g.hidden=on; toast(on?`Hid ${g.title}. Find it under Library › Hidden.`:`${g.title} is back in your library`);
-  if(host) call('library.setHidden',{id:g.id,on}).catch(e=>toast(e.message));
+  if(host) call('library.setHidden',{id:g.id,on}).catch(e=>{ if(g.hidden===on){ g.hidden=!on; if(!S.layers.length) render(null,true); } toast(e.message); });
   render(null,true);
 }
 async function removeGame(g){
@@ -6619,6 +6638,7 @@ async function addManual(){
 }
 
 // ---------- installs and downloads ----------
+const INSTALLING = new Set();   // install requests on their way (a second press didn't start a second install)
 async function installGame(g){
   if(!g) return;
   if(g.src==='beacon') return beaconSetup(g);   // Game setup: install it, or show where it is
@@ -6627,6 +6647,8 @@ async function installGame(g){
   if(xs && !g.note) return expiredSheet(g.src, `${g.title} can't install until you do.`);
   if(!host) return toast(`The browser preview can't install games`);
   if(g.note) return toast(`${g.note}. ${APP} can't install it.`);
+  if(INSTALLING.has(g.id)) return;
+  INSTALLING.add(g.id);
   try{
     const r = await call('game.install',{id:g.id},60000);
     if(r && r.silent){
@@ -6647,6 +6669,7 @@ async function installGame(g){
     if((g.src==='epic' || g.src==='gog') && /sign-in expired/i.test(e.message)){ await loadAccounts(true); return expiredSheet(g.src, `${g.title} can't install until you do.`); }
     toast(e.message);
   }
+  finally{ INSTALLING.delete(g.id); }
 }
 let dlTimer=null, dlWatchUntil=0, dlRunning=false, dlSig='';
 // Polls Steam's install records while anything is downloading (and for a while after an install request,
@@ -7249,8 +7272,9 @@ function profEdit(id){
       {label:'Sign in another Steam account', icon:'user', run:()=>pinCall('profiles.addSteam',{id:p.id}).then(()=>toast('Sign in on Steam\'s screen. Tick "Remember me".')).catch(e=>toast(e.message))},
       ...(p.steam?[{label:'Unlink', icon:'x', run:()=>pinCall('profiles.update',{id:p.id, steam:''}).then(loadProfiles).catch(e=>toast(e.message))}]:[])]}),250)},
     {label:`Limits${PROF.s.hasPin?': '+limitsSummary(p):''}`, icon:'clock', run:()=>setTimeout(()=>profLimits(p.id),250)},
-    {label:'Rename', icon:'kbd', run:()=>setTimeout(async()=>{ const n=await openPrompt({title:'Name', value:profName(p)}); if(n&&n.trim()){ if(p.current) saveProfile({name:n.trim()}); await pinCall('profiles.update',{id:p.id, name:n.trim()}).catch(()=>{}); loadProfiles(); } },250)},
-    {label:'Color', icon:'user', run:()=>setTimeout(()=>openSheet({title:'Color', items:PROF_COLORS.map(c=>({label:c, icon:p.color===c?'check':'', run:()=>{ pinCall('profiles.update',{id:p.id, color:c}).then(loadProfiles); if(p.current) saveProfile({accent:c}); }}))}),250)},
+    // Renamed or recolored only once the profile change went through (it can need the PIN, which can be refused).
+    {label:'Rename', icon:'kbd', run:()=>setTimeout(async()=>{ const n=await openPrompt({title:'Name', value:profName(p)}); if(n&&n.trim()){ try{ await pinCall('profiles.update',{id:p.id, name:n.trim()}); if(p.current) saveProfile({name:n.trim()}); }catch(e){ toast(e.message); } loadProfiles(); } },250)},
+    {label:'Color', icon:'user', run:()=>setTimeout(()=>openSheet({title:'Color', items:PROF_COLORS.map(c=>({label:c, icon:p.color===c?'check':'', run:()=>pinCall('profiles.update',{id:p.id, color:c}).then(()=>{ if(p.current) saveProfile({accent:c}); return loadProfiles(); }).catch(e=>toast(e.message))}))}),250)},
     ...(p.current?[]:[{label:'Remove profile', icon:'trash', run:()=>setTimeout(()=>openSheet({title:`Remove ${profName(p)}?`, sub:'Their sign-ins, favorites and play time on this device go. Installed games stay.', items:[
       {label:'Remove', icon:'trash', run:()=>pinCall('profiles.remove',{id:p.id}).then(loadProfiles).then(()=>toast('Removed')).catch(e=>toast(e.message))}]}),250)}])]});
 }
