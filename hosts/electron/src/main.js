@@ -184,7 +184,8 @@ function openSignIn(m) {
     webPreferences: { partition: 'signin-' + Date.now(), contextIsolation: true, sandbox: true },
   });
   w.on('page-title-updated', e => e.preventDefault());
-  const inject = (m.pad ? script('signin-pad.js') : '') + '\n' + (m.script || '');
+  // The page never sees the controller (Epic's and Microsoft's react to it on their own: random clicks).
+  const inject = script('signin-nogamepad.js') + '\n' + (m.pad ? script('signin-pad.js') : '') + '\n' + (m.script || '');
   const nav = url => send({ t: 'signin.nav', url });
   // hearth-signin://done or cancel: the core's answer, not a page (Chromium would show an error page for it).
   const own = url => String(url).startsWith('hearth-signin:');

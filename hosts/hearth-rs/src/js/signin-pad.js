@@ -12,6 +12,8 @@
 if (window.__hearthPad) return;
 if (window.__hearthPadWanted === false) return;   // the Xbox Cloud Gaming window, on a page that isn't a sign-in
 window.__hearthPad = true;
+// The real controllers: the sign-in page itself is shown none (signin-nogamepad.js), but this script needs them.
+const readPads = () => { const g = window.__hearthGamepads || (navigator.getGamepads && navigator.getGamepads.bind(navigator)); return g ? [...g()].filter(Boolean) : []; };
 // In the Rust host there's no Electron to send real input events: clicks, typing and scrolling happen in the
 // page itself, and B leaves through an address the app catches.
 const ipcRenderer = { send(what, p) {
@@ -99,7 +101,7 @@ const sendKey = key => { ownKeyAt = performance.now(); ipcRenderer.send('signin:
 const sendType = t => { ownKeyAt = performance.now(); ipcRenderer.send('signin:type', t); };
 let padHeldAt = 0;
 function padHeld() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = readPads();
   if (pads.some(p => p.buttons.some(b => b && b.pressed))) padHeldAt = performance.now();
   return performance.now() - padHeldAt < 300;
 }
@@ -218,7 +220,7 @@ let last = performance.now();
 function poll(now) {
   const dt = Math.min(50, now - last) / 16.7;
   last = now;
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = readPads();
   const st = { a: false, b: false, x: false, y: false, lb: false, start: false, up: false, down: false, left: false, right: false };
   let lx = 0, ly = 0, rx = 0, ry = 0;
   for (const p of pads) {
