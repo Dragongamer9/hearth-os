@@ -6,6 +6,7 @@ something needs changing. Turn it off with: sudo touch /etc/hearth/keep-boot-ord
 """
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -13,7 +14,10 @@ OPT_OUT = '/etc/hearth/keep-boot-order'
 
 
 def run(*cmd):
-    return subprocess.run(cmd, capture_output=True, text=True).stdout
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=60).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ''
 
 
 def boot_entries(text):
@@ -34,10 +38,20 @@ def efi_loader(esp_root):
     return '\\EFI\\fedora\\grubx64.efi'
 
 
-def plan(text, partuuid):
-    """(entry to put first or None, new order or None when it's already first)."""
+def same_loader(line, loader):
+    """Does this boot entry start `loader` (\\EFI\\fedora\\shimx64.efi)? efibootmgr shows the path with either slash."""
+    want = loader.replace('\\', '/').lower()
+    return bool(loader) and want in line.replace('\\', '/').lower()
+
+
+def plan(text, partuuid, loader=''):
+    """(entry to put first or None, new order or None when it's already first). Hearth's entry is the one on its
+    EFI partition; failing that, an entry called "Hearth OS" that starts its boot loader: some firmware rewrites
+    the entries it keeps (without the partition's id), and a new entry was then made at every start."""
     entries, order = boot_entries(text)
     mine = next((n for n, line in entries.items() if partuuid and partuuid in line.lower()), None)
+    if not mine:
+        mine = next((n for n, line in entries.items() if 'Hearth OS' in line and same_loader(line, loader)), None)
     if not mine:
         return None, None
     if order and order[0] == mine:
@@ -48,21 +62,26 @@ def plan(text, partuuid):
 def main():
     if os.path.exists(OPT_OUT) or not os.path.isdir('/sys/firmware/efi'):
         return 0
+    if not shutil.which('efibootmgr'):
+        print('efibootmgr is missing: the boot order is left as it is')
+        return 0
     esp = run('findmnt', '-no', 'SOURCE', '/boot/efi').strip()
     if not esp:
         return 0
     partuuid = run('blkid', '-s', 'PARTUUID', '-o', 'value', esp).strip().lower()
     text = run('efibootmgr', '-v')
-    mine, order = plan(text, partuuid)
-    if not mine:
+    if not text.strip():
+        return 0          # efibootmgr couldn't read the firmware's entries: change nothing
+    loader = efi_loader('/boot/efi')
+    mine, order = plan(text, partuuid, loader)
+    num = re.search(r'(\d+)$', esp)
+    if not mine and partuuid and num:
         # No entry for Hearth's EFI partition at all: make one.
         disk = '/dev/' + run('lsblk', '-no', 'PKNAME', esp).strip()
-        num = re.search(r'(\d+)$', esp).group(1)
-        loader = efi_loader('/boot/efi')
-        subprocess.run(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', loader])
-        mine, order = plan(run('efibootmgr', '-v'), partuuid)
+        run('efibootmgr', '-q', '-c', '-d', disk, '-p', num.group(1), '-L', 'Hearth OS', '-l', loader)
+        mine, order = plan(run('efibootmgr', '-v'), partuuid, loader)
     if mine and order:
-        subprocess.run(['efibootmgr', '-q', '-o', ','.join(order)])
+        run('efibootmgr', '-q', '-o', ','.join(order))
         print(f'Hearth OS ({mine}) is first in the boot order again')
     return 0
 
