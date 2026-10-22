@@ -269,6 +269,12 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .kb .key.on{background:#eef1f6;color:#15171c}
 .kb .key .kg{position:absolute;top:4px;right:6px;font-size:10px;font-weight:700;opacity:.55;letter-spacing:.02em}
 .kb .key:active{transform:translateY(1px)}
+/* The selected key, like SteamOS's: lit up and a little bigger, so it's plain from across the room. After .on and .go so it wins. */
+.kb .key.focus{background:#f4f6fa;color:#101216;box-shadow:0 0 0 3px var(--accent),0 6px 22px color-mix(in srgb,var(--accent) 45%,transparent);transform:scale(1.08);z-index:2}
+.kb .key.go.focus{background:var(--accent);color:var(--accentInk);box-shadow:0 0 0 3px #f4f6fa,0 6px 22px color-mix(in srgb,var(--accent) 55%,transparent)}
+.kb .key.focus .kg{opacity:.8}
+.kb .key.on:not(.focus){background:color-mix(in srgb,var(--accent) 35%,#2b2f37);color:#fff}
+.kb .key{transition:transform .08s,background .08s}
 .sfield{display:flex;align-items:center;gap:12px;background:var(--bg2);border-radius:10px;padding:14px 16px;font-size:18px;min-height:54px}
 .sfield .q:empty:before{content:attr(data-ph);color:var(--faint)}
 .sfield .q.mono{letter-spacing:.14em}
