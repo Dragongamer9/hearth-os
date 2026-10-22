@@ -523,7 +523,7 @@ def check_linux(part):
     shrinkable = fs in SHRINKABLE and bool(sysinfo and sysinfo.get('shrink') == part)
     target = {'kind': 'linux', 'name': name, 'part': part, 'disk': disk, 'fs': fs, 'size': psize, 'used': 0, 'min': psize, 'canGive': 0}
     free = free_regions(disk)
-    target['freeSpace'] = free[0][1] * 512 if free else 0
+    target['freeSpace'] = free[0][1] * sector_size(disk) if free else 0
     if not shrinkable:
         if target['freeSpace'] < MIN_DISK:
             why = 'is encrypted' if fs == 'crypto_LUKS' else 'uses LVM' if sysinfo and part.startswith('/dev/mapper/') else f"uses {fs or 'a file system'}"
@@ -543,6 +543,17 @@ def check_linux(part):
         problems.append({'id': 'room', 'text': f"{name} doesn't have room to give: Hearth needs {MIN_DISK // GIB} GB and {name} can give {give // GIB} GB. Free up space in {name}, or install on another drive."})
     suggested = min(give, max(MIN_DISK, give // 2 // (16 * GIB) * (16 * GIB)))
     return {'target': {**target, 'canGive': give}, 'problems': problems, 'suggested': suggested}
+
+
+def sector_size(disk):
+    """The drive's logical sector size: the unit of sfdisk's start=/size= and of its free-space list. Most drives
+    say 512, but NVMe drives formatted with 4K sectors say 4096; counting those as 512 made every partition the
+    wrong size (and put a shrunk partition's start somewhere else)."""
+    try:
+        with open(f'/sys/class/block/{os.path.basename(os.path.realpath(disk))}/queue/logical_block_size') as f:
+            return int(f.read().strip()) or 512
+    except (OSError, ValueError):
+        return 512
 
 
 def free_regions(disk):
@@ -586,9 +597,10 @@ def partition_whole(disk):
     release(disk)
     stage('disk', 1, 'Erasing the drive')
     sh(['wipefs', '-a', disk])
+    ss = sector_size(disk)
     layout = (f'label: gpt\n'
-              f'size={ESP_SIZE // 512}, type={ESP_TYPE}, name="EFI System"\n'
-              f'size={BOOT_SIZE // 512}, type={XBOOTLDR_TYPE}, name="boot"\n'
+              f'size={ESP_SIZE // ss}, type={ESP_TYPE}, name="EFI System"\n'
+              f'size={BOOT_SIZE // ss}, type={XBOOTLDR_TYPE}, name="boot"\n'
               f'type={LINUX_TYPE}, name="hearth"\n')
     sh(['sfdisk', '--wipe', 'always', '--wipe-partitions', 'always', disk], input=layout)
     settle(disk)
@@ -620,7 +632,7 @@ def partition_beside(disk, give):
     remove_ours(disk)
     # Already room (a try that stopped after shrinking, or Ember's "Switch to Hearth OS" made it): use it.
     room = free_regions(disk)
-    if room and room[0][1] * 512 >= min(give, MIN_DISK) * 0.95:
+    if room and room[0][1] * sector_size(disk) >= min(give, MIN_DISK) * 0.95:
         stage('shrink', 14, 'Using the free space next to Windows')
         return partition_free(disk)
     stage('shrink', 0, 'Checking Windows')
@@ -642,7 +654,7 @@ def partition_beside_linux(disk, part, give):
     """Makes room next to a Linux (SteamOS' home, or another Linux's ext4/btrfs) and installs there."""
     remove_ours(disk)
     room = free_regions(disk)
-    if room and room[0][1] * 512 >= min(give, MIN_DISK) * 0.95:
+    if room and room[0][1] * sector_size(disk) >= min(give, MIN_DISK) * 0.95:
         stage('shrink', 14, 'Using the free space on the drive')
         return partition_free(disk)
     if part not in [p['dev'] for p in disks_parts(disk) if p['fs'] in SHRINKABLE]:
@@ -694,8 +706,11 @@ def shrink_linux(disk, part, give):
         finally:
             sh(['umount', mnt], check=False)
     stage('shrink', 12, 'Making room')
-    start = int(open(f'/sys/class/block/{os.path.basename(part)}/start').read())
-    sh(['sfdisk', '--no-reread', '--force', '-N', str(part_number(part)), disk], input=f'start={start}, size={new // 512}\n')
+    # The start as sfdisk counts it (in the drive's sectors; /sys counts 512-byte units whatever the drive uses).
+    start = next((int(p['start']) for p in table(disk) if p.get('node') == part and p.get('start') is not None), None)
+    if start is None:
+        start = int(open(f'/sys/class/block/{os.path.basename(part)}/start').read()) * 512 // sector_size(disk)
+    sh(['sfdisk', '--no-reread', '--force', '-N', str(part_number(part)), disk], input=f'start={start}, size={new // sector_size(disk)}\n')
     settle(disk)
 
 
@@ -720,11 +735,13 @@ def partition_free(disk):
     (its EFI/fedora folder) can't make the PC start that system instead of Hearth."""
     release(disk)
     regions = free_regions(disk)
-    if not regions or regions[0][1] * 512 < MIN_DISK:
+    ss = sector_size(disk)
+    if not regions or regions[0][1] * ss < MIN_DISK:
         raise Fail("there's no room for Hearth on the drive after making room")
     start, n = regions[0]
-    start = (start + 2047) // 2048 * 2048
-    esp_n, boot_n = ESP_SIZE // 512, BOOT_SIZE // 512
+    align = MIB // ss   # 1 MiB
+    start = (start + align - 1) // align * align
+    esp_n, boot_n = ESP_SIZE // ss, BOOT_SIZE // ss
     sh(['sfdisk', '--append', '--no-reread', '--force', disk],
        input=f'start={start}, size={esp_n}, type={ESP_TYPE}, name="{HEARTH_ESP_NAME}"\n'
              f'start={start + esp_n}, size={boot_n}, type={XBOOTLDR_TYPE}, name="boot"\n'
