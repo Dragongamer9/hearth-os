@@ -1,0 +1,12 @@
+# Accounts in the groups Hearth's settings need (screen brightness on Debian and Ubuntu); see hearth-groups.
+[Unit]
+Description=Hearth: account groups (screen brightness)
+Before=display-manager.service systemd-user-sessions.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-groups
+
+[Install]
+WantedBy=multi-user.target

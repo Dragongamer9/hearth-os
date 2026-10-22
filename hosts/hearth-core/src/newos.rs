@@ -207,7 +207,10 @@ pub fn start(emit: crate::system::bt_scan::Emit, edition_id: &str, testing: bool
     std::thread::spawn(move || {
         let push = |emit: &crate::system::bt_scan::Emit| emit(json!({"type": "event", "name": "newOs", "data": progress_status()}));
         let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+        crate::bridge::log(&format!("switch edition: hearth-admin {}", args.join(" ")));
         let r = crate::admin::run(&args, None, &mut |line: &str| {
+            // Everything but the progress itself goes in Hearth's log (Settings › Send logs), errors included.
+            if !line.starts_with("progress: ") && !line.starts_with("stage: ") { crate::bridge::log(&format!("switch edition: {}", line.chars().take(400).collect::<String>())); }
             let changed = apply_line(&mut st.lock().unwrap(), line);
             if changed && last.elapsed().as_millis() >= 500 { last = std::time::Instant::now(); push(&emit); }
         });
@@ -216,7 +219,7 @@ pub fn start(emit: crate::system::bt_scan::Emit, edition_id: &str, testing: bool
             s["progress"] = Value::Null;
             match r {
                 Ok(v) => { s["state"] = json!("done"); s["result"] = v; s["line"] = json!("Restart to start the new Hearth OS."); }
-                Err(e) => { s["state"] = json!("idle"); s["error"] = json!(e); }
+                Err(e) => { crate::bridge::log(&format!("switch edition failed: {e}")); s["state"] = json!("idle"); s["error"] = json!(e); }
             }
         }
         push(&emit);
