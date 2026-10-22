@@ -279,6 +279,8 @@ jobs:
           check "Handheld Daemon's udev rules are installed" "ls /usr/lib/udev/rules.d/*hhd*.rules"
           check "power-profiles-daemon is installed and only runs when HHD is off" "pacman -Q power-profiles-daemon && grep -q 'ConditionPathExists=/etc/hearth/no-hhd' /usr/lib/systemd/system/power-profiles-daemon.service.d/10-hearth-hhd.conf"
           check "InputPlumber and SteamOS Manager don't run next to HHD" "test \"\$(readlink /etc/systemd/system/inputplumber.service)\" = /dev/null && test \"\$(readlink /etc/systemd/system/steamos-manager.service)\" = /dev/null"
+          # bughunt: GLib programs (the desktop portal, WebKit, the accessibility bus) abort without compiled GSettings schemas.
+          check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
           warn "Handheld Daemon is 4.x or newer (its /run/hhd/api socket, which Hearth uses)" "test \$(vercmp \$(pacman -Q hhd | cut -d' ' -f2) 4) -ge 0"
           echo "--- nice to have"
           warn "acpi_call (Legion Go power limits through HHD)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."

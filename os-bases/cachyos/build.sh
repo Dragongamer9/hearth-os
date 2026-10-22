@@ -562,6 +562,14 @@ lsinitrd "/usr/lib/modules/$KVER/initramfs.img" > /tmp/initramfs-files.txt
 grep ostree-prepare-root /tmp/initramfs-files.txt > /dev/null || { echo "the initramfs has no ostree-prepare-root"; exit 1; }
 grep plymouth /tmp/initramfs-files.txt > /dev/null || echo "warning: the initramfs has no boot splash"
 
+# ------------------------------------------------------------------ GSettings schemas (bughunt)
+# Without /usr/share/glib-2.0/schemas/gschemas.compiled every GLib program that reads a setting aborts ("No GSettings
+# schemas are installed"): the desktop portal, the accessibility bus and Hearth's own WebKit network process crashed
+# over and over on CachyOS. Installed by name and marked as wanted (so the orphan removal below can't take them),
+# then compiled after it, whatever pacman's hooks did.
+"${PAC[@]}" glib2 gsettings-desktop-schemas
+pacman -D --asexplicit glib2 gsettings-desktop-schemas >/dev/null
+
 # ------------------------------------------------------------------ tidy up
 # Packages that were only needed to build something (Handheld Daemon's build tools, if it was built here).
 orphans=$(pacman -Qtdq || true)
@@ -570,6 +578,8 @@ if [ -n "$orphans" ]; then pacman -Rns --noconfirm $orphans || true; fi
 # package-signing keyring: every installed Hearth would otherwise share the same local signing key. On the device
 # pacman doesn't install anything (/usr is read-only); `pacman-key --init` recreates the keyring if needed.
 rm -rf /usr/lib/sysimage/lib/pacman/sync/* /etc/pacman.d/gnupg
+glib-compile-schemas /usr/share/glib-2.0/schemas
+test -s /usr/share/glib-2.0/schemas/gschemas.compiled || { echo "no compiled GSettings schemas"; exit 1; }
 if [ "${#OPTIONAL_MISSING[@]}" -gt 0 ]; then echo "Not installed (not in the repositories): ${OPTIONAL_MISSING[*]}"; fi
 
 # ------------------------------------------------------------------ system accounts that later images add
