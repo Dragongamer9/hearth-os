@@ -97,7 +97,14 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
-## 0.3.0
+## 0.3.1 (released)
+
+- [x] Switch edition and updates on Peppermint, Ubuntu and CachyOS: podman in the images (bootc needs it); systems without it get it for that run
+- [x] Brightness on Peppermint and Ubuntu (accounts get write access at start-up; Game Mode falls back to logind)
+- [x] Game Mode sounds keep working (the sound engine recovers when it's suspended or stalls)
+- [x] Switch edition: its messages and errors go in the logs
+
+## 0.3.0 (released)
 
 - [x] Game Mode keyboard: the selected key lights up, like SteamOS's
 - [x] Power button: does what Settings › Power button says (Sleep no longer shuts down: the system leaves the button to Hearth while it runs)
