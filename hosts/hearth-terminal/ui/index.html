@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terminal</title>
+<link rel="stylesheet" href="vendor/xterm.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="bar">
+    <div id="tabs" role="tablist" aria-label="Tabs"></div>
+    <div class="newtab">
+      <button id="btnNew" class="ibtn" data-f title="New tab (Ctrl+Shift+T)" aria-label="New tab">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button id="btnShells" class="ibtn narrow" data-f title="New tab with another shell" aria-label="Choose a shell">
+        <svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg>
+      </button>
+    </div>
+    <div class="sp"></div>
+    <button id="btnSplit" class="ibtn" data-f title="Split (Ctrl+Shift+D)" aria-label="Split">
+      <svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M12 4.5v15"/></svg>
+    </button>
+    <button id="btnFind" class="ibtn" data-f title="Find (Ctrl+Shift+F)" aria-label="Find">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
+    </button>
+    <button id="btnKeys" class="ibtn" data-f title="Quick keys (Esc, Tab, Ctrl, arrows)" aria-label="Quick keys">
+      <svg viewBox="0 0 24 24"><rect x="3" y="7" width="7" height="5" rx="1.2"/><rect x="14" y="7" width="7" height="5" rx="1.2"/><path d="M6.5 16.5h11"/></svg>
+    </button>
+    <button id="btnOsk" class="ibtn" data-f title="On-screen keyboard" aria-label="On-screen keyboard">
+      <svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9 10h.01M12 10h.01M15 10h.01M18 10h.01M7 14h10"/></svg>
+    </button>
+    <button id="btnSettings" class="ibtn" data-f title="Settings (Ctrl+,)" aria-label="Settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <div id="findbar" hidden>
+    <input id="findInput" type="text" placeholder="Find" spellcheck="false" autocomplete="off" aria-label="Find">
+    <span id="findCount"></span>
+    <button id="findPrev" class="ibtn" data-f title="Previous (Shift+Enter)" aria-label="Previous">
+      <svg viewBox="0 0 24 24"><path d="M7 14l5-5 5 5"/></svg>
+    </button>
+    <button id="findNext" class="ibtn" data-f title="Next (Enter)" aria-label="Next">
+      <svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg>
+    </button>
+    <button id="findClose" class="ibtn" data-f title="Close (Esc)" aria-label="Close find">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <main id="panes"></main>
+
+  <div id="quick" hidden>
+    <button data-f data-key="esc">Esc</button>
+    <button data-f data-key="tab">Tab</button>
+    <button data-f data-key="ctrl" class="latch">Ctrl</button>
+    <button data-f data-key="alt" class="latch">Alt</button>
+    <button data-f data-key="left" aria-label="Left">←</button>
+    <button data-f data-key="down" aria-label="Down">↓</button>
+    <button data-f data-key="up" aria-label="Up">↑</button>
+    <button data-f data-key="right" aria-label="Right">→</button>
+    <button data-f data-key="|">|</button>
+    <button data-f data-key="~">~</button>
+    <button data-f data-key="/">/</button>
+    <button data-f data-key="-">-</button>
+    <button data-f data-key="paste">Paste</button>
+  </div>
+</div>
+
+<div id="menu" role="menu" hidden></div>
+
+<aside id="settings" hidden aria-label="Settings">
+  <div class="shead">
+    <h1>Settings</h1>
+    <button id="settingsClose" class="ibtn" data-f title="Close (Esc)" aria-label="Close settings">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="sbody">
+    <section>
+      <h2>Text size</h2>
+      <div class="stepper">
+        <button data-f data-step="fontSize:-1" aria-label="Smaller">−</button>
+        <output id="vFontSize"></output>
+        <button data-f data-step="fontSize:1" aria-label="Bigger">+</button>
+      </div>
+    </section>
+    <section>
+      <h2>Theme</h2>
+      <div class="choices" data-setting="theme"></div>
+    </section>
+    <section>
+      <h2>New tabs open</h2>
+      <div class="choices column" data-setting="shell"></div>
+    </section>
+    <section>
+      <h2>Background</h2>
+      <div class="stepper">
+        <button data-f data-step="opacity:-0.1" aria-label="More see-through">−</button>
+        <output id="vOpacity"></output>
+        <button data-f data-step="opacity:0.1" aria-label="Less see-through">+</button>
+      </div>
+      <p class="hint" id="opacityHint" hidden>See-through backgrounds start the next time you open Terminal.</p>
+    </section>
+    <section>
+      <h2>Cursor</h2>
+      <div class="choices" data-setting="cursorStyle"></div>
+      <div class="choices" data-setting="cursorBlink"></div>
+    </section>
+    <section>
+      <h2>Quick keys bar</h2>
+      <div class="choices" data-setting="quickKeys"></div>
+    </section>
+    <section class="about">
+      <h2>Keys</h2>
+      <dl>
+        <dt>Ctrl+Shift+T / W</dt><dd>New tab / close</dd>
+        <dt>Ctrl+Tab</dt><dd>Next tab</dd>
+        <dt>Ctrl+Shift+C / V</dt><dd>Copy / paste</dd>
+        <dt>Ctrl+Shift+F</dt><dd>Find</dd>
+        <dt>Ctrl+Shift+D</dt><dd>Split</dd>
+        <dt>Ctrl + / − / 0</dt><dd>Text size</dd>
+        <dt>F6</dt><dd>Tabs and buttons (arrows to move, Esc to go back)</dd>
+      </dl>
+      <p class="hint" id="version"></p>
+    </section>
+  </div>
+</aside>
+
+<div id="drop" hidden><div>Drop to type the path</div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-fit.js"></script>
+<script src="vendor/addon-web-links.js"></script>
+<script src="vendor/addon-unicode11.js"></script>
+<script src="vendor/addon-search.js"></script>
+<script src="vendor/addon-webgl.js"></script>
+<script src="vendor/addon-canvas.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

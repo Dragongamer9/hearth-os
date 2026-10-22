@@ -1,0 +1,43 @@
+[package]
+name = "hearth-terminal"
+version = "0.1.0"
+edition = "2021"
+description = "Hearth Terminal: Hearth OS's own terminal, for Linux (Mantel) and Windows (Ember)"
+license = "GPL-3.0-or-later"
+
+# The pieces that don't need a window (the shell's PTY, the shell list, settings, the command line) are a
+# library, so the tests can drive a real shell without opening the app.
+[lib]
+name = "hearth_terminal"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-terminal"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+portable-pty = "0.9"
+anyhow = "1"
+dirs = "5"
+base64 = "0.22"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# The Windows touch keyboard is shown through its COM interface (as Ember's TouchKeyboard.cs does).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
