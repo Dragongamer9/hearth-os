@@ -46,7 +46,7 @@ public sealed class ControllerBridge : IDisposable
         _mainWindow = mainWindow;
         _gameRunning = gameRunning;
         MouseMode = mouseMode;
-        _thread = new Thread(Loop) { IsBackground = true, Name = "Nimbus controller bridge" };
+        _thread = new Thread(SafeLoop) { IsBackground = true, Name = "Nimbus controller bridge" };
         _thread.Start();
     }
 
@@ -103,6 +103,23 @@ public sealed class ControllerBridge : IDisposable
     public int Connected => Math.Max(0, _connected);
 
     // ------------------------------------------------------------------ main loop
+
+    /// <summary>An error in the loop (a window that went away, a handler on a window that's closing) would end the
+    /// whole process from this thread; it's logged and the controller is read again instead.</summary>
+    private void SafeLoop()
+    {
+        while (!_stop)
+        {
+            try { Loop(); }
+            catch (Exception ex)
+            {
+                if (_stop) return;
+                SystemBridge.Log("controller bridge: " + ex);
+                try { Mapper?.Release(); } catch { }
+                Thread.Sleep(500);
+            }
+        }
+    }
 
     private void Loop()
     {

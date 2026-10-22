@@ -98,6 +98,7 @@ public sealed class OverlayForm : Form
 
     private void OnMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        if (!SystemBridge.FromOwnPage(e.Source)) { SystemBridge.Log("overlay: ignored a message from " + e.Source); return; }
         try
         {
             using var doc = JsonDocument.Parse(e.WebMessageAsJson);
