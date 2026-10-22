@@ -65,7 +65,7 @@ mod tests {
         assert_eq!(query_param("https://embed.gog.com/on_login_success?origin=client&code=ab%2Fc+d", "code").as_deref(), Some("ab/c d"));
         assert_eq!(query_param("https://x/?a=1", "b"), None);
         assert_eq!(urlencode("a b/c"), "a%20b%2Fc");
-        assert_eq!(urldecode("%aé%zz%+1"), "%aé%zz%+1");
+        assert_eq!(urldecode("%aé%zz%+1"), "%aé%zz% 1");
         assert_eq!(urldecode("%C3%A9"), "é");
     }
 }
