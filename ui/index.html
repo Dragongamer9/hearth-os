@@ -1826,7 +1826,7 @@ function seatsAfter(r){
   if(!r) return;
   if((r.warnings||[]).length) toast(r.warnings[0]);
   if(r.restart) openSheet({title:'Restart to finish', sub:'Each graphics card goes to its player when the device starts.', items:[{label:'Restart now', icon:'restart', run:()=>power('restart',true)},{label:'Later', icon:'x', run:()=>{}}]});
-  else if(r.restart_game_mode) openSheet({title:'Game Mode restarts', sub:'To share the screens out, Game Mode starts again (your games are closed first).', items:[{label:'Restart Game Mode now', icon:'restart', run:()=>power('signout',true)},{label:'Later', icon:'x', run:()=>{}}]});
+  else if(r.restart_game_mode) openSheet({title:'Game Mode restarts', sub:'To share the screens out, Game Mode starts again (your games are closed first).', items:[{label:'Restart Game Mode now', icon:'restart', run:()=>{ closeAll(); toast('Restarting Game Mode…'); call('seats.restartGameMode').catch(e=>toast(e.message)); }},{label:'Later', icon:'x', run:()=>{}}]});
 }
 function seatsEvent(name, data){
   if(name==='seats.setup.progress'||name==='seats.remove.progress'){ SE.busy=data.text||SE.busy; }
