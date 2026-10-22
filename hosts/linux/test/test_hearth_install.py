@@ -215,6 +215,29 @@ class Plan(unittest.TestCase):
             with self.assertRaises(H.Fail, msg=name):
                 H.check_plan({**GOOD, 'user': {'name': name, 'password': 'pw'}})
 
+    def test_system_group_names_refused(self):
+        for name in ('video', 'audio', 'input', 'render', 'sudo'):
+            with self.assertRaises(H.Fail, msg=name):
+                H.check_plan({**GOOD, 'user': {'name': name, 'password': 'pw'}})
+
+    def test_device_name_from_a_user_name_with_underscore(self):
+        self.assertEqual(H.check_plan({**GOOD, 'hostname': 'sam_r-hearth'})['hostname'], 'sam-r-hearth')
+        self.assertEqual(H.check_plan({**GOOD, 'hostname': '_'})['hostname'], 'hearth')
+
+    def test_reachable_asks_again_then_gives_up(self):
+        calls = []
+        orig = (H.published, H.time.sleep)
+        try:
+            H.time.sleep = lambda s: None
+            H.published = lambda img: calls.append(img)
+            self.assertIsNone(H.reachable('ghcr.io/x/y:latest'))
+            self.assertEqual(len(calls), 3)
+            answers = [None, True]
+            H.published = lambda img: answers.pop(0)
+            self.assertTrue(H.reachable('ghcr.io/x/y:latest'))
+        finally:
+            H.published, H.time.sleep = orig
+
     def test_needs_password(self):
         with self.assertRaises(H.Fail):
             H.check_plan({**GOOD, 'user': {'name': 'sam', 'password': ''}})
@@ -246,6 +269,28 @@ class Plan(unittest.TestCase):
         p = H.check_plan({k: v for k, v in GOOD.items() if k != 'edition'})
         self.assertEqual(p['edition'], 'anatase')
         self.assertEqual(p['image'], 'ghcr.io/dragongamer9/hearth-os:latest')
+
+
+class CloseVolumes(unittest.TestCase):
+    def test_innermost_first_and_only_volumes(self):
+        calls = []
+
+        class R:
+            def __init__(self, out=''):
+                self.stdout, self.returncode = out, 0
+        tree = 'sda disk\nsda1 part\nsda2 part\nsda3 part\nluks-1 crypt\nvg-root lvm\nvg-home lvm\n'
+
+        def fake(cmd, check=True, input=None, **kw):
+            calls.append(cmd)
+            return R(tree if cmd[0] == 'lsblk' else '')
+        orig = (H.sh, H.shutil.which)
+        try:
+            H.sh, H.shutil.which = fake, lambda n: '/usr/sbin/' + n
+            H.close_volumes('/dev/sda')
+        finally:
+            H.sh, H.shutil.which = orig
+        removed = [c[-1] for c in calls if c[0] == 'dmsetup']
+        self.assertEqual(removed, ['vg-home', 'vg-root', 'luks-1'])
 
 
 class Parsing(unittest.TestCase):

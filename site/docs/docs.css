@@ -120,6 +120,12 @@ footer .brand{margin-right:auto;font-size:15px}
   .cards{grid-template-columns:1fr}
   .cmd .bar .q{flex-basis:100%}
 }
+/* The smallest phones (320 px): the top bar was a few pixels too wide and the whole page scrolled sideways. */
+@media (max-width:360px){
+  nav.top .wrap{gap:8px}
+  nav.top .links a{padding:6px 9px}
+  .brand span{display:none}
+}
 
 /* "Still stuck? Tell us" */
 .ask{display:grid;gap:12px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);padding:18px;margin:14px 0 8px}

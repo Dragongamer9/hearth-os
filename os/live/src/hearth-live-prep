@@ -3,7 +3,7 @@
 
 Run as root (pkexec; the live user is allowed). Installed only on the live USB.
 
-  hearth-live-prep check        JSON: the Windows partition (size, free space, how small it can get), what's
+  hearth-live-prep check [DISK] JSON: the Windows partition (size, free space, how small it can get), what's
                                 in the way (BitLocker, Fast Startup / hibernation, on battery, no internet),
                                 and the games and folders on it (the same scan Hearth's importer uses)
   hearth-live-prep shrink BYTES [DISK]
@@ -126,8 +126,9 @@ def online():
     return sh(['nm-online', '-q', '-t', '3'], check=False).returncode == 0 if shutil.which('nm-online') else None
 
 
-def check():
-    win, locked = windows_partition()
+def check(disk=None):
+    # With DISK: the Windows on that drive (the one Hearth installs next to), not the biggest one on any drive.
+    win, locked = windows_partition(disk)
     res = {'power': power(), 'online': online(), 'problems': [], 'windows': None, 'games': None}
     if locked and not win:
         res['problems'].append({'id': 'bitlocker', 'text': "Windows is locked with BitLocker. In Windows, open Settings › Privacy & security › Device encryption (or BitLocker), turn it off, wait for it to finish, then try again."})
@@ -234,13 +235,13 @@ def main(argv):
         fail('run this as root (pkexec)')
     cmd = argv[1] if len(argv) > 1 else ''
     try:
-        if cmd == 'check':
-            check()
+        if cmd == 'check' and len(argv) in (2, 3) and (len(argv) == 2 or re.fullmatch(r'/dev/[A-Za-z0-9/_-]+', argv[2])):
+            check(argv[2] if len(argv) == 3 else None)
         elif cmd == 'shrink' and len(argv) in (3, 4) and argv[2].isdigit() and \
                 (len(argv) == 3 or re.fullmatch(r'/dev/[A-Za-z0-9/_-]+', argv[3])):
             shrink(int(argv[2]), argv[3] if len(argv) == 4 else None)
         else:
-            fail('usage: hearth-live-prep check | shrink BYTES [DISK]')
+            fail('usage: hearth-live-prep check [DISK] | shrink BYTES [DISK]')
     except RuntimeError as e:
         fail(str(e))
 
