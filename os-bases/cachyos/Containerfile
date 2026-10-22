@@ -33,13 +33,17 @@ FROM ${BASE_IMAGE} AS base
 # container build. NoExtract is dropped so man pages and locales are installed. DisableSandboxNetwork: pacman 7.1
 # refuses to run install scripts when it can't cut them off from the network, and a container build can't do that
 # ("could not isolate the network ... refusing to run /usr/bin/bash").
+# DBPath ends in "/": CachyOS's pacman saves "update notice seen" as DBPath + "local/CACHY_UPDATE_NOTICE", so without
+# the slash a full upgrade that shows a notice fails ("could not save notice id: No such file or directory").
 RUN grep "= */var" /etc/pacman.conf | sed "/= *\/var/s/.*=// ; s/ //" | \
       xargs -n1 sh -c 'mkdir -p "/usr/lib/sysimage/$(dirname $(echo $1 | sed "s@/var/@@"))" && mv -v "$1" "/usr/lib/sysimage/$(echo "$1" | sed "s@/var/@@")" || true' '' && \
     sed -i -e "/= *\/var/ s/^#//" -e "s@= */var@= /usr/lib/sysimage@g" -e "/DownloadUser/d" /etc/pacman.conf && \
     sed -i 's/^[[:space:]]*NoExtract/#&/' /etc/pacman.conf && \
     { grep -q "^DisableSandboxNetwork" /etc/pacman.conf || sed -i "/^\[options\]/a DisableSandboxNetwork" /etc/pacman.conf; } && \
+    sed -i -E 's@^(DBPath[[:space:]]*=[[:space:]]*[^[:space:]]*[^/[:space:]])[[:space:]]*$@\1/@' /etc/pacman.conf && \
     grep -nE "DBPath|CacheDir|LogFile|^\[" /etc/pacman.conf && \
-    test -d /usr/lib/sysimage/lib/pacman/local
+    test -d /usr/lib/sysimage/lib/pacman/local && \
+    test -d "$(sed -n 's/^DBPath[[:space:]]*=[[:space:]]*//p' /etc/pacman.conf)local"
 # Keys first (the image may be older than a key change), then everything up to date, then glibc again so the
 # locales the container image left out are there.
 RUN --mount=type=tmpfs,dst=/tmp \
