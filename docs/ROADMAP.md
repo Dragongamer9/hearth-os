@@ -97,6 +97,22 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.5.0 (released)
+
+- [x] Steam like GOG and Epic: owned games show with Install, and Steam games install and uninstall from Hearth without Steam's windows (progress in Downloads); Steam starts only when it's needed and closes itself after 10 idle minutes; signing in is Steam's own window (Linux and Windows)
+- [x] Screen modes: a refresh rate the screen won't take falls back to the screen's own mode instead of going back to the sign-in screen; a second change during the 20-second check goes back to the right mode; 4096×2160 isn't offered on TVs; Hearth and Desktop Mode keep each other's monitor settings
+- [x] Installer: checks for internet before touching the drive; erasing a drive with Linux on LVM works; reserved user names refused; the room shown is for the Windows on the chosen drive
+- [x] Hearth Disks: never offers to format the partitions the system runs from (LVM, RAID, encrypted); refuses if the drive was swapped after you confirmed
+- [x] Hearth Terminal: a big paste no longer freezes the window; shells that end are closed
+- [x] Game Mode: the game case shelf works with a controller, "Played today" stays right, parental limits apply to Search and Hidden, switches that fail go back, the lock screen clock keeps time, About names your edition
+- [x] ROG Ally: plugged in at the charge limit shows as plugged in; the power limit comes back after sleep
+- [x] Multi-seat: extra players keep their screen and card, can't change the whole PC's power settings, and get only the actions that work for them; "Restart Game Mode" restarts it instead of signing out
+- [x] Desktop Mode: Bluetooth page doesn't hang without Bluetooth, copying to USB sticks with links works, screenshots with an apostrophe in the folder name and two in the same second are saved, the clipboard history survives odd text, Wi-Fi networks you renamed are still saved
+- [x] Nvidia PCs (Chromium window): the UI size you set is used at start, a second store sign-in doesn't cancel itself, a crash restarts Hearth
+- [x] Ember (Windows): rolling back an update keeps the old version, paused games unfreeze, low memory closes one game at a time, unplugging the controller doesn't leave keys held, play-time limits count right, each profile keeps its own GOG account, the taskbar comes back after a crash, "Switch to Hearth OS" leaves Windows the room it says
+- [x] Safer and sturdier: store sign-in tokens and the Sunshine password are no longer visible to other users on the PC; app updates without a checksum are refused; profile and Steam account files survive a power cut; a clock set back no longer ends a limited profile's play time; damaged Steam files don't crash Hearth; Quick Access no longer stalls on Nvidia PCs
+- [x] Images: Steam is built into Anatase again (it was left out and downloaded after first boot); Sunshine (Remote play, streamed players) is on Peppermint; CachyOS builds again with the newest pacman
+
 ## 0.4.0 (released)
 
 - [x] Hearth Browser is real Firefox: Google sign-in, streaming video (DRM) and uBlock Origin work, Hearth's look, big buttons and an on-screen keyboard in Game Mode (Linux and Windows)
