@@ -11,7 +11,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml']
+    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearth-terminal/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -50,6 +50,10 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
           cargo build --release
           mkdir -p /tmp/app && cp target/release/hearth /tmp/app/hearth
+          # Hearth Terminal (hosts/hearth-terminal), built the same way and carried along in hearth-app.tar; build.sh
+          # installs it as /usr/bin/hearth-terminal. If it doesn't build, the image keeps its other terminals.
+          if (cd ../hearth-terminal && cargo build --release); then cp ../hearth-terminal/target/release/hearth-terminal /tmp/app/hearth-terminal
+          else echo "::warning title=Hearth Terminal::didn't build; this image goes without it"; fi
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

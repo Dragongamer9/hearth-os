@@ -40,6 +40,8 @@ internal static class Program
 
         // --windowed: run in a normal window for development instead of fullscreen.
         bool windowed = args.Contains("--windowed", StringComparer.OrdinalIgnoreCase);
+        // Hearth Terminal's Start menu entry (HearthTerminal.cs).
+        Task.Run(HearthTerminal.EnsureStartMenuEntry);
         Application.Run(new ShellForm(windowed));
         return ExitCode;
     }
