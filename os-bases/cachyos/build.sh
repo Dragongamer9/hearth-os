@@ -225,6 +225,8 @@ if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/heart
 # crashed over and over on CachyOS: "image-missing.svg: Unrecognized image file format"). The loaders list is
 # rebuilt so the SVG loader is in it.
 "${PAC[@]}" librsvg gdk-pixbuf2
+# Newer gdk-pixbuf loads SVG (and other images) through glycin's loaders instead.
+"${PAC[@]}" glycin || true
 for q in /usr/bin/gdk-pixbuf-query-loaders /usr/bin/gdk-pixbuf-query-loaders-64 /usr/lib/*/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders; do
   [ -x "$q" ] && { "$q" --update-cache || true; break; }
 done
@@ -388,7 +390,7 @@ python3 /usr/share/hearth-browser/install-firefox /usr/lib/hearth-browser/firefo
 
 # Firefox's own libraries come with it; the system ones it links (GTK 3, X11, D-Bus...) must be in the image. Any
 # still missing are looked up by file name and installed, so a new Firefox needing one more never ships broken.
-ff_missing() { ldd /usr/lib/hearth-browser/firefox/libxul.so /usr/lib/hearth-browser/firefox/firefox 2>/dev/null | awk '/not found/{print $1}' | sort -u; }
+ff_missing() { LD_LIBRARY_PATH=/usr/lib/hearth-browser/firefox ldd /usr/lib/hearth-browser/firefox/libxul.so /usr/lib/hearth-browser/firefox/firefox 2>/dev/null | awk '/not found/{print $1}' | sort -u; }   # Firefox's own libraries sit next to it
 "${PAC[@]}" gtk3 dbus-glib libxcomposite libxdamage libxrandr libxtst libxt alsa-lib || true
 if [ -n "$(ff_missing)" ]; then pacman -Fy >/dev/null 2>&1 || true; for l in $(ff_missing); do p=$(pacman -Fq "$l" 2>/dev/null | head -1); [ -n "$p" ] && "${PAC[@]}" "${p##*/}" || true; done; fi
 [ -z "$(ff_missing)" ] || echo "warning: Hearth Browser's Firefox is still missing: $(ff_missing | tr '\n' ' ')"

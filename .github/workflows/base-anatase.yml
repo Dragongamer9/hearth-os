@@ -183,13 +183,15 @@ jobs:
           # Hearth Browser: Mozilla's Firefox with Hearth's parts (os/system_files/usr/share/hearth-browser).
           check "Hearth Browser is installed (Firefox with Hearth's parts)" "test -x /usr/bin/hearth-browser && test -x /usr/lib/hearth-browser/firefox/firefox && test -f /usr/lib/hearth-browser/firefox/hearth.cfg && test -f /usr/lib/hearth-browser/firefox/defaults/pref/autoconfig.js && test -f /usr/lib/hearth-browser/firefox/hearth/hearth.sys.mjs"
           check "Hearth Browser's policies are valid and leave updates to the image" "python3 -c 'import json, sys; p = json.load(open(\"/usr/lib/hearth-browser/firefox/distribution/policies.json\"))[\"policies\"]; sys.exit(0 if p.get(\"DisableAppUpdate\") is True and \"ExtensionSettings\" in p else 1)'"
-          ffm=$(ldd /usr/lib/hearth-browser/firefox/libxul.so 2>/dev/null | awk '/not found/{print $1}' | tr '\n' ' '); [ -z "$ffm" ] || echo "::error title=Firefox libraries missing::$ffm"
-          check "every library Hearth Browser's Firefox links is installed" "! ldd /usr/lib/hearth-browser/firefox/libxul.so | grep -q 'not found'"
+          ffm=$(LD_LIBRARY_PATH=/usr/lib/hearth-browser/firefox ldd /usr/lib/hearth-browser/firefox/libxul.so 2>/dev/null | awk '/not found/{print $1}' | tr '\n' ' '); [ -z "$ffm" ] || echo "::error title=Firefox libraries missing::$ffm"
+          check "every library Hearth Browser's Firefox links is installed" "! LD_LIBRARY_PATH=/usr/lib/hearth-browser/firefox ldd /usr/lib/hearth-browser/firefox/libxul.so | grep -q 'not found'"
           check "hearth-browser answers (--hearth-status)" "HOME=/tmp /usr/bin/hearth-browser --hearth-status | grep -q '\"installed\": true'"
           warn "Hearth Browser's Firefox runs (--version)" "HOME=/tmp /usr/lib/hearth-browser/firefox/firefox --version | grep -q 'Mozilla Firefox'"
           check "the old Chromium (CEF) Hearth Browser is gone" "test ! -e /usr/lib/hearth-browser-cef"
           check "hearthfetch is installed and runs" "test -x /usr/bin/hearthfetch && /usr/bin/hearthfetch --no-logo | grep -q Hearth"
-          check "GTK can load SVG icons (librsvg's loader is registered)" "for f in /usr/lib*/gdk-pixbuf-2.0/2.10.0/loaders.cache /usr/lib/*/gdk-pixbuf-2.0/2.10.0/loaders.cache; do grep -qi svg \"\$f\" 2>/dev/null && exit 0; done; exit 1"
+          # SVG through gdk-pixbuf: the classic loader in loaders.cache, or glycin's SVG loader (newer gdk-pixbuf).
+          check "GTK can load SVG icons (gdk-pixbuf's SVG loader or glycin's)" "grep -qis svg /usr/lib*/gdk-pixbuf-2.0/2.10.0/loaders.cache /usr/lib/*/gdk-pixbuf-2.0/2.10.0/loaders.cache 2>/dev/null || ls /usr/share/glycin-loaders/*/conf.d/ 2>/dev/null | grep -qi svg || ls /usr/libexec/glycin-loaders/*/ /usr/lib/glycin-loaders/*/ 2>/dev/null | grep -qi svg"
+          warn "an SVG icon really loads (gdk-pixbuf-thumbnailer)" "gdk-pixbuf-thumbnailer -s 32 /usr/share/icons/Adwaita/scalable/status/image-missing.svg /tmp/svg.png"
           echo "--- Game Mode and Desktop Mode"
           check "gamescope is installed" "command -v gamescope"
           check "labwc is installed" "command -v labwc"
