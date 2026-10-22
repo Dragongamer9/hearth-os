@@ -23,7 +23,7 @@ SetPage {
         return f.indexOf("/backgrounds/hearth/") >= 0 && names[id] ? names[id] : base.replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     }
     readonly property var moving: ["", "anim:lava", "anim:aurora"]
-    function preview(f) { return f === "anim:lava" ? Qt.resolvedUrl("images/wall-lava.jpg") : f === "anim:aurora" ? Qt.resolvedUrl("images/wall-aurora.jpg") : "file://" + f; }
+    function preview(f) { return f === "anim:lava" ? Qt.resolvedUrl("images/wall-lava.jpg") : f === "anim:aurora" ? Qt.resolvedUrl("images/wall-aurora.jpg") : "file://" + f.split("/").map(encodeURIComponent).join("/"); }
 
     // "Choose a picture…": the desktop's file picker (KDE's or GNOME's, whichever is installed).
     Process {
