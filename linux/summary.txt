@@ -1,0 +1,5 @@
+failed:
+[desktop] the test ran (Marionette:SetContext: System access is required. Start Firefox with "-remote-allow-system-access" to enable it.)
+[game] the test ran (Marionette:SetContext: System access is required. Start Firefox with "-remote-allow-system-access" to enable it.)
+warnings:
+
