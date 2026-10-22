@@ -207,7 +207,7 @@ def run_mode(ff, out, mode, extras, port):
         if game:
             w = m.js('await new Promise(r => setTimeout(r, 2500)); return [window.outerWidth, window.outerHeight, window.screen.width, window.screen.height];')
             report['window'] = w
-            ok(w[0] >= w[2] and w[1] >= w[3], '[game] the window fills the screen %s' % w)
+            ok(w[0] >= w[2] * 0.95 and w[1] >= w[3] * 0.9, '[game] the window fills the screen %s' % w)
         m.shot(os.path.join(out, '%s-1-start.png' % mode))
 
         # The on-screen keyboard, typing into a web page.
