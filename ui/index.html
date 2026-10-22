@@ -1244,7 +1244,6 @@ const MOCK = (()=>{
     'oldfiles.restore':async({item})=>{ const f=await MOCK.call('oldfiles.status'); f.folders[0].moved=f.folders[0].moved.filter(x=>x!==item); st.oldf=clone(f); return Object.assign(f,{restored:'/home/you/'+item}); },
     'game.options.set':async({id,options})=>{ MOCKOPT[id]=Object.assign(MOCKOPT[id]||{},options); return MOCK.call('game.options.get',{id}); },
     'pad.toggleMouse':async()=>({mouseOn:!PAD.mouseOn}),
-    'system.gameMode':async({set})=>{ if(set) st.gmode=set; return {mode:st.gmode||'hearth', steam:true}; },
     'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}),
     'overlay.setHoldView':async({on})=>{ st.holdView=on; return {holdView:on,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}; },
     'overlay.setGameBarButton':async({on})=>{ st.gbb=on; return {holdView:!!st.holdView,gameBarButton:on,hotkey:'Ctrl+Alt+Q'}; },
@@ -2092,12 +2091,6 @@ function pageSystem(){
     h += `<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Storage</b><small>${gb(st.freeBytes)} free of ${gb(st.totalBytes)}</small><div class="storage"><i style="width:${pct}%"></i></div></div><div class="rv">${pct}% used</div></div>`;
   }
   if(LINUX) h += oldFilesRows();
-  // Which Game Mode the session runs: Hearth's own, or Steam's own (Big Picture), from the next start of Game Mode.
-  if(LINUX && host && HOSTINFO.system){
-    const g=GMODE.s;
-    h += shead('Game Mode') + `<button class="row" data-f data-k="sy-gmode" data-act="gmodePick"><span class="ricon">${I.pad}</span><div class="rt"><b>Game Mode</b><small>${APP}'s own, or Steam's own Game Mode (Big Picture, like SteamOS). In Steam's, use Steam's Switch to Desktop, or hold View and Menu for 3 seconds, to get to Desktop Mode.</small></div><div class="rv">${g?(g.mode==='steam'?'Steam':APP):'…'} ›</div></button>`;
-    if(!g) call('system.gameMode').then(r=>{ GMODE.s=r; if(S.view==='settings') render(null,true); }).catch(()=>{});
-  }
   const tz=(()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }catch(e){ return ''; } })();
   if(LINUX && ART.s) h += shead('Offline') + `<div class="row" data-f data-k="sy-art"><span class="ricon">${I.dl}</span><div class="rt"><b>Game art on this device</b><small>${ART.s.pictures} pictures (${Math.round(ART.s.bytes/1e6)} MB)${ART.s.waiting?` · ${ART.s.waiting} still downloading`:' · your library looks the same offline'}</small></div></div>`;
   if(LINUX) h += browserRows();
@@ -5304,7 +5297,6 @@ function act(el){
     case 'gsProton': return openSheet({title:'Proton version', sub:'For '+(G(GSET.id)?.title||'this game'), items:GSET.s.protonChoices.map(c=>({label:c.label+(c.sub?' — '+c.sub:''), icon:GSET.s.options.proton===c.id?'check':'', run:()=>saveGameSet({proton:c.id},'gs-proton')}))});
     case 'gsText': { const key=d.key; const title=key==='args'?'Launch options':'Environment variables';
       return openPrompt({title, value:GSET.s.options[key]||''}).then(v=>{ if(v!=null) saveGameSet({[key]:v.trim()}, 'gs-'+key); }); }
-    case 'gmodePick': return openSheet({title:'Game Mode', sub:'Used from the next time Game Mode starts.', items:[['hearth',APP+"'s Game Mode",'Your whole library, '+APP+"'s menus"],['steam',"Steam's Game Mode (Experimental)",'Steam Big Picture, the way SteamOS runs it. Experimental: Wi-Fi, power and Switch to Desktop may not work yet']].map(([v,l,sb])=>({label:`${l} · ${sb}`, icon:v==='steam'?'pad':'home', run:()=>call('system.gameMode',{set:v}).then(r=>{ GMODE.s=r; render('sy-gmode',true); toast(v==='steam'?"Steam's Game Mode from the next start of Game Mode":APP+"'s Game Mode from the next start of Game Mode"); }).catch(e=>toast(e.message))}))});
     case 'rndPick': return openSheet({title:'Drawing engine', sub:`${APP} restarts to change it.`, items:[['auto','Automatic','Chromium on Nvidia, WebKit elsewhere'],['chromium','Chromium','Smoother on Nvidia graphics'],['webkit','WebKit','Lighter; the usual one on AMD and Intel']].map(([v,l,sb])=>({label:`${l} · ${sb}`, icon:'display', run:()=>call('display.renderer',{set:v}).then(r=>{ RND.s=r; toast(`Restarting ${APP}…`); setTimeout(()=>call('app.restart').catch(()=>{}),600); }).catch(e=>toast(e.message))}))});
     case 'nvDrawing': return openSheet({title:`How ${APP} draws on Nvidia`, sub:`${APP} restarts to change it.`, items:[['auto','Automatic','Fast on newer drivers'],['fast','Fast','Smooth menus and library'],['compatible','Compatible','Slower; for a black screen']].map(([v,l,s])=>({label:`${l} · ${s}`, icon:'display', run:()=>call('display.nvidiaDrawing',{set:v}).then(r=>{ NVD.s=r; toast(`Restarting ${APP}…`); setTimeout(()=>call('app.restart').catch(()=>{}),600); }).catch(e=>toast(e.message))}))});
     case 'gsDelete': return uninstallGame(G(GSET.id||S.game));
@@ -7756,7 +7748,6 @@ async function overlayTip(){
   toast(OVS.s.gameBarButton ? 'Tip: press the Xbox button for the '+APP+' overlay. If Game Bar opens too, turn it off in Settings › Controls.'
                             : 'Tip: press the Xbox button for the '+APP+' overlay.');
 }
-const GMODE = {s:null};
 const PAD = {host:false, last:'', swapAB:false, swapXY:false, mouseMode:'steam', mouseOn:false};
 try{ PAD.swapAB = localStorage.getItem('nimbus.swapAB')==='1'; PAD.swapXY = localStorage.getItem('nimbus.swapXY')==='1'; }catch(e){}
 function mapPad(k){
