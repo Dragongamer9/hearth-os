@@ -10,10 +10,10 @@ public sealed record GameDto(
     Dictionary<string, string> Art, string? Path, bool CanRemove,
     bool Installed, string State, double? Progress, long? BytesDone, long? BytesTotal, long? BytesPerSec = null,
     bool CanUninstall = false, string? Note = null, string? InstallKind = null,
-    List<string>? Cols = null, object? Beacon = null, bool Frozen = false);
+    List<string>? Cols = null, object? Beacon = null, bool Frozen = false, string? Stage = null);
 
 public sealed record LibraryDto(List<GameDto> Games, Dictionary<string, bool> Sources, Dictionary<string, int> Counts,
-                                string? RunningId, bool SteamBackground, object? QuickResume = null, List<object>? Collections = null);
+                                string? RunningId, bool SteamBackground, object? QuickResume = null, List<object>? Collections = null, bool SteamOnDemand = true);
 
 public sealed record DownloadsDto(List<GameDto> Active, bool Changed);
 
@@ -117,8 +117,12 @@ public sealed class LibraryService : IDisposable
             _monitor.RunningId,
             _store.Read(d => d.SteamBackground),
             QuickState(),
-            _store.Read(d => d.Collections.Select(c => (object)new { id = c.Id, name = c.Name, games = c.Games.ToList() }).ToList()));
+            _store.Read(d => d.Collections.Select(c => (object)new { id = c.Id, name = c.Name, games = c.Games.ToList() }).ToList()),
+            SteamOnDemand);
     }
+
+    /// <summary>Reads every store again (after Steam took up an install, a sign-in, a new owned-games list).</summary>
+    public Task RescanAsync() => ScanAsync();
 
     private async Task ScanAsync()
     {
@@ -157,7 +161,10 @@ public sealed class LibraryService : IDisposable
                 try { owned = await Task.Run(() => SteamScanner.ScanOwned(installedIds)); }
                 catch { owned = new(); }
                 foreach (var g in owned) all.TryAdd(g.Id, g);
+                // And the ones on your public Steam Community games page (SteamControl), when Steam's caches don't list them.
+                try { foreach (var g in SteamScanner.ScanCommunity(all.Keys.ToHashSet())) all.TryAdd(g.Id, g); } catch { }
                 counts["steamOwned"] = all.Values.Count(g => g.Source == "steam");
+                SteamStages(all.Values, null);
             }
 
             // Games on your Epic / GOG / Xbox accounts that aren't installed (when you're signed in).
@@ -214,7 +221,7 @@ public sealed class LibraryService : IDisposable
                               g.Installed ? g.InstallPath : null, g.Source == "manual",
                               g.Installed, g.State, g.Progress, g.BytesDone, g.BytesTotal,
                               CanUninstall: g.CanUninstall, Note: g.Note, InstallKind: installKind,
-                              Cols: cols, Beacon: g.BeaconInfo, Frozen: _quick.Has(g.Id));
+                              Cols: cols, Beacon: g.BeaconInfo, Frozen: _quick.Has(g.Id), Stage: g.Stage);
         // An install Nimbus is running shows as a download.
         if (Accounts.Installs.Get(g.Id) is { } job)
             dto = dto with { State = job.State, Progress = job.Progress, BytesDone = job.BytesDone, BytesTotal = job.BytesTotal, BytesPerSec = job.Speed };
@@ -259,11 +266,17 @@ public sealed class LibraryService : IDisposable
                 if (!manifests.Any(m => m.Id == old.Id)) games.Remove(old.Id);
             _games = games;
         }
+        var (clog, fresh) = SteamControl.ReadContentLog();
+        SteamStages(_games.Values, clog);
 
         var sig = CurrentSignature();
         bool changed = sig != _downloadSignature;
         _downloadSignature = sig;
         var active = _games.Values.Where(g => IsActive(g.State)).Select(ToDto).Select(Estimate).ToList();
+        // Steam's own log says its download speed while it writes it.
+        if (fresh && clog.Rate is { } rate && rate > 0)
+            for (int i = 0; i < active.Count; i++)
+                if (active[i].Source == "steam" && active[i].State == "downloading") { active[i] = active[i] with { BytesPerSec = rate }; break; }
         foreach (var job in Accounts.Installs.Active())
             if (_games.TryGetValue(job.GameId, out var g) && !active.Any(a => a.Id == g.Id)) active.Add(ToDto(g));
         return new DownloadsDto(active, changed);
@@ -317,6 +330,92 @@ public sealed class LibraryService : IDisposable
         return d with { BytesDone = estimate, Progress = (double)estimate / total, BytesPerSec = _speed };
     }
 
+    /// <summary>Steam downloads: what Steam is doing (its content log), and installs waiting for Steam to take them up.</summary>
+    private static void SteamStages(IEnumerable<Game> games, SteamControl.ContentLog? log)
+    {
+        log ??= SteamControl.ReadContentLog().Log;
+        var pending = SteamControl.PendingIds();
+        foreach (var g in games.Where(g => g.Source == "steam"))
+        {
+            g.Stage = null;
+            if (!uint.TryParse(g.Id["steam:".Length..], out var app)) continue;
+            if (pending.Contains(app) && !g.Installed) { g.State = "queued"; g.Stage = "Waiting for Steam"; continue; }
+            if (g.State is "installed" or "notInstalled") continue;
+            if (log.Apps.TryGetValue(app, out var e)) g.Stage = e.Reason is { } r ? "Stopped: " + r : e.Stage.Length > 0 ? e.Stage : null;
+        }
+    }
+
+    // ------------------------------------------------------------------ Steam (SteamControl)
+
+    /// <summary>"Start Steam only when needed" (on by default).</summary>
+    public bool SteamOnDemand => _store.Read(d => d.SteamOnDemand);
+    /// <summary>Steam starts hidden for games and installs (always, or when needed).</summary>
+    private bool SteamHidden => SteamOnDemand || SteamBackground;
+
+    public async Task SetSteamOnDemandAsync(bool on)
+    {
+        _store.Update(d => { d.SteamOnDemand = on; if (!on) d.SteamBackground = true; });
+        if (!on) await SteamControl.EnsureRunningAsync();
+    }
+
+    /// <summary>The Steam library new Steam games go to.</summary>
+    public string? SteamLibrary()
+    {
+        var steam = SteamScanner.SteamPath();
+        if (steam is null) return null;
+        return SteamControl.ChooseLibrary(SteamScanner.Libraries(steam).ToList(), _store.Read(d => d.SteamLibrary), Accounts.InstallRoot);
+    }
+    public object SteamLibraries()
+    {
+        var steam = SteamScanner.SteamPath() ?? throw new InvalidOperationException("Steam isn't installed on this PC.");
+        var chosen = SteamLibrary();
+        var libs = SteamScanner.Libraries(steam).ToList();
+        return new { list = libs.Select((l, i) => new { path = l, free = SteamControl.FreeBytes(l), main = i == 0, chosen = string.Equals(l, chosen, StringComparison.OrdinalIgnoreCase) }).ToList(), chosen };
+    }
+    public void SetSteamLibrary(string path)
+    {
+        var steam = SteamScanner.SteamPath() ?? throw new InvalidOperationException("Steam isn't installed on this PC.");
+        if (!SteamScanner.Libraries(steam).Any(l => string.Equals(l, path, StringComparison.OrdinalIgnoreCase))) throw new InvalidOperationException("That folder isn't a Steam library.");
+        _store.Update(d => d.SteamLibrary = path);
+    }
+
+    /// <summary>Installs a Steam game without Steam's dialog (SteamControl.InstallAsync): {silent, waiting}.</summary>
+    public async Task<object> InstallSteamAsync(string id)
+    {
+        if (!_games.TryGetValue(id, out var g)) throw new InvalidOperationException("That game isn't in the library anymore.");
+        if (g.Installed) throw new InvalidOperationException($"{g.Title} is already installed.");
+        if (!uint.TryParse(id["steam:".Length..], out var app)) throw new InvalidOperationException("That isn't a Steam game.");
+        var lib = SteamLibrary() ?? throw new InvalidOperationException("Steam isn't installed on this PC.");
+        var r = await SteamControl.InstallAsync(app, g.Title, lib);
+        g.State = "queued"; g.Stage = "Waiting for Steam";
+        return r;
+    }
+
+    /// <summary>Deletes a Steam game without Steam's dialog (SteamControl.UninstallAsync), then reads the library again.</summary>
+    public async Task UninstallSteamAsync(string id)
+    {
+        if (!_games.TryGetValue(id, out var g)) throw new InvalidOperationException("That game isn't in the library anymore.");
+        if (_monitor.RunningId == id || _quick.Has(id)) throw new InvalidOperationException($"Exit {g.Title} first.");
+        if (!uint.TryParse(id["steam:".Length..], out var app)) throw new InvalidOperationException("That isn't a Steam game.");
+        bool wasRunning = await SteamControl.UninstallAsync(app, g.Title);
+        if (wasRunning && !SteamOnDemand) await SteamControl.EnsureRunningAsync();
+        await ScanAsync();
+    }
+
+    /// <summary>The Steam card on the Stores page, with what SteamControl knows.</summary>
+    private Stores.AccountDto SteamCard(Stores.AccountDto a)
+    {
+        var owned = SteamControl.LoadOwned();
+        var problem = owned["problem"]?.ToString();
+        return a with
+        {
+            Fetched = SteamControl.Num(owned["fetched"]), Busy = SteamControl.OwnedBusy, Signing = SteamControl.SigningIn, Library = SteamLibrary(),
+            Hint = problem == "private" ? SteamControl.PrivateNote : null,
+            Error = problem is { Length: > 0 } p && p != "private" ? "Couldn't get your Steam games list: " + p : null,
+            Note = a.Note ?? (a.SignedIn ? null : "Not signed in"),
+        };
+    }
+
     /// <summary>Asks the store to install the game. For Steam this opens Steam's install dialog.</summary>
     public async Task InstallAsync(string id)
     {
@@ -348,20 +447,26 @@ public sealed class LibraryService : IDisposable
     public bool AutoUpdateCheck { get => _store.Read(d => d.AutoUpdateCheck); set => _store.Update(d => d.AutoUpdateCheck = value); }
     public string ControllerMouse { get => _store.Read(d => d.ControllerMouse); set => _store.Update(d => d.ControllerMouse = value); }
 
+    /// <summary>Hearth Task Manager's "Steam starts with Ember": the opposite of "Start Steam only when needed".</summary>
     public async Task SetSteamBackgroundAsync(bool on)
     {
-        _store.Update(d => d.SteamBackground = on);
-        if (on) await SteamScanner.EnsureRunningSilentAsync();
+        _store.Update(d => { d.SteamBackground = on; d.SteamOnDemand = !on; });
+        if (on) await SteamControl.EnsureRunningAsync();
     }
+    public bool SteamStartsWithEmber => !SteamOnDemand && SteamBackground;
 
     /// <summary>Called when Nimbus starts: bring Steam up hidden so games and installs start without its window.</summary>
     public async Task StartBackgroundServicesAsync()
     {
         Accounts.RefreshStale();   // Epic / GOG / Xbox game lists, if they're old
-        if (!SteamBackground || !_store.Read(d => !d.Sources.TryGetValue("steam", out var on) || on)) return;
+        if (!_store.Read(d => !d.Sources.TryGetValue("steam", out var on) || on)) return;
+        // SteamControl: installs Steam should take up, and closing Steam when nothing needs it (with the setting on).
+        SteamControl.Start(() => SteamOnDemand, () => _monitor.RunningId?.StartsWith("steam:") == true || _quick.List().Any(e => e.Id.StartsWith("steam:")));
+        _ = Task.Run(async () => { await Task.Delay(20_000); SteamControl.RefreshOwned(false); });
+        if (SteamOnDemand || !SteamBackground) return;
         // Steam can show its window while it starts or updates even with -silent; hide it for the first minute.
         SteamWindows.HideMainFor(60);
-        await SteamScanner.EnsureRunningSilentAsync();
+        await SteamControl.EnsureRunningAsync();
     }
 
     // ------------------------------------------------------------------ edits
@@ -417,11 +522,12 @@ public sealed class LibraryService : IDisposable
             if (!QuickResumeOn) throw new InvalidOperationException($"Exit {ot} first (Quick Access → Now playing)");
             await PutAsideAsync();
         }
-        if (g.Source == "steam" && SteamBackground)
+        if (g.Source == "steam" && SteamHidden)
         {
-            await SteamScanner.EnsureRunningSilentAsync();
+            await SteamControl.EnsureRunningAsync();
             SteamWindows.HideMainFor(20);
         }
+        if (g.Source == "steam") SteamControl.Touch();
 
         if (g.BeaconGame is { } bg)
         {
@@ -612,7 +718,7 @@ public sealed class LibraryService : IDisposable
     public List<Stores.AccountDto> AccountsStatus()
     {
         var installed = _games.Values.Where(g => g.Installed).GroupBy(g => g.Source).ToDictionary(x => x.Key, x => x.Count());
-        return Accounts.Status(installed, _games.Values.Count(g => g.Source == "steam"));
+        return Accounts.Status(installed, _games.Values.Count(g => g.Source == "steam")).Select(a => a.Store == "steam" ? SteamCard(a) : a).ToList();
     }
 
     // ------------------------------------------------------------------ profile
