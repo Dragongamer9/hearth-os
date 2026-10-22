@@ -52,6 +52,7 @@ public sealed class LibraryService : IDisposable
         _monitor.StartTimedOut += id => GameStartTimedOut?.Invoke(id);
         _monitor.Exited += (id, minutes) =>
         {
+            if (_pausedId == id) _pausedId = null;
             SaveRunning();
             _store.Update(d =>
             {
@@ -593,9 +594,18 @@ public sealed class LibraryService : IDisposable
     {
         var title = RunningTitle;
         var d = _monitor.Detach() ?? throw new InvalidOperationException("No game is running.");
+        // Paused (Quick Access › Pause): unpaused first. Windows counts freezes, so Quick Resume's own freeze on top
+        // would leave it frozen after carrying on with it.
+        bool paused = _pausedId == d.Id;
+        if (paused) { GameMonitor.SuspendAll(d.Dirs, false); _pausedId = null; }
         List<QuickResume.Entry> over;
         try { over = _quick.Add(d.Id, d.Dirs, title); }
-        catch { _monitor.Adopt(d.Id, d.Dirs, d.Started); throw; }   // not frozen: still the running game, same play time
+        catch
+        {
+            _monitor.Adopt(d.Id, d.Dirs, d.Started);   // not frozen: still the running game, same play time
+            if (paused && GameMonitor.SuspendAll(d.Dirs, true).Done > 0) _pausedId = d.Id;
+            throw;
+        }
         SaveRunning();
         foreach (var e in over) await GameMonitor.CloseDirsAsync(e.Dirs);
         var minutes = (int)Math.Round((DateTime.UtcNow - d.Started).TotalMinutes);
@@ -627,7 +637,9 @@ public sealed class LibraryService : IDisposable
     {
         var dirs = _monitor.RunningDirs;
         if (dirs.Length == 0) throw new InvalidOperationException("No game is running.");
-        if (!on) { GameMonitor.SuspendAll(dirs, false); return false; }
+        if (!on) { GameMonitor.SuspendAll(dirs, false); _pausedId = null; return false; }
+        // Windows counts freezes: pausing twice (from the overlay and from Ember's Quick Access) would need two unpauses.
+        if (_pausedId is { } p && p == _monitor.RunningId) return true;
         if (QuickResume.AntiCheatOf(dirs) is { } ac) throw new InvalidOperationException($"{RunningTitle ?? "This game"} runs with {ac}, which can treat a frozen game as cheating, so Ember doesn't pause it.");
         var (done, failed) = GameMonitor.SuspendAll(dirs, true);
         if (done == 0 || failed > 0)
@@ -635,8 +647,12 @@ public sealed class LibraryService : IDisposable
             if (done > 0) GameMonitor.SuspendAll(dirs, false);
             throw new InvalidOperationException("Windows didn't let Ember pause this game (it runs as administrator, or it's protected).");
         }
+        _pausedId = _monitor.RunningId;
         return true;
     }
+
+    /// <summary>The running game paused with Quick Access › Pause (frozen in place), or null.</summary>
+    private string? _pausedId;
 
     // ------------------------------------------------------------------ collections (Library tabs of your own)
 
