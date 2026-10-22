@@ -10,14 +10,31 @@ impl Reply {
 
 pub fn request(method: &str, url: &str, headers: &[(&str, &str)], body: Option<&str>, timeout_s: u32) -> Result<Reply, String> {
     let t = timeout_s.to_string();
-    let mut args: Vec<String> = vec!["-sS".into(), "-L".into(), "-m".into(), t, "-X".into(), method.into(), "-A".into(), "Hearth".into(), "-w".into(), "\n%{http_code}".into()];
-    for (k, v) in headers { args.push("-H".into()); args.push(format!("{k}: {v}")); }
-    if let Some(b) = body { args.push("--data-binary".into()); args.push(b.into()); }
-    args.push(url.into());
-    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let out = crate::system::run_timeout("curl", &refs, std::time::Duration::from_secs(timeout_s as u64 + 5)).map_err(|e| format!("No connection ({e})"))?;
+    let args = ["-sS", "-L", "-m", &t, "-X", method, "-A", "Hearth", "-w", "\n%{http_code}", "-K", "-"];
+    // The address, headers and body go to curl on its standard input (a config file), not on its command line:
+    // every program on the PC, any user's, can read a command line, and these carry sign-ins (Epic, GOG and Xbox
+    // tokens in headers, GOG's refresh token in the address, Microsoft's in the body).
+    let cfg = curl_config(url, headers, body);
+    let out = crate::system::run_input("curl", &args, Some(&cfg), std::time::Duration::from_secs(timeout_s as u64 + 5)).map_err(|e| format!("No connection ({e})"))?;
     let (text, code) = out.rsplit_once('\n').unwrap_or((&out, "0"));
     Ok(Reply { status: code.trim().parse().unwrap_or(0), text: text.to_string() })
+}
+/// A value for a curl config file: in double quotes, with \\ \" and line breaks escaped (curl's own rules).
+pub fn curl_quote(v: &str) -> String {
+    let mut o = String::with_capacity(v.len() + 2);
+    o.push('"');
+    for c in v.chars() {
+        match c { '\\' => o.push_str("\\\\"), '"' => o.push_str("\\\""), '\n' => o.push_str("\\n"), '\r' => o.push_str("\\r"), '\t' => o.push_str("\\t"), c => o.push(c) }
+    }
+    o.push('"');
+    o
+}
+/// curl's config for one request: its address, headers and body.
+pub fn curl_config(url: &str, headers: &[(&str, &str)], body: Option<&str>) -> String {
+    let mut c = format!("url = {}\n", curl_quote(url));
+    for (k, v) in headers { c.push_str(&format!("header = {}\n", curl_quote(&format!("{k}: {v}")))); }
+    if let Some(b) = body { c.push_str(&format!("data-binary = {}\n", curl_quote(b))); }
+    c
 }
 pub fn get(url: &str, headers: &[(&str, &str)]) -> Result<Reply, String> { request("GET", url, headers, None, 30) }
 pub fn get_json(url: &str, headers: &[(&str, &str)]) -> Result<Value, String> {
@@ -67,5 +84,18 @@ mod tests {
         assert_eq!(urlencode("a b/c"), "a%20b%2Fc");
         assert_eq!(urldecode("%aé%zz%+1"), "%aé%zz% 1");
         assert_eq!(urldecode("%C3%A9"), "é");
+    }
+    #[test]
+    fn secrets_go_to_curl_on_its_input() {
+        assert_eq!(curl_quote(r#"a "b" \c"#), r#""a \"b\" \\c""#);
+        assert_eq!(curl_quote("x\ny"), r#""x\ny""#);
+        let c = curl_config("https://x/?t=1&r=2", &[("Authorization", "Bearer tok")], Some("a=1&b=\"2\""));
+        assert_eq!(c, "url = \"https://x/?t=1&r=2\"\nheader = \"Authorization: Bearer tok\"\ndata-binary = \"a=1&b=\\\"2\\\"\"\n");
+        // curl reads it: a local file through the same path, with a header that needs quoting.
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("page.txt");
+        std::fs::write(&f, "hello").unwrap();
+        let r = request("GET", &format!("file://{}", f.display()), &[("Authorization", "Bearer \"x\" y")], None, 5).unwrap();
+        assert_eq!(r.text, "hello");
     }
 }
