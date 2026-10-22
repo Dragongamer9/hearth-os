@@ -76,10 +76,12 @@ jobs:
           export HOME="$RUNNER_TEMP/home2"; mkdir -p "$HOME"
           Xvfb :7 -screen 0 1920x1080x24 >/dev/null 2>&1 & sleep 2
           export DISPLAY=:7
-          page='data:text/html;charset=utf-8,<title>Typing</title><body style="background:%23222;color:%23eee;font:24px sans-serif"><input id="i" autofocus style="font-size:28px;width:80%25"></body>'
+          page="$RUNNER_TEMP/typing.html"
+          echo '<!doctype html><title>Typing</title><body style="background:#222;color:#eee;font:24px sans-serif"><p>Real keys through the on-screen keyboard:</p><input id="i" autofocus style="font-size:28px;width:80%"></body>' > "$page"
+          page="file://$page"
           # GAMESCOPE_WAYLAND_DISPLAY: what tells hearth-browser it's in Game Mode.
           GAMESCOPE_WAYLAND_DISPLAY=gamescope-0 os/system_files/usr/bin/hearth-browser --marionette "$page" > shots/xvfb-firefox.log 2>&1 &
-          for i in $(seq 1 40); do win=$(xdotool search --class hearth-browser 2>/dev/null | tail -1); [ -n "$win" ] && break; sleep 1; done
+          for i in $(seq 1 40); do win=$(xdotool search --onlyvisible --class hearth-browser 2>/dev/null | tail -1); [ -n "$win" ] && break; sleep 1; done
           test -n "$win" || { echo "::error title=window::no window with class hearth-browser"; xwininfo -root -tree | head -40; exit 1; }
           sleep 8
           xprop -id "$win" WM_CLASS | tee shots/xvfb-wm-class.txt
@@ -109,7 +111,7 @@ jobs:
         run: |
           mkdir -p pub/linux && cp -r shots/. pub/linux/ 2>/dev/null || true
           cd pub && git init -q -b ci/hearth-browser-shots
-          git fetch -q --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/hearth-browser-shots 2>/dev/null && git reset -q --soft FETCH_HEAD || true
+          git fetch -q --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/hearth-browser-shots 2>/dev/null && git reset -q FETCH_HEAD || true
           git add -A linux && git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Browser linux ${GITHUB_SHA::7}" || exit 0
           for i in 1 2 3; do git push -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:ci/hearth-browser-shots && break; sleep $((i*5)); git fetch -q --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/hearth-browser-shots && git rebase -q FETCH_HEAD || true; done
 
@@ -183,7 +185,7 @@ jobs:
         run: |
           mkdir -p pub/windows && cp -r shots/. pub/windows/ 2>/dev/null || true
           cd pub && git init -q -b ci/hearth-browser-shots
-          git fetch -q --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/hearth-browser-shots 2>/dev/null && git reset -q --soft FETCH_HEAD || true
+          git fetch -q --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/hearth-browser-shots 2>/dev/null && git reset -q FETCH_HEAD || true
           git add -A windows && git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Browser windows ${GITHUB_SHA::7}" || exit 0
           for i in 1 2 3; do git push -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:ci/hearth-browser-shots && break; sleep $((i*5)); git fetch -q --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci/hearth-browser-shots && git rebase -q FETCH_HEAD || true; done
 

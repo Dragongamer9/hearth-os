@@ -8,6 +8,7 @@
     "NoDefaultBookmarks": true,
     "OverrideFirstRunPage": "",
     "OverridePostUpdatePage": "",
+    "SkipTermsOfUse": true,
     "EncryptedMediaExtensions": {
       "Enabled": true
     },

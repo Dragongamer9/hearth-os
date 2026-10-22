@@ -66,6 +66,8 @@ function defaults() {
   set("layout.css.prefers-color-scheme.content-override", 0);
   // No welcome tour, sponsored tiles, Firefox account button or bookmarks bar.
   set("browser.aboutwelcome.enabled", false);
+  // Firefox's first-start window (terms of use, with a choice about data): Hearth's policies already decide.
+  set("browser.preonboarding.enabled", false);
   set("browser.newtabpage.activity-stream.showSponsored", false);
   set("browser.newtabpage.activity-stream.showSponsoredTopSites", false);
   set("browser.newtabpage.activity-stream.feeds.section.topstories", false);
