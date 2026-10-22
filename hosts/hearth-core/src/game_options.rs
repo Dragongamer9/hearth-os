@@ -36,14 +36,29 @@ pub fn clean(patch: &Value) -> Map<String, Value> {
     out
 }
 
+#[cfg(test)]
+mod repair_tests {
+    use super::*;
+    #[test]
+    fn settings_saved_over_damaged_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path().join("l.json"));
+        s.data["gameOptions"] = json!(5);
+        set(&mut s, "steam:1", &json!({"fpsLimit": 40})).unwrap();
+        s.data["gameOptions"]["steam:2"] = json!("x");
+        set(&mut s, "steam:2", &json!({"fpsLimit": 30})).unwrap();
+        assert_eq!(get(&s, "steam:1")["fpsLimit"], 40);
+        assert_eq!(get(&s, "steam:2")["fpsLimit"], 30);
+    }
+}
+
 pub fn set(store: &mut Store, id: &str, patch: &Value) -> Result<(), String> {
     let mut c = clean(patch);
     // A power limit picked on the game's page replaces the HHD power settings kept from Quick Access.
     if c.contains_key("tdp") && !c.contains_key("hhdPower") { c.insert("hhdPower".into(), json!({})); c.insert("powerLabel".into(), json!("")); }
     let id = id.to_string();
     store.update(|d| {
-        let all = d.entry("gameOptions").or_insert(json!({}));
-        let cur = all.as_object_mut().unwrap().entry(id).or_insert(json!({}));
+        let cur = crate::store::object_at(crate::store::object_in(d, "gameOptions"), id, json!({}));
         for (k, v) in c { cur[k] = v; }
     }).map_err(|e| e.to_string())
 }

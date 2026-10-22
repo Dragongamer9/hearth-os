@@ -306,7 +306,7 @@ impl Library {
     pub fn install_done(&mut self, id: &str, error: Option<&str>, gog_dir: Option<&str>) -> Value {
         if let (Some(dir), None) = (gog_dir, error) {
             let gid = id.trim_start_matches("gog:").to_string();
-            let _ = self.store.update(|d| { let m = d.entry("gogInstalls").or_insert(json!({})); if let Some(o) = m.as_object_mut() { o.insert(gid, json!(dir)); } });
+            let _ = self.store.update(|d| { crate::store::object_in(d, "gogInstalls").insert(gid, json!(dir)); });
         }
         self.save_queue();
         let title = self.games.get(id).map(|g| g.title.clone()).unwrap_or_else(|| id.to_string());
@@ -680,8 +680,7 @@ impl Library {
             let minutes = ((now_ms().saturating_sub(r.started_at).saturating_sub(paused)) as f64 / 60000.0).round() as u64;
             let id = r.id.clone();
             let _ = self.store.update(|d| {
-                let stats = d.entry("stats").or_insert(json!({}));
-                let s = stats.as_object_mut().unwrap().entry(id).or_insert(json!({"minutes": 0, "lastPlayed": 0}));
+                let s = crate::store::object_at(crate::store::object_in(d, "stats"), id, json!({"minutes": 0, "lastPlayed": 0}));
                 s["minutes"] = json!(s["minutes"].as_u64().unwrap_or(0) + minutes);
                 s["lastPlayed"] = json!(now_ms());
             });

@@ -7,6 +7,29 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
+/// One Wi-Fi job (scan, connect) and one Bluetooth pairing at a time: two at once fight over the radio.
+pub static WIFI_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static BT_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Holding one of those; let go when dropped.
+pub struct Turn(&'static std::sync::atomic::AtomicBool);
+impl Drop for Turn { fn drop(&mut self) { self.0.store(false, std::sync::atomic::Ordering::SeqCst); } }
+/// The turn, or None while another job has it.
+pub fn take_turn(flag: &'static std::sync::atomic::AtomicBool) -> Option<Turn> {
+    if flag.swap(true, std::sync::atomic::Ordering::SeqCst) { None } else { Some(Turn(flag)) }
+}
+
+/// A Bluetooth address as bluetoothctl writes it ("AA:BB:CC:DD:EE:FF"). Anything else from the page never reaches
+/// bluetoothctl (pairing types it into bluetoothctl's own prompt, where a line break would start another command).
+pub fn valid_mac(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 17 && b.iter().enumerate().all(|(i, c)| if i % 3 == 2 { *c == b':' } else { c.is_ascii_hexdigit() })
+}
+/// A Wi-Fi network's name for nmcli: 1-32 bytes, no control characters, and not starting with "-" (it would be read
+/// as one of nmcli's options).
+pub fn valid_ssid(s: &str) -> bool { !s.is_empty() && s.len() <= 32 && !s.starts_with('-') && !s.chars().any(char::is_control) }
+/// A Wi-Fi password for nmcli: at most 64 bytes, no control characters, not starting with "-".
+pub fn valid_wifi_password(s: &str) -> bool { s.len() <= 64 && !s.starts_with('-') && !s.chars().any(char::is_control) }
+
 /// Runs a program and returns what it printed; Err with its last line when it fails or isn't there.
 pub fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
     run_timeout(cmd, args, Duration::from_secs(15))
@@ -109,6 +132,8 @@ pub mod wifi {
         Ok(Value::Array(parse_scan(&text, &saved())))
     }
     pub fn connect(ssid: &str, password: Option<&str>) -> Value {
+        if !valid_ssid(ssid) { return json!({"ok": false, "error": "That network's name can't be used."}); }
+        if !password.map(valid_wifi_password).unwrap_or(true) { return json!({"ok": false, "error": "That password can't be used."}); }
         let r = if saved().iter().any(|s| s == ssid) && password.is_none() {
             run_timeout("nmcli", &["connection", "up", "id", ssid], Duration::from_secs(45))
         } else {
@@ -126,7 +151,7 @@ pub mod wifi {
         }
     }
     pub fn disconnect() -> Result<(), String> { if let Some((d, _)) = device() { run("nmcli", &["device", "disconnect", &d])?; } Ok(()) }
-    pub fn forget(ssid: &str) -> Result<(), String> { run("nmcli", &["connection", "delete", "id", ssid]).map(|_| ()) }
+    pub fn forget(ssid: &str) -> Result<(), String> { if !valid_ssid(ssid) { return Err("That network's name can't be used.".into()); } run("nmcli", &["connection", "delete", "id", ssid]).map(|_| ()) }
 }
 
 // ------------------------------------------------------------------ Bluetooth, radios
@@ -161,7 +186,7 @@ pub mod bt_devices {
         let mut args = vec!["devices"]; if let Some(f) = filter { args.push(f); }
         run("bluetoothctl", &args).unwrap_or_default().lines().filter_map(|l| l.strip_prefix("Device ")).map(|l| l.chars().take(17).collect()).collect()
     }
-    pub fn info(mac: &str) -> Option<Value> { run("bluetoothctl", &["info", mac]).ok().map(|t| parse_info(mac, &t)) }
+    pub fn info(mac: &str) -> Option<Value> { if !valid_mac(mac) { return None; } run("bluetoothctl", &["info", mac]).ok().map(|t| parse_info(mac, &t)) }
     pub fn paired() -> Value { Value::Array(devices(Some("Paired")).iter().filter_map(|m| info(m)).collect()) }
     /// Pairs, trusts and connects, in one bluetoothctl session with its own "just works" agent (controllers
     /// have no screen or keys to confirm a code). Scanning has to be off while pairing: many adapters drop the
@@ -169,6 +194,7 @@ pub mod bt_devices {
     pub fn pair(mac: &str) -> Value {
         use std::io::{BufRead, Write};
         use std::sync::mpsc;
+        if !valid_mac(mac) { return json!({"ok": false, "error": "That isn't a Bluetooth address."}); }
         // Any scan Hearth is running stops first (they're separate bluetoothctl clients).
         let _ = run("pkill", &["-f", "bluetoothctl --timeout"]);
         // A half-done earlier attempt gets in the way of a new one.
@@ -222,7 +248,7 @@ pub mod bt_devices {
         let _ = child.wait();
         r
     }
-    pub fn unpair(mac: &str) -> Value { match run("bluetoothctl", &["remove", mac]) { Ok(_) => json!({"ok": true}), Err(e) => json!({"ok": false, "error": e}) } }
+    pub fn unpair(mac: &str) -> Value { if !valid_mac(mac) { return json!({"ok": false, "error": "That isn't a Bluetooth address."}); } match run("bluetoothctl", &["remove", mac]) { Ok(_) => json!({"ok": true}), Err(e) => json!({"ok": false, "error": e}) } }
 }
 
 /// Bluetooth scanning (Settings › Bluetooth) and "Connect a controller" (pairs controllers by itself).
@@ -300,6 +326,8 @@ pub mod bt_scan {
                     if let Some((t, n)) = tried.get(&mac) { if t.elapsed() < Duration::from_secs(8) || *n >= 5 { continue; } }
                     let Some(d) = bt_devices::info(&mac) else { continue };
                     if d["paired"] == true || !is_gamepad(&d) { continue; }
+                    // Not while a pairing from Settings runs (tried again on the next round).
+                    let Some(_turn) = take_turn(&BT_BUSY) else { break };
                     let n = tried.get(&mac).map(|x| x.1).unwrap_or(0) + 1;
                     tried.insert(mac.clone(), (std::time::Instant::now(), n));
                     emit(ev("bt.pad", json!({"state": "pairing", "name": d["name"]})));
@@ -464,6 +492,19 @@ pub fn status(max_volume: u32) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn page_values_checked_before_the_tools() {
+        assert!(valid_mac("AA:bb:01:23:45:6F"));
+        assert!(!valid_mac("AA:BB:CC:DD:EE:FF\nremove 11:22:33:44:55:66") && !valid_mac("AA-BB-CC-DD-EE-FF") && !valid_mac(""));
+        assert!(valid_ssid("Casa Wifi 5G") && valid_ssid("Café"));
+        assert!(!valid_ssid("") && !valid_ssid("--ask") && !valid_ssid("a\nb") && !valid_ssid(&"x".repeat(33)));
+        assert!(valid_wifi_password("hunter2!") && !valid_wifi_password("-x") && !valid_wifi_password("a\tb"));
+        assert_eq!(bt_devices::pair("x\nquit")["ok"], false);
+        let t = take_turn(&WIFI_BUSY).unwrap();
+        assert!(take_turn(&WIFI_BUSY).is_none());
+        drop(t);
+        assert!(take_turn(&WIFI_BUSY).is_some());
+    }
     #[test]
     fn errors_say_what_went_wrong() {
         assert_eq!(run_timeout("sh", &["-c", "echo 'curl: (28) Operation timed out' >&2; printf 'body\\n200'; exit 28"], Duration::from_secs(5)).unwrap_err(), "curl: (28) Operation timed out");
