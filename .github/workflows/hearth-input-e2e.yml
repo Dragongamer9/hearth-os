@@ -37,4 +37,19 @@ jobs:
 
       - name: End-to-end test
         # As root: the fake controllers' /dev/input nodes are root:input, and the daemon must open them.
-        run: sudo E2E_SHOW_LOG=1 /usr/bin/python3 tools/e2e-hearth-input.py
+        run: |
+          set -o pipefail
+          sudo E2E_SHOW_LOG=1 /usr/bin/python3 tools/e2e-hearth-input.py 2>&1 | tee e2e.log
+
+      - name: Report as annotations
+        # The report (and the daemon's log) on the run's page too, readable without downloading the job log.
+        if: always()
+        run: |
+          [ -f e2e.log ] || exit 0
+          python3 - <<'PY'
+          text = open('e2e.log', encoding='utf-8', errors='replace').read()
+          chunks = [text[i:i + 3800] for i in range(0, len(text), 3800)][:10]
+          for n, c in enumerate(chunks, 1):
+              c = c.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+              print('::notice title=e2e report %d/%d::%s' % (n, len(chunks), c))
+          PY
