@@ -14,7 +14,9 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-pub const HELPER: &str = "/usr/share/nimbus/desktop/shell/hearth-pad";
+/// hearth-pad where Hearth finds its other helpers (paths::desktop_dir): a fixed /usr/share/nimbus path left the
+/// controller mouse "not installed" where the session keeps its desktop files elsewhere (/usr/local/share/nimbus).
+pub fn helper() -> std::path::PathBuf { crate::paths::desktop_dir().join("shell/hearth-pad") }
 
 struct Running { child: Child, stdin: ChildStdin, paused: bool }
 
@@ -25,7 +27,7 @@ static PROBE: OnceLock<Arc<dyn Fn() -> bool + Send + Sync>> = OnceLock::new();
 pub fn set_pause_probe(f: Arc<dyn Fn() -> bool + Send + Sync>) { let _ = PROBE.set(f); }
 
 /// The helper's arguments: Game Mode, and the pointer speed from Settings when there is one.
-pub fn helper_args() -> Vec<String> { vec![HELPER.to_string(), "--game".to_string()] }
+pub fn helper_args() -> Vec<String> { vec![helper().to_string_lossy().to_string(), "--game".to_string()] }
 
 /// Is it on?
 pub fn is_on() -> bool {
@@ -56,7 +58,7 @@ pub fn stop() {
 pub fn start() -> Result<(), String> {
     if is_on() { return Ok(()); }
     if !crate::gamescope::inside() { return Err("The controller mouse is for Game Mode; the desktop has its own (Quick Access there).".into()); }
-    if !std::path::Path::new(HELPER).is_file() { return Err("The controller helper (hearth-pad) isn't installed.".into()); }
+    if !helper().is_file() { return Err("The controller helper (hearth-pad) isn't installed.".into()); }
     let args = helper_args();
     let mut child = Command::new("python3").args(&args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
         .map_err(|e| format!("Couldn't start the controller mouse: {e}"))?;
@@ -109,7 +111,8 @@ mod tests {
     use super::*;
     #[test]
     fn game_mode_helper() {
-        assert_eq!(helper_args(), vec![HELPER.to_string(), "--game".to_string()]);
+        assert_eq!(helper_args(), vec![helper().to_string_lossy().to_string(), "--game".to_string()]);
+        assert!(helper_args()[0].ends_with("shell/hearth-pad"));
         assert!(!is_on());
     }
 }
