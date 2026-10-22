@@ -202,6 +202,8 @@ jobs:
       # REQUIRED: a failure here stops the image from being published.
       - name: Check the image
         run: |
+          # pipefail: without it `bootc container lint | tee` below always passed, even when lint failed.
+          set -o pipefail
           cat > /tmp/check.sh <<'EOF'
           fail=0
           # dpkg's database is in /usr/lib/sysimage/dpkg; tmpfiles links /var/lib/dpkg to it at boot, which a plain
