@@ -173,6 +173,7 @@ class Keyboard {
     this.r = 1;
     this.c = 0;
     this.tip = null;
+    this.heard = [];   // the last keys it acted on (for the CI test)
     this.build();
   }
 
@@ -206,7 +207,7 @@ class Keyboard {
         const cmd = doc.createXULElement("command");
         cmd.id = cmdId;
         // Acted on once the key press is over: typing from inside it would find Firefox's text input busy.
-        cmd.addEventListener("command", () => this.win.setTimeout(fn, 0));
+        cmd.addEventListener("command", () => { this.heard.push(name); this.heard.splice(0, this.heard.length - 20); this.win.setTimeout(fn, 0); });
         commands.appendChild(cmd);
       }
       const key = doc.createXULElement("key");
@@ -352,9 +353,19 @@ function keyboardOf(win) {
   return k;
 }
 
+/** Firefox's toolbar module (moved to moz-src:// in newer versions). */
+function customizableUI() {
+  for (const url of ["moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs", "resource:///modules/CustomizableUI.sys.mjs"]) {
+    try { return ChromeUtils.importESModule(url).CustomizableUI; } catch (e) {}
+  }
+  throw new Error("Firefox's CustomizableUI module wasn't found");
+}
+
+let buttonMade = false;
 function keyboardButton() {
+  if (buttonMade) return;
   try {
-    const { CustomizableUI } = ChromeUtils.importESModule("resource:///modules/CustomizableUI.sys.mjs");
+    const CustomizableUI = customizableUI();
     CustomizableUI.createWidget({
       id: "hearth-keyboard-button",
       type: "button",
@@ -363,6 +374,7 @@ function keyboardButton() {
       defaultArea: CustomizableUI.AREA_NAVBAR,
       onCommand: e => keyboardOf(e.target.ownerGlobal).toggle(),
     });
+    buttonMade = true;
   } catch (e) { report("keyboard button", e); }
 }
 
@@ -394,6 +406,7 @@ function setUpWindow(win) {
   try {
     if (win.document.documentURI !== BROWSER_DOC) return;
     newTabPage();
+    keyboardButton();
     // The start page on a new tab leaves the address bar empty, as Firefox's own does.
     try { if (Array.isArray(win.gInitialPages) && !win.gInitialPages.includes(START)) win.gInitialPages.push(START); } catch (e) {}
     const kb = keyboardOf(win);
@@ -414,7 +427,6 @@ export function start() {
   defaults();
   modePrefs();
   styles();
-  keyboardButton();
   Services.obs.addObserver(win => setUpWindow(win), "browser-delayed-startup-finished");
   Services.prefs.setIntPref("hearth.started", Math.floor(Date.now() / 1000));
 }
