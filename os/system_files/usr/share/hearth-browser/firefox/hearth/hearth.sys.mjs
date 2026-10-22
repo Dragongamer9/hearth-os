@@ -196,34 +196,24 @@ class Keyboard {
     if (anchor) anchor.after(box); else doc.documentElement.appendChild(box);
     this.box = box;
 
-    // Keys: always Ctrl+Alt+K (open/close); the rest only while the keyboard is open.
+    // Keys: always Ctrl+Alt+K (open/close); the rest only while the keyboard is open, in a keyset of their own
+    // that's put in when it opens and taken out when it closes (Firefox reads a keyset's keys once, so switching
+    // single keys on and off doesn't work).
     const commands = doc.createXULElement("commandset");
     commands.id = "hearth-osk-commands";
-    const keys = doc.createXULElement("keyset");
-    keys.id = "hearth-osk-keys";
-    const add = (name, attrs, fn, nav) => {
-      const cmdId = "hearth-osk-cmd-" + name;
-      if (!doc.getElementById(cmdId) && !commands.querySelector("#" + cmdId)) {
-        const cmd = doc.createXULElement("command");
-        cmd.id = cmdId;
-        // Acted on once the key press is over: typing from inside it would find Firefox's text input busy.
-        cmd.addEventListener("command", () => { this.heard.push(name); this.heard.splice(0, this.heard.length - 20); this.win.setTimeout(fn, 0); });
-        commands.appendChild(cmd);
-      }
-      const key = doc.createXULElement("key");
-      for (const [k, v] of Object.entries(attrs)) if (v) key.setAttribute(k, v);
-      key.setAttribute("command", cmdId);
-      key.setAttribute("reserved", "true");
-      if (nav) { key.classList.add("hearth-osk-nav"); key.setAttribute("disabled", "true"); }
-      keys.appendChild(key);
+    const command = (name, fn) => {
+      const cmd = doc.createXULElement("command");
+      cmd.id = "hearth-osk-cmd-" + name;
+      // Acted on once the key press is over: typing from inside it would find Firefox's text input busy.
+      cmd.addEventListener("command", () => { this.heard.push(name); this.heard.splice(0, this.heard.length - 20); this.win.setTimeout(fn, 0); });
+      commands.appendChild(cmd);
     };
-    add("toggle", { key: "K", modifiers: "accel,alt" }, () => this.toggle(), false);
+    command("toggle", () => this.toggle());
     const acts = { up: () => this.move(-1, 0), down: () => this.move(1, 0), left: () => this.move(0, -1), right: () => this.move(0, 1),
                    press: () => this.press(), backspace: () => this.typeKey("Backspace"), close: () => this.close() };
-    for (const [name, keycode, modifiers] of NAV) add(name, { keycode, modifiers }, acts[name], true);
+    for (const [name, fn] of Object.entries(acts)) command(name, fn);
     doc.documentElement.appendChild(commands);
-    doc.documentElement.appendChild(keys);
-    this.keys = keys;
+    doc.documentElement.appendChild(this.keyset("hearth-osk-toggle", [["toggle", { key: "K", modifiers: "accel,alt" }]]));
     this.render();
   }
 
@@ -319,10 +309,24 @@ class Keyboard {
   typeChar(ch) { this.dispatch({ key: ch }); }
   typeKey(name) { this.dispatch({ key: name, code: CODES[name] || "", keyCode: KEYCODES[name] || 0 }); }
 
-  navKeys(on) {
-    for (const k of this.keys.querySelectorAll(".hearth-osk-nav")) {
-      if (on) k.removeAttribute("disabled"); else k.setAttribute("disabled", "true");
+  /** A keyset of reserved keys (they come here before the web page), each running one of the commands above. */
+  keyset(id, keys) {
+    const set = this.doc.createXULElement("keyset");
+    set.id = id;
+    for (const [name, attrs] of keys) {
+      const key = this.doc.createXULElement("key");
+      for (const [k, v] of Object.entries(attrs)) if (v) key.setAttribute(k, v);
+      key.setAttribute("command", "hearth-osk-cmd-" + name);
+      key.setAttribute("reserved", "true");
+      set.appendChild(key);
     }
+    return set;
+  }
+
+  navKeys(on) {
+    const old = this.doc.getElementById("hearth-osk-nav");
+    if (on && !old) this.doc.documentElement.appendChild(this.keyset("hearth-osk-nav", NAV.map(([name, keycode, modifiers]) => [name, { keycode, modifiers }])));
+    else if (!on && old) old.remove();
   }
 
   open() {
