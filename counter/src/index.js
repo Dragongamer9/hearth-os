@@ -6,9 +6,13 @@
 //                   now = seen in the last 15 minutes, today = 24 hours, month = 30 days.
 //
 //   POST /v1/logs   (text) Settings › System › "Send logs": a bug report's logs (personal details already taken
-//                   out on the device). Answers {"code": "ABCD-EFGH-JK"}; kept 14 days.
+//                   out on the device). Answers {"code": "ABCD-EFGH-JK"}; kept 14 days. Also the "Still stuck?"
+//                   form on hearthos.fun/docs (kind "docs"): what the person wrote, as a log.
 //   POST /v1/vote   {"id": "<device id>", "layout": "x-orbit", "up": true}  upvote (or take back) an experimental layout
 //   GET  /v1/votes  {"counts": {"x-orbit": 12, ...}}  everyone's upvotes, live
+//   POST /v1/cmdvote {"id": "<browser id>", "cmd": "fix-podman", "v": 1 | -1 | 0}  hearthos.fun/docs: did this
+//                   command work? (0 takes the vote back)
+//   GET  /v1/cmdvotes {"counts": {"fix-podman": {"up": 9, "down": 1}, ...}}
 //   GET  /v1/logs/<code>  the logs, as text, for whoever has the code (the person shows it to the developer).
 //   Each log sent is also put in the private GitHub repository LOGS_REPO (a file plus an issue with the code,
 //   version, device, the person's note from X-Hearth-Note, and the error lines), once the worker has the secret
@@ -17,7 +21,7 @@
 // Stored per install: the random id, its kind, its version, when it was first and last seen. No IP
 // addresses, names or anything else. Rows not seen for 40 days are deleted every day.
 
-const KINDS = new Set(['amd', 'nvidia', 'windows', 'appimage', 'live', 'anatase', 'ubuntu', 'cachyos', 'peppermint', 'android', 'other']);
+const KINDS = new Set(['amd', 'nvidia', 'windows', 'appimage', 'live', 'anatase', 'ubuntu', 'cachyos', 'peppermint', 'android', 'docs', 'other']);  // docs: a problem sent from hearthos.fun/docs
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
 const json = (o, status = 200, extra = {}) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', ...CORS, ...extra } });
 
@@ -29,6 +33,8 @@ export default {
     if (url.pathname === '/v1/stats' && req.method === 'GET') return stats(req, env, ctx);
     if (url.pathname === '/v1/logs' && req.method === 'POST') return putLogs(req, env, ctx);
     if (url.pathname === '/v1/vote' && req.method === 'POST') return putVote(req, env);
+    if (url.pathname === '/v1/cmdvote' && req.method === 'POST') return putCmdVote(req, env);
+    if (url.pathname === '/v1/cmdvotes' && req.method === 'GET') return json({ counts: await cmdCounts(env) }, 200, { 'cache-control': 'no-store' });
     if (url.pathname === '/v1/votes' && req.method === 'GET') return json({ counts: await voteCounts(env) }, 200, { 'cache-control': 'no-store' });
     if (url.pathname === '/v1/github-errors' && req.method === 'GET') return ghErrors(env);
     if (url.pathname.startsWith('/v1/logs/') && req.method === 'GET') return getLogs(url, env);
@@ -224,4 +230,30 @@ async function putVote(req, env) {
   if (b.up) await env.DB.prepare('INSERT OR IGNORE INTO votes (device, layout, at) VALUES (?, ?, ?)').bind(id, layout, Date.now()).run();
   else await env.DB.prepare('DELETE FROM votes WHERE device = ? AND layout = ?').bind(id, layout).run();
   return json({ ok: true, counts: await voteCounts(env) });
+}
+
+// ---------------------------------------------------------------- docs: did this command work?
+async function cmdTable(env) {
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS cmd_votes (device TEXT NOT NULL, cmd TEXT NOT NULL, v INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (device, cmd))').run();
+}
+
+async function cmdCounts(env) {
+  await cmdTable(env);
+  const rows = await env.DB.prepare('SELECT cmd, SUM(v = 1) AS up, SUM(v = -1) AS down FROM cmd_votes GROUP BY cmd').all();
+  const out = {};
+  for (const r of rows.results || []) out[r.cmd] = { up: r.up || 0, down: r.down || 0 };
+  return out;
+}
+
+async function putCmdVote(req, env) {
+  let b;
+  try { b = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
+  const id = String(b && b.id || ''), cmd = String(b && b.cmd || ''), v = Number(b && b.v);
+  if (!/^[a-f0-9]{16,64}$/.test(id)) return json({ error: 'bad id' }, 400);
+  if (!/^[a-z0-9-]{2,40}$/.test(cmd)) return json({ error: 'bad command' }, 400);
+  if (![1, -1, 0].includes(v)) return json({ error: 'bad vote' }, 400);
+  await cmdTable(env);
+  if (v === 0) await env.DB.prepare('DELETE FROM cmd_votes WHERE device = ? AND cmd = ?').bind(id, cmd).run();
+  else await env.DB.prepare('INSERT INTO cmd_votes (device, cmd, v, at) VALUES (?, ?, ?, ?) ON CONFLICT (device, cmd) DO UPDATE SET v = excluded.v, at = excluded.at').bind(id, cmd, v, Date.now()).run();
+  return json({ ok: true, counts: await cmdCounts(env) });
 }

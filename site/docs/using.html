@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Using Hearth · Hearth OS docs</title>
+<meta name="description" content="Game Mode, the desktop, the controller and keyboard, the power button, and sending logs.">
+<meta name="theme-color" content="#120c09">
+<link rel="icon" href="../img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<nav class="top" aria-label="Main">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="">Hearth OS <span>Docs</span></a>
+    <div class="links">
+      <a href="../">Home</a>
+      <a class="keep" href="troubleshooting.html">Help</a>
+      <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a>
+      <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
+      <a class="cta" href="../#download">Download</a>
+    </div>
+  </div>
+</nav>
+<div class="wrap layout">
+  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html" class="cur" aria-current="page">Using Hearth</a><div class="sub"><a href="#modes">Game Mode and Desktop Mode</a><a href="#controller">Controller</a><a href="#keyboard">The on-screen keyboard</a><a href="#power">The power button</a><a href="#display">Display and performance</a><a href="#profiles">Profiles and stores</a><a href="#logs">Sending logs</a></div><a href="troubleshooting.html">Troubleshooting</a></div></aside>
+  <main id="main">
+    <div class="crumb">Docs · for Hearth OS 0.3.1</div>
+    <h1>Using Hearth</h1>
+    <p class="lead">Game Mode, the desktop, the controller and keyboard, the power button, and sending logs.</p>
+
+<h2 id="modes">Game Mode and Desktop Mode</h2>
+<p><b>Game Mode</b> is the console-style screen Hearth starts in. <b>Desktop Mode</b> (Mantel) is a full desktop with windows,
+a file manager and a terminal.</p>
+<ul>
+<li>To the desktop: <b>Power › Switch to desktop</b> in Game Mode.</li>
+<li>Back to Game Mode: the <b>Game Mode</b> button at the bottom right of the desktop.</li>
+<li><b>Settings › Sign-in › Start in</b> picks which one you see after signing in.</li>
+</ul>
+
+<h2 id="controller">Controller</h2>
+<div class="tbl"><table>
+<tr><th>Button</th><th>In Game Mode</th></tr>
+<tr><td>A / B</td><td>Select / back</td></tr>
+<tr><td>Y</td><td>Search</td></tr>
+<tr><td>Menu (☰)</td><td>Main menu</td></tr>
+<tr><td>View (⧉)</td><td>Quick Access: volume, brightness, power, Wi-Fi</td></tr>
+<tr><td>Xbox / Guide</td><td>Over a game: the overlay (back to Hearth, close the game, settings)</td></tr>
+<tr><td>View + Menu together</td><td>Controller mouse on or off (for launchers and installers a controller can't drive)</td></tr>
+</table></div>
+<p>The controller mouse: right stick moves the pointer, A or RT clicks, X or LT right-clicks, left stick scrolls, B is Esc.</p>
+
+<h2 id="keyboard">The on-screen keyboard</h2>
+<p>Laid out like SteamOS's, at the bottom of the screen. With a controller:</p>
+<div class="tbl"><table>
+<tr><th>Button</th><th>Does</th></tr>
+<tr><td>A</td><td>Type the selected key</td></tr>
+<tr><td>Y</td><td>Delete</td></tr>
+<tr><td>X</td><td>Space</td></tr>
+<tr><td>LB</td><td>Shift (twice for caps lock)</td></tr>
+<tr><td>RB</td><td>Symbols (&amp;123)</td></tr>
+<tr><td>Menu</td><td>Done</td></tr>
+<tr><td>B</td><td>Close</td></tr>
+</table></div>
+<p>The ← and → keys move the text cursor. A USB or Bluetooth keyboard works too.</p>
+
+<h2 id="power">The power button</h2>
+<p><b>Settings › Power › Power button</b> sets what a quick <b>Press</b> and a <b>Hold</b> do (sleep, the power menu, turn off).
+Holding the button for several seconds always turns the device off.</p>
+
+<h2 id="display">Display and performance</h2>
+<ul>
+<li><b>Settings › Display › Drawing engine</b>: on Nvidia graphics Hearth uses Chromium to draw Game Mode, which is much smoother there. It's chosen automatically.</li>
+<li><b>Settings › Power</b>: power mode and the power limit (TDP) on handhelds.</li>
+</ul>
+
+<h2 id="profiles">Profiles and stores</h2>
+<ul>
+<li>Each Hearth profile can sign in to its own Steam account. With more than one profile, each sees its own Steam games.</li>
+<li>Stores are signed in to from <b>Settings › Game stores</b>. Beacon (the Battle for Middle-earth launcher) is built in.</li>
+</ul>
+
+<h2 id="logs">Sending logs</h2>
+<p>When something goes wrong, <b>Settings › System › Send logs to the developer</b>. You get a short code (like
+<code>ABCD-EFGH-JK</code>): share it when you report the problem. Logs are kept 14 days, personal details are taken out
+before they're sent, and only someone with the code can read them.</p>
+
+<div class="pager"><a href="updates.html">← Updates and editions</a><a href="troubleshooting.html">Troubleshooting →</a></div>
+  </main>
+</div>
+<footer>
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="" width="22" height="22">Hearth OS</a>
+    <a href="https://github.com/Dragongamer9/hearth-os">Source code</a>
+    <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a>
+    <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">Roadmap</a>
+    <a href="troubleshooting.html#ask">Report a problem</a>
+  </div>
+</footer>
+<script src="docs.js" defer></script>
+</body>
+</html>
