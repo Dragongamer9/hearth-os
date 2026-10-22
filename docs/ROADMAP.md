@@ -97,6 +97,11 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.2.10 (released)
+
+- [x] Steam's Game Mode taken out: Game Mode is always Hearth's (the old choice is cleared at the next start)
+- [x] Game Mode keyboard laid out like SteamOS's: docked at the bottom, a caret you can move, shift and caps, &123 symbols; Y delete, X space, LB shift, RB symbols, Menu done
+
 ## 0.2.9 (released)
 
 - [x] Steam's Game Mode (Experimental): the Flatpak may reach Wi-Fi, power, Bluetooth and SteamOS Manager; one that didn't end cleanly falls back to Hearth's at the next start; set back to Hearth's once after 0.2.8
