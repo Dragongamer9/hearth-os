@@ -16,18 +16,19 @@
       "UserMessaging",
       "FirefoxHome",
       "FirefoxSuggest",
-      "ExtensionSettings"
+      "ExtensionSettings",
+      "DisableAppUpdate"
     ],
     "hearth": {
-      "start": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
+      "start": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
       "game": true,
       "big": true,
       "scale": 1.5
     },
     "prefs": {
-      "hearth.started": 1792664567,
+      "hearth.started": 1792664825,
       "hearth.keyboard.ready": true,
-      "browser.startup.homepage": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
+      "browser.startup.homepage": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
       "media.eme.enabled": true,
       "toolkit.legacyUserProfileCustomizations.stylesheets": true,
       "datareporting.healthreport.uploadEnabled": false,
@@ -37,7 +38,7 @@
       "browser.link.open_newwindow.restriction": 0,
       "extensions.activeThemeID": "firefox-compact-dark@mozilla.org"
     },
-    "newTab": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
+    "newTab": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
     "keyboardButton": true,
     "keyboard": true,
     "window": [
@@ -53,5 +54,30 @@
     720,
     1280,
     720
+  ],
+  "key-experiment": {
+    "newKeyset": true,
+    "mainKeyset": true,
+    "capture": 1,
+    "systemCapture": 1,
+    "wasDisabled": true
+  },
+  "keys": [
+    {
+      "key": "ArrowDown",
+      "open": true,
+      "r": 1,
+      "c": 0,
+      "heard": [],
+      "focus": "browser"
+    },
+    {
+      "key": "Enter",
+      "open": true,
+      "r": 1,
+      "c": 0,
+      "heard": [],
+      "focus": "browser"
+    }
   ]
 }
