@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-peppermint.yml']
+    paths: ['os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-peppermint.yml']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -62,6 +62,9 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
           cargo build --release
           mkdir -p /tmp/app && cp target/release/hearth /tmp/app/hearth
+          # ---- hearthfetch (hosts/hearthfetch): /usr/bin/hearthfetch, Hearth OS's system summary for the terminal.
+          (cd ../hearthfetch && sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml && cargo build --release && cp target/release/hearthfetch /tmp/app/hearthfetch)
+          # ---- end hearthfetch
           echo "--- libraries the app links (all come from Debian trixie)"
           objdump -p target/release/hearth | grep NEEDED
           echo "--- newest glibc symbol it needs (trixie has 2.41)"
@@ -200,6 +203,7 @@ jobs:
           echo "--- the Hearth app runs on Debian trixie"
           check "every library the Hearth app links is installed" "! ldd /usr/lib/nimbus/nimbus | grep -q 'not found'"
           check "Hearth Browser is installed" "test -x /usr/lib/hearth-browser/nimbus"
+          check "hearthfetch is installed and runs" "test -x /usr/bin/hearthfetch && /usr/bin/hearthfetch --no-logo | grep -q Hearth"
           warn "every library Hearth Browser links is installed" "! ldd /usr/lib/hearth-browser/nimbus | grep -q 'not found'"
           echo "--- bootable"
           check "one kernel with its initramfs in /usr/lib/modules" "test \$(ls /usr/lib/modules/*/vmlinuz | wc -l) = 1 && ls /usr/lib/modules/*/initramfs.img"

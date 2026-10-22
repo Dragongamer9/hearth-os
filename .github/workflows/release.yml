@@ -78,6 +78,19 @@ jobs:
             if (-not (Test-Path $f)) { throw "Missing $f in the published output" }
           }
 
+      # ---- hearthfetch (hosts/hearthfetch): Hearth's system summary for the terminal, in Ember's bin folder (Ember puts
+      # that folder on your PATH: CliPath.cs).
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build hearthfetch
+        shell: bash
+        run: |
+          cd hosts/hearthfetch
+          sed -i "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
+          cargo build --release
+          mkdir -p ../../out/bin && cp target/release/hearthfetch.exe ../../out/bin/
+          ../../out/bin/hearthfetch.exe --no-logo
+      # ---- end hearthfetch
+
       - name: Package
         shell: pwsh
         run: |

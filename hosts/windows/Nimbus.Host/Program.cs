@@ -31,6 +31,8 @@ internal static class Program
 
         IsShell = shell;
         ApplicationConfiguration.Initialize();
+        // hearthfetch (Ember's bin folder) on your PATH: CliPath.cs.
+        _ = Task.Run(CliPath.Ensure);
 
         if (shell)
         {
