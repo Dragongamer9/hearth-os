@@ -210,17 +210,21 @@ class DisplayModes {
     return this.get();
   }
 
-  /** Desktop Mode (labwc) forgets wlr-randr changes on restart; keep them in a script its autostart runs. */
+  /** Desktop Mode (labwc) forgets wlr-randr changes on restart; keep them in a script its autostart runs. display.sh
+   *  itself is what's kept (Desktop Mode's own Settings › Display writes it too): only this screen's line changes. */
   saveWlr(output, change) {
-    const file = path.join(CONF_DIR, 'display.json');
-    let saved = {};
-    try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
-    saved[output] = { ...(saved[output] || {}), ...change };
+    const file = path.join(CONF_DIR, 'display.sh');
+    let old = '';
+    try { old = fs.readFileSync(file, 'utf8'); } catch {}
+    const ours = `wlr-randr --output '${output}'`;
+    const mine = l => l === ours || l.startsWith(ours + ' ');
+    const prev = old.split('\n').find(mine) || '';
+    const c = { mode: (prev.match(/--mode '([^']*)'/) || [])[1], scale: (prev.match(/--scale (\S+)/) || [])[1], ...change };
+    const lines = old.split('\n').filter(l => l.startsWith('wlr-randr ') && !mine(l));
+    lines.push(`${ours}${c.mode ? ` --mode '${c.mode}'` : ''}${c.scale ? ` --scale ${c.scale}` : ''}`);
     fs.mkdirSync(CONF_DIR, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(saved, null, 2));
-    const lines = Object.entries(saved).map(([o, c]) =>
-      `wlr-randr --output '${o}'${c.mode ? ` --mode '${c.mode}'` : ''}${c.scale ? ` --scale ${c.scale}` : ''}`);
-    fs.writeFileSync(path.join(CONF_DIR, 'display.sh'), `#!/bin/sh\n# Written by Nimbus › Settings › Display\n${lines.join('\n')}\n`, { mode: 0o755 });
+    fs.writeFileSync(file + '.tmp', `#!/bin/sh\n# Written by Nimbus › Settings › Display\n${lines.join('\n')}\n`, { mode: 0o755 });
+    fs.renameSync(file + '.tmp', file);
   }
 }
 
