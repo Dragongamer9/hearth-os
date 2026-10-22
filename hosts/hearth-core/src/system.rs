@@ -389,7 +389,39 @@ pub fn brightness() -> Option<u32> {
     let out = run("brightnessctl", &["-m", "-c", "backlight", "info"]).ok()?;
     out.split(',').find(|f| f.ends_with('%')).and_then(|f| f.trim_end_matches('%').parse().ok())
 }
-pub fn set_brightness(v: u32) -> Result<(), String> { run("brightnessctl", &["-c", "backlight", "set", &format!("{}%", v.clamp(1, 100))]).map(|_| ()) }
+pub fn set_brightness(v: u32) -> Result<(), String> {
+    let v = v.clamp(1, 100);
+    match run("brightnessctl", &["-c", "backlight", "set", &format!("{v}%")]) {
+        Ok(_) => Ok(()),
+        // Debian's and Ubuntu's brightnessctl write the file themselves (the video group, which hearth-groups
+        // adds at start-up); until then, logind sets it for the signed-in user.
+        Err(e) => logind_brightness(v).map_err(|_| e),
+    }
+}
+
+/// The screen's brightness through logind (Session.SetBrightness), which any signed-in user may do.
+fn logind_brightness(pct: u32) -> Result<(), String> {
+    let info = run("brightnessctl", &["-m", "-c", "backlight", "info"])?;
+    let (dev, max) = backlight_device(&info).ok_or("no backlight")?;
+    let raw = ((max as u64 * pct as u64 + 50) / 100).max(1).to_string();
+    run("busctl", &["call", "org.freedesktop.login1", "/org/freedesktop/login1/session/auto", "org.freedesktop.login1.Session",
+                    "SetBrightness", "ssu", "backlight", &dev, &raw]).map(|_| ())
+}
+
+/// brightnessctl -m: "device,class,current,percent%,max".
+fn backlight_device(info: &str) -> Option<(String, u32)> {
+    let f: Vec<&str> = info.lines().next()?.split(',').collect();
+    Some((f.first()?.to_string(), f.get(4)?.trim().parse().ok()?))
+}
+
+#[cfg(test)]
+mod brightness_tests {
+    #[test]
+    fn reads_device_and_max() {
+        assert_eq!(super::backlight_device("amdgpu_bl1,backlight,120,47%,255\n"), Some(("amdgpu_bl1".into(), 255)));
+        assert_eq!(super::backlight_device(""), None);
+    }
+}
 
 /// The device's own battery (not a controller's or a mouse's).
 pub fn battery(root: &Path) -> Value {
