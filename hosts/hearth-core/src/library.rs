@@ -760,6 +760,11 @@ impl Library {
     // ------------------------------------------------------------------ Quick Resume
 
     pub fn quick_resume_on(&self) -> bool { self.store.data["quickResume"] != false }
+    /// Games Quick Resume would keep through turning off or restarting (when the PC can): the ones put aside and
+    /// the one running (not a cloud game), with Quick Resume on.
+    pub fn games_to_keep(&self) -> bool {
+        self.quick_resume_on() && (!self.frozen.is_empty() || self.running.as_ref().is_some_and(|r| !r.cloud && r.started_at > 0))
+    }
 
     /// The running game goes aside: frozen where it is, kept in memory.
     pub fn freeze_running(&mut self) -> Result<(), String> {

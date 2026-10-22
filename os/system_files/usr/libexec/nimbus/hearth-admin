@@ -39,6 +39,9 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      starts at the next restart
   hearth-admin hibernate-setup       room on the drive (a swap file the size of memory) so the PC can turn
                                      off with Quick Resume games kept, and the boot options to come back to it
+  hearth-admin hibernate-reboot      restart and keep games: save memory to the drive (hibernate), restart by
+                                     itself and come back with the games where they were. Only this one
+                                     hibernation restarts: the setting is a runtime file that is removed again
   hearth-admin timezone ZONE         the time zone (one from timedatectl list-timezones)
   hearth-admin ntp on|off            set the time from the internet, or not
   hearth-admin time-set "YYYY-MM-DD HH:MM"
@@ -713,6 +716,53 @@ def hibernate_setup():
         set_kargs(old, want)
     print(json.dumps({'ok': True, 'gb': gib, 'restart': sorted(old) != sorted(want)}))
 
+
+
+# Restart and keep games. systemd-sleep picks how a hibernation ends from sleep.conf's HibernateMode (it writes
+# it to /sys/power/disk itself, so writing there first wouldn't last): "reboot" makes the kernel restart the PC
+# once memory is saved, and the next start comes back to it. The setting is a drop-in under /run, so it never
+# touches a plain "Turn off and keep games", Shut down or Restart, and it's removed three ways: by the sleep hook
+# right after the PC comes back (/usr/lib/systemd/system-sleep/hearth-restart-keep), by a timer two minutes of
+# running time later in case the hibernation never happened (a timer's monotonic clock doesn't count the time
+# the PC was off), and by any real boot (/run is empty then).
+POWER_DISK = '/sys/power/disk'
+RESTART_KEEP_DROPIN = '/run/systemd/sleep.conf.d/50-hearth-restart-keep.conf'
+RESTART_KEEP_UNIT = 'hearth-restart-keep-cleanup'
+
+
+def disk_modes(text):
+    """/sys/power/disk's choices ("[platform] shutdown reboot suspend test_resume") without the brackets."""
+    return [m.strip('[]') for m in (text or '').split()]
+
+
+def hibernate_reboot():
+    caller()
+    modes = []
+    if os.path.exists(POWER_DISK):
+        with open(POWER_DISK) as f:
+            modes = disk_modes(f.read())
+    if 'reboot' not in modes:
+        fail("this PC can't restart with games kept (its kernel has no hibernate-then-restart)")
+    os.makedirs(os.path.dirname(RESTART_KEEP_DROPIN), exist_ok=True)
+    with open(RESTART_KEEP_DROPIN, 'w') as f:
+        f.write('# Hearth: this one hibernation restarts the PC (Restart and keep games). Removed when it comes back.\n'
+                '[Sleep]\nHibernateMode=reboot\n')
+    # The safety net, set before the hibernation starts (removing a stale one first).
+    subprocess.run(['systemctl', 'stop', RESTART_KEEP_UNIT + '.timer'], capture_output=True)
+    try:
+        subprocess.run(['systemd-run', '--quiet', '--unit', RESTART_KEEP_UNIT, '--on-active=2min', '--timer-property=AccuracySec=1s',
+                        '/usr/bin/rm', '-f', RESTART_KEEP_DROPIN], capture_output=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        r = subprocess.run(['systemctl', 'hibernate'], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        r = subprocess.CompletedProcess([], 1, '', str(e))
+    if r.returncode != 0:
+        if os.path.exists(RESTART_KEEP_DROPIN):
+            os.remove(RESTART_KEEP_DROPIN)
+        fail("couldn't restart with games kept (" + (((r.stderr or r.stdout or '').strip().splitlines()) or ['systemctl hibernate failed'])[-1] + ')')
+    print(json.dumps({'ok': True}))
 
 # ---------------------------------------------------------------------- multi-seat (experimental)
 # Root side of /usr/libexec/nimbus/hearth-seats (docs/MULTI-SEAT.md). Everything it does is listed in
@@ -2178,6 +2228,8 @@ def main(argv):
         tdp(argv[2])
     elif cmd == 'hibernate-setup':
         hibernate_setup()
+    elif cmd == 'hibernate-reboot' and len(argv) == 2:
+        hibernate_reboot()
     elif cmd == 'move-to-new-os' and move_args(argv[2:]):
         move_to_new_os(*move_args(argv[2:]))
     elif cmd == 'seats-setup':
