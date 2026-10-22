@@ -24,3 +24,12 @@ CREATE TABLE IF NOT EXISTS votes (
   at INTEGER NOT NULL,
   PRIMARY KEY (device, layout)
 );
+
+-- hearthos.fun/docs: "Did this work?" on each command (one vote per browser and command: 1 up, -1 down).
+CREATE TABLE IF NOT EXISTS cmd_votes (
+  device TEXT NOT NULL,
+  cmd TEXT NOT NULL,
+  v INTEGER NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (device, cmd)
+);

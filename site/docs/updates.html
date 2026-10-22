@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Updates and editions · Hearth OS docs</title>
+<meta name="description" content="Hearth OS updates itself in one piece. Here is how that works, how to go back, and how to switch edition.">
+<meta name="theme-color" content="#120c09">
+<link rel="icon" href="../img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<nav class="top" aria-label="Main">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="">Hearth OS <span>Docs</span></a>
+    <div class="links">
+      <a href="../">Home</a>
+      <a class="keep" href="troubleshooting.html">Help</a>
+      <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a>
+      <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
+      <a class="cta" href="../#download">Download</a>
+    </div>
+  </div>
+</nav>
+<div class="wrap layout">
+  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html" class="cur" aria-current="page">Updates and editions</a><div class="sub"><a href="#how">How updates work</a><a href="#rollback">Going back to the last version</a><a href="#switch">Switching edition</a><a href="#versions">Versions</a></div><a href="using.html">Using Hearth</a><a href="troubleshooting.html">Troubleshooting</a></div></aside>
+  <main id="main">
+    <div class="crumb">Docs · for Hearth OS 0.3.1</div>
+    <h1>Updates and editions</h1>
+    <p class="lead">Hearth OS updates itself in one piece. Here is how that works, how to go back, and how to switch edition.</p>
+
+<h2 id="how">How updates work</h2>
+<ul>
+<li>Hearth checks for updates when it starts and every 6 hours (<b>Settings › Updates › Check automatically</b>).</li>
+<li>An update downloads in the background while you play. It's used <b>the next time you restart</b>.</li>
+<li>The whole system is replaced in one piece, so an update can't half-install. The version before it stays on the drive.</li>
+<li>To update now: <b>Settings › Updates › Check for updates</b>, then restart when it says it's ready.</li>
+</ul>
+<p>From a terminal in Desktop Mode, the same update:</p>
+<div class="cmd" data-cmd="update-now"><pre><code>pkexec /usr/libexec/nimbus/hearth-admin update</code></pre></div>
+
+<h2 id="rollback">Going back to the last version</h2>
+<p>If a new version has a problem, go back to the one before it.</p>
+<h3>From the boot menu</h3>
+<p>Restart, and in the boot menu pick the second <b>Hearth OS</b> entry (the older version). On a handheld, the boot menu
+can be moved with the D-pad or volume buttons.</p>
+<h3>From a terminal</h3>
+<p>This makes the version before the default, from the next restart on:</p>
+<div class="cmd" data-cmd="rollback"><pre><code>sudo bootc rollback</code></pre></div>
+<p>Then restart. The next update moves you forward again.</p>
+
+<h2 id="switch">Switching edition</h2>
+<p>Move between Anatase, Ubuntu, CachyOS and Peppermint without a USB stick: <b>Settings › Updates › Switch edition</b>.</p>
+<ul>
+<li><b>Kept:</b> your account, your games, saves and store libraries (Steam, Epic, GOG...).</li>
+<li><b>Set aside:</b> the rest of your home folder goes into a folder called <code>.old-hearth-</code> plus the date, for 30 days,
+so you can copy back anything you need. After 30 days it's deleted.</li>
+<li>The new edition downloads in the background (about 3 GB), then starts at the next restart. Before anything starts you see exactly what's kept.</li>
+</ul>
+<div class="note warn"><p><b>Peppermint, Ubuntu or CachyOS installed from 0.3.0 or earlier:</b> switching edition (and updating) fails with
+"podman executable not found in PATH". See <a href="troubleshooting.html#podman">the fix</a>.</p></div>
+<h3>Switching from a terminal</h3>
+<p>The same switch as the Settings button. Change <code>ubuntu</code> to <code>anatase</code>, <code>cachyos</code> or <code>peppermint</code>:</p>
+<div class="cmd" data-cmd="switch-edition"><pre><code>pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os --edition ubuntu</code></pre></div>
+<p>When it says <b>Done. Restart to start the new Hearth OS.</b>, restart.</p>
+
+<h2 id="versions">Versions</h2>
+<p>What changed in each version: <a href="https://github.com/Dragongamer9/hearth-os/releases">release notes</a> and the
+<a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">roadmap</a>.</p>
+
+<div class="pager"><a href="install.html">← Installing</a><a href="using.html">Using Hearth →</a></div>
+  </main>
+</div>
+<footer>
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="" width="22" height="22">Hearth OS</a>
+    <a href="https://github.com/Dragongamer9/hearth-os">Source code</a>
+    <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a>
+    <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">Roadmap</a>
+    <a href="troubleshooting.html#ask">Report a problem</a>
+  </div>
+</footer>
+<script src="docs.js" defer></script>
+</body>
+</html>

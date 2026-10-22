@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Troubleshooting · Hearth OS docs</title>
+<meta name="description" content="Fixes for known problems, how to get unstuck, and how to tell us when nothing here helps.">
+<meta name="theme-color" content="#120c09">
+<link rel="icon" href="../img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<nav class="top" aria-label="Main">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="">Hearth OS <span>Docs</span></a>
+    <div class="links">
+      <a href="../">Home</a>
+      <a class="keep" href="troubleshooting.html">Help</a>
+      <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a>
+      <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
+      <a class="cta" href="../#download">Download</a>
+    </div>
+  </div>
+</nav>
+<div class="wrap layout">
+  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="troubleshooting.html" class="cur" aria-current="page">Troubleshooting</a><div class="sub"><a href="#logs">First: send a log</a><a href="#terminal">Getting to a terminal</a><a href="#podman">Switching edition or updating fails: "podman executable not found"</a><a href="#stuck">Stuck on a black screen, or Hearth doesn't respond</a><a href="#power-button">The power button turns the device off instead of sleeping</a><a href="#brightness">Brightness doesn't change ("get write permission")</a><a href="#boot-text">Lines of text when turning on and off</a><a href="#sounds">Game Mode sounds fade out</a><a href="#steam-mode">Stuck in Steam's Game Mode</a><a href="#nvidia">Game Mode feels slow on Nvidia</a><a href="#steam-games">Steam games are missing from the library</a><a href="#install-failed">Installing fails</a><a href="#ask">Still stuck? Tell us</a></div></div></aside>
+  <main id="main">
+    <div class="crumb">Docs · for Hearth OS 0.3.1</div>
+    <h1>Troubleshooting</h1>
+    <p class="lead">Fixes for known problems, how to get unstuck, and how to tell us when nothing here helps.</p>
+
+<div class="note"><p>Each fix says which version it's for. Most known problems are fixed by updating:
+<b>Settings › Updates › Check for updates</b>. Under every command, tell us whether it worked: that's how we know which fixes need work.</p></div>
+
+<h2 id="logs">First: send a log</h2>
+<p><b>Settings › System › Send logs to the developer</b>, then share the code. The log shows what Hearth saw at the moment
+it went wrong, so send it right after the problem happens.</p>
+
+<h2 id="terminal">Getting to a terminal</h2>
+<ul>
+<li><b>Desktop Mode:</b> open <b>Terminal</b> from the app menu.</li>
+<li><b>When the screen is stuck:</b> with a USB keyboard, press <b>Ctrl + Alt + F3</b> and sign in with your user name and password.
+<b>Ctrl + Alt + F1</b> (or F2) goes back.</li>
+</ul>
+
+<h2 id="podman">Switching edition or updating fails: "podman executable not found"</h2>
+<p><span class="ver">Peppermint, Ubuntu, CachyOS · 0.3.0 and earlier</span> <span class="ver fixed">Fixed in 0.3.1</span></p>
+<p>Those images were missing a tool (podman) that switching and updating need, and updating to the fix needs it too.
+This runs the switch with podman unpacked into a temporary folder (nothing is installed; it's gone after the restart).
+Change <code>ubuntu</code> to the edition you want:</p>
+<div class="cmd" data-cmd="fix-podman-switch"><pre><code>curl -sL raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/switch-edition.sh | sh -s ubuntu</code></pre></div>
+<p>When it says <b>Done. Restart to start the new Hearth OS.</b>, restart. A "could not find netavark" line along the way is only a warning.</p>
+
+<h2 id="stuck">Stuck on a black screen, or Hearth doesn't respond</h2>
+<ol class="steps">
+<li><b>Wait half a minute.</b> Starting a game or switching modes can take a moment.</li>
+<li><b>Hold the power button</b> for about 10 seconds to turn the device off, then turn it on again.</li>
+<li><b>Still stuck after starting?</b> Pick the older <b>Hearth OS</b> entry in the boot menu (<a href="updates.html#rollback">going back</a>),
+then send a log from there.</li>
+</ol>
+
+<h2 id="power-button">The power button turns the device off instead of sleeping</h2>
+<p><span class="ver">0.2.10 and earlier</span> <span class="ver fixed">Fixed in 0.3.0</span> Update. After updating, <b>Settings › Power › Power button</b> is followed.</p>
+
+<h2 id="brightness">Brightness doesn't change ("get write permission")</h2>
+<p><span class="ver">Peppermint, Ubuntu · 0.3.0 and earlier</span> <span class="ver fixed">Fixed in 0.3.1</span>
+Update and restart. If you can't update yet, this gives your account permission (then restart):</p>
+<div class="cmd" data-cmd="fix-brightness"><pre><code>sudo usermod -aG video $USER</code></pre></div>
+
+<h2 id="boot-text">Lines of text when turning on and off</h2>
+<p><span class="ver">Anatase · 0.2.10 and earlier</span> <span class="ver fixed">Fixed in 0.3.0</span>
+Update, then restart once. Or, right away (then restart):</p>
+<div class="cmd" data-cmd="fix-boot-text"><pre><code>sudo rpm-ostree kargs --append-if-missing=quiet --append-if-missing=splash --append-if-missing=loglevel=3</code></pre></div>
+
+<h2 id="sounds">Game Mode sounds fade out</h2>
+<p><span class="ver fixed">Fixed in 0.3.1</span> Update. Until then, restarting Hearth brings the sounds back for a while.</p>
+
+<h2 id="steam-mode">Stuck in Steam's Game Mode</h2>
+<p><span class="ver">0.2.8 and 0.2.9</span> <span class="ver fixed">Removed in 0.2.10</span>
+Steam's own Game Mode was an option in 0.2.8 and 0.2.9. If a device is stuck in it: with a USB keyboard press
+<b>Ctrl + Alt + F3</b>, sign in, and run (then restart):</p>
+<div class="cmd" data-cmd="fix-steam-mode"><pre><code>echo hearth &gt; ~/.config/nimbus/game-mode &amp;&amp; sudo reboot</code></pre></div>
+
+<h2 id="nvidia">Game Mode feels slow on Nvidia</h2>
+<p>Check <b>Settings › Display › Drawing engine</b> is <b>Chromium</b> (the default on Nvidia since 0.2.6), and update.</p>
+
+<h2 id="steam-games">Steam games are missing from the library</h2>
+<p>Make sure Steam is signed in. With more than one Hearth profile, each profile shows the games of the Steam account
+signed in on it: sign in to Steam on that profile.</p>
+
+<h2 id="install-failed">Installing fails</h2>
+<ul>
+<li>Try the <b>offline USB</b> for your edition instead of the small installer (no download to go wrong).</li>
+<li>If the install says it failed but the computer later starts Hearth OS anyway, it may have finished: check <b>Settings › Updates</b> and update.</li>
+<li>From the live USB, <b>Settings › System › Send logs to the developer</b> includes the installer's log.</li>
+</ul>
+
+<h2 id="ask">Still stuck? Tell us</h2>
+<p>Describe what happened. It goes straight to the developer, like a log, and you get a code to quote if you follow up.
+Don't include passwords.</p>
+<form id="ask" class="ask" novalidate>
+  <label><span>What went wrong? <span class="req">(needed)</span></span>
+    <textarea name="what" rows="5" maxlength="4000" required placeholder="What you did, what you expected, and what happened instead. Error messages word for word help a lot."></textarea></label>
+  <div class="row2">
+    <label>Edition
+      <select name="edition"><option value="">Not sure</option><option>Anatase</option><option>Ubuntu</option><option>CachyOS</option><option>Peppermint</option><option>Ember (Windows)</option></select></label>
+    <label>Hearth version <input name="version" maxlength="20" placeholder="e.g. 0.3.1 (Settings › Updates)"></label>
+  </div>
+  <div class="row2">
+    <label>Device <input name="device" maxlength="80" placeholder="e.g. ROG Ally, desktop with RTX 5070"></label>
+    <label>Log code, if you sent one <input name="code" maxlength="20" placeholder="ABCD-EFGH-JK"></label>
+  </div>
+  <label>What you already tried <textarea name="tried" rows="2" maxlength="2000"></textarea></label>
+  <label><span>How to reach you <span class="opt">(optional: a GitHub or Discord name)</span></span> <input name="contact" maxlength="100"></label>
+  <div class="send"><button type="submit">Send to the developer</button><span class="msg" role="status" aria-live="polite"></span></div>
+</form>
+
+<div class="pager"><a href="using.html">← Using Hearth</a><span></span></div>
+  </main>
+</div>
+<footer>
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="" width="22" height="22">Hearth OS</a>
+    <a href="https://github.com/Dragongamer9/hearth-os">Source code</a>
+    <a href="https://github.com/Dragongamer9/hearth-os/releases">Release notes</a>
+    <a href="https://github.com/Dragongamer9/hearth-os/blob/main/docs/ROADMAP.md">Roadmap</a>
+    <a href="troubleshooting.html#ask">Report a problem</a>
+  </div>
+</footer>
+<script src="docs.js" defer></script>
+</body>
+</html>
