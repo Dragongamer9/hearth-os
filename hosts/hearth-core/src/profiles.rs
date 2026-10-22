@@ -13,7 +13,7 @@ const COLORS: [&str; 7] = ["#ff8a3d", "#3fd0b8", "#5aa9ff", "#b57bff", "#ffd166"
 pub struct Profiles { pub dir: PathBuf, pub data: Value }
 
 fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{x:02x}")).collect() }
-fn unhex(s: &str) -> Vec<u8> { (0..s.len() / 2).filter_map(|i| u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()).collect() }
+fn unhex(s: &str) -> Vec<u8> { s.as_bytes().chunks_exact(2).filter_map(|p| std::str::from_utf8(p).ok().and_then(|h| u8::from_str_radix(h, 16).ok())).collect() }
 fn scrypt32(pin: &str, salt: &[u8]) -> Vec<u8> {
     // Node's crypto.scryptSync defaults: N=16384, r=8, p=1.
     let params = scrypt::Params::new(14, 8, 1, 32).expect("scrypt params");
@@ -112,7 +112,9 @@ impl Profiles {
         for g in manual { if !mine.iter().any(|m| m["id"] == g["id"]) { mine.push(g); } }
         d["manual"] = Value::Array(mine);
         if d["profile"].is_null() { d["profile"] = json!({"name": to["name"], "accent": to["color"]}); }
-        std::fs::write(&lib, serde_json::to_string_pretty(&d).unwrap()).map_err(|e| e.to_string())?;
+        // All at once: a power cut here used to leave the new person's library.json cut short (favorites, play time
+        // and their own games gone, as the file no longer read).
+        crate::paths::write_atomic(&lib, serde_json::to_string_pretty(&d).unwrap_or_default().as_bytes()).map_err(|e| e.to_string())?;
         self.data["active"] = json!(id);
         self.save()?;
         Ok(to)
@@ -128,8 +130,8 @@ impl Profiles {
     /// Sets or changes the PIN ("" removes it, and every limit with it).
     pub fn set_pin(&mut self, pin: &str) -> Result<(), String> {
         if pin.is_empty() {
-            self.data.as_object_mut().unwrap().remove("pin");
-            for p in self.data["list"].as_array_mut().unwrap() { p.as_object_mut().unwrap().remove("limits"); }
+            if let Some(o) = self.data.as_object_mut() { o.remove("pin"); }
+            for p in self.data["list"].as_array_mut().into_iter().flatten() { if let Some(o) = p.as_object_mut() { o.remove("limits"); } }
             return self.save();
         }
         if !(4..=8).contains(&pin.len()) || !pin.chars().all(|c| c.is_ascii_digit()) { return Err("The PIN is 4 to 8 numbers".into()); }
@@ -235,9 +237,10 @@ pub fn stop_steam() {
 /// Steam signs in as `account` the next time it starts ('' shows Steam's own sign-in). Steam must be closed.
 pub fn set_steam_account(account: &str) {
     let Some((reg, users)) = steam_files() else { return };
-    if let Some(reg) = reg { if let Ok(t) = std::fs::read_to_string(&reg) { let _ = std::fs::write(&reg, steam_registry_text(&t, account)); } }
+    // Steam's own files, written all at once: cut short, Steam forgets every saved sign-in on this PC.
+    if let Some(reg) = reg { if let Ok(t) = std::fs::read_to_string(&reg) { let _ = crate::paths::write_atomic(&reg, steam_registry_text(&t, account).as_bytes()); } }
     // Empty: no account marked either, so Hearth doesn't show the last person's Steam games (steam::signed_in_id64).
-    if let Ok(t) = std::fs::read_to_string(&users) { let _ = std::fs::write(&users, steam_login_users_text(&t, account)); }
+    if let Ok(t) = std::fs::read_to_string(&users) { let _ = crate::paths::write_atomic(&users, steam_login_users_text(&t, account).as_bytes()); }
 }
 
 /// The Steam account signed in now (the one Steam signs in as by itself): registry.vdf's AutoLoginUser, else the
@@ -340,6 +343,18 @@ mod tests {
         // Node: crypto.scryptSync('2468', Buffer.from('00112233445566778899aabbccddeeff','hex'), 32).toString('hex')
         let salt = unhex("00112233445566778899aabbccddeeff");
         assert_eq!(hex(&scrypt32("2468", &salt)), "f9e3f4915303b2269ab1d8c2017b630f2e7b8d557ec3264dd028464f3cdca09b");
+    }
+    #[test]
+    fn a_damaged_profiles_file_doesnt_crash() {
+        // A salt that isn't plain hex (a hand-edited or damaged file) panicked when the PIN was checked.
+        assert_eq!(unhex("abé"), vec![0xab]);
+        let _ = unhex("0é1f");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("profiles.json"), r#"{"active": "main", "list": [{"id": "main"}, 7], "pin": {"salt": "é", "hash": "00"}}"#).unwrap();
+        let mut ps = Profiles::open(dir.path());
+        assert!(!ps.check_pin("1234"));
+        ps.set_pin("").unwrap();
+        assert!(!ps.has_pin());
     }
     #[test]
     fn steam_files() {
