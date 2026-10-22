@@ -1,0 +1,100 @@
+HEARTH-CI opened Hearth in a window on wayland-0
+HEARTH-CI t=30s
+session: 2026-10-22 00:27:04 desktop mode
+pages:  bridge lines
+HEARTH-CI t=60s
+session: 2026-10-22 00:27:04 desktop mode
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+bridge: 1792628855773 [rust] graphics: AMD/Intel (DMA-BUF renderer on)
+pages: 6 bridge lines
+HEARTH-CI t=90s
+session: 2026-10-22 00:27:04 desktop mode
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+bridge: 1792628855773 [rust] graphics: AMD/Intel (DMA-BUF renderer on)
+pages: 6 bridge lines
+HEARTH-CI t=120s
+session: 2026-10-22 00:27:04 desktop mode
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+bridge: 1792628855773 [rust] graphics: AMD/Intel (DMA-BUF renderer on)
+pages: 6 bridge lines
+HEARTH-CI t=150s
+session: 2026-10-22 00:27:04 desktop mode
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+bridge: 1792628855773 [rust] graphics: AMD/Intel (DMA-BUF renderer on)
+pages: 7 bridge lines
+HEARTH-CI t=180s
+session: 2026-10-22 00:27:04 desktop mode
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+bridge: 1792628855773 [rust] graphics: AMD/Intel (DMA-BUF renderer on)
+pages: 7 bridge lines
+failed: grub-boot-success.service loaded failed failed Mark boot as successful and reset GRUB boot counter
+HEARTH-CI t=210s
+session: 2026-10-22 00:27:04 desktop mode
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+bridge: 1792628855773 [rust] graphics: AMD/Intel (DMA-BUF renderer on)
+pages: 134 bridge lines
+failed: grub-boot-success.service loaded failed failed Mark boot as successful and reset GRUB boot counter
+HEARTH-CI t=240s
+session: 2026-10-22 00:27:04 desktop mode
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+bridge: 1792628855773 [rust] graphics: AMD/Intel (DMA-BUF renderer on)
+pages: 134 bridge lines
+failed: grub-boot-success.service loaded failed failed Mark boot as successful and reset GRUB boot counter
+HEARTH-CI t=270s
+session: 2026-10-22 00:27:04 desktop mode
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+bridge: 1792628855773 [rust] graphics: AMD/Intel (DMA-BUF renderer on)
+pages: 134 bridge lines
+failed: grub-boot-success.service loaded failed failed Mark boot as successful and reset GRUB boot counter
+HEARTH-CI t=300s
+session: 2026-10-22 00:27:04 desktop mode
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+window: MESA-EGL: warning: egl: failed to create dri2 screen
+window: MESA-EGL: warning: DRI2: failed to create screen
+bridge: 1792628855773 [rust] graphics: AMD/Intel (DMA-BUF renderer on)
+pages: 134 bridge lines
+failed: grub-boot-success.service loaded failed failed Mark boot as successful and reset GRUB boot counter
+HEARTH-CI-END
