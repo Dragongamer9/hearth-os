@@ -98,6 +98,17 @@ pub fn report(version: &str) -> String {
     for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
+    // Hearth Input (controller layouts for keyboard-and-mouse games): what the mapper did, and what it's doing now
+    // (its controllers, whether it holds them, the layout running, its last error).
+    {
+        let log = std::fs::read_to_string(data.join("input.log")).map(|t| tail(&t, 300)).unwrap_or_else(|_| "(no input.log: Hearth Input hasn't run in Game Mode)".into());
+        let status = sh("python3 /usr/share/nimbus/desktop/shell/hearth-input status");
+        let layouts = std::fs::read_dir(crate::input_map::dir()).map(|d| d.filter_map(Result::ok).filter_map(|e| {
+            let v: Value = std::fs::read(e.path()).ok().and_then(|b| serde_json::from_slice(&b).ok())?;
+            Some(format!("{}: {}", e.file_name().to_string_lossy().trim_end_matches(".json"), v["layout"].as_str().unwrap_or("?")))
+        }).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+        section("Hearth Input (controller layouts)", format!("Now: {}\n\nGames with a layout chosen:\n{}\n\nIts log:\n{}", status.trim(), if layouts.is_empty() { "(none)".into() } else { layouts }, log));
+    }
     // The installer USB: the install screens' own log and the installer session's log (a report sent from there may
     // come from another account, so the installer user's files are read directly).
     if Path::new("/etc/hearth-live").exists() {
