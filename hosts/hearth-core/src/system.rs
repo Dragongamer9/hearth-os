@@ -506,7 +506,8 @@ pub fn battery(root: &Path) -> Value {
             if read(dir.join("type")) != "Battery" || read(dir.join("scope")) == "Device" { continue; }
             let Ok(pct) = read(dir.join("capacity")).parse::<u32>() else { continue };
             let status = read(dir.join("status"));
-            return json!({"present": true, "pct": pct, "charging": status == "Charging" || status == "Full"});
+            // "Not charging": plugged in but held below full (a charge limit, like the ROG Ally's 80 %), not "on battery".
+            return json!({"present": true, "pct": pct, "charging": status == "Charging" || status == "Full" || status == "Not charging"});
         }
     }
     json!({"present": false, "pct": 0, "charging": false})
@@ -599,5 +600,9 @@ mod tests {
         put("BAT1", "type", "Battery"); put("BAT1", "capacity", "73"); put("BAT1", "status", "Charging\n");
         assert_eq!(battery(dir.path()), json!({"present": true, "pct": 73, "charging": true}));
         assert_eq!(battery(&dir.path().join("none")), json!({"present": false, "pct": 0, "charging": false}));
+        put("BAT1", "capacity", "80"); put("BAT1", "status", "Not charging\n");
+        assert_eq!(battery(dir.path()), json!({"present": true, "pct": 80, "charging": true}));
+        put("BAT1", "status", "Discharging\n");
+        assert_eq!(battery(dir.path())["charging"], false);
     }
 }
