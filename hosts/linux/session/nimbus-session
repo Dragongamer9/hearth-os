@@ -273,7 +273,9 @@ mode="${NIMBUS_START_MODE:-game}"
 rm -f "$NEXT"
 while :; do
   # Fall back to whichever mode can run.
-  if [ "$mode" = game ] && ! can_game; then log "game mode unavailable (gamescope or Nimbus missing)"; mode=desktop; fi
+  # Desktop Mode's autostart reads the note: if its taskbar can't start either, it stays put instead of asking for
+  # Game Mode again (that restarted Desktop Mode about once a minute, forever).
+  if [ "$mode" = game ] && ! can_game; then log "game mode unavailable (gamescope or Nimbus missing)"; : >"$RUN/nimbus-game-unavailable"; mode=desktop; fi
   if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc missing)"; can_game && mode=game || exit 1; fi
 
   if [ "$mode" = game ]; then input_start; run_game; code=$?; input_stop; else run_desktop; code=$?; fi
