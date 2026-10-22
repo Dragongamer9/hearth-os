@@ -16,18 +16,19 @@
       "UserMessaging",
       "FirefoxHome",
       "FirefoxSuggest",
-      "ExtensionSettings"
+      "ExtensionSettings",
+      "DisableAppUpdate"
     ],
     "hearth": {
-      "start": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
+      "start": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
       "game": true,
       "big": true,
       "scale": 1.5
     },
     "prefs": {
-      "hearth.started": 1792665857,
-      "hearth.keyboard.ready": null,
-      "browser.startup.homepage": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
+      "hearth.started": 1792665948,
+      "hearth.keyboard.ready": true,
+      "browser.startup.homepage": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
       "media.eme.enabled": true,
       "toolkit.legacyUserProfileCustomizations.stylesheets": true,
       "datareporting.healthreport.uploadEnabled": false,
@@ -37,7 +38,7 @@
       "browser.link.open_newwindow.restriction": 0,
       "extensions.activeThemeID": "firefox-compact-dark@mozilla.org"
     },
-    "newTab": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
+    "newTab": "file:///home/runner/work/_temp/hb/firefox/hearth/start.html",
     "keyboardButton": true,
     "keyboard": true,
     "window": [
@@ -46,9 +47,7 @@
       1280,
       720
     ],
-    "errors": [
-      "[JavaScript Error: \"Hearth Browser (window): ReferenceError: win is not defined\" {file: \"resource://hearth/hearth.sys.mjs\" line: 34}]\nreport@resource://hearth/hearth.sys.mjs:34:12\nsetUpWindow@resource://hearth/hearth.sys.mjs:413:23\nstart/<@resource://hearth/hearth.sys.mjs:424:46\n_delayedStartup@chrome://browser/content/browser-init.js:749:18\n"
-    ]
+    "errors": []
   },
   "window": [
     1280,
@@ -73,10 +72,30 @@
   },
   "keys": [
     {
-      "error": "ReferenceError: win is not defined"
+      "key": "ArrowDown",
+      "open": true,
+      "r": 2,
+      "c": 0,
+      "heard": [
+        "down"
+      ],
+      "focus": "browser"
     },
     {
-      "error": "ReferenceError: win is not defined"
+      "key": "Enter",
+      "open": true,
+      "r": 2,
+      "c": 0,
+      "heard": [
+        "down",
+        "press"
+      ],
+      "focus": "browser"
     }
-  ]
+  ],
+  "google": {
+    "url": "https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&followup=https://accounts.google.com/&passive=1209600&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S69689728:1792665957676207",
+    "title": "Sign in - Google Accounts",
+    "text": "Loading\nSign in\nUse your Google Account\nEmail or phone\nForgot email?\nNot your computer? Use a Private Window to sign in. Learn more about using Guest mode\nNext\nCreate account\nEnglish (United States)\nHelp\nPrivacy\nTerms"
+  }
 }
