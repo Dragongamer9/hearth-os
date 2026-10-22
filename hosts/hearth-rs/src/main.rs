@@ -314,7 +314,11 @@ pub(crate) fn start_core(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, 
                     let (br, h) = (br.clone(), h.clone());
                     std::thread::spawn(move || {
                         let out = match br.lock() { Ok(mut b) => b.internal(&v), Err(p) => p.into_inner().internal(&v) };
-                        for e in out { broadcast(&h, e); }
+                        for e in out {
+                            // An answer for one window (internal's replies carry "to").
+                            if e["type"] == "result" { if let Some(to) = e["to"].as_str().map(str::to_string) { send_to(&h, &to, e); continue; } }
+                            broadcast(&h, e);
+                        }
                     });
                     return;
                 }

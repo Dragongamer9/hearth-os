@@ -38,6 +38,25 @@ pub fn pending_after(current: &[Value], tried: &[Value], left: &[Value]) -> Vec<
     out
 }
 
+/// What removing the old system would do (hearth-admin takeover-plan reads the drives: slow, so the bridge runs it
+/// on its own thread with this).
+pub fn takeover_plan_with(state: &Arc<Mutex<Value>>, pending: usize) -> Result<Value, String> {
+    if !crate::admin::can_admin() { return Err("This needs Hearth, the OS.".into()); }
+    if state.lock().unwrap()["state"] != "idle" { return Ok(status_of(state, pending)); }
+    let patch = match crate::admin::run(&["takeover-plan"], None, &mut |_| {}) {
+        Ok(p) => json!({"takeover": p, "takeoverError": null}),
+        Err(e) => json!({"takeover": null, "takeoverError": e}),
+    };
+    { let mut s = state.lock().unwrap(); for (k, v) in patch.as_object().cloned().unwrap_or_default() { s[k] = v; } push(&s, pending_count()); }
+    Ok(status_of(state, pending))
+}
+fn status_of(state: &Arc<Mutex<Value>>, pending: usize) -> Value {
+    let mut s = state.lock().unwrap().clone();
+    s["supported"] = json!(crate::admin::can_admin());
+    s["pendingEpic"] = json!(pending);
+    s
+}
+
 impl Importer {
     pub fn new() -> Importer {
         Importer { state: Arc::new(Mutex::new(json!({"state": "idle", "scan": null, "scannedAt": 0, "progress": null, "speeds": [], "result": null, "error": null}))),
@@ -185,15 +204,7 @@ impl Importer {
     // Erases the other systems' partitions on Hearth's drive and gives Hearth the space (hearth-takeover).
     // Only partitions it offers can be chosen, never Hearth's own.
 
-    pub fn takeover_plan(&self, pending: usize) -> Result<Value, String> {
-        if !crate::admin::can_admin() { return Err("This needs Hearth, the OS.".into()); }
-        if !self.idle() { return Ok(self.status(pending)); }
-        match crate::admin::run(&["takeover-plan"], None, &mut |_| {}) {
-            Ok(p) => self.set(json!({"takeover": p, "takeoverError": null})),
-            Err(e) => self.set(json!({"takeover": null, "takeoverError": e})),
-        }
-        Ok(self.status(pending))
-    }
+    pub fn takeover_plan(&self, pending: usize) -> Result<Value, String> { takeover_plan_with(&self.state, pending) }
     pub fn takeover_run(&self, remove: &Value, windows_boot: bool, pending: usize) -> Result<Value, String> {
         if !self.idle() { return Err("Already busy".into()); }
         if remove.as_array().map(|a| a.is_empty()).unwrap_or(true) { return Err("Choose what to remove first".into()); }

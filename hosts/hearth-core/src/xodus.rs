@@ -87,11 +87,16 @@ fn latest() -> Result<(String, String, u64), String> {
     Ok((tag, asset["browser_download_url"].as_str().unwrap_or("").to_string(), asset["size"].as_u64().unwrap_or(0)))
 }
 
+/// The newer version to offer, if any.
+fn update_of(have: Option<String>, latest: &Option<String>) -> Option<String> {
+    match (have, latest) { (Some(v), Some(l)) if !l.is_empty() && &v != l => Some(l.clone()), _ => None }
+}
+
 /// Install and update, in the background, telling the page how it's going ("xodus" events).
-pub struct Xodus { pub state: Arc<Mutex<Value>>, checked: Mutex<(u64, Option<String>)> }
+pub struct Xodus { pub state: Arc<Mutex<Value>>, checked: Arc<Mutex<(u64, Option<String>)>> }
 impl Default for Xodus { fn default() -> Self { Self::new() } }
 impl Xodus {
-    pub fn new() -> Xodus { Xodus { state: Arc::new(Mutex::new(json!({"busy": false, "progress": null, "error": null}))), checked: Mutex::new((0, None)) } }
+    pub fn new() -> Xodus { Xodus { state: Arc::new(Mutex::new(json!({"busy": false, "progress": null, "error": null}))), checked: Arc::new(Mutex::new((0, None))) } }
 
     /// {installed, version, latest, busy, progress, error, project}. Looks for a newer version at most every 6 hours.
     pub fn status(&self, look: bool) -> Value {
@@ -99,11 +104,21 @@ impl Xodus {
         let now = crate::library::now_ms();
         let latest = {
             let mut c = self.checked.lock().unwrap();
-            if look && installed() && now.saturating_sub(c.0) > 6 * 3600 * 1000 { c.0 = now; c.1 = latest().ok().map(|l| l.0); }
+            if look && installed() && now.saturating_sub(c.0) > 6 * 3600 * 1000 {
+                // Asked of GitHub in the background (up to 30 s; it held the bridge): the page hears an "xodus" event.
+                c.0 = now;
+                let (checked, state) = (self.checked.clone(), self.state.clone());
+                std::thread::spawn(move || {
+                    let l = latest().ok().map(|l| l.0);
+                    checked.lock().unwrap().1 = l.clone();
+                    let busy = state.lock().unwrap()["busy"].clone();
+                    crate::stores::notify(json!({"type": "event", "name": "xodus", "data": {"busy": busy, "update": update_of(version(), &l)}}));
+                });
+            }
             c.1.clone()
         };
         s["installed"] = json!(installed()); s["version"] = json!(version()); s["project"] = json!(PROJECT); s["folder"] = json!(games_folder());
-        s["update"] = json!(match (version(), &latest) { (Some(v), Some(l)) if !l.is_empty() && &v != l => Some(l.clone()), _ => None });
+        s["update"] = json!(update_of(version(), &latest));
         s
     }
 

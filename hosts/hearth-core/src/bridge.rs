@@ -90,7 +90,13 @@ impl Bridge {
             "rescan" => {
                 self.library.scan();
                 out.push(Bridge::event("library.changed", json!({})));
-                if !v["reply"].is_null() { out.push(json!({"type": "result", "id": v["reply"], "ok": true, "value": null})); }
+                // {id, to}: the answer to accounts.refresh, for the window that asked (a bare id: any window).
+                let r = &v["reply"];
+                if !r.is_null() {
+                    let mut m = json!({"type": "result", "id": if r.is_object() { r["id"].clone() } else { r.clone() }, "ok": true, "value": null});
+                    if let Some(t) = r["to"].as_str() { m["to"] = json!(t); }
+                    out.push(m);
+                }
             }
             "installDone" => {
                 let d = self.library.install_done(v["id"].as_str().unwrap_or(""), v["error"].as_str(), v["gogDir"].as_str());
@@ -184,11 +190,12 @@ impl Bridge {
         let page = crate::stores::sign_in_page(store).ok_or("Unknown store")?;
         let s: &'static str = crate::stores::STORES.into_iter().find(|x| *x == store).unwrap();
         self.library.accounts.lock().unwrap().errors.remove(s);
-        let (id, open, acc) = (self.cur_id.clone(), self.sign_in.clone(), self.library.accounts.clone());
+        let (id, open, acc, to) = (self.cur_id.clone(), self.sign_in.clone(), self.library.accounts.clone(), self.cur_label.clone());
         std::thread::spawn(move || {
+            // To the window that asked only (each window numbers its own requests).
             let reply = |r: Result<bool, String>| crate::stores::notify(match r {
-                Ok(ok) => json!({"type": "result", "id": id, "ok": true, "value": {"ok": ok}}),
-                Err(e) => json!({"type": "result", "id": id, "ok": false, "error": e}),
+                Ok(ok) => json!({"type": "result", "id": id, "ok": true, "value": {"ok": ok}, "to": to}),
+                Err(e) => json!({"type": "result", "id": id, "ok": false, "error": e, "to": to}),
             });
             let Some(code) = open(&page) else { return reply(Ok(false)) };
             if code.is_empty() { return reply(Err("The sign-in page didn't give Hearth a code. Try again.".into())); }
@@ -316,7 +323,8 @@ impl Bridge {
             }
             // Remote play
             "remote.status" => Ok(crate::remote::status()),
-            "remote.setOn" => crate::remote::set_on(a["on"] == true),
+            // Starting Sunshine and waiting for it: up to 45 s, off the bridge.
+            "remote.setOn" => { let on = a["on"] == true; self.later(move || crate::remote::set_on(on)) }
             "remote.pair" => crate::remote::pair(a["pin"].as_str().unwrap_or(""), a["name"].as_str().unwrap_or("Moonlight")).map(|v| json!(v)),
             "remote.unpair" => crate::remote::unpair(&req("uuid")?).map(|v| json!(v)),
             "remote.login" => crate::remote::login(a["user"].as_str().unwrap_or(""), a["pass"].as_str().unwrap_or("")).map(|v| json!(v)),
@@ -367,7 +375,7 @@ impl Bridge {
             "accounts.refresh" => {
                 let store = req("store")?;
                 let s = crate::stores::STORES.into_iter().find(|x| *x == store).ok_or("Unknown store")?;
-                crate::stores::refresh(s, self.library.accounts.clone(), self.cur_id.clone());
+                crate::stores::refresh(s, self.library.accounts.clone(), json!({"id": self.cur_id, "to": self.cur_label}));
                 Ok(json!(DEFERRED))
             }
             "accounts.pickFolder" => {
@@ -380,7 +388,7 @@ impl Bridge {
             "import.scan" => self.importer.scan(self.pending_epic().len()),
             "import.start" => self.importer.start(&a["items"], a["mode"].as_str().unwrap_or("copy"), &self.library.install_root(), self.pending_epic().len()),
             "import.cancel" => Ok(self.importer.cancel(self.pending_epic().len())),
-            "takeover.plan" => self.importer.takeover_plan(self.pending_epic().len()),
+            "takeover.plan" => { let (st, n) = (self.importer.state.clone(), self.pending_epic().len()); self.later(move || crate::importer::takeover_plan_with(&st, n)) }
             "takeover.run" => self.importer.takeover_run(&a["remove"], a["windowsBoot"] != false, self.pending_epic().len()),
             // Move (Beta Experimental): copy, check every file, register, then delete the original (hearth-import).
             "import.move" => self.importer.start(&a["items"], "move", &self.library.install_root(), self.pending_epic().len()),
