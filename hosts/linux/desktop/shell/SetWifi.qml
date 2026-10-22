@@ -74,10 +74,12 @@ SetPage {
         stderr: StdioCollector { id: actErr }
         onExited: code => { page.busy = ""; page.message = code === 0 ? action.okText : (actErr.text.trim().split("\n").pop() || "That didn't work"); page.refresh(); }
     }
-    function run(cmd, okText) { action.okText = okText; action.command = cmd; action.running = true; }
+    function run(cmd, okText, env) { action.okText = okText; action.environment = env || {}; action.command = cmd; action.running = true; }
     function connect(n, pw) {
         busy = n.ssid; asking = ""; message = "";
-        if (pw) run(["nmcli", "device", "wifi", "connect", n.ssid, "password", pw], "Connected to " + n.ssid);
+        // The password goes to nmcli on its input (it asks for it with --ask), through the environment, which only
+        // you can read: on its command line every account on the device could see it (ps, /proc).
+        if (pw) run(["sh", "-c", 'printf "%s\\n" "$HEARTH_WIFI_PSK" | exec nmcli --ask device wifi connect "$1"', "sh", n.ssid], "Connected to " + n.ssid, { HEARTH_WIFI_PSK: pw });
         else if (saved.includes(n.ssid)) run(["nmcli", "connection", "up", "id", n.ssid], "Connected to " + n.ssid);
         else run(["nmcli", "device", "wifi", "connect", n.ssid], "Connected to " + n.ssid);
     }
