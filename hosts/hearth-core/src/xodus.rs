@@ -123,8 +123,10 @@ impl Xodus {
                 std::fs::create_dir_all(dir()).map_err(|e| e.to_string())?;
                 let part = dir().join("Xodus-Nexus.AppImage.part");
                 let _ = std::fs::remove_file(&part);
-                let mut child = std::process::Command::new("curl").args(["-sSL", "--fail", "-o"]).arg(&part).arg(&url)
-                    .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped()).spawn().map_err(|e| format!("Couldn't download it: {e}"))?;
+                // A download that stalls (under 1 KB/s for a minute) stops: it used to wait forever, with the install
+                // showing as busy (and not startable again) until Hearth restarted.
+                let mut child = std::process::Command::new("curl").args(["-sSL", "--fail", "--speed-limit", "1024", "--speed-time", "60", "-o"]).arg(&part).arg(&url)
+                    .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().map_err(|e| format!("Couldn't download it: {e}"))?;
                 loop {
                     if let Some(st) = child.try_wait().map_err(|e| e.to_string())? {
                         if !st.success() { let _ = std::fs::remove_file(&part); return Err("The download didn't finish. Check the internet connection and try again.".into()); }

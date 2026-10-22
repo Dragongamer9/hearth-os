@@ -30,6 +30,14 @@ fn pending_count() -> usize {
         .and_then(|d| d["pendingEpicImports"].as_array().map(|a| a.len())).unwrap_or(0)
 }
 
+/// The Epic games still waiting after a round of registering: the ones tried that didn't go in, and any added
+/// meanwhile (another import while this round ran: they used to be overwritten by the round's leftovers and lost).
+pub fn pending_after(current: &[Value], tried: &[Value], left: &[Value]) -> Vec<Value> {
+    let mut out: Vec<Value> = current.iter().filter(|g| !tried.contains(g)).cloned().collect();
+    for g in left { if !out.contains(g) { out.push(g.clone()); } }
+    out
+}
+
 impl Importer {
     pub fn new() -> Importer {
         Importer { state: Arc::new(Mutex::new(json!({"state": "idle", "scan": null, "scannedAt": 0, "progress": null, "speeds": [], "result": null, "error": null}))),
@@ -157,6 +165,7 @@ impl Importer {
     pub fn finish_pending_epic(&self, pending: Vec<Value>) {
         if pending.is_empty() || !crate::stores::epic::signed_in() || self.epic_busy.swap(true, std::sync::atomic::Ordering::SeqCst) { return; }
         let busy = self.epic_busy.clone();
+        let tried = pending.clone();
         std::thread::spawn(move || {
             let mut left = Vec::new();
             let mut done = 0;
@@ -168,7 +177,7 @@ impl Importer {
                 }
             }
             busy.store(false, std::sync::atomic::Ordering::SeqCst);
-            crate::stores::notify(json!({"type": "internal", "what": "epicImported", "left": left, "done": done}));
+            crate::stores::notify(json!({"type": "internal", "what": "epicImported", "tried": tried, "left": left, "done": done}));
         });
     }
 
@@ -206,5 +215,17 @@ impl Importer {
             push(&s, pending_count());
         });
         Ok(self.status(pending))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn games_added_during_a_round_stay_waiting() {
+        let (a, b, c) = (json!({"app": "A"}), json!({"app": "B"}), json!({"app": "C"}));
+        // The round tried A and B; B didn't go in; C came from another import meanwhile.
+        assert_eq!(pending_after(&[a.clone(), b.clone(), c.clone()], &[a.clone(), b.clone()], &[b.clone()]), vec![c, b]);
+        assert!(pending_after(&[a.clone()], &[a.clone()], &[]).is_empty());
     }
 }
