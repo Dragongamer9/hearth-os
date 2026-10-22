@@ -1134,7 +1134,7 @@ impl Bridge {
                 }
                 "game.exited" => {
                     if self.parental_since > 0 {
-                        let mins = (now_ms() - self.parental_since) as f64 / 60000.0;
+                        let mins = now_ms().saturating_sub(self.parental_since) as f64 / 60000.0;   // the clock set back (time sync) wrapped to years
                         let active = self.profiles.active();
                         let _ = self.profiles.add_played(&active, mins, chrono::Local::now());
                     }
@@ -1227,7 +1227,7 @@ impl Bridge {
     /// end, then the game closes.
     pub fn parental_tick(&mut self) -> Vec<Value> {
         if self.parental_since == 0 || !self.profiles.restricted(&self.profiles.active()) { return vec![]; }
-        let session = (now_ms() - self.parental_since) as f64 / 60000.0;
+        let session = now_ms().saturating_sub(self.parental_since) as f64 / 60000.0;
         let r = self.profiles.can_play(self.library.running_id().as_deref(), chrono::Local::now(), session);
         let Some(left) = r["minutesLeft"].as_f64() else { return vec![] };
         if r["ok"] != true {
