@@ -16,6 +16,9 @@ internal static class Program
         // Switch to Hearth OS: a step that needs administrator rights (started by Ember after Windows' prompt).
         if (args.Contains("--admin", StringComparer.OrdinalIgnoreCase)) return Switch.AdminTasks.Run(args);
 
+        // Hearth Browser (Firefox with Hearth's settings), like hearth-browser [URL] on Hearth OS. Not the shell.
+        if (args.Contains("--browser", StringComparer.OrdinalIgnoreCase)) return Services.HearthBrowser.RunCli(args);
+
         // The desktop's "Game Mode" shortcut: ask the running Ember to come back, or start it.
         if (args.Contains("--game-mode", StringComparer.OrdinalIgnoreCase) && DesktopMode.SignalRunning()) return 0;
 

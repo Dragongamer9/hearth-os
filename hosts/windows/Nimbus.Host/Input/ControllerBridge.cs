@@ -322,6 +322,8 @@ public sealed class ControllerBridge : IDisposable
         GetWindowThreadProcessId(fg, out var pid);
         if (pid == (uint)Environment.ProcessId) return Stores.SignInWindow.IsSignInWindow(fg) ? Target.Web : MantelDesktopWindow(fg) ? Target.Other : Target.NimbusDialog;
         if (IsSteam(pid)) return Target.Steam;
+        // Hearth Browser in Game Mode: driven like a sign-in page (pointer, A Enter, Y the touch keyboard...).
+        if (!DesktopMode() && Services.HearthBrowser.IsBrowserProcess(pid)) return Target.Web;
         return Target.Other;
     }
 
