@@ -710,7 +710,9 @@ public sealed class LibraryService : IDisposable
     public async Task UninstallAsync(string id)
     {
         if (!_games.TryGetValue(id, out var g)) throw new InvalidOperationException("That game isn't in the library anymore.");
-        if (_monitor.RunningId == id) throw new InvalidOperationException($"Exit {g.Title} first.");
+        // A game put aside with Quick Resume still runs (frozen) and holds its files: deleting its folder now would
+        // leave half of it behind.
+        if (_monitor.RunningId == id || _quick.Has(id)) throw new InvalidOperationException($"Exit {g.Title} first.");
         await Accounts.UninstallAsync(g);
         await ScanAsync();
     }
