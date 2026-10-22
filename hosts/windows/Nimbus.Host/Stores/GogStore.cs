@@ -234,7 +234,16 @@ public sealed class GogStore
             int i = o.IndexOf(k, StringComparison.OrdinalIgnoreCase);
             if (i >= 0) o = o[..i] + v + o[(i + k.Length)..];
         }
-        return o.Contains('%') || o.Contains("<?") ? null : o;
+        if (o.Contains('%') || o.Contains("<?")) return null;
+        if (Path.IsPathFullyQualified(o)) return o;
+        // No placeholder: a folder inside the game's own (never relative to wherever Ember was started from).
+        try
+        {
+            var root = Path.GetFullPath(install).TrimEnd('\\') + "\\";
+            var full = Path.GetFullPath(Path.Combine(root, o.TrimStart('\\')));
+            return full.StartsWith(root, StringComparison.OrdinalIgnoreCase) || full.Equals(root.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase) ? full : null;
+        }
+        catch { return null; }
     }
 
     /// <summary>Where the game keeps its saves, from GOG's own settings for it (as GOG Galaxy uses).</summary>

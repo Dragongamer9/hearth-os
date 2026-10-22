@@ -31,6 +31,7 @@ public sealed class QuickResume : IDisposable
                     if (GameMonitor.ProcessIds(e.Dirs).Count > 0) _frozen.Add(e);   // still there (not after a restart of Windows)
         }
         catch { }
+        // Tick is async void on a timer thread: an error in it would end Ember, so it's logged instead.
         _timer = new System.Threading.Timer(_ => Tick(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
@@ -131,6 +132,12 @@ public sealed class QuickResume : IDisposable
     [DllImport("kernel32.dll")] private static extern bool GlobalMemoryStatusEx(ref MemoryStatus m);
 
     private async void Tick()
+    {
+        try { await TickAsync(); }
+        catch (Exception ex) { SystemBridge.Log("quick resume: " + ex.Message); }
+    }
+
+    private async Task TickAsync()
     {
         List<Entry> snapshot;
         lock (_lock) snapshot = _frozen.ToList();
