@@ -9,6 +9,7 @@ Type=Application
 Categories=System;TerminalEmulator;Utility;
 Keywords=terminal;shell;command;prompt;console;bash;
 StartupNotify=true
+StartupWMClass=hearth-terminal
 X-TerminalArgExec=-e
 X-TerminalArgDir=--cwd
 X-ExecArg=-e

@@ -110,6 +110,12 @@ jobs:
           xwininfo -root -tree | grep -i terminal | head -3 | sed 's/^/::notice title=Window::/' || true
           pkill -f 'target/release/hearth-terminal' || true
           echo "::notice title=App output::$(tail -c 1200 run.log | tr '\n' '|')"
+      # Small copies of the screenshots right in the log too (for looking at them without the artifact).
+      - name: Screenshots in the log
+        if: always()
+        run: |
+          for f in shots/*.png; do [ -f "$f" ] || continue
+            echo "SHOT $(basename "$f" .png) $(convert "$f" -resize 960x -quality 65 jpg:- | base64 -w0)"; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
