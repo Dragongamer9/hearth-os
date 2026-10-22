@@ -281,6 +281,54 @@ class SwitchEditions(unittest.TestCase):
 
 
 class Admin(unittest.TestCase):
+    def test_never_on_another_edition(self):
+        # A plan for CachyOS, but Anatase started (the old system from the boot menu, or a switch that never
+        # finished): nothing is touched and the plan stays for the system it's for.
+        root = tempfile.mkdtemp()
+        write(os.path.join(root, 'var/lib/hearth/clean-install.json'), json.dumps({'version': 1, 'user': 'sam', 'uid': os.getuid(), 'home': '/var/home/sam', 'edition': 'cachyos'}))
+        write(os.path.join(root, 'usr/share/nimbus/image-info.json'), json.dumps({'base': 'anatase'}))
+        write(os.path.join(root, 'var/home/sam/Documents/taxes.pdf'), 'x')
+        write(os.path.join(root, 'etc/hostname'), 'deck')
+        ci.ROOT = root
+        try:
+            self.assertEqual(ci.main(['x']), 0)
+        finally:
+            ci.ROOT = '/'
+        self.assertTrue(os.path.isfile(os.path.join(root, 'var/home/sam/Documents/taxes.pdf')))
+        self.assertTrue(os.path.exists(os.path.join(root, ci.PLAN)))
+        self.assertFalse(os.path.exists(os.path.join(root, ci.STATE)))
+
+    def test_switch_writes_the_plan_only_when_it_worked(self):
+        from unittest import mock
+        tmp = tempfile.mkdtemp()
+        plan = os.path.join(tmp, 'clean-install.json')
+        write(plan, '{"edition": "ubuntu"}')   # left from a switch that never finished
+        user = types.SimpleNamespace(pw_name='sam', pw_uid=1000, pw_dir='/var/home/sam', pw_gid=1000)
+        calls = []
+
+        def fails(*a, **k):
+            calls.append(a)
+            raise ha.UpgradeFailed('error: Switching: pinging container registry ghcr.io: Get "https://ghcr.io/v2/": dial tcp: lookup ghcr.io: Temporary failure in name resolution')
+        with mock.patch.object(ha, 'caller', lambda: user), mock.patch.object(ha, 'CLEAN_INSTALL', plan), \
+                mock.patch.object(ha.os.path, 'exists', lambda x: True if x == '/run/ostree-booted' else os.path.lexists(x)), \
+                mock.patch.object(ha, 'own_edition', lambda: 'anatase'), mock.patch.object(ha, 'ensure_podman', lambda: None), \
+                mock.patch.object(ha, 'layered', lambda: False), mock.patch.object(ha, 'bootc_upgrade_with_progress', fails), \
+                mock.patch.object(ha.time, 'sleep', lambda s: None), mock.patch('builtins.print') as out:
+            with self.assertRaises(SystemExit):
+                ha.move_to_new_os('ubuntu', False)
+        self.assertEqual(len(calls), 3)   # tried again twice after the dropped connection
+        self.assertFalse(os.path.exists(plan))
+        said = [c[0][0] for c in out.call_args_list if c[0] and str(c[0][0]).startswith('error: ')]
+        self.assertEqual(said, ["error: couldn't get the new Hearth OS: the internet connection dropped while downloading. Check the connection and try again"])
+        ok = lambda *a, **k: None
+        with mock.patch.object(ha, 'caller', lambda: user), mock.patch.object(ha, 'CLEAN_INSTALL', plan), \
+                mock.patch.object(ha.os.path, 'exists', lambda x: True if x == '/run/ostree-booted' else os.path.lexists(x)), \
+                mock.patch.object(ha, 'own_edition', lambda: 'anatase'), mock.patch.object(ha, 'ensure_podman', lambda: None), \
+                mock.patch.object(ha, 'layered', lambda: False), mock.patch.object(ha, 'bootc_upgrade_with_progress', ok), \
+                mock.patch.object(ha, 'bootc_status', lambda: {}), mock.patch('builtins.print'):
+            ha.move_to_new_os('ubuntu', False)
+        self.assertEqual(jload(plan)['edition'], 'ubuntu')
+
     def test_editions(self):
         self.assertEqual(ha.new_os_image('anatase'), 'ghcr.io/dragongamer9/hearth-os:latest')
         self.assertEqual(ha.new_os_image('anatase', True), 'ghcr.io/dragongamer9/hearth-os:testing')
