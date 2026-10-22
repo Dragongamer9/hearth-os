@@ -115,6 +115,28 @@ class Parsing(unittest.TestCase):
         b = self.m.parse_ntfsresize_info(NTFS_INFO)
         self.assertEqual((a['size'], a['min']), (b['size'], b['min']))
 
+    def test_live_usb_shrinks_the_windows_on_the_chosen_drive(self):
+        """Two drives, each with a Windows: the installer's drive decides which one is made smaller."""
+        prep = load(PREP, 'hearth_live_prep')
+        tree = {'blockdevices': [
+            {'name': 'sda', 'path': '/dev/sda', 'type': 'disk', 'children': [
+                {'name': 'sda3', 'path': '/dev/sda3', 'pkname': 'sda', 'type': 'part', 'fstype': 'ntfs', 'size': 900 * GIB}]},
+            {'name': 'nvme0n1', 'path': '/dev/nvme0n1', 'type': 'disk', 'children': [
+                {'name': 'nvme0n1p3', 'path': '/dev/nvme0n1p3', 'pkname': 'nvme0n1', 'type': 'part', 'fstype': 'ntfs', 'size': 400 * GIB}]}]}
+        orig_sh, orig_isdir = prep.sh, prep.os.path.isdir
+
+        def sh(cmd, check=True, **kw):
+            return type('R', (), {'stdout': json.dumps(tree) if cmd[0] == 'lsblk' else '', 'stderr': '', 'returncode': 0})()
+        prep.sh = sh
+        prep.os.path.isdir = lambda p: p.endswith('System32') or orig_isdir(p)   # both are Windows
+        orig_makedirs = prep.os.makedirs
+        prep.os.makedirs = lambda *a, **k: None
+        try:
+            self.assertEqual(prep.windows_partition()[0]['path'], '/dev/sda3')            # the biggest, any drive
+            self.assertEqual(prep.windows_partition('/dev/nvme0n1')[0]['path'], '/dev/nvme0n1p3')
+        finally:
+            prep.sh, prep.os.path.isdir, prep.os.makedirs = orig_sh, orig_isdir, orig_makedirs
+
     def test_free_regions_parse_like_the_installer(self):
         inst = load(INSTALL, 'hearth_install')
         text = "Unpartitioned space /dev/nvme0n1: 100 GiB\nSector size: 512\n     Start       End   Sectors  Size\n  419430400 629145566 209715167  100G\n      2048      4095      2048    1M\n"
