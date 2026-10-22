@@ -155,6 +155,19 @@ fn mount(c: &Connection, path: &str) -> Result<String, String> {
     call::<_, String>(c, path, udisks::FILESYSTEM, "Mount", &(opts(),))
 }
 
+/// Mounts a file system that was just made, once udisks has caught up with it (its Filesystem part can show up
+/// a moment after the call returns). Returns a note for the message when it can't be mounted.
+fn mount_new(c: &Connection, path: &str) -> String {
+    for _ in 0..40 {
+        if objects(c).ok().and_then(|o| o.get(path).and_then(|x| x.get(udisks::FILESYSTEM)).cloned()).is_some() { break; }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    match mount(c, path) {
+        Ok(_) => String::new(),
+        Err(e) => format!(" It couldn't be mounted yet ({e})."),
+    }
+}
+
 /// Unmounts everything on a drive and locks what's unlocked, so it can be formatted or removed.
 fn tear_down(c: &Connection, d: &Drive) -> Result<(), String> {
     for p in d.partitions.iter().filter(|p| p.kind != "free") {
@@ -235,8 +248,13 @@ fn remount_if(c: &Connection, path: &str, was: bool) { if was { let _ = mount(c,
 /// start (an fstab entry, added through udisks: x-systemd.automount, so an SD card that isn't there doesn't
 /// hold up starting), then it's mounted and Hearth's Steam code (hearth-core) adds <mount>/SteamLibrary to Steam.
 fn setup_games(c: &Connection, path: &str, step: &dyn Fn(&str)) -> Result<String, String> {
-    let objs = objects(c)?;
-    let o = objs.get(path).cloned().unwrap_or(Value::Null);
+    // A file system that was just made can take a moment to show up with its UUID.
+    let mut o = Value::Null;
+    for _ in 0..40 {
+        o = objects(c)?.get(path).cloned().unwrap_or(Value::Null);
+        if o[udisks::BLOCK]["IdUUID"].as_str().map(|u| !u.is_empty()).unwrap_or(false) && o.get(udisks::FILESYSTEM).is_some() { break; }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
     let block = &o[udisks::BLOCK];
     let uuid = block["IdUUID"].as_str().unwrap_or("").to_string();
     let fs = block["IdType"].as_str().unwrap_or("").to_string();
@@ -350,8 +368,8 @@ fn work(c: &Connection, action: &str, d: &Drive, p: Option<&Partition>, o: &Opts
         ("format", Some(p)) => {
             step("Formatting");
             format_part(&c, p, &o.fs, &o.label)?;
-            if d.removable { let _ = mount(&c, &p.id); }
-            Ok("Formatted.".into())
+            let note = if d.removable { mount_new(&c, &p.id) } else { String::new() };
+            Ok(format!("Formatted.{note}"))
         }
         ("delete", Some(p)) => {
             step("Deleting the partition");
@@ -364,13 +382,13 @@ fn work(c: &Connection, action: &str, d: &Drive, p: Option<&Partition>, o: &Opts
             step("Making the partition");
             let size = if o.size == 0 { 0 } else { o.size };
             let path = create(&c, d, p.offset, size, &o.fs, &o.label)?;
-            if d.removable { let _ = mount(&c, &path); }
-            Ok("Partition made.".into())
+            let note = if d.removable { mount_new(&c, &path) } else { String::new() };
+            Ok(format!("Partition made.{note}"))
         }
         ("format_drive", None) => {
             let path = format_drive(&c, d, &o.fs, &o.label, step)?;
-            if d.removable { step("Mounting it"); let _ = mount(&c, &path); }
-            Ok(format!("{} is formatted.", d.name()))
+            let note = if d.removable { step("Mounting it"); mount_new(&c, &path) } else { String::new() };
+            Ok(format!("{} is formatted.{note}", d.name()))
         }
         ("games", target) => {
             let label = if o.label.is_empty() { "Games".to_string() } else { o.label.clone() };

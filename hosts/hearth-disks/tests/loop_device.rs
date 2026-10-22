@@ -37,7 +37,8 @@ fn loop_device_through_udisks() {
     assert!(d.actions.iter().any(|a| a.id == "format_drive"));
 
     // Format the whole image as exFAT: one partition, mounted (it counts as removable).
-    run("format_drive", &d.id, opts("exfat", "HEARTHTEST"));
+    let m = run("format_drive", &d.id, opts("exfat", "HEARTHTEST"));
+    assert!(!m.contains("couldn't be mounted"), "{m}");
     let d = image(&dev);
     let parts: Vec<_> = d.partitions.iter().filter(|p| p.kind != "free").collect();
     assert_eq!(parts.len(), 1, "{:?}", d.partitions);
