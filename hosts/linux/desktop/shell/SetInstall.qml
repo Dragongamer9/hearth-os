@@ -42,7 +42,7 @@ SetPage {
         if (mode === "beside") {
             if (checking || !win) return "Checking " + tname + "…";
             if (blockers.length) return blockers[0].text;
-            if (give < 64 * gib) return "Hearth needs at least 64 GB";
+            if (give < 64 * gib) return "Hearth needs at least 69 GB (64 GiB)";
         }
         if (!fullName.text.trim()) return "Type your name";
         if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(userName.text)) return "The user name can only have small letters, numbers, - and _";
@@ -164,7 +164,7 @@ SetPage {
         model: page.phase === "setup" && page.mode === "whole" && page.drives ? page.drives : []
         delegate: SetRow {
             required property var modelData
-            readonly property string why: modelData.live ? "The USB stick Hearth is running from" : modelData.tooSmall ? "Too small (Hearth needs 64 GB)" : ""
+            readonly property string why: modelData.live ? "The USB stick Hearth is running from" : modelData.tooSmall ? "Too small (Hearth needs 69 GB, 64 GiB)" : ""
             interactive: why === ""
             chevron: false
             icon: modelData.dev === page.disk ? "check" : "display"
