@@ -1,2 +1,2 @@
-[4722] Sandbox: CanCreateUserNamespace() unshare(CLONE_NEWPID): EPERM
-1792670811012	Marionette	INFO	Listening on port 2828
+[4718] Sandbox: CanCreateUserNamespace() unshare(CLONE_NEWPID): EPERM
+1792679367593	Marionette	INFO	Listening on port 2828
