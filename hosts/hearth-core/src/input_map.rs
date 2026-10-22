@@ -313,6 +313,14 @@ pub fn state_in(dir: &Path, game: Option<&str>, front: bool, overlay: bool) -> V
 }
 pub fn state(game: Option<&str>, front: bool, overlay: bool) -> Value { state_in(&dir(), game, front, overlay) }
 
+/// One line for the log: "no game", or "gog:123 in front (Quick Access open), layout Strategy (RTS)" / "layout off".
+pub fn describe(st: &Value) -> String {
+    let Some(game) = st["game"].as_str() else { return "no game running".into() };
+    let place = if st["overlay"] == true { "Quick Access open" } else if st["front"] == true { "in front" } else { "not in front" };
+    let layout = match st["layout"]["name"].as_str() { Some(n) => format!("layout {n}"), None if st["layout"].is_object() => "custom layout".into(), None => "layout off (the game gets the controller)".into() };
+    format!("{game} {place}, {layout}")
+}
+
 // ------------------------------------------------------------------ the mapper's socket
 
 pub fn socket_path() -> PathBuf { crate::overlay_link::runtime_dir().join("hearth").join("input.sock") }
@@ -376,11 +384,16 @@ pub fn start_link(get: GetState, on_event: OnEvent) {
             let _ = s.set_write_timeout(Some(Duration::from_secs(2)));
             let mut buf = Vec::new();
             let mut last = String::new();
+            let mut said = String::new();
             let mut sent: Option<Instant> = None;
             let mut chunk = [0u8; 4096];
             loop {
                 let (game, front, overlay) = get();
-                let msg = state(game.as_deref(), front, overlay).to_string();
+                let st = state(game.as_deref(), front, overlay);
+                // In Hearth's log whenever it changes (Settings › Send logs): which game, whether it's in front, which layout.
+                let summary = describe(&st);
+                if summary != said { crate::bridge::log(&format!("input: {summary}")); said = summary; }
+                let msg = st.to_string();
                 if msg != last || sent.map(|t| t.elapsed() >= Duration::from_secs(1)).unwrap_or(true) {
                     if s.write_all(format!("{msg}\n").as_bytes()).is_err() { break; }
                     last = msg;
@@ -597,6 +610,12 @@ mod tests {
         assert_eq!(load_in(&dir, "steam:3")["layout"], "off");
     }
 
+    #[test]
+    fn log_line() {
+        assert_eq!(describe(&json!({"game": null})), "no game running");
+        assert_eq!(describe(&json!({"game": "gog:1", "front": true, "overlay": false, "layout": {"name": "Strategy (RTS)"}})), "gog:1 in front, layout Strategy (RTS)");
+        assert_eq!(describe(&json!({"game": "gog:1", "front": false, "overlay": true, "layout": null})), "gog:1 Quick Access open, layout off (the game gets the controller)");
+    }
     #[test]
     fn state_for_the_mapper() {
         let d = tempfile::tempdir().unwrap();
