@@ -157,12 +157,6 @@ const LAYOUTS = {
 const KEYCODES = { Backspace: 8, Enter: 13, " ": 32, ArrowLeft: 37, ArrowRight: 39 };
 const CODES = { Backspace: "Backspace", Enter: "Enter", " ": "Space", ArrowLeft: "ArrowLeft", ArrowRight: "ArrowRight" };
 
-/** Keys the keyboard listens to while it's open (reserved: they come here before the web page). */
-const NAV = [
-  ["up", "VK_UP", ""], ["down", "VK_DOWN", ""], ["left", "VK_LEFT", ""], ["right", "VK_RIGHT", ""],
-  ["down", "VK_TAB", ""], ["up", "VK_TAB", "shift"], ["press", "VK_RETURN", ""], ["backspace", "VK_LEFT", "alt"],
-  ["close", "VK_ESCAPE", ""],
-];
 
 class Keyboard {
   constructor(win) {
@@ -174,6 +168,7 @@ class Keyboard {
     this.c = 0;
     this.tip = null;
     this.heard = [];   // the last keys it acted on (for the CI test)
+    this.typing = false;
     this.build();
   }
 
@@ -196,24 +191,10 @@ class Keyboard {
     if (anchor) anchor.after(box); else doc.documentElement.appendChild(box);
     this.box = box;
 
-    // Keys: always Ctrl+Alt+K (open/close); the rest only while the keyboard is open, in a keyset of their own
-    // that's put in when it opens and taken out when it closes (Firefox reads a keyset's keys once, so switching
-    // single keys on and off doesn't work).
-    const commands = doc.createXULElement("commandset");
-    commands.id = "hearth-osk-commands";
-    const command = (name, fn) => {
-      const cmd = doc.createXULElement("command");
-      cmd.id = "hearth-osk-cmd-" + name;
-      // Acted on once the key press is over: typing from inside it would find Firefox's text input busy.
-      cmd.addEventListener("command", () => { this.heard.push(name); this.heard.splice(0, this.heard.length - 20); this.win.setTimeout(fn, 0); });
-      commands.appendChild(cmd);
-    };
-    command("toggle", () => this.toggle());
-    const acts = { up: () => this.move(-1, 0), down: () => this.move(1, 0), left: () => this.move(0, -1), right: () => this.move(0, 1),
-                   press: () => this.press(), backspace: () => this.typeKey("Backspace"), close: () => this.close() };
-    for (const [name, fn] of Object.entries(acts)) command(name, fn);
-    doc.documentElement.appendChild(commands);
-    doc.documentElement.appendChild(this.keyset("hearth-osk-toggle", [["toggle", { key: "K", modifiers: "accel,alt" }]]));
+    // Keys: always Ctrl+Alt+K (open/close); the rest only while the keyboard is open. Caught on the window first
+    // (capturing, in Firefox's system group), so they never reach the web page or Firefox's own shortcuts.
+    this.onKey = e => this.key(e);
+    win.addEventListener("keydown", this.onKey, { capture: true, mozSystemGroup: true });
     this.render();
   }
 
@@ -291,11 +272,11 @@ class Keyboard {
   }
 
   /** One key down and up, through Firefox's text input interface: to whatever has the keyboard focus (the address
-   *  bar, or the text field in the page). The keyboard's own keys are off meanwhile, or they'd catch it. */
+   *  bar, or the text field in the page). The keyboard doesn't catch its own keys meanwhile. */
   dispatch(init) {
     const tip = this.textInput();
     if (!tip) return;
-    this.navKeys(false);
+    this.typing = true;
     try {
       const e = new this.win.KeyboardEvent("", init);
       tip.keydown(e);
@@ -303,43 +284,45 @@ class Keyboard {
     } catch (e) {
       report("typing", e);
     } finally {
-      this.navKeys(this.isOpen);
+      this.typing = false;
     }
   }
   typeChar(ch) { this.dispatch({ key: ch }); }
   typeKey(name) { this.dispatch({ key: name, code: CODES[name] || "", keyCode: KEYCODES[name] || 0 }); }
 
-  /** A keyset of reserved keys (they come here before the web page), each running one of the commands above. */
-  keyset(id, keys) {
-    const set = this.doc.createXULElement("keyset");
-    set.id = id;
-    for (const [name, attrs] of keys) {
-      const key = this.doc.createXULElement("key");
-      for (const [k, v] of Object.entries(attrs)) if (v) key.setAttribute(k, v);
-      key.setAttribute("command", "hearth-osk-cmd-" + name);
-      key.setAttribute("reserved", "true");
-      set.appendChild(key);
+  /** A key pressed on a keyboard (or sent by the controller through Hearth Input). Acted on once the key press is
+   *  over: typing from inside it would find Firefox's text input busy. */
+  key(e) {
+    if (this.typing || e.defaultPrevented) return;
+    let act = null;
+    if (e.key.toLowerCase() === "k" && e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey) act = "toggle";
+    else if (this.isOpen && !e.ctrlKey && !e.metaKey) {
+      const plain = !e.altKey;
+      act = e.key === "ArrowUp" && plain ? "up" : e.key === "ArrowDown" && plain ? "down"
+        : e.key === "ArrowLeft" && plain ? "left" : e.key === "ArrowRight" && plain ? "right"
+        : e.key === "ArrowLeft" && e.altKey ? "backspace"
+        : e.key === "Tab" && plain ? (e.shiftKey ? "up" : "down")
+        : e.key === "Enter" && plain ? "press" : e.key === "Escape" && plain ? "close" : null;
     }
-    return set;
-  }
-
-  navKeys(on) {
-    const old = this.doc.getElementById("hearth-osk-nav");
-    if (on && !old) this.doc.documentElement.appendChild(this.keyset("hearth-osk-nav", NAV.map(([name, keycode, modifiers]) => [name, { keycode, modifiers }])));
-    else if (!on && old) old.remove();
+    if (!act) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.heard.push(act);
+    this.heard.splice(0, this.heard.length - 20);
+    const acts = { toggle: () => this.toggle(), up: () => this.move(-1, 0), down: () => this.move(1, 0), left: () => this.move(0, -1),
+                   right: () => this.move(0, 1), press: () => this.press(), backspace: () => this.typeKey("Backspace"), close: () => this.close() };
+    this.win.setTimeout(acts[act], 0);
   }
 
   open() {
     if (this.isOpen) return;
     this.box.hidden = false;
-    this.navKeys(true);
     this.render();
     this.button(true);
   }
   close() {
     if (!this.isOpen) return;
     this.box.hidden = true;
-    this.navKeys(false);
     this.shift = false;
     this.button(false);
   }
