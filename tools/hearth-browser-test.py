@@ -140,41 +140,6 @@ CHROME_KEY = r'''
   return { key, open: kb.isOpen, r: kb.r, c: kb.c, heard: kb.heard.slice(-4), focus: String(document.activeElement && document.activeElement.localName) };
 '''
 
-EXPERIMENT = r"""
-  const out = {};
-  const send = (key, code, keyCode) => {
-    const tip = Components.classes["@mozilla.org/text-input-processor;1"].createInstance(Components.interfaces.nsITextInputProcessor);
-    tip.beginInputTransaction(window, () => true);
-    const e = new window.KeyboardEvent("", { key, code, keyCode });
-    tip.keydown(e); tip.keyup(e);
-  };
-  const cs = document.createXULElement("commandset"); document.documentElement.appendChild(cs);
-  const ks = document.createXULElement("keyset");
-  const mk = (id, attrs) => { const c = document.createXULElement("command"); c.id = "x-" + id; c.addEventListener("command", () => out[id] = (out[id] || 0) + 1); cs.appendChild(c);
-    const k = document.createXULElement("key"); for (const [a, v] of Object.entries(attrs)) k.setAttribute(a, v); k.setAttribute("command", "x-" + id); k.setAttribute("reserved", "true"); ks.appendChild(k); };
-  mk("f13", { keycode: "VK_F13" });
-  mk("down", { keycode: "VK_DOWN" });
-  mk("pagedown", { keycode: "VK_PAGE_DOWN" });
-  mk("ctrlDown", { keycode: "VK_DOWN", modifiers: "accel" });
-  mk("key_q", { key: "q" });
-  document.documentElement.appendChild(ks);
-  send("F13", "F13", 124); send("ArrowDown", "ArrowDown", 40); send("PageDown", "PageDown", 34);
-  { const tip = Components.classes["@mozilla.org/text-input-processor;1"].createInstance(Components.interfaces.nsITextInputProcessor); tip.beginInputTransaction(window, () => true);
-    const c = new window.KeyboardEvent("", { key: "Control", code: "ControlLeft", keyCode: 17 }); tip.keydown(c); const d = new window.KeyboardEvent("", { key: "ArrowDown", code: "ArrowDown", keyCode: 40 }); tip.keydown(d); tip.keyup(d); tip.keyup(c); }
-  send("q", "KeyQ", 81);
-  ks.remove();
-  // A system-group capture listener that stops "z": does the page still get it?
-  const seen = [];
-  const stop = e => { if (e.key === "z") { seen.push([e.type, e.eventPhase, e.defaultPrevented]); e.preventDefault(); e.stopPropagation(); } };
-  window.addEventListener("keydown", stop, { capture: true, mozSystemGroup: true });
-  window.addEventListener("keypress", stop, { capture: true, mozSystemGroup: true });
-  send("z", "KeyZ", 90);
-  await new Promise(r => setTimeout(r, 500));
-  window.removeEventListener("keydown", stop, { capture: true, mozSystemGroup: true });
-  window.removeEventListener("keypress", stop, { capture: true, mozSystemGroup: true });
-  out.stopZ = seen;
-  return out;
-"""
 
 PAGE = 'data:text/html;charset=utf-8,' + ('<title>Typing</title><body style="background:%23222;color:%23eee;font:24px sans-serif">'
                                           '<p>Typed with Hearth Browser\'s keyboard:</p><input id="i" style="font-size:28px;width:80%25"></body>')
@@ -245,26 +210,9 @@ def run_mode(ff, out, mode, extras, port):
         m.js('document.getElementById("i").focus(); return true;')
         m.context('chrome')
         m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); return true;')
-        exp = m.js(EXPERIMENT)
-        report['key-experiment'] = exp
-        m.context('content')
-        exp['page'] = m.js('const i = document.getElementById("i"); const v = i.value; i.value = ""; return v;')
-        m.context('chrome')
-        print('::notice title=keys experiment %s::%s' % (mode, json.dumps(exp)), flush=True)
         m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); '
              'const { HearthBrowser } = ChromeUtils.importESModule("resource://hearth/hearth.sys.mjs"); '
              'const kb = HearthBrowser.keyboardOf(window); kb.layout = "abc"; kb.r = 1; kb.c = 0; kb.open(); kb.render(); return kb.isOpen;')
-        diag = m.js('''
-          const { HearthBrowser } = ChromeUtils.importESModule("resource://hearth/hearth.sys.mjs");
-          const kb = HearthBrowser.keyboardOf(window);
-          const before = kb.heard.length;
-          await new Promise(r => setTimeout(r, 300));
-          return { osk: document.querySelectorAll("#hearth-osk").length, keysets: document.querySelectorAll("#hearth-osk-keys").length,
-                   cmds: document.querySelectorAll("[id^=hearth-osk-cmd]").length,
-                   open: kb.isOpen, navSets: document.querySelectorAll("#hearth-osk-nav").length, toggleSets: document.querySelectorAll("#hearth-osk-toggle").length, keys: [...document.querySelectorAll("#hearth-osk-nav key")].map(k => [k.getAttribute("keycode") || k.getAttribute("key"), k.getAttribute("modifiers"), k.getAttribute("disabled"), k.getAttribute("command"), k.getAttribute("reserved")]),
-                   heardByDoCommand: kb.heard.length - before, r: kb.r, c: kb.c, same: kb.box === document.getElementById("hearth-osk") };
-        ''')
-        print('::notice title=keyboard diag %s::%s' % (mode, json.dumps(diag)), flush=True)
         steps = []
         for key in (('ArrowDown', 'ArrowDown', 40, False), ('Return', None, None, None)):
             if key[0] == 'Return':
