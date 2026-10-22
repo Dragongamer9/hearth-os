@@ -32,8 +32,10 @@
     <div class="crumb">Docs · for Hearth OS 0.3.1</div>
     <h1>Using Hearth</h1>
     <p class="lead">Game Mode, the desktop, the controller and keyboard, the power button, and sending logs.</p>
+    <div class="picker" role="group" aria-label="Your edition"><span class="pl">Your edition</span><button type="button" data-pick="all">All editions</button><button type="button" data-pick="anatase">Anatase <small>Fedora</small></button><button type="button" data-pick="ubuntu">Ubuntu <small>Ubuntu</small></button><button type="button" data-pick="cachyos">CachyOS <small>Arch</small></button><button type="button" data-pick="peppermint">Peppermint <small>Debian</small></button></div>
+    <p class="edshow" hidden></p>
 
-<h2 id="modes">Game Mode and Desktop Mode</h2>
+<section><h2 id="modes">Game Mode and Desktop Mode</h2>
 <p><b>Game Mode</b> is the console-style screen Hearth starts in. <b>Desktop Mode</b> (Mantel) is a full desktop with windows,
 a file manager and a terminal.</p>
 <ul>
@@ -42,7 +44,7 @@ a file manager and a terminal.</p>
 <li><b>Settings › Sign-in › Start in</b> picks which one you see after signing in.</li>
 </ul>
 
-<h2 id="controller">Controller</h2>
+</section><section><h2 id="controller">Controller</h2>
 <div class="tbl"><table>
 <tr><th>Button</th><th>In Game Mode</th></tr>
 <tr><td>A / B</td><td>Select / back</td></tr>
@@ -54,7 +56,7 @@ a file manager and a terminal.</p>
 </table></div>
 <p>The controller mouse: right stick moves the pointer, A or RT clicks, X or LT right-clicks, left stick scrolls, B is Esc.</p>
 
-<h2 id="keyboard">The on-screen keyboard</h2>
+</section><section><h2 id="keyboard">The on-screen keyboard</h2>
 <p>Laid out like SteamOS's, at the bottom of the screen. With a controller:</p>
 <div class="tbl"><table>
 <tr><th>Button</th><th>Does</th></tr>
@@ -68,27 +70,27 @@ a file manager and a terminal.</p>
 </table></div>
 <p>The ← and → keys move the text cursor. A USB or Bluetooth keyboard works too.</p>
 
-<h2 id="power">The power button</h2>
+</section><section><h2 id="power">The power button</h2>
 <p><b>Settings › Power › Power button</b> sets what a quick <b>Press</b> and a <b>Hold</b> do (sleep, the power menu, turn off).
 Holding the button for several seconds always turns the device off.</p>
 
-<h2 id="display">Display and performance</h2>
+</section><section><h2 id="display">Display and performance</h2>
 <ul>
 <li><b>Settings › Display › Drawing engine</b>: on Nvidia graphics Hearth uses Chromium to draw Game Mode, which is much smoother there. It's chosen automatically.</li>
 <li><b>Settings › Power</b>: power mode and the power limit (TDP) on handhelds.</li>
 </ul>
 
-<h2 id="profiles">Profiles and stores</h2>
+</section><section><h2 id="profiles">Profiles and stores</h2>
 <ul>
 <li>Each Hearth profile can sign in to its own Steam account. With more than one profile, each sees its own Steam games.</li>
 <li>Stores are signed in to from <b>Settings › Game stores</b>. Beacon (the Battle for Middle-earth launcher) is built in.</li>
 </ul>
 
-<h2 id="logs">Sending logs</h2>
+</section><section><h2 id="logs">Sending logs</h2>
 <p>When something goes wrong, <b>Settings › System › Send logs to the developer</b>. You get a short code (like
 <code>ABCD-EFGH-JK</code>): share it when you report the problem. Logs are kept 14 days, personal details are taken out
 before they're sent, and only someone with the code can read them.</p>
-
+</section>
 <div class="pager"><a href="updates.html">← Updates and editions</a><a href="troubleshooting.html">Troubleshooting →</a></div>
   </main>
 </div>

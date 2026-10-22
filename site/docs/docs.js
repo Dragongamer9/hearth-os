@@ -67,6 +67,34 @@
       .catch(function(){ blocks.forEach(function(el){ el.querySelectorAll('.n').forEach(function(n){ n.textContent = '0'; }); }); });
   }
 
+  // The edition picker: what doesn't apply to the chosen edition is hidden on every page (remembered; ?ed= in a link
+  // picks it too). data-ed="all" parts only show with All editions.
+  var NAMES = {anatase: 'Anatase', ubuntu: 'Ubuntu', cachyos: 'CachyOS', peppermint: 'Peppermint'};
+  function chosen(){
+    var q = (location.search.match(/[?&]ed=([a-z]+)/) || [])[1];
+    if(q && (NAMES[q] || q === 'all')){ store('hearth.docs.ed', q); return q; }
+    var s = store('hearth.docs.ed'); return NAMES[s] ? s : 'all';
+  }
+  function applyEdition(ed){
+    var hidden = 0;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ed]'), function(el){
+      var list = el.getAttribute('data-ed').split(/\s+/);
+      var off = list[0] === 'all' ? ed !== 'all' : (ed !== 'all' && list.indexOf(ed) < 0);
+      el.classList.toggle('ed-off', off);
+      if(off && el.tagName === 'SECTION') hidden++;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.picker button'), function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-pick') === ed ? 'true' : 'false'); });
+    var show = document.querySelector('.edshow');
+    if(show){
+      show.hidden = ed === 'all';
+      if(ed !== 'all') show.innerHTML = 'Showing what applies to <b>' + NAMES[ed] + '</b>' + (hidden ? ' (' + hidden + ' section' + (hidden > 1 ? 's' : '') + ' for other editions hidden)' : '') + '. <button type="button">Show everything</button>';
+      var b = show.querySelector('button'); if(b) b.onclick = function(){ pick('all'); };
+    }
+  }
+  function pick(ed){ store('hearth.docs.ed', ed === 'all' ? null : ed); applyEdition(ed); if(typeof follow === 'function') follow(); }
+  Array.prototype.forEach.call(document.querySelectorAll('.picker button'), function(b){ b.addEventListener('click', function(){ pick(b.getAttribute('data-pick')); }); });
+  applyEdition(chosen());
+
   // The section list follows the reading position: the last heading above the top of the screen.
   var links = Array.prototype.slice.call(document.querySelectorAll('.side .sub a[href^="#"]'));
   var heads = links.map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); });
@@ -74,8 +102,8 @@
   function follow(){
     ticking = false;
     var cur = 0;
-    for(var i = 0; i < heads.length; i++){ if(heads[i] && heads[i].getBoundingClientRect().top < 130) cur = i; }
-    if(window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) cur = heads.length - 1;
+    for(var i = 0; i < heads.length; i++){ if(heads[i] && heads[i].offsetParent && heads[i].getBoundingClientRect().top < 130) cur = i; }
+    if(window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4){ for(var j = heads.length - 1; j >= 0; j--){ if(heads[j] && heads[j].offsetParent){ cur = j; break; } } }
     links.forEach(function(a, i){ a.classList.toggle('cur', i === cur); });
   }
   if(links.length){ window.addEventListener('scroll', function(){ if(!ticking){ ticking = true; requestAnimationFrame(follow); } }, {passive: true}); follow(); }
