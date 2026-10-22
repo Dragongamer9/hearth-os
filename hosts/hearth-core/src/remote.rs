@@ -17,12 +17,12 @@ fn creds() -> Option<(String, String)> {
 /// One call to Sunshine's API. Err("AUTH") when it wants a username and password.
 pub fn api(method: &str, path: &str, body: Option<&Value>, login: Option<(String, String)>) -> Result<Value, String> {
     let url = format!("https://127.0.0.1:47990{path}");
-    let mut args: Vec<String> = vec!["-sk".into(), "-m".into(), "8".into(), "-X".into(), method.into(), "-H".into(), "Content-Type: application/json".into(), "-w".into(), "\n%{http_code}".into()];
-    if let Some((u, p)) = &login { args.push("-u".into()); args.push(format!("{u}:{p}")); }
-    if let Some(b) = body { args.push("-d".into()); args.push(b.to_string()); }
-    args.push(url);
-    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let out = crate::system::run("curl", &refs).map_err(|_| "Sunshine isn't running".to_string())?;
+    let args = ["-sk", "-m", "8", "-X", method, "-w", "\n%{http_code}", "-K", "-"];
+    // Sunshine's login (and a new password, or a pairing PIN, in the body) goes to curl on its standard input, not
+    // its command line, which every user on the PC can read: with it anyone could pair their own Moonlight and
+    // stream (and control) this PC.
+    let cfg = sunshine_config(&url, body, login.as_ref());
+    let out = crate::system::run_input("curl", &args, Some(&cfg), std::time::Duration::from_secs(15)).map_err(|_| "Sunshine isn't running".to_string())?;
     let (text, code) = out.rsplit_once('\n').unwrap_or(("", "0"));
     match code.trim() {
         "401" => Err("AUTH".into()),
@@ -32,6 +32,13 @@ pub fn api(method: &str, path: &str, body: Option<&Value>, login: Option<(String
     }
 }
 
+/// curl's config for one call to Sunshine: the address, the JSON body and the login.
+pub fn sunshine_config(url: &str, body: Option<&Value>, login: Option<&(String, String)>) -> String {
+    let mut c = crate::http::curl_config(url, &[("Content-Type", "application/json")], None);
+    if let Some(b) = body { c.push_str(&format!("data = {}\n", crate::http::curl_quote(&b.to_string()))); }
+    if let Some((u, p)) = login { c.push_str(&format!("user = {}\n", crate::http::curl_quote(&format!("{u}:{p}")))); }
+    c
+}
 fn unit() -> Option<&'static str> {
     UNITS.iter().copied().find(|u| crate::system::run("systemctl", &["--user", "list-unit-files", u, "--no-legend"]).map(|o| !o.trim().is_empty()).unwrap_or(false))
 }
@@ -112,3 +119,14 @@ pub fn install_moonlight() -> Result<bool, String> {
 }
 #[allow(dead_code)]
 fn _unused(_: &Path) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn the_login_never_goes_on_the_command_line() {
+        let c = sunshine_config("https://127.0.0.1:47990/api/pin", Some(&json!({"pin": "1234"})), Some(&("hearth".into(), "p\"w".into())));
+        assert_eq!(c, "url = \"https://127.0.0.1:47990/api/pin\"\nheader = \"Content-Type: application/json\"\ndata = \"{\\\"pin\\\":\\\"1234\\\"}\"\nuser = \"hearth:p\\\"w\"\n");
+        assert_eq!(sunshine_config("u", None, None), "url = \"u\"\nheader = \"Content-Type: application/json\"\n");
+    }
+}

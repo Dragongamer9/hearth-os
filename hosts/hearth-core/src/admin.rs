@@ -53,17 +53,21 @@ pub fn run_with(args: &[&str], input: Option<&str>, on_line: &mut dyn FnMut(&str
         .spawn().map_err(|e| e.to_string())?;
     on_spawn(child.id());
     if let Some(mut stdin) = child.stdin.take() { if let Some(i) = input { let _ = stdin.write_all(i.as_bytes()); } }
+    // Its error output is read while it runs: read only at the end, a job that wrote more there than a pipe holds
+    // (64 KiB: an update's or a flatpak install's progress) stopped, waiting for us, and the job never ended.
+    let err_reader = child.stderr.take().map(|mut e| std::thread::spawn(move || { let mut b = Vec::new(); let _ = std::io::Read::read_to_end(&mut e, &mut b); b }));
     let mut out = String::new();
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) { on_line(line.trim()); out.push_str(&line); out.push('\n'); }
     }
-    let o = child.wait_with_output().map_err(|e| e.to_string())?;
+    let status = child.wait().map_err(|e| e.to_string())?;
+    let stderr = err_reader.and_then(|t| t.join().ok()).unwrap_or_default();
     let parsed = parse_helper(&out);
     if parsed.is_err() { return parsed; }
-    match o.status.code() {
+    match status.code() {
         Some(0) => parsed,
         Some(126) | Some(127) => Err("Not allowed (the polkit rule for Hearth is missing).".into()),
-        _ => Err(String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("hearth-admin failed").to_string()),
+        _ => Err(String::from_utf8_lossy(&stderr).lines().last().unwrap_or("hearth-admin failed").to_string()),
     }
 }
 
