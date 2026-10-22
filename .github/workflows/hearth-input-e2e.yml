@@ -1,0 +1,40 @@
+# Hearth Input end to end: the real daemon (hosts/linux/desktop/shell/hearth-input) with real evdev and uinput.
+# Fake controllers (Xbox 360 pad, Bluetooth Xbox controller, DualSense) are made with /dev/uinput; the test talks
+# to the daemon's socket the way Hearth does and reads its virtual keyboard and mouse (tools/e2e-hearth-input.py).
+name: Hearth Input e2e
+
+on:
+  push:
+    branches: [main, linux-host]
+    paths:
+      - 'hosts/linux/desktop/shell/hearth-input*'
+      - 'hosts/linux/desktop/shell/input-layouts.json'
+      - 'hosts/linux/test/test_hearth_input.py'
+      - 'tools/e2e-hearth-input.py'
+      - '.github/workflows/hearth-input-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: uinput and python3-evdev
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-evdev >/dev/null
+          sudo modprobe uinput
+          ls -l /dev/uinput
+          /usr/bin/python3 -c "import evdev; print('python3-evdev', getattr(evdev, '__version__', '?'))"
+
+      - name: Unit tests
+        run: /usr/bin/python3 -m unittest discover -s hosts/linux/test -q
+
+      - name: End-to-end test
+        # As root: the fake controllers' /dev/input nodes are root:input, and the daemon must open them.
+        run: sudo E2E_SHOW_LOG=1 /usr/bin/python3 tools/e2e-hearth-input.py
