@@ -220,6 +220,15 @@ ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
 # ---- end hearthfetch
 
+# ------------------------------------------------------------------ SVG icons for GTK (librsvg's gdk-pixbuf loader)
+# Without it GTK can't draw an SVG icon and aborts the whole program the first time it needs one (Hearth's Game Mode
+# crashed over and over on CachyOS: "image-missing.svg: Unrecognized image file format"). The loaders list is
+# rebuilt so the SVG loader is in it.
+"${PAC[@]}" librsvg gdk-pixbuf2
+for q in /usr/bin/gdk-pixbuf-query-loaders /usr/bin/gdk-pixbuf-query-loaders-64 /usr/lib/*/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders; do
+  [ -x "$q" ] && { "$q" --update-cache || true; break; }
+done
+
 # ------------------------------------------------------------------ Hearth Disks (hosts/hearth-disks)
 # The disk manager, built with the app (base-cachyos.yml). udisks2 does all its changes (installed with the base packages above).
 command -v udisksctl >/dev/null || echo "warning: udisks2 is missing, so Disks can't change drives"

@@ -241,6 +241,7 @@ jobs:
           check "the old Chromium (CEF) Hearth Browser is gone" "test ! -e /usr/lib/hearth-browser-cef"
           warn "every library the Electron build (Quick Access) links is installed" "! ldd /usr/lib/hearth-browser/nimbus | grep -q 'not found'"
           check "hearthfetch is installed and runs" "test -x /usr/bin/hearthfetch && /usr/bin/hearthfetch --no-logo | grep -q Hearth"
+          check "GTK can load SVG icons (librsvg's loader is registered)" "for f in /usr/lib*/gdk-pixbuf-2.0/2.10.0/loaders.cache /usr/lib/*/gdk-pixbuf-2.0/2.10.0/loaders.cache; do grep -qi svg \"\$f\" 2>/dev/null && exit 0; done; exit 1"
           echo "--- bootable"
           check "one kernel with its initramfs in /usr/lib/modules" "test \$(ls /usr/lib/modules/*/vmlinuz | wc -l) = 1 && ls /usr/lib/modules/*/initramfs.img"
           check "the CachyOS kernel" "pacman -Q linux-cachyos-deckify || pacman -Q linux-cachyos"
