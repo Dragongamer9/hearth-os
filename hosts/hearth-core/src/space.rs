@@ -74,12 +74,16 @@ pub fn grow(from: &str, gb: u64, emit: crate::system::bt_scan::Emit) -> Result<V
 }
 
 /// Answers a call from another thread, so a slow look at the drives doesn't hold up the rest of the page.
-pub fn answer_later(id: Value, f: impl FnOnce() -> Result<Value, String> + Send + 'static) {
+pub fn answer_later(id: Value, f: impl FnOnce() -> Result<Value, String> + Send + 'static) { answer_later_to(id, None, f) }
+/// The same, to one window only ("to": its label; the host sends it there).
+pub fn answer_later_to(id: Value, to: Option<String>, f: impl FnOnce() -> Result<Value, String> + Send + 'static) {
     std::thread::spawn(move || {
-        crate::stores::notify(match f() {
+        let mut r = match f() {
             Ok(v) => json!({"type": "result", "id": id, "ok": true, "value": v}),
             Err(e) => json!({"type": "result", "id": id, "ok": false, "error": e}),
-        });
+        };
+        if let Some(t) = to { r["to"] = json!(t); }
+        crate::stores::notify(r);
     });
 }
 

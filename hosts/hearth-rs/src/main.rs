@@ -236,6 +236,7 @@ pub(crate) fn page_msg(host: &Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, l
         let mut b = match bridge.lock() { Ok(b) => b, Err(p) => p.into_inner() };
         // The fail-safe watches what holds the bridge (hearth_core::watchdog).
         let n = hearth_core::watchdog::enter(msg["method"].as_str().or(msg["type"].as_str()).unwrap_or("?"));
+        b.cur_label = label.clone();
         let r = if msg["type"] == "call" { (b.handle(&msg), false) } else { (None, b.other(&msg)) };
         hearth_core::watchdog::leave(n);
         r
@@ -317,6 +318,8 @@ pub(crate) fn start_core(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, 
                     });
                     return;
                 }
+                // An answer given later (bridge.rs `later`): only to the window that asked.
+                if v["type"] == "result" { if let Some(to) = v["to"].as_str().map(str::to_string) { send_to(&h, &to, v); return; } }
                 // The host asks for a restart (after restoring a backup): Hearth reads everything at start.
                 // Game Mode restarts with new options (the session starts it again when Hearth closes).
                 if v["type"] == "quit" { h.exit(0); return; }
