@@ -9,7 +9,8 @@ SetPage {
     title: "Wi-Fi"
     property bool on: false
     property var nets: []          // [{ssid, signal, secure, inUse}]
-    property var saved: []
+    property var saved: []         // the saved networks' SSIDs
+    property var savedIds: ({})    // SSID: its saved connection's UUID
     property bool scanning: false
     property string asking: ""     // the network we're asking a password for
     property string busy: ""
@@ -46,8 +47,17 @@ SetPage {
     }
     Process {
         id: savedProc
-        command: ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"]
-        stdout: StdioCollector { onStreamFinished: page.replaceList("saved", text.split("\n").map(l => page.fields(l)).filter(f => /wireless/.test(f[1] || "")).map(f => f[0])) }
+        // Each saved Wi-Fi connection as UUID:SSID. The SSID is the connection's own (802-11-wireless.ssid), not
+        // its name, so a renamed connection still counts as saved; its name only stands in when there's no SSID.
+        command: ["sh", "-c", 'nmcli -t -f UUID,TYPE,NAME connection show | while IFS=: read -r u t n; do case "$t" in *wireless*) s=$(nmcli --escape yes -g 802-11-wireless.ssid connection show uuid "$u" 2>/dev/null); printf "%s:%s\\n" "$u" "${s:-$n}";; esac; done']
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const ids = {};
+                for (const l of text.split("\n")) { const f = page.fields(l); if (f.length >= 2 && f[0] && f[1]) ids[f[1]] = f[0]; }
+                page.savedIds = ids;
+                page.replaceList("saved", Object.keys(ids));
+            }
+        }
     }
     Process {
         id: scan
@@ -80,7 +90,7 @@ SetPage {
         // The password goes to nmcli on its input (it asks for it with --ask), through the environment, which only
         // you can read: on its command line every account on the device could see it (ps, /proc).
         if (pw) run(["sh", "-c", 'printf "%s\\n" "$HEARTH_WIFI_PSK" | exec nmcli --ask device wifi connect "$1"', "sh", n.ssid], "Connected to " + n.ssid, { HEARTH_WIFI_PSK: pw });
-        else if (saved.includes(n.ssid)) run(["nmcli", "connection", "up", "id", n.ssid], "Connected to " + n.ssid);
+        else if (savedIds[n.ssid]) run(["nmcli", "connection", "up", "uuid", savedIds[n.ssid]], "Connected to " + n.ssid);
         else run(["nmcli", "device", "wifi", "connect", n.ssid], "Connected to " + n.ssid);
     }
     function bars(s) { return s > 75 ? "▂▄▆█" : s > 50 ? "▂▄▆" : s > 25 ? "▂▄" : "▂"; }
@@ -107,7 +117,7 @@ SetPage {
                 value: page.bars(netItem.modelData.signal) + (netItem.modelData.secure ? "  🔒" : "")
                 onActivated: {
                     const n = netItem.modelData;
-                    if (n.inUse) page.run(["nmcli", "connection", "down", "id", n.ssid], "Disconnected from " + n.ssid);
+                    if (n.inUse) page.run(["nmcli", "connection", "down"].concat(page.savedIds[n.ssid] ? ["uuid", page.savedIds[n.ssid]] : ["id", n.ssid]), "Disconnected from " + n.ssid);
                     else if (n.secure && !page.saved.includes(n.ssid)) { page.asking = n.ssid; Qt.callLater(() => pw.focusInput()); }
                     else page.connect(n, "");
                 }
