@@ -78,6 +78,22 @@ jobs:
             if (-not (Test-Path $f)) { throw "Missing $f in the published output" }
           }
 
+      # ---- Hearth Terminal (hosts/hearth-terminal): built here and packaged next to Nimbus.exe; Ember adds it to
+      # the Start menu (HearthTerminal.cs), which also puts it in Mantel's app list.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-terminal
+      - name: Build Hearth Terminal
+        shell: pwsh
+        working-directory: hosts/hearth-terminal
+        run: |
+          (Get-Content Cargo.toml) -replace '^version = ".*"', 'version = "${{ needs.version.outputs.version }}"' | Set-Content Cargo.toml
+          cargo build --release
+          if ($LASTEXITCODE -ne 0) { throw "Hearth Terminal didn't build" }
+          Copy-Item target/release/hearth-terminal.exe ../../out/hearth-terminal.exe
+      # ---- end of Hearth Terminal
+
       - name: Package
         shell: pwsh
         run: |

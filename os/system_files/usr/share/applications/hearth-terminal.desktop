@@ -1,0 +1,19 @@
+[Desktop Entry]
+Name=Terminal
+GenericName=Terminal
+Comment=Type commands into your system's shell
+Exec=hearth-terminal
+TryExec=hearth-terminal
+Icon=hearth
+Type=Application
+Categories=System;TerminalEmulator;Utility;
+Keywords=terminal;shell;command;prompt;console;bash;
+StartupNotify=true
+X-TerminalArgExec=-e
+X-TerminalArgDir=--cwd
+X-ExecArg=-e
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New window
+Exec=hearth-terminal

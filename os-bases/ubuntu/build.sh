@@ -284,6 +284,18 @@ if ldd /usr/lib/nimbus/nimbus | grep "not found"; then
   echo "The Hearth app needs libraries this image doesn't have (above)"; exit 1
 fi
 
+# ---- Hearth Terminal (hosts/hearth-terminal): built by CI next to the Hearth app (base-*.yml) and carried in
+# os/nimbus-app. Mantel opens it for its terminal (desktop/open.sh); its menu entry (hearth-terminal.desktop) and
+# Mantel's xdg-terminal-exec list come from os/system_files. foot stays installed as the fallback.
+if [ -x /ctx/nimbus-app/hearth-terminal ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-terminal /usr/bin/hearth-terminal
+  # A terminal that can't start is worse than none: then Mantel falls back to foot.
+  if ldd /usr/bin/hearth-terminal | grep 'not found'; then echo "Hearth Terminal needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/hearth-terminal; fi
+  # Debian's "the terminal" for apps that ask for one (foot stays registered as the fallback).
+  if [ -x /usr/bin/hearth-terminal ]; then update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator /usr/bin/hearth-terminal 60 || true; fi
+fi
+# ---- end of Hearth Terminal
+
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session
 install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
