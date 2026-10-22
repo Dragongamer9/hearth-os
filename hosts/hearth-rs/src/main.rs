@@ -498,6 +498,18 @@ fn start_game_mode(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, window
             let mut locked = false;
             for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
                 if !line.contains("PrepareForSleep") { continue; }
+                if !line.contains("(true") {
+                    // Awake: the power limit you chose, set again (the handheld's own one is back after sleep on
+                    // many, ryzenadj's on the ROG Ally). A few seconds first, for the firmware to settle.
+                    std::thread::spawn(|| {
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                        match hearth_core::power::restore() {
+                            Ok(Some(t)) => hearth_core::bridge::log(&format!("power: limit set again after waking ({t})")),
+                            Ok(None) => {}
+                            Err(e) => hearth_core::bridge::log(&format!("power: couldn't set the limit again after waking: {e}")),
+                        }
+                    });
+                }
                 if line.contains("(true") {
                     if hearth_core::admin::login()["lockOnWake"] == true { locked = true; g.to_main(Bridge::event("lock", serde_json::json!({}))); }
                 } else if locked {
