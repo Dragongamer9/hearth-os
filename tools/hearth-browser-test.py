@@ -164,6 +164,12 @@ def run_mode(ff, out, mode, extras, port):
     try:
         m = Marionette(port)
         m.cmd('WebDriver:NewSession', {'capabilities': {'alwaysMatch': {'acceptInsecureCerts': False}}})
+        # The window active, as one on screen is (headless windows start without focus).
+        try:
+            handle = m.cmd('WebDriver:GetWindowHandle').get('value')
+            m.cmd('WebDriver:SwitchToWindow', {'handle': handle, 'focus': True})
+        except Exception as e:
+            print('focus:', e, flush=True)
         m.context('chrome')
         info = m.js(CHROME_INFO, timeout=60)
         report['chrome'] = info
@@ -209,7 +215,7 @@ def run_mode(ff, out, mode, extras, port):
         m.cmd('WebDriver:Navigate', {'url': PAGE})
         m.js('document.getElementById("i").focus(); return true;')
         m.context('chrome')
-        m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); return true;')
+        m.js('window.focus(); gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); return true;')
         # First, a key with the keyboard closed: it must reach the page.
         m.js(CHROME_KEY, 'w', 'KeyW', 87, False)
         m.context('content')
