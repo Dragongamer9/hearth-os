@@ -246,12 +246,13 @@ def runtime_dir():
 class Hearth:
     """One connection held open, a state line every 0.5 s (input_map.rs start_link), events read back."""
 
-    def __init__(self, path):
+    def __init__(self, path, **state):
         self.path = path
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.connect(path)
         self.state = {'cmd': 'state', 'game': None, 'front': False, 'overlay': False, 'layout': None,
                       'prefs': {'sensitivity': 1, 'gyro': False}}
+        self.state.update(state)
         self.sending = True
         self.lock = threading.Lock()
         self.events = []
@@ -367,8 +368,13 @@ class Rig:
     def keylog(self, m):
         out = []
         for k, d in self.dev.items():
-            out += ['%s=%d' % (E.KEY.get(c) or E.BTN.get(c) or c, v) for _, t, c, v in d.since(m[k]) if t == E.EV_KEY]
-        return ' '.join(str(x) for x in out) or 'nothing'
+            out += ['%s=%d' % (code_name(c), v) for _, t, c, v in d.since(m[k]) if t == E.EV_KEY]
+        return ' '.join(out) or 'nothing'
+
+
+def code_name(c):
+    n = E.KEY.get(c) or E.BTN.get(c) or str(c)
+    return n[0] if isinstance(n, (list, tuple)) else n
 
 
 def check_button(rig, pad, layout, ctl, label, shifted=False):
@@ -765,10 +771,11 @@ def run(proc, pad, sock_path, log_path, extra, recs):
 
     # Hearth's connection goes away and comes back (Hearth restarted).
     h.close()
-    h2 = Hearth(sock_path)
-    h2.set(game='test', front=True, overlay=False, layout=shooter)
-    time.sleep(0.3)
-    check('a new connection (Hearth restarted) carries on', status()['active'])
+    lines = daemon_log().count('\n')
+    h2 = Hearth(sock_path, game='test', front=True, overlay=False, layout=shooter)
+    time.sleep(0.5)
+    flaps = [l for l in daemon_log().split('\n')[lines:] if l.endswith('layout off')]
+    check('a new connection (Hearth restarted) carries on', status()['active'], '%d layout off on the way' % len(flaps))
     check_button(rig, pad, shooter, 'a', 'Shooter after reconnecting')
 
     # ------------------------------------------------------------------ the daemon ends
