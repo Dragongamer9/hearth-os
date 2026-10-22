@@ -135,6 +135,39 @@ const PINS = [{ id: 'Valve.Steam', name: 'Steam' }, { id: 'Discord.Discord', nam
     await p.close();
   });
 
+  // ---------------------------------------------------------------- the launcher's Games and Windows sections
+  await check('launcher sections', async () => {
+    const p = await open('mantel.html?part=launcher', 880, 640);
+    await p.evaluate(() => {
+      __push('mantel.state', { pins: [] });
+      __push('mantel.apps', [{ id: 'Valve.Steam', name: 'Steam' }]);
+      __push('mantel.games', [{ id: 'steam:570', name: 'Dota 2', cover: '' }, { id: 'manual:1', name: 'Celeste' }]);
+      __push('mantel.windowsApps', [{ id: 'Microsoft.WindowsCalculator_8wekyb3d8bbwe!App', name: 'Calculator' }, { id: 'C:\\Windows\\System32\\cmd.exe', name: 'Command Prompt' }]);
+      __push('mantel.opened', {});
+    });
+    await p.waitForTimeout(100);
+    expect((await sent(p, 'games')).length >= 1, 'opening the launcher asks Ember for the games');
+    expect(await p.$$eval('.ltab', b => b.map(x => x.textContent).join()) === 'Apps,Games,Windows', 'three sections: Apps, Games, Windows');
+    // Up from the top row reaches the section buttons; right goes to Games (the D-pad).
+    await p.keyboard.press('ArrowUp');
+    await p.keyboard.press('ArrowRight');
+    expect(await p.$eval('.ltab.on', b => b.textContent) === 'Games', 'up then right shows Games');
+    expect(await p.$$eval('.cell.game', c => c.length) === 2, 'both games show');
+    await p.keyboard.press('ArrowDown');
+    await p.keyboard.press('Enter');
+    const play = (await sent(p, 'playGame')).pop();
+    expect(play && play.id === 'manual:1', 'Enter plays the first game (A to Z: Celeste)');
+    await shot(p, 'launcher-games');
+    await p.keyboard.press('Tab');
+    expect(await p.$eval('.ltab.on', b => b.textContent) === 'Windows', 'Tab shows Windows');
+    await p.click('.cell[title="Calculator"]');
+    expect((await sent(p, 'launch')).some(x => x.id === 'Microsoft.WindowsCalculator_8wekyb3d8bbwe!App'), 'a Windows program opens');
+    await p.click('.cell[title="Command Prompt"]', { button: 'right' });
+    const m = (await sent(p, 'menu')).pop();
+    expect(m && m.items.map(i => i.label).join() === 'Open,Pin to taskbar', 'Windows programs can be pinned');
+    await p.close();
+  });
+
   // ---------------------------------------------------------------- the right-click menu
   await check('menu', async () => {
     const p = await open('mantel.html?part=menu', 268, 330);

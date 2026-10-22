@@ -1,0 +1,190 @@
+#!/usr/bin/python3
+"""hearth-games: the Games section of Mantel's app launcher (Launcher.qml): your installed games from Hearth's library,
+started through Hearth.
+
+  hearth-games cached      the games from last time, at once (a copy kept in $XDG_CACHE_HOME/hearth/desktop-games.json)
+  hearth-games list        ask Hearth for the games now (`nimbus --list-games`), keep the copy, and print them
+  hearth-games play ID     play a game through Hearth: handed to the Hearth window that's open, or Hearth opens
+                           in a window and plays it (`nimbus --windowed --play ID`)
+
+list and cached print one JSON line: [{"id", "title", "source", "cover", "wide", "icon"}], pictures as file:// or
+web addresses. Failures print "error: ..." and exit 1. The hand-over to an open Hearth is
+$XDG_RUNTIME_DIR/hearth-play-route.json ({"id", "at"}), which it looks for every second; the same rules are in
+hosts/hearth-core/src/desktop_games.rs.
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+
+LIST_TIMEOUT = 40
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def cache_path():
+    base = os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache')
+    return os.path.join(base, 'hearth', 'desktop-games.json')
+
+
+def route_path():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-play-route.json')
+
+
+def valid_id(i):
+    """The same check as desktop_games::valid_id."""
+    return (isinstance(i, str) and 0 < len(i) <= 200 and ':' in i
+            and not any(c in i for c in '"\\') and all(ord(c) >= 32 and ord(c) != 127 for c in i))
+
+
+def app():
+    """The Hearth app: the session's NIMBUS_APP, or the installed one."""
+    for c in (os.environ.get('NIMBUS_APP'), '/usr/bin/nimbus', shutil.which('nimbus')):
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def picture(v):
+    """A file on this device as a file:// address (what QML's Image loads); web addresses as they are."""
+    if not isinstance(v, str) or not v:
+        return ''
+    if v.startswith(('http://', 'https://', 'file://')):
+        return v
+    if v.startswith('/'):
+        return 'file://' + urllib.parse.quote(v)
+    return ''
+
+
+def clean(games):
+    """Hearth's list in the shape the launcher reads, A to Z, nothing odd."""
+    out = []
+    if not isinstance(games, list):
+        return out
+    for g in games:
+        if not isinstance(g, dict) or not valid_id(g.get('id')):
+            continue
+        title = g.get('title') if isinstance(g.get('title'), str) and g.get('title').strip() else g['id']
+        out.append({'id': g['id'], 'title': title, 'source': g.get('source') if isinstance(g.get('source'), str) else '',
+                    'cover': picture(g.get('cover')), 'wide': picture(g.get('wide')), 'icon': picture(g.get('icon'))})
+    out.sort(key=lambda g: g['title'].lower())
+    return out
+
+
+def read_cache():
+    try:
+        with open(cache_path(), encoding='utf-8') as f:
+            return clean(json.load(f))
+    except (OSError, ValueError):
+        return []
+
+
+def write_cache(games):
+    path = cache_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.desktop-games-')
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(games, f)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def ask_hearth(exe):
+    """`nimbus --list-games`: its last line is the list."""
+    r = subprocess.run([exe, '--list-games'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                       timeout=LIST_TIMEOUT, check=False)
+    lines = [l for l in r.stdout.decode('utf-8', 'replace').splitlines() if l.strip()]
+    if r.returncode != 0 or not lines:
+        raise RuntimeError('Hearth could not list your games')
+    return json.loads(lines[-1])
+
+
+def list_games():
+    exe = app()
+    if not exe:
+        return read_cache()     # no Hearth app here: what it said last
+    try:
+        games = clean(ask_hearth(exe))
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+        return read_cache()
+    write_cache(games)
+    return games
+
+
+def running_hearth(proc='/proc', uid=None):
+    """The process id of a windowed Hearth of this user that's open (`nimbus --windowed ...`), or None."""
+    uid = os.getuid() if uid is None else uid
+    me = os.getpid()
+    try:
+        pids = [p for p in os.listdir(proc) if p.isdigit()]
+    except OSError:
+        return None
+    for p in sorted(pids, key=int):
+        if int(p) == me:
+            continue
+        d = os.path.join(proc, p)
+        try:
+            if os.stat(d).st_uid != uid:
+                continue
+            with open(os.path.join(d, 'cmdline'), 'rb') as f:
+                argv = [a.decode('utf-8', 'replace') for a in f.read().split(b'\0') if a]
+        except OSError:
+            continue
+        if argv and os.path.basename(argv[0]) in ('nimbus', 'hearth') and '--windowed' in argv[1:] and '--list-games' not in argv:
+            return int(p)
+    return None
+
+
+def hand_over(game, now=None):
+    """Gives the game to the Hearth window that's open."""
+    path = route_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.hearth-play-')
+    with os.fdopen(fd, 'w') as f:
+        json.dump({'id': game, 'at': int(time.time() if now is None else now)}, f)
+    os.replace(tmp, path)
+
+
+def play(game):
+    if not valid_id(game):
+        raise ValueError("That isn't a game Hearth knows")
+    if running_hearth():
+        hand_over(game)
+        return {'ok': True, 'how': 'handed'}
+    exe = app()
+    if not exe:
+        raise ValueError("Hearth isn't installed")
+    subprocess.Popen([exe, '--windowed', '--play', game], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+    return {'ok': True, 'how': 'opened'}
+
+
+def main(argv):
+    what = argv[1] if len(argv) > 1 else ''
+    try:
+        if what == 'cached':
+            out = read_cache()
+        elif what == 'list':
+            out = list_games()
+        elif what == 'play' and len(argv) > 2:
+            out = play(argv[2])
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except (OSError, ValueError) as e:
+        print('error: %s' % e)
+        return 1
+    print(json.dumps(out))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

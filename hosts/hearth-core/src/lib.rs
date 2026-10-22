@@ -9,6 +9,7 @@ pub mod beacon;
 pub mod binkv;
 pub mod bridge;
 pub mod collections;
+pub mod desktop_games;
 pub mod display;
 pub mod emulators;
 pub mod friends;
