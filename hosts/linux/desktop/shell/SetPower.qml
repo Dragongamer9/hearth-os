@@ -107,7 +107,7 @@ SetPage {
         title: "Which Game Mode"
         sub: page.gameMode === "steam" ? "Steam's own Game Mode (Big Picture, like SteamOS). To come back here: Steam's Switch to Desktop, or hold View and Menu for 3 seconds."
             : "Hearth's Game Mode: your whole library and Hearth's menus."
-        options: [{ value: "hearth", label: "Hearth" }, { value: "steam", label: "Steam" }]
+        options: [{ value: "hearth", label: "Hearth" }, { value: "steam", label: "Steam (Experimental)" }]
         current: page.gameMode
         onChosen: v => { page.gameMode = v; Quickshell.execDetached(["sh", "-c", "mkdir -p \"$HOME/.config/nimbus\" && printf %s \"$1\" > \"$HOME/.config/nimbus/game-mode\"", "sh", v]); }
     }
