@@ -1,3 +1,0 @@
-[3275] Sandbox: CanCreateUserNamespace() unshare(CLONE_NEWPID): EPERM
-*** You are running in headless mode.
-[GFX1-]: RenderCompositorSWGL failed mapping default framebuffer, no dt
