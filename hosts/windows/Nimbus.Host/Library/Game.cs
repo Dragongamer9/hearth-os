@@ -39,7 +39,9 @@ public sealed class Game
     // Install state. Installed games have State "installed"; Steam can also report
     // "downloading", "queued", "paused", "updating"; owned-but-not-installed games are "notInstalled".
     public bool Installed { get; init; } = true;
-    public string State { get; init; } = "installed";
+    public string State { get; set; } = "installed";
+    /// <summary>Steam downloads: what Steam is doing ("Verifying", "Waiting for Steam", "Stopped: …"), SteamControl.</summary>
+    public string? Stage { get; set; }
     public double? Progress { get; init; }          // 0..1 while downloading
     public long? BytesDone { get; init; }
     public long? BytesTotal { get; init; }
