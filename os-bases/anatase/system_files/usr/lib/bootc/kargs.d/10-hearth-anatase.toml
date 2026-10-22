@@ -1,0 +1,4 @@
+# Hearth OS on Anatase: the boot splash instead of start-up and shut-down text, and Nvidia's display driver taking
+# the screen (needed for Wayland, gamescope and the splash on Nvidia; ignored on AMD and Intel). The installer adds
+# these to a new install; bootc adds them to an installed one at its next update.
+kargs = ["quiet", "splash", "loglevel=3", "rd.udev.log_level=3", "vt.global_cursor_default=0", "nvidia-drm.modeset=1", "nvidia-drm.fbdev=1"]
