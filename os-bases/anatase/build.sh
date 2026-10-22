@@ -309,6 +309,13 @@ DESKTOP
 # with the image (Firefox's own updater is off). /usr/bin/hearth-browser starts it with its own profile. The Electron
 # build in /usr/lib/hearth-browser stays: it's the Quick Access overlay app (hearth-overlay).
 python3 /usr/share/hearth-browser/install-firefox /usr/lib/hearth-browser/firefox
+
+# Firefox's own libraries come with it; the system ones it links (GTK 3, X11, D-Bus...) must be in the image. Any
+# still missing are looked up by file name and installed, so a new Firefox needing one more never ships broken.
+ff_missing() { ldd /usr/lib/hearth-browser/firefox/libxul.so /usr/lib/hearth-browser/firefox/firefox 2>/dev/null | awk '/not found/{print $1}' | sort -u; }
+dnf5 -y install --setopt=install_weak_deps=False gtk3 dbus-glib dbus-libs libX11-xcb libXcomposite libXdamage libXrandr libXtst libXt alsa-lib pango cairo-gobject || true
+for l in $(ff_missing); do dnf5 -y install --setopt=install_weak_deps=False "$l()(64bit)" || true; done
+[ -z "$(ff_missing)" ] || echo "warning: Hearth Browser's Firefox is still missing: $(ff_missing | tr '\n' ' ')"
 chmod 755 /usr/bin/hearth-browser /usr/share/hearth-browser/install-firefox
 # Links open in it in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), unless you pick another browser.
 printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hearth-browser.desktop\ntext/html=hearth-browser.desktop\napplication/xhtml+xml=hearth-browser.desktop\n' >> /etc/xdg/nimbus-mimeapps.list

@@ -227,6 +227,7 @@ jobs:
           # Hearth Browser: Mozilla's Firefox with Hearth's parts (os/system_files/usr/share/hearth-browser).
           check "Hearth Browser is installed (Firefox with Hearth's parts)" "test -x /usr/bin/hearth-browser && test -x /usr/lib/hearth-browser/firefox/firefox && test -f /usr/lib/hearth-browser/firefox/hearth.cfg && test -f /usr/lib/hearth-browser/firefox/defaults/pref/autoconfig.js && test -f /usr/lib/hearth-browser/firefox/hearth/hearth.sys.mjs"
           check "Hearth Browser's policies are valid and leave updates to the image" "python3 -c 'import json, sys; p = json.load(open(\"/usr/lib/hearth-browser/firefox/distribution/policies.json\"))[\"policies\"]; sys.exit(0 if p.get(\"DisableAppUpdate\") is True and \"ExtensionSettings\" in p else 1)'"
+          ffm=$(ldd /usr/lib/hearth-browser/firefox/libxul.so 2>/dev/null | awk '/not found/{print $1}' | tr '\n' ' '); [ -z "$ffm" ] || echo "::error title=Firefox libraries missing::$ffm"
           check "every library Hearth Browser's Firefox links is installed" "! ldd /usr/lib/hearth-browser/firefox/libxul.so | grep -q 'not found'"
           check "hearth-browser answers (--hearth-status)" "HOME=/tmp /usr/bin/hearth-browser --hearth-status | grep -q '\"installed\": true'"
           warn "Hearth Browser's Firefox runs (--version)" "HOME=/tmp /usr/lib/hearth-browser/firefox/firefox --version | grep -q 'Mozilla Firefox'"
