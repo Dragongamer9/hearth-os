@@ -1352,10 +1352,37 @@ function toast(t){ const el=document.createElement('div'); el.className='toast';
 let actx=null;
 // Sound packs (Settings › Appearance): the same moves, a different voice.
 const SOUND_PACKS = {soft:{name:'Soft', type:'sine', f:1, d:1, v:1}, warm:{name:'Warm', type:'triangle', f:.6, d:1.8, v:1.3}, arcade:{name:'Arcade', type:'square', f:1.25, d:.8, v:.35}, glass:{name:'Glass', type:'sine', f:2.1, d:3.2, v:.6}};
+// The sound engine, kept working: the browser engine can suspend, interrupt or stall it (the sound device
+// changing, sleep, an idle output that PipeWire switched off), and then every sound after that was silent until
+// Hearth restarted: heard for a moment, then gone. Resumed when it's not running, made again when it's closed
+// or its clock stopped; while sounds are being played it keeps the output awake with an inaudible tone, so the
+// next sound's start isn't cut off while the output wakes up.
+let actxSeen=null, actxKeep=null, actxKeepT=0;
+function audioCtx(){
+  const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return null;
+  const nowW=performance.now();
+  if(actx && actx.state!=='closed' && actxSeen && actx.state==='running' && nowW-actxSeen.w>1500 && actx.currentTime===actxSeen.t){
+    try{ actx.close(); }catch(e){} actx=null; actxKeep=null;   // its clock stopped: a new one
+  }
+  if(actx && actx.state==='closed'){ actx=null; actxKeep=null; }
+  if(!actx) actx=new AC();
+  if(actx.state!=='running'){ try{ actx.resume(); }catch(e){} }
+  actxSeen={w:nowW, t:actx.currentTime};
+  try{
+    if(!actxKeep){
+      const o=actx.createOscillator(), g=actx.createGain(); o.frequency.value=30; g.gain.value=0.00002;
+      o.connect(g).connect(actx.destination); o.start(); actxKeep=o;
+    }
+    clearTimeout(actxKeepT);
+    actxKeepT=setTimeout(()=>{ try{ actxKeep&&actxKeep.stop(); }catch(e){} actxKeep=null; }, 20000);   // quiet again 20 s after the last sound
+  }catch(e){}
+  return actx;
+}
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && actx && actx.state!=='running'){ try{ actx.resume(); }catch(e){} } });
 function blip(f=700,d=.035,v=.035){
   if(!S.set.sounds) return;
   const P=SOUND_PACKS[LOOK.soundPack]||SOUND_PACKS.soft; f*=P.f; d*=P.d; v*=P.v;
-  try{ actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+  try{ const ctx=audioCtx(); if(!ctx) return; actx=ctx;
     const o=actx.createOscillator(), g=actx.createGain(); o.type=P.type; o.frequency.value=f;
     g.gain.setValueAtTime(v,actx.currentTime); g.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+d);
     o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime+d+.01);
