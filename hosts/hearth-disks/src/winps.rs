@@ -61,8 +61,18 @@ fn ps(script: &str) -> Result<String, String> {
     Ok(text)
 }
 
-/// A PowerShell string literal.
-pub fn q(s: &str) -> String { format!("'{}'", s.replace('\'', "''")) }
+/// A PowerShell string literal. PowerShell also takes the curly quotes (‘ ’ ‚ ‛) as ', so those are doubled too:
+/// a name like "Sam’s Games" ended the string early, and the rest ran as commands in the elevated script.
+pub fn q(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for c in s.chars() {
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') { out.push(c); }
+        out.push(c);
+    }
+    out.push('\'');
+    out
+}
 
 fn steam_here(letter: &str) -> bool {
     let root = format!("{letter}:\\");
@@ -278,6 +288,8 @@ mod tests {
     #[test]
     fn quoting_and_ids() {
         assert_eq!(q("it's"), "'it''s'");
+        assert_eq!(q("Sam\u{2019}s"), "'Sam\u{2019}\u{2019}s'");
+        assert_eq!(q("\u{2018}x\u{201B}"), "'\u{2018}\u{2018}x\u{201B}\u{201B}'");
         assert_eq!(ids("disk:3:part:2"), (3, 2));
         assert_eq!(ids("disk:1"), (1, 0));
         assert_eq!(b64(b"hello"), "aGVsbG8=");

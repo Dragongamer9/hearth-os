@@ -137,7 +137,12 @@ pub fn list() -> Result<Vec<Drive>, String> {
     let libs: Vec<std::path::PathBuf> = hearth_core::steam::steam_path(&home).map(|s| hearth_core::steam::libraries(&s)).unwrap_or_default();
     // The system's own mounts (/var/home holds Steam's own library) aren't "a Steam library" partition.
     let steam = move |mounts: &[String]| mounts.iter().filter(|m| !crate::model::is_system_mount(m)).any(|m| has_library(m, &libs));
-    let ctx = udisks::Ctx { uid: unsafe { libc::getuid() }, steam: &steam, usage: &usage };
+    let slaves = |k: &str| -> Vec<String> {
+        if k.contains('/') || k.starts_with('.') { return vec![]; }
+        std::fs::read_dir(format!("/sys/class/block/{k}/slaves")).into_iter().flatten().flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned()).collect()
+    };
+    let ctx = udisks::Ctx { uid: unsafe { libc::getuid() }, steam: &steam, usage: &usage, slaves: &slaves };
     Ok(udisks::parse(&objs, &ctx))
 }
 
