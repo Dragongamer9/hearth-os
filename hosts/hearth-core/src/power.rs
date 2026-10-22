@@ -37,7 +37,14 @@ fn ask() -> Option<Value> {
     let m = &r["mode"];
     let avail: Vec<&str> = m["available"].as_array().map(|a| a.iter().filter_map(|v| v.as_str()).filter_map(to_mode).collect()).unwrap_or_default();
     Some(json!({"mode": {"supported": m["supported"] == true, "mode": m["active"].as_str().and_then(to_mode).unwrap_or("balanced"), "available": avail, "via": m["via"]},
-           "tdp": if r["tdp"]["supported"] == true { r["tdp"].clone() } else { json!({"supported": false}) }}))
+           "tdp": if r["tdp"]["supported"] == true { within_range(r["tdp"].clone()) } else { json!({"supported": false}) }}))
+}
+/// The limit shown never outside the device's range (a limit remembered from another device showed 30 W of 20).
+fn within_range(mut t: Value) -> Value {
+    if let (Some(w), Some(lo), Some(hi)) = (t["watts"].as_f64(), t["min"].as_f64(), t["max"].as_f64()) {
+        if lo <= hi && (w < lo || w > hi) { t["watts"] = json!(w.clamp(lo, hi)); }
+    }
+    t
 }
 fn unsupported() -> Value { json!({"mode": {"supported": false, "mode": "balanced", "available": [], "via": null}, "tdp": {"supported": false}}) }
 
@@ -164,6 +171,12 @@ mod tests {
     fn c_good() -> Option<Value> { Some(json!({"mode": {"supported": true}, "tdp": {"supported": true}})) }
     fn c_none() -> Option<Value> { None }
 
+    #[test]
+    fn limit_shown_within_the_range() {
+        assert_eq!(within_range(json!({"watts": 30, "min": 4, "max": 20}))["watts"], json!(20.0));
+        assert_eq!(within_range(json!({"watts": 15, "min": 4, "max": 20}))["watts"], json!(15));
+        assert_eq!(within_range(json!({"watts": null, "min": 4, "max": 20}))["watts"], Value::Null);
+    }
     #[test]
     fn no_answer_keeps_the_last_good_one() {
         assert_eq!(refresh(&C_SLOT, c_none)["tdp"]["supported"], false);
