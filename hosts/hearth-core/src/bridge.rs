@@ -893,6 +893,9 @@ impl Bridge {
             "seats.plan" => crate::multiplay::ask(crate::multiplay::SEATS, &["plan"]),
             "seats.status" => crate::multiplay::ask(crate::multiplay::SEATS, &["status"]),
             "seats.start" => crate::multiplay::ask(crate::multiplay::SEATS, &["start"]),
+            // Game Mode starts again to share the screens out (or to stop sharing them): the session's next round
+            // (signing out instead left you at the sign-in screen without automatic sign-in).
+            "seats.restartGameMode" => { self.restart_game_mode(); Ok(Value::Null) }
             "seats.stop" => crate::multiplay::ask(crate::multiplay::SEATS, &["stop"]),
             "seats.assignPad" => {
                 let seat = a["seat"].as_u64().unwrap_or(1).to_string();

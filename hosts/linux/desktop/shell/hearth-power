@@ -398,9 +398,20 @@ def set_tdp(watts):
     raise Fail("couldn't set the power limit (" + '; '.join(errors) + ')')
 
 
+SEAT_REASON = "Player 1 chooses this PC's power mode and power limit"
+
+
 def cmd(argv):
     c = argv[1] if len(argv) > 1 else 'status'
-    if c == 'status':
+    # Multi-seat: the power mode and limit are the whole PC's, so they're player 1's. An extra player's Quick Access
+    # and a game of theirs with its own limit changed them for everyone (and player 1's own came back only later).
+    seat = bool(os.environ.get('HEARTH_SEAT'))
+    if seat and c in ('mode', 'tdp') and len(argv) == 3:
+        raise Fail(SEAT_REASON)
+    if seat and c in ('status', 'restore'):
+        out = {'mode': {'supported': False, 'active': 'balanced', 'available': [], 'via': None},
+               'tdp': {'supported': False, 'via': None, 'reason': SEAT_REASON}} if c == 'status' else {'tdp': None, 'skipped': SEAT_REASON}
+    elif c == 'status':
         out = {'mode': mode_status(), 'tdp': tdp_status()}
     elif c == 'mode' and len(argv) == 3:
         set_mode(argv[2])

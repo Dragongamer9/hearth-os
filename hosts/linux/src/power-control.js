@@ -31,7 +31,8 @@ let cache = null, cachedAt = 0, pending = null;
 /** {mode:{supported, mode, available:[modes], via}, tdp:{supported, watts, min, max, via}} — cached for a few seconds. */
 async function status(fresh = false) {
   if (!fresh && cache && Date.now() - cachedAt < 5000) return cache;
-  if (pending) return pending;
+  // A question already on its way was asked before the change a fresh one is for: ask again after it.
+  if (pending) return fresh ? pending.then(() => status(true)) : pending;
   pending = call(['status']).then(r => {
     const m = r.mode || {};
     cache = {

@@ -1828,7 +1828,7 @@ function seatsAfter(r){
   if(!r) return;
   if((r.warnings||[]).length) toast(r.warnings[0]);
   if(r.restart) openSheet({title:'Restart to finish', sub:'Each graphics card goes to its player when the device starts.', items:[{label:'Restart now', icon:'restart', run:()=>power('restart',true)},{label:'Later', icon:'x', run:()=>{}}]});
-  else if(r.restart_game_mode) openSheet({title:'Game Mode restarts', sub:'To share the screens out, Game Mode starts again (your games are closed first).', items:[{label:'Restart Game Mode now', icon:'restart', run:()=>power('signout',true)},{label:'Later', icon:'x', run:()=>{}}]});
+  else if(r.restart_game_mode) openSheet({title:'Game Mode restarts', sub:'To share the screens out, Game Mode starts again (your games are closed first).', items:[{label:'Restart Game Mode now', icon:'restart', run:()=>{ closeAll(); toast('Restarting Game Mode…'); call('seats.restartGameMode').catch(e=>toast(e.message)); }},{label:'Later', icon:'x', run:()=>{}}]});
 }
 function seatsEvent(name, data){
   if(name==='seats.setup.progress'||name==='seats.remove.progress'){ SE.busy=data.text||SE.busy; }
@@ -4986,6 +4986,10 @@ function qamQuick(){
 function renderPower(){
   // Android: the system's own power menu (hold the power button) sleeps and turns off; Hearth can only step aside.
   if(ANDROID){ $('#powerBox').innerHTML = `<h3>Power</h3><button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}Leave ${APP}</button>
+    <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`; return; }
+  // An extra multi-seat player: sleep, restart and shut down are the whole PC's (player 1's), and signing out left
+  // their screen dark until multi-seat was started again.
+  if(hasFeat('extraSeat')){ $('#powerBox').innerHTML = `<h3>Power</h3><div class="muted" style="font-size:13px;margin:4px 0 10px">Player 1 puts this PC to sleep and turns it off.</div>
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`; return; }
   $('#powerBox').innerHTML = `<h3>Power</h3>
     <button class="mitem" data-f data-k="p-sleep" data-act="pwr" data-p="sleep">${I.moon}Sleep</button>
