@@ -72,7 +72,7 @@ jobs:
         env:
           HEARTH_FIREFOX_DIR: ${{ runner.temp }}/hb/firefox
         run: |
-          sudo apt-get install -y -qq xvfb x11-utils xdotool imagemagick >/dev/null
+          sudo apt-get update -qq >/dev/null; sudo apt-get install -y -qq xvfb x11-utils xdotool imagemagick >/dev/null
           export HOME="$RUNNER_TEMP/home2"; mkdir -p "$HOME"
           Xvfb :7 -screen 0 1920x1080x24 >/dev/null 2>&1 & sleep 2
           export DISPLAY=:7
