@@ -294,10 +294,18 @@ public sealed class UpdateService
             $"taskkill /im Nimbus.exe /f {NUL} 2>&1",
             $"taskkill /im hearth-terminal.exe /f {NUL} 2>&1",
             $"taskkill /im hearth-disks.exe /f {NUL} 2>&1",
+            $"taskkill /im hearthfetch.exe /f {NUL} 2>&1",
             "set \"APP=%EMBER_UPDATE_APP%\"",
             "if exist \"%APP%.bad\" rmdir /s /q \"%APP%.bad\"",
-            "move \"%APP%\" \"%APP%.bad\"",
-            "move \"%APP%.old\" \"%APP%\"",
+            // Files can stay locked for a moment after exit; retry the move.
+            "for /l %%i in (1,1,10) do (",
+            "  move \"%APP%\" \"%APP%.bad\"",
+            "  if not exist \"%APP%\" goto moved",
+            $"  timeout /t 1 {NUL}",
+            ")",
+            ":moved",
+            // Still locked: moving the old version now would put it inside the current one (and lose it).
+            "if not exist \"%APP%\" move \"%APP%.old\" \"%APP%\"",
             $"start \"\" \"%APP%\\Nimbus.exe\" {(asShell ? "--shell" : "")}",
             "",
         }));
