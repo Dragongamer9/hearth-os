@@ -240,6 +240,41 @@ class Transfers(Base):
         self.assertEqual(open(os.path.join(r['items'][0], 'f.txt')).read(), 'abc')
         self.assertFalse(os.path.exists(src))
 
+    def test_move_across_bind_mount_copies(self):
+        # Same device number but rename says EXDEV (the same drive mounted twice): copied, then removed.
+        import errno
+        from unittest import mock
+        f = os.path.join(self.home, 'a.txt')
+        write(f, 'abc')
+        d = os.path.join(self.home, 'dest')
+        os.mkdir(d)
+        with mock.patch.object(self.hf.os, 'rename', side_effect=OSError(errno.EXDEV, 'Invalid cross-device link')):
+            r = self.hf.transfer([f], d, move=True)
+        self.assertTrue(r['ok'])
+        with open(os.path.join(d, 'a.txt')) as fh:
+            self.assertEqual(fh.read(), 'abc')
+        self.assertFalse(os.path.exists(f))
+
+    def test_copy_links_to_drive_without_links(self):
+        # FAT32/exFAT can't hold symlinks: the file a link points to is copied instead, a folder link left out.
+        import errno
+        from unittest import mock
+        src = os.path.join(self.home, 'game')
+        write(os.path.join(src, 'data.bin'), 'data')
+        os.symlink('data.bin', os.path.join(src, 'link.bin'))
+        os.mkdir(os.path.join(src, 'sub'))
+        os.symlink('sub', os.path.join(src, 'sublink'))
+        d = os.path.join(self.media, 'USB')
+        os.mkdir(d)
+        with mock.patch.object(self.hf.os, 'symlink', side_effect=OSError(errno.EPERM, 'Operation not permitted')):
+            r = self.hf.transfer([src], d, move=False)
+        self.assertTrue(r['ok'])
+        out = os.path.join(d, 'game')
+        self.assertFalse(os.path.islink(os.path.join(out, 'link.bin')))
+        with open(os.path.join(out, 'link.bin')) as fh:
+            self.assertEqual(fh.read(), 'data')
+        self.assertFalse(os.path.lexists(os.path.join(out, 'sublink')))
+
     def test_cancel_removes_partial_copy(self):
         src = os.path.join(self.home, 'big.bin')
         write(src, b'\0' * (24 * 1024 * 1024))
