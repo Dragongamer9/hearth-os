@@ -52,7 +52,9 @@ public sealed class LibraryData
     public HashSet<string> Hidden { get; set; } = new();
     public List<ManualGame> Manual { get; set; } = new();
     public Dictionary<string, GameStats> Stats { get; set; } = new();
-    public bool SteamBackground { get; set; } = true;   // keep Steam running hidden (-silent)
+    public bool SteamBackground { get; set; } = true;   // keep Steam running hidden (-silent), when SteamOnDemand is off
+    public bool SteamOnDemand { get; set; } = true;     // "Start Steam only when needed" (SteamControl): starts hidden when needed, closes when idle
+    public string? SteamLibrary { get; set; }           // the Steam library new Steam games install to (null: SteamControl.ChooseLibrary)
     public bool AutoUpdateCheck { get; set; } = true;   // check GitHub for Nimbus updates
     public bool QuickResume { get; set; } = true;       // starting another game puts the running one aside (frozen)
     public string ControllerMouse { get; set; } = "steam"; // right stick as mouse: off | steam | always
