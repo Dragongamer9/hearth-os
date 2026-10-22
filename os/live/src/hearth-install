@@ -51,7 +51,11 @@ XBOOTLDR_TYPE = 'bc13c2ff-59e6-4262-a352-b275fd6f7172'
 TARGET = '/run/hearth-install/target'
 PREP = '/usr/libexec/nimbus/hearth-live-prep'
 RESERVED = {'root', 'bin', 'daemon', 'adm', 'lp', 'sync', 'shutdown', 'halt', 'mail', 'operator', 'games', 'ftp',
-            'nobody', 'liveuser', 'admin', 'system', 'systemd', 'dbus', 'polkitd', 'sddm', 'gdm', 'wheel', 'users'}
+            'nobody', 'liveuser', 'admin', 'system', 'systemd', 'dbus', 'polkitd', 'sddm', 'gdm', 'wheel', 'users',
+            # System groups every edition has: a person named like one got a second group of that name (with
+            # their own number), so files and permissions for that group went to the wrong one.
+            'audio', 'video', 'input', 'render', 'kvm', 'tty', 'disk', 'dialout', 'plugdev', 'sudo', 'utmp', 'sys',
+            'cdrom', 'sshd', 'nogroup', 'kmem', 'mem', 'floppy', 'tape'}
 
 
 # ------------------------------------------------------------------ small helpers
@@ -105,6 +109,9 @@ def check_plan(p):
     if '\n' in (u.get('password') or '') or ':' in name:
         raise Fail("the password can't have a line break in it")
     host = (p.get('hostname') or 'hearth').strip().lower()
+    # The screens' default device name is "<user name>-hearth", and a user name may have "_" in it, which a
+    # device name can't: make it a "-" instead of refusing the install.
+    host = re.sub(r'_+', '-', host).strip('-') or 'hearth'
     if not re.fullmatch(r'[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?', host):
         raise Fail('the device name can only have letters, numbers and -')
     tz = p.get('timezone') or 'UTC'
@@ -263,6 +270,18 @@ def published(img, timeout=6):
         return False if e.code in (401, 403, 404) else None
     except Exception:
         return None
+
+
+def reachable(img, tries=3, wait=2):
+    """Can this image be downloaded right now? Asked a few times (a network that just came up). None: couldn't
+    reach GitHub's registry at all."""
+    for i in range(tries):
+        r = published(img)
+        if r is not None:
+            return r
+        if i < tries - 1:
+            time.sleep(wait)
+    return None
 
 
 def published_all(offered):
@@ -584,6 +603,22 @@ def release(disk):
                     sh(['umount', '-R', m.strip()], check=False)
 
 
+def close_volumes(disk):
+    """Volumes open on the drive's partitions (LVM, which this USB turns on by itself at start, and opened encrypted
+    ones), closed, the innermost first. Only before erasing the whole drive: while they're open the drive is busy,
+    and writing its new partition table failed ("Device or resource busy") with the old one already wiped. Nothing
+    on them is changed: closing one only takes it off this USB (the drive is erased next anyway)."""
+    if not shutil.which('dmsetup'):
+        return
+    rows = sh(['lsblk', '-nro', 'NAME,TYPE', disk], check=False).stdout.splitlines()
+    done = set()
+    for line in reversed(rows):   # lsblk lists a volume after what it's on: backwards is innermost first
+        bits = line.split()
+        if len(bits) == 2 and bits[1] in ('lvm', 'crypt') and bits[0] not in done:
+            done.add(bits[0])
+            sh(['dmsetup', 'remove', '--retry', bits[0]], check=False)
+
+
 def settle(disk):
     sh(['partx', '-u', disk], check=False)
     sh(['udevadm', 'settle', '-t', '10'], check=False)
@@ -595,6 +630,7 @@ def settle(disk):
 def partition_whole(disk):
     """GPT with EFI, /boot and Hearth. Returns (esp, boot, root, esp_is_new)."""
     release(disk)
+    close_volumes(disk)
     stage('disk', 1, 'Erasing the drive')
     sh(['wipefs', '-a', disk])
     ss = sector_size(disk)
@@ -1374,6 +1410,11 @@ def run(plan):
     if warning:
         print(f'log: {warning}', flush=True)   # a warning, not a stop: Secure Boot can be turned off afterwards
     print(f"log: installing {EDITIONS[plan['edition']]['label']} ({plan['image']})", flush=True)
+    # Hearth OS is downloaded after the drive is erased (or Windows made smaller): without the internet the
+    # install stopped there, with the drive already wiped. Ask first, before anything on the drive changes.
+    if not local_image(plan['image']) and reachable(plan['image']) is None:
+        raise Fail("there's no internet connection, and Hearth OS is downloaded while it installs. Connect to Wi-Fi "
+                   "or plug in a cable, then try again. Nothing on the drive was changed")
     unmount_all()
     try:
         if plan['mode'] == 'whole':
