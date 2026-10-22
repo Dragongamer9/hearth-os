@@ -73,6 +73,9 @@ run_game() {
   # Multi-seat: no performance overlay. mangoapp reads every process using the graphics card, the other players'
   # too (their own accounts: "Permission denied" on /proc/<pid>/fdinfo), and crashed over and over.
   [ -n "$HEARTH_SEAT" ] && extra=""
+  # ...and player 1's too while multi-seat is on (a card per player, or normal Game Mode after the host couldn't
+  # start): the other players' games run then as well.
+  grep -Eq '"enabled": *true' /etc/hearth/seats.json 2>/dev/null && extra=""
   # Games get gamescope's Vulkan layer: the frame-rate limit (Quick Access › Performance) works through it.
   export ENABLE_GAMESCOPE_WSI="${ENABLE_GAMESCOPE_WSI:-1}"
   # Fullscreen games mustn't minimize themselves when Quick Access or Hearth comes in front (that left a black
@@ -146,7 +149,12 @@ run_desktop() {
     CONF="$(python3 "$SHARE/desktop/shell/hearth-system" labwc-config 2>/dev/null)" || CONF="$SHARE/desktop/labwc"
     [ -f "$CONF/rc.xml" ] || CONF="$SHARE/desktop/labwc"
   fi
-  labwc -C "$CONF"
+  # labwc's own messages (wlroots, the graphics driver) in ~/.local/share/nimbus/labwc.log, which the log report
+  # includes; before, they went nowhere anyone could see. The previous one is kept as labwc.log.old.
+  LABWC_LOG="$(dirname "$LOG")/labwc.log"
+  [ -f "$LABWC_LOG" ] && [ "$(wc -c <"$LABWC_LOG")" -gt 1000000 ] && mv -f "$LABWC_LOG" "$LABWC_LOG.old"
+  echo "--- $(date '+%F %T') Desktop Mode" >>"$LABWC_LOG"
+  labwc -C "$CONF" >>"$LABWC_LOG" 2>&1
 }
 
 # Button remaps for the built-in controller (Settings › Controller), kept applied for the whole session in
