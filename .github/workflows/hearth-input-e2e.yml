@@ -1,0 +1,55 @@
+# Hearth Input end to end: the real daemon (hosts/linux/desktop/shell/hearth-input) with real evdev and uinput.
+# Fake controllers (Xbox 360 pad, Bluetooth Xbox controller, DualSense) are made with /dev/uinput; the test talks
+# to the daemon's socket the way Hearth does and reads its virtual keyboard and mouse (tools/e2e-hearth-input.py).
+name: Hearth Input e2e
+
+on:
+  push:
+    branches: [main, linux-host, input-e2e]   # input-e2e: where this test was built (dispatch needs it on main first)
+    paths:
+      - 'hosts/linux/desktop/shell/hearth-input*'
+      - 'hosts/linux/desktop/shell/input-layouts.json'
+      - 'hosts/linux/test/test_hearth_input.py'
+      - 'tools/e2e-hearth-input.py'
+      - '.github/workflows/hearth-input-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: uinput and python3-evdev
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-evdev >/dev/null
+          sudo modprobe uinput
+          ls -l /dev/uinput
+          /usr/bin/python3 -c "import evdev; print('python3-evdev', getattr(evdev, '__version__', '?'))"
+
+      - name: Unit tests
+        run: /usr/bin/python3 -m unittest discover -s hosts/linux/test -q
+
+      - name: End-to-end test
+        # As root: the fake controllers' /dev/input nodes are root:input, and the daemon must open them.
+        run: |
+          set -o pipefail
+          sudo E2E_SHOW_LOG=1 /usr/bin/python3 tools/e2e-hearth-input.py 2>&1 | tee e2e.log
+
+      - name: Report as annotations
+        # The report (and the daemon's log) on the run's page too, readable without downloading the job log.
+        if: always()
+        run: |
+          [ -f e2e.log ] || exit 0
+          python3 - <<'PY'
+          text = open('e2e.log', encoding='utf-8', errors='replace').read()
+          chunks = [text[i:i + 3800] for i in range(0, len(text), 3800)][:10]
+          for n, c in enumerate(chunks, 1):
+              c = c.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+              print('::notice title=e2e report %d/%d::%s' % (n, len(chunks), c))
+          PY
