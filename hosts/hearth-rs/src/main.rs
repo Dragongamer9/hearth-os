@@ -464,7 +464,7 @@ fn start_game_mode(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, window
     // so a screen that can't show it doesn't stay black.
     {
         let b = bridge.clone();
-        hearth_core::display::watch_pending(std::sync::Arc::new(move || { if let Ok(b) = b.lock() { b.restart_game_mode(); } }));
+        hearth_core::display::watch_pending(std::sync::Arc::new(move || { b.lock().unwrap_or_else(|e| e.into_inner()).restart_game_mode(); }));
     }
     // Every window carries its game's number (or Hearth's), and gamescope follows them (Quick Resume shows the
     // game asked for, never another one's frozen picture).
