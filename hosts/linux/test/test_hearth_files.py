@@ -291,6 +291,13 @@ class Details(Base):
         self.assertEqual(self.hf.expand_exec('"/opt/my app/run"', pic), ['/opt/my app/run', pic])
         self.assertEqual(self.hf.expand_exec('flatpak run --file-forwarding org.x.Y @@ %F @@', pic)[-3:], ['@@', pic, '@@'])
 
+    def test_expand_exec_names_with_percent_signs(self):
+        # A file name with "%u" or "%%" in it is put in as it is, never read again as a field code.
+        odd = '/home/me/100%% done %u.txt'
+        self.assertEqual(self.hf.expand_exec('edit --file=%f', odd), ['edit', '--file=' + odd])
+        self.assertEqual(self.hf.expand_exec('printf 50%%%f', '/x'), ['printf', '50%/x'])
+        self.assertEqual(self.hf.expand_exec('app --title=%c %f', odd, {'Name': 'A %f B'}), ['app', '--title=A %f B', odd])
+
 
 if __name__ == '__main__':
     unittest.main()
