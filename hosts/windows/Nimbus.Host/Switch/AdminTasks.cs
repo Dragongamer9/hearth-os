@@ -70,10 +70,13 @@ public static class AdminTasks
 
         report("running", 15, "Checking how much room Windows can give", null);
         var query = Diskpart("select volume C\r\nshrink querymax\r\n");
-        var m = System.Text.RegularExpressions.Regex.Match(query, @"(\d+)\s*(GB|MB)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        // The number may be written with the language's thousands separator (1,234 MB, 1.234 MB, 1 234 MB): digits
+        // with separators between groups of three are read as one number.
+        var m = System.Text.RegularExpressions.Regex.Match(query, @"(\d{1,3}(?:[.,\u00A0\u202F ]\d{3})+|\d+)\s*(GB|MB)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (m.Success)
         {
-            long maxMb = long.Parse(m.Groups[1].Value) * (m.Groups[2].Value.Equals("GB", StringComparison.OrdinalIgnoreCase) ? 1024 : 1);
+            long maxMb = long.Parse(System.Text.RegularExpressions.Regex.Replace(m.Groups[1].Value, @"\D", ""), System.Globalization.CultureInfo.InvariantCulture)
+                * (m.Groups[2].Value.Equals("GB", StringComparison.OrdinalIgnoreCase) ? 1024 : 1);
             if (maxMb < sizeGb * 1024L)
                 throw new InvalidOperationException($"Windows can only give {maxMb / 1024} GB right now (files it can't move are in the way). Try a smaller size, or run Disk Cleanup first.");
         }
@@ -199,7 +202,7 @@ public static class AdminTasks
     private static (int Code, string Output) RunTool(string file, string args)
     {
         using var p = Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })!;
-        string o = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+        string o = ReadBoth(p);
         p.WaitForExit();
         return (p.ExitCode, o);
     }
@@ -220,11 +223,20 @@ public static class AdminTasks
 
     private static string Exec(string file, string args)
     {
-        var p = Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })!;
-        string o = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+        using var p = Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })!;
+        string o = ReadBoth(p);
         p.WaitForExit();
         SystemBridge.Log($"admin: {file} {args.Split(' ')[0]} → {p.ExitCode}");
         return o;
+    }
+
+    /// <summary>A tool's output and errors, read at the same time: reading one to the end first would wait forever
+    /// if the tool filled the other one and stopped to wait for it to be read.</summary>
+    private static string ReadBoth(Process p)
+    {
+        var err = p.StandardError.ReadToEndAsync();
+        string o = p.StandardOutput.ReadToEnd();
+        return o + err.GetAwaiter().GetResult();
     }
 
     private static string LastLine(string s) => s.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.Length > 0) ?? "";

@@ -515,6 +515,7 @@ public sealed partial class MantelHost : IDisposable
     /// give Windows' taskbar its setting back.</summary>
     public void RecoverTaskbar()
     {
+        try { FullShell.Recover(); } catch (Exception ex) { SystemBridge.Log("mantel: full: " + ex.Message); }
         var s = MantelState.Load();
         if (s.TaskbarState is int st) { _savedTaskbarState = st; RestoreWindowsTaskbar(); SystemBridge.Log("mantel: put Windows' taskbar back after an unclean stop"); }
     }
