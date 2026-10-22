@@ -144,3 +144,33 @@
       .then(function(){ btn.disabled = false; });
   });
 })();
+
+// Requests page: sent to the counter's /v1/logs as kind "request" (filed under requests/ with the label "request").
+(function(){
+  var f = document.getElementById('req'); if(!f) return;
+  var API = 'https://hearth-counter.game305-cl.workers.dev';
+  f.addEventListener('submit', function(e){
+    e.preventDefault();
+    var msg = f.querySelector('.msg'), btn = f.querySelector('button'), v = function(n){ return (f.elements[n].value || '').trim(); };
+    msg.className = 'msg';
+    if(v('title').length < 4){ msg.className = 'msg err'; msg.textContent = 'Give it a short title.'; f.elements.title.focus(); return; }
+    if(v('details').length < 10){ msg.className = 'msg err'; msg.textContent = 'Say a bit more about what you\'d like.'; f.elements.details.focus(); return; }
+    var body = 'Hearth logs: a request from hearthos.fun/docs\n\n'
+      + 'Type: ' + v('type') + '\n'
+      + 'Title: ' + v('title') + '\n'
+      + 'Edition: ' + (v('edition') || 'every edition') + '\n'
+      + 'Device: ' + (v('device') || '?') + '\n'
+      + 'Contact: ' + (v('contact') || 'none') + '\n\n'
+      + '===== The request =====\n' + v('details') + '\n';
+    btn.disabled = true; msg.textContent = 'Sending…';
+    fetch(API + '/v1/logs', {method: 'POST', body: body, headers: {'content-type': 'text/plain; charset=utf-8',
+        'x-hearth-kind': 'request', 'x-hearth-version': 'website', 'x-hearth-note': encodeURIComponent(v('type') + ': ' + v('title'))}})
+      .then(function(r){ return r.json().then(function(j){ return {ok: r.ok, j: j}; }); })
+      .then(function(x){
+        if(x.ok && x.j.code){ msg.innerHTML = 'Thanks! Sent. Your code: <b></b>'; msg.querySelector('b').textContent = x.j.code; f.reset(); }
+        else { msg.className = 'msg err'; msg.textContent = (x.j && x.j.error === 'busy, try again later') ? 'Lots of messages right now: try again in an hour.' : 'That didn\'t send. Try again in a moment.'; }
+      })
+      .catch(function(){ msg.className = 'msg err'; msg.textContent = 'That didn\'t send (no connection?). Try again in a moment.'; })
+      .then(function(){ btn.disabled = false; });
+  });
+})();

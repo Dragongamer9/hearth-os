@@ -7,7 +7,8 @@
 //
 //   POST /v1/logs   (text) Settings › System › "Send logs": a bug report's logs (personal details already taken
 //                   out on the device). Answers {"code": "ABCD-EFGH-JK"}; kept 14 days. Also the "Still stuck?"
-//                   form on hearthos.fun/docs (kind "docs"): what the person wrote, as a log.
+//                   form on hearthos.fun/docs (kind "docs"): what the person wrote, as a log; and the Requests page
+//                   (kind "request": ideas and new editions, filed under requests/ with the label "request").
 //   POST /v1/vote   {"id": "<device id>", "layout": "x-orbit", "up": true}  upvote (or take back) an experimental layout
 //   GET  /v1/votes  {"counts": {"x-orbit": 12, ...}}  everyone's upvotes, live
 //   POST /v1/cmdvote {"id": "<browser id>", "cmd": "fix-podman", "v": 1 | -1 | 0}  hearthos.fun/docs: did this
@@ -21,7 +22,7 @@
 // Stored per install: the random id, its kind, its version, when it was first and last seen. No IP
 // addresses, names or anything else. Rows not seen for 40 days are deleted every day.
 
-const KINDS = new Set(['amd', 'nvidia', 'windows', 'appimage', 'live', 'anatase', 'ubuntu', 'cachyos', 'peppermint', 'android', 'docs', 'other']);  // docs: a problem sent from hearthos.fun/docs
+const KINDS = new Set(['amd', 'nvidia', 'windows', 'appimage', 'live', 'anatase', 'ubuntu', 'cachyos', 'peppermint', 'android', 'docs', 'request', 'other']);  // docs: a problem sent from hearthos.fun/docs
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
 const json = (o, status = 200, extra = {}) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', ...CORS, ...extra } });
 
@@ -190,19 +191,23 @@ async function putFile(env, repo, path, text, message) {
 async function toGitHub(env, code, ver, kind, body, note) {
   const repo = env.LOGS_REPO || 'Dragongamer9/hearth-logs';
   const day = new Date().toISOString().slice(0, 10);
-  const path = `logs/${day}/${code}.txt`;
-  await putFile(env, repo, path, body, `Logs ${code} (Hearth ${ver || '?'})`);
+  // Requests from hearthos.fun/docs/requests.html (ideas, new editions) go in requests/, apart from the logs.
+  const isReq = kind === 'request';
+  const path = `${isReq ? 'requests' : 'logs'}/${day}/${code}.txt`;
+  await putFile(env, repo, path, body, `${isReq ? 'Request' : 'Logs'} ${code} (Hearth ${ver || '?'})`);
   const head = body.split('\n').slice(0, 12).filter(l => l.trim()).join('\n');
   const device = (body.match(/"device":\s*"([^"]+)"/) || body.match(/^Device:\s*(.+)$/m) || [])[1] || kind;
   const problems = problemLines(body);
-  const title = `${code} · Hearth ${ver || '?'} · ${device.slice(0, 60)}` + (note ? ` · ${note.slice(0, 80)}` : '');
-  const md = [
+  const title = isReq ? `Request ${code} · ${note.slice(0, 120) || 'no title'}`
+    : `${code} · Hearth ${ver || '?'} · ${device.slice(0, 60)}` + (note ? ` · ${note.slice(0, 80)}` : '');
+  const md = isReq ? [body.replace(/```/g, "'''").slice(0, 60000)].join('\n') : [
     note ? `**What happened:** ${note}` : '_No description given._',
     '', '```', head, '```',
     '', `**Full log:** [${path}](https://github.com/${repo}/blob/main/${path}) · also at \`/v1/logs/${code}\` for 14 days`,
     '', `### Problems found (${problems.length})`, '', '```', problems.join('\n').replace(/```/g, "'''") || '(none matched)', '```',
   ].join('\n').slice(0, 60000);
-  await gh(env, 'POST', `/repos/${repo}/issues`, { title, body: md, labels: [ver ? 'v' + ver : 'unknown version', kind] });
+  const reqType = isReq ? ((body.match(/^Type:\s*(.+)$/m) || [])[1] || 'request').toLowerCase().slice(0, 40) : null;
+  await gh(env, 'POST', `/repos/${repo}/issues`, { title, body: md, labels: isReq ? ['request', reqType] : [ver ? 'v' + ver : 'unknown version', kind] });
 }
 
 async function getLogs(url, env) {

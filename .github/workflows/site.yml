@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['site/**', '.github/workflows/site.yml']
+    paths: ['site/**', 'tools/build-docs.py', 'docs/ROADMAP.md', 'hosts/windows/Nimbus.Host/Nimbus.Host.csproj', '.github/workflows/site.yml']
 
 permissions:
   contents: read
@@ -25,6 +25,9 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      # The docs (site/docs): release notes from docs/ROADMAP.md and the current version, so they follow each release.
+      - name: Build the docs
+        run: python3 tools/build-docs.py site/docs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -319,7 +319,6 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Later
 
-- [ ] New live ISOs (AMD/Intel and Nvidia) with Install next to Windows
 
 ## Not started
 

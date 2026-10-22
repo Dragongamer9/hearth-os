@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Requests · Hearth OS docs</title>
+<meta name="description" content="Ideas for Hearth OS, changes you&#x27;d like, and editions on other Linux: ask here.">
+<meta name="theme-color" content="#120c09">
+<link rel="icon" href="../img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<nav class="top" aria-label="Main">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="">Hearth OS <span>Docs</span></a>
+    <div class="links">
+      <a href="../">Home</a>
+      <a class="keep" href="troubleshooting.html">Help</a>
+      <a href="requests.html">Requests</a>
+      <a href="releases.html">Release notes</a>
+      <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
+      <a class="cta" href="../#download">Download</a>
+    </div>
+  </div>
+</nav>
+<div class="wrap layout">
+  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html" class="cur" aria-current="page">Requests</a><div class="sub"><a href="#what">What you can ask for</a><a href="#how">What happens to a request</a><a href="#send">Send a request</a></div><a href="releases.html">Release notes</a></div></aside>
+  <main id="main">
+    <div class="crumb"><span>Docs · for Hearth OS 0.3.1</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="ubuntu">Ubuntu (Ubuntu)</option><option value="cachyos">CachyOS (Arch)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
+    <h1>Requests</h1>
+    <p class="lead">Ideas for Hearth OS, changes you'd like, and editions on other Linux: ask here.</p>
+
+<section><h2 id="what">What you can ask for</h2>
+<ul>
+<li><b>A new feature</b>, or a change to one that's there: something in Game Mode, the desktop, Settings, the stores.</li>
+<li><b>A new edition</b>: Hearth OS on another Linux (for example another family than Fedora, Debian/Ubuntu or Arch).</li>
+<li><b>Device support</b>: a handheld, controller or PC part that doesn't work well yet.</li>
+<li><b>Anything else</b>: games, launchers, the website, these docs.</li>
+</ul>
+<p>Something broken? That's <a href="troubleshooting.html#ask">a problem report</a> instead, so it gets fixed first.</p>
+
+</section><section><h2 id="how">What happens to a request</h2>
+<ol class="steps">
+<li><b>It reaches the developer</b>, straight away, with a code you can quote later.</li>
+<li><b>Requests are read and grouped</b>: the same idea from several people counts for more.</li>
+<li><b>What's planned goes under <a href="releases.html#next">Coming next</a></b>, and the <a href="releases.html">release notes</a> say when it arrives.</li>
+</ol>
+
+</section><section><h2 id="send">Send a request</h2>
+<form id="req" class="ask" novalidate>
+  <div class="row2">
+    <label>What kind of request?
+      <select name="type"><option>New feature</option><option>Change something</option><option>New edition</option><option>Device support</option><option>Other</option></select></label>
+    <label>For which edition?
+      <select name="edition"><option value="">Every edition</option><option>Anatase</option><option>Ubuntu</option><option>CachyOS</option><option>Peppermint</option><option>Ember (Windows)</option><option>A new edition</option></select></label>
+  </div>
+  <label><span>In a few words <span class="req">(needed)</span></span>
+    <input name="title" maxlength="120" required placeholder="e.g. Hearth OS on openSUSE, or a battery saver for handhelds"></label>
+  <label><span>Tell us more <span class="req">(needed)</span></span>
+    <textarea name="details" rows="5" maxlength="4000" required placeholder="What you'd like, and why: what would it let you do? For a new edition: which Linux, and what you'd use it for."></textarea></label>
+  <div class="row2">
+    <label><span>Your device <span class="opt">(optional)</span></span> <input name="device" maxlength="80" placeholder="e.g. Legion Go, desktop with RX 7800"></label>
+    <label><span>How to reach you <span class="opt">(optional)</span></span> <input name="contact" maxlength="100" placeholder="a GitHub or Discord name"></label>
+  </div>
+  <div class="send"><button type="submit">Send the request</button><span class="msg" role="status" aria-live="polite"></span></div>
+</form>
+</section>
+<div class="pager"><a href="troubleshooting.html">← Troubleshooting</a><a href="releases.html">Release notes →</a></div>
+  </main>
+</div>
+<footer>
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="" width="22" height="22">Hearth OS</a>
+    <a href="releases.html">Release notes</a>
+    <a href="requests.html">Requests</a>
+    <a href="troubleshooting.html#ask">Report a problem</a>
+  </div>
+</footer>
+<script src="docs.js" defer></script>
+</body>
+</html>
