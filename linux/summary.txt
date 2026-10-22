@@ -1,0 +1,13 @@
+failed:
+[desktop] keyboard: Down then Enter types "a" into the page (got ''; [{'key': 'ArrowDown', 'open': True, 'r': 1, 'c': 0, 'heard': [], 'focus': 'browser'}, {'key': 'Enter', 'open': True, 'r': 1, 'c': 0, 'heard': [], 'focus': 'browser'}])
+[desktop] keyboard: Alt+Left (B) deletes it (got {'error': 'TypeError: can\'t access property "value", document.getElementById(...) is null'})
+[desktop] keyboard: typing letters, a space, @ and Backspace (got {'error': 'TypeError: can\'t access property "value", document.getElementById(...) is null'})
+[desktop] keyboard: Esc closes it
+[desktop] the test ran ('dict' object has no attribute 'endswith')
+[game] keyboard: Down then Enter types "a" into the page (got ''; [{'key': 'ArrowDown', 'open': True, 'r': 1, 'c': 0, 'heard': [], 'focus': 'browser'}, {'key': 'Enter', 'open': True, 'r': 1, 'c': 0, 'heard': [], 'focus': 'browser'}])
+[game] keyboard: Alt+Left (B) deletes it (got {'error': 'TypeError: can\'t access property "value", document.getElementById(...) is null'})
+[game] keyboard: typing letters, a space, @ and Backspace (got {'error': 'TypeError: can\'t access property "value", document.getElementById(...) is null'})
+[game] keyboard: Esc closes it
+[game] the test ran ('dict' object has no attribute 'endswith')
+warnings:
+
