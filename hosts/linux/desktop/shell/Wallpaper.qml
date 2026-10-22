@@ -213,7 +213,8 @@ PanelWindow {
     Image {
         id: chosen
         anchors.fill: parent
-        source: root.picture ? "file://" + root.picture : ""
+        // Encoded: a name with # or % in it is otherwise read as part of the address, and nothing shows.
+        source: root.picture ? "file://" + root.picture.split("/").map(encodeURIComponent).join("/") : ""
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         visible: status === Image.Ready

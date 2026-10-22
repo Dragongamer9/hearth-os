@@ -26,6 +26,9 @@ pub struct Opts {
     pub size: u64,
     /// What was typed in the confirmation.
     pub typed: String,
+    /// The plan's `fingerprint` from when it was shown: the run is refused if the drive is no longer the same one
+    /// (a USB stick swapped for another gets the same device path). Empty: not checked.
+    pub expect: String,
 }
 
 /// What the page shows before an action runs.
@@ -50,6 +53,21 @@ pub struct Plan {
     pub label_default: String,
     /// For a new partition: the most it can be.
     pub max_size: u64,
+    /// Which drive and partition this plan is about (see `fingerprint`); the page sends it back with the run.
+    pub fingerprint: String,
+}
+
+/// What identifies the drive and the partition (or free space) an action is for, beyond their paths: the drive's
+/// serial, model and size, and the partitions' UUIDs, places and sizes. A different stick plugged in where the
+/// last one was gets the same paths but not the same fingerprint.
+pub fn fingerprint(d: &Drive, p: Option<&Partition>) -> String {
+    let part = |p: &Partition| format!("{}|{}|{}|{}|{}", p.id, p.uuid, p.offset, p.size, p.fs);
+    let mut s = format!("{}|{}|{}|{}|{}", d.id, d.serial, d.vendor, d.model, d.size);
+    match p {
+        Some(p) => { s.push_str("#"); s.push_str(&part(p)); }
+        None => for p in d.partitions.iter().filter(|p| p.kind != "free") { s.push_str("#"); s.push_str(&part(p)); },
+    }
+    s
 }
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
@@ -172,7 +190,7 @@ fn losing(parts: &[&Partition]) -> Vec<String> {
 
 /// What an action will do, or why it can't. `p`: the partition or free space (None: the whole drive).
 pub fn plan(action: &str, d: &Drive, p: Option<&Partition>, host: &str) -> Plan {
-    let mut plan = Plan { action: action.into(), confirm: "OK".into(), ..Default::default() };
+    let mut plan = Plan { action: action.into(), confirm: "OK".into(), fingerprint: fingerprint(d, p), ..Default::default() };
     let offered = match p { Some(p) => partition_actions(d, p, host), None => drive_actions(d, host) };
     let refuse = |plan: &mut Plan, why: &str| { plan.refuse = Some(why.into()); };
     let sys_name = if host == "windows" { "Windows" } else { "Hearth OS" };
@@ -309,6 +327,9 @@ pub fn plan(action: &str, d: &Drive, p: Option<&Partition>, host: &str) -> Plan 
 pub fn approve(action: &str, d: &Drive, p: Option<&Partition>, host: &str, o: &Opts) -> Result<Plan, String> {
     let plan = plan(action, d, p, host);
     if let Some(why) = &plan.refuse { return Err(why.clone()); }
+    if !o.expect.is_empty() && o.expect != plan.fingerprint {
+        return Err("This isn't the same drive or partition you confirmed (it may have been swapped or changed). Nothing was changed. Look at it again and choose what to do.".into());
+    }
     if let Some(word) = &plan.typed {
         if o.typed.trim().to_uppercase() != *word { return Err(format!("Type {word} to confirm.")); }
     }
@@ -438,6 +459,40 @@ mod tests {
         assert_eq!(fs_choices("windows", true, 64 * GIB)[0].id, "ntfs");
         assert_eq!(fs_choices("linux", false, 0).iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), vec!["exfat", "ext4", "ntfs", "btrfs"]);
         assert!(games_ready("linux", "ext4") && !games_ready("linux", "exfat") && games_ready("windows", "NTFS"));
+    }
+
+    #[test]
+    fn refuses_a_swapped_drive() {
+        // The plan is shown for one USB stick...
+        let d = usb();
+        let pl = plan("format", &d, Some(&d.partitions[0]), "linux");
+        let o = Opts { fs: "exfat".into(), expect: pl.fingerprint.clone(), ..Default::default() };
+        assert!(approve("format", &d, Some(&d.partitions[0]), "linux", &o).is_ok());
+        // ...then it's swapped for another at the same path: same ids, different UUID, serial or size.
+        let mut other = usb();
+        other.partitions[0].uuid = "1234-ABCD".into();
+        assert!(approve("format", &other, Some(&other.partitions[0]), "linux", &o).is_err());
+        let mut other = usb();
+        other.serial = "OTHER".into();
+        assert!(approve("format", &other, Some(&other.partitions[0]), "linux", &o).is_err());
+        let mut other = usb();
+        other.partitions[0].size = 7 * GIB;
+        assert!(approve("format", &other, Some(&other.partitions[0]), "linux", &o).is_err());
+        // The whole drive too.
+        let pl = plan("format_drive", &d, None, "linux");
+        let o = Opts { fs: "exfat".into(), expect: pl.fingerprint.clone(), ..Default::default() };
+        assert!(approve("format_drive", &d, None, "linux", &o).is_ok());
+        let mut other = usb();
+        other.size = 32 * GIB;
+        assert!(approve("format_drive", &other, None, "linux", &o).is_err());
+        let mut other = usb();
+        other.partitions[0].uuid = "5678-EF01".into();
+        assert!(approve("format_drive", &other, None, "linux", &o).is_err());
+        // Mounting or files being added don't count as a change.
+        let mut same = usb();
+        same.partitions[0].mounted = true;
+        same.partitions[0].used = Some(2 * GIB);
+        assert!(approve("format_drive", &same, None, "linux", &o).is_ok());
     }
 
     #[test]

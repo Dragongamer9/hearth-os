@@ -660,7 +660,7 @@ impl Bridge {
             // Hearth's own installer (live USB)
             "osinstall.status" => Ok(self.osinstall.status()),
             "osinstall.disks" => self.osinstall.disks(),
-            "osinstall.check" => self.osinstall.check(a["part"].as_str()),
+            "osinstall.check" => self.osinstall.check(a["part"].as_str(), a["disk"].as_str()),
             "osinstall.start" => self.osinstall.start(&a["plan"]),
             "osinstall.restart" => Ok(json!(self.osinstall.restart())),
             "osinstall.useMantel" => Ok(json!(crate::osinstall::handoff(true))),

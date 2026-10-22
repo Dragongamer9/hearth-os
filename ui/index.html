@@ -6921,7 +6921,7 @@ function osiLoad(){
 function osiCheck(){
   if(OSI.checking) return; OSI.checking=true; OSI.check=null; render(null,true);
   const t=OSI.target;
-  call('osinstall.check',{part:t&&t.kind==='linux'?(t.shrink||t.part):null},180000).then(r=>{ OSI.check=r; OSI.give = r.suggested || r.target&&r.target.canGive || 0; })
+  call('osinstall.check',{part:t&&t.kind==='linux'?(t.shrink||t.part):null, disk:OSI.disk||null},180000).then(r=>{ OSI.check=r; OSI.give = r.suggested || r.target&&r.target.canGive || 0; })
     .catch(e=>{ OSI.check={problems:[{id:'error',text:e.message}]}; })
     .finally(()=>{ OSI.checking=false; render(null,true); });
 }
@@ -6948,7 +6948,7 @@ function osiBlock(step){
   if(step==='drive'){
     if(!OSI.disk) return 'Choose a drive';
     if(OSI.mode==='beside'){ const c=OSI.check; if(!c||OSI.checking) return `Checking ${osiName()}…`;
-      const hard=(c.problems||[]).filter(p=>!p.soft); if(hard.length) return hard[0].text; if(OSI.give<64*2**30) return 'Hearth needs at least 64 GB'; }
+      const hard=(c.problems||[]).filter(p=>!p.soft); if(hard.length) return hard[0].text; if(OSI.give<64*2**30) return 'Hearth needs at least 69 GB (64 GiB)'; }
   }
   if(step==='account'){ const u=OSI.user;
     if(!u.full.trim()) return 'Type your name';
@@ -7034,7 +7034,7 @@ function viewOsInstall(){
     const list=(OSI.disks||[]).filter(d=>OSI.mode==='beside'?d.dev===OSI.disk:true);
     if(!OSI.disks) body=`<h1>Choose a drive</h1>${note('Looking for drives…')}`;
     else {
-      const rows=list.map(d=>{ const why=d.live?'The USB stick Hearth is running from':d.tooSmall?'Too small (Hearth needs 64 GB)':'';
+      const rows=list.map(d=>{ const why=d.live?'The USB stick Hearth is running from':d.tooSmall?'Too small (Hearth needs 69 GB, 64 GiB)':'';
         return choice('osi-d-'+d.dev.replace(/\W/g,''),'dl',`${esc(d.model)} · ${gb(d.size)}`, why || [d.tran&&d.tran.toUpperCase(), (d.systems||[]).length?'Has '+d.systems.map(x=>x.name).join(' and '):'', d.parts.length?`${d.parts.length} partition${d.parts.length===1?'':'s'}`:'Empty'].filter(Boolean).join(' · '), OSI.disk===d.dev, why?'noop':'osiDisk', `data-v="${esc(d.dev)}"${why?' disabled':''}`); }).join('');
       body = OSI.mode==='beside' ? `<h1>Room for Hearth</h1><p class="lead">Hearth goes next to ${esc(osiName())} on ${esc((osiDisk()||{}).model||'this drive')}.</p>`
         : `<h1>Which drive should Hearth go on?</h1><p class="lead"><b>Everything on the drive you choose is erased.</b></p><div class="rows">${rows||note('No drives found that Hearth can use.')}</div>`;
