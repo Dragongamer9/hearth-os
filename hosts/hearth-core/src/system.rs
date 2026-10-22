@@ -116,10 +116,29 @@ pub mod wifi {
         let rows = nm_lines(&run("nmcli", &["-t", "-f", "ACTIVE,SSID,SIGNAL", "device", "wifi", "list", "--rescan", "no"]).unwrap_or_default());
         rows.into_iter().find(|r| r[0] == "yes").map(|r| (r.get(1).filter(|s| !s.is_empty()).cloned(), bars(r.get(2).and_then(|s| s.parse().ok()).unwrap_or(0)))).unwrap_or((None, 0))
     }
-    pub fn saved() -> Vec<String> {
-        nm_lines(&run("nmcli", &["-t", "-f", "NAME,TYPE", "connection", "show"]).unwrap_or_default()).into_iter()
-            .filter(|r| r.get(1).map(|t| t.contains("wireless")).unwrap_or(false)).map(|r| r[0].clone()).collect()
+    /// The saved Wi-Fi connections as (network name, connection UUID). The network name is the connection's own
+    /// SSID (802-11-wireless.ssid), not its name: a connection renamed in NetworkManager still counts as saved.
+    pub fn saved_connections() -> Vec<(String, String)> {
+        let list = run("nmcli", &["-t", "-f", "NAME,UUID,TYPE", "connection", "show"]).unwrap_or_default();
+        parse_saved(&list, |uuid| run("nmcli", &["--escape", "yes", "-g", "802-11-wireless.ssid", "connection", "show", "uuid", uuid]).ok())
     }
+    /// `nmcli -t -f NAME,UUID,TYPE connection show` to (SSID, UUID) for the Wi-Fi ones; `ssid_of` asks nmcli for a
+    /// connection's SSID (`-g 802-11-wireless.ssid`). Without an answer the connection's name stands in for it.
+    pub fn parse_saved(list: &str, ssid_of: impl Fn(&str) -> Option<String>) -> Vec<(String, String)> {
+        nm_lines(list).into_iter().filter(|r| r.get(2).map(|t| t.contains("wireless")).unwrap_or(false) && r.len() >= 3)
+            .map(|r| {
+                // -g escapes '\' and ':' like -t does; a value with neither comes out as it is.
+                let ssid = ssid_of(&r[1]).map(|t| nm_value(t.trim_end_matches(['\n', '\r']))).filter(|s| !s.is_empty()).unwrap_or_else(|| r[0].clone());
+                (ssid, r[1].clone())
+            }).collect()
+    }
+    fn nm_value(t: &str) -> String {
+        let mut out = String::new();
+        let mut chars = t.chars();
+        while let Some(c) = chars.next() { if c == '\\' { if let Some(n) = chars.next() { out.push(n); } } else { out.push(c); } }
+        out
+    }
+    pub fn saved() -> Vec<String> { saved_connections().into_iter().map(|(ssid, _)| ssid).collect() }
     /// Networks around, best first: the connected one, then saved ones, then by signal. One entry per name.
     pub fn parse_scan(text: &str, saved: &[String]) -> Vec<Value> {
         let mut best: Vec<(String, bool, bool, u8, bool)> = Vec::new();   // ssid, connected, saved, bars, secure
@@ -143,8 +162,9 @@ pub mod wifi {
     pub fn connect(ssid: &str, password: Option<&str>) -> Value {
         if !valid_ssid(ssid) { return json!({"ok": false, "error": "That network's name can't be used."}); }
         if !password.map(valid_wifi_password).unwrap_or(true) { return json!({"ok": false, "error": "That password can't be used."}); }
-        let r = if saved().iter().any(|s| s == ssid) && password.is_none() {
-            run_timeout("nmcli", &["connection", "up", "id", ssid], Duration::from_secs(45))
+        let known = saved_connections().into_iter().find(|(s, _)| s == ssid).map(|(_, uuid)| uuid);
+        let r = if let (Some(uuid), None) = (&known, password) {
+            run_timeout("nmcli", &["connection", "up", "uuid", uuid], Duration::from_secs(45))
         } else {
             // The password goes to nmcli's own prompt (--ask) on its standard input, never on its command line.
             run_input("nmcli", &connect_args(ssid, password.is_some()), password.map(|p| format!("{p}\n")).as_deref(), Duration::from_secs(45))
@@ -165,7 +185,13 @@ pub mod wifi {
         a
     }
     pub fn disconnect() -> Result<(), String> { if let Some((d, _)) = device() { run("nmcli", &["device", "disconnect", &d])?; } Ok(()) }
-    pub fn forget(ssid: &str) -> Result<(), String> { if !valid_ssid(ssid) { return Err("That network's name can't be used.".into()); } run("nmcli", &["connection", "delete", "id", ssid]).map(|_| ()) }
+    pub fn forget(ssid: &str) -> Result<(), String> {
+        if !valid_ssid(ssid) { return Err("That network's name can't be used.".into()); }
+        let uuids: Vec<String> = saved_connections().into_iter().filter(|(s, _)| s == ssid).map(|(_, u)| u).collect();
+        if uuids.is_empty() { return run("nmcli", &["connection", "delete", "id", ssid]).map(|_| ()); }
+        for u in &uuids { run("nmcli", &["connection", "delete", "uuid", u])?; }
+        Ok(())
+    }
 }
 
 // ------------------------------------------------------------------ Bluetooth, radios
@@ -541,6 +567,10 @@ mod tests {
         assert_eq!(list[1]["bars"], 4);
         assert_eq!(list[2]["secure"], false);
         assert_eq!(list[0]["connected"], true);
+        // Saved networks by their SSID, not the connection's name (here renamed "Upstairs").
+        let conns = "Upstairs:1111-aaaa:802-11-wireless\nWired connection 1:2222-bbbb:802-3-ethernet\nCafe:3333-cccc:802-11-wireless\nOld:4444-dddd:802-11-wireless\n";
+        let ssids = |u: &str| match u { "1111-aaaa" => Some("Home\n".to_string()), "3333-cccc" => Some(r"Caf\:e 2".to_string() + "\n"), _ => None };
+        assert_eq!(wifi::parse_saved(conns, ssids), vec![("Home".to_string(), "1111-aaaa".to_string()), ("Caf:e 2".to_string(), "3333-cccc".to_string()), ("Old".to_string(), "4444-dddd".to_string())]);
     }
     #[test]
     fn reads_wpctl_status() {

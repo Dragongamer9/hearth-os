@@ -1,7 +1,8 @@
 //! Hearth's own installer, the app's side (live USB only): talks to /usr/libexec/nimbus/hearth-install (the
 //! engine, shared with Mantel's install window) through pkexec. Port of hosts/linux/src/os-installer.js.
 //!   disks()      the drives Hearth can go on
-//!   check(part)  next to Windows (no part) or the Linux on `part` (SteamOS...): room it can give, what's in the way
+//!   check(part, disk)  next to Windows (no part; the one on `disk`, the chosen drive) or the Linux on `part`
+//!                (SteamOS...): room it can give, what's in the way
 //!   start(plan)  installs; progress goes to the page as 'osInstall' events ({state, stage, pct, text...})
 //!   restart()    restarts into the installed Hearth
 
@@ -51,14 +52,19 @@ impl OsInstaller {
 
     pub fn disks(&self) -> Result<Value, String> { Self::need()?; Self::helper(ENGINE, &["disks"]) }
 
-    pub fn check(&self, part: Option<&str>) -> Result<Value, String> {
+    pub fn check(&self, part: Option<&str>, disk: Option<&str>) -> Result<Value, String> {
         Self::need()?;
+        let dev_ok = |p: &str| p.starts_with("/dev/") && p[5..].chars().all(|c| c.is_ascii_alphanumeric() || "_/-".contains(c)) && p.len() > 5;
         if let Some(p) = part {
-            let ok = p.starts_with("/dev/") && p[5..].chars().all(|c| c.is_ascii_alphanumeric() || "_/-".contains(c)) && p.len() > 5;
-            if !ok { return Err("Unknown partition".into()); }
+            if !dev_ok(p) { return Err("Unknown partition".into()); }
             return Self::helper(ENGINE, &["check", p]);
         }
-        let mut r = Self::helper(PREP, &["check"])?;
+        // The Windows on the chosen drive (the one Hearth goes next to), not the biggest one on any drive.
+        let mut r = match disk {
+            Some(d) if !dev_ok(d) => return Err("Unknown drive".into()),
+            Some(d) => Self::helper(PREP, &["check", d])?,
+            None => Self::helper(PREP, &["check"])?,
+        };
         let w = r["windows"].clone();
         r["target"] = if w.is_object() { let mut t = w.clone(); t["kind"] = json!("windows"); t["name"] = json!("Windows"); t["part"] = w["dev"].clone(); t } else { Value::Null };
         Ok(r)
