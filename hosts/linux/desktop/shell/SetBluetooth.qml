@@ -23,12 +23,12 @@ SetPage {
 
     Process {
         id: show
-        command: ["bluetoothctl", "show"]
+        command: ["bluetoothctl", "--timeout", "5", "show"]
         stdout: StdioCollector { onStreamFinished: page.on = /Powered: yes/.test(text) }
     }
     Process {
         id: pairedProc
-        command: ["sh", "-c", "bluetoothctl devices Paired; echo ---; bluetoothctl devices Connected"]
+        command: ["sh", "-c", "bluetoothctl --timeout 5 devices Paired; echo ---; bluetoothctl --timeout 5 devices Connected"]
         stdout: StdioCollector {
             onStreamFinished: {
                 const parts = text.split("---"), p = parts[0], c = parts[1];
@@ -39,7 +39,7 @@ SetPage {
     }
     Process {
         id: scanProc
-        command: ["sh", "-c", "bluetoothctl --timeout 12 scan on >/dev/null; bluetoothctl devices"]
+        command: ["sh", "-c", "bluetoothctl --timeout 12 scan on >/dev/null; bluetoothctl --timeout 5 devices"]
         stdout: StdioCollector {
             onStreamFinished: {
                 const known = page.paired.map(d => d.mac);
@@ -54,14 +54,15 @@ SetPage {
         stdout: StdioCollector { id: actOut }
         onExited: code => { page.busy = ""; page.message = code === 0 ? action.okText : (actOut.text.trim().split("\n").pop() || "That didn't work"); page.refresh(); }
     }
-    // Every bluetoothctl action has a --timeout: without one, "pair" waits for ever when the device never answers
-    // (or asks for a code nobody can type here), and the row stays on "Pairing…" until Settings is closed.
+    // Every bluetoothctl call has a --timeout: without one, "pair" waits for ever when the device never answers
+    // (or asks for a code nobody can type here), and the row stays on "Pairing…" until Settings is closed. And
+    // with the Bluetooth service stopped or missing, every call (even "show") waits for ever for it to appear.
     function run(cmd, okText) { action.okText = okText; action.command = ["sh", "-c", cmd]; action.running = true; }
 
     SetSwitch {
         icon: "bt"; title: "Bluetooth"; sub: page.on ? (page.paired.some(d => d.connected) ? page.paired.filter(d => d.connected).map(d => d.name).join(", ") + " connected" : "On") : "Off"
         checked: page.on
-        onToggled: v => { page.on = v; page.run("bluetoothctl power " + (v ? "on" : "off"), v ? "Bluetooth on" : "Bluetooth off"); }
+        onToggled: v => { page.on = v; page.run("bluetoothctl --timeout 10 power " + (v ? "on" : "off"), v ? "Bluetooth on" : "Bluetooth off"); }
     }
     Text { visible: page.message !== ""; text: page.message; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; Layout.leftMargin: 4 }
 
@@ -99,7 +100,7 @@ SetPage {
         delegate: SetRow {
             required property var modelData
             icon: "close"; danger: true; title: "Forget " + modelData.name; chevron: false
-            onActivated: page.run("bluetoothctl remove " + modelData.mac, modelData.name + " forgotten")
+            onActivated: page.run("bluetoothctl --timeout 10 remove " + modelData.mac, modelData.name + " forgotten")
         }
     }
 }
