@@ -1,5 +1,8 @@
-// Hearth Settings › Web browser: Aloha Browser, downloaded from alohabrowser.com by hearth-browser (it can't
-// ship inside Hearth's image), installed in your home folder and made the default browser.
+// Hearth Settings › Web browser.
+// Hearth Browser: Mozilla's Firefox with Hearth's settings, part of Hearth OS (/usr/bin/hearth-browser, which answers
+// --hearth-status, --hearth-default and --hearth-layout here). Aloha Browser stays an optional extra: downloaded from
+// alohabrowser.com by the hearth-browser helper next to this file (it can't ship inside Hearth's image), installed
+// in your home folder.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -9,11 +12,13 @@ SetPage {
     id: page
     title: "Web browser"
     property var st: null
+    property var hb: null
     property string busy: ""
     property real progress: -1
     property string line: ""
     property string error: ""
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-browser").toString().replace(/^file:\/\//, ""))
+    readonly property string browser: "/usr/bin/hearth-browser"
 
     function run(cmd) {
         if (proc.running) return;
@@ -21,7 +26,12 @@ SetPage {
         proc.command = ["python3", helper, cmd];
         proc.running = true;
     }
-    Component.onCompleted: run("status")
+    function hearth(args) {
+        if (hbProc.running) return;
+        hbProc.command = [browser].concat(args);
+        hbProc.running = true;
+    }
+    Component.onCompleted: { run("status"); hearth(["--hearth-status"]); }
     Process {
         id: proc
         stdout: SplitParser {
@@ -34,7 +44,36 @@ SetPage {
         }
         onExited: { page.busy = ""; page.progress = -1; }
     }
+    Process {
+        id: hbProc
+        stdout: SplitParser {
+            onRead: l => {
+                if (l.startsWith("error: ")) page.error = l.slice(7);
+                else if (l.startsWith("{")) { try { page.hb = JSON.parse(l); } catch (e) {} }
+            }
+        }
+    }
+    SetHeader { text: "Hearth Browser" }
+    SetRow {
+        icon: "globe"; title: "Open Hearth Browser"
+        sub: !page.hb ? "Checking…" : !page.hb.installed ? "Not part of this version of Hearth OS yet"
+            : "Built on Firefox" + (page.hb.version ? " " + page.hb.version : "") + ": Google sign-in, Netflix and add-ons work" + (page.hb.default ? " · your default browser" : "")
+        onActivated: if (page.hb && page.hb.installed) Quickshell.execDetached([page.browser])
+    }
+    SetRow {
+        visible: !!page.hb && page.hb.installed && !page.hb.default
+        icon: "check"; title: "Make Hearth Browser the default"; sub: "Links from other apps open in it"; chevron: false
+        onActivated: page.hearth(["--hearth-default"])
+    }
+    SetChoice {
+        visible: !!page.hb && page.hb.installed
+        title: "Bigger buttons and text"; sub: "For a controller and a small screen. Applies the next time it opens."
+        options: [{ value: "auto", label: "In Game Mode" }, { value: "big", label: "Always" }, { value: "normal", label: "Never" }]
+        current: page.hb ? page.hb.layout : "auto"
+        onChosen: v => page.hearth(["--hearth-layout", v])
+    }
 
+    SetHeader { text: "Aloha Browser (optional)" }
     SetRow {
         interactive: false; chevron: false
         icon: "info"; title: "Aloha Browser"

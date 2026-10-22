@@ -1,10 +1,177 @@
-#!/usr/bin/sh
-# Hearth Browser: Hearth's own web browser. The Chromium (CEF) build (hosts/hearth-browser) when it's
-# installed; otherwise the Electron one (hosts/linux/src/web). Both keep their data in ~/.config/hearth-browser.
-if [ -x /usr/lib/hearth-browser-cef/hearth-browser ] && [ -z "$HEARTH_BROWSER_ELECTRON" ]; then
-  exec /usr/lib/hearth-browser-cef/hearth-browser "$@"
-fi
-# On Wayland (Mantel) Electron runs natively; anywhere else it uses X11.
-if [ -n "$WAYLAND_DISPLAY" ]; then set -- --ozone-platform=wayland --enable-features=WaylandWindowDecorations "$@"; fi
-if [ -x /usr/lib/hearth-browser/nimbus ]; then exec /usr/lib/hearth-browser/nimbus --browser "$@"; fi
-exec /usr/lib/nimbus/nimbus --browser "$@"
+#!/usr/bin/python3
+"""hearth-browser: Hearth Browser, Mozilla's Firefox with Hearth's settings (see /usr/share/hearth-browser).
+
+  hearth-browser [URL...]                open Hearth Browser, or a page in it (Firefox's own options pass through)
+  hearth-browser --hearth-status         JSON: installed, version, default, layout
+  hearth-browser --hearth-default        make it the default browser
+  hearth-browser --hearth-layout auto|big|normal
+                                         bigger buttons and text: in Game Mode only (auto), always, or never
+
+Firefox is in /usr/lib/hearth-browser/firefox (it updates with Hearth OS) and keeps your bookmarks, passwords and
+add-ons in ~/.local/share/nimbus/hearth-browser, its own profile, apart from any other Firefox. Its windows are
+called hearth-browser (X11 class and Wayland app id), so taskbars and Game Mode show them as Hearth Browser.
+In Game Mode (gamescope) it fills the screen with bigger buttons and runs on X11, as gamescope wants; in Desktop
+Mode it's an ordinary window. Without that Firefox (an older image), the Electron browser opens as before.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+FIREFOX_DIR = os.environ.get('HEARTH_FIREFOX_DIR') or '/usr/lib/hearth-browser/firefox'
+FIREFOX = os.path.join(FIREFOX_DIR, 'firefox')
+HOME = os.path.expanduser('~')
+DATA = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share'), 'nimbus')
+CONFIG = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config'), 'nimbus')
+PROFILE = os.path.join(DATA, 'hearth-browser')
+SETTINGS = os.path.join(CONFIG, 'hearth-browser.json')
+DESKTOP_ID = 'hearth-browser.desktop'
+CLASS = 'hearth-browser'
+LAYOUTS = ('auto', 'big', 'normal')
+
+
+def settings():
+    try:
+        with open(SETTINGS) as f:
+            s = json.load(f)
+        return s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(s):
+    os.makedirs(CONFIG, exist_ok=True)
+    with open(SETTINGS + '.tmp', 'w') as f:
+        json.dump(s, f, indent=2)
+    os.replace(SETTINGS + '.tmp', SETTINGS)
+
+
+def layout():
+    v = settings().get('layout')
+    return v if v in LAYOUTS else 'auto'
+
+
+def version():
+    """Firefox's version, from its application.ini."""
+    try:
+        with open(os.path.join(FIREFOX_DIR, 'application.ini')) as f:
+            m = re.search(r'^Version=(\S+)', f.read(), re.M)
+        return m.group(1) if m else None
+    except OSError:
+        return None
+
+
+def is_default():
+    try:
+        r = subprocess.run(['xdg-settings', 'get', 'default-web-browser'], capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() == DESKTOP_ID
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def make_default():
+    try:
+        return subprocess.run(['xdg-settings', 'set', 'default-web-browser', DESKTOP_ID], capture_output=True, timeout=15).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def screen_height():
+    """The height of the screen Firefox will open on (gamescope's X screen), 0 when it can't be told."""
+    for cmd in (['xwininfo', '-root'], ['xdpyinfo']):
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=3).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        m = re.search(r'^\s*Height:\s*(\d+)', out, re.M) or re.search(r'dimensions:\s*\d+x(\d+)', out)
+        if m:
+            return int(m.group(1))
+    return 0
+
+
+def scale_for(height):
+    """Game Mode: how big everything is drawn. 720p and 800p as they are; 1080p (a 7" handheld or a TV) 1.5x; 1440p 2x."""
+    if height <= 0:
+        return 0
+    return max(1.0, min(3.0, round(height / 720 * 4) / 4)) if height >= 900 else 0
+
+
+def accent():
+    try:
+        with open(os.path.join(DATA, 'library.json')) as f:
+            a = ((json.load(f) or {}).get('profile') or {}).get('accent') or ''
+        return a if re.fullmatch(r'#[0-9a-fA-F]{6}', a) else ''
+    except (OSError, ValueError, AttributeError):
+        return ''
+
+
+def electron(args):
+    """The Electron browser of older images (hosts/linux/src/web)."""
+    if os.environ.get('WAYLAND_DISPLAY'):
+        args = ['--ozone-platform=wayland', '--enable-features=WaylandWindowDecorations'] + args
+    for app in ('/usr/lib/hearth-browser/nimbus', '/usr/lib/nimbus/nimbus'):
+        if os.access(app, os.X_OK):
+            os.execv(app, [app, '--browser'] + args)
+    print('hearth-browser: Hearth Browser is not installed', file=sys.stderr)
+    sys.exit(1)
+
+
+def launch(args):
+    if not os.access(FIREFOX, os.X_OK):
+        electron(args)
+    env = dict(os.environ)
+    game = bool(env.get('GAMESCOPE_WAYLAND_DISPLAY'))
+    lay = layout()
+    big = lay == 'big' or (lay == 'auto' and game)
+    for k in ('HEARTH_BROWSER_GAME', 'HEARTH_BROWSER_BIG', 'HEARTH_BROWSER_SCALE', 'HEARTH_BROWSER_ACCENT'):
+        env.pop(k, None)
+    if game:
+        env['HEARTH_BROWSER_GAME'] = '1'
+        # gamescope shows X11 windows (with their class and process), so Firefox uses X11 there.
+        env['MOZ_ENABLE_WAYLAND'] = '0'
+        env['GDK_BACKEND'] = 'x11'
+    if big:
+        env['HEARTH_BROWSER_BIG'] = '1'
+        s = scale_for(screen_height()) if game else 0
+        if s:
+            env['HEARTH_BROWSER_SCALE'] = '%g' % s
+    a = accent()
+    if a:
+        env['HEARTH_BROWSER_ACCENT'] = a
+    # Firefox restarts itself (after an add-on or a crash) through this, so it comes back as Hearth Browser.
+    env['MOZ_APP_LAUNCHER'] = '/usr/bin/hearth-browser'
+    os.makedirs(PROFILE, mode=0o700, exist_ok=True)
+    # exec: Firefox is the process whoever started this waits for (Hearth's Game Mode finds its windows that way).
+    os.execve(FIREFOX, [FIREFOX, '--name', CLASS, '--class', CLASS, '--profile', PROFILE] + args, env)
+
+
+def status():
+    return {'installed': os.access(FIREFOX, os.X_OK), 'engine': 'Firefox', 'version': version(), 'default': is_default(),
+            'layout': layout(), 'profile': PROFILE, 'name': 'Hearth Browser'}
+
+
+def main(argv):
+    args = argv[1:]
+    if args[:1] == ['--hearth-status']:
+        print(json.dumps(status()))
+    elif args[:1] == ['--hearth-default']:
+        if not make_default():
+            print("error: couldn't make Hearth Browser the default browser")
+            return 1
+        print(json.dumps(status()))
+    elif args[:1] == ['--hearth-layout']:
+        if len(args) != 2 or args[1] not in LAYOUTS:
+            print('error: usage: hearth-browser --hearth-layout auto|big|normal')
+            return 2
+        s = settings()
+        s['layout'] = args[1]
+        save_settings(s)
+        print(json.dumps(status()))
+    else:
+        launch(args)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

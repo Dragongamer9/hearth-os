@@ -127,6 +127,7 @@ internal static class WinSettings
             if (isDefault) installed = true;
         }
         catch { }
-        return new { installed, @default = isDefault, version };
+        // Hearth Browser (Firefox with Hearth's settings) too: Settings shows both.
+        return new { installed, @default = isDefault, version, hearth = Services.HearthBrowser.Status() };
     }
 }

@@ -452,11 +452,16 @@ impl Bridge {
             "oldfiles.status" => Ok(crate::newos::old_files_status()),
             "oldfiles.delete" => { let (id, name) = (self.cur_id.clone(), req("name")?); crate::space::answer_later(id, move || crate::newos::delete(&name)); Ok(json!(DEFERRED)) }
             "oldfiles.restore" => crate::newos::restore(&req("name")?, &req("item")?),
-            // Web browsers: Aloha (downloaded on the device) and Hearth Browser (Hearth's own)
+            // Web browsers: Hearth Browser (Hearth's own: Firefox, hearth_browser.rs) and Aloha (optional, downloaded
+            // on the device)
             "browser.status" => Ok(self.browser_status()),
             "browser.act" => { self.browser_act(&req("action")?)?; Ok(self.browser_status()) }
             "browser.hearth" => {
-                if a["action"] == "open" { let _ = std::process::Command::new("/usr/bin/hearth-browser").spawn(); return Ok(json!(true)); }
+                if a["action"] == "open" {
+                    let url = a["url"].as_str().filter(|u| crate::beacon::valid_link(u));
+                    crate::hearth_browser::open(url)?;
+                    return Ok(json!(true));
+                }
                 if a["action"] == "default" { system::run("xdg-settings", &["set", "default-web-browser", "hearth-browser.desktop"]).map_err(|_| "Couldn't make it the default".to_string())?; }
                 Ok(self.browser_status())
             }
@@ -1102,7 +1107,7 @@ impl Bridge {
         vec![]
     }
 
-    /// Aloha Browser, through desktop/shell/hearth-browser.
+    /// Aloha Browser, through desktop/shell/hearth-browser; and Hearth Browser (`hearth`).
     fn browser_status(&self) -> Value {
         let helper = paths::desktop_dir().join("shell/hearth-browser");
         let job = self.browser.lock().unwrap().clone();
@@ -1113,7 +1118,7 @@ impl Bridge {
         } else { json!({"available": false}) };
         for (k, v) in job.as_object().cloned().unwrap_or_default() { s[k] = v; }
         let hb = std::path::Path::new("/usr/bin/hearth-browser").exists();
-        s["hearth"] = if hb { json!({"available": true, "default": system::run("xdg-settings", &["get", "default-web-browser"]).map(|o| o.trim() == "hearth-browser.desktop").unwrap_or(false)}) } else { json!({"available": false}) };
+        s["hearth"] = if hb { json!({"available": true, "installed": true, "engine": "Firefox", "version": crate::hearth_browser::version(), "default": system::run("xdg-settings", &["get", "default-web-browser"]).map(|o| o.trim() == "hearth-browser.desktop").unwrap_or(false)}) } else { json!({"available": false}) };
         s
     }
     fn browser_act(&self, what: &str) -> Result<(), String> {
