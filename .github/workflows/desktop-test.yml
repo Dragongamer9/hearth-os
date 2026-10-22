@@ -37,6 +37,9 @@ jobs:
           set -x
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
           mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          # The launcher's Games section: what Hearth listed last time (no Hearth app here to ask).
+          mkdir -p "$HOME/.cache/hearth"
+          printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""},{"id":"beacon:bfme2","title":"The Battle for Middle-earth II","source":"beacon","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
           export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
           chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
@@ -51,6 +54,7 @@ jobs:
           ipc quick toggle; grim shots/2-quick-access.png || true; ipc quick toggle
           ipc menu open; grim shots/3-hearth-menu.png || true; ipc menu close
           ipc launcher toggle; grim shots/4-launcher.png || true; ipc launcher toggle
+          ipc launcher section games; grim shots/4b-launcher-games.png || true; ipc launcher close
           ipc help toggle; grim shots/5-controls.png || true; ipc help toggle
           # Hearth Settings, every page
           n=6

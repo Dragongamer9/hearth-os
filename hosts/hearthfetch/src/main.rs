@@ -230,7 +230,7 @@ mod tests {
         assert!(!out.contains('\x1b'));
         let rows: Vec<&str> = out.lines().collect();
         assert!(rows[0].ends_with("deck@steamdeck"));
-        assert!(rows[0].starts_with(&" ".repeat(10)));
+        assert!(rows[0].starts_with("    "));
         assert_eq!(rows[0].find("deck@").unwrap(), logo::WIDTH + 3);
         assert!(rows.iter().any(|r| r.contains("OS        Hearth OS 0.3.1")));
         let bare = render(&sample(), Colors::Plain, false);

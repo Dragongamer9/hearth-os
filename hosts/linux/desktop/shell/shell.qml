@@ -5,7 +5,7 @@
 // on-screen keyboard, controller support and touch gestures, on top of labwc.
 // Started by labwc's autostart: quickshell -p <share>/desktop/shell
 // From a terminal or a key binding: quickshell ipc -p <this folder> call <target> <function>
-//   launcher toggle|open|close   quick toggle   keyboard open|close   menu open   settings open|page <name>|close
+//   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close   menu open   settings open|page <name>|close
 //   tasks open|tab <apps|perf|startup>|close|toggle   files open <path>|home|toggle|close
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 import QtQuick
@@ -168,6 +168,8 @@ ShellRoot {
         function toggle(): void { launcher.toggle(); }
         function open(): void { launcher.shown = true; }
         function close(): void { launcher.shown = false; }
+        // The launcher open at a section: apps or games.
+        function section(name: string): void { launcher.openTab(name === "games" ? "games" : "apps"); }
     }
     IpcHandler {
         target: "quick"

@@ -31,10 +31,21 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: hosts/hearthfetch
+      # Failures show up as annotations on the run (the end of the failing output), so the full log isn't needed.
       - name: Test
-        run: cargo test
+        run: |
+          set -o pipefail
+          if ! cargo test 2>&1 | tee test.log; then
+            echo "::error title=tests::$( (grep -E -A10 '^(error|warning|---- |thread .* panicked)' test.log | head -80; echo ===; tail -20 test.log) | tr '\n' '|' | cut -c1-3900)"
+            exit 1
+          fi
       - name: Build
-        run: cargo build --release
+        run: |
+          set -o pipefail
+          if ! cargo build --release 2>&1 | tee build.log; then
+            echo "::error title=build::$(grep -E -A10 '^(error|warning)' build.log | head -80 | tr '\n' '|' | cut -c1-3900)"
+            exit 1
+          fi
       - name: Run it
         run: |
           set -e
@@ -42,7 +53,8 @@ jobs:
           [ -f "$exe.exe" ] && exe="$exe.exe"
           ls -l "$exe"
           echo "=== hearthfetch (the log isn't a terminal: plain)"
-          "$exe" --time
+          "$exe" --time | tee plain.txt
+          echo "::notice title=hearthfetch on ${{ matrix.os }}::$(tr '\n' '|' < plain.txt | cut -c1-3900)"
           echo "=== hearthfetch --color always"
           "$exe" --color always
           echo "=== hearthfetch --color 256 --no-logo"

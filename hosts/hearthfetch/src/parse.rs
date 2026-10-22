@@ -138,14 +138,14 @@ pub fn pci_name(ids: &str, vendor: u16, device: u16) -> Option<(String, Option<S
         if line.starts_with('#') || line.is_empty() { continue; }
         if vendor_name.is_none() {
             if line.starts_with("C ") { return None; }   // device classes: past every vendor
-            if line.len() > 6 && line[..4].eq_ignore_ascii_case(&vhex) && line.as_bytes()[4] == b' ' {
+            if line.len() > 6 && line.get(..4).map(|h| h.eq_ignore_ascii_case(&vhex)).unwrap_or(false) && line.as_bytes()[4] == b' ' {
                 vendor_name = Some(line[4..].trim().to_string());
             }
             continue;
         }
         if line.starts_with("\t\t") { continue; }
         if let Some(rest) = line.strip_prefix('\t') {
-            if rest.len() > 6 && rest[..4].eq_ignore_ascii_case(&dhex) && rest.as_bytes()[4] == b' ' {
+            if rest.len() > 6 && rest.get(..4).map(|h| h.eq_ignore_ascii_case(&dhex)).unwrap_or(false) && rest.as_bytes()[4] == b' ' {
                 return Some((vendor_name.unwrap(), Some(rest[4..].trim().to_string())));
             }
             continue;

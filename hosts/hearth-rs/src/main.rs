@@ -420,6 +420,18 @@ pub(crate) fn start_core(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, 
             h.emit_to("main", Bridge::event("signinStart", serde_json::json!({"store": store})));
         });
     }
+    // A windowed Hearth that's open in Desktop Mode: a game started from Mantel's Games section is handed to it
+    // (desktop/shell/hearth-games) and played the way the library's Play button does.
+    if windowed {
+        let h = host.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+            let Some(id) = hearth_core::desktop_games::take_route() else { continue };
+            hearth_core::bridge::log(&format!("desktop: {id} started from Mantel's Games section"));
+            if h.exists("main") { h.unminimize("main"); h.show("main"); h.focus("main"); }
+            h.emit_to("main", Bridge::event("play", serde_json::json!({"id": id})));
+        });
+    }
     start_game_mode(host, bridge, windowed);
 }
 
@@ -607,6 +619,8 @@ fn main() {
             Err(e) => { eprintln!("{e}"); std::process::exit(1); }
         }
     }
+    // Mantel's Games section (Desktop Mode's launcher): the installed games as JSON. No window is opened.
+    if has("--list-games") { println!("{}", hearth_core::desktop_games::list_now()); std::process::exit(0); }
     let windowed = has("--windowed");
     // Started by Hearth's Electron window app (Chromium): no window here, everything else as usual.
     if has("--core-stdio") { std::process::exit(core_ipc::run(windowed)); }
