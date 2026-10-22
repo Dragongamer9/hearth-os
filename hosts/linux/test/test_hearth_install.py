@@ -524,3 +524,39 @@ class DownloadProgress(unittest.TestCase):
     def test_says_how_much_and_how_fast(self):
         self.assertEqual(H.download_text(3_200_000_000, 9_600_000_000, 12_400_000), 'Downloading Hearth OS · 3.2 of 9.6 GB · 12.4 MB/s')
         self.assertEqual(H.download_text(0, 0, 0), 'Downloading Hearth OS')
+
+
+def load_boot_first():
+    p = pathlib.Path(__file__).resolve().parents[3] / 'os' / 'system_files' / 'usr' / 'libexec' / 'nimbus' / 'hearth-boot-first'
+    loader = importlib.machinery.SourceFileLoader('hearth_boot_first', str(p))
+    m = importlib.util.module_from_spec(importlib.util.spec_from_loader('hearth_boot_first', loader))
+    loader.exec_module(m)
+    return m
+
+
+class BootFirst(unittest.TestCase):
+    """hearth-boot-first (every start): keeps Hearth first, without piling up boot entries."""
+    LOADER = '\\EFI\\fedora\\shimx64.efi'
+
+    def test_found_by_partition(self):
+        bf = load_boot_first()
+        t = ('BootOrder: 0000,0003\nBoot0000* Windows Boot Manager\tHD(1,GPT,aaaa,0x800,0x32000)/\\EFI\\Microsoft\\Boot\\bootmgfw.efi\n'
+             'Boot0003* Hearth OS\tHD(5,GPT,BBBB-1,0x1,0x2)/\\EFI\\fedora\\shimx64.efi\n')
+        self.assertEqual(bf.plan(t, 'bbbb-1', self.LOADER), ('0003', ['0003', '0000']))
+
+    def test_rewritten_entry_isnt_made_again(self):
+        # The firmware kept the entry but dropped the partition's id: it's still Hearth's (no new one each start).
+        bf = load_boot_first()
+        t = ('BootOrder: 0003,0000\nBoot0000* Windows Boot Manager\tHD(1,GPT,aaaa)/\\EFI\\Microsoft\\Boot\\bootmgfw.efi\n'
+             'Boot0003* Hearth OS\tVenHw(99e275e7-75a0-4b37-a2e6-c5385e6c00cb)/File(\\EFI\\fedora\\shimx64.efi)\n')
+        self.assertEqual(bf.plan(t, 'bbbb-1', self.LOADER), ('0003', None))
+        # Another system's "Hearth OS"-less entry with the same loader isn't taken for Hearth's.
+        t2 = 'BootOrder: 0002\nBoot0002* Fedora\tHD(2,GPT,cccc)/\\EFI\\fedora\\shimx64.efi\n'
+        self.assertEqual(bf.plan(t2, 'bbbb-1', self.LOADER), (None, None))
+
+    def test_no_efibootmgr_changes_nothing(self):
+        from unittest import mock
+        bf = load_boot_first()
+        with mock.patch.object(bf.os.path, 'isdir', lambda p: True), mock.patch.object(bf.os.path, 'exists', lambda p: False), \
+                mock.patch.object(bf.shutil, 'which', lambda n: None), mock.patch('builtins.print'):
+            self.assertEqual(bf.main(), 0)
