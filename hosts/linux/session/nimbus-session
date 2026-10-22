@@ -84,12 +84,21 @@ run_game() {
   # Fullscreen, except an extra player on part of a split screen (their window is the size of their part).
   full="-f"
   [ -n "$HEARTH_SEAT" ] && [ -n "$HEARTH_SEAT_WINDOWED" ] && full=""
-  if [ -z "$HEARTH_SEAT" ] && [ -f "$SEATS" ]; then
+  # A host that fails within seconds three times in a row (a crash on start) isn't tried again this session:
+  # normal Game Mode instead of restarting it every two seconds forever.
+  if [ -z "$HEARTH_SEAT" ] && [ -f "$SEATS" ] && [ "${HOST_FAILS:-0}" -lt 3 ]; then
     if python3 "$SEATS" host-check 2>/dev/null; then
       log "multi-seat: hosting the other players' screens"
+      host_started=$(date +%s)
       # shellcheck disable=SC2086
       python3 "$SEATS" host -- gamescope -f $NIMBUS_GAMESCOPE_ARGS -- "$WATCHDOG" "$NIMBUS_APP"
       rc=$?
+      if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && [ $(( $(date +%s) - host_started )) -lt 15 ]; then
+        HOST_FAILS=$(( ${HOST_FAILS:-0} + 1 ))
+        [ "$HOST_FAILS" -ge 3 ] && log "multi-seat host failed $HOST_FAILS times right away (code $rc); normal Game Mode until you sign in again"
+      else
+        HOST_FAILS=0
+      fi
       [ "$rc" -ne 3 ] && return "$rc"
       log "multi-seat host couldn't start; normal Game Mode"
     fi
