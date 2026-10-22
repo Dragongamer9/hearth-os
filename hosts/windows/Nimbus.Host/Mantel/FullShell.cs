@@ -31,7 +31,7 @@ internal sealed class FullShell : IDisposable
     {
         // Settings a previous run changed and couldn't put back (Ember crashed) are the real originals, not what's
         // on the screen now.
-        if (LoadSaved() is { } left) { _savedWorkArea ??= left.Item1; _savedMinimized ??= left.Item2; }
+        if (LoadSaved() is { } left) { if (Fits(left.Item1)) _savedWorkArea ??= left.Item1; _savedMinimized ??= left.Item2; }
         SetWorkArea(barSize);
         HideMinimized();
         WriteSaved();
@@ -79,12 +79,23 @@ internal sealed class FullShell : IDisposable
         catch { return null; }
     }
 
+    /// <summary>Does this work area lie on the main screen as it is now (the work area is the main screen's)?</summary>
+    private static bool Fits(Native.RECT r)
+    {
+        var b = Screen.PrimaryScreen?.Bounds ?? Rectangle.Empty;
+        return r.Right > r.Left && r.Bottom > r.Top && r.Left >= b.Left && r.Top >= b.Top && r.Right <= b.Right && r.Bottom <= b.Bottom
+            && (r.Right - r.Left) * 2 >= b.Width && (r.Bottom - r.Top) * 2 >= b.Height;
+    }
+
     /// <summary>At Ember's start: puts back what a run of full Mantel that didn't stop cleanly left changed.</summary>
     public static void Recover()
     {
         if (LoadSaved() is not { } left) return;
         var rr = left.Item1; var mm = left.Item2;
-        Native.SystemParametersInfo(0x002F /* SPI_SETWORKAREA */, 0, ref rr, 1 | 2);
+        // The screen may have changed since (another resolution, a monitor unplugged): a work area that no longer
+        // fits it is left alone (Windows' own is better than a wrong one).
+        if (Fits(rr)) Native.SystemParametersInfo(0x002F /* SPI_SETWORKAREA */, 0, ref rr, 1 | 2);
+        else SystemBridge.Log("mantel: the saved work area doesn't fit the screen any more, not put back");
         SystemParametersInfo(0x002C /* SPI_SETMINIMIZEDMETRICS */, (uint)mm.cbSize, ref mm, 1 | 2);
         try { File.Delete(SavedFile); } catch { }
         SystemBridge.Log("mantel: put the work area and minimized windows back after an unclean stop");
