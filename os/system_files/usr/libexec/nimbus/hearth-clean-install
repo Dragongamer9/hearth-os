@@ -298,8 +298,14 @@ def reset_etc(stamp, from_edition=None):
                     pass
         for name, text in (accounts or {}).items():
             write_like(os.path.join(etc, name), text, os.path.join(usr_etc, name))
-        if ROOT == '/' and shutil.which('restorecon'):
+        if ROOT == '/' and shutil.which('restorecon') and os.path.exists('/sys/fs/selinux/enforce'):
+            # Files the old system wrote carry its labels, or none (Debian, Ubuntu and Arch don't use SELinux), and
+            # Fedora's services are refused them: Bluetooth couldn't read its pairings ("Permission denied", and
+            # pairing a controller hung). /etc and /var now; the home folders (big: games) in the background.
             subprocess.run(['restorecon', '-RF', '/etc'], capture_output=True)
+            subprocess.run(['restorecon', '-RF', '-e', '/var/home', '/var'], capture_output=True)
+            if os.path.isdir('/var/home'):
+                subprocess.Popen(['nice', '-n', '19', 'restorecon', '-RF', '/var/home'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         if ROOT == '/' and accounts:
             # System accounts the image creates at boot (sysusers ran before this, against the old files), and
             # ld.so's cache for this system's library folders.
