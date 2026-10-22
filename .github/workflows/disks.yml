@@ -55,6 +55,8 @@ jobs:
           RULE
           sudo systemctl restart polkit || true
           sudo systemctl start udisks2
+          # The runner's kernel keeps exFAT in its extra modules.
+          sudo modprobe exfat 2>/dev/null || { sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" >/dev/null && sudo modprobe exfat; } || echo "::warning::no exFAT in this kernel"
           truncate -s 256M "$RUNNER_TEMP/disk.img"
           out=$(udisksctl loop-setup --no-user-interaction -f "$RUNNER_TEMP/disk.img")
           echo "$out"
