@@ -59,8 +59,10 @@ def parse_list(text, limit=LIMIT):
 
 def cliphist(args, input=None, binary=False, timeout=20):
     try:
-        r = subprocess.run(['cliphist'] + args, input=input, capture_output=True, timeout=timeout,
-                           text=not binary)
+        # Text that isn't UTF-8 (copied from an old Latin-1 file) is shown with replacement marks instead of
+        # making the whole list fail to load.
+        text = {} if binary else {'encoding': 'utf-8', 'errors': 'replace'}
+        r = subprocess.run(['cliphist'] + args, input=input, capture_output=True, timeout=timeout, **text)
         return r.returncode, r.stdout
     except (OSError, subprocess.TimeoutExpired) as e:
         raise Fail('cliphist didn\'t answer (%s)' % e)

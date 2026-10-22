@@ -9,6 +9,7 @@ import io
 import json
 import os
 import pathlib
+import shutil
 import tempfile
 import types
 import unittest
@@ -680,6 +681,23 @@ class ClipboardHelper(unittest.TestCase):
                 self.c.decode(bad)
             with self.assertRaises(self.c.Fail):
                 self.c.delete(bad)
+
+    def test_list_with_text_that_isnt_utf8(self):
+        # One item copied from a Latin-1 file mustn't make the whole history fail to load.
+        tmp = tempfile.mkdtemp(prefix='hearth-clip-test-')
+        self.addCleanup(shutil.rmtree, tmp, True)
+        for name, body in (('cliphist', "printf '2\\tcaf\\351\\n1\\tplain\\n'"), ('wl-copy', 'exit 0'), ('wl-paste', 'exit 0')):
+            with open(os.path.join(tmp, name), 'w') as f:
+                f.write('#!/bin/sh\n' + body + '\n')
+            os.chmod(os.path.join(tmp, name), 0o755)
+        self.c.CACHE = os.path.join(tmp, 'cache')
+        old_path = os.environ.get('PATH', '')
+        os.environ['PATH'] = tmp + os.pathsep + old_path
+        self.addCleanup(os.environ.__setitem__, 'PATH', old_path)
+        r = self.c.list_items()
+        self.assertTrue(r['available'])
+        self.assertEqual([i['id'] for i in r['items']], ['2', '1'])
+        self.assertEqual(r['items'][0]['text'], 'caf\ufffd')
 
     def test_mime(self):
         self.assertEqual(self.c.mime_of(b'\x89PNG\r\n'), 'image/png')
