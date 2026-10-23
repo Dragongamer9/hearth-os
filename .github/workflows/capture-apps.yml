@@ -140,6 +140,13 @@ jobs:
             [ "${PIPESTATUS[0]}" = 0 ] || status=1
           done
           exit $status
+      - name: What the session's programs said (when something failed)
+        if: failure()
+        run: |
+          for f in /tmp/out/logs-*/*.log; do
+            [ -s "$f" ] && echo "::notice title=$(basename $(dirname $f))/$(basename $f)::$(tail -c 1200 "$f" | tr '\n' '|')"
+          done
+          true
       - name: gpu-screen-recorder (Fedora's COPR) is found and set up the way Recorder expects
         if: matrix.kind == 'wayland'
         continue-on-error: true
