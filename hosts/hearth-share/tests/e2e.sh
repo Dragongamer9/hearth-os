@@ -8,7 +8,7 @@ export HOME=$(mktemp -d)
 OUT=${OUT:-/tmp/share-e2e}; mkdir -p "$OUT"
 FAILED=0
 fail() { echo "::error title=Share ($KIND) $1::$2"; tail -n 5 "$XDG_RUNTIME_DIR/hearth-share/capture.log" 2>/dev/null; FAILED=1; }
-note() { echo "::notice title=Share ($KIND)::$*"; }
+note() { echo "ok: $*"; SUMMARY="$SUMMARY$*  ·  "; }
 field() { python3 -c 'import json,sys
 d=json.loads(sys.stdin.read() or "{}"); v=d.get(sys.argv[1]); print("" if v is None else v)' "$1"; }
 
@@ -45,4 +45,5 @@ code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/wrongtoken
 
 wait $pid; rc=$?
 [ $rc = 0 ] && note "stopped cleanly" || fail "stop" "exit $rc: $(cat "$OUT/serve.err")"
+echo "::notice title=Share ($KIND) passed::${SUMMARY:-nothing}" | cut -c1-4000
 exit $FAILED

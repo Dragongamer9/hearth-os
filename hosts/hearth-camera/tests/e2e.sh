@@ -7,7 +7,7 @@ export HOME=$(mktemp -d) HEARTH_CAMERA_TEST=1
 OUT=${OUT:-/tmp/camera-e2e}; mkdir -p "$OUT"
 FAILED=0
 fail() { echo "::error title=Camera ($KIND) $1::$2"; tail -n 5 "$XDG_RUNTIME_DIR/hearth-camera/ffmpeg.log" 2>/dev/null; FAILED=1; }
-note() { echo "::notice title=Camera ($KIND)::$*"; }
+note() { echo "ok: $*"; SUMMARY="$SUMMARY$*  ·  "; }
 streams() { ffprobe -v error -show_entries stream=codec_type,codec_name,width,height -of csv=p=0 "$1" 2>/dev/null | tr '\n' ' '; }
 dur() { ffprobe -v error -show_entries format=duration -of csv=p=0 "$1" 2>/dev/null | cut -d. -f1; }
 
@@ -24,4 +24,5 @@ v=$($B --video 2 --device test --no-sound 2>&1 | tail -1); s=$(streams "$v")
 if [[ "$s" == *video* ]] && [[ "$s" != *audio* ]]; then note "video without sound: $s"; else fail "silent video" "$v: $s"; fi
 
 r=$($B --photo --device /dev/video99 2>&1); [ $? -ne 0 ] && note "a missing camera says: $r" || fail "missing camera" "$r"
+echo "::notice title=Camera ($KIND) passed::${SUMMARY:-nothing}" | cut -c1-4000
 exit $FAILED
