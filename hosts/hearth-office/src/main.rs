@@ -181,7 +181,7 @@ fn export_pdf(app: tauri::AppHandle, window: tauri::WebviewWindow, path: String,
             let wv = pw.inner();
             let op = PrintOperation::new(&wv);
             let settings = gtk::PrintSettings::new();
-            settings.set_printer(Some("Print to File"));
+            settings.set_printer("Print to File");
             settings.set("output-file-format", Some("pdf"));
             let uri = gtk::glib::filename_to_uri(&p2, None).map(|u| u.to_string()).unwrap_or_else(|_| format!("file://{p2}"));
             settings.set("output-uri", Some(&uri));
