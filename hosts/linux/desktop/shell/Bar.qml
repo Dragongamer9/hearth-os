@@ -59,7 +59,7 @@ PanelWindow {
         }
         for (const t of ToplevelManager.toplevels.values) {
             const own = ownWindow(t);
-            const entry = own ? null : DesktopEntries.heuristicLookup(t.appId);
+            const entry = own ? null : AppIcons.entryFor(t.appId);
             const key = own ? "own:" + t.title : entry ? entry.id : "app:" + (t.appId || t.title);
             if (!byKey[key]) {
                 byKey[key] = { key: key, id: entry ? entry.id : "", entry: entry, pinned: false, own: own, windows: [] };
@@ -298,12 +298,13 @@ PanelWindow {
                     onDragStarted: { bar.dragFrom = index; bar.dragTo = index; }
                     onDragMoved: pos => bar.dragTo = bar.dropIndexAt(pos)
                     onDragEnded: bar.finishDrag()
-                    IconImage {
+                    AppIcon {
                         anchors.centerIn: parent
-                        implicitSize: 28
-                        // Hearth's own windows (Settings, Files, Task Manager) show the Hearth mark.
-                        source: task.modelData.own ? Qt.resolvedUrl("images/hearth-logo.png")
-                            : Quickshell.iconPath(task.modelData.entry ? task.modelData.entry.icon : (task.wins.length ? task.wins[0].appId : ""), "application-x-executable")
+                        size: 28
+                        // Hearth's own windows (Settings, Files, Task Manager) show their own Hearth icons.
+                        source: task.modelData.own ? AppIcons.own(task.wins.length ? task.wins[0].title : "") : ""
+                        icon: task.modelData.entry ? (task.modelData.entry.icon || "") : ""
+                        appId: task.wins.length ? (task.wins[0].appId || "") : (task.modelData.id || "")
                     }
                 }
             }
