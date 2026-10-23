@@ -23,6 +23,8 @@ W=/mnt/boottest
 if [ "$(df --output=avail -B1 /mnt 2>/dev/null | tail -1 || echo 0)" -lt "$(df --output=avail -B1 . | tail -1)" ]; then W="$PWD/boottest"; fi
 sudo mkdir -p "$W" && sudo chown "$(id -u)" "$W"
 fail() { echo "::error title=Boot rollback test::$*"; exit 1; }
+# Logs can't be read from everywhere this is looked at: the failing command goes on the run page.
+trap 'echo "::error title=Boot rollback test::line $LINENO: $BASH_COMMAND (exit $?)"' ERR
 clean() { sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g; s/\r//g' "$@"; }
 
 echo "--- 1. install $TAG as $REF (offline, from an OCI copy)"
@@ -55,8 +57,9 @@ sudo mount -o subvol=root "${LOOP}p3" $H && sudo mount "${LOOP}p2" $H/boot && su
 dep=$(sudo sh -c "ls -d $H/ostree/deploy/default/deploy/*.0 | head -1")
 csum=$(basename "$dep" .0)
 sudo test -f "$dep/usr/libexec/nimbus/hearth-boot-guard" || fail "the installed system isn't the image built here (no hearth-boot-guard)"
-sudo podman run --rm --privileged -v $H:$H --security-opt label=disable "$TOOLS" \
-  ostree admin deploy --sysroot=$H --os=default --origin-file="$dep.origin" --karg-append=systemd.unit=emergency.target "$csum"
+# (ostree's own command isn't in every image: added for this run, as the installer's run.sh does.)
+sudo podman run --rm --privileged -v $H:$H --security-opt label=disable "$TOOLS" sh -c \
+  "command -v ostree >/dev/null || dnf -y -q install ostree </dev/null >&2; ostree admin deploy --sysroot=$H --os=default --origin-file='$dep.origin' --karg-append=systemd.unit=emergency.target '$csum'"
 sudo python3 -I "$dep/usr/libexec/nimbus/hearth-boot-guard" setup --boot $H/boot
 if sudo grep -qs hearth-bls.cfg $H/boot/grub2/grub.cfg; then sudo sh "$dep/usr/libexec/nimbus/hearth-bls-grub" --boot $H/boot; fi
 sudo sh -c "grep -H . $H/boot/loader/entries/*.conf; cat $H/boot/grub2/custom.cfg $H/boot/grub2/hearth-boot.cfg; head -c 300 $H/boot/grub2/grubenv; echo"
