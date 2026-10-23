@@ -79,11 +79,14 @@ Scope {
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
                         spacing: 12
 
-                        IconImage {
+                        AppIcon {
                             Layout.alignment: Qt.AlignTop
-                            implicitSize: 40
-                            visible: source != ""
-                            source: card.modelData.image || (card.modelData.appIcon ? Quickshell.iconPath(card.modelData.appIcon, true) : "")
+                            size: 40
+                            genericFallback: false
+                            visible: hasIcon
+                            source: card.modelData.image ? AppIcons.fromIcon(card.modelData.image) : ""
+                            icon: card.modelData.appIcon || ""
+                            appId: card.modelData.desktopEntry || ""
                         }
 
                         ColumnLayout {
