@@ -166,9 +166,11 @@ fn pick_drawing() -> Vec<String> {
         || std::fs::read_to_string("/proc/cmdline").map(|c| c.split_whitespace().any(|w| w == "nomodeset")).unwrap_or(false);
     let nvidia = std::fs::read_dir("/sys/class/drm").into_iter().flatten().flatten()
         .any(|e| std::fs::read_to_string(e.path().join("device/vendor")).map(|v| v.trim() == "0x10de").unwrap_or(false));
-    let new_driver = std::fs::read_to_string("/sys/module/nvidia/version").unwrap_or_default()
+    // Nvidia: WebKit's newer drawing path (DMA-BUF) crashes these windows on 615.x too, so the older path is used
+    // on every Nvidia driver, as Hearth Text, Clock and the other apps already do.
+    let _new_driver = std::fs::read_to_string("/sys/module/nvidia/version").unwrap_or_default()
         .trim().split('.').next().and_then(|m| m.parse::<u32>().ok()).map(|m| m >= 560).unwrap_or(false);
-    if fallback || (nvidia && !new_driver) {
+    if fallback || nvidia {
         std::env::set_var(VAR, "1");
         return vec![VAR.into()];
     }
