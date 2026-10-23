@@ -1,7 +1,7 @@
 {
   "name": "hearth-electron",
   "productName": "Hearth",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "license": "GPL-3.0-or-later",
   "description": "Hearth's window drawn by Chromium (Electron), on top of the same Hearth core (hearth --core-stdio). Used on Nvidia graphics.",
   "main": "src/main.js",
