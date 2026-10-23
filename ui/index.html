@@ -726,7 +726,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .mkc .cover .notinst{left:auto;right:8px}
 .mkc-cv .lfav{position:absolute;right:8px;bottom:8px;z-index:3;font-size:13px;text-shadow:0 1px 6px rgba(0,0,0,.8)}
 .mko{position:absolute;inset:0;z-index:4;background:rgba(8,11,15,.58);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;opacity:0;pointer-events:none;transition:opacity .14s}
-body.mk .mkc:hover .mko{opacity:1;pointer-events:auto}
+body.mk-on .mkc:hover .mko{opacity:1;pointer-events:auto}
 .mko-play,.mkr-play{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 18px;border-radius:18px;background:var(--accent);color:var(--accentInk);font-weight:700;font-size:13px}
 .mko-play svg,.mkr-play svg{width:13px;height:13px;fill:currentColor;stroke:none}.mko-play.sm{height:30px;padding:0 13px;font-size:12px}
 .mko-r{display:flex;gap:6px}.mko-b{width:32px;height:32px;border-radius:16px;border:1px solid rgba(255,255,255,.3);background:rgba(0,0,0,.35);color:#fff;display:grid;place-items:center}.mko-b svg{width:15px;height:15px}.mko-b.on{color:#ffd166}.mko-b.on svg{fill:currentColor}
@@ -735,18 +735,18 @@ body.mk .mkc:hover .mko{opacity:1;pointer-events:auto}
 .mk-rc{position:relative;flex:none;width:clamp(200px,19vw,260px);aspect-ratio:16/8;border-radius:10px;overflow:hidden;cursor:pointer}
 .mk-rc .art,.mk-rc .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.mk-rc:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 35%,rgba(6,8,12,.9))}
 .mk-rc-t{position:absolute;left:12px;right:12px;bottom:10px;z-index:1;display:flex;flex-direction:column}.mk-rc-t b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mk-rc-t small{font-size:12px;color:#c3ccd6}
-.mk-rc .mko-play{position:absolute;right:10px;top:10px;z-index:2;opacity:0;transition:opacity .14s}body.mk .mk-rc:hover .mko-play{opacity:1}
+.mk-rc .mko-play{position:absolute;right:10px;top:10px;z-index:2;opacity:0;transition:opacity .14s}body.mk-on .mk-rc:hover .mko-play{opacity:1}
 .mk-empty{padding:40px 10px;color:var(--dim);font-size:15px;display:flex;flex-direction:column;align-items:flex-start;gap:12px}
 /* rows: the Table, and the Desk's list view */
 .mk-rows,.mk-tbody{display:flex;flex-direction:column}
 .mkr{display:grid;grid-template-columns:minmax(0,2.4fr) minmax(70px,.8fr) minmax(90px,.9fr) minmax(70px,.7fr) minmax(70px,.7fr) minmax(96px,.9fr) 84px;align-items:center;gap:12px;min-height:44px;padding:4px 12px;border-radius:8px;font-size:13px;color:#b8c2ce;content-visibility:auto;contain-intrinsic-size:auto 46px}
-.mk-table .mkr{grid-template-columns:28px minmax(0,2.4fr) minmax(70px,.8fr) minmax(90px,.9fr) minmax(70px,.7fr) minmax(70px,.7fr) minmax(90px,.8fr) 52px}
+.mk-table .mkr{grid-template-columns:28px minmax(150px,3fr) minmax(60px,.8fr) minmax(80px,.9fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(76px,.8fr) 40px}
 .mkr>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mkr:hover{background:var(--panel)}.mkr.focus{background:var(--panel2);box-shadow:inset 0 0 0 2px var(--accent)}.mkr.sel{background:color-mix(in srgb,var(--accent) 14%,var(--panel))}
 .mkr-n{display:flex;align-items:center;gap:10px;min-width:0}.mkr-n b{color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mkr-th{width:24px;aspect-ratio:3/4;flex:none;position:relative}.mkr-th .cover{position:absolute;inset:0;border-radius:4px}.mkr-th .ct,.mkr-th .notinst,.mkr-th .dl{display:none}
 .mkr-p{text-align:right;overflow:visible!important}.mkr-play{height:28px;padding:0 10px;font-size:12px;opacity:0;pointer-events:none}.mk-table .mkr-play{width:28px;padding:0;justify-content:center;border-radius:14px;font-size:0;gap:0}
-body.mk .mkr:hover .mkr-play{opacity:1;pointer-events:auto}.mkr.focus .mkr-play{opacity:1;pointer-events:auto}
+body.mk-on .mkr:hover .mkr-play{opacity:1;pointer-events:auto}.mkr.focus .mkr-play{opacity:1;pointer-events:auto}
 .mkr-hd{position:sticky;top:0;z-index:3;background:var(--bg);min-height:36px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);border-radius:0}
 .mkr-hd:hover{background:var(--bg)}.mkr-hd button{text-align:left;color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 6px;margin-left:-6px;border-radius:5px;white-space:nowrap}.mkr-hd button:hover,.mkr-hd button.focus{color:var(--text);background:var(--panel)}.mkr-hd button.on{color:var(--text)}
 .mk-cb{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--faint);display:grid;place-items:center;cursor:pointer}.mk-cb.on{background:var(--accent);border-color:var(--accent);color:var(--accentInk)}.mk-cb svg{width:13px;height:13px;stroke-width:2.6}
@@ -794,7 +794,7 @@ body.mk .mkr:hover .mkr-play{opacity:1;pointer-events:auto}.mkr.focus .mkr-play{
 .mkm-i kbd{font:inherit;font-size:11px;color:var(--dim)}.mkm-i:hover,.mkm-i.focus{background:var(--panel3);box-shadow:none}.mkm-i.danger{color:#ff8a8a}
 .mkm-sep{height:1px;background:var(--line);margin:4px 0}
 .scrim.light{background:transparent}
-body.mk .mk [data-f].focus:not(.mkc):not(.mkr):not(.mkm-i){box-shadow:0 0 0 2px var(--accent)}
+body.mk-on .mk [data-f].focus:not(.mkc):not(.mkr):not(.mkm-i){box-shadow:0 0 0 2px var(--accent)}
 /* ===================== Library layouts (Settings › You › Library layout) ===================== */
 /* Shared: status chips, the info bar, the background art, boxes that fill the rest of the screen (.lfit) */
 .lwrap{position:relative}
@@ -2936,7 +2936,8 @@ const lDeckHead = g => `<div class="ld-title">${esc(g.title)}</div><div class="x
 // The Library's games in the chosen layout (viewLibrary calls this when there are games to show).
 function libBody(L){
   const id=libLayout();
-  queueMicrotask(()=>{ if(S.view==='library'){ lFit(); if(focused && focused.closest && focused.closest('.lfit')){ focused.scrollIntoView({block:'nearest',inline:'center'}); $('#view').scrollTop=0; } } });
+  const fit=()=>{ if(S.view==='library'){ lFit(); if(focused && focused.closest && focused.closest('.lfit')){ focused.scrollIntoView({block:'nearest',inline:'center'}); $('#view').scrollTop=0; } } };
+  queueMicrotask(fit); requestAnimationFrame(fit);
   return `<div class="lwrap lw-${id}">${(LIBL[id]||LIBL.covers)(L)}</div>`;
 }
 
@@ -3162,6 +3163,7 @@ function mkHero(g, ctx){
 }
 function mkPage(ctx){
   const k=mkKind();
+  if(MK.kind!==k+ctx){ MK.kind=k+ctx; MK.cur=null; MK.sel.clear(); MK.anchor=null; }   // another layout: start from its first game
   return k==='table' ? mkTable(ctx) : k==='launcher' ? mkLauncher(ctx) : mkDesk(ctx);
 }
 // Draw again, keeping where the lists were scrolled to and what was picked.
@@ -8603,7 +8605,8 @@ try{ INPUT.mode = localStorage.getItem('nimbus.inputMode') || 'auto'; }catch(e){
 // actions, key hints, right-click menus) on with keyboard or mouse input and off when a controller is used.
 const MADE_FOR = [['auto','Automatic'],['mk','Mouse & keyboard'],['pad','Controller']];
 function mkOn(){ const m=LOOK.madeFor||'auto'; return m==='mk' || (m==='auto' && (INPUT.last==='kbd' || (INPUT.last==='mouse' && !INPUT.touch))); }
-function applyMk(){ const on=mkOn(); document.body.classList.toggle('mk', on); document.body.classList.toggle('mk-pad', !on); }
+// (Not the class "mk": that's the keyboard & mouse layouts' own box, and on <body> it threw the whole page off.)
+function applyMk(){ const on=mkOn(); document.body.classList.toggle('mk-on', on); document.body.classList.toggle('mk-pad', !on); }
 function promptStyle(){
   if(INPUT.mode!=='auto') return INPUT.mode;
   const m=LOOK.madeFor||'auto';
