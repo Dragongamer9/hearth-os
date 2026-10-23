@@ -338,8 +338,13 @@ def run(cmd, timeout=600):
         return 124, 'it took too long'
 
 
+ANSI = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07')
+
+
 def last_line(text, default):
-    lines = [l.strip() for l in (text or '').splitlines() if l.strip() and not l.startswith(('dlstatus:', 'pmstatus:'))]
+    """The line that says what went wrong (distrobox colours its output: the colour codes are taken out)."""
+    lines = [l.strip() for l in ANSI.sub('', text or '').replace('\r', '\n').splitlines()
+             if l.strip() and not l.startswith(('dlstatus:', 'pmstatus:')) and re.search(r'\w', l)]
     for l in reversed(lines):
         if l.lower().startswith(('e:', 'error')):
             return re.sub(r'^(e:|error:?)\s*', '', l, flags=re.I)
