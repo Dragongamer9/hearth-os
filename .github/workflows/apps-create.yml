@@ -34,7 +34,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
-            xvfb x11-utils imagemagick xdotool dbus-x11 fontconfig fonts-dejavu fonts-noto-color-emoji fonts-noto-core labwc wtype wl-clipboard grim >/dev/null
+            xvfb x11-utils imagemagick xdotool dbus-x11 dbus-daemon fontconfig fonts-dejavu fonts-noto-color-emoji fonts-noto-core labwc wtype wl-clipboard grim >/dev/null
       - name: Unit tests (each app's library, hearth-gamma's ramps, Settings › Accessibility's helper)
         run: |
           set -o pipefail
@@ -80,7 +80,7 @@ jobs:
           win() { for i in $(seq 1 20); do w=$(xdotool search --name "$1" 2>/dev/null | tail -1); [ -n "$w" ] && { echo "$w"; return; }; sleep 0.5; done; }
           # Paint, with a picture opened from the command line.
           convert -size 900x560 gradient:'#ff8a3d-#2a1206' -fill white -pointsize 44 -gravity center -annotate 0 'Hearth Paint' $HOME/Pictures/test.png
-          "$CARGO_TARGET_DIR/release/hearth-paint" $HOME/Pictures/test.png > paint.log 2>&1 &
+          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-paint" $HOME/Pictures/test.png > paint.log 2>&1 &
           sleep 8; w=$(win 'Paint'); xdotool windowactivate --sync "$w" 2>/dev/null || true
           { echo "--- processes"; ps aux | grep -E 'hearth-|Xvfb|WebKit' | grep -v grep; echo "--- windows"; xwininfo -root -children 2>&1 | head -30; echo "--- paint window: $w"; } > shots/diagnostics.txt 2>&1
           sleep 10; { echo "--- 10 s later"; xwininfo -root -children 2>&1 | head -30; } >> shots/diagnostics.txt 2>&1
@@ -92,18 +92,18 @@ jobs:
           sleep 1; import -window root shots/paint-drawn.png || true
           pkill -f release/hearth-paint || true
           # Fonts.
-          "$CARGO_TARGET_DIR/release/hearth-fonts" > fonts.log 2>&1 &
+          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-fonts" > fonts.log 2>&1 &
           sleep 8; import -window root shots/fonts.png || true
           w=$(win 'Fonts'); xdotool windowactivate --sync "$w" 2>/dev/null || true
           xdotool key Down Down Down; sleep 2; import -window root shots/fonts-picked.png || true
           pkill -f release/hearth-fonts || true
           # Fonts opening a font file (as Hearth Files does).
           f=$(fc-list : file | grep -m1 -i 'DejaVuSerif.ttf' | cut -d: -f1); cp "$f" $HOME/Downloads/Test-Serif.ttf
-          "$CARGO_TARGET_DIR/release/hearth-fonts" $HOME/Downloads/Test-Serif.ttf > fonts2.log 2>&1 &
+          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-fonts" $HOME/Downloads/Test-Serif.ttf > fonts2.log 2>&1 &
           sleep 8; import -window root shots/fonts-file.png || true
           pkill -f release/hearth-fonts || true
           # The emoji picker, then a search.
-          "$CARGO_TARGET_DIR/release/hearth-emoji" > emoji.log 2>&1 &
+          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-emoji" > emoji.log 2>&1 &
           sleep 7; import -window root shots/emoji.png || true
           w=$(win 'Emoji'); xdotool windowactivate --sync "$w" 2>/dev/null || true
           xdotool type --delay 80 'heart'; sleep 1; import -window root shots/emoji-search.png || true
