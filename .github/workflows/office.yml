@@ -180,8 +180,8 @@ jobs:
               except Exception as e: check(False, f'{f}: {e}')
           sys.exit(0 if ok else 1)
           EOF
-          pdftoppm -r 40 -png -f 1 -l 1 out/w.pdf shots/pdf-write 2>/dev/null || true
-          pdftoppm -r 40 -png -f 1 -l 1 out/p.pdf shots/pdf-slides 2>/dev/null || true
+          pdftoppm -r 70 -png -f 1 -l 1 out/w.pdf shots/pdf-write 2>/dev/null || true
+          pdftoppm -r 50 -png -f 1 -l 1 out/p.pdf shots/pdf-slides 2>/dev/null || true
           exit $fail
       - name: Screenshots of the three apps
         if: always()
@@ -198,13 +198,48 @@ jobs:
           shot slides-present --present samples/sample.pptx; xdotool key Right; sleep 1; import -window root shots/slides-present-2.png || true; pkill -f target/release/hearth-office; sleep 1
           shot sheets-start --app sheets; pkill -f target/release/hearth-office; sleep 1
           for f in shots/*.log; do echo "::notice title=$(basename "$f")::$(tail -c 600 "$f" | tr '\n' '|')"; done
-      - name: Screenshots as notices
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: Write with a .docx open"
         if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
         run: |
-          for n in write-docx sheets-xlsx slides-pptx write-typing slides-present-2; do
-            f=shots/$n.png; [ -f "$f" ] || continue
-            convert "$f" -resize 640x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
-          done
+          f=shots/write-docx.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT write-docx $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: Write while typing (spelling marks)"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/write-typing.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT write-typing $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: Sheets with an .xlsx open"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/sheets-xlsx.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT sheets-xlsx $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: Slides with a .pptx open"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/slides-pptx.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT slides-pptx $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: Slides presenting"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/slides-present-2.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT slides-present-2 $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: page 1 of the PDF Write exported"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/pdf-write-1.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT pdf-write-1 $i::$part"; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:

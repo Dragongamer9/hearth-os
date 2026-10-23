@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- Placeholder icon for Hearth Slides (hosts/hearth-office). The hearth-icons pass replaces it with the real artwork. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff9b52"/><stop offset="1" stop-color="#e2552b"/></linearGradient></defs>
-  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#g)"/>
-  <g fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="18" width="36" height="24" rx="3"/><path d="M32 42v6M25 48h14M22 27h20M22 33h12"/></g>
-</svg>

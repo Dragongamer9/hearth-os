@@ -1029,18 +1029,37 @@ W.spell = (() => {
   const user = () => new Set((H.settings.dictionary || []).map((w) => w.toLowerCase()));
   S.ignored = new Set();
   S.start = () => {
-    if (S.worker) return;
+    if (S.worker || S.local) return;
     try {
       S.worker = new Worker('spell-worker.js');
       S.worker.onmessage = (e) => {
         const m = e.data;
-        if (m.type === 'ready') { S.ready = true; S.soon(); $('#wSpell') && ($('#wSpell').textContent = ''); return; }
-        if (m.type === 'error') { $('#wSpell').textContent = 'Spelling unavailable'; H.invoke('log', { message: 'spell: ' + m.error }); return; }
+        if (m.type === 'ready') { S.ready = true; S.soon(); H.invoke('log', { message: 'spell checker ready (worker); highlights: ' + !!(window.CSS && CSS.highlights) }); return; }
+        if (m.type === 'error') { H.invoke('log', { message: 'spell worker: ' + m.error }); S.worker = null; S.startHere(); return; }
         const p = S.pending.get(m.id); if (p) { S.pending.delete(m.id); p(m.result); }
       };
-    } catch (e) { H.invoke('log', { message: 'spell worker: ' + e }); }
+      S.worker.onerror = (e) => { H.invoke('log', { message: 'spell worker failed: ' + (e.message || e) }); S.worker = null; S.startHere(); };
+    } catch (e) { H.invoke('log', { message: 'spell worker: ' + e }); S.worker = null; S.startHere(); }
   };
-  const ask = (type, data) => new Promise((res) => { if (!S.worker || !S.ready) return res(null); const id = ++S.seq; S.pending.set(id, res); S.worker.postMessage({ id, type, data }); });
+  // Where the web view can't run the worker: the same checker on the page itself (loading takes a moment).
+  S.startHere = async () => {
+    if (S.local) return;
+    S.local = true;
+    try {
+      await H.need('vendor/typo.js');
+      const [aff, dic] = await Promise.all([fetch('vendor/en_US.aff').then((r) => r.text()), fetch('vendor/en_US.dic').then((r) => r.text())]);
+      await H.sleep(50);
+      S.dict = new Typo('en_US', aff, dic, { platform: 'any' });
+      S.ready = true; S.soon(); H.invoke('log', { message: 'spell checker ready (page); highlights: ' + !!(window.CSS && CSS.highlights) });
+    } catch (e) { $('#wSpell').textContent = 'Spelling unavailable'; H.invoke('log', { message: 'spell: ' + e }); }
+  };
+  const okWord = (w) => S.dict.check(w) || S.dict.check(w.toLowerCase()) || (w.endsWith("'s") && S.dict.check(w.slice(0, -2)));
+  const ask = (type, data) => new Promise((res) => {
+    if (!S.ready) return res(null);
+    if (S.dict) { try { if (type === 'check') { const o = {}; for (const w of data) o[w] = okWord(w); res(o); } else res(S.dict.suggest(data, 8)); } catch { res(null); } return; }
+    if (!S.worker) return res(null);
+    const id = ++S.seq; S.pending.set(id, res); S.worker.postMessage({ id, type, data });
+  });
   const WORD = /[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-z]+)*/g;
   const skip = (w) => w.length < 2 || /^[A-Z]{2,}$/.test(w) || user().has(w.toLowerCase()) || S.ignored.has(w);
   S.isWrong = (w) => { w = w.replace(/’/g, "'"); return !skip(w) && S.cache.get(w) === false; };
