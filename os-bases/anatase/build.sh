@@ -407,6 +407,9 @@ dnf5 -y install 7zip || dnf5 -y install p7zip p7zip-plugins || true
 # bsdtar: Hearth Files opens .rar, .iso, .cbr and the rest of the archive kinds 7-Zip doesn't.
 dnf5 -y install bsdtar || true
 dnf5 -y install fuse-overlayfs bubblewrap xdpyinfo xrandr || true
+# Send logs decodes the screen's EDID (what the TV says it can do: HDMI 2.1's fast link, its fastest 4K rates, VRR)
+# when a screen shows fewer modes than expected. Not fatal.
+dnf5 -y install edid-decode || dnf5 -y install libdisplay-info-tools || true
 dnf5 -y install ntfsprogs ntfs-3g e2fsprogs btrfs-progs util-linux || true
 dnf5 -y install umu-launcher || true
 # Claude Desktop (Hearth Settings › Claude: Anthropic's package, unpacked in the user's home folder by
@@ -877,6 +880,21 @@ chmod 755 /usr/lib/systemd/system-sleep/hearth-restart-keep
 # hibernation, or the picture comes back black or broken (RTX desktops). Written before the boot image (dracut,
 # below) so the setting is in it too. Harmless without an Nvidia card (the module never loads).
 echo "Nvidia power management Anatase brings: $(grep -rhs 'NVreg_PreserveVideoMemoryAllocations\|NVreg_TemporaryFilePath\|NVreg_UseKernelSuspendNotifiers' /usr/lib/modprobe.d /etc/modprobe.d | tr '\n' ' ')"
+# What the screen side of the image is, as a notice on the CI run ("only 60 Hz on a 144 Hz TV" reports: HDMI 2.1's
+# fast link (FRL) depends on the driver's version and nvidia-modeset's options, 4K above 60 Hz needs it): the
+# driver's packages and version, open or Nvidia's own kernel modules, every nvidia option in modprobe.d, the
+# kernel arguments the image adds, and gamescope's version.
+{
+  NV_KVER=$(ls /usr/lib/modules | sort -V | tail -1)
+  echo "kernel $NV_KVER;"
+  echo "packages: $(rpm -qa 2>/dev/null | grep -iE 'nvidia|^kmod-nv|gamescope|edid-decode|libdisplay-info' | sort | tr '\n' ' ');"
+  echo "nvidia module: version $(modinfo -k "$NV_KVER" -F version nvidia 2>/dev/null || echo none), license $(modinfo -k "$NV_KVER" -F license nvidia 2>/dev/null || echo none) (Dual MIT/GPL = open modules);"
+  echo "nvidia-modeset options: $(modinfo -k "$NV_KVER" -F parm nvidia_modeset 2>/dev/null | cut -d: -f1 | tr '\n' ' ');"
+  echo "modprobe.d: $(grep -rhsE '^[[:space:]]*(options|install|blacklist)[[:space:]].*(nvidia|nouveau|nova)' /usr/lib/modprobe.d /etc/modprobe.d | tr '\n' ';');"
+  echo "kargs.d: $(cat /usr/lib/bootc/kargs.d/*.toml 2>/dev/null | grep -E '^kargs' | tr '\n' ' ')"
+} > /tmp/hearth-nvidia-notice.txt 2>&1 || true
+cat /tmp/hearth-nvidia-notice.txt || true
+echo "::notice title=Screen and Nvidia driver in this image::$(tr '\n' ' ' < /tmp/hearth-nvidia-notice.txt | cut -c1-3500)" || true
 mkdir -p /usr/lib/modprobe.d
 cat > /usr/lib/modprobe.d/zz-hearth-nvidia-power.conf <<'CONF'
 # Hearth: Quick Resume keeps games through sleep and turning off (hibernation). Nvidia's driver saves the graphics
