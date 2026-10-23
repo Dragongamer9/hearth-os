@@ -18,6 +18,24 @@ Steam's questions) and gets the controller through its own hearth-pad; Game Mode
 Which mode is on comes from the session's activation environment (systemctl --user show-environment): Desktop Mode's
 labwc puts WAYLAND_DISPLAY there, Game Mode's nimbus-watchdog DISPLAY with an empty WAYLAND_DISPLAY.
 
+Which apps get Hearth Files as their Open / Save dialog (xdg-desktop-portal's FileChooser is Hearth's in Hearth's
+session: nimbus-portals.conf, XDG_CURRENT_DESKTOP=Nimbus in both modes):
+  Flatpak and Snap apps              always (they can only use the portal)
+  Chromium, Brave, Chrome, newer Electron apps (VS Code, Discord...)   the portal whenever it's there
+  GTK 3 apps, older Electron apps, WebKitGTK's file buttons   GTK_USE_PORTAL=1 (nimbus-session) - for GTK's
+                                     "native" chooser, which most apps use
+  GTK 4 / libadwaita apps            GDK_DEBUG=portals (nimbus-session)
+  Qt / KDE apps                      Desktop Mode: qt6ct's standard_dialogs=xdgdesktopportal (theme/apply.sh); Game
+                                     Mode: QT_QPA_PLATFORMTHEME=xdgdesktopportal when the plugin is installed
+  Firefox / Hearth Browser           widget.use-xdg-desktop-portal.file-picker=1 (and GTK_USE_PORTAL)
+  Hearth's own apps (Tauri)          tauri-plugin-dialog's xdg-portal backend
+Apps that keep a dialog of their own (nothing outside the app can change it):
+  Wine / Proton programs (Windows' dialogs, drawn by Wine), Steam's own dialogs (its client draws them; its "Browse
+  local files" opens the folder, which is Hearth Files), Java/Swing and Tk apps, SDL and game-engine games that draw
+  their own browser, GTK apps that build a GtkFileChooserDialog themselves instead of the native chooser (some older
+  GTK 2/3 programs), apps that set QT_QPA_PLATFORMTHEME or GTK_USE_PORTAL=0 themselves, and Qt apps without the
+  xdgdesktopportal plugin.
+
 The picker gets a request file (HEARTH_PICK_REQUEST, JSON) and writes what was picked to HEARTH_PICK_RESULT:
   request: {kind: open|save|savefiles, title, accept, multiple, directory, filters: [{name, globs, mimes}], filter,
             folder, name, files, choices: [{id, label, options: [[id, label]], value}], app}
