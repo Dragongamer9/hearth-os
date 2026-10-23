@@ -25,6 +25,12 @@
 //! also on Hearth's starting screen while a game or Steam loads (`open_from_hearth`), and while HHD is starting its
 //! overlay app again (Hearth waits for it and asks HHD to start it: `open_or_wait`). Hearth's own Quick Access
 //! over the game is only a last resort, logged as such, when the overlay can't be shown at all.
+//!
+//! While Quick Access is open over a game nothing puts the game back in front of it (`front_decision`), and Hearth's
+//! own page doesn't act on the controller unless its window is what's on screen (`main_page_reads_pad`): it reads the
+//! controller itself through the browser, and Chromium (the Electron window app) keeps doing that for a hidden window,
+//! so a Guide press over a game also opened the main window's old panel behind the game, and the next press closed it
+//! and sent "back to the game", which put the game over the overlay that had just opened.
 
 use hearth_core::appid::{APPS_ID, HEARTH_ID};
 use hearth_core::bridge::Bridge;
@@ -91,7 +97,45 @@ pub struct GameMode {
     opened_after_wait: AtomicU64,
     /// When Hearth last asked HHD to start the app on its own (not for a press): the open HHD sends it along is ignored.
     keeper_poked_at: AtomicU64,
+    /// Hearth set its own window aside for something else (a game, an app, a Steam window): its page isn't on screen.
+    main_aside: AtomicBool,
+    /// What Hearth's page was last told about reading the controller (hostScreen): 0 nothing yet, 1 it may, 2 it may not.
+    pads_told: AtomicU64,
 }
+
+/// Who asks for something to come to the front.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrontAsk {
+    /// The running game (Hearth's own choices: it came up, the hand-back after Quick Access, the nudges after it).
+    Game,
+    /// Hearth's own page said "back to the game" (its panel closed, B on the starting screen).
+    MainWindowResume,
+    /// Hearth's own screen (a game ended, "Back to Hearth", the last resort).
+    Hearth,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrontAnswer {
+    Go,
+    /// Not now: Quick Access is open over the game, and the game would be drawn over it (or HHD's overlay hidden). The
+    /// game comes back in front when Quick Access closes (hide_overlay hands it back).
+    KeepQuickAccess,
+}
+/// Whether a request to put something in front goes ahead while Quick Access may be open over the game.
+pub fn front_decision(ask: FrontAsk, quick_access_open: bool) -> FrontAnswer {
+    match ask {
+        FrontAsk::Hearth => FrontAnswer::Go,
+        FrontAsk::Game | FrontAsk::MainWindowResume if quick_access_open => FrontAnswer::KeepQuickAccess,
+        _ => FrontAnswer::Go,
+    }
+}
+/// Whether Hearth's own page may act on the controller it reads itself (the browser's gamepad API): only while its
+/// window is what's on screen and Quick Access (the overlay) isn't open over it.
+pub fn main_page_reads_pad(main_aside: bool, quick_access_open: bool) -> bool { !main_aside && !quick_access_open }
+/// Hearth set its window aside, but it's what's on screen now (the window in front of it closed by itself): it isn't
+/// aside any more. Only ever gives the controller back, never takes it from Hearth's own screen.
+pub fn still_aside(main_aside: bool, hearth_on_screen: bool) -> bool { main_aside && !hearth_on_screen }
+/// Labels of focus changes that put Hearth's own window in front (everything else sets it aside).
+fn focus_is_hearth(label: &str) -> bool { matches!(label, "hearth" | "back to starting screen") }
 
 fn now() -> u64 { hearth_core::library::now_ms() }
 fn log(t: &str) { hearth_core::bridge::log(t); }
@@ -106,7 +150,7 @@ impl GameMode {
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()), game_wins: Default::default(),
             hhd_overlay: AtomicBool::new(false), win_tags: Default::default(), ids_on: AtomicBool::new(false),
             over_launch: AtomicBool::new(false), waiting: AtomicU64::new(0), wait_gen: AtomicU64::new(0), opened_after_wait: AtomicU64::new(0),
-            keeper_poked_at: AtomicU64::new(0) });
+            keeper_poked_at: AtomicU64::new(0), main_aside: AtomicBool::new(false), pads_told: AtomicU64::new(0) });
         let hhd = gm.inside() && hearth_core::overlay_link::hhd_hosts_overlay();
         gm.hhd_overlay.store(hhd, Ordering::SeqCst);
         gm
@@ -149,9 +193,24 @@ impl GameMode {
             let _g = me.focus_lock.lock().unwrap();
             let still = || me.gen.load(Ordering::SeqCst) == n;
             if !still() { log(&format!("focus: {label} dropped (something newer)")); return; }
+            if !focus_is_hearth(label) { me.set_aside(true); }
             f(&still);
         });
     }
+    /// Hearth's window set aside (or back on screen), and its page told whether it may act on the controller.
+    fn set_aside(&self, aside: bool) {
+        self.main_aside.store(aside, Ordering::SeqCst);
+        self.sync_main_pads();
+    }
+    /// Tells Hearth's page whether it may act on the controller it reads itself (when that changes).
+    pub fn sync_main_pads(&self) {
+        if !self.inside() { return; }
+        let on = main_page_reads_pad(self.main_aside.load(Ordering::SeqCst), self.overlay_on.load(Ordering::SeqCst));
+        let code = if on { 1 } else { 2 };
+        if self.pads_told.swap(code, Ordering::SeqCst) != code { self.to_main(ev("hostScreen", json!({"pads": on}))); }
+    }
+    /// Hearth's page (re)loaded: it's told again.
+    pub fn main_ready(&self) { self.pads_told.store(0, Ordering::SeqCst); self.sync_main_pads(); }
     pub fn focus_xid(self: &Arc<Self>, label: &'static str, win: u64, delay_ms: u64, soft: bool) {
         if win == 0 { return; }
         self.run_focus(label, delay_ms, soft, move |_| gs::focus_window(win));
@@ -160,6 +219,7 @@ impl GameMode {
     /// Hearth back in front (a game ended, Guide was pressed...): Hearth's number.
     pub fn come_back(self: &Arc<Self>) {
         self.claim();
+        self.set_aside(false);
         if !self.overlay_on.load(Ordering::SeqCst) && !self.look_closed.load(Ordering::SeqCst) { self.overlay_look(false, false); }
         if self.host.exists("main") { self.host.unminimize("main"); self.host.show("main"); self.host.focus("main"); }
         let main = self.xid(MAIN_TITLE);
@@ -172,7 +232,7 @@ impl GameMode {
             log(&format!("focus: Hearth in front (id {HEARTH_ID})"));
         });
     }
-    pub fn step_aside(&self) { if !self.windowed && self.host.exists("main") { self.host.hide("main"); } }
+    pub fn step_aside(&self) { if !self.windowed && self.host.exists("main") { self.host.hide("main"); self.set_aside(true); } }
 
     fn running(&self) -> Option<(String, Vec<u32>)> {
         let b = self.bridge.lock().ok()?;
@@ -192,7 +252,13 @@ impl GameMode {
         let Some((id, app_id)) = self.running_app() else { return };
         let bridge = self.bridge.clone();
         let game_wins = self.game_wins.clone();
+        let gm = self.clone();
         self.run_focus("game", delay_ms, soft, move |still| {
+            // Quick Access open over it: the game stays behind (hide_overlay hands it back when it closes).
+            if front_decision(FrontAsk::Game, gm.overlay_on.load(Ordering::SeqCst)) == FrontAnswer::KeepQuickAccess {
+                log(&format!("focus: {id} stays behind Quick Access (open); it comes back in front when Quick Access closes"));
+                return;
+            }
             let pids = || bridge.lock().map(|b| b.library.game_pids()).unwrap_or_default();
             // Never a game put aside (its window shows its last picture, frozen): not its processes, not its number.
             let (frozen, mut other_ids) = bridge.lock().map(|b| (b.library.frozen_pids(), b.library.frozen_ids())).unwrap_or_default();
@@ -253,6 +319,9 @@ impl GameMode {
                 std::thread::sleep(Duration::from_millis(500));
                 me.tag_windows(&mut seen, false);
                 gs::keep_list();
+                // Hearth's window set aside but on screen again (what was in front of it closed by itself): its page
+                // gets the controller back.
+                if me.main_aside.load(Ordering::SeqCst) && !still_aside(true, me.hearth_on_screen()) { me.set_aside(false); }
             }
         });
     }
@@ -344,7 +413,9 @@ impl GameMode {
                 Some(gs::Ready::Window(w)) => {
                     log(&format!("launch: {id} is ready (window {w:#x}, id {app_number}, {})", procs::describe(&pids())));
                     { let mut m = me.game_wins.lock().unwrap(); m.retain(|_, v| *v != w); m.insert(id.clone(), w); }
-                    if app_number != 0 {
+                    if front_decision(FrontAsk::Game, me.overlay_on.load(Ordering::SeqCst)) == FrontAnswer::KeepQuickAccess {
+                        log(&format!("focus: {id} stays behind Quick Access (open); it comes in front when Quick Access closes"));
+                    } else if app_number != 0 {
                         me.run_focus("game window", 0, false, move |_| { gs::front_by_id(app_number, w); log(&format!("focus: id {app_number} in front (window {w:#x})")); });
                     } else {
                         me.focus_xid("game window", w, 0, false);
@@ -387,6 +458,23 @@ impl GameMode {
     /// minimize take a moment to draw, and the first try can land before their window is ready.
     fn nudge_game(self: &Arc<Self>) {
         for ms in [1200u64, 3000] { self.focus_running_game(ms, true); }
+    }
+
+    /// Hearth's own page asked to go back to the game (its panel closed, B on the starting screen). Not while Quick
+    /// Access is open over the game: that's the overlay's to decide (it was the hidden page acting on a Guide press
+    /// meant for the overlay).
+    pub fn resume_from_main(self: &Arc<Self>) {
+        if front_decision(FrontAsk::MainWindowResume, self.overlay_on.load(Ordering::SeqCst)) == FrontAnswer::KeepQuickAccess {
+            log("focus: Hearth's window asked to go back to the game while Quick Access is open over it; ignored");
+            return;
+        }
+        self.resume_game();
+    }
+    /// Quick Access closes for something else (an app switch, Steam, Back to Hearth...): said in the log, so a close
+    /// nobody asked for can be traced.
+    fn close_for(self: &Arc<Self>, why: &str) {
+        if self.overlay_on.load(Ordering::SeqCst) { log(&format!("overlay: closing Quick Access ({why})")); }
+        self.hide_overlay();
     }
 
     /// Back to the game (Quick Access closed, "Back to game"): un-paused and in front.
@@ -470,6 +558,7 @@ impl GameMode {
         let _o = self.overlay_lock.lock().unwrap();
         self.overlay_on.store(true, Ordering::SeqCst);
         self.osd_on.store(false, Ordering::SeqCst);
+        self.sync_main_pads();
         self.claim();   // opening it is a choice too: a hand-back still waiting from the last close is dropped
         self.before_overlay.store(gs::focused().unwrap_or(0), Ordering::SeqCst);
         self.guide.buttons.store(true, Ordering::SeqCst);
@@ -648,6 +737,7 @@ impl GameMode {
             return;
         }
         self.overlay_on.store(false, Ordering::SeqCst);
+        self.sync_main_pads();
         let from_launch = self.over_launch.swap(false, Ordering::SeqCst);
         self.osd_on.store(false, Ordering::SeqCst);
         self.reveal_gen.fetch_add(1, Ordering::SeqCst);
@@ -928,10 +1018,10 @@ impl GameMode {
     /// Messages from the overlay page.
     pub fn from_overlay(self: &Arc<Self>, m: &Value) -> bool {
         match (m["type"].as_str().unwrap_or(""), m["action"].as_str().unwrap_or("")) {
-            ("overlay", "close") => self.hide_overlay(),
+            ("overlay", "close") => self.close_for("its page closed it: B, Guide or the panel emptied"),
             ("overlay", "alive") => self.overlay_alive.store(now(), Ordering::SeqCst),
             ("overlay", "painted") => self.reveal_overlay(),
-            ("overlay", "home") => { self.claim(); self.hide_overlay(); self.come_back(); }
+            ("overlay", "home") => { self.claim(); self.close_for("Back to Hearth"); self.come_back(); }
             ("hhd", "open") => self.hhd_open(m["late"] == true),
             // The page (re)loaded: HHD's overlay app loads it each time it connects, maybe after Quick Access was
             // opened (a press that waited for the app): it's told again, and gets its 5 s to answer from now.
@@ -943,8 +1033,8 @@ impl GameMode {
                 }
                 return false;
             }
-            ("resume", _) => { self.claim(); self.hide_overlay(); self.resume_game(); }
-            ("power", _) => { self.hide_overlay(); return false; }   // handled like the main window's
+            ("resume", _) => { self.claim(); self.close_for("Back to game"); self.resume_game(); }
+            ("power", _) => { self.close_for("power menu"); return false; }   // handled like the main window's
             _ => return false,
         }
         true
@@ -965,7 +1055,7 @@ impl GameMode {
             "focusApp" => {
                 let (id, pid) = (a["id"].as_u64().unwrap_or(0), a["pid"].as_u64().unwrap_or(0));
                 self.claim();
-                self.hide_overlay();
+                self.close_for("switching apps");
                 if pid == std::process::id() as u64 { return self.come_back(); }
                 self.step_aside();
                 if id == 0 && pid == 0 { let _ = hearth_core::steam::spawn(&hearth_core::paths::home(), "steam://open/main"); return self.host_action_now("showSteam", &json!({})); }
@@ -993,7 +1083,7 @@ impl GameMode {
             "showSteam" => {
                 if !self.inside() { return; }
                 self.claim();
-                self.hide_overlay();
+                self.close_for("a Steam window");
                 let me = self.clone();
                 // {wait: seconds}: Steam may still be starting (hidden) when its window is asked for.
                 let tries = (a["wait"].as_u64().unwrap_or(14).min(300) * 10 / 7).max(20);
@@ -1008,12 +1098,12 @@ impl GameMode {
                 });
             }
             "closeGame" => { if let Ok(mut b) = self.bridge.lock() { b.library.close_running(); } }
-            "comeBack" => { self.hide_overlay(); self.come_back(); }
+            "comeBack" => { self.close_for("Hearth back in front"); self.come_back(); }
             // Couch Co-op: the split screen (a window of the given process) in front, Hearth out of the way.
             "showPid" => {
                 let pid = a["pid"].as_u64().unwrap_or(0) as u32;
                 if pid == 0 || !self.inside() { return; }
-                self.hide_overlay();
+                self.close_for("Couch Co-op");
                 self.step_aside();
                 self.run_focus("couch co-op", 300, false, move |still| {
                     let mine = [std::process::id() as u64];
@@ -1022,8 +1112,80 @@ impl GameMode {
                 });
             }
             // Quick Resume: the game picked is running again; put it in front.
-            "resumeGame" => { self.hide_overlay(); self.resume_game(); }
+            "resumeGame" => { self.close_for("a game resumed"); self.resume_game(); }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_game_stays_behind_open_quick_access() {
+        // Quick Access open over the game: neither Hearth's own choices (the nudges, the game coming up) nor its page's
+        // "back to the game" put the game over it.
+        assert_eq!(front_decision(FrontAsk::Game, true), FrontAnswer::KeepQuickAccess);
+        assert_eq!(front_decision(FrontAsk::MainWindowResume, true), FrontAnswer::KeepQuickAccess);
+        // Closed: the game comes to the front as before.
+        assert_eq!(front_decision(FrontAsk::Game, false), FrontAnswer::Go);
+        assert_eq!(front_decision(FrontAsk::MainWindowResume, false), FrontAnswer::Go);
+        // Hearth's own screen always may (a game ended, Back to Hearth, the last resort).
+        assert_eq!(front_decision(FrontAsk::Hearth, true), FrontAnswer::Go);
+        assert_eq!(front_decision(FrontAsk::Hearth, false), FrontAnswer::Go);
+    }
+
+    #[test]
+    fn hearths_page_reads_the_controller_only_on_screen() {
+        assert!(main_page_reads_pad(false, false));             // Hearth's screen in front
+        assert!(!main_page_reads_pad(true, false));             // a game in front (Hearth's window hidden)
+        assert!(!main_page_reads_pad(false, true));             // Quick Access open over the starting screen
+        assert!(!main_page_reads_pad(true, true));              // Quick Access open over a game
+    }
+
+    #[test]
+    fn hearth_on_screen_again_gets_the_controller_back() {
+        assert!(still_aside(true, false));
+        assert!(!still_aside(true, true));                      // what was in front of it closed by itself
+        assert!(!still_aside(false, false));                    // never takes the controller from Hearth's screen
+        assert!(!still_aside(false, true));
+    }
+
+    #[test]
+    fn only_hearths_own_focus_changes_keep_its_page_on_screen() {
+        for l in ["hearth", "back to starting screen"] { assert!(focus_is_hearth(l), "{l}"); }
+        for l in ["game", "game window", "app window", "app", "window", "back from the overlay", "stream", "steam window", "Steam question", "couch co-op"] {
+            assert!(!focus_is_hearth(l), "{l}");
+        }
+    }
+
+    /// The owner's log (Hearth 0.6.0, Electron window, Handheld Daemon's overlay app; Guide over a GOG game): each press
+    /// opened Quick Access, the hidden main page toggled its own panel on the same press, and on every other press it
+    /// sent "back to the game", which put the game over the overlay at once ("focus: ... to the front" 8 ms after the
+    /// press) and again 1.2 s and 3 s later. Replayed through the decisions: the overlay keeps the front until it closes.
+    #[test]
+    fn owners_guide_presses_replayed() {
+        let mut aside = true;           // the game is up: Hearth's window was set aside
+        let mut open = false;
+        let mut game_put_over_quick_access = 0;
+        let mut main_page_acted = 0;
+        for press in 0..4 {
+            // Guide: Hearth opens the overlay (show_overlay).
+            open = true;
+            // The main page reads the same press through the browser: it may act only if told it may.
+            if main_page_reads_pad(aside, open) { main_page_acted += 1; }
+            // What the old page did on every other press: "back to the game"; and Hearth's nudges after it.
+            if press % 2 == 1 && front_decision(FrontAsk::MainWindowResume, open) == FrontAnswer::Go { game_put_over_quick_access += 1; }
+            for _nudge in [1200, 3000] { if front_decision(FrontAsk::Game, open) == FrontAnswer::Go { game_put_over_quick_access += 1; } }
+            // B in Quick Access: it closes (hide_overlay), and the game is handed back.
+            open = false;
+            assert_eq!(front_decision(FrontAsk::Game, open), FrontAnswer::Go);
+            aside = still_aside(aside, false);
+        }
+        assert_eq!(main_page_acted, 0, "Hearth's hidden page acted on Guide meant for the overlay");
+        assert_eq!(game_put_over_quick_access, 0, "the game was put in front of open Quick Access");
+        // Back to Hearth (come_back): its page reads the controller again.
+        assert!(main_page_reads_pad(false, open));
     }
 }
