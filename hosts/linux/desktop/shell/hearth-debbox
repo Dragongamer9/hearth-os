@@ -460,6 +460,11 @@ def create(quiet=False):
     progress(state['pct'], 'Starting the Debian box for the first time')
     code, out = stream(enter_cmd(['true']), lambda l: init_progress(l, state), timeout=1800)
     if code != 0:
+        # distrobox only follows the box's setup log the first time; once the box runs, entering again just works.
+        progress(state['pct'], 'Starting the Debian box again')
+        code, out2 = stream(enter_cmd(['true']), lambda l: init_progress(l, state), timeout=1800)
+        out = out if code != 0 and not out2.strip() else out2
+    if code != 0:
         raise Fail('the Debian box was made but didn\'t start (%s)' % last_line(out, 'distrobox enter failed'))
     progress(90, 'Getting Debian\'s list of packages')
     code, out = run(apt_update_cmd(), timeout=900)
