@@ -44,6 +44,7 @@ jobs:
           ./target/release/hearth-calculator --version
       - name: Run it and type a sum
         run: |
+          set +e
           mkdir -p shots
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_CALCULATOR_CONFIG="$RUNNER_TEMP/calc"
           Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
@@ -59,6 +60,7 @@ jobs:
           xdotool key alt+3; sleep 1; import -window root shots/programmer.png || true
           xdotool key alt+4; sleep 1; xdotool type --delay 120 '12'; sleep 1; import -window root shots/converter.png || true
           sleep 1
+          echo "::notice title=Windows::$(xwininfo -root -tree | grep -i calc | head -3 | tr '\n' ' ')"
           cat "$RUNNER_TEMP/calc/state.json" | head -c 1500; echo
           python3 - "$RUNNER_TEMP/calc/state.json" <<'PY'
           import json, sys
@@ -69,7 +71,7 @@ jobs:
           rc=$?
           pkill -f target/release/hearth-calculator || true
           echo "::notice title=Typed into the app::0.1+0.2=0.3, 12*3.5=42, scientific 2+3*4=14 (read back from its saved history)"
-          [ $rc = 0 ] || { echo "::error title=app::the answers weren't right: $(tail -c 1500 run.log | tr '\n' '|')"; exit 1; }
+          [ $rc = 0 ] || { echo "::error title=app::the answers weren't right (state: $(head -c 600 "$RUNNER_TEMP/calc/state.json" 2>&1)): $(tail -c 1500 run.log | tr '\n' '|')"; exit 1; }
       - name: The page in Chromium
         run: |
           pip install -q playwright==1.48.2 >/dev/null && python3 -m playwright install --with-deps chromium >/dev/null
