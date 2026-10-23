@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Office</title>
+<link rel="stylesheet" href="style.css">
+<script src="vendor/purify.min.js"></script>
+<script src="core.js"></script>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div id="brand" title="Hearth Office"><span id="brandIcon"></span></div>
+    <nav id="menubar" role="menubar"></nav>
+    <div class="sp"></div>
+    <div id="docTitle" title="Document name"><span id="docName">Untitled</span><span id="docState"></span></div>
+    <div class="sp"></div>
+    <button class="ibtn" id="btnHome" data-f title="Start (recent files, new, open)"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></button>
+  </header>
+  <div id="toolbar" role="toolbar"></div>
+  <main id="main"></main>
+  <footer id="status"><div id="statusLeft"></div><div class="sp"></div><div id="statusRight"></div></footer>
+</div>
+
+<!-- Start: new, templates, recent files, recovered work. -->
+<section id="start" hidden>
+  <div class="start-in">
+    <div class="start-head"><span id="startIcon"></span><div><h1 id="startTitle">Hearth Office</h1><p id="startSub"></p></div>
+      <div class="sp"></div>
+      <div class="start-apps" id="startApps"></div>
+    </div>
+    <div id="recoverBox" hidden></div>
+    <h2>New</h2>
+    <div class="tiles" id="tiles"></div>
+    <div class="start-row"><h2>Recent</h2><div class="sp"></div><button class="btn f" data-f id="startOpen">Open a file…</button></div>
+    <div id="recentList" class="recent"></div>
+  </div>
+</section>
+
+<div id="layer"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="print" aria-hidden="true"></div>
+</body>
+</html>

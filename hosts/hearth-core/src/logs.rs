@@ -54,6 +54,74 @@ fn sh(cmd: &str) -> String {
     crate::system::run_timeout("sh", &["-c", &format!("{cmd} 2>&1")], Duration::from_secs(15)).unwrap_or_else(|e| format!("({e})"))
 }
 
+/// The screen: gamescope's whole mode list (and the fastest rate at each size), the mode Hearth asked gamescope
+/// for, and per kernel connector its status, modes and decoded EDID (the TV's own list: its fastest link, HDMI 2.1
+/// FRL rate, 4K rates, VRR range). Serial numbers are left out.
+const SCREEN_SH: &str = r##"
+echo "--- gamescope: every mode of the external screen"
+list=$(xprop -root GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL 2>/dev/null | sed -n 's/^[^"]*"\(.*\)".*/\1/p')
+if [ -n "$list" ]; then
+  echo "$list"
+  echo "($(echo "$list" | wc -w) modes) fastest at each size: $(echo "$list" | tr ' ' '\n' | awk -F@ 'NF==2 { if (!($1 in m) || $2+0 > m[$1]+0) { if (!($1 in m)) o[++n]=$1; m[$1]=$2 } } END { for (i=1;i<=n;i++) printf "%s@%s ", o[i], m[o[i]] }')"
+else
+  echo "(none: not in Game Mode, or the built-in screen)"
+fi
+xprop -root GAMESCOPE_DISPLAY_EDID_PATH GAMESCOPE_DISPLAY_REFRESH_RATE_FEEDBACK 2>/dev/null
+pid=$(xprop -root GAMESCOPE_PID 2>/dev/null | awk '{print $3}')
+[ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ] && echo "gamescope started as: $(tr '\0' ' ' < /proc/$pid/cmdline)"
+echo "gamescope version: $(rpm -q gamescope 2>/dev/null || gamescope --version 2>&1 | head -1)"
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus"
+grep -hE '^[[:space:]]*(export[[:space:]]+)?NIMBUS_GAMESCOPE_ARGS=' "$conf/session.conf" 2>/dev/null || echo "session.conf: no gamescope options (gamescope starts at the screen's own mode)"
+[ -f "$conf/display-pending.json" ] && echo "a new mode is waiting to be kept: $(cat "$conf/display-pending.json")"
+[ -n "$GAMESCOPE_MODE_SAVE_FILE" ] && echo "GAMESCOPE_MODE_SAVE_FILE=$GAMESCOPE_MODE_SAVE_FILE"
+for c in /sys/class/drm/card*-*; do
+  [ -r "$c/status" ] || continue
+  st=$(cat "$c/status")
+  echo; echo "--- ${c##*/}: $st, $(cat "$c/enabled" 2>/dev/null), $(cat "$c/dpms" 2>/dev/null)"
+  [ "$st" = connected ] || continue
+  echo "kernel's modes (sizes only): $(paste -sd' ' "$c/modes" 2>/dev/null)"
+  [ -s "$c/edid" ] || { echo "(no EDID)"; continue; }
+  d=""
+  if command -v edid-decode >/dev/null 2>&1; then d=$(edid-decode "$c/edid" 2>&1)
+  elif command -v di-edid-decode >/dev/null 2>&1; then d=$(di-edid-decode "$c/edid" 2>&1)
+  fi
+  if [ -n "$d" ]; then
+    d=$(echo "$d" | grep -viE 'serial')
+    echo "EDID summary ($(wc -c < "$c/edid") bytes):"
+    echo "$d" | grep -iE 'Display Product Name|Manufacturer:|Model:|Made in|Monitor ranges|Display Range Limits|TMDS|Fixed Rate Link|FRL|DSC|VRR|ALLM|QMS|Max.*Pixel Clock|HDMI Forum|Vendor-Specific Data Block \(HDMI|Colorimetry|HDR Static|3840x2160|4096x2160|2560x1440|1920x1080 .*(1[0-9][0-9])\.' | sed 's/^[[:space:]]*/  /' | head -80
+    echo "EDID in full:"
+    echo "$d" | sed 's/^/  /' | head -500
+  else
+    echo "EDID ($(wc -c < "$c/edid") bytes; edid-decode isn't installed):"
+    od -An -tx1 -v "$c/edid" | head -48
+  fi
+done
+true
+"##;
+
+/// The graphics driver the screen link was made with: Nvidia's version, open or closed kernel modules, its display
+/// options (hdmi_deepcolor, disable_hdmi_frl...), modprobe.d, the kernel command line, and the kernel's messages
+/// about HDMI links (FRL link training) this boot.
+const DRIVER_SH: &str = r##"
+if [ -e /proc/driver/nvidia/version ]; then
+  head -2 /proc/driver/nvidia/version
+  command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi --query-gpu=name,driver_version,vbios_version --format=csv,noheader
+  echo "nvidia module: version $(modinfo -F version nvidia 2>/dev/null), license $(modinfo -F license nvidia 2>/dev/null) (Dual MIT/GPL = the open kernel modules)"
+  for m in nvidia_modeset nvidia_drm; do
+    [ -d "/sys/module/$m/parameters" ] && echo "$m: $(cd "/sys/module/$m/parameters" && grep -s . * | tr '\n' ' ')"
+  done
+  grep -sE 'EnableGpuFirmware|PreserveVideoMemory|TemporaryFilePath|EnableMSI|DynamicPowerManagement:' /proc/driver/nvidia/params | tr '\n' ' '; echo
+else
+  for d in /sys/class/drm/card[0-9]; do [ -e "$d/device/driver" ] && echo "${d##*/}: $(basename "$(readlink "$d/device/driver")")"; done
+fi
+echo "modprobe.d: $(grep -rhsE '^[[:space:]]*(options|blacklist|install)[[:space:]].*(nvidia|nouveau|nova|amdgpu|i915|xe)' /usr/lib/modprobe.d /etc/modprobe.d /run/modprobe.d | tr '\n' ';')"
+echo "kernel command line: $(cat /proc/cmdline)"
+echo "kernel: $(uname -r)"
+echo "--- kernel messages about screens and HDMI links (this boot)"
+journalctl -k -b --no-pager 2>/dev/null | grep -iE 'frl|hdmi|nvidia-modeset|nvkms|NVRM|link training|edid|drm.*(connector|mode)' | tail -60
+true
+"##;
+
 /// Personal details out: the user name and home folder, sign-in tokens, e-mail addresses, Steam account ids,
 /// Wi-Fi passwords.
 pub fn redact(text: &str, user: &str, home: &str) -> String {
@@ -160,7 +228,13 @@ pub fn report(version: &str) -> String {
             journalctl -b --no-pager -n 40 -u systemd-hibernate.service -u nvidia-hibernate.service -u nvidia-resume.service -u systemd-hibernate-resume.service 2>/dev/null | tail -40")));
     section("Controllers (InputPlumber)", sh("busctl --system --list tree org.shadowblip.InputPlumber | head -40; for d in $(busctl --system --list tree org.shadowblip.InputPlumber | grep -o '/org/shadowblip/InputPlumber/CompositeDevice[0-9]*' | sort -u); do echo \"$d\"; busctl --system get-property org.shadowblip.InputPlumber $d org.shadowblip.Input.CompositeDevice Name InterceptMode ProfileName 2>&1 | sed 's/^/  /'; done"));
     section("Controllers and power (Handheld Daemon)", crate::hhd::report());
-    section("gamescope", sh("xprop -root | grep -E '^GAMESCOPE|^GAMESCOPECTRL' | cut -c1-300"));
+    // Long enough for an external screen's whole mode list (it was cut at 300 characters, in the middle of it).
+    section("gamescope", sh("xprop -root | grep -E '^GAMESCOPE|^GAMESCOPECTRL' | cut -c1-4000"));
+    // "My TV does 144 Hz but Game Mode shows 60": what gamescope, the kernel and the TV itself (its EDID) say, and
+    // which driver and options the link was made with. Enough to tell a TV that only offered HDMI 2.0 rates from a
+    // driver that didn't make the HDMI 2.1 fast link (FRL), or a mode Hearth chose.
+    section("Screen: modes and what it says it can do (EDID)", sh(&format!("{{ {SCREEN_SH} }}")));
+    section("Graphics driver and the screen link", sh(&format!("{{ {DRIVER_SH} }}")));
     section("Bluetooth", sh("bluetoothctl devices; bluetoothctl show | grep -E 'Powered|Discoverable|Pairable'"));
     section("System journal: controllers, power, display (this boot)", cap(&sh("journalctl -b --no-pager -n 400 -u inputplumber -u hhd -u steamos-manager -u powerstation -u bluetooth -u tuned -u tuned-ppd"), 80_000));
     section("System journal: errors (this boot)", cap(&without_dump_details(&sh("journalctl -b --no-pager -p err -n 400")), 80_000));
@@ -291,6 +365,13 @@ mod tests {
         assert_eq!(tail("a\nb\nc", 2), "[… 1 older lines left out …]\nb\nc");
         let t = redact("steam at /home/jo/.steam and /var/home/jo/Games, not /home/joan", "jo", "/var/home/jo");
         assert_eq!(t, "steam at ~/.steam and ~/Games, not /home/joan");
+    }
+    #[test]
+    fn screen_sections_keep_their_output() {
+        // sh() gives only an error line when the script's last command fails (grep finding nothing): both end in true.
+        for s in [SCREEN_SH, DRIVER_SH] { assert!(s.trim_end().ends_with("\ntrue"), "{s}"); }
+        assert!(SCREEN_SH.contains("GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL") && SCREEN_SH.contains("edid-decode"));
+        assert!(DRIVER_SH.contains("/proc/cmdline") && DRIVER_SH.contains("modinfo -F version nvidia") && DRIVER_SH.contains("driver_version"));
     }
     #[test]
     fn crash_dumps_shortened() {

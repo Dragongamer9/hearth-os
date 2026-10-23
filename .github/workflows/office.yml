@@ -1,0 +1,284 @@
+# Hearth Office (hosts/hearth-office): Write, Sheets and Slides, Hearth OS's own office apps (one program).
+# - page: the apps' page in Chromium and WebKit (Playwright): each app opens sample .docx/.xlsx/.csv/.pptx files
+#   made by python-docx, openpyxl and python-pptx, saves them in every format it writes, and the files are read
+#   back with those libraries and compared (tests/ui_test.py). Screenshots in the hearth-office-page artifact.
+# - linux: Rust unit tests, the release build, then the real window (WebKitGTK under Xvfb): screenshots of each
+#   app with a file open, and --convert runs that open and save sample files (and export PDFs) through the real
+#   window, checked the same way. The binary and screenshots are in the hearth-office-linux artifact.
+# - windows: a build only (Ember doesn't ship Hearth Office yet); it doesn't fail the run.
+# "vendor" (when started by hand) downloads the pinned library files (vendor.sh) and commits them.
+# Release builds are made by base-anatase.yml and base-peppermint.yml (the Linux images).
+name: Hearth Office
+
+on:
+  push:
+    branches: [apps-office, main, linux-host]
+    paths: ['hosts/hearth-office/**', '.github/workflows/office.yml']
+  workflow_dispatch:
+    inputs:
+      vendor:
+        description: Download the pinned library files into ui/vendor and commit them
+        type: boolean
+        default: false
+      vendor_only:
+        description: 'With vendor: which ones (all, npm, sheetjs)'
+        type: string
+        default: all
+      shots:
+        description: Put small copies of the Linux screenshots on the run as notices
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  vendor:
+    if: github.event_name == 'workflow_dispatch' && inputs.vendor
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and commit
+        run: |
+          ONLY="${{ inputs.vendor_only }}" sh hosts/hearth-office/vendor.sh
+          echo "::notice title=vendored::$(tr '\n' ' ' < hosts/hearth-office/ui/vendor/VERSIONS)"
+          git config user.name "Dragongamer9"; git config user.email "Dragongamer9@users.noreply.github.com"
+          git add hosts/hearth-office/ui/vendor
+          if git diff --cached --quiet; then echo "Already up to date"; exit 0; fi
+          git commit -qm "Hearth Office: vendored library files (vendor.sh)"
+          git push -q origin "HEAD:refs/heads/${{ github.ref_name }}"
+
+  page:
+    needs: vendor
+    if: ${{ !cancelled() && (needs.vendor.result == 'success' || needs.vendor.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: hosts/hearth-office
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.sha }}
+      - name: The page's files are there
+        run: |
+          for f in purify.min.js jszip.min.js docx.iife.js mammoth.browser.min.js hyperformula.full.min.js xlsx.full.min.js pptxgen.bundle.js marked.umd.js turndown.browser.umd.js typo.js en_US.aff en_US.dic; do
+            test -s "ui/vendor/$f" || { echo "::error title=vendor::ui/vendor/$f is missing: run this workflow by hand with 'vendor' ticked"; exit 1; }
+          done
+          for f in ui/*.js ui/formats/*.js; do node --check "$f"; done
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Playwright, python-docx, openpyxl, python-pptx
+        run: |
+          pip install -q playwright==1.48.0 python-docx openpyxl python-pptx
+          python -m playwright install --with-deps chromium webkit >/dev/null
+      - name: Open and save sample files (Chromium)
+        run: |
+          set -o pipefail
+          timeout 1200 python tests/ui_test.py --browser chromium --shots shots/chromium 2>&1 | tee chromium.log || { echo "::error title=page tests (Chromium)::$(grep -E '^FAIL' chromium.log | head -30 | tr '\n' '|' | cut -c1-3000) last: $(tail -4 chromium.log | tr '\n' '|' | cut -c1-700)"; exit 1; }
+          echo "::notice title=page tests (Chromium)::$(tail -1 chromium.log)"
+      - name: Open and save sample files (WebKit, the engine Hearth's window uses)
+        if: always()
+        run: |
+          set -o pipefail
+          timeout 1200 python tests/ui_test.py --browser webkit --shots shots/webkit 2>&1 | tee webkit.log || { echo "::error title=page tests (WebKit)::$(grep -E '^FAIL' webkit.log | head -30 | tr '\n' '|' | cut -c1-3000) last: $(tail -4 webkit.log | tr '\n' '|' | cut -c1-700)"; exit 1; }
+          echo "::notice title=page tests (WebKit)::$(tail -1 webkit.log)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-office-page
+          path: |
+            hosts/hearth-office/shots
+            hosts/hearth-office/*.log
+
+  linux:
+    needs: vendor
+    if: ${{ !cancelled() && (needs.vendor.result == 'success' || needs.vendor.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: hosts/hearth-office
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-office
+      - name: WebKit and GTK, Xvfb, fonts, PDF tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick x11-utils dbus-x11 xdotool poppler-utils fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation2 >/dev/null
+          pip install -q python-docx openpyxl python-pptx
+      - name: Unit tests (command line, recent files, recovery copies)
+        run: |
+          set -o pipefail
+          cargo test --lib 2>&1 | tee test.log || { echo "::error title=unit tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 test.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A12 build.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=size::$(du -h target/release/hearth-office | cut -f1)"
+          ./target/release/hearth-office --help
+      - name: The real window opens and saves files (--convert)
+        run: |
+          set -o pipefail
+          mkdir -p shots out
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_OFFICE_SHOW=1
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          python3 tests/samples.py samples >/dev/null
+          conv() { timeout 120 dbus-run-session -- ./target/release/hearth-office --convert "$1" "$2" > "out/$(basename "$2").log" 2>&1; }
+          fail=0
+          for pair in "samples/sample.docx out/w.docx" "samples/sample.docx out/w.odt" "samples/sample.docx out/w.pdf" "samples/sample.xlsx out/s.xlsx" "samples/sample.csv out/c.xlsx" "samples/sample.pptx out/p.pptx" "samples/sample.pptx out/p.pdf"; do
+            set -- $pair
+            if conv "$1" "$2" && [ -s "$2" ]; then echo "::notice title=convert::$1 → $2 ($(stat -c %s "$2") bytes)"
+            else echo "::error title=convert::$1 → $2 failed: $(tail -c 1500 "out/$(basename "$2").log" | tr '\n' '|')"; fail=1; fi
+          done
+          python3 - <<'EOF' || fail=1
+          import docx, openpyxl, pptx, subprocess, sys
+          ok = True
+          def check(c, what):
+              global ok
+              print(('ok   ' if c else 'FAIL ') + what)
+              if not c:
+                  print(f'::error title=real window::{what}')
+                  ok = False
+          try:
+              d = docx.Document('out/w.docx'); t = '\n'.join(p.text for p in d.paragraphs)
+              check('Quarterly report' in t and len(d.tables) == 1 and len(d.inline_shapes) == 1, 'docx → docx through WebKitGTK keeps text, table and picture')
+          except Exception as e: check(False, f'docx → docx: {e}')
+          try:
+              wb = openpyxl.load_workbook('out/s.xlsx'); ws = wb['Budget']
+              check(ws['D7'].value == '=SUM(D2:D5)' and ws['A1'].font.b and ws.freeze_panes == 'A2', 'xlsx → xlsx through WebKitGTK keeps formulas, bold and the frozen row')
+              wv = openpyxl.load_workbook('out/s.xlsx', data_only=True)['Budget']
+              check(abs((wv['D7'].value or 0) - 29.25) < 1e-9, f'xlsx → xlsx: HyperFormula worked out 29.25 ({wv["D7"].value})')
+          except Exception as e: check(False, f'xlsx → xlsx: {e}')
+          try:
+              ws = openpyxl.load_workbook('out/c.xlsx').active
+              check(ws['A2'].value == 'Smith, Jo' and ws['B3'].value == 78.5, 'csv → xlsx keeps quoted commas and numbers')
+          except Exception as e: check(False, f'csv → xlsx: {e}')
+          try:
+              p = pptx.Presentation('out/p.pptx')
+              check(len(p.slides) == 3 and p.slides[0].has_notes_slide, 'pptx → pptx through WebKitGTK keeps 3 slides and notes')
+          except Exception as e: check(False, f'pptx → pptx: {e}')
+          for f, want in (('out/w.pdf', None), ('out/p.pdf', 3)):
+              try:
+                  info = subprocess.run(['pdfinfo', f], capture_output=True, text=True).stdout
+                  pages = int([l for l in info.splitlines() if l.startswith('Pages:')][0].split()[1])
+                  size = [l for l in info.splitlines() if l.startswith('Page size:')][0]
+                  check(pages >= 1 and (want is None or pages == want), f'{f}: {pages} pages, {size}')
+                  print(f'::notice title={f}::{pages} pages, {size}')
+              except Exception as e: check(False, f'{f}: {e}')
+          sys.exit(0 if ok else 1)
+          EOF
+          pdftoppm -r 70 -png -f 1 -l 1 out/w.pdf shots/pdf-write 2>/dev/null || true
+          pdftoppm -r 50 -png -f 1 -l 1 out/p.pdf shots/pdf-slides 2>/dev/null || true
+          exit $fail
+      - name: Screenshots of the three apps
+        if: always()
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          pgrep Xvfb >/dev/null || { Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 2; }
+          mkdir -p shots
+          test -d samples || python3 tests/samples.py samples >/dev/null
+          shot() { name=$1; shift; dbus-run-session -- ./target/release/hearth-office "$@" > "shots/$name.log" 2>&1 & sleep 9; import -window root "shots/$name.png" || true; }
+          shot write-start --app write; xdotool key Return; sleep 2; xdotool type --delay 30 'Hello from Hearth Write. Ths has a speling mistake.'; sleep 3; import -window root shots/write-typing.png || true; pkill -f target/release/hearth-office; sleep 1
+          shot write-docx samples/sample.docx; pkill -f target/release/hearth-office; sleep 1
+          shot sheets-xlsx samples/sample.xlsx; xdotool key ctrl+Down; sleep 1; import -window root shots/sheets-move.png || true; pkill -f target/release/hearth-office; sleep 1
+          shot slides-pptx samples/sample.pptx; pkill -f target/release/hearth-office; sleep 1
+          shot slides-present --present samples/sample.pptx; xdotool key Right; sleep 1; import -window root shots/slides-present-2.png || true; pkill -f target/release/hearth-office; sleep 1
+          shot sheets-start --app sheets; pkill -f target/release/hearth-office; sleep 1
+          for f in shots/*.log; do echo "::notice title=$(basename "$f")::$(tail -c 600 "$f" | tr '\n' '|')"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: Write with a .docx open"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/write-docx.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT write-docx $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: Write while typing (spelling marks)"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/write-typing.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT write-typing $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: Sheets with an .xlsx open"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/sheets-xlsx.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT sheets-xlsx $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: Slides with a .pptx open"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/slides-pptx.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT slides-pptx $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: Slides presenting"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/slides-present-2.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT slides-present-2 $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces), for looking at
+      # it where the artifact can't be downloaded. One step each (GitHub keeps 10 notices per step).
+      - name: "Screenshot as notices: page 1 of the PDF Write exported"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/pdf-write-1.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 42 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT pdf-write-1 $i::$part"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-office-linux
+          path: |
+            hosts/hearth-office/target/release/hearth-office
+            hosts/hearth-office/shots
+            hosts/hearth-office/out
+
+  windows:
+    needs: vendor
+    if: ${{ !cancelled() && (needs.vendor.result == 'success' || needs.vendor.result == 'skipped') }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: hosts/hearth-office
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-office
+      - name: Unit tests and build (not shipped in Ember yet)
+        run: |
+          cargo test --lib 2>&1 | Tee-Object test.log
+          if ($LASTEXITCODE -ne 0) {
+            $msg = (Select-String -Path test.log -Pattern '^(error|---- |thread .* panicked)' -Context 0,10 | Select-Object -First 8 | Out-String) -replace "`r?`n", '|'
+            Write-Output "::error title=Windows tests::$($msg.Substring(0, [Math]::Min(3900, $msg.Length)))"
+            exit 1
+          }
+          cargo build --release 2>&1 | Tee-Object build.log
+          if ($LASTEXITCODE -ne 0) {
+            $msg = (Select-String -Path build.log -Pattern '^error' -Context 0,12 | Select-Object -First 6 | Out-String) -replace "`r?`n", '|'
+            Write-Output "::error title=Windows build::$($msg.Substring(0, [Math]::Min(3900, $msg.Length)))"
+            exit 1
+          }
+          Write-Output "::notice title=Windows build::$([Math]::Round((Get-Item target/release/hearth-office.exe).Length / 1MB, 1)) MB"

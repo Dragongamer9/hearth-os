@@ -184,6 +184,19 @@
     <keybind key="XF86AudioStop"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media stop'" /></keybind>
     <!-- The sleep key (the session holds it so the power button stays Hearth's, so it's done here). -->
     <keybind key="XF86Sleep"><action name="Execute" command="systemctl suspend" /></keybind>
+    <!-- ==== Accessibility and the emoji picker (Settings › Accessibility; hearth-access, hearth-emoji) ====
+         Super+= zooms in (and turns the magnifier on), Super+- zooms out (off at the lowest step), Super+Esc turns
+         it off or back on at the last level; its size and steps are set in Settings (hearth-system adds them to this file). Super+Alt+S turns
+         the screen reader (Orca) on or off. Super+. opens the emoji and symbol picker. -->
+    <keybind key="W-equal"><action name="ZoomIn" /></keybind>
+    <keybind key="W-plus"><action name="ZoomIn" /></keybind>
+    <keybind key="W-KP_Add"><action name="ZoomIn" /></keybind>
+    <keybind key="W-minus"><action name="ZoomOut" /></keybind>
+    <keybind key="W-KP_Subtract"><action name="ZoomOut" /></keybind>
+    <keybind key="W-Escape"><action name="ToggleMagnify" /></keybind>
+    <keybind key="W-A-s"><action name="Execute" command="sh -c 'python3 $NIMBUS_SHARE/desktop/shell/hearth-access screen-reader toggle'" /></keybind>
+    <keybind key="W-period"><action name="Execute" command="sh -c 'pkill -x hearth-emoji || hearth-emoji'" /></keybind>
+    <!-- ==== end Accessibility and the emoji picker ==== -->
   </keyboard>
 
   <mouse>

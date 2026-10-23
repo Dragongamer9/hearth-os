@@ -478,6 +478,11 @@ body.overlay .modal{width:min(380px,92vw)}
 body.L-tiles .topnav,body.L-spotlight .topnav{display:flex}
 body.L-tiles #vtitle,body.L-spotlight #vtitle{display:none}
 body.reduce-motion *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+/* ---- Accessibility: high contrast (Settings › Accessibility) */
+body.hc{--bg:#000;--bg2:#000;--panel:#000;--panel2:#0b0b0b;--panel3:#1c1c1c;--line:#fff;--text:#fff;--dim:#f0f0f0;--faint:#cfcfcf}
+body.hc .row,body.hc .chip,body.hc .btn,body.hc .card{border:1px solid #fff!important}
+body.hc .muted,body.hc small{color:#f0f0f0!important}
+/* ---- end Accessibility */
 /* Lighter effects: when the host draws the compatible way (no DMA-BUF: Nvidia RTX 50, basic graphics), big blurs and
    shadows are drawn without the graphics card's help every frame, which made Hearth sluggish. Same look, flatter. */
 body.lite .home-hero .art,body.lite .home-hero .img,body.lite #launch .art{filter:none!important;opacity:.22;transform:none;will-change:auto}
@@ -1440,6 +1445,7 @@ function applyLook(){
   b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id));
   if(isX(LOOK.layout)){ b.classList.add('L-spotlight','X-'+LOOK.layout); } else b.classList.add('L-'+LOOK.layout);
   b.classList.toggle('reduce-motion', !!LOOK.reduceMotion);
+  b.classList.toggle('hc', !!LOOK.highContrast);   // Accessibility: high contrast
   b.classList.toggle('no-battpct', !LOOK.battPct);
   b.style.zoom = (TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[2];
   renderTopNav(); if(typeof tick==='function') tick();
@@ -2140,6 +2146,53 @@ function lookRow(key,label,sub){ return `<button class="row" data-f data-k="ap-$
 function pickTextSize(){
   openSheet({title:'Text size', sub:'Makes everything in '+APP+' bigger or smaller', items:TEXT_SIZES.map(([k,l])=>({label:l, icon:LOOK.textSize===k?'check':'', run:()=>{ LOOK.textSize=k; saveLook(); render('ap-text'); }}))});
 }
+
+// ---------- Settings › Accessibility (Hearth OS) ----------
+// Zoom and colour filters are gamescope's, the screen reader is Orca: desktop/shell/hearth-access does them (through
+// hearth-core's access.* calls), with the same settings file as Desktop Mode's Settings › Accessibility. Text size,
+// high contrast and reduce motion are this page's own (LOOK). Ember (Windows) doesn't have it yet.
+const A11Y = {s:null, busy:false};
+const A11Y_FILTERS = [['none','Off',''],['grayscale','Greyscale','Shades of grey only'],['invert','Inverted colours','Light becomes dark and colours flip'],
+  ['invert-brightness','Inverted brightness','Light becomes dark; colours stay much the same'],['protanopia','Red-green (protanopia)','Moves reds where they\'re easier to tell apart'],
+  ['deuteranopia','Green-red (deuteranopia)','Moves greens where they\'re easier to tell apart'],['tritanopia','Blue-yellow (tritanopia)','Moves blues and yellows where they\'re easier to tell apart']];
+const A11Y_ZOOMS = [[1,'Off'],[1.25,'1.25×'],[1.5,'1.5×'],[2,'2×'],[2.5,'2.5×'],[3,'3×'],[4,'4×']];
+const A11Y_DEMO = {settings:{magnifierSize:'full',magnifierZoom:2,magnifierStep:.5,gameZoom:1,filter:'none',screenReader:false,textScale:1,highContrast:false,largePointer:false},
+  mode:'game', available:{orca:true, xprop:true, labwcMagnifier:true, filters:A11Y_FILTERS.map(f=>f[0])}, orcaRunning:false, problems:{}};
+function a11yCall(m, args){ return host ? call(m, args||{}, 20000) : Promise.resolve(m==='access.set' ? (Object.assign(A11Y_DEMO.settings, args.set), A11Y_DEMO) : A11Y_DEMO); }
+function a11yLoad(){ a11yCall('access.status').then(r=>{ A11Y.s=r; refreshUI(); }).catch(e=>{ A11Y.s={error:e.message||String(e)}; refreshUI(); }); }
+function a11ySet(o, key, done){
+  A11Y.busy=true; render(key, true);
+  a11yCall('access.set', {set:o}).then(r=>{ A11Y.s=r; const p=Object.values(r.problems||{}); toast(p.length ? p[0] : done); })
+    .catch(e=>toast(e.message||String(e))).finally(()=>{ A11Y.busy=false; render(key, true); });
+}
+function pageAccess(){
+  const st=A11Y.s, set=(st&&st.settings)||{}, av=(st&&st.available)||{};
+  const ts=(TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[1];
+  const zoom=(A11Y_ZOOMS.find(z=>z[0]===set.gameZoom)||[0, set.gameZoom>1 ? set.gameZoom+'×' : 'Off'])[1];
+  const filt=(A11Y_FILTERS.find(f=>f[0]===set.filter)||A11Y_FILTERS[0])[1];
+  const spin = A11Y.busy ? '<span class="mini-spin"></span>' : '';
+  let h = shead('Seeing the screen', !st);
+  if(st && st.error) h += note('Couldn\'t read the accessibility settings: '+esc(st.error));
+  h += sgrid(`<button class="row" data-f data-k="a11y-zoom" data-act="a11yZoom"><span class="ricon">${I.search}</span><div class="rt"><b>Zoom</b><small>Makes the whole screen bigger, around the pointer</small></div>${spin||`<div class="rv">${esc(zoom)} ›</div>`}</button>`
+    + `<button class="row" data-f data-k="a11y-filter" data-act="a11yFilter"><span class="ricon">${I.display}</span><div class="rt"><b>Colour filter</b><small>Greyscale, inverted colours, or colours for colour blindness</small></div>${spin||`<div class="rv">${esc(filt)} ›</div>`}</button>`
+    + `<button class="row" data-f data-k="a11y-reader" data-act="a11yReader"><span class="ricon">${I.vol}</span><div class="rt"><b>Screen reader</b><small>${st&&!av.orca?'Orca, the screen reader, isn\'t installed':'Orca reads out what\'s on the screen'}</small></div>${spin||`<div class="sw ${set.screenReader?'on':''}"></div>`}</button>`
+    + `<button class="row" data-f data-k="a11y-hc" data-act="a11yHc"><span class="ricon">${I.sun}</span><div class="rt"><b>High contrast</b><small>Black and white with clear outlines, in ${APP}</small></div><div class="sw ${LOOK.highContrast?'on':''}"></div></button>`
+    + `<button class="row" data-f data-k="ap-text" data-act="textSize"><span class="ricon">${I.text}</span><div class="rt"><b>Text size</b><small>Makes everything in ${APP} bigger or smaller</small></div><div class="rv">${ts} ›</div></button>`
+    + lookRow('reduceMotion','Reduce motion','Turns off animations and smooth scrolling'));
+  h += shead('In Desktop Mode')
+    + tipRow('a11y-desk', 'Magnifier, filters and more', 'In Desktop Mode, Super+= zooms in around the pointer, Super+- zooms out and Super+Esc turns the magnifier off. Super+Alt+S turns the screen reader on or off, and Super+. opens emoji and symbols. Its Settings › Accessibility has the magnifier\'s size, bigger text for apps, a large pointer and high contrast. There, only inverted colours work of the colour filters.');
+  return h;
+}
+function a11yAct(a, d){
+  const set=(A11Y.s&&A11Y.s.settings)||{};
+  if(a==='a11yZoom') return openSheet({title:'Zoom', sub:'The whole screen, bigger around the pointer. Games too.', items:A11Y_ZOOMS.map(([v,l])=>({label:l, icon:set.gameZoom===v?'check':'', run:()=>a11ySet({gameZoom:v}, 'a11y-zoom', v>1?'Zoomed in to '+l:'Zoom is off')}))});
+  if(a==='a11yFilter') return openSheet({title:'Colour filter', sub:'For the whole screen, games too.', items:A11Y_FILTERS.map(([v,l,sb])=>({label:l+(sb?' · '+sb:''), icon:set.filter===v?'check':'', run:()=>a11ySet({filter:v}, 'a11y-filter', v==='none'?'Colour filter off':l+' is on')}))});
+  if(a==='a11yReader') return a11ySet({screenReader:!set.screenReader}, 'a11y-reader', !set.screenReader?'Screen reader on':'Screen reader off');
+  if(a==='a11yHc'){ LOOK.highContrast=!LOOK.highContrast; saveLook(); return render('a11y-hc'); }
+}
+// Each start of Game Mode: the zoom, colour filter and screen reader as they were set (gamescope forgets them).
+if(LINUX && host && !OVERLAY) setTimeout(()=>call('access.apply',{},20000).catch(()=>{}), 2500);
+// ---------- end Settings › Accessibility
 
 // ---------- Settings › System and › About ----------
 const SYSINFO = {s:null};
@@ -2949,6 +3002,9 @@ const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',liblook:'you',
 const stabGroup = k => STAB_GROUP[k]||'system';
 const stabShown = k => STABS.some(x=>x[0]===k) && k!=='audio' && (ANDROID ? ANDROID_TABS.includes(k) && (k!=='linux'||lxOn()) : k==='linux' ? false : (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX)));
 const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k));
+// ---- Accessibility: its page (pageAccess) in You, on Hearth OS only
+if(LINUX){ STABS.splice(STABS.findIndex(x=>x[0]==='liblook')+1, 0, ['access','text','Accessibility']); STAB_GROUP.access='you'; }
+// ---- end Accessibility
 const SLAST = {};
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
@@ -3025,6 +3081,15 @@ function pageBluetooth(){
   if(S.sys.foundDone && !S.sys.btScanning && !S.sys.found.length) h += note('Nothing new found. Make sure the device is in pairing mode and close by.');
   return h;
 }
+// ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect): opened from Settings › Bluetooth
+// in Game Mode (bridge "linkapps.open"); in Desktop Mode they're in the app list too.
+function pageLinkApps(){
+  if(!LINUX || ANDROID) return '';
+  const row=(k,v,title,sub)=>`<button class="row" data-f data-k="la-${k}" data-act="linkApp" data-v="${v}"><span class="ricon">${I.phone}</span><div class="rt"><b>${title}</b><small>${sub}</small></div><div class="rv">›</div></button>`;
+  return shead('Phones and nearby devices') + sgrid(row('nearby','nearby','Nearby Share','Send and receive files with phones and PCs on this network (works with LocalSend)')
+    + row('connect','connect','Hearth Connect','Link your phone: notifications, files, clipboard, phone as touchpad (works with KDE Connect)'));
+}
+// ---- end of Nearby Share and Hearth Connect
 const NVD = {s:null};
 const RND = {s:null};
 function pageDisplay(){
@@ -3039,6 +3104,7 @@ function pageDisplay(){
   else g += infoRow('scale','Scale',d.scale||'—');
   h += sgrid(g);
   if(!d.supported) h += note('Brightness works on built-in screens (laptops and handhelds), not external monitors yet.');
+  const hzTip=dispHzTip(d); if(hzTip) h += note(hzTip);
   h += note((d.appliesOnRestart ? 'In Game Mode, a new resolution or refresh rate restarts '+APP+' for a moment.'
     : 'A new resolution or refresh rate switches back after 15 seconds unless you keep it.')+(d.scaleIsInterface?' Scale sizes the '+APP+' interface.':''));
   if((HOSTINFO.features||[]).includes('nvidiaDrawing')){
@@ -3055,6 +3121,18 @@ function pageDisplay(){
   return h;
 }
 function dispModeOf(w,h){ return (S.sys.display.modes||[]).find(m=>m.width===w&&m.height===h); }
+// Why a fast TV or monitor only shows 60 Hz: Hearth can only offer the modes the screen itself reports (its EDID).
+// When it reports a higher rate at a lower resolution only, or nothing above 60 Hz, say so and what usually fixes it.
+function dispHzTip(d){
+  const modes=(d&&d.modes)||[]; if(!modes.length || !d.width) return '';
+  const cur=dispModeOf(d.width,d.height), curMax=cur&&cur.rates.length?Math.max(...cur.rates):0;
+  let best=null; modes.forEach(m=>{ const r=m.rates.length?Math.max(...m.rates):0; if(!best||r>best.r||(r===best.r&&m.width*m.height>best.m.width*best.m.height)) best={m,r}; });
+  if(!best || !curMax) return '';
+  const fix='If your screen can go faster, turn on its enhanced HDMI or PC/Game mode for this input (TVs call it Input Signal Plus, HDMI Ultra HD Deep Colour, Enhanced format or similar), use an HDMI 2.1 port and an Ultra High Speed HDMI cable (or DisplayPort), then restart '+APP+'. If it went faster before on this PC, turn the screen off and on again with its own power button while '+APP+' is showing: the fast HDMI 2.1 link is set up when the screen is found, and a TV that was asleep then can be stuck at HDMI 2.0 rates.';
+  if(best.r>curMax) return `At ${d.width} × ${d.height} this screen only reports up to ${curMax} Hz; it reports ${best.r} Hz at ${best.m.width} × ${best.m.height}. ${fix}`;
+  if(curMax<=60) return `This screen only reports up to ${curMax} Hz, so that's the most ${APP} can use. ${fix}`;
+  return '';
+}
 function dispRes(){
   const d=S.sys.display;
   openSheet({title:'Resolution', items:d.modes.slice(0,14).map((m,i)=>({label:`${m.width} × ${m.height}${i===0?'  (native)':''}`, icon:m.width===d.width&&m.height===d.height?'check':'',
@@ -4713,7 +4791,7 @@ function viewSettings(){
   const t=S.settingsTab, grp=stabGroup(t), tabs=stabsIn(grp); let body='';
   if(t==='wifi') body = pageWifi();
   if(t==='seats') body = pageSeats();
-  if(t==='bluetooth') body = pageBluetooth();
+  if(t==='bluetooth') body = pageBluetooth() + pageLinkApps();   // + Nearby Share and Hearth Connect
   if(t==='display') body = pageDisplay() + shead('Sound') + pageAudio();
   if(t==='power') body = pagePower();
   if(t==='profile') body = pageProfile();
@@ -4722,6 +4800,7 @@ function viewSettings(){
   if(t==='signin') body = pageSignin();
   if(t==='system') body = pageSystem();
   if(t==='appearance') body = pageAppearance();
+  if(t==='access') body = pageAccess();   // Accessibility
   if(t==='liblook') body = pageLibLook();
   if(t==='controller') body = pageControls();
   if(t==='sources'){
@@ -5326,6 +5405,7 @@ function act(el){
   if(S.locked && !['unlock','pkey','back','sheet'].includes(a)) return;   // locked: only unlocking
   blip(880,.05,.045);
   if(a.startsWith('bcn')) return beaconAct(a, d);   // Beacon's screens (Game setup, Mods)
+  if(a.startsWith('a11y')) return a11yAct(a, d);   // Settings › Accessibility
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
   switch(a){
     case 'unlock': return lockUnlock();
@@ -5359,6 +5439,9 @@ function act(el){
     case 'countMe': { const on=!counterOn(); try{ localStorage.setItem('nimbus.countMe', on?'1':'0'); }catch(e){} if(on) counterPing(); toast(on?'You\'re in the player count':'You\'re no longer counted'); return render('sy-count',true); }
     case 'autoReport': return call('logs.setAutoReport',{on:HOSTINFO.autoReport===false}).then(on=>{ HOSTINFO.autoReport=on; toast(on?'Reports sent when it gets stuck':'No reports sent by itself'); render('sy-autorep',true); }).catch(e=>toast(e.message));
     case 'inputLog': INPUT_LOG=!INPUT_LOG; try{ localStorage.setItem('nimbus.inputLog', INPUT_LOG?'1':'0'); }catch(e){} toast(INPUT_LOG?'Logging controller input':'Stopped logging controller input'); return render('sy-inlog',true);
+    // ---- Nearby Share and Hearth Connect
+    case 'linkApp': toast(d.v==='nearby'?'Opening Nearby Share…':'Opening Hearth Connect…'); return call('linkapps.open',{app:d.v}).catch(e=>toast(e.message));
+    // ---- end of Nearby Share and Hearth Connect
     case 'browser': return call('browser.act',{action:d.v}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'claude':
       if(d.v==='open'){ toast('Opening Claude…'); return call('claude.act',{action:'open'}).catch(e=>toast(e.message)); }
@@ -7715,6 +7798,7 @@ function onSysEvent(name, data){
   }
   if(name==='padAxes'){ if(DESK.open) deskAxes(data); return; }
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
+  if(name==='hostScreen'){ HOSTSCREEN.pads = !data || data.pads!==false; return; }
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
   if(name==='friends'){ if(S.view==='friends' && !S.layers.length) loadFriends(); return; }
@@ -7822,6 +7906,7 @@ function onSettingsTab(t){
   if(t==='sources'){ loadEmu(); loadXodus(); }
   if(t==='appearance'){ loadDeskWall(); watchVotes(true); }
   if(t==='liblook') watchVotes(true);
+  if(t==='access') a11yLoad();   // Accessibility
   if(t==='import') loadImport();
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();
@@ -8084,10 +8169,18 @@ function pollPads(t){
   try{ pollPadsNow(t); } catch(e){ try{ send({type:'log', text:'controller: '+(e&&e.stack||e)}); }catch(_){} }
   requestAnimationFrame(pollPads);
 }
+// Game Mode: Hearth says whether this window is the one on screen (hostScreen). Set aside for a game (Chromium keeps
+// reading the controller for a hidden window), or with Quick Access open over it, the presses aren't this page's:
+// a Guide press over a game opened this window's old panel behind the game, and the next one sent "back to the game"
+// over the new Quick Access. Held buttons are still followed, so one held when the page gets the controller back
+// isn't taken for a new press.
+const HOSTSCREEN = {pads:true};
+function padsQuiet(){ return !OVERLAY && HOSTSCREEN.pads===false; }
 function pollPadsNow(t){
   // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
   const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
   if(deskActive()) return deskPollPads(pads);
+  const quiet = padsQuiet();
   const st={};
   for(const p of pads){ if(!p) continue;
     const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
@@ -8100,8 +8193,8 @@ function pollPadsNow(t){
   }
   for(const k of ['a','b','x','y','lb','rb','select','start','guide','up','down','left','right','rup','rdown']){
     const on=!!st[k], h=held[k];
-    if(on && !h){ held[k]={t0:t,last:t}; padPressed(mapPad(k)); }
-    else if(on && h && REPEAT.has(k) && t-h.t0>400 && t-h.last>110){ h.last=t; PAD_AT[k]=performance.now(); input(k); }
+    if(on && !h){ held[k]={t0:t,last:t}; if(!quiet) padPressed(mapPad(k)); }
+    else if(on && h && REPEAT.has(k) && t-h.t0>400 && t-h.last>110){ h.last=t; if(!quiet){ PAD_AT[k]=performance.now(); input(k); } }
     else if(!on && h) delete held[k];
   }
 }

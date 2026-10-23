@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Connect</title>
+<style>
+/* Hearth's ember palette (hosts/linux/desktop/shell/Theme.qml), as in Disks and Nearby Share. */
+:root {
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --faint:#6f6055; --ember:#ff8a3d; --flame:#ffd166; --danger:#ff5d5d; --good:#6fd08c;
+  --ink:#2a1206; --r:14px; --gut:clamp(14px,2.4vw,36px); --ease:cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
+body { font:400 clamp(15px, .9vw + 7px, 24px)/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; overflow:hidden;
+  background:radial-gradient(1200px 700px at 85% -10%, #2a170d 0%, transparent 60%), var(--bg); user-select:none; -webkit-user-select:none; }
+button, input, textarea { font:inherit; color:inherit; }
+.app { display:grid; grid-template-rows:auto 1fr auto; height:100%; }
+header { display:flex; align-items:center; gap:.8em; padding:.7em var(--gut) .5em; flex-wrap:wrap; }
+header h1 { font-size:1.35em; margin:0; font-weight:650; }
+header .sub { color:var(--muted); font-size:.85em; }
+header .spacer { flex:1; }
+main { display:grid; grid-template-columns:minmax(15em, 24em) 1fr; gap:var(--gut); padding:0 var(--gut) .6em; min-height:0; }
+footer { display:flex; gap:1.4em; padding:.45em var(--gut) .7em; color:var(--muted); font-size:.8em; flex-wrap:wrap; }
+footer b { display:inline-grid; place-items:center; min-width:1.6em; height:1.6em; border-radius:50%; background:var(--panel3); color:var(--text); margin-right:.35em; font-size:.85em; }
+.scroll { overflow:auto; min-height:0; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; padding:4px; }
+h2.sec { font-size:.85em; color:var(--muted); font-weight:600; margin:.8em 0 .5em; }
+.f { outline:none; cursor:pointer; transition:transform .14s var(--ease), box-shadow .14s var(--ease), background .14s; }
+.f:focus, .f.focus { box-shadow:0 0 0 3px var(--ember), 0 0 22px rgba(255,138,61,.35); }
+.f:active { transform:scale(.985); }
+.list { display:flex; flex-direction:column; gap:.55em; }
+.dev { display:grid; grid-template-columns:2.4em 1fr; gap:.15em .8em; align-items:center; text-align:left; width:100%; padding:.7em .9em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); }
+.dev.sel { background:var(--panel2); border-color:#5a3f2c; }
+.dev .ico { grid-row:span 2; width:2.4em; height:2.4em; border-radius:10px; display:grid; place-items:center; background:var(--panel3); color:var(--ember); }
+.dev .ico svg { width:1.4em; height:1.4em; }
+.dev .n { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dev .m { color:var(--muted); font-size:.8em; display:flex; gap:.5em; align-items:center; flex-wrap:wrap; }
+.dot { width:.62em; height:.62em; border-radius:50%; display:inline-block; background:var(--faint); flex:none; }
+.dot.good { background:var(--good); } .dot.warn { background:var(--flame); }
+.badge { font-size:.72em; padding:.12em .55em; border-radius:99px; background:rgba(255,138,61,.16); color:var(--ember); white-space:nowrap; }
+.detail { min-height:0; overflow:auto; padding:4px; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
+.dhead { display:flex; flex-wrap:wrap; align-items:flex-end; gap:.4em 1.2em; margin-bottom:.6em; }
+.dhead h2 { margin:0; font-size:1.25em; font-weight:650; }
+.dhead .facts { color:var(--muted); font-size:.85em; display:flex; gap:.4em 1.1em; flex-wrap:wrap; }
+.acts { display:flex; flex-wrap:wrap; gap:.5em; }
+.btn { padding:.55em 1em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); min-height:2.6em; }
+.btn.primary { background:var(--ember); color:var(--ink); border-color:transparent; font-weight:650; }
+.btn.danger { color:#ffb3a1; border-color:#5c2a22; background:#2a1512; }
+.btn[disabled] { opacity:.45; pointer-events:none; }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:.8em 1em; margin-top:.7em; }
+.panel h3 { margin:0 0 .5em; font-size:1em; }
+.note { color:var(--muted); font-size:.85em; line-height:1.45; margin:.4em 0; }
+.items { display:flex; flex-direction:column; gap:.4em; }
+.item { display:grid; grid-template-columns:1fr auto; gap:.15em .8em; align-items:center; padding:.5em .75em; border-radius:10px; background:var(--panel2); border:1px solid var(--line); text-align:left; width:100%; }
+.item .t { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.item .s { color:var(--muted); font-size:.82em; grid-column:1; overflow-wrap:anywhere; }
+.item .r { grid-row:span 2; grid-column:2; display:flex; gap:.4em; }
+.toggle { display:flex; gap:.7em; align-items:center; padding:.5em .7em; border-radius:10px; background:var(--panel2); border:1px solid var(--line); text-align:left; width:100%; }
+.sw { width:2.4em; height:1.35em; border-radius:99px; background:var(--panel3); position:relative; flex:none; }
+.sw::after { content:''; position:absolute; top:.15em; left:.15em; width:1.05em; height:1.05em; border-radius:50%; background:var(--muted); transition:left .15s; }
+.sw.on { background:var(--ember); } .sw.on::after { left:1.2em; background:var(--ink); }
+.grid2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(16em, 1fr)); gap:.45em; }
+.media { display:flex; gap:.8em; align-items:center; flex-wrap:wrap; }
+.media .what { flex:1; min-width:10em; } .media .what b { display:block; }
+.veil { position:fixed; inset:0; background:rgba(8,5,4,.74); display:grid; place-items:center; padding:var(--gut); z-index:10; backdrop-filter:blur(3px); }
+.dlg { width:min(44em, 100%); max-height:100%; overflow:auto; background:var(--panel); border:1px solid #4a372b; border-radius:18px; padding:1.1em 1.3em; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+.dlg h2 { margin:0 0 .5em; font-size:1.2em; }
+.key { font:700 2em/1.2 ui-monospace, "JetBrains Mono", monospace; letter-spacing:.18em; color:var(--flame); text-align:center; padding:.4em; background:var(--bg2); border-radius:12px; border:1px solid var(--line); margin:.5em 0; }
+.row { display:flex; gap:.6em; justify-content:flex-end; margin-top:1em; flex-wrap:wrap; }
+.inp { width:100%; padding:.6em .8em; border-radius:12px; border:1px solid var(--line); background:var(--bg2); }
+textarea.inp { min-height:6em; resize:vertical; }
+.inp:focus { border-color:var(--ember); outline:none; }
+.files { display:flex; flex-direction:column; gap:.35em; max-height:48vh; overflow:auto; padding:3px; }
+.file { display:grid; grid-template-columns:1.6em 1fr auto; gap:.6em; align-items:center; padding:.45em .7em; border-radius:10px; background:var(--panel2); border:1px solid var(--line); text-align:left; width:100%; }
+.file .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .file .sz { color:var(--muted); font-size:.8em; }
+.file.on { border-color:var(--ember); background:#3a2416; }
+.prog { height:.5em; border-radius:9px; background:var(--panel3); overflow:hidden; margin:.4em 0; }
+.prog i { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--ember), var(--flame)); border-radius:9px; }
+.empty { color:var(--muted); padding:1em .3em; line-height:1.5; }
+.osk { display:grid; grid-template-columns:repeat(10, 1fr); gap:.3em; margin-top:.5em; }
+.osk button { padding:.45em 0; border-radius:9px; background:var(--panel3); border:1px solid var(--line); }
+.osk .wide { grid-column:span 2; }
+.toast { position:fixed; left:50%; bottom:3.2em; transform:translateX(-50%); background:var(--panel3); border:1px solid var(--line); padding:.6em 1.1em; border-radius:12px; z-index:20; box-shadow:0 10px 30px rgba(0,0,0,.5); max-width:90vw; }
+@media (max-width: 760px) { main { grid-template-columns:1fr; overflow:auto; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Hearth Connect</h1>
+    <span class="sub" id="sub">Starting…</span>
+    <span class="spacer"></span>
+    <button class="btn f" data-act="refresh">Look again</button>
+    <button class="btn f" data-act="settings">Settings</button>
+  </header>
+  <main>
+    <section class="scroll"><div class="list" id="devices"></div></section>
+    <section class="detail" id="detail"></section>
+  </main>
+  <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>Y</b>Look again</span><span id="hint"></span></footer>
+</div>
+<div id="layer"></div>
+<script>
+'use strict';
+const T = window.__TAURI__;
+const invoke = T ? T.core.invoke : demoInvoke;
+const listen = T ? T.event.listen : () => {};
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const human = b => { if (b == null || b < 0) return ''; const u = ['bytes','KB','MB','GB','TB']; let v = b, i = 0; while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; } return (i ? v.toFixed(v < 10 ? 1 : 0) : v) + ' ' + u[i]; };
+const call = (cmd, args) => invoke('call', { cmd, args: args || {} });
+const ICON = {
+  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>',
+  tablet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M11 18h2"/></svg>',
+  pc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+};
+const S = { st: null, sel: null, dlg: null, pad: false, off: false, picked: new Set(), browse: null };
+
+function toast(t) { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 3800); }
+const ago = ms => { const s = Math.max(0, (Date.now() - ms) / 1000); return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)} min ago` : new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+
+async function load() {
+  try { S.st = await call('state'); S.off = false; } catch (e) { S.st = null; S.off = true; drawOff(String(e)); return; }
+  const st = S.st;
+  $('#sub').textContent = `This PC shows up as “${st.name}” in KDE Connect`;
+  const ds = st.devices;
+  if (!S.sel || !ds.some(d => d.id === S.sel)) S.sel = ds[0]?.id || null;
+  drawDevices(); drawDetail();
+  const asking = ds.find(d => d.pair.state === 'asking');
+  if (asking && S.dlg !== 'pair:' + asking.id) showPairRequest(asking);
+  const offer = st.files.find(f => f.decided == null && !f.error);
+  if (offer && !S.dlg) showFileOffer(offer);
+}
+
+function drawOff(err) {
+  $('#sub').textContent = 'Off';
+  $('#devices').innerHTML = '';
+  $('#detail').innerHTML = `<div class="panel"><h3>Hearth Connect is off</h3><p class="note">Turn it on to link your phone: send files both ways, see your phone's notifications here, share the clipboard, use the phone as a touchpad and keyboard, control music, find your phone, see its battery.</p>
+    <p class="note">${esc(err)}</p><div class="acts"><button class="btn primary f" data-act="turnon">Turn on</button></div></div>`;
+  $('[data-act="turnon"]')?.focus();
+}
+
+function devIcon(d) { return d.kind === 'tablet' ? ICON.tablet : (d.kind === 'desktop' || d.kind === 'laptop' || d.kind === 'tv') ? ICON.pc : ICON.phone; }
+function status(d) {
+  if (d.pair.state === 'asking') return '<span class="dot warn"></span>Wants to pair';
+  if (d.pair.state === 'requested') return '<span class="dot warn"></span>Waiting for the phone';
+  if (!d.reachable) return `<span class="dot"></span>${d.paired ? 'Not connected' : 'Gone'}`;
+  if (!d.paired) return '<span class="dot"></span>Not paired';
+  return `<span class="dot good"></span>Connected${d.battery ? ` · ${d.battery.charge}%${d.battery.charging ? ' charging' : ''}` : ''}`;
+}
+function drawDevices() {
+  const ds = S.st.devices;
+  const focused = document.activeElement?.dataset?.dev;
+  $('#devices').innerHTML = (ds.length ? ds.map(d => `<button class="dev f ${d.id === S.sel ? 'sel' : ''}" data-dev="${esc(d.id)}"><span class="ico">${devIcon(d)}</span>
+      <span class="n">${esc(d.name)}</span><span class="m">${status(d)}${d.notifications.length ? ` <span class="badge">${d.notifications.length}</span>` : ''}</span></button>`).join('')
+    : `<div class="empty">No phones yet. Install <b>KDE Connect</b> on your phone (Google Play, F-Droid or the App Store), open it on the same Wi-Fi as this PC, and choose “${esc(S.st.name)}” there, or pair from here when the phone shows up.</div>`)
+    + (Object.keys(S.st.oldProtocol || {}).length ? `<div class="note">${Object.values(S.st.oldProtocol).map(esc).join(', ')}: update KDE Connect on that device (it's too old to link).</div>` : '');
+  if (focused) $(`[data-dev="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+}
+
+function sw(key, label, on, sub) { return `<button class="toggle f" data-opt="${key}"><span class="sw ${on ? 'on' : ''}"></span><span>${esc(label)}${sub ? `<div class="note" style="margin:0">${esc(sub)}</div>` : ''}</span></button>`; }
+
+function drawDetail() {
+  const st = S.st, d = st.devices.find(x => x.id === S.sel);
+  const files = st.files.filter(f => !d || f.device === d.id);
+  const texts = (st.texts || []).filter(t => !d || t.device === d.id).slice(0, 8);
+  let h = '';
+  if (!d) { h = `<div class="panel"><h3>Link your phone</h3><p class="note">1. Install <b>KDE Connect</b> on your phone (Android: Google Play or F-Droid; iPhone: App Store).<br>2. Connect it to the same Wi-Fi as this PC.<br>3. In KDE Connect, choose “${esc(st.name)}” and pair. Accept here, after checking both show the same code.</p></div>`; $('#detail').innerHTML = h; return; }
+  h += `<div class="dhead"><h2>${esc(d.name)}</h2><span class="facts"><span>${status(d)}</span>${d.ip ? `<span>${esc(d.ip)}</span>` : ''}</span></div>`;
+  if (!d.paired) {
+    h += d.pair.state === 'requested'
+      ? `<div class="panel"><h3>Pairing…</h3><p class="note">Accept on ${esc(d.name)}. Check it shows this code:</p><div class="key">${esc(d.pair.key || '')}</div><div class="acts"><button class="btn f" data-act="reject">Cancel</button></div></div>`
+      : `<div class="panel"><h3>Not paired</h3><p class="note">Pairing lets ${esc(d.name)} send files, notifications and clipboard to this PC, and use it as a touchpad. Nothing is shared before you pair.</p><div class="acts"><button class="btn primary f" data-act="pair" ${d.reachable ? '' : 'disabled'}>Pair</button></div></div>`;
+    $('#detail').innerHTML = h; return;
+  }
+  const on = d.reachable;
+  h += `<div class="acts"><button class="btn primary f" data-act="send" ${on ? '' : 'disabled'}>Send files</button><button class="btn f" data-act="sendtext" ${on ? '' : 'disabled'}>Send text or link</button>
+    <button class="btn f" data-act="clip" ${on ? '' : 'disabled'}>Send clipboard</button><button class="btn f" data-act="ring" ${on ? '' : 'disabled'}>Ring phone</button><button class="btn f" data-act="ping" ${on ? '' : 'disabled'}>Ping</button></div>`;
+  if (!on) h += `<p class="note">${esc(d.name)} isn't connected. Open KDE Connect on it, on the same Wi-Fi.</p>`;
+  if (files.length) h += `<div class="panel"><h3>Files from ${esc(d.name)}</h3><div class="items">${files.map(fileRow).join('')}</div><div class="acts" style="margin-top:.5em"><button class="btn f" data-act="openfolder">Open the folder</button></div></div>`;
+  // Media on the phone.
+  if (on && d.players.length) {
+    const pl = S.player && d.players.includes(S.player) ? S.player : d.players[0];
+    const np = d.playing[pl] || {};
+    h += `<div class="panel"><h3>Playing on ${esc(d.name)}</h3><div class="media"><div class="what"><b>${esc(np.title || np.nowPlaying || 'Nothing playing')}</b><span class="note">${esc([np.artist, np.album].filter(Boolean).join(' · '))}${d.players.length > 1 ? ` · ${esc(pl)}` : ''}</span></div>
+      <button class="btn f" data-media="Previous">⏮</button><button class="btn f" data-media="PlayPause">${np.isPlaying ? '⏸' : '▶'}</button><button class="btn f" data-media="Next">⏭</button>
+      <button class="btn f" data-vol="-10">−</button><button class="btn f" data-vol="10">＋</button>${d.players.length > 1 ? '<button class="btn f" data-act="nextplayer">Other player</button>' : ''}</div></div>`;
+  }
+  // Notifications.
+  h += `<div class="panel"><h3>Notifications</h3>${d.options.notifications ? (d.notifications.length ? `<div class="items">${d.notifications.slice(0, 30).map(n => `<div class="item"><span class="t">${esc(n.appName)}${n.title && n.title !== n.appName ? ': ' + esc(n.title) : ''}</span><span class="s">${esc(n.text)} · ${ago(n.time)}</span>
+      <span class="r">${n.replyId ? `<button class="btn f" data-reply="${esc(n.replyId)}">Reply</button>` : ''}${n.dismissable ? `<button class="btn f" data-dismiss="${esc(n.id)}">Dismiss</button>` : ''}</span></div>`).join('')}</div>` : '<p class="note">None right now. If they don\'t arrive, allow notification access for KDE Connect in the phone\'s settings.</p>') : '<p class="note">Off for this phone (below).</p>'}</div>`;
+  if (texts.length) h += `<div class="panel"><h3>Shared with this PC</h3><div class="items">${texts.map((t, i) => `<div class="item"><span class="t">${esc(t.url || t.text)}</span><span class="s">${ago(t.at)}</span><span class="r"><button class="btn f" data-copy="${i}">Copy</button>${t.url ? `<button class="btn f" data-openurl="${i}">Open</button>` : ''}</span></div>`).join('')}</div></div>`;
+  h += `<div class="panel"><h3>Touchpad and keyboard</h3><p class="note">On the phone, open KDE Connect › ${esc(st.name)} › Remote input: drag to move the pointer, tap to click, two fingers to scroll, and the keyboard button to type.${st.inputError ? ` <b>Not working here:</b> ${esc(st.inputError)}` : ''}</p></div>`;
+  h += `<div class="panel"><h3>For this phone</h3><div class="grid2">${sw('autoAccept', 'Accept files without asking', d.options.autoAccept, 'Otherwise each file waits for your OK')}${sw('notifications', 'Show its notifications', d.options.notifications)}${sw('clipboard', 'Share the clipboard', d.options.clipboard, 'Copy on one, paste on the other')}${sw('input', 'Let it control the pointer and keyboard', d.options.input)}</div>
+    <div class="acts" style="margin-top:.6em"><button class="btn danger f" data-act="unpair">Unpair</button></div></div>`;
+  const focusKey = document.activeElement && $('#detail').contains(document.activeElement) ? keyOf(document.activeElement) : null;
+  $('#detail').innerHTML = h;
+  if (focusKey) $('#detail').querySelector(focusKey)?.focus({ preventScroll: true });
+}
+function keyOf(el) { for (const a of ['act', 'opt', 'media', 'vol', 'dismiss', 'reply', 'copy', 'file', 'openurl']) if (el.dataset[a] != null) return `[data-${a}="${CSS.escape(el.dataset[a])}"]`; return null; }
+function fileRow(f) {
+  const state = f.saved ? 'Saved' : f.error ? `Failed: ${f.error}` : f.decided === false ? 'Deleted' : f.done ? (f.decided ? 'Saving…' : 'Arrived: keep it?') : `Receiving ${human(f.received)}${f.size > 0 ? ' of ' + human(f.size) : ''}`;
+  const btns = f.saved ? `<button class="btn f" data-file="open:${esc(f.token)}">Open</button>` : f.decided == null && !f.error ? `<button class="btn primary f" data-file="keep:${esc(f.token)}">Keep</button><button class="btn f" data-file="delete:${esc(f.token)}">Delete</button>` : '';
+  return `<div class="item"><span class="t">${esc(f.name)}</span><span class="s">${esc(state)} · ${human(f.size)}</span><span class="r">${btns}</span></div>`;
+}
+
+// ---------------------------------------------------------------- dialogs
+function showDialog(html, key) { S.dlg = key || 'dlg'; $('#layer').innerHTML = `<div class="veil"><div class="dlg">${html}</div></div>`; ($('#layer [data-autofocus]') || $('#layer .f'))?.focus(); }
+function closeDialog() { $('#layer').innerHTML = ''; S.dlg = null; oskTarget = null; ($('.dev.sel') || $('.dev') || $('#detail .f'))?.focus(); }
+function showPairRequest(d) {
+  showDialog(`<h2>${esc(d.name)} wants to pair</h2><p class="note">Pair only if this is your phone and it shows the same code:</p><div class="key">${esc(d.pair.key || '')}</div>
+    <p class="note">Once paired it can send files and notifications to this PC, share the clipboard and use the pointer and keyboard. You can turn each of these off, or unpair, later.</p>
+    <div class="row"><button class="btn f" data-pairno="${esc(d.id)}">Reject</button><button class="btn primary f" data-pairyes="${esc(d.id)}" data-autofocus>Pair</button></div>`, 'pair:' + d.id);
+}
+function showFileOffer(f) {
+  showDialog(`<h2>${esc(f.from)} sent a file</h2><div class="items"><div class="item"><span class="t">${esc(f.name)}</span><span class="s">${human(f.size)}</span></div></div>
+    <p class="note">Keep it to put it in ${esc(S.st.folder)}. Until then it waits in a hidden folder, and Delete removes it.</p>
+    <div class="row"><button class="btn f" data-file="delete:${esc(f.token)}">Delete</button><button class="btn primary f" data-file="keep:${esc(f.token)}" data-autofocus>Keep</button></div>`, 'file:' + f.token);
+}
+function showText(title, act, placeholder) {
+  showDialog(`<h2>${esc(title)}</h2><textarea class="inp f" id="txt" data-osk="txt" maxlength="20000" placeholder="${esc(placeholder)}"></textarea>
+    <div class="row"><button class="btn f" data-act="close">Cancel</button><button class="btn primary f" data-act="${act}">Send</button></div>`, 'text');
+  $('#txt').focus();
+}
+async function browse(path) {
+  try { S.browse = await invoke('list_dir', { path: path || '' }); } catch (e) { toast(String(e)); return; }
+  const l = S.browse;
+  const items = l.items.map(it => it.dir ? `<button class="file f" data-open="${esc(it.path)}"><span>📁</span><span class="nm">${esc(it.name)}</span><span></span></button>`
+    : `<button class="file f ${S.picked.has(it.path) ? 'on' : ''}" data-pick="${esc(it.path)}"><span>${S.picked.has(it.path) ? '✓' : ''}</span><span class="nm">${esc(it.name)}</span><span class="sz">${human(it.size)}</span></button>`).join('');
+  showDialog(`<h2>Choose files to send</h2><div class="note">${esc(l.path)}</div><div class="files">${l.parent ? `<button class="file f" data-open="${esc(l.parent)}"><span>⬆</span><span class="nm">Up one folder</span><span></span></button>` : ''}${items || '<div class="empty">Nothing here.</div>'}</div>
+    <div class="row"><button class="btn f" data-act="close">Cancel</button><button class="btn primary f" data-act="sendpicked">Send${S.picked.size ? ` ${S.picked.size}` : ''}</button></div>`, 'browse');
+}
+async function showSettings() {
+  let auto = false; try { auto = await invoke('autostart', { on: null }); } catch {}
+  const st = S.st || {};
+  showDialog(`<h2>Hearth Connect settings</h2><label class="note" for="nm">This PC's name on your phone</label><input class="inp f" id="nm" data-osk="nm" maxlength="32" value="${esc(st.name)}" spellcheck="false" autocomplete="off">
+    <button class="toggle f" data-act="auto" style="margin-top:.6em"><span class="sw ${auto ? 'on' : ''}"></span><span>Start when I sign in<div class="note" style="margin:0">So your phone links without opening this window</div></span></button>
+    <h2 class="sec">Add a phone by address</h2><p class="note">If your phone doesn't show up (some routers block it), type the IP address KDE Connect shows on it.</p>
+    <div class="acts"><input class="inp f" id="ip" data-osk="ip" maxlength="40" placeholder="192.168.1.30" style="flex:1"><button class="btn f" data-act="addip">Add</button></div>
+    ${(st.manual || []).map(ip => `<div class="item" style="margin-top:.4em"><span class="t">${esc(ip)}</span><span class="r"><button class="btn f" data-rmip="${esc(ip)}">Remove</button></span></div>`).join('')}
+    <p class="note">Received files go to ${esc(st.folder)}. Firewall: ${esc(fwText(st.firewall))}. Only devices on your local network can reach Hearth Connect, and only paired ones can do anything.</p>
+    <div class="row"><button class="btn danger f" data-act="turnoff">Turn off Hearth Connect</button><button class="btn f" data-act="close">Close</button><button class="btn primary f" data-act="rename" data-autofocus>Save name</button></div>`, 'settings');
+}
+function fwText(f) { if (!f) return 'unknown'; if (!f.ok) return 'couldn\'t be opened (' + (f.error || '') + ')'; return { firewalld: 'open to local devices while Hearth Connect runs', ufw: 'open to local devices while Hearth Connect runs', none: 'none running', unmanaged: 'not changed' }[f.firewall] || f.firewall; }
+
+// ---------------------------------------------------------------- clicks
+const dev = () => S.st?.devices.find(x => x.id === S.sel);
+async function act(p) { try { return await p; } catch (e) { toast(String(e)); } }
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const d = dev(), ds = b.dataset;
+  if (ds.dev) { S.sel = ds.dev; drawDevices(); drawDetail(); $(`[data-dev="${CSS.escape(S.sel)}"]`)?.focus(); return; }
+  if (ds.key) return oskPress(ds.key);
+  if (ds.pairyes) { await act(call('accept', { id: ds.pairyes })); closeDialog(); return load(); }
+  if (ds.pairno) { await act(call('reject', { id: ds.pairno })); closeDialog(); return load(); }
+  if (ds.opt) { await act(call('option', { id: d.id, key: ds.opt, on: !d.options[ds.opt] })); return load(); }
+  if (ds.media) { await act(call('media', { id: d.id, player: S.player && d.players.includes(S.player) ? S.player : d.players[0], action: ds.media })); return; }
+  if (ds.vol) { const pl = S.player && d.players.includes(S.player) ? S.player : d.players[0]; const v = Math.max(0, Math.min(100, (d.playing[pl]?.volume ?? 50) + Number(ds.vol))); await act(call('media', { id: d.id, player: pl, volume: v })); return; }
+  if (ds.dismiss) { await act(call('dismiss', { id: d.id, notification: ds.dismiss })); return load(); }
+  if (ds.reply) { S.replyId = ds.reply; return showText('Reply', 'replysend', 'Your reply'); }
+  if (ds.copy != null) { const t = (S.st.texts || []).filter(x => x.device === d.id)[Number(ds.copy)]; try { await navigator.clipboard.writeText(t.url || t.text); toast('Copied'); } catch { toast('Couldn\'t copy'); } return; }
+  if (ds.openurl != null) { const t = (S.st.texts || []).filter(x => x.device === d.id)[Number(ds.openurl)]; return act(invoke('open_path', { path: t.url })); }
+  if (ds.file) { const [what, token] = ds.file.split(':'); if (what === 'open') { const f = S.st.files.find(x => x.token === token); return act(invoke('open_path', { path: f?.saved })); } await act(call('file', { token, accept: what === 'keep' })); if (S.dlg?.startsWith('file:')) closeDialog(); return load(); }
+  if (ds.open) return browse(ds.open);
+  if (ds.pick) { S.picked.has(ds.pick) ? S.picked.delete(ds.pick) : S.picked.add(ds.pick); await browse(S.browse.path); $(`[data-pick="${CSS.escape(ds.pick)}"]`)?.focus(); return; }
+  if (ds.rmip) { await act(call('remove_ip', { ip: ds.rmip })); await load(); return showSettings(); }
+  switch (ds.act) {
+    case 'refresh': await act(call('refresh')); toast('Looking for phones…'); return load();
+    case 'settings': return showSettings();
+    case 'pair': { const r = await act(call('pair', { id: d.id })); if (r?.key) toast(`Accept on ${d.name}: the code is ${r.key}`); return load(); }
+    case 'reject': await act(call('reject', { id: d.id })); return load();
+    case 'unpair': await act(call('unpair', { id: d.id })); return load();
+    case 'ping': await act(call('ping', { id: d.id })); return toast('Ping sent');
+    case 'ring': await act(call('ring', { id: d.id })); return toast(`Ringing ${d.name}`);
+    case 'clip': if (await act(call('clipboard', { id: d.id })) !== undefined) toast('Clipboard sent'); return;
+    case 'send': S.picked = new Set(); return browse(S.browse?.path || '');
+    case 'sendpicked': { const paths = [...S.picked]; if (!paths.length) return toast('Choose files first'); closeDialog(); const r = await act(call('share', { id: d.id, paths })); if (r) toast(`Sending ${r.count} ${r.count === 1 ? 'file' : 'files'} to ${d.name}…`); return; }
+    case 'sendtext': return showText(`Send to ${d.name}`, 'textsend', 'Text or a link');
+    case 'textsend': { const t = $('#txt').value.trim(); if (!t) return; closeDialog(); const isUrl = /^https?:\/\/\S+$/i.test(t); await act(call(isUrl ? 'url' : 'text', isUrl ? { id: d.id, url: t } : { id: d.id, text: t })); return toast('Sent'); }
+    case 'replysend': { const t = $('#txt').value.trim(); if (!t) return; closeDialog(); await act(call('reply', { id: d.id, replyId: S.replyId, message: t })); return toast('Reply sent'); }
+    case 'nextplayer': { const i = d.players.indexOf(S.player); S.player = d.players[(i + 1) % d.players.length]; return drawDetail(); }
+    case 'openfolder': return act(invoke('open_path', { path: S.st.folder }));
+    case 'close': return closeDialog();
+    case 'auto': { const now = await act(invoke('autostart', { on: null })); await act(invoke('autostart', { on: !now })); return showSettings(); }
+    case 'rename': await act(call('rename', { name: $('#nm').value })); closeDialog(); return load();
+    case 'addip': { const ip = $('#ip').value.trim(); if (!ip) return; if (await act(call('add_ip', { ip })) !== undefined) toast(`Told ${ip} about this PC`); await load(); return showSettings(); }
+    case 'turnoff': await act(invoke('turn_off')); closeDialog(); setTimeout(load, 800); return;
+    case 'turnon': await act(invoke('turn_on')); return load();
+  }
+});
+
+// ---------------------------------------------------------------- events from the service
+let reloadTimer = null;
+const soon = () => { clearTimeout(reloadTimer); reloadTimer = setTimeout(load, 120); };
+listen('connect://event', ev => {
+  const { event, data } = ev.payload || {};
+  switch (event) {
+    case 'pair-request': soon(); break;
+    case 'paired': toast(`Paired with ${data.from}`); if (S.dlg?.startsWith('pair:')) closeDialog(); soon(); break;
+    case 'pair-failed': toast(data.error || 'Pairing didn\'t work'); if (S.dlg?.startsWith('pair:')) closeDialog(); soon(); break;
+    case 'unpaired': soon(); break;
+    case 'ping': toast(`${data.from}: ${data.message}`); break;
+    case 'ring': toast(`${data.from} is looking for this PC`); break;
+    case 'text': case 'url': toast(`${data.from} shared ${event === 'url' ? 'a link' : 'text'}`); soon(); break;
+    case 'file-offer': soon(); break;
+    case 'file-progress': { soon(); break; }
+    case 'file-saved': toast(`Saved ${data.name}`); soon(); break;
+    case 'file-failed': toast(`A file didn't arrive: ${data.error}`); soon(); break;
+    case 'send-progress': $('#hint').textContent = `Sending ${data.file} (${data.index}/${data.count}) ${data.total ? Math.round(data.sent * 100 / data.total) : 0}%`; break;
+    case 'sent': $('#hint').textContent = ''; toast(`Sent to ${data.to}`); break;
+    case 'send-failed': $('#hint').textContent = ''; toast(`Not sent: ${data.error}`); break;
+    case 'warning': toast(data.text); break;
+    case 'input-error': break;
+    case 'service-gone': if (!S.off) setTimeout(load, 500); break;
+    default: soon();
+  }
+});
+
+// ---------------------------------------------------------------- on-screen keyboard
+let oskTarget = null, lower = true;
+const OSK = 'QWERTYUIOP ASDFGHJKL. ZXCVBNM-_ 1234567890'.split(' ');
+function openOsk(input) {
+  oskTarget = input;
+  const rows = OSK.map(r => [...r].map(c => `<button class="f" data-key="${c}">${lower ? c.toLowerCase() : c}</button>`).join('')).join('');
+  input.insertAdjacentHTML('afterend', `<div class="osk" id="osk">${rows}<button class="f wide" data-key="space">Space</button><button class="f wide" data-key="back">⌫</button><button class="f wide" data-key="shift">Aa</button><button class="f wide" data-key=":">:</button><button class="f wide" data-key="done">Done</button></div>`);
+  $('#osk .f').focus();
+}
+function closeOsk() { const t = oskTarget; $('#osk')?.remove(); oskTarget = null; t?.focus(); }
+function oskPress(k) {
+  const t = oskTarget; if (!t) return;
+  if (k === 'done') return closeOsk();
+  if (k === 'shift') { lower = !lower; document.querySelectorAll('#osk [data-key]').forEach(b => { if (b.dataset.key.length === 1) b.textContent = lower ? b.dataset.key.toLowerCase() : b.dataset.key; }); return; }
+  if (k === 'back') t.value = t.value.slice(0, -1);
+  else if (t.value.length < (t.maxLength > 0 ? t.maxLength : 200)) t.value += k === 'space' ? ' ' : (lower ? k.toLowerCase() : k);
+}
+
+// ---------------------------------------------------------------- moving around: D-pad, stick, arrow keys
+function focusables() { const root = $('#layer').firstChild || document; return [...root.querySelectorAll('.f')].filter(el => !el.disabled && el.offsetParent !== null); }
+function move(dir) {
+  const cur = document.activeElement, all = focusables(); if (!all.length) return;
+  if (!cur || !all.includes(cur)) { all[0].focus(); return; }
+  const a = cur.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+  let best = null, bestScore = Infinity;
+  for (const el of all) {
+    if (el === cur) continue;
+    const r = el.getBoundingClientRect(), bx = r.left + r.width / 2, by = r.top + r.height / 2;
+    const ok = dir === 'left' ? r.right <= a.left + 4 : dir === 'right' ? r.left >= a.right - 4 : dir === 'up' ? r.bottom <= a.top + 4 : r.top >= a.bottom - 4;
+    if (!ok) continue;
+    const main = dir === 'left' || dir === 'right' ? Math.abs(bx - ax) : Math.abs(by - ay), cross = dir === 'left' || dir === 'right' ? Math.abs(by - ay) : Math.abs(bx - ax);
+    const score = main + cross * 2.2; if (score < bestScore) { bestScore = score; best = el; }
+  }
+  if (best) { best.focus(); best.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+}
+function choose() { const el = document.activeElement; if (!el || el === document.body) { focusables()[0]?.focus(); return; } if (el.dataset.osk && S.pad) { if (!oskTarget) openOsk(el); return; } if (el.tagName === 'BUTTON') el.click(); }
+function back() { if (oskTarget) return closeOsk(); if (S.dlg?.startsWith('pair:')) return $('[data-pairno]')?.click(); if (S.dlg) return closeDialog(); }
+document.addEventListener('keydown', e => {
+  S.pad = false;
+  const typing = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+  if (e.key === 'Escape') { e.preventDefault(); back(); return; }
+  if (typing) return;
+  const dirs = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  if (dirs[e.key]) { e.preventDefault(); move(dirs[e.key]); return; }
+  if (e.key === 'Backspace') { e.preventDefault(); back(); }
+  if (e.key === 'F5') { e.preventDefault(); load(); }
+});
+const held = {}; let lastPadMove = 0;
+function pad() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const now = performance.now(), state = { up: false, down: false, left: false, right: false, a: false, b: false, y: false };
+  for (const g of pads) {
+    const bt = i => g.buttons[i]?.pressed, ax = g.axes[0] || 0, ay = g.axes[1] || 0;
+    state.up ||= bt(12) || ay < -.6; state.down ||= bt(13) || ay > .6; state.left ||= bt(14) || ax < -.6; state.right ||= bt(15) || ax > .6;
+    state.a ||= bt(0); state.b ||= bt(1); state.y ||= bt(3);
+  }
+  for (const [k, on] of Object.entries(state)) {
+    if (!on) { held[k] = 0; continue; }
+    const first = !held[k], repeat = held[k] && now - held[k] > 380 && now - lastPadMove > 110;
+    if (first) held[k] = now;
+    if (!(first || (repeat && ['up','down','left','right'].includes(k)))) continue;
+    S.pad = true; lastPadMove = now;
+    if (k === 'a') choose(); else if (k === 'b') back(); else if (k === 'y') { if (!S.dlg) $('[data-act="refresh"]').click(); } else move(k);
+  }
+  requestAnimationFrame(pad);
+}
+requestAnimationFrame(pad);
+window.addEventListener('gamepadconnected', () => { $('#hint').textContent = 'Controller connected'; });
+setInterval(() => { if (!S.dlg && document.visibilityState === 'visible') load(); }, 5000);
+load().then(() => ($('.dev.sel') || $('#detail .f'))?.focus());
+
+// ---------------------------------------------------------------- without the app (the page in a browser): a sample phone
+function demoInvoke(cmd, args) {
+  if (cmd === 'call' && args.cmd === 'state') return Promise.resolve({ name: 'Living room PC', deviceId: 'x', tcpPort: 1716, folder: '/home/you/Downloads/Hearth Connect', firewall: { ok: true, firewall: 'firewalld' }, inputReady: true, inputError: null, oldProtocol: {}, manual: [], log: [],
+    files: [{ token: 't1', device: 'p1', from: 'Pixel 9', name: 'IMG_2041.jpg', size: 2400000, received: 2400000, done: true, decided: null }],
+    texts: [{ device: 'p1', from: 'Pixel 9', url: 'https://hearthos.fun', at: Date.now() - 60000 }],
+    devices: [{ id: 'p1', name: 'Pixel 9', kind: 'phone', reachable: true, ip: '192.168.1.31', paired: true, pair: { state: 'paired' }, battery: { charge: 76, charging: false }, keyboard: true,
+      players: ['Spotify'], playing: { Spotify: { title: 'Holocene', artist: 'Bon Iver', isPlaying: true, volume: 60 } },
+      notifications: [{ id: 'n1', appName: 'Messages', title: 'Ana', text: 'Dinner at 8?', time: Date.now() - 120000, replyId: 'r1', dismissable: true }],
+      options: { autoAccept: false, clipboard: true, input: true, notifications: true } },
+      { id: 'p2', name: 'Galaxy Tab', kind: 'tablet', reachable: true, ip: '192.168.1.40', paired: false, pair: { state: 'none' }, players: [], playing: {}, notifications: [], options: null }] });
+  if (cmd === 'list_dir') return Promise.resolve({ path: '/home/you', parent: '/home', items: [{ name: 'Pictures', path: '/home/you/Pictures', dir: true }, { name: 'notes.txt', path: '/home/you/notes.txt', dir: false, size: 1200 }] });
+  if (cmd === 'autostart') return Promise.resolve(true);
+  return Promise.reject('This is a preview: open Hearth Connect to do that.');
+}
+</script>
+</body>
+</html>
