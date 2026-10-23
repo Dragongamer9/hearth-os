@@ -1,0 +1,4073 @@
+[
+  {
+    "name": "C059",
+    "faces": [
+      {
+        "style": "Roman",
+        "file": "/usr/share/fonts/opentype/urw-base35/C059-Roman.otf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Roman",
+        "file": "/usr/share/fonts/type1/urw-base35/C059-Roman.t1",
+        "weight": 500,
+        "italic": false
+      },
+      {
+        "style": "Roman",
+        "file": "/usr/share/fonts/X11/Type1/C059-Roman.pfb",
+        "weight": 500,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/type1/urw-base35/C059-Bold.t1",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/X11/Type1/C059-Bold.pfb",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/opentype/urw-base35/C059-Bold.otf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/C059-Italic.otf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/C059-Italic.t1",
+        "weight": 500,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/X11/Type1/C059-Italic.pfb",
+        "weight": 500,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/C059-BdIta.otf",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/X11/Type1/C059-BdIta.pfb",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/C059-BdIta.t1",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "D050000L",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/X11/Type1/D050000L.pfb",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/type1/urw-base35/D050000L.t1",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/opentype/urw-base35/D050000L.otf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "DejaVu Math TeX Gyre",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuMathTeXGyre.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "DejaVu Sans",
+    "faces": [
+      {
+        "style": "ExtraLight",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSans-ExtraLight.ttf",
+        "weight": 200,
+        "italic": false
+      },
+      {
+        "style": "Book",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Condensed",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Condensed Bold",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Condensed Oblique",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Oblique.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Oblique",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Oblique",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Condensed Bold Oblique",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-BoldOblique.ttf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "DejaVu Sans Mono",
+    "faces": [
+      {
+        "style": "Book",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Oblique",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Oblique",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-BoldOblique.ttf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "DejaVu Serif",
+    "faces": [
+      {
+        "style": "Book",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Condensed",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Condensed Bold",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Condensed Italic",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-Italic.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Condensed Bold Italic",
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-BoldItalic.ttf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Droid Sans Fallback",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Lato",
+    "faces": [
+      {
+        "style": "Hairline",
+        "file": "/usr/share/fonts/truetype/lato/Lato-Hairline.ttf",
+        "weight": 200,
+        "italic": false
+      },
+      {
+        "style": "Light",
+        "file": "/usr/share/fonts/truetype/lato/Lato-Light.ttf",
+        "weight": 300,
+        "italic": false
+      },
+      {
+        "style": "Thin",
+        "file": "/usr/share/fonts/truetype/lato/Lato-Thin.ttf",
+        "weight": 300,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/lato/Lato-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Medium",
+        "file": "/usr/share/fonts/truetype/lato/Lato-Medium.ttf",
+        "weight": 500,
+        "italic": false
+      },
+      {
+        "style": "Semibold",
+        "file": "/usr/share/fonts/truetype/lato/Lato-Semibold.ttf",
+        "weight": 600,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/lato/Lato-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Heavy",
+        "file": "/usr/share/fonts/truetype/lato/Lato-Heavy.ttf",
+        "weight": 800,
+        "italic": false
+      },
+      {
+        "style": "Black",
+        "file": "/usr/share/fonts/truetype/lato/Lato-Black.ttf",
+        "weight": 900,
+        "italic": false
+      },
+      {
+        "style": "Hairline Italic",
+        "file": "/usr/share/fonts/truetype/lato/Lato-HairlineItalic.ttf",
+        "weight": 200,
+        "italic": true
+      },
+      {
+        "style": "Light Italic",
+        "file": "/usr/share/fonts/truetype/lato/Lato-LightItalic.ttf",
+        "weight": 300,
+        "italic": true
+      },
+      {
+        "style": "Thin Italic",
+        "file": "/usr/share/fonts/truetype/lato/Lato-ThinItalic.ttf",
+        "weight": 300,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/truetype/lato/Lato-Italic.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Medium Italic",
+        "file": "/usr/share/fonts/truetype/lato/Lato-MediumItalic.ttf",
+        "weight": 500,
+        "italic": true
+      },
+      {
+        "style": "Semibold Italic",
+        "file": "/usr/share/fonts/truetype/lato/Lato-SemiboldItalic.ttf",
+        "weight": 600,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/truetype/lato/Lato-BoldItalic.ttf",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Heavy Italic",
+        "file": "/usr/share/fonts/truetype/lato/Lato-HeavyItalic.ttf",
+        "weight": 800,
+        "italic": true
+      },
+      {
+        "style": "Black Italic",
+        "file": "/usr/share/fonts/truetype/lato/Lato-BlackItalic.ttf",
+        "weight": 900,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Liberation Mono",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationMono-Italic.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationMono-BoldItalic.ttf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Liberation Sans",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Liberation Serif",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/truetype/liberation/LiberationSerif-BoldItalic.ttf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Nimbus Mono PS",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/X11/Type1/NimbusMonoPS-Regular.pfb",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusMonoPS-Regular.otf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusMonoPS-Regular.t1",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusMonoPS-Bold.t1",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusMonoPS-Bold.otf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/X11/Type1/NimbusMonoPS-Bold.pfb",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusMonoPS-Italic.t1",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/X11/Type1/NimbusMonoPS-Italic.pfb",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusMonoPS-Italic.otf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/X11/Type1/NimbusMonoPS-BoldItalic.pfb",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusMonoPS-BoldItalic.otf",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusMonoPS-BoldItalic.t1",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Nimbus Roman",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusRoman-Regular.otf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/X11/Type1/NimbusRoman-Regular.pfb",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusRoman-Regular.t1",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/X11/Type1/NimbusRoman-Bold.pfb",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusRoman-Bold.t1",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusRoman-Bold.otf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusRoman-Italic.otf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusRoman-Italic.t1",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/X11/Type1/NimbusRoman-Italic.pfb",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusRoman-BoldItalic.t1",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusRoman-BoldItalic.otf",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/X11/Type1/NimbusRoman-BoldItalic.pfb",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Nimbus Sans",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/X11/Type1/NimbusSans-Regular.pfb",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusSans-Regular.otf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusSans-Regular.t1",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusSans-Bold.otf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusSans-Bold.t1",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/X11/Type1/NimbusSans-Bold.pfb",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusSans-Italic.t1",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusSans-Italic.otf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/X11/Type1/NimbusSans-Italic.pfb",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusSans-BoldItalic.otf",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/X11/Type1/NimbusSans-BoldItalic.pfb",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusSans-BoldItalic.t1",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Nimbus Sans Narrow",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/X11/Type1/NimbusSansNarrow-Regular.pfb",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusSansNarrow-Regular.otf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusSansNarrow-Regular.t1",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusSansNarrow-Bold.t1",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/X11/Type1/NimbusSansNarrow-Bold.pfb",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusSansNarrow-Bold.otf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Oblique",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusSansNarrow-Oblique.t1",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Oblique",
+        "file": "/usr/share/fonts/X11/Type1/NimbusSansNarrow-Oblique.pfb",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Oblique",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusSansNarrow-Oblique.otf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Oblique",
+        "file": "/usr/share/fonts/X11/Type1/NimbusSansNarrow-BoldOblique.pfb",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Oblique",
+        "file": "/usr/share/fonts/opentype/urw-base35/NimbusSansNarrow-BoldOblique.otf",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Oblique",
+        "file": "/usr/share/fonts/type1/urw-base35/NimbusSansNarrow-BoldOblique.t1",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Color Emoji",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": true
+  },
+  {
+    "name": "Noto Kufi Arabic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoKufiArabic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoKufiArabic-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Looped Lao",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoLoopedLao-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoLoopedLao-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Looped Thai",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoLoopedThai-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoLoopedThai-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Mono",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Music",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoMusic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Naskh Arabic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Nastaliq Urdu",
+    "faces": [
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoNastaliqUrdu-Bold.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoNastaliqUrdu-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Rashi Hebrew",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoRashiHebrew-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoRashiHebrew-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/truetype/noto/NotoSans-Italic.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/truetype/noto/NotoSans-BoldItalic.ttf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Adlam",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansAdlam-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansAdlam-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Adlam Unjoined",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansAdlamUnjoined-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansAdlamUnjoined-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Anatolian Hieroglyphs",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansAnatolianHieroglyphs-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Arabic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Armenian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansArmenian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansArmenian-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Avestan",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansAvestan-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Balinese",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBalinese-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBalinese-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Bamum",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBamum-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBamum-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Bassa Vah",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBassaVah-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Batak",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBatak-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Bengali",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBengali-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBengali-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Bhaiksuki",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBhaiksuki-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Brahmi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBrahmi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Buginese",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBuginese-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Buhid",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansBuhid-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Canadian Aboriginal",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCanadianAboriginal-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCanadianAboriginal-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Carian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCarian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Caucasian Albanian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCaucasianAlbanian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Chakma",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansChakma-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Cham",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCham-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCham-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Cherokee",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCherokee-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCherokee-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Coptic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCoptic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Cuneiform",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCuneiform-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Cypriot",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansCypriot-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Deseret",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansDeseret-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Devanagari",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Display",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansDisplay-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansDisplay-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansDisplay-Italic.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansDisplay-BoldItalic.ttf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Duployan",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansDuployan-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Egyptian Hieroglyphs",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansEgyptianHieroglyphs-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Elbasan",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansElbasan-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Elymaic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansElymaic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Ethiopic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansEthiopic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansEthiopic-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Georgian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansGeorgian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansGeorgian-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Glagolitic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansGlagolitic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Gothic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansGothic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Grantha",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansGrantha-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Gujarati",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansGujarati-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansGujarati-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Gunjala Gondi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansGunjalaGondi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Gurmukhi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansGurmukhi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansGurmukhi-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Hanifi Rohingya",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansHanifiRohingya-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansHanifiRohingya-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Hanunoo",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansHanunoo-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Hatran",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansHatran-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Hebrew",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansHebrew-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansHebrew-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Imperial Aramaic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansImperialAramaic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Indic Siyaq Numbers",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansIndicSiyaqNumbers-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Inscriptional Pahlavi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansInscriptionalPahlavi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Inscriptional Parthian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansInscriptionalParthian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Javanese",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansJavanese-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansJavanese-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Kaithi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansKaithi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Kannada",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansKannada-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansKannada-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Kayah Li",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansKayahLi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansKayahLi-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Kharoshthi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansKharoshthi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Khmer",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansKhmer-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Khojki",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansKhojki-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Khudawadi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansKhudawadi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Lao",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansLao-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansLao-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Lepcha",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansLepcha-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Limbu",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansLimbu-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Linear A",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansLinearA-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Linear B",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansLinearB-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Lisu",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansLisu-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansLisu-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Lycian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansLycian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Lydian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansLydian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Mahajani",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMahajani-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Malayalam",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMalayalam-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMalayalam-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Mandaic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMandaic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Manichaean",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansManichaean-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Marchen",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMarchen-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Masaram Gondi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMasaramGondi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Math",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMath-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Mayan Numerals",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMayanNumerals-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Medefaidrin",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMedefaidrin-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMedefaidrin-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Meetei Mayek",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMeeteiMayek-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMeeteiMayek-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Mende Kikakui",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMendeKikakui-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Meroitic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMeroitic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Miao",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMiao-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Modi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansModi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Mongolian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMongolian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Mono",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMono-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Mro",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMro-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Multani",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMultani-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Myanmar",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Nabataean",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansNabataean-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans New Tai Lue",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansNewTaiLue-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Newa",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansNewa-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans NKo",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansNKo-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Nushu",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansNushu-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Ogham",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOgham-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Ol Chiki",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOlChiki-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOlChiki-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Old Hungarian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOldHungarian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Old Italic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOldItalic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Old North Arabian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOldNorthArabian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Old Permic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOldPermic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Old Persian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOldPersian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Old Sogdian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOldSogdian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Old South Arabian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOldSouthArabian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Old Turkic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOldTurkic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Oriya",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOriya-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOriya-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Osage",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOsage-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Osmanya",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansOsmanya-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Pahawh Hmong",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansPahawhHmong-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Palmyrene",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansPalmyrene-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Pau Cin Hau",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansPauCinHau-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans PhagsPa",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansPhagsPa-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Phoenician",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansPhoenician-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Psalter Pahlavi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansPsalterPahlavi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Rejang",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansRejang-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Runic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansRunic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Samaritan",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSamaritan-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Saurashtra",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSaurashtra-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Sharada",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSharada-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Shavian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansShavian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Siddham",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSiddham-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans SignWriting",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSignWriting-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Sinhala",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSinhala-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSinhala-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Sogdian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSogdian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Sora Sompeng",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSoraSompeng-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSoraSompeng-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Soyombo",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSoyombo-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Sundanese",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSundanese-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSundanese-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Syloti Nagri",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSylotiNagri-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Symbols",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSymbols-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": true
+  },
+  {
+    "name": "Noto Sans Symbols2",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": true
+  },
+  {
+    "name": "Noto Sans Syriac",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansSyriac-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tagalog",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTagalog-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tagbanwa",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTagbanwa-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tai Le",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTaiLe-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tai Tham",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTaiTham-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTaiTham-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tai Viet",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTaiViet-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Takri",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTakri-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tamil",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTamil-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTamil-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tamil Supplement",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTamilSupplement-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Telugu",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTelugu-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTelugu-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Thaana",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansThaana-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansThaana-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Thai",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansThai-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinagh-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh Adrar",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghAdrar-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh Agraw Imazighen",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghAgrawImazighen-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh Ahaggar",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghAhaggar-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh Air",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghAir-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh APT",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghAPT-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh Azawagh",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghAzawagh-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh Ghat",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghGhat-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh Hawad",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghHawad-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh Rhissa Ixa",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghRhissaIxa-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh SIL",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghSIL-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tifinagh Tawellemmet",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTifinaghTawellemmet-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Tirhuta",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansTirhuta-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Ugaritic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansUgaritic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Vai",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansVai-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Wancho",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansWancho-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Warang Citi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansWarangCiti-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Yi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansYi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Sans Zanabazar Square",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSansZanabazarSquare-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerif-Italic.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerif-BoldItalic.ttf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Ahom",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifAhom-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Armenian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifArmenian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifArmenian-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Balinese",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifBalinese-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Bengali",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifBengali-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifBengali-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Devanagari",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifDevanagari-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifDevanagari-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Display",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifDisplay-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifDisplay-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifDisplay-Italic.ttf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifDisplay-BoldItalic.ttf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Dogra",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifDogra-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Ethiopic",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifEthiopic-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifEthiopic-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Georgian",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifGeorgian-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifGeorgian-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Grantha",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifGrantha-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Gujarati",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifGujarati-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifGujarati-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Gurmukhi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifGurmukhi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifGurmukhi-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Hebrew",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifHebrew-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifHebrew-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Hmong Nyiakeng",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifNyiakengPuachueHmong-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifNyiakengPuachueHmong-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Kannada",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifKannada-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifKannada-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Khmer",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifKhmer-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifKhmer-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Khojki",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifKhojki-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifKhojki-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Lao",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifLao-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifLao-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Malayalam",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifMalayalam-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifMalayalam-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Myanmar",
+    "faces": [
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifMyanmar-Bold.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifMyanmar-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Sinhala",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifSinhala-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifSinhala-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Tamil",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifTamil-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifTamil-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Tamil Slanted",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifTamilSlanted-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifTamilSlanted-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Tangut",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifTangut-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Telugu",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifTelugu-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifTelugu-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Thai",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifThai-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifThai-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Tibetan",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifTibetan-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifTibetan-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Serif Yezidi",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifYezidi-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/truetype/noto/NotoSerifYezidi-Bold.ttf",
+        "weight": 700,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Noto Traditional Nushu",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/truetype/noto/NotoTraditionalNushu-Regular.ttf",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "P052",
+    "faces": [
+      {
+        "style": "Roman",
+        "file": "/usr/share/fonts/opentype/urw-base35/P052-Roman.otf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Roman",
+        "file": "/usr/share/fonts/type1/urw-base35/P052-Roman.t1",
+        "weight": 500,
+        "italic": false
+      },
+      {
+        "style": "Roman",
+        "file": "/usr/share/fonts/X11/Type1/P052-Roman.pfb",
+        "weight": 500,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/X11/Type1/P052-Bold.pfb",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/opentype/urw-base35/P052-Bold.otf",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Bold",
+        "file": "/usr/share/fonts/type1/urw-base35/P052-Bold.t1",
+        "weight": 700,
+        "italic": false
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/P052-Italic.t1",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/X11/Type1/P052-Italic.pfb",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/P052-Italic.otf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/P052-BoldItalic.t1",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/X11/Type1/P052-BoldItalic.pfb",
+        "weight": 700,
+        "italic": true
+      },
+      {
+        "style": "Bold Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/P052-BoldItalic.otf",
+        "weight": 700,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Standard Symbols PS",
+    "faces": [
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/X11/Type1/StandardSymbolsPS.pfb",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/opentype/urw-base35/StandardSymbolsPS.otf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Regular",
+        "file": "/usr/share/fonts/type1/urw-base35/StandardSymbolsPS.t1",
+        "weight": 400,
+        "italic": false
+      }
+    ],
+    "mine": false,
+    "symbols": true
+  },
+  {
+    "name": "URW Bookman",
+    "faces": [
+      {
+        "style": "Light",
+        "file": "/usr/share/fonts/opentype/urw-base35/URWBookman-Light.otf",
+        "weight": 300,
+        "italic": false
+      },
+      {
+        "style": "Light",
+        "file": "/usr/share/fonts/X11/Type1/URWBookman-Light.pfb",
+        "weight": 300,
+        "italic": false
+      },
+      {
+        "style": "Light",
+        "file": "/usr/share/fonts/type1/urw-base35/URWBookman-Light.t1",
+        "weight": 300,
+        "italic": false
+      },
+      {
+        "style": "Demi",
+        "file": "/usr/share/fonts/type1/urw-base35/URWBookman-Demi.t1",
+        "weight": 600,
+        "italic": false
+      },
+      {
+        "style": "Demi",
+        "file": "/usr/share/fonts/X11/Type1/URWBookman-Demi.pfb",
+        "weight": 600,
+        "italic": false
+      },
+      {
+        "style": "Demi",
+        "file": "/usr/share/fonts/opentype/urw-base35/URWBookman-Demi.otf",
+        "weight": 600,
+        "italic": false
+      },
+      {
+        "style": "Light Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/URWBookman-LightItalic.otf",
+        "weight": 300,
+        "italic": true
+      },
+      {
+        "style": "Light Italic",
+        "file": "/usr/share/fonts/X11/Type1/URWBookman-LightItalic.pfb",
+        "weight": 300,
+        "italic": true
+      },
+      {
+        "style": "Light Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/URWBookman-LightItalic.t1",
+        "weight": 300,
+        "italic": true
+      },
+      {
+        "style": "Demi Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/URWBookman-DemiItalic.t1",
+        "weight": 600,
+        "italic": true
+      },
+      {
+        "style": "Demi Italic",
+        "file": "/usr/share/fonts/X11/Type1/URWBookman-DemiItalic.pfb",
+        "weight": 600,
+        "italic": true
+      },
+      {
+        "style": "Demi Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/URWBookman-DemiItalic.otf",
+        "weight": 600,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "URW Gothic",
+    "faces": [
+      {
+        "style": "Book",
+        "file": "/usr/share/fonts/type1/urw-base35/URWGothic-Book.t1",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Book",
+        "file": "/usr/share/fonts/opentype/urw-base35/URWGothic-Book.otf",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Book",
+        "file": "/usr/share/fonts/X11/Type1/URWGothic-Book.pfb",
+        "weight": 400,
+        "italic": false
+      },
+      {
+        "style": "Demi",
+        "file": "/usr/share/fonts/X11/Type1/URWGothic-Demi.pfb",
+        "weight": 600,
+        "italic": false
+      },
+      {
+        "style": "Demi",
+        "file": "/usr/share/fonts/type1/urw-base35/URWGothic-Demi.t1",
+        "weight": 600,
+        "italic": false
+      },
+      {
+        "style": "Demi",
+        "file": "/usr/share/fonts/opentype/urw-base35/URWGothic-Demi.otf",
+        "weight": 600,
+        "italic": false
+      },
+      {
+        "style": "Book Oblique",
+        "file": "/usr/share/fonts/opentype/urw-base35/URWGothic-BookOblique.otf",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Book Oblique",
+        "file": "/usr/share/fonts/type1/urw-base35/URWGothic-BookOblique.t1",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Book Oblique",
+        "file": "/usr/share/fonts/X11/Type1/URWGothic-BookOblique.pfb",
+        "weight": 400,
+        "italic": true
+      },
+      {
+        "style": "Demi Oblique",
+        "file": "/usr/share/fonts/X11/Type1/URWGothic-DemiOblique.pfb",
+        "weight": 600,
+        "italic": true
+      },
+      {
+        "style": "Demi Oblique",
+        "file": "/usr/share/fonts/opentype/urw-base35/URWGothic-DemiOblique.otf",
+        "weight": 600,
+        "italic": true
+      },
+      {
+        "style": "Demi Oblique",
+        "file": "/usr/share/fonts/type1/urw-base35/URWGothic-DemiOblique.t1",
+        "weight": 600,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  },
+  {
+    "name": "Z003",
+    "faces": [
+      {
+        "style": "Medium Italic",
+        "file": "/usr/share/fonts/X11/Type1/Z003-MediumItalic.pfb",
+        "weight": 500,
+        "italic": true
+      },
+      {
+        "style": "Medium Italic",
+        "file": "/usr/share/fonts/opentype/urw-base35/Z003-MediumItalic.otf",
+        "weight": 500,
+        "italic": true
+      },
+      {
+        "style": "Medium Italic",
+        "file": "/usr/share/fonts/type1/urw-base35/Z003-MediumItalic.t1",
+        "weight": 500,
+        "italic": true
+      }
+    ],
+    "mine": false,
+    "symbols": false
+  }
+]
