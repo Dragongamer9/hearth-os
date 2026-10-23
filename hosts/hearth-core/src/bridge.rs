@@ -372,6 +372,9 @@ impl Bridge {
             "remote.unpair" => crate::remote::unpair(&req("uuid")?).map(|v| json!(v)),
             "remote.login" => crate::remote::login(a["user"].as_str().unwrap_or(""), a["pass"].as_str().unwrap_or("")).map(|v| json!(v)),
             "moonlight.open" => Ok(json!(crate::remote::open_moonlight())),
+            // ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect), from Game Mode
+            "linkapps.open" => crate::link_apps::open(a["app"].as_str().unwrap_or("")).map(|_| json!({"ok": true})),
+            // ---- end of Nearby Share and Hearth Connect
             "moonlight.install" => crate::remote::install_moonlight().map(|v| json!(v)),
             // ---- Hearth's gaming apps (gaming_apps.rs): Controller Lab, Saves and Mods, opened on a game
             "gamingApps.open" => crate::gaming_apps::open(&req("app")?, a["game"].as_str(), crate::signin_handoff::game_mode()).map(|_| json!({"ok": true})),
@@ -545,6 +548,11 @@ impl Bridge {
             }
             "controller.preset" => crate::guide::controller(&["preset", &req("name")?]),
             "controller.reset" => crate::guide::controller(&["reset"]),
+            // ---- Accessibility (Settings › Accessibility: zoom, colour filters, screen reader; access.rs)
+            "access.status" => crate::access::run(&["status"]),
+            "access.set" => { let j = crate::access::set_args(a)?; crate::access::run(&["set", &j]) }
+            "access.apply" => crate::access::run(&["apply", "game"]),
+            // ---- end Accessibility
             // Is Handheld Daemon running, its controllers and power limit (Settings › Controls shows the way in).
             "hhd.status" => Ok(crate::hhd::status()),
             // Settings › Controls › Handheld Daemon: HHD's whole settings tree with its state, the state alone (the

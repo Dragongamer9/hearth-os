@@ -156,18 +156,6 @@ UNIT
 fi
 # ---- end of Hearth Time
 
-# ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
-# Scanner and Welcome & Tips in one program (/usr/bin/hearth-tools --app NAME), built with the app (base-anatase.yml)
-# and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the
-# tools run: SANE's scanimage and sane-airscan (network scanners), traceroute and tracepath, iw (Wi-Fi link details).
-dnf5 -y install --skip-unavailable sane-backends sane-backends-drivers-scanners sane-airscan traceroute iputils iw || true
-if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
-  install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
-  if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi
-  install -d /usr/share/applications
-  install -m644 /ctx/nimbus-app/hearth-tools/hearth-*.desktop /usr/share/applications/
-fi
-# ---- end Hearth Tools
 # ------------------------------------------------------------------ Hearth's gaming apps (hosts/hearth-gaming)
 # Controller Lab, Saves and Mods: built with the app (base-anatase.yml) and carried in os/nimbus-app; their icons come
 # with Hearth's icon set (branding/icons, above: Icon=hearth-controller-lab ...). Desktop Mode lists them
@@ -228,6 +216,152 @@ UNIT
 fi
 # ---- end of Hearth's gaming apps
 
+# ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect) ------------------------------
+# Hearth's apps for phones and nearby devices, built with the app (base-anatase.yml) and carried in os/nimbus-app
+# (their icons, hearth-nearby and hearth-connect, come with Hearth's icon set). Nearby Share speaks LocalSend's protocol, Hearth Connect KDE Connect's. playerctl lets a phone
+# control this PC's music, wl-clipboard/wtype give Hearth Connect the clipboard and typing in Desktop Mode, and
+# notify-send's library its notifications. Their firewall helper and polkit rule come from os/system_files
+# (hearth-link-firewall, 49-hearth-link.rules): ports open only while the apps listen, and only to local addresses.
+dnf5 -y install --skip-unavailable playerctl wl-clipboard wtype libnotify || true
+for app in hearth-nearby hearth-connect; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app is missing the libraries above"; fi
+  fi
+done
+chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
+rpm -q firewalld >/dev/null 2>&1 && echo "firewalld is in this image: Nearby Share and Hearth Connect open their ports with it" || echo "no firewalld in this image: nothing to open"
+install -d /usr/share/applications /usr/lib/systemd/user
+if [ -x /usr/bin/hearth-nearby ]; then
+  cat > /usr/share/applications/hearth-nearby.desktop <<DESKTOP
+[Desktop Entry]
+Name=Nearby Share
+GenericName=File Sharing
+Comment=Send and receive files with phones and computers on the same network (works with LocalSend)
+Exec=/usr/bin/hearth-nearby %F
+Icon=hearth-nearby
+Type=Application
+Categories=Network;FileTransfer;Utility;
+Keywords=localsend;share;send;receive;nearby;airdrop;transfer;phone;files;
+DESKTOP
+fi
+if [ -x /usr/bin/hearth-connect ]; then
+  cat > /usr/share/applications/hearth-connect.desktop <<DESKTOP
+[Desktop Entry]
+Name=Hearth Connect
+GenericName=Phone Link
+Comment=Link your phone: files, notifications, clipboard, phone as touchpad, music, find my phone (works with KDE Connect)
+Exec=/usr/bin/hearth-connect
+Icon=hearth-connect
+Type=Application
+Categories=Network;Utility;
+Keywords=kde connect;kdeconnect;phone;android;iphone;notifications;clipboard;remote;touchpad;
+DESKTOP
+  # The background service that keeps the phone linked. Off until the person opens Hearth Connect (which turns it on
+  # for their account), so nothing listens on the network before they ask for it.
+  cat > /usr/lib/systemd/user/hearth-connect.service <<UNIT
+[Unit]
+Description=Hearth Connect (your phone, linked; KDE Connect's protocol)
+
+[Service]
+ExecStart=/usr/bin/hearth-connect --daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+fi
+# ---- end of Nearby Share and Hearth Connect
+
+# ==== Hearth Paint, the emoji picker, Hearth Fonts, and Settings › Accessibility (hosts/hearth-paint, hearth-emoji,
+# hearth-fonts, hearth-gamma, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
+# os/nimbus-app (their icons are in the Hearth icon set, installed above). The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;
+# Settings › Accessibility uses Orca (the screen reader, with speech-dispatcher and eSpeak NG) and xprop (gamescope's
+# zoom and colour filters in Game Mode). Each app is left out if it didn't build or can't find its libraries.
+for p in orca speech-dispatcher espeak-ng fontconfig wtype wl-clipboard xprop; do dnf5 -y install "$p" || echo "warning: $p isn't available"; done
+for app in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+  [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so it's left out"; continue; }
+  install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+  if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
+done
+install -d /usr/share/applications
+if [ -x /usr/bin/hearth-paint ]; then
+  cat > /usr/share/applications/hearth-paint.desktop <<DESKTOP
+[Desktop Entry]
+Name=Paint
+GenericName=Drawing
+Comment=Draw, and mark up pictures and screenshots
+Exec=/usr/bin/hearth-paint %f
+Icon=hearth-paint
+Type=Application
+Categories=Graphics;2DGraphics;RasterGraphics;
+MimeType=image/png;image/jpeg;image/webp;image/bmp;image/gif;
+Keywords=paint;draw;drawing;sketch;annotate;markup;screenshot;picture;image;crop;
+StartupWMClass=hearth-paint
+DESKTOP
+fi
+if [ -x /usr/bin/hearth-emoji ]; then
+  cat > /usr/share/applications/hearth-emoji.desktop <<DESKTOP
+[Desktop Entry]
+Name=Emoji & Symbols
+Comment=Type emoji, symbols and special characters into any app (Super+.)
+Exec=/usr/bin/hearth-emoji
+Icon=hearth-emoji
+Type=Application
+Categories=Utility;
+Keywords=emoji;emoticon;smiley;symbol;character;special;accent;kaomoji;unicode;
+StartupWMClass=hearth-emoji
+DESKTOP
+fi
+if [ -x /usr/bin/hearth-fonts ]; then
+  cat > /usr/share/applications/hearth-fonts.desktop <<DESKTOP
+[Desktop Entry]
+Name=Fonts
+GenericName=Font Viewer
+Comment=See your fonts, and install or remove fonts
+Exec=/usr/bin/hearth-fonts %f
+Icon=hearth-fonts
+Type=Application
+Categories=Utility;
+MimeType=font/ttf;font/otf;font/collection;font/sfnt;application/x-font-ttf;application/x-font-otf;application/vnd.ms-opentype;
+Keywords=font;fonts;typeface;ttf;otf;install;
+StartupWMClass=hearth-fonts
+DESKTOP
+  # Hearth Files opens font files in it.
+  if ! grep -q 'hearth-fonts.desktop' /usr/share/applications/mimeapps.list 2>/dev/null; then
+    printf '\n[Default Applications]\n' >> /usr/share/applications/mimeapps.list
+    for m in font/ttf font/otf font/collection font/sfnt application/x-font-ttf application/x-font-otf application/vnd.ms-opentype; do
+      echo "$m=hearth-fonts.desktop" >> /usr/share/applications/mimeapps.list
+    done
+  fi
+fi
+cat > /usr/share/applications/hearth-accessibility.desktop <<DESKTOP
+[Desktop Entry]
+Name=Accessibility
+Comment=Magnifier, colour filters, screen reader, bigger text
+Exec=/usr/bin/hearth-settings accessibility
+Icon=hearth-accessibility
+Type=Application
+Categories=Settings;Accessibility;
+Keywords=accessibility;a11y;magnifier;zoom;screen reader;orca;colour;color;filter;contrast;text size;
+DESKTOP
+update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+# ==== end Hearth Paint, Emoji, Fonts and Accessibility
+
+# ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
+# Scanner and Welcome & Tips in one program (/usr/bin/hearth-tools --app NAME), built with the app (base-anatase.yml)
+# and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the
+# tools run: SANE's scanimage and sane-airscan (network scanners), traceroute and tracepath, iw (Wi-Fi link details).
+dnf5 -y install --skip-unavailable sane-backends sane-backends-drivers-scanners sane-airscan traceroute iputils iw || true
+if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
+  if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi
+  install -d /usr/share/applications
+  install -m644 /ctx/nimbus-app/hearth-tools/hearth-*.desktop /usr/share/applications/
+fi
+# ---- end Hearth Tools
+
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session
 install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
@@ -275,6 +409,9 @@ dnf5 -y install 7zip || dnf5 -y install p7zip p7zip-plugins || true
 # bsdtar: Hearth Files opens .rar, .iso, .cbr and the rest of the archive kinds 7-Zip doesn't.
 dnf5 -y install bsdtar || true
 dnf5 -y install fuse-overlayfs bubblewrap xdpyinfo xrandr || true
+# Send logs decodes the screen's EDID (what the TV says it can do: HDMI 2.1's fast link, its fastest 4K rates, VRR)
+# when a screen shows fewer modes than expected. Not fatal.
+dnf5 -y install edid-decode || dnf5 -y install libdisplay-info-tools || true
 dnf5 -y install ntfsprogs ntfs-3g e2fsprogs btrfs-progs util-linux || true
 dnf5 -y install umu-launcher || true
 # Claude Desktop (Hearth Settings › Claude: Anthropic's package, unpacked in the user's home folder by
@@ -528,6 +665,73 @@ printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hea
 # .deb files open in Install Package (Hearth's Debian box).
 printf 'application/vnd.debian.binary-package=hearth-install-package.desktop\napplication/x-deb=hearth-install-package.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
 
+# ------------------------------------------------------------------ Hearth Player and Hearth Calculator
+# ---- hosts/hearth-player and hosts/hearth-calculator, built by CI with the app (base-anatase.yml) and carried in
+# os/nimbus-app; their menu entries are os/system_files' hearth-player.desktop and hearth-calculator.desktop.
+# The player plays through WebKitGTK (GStreamer) and edits with ffmpeg, so this image gets the codecs for both:
+# RPM Fusion's full ffmpeg (H.264/H.265 decoding and libx264 encoding) and its GStreamer plugins, else Fedora's own
+# (ffmpeg-free, gstreamer1-plugin-libav, openh264). What ended up in is in /usr/share/nimbus/media-codecs.txt.
+if [ ! -f /etc/yum.repos.d/rpmfusion-free.repo ]; then
+  dnf5 -y install "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA}.noarch.rpm" \
+                  "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA}.noarch.rpm" || true
+fi
+RPMF=()
+for r in rpmfusion-free rpmfusion-free-updates rpmfusion-nonfree rpmfusion-nonfree-updates; do
+  if grep -qs "^\[$r\]" /etc/yum.repos.d/rpmfusion-*.repo; then RPMF+=("--enablerepo=$r"); fi
+done
+if [ ${#RPMF[@]} -gt 0 ]; then
+  if rpm -q ffmpeg-free >/dev/null 2>&1; then dnf5 -y swap --allowerasing "${RPMF[@]}" ffmpeg-free ffmpeg || true; fi
+  rpm -q ffmpeg >/dev/null 2>&1 || dnf5 -y install --allowerasing "${RPMF[@]}" ffmpeg || true
+  dnf5 -y install --allowerasing --skip-unavailable "${RPMF[@]}" gstreamer1-plugins-bad-freeworld gstreamer1-plugins-ugly gstreamer1-libav libavcodec-freeworld || true
+fi
+dnf5 -y install --skip-unavailable gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugin-libav gstreamer1-plugin-openh264 gstreamer1-plugin-dav1d gstreamer1-plugins-base-tools || true
+command -v ffmpeg >/dev/null || dnf5 -y install ffmpeg-free || echo "warning: no ffmpeg in this image: Hearth Player can't edit or convert"
+# The RPM Fusion repositories stay off on the installed system (the image brings updates).
+for r in /etc/yum.repos.d/rpmfusion-*.repo; do
+  if [ -f "$r" ]; then sed -i 's/^enabled=1/enabled=0/' "$r"; fi
+done
+for app in hearth-player hearth-calculator; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    # An app that can't start is worse than none (its menu entry hides itself without it: TryExec).
+    if ldd "/usr/bin/$app" | grep 'not found'; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
+  else
+    echo "warning: $app wasn't built for this image"
+  fi
+done
+# Videos, music and playlists open in Hearth Player: in every desktop (/usr/share/applications/mimeapps.list) and in
+# Desktop Mode's own list, so Hearth Files' Open uses it; every type it lists in hearth-player.desktop (os/system_files).
+if [ -x /usr/bin/hearth-player ]; then
+  player_lines=$(sed -n 's/^MimeType=//p' /usr/share/applications/hearth-player.desktop | tr ';' '\n' | grep . | sed 's/$/=hearth-player.desktop;/')
+  for list in /usr/share/applications/mimeapps.list /etc/xdg/nimbus-mimeapps.list; do
+    [ -f "$list" ] || printf '[Default Applications]\n' > "$list"
+    grep -q '^\[Default Applications\]' "$list" || printf '\n[Default Applications]\n' >> "$list"
+    for l in $player_lines; do sed -i "\#^${l%%=*}=#d" "$list"; done
+    # Right under the [Default Applications] heading.
+    awk -v add="$player_lines" '{ print } /^\[Default Applications\]$/ && !done { print add; done = 1 }' "$list" > "$list.new" && mv "$list.new" "$list"
+  done
+fi
+update-desktop-database /usr/share/applications 2>/dev/null || true
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+# What plays and what edits: in the build log and in the image.
+{
+  echo "Hearth Player media support, $(date -u +%F)"
+  echo "ffmpeg: $(ffmpeg -hide_banner -version 2>/dev/null | head -1 || echo missing)"
+  echo "--- ffmpeg decoders"
+  ffmpeg -hide_banner -decoders 2>/dev/null | awk '{print $2}' | grep -xE 'h264|hevc|av1|libdav1d|vp8|vp9|libvpx-vp9|mpeg2video|mpeg4|aac|mp3|mp3float|flac|opus|libopus|vorbis|ac3|eac3|dca|truehd|alac|wmav2|subrip|ass|mov_text' | tr '\n' ' ' || true
+  echo; echo "--- ffmpeg encoders"
+  ffmpeg -hide_banner -encoders 2>/dev/null | awk '{print $2}' | grep -xE 'libx264|libopenh264|libx265|h264_vaapi|hevc_vaapi|libsvtav1|libaom-av1|libvpx-vp9|libvpx|mpeg4|aac|libfdk_aac|libmp3lame|libopus|libvorbis|flac|pcm_s16le|wavpack|wmav2' | tr '\n' ' ' || true
+  echo; echo "--- GStreamer (what WebKitGTK plays with)"
+  for e in avdec_h264 avdec_h265 avdec_av1 openh264dec dav1ddec vp9dec vah264dec vah265dec avdec_aac faad avdec_mp3 mpg123audiodec flacdec opusdec vorbisdec avdec_ac3 matroskademux qtdemux webmmux; do
+    if gst-inspect-1.0 --exists "$e" 2>/dev/null; then echo "$e yes"; else echo "$e no"; fi
+  done | tr '\n' ' ' || true
+  echo
+} | tee /usr/share/nimbus/media-codecs.txt || true
+# The same as a notice on the CI run (the image build's output reaches the workflow).
+echo "::notice title=Hearth Player codecs::$(tr '\n' ' ' < /usr/share/nimbus/media-codecs.txt | cut -c1-3500)" || true
+# ---- end of Hearth Player and Hearth Calculator
+
+
 # ------------------------------------------------------------------ Hearth Photos and Hearth Documents
 # (hosts/hearth-photos, hosts/hearth-documents) Hearth's picture viewer/editor and its reader for PDFs, e-books (EPUB)
 # and comic books (CBZ), built by CI with the app (base-anatase.yml) and carried in os/nimbus-app (their icons,
@@ -672,6 +876,15 @@ DESKTOP
 fi
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # ---- end of Hearth Contacts and Hearth Maps
+# ---- Hearth Office (hosts/hearth-office): Write, Sheets and Slides, built by CI with the app (base-anatase.yml) and
+# carried in os/nimbus-app/office. office/install.sh puts in the program (hearth-write, hearth-sheets and
+# hearth-slides are links to it), the menu entries and the .hslides file type (the icons are in Hearth's icon set), and makes them the default
+# apps for office files in Hearth's desktop (nimbus-mimeapps.list, so after the file manager's line above). Fonts with
+# the same sizes as Office's (Calibri, Cambria, Arial, Times New Roman), so documents keep their layout.
+dnf5 -y install --skip-unavailable google-carlito-fonts google-crosextra-caladea-fonts liberation-sans-fonts liberation-serif-fonts liberation-mono-fonts || true
+if [ -x /ctx/nimbus-app/office/hearth-office ]; then sh /ctx/nimbus-app/office/install.sh
+else echo "Hearth Office wasn't built; this image goes without it"; fi
+# ---- end of Hearth Office
 
 # ------------------------------------------------------------------ boot straight into Hearth
 # nimbus-autologin writes the login screen's autologin: Plasma Login Manager's /etc/plasmalogin.conf on Anatase
@@ -696,6 +909,22 @@ chmod 755 /usr/lib/systemd/system-sleep/hearth-restart-keep
 # hibernation, or the picture comes back black or broken (RTX desktops). Written before the boot image (dracut,
 # below) so the setting is in it too. Harmless without an Nvidia card (the module never loads).
 echo "Nvidia power management Anatase brings: $(grep -rhs 'NVreg_PreserveVideoMemoryAllocations\|NVreg_TemporaryFilePath\|NVreg_UseKernelSuspendNotifiers' /usr/lib/modprobe.d /etc/modprobe.d | tr '\n' ' ')"
+# What the screen side of the image is, as a notice on the CI run ("only 60 Hz on a 144 Hz TV" reports: HDMI 2.1's
+# fast link (FRL) depends on the driver's version and nvidia-modeset's options, 4K above 60 Hz needs it): the
+# driver's packages and version, open or Nvidia's own kernel modules, every nvidia option in modprobe.d, the
+# kernel arguments the image adds, and gamescope's version.
+(
+  set +x   # the build's command tracing kept out of the notice
+  NV_KVER=$(ls /usr/lib/modules | sort -V | tail -1)
+  echo "kernel $NV_KVER;"
+  echo "nvidia module: version $(modinfo -k "$NV_KVER" -F version nvidia 2>/dev/null || echo none), license $(modinfo -k "$NV_KVER" -F license nvidia 2>/dev/null || echo none) (Dual MIT/GPL = open modules);"
+  echo "nvidia-modeset options: $(modinfo -k "$NV_KVER" -F parm nvidia_modeset 2>/dev/null | cut -d: -f1 | tr '\n' ' ');"
+  echo "modprobe.d: $(grep -rhsE '^[[:space:]]*(options|install|blacklist)[[:space:]].*(nvidia|nouveau|nova)' /usr/lib/modprobe.d /etc/modprobe.d | tr '\n' ';');"
+  echo "kargs.d: $(cat /usr/lib/bootc/kargs.d/*.toml 2>/dev/null | grep -E '^kargs' | tr '\n' ' ')"
+  echo "packages: $(rpm -qa 2>/dev/null | grep -iE '^(nvidia-driver|nvidia-kmod-common|kernel-nvidia|gamescope|edid-decode|libdisplay-info-tools)-[0-9]' | sort -u | tr '\n' ' ')"
+) > /tmp/hearth-nvidia-notice.txt 2>/dev/null || true
+cat /tmp/hearth-nvidia-notice.txt || true
+echo "::notice title=Screen and Nvidia driver in this image::$(tr '\n' ' ' < /tmp/hearth-nvidia-notice.txt | cut -c1-3500)" || true
 mkdir -p /usr/lib/modprobe.d
 cat > /usr/lib/modprobe.d/zz-hearth-nvidia-power.conf <<'CONF'
 # Hearth: Quick Resume keeps games through sleep and turning off (hibernation). Nvidia's driver saves the graphics

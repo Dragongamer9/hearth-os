@@ -253,8 +253,12 @@ pub(crate) fn page_msg(host: &Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, l
             gm.open_from_hearth();
             return;
         } else if ty == "resume" {
-            gm.resume_game();
+            // Hearth's own page: not while Quick Access is open over the game (gamemode.rs front_decision).
+            gm.resume_from_main();
             return;
+        } else if ty == "ready" && label == "main" {
+            // Hearth's page (re)loaded: told again whether it may act on the controller (gamemode.rs main_page_reads_pad).
+            gm.main_ready();
         }
     }
     if ty == "overlay" && msg["action"] == "open" { send_to(host, &label, Bridge::event("overlay.unavailable", serde_json::json!({}))); return; }

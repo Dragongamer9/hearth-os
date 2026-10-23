@@ -8,6 +8,9 @@ SetRow {
     signal toggled(bool on)
     chevron: false
     onActivated: toggled(!checked)
+    Accessible.role: Accessible.CheckBox   // for the screen reader
+    Accessible.checkable: true
+    Accessible.checked: checked
 
     Rectangle {
         anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
