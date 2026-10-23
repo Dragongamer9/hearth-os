@@ -1,0 +1,41 @@
+[package]
+name = "hearth-office"
+version = "0.1.0"
+edition = "2021"
+description = "Hearth Office: Hearth OS's own word processor (Write), spreadsheet (Sheets) and presentations (Slides)"
+license = "GPL-3.0-or-later"
+
+# One program, three apps: `hearth-office --app write|sheets|slides`, or run it as hearth-write, hearth-sheets or
+# hearth-slides (the images install those names as links). The pieces that don't need a window (the command line,
+# recent files, recovery copies, file reading and writing) are a library, so the tests can check them.
+[lib]
+name = "hearth_office"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-office"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+dirs = "5"
+
+# Linux: Export as PDF prints the page straight to a PDF file through WebKitGTK (no print dialog). The same
+# versions Tauri's web view (wry) uses, so they're one copy.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0"
+gtk = "0.18"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
