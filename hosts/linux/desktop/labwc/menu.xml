@@ -32,6 +32,13 @@
     <item label="Middle of the screen"><action name="SnapToRegion" region="center" /></item>
   </menu>
 
+  <menu id="client-output" label="Move to screen">
+    <item label="Screen on the left"><action name="MoveToOutput" direction="left" wrap="yes" /></item>
+    <item label="Screen on the right"><action name="MoveToOutput" direction="right" wrap="yes" /></item>
+    <item label="Screen above"><action name="MoveToOutput" direction="up" wrap="yes" /></item>
+    <item label="Screen below"><action name="MoveToOutput" direction="down" wrap="yes" /></item>
+  </menu>
+
   <menu id="client-menu" label="Window">
     <item label="Minimize"><action name="Iconify" /></item>
     <item label="Maximize or restore"><action name="ToggleMaximize" /></item>
@@ -42,6 +49,7 @@
     <item label="Resize"><action name="Resize" /></item>
     <item label="Keep on top"><action name="ToggleAlwaysOnTop" /></item>
     <menu id="client-send-to" />
+    <menu id="client-output" />
     <separator />
     <item label="Close"><action name="Close" /></item>
   </menu>

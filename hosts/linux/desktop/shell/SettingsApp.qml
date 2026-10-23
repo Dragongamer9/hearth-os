@@ -19,11 +19,13 @@ Scope {
         { id: "wifi", icon: "wifi", label: "Wi-Fi" },
         { id: "bluetooth", icon: "bt", label: "Bluetooth" },
         { id: "sound", icon: "vol", label: "Sound" },
+        { id: "notifications", icon: "bell", label: "Notifications" },
         { id: "display", icon: "display", label: "Display" },
         { id: "appearance", icon: "palette", label: "Appearance" },
         { id: "power", icon: "power", label: "Power" },
         { id: "controller", icon: "pad", label: "Controller" },
         { id: "keyboard", icon: "kbd", label: "Keyboard" },
+        { id: "mouse", icon: "mouse", label: "Mouse & touchpad" },
         { id: "printers", icon: "printer", label: "Printers" },
         { id: "datetime", icon: "clock", label: "Date & time" },
         { id: "defaults", icon: "grid", label: "Default apps" },
@@ -39,7 +41,7 @@ Scope {
         appearance: "SetAppearance.qml", power: "SetPower.qml", controller: "SetController.qml", signin: "SetSignin.qml", browser: "SetBrowser.qml", claude: "SetClaude.qml",
         updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml",
         keyboard: "SetKeyboard.qml", printers: "SetPrinters.qml", datetime: "SetDateTime.qml", defaults: "SetDefaults.qml",
-        clipboard: "SetClipboard.qml", users: "SetUsers.qml" })
+        clipboard: "SetClipboard.qml", users: "SetUsers.qml", mouse: "SetMouse.qml", notifications: "SetNotifications.qml" })
 
     function open(p) {
         if (p && files[p]) page = p;

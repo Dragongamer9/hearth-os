@@ -141,7 +141,9 @@ for p in libsecret libnotify libxcb at-spi2-core libuuid xdg-utils libayatana-ap
 done
 # Printing (Settings › Printers: CUPS with driverless IPP Everywhere, USB printers through ipp-usb, network printers
 # found with Avahi), clipboard history (Super+V: wl-clipboard, cliphist; wtype pastes) and Flatpak for Apps.
-for p in cups cups-filters ipp-usb avahi nss-mdns wl-clipboard cliphist wtype flatpak; do
+# Desktop Mode also: choosing an area for a screenshot (slurp), screenshot notifications (notify-send) and turning
+# the screen off when idle (wlopm, Settings › Power).
+for p in cups cups-filters ipp-usb avahi nss-mdns wl-clipboard cliphist wtype flatpak slurp libnotify wlopm; do
   dnf5 -y install "$p" || echo "warning: $p isn't available"
 done
 systemctl enable cups.socket || true
