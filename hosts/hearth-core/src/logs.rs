@@ -354,6 +354,13 @@ mod tests {
         assert_eq!(t, "steam at ~/.steam and ~/Games, not /home/joan");
     }
     #[test]
+    fn screen_sections_keep_their_output() {
+        // sh() gives only an error line when the script's last command fails (grep finding nothing): both end in true.
+        for s in [SCREEN_SH, DRIVER_SH] { assert!(s.trim_end().ends_with("\ntrue"), "{s}"); }
+        assert!(SCREEN_SH.contains("GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL") && SCREEN_SH.contains("edid-decode"));
+        assert!(DRIVER_SH.contains("/proc/cmdline") && DRIVER_SH.contains("modinfo -F version nvidia") && DRIVER_SH.contains("driver_version"));
+    }
+    #[test]
     fn crash_dumps_shortened() {
         let j = "Oct 21 x systemd-coredump[1]: Process 5 (mangoapp) of user 1000 dumped core.\n    \n    Module libz.so.1 from rpm zlib\n    Module libx.so\n    Stack trace of thread 5:\n    #0 a\n    #1 b\nOct 21 y kernel: something else";
         let o = without_dump_details(j);
