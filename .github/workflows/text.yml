@@ -40,7 +40,8 @@ jobs:
           if [ "${{ github.event_name == 'workflow_dispatch' && inputs.vendor }}" != true ] && [ -s hosts/hearth-text/ui/vendor/VERSIONS ]; then
             echo "Already vendored"; exit 0
           fi
-          sh hosts/hearth-text/vendor.sh
+          sh hosts/hearth-text/vendor.sh > vendor.log 2>&1 || { echo "::error title=vendor::$(tail -25 vendor.log | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=vendored::$(tr '\n' '|' < hosts/hearth-text/ui/vendor/VERSIONS | sed 's/ sha512-[^|]*//g' | cut -c1-3900)"
           git config user.name "Dragongamer9"; git config user.email "Dragongamer9@users.noreply.github.com"
           git add hosts/hearth-text/ui/vendor
           if git diff --cached --quiet; then echo "Already up to date"; exit 0; fi
@@ -67,7 +68,19 @@ jobs:
         run: |
           pip install -q playwright==1.48.0 >/dev/null
           python3 -m playwright install --with-deps chromium >/dev/null
-          python3 hosts/hearth-text/tests/page_check.py --shots page-shots
+          set -o pipefail
+          python3 hosts/hearth-text/tests/page_check.py --shots page-shots 2>&1 | tee page.log || { echo "::error title=page::$(grep -E 'FAIL|Error|error' page.log | head -30 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=page::$(grep -c '^ok' page.log) checks passed"
+      # The screenshots also go to a branch (ci/hearth-text-shots-<branch>), to look at without downloading the artifact.
+      - name: Publish screenshots to a branch
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          [ -d page-shots ] || exit 0
+          to="ci/hearth-text-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          git fetch -q origin "$to" 2>/dev/null && git worktree add -q /tmp/shots FETCH_HEAD 2>/dev/null || { git worktree add -q --detach /tmp/shots && (cd /tmp/shots && git checkout -q --orphan tmp && git rm -rqf . ); }
+          rm -rf /tmp/shots/page && cp -r page-shots /tmp/shots/page && cp page.log /tmp/shots/page/ 2>/dev/null || true
+          cd /tmp/shots && git add -A && git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Text page ${GITHUB_SHA::7}" || exit 0
+          for i in 1 2 3; do git push -q origin "HEAD:refs/heads/$to" && break; sleep 3; git fetch -q origin "$to" && git rebase -q FETCH_HEAD || true; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -123,7 +136,7 @@ jobs:
           "$bin" "$D/sample.sh" "$D/app.py" "$D/new.txt" > run.log 2>&1 &
           sleep 10; win; shot 1-new-file
           xdotool type --delay 30 'hello from CI'; xdotool key ctrl+s; sleep 2; shot 2-saved
-          test "$(cat "$D/new.txt" 2>/dev/null)" = "hello from CI" || { echo "::error title=save::new.txt has '$(cat "$D/new.txt" 2>&1)'"; tail -c 1500 run.log; exit 1; }
+          test "$(cat "$D/new.txt" 2>/dev/null)" = "hello from CI" || { echo "::error title=save::new.txt has '$(cat "$D/new.txt" 2>&1)' $(tail -c 1500 run.log | tr '\n' '|')"; exit 1; }
           echo "::notice title=save::typed and saved new.txt"
           xdotool key ctrl+Tab; sleep 1; shot 3-shell-colors
           xdotool key ctrl+Tab; sleep 1; shot 4-python-colors
@@ -144,6 +157,17 @@ jobs:
           pgrep -f target/release/hearth-text >/dev/null || { echo "::error title=close::the window closed without asking"; exit 1; }
           pkill -f 'target/release/hearth-text' || true
           echo "::notice title=App output::$(tail -c 1200 run.log | tr '\n' '|')"
+      - name: Publish screenshots to a branch
+        if: always() && github.event_name != 'pull_request'
+        working-directory: .
+        run: |
+          [ -d hosts/hearth-text/shots ] || exit 0
+          to="ci/hearth-text-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          git fetch -q origin "$to" 2>/dev/null && git worktree add -q /tmp/shots FETCH_HEAD 2>/dev/null || { git worktree add -q --detach /tmp/shots && (cd /tmp/shots && git checkout -q --orphan tmp && git rm -rqf . ); }
+          rm -rf /tmp/shots/app && cp -r hosts/hearth-text/shots /tmp/shots/app
+          for f in run.log run2.log; do cp "hosts/hearth-text/$f" /tmp/shots/app/ 2>/dev/null || true; done
+          cd /tmp/shots && git add -A && git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Text app ${GITHUB_SHA::7}" || exit 0
+          for i in 1 2 3; do git push -q origin "HEAD:refs/heads/$to" && break; sleep 3; git fetch -q origin "$to" && git rebase -q FETCH_HEAD || true; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
