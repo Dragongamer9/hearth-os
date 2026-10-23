@@ -88,7 +88,7 @@ async fn add_account(name: String, provider: String, server: String, username: S
         a.last_sync = store::now_rev();
         a.last_error = r.as_ref().err().cloned().unwrap_or_default();
         s.put_account(a)?;
-        Ok(json!({"id": id, "report": r.ok(), "error": r.err()}))
+        Ok(json!({"id": id, "report": r.as_ref().ok(), "error": r.err()}))
     }).await
 }
 
