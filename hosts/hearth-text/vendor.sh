@@ -127,7 +127,7 @@ def entry(meta):
     return meta.get('module') or meta.get('main') or 'index.js'
 
 
-IMPORT = re.compile(r'''((?:\bfrom|\bimport)\s*\(?\s*)(['"])([^'"\n]+)\2''')
+IMPORT = re.compile(r'''((?:\bfrom|\bimport)\s*\(?\s*)(['"])([@\w.][\w@/.\-]*)\2''')
 
 
 def relink(src, up):
@@ -136,7 +136,8 @@ def relink(src, up):
         if spec.startswith('.') or spec.startswith('/'):
             return m[0]
         if spec not in chosen:
-            sys.exit('An import of %s, which is not vendored' % spec)
+            print('note: left alone (not a vendored package): %s' % spec)
+            return m[0]
         return m[1] + m[2] + up + flat(spec) + m[2]
     return IMPORT.sub(sub, src)
 
