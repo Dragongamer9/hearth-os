@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<!-- Hearth icon set: hearth-controller-lab (branding/icons/make-icons.py) -->
+<defs>
+  <linearGradient id="tile" x1="0" y1="24" x2="0" y2="488" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#3a2b22"/><stop offset="1" stop-color="#140e0b"/>
+  </linearGradient>
+  <linearGradient id="rim" x1="0" y1="24" x2="0" y2="260" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffe9d2" stop-opacity=".22"/><stop offset="1" stop-color="#ffe9d2" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="c" x1="0" y1="112" x2="0" y2="400" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#fff8f0"/><stop offset="1" stop-color="#d6c3ae"/>
+  </linearGradient>
+  <linearGradient id="e" x1="0" y1="112" x2="0" y2="400" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffd166"/><stop offset=".55" stop-color="#ff8a3d"/><stop offset="1" stop-color="#e5483b"/>
+  </linearGradient>
+  <linearGradient id="core" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff6d6"/><stop offset="1" stop-color="#ffc24f"/>
+  </linearGradient>
+</defs>
+<rect x="24" y="30" width="464" height="464" rx="112" fill="#000" opacity=".28"/>
+<rect x="24" y="24" width="464" height="464" rx="112" fill="url(#tile)"/>
+<rect x="27" y="27" width="458" height="458" rx="109" fill="none" stroke="url(#rim)" stroke-width="6"/>
+<path d="M176 204H336c44 0 70 26 78 66l18 78c8 38-34 58-58 30l-40-44H198l-40 44c-24 28-66 8-58-30l18-78c8-40 34-66 78-66Z" fill="url(#c)"/><path d="M196 254 V306 M170 280 H222" fill="none" stroke="#2a1f19" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/><circle cx="324" cy="262" r="17" fill="url(#e)"/><circle cx="358" cy="296" r="17" fill="url(#e)"/><path d="M176 140 H214 L234 112 L262 166 L284 140 H336" fill="none" stroke="url(#e)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -142,11 +142,14 @@ PanelWindow {
                         id: crow
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
                         spacing: 10
-                        IconImage {
+                        AppIcon {
                             Layout.alignment: Qt.AlignTop
-                            implicitSize: 32
-                            visible: source != ""
-                            source: card.modelData.image || (card.modelData.icon ? Quickshell.iconPath(card.modelData.icon, true) : "")
+                            size: 32
+                            genericFallback: false
+                            visible: hasIcon
+                            source: card.modelData.image ? AppIcons.fromIcon(card.modelData.image) : ""
+                            icon: card.modelData.icon || ""
+                            appId: card.modelData.entry || ""
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
