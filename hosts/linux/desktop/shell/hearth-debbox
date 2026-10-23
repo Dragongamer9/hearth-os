@@ -91,7 +91,7 @@ def apt_install_cmd(box_path):
     progress (APT::Status-Fd: "dlstatus:..." and "pmstatus:..." lines)."""
     if not box_path.startswith('/'):
         raise Fail('the package file needs a full path')
-    return root_cmd(['apt-get', 'install', '-y', '--no-install-recommends', '-o', 'APT::Status-Fd=1',
+    return root_cmd(['apt-get', 'install', '-y', '--no-install-recommends', '-o', 'APT::Status-Fd=1', '-o', 'DPkg::Lock::Timeout=300',
                      '-o', 'Dpkg::Use-Pty=0', box_path])
 
 
@@ -447,6 +447,32 @@ def init_progress(line, state):
         progress(state['pct'], 'Setting up the Debian box: ' + re.sub(r'\s+\[.*$', '', l)[:80])
 
 
+def wait_ready(state=None, limit=1200, sleep=time.sleep):
+    """Waits for distrobox's first-start setup inside the box to finish (it installs sudo and the rest of what the
+    box needs with apt, holding apt's lock meanwhile): until sudo is there. True when ready."""
+    end = time.time() + limit
+    while time.time() < end:
+        code, _ = run(['podman', 'exec', '--user', 'root', BOX, 'sh', '-c', 'command -v sudo >/dev/null'], timeout=60)
+        if code == 0:
+            return True
+        if state is not None:
+            state['pct'] = min(88, state['pct'] + 1)
+            progress(state['pct'], 'Setting up the Debian box: installing what it needs')
+        sleep(5)
+    return False
+
+
+def apt_run(cmd, timeout=900, tries=6, sleep=time.sleep):
+    """An apt command, tried again while something else holds apt's lock (distrobox's setup, an earlier install)."""
+    code, out = 1, ''
+    for _ in range(tries):
+        code, out = run(cmd, timeout=timeout)
+        if code == 0 or not re.search(r'(?i)unable to (lock|acquire)|could not get lock', out):
+            break
+        sleep(10)
+    return code, out
+
+
 def create(quiet=False):
     """Makes the box and starts it once (distrobox sets it up on the first start), then apt's package lists."""
     need_tools()
@@ -471,8 +497,11 @@ def create(quiet=False):
         out = out if code != 0 and not out2.strip() else out2
     if code != 0:
         raise Fail('the Debian box was made but didn\'t start (%s)' % last_line(out, 'distrobox enter failed'))
+    if not wait_ready(state):
+        raise Fail('the Debian box was made but its setup didn\'t finish (distrobox couldn\'t install what it needs). '
+                   'Check the internet connection, then try again (Settings › Apps › Reset the Debian box).')
     progress(90, 'Getting Debian\'s list of packages')
-    code, out = run(apt_update_cmd(), timeout=900)
+    code, out = apt_run(apt_update_cmd())
     if code != 0:
         raise Fail('the Debian box can\'t reach Debian\'s servers (%s). Check the internet connection.' % last_line(out, 'apt-get update failed'))
     progress(100, 'The Debian box is ready')
@@ -542,8 +571,9 @@ def install(path):
         shutil.copyfile(p, tmp)
         target = box_path(tmp)
     run(['podman', 'start', BOX], timeout=300)
+    wait_ready()
     progress(5, 'Getting Debian\'s list of packages')
-    run(apt_update_cmd(), timeout=900)
+    apt_run(apt_update_cmd())
     state = {'from': 10, 'to': 92, 'shown': 0, 'last': ''}
     progress(10, 'Installing %s %s' % (pkg, info['version']))
     try:
