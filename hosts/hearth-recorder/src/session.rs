@@ -203,8 +203,7 @@ fn record(req: &Req, st: &mut State) -> Result<Option<PathBuf>, String> {
                 st.status = "recording".into();
                 control::write(st);
             }
-            if let Some(k) = kids.iter_mut().find(|k| matches!(k.try_wait(), Ok(Some(_)))) {
-                let _ = k;
+            if kids.iter_mut().any(|k| matches!(k.try_wait(), Ok(Some(_)))) {
                 err = Some(format!("The recording stopped by itself: {}", log_tail()));
                 break;
             }

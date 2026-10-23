@@ -168,6 +168,19 @@ pub fn uid() -> u32 {
     { 0 }
 }
 
+/// A random token of `n` bytes as hex (from the kernel's random source), for links only the app knows.
+pub fn token(n: usize) -> String {
+    use std::io::Read as _;
+    let mut b = vec![0u8; n];
+    let ok = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut b)).is_ok();
+    if !ok {
+        // Without it: the time and the process, stirred (never used for anything that matters more than a link).
+        let mut x = crate::dirs::now_ms() ^ ((std::process::id() as u64) << 32);
+        for v in b.iter_mut() { x ^= x << 13; x ^= x >> 7; x ^= x << 17; *v = x as u8; }
+    }
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,6 +203,12 @@ mod tests {
         assert!(alive(pid));
         assert!(stop_child(&mut c, Duration::from_secs(3)));
         assert!(!alive(pid));
+    }
+    #[test]
+    fn tokens() {
+        let a = token(8);
+        assert_eq!(a.len(), 16);
+        assert_ne!(a, token(8));
     }
     #[test]
     fn fifo() {
