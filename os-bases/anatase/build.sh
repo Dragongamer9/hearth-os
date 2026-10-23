@@ -161,6 +161,12 @@ dnf5 -y install fuse || true
 if ! command -v fusermount >/dev/null && command -v fusermount3 >/dev/null; then ln -s "$(command -v fusermount3)" /usr/bin/fusermount; fi
 touch /etc/subuid /etc/subgid
 command -v distrobox
+# Flathub for the system installation (hearth-flatpak-setup adds it from here; Bazaar and Apps' system fallback use it),
+# unless Anatase already brings a Flathub remote file.
+if ! grep -qls 'dl.flathub.org' /etc/flatpak/remotes.d/*.flatpakrepo /usr/share/flatpak/remotes.d/*.flatpakrepo 2>/dev/null; then
+  mkdir -p /etc/flatpak/remotes.d
+  curl -fsSL --retry 3 -o /etc/flatpak/remotes.d/flathub.flatpakrepo https://dl.flathub.org/repo/flathub.flatpakrepo || echo "warning: couldn't fetch Flathub's remote file"
+fi
 # Bazaar, the Flathub store (io.github.kolunmi.Bazaar): Fedora's package when this release has it (only kept if it
 # really is that app: its .desktop id); otherwise hearth-flatpak-setup installs Flathub's at the first online boot.
 if dnf5 -y install bazaar >/tmp/bazaar.log 2>&1 && [ -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop ]; then
