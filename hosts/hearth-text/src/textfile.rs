@@ -27,7 +27,7 @@ pub const ENCODINGS: [&str; 4] = ["utf-8", "utf-16le", "utf-16be", "latin-1"];
 /// A NUL byte in the first 8 KB means "not text" (unless it's UTF-16): the same rule Hearth Files uses.
 pub fn looks_binary(bytes: &[u8]) -> bool {
     let head = &bytes[..bytes.len().min(8192)];
-    head.contains(&0) && utf16_guess(head).is_none()
+    head.contains(&0) && !detect_with(head, true).0.starts_with("utf-16")
 }
 
 /// UTF-16 without a byte-order mark: plain-ASCII text in UTF-16 has a NUL in every other byte.
@@ -76,7 +76,7 @@ pub fn decode(bytes: &[u8], force: Option<&str>) -> Decoded { decode_with(bytes,
 /// decode() for bytes that may be only part of the file (`partial`, see detect_with).
 pub fn decode_with(bytes: &[u8], force: Option<&str>, partial: bool) -> Decoded {
     let (det, _) = detect_with(bytes, partial);
-    let binary = force.is_none() && looks_binary(bytes);
+    let binary = force.is_none() && !det.starts_with("utf-16") && bytes[..bytes.len().min(8192)].contains(&0);
     let enc = if binary { "latin-1" } else { force.filter(|f| ENCODINGS.contains(f)).unwrap_or(det) };
     let skip = bom_len(enc, bytes);
     let body = &bytes[skip..];
