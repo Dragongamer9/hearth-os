@@ -1,0 +1,5 @@
+dconf
+nimbus-shell.log
+quickshell
+wayland-0
+wayland-0.lock
