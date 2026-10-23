@@ -136,7 +136,7 @@ jobs:
             [ -f "$t" ] || continue
             runuser -u tester -- env KIND=${{ matrix.kind }} OUT=/tmp/out LOGS=/tmp/out/logs-$(basename $(dirname $(dirname $t))) \
               RECORDER=$PWD/bin/hearth-recorder CAMERA=$PWD/bin/hearth-camera SHARE=$PWD/bin/hearth-share \
-              dbus-run-session -- bash hosts/hearth-media/ci/session.sh bash "$t" 2>&1 | tee -a /tmp/out/e2e.log || status=1
+              timeout 900 dbus-run-session -- bash hosts/hearth-media/ci/session.sh bash "$t" 2>&1 | tee -a /tmp/out/e2e.log || status=1
             [ "${PIPESTATUS[0]}" = 0 ] || status=1
           done
           exit $status
