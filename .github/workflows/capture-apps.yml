@@ -124,6 +124,9 @@ jobs:
             # Game Mode: gamescope (headless, on Mesa's software Vulkan) and what reads its PipeWire stream, as on Anatase.
             if [ "${{ matrix.kind }}" = gamescope ]; then
               dnf -y -q install --skip-unavailable gamescope xterm mesa-vulkan-drivers vulkan-loader pipewire-gstreamer gstreamer1-plugin-libav >/dev/null
+              # Fedora gives gamescope a file capability (cap_sys_nice) that an unprivileged container can't grant, so
+              # running it fails ("Operation not permitted"); rewriting the file drops it (CI only; the image keeps it).
+              cp /usr/bin/gamescope /tmp/gamescope.bin && cp /tmp/gamescope.bin /usr/bin/gamescope
               gamescope --version 2>&1 | head -1
             fi
           else
