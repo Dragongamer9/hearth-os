@@ -1,3 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><!-- Placeholder for hearth-weather: the icon pass (branch hearth-icons) replaces it. -->
-<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd166"/><stop offset="1" stop-color="#ff8a3d"/></linearGradient></defs>
-<rect x="8" y="8" width="112" height="112" rx="28" fill="url(#g)"/><circle cx="52" cy="52" r="15" fill="#2a1206"/><path d="M48 96h36a14 14 0 0 0 0-28 19 19 0 0 0-36-2 15 15 0 0 0 0 30z" fill="#2a1206"/></svg>

@@ -88,7 +88,7 @@ fi
 
 # ------------------------------------------------------------------ Hearth Time (hosts/hearth-time)
 # Clock, Calendar, Notes and Weather: one program, /usr/bin/hearth-time, with a link per app (hearth-clock,
-# hearth-calendar, hearth-notes, hearth-weather), their menu entries and icons, and the small background service
+# hearth-calendar, hearth-notes, hearth-weather), their menu entries, and the small background service
 # that rings alarms and timers with the apps closed, shows calendar reminders and keeps the weather summary fresh
 # (hearth-time.service, a systemd user service, on for every user). Built with the app (base-*.yml), carried in
 # os/nimbus-app/hearth-time/. Alarms open their window with xprop/xdotool in Game Mode and wlopm in Desktop Mode
@@ -96,11 +96,9 @@ fi
 if [ -x /ctx/nimbus-app/hearth-time/hearth-time ]; then
   install -Dm755 /ctx/nimbus-app/hearth-time/hearth-time /usr/bin/hearth-time
   if ldd /usr/bin/hearth-time | grep "not found"; then echo "warning: Hearth Time is missing the libraries above"; fi
-  install -d /usr/share/applications /usr/share/icons/hicolor/scalable/apps /usr/lib/systemd/user
-  for a in clock calendar notes weather; do
-    ln -sf hearth-time "/usr/bin/hearth-$a"
-    if [ -f "/ctx/nimbus-app/hearth-time/hearth-$a.svg" ]; then install -m644 "/ctx/nimbus-app/hearth-time/hearth-$a.svg" "/usr/share/icons/hicolor/scalable/apps/hearth-$a.svg"; fi
-  done
+  install -d /usr/share/applications /usr/lib/systemd/user
+  # Their icons (hearth-clock, hearth-calendar, hearth-notes, hearth-weather) come with Hearth's icon set.
+  for a in clock calendar notes weather; do ln -sf hearth-time "/usr/bin/hearth-$a"; done
   hearth_time_entry() {  # id, name, comment, categories, keywords
     cat > "/usr/share/applications/hearth-$1.desktop" <<DESKTOP
 [Desktop Entry]
@@ -135,7 +133,6 @@ WantedBy=default.target
 UNIT
   systemctl --global enable hearth-time.service 2>/dev/null \
     || { mkdir -p /etc/systemd/user/default.target.wants && ln -sf /usr/lib/systemd/user/hearth-time.service /etc/systemd/user/default.target.wants/hearth-time.service; }
-  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
 fi
 # ---- end of Hearth Time
 
