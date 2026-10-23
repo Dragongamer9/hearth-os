@@ -109,7 +109,6 @@ jobs:
             image: registry.fedoraproject.org/fedora:latest
             kind: gamescope
             options: --privileged
-            optional: true
           - name: debian13-x11
             image: docker.io/library/debian:trixie
             kind: x11
