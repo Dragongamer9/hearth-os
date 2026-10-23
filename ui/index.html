@@ -65,6 +65,7 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .cover .dl{position:absolute;left:10px;right:10px;bottom:10px;z-index:2}
 .cover .dl .bar{background:rgba(0,0,0,.55);height:6px}
 .cover .dl span{display:block;font-size:11px;font-weight:700;margin-bottom:5px;text-shadow:0 1px 6px rgba(0,0,0,.8)}
+.cover:has(.dl) .ct{bottom:44px}
 .thumb .cover{position:absolute;inset:0;border-radius:6px}
 .cover.ni .img{filter:saturate(.55) brightness(.7)}
 .play.dling{background:var(--panel3);color:var(--text);min-width:230px;flex-direction:column;align-items:stretch;gap:8px;padding:12px 22px}
@@ -221,7 +222,10 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .sbtn.pri{background:var(--accent);color:var(--accentInk)}
 .sbtn svg{width:16px;height:16px}
 .libmeta .lmr{display:flex;gap:8px}
-#qam{top:0;bottom:0;right:0;width:min(400px,92vw);background:var(--panel);transform:translateX(102%);transition:transform .24s var(--ease),visibility .24s;display:grid;grid-template-columns:1fr 58px;box-shadow:-20px 0 60px rgba(0,0,0,.4)}
+/* Quick Access: one panel, the same in Hearth's window and over a game (the ?overlay=full page): 440 px on the right,
+   what's behind it dimmed the same way (.scrim.qa, like body.ovfull:before) */
+#qam{top:0;bottom:0;right:0;width:min(440px,92vw);background:var(--panel);transform:translateX(102%);transition:transform .24s var(--ease),visibility .24s;display:grid;grid-template-columns:1fr 58px;box-shadow:-20px 0 60px rgba(0,0,0,.5)}
+.scrim.qa{background:rgba(0,0,0,.35)}
 #qam.open{transform:none}
 .qbody{overflow-y:auto;padding:22px 18px;scrollbar-width:none}
 .qbody h3{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin:4px 0 14px}
@@ -278,6 +282,10 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .sfield{display:flex;align-items:center;gap:12px;background:var(--bg2);border-radius:10px;padding:14px 16px;font-size:18px;min-height:54px}
 .sfield .q:empty:before{content:attr(data-ph);color:var(--faint)}
 .sfield .q.mono{letter-spacing:.14em}
+.sfield[data-f]{cursor:text}
+/* No on-screen keyboard (keyboard or mouse): a short line of what to do, and buttons for the mouse */
+.kbnone{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px var(--gut);background:var(--panel);border-top:1px solid var(--line);font-size:14px}
+.kbnone .muted{flex:1;min-width:200px}.kbnone b{color:var(--text);font-weight:600}.kbnone .pill svg{width:16px;height:16px}
 .caret{width:2px;height:22px;background:var(--accent);animation:blink 1s steps(2) infinite}
 @keyframes blink{50%{opacity:0}}
 .sres{display:flex;gap:10px;margin:14px 0;min-height:54px;overflow-x:auto;scrollbar-width:none;padding:4px}
@@ -629,25 +637,28 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
   .stat.hide-s,.hint.hide-s{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
-.tile.qr{position:relative}.tile.qr .qrb{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:rgba(10,14,20,.82);color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.tile.qr .qrb svg{width:12px;height:12px}
+.tile.qr{position:relative}.tile.qr .cover .src{display:none}.tile.qr .qrb{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:rgba(10,14,20,.82);color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.tile.qr .qrb svg{width:12px;height:12px}
 .qrrow{display:flex;gap:8px;align-items:stretch}.qrrow .btn:first-child{flex:1;justify-content:flex-start}
 .osi-dl{display:flex;gap:18px;align-items:baseline;margin:0 0 22px;color:var(--dim);font-size:15px}.osi-dl b{font-size:22px;color:var(--text)}
 .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}.shot{display:flex;flex-direction:column;gap:6px;padding:0;background:none;border:0;color:var(--muted);text-align:left;border-radius:12px}.shot img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;background:var(--panel2)}.shot small{padding:0 4px}
 .shotview{display:flex;flex-direction:column;gap:12px;height:calc(100vh - 170px)}.shotview img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:12px;background:#000}.shotbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.shotbar .muted{flex:1}
 .xnote{background:var(--panel);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:var(--r);padding:12px 14px;margin:0 0 12px;color:var(--dim);font-size:14px;line-height:1.45}.xnote b{color:var(--warn);margin-right:6px}
+.xdrop .rv{display:flex;align-items:center;gap:6px}.xdrop .rv svg{width:18px;height:18px;transition:transform .2s var(--ease)}.xdrop.open .rv svg{transform:rotate(180deg)}
+.xdrop+.xdrop,.xdrop-body+.xdrop{margin-top:8px}.xdrop-body{padding:12px 0 6px}
 .xcard{display:flex;flex-direction:column;gap:6px}.xvote{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:var(--panel);font-weight:700;font-size:15px;align-self:flex-start}.xvote svg{width:16px;height:16px;fill:currentColor}.xvote span{font-weight:500;color:var(--dim);font-size:13px}.xvote.on{background:color-mix(in srgb,var(--accent) 22%,var(--panel));color:var(--accent)}
 .xk{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}.xd-title{font-size:clamp(26px,3.4vw,44px);font-weight:700;line-height:1.05}.xd-meta{color:var(--dim);font-size:15px;margin:6px 0 14px}
 .xnav{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.xnav .pill svg{width:18px;height:18px}
 .xc{border-radius:var(--r);flex:none}.xc .cover{width:100%;height:100%}
-.x-car{display:flex;flex-direction:column;align-items:center;gap:18px;padding-top:4vh}.xc-strip{display:flex;gap:18px;align-items:center;justify-content:safe center;overflow-x:auto;width:100%;padding:24px 20px;scrollbar-width:none;min-height:46vh}.xc-strip::-webkit-scrollbar{display:none}
+.x-car{display:flex;flex-direction:column;align-items:center;gap:18px;padding-top:4vh}.xc-strip{display:flex;gap:18px;align-items:center;justify-content:flex-start;overflow-x:auto;width:100%;padding:24px calc(50% - 10vw);scrollbar-width:none;min-height:min(46vh,calc(30vw + 48px))}.xc-strip::-webkit-scrollbar{display:none}
 .xc-strip .xc{width:13vw;aspect-ratio:2/3;opacity:.6;transition:width .18s,opacity .18s}.xc-strip .xc.focus{width:20vw;opacity:1}.xc-info{text-align:center}.xc-info .sp-acts{justify-content:center}
-.x-rows .xr-hero{min-height:34vh;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:10px}
-.x-list{display:flex;gap:0;height:calc(100vh - 140px);margin:0 calc(-1*var(--gut))}.xl-col{width:min(400px,36vw);overflow-y:auto;padding:8px 14px;display:flex;flex-direction:column;gap:4px;background:var(--bg2);border-right:1px solid var(--line)}
-.xl-row{display:flex;align-items:center;gap:12px;padding:8px;border-radius:12px}.xl-row.focus{background:var(--panel3)}.xl-th{width:44px;height:60px;flex:none}.xl-th .cover{width:100%;height:100%}.xl-row .rt b{font-size:16px}.xl-row .rt small{color:var(--dim)}
+.x-rows .xr-hero{min-height:min(34vh,calc(100vh - 470px));display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:10px}
+.x-list{display:flex;gap:0;height:calc(100vh - var(--top) - var(--foot) - 4px);margin:0 calc(-1*var(--gut)) -40px}.xl-col{width:min(400px,36vw);overflow-y:auto;padding:8px 14px;display:flex;flex-direction:column;gap:4px;background:var(--bg2);border-right:1px solid var(--line)}
+.xl-row{display:flex;align-items:center;gap:12px;padding:8px;border-radius:12px}.xl-row.focus{background:var(--panel3)}.xl-th{width:44px;height:60px;flex:none}.xl-th .cover{width:100%;height:100%}.xl-row .rt{flex:1;min-width:0}.xl-row .rt b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.xl-row .rt small{display:block;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xl-th .ct,.xl-th .notinst,.xl-th .dl,.xm-th .ct,.xm-th .notinst,.xm-th .dl,.xw-qt .ct,.xw-qt .notinst,.xj-bar .notinst,.xf-th .ct,.xf-th .notinst{display:none}
 .xl-detail{flex:1;position:relative;overflow:hidden}.xl-bg{position:absolute!important;z-index:0}.xl-in{position:absolute;left:4vw;right:4vw;bottom:5vh;z-index:1}
 .x-wall{display:flex;flex-direction:column;gap:14px;padding-bottom:70px}.xw-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.xw-top .xnav{justify-content:flex-start}
 .xw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:12px}.xw-grid .xc{aspect-ratio:2/3}
-.xw-bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:16px;align-items:center;padding:14px var(--gut);background:var(--bg2);border-top:1px solid var(--line);z-index:5}.xw-bar span{color:var(--dim)}
+.xw-bar{position:fixed;left:0;right:0;bottom:var(--foot);display:flex;gap:16px;align-items:center;padding:14px var(--gut);background:var(--bg2);border-top:1px solid var(--line);z-index:5}.xw-bar span{color:var(--dim)}
 .x-focus{display:flex;flex-direction:column;align-items:center;gap:22px;padding-top:6vh}.xf-clock{font-size:clamp(70px,11vw,130px);font-weight:300;line-height:1}.xf-date{color:var(--dim);font-size:19px;margin-top:-10px}
 .xf-card{display:flex;align-items:center;gap:22px;padding:16px 22px 16px 16px;border-radius:20px;background:var(--panel)}.xf-th{width:84px;height:112px}.xf-th .cover{width:100%;height:100%}.xf-card .xd-meta{margin-bottom:0}
 .xf-btns{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}.xf-b{width:140px;height:96px;border-radius:18px;background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-weight:600}.xf-b svg{width:26px;height:26px}
@@ -655,27 +666,138 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .xw-big .art,.xw-big .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.xw-cap{position:absolute;left:0;right:0;bottom:0;padding:20px;background:linear-gradient(transparent,rgba(6,8,12,.92))}.xw-cap .xd-meta{margin-bottom:0}
 .xw-card{background:var(--panel);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:8px;text-align:left}.xw-line{font-size:14px}.xw-line .ing{color:#7ad15a}.xw-num{font-size:38px;font-weight:700}.xw-qr{display:flex;gap:8px}.xw-qt{width:54px;height:72px}.xw-qt .cover{width:100%;height:100%}
 .xw-strip{grid-column:1/-1;background:var(--panel);border-radius:18px;padding:16px}.xw-strip .shelf{margin-top:8px}
-.x-orbit{position:relative;height:calc(100vh - 150px)}.xo-ring{position:absolute;left:50%;top:50%;width:72vh;height:68vh;transform:translate(-50%,-50%);border:2px dashed var(--line);border-radius:50%}
-.xo-c{position:absolute;width:10vh;height:14vh}.xo-c.focus{transform:scale(1.15)}.xo-mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:30vh;text-align:center}.xo-mid .xd-title{font-size:24px}.xo-mid .sp-acts{justify-content:center}.x-orbit .xnav{position:absolute;right:0;bottom:0;flex-direction:column;align-items:flex-end}
-.x-spines{display:flex;flex-direction:column;gap:22px;padding-top:3vh}.xs-shelf{display:flex;align-items:flex-end;gap:6px;height:56vh;overflow-x:auto;padding:16px 10px 0;border-bottom:10px solid #3a2a1f;scrollbar-width:none}.xs-shelf::-webkit-scrollbar{display:none}
+.x-orbit{position:relative;height:calc(100vh - var(--top) - var(--foot) - 48px);container-type:size}.xo-ring{position:absolute;left:50%;top:50%;width:76cqh;height:76cqh;transform:translate(-50%,-50%);border:2px dashed var(--line);border-radius:50%}
+.xo-c{position:absolute;width:10cqh;height:14cqh}.xo-c.focus{transform:scale(1.15)}.xo-c .ct{font-size:11px;left:6px;right:6px;bottom:6px}.xo-c .notinst{display:none}.xo-mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(34cqh,40cqw);text-align:center}.xo-mid .xd-title{font-size:24px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.xo-mid .sp-acts{justify-content:center}.x-orbit .xnav{position:absolute;right:0;bottom:0;flex-direction:column;align-items:flex-end}
+.x-spines{display:flex;flex-direction:column;gap:22px;padding-top:3vh}.xs-shelf{display:flex;align-items:flex-end;gap:6px;height:min(56vh,calc(100vh - 380px));min-height:220px;overflow-x:auto;padding:16px 10px 0;border-bottom:10px solid #3a2a1f;scrollbar-width:none}.xs-shelf::-webkit-scrollbar{display:none}
 .xs-sp{flex:none;width:48px;height:92%;border-radius:6px 6px 0 0;background:var(--panel2);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;transition:width .2s}.xs-sp:nth-child(3n){height:86%}.xs-sp:nth-child(4n+1){height:96%}
 .xs-t{writing-mode:vertical-rl;transform:rotate(180deg);font-weight:700;font-size:14px;white-space:nowrap;color:var(--dim)}.xs-cv{display:none;position:absolute;inset:0}.xs-cv .cover{width:100%;height:100%;border-radius:0}
 .xs-sp.focus{width:min(300px,24vw);height:100%}.xs-sp.focus .xs-cv{display:block}.xs-sp.focus .xs-t{display:none}
 .x-mag .xm-mast{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:18px}.xm-mast span{font-family:Georgia,'Times New Roman',serif;font-size:34px;font-weight:700}.xm-mast small{color:var(--dim)}
-.xm-grid{display:grid;grid-template-columns:2fr 1fr;gap:26px}.xm-art{position:relative;width:100%;aspect-ratio:16/8;border-radius:16px;overflow:hidden;margin-bottom:12px;display:block}.xm-art .art,.xm-art .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.xm-grid{display:grid;grid-template-columns:2fr 1fr;gap:26px}.xm-grid.solo{grid-template-columns:1fr}.xm-art{position:relative;width:100%;aspect-ratio:16/8;max-height:calc(100vh - 420px);min-height:160px;border-radius:16px;overflow:hidden;margin-bottom:12px;display:block}.xm-art .art,.xm-art .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .xm-h{font-family:Georgia,'Times New Roman',serif;font-size:clamp(30px,3.6vw,46px);font-weight:700;line-height:1.05;margin-top:6px}.xm-side{display:flex;flex-direction:column;gap:12px}.xm-item{display:flex;gap:12px;align-items:center;text-align:left;padding:6px;border-radius:12px}
-.xm-th{width:96px;height:56px;flex:none}.xm-th .cover{width:100%;height:100%}.xm-item b{display:block;font-family:Georgia,'Times New Roman',serif;font-size:18px}.xm-item small{color:var(--dim)}
+.xm-th{width:96px;height:56px;flex:none}.xm-th .cover{width:100%;height:100%}.xm-item>div:last-child{min-width:0}.xm-item b{display:block;font-family:Georgia,'Times New Roman',serif;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.xm-item small{display:block;color:var(--dim)}
 .x-dock{position:relative;height:calc(100vh - 150px)}.xk-info{position:absolute;left:0;top:22vh;max-width:60%}.xk-dock{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:12px;padding:12px;border-radius:26px;background:rgba(18,24,33,.88);border:1px solid var(--line);align-items:center;max-width:100%;overflow-x:auto}
-.xk-ic{width:84px;height:84px;border-radius:20px;flex:none}.xk-ic .cover{border-radius:20px}.xk-dock i{width:2px;height:60px;background:var(--line);flex:none}.xk-u{background:var(--panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:600}.xk-u svg{width:24px;height:24px}
-.x-cols{display:flex;flex-direction:column;gap:16px}.xcl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}.xcl{background:var(--panel);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px;text-align:left}
-.xcl-stack{position:relative;height:170px}.xcl-c{position:absolute;top:10px;width:110px;height:150px}.xcl-c .cover{width:100%;height:100%}.xcl-c.s0{left:0;transform:rotate(-6deg)}.xcl-c.s1{left:62px;top:0;z-index:1}.xcl-c.s2{left:124px;transform:rotate(6deg)}.xcl-n{display:flex;justify-content:space-between;align-items:baseline}.xcl-n b{font-size:19px}.xcl-n small{color:var(--dim)}
+.xk-ic{width:84px;height:84px;border-radius:20px;flex:none}.xk-ic .cover{border-radius:20px;width:100%;height:100%}.xk-ic .ct{font-size:11px;left:7px;right:7px;bottom:7px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.xk-ic .notinst,.xk-ic .dl span{display:none}.xk-dock i{width:2px;height:60px;background:var(--line);flex:none}.xk-u{background:var(--panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:600}.xk-u svg{width:24px;height:24px}
+.x-cols{display:flex;flex-direction:column;gap:16px}.x-cols>.pill{align-self:flex-start}.xcl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}.xcl{background:var(--panel);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px;text-align:left}
+.xcl-stack{position:relative;height:170px}.xcl-c{position:absolute;top:10px;width:110px;height:150px}.xcl-c .cover{width:100%;height:100%}.xcl-c.s0 .ct,.xcl-c.s2 .ct,.xcl-c .notinst,.xcl-c .dl{display:none}.xcl-c.s0:only-child .ct{display:block}.xcl-c .ct{font-size:13px}.xcl-c.s0{left:0;transform:rotate(-6deg)}.xcl-c.s1{left:62px;top:0;z-index:1}.xcl-c.s2{left:124px;transform:rotate(6deg)}.xcl-n{display:flex;justify-content:space-between;align-items:baseline}.xcl-n b{font-size:19px}.xcl-n small{color:var(--dim)}
 .x-jr{display:flex;flex-direction:column;gap:6px}.xj-line{height:2px;background:var(--line);margin:28px 0 -34px}.xj-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
 .xj-d{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}.xj-dot{width:14px;height:14px;border-radius:50%;background:var(--line);border:3px solid var(--bg)}.xj-d.today .xj-dot{background:var(--accent)}.xj-d small{color:var(--dim)}.xj-d.today>small:first-of-type{color:var(--accent)}
 .xj-bar{width:100%;aspect-ratio:2/3}.xj-bar .cover{width:100%;height:100%}.xj-none{width:100%;aspect-ratio:2/3;border-radius:var(--r);border:2px dashed var(--line)}.xj-d b{font-size:14px}
-.xj-now{display:flex;align-items:center;gap:16px;margin-top:20px;padding:16px 20px;border-radius:16px;background:var(--panel)}.xj-now .rt{flex:1}.xj-now small{color:var(--dim)}
+.xj-now{display:flex;align-items:center;gap:16px;margin-top:20px;padding:16px 20px;border-radius:16px;background:var(--panel)}.xj-now .rt{flex:1;min-width:0}.xj-now .rt b{display:block;font-size:17px}.xj-now small{display:block;color:var(--dim)}.xj-d b{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .logcode{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;background:var(--panel2);margin-bottom:6px}.logcode b{font-size:30px;letter-spacing:.12em;color:var(--accent);font-variant-numeric:tabular-nums}.logcode code{font-size:13px;word-break:break-all;color:var(--dim)}
 .frchips{margin:0 0 14px}.frplat{font-size:11px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:2px;background:var(--panel3);color:var(--dim)}.fp-steam{background:#1b2838;color:#66c0f4}.fp-xbox{background:#0e3a12;color:#7ad15a}.fp-epic{background:#2a2a2a;color:#ddd}.frjoin{color:var(--accent);font-weight:700}
 .frav{position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none;margin-right:12px}.frav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.frav i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#56606e;border:2px solid var(--bg)}.frow.on .frav i{background:#5aa9ff}.frow.ing .frav i{background:#7ad15a}.frow.ing small{color:#7ad15a}
+/* ===================== Keyboard & mouse layouts (Experimental · Keyboard & mouse) ===================== */
+.mk{display:flex;height:calc(100vh - var(--top) - var(--foot) - 4px);margin:0 calc(-1*var(--gut)) -40px;background:var(--bg);min-height:320px}
+.mk-scroll{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent}
+.mk-side{width:clamp(180px,17vw,230px);flex:none;border-right:1px solid var(--line);background:var(--bg2);padding:14px 10px 20px;display:flex;flex-direction:column;gap:16px}
+.mk-grp{display:flex;flex-direction:column;gap:2px}
+.mk-h{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:0 10px 6px}
+.mk-add{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;color:var(--dim);font-size:15px}.mk-add:hover,.mk-add.focus{color:var(--text);background:var(--panel2)}
+.mks{display:flex;align-items:center;gap:9px;min-height:32px;padding:0 10px;border-radius:7px;color:#b8c2ce;font-size:13px;font-weight:500}
+.mks span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mks small{color:var(--dim);font-size:12px}
+.mks i{width:8px;height:8px;border-radius:2px;flex:none}
+.mks:hover{background:var(--panel)}.mks.on{background:var(--panel2);color:var(--text);font-weight:600}.mks.on small{color:var(--dim)}
+.mk-none{font-size:12px;color:var(--dim);padding:2px 10px}
+.mk-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.mk-top{display:flex;align-items:center;gap:12px;padding:12px 20px 4px}
+.mk-search{display:flex;align-items:center;gap:8px;width:min(380px,100%);height:36px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--dim);font-size:13px;cursor:text;flex:none}
+.mk-search svg{width:16px;height:16px}.mk-search .q{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}.mk-search .q.ph{color:var(--dim)}
+.mk-search .caret{display:none;width:2px;height:16px;background:var(--accent);margin-left:-6px}.mk-search.focus .caret{display:block;animation:blink 1s steps(1) infinite}
+.mk-search.focus{border-color:var(--accent)}.mk-search kbd{font:inherit;font-size:11px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;color:var(--dim)}
+.mk-x{display:grid;place-items:center;width:20px;height:20px;border-radius:5px}.mk-x svg{width:13px;height:13px}.mk-x:hover{background:var(--panel3);color:var(--text)}
+.mk-nav,.mk-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;min-width:0}.mk-nav .pill svg{width:16px;height:16px}
+.mk-tabs{margin-left:0;flex:1;overflow:hidden;flex-wrap:nowrap}
+.mk-tool{display:flex;align-items:center;gap:12px;padding:10px 20px;flex-wrap:wrap;min-height:56px}
+.mk-tool h1{font-size:20px;font-weight:700;white-space:nowrap}.mk-n{color:var(--dim);font-size:13px}
+.mk-chips{display:flex;gap:6px;flex-wrap:wrap}
+.mk-chip{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:#b8c2ce;font-size:12px;font-weight:500;white-space:nowrap}
+.mk-chip svg{width:12px;height:12px}.mk-chip.ghost{border-style:dashed;background:transparent;color:var(--dim)}.mk-chip.on{background:var(--panel3);color:var(--text);border-color:var(--panel3)}.mk-chip:hover{color:var(--text)}
+.mk-tr{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.mk-sel{height:30px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--panel);font-size:12px;color:var(--dim)}.mk-sel b{color:var(--text);font-weight:600}
+.mk-size{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--dim)}.mk-size button{width:26px;height:26px;border-radius:6px;background:var(--panel);display:grid;place-items:center;font-size:14px;color:var(--text)}
+.mk-size span{display:flex;gap:3px}.mk-size i{width:12px;height:4px;border-radius:2px;background:var(--panel3)}.mk-size i.on{background:var(--accent)}
+.mk-seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}.mk-seg button{width:32px;height:28px;display:grid;place-items:center;background:var(--panel);color:var(--dim)}.mk-seg button.on{background:var(--panel3);color:var(--text)}.mk-seg svg{width:15px;height:15px}
+.mk-body{flex:1;min-height:0;padding:4px 20px 24px}
+.mkgrid.grid{grid-template-columns:repeat(auto-fill,minmax(var(--mk-w,146px),1fr));gap:18px 16px;padding:4px 2px}
+.mkc{display:flex;flex-direction:column;gap:6px;border-radius:10px;padding:4px;min-width:0;content-visibility:auto;contain-intrinsic-size:auto 260px;cursor:pointer}
+.mkc[data-f].focus{box-shadow:0 0 0 2px var(--accent)}
+.mkc-cv{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden}.mkc-cv .cover{position:absolute;inset:0;border-radius:8px}
+.mkc-cv .cover .ct{font-size:clamp(12px,calc(var(--mk-w,146px)/10),17px)}
+.mkc b{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mkc small{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-dot{position:absolute;top:8px;left:8px;width:8px;height:8px;border-radius:4px;background:#5fd068;z-index:3;box-shadow:0 0 0 2px rgba(0,0,0,.35)}
+.mkc .cover .notinst{left:auto;right:8px}
+.mkc-cv .lfav{position:absolute;right:8px;bottom:8px;z-index:3;font-size:13px;text-shadow:0 1px 6px rgba(0,0,0,.8)}
+.mko{position:absolute;inset:0;z-index:4;background:rgba(8,11,15,.58);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;opacity:0;pointer-events:none;transition:opacity .14s}
+body.mk-on .mkc:hover .mko{opacity:1;pointer-events:auto}
+.mko-play,.mkr-play{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 18px;border-radius:18px;background:var(--accent);color:var(--accentInk);font-weight:700;font-size:13px}
+.mko-play svg,.mkr-play svg{width:13px;height:13px;fill:currentColor;stroke:none}.mko-play.sm{height:30px;padding:0 13px;font-size:12px}
+.mko-r{display:flex;gap:6px}.mko-b{width:32px;height:32px;border-radius:16px;border:1px solid rgba(255,255,255,.3);background:rgba(0,0,0,.35);color:#fff;display:grid;place-items:center}.mko-b svg{width:15px;height:15px}.mko-b.on{color:#ffd166}.mko-b.on svg{fill:currentColor}
+.mko-play:hover,.mko-b:hover{filter:brightness(1.15)}
+.mk-rec{padding:6px 20px 0}.mk-recs{gap:12px;padding:4px 2px 8px}
+.mk-rc{position:relative;flex:none;width:clamp(200px,19vw,260px);aspect-ratio:16/8;border-radius:10px;overflow:hidden;cursor:pointer}
+.mk-rc .art,.mk-rc .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.mk-rc:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 35%,rgba(6,8,12,.9))}
+.mk-rc-t{position:absolute;left:12px;right:12px;bottom:10px;z-index:1;display:flex;flex-direction:column}.mk-rc-t b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mk-rc-t small{font-size:12px;color:#c3ccd6}
+.mk-rc .mko-play{position:absolute;right:10px;top:10px;z-index:2;opacity:0;transition:opacity .14s}body.mk-on .mk-rc:hover .mko-play{opacity:1}
+.mk-empty{padding:40px 10px;color:var(--dim);font-size:15px;display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+/* rows: the Table, and the Desk's list view */
+.mk-rows,.mk-tbody{display:flex;flex-direction:column}
+.mkr{display:grid;grid-template-columns:minmax(0,2.4fr) minmax(70px,.8fr) minmax(90px,.9fr) minmax(70px,.7fr) minmax(70px,.7fr) minmax(96px,.9fr) 84px;align-items:center;gap:12px;min-height:44px;padding:4px 12px;border-radius:8px;font-size:13px;color:#b8c2ce;content-visibility:auto;contain-intrinsic-size:auto 46px}
+.mk-table .mkr{grid-template-columns:28px minmax(150px,3fr) minmax(60px,.8fr) minmax(80px,.9fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(76px,.8fr) 40px}
+.mkr>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mkr:hover{background:var(--panel)}.mkr.focus{background:var(--panel2);box-shadow:inset 0 0 0 2px var(--accent)}.mkr.sel{background:color-mix(in srgb,var(--accent) 14%,var(--panel))}
+.mkr-n{display:flex;align-items:center;gap:10px;min-width:0}.mkr-n b{color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mkr-th{width:24px;aspect-ratio:3/4;flex:none;position:relative}.mkr-th .cover{position:absolute;inset:0;border-radius:4px}.mkr-th .ct,.mkr-th .notinst,.mkr-th .dl{display:none}
+.mkr-p{text-align:right;overflow:visible!important}.mkr-play{height:28px;padding:0 10px;font-size:12px;opacity:0;pointer-events:none}.mk-table .mkr-play{width:28px;padding:0;justify-content:center;border-radius:14px;font-size:0;gap:0}
+body.mk-on .mkr:hover .mkr-play{opacity:1;pointer-events:auto}.mkr.focus .mkr-play{opacity:1;pointer-events:auto}
+.mkr-hd{position:sticky;top:0;z-index:3;background:var(--bg);min-height:36px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);border-radius:0}
+.mkr-hd:hover{background:var(--bg)}.mkr-hd button{text-align:left;color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 6px;margin-left:-6px;border-radius:5px;white-space:nowrap}.mkr-hd button:hover,.mkr-hd button.focus{color:var(--text);background:var(--panel)}.mkr-hd button.on{color:var(--text)}
+.mk-cb{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--faint);display:grid;place-items:center;cursor:pointer}.mk-cb.on{background:var(--accent);border-color:var(--accent);color:var(--accentInk)}.mk-cb svg{width:13px;height:13px;stroke-width:2.6}
+.mk-faint{color:var(--faint)}
+.mk-bulk{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 12px;border-radius:10px;background:color-mix(in srgb,var(--accent) 14%,var(--panel));font-size:13px}.mk-bulk b{margin-right:4px}.mk-bulk .pill svg{width:14px;height:14px}
+.mk-split{flex:1;min-height:0;display:flex;gap:0}
+.mk-tbl{flex:1;min-width:0;padding:0 14px 20px 20px}
+.mk-det{width:clamp(260px,26vw,340px);flex:none;border-left:1px solid var(--line);background:var(--bg2);overflow-y:auto;scrollbar-width:none}
+.mk-det-art{position:relative;aspect-ratio:16/9;overflow:hidden}.mk-det-art .art,.mk-det-art .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.mk-det-art:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 40%,rgba(6,8,12,.9))}
+.mk-det-art h2{position:absolute;left:16px;right:16px;bottom:12px;z-index:1;margin:0;color:var(--text);text-transform:none;letter-spacing:0;font-size:20px;font-weight:700}
+.mk-det-b{padding:16px;display:flex;flex-direction:column;gap:14px}.mk-det .sp-acts .sq{width:40px;height:40px;background:var(--panel2)}
+.mk-tip{padding:6px 20px 8px;font-size:12px;color:var(--dim);border-top:1px solid var(--line)}
+/* Launcher */
+.mkl-side{width:clamp(220px,22vw,290px);flex:none;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--bg2)}
+.mkl-side .mk-top{padding:12px 12px 8px}.mkl-side .mk-search{width:100%}
+.mkl-list{flex:1;min-height:0;padding:0 8px 14px;display:flex;flex-direction:column;gap:1px}
+.mkl-h{display:flex;align-items:center;gap:6px;min-height:30px;padding:0 8px;margin-top:8px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);border-radius:6px;flex:none}
+.mkl-h small{margin-left:auto;font-weight:600}.mkl-car{width:12px}.mkl-h:hover{color:var(--text)}
+.mkl-g{display:flex;align-items:center;gap:9px;min-height:32px;padding:0 10px;border-radius:7px;font-size:13px;color:#b8c2ce;flex:none;content-visibility:auto;contain-intrinsic-size:auto 32px}
+.mkl-g span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mkl-g small{color:var(--accent);font-size:11px;white-space:nowrap}
+.mkl-g:hover{background:var(--panel)}.mkl-g.cur{background:var(--panel2);color:var(--text);font-weight:600}
+.mkl-dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}.mkl-dot.inst,.mkl-dot.on,.mkl-dot.qr{background:#5fd068}.mkl-dot.dl{background:var(--accent)}.mkl-dot.cloud{background:#8fc7ff}
+.mkl-dl{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line);font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mkl-main{display:block}
+.mkl-hero{position:relative;min-height:min(46vh,380px);display:flex;align-items:flex-end;overflow:hidden}
+.mkl-hero>.art,.mkl-hero>.img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.mkl-shade{position:absolute;inset:0;background:linear-gradient(180deg,transparent 20%,color-mix(in srgb,var(--bg) 70%,transparent) 62%,var(--bg))}
+.mkl-in{position:relative;z-index:1;padding:24px 28px 18px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;width:100%;flex-wrap:wrap}
+.mkl-in h1{font-size:clamp(26px,3.2vw,40px);font-weight:800;line-height:1.05;margin-bottom:14px;text-shadow:0 2px 18px rgba(0,0,0,.5)}
+.mkl-btns{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.mkl-btns .sq{width:42px;height:42px;background:var(--panel2)}.mkl-btns .sq.on{color:#ffd166}.mkl-btns .sq.on svg{fill:currentColor}
+.mkl-stats{display:flex;gap:26px}.mkl-stats small{display:block;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-weight:700}.mkl-stats b{font-size:16px}
+.mkl-tabs{display:flex;gap:4px;padding:0 24px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2;overflow-x:auto;scrollbar-width:none}
+.mkl-tabs button{padding:12px 14px;font-size:14px;font-weight:600;color:var(--dim);border-bottom:2px solid transparent;border-radius:0;white-space:nowrap}.mkl-tabs button.on{color:var(--text);border-bottom-color:var(--accent)}.mkl-tabs button:hover{color:var(--text)}
+.mkl-body{padding:20px 28px 40px}
+.mkl-body h3{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px}
+.mkl-cols{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(240px,1fr);gap:28px}
+.mkl-facts{background:var(--panel);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;align-self:start}
+.mkl-facts div{display:flex;justify-content:space-between;gap:12px;font-size:14px}.mkl-facts span{color:var(--dim)}.mkl-facts b{font-weight:600;text-align:right}.mkl-facts .pill{align-self:flex-start;margin-top:6px}
+.mkl-act{font-size:15px;color:var(--accent);font-weight:600}.mkl-act-row{display:flex;gap:10px}
+@media (max-width:1100px){.mkl-cols{grid-template-columns:1fr}.mk-det{display:none}.mk-table .mkr{grid-template-columns:28px minmax(0,2.4fr) minmax(70px,.8fr) minmax(90px,.9fr) minmax(70px,.7fr) minmax(90px,.8fr) 52px}.mk-table .mkr>:nth-child(6){display:none}}
+/* the right-click menu */
+#mkmenu{left:0;top:0}
+.mkm{position:fixed;min-width:220px;max-width:300px;padding:6px;border:1px solid var(--line);border-radius:10px;background:#1a212c;box-shadow:0 12px 32px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:1px}
+.mkm-i{display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:32px;padding:0 10px;border-radius:6px;font-size:13px;font-weight:500;color:var(--text)}
+.mkm-i kbd{font:inherit;font-size:11px;color:var(--dim)}.mkm-i:hover,.mkm-i.focus{background:var(--panel3);box-shadow:none}.mkm-i.danger{color:#ff8a8a}
+.mkm-sep{height:1px;background:var(--line);margin:4px 0}
+.scrim.light{background:transparent}
+body.mk-on .mk [data-f].focus:not(.mkc):not(.mkr):not(.mkm-i){box-shadow:0 0 0 2px var(--accent)}
 /* ===================== Library layouts (Settings › You › Library layout) ===================== */
 /* Shared: status chips, the info bar, the background art, boxes that fill the rest of the screen (.lfit) */
 .lwrap{position:relative}
@@ -767,7 +889,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 
 /* ---- experimental library layouts ---- */
 /* Cover Flow */
-.lx-flow{display:flex;flex-direction:column;justify-content:center;gap:10px}
+.lx-flow{display:flex;flex-direction:column;justify-content:center;gap:10px}.lx-flow .lfc{width:clamp(110px,min(15vw,26vh),210px)}
 .lx-flow .shelf{perspective:1100px;align-items:center;padding:30px 45%;gap:0;flex:none}
 .lfc{flex:none;width:clamp(130px,15vw,210px);aspect-ratio:2/3;margin:0 -22px;transform:rotateY(48deg) scale(.86);transition:transform .28s var(--ease)}
 .lfc .cover{width:100%;height:100%;box-shadow:0 18px 40px rgba(0,0,0,.55);-webkit-box-reflect:below 6px linear-gradient(transparent 70%,rgba(255,255,255,.18))}
@@ -775,21 +897,21 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .lfc.focus{transform:none;z-index:3;margin:0 24px}
 .lx-flow .linfo{align-self:center;width:min(640px,100%)}
 /* Bookshelf */
-.lx-spines{display:flex;flex-wrap:wrap;gap:30px 5px;padding:150px 6px 100px;background:repeating-linear-gradient(180deg,transparent 0 206px,#3b2a1d 206px 218px,transparent 218px 236px) 0 150px no-repeat}
+.lx-spines{display:flex;flex-wrap:wrap;gap:30px 5px;padding:20px 6px 100px;background:repeating-linear-gradient(180deg,transparent 0 206px,#3b2a1d 206px 218px,transparent 218px 236px) 0 20px no-repeat}
 .lsp{position:relative;width:36px;height:206px;border-radius:4px 4px 2px 2px;overflow:visible;flex:none;content-visibility:auto;contain-intrinsic-size:36px 206px}
 .lsp .lsp-b{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
 .lsp .lsp-b:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.35),transparent 30%,transparent 70%,rgba(0,0,0,.4))}
 .lsp .lsp-t{position:absolute;inset:8px 0;writing-mode:vertical-rl;transform:rotate(180deg);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:flex-start;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;z-index:1;text-shadow:0 1px 4px rgba(0,0,0,.7)}
-.lsp .lsp-cv{display:none;position:absolute;left:50%;bottom:calc(100% - 30px);width:110px;aspect-ratio:2/3;transform:translateX(-50%);z-index:5}
+.lsp .lsp-cv{display:none;position:absolute;inset:0;z-index:5}.lsp .lsp-cv .ct{font-size:13px}.lsp{transition:width .18s var(--ease)}
 .lsp .lsp-cv .cover{width:100%;height:100%;box-shadow:0 14px 40px rgba(0,0,0,.6)}
-.lsp.focus{transform:translateY(-14px);z-index:4;content-visibility:visible}
-.lsp.focus .lsp-cv{display:block}
+.lsp.focus{width:137px;transform:translateY(-8px);z-index:4;content-visibility:visible}
+.lsp.focus .lsp-cv{display:block}.lsp.focus .lsp-t{display:none}
 /* Timeline */
 .lx-tl .lrow{position:relative;padding-left:30px}
 .lx-tl .lrow:before{content:"";position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--line)}
 .lx-tl .lrow:after{content:"";position:absolute;left:3px;top:24px;width:12px;height:12px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--bg)}
 /* Store towers */
-.lx-tw{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none}
+.lx-tw.lfit{display:flex;gap:14px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
 .ltw{flex:1 0 220px;max-width:320px;display:flex;flex-direction:column;min-height:0;background:var(--panel);border-radius:14px;overflow:hidden}
 .ltw h3{padding:12px 14px 8px;font-size:15px;display:flex;justify-content:space-between;align-items:baseline}
 .ltw h3 small{color:var(--faint);font-size:12px}
@@ -799,7 +921,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .ltw-r .ll-th{width:30px;flex:none}
 .ltw-r .rt{min-width:0}.ltw-r b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ltw-r small{color:var(--dim);font-size:12px}
 /* Constellations */
-.lx-stars{display:flex;flex-wrap:wrap;gap:24px;justify-content:center;padding:6px 0 100px}
+.lx-stars{display:flex;flex-wrap:wrap;gap:34px 24px;justify-content:center;padding:6px 0 120px}
 .lcl{position:relative;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 9%,transparent),transparent 70%)}
 .lcl>b{position:absolute;left:0;right:0;bottom:-20px;text-align:center;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
 .lstar{position:absolute;width:var(--s);height:var(--s);margin:calc(var(--s)/-2) 0 0 calc(var(--s)/-2);border-radius:50%;background:radial-gradient(circle,#fff 0 30%,hsla(var(--h),90%,75%,.9) 45%,transparent 72%)}
@@ -807,9 +929,9 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .lstar.focus{box-shadow:0 0 0 2px var(--accent),0 0 22px var(--accent);transform:scale(1.5);z-index:3}
 /* Arcade cabinet */
 .lx-arc{display:flex;flex-direction:column;align-items:center;gap:8px}
-.lcab{flex:1;min-height:0;width:min(760px,92%);display:flex;flex-direction:column;border-radius:22px 22px 10px 10px;background:linear-gradient(180deg,#2a1d3f,#151020);padding:12px 22px 14px;box-shadow:0 0 0 3px #3d2b5c,0 20px 60px rgba(0,0,0,.5)}
+.lcab{flex:1 1 0;min-height:0;max-height:calc(100% - 120px);width:min(760px,92%);display:flex;flex-direction:column;border-radius:22px 22px 10px 10px;background:linear-gradient(180deg,#2a1d3f,#151020);padding:12px 22px 14px;box-shadow:0 0 0 3px #3d2b5c,0 20px 60px rgba(0,0,0,.5)}
 .lcab-m{text-align:center;font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:clamp(14px,1.6vw,20px);padding:6px;border-radius:8px;background:linear-gradient(90deg,#ff5fa2,#ffd166,#5fd0ff);color:#1a1020;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lcab-s{position:relative;flex:1;min-height:60px;margin:10px 0;border-radius:14px;overflow:hidden;border:6px solid #0a0710;box-shadow:inset 0 0 40px rgba(0,0,0,.8)}
+.lcab-s{position:relative;flex:1 1 0;min-height:60px;margin:10px 0;border-radius:14px;overflow:hidden;border:6px solid #0a0710;box-shadow:inset 0 0 40px rgba(0,0,0,.8)}
 .lcab-s .art,.lcab-s .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .lcab-s:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 2px,transparent 2px 4px)}
 .lcab-s .lcab-t{position:absolute;left:16px;bottom:12px;right:16px;z-index:1;font-size:clamp(18px,2vw,26px);font-weight:800;text-shadow:0 2px 12px #000}
@@ -826,11 +948,11 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 /* Stats board */
 .lx-stats .lsum{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:4px 0 16px}
 .lx-stats .lsum div{background:var(--panel);border-radius:12px;padding:12px 16px}
-.lx-stats .lsum small{color:var(--faint);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.lx-stats .lsum small{color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .lx-stats .lsum b{display:block;font-size:22px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lsr{display:grid;grid-template-columns:44px 34px minmax(140px,1.2fr) 2fr 80px;align-items:center;gap:14px;padding:6px 12px;border-radius:var(--r);width:100%;content-visibility:auto;contain-intrinsic-size:auto 62px}
 .lsr.focus{background:var(--panel2)}
-.lsr .n{color:var(--faint);font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
+.lsr .n{color:var(--dim);font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
 .lsr .ll-th{width:34px}
 .lsr b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 .lsr .lbar{height:10px;border-radius:5px;background:var(--panel3);overflow:hidden}
@@ -863,7 +985,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .lx-deck .ldh{padding:clamp(10px,4vh,40px) 4px 0;max-width:640px}
 .lx-deck .ldh .ld-title{font-size:clamp(28px,3.4vw,46px)}
 .lx-deck .ldh .xd-meta{color:var(--dim);margin:8px 0 14px}
-.lx-deck .shelf{padding:70px 45% 30px;align-items:flex-end;flex:none}
+.lx-deck .shelf{padding:56px 45% 24px;align-items:flex-end;flex:none}.lx-deck .ldk{width:clamp(100px,min(12vw,24vh),160px)}
 .ldk{flex:none;width:clamp(120px,12vw,160px);aspect-ratio:2/3;margin-left:-54px;transform:rotate(var(--r)) translateY(var(--y));transform-origin:50% 120%;transition:transform .22s var(--ease)}
 .ldk:first-child{margin-left:0}
 .ldk .cover{width:100%;height:100%;box-shadow:-8px 10px 24px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.12)}
@@ -878,7 +1000,10 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .lmo.s2{grid-column:span 2;grid-row:span 2}
 .lmo.w{grid-column:span 2}
 .lmo.focus{transform:scale(1.05);z-index:2}
-.lmo .lmh{position:absolute;top:8px;left:8px;z-index:2;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px;background:rgba(0,0,0,.55)}
+.lmo .notinst{display:none}
+.lx-mos .lmo .cover:has(.dl) .ct,.lx-hex .lhx .hxi .cover:has(.dl) .ct{bottom:40px}
+.lmo.s1 .cover .dl span,.lhx .cover .dl span{display:none}.lx-mos .lmo.s1 .cover:has(.dl) .ct{bottom:20px}.lx-hex .lhx .hxi .cover:has(.dl) .ct{bottom:34px}
+.lmo.s3.focus,.lmo.s2.focus{transform:scale(1.02)}.lmo .lmh{position:absolute;top:8px;left:8px;z-index:2;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px;background:rgba(0,0,0,.55)}
 
 /* Settings: Library layout previews */
 .lprev .lp-a{background:var(--accent)}.lprev .lp-t{background:var(--text)}.lprev .lp-p{background:var(--panel2)}
@@ -915,6 +1040,7 @@ body.reduce-motion .lfc,body.reduce-motion .ldk{transition:none}
 <section class="layer" id="search"></section>
 <section class="layer" id="sheet"><div class="modal" id="sheetBox"></div></section>
 <section class="layer" id="prompt"></section>
+<section class="layer" id="mkmenu"></section>
 <section class="layer" id="launch"></section>
 <div id="desk" aria-label="Linux desktop"><div id="deskScreen"></div><div id="deskTouch"></div><svg id="deskCursor" viewBox="0 0 20 20"><path d="M2 1l14 9.5-6.2.9 3.6 6.7-2.4 1.3-3.6-6.8L2 17z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg><div id="deskMsg"></div><div id="deskBar"></div></div>
 <div id="toasts"></div>
@@ -1050,7 +1176,9 @@ const S = {
 };
 const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['emu','Emulators'],['beacon','Beacon'],['manual','Non-library'],['hidden','Hidden']];
 const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settings'],['perf','bolt','Performance'],['now','play','Now playing']];
-if(/[?&]overlay=full/.test(location.search) || (window.nimbusHost && window.nimbusHost.platform!=='android' && !/[?&]overlay/.test(location.search))) QTABS.splice(3,0,['apps','lib','Open apps']);
+// Open apps: wherever the host can list them (Hearth OS's window and every overlay page; not Ember's own window), the
+// same tab in Hearth's panel and over a game.
+if(/[?&]overlay/.test(location.search) || (window.nimbusHost && window.nimbusHost.platform!=='android') || /[?&]preview=linux/.test(location.search)) QTABS.splice(3,0,['apps','lib','Open apps']);
 
 // ---------- host bridge ----------
 // send(): fire-and-forget message.  call(): request/response, resolves with the host's result.
@@ -1436,17 +1564,21 @@ const XLAYOUTS = [
   {id:'x-collections', name:'Collections', desc:'Favorites, your collections, installed and unplayed games as cards.'},
   {id:'x-journal', name:'Play journal', desc:'Your week of playing as a timeline, with today\'s game ready to resume.'},
 ];
-const isX = id => XLAYOUTS.some(l=>l.id===id);
+// Keyboard & mouse layouts (Experimental · Keyboard & mouse): the same three on Home and in the Library.
+const MK_LAYOUTS = [];
+const MK_NOTE = `<b>Experimental · Keyboard &amp; mouse</b> Made for a mouse and keyboard: hover a game for Play, right-click it for everything else, Enter plays, Space shows details, F favorites, Ctrl+K or just typing searches. A controller still works. Upvote the ones you'd like to see finished.`;
+const isX = id => XLAYOUTS.some(l=>l.id===id) || MK_LAYOUTS.some(l=>l.id===id);
 const TEXT_SIZES = [['small','Small',0.9],['normal','Default',1],['large','Large',1.15],['xl','Extra large',1.3]];
 function applyLook(){
   if(!LAYOUTS.some(l=>l.id===LOOK.layout) && !isX(LOOK.layout)) LOOK.layout='shelf';
   const b=document.body;
   // Experimental layouts use Spotlight's frame (the menu along the top) plus their own class.
-  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id));
+  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id), ...MK_LAYOUTS.map(l=>'X-'+l.id));
   if(isX(LOOK.layout)){ b.classList.add('L-spotlight','X-'+LOOK.layout); } else b.classList.add('L-'+LOOK.layout);
   b.classList.toggle('reduce-motion', !!LOOK.reduceMotion);
   b.classList.toggle('hc', !!LOOK.highContrast);   // Accessibility: high contrast
   b.classList.toggle('no-battpct', !LOOK.battPct);
+  if(typeof applyMk==='function') applyMk();
   b.style.zoom = (TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[2];
   renderTopNav(); if(typeof tick==='function') tick();
 }
@@ -1967,13 +2099,24 @@ function updateSpot(id){
 // Beta: they may change or go away and don't get every update. Everyone can upvote the ones they like; the
 // counts come live from Hearth OS's server (the player counter's), one vote per device.
 
-const XV = {votes:null, mine:{}, timer:null, open:false};
+const XV = {votes:null, mine:{}, timer:null};
 try{ XV.mine = JSON.parse(localStorage.getItem('hearth.xvotes')||'{}')||{}; }catch(e){}
+// The experimental drop-downs (Appearance: home-x, home-mk; Library layout: lib-x, lib-mk): closed at first, and
+// they stay as you left them.
+const XOPEN = {};
+try{ Object.assign(XOPEN, JSON.parse(localStorage.getItem('hearth.xopen')||'{}')||{}); }catch(e){}
+function xDropToggle(id){ XOPEN[id]=!XOPEN[id]; try{ localStorage.setItem('hearth.xopen', JSON.stringify(XOPEN)); }catch(e){} if(XOPEN[id]) loadVotes(); render('xd-'+id,true); }
+function xDrop(id, title, sub, inner){
+  const open=!!XOPEN[id];
+  return `<button class="row xdrop ${open?'open':''}" data-f data-k="xd-${id}" data-act="xDrop" data-v="${id}" aria-expanded="${open}"><span class="ricon">${I.layout}</span><div class="rt"><b>${title}</b><small>${sub}</small></div><div class="rv"><span class="xchev">${open?'Hide':'Show'}</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div></button>`
+    + (open ? `<div class="xdrop-body">${inner}</div>` : '');
+}
+const xVote = l => `<button class="xvote ${XV.mine[l.id]?'on':''}" data-f data-k="xv-${l.id}" data-act="xvote" data-v="${l.id}" aria-label="Upvote ${esc(l.name)}"><svg viewBox="0 0 24 24"><path d="M12 5l7 8h-4v6H9v-6H5z"/></svg>${XV.votes?(XV.votes[l.id]||0):'…'}<span>${XV.mine[l.id]?'Upvoted':'Upvote'}</span></button>`;
 function loadVotes(){
   if(!host && !LINUX) return;
   fetch(COUNTER.url+'/v1/votes').then(r=>r.json()).then(v=>{ XV.votes=v.counts||{}; if(S.view==='settings'&&(S.settingsTab==='appearance'||S.settingsTab==='liblook')) render(null,true); }).catch(()=>{});
 }
-function watchVotes(on){ clearInterval(XV.timer); XV.timer=null; if(on){ loadVotes(); XV.timer=setInterval(()=>{ if(S.view==='settings'&&(S.settingsTab==='appearance'||S.settingsTab==='liblook')) { if(XV.open||S.settingsTab==='liblook') loadVotes(); } else watchVotes(false); },20000); } }
+function watchVotes(on){ clearInterval(XV.timer); XV.timer=null; if(on){ loadVotes(); XV.timer=setInterval(()=>{ if(S.view==='settings'&&(S.settingsTab==='appearance'||S.settingsTab==='liblook')) { if(Object.values(XOPEN).some(Boolean)) loadVotes(); } else watchVotes(false); },20000); } }
 function vote(id){
   const up=!XV.mine[id]; XV.mine[id]=up; try{ localStorage.setItem('hearth.xvotes', JSON.stringify(XV.mine)); }catch(e){}
   XV.votes=XV.votes||{}; XV.votes[id]=Math.max(0,(XV.votes[id]||0)+(up?1:-1));
@@ -1981,11 +2124,10 @@ function vote(id){
   fetch(COUNTER.url+'/v1/vote',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:counterId(),layout:id,up})})
     .then(r=>r.json()).then(v=>{ if(v.counts){ XV.votes=v.counts; render('xv-'+id,true); } }).catch(()=>toast('Couldn\'t send your vote. Check the internet connection.'));
 }
-function xCards(){
-  return `<div class="xnote"><b>Experimental · beta</b> These layouts are early experiments. They may look rough, change or be removed, and they won't always get the fixes and updates the main layouts do. Upvote the ones you'd like to see finished: the counts are everyone's, live.</div>
-    <div class="layouts">${XLAYOUTS.map(l=>`<div class="xcard"><button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
-      <div class="lprev">${xPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>
-      <button class="xvote ${XV.mine[l.id]?'on':''}" data-f data-k="xv-${l.id}" data-act="xvote" data-v="${l.id}" aria-label="Upvote ${esc(l.name)}"><svg viewBox="0 0 24 24"><path d="M12 5l7 8h-4v6H9v-6H5z"/></svg>${XV.votes?(XV.votes[l.id]||0):'…'}<span>${XV.mine[l.id]?'Upvoted':'Upvote'}</span></button></div>`).join('')}</div>`;
+function xCards(list, note){
+  return `<div class="xnote">${note||`<b>Experimental · beta</b> These layouts are early experiments. They may look rough, change or be removed, and they won't always get the fixes and updates the main layouts do. Upvote the ones you'd like to see finished: the counts are everyone's, live.`}</div>
+    <div class="layouts">${(list||XLAYOUTS).map(l=>`<div class="xcard"><button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
+      <div class="lprev">${xPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>${xVote(l)}</div>`).join('')}</div>`;
 }
 function xPreview(id){
   const r=(l,t,w,h,x='')=>`<i style="left:${l}%;top:${t}%;width:${w}%;height:${h}%;${x}"></i>`, A='background:var(--accent)', T='background:var(--text)';
@@ -2001,6 +2143,9 @@ function xPreview(id){
     'x-magazine': r(4,6,40,8,T)+r(4,20,60,44,'background:var(--panel2)')+r(4,70,56,10,T)+[0,1,2,3].map(i=>r(70,20+i*18,26,12)).join(''),
     'x-dock': r(0,0,100,100,'background:var(--panel2)')+r(6,30,36,10,T)+r(6,46,14,8,A)+r(14,78,72,18,'background:var(--bg)'),
     'x-collections': [0,1,2,3,4,5].map(i=>r(4+(i%3)*32,8+Math.floor(i/3)*46,29,40,i?'':'background:var(--panel2)')).join(''),
+    'mk-desk': r(0,0,18,100,'background:var(--panel2)')+[0,1,2,3,4].map(i=>r(2,8+i*9,14,5,i?'':A)).join('')+r(22,4,40,7)+[...Array(18)].map((_,i)=>r(22+(i%6)*13,16+Math.floor(i/6)*28,11,24,i===2?A:'')).join(''),
+    'mk-table': r(4,4,40,7)+r(4,15,62,6,'background:var(--panel2)')+[0,1,2,3,4,5,6].map(i=>r(4,24+i*10,62,7,i===1?A:'')).join('')+r(70,15,26,80,'background:var(--panel2)')+r(73,62,14,6,A),
+    'mk-launcher': r(0,0,26,100,'background:var(--panel2)')+[0,1,2,3,4,5,6,7].map(i=>r(3,10+i*10,20,6,i===2?A:'')).join('')+r(30,4,66,48,'background:var(--panel2)')+r(34,30,30,8,T)+r(34,42,10,6,A)+r(30,58,40,4)+r(30,68,30,24)+r(64,68,32,24),
     'x-journal': r(4,40,92,2)+[0,1,2,3,4,5,6].map(i=>r(6+i*13,48,10,[20,30,8,16,40,34,28][i],i===6?A:'')).join(''),
   };
   return P[id]||'';
@@ -2028,6 +2173,7 @@ const xCover = (g,k,cls='',wide=false) => `<button class="xc ${cls}" data-f data
 
 function homeX(V){
   const L=xOrder(V), g=L[0], id=LOOK.layout;
+  if(/^mk-/.test(id)) return mkPage('home');   // Experimental · Keyboard & mouse
   if(id==='x-carousel') return xBg(g)+`<div class="x-car"><div class="xc-strip">${L.map(x=>xCover(x,'xc-'+x.id)).join('')}</div>
     <div class="xc-info" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>${xNav()}</div>`;
   if(id==='x-rows'){
@@ -2065,7 +2211,7 @@ function homeX(V){
   }
   if(id==='x-orbit'){
     const ring=L.slice(0,9);
-    return xBg(g)+`<div class="x-orbit"><div class="xo-ring"></div>${ring.map((x,i)=>{ const a=-Math.PI/2+i/ring.length*Math.PI*2; return `<button class="xc xo-c" style="left:calc(50% + ${Math.cos(a)*36}vh - 5vh);top:calc(50% + ${Math.sin(a)*34}vh - 7vh)" data-f data-k="xo-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}">${cover(x,{badge:false})}</button>`; }).join('')}
+    return xBg(g)+`<div class="x-orbit"><div class="xo-ring"></div>${ring.map((x,i)=>{ const a=-Math.PI/2+i/ring.length*Math.PI*2; return `<button class="xc xo-c" style="left:calc(50% + ${(Math.cos(a)*38).toFixed(2)}cqh - 5cqh);top:calc(50% + ${(Math.sin(a)*38).toFixed(2)}cqh - 7cqh)" data-f data-k="xo-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}">${cover(x,{badge:false})}</button>`; }).join('')}
       <div class="xo-mid" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>${xNav()}</div>`;
   }
   if(id==='x-spines') return `<div class="x-spines"><div class="xs-shelf" data-row>${L.map(x=>`<button class="xs-sp" data-f data-k="xs-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}"><span class="xs-t">${esc(x.title)}</span><div class="xs-cv">${cover(x,{badge:false})}</div></button>`).join('')}</div>
@@ -2073,9 +2219,9 @@ function homeX(V){
   if(id==='x-magazine'){
     const side=L.slice(1,6), line=x=>isActive(x)?dlInfo(x).label:!x.last?`Added ${ago(x.added).toLowerCase()}, not played yet`:x.hrs?`${hrs(x.hrs)} played`:SOURCES[x.src];
     return `<div class="x-mag"><div class="xm-mast"><span>The Hearth</span><small>${new Date().toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'})}</small></div>
-      <div class="xm-grid"><div class="xm-lead"><button class="xm-art" data-f data-k="xm-lead" data-act="${xAct(g)}" data-id="${esc(g.id)}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</button>
+      <div class="xm-grid${side.length?'':' solo'}"><div class="xm-lead"><button class="xm-art" data-f data-k="xm-lead" data-act="${xAct(g)}" data-id="${esc(g.id)}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</button>
         <div class="xk">${g.last?'Pick up where you left off':'Waiting for you'}</div><div class="xm-h">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div><div class="sp-acts">${xPlay(g,'xm-play')}</div></div>
-      <div class="xm-side"><div class="xk">Also in your library</div>${side.map(x=>`<button class="xm-item" data-f data-k="xm-${x.id}" data-act="game" data-id="${esc(x.id)}"><div class="xm-th">${cover(x,{badge:false,wide:true})}</div><div><b>${esc(x.title)}</b><small>${esc(line(x))}</small></div></button>`).join('')}</div></div></div>`;
+      ${side.length?`<div class="xm-side"><div class="xk">Also in your library</div>`:'<div hidden>'}${side.map(x=>`<button class="xm-item" data-f data-k="xm-${x.id}" data-act="game" data-id="${esc(x.id)}"><div class="xm-th">${cover(x,{badge:false,wide:true})}</div><div><b>${esc(x.title)}</b><small>${esc(line(x))}</small></div></button>`).join('')}</div></div></div>`;
   }
   if(id==='x-dock') return xBg(g)+`<div class="x-dock"><div class="xk-info" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>
     <div class="xk-dock">${L.slice(0,8).map(x=>xCover(x,'xk-'+x.id,'xk-ic',true)).join('')}<i></i>${[['library','lib','Library'],['friends','user','Friends'],['coop','pad','Couch Co-op'],['settings','gear','Settings']].filter(([v])=>(v!=='friends'||(HOSTINFO.features||[]).includes('friends'))&&(v!=='coop'||coopOn())).map(([v,ic,l])=>`<button class="xk-ic xk-u" data-f data-k="xk-${v}" data-act="nav" data-view="${v}" aria-label="${l}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
@@ -2124,13 +2270,16 @@ function themeCard(t){
 function pageAppearance(){
   const ts=(TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[1];
   const wl=DESKWALL.v==null?'':(WALLS.find(w=>w[0]===DESKWALL.v)||['','Your picture'])[1];
-  return shead('Themes') + `<div class="opts">${THEME_PACKS.map(themeCard).join('')}</div>`
+  const mf=LOOK.madeFor||'auto';
+  return shead('Made for') + `<div class="row"><span class="ricon">${I.kbd}</span><div class="rt"><b>Made for</b><small>${mf==='auto'?`Automatic: mouse &amp; keyboard while you use them (now: <span id="mfNow">${mkOn()?'mouse &amp; keyboard':'controller'}</span>), controller when you pick one up`:mf==='mk'?'Hover actions, right-click menus and key hints. The on-screen keyboard only comes up from a controller':'Big targets and button prompts. The on-screen keyboard comes up for every text field'}</small></div>
+      <div class="seg">${MADE_FOR.map(([k,l])=>`<button class="${mf===k?'on':''}" data-f data-k="ap-mf-${k}" data-act="madeFor" data-v="${k}">${l}</button>`).join('')}</div></div>`
+    + shead('Themes') + `<div class="opts">${THEME_PACKS.map(themeCard).join('')}</div>`
     + note(`An accent color, background and sounds together${LINUX?', and the desktop\'s wallpaper':''}. Change any of them on its own below or in your profile.`)
     + shead('Home layout')
     + `<div class="layouts">${LAYOUTS.map(l=>`<button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
         <div class="lprev">${layoutPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>`).join('')}</div>`
-    + `<button class="row" data-f data-k="ap-xopen" data-act="xOpen"><span class="ricon">${I.layout}</span><div class="rt"><b>Experimental layouts · beta</b><small>${XLAYOUTS.length} early layouts to try and upvote${isX(LOOK.layout)?` · using ${esc((XLAYOUTS.find(l=>l.id===LOOK.layout)||{}).name||'')}`:''}</small></div><div class="rv">${XV.open?'Hide ▴':'Show ▾'}</div></button>`
-    + (XV.open ? xCards() : '')
+    + xDrop('home-x', 'Experimental layouts · beta', `${XLAYOUTS.length} early layouts to try and upvote${XLAYOUTS.some(l=>l.id===LOOK.layout)?` · using ${esc((XLAYOUTS.find(l=>l.id===LOOK.layout)||{}).name||'')}`:''}`, xCards(XLAYOUTS))
+    + (MK_LAYOUTS.length ? xDrop('home-mk', 'Experimental · Keyboard &amp; mouse', `${MK_LAYOUTS.length} layouts made for a mouse and keyboard${MK_LAYOUTS.some(l=>l.id===LOOK.layout)?` · using ${esc((MK_LAYOUTS.find(l=>l.id===LOOK.layout)||{}).name||'')}`:''}`, xCards(MK_LAYOUTS, MK_NOTE)) : '')
     + shead('Text, motion and top bar')
     + sgrid(`<button class="row" data-f data-k="ap-text" data-act="textSize"><span class="ricon">${I.text}</span><div class="rt"><b>Text size</b><small>Makes everything in ${APP} bigger or smaller</small></div><div class="rv">${ts} ›</div></button>`
     + lookRow('reduceMotion','Reduce motion','Turns off animations and smooth scrolling')
@@ -2506,6 +2655,7 @@ function colEdit(id){
 const SORTS = [['recent','Recently played'],['alpha','A–Z'],['hours','Play time'],['added','Date added']];
 function viewLibrary(){
   if(!libTabs().some(t=>t[0]===S.tab)) S.tab='all';
+  if(mkKind()) return mkPage('library');   // Experimental · Keyboard & mouse: their own toolbar and sidebar
   const L=libGames();
   return `<div class="libhead">
     <span class="glyph lbrb">LB</span>
@@ -2519,7 +2669,7 @@ function viewLibrary(){
     <button class="pill ${S.lfilter?'on':''}" data-f data-k="lfilter" data-act="lfilter">Show: ${LFILTERS.find(f=>f[0]===(S.lfilter||''))[1]}</button>
     <button class="pill" data-f data-k="sort" data-act="sort">Sort: ${SORTS.find(s=>s[0]===S.sort)[1]}</button></div></div>
   ${L.length?libBody(L):`<div class="empty">${LIB.loading?'Loading your games…':
-     S.tab.startsWith('c:')&&!S.lfilter?'This collection is empty. Add games from a game\'s ⋯ menu (Add to collection).':S.lfilter?'No games match. Change Show to see more.':STORE_INFO[S.tab]?`Sign in to ${STORE_INFO[S.tab].name} under Stores &amp; accounts to see your games here.`:'Nothing here yet.'}</div>`}`;
+     !GAMES.length?'No games yet. Sign in to your stores under Stores &amp; accounts, or add a game from Home.':S.tab.startsWith('c:')&&!S.lfilter?'This collection is empty. Add games from a game\'s ⋯ menu (Add to collection).':S.lfilter?'No games match. Change Show to see more.':STORE_INFO[S.tab]?`Sign in to ${STORE_INFO[S.tab].name} under Stores &amp; accounts to see your games here.`:'Nothing here yet.'}</div>`}`;
 }
 
 // =====================================================================
@@ -2548,7 +2698,8 @@ const XLIB_LAYOUTS = [
   {id:'x-lib-deck', name:'Hand of cards', desc:'Your games fanned out like a hand of cards; the one you pick is lifted out.'},
   {id:'x-lib-mosaic', name:'Mosaic', desc:'Tiles sized by play time: your most played games are the biggest.'},
 ];
-const libLayout = () => { const id=LOOK.libLayout; return LIB_LAYOUTS.some(l=>l.id===id) || XLIB_LAYOUTS.some(l=>l.id===id) ? id : 'covers'; };
+const MKLIB_LAYOUTS = [];
+const libLayout = () => { const id=LOOK.libLayout; return [LIB_LAYOUTS,XLIB_LAYOUTS,MKLIB_LAYOUTS].some(L=>L.some(l=>l.id===id)) ? id : 'covers'; };
 const LST = {row:null};
 const lId = g => esc(g.id);
 const lLetter = g => { const c=((g&&g.title)||'').trim().charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; };
@@ -2623,12 +2774,15 @@ function libFocus(el){ lFit(); if(el.dataset.lspot) lUpdate(el.dataset.lspot); }
 // inside and the detail panel stays put. Measured in CSS pixels, so the text size setting is respected.
 function lFit(){
   const v=$('#view'), box=v && v.querySelector('.lfit'); if(!box) return;
-  let top=0; for(let e=box; e && e!==v && e!==v.offsetParent; e=e.offsetParent) top+=e.offsetTop;
-  top-=v.offsetTop;
+  // While the page fades in it is the boxes' offsetParent itself (then its own offsetTop isn't in the sum): taking
+  // it off anyway made these layouts a top bar too tall, under the footer.
+  let top=0, e=box; for(; e && e!==v && e!==v.offsetParent; e=e.offsetParent) top+=e.offsetTop;
+  if(e!==v) top-=v.offsetTop;
   const h=Math.max(300, v.clientHeight-top-10)+'px';
   if(box.style.height!==h) box.style.height=h;
 }
-window.addEventListener('resize', ()=>{ if(S.view==='library') debounce('lfit', ()=>{ lFit(); if(focused && document.contains(focused)) focused.scrollIntoView({block:'center',inline:'center'}); }, 120); });
+window.addEventListener('resize', ()=>{ if(S.view==='library') debounce('lfit', ()=>{ if(libLayout()==='x-lib-hex' && !S.layers.length) return render(focused&&focused.dataset.k, true);   // rows are laid out for the width
+    lFit(); if(focused && document.contains(focused)){ const fit=focused.closest('.lfit'); focused.scrollIntoView({block:fit?'nearest':'center',inline:'center'}); if(fit) $('#view').scrollTop=0; } }, 120); });
 
 // Fast moves for long lists and rows (like gridMove): along a list/row it's the next one; across, the nearest
 // one in the next row/column. Nothing measured but that row. null = the usual search decides.
@@ -2637,8 +2791,15 @@ function libMove(dir){
   // List & details: right goes to the panel's Play, left from the panel back to the game you were on.
   if(f.classList.contains('ll-row') && dir==='right') return $('#lDetail [data-f]');
   if(f.closest('#lDetail') && dir==='left' && !f.previousElementSibling){ const r=LST.row && $(`#view [data-k="${CSS.escape(LST.row)}"]`); if(r) return r; }
+  // Keyboard & mouse layouts: right from a Table row / Launcher game goes to the panel / page, and back.
+  if(f.closest('.mk')){
+    if(dir==='right' && f.classList.contains('mkr') && !f.classList.contains('mkr-hd')){ const d=$('#mkDetail [data-f]'); if(d) return d; }
+    if(dir==='right' && f.classList.contains('mkl-g')){ const d=$('#mkHero [data-k="mkh-play"]'); if(d) return d; }
+    if(dir==='left' && f.closest('#mkDetail,#mkHero .mkl-btns') && !f.previousElementSibling){ const r=MK.cur && $(`#view .mk-tbody [data-id="${CSS.escape(MK.cur)}"], #view .mkl-g[data-id="${CSS.escape(MK.cur)}"]`); if(r) return r; }
+  }
   const nav=p.dataset.lnav; if(!nav) return null;
   const h=nav==='h', along = h ? (dir==='left'||dir==='right') : (dir==='up'||dir==='down');
+  if(!along && f.closest('.mk')) return null;   // across: the usual search (to the sidebar, the panel)
   const fwd = dir==='right'||dir==='down';
   if(along){
     let s=f; do{ s = fwd ? s.nextElementSibling : s.previousElementSibling; } while(s && !s.hasAttribute('data-f'));
@@ -2765,7 +2926,7 @@ const LIBL = {
   },
   'x-lib-rolodex': L => {
     const by={}; [...L].sort((a,b)=>a.title.localeCompare(b.title)).forEach(g=>{ (by[lLetter(g)]=by[lLetter(g)]||[]).push(g); });
-    return lBg(L[0])+`<div class="lx-rx lsh">${Object.keys(by).sort().map(c=>`<section class="lrow" data-lgrp><div class="lrx-card">${c}</div><div class="shelf" data-lnav="h">${by[c].map(g=>lTile(g,'p','lrx-'+g.id)).join('')}</div></section>`).join('')}</div>`;
+    return lBg(L[0])+`<div class="lx-rx lsh">${Object.keys(by).sort().map(c=>`<section class="lrow" data-lgrp><div class="lrx-card">${c}</div><div class="shelf" data-lnav="h" data-lj>${by[c].map(g=>lTile(g,'p','lrx-'+g.id)).join('')}</div></section>`).join('')}</div>`;
   },
   'x-lib-hex': L => {
     const v=$('#view'), w=(v?v.clientWidth:1200)-80, n=Math.max(3,Math.floor((w-58)/116)), rows=[];
@@ -2785,7 +2946,8 @@ const lDeckHead = g => `<div class="ld-title">${esc(g.title)}</div><div class="x
 // The Library's games in the chosen layout (viewLibrary calls this when there are games to show).
 function libBody(L){
   const id=libLayout();
-  queueMicrotask(()=>{ if(S.view==='library'){ lFit(); if(focused && focused.closest && focused.closest('.lfit')) focused.scrollIntoView({block:'center',inline:'center'}); } });
+  const fit=()=>{ if(S.view==='library'){ lFit(); if(focused && focused.closest && focused.closest('.lfit')){ focused.scrollIntoView({block:'nearest',inline:'center'}); $('#view').scrollTop=0; } } };
+  queueMicrotask(fit); requestAnimationFrame(fit);
   return `<div class="lwrap lw-${id}">${(LIBL[id]||LIBL.covers)(L)}</div>`;
 }
 
@@ -2808,6 +2970,9 @@ function lPreview(id){
     'x-lib-rolodex': [0,1,2].map(j=>r(4,8+j*31,10,26,'lp-p')+[0,1,2,3,4].map(i=>r(18+i*16,8+j*31,14,26,j===0&&i===0?'lp-a':'')).join('')).join(''),
     'x-lib-hex': [...Array(21)].map((_,i)=>{ const row=Math.floor(i/7), col=i%7; return `<i style="left:${4+col*13+(row%2)*6.5}%;top:${8+row*28}%;width:11%;height:34%;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);border-radius:0;${i===9?'background:var(--accent)':''}"></i>`; }).join(''),
     'x-lib-deck': r(0,0,100,100,'glow')+r(6,12,40,8,'lp-t')+r(6,26,24,5)+[...Array(7)].map((_,i)=>`<i style="left:${18+i*9}%;top:${i===3?44:54}%;width:13%;height:38%;transform:rotate(${(i-3)*6}deg);${i===3?'background:var(--accent)':''}"></i>`).join(''),
+    'mk-lib-desk': r(0,0,18,100,'lp-p')+[0,1,2,3,4].map(i=>r(2,8+i*9,14,5,i?'':'lp-a')).join('')+r(22,4,40,7)+[...Array(18)].map((_,i)=>r(22+(i%6)*13,16+Math.floor(i/6)*28,11,24,i===2?'lp-a':'')).join(''),
+    'mk-lib-table': r(4,4,40,7)+r(4,15,62,6,'lp-p')+[0,1,2,3,4,5,6].map(i=>r(4,24+i*10,62,7,i===1?'lp-a':'')).join('')+r(70,15,26,80,'lp-p')+r(73,62,14,6,'lp-a'),
+    'mk-lib-launcher': r(0,0,26,100,'lp-p')+[0,1,2,3,4,5,6,7].map(i=>r(3,10+i*10,20,6,i===2?'lp-a':'')).join('')+r(30,4,66,48,'lp-p')+r(34,30,30,8,'lp-t')+r(34,42,10,6,'lp-a')+r(30,58,40,4)+r(30,68,30,24)+r(64,68,32,24),
     'x-lib-mosaic': r(4,6,30,58,'lp-a')+r(36,6,20,28)+r(58,6,20,28)+r(80,6,16,28)+r(36,36,20,28)+r(58,36,38,28)+[...Array(9)].map((_,i)=>r(4+i*10.4,68,9,26)).join(''),
   };
   return P[id]||'';
@@ -2819,9 +2984,358 @@ function lCard(l){
 function pageLibLook(){
   return shead('Library layout') + `<div class="layouts">${LIB_LAYOUTS.map(lCard).join('')}</div>`
     + note('How Library shows your games. Tabs (LB / RB), Show and Sort work the same in every layout.')
-    + shead('Experimental') + `<div class="xnote"><b>Beta Experimental</b> Library layouts made for fun. They may look rough, change or be removed. Upvote the ones you'd like to see finished: the counts are everyone's, live.</div>
-      <div class="layouts">${XLIB_LAYOUTS.map(l=>`<div class="xcard">${lCard(l)}<button class="xvote ${XV.mine[l.id]?'on':''}" data-f data-k="xv-${l.id}" data-act="xvote" data-v="${l.id}" aria-label="Upvote ${esc(l.name)}"><svg viewBox="0 0 24 24"><path d="M12 5l7 8h-4v6H9v-6H5z"/></svg>${XV.votes?(XV.votes[l.id]||0):'…'}<span>${XV.mine[l.id]?'Upvoted':'Upvote'}</span></button></div>`).join('')}</div>`;
+    + shead('Experimental')
+    + xDrop('lib-x', 'Experimental layouts · beta', `${XLIB_LAYOUTS.length} Library layouts made for fun${XLIB_LAYOUTS.some(l=>l.id===libLayout())?` · using ${esc(XLIB_LAYOUTS.find(l=>l.id===libLayout()).name)}`:''}`,
+        `<div class="xnote"><b>Beta Experimental</b> Library layouts made for fun. They may look rough, change or be removed. Upvote the ones you'd like to see finished: the counts are everyone's, live.</div>
+      <div class="layouts">${XLIB_LAYOUTS.map(l=>`<div class="xcard">${lCard(l)}${xVote(l)}</div>`).join('')}</div>`)
+    + (MKLIB_LAYOUTS.length ? xDrop('lib-mk', 'Experimental · Keyboard &amp; mouse', `${MKLIB_LAYOUTS.length} layouts made for a mouse and keyboard${MKLIB_LAYOUTS.some(l=>l.id===libLayout())?` · using ${esc(MKLIB_LAYOUTS.find(l=>l.id===libLayout()).name)}`:''}`,
+        `<div class="xnote">${MK_NOTE}</div><div class="layouts">${MKLIB_LAYOUTS.map(l=>`<div class="xcard">${lCard(l)}${xVote(l)}</div>`).join('')}</div>`) : '');
 }
+
+// =====================================================================
+// Keyboard & mouse layouts (Settings › Appearance and Settings › You › Library layout, "Experimental · Keyboard &
+// mouse"): Desk grid, Table and Launcher. The same three on Home (mk-*) and in the Library (mk-lib-*), drawn with the
+// Library's games (tabs, Show, Sort, hidden games and parental limits as everywhere) plus a search box.
+// Mouse: hover a game for Play / favorite / ⋯, right-click for a menu, double-click plays, the wheel scrolls (Ctrl +
+// wheel sizes the covers). Keyboard: Enter plays, Space shows the game's page, F favorites, Ctrl+K or just typing
+// searches, Esc clears. Table: sortable headers, Shift/Ctrl-click to pick several, a bar for what to do with them.
+// A controller still works: every game and button is in the focus system (data-f / data-k), A opens the game.
+// =====================================================================
+MK_LAYOUTS.push(
+  {id:'mk-desk', name:'Desk grid', desc:'Lists and stores down the side, a dense grid of covers. Hover for Play, right-click for more.'},
+  {id:'mk-table', name:'Table', desc:'Every game in sortable columns: store, last played, play time, size, Linux rating. Pick several with Shift or Ctrl.'},
+  {id:'mk-launcher', name:'Launcher', desc:'Your games grouped by store down the side; the one you pick gets a big page with Play, stats and tabs.'});
+MKLIB_LAYOUTS.push(
+  {id:'mk-lib-desk', name:'Desk grid', desc:'Lists and stores down the side, a dense grid of covers. Hover for Play, right-click for more.'},
+  {id:'mk-lib-table', name:'Table', desc:'Every game in sortable columns: store, last played, play time, size, Linux rating. Pick several with Shift or Ctrl.'},
+  {id:'mk-lib-launcher', name:'Launcher', desc:'Your games grouped by store down the side; the one you pick gets a big page with Play, stats and tabs.'});
+const MK = {q:'', size:3, view:'grid', col:'last', dir:-1, closed:{}, sel:new Set(), anchor:null, cur:null, tab:'overview', menu:null, ptr:{shift:false, ctrl:false, t:0}};
+try{ const v=JSON.parse(localStorage.getItem('hearth.mk')||'{}')||{}; ['size','view','col','dir','closed'].forEach(k=>{ if(v[k]!=null) MK[k]=v[k]; }); }catch(e){}
+function mkSave(){ try{ localStorage.setItem('hearth.mk', JSON.stringify({size:MK.size, view:MK.view, col:MK.col, dir:MK.dir, closed:MK.closed})); }catch(e){} }
+function mkKind(){
+  const id = S.view==='home' ? LOOK.layout : S.view==='library' ? libLayout() : '';
+  const m = /^mk-(?:lib-)?(desk|table|launcher)$/.exec(id||''); return m ? m[1] : null;
+}
+const mkActive = () => !!mkKind() && !S.layers.length && !S.locked;
+const mkSizes = [104,124,146,172,204];
+// The games: the Library's list for its tab, Show and Sort, then the search box. "store:steam", "installed",
+// "fav" and "never" in the search box filter too (as the Table's design shows).
+function mkGames(){
+  let L=libGames();
+  const words=MK.q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  for(const w of words){
+    if(w.startsWith('store:')){ const s=w.slice(6); L=L.filter(g=>(g.src||'').startsWith(s) || (SOURCES[g.src]||'').toLowerCase().startsWith(s)); continue; }
+    if(w==='installed'){ L=L.filter(g=>g.inst); continue; }
+    if(w==='fav'||w==='favorites'){ L=L.filter(g=>g.fav); continue; }
+    if(w==='never'){ L=L.filter(g=>!g.last); continue; }
+    L=L.filter(g=>[(g.title||''),SOURCES[g.src]||'',g.genre||'',g.system||''].join(' ').toLowerCase().includes(w));
+  }
+  return L;
+}
+const mkPdb = g => { const p=(GINFO[g.id]||{}).protondb; return p && p.tier ? p.tier : (g.cloud ? 'cloud' : g.src==='emu' ? 'native' : null); };
+const mkSize = g => { const m=/([\d.]+)\s*(GB|MB|TB)/i.exec(g.size||''); if(!m) return 0; return +m[1]*({MB:1/1024,GB:1,TB:1024}[m[2].toUpperCase()]); };
+const MK_COLS = [['name','Name',g=>(g.title||'').toLowerCase(),1],['store','Store',g=>lSrc(g).toLowerCase(),1],['last','Last played',g=>g.last||0,-1],['hrs','Play time',g=>g.hrs||0,-1],['size','Size',mkSize,-1],['pdb','On Linux',g=>['native','platinum','gold','silver','bronze','pending','borked'].indexOf(mkPdb(g)||'zz'),1]];
+function mkSorted(L){
+  const c=MK_COLS.find(x=>x[0]===MK.col)||MK_COLS[2], f=c[2], d=MK.dir||-1;
+  return [...L].sort((a,b)=>{ const x=f(a), y=f(b); return (typeof x==='string' ? x.localeCompare(y) : x<y?-1:x>y?1:0)*d || (a.title||'').localeCompare(b.title||''); });
+}
+const mkTabCount = t => { const s=S.tab, f=S.lfilter; S.tab=t; S.lfilter=''; const n=libGames().length; S.tab=s; S.lfilter=f; return n; };
+function mkSearchBox(){
+  return `<button class="mk-search" data-f data-k="mk-q" data-act="mkSearch" aria-label="Search your games">${I.search}<span class="q${MK.q?'':' ph'}">${MK.q?esc(MK.q):'Search your games'}</span><span class="caret"></span>${MK.q?`<span class="mk-x" data-act="mkClear" aria-label="Clear the search">${I.x}</span>`:''}<kbd>Ctrl K</kbd></button>`;
+}
+// The sidebar: the Library's lists, stores and collections (they're its tabs, so LB / RB still go through them).
+function mkSide(){
+  const item=(k,label,on,n,dot)=>`<button class="mks ${on?'on':''}" data-f data-k="mks-${esc(k)}" data-act="mkTab" data-tab="${esc(k)}">${dot?`<i style="background:${dot}"></i>`:''}<span>${esc(label)}</span><small>${n}</small></button>`;
+  const tabs=libTabs(), has=k=>tabs.some(t=>t[0]===k);
+  const lists=[['all','All games'],['inst','Installed'],['fav','Favorites']].filter(([k])=>has(k));
+  const stores=tabs.filter(([k])=>SOURCES[k]), cols=tabs.filter(([k])=>k.startsWith('c:'));
+  const SC={steam:'#4c8dff',epic:'#c9ced6',gog:'#b06bff',xbox:'#5fd068',emu:'#ff6fae',beacon:'#ffb547',manual:'#8d99a8'};
+  const playedOn = S.tab==='all' && S.lfilter==='played', neverOn = S.tab==='all' && S.lfilter==='unplayed';
+  return `<aside class="mk-side mk-scroll" data-sk="side">
+    <div class="mk-grp">${lists.map(([k,l])=>item(k,l,S.tab===k&&!(k==='all'&&(playedOn||neverOn)),mkTabCount(k))).join('')}
+      ${item('played','Recently played',playedOn,visible().filter(g=>g.last).length)}${item('never','Never played',neverOn,visible().filter(g=>!g.last&&!g.hrs).length)}</div>
+    ${stores.length?`<div class="mk-grp"><div class="mk-h">Stores</div>${stores.map(([k,l])=>item(k,l,S.tab===k,mkTabCount(k),SC[k]||'var(--dim)')).join('')}</div>`:''}
+    <div class="mk-grp"><div class="mk-h">Collections<button class="mk-add" data-f data-k="mks-new" data-act="colNew" aria-label="New collection">＋</button></div>
+      ${cols.length?cols.map(([k,l])=>item(k,l,S.tab===k,mkTabCount(k))).join(''):'<div class="mk-none">Make one with ＋, or from a game\'s menu</div>'}</div>
+    ${has('hidden')?`<div class="mk-grp">${item('hidden','Hidden',S.tab==='hidden',mkTabCount('hidden'))}</div>`:''}
+  </aside>`;
+}
+const mkTitle = () => S.tab==='all' && S.lfilter==='played' ? 'Recently played' : S.tab==='all' && S.lfilter==='unplayed' ? 'Never played' : (libTabs().find(t=>t[0]===S.tab)||[,'All games'])[1];
+// One game's cover in the grid: hover shows Play, favorite and ⋯ (mouse only; a controller's A opens the game).
+function mkCard(g, k){
+  const [sc,sl]=lStatus(g), sub = isActive(g) ? dlInfo(g).label : g.last ? (g.hrs?hrs(g.hrs)+' · ':'')+ago(g.last) : sc==='ni' ? sl : 'Never played';
+  return `<div class="mkc" role="button" tabindex="-1" data-f data-k="${k}" data-act="mkCard" data-id="${lId(g)}" data-mkplay="${lId(g)}" title="${esc(g.title)}">
+    <div class="mkc-cv">${cover(g,{badge:false})}${g.inst?'<i class="mk-dot" title="Installed"></i>':''}${g.fav?'<i class="lfav">★</i>':''}
+      <div class="mko">${mkPlayBtn(g)}<div class="mko-r"><button class="mko-b ${g.fav?'on':''}" data-act="mkFav" data-id="${lId(g)}" aria-label="${g.fav?'Remove from favorites':'Add to favorites'}">${I.star}</button><button class="mko-b" data-act="mkMenu" data-id="${lId(g)}" aria-label="More">${I.dots}</button></div></div></div>
+    <b>${esc(g.title)}</b><small>${esc(sub)}</small></div>`;
+}
+function mkPlayBtn(g, cls='mko-play'){
+  const run=S.running===g.id, fr=isFrozen(g);
+  const a = run?'resume' : fr?'quickres' : playable(g)?'play' : isActive(g)?'game' : 'install';
+  const l = run||fr ? 'Resume' : playable(g) ? (g.cloud&&!g.inst?'Stream':'Play') : isActive(g) ? dlInfo(g).label : g.src==='beacon' ? 'Set up' : 'Install';
+  return `<button class="${cls}" data-act="${a}" data-id="${lId(g)}">${playable(g)||run?I.play:I.dl}${esc(l)}</button>`;
+}
+function mkToolbar(L, extra=''){
+  const chip = S.lfilter && !['played','unplayed'].includes(S.lfilter) ? `<button class="mk-chip" data-f data-k="mk-chip" data-act="mkUnfilter">${esc(LFILTERS.find(f=>f[0]===S.lfilter)[1])} ${I.x}</button>` : '';
+  return `<div class="mk-tool"><h1>${esc(mkTitle())}</h1><span class="mk-n">${L.length}</span>
+    <div class="mk-chips">${chip}<button class="mk-chip ghost" data-f data-k="lfilter" data-act="lfilter">＋ Filter</button></div>
+    <div class="mk-tr">${extra}</div></div>`;
+}
+function mkDesk(ctx){
+  const L=mkGames(), size=mkSizes[Math.max(0,Math.min(4,(MK.size|0)-1))];
+  const rec = ctx==='home' ? visible().filter(g=>g.last).sort((a,b)=>b.last-a.last).slice(0,6) : [];
+  const tools = `<button class="mk-sel" data-f data-k="sort" data-act="sort">Sort: <b>${SORTS.find(s=>s[0]===S.sort)[1]}</b></button>
+    <div class="mk-size" role="group" aria-label="Cover size"><button data-f data-k="mk-sz-" data-act="mkSize" data-v="-1" aria-label="Smaller covers">−</button><span>${[1,2,3,4,5].map(i=>`<i class="${i<=MK.size?'on':''}"></i>`).join('')}</span><button data-f data-k="mk-sz+" data-act="mkSize" data-v="1" aria-label="Bigger covers">＋</button></div>
+    <div class="mk-seg" role="group" aria-label="View"><button class="${MK.view!=='list'?'on':''}" data-f data-k="mk-v-grid" data-act="mkView" data-v="grid" aria-label="Grid">${I.lib}</button><button class="${MK.view==='list'?'on':''}" data-f data-k="mk-v-list" data-act="mkView" data-v="list" aria-label="List"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button></div>`;
+  const body = !L.length ? mkEmpty()
+    : MK.view==='list' ? `<div class="mk-rows" data-lnav="v" data-lj>${L.map(g=>mkRow(g,'mkd-'+g.id,false)).join('')}</div>`
+    : `<div class="mkgrid grid" data-lj style="--mk-w:${size}px">${L.map(g=>mkCard(g,'mkd-'+g.id)).join('')}</div>`;
+  return `<div class="mk mk-desk">${mkSide()}<main class="mk-main">
+    <div class="mk-top">${mkSearchBox()}${ctx==='home'?mkNavPills():''}</div>
+    ${rec.length&&!MK.q?`<div class="mk-rec"><div class="mk-h">Jump back in</div><div class="mk-recs shelf" data-lnav="h">${rec.map(g=>`<div class="mk-rc" role="button" tabindex="-1" data-f data-k="mkr-${lId(g)}" data-act="mkCard" data-id="${lId(g)}" data-mkplay="${lId(g)}"><div class="art" style="${artBg(g)}"></div>${artImg(g,['wide','hero','cover'])}<div class="mk-rc-t"><b>${esc(g.title)}</b><small>${esc(ago(g.last))}</small></div>${mkPlayBtn(g,'mko-play sm')}</div>`).join('')}</div></div>`:''}
+    ${mkToolbar(L, tools)}
+    <div class="mk-body mk-scroll" data-sk="body">${body}</div></main></div>`;
+}
+function mkEmpty(){
+  return `<div class="mk-empty">${LIB.loading?'Loading your games…':MK.q?`Nothing matches “${esc(MK.q)}”. <button class="pill" data-f data-k="mk-clear" data-act="mkClear">Clear the search</button>`:!GAMES.length?'No games yet. Sign in to your stores under Stores &amp; accounts, or add a game from Home.':S.lfilter?'No games match. Remove the filter to see more.':'Nothing here yet.'}</div>`;
+}
+const mkNavPills = () => `<div class="mk-nav">${[['library','lib','Library'],['downloads','dl','Downloads'],['stores','user','Stores'],['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="mkn-${v}" data-act="${v==='stores'?'stores':'nav'}" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
+// A row (Table, and the Desk's list view). Table rows have a checkbox and follow the Shift/Ctrl selection.
+function mkRow(g, k, table){
+  const [sc,sl]=lStatus(g), p=mkPdb(g), on=MK.sel.has(g.id);
+  const pdb = p ? `<span class="pdb" style="--c:${PDB_COLORS[p]||'#8fc7ff'}">${p==='cloud'?'Cloud':p[0].toUpperCase()+p.slice(1)}</span>` : '<span class="mk-faint">—</span>';
+  return `<div class="mkr ${on?'sel':''}" role="row" tabindex="-1" data-f data-k="${k}" data-act="${table?'mkRow':'mkCard'}" data-id="${lId(g)}" data-mkplay="${lId(g)}" data-mkspot="${lId(g)}" aria-selected="${on}">
+    ${table?`<span class="mk-cb ${on?'on':''}" data-act="mkCheck" data-id="${lId(g)}" role="checkbox" aria-checked="${on}" aria-label="Select ${esc(g.title)}">${on?I.check:''}</span>`:''}
+    <span class="mkr-n"><span class="mkr-th">${cover(g,{badge:false})}</span><b>${esc(g.title)}${g.fav?' <i class="lfav">★</i>':''}</b></span>
+    <span>${esc(lSrc(g))}</span><span>${esc(ago(g.last))}</span><span>${g.hrs?hrs(g.hrs):'—'}</span><span>${esc(g.size&&g.size!=='—'?g.size:'—')}</span>
+    <span>${table?pdb:`<span class="lst ${sc}">${esc(sl)}</span>`}</span><span class="mkr-p">${mkPlayBtn(g,'mkr-play')}</span></div>`;
+}
+function mkTable(ctx){
+  const L=mkSorted(mkGames()), cur=G(MK.cur)&&L.some(g=>g.id===MK.cur) ? G(MK.cur) : L[0];
+  for(const id of [...MK.sel]) if(!G(id)) MK.sel.delete(id);
+  const n=MK.sel.size, all=L.length&&L.every(g=>MK.sel.has(g.id));
+  const head = `<div class="mkr mkr-hd" role="row"><span class="mk-cb ${all?'on':''}" data-f data-k="mk-all" data-act="mkAll" role="checkbox" aria-checked="${all}" aria-label="Select all">${all?I.check:''}</span>${MK_COLS.map(([id,l])=>`<button data-f data-k="mkh-${id}" data-act="mkSort" data-v="${id}" class="${MK.col===id?'on':''}" aria-sort="${MK.col===id?(MK.dir>0?'ascending':'descending'):'none'}">${l}${MK.col===id?(MK.dir>0?' ▴':' ▾'):''}</button>`).join('')}<span></span></div>`;
+  const bulk = n ? `<div class="mk-bulk"><b>${n} selected</b><button class="pill" data-f data-k="mkb-fav" data-act="mkBulk" data-v="fav">${I.star}Favorite</button><button class="pill" data-f data-k="mkb-col" data-act="mkBulk" data-v="col">${I.lib}Add to collection</button><button class="pill" data-f data-k="mkb-hide" data-act="mkBulk" data-v="hide">${I.x}Hide</button><button class="pill ghost" data-f data-k="mkb-clear" data-act="mkBulk" data-v="clear">Clear</button></div>` : '';
+  return `<div class="mk mk-table ${ctx==='home'?'':'mk-noside'}">${ctx==='home'?mkSide():''}<main class="mk-main">
+    <div class="mk-top">${mkSearchBox()}${ctx==='home'?mkNavPills():`<div class="mk-tabs">${libTabs().slice(0,9).map(([k,l])=>`<button class="mk-chip ${S.tab===k?'on':''}" data-f data-k="mks-${esc(k)}" data-act="mkTab" data-tab="${esc(k)}">${esc(l)}</button>`).join('')}</div>`}</div>
+    ${mkToolbar(L, bulk)}
+    <div class="mk-split"><div class="mk-tbl mk-scroll" data-sk="body" role="table">${head}${L.length?`<div class="mk-tbody" data-lnav="v" data-lj>${L.map(g=>mkRow(g,'mkt-'+g.id,true)).join('')}</div>`:mkEmpty()}</div>
+      <aside class="mk-det" id="mkDetail" data-id="${cur?lId(cur):''}">${cur?mkDetail(cur):''}</aside></div>
+    <div class="mk-tip">Shift-click picks a range, Ctrl-click adds one. Ctrl+A picks them all.</div></main></div>`;
+}
+function mkDetail(g){
+  const p=mkPdb(g);
+  return `<div class="mk-det-art"><div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide','cover'])}<h2>${esc(g.title)}</h2></div>
+    <div class="mk-det-b"><div class="sp-acts">${lPlay(g,'mkd-play')}<button class="sq" data-f data-k="mkd-page" data-act="game" data-id="${lId(g)}" aria-label="Game page">${I.info}</button><button class="sq" data-f data-k="mkd-opt" data-act="mkMenu" data-id="${lId(g)}" aria-label="More">${I.dots}</button></div>
+      <div class="ld-stats">${[['Play time',g.hrs?hrs(g.hrs):'—'],['Last played',ago(g.last)],['Size',g.size||'—'],['On Linux',p?p[0].toUpperCase()+p.slice(1):'—'],[g.system?'System':'Store',lSrc(g)]].map(([k,v])=>`<div><small>${k}</small><b>${esc(v)}</b></div>`).join('')}</div>
+      <p class="ld-about">${lAbout(g)}</p></div>`;
+}
+// Launcher: a list grouped by Favorites then each store (each group folds), and a big page for the picked game.
+function mkLauncher(ctx){
+  const L=mkGames(), favs=L.filter(g=>g.fav);
+  const groups=[['fav','Favorites',favs], ...Object.keys(SOURCES).map(s=>[s, s==='manual'?'Non-library':SOURCES[s], L.filter(g=>g.src===s)])].filter(x=>x[2].length);
+  let cur=G(MK.cur); if(!cur || !L.includes(cur)) cur = ctx==='home' ? ([...L].sort((a,b)=>(b.last||0)-(a.last||0))[0]) : L[0];
+  if(cur) MK.cur=cur.id;
+  const dl=GAMES.find(g=>isActive(g));
+  const list = groups.map(([k,name,gs])=>{ const shut=!!MK.closed[k];
+    return `<button class="mkl-h" data-f data-k="mkl-h-${esc(k)}" data-act="mkFold" data-v="${esc(k)}" aria-expanded="${!shut}"><span class="mkl-car">${shut?'▸':'▾'}</span>${esc(name)}<small>${gs.length}</small></button>`
+      + (shut?'':gs.map(g=>{ const [sc]=lStatus(g); return `<button class="mkl-g ${cur&&cur.id===g.id?'cur':''}" data-f data-k="mkl-${esc(k)}-${lId(g)}" data-act="mkPick" data-id="${lId(g)}" data-mkplay="${lId(g)}" data-mkspot="${lId(g)}"><i class="mkl-dot ${sc}"></i><span>${esc(g.title)}</span>${isActive(g)?`<small>${esc(dlInfo(g).label)}</small>`:S.running===g.id?'<small>Playing</small>':isFrozen(g)?'<small>Paused</small>':''}</button>`; }).join(''));
+  }).join('');
+  return `<div class="mk mk-launch"><aside class="mkl-side"><div class="mk-top">${mkSearchBox()}</div>
+      <div class="mkl-list mk-scroll" data-sk="side" data-lnav="v">${list||`<div class="mk-empty">${MK.q?'Nothing matches':LIB.loading?'Loading…':'No games yet'}</div>`}</div>
+      ${dl?`<div class="mkl-dl"><i class="dot"></i>${esc(dlInfo(dl).label)} · ${esc(dl.title)}</div>`:''}</aside>
+    <main class="mk-main mkl-main mk-scroll" data-sk="body" id="mkHero" data-id="${cur?lId(cur):''}">${cur?mkHero(cur, ctx):mkEmpty()}</main></div>`;
+}
+const MK_TABS = [['overview','Overview'],['ach','Achievements'],['shots','Screenshots'],['mods','Mods & saves'],['set','Game settings']];
+function mkHero(g, ctx){
+  loadGameInfo(g.id);
+  const gi=GINFO[g.id]||{}, ach=gi.achievements, p=mkPdb(g), run=S.running===g.id, fr=isFrozen(g);
+  const t=MK.tab;
+  const stats=[['Last played',ago(g.last)],['Play time',g.hrs?hrs(g.hrs):'—'],...(ach?[['Achievements',`${ach.done} / ${ach.total}`]]:g.ach?[['Achievements',`${g.ach[0]} / ${g.ach[1]}`]]:[])];
+  let body='';
+  if(t==='overview') body = `<div class="mkl-cols"><section><h3>About</h3><p class="ld-about">${lAbout(g)}</p>
+      ${S.running===g.id||isFrozen(g)?`<h3>Right now</h3><div class="mkl-act">${run?'Playing now':'Paused in Quick Resume'}</div>`:''}</section>
+    <section class="mkl-facts"><h3>This game on ${APP}</h3>${[['Store',lSrc(g)],['On Linux',p?p[0].toUpperCase()+p.slice(1):'Not rated'],['Size',g.size||'—'],['Status',lStatus(g)[1]]].map(([k,v])=>`<div><span>${k}</span><b>${esc(v)}</b></div>`).join('')}
+      ${host&&(LINUX||hasFeat('gameSettings'))&&!g.cloud?`<button class="pill" data-f data-k="mkh-set" data-act="mkGameSet" data-id="${lId(g)}">${I.gear}Open game settings</button>`:''}</section></div>`;
+  else if(t==='ach') body = ach ? `<div class="muted">${ach.done} of ${ach.total} unlocked</div><div class="bar" style="margin:10px 0 16px"><i style="width:${(ach.done/ach.total*100).toFixed(0)}%"></i></div><div class="achs">${ach.list.slice(0,24).map(a=>`<div class="ach ${a.done?'':'locked'}"><div><b>${esc(a.hidden&&!a.done?'Hidden':a.name)}</b><small>${esc(a.done?'Unlocked':(a.hidden?'Keep playing to find out':a.desc))}</small></div></div>`).join('')}</div>`
+    : g.ach ? `<div class="muted">${g.ach[0]} of ${g.ach[1]} unlocked</div><div class="bar" style="margin-top:10px"><i style="width:${(g.ach[0]/g.ach[1]*100).toFixed(0)}%"></i></div>` : `<div class="muted">${LINUX&&host?'Loading achievements…':'No achievements for this game.'}</div>`;
+  else if(t==='shots') body = (HOSTINFO.features||[]).includes('screenshots') ? `<div class="muted" style="margin-bottom:12px">Screenshots you take with the Quick Access button are kept per game.</div><button class="pill" data-f data-k="mkh-shots" data-act="shots">${I.display}Open Screenshots</button>` : '<div class="muted">Screenshots aren\'t available on this device.</div>';
+  else if(t==='mods') body = g.src==='beacon' ? `<button class="pill" data-f data-k="mkh-mods" data-act="mkMods" data-id="${lId(g)}">${I.lib}Mods</button>` : (HOSTINFO.features||[]).includes('gamingApps') ? `<div class="mkl-act-row"><button class="pill" data-f data-k="mkh-saves" data-act="gamingApp" data-v="saves" data-id="${lId(g)}">Saves</button><button class="pill" data-f data-k="mkh-mods" data-act="gamingApp" data-v="mods" data-id="${lId(g)}">Mods</button></div>` : '<div class="muted">Saves and mods for this game are managed by its store.</div>';
+  else if(t==='set') body = host&&(LINUX||hasFeat('gameSettings'))&&!g.cloud ? `<div class="muted" style="margin-bottom:12px">Proton version, launch options, controller layout and more.</div><button class="pill" data-f data-k="mkh-set" data-act="mkGameSet" data-id="${lId(g)}">${I.gear}Open game settings</button>` : `<div class="muted">${g.cloud?'Cloud games have no settings here.':'Game settings are available on Hearth OS.'}</div><button class="pill" data-f data-k="mkh-page" data-act="game" data-id="${lId(g)}" style="margin-top:12px">${I.info}Game page</button>`;
+  return `<div class="mkl-hero"><div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="mkl-shade"></div>
+      <div class="mkl-in"><h1>${esc(g.title)}</h1><div class="mkl-btns">${lPlay(g,'mkh-play')}
+        ${fr&&!run?`<button class="pill" data-f data-k="mkh-resume" data-act="quickres" data-id="${lId(g)}">Resume where I left off</button>`:''}
+        <button class="sq ${g.fav?'on':''}" data-f data-k="mkh-fav" data-act="mkFav" data-id="${lId(g)}" aria-label="${g.fav?'Remove from favorites':'Add to favorites'}">${I.star}</button>
+        <button class="sq" data-f data-k="mkh-more" data-act="mkMenu" data-id="${lId(g)}" aria-label="More">${I.dots}</button></div>
+      <div class="mkl-stats">${stats.map(([k,v])=>`<div><small>${k}</small><b>${esc(v)}</b></div>`).join('')}</div></div></div>
+    <nav class="mkl-tabs">${MK_TABS.map(([k,l])=>`<button class="${t===k?'on':''}" data-f data-k="mkt-${k}" data-act="mkHeroTab" data-v="${k}">${l}</button>`).join('')}</nav>
+    <div class="mkl-body">${body}</div>`;
+}
+function mkPage(ctx){
+  const k=mkKind();
+  if(MK.kind!==k+ctx){ MK.kind=k+ctx; MK.cur=null; MK.sel.clear(); MK.anchor=null; }   // another layout: start from its first game
+  return k==='table' ? mkTable(ctx) : k==='launcher' ? mkLauncher(ctx) : mkDesk(ctx);
+}
+// Draw again, keeping where the lists were scrolled to and what was picked.
+function mkRender(key){
+  const sc={}; document.querySelectorAll('#view .mk-scroll[data-sk]').forEach(e=>{ sc[e.dataset.sk]=e.scrollTop; });
+  render(key || (focused && focused.dataset.k), true);
+  document.querySelectorAll('#view .mk-scroll[data-sk]').forEach(e=>{ if(sc[e.dataset.sk]!=null) e.scrollTop=sc[e.dataset.sk]; });
+  if(focused && document.contains(focused) && $('#view').contains(focused)) focused.scrollIntoView({block:'nearest', inline:'nearest'});
+}
+// The picked game fills the Table's panel / the Launcher's page in place (as lUpdate does).
+function mkSpot(id){
+  const g=G(id); if(!g) return;
+  const d=$('#mkDetail'); if(d && d.dataset.id!==id){ d.dataset.id=id; d.innerHTML=mkDetail(g); MK.cur=id; }
+  const h=$('#mkHero'); if(h && h.dataset.id!==id){ h.dataset.id=id; MK.cur=id; h.innerHTML=mkHero(g, S.view==='home'?'home':'library'); h.scrollTop=0;
+    document.querySelectorAll('#view .mkl-g.cur').forEach(e=>e.classList.remove('cur')); document.querySelectorAll(`#view .mkl-g[data-id="${CSS.escape(id)}"]`).forEach(e=>e.classList.add('cur')); }
+}
+function mkPlay(g){
+  if(!g) return; blip(880,.05,.045);
+  if(S.running===g.id){ closeAll(); return send({type:'resume'}); }
+  if(isFrozen(g)) return quickResume(g.id);
+  if(playable(g)) return launch(g);
+  if(isActive(g)) return navigate('game',{game:g.id});
+  return installGame(g);
+}
+function mkFavToggle(g){
+  if(!g) return;
+  const on=!g.fav; g.fav=on; toast(on?`Added ${g.title} to Favorites`:`Removed ${g.title} from Favorites`);
+  if(host) call('library.setFav',{id:g.id,on}).catch(e=>{ if(g.fav===on){ g.fav=!on; if(!S.layers.length) mkRender(); } toast(e.message); });
+  mkRender();
+}
+// ---------- the right-click menu (a layer, so a controller and the keyboard can use it too) ----------
+function mkMenuOpen(g, x, y){
+  if(!g) return;
+  const sel = mkKind()==='table' && MK.sel.size>1 && MK.sel.has(g.id) ? [...MK.sel].map(G).filter(Boolean) : null;
+  const items = [];
+  if(sel){
+    items.push({label:`Add ${sel.length} to favorites`, key:'F', run:()=>mkBulk('fav')});
+    items.push({label:'Add to collection…', key:'›', run:()=>mkBulk('col')});
+    items.push({label:`Hide ${sel.length} games`, run:()=>mkBulk('hide')});
+    items.push({sep:true});
+    items.push({label:'Clear the selection', key:'Esc', run:()=>mkBulk('clear')});
+  } else {
+    const run=S.running===g.id, fr=isFrozen(g);
+    items.push({label: run||fr ? 'Resume' : playable(g) ? (g.cloud&&!g.inst?'Stream':'Play') : isActive(g) ? 'Show download' : 'Install', key:'Enter', run:()=>mkPlay(g)});
+    items.push({label:'Details', key:'Space', run:()=>navigate('game',{game:g.id})});
+    items.push({label:g.fav?'Remove from favorites':'Add to favorites', key:'F', run:()=>mkFavToggle(g)});
+    items.push({sep:true});
+    gameOptionItems(g).forEach(it=>items.push({label:it.label, run:it.run, danger:/^Uninstall|^Remove|^Cancel/.test(it.label)}));
+  }
+  MK.menu={g, items, x, y};
+  openLayer('mkmenu', 'mm-0');
+}
+function renderMkMenu(){
+  const m=MK.menu, box=$('#mkmenu'); if(!m) return;
+  box.innerHTML = `<div class="mkm" role="menu" aria-label="${esc(m.g.title)}">${m.items.map((it,i)=>it.sep?'<i class="mkm-sep"></i>':`<button class="mkm-i ${it.danger?'danger':''}" role="menuitem" data-f data-k="mm-${i}" data-act="mkMenuPick" data-i="${i}"><span>${esc(it.label)}</span>${it.key?`<kbd>${esc(it.key)}</kbd>`:''}</button>`).join('')}</div>`;
+  const el=box.firstElementChild, r=el.getBoundingClientRect();
+  const x=Math.max(8, Math.min(m.x, innerWidth-r.width-8)), y=Math.max(8, Math.min(m.y, innerHeight-r.height-8));
+  el.style.left=x+'px'; el.style.top=y+'px';
+}
+function mkMenuPick(i){ const m=MK.menu, it=m&&m.items[i]; if(!it||it.sep) return; closeLayer(); setTimeout(()=>it.run(), 0); }
+function mkBulk(what){
+  const gs=[...MK.sel].map(G).filter(Boolean);
+  if(what==='clear'){ MK.sel.clear(); MK.anchor=null; return mkRender(); }
+  if(!gs.length) return;
+  if(what==='fav'){ gs.forEach(g=>{ if(!g.fav){ g.fav=true; if(host) call('library.setFav',{id:g.id,on:true}).catch(e=>toast(e.message)); } }); toast(`Added ${gs.length} game${gs.length===1?'':'s'} to Favorites`); return mkRender(); }
+  if(what==='hide'){ gs.forEach(g=>{ g.hidden=true; if(host) call('library.setHidden',{id:g.id,on:true}).catch(e=>toast(e.message)); }); MK.sel.clear(); toast(`Hid ${gs.length} game${gs.length===1?'':'s'}. Find them under Hidden.`); return mkRender(); }
+  if(what==='col') return openSheet({title:'Add to collection', sub:`${gs.length} game${gs.length===1?'':'s'}`, items:[
+    ...COLS.map(c=>({label:c.name, icon:'lib', run:async()=>{ for(const g of gs) await colSet(c.id,g,true,true); toast(`Added ${gs.length} to ${c.name}`); mkRender(); }})),
+    {label:'New collection…', icon:'lib', run:()=>colNew(gs[0])}]});
+}
+// Table rows: a click picks one; Shift-click a range from the last one picked; Ctrl-click adds or removes one.
+function mkRowClick(id, how){
+  const L=[...document.querySelectorAll('#view .mk-tbody [data-id]')].map(e=>e.dataset.id);
+  if(how==='shift' && MK.anchor && L.includes(MK.anchor)){
+    const a=L.indexOf(MK.anchor), b=L.indexOf(id); MK.sel=new Set(L.slice(Math.min(a,b), Math.max(a,b)+1));
+  } else if(how==='ctrl'){ MK.sel.has(id) ? MK.sel.delete(id) : MK.sel.add(id); MK.anchor=id; }
+  else { MK.sel=new Set(MK.sel.size===1&&MK.sel.has(id)?[]:[id]); MK.anchor=id; }
+  MK.cur=id; mkRender('mkt-'+id);
+}
+function mkAct(a, d, el){
+  switch(a){
+    case 'mkTab': MK.sel.clear();
+      if(d.tab==='played'){ S.tab='all'; S.lfilter='played'; S.sort='recent'; }
+      else if(d.tab==='never'){ S.tab='all'; S.lfilter='unplayed'; }
+      else { S.tab=d.tab; if(['played','unplayed'].includes(S.lfilter)) S.lfilter=''; }
+      return mkRender('mks-'+d.tab);
+    case 'mkUnfilter': S.lfilter=''; return mkRender('lfilter');
+    case 'mkSearch':
+      // A controller (or a finger with no keyboard) types with the on-screen keyboard; a keyboard just types.
+      if(INPUT.last==='pad' || (INPUT.touch && !INPUT.hwKbd)) return openPrompt({title:'Search your games', value:MK.q}).then(v=>{ if(v!=null){ MK.q=v.trim(); mkRender('mk-q'); } });
+      if(INPUT.last==='kbd'){ const f=$('#view .mkgrid [data-f], #view .mk-tbody [data-f], #view .mk-rows [data-f], #view .mkl-g'); if(f) setFocus(f); }
+      return;
+    case 'mkClear': MK.q=''; return mkRender('mk-q');
+    case 'mkSize': MK.size=Math.max(1,Math.min(5,(MK.size|0)+(+d.v))); mkSave(); return mkRender();
+    case 'mkView': MK.view=d.v; mkSave(); return mkRender('mk-v-'+d.v);
+    case 'mkFav': return mkFavToggle(G(d.id));
+    case 'mkMenu': { const r=el.getBoundingClientRect(); return mkMenuOpen(G(d.id), r.left, r.bottom+4); }
+    case 'mkMenuPick': return mkMenuPick(+d.i);
+    case 'mkSort': if(MK.col===d.v) MK.dir=-(MK.dir||-1); else { MK.col=d.v; MK.dir=(MK_COLS.find(c=>c[0]===d.v)||[])[3]||1; } mkSave(); return mkRender('mkh-'+d.v);
+    case 'mkAll': { const L=mkGames(); const all=L.length&&L.every(g=>MK.sel.has(g.id)); MK.sel = all ? new Set() : new Set(L.map(g=>g.id)); return mkRender('mk-all'); }
+    case 'mkCheck': { const id=d.id; MK.sel.has(id) ? MK.sel.delete(id) : MK.sel.add(id); MK.anchor=id; return mkRender('mkt-'+id); }
+    case 'mkRow': {
+      const recent = performance.now()-MK.ptr.t < 600 && INPUT.last==='mouse';
+      if(recent) return mkRowClick(d.id, MK.ptr.shift?'shift':MK.ptr.ctrl?'ctrl':'');
+      return navigate('game',{game:d.id});   // A on a row (controller) or Space: the game's page
+    }
+    case 'mkBulk': return mkBulk(d.v);
+    case 'mkCard': {
+      // The mouse: a click shows the game's page, unless a second click makes it a double-click (that plays).
+      if(performance.now()-MK.ptr.t < 600 && INPUT.last==='mouse'){ clearTimeout(MK.clickT); MK.clickT=setTimeout(()=>{ if(mkActive()) navigate('game',{game:d.id}); }, 280); return; }
+      return navigate('game',{game:d.id});
+    }
+    case 'mkFold': MK.closed[d.v]=!MK.closed[d.v]; mkSave(); return mkRender('mkl-h-'+d.v);
+    case 'mkPick': mkSpot(d.id); if(INPUT.last==='pad'){ const p=$('#mkHero [data-k="mkh-play"]'); if(p) setFocus(p); } return;
+    case 'mkHeroTab': MK.tab=d.v; return mkRender('mkt-'+d.v);
+    case 'mkGameSet': return navigate('gameset',{game:d.id});
+    case 'mkMods': return beaconModsPage(G(d.id));
+  }
+}
+// Keys in a keyboard & mouse layout (before the controller-style keys). true: handled.
+function mkKey(e){
+  if(!mkActive()) return false;
+  const k=e.key, f=focused && $('#view').contains(focused) ? focused : null, id=f && (f.dataset.id || f.dataset.mkplay), g=id && G(id);
+  const inSearch = f && f.dataset.k==='mk-q';
+  if((e.ctrlKey||e.metaKey) && (k==='k'||k==='K')){ const s=$('#view [data-k="mk-q"]'); if(s) setFocus(s); return true; }
+  if((e.ctrlKey||e.metaKey) && (k==='a'||k==='A') && mkKind()==='table' && !inSearch){ const L=mkGames(); MK.sel=new Set(L.map(x=>x.id)); mkRender(); return true; }
+  if(e.ctrlKey||e.metaKey||e.altKey) return false;
+  if(inSearch){
+    if(k.length===1){ MK.q+=k; mkRender('mk-q'); return true; }
+    if(k==='Backspace'){ MK.q=MK.q.slice(0,-1); mkRender('mk-q'); return true; }
+    if(k==='Escape'){ if(MK.q){ MK.q=''; mkRender('mk-q'); return true; } return false; }
+    if(k==='Enter'||k==='ArrowDown'){ const first=$('#view .mkgrid [data-f], #view .mk-tbody [data-f], #view .mk-rows [data-f], #view .mkl-g'); if(first){ setFocus(first); return true; } }
+    return false;
+  }
+  if(k==='ContextMenu' || (k==='F10' && e.shiftKey)){ if(g){ const r=f.getBoundingClientRect(); mkMenuOpen(g, r.left+20, r.top+20); return true; } return false; }
+  if(k==='Escape' && MK.sel.size){ MK.sel.clear(); mkRender(); return true; }
+  if(k==='Escape' && MK.q){ MK.q=''; mkRender(); return true; }
+  if(g && k==='Enter' && f.dataset.mkplay){ mkPlay(g); return true; }
+  if(g && k===' ' && f.dataset.k!=='mk-q'){ if(mkKind()==='launcher' && f.classList.contains('mkl-g')){ act(f); return true; } navigate('game',{game:g.id}); return true; }
+  if(g && (k==='f'||k==='F')){ mkFavToggle(g); return true; }
+  // Any other character starts a search (not the ones a controller's driver could send as keys).
+  if(k.length===1 && /[\p{L}\p{N}]/u.test(k)){ const s=$('#view [data-k="mk-q"]'); if(s){ MK.q=k; mkRender('mk-q'); return true; } }
+  return false;
+}
+// The mouse: right-click a game for its menu; double-click plays; Ctrl + wheel sizes the Desk's covers.
+document.addEventListener('pointerdown', e=>{ MK.ptr={shift:e.shiftKey, ctrl:e.ctrlKey||e.metaKey, t:performance.now()}; }, true);
+document.addEventListener('contextmenu', e=>{
+  if(!mkActive()) return;
+  const el=e.target.closest('#view [data-id]'); const g=el && G(el.dataset.id); if(!g) return;
+  e.preventDefault();
+  if(el.dataset.f!==undefined) setFocus(el, true);
+  mkMenuOpen(g, e.clientX, e.clientY);
+});
+document.addEventListener('dblclick', e=>{
+  if(!mkActive()) return;
+  const el=e.target.closest('#view [data-mkplay]'); const g=el && G(el.dataset.mkplay); if(!g || e.target.closest('.mko,.mkr-p,.mk-cb')) return;
+  clearTimeout(MK.clickT); mkPlay(g);
+});
+document.addEventListener('wheel', e=>{
+  if(!e.ctrlKey || !mkActive() || mkKind()!=='desk' || !e.target.closest('#view .mk-body')) return;
+  e.preventDefault(); const was=MK.size; MK.size=Math.max(1,Math.min(5,(MK.size|0)+(e.deltaY<0?1:-1))); if(MK.size!==was){ mkSave(); mkRender(); }
+}, {passive:false});
 
 // Browser preview only: ?stress=300 adds that many made-up games (all stores, downloads, Quick Resume) to try
 // the layouts with a big library. Never with a host.
@@ -3429,7 +3943,7 @@ function hhdMode(k, n){
   const cur=hv(k+'.mode'), m=(n.modes||{})[cur];
   let h = `<button class="row" data-f data-k="${HHDP.kp}${k}.mode" data-act="hhd" data-op="pick" data-key="${esc(k)}.mode"><div class="rt"><b>${esc(hhdTitle(n,k))}</b>${m&&m.hint&&!HHDP.compact?`<small>${esc(String(m.hint).trim())}</small>`:hhdHint(n)}</div>${HHDP.busy[k+'.mode']?'<span class="mini-spin"></span>':`<div class="rv">${esc(hhdOptLabel(n, cur))} ›</div>`}</button>`;
   if(m && hhdShown(m)) h += `<div class="hhd-sub">${hhdKids(k+'.'+cur, m)}</div>`;
-  else if(HHDP.compact && m && Object.keys(m.children||{}).length) h += `<div class="muted qhhd-note" style="margin:0 4px 2px">${LINUX&&!OVERLAY?'Its settings are in Handheld Daemon settings, below.':'Its settings are in Settings › Controls › Handheld Daemon.'}</div>`;
+  else if(HHDP.compact && m && Object.keys(m.children||{}).length) h += `<div class="muted qhhd-note" style="margin:0 4px 2px">Its settings are in Settings › Controls › Handheld Daemon.</div>`;
   return h;
 }
 function hhdKids(k, c){
@@ -4625,7 +5139,7 @@ function deskType(text){
 }
 async function deskKeyboard(){
   deskReleaseAll();
-  const t=await openPrompt({title:'Type into Linux', value:''});
+  const t=await openPrompt({title:'Type into Linux', value:'', osk:true});   // asked for from the controller or the bar
   if(t) deskType(t);
   if(DESK.rfb) try{ DESK.rfb.focus({preventScroll:true}); }catch(e){}
 }
@@ -4953,9 +5467,8 @@ function perfBody(){
       <div class="chips">${choices.map(v=>`<button class="chip ${p.tdp.watts===v?'on':''}" data-f data-k="pt-${v}" data-act="tdp" data-v="${v}">${v} W</button>`).join('')}</div>
       <div class="muted">Lower uses less battery; higher runs demanding games faster.</div></div>`;
   }
-  // Handheld Daemon's whole settings page (fan curve, power modes, lights...): from Hearth itself, not over a game.
-  if(LINUX && !OVERLAY && (hp || (HHDS.s && HHDS.s.running))) h += `<button class="btn sm" data-f data-k="pt-hhd" data-act="hhdOpen"${hp?' style="margin-top:12px"':''}>${I.sliders}Handheld Daemon settings</button>`;
-  else if(hp && OVERLAY) h += `<div class="muted qhhd-note">More (fan curve, lights, the controller): ${APP} › Settings › Controls › Handheld Daemon.</div>`;
+  // Handheld Daemon's whole page is in Settings: Quick Access says where, the same in Hearth's panel and over a game.
+  if(hp) h += `<div class="muted qhhd-note">More (fan curve, lights, the controller): ${APP} › Settings › Controls › Handheld Daemon.</div>`;
   if(!hp && p.powerMode){
     h += `<div class="pctl"><div class="lab">${I.bolt}Power</div>
       <div class="chips">${(p.powerModes&&p.powerModes.length?PMODES.filter(([k])=>p.powerModes.includes(k)):PMODES).map(([k,l])=>`<button class="chip ${p.powerMode===k?'on':''}" data-f data-k="pp-${k}" data-act="perfPower" data-v="${k}">${l}</button>`).join('')}</div></div>`;
@@ -5077,7 +5590,7 @@ async function overlayShown(){
   while(S.layers.length>1) closeLayer();
   try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); if(!r.runningId) S.running=null; if(r.quickResume) applyQuick({list:r.quickResume.list, on:r.quickResume.on}); }catch(e){}
   if(S.running && !G(S.running)) await loadLibrary();
-  S.qtab = S.running ? 'now' : 'quick';
+  qamFresh();
   if(!S.layers.includes('qam')) openLayer('qam'); else { renderQam(); setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
   refreshStatus(); loadProfile();
   if(S.qtab==='perf') startPerf();
@@ -5086,6 +5599,8 @@ async function overlayShown(){
 }
 function overlayHidden(){ OV.shown=false; document.body.classList.add('ov-closed'); while(S.layers.length>1) closeLayer(); }
 
+/** Quick Access opened by Guide (Hearth's panel or the overlay): on Now playing with a game running, else Quick settings. */
+function qamFresh(){ S.qtab = S.running ? 'now' : 'quick'; }
 function renderQam(){
   const t=S.qtab; let body='';
   if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
@@ -5102,18 +5617,20 @@ function renderQam(){
   if(t==='now'){ const g=S.running&&G(S.running);
     const mins = S.runningSince ? Math.max(0,Math.round((Date.now()-S.runningSince)/60000)) : null;
     const mouseBtn = `<button class="btn sm" data-f data-k="q-mouse" data-act="toggleMouse">${I.mouse}Controller mouse: ${PAD.mouseOn?'on':'off'}</button>`;
-    const ovBtns = OVERLAY ? `<button class="btn sm" data-f data-k="q-shot" data-act="ovShot">${I.display}Take a screenshot</button>${mouseBtn}
-      <button class="btn sm" data-f data-k="q-home" data-act="ovHome">${I.home}Back to ${APP}</button>` : '';
+    // The same buttons in Hearth's own panel and over a game (the overlay), in the same order (qamButtons, tools/ui-check.js).
+    // Take a screenshot needs a host that can take one (Hearth OS, or Ember's overlay); Back to Hearth in Hearth's own
+    // window just closes the panel (Hearth is what's on screen).
+    const shotBtn = (OVERLAY||LINUX) ? `<button class="btn sm" data-f data-k="q-shot" data-act="ovShot">${I.display}Take a screenshot</button>` : '';
+    const ovBtns = `${shotBtn}${mouseBtn}
+      <button class="btn sm" data-f data-k="q-home" data-act="ovHome">${I.home}Back to ${APP}</button>`;
     body = `<h3>Now playing</h3>${g?`<div class="np"><div class="nart" style="${artBg(g)}">${artImg(g,['hero','wide','cover'])}</div><div class="nb"><b>${esc(g.title)}</b>
       <div class="muted">${SOURCES[g.src]}${mins!=null?` · playing for ${mins<60?mins+' min':hrs(mins/60)}`:' · running'}</div>
-      ${OVERLAY?'':`<button class="btn" data-f data-k="q-gp" data-act="game" data-id="${g.id}">Game details</button>`}
       ${ovBtns}
       ${LINUX?`<button class="btn" data-f data-k="q-resume" data-act="resume">${I.play}Back to game</button>`:''}
       ${(LINUX||hasFeat('pause'))&&!G(S.running)?.cloud?`<button class="btn" data-f data-k="q-pause" data-act="pauseGame">${S.paused?I.play+'Unpause':I.pause+'Pause'}</button>`:''}
       ${qrFeature()&&QR.on&&!g.cloud?`<button class="btn" data-f data-k="q-aside" data-act="putaside">${I.pause}Put aside (Quick Resume)</button>`:''}
       <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>${inputQam(g)}${qamQuick()}`
-      : (QR.list.length && !OVERLAY) ? `<div class="muted" style="margin-bottom:10px">Nothing running right now.</div>${qamQuick()}`
-      : OVERLAY ? `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}` : '<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
+      : `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}${qamQuick()}`}`;
   }
   $('#qam').innerHTML = `<div class="qbody">${body}</div><div class="qtabs">${QTABS.map(([k,ic,l])=>`<button class="qtab ${t===k?'on':''}" data-f data-k="qt-${k}" data-act="qtab" data-tab="${k}" aria-label="${l}">${I[ic]}</button>`).join('')}</div>`;
 }
@@ -5160,6 +5677,49 @@ function kbGlyph(c){
   const st=promptStyle(); if(st!=='pad') return '';
   return {bksp:'Y',space:'X',shift:'LB',sym:'RB',done:'☰'}[c]||'';
 }
+// ---------- when the on-screen keyboard shows ----------
+// Only for a controller (or a touchscreen with no keyboard): after keyboard or mouse input, a text field just takes
+// what's typed on the real keyboard, and the on-screen keyboard stays away. Every text field (search and the text
+// prompt) asks oskShown(); a controller's A on the field brings the keyboard up (oskField).
+function oskWanted(){
+  if(!INPUT.seen) return true;              // nothing pressed yet (a controller-only handheld): show it
+  if(INPUT.last==='pad') return true;
+  if(INPUT.last==='kbd') return false;      // typing on a real keyboard never brings it up
+  if(INPUT.touch) return (LOOK.madeFor||'auto')==='pad' || ((LOOK.madeFor||'auto')!=='mk' && !INPUT.hwKbd);
+  return false;                             // the mouse
+}
+const oskShown = t => !!(t && t.forceOsk) || oskWanted();
+// Instead of the keyboard: what to do, plus buttons for the mouse (and one to bring the keyboard up anyway).
+function kbNone(pre, actName){
+  return `<div class="kbnone"><span class="muted">Type on your keyboard · <b>Enter</b> ${pre==='sk'?'opens the first match':'finishes'} · <b>Esc</b> cancels</span>
+    <button class="pill" data-f data-k="${pre}-osk" data-act="oskShow" data-v="${pre}">${I.kbd}On-screen keyboard</button>
+    <button class="pill" data-f data-k="${pre}-done" data-act="${actName}" data-c="${pre==='sk'?'enter':'done'}">${pre==='sk'?'Open':'Done'}</button></div>`;
+}
+// The OSK on or off for the open search / prompt, with the selection kept where it makes sense.
+function oskRefresh(){
+  const top=S.layers.at(-1);
+  if(top!=='prompt' && top!=='search') return;
+  const t = top==='prompt' ? prompt : SKB; if(!t) return;
+  const box=$('#'+top), had=!!box.querySelector('.kb'), want=oskShown(t);
+  if(had===want) return;
+  const pre = top==='prompt' ? 'pk' : 'sk';
+  // The selection stays where it was when it still can (the field, a result); else the keyboard's first letter or
+  // the field.
+  const was = focused && box.contains(focused) ? focused.dataset.k : null;
+  if(top==='prompt') renderPrompt(); else renderSearch();
+  const el = (was && box.querySelector(`[data-k="${CSS.escape(was)}"]`)) || box.querySelector(`[data-k="${want?pre+'-1-0':pre+'-field'}"]`);
+  if(el) setFocus(el,true);
+}
+function oskField(which){
+  const t = which==='prompt' ? prompt : SKB; if(!t) return;
+  // A controller (or a finger with no keyboard) on the field brings the keyboard up; Enter on a keyboard finishes.
+  if(INPUT.last==='pad' || (INPUT.touch && INPUT.last==='mouse' && !INPUT.hwKbd)){
+    t.forceOsk=true; oskRefresh();
+    const k=$(`#${which} [data-k="${which==='prompt'?'pk':'sk'}-1-0"]`); if(k && INPUT.last==='pad') setFocus(k,true);   // on to the letters
+    return;
+  }
+  if(INPUT.last==='kbd') return which==='prompt' ? promptSubmit() : typeKey('enter');
+}
 function kbHTML(t, pre, actName){
   const up=(t.shift||t.caps)&&!t.sym;
   return `<div class="kb">${(t.sym?KB_SYMS:KB_LETTERS).map((r,ri)=>`<div class="kbrow">${r.map((c,ci)=>{
@@ -5198,9 +5758,10 @@ function renderSearch(keepKey){
   const a=allowedList();
   const res = q ? GAMES.filter(g=>(!a || a.includes(g.id)) && (g.title||'').toLowerCase().includes(q)).slice(0,8) : [];
   const t=Object.assign(SKB,{text:query});
-  $('#search').innerHTML = `<div class="kbtop"><div class="sfield">${I.search}${kbField(t,'','Search your library')}</div>
-    <div class="sres">${res.map(g=>`<button class="row" data-f data-k="sr-${esc(g.id)}" data-act="game" data-id="${esc(g.id)}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('') || `<div class="muted" style="padding:16px 4px">${q?'No matches':'Type with the keyboard below, or a real keyboard'}</div>`}</div></div>
-    ${kbHTML(Object.assign(t,{enterLabel:'Search'}),'sk','key')}`;
+  const osk=oskShown(SKB);
+  $('#search').innerHTML = `<div class="kbtop"><div class="sfield" data-f data-k="sk-field" data-act="oskField" data-v="search">${I.search}${kbField(t,'','Search your library')}</div>
+    <div class="sres">${res.map(g=>`<button class="row" data-f data-k="sr-${esc(g.id)}" data-act="game" data-id="${esc(g.id)}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('') || `<div class="muted" style="padding:16px 4px">${q?'No matches':osk?'Type with the keyboard below, or a real keyboard':'Type the name of a game'}</div>`}</div></div>
+    ${osk?kbHTML(Object.assign(t,{enterLabel:'Search'}),'sk','key'):kbNone('sk','key')}`;
   if(keepKey){ const el=$(`#search [data-k="${CSS.escape(keepKey)}"]`); if(el) setFocus(el,true); }
 }
 
@@ -5218,13 +5779,14 @@ function sheetPick(i){ const it=sheet && sheet.items[i]; if(!it) return; sheet.p
 // ---------- text prompt with on-screen keyboard (passwords etc.) ----------
 let prompt=null;
 const OSK_SYM=['1234567890','!@#$%^&*()','-_=+[]{};:',"'\",.?/\\|~`"];
-function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',caret:null,shift:false,caps:false,sym:false,show:!o.secret,res,done:false}; openLayer('prompt','pk-1-0'); }); }
+// o.osk: show the on-screen keyboard even after keyboard or mouse input (it was asked for, e.g. the desktop's keyboard).
+function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',caret:null,shift:false,caps:false,sym:false,show:!o.secret,res,done:false,forceOsk:!!o.osk}; openLayer('prompt',oskShown(prompt)?'pk-1-0':'pk-field'); }); }
 function renderPrompt(keepK){
   const p=prompt; if(!p) return;
   $('#prompt').innerHTML = `<div class="kbtop"><div class="ptitle">${esc(p.title)}</div>
-    <div class="sfield">${p.secret?I.lock:I.kbd}${kbField(p,'',p.secret?'Password':'Type here',p.secret,p.show)}
+    <div class="sfield" data-f data-k="pk-field" data-act="oskField" data-v="prompt">${p.secret?I.lock:I.kbd}${kbField(p,'',p.secret?'Password':'Type here',p.secret,p.show)}
       ${p.secret?`<button class="pill" style="margin-left:auto" data-f data-k="pk-show" data-act="pkey" data-c="show">${p.show?'Hide':'Show'}</button>`:''}</div></div>
-    ${kbHTML(Object.assign(p,{enterLabel:'Done'}),'pk','pkey')}`;
+    ${oskShown(p)?kbHTML(Object.assign(p,{enterLabel:'Done'}),'pk','pkey'):kbNone('pk','pkey')}`;
   if(keepK){ const el=$(`#prompt [data-k="${keepK}"]`); if(el) setFocus(el,true); }
 }
 function promptKey(c){
@@ -5240,10 +5802,11 @@ function promptSubmit(){
   p.done=true; closeLayer(); p.res(p.text);
 }
 
-const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt()};
+const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt(), mkmenu:()=>renderMkMenu()};
 const LAYER_CLOSE = {
   sheet:()=>{ if(sheet && !sheet.picked && sheet.onCancel) sheet.onCancel(); sheet=null; },
   prompt:()=>{ if(prompt && !prompt.done) prompt.res(null); prompt=null; },
+  mkmenu:()=>{ MK.menu=null; },
 };
 const focusStack=[];
 function openLayer(id, focusKey){
@@ -5254,7 +5817,8 @@ function openLayer(id, focusKey){
   S.layers.push(id);
   $('#'+id).classList.add('open');
   syncScrim();
-  const el = (focusKey && $(`#${id} [data-k="${focusKey}"]`)) || $(`#${id} .cur`) || $(`#${id} .on[data-f]`) || $(`#${id} [data-f]`);
+  // Quick Access starts on its first control (not its tab), in Hearth's panel as over a game.
+  const el = (focusKey && $(`#${id} [data-k="${focusKey}"]`)) || (id==='qam' && $('#qam .qbody [data-f]')) || $(`#${id} .cur`) || $(`#${id} .on[data-f]`) || $(`#${id} [data-f]`);
   setFocus(el, true);
   renderFooter(); blip(520,.05);
 }
@@ -5282,7 +5846,9 @@ function resumeIfGame(closed){ if(LINUX && host && closed==='qam' && S.running &
 function syncScrim(){
   const top=S.layers.at(-1);
   $('#scrim').classList.toggle('open', !!top && top!=='launch');
-  $('#app').classList.toggle('dim', !!top && top!=='launch');
+  $('#scrim').classList.toggle('qa', top==='qam');
+  $('#scrim').classList.toggle('light', top==='mkmenu');   // a right-click menu: nothing dims, a click outside closes it
+  $('#app').classList.toggle('dim', !!top && top!=='launch' && top!=='mkmenu' && top!=='qam');
 }
 
 // =====================================================================
@@ -5295,7 +5861,7 @@ function focusables(){ return [...root().querySelectorAll('[data-f]')].filter(el
 // of gliding: a smooth scroll still moving under the next press made the next pick wrong (it bounced between
 // two items), and the glide fell behind on a handheld.
 let lastNav=0;
-const scrollOpts = (el, smooth) => { const shelf = el.closest('.shelf,.news,.tabs,.sres');
+const scrollOpts = (el, smooth) => { const shelf = el.closest('.shelf,.news,.tabs,.sres,.xc-strip,.xs-shelf,.xk-dock');
   return {block: shelf?'nearest':'center', inline: shelf?'center':'nearest', behavior: smooth?'smooth':'auto'}; };
 /** Ends a smooth scroll still under way (jumps to where it was going), so positions are final. */
 function settleScroll(){ if(focused && document.contains(focused)) focused.scrollIntoView(scrollOpts(focused, false)); }
@@ -5306,6 +5872,7 @@ function setFocus(el, quiet){
   focused=el; el.classList.add('focus');
   el.focus({preventScroll:true});
   if(S.view==='library' && !S.layers.length) libFocus(el);   // Library layouts: fit, and fill the detail panel
+  if(el.dataset.mkspot && !S.layers.length) mkSpot(el.dataset.mkspot);   // keyboard & mouse layouts: the panel / page
   const now=performance.now(), rapid = now-lastNav < 260;
   lastNav=now;
   el.scrollIntoView(scrollOpts(el, !quiet && !rapid && !LOOK.reduceMotion));
@@ -5407,12 +5974,13 @@ function act(el){
   if(a.startsWith('bcn')) return beaconAct(a, d);   // Beacon's screens (Game setup, Mods)
   if(a.startsWith('a11y')) return a11yAct(a, d);   // Settings › Accessibility
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
+  if(/^mk[A-Z]/.test(a)) return mkAct(a, d, el);   // the keyboard & mouse layouts
   switch(a){
     case 'unlock': return lockUnlock();
     case 'loginWake': return call('login.setLockOnWake',{on:!(LOGIN.s&&LOGIN.s.lockOnWake)}).then(r=>{ LOGIN.s=r; refreshUI(); toast(r.lockOnWake?'Asks for your password after sleep':'Wakes without asking for a password'); }).catch(e=>toast(e.message));
     case 'menu': return toggleLayer('menu');
     case 'qam': closeAll(); if(d.tab) S.qtab=d.tab; return openLayer('qam');
-    case 'search': closeAll(); query=''; return openLayer('search');
+    case 'search': closeAll(); query=''; SKB.forceOsk=false; return openLayer('search', oskWanted()?'sk-0-0':'sk-field');
     case 'power': closeAll(); return openLayer('power');
     case 'back': return back();
     case 'nav': closeAll(); if(S.view!==d.view){ S.history=[]; navigate(d.view,{},false);} return;
@@ -5575,6 +6143,9 @@ function act(el){
     case 'padSwap': { const k='swap'+d.v; PAD[k]=!PAD[k]; try{ localStorage.setItem('nimbus.'+k, PAD[k]?'1':'0'); }catch(e){} return render('ctl-swap'+d.v.toLowerCase()); }
     case 'inputMode': INPUT.mode=d.v; try{ localStorage.setItem('nimbus.inputMode', d.v); }catch(e){} renderFooter(); return render('ctl-'+d.v);
     case 'pkey': return promptKey(d.c);
+    case 'oskField': return oskField(d.v);
+    case 'madeFor': LOOK.madeFor=d.v; saveLook(); renderFooter(); return render('ap-mf-'+d.v);
+    case 'oskShow': { const t = d.v==='pk' ? prompt : SKB; if(t){ t.forceOsk=true; oskRefresh(); } return; }
     case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); if(d.tab==='apps') loadApps(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
     case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
     case 'gsRetry': loadGameSet(S.game); return render(null,true);
@@ -5594,8 +6165,12 @@ function act(el){
     case 'perfOverlay': return call('perf.setOverlay',{level:+d.v}).then(r=>{ if(PERF.s) PERF.s.perfOverlay=r.perfOverlay; toast(r.perfOverlay?`Overlay: ${PO_LEVELS[r.perfOverlay]}`:'Overlay off'); renderQam(); setFocus($(`#qam [data-k="po-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'fpsLimit': return call('perf.setFpsLimit',{fps:+d.v}).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'perfPower': return call('power.setMode',{mode:d.v}).then(r=>{ if(PERF.s) PERF.s.powerMode=r.mode||d.v; renderQam(); setFocus($(`#qam [data-k="pp-${d.v}"]`),true); }).catch(e=>toast(e.message));
-    case 'ovShot': return call('overlay.screenshot',{},20000).then(r=>{ SH.list=null; toast(`Screenshot saved · see it in Library › Screenshots`); }).catch(e=>toast(e.message));
-    case 'ovHome': return send({type:'overlay', action:'home'});
+    case 'ovShot': {   // Hearth's own panel closes first, so it isn't in the picture
+      const shot=()=>call('overlay.screenshot',{},20000).then(r=>{ SH.list=null; toast(`Screenshot saved · see it in Library › Screenshots`); }).catch(e=>toast(e.message));
+      if(OVERLAY) return shot();
+      closeAll(); return setTimeout(shot, 350);
+    }
+    case 'ovHome': return OVERLAY ? send({type:'overlay', action:'home'}) : closeAll();   // Hearth's panel: Hearth is already on screen
     case 'ovHoldView': return call('overlay.setHoldView',{on:!(OVS.s&&OVS.s.holdView)}).then(r=>{ OVS.s=r; render('ov-hold'); }).catch(e=>toast(e.message));
     case 'ovGameBar': return call('overlay.setGameBarButton',{on:!(OVS.s&&OVS.s.gameBarButton)}).then(r=>{ OVS.s=r; render('ov-gb'); }).catch(e=>toast(e.message));
     case 'toggle': { S.set[d.key]=!S.set[d.key];
@@ -5645,7 +6220,7 @@ function act(el){
     case 'dlClearRecent': DL_DONE.length=0; DLS.recent=[]; return call('downloads.clearRecent').then(()=>render(null,true)).catch(e=>toast(e.message));
     case 'stores': closeAll(); return S.view==='stores' ? null : navigate('stores');
     case 'xvote': return vote(d.v);
-    case 'xOpen': XV.open=!XV.open; if(XV.open) loadVotes(); return render('ap-xopen',true);
+    case 'xDrop': return xDropToggle(d.v);
     case 'libJump': return lJumpTo(d.v);
     case 'xLib': closeAll(); S.tab=d.tab||'all'; S.lfilter=d.filter||''; S.history=[]; return navigate('library',{},false);
     case 'frPlat': FR.plat=d.v; return render('frp-'+d.v,true);
@@ -5814,7 +6389,7 @@ function gameSlow(d){
 }
 function launchQam(){
   if(host && !OVERLAY && (HOSTINFO.features||[]).includes('overlayOverLaunch')) return send({type:'overlay', action:'open'});
-  openLayer('qam');
+  qamFresh(); openLayer('qam');
 }
 function launchShow(){ S.launchWaiting=null; hideLaunch(); send({type:'resume'}); }
 function gameReady(id){
@@ -6359,6 +6934,9 @@ function imAct(el, d){
 
 function gameOptions(g){
   if(!g) return;
+  openSheet({title:g.title, sub:SOURCES[g.src], items:gameOptionItems(g)});
+}
+function gameOptionItems(g){
   const items=[];
   if(host && (LINUX || hasFeat('gameSettings')) && !g.cloud) items.push({label:'Game settings',icon:'gear',run:()=>navigate('gameset',{game:g.id})});
   items.push({label:'Add to collection…',icon:'lib',run:()=>colPick(g)});
@@ -6374,7 +6952,7 @@ function gameOptions(g){
     items.push({label:'Open Beacon',icon:'sliders',run:()=>beaconOpen()});
   }
   gamingGameItems(g, items);   // Hearth's gaming apps (block below)
-  openSheet({title:g.title, sub:SOURCES[g.src], items});
+  return items;
 }
 // ---------- Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves, Mods ----------
 // Separate programs on Hearth OS (host.info feature "gamingApps"); the host opens them full screen in Game Mode
@@ -7828,7 +8406,7 @@ function onSysEvent(name, data){
     return;
   }
   if(name==='browser'){ BROWSER.s=data; if(S.view==='settings' && S.settingsTab==='system') render(null,true); if(data && data.error && data.state==='idle') toast(data.error); return; }
-  if(name==='overlay.unavailable'){ if(!OVERLAY && S.layers.at(-1)==='launch'){ send({type:'log', text:'overlay: none to show Quick Access in over the starting screen; using this window\'s'}); openLayer('qam'); } return; }
+  if(name==='overlay.unavailable'){ if(!OVERLAY && S.layers.at(-1)==='launch'){ send({type:'log', text:'overlay: none to show Quick Access in over the starting screen; using this window\'s'}); qamFresh(); openLayer('qam'); } return; }
   if(name==='power.menu'){ if(OVERLAY && OV.busy){ OV.wantPower=true; return; } if(S.layers.at(-1)!=='power'){ if(!OVERLAY) closeAll(); openLayer('power'); } return; }
   if(name==='overlay.shown') return overlayShown();
   if(name==='overlay.hidden') return overlayHidden();
@@ -8039,23 +8617,42 @@ async function setPowerMode(mode){
 // ---------- input modes & footer prompts ----------
 // Prompts follow whatever you used last: controller buttons, keyboard keys, or clickable buttons for the mouse.
 // Settings › Controls can pin them to one style.
-const INPUT = {last:'kbd', mode:'auto'};
+// INPUT.seen: anything pressed yet. INPUT.touch: the last pointer was a finger. INPUT.hwKbd: a real keyboard typed.
+const INPUT = {last:'kbd', mode:'auto', seen:false, touch:false, hwKbd:false};
 try{ INPUT.mode = localStorage.getItem('nimbus.inputMode') || 'auto'; }catch(e){}
-function promptStyle(){ return INPUT.mode==='auto' ? INPUT.last : INPUT.mode; }
+// Settings › Appearance › Made for: Automatic turns the mouse & keyboard behaviour (no on-screen keyboard, hover
+// actions, key hints, right-click menus) on with keyboard or mouse input and off when a controller is used.
+const MADE_FOR = [['auto','Automatic'],['mk','Mouse & keyboard'],['pad','Controller']];
+function mkOn(){ const m=LOOK.madeFor||'auto'; return m==='mk' || (m==='auto' && (INPUT.last==='kbd' || (INPUT.last==='mouse' && !INPUT.touch))); }
+// (Not the class "mk": that's the keyboard & mouse layouts' own box, and on <body> it threw the whole page off.)
+function applyMk(){ const on=mkOn(); document.body.classList.toggle('mk-on', on); document.body.classList.toggle('mk-pad', !on); }
+function promptStyle(){
+  if(INPUT.mode!=='auto') return INPUT.mode;
+  const m=LOOK.madeFor||'auto';
+  if(m==='pad') return 'pad';
+  if(mkOn()) return 'kbd';           // key hints (they're buttons too, for the mouse)
+  return INPUT.last;
+}
 let NAV_AT=0;   // when the controller or keyboard last moved the selection (the pointer doesn't take it back right after)
 function setInput(kind){
   if(kind!=='mouse') NAV_AT=performance.now();
+  INPUT.seen=true;
   if(INPUT.last===kind) return;
   INPUT.last=kind;
   document.body.classList.toggle('pad-mode', kind==='pad');
+  applyMk();
   renderFooter();
+  { const n=$('#mfNow'); if(n) n.innerHTML = mkOn()?'mouse &amp; keyboard':'controller'; }
+  // A text field open: a controller brings the on-screen keyboard up, the real keyboard sends it away (the mouse
+  // leaves it as it is: redrawing it under the pointer would swallow the click).
+  if(kind==='kbd'||kind==='pad') oskRefresh();
   // Update the label in place: re-rendering here would swallow the click that caused it.
   const n=$('#inputNow'); if(n) n.textContent = INPUT_NAMES[kind];
 }
 const INPUT_NAMES = {pad:'Controller', kbd:'Keyboard', mouse:'Mouse or touch'};
 const GLYPHS = {
   pad: {select:['A','a'], back:['B','b'], search:['Y','y'], menu:['☰',''], qam:['⧉',''], tabs:['LB RB',''], adjust:['◀▶',''], del:['Y','y'], space:['X','x'], done:['☰',''], stores:['X','x']},
-  kbd: {select:['Enter','kc'], back:['Esc','kc'], search:['/','kc'], menu:['M','kc'], qam:['Q','kc'], tabs:['Tab','kc'], adjust:['← →','kc'], del:['Bksp','kc'], space:['Space','kc'], done:['Enter','kc'], stores:['F','kc']},
+  kbd: {mkplay:['Enter','kc'], mkinfo:['Space','kc'], mkfav:['F','kc'], mkmore:['Right-click','kc'], mksearch:['Ctrl K','kc'], select:['Enter','kc'], back:['Esc','kc'], search:['/','kc'], menu:['M','kc'], qam:['Q','kc'], tabs:['Tab','kc'], adjust:['← →','kc'], del:['Bksp','kc'], space:['Space','kc'], done:['Enter','kc'], stores:['F','kc']},
 };
 const HINT_ICON = {back:I.x, search:I.search, menu:'<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>', qam:I.sliders, tabs:I.lib, stores:I.user};
 function renderFooter(){
@@ -8071,8 +8668,11 @@ function renderFooter(){
   if(!top && S.view==='library') h.push(['tabs','Tabs'],['stores','Stores']);
   if(top==='qam') h.push(['tabs','Sections']);
   if(!top) h.push(['search','Search'],['menu','Menu'],['qam','Quick Access']);
+  // Keyboard & mouse layouts with a keyboard or mouse: their own keys.
+  if(!top && style!=='pad' && typeof mkKind==='function' && mkKind()){ h.length=0; h.push(['mkplay','Play'],['mkinfo','Details'],['mkfav','Favorite'],['mkmore','More'],['mksearch','Search'],['back','Back']); }
   const g=S.running&&G(S.running);
   const items = h.filter(([id])=> style!=='mouse' || !['select','adjust'].includes(id)).map(([id,l],i)=>{
+    if(id.startsWith('mk')) return `<button class="hint ${i>3?'hide-s':''}" data-act="hint" data-h="${id}">${`<span class="glyph kc">${GLYPHS.kbd[id][0]}</span>`}${l}</button>`;
     let glyph;
     if(style==='mouse') glyph = HINT_ICON[id] || '';
     else { const [k,c]=(GLYPHS[style]||GLYPHS.kbd)[id]; glyph=`<span class="glyph ${c}">${k}</span>`; }
@@ -8081,6 +8681,14 @@ function renderFooter(){
   $('#footer').innerHTML = (g?`<div class="running"><span class="dot"></span>${esc(g.title)}</div>`:'') + items.join('');
 }
 function hintAction(id){
+  if(id.startsWith('mk')){ const f=focused && $('#view').contains(focused) ? focused : null, g=f && G(f.dataset.id||f.dataset.mkplay);
+    if(id==='mksearch'){ const q=$('#view [data-k="mk-q"]'); return q && setFocus(q); }
+    if(!g) return toast('Pick a game first');
+    if(id==='mkplay') return mkPlay(g);
+    if(id==='mkinfo') return navigate('game',{game:g.id});
+    if(id==='mkfav') return mkFavToggle(g);
+    if(id==='mkmore'){ const r=f.getBoundingClientRect(); return mkMenuOpen(g, r.left+20, r.top+20); }
+    return; }
   ({select:()=>focused&&act(focused), back:()=>back(), search:()=>input('y'), menu:()=>input('start'),
     qam:()=>input('select'), tabs:()=>input('rb'), adjust:()=>{}, del:()=>input('y'), space:()=>input('x'), done:()=>input('start'), stores:()=>input('x')})[id]?.();
 }
@@ -8116,8 +8724,8 @@ function input(k){
     case 'a': return focused && act(focused);
     case 'b': return back();
     case 'start': return top==='prompt' ? promptSubmit() : top==='search' ? back() : toggleLayer('menu');
-    case 'select': case 'guide': return top==='prompt'||top==='sheet' ? null : toggleLayer('qam');
-    case 'y': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (closeAll(), query='', openLayer('search'));
+    case 'select': case 'guide': if(top==='prompt'||top==='sheet') return; if(top!=='qam') qamFresh(); return toggleLayer('qam');
+    case 'y': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (closeAll(), query='', SKB.forceOsk=false, openLayer('search', oskWanted()?'sk-0-0':'sk-field'));
     case 'x': return top==='prompt' ? promptKey('space') : top==='search' ? typeKey('space') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
     case 'lb': case 'rb':
       if(top==='prompt') return promptKey(k==='lb'?'shift':'sym');
@@ -8129,7 +8737,7 @@ function input(k){
 function shiftTab(d){
   const top=S.layers.at(-1);
   if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
-  if(!top && S.view==='library'){ const T=libTabs(), i=T.findIndex(t=>t[0]===S.tab); S.tab=T[(i+d+T.length)%T.length][0]; render('tab-'+S.tab); return blip(600); }
+  if(!top && S.view==='library'){ const T=libTabs(), i=T.findIndex(t=>t[0]===S.tab); S.tab=T[(i+d+T.length)%T.length][0]; if(mkKind()){ MK.sel.clear(); mkRender('mks-'+S.tab); } else render('tab-'+S.tab); return blip(600); }
 }
 
 // Controllers: Xbox-style controllers come from the host (XInput, exact button names, works with any
@@ -8226,6 +8834,8 @@ const KEY_EXTRA = {Home:()=>{ closeAll(); if(S.view!=='home'){ S.history=[]; nav
 // Steam (running in the background) can turn controller buttons into keys for the window in front: the d-pad
 // into arrow keys, A into Enter. With the controller also read here, every press counted twice, and the
 // selection jumped two places. Navigation keys that arrive while a controller button is held are dropped.
+// A key within 250 ms of a controller press is the controller's driver (Steam) repeating it as a key.
+function kbdEcho(){ const t=Math.max(0,...Object.values(PAD_AT)); return performance.now()-t < 250; }
 const NAV_KEYS=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter',' ','Escape','Backspace','Tab','w','a','s','d']);
 function padHeldNow(){
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
@@ -8243,6 +8853,9 @@ document.addEventListener('keydown', e=>{
     send({type:'log', text:'debug '+JSON.stringify({id, art:g&&g.art, imgs})});
     toast('Debug info written to bridge.log'); e.preventDefault(); return;
   }
+  // A real keyboard typing (a character, not a key a controller's driver could send): this is a keyboard.
+  if(e.key.length===1 && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key!==' ' || !kbdEcho())){ INPUT.hwKbd=true; if(prompt) prompt.forceOsk=false; SKB.forceOsk=false; setInput('kbd'); oskRefresh(); }
+  else if((S.layers.at(-1)==='prompt'||S.layers.at(-1)==='search') && !kbdEcho()) setInput('kbd');
   if(S.layers.at(-1)==='prompt' && prompt){
     if(e.key==='Enter'){ e.preventDefault(); return promptSubmit(); }
     if(e.key==='Escape'){ e.preventDefault(); return back(); }
@@ -8255,6 +8868,7 @@ document.addEventListener('keydown', e=>{
     if(e.key.length===1 && !e.ctrlKey && !e.metaKey){ e.preventDefault(); return typeKey(e.key===' '?'space':e.key); }
     if(e.key==='Backspace'){ e.preventDefault(); if(query) return typeKey('bksp'); return back(); }
   }
+  if(!S.layers.length && mkKey(e)){ e.preventDefault(); setInput('kbd'); return; }   // keyboard & mouse layouts
   if(e.key==='Tab'){ e.preventDefault(); setInput('kbd'); return input(e.shiftKey?'lb':'rb'); }
   if(KEY_EXTRA[e.key] && !e.ctrlKey && !e.altKey){ e.preventDefault(); setInput('kbd'); return KEY_EXTRA[e.key](); }
   if(e.ctrlKey || e.altKey || e.metaKey) return;
@@ -8265,7 +8879,11 @@ document.addEventListener('keydown', e=>{
   if(performance.now()-(PAD_AT[k]||0) < 250 && !e.ctrlKey && !e.altKey){ logInput('key '+e.key+' dropped (echo of the controller)'); return; }
   setInput('kbd'); input(k);
 });
-document.addEventListener('pointerdown', e=>{ if(e.pointerType==='mouse'||e.pointerType==='pen') setInput('mouse'); else if(e.pointerType==='touch') setInput('mouse'); });
+document.addEventListener('pointerdown', e=>{
+  const touch=e.pointerType==='touch';
+  if(INPUT.touch!==touch){ INPUT.touch=touch; if(INPUT.last==='mouse'){ applyMk(); renderFooter(); } }
+  setInput('mouse');
+});
 document.addEventListener('click', e=>{
   const el=e.target.closest('[data-act],[data-f]'); if(!el) return;
   if(el.dataset.f!==undefined) setFocus(el,true);
