@@ -24,8 +24,9 @@ Scope {
 
     readonly property var active: ToplevelManager.activeToplevel
     // The controller types arrow keys / Enter / Esc instead of moving the pointer in Hearth's own menus
-    // and in Hearth Settings when it's the window in front.
-    readonly property bool keysContext: launcher.shown || quick.shown || powerMenu.shown || liveWelcome.shown || (settings.shown && active !== null && active.title === "Hearth Settings") || (tasks.shown && active !== null && active.title === "Task Manager") || (files.shown && active !== null && active.title === "Files")
+    // and in Hearth Settings when it's the window in front. Hearth Files' windows are "<folder> – Files", and every
+    // app's Open / Save dialog (picker.qml, another Quickshell) is "<title> – Files".
+    readonly property bool keysContext: launcher.shown || quick.shown || powerMenu.shown || liveWelcome.shown || (settings.shown && active !== null && active.title === "Hearth Settings") || (tasks.shown && active !== null && active.title === "Task Manager") || (active !== null && (active.title === "Files" || active.title.endsWith(" – Files")))
         || SettingsNav.clipShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true

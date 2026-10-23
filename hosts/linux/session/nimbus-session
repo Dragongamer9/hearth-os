@@ -67,6 +67,25 @@ fi
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# ---- Every app's Open / Save dialog is Hearth Files: xdg-desktop-portal's FileChooser goes to Hearth's backend
+# (desktop/shell/hearth-portal, named in /usr/share/xdg-desktop-portal/nimbus-portals.conf), and apps that only use
+# the portal when asked are asked here, in both modes. A value you set yourself is kept.
+#   Flatpak apps, Chromium and newer Electron apps, Hearth's own apps: the portal already
+#   GTK 3 apps, older Electron apps, WebKitGTK's file buttons, Firefox: GTK_USE_PORTAL=1
+#   GTK 4 apps: GDK_DEBUG=portals (added to what's there)
+#   Qt apps: the xdgdesktopportal platform theme in Game Mode, when it's installed (Desktop Mode's qt6ct look asks
+#   for portal dialogs itself: standard_dialogs=xdgdesktopportal, desktop/theme/apply.sh)
+# (desktop-test.yml runs these lines, between the >>> and <<< marks.)
+# >>> portal dialogs
+[ -z "${GTK_USE_PORTAL+x}" ] && export GTK_USE_PORTAL=1
+case ",${GDK_DEBUG:-}," in *,portals,*) ;; *) export GDK_DEBUG="${GDK_DEBUG:+$GDK_DEBUG,}portals" ;; esac
+if [ -z "${QT_QPA_PLATFORMTHEME+x}" ]; then
+  for d in /usr/lib64/qt6/plugins /usr/lib/qt6/plugins /usr/lib/*-linux-gnu*/qt6/plugins; do
+    if [ -e "$d/platformthemes/libqxdgdesktopportal.so" ]; then export QT_QPA_PLATFORMTHEME=xdgdesktopportal; break; fi
+  done
+fi
+# <<< portal dialogs
+
 # Steam's own Game Mode was an option in 0.2.8 and 0.2.9 and has been taken out: Game Mode is always Hearth's.
 # The old choice (~/.config/nimbus/game-mode) is removed so nothing reads it again.
 rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$HOME/.local/state}/nimbus/steam-game-mode-running" 2>/dev/null
@@ -223,6 +242,13 @@ fi
 if [ -z "$HEARTH_SEAT" ] && have systemd-inhibit; then
   systemd-inhibit --what=handle-power-key:handle-suspend-key --who="Hearth" \
     --why="Hearth handles the power button (Settings › Power button)" --mode=block sleep infinity >/dev/null 2>&1 &
+  BG_PIDS="$BG_PIDS $!"
+fi
+# "Show in folder" / "Open containing folder" in any app opens Hearth Files: org.freedesktop.FileManager1 is
+# hearth-portal's for the whole session (both modes), so Dolphin, Nautilus or Thunar, which D-Bus would start for
+# that name otherwise, never take over.
+if [ -f "$SHARE/desktop/shell/hearth-portal" ] && have python3; then
+  python3 "$SHARE/desktop/shell/hearth-portal" filemanager1 --replace >>"$(dirname "$LOG")/portal.log" 2>&1 &
   BG_PIDS="$BG_PIDS $!"
 fi
 if [ -n "$BG_PIDS" ]; then

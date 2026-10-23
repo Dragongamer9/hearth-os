@@ -1,0 +1,6 @@
+# "Show in folder" / "Open containing folder" opens Hearth Files (/usr/share/nimbus/desktop/shell/hearth-portal).
+# Hearth's session holds this name from the start (nimbus-session), so Dolphin's, Nautilus' or Thunar's own service
+# files for it are never used there; outside Hearth's session hearth-portal hands the folder to one of them.
+[D-BUS Service]
+Name=org.freedesktop.FileManager1
+Exec=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-portal filemanager1
