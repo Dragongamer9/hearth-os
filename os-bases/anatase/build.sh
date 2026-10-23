@@ -370,7 +370,6 @@ for app in hearth-player hearth-calculator; do
   else
     echo "warning: $app wasn't built for this image"
   fi
-  if [ -f "/ctx/icons/apps/$app.svg" ]; then install -Dm644 "/ctx/icons/apps/$app.svg" "/usr/share/icons/hicolor/scalable/apps/$app.svg"; fi
 done
 # Videos, music and playlists open in Hearth Player in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), so
 # Hearth Files' Open uses it; every type it lists in hearth-player.desktop (os/system_files).
