@@ -368,7 +368,8 @@ DESKTOP
 mkdir -p /etc/xdg
 printf '[Default Applications]\ninode/directory=hearth-files.desktop\n' > /etc/xdg/nimbus-mimeapps.list
 # ---- Hearth Text (hosts/hearth-text): Hearth OS's text editor, built by CI next to the Hearth app (base-*.yml) and
-# carried in os/nimbus-app. Its menu entry (icon: hearth-text from the Hearth icon set) (hearth-text.desktop) comes from os/system_files. In Desktop
+# carried in os/nimbus-app. Its menu entry (hearth-text.desktop, icon hearth-text from the Hearth icon set) comes from
+# os/system_files. In Desktop
 # Mode it opens text files, scripts, settings files and logs (nimbus-mimeapps.list, written just above), and Hearth
 # Files opens text-like files without an app in it.
 if [ -x /ctx/nimbus-app/hearth-text ]; then
