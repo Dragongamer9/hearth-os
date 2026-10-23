@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Player</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="view-play">
+<div class="app" id="app">
+  <header id="top">
+    <nav class="tabs" id="tabs">
+      <button class="tab f" data-view="play"><span data-i="play"></span>Now playing</button>
+      <button class="tab f" data-view="open"><span data-i="folder"></span>Open</button>
+      <button class="tab f" data-view="pods"><span data-i="radio"></span>Podcasts &amp; Radio</button>
+    </nav>
+    <span class="spacer"></span>
+    <span class="title" id="title"></span>
+  </header>
+
+  <!-- Now playing: the video, or the music view (cover and the folder's songs). -->
+  <section class="view" id="v-play">
+    <div class="stage" id="stage">
+      <video id="video" playsinline preload="auto"></video>
+      <div class="empty-stage" id="emptyStage">
+        <div class="big-ico" data-i="play"></div>
+        <h2>Nothing playing</h2>
+        <p>Open a video, a song, a folder or a playlist.</p>
+        <button class="btn primary f" data-act="goOpen">Open files</button>
+      </div>
+      <div class="music" id="music" hidden>
+        <div class="cover-wrap"><img id="cover" alt=""><div class="cover-none" id="coverNone" data-i="note"></div></div>
+        <div class="music-side">
+          <div class="np"><h2 id="mTitle"></h2><p id="mArtist"></p><p class="dim" id="mAlbum"></p></div>
+          <div class="tracks scroll" id="tracks"></div>
+        </div>
+      </div>
+      <div class="cues" id="cues" aria-live="polite"></div>
+      <div class="osd" id="osd"></div>
+      <div class="notice" id="notice" hidden></div>
+    </div>
+
+    <div class="controls" id="controls">
+      <div class="seek-row">
+        <span class="time" id="tCur">0:00</span>
+        <div class="seek f" id="seek" tabindex="0" role="slider" aria-label="Position">
+          <div class="rail"><div class="buf" id="buf"></div><div class="keep" id="keep" hidden></div><div class="cut" id="cutBar" hidden></div><div class="done" id="done"></div></div>
+          <div class="marks" id="marks"></div>
+          <div class="knob" id="knob"></div>
+          <div class="thumb" id="thumb" hidden><canvas id="thumbCanvas" width="192" height="108"></canvas><span id="thumbTime"></span></div>
+        </div>
+        <span class="time" id="tDur">0:00</span>
+      </div>
+      <div class="btn-row">
+        <div class="grp">
+          <button class="ic f" data-act="prev" title="Previous (P)"><span data-i="prev"></span></button>
+          <button class="ic f big" data-act="playPause" id="ppBtn" title="Play or pause (Space)"><span data-i="play"></span></button>
+          <button class="ic f" data-act="next" title="Next (N)"><span data-i="next"></span></button>
+          <button class="ic f" data-act="back10" title="Back 10 seconds (J)"><span data-i="back10"></span></button>
+          <button class="ic f" data-act="fwd10" title="Forward 10 seconds (L)"><span data-i="fwd10"></span></button>
+        </div>
+        <div class="grp">
+          <button class="ic f" data-act="mute" id="muteBtn" title="Mute (M)"><span data-i="vol"></span></button>
+          <input type="range" class="vol f" id="vol" min="0" max="100" value="100" aria-label="Volume">
+        </div>
+        <span class="spacer"></span>
+        <div class="grp">
+          <button class="ic f" data-act="shuffle" id="shufBtn" title="Shuffle"><span data-i="shuffle"></span></button>
+          <button class="ic f" data-act="repeat" id="repBtn" title="Repeat"><span data-i="repeat"></span></button>
+          <button class="pill f" data-act="speed" id="speedBtn" title="Speed ([ and ])">1×</button>
+          <button class="ic f" data-act="subs" id="subsBtn" title="Subtitles (V)"><span data-i="cc"></span></button>
+          <button class="ic f" data-act="audio" id="audioBtn" title="Sound track (A)"><span data-i="lang"></span></button>
+          <button class="ic f" data-act="chapters" id="chapBtn" title="Chapters"><span data-i="list"></span></button>
+          <button class="ic f" data-act="queue" title="Play queue (Q)"><span data-i="queue"></span></button>
+          <button class="ic f" data-act="shot" id="shotBtn" title="Save this frame as a picture (S)"><span data-i="camera"></span></button>
+          <button class="ic f" data-act="edit" id="editBtn" title="Edit (E)"><span data-i="cut"></span></button>
+          <button class="ic f" data-act="full" id="fullBtn" title="Full screen (F)"><span data-i="full"></span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Open: places and folders. -->
+  <section class="view" id="v-open" hidden>
+    <div class="browser">
+      <aside class="places scroll" id="places"></aside>
+      <div class="files">
+        <div class="pathbar"><button class="ic f" data-act="up" title="Up a folder (Backspace)"><span data-i="up"></span></button><span class="path" id="path"></span><span class="spacer"></span><button class="btn f" data-act="playFolder" id="playFolder">Play this folder</button></div>
+        <div class="list scroll" id="files"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Podcasts & Radio. -->
+  <section class="view" id="v-pods" hidden>
+    <div class="pods">
+      <div class="subtabs">
+        <button class="chip f" data-pod="shows">Podcasts</button>
+        <button class="chip f" data-pod="radio">Radio</button>
+        <span class="spacer"></span>
+        <div class="searchbox"><input class="inp f" id="podSearch" placeholder="Search podcasts, or paste a feed address" spellcheck="false" autocomplete="off" data-osk="search"><button class="btn primary f" data-act="podGo">Search</button></div>
+      </div>
+      <div class="pod-body scroll" id="podBody"></div>
+    </div>
+  </section>
+
+  <footer id="hints"></footer>
+</div>
+<div id="editPanel" class="edit" hidden></div>
+<div id="layer"></div>
+<div id="toast" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
