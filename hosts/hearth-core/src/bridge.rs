@@ -545,6 +545,11 @@ impl Bridge {
             }
             "controller.preset" => crate::guide::controller(&["preset", &req("name")?]),
             "controller.reset" => crate::guide::controller(&["reset"]),
+            // ---- Accessibility (Settings › Accessibility: zoom, colour filters, screen reader; access.rs)
+            "access.status" => crate::access::run(&["status"]),
+            "access.set" => { let j = crate::access::set_args(a)?; crate::access::run(&["set", &j]) }
+            "access.apply" => crate::access::run(&["apply", "game"]),
+            // ---- end Accessibility
             // Is Handheld Daemon running, its controllers and power limit (Settings › Controls shows the way in).
             "hhd.status" => Ok(crate::hhd::status()),
             // Settings › Controls › Handheld Daemon: HHD's whole settings tree with its state, the state alone (the
