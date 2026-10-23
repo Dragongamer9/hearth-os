@@ -4,8 +4,10 @@
 #   video: screen brightness where brightnessctl writes the file itself (Debian, Ubuntu).
 #   systemd-journal: reading the system's log, so the log report (Settings › About) has it; Fedora's and Arch's
 #     wheel group can already, Debian's and Ubuntu's accounts couldn't.
+#   netdev: joining Wi-Fi and changing network connections (Debian's NetworkManager allows the netdev group;
+#     Peppermint said "insufficient privileges" without it). Not on Fedora, where the loop skips it.
 # Runs at start-up, before anyone signs in, so it applies to that sign-in.
-for g in video systemd-journal; do
+for g in video systemd-journal netdev; do
   getent group "$g" >/dev/null || continue
   getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /(nologin|false)$/ {print $1}' | while read -r u; do
     id -nG "$u" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" && continue
@@ -16,7 +18,7 @@ for g in video systemd-journal; do
   done
 done
 # ...and taken out again where an earlier version put them in.
-for g in video systemd-journal; do
+for g in video systemd-journal netdev; do
   getent passwd | awk -F: '$1 ~ /^hearth-p[0-9]+$/ {print $1}' | while read -r u; do
     id -nG "$u" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" || continue
     gpasswd -d "$u" "$g" >/dev/null && echo "hearth-groups: $u taken out of $g"

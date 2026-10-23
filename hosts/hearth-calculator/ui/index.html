@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <nav class="modes" id="modes">
+      <button class="mode f" data-mode="standard">Standard</button>
+      <button class="mode f" data-mode="scientific">Scientific</button>
+      <button class="mode f" data-mode="programmer">Programmer</button>
+      <button class="mode f" data-mode="convert">Converter</button>
+    </nav>
+    <span class="spacer"></span>
+    <button class="ic f" id="histBtn" data-act="side" title="History and memory (Ctrl+H)"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4M12 8v4.5l3 2"/></svg></button>
+  </header>
+  <main>
+    <section class="calc" id="calc">
+      <div class="display" id="display">
+        <div class="expr" id="expr" aria-live="polite"></div>
+        <div class="entry" id="entry" aria-live="polite">0</div>
+        <div class="bases" id="bases" hidden></div>
+        <div class="conv" id="conv" hidden></div>
+      </div>
+      <div class="memrow" id="memrow">
+        <button class="mk f" data-k="MC" title="Clear memory (Ctrl+L)">MC</button>
+        <button class="mk f" data-k="MR" title="Recall (Ctrl+R)">MR</button>
+        <button class="mk f" data-k="M+" title="Add to memory (Ctrl+P)">M+</button>
+        <button class="mk f" data-k="M-" title="Subtract from memory (Ctrl+Q)">M−</button>
+        <button class="mk f" data-k="MS" title="Store (Ctrl+M)">MS</button>
+        <span class="spacer"></span>
+        <span class="angle" id="angleRow" hidden><button class="mk f" data-k="angle" id="angleBtn">DEG</button></span>
+        <span class="angle" id="wordRow" hidden><button class="mk f" data-k="word" id="wordBtn">QWORD</button></span>
+      </div>
+      <div class="pad" id="pad"></div>
+    </section>
+    <aside class="side" id="side">
+      <div class="sidetabs"><button class="chip f on" data-side="history">History</button><button class="chip f" data-side="memory">Memory</button><span class="spacer"></span><button class="ic f" data-act="clearSide" title="Clear"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg></button></div>
+      <div class="sidelist" id="sidelist"></div>
+    </aside>
+  </main>
+  <footer id="hints"><span><b>A</b>Press</span><span><b>B</b>Delete</span><span><b>X</b>Clear</span><span><b>Y</b>Equals</span><span><b>LB RB</b>Mode</span><span><b>View</b>History</span></footer>
+</div>
+<div id="toast" class="toast" hidden></div>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

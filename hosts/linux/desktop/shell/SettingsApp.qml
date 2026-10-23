@@ -28,6 +28,9 @@ Scope {
         { id: "mouse", icon: "mouse", label: "Mouse & touchpad" },
         { id: "printers", icon: "printer", label: "Printers" },
         { id: "datetime", icon: "clock", label: "Date & time" },
+        // ---- Accessibility (SetAccessibility.qml)
+        { id: "accessibility", icon: "access", label: "Accessibility" },
+        // ---- end Accessibility
         { id: "defaults", icon: "grid", label: "Default apps" },
         { id: "apps", icon: "store", label: "Apps" },
         { id: "clipboard", icon: "clipboard", label: "Clipboard" },
@@ -42,7 +45,8 @@ Scope {
         appearance: "SetAppearance.qml", power: "SetPower.qml", controller: "SetController.qml", signin: "SetSignin.qml", browser: "SetBrowser.qml", claude: "SetClaude.qml",
         updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml",
         keyboard: "SetKeyboard.qml", apps: "SetApps.qml", printers: "SetPrinters.qml", datetime: "SetDateTime.qml", defaults: "SetDefaults.qml",
-        clipboard: "SetClipboard.qml", users: "SetUsers.qml", mouse: "SetMouse.qml", notifications: "SetNotifications.qml" })
+        clipboard: "SetClipboard.qml", users: "SetUsers.qml", mouse: "SetMouse.qml", notifications: "SetNotifications.qml",
+        accessibility: "SetAccessibility.qml" /* Accessibility */ })
 
     function open(p) {
         if (p && files[p]) page = p;
