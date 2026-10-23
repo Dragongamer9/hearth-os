@@ -1141,6 +1141,6 @@ W.pad = (b) => {
   return false;
 };
 
-W.SIZES = SIZES; W.fontCss = fontCss; W.firstFont = firstFont; W.MM = MM;
+W.SIZES = SIZES; W._undo = U; W.fontCss = fontCss; W.firstFont = firstFont; W.MM = MM;
 H.register(W);
 })();
