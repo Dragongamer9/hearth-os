@@ -480,6 +480,9 @@ ACTION_WORDS = {
 COMMAND_WORDS = [
     (r'call launcher toggle', 'Open or close the app launcher'), (r'call launcher open', 'Search apps'),
     (r'open\.sh terminal', 'Open a terminal'), (r'open\.sh files', 'Open Files'),
+    # Hearth Recorder (rc.xml's Super+Alt+R / Super+Alt+Shift+R / Super+Alt+G)
+    (r'open\.sh record-area', 'Record an area of the screen, or stop'), (r'open\.sh record', 'Record the screen, or stop and save'),
+    (r'open\.sh replay-save', 'Save the instant replay (turns it on when it\'s off)'),
     (r'open\.sh screenshot-region', 'Screenshot of an area you choose'),
     (r'open\.sh screenshot-clipboard', 'Screenshot to the clipboard only'),
     (r'open\.sh screenshot', 'Screenshot of the whole screen'),
