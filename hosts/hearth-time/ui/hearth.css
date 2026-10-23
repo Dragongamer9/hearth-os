@@ -59,6 +59,7 @@ input.f:focus, textarea.f:focus { border-color:var(--ember); }
 .faint { color:var(--faint); }
 .empty { color:var(--muted); padding:2.5em 1em; text-align:center; }
 .empty .big { font-size:2.6em; display:block; margin-bottom:.2em; opacity:.6; }
+.empty .big svg { width:1em; height:1em; }
 .badge { font-size:.72em; padding:.12em .55em; border-radius:99px; background:rgba(255,138,61,.16); color:var(--ember); white-space:nowrap; }
 .num { font-variant-numeric:tabular-nums; }
 .inp { width:100%; padding:.6em .8em; border-radius:12px; border:1px solid var(--line); background:var(--bg2); outline:none; }
