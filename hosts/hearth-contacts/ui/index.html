@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contacts</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="list-mode">
+<div class="app">
+  <header>
+    <h1>Contacts</h1>
+    <span class="sub" id="sub"></span>
+    <span class="spacer"></span>
+    <input class="inp f search" id="q" type="search" placeholder="Search names, numbers, emails" data-osk="search" spellcheck="false" autocomplete="off" aria-label="Search">
+    <button class="btn primary f" data-act="new" title="New contact (Ctrl+N)">New</button>
+    <button class="btn f" data-act="import" title="Add contacts from a .vcf file (Ctrl+I)">Import</button>
+    <button class="btn f" data-act="export" title="Save contacts as a .vcf file (Ctrl+E)">Export</button>
+    <button class="btn f" data-act="accounts" title="CardDAV accounts and sync">Accounts</button>
+  </header>
+  <main>
+    <nav class="scroll side" id="side" aria-label="Address books and groups"></nav>
+    <div class="scroll listcol"><div class="list" id="list"></div></div>
+    <section class="scroll detail" id="detail"></section>
+  </main>
+  <footer id="foot"><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>New</span><span><b>Y</b>Search</span><span><b>☰</b>Import, export, accounts</span><span id="hint"></span></footer>
+</div>
+<div id="layer"></div>
+<script src="app.js"></script>
+</body>
+</html>

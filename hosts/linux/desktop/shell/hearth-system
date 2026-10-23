@@ -610,7 +610,8 @@ KINDS = [
     {'kind': 'browser', 'label': 'Web browser', 'category': 'WebBrowser', 'mimes': None},
     {'kind': 'files', 'label': 'File manager', 'category': 'FileManager', 'mimes': ['inode/directory']},
     {'kind': 'text', 'label': 'Text editor', 'category': 'TextEditor', 'mimes': ['text/plain']},
-    {'kind': 'image', 'label': 'Image viewer', 'category': 'Viewer', 'mimes': ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff', 'image/svg+xml']},
+    {'kind': 'image', 'label': 'Image viewer', 'category': 'Viewer', 'mimes': ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff', 'image/svg+xml', 'image/avif', 'image/heic']},
+    {'kind': 'documents', 'label': 'Document viewer', 'category': 'Viewer', 'mimes': ['application/pdf', 'application/epub+zip', 'application/vnd.comicbook+zip']},
     {'kind': 'video', 'label': 'Video player', 'category': 'Video', 'mimes': ['video/mp4', 'video/x-matroska', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/mpeg', 'video/ogg']},
     {'kind': 'music', 'label': 'Music player', 'category': 'Audio', 'mimes': ['audio/mpeg', 'audio/flac', 'audio/ogg', 'audio/x-wav', 'audio/mp4', 'audio/x-vorbis+ogg', 'audio/opus']},
 ]

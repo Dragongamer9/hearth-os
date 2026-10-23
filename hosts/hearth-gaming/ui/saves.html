@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saves</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+.split { grid-template-columns:minmax(16em, 26em) 1fr; }
+.detail { display:grid; grid-template-rows:auto 1fr; gap:.8em; min-height:0; }
+.folders { display:flex; flex-direction:column; gap:.45em; }
+.folder { display:grid; grid-template-columns:1fr auto; gap:.1em .8em; padding:.55em .8em; border-radius:12px; background:var(--bg2); border:1px solid var(--line); width:100%; }
+.folder .path { grid-column:1; }
+.folder .end { grid-row:span 2; align-self:center; color:var(--muted); font-size:.85em; }
+.big { font-size:1.6em; font-weight:700; }
+.stats { display:flex; gap:1.6em; flex-wrap:wrap; margin:.3em 0 .8em; }
+.stats div small { display:block; color:var(--muted); font-size:.72em; }
+.auto { max-width:52em; display:flex; flex-direction:column; gap:.9em; }
+.tabpage { min-height:0; display:grid; }
+.note { color:var(--muted); font-size:.85em; margin:.2em 0 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></svg>Saves</h1>
+    <span class="sub" id="sub"></span>
+    <span class="spacer"></span>
+    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="games">Games</button><button class="tab f" data-tab="backups">Backups</button><button class="tab f" data-tab="auto">Automatic</button><span class="lbrb">RB</span></div>
+  </header>
+  <main id="main"></main>
+  <footer id="foot"></footer>
+</div>
+<script src="kit.js"></script>
+<script>
+'use strict';
+const { $, esc, human, when } = KIT;
+const S = { tab: 'games', games: [], sel: null, picked: new Set(), manifest: null, config: {}, dests: [], backups: null, loading: true, info: {} };
+const SRC = { steam: 'Steam', epic: 'Epic', gog: 'GOG', manual: 'Your game', beacon: 'Beacon', 'heroic-epic': 'Heroic (Epic)', 'heroic-gog': 'Heroic (GOG)', emulator: 'Emulator' };
+const game = id => S.games.find(g => g.id === id);
+const lastDest = () => { try { return localStorage.getItem('hearth.saves.dest') || ''; } catch (e) { return ''; } };
+const rememberDest = p => { try { localStorage.setItem('hearth.saves.dest', p); } catch (e) {} };
+
+// ---------------------------------------------------------------- loading
+async function load(refresh = false) {
+  S.loading = true; render();
+  try {
+    const r = await KIT.invoke('load', { refresh });
+    S.games = r.games || []; S.manifest = r.manifest; S.config = r.config || {}; S.dests = r.destinations || []; S.timer = r.timer;
+    if (!S.sel || !game(S.sel)) S.sel = (S.info.game && game(S.info.game)) ? S.info.game : (S.games.find(g => g.saves?.count) || S.games[0])?.id || null;
+  } catch (e) { KIT.toast(KIT.err(e)); }
+  S.loading = false; render();
+  if (S.manifest && !S.manifest.ok) KIT.toast(S.manifest.error);
+  else if (S.manifest?.note) KIT.toast(S.manifest.note);
+}
+async function loadBackups() { try { const r = await KIT.invoke('backups'); S.backups = r.backups || []; S.safetyDir = r.safetyDir; } catch (e) { S.backups = []; KIT.toast(KIT.err(e)); } if (S.tab === 'backups') render(); }
+KIT.listen('saves://progress', ev => { const p = ev.payload || {}; if (KIT.dialogOpen()) KIT.setProgress(p.text, p.pct); else if (S.loading) { const el = $('#loadmsg'); if (el) el.textContent = p.text; } });
+KIT.listen('saves://done', ev => onDone(ev.payload || {}));
+
+// ---------------------------------------------------------------- drawing
+function render() {
+  const focusKey = document.activeElement?.dataset?.key;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === S.tab));
+  const withSaves = S.games.filter(g => g.saves?.count).length;
+  $('#sub').textContent = S.loading ? '' : `${S.games.length} games · saves found for ${withSaves}`;
+  const m = $('#main');
+  m.className = S.tab === 'games' ? 'split' : '';
+  if (S.loading) m.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="prog spin" style="max-width:20em;margin:0 auto 1em"><i></i></div><span id="loadmsg">Looking for your games' saves…</span></div>`;
+  else if (S.tab === 'games') m.innerHTML = gamesList() + `<section class="detail">${detail()}</section>`;
+  else if (S.tab === 'backups') m.innerHTML = backupsPage();
+  else m.innerHTML = autoPage();
+  footer();
+  const back = focusKey && document.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
+  if (back) back.focus({ preventScroll: true }); else if (!KIT.dialogOpen() && (!document.activeElement || document.activeElement === document.body)) KIT.focusFirst('.item.sel') || KIT.focusFirst();
+}
+function footer() {
+  const h = [['A', 'Choose'], ['B', 'Back']];
+  if (S.tab === 'games') h.push(['X', S.picked.size ? `Select (${S.picked.size})` : 'Select'], ['Y', S.picked.size ? `Back up ${S.picked.size}` : 'Back up all']);
+  h.push(['LB', 'RB', 'Switch tabs']);
+  $('#foot').innerHTML = h.map(x => x.length === 3 ? `<span><b class="wide">${x[0]}</b><b class="wide">${x[1]}</b>${x[2]}</span>` : `<span><b>${x[0]}</b>${x[1]}</span>`).join('');
+}
+function savesLine(g) {
+  const s = g.saves;
+  if (!s) return 'Not looked at';
+  if (!s.count) return g.kind === 'emulator' ? 'No saves yet' : (s.knownAs || s.custom?.length ? 'No saves found on this PC' : 'Not in the save-location list');
+  return `${s.count} file${s.count > 1 ? 's' : ''} · ${human(s.size)} · saved ${when(s.newest)}`;
+}
+function gamesList() {
+  const rows = S.games.map(g => `
+    <button class="item f ${g.id === S.sel ? 'sel' : ''}" data-key="g:${esc(g.id)}" data-game="${esc(g.id)}">
+      <span class="ico">${S.picked.has(g.id) ? '<span class="check on"></span>' : esc((g.title || '?')[0].toUpperCase())}</span>
+      <span class="n">${esc(g.title)}</span>
+      <span class="end"><span class="dot ${g.saves?.count ? 'good' : ''}"></span></span>
+      <span class="m">${esc(savesLine(g))}</span>
+    </button>`).join('');
+  return `<div class="scroll"><div class="acts" style="margin-bottom:.6em"><button class="btn primary f" data-key="all" data-act="backupAll">${S.picked.size ? `Back up ${S.picked.size} chosen` : 'Back up all'}</button><button class="btn f" data-key="again" data-act="again">Look again</button></div><div class="list">${rows || '<div class="empty">No installed games found.</div>'}</div></div>`;
+}
+function detail() {
+  const g = game(S.sel);
+  if (!g) return '<div class="empty">Choose a game.</div>';
+  const s = g.saves || {};
+  const where = [g.prefix ? '<span class="badge sky">Proton / Wine</span>' : '', g.kind === 'emulator' ? '<span class="badge muted">Emulator</span>' : `<span class="badge muted">${esc(SRC[g.source] || g.source)}</span>`].join(' ');
+  const folders = (s.folders || []).map((f, i) => `<button class="folder f" data-key="fo:${i}" data-open="${esc(f.path)}"><span class="path">${esc(f.path)}</span><span class="end">${f.count} · ${esc(human(f.size))}</span></button>`).join('');
+  const custom = (s.custom || []).map((c, i) => `<button class="folder f" data-key="cu:${i}" data-custom="${esc(c)}"><span class="path">${esc(c)}</span><span class="end">Yours · remove</span></button>`).join('');
+  const why = !s.count ? (g.kind === 'emulator' ? '' : s.knownAs ? `<p class="note">The save-location list knows this game (as “${esc(s.knownAs)}”), but its saves aren't on this PC yet. Play it once, or restore a backup.</p>`
+    : `<p class="note">This game isn't in the open save-location list (Ludusavi's). If you know where it saves, add that folder.</p>`) : (s.knownAs ? `<p class="note">Save locations from Ludusavi's open list (“${esc(s.knownAs)}”).</p>` : '');
+  return `<div class="panel">
+      <h2>${esc(g.title)}</h2>
+      <div style="display:flex;gap:.4em;flex-wrap:wrap">${where}</div>
+      <div class="stats"><div><span class="big">${s.count || 0}</span><small>files</small></div><div><span class="big">${esc(human(s.size || 0))}</span><small>in all</small></div><div><span class="big">${s.newest ? esc(when(s.newest)) : '—'}</span><small>last saved</small></div></div>
+      <div class="acts"><button class="btn primary f" data-key="bk" data-act="backup" ${s.count ? '' : 'disabled'}>Back up now</button><button class="btn f" data-key="rs" data-act="restoreFor">Restore a backup…</button><button class="btn f" data-key="af" data-act="addFolder">Add a save folder…</button><button class="btn f" data-key="ls" data-act="rescan">Look again</button></div>
+      ${why}
+    </div>
+    <div class="scroll"><div class="folders">${folders}${custom}</div>${!folders && !custom ? '' : '<p class="note">Choose a folder to open it.</p>'}</div>`;
+}
+function backupsPage() {
+  if (!S.backups) { loadBackups(); return '<div class="empty">Looking for backups…</div>'; }
+  const rows = S.backups.map((b, i) => `<button class="item f" data-key="b:${i}" data-backup="${i}">
+      <span class="ico">${b.safety ? '⟲' : b.auto ? '⏱' : '★'}</span>
+      <span class="n">${esc(b.title)}</span>
+      <span class="end">${esc(human(b.bytes))}</span>
+      <span class="m">${esc(when(b.created))} · ${b.count} file${b.count === 1 ? '' : 's'}${b.host ? ` · from ${esc(b.host)}` : ''} ${b.safety ? '<span class="badge muted">Safety copy</span>' : b.auto ? '<span class="badge muted">Automatic</span>' : ''} <span class="path">${esc(placeOf(b.file))}</span></span>
+    </button>`).join('');
+  return `<div class="scroll" style="max-width:64em;width:100%;margin:0 auto">
+    <div class="panel" style="margin-bottom:.8em"><b>Moving saves to another Hearth PC</b><p class="note">Back up to a USB drive here, plug it into the other PC, then restore from this list there. A restore first keeps a safety copy of the saves already on that PC.</p></div>
+    <div class="acts" style="margin-bottom:.6em"><button class="btn f" data-key="brf" data-act="refreshBackups">Look again</button></div>
+    <div class="list">${rows || '<div class="empty">No backups yet. Back up from the Games tab, or plug in the USB drive that has them.</div>'}</div></div>`;
+}
+function placeOf(file) {
+  const d = S.dests.find(d => file.startsWith(d.path + '/'));
+  if (d) return d.removable ? `on ${d.label}` : d.label;
+  if (S.safetyDir && file.startsWith(S.safetyDir)) return 'Safety copies';
+  return file.replace(/\/[^/]*$/, '');
+}
+function destLabel(p) { const d = S.dests.find(d => d.path === p); return d ? `${d.label}${d.removable ? ' (USB drive)' : ''}` : (p || 'Backups folder on this PC'); }
+function autoPage() {
+  const c = S.config || {};
+  const sched = c.schedule || 'off';
+  return `<div class="scroll"><div class="auto">
+    <div class="panel"><h2>Automatic backups</h2>
+      <p class="note" style="margin-bottom:.8em">Saves backs up every game whose saves changed since the last time, then keeps only the newest few automatic backups of each game. Backups you make yourself are never deleted.</p>
+      <div class="field"><label>How often</label><div class="chips">${[['off', 'Off'], ['daily', 'Every day'], ['weekly', 'Every week']].map(([k, l]) => `<button class="chip f ${sched === k ? 'on' : ''}" data-key="sc:${k}" data-sched="${k}">${l}</button>`).join('')}</div></div>
+      <div class="field"><label>Where</label><button class="btn f" data-key="adest" data-act="autoDest">${esc(destLabel(c.dest || ''))} ›</button><p class="note">On a USB drive, a backup waits until the drive is plugged in.</p></div>
+      <div class="field"><label for="keep">Keep the newest <b id="keepv">${c.keep || 5}</b> automatic backups of each game</label><input type="range" class="range f" id="keep" data-key="keep" min="1" max="20" step="1" value="${c.keep || 5}"></div>
+      <div class="acts"><button class="btn primary f" data-key="arun" data-act="autoNow">Back up changed games now</button></div>
+      <p class="note">Last time: ${c.lastAuto ? `${esc(when(c.lastAuto))}${c.lastAutoText ? ` (${esc(c.lastAutoText)})` : ''}` : 'never'}</p>
+    </div>
+    <div class="panel"><h3>The save-location list</h3>
+      <p class="note">${S.manifest?.ok ? `${S.manifest.games.toLocaleString()} games, from Ludusavi's open, community-kept list (downloaded from GitHub ${esc(when(S.manifest.fetched))}; no account needed).` : esc(S.manifest?.error || 'Not loaded.')}</p>
+      <div class="acts" style="margin-top:.6em"><button class="btn f" data-key="mref" data-act="refreshManifest">Download it again</button></div>
+    </div></div></div>`;
+}
+
+// ---------------------------------------------------------------- choosing things
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled || b.closest('#kit-layer')) return;
+  if (KIT.dialogOpen()) return;
+  if (b.dataset.tab) return setTab(b.dataset.tab);
+  if (b.dataset.game) { S.sel = b.dataset.game; render(); if (KIT.usingPad()) KIT.focusFirst('[data-key="bk"]:not([disabled])') || KIT.focusFirst('[data-key="rs"]'); return; }
+  if (b.dataset.open) return KIT.invoke('open_folder', { path: b.dataset.open }).catch(e => KIT.toast(KIT.err(e)));
+  if (b.dataset.custom) return removeFolder(b.dataset.custom);
+  if (b.dataset.backup != null) return backupActions(S.backups[+b.dataset.backup]);
+  if (b.dataset.sched) return setSchedule({ schedule: b.dataset.sched });
+  const a = b.dataset.act;
+  if (a === 'backupAll') return backupMany(S.picked.size ? [...S.picked] : S.games.filter(g => g.saves?.count).map(g => g.id));
+  if (a === 'backup') return backupMany([S.sel]);
+  if (a === 'again') return load(false);
+  if (a === 'rescan') return rescan(S.sel);
+  if (a === 'restoreFor') return restoreFor(game(S.sel));
+  if (a === 'addFolder') return addFolder();
+  if (a === 'refreshBackups') { S.backups = null; return render(); }
+  if (a === 'autoDest') return autoDest();
+  if (a === 'autoNow') return autoNow();
+  if (a === 'refreshManifest') return load(true);
+});
+document.addEventListener('change', e => { if (e.target.id === 'keep') setSchedule({ keep: Number(e.target.value) }); });
+document.addEventListener('input', e => { if (e.target.id === 'keep') $('#keepv').textContent = e.target.value; });
+function setTab(t) { S.tab = t; render(); KIT.focusFirst(`.tab[data-tab="${t}"]`); }
+KIT.onTab = d => { const order = ['games', 'backups', 'auto']; setTab(order[(order.indexOf(S.tab) + d + order.length) % order.length]); };
+KIT.onX = () => { if (S.tab !== 'games') return; const id = document.activeElement?.dataset?.game || S.sel; if (!id) return; S.picked.has(id) ? S.picked.delete(id) : S.picked.add(id); render(); };
+KIT.onY = () => { if (S.tab === 'games') backupMany(S.picked.size ? [...S.picked] : S.games.filter(g => g.saves?.count).map(g => g.id)); };
+KIT.onBack = () => { const a = document.activeElement; if (S.tab === 'games' && a && !a.dataset.game) KIT.focusFirst('.item.sel'); else if (S.picked.size) { S.picked.clear(); render(); } };
+
+async function rescan(id) {
+  try { const g = await KIT.invoke('rescan', { id }); const i = S.games.findIndex(x => x.id === id); if (i >= 0) S.games[i] = g; render(); KIT.toast(g.saves?.count ? `${g.saves.count} save files found` : 'No saves found'); }
+  catch (e) { KIT.toast(KIT.err(e)); }
+}
+
+// ---------------------------------------------------------------- backing up
+async function pickDest(title) {
+  try { S.dests = await KIT.invoke('destinations'); } catch (e) {}
+  const items = S.dests.map(d => ({ id: d.path, label: d.label + (d.removable ? ' (USB drive)' : ''), sub: d.path, end: d.free != null ? `${human(d.free)} free` : (d.missing ? 'not connected' : '') }));
+  items.push({ id: '@other', label: 'Another folder…', sub: 'Choose any folder' });
+  const last = lastDest(); const i = items.findIndex(x => x.id === last); if (i > 0) items.unshift(items.splice(i, 1)[0]);
+  let p = await KIT.choose(title, items);
+  if (p === '@other') p = await KIT.pickPath({ title: 'Back up to which folder?', start: last || undefined });
+  if (p) rememberDest(p);
+  return p;
+}
+async function backupMany(ids) {
+  ids = ids.filter(id => game(id)?.saves?.count);
+  if (!ids.length) return KIT.toast('No saves to back up for that.');
+  const dest = await pickDest(ids.length === 1 ? `Back up ${game(ids[0]).title} to…` : `Back up ${ids.length} games to…`);
+  if (!dest) return;
+  try { await KIT.invoke('backup', { ids, dest }); KIT.progress(ids.length === 1 ? `Backing up ${game(ids[0]).title}` : `Backing up ${ids.length} games`); }
+  catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+}
+function onDone(p) {
+  if (p.what === 'backup') {
+    const r = p.result || {};
+    S.picked.clear(); S.backups = null;
+    const ok = (r.done || []).length, bad = r.failed || [];
+    KIT.close();
+    KIT.alert(bad.length ? 'Backed up, with problems' : 'Backed up', `${ok} game${ok === 1 ? '' : 's'} backed up to <span class="path">${esc(r.dest)}</span>.${r.noSaves ? ` ${r.noSaves} had no saves.` : ''}${bad.length ? `<br><br>${bad.map(f => `<b>${esc(f.title)}</b>: ${esc(f.error)}`).join('<br>')}` : ''}`, !bad.length);
+    render();
+  } else if (p.what === 'auto') {
+    S.config = p.config || S.config; S.backups = null;
+    KIT.close(); KIT.alert(p.ok ? 'Done' : 'That didn\'t work', esc(p.message), p.ok); render();
+  }
+}
+
+// ---------------------------------------------------------------- restoring
+async function restoreFor(g) {
+  if (!S.backups) await loadBackups();
+  const mine = (S.backups || []).filter(b => b.id === g.id || b.title.toLowerCase() === g.title.toLowerCase());
+  if (!mine.length) return KIT.alert('No backups of this game', `Backups are looked for in your Backups folder and on USB drives that are plugged in.${S.safetyDir ? '' : ''}`);
+  const pick = await KIT.choose(`Restore ${g.title}`, mine.map((b, i) => ({ id: i, label: when(b.created), sub: `${b.count} files · ${placeOf(b.file)}${b.host ? ` · from ${b.host}` : ''}${b.safety ? ' · safety copy' : b.auto ? ' · automatic' : ''}`, end: human(b.bytes) })));
+  if (pick == null) return;
+  doRestore(mine[pick], g);
+}
+async function doRestore(b, g) {
+  const ok = await KIT.confirm({ title: `Restore ${g.title}?`, ok: 'Restore', danger: true,
+    text: `<p>The saves from ${esc(when(b.created))}${b.host ? ` (backed up on ${esc(b.host)})` : ''} replace the ones on this PC.</p><p class="note">Close the game first. The saves on this PC now are kept as a safety copy, so you can go back to them from the Backups tab.</p>` });
+  if (!ok) return;
+  KIT.progress(`Restoring ${g.title}`);
+  try {
+    const r = await KIT.invoke('restore', { file: b.file, id: g.id });
+    S.backups = null;
+    const i = S.games.findIndex(x => x.id === g.id);
+    try { const ng = await KIT.invoke('rescan', { id: g.id }); if (i >= 0) S.games[i] = ng; } catch (e) {}
+    KIT.close();
+    await KIT.alert(r.skipped?.length ? 'Restored, with some files left out' : 'Restored', `${r.restored} file${r.restored === 1 ? '' : 's'} put back.${r.skipped?.length ? `<br><br>${r.skipped.map(esc).join('<br>')}` : ''}${r.safety ? `<p class="note">The saves that were here are in a safety copy (Backups tab).</p>` : ''}`, !r.skipped?.length);
+    render();
+  } catch (e) { KIT.close(); KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+}
+async function backupActions(b) {
+  const g = game(b.id) || S.games.find(x => x.title.toLowerCase() === b.title.toLowerCase());
+  const items = [];
+  if (g) items.push({ id: 'restore', label: `Restore to ${g.title}`, sub: 'The saves on this PC are kept in a safety copy first' });
+  else items.push({ id: 'restoreTo', label: 'Restore to a game…', sub: `${b.title} isn't installed here; choose which game it's for` });
+  items.push({ id: 'open', label: 'Open its folder' }, { id: 'delete', label: 'Delete this backup' });
+  const a = await KIT.choose(`${b.title} · ${when(b.created)}`, items, `${b.count} files · ${human(b.bytes)} · ${placeOf(b.file)}`);
+  if (a === 'restore') return doRestore(b, g);
+  if (a === 'restoreTo') { const id = await KIT.choose('Which game is it for?', S.games.filter(x => x.kind === 'game').map(x => ({ id: x.id, label: x.title }))); if (id) doRestore(b, game(id)); return; }
+  if (a === 'open') return KIT.invoke('open_folder', { path: b.file.replace(/\/[^/]*$/, '') }).catch(e => KIT.toast(KIT.err(e)));
+  if (a === 'delete') {
+    if (!await KIT.confirm({ title: 'Delete this backup?', text: `<p>${esc(b.title)}, ${esc(when(b.created))}. This can't be undone.</p>`, ok: 'Delete', danger: true })) return;
+    try { await KIT.invoke('delete_backup', { file: b.file }); S.backups = null; render(); KIT.toast('Backup deleted'); } catch (e) { KIT.toast(KIT.err(e)); }
+  }
+}
+
+// ---------------------------------------------------------------- save folders you add
+async function addFolder() {
+  const g = game(S.sel); if (!g) return;
+  const p = await KIT.pickPath({ title: `Where does ${g.title} save?`, note: 'Choose the folder with its save files (in your home folder or the game\'s own folder).', start: g.install || undefined });
+  if (!p) return;
+  try { const ng = await KIT.invoke('set_folder', { id: g.id, path: p, add: true }); S.games[S.games.findIndex(x => x.id === g.id)] = ng; render(); KIT.toast('Folder added'); }
+  catch (e) { KIT.toast(KIT.err(e)); }
+}
+async function removeFolder(p) {
+  const g = game(S.sel); if (!g) return;
+  if (!await KIT.confirm({ title: 'Stop backing up this folder?', text: `<p class="path">${esc(p)}</p><p class="note">Nothing is deleted; it's just no longer part of this game's saves.</p>`, ok: 'Remove' })) return;
+  try { const ng = await KIT.invoke('set_folder', { id: g.id, path: p, add: false }); S.games[S.games.findIndex(x => x.id === g.id)] = ng; render(); }
+  catch (e) { KIT.toast(KIT.err(e)); }
+}
+
+// ---------------------------------------------------------------- automatic backups
+async function setSchedule(change) {
+  const c = Object.assign({ schedule: S.config.schedule || 'off', dest: S.config.dest || '', keep: S.config.keep || 5 }, change);
+  try { S.config = Object.assign(S.config, await KIT.invoke('set_schedule', c)); render(); if (change.schedule) KIT.toast(change.schedule === 'off' ? 'Automatic backups are off' : `Backs up ${change.schedule === 'daily' ? 'every day' : 'every week'}`); }
+  catch (e) { KIT.toast(KIT.err(e)); }
+}
+async function autoDest() { const p = await pickDest('Automatic backups go to…'); if (p) setSchedule({ dest: p }); }
+async function autoNow() {
+  try { await KIT.invoke('run_auto'); KIT.progress('Backing up changed games'); } catch (e) { KIT.toast(KIT.err(e)); }
+}
+
+
+// ---------------------------------------------------------------- without the app (opening the page in a browser): sample games
+KIT.demo = (cmd, a) => {
+  const now = Date.now();
+  const games = [
+    { id: 'steam:367520', title: 'Hollow Knight', source: 'steam', store: 'steam', kind: 'game', install: '/home/you/.local/share/Steam/steamapps/common/Hollow Knight', prefix: '/home/you/.local/share/Steam/steamapps/compatdata/367520/pfx',
+      saves: { count: 6, size: 1843200, newest: now - 3600e3, knownAs: 'Hollow Knight', folders: [{ path: '/home/you/.local/share/Steam/steamapps/compatdata/367520/pfx/drive_c/users/steamuser/AppData/LocalLow/Team Cherry/Hollow Knight', count: 5, size: 1800000 }, { path: '/home/you/.local/share/Steam/steamapps/common/Hollow Knight/hollow_knight_Data', count: 1, size: 43200 }], custom: [] } },
+    { id: 'steam:504230', title: 'Celeste', source: 'steam', store: 'steam', kind: 'game', saves: { count: 3, size: 52000, newest: now - 86400e3 * 2, knownAs: 'Celeste', folders: [{ path: '/home/you/.local/share/Celeste/Saves', count: 3, size: 52000 }], custom: [] } },
+    { id: 'epic:Min', title: 'Hades', source: 'epic', store: 'epic', kind: 'game', prefix: '/home/you/.local/share/nimbus/prefixes/epic-Min', saves: { count: 0, size: 0, newest: 0, knownAs: 'Hades', folders: [], custom: [] } },
+    { id: 'manual:abc', title: 'My Indie Game', source: 'manual', kind: 'game', saves: { count: 0, size: 0, newest: 0, knownAs: null, folders: [], custom: [] } },
+    { id: 'emulator:retroarch', title: 'RetroArch saves', source: 'emulator', kind: 'emulator', saves: { count: 41, size: 9800000, newest: now - 86400e3 * 9, folders: [{ path: '/home/you/.config/retroarch/saves', count: 30, size: 800000 }, { path: '/home/you/.config/retroarch/states', count: 11, size: 9000000 }], custom: [] } },
+  ];
+  const dests = [{ path: '/home/you/Backups', label: 'Backups folder on this PC', removable: false, free: 212e9 }, { path: '/run/media/you/HEARTH-USB', label: 'HEARTH-USB', removable: true, free: 28e9 }];
+  if (cmd === 'info') return { version: 'preview', game: null };
+  if (cmd === 'load') return new Promise(r => setTimeout(() => r({ games, manifest: { ok: true, games: 18431, fetched: now - 86400e3 }, config: { schedule: 'weekly', dest: '/run/media/you/HEARTH-USB', keep: 5, lastAuto: now - 86400e3 * 3, lastAutoText: '2 backed up, 3 unchanged' }, destinations: dests }), 300));
+  if (cmd === 'destinations') return dests;
+  if (cmd === 'backups') return { backups: [
+    { file: '/run/media/you/HEARTH-USB/Hearth Saves/Hollow Knight/Hollow Knight 2026-10-21 20-14.zip', id: 'steam:367520', title: 'Hollow Knight', created: now - 86400e3, host: 'living-room', count: 6, bytes: 920000, auto: false },
+    { file: '/home/you/Backups/Hearth Saves/Celeste/Celeste 2026-10-18 09-00 (automatic).zip', id: 'steam:504230', title: 'Celeste', created: now - 86400e3 * 4, host: 'hearth-ally', count: 3, bytes: 31000, auto: true }], safetyDir: '/home/you/.local/share/nimbus/saves-safety' };
+  if (cmd === 'places') return [{ label: 'Home', path: '/home/you' }, { label: 'HEARTH-USB', path: '/run/media/you/HEARTH-USB', drive: true }];
+  if (cmd === 'browse') return { path: a.path, parent: a.path === '/' ? null : a.path.replace(/\/[^/]*$/, '') || '/', entries: [{ name: 'Documents', path: a.path + '/Documents', dir: true }, { name: 'Games', path: a.path + '/Games', dir: true }] };
+  if (cmd === 'rescan') return games.find(g => g.id === a.id);
+  throw 'This is a preview: open Saves to do that.';
+};
+// ---------------------------------------------------------------- start
+(async () => {
+  try { S.info = await KIT.invoke('info'); } catch (e) {}
+  await load(false);
+  KIT.focusFirst('.item.sel');
+})();
+</script>
+</body>
+</html>
