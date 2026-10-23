@@ -12,6 +12,11 @@ on:
   pull_request:
     paths: ['hosts/hearth-contacts/**', '.github/workflows/contacts.yml']
   workflow_dispatch:
+    inputs:
+      shots:
+        description: Put small copies of the screenshots on the run as notices
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: never
@@ -112,6 +117,26 @@ jobs:
           ./target/release/hearth-contacts --list | python3 -c 'import json,sys; d=json.load(sys.stdin); n=[e["contact"]["name"]["given"] for e in d]; print(n); assert "Margaret" in n' \
             && echo "::notice title=window::made and saved a contact with the keyboard" || echo "::warning title=window::the contact typed in the window wasn't saved"
           echo "::notice title=App output::$(tail -c 1200 run.log | tr '\n' '|')"
+      - name: Screenshot list as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/list.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT list $i::$part"; done
+      - name: Screenshot detail-focused as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/detail-focused.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT detail-focused $i::$part"; done
+      - name: Screenshot edit as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/edit.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT edit $i::$part"; done
+      - name: Screenshot open-vcf as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/open-vcf.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT open-vcf $i::$part"; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:

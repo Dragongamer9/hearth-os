@@ -17,6 +17,10 @@ on:
         description: Download the pinned MapLibre GL JS files into ui/vendor and commit them
         type: boolean
         default: false
+      shots:
+        description: Put small copies of the screenshots on the run as notices
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -112,6 +116,26 @@ jobs:
           stop
           du -sh "$HEARTH_MAPS_CACHE" | sed 's/^/::notice title=offline copies::/'
           for f in run.log run-search.log run-geo.log; do echo "::notice title=$f::$(tail -c 800 $f | tr '\n' '|')"; done
+      - name: Screenshot map as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/map.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT map $i::$part"; done
+      - name: Screenshot search as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/search.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT search $i::$part"; done
+      - name: Screenshot geo-dark as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/geo-dark.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT geo-dark $i::$part"; done
+      - name: Screenshot directions as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          f=shots/directions.png; [ -f "$f" ] || exit 0
+          convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT directions $i::$part"; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
