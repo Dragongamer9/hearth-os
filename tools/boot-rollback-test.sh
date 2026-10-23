@@ -57,9 +57,23 @@ sudo mount -o subvol=root "${LOOP}p3" $H && sudo mount "${LOOP}p2" $H/boot && su
 dep=$(sudo sh -c "ls -d $H/ostree/deploy/default/deploy/*.0 | head -1")
 csum=$(basename "$dep" .0)
 sudo test -f "$dep/usr/libexec/nimbus/hearth-boot-guard" || fail "the installed system isn't the image built here (no hearth-boot-guard)"
-# (ostree's own command isn't in every image: added for this run, as the installer's run.sh does.)
-sudo podman run --rm --privileged -v $H:$H --security-opt label=disable "$TOOLS" sh -c \
-  "command -v ostree >/dev/null || dnf -y -q install ostree </dev/null >&2; ostree admin deploy --sysroot=$H --os=default --origin-file='$dep.origin' --karg-append=systemd.unit=emergency.target '$csum'"
+# ostree's own command: from the installer's image (added with dnf when it hasn't got it), else the image under test,
+# else the runner's. Each try's output goes on the run page if none works.
+deploy="ostree admin deploy --sysroot=$H --os=default --origin-file='$dep.origin' --karg-append=systemd.unit=emergency.target '$csum'"
+tries=""
+deployed=0
+for img in "$TOOLS" "$TAG"; do
+  if out=$(sudo podman run --rm --privileged -v $H:$H --security-opt label=disable --entrypoint sh "$img" -c \
+      "command -v ostree >/dev/null || { command -v dnf >/dev/null && dnf -y -q install ostree </dev/null; } || { command -v apt-get >/dev/null && apt-get update -qq && apt-get install -y -qq ostree; } >/dev/null 2>&1; command -v ostree || echo 'no ostree here'; $deploy" 2>&1); then
+    deployed=1; echo "$out" | tail -n 5; break
+  fi
+  tries="$tries [$img: $(echo "$out" | tail -n 4 | tr '\n' ' ')]"
+done
+if [ $deployed = 0 ]; then
+  sudo apt-get install -y -qq ostree >/dev/null 2>&1 || true
+  out=$(sudo sh -c "$deploy" 2>&1) && deployed=1 || tries="$tries [runner: $(echo "$out" | tail -n 4 | tr '\n' ' ')]"
+fi
+[ $deployed = 1 ] || fail "couldn't add the second deployment:$tries"
 sudo python3 -I "$dep/usr/libexec/nimbus/hearth-boot-guard" setup --boot $H/boot
 if sudo grep -qs hearth-bls.cfg $H/boot/grub2/grub.cfg; then sudo sh "$dep/usr/libexec/nimbus/hearth-bls-grub" --boot $H/boot; fi
 sudo sh -c "grep -H . $H/boot/loader/entries/*.conf; cat $H/boot/grub2/custom.cfg $H/boot/grub2/hearth-boot.cfg; head -c 300 $H/boot/grub2/grubenv; echo"
