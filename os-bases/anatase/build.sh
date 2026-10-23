@@ -156,18 +156,6 @@ UNIT
 fi
 # ---- end of Hearth Time
 
-# ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
-# Scanner and Welcome & Tips in one program (/usr/bin/hearth-tools --app NAME), built with the app (base-anatase.yml)
-# and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the
-# tools run: SANE's scanimage and sane-airscan (network scanners), traceroute and tracepath, iw (Wi-Fi link details).
-dnf5 -y install --skip-unavailable sane-backends sane-backends-drivers-scanners sane-airscan traceroute iputils iw || true
-if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
-  install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
-  if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi
-  install -d /usr/share/applications
-  install -m644 /ctx/nimbus-app/hearth-tools/hearth-*.desktop /usr/share/applications/
-fi
-# ---- end Hearth Tools
 # ------------------------------------------------------------------ Hearth's gaming apps (hosts/hearth-gaming)
 # Controller Lab, Saves and Mods: built with the app (base-anatase.yml) and carried in os/nimbus-app; their icons come
 # with Hearth's icon set (branding/icons, above: Icon=hearth-controller-lab ...). Desktop Mode lists them
@@ -227,6 +215,19 @@ UNIT
   ln -sf ../hearth-saves-auto.timer /usr/lib/systemd/user/timers.target.wants/hearth-saves-auto.timer
 fi
 # ---- end of Hearth's gaming apps
+
+# ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
+# Scanner and Welcome & Tips in one program (/usr/bin/hearth-tools --app NAME), built with the app (base-anatase.yml)
+# and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the
+# tools run: SANE's scanimage and sane-airscan (network scanners), traceroute and tracepath, iw (Wi-Fi link details).
+dnf5 -y install --skip-unavailable sane-backends sane-backends-drivers-scanners sane-airscan traceroute iputils iw || true
+if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
+  if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi
+  install -d /usr/share/applications
+  install -m644 /ctx/nimbus-app/hearth-tools/hearth-*.desktop /usr/share/applications/
+fi
+# ---- end Hearth Tools
 
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session
