@@ -1,0 +1,12 @@
+# Once a day (and soon after signing in, if a day was missed while the device was off or asleep).
+[Unit]
+Description=Check for a newer Claude Desktop once a day
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=2h
+Persistent=true
+OnStartupSec=20min
+
+[Install]
+WantedBy=timers.target

@@ -131,6 +131,14 @@ dnf5 -y install 7zip || dnf5 -y install p7zip p7zip-plugins || true
 dnf5 -y install fuse-overlayfs bubblewrap xdpyinfo xrandr || true
 dnf5 -y install ntfsprogs ntfs-3g e2fsprogs btrfs-progs util-linux || true
 dnf5 -y install umu-launcher || true
+# Claude Desktop (Hearth Settings › Claude: Anthropic's package, unpacked in the user's home folder by
+# desktop/shell/hearth-claude, never shipped in this image): gpg checks Anthropic's signature; the app links
+# GTK 3, NSS, libdrm/gbm, libxtst, PipeWire and AT-SPI (above), and opens libsecret (the sign-in kept in the
+# password store), libnotify (notifications) and the tray library while it runs.
+dnf5 -y install gnupg2
+for p in libsecret libnotify libxcb at-spi2-core libuuid xdg-utils libayatana-appindicator-gtk3 pipewire-libs libdrm mesa-libgbm; do
+  dnf5 -y install "$p" || echo "warning: $p isn't available"
+done
 # Printing (Settings › Printers: CUPS with driverless IPP Everywhere, USB printers through ipp-usb, network printers
 # found with Avahi), clipboard history (Super+V: wl-clipboard, cliphist; wtype pastes) and Flatpak for Apps.
 for p in cups cups-filters ipp-usb avahi nss-mdns wl-clipboard cliphist wtype flatpak; do

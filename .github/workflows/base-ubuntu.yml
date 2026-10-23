@@ -297,6 +297,22 @@ jobs:
           check "power-profiles-daemon only runs when HHD is off" "grep -q 'ConditionPathExists=/etc/hearth/no-hhd' /usr/lib/systemd/system/power-profiles-daemon.service.d/10-hearth-hhd.conf"
           # bughunt: GLib programs (the desktop portal, WebKit, the accessibility bus) abort without compiled GSettings schemas.
           check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
+          echo "--- Claude (Settings › Claude: installed for each user from Anthropic, not part of the image)"
+          check "gpg is installed (checks Anthropic's signature on Claude Desktop)" "command -v gpg"
+          check "hearth-claude is installed and its Python is valid" "test -x /usr/bin/hearth-claude && python3 -c 'import ast; ast.parse(open(\"/usr/share/nimbus/desktop/shell/hearth-claude\").read())'"
+          check "Claude Desktop is checked for updates daily (a user timer, on for everyone)" "test -f /usr/lib/systemd/user/hearth-claude-update.service && test -L /usr/lib/systemd/user/timers.target.wants/hearth-claude-update.timer && test -f /usr/share/applications/hearth-get-claude.desktop"
+          check "~/.local/bin is on PATH in login shells (Claude Code)" "env -i HOME=/tmp/u PATH=/usr/bin:/bin bash -lc 'echo \$PATH' | grep -q /tmp/u/.local/bin"
+          # Anthropic's real package, installed the way Settings does it, for a throwaway user: shows whether this
+          # image has every library it needs. A warning only (it needs downloads.claude.ai).
+          mkdir -p /tmp/ch && chown 65534:65534 /tmp/ch
+          if cout=$(setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/tmp/ch PATH=/usr/bin:/bin python3 /usr/share/nimbus/desktop/shell/hearth-claude install 2>&1) \
+             && cver=$(setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/tmp/ch /tmp/ch/.local/bin/claude-desktop --version 2>/dev/null | tail -1) && [ -n "$cver" ]; then
+            echo "ok: Claude Desktop $cver installs for a user and starts (--version)"; echo "::notice title=Claude Desktop::$cver installed in a throwaway home folder and answered --version"
+            cmiss=$(ldd /tmp/ch/.local/opt/claude-desktop/claude-desktop | awk '/not found/{print $1}' | tr '\n' ' '); [ -z "$cmiss" ] || echo "::warning title=Claude Desktop libraries::$cmiss"
+            for l in libsecret-1.so.0 libnotify.so.4; do ldconfig -p | grep -q "$l" || echo "::warning title=Claude Desktop::$l (opened at run time) isn't installed"; done
+          else
+            echo "::warning title=Claude Desktop install::$(printf '%s' "$cout" | grep -v '^progress' | tail -3 | tr '\n' ' ' | cut -c1-600)"
+          fi
           echo "--- nice to have"
           warn "acpi_call (Legion Go power limits through HHD on older firmware paths)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
           warn "RyzenAdj is installed" "command -v ryzenadj"

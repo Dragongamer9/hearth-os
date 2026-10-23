@@ -33,6 +33,11 @@ ENV_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS"
 [ -z "$NIMBUS_APP" ] && [ -f "$CONF/app-path" ] && NIMBUS_APP="$(cat "$CONF/app-path")"
 [ -z "$NIMBUS_APP" ] && [ -x /usr/bin/nimbus ] && NIMBUS_APP=/usr/bin/nimbus
 export NIMBUS_SESSION=1 NIMBUS_APP NIMBUS_SHARE="$SHARE"
+# Programs you install for yourself (Claude Code, Claude Desktop's launcher, pip --user...) live in ~/.local/bin:
+# on PATH for everything this session starts (the terminal, the app menu, Game Mode), on every edition, even
+# when the folder is only made later. Login shells get the same from /etc/profile.d/hearth-local-bin.sh.
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac
+export PATH
 export XDG_CURRENT_DESKTOP=Nimbus XDG_SESSION_DESKTOP=nimbus
 # gamescope reuses a mode saved in GAMESCOPE_MODE_SAVE_FILE (set by some Steam sessions) whenever -W/-H/-r are
 # absent or don't match, so a switch back to "the screen's own mode" could land on an old saved 144 Hz instead.
