@@ -31,9 +31,12 @@ ffmpeg -nostdin -loglevel error -re -f lavfi -i "sine=frequency=880:sample_rate=
 if [ "$KIND" = wayland ]; then
   mkdir -p /tmp/labwc-cfg
   WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 labwc -C /tmp/labwc-cfg >"$L/labwc.log" 2>&1 &
-  for _ in $(seq 40); do [ -S "$XDG_RUNTIME_DIR/wayland-0" ] && break; sleep 0.25; done
-  export WAYLAND_DISPLAY=wayland-0
+  sock=""
+  for _ in $(seq 60); do sock=$(cd "$XDG_RUNTIME_DIR" && ls wayland-* 2>/dev/null | grep -v lock | head -1); [ -n "$sock" ] && break; sleep 0.25; done
+  if [ -z "$sock" ]; then echo "::error title=labwc didn't start::$(tail -c 1500 "$L/labwc.log" | tr '\n' '|')"; fi
+  export WAYLAND_DISPLAY=${sock:-wayland-0}
   unset DISPLAY
+  echo "labwc: WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
   command -v wlr-randr >/dev/null && wlr-randr --output HEADLESS-1 --custom-mode 1280x720 2>/dev/null
   # Something that changes, so the screen has new pictures to capture.
   foot -e top -d 0.3 >"$L/foot.log" 2>&1 &
