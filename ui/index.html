@@ -997,7 +997,10 @@ body.mk-on .mk [data-f].focus:not(.mkc):not(.mkr):not(.mkm-i){box-shadow:0 0 0 2
 .lmo.s2{grid-column:span 2;grid-row:span 2}
 .lmo.w{grid-column:span 2}
 .lmo.focus{transform:scale(1.05);z-index:2}
-.lmo .notinst{display:none}.lmo .lmh{position:absolute;top:8px;left:8px;z-index:2;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px;background:rgba(0,0,0,.55)}
+.lmo .notinst{display:none}
+.lx-mos .lmo .cover:has(.dl) .ct,.lx-hex .lhx .hxi .cover:has(.dl) .ct{bottom:40px}
+.lmo.s1 .cover .dl span,.lhx .cover .dl span{display:none}.lx-mos .lmo.s1 .cover:has(.dl) .ct{bottom:20px}.lx-hex .lhx .hxi .cover:has(.dl) .ct{bottom:34px}
+.lmo.s3.focus,.lmo.s2.focus{transform:scale(1.02)}.lmo .lmh{position:absolute;top:8px;left:8px;z-index:2;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px;background:rgba(0,0,0,.55)}
 
 /* Settings: Library layout previews */
 .lprev .lp-a{background:var(--accent)}.lprev .lp-t{background:var(--text)}.lprev .lp-p{background:var(--panel2)}
@@ -2766,8 +2769,10 @@ function libFocus(el){ lFit(); if(el.dataset.lspot) lUpdate(el.dataset.lspot); }
 // inside and the detail panel stays put. Measured in CSS pixels, so the text size setting is respected.
 function lFit(){
   const v=$('#view'), box=v && v.querySelector('.lfit'); if(!box) return;
-  let top=0; for(let e=box; e && e!==v && e!==v.offsetParent; e=e.offsetParent) top+=e.offsetTop;
-  top-=v.offsetTop;
+  // While the page fades in it is the boxes' offsetParent itself (then its own offsetTop isn't in the sum): taking
+  // it off anyway made these layouts a top bar too tall, under the footer.
+  let top=0, e=box; for(; e && e!==v && e!==v.offsetParent; e=e.offsetParent) top+=e.offsetTop;
+  if(e!==v) top-=v.offsetTop;
   const h=Math.max(300, v.clientHeight-top-10)+'px';
   if(box.style.height!==h) box.style.height=h;
 }
