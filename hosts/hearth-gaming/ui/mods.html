@@ -1,1 +1,216 @@
-<!doctype html><title>mods</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mods</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+.split { grid-template-columns:minmax(16em, 26em) 1fr; }
+.detail { display:grid; grid-template-rows:auto 1fr; gap:.8em; min-height:0; }
+.mod { display:grid; grid-template-columns:auto auto 1fr auto; gap:.1em .8em; align-items:center; width:100%; padding:.65em .9em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); min-height:3.4em; }
+.mod.off { opacity:.62; }
+.mod .num { grid-row:span 2; color:var(--faint); font-variant-numeric:tabular-nums; font-weight:700; min-width:1.4em; text-align:right; }
+.mod .n { font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mod .m { grid-column:3; color:var(--muted); font-size:.8em; display:flex; gap:.5em; flex-wrap:wrap; }
+.mod .sw, .sw { grid-row:span 2; width:2.6em; height:1.5em; border-radius:99px; background:var(--panel3); position:relative; flex:none; }
+.sw::after { content:""; position:absolute; top:.17em; left:.18em; width:1.16em; height:1.16em; border-radius:50%; background:var(--muted); transition:left .15s var(--ease); }
+.sw.on { background:var(--ember); } .sw.on::after { left:1.25em; background:var(--ink); }
+.mod .end { grid-row:span 2; color:var(--muted); font-size:.85em; text-align:right; }
+.beacon { display:grid; place-items:center; text-align:center; gap:.8em; padding:2.4em 1em; }
+.tops { display:flex; flex-wrap:wrap; gap:.35em; margin:.3em 0; }
+.tops span { font-family:ui-monospace, monospace; font-size:.78em; background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:.15em .5em; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7l8-4 8 4-8 4z"/><path d="M4 12l8 4 8-4M4 17l8 4 8-4"/></svg>Mods</h1>
+    <span class="sub" id="sub"></span>
+  </header>
+  <main id="main" class="split"></main>
+  <footer id="foot"></footer>
+</div>
+<script src="kit.js"></script>
+<script>
+'use strict';
+const { $, esc, human, when } = KIT;
+const S = { games: [], sel: null, sum: null, loading: true, info: {} };
+const SRC = { steam: 'Steam', epic: 'Epic', gog: 'GOG', manual: 'Your game', beacon: 'Beacon', 'heroic-epic': 'Heroic (Epic)', 'heroic-gog': 'Heroic (GOG)' };
+const game = id => S.games.find(g => g.id === id);
+
+async function load() {
+  S.loading = true; render();
+  try { S.games = await KIT.invoke('list'); } catch (e) { S.games = []; KIT.toast(KIT.err(e)); }
+  S.loading = false;
+  if (!S.sel || !game(S.sel)) S.sel = (S.info.game && game(S.info.game)) ? S.info.game : S.games[0]?.id || null;
+  await loadMods();
+}
+async function loadMods() {
+  S.sum = null;
+  if (S.sel && !game(S.sel)?.beacon) { try { S.sum = await KIT.invoke('mods_of', { id: S.sel }); } catch (e) { KIT.toast(KIT.err(e)); } }
+  render();
+}
+function applyResult(r) {
+  S.sum = r.summary;
+  const g = game(S.sel); if (g) { g.mods = r.summary.mods.length; g.modsOn = r.summary.mods.filter(m => m.enabled).length; }
+  const rep = r.report || {};
+  render();
+  if (rep.problems?.length) KIT.alert('Done, with problems', rep.problems.map(esc).join('<br>'), false);
+  else if (rep.keptChanged?.length) KIT.alert('Done', `The game had changed ${rep.keptChanged.length} of the mod's files while it was on; those copies are kept in the mod folder (changed/).`);
+}
+
+// ---------------------------------------------------------------- drawing
+function render() {
+  const focusKey = document.activeElement?.dataset?.key;
+  $('#sub').textContent = S.loading ? '' : `${S.games.length} games`;
+  if (S.loading) { $('#main').innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="prog spin" style="max-width:20em;margin:0 auto 1em"><i></i></div>Reading your library…</div>`; footer(); return; }
+  const rows = S.games.map(g => `<button class="item f ${g.id === S.sel ? 'sel' : ''}" data-key="g:${esc(g.id)}" data-game="${esc(g.id)}">
+      <span class="ico">${esc((g.title || '?')[0].toUpperCase())}</span><span class="n">${esc(g.title)}</span>
+      <span class="end">${g.modsOn ? `<span class="badge">${g.modsOn} on</span>` : ''}</span>
+      <span class="m">${g.beacon ? '<span class="badge sky">Managed by Beacon</span>' : g.mods ? `${g.mods} mod${g.mods > 1 ? 's' : ''}` : 'No mods'} · ${esc(SRC[g.source] || g.source)}</span></button>`).join('');
+  $('#main').innerHTML = `<div class="scroll"><div class="list">${rows || '<div class="empty">No installed games found.</div>'}</div></div><section class="detail">${detail()}</section>`;
+  footer();
+  const back = focusKey && document.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
+  if (back) back.focus({ preventScroll: true }); else if (!KIT.dialogOpen() && (!document.activeElement || document.activeElement === document.body)) KIT.focusFirst('.item.sel') || KIT.focusFirst();
+}
+function footer() {
+  const onMod = document.activeElement?.dataset?.mod;
+  const h = [['A', 'Choose'], ['B', 'Back'], ['X', onMod ? 'On / off' : ''], ['Y', 'Add a mod']].filter(x => x[1]);
+  $('#foot').innerHTML = h.map(x => `<span><b>${x[0]}</b>${x[1]}</span>`).join('');
+}
+function detail() {
+  const g = game(S.sel);
+  if (!g) return '<div class="empty">Choose a game.</div>';
+  if (g.beacon) return `<div class="panel beacon"><h2>${esc(g.title)}</h2><p class="msg">Beacon manages this game and its mods (Battle for Middle-earth, Age of the Ring and the others).</p><button class="btn primary f" data-key="beacon" data-act="beacon" data-autofocus>Open Beacon</button></div>`;
+  const s = S.sum;
+  if (!s) return '<div class="empty">Reading its mods…</div>';
+  const mods = s.mods.map(m => `<button class="mod f ${m.enabled ? '' : 'off'}" data-key="m:${esc(m.id)}" data-mod="${esc(m.id)}">
+      <span class="num">${m.order + 1}</span><span class="sw ${m.enabled ? 'on' : ''}"></span><span class="n">${esc(m.name)}</span><span class="end">${esc(human(m.size))}</span>
+      <span class="m"><span>${m.files} file${m.files === 1 ? '' : 's'}</span><span>${esc(m.targetLabel)}${m.sub ? ` › ${esc(m.sub)}` : ''}</span>${m.enabled && m.overriddenBy.length ? `<span class="warn">${m.winning ? 'Some files' : 'All its files'} replaced by ${esc(m.overriddenBy.join(', '))}</span>` : ''}</span></button>`).join('');
+  return `<div class="panel">
+      <h2>${esc(g.title)}</h2>
+      <div class="path">${esc(g.install || '')}</div>
+      <div class="acts" style="margin-top:.7em"><button class="btn primary f" data-key="add" data-act="add">Add a mod…</button><button class="btn f" data-key="og" data-act="openGame">Open game folder</button>${s.mods.length ? '<button class="btn f" data-key="om" data-act="openStore">Open mod files</button>' : ''}</div>
+      <p class="msg small" style="margin:.6em 0 0">${s.mods.length > 1 ? 'Mods lower in the list win when two have the same file. ' : ''}Turning a mod off puts the game's own files back. Download mods from the mod's page (Nexus Mods' "Manual download", ModDB, GitHub…), then add the file here.</p>
+    </div>
+    <div class="scroll"><div class="list">${mods || '<div class="empty">No mods yet. Add one from a .zip, .7z or .rar file, or a folder.</div>'}</div></div>`;
+}
+
+// ---------------------------------------------------------------- choosing things
+document.addEventListener('focusin', footer);
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled || b.closest('#kit-layer') || KIT.dialogOpen()) return;
+  if (b.dataset.game) { S.sel = b.dataset.game; loadMods().then(() => { if (KIT.usingPad()) KIT.focusFirst('.mod') || KIT.focusFirst('[data-key="add"]') || KIT.focusFirst('[data-key="beacon"]'); }); return; }
+  if (b.dataset.mod) return modActions(b.dataset.mod);
+  const a = b.dataset.act;
+  if (a === 'beacon') return KIT.invoke('open_beacon').then(() => KIT.toast('Opening Beacon…')).catch(e => KIT.alert('Beacon', esc(KIT.err(e)), false));
+  if (a === 'add') return addMod();
+  if (a === 'openGame') return KIT.invoke('open_folder', { path: game(S.sel).install }).catch(e => KIT.toast(KIT.err(e)));
+  if (a === 'openStore') return KIT.invoke('open_folder', { path: S.sum.folder + '/files' }).catch(e => KIT.toast(KIT.err(e)));
+});
+KIT.onBack = () => { if (!document.activeElement?.dataset?.game) KIT.focusFirst('.item.sel'); };
+KIT.onX = () => { const id = document.activeElement?.dataset?.mod; if (id) { const m = S.sum.mods.find(x => x.id === id); toggle(m, !m.enabled); } };
+KIT.onY = () => { if (game(S.sel) && !game(S.sel).beacon) addMod(); };
+
+async function toggle(m, on) {
+  try { applyResult(await KIT.invoke('toggle', { id: S.sel, m: m.id, on })); KIT.toast(`${m.name}: ${on ? 'on' : 'off'}`); } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+}
+async function modActions(id) {
+  const m = S.sum.mods.find(x => x.id === id); if (!m) return;
+  const items = [{ id: 'toggle', label: m.enabled ? 'Turn off' : 'Turn on', sub: m.enabled ? 'Takes its files out and puts the game\'s own back' : 'Puts its files in the game' }];
+  if (m.order > 0) items.push({ id: 'up', label: 'Move up', sub: 'Loses to the mods below it' });
+  if (m.order < S.sum.mods.length - 1) items.push({ id: 'down', label: 'Move down', sub: 'Wins over the mods above it' });
+  items.push({ id: 'open', label: 'Open its files' }, { id: 'where', label: 'Open where it goes' }, { id: 'remove', label: 'Remove…', sub: 'Turns it off and deletes Hearth\'s copy of it' });
+  const a = await KIT.choose(m.name, items, `${m.files} files · ${human(m.size)} · added ${when(m.added)}${m.source ? `<br><span class="path">${esc(m.source)}</span>` : ''}`);
+  try {
+    if (a === 'toggle') return toggle(m, !m.enabled);
+    if (a === 'up' || a === 'down') { applyResult(await KIT.invoke('move_mod', { id: S.sel, m: id, by: a === 'up' ? -1 : 1 })); KIT.focusFirst(`[data-key="m:${CSS.escape(id)}"]`); return; }
+    if (a === 'open') return KIT.invoke('open_folder', { path: `${S.sum.folder}/files/${id}` });
+    if (a === 'where') return m.root ? KIT.invoke('open_folder', { path: m.root }) : KIT.toast('That folder isn\'t there yet.');
+    if (a === 'remove') {
+      if (!await KIT.confirm({ title: `Remove ${m.name}?`, text: '<p>Its files come out of the game (the game\'s own files go back), and Hearth\'s copy of the mod is deleted. The file you installed it from isn\'t touched.</p>', ok: 'Remove', danger: true })) return;
+      applyResult(await KIT.invoke('remove_mod', { id: S.sel, m: id }));
+      KIT.toast(`${m.name} removed`);
+    }
+  } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+}
+
+// ---------------------------------------------------------------- adding a mod
+async function addMod() {
+  const g = game(S.sel); if (!g || g.beacon) return;
+  const start = (await KIT.invoke('places').catch(() => [])).find(p => p.label === 'Downloads')?.path;
+  const src = await KIT.pickPath({ title: 'Choose a mod', note: 'A .zip, .7z or .rar file, or a folder with the mod in it.', files: true, archives: true, folder: true, start });
+  if (!src) return;
+  KIT.progress('Unpacking the mod');
+  let st;
+  try { st = await KIT.invoke('stage', { id: g.id, path: src }); } catch (e) { KIT.close(); return KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+  const pick = { name: st.name, target: st.suggestTarget || 'game', sub: st.suggestSub || '', enable: true };
+  const targets = S.sum?.targets || [{ id: 'game', label: 'Game folder', path: g.install }];
+  const draw = () => {
+    const root = (targets.find(t => t.id === pick.target) || {}).path || '';
+    KIT.dialog(`<h2>Install a mod for ${esc(g.title)}</h2>
+      <div class="field"><label for="mname">Name</label><input class="inp f" id="mname" data-osk maxlength="120" value="${esc(pick.name)}" spellcheck="false" autocomplete="off"></div>
+      <p class="msg small">${st.files} file${st.files === 1 ? '' : 's'}, ${esc(human(st.size))}${st.unwrapped ? ` · the folder “${esc(st.unwrapped)}” around them is left out` : ''}. At its top:</p>
+      <div class="tops">${st.top.slice(0, 14).map(t => `<span>${esc(t)}</span>`).join('')}${st.top.length > 14 ? `<span>+${st.top.length - 14} more</span>` : ''}</div>
+      <div class="field"><label>Where it goes</label><div class="chips">${targets.map(t => `<button class="chip f ${t.id === pick.target ? 'on' : ''}" data-tgt="${esc(t.id)}">${esc(t.label)}</button>`).join('')}</div></div>
+      <div class="field"><label>Folder inside it</label><button class="btn f" data-dl="sub">${pick.sub ? esc(pick.sub) : '(its top)'} ›</button> ${pick.sub ? '<button class="btn f" data-dl="nosub">Use its top</button>' : ''}<div class="path" style="margin-top:.35em">${esc(root)}${pick.sub ? '/' + esc(pick.sub) : ''}</div></div>
+      <div class="field"><button class="chip f ${pick.enable ? 'on' : ''}" data-dl="enable"><span class="sw ${pick.enable ? 'on' : ''}" style="display:inline-block;vertical-align:middle;margin-right:.5em"></span>Turn it on now</button></div>
+      <div class="row"><button class="btn f" data-dl="cancel">Cancel</button><button class="btn primary f" data-dl="go" data-autofocus>Install</button></div>`,
+      { wide: true, onBack: cancel });
+    $('#kit-layer').onclick = async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.tgt) { pick.target = b.dataset.tgt; pick.sub = ''; return draw(); }
+      const d = b.dataset.dl;
+      if (d === 'cancel') return cancel();
+      if (d === 'enable') { pick.enable = !pick.enable; return draw(); }
+      if (d === 'nosub') { pick.sub = ''; return draw(); }
+      if (d === 'sub') {
+        $('#kit-layer').onclick = null;
+        const p = await KIT.pickPath({ title: 'Which folder inside it?', start: root + (pick.sub ? '/' + pick.sub : ''), note: root });
+        if (p && (p === root || p.startsWith(root + '/'))) pick.sub = p.slice(root.length + 1); else if (p) KIT.toast('Choose a folder inside ' + root);
+        return draw();
+      }
+      if (d === 'go') {
+        $('#kit-layer').onclick = null;
+        KIT.progress(`Installing ${pick.name}`);
+        try { const r = await KIT.invoke('install', { id: g.id, token: st.token, name: pick.name, target: pick.target, sub: pick.sub, enable: pick.enable }); KIT.close(); applyResult(r); KIT.toast(`${pick.name} installed${pick.enable ? ' and on' : ''}`); }
+        catch (err) { KIT.close(); KIT.alert('That didn\'t work', esc(KIT.err(err)), false); }
+      }
+    };
+    $('#mname').addEventListener('input', e => { pick.name = e.target.value; });
+  };
+  const cancel = () => { $('#kit-layer').onclick = null; KIT.invoke('cancel_stage', { token: st.token }).catch(() => {}); KIT.close(); };
+  KIT.close();
+  setTimeout(draw, 0);
+}
+
+// ---------------------------------------------------------------- without the app (opening the page in a browser): sample games
+KIT.demo = (cmd, a) => {
+  const games = [
+    { id: 'steam:489830', title: 'The Elder Scrolls V: Skyrim Special Edition', source: 'steam', install: '/home/you/.local/share/Steam/steamapps/common/Skyrim Special Edition', prefix: '/home/you/.local/share/Steam/steamapps/compatdata/489830/pfx', mods: 3, modsOn: 2 },
+    { id: 'beacon:bfme2', title: 'The Battle for Middle-earth II', source: 'beacon', beacon: true, install: '/home/you/Games/BFME2' },
+    { id: 'steam:413150', title: 'Stardew Valley', source: 'steam', install: '/home/you/.local/share/Steam/steamapps/common/Stardew Valley', mods: 0, modsOn: 0 },
+  ];
+  const sum = { game: 'steam:489830', title: games[0].title, folder: '/home/you/.local/share/nimbus/mods/steam%3A489830', targets: [{ id: 'game', label: 'Game folder', path: games[0].install }, { id: 'prefix-documents', label: 'Documents (in the game\'s Proton folder)', path: '/pfx/drive_c/users/steamuser/Documents' }],
+    mods: [
+      { id: 'm0', name: 'SkyUI', enabled: true, order: 0, target: 'game', sub: 'Data', targetLabel: 'Game folder', files: 4, size: 5_300_000, added: Date.now() - 5e8, overriddenBy: [], winning: 4, root: games[0].install + '/Data' },
+      { id: 'm1', name: 'Unofficial Patch', enabled: true, order: 1, target: 'game', sub: 'Data', targetLabel: 'Game folder', files: 2, size: 81_000_000, added: Date.now() - 4e8, overriddenBy: ['Texture Pack'], winning: 1, root: games[0].install + '/Data' },
+      { id: 'm2', name: 'Texture Pack', enabled: false, order: 2, target: 'game', sub: 'Data', targetLabel: 'Game folder', files: 812, size: 2_100_000_000, added: Date.now() - 1e8, overriddenBy: [], winning: 0, root: games[0].install + '/Data' }] };
+  if (cmd === 'info') return { version: 'preview' };
+  if (cmd === 'list') return games;
+  if (cmd === 'mods_of') return a.id === 'steam:489830' ? sum : { game: a.id, title: game(a.id).title, folder: '/x', targets: [{ id: 'game', label: 'Game folder', path: game(a.id).install }], mods: [] };
+  if (cmd === 'places') return [{ label: 'Home', path: '/home/you' }, { label: 'Downloads', path: '/home/you/Downloads' }];
+  if (cmd === 'browse') return { path: a.path, parent: '/home/you', entries: [{ name: 'Mods', path: a.path + '/Mods', dir: true }, { name: 'SkyUI_5_2_SE.7z', path: a.path + '/SkyUI_5_2_SE.7z', dir: false, archive: true, size: 5_300_000 }] };
+  if (cmd === 'stage') return { token: 's1', name: 'SkyUI_5_2_SE', files: 4, size: 5_300_000, top: ['Data/', 'readme.txt'], unwrapped: null, suggestTarget: 'game', suggestSub: '' };
+  throw 'This is a preview: open Mods to do that.';
+};
+
+(async () => {
+  try { S.info = await KIT.invoke('info'); } catch (e) {}
+  await load();
+  KIT.focusFirst('.item.sel');
+})();
+</script>
+</body>
+</html>
