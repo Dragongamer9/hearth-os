@@ -58,6 +58,12 @@ export XDG_CURRENT_DESKTOP=Nimbus XDG_SESSION_DESKTOP=nimbus
 # absent or don't match, so a switch back to "the screen's own mode" could land on an old saved 144 Hz instead.
 # Hearth keeps its mode in session.conf, so gamescope's own save is turned off.
 unset GAMESCOPE_MODE_SAVE_FILE
+# Nvidia: WebKitGTK's DMA-BUF drawing crashes or blanks windows on Nvidia's driver (615 included), so every WebKit app
+# started from this session (Hearth's own apps, Beacon, anything else on WebKitGTK/Tauri) uses the older path.
+# A value someone set themselves is kept.
+if [ -d /sys/module/nvidia ] && [ -z "${WEBKIT_DISABLE_DMABUF_RENDERER+x}" ]; then
+  export WEBKIT_DISABLE_DMABUF_RENDERER=1
+fi
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
