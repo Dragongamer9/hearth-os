@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'hosts/hearth-time/**', 'branding/icons/apps/**']
+    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'hosts/hearth-time/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -75,7 +75,7 @@ jobs:
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-disks" /tmp/app/hearth-disks
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- Hearth Time (hosts/hearth-time): Clock, Calendar, Notes and Weather, one program. Built the same way and
-      # carried in hearth-app.tar as hearth-time/ (the program and the four apps' icons); build.sh installs it. Not
+      # carried in hearth-app.tar as hearth-time/; build.sh installs it (the icons come with Hearth's icon set). Not
       # fatal: without it the image is still made.
       - name: Build Hearth Time (Clock, Calendar, Notes, Weather)
         continue-on-error: true
@@ -87,7 +87,6 @@ jobs:
           cargo build --release || { echo "::warning title=Hearth Time::it didn't build, so this image is made without Clock, Calendar, Notes and Weather"; exit 1; }
           mkdir -p /tmp/app/hearth-time
           cp "$CARGO_TARGET_DIR/release/hearth-time" /tmp/app/hearth-time/hearth-time
-          for a in clock calendar notes weather; do cp "$GITHUB_WORKSPACE/branding/icons/apps/hearth-$a.svg" /tmp/app/hearth-time/; done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth Time
       - uses: actions/setup-node@v4

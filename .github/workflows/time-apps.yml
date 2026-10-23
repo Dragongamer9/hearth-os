@@ -9,7 +9,7 @@ name: Hearth Time apps
 on:
   push:
     branches: [apps-time, main, linux-host]
-    paths: ['hosts/hearth-time/**', 'branding/icons/apps/hearth-clock.svg', 'branding/icons/apps/hearth-calendar.svg', 'branding/icons/apps/hearth-notes.svg', 'branding/icons/apps/hearth-weather.svg', 'hosts/linux/desktop/shell/ClockPanel.qml', 'hosts/linux/desktop/shell/QuickAccess.qml', '.github/workflows/time-apps.yml']
+    paths: ['hosts/hearth-time/**', 'hosts/linux/desktop/shell/ClockPanel.qml', 'hosts/linux/desktop/shell/QuickAccess.qml', '.github/workflows/time-apps.yml']
   pull_request:
     paths: ['hosts/hearth-time/**', '.github/workflows/time-apps.yml']
   workflow_dispatch:
