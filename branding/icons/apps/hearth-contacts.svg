@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Placeholder for Hearth Contacts (the hearth-icons branch draws the real artwork). -->
+  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb066"/><stop offset="1" stop-color="#ff7a2b"/></linearGradient></defs>
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="#1c1512"/>
+  <rect x="52" y="40" width="152" height="176" rx="22" fill="url(#g)"/>
+  <rect x="40" y="70" width="16" height="28" rx="6" fill="#ffd166"/><rect x="40" y="114" width="16" height="28" rx="6" fill="#ffd166"/><rect x="40" y="158" width="16" height="28" rx="6" fill="#ffd166"/>
+  <circle cx="128" cy="108" r="30" fill="#2a1206"/>
+  <path d="M76 186c6-30 28-44 52-44s46 14 52 44z" fill="#2a1206"/>
+</svg>

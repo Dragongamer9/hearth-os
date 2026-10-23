@@ -1,0 +1,22 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Grace Hopper
+N:Hopper;Grace;Brewster Murray;Rear Admiral;
+EMAIL;TYPE=INTERNET;TYPE=WORK:grace@navy.example
+TEL;TYPE=CELL:+1 202 555 0147
+TEL;TYPE=WORK:+1 202 555 0148
+ADR;TYPE=HOME:;;1 Cobol Lane;Arlington;VA;22201;United States
+ORG:US Navy
+TITLE:Computer scientist
+BDAY:1906-12-09
+URL:https\://example.org/grace
+NOTE:Found the first bug.
+CATEGORIES:myContacts,Pioneers
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Linus
+N:;Linus;;;
+TEL;TYPE=CELL:+358 40 555
+CATEGORIES:myContacts
+END:VCARD

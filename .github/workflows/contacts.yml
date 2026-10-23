@@ -1,0 +1,121 @@
+# Hearth Contacts (hosts/hearth-contacts), the address book of Hearth OS (Linux editions for now; Ember later):
+# vCard round trips (files as Google, iCloud, old Android phones and RFC 6350 write them), two-way sync with a real
+# CardDAV server (Radicale, started here with a throwaway test account), passwords in a real Secret Service
+# (GNOME Keyring), the build, and screenshots of the window (in the run's hearth-contacts-linux artifact).
+# Release builds are made by base-anatase.yml and base-peppermint.yml (the Linux images).
+name: Hearth Contacts
+
+on:
+  push:
+    branches: [apps-mail-maps, main, linux-host]
+    paths: ['hosts/hearth-contacts/**', '.github/workflows/contacts.yml']
+  pull_request:
+    paths: ['hosts/hearth-contacts/**', '.github/workflows/contacts.yml']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: hosts/hearth-contacts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-contacts
+      - name: The page's script
+        run: node --check ui/app.js
+      - name: WebKit, GTK, D-Bus, GNOME Keyring and the screenshot tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libdbus-1-dev \
+            gnome-keyring libsecret-tools dbus-x11 xvfb imagemagick xdotool >/dev/null
+      - name: Unit tests and vCard round trips
+        run: |
+          set -o pipefail
+          cargo test --lib --test roundtrip 2>&1 | tee test.log || { echo "::error title=tests::$(grep -E '^(error|---- |thread .* panicked)' -A10 test.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=unit and round-trip tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Sync with a real CardDAV server (Radicale)
+        run: |
+          set -o pipefail
+          python3 -m venv "$RUNNER_TEMP/venv" && "$RUNNER_TEMP/venv/bin/pip" install --quiet radicale
+          mkdir -p "$RUNNER_TEMP/radicale"
+          # A throwaway account for this run only, on this machine only.
+          printf 'hearth:ci-only-test-password\n' > "$RUNNER_TEMP/radicale/users"
+          cat > "$RUNNER_TEMP/radicale/config" <<EOF
+          [server]
+          hosts = 127.0.0.1:5232
+          [auth]
+          type = htpasswd
+          htpasswd_filename = $RUNNER_TEMP/radicale/users
+          htpasswd_encryption = plain
+          delay = 0
+          [storage]
+          filesystem_folder = $RUNNER_TEMP/radicale/data
+          EOF
+          "$RUNNER_TEMP/venv/bin/python" -m radicale --config "$RUNNER_TEMP/radicale/config" > "$RUNNER_TEMP/radicale/log" 2>&1 &
+          for i in $(seq 30); do curl -s -o /dev/null http://127.0.0.1:5232/ && break; sleep 1; done
+          # An empty address book, as a new account on a server would have.
+          curl -sS -f -u hearth:ci-only-test-password -X MKCOL http://127.0.0.1:5232/hearth/contacts/ -H 'Content-Type: application/xml' \
+            --data '<?xml version="1.0"?><mkcol xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav"><set><prop><resourcetype><collection/><C:addressbook/></resourcetype><displayname>Contacts</displayname></prop></set></mkcol>'
+          HEARTH_CARDDAV_URL=http://127.0.0.1:5232/ HEARTH_CARDDAV_USER=hearth HEARTH_CARDDAV_PASS=ci-only-test-password \
+            cargo test --test carddav -- --nocapture 2>&1 | tee dav.log \
+            || { echo "::error title=CardDAV sync::$(grep -E '(panicked|error|assert)' -A8 dav.log | head -50 | tr '\n' '|' | cut -c1-3900) || radicale: $(tail -c 800 "$RUNNER_TEMP/radicale/log" | tr '\n' '|')"; exit 1; }
+          echo "::notice title=CardDAV sync::found the address book, uploaded, downloaded, sent changes and deletions both ways, kept both sides of a conflict ($(grep -E '^test result' dav.log | tail -1))"
+      - name: Passwords in the system keyring (GNOME Keyring through the Secret Service)
+        run: |
+          set -o pipefail
+          dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; HEARTH_KEYRING_TEST=1 cargo test --test keyring -- --nocapture' 2>&1 | tee keyring.log \
+            || { echo "::error title=keyring::$(tail -40 keyring.log | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=keyring::$(grep -E 'secret-tool found it|^test result' keyring.log | tr '\n' ' ')"
+      - name: Build
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=size::$(du -h target/release/hearth-contacts | cut -f1)"
+      - name: Command line (import, list, export)
+        run: |
+          export HEARTH_CONTACTS_DIR="$RUNNER_TEMP/book"
+          for f in tests/fixtures/*.vcf; do ./target/release/hearth-contacts --import "$f"; done
+          ./target/release/hearth-contacts --list | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d), "contacts:", ", ".join(e["contact"]["display"] or e["contact"]["name"]["given"] for e in d)); assert len(d) == 5'
+          ./target/release/hearth-contacts --export "$RUNNER_TEMP/all.vcf"
+          test "$(grep -c BEGIN:VCARD "$RUNNER_TEMP/all.vcf")" = 5
+          ls "$HEARTH_CONTACTS_DIR/books/local"
+      - name: Screenshots of the window
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_CONTACTS_DIR="$RUNNER_TEMP/book"
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          shot() { import -window root "shots/$1.png" || true; }
+          win() { w=$(xdotool search --name '^Contacts$' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true; }
+          dbus-run-session -- ./target/release/hearth-contacts > run.log 2>&1 &
+          sleep 8; win
+          shot list
+          xdotool key Down; sleep 1; xdotool key Down; sleep 1; shot detail
+          xdotool key Return; sleep 1; shot detail-focused
+          xdotool key Escape; sleep 1; xdotool key e; sleep 2; shot edit
+          xdotool key Escape; sleep 1; xdotool key ctrl+f; xdotool type --delay 60 'hop'; sleep 1; shot search
+          xdotool key Escape; sleep 1; xdotool key ctrl+n; sleep 2; xdotool type --delay 40 'Margaret'; xdotool key Tab; xdotool type --delay 40 'Hamilton'; sleep 1; shot new
+          xdotool key ctrl+s; sleep 2; shot saved
+          pkill -f 'target/release/hearth-contacts' || true; sleep 1
+          # Opened with a .vcf file (what double-clicking one does): it offers to add the contacts.
+          dbus-run-session -- ./target/release/hearth-contacts "$PWD/tests/fixtures/google.vcf" > run2.log 2>&1 &
+          sleep 8; win; shot open-vcf
+          pkill -f 'target/release/hearth-contacts' || true
+          ./target/release/hearth-contacts --list | python3 -c 'import json,sys; d=json.load(sys.stdin); n=[e["contact"]["name"]["given"] for e in d]; print(n); assert "Margaret" in n' \
+            && echo "::notice title=window::made and saved a contact with the keyboard" || echo "::warning title=window::the contact typed in the window wasn't saved"
+          echo "::notice title=App output::$(tail -c 1200 run.log | tr '\n' '|')"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-contacts-linux
+          path: |
+            hosts/hearth-contacts/target/release/hearth-contacts
+            hosts/hearth-contacts/shots

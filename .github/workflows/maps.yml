@@ -1,0 +1,121 @@
+# Hearth Maps (hosts/hearth-maps), OpenStreetMap maps for Hearth OS (Linux editions for now; Ember later): unit
+# tests, a light check against the real services (a few map pieces, one search, one route), the build, and
+# screenshots of the window (in the run's hearth-maps-linux artifact). Release builds are made by base-anatase.yml
+# and base-peppermint.yml (the Linux images).
+# "vendor" (when started by hand) downloads the pinned MapLibre GL JS build (vendor.sh) and commits it.
+name: Hearth Maps
+
+on:
+  push:
+    branches: [apps-mail-maps, main, linux-host]
+    paths: ['hosts/hearth-maps/**', 'config/hearth-maps-services.json', '.github/workflows/maps.yml']
+  pull_request:
+    paths: ['hosts/hearth-maps/**', 'config/hearth-maps-services.json', '.github/workflows/maps.yml']
+  workflow_dispatch:
+    inputs:
+      vendor:
+        description: Download the pinned MapLibre GL JS files into ui/vendor and commit them
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  vendor:
+    if: github.event_name == 'workflow_dispatch' && inputs.vendor
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and commit
+        run: |
+          sh hosts/hearth-maps/vendor.sh
+          git config user.name "Dragongamer9"; git config user.email "Dragongamer9@users.noreply.github.com"
+          git add hosts/hearth-maps/ui/vendor
+          if git diff --cached --quiet; then echo "Already up to date"; exit 0; fi
+          git commit -qm "Hearth Maps: vendored MapLibre GL JS (vendor.sh)"
+          git push -q origin "HEAD:refs/heads/${{ github.ref_name }}"
+
+  linux:
+    needs: vendor
+    if: ${{ !cancelled() && (needs.vendor.result == 'success' || needs.vendor.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: hosts/hearth-maps
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-maps
+      - name: The page's files are there
+        run: |
+          for f in maplibre-gl.js maplibre-gl.css LICENSE-maplibre-gl.txt; do
+            test -s "ui/vendor/$f" || { echo "::error title=vendor::ui/vendor/$f is missing: run this workflow by hand with 'vendor' ticked"; exit 1; }
+          done
+          node --check ui/app.js
+          cat ui/vendor/VERSIONS
+      - name: WebKit, GTK and the screenshot tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick xdotool dbus-x11 >/dev/null
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          cargo test --lib 2>&1 | tee test.log || { echo "::error title=tests::$(grep -E '^(error|---- |thread .* panicked)' -A10 test.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: The real services, lightly (OpenFreeMap, Nominatim, FOSSGIS OSRM)
+        run: |
+          set -o pipefail
+          HEARTH_MAPS_LIVE=1 cargo test --test live -- --nocapture 2>&1 | tee live.log \
+            || { echo "::error title=services::$(grep -E '(panicked|error|style|tile|found|on foot)' -A4 live.log | head -40 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=services::$(grep -E '^(style|tile|found|what|on foot)' live.log | tr '\n' '|' | cut -c1-3000)"
+      - name: Build
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=size::$(du -h target/release/hearth-maps | cut -f1)"
+          ./target/release/hearth-maps --version
+      - name: Screenshots of the window
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_MAPS_DATA="$RUNNER_TEMP/maps-data" HEARTH_MAPS_CACHE="$RUNNER_TEMP/maps-cache" HEARTH_MAPS_NO_REMOTE=1
+          mkdir -p "$HEARTH_MAPS_DATA"
+          echo '{"lat":51.5072,"lon":-0.1276,"zoom":13.5,"style":"liberty"}' > "$HEARTH_MAPS_DATA/view.json"
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          shot() { import -window root "shots/$1.png" || true; }
+          win() { w=$(xdotool search --name '^Maps$' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true; }
+          stop() { pkill -f 'target/release/hearth-maps' || true; sleep 1; }
+          ./target/release/hearth-maps > run.log 2>&1 &
+          sleep 15; win; shot map
+          xdotool key Escape; sleep 1; xdotool key m; sleep 2; shot layers
+          xdotool key Escape Escape; sleep 1
+          stop
+          # A search (one Nominatim request), as "hearth-maps --search" does.
+          ./target/release/hearth-maps --search "British Museum, London" > run-search.log 2>&1 &
+          sleep 15; win; shot search
+          stop
+          # A geo: link (what clicking one does), in the dark style.
+          echo '{"lat":0,"lon":0,"zoom":2,"style":"dark"}' > "$HEARTH_MAPS_DATA/view.json"
+          ./target/release/hearth-maps "geo:48.8584,2.2945?z=16" > run-geo.log 2>&1 &
+          sleep 15; win; shot geo-dark
+          xdotool key ctrl+d; sleep 2; shot directions
+          stop
+          du -sh "$HEARTH_MAPS_CACHE" | sed 's/^/::notice title=offline copies::/'
+          for f in run.log run-search.log run-geo.log; do echo "::notice title=$f::$(tail -c 800 $f | tr '\n' '|')"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-maps-linux
+          path: |
+            hosts/hearth-maps/target/release/hearth-maps
+            hosts/hearth-maps/shots
