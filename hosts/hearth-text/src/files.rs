@@ -115,7 +115,7 @@ pub fn open(path: &Path, mode: &str, encoding: Option<&str>) -> Result<Opened, S
         (buf, None)
     };
     let shown = bytes.len() as u64;
-    let decoded = textfile::decode(&bytes, encoding);
+    let decoded = textfile::decode_with(&bytes, encoding, part.is_some());
     let shown_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     Ok(Opened {
         path: display_path(&shown_path),

@@ -33,7 +33,7 @@ pub fn looks_binary(bytes: &[u8]) -> bool {
 /// UTF-16 without a byte-order mark: plain-ASCII text in UTF-16 has a NUL in every other byte.
 fn utf16_guess(head: &[u8]) -> Option<&'static str> {
     let n = head.len() / 2;
-    if n < 2 { return None; }
+    if n < 8 { return None; }
     let (mut even, mut odd) = (0usize, 0usize);
     for (i, b) in head[..n * 2].iter().enumerate() {
         if *b == 0 { if i % 2 == 0 { even += 1 } else { odd += 1 } }
@@ -44,7 +44,10 @@ fn utf16_guess(head: &[u8]) -> Option<&'static str> {
 }
 
 /// The encoding the bytes are most likely in, and whether they start with a byte-order mark.
-pub fn detect(bytes: &[u8]) -> (&'static str, bool) {
+pub fn detect(bytes: &[u8]) -> (&'static str, bool) { detect_with(bytes, false) }
+
+/// `partial`: the bytes are only the start of a bigger file, so a character cut off at the very end is fine.
+pub fn detect_with(bytes: &[u8], partial: bool) -> (&'static str, bool) {
     if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) { return ("utf-8", true); }
     if bytes.starts_with(&[0xFF, 0xFE]) { return ("utf-16le", true); }
     if bytes.starts_with(&[0xFE, 0xFF]) { return ("utf-16be", true); }
@@ -52,8 +55,8 @@ pub fn detect(bytes: &[u8]) -> (&'static str, bool) {
     if let Some(e) = utf16_guess(head) { return (e, false); }
     match std::str::from_utf8(bytes) {
         Ok(_) => ("utf-8", false),
-        // Only cut off at the very end (a big file shown in part): still UTF-8.
-        Err(e) if e.error_len().is_none() => ("utf-8", false),
+        // Only cut off at the very end of a big file shown in part: still UTF-8.
+        Err(e) if partial && e.error_len().is_none() => ("utf-8", false),
         Err(_) => ("latin-1", false),
     }
 }
@@ -68,8 +71,11 @@ fn bom_len(enc: &str, bytes: &[u8]) -> usize {
 }
 
 /// Turns the file's bytes into text, in `force` if it's given (Reopen with encoding), else the detected one.
-pub fn decode(bytes: &[u8], force: Option<&str>) -> Decoded {
-    let (det, _) = detect(bytes);
+pub fn decode(bytes: &[u8], force: Option<&str>) -> Decoded { decode_with(bytes, force, false) }
+
+/// decode() for bytes that may be only part of the file (`partial`, see detect_with).
+pub fn decode_with(bytes: &[u8], force: Option<&str>, partial: bool) -> Decoded {
+    let (det, _) = detect_with(bytes, partial);
     let binary = force.is_none() && looks_binary(bytes);
     let enc = if binary { "latin-1" } else { force.filter(|f| ENCODINGS.contains(f)).unwrap_or(det) };
     let skip = bom_len(enc, bytes);
@@ -78,7 +84,7 @@ pub fn decode(bytes: &[u8], force: Option<&str>) -> Decoded {
     let raw: String = match enc {
         "utf-8" => match std::str::from_utf8(body) {
             Ok(s) => s.to_string(),
-            Err(e) if e.error_len().is_none() => String::from_utf8_lossy(&body[..e.valid_up_to()]).into_owned(),
+            Err(e) if partial && e.error_len().is_none() => String::from_utf8_lossy(&body[..e.valid_up_to()]).into_owned(),
             Err(_) => { lossy = true; String::from_utf8_lossy(body).into_owned() }
         },
         "utf-16le" | "utf-16be" => {
@@ -175,9 +181,9 @@ mod tests {
         let le: Vec<u8> = [0xFF, 0xFE].into_iter().chain("hé\r\n".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
         let d = decode(&le, None);
         assert_eq!((d.text.as_str(), d.encoding.as_str(), d.bom, d.eol.as_str()), ("hé\n", "utf-16le", true, "crlf"));
-        let be: Vec<u8> = "plain ascii text".encode_utf16().flat_map(|u| u.to_be_bytes()).collect();
+        let be: Vec<u8> = "plain ascii text, long enough".encode_utf16().flat_map(|u| u.to_be_bytes()).collect();
         let d = decode(&be, None);
-        assert_eq!((d.text.as_str(), d.encoding.as_str(), d.bom, d.binary), ("plain ascii text", "utf-16be", false, false));
+        assert_eq!((d.text.as_str(), d.encoding.as_str(), d.bom, d.binary), ("plain ascii text, long enough", "utf-16be", false, false));
     }
 
     #[test]
@@ -201,8 +207,10 @@ mod tests {
     fn cut_off_utf8_is_still_utf8() {
         let mut b = "aé".as_bytes().to_vec();
         b.pop();
-        let d = decode(&b, None);
+        let d = decode_with(&b, None, true);
         assert_eq!((d.encoding.as_str(), d.text.as_str(), d.lossy), ("utf-8", "a", false));
+        // The whole file ending that way isn't UTF-8.
+        assert_eq!(decode(&b, None).encoding, "latin-1");
     }
 
     #[test]
