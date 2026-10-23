@@ -385,6 +385,9 @@ impl Bridge {
             "remote.unpair" => crate::remote::unpair(&req("uuid")?).map(|v| json!(v)),
             "remote.login" => crate::remote::login(a["user"].as_str().unwrap_or(""), a["pass"].as_str().unwrap_or("")).map(|v| json!(v)),
             "moonlight.open" => Ok(json!(crate::remote::open_moonlight())),
+            // ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect), from Game Mode
+            "linkapps.open" => crate::link_apps::open(a["app"].as_str().unwrap_or("")).map(|_| json!({"ok": true})),
+            // ---- end of Nearby Share and Hearth Connect
             "moonlight.install" => crate::remote::install_moonlight().map(|v| json!(v)),
             // ---- Hearth's gaming apps (gaming_apps.rs): Controller Lab, Saves and Mods, opened on a game
             "gamingApps.open" => crate::gaming_apps::open(&req("app")?, a["game"].as_str(), crate::signin_handoff::game_mode()).map(|_| json!({"ok": true})),
