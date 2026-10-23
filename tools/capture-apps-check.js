@@ -27,7 +27,7 @@ const steps = {
   ],
   share: [
     ['share-start', async p => {}],
-    ['share-browser', async p => { await p.click('[data-act="web-start"]'); await p.waitForSelector('#url'); }],
+    ['share-browser', async p => { await p.click('[data-act="web-start"]'); await p.waitForSelector('.url'); }],
     ['share-moonlight', async p => { await p.click('[data-act="tab"][data-tab="moonlight"]'); await p.waitForTimeout(300); }],
   ],
 };

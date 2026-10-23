@@ -1,0 +1,33 @@
+[package]
+name = "hearth-share"
+version = "0.1.0"
+edition = "2021"
+description = "Hearth Share: show this screen on a TV, phone or another PC (Moonlight through Hearth's Remote play, or any web browser on the network)"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "hearth_share"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-share"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hearth-media = { path = "../hearth-media" }
+
+# Moonlight: Hearth's own Remote play (Sunshine), the same code as Settings › Remote play (hearth-core's remote.rs).
+[target.'cfg(target_os = "linux")'.dependencies]
+hearth-core = { path = "../hearth-core" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

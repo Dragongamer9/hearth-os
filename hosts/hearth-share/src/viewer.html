@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Hearth Share</title>
+<style>
+html, body { margin:0; height:100%; background:#000; color:#f4ece3; font:16px system-ui, "Segoe UI", sans-serif; overflow:hidden; }
+#screen { position:fixed; inset:0; width:100%; height:100%; object-fit:contain; }
+#bar { position:fixed; left:50%; bottom:max(16px, env(safe-area-inset-bottom)); transform:translateX(-50%); display:flex; gap:8px; align-items:center;
+  background:rgba(23,17,14,.82); border:1px solid #3b2e26; border-radius:99px; padding:6px 8px 6px 14px; transition:opacity .4s; backdrop-filter:blur(6px); }
+#bar.hide { opacity:0; pointer-events:none; }
+#bar b { color:#ff8a3d; font-weight:650; margin-right:4px; }
+button { font:inherit; color:#f4ece3; background:#33271f; border:1px solid #4a372b; border-radius:99px; padding:8px 14px; cursor:pointer; }
+button:focus { outline:none; box-shadow:0 0 0 3px #ff8a3d; }
+#msg { position:fixed; inset:0; display:grid; place-items:center; text-align:center; padding:2em; color:#a69484; pointer-events:none; }
+</style>
+</head>
+<body>
+<img id="screen" alt="">
+<div id="msg">Connecting to Hearth…</div>
+<div id="bar"><b>Hearth Share</b><button id="snd" hidden>Sound on</button><button id="fs">Full screen</button></div>
+<audio id="audio" preload="none"></audio>
+<script>
+'use strict';
+var SOUND = '{{SOUND}}' === '1', SOUNDFILE = '{{SOUNDFILE}}';
+var img = document.getElementById('screen'), msg = document.getElementById('msg'), bar = document.getElementById('bar');
+var audio = document.getElementById('audio'), snd = document.getElementById('snd'), fs = document.getElementById('fs');
+var n = 0, hideTimer = 0, last = Date.now();
+function connect() { img.src = 'live.mjpg?n=' + (n++); }
+img.onload = function () { msg.style.display = 'none'; last = Date.now(); };
+img.onerror = function () { msg.style.display = ''; msg.textContent = 'Hearth stopped sharing, or the connection dropped. Trying again…'; setTimeout(connect, 2000); };
+connect();
+if (SOUND) {
+  snd.hidden = false;
+  snd.onclick = function () {
+    if (audio.paused) { audio.src = SOUNDFILE + '?n=' + (n++); audio.play().then(function () { snd.textContent = 'Sound off'; }).catch(function () { snd.textContent = 'Sound on'; }); }
+    else { audio.pause(); audio.removeAttribute('src'); audio.load(); snd.textContent = 'Sound on'; }
+  };
+  // Sound drifts behind the picture over time: jump to the newest.
+  setInterval(function () { if (!audio.paused && audio.buffered.length && audio.buffered.end(audio.buffered.length - 1) - audio.currentTime > 1.5) audio.currentTime = audio.buffered.end(audio.buffered.length - 1) - 0.2; }, 3000);
+}
+fs.onclick = function () {
+  var d = document.documentElement;
+  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else if (d.requestFullscreen) d.requestFullscreen(); else if (d.webkitRequestFullscreen) d.webkitRequestFullscreen(); else if (img.webkitEnterFullscreen) img.webkitEnterFullscreen();
+};
+function wake() { bar.classList.remove('hide'); clearTimeout(hideTimer); hideTimer = setTimeout(function () { bar.classList.add('hide'); }, 4000); }
+['mousemove', 'touchstart', 'keydown', 'click'].forEach(function (e) { document.addEventListener(e, wake); });
+wake();
+</script>
+</body>
+</html>
