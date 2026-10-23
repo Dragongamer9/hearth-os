@@ -1,0 +1,6 @@
+target/
+gen/
+Cargo.lock
+# Made from tools/build-docs.py at build time (build.rs), so the help always matches the website.
+ui/help.json
+shots/

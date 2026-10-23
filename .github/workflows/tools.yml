@@ -1,0 +1,122 @@
+# Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
+# Scanner and Welcome & Tips, in one program. Tests it (Rust unit tests, hearthfetch's library it shares, the
+# hearth-admin commands it uses, the Welcome help made from the docs), builds it, asks it real questions on the
+# runner without a window (--call), checks every page in Chromium on its sample data, and takes a screenshot of
+# each tool's real window (the run's hearth-tools-linux artifact). Release builds are made by base-anatase.yml and
+# base-peppermint.yml (the Linux images). Linux only for now: Ember (Windows) gets these tools later.
+name: Hearth Tools
+
+on:
+  push:
+    branches: [apps-system, main, linux-host]
+    paths: ['hosts/hearth-tools/**', 'hosts/hearthfetch/**', 'hosts/hearth-core/**', 'hosts/hearth-disks/**', 'tools/build-docs.py',
+            'branding/icons/apps/**', 'os/system_files/usr/libexec/nimbus/hearth-admin', 'hosts/linux/test/test_hearth_system_tools.py', '.github/workflows/tools.yml']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            hosts/hearth-tools
+            hosts/hearthfetch
+      - name: WebKit and GTK, and the programs the tools run
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick dbus-x11 xdotool sane-utils traceroute iputils-tracepath iw udisks2 >/dev/null
+      - name: The hearth-admin commands and the Welcome help (Python)
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_system_tools.py' -v 2>&1 | tail -15
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_settings_basics.py' 2>&1 | tail -3
+          python3 tools/build-docs.py --help-json - | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d["sections"]), "help sections,", len(d["controls"]), "controller buttons")'
+      - name: hearthfetch (its detection is now a library System Info uses)
+        working-directory: hosts/hearthfetch
+        run: |
+          set -o pipefail
+          cargo test 2>&1 | tee test.log || { echo "::error title=hearthfetch tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 test.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          cargo run --release -q -- --no-logo
+      - name: Unit tests
+        working-directory: hosts/hearth-tools
+        run: |
+          set -o pipefail
+          cargo test --lib 2>&1 | tee test.log || { echo "::error title=unit tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A8 test.log | head -70 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        working-directory: hosts/hearth-tools
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -70 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          ls -l target/release/hearth-tools
+          echo "::notice title=size::$(du -h target/release/hearth-tools | cut -f1)"
+      - name: Real answers without a window (--call)
+        working-directory: hosts/hearth-tools
+        run: |
+          t=target/release/hearth-tools
+          $t --list-apps
+          ask() { a="$2"; [ -n "$a" ] || a='{}'; echo "=== $1 $a"; if out=$($t --call "$1" "$a" 2>&1); then echo "$out" | head -c 2500; echo; else echo "::warning title=$1::$(echo "$out" | tail -c 600 | tr '\n' '|')"; fi; }
+          ask sys.overview
+          ask du.places
+          ask du.scan '{"path":"/usr/share"}'
+          ask logs.boots
+          ask logs.query '{"priority":4,"limit":30}'
+          ask logs.query '{"source":"user","limit":10}'
+          ask logs.apps
+          ask net.overview
+          ask net.connections
+          ask net.usage
+          ask net.dns '{"name":"hearthos.fun","type":"A","server":"1.1.1.1"}'
+          ask net.dns '{"name":"github.com","type":"MX"}'
+          ask net.dns '{"name":"1.1.1.1"}'
+          ask net.ping '{"host":"1.1.1.1","count":2}'
+          ask print.state
+          ask scan.devices
+          ask app.info
+          # Must fail: bad input is refused before anything runs.
+          if $t --call net.ping '{"host":"-f 1.1.1.1"}' 2>/dev/null; then echo "::error::a bad host was accepted"; exit 1; fi
+          if $t --call du.trash '{"paths":["/usr"]}' 2>/dev/null; then echo "::error::trashing /usr was accepted"; exit 1; fi
+          if $t --call keys.wifiReveal '{"uuid":"--help","password":"x"}' 2>/dev/null; then echo "::error::a bad uuid was accepted"; exit 1; fi
+          # The speed test reaches Cloudflare from here (not fatal: the runner's network varies).
+          ask net.speed
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Every page on its sample data (Chromium)
+        working-directory: hosts/hearth-tools
+        run: |
+          set -o pipefail
+          npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node tests/pages.js
+      - name: Screenshots of each tool's real window
+        working-directory: hosts/hearth-tools
+        run: |
+          mkdir -p shots/app
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          eval "$(dbus-launch --sh-syntax)"
+          for app in disk-usage system-info logs network passwords printers welcome; do
+            ./target/release/hearth-tools --app "$app" > "shots/app/$app.log" 2>&1 &
+            pid=$!
+            sleep 9
+            import -window root "shots/app/$app.png" || true
+            xdotool key Down; sleep 0.4; xdotool key Down; sleep 0.4; xdotool key Right; sleep 1
+            import -window root "shots/app/$app-moved.png" || true
+            kill $pid 2>/dev/null; sleep 1
+            echo "::notice title=$app window::$(tail -c 400 "shots/app/$app.log" | tr '\n' '|')"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-tools-linux
+          path: |
+            hosts/hearth-tools/target/release/hearth-tools
+            hosts/hearth-tools/shots

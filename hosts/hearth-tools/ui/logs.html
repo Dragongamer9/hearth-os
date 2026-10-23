@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logs</title>
+<link rel="stylesheet" href="common.css">
+<style>
+.filters { display:flex; flex-wrap:wrap; gap:.5em .8em; align-items:center; margin-bottom:.5em; }
+.filters select.inp { width:auto; min-width:11em; max-width:22em; }
+.filters .search { flex:1; min-width:12em; }
+.banner { padding:.55em .9em; border-radius:12px; background:#2a1d10; border:1px solid #5c4322; margin-bottom:.5em; display:flex; gap:.8em; align-items:center; flex-wrap:wrap; }
+.log { flex:1; font-family:var(--mono); font-size:.8em; }
+.e { display:grid; grid-template-columns:auto auto 1fr; gap:.15em .8em; padding:.25em .55em; border-radius:8px; text-align:left; width:100%; background:transparent; border:0; border-left:3px solid transparent; }
+.e:nth-child(odd) { background:rgba(255,255,255,.018); }
+.e .tm { color:var(--faint); white-space:nowrap; }
+.e .ap { color:var(--sky); white-space:nowrap; max-width:14em; overflow:hidden; text-overflow:ellipsis; }
+.e .ms { white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; -webkit-user-select:text; }
+.e.p0, .e.p1, .e.p2 { border-left-color:var(--danger); } .e.p0 .ms, .e.p1 .ms, .e.p2 .ms { color:#ffb3a1; font-weight:600; }
+.e.p3 { border-left-color:var(--danger); } .e.p3 .ms { color:#ffc9bd; }
+.e.p4 { border-left-color:var(--flame); } .e.p4 .ms { color:#ffe2a6; }
+.e.p7 .ms { color:var(--muted); }
+.e.open { background:var(--panel2); }
+.e .more { grid-column:1 / -1; color:var(--muted); font-size:.95em; }
+mark { background:rgba(255,138,61,.35); color:inherit; border-radius:3px; }
+.count { color:var(--muted); font-size:.85em; }
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<script>
+'use strict';
+const { $, $$, esc } = H;
+const S = { tab: 'system', boots: [], apps: [], files: [], file: '', boot: 0, priority: 6, app: '', since: 0, search: '', entries: [], limited: false, admin: false, loading: false, open: -1, note: '' };
+H.shell({ title: 'Logs', sub: 'What your system and Hearth have been saying', tabs: [{ id: 'system', label: 'System' }, { id: 'user', label: 'Your session' }, { id: 'hearth', label: 'Hearth' }],
+  onTab: t => { S.tab = t; S.app = ''; S.open = -1; renderFilters(); load(); }, hints: [['X', 'Send to the developer'], ['Y', 'Refresh']] });
+H.actions('<button class="btn f" id="export">Save as file</button><button class="btn primary f" id="send">Send to the developer</button>');
+$('#export').onclick = exportLog;
+$('#send').onclick = sendLog;
+H.S.alt = sendLog;
+H.S.refresh = () => load();
+
+const LEVELS = [[3, 'Errors'], [4, 'Warnings'], [6, 'Normal'], [7, 'Everything']];
+const SINCE = [[0, 'Any time'], [15, '15 min'], [60, 'Hour'], [1440, 'Day']];
+function looking() {
+  const lv = LEVELS.find(l => l[0] === S.priority)?.[1] || '';
+  if (S.tab === 'hearth') return `Hearth's ${(S.files.find(f => f.id === S.file) || {}).name || 'log'}, ${lv.toLowerCase()}${S.search ? `, "${S.search}"` : ''}`;
+  const b = S.boot === 0 ? 'this start' : `start ${S.boot}`;
+  return `${S.tab === 'user' ? 'session' : 'system'} journal, ${b}, ${lv.toLowerCase()}${S.app ? ', ' + S.app : ''}${S.since ? `, last ${S.since} min` : ''}${S.search ? `, "${S.search}"` : ''}`;
+}
+
+function renderFrame() {
+  $('#main').innerHTML = `<div class="filters" id="filters"></div><div id="banner"></div><div class="row" style="margin-bottom:.3em"><span class="count" id="count"></span></div><div class="scroll log" id="log"></div>`;
+  renderFilters();
+}
+function renderFilters() {
+  const f = $('#filters'); if (!f) return;
+  const bootOpts = S.boots.length ? S.boots.map(b => `<option value="${b.index}"${b.index === S.boot ? ' selected' : ''}>${b.index === 0 ? 'This start' : 'Start ' + b.index}${b.first ? ' · ' + (typeof b.first === 'number' ? H.when(b.first) : esc(b.first)) : ''}</option>`).join('') : '<option value="0">This start</option>';
+  f.innerHTML = (S.tab === 'hearth'
+      ? `<select class="inp f" id="file">${S.files.map(x => `<option value="${esc(x.id)}"${x.id === S.file ? ' selected' : ''}>${esc(x.name)}</option>`).join('') || '<option>No Hearth logs yet</option>'}</select>`
+      : `<select class="inp f" id="boot" title="Which start of the device">${bootOpts}</select>
+         <select class="inp f" id="app" title="One app"><option value="">Every app</option>${S.apps.map(a => `<option${a === S.app ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>`)
+    + `<span class="chips">${LEVELS.map(([v, l]) => `<button class="chip f${v === S.priority ? ' on' : ''}" data-pri="${v}">${l}</button>`).join('')}</span>`
+    + (S.tab === 'hearth' ? '' : `<span class="chips">${SINCE.map(([v, l]) => `<button class="chip f${v === S.since ? ' on' : ''}" data-since="${v}">${l}</button>`).join('')}</span>`)
+    + `<input class="inp search f" id="search" data-osk="1" placeholder="Search the messages" value="${esc(S.search)}">`;
+  if ($('#boot')) $('#boot').onchange = e => { S.boot = +e.target.value; S.app = ''; loadApps(); load(); };
+  if ($('#app')) $('#app').onchange = e => { S.app = e.target.value; load(); };
+  if ($('#file')) $('#file').onchange = e => { S.file = e.target.value; load(); };
+  $$('[data-pri]').forEach(b => b.onclick = () => { S.priority = +b.dataset.pri; renderFilters(); load(); $(`[data-pri="${S.priority}"]`)?.focus(); });
+  $$('[data-since]').forEach(b => b.onclick = () => { S.since = +b.dataset.since; renderFilters(); load(); $(`[data-since="${S.since}"]`)?.focus(); });
+  let t = 0;
+  $('#search').addEventListener('input', e => { clearTimeout(t); t = setTimeout(() => { S.search = e.target.value.trim(); load(); }, 350); });
+  $('#search').addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(t); S.search = e.target.value.trim(); load(); } });
+}
+
+const two = n => String(n).padStart(2, '0');
+function time(e) {
+  if (e.time) return e.time;
+  if (!e.t) return '';
+  const d = new Date(e.t); const today = new Date().toDateString() === d.toDateString();
+  return (today ? '' : `${d.getMonth() + 1}/${d.getDate()} `) + `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
+}
+function hl(text) {
+  const t = esc(text);
+  if (!S.search) return t;
+  const q = esc(S.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return t.replace(new RegExp(q, 'gi'), m => `<mark>${m}</mark>`);
+}
+function renderLog(keepScroll = false) {
+  const el = $('#log'); if (!el) return;
+  const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  if (S.loading && !S.entries.length) { el.innerHTML = '<div class="empty"><span class="spinner"></span> Reading…</div>'; return; }
+  el.innerHTML = S.entries.length ? S.entries.map((e, i) => `<button class="e f p${e.p}${i === S.open ? ' open' : ''}" data-i="${i}"><span class="tm">${esc(time(e))}</span><span class="ap">${esc(e.app || '')}</span><span class="ms">${hl(e.msg)}</span>${i === S.open ? `<span class="more">${['Level ' + e.p + ' (' + ['emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug'][e.p] + ')', e.pid && 'process ' + e.pid, e.unit].filter(Boolean).map(esc).join(' · ')} · <u data-copy="${i}">Copy this line</u></span>` : ''}</button>`).join('')
+    : `<div class="empty">${S.note ? esc(S.note) : 'Nothing matches. Try "Everything", another start, or fewer words.'}</div>`;
+  $$('.e', el).forEach(b => b.onclick = ev => {
+    const i = +b.dataset.i;
+    if (ev.target.dataset.copy) { const e = S.entries[i]; H.copy(`${time(e)} ${e.app || ''} ${e.msg}`); return; }
+    S.open = S.open === i ? -1 : i; renderLog(true); $(`.e[data-i="${i}"]`)?.focus({ preventScroll: true });
+  });
+  const errs = S.entries.filter(e => e.p <= 3).length, warns = S.entries.filter(e => e.p === 4).length;
+  $('#count').textContent = `${S.entries.length.toLocaleString()} lines${errs ? ` · ${errs} errors` : ''}${warns ? ` · ${warns} warnings` : ''} · newest at the bottom`;
+  if (!keepScroll && (atEnd || !el.dataset.seen)) { el.scrollTop = el.scrollHeight; el.dataset.seen = '1'; }
+  $('#banner').innerHTML = S.limited && S.tab === 'system' ? `<div class="banner"><span class="grow">Only the logs your account may read are shown. The whole system's journal needs permission.</span><button class="btn small f" id="all">Show everything</button></div>` : '';
+  if ($('#all')) $('#all').onclick = () => { S.admin = true; load(); };
+}
+
+let seq = 0;
+async function load() {
+  const my = ++seq;
+  S.loading = true; S.note = ''; renderLog();
+  try {
+    let r;
+    if (S.tab === 'hearth') {
+      if (!S.files.length) { S.files = (await H.call('logs.files')).files; S.file = S.file || (S.files[0] && S.files[0].id) || ''; renderFilters(); }
+      r = S.file ? await H.call('logs.file', { id: S.file, priority: S.priority, search: S.search }) : { entries: [] };
+    } else {
+      r = await H.call('logs.query', { source: S.tab, boot: S.boot, priority: S.priority, app: S.app, sinceMin: S.since, search: S.search, admin: S.admin ? 'yes' : '' });
+    }
+    if (my !== seq) return;
+    S.entries = r.entries || []; S.limited = !!r.limited; S.note = r.note || ''; S.open = -1;
+  } catch (e) { if (my !== seq) return; S.entries = []; S.note = String(e); if (S.admin) S.admin = false; }
+  S.loading = false; renderLog();
+}
+async function loadApps() {
+  try { S.apps = (await H.call('logs.apps', { source: S.tab, boot: S.boot })).apps; renderFilters(); } catch (e) { /* the filter just stays "Every app" */ }
+}
+
+async function exportLog() {
+  if (!S.entries.length) { H.toast('Nothing to save'); return; }
+  const text = `Logs · ${looking()}\n\n` + S.entries.map(e => `${time(e)}  ${e.app || ''}  ${e.msg}`).join('\n') + '\n';
+  try { const r = await H.call('logs.export', { text, label: S.tab }); H.toast('Saved as ' + r.path); } catch (e) { H.fail(e); }
+}
+async function sendLog() {
+  let note = '';
+  const ok = await H.dialog({ title: 'Send to the developer', html: `<p class="muted">This sends Hearth's bug report (the same as Settings › System › Send logs): Hearth's logs and the system's recent errors, with your name, e-mail addresses and passwords taken out. A copy is saved in your home folder.</p>
+      <p class="muted">What happened? (optional)</p><input class="inp f" id="note" data-osk="1" placeholder="The game froze when I…">`,
+    buttons: [{ label: 'Cancel', value: false }, { label: 'Send', value: true, primary: true }], onOpen: d => { $('#note', d).addEventListener('input', e => { note = e.target.value; }); } });
+  if (!ok) return;
+  H.toast('Sending… (up to a minute)');
+  try {
+    const r = await H.job('logs.send', { note, looking: looking() });
+    await H.dialog({ title: 'Sent', html: `<p>Your code is <b style="font-size:1.4em;color:var(--ember)">${esc(r.code)}</b></p><p class="muted">Give this code to the developer (on GitHub or wherever you're talking). It's kept for 14 days. Saved as ${esc(r.path)}.</p>`,
+      buttons: [{ label: 'Copy the code', value: 'copy' }, { label: 'Done', value: true, primary: true }] }).then(v => { if (v === 'copy') H.copy(r.code); });
+  } catch (e) { H.fail(e); }
+}
+
+// ---------------------------------------------------------------- without the app: sample logs
+H.demo.call = (m, a) => {
+  const now = Date.now();
+  const sys = [[6, 'kernel', 'usb 3-2: new full-speed USB device number 4 using xhci_hcd'], [6, 'NetworkManager', 'device (wlan0): state change: activated -> activated'], [4, 'hhd', 'Controller emulation: gyro not found, using defaults'],
+    [3, 'kernel', 'amdgpu 0000:c4:00.0: [drm] *ERROR* dc_dmub_srv_log_diagnostic_data: DMCUB error'], [6, 'systemd', 'Started Hearth session watchdog.'], [5, 'bluetoothd', 'Xbox Wireless Controller connected'],
+    [6, 'gamescope', 'Running with 1920x1080@120'], [3, 'pipewire', 'spa.alsa: hw:1: snd_pcm_avail after recover: Broken pipe'], [6, 'nimbus', 'library: 214 games (Steam 180, Epic 21, GOG 13)']];
+  if (m === 'logs.boots') return { boots: [{ index: 0, first: now - 7200e3 }, { index: -1, first: now - 86400e3 }, { index: -2, first: now - 3 * 86400e3 }] };
+  if (m === 'logs.apps') return { apps: ['bluetoothd', 'gamescope', 'hhd', 'kernel', 'NetworkManager', 'nimbus', 'pipewire', 'systemd'] };
+  if (m === 'logs.query') { let e = sys.map(([p, app, msg], i) => ({ t: now - (sys.length - i) * 61e3, p, app, msg, pid: String(800 + i) })); e = e.filter(x => x.p <= a.priority && (!a.app || x.app === a.app) && (!a.search || x.msg.toLowerCase().includes(a.search.toLowerCase()))); return { entries: e, limited: a.source === 'system' && !a.admin }; }
+  if (m === 'logs.files') return { files: [{ id: 'bridge', name: 'Hearth (Game Mode)' }, { id: 'session', name: 'Session (starting Game Mode and Desktop Mode)' }] };
+  if (m === 'logs.file') return { entries: [{ time: '10:02:11', p: 6, msg: 'store.steam ok 41ms' }, { time: '10:02:15', p: 3, msg: 'artcache: download failed: timeout' }] };
+  throw 'This is a preview.';
+};
+H.demo.job = () => ({ code: 'K7Q2-9XPA', path: '~/Hearth-logs-2026-10-22-10-30.txt' });
+
+renderFrame();
+(async () => {
+  try { S.boots = (await H.call('logs.boots')).boots || []; } catch (e) { /* only "this start" */ }
+  renderFilters(); loadApps(); await load();
+  setTimeout(() => $('[data-tab="system"]')?.focus(), 0);
+})();
+</script>
+</body>
+</html>
