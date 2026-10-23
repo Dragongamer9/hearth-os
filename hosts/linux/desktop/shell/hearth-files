@@ -1345,6 +1345,15 @@ def default_app(mime):
     entries = desktop_entries()
     defaults, _, _ = mimeapps(mime)
     did = next((d for d in defaults if d in entries and usable(entries[d][1])), None)
+    if not did and shutil.which('gio'):
+        # No choice in mimeapps.list: what GLib would pick (its own rules, e.g. the type's parent).
+        try:
+            r = subprocess.run(['gio', 'mime', mime], capture_output=True, text=True, timeout=3)
+            m = re.search(r"Default application for .*?:\s*(\S+\.desktop)", r.stdout)
+            if m and m.group(1) in entries:
+                did = m.group(1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     if not did:
         return None
     f = entries[did][1]
