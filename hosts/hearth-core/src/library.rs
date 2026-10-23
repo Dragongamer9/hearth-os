@@ -489,7 +489,7 @@ impl Library {
             "system": g.system, "frozen": self.frozen.iter().any(|f| f.id == g.id), "stage": g.stage,
         });
         if let Some(b) = &g.beacon {
-            out["beacon"] = json!({"family": b.family, "short": b.short, "ready": b.ready, "blocker": b.blocker(), "edition": b.edition, "viaSteam": b.via_steam,
+            out["beacon"] = json!({"family": b.family, "short": b.short, "ready": b.ready, "blocker": b.blocker(), "edition": b.edition, "viaSteam": b.via_steam, "custom": b.custom,
                 "issues": b.issues.iter().map(|(l, m)| json!({"level": l, "message": m})).collect::<Vec<_>>(),
                 "mod": b.selected_mod, "mods": b.mods.iter().map(|m| json!({"id": m.id, "name": m.name, "kind": m.kind})).collect::<Vec<_>>()});
         }
