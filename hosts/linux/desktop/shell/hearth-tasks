@@ -7,6 +7,9 @@
   hearth-tasks kill PID              force it closed (SIGKILL)
   hearth-tasks startup               JSON: things that start on their own (services, autostart apps, Steam)
   hearth-tasks startup-set ID on|off turn one of them on or off
+  hearth-tasks autostart-run         start the autostart apps that are on (~/.config/autostart, /etc/xdg/autostart),
+                                     as a desktop does when you sign in (labwc's autostart runs it in Desktop Mode)
+  hearth-tasks autostart-plan        JSON: what autostart-run would start, and why the others are skipped
 
 Everything is read from /proc and /sys directly. CPU use needs two samples: the previous one is kept in
 $XDG_RUNTIME_DIR (or the helper waits 250 ms when there's none). Only your own processes are listed or
@@ -1057,6 +1060,118 @@ def startup_set(item, on):
     return {'id': item, 'on': on}
 
 
+# ---------------------------------------------------------------------- starting the autostart apps
+# Desktop Mode starts the XDG autostart apps that are on, like GNOME and KDE do (Discord, a sync client, a
+# password manager...), with these left out:
+#  - Steam: Hearth starts it when a game needs it, or keeps it in the background (the first Startup item);
+#    Steam's own "Run Steam when my computer starts" would start it a second time,
+#  - Hearth's own (they're started by the session already),
+#  - parts of other desktops Desktop Mode has its own of (password prompts, notifications, panels, screen
+#    lockers), and anything marked for other desktops only (OnlyShowIn / NotShowIn against XDG_CURRENT_DESKTOP).
+AUTOSTART_SKIP = re.compile(r'polkit|policykit|notification-daemon|notify-osd|dunst|mako|xfce4-notifyd|xscreensaver|'
+                            r'light-locker|xfce4-power-manager|picom|compton|tint2|plank|xfce4-panel|lxpanel|'
+                            r'lxqt-panel|cairo-dock|conky-manager|gnome-shell|plasmashell|kded|org\.kde\.')
+STEAM_EXEC = re.compile(r'(^|/)steam(\.sh)?$|^steam-runtime|com\.valvesoftware\.Steam')
+FIELD_CODES = re.compile(r'%[fFuUdDnNickvm%]')
+
+
+def autostart_argv(execline, fields=None):
+    """argv for an autostart entry's Exec= (no files to open: field codes dropped, %% kept as %)."""
+    try:
+        words = shlex.split(execline)
+    except ValueError:
+        return []
+    out = []
+    for w in words:
+        if w == '%i':
+            if fields and fields.get('Icon'):
+                out += ['--icon', fields['Icon']]
+            continue
+        w = FIELD_CODES.sub(lambda m: '%' if m.group(0) == '%%' else '', w)
+        if w:
+            out.append(w)
+    return out
+
+
+def desktops_now():
+    return [d.strip().lower() for d in (os.environ.get('XDG_CURRENT_DESKTOP') or 'Nimbus:wlroots').split(':') if d.strip()]
+
+
+def autostart_plan(user=None, system=None):
+    """[{file, name, argv, delay, start, why}] for every autostart file (yours over the system's)."""
+    if user is None:
+        user, system = autostart_dirs()
+    files = {}
+    for d in reversed(system or []):
+        for p in glob.glob(os.path.join(d, '*.desktop')):
+            files[os.path.basename(p)] = p
+    for p in glob.glob(os.path.join(user, '*.desktop')):
+        files[os.path.basename(p)] = p
+    here = desktops_now()
+    plan = []
+    for fn in sorted(files):
+        de = parse_desktop(read(files[fn], '') or '')
+        item = {'file': files[fn], 'name': de.get('Name') or fn[:-8], 'argv': [], 'delay': 0, 'start': False, 'why': ''}
+        plan.append(item)
+        only = [x.strip().lower() for x in de.get('OnlyShowIn', '').split(';') if x.strip()]
+        never = [x.strip().lower() for x in de.get('NotShowIn', '').split(';') if x.strip()]
+        argv = autostart_argv(de.get('Exec', ''), de)
+        prog = os.path.basename(argv[0]) if argv else ''
+        joined = ' '.join(argv)
+        if de.get('Type', 'Application') != 'Application':
+            item['why'] = 'not an app'
+        elif not autostart_on(de):
+            item['why'] = 'turned off'
+        elif only and not set(only) & set(here):
+            item['why'] = 'only for ' + de.get('OnlyShowIn', '').strip(';')
+        elif never and set(never) & set(here):
+            item['why'] = 'not for this desktop'
+        elif not argv:
+            item['why'] = 'no command'
+        elif de.get('TryExec') and not shutil.which(os.path.expanduser(de['TryExec'])):
+            item['why'] = de['TryExec'] + " isn't installed"
+        elif not shutil.which(argv[0]) and not (os.path.isabs(argv[0]) and os.access(argv[0], os.X_OK)):
+            item['why'] = argv[0] + " isn't installed"
+        elif de.get('Terminal', 'false').lower() == 'true':
+            item['why'] = 'needs a terminal'
+        elif STEAM_EXEC.search(prog) or any(STEAM_EXEC.search(a) for a in argv[1:3]):
+            item['why'] = 'Hearth starts Steam itself'
+        elif re.search(r'(^|/)(nimbus|hearth)[\w-]*$', prog) or 'nimbus-' in joined:
+            item['why'] = "Hearth's own"
+        elif AUTOSTART_SKIP.search(fn.lower()) or AUTOSTART_SKIP.search(prog.lower()):
+            item['why'] = 'Desktop Mode has its own'
+        else:
+            item['argv'] = argv
+            item['start'] = True
+            try:
+                item['delay'] = max(0, min(120, int(de.get('X-GNOME-Autostart-Delay', '0') or 0)))
+            except ValueError:
+                item['delay'] = 0
+            item['cwd'] = os.path.expanduser(de['Path']) if de.get('Path') else ''
+    return plan
+
+
+def autostart_run(plan=None, spawn=None):
+    plan = autostart_plan() if plan is None else plan
+    started = []
+    home = os.path.expanduser('~')
+    for it in plan:
+        if not it['start']:
+            continue
+        argv = it['argv'] if not it['delay'] else ['sh', '-c', 'sleep "$0"; exec "$@"', str(it['delay'])] + it['argv']
+        cwd = it.get('cwd') if it.get('cwd') and os.path.isdir(it['cwd']) else home
+        try:
+            if spawn:
+                spawn(argv, cwd)
+            else:
+                subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, start_new_session=True)
+            started.append(it['name'])
+        except OSError:
+            pass
+    return {'started': started}
+
+
 # ---------------------------------------------------------------------- main
 def parse_pid(s):
     if not s.isdigit() or int(s) <= 1:
@@ -1078,8 +1193,12 @@ def cmd(argv):
         out = startup()
     elif c == 'startup-set' and len(argv) == 4 and argv[3] in ('on', 'off'):
         out = startup_set(argv[2], argv[3] == 'on')
+    elif c == 'autostart-run' and len(argv) == 2:
+        out = autostart_run()
+    elif c == 'autostart-plan' and len(argv) == 2:
+        out = {'plan': autostart_plan()}
     else:
-        print('usage: hearth-tasks list | perf | end PID | kill PID | startup | startup-set ID on|off')
+        print('usage: hearth-tasks list | perf | end PID | kill PID | startup | startup-set ID on|off | autostart-run | autostart-plan')
         sys.exit(2)
     print(json.dumps(out, separators=(',', ':')))
 
