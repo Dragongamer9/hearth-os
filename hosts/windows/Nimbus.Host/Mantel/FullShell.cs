@@ -11,7 +11,10 @@ namespace Nimbus.Host.Mantel;
 /// - the Windows key opens Mantel's launcher (alone; Win+E, Win+R and other shortcuts still go to Windows),
 /// - the volume keys work (Explorer is what normally handles them) and show Mantel's volume bar,
 /// - Windows+Left/Right snap the window in front to half the screen and Windows+Up/Down maximize, restore or
-///   minimize it (Explorer handles these shortcuts too; dragging a window to an edge still snaps by itself).
+///   minimize it (Explorer handles these shortcuts too; dragging a window to an edge still snaps by itself),
+/// - the other Windows-key shortcuts Explorer would handle: Windows+D / M show the desktop, E opens Files, I Windows
+///   Settings, A Quick Access, N the notifications, S / R the launcher's search, Shift+S the Snipping Tool, 1-9 the
+///   apps on Mantel's taskbar (see <see cref="Shortcut"/>).
 /// Everything is put back when Mantel stops.
 /// </summary>
 internal sealed class FullShell : IDisposable
@@ -26,6 +29,9 @@ internal sealed class FullShell : IDisposable
     public event Action<int>? VolumeKey;
     /// <summary>Ctrl+Shift+Esc (Explorer's shortcut for Task Manager): Hearth Task Manager.</summary>
     public event Action? TaskManagerKey;
+    /// <summary>A Windows-key shortcut Explorer would have handled: showDesktop, files, settings, quick, clock,
+    /// launcher, snip, or task:1 … task:9.</summary>
+    public event Action<string>? Shortcut;
 
     public void Start(int barSize)
     {
@@ -159,10 +165,16 @@ internal sealed class FullShell : IDisposable
             {
                 _winCombo = true;
                 // Windows+arrows (alone, without Ctrl or Shift): snap like Explorer would.
-                if (vk is >= 0x25 and <= 0x28 && (GetAsyncKeyState(0x11) & 0x8000) == 0 && (GetAsyncKeyState(0x10) & 0x8000) == 0)
+                bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0, shift = (GetAsyncKeyState(0x10) & 0x8000) != 0, alt = (GetAsyncKeyState(0x12) & 0x8000) != 0;
+                if (vk is >= 0x25 and <= 0x28 && !ctrl && !shift)
                 {
                     var fg = Native.GetForegroundWindow();
                     ThreadPool.QueueUserWorkItem(_ => Snap(fg, vk));
+                    return (IntPtr)1;
+                }
+                if (!ctrl && !alt && WinShortcut(vk, shift) is { } name)
+                {
+                    Shortcut?.Invoke(name);
                     return (IntPtr)1;
                 }
             }
@@ -179,6 +191,21 @@ internal sealed class FullShell : IDisposable
         }
         return CallNextHookEx(_hook, code, wParam, lParam);
     }
+
+    /// <summary>The name of the Windows-key shortcut for a key (null: not one Mantel handles; Windows+L, V and the
+    /// rest still go to Windows).</summary>
+    internal static string? WinShortcut(int vk, bool shift) => (vk, shift) switch
+    {
+        (0x44, false) or (0x4D, false) => "showDesktop",   // D, M
+        (0x45, false) => "files",                           // E
+        (0x49, false) => "settings",                        // I
+        (0x41, false) => "quick",                           // A
+        (0x4E, false) => "clock",                           // N
+        (0x53, true) => "snip",                             // Shift+S
+        (0x53, false) or (0x52, false) => "launcher",       // S, R
+        ( >= 0x31 and <= 0x39, false) => "task:" + (vk - 0x30),   // 1-9
+        _ => null,
+    };
 
     /// <summary>Windows+Left/Right: the left or right half of the work area (beside Mantel's taskbar); Up: maximize;
     /// Down: restore a maximized window, else minimize it. Windows' invisible resize borders are allowed for.</summary>
