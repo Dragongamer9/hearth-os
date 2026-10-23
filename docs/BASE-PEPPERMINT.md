@@ -114,7 +114,9 @@ the Ubuntu image. The menu is rewritten at these points:
 - when ostree changes the entries (`hearth-bls-grub-refresh.path`: rollback, kargs)
 - at shutdown, right after a staged update is finalized (`hearth-bls-grub.service`)
 
-The installer also has to run it once after deploying (see "Changes needed outside this folder" below).
+The installer also has to run it once after deploying (see "Changes needed outside this folder" below). The script
+and its units now live in `os/system_files`, shared with the other editions: a system switched from Peppermint to
+Anatase keeps this GRUB and still needs the menu written.
 
 ### What's installed
 

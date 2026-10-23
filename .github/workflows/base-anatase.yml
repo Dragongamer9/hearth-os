@@ -221,6 +221,7 @@ jobs:
           check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
           warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
+          check "GRUB's menu is written from the boot entries where GRUB can't read them (also after switching edition)" "sh -n /usr/libexec/nimbus/hearth-bls-grub && test -L /etc/systemd/system/multi-user.target.wants/hearth-bls-grub.service"
           exit $fail
           EOF
           sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-os:build sh /check.sh

@@ -99,6 +99,16 @@ and Peppermint images; it only runs where `/usr/share/nimbus/image-info.json` ex
 
 Every step can run again after a power cut; the log is `journalctl -u hearth-clean-install`.
 
+## Systems switched from another edition
+
+Settings › Updates › Switch edition (`bootc switch`) changes the system, not the boot loader. A system installed
+as Peppermint, Ubuntu or CachyOS keeps that edition's GRUB and `grub.cfg` after switching to Anatase, and those only
+read the menu `hearth-bls-grub` writes. That script is now in every image, Anatase's too: there it checks whether
+`grub.cfg` reads `hearth-bls.cfg` and does nothing on Anatase's own installs. Before this, a switched system's menu
+froze at the switch, and its first update left GRUB pointing at a version that was gone. The boot count works the
+same on switched systems (it only needs `custom.cfg`).
+
+
 ## Not verified yet
 
 These come from Anatase's description and haven't been checked on a running Anatase system:
