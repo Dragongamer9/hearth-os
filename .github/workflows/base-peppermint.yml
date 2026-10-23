@@ -349,6 +349,7 @@ jobs:
           check "hearth-takeover and its tools are installed" "test -x /usr/libexec/nimbus/hearth-takeover && command -v sfdisk && command -v partx && command -v efibootmgr && command -v btrfs"
           check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
           check "saving a system file (hearth-admin write-file) always asks for a password" "grep -q write-file /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
+          check "joining Wi-Fi needs no password prompt for the person at the device (polkit rule, netdev group)" "test -f /usr/share/polkit-1/rules.d/49-hearth-network.rules && grep -q netdev /usr/libexec/nimbus/hearth-groups && getent group netdev"
           warn "Hearth Text is installed with every library it links" "test -x /usr/bin/hearth-text && ! ldd /usr/bin/hearth-text | grep -q 'not found'"
           warn "text files open in Hearth Text in Desktop Mode" "grep -q '^text/plain=hearth-text.desktop' /etc/xdg/nimbus-mimeapps.list"
           warn "Hearth Text's menu entry is installed" "test -f /usr/share/applications/hearth-text.desktop"
