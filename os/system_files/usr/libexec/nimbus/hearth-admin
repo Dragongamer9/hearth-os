@@ -101,6 +101,9 @@ def fail(msg):
     sys.exit(1)
 
 
+HEARTH_HOSTS = '/usr/libexec/nimbus/hearth-hosts'
+
+
 def caller():
     """The account that ran pkexec."""
     uid = os.environ.get('PKEXEC_UID')
@@ -126,6 +129,9 @@ def hostname(name):
     if not re.fullmatch(r'[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?', name or ''):
         fail('use letters, numbers and dashes (up to 63), not starting or ending with a dash')
     subprocess.run(['hostnamectl', 'hostname', name], check=True)
+    # /etc/hosts gets the new name (hearth-hosts.path would too, a moment later), so sudo keeps resolving it.
+    if os.access(HEARTH_HOSTS, os.X_OK):
+        subprocess.run([HEARTH_HOSTS, '--hostname', name], stdout=subprocess.DEVNULL, check=False)
     print(json.dumps({'hostname': name}))
 
 

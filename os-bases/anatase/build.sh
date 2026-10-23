@@ -895,6 +895,7 @@ systemctl enable hearth-boot-first.service    # Hearth stays first in the boot o
 systemctl enable hearth-groups.service        # accounts in video (screen brightness)
 systemctl enable hearth-home-repair.service   # home folders' Flatpak/cache folders yours, container id ranges
 systemctl enable hearth-flatpak-setup.service # Flatpak's system installation, Flathub, Bazaar (when not a package)
+systemctl enable hearth-hosts.service hearth-hosts.path  # /etc/hosts maps the device's name (sudo warns otherwise)
 systemctl enable hearth-bluetooth-labels.service  # Bluetooth pairings readable under SELinux before bluetoothd
 # The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
 # (os/system_files; does nothing without the plan the old system leaves).
