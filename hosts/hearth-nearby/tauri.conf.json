@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nearby Share",
+  "identifier": "io.github.dragongamer9.hearth.nearby",
+  "build": { "frontendDist": "ui" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": false, "icon": ["icons/icon.png", "icons/icon.ico"] }
+}

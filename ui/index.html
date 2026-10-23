@@ -3081,6 +3081,15 @@ function pageBluetooth(){
   if(S.sys.foundDone && !S.sys.btScanning && !S.sys.found.length) h += note('Nothing new found. Make sure the device is in pairing mode and close by.');
   return h;
 }
+// ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect): opened from Settings › Bluetooth
+// in Game Mode (bridge "linkapps.open"); in Desktop Mode they're in the app list too.
+function pageLinkApps(){
+  if(!LINUX || ANDROID) return '';
+  const row=(k,v,title,sub)=>`<button class="row" data-f data-k="la-${k}" data-act="linkApp" data-v="${v}"><span class="ricon">${I.phone}</span><div class="rt"><b>${title}</b><small>${sub}</small></div><div class="rv">›</div></button>`;
+  return shead('Phones and nearby devices') + sgrid(row('nearby','nearby','Nearby Share','Send and receive files with phones and PCs on this network (works with LocalSend)')
+    + row('connect','connect','Hearth Connect','Link your phone: notifications, files, clipboard, phone as touchpad (works with KDE Connect)'));
+}
+// ---- end of Nearby Share and Hearth Connect
 const NVD = {s:null};
 const RND = {s:null};
 function pageDisplay(){
@@ -3095,6 +3104,7 @@ function pageDisplay(){
   else g += infoRow('scale','Scale',d.scale||'—');
   h += sgrid(g);
   if(!d.supported) h += note('Brightness works on built-in screens (laptops and handhelds), not external monitors yet.');
+  const hzTip=dispHzTip(d); if(hzTip) h += note(hzTip);
   h += note((d.appliesOnRestart ? 'In Game Mode, a new resolution or refresh rate restarts '+APP+' for a moment.'
     : 'A new resolution or refresh rate switches back after 15 seconds unless you keep it.')+(d.scaleIsInterface?' Scale sizes the '+APP+' interface.':''));
   if((HOSTINFO.features||[]).includes('nvidiaDrawing')){
@@ -3111,6 +3121,18 @@ function pageDisplay(){
   return h;
 }
 function dispModeOf(w,h){ return (S.sys.display.modes||[]).find(m=>m.width===w&&m.height===h); }
+// Why a fast TV or monitor only shows 60 Hz: Hearth can only offer the modes the screen itself reports (its EDID).
+// When it reports a higher rate at a lower resolution only, or nothing above 60 Hz, say so and what usually fixes it.
+function dispHzTip(d){
+  const modes=(d&&d.modes)||[]; if(!modes.length || !d.width) return '';
+  const cur=dispModeOf(d.width,d.height), curMax=cur&&cur.rates.length?Math.max(...cur.rates):0;
+  let best=null; modes.forEach(m=>{ const r=m.rates.length?Math.max(...m.rates):0; if(!best||r>best.r||(r===best.r&&m.width*m.height>best.m.width*best.m.height)) best={m,r}; });
+  if(!best || !curMax) return '';
+  const fix='If your screen can go faster, turn on its enhanced HDMI or PC/Game mode for this input (TVs call it Input Signal Plus, HDMI Ultra HD Deep Colour, Enhanced format or similar), use an HDMI 2.1 port and an Ultra High Speed HDMI cable (or DisplayPort), then restart '+APP+'. If it went faster before on this PC, turn the screen off and on again with its own power button while '+APP+' is showing: the fast HDMI 2.1 link is set up when the screen is found, and a TV that was asleep then can be stuck at HDMI 2.0 rates.';
+  if(best.r>curMax) return `At ${d.width} × ${d.height} this screen only reports up to ${curMax} Hz; it reports ${best.r} Hz at ${best.m.width} × ${best.m.height}. ${fix}`;
+  if(curMax<=60) return `This screen only reports up to ${curMax} Hz, so that's the most ${APP} can use. ${fix}`;
+  return '';
+}
 function dispRes(){
   const d=S.sys.display;
   openSheet({title:'Resolution', items:d.modes.slice(0,14).map((m,i)=>({label:`${m.width} × ${m.height}${i===0?'  (native)':''}`, icon:m.width===d.width&&m.height===d.height?'check':'',
@@ -4769,7 +4791,7 @@ function viewSettings(){
   const t=S.settingsTab, grp=stabGroup(t), tabs=stabsIn(grp); let body='';
   if(t==='wifi') body = pageWifi();
   if(t==='seats') body = pageSeats();
-  if(t==='bluetooth') body = pageBluetooth();
+  if(t==='bluetooth') body = pageBluetooth() + pageLinkApps();   // + Nearby Share and Hearth Connect
   if(t==='display') body = pageDisplay() + shead('Sound') + pageAudio();
   if(t==='power') body = pagePower();
   if(t==='profile') body = pageProfile();
@@ -5447,6 +5469,9 @@ function act(el){
     case 'countMe': { const on=!counterOn(); try{ localStorage.setItem('nimbus.countMe', on?'1':'0'); }catch(e){} if(on) counterPing(); toast(on?'You\'re in the player count':'You\'re no longer counted'); return render('sy-count',true); }
     case 'autoReport': return call('logs.setAutoReport',{on:HOSTINFO.autoReport===false}).then(on=>{ HOSTINFO.autoReport=on; toast(on?'Reports sent when it gets stuck':'No reports sent by itself'); render('sy-autorep',true); }).catch(e=>toast(e.message));
     case 'inputLog': INPUT_LOG=!INPUT_LOG; try{ localStorage.setItem('nimbus.inputLog', INPUT_LOG?'1':'0'); }catch(e){} toast(INPUT_LOG?'Logging controller input':'Stopped logging controller input'); return render('sy-inlog',true);
+    // ---- Nearby Share and Hearth Connect
+    case 'linkApp': toast(d.v==='nearby'?'Opening Nearby Share…':'Opening Hearth Connect…'); return call('linkapps.open',{app:d.v}).catch(e=>toast(e.message));
+    // ---- end of Nearby Share and Hearth Connect
     case 'browser': return call('browser.act',{action:d.v}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'claude':
       if(d.v==='open'){ toast('Opening Claude…'); return call('claude.act',{action:'open'}).catch(e=>toast(e.message)); }
@@ -7808,6 +7833,7 @@ function onSysEvent(name, data){
   }
   if(name==='padAxes'){ if(DESK.open) deskAxes(data); return; }
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
+  if(name==='hostScreen'){ HOSTSCREEN.pads = !data || data.pads!==false; return; }
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
   if(name==='friends'){ if(S.view==='friends' && !S.layers.length) loadFriends(); return; }
@@ -8178,10 +8204,18 @@ function pollPads(t){
   try{ pollPadsNow(t); } catch(e){ try{ send({type:'log', text:'controller: '+(e&&e.stack||e)}); }catch(_){} }
   requestAnimationFrame(pollPads);
 }
+// Game Mode: Hearth says whether this window is the one on screen (hostScreen). Set aside for a game (Chromium keeps
+// reading the controller for a hidden window), or with Quick Access open over it, the presses aren't this page's:
+// a Guide press over a game opened this window's old panel behind the game, and the next one sent "back to the game"
+// over the new Quick Access. Held buttons are still followed, so one held when the page gets the controller back
+// isn't taken for a new press.
+const HOSTSCREEN = {pads:true};
+function padsQuiet(){ return !OVERLAY && HOSTSCREEN.pads===false; }
 function pollPadsNow(t){
   // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
   const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
   if(deskActive()) return deskPollPads(pads);
+  const quiet = padsQuiet();
   const st={};
   for(const p of pads){ if(!p) continue;
     const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
@@ -8194,8 +8228,8 @@ function pollPadsNow(t){
   }
   for(const k of ['a','b','x','y','lb','rb','select','start','guide','up','down','left','right','rup','rdown']){
     const on=!!st[k], h=held[k];
-    if(on && !h){ held[k]={t0:t,last:t}; padPressed(mapPad(k)); }
-    else if(on && h && REPEAT.has(k) && t-h.t0>400 && t-h.last>110){ h.last=t; PAD_AT[k]=performance.now(); input(k); }
+    if(on && !h){ held[k]={t0:t,last:t}; if(!quiet) padPressed(mapPad(k)); }
+    else if(on && h && REPEAT.has(k) && t-h.t0>400 && t-h.last>110){ h.last=t; if(!quiet){ PAD_AT[k]=performance.now(); input(k); } }
     else if(!on && h) delete held[k];
   }
 }

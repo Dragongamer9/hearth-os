@@ -355,6 +355,64 @@ if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -m644 /ctx/nimbus-app/hearth-tools/hearth-*.desktop /usr/share/applications/
 fi
 # ---- end Hearth Tools
+# ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect) ------------------------------
+# Hearth's apps for phones and nearby devices, built with the app (base-peppermint.yml) and carried in os/nimbus-app
+# (their icons, hearth-nearby and hearth-connect, come with Hearth's icon set). Nearby Share speaks LocalSend's protocol, Hearth Connect KDE Connect's. playerctl lets a phone
+# control this PC's music, wl-clipboard/wtype give Hearth Connect the clipboard and typing in Desktop Mode, and
+# notify-send's library its notifications. Their firewall helper and polkit rule come from os/system_files
+# (hearth-link-firewall, 49-hearth-link.rules): ports open only while the apps listen, and only to local addresses.
+optional playerctl wl-clipboard wtype libnotify-bin
+for app in hearth-nearby hearth-connect; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app is missing the libraries above"; fi
+  fi
+done
+chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
+if dpkg -s firewalld >/dev/null 2>&1 || dpkg -s ufw >/dev/null 2>&1; then echo "a firewall is in this image: Nearby Share and Hearth Connect open their ports with it"; else echo "no firewall in this image: nothing to open"; fi
+install -d /usr/share/applications /usr/lib/systemd/user
+if [ -x /usr/bin/hearth-nearby ]; then
+  cat > /usr/share/applications/hearth-nearby.desktop <<DESKTOP
+[Desktop Entry]
+Name=Nearby Share
+GenericName=File Sharing
+Comment=Send and receive files with phones and computers on the same network (works with LocalSend)
+Exec=/usr/bin/hearth-nearby %F
+Icon=hearth-nearby
+Type=Application
+Categories=Network;FileTransfer;Utility;
+Keywords=localsend;share;send;receive;nearby;airdrop;transfer;phone;files;
+DESKTOP
+fi
+if [ -x /usr/bin/hearth-connect ]; then
+  cat > /usr/share/applications/hearth-connect.desktop <<DESKTOP
+[Desktop Entry]
+Name=Hearth Connect
+GenericName=Phone Link
+Comment=Link your phone: files, notifications, clipboard, phone as touchpad, music, find my phone (works with KDE Connect)
+Exec=/usr/bin/hearth-connect
+Icon=hearth-connect
+Type=Application
+Categories=Network;Utility;
+Keywords=kde connect;kdeconnect;phone;android;iphone;notifications;clipboard;remote;touchpad;
+DESKTOP
+  # The background service that keeps the phone linked. Off until the person opens Hearth Connect (which turns it on
+  # for their account), so nothing listens on the network before they ask for it.
+  cat > /usr/lib/systemd/user/hearth-connect.service <<UNIT
+[Unit]
+Description=Hearth Connect (your phone, linked; KDE Connect's protocol)
+
+[Service]
+ExecStart=/usr/bin/hearth-connect --daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+fi
+# ---- end of Nearby Share and Hearth Connect
+
 # ==== Hearth Paint, the emoji picker, Hearth Fonts, and Settings › Accessibility (hosts/hearth-paint, hearth-emoji,
 # hearth-fonts, hearth-gamma, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
 # os/nimbus-app (their icons are in the Hearth icon set, installed above). The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;

@@ -324,6 +324,64 @@ UNIT
 fi
 # ---- end of Hearth's gaming apps
 
+# ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect) ------------------------------
+# Hearth's apps for phones and nearby devices, built with the app (base-anatase.yml) and carried in os/nimbus-app
+# (their icons, hearth-nearby and hearth-connect, come with Hearth's icon set). Nearby Share speaks LocalSend's protocol, Hearth Connect KDE Connect's. playerctl lets a phone
+# control this PC's music, wl-clipboard/wtype give Hearth Connect the clipboard and typing in Desktop Mode, and
+# notify-send's library its notifications. Their firewall helper and polkit rule come from os/system_files
+# (hearth-link-firewall, 49-hearth-link.rules): ports open only while the apps listen, and only to local addresses.
+dnf5 -y install --skip-unavailable playerctl wl-clipboard wtype libnotify || true
+for app in hearth-nearby hearth-connect; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app is missing the libraries above"; fi
+  fi
+done
+chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
+rpm -q firewalld >/dev/null 2>&1 && echo "firewalld is in this image: Nearby Share and Hearth Connect open their ports with it" || echo "no firewalld in this image: nothing to open"
+install -d /usr/share/applications /usr/lib/systemd/user
+if [ -x /usr/bin/hearth-nearby ]; then
+  cat > /usr/share/applications/hearth-nearby.desktop <<DESKTOP
+[Desktop Entry]
+Name=Nearby Share
+GenericName=File Sharing
+Comment=Send and receive files with phones and computers on the same network (works with LocalSend)
+Exec=/usr/bin/hearth-nearby %F
+Icon=hearth-nearby
+Type=Application
+Categories=Network;FileTransfer;Utility;
+Keywords=localsend;share;send;receive;nearby;airdrop;transfer;phone;files;
+DESKTOP
+fi
+if [ -x /usr/bin/hearth-connect ]; then
+  cat > /usr/share/applications/hearth-connect.desktop <<DESKTOP
+[Desktop Entry]
+Name=Hearth Connect
+GenericName=Phone Link
+Comment=Link your phone: files, notifications, clipboard, phone as touchpad, music, find my phone (works with KDE Connect)
+Exec=/usr/bin/hearth-connect
+Icon=hearth-connect
+Type=Application
+Categories=Network;Utility;
+Keywords=kde connect;kdeconnect;phone;android;iphone;notifications;clipboard;remote;touchpad;
+DESKTOP
+  # The background service that keeps the phone linked. Off until the person opens Hearth Connect (which turns it on
+  # for their account), so nothing listens on the network before they ask for it.
+  cat > /usr/lib/systemd/user/hearth-connect.service <<UNIT
+[Unit]
+Description=Hearth Connect (your phone, linked; KDE Connect's protocol)
+
+[Service]
+ExecStart=/usr/bin/hearth-connect --daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+fi
+# ---- end of Nearby Share and Hearth Connect
+
 # ==== Hearth Paint, the emoji picker, Hearth Fonts, and Settings › Accessibility (hosts/hearth-paint, hearth-emoji,
 # hearth-fonts, hearth-gamma, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
 # os/nimbus-app (their icons are in the Hearth icon set, installed above). The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;
@@ -457,6 +515,9 @@ dnf5 -y install 7zip || dnf5 -y install p7zip p7zip-plugins || true
 # bsdtar: Hearth Files opens .rar, .iso, .cbr and the rest of the archive kinds 7-Zip doesn't.
 dnf5 -y install bsdtar || true
 dnf5 -y install fuse-overlayfs bubblewrap xdpyinfo xrandr || true
+# Send logs decodes the screen's EDID (what the TV says it can do: HDMI 2.1's fast link, its fastest 4K rates, VRR)
+# when a screen shows fewer modes than expected. Not fatal.
+dnf5 -y install edid-decode || dnf5 -y install libdisplay-info-tools || true
 dnf5 -y install ntfsprogs ntfs-3g e2fsprogs btrfs-progs util-linux || true
 dnf5 -y install umu-launcher || true
 # Claude Desktop (Hearth Settings › Claude: Anthropic's package, unpacked in the user's home folder by
@@ -927,6 +988,22 @@ chmod 755 /usr/lib/systemd/system-sleep/hearth-restart-keep
 # hibernation, or the picture comes back black or broken (RTX desktops). Written before the boot image (dracut,
 # below) so the setting is in it too. Harmless without an Nvidia card (the module never loads).
 echo "Nvidia power management Anatase brings: $(grep -rhs 'NVreg_PreserveVideoMemoryAllocations\|NVreg_TemporaryFilePath\|NVreg_UseKernelSuspendNotifiers' /usr/lib/modprobe.d /etc/modprobe.d | tr '\n' ' ')"
+# What the screen side of the image is, as a notice on the CI run ("only 60 Hz on a 144 Hz TV" reports: HDMI 2.1's
+# fast link (FRL) depends on the driver's version and nvidia-modeset's options, 4K above 60 Hz needs it): the
+# driver's packages and version, open or Nvidia's own kernel modules, every nvidia option in modprobe.d, the
+# kernel arguments the image adds, and gamescope's version.
+(
+  set +x   # the build's command tracing kept out of the notice
+  NV_KVER=$(ls /usr/lib/modules | sort -V | tail -1)
+  echo "kernel $NV_KVER;"
+  echo "nvidia module: version $(modinfo -k "$NV_KVER" -F version nvidia 2>/dev/null || echo none), license $(modinfo -k "$NV_KVER" -F license nvidia 2>/dev/null || echo none) (Dual MIT/GPL = open modules);"
+  echo "nvidia-modeset options: $(modinfo -k "$NV_KVER" -F parm nvidia_modeset 2>/dev/null | cut -d: -f1 | tr '\n' ' ');"
+  echo "modprobe.d: $(grep -rhsE '^[[:space:]]*(options|install|blacklist)[[:space:]].*(nvidia|nouveau|nova)' /usr/lib/modprobe.d /etc/modprobe.d | tr '\n' ';');"
+  echo "kargs.d: $(cat /usr/lib/bootc/kargs.d/*.toml 2>/dev/null | grep -E '^kargs' | tr '\n' ' ')"
+  echo "packages: $(rpm -qa 2>/dev/null | grep -iE '^(nvidia-driver|nvidia-kmod-common|kernel-nvidia|gamescope|edid-decode|libdisplay-info-tools)-[0-9]' | sort -u | tr '\n' ' ')"
+) > /tmp/hearth-nvidia-notice.txt 2>/dev/null || true
+cat /tmp/hearth-nvidia-notice.txt || true
+echo "::notice title=Screen and Nvidia driver in this image::$(tr '\n' ' ' < /tmp/hearth-nvidia-notice.txt | cut -c1-3500)" || true
 mkdir -p /usr/lib/modprobe.d
 cat > /usr/lib/modprobe.d/zz-hearth-nvidia-power.conf <<'CONF'
 # Hearth: Quick Resume keeps games through sleep and turning off (hibernation). Nvidia's driver saves the graphics
