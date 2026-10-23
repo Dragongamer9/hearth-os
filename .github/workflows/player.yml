@@ -129,7 +129,7 @@ jobs:
       - name: The page in Chromium (sample data)
         run: |
           set -o pipefail
-          { python3 -m pip install -q --user --break-system-packages playwright==1.48.2 && python3 -m playwright install --with-deps chromium; } > pw.log 2>&1 \
+          { python3 -m pip install -q --user --break-system-packages playwright==1.56.0 && python3 -m playwright install --with-deps chromium; } > pw.log 2>&1 \
             || { echo "::error title=Playwright::$(tail -c 2500 pw.log | tr '\n' '|')"; exit 1; }
           m="$RUNNER_TEMP/uimedia"; mkdir -p "$m"
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=640x360:rate=25:duration=12 -f lavfi -i sine=f=440:duration=12 -c:v libvpx-vp9 -b:v 300k -deadline realtime -c:a libopus -shortest "$m/Sample clip.webm"
