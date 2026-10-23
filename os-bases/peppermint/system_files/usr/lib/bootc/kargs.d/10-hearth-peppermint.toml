@@ -1,4 +1,6 @@
 # Hearth on Peppermint/Debian: the boot splash, and Nvidia's display driver taking the screen (needed for
 # Wayland, gamescope and the splash on Nvidia; ignored on AMD and Intel).
-kargs = ["quiet", "splash", "loglevel=3", "nvidia-drm.modeset=1", "nvidia-drm.fbdev=1"]
+# fsck.repair=yes: after a power cut, the start-up check of /boot and the EFI partition fixes what it finds
+# instead of stopping in emergency mode (the default only fixes what is "safe" and stops on the rest).
+kargs = ["quiet", "splash", "loglevel=3", "nvidia-drm.modeset=1", "nvidia-drm.fbdev=1", "fsck.repair=yes"]
 match-architectures = ["x86_64"]

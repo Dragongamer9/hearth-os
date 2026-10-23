@@ -164,6 +164,21 @@ It only runs once systemd has switched to the installed system. A failure inside
 not found, for example) still shows dracut's own emergency shell. The boot count still covers that case: after two
 such starts GRUB starts the previous version.
 
+### Surviving a hard power-off
+
+- `/boot` (ext4) and the EFI partition are checked at every start (fstab pass 2, `systemd-fsck`), and
+  `fsck.repair=yes` (kargs.d) lets that check fix what it finds instead of stopping in emergency mode.
+- The EFI partition is `nofail`: a running system doesn't need it. The installer writes it that way, and
+  `hearth-boot-guard setup` adds it to installed systems' fstab (only an fstab written by Hearth's installer). The
+  btrfs main drive needs no check at start (copy-on-write, checksums).
+- `/boot` is written as little as possible. `hearth-bls-grub` and `hearth-boot-guard` only write when something
+  changed, through a new file and a rename, synced.
+- Hearth's own early units can't cause emergency mode: `hearth-clean-install`, `hearth-groups`,
+  `hearth-bluetooth-labels`, `hearth-boot-first`, `hearth-bls-grub` and `hearth-boot-guard` are all only *wanted*
+  (by `multi-user.target` or `bluetooth.service`). None is required by `local-fs.target`, `sysinit.target` or
+  another unit that emergency mode follows from. If one fails, it's logged and the start carries on.
+  (`RequiresMountsFor=` on some of them only makes that unit wait for, or fail with, its own mount.)
+
 ### Systems switched from another edition
 
 Settings › Updates › Switch edition (`bootc switch`) changes the system, not the boot loader. A system installed

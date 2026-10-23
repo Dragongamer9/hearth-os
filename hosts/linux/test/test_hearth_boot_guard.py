@@ -99,6 +99,25 @@ class Setup(unittest.TestCase):
             self.assertIn("set hearth_default=''", open(f'{d}/grub2/hearth-boot.cfg').read())
 
 
+class Fstab(unittest.TestCase):
+    def test_hearth_fstab_gets_nofail_on_the_esp(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = f'{d}/fstab'
+            open(p, 'w').write("# Written by Hearth's installer\nUUID=R / btrfs subvol=root 0 0\nUUID=B /boot ext4 defaults 1 2\n"
+                               "UUID=E /boot/efi vfat umask=0077,shortname=winnt 0 2\n")
+            self.assertTrue(G.fstab_nofail_esp(p))
+            t = open(p).read()
+            self.assertIn('UUID=E /boot/efi vfat umask=0077,shortname=winnt,nofail 0 2', t)
+            self.assertIn('UUID=B /boot ext4 defaults 1 2', t)
+            self.assertFalse(G.fstab_nofail_esp(p))
+
+    def test_other_fstabs_left_alone(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = f'{d}/fstab'
+            open(p, 'w').write('UUID=E /boot/efi vfat umask=0077 0 2\n')
+            self.assertFalse(G.fstab_nofail_esp(p))
+
+
 class Success(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

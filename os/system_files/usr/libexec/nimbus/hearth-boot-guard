@@ -42,6 +42,7 @@ ENV_SIZE = 1024
 ENV_HEADER = '# GRUB Environment Block\n'
 CUSTOM_MARK = '### Hearth: automatic return to the previous version (hearth-boot-guard; keep these lines)'
 CUSTOM_LINES = CUSTOM_MARK + '\nif [ -f ${prefix}/' + CFG_NAME + ' ]; then\n  source ${prefix}/' + CFG_NAME + '\nfi\n'
+FSTAB_MARK = "# Written by Hearth's installer"
 TRIES = 'hearth_tries'
 SAFE_ID = re.compile(r'^[A-Za-z0-9._+-]{1,200}$')
 
@@ -222,8 +223,31 @@ def setup(boot=BOOT, installer=False):
     if not os.path.exists(os.path.join(gdir, ENV_NAME)):
         env_set(gdir)
         changed = True
+    if not installer:
+        fstab_nofail_esp()
     log('%s: newest %s, previous %s' % ('updated' if changed else 'up to date', default_id or '(none)', fallback_id or '(none)'))
     return 0
+
+
+def fstab_nofail_esp(path='/etc/fstab'):
+    """Hearth's own fstab (from its installer): the EFI partition with nofail. A system runs without it, and a
+    damaged or missing one must not stop the start (it did: emergency mode). New installs get it from the
+    installer; this brings installed ones in line. Other fstabs are left alone."""
+    text = read(path)
+    if not text or not text.startswith(FSTAB_MARK):
+        return False
+    out, hit = [], False
+    for line in text.splitlines(keepends=True):
+        f = line.split()
+        if len(f) >= 4 and not line.lstrip().startswith('#') and f[1] == '/boot/efi' and 'nofail' not in f[3].split(','):
+            f[3] += ',nofail'
+            line = ' '.join(f) + '\n'
+            hit = True
+        out.append(line)
+    if hit:
+        write_atomic(path, ''.join(out))
+        log('fstab: the EFI partition is now optional at start (nofail)')
+    return hit
 
 
 # ------------------------------------------------------------------ the Linux side
