@@ -207,6 +207,9 @@ jobs:
           warn "Hearth Browser's Firefox runs (--version)" "HOME=/tmp /usr/lib/hearth-browser/firefox/firefox --version | grep -q 'Mozilla Firefox'"
           check "the old Chromium (CEF) Hearth Browser is gone" "test ! -e /usr/lib/hearth-browser-cef"
           check "hearthfetch is installed and runs" "test -x /usr/bin/hearthfetch && /usr/bin/hearthfetch --no-logo | grep -q Hearth"
+          # ---- Hearth Time (Clock, Calendar, Notes, Weather): a warning only, as the build of it isn't required.
+          warn "Hearth Time is installed with its four apps, icons and alarm service" "test -x /usr/bin/hearth-time && ! ldd /usr/bin/hearth-time | grep -q 'not found' && /usr/bin/hearth-time --version && for a in clock calendar notes weather; do test -L /usr/bin/hearth-\$a && test -f /usr/share/applications/hearth-\$a.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-\$a.svg || exit 1; done && test -f /usr/lib/systemd/user/hearth-time.service && test -L /etc/systemd/user/default.target.wants/hearth-time.service"
+          # ---- end of Hearth Time
           # SVG through gdk-pixbuf: the classic loader in loaders.cache, or glycin's SVG loader (newer gdk-pixbuf).
           check "GTK can load SVG icons (gdk-pixbuf's SVG loader or glycin's)" "grep -qis svg /usr/lib*/gdk-pixbuf-2.0/2.10.0/loaders.cache /usr/lib/*/gdk-pixbuf-2.0/2.10.0/loaders.cache 2>/dev/null || ls /usr/share/glycin-loaders/*/conf.d/ 2>/dev/null | grep -qi svg || ls /usr/libexec/glycin-loaders/*/ /usr/lib/glycin-loaders/*/ 2>/dev/null | grep -qi svg"
           warn "an SVG icon really loads (gdk-pixbuf-thumbnailer)" "gdk-pixbuf-thumbnailer -s 32 /usr/share/icons/Adwaita/scalable/status/image-missing.svg /tmp/svg.png"
