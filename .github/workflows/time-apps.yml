@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       shots:
-        description: Put small copies of the screenshots on the run as notices
-        type: boolean
-        default: false
+        description: 'Up to 4 screenshots to put on the run as notices (small copies), e.g. ring,clock,calendar,notes'
+        type: string
+        default: ''
 
 env:
   CARGO_TERM_COLOR: never
@@ -119,7 +119,7 @@ jobs:
           ls "$HEARTH_TIME_HOME/state/hearth-time"; cat "$HEARTH_TIME_HOME/state/hearth-time/rang.json"
           grep -q 'alarm:a1:' "$HEARTH_TIME_HOME/state/hearth-time/rang.json"
           pkill -f 'hearth-time --service' || true
-          echo "::notice title=alarm::dismissed: the window closed, the one-time alarm switched off, the service remembers it rang"
+          echo "::notice title=alarm dismissed::dismissed: the window closed, the one-time alarm switched off, the service remembers it rang"
       - name: Each app (screenshots)
         run: |
           export HEARTH_TIME_HOME="$RUNNER_TEMP/apps"
@@ -136,7 +136,7 @@ jobs:
             [ -n "$w" ] || echo "::warning title=$app::no window: $(tail -c 800 run-$app.log | tr '\n' '|')"
             xdotool windowactivate --sync "$w" 2>/dev/null || true
             shot "$app"
-            xprop -id "$w" WM_CLASS 2>/dev/null | sed "s/^/::notice title=$app window class::/" || true
+            classes="$classes $app=$(xprop -id "$w" WM_CLASS 2>/dev/null | cut -d'"' -f2)"
             case $app in
               clock) xdotool key Right; sleep 1; xdotool key Return; sleep 1; shot clock-timers ;;
               calendar) xdotool key w; sleep 2; shot calendar-week; xdotool key a; sleep 2; shot calendar-agenda ;;
@@ -145,13 +145,51 @@ jobs:
             pkill -f "hearth-time --app $app" || true
             sleep 1
           done
-      - name: Screenshots as notices
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+          echo "::notice title=window classes::$classes"
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces; at most 10 notices
+      # a step), for looking at it where the artifact can't be downloaded.
+      - name: Screenshot 1 as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots != ''
+        env:
+          SHOTS: ${{ inputs.shots }}
         run: |
-          for n in ring clock calendar notes weather; do
-            f=shots/$n.png; [ -f "$f" ] || continue
-            convert "$f" -resize 640x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
-          done
+          n=$(echo "$SHOTS" | cut -d, -f1 | tr -cd 'a-z0-9-'); f=shots/$n.png
+          [ -n "$n" ] && [ -f "$f" ] || exit 0
+          for q in 45 35 28 22 16; do convert "$f" -resize 600x -quality $q jpg:/tmp/s.jpg; [ "$(base64 -w0 /tmp/s.jpg | wc -c)" -le 37000 ] && break; done
+          base64 -w0 /tmp/s.jpg | fold -w 3700 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces; at most 10 notices
+      # a step), for looking at it where the artifact can't be downloaded.
+      - name: Screenshot 2 as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots != ''
+        env:
+          SHOTS: ${{ inputs.shots }}
+        run: |
+          n=$(echo "$SHOTS" | cut -d, -f2 | tr -cd 'a-z0-9-'); f=shots/$n.png
+          [ -n "$n" ] && [ -f "$f" ] || exit 0
+          for q in 45 35 28 22 16; do convert "$f" -resize 600x -quality $q jpg:/tmp/s.jpg; [ "$(base64 -w0 /tmp/s.jpg | wc -c)" -le 37000 ] && break; done
+          base64 -w0 /tmp/s.jpg | fold -w 3700 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces; at most 10 notices
+      # a step), for looking at it where the artifact can't be downloaded.
+      - name: Screenshot 3 as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots != ''
+        env:
+          SHOTS: ${{ inputs.shots }}
+        run: |
+          n=$(echo "$SHOTS" | cut -d, -f3 | tr -cd 'a-z0-9-'); f=shots/$n.png
+          [ -n "$n" ] && [ -f "$f" ] || exit 0
+          for q in 45 35 28 22 16; do convert "$f" -resize 600x -quality $q jpg:/tmp/s.jpg; [ "$(base64 -w0 /tmp/s.jpg | wc -c)" -le 37000 ] && break; done
+          base64 -w0 /tmp/s.jpg | fold -w 3700 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces; at most 10 notices
+      # a step), for looking at it where the artifact can't be downloaded.
+      - name: Screenshot 4 as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots != ''
+        env:
+          SHOTS: ${{ inputs.shots }}
+        run: |
+          n=$(echo "$SHOTS" | cut -d, -f4 | tr -cd 'a-z0-9-'); f=shots/$n.png
+          [ -n "$n" ] && [ -f "$f" ] || exit 0
+          for q in 45 35 28 22 16; do convert "$f" -resize 600x -quality $q jpg:/tmp/s.jpg; [ "$(base64 -w0 /tmp/s.jpg | wc -c)" -le 37000 ] && break; done
+          base64 -w0 /tmp/s.jpg | fold -w 3700 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
