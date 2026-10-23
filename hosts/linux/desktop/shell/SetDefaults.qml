@@ -36,7 +36,7 @@ SetPage {
         RowLayout {
             anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
             spacing: 14
-            IconImage { implicitSize: 32; source: ac.appIcon.startsWith("/") ? "file://" + ac.appIcon : Quickshell.iconPath(ac.appIcon, "application-x-executable") }
+            IconImage { implicitSize: 32; source: AppIcons.source(ac.appIcon, "") }
             Text { Layout.fillWidth: true; text: ac.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; elide: Text.ElideRight }
             Text { visible: ac.current; text: "In use"; color: Theme.flame; font.family: Theme.font; font.pixelSize: 13 }
         }

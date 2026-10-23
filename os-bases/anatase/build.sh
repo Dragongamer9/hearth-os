@@ -19,6 +19,26 @@ echo "Anatase on Fedora $FEDORA"
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/anatase_files/. /
 
+# ------------------------------------------------------------------ Hearth icon set (branding/icons)
+# Every Hearth app's icon (Hearth, Settings, Files, Terminal, Disks, Browser, Task Manager, Apps, the installer and
+# the newer apps: hearth-text, hearth-photos...) in the hicolor theme, so Mantel, labwc's Alt+Tab and any other
+# desktop find them by name (Icon=hearth-settings). Drawn by branding/icons/make-icons.py: one SVG each plus PNGs
+# from 16 to 256 px. Apps on other branches only need their .desktop file's Icon= set to their name.
+dnf5 -y install hicolor-icon-theme gtk-update-icon-cache || dnf5 -y install hicolor-icon-theme || true
+for svg in /ctx/icons/apps/*.svg; do
+  install -Dm644 "$svg" "/usr/share/icons/hicolor/scalable/apps/$(basename "$svg")"
+done
+for dir in /ctx/icons/png/*x*; do
+  install -d "/usr/share/icons/hicolor/$(basename "$dir")/apps"
+  install -m644 "$dir"/*.png "/usr/share/icons/hicolor/$(basename "$dir")/apps/"
+done
+# The old 512 px Hearth logo (os/system_files, without the tile) would win over the set at large sizes.
+rm -f /usr/share/icons/hicolor/512x512/apps/hearth.png
+test -f /usr/share/icons/hicolor/scalable/apps/hearth-settings.svg
+test -f /usr/share/icons/hicolor/48x48/apps/hearth-files.png
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
+# ---- end of the Hearth icon set
+
 # ------------------------------------------------------------------ Hearth itself, under /usr (the OS updates it)
 mkdir -p /usr/lib/nimbus
 if [ -x /ctx/nimbus-app/hearth ]; then
@@ -79,7 +99,7 @@ Name=Disks
 GenericName=Disk Manager
 Comment=See your drives and their health, format USB drives and SD cards, and set up drives for games
 Exec=/usr/bin/hearth-disks
-Icon=hearth
+Icon=hearth-disks
 Type=Application
 Categories=System;Utility;
 Keywords=disk;drive;partition;format;usb;sd;card;mount;eject;storage;steam;library;
@@ -253,7 +273,7 @@ Name=Files
 GenericName=File Manager
 Comment=Browse, copy and move your files, games, USB drives and SD cards
 Exec=/usr/bin/hearth-filemanager %U
-Icon=hearth
+Icon=hearth-files
 Type=Application
 Categories=System;FileManager;Utility;
 MimeType=inode/directory;
@@ -268,7 +288,7 @@ cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
 Name=Task Manager
 Comment=See what's running, close apps that stopped responding, and check performance
 Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call tasks open
-Icon=hearth
+Icon=hearth-tasks
 Type=Application
 Categories=System;Monitor;
 Keywords=task;process;end;kill;cpu;memory;gpu;performance;startup;
@@ -279,7 +299,7 @@ cat > /usr/share/applications/hearth-settings.desktop <<DESKTOP
 Name=Hearth Settings
 Comment=Wi-Fi, Bluetooth, sound, display, controllers, accounts and updates
 Exec=/usr/bin/hearth-settings
-Icon=hearth
+Icon=hearth-settings
 Type=Application
 Categories=Settings;
 Keywords=wifi;bluetooth;sound;display;controller;update;
@@ -290,7 +310,7 @@ Name=Apps
 GenericName=App Store
 Comment=Find, install and update apps from Flathub
 Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call apps open
-Icon=hearth
+Icon=hearth-apps
 Type=Application
 Categories=System;PackageManager;
 Keywords=store;software;install;update;flathub;flatpak;
@@ -357,16 +377,16 @@ org.freedesktop.impl.portal.FileChooser=kde
 PORTALS
 
 # ------------------------------------------------------------------ Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps)
-# Built with the app (base-anatase.yml) and carried in os/nimbus-app with their icons (branding/icons/apps).
+# Built with the app (base-anatase.yml) and carried in os/nimbus-app; their icons (Icon=hearth-contacts, hearth-maps)
+# come with Hearth's icon set above.
 # Contacts opens .vcf files and keeps CardDAV passwords in GNOME Keyring (Hearth's session starts it); Maps opens
 # geo: links and asks GeoClue for "Where am I" only when that button is pressed (docs/HEARTH-MAPS.md).
 dnf5 -y install geoclue2 libsecret || true
-install -d /usr/share/applications /usr/share/icons/hicolor/scalable/apps
+install -d /usr/share/applications
 for app in hearth-contacts hearth-maps; do
   [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so this image goes without it"; continue; }
   install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
   if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app is missing the libraries above"; fi
-  if [ -f "/ctx/nimbus-app/icons/$app.svg" ]; then install -Dm644 "/ctx/nimbus-app/icons/$app.svg" "/usr/share/icons/hicolor/scalable/apps/$app.svg"; fi
 done
 if [ -x /usr/bin/hearth-contacts ]; then
   cat > /usr/share/applications/hearth-contacts.desktop <<DESKTOP
@@ -405,7 +425,6 @@ DESKTOP
   install -d /etc/geoclue/conf.d
   printf '[hearth-maps]\nallowed=true\nsystem=false\nusers=\n' > /etc/geoclue/conf.d/90-hearth-maps.conf
 fi
-if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -qtf /usr/share/icons/hicolor || true; fi
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # ---- end of Hearth Contacts and Hearth Maps
 

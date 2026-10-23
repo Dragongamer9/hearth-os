@@ -142,7 +142,7 @@ PanelWindow {
         return "text-x-generic";
     }
     function iconFor(e) {
-        if (e.launcher) return e.icon && e.icon.startsWith("/") ? fileUrl(e.icon) : Quickshell.iconPath(e.icon || "", "application-x-executable");
+        if (e.launcher) return AppIcons.source(e.icon || "", e.id || "");
         if (e.dir) return Quickshell.iconPath("folder", "inode-directory");
         return Quickshell.iconPath((e.mime || "").replace("/", "-"), genericIcon(e));
     }

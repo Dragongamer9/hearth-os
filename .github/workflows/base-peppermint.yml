@@ -13,7 +13,7 @@ on:
         default: true
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'branding/icons/apps/**']
+    paths: ['os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -92,7 +92,7 @@ jobs:
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-disks" /tmp/app/hearth-disks
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps): built the same way and put
-      # beside the app in hearth-app.tar with their icons (branding/icons/apps); build.sh installs them as
+      # beside the app in hearth-app.tar (their icons are in Hearth's icon set); build.sh installs them as
       # /usr/bin/hearth-contacts and /usr/bin/hearth-maps. Not fatal: an app that doesn't build is left out.
       - name: Build Hearth Contacts and Hearth Maps
         continue-on-error: true
@@ -101,12 +101,11 @@ jobs:
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
           # Contacts keeps CardDAV passwords in the Secret Service through libdbus.
           apt-get install -y -qq libdbus-1-dev >/dev/null
-          mkdir -p /tmp/app/icons
+          mkdir -p /tmp/app
           for app in hearth-contacts hearth-maps; do
             sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" "hosts/$app/Cargo.toml"
             if (cd "hosts/$app" && cargo build --release); then
               cp "$CARGO_TARGET_DIR/release/$app" "/tmp/app/$app"
-              cp "branding/icons/apps/$app.svg" /tmp/app/icons/
             else echo "::warning title=$app::it didn't build, so this image is made without it"; fi
           done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
