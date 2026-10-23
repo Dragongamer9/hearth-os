@@ -3681,6 +3681,7 @@ function newOsRows(){
   if(pick && pick.allowed) return h + newOsConfirmRows(n, pick);
   h += sw ? `<div class="row" data-f data-k="no-intro"><span class="ricon">${I.dl}</span><div class="rt"><b>You're on ${esc(curLabel)}</b><small>Switch to another edition of Hearth OS. Switching starts you fresh and keeps your games. You'll see exactly what's kept before anything starts, and ${esc(curLabel)} stays in the boot menu.</small></div></div>`
     : `<div class="row" data-f data-k="no-intro"><span class="ricon">${I.dl}</span><div class="rt"><b>Hearth OS is moving away from Bazzite</b><small>Choose the Hearth OS you want next. Moving starts you fresh and keeps your games. You'll see exactly what's kept before anything starts.</small></div></div>`;
+  if(n.archived) h += note(esc(curLabel)+' is archived for now: it gets no more updates. Switch to Anatase or Peppermint to keep getting them; your games come with you.');
   if(n.error) h += note(esc(n.error));
   if(!n.editions) return h + note('Checking which ones are ready…');
   h += n.editions.map(e=>{

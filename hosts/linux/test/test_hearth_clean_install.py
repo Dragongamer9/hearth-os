@@ -330,7 +330,7 @@ class Admin(unittest.TestCase):
                 mock.patch.object(ha, 'layered', lambda: False), mock.patch.object(ha, 'bootc_upgrade_with_progress', fails), \
                 mock.patch.object(ha.time, 'sleep', lambda s: None), mock.patch('builtins.print') as out:
             with self.assertRaises(SystemExit):
-                ha.move_to_new_os('ubuntu', False)
+                ha.move_to_new_os('peppermint', False)
         self.assertEqual(len(calls), 3)   # tried again twice after the dropped connection
         self.assertFalse(os.path.exists(plan))
         said = [c[0][0] for c in out.call_args_list if c[0] and str(c[0][0]).startswith('error: ')]
@@ -341,8 +341,8 @@ class Admin(unittest.TestCase):
                 mock.patch.object(ha, 'own_edition', lambda: 'anatase'), mock.patch.object(ha, 'ensure_podman', lambda: None), \
                 mock.patch.object(ha, 'layered', lambda: False), mock.patch.object(ha, 'bootc_upgrade_with_progress', ok), \
                 mock.patch.object(ha, 'bootc_status', lambda: {}), mock.patch('builtins.print'):
-            ha.move_to_new_os('ubuntu', False)
-        self.assertEqual(jload(plan)['edition'], 'ubuntu')
+            ha.move_to_new_os('peppermint', False)
+        self.assertEqual(jload(plan)['edition'], 'peppermint')
 
     def test_editions(self):
         self.assertEqual(ha.new_os_image('anatase'), 'ghcr.io/dragongamer9/hearth-os:latest')

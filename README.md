@@ -52,8 +52,8 @@
 | Edition | Base | Status |
 |---|---|---|
 | **Hearth OS** | [Anatase](https://anatase.org) (Fedora, image-based), one image for AMD, Intel and Nvidia | Main edition |
-| Hearth OS on Ubuntu | Ubuntu 26.04 LTS, without snaps | Beta Experimental |
-| Hearth OS on CachyOS | CachyOS, performance-tuned (needs a 2015-or-newer CPU, Secure Boot off) | Beta Experimental |
+| Hearth OS on Ubuntu | Ubuntu 26.04 LTS, without snaps | Archived for now |
+| Hearth OS on CachyOS | CachyOS, performance-tuned | Archived for now |
 | Hearth OS on Peppermint | Peppermint OS on Debian 13 | Beta Experimental |
 | **Ember** | Windows 11 (replaces Explorer, or runs on top of it) | Beta |
 | Hearth for Android | An app on Android 8.0+ phones, handhelds and TVs | **Archived** (on hold; the code stays in `hosts/android`) |
@@ -109,7 +109,7 @@ hearth-os/
 
 - **The bridge** between the interface and a host: [docs/bridge.md](docs/bridge.md)
 - **Linux app and session:** [hosts/linux/README.md](hosts/linux/README.md) · **the OS:** [os/README.md](os/README.md) · **Rust host:** [docs/RUST.md](docs/RUST.md)
-- **Editions:** [Anatase](docs/BASE-ANATASE.md) · [Ubuntu](docs/BASE-UBUNTU.md) · [CachyOS](docs/BASE-CACHYOS.md) · [Peppermint](docs/BASE-PEPPERMINT.md)
+- **Editions:** [Anatase](docs/BASE-ANATASE.md) · [Peppermint](docs/BASE-PEPPERMINT.md) · archived for now: [Ubuntu](docs/BASE-UBUNTU.md), [CachyOS](docs/BASE-CACHYOS.md)
 - **Features:** [Couch Co-op](docs/COUCH-COOP.md) · [Multi-seat](docs/MULTI-SEAT.md) · [Moving games and growing Hearth](docs/MOVE-AND-GROW.md) · [Beacon](docs/BEACON.md) · [Mantel](docs/MANTEL-PARITY.md)
 - **Ember (Windows):** [docs/EMBER.md](docs/EMBER.md)
 - **Hearth for Android:** [docs/ANDROID.md](docs/ANDROID.md)
