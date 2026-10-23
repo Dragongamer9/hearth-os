@@ -1,0 +1,690 @@
+#!/usr/bin/python3 -I
+"""Hearth's emergency screen: what systemd's emergency (and rescue) mode shows instead of "Cannot open access to
+console, the root account is locked" (emergency.service.d/50-hearth.conf).
+
+It says in plain words what failed (systemctl --failed, the last errors) and offers, with a keyboard (numbers, or
+arrows and Enter) or a handheld's own buttons (volume up/down or the d-pad to move, power or A to choose):
+  1 start the previous version of Hearth OS     (hearth-boot-guard previous, then restart)
+  2 check and repair the drives                 (/boot and the EFI partition: check first, repair only when asked;
+                                                 the btrfs main drive: a read-only check, and a scrub)
+  3 save a bug report                           (to a USB stick, the EFI partition or /boot: this start's and the
+                                                 previous start's system log)
+  4 restart   5 a command line (only after an administrator's password)   6 carry on starting   7 turn off
+In emergency mode, while a previous version is there to go back to and the count of failed starts hasn't reached
+it yet, it restarts by itself after 90 s unless a key or button is pressed (a handheld without a keyboard then still
+gets to the previous version: GRUB starts it after two failed starts). Exits non-zero only if it breaks, and then
+the unit falls back to the usual sulogin.
+"""
+import glob
+import json
+import os
+import re
+import select
+import shutil
+import struct
+import subprocess
+import sys
+import time
+
+GUARD = '/usr/libexec/nimbus/hearth-boot-guard'
+AUTO_RESTART = 90
+EVENT = struct.Struct('llHHi')
+EV_KEY, EV_ABS = 1, 3
+KEY_UP, KEY_DOWN, KEY_SELECT = 'up', 'down', 'select'
+# Handheld buttons and controllers (keyboards come through the console itself).
+EV_KEYS = {115: KEY_UP, 114: KEY_DOWN, 116: KEY_SELECT,          # volume up, volume down, power
+           304: KEY_SELECT, 544: KEY_UP, 545: KEY_DOWN}          # A (south), d-pad up, d-pad down
+ABS_HAT0Y = 17
+MODE = sys.argv[1] if len(sys.argv) > 1 else 'emergency'
+
+
+def run(cmd, timeout=30, **kw):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+        return r.returncode, (r.stdout + r.stderr)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, str(e)
+
+
+def out(text=''):
+    sys.stdout.write(text.replace('\n', '\r\n') + '\r\n')
+    sys.stdout.flush()
+
+
+def clear():
+    sys.stdout.write('\033[2J\033[H')
+    sys.stdout.flush()
+
+
+# ------------------------------------------------------------------ the console and the buttons
+
+class Input:
+    def __init__(self):
+        self.tty = sys.stdin.isatty()
+        self.saved = None
+        self.devs = {}
+        self.scanned = 0
+
+    def raw(self):
+        if self.tty and self.saved is None:
+            import termios
+            import tty
+            try:
+                self.saved = termios.tcgetattr(0)
+                tty.setcbreak(0)
+            except termios.error:
+                self.saved = None
+
+    def cooked(self):
+        if self.saved is not None:
+            import termios
+            try:
+                termios.tcsetattr(0, termios.TCSADRAIN, self.saved)
+            except termios.error:
+                pass
+            self.saved = None
+
+    def scan(self):
+        if time.monotonic() - self.scanned < 3:
+            return
+        self.scanned = time.monotonic()
+        for path in glob.glob('/dev/input/event*'):
+            if path not in self.devs:
+                try:
+                    self.devs[path] = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                except OSError:
+                    pass
+
+    def get(self, timeout):
+        """'up', 'down', 'select', a digit, 'other', or None after `timeout` s."""
+        self.raw()
+        self.scan()
+        end = time.monotonic() + timeout
+        while True:
+            left = end - time.monotonic()
+            if left <= 0:
+                return None
+            fds = list(self.devs.values()) + ([0] if self.tty or not sys.stdin.closed else [])
+            try:
+                ready, _, _ = select.select(fds, [], [], min(left, 3))
+            except (OSError, ValueError):
+                time.sleep(min(left, 1))
+                ready = []
+            for fd in ready:
+                if fd == 0:
+                    k = self.key()
+                    if k:
+                        return k
+                    continue
+                k = self.event(fd)
+                if k:
+                    return k
+            self.scan()
+
+    def key(self):
+        try:
+            c = os.read(0, 1).decode(errors='replace')
+        except OSError:
+            return None
+        if not c:
+            time.sleep(0.5)   # no console input at all (closed): don't spin
+            return None
+        if c == '\x1b':
+            seq = ''
+            while select.select([0], [], [], 0.05)[0]:
+                seq += os.read(0, 1).decode(errors='replace')
+            return {'[A': KEY_UP, '[B': KEY_DOWN, 'OA': KEY_UP, 'OB': KEY_DOWN}.get(seq, 'other')
+        if c in '\r\n ':
+            return KEY_SELECT
+        if c.isdigit():
+            return c
+        if c in 'kw':
+            return KEY_UP
+        if c in 'js':
+            return KEY_DOWN
+        return 'other'
+
+    def event(self, fd):
+        got = None
+        try:
+            data = os.read(fd, EVENT.size * 64)
+        except BlockingIOError:
+            return None
+        except OSError:
+            for p, f in list(self.devs.items()):
+                if f == fd:
+                    del self.devs[p]
+                    os.close(fd)
+            return None
+        for i in range(0, len(data) - EVENT.size + 1, EVENT.size):
+            _, _, typ, code, value = EVENT.unpack_from(data, i)
+            if typ == EV_KEY and value == 1 and code in EV_KEYS:
+                got = EV_KEYS[code]
+            elif typ == EV_ABS and code == ABS_HAT0Y and value in (-1, 1):
+                got = KEY_UP if value < 0 else KEY_DOWN
+        return got
+
+
+INPUT = Input()
+
+
+def choose(title, options, intro='', default=0, timeout=None, timeout_text=''):
+    """A menu: numbers, arrows/Enter, or the handheld's buttons. Returns the index, or None when `timeout` ran
+    out without a key."""
+    sel = default
+    end = time.monotonic() + timeout if timeout else None
+    while True:
+        clear()
+        if intro:
+            out(intro)
+            out()
+        out(title)
+        out()
+        for i, o in enumerate(options):
+            out(('  > ' if i == sel else '    ') + '%d  %s' % (i + 1, o))
+        out()
+        out('Keyboard: press a number, or the arrow keys and Enter.')
+        out('Handheld: volume up/down (or the d-pad) to move, power button (or A) to choose.')
+        if end:
+            out()
+            out(timeout_text % max(0, int(end - time.monotonic())))
+        k = INPUT.get(1 if end else 3600)
+        if k is None:
+            if end and time.monotonic() >= end:
+                return None
+            continue
+        end = None   # any key stops the countdown
+        if k == KEY_UP:
+            sel = (sel - 1) % len(options)
+        elif k == KEY_DOWN:
+            sel = (sel + 1) % len(options)
+        elif k == KEY_SELECT:
+            return sel
+        elif k.isdigit() and 1 <= int(k) <= len(options):
+            return int(k) - 1
+
+
+def pause(text):
+    out()
+    out(text)
+    out()
+    out('Press any key or button to go back.')
+    INPUT.get(3600)
+
+
+def confirm(question, yes, no='No, go back'):
+    return choose(question, [no, yes]) == 1
+
+
+def bigger_font():
+    """The console's tiny default font on a 1080p handheld screen is hard to read: a bigger one when there is one."""
+    try:
+        with open('/sys/class/graphics/fb0/virtual_size') as f:
+            w = int(f.read().split(',')[0])
+    except (OSError, ValueError):
+        return
+    if w < 1600 or not shutil.which('setfont'):
+        return
+    for font in ('ter-v32b', 'ter-132b', 'latarcyrheb-sun32', 'Lat15-TerminusBold32x16', 'solar24x32'):
+        if run(['setfont', font], timeout=10)[0] == 0:
+            return
+
+
+# ------------------------------------------------------------------ what went wrong
+
+def failed_units():
+    code, text = run(['systemctl', '--failed', '--no-legend', '--plain', '--no-pager'])
+    units = []
+    for line in text.splitlines():
+        f = line.split(None, 4)
+        if f and f[0].endswith(('.service', '.mount', '.target', '.device', '.socket', '.swap', '.path', '.timer', '.automount', '.slice', '.scope')):
+            units.append((f[0], f[4] if len(f) > 4 else ''))
+    return units
+
+
+def last_errors(n=6):
+    code, text = run(['journalctl', '-b', '-p', 'err', '-n', str(n), '-o', 'cat', '--no-pager'])
+    return [l.strip()[:110] for l in text.splitlines() if l.strip()][-n:]
+
+
+def guard_status():
+    code, text = run([GUARD, 'status', '--json'], timeout=20)
+    try:
+        return json.loads(text)
+    except ValueError:
+        return {}
+
+
+def version():
+    v = ''
+    try:
+        v = open('/usr/share/nimbus/version').read().strip()
+    except OSError:
+        pass
+    name = 'Hearth OS'
+    try:
+        for line in open('/etc/os-release'):
+            if line.startswith('PRETTY_NAME='):
+                name = line.split('=', 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return name + (' ' + v if v else '')
+
+
+def summary(st):
+    lines = ['Hearth OS couldn\'t finish starting.' if MODE == 'emergency' else 'Hearth OS started in rescue mode.']
+    lines.append('This is ' + version() + '.')
+    units = failed_units()
+    if units:
+        lines.append('')
+        lines.append('What failed:')
+        for u, desc in units[:5]:
+            lines.append('  - %s%s' % (u, ' (' + desc + ')' if desc else ''))
+        if len(units) > 5:
+            lines.append('  ... and %d more' % (len(units) - 5))
+    errs = last_errors()
+    if errs:
+        lines.append('')
+        lines.append('The last errors in the system log:')
+        lines += ['  ' + e for e in errs]
+    lines.append('')
+    if st.get('previous'):
+        lines.append('The version before the last update is still on this device and can be started instead (1).')
+    else:
+        lines.append('There is no earlier version on this device to go back to.')
+    return '\n'.join(lines)
+
+
+# ------------------------------------------------------------------ 1: the previous version
+
+def restart():
+    out('Restarting...')
+    if run(['systemctl', 'reboot'], timeout=30)[0] != 0:
+        run(['reboot', '-f'], timeout=30)
+    time.sleep(30)
+
+
+def go_previous():
+    clear()
+    out('Setting up the previous version of Hearth OS for the next start...')
+    code, text = run([GUARD, 'previous'], timeout=360)
+    out(text.strip())
+    if code != 0:
+        pause('That didn\'t work. With a keyboard plugged in, you can also pick the entry that ends in '
+              '"(previous version)" in the menu that shows when the device starts.')
+        return
+    out()
+    out('Done: the previous version starts now. Once it has started, it stays the one that starts.')
+    time.sleep(3)
+    restart()
+
+
+# ------------------------------------------------------------------ 2: the drives
+
+def fstab():
+    """[(device, mountpoint, fstype)] from /etc/fstab, devices resolved."""
+    res = []
+    for line in (open('/etc/fstab').read().splitlines() if os.path.exists('/etc/fstab') else []):
+        f = line.split()
+        if len(f) < 3 or f[0].startswith('#'):
+            continue
+        dev = f[0]
+        if '=' in dev:
+            code, t = run(['findfs', dev])
+            dev = t.strip() if code == 0 else ''
+        res.append((dev, f[1], f[2]))
+    return res
+
+
+def mounted(path):
+    return run(['findmnt', '-n', path])[0] == 0
+
+
+def show(cmd, timeout=1800):
+    """Runs a check, its output on the screen as it goes; returns (exit code, output)."""
+    out('$ ' + ' '.join(cmd))
+    INPUT.cooked()
+    try:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        lines = []
+        for line in p.stdout:
+            lines.append(line)
+            sys.stdout.write(line)
+            sys.stdout.flush()
+        code = p.wait(timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, str(e)
+    finally:
+        INPUT.raw()
+    return code, ''.join(lines)
+
+
+def check_small(dev, mnt, fstype):
+    """/boot (ext4) or the EFI partition (FAT): unmounted, checked without changing anything, and repaired only
+    when asked; mounted again afterwards."""
+    clear()
+    if not dev:
+        pause("Couldn't find the drive for %s." % mnt)
+        return
+    out('Checking %s (%s, %s). It is unmounted while it is checked.' % (mnt, dev, fstype))
+    out()
+    for m in (['/boot/efi', '/boot'] if mnt == '/boot' else [mnt]):
+        if mounted(m) and run(['umount', m])[0] != 0:
+            pause("Couldn't unmount %s, so it can't be checked now." % m)
+            return
+    try:
+        if fstype.startswith('ext'):
+            code, _ = show(['e2fsck', '-f', '-n', dev])
+            if code == 0:
+                pause('No problems found on %s.' % mnt)
+                return
+            pick = choose('Problems were found on %s. What now?' % mnt,
+                          ['Leave it as it is', 'Fix the safe things automatically (recommended)',
+                           'Fix everything the check finds (answers yes to every question: damaged files may be lost)'])
+            if pick == 1:
+                clear()
+                code, _ = show(['e2fsck', '-f', '-p', dev])
+                if code & 4:
+                    pause('Some problems need a full repair (choose this again and pick "Fix everything").')
+                else:
+                    pause('Fixed (e2fsck exit code %d).' % code)
+            elif pick == 2 and confirm('A full repair can delete files it finds damaged. Go ahead?', 'Yes, repair everything'):
+                clear()
+                code, _ = show(['e2fsck', '-f', '-y', dev])
+                pause('The repair finished (e2fsck exit code %d: 0-2 means fixed).' % code)
+        else:
+            code, _ = show(['fsck.vfat', '-n', dev])
+            if code == 0:
+                pause('No problems found on %s.' % mnt)
+                return
+            if confirm('Problems were found on the EFI partition. Fix them automatically?', 'Yes, fix them'):
+                clear()
+                code, _ = show(['fsck.vfat', '-a', '-w', dev])
+                pause('The repair finished (fsck.vfat exit code %d).' % code)
+    finally:
+        for m in (['/boot', '/boot/efi'] if mnt == '/boot' else [mnt]):
+            if not mounted(m):
+                run(['mount', m])
+
+
+def root_device():
+    for target in ('/sysroot', '/'):
+        code, text = run(['findmnt', '-n', '-o', 'SOURCE,FSTYPE', target])
+        f = text.split()
+        if code == 0 and len(f) >= 2 and f[1] == 'btrfs':
+            return re.sub(r'\[.*\]$', '', f[0]), target
+    for dev, mnt, fstype in fstab():
+        if mnt == '/' and fstype == 'btrfs':
+            return dev, None
+    return '', None
+
+
+def check_btrfs():
+    dev, mnt = root_device()
+    clear()
+    if not dev:
+        pause("Couldn't find Hearth's main drive (btrfs).")
+        return
+    out('Checking the main drive (%s, btrfs) without changing anything. It is in use, so the result can show' % dev)
+    out('small differences that aren\'t real problems. This can take a few minutes.')
+    out()
+    code, text = show(['btrfs', 'check', '--readonly', '--force', dev], timeout=3600)
+    ok = code == 0
+    msg = 'No problems found on the main drive.' if ok else 'The check found problems (exit code %d).' % code
+    msg += ('\n\nA repair (btrfs check --repair) isn\'t offered here: it can make damage worse, and it needs the drive '
+            'not in use. Save a bug report (3) and ask for help first. A scrub is safe: it reads everything and fixes what '
+            'the drive\'s own checksums and copies can fix.')
+    pick = choose(msg, ['Back', 'Run a scrub now (safe; reads the whole drive, can take a long time)'])
+    if pick == 1 and mnt:
+        clear()
+        code, _ = show(['btrfs', 'scrub', 'start', '-B', '-d', mnt], timeout=6 * 3600)
+        pause('The scrub finished (exit code %d).' % code)
+
+
+def drives():
+    while True:
+        tab = fstab()
+        boot = next(((d, m, t) for d, m, t in tab if m == '/boot'), None)
+        esp = next(((d, m, t) for d, m, t in tab if m == '/boot/efi'), None)
+        opts, acts = [], []
+        if boot:
+            opts.append('Check the boot partition (/boot, %s)' % boot[2])
+            acts.append(lambda b=boot: check_small(*b))
+        if esp:
+            opts.append('Check the EFI partition (/boot/efi, %s)' % esp[2])
+            acts.append(lambda e=esp: check_small(*e))
+        opts.append('Check the main drive (btrfs: a read-only check, then an optional scrub)')
+        acts.append(check_btrfs)
+        opts.append('Back')
+        acts.append(None)
+        i = choose('Check and repair the drives. Each check only reads at first; nothing is changed without asking.', opts)
+        if acts[i] is None:
+            return
+        acts[i]()
+
+
+# ------------------------------------------------------------------ 3: a bug report
+
+def redact(text):
+    text = re.sub(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '[email]', text)
+    text = re.sub(r'(?i)((?:token|password|passwd|psk|secret|cookie|authorization)["\']?\s*[:=]\s*["\']?)[^\s"\',&}]{4,}', r'\1[removed]', text)
+    text = re.sub(r'(?i)(ssid[\s:=]+)\S+', r'\1[wifi]', text)
+    return text
+
+
+def report():
+    parts = ['Hearth emergency report - %s - %s (%s mode)' % (time.strftime('%Y-%m-%d %H:%M'), version(), MODE)]
+    for title, cmd in [
+            ('Automatic return to the previous version', [GUARD, 'status']),
+            ('Failed units', ['systemctl', '--failed', '--no-pager']),
+            ('Kernel command line', ['cat', '/proc/cmdline']),
+            ('System versions (bootc)', ['bootc', 'status']),
+            ('Drives', ['lsblk', '-o', 'NAME,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS']),
+            ('Mounts', ['findmnt', '-o', 'TARGET,SOURCE,FSTYPE,OPTIONS']),
+            ('fstab', ['cat', '/etc/fstab']),
+            ('Starts this system remembers', ['journalctl', '--list-boots', '--no-pager']),
+            ('This start: warnings and errors', ['journalctl', '-b', '-p', 'warning', '-n', '400', '--no-pager']),
+            ('This start: everything (newest 2500 lines)', ['journalctl', '-b', '-n', '2500', '--no-pager']),
+            ('Previous start: how it ended (newest 1500 lines)', ['journalctl', '-b', '-1', '-n', '1500', '--no-pager']),
+            ('Previous start: the kernel (graphics, controllers, power; newest 600 lines)', ['journalctl', '-b', '-1', '-k', '-n', '600', '--no-pager']),
+            ('Previous start: errors', ['journalctl', '-b', '-1', '-p', 'err', '-n', '300', '--no-pager'])]:
+        code, text = run(cmd, timeout=60)
+        parts.append('\n===== %s =====\n%s' % (title, text.strip()))
+    return redact('\n'.join(parts) + '\n')
+
+
+def usb_partitions():
+    """[(device, label)] of partitions on USB sticks and SD cards with a file system Hearth can write."""
+    code, text = run(['lsblk', '-J', '-p', '-o', 'NAME,TRAN,HOTPLUG,RM,FSTYPE,LABEL,SIZE,TYPE'])
+    found = []
+    try:
+        disks = json.loads(text).get('blockdevices', [])
+    except ValueError:
+        return found
+    for d in disks:
+        removable = d.get('tran') == 'usb' or d.get('hotplug') in (True, '1') or d.get('rm') in (True, '1')
+        for p in [d] + (d.get('children') or []):
+            if removable and p.get('fstype') in ('vfat', 'exfat', 'ntfs', 'ext4', 'btrfs') and p.get('type') in ('part', 'disk'):
+                found.append((p['name'], '%s %s' % (p.get('label') or 'USB drive', p.get('size') or '')))
+    return found
+
+
+def save_report():
+    clear()
+    out('Collecting the logs...')
+    text = report()
+    name = 'Hearth-emergency-%s.txt' % time.strftime('%Y-%m-%d-%H-%M')
+    places = [('usb', d, 'USB drive / SD card: %s (%s)' % (label.strip(), d)) for d, label in usb_partitions()]
+    if mounted('/boot/efi') or os.path.isdir('/boot/efi/EFI'):
+        places.append(('dir', '/boot/efi', 'The EFI partition (readable from Windows or any PC)'))
+    if mounted('/boot'):
+        places.append(('dir', '/boot', 'The boot partition (/boot)'))
+    places.append(('dir', '/var/lib/hearth', 'This system (/var/lib/hearth)'))
+    i = choose('Where should the bug report go? (Plug in a USB stick now and press "Look again" to see it.)',
+               [p[2] for p in places] + ['Look again', 'Back'])
+    if i == len(places):
+        return save_report()
+    if i > len(places):
+        return
+    kind, where, label = places[i]
+    path = None
+    try:
+        if kind == 'usb':
+            mnt = '/run/hearth-emergency/usb'
+            os.makedirs(mnt, exist_ok=True)
+            code, msg = run(['mount', where, mnt])
+            if code != 0:
+                pause("Couldn't open the USB drive: " + msg.strip())
+                return
+            try:
+                path = os.path.join(mnt, name)
+                with open(path, 'w') as f:
+                    f.write(text)
+                os.sync()
+            finally:
+                run(['umount', mnt])
+            path = '%s on %s' % (name, label)
+        else:
+            d = os.path.join(where, 'hearth-logs') if where.startswith('/boot') else where
+            os.makedirs(d, exist_ok=True)
+            path = os.path.join(d, name)
+            with open(path, 'w') as f:
+                f.write(text)
+            os.sync()
+    except OSError as e:
+        pause("Couldn't save it there: %s" % e)
+        return
+    pause('Saved: %s\n\nSend this file with your bug report. (It holds the system log of this start and the one '
+          'before; e-mail addresses, passwords and Wi-Fi names are taken out.)' % path)
+
+
+# ------------------------------------------------------------------ 5: a command line, for an administrator
+
+def admins():
+    users = []
+    try:
+        for line in open('/etc/group'):
+            f = line.strip().split(':')
+            if len(f) >= 4 and f[0] in ('wheel', 'sudo'):
+                users += [u for u in f[3].split(',') if u and u not in users]
+    except OSError:
+        pass
+    return users
+
+
+def root_has_password():
+    try:
+        for line in open('/etc/shadow'):
+            f = line.split(':')
+            if f[0] == 'root':
+                return len(f) > 1 and f[1] not in ('', '*', '!', '!!') and not f[1].startswith(('!', '*'))
+    except OSError:
+        pass
+    return False
+
+
+def shell():
+    users = admins()
+    opts = ['%s (administrator)' % u for u in users]
+    if root_has_password():
+        opts.append('root (with the root password)')
+    if not opts:
+        pause('There is no administrator account on this system, and the root account is locked, so a command line '
+              'can\'t be opened here. Start Hearth\'s USB stick to repair the system instead.')
+        return
+    i = choose('A command line runs as root, so it needs an administrator\'s password. Whose password will you type?\n'
+               '(Typing needs a keyboard.)', opts + ['Back'])
+    if i >= len(opts):
+        return
+    clear()
+    INPUT.cooked()
+    try:
+        if i < len(users):
+            user = users[i]
+            out('Password for %s:' % user)
+            # su checks the password through PAM, run as nobody so it really asks (root is never asked).
+            ok = subprocess.run(['setpriv', '--reuid=65534', '--regid=65534', '--clear-groups', '--',
+                                 'su', '-c', 'true', '--', user]).returncode == 0
+            if not ok:
+                INPUT.raw()
+                pause('That password wasn\'t right.')
+                return
+            out()
+            out('Command line as root. Type "exit" to go back to the menu.')
+            subprocess.run(['/bin/bash', '--login'], env=dict(os.environ, HOME='/root', PS1='[hearth-emergency \\w]# '))
+        else:
+            sulogin = shutil.which('sulogin') or '/usr/sbin/sulogin'
+            subprocess.run([sulogin, '--force'])
+    finally:
+        INPUT.raw()
+
+
+# ------------------------------------------------------------------ the menu
+
+def carry_on():
+    clear()
+    out('Trying to carry on starting Hearth OS...')
+    run(['systemctl', '--job-mode=fail', '--no-block', 'default'], timeout=30)
+    INPUT.cooked()
+    sys.exit(0)
+
+
+def ensure_boot():
+    """/boot (and the EFI partition) mounted, so the versions and GRUB's count can be read and set: emergency mode
+    can come before they're mounted (or because one of them failed). If /boot won't mount normally, read-only, so
+    the screen still knows whether there's a previous version (option 2 can then repair it)."""
+    for m in ('/boot', '/boot/efi'):
+        if not mounted(m):
+            run(['mount', m], timeout=60)
+    if not mounted('/boot'):
+        dev = next((d for d, m, t in fstab() if m == '/boot'), '')
+        fstype = next((t for d, m, t in fstab() if m == '/boot'), '')
+        if dev:
+            run(['mount', '-o', 'ro,noload' if fstype.startswith('ext') else 'ro', dev, '/boot'], timeout=60)
+
+
+def main():
+    bigger_font()
+    ensure_boot()
+    st = guard_status()
+    auto = (MODE == 'emergency' and st.get('active') and st.get('previous') and (st.get('tries') or '') in ('1', '2'))
+    first = True
+    while True:
+        st = guard_status()
+        options = ['Start the previous version of Hearth OS' + (' (recommended)' if st.get('previous') else ' (there is none)'),
+                   'Check and repair the drives', 'Save a bug report (to a USB stick or the EFI partition)', 'Restart',
+                   'Open a command line (needs an administrator\'s password)', 'Try to carry on starting', 'Turn off']
+        if st.get('tries') == '1':
+            note = 'If nothing is pressed, the device restarts in %d s and tries this version once more.'
+        else:
+            note = 'If nothing is pressed, the device restarts in %d s and starts the previous version.'
+        i = choose('What would you like to do?', options, intro=summary(st),
+                   timeout=AUTO_RESTART if (auto and first) else None, timeout_text=note + ' Any key or button stops this.')
+        first = False
+        if i is None:
+            restart()
+            continue
+        if i == 0:
+            go_previous() if st.get('previous') else pause('There is no earlier version on this device.')
+        elif i == 1:
+            drives()
+        elif i == 2:
+            save_report()
+        elif i == 3:
+            restart()
+        elif i == 4:
+            shell()
+        elif i == 5:
+            carry_on()
+        elif i == 6:
+            out('Turning off...')
+            if run(['systemctl', 'poweroff'], timeout=30)[0] != 0:
+                run(['poweroff', '-f'], timeout=30)
+            time.sleep(30)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    finally:
+        INPUT.cooked()

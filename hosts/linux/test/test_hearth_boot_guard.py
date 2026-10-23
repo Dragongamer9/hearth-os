@@ -1,4 +1,5 @@
-"""Tests for hearth-boot-guard (going back to the previous version after starts that don't reach Hearth). No real /boot, bootc or GRUB: temporary folders and a fake bootc."""
+"""Tests for hearth-boot-guard (going back to the previous version after starts that don't reach Hearth) and the
+emergency screen's helpers. No real /boot, bootc or GRUB: temporary folders and a fake bootc."""
 import sys
 sys.dont_write_bytecode = True
 import importlib.machinery
@@ -22,6 +23,7 @@ def load(name):
 
 
 G = load('hearth-boot-guard')
+E = load('hearth-emergency')
 
 ENTRY = 'title Hearth OS {v}\nversion {n}\nlinux /ostree/default-{c}/vmlinuz\ninitrd /ostree/default-{c}/initramfs.img\noptions root=UUID=x rw ostree=/ostree/boot.1/default/{c}/0\n'
 
@@ -163,6 +165,21 @@ class Success(unittest.TestCase):
         self.assertEqual([v['running'] for v in st['versions']], [False, True])
         self.assertTrue(st['previous'])
         self.assertIn('[running now]', G.status_text(st))
+
+
+class Emergency(unittest.TestCase):
+    def test_redact(self):
+        t = E.redact('mail me at a.b@example.com psk=hunter22 ssid HomeNet')
+        self.assertNotIn('example.com', t)
+        self.assertNotIn('hunter22', t)
+        self.assertNotIn('HomeNet', t)
+
+    def test_event_size(self):
+        self.assertEqual(E.EVENT.size, 24)   # struct input_event on 64-bit
+
+    def test_buttons(self):
+        self.assertEqual(E.EV_KEYS[115], E.KEY_UP)      # volume up
+        self.assertEqual(E.EV_KEYS[116], E.KEY_SELECT)  # power
 
 
 if __name__ == '__main__':
