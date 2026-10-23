@@ -13,7 +13,7 @@ on:
         default: true
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**']
+    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -290,6 +290,21 @@ jobs:
           else
             echo "::warning title=Claude Desktop install::$(printf '%s' "$cout" | grep -v '^progress' | tail -3 | tr '\n' ' ' | cut -c1-600)"
           fi
+          echo "--- .deb files (Hearth's Debian box), AppImages, the app store"
+          check "Distrobox, podman and newuidmap/newgidmap are installed (rootless containers)" "command -v distrobox && command -v podman && command -v newuidmap && command -v newgidmap"
+          check "hearth-debbox is installed (also as /usr/bin/hearth-debbox) and its Python is valid" "test -x /usr/share/nimbus/desktop/shell/hearth-debbox && test -x /usr/bin/hearth-debbox && python3 -c 'import ast; ast.parse(open(\"/usr/share/nimbus/desktop/shell/hearth-debbox\").read())'"
+          check ".deb files open in Install Package (desktop file and MIME default)" "test -x /usr/bin/hearth-install-package && grep -q 'application/vnd.debian.binary-package' /usr/share/applications/hearth-install-package.desktop && grep -q '^application/vnd.debian.binary-package=hearth-install-package.desktop' /etc/xdg/nimbus-mimeapps.list && test -f /usr/share/nimbus/desktop/shell/DebInstaller.qml"
+          check "FUSE 2 for AppImages (libfuse.so.2 and fusermount)" "ldconfig -p | grep -q 'libfuse.so.2 ' && command -v fusermount"
+          check "home folder repair is installed and runs every boot" "python3 -m py_compile /usr/libexec/nimbus/hearth-home-repair && test -L /etc/systemd/system/multi-user.target.wants/hearth-home-repair.service"
+          check "Flatpak's system installation set up / Bazaar installer runs every boot" "python3 -m py_compile /usr/libexec/nimbus/hearth-flatpak-setup && test -L /etc/systemd/system/multi-user.target.wants/hearth-flatpak-setup.service"
+          check "nothing makes an empty /var/lib/flatpak/repo at boot (flatpak can't open one: openat(config))" "! grep -rqs 'var/lib/flatpak/repo' /usr/lib/tmpfiles.d /etc/tmpfiles.d"
+          check "Bazaar: the image's package, or installed at boot (hearth-flatpak-setup)" "test -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop || grep -q io.github.kolunmi.Bazaar /usr/libexec/nimbus/hearth-flatpak-setup"
+          if [ -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop ]; then echo "::notice title=Bazaar::the image has it as a package"; else echo "::notice title=Bazaar::installed from Flathub at the first online boot (hearth-flatpak-setup.service)"; fi
+          check "a Flathub remote file for the system installation" "test -s /etc/flatpak/remotes.d/flathub.flatpakrepo"
+          # A new account gets a container id range from hearth-home-repair (rootless podman needs one).
+          mkdir -p /var/home && useradd -m -d /var/home/subtest subtest >/dev/null 2>&1; sed -i '/^subtest:/d' /etc/subuid /etc/subgid
+          check "hearth-home-repair gives an account its subuid/subgid range" "/usr/libexec/nimbus/hearth-home-repair --user subtest && grep -q '^subtest:[0-9]*:65536' /etc/subuid && grep -q '^subtest:[0-9]*:65536' /etc/subgid"
+          check "hearth-apps and hearth-files are valid" "python3 -c 'import ast; [ast.parse(open(\"/usr/share/nimbus/desktop/shell/\" + f).read()) for f in (\"hearth-apps\", \"hearth-files\")]'"
           echo "--- nice to have"
           warn "Peppermint's desktop (Xfce) is on the login screen" "grep -q 'Peppermint desktop' /usr/share/xsessions/xfce.desktop"
           warn "acpi_call (Legion Go power limits through HHD)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
@@ -301,6 +316,16 @@ jobs:
           echo "--- bootc container lint"
           sudo podman run --rm hearth-peppermint:latest bootc container lint 2>&1 | tee /tmp/lint.log || {
             msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
+
+      # WARN-ONLY: rootless podman, Hearth's Debian box with a small .deb, AppImages through FUSE, Bazaar from Flathub,
+      # for a throwaway account in a privileged container (.github/scripts/hearth-box-check.sh). Needs the network and
+      # nested containers, which a runner may not give, so it never fails the build.
+      - name: Debian box, AppImages and Bazaar (warn-only)
+        continue-on-error: true
+        timeout-minutes: 40
+        run: |
+          sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
+            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-peppermint:latest bash /box.sh || echo "::warning title=box check::the check didn't finish"
 
       - name: Publish to GitHub Container Registry
         if: env.PUBLISH == 'true'

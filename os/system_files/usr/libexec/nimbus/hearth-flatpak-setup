@@ -1,0 +1,179 @@
+#!/usr/bin/python3
+"""hearth-flatpak-setup: the system's Flatpak installation made usable, Flathub in it, and Bazaar (the Flathub app
+store, io.github.kolunmi.Bazaar) installed for everyone. Runs as root at every boot (hearth-flatpak-setup.service,
+after the network is up; retried until it works), so existing installs get it after an update too. Logs to the
+journal (journalctl -u hearth-flatpak-setup).
+
+  1. repo     /var/lib/flatpak/repo there but never initialised (no `config`): flatpak then fails every system
+              operation with "opening repo: openat(config): No such file or directory". Peppermint images up to
+              0.6.0 made that empty folder at every boot (the bootc layout turned the image's /var/lib/flatpak
+              folders into tmpfiles.d entries). Empty (no objects): moved aside to repo.broken-<time> and made again
+              by flatpak itself. With objects but no config: NOT deleted; a config is written back (mode
+              bare-user-only, what flatpak gives system repos) and that's logged loudly.
+  2. flathub  the system's Flathub remote (from /etc/flatpak/remotes.d/flathub.flatpakrepo, which flatpak only
+              reads when it makes a new installation).
+  3. bazaar   Bazaar from Flathub, system-wide, unless the image has it as a package already, or it was installed
+              by this once and removed since (/var/lib/hearth/bazaar.done; delete it to get Bazaar back). Then a
+              system override lets Bazaar read ~/.config/gtk-4.0 (Hearth's theme script puts Mantel's colours there
+              unless you have your own gtk.css).
+
+  hearth-flatpak-setup [--no-bazaar] [--root DIR]   (--root: a fake system for tests; nothing is run there)
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+ROOT = '/'
+BAZAAR = 'io.github.kolunmi.Bazaar'
+REMOTE = 'flathub'
+REMOTE_FILE = 'etc/flatpak/remotes.d/flathub.flatpakrepo'
+REMOTE_URL = 'https://dl.flathub.org/repo/flathub.flatpakrepo'
+REPO = 'var/lib/flatpak/repo'
+DONE = 'var/lib/hearth/bazaar.done'
+# What flatpak writes when it makes a system repo (flatpak_dir_ensure_repo: bare-user-only for every installation).
+REPO_CONFIG = '[core]\nrepo_version=1\nmode=bare-user-only\nmin-free-space-size=500MB\n'
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+def p(*parts):
+    return os.path.join(ROOT, *parts)
+
+
+def has_objects(objects):
+    """Whether an ostree objects folder holds any object (any file in its xx/ folders)."""
+    try:
+        for d in os.listdir(objects):
+            sub = os.path.join(objects, d)
+            if os.path.isdir(sub) and not os.path.islink(sub) and os.listdir(sub):
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def repo_state(repo):
+    """ok | missing | empty-no-config | objects-no-config."""
+    if not os.path.lexists(repo):
+        return 'missing'
+    if os.path.isfile(os.path.join(repo, 'config')):
+        return 'ok'
+    return 'objects-no-config' if has_objects(os.path.join(repo, 'objects')) else 'empty-no-config'
+
+
+def fix_repo(repo, now=None):
+    """Makes /var/lib/flatpak/repo usable again (see the top). Returns what it did."""
+    state = repo_state(repo)
+    if state in ('ok', 'missing'):
+        return state
+    if state == 'empty-no-config':
+        aside = '%s.broken-%d' % (repo, int(now or time.time()))
+        os.rename(repo, aside)
+        log('repo: %s was never initialised (no config, no objects): moved to %s; flatpak makes it again' % (repo, aside))
+        return 'moved-aside'
+    log('repo: WARNING: %s has objects but no config; writing the config back (mode=bare-user-only) instead of deleting '
+        'anything. If flatpak still fails, move %s aside and restart.' % (repo, repo))
+    with open(os.path.join(repo, 'config'), 'w') as f:
+        f.write(REPO_CONFIG)
+    os.chmod(os.path.join(repo, 'config'), 0o644)
+    return 'config-written'
+
+
+def flatpak(args, timeout=1800):
+    try:
+        r = subprocess.run(['flatpak'] + args, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, LC_ALL='C'))
+        return r.returncode, (r.stdout + r.stderr).strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, str(e)
+
+
+def ensure_remote():
+    code, out = flatpak(['remotes', '--system', '--columns=name'])
+    if code == 0 and REMOTE in out.split():
+        return True
+    src = p(REMOTE_FILE) if os.path.exists(p(REMOTE_FILE)) else REMOTE_URL
+    code, out = flatpak(['remote-add', '--system', '--if-not-exists', REMOTE, src], timeout=300)
+    log('flathub: %s (%s)' % ('added to the system installation' if code == 0 else 'couldn\'t be added', out.splitlines()[-1] if out else src))
+    return code == 0
+
+
+def bazaar_packaged():
+    return any(os.path.exists(p(d, 'applications', BAZAAR + '.desktop')) for d in ('usr/share', 'usr/local/share'))
+
+
+def bazaar_installed():
+    return flatpak(['info', '--system', BAZAAR], timeout=60)[0] == 0
+
+
+def bazaar_plan(packaged, installed, done):
+    """skip-packaged | override | skip-removed | install."""
+    if packaged:
+        return 'skip-packaged'
+    if installed:
+        return 'override'
+    if done:
+        return 'skip-removed'
+    return 'install'
+
+
+def override():
+    code, out = flatpak(['override', '--system', BAZAAR, '--filesystem=xdg-config/gtk-4.0:ro'], timeout=60)
+    log('bazaar: %s' % ('can read ~/.config/gtk-4.0 (Mantel\'s colours)' if code == 0 else 'override failed: ' + out))
+
+
+def mark_done():
+    os.makedirs(os.path.dirname(p(DONE)), exist_ok=True)
+    with open(p(DONE), 'w') as f:
+        json.dump({'installed': int(time.time()), 'by': 'hearth-flatpak-setup'}, f)
+
+
+def bazaar():
+    plan = bazaar_plan(bazaar_packaged(), bazaar_installed(), os.path.exists(p(DONE)))
+    log('bazaar: ' + {'skip-packaged': 'installed with the system image', 'override': 'installed',
+                      'skip-removed': 'was installed by Hearth and removed since: left out (delete %s to get it back)' % p(DONE),
+                      'install': 'installing from Flathub for everyone'}[plan])
+    if plan in ('skip-packaged', 'skip-removed'):
+        return True
+    if plan == 'install':
+        last = ''
+        for attempt in range(1, 4):
+            code, last = flatpak(['install', '--system', '--noninteractive', '-y', REMOTE, BAZAAR])
+            if code == 0 or bazaar_installed():
+                break
+            log('bazaar: attempt %d failed (%s)' % (attempt, last.splitlines()[-1] if last else '?'))
+            time.sleep(30 * attempt)
+        else:
+            return False
+        mark_done()
+        log('bazaar: installed')
+    override()
+    return True
+
+
+def main(argv):
+    global ROOT
+    args = argv[1:]
+    if '--root' in args:
+        ROOT = args[args.index('--root') + 1]
+        log('repo: ' + fix_repo(p(REPO)))
+        return 0
+    if os.geteuid() != 0:
+        log('error: needs root')
+        return 1
+    if not shutil.which('flatpak'):
+        log('flatpak isn\'t installed: nothing to do')
+        return 0
+    log('repo: ' + fix_repo(p(REPO)))
+    ok = ensure_remote()
+    if ok and '--no-bazaar' not in args:
+        ok = bazaar()
+    return 0 if ok else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

@@ -23,6 +23,7 @@ Scope {
     property string message: ""
     property bool messageBad: false
     property string confirmRemove: ""
+    property var listError: ({})           // view -> why its list couldn't be loaded (shown instead of a spinner)
     property int seq: 0                    // answers for a page you already left are dropped
     readonly property var current: view === "app" ? [] : (lists[view] || [])
     readonly property var nav: [
@@ -63,12 +64,25 @@ Scope {
         confirmRemove = "";
         load(v);
     }
+    function failList(v, e) { const l = Object.assign({}, listError); l[v] = e; listError = l; if (!lists[v]) setList(v, []); reloadStatus(); }
+    function reloadStatus() { reader.run(["status"], r => store.status = r); }
+    function retry() {
+        if (worker.busy) return say("Wait for " + busyWhat.toLowerCase() + " to finish.", true);
+        listError = ({}); lists = ({}); busyId = "--refresh"; busyWhat = "Downloading the list of apps"; say("");
+        worker.run(["refresh"], r => { store.busyId = ""; store.reloadStatus(); if (r.warning) store.say(r.warning, true); store.load(store.view === "app" ? store.backTo : store.view); },
+            e => { store.busyId = ""; store.reloadStatus(); store.failList(store.view === "app" ? store.backTo : store.view, e); });
+    }
+    function repair() {
+        say("Giving your Flatpak folders back to you…");
+        admin.run(["home-repair"], r => { store.say("Fixed. Downloading the list of apps again…"); store.retry(); },
+            e => store.say("Couldn't fix it: " + e + ". In a terminal: " + ((store.status && store.status.repair) || "pkexec /usr/libexec/nimbus/hearth-admin home-repair"), true));
+    }
     function load(v) {
         const s = ++seq;
-        if (v === "installed") reader.run(["installed"], r => { store.setList("installed", r.apps || []); }, e => store.say(e, true));
+        if (v === "installed") reader.run(["installed"], r => { store.setList("installed", r.apps || []); }, e => store.failList("installed", e));
         else if (v === "updates") refreshUpdates();
         else if (v === "search") { if (searchText !== "") reader.run(["search", searchText], r => { if (s === store.seq) store.setList("search", r.apps || []); }, e => store.say(e, true)); }
-        else reader.run(["browse", v], r => store.setList(v, r.apps || []), e => store.say(e, true), "", "list");
+        else reader.run(["browse", v], r => { store.setList(v, r.apps || []); }, e => store.failList(v, e), "", "list");
     }
     function refreshUpdates() { reader.run(["updates"], r => { store.updatesList = r.apps || []; store.setList("updates", store.updatesList); }); }
     property string searchText: ""
@@ -108,6 +122,8 @@ Scope {
 
     SetJob { id: reader; helper: "hearth-apps" }
     SetJob { id: worker; helper: "hearth-apps" }
+    // Gives your own Flatpak folders back to you when root or an old account owns them (hearth-home-repair).
+    SetJob { id: admin; helper: "/usr/libexec/nimbus/hearth-admin"; admin: true }
 
     IpcHandler {
         target: "apps"
@@ -277,12 +293,29 @@ Scope {
                         interactive: false; chevron: false
                         icon: "info"; title: "Flatpak isn't installed"; sub: "Apps uses Flatpak to install apps from Flathub."
                     }
+                    // Your own Flatpak folder belongs to someone else (root, or an account from another system):
+                    // said plainly, with the fix one press away. Apps still uses the system's Flathub meanwhile.
+                    SetRow {
+                        visible: store.view !== "app" && !!store.status && store.status.flatpak && !store.status.userWritable
+                        danger: true; chevron: false
+                        icon: "info"; title: "Fix your Flatpak folder"
+                        sub: (store.status && store.status.userProblem ? store.status.userProblem : "")
+                            + (store.status && store.status.installTo === "system" ? " Until then, apps are installed for everyone on this PC." : "")
+                        onActivated: store.repair()
+                    }
                     SetField {
                         id: searchField
                         visible: store.view === "search"
                         placeholder: "Search Flathub: a name, or what it does"
                         onTextChanged: { store.searchText = text.trim(); searchLater.restart(); }
                         onSubmitted: { searchLater.stop(); store.load("search"); }
+                    }
+                    // Bazaar: the full Flathub store Hearth OS installs for everyone (hearth-flatpak-setup).
+                    SetRow {
+                        visible: store.view === "featured" && !!store.status && store.status.bazaar
+                        icon: "store"; chevron: false; title: "Get more apps in Bazaar"
+                        sub: "Bazaar is a full Flathub store: every app, curated lists and add-ons"
+                        onActivated: { Quickshell.execDetached(["sh", "-c", store.status.bazaarCommand]); SettingsNav.toast("Opening Bazaar"); }
                     }
                     WorkProgress { visible: store.busyId !== "" && (store.view !== "app" || !store.detail || store.busyId !== store.detail.id) }
                     SetRow {
@@ -306,12 +339,21 @@ Scope {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 14
-                        text: reader.what === "list" && !store.lists[store.view] ? "Getting the list of apps from Flathub… The first time takes a minute."
+                        text: store.listError[store.view] ? "The list of apps couldn't be loaded: " + store.listError[store.view]
+                            : store.busyId === "--refresh" ? (worker.line || "Downloading the list of apps…")
+                            : reader.what === "list" && !store.lists[store.view] ? (reader.line || "Getting the list of apps from Flathub…") + " The first time takes a minute."
                             : reader.busy && !store.lists[store.view] ? "Loading…"
                             : store.view === "search" ? (store.searchText === "" ? "Type to search." : "Nothing on Flathub matches \"" + store.searchText + "\".")
                             : store.view === "updates" ? "Everything is up to date."
                             : store.view === "installed" ? "No apps from Flathub are installed yet."
                             : "Nothing here yet."
+                    }
+                    SetRow {
+                        visible: store.view !== "app" && store.view !== "search" && store.view !== "updates" && store.busyId === ""
+                            && (!!store.listError[store.view] || (store.view !== "installed" && !reader.busy && store.lists[store.view] !== undefined && store.current.length === 0))
+                        icon: "update"; chevron: false; title: "Try again"
+                        sub: "Download Flathub's list of apps again" + (store.status && store.status.lastError && store.status.lastError.error ? " (last time: " + store.status.lastError.error + ")" : "")
+                        onActivated: store.retry()
                     }
 
                     // ---- an app's page
@@ -349,7 +391,8 @@ Scope {
                     }
                     SetRow {
                         visible: store.view === "app" && !!store.detail && !store.detail.installed && store.busyId !== store.detail.id
-                        icon: "update"; chevron: false; title: "Install"; sub: "From Flathub, for you"
+                        icon: "update"; chevron: false; title: "Install"
+                        sub: store.status && store.status.installTo === "system" ? "From Flathub, for everyone on this PC (it may ask for your password)" : "From Flathub, for you"
                         onActivated: store.install(store.detail)
                     }
                     SetRow {

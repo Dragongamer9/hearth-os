@@ -71,7 +71,7 @@ jobs:
           ipc help toggle; grim shots/5-controls.png || true; ipc help toggle
           # Hearth Settings, every page
           n=6
-          for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse signin browser claude updates about install; do
+          for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse signin browser claude updates about install apps; do
             ipc settings page "$p"; grim "shots/$n-settings-$p.png" || true; n=$((n+1))
           done
           ipc settings close
@@ -95,6 +95,11 @@ jobs:
           ipc fileprops tab checksums; grim shots/files-8-checksums.png || true
           ipc fileprops open "$HOME/Documents"; grim shots/files-9-folder-properties.png || true
           ipc fileprops close; ipc files close
+          # Install Package: a small .deb (made without dpkg) opened in the installer window, and in Files' menu.
+          mkdir -p "$HOME/Downloads" && python3 hosts/linux/test/make_test_deb.py "$HOME/Downloads/hearth-hello.deb" >/dev/null || true
+          ipc debs open "$HOME/Downloads/hearth-hello.deb"; sleep 2; grim shots/deb-1-installer.png || true; ipc debs close
+          ipc files open "$HOME/Downloads"; ipc filemanager select hearth-hello.deb; ipc filemanager menu; grim shots/deb-2-files-menu.png || true
+          ipc filemanager close; ipc files close
           n=$((n+3))
           # Desktop icons: one picked and its menu (Open with, Cut, Copy...).
           ipc desktop itemMenu notes.txt; grim "shots/$n-desktop-item-menu.png" || true; ipc desktop close; n=$((n+1))

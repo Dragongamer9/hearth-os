@@ -2,6 +2,12 @@
 """hearth-apps: the work behind Apps (AppStore.qml), Desktop Mode's app store for Flathub, through the flatpak
 command. Apps are installed for you (flatpak --user), the way the rest of Hearth installs Flatpaks (Moonlight,
 emulators); apps that came with the system (--system) are listed, updated and can be removed too.
+When your own Flatpak folder can't be written (~/.local/share/flatpak, or ~/.local/share, owned by root or by an
+account from another system, e.g. after moving editions), that's said plainly in `status` (userProblem), the catalog
+comes from the system's Flathub (/etc/flatpak/remotes.d; `flatpak update --appstream --system` goes through
+flatpak's polkit), and installs go to the system (`flatpak install --system`, which asks for your password) instead
+of failing. Hearth fixes the folders' owner at every start (hearth-home-repair.service) and on request
+(pkexec /usr/libexec/nimbus/hearth-admin home-repair). A refresh that fails keeps its reason (status: lastError).
 
   hearth-apps status                 JSON: is flatpak there, is Flathub set up, is the catalog downloaded
   hearth-apps refresh                download Flathub's catalog (appstream); progress lines, then JSON
@@ -11,11 +17,14 @@ emulators); apps that came with the system (--system) are listed, updated and ca
   hearth-apps app APP_ID             JSON: one app's page (description, screenshots, version, installed or not)
   hearth-apps installed              JSON: installed apps
   hearth-apps updates                JSON: apps with an update
-  hearth-apps install APP_ID         install from Flathub; progress lines, then JSON
+  hearth-apps install APP_ID [--user|--system]
+                                     install from Flathub (for you; for everyone when your own installation can't
+                                     be used, or with --system); progress lines, then JSON
   hearth-apps remove APP_ID [--delete-data]
   hearth-apps update APP_ID|--all    progress lines, then JSON
 Progress lines are "progress: <0-100> <what>"; failures print "error: ..." and exit 1.
 """
+import glob
 import gzip
 import json
 import os
@@ -30,7 +39,9 @@ import xml.etree.ElementTree as ET
 
 HOME = os.path.expanduser('~')
 DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
-CACHE = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache'), 'nimbus', 'apps')
+CACHE_HOME = os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache')
+CACHE = os.path.join(CACHE_HOME, 'nimbus', 'apps')
+REPAIR = 'pkexec /usr/libexec/nimbus/hearth-admin home-repair'
 REMOTE = 'flathub'
 REMOTE_URL = 'https://dl.flathub.org/repo/flathub.flatpakrepo'
 FEATURED_URL = 'https://flathub.org/api/v2/collection/popular?page=1&per_page=60'
@@ -79,10 +90,24 @@ def check_id(app_id):
 
 
 # ---------------------------------------------------------------------- catalog (Flathub's appstream data)
+SYSTEM_FLATPAK = '/var/lib/flatpak'
+
+
 def appstream_dirs():
+    """Where flatpak keeps Flathub's catalog, yours then the system's: appstream/<remote>/<arch>/active (a link to
+    the newest checkout; flatpak 1.x, also Debian 13's 1.16 with the appstream2 branch, which keeps the same
+    layout), or the newest checkout when the link isn't there."""
     a = arch()
-    return [os.path.join(DATA, 'flatpak', 'appstream', REMOTE, a, 'active'),
-            os.path.join('/var/lib/flatpak/appstream', REMOTE, a, 'active')]
+    out = []
+    for base in (os.path.join(DATA, 'flatpak'), SYSTEM_FLATPAK):
+        top = os.path.join(base, 'appstream', REMOTE, a)
+        active = os.path.join(top, 'active')
+        out.append(active)
+        if not os.path.isdir(active):
+            checkouts = sorted((d for d in glob.glob(os.path.join(top, '*')) if os.path.isdir(d) and not d.endswith('.tmp')),
+                               key=lambda d: os.path.getmtime(d), reverse=True)
+            out += checkouts[:1]
+    return out
 
 
 def appstream_file():
@@ -196,13 +221,32 @@ def parse_appstream(stream, icon_dir):
     return apps, details
 
 
+def writable_dir(path):
+    """path made (if needed) and writable by you, or None."""
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        return None
+    return path if os.access(path, os.W_OK | os.X_OK) else None
+
+
+def cache_dir():
+    """Where the catalog is cached: ~/.cache/nimbus/apps, or (when ~/.cache can't be written) the session's own
+    runtime folder, so Apps still works while the home folder's owner is being fixed."""
+    for d in (CACHE, os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-apps-%d' % os.getuid())):
+        if writable_dir(d):
+            return d
+    raise Fail('there\'s nowhere to keep the list of apps: %s can\'t be written. %s' % (CACHE_HOME, repair_hint()))
+
+
 def catalog(force=False):
     """The catalog, from the cache (rebuilt when the appstream file changed)."""
     src = appstream_file()
     if not src:
         return {}, None
     path, icon_dir, mtime = src
-    cat_file, det_file = os.path.join(CACHE, 'catalog.json'), os.path.join(CACHE, 'details.json')
+    cache = cache_dir()
+    cat_file, det_file = os.path.join(cache, 'catalog.json'), os.path.join(cache, 'details.json')
     if not force:
         try:
             with open(cat_file) as f:
@@ -214,7 +258,6 @@ def catalog(force=False):
     opener = gzip.open if path.endswith('.gz') else open
     with opener(path, 'rb') as f:
         apps, details = parse_appstream(f, icon_dir)
-    os.makedirs(CACHE, exist_ok=True)
     for name, obj in ((cat_file, {'version': 2, 'source': path, 'mtime': mtime, 'apps': apps}), (det_file, details)):
         with open(name + '.tmp', 'w') as f:
             json.dump(obj, f)
@@ -222,31 +265,176 @@ def catalog(force=False):
     return apps, det_file
 
 
+# ---------------------------------------------------------------------- can your own installation be used?
+def owner_name(uid):
+    try:
+        import pwd
+        return pwd.getpwuid(uid).pw_name
+    except (KeyError, ImportError):
+        return 'an account that no longer exists (id %d)' % uid
+
+
+def repair_hint():
+    return ('Hearth fixes this when the PC starts; to fix it now, run in a terminal: ' + REPAIR)
+
+
+def user_dir_problems(uid=None, cache=True):
+    """[{path, owner, uid}] for the folders your own Flatpak installation (and Apps) write to that aren't yours or
+    can't be written: ~/.local/share/flatpak (or, before it exists, the folder it would be made in), ~/.local/share,
+    ~/.cache. Empty when everything is fine."""
+    uid = os.getuid() if uid is None else uid
+    fp = os.path.join(DATA, 'flatpak')
+    checks = [fp] if os.path.lexists(fp) else []
+    checks += [DATA] + ([CACHE_HOME] if cache else [])
+    if os.path.isdir(fp) and not os.path.islink(fp):
+        for sub in ('repo', 'appstream', 'repo/tmp', 'repo/objects', 'repo/refs/remotes'):
+            p = os.path.join(fp, sub)
+            if os.path.lexists(p):
+                checks.append(p)
+    out = []
+    for p in checks:
+        try:
+            st = os.lstat(p)
+        except FileNotFoundError:
+            # Not made yet: the nearest folder above it must be writable.
+            parent = os.path.dirname(p)
+            while parent and not os.path.exists(parent):
+                parent = os.path.dirname(parent)
+            if parent and not os.access(parent, os.W_OK | os.X_OK):
+                st = os.stat(parent)
+                out.append({'path': parent, 'owner': owner_name(st.st_uid), 'uid': st.st_uid})
+            continue
+        except OSError:
+            continue
+        if os.path.islink(p):
+            continue
+        if st.st_uid != uid or not os.access(p, os.W_OK | os.X_OK):
+            out.append({'path': p, 'owner': owner_name(st.st_uid), 'uid': st.st_uid})
+    seen, uniq = set(), []
+    for o in out:
+        if o['path'] not in seen:
+            seen.add(o['path'])
+            uniq.append(o)
+    return uniq
+
+
+def problem_text(problems):
+    if not problems:
+        return ''
+    first = problems[0]
+    where = first['path'].replace(HOME, '~', 1)
+    who = 'root' if first['uid'] == 0 else first['owner']
+    return ('Your own Flatpak folder can\'t be used: %s belongs to %s, not you%s, so apps can\'t be installed for '
+            'you alone. %s' % (where, who, ' (and %d more)' % (len(problems) - 1) if len(problems) > 1 else '', repair_hint()))
+
+
+def remotes(inst):
+    code, out = flatpak(['remotes', '--' + inst, '--columns=name'])
+    return out.split() if code == 0 else []
+
+
+def last_error_files():
+    return [os.path.join(CACHE, 'last-error.json'),
+            os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-apps-%d' % os.getuid(), 'last-error.json')]
+
+
+def remember_error(msg):
+    """The last refresh failure and when (status: lastError; the bug report shows it). Cleared on success."""
+    for f in last_error_files():
+        d = writable_dir(os.path.dirname(f))
+        if not d:
+            continue
+        try:
+            if msg:
+                with open(f, 'w') as fh:
+                    json.dump({'error': msg, 'time': int(time.time())}, fh)
+            elif os.path.exists(f):
+                os.remove(f)
+        except OSError:
+            continue
+        if msg:
+            return
+
+
+def last_error():
+    best = None
+    for f in last_error_files():
+        try:
+            with open(f) as fh:
+                e = json.load(fh)
+            if isinstance(e, dict) and (best is None or e.get('time', 0) > best.get('time', 0)):
+                best = e
+        except (OSError, ValueError):
+            pass
+    return best
+
+
+def first_error(out):
+    """flatpak's own reason from its output ("error: ..." or the last line)."""
+    lines = [l.strip() for l in (out or '').splitlines() if l.strip()]
+    for l in lines:
+        if l.lower().startswith('error:'):
+            return l[6:].strip()
+    return lines[-1][:300] if lines else ''
+
+
 def ensure_remote():
-    """Flathub for your own installs (Hearth installs apps per user)."""
+    """Flathub for your own installs (Hearth installs apps per user). (ok, reason)."""
     code, out = flatpak(['remotes', '--user', '--columns=name'])
     if code == 0 and REMOTE in out.split():
-        return True
+        return True, ''
     code, out = flatpak(['remote-add', '--user', '--if-not-exists', REMOTE, REMOTE_URL], timeout=120)
-    return code == 0
+    return code == 0, first_error(out)
+
+
+def user_usable():
+    """Whether flatpak --user can write its folders (~/.cache doesn't count: Apps has a fallback for its own cache)."""
+    return not user_dir_problems(cache=False)
 
 
 def refresh():
     if not shutil.which('flatpak'):
         raise Fail('Flatpak isn\'t installed')
-    progress(5, 'Getting Flathub ready')
-    ok = ensure_remote()
-    progress(20, 'Downloading the list of apps')
-    code, out = flatpak(['update', '--appstream', '--user', REMOTE], timeout=600) if ok else (1, '')
-    if code != 0:
-        # Your own Flathub couldn't be set up or reached: the system's catalog, if there is one.
-        flatpak(['update', '--appstream', '--system', REMOTE], timeout=600)
+    reasons = []
+    problems = user_dir_problems(cache=False)
+    got = False
+    if not problems:
+        progress(5, 'Getting Flathub ready')
+        ok, why = ensure_remote()
+        if not ok:
+            reasons.append('your own Flathub couldn\'t be set up (%s)' % (why or 'flatpak remote-add failed'))
+        else:
+            progress(20, 'Downloading the list of apps')
+            code, out = flatpak(['update', '--appstream', '--user', REMOTE], timeout=600)
+            if code == 0:
+                got = True
+            else:
+                reasons.append('downloading it for you failed (%s)' % (first_error(out) or 'flatpak update --appstream failed'))
+    else:
+        reasons.append(problem_text(problems))
+    if not got:
+        # The system's Flathub (Hearth's images add it in /etc/flatpak/remotes.d): flatpak's polkit lets the person at
+        # the device update its catalog.
+        if REMOTE in remotes('system'):
+            progress(30, 'Downloading the list of apps (the system\'s Flathub)')
+            code, out = flatpak(['update', '--appstream', '--system', REMOTE], timeout=600)
+            if code == 0:
+                got = True
+            else:
+                reasons.append('the system\'s catalog couldn\'t be downloaded either (%s)' % (explain(first_error(out)) or 'flatpak update --appstream --system failed'))
+        else:
+            reasons.append('the system has no Flathub set up')
     progress(70, 'Reading the list of apps')
     apps, _ = catalog(force=True)
     if not apps:
-        raise Fail('couldn\'t download Flathub\'s list of apps. Check the internet connection.')
+        msg = 'couldn\'t get Flathub\'s list of apps: ' + '; '.join(r for r in reasons if r) if reasons else \
+            'couldn\'t download Flathub\'s list of apps. Check the internet connection.'
+        remember_error(msg)
+        raise Fail(msg)
+    # A catalog was there (maybe an older one): the reasons are kept for status, but the list still works.
+    remember_error('; '.join(reasons) if not got and reasons else '')
     progress(100, 'Done')
-    return {'ok': True, 'apps': len(apps)}
+    return {'ok': True, 'apps': len(apps), 'warning': '; '.join(r for r in reasons if r)}
 
 
 def catalog_or_refresh():
@@ -464,18 +652,39 @@ def run_with_progress(cmd, what):
     return code, err or (last if code else '')
 
 
-def install(app_id):
+def install_target():
+    """'user' when your own installation can be used, else 'system' (flatpak's polkit asks for your password),
+    or None when neither has Flathub."""
+    if user_usable():
+        return 'user'
+    return 'system' if REMOTE in remotes('system') else None
+
+
+def install(app_id, where=None):
     check_id(app_id)
     if not shutil.which('flatpak'):
         raise Fail('Flatpak isn\'t installed')
     progress(0, 'Getting ready')
-    if not ensure_remote():
-        raise Fail('couldn\'t set up Flathub. Check the internet connection.')
-    code, err = run_with_progress(['flatpak', 'install', '--user', '-y', REMOTE, app_id], 'Installing')
+    where = where or install_target()
+    if where is None:
+        raise Fail(problem_text(user_dir_problems(cache=False)) + ' The system has no Flathub to install from instead.')
+    if where == 'user':
+        ok, why = ensure_remote()
+        if not ok:
+            if REMOTE in remotes('system'):
+                where = 'system'
+            else:
+                raise Fail('couldn\'t set up Flathub (%s). Check the internet connection.' % (why or 'flatpak remote-add failed'))
+    code, err = run_with_progress(['flatpak', 'install', '--' + where, '-y', REMOTE, app_id],
+                                  'Installing' + (' for everyone on this PC' if where == 'system' else ''))
+    if code != 0 and app_id not in installed_map() and where == 'user' and re.search(r'(?i)permission|not allowed|read-only', err or '') \
+            and REMOTE in remotes('system'):
+        where = 'system'
+        code, err = run_with_progress(['flatpak', 'install', '--system', '-y', REMOTE, app_id], 'Installing for everyone on this PC')
     if code != 0 and app_id not in installed_map():
-        raise Fail('couldn\'t install it' + (' (%s)' % err if err else ''))
+        raise Fail('couldn\'t install it' + (' (%s)' % explain(err) if err else ''))
     progress(100, 'Installed')
-    return {'ok': True, 'id': app_id, 'installed': True}
+    return {'ok': True, 'id': app_id, 'installed': True, 'installation': where}
 
 
 def remove(app_id, delete_data=False):
@@ -534,7 +743,7 @@ def enrich(rows):
     """Icons, summaries and names from the catalog (when it's downloaded) for installed apps and updates."""
     try:
         apps, _ = catalog()
-    except (OSError, ValueError, ET.ParseError, EOFError):
+    except (OSError, ValueError, ET.ParseError, EOFError, Fail):
         apps = {}
     for r in rows:
         a = apps.get(r['id']) or {}
@@ -547,12 +756,42 @@ def enrich(rows):
     return sorted(rows, key=lambda r: (r.get('name') or r['id']).lower())
 
 
+BAZAAR = 'io.github.kolunmi.Bazaar'
+BAZAAR_CMD = 'command -v bazaar >/dev/null 2>&1 && exec bazaar || exec flatpak run io.github.kolunmi.Bazaar'
+
+
+def bazaar_present():
+    """Bazaar (the Flathub store Hearth OS installs for everyone, hearth-flatpak-setup) as a package or a Flatpak."""
+    return any(os.path.exists(p) for p in ('/usr/share/applications/%s.desktop' % BAZAAR, os.path.join(SYSTEM_FLATPAK, 'app', BAZAAR),
+                                            os.path.join(DATA, 'flatpak', 'app', BAZAAR)))
+
+
+def explain(err):
+    """flatpak's reason, with what to do for the ones Hearth knows."""
+    if 'openat(config)' in (err or ''):
+        return err + ' (the system\'s Flatpak installation was never set up; Hearth sets it up at the next start, or now with: sudo systemctl start hearth-flatpak-setup)'
+    return err
+
+
+def flatpak_version():
+    code, out = flatpak(['--version'])
+    return out.strip() if code == 0 else ''
+
+
 def status():
     src = appstream_file()
     have = bool(shutil.which('flatpak'))
-    code, out = flatpak(['remotes', '--columns=name']) if have else (1, '')
-    return {'flatpak': have, 'flathub': REMOTE in out.split(), 'catalog': bool(src),
-            'catalogAge': int(time.time() - src[2]) if src else None, 'categories': CATEGORIES}
+    user_r = remotes('user') if have else []
+    sys_r = remotes('system') if have else []
+    problems = user_dir_problems()
+    return {'flatpak': have, 'version': flatpak_version() if have else '', 'flathub': REMOTE in user_r + sys_r,
+            'userRemote': REMOTE in user_r, 'systemRemote': REMOTE in sys_r,
+            'userWritable': not problems, 'userProblems': problems, 'userProblem': problem_text(problems),
+            'repair': REPAIR, 'installTo': ('user' if user_usable() else 'system' if REMOTE in sys_r else ''),
+            'bazaar': bazaar_present(), 'bazaarCommand': BAZAAR_CMD,
+            'catalog': bool(src), 'catalogPath': src[0] if src else '',
+            'catalogAge': int(time.time() - src[2]) if src else None, 'lastError': last_error(),
+            'categories': CATEGORIES}
 
 
 def main(argv):
@@ -574,13 +813,15 @@ def main(argv):
         out = {'apps': enrich(updates())}
     elif c == 'install' and len(a) == 1:
         out = install(a[0])
+    elif c == 'install' and len(a) == 2 and a[1] in ('--user', '--system'):
+        out = install(a[0], a[1][2:])
     elif c == 'remove' and len(a) in (1, 2) and a[1:] in ([], ['--delete-data']):
         out = remove(a[0], a[1:] == ['--delete-data'])
     elif c == 'update' and len(a) == 1:
         out = update(a[0])
     else:
         print('usage: hearth-apps status | refresh | browse featured|CATEGORY | search QUERY | app ID | installed | '
-              'updates | install ID | remove ID [--delete-data] | update ID|--all')
+              'updates | install ID [--user|--system] | remove ID [--delete-data] | update ID|--all')
         sys.exit(2)
     print(json.dumps(out), flush=True)
 
