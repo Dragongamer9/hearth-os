@@ -1,0 +1,11 @@
+// Hearth: the person at the device can join Wi-Fi networks, turn Wi-Fi and Bluetooth tethering on and off and
+// change saved connections from Hearth's settings without a password prompt (Game Mode has no prompt to answer).
+// Debian only lets the netdev group do this, and a Game Mode session may not count as "active" to polkit, so
+// Peppermint said "insufficient privileges" when joining Wi-Fi. Only for administrators (wheel) and netdev, only
+// from a local session; multi-seat's extra players (hearth-p2..4) are in neither group.
+polkit.addRule(function (action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") == 0 &&
+        subject.local && (subject.isInGroup("wheel") || subject.isInGroup("netdev"))) {
+        return polkit.Result.YES;
+    }
+});
