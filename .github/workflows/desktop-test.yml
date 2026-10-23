@@ -55,7 +55,7 @@ jobs:
           printf '#!/bin/sh\ntouch "$HOME/steam-started"\n' > /tmp/fakebin/steam && chmod +x /tmp/fakebin/steam
           export PATH="/tmp/fakebin:$PATH"
           printf '[Desktop Entry]\nType=Application\nName=Autostart test\nExec=touch %s/autostarted\n' "$HOME" > "$HOME/.config/autostart/test.desktop"
-          printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=steam -silent %%U\n' > "$HOME/.config/autostart/steam.desktop\"
+          printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=steam -silent %%U\n' > "$HOME/.config/autostart/steam.desktop"
           labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
