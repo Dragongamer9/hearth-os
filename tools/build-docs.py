@@ -365,8 +365,8 @@ for you. Then type <code>claude</code> in the Terminal. It keeps itself up to da
 {cmd('claude-code', 'hearth-claude install-code')}
 <p><code>hearth-claude status</code>, <code>update</code> and <code>remove</code> do the rest (<code>remove-code</code> for Claude Code).
 Removing keeps your chats (they're in your Claude account) and settings.</p>
-{only('anatase cachyos', '<div class="note"><p>Anthropic supports Claude Desktop for Linux (in beta) on Debian and Ubuntu. On Anatase and CachyOS, Hearth runs Anthropic\'s Debian build from your home folder: it should work, but Anthropic doesn\'t support it there yet. Claude Code is supported everywhere.</p></div>')}
-{only('ubuntu peppermint', '<div class="note"><p>On Ubuntu and Peppermint you can also install <code>claude-desktop</code> with apt from Anthropic\'s repository, following Anthropic\'s instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div>')}
+{only('anatase', '<div class="note"><p>Anthropic supports Claude Desktop for Linux (in beta) on Debian and Ubuntu. On Anatase, Hearth runs Anthropic\'s Debian build from your home folder: it should work, but Anthropic doesn\'t support it there yet. Claude Code is supported everywhere.</p></div>')}
+{only('peppermint', '<div class="note"><p>On Peppermint you can also install <code>claude-desktop</code> with apt from Anthropic\'s repository, following Anthropic\'s instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div>')}
 
 {h2('logs', 'Sending logs')}
 <p>When something goes wrong, <b>Settings › System › Send logs to the developer</b>. You get a short code (like

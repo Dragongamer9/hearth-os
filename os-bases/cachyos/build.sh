@@ -181,12 +181,6 @@ QUICKSHELL=$(first_of quickshell quickshell-git) || { echo "quickshell isn't in 
   webkit2gtk-4.1 gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav \
   gtk3 nss libcups alsa-lib libxss at-spi2-core
 optional qt6ct qt5ct gst-plugin-pipewire qt6-5compat
-# Claude Desktop (Hearth Settings › Claude: Anthropic's package, unpacked in the user's home folder by
-# desktop/shell/hearth-claude, never shipped in this image): gpg checks Anthropic's signature; the app links
-# GTK 3, NSS, libdrm/gbm, libxtst, PipeWire and AT-SPI (above), and opens libsecret (the sign-in kept in the
-# password store), libnotify (notifications) and the tray library while it runs.
-"${PAC[@]}" gnupg
-optional libsecret libnotify libxcb util-linux-libs xdg-utils libayatana-appindicator
 # Printing (Settings › Printers: CUPS, driverless IPP Everywhere, ipp-usb, Avahi) and clipboard history (Super+V).
 optional cups cups-filters ipp-usb avahi nss-mdns wl-clipboard cliphist wtype
 
