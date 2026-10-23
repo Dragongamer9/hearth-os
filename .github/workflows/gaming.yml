@@ -1,0 +1,54 @@
+# Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves and Mods, for Hearth OS (Linux; Ember on Windows
+# comes later). Unit tests, the build, then each app driven for real: Saves against a fake home with a Steam game
+# (native and Proton saves) and a test copy of the save-location list, then the real list from GitHub; Mods against a
+# fake game folder; Controller Lab against virtual controllers made with /dev/uinput. Screenshots of each window.
+# Release builds are made by base-anatase.yml and base-peppermint.yml (the Linux images).
+name: Hearth gaming apps
+
+on:
+  push:
+    branches: [apps-gaming, main, linux-host]
+    paths: ['hosts/hearth-gaming/**', 'hosts/hearth-core/**', '.github/workflows/gaming.yml', 'tools/gaming-e2e/**']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-gaming
+      - name: WebKit and GTK, uinput, and the tools for the screenshots
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick dbus-x11 xdotool python3-evdev libarchive-tools >/dev/null
+      - name: Unit tests (manifest, finding saves, backup and restore, mods in and out, evdev numbers)
+        working-directory: hosts/hearth-gaming
+        run: |
+          set -o pipefail
+          cargo test --lib -- --test-threads=1 2>&1 | tee test.log || { echo "::error title=unit tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A8 test.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        working-directory: hosts/hearth-gaming
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          ls -l target/release/hearth-controller-lab target/release/hearth-saves target/release/hearth-mods
+          echo "::notice title=size::$(du -h target/release/hearth-controller-lab target/release/hearth-saves target/release/hearth-mods | tr '\n' ' ')"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-gaming-linux
+          path: |
+            hosts/hearth-gaming/target/release/hearth-controller-lab
+            hosts/hearth-gaming/target/release/hearth-saves
+            hosts/hearth-gaming/target/release/hearth-mods
+            hosts/hearth-gaming/shots
+            hosts/hearth-gaming/e2e.log
