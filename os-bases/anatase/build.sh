@@ -453,8 +453,6 @@ Keywords=web;internet;browser;firefox;
 [Desktop Action new-window]
 Name=New window
 Exec=/usr/bin/hearth-browser
-# .deb files open in Install Package (Hearth's Debian box).
-printf 'application/vnd.debian.binary-package=hearth-install-package.desktop\napplication/x-deb=hearth-install-package.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
 
 [Desktop Action private-window]
 Name=New private window
@@ -477,6 +475,8 @@ for l in $(ff_missing); do dnf5 -y install --setopt=install_weak_deps=False "$l(
 chmod 755 /usr/bin/hearth-browser /usr/share/hearth-browser/install-firefox
 # Links open in it in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), unless you pick another browser.
 printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hearth-browser.desktop\ntext/html=hearth-browser.desktop\napplication/xhtml+xml=hearth-browser.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
+# .deb files open in Install Package (Hearth's Debian box).
+printf 'application/vnd.debian.binary-package=hearth-install-package.desktop\napplication/x-deb=hearth-install-package.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
 
 # ------------------------------------------------------------------ Hearth Photos and Hearth Documents
 # (hosts/hearth-photos, hosts/hearth-documents) Hearth's picture viewer/editor and its reader for PDFs, e-books (EPUB)
