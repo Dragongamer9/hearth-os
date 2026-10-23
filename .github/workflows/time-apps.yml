@@ -1,0 +1,206 @@
+# Hearth Clock, Calendar, Notes and Weather (hosts/hearth-time, one program for the four apps): unit tests, the
+# build, and on Linux a run of each app with screenshots, plus the alarm path from end to end: the background
+# service finds an alarm that's due, opens the ringing window on a gamescope-like X display (pinned in front the way
+# Game Mode needs) and stops when it's dismissed. Screenshots are in the run's hearth-time-linux artifact.
+# Release builds are made by base-anatase.yml and base-peppermint.yml (the Linux images). Ember (Windows) gets these
+# apps later.
+name: Hearth Time apps
+
+on:
+  push:
+    branches: [apps-time, main, linux-host]
+    paths: ['hosts/hearth-time/**', 'hosts/linux/desktop/shell/ClockPanel.qml', 'hosts/linux/desktop/shell/QuickAccess.qml', '.github/workflows/time-apps.yml']
+  pull_request:
+    paths: ['hosts/hearth-time/**', '.github/workflows/time-apps.yml']
+  workflow_dispatch:
+    inputs:
+      shots:
+        description: 'Up to 4 screenshots to put on the run as notices (small copies), e.g. ring,clock,calendar,notes'
+        type: string
+        default: ''
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  pages:
+    name: The pages (in Chromium, with sample data)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scripts parse
+        run: for f in hosts/hearth-time/ui/*.js; do node --check "$f"; done
+      - name: Every page draws without a script error
+        working-directory: hosts/hearth-time
+        run: |
+          npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node tests/pages.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-time-pages
+          path: hosts/hearth-time/shots-pages
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: hosts/hearth-time
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-time
+      - name: WebKit and GTK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick x11-utils x11-xserver-utils dbus-x11 xdotool >/dev/null
+      - name: Unit tests (alarms, repeats, .ics, notes files, weather)
+        run: |
+          set -o pipefail
+          cargo test --lib 2>&1 | tee test.log || { echo "::error title=unit tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A10 test.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A12 build.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=Size::$(du -h target/release/hearth-time | cut -f1)"
+          ./target/release/hearth-time --help
+      - name: Command line (taskbar calendar, weather summary)
+        run: |
+          export HEARTH_TIME_HOME="$RUNNER_TEMP/home"
+          mkdir -p "$HEARTH_TIME_HOME/data/hearth-calendar"
+          today=$(date +%F); tomorrow=$(date -d tomorrow +%F)
+          cat > "$HEARTH_TIME_HOME/data/hearth-calendar/calendar.json" <<EOF
+          {"events": [{"id": "e1", "calendar": "local", "title": "Dentist", "start": "${today}T15:00:00", "end": "${today}T16:00:00", "reminders": [30]},
+                      {"id": "e2", "calendar": "local", "title": "Gym", "start": "${today}T07:00:00", "end": "${today}T08:00:00", "rrule": "FREQ=DAILY;COUNT=5"}], "subs": []}
+          EOF
+          out=$(./target/release/hearth-time --events "$today" "$(date -d '+7 days' +%F)")
+          echo "$out"
+          echo "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); t=[e["title"] for e in d["events"]]; assert t.count("Gym")==5 and "Dentist" in t, t'
+          test "$(./target/release/hearth-time --weather-summary)" = "{}"
+          echo "::notice title=--events::$(echo "$out" | head -c 600)"
+      - name: The alarm, from the service to the ringing window and back
+        run: |
+          set -x
+          export HEARTH_TIME_HOME="$RUNNER_TEMP/alarm"
+          mkdir -p "$HEARTH_TIME_HOME/config/hearth-clock" shots
+          export DISPLAY=:98 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          Xvfb :98 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          # A one-time alarm a few seconds from now.
+          when=$(date -d '+20 seconds' +%H:%M); day=$(date -d '+20 seconds' +%F)
+          now=$(date +%s%3N)
+          echo "{\"alarms\": [{\"id\": \"a1\", \"time\": \"$when\", \"days\": [], \"date\": \"$day\", \"label\": \"Wake up\", \"enabled\": true, \"since\": $((now - 120000))}], \"settings\": {\"ringMinutes\": 2}}" > "$HEARTH_TIME_HOME/config/hearth-clock/clock.json"
+          # "systemd" says the session is in Game Mode: gamescope's X display, no Wayland one (as nimbus-watchdog sets it).
+          mkdir -p "$RUNNER_TEMP/bin"
+          printf '#!/bin/sh\necho DISPLAY=:98\necho WAYLAND_DISPLAY=\n' > "$RUNNER_TEMP/bin/systemctl"; chmod +x "$RUNNER_TEMP/bin/systemctl"
+          PATH="$RUNNER_TEMP/bin:$PATH" dbus-run-session -- ./target/release/hearth-time --service > service.log 2>&1 &
+          for i in $(seq 90); do xdotool search --name 'Ringing - Clock' >/dev/null 2>&1 && break; sleep 1; done
+          sleep 6
+          import -window root shots/ring.png || true
+          w=$(xdotool search --name 'Ringing - Clock' | tail -1)
+          test -n "$w" || { echo "::error title=alarm::no ringing window: $(tail -c 1500 service.log | tr '\n' '|')"; exit 1; }
+          pin=$(xprop -root GAMESCOPECTRL_BASELAYER_WINDOW | grep -o '[0-9]*$')
+          echo "::notice title=alarm::rang; the ringing window ($w) is pinned in front for Game Mode: $pin"
+          test "$pin" = "$w" || echo "::warning title=alarm::the window pinned ($pin) isn't the ringing window ($w)"
+          # Dismiss it with the keyboard (Enter on the focused Dismiss button). Xvfb has no window manager to give the
+          # window the keyboard, so it's focused by hand (and tried again if a key went elsewhere).
+          for try in 1 2 3; do
+            xdotool search --name 'Ringing - Clock' >/dev/null 2>&1 || break
+            xdotool mousemove --window "$w" 20 20 2>/dev/null || true
+            xdotool windowfocus --sync "$w" 2>/dev/null || true
+            sleep 1
+            xdotool key Return
+            for i in $(seq 8); do xdotool search --name 'Ringing - Clock' >/dev/null 2>&1 || break; sleep 1; done
+          done
+          ! xdotool search --name 'Ringing - Clock' >/dev/null 2>&1 || { echo "::error title=alarm::Dismiss didn't close the window"; exit 1; }
+          sleep 2
+          cat "$HEARTH_TIME_HOME/config/hearth-clock/clock.json"
+          python3 -c "import json,sys; c=json.load(open('$HEARTH_TIME_HOME/config/hearth-clock/clock.json')); assert c['alarms'][0]['enabled'] is False, c"
+          xprop -root GAMESCOPECTRL_BASELAYER_WINDOW | grep -q 'not found' || echo "::warning title=alarm::the pin is still there after the window closed"
+          ls "$HEARTH_TIME_HOME/state/hearth-time"; cat "$HEARTH_TIME_HOME/state/hearth-time/rang.json"
+          grep -q 'alarm:a1:' "$HEARTH_TIME_HOME/state/hearth-time/rang.json"
+          pkill -f 'hearth-time --service' || true
+          echo "::notice title=alarm dismissed::dismissed: the window closed, the one-time alarm switched off, the service remembers it rang"
+      - name: Each app (screenshots)
+        run: |
+          export HEARTH_TIME_HOME="$RUNNER_TEMP/apps"
+          mkdir -p shots "$HEARTH_TIME_HOME/Documents/Notes" "$HEARTH_TIME_HOME/config/hearth-clock" "$HEARTH_TIME_HOME/data/hearth-calendar"
+          sh tests/sample-home.sh "$HEARTH_TIME_HOME"
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          shot() { import -window root "shots/$1.png" || true; }
+          for app in clock calendar notes weather; do
+            dbus-run-session -- ./target/release/hearth-time --app "$app" > "run-$app.log" 2>&1 &
+            sleep 9
+            w=$(xdotool search --onlyvisible --name "^$(echo "$app" | sed 's/./\U&/')\$" | tail -1)
+            [ -n "$w" ] || echo "::warning title=$app::no window: $(tail -c 800 run-$app.log | tr '\n' '|')"
+            xdotool windowactivate --sync "$w" 2>/dev/null || true
+            shot "$app"
+            classes="$classes $app=$(xprop -id "$w" WM_CLASS 2>/dev/null | cut -d'"' -f2)"
+            case $app in
+              clock) xdotool key Right; sleep 1; xdotool key Return; sleep 1; shot clock-timers ;;
+              calendar) xdotool key w; sleep 2; shot calendar-week; xdotool key a; sleep 2; shot calendar-agenda ;;
+              notes) xdotool key Down Return; sleep 2; shot notes-open ;;
+            esac
+            pkill -f "hearth-time --app $app" || true
+            sleep 1
+          done
+          echo "::notice title=window classes::$classes"
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces; at most 10 notices
+      # a step), for looking at it where the artifact can't be downloaded.
+      - name: Screenshot 1 as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots != ''
+        env:
+          SHOTS: ${{ inputs.shots }}
+        run: |
+          n=$(echo "$SHOTS" | cut -d, -f1 | tr -cd 'a-z0-9-'); f=shots/$n.png
+          [ -n "$n" ] && [ -f "$f" ] || exit 0
+          for q in 45 35 28 22 16; do convert "$f" -resize 600x -quality $q jpg:/tmp/s.jpg; [ "$(base64 -w0 /tmp/s.jpg | wc -c)" -le 37000 ] && break; done
+          base64 -w0 /tmp/s.jpg | fold -w 3700 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces; at most 10 notices
+      # a step), for looking at it where the artifact can't be downloaded.
+      - name: Screenshot 2 as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots != ''
+        env:
+          SHOTS: ${{ inputs.shots }}
+        run: |
+          n=$(echo "$SHOTS" | cut -d, -f2 | tr -cd 'a-z0-9-'); f=shots/$n.png
+          [ -n "$n" ] && [ -f "$f" ] || exit 0
+          for q in 45 35 28 22 16; do convert "$f" -resize 600x -quality $q jpg:/tmp/s.jpg; [ "$(base64 -w0 /tmp/s.jpg | wc -c)" -le 37000 ] && break; done
+          base64 -w0 /tmp/s.jpg | fold -w 3700 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces; at most 10 notices
+      # a step), for looking at it where the artifact can't be downloaded.
+      - name: Screenshot 3 as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots != ''
+        env:
+          SHOTS: ${{ inputs.shots }}
+        run: |
+          n=$(echo "$SHOTS" | cut -d, -f3 | tr -cd 'a-z0-9-'); f=shots/$n.png
+          [ -n "$n" ] && [ -f "$f" ] || exit 0
+          for q in 45 35 28 22 16; do convert "$f" -resize 600x -quality $q jpg:/tmp/s.jpg; [ "$(base64 -w0 /tmp/s.jpg | wc -c)" -le 37000 ] && break; done
+          base64 -w0 /tmp/s.jpg | fold -w 3700 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+      # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces; at most 10 notices
+      # a step), for looking at it where the artifact can't be downloaded.
+      - name: Screenshot 4 as notices
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots != ''
+        env:
+          SHOTS: ${{ inputs.shots }}
+        run: |
+          n=$(echo "$SHOTS" | cut -d, -f4 | tr -cd 'a-z0-9-'); f=shots/$n.png
+          [ -n "$n" ] && [ -f "$f" ] || exit 0
+          for q in 45 35 28 22 16; do convert "$f" -resize 600x -quality $q jpg:/tmp/s.jpg; [ "$(base64 -w0 /tmp/s.jpg | wc -c)" -le 37000 ] && break; done
+          base64 -w0 /tmp/s.jpg | fold -w 3700 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-time-linux
+          path: |
+            hosts/hearth-time/target/release/hearth-time
+            hosts/hearth-time/shots
+            hosts/hearth-time/*.log
