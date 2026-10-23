@@ -32,9 +32,13 @@ jobs:
         run: |
           set -eu
           note() { printf '::notice title=%s::%s\n' "$1" "$(head -c 3500 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
+          # Hearth OS allows user namespaces (Ubuntu's AppArmor restriction is lifted in its image by
+          # 61-hearth-ubuntu-userns.conf); the runner's Ubuntu restricts them, and Chromium needs them for its sandbox.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           export HOME=$RUNNER_TEMP/home; mkdir -p "$HOME"; unset XDG_DATA_HOME XDG_CONFIG_HOME
           H=hosts/linux/desktop/shell/hearth-claude
           python3 $H install | tee install.log | tail -3
+          python3 $H status | tail -1 | grep -q '"sandbox": true'
           st=$(python3 $H status | tail -1); echo "$st"
           v=$("$HOME/.local/bin/claude-desktop" --version | tail -1)
           echo "$st" | python3 -c "import json,sys; s=json.load(sys.stdin); assert s['ours'] and s['version']=='$v' and s['latest']=='$v' and not s['updateAvailable'], s"
@@ -50,8 +54,6 @@ jobs:
         run: |
           note() { printf '::notice title=%s::%s\n' "$1" "$(head -c 3500 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
           export HOME=$RUNNER_TEMP/home
-          # Hearth's Ubuntu image lifts Ubuntu's AppArmor user-namespace restriction (61-hearth-ubuntu-userns.conf).
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo apt-get install -y -qq xvfb dbus-x11 >/dev/null
           ( timeout 30 dbus-run-session -- xvfb-run -a "$HOME/.local/bin/claude-desktop" > run.log 2>&1; echo "exit=$?" >> run.log ) || true
           tail -3 run.log
@@ -97,8 +99,10 @@ jobs:
           ! command -v dpkg-deb
           useradd -m player
           cp /src/hosts/linux/desktop/shell/hearth-claude /tmp/hearth-claude
-          su player -c 'python3 /tmp/hearth-claude install | tail -2 && ~/.local/bin/claude-desktop --version && python3 /tmp/hearth-claude status | tail -1'
+          su player -c 'python3 /tmp/hearth-claude install | tail -2 && python3 /tmp/hearth-claude status | tail -1 && ~/.local/bin/claude-desktop --version'
           EOF
-          out=$(docker run --rm -e DEPS="${{ matrix.deps }}" -v "$PWD:/src:ro" -v /tmp/run.sh:/run.sh:ro ${{ matrix.image }} sh /run.sh 2>&1) || { echo "$out" | tail -20; echo "::error title=${{ matrix.name }}::$(echo "$out" | tail -5 | tr '\n' ' ' | cut -c1-800)"; exit 1; }
+          # As on Hearth OS: user namespaces allowed (the runner's Ubuntu restricts them; Docker's seccomp too).
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          out=$(docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconfined -e DEPS="${{ matrix.deps }}" -v "$PWD:/src:ro" -v /tmp/run.sh:/run.sh:ro ${{ matrix.image }} sh /run.sh 2>&1) || { echo "$out" | tail -20; echo "::error title=${{ matrix.name }}::$(echo "$out" | tail -5 | tr '\n' ' ' | cut -c1-800)"; exit 1; }
           echo "$out" | tail -5
           echo "::notice title=${{ matrix.name }}::$(echo "$out" | grep -v '^{' | tail -2 | tr '\n' ' ' | cut -c1-500)"
