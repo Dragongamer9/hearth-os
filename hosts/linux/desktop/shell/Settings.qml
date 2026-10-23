@@ -15,9 +15,12 @@ Singleton {
     property bool lockOnWake: false      // lock the screen when the device goes to sleep (Desktop Mode)
     property bool clock24: false         // taskbar clock: 24-hour ("14:05") instead of 12-hour ("2:05 PM"); Settings › Date & time
     property bool clipboardHistory: true // keep what you copy for Super+V (cliphist); Settings › Clipboard
+    property int screenOffMinutes: 10    // turn the screen off after this long without use (0 = never); Settings › Power
+    property int sleepMinutes: 0         // go to sleep after this long without use (0 = never); Settings › Power
     property bool loaded: false
 
-    readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake", "clock24", "clipboardHistory"]
+    readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake", "clock24", "clipboardHistory",
+        "screenOffMinutes", "sleepMinutes"]
     onNightLightChanged: save()
     onWallpaperChanged: save()
     onReduceMotionChanged: save()
@@ -25,6 +28,8 @@ Singleton {
     onLockOnWakeChanged: save()
     onClock24Changed: save()
     onClipboardHistoryChanged: save()
+    onScreenOffMinutesChanged: save()
+    onSleepMinutesChanged: save()
     function save() {
         if (!loaded) return;
         const o = {};

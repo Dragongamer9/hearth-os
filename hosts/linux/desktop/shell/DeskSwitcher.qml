@@ -16,7 +16,9 @@ Item {
         all.sort((a, b) => {
             const ca = a.coordinates || [], cb = b.coordinates || [];
             for (let i = 0; i < Math.max(ca.length, cb.length); i++) if ((ca[i] || 0) !== (cb[i] || 0)) return (ca[i] || 0) - (cb[i] || 0);
-            return 0;
+            // No coordinates (labwc doesn't send them): by name, numbers in order ("Desktop 2" before "Desktop 10"),
+            // so the first desktop is the first button and the one you start on isn't shown as "3".
+            return String(a.name || "").localeCompare(String(b.name || ""), undefined, { numeric: true });
         });
         return all.map(w => ({ name: w.name || "", active: w.active, set: w }));
     }

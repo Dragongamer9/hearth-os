@@ -1,14 +1,17 @@
-// The volume bar that shows for a moment when the volume buttons are pressed (Desktop Mode).
+// The volume bar that shows for a moment when the volume buttons are pressed (Desktop Mode); also the brightness
+// keys' bar (`quickshell ipc ... call brightness up|down`, brightnessctl).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Io
 
 PanelWindow {
     id: root
     property real volume: 0
     property bool muted: false
     property bool showing: false
+    property bool bright: false          // showing the brightness, not the volume
     visible: showing || card.opacity > 0
     color: "transparent"
     anchors { top: true }
@@ -21,7 +24,16 @@ PanelWindow {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     mask: Region {}                      // clicks go through
 
-    function show(v, m) { volume = v; muted = m; showing = true; hide.restart(); }
+    function show(v, m) { bright = false; volume = v; muted = m; showing = true; hide.restart(); }
+    // Brightness, 0-100 (from brightnessctl after the change).
+    function showBrightness(pct) { bright = true; volume = pct / 100; muted = false; showing = true; hide.restart(); }
+    function brightness(up) { brightProc.command = ["brightnessctl", "-m", "-c", "backlight", "set", up ? "5%+" : "5%-"]; brightProc.running = true; }
+    Process {
+        id: brightProc
+        stdout: StdioCollector {
+            onStreamFinished: { const f = text.trim().split(","); if (f.length >= 4) root.showBrightness(parseInt(f[3])); }
+        }
+    }
     Timer { id: hide; interval: 1500; onTriggered: root.showing = false }
     Connections { target: Buttons; function onOsd(v, m) { root.show(v, m); } }
 
@@ -36,22 +48,22 @@ PanelWindow {
         RowLayout {
             anchors { fill: parent; leftMargin: 20; rightMargin: 22 }
             spacing: 14
-            Icon { name: root.muted || root.volume <= 0 ? "vol-mute" : "vol"; size: 22 }
+            Icon { name: root.bright ? "sun" : root.muted || root.volume <= 0 ? "vol-mute" : "vol"; size: 22 }
             Item {
                 Layout.fillWidth: true
                 implicitHeight: 6
                 Rectangle { anchors.fill: parent; radius: 3; color: Theme.panel3 }
                 Rectangle {
                     height: parent.height; radius: 3
-                    width: root.muted ? 0 : parent.width * Math.min(1, root.volume / Buttons.maxVolume)
+                    width: root.muted ? 0 : parent.width * Math.min(1, root.volume / (root.bright ? 1 : Buttons.maxVolume))
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
                         GradientStop { position: 0; color: Theme.ember }
-                        GradientStop { position: 1; color: root.volume > 1 ? Theme.danger : Theme.flame }
+                        GradientStop { position: 1; color: root.volume > 1 && !root.bright ? Theme.danger : Theme.flame }
                     }
                 }
                 Rectangle {                  // where 100% is, when it can go past it
-                    visible: Buttons.maxVolume > 1
+                    visible: Buttons.maxVolume > 1 && !root.bright
                     x: parent.width / Buttons.maxVolume - 1; y: -4
                     width: 2; height: parent.height + 8; radius: 1
                     color: Qt.rgba(1, 1, 1, 0.5)
