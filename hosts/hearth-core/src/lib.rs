@@ -1,5 +1,6 @@
 //! Hearth's host logic in Rust, without a window: the Tauri app (hosts/hearth-rs) puts the UI on screen and
 //! passes its messages here. Replaces the Electron host (hosts/linux) a part at a time; see docs/RUST.md.
+pub mod access;   // Settings › Accessibility (desktop/shell/hearth-access)
 pub mod admin;
 pub mod appid;
 pub mod appupdate;
@@ -13,6 +14,9 @@ pub mod desktop_games;
 pub mod display;
 pub mod emulators;
 pub mod friends;
+// ---- Hearth's gaming apps (Controller Lab, Saves, Mods): opened from Game Mode
+pub mod gaming_apps;
+// ---- end of Hearth's gaming apps
 pub mod game_options;
 pub mod gameinfo;
 pub mod gamescope;
@@ -26,6 +30,9 @@ pub mod inputplumber;
 pub mod logs;
 pub mod xodus;
 pub mod library;
+// ---- Nearby Share and Hearth Connect, opened from Game Mode
+pub mod link_apps;
+// ---- end of Nearby Share and Hearth Connect
 pub mod multiplay;
 pub mod owned;
 pub mod padmouse;

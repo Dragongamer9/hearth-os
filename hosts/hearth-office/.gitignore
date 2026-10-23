@@ -1,0 +1,5 @@
+target/
+gen/
+Cargo.lock
+tests/__pycache__/
+shots/

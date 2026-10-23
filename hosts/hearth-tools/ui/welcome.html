@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Welcome &amp; Tips</title>
+<link rel="stylesheet" href="common.css">
+<style>
+.tour { flex:1; display:grid; grid-template-rows:1fr auto; min-height:0; }
+.slide { display:grid; grid-template-columns:minmax(10em, 16em) 1fr; gap:2em; align-items:center; max-width:60em; margin:0 auto; padding:1em; }
+.slide .art { aspect-ratio:1; border-radius:28px; display:grid; place-items:center; font-size:5em; background:radial-gradient(circle at 30% 25%, #4a2a16, var(--panel) 70%); border:1px solid #4a372b; }
+.slide h2 { font-size:1.8em; margin:0 0 .4em; }
+.slide p { color:var(--muted); font-size:1.05em; margin:.4em 0; }
+.slide ul { color:var(--muted); padding-left:1.2em; margin:.5em 0; }
+.slide li { margin:.25em 0; }
+.slide b { color:var(--text); }
+.dots { display:flex; gap:.4em; justify-content:center; }
+.dots i { width:.55em; height:.55em; border-radius:50%; background:var(--panel3); }
+.dots i.on { background:var(--ember); width:1.4em; border-radius:9px; }
+.help { display:grid; grid-template-columns:minmax(16em, 24em) 1fr; gap:var(--gut); min-height:0; flex:1; grid-template-rows:minmax(0, 1fr); }
+.results { display:flex; flex-direction:column; gap:.35em; }
+.res { text-align:left; padding:.55em .8em; border-radius:12px; background:var(--panel); border:1px solid var(--line); }
+.res.on { border-color:var(--ember); background:#2a1b12; }
+.res small { color:var(--muted); display:block; font-size:.78em; }
+.doc { line-height:1.55; user-select:text; -webkit-user-select:text; }
+.doc h2 { margin:.1em 0 .5em; font-size:1.35em; }
+.doc a { color:var(--ember); }
+.doc code, .doc pre { font-family:var(--mono); font-size:.88em; background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:.1em .35em; }
+.doc pre { padding:.6em .8em; overflow:auto; white-space:pre-wrap; }
+.doc table { border-collapse:collapse; width:100%; font-size:.92em; } .doc td, .doc th { border-top:1px solid var(--line); padding:.35em .5em; text-align:left; vertical-align:top; }
+.doc .note { border-left:3px solid var(--ember); background:var(--panel); padding:.3em .9em; border-radius:0 10px 10px 0; }
+.doc .ver { font-size:.75em; padding:.1em .5em; border-radius:99px; background:rgba(255,138,61,.16); color:var(--ember); }
+.doc .cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(14em, 1fr)); gap:.5em; }
+.doc .cards a { display:block; padding:.6em .8em; border-radius:12px; background:var(--panel); border:1px solid var(--line); color:var(--text); text-decoration:none; }
+.doc .cards a span { display:block; color:var(--muted); font-size:.85em; }
+.tools { display:grid; gap:.7em; grid-template-columns:repeat(auto-fill, minmax(min(100%, 17em), 1fr)); }
+.tool { text-align:left; padding:.9em 1em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); display:grid; grid-template-columns:2.4em 1fr; gap:.2em .8em; align-items:center; }
+.tool .ic { grid-row:span 2; font-size:1.6em; }
+.tool b { font-size:1.02em; } .tool small { color:var(--muted); }
+.controls { display:grid; grid-template-columns:auto 1fr; gap:.45em 1.4em; max-width:44em; }
+.controls dt { color:var(--ember); font-weight:600; } .controls dd { margin:0; }
+@media (max-width: 760px) { .slide { grid-template-columns:1fr; } .slide .art { max-width:8em; } .help { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<script>
+'use strict';
+const { $, $$, esc } = H;
+const S = { tab: H.boot.page === 'help' ? 'help' : 'tour', step: 0, help: null, q: '', sel: null, edition: '', info: null };
+H.shell({ title: 'Welcome & Tips', sub: '', tabs: [{ id: 'tour', label: 'Welcome' }, { id: 'help', label: 'How do I…' }, { id: 'controller', label: 'Controller' }, { id: 'tools', label: 'System tools' }], tab: S.tab,
+  onTab: t => { S.tab = t; render(); }, hints: [] });
+H.S.back = () => { if (S.tab === 'tour' && S.step > 0) { S.step--; render(); setTimeout(() => $('#next')?.focus(), 0); return true; } return false; };
+
+const TOUR = [
+  { art: '🔥', title: 'Welcome to Hearth OS', body: `<p>Hearth OS is a gaming system that is also a full computer. This quick tour shows where things are. It takes a minute, and you can open it again any time from the app menu (<b>Welcome &amp; Tips</b>).</p>` },
+  { art: '🎮', title: 'Game Mode and Desktop Mode', body: `<p><b>Game Mode</b> is the console-style screen with all your games: Steam, Epic, GOG, Xbox and the ones you add.</p><p><b>Desktop Mode</b> (Mantel, where you are now) is a full desktop with windows, a file manager, a browser and a terminal.</p><ul><li>To the desktop: <b>Power › Switch to desktop</b> in Game Mode.</li><li>Back to Game Mode: the <b>Game Mode</b> button at the bottom right.</li></ul>`, action: ['Choose where you start', 'settings:signin'] },
+  { art: '🕹️', title: 'Your controller works everywhere', body: `<p>In Desktop Mode the controller is a mouse and keyboard: the <b>right stick</b> moves the pointer, <b>A</b> clicks, <b>B</b> goes back, <b>Y</b> opens the on-screen keyboard, and <b>Menu ☰</b> opens your apps.</p><p>Hearth's own apps (like this one) also work with the D-pad: move with it, A to choose, B to go back, LB/RB to switch tabs.</p>`, action: ['See every button', 'tab:controller'] },
+  { art: '⬆️', title: 'Updates look after themselves', body: `<p>Hearth OS updates in one piece, in the background, and the version you had before stays on the drive, so you can always go back to it.</p><p>Look for new versions in <b>Settings › Updates</b>.</p>`, action: ['Open Updates', 'settings:updates'] },
+  { art: '🧰', title: 'Tools for when you need them', body: `<p>In the app menu: <b>Disk Usage</b> (what's filling your drive), <b>System Info</b>, <b>Logs</b>, <b>Network Tools</b> (speed test, Wi-Fi), <b>Passwords &amp; Keys</b>, <b>Printers &amp; Scanner</b>, and <b>Disks</b> for your drives and SD cards.</p>`, action: ['See them all', 'tab:tools'] },
+  { art: '💬', title: 'When something goes wrong', body: `<p><b>Settings › System › Send logs to the developer</b> (or <b>Logs › Send to the developer</b>) sends what Hearth saw, with your personal details taken out, and gives you a short code to share.</p><p>Hearth OS is in beta: every report helps. Questions? <b>How do I…</b> has the answers from the website, searchable.</p>`, action: ['Search the help', 'tab:help'] },
+];
+const TOOLS = [['disk-usage', '🍩', 'Disk Usage', 'What\'s filling your drives, and quick clean-ups'], ['system-info', '💻', 'System Info', 'Your hardware and Hearth\'s version, to copy into a report'], ['logs', '📜', 'Logs', 'What the system and Hearth said, with filters'],
+  ['network', '📶', 'Network Tools', 'Speed test, Wi-Fi signal, ping and DNS'], ['passwords', '🔑', 'Passwords & Keys', 'Saved passwords and Wi-Fi passwords'], ['printers', '🖨️', 'Printers & Scanner', 'Print queue, add a printer, scan to PDF'], ['disks', '💽', 'Disks', 'Drives, SD cards, formatting and games libraries']];
+
+async function loadHelp() {
+  try { const r = await fetch('help.json'); S.help = await r.json(); }
+  catch (e) { S.help = H.preview ? SAMPLE : { sections: [], controls: [] }; }
+  if (S.tab !== 'tour') render();
+}
+const forEdition = s => !s.eds || !S.edition || s.eds.split(' ').includes(S.edition);
+function search(q) {
+  const secs = (S.help && S.help.sections || []).filter(forEdition);
+  const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+  if (!words.length) return secs.map(s => [0, s]);
+  return secs.map(s => {
+    const t = s.title.toLowerCase(), x = s.text.toLowerCase();
+    let score = 0;
+    for (const w of words) { const inT = t.includes(w), inX = x.includes(w); if (!inT && !inX) return [0, s]; score += (inT ? 6 : 0) + Math.min(5, x.split(w).length - 1); }
+    return [score, s];
+  }).filter(r => r[0] > 0).sort((a, b) => b[0] - a[0]);
+}
+function cleanDoc(html) {
+  const d = document.createElement('div'); d.innerHTML = html;
+  d.querySelectorAll('script, style, form, iframe, input, button, select, textarea').forEach(e => e.remove());
+  d.querySelectorAll('[data-ed]').forEach(e => { const eds = e.dataset.ed; if (S.edition && eds !== 'all' && !eds.split(' ').includes(S.edition)) e.remove(); else if (eds === 'all' && S.edition) e.remove(); });
+  d.querySelectorAll('*').forEach(e => [...e.attributes].forEach(a => { if (/^on/i.test(a.name) || (a.name === 'style')) e.removeAttribute(a.name); }));
+  return d.innerHTML;
+}
+
+function render() {
+  const m = $('#main');
+  if (S.tab === 'tour') {
+    const s = TOUR[S.step], last = S.step === TOUR.length - 1;
+    m.innerHTML = `<div class="tour"><div class="scroll" style="display:grid;align-items:center"><div class="slide"><div class="art">${s.art}</div><div><h2>${esc(s.title)}</h2>${s.body}${s.action ? `<p><button class="btn f" id="act">${esc(s.action[0])}</button></p>` : ''}</div></div></div>
+      <div class="row" style="justify-content:space-between;padding:.6em 0"><button class="btn f" id="skip">${last ? 'Close' : 'Skip the tour'}</button><span class="dots">${TOUR.map((_, i) => `<i class="${i === S.step ? 'on' : ''}"></i>`).join('')}</span>
+      <span class="row">${S.step ? '<button class="btn f" id="prev">Back</button>' : ''}<button class="btn primary f" id="next">${last ? 'Start using Hearth' : 'Next'}</button></span></div></div>`;
+    $('#next').onclick = () => { if (last) finish(); else { S.step++; render(); setTimeout(() => $('#next').focus(), 0); } };
+    if ($('#prev')) $('#prev').onclick = () => { S.step--; render(); setTimeout(() => $('#next').focus(), 0); };
+    $('#skip').onclick = finish;
+    if ($('#act')) $('#act').onclick = () => { const a = s.action[1]; if (a.startsWith('tab:')) H.setTab(a.slice(4), true); else H.call('app.open', { what: a }).catch(H.fail); };
+  } else if (S.tab === 'help') {
+    const results = search(S.q);
+    if (!S.sel || !results.some(r => r[1] === S.sel)) S.sel = results[0] ? results[0][1] : null;
+    m.innerHTML = `<input class="inp f" id="q" data-osk="1" placeholder="How do I… (try: update, controller, Wi-Fi, black screen)" value="${esc(S.q)}" style="margin-bottom:.6em">
+      <div class="help"><div class="scroll"><div class="results">${!S.help ? '<div class="empty"><span class="spinner"></span></div>' : results.length ? results.slice(0, 60).map(([, s], i) => `<button class="res f${s === S.sel ? ' on' : ''}" data-i="${i}">${esc(s.title)}<small>${esc(s.pageTitle)}</small></button>`).join('') : '<div class="empty">Nothing found. Try other words, or ask on the website.</div>'}</div></div>
+      <div class="scroll"><article class="doc" id="doc">${S.sel ? `<h2>${esc(S.sel.title)}</h2>${cleanDoc(S.sel.html)}<p class="faint" style="font-size:.85em">From the Hearth OS docs (${esc(S.sel.pageTitle)}). <a href="#" id="web">Open on the website</a></p>` : ''}</article></div></div>`;
+    const list = results.slice(0, 60).map(r => r[1]);
+    $$('[data-i]').forEach(b => { b.onclick = () => { S.sel = list[+b.dataset.i]; render(); $(`[data-i="${b.dataset.i}"]`)?.focus(); }; });
+    let t = 0;
+    $('#q').addEventListener('input', e => { clearTimeout(t); t = setTimeout(() => { S.q = e.target.value; S.sel = null; const pos = e.target.selectionStart; render(); const n = $('#q'); n.focus(); n.setSelectionRange(pos, pos); }, 200); });
+    $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('.res')?.focus(); } });
+    if ($('#web')) $('#web').onclick = e => { e.preventDefault(); H.call('app.open', { what: `url:https://hearthos.fun/docs/${S.sel.page === 'index' ? 'index' : S.sel.page}.html#${S.sel.id}` }).catch(H.fail); };
+    $$('#doc a[href]').forEach(a => { if (a.id === 'web') return; a.onclick = e => { e.preventDefault(); follow(a.getAttribute('href')); }; });
+  } else if (S.tab === 'controller') {
+    const c = (S.help && S.help.controls) || [];
+    m.innerHTML = `<div class="scroll" style="flex:1"><p class="muted">In Desktop Mode the controller works like a mouse and keyboard everywhere. It pauses while a game is fullscreen. (View on the controller shows this list too.)</p>
+      <dl class="controls">${c.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') || '<dd class="muted">…</dd>'}</dl>
+      <h3 style="margin-top:1.2em">In Hearth's own apps</h3><dl class="controls"><dt>D-pad / left stick</dt><dd>Move between buttons</dd><dt>A</dt><dd>Choose</dd><dt>B</dt><dd>Back, close a dialog</dd><dt>X / Y</dt><dd>The app's own extra action / refresh (shown at the bottom)</dd><dt>LB / RB</dt><dd>Switch tabs</dd></dl>
+      <p><button class="btn f" id="cs">Controller settings</button></p></div>`;
+    $('#cs').onclick = () => H.call('app.open', { what: 'settings:controller' }).catch(H.fail);
+  } else if (S.tab === 'tools') {
+    m.innerHTML = `<div class="scroll" style="flex:1"><div class="tools">${TOOLS.map(([id, ic, n, d]) => `<button class="tool f" data-tool="${id}"><span class="ic">${ic}</span><b>${esc(n)}</b><small>${esc(d)}</small></button>`).join('')}</div>
+      <div class="row" style="margin-top:1em"><button class="btn f" data-open="settings:">Hearth Settings</button><button class="btn f" data-open="files">Files</button><button class="btn f" data-open="terminal">Terminal</button></div></div>`;
+    $$('[data-tool]').forEach(b => b.onclick = () => H.call('app.open', { what: b.dataset.tool === 'disks' ? 'disks' : 'tool:' + b.dataset.tool }).then(() => H.toast('Opening…')).catch(H.fail));
+    $$('[data-open]').forEach(b => b.onclick = () => H.call('app.open', { what: b.dataset.open }).catch(H.fail));
+  }
+}
+function follow(href) {
+  const m = href.match(/^(?:\.\/)?([a-z-]+)\.html(?:#([\w-]+))?$/) || href.match(/^#([\w-]+)$/) && [null, S.sel.page, href.slice(1)];
+  if (m) {
+    const secs = (S.help.sections || []).filter(forEdition);
+    const target = secs.find(s => s.page === m[1] && (!m[2] || s.id === m[2])) || secs.find(s => s.page === m[1]);
+    if (target) { S.sel = target; S.q = ''; render(); $('.res.on')?.scrollIntoView({ block: 'nearest' }); return; }
+  }
+  const url = /^https?:/.test(href) ? href : 'https://hearthos.fun/docs/' + href.replace(/^\.\//, '');
+  H.call('app.open', { what: 'url:' + url }).catch(() => H.toast('Open ' + url + ' in your browser'));
+}
+async function finish() {
+  try { await H.call('welcome.done'); } catch (e) { /* preview */ }
+  H.setTab('help', true);
+}
+
+const SAMPLE = { sections: [
+  { page: 'updates', pageTitle: 'Updates and editions', id: 'how', title: 'How updates work', eds: '', text: 'Hearth OS updates in one piece in the background', html: '<p>Hearth OS updates in one piece, in the background. <b>Settings › Updates</b> shows what\'s new.</p>' },
+  { page: 'troubleshooting', pageTitle: 'Troubleshooting', id: 'logs', title: 'First: send a log', eds: '', text: 'Settings System Send logs to the developer then share the code', html: '<p><b>Settings › System › Send logs to the developer</b>, then share the code.</p>' },
+  { page: 'using', pageTitle: 'Using Hearth', id: 'controller', title: 'Controller', eds: '', text: 'A B select back Y search', html: '<div class="tbl"><table><tr><th>Button</th><th>In Game Mode</th></tr><tr><td>A / B</td><td>Select / back</td></tr></table></div>' }],
+  controls: [['Right stick', 'Move the pointer (press it in: precise)'], ['A  /  RT', 'Click (hold to drag)'], ['B', 'Back (Esc)'], ['Y', 'On-screen keyboard']] };
+H.demo.call = m => { if (m === 'app.info') return { edition: 'anatase', version: '0.6.0', seen: false }; throw 'This is a preview.'; };
+
+(async () => {
+  try { S.info = await H.call('app.info'); S.edition = S.info.edition || ''; H.sub(S.info.version ? `Hearth OS ${S.info.version}` : ''); } catch (e) { /* fine */ }
+  // The first-run tour counts as seen once it has opened (closing the window is fine too).
+  if (H.boot.firstRun) H.call('welcome.done').catch(() => {});
+  render(); loadHelp();
+  setTimeout(() => ($('#next') || $('#q') || H.firstFocus())?.focus(), 50);
+})();
+</script>
+</body>
+</html>

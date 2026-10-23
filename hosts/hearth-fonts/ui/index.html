@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fonts</title>
+<style>
+/* Hearth's ember palette (hosts/linux/desktop/shell/Theme.qml), as in Disks and Terminal. */
+:root {
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --faint:#6f6055; --ember:#ff8a3d; --flame:#ffd166; --danger:#ff5d5d; --good:#6fd08c;
+  --ink:#2a1206; --r:14px; --gut:clamp(14px,2.2vw,30px); --ease:cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
+body { font:400 15px/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; overflow:hidden; user-select:none; -webkit-user-select:none;
+  background:radial-gradient(1100px 600px at 85% -10%, #2a170d 0%, transparent 60%), var(--bg); }
+button, input { font:inherit; color:inherit; }
+.app { display:grid; grid-template-rows:auto 1fr auto; height:100%; }
+header { display:flex; align-items:center; gap:12px; padding:12px var(--gut) 10px; flex-wrap:wrap; }
+header h1 { font-size:21px; margin:0; font-weight:650; }
+header .sub { color:var(--muted); font-size:13px; }
+.spacer { flex:1; }
+.inp { padding:9px 12px; border-radius:12px; border:1px solid var(--line); background:var(--bg2); outline:none; min-width:0; }
+.inp:focus { border-color:var(--ember); box-shadow:0 0 0 2px rgba(255,138,61,.25); }
+.f { outline:none; cursor:pointer; transition:transform .12s var(--ease), box-shadow .12s, background .12s; }
+.f:focus, .f.focus { box-shadow:0 0 0 3px var(--ember), 0 0 20px rgba(255,138,61,.3); }
+.btn { padding:8px 14px; border-radius:12px; background:var(--panel2); border:1px solid var(--line); min-height:38px; }
+.btn.primary { background:var(--ember); color:var(--ink); border-color:transparent; font-weight:650; }
+.btn.danger { color:#ffb3a1; border-color:#5c2a22; background:#2a1512; }
+.chips { display:flex; gap:6px; flex-wrap:wrap; }
+.chip { padding:6px 12px; border-radius:99px; background:var(--panel2); border:1px solid var(--line); font-size:13px; }
+.chip.on { border-color:var(--ember); background:#3a2416; }
+main { display:grid; grid-template-columns:minmax(260px, 340px) 1fr; gap:var(--gut); padding:0 var(--gut) 10px; min-height:0; }
+.side { display:grid; grid-template-rows:auto auto 1fr; gap:8px; min-height:0; }
+.list { overflow:auto; min-height:0; padding:3px; display:flex; flex-direction:column; gap:4px; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
+.fam { text-align:left; padding:9px 12px; border-radius:12px; background:var(--panel); border:1px solid var(--line); display:grid; gap:2px; width:100%; }
+.fam.sel { background:var(--panel2); border-color:#5a3f2c; }
+.fam .n { font-size:13px; color:var(--muted); display:flex; gap:6px; align-items:center; }
+.fam .p { font-size:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.badge { font-size:11px; padding:1px 7px; border-radius:99px; background:rgba(255,138,61,.16); color:var(--ember); }
+.detail { overflow:auto; min-height:0; padding:3px 3px 20px; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
+.dhead { display:flex; align-items:flex-end; gap:10px 16px; flex-wrap:wrap; margin-bottom:10px; }
+.dhead h2 { margin:0; font-size:26px; font-weight:650; }
+.dhead .facts { color:var(--muted); font-size:13px; }
+.tools { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:6px 0 14px; }
+.tools .inp { flex:1; min-width:220px; }
+.face { padding:12px 16px 14px; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); margin-bottom:8px; }
+.face .st { font-size:12px; color:var(--muted); display:flex; gap:10px; }
+.face .sample { margin-top:4px; overflow-wrap:anywhere; line-height:1.25; color:var(--text); user-select:text; -webkit-user-select:text; }
+.glyphs { margin-top:10px; padding:12px 16px; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); line-height:1.6; overflow-wrap:anywhere; color:var(--muted); }
+.empty { color:var(--muted); text-align:center; padding:40px 10px; }
+.drop { position:fixed; inset:0; display:none; place-items:center; background:rgba(8,5,4,.75); font-size:22px; z-index:5; border:3px dashed var(--ember); }
+body.dragging .drop { display:grid; }
+footer { display:flex; gap:18px; padding:7px var(--gut) 10px; color:var(--muted); font-size:12px; flex-wrap:wrap; }
+footer b { display:inline-grid; place-items:center; min-width:20px; height:20px; border-radius:50%; background:var(--panel3); color:var(--text); margin-right:5px; font-size:11px; }
+.veil { position:fixed; inset:0; background:rgba(8,5,4,.72); display:grid; place-items:center; padding:var(--gut); z-index:10; }
+.dlg { width:min(36em, 100%); background:var(--panel); border:1px solid #4a372b; border-radius:18px; padding:18px 20px; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+.dlg h3 { margin:0 0 8px; }
+.row { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+.osk { display:grid; grid-template-columns:repeat(10, 1fr); gap:5px; margin-top:10px; }
+.osk button { padding:8px 0; border-radius:9px; background:var(--panel3); border:1px solid var(--line); }
+.osk .wide { grid-column:span 2; }
+.toast { position:fixed; left:50%; bottom:46px; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--line); padding:9px 16px; border-radius:12px; z-index:20; }
+@media (max-width: 760px) { main { grid-template-columns:1fr; overflow:auto; } .side { grid-template-rows:auto auto 260px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Fonts</h1><span class="sub" id="sub"></span>
+    <span class="spacer"></span>
+    <button class="btn f" data-act="open" data-k="open">Install a font…</button>
+  </header>
+  <main>
+    <section class="side">
+      <input class="inp f" id="q" data-k="q" placeholder="Search fonts" spellcheck="false" autocomplete="off" data-osk="1">
+      <div class="chips" id="filters"></div>
+      <div class="list" id="list"></div>
+    </section>
+    <section class="detail" id="detail"></section>
+  </main>
+  <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Preview text</span><span><b>Y</b>Install a font</span><span><b>LB</b><b>RB</b>Size</span><span id="hint"></span></footer>
+</div>
+<div class="drop">Drop a .ttf or .otf font to look at it and install it</div>
+<div id="layer"></div>
+<script>
+'use strict';
+const T = window.__TAURI__;
+const invoke = T ? T.core.invoke : demoInvoke;
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const SIZES = [14, 18, 24, 32, 48, 64, 96];
+const S = { fams: [], filter: 'all', q: '', sel: null, text: '', size: 32, opened: null, pad: false, userDir: '', loaded: {} };
+const DEFAULT_TEXT = 'The quick brown fox jumps over the lazy dog. 0123456789';
+try { S.text = localStorage.getItem('hearth.fonts.text') || ''; S.size = +localStorage.getItem('hearth.fonts.size') || 32; } catch (e) {}
+
+function toast(t) { let el = $('.toast'); if (!el) { el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); } el.textContent = t; clearTimeout(toast.t); toast.t = setTimeout(() => el.remove(), 3200); }
+// Single quotes: it goes inside style="..." attributes. (esc() would turn a ' in a name into an entity, so they go.)
+const cssFamily = n => `'${String(n).replace(/['"\\<>&]/g, '')}'`;
+function visible() {
+  const q = S.q.trim().toLowerCase();
+  return S.fams.filter(f => (S.filter === 'all' || (S.filter === 'mine' ? f.mine : S.filter === 'mono' ? /mono|code|console|courier/i.test(f.name) : S.filter === 'symbols' ? f.symbols : true)) && (!q || f.name.toLowerCase().includes(q)));
+}
+function famPreview(f) { return f.symbols ? f.name : (S.text.trim() ? S.text.trim().slice(0, 60) : f.name); }
+
+function renderList() {
+  const fs = visible();
+  $('#filters').innerHTML = [['all', 'All'], ['mine', 'Yours'], ['mono', 'Monospace'], ['symbols', 'Symbols']]
+    .map(([k, l]) => `<button class="chip f ${S.filter === k ? 'on' : ''}" data-act="filter" data-v="${k}" data-k="filter:${k}">${l}</button>`).join('');
+  const opened = S.opened ? `<button class="fam f ${S.sel === '\u0000opened' ? 'sel' : ''}" data-act="pick" data-name="\u0000opened" data-k="fam:\u0000opened"><span class="n">${esc(S.opened.name)} <span class="badge">Not installed</span></span><span class="p" style="font-family:${cssFamily('hearth-opened-0')}">${esc(famPreview(S.opened))}</span></button>` : '';
+  $('#list').innerHTML = opened + (fs.length ? fs.slice(0, 600).map(f => `<button class="fam f ${S.sel === f.name ? 'sel' : ''}" data-act="pick" data-name="${esc(f.name)}" data-k="fam:${esc(f.name)}">
+      <span class="n">${esc(f.name)}${f.mine ? ' <span class="badge">Yours</span>' : ''}</span><span class="p" style="font-family:${cssFamily(f.name)}, sans-serif">${esc(famPreview(f))}</span></button>`).join('')
+    : `<div class="empty">${S.fams.length ? 'No font by that name.' : 'Looking at your fonts…'}</div>`);
+  $('#sub').textContent = S.fams.length ? `${S.fams.length} font families` : '';
+}
+
+async function loadFaces(fam, prefix) {
+  // A font that isn't installed (or a style the web view wouldn't pick by name): the file itself, loaded into the page.
+  for (let i = 0; i < fam.faces.length; i++) {
+    const name = `${prefix}-${i}`;
+    if (S.loaded[name]) continue;
+    try {
+      const b64 = await invoke('font_data', { path: fam.faces[i].file });
+      const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const ff = new FontFace(name, bin.buffer);
+      await ff.load(); document.fonts.add(ff); S.loaded[name] = true;
+    } catch (e) { S.loaded[name] = 'bad'; }
+  }
+}
+function current() { return S.sel === '\u0000opened' ? S.opened : S.fams.find(f => f.name === S.sel); }
+let detailToken = 0;
+async function renderDetail() {
+  const f = current();
+  if (!f) { $('#detail').innerHTML = `<div class="empty">Pick a font to see it.</div>`; return; }
+  const opened = f === S.opened;
+  const token = ++detailToken;
+  const prefix = opened ? 'hearth-opened' : 'hearth-face-' + btoa(unescape(encodeURIComponent(f.name))).replace(/[^a-z0-9]/gi, '');
+  const sample = S.text.trim() || DEFAULT_TEXT;
+  const faceFamily = (i) => S.loaded[`${prefix}-${i}`] === true ? cssFamily(`${prefix}-${i}`) + ', ' + cssFamily(f.name) : cssFamily(f.name);
+  const draw = () => {
+    if (token !== detailToken) return;
+    const acts = opened ? `<button class="btn primary f" data-act="install" data-k="install">Install for me</button>`
+      : f.mine ? `<button class="btn danger f" data-act="uninstall" data-k="uninstall">Remove…</button>` : '';
+    $('#detail').innerHTML = `<div class="dhead"><h2 style="font-family:${faceFamily(0)}">${esc(f.name)}</h2>
+        <span class="facts">${f.faces.length} style${f.faces.length === 1 ? '' : 's'}${opened ? ' · ' + esc(f.faces[0].file) : f.mine ? ' · installed by you' : ' · comes with the system'}</span></div>
+      <div class="tools"><input class="inp f" id="text" data-k="text" data-osk="1" placeholder="Type your own preview text" value="${esc(S.text)}" spellcheck="false">
+        <div class="chips">${SIZES.map(z => `<button class="chip f ${S.size === z ? 'on' : ''}" data-act="size" data-v="${z}" data-k="size:${z}">${z}</button>`).join('')}</div>
+        <button class="btn f" data-act="copyname" data-k="copyname">Copy name</button>${acts}</div>
+      ${f.faces.map((x, i) => `<div class="face"><div class="st"><b>${esc(x.style)}</b><span>${x.weight}${x.italic ? ' italic' : ''}</span></div>
+        <div class="sample" style="font-family:${faceFamily(i)}, sans-serif;font-weight:${S.loaded[`${prefix}-${i}`] === true ? 400 : x.weight};font-style:${x.italic && S.loaded[`${prefix}-${i}`] !== true ? 'italic' : 'normal'};font-size:${S.size}px">${esc(sample)}</div></div>`).join('')}
+      <div class="glyphs" style="font-family:${faceFamily(0)}, sans-serif;font-size:22px;color:var(--text)">ABCDEFGHIJKLMNOPQRSTUVWXYZ<br>abcdefghijklmnopqrstuvwxyz<br>0123456789 !?&amp;@#%()[]{}«»€£$ àéîõüçñ ßæøå ΑΒΓ АБВ</div>`;
+  };
+  draw();
+  if (opened || f.faces.length > 1 || f.mine) { await loadFaces(f, prefix); draw(); }
+}
+
+function select(name) { S.sel = name; renderList(); renderDetail(); }
+
+// ---------------------------------------------------------------- install / remove
+async function openFile(path) {
+  try {
+    const fam = await invoke('inspect', { path });
+    S.opened = fam; S.loaded = Object.fromEntries(Object.entries(S.loaded).filter(([k]) => !k.startsWith('hearth-opened')));
+    await loadFaces(fam, 'hearth-opened');
+    select('\u0000opened');
+  } catch (e) { toast(String(e)); }
+}
+async function install() {
+  const f = S.opened; if (!f) return;
+  try {
+    for (const x of f.faces.filter((x, i, a) => a.findIndex(y => y.file === x.file) === i)) await invoke('install', { path: x.file });
+    toast(`${f.name} is installed. Apps you open from now on have it.`);
+    S.opened = null; await load(); select(f.name);
+  } catch (e) { toast(String(e)); }
+}
+function confirmRemove() {
+  const f = current(); if (!f || !f.mine) return;
+  dialog(`<h3>Remove ${esc(f.name)}?</h3><p class="sub">Its ${f.faces.length} file${f.faces.length === 1 ? '' : 's'} in your fonts folder go. Documents that use it show another font.</p>
+    <div class="row"><button class="btn f" data-act="close" data-k="d-no">Keep it</button><button class="btn danger f" data-act="remove" data-k="d-yes">Remove</button></div>`);
+}
+async function remove() {
+  const f = current(); closeDialog();
+  try { for (const x of f.faces) await invoke('uninstall', { file: x.file }); toast(`${f.name} was removed.`); S.sel = null; await load(); }
+  catch (e) { toast(String(e)); }
+}
+
+// A small file browser for picking a font (works with the controller; no system dialog needed).
+async function browse(dir) {
+  const r = await invoke('browse', { dir: dir || '' }).catch(e => ({ error: String(e) }));
+  if (r.error) return toast(r.error);
+  dialog(`<h3>Install a font</h3><p class="sub">${esc(r.dir)}</p><div class="list" style="max-height:50vh">
+    ${r.parent ? `<button class="fam f" data-act="browse" data-v="${esc(r.parent)}" data-k="b-up"><span class="p" style="font-size:15px">⬑ Up a folder</span></button>` : ''}
+    ${r.entries.map((e, i) => `<button class="fam f" data-act="${e.dir ? 'browse' : 'choosefile'}" data-v="${esc(e.path)}" data-k="b-${i}"><span class="p" style="font-size:15px">${e.dir ? '📁 ' : '🔤 '}${esc(e.name)}</span></button>`).join('') || '<div class="empty">No fonts or folders here.</div>'}
+    </div><div class="row"><button class="btn f" data-act="close" data-k="b-cancel">Cancel</button></div>`);
+}
+
+// ---------------------------------------------------------------- dialogs and the on-screen keyboard
+let lastFocus = null;
+function dialog(html) { lastFocus = document.activeElement?.dataset?.k || null; $('#layer').innerHTML = `<div class="veil"><div class="dlg">${html}</div></div>`; $('#layer .f')?.focus(); }
+function closeDialog() { $('#layer').innerHTML = ''; const k = lastFocus; setTimeout(() => (k && document.querySelector(`[data-k="${CSS.escape(k)}"]`) || $('.fam.sel') || $('.fam'))?.focus(), 0); }
+let oskTarget = null;
+const OSK = 'QWERTYUIOPASDFGHJKL\'ZXCVBNM,.?1234567890'.split('');
+function openOsk(input) {
+  oskTarget = input; let lower = true;
+  dialog(`<h3>${input.id === 'q' ? 'Search fonts' : 'Preview text'}</h3><input class="inp" id="oskv" style="width:100%" value="${esc(input.value)}" readonly><div class="osk">${OSK.map(k => `<button class="f" data-act="key" data-v="${esc(k)}">${esc(k.toLowerCase())}</button>`).join('')}
+    <button class="f wide" data-act="key" data-v="shift">⇧</button><button class="f wide" data-act="key" data-v="space">Space</button><button class="f wide" data-act="key" data-v="back">⌫</button><button class="f wide" data-act="key" data-v="clear">Clear</button><button class="f wide" data-act="key" data-v="done">Done</button></div>`);
+  openOsk.lower = lower;
+}
+function oskKey(k) {
+  const v = $('#oskv'); if (!v) return;
+  if (k === 'done') { const t = oskTarget; oskTarget = null; closeDialog(); t.value = v.value; t.dispatchEvent(new Event('input')); return; }
+  if (k === 'shift') { openOsk.lower = !openOsk.lower; document.querySelectorAll('.osk [data-v]').forEach(b => { if (b.dataset.v.length === 1) b.textContent = openOsk.lower ? b.dataset.v.toLowerCase() : b.dataset.v; }); return; }
+  v.value = k === 'space' ? v.value + ' ' : k === 'back' ? v.value.slice(0, -1) : k === 'clear' ? '' : v.value + (openOsk.lower ? k.toLowerCase() : k);
+}
+
+// ---------------------------------------------------------------- input
+function act(el) {
+  const a = el?.dataset?.act, v = el?.dataset?.v;
+  switch (a) {
+    case 'pick': return select(el.dataset.name);
+    case 'filter': S.filter = v; renderList(); return $(`[data-k="filter:${v}"]`)?.focus();
+    case 'size': S.size = +v; try { localStorage.setItem('hearth.fonts.size', v); } catch (e) {} renderDetail().then(() => $(`[data-k="size:${v}"]`)?.focus()); return;
+    case 'copyname': return navigator.clipboard?.writeText(current()?.name || '').then(() => toast('Copied the name'), () => toast(current()?.name || ''));
+    case 'install': return install();
+    case 'uninstall': return confirmRemove();
+    case 'remove': return remove();
+    case 'close': return closeDialog();
+    case 'open': return browse('');
+    case 'browse': return browse(v);
+    case 'choosefile': closeDialog(); return openFile(v);
+    case 'key': return oskKey(v);
+  }
+}
+document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (el) act(el); });
+document.addEventListener('input', e => {
+  if (e.target.id === 'q') { S.q = e.target.value; renderList(); }
+  if (e.target.id === 'text') { S.text = e.target.value; try { localStorage.setItem('hearth.fonts.text', S.text); } catch (x) {} document.querySelectorAll('.sample').forEach(s => s.textContent = S.text.trim() || DEFAULT_TEXT); renderListSoon(); }
+});
+let listTimer = 0; function renderListSoon() { clearTimeout(listTimer); listTimer = setTimeout(() => { const k = document.activeElement?.id; renderList(); if (k) $('#' + k)?.focus(); }, 300); }
+function focusables() { return [...document.querySelectorAll($('#layer').firstChild ? '#layer .f' : '.app .f')].filter(el => el.offsetParent !== null); }
+function move(dir) {
+  const cur = document.activeElement;
+  const all = focusables();
+  if (!cur || !all.includes(cur)) { all[0]?.focus(); return; }
+  const r = cur.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  let best = null, bs = Infinity;
+  for (const el of all) {
+    if (el === cur) continue;
+    const q = el.getBoundingClientRect(), dx = q.left + q.width / 2 - cx, dy = q.top + q.height / 2 - cy;
+    const ok = dir === 'left' ? dx < -4 : dir === 'right' ? dx > 4 : dir === 'up' ? dy < -4 : dy > 4;
+    if (!ok) continue;
+    const main = dir === 'left' || dir === 'right' ? Math.abs(dx) : Math.abs(dy), cross = dir === 'left' || dir === 'right' ? Math.abs(dy) : Math.abs(dx);
+    const sc = main + cross * 2.2; if (sc < bs) { bs = sc; best = el; }
+  }
+  if (best) { best.focus(); best.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+}
+function back() {
+  if ($('#layer').firstChild) return closeDialog();
+  if (document.activeElement?.closest('.detail')) return ($('.fam.sel') || $('.fam'))?.focus();
+  if (S.q) { S.q = ''; $('#q').value = ''; renderList(); }
+}
+document.addEventListener('keydown', e => {
+  S.pad = false;
+  const typing = e.target.tagName === 'INPUT';
+  const k = e.key;
+  if (k === 'Escape') { e.preventDefault(); back(); return; }
+  if (typing && (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'Backspace' || k.length === 1)) return;
+  const dirs = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  if (dirs[k]) { e.preventDefault(); move(dirs[k]); return; }
+  if (k === 'Enter' && typing) { e.preventDefault(); move('down'); return; }
+  if (k === 'Enter' && document.activeElement?.dataset?.act) { e.preventDefault(); act(document.activeElement); return; }
+  if (k === '+' || k === '=') { stepSize(1); } else if (k === '-') { stepSize(-1); }
+  else if (k.length === 1 && !e.ctrlKey && !e.altKey && !$('#layer').firstChild) { $('#q').focus(); }
+});
+document.addEventListener('focusin', e => { const el = e.target; if (S.pad && el.dataset?.act === 'pick' && el.dataset.name !== S.sel) { S.sel = el.dataset.name; el.parentNode.querySelectorAll('.fam.sel').forEach(x => x.classList.remove('sel')); el.classList.add('sel'); renderDetail(); } });
+function stepSize(d) { const i = SIZES.indexOf(S.size); S.size = SIZES[Math.max(0, Math.min(SIZES.length - 1, (i < 0 ? 3 : i) + d))]; try { localStorage.setItem('hearth.fonts.size', S.size); } catch (e) {} renderDetail(); }
+// Font files dropped on the window (from Hearth Files).
+document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
+document.addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('dragging'); const u = (e.dataTransfer.getData('text/uri-list') || '').split('\n')[0].trim(); if (u.startsWith('file://')) openFile(decodeURIComponent(u.slice(7))); });
+
+// Controllers (standard mapping): D-pad/stick moves, A chooses, B back, X preview text, Y install a font, LB/RB size.
+const held = {}; let lastMove = 0;
+function pad() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const now = performance.now(); const st = { up: 0, down: 0, left: 0, right: 0, a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0 };
+  for (const g of pads) { const bt = i => g.buttons[i]?.pressed, ax = g.axes[0] || 0, ay = g.axes[1] || 0;
+    st.up ||= bt(12) || ay < -.6; st.down ||= bt(13) || ay > .6; st.left ||= bt(14) || ax < -.6; st.right ||= bt(15) || ax > .6;
+    st.a ||= bt(0); st.b ||= bt(1); st.x ||= bt(2); st.y ||= bt(3); st.lb ||= bt(4); st.rb ||= bt(5); }
+  for (const [k, on] of Object.entries(st)) {
+    if (!on) { held[k] = 0; continue; }
+    const first = !held[k], dir = ['up', 'down', 'left', 'right'].includes(k), rep = held[k] && now - held[k] > 380 && now - lastMove > 100;
+    if (first) held[k] = now;
+    if (!(first || (rep && dir))) continue;
+    S.pad = true; lastMove = now;
+    const el = document.activeElement;
+    if (dir) move(k);
+    else if (k === 'a') { if (el?.dataset?.osk) openOsk(el); else if (el?.dataset?.act) act(el); else focusables()[0]?.focus(); }
+    else if (k === 'b') back();
+    else if (k === 'x') { const t = $('#text') || $('#q'); openOsk(t); }
+    else if (k === 'y') browse('');
+    else if (k === 'lb') stepSize(-1); else if (k === 'rb') stepSize(1);
+  }
+  requestAnimationFrame(pad);
+}
+requestAnimationFrame(pad);
+
+async function load() {
+  try { S.fams = await invoke('list'); } catch (e) { toast(String(e)); S.fams = []; }
+  renderList(); if (!S.sel && !S.opened && S.fams.length) select((S.fams.find(f => /^(noto sans|dejavu sans|cantarell|inter)$/i.test(f.name)) || S.fams[0]).name);
+}
+invoke('init').then(async r => { S.userDir = r.userDir; await load(); if (r.file) await openFile(r.file); ($('.fam.sel') || $('.fam'))?.focus(); }).catch(e => toast(String(e)));
+
+// Without the app (the page opened in a browser, CI's screenshots): sample fonts.
+function demoInvoke(cmd, args) {
+  const fam = (name, mine, ...styles) => ({ name, mine, symbols: /emoji|symbol/i.test(name), faces: styles.map(([style, weight, italic]) => ({ style, weight, italic: !!italic, file: '/usr/share/fonts/' + name.replace(/ /g, '') + '-' + style + '.ttf' })) });
+  if (cmd === 'init') return Promise.resolve({ file: null, userDir: '/home/you/.local/share/fonts', platform: 'linux' });
+  if (cmd === 'list') return Promise.resolve([fam('Cantarell', false, ['Regular', 400], ['Bold', 700]), fam('DejaVu Sans', false, ['Book', 400], ['Bold', 700], ['Oblique', 400, 1]),
+    fam('DejaVu Sans Mono', false, ['Book', 400], ['Bold', 700]), fam('DejaVu Serif', false, ['Book', 400], ['Bold', 700], ['Italic', 400, 1]), fam('Liberation Serif', false, ['Regular', 400], ['Italic', 400, 1]),
+    fam('Lobster', true, ['Regular', 400]), fam('Noto Color Emoji', false, ['Regular', 400]), fam('Noto Sans', false, ['Regular', 400], ['Medium', 500], ['Bold', 700], ['Italic', 400, 1]), fam('serif', false, ['Regular', 400]), fam('monospace', false, ['Regular', 400])]);
+  if (cmd === 'browse') return Promise.resolve({ dir: '/home/you/Downloads', parent: '/home/you', entries: [{ name: 'fonts', path: '/home/you/Downloads/fonts', dir: true }, { name: 'Lobster-Regular.ttf', path: '/home/you/Downloads/Lobster-Regular.ttf', dir: false }] });
+  if (cmd === 'font_data') return Promise.reject('preview');
+  return Promise.reject('This is a preview: open Fonts to make changes.');
+}
+</script>
+</body>
+</html>
