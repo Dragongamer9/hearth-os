@@ -444,6 +444,56 @@ class SystemHelper(unittest.TestCase):
         self.assertEqual([l['layout'] for l in st['layouts']], ['de', 'us'])
         self.assertEqual((st['delay'], st['rate'], st['switch']), (300, 40, 'grp:alt_shift_toggle'))
 
+    def test_pointer_settings_are_checked(self):
+        c = self.s.pointer_clean({'mouse': {'speed': 3, 'natural': 'yes', 'accel': 'flat'},
+                                  'touchpad': {'tap': False, 'scroll': 'circle', 'speed': -0.333}})
+        self.assertEqual(c['mouse'], {'speed': 1.0, 'natural': False, 'leftHanded': False, 'accel': 'flat'})
+        self.assertEqual((c['touchpad']['tap'], c['touchpad']['scroll'], c['touchpad']['speed']), (False, 'twofinger', -0.33))
+        self.assertEqual(self.s.pointer_clean('junk'), self.s.POINTER_DEFAULT)
+
+    def test_pointer_in_rc_xml_once(self):
+        import xml.etree.ElementTree as ET
+        rc = (LABWC / 'rc.xml').read_text()
+        out = self.s.rc_with_pointer(rc, self.s.pointer_clean({'touchpad': {'natural': True}}))
+        out = self.s.rc_with_pointer(out, self.s.pointer_clean({'touchpad': {'natural': False, 'tap': False}}))
+        root = ET.fromstring(out)
+        devs = {d.get('category'): d for d in root.findall('libinput/device')}
+        self.assertEqual(len(root.findall('libinput')), 1)
+        self.assertEqual(devs['touchpad'].find('naturalScroll').text, 'no')
+        self.assertEqual(devs['touchpad'].find('tap').text, 'no')
+        self.assertEqual(devs['non-touch'].find('pointerSpeed').text, '0.00')
+        self.assertEqual(len(root.find('keyboard').findall('keybind')), len(ET.fromstring(rc).find('keyboard').findall('keybind')))
+
+    def test_pointer_set_writes_file_and_labwc_folder(self):
+        os.makedirs(self.s.runtime_dir())
+        src = os.path.join(self.tmp, 'share-labwc')
+        write(os.path.join(src, 'rc.xml'), (LABWC / 'rc.xml').read_text())
+        write(os.path.join(src, 'environment'), 'MOZ_ENABLE_WAYLAND=1\n')
+        self.s.LABWC_DIR = src
+        with mock.patch.dict(os.environ, {'LABWC_PID': ''}):
+            r = self.s.pointer_set(json.dumps({'mouse': {'speed': 0.4, 'leftHanded': True}}))
+        self.assertTrue(r['ok'])
+        self.assertEqual(self.s.pointer_status()['mouse']['speed'], 0.4)
+        rc = pathlib.Path(self.s.runtime_dir(), 'rc.xml').read_text()
+        self.assertIn('<pointerSpeed>0.40</pointerSpeed>', rc)
+        self.assertIn('<leftHanded>yes</leftHanded>', rc)
+        with self.assertRaises(self.s.Fail):
+            self.s.pointer_set('[1]')
+
+    def test_touchpad_detection(self):
+        text = 'I: Bus=0018\nN: Name="ELAN0001:00 04F3:3140 Touchpad"\n\nI: Bus=0003\nN: Name="Logitech USB Mouse"\n'
+        self.assertTrue(self.s.has_touchpad(text))
+        self.assertFalse(self.s.has_touchpad('I: Bus=0003\nN: Name="Logitech USB Mouse"\n'))
+
+    def test_new_shortcuts_in_plain_words(self):
+        by = {b['key']: b for b in self.s.parse_keybinds((LABWC / 'rc.xml').read_text())}
+        self.assertEqual(by['C-A-t']['action'], 'Open a terminal')
+        self.assertEqual(by['W-3']['action'], 'Open or switch to taskbar app 3')
+        self.assertEqual(by['S-Print']['action'], 'Screenshot of an area you choose')
+        self.assertEqual(by['Print']['action'], 'Screenshot of the whole screen')
+        self.assertEqual(by['W-S-Left']['action'], 'Move the window to the screen on the left')
+        self.assertEqual(by['XF86AudioPlay']['keys'], 'Play key')
+
     def test_keybinds_in_plain_words(self):
         binds = self.s.parse_keybinds((LABWC / 'rc.xml').read_text())
         by = {b['key']: b for b in binds}
