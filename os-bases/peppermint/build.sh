@@ -291,8 +291,8 @@ fi
 # ---- end of Hearth Terminal
 
 # ------------------------------------------------------------------ Hearth's gaming apps (hosts/hearth-gaming)
-# Controller Lab, Saves and Mods: built with the app (base-peppermint.yml) and carried in os/nimbus-app, with their icons
-# in nimbus-app/icons (placeholders from branding/icons/apps until Hearth's own icon set). Desktop Mode lists them
+# Controller Lab, Saves and Mods: built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons come
+# with Hearth's icon set (branding/icons, above: Icon=hearth-controller-lab ...). Desktop Mode lists them
 # with Hearth's own apps (their ids start with "hearth"); Game Mode opens them from Settings › Controls and a
 # game's ⋯ menu (hearth-core gaming_apps.rs). Saves' hourly timer is on for everyone and does nothing until a
 # schedule is chosen in Saves (hearth-saves --auto). Mods unpacks .7z and .rar files with bsdtar.
@@ -313,12 +313,11 @@ StartupNotify=true
 StartupWMClass=$1
 DESKTOP
 }
-install -d /usr/share/applications /usr/share/icons/hicolor/scalable/apps
+install -d /usr/share/applications
 for app in hearth-controller-lab hearth-saves hearth-mods; do
   [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so this image goes without it"; continue; }
   install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
   if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs the libraries above; left out"; rm -f "/usr/bin/$app"; continue; fi
-  [ -f "/ctx/nimbus-app/icons/$app.svg" ] && install -Dm644 "/ctx/nimbus-app/icons/$app.svg" "/usr/share/icons/hicolor/scalable/apps/$app.svg"
 done
 gaming_entry hearth-controller-lab "Controller Lab" "Controller Tester" "Test every button, stick, trigger, gyro and rumble; measure stick drift and calibrate" "controller;gamepad;joystick;test;tester;calibrate;drift;deadzone;rumble;gyro;battery;"
 gaming_entry hearth-saves "Saves" "Game Save Backup" "Back up and restore your games' saves, and move them to another PC" "save;saves;backup;restore;game;steam;proton;usb;"
@@ -349,7 +348,6 @@ WantedBy=timers.target
 UNIT
   ln -sf ../hearth-saves-auto.timer /usr/lib/systemd/user/timers.target.wants/hearth-saves-auto.timer
 fi
-gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 # ---- end of Hearth's gaming apps
 
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
