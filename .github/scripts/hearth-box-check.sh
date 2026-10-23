@@ -47,6 +47,8 @@ if as timeout 1500 hearth-debbox install "$H/Downloads/hearth-hello.deb" > /tmp/
     && ok "removed again (menu entry gone)" || w "removing it failed: $(tailof /tmp/debrm.txt)"
 else
   w "Debian box install didn't work here (network or nested containers): $(grep -v '^progress' /tmp/debbox.txt | tail -5 | tr '\n' ' ' | cut -c1-900)"
+  as podman logs --tail 25 hearth-debian > /tmp/boxlog.txt 2>&1 && w "the box's own log (distrobox's setup inside it): $(sed 's/\x1b\[[0-9;]*m//g' /tmp/boxlog.txt | tr '\n' ' ' | cut -c1-1500)"
+  as timeout 300 distrobox enter --name hearth-debian --no-tty -- true > /tmp/enter.txt 2>&1; w "distrobox enter again (exit $?): $(sed 's/\x1b\[[0-9;]*m//g' /tmp/enter.txt | tail -8 | tr '\n' ' ' | cut -c1-900)"
 fi
 
 echo "--- AppImages"
@@ -57,7 +59,7 @@ if curl -fsSL --retry 3 -m 180 -o /tmp/ai/appimagetool.AppImage https://github.c
    || curl -fsSL --retry 3 -m 180 -o /tmp/ai/appimagetool.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage 2>>/tmp/ai/curl.txt; then
   chmod +x /tmp/ai/appimagetool.AppImage
   /tmp/ai/appimagetool.AppImage --appimage-version >/tmp/ai/v.txt 2>&1 && ok "a type-2 AppImage runtime starts: $(head -1 /tmp/ai/v.txt)" || w "--appimage-version failed: $(tailof /tmp/ai/v.txt)"
-  if /tmp/ai/appimagetool.AppImage --version >/tmp/ai/f.txt 2>&1; then ok "a classic AppImage mounts with FUSE 2 and runs: $(tail -1 /tmp/ai/f.txt)"
+  if /tmp/ai/appimagetool.AppImage --version >/tmp/ai/f.txt 2>&1; then ok "the AppImage mounts with FUSE and runs: $(tail -1 /tmp/ai/f.txt)"
   else w "the AppImage didn't run through FUSE here: $(tailof /tmp/ai/f.txt)"; fi
   APPIMAGE_EXTRACT_AND_RUN=1 /tmp/ai/appimagetool.AppImage --version >/tmp/ai/x.txt 2>&1 && ok "and unpacked (the fallback)" || w "APPIMAGE_EXTRACT_AND_RUN failed: $(tailof /tmp/ai/x.txt)"
   cp /tmp/ai/appimagetool.AppImage "$H/Downloads/appimagetool-x86_64.AppImage" && chown boxtest:boxtest "$H/Downloads/appimagetool-x86_64.AppImage"
