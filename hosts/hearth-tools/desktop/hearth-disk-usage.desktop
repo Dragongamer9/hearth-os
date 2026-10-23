@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Disk Usage
+GenericName=Disk Usage Analyzer
+Comment=See what's filling your drives and clean up big files, old downloads and caches
+Exec=/usr/bin/hearth-tools --app disk-usage
+TryExec=/usr/bin/hearth-tools
+Icon=hearth-disk-usage
+Type=Application
+Categories=System;Utility;
+Keywords=disk;usage;space;storage;full;clean;cleanup;big;files;cache;du;baobab;
+StartupWMClass=io.github.dragongamer9.hearth.diskusage

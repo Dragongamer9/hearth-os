@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Info</title>
+<link rel="stylesheet" href="common.css">
+<style>
+.hero { display:flex; gap:1.1em; align-items:center; padding:.9em 1.1em; border-radius:18px; background:linear-gradient(120deg, #2a1a10, var(--panel)); border:1px solid #4a372b; margin-bottom:.8em; }
+.hero .big { font-size:1.45em; font-weight:700; }
+.hero .chips { margin-top:.35em; }
+.card { display:flex; flex-direction:column; gap:.4em; }
+.card .meter { display:grid; grid-template-columns:1fr auto; gap:.25em .8em; align-items:center; font-size:.88em; }
+.drive { border-top:1px solid var(--line); padding-top:.55em; margin-top:.15em; }
+.drive:first-of-type { border-top:0; padding-top:0; margin-top:0; }
+.drive .n { font-weight:600; display:flex; gap:.5em; align-items:center; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, human } = H;
+let D = null;
+H.shell({ title: 'System Info', sub: 'Your device at a glance', hints: [['X', 'Copy as text'], ['Y', 'Look again']] });
+H.actions('<button class="btn f" id="save">Save as file</button><button class="btn primary f" id="copy">Copy as text</button>');
+$('#copy').onclick = () => D && H.copy(asText());
+$('#save').onclick = () => D && H.call('logs.export', { text: asText(), label: 'system-info' }).then(r => H.toast('Saved as ' + r.path)).catch(H.fail);
+H.S.alt = () => D && H.copy(asText());
+H.S.refresh = load;
+
+const up = s => { if (!s) return ''; const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return [d && d + ' d', h && h + ' h', m + ' min'].filter(Boolean).join(' '); };
+const val = x => x != null && x !== '' && !(Array.isArray(x) && !x.length);
+const kv = rows => `<dl class="kv">${rows.filter(r => val(r[1])).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+const meter = (label, used, total) => total ? `<div class="meter"><span>${esc(label)}</span><span class="muted">${human(used)} of ${human(total)}</span><span class="bar" style="grid-column:span 2"><i style="width:${Math.min(100, used / total * 100).toFixed(1)}%"></i></span></div>` : '';
+
+function sections() {
+  const d = D, f = d.fetch || {}, dev = d.device || {}, os = d.os || {}, cpu = d.cpu || {}, mem = d.memory || {};
+  const out = [];
+  out.push(['Device', [['Model', [dev.vendor, dev.product].filter(Boolean).join(' ') || f.device], ['Version', dev.version], ['Kind', dev.chassis], ['Name on the network', dev.hostname || f.host],
+    ['Board', dev.board], ['Firmware', dev.bios], ['Starts with', dev.firmware], ['Secure Boot', dev.secureBoot == null ? '' : dev.secureBoot ? 'On' : 'Off']]]);
+  out.push(['System', [['Hearth OS', os.hearth ? `${os.hearth}${os.edition ? ' · ' + os.edition + ' edition' : ''}` : ''], ['Built on', os.editionDetail || os.name], ['Image', os.imageRef ? `${os.imageRef}:${os.imageTag || ''}` : ''],
+    ['Kernel', os.kernel ? `Linux ${os.kernel} (${os.arch})` : f.kernel], ['Desktop', [os.desktop, os.session].filter(Boolean).join(' · ')], ['Running for', up(os.uptime || f.uptimeSeconds)], ['System tools', os.toolsVersion]]]);
+  out.push(['Processor', [['Name', cpu.name || (f.cpu && f.cpu.name)], ['Cores', cpu.cores ? `${cpu.cores} cores, ${cpu.threads} threads` : cpu.threads], ['Top speed', cpu.maxMhz ? (cpu.maxMhz / 1000).toFixed(2) + ' GHz' : ''],
+    ['Speed now', cpu.nowMhz ? (cpu.nowMhz / 1000).toFixed(2) + ' GHz' : ''], ['Power mode', cpu.governor], ['Virtual machines', cpu.virtualization ? cpu.virtualization + ' supported' : ''], ['Load', cpu.load]]]);
+  (d.gpus || []).forEach((g, i) => out.push([d.gpus.length > 1 ? `Graphics ${i + 1}` : 'Graphics', [['Name', g.name], ['Type', g.integrated == null ? '' : g.integrated ? 'Built in (shares memory)' : 'Its own card'], ['Driver', g.driver], ['Driver version', g.driverVersion],
+    ['Video memory', g.vram ? human(g.vram) + (g.vramUsed != null ? ` (${human(g.vramUsed)} in use)` : '') : ''], ['Busy', g.busy != null ? g.busy + '%' : ''], ['Shows the start screen', g.primary ? 'Yes' : '']]]));
+  if (!(d.gpus || []).length && f.gpus) out.push(['Graphics', f.gpus.map(g => ['GPU', g])]);
+  out.push(['Memory', [['Installed', human(mem.total || (f.memory && f.memory.totalBytes))], ['In use', mem.used != null ? human(mem.used) : (f.memory && human(f.memory.usedBytes))], ['Available', human(mem.available)],
+    ['Swap', mem.swapTotal ? `${human(mem.swapUsed)} of ${human(mem.swapTotal)} used${mem.zram ? ' (compressed in memory, zram)' : ''}` : 'None']]]);
+  (d.batteries || []).forEach(b => out.push(['Battery', [['Charge', b.percent != null ? `${b.percent}%${b.status ? ' · ' + b.status : ''}` : ''], ['Health', b.health != null ? `${b.health}% of its original capacity` : ''],
+    ['Holds now', b.full != null ? `${b.full.toFixed(1)} ${b.unit} (new: ${b.design != null ? b.design.toFixed(1) : '?'} ${b.unit})` : ''], ['Charge cycles', b.cycles], ['Using now', b.watts ? b.watts.toFixed(1) + ' W' : ''], ['Made by', [b.maker, b.model].filter(Boolean).join(' ')], ['Type', b.technology]]]));
+  (d.displays || []).forEach(s => out.push([s.builtIn ? 'Built-in screen' : 'Screen', [['Name', [s.maker, s.name].filter(Boolean).join(' ')], ['Best resolution', s.best], ['Size', s.inches ? s.inches + '″' : ''], ['Connected to', s.port], ['Modes', s.modes ? s.modes + ' listed' : '']]]));
+  if (!(d.displays || []).length && f.displays) f.displays.forEach(x => out.push(['Screen', [['Resolution', x]]]));
+  return out;
+}
+
+function asText() {
+  const lines = [`System Info · Hearth OS`, ''];
+  for (const [title, rows] of sections()) { const r = rows.filter(x => val(x[1])); if (!r.length) continue; lines.push(title); r.forEach(([k, v]) => lines.push(`  ${k}: ${v}`)); lines.push(''); }
+  const drives = Array.isArray(D.drives) ? D.drives : [];
+  if (drives.length) { lines.push('Drives'); drives.forEach(x => lines.push(`  ${x.name} · ${human(x.size)} · ${x.connection || x.kind} · health: ${x.health ? x.health.text : 'unknown'}${x.system ? ' · Hearth OS is on it' : ''}`)); lines.push(''); }
+  return lines.join('\n');
+}
+
+function render() {
+  const d = D, f = d.fetch || {}, os = d.os || {}, dev = d.device || {};
+  const model = [dev.vendor, dev.product].filter(Boolean).join(' ') || f.device || 'This device';
+  const cards = sections().map(([title, rows]) => {
+    const r = rows.filter(x => val(x[1])); if (!r.length) return '';
+    let extra = '';
+    if (title === 'Memory' && d.memory) extra = meter('Memory', d.memory.used, d.memory.total);
+    if (title === 'Battery') { const b = (d.batteries || [])[0]; if (b && b.health != null) extra = `<div class="meter"><span>Battery health</span><span class="${b.health < 70 ? 'warn' : 'muted'}">${b.health}%</span><span class="bar" style="grid-column:span 2"><i style="width:${b.health}%"></i></span></div>`; }
+    return `<section class="panel card f" tabindex="0"><h3>${esc(title)}</h3>${extra}${kv(r)}</section>`;
+  }).join('');
+  const drives = Array.isArray(d.drives) ? d.drives : [];
+  const driveCard = d.drives && d.drives.error ? `<section class="panel card f" tabindex="0"><h3>Drives</h3><p class="muted">${esc(d.drives.error)}</p></section>`
+    : drives.length ? `<section class="panel card f" tabindex="0"><h3>Drives</h3>${drives.map(x => {
+      const h = x.health || {}; const used = (x.partitions || []).reduce((a, p) => a + (p.used || 0), 0);
+      return `<div class="drive"><div class="n"><span class="dot ${h.state === 'good' ? 'good' : h.state === 'bad' ? 'bad' : h.state === 'warn' ? 'warn' : ''}"></span>${esc(x.name)} <span class="badge">${human(x.size)}</span>${x.system ? '<span class="badge good">Hearth OS</span>' : ''}</div>
+        <dl class="kv"><dt>Connected</dt><dd>${esc(x.connection || x.kind)}</dd><dt>Health</dt><dd>${esc(h.text || 'Not reported')}</dd>${h.tempC != null ? `<dt>Temperature</dt><dd>${h.tempC.toFixed(0)} °C</dd>` : ''}${h.powerOnHours != null ? `<dt>Used for</dt><dd>${h.powerOnHours.toLocaleString()} hours</dd>` : ''}${h.wearPct != null ? `<dt>Wear</dt><dd>${h.wearPct}% of its rated life</dd>` : ''}${used ? `<dt>Files</dt><dd>${human(used)}</dd>` : ''}</dl></div>`;
+    }).join('')}<div class="row"><button class="btn small f" id="disks">Open Disks</button></div></section>` : '';
+  $('#main').innerHTML = `<div class="scroll" style="flex:1">
+    <div class="hero"><span class="logo" style="width:3.2em;height:3.2em;border-radius:16px;display:grid;place-items:center;background:linear-gradient(140deg,var(--ember),#c2410c);color:var(--ink)">${H.icons.hearth}</span>
+      <div class="grow"><div class="big">${esc(model)}</div><div class="muted">${esc(os.hearth ? `Hearth OS ${os.hearth}${os.edition ? ' · ' + os.edition : ''}` : (f.os || ''))}</div>
+      <div class="chips">${[d.cpu && d.cpu.name, (d.gpus || [])[0] && d.gpus[0].name, d.memory && d.memory.total && human(d.memory.total) + ' memory'].filter(Boolean).map(c => `<span class="chip">${esc(c)}</span>`).join('')}</div></div></div>
+    <div class="grid">${cards}${driveCard}</div></div>`;
+  if ($('#disks')) $('#disks').onclick = () => H.call('app.open', { what: 'disks' }).catch(() => H.toast('Open Disks from the app menu'));
+  H.sub(`${f.user ? f.user + '@' : ''}${f.host || ''}`);
+}
+
+async function load() {
+  if (!D) $('#main').innerHTML = '<div class="empty"><span class="spinner"></span> Looking at your device…</div>';
+  try { D = await H.job('sys.overview'); render(); setTimeout(() => $('#copy').focus(), 0); } catch (e) { H.fail(e); }
+}
+
+H.demo.job = () => ({
+  fetch: { user: 'sam', host: 'ally', os: 'Hearth OS 0.6.0 (Anatase edition) x86_64', uptimeSeconds: 7380 },
+  device: { vendor: 'ASUSTeK COMPUTER INC.', product: 'ROG Ally RC71L', version: '1.0', chassis: 'Tablet or handheld', hostname: 'ally', board: 'ASUSTeK RC71L', bios: 'American Megatrends RC71L.341 (05/12/2025)', firmware: 'UEFI', secureBoot: false },
+  os: { name: 'Fedora Linux 45', edition: 'Anatase', editionDetail: 'Anatase (Fedora 45)', imageRef: 'ghcr.io/dragongamer9/hearth-os', imageTag: 'testing', hearth: '0.6.0', toolsVersion: '0.6.0', kernel: '6.17.4-300.fc45.x86_64', arch: 'x86_64', desktop: 'Mantel', session: 'wayland', uptime: 7380 },
+  cpu: { name: 'AMD Ryzen Z1 Extreme', threads: 16, cores: 8, maxMhz: 5100, nowMhz: 1600, governor: 'powersave', virtualization: 'AMD-V', load: '0.42 0.51 0.60' },
+  gpus: [{ name: 'AMD Radeon 780M', driver: 'amdgpu (open source)', driverVersion: 'Mesa 25.2.1, kernel 6.17.4', vram: 4294967296, vramUsed: 812000000, busy: 7, integrated: null, primary: true }],
+  memory: { total: 16.4e9, used: 6.1e9, available: 10.3e9, swapTotal: 8e9, swapUsed: 0.2e9, zram: true },
+  drives: [{ name: 'Micron 2400 512GB', size: 512e9, kind: 'nvme', connection: 'Inside, NVMe', system: true, health: { state: 'good', text: 'Healthy', tempC: 41, powerOnHours: 1840, wearPct: 2 }, partitions: [{ used: 210e9 }] },
+    { name: 'SD card', size: 512e9, kind: 'sd', connection: 'SD card slot', health: { state: 'unknown', text: 'Health not reported' }, partitions: [{ used: 101e9 }] }],
+  batteries: [{ percent: 81, status: 'Discharging', health: 92, full: 36.7, design: 40, unit: 'Wh', cycles: 211, watts: 14.2, maker: 'ASUS', model: 'C11P2208', technology: 'Li-poly' }],
+  displays: [{ port: 'eDP-1', builtIn: true, best: '1920x1080', modes: 4, maker: 'TMX', name: '', inches: 7 }],
+});
+load();
+</script>
+</body>
+</html>
