@@ -234,8 +234,16 @@ jobs:
           workspaces: hosts/hearth-office
       - name: Unit tests and build (not shipped in Ember yet)
         run: |
-          cargo test --lib
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          cargo build --release
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          cargo test --lib 2>&1 | Tee-Object test.log
+          if ($LASTEXITCODE -ne 0) {
+            $msg = (Select-String -Path test.log -Pattern '^(error|---- |thread .* panicked)' -Context 0,10 | Select-Object -First 8 | Out-String) -replace "`r?`n", '|'
+            Write-Output "::error title=Windows tests::$($msg.Substring(0, [Math]::Min(3900, $msg.Length)))"
+            exit 1
+          }
+          cargo build --release 2>&1 | Tee-Object build.log
+          if ($LASTEXITCODE -ne 0) {
+            $msg = (Select-String -Path build.log -Pattern '^error' -Context 0,12 | Select-Object -First 6 | Out-String) -replace "`r?`n", '|'
+            Write-Output "::error title=Windows build::$($msg.Substring(0, [Math]::Min(3900, $msg.Length)))"
+            exit 1
+          }
           Write-Output "::notice title=Windows build::$([Math]::Round((Get-Item target/release/hearth-office.exe).Length / 1MB, 1)) MB"

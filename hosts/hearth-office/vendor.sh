@@ -37,7 +37,7 @@ dictionary-en 4.0.0 index.aff index.dic LICENSE
 
 # SheetJS Community Edition (Apache-2.0): reads and writes .xlsx, .xls, .ods and .csv (Sheets).
 SHEETJS_VER=0.20.3
-SHEETJS_SHA256=${SHEETJS_SHA256:-}
+SHEETJS_SHA256=${SHEETJS_SHA256:-8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8}
 
 : > "$tmp/versions"
 [ -f "$out/VERSIONS" ] && cp "$out/VERSIONS" "$tmp/old"

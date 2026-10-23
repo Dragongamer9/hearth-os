@@ -322,6 +322,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)] // the paths below are Unix ones
     fn files_and_convert() {
         let l = run("hearth-office", &["file:///tmp/My%20Doc.docx"]);
         assert_eq!(l.file.as_deref(), Some("/tmp/My Doc.docx"));

@@ -364,7 +364,7 @@ H.markSaved = () => {
 H.newRid = () => { H.doc.rid = H.app.id + '-' + H.uid(); };
 // Every 15 seconds: a recovery copy of a changed document (so a crash or power cut loses little). With
 // AutoSave on (File menu), a document that has a file in a format that keeps everything is saved to it as well.
-setInterval(async () => {
+H.autosaveTick = async () => {
   if (!H.app || !H.doc.dirty || !H._recoveryDue || H._busy) return;
   H._recoveryDue = false;
   try {
@@ -372,7 +372,8 @@ setInterval(async () => {
     await H.invoke('recovery_save', { id: H.doc.rid, meta: { app: H.app.id, title: H.doc.name, path: H.doc.path, ext: H.doc.ext }, body: H.app.snapshot() });
     if (H.settings.autosave && H.doc.path && H.app.canWrite(H.doc.ext) && !H.app.lossy(H.doc.ext)) await H.save({ quiet: true });
   } catch (e) { H.invoke('log', { message: 'recovery: ' + e }); }
-}, 15000);
+};
+setInterval(() => H.autosaveTick(), 15000);
 
 H.saveSettings = () => H.invoke('settings_save', { value: H.settings }).catch(() => {});
 
