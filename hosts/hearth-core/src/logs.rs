@@ -90,6 +90,9 @@ pub fn report(version: &str) -> String {
     section("About this device", serde_json::to_string_pretty(&info).unwrap_or_default());
     section("OS", std::fs::read_to_string("/etc/os-release").unwrap_or_default());
     section("System version (bootc)", sh("{ bootc status --format humanreadable || bootc status || rpm-ostree status; } 2>&1; ls /ostree/deploy/*/deploy 2>&1 | head -8"));
+    // Starts that didn't reach Hearth and the automatic return to the previous version (hearth-boot-guard), and the
+    // starts the system log remembers (a freeze or forced power-off shows as a start that ends without a shutdown).
+    section("Starts (automatic return to the previous version)", sh("/usr/libexec/nimbus/hearth-boot-guard status 2>&1; echo; journalctl --list-boots --no-pager 2>&1 | tail -n 8; echo; echo Emergency screen reports:; ls -1 /var/lib/hearth/Hearth-emergency-*.txt /boot/hearth-logs 2>/dev/null | tail -n 5"));
     // Hearth's log: the controller input lines first (the jumping-selection reports), then the newest lines.
     // Thousands of identical "library.downloads ok" lines from the old Electron app are left out.
     if let Ok(t) = std::fs::read_to_string(data.join("bridge.log")) {
@@ -151,6 +154,13 @@ pub fn report(version: &str) -> String {
     section("Bluetooth", sh("bluetoothctl devices; bluetoothctl show | grep -E 'Powered|Discoverable|Pairable'"));
     section("System journal: controllers, power, display (this boot)", cap(&sh("journalctl -b --no-pager -n 400 -u inputplumber -u hhd -u steamos-manager -u powerstation -u bluetooth -u tuned -u tuned-ppd"), 80_000));
     section("System journal: errors (this boot)", cap(&without_dump_details(&sh("journalctl -b --no-pager -p err -n 400")), 80_000));
+    // The start before this one: how it ended. After a freeze or a forced power-off, this is the only place that shows
+    // what the controllers, power, the display and the graphics driver were doing (journald keeps the log on the drive
+    // and writes it every 15 s: journald.conf.d/50-hearth.conf).
+    section("Previous start: controllers, power, display (system journal)", cap(&sh("journalctl -b -1 --no-pager -n 400 -u inputplumber -u hhd -u 'hhd@*' -u steamos-manager -u powerstation -u power-profiles-daemon -u bluetooth -u systemd-logind -u sddm -u display-manager -u plasmalogin -u hearth-steam -u upower"), 80_000));
+    section("Previous start: graphics, input and power (kernel)", cap(&sh("journalctl -b -1 -k --no-pager -n 3000 | grep -iE 'amdgpu|drm|gpu|i915|xe |nvidia|gfx|ring|timeout|reset|hid|xpad|asus|input|usb|acpi|thermal|power|hung|watchdog|oops|bug|panic|error|fail' | tail -n 400"), 80_000));
+    section("Previous start: errors", cap(&without_dump_details(&sh("journalctl -b -1 --no-pager -p err -n 300")), 60_000));
+    section("Previous start: the last lines before it ended", cap(&without_dump_details(&sh("journalctl -b -1 --no-pager -n 200")), 60_000));
     section("Your session's journal (this boot)", cap(&without_dump_details(&sh("journalctl --user -b --no-pager -n 800")), 150_000));
     let user = std::env::var("USER").unwrap_or_default();
     redact(&out, &user, &crate::paths::home().to_string_lossy())

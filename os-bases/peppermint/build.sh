@@ -507,8 +507,8 @@ systemctl enable hearth-groups.service        # accounts in video (screen bright
 # The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
 # (os/system_files; does nothing without the plan the old system leaves).
 systemctl enable hearth-clean-install.service
-# When a start fails: back to the previous version after two failed starts, the emergency screen
-# (os/system_files; see docs/BASE-ANATASE.md, "When Hearth OS doesn't start").
+# When a start fails: back to the previous version after two failed starts, the emergency screen, the system log on
+# the drive (os/system_files; see docs/BASE-ANATASE.md, "When Hearth OS doesn't start").
 systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-success.service
 chmod 755 /usr/lib/systemd/system-sleep/hearth-boot-guard
 

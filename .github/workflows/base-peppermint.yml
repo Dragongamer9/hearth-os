@@ -292,6 +292,7 @@ jobs:
           check "the emergency screen's tools are there (setpriv, su, findfs, e2fsck, fsck.vfat, btrfs)" "command -v setpriv && command -v su && command -v findfs && command -v e2fsck && command -v fsck.vfat && command -v btrfs"
           check "bootupd's GRUB config reads custom.cfg (where the boot count comes in)" "cat /usr/lib/bootupd/grub2-static/configs.d/*.cfg | grep -q 'custom.cfg'"
           warn "GRUB has load_env and save_env (the boot count is kept in grubenv)" "grep -aqs save_env /usr/lib/efi/grub2/*/EFI/*/grubx64.efi && grep -aqs load_env /usr/lib/efi/grub2/*/EFI/*/grubx64.efi"
+          check "the system log is kept on the drive (the previous start's log after a freeze)" "grep -q '^Storage=persistent' /usr/lib/systemd/journald.conf.d/50-hearth.conf"
           check "/boot and the EFI partition are repaired at start after a power cut (fsck.repair=yes)" "grep -hs fsck.repair=yes /usr/lib/bootc/kargs.d/*.toml"
           check "background updates skip a version that didn't start here" "grep -q 'hearth-boot-guard update-allowed' /usr/lib/systemd/system/bootc-fetch-apply-updates.service.d/20-hearth-boot-guard.conf"
           check "GRUB's menu is written from the boot entries where GRUB can't read them (also after switching edition)" "sh -n /usr/libexec/nimbus/hearth-bls-grub && test -L /etc/systemd/system/multi-user.target.wants/hearth-bls-grub.service"
@@ -301,6 +302,7 @@ jobs:
           echo "--- bootc container lint"
           sudo podman run --rm hearth-peppermint:latest bootc container lint 2>&1 | tee /tmp/lint.log || {
             msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
+
       # Optional (boot_test): install the image just built onto a loop disk, add a newer deployment that can't start,
       # and prove the device goes back to the previous version by itself (tools/boot-rollback-test.sh).
       - name: Boot test (an update that can't start is rolled back by itself)
