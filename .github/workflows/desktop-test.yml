@@ -241,7 +241,7 @@ jobs:
             cat shots/file-chooser.txt
             grep '^::error' shots/file-chooser.txt || true
             cp "$HOME/.local/share/nimbus/picker.log" shots/picker.log 2>/dev/null || true
-            pbad=$(grep -E "TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Failed to load" shots/picker.log 2>/dev/null | head -8 | cut -c1-200 | tr '\n' '|')
+            pbad=$(grep -E "TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Failed to load" shots/picker.log 2>/dev/null | head -8 | cut -c1-200 | tr '\n' '|' || true)
             [ -z "$pbad" ] || { echo "::error title=picker::$pbad"; touch shots/FAILED; }
           else
             echo "::error title=file chooser::xdg-desktop-portal or python3-gobject is missing here"; touch shots/FAILED
