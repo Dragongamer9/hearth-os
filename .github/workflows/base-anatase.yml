@@ -75,7 +75,7 @@ jobs:
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-disks" /tmp/app/hearth-disks
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- Hearth Text (hosts/hearth-text), the text editor: built the same way and put beside the app in
-      # hearth-app.tar with its icon (build.sh installs it as /usr/bin/hearth-text and makes it the default for text
+      # hearth-app.tar (build.sh installs it as /usr/bin/hearth-text and makes it the default for text
       # files). Not fatal: without it the image is still made.
       - name: Build Hearth Text
         continue-on-error: true
@@ -87,7 +87,6 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
           cargo build --release || { echo "::warning title=Hearth Text::it didn't build, so this image is made without it"; exit 1; }
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-text" /tmp/app/hearth-text
-          cp "$GITHUB_WORKSPACE/branding/icons/apps/hearth-text.svg" /tmp/app/hearth-text.svg
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth Text
       - uses: actions/setup-node@v4
@@ -191,7 +190,7 @@ jobs:
           check "saving a system file (hearth-admin write-file) always asks for a password" "grep -q write-file /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
           warn "Hearth Text is installed with every library it links" "test -x /usr/bin/hearth-text && ! ldd /usr/bin/hearth-text | grep -q 'not found'"
           warn "text files open in Hearth Text in Desktop Mode" "grep -q '^text/plain=hearth-text.desktop' /etc/xdg/nimbus-mimeapps.list"
-          warn "Hearth Text's menu entry and icon are installed" "test -f /usr/share/applications/hearth-text.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-text.svg"
+          warn "Hearth Text's menu entry is installed" "test -f /usr/share/applications/hearth-text.desktop"
           check "hearth-admin's Python is valid" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin"
           echo "--- update path (required, the app's own check)"
           /usr/lib/nimbus/nimbus --check-update-path || fail=1
