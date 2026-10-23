@@ -218,6 +218,26 @@ cp -avf /ctx/system_files/. /
 cp -avf /ctx/peppermint_files/. /
 chmod 440 /etc/sudoers.d/hearth-wheel
 
+# ------------------------------------------------------------------ Hearth icon set (branding/icons)
+# Every Hearth app's icon (Hearth, Settings, Files, Terminal, Disks, Browser, Task Manager, Apps, the installer and
+# the newer apps: hearth-text, hearth-photos...) in the hicolor theme, so Mantel, labwc's Alt+Tab and any other
+# desktop find them by name (Icon=hearth-settings). Drawn by branding/icons/make-icons.py: one SVG each plus PNGs
+# from 16 to 256 px. Apps on other branches only need their .desktop file's Icon= set to their name.
+optional hicolor-icon-theme adwaita-icon-theme libgtk-3-bin
+for svg in /ctx/icons/apps/*.svg; do
+  install -Dm644 "$svg" "/usr/share/icons/hicolor/scalable/apps/$(basename "$svg")"
+done
+for dir in /ctx/icons/png/*x*; do
+  install -d "/usr/share/icons/hicolor/$(basename "$dir")/apps"
+  install -m644 "$dir"/*.png "/usr/share/icons/hicolor/$(basename "$dir")/apps/"
+done
+# The old 512 px Hearth logo (os/system_files, without the tile) would win over the set at large sizes.
+rm -f /usr/share/icons/hicolor/512x512/apps/hearth.png
+test -f /usr/share/icons/hicolor/scalable/apps/hearth-settings.svg
+test -f /usr/share/icons/hicolor/48x48/apps/hearth-files.png
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
+# ---- end of the Hearth icon set
+
 # ------------------------------------------------------------------ Hearth itself, under /usr (the OS updates it)
 mkdir -p /usr/lib/nimbus
 if [ -x /ctx/nimbus-app/hearth ]; then
@@ -267,7 +287,7 @@ Name=Disks
 GenericName=Disk Manager
 Comment=See your drives and their health, format USB drives and SD cards, and set up drives for games
 Exec=/usr/bin/hearth-disks
-Icon=hearth
+Icon=hearth-disks
 Type=Application
 Categories=System;Utility;
 Keywords=disk;drive;partition;format;usb;sd;card;mount;eject;storage;steam;library;
@@ -275,7 +295,7 @@ DESKTOP
 fi
 # ==== Hearth Paint, the emoji picker, Hearth Fonts, and Settings › Accessibility (hosts/hearth-paint, hearth-emoji,
 # hearth-fonts, hearth-gamma, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
-# os/nimbus-app with their icons. The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;
+# os/nimbus-app (their icons are in the Hearth icon set, installed above). The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;
 # Settings › Accessibility uses Orca (the screen reader, with speech-dispatcher and eSpeak NG) and xprop (gamescope's
 # zoom and colour filters in Game Mode). Each app is left out if it didn't build or can't find its libraries.
 optional orca speech-dispatcher espeak-ng at-spi2-core fontconfig wtype wl-clipboard x11-utils
@@ -284,10 +304,6 @@ for app in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
   install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
   if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
 done
-for icon in hearth-paint hearth-emoji hearth-fonts hearth-accessibility; do
-  [ -f "/ctx/nimbus-app/icons/$icon.svg" ] && install -Dm644 "/ctx/nimbus-app/icons/$icon.svg" "/usr/share/icons/hicolor/scalable/apps/$icon.svg"
-done
-gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
 install -d /usr/share/applications
 if [ -x /usr/bin/hearth-paint ]; then
   cat > /usr/share/applications/hearth-paint.desktop <<DESKTOP
@@ -417,7 +433,7 @@ Name=Files
 GenericName=File Manager
 Comment=Browse, copy and move your files, games, USB drives and SD cards
 Exec=/usr/bin/hearth-filemanager %U
-Icon=hearth
+Icon=hearth-files
 Type=Application
 Categories=System;FileManager;Utility;
 MimeType=inode/directory;
@@ -431,7 +447,7 @@ cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
 Name=Task Manager
 Comment=See what's running, close apps that stopped responding, and check performance
 Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call tasks open
-Icon=hearth
+Icon=hearth-tasks
 Type=Application
 Categories=System;Monitor;
 Keywords=task;process;end;kill;cpu;memory;gpu;performance;startup;
@@ -442,7 +458,7 @@ cat > /usr/share/applications/hearth-settings.desktop <<DESKTOP
 Name=Hearth Settings
 Comment=Wi-Fi, Bluetooth, sound, display, controllers, accounts and updates
 Exec=/usr/bin/hearth-settings
-Icon=hearth
+Icon=hearth-settings
 Type=Application
 Categories=Settings;
 Keywords=wifi;bluetooth;sound;display;controller;update;
@@ -453,7 +469,7 @@ Name=Apps
 GenericName=App Store
 Comment=Find, install and update apps from Flathub
 Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call apps open
-Icon=hearth
+Icon=hearth-apps
 Type=Application
 Categories=System;PackageManager;
 Keywords=store;software;install;update;flathub;flatpak;
