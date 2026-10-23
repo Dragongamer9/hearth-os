@@ -213,7 +213,7 @@ Type=Application
 Name=Install Hearth OS
 Comment=Install Hearth OS on this PC, next to Windows or on a whole drive
 Exec=sh -c 'quickshell ipc -p "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell" call live install'
-Icon=/usr/share/pixmaps/hearth.png
+Icon=hearth-installer
 Categories=System;
 DESKTOP
 install -Dm644 /src/branding/hearth-512.png /usr/share/pixmaps/hearth.png

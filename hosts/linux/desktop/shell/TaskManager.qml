@@ -197,7 +197,7 @@ Scope {
                     const a = (t.appId || "").toLowerCase();
                     if (!a || t.title === "Task Manager" || t.title === "Hearth Settings") continue;
                     if (ids.indexOf(a) >= 0 || (desk && a === desk)) return t;
-                    const e = DesktopEntries.heuristicLookup(t.appId);
+                    const e = AppIcons.entryFor(t.appId);
                     if (e && desk && (e.id || "").toLowerCase() === desk) return t;
                 }
                 return null;
@@ -540,7 +540,7 @@ Scope {
                                                 anchors.centerIn: parent
                                                 visible: row.icon !== ""
                                                 implicitSize: 26
-                                                source: row.icon === "" ? "" : row.icon.startsWith("/") ? "file://" + row.icon : Quickshell.iconPath(row.icon, "application-x-executable")
+                                                source: row.icon === "" ? "" : AppIcons.source(row.icon, "")
                                             }
                                             Icon {
                                                 anchors.centerIn: parent

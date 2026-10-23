@@ -255,7 +255,7 @@ PanelWindow {
                             id: chipRow
                             anchors.centerIn: parent
                             spacing: 8
-                            IconImage { anchors.verticalCenter: parent.verticalCenter; implicitSize: 22; source: Quickshell.iconPath(chip.modelData.icon || "", "application-x-executable") }
+                            AppIcon { anchors.verticalCenter: parent.verticalCenter; size: 22; icon: chip.modelData.icon || ""; appId: chip.modelData.id || "" }
                             Text { anchors.verticalCenter: parent.verticalCenter; text: chip.modelData.name; color: Theme.text; font.pixelSize: 13; font.family: Theme.font; elide: Text.ElideRight; width: Math.min(implicitWidth, 140) }
                         }
                         MouseArea {
@@ -302,11 +302,12 @@ PanelWindow {
                     Column {
                         anchors.centerIn: parent
                         spacing: 8
-                        IconImage {
+                        AppIcon {
                             visible: !cell.isGame
                             anchors.horizontalCenter: parent.horizontalCenter
-                            implicitSize: 48
-                            source: cell.isGame ? "" : Quickshell.iconPath(cell.modelData.icon || "", "application-x-executable")
+                            size: 48
+                            icon: cell.isGame ? "" : (cell.modelData.icon || "")
+                            appId: cell.isGame ? "" : (cell.modelData.id || "")
                         }
                         // The game's cover (its first letter until the picture is in, or without one).
                         Rectangle {
