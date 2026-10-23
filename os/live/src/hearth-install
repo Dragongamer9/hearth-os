@@ -1133,6 +1133,16 @@ def reads_bls_menu(dep):
     return False
 
 
+def boot_guard(dep):
+    """Going back to the previous version by itself after starts that don't reach Hearth (the image's
+    hearth-boot-guard): its GRUB part on the new /boot, read through custom.cfg (written above). Never fatal: an
+    image without it (or a failure here) only means the new system sets it up at its first start."""
+    guard = f'{dep}/usr/libexec/nimbus/hearth-boot-guard'
+    if os.path.isfile(guard):
+        r = sh(['python3', '-I', guard, 'setup', '--boot', f'{TARGET}/boot'], check=False)
+        print('log: ' + ((r.stdout or r.stderr or '').strip().splitlines() or ['boot guard set up'])[-1], flush=True)
+
+
 def grub_dir(boot):
     """The folder of the GRUB menu that starts this system, where custom.cfg is read ($prefix/custom.cfg).
     Every edition boots through bootupd's static GRUB config, whatever its GRUB (Fedora's, Debian's and Ubuntu's
@@ -1453,6 +1463,7 @@ def run(plan):
         if bls:   # again: bootupd may have rewritten /boot/grub2
             sh(['sh', bls, '--boot', f'{TARGET}/boot'])
         other_systems_menu(esp)
+        boot_guard(dep)
         write_fstab(dep, esp, boot, root)
         setup_system(dep, root, plan)
         stage('finish', 97, 'Finishing up')

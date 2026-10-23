@@ -1,0 +1,401 @@
+#!/usr/bin/python3 -I
+"""Hearth's boot guard: go back to the previous version of Hearth OS by itself when a new one doesn't start.
+
+bootc keeps the version before an update next to the new one (ostree's two boot entries). This counts the starts
+that never reached Hearth and, after two in a row, has GRUB start the previous version; once that one comes up,
+it becomes the default again (bootc rollback) and the update that didn't start is remembered so the background
+updates don't put it back. See docs/BASE-ANATASE.md ("When Hearth OS doesn't start").
+
+How the count works (every edition boots through bootupd's static GRUB config, which loads /boot/grub2/grubenv
+and sources /boot/grub2/custom.cfg on every start, whatever the GRUB: Fedora's, Debian's signed one, Arch's):
+  - custom.cfg sources hearth-boot.cfg, written here, which holds the boot entries' ids (the newest version and
+    the one before) and the GRUB side of the count, in plain GRUB script (no `increment`: Debian's and Arch's
+    GRUB don't have it).
+  - GRUB, at every start: hearth_tries (in grubenv) ok/unset -> 1 -> 2 -> "fallback" (start the previous version),
+    saved with save_env. From the first start that didn't make it, the menu shows for 10 s.
+  - Linux, once the start is good (graphical.target reached: hearth-boot-success.service; and after waking from
+    hibernation, the sleep hook): hearth_tries=ok. On the previous version after a fallback: bootc rollback.
+
+  hearth-boot-guard setup [--boot DIR]   write hearth-boot.cfg, make custom.cfg read it, make sure grubenv is
+                                         there (at boot, when the entries change, at shutdown after an update is
+                                         finalized, and by the installer with --boot <target>/boot)
+  hearth-boot-guard success              this start was good (hearth-boot-success.service)
+  hearth-boot-guard previous             start the previous version at the next start (the emergency screen)
+  hearth-boot-guard status [--json]      what the count says, the versions, and the ones that didn't start
+  hearth-boot-guard update-allowed       exit 1 when the update on offer is one that didn't start here before
+                                         (bootc-fetch-apply-updates' ExecCondition, hearth-admin update)
+Never fatal for the system: everything that goes wrong is logged and the command ends.
+"""
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+BOOT = '/boot'
+STATE = '/var/lib/hearth/boot-guard.json'
+CFG_NAME = 'hearth-boot.cfg'
+ENV_NAME = 'grubenv'
+ENV_SIZE = 1024
+ENV_HEADER = '# GRUB Environment Block\n'
+CUSTOM_MARK = '### Hearth: automatic return to the previous version (hearth-boot-guard; keep these lines)'
+CUSTOM_LINES = CUSTOM_MARK + '\nif [ -f ${prefix}/' + CFG_NAME + ' ]; then\n  source ${prefix}/' + CFG_NAME + '\nfi\n'
+TRIES = 'hearth_tries'
+SAFE_ID = re.compile(r'^[A-Za-z0-9._+-]{1,200}$')
+
+
+def log(msg):
+    print('hearth-boot-guard: ' + msg, flush=True)
+
+
+# ------------------------------------------------------------------ files
+
+def grub_dir(boot):
+    """Where bootupd's static GRUB config lives: <boot>/grub2 (or <boot>/boot/grub2, /boot on the root)."""
+    for d in ('grub2', 'boot/grub2'):
+        if os.path.isfile(os.path.join(boot, d, 'grub.cfg')):
+            return os.path.join(boot, d)
+    if os.path.isfile(os.path.join(boot, 'grub', 'grub.cfg')):
+        return os.path.join(boot, 'grub')
+    return os.path.join(boot, 'grub2')
+
+
+def read(path, default=None):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+def write_atomic(path, text, mode=0o644):
+    """Written only when it changed (/boot is written as little as possible: a power cut mid-write is what it has
+    to survive), via a new file and a rename, synced."""
+    if read(path) == text:
+        return False
+    tmp = path + '.hearth-tmp'
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        os.write(fd, text.encode())
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp, path)
+    try:
+        dfd = os.open(os.path.dirname(path) or '.', os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    except OSError:
+        pass
+    return True
+
+
+# ------------------------------------------------------------------ grubenv (GRUB's own format, 1024 bytes)
+
+def env_parse(text):
+    out = {}
+    for line in (text or '').split('\n'):
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        k, v = line.split('=', 1)
+        out[k] = v.replace('\\n', '\n').replace('\\\\', '\\')
+    return out
+
+
+def env_format(values):
+    body = ENV_HEADER + ''.join('%s=%s\n' % (k, v.replace('\\', '\\\\').replace('\n', '\\n')) for k, v in values.items())
+    if len(body.encode()) > ENV_SIZE:
+        raise ValueError('grubenv would be bigger than %d bytes' % ENV_SIZE)
+    return body + '#' * (ENV_SIZE - len(body.encode()))
+
+
+def env_read(gdir):
+    return env_parse(read(os.path.join(gdir, ENV_NAME), ''))
+
+
+def env_set(gdir, **values):
+    """Sets (value str) or removes (value None) grubenv variables, keeping everything else in it."""
+    env = env_read(gdir)
+    for k, v in values.items():
+        if v is None:
+            env.pop(k, None)
+        else:
+            env[k] = v
+    return write_atomic(os.path.join(gdir, ENV_NAME), env_format(env), 0o600)
+
+
+# ------------------------------------------------------------------ ostree's boot entries
+
+def entries(boot):
+    """[(version, id, title, ostree_path)] of /boot/loader/entries, newest (GRUB's default) first."""
+    out = []
+    for f in glob.glob(os.path.join(boot, 'loader', 'entries', '*.conf')):
+        text = read(f, '')
+        val = {}
+        for line in text.splitlines():
+            parts = line.strip().split(None, 1)
+            if len(parts) == 2 and parts[0] not in val:
+                val[parts[0]] = parts[1].strip()
+        v = val.get('version', '0')
+        m = re.search(r'(?:^|\s)ostree=(\S+)', val.get('options', ''))
+        out.append((int(v) if v.isdigit() else 0, os.path.basename(f)[:-5], val.get('title', 'Hearth OS'), m.group(1) if m else ''))
+    out.sort(key=lambda e: (-e[0], e[1]))
+    return out
+
+
+def booted_ostree(cmdline=None):
+    if cmdline is None:
+        cmdline = read('/proc/cmdline', '')
+    m = re.search(r'(?:^|\s)ostree=(\S+)', cmdline or '')
+    return m.group(1) if m else ''
+
+
+def same_deployment(a, b):
+    """ostree= paths name one deployment through /ostree/boot.0 or boot.1 (a link farm that flips when the
+    entries change): compare what comes after the boot.N part."""
+    def key(p):
+        return re.sub(r'^/ostree/boot\.[01]/', '', p or '')
+    return bool(a) and bool(b) and key(a) == key(b)
+
+
+# ------------------------------------------------------------------ the GRUB side
+
+def grub_script(default_id, fallback_id):
+    """hearth-boot.cfg. Plain GRUB script: Fedora's, Debian's and Arch's GRUB all run it. No apostrophes in it,
+    comments included (a stray quote would break GRUB's parsing of the rest of custom.cfg)."""
+    q = lambda s: "'" + (s or '') + "'"
+    return f"""# Hearth: back to the previous version of Hearth OS after two starts in a row that did not reach Hearth.
+# Written by /usr/libexec/nimbus/hearth-boot-guard whenever the boot entries change; sourced by custom.cfg.
+# {TRIES} (grubenv): ok or unset = the last start was good; 1, 2 = starts in a row that were not;
+# fallback = the previous version is started until one start is good again.
+set hearth_default={q(default_id)}
+set hearth_fallback={q(fallback_id)}
+set hearth_pick=normal
+if [ "${{{TRIES}}}" = "fallback" ]; then
+  set hearth_pick=fallback
+elif [ "${{{TRIES}}}" = "2" ]; then
+  set hearth_pick=fallback
+elif [ "${{{TRIES}}}" = "1" ]; then
+  set {TRIES}=2
+  set hearth_pick=again
+else
+  set {TRIES}=1
+fi
+if [ "${{hearth_pick}}" = "fallback" ]; then
+  if [ -n "${{hearth_fallback}}" ]; then
+    set {TRIES}=fallback
+    set default="${{hearth_fallback}}"
+  else
+    set {TRIES}=2
+  fi
+fi
+save_env -f "${{prefix}}/grubenv" {TRIES}
+# After a start that did not make it: the menu stays up 10 s (arrow keys and Enter on a keyboard; GRUB cannot read
+# controllers or the buttons of a handheld).
+if [ "${{hearth_pick}}" != "normal" ]; then
+  set timeout_style=menu
+  set timeout=10
+fi
+"""
+
+
+def setup(boot=BOOT, installer=False):
+    if not os.path.isdir(os.path.join(boot, 'loader', 'entries')) and not installer:
+        log('no boot entries in %s (nothing deployed?), nothing to do' % boot)
+        return 0
+    gdir = grub_dir(boot)
+    os.makedirs(gdir, mode=0o700, exist_ok=True)
+    ents = entries(boot)
+    ids = [e[1] if SAFE_ID.match(e[1]) else '' for e in ents]
+    default_id = ids[0] if ids else ''
+    fallback_id = ids[1] if len(ids) > 1 else ''
+    changed = write_atomic(os.path.join(gdir, CFG_NAME), grub_script(default_id, fallback_id))
+    custom = os.path.join(gdir, 'custom.cfg')
+    text = read(custom, '')
+    if CUSTOM_MARK not in text:
+        write_atomic(custom, (text.rstrip('\n') + '\n\n' if text.strip() else '') + CUSTOM_LINES, 0o644)
+        changed = True
+    if not os.path.exists(os.path.join(gdir, ENV_NAME)):
+        env_set(gdir)
+        changed = True
+    log('%s: newest %s, previous %s' % ('updated' if changed else 'up to date', default_id or '(none)', fallback_id or '(none)'))
+    return 0
+
+
+# ------------------------------------------------------------------ the Linux side
+
+def active(boot=BOOT):
+    return os.path.isfile(os.path.join(grub_dir(boot), CFG_NAME))
+
+
+def state():
+    try:
+        with open(STATE) as f:
+            s = json.load(f)
+        return s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(s):
+    os.makedirs(os.path.dirname(STATE), mode=0o755, exist_ok=True)
+    write_atomic(STATE, json.dumps(s, indent=2) + '\n')
+
+
+def bootc_json():
+    try:
+        r = subprocess.run(['bootc', 'status', '--format', 'json'], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            return {}
+        return json.loads(r.stdout).get('status') or {}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {}
+
+
+def image_of(entry):
+    img = (entry or {}).get('image') or {}
+    return {'digest': img.get('imageDigest'), 'version': img.get('version'), 'image': ((img.get('image') or {}).get('image'))}
+
+
+def success(boot=BOOT, cmdline=None):
+    if not active(boot):
+        log('not set up on this system (no %s), nothing to do' % CFG_NAME)
+        return 0
+    gdir = grub_dir(boot)
+    tries = env_read(gdir).get(TRIES, '')
+    ents = entries(boot)
+    me = booted_ostree(cmdline)
+    on_previous = bool(me) and len(ents) > 1 and not same_deployment(me, ents[0][3]) and any(same_deployment(me, e[3]) for e in ents[1:])
+    env_set(gdir, **{TRIES: 'ok'})
+    if tries in ('', 'ok'):
+        log('this start was good')
+        return 0
+    log('this start was good, after %s' % ('starting the previous version' if tries == 'fallback' else 'a start that wasn\'t'))
+    if tries == 'fallback' and on_previous:
+        # The new version didn't start twice; this one did. It becomes the default again (the other stays as the
+        # "previous version" until the next update replaces it), and it's remembered so updates skip it.
+        st = bootc_json()
+        bad = image_of((st or {}).get('rollback'))
+        r = subprocess.run(['bootc', 'rollback'], capture_output=True, text=True)
+        out = (r.stdout + r.stderr).strip()
+        if r.returncode != 0 and os.path.exists('/usr/bin/rpm-ostree'):
+            r = subprocess.run(['rpm-ostree', 'rollback'], capture_output=True, text=True)
+            out = (r.stdout + r.stderr).strip()
+        s = state()
+        event = {'when': int(time.time()), 'rolledBack': r.returncode == 0, 'failed': bad, 'output': out[-500:]}
+        s['last'] = event
+        if bad.get('digest'):
+            s['bad'] = ([b for b in s.get('bad', []) if b.get('digest') != bad['digest']] + [dict(bad, when=event['when'])])[-5:]
+        try:
+            save_state(s)
+        except OSError as e:
+            log("couldn't save %s: %s" % (STATE, e))
+        if r.returncode == 0:
+            log('the version that didn\'t start (%s) is now the previous version; this one is the default again' % (bad.get('version') or bad.get('digest') or '?'))
+            setup(boot)
+            bls = '/usr/libexec/nimbus/hearth-bls-grub'
+            if os.path.exists(bls):
+                subprocess.run([bls], capture_output=True)
+        else:
+            log('making this version the default failed: ' + (out.splitlines() or ['?'])[-1])
+    return 0
+
+
+def previous(boot=BOOT):
+    """For the emergency screen: the previous version at the next start. Through the count when it can (GRUB
+    then starts the previous version, and once that's good it becomes the default), else bootc rollback."""
+    gdir = grub_dir(boot)
+    ents = entries(boot)
+    if len(ents) < 2:
+        log('there is no previous version on this system')
+        return 2
+    try:
+        setup(boot)
+        env_set(gdir, **{TRIES: 'fallback'})
+        log('the previous version (%s) starts next' % ents[1][2])
+        return 0
+    except (OSError, ValueError) as e:
+        log("couldn't write GRUB's settings (%s); trying bootc rollback" % e)
+    r = subprocess.run(['bootc', 'rollback'], capture_output=True, text=True, timeout=300)
+    if r.returncode == 0:
+        log('bootc rollback: the previous version starts next')
+        return 0
+    log('bootc rollback failed: ' + ((r.stdout + r.stderr).strip().splitlines() or ['?'])[-1])
+    return 1
+
+
+def status(boot=BOOT, cmdline=None):
+    gdir = grub_dir(boot)
+    ents = entries(boot)
+    me = booted_ostree(cmdline)
+    return {
+        'active': active(boot),
+        'tries': env_read(gdir).get(TRIES) if os.path.isdir(gdir) else None,
+        'versions': [{'id': e[1], 'title': e[2], 'default': i == 0, 'running': same_deployment(me, e[3])} for i, e in enumerate(ents)],
+        'previous': len(ents) > 1,
+        'state': state(),
+    }
+
+
+def status_text(st):
+    tries = st.get('tries') or 'ok'
+    lines = ['Automatic return to the previous version: ' + ('on' if st['active'] else 'not set up on this system')]
+    lines.append('Starts in a row that did not reach Hearth: ' + {'ok': '0', '1': '1', '2': '2', 'fallback': '2 (starting the previous version)'}.get(tries, tries))
+    for v in st['versions']:
+        lines.append('  %s%s%s' % (v['title'], ' [default]' if v['default'] else '', ' [running now]' if v['running'] else ''))
+    last = st['state'].get('last')
+    if last:
+        lines.append('Last automatic return: %s (%s)' % (time.strftime('%Y-%m-%d %H:%M', time.localtime(last.get('when', 0))),
+                                                      'done' if last.get('rolledBack') else 'failed'))
+    for b in st['state'].get('bad', []):
+        lines.append('Did not start here: %s %s' % (b.get('version') or '', b.get('digest') or ''))
+    return '\n'.join(lines)
+
+
+def update_allowed():
+    """Exit 1 (with why) when the update bootc would get is one that didn't start on this device before."""
+    bad = {b.get('digest') for b in state().get('bad', []) if b.get('digest')}
+    if not bad:
+        return 0
+    try:
+        subprocess.run(['bootc', 'upgrade', '--check'], capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    cached = ((bootc_json().get('booted') or {}).get('cachedUpdate') or {})
+    if cached.get('imageDigest') in bad:
+        print('The newest Hearth OS version (%s) didn\'t start on this device, so Hearth went back to the one '
+              'before. It waits for a newer version.' % (cached.get('version') or cached.get('imageDigest')))
+        return 1
+    return 0
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    try:
+        if cmd == 'setup':
+            if len(argv) == 4 and argv[2] == '--boot':
+                return setup(argv[3], installer=True)
+            return setup()
+        if cmd == 'success':
+            return success()
+        if cmd == 'previous':
+            return previous()
+        if cmd == 'status':
+            st = status()
+            print(json.dumps(st, indent=2) if '--json' in argv else status_text(st))
+            return 0
+        if cmd == 'update-allowed':
+            return update_allowed()
+    except Exception as e:   # never stop a start, a shutdown or an update over this
+        log('%s failed: %s: %s' % (cmd, type(e).__name__, e))
+        return 0 if cmd in ('update-allowed', 'success', 'setup') else 1
+    print('usage: hearth-boot-guard setup [--boot DIR] | success | previous | status [--json] | update-allowed', file=sys.stderr)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

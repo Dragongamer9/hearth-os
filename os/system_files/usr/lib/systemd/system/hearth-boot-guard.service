@@ -1,0 +1,24 @@
+# Hearth: the GRUB side of going back to the previous version after starts that don't reach Hearth (see
+# /usr/libexec/nimbus/hearth-boot-guard). Writes /boot/grub2/hearth-boot.cfg (the boot entries' ids) at start, and
+# again at shutdown *after* ostree-finalize-staged.service has written an update's entry (units stop in the reverse
+# of their start order: Before= here), so the next start already counts with the new version. Never fatal: the
+# script logs what went wrong and ends with success, and nothing requires this unit.
+[Unit]
+Description=Hearth: automatic return to the previous version (boot entries)
+DefaultDependencies=no
+RequiresMountsFor=/boot
+After=local-fs.target
+Before=ostree-finalize-staged.service basic.target final.target
+Conflicts=final.target
+ConditionPathIsDirectory=/boot/loader/entries
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=-/usr/libexec/nimbus/hearth-boot-guard setup
+ExecStop=-/usr/libexec/nimbus/hearth-boot-guard setup
+TimeoutStartSec=60
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

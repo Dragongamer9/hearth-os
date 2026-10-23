@@ -12,6 +12,10 @@ on:
         description: 'Publish the image (off: build and check it only, e.g. to test a branch before merging)'
         type: boolean
         default: true
+      boot_test:
+        description: 'Also install the image onto a virtual disk and prove an update that cannot start is rolled back by itself (about 20 min more)'
+        type: boolean
+        default: false
   # linux-host: test images (:testing). main (a release): also :latest, what Hearth OS on Anatase updates from and
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
@@ -221,6 +225,14 @@ jobs:
           check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
           warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
+          echo "--- when a start fails (docs/BASE-ANATASE.md: When Hearth OS doesn't start)"
+          check "hearth-boot-guard is installed (valid Python, executable)" "test -x /usr/libexec/nimbus/hearth-boot-guard && python3 -m py_compile /usr/libexec/nimbus/hearth-boot-guard"
+          check "hearth-boot-guard runs" "/usr/libexec/nimbus/hearth-boot-guard status"
+          check "the boot count is set up at start, kept in step with the entries, and good starts are marked" "test -L /etc/systemd/system/multi-user.target.wants/hearth-boot-guard.service && test -L /etc/systemd/system/multi-user.target.wants/hearth-boot-guard-refresh.path && test -L /etc/systemd/system/multi-user.target.wants/hearth-boot-success.service && test -L /etc/systemd/system/graphical.target.wants/hearth-boot-success.service"
+          check "waking from hibernation counts as a good start" "test -x /usr/lib/systemd/system-sleep/hearth-boot-guard"
+          check "bootupd's GRUB config reads custom.cfg (where the boot count comes in)" "cat /usr/lib/bootupd/grub2-static/configs.d/*.cfg | grep -q 'custom.cfg'"
+          warn "GRUB has load_env and save_env (the boot count is kept in grubenv)" "grep -aqs save_env /usr/lib/efi/grub2/*/EFI/*/grubx64.efi && grep -aqs load_env /usr/lib/efi/grub2/*/EFI/*/grubx64.efi"
+          check "background updates skip a version that didn't start here" "grep -q 'hearth-boot-guard update-allowed' /usr/lib/systemd/system/bootc-fetch-apply-updates.service.d/20-hearth-boot-guard.conf"
           check "GRUB's menu is written from the boot entries where GRUB can't read them (also after switching edition)" "sh -n /usr/libexec/nimbus/hearth-bls-grub && test -L /etc/systemd/system/multi-user.target.wants/hearth-bls-grub.service"
           exit $fail
           EOF
@@ -228,6 +240,17 @@ jobs:
           echo "--- bootc container lint"
           sudo podman run --rm hearth-os:build bootc container lint 2>&1 | tee /tmp/lint.log || {
             msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
+      # Optional (boot_test): install the image just built onto a loop disk, add a newer deployment that can't start,
+      # and prove the device goes back to the previous version by itself (tools/boot-rollback-test.sh).
+      - name: Boot test (an update that can't start is rolled back by itself)
+        if: github.event_name == 'workflow_dispatch' && inputs.boot_test
+        run: tools/boot-rollback-test.sh hearth-os:build anatase
+
+      - uses: actions/upload-artifact@v4
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.boot_test
+        with:
+          name: boot-rollback-anatase
+          path: boot-rollback.log
 
       # Only :testing (and a dated testing tag). Never :latest.
       - name: Publish to GitHub Container Registry

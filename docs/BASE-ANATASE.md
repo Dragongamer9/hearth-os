@@ -99,7 +99,44 @@ and Peppermint images; it only runs where `/usr/share/nimbus/image-info.json` ex
 
 Every step can run again after a power cut; the log is `journalctl -u hearth-clean-install`.
 
-## Systems switched from another edition
+## When Hearth OS doesn't start
+
+The same on Anatase and Peppermint (the files are in `os/system_files`, so every edition built from it has them).
+
+### Going back to the previous version by itself
+
+bootc keeps the version from before the last update next to the new one. If the new one doesn't start twice in a
+row, GRUB starts the previous one, and once that one is up it becomes the default again.
+
+- **What counts as a good start:** the system reached `graphical.target` (the login screen or Hearth's session
+  is starting), or `multi-user.target` where nothing graphical starts. `hearth-boot-success.service` then sets
+  `hearth_tries=ok` in `/boot/grub2/grubenv`. Waking from hibernation (Quick Resume through Restart and Shut down)
+  also counts: the sleep hook `system-sleep/hearth-boot-guard` marks it.
+- **What counts as a failed one:** anything that stops before that. That includes emergency mode, a hang during
+  start, a kernel panic, a power cut or a hard power-off mid-start.
+- **The count lives in GRUB.** Every edition boots through bootupd's static `grub.cfg`, whatever its GRUB. It
+  loads `grubenv` and sources `/boot/grub2/custom.cfg` on every start. `hearth-boot-guard setup` adds two lines to
+  `custom.cfg` that source `/boot/grub2/hearth-boot.cfg`. That file holds the ids of the newest boot entry and the
+  one before it, plus a few lines of plain GRUB script (no `increment`, which Debian's and Arch's GRUB don't have).
+  At each start the script moves `hearth_tries` along: unset or `ok` → `1` → `2` → `fallback`. At `fallback` it
+  sets `default` to the previous entry and saves the count with `save_env`. After a start that failed, the GRUB menu
+  stays up for 10 seconds instead of 1. **GRUB can't read controllers or a handheld's own buttons.** On a handheld
+  without a keyboard, the menu just times out to what the count picked. With a USB keyboard you can use the arrow
+  keys and Enter.
+- **Making it stick:** on the previous version after a fallback, `hearth-boot-guard success` runs `bootc
+  rollback`. That makes the running version the default again (the one that didn't start stays as "previous"
+  until the next update replaces it). It also records the version that failed in `/var/lib/hearth/boot-guard.json`.
+  Background updates (`bootc-fetch-apply-updates`' `ExecCondition`) and Settings › Updates then skip that exact
+  version until a newer one is published. Picking the previous version by hand in the GRUB menu doesn't change
+  the default.
+- **When the entries change** the ids are rewritten: at start (`hearth-boot-guard.service`), when `/boot/loader`
+  changes (`hearth-boot-guard-refresh.path`: rollback, kargs), at shutdown right after
+  `ostree-finalize-staged.service` has written an update's entry, and by the installer right after it deploys.
+- **No previous version** (a fresh install before its first update): the count stops at `2`, and the menu is
+  shown at every start until one start is good.
+- `hearth-boot-guard status` shows the count, the versions and any version that didn't start.
+
+### Systems switched from another edition
 
 Settings › Updates › Switch edition (`bootc switch`) changes the system, not the boot loader. A system installed
 as Peppermint, Ubuntu or CachyOS keeps that edition's GRUB and `grub.cfg` after switching to Anatase, and those only
@@ -108,6 +145,13 @@ read the menu `hearth-bls-grub` writes. That script is now in every image, Anata
 froze at the switch, and its first update left GRUB pointing at a version that was gone. The boot count works the
 same on switched systems (it only needs `custom.cfg`).
 
+### Testing it
+
+`base-anatase.yml` / `base-peppermint.yml` with `boot_test` on (and `publish` off) run `tools/boot-rollback-test.sh`.
+It installs the image just built onto a loop disk with Hearth's installer, then adds a newer deployment that boots
+into emergency mode, the way a broken update would. It boots the disk in a virtual PC and expects the emergency screen,
+two restarts by itself, then the previous version starting and becoming the default again. Afterwards it checks the
+disk.
 
 ## Not verified yet
 

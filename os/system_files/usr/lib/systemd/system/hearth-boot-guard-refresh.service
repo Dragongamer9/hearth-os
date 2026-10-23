@@ -1,0 +1,7 @@
+[Unit]
+Description=Hearth: boot entry ids for the automatic return to the previous version
+RequiresMountsFor=/boot
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/libexec/nimbus/hearth-boot-guard setup

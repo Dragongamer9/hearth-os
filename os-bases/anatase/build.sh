@@ -355,9 +355,16 @@ systemctl enable hearth-bluetooth-labels.service  # Bluetooth pairings readable 
 # The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
 # (os/system_files; does nothing without the plan the old system leaves).
 systemctl enable hearth-clean-install.service
+
+# ------------------------------------------------------------------ when a start fails
+# Back to the previous version by itself after two starts in a row that don't reach Hearth (GRUB counts them through
+# custom.cfg; hearth-boot-success marks a good start), from os/system_files; see docs/BASE-ANATASE.md ("When Hearth
+# OS doesn't start").
+systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-success.service
 # GRUB's menu from the boot entries, for systems switched here from Peppermint, Ubuntu or CachyOS, whose GRUB (kept
 # by the switch) can't read them itself; does nothing on Anatase's own installs (hearth-bls-grub checks grub.cfg).
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
+chmod 755 /usr/lib/systemd/system-sleep/hearth-boot-guard
 
 # ------------------------------------------------------------------ Quick Resume through turning off and restarting
 # Quick Resume keeps games through Shut down and Restart by hibernating (hearth-admin hibernate-setup makes the room,
