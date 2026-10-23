@@ -163,13 +163,23 @@ def localsend(ip):
             break
     ok('LocalSend discovers Nearby Share (listed as a device)', num, text[-500:] if num is None else 'number ' + num)
     got = os.path.join(dest, 'from-localsend.bin')
-    if num:
-        sp.stdin.write(num.encode())
-        sp.stdin.flush()
-        for _ in range(60):
+    def arrived(secs):
+        for _ in range(secs):
             if os.path.exists(got) and os.path.getsize(got) == os.path.getsize(f):
-                break
+                return True
             time.sleep(1)
+        return False
+    if num:
+        # With --file it opens a device picker: close it (Esc) and use the number hotkey; if that doesn't send,
+        # open the picker again (d) and choose with the arrow keys and Enter.
+        time.sleep(3)
+        sp.stdin.write(b'\x1b'); sp.stdin.flush(); time.sleep(1.5)
+        sp.stdin.write(num.encode()); sp.stdin.flush()
+        if not arrived(20):
+            sp.stdin.write(b'\x1b'); sp.stdin.flush(); time.sleep(1)
+            sp.stdin.write(b'd'); sp.stdin.flush(); time.sleep(1.5)
+            sp.stdin.write(b'\x1b[B' * (int(num) - 1) + b'\r'); sp.stdin.flush()
+            arrived(40)
     time.sleep(1)
     ok('LocalSend -> Nearby Share: a file', os.path.exists(got) and sha(f) == sha(got),
        re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', open(slog_path, errors='replace').read())[-700:])
