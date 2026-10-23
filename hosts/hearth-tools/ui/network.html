@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Tools</title>
+<link rel="stylesheet" href="common.css">
+<style>
+.speed { display:grid; grid-template-columns:repeat(auto-fit, minmax(12em, 1fr)); gap:.8em; margin:.6em 0; }
+.gauge { text-align:center; padding:1em; }
+.gauge .v { font-size:2.4em; font-weight:750; font-variant-numeric:tabular-nums; line-height:1.1; }
+.gauge .u { color:var(--muted); }
+.gauge.live .v { color:var(--ember); }
+.out { font-family:var(--mono); font-size:.82em; white-space:pre-wrap; background:var(--bg2); border:1px solid var(--line); border-radius:12px; padding:.7em .9em; min-height:8em; user-select:text; -webkit-user-select:text; }
+.sig { display:inline-flex; gap:2px; align-items:flex-end; height:1em; vertical-align:middle; }
+.sig i { width:.28em; background:var(--panel3); border-radius:2px; }
+.sig i.on { background:var(--good); }
+.chan { display:flex; align-items:flex-end; gap:3px; height:6em; padding:.3em 0; margin-bottom:1.4em; }
+.chan div { flex:1; background:var(--panel3); border-radius:4px 4px 0 0; position:relative; min-width:6px; }
+.chan div.mine { background:var(--ember); }
+.chan span { position:absolute; bottom:-1.4em; left:50%; transform:translateX(-50%); font-size:.65em; color:var(--muted); }
+.form { display:flex; gap:.6em; flex-wrap:wrap; align-items:center; margin-bottom:.7em; }
+.form .inp { flex:1; min-width:14em; }
+.form select.inp { flex:none; width:auto; min-width:8em; }
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, human } = H;
+const S = { tab: 'overview', ov: null, wifi: null, conns: null, usage: null, speed: null, speedJob: null, out: '', runJob: null, dns: null, timer: 0 };
+H.shell({ title: 'Network Tools', sub: '', tabs: [{ id: 'overview', label: 'Overview' }, { id: 'speed', label: 'Speed test' }, { id: 'apps', label: 'Apps & connections' }, { id: 'wifi', label: 'Wi-Fi' }, { id: 'ping', label: 'Ping & traceroute' }, { id: 'dns', label: 'DNS lookup' }],
+  onTab: t => { S.tab = t; clearInterval(S.timer); render(); enter(t); }, hints: [['Y', 'Refresh']] });
+H.S.refresh = () => enter(S.tab, true);
+const rate = b => b == null ? '' : human(b) + '/s';
+const mbps = v => v == null ? '–' : v >= 100 ? v.toFixed(0) : v.toFixed(1);
+const bars = pct => { const n = pct >= 75 ? 4 : pct >= 50 ? 3 : pct >= 25 ? 2 : pct > 0 ? 1 : 0; return `<span class="sig">${[1, 2, 3, 4].map(i => `<i class="${i <= n ? 'on' : ''}" style="height:${i * 25}%"></i>`).join('')}</span>`; };
+
+async function enter(t, force) {
+  try {
+    if (t === 'overview') { S.ov = await H.call('net.overview'); render(); }
+    if (t === 'wifi' && (force || !S.wifi)) { S.wifi = await H.call('net.wifi', { rescan: force ? 'yes' : '' }); render(); }
+    if (t === 'apps') { await tickApps(); S.timer = setInterval(() => S.tab === 'apps' && tickApps(), 2000); }
+  } catch (e) { H.fail(e); }
+}
+async function tickApps() {
+  const [u, c] = await Promise.all([H.call('net.usage'), H.call('net.connections')]);
+  S.usage = u; S.conns = c; if (S.tab === 'apps') renderApps();
+}
+
+function render() {
+  const m = $('#main');
+  if (S.tab === 'overview') {
+    const o = S.ov;
+    if (!o) { m.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; return; }
+    const up = o.interfaces.filter(i => i.up);
+    H.sub(up.length ? `Connected through ${up.map(i => i.kind === 'wifi' ? 'Wi-Fi' : i.kind === 'wired' ? 'cable' : i.name).join(' and ')}` : 'Not connected');
+    m.innerHTML = `<div class="scroll" style="flex:1"><div class="grid">
+      ${o.interfaces.map(i => `<section class="panel f" tabindex="0"><h3><span class="dot ${i.up ? 'good' : ''}"></span>${esc(i.kind === 'wifi' ? 'Wi-Fi' : i.kind === 'wired' ? 'Cable (Ethernet)' : 'Virtual')} · ${esc(i.name)}</h3>
+        <dl class="kv"><dt>State</dt><dd>${i.up ? 'Connected' : 'Not connected'}</dd>${i.ips.map(a => `<dt>Address</dt><dd>${esc(a)}</dd>`).join('')}<dt>Hardware address</dt><dd>${esc(i.mac || '')}</dd>${i.mbps ? `<dt>Link speed</dt><dd>${i.mbps} Mbit/s</dd>` : ''}<dt>Since start</dt><dd>${human(i.rx)} down · ${human(i.tx)} up</dd></dl></section>`).join('')}
+      <section class="panel f" tabindex="0"><h3>Internet</h3><dl class="kv"><dt>Router</dt><dd>${esc(o.gateway && o.gateway.via || 'None')}</dd><dt>DNS servers</dt><dd>${esc((o.dns || []).join(', ') || 'None')}</dd></dl>
+        <div class="row" style="margin-top:.6em"><button class="btn small f" data-go="speed">Test the speed</button><button class="btn small f" data-go="ping">Ping something</button></div></section>
+    </div></div>`;
+    $$('[data-go]').forEach(b => b.onclick = () => H.setTab(b.dataset.go, true));
+  } else if (S.tab === 'speed') {
+    const s = S.speed || {};
+    const running = !!S.speedJob;
+    m.innerHTML = `<div class="scroll" style="flex:1"><p class="muted">Measures your connection with Cloudflare's public speed test (speed.cloudflare.com). It downloads and uploads up to about 300 MB.</p>
+      <div class="speed">
+        <div class="panel gauge${s.stage === 'latency' ? ' live' : ''}"><div class="u">Latency</div><div class="v">${s.latency != null ? s.latency.toFixed(0) : '–'}</div><div class="u">ms${s.jitter != null ? ` · jitter ${s.jitter.toFixed(1)} ms` : ''}</div></div>
+        <div class="panel gauge${s.stage === 'download' ? ' live' : ''}"><div class="u">Download</div><div class="v">${mbps(s.download)}</div><div class="u">Mbit/s</div></div>
+        <div class="panel gauge${s.stage === 'upload' ? ' live' : ''}"><div class="u">Upload</div><div class="v">${mbps(s.upload)}</div><div class="u">Mbit/s</div></div>
+      </div>
+      <div class="row">${running ? '<button class="btn f" id="stop">Stop</button><span class="spinner"></span><span class="muted">' + esc({ server: 'Finding the nearest server…', latency: 'Measuring latency…', download: 'Downloading…', upload: 'Uploading…' }[s.stage] || '') + '</span>'
+        : `<button class="btn primary f" id="go">${S.speed && S.speed.done ? 'Test again' : 'Start the test'}</button>`}
+        ${s.server ? `<span class="muted">Server: ${esc(s.server.colo || '?')}${s.server.loc ? ' · you\'re in ' + esc(s.server.loc) : ''}</span>` : ''}</div>
+      ${s.error ? `<p class="bad">${esc(s.error)}</p>` : ''}</div>`;
+    if ($('#go')) $('#go').onclick = speedTest;
+    if ($('#stop')) $('#stop').onclick = () => S.speedJob && S.speedJob.cancel();
+  } else if (S.tab === 'apps') {
+    m.innerHTML = '<div class="scroll" style="flex:1" id="appsview"><div class="empty"><span class="spinner"></span></div></div>';
+    if (S.usage) renderApps();
+  } else if (S.tab === 'wifi') {
+    const w = S.wifi;
+    if (!w) { m.innerHTML = '<div class="empty"><span class="spinner"></span> Looking for networks…</div>'; return; }
+    const nets = w.networks || [];
+    const mine = nets.find(n => n.active);
+    const chans = {}; nets.forEach(n => { if (n.channel) chans[n.channel] = (chans[n.channel] || 0) + 1; });
+    const list24 = Object.keys(chans).map(Number).filter(c => c <= 14).sort((a, b) => a - b), list5 = Object.keys(chans).map(Number).filter(c => c > 14).sort((a, b) => a - b);
+    const max = Math.max(1, ...Object.values(chans));
+    const chanChart = (list, label) => list.length ? `<div><div class="muted" style="font-size:.85em">${label}</div><div class="chan">${list.map(c => `<div class="${mine && mine.channel === c ? 'mine' : ''}" style="height:${chans[c] / max * 100}%" title="${chans[c]} networks"><span>${c}</span></div>`).join('')}</div></div>` : '';
+    const l = w.link || {};
+    m.innerHTML = `<div class="scroll" style="flex:1"><div class="grid">
+      <section class="panel f" tabindex="0"><h3>Your Wi-Fi</h3>${mine ? `<dl class="kv"><dt>Network</dt><dd>${esc(mine.ssid)}</dd><dt>Signal</dt><dd>${bars(mine.signal)} ${mine.signal}%${l.signal ? ' · ' + esc(l.signal) : ''}</dd><dt>Channel</dt><dd>${mine.channel} (${mine.freq >= 5900 ? '6' : mine.freq >= 4900 ? '5' : '2.4'} GHz)</dd>
+        <dt>Speed</dt><dd>${esc(l.rx ? 'down ' + l.rx : mine.rate)}${l.tx ? '<br>up ' + esc(l.tx) : ''}</dd><dt>Security</dt><dd>${esc(mine.security || 'Open')}</dd></dl>` : '<p class="muted">Not connected to Wi-Fi.</p>'}
+        <div class="row" style="margin-top:.5em"><button class="btn small f" id="rescan">Look again</button><button class="btn small f" id="wset">Wi-Fi settings</button></div></section>
+      <section class="panel f" tabindex="0"><h3>Busy channels nearby</h3><p class="muted" style="margin:0 0 .4em;font-size:.85em">Each bar is how many networks share a channel. A quieter channel (set on your router) can be faster.</p>${chanChart(list24, '2.4 GHz')}${chanChart(list5, '5 and 6 GHz')}</section>
+      </div>
+      <table class="list" style="margin-top:.8em"><tr><th>Network</th><th>Signal</th><th>Channel</th><th>Security</th></tr>
+      ${nets.map(n => `<tr class="f" tabindex="0"><td>${n.active ? '<b>' : ''}${esc(n.ssid || '(hidden)')}${n.active ? '</b> <span class="badge good">connected</span>' : ''}</td><td>${bars(n.signal)} ${n.signal}%</td><td>${n.channel || ''}</td><td>${esc(n.security || 'Open')}</td></tr>`).join('')}</table></div>`;
+    $('#rescan').onclick = () => { S.wifi = null; render(); H.call('net.wifi', { rescan: 'yes' }).then(w => { S.wifi = w; render(); }).catch(H.fail); };
+    $('#wset').onclick = () => H.call('app.open', { what: 'settings:wifi' }).catch(H.fail);
+  } else if (S.tab === 'ping') {
+    m.innerHTML = `<div class="form"><input class="inp f" id="host" data-osk="1" placeholder="A name or address, like hearthos.fun or 1.1.1.1" value="${esc(S.host || '')}">
+        <button class="btn primary f" id="ping">Ping</button><button class="btn f" id="trace">Traceroute</button>${S.runJob ? '<button class="btn f" id="stop">Stop</button>' : ''}</div>
+      <div class="row" style="margin-bottom:.6em">${['1.1.1.1', 'hearthos.fun', 'store.steampowered.com', S.ov && S.ov.gateway && S.ov.gateway.via].filter(Boolean).map(h => `<button class="chip f" data-host="${esc(h)}">${esc(h)}</button>`).join('')}</div>
+      <div class="scroll" style="flex:1"><div class="out" id="out">${esc(S.out || 'Ping checks that something answers and how long it takes. Traceroute shows each stop on the way there.')}</div></div>`;
+    const host = () => (S.host = $('#host').value.trim());
+    $('#ping').onclick = () => run('net.ping', { host: host(), count: 5 });
+    $('#trace').onclick = () => run('net.trace', { host: host() });
+    if ($('#stop')) $('#stop').onclick = () => S.runJob && S.runJob.cancel();
+    $('#host').addEventListener('keydown', e => { if (e.key === 'Enter') run('net.ping', { host: host(), count: 5 }); });
+    $$('[data-host]').forEach(b => b.onclick = () => { $('#host').value = b.dataset.host; run('net.ping', { host: host(), count: 5 }); });
+  } else if (S.tab === 'dns') {
+    const d = S.dns;
+    m.innerHTML = `<div class="form"><input class="inp f" id="name" data-osk="1" placeholder="A name (example.com) or an address (to find its name)" value="${esc(S.name || '')}">
+        <select class="inp f" id="type">${['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SOA', 'SRV', 'CAA'].map(t => `<option${t === (S.qtype || 'A') ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        <select class="inp f" id="server">${[['system', 'Your DNS'], ['1.1.1.1', 'Cloudflare'], ['8.8.8.8', 'Google'], ['9.9.9.9', 'Quad9']].map(([v, l]) => `<option value="${v}"${v === (S.server || 'system') ? ' selected' : ''}>${l}</option>`).join('')}</select>
+        <button class="btn primary f" id="look">Look up</button></div>
+      <div class="scroll" style="flex:1">${d ? `<p class="muted">${esc(d.query)} · ${esc(d.type)} · asked ${esc(d.server)} · ${d.ms} ms${d.status !== 'ok' ? ` · <span class="bad">${esc(d.status)}</span>` : ''}</p>
+        ${d.answers.length ? `<table class="list"><tr><th>Type</th><th>Name</th><th>Answer</th><th class="num">Kept for</th></tr>${d.answers.map(a => `<tr class="f" tabindex="0"><td>${esc(a.type)}</td><td>${esc(a.name)}</td><td class="mono" style="user-select:text">${esc(a.value)}</td><td class="num">${a.ttl}s</td></tr>`).join('')}</table>` : '<div class="empty">No records of that type.</div>'}`
+        : '<p class="muted">Ask a DNS server what a name points to (A and AAAA: its addresses; MX: its mail servers; TXT: notes and keys), or which name an address has.</p>'}</div>`;
+    const look = async () => {
+      S.name = $('#name').value.trim(); S.qtype = $('#type').value; S.server = $('#server').value;
+      if (!S.name) return;
+      try { S.dns = await H.call('net.dns', { name: S.name, type: S.qtype, server: S.server }); render(); $('#look').focus(); } catch (e) { H.fail(e); }
+    };
+    $('#look').onclick = look;
+    $('#name').addEventListener('keydown', e => { if (e.key === 'Enter') look(); });
+  }
+}
+
+function renderApps() {
+  const el = $('#appsview'); if (!el) return;
+  const u = S.usage || { apps: [], devices: [] }, c = S.conns || { connections: [] };
+  const top = Math.max(1, ...u.apps.map(a => a.up + a.down));
+  const conns = c.connections.filter(x => x.state !== 'Listening');
+  const listening = c.connections.filter(x => x.state === 'Listening');
+  el.innerHTML = `<div class="grid" style="margin-bottom:.8em">${u.devices.map(d => `<section class="panel"><h3>${esc(d.name)}</h3><div class="row"><span class="grow">↓ ${rate(d.down)}</span><span>↑ ${rate(d.up)}</span></div></section>`).join('')}</div>
+    <h3 style="margin:.2em 0 .4em">Apps using the network now</h3><p class="muted" style="margin:0 0 .5em;font-size:.85em">Your apps' TCP traffic, measured every 2 seconds.</p>
+    <table class="list"><tr><th>App</th><th class="num">Down</th><th class="num">Up</th><th class="num">Connections</th><th style="width:30%"></th></tr>
+    ${u.apps.map(a => `<tr class="f" tabindex="0"><td>${esc(a.app)}</td><td class="num">${rate(a.down)}</td><td class="num">${rate(a.up)}</td><td class="num">${a.sockets}</td><td><span class="bar"><i style="width:${((a.up + a.down) / top * 100).toFixed(1)}%"></i></span></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Nothing yet.</td></tr>'}</table>
+    <h3 style="margin:1em 0 .4em">Connections (${conns.length})</h3>
+    <table class="list"><tr><th>App</th><th>Kind</th><th>From</th><th>To</th><th>State</th></tr>
+    ${conns.slice(0, 300).map(x => `<tr class="f" tabindex="0"><td>${esc(x.app || '—')}${x.pid ? ` <span class="faint">${x.pid}</span>` : ''}</td><td>${x.proto}</td><td class="mono">${esc(x.local)}</td><td class="mono">${esc(x.remote)}</td><td>${esc(x.state)}</td></tr>`).join('')}</table>
+    <h3 style="margin:1em 0 .4em">Waiting for connections (${listening.length})</h3>
+    <table class="list"><tr><th>App</th><th>Kind</th><th>Address</th><th>Account</th></tr>${listening.map(x => `<tr class="f" tabindex="0"><td>${esc(x.app || '—')}</td><td>${x.proto}</td><td class="mono">${esc(x.local)}</td><td>${esc(x.user)}</td></tr>`).join('')}</table>
+    ${c.unknownOwner ? `<p class="faint" style="font-size:.85em">${c.unknownOwner} connections belong to the system or other accounts, so their app isn't shown.</p>` : ''}`;
+}
+
+async function speedTest() {
+  S.speed = { stage: 'server' };
+  const j = H.job('net.speed', {}, st => { Object.assign(S.speed, st); if (st.stage === 'download' && st.mbps != null) S.speed.download = st.mbps; if (st.stage === 'upload' && st.mbps != null) S.speed.upload = st.mbps; if (S.tab === 'speed') render(); });
+  S.speedJob = j; render();
+  try { const r = await j; S.speed = Object.assign(r, { done: true }); } catch (e) { S.speed.error = String(e); S.speed.done = true; }
+  S.speedJob = null; S.speed.stage = null; if (S.tab === 'speed') { render(); $('#go')?.focus(); }
+}
+async function run(job, args) {
+  if (!args.host) { $('#host').focus(); return; }
+  if (S.runJob) S.runJob.cancel();
+  S.out = `${job === 'net.ping' ? 'ping' : 'traceroute'} ${args.host}\n`;
+  const j = H.job(job, args, st => { if (st.line != null) { S.out += st.line + '\n'; const o = $('#out'); if (o) { o.textContent = S.out; o.parentElement.scrollTop = o.parentElement.scrollHeight; } } });
+  S.runJob = j; render();
+  try { const r = await j; S.out += r.code == null ? '\nStopped.' : r.code === 0 ? '\nDone.' : '\nIt didn\'t answer (or not all the way).'; } catch (e) { S.out += '\n' + e; }
+  S.runJob = null; if (S.tab === 'ping') render();
+}
+
+// ---------------------------------------------------------------- without the app: sample data
+H.demo.call = (m, a) => {
+  if (m === 'net.overview') return { interfaces: [{ name: 'wlan0', kind: 'wifi', up: true, mac: 'a4:c3:f0:11:22:33', ips: ['192.168.1.42/24', '2a02:a46f:1:2::42/64'], rx: 8.2e9, tx: 0.9e9, mbps: null }, { name: 'enp4s0', kind: 'wired', up: false, mac: '00:e0:4c:68:00:01', ips: [], rx: 0, tx: 0 }], gateway: { via: '192.168.1.1', dev: 'wlan0' }, dns: ['192.168.1.1'] };
+  if (m === 'net.wifi') return { networks: [{ active: true, ssid: 'Home-5G', channel: 36, freq: 5180, rate: '866 Mbit/s', signal: 78, security: 'WPA2 WPA3' }, { active: false, ssid: 'Neighbour', channel: 6, freq: 2437, signal: 40, security: 'WPA2' }, { active: false, ssid: 'Cafe', channel: 6, freq: 2437, signal: 22, security: '' }, { active: false, ssid: 'Home', channel: 1, freq: 2412, signal: 70, security: 'WPA2' }],
+    link: { signal: '-52 dBm', rx: '866.7 MBit/s VHT-MCS 9 80MHz', tx: '650.0 MBit/s' } };
+  if (m === 'net.usage') return { apps: [{ app: 'steam', down: 12.4e6, up: 0.2e6, sockets: 14 }, { app: 'hearth-browser', down: 0.3e6, up: 0.04e6, sockets: 22 }, { app: 'Other (not yours)', down: 0, up: 0, sockets: 3 }], devices: [{ name: 'wlan0', down: 12.9e6, up: 0.3e6 }] };
+  if (m === 'net.connections') return { connections: [{ proto: 'TCP', local: '192.168.1.42:51522', remote: '23.4.5.6:443', state: 'Connected', app: 'steam', pid: 2210, user: 'sam' }, { proto: 'TCP', local: '0.0.0.0:27036', remote: '', state: 'Listening', app: 'steam', pid: 2210, user: 'sam' }], unknownOwner: 3 };
+  if (m === 'net.dns') return { name: a.name, query: a.name, type: a.type, server: '192.168.1.1', ms: 12, status: 'ok', answers: [{ type: 'A', name: a.name, ttl: 300, value: '185.199.108.153' }] };
+  throw 'This is a preview.';
+};
+H.demo.job = (n, a, step) => n === 'net.speed' ? { server: { colo: 'AMS', loc: 'NL' }, latency: 9.8, jitter: 1.2, download: 412.5, upload: 38.1 } : (step({ line: 'PING 1.1.1.1 56(84) bytes of data.' }), step({ line: '64 bytes from 1.1.1.1: icmp_seq=1 ttl=57 time=8.91 ms' }), { code: 0 });
+
+render(); enter('overview');
+</script>
+</body>
+</html>
