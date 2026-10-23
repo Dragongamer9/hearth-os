@@ -87,6 +87,32 @@ PanelWindow {
                     }
                 }
             }
+            // ---- Welcome & Tips (hosts/hearth-tools, --app welcome): the searchable "How do I…" help and the tour,
+            // built from the same docs as hearthos.fun. This card stays the quick controller list.
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.topMargin: 8
+                implicitHeight: moreText.implicitHeight + 20
+                radius: Theme.radius
+                color: moreArea.containsMouse ? Theme.line : "transparent"
+                border.color: Theme.line
+                Text {
+                    id: moreText
+                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
+                    wrapMode: Text.WordWrap
+                    text: "More help: open <b>Welcome &amp; Tips</b> for the tour and \u201cHow do I\u2026\u201d answers"
+                    textFormat: Text.StyledText
+                    color: Theme.text; font.family: Theme.font; font.pixelSize: 13
+                }
+                MouseArea {
+                    id: moreArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: { root.shown = false; Quickshell.execDetached(["hearth-tools", "--app", "welcome", "--page", "help"]); }
+                }
+            }
+            // ---- end Welcome & Tips
         }
     }
 

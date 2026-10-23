@@ -1,0 +1,145 @@
+# Hearth Documents (hosts/hearth-documents), the reader for PDFs, e-books (EPUB) and comic books (CBZ): tests its
+# library, builds it, and runs it under Xvfb on sample documents (tests/samples.py): the page reports that pdf.js,
+# epub.js and the comic book pages work in WebKitGTK (the "selftest" notice), and screenshots of each are in the
+# hearth-documents-linux artifact.
+# The vendored pdf.js / epub.js / JSZip files (ui/vendor, vendor.sh) are downloaded and committed by the vendor job
+# whenever they don't match the pins in vendor.sh. Linux only for now (Ember/Windows comes later). Release builds are
+# made by base-anatase.yml / base-peppermint.yml.
+name: Hearth Documents
+
+on:
+  push:
+    branches: [main, linux-host, hearth-photos-docs]
+    paths: ['hosts/hearth-documents/**', '.github/workflows/documents.yml']
+  pull_request:
+    paths: ['hosts/hearth-documents/**', '.github/workflows/documents.yml']
+  workflow_dispatch:
+    inputs:
+      shots:
+        description: Put small copies of the screenshots on the run as notices
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  vendor:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and commit (only when the pins changed)
+        working-directory: hosts/hearth-documents
+        run: |
+          want=$(sed -n "/^PINS='/,/^'/p" vendor.sh | awk 'NF==2{print $1"@"$2}' | sort | tr '\n' ' ')
+          have=$(cut -d' ' -f1 ui/vendor/VERSIONS 2>/dev/null | sort | tr '\n' ' ')
+          if [ "$want" = "$have" ]; then echo "Vendored files are up to date: $have"; exit 0; fi
+          if [ "${{ github.event_name }}" = pull_request ]; then echo "::error title=vendor::ui/vendor doesn't match vendor.sh"; exit 1; fi
+          sh vendor.sh
+          git config user.name "Dragongamer9"; git config user.email "Dragongamer9@users.noreply.github.com"
+          git add ui/vendor
+          git commit -qm "Hearth Documents: vendored pdf.js, epub.js and JSZip (vendor.sh)"
+          git push -q origin "HEAD:refs/heads/${{ github.ref_name }}"
+          echo "::notice title=vendor::committed $want"
+
+  linux:
+    needs: vendor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: hosts/hearth-documents
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.sha || github.ref_name }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-documents
+      - name: The page's files are there
+        run: |
+          for f in pdfjs/pdf.min.mjs pdfjs/pdf.worker.min.mjs pdfjs/pdf_viewer.mjs pdfjs/pdf_viewer.css epub/epub.min.js epub/jszip.min.js; do
+            test -s "ui/vendor/$f" || { echo "::error title=vendor::ui/vendor/$f is missing"; exit 1; }
+          done
+          node --check ui/app.js
+          python3 -m py_compile tests/samples.py
+      - name: WebKit and GTK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick x11-utils dbus-x11 xdotool >/dev/null
+      - name: Test
+        run: |
+          set -o pipefail
+          cargo test 2>&1 | tee test.log || { echo "::error title=tests::$(grep -E '^(error|---- |thread .* panicked)' -A10 test.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=size::$(du -h target/release/hearth-documents | cut -f1)"
+          ./target/release/hearth-documents --help
+      - name: Sample documents
+        run: python3 tests/samples.py "$RUNNER_TEMP/docs"
+      - name: Self-test in WebKitGTK (PDF, EPUB, CBZ)
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_DOCUMENTS_STATE="$RUNNER_TEMP/state.json"
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          fail=0
+          for f in "Hearth Guide.pdf" "A Hearth Story.epub" "Ember Comics.cbz"; do
+            HEARTH_DOCUMENTS_SELFTEST=1 timeout 120 dbus-run-session -- ./target/release/hearth-documents "$RUNNER_TEMP/docs/$f" > st.log 2>&1 || true
+            grep '^SELFTEST' st.log || true
+            if grep -q 'SELFTEST ok' st.log; then echo "::notice title=selftest $f::$(grep '^SELFTEST' st.log | sed 's/^SELFTEST //' | tr '\n' '|')"
+            else echo "::error title=selftest $f::$(tail -c 1500 st.log | tr '\n' '|')"; fail=1; fi
+          done
+          cat "$RUNNER_TEMP/state.json" || true
+          exit $fail
+      - name: Run it (screenshots)
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_DOCUMENTS_STATE="$RUNNER_TEMP/state.json"
+          pgrep Xvfb >/dev/null || { Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 2; }
+          shot() { import -window root "shots/$1.png" || true; }
+          win() { w=$(xdotool search --name 'Documents' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true; xdotool windowsize "$w" 1280 800 2>/dev/null || true; sleep 1; }
+          dbus-run-session -- ./target/release/hearth-documents "$RUNNER_TEMP/docs/Hearth Guide.pdf" > run-pdf.log 2>&1 &
+          sleep 8; win
+          shot pdf
+          xdotool key ctrl+f; sleep 1; xdotool type fireside; xdotool key Return; sleep 2; shot pdf-find
+          xdotool key Escape; sleep 1
+          xdotool key d; sleep 2; shot pdf-dark
+          xdotool key d; xdotool key ctrl+plus ctrl+plus; sleep 2; shot pdf-zoom
+          xdotool key o; sleep 2; shot pdf-outline
+          pkill -f 'target/release/hearth-documents' || true; sleep 1
+          dbus-run-session -- ./target/release/hearth-documents "$RUNNER_TEMP/docs/A Hearth Story.epub" > run-epub.log 2>&1 &
+          sleep 8; win
+          shot epub
+          xdotool key Right; sleep 2; shot epub-next
+          xdotool key s; sleep 2; shot epub-sepia
+          pkill -f 'target/release/hearth-documents' || true; sleep 1
+          dbus-run-session -- ./target/release/hearth-documents "$RUNNER_TEMP/docs/Ember Comics.cbz" > run-cbz.log 2>&1 &
+          sleep 6; win; shot cbz
+          pkill -f 'target/release/hearth-documents' || true; sleep 1
+          dbus-run-session -- ./target/release/hearth-documents > run-home.log 2>&1 &
+          sleep 6; win; shot recent
+          pkill -f 'target/release/hearth-documents' || true
+          echo "::notice title=App output::$(tail -c 800 run-pdf.log run-epub.log | tr '\n' '|')"
+      - name: Screenshots as notices (started by hand with "shots", or a commit saying [shots])
+        if: always() && ((github.event_name == 'workflow_dispatch' && inputs.shots) || contains(github.event.head_commit.message, '[shots]'))
+        run: |
+          for n in pdf pdf-find epub recent; do
+            f=shots/$n.png; [ -f "$f" ] || continue
+            convert "$f" -resize 720x -quality 50 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-documents-linux
+          path: |
+            hosts/hearth-documents/target/release/hearth-documents
+            hosts/hearth-documents/shots
+            hosts/hearth-documents/*.log
