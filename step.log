@@ -1,0 +1,399 @@
++ export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
++ XDG_RUNTIME_DIR=/tmp/xdg
++ HOME=/tmp/home
++ mkdir -p /tmp/xdg /tmp/home
++ chmod 700 /tmp/xdg
++ mkdir -p /tmp/home/.cache/hearth
++ printf %s '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""},{"id":"beacon:bfme2","title":"The Battle for Middle-earth II","source":"beacon","cover":"","wide":"","icon":""}]'
++ export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
++ WLR_BACKENDS=headless
++ WLR_RENDERER=pixman
++ WLR_LIBINPUT_NO_DEVICES=1
++ WLR_HEADLESS_OUTPUTS=1
++ export QT_QUICK_BACKEND=software NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ QT_QUICK_BACKEND=software
++ NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
++ labwc -C hosts/linux/desktop/labwc
+++ seq 1 30
++ for i in $(seq 1 30)
++ ls '/tmp/xdg/wayland-?'
++ sleep 1
++ for i in $(seq 1 30)
++ ls /tmp/xdg/wayland-0
++ break
++++ ls /tmp/xdg/wayland-0
++++ head -1
+++ basename /tmp/xdg/wayland-0
++ export WAYLAND_DISPLAY=wayland-0
++ WAYLAND_DISPLAY=wayland-0
++ wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
++ sleep 15
++ LOG=/tmp/xdg/nimbus-shell.log
++ grim shots/1-desktop.png
++ ipc quick toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call quick toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/2-quick-access.png
++ ipc quick toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call quick toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc menu open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call menu open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/3-hearth-menu.png
++ ipc menu close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call menu close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc launcher toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/4-launcher.png
++ ipc launcher toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc launcher section games
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher section games
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/4b-launcher-games.png
++ ipc launcher close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc help toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call help toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/5-controls.png
++ ipc help toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call help toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ n=6
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page wifi
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page wifi
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/6-settings-wifi.png
++ n=7
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page bluetooth
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page bluetooth
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/7-settings-bluetooth.png
++ n=8
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page sound
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page sound
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/8-settings-sound.png
++ n=9
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page display
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page display
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/9-settings-display.png
++ n=10
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page appearance
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page appearance
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/10-settings-appearance.png
++ n=11
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page power
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page power
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/11-settings-power.png
++ n=12
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page controller
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page controller
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/12-settings-controller.png
++ n=13
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page signin
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page signin
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/13-settings-signin.png
++ n=14
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page browser
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page browser
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/14-settings-browser.png
++ n=15
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page updates
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page updates
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/15-settings-updates.png
++ n=16
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page about
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page about
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/16-settings-about.png
++ n=17
++ for p in wifi bluetooth sound display appearance power controller signin browser updates about install
++ ipc settings page install
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page install
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/17-settings-install.png
++ n=18
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc power menu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call power menu
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/18-power-menu.png
++ ipc power close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call power close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ mkdir -p /tmp/home/Desktop/Projects
++ echo hi
++ sleep 4
++ ipc desktop menu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call desktop menu
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/19-desktop-menu.png
++ ipc desktop close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call desktop close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc calendar open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call calendar open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/20-calendar.png
++ ipc calendar close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call calendar close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ mkdir -p /tmp/home/Documents/Reports /tmp/home/Templates
++ printf 'a,b\n1,2\n'
++ head -c 300000 /dev/urandom
++ echo letter
++ ipc files open /tmp/home/Documents
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files open /tmp/home/Documents
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-1-icons.png
++ ipc filemanager view details
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager view details
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager select data.csv
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager select data.csv
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-2-details.png
++ ipc filemanager menu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager menu
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-3-menu.png
++ ipc filemanager close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager view compact
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager view compact
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-4-compact.png
++ ipc filemanager search data
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager search data
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-5-search.png
++ ipc filemanager view grid
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager view grid
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc fileprops open /tmp/home/Desktop/notes.txt
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call fileprops open /tmp/home/Desktop/notes.txt
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-6-properties.png
++ ipc fileprops tab permissions
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call fileprops tab permissions
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-7-permissions.png
++ ipc fileprops tab checksums
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call fileprops tab checksums
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-8-checksums.png
++ ipc fileprops open /tmp/home/Documents
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call fileprops open /tmp/home/Documents
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-9-folder-properties.png
++ ipc fileprops close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call fileprops close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc files close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ cp /tmp/xdg/nimbus-shell.log shots/nimbus-shell.log
++ ls /tmp/xdg
++ pgrep -af 'quickshell|/qs( |$)'
++ set +x

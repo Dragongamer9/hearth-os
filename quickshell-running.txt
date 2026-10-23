@@ -1,0 +1,1 @@
+461 quickshell -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell
