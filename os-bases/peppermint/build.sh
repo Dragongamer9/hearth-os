@@ -477,6 +477,8 @@ gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
   done | tr '\n' ' ' || true
   echo
 } | tee /usr/share/nimbus/media-codecs.txt || true
+# The same as a notice on the CI run (the image build's output reaches the workflow).
+echo "::notice title=Hearth Player codecs::$(tr '\n' ' ' < /usr/share/nimbus/media-codecs.txt | cut -c1-3500)" || true
 # ---- end of Hearth Player and Hearth Calculator
 
 install -Dm644 /usr/share/nimbus/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
