@@ -437,7 +437,7 @@ PORTALS
 
 # ---- Hearth Office (hosts/hearth-office): Write, Sheets and Slides, built by CI with the app (base-peppermint.yml) and
 # carried in os/nimbus-app/office. office/install.sh puts in the program (hearth-write, hearth-sheets and
-# hearth-slides are links to it), the menu entries, icons and the .hslides file type, and makes them the default
+# hearth-slides are links to it), the menu entries and the .hslides file type (the icons are in Hearth's icon set), and makes them the default
 # apps for office files in Hearth's desktop (nimbus-mimeapps.list, so after the file manager's line above). Fonts with
 # the same sizes as Office's (Calibri, Cambria, Arial, Times New Roman), so documents keep their layout.
 "${APT[@]}" fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation2 || true
