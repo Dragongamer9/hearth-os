@@ -63,6 +63,19 @@ pub type SignInFn = std::sync::Arc<dyn Fn(&crate::stores::SignIn) -> Option<Stri
 pub const DEFERRED: &str = "__deferred";
 const WIFI_BUSY_TEXT: &str = "Wi-Fi is already busy (looking for networks or connecting). Try again in a moment.";
 
+// ==== Hearth Recorder (hosts/hearth-recorder): Quick Access records the game and saves instant replays through
+// Recorder's own command line, which answers in JSON ({"ok": false, "error": ...} when it can't).
+fn recorder_cli(args: &[&str]) -> Result<Value, String> {
+    if !crate::system::has("hearth-recorder") { return Err("Hearth Recorder isn't installed".into()); }
+    let mut a = args.to_vec();
+    a.push("--json");
+    let text = match crate::system::run_timeout("hearth-recorder", &a, std::time::Duration::from_secs(70)) { Ok(t) => t, Err(e) => e };
+    let v: Value = serde_json::from_str(text.trim()).map_err(|_| text.trim().to_string())?;
+    if v["ok"] == false { return Err(v["error"].as_str().unwrap_or("Recorder couldn't do that").to_string()); }
+    Ok(v)
+}
+// ==== end of Hearth Recorder
+
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
         let store = Store::open(paths::data_dir().join("library.json"));
@@ -517,6 +530,12 @@ impl Bridge {
                 (self.host)("screenshot", &json!({"before": false}));
                 r
             }
+            // ==== Hearth Recorder (hosts/hearth-recorder) from Quick Access › Now playing (ui/index.html recQam)
+            "recorder.status" => recorder_cli(&["--status"]),
+            "recorder.toggle" => self.later(|| recorder_cli(&["--toggle"])),
+            "recorder.replay" => self.later(|| recorder_cli(&["--replay"])),
+            "recorder.saveReplay" => self.later(|| recorder_cli(&["--save-replay"])),
+            // ==== end of Hearth Recorder
             "screenshots.list" => Ok(json!({"dir": crate::gamescope::screenshot_dir().to_string_lossy(), "list": crate::gamescope::screenshots()})),
             "screenshots.delete" => { crate::gamescope::delete_screenshot(a["file"].as_str().unwrap_or(""))?; Ok(json!({"list": crate::gamescope::screenshots()})) }
             "apps.list" => Ok(if crate::gamescope::inside() { self.apps_list() } else { json!([]) }),

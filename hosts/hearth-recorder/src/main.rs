@@ -98,7 +98,9 @@ fn cli(args: &[String]) -> Option<i32> {
     };
     let announce = !json_out;
     let r: Result<Value, String> = if has("--toggle") {
-        area().and_then(|a| hearth_recorder::toggle(a, announce))
+        // Stopping never asks for an area first.
+        if control::current().map(|s| s.kind == "record").unwrap_or(false) { hearth_recorder::stop() }
+        else { area().and_then(|a| hearth_recorder::toggle(a, announce)) }
     } else if has("--start") {
         area().and_then(|a| hearth_recorder::start(Kind::Record, a, announce).map(|s| json!({"ok": true, "started": s})))
     } else if has("--stop") {
