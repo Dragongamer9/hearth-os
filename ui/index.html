@@ -65,6 +65,7 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .cover .dl{position:absolute;left:10px;right:10px;bottom:10px;z-index:2}
 .cover .dl .bar{background:rgba(0,0,0,.55);height:6px}
 .cover .dl span{display:block;font-size:11px;font-weight:700;margin-bottom:5px;text-shadow:0 1px 6px rgba(0,0,0,.8)}
+.cover:has(.dl) .ct{bottom:44px}
 .thumb .cover{position:absolute;inset:0;border-radius:6px}
 .cover.ni .img{filter:saturate(.55) brightness(.7)}
 .play.dling{background:var(--panel3);color:var(--text);min-width:230px;flex-direction:column;align-items:stretch;gap:8px;padding:12px 22px}
@@ -633,25 +634,28 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
   .stat.hide-s,.hint.hide-s{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
-.tile.qr{position:relative}.tile.qr .qrb{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:rgba(10,14,20,.82);color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.tile.qr .qrb svg{width:12px;height:12px}
+.tile.qr{position:relative}.tile.qr .cover .src{display:none}.tile.qr .qrb{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:rgba(10,14,20,.82);color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.tile.qr .qrb svg{width:12px;height:12px}
 .qrrow{display:flex;gap:8px;align-items:stretch}.qrrow .btn:first-child{flex:1;justify-content:flex-start}
 .osi-dl{display:flex;gap:18px;align-items:baseline;margin:0 0 22px;color:var(--dim);font-size:15px}.osi-dl b{font-size:22px;color:var(--text)}
 .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}.shot{display:flex;flex-direction:column;gap:6px;padding:0;background:none;border:0;color:var(--muted);text-align:left;border-radius:12px}.shot img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;background:var(--panel2)}.shot small{padding:0 4px}
 .shotview{display:flex;flex-direction:column;gap:12px;height:calc(100vh - 170px)}.shotview img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:12px;background:#000}.shotbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.shotbar .muted{flex:1}
 .xnote{background:var(--panel);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:var(--r);padding:12px 14px;margin:0 0 12px;color:var(--dim);font-size:14px;line-height:1.45}.xnote b{color:var(--warn);margin-right:6px}
+.xdrop .rv{display:flex;align-items:center;gap:6px}.xdrop .rv svg{width:18px;height:18px;transition:transform .2s var(--ease)}.xdrop.open .rv svg{transform:rotate(180deg)}
+.xdrop+.xdrop,.xdrop-body+.xdrop{margin-top:8px}.xdrop-body{padding:12px 0 6px}
 .xcard{display:flex;flex-direction:column;gap:6px}.xvote{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:var(--panel);font-weight:700;font-size:15px;align-self:flex-start}.xvote svg{width:16px;height:16px;fill:currentColor}.xvote span{font-weight:500;color:var(--dim);font-size:13px}.xvote.on{background:color-mix(in srgb,var(--accent) 22%,var(--panel));color:var(--accent)}
 .xk{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}.xd-title{font-size:clamp(26px,3.4vw,44px);font-weight:700;line-height:1.05}.xd-meta{color:var(--dim);font-size:15px;margin:6px 0 14px}
 .xnav{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.xnav .pill svg{width:18px;height:18px}
 .xc{border-radius:var(--r);flex:none}.xc .cover{width:100%;height:100%}
-.x-car{display:flex;flex-direction:column;align-items:center;gap:18px;padding-top:4vh}.xc-strip{display:flex;gap:18px;align-items:center;justify-content:safe center;overflow-x:auto;width:100%;padding:24px 20px;scrollbar-width:none;min-height:46vh}.xc-strip::-webkit-scrollbar{display:none}
+.x-car{display:flex;flex-direction:column;align-items:center;gap:18px;padding-top:4vh}.xc-strip{display:flex;gap:18px;align-items:center;justify-content:flex-start;overflow-x:auto;width:100%;padding:24px calc(50% - 10vw);scrollbar-width:none;min-height:min(46vh,calc(30vw + 48px))}.xc-strip::-webkit-scrollbar{display:none}
 .xc-strip .xc{width:13vw;aspect-ratio:2/3;opacity:.6;transition:width .18s,opacity .18s}.xc-strip .xc.focus{width:20vw;opacity:1}.xc-info{text-align:center}.xc-info .sp-acts{justify-content:center}
-.x-rows .xr-hero{min-height:34vh;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:10px}
-.x-list{display:flex;gap:0;height:calc(100vh - 140px);margin:0 calc(-1*var(--gut))}.xl-col{width:min(400px,36vw);overflow-y:auto;padding:8px 14px;display:flex;flex-direction:column;gap:4px;background:var(--bg2);border-right:1px solid var(--line)}
-.xl-row{display:flex;align-items:center;gap:12px;padding:8px;border-radius:12px}.xl-row.focus{background:var(--panel3)}.xl-th{width:44px;height:60px;flex:none}.xl-th .cover{width:100%;height:100%}.xl-row .rt b{font-size:16px}.xl-row .rt small{color:var(--dim)}
+.x-rows .xr-hero{min-height:min(34vh,calc(100vh - 470px));display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:10px}
+.x-list{display:flex;gap:0;height:calc(100vh - var(--top) - var(--foot) - 4px);margin:0 calc(-1*var(--gut)) -40px}.xl-col{width:min(400px,36vw);overflow-y:auto;padding:8px 14px;display:flex;flex-direction:column;gap:4px;background:var(--bg2);border-right:1px solid var(--line)}
+.xl-row{display:flex;align-items:center;gap:12px;padding:8px;border-radius:12px}.xl-row.focus{background:var(--panel3)}.xl-th{width:44px;height:60px;flex:none}.xl-th .cover{width:100%;height:100%}.xl-row .rt{flex:1;min-width:0}.xl-row .rt b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.xl-row .rt small{display:block;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xl-th .ct,.xl-th .notinst,.xl-th .dl,.xm-th .ct,.xm-th .notinst,.xm-th .dl,.xw-qt .ct,.xw-qt .notinst,.xj-bar .notinst,.xf-th .ct,.xf-th .notinst{display:none}
 .xl-detail{flex:1;position:relative;overflow:hidden}.xl-bg{position:absolute!important;z-index:0}.xl-in{position:absolute;left:4vw;right:4vw;bottom:5vh;z-index:1}
 .x-wall{display:flex;flex-direction:column;gap:14px;padding-bottom:70px}.xw-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.xw-top .xnav{justify-content:flex-start}
 .xw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:12px}.xw-grid .xc{aspect-ratio:2/3}
-.xw-bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:16px;align-items:center;padding:14px var(--gut);background:var(--bg2);border-top:1px solid var(--line);z-index:5}.xw-bar span{color:var(--dim)}
+.xw-bar{position:fixed;left:0;right:0;bottom:var(--foot);display:flex;gap:16px;align-items:center;padding:14px var(--gut);background:var(--bg2);border-top:1px solid var(--line);z-index:5}.xw-bar span{color:var(--dim)}
 .x-focus{display:flex;flex-direction:column;align-items:center;gap:22px;padding-top:6vh}.xf-clock{font-size:clamp(70px,11vw,130px);font-weight:300;line-height:1}.xf-date{color:var(--dim);font-size:19px;margin-top:-10px}
 .xf-card{display:flex;align-items:center;gap:22px;padding:16px 22px 16px 16px;border-radius:20px;background:var(--panel)}.xf-th{width:84px;height:112px}.xf-th .cover{width:100%;height:100%}.xf-card .xd-meta{margin-bottom:0}
 .xf-btns{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}.xf-b{width:140px;height:96px;border-radius:18px;background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-weight:600}.xf-b svg{width:26px;height:26px}
@@ -659,24 +663,24 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .xw-big .art,.xw-big .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.xw-cap{position:absolute;left:0;right:0;bottom:0;padding:20px;background:linear-gradient(transparent,rgba(6,8,12,.92))}.xw-cap .xd-meta{margin-bottom:0}
 .xw-card{background:var(--panel);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:8px;text-align:left}.xw-line{font-size:14px}.xw-line .ing{color:#7ad15a}.xw-num{font-size:38px;font-weight:700}.xw-qr{display:flex;gap:8px}.xw-qt{width:54px;height:72px}.xw-qt .cover{width:100%;height:100%}
 .xw-strip{grid-column:1/-1;background:var(--panel);border-radius:18px;padding:16px}.xw-strip .shelf{margin-top:8px}
-.x-orbit{position:relative;height:calc(100vh - 150px)}.xo-ring{position:absolute;left:50%;top:50%;width:72vh;height:68vh;transform:translate(-50%,-50%);border:2px dashed var(--line);border-radius:50%}
-.xo-c{position:absolute;width:10vh;height:14vh}.xo-c.focus{transform:scale(1.15)}.xo-mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:30vh;text-align:center}.xo-mid .xd-title{font-size:24px}.xo-mid .sp-acts{justify-content:center}.x-orbit .xnav{position:absolute;right:0;bottom:0;flex-direction:column;align-items:flex-end}
-.x-spines{display:flex;flex-direction:column;gap:22px;padding-top:3vh}.xs-shelf{display:flex;align-items:flex-end;gap:6px;height:56vh;overflow-x:auto;padding:16px 10px 0;border-bottom:10px solid #3a2a1f;scrollbar-width:none}.xs-shelf::-webkit-scrollbar{display:none}
+.x-orbit{position:relative;height:calc(100vh - var(--top) - var(--foot) - 48px);container-type:size}.xo-ring{position:absolute;left:50%;top:50%;width:76cqh;height:76cqh;transform:translate(-50%,-50%);border:2px dashed var(--line);border-radius:50%}
+.xo-c{position:absolute;width:10cqh;height:14cqh}.xo-c.focus{transform:scale(1.15)}.xo-c .ct{font-size:11px;left:6px;right:6px;bottom:6px}.xo-c .notinst{display:none}.xo-mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(34cqh,40cqw);text-align:center}.xo-mid .xd-title{font-size:24px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.xo-mid .sp-acts{justify-content:center}.x-orbit .xnav{position:absolute;right:0;bottom:0;flex-direction:column;align-items:flex-end}
+.x-spines{display:flex;flex-direction:column;gap:22px;padding-top:3vh}.xs-shelf{display:flex;align-items:flex-end;gap:6px;height:min(56vh,calc(100vh - 380px));min-height:220px;overflow-x:auto;padding:16px 10px 0;border-bottom:10px solid #3a2a1f;scrollbar-width:none}.xs-shelf::-webkit-scrollbar{display:none}
 .xs-sp{flex:none;width:48px;height:92%;border-radius:6px 6px 0 0;background:var(--panel2);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;transition:width .2s}.xs-sp:nth-child(3n){height:86%}.xs-sp:nth-child(4n+1){height:96%}
 .xs-t{writing-mode:vertical-rl;transform:rotate(180deg);font-weight:700;font-size:14px;white-space:nowrap;color:var(--dim)}.xs-cv{display:none;position:absolute;inset:0}.xs-cv .cover{width:100%;height:100%;border-radius:0}
 .xs-sp.focus{width:min(300px,24vw);height:100%}.xs-sp.focus .xs-cv{display:block}.xs-sp.focus .xs-t{display:none}
 .x-mag .xm-mast{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:18px}.xm-mast span{font-family:Georgia,'Times New Roman',serif;font-size:34px;font-weight:700}.xm-mast small{color:var(--dim)}
-.xm-grid{display:grid;grid-template-columns:2fr 1fr;gap:26px}.xm-art{position:relative;width:100%;aspect-ratio:16/8;border-radius:16px;overflow:hidden;margin-bottom:12px;display:block}.xm-art .art,.xm-art .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.xm-grid{display:grid;grid-template-columns:2fr 1fr;gap:26px}.xm-grid.solo{grid-template-columns:1fr}.xm-art{position:relative;width:100%;aspect-ratio:16/8;max-height:calc(100vh - 420px);min-height:160px;border-radius:16px;overflow:hidden;margin-bottom:12px;display:block}.xm-art .art,.xm-art .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .xm-h{font-family:Georgia,'Times New Roman',serif;font-size:clamp(30px,3.6vw,46px);font-weight:700;line-height:1.05;margin-top:6px}.xm-side{display:flex;flex-direction:column;gap:12px}.xm-item{display:flex;gap:12px;align-items:center;text-align:left;padding:6px;border-radius:12px}
-.xm-th{width:96px;height:56px;flex:none}.xm-th .cover{width:100%;height:100%}.xm-item b{display:block;font-family:Georgia,'Times New Roman',serif;font-size:18px}.xm-item small{color:var(--dim)}
+.xm-th{width:96px;height:56px;flex:none}.xm-th .cover{width:100%;height:100%}.xm-item>div:last-child{min-width:0}.xm-item b{display:block;font-family:Georgia,'Times New Roman',serif;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.xm-item small{display:block;color:var(--dim)}
 .x-dock{position:relative;height:calc(100vh - 150px)}.xk-info{position:absolute;left:0;top:22vh;max-width:60%}.xk-dock{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:12px;padding:12px;border-radius:26px;background:rgba(18,24,33,.88);border:1px solid var(--line);align-items:center;max-width:100%;overflow-x:auto}
-.xk-ic{width:84px;height:84px;border-radius:20px;flex:none}.xk-ic .cover{border-radius:20px}.xk-dock i{width:2px;height:60px;background:var(--line);flex:none}.xk-u{background:var(--panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:600}.xk-u svg{width:24px;height:24px}
-.x-cols{display:flex;flex-direction:column;gap:16px}.xcl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}.xcl{background:var(--panel);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px;text-align:left}
-.xcl-stack{position:relative;height:170px}.xcl-c{position:absolute;top:10px;width:110px;height:150px}.xcl-c .cover{width:100%;height:100%}.xcl-c.s0{left:0;transform:rotate(-6deg)}.xcl-c.s1{left:62px;top:0;z-index:1}.xcl-c.s2{left:124px;transform:rotate(6deg)}.xcl-n{display:flex;justify-content:space-between;align-items:baseline}.xcl-n b{font-size:19px}.xcl-n small{color:var(--dim)}
+.xk-ic{width:84px;height:84px;border-radius:20px;flex:none}.xk-ic .cover{border-radius:20px;width:100%;height:100%}.xk-ic .ct{font-size:11px;left:7px;right:7px;bottom:7px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.xk-ic .notinst,.xk-ic .dl span{display:none}.xk-dock i{width:2px;height:60px;background:var(--line);flex:none}.xk-u{background:var(--panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:600}.xk-u svg{width:24px;height:24px}
+.x-cols{display:flex;flex-direction:column;gap:16px}.x-cols>.pill{align-self:flex-start}.xcl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}.xcl{background:var(--panel);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px;text-align:left}
+.xcl-stack{position:relative;height:170px}.xcl-c{position:absolute;top:10px;width:110px;height:150px}.xcl-c .cover{width:100%;height:100%}.xcl-c.s0 .ct,.xcl-c.s2 .ct,.xcl-c .notinst,.xcl-c .dl{display:none}.xcl-c .ct{font-size:13px}.xcl-c.s0{left:0;transform:rotate(-6deg)}.xcl-c.s1{left:62px;top:0;z-index:1}.xcl-c.s2{left:124px;transform:rotate(6deg)}.xcl-n{display:flex;justify-content:space-between;align-items:baseline}.xcl-n b{font-size:19px}.xcl-n small{color:var(--dim)}
 .x-jr{display:flex;flex-direction:column;gap:6px}.xj-line{height:2px;background:var(--line);margin:28px 0 -34px}.xj-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
 .xj-d{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}.xj-dot{width:14px;height:14px;border-radius:50%;background:var(--line);border:3px solid var(--bg)}.xj-d.today .xj-dot{background:var(--accent)}.xj-d small{color:var(--dim)}.xj-d.today>small:first-of-type{color:var(--accent)}
 .xj-bar{width:100%;aspect-ratio:2/3}.xj-bar .cover{width:100%;height:100%}.xj-none{width:100%;aspect-ratio:2/3;border-radius:var(--r);border:2px dashed var(--line)}.xj-d b{font-size:14px}
-.xj-now{display:flex;align-items:center;gap:16px;margin-top:20px;padding:16px 20px;border-radius:16px;background:var(--panel)}.xj-now .rt{flex:1}.xj-now small{color:var(--dim)}
+.xj-now{display:flex;align-items:center;gap:16px;margin-top:20px;padding:16px 20px;border-radius:16px;background:var(--panel)}.xj-now .rt{flex:1;min-width:0}.xj-now .rt b{display:block;font-size:17px}.xj-now small{display:block;color:var(--dim)}.xj-d b{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .logcode{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;background:var(--panel2);margin-bottom:6px}.logcode b{font-size:30px;letter-spacing:.12em;color:var(--accent);font-variant-numeric:tabular-nums}.logcode code{font-size:13px;word-break:break-all;color:var(--dim)}
 .frchips{margin:0 0 14px}.frplat{font-size:11px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:2px;background:var(--panel3);color:var(--dim)}.fp-steam{background:#1b2838;color:#66c0f4}.fp-xbox{background:#0e3a12;color:#7ad15a}.fp-epic{background:#2a2a2a;color:#ddd}.frjoin{color:var(--accent);font-weight:700}
 .frav{position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none;margin-right:12px}.frav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.frav i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#56606e;border:2px solid var(--bg)}.frow.on .frav i{background:#5aa9ff}.frow.ing .frav i{background:#7ad15a}.frow.ing small{color:#7ad15a}
@@ -771,7 +775,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 
 /* ---- experimental library layouts ---- */
 /* Cover Flow */
-.lx-flow{display:flex;flex-direction:column;justify-content:center;gap:10px}
+.lx-flow{display:flex;flex-direction:column;justify-content:center;gap:10px}.lx-flow .lfc{width:clamp(110px,min(15vw,26vh),210px)}
 .lx-flow .shelf{perspective:1100px;align-items:center;padding:30px 45%;gap:0;flex:none}
 .lfc{flex:none;width:clamp(130px,15vw,210px);aspect-ratio:2/3;margin:0 -22px;transform:rotateY(48deg) scale(.86);transition:transform .28s var(--ease)}
 .lfc .cover{width:100%;height:100%;box-shadow:0 18px 40px rgba(0,0,0,.55);-webkit-box-reflect:below 6px linear-gradient(transparent 70%,rgba(255,255,255,.18))}
@@ -779,21 +783,21 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .lfc.focus{transform:none;z-index:3;margin:0 24px}
 .lx-flow .linfo{align-self:center;width:min(640px,100%)}
 /* Bookshelf */
-.lx-spines{display:flex;flex-wrap:wrap;gap:30px 5px;padding:150px 6px 100px;background:repeating-linear-gradient(180deg,transparent 0 206px,#3b2a1d 206px 218px,transparent 218px 236px) 0 150px no-repeat}
+.lx-spines{display:flex;flex-wrap:wrap;gap:30px 5px;padding:20px 6px 100px;background:repeating-linear-gradient(180deg,transparent 0 206px,#3b2a1d 206px 218px,transparent 218px 236px) 0 20px no-repeat}
 .lsp{position:relative;width:36px;height:206px;border-radius:4px 4px 2px 2px;overflow:visible;flex:none;content-visibility:auto;contain-intrinsic-size:36px 206px}
 .lsp .lsp-b{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
 .lsp .lsp-b:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.35),transparent 30%,transparent 70%,rgba(0,0,0,.4))}
 .lsp .lsp-t{position:absolute;inset:8px 0;writing-mode:vertical-rl;transform:rotate(180deg);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:flex-start;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;z-index:1;text-shadow:0 1px 4px rgba(0,0,0,.7)}
-.lsp .lsp-cv{display:none;position:absolute;left:50%;bottom:calc(100% - 30px);width:110px;aspect-ratio:2/3;transform:translateX(-50%);z-index:5}
+.lsp .lsp-cv{display:none;position:absolute;inset:0;z-index:5}.lsp .lsp-cv .ct{font-size:13px}.lsp{transition:width .18s var(--ease)}
 .lsp .lsp-cv .cover{width:100%;height:100%;box-shadow:0 14px 40px rgba(0,0,0,.6)}
-.lsp.focus{transform:translateY(-14px);z-index:4;content-visibility:visible}
-.lsp.focus .lsp-cv{display:block}
+.lsp.focus{width:137px;transform:translateY(-8px);z-index:4;content-visibility:visible}
+.lsp.focus .lsp-cv{display:block}.lsp.focus .lsp-t{display:none}
 /* Timeline */
 .lx-tl .lrow{position:relative;padding-left:30px}
 .lx-tl .lrow:before{content:"";position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--line)}
 .lx-tl .lrow:after{content:"";position:absolute;left:3px;top:24px;width:12px;height:12px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--bg)}
 /* Store towers */
-.lx-tw{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none}
+.lx-tw.lfit{display:flex;gap:14px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
 .ltw{flex:1 0 220px;max-width:320px;display:flex;flex-direction:column;min-height:0;background:var(--panel);border-radius:14px;overflow:hidden}
 .ltw h3{padding:12px 14px 8px;font-size:15px;display:flex;justify-content:space-between;align-items:baseline}
 .ltw h3 small{color:var(--faint);font-size:12px}
@@ -803,7 +807,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .ltw-r .ll-th{width:30px;flex:none}
 .ltw-r .rt{min-width:0}.ltw-r b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ltw-r small{color:var(--dim);font-size:12px}
 /* Constellations */
-.lx-stars{display:flex;flex-wrap:wrap;gap:24px;justify-content:center;padding:6px 0 100px}
+.lx-stars{display:flex;flex-wrap:wrap;gap:34px 24px;justify-content:center;padding:6px 0 120px}
 .lcl{position:relative;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 9%,transparent),transparent 70%)}
 .lcl>b{position:absolute;left:0;right:0;bottom:-20px;text-align:center;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
 .lstar{position:absolute;width:var(--s);height:var(--s);margin:calc(var(--s)/-2) 0 0 calc(var(--s)/-2);border-radius:50%;background:radial-gradient(circle,#fff 0 30%,hsla(var(--h),90%,75%,.9) 45%,transparent 72%)}
@@ -811,9 +815,9 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .lstar.focus{box-shadow:0 0 0 2px var(--accent),0 0 22px var(--accent);transform:scale(1.5);z-index:3}
 /* Arcade cabinet */
 .lx-arc{display:flex;flex-direction:column;align-items:center;gap:8px}
-.lcab{flex:1;min-height:0;width:min(760px,92%);display:flex;flex-direction:column;border-radius:22px 22px 10px 10px;background:linear-gradient(180deg,#2a1d3f,#151020);padding:12px 22px 14px;box-shadow:0 0 0 3px #3d2b5c,0 20px 60px rgba(0,0,0,.5)}
+.lcab{flex:1 1 0;min-height:0;max-height:calc(100% - 120px);width:min(760px,92%);display:flex;flex-direction:column;border-radius:22px 22px 10px 10px;background:linear-gradient(180deg,#2a1d3f,#151020);padding:12px 22px 14px;box-shadow:0 0 0 3px #3d2b5c,0 20px 60px rgba(0,0,0,.5)}
 .lcab-m{text-align:center;font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:clamp(14px,1.6vw,20px);padding:6px;border-radius:8px;background:linear-gradient(90deg,#ff5fa2,#ffd166,#5fd0ff);color:#1a1020;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lcab-s{position:relative;flex:1;min-height:60px;margin:10px 0;border-radius:14px;overflow:hidden;border:6px solid #0a0710;box-shadow:inset 0 0 40px rgba(0,0,0,.8)}
+.lcab-s{position:relative;flex:1 1 0;min-height:60px;margin:10px 0;border-radius:14px;overflow:hidden;border:6px solid #0a0710;box-shadow:inset 0 0 40px rgba(0,0,0,.8)}
 .lcab-s .art,.lcab-s .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .lcab-s:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 2px,transparent 2px 4px)}
 .lcab-s .lcab-t{position:absolute;left:16px;bottom:12px;right:16px;z-index:1;font-size:clamp(18px,2vw,26px);font-weight:800;text-shadow:0 2px 12px #000}
@@ -830,11 +834,11 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 /* Stats board */
 .lx-stats .lsum{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:4px 0 16px}
 .lx-stats .lsum div{background:var(--panel);border-radius:12px;padding:12px 16px}
-.lx-stats .lsum small{color:var(--faint);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.lx-stats .lsum small{color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .lx-stats .lsum b{display:block;font-size:22px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lsr{display:grid;grid-template-columns:44px 34px minmax(140px,1.2fr) 2fr 80px;align-items:center;gap:14px;padding:6px 12px;border-radius:var(--r);width:100%;content-visibility:auto;contain-intrinsic-size:auto 62px}
 .lsr.focus{background:var(--panel2)}
-.lsr .n{color:var(--faint);font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
+.lsr .n{color:var(--dim);font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
 .lsr .ll-th{width:34px}
 .lsr b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 .lsr .lbar{height:10px;border-radius:5px;background:var(--panel3);overflow:hidden}
@@ -867,7 +871,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .lx-deck .ldh{padding:clamp(10px,4vh,40px) 4px 0;max-width:640px}
 .lx-deck .ldh .ld-title{font-size:clamp(28px,3.4vw,46px)}
 .lx-deck .ldh .xd-meta{color:var(--dim);margin:8px 0 14px}
-.lx-deck .shelf{padding:70px 45% 30px;align-items:flex-end;flex:none}
+.lx-deck .shelf{padding:56px 45% 24px;align-items:flex-end;flex:none}.lx-deck .ldk{width:clamp(100px,min(12vw,24vh),160px)}
 .ldk{flex:none;width:clamp(120px,12vw,160px);aspect-ratio:2/3;margin-left:-54px;transform:rotate(var(--r)) translateY(var(--y));transform-origin:50% 120%;transition:transform .22s var(--ease)}
 .ldk:first-child{margin-left:0}
 .ldk .cover{width:100%;height:100%;box-shadow:-8px 10px 24px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.12)}
@@ -882,7 +886,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .lmo.s2{grid-column:span 2;grid-row:span 2}
 .lmo.w{grid-column:span 2}
 .lmo.focus{transform:scale(1.05);z-index:2}
-.lmo .lmh{position:absolute;top:8px;left:8px;z-index:2;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px;background:rgba(0,0,0,.55)}
+.lmo .notinst{display:none}.lmo .lmh{position:absolute;top:8px;left:8px;z-index:2;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px;background:rgba(0,0,0,.55)}
 
 /* Settings: Library layout previews */
 .lprev .lp-a{background:var(--accent)}.lprev .lp-t{background:var(--text)}.lprev .lp-p{background:var(--panel2)}
@@ -1440,13 +1444,16 @@ const XLAYOUTS = [
   {id:'x-collections', name:'Collections', desc:'Favorites, your collections, installed and unplayed games as cards.'},
   {id:'x-journal', name:'Play journal', desc:'Your week of playing as a timeline, with today\'s game ready to resume.'},
 ];
-const isX = id => XLAYOUTS.some(l=>l.id===id);
+// Keyboard & mouse layouts (Experimental · Keyboard & mouse): the same three on Home and in the Library.
+const MK_LAYOUTS = [];
+const MK_NOTE = `<b>Experimental · Keyboard &amp; mouse</b> Made for a mouse and keyboard: hover a game for Play, right-click it for everything else, Enter plays, Space shows details, F favorites, Ctrl+K or just typing searches. A controller still works. Upvote the ones you'd like to see finished.`;
+const isX = id => XLAYOUTS.some(l=>l.id===id) || MK_LAYOUTS.some(l=>l.id===id);
 const TEXT_SIZES = [['small','Small',0.9],['normal','Default',1],['large','Large',1.15],['xl','Extra large',1.3]];
 function applyLook(){
   if(!LAYOUTS.some(l=>l.id===LOOK.layout) && !isX(LOOK.layout)) LOOK.layout='shelf';
   const b=document.body;
   // Experimental layouts use Spotlight's frame (the menu along the top) plus their own class.
-  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id));
+  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id), ...MK_LAYOUTS.map(l=>'X-'+l.id));
   if(isX(LOOK.layout)){ b.classList.add('L-spotlight','X-'+LOOK.layout); } else b.classList.add('L-'+LOOK.layout);
   b.classList.toggle('reduce-motion', !!LOOK.reduceMotion);
   b.classList.toggle('hc', !!LOOK.highContrast);   // Accessibility: high contrast
@@ -1972,13 +1979,24 @@ function updateSpot(id){
 // Beta: they may change or go away and don't get every update. Everyone can upvote the ones they like; the
 // counts come live from Hearth OS's server (the player counter's), one vote per device.
 
-const XV = {votes:null, mine:{}, timer:null, open:false};
+const XV = {votes:null, mine:{}, timer:null};
 try{ XV.mine = JSON.parse(localStorage.getItem('hearth.xvotes')||'{}')||{}; }catch(e){}
+// The experimental drop-downs (Appearance: home-x, home-mk; Library layout: lib-x, lib-mk): closed at first, and
+// they stay as you left them.
+const XOPEN = {};
+try{ Object.assign(XOPEN, JSON.parse(localStorage.getItem('hearth.xopen')||'{}')||{}); }catch(e){}
+function xDropToggle(id){ XOPEN[id]=!XOPEN[id]; try{ localStorage.setItem('hearth.xopen', JSON.stringify(XOPEN)); }catch(e){} if(XOPEN[id]) loadVotes(); render('xd-'+id,true); }
+function xDrop(id, title, sub, inner){
+  const open=!!XOPEN[id];
+  return `<button class="row xdrop ${open?'open':''}" data-f data-k="xd-${id}" data-act="xDrop" data-v="${id}" aria-expanded="${open}"><span class="ricon">${I.layout}</span><div class="rt"><b>${title}</b><small>${sub}</small></div><div class="rv"><span class="xchev">${open?'Hide':'Show'}</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div></button>`
+    + (open ? `<div class="xdrop-body">${inner}</div>` : '');
+}
+const xVote = l => `<button class="xvote ${XV.mine[l.id]?'on':''}" data-f data-k="xv-${l.id}" data-act="xvote" data-v="${l.id}" aria-label="Upvote ${esc(l.name)}"><svg viewBox="0 0 24 24"><path d="M12 5l7 8h-4v6H9v-6H5z"/></svg>${XV.votes?(XV.votes[l.id]||0):'…'}<span>${XV.mine[l.id]?'Upvoted':'Upvote'}</span></button>`;
 function loadVotes(){
   if(!host && !LINUX) return;
   fetch(COUNTER.url+'/v1/votes').then(r=>r.json()).then(v=>{ XV.votes=v.counts||{}; if(S.view==='settings'&&(S.settingsTab==='appearance'||S.settingsTab==='liblook')) render(null,true); }).catch(()=>{});
 }
-function watchVotes(on){ clearInterval(XV.timer); XV.timer=null; if(on){ loadVotes(); XV.timer=setInterval(()=>{ if(S.view==='settings'&&(S.settingsTab==='appearance'||S.settingsTab==='liblook')) { if(XV.open||S.settingsTab==='liblook') loadVotes(); } else watchVotes(false); },20000); } }
+function watchVotes(on){ clearInterval(XV.timer); XV.timer=null; if(on){ loadVotes(); XV.timer=setInterval(()=>{ if(S.view==='settings'&&(S.settingsTab==='appearance'||S.settingsTab==='liblook')) { if(Object.values(XOPEN).some(Boolean)) loadVotes(); } else watchVotes(false); },20000); } }
 function vote(id){
   const up=!XV.mine[id]; XV.mine[id]=up; try{ localStorage.setItem('hearth.xvotes', JSON.stringify(XV.mine)); }catch(e){}
   XV.votes=XV.votes||{}; XV.votes[id]=Math.max(0,(XV.votes[id]||0)+(up?1:-1));
@@ -1986,11 +2004,10 @@ function vote(id){
   fetch(COUNTER.url+'/v1/vote',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:counterId(),layout:id,up})})
     .then(r=>r.json()).then(v=>{ if(v.counts){ XV.votes=v.counts; render('xv-'+id,true); } }).catch(()=>toast('Couldn\'t send your vote. Check the internet connection.'));
 }
-function xCards(){
-  return `<div class="xnote"><b>Experimental · beta</b> These layouts are early experiments. They may look rough, change or be removed, and they won't always get the fixes and updates the main layouts do. Upvote the ones you'd like to see finished: the counts are everyone's, live.</div>
-    <div class="layouts">${XLAYOUTS.map(l=>`<div class="xcard"><button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
-      <div class="lprev">${xPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>
-      <button class="xvote ${XV.mine[l.id]?'on':''}" data-f data-k="xv-${l.id}" data-act="xvote" data-v="${l.id}" aria-label="Upvote ${esc(l.name)}"><svg viewBox="0 0 24 24"><path d="M12 5l7 8h-4v6H9v-6H5z"/></svg>${XV.votes?(XV.votes[l.id]||0):'…'}<span>${XV.mine[l.id]?'Upvoted':'Upvote'}</span></button></div>`).join('')}</div>`;
+function xCards(list, note){
+  return `<div class="xnote">${note||`<b>Experimental · beta</b> These layouts are early experiments. They may look rough, change or be removed, and they won't always get the fixes and updates the main layouts do. Upvote the ones you'd like to see finished: the counts are everyone's, live.`}</div>
+    <div class="layouts">${(list||XLAYOUTS).map(l=>`<div class="xcard"><button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
+      <div class="lprev">${xPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>${xVote(l)}</div>`).join('')}</div>`;
 }
 function xPreview(id){
   const r=(l,t,w,h,x='')=>`<i style="left:${l}%;top:${t}%;width:${w}%;height:${h}%;${x}"></i>`, A='background:var(--accent)', T='background:var(--text)';
@@ -2070,7 +2087,7 @@ function homeX(V){
   }
   if(id==='x-orbit'){
     const ring=L.slice(0,9);
-    return xBg(g)+`<div class="x-orbit"><div class="xo-ring"></div>${ring.map((x,i)=>{ const a=-Math.PI/2+i/ring.length*Math.PI*2; return `<button class="xc xo-c" style="left:calc(50% + ${Math.cos(a)*36}vh - 5vh);top:calc(50% + ${Math.sin(a)*34}vh - 7vh)" data-f data-k="xo-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}">${cover(x,{badge:false})}</button>`; }).join('')}
+    return xBg(g)+`<div class="x-orbit"><div class="xo-ring"></div>${ring.map((x,i)=>{ const a=-Math.PI/2+i/ring.length*Math.PI*2; return `<button class="xc xo-c" style="left:calc(50% + ${(Math.cos(a)*38).toFixed(2)}cqh - 5cqh);top:calc(50% + ${(Math.sin(a)*38).toFixed(2)}cqh - 7cqh)" data-f data-k="xo-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}">${cover(x,{badge:false})}</button>`; }).join('')}
       <div class="xo-mid" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>${xNav()}</div>`;
   }
   if(id==='x-spines') return `<div class="x-spines"><div class="xs-shelf" data-row>${L.map(x=>`<button class="xs-sp" data-f data-k="xs-${x.id}" data-act="${xAct(x)}" data-id="${esc(x.id)}" data-xspot="${esc(x.id)}"><span class="xs-t">${esc(x.title)}</span><div class="xs-cv">${cover(x,{badge:false})}</div></button>`).join('')}</div>
@@ -2078,9 +2095,9 @@ function homeX(V){
   if(id==='x-magazine'){
     const side=L.slice(1,6), line=x=>isActive(x)?dlInfo(x).label:!x.last?`Added ${ago(x.added).toLowerCase()}, not played yet`:x.hrs?`${hrs(x.hrs)} played`:SOURCES[x.src];
     return `<div class="x-mag"><div class="xm-mast"><span>The Hearth</span><small>${new Date().toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'})}</small></div>
-      <div class="xm-grid"><div class="xm-lead"><button class="xm-art" data-f data-k="xm-lead" data-act="${xAct(g)}" data-id="${esc(g.id)}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</button>
+      <div class="xm-grid${side.length?'':' solo'}"><div class="xm-lead"><button class="xm-art" data-f data-k="xm-lead" data-act="${xAct(g)}" data-id="${esc(g.id)}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</button>
         <div class="xk">${g.last?'Pick up where you left off':'Waiting for you'}</div><div class="xm-h">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div><div class="sp-acts">${xPlay(g,'xm-play')}</div></div>
-      <div class="xm-side"><div class="xk">Also in your library</div>${side.map(x=>`<button class="xm-item" data-f data-k="xm-${x.id}" data-act="game" data-id="${esc(x.id)}"><div class="xm-th">${cover(x,{badge:false,wide:true})}</div><div><b>${esc(x.title)}</b><small>${esc(line(x))}</small></div></button>`).join('')}</div></div></div>`;
+      ${side.length?`<div class="xm-side"><div class="xk">Also in your library</div>`:'<div hidden>'}${side.map(x=>`<button class="xm-item" data-f data-k="xm-${x.id}" data-act="game" data-id="${esc(x.id)}"><div class="xm-th">${cover(x,{badge:false,wide:true})}</div><div><b>${esc(x.title)}</b><small>${esc(line(x))}</small></div></button>`).join('')}</div></div></div>`;
   }
   if(id==='x-dock') return xBg(g)+`<div class="x-dock"><div class="xk-info" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>
     <div class="xk-dock">${L.slice(0,8).map(x=>xCover(x,'xk-'+x.id,'xk-ic',true)).join('')}<i></i>${[['library','lib','Library'],['friends','user','Friends'],['coop','pad','Couch Co-op'],['settings','gear','Settings']].filter(([v])=>(v!=='friends'||(HOSTINFO.features||[]).includes('friends'))&&(v!=='coop'||coopOn())).map(([v,ic,l])=>`<button class="xk-ic xk-u" data-f data-k="xk-${v}" data-act="nav" data-view="${v}" aria-label="${l}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
@@ -2137,8 +2154,8 @@ function pageAppearance(){
     + shead('Home layout')
     + `<div class="layouts">${LAYOUTS.map(l=>`<button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
         <div class="lprev">${layoutPreview(l.id)}</div><b>${l.name}${LOOK.layout===l.id?'<em>In use</em>':''}</b><small>${l.desc}</small></button>`).join('')}</div>`
-    + `<button class="row" data-f data-k="ap-xopen" data-act="xOpen"><span class="ricon">${I.layout}</span><div class="rt"><b>Experimental layouts · beta</b><small>${XLAYOUTS.length} early layouts to try and upvote${isX(LOOK.layout)?` · using ${esc((XLAYOUTS.find(l=>l.id===LOOK.layout)||{}).name||'')}`:''}</small></div><div class="rv">${XV.open?'Hide ▴':'Show ▾'}</div></button>`
-    + (XV.open ? xCards() : '')
+    + xDrop('home-x', 'Experimental layouts · beta', `${XLAYOUTS.length} early layouts to try and upvote${XLAYOUTS.some(l=>l.id===LOOK.layout)?` · using ${esc((XLAYOUTS.find(l=>l.id===LOOK.layout)||{}).name||'')}`:''}`, xCards(XLAYOUTS))
+    + (MK_LAYOUTS.length ? xDrop('home-mk', 'Experimental · Keyboard &amp; mouse', `${MK_LAYOUTS.length} layouts made for a mouse and keyboard${MK_LAYOUTS.some(l=>l.id===LOOK.layout)?` · using ${esc((MK_LAYOUTS.find(l=>l.id===LOOK.layout)||{}).name||'')}`:''}`, xCards(MK_LAYOUTS, MK_NOTE)) : '')
     + shead('Text, motion and top bar')
     + sgrid(`<button class="row" data-f data-k="ap-text" data-act="textSize"><span class="ricon">${I.text}</span><div class="rt"><b>Text size</b><small>Makes everything in ${APP} bigger or smaller</small></div><div class="rv">${ts} ›</div></button>`
     + lookRow('reduceMotion','Reduce motion','Turns off animations and smooth scrolling')
@@ -2527,7 +2544,7 @@ function viewLibrary(){
     <button class="pill ${S.lfilter?'on':''}" data-f data-k="lfilter" data-act="lfilter">Show: ${LFILTERS.find(f=>f[0]===(S.lfilter||''))[1]}</button>
     <button class="pill" data-f data-k="sort" data-act="sort">Sort: ${SORTS.find(s=>s[0]===S.sort)[1]}</button></div></div>
   ${L.length?libBody(L):`<div class="empty">${LIB.loading?'Loading your games…':
-     S.tab.startsWith('c:')&&!S.lfilter?'This collection is empty. Add games from a game\'s ⋯ menu (Add to collection).':S.lfilter?'No games match. Change Show to see more.':STORE_INFO[S.tab]?`Sign in to ${STORE_INFO[S.tab].name} under Stores &amp; accounts to see your games here.`:'Nothing here yet.'}</div>`}`;
+     !GAMES.length?'No games yet. Sign in to your stores under Stores &amp; accounts, or add a game from Home.':S.tab.startsWith('c:')&&!S.lfilter?'This collection is empty. Add games from a game\'s ⋯ menu (Add to collection).':S.lfilter?'No games match. Change Show to see more.':STORE_INFO[S.tab]?`Sign in to ${STORE_INFO[S.tab].name} under Stores &amp; accounts to see your games here.`:'Nothing here yet.'}</div>`}`;
 }
 
 // =====================================================================
@@ -2556,7 +2573,8 @@ const XLIB_LAYOUTS = [
   {id:'x-lib-deck', name:'Hand of cards', desc:'Your games fanned out like a hand of cards; the one you pick is lifted out.'},
   {id:'x-lib-mosaic', name:'Mosaic', desc:'Tiles sized by play time: your most played games are the biggest.'},
 ];
-const libLayout = () => { const id=LOOK.libLayout; return LIB_LAYOUTS.some(l=>l.id===id) || XLIB_LAYOUTS.some(l=>l.id===id) ? id : 'covers'; };
+const MKLIB_LAYOUTS = [];
+const libLayout = () => { const id=LOOK.libLayout; return [LIB_LAYOUTS,XLIB_LAYOUTS,MKLIB_LAYOUTS].some(L=>L.some(l=>l.id===id)) ? id : 'covers'; };
 const LST = {row:null};
 const lId = g => esc(g.id);
 const lLetter = g => { const c=((g&&g.title)||'').trim().charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; };
@@ -2636,7 +2654,8 @@ function lFit(){
   const h=Math.max(300, v.clientHeight-top-10)+'px';
   if(box.style.height!==h) box.style.height=h;
 }
-window.addEventListener('resize', ()=>{ if(S.view==='library') debounce('lfit', ()=>{ lFit(); if(focused && document.contains(focused)) focused.scrollIntoView({block:'center',inline:'center'}); }, 120); });
+window.addEventListener('resize', ()=>{ if(S.view==='library') debounce('lfit', ()=>{ if(libLayout()==='x-lib-hex' && !S.layers.length) return render(focused&&focused.dataset.k, true);   // rows are laid out for the width
+    lFit(); if(focused && document.contains(focused)){ const fit=focused.closest('.lfit'); focused.scrollIntoView({block:fit?'nearest':'center',inline:'center'}); if(fit) $('#view').scrollTop=0; } }, 120); });
 
 // Fast moves for long lists and rows (like gridMove): along a list/row it's the next one; across, the nearest
 // one in the next row/column. Nothing measured but that row. null = the usual search decides.
@@ -2773,7 +2792,7 @@ const LIBL = {
   },
   'x-lib-rolodex': L => {
     const by={}; [...L].sort((a,b)=>a.title.localeCompare(b.title)).forEach(g=>{ (by[lLetter(g)]=by[lLetter(g)]||[]).push(g); });
-    return lBg(L[0])+`<div class="lx-rx lsh">${Object.keys(by).sort().map(c=>`<section class="lrow" data-lgrp><div class="lrx-card">${c}</div><div class="shelf" data-lnav="h">${by[c].map(g=>lTile(g,'p','lrx-'+g.id)).join('')}</div></section>`).join('')}</div>`;
+    return lBg(L[0])+`<div class="lx-rx lsh">${Object.keys(by).sort().map(c=>`<section class="lrow" data-lgrp><div class="lrx-card">${c}</div><div class="shelf" data-lnav="h" data-lj>${by[c].map(g=>lTile(g,'p','lrx-'+g.id)).join('')}</div></section>`).join('')}</div>`;
   },
   'x-lib-hex': L => {
     const v=$('#view'), w=(v?v.clientWidth:1200)-80, n=Math.max(3,Math.floor((w-58)/116)), rows=[];
@@ -2793,7 +2812,7 @@ const lDeckHead = g => `<div class="ld-title">${esc(g.title)}</div><div class="x
 // The Library's games in the chosen layout (viewLibrary calls this when there are games to show).
 function libBody(L){
   const id=libLayout();
-  queueMicrotask(()=>{ if(S.view==='library'){ lFit(); if(focused && focused.closest && focused.closest('.lfit')) focused.scrollIntoView({block:'center',inline:'center'}); } });
+  queueMicrotask(()=>{ if(S.view==='library'){ lFit(); if(focused && focused.closest && focused.closest('.lfit')){ focused.scrollIntoView({block:'nearest',inline:'center'}); $('#view').scrollTop=0; } } });
   return `<div class="lwrap lw-${id}">${(LIBL[id]||LIBL.covers)(L)}</div>`;
 }
 
@@ -2827,8 +2846,12 @@ function lCard(l){
 function pageLibLook(){
   return shead('Library layout') + `<div class="layouts">${LIB_LAYOUTS.map(lCard).join('')}</div>`
     + note('How Library shows your games. Tabs (LB / RB), Show and Sort work the same in every layout.')
-    + shead('Experimental') + `<div class="xnote"><b>Beta Experimental</b> Library layouts made for fun. They may look rough, change or be removed. Upvote the ones you'd like to see finished: the counts are everyone's, live.</div>
-      <div class="layouts">${XLIB_LAYOUTS.map(l=>`<div class="xcard">${lCard(l)}<button class="xvote ${XV.mine[l.id]?'on':''}" data-f data-k="xv-${l.id}" data-act="xvote" data-v="${l.id}" aria-label="Upvote ${esc(l.name)}"><svg viewBox="0 0 24 24"><path d="M12 5l7 8h-4v6H9v-6H5z"/></svg>${XV.votes?(XV.votes[l.id]||0):'…'}<span>${XV.mine[l.id]?'Upvoted':'Upvote'}</span></button></div>`).join('')}</div>`;
+    + shead('Experimental')
+    + xDrop('lib-x', 'Experimental layouts · beta', `${XLIB_LAYOUTS.length} Library layouts made for fun${XLIB_LAYOUTS.some(l=>l.id===libLayout())?` · using ${esc(XLIB_LAYOUTS.find(l=>l.id===libLayout()).name)}`:''}`,
+        `<div class="xnote"><b>Beta Experimental</b> Library layouts made for fun. They may look rough, change or be removed. Upvote the ones you'd like to see finished: the counts are everyone's, live.</div>
+      <div class="layouts">${XLIB_LAYOUTS.map(l=>`<div class="xcard">${lCard(l)}${xVote(l)}</div>`).join('')}</div>`)
+    + (MKLIB_LAYOUTS.length ? xDrop('lib-mk', 'Experimental · Keyboard &amp; mouse', `${MKLIB_LAYOUTS.length} layouts made for a mouse and keyboard${MKLIB_LAYOUTS.some(l=>l.id===libLayout())?` · using ${esc(MKLIB_LAYOUTS.find(l=>l.id===libLayout()).name)}`:''}`,
+        `<div class="xnote">${MK_NOTE}</div><div class="layouts">${MKLIB_LAYOUTS.map(l=>`<div class="xcard">${lCard(l)}${xVote(l)}</div>`).join('')}</div>`) : '');
 }
 
 // Browser preview only: ?stress=300 adds that many made-up games (all stores, downloads, Quick Resume) to try
@@ -5348,7 +5371,7 @@ function focusables(){ return [...root().querySelectorAll('[data-f]')].filter(el
 // of gliding: a smooth scroll still moving under the next press made the next pick wrong (it bounced between
 // two items), and the glide fell behind on a handheld.
 let lastNav=0;
-const scrollOpts = (el, smooth) => { const shelf = el.closest('.shelf,.news,.tabs,.sres');
+const scrollOpts = (el, smooth) => { const shelf = el.closest('.shelf,.news,.tabs,.sres,.xc-strip,.xs-shelf,.xk-dock');
   return {block: shelf?'nearest':'center', inline: shelf?'center':'nearest', behavior: smooth?'smooth':'auto'}; };
 /** Ends a smooth scroll still under way (jumps to where it was going), so positions are final. */
 function settleScroll(){ if(focused && document.contains(focused)) focused.scrollIntoView(scrollOpts(focused, false)); }
@@ -5701,7 +5724,7 @@ function act(el){
     case 'dlClearRecent': DL_DONE.length=0; DLS.recent=[]; return call('downloads.clearRecent').then(()=>render(null,true)).catch(e=>toast(e.message));
     case 'stores': closeAll(); return S.view==='stores' ? null : navigate('stores');
     case 'xvote': return vote(d.v);
-    case 'xOpen': XV.open=!XV.open; if(XV.open) loadVotes(); return render('ap-xopen',true);
+    case 'xDrop': return xDropToggle(d.v);
     case 'libJump': return lJumpTo(d.v);
     case 'xLib': closeAll(); S.tab=d.tab||'all'; S.lfilter=d.filter||''; S.history=[]; return navigate('library',{},false);
     case 'frPlat': FR.plat=d.v; return render('frp-'+d.v,true);
