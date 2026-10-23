@@ -2,6 +2,8 @@
 // A single error can leave the app blank, so a release that fails this isn't published.
 //   npm i --no-save playwright@1.48.2 && npx playwright install chromium && node tools/ui-check.js
 const { chromium } = require('playwright');
+// 'up' / 'down' when a list of names is sorted that way.
+const MKSORTED = L => L.every((x, i) => !i || L[i - 1].localeCompare(x) <= 0) ? 'up' : L.every((x, i) => !i || L[i - 1].localeCompare(x) >= 0) ? 'down' : 'neither';
 const path = require('path');
 
 (async () => {
@@ -246,7 +248,7 @@ const path = require('path');
     seatsAct({v: 'pair', n: '3'}); if (!S.layers.includes('sheet') || !/Moonlight/.test(document.body.textContent)) throw new Error('no pairing sheet'); closeAll();
     SE.status = null; SE.stream = null; SE.draft = null; S.layers = []; HOSTINFO.features = HOSTINFO.features.filter(f => f !== 'seats'); navigate('home', {}, false);
   });
-  const layouts = await page.evaluate(() => [...(typeof LAYOUTS !== 'undefined' ? LAYOUTS : []), ...(typeof XLAYOUTS !== 'undefined' ? XLAYOUTS : [])].map(l => l.id));
+  const layouts = await page.evaluate(() => [...(typeof LAYOUTS !== 'undefined' ? LAYOUTS : []), ...(typeof XLAYOUTS !== 'undefined' ? XLAYOUTS : []), ...(typeof MK_LAYOUTS !== 'undefined' ? MK_LAYOUTS : [])].map(l => l.id));
   for (const id of layouts) await step('layout ' + id, id => { LOOK.layout = id; saveLook(); S.layers = []; navigate('home', {}, false); }, id);
   // Library layouts (Settings › You › Library): each shows every game of the tab, moving fills its panel / info bar
   // without drawing the page again, and Back from a game's page finds the same game.
@@ -372,6 +374,94 @@ const path = require('path');
     act(q('xd-lib-x'));
     closeAll(); navigate('home', {}, false);
   });
+  // Keyboard & mouse layouts (Desk grid, Table, Launcher; Home and Library), driven with a real keyboard and mouse:
+  // hover shows Play, right-click opens Hearth's menu (never a browser dialog), Enter plays, Space opens the game,
+  // F favorites, Ctrl+K and typing search, double-click plays; Table headers sort and Shift/Ctrl-click pick several;
+  // a controller's A still opens the game.
+  {
+    const ev = f => page.evaluate(f);
+    const mk = async (view, id) => {
+      await page.evaluate(([view, id]) => { closeAll(); S.history = []; S.tab = 'all'; S.lfilter = ''; S.sort = 'recent'; MK.q = ''; MK.sel.clear(); MK.cur = null;
+        window.__launched = null; window.launch = g => { window.__launched = g.id; };
+        if (view === 'home') LOOK.layout = id; else { LOOK.layout = 'shelf'; LOOK.libLayout = id; }
+        saveLook(); navigate(view, {}, false); }, [view, id]);
+      await wait(200);
+    };
+    const center = sel => page.evaluate(sel => { const e = document.querySelector(sel); if (!e) return null; e.scrollIntoView({block: 'nearest'}); const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + Math.min(r.height / 2, 40)}; }, sel);
+    const realLaunch = await ev(() => { window.__realLaunch = window.launch; window.__dialogs = 0; window.alert = window.confirm = () => { window.__dialogs++; return true; }; return true; });
+    try {
+      for (const [view, id] of [['library', 'mk-lib-desk'], ['library', 'mk-lib-table'], ['library', 'mk-lib-launcher'], ['home', 'mk-desk'], ['home', 'mk-table'], ['home', 'mk-launcher']]) {
+        await mk(view, id);
+        const n = await ev(() => ({games: document.querySelectorAll('#view [data-f][data-mkplay]').length, q: !!document.querySelector('#view [data-k="mk-q"]'), err: !document.querySelector('#view .mk')}));
+        if (n.err || !n.games || !n.q) errors.push(`${id}: drew ${n.games} games, search box ${n.q}`);
+      }
+      // Desk grid
+      await mk('library', 'mk-lib-desk');
+      await page.keyboard.press('Shift');   // a keyboard
+      const card = '#view .mkgrid .mkc';
+      const id0 = await ev(() => { const c = document.querySelector('#view .mkgrid .mkc'); setFocus(c, true); return c.dataset.id; });
+      const fav0 = await ev(() => !!G(document.querySelector('#view .mkgrid .mkc').dataset.id).fav);
+      await page.keyboard.press('f'); await wait(100);
+      if ((await page.evaluate(id => !!G(id).fav, id0)) === fav0) errors.push('Desk grid: F did not change the favorite');
+      await page.evaluate(id => setFocus(document.querySelector(`#view [data-k="mkd-${id}"]`), true), id0);
+      await page.keyboard.press('Enter'); await wait(100);
+      if ((await ev(() => window.__launched)) !== id0) errors.push('Desk grid: Enter did not play the game');
+      await page.keyboard.press(' '); await wait(150);
+      if ((await ev(() => S.view + ':' + S.game)) !== 'game:' + id0) errors.push('Desk grid: Space did not open the game');
+      await ev(() => goBack()); await wait(200);
+      await page.keyboard.press('Control+k'); await wait(100);
+      if ((await ev(() => focused && focused.dataset.k)) !== 'mk-q') errors.push('Desk grid: Ctrl+K did not go to the search box');
+      await page.keyboard.type('zzqx'); await wait(150);
+      if ((await ev(() => [MK.q, document.querySelectorAll('#view .mkgrid .mkc').length].join()))!== 'zzqx,0') errors.push('Desk grid: typing in the search box did not filter: ' + (await ev(() => MK.q)));
+      await page.keyboard.press('Escape'); await wait(100);
+      if (await ev(() => MK.q)) errors.push('Desk grid: Esc did not clear the search');
+      await ev(() => setFocus(document.querySelector('#view .mkgrid .mkc'), true));
+      await page.keyboard.press('s'); await wait(100);
+      if ((await ev(() => [focused && focused.dataset.k, MK.q].join())) !== 'mk-q,s') errors.push('Desk grid: typing a letter did not start a search');
+      await ev(() => { MK.q = ''; mkRender(); });
+      let c = await center(card);
+      await page.mouse.move(c.x - 50, c.y); await page.mouse.move(c.x, c.y, {steps: 4}); await wait(250);
+      if (!(await ev(() => { const o = document.querySelector('#view .mkgrid .mkc:hover .mko'); return o && +getComputedStyle(o).opacity > .5; }))) errors.push('Desk grid: hovering a game shows no Play');
+      await page.mouse.click(c.x, c.y, {button: 'right'}); await wait(200);
+      if (!(await ev(() => S.layers.includes('mkmenu') && document.querySelectorAll('#mkmenu .mkm-i').length >= 4))) errors.push("Desk grid: right-click did not open Hearth's menu");
+      await page.keyboard.press('Escape'); await wait(150);
+      if (await ev(() => S.layers.includes('mkmenu'))) errors.push('Desk grid: Esc did not close the menu');
+      await ev(() => { window.__launched = null; });
+      c = await center(card + ' > b');
+      await page.mouse.dblclick(c.x, c.y); await wait(450);
+      if (!(await ev(() => window.__launched))) errors.push('Desk grid: double-click did not play');
+      if ((await ev(() => S.view)) !== 'library') { errors.push('Desk grid: double-click also opened the game page'); await ev(() => goBack()); }
+      // Table
+      await mk('library', 'mk-lib-table');
+      c = await center('#view [data-k="mkh-name"]'); await page.mouse.click(c.x, c.y); await wait(150);
+      const order = await ev(() => [...document.querySelectorAll('#view .mk-tbody [data-id]')].map(e => G(e.dataset.id).title.toLowerCase()));
+      if (MKSORTED(order) !== 'up') errors.push('Table: the Name header did not sort A–Z');
+      c = await center('#view [data-k="mkh-name"]'); await page.mouse.click(c.x, c.y); await wait(150);
+      const order2 = await ev(() => [...document.querySelectorAll('#view .mk-tbody [data-id]')].map(e => G(e.dataset.id).title.toLowerCase()));
+      if (MKSORTED(order2) !== 'down') errors.push('Table: clicking Name again did not reverse it');
+      const rows = await ev(() => [...document.querySelectorAll('#view .mk-tbody .mkr')].slice(0, 5).map(e => e.dataset.k));
+      const rowAt = async k => { const p = await center(`#view [data-k="${k}"] .mkr-n`); return p; };
+      let p = await rowAt(rows[0]); await page.mouse.click(p.x, p.y); await wait(120);
+      p = await rowAt(rows[2]); await page.keyboard.down('Shift'); await page.mouse.click(p.x, p.y); await page.keyboard.up('Shift'); await wait(120);
+      if ((await ev(() => MK.sel.size)) !== 3) errors.push('Table: Shift-click did not pick the range: ' + (await ev(() => MK.sel.size)));
+      p = await rowAt(rows[4]); await page.keyboard.down('Control'); await page.mouse.click(p.x, p.y); await page.keyboard.up('Control'); await wait(120);
+      if ((await ev(() => MK.sel.size)) !== 4) errors.push('Table: Ctrl-click did not add one');
+      if (!(await ev(() => !!document.querySelector('#view .mk-bulk')))) errors.push('Table: no bar for the picked games');
+      if ((await ev(() => S.view)) !== 'library') errors.push('Table: clicking rows left the Library');
+      await ev(() => { setFocus(document.querySelector('#view .mk-tbody .mkr'), true); padPressed('a'); }); await wait(150);
+      if ((await ev(() => S.view)) !== 'game') errors.push("Table: a controller's A on a row did not open the game");
+      await ev(() => { closeAll(); goBack(); });
+      // Launcher
+      await mk('library', 'mk-lib-launcher');
+      const pick = await ev(() => { const e = [...document.querySelectorAll('#view .mkl-g')][2]; return e && e.dataset.k; });
+      p = await center(`#view [data-k="${pick}"]`); await page.mouse.click(p.x, p.y); await wait(150);
+      if (!(await page.evaluate(k => document.querySelector('#mkHero').dataset.id === document.querySelector(`#view [data-k="${k}"]`).dataset.id, pick))) errors.push('Launcher: clicking a game did not show it');
+      await ev(() => { window.__launched = null; }); await page.keyboard.press('Enter'); await wait(100);
+      if (!(await ev(() => window.__launched))) errors.push('Launcher: Enter did not play the picked game');
+      if (await ev(() => window.__dialogs)) errors.push('a browser dialog (alert / confirm) came up');
+    } catch (e) { errors.push('keyboard & mouse layouts: ' + e.message.split('\n')[0]); }
+    await ev(() => { window.launch = window.__realLaunch; closeAll(); LOOK.layout = 'shelf'; LOOK.libLayout = 'covers'; saveLook(); S.history = []; navigate('home', {}, false); });
+  }
   // The lock screen's and the Focus layout's big clocks keep time (they kept the time they were drawn at).
   await step('big clocks keep time', () => {
     S.layers = []; S.view = 'lock'; render(null, true);

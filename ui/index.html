@@ -684,6 +684,117 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .logcode{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;background:var(--panel2);margin-bottom:6px}.logcode b{font-size:30px;letter-spacing:.12em;color:var(--accent);font-variant-numeric:tabular-nums}.logcode code{font-size:13px;word-break:break-all;color:var(--dim)}
 .frchips{margin:0 0 14px}.frplat{font-size:11px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:2px;background:var(--panel3);color:var(--dim)}.fp-steam{background:#1b2838;color:#66c0f4}.fp-xbox{background:#0e3a12;color:#7ad15a}.fp-epic{background:#2a2a2a;color:#ddd}.frjoin{color:var(--accent);font-weight:700}
 .frav{position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none;margin-right:12px}.frav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.frav i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#56606e;border:2px solid var(--bg)}.frow.on .frav i{background:#5aa9ff}.frow.ing .frav i{background:#7ad15a}.frow.ing small{color:#7ad15a}
+/* ===================== Keyboard & mouse layouts (Experimental · Keyboard & mouse) ===================== */
+.mk{display:flex;height:calc(100vh - var(--top) - var(--foot) - 4px);margin:0 calc(-1*var(--gut)) -40px;background:var(--bg);min-height:320px}
+.mk-scroll{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent}
+.mk-side{width:clamp(180px,17vw,230px);flex:none;border-right:1px solid var(--line);background:var(--bg2);padding:14px 10px 20px;display:flex;flex-direction:column;gap:16px}
+.mk-grp{display:flex;flex-direction:column;gap:2px}
+.mk-h{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:0 10px 6px}
+.mk-add{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;color:var(--dim);font-size:15px}.mk-add:hover,.mk-add.focus{color:var(--text);background:var(--panel2)}
+.mks{display:flex;align-items:center;gap:9px;min-height:32px;padding:0 10px;border-radius:7px;color:#b8c2ce;font-size:13px;font-weight:500}
+.mks span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mks small{color:var(--dim);font-size:12px}
+.mks i{width:8px;height:8px;border-radius:2px;flex:none}
+.mks:hover{background:var(--panel)}.mks.on{background:var(--panel2);color:var(--text);font-weight:600}.mks.on small{color:var(--dim)}
+.mk-none{font-size:12px;color:var(--dim);padding:2px 10px}
+.mk-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.mk-top{display:flex;align-items:center;gap:12px;padding:12px 20px 4px}
+.mk-search{display:flex;align-items:center;gap:8px;width:min(380px,100%);height:36px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--dim);font-size:13px;cursor:text;flex:none}
+.mk-search svg{width:16px;height:16px}.mk-search .q{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}.mk-search .q.ph{color:var(--dim)}
+.mk-search .caret{display:none;width:2px;height:16px;background:var(--accent);margin-left:-6px}.mk-search.focus .caret{display:block;animation:blink 1s steps(1) infinite}
+.mk-search.focus{border-color:var(--accent)}.mk-search kbd{font:inherit;font-size:11px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;color:var(--dim)}
+.mk-x{display:grid;place-items:center;width:20px;height:20px;border-radius:5px}.mk-x svg{width:13px;height:13px}.mk-x:hover{background:var(--panel3);color:var(--text)}
+.mk-nav,.mk-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;min-width:0}.mk-nav .pill svg{width:16px;height:16px}
+.mk-tabs{margin-left:0;flex:1;overflow:hidden;flex-wrap:nowrap}
+.mk-tool{display:flex;align-items:center;gap:12px;padding:10px 20px;flex-wrap:wrap;min-height:56px}
+.mk-tool h1{font-size:20px;font-weight:700;white-space:nowrap}.mk-n{color:var(--dim);font-size:13px}
+.mk-chips{display:flex;gap:6px;flex-wrap:wrap}
+.mk-chip{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:#b8c2ce;font-size:12px;font-weight:500;white-space:nowrap}
+.mk-chip svg{width:12px;height:12px}.mk-chip.ghost{border-style:dashed;background:transparent;color:var(--dim)}.mk-chip.on{background:var(--panel3);color:var(--text);border-color:var(--panel3)}.mk-chip:hover{color:var(--text)}
+.mk-tr{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.mk-sel{height:30px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--panel);font-size:12px;color:var(--dim)}.mk-sel b{color:var(--text);font-weight:600}
+.mk-size{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--dim)}.mk-size button{width:26px;height:26px;border-radius:6px;background:var(--panel);display:grid;place-items:center;font-size:14px;color:var(--text)}
+.mk-size span{display:flex;gap:3px}.mk-size i{width:12px;height:4px;border-radius:2px;background:var(--panel3)}.mk-size i.on{background:var(--accent)}
+.mk-seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}.mk-seg button{width:32px;height:28px;display:grid;place-items:center;background:var(--panel);color:var(--dim)}.mk-seg button.on{background:var(--panel3);color:var(--text)}.mk-seg svg{width:15px;height:15px}
+.mk-body{flex:1;min-height:0;padding:4px 20px 24px}
+.mkgrid.grid{grid-template-columns:repeat(auto-fill,minmax(var(--mk-w,146px),1fr));gap:18px 16px;padding:4px 2px}
+.mkc{display:flex;flex-direction:column;gap:6px;border-radius:10px;padding:4px;min-width:0;content-visibility:auto;contain-intrinsic-size:auto 260px;cursor:pointer}
+.mkc[data-f].focus{box-shadow:0 0 0 2px var(--accent)}
+.mkc-cv{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden}.mkc-cv .cover{position:absolute;inset:0;border-radius:8px}
+.mkc-cv .cover .ct{font-size:clamp(12px,calc(var(--mk-w,146px)/10),17px)}
+.mkc b{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mkc small{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-dot{position:absolute;top:8px;left:8px;width:8px;height:8px;border-radius:4px;background:#5fd068;z-index:3;box-shadow:0 0 0 2px rgba(0,0,0,.35)}
+.mkc .cover .notinst{left:auto;right:8px}
+.mkc-cv .lfav{position:absolute;right:8px;bottom:8px;z-index:3;font-size:13px;text-shadow:0 1px 6px rgba(0,0,0,.8)}
+.mko{position:absolute;inset:0;z-index:4;background:rgba(8,11,15,.58);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;opacity:0;pointer-events:none;transition:opacity .14s}
+body.mk .mkc:hover .mko{opacity:1;pointer-events:auto}
+.mko-play,.mkr-play{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 18px;border-radius:18px;background:var(--accent);color:var(--accentInk);font-weight:700;font-size:13px}
+.mko-play svg,.mkr-play svg{width:13px;height:13px;fill:currentColor;stroke:none}.mko-play.sm{height:30px;padding:0 13px;font-size:12px}
+.mko-r{display:flex;gap:6px}.mko-b{width:32px;height:32px;border-radius:16px;border:1px solid rgba(255,255,255,.3);background:rgba(0,0,0,.35);color:#fff;display:grid;place-items:center}.mko-b svg{width:15px;height:15px}.mko-b.on{color:#ffd166}.mko-b.on svg{fill:currentColor}
+.mko-play:hover,.mko-b:hover{filter:brightness(1.15)}
+.mk-rec{padding:6px 20px 0}.mk-recs{gap:12px;padding:4px 2px 8px}
+.mk-rc{position:relative;flex:none;width:clamp(200px,19vw,260px);aspect-ratio:16/8;border-radius:10px;overflow:hidden;cursor:pointer}
+.mk-rc .art,.mk-rc .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.mk-rc:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 35%,rgba(6,8,12,.9))}
+.mk-rc-t{position:absolute;left:12px;right:12px;bottom:10px;z-index:1;display:flex;flex-direction:column}.mk-rc-t b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mk-rc-t small{font-size:12px;color:#c3ccd6}
+.mk-rc .mko-play{position:absolute;right:10px;top:10px;z-index:2;opacity:0;transition:opacity .14s}body.mk .mk-rc:hover .mko-play{opacity:1}
+.mk-empty{padding:40px 10px;color:var(--dim);font-size:15px;display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+/* rows: the Table, and the Desk's list view */
+.mk-rows,.mk-tbody{display:flex;flex-direction:column}
+.mkr{display:grid;grid-template-columns:minmax(0,2.4fr) minmax(70px,.8fr) minmax(90px,.9fr) minmax(70px,.7fr) minmax(70px,.7fr) minmax(96px,.9fr) 84px;align-items:center;gap:12px;min-height:44px;padding:4px 12px;border-radius:8px;font-size:13px;color:#b8c2ce;content-visibility:auto;contain-intrinsic-size:auto 46px}
+.mk-table .mkr{grid-template-columns:28px minmax(0,2.4fr) minmax(70px,.8fr) minmax(90px,.9fr) minmax(70px,.7fr) minmax(70px,.7fr) minmax(90px,.8fr) 52px}
+.mkr>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mkr:hover{background:var(--panel)}.mkr.focus{background:var(--panel2);box-shadow:inset 0 0 0 2px var(--accent)}.mkr.sel{background:color-mix(in srgb,var(--accent) 14%,var(--panel))}
+.mkr-n{display:flex;align-items:center;gap:10px;min-width:0}.mkr-n b{color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mkr-th{width:24px;aspect-ratio:3/4;flex:none;position:relative}.mkr-th .cover{position:absolute;inset:0;border-radius:4px}.mkr-th .ct,.mkr-th .notinst,.mkr-th .dl{display:none}
+.mkr-p{text-align:right;overflow:visible!important}.mkr-play{height:28px;padding:0 10px;font-size:12px;opacity:0;pointer-events:none}.mk-table .mkr-play{width:28px;padding:0;justify-content:center;border-radius:14px;font-size:0;gap:0}
+body.mk .mkr:hover .mkr-play{opacity:1;pointer-events:auto}.mkr.focus .mkr-play{opacity:1;pointer-events:auto}
+.mkr-hd{position:sticky;top:0;z-index:3;background:var(--bg);min-height:36px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);border-radius:0}
+.mkr-hd:hover{background:var(--bg)}.mkr-hd button{text-align:left;color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 6px;margin-left:-6px;border-radius:5px;white-space:nowrap}.mkr-hd button:hover,.mkr-hd button.focus{color:var(--text);background:var(--panel)}.mkr-hd button.on{color:var(--text)}
+.mk-cb{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--faint);display:grid;place-items:center;cursor:pointer}.mk-cb.on{background:var(--accent);border-color:var(--accent);color:var(--accentInk)}.mk-cb svg{width:13px;height:13px;stroke-width:2.6}
+.mk-faint{color:var(--faint)}
+.mk-bulk{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 12px;border-radius:10px;background:color-mix(in srgb,var(--accent) 14%,var(--panel));font-size:13px}.mk-bulk b{margin-right:4px}.mk-bulk .pill svg{width:14px;height:14px}
+.mk-split{flex:1;min-height:0;display:flex;gap:0}
+.mk-tbl{flex:1;min-width:0;padding:0 14px 20px 20px}
+.mk-det{width:clamp(260px,26vw,340px);flex:none;border-left:1px solid var(--line);background:var(--bg2);overflow-y:auto;scrollbar-width:none}
+.mk-det-art{position:relative;aspect-ratio:16/9;overflow:hidden}.mk-det-art .art,.mk-det-art .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.mk-det-art:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 40%,rgba(6,8,12,.9))}
+.mk-det-art h2{position:absolute;left:16px;right:16px;bottom:12px;z-index:1;margin:0;color:var(--text);text-transform:none;letter-spacing:0;font-size:20px;font-weight:700}
+.mk-det-b{padding:16px;display:flex;flex-direction:column;gap:14px}.mk-det .sp-acts .sq{width:40px;height:40px;background:var(--panel2)}
+.mk-tip{padding:6px 20px 8px;font-size:12px;color:var(--dim);border-top:1px solid var(--line)}
+/* Launcher */
+.mkl-side{width:clamp(220px,22vw,290px);flex:none;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--bg2)}
+.mkl-side .mk-top{padding:12px 12px 8px}.mkl-side .mk-search{width:100%}
+.mkl-list{flex:1;min-height:0;padding:0 8px 14px;display:flex;flex-direction:column;gap:1px}
+.mkl-h{display:flex;align-items:center;gap:6px;min-height:30px;padding:0 8px;margin-top:8px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);border-radius:6px;flex:none}
+.mkl-h small{margin-left:auto;font-weight:600}.mkl-car{width:12px}.mkl-h:hover{color:var(--text)}
+.mkl-g{display:flex;align-items:center;gap:9px;min-height:32px;padding:0 10px;border-radius:7px;font-size:13px;color:#b8c2ce;flex:none;content-visibility:auto;contain-intrinsic-size:auto 32px}
+.mkl-g span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mkl-g small{color:var(--accent);font-size:11px;white-space:nowrap}
+.mkl-g:hover{background:var(--panel)}.mkl-g.cur{background:var(--panel2);color:var(--text);font-weight:600}
+.mkl-dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}.mkl-dot.inst,.mkl-dot.on,.mkl-dot.qr{background:#5fd068}.mkl-dot.dl{background:var(--accent)}.mkl-dot.cloud{background:#8fc7ff}
+.mkl-dl{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line);font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mkl-main{display:block}
+.mkl-hero{position:relative;min-height:min(46vh,380px);display:flex;align-items:flex-end;overflow:hidden}
+.mkl-hero>.art,.mkl-hero>.img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.mkl-shade{position:absolute;inset:0;background:linear-gradient(180deg,transparent 20%,color-mix(in srgb,var(--bg) 70%,transparent) 62%,var(--bg))}
+.mkl-in{position:relative;z-index:1;padding:24px 28px 18px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;width:100%;flex-wrap:wrap}
+.mkl-in h1{font-size:clamp(26px,3.2vw,40px);font-weight:800;line-height:1.05;margin-bottom:14px;text-shadow:0 2px 18px rgba(0,0,0,.5)}
+.mkl-btns{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.mkl-btns .sq{width:42px;height:42px;background:var(--panel2)}.mkl-btns .sq.on{color:#ffd166}.mkl-btns .sq.on svg{fill:currentColor}
+.mkl-stats{display:flex;gap:26px}.mkl-stats small{display:block;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-weight:700}.mkl-stats b{font-size:16px}
+.mkl-tabs{display:flex;gap:4px;padding:0 24px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2;overflow-x:auto;scrollbar-width:none}
+.mkl-tabs button{padding:12px 14px;font-size:14px;font-weight:600;color:var(--dim);border-bottom:2px solid transparent;border-radius:0;white-space:nowrap}.mkl-tabs button.on{color:var(--text);border-bottom-color:var(--accent)}.mkl-tabs button:hover{color:var(--text)}
+.mkl-body{padding:20px 28px 40px}
+.mkl-body h3{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px}
+.mkl-cols{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(240px,1fr);gap:28px}
+.mkl-facts{background:var(--panel);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;align-self:start}
+.mkl-facts div{display:flex;justify-content:space-between;gap:12px;font-size:14px}.mkl-facts span{color:var(--dim)}.mkl-facts b{font-weight:600;text-align:right}.mkl-facts .pill{align-self:flex-start;margin-top:6px}
+.mkl-act{font-size:15px;color:var(--accent);font-weight:600}.mkl-act-row{display:flex;gap:10px}
+@media (max-width:1100px){.mkl-cols{grid-template-columns:1fr}.mk-det{display:none}.mk-table .mkr{grid-template-columns:28px minmax(0,2.4fr) minmax(70px,.8fr) minmax(90px,.9fr) minmax(70px,.7fr) minmax(90px,.8fr) 52px}.mk-table .mkr>:nth-child(6){display:none}}
+/* the right-click menu */
+#mkmenu{left:0;top:0}
+.mkm{position:fixed;min-width:220px;max-width:300px;padding:6px;border:1px solid var(--line);border-radius:10px;background:#1a212c;box-shadow:0 12px 32px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:1px}
+.mkm-i{display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:32px;padding:0 10px;border-radius:6px;font-size:13px;font-weight:500;color:var(--text)}
+.mkm-i kbd{font:inherit;font-size:11px;color:var(--dim)}.mkm-i:hover,.mkm-i.focus{background:var(--panel3);box-shadow:none}.mkm-i.danger{color:#ff8a8a}
+.mkm-sep{height:1px;background:var(--line);margin:4px 0}
+.scrim.light{background:transparent}
+body.mk .mk [data-f].focus:not(.mkc):not(.mkr):not(.mkm-i){box-shadow:0 0 0 2px var(--accent)}
 /* ===================== Library layouts (Settings › You › Library layout) ===================== */
 /* Shared: status chips, the info bar, the background art, boxes that fill the rest of the screen (.lfit) */
 .lwrap{position:relative}
@@ -923,6 +1034,7 @@ body.reduce-motion .lfc,body.reduce-motion .ldk{transition:none}
 <section class="layer" id="search"></section>
 <section class="layer" id="sheet"><div class="modal" id="sheetBox"></div></section>
 <section class="layer" id="prompt"></section>
+<section class="layer" id="mkmenu"></section>
 <section class="layer" id="launch"></section>
 <div id="desk" aria-label="Linux desktop"><div id="deskScreen"></div><div id="deskTouch"></div><svg id="deskCursor" viewBox="0 0 20 20"><path d="M2 1l14 9.5-6.2.9 3.6 6.7-2.4 1.3-3.6-6.8L2 17z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg><div id="deskMsg"></div><div id="deskBar"></div></div>
 <div id="toasts"></div>
@@ -2023,6 +2135,9 @@ function xPreview(id){
     'x-magazine': r(4,6,40,8,T)+r(4,20,60,44,'background:var(--panel2)')+r(4,70,56,10,T)+[0,1,2,3].map(i=>r(70,20+i*18,26,12)).join(''),
     'x-dock': r(0,0,100,100,'background:var(--panel2)')+r(6,30,36,10,T)+r(6,46,14,8,A)+r(14,78,72,18,'background:var(--bg)'),
     'x-collections': [0,1,2,3,4,5].map(i=>r(4+(i%3)*32,8+Math.floor(i/3)*46,29,40,i?'':'background:var(--panel2)')).join(''),
+    'mk-desk': r(0,0,18,100,'background:var(--panel2)')+[0,1,2,3,4].map(i=>r(2,8+i*9,14,5,i?'':A)).join('')+r(22,4,40,7)+[...Array(18)].map((_,i)=>r(22+(i%6)*13,16+Math.floor(i/6)*28,11,24,i===2?A:'')).join(''),
+    'mk-table': r(4,4,40,7)+r(4,15,62,6,'background:var(--panel2)')+[0,1,2,3,4,5,6].map(i=>r(4,24+i*10,62,7,i===1?A:'')).join('')+r(70,15,26,80,'background:var(--panel2)')+r(73,62,14,6,A),
+    'mk-launcher': r(0,0,26,100,'background:var(--panel2)')+[0,1,2,3,4,5,6,7].map(i=>r(3,10+i*10,20,6,i===2?A:'')).join('')+r(30,4,66,48,'background:var(--panel2)')+r(34,30,30,8,T)+r(34,42,10,6,A)+r(30,58,40,4)+r(30,68,30,24)+r(64,68,32,24),
     'x-journal': r(4,40,92,2)+[0,1,2,3,4,5,6].map(i=>r(6+i*13,48,10,[20,30,8,16,40,34,28][i],i===6?A:'')).join(''),
   };
   return P[id]||'';
@@ -2050,6 +2165,7 @@ const xCover = (g,k,cls='',wide=false) => `<button class="xc ${cls}" data-f data
 
 function homeX(V){
   const L=xOrder(V), g=L[0], id=LOOK.layout;
+  if(/^mk-/.test(id)) return mkPage('home');   // Experimental · Keyboard & mouse
   if(id==='x-carousel') return xBg(g)+`<div class="x-car"><div class="xc-strip">${L.map(x=>xCover(x,'xc-'+x.id)).join('')}</div>
     <div class="xc-info" id="xDetail" data-id="${g?esc(g.id):''}">${xDetail(g)}</div>${xNav()}</div>`;
   if(id==='x-rows'){
@@ -2531,6 +2647,7 @@ function colEdit(id){
 const SORTS = [['recent','Recently played'],['alpha','A–Z'],['hours','Play time'],['added','Date added']];
 function viewLibrary(){
   if(!libTabs().some(t=>t[0]===S.tab)) S.tab='all';
+  if(mkKind()) return mkPage('library');   // Experimental · Keyboard & mouse: their own toolbar and sidebar
   const L=libGames();
   return `<div class="libhead">
     <span class="glyph lbrb">LB</span>
@@ -2835,6 +2952,9 @@ function lPreview(id){
     'x-lib-rolodex': [0,1,2].map(j=>r(4,8+j*31,10,26,'lp-p')+[0,1,2,3,4].map(i=>r(18+i*16,8+j*31,14,26,j===0&&i===0?'lp-a':'')).join('')).join(''),
     'x-lib-hex': [...Array(21)].map((_,i)=>{ const row=Math.floor(i/7), col=i%7; return `<i style="left:${4+col*13+(row%2)*6.5}%;top:${8+row*28}%;width:11%;height:34%;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);border-radius:0;${i===9?'background:var(--accent)':''}"></i>`; }).join(''),
     'x-lib-deck': r(0,0,100,100,'glow')+r(6,12,40,8,'lp-t')+r(6,26,24,5)+[...Array(7)].map((_,i)=>`<i style="left:${18+i*9}%;top:${i===3?44:54}%;width:13%;height:38%;transform:rotate(${(i-3)*6}deg);${i===3?'background:var(--accent)':''}"></i>`).join(''),
+    'mk-lib-desk': r(0,0,18,100,'lp-p')+[0,1,2,3,4].map(i=>r(2,8+i*9,14,5,i?'':'lp-a')).join('')+r(22,4,40,7)+[...Array(18)].map((_,i)=>r(22+(i%6)*13,16+Math.floor(i/6)*28,11,24,i===2?'lp-a':'')).join(''),
+    'mk-lib-table': r(4,4,40,7)+r(4,15,62,6,'lp-p')+[0,1,2,3,4,5,6].map(i=>r(4,24+i*10,62,7,i===1?'lp-a':'')).join('')+r(70,15,26,80,'lp-p')+r(73,62,14,6,'lp-a'),
+    'mk-lib-launcher': r(0,0,26,100,'lp-p')+[0,1,2,3,4,5,6,7].map(i=>r(3,10+i*10,20,6,i===2?'lp-a':'')).join('')+r(30,4,66,48,'lp-p')+r(34,30,30,8,'lp-t')+r(34,42,10,6,'lp-a')+r(30,58,40,4)+r(30,68,30,24)+r(64,68,32,24),
     'x-lib-mosaic': r(4,6,30,58,'lp-a')+r(36,6,20,28)+r(58,6,20,28)+r(80,6,16,28)+r(36,36,20,28)+r(58,36,38,28)+[...Array(9)].map((_,i)=>r(4+i*10.4,68,9,26)).join(''),
   };
   return P[id]||'';
@@ -2853,6 +2973,350 @@ function pageLibLook(){
     + (MKLIB_LAYOUTS.length ? xDrop('lib-mk', 'Experimental · Keyboard &amp; mouse', `${MKLIB_LAYOUTS.length} layouts made for a mouse and keyboard${MKLIB_LAYOUTS.some(l=>l.id===libLayout())?` · using ${esc(MKLIB_LAYOUTS.find(l=>l.id===libLayout()).name)}`:''}`,
         `<div class="xnote">${MK_NOTE}</div><div class="layouts">${MKLIB_LAYOUTS.map(l=>`<div class="xcard">${lCard(l)}${xVote(l)}</div>`).join('')}</div>`) : '');
 }
+
+// =====================================================================
+// Keyboard & mouse layouts (Settings › Appearance and Settings › You › Library layout, "Experimental · Keyboard &
+// mouse"): Desk grid, Table and Launcher. The same three on Home (mk-*) and in the Library (mk-lib-*), drawn with the
+// Library's games (tabs, Show, Sort, hidden games and parental limits as everywhere) plus a search box.
+// Mouse: hover a game for Play / favorite / ⋯, right-click for a menu, double-click plays, the wheel scrolls (Ctrl +
+// wheel sizes the covers). Keyboard: Enter plays, Space shows the game's page, F favorites, Ctrl+K or just typing
+// searches, Esc clears. Table: sortable headers, Shift/Ctrl-click to pick several, a bar for what to do with them.
+// A controller still works: every game and button is in the focus system (data-f / data-k), A opens the game.
+// =====================================================================
+MK_LAYOUTS.push(
+  {id:'mk-desk', name:'Desk grid', desc:'Lists and stores down the side, a dense grid of covers. Hover for Play, right-click for more.'},
+  {id:'mk-table', name:'Table', desc:'Every game in sortable columns: store, last played, play time, size, Linux rating. Pick several with Shift or Ctrl.'},
+  {id:'mk-launcher', name:'Launcher', desc:'Your games grouped by store down the side; the one you pick gets a big page with Play, stats and tabs.'});
+MKLIB_LAYOUTS.push(
+  {id:'mk-lib-desk', name:'Desk grid', desc:'Lists and stores down the side, a dense grid of covers. Hover for Play, right-click for more.'},
+  {id:'mk-lib-table', name:'Table', desc:'Every game in sortable columns: store, last played, play time, size, Linux rating. Pick several with Shift or Ctrl.'},
+  {id:'mk-lib-launcher', name:'Launcher', desc:'Your games grouped by store down the side; the one you pick gets a big page with Play, stats and tabs.'});
+const MK = {q:'', size:3, view:'grid', col:'last', dir:-1, closed:{}, sel:new Set(), anchor:null, cur:null, tab:'overview', menu:null, ptr:{shift:false, ctrl:false, t:0}};
+try{ const v=JSON.parse(localStorage.getItem('hearth.mk')||'{}')||{}; ['size','view','col','dir','closed'].forEach(k=>{ if(v[k]!=null) MK[k]=v[k]; }); }catch(e){}
+function mkSave(){ try{ localStorage.setItem('hearth.mk', JSON.stringify({size:MK.size, view:MK.view, col:MK.col, dir:MK.dir, closed:MK.closed})); }catch(e){} }
+function mkKind(){
+  const id = S.view==='home' ? LOOK.layout : S.view==='library' ? libLayout() : '';
+  const m = /^mk-(?:lib-)?(desk|table|launcher)$/.exec(id||''); return m ? m[1] : null;
+}
+const mkActive = () => !!mkKind() && !S.layers.length && !S.locked;
+const mkSizes = [104,124,146,172,204];
+// The games: the Library's list for its tab, Show and Sort, then the search box. "store:steam", "installed",
+// "fav" and "never" in the search box filter too (as the Table's design shows).
+function mkGames(){
+  let L=libGames();
+  const words=MK.q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  for(const w of words){
+    if(w.startsWith('store:')){ const s=w.slice(6); L=L.filter(g=>(g.src||'').startsWith(s) || (SOURCES[g.src]||'').toLowerCase().startsWith(s)); continue; }
+    if(w==='installed'){ L=L.filter(g=>g.inst); continue; }
+    if(w==='fav'||w==='favorites'){ L=L.filter(g=>g.fav); continue; }
+    if(w==='never'){ L=L.filter(g=>!g.last); continue; }
+    L=L.filter(g=>[(g.title||''),SOURCES[g.src]||'',g.genre||'',g.system||''].join(' ').toLowerCase().includes(w));
+  }
+  return L;
+}
+const mkPdb = g => { const p=(GINFO[g.id]||{}).protondb; return p && p.tier ? p.tier : (g.cloud ? 'cloud' : g.src==='emu' ? 'native' : null); };
+const mkSize = g => { const m=/([\d.]+)\s*(GB|MB|TB)/i.exec(g.size||''); if(!m) return 0; return +m[1]*({MB:1/1024,GB:1,TB:1024}[m[2].toUpperCase()]); };
+const MK_COLS = [['name','Name',g=>(g.title||'').toLowerCase(),1],['store','Store',g=>lSrc(g).toLowerCase(),1],['last','Last played',g=>g.last||0,-1],['hrs','Play time',g=>g.hrs||0,-1],['size','Size',mkSize,-1],['pdb','On Linux',g=>['native','platinum','gold','silver','bronze','pending','borked'].indexOf(mkPdb(g)||'zz'),1]];
+function mkSorted(L){
+  const c=MK_COLS.find(x=>x[0]===MK.col)||MK_COLS[2], f=c[2], d=MK.dir||-1;
+  return [...L].sort((a,b)=>{ const x=f(a), y=f(b); return (typeof x==='string' ? x.localeCompare(y) : x<y?-1:x>y?1:0)*d || (a.title||'').localeCompare(b.title||''); });
+}
+const mkTabCount = t => { const s=S.tab, f=S.lfilter; S.tab=t; S.lfilter=''; const n=libGames().length; S.tab=s; S.lfilter=f; return n; };
+function mkSearchBox(){
+  return `<button class="mk-search" data-f data-k="mk-q" data-act="mkSearch" aria-label="Search your games">${I.search}<span class="q${MK.q?'':' ph'}">${MK.q?esc(MK.q):'Search your games'}</span><span class="caret"></span>${MK.q?`<span class="mk-x" data-act="mkClear" aria-label="Clear the search">${I.x}</span>`:''}<kbd>Ctrl K</kbd></button>`;
+}
+// The sidebar: the Library's lists, stores and collections (they're its tabs, so LB / RB still go through them).
+function mkSide(){
+  const item=(k,label,on,n,dot)=>`<button class="mks ${on?'on':''}" data-f data-k="mks-${esc(k)}" data-act="mkTab" data-tab="${esc(k)}">${dot?`<i style="background:${dot}"></i>`:''}<span>${esc(label)}</span><small>${n}</small></button>`;
+  const tabs=libTabs(), has=k=>tabs.some(t=>t[0]===k);
+  const lists=[['all','All games'],['inst','Installed'],['fav','Favorites']].filter(([k])=>has(k));
+  const stores=tabs.filter(([k])=>SOURCES[k]), cols=tabs.filter(([k])=>k.startsWith('c:'));
+  const SC={steam:'#4c8dff',epic:'#c9ced6',gog:'#b06bff',xbox:'#5fd068',emu:'#ff6fae',beacon:'#ffb547',manual:'#8d99a8'};
+  const playedOn = S.tab==='all' && S.lfilter==='played', neverOn = S.tab==='all' && S.lfilter==='unplayed';
+  return `<aside class="mk-side mk-scroll" data-sk="side">
+    <div class="mk-grp">${lists.map(([k,l])=>item(k,l,S.tab===k&&!(k==='all'&&(playedOn||neverOn)),mkTabCount(k))).join('')}
+      ${item('played','Recently played',playedOn,visible().filter(g=>g.last).length)}${item('never','Never played',neverOn,visible().filter(g=>!g.last&&!g.hrs).length)}</div>
+    ${stores.length?`<div class="mk-grp"><div class="mk-h">Stores</div>${stores.map(([k,l])=>item(k,l,S.tab===k,mkTabCount(k),SC[k]||'var(--dim)')).join('')}</div>`:''}
+    <div class="mk-grp"><div class="mk-h">Collections<button class="mk-add" data-f data-k="mks-new" data-act="colNew" aria-label="New collection">＋</button></div>
+      ${cols.length?cols.map(([k,l])=>item(k,l,S.tab===k,mkTabCount(k))).join(''):'<div class="mk-none">Make one with ＋, or from a game\'s menu</div>'}</div>
+    ${has('hidden')?`<div class="mk-grp">${item('hidden','Hidden',S.tab==='hidden',mkTabCount('hidden'))}</div>`:''}
+  </aside>`;
+}
+const mkTitle = () => S.tab==='all' && S.lfilter==='played' ? 'Recently played' : S.tab==='all' && S.lfilter==='unplayed' ? 'Never played' : (libTabs().find(t=>t[0]===S.tab)||[,'All games'])[1];
+// One game's cover in the grid: hover shows Play, favorite and ⋯ (mouse only; a controller's A opens the game).
+function mkCard(g, k){
+  const [sc,sl]=lStatus(g), sub = isActive(g) ? dlInfo(g).label : g.last ? (g.hrs?hrs(g.hrs)+' · ':'')+ago(g.last) : sc==='ni' ? sl : 'Never played';
+  return `<div class="mkc" role="button" tabindex="-1" data-f data-k="${k}" data-act="mkCard" data-id="${lId(g)}" data-mkplay="${lId(g)}" title="${esc(g.title)}">
+    <div class="mkc-cv">${cover(g,{badge:false})}${g.inst?'<i class="mk-dot" title="Installed"></i>':''}${g.fav?'<i class="lfav">★</i>':''}
+      <div class="mko">${mkPlayBtn(g)}<div class="mko-r"><button class="mko-b ${g.fav?'on':''}" data-act="mkFav" data-id="${lId(g)}" aria-label="${g.fav?'Remove from favorites':'Add to favorites'}">${I.star}</button><button class="mko-b" data-act="mkMenu" data-id="${lId(g)}" aria-label="More">${I.dots}</button></div></div></div>
+    <b>${esc(g.title)}</b><small>${esc(sub)}</small></div>`;
+}
+function mkPlayBtn(g, cls='mko-play'){
+  const run=S.running===g.id, fr=isFrozen(g);
+  const a = run?'resume' : fr?'quickres' : playable(g)?'play' : isActive(g)?'game' : 'install';
+  const l = run||fr ? 'Resume' : playable(g) ? (g.cloud&&!g.inst?'Stream':'Play') : isActive(g) ? dlInfo(g).label : g.src==='beacon' ? 'Set up' : 'Install';
+  return `<button class="${cls}" data-act="${a}" data-id="${lId(g)}">${playable(g)||run?I.play:I.dl}${esc(l)}</button>`;
+}
+function mkToolbar(L, extra=''){
+  const chip = S.lfilter && !['played','unplayed'].includes(S.lfilter) ? `<button class="mk-chip" data-f data-k="mk-chip" data-act="mkUnfilter">${esc(LFILTERS.find(f=>f[0]===S.lfilter)[1])} ${I.x}</button>` : '';
+  return `<div class="mk-tool"><h1>${esc(mkTitle())}</h1><span class="mk-n">${L.length}</span>
+    <div class="mk-chips">${chip}<button class="mk-chip ghost" data-f data-k="lfilter" data-act="lfilter">＋ Filter</button></div>
+    <div class="mk-tr">${extra}</div></div>`;
+}
+function mkDesk(ctx){
+  const L=mkGames(), size=mkSizes[Math.max(0,Math.min(4,(MK.size|0)-1))];
+  const rec = ctx==='home' ? visible().filter(g=>g.last).sort((a,b)=>b.last-a.last).slice(0,6) : [];
+  const tools = `<button class="mk-sel" data-f data-k="sort" data-act="sort">Sort: <b>${SORTS.find(s=>s[0]===S.sort)[1]}</b></button>
+    <div class="mk-size" role="group" aria-label="Cover size"><button data-f data-k="mk-sz-" data-act="mkSize" data-v="-1" aria-label="Smaller covers">−</button><span>${[1,2,3,4,5].map(i=>`<i class="${i<=MK.size?'on':''}"></i>`).join('')}</span><button data-f data-k="mk-sz+" data-act="mkSize" data-v="1" aria-label="Bigger covers">＋</button></div>
+    <div class="mk-seg" role="group" aria-label="View"><button class="${MK.view!=='list'?'on':''}" data-f data-k="mk-v-grid" data-act="mkView" data-v="grid" aria-label="Grid">${I.lib}</button><button class="${MK.view==='list'?'on':''}" data-f data-k="mk-v-list" data-act="mkView" data-v="list" aria-label="List"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button></div>`;
+  const body = !L.length ? mkEmpty()
+    : MK.view==='list' ? `<div class="mk-rows" data-lnav="v" data-lj>${L.map(g=>mkRow(g,'mkd-'+g.id,false)).join('')}</div>`
+    : `<div class="mkgrid grid" data-lj style="--mk-w:${size}px">${L.map(g=>mkCard(g,'mkd-'+g.id)).join('')}</div>`;
+  return `<div class="mk mk-desk">${mkSide()}<main class="mk-main">
+    <div class="mk-top">${mkSearchBox()}${ctx==='home'?mkNavPills():''}</div>
+    ${rec.length&&!MK.q?`<div class="mk-rec"><div class="mk-h">Jump back in</div><div class="mk-recs shelf" data-lnav="h">${rec.map(g=>`<div class="mk-rc" role="button" tabindex="-1" data-f data-k="mkr-${lId(g)}" data-act="mkCard" data-id="${lId(g)}" data-mkplay="${lId(g)}"><div class="art" style="${artBg(g)}"></div>${artImg(g,['wide','hero','cover'])}<div class="mk-rc-t"><b>${esc(g.title)}</b><small>${esc(ago(g.last))}</small></div>${mkPlayBtn(g,'mko-play sm')}</div>`).join('')}</div></div>`:''}
+    ${mkToolbar(L, tools)}
+    <div class="mk-body mk-scroll" data-sk="body">${body}</div></main></div>`;
+}
+function mkEmpty(){
+  return `<div class="mk-empty">${LIB.loading?'Loading your games…':MK.q?`Nothing matches “${esc(MK.q)}”. <button class="pill" data-f data-k="mk-clear" data-act="mkClear">Clear the search</button>`:!GAMES.length?'No games yet. Sign in to your stores under Stores &amp; accounts, or add a game from Home.':S.lfilter?'No games match. Remove the filter to see more.':'Nothing here yet.'}</div>`;
+}
+const mkNavPills = () => `<div class="mk-nav">${[['library','lib','Library'],['downloads','dl','Downloads'],['stores','user','Stores'],['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="mkn-${v}" data-act="${v==='stores'?'stores':'nav'}" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
+// A row (Table, and the Desk's list view). Table rows have a checkbox and follow the Shift/Ctrl selection.
+function mkRow(g, k, table){
+  const [sc,sl]=lStatus(g), p=mkPdb(g), on=MK.sel.has(g.id);
+  const pdb = p ? `<span class="pdb" style="--c:${PDB_COLORS[p]||'#8fc7ff'}">${p==='cloud'?'Cloud':p[0].toUpperCase()+p.slice(1)}</span>` : '<span class="mk-faint">—</span>';
+  return `<div class="mkr ${on?'sel':''}" role="row" tabindex="-1" data-f data-k="${k}" data-act="${table?'mkRow':'mkCard'}" data-id="${lId(g)}" data-mkplay="${lId(g)}" data-mkspot="${lId(g)}" aria-selected="${on}">
+    ${table?`<span class="mk-cb ${on?'on':''}" data-act="mkCheck" data-id="${lId(g)}" role="checkbox" aria-checked="${on}" aria-label="Select ${esc(g.title)}">${on?I.check:''}</span>`:''}
+    <span class="mkr-n"><span class="mkr-th">${cover(g,{badge:false})}</span><b>${esc(g.title)}${g.fav?' <i class="lfav">★</i>':''}</b></span>
+    <span>${esc(lSrc(g))}</span><span>${esc(ago(g.last))}</span><span>${g.hrs?hrs(g.hrs):'—'}</span><span>${esc(g.size&&g.size!=='—'?g.size:'—')}</span>
+    <span>${table?pdb:`<span class="lst ${sc}">${esc(sl)}</span>`}</span><span class="mkr-p">${mkPlayBtn(g,'mkr-play')}</span></div>`;
+}
+function mkTable(ctx){
+  const L=mkSorted(mkGames()), cur=G(MK.cur)&&L.some(g=>g.id===MK.cur) ? G(MK.cur) : L[0];
+  for(const id of [...MK.sel]) if(!G(id)) MK.sel.delete(id);
+  const n=MK.sel.size, all=L.length&&L.every(g=>MK.sel.has(g.id));
+  const head = `<div class="mkr mkr-hd" role="row"><span class="mk-cb ${all?'on':''}" data-f data-k="mk-all" data-act="mkAll" role="checkbox" aria-checked="${all}" aria-label="Select all">${all?I.check:''}</span>${MK_COLS.map(([id,l])=>`<button data-f data-k="mkh-${id}" data-act="mkSort" data-v="${id}" class="${MK.col===id?'on':''}" aria-sort="${MK.col===id?(MK.dir>0?'ascending':'descending'):'none'}">${l}${MK.col===id?(MK.dir>0?' ▴':' ▾'):''}</button>`).join('')}<span></span></div>`;
+  const bulk = n ? `<div class="mk-bulk"><b>${n} selected</b><button class="pill" data-f data-k="mkb-fav" data-act="mkBulk" data-v="fav">${I.star}Favorite</button><button class="pill" data-f data-k="mkb-col" data-act="mkBulk" data-v="col">${I.lib}Add to collection</button><button class="pill" data-f data-k="mkb-hide" data-act="mkBulk" data-v="hide">${I.x}Hide</button><button class="pill ghost" data-f data-k="mkb-clear" data-act="mkBulk" data-v="clear">Clear</button></div>` : '';
+  return `<div class="mk mk-table ${ctx==='home'?'':'mk-noside'}">${ctx==='home'?mkSide():''}<main class="mk-main">
+    <div class="mk-top">${mkSearchBox()}${ctx==='home'?mkNavPills():`<div class="mk-tabs">${libTabs().slice(0,9).map(([k,l])=>`<button class="mk-chip ${S.tab===k?'on':''}" data-f data-k="mks-${esc(k)}" data-act="mkTab" data-tab="${esc(k)}">${esc(l)}</button>`).join('')}</div>`}</div>
+    ${mkToolbar(L, bulk)}
+    <div class="mk-split"><div class="mk-tbl mk-scroll" data-sk="body" role="table">${head}${L.length?`<div class="mk-tbody" data-lnav="v" data-lj>${L.map(g=>mkRow(g,'mkt-'+g.id,true)).join('')}</div>`:mkEmpty()}</div>
+      <aside class="mk-det" id="mkDetail" data-id="${cur?lId(cur):''}">${cur?mkDetail(cur):''}</aside></div>
+    <div class="mk-tip">Shift-click picks a range, Ctrl-click adds one. Ctrl+A picks them all.</div></main></div>`;
+}
+function mkDetail(g){
+  const p=mkPdb(g);
+  return `<div class="mk-det-art"><div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide','cover'])}<h2>${esc(g.title)}</h2></div>
+    <div class="mk-det-b"><div class="sp-acts">${lPlay(g,'mkd-play')}<button class="sq" data-f data-k="mkd-page" data-act="game" data-id="${lId(g)}" aria-label="Game page">${I.info}</button><button class="sq" data-f data-k="mkd-opt" data-act="mkMenu" data-id="${lId(g)}" aria-label="More">${I.dots}</button></div>
+      <div class="ld-stats">${[['Play time',g.hrs?hrs(g.hrs):'—'],['Last played',ago(g.last)],['Size',g.size||'—'],['On Linux',p?p[0].toUpperCase()+p.slice(1):'—'],[g.system?'System':'Store',lSrc(g)]].map(([k,v])=>`<div><small>${k}</small><b>${esc(v)}</b></div>`).join('')}</div>
+      <p class="ld-about">${lAbout(g)}</p></div>`;
+}
+// Launcher: a list grouped by Favorites then each store (each group folds), and a big page for the picked game.
+function mkLauncher(ctx){
+  const L=mkGames(), favs=L.filter(g=>g.fav);
+  const groups=[['fav','Favorites',favs], ...Object.keys(SOURCES).map(s=>[s, s==='manual'?'Non-library':SOURCES[s], L.filter(g=>g.src===s)])].filter(x=>x[2].length);
+  let cur=G(MK.cur); if(!cur || !L.includes(cur)) cur = ctx==='home' ? ([...L].sort((a,b)=>(b.last||0)-(a.last||0))[0]) : L[0];
+  if(cur) MK.cur=cur.id;
+  const dl=GAMES.find(g=>isActive(g));
+  const list = groups.map(([k,name,gs])=>{ const shut=!!MK.closed[k];
+    return `<button class="mkl-h" data-f data-k="mkl-h-${esc(k)}" data-act="mkFold" data-v="${esc(k)}" aria-expanded="${!shut}"><span class="mkl-car">${shut?'▸':'▾'}</span>${esc(name)}<small>${gs.length}</small></button>`
+      + (shut?'':gs.map(g=>{ const [sc]=lStatus(g); return `<button class="mkl-g ${cur&&cur.id===g.id?'cur':''}" data-f data-k="mkl-${esc(k)}-${lId(g)}" data-act="mkPick" data-id="${lId(g)}" data-mkplay="${lId(g)}" data-mkspot="${lId(g)}"><i class="mkl-dot ${sc}"></i><span>${esc(g.title)}</span>${isActive(g)?`<small>${esc(dlInfo(g).label)}</small>`:S.running===g.id?'<small>Playing</small>':isFrozen(g)?'<small>Paused</small>':''}</button>`; }).join(''));
+  }).join('');
+  return `<div class="mk mk-launch"><aside class="mkl-side"><div class="mk-top">${mkSearchBox()}</div>
+      <div class="mkl-list mk-scroll" data-sk="side" data-lnav="v">${list||`<div class="mk-empty">${MK.q?'Nothing matches':LIB.loading?'Loading…':'No games yet'}</div>`}</div>
+      ${dl?`<div class="mkl-dl"><i class="dot"></i>${esc(dlInfo(dl).label)} · ${esc(dl.title)}</div>`:''}</aside>
+    <main class="mk-main mkl-main mk-scroll" data-sk="body" id="mkHero" data-id="${cur?lId(cur):''}">${cur?mkHero(cur, ctx):mkEmpty()}</main></div>`;
+}
+const MK_TABS = [['overview','Overview'],['ach','Achievements'],['shots','Screenshots'],['mods','Mods & saves'],['set','Game settings']];
+function mkHero(g, ctx){
+  loadGameInfo(g.id);
+  const gi=GINFO[g.id]||{}, ach=gi.achievements, p=mkPdb(g), run=S.running===g.id, fr=isFrozen(g);
+  const t=MK.tab;
+  const stats=[['Last played',ago(g.last)],['Play time',g.hrs?hrs(g.hrs):'—'],...(ach?[['Achievements',`${ach.done} / ${ach.total}`]]:g.ach?[['Achievements',`${g.ach[0]} / ${g.ach[1]}`]]:[])];
+  let body='';
+  if(t==='overview') body = `<div class="mkl-cols"><section><h3>About</h3><p class="ld-about">${lAbout(g)}</p>
+      ${S.running===g.id||isFrozen(g)?`<h3>Right now</h3><div class="mkl-act">${run?'Playing now':'Paused in Quick Resume'}</div>`:''}</section>
+    <section class="mkl-facts"><h3>This game on ${APP}</h3>${[['Store',lSrc(g)],['On Linux',p?p[0].toUpperCase()+p.slice(1):'Not rated'],['Size',g.size||'—'],['Status',lStatus(g)[1]]].map(([k,v])=>`<div><span>${k}</span><b>${esc(v)}</b></div>`).join('')}
+      ${host&&(LINUX||hasFeat('gameSettings'))&&!g.cloud?`<button class="pill" data-f data-k="mkh-set" data-act="mkGameSet" data-id="${lId(g)}">${I.gear}Open game settings</button>`:''}</section></div>`;
+  else if(t==='ach') body = ach ? `<div class="muted">${ach.done} of ${ach.total} unlocked</div><div class="bar" style="margin:10px 0 16px"><i style="width:${(ach.done/ach.total*100).toFixed(0)}%"></i></div><div class="achs">${ach.list.slice(0,24).map(a=>`<div class="ach ${a.done?'':'locked'}"><div><b>${esc(a.hidden&&!a.done?'Hidden':a.name)}</b><small>${esc(a.done?'Unlocked':(a.hidden?'Keep playing to find out':a.desc))}</small></div></div>`).join('')}</div>`
+    : g.ach ? `<div class="muted">${g.ach[0]} of ${g.ach[1]} unlocked</div><div class="bar" style="margin-top:10px"><i style="width:${(g.ach[0]/g.ach[1]*100).toFixed(0)}%"></i></div>` : `<div class="muted">${LINUX&&host?'Loading achievements…':'No achievements for this game.'}</div>`;
+  else if(t==='shots') body = (HOSTINFO.features||[]).includes('screenshots') ? `<div class="muted" style="margin-bottom:12px">Screenshots you take with the Quick Access button are kept per game.</div><button class="pill" data-f data-k="mkh-shots" data-act="shots">${I.display}Open Screenshots</button>` : '<div class="muted">Screenshots aren\'t available on this device.</div>';
+  else if(t==='mods') body = g.src==='beacon' ? `<button class="pill" data-f data-k="mkh-mods" data-act="mkMods" data-id="${lId(g)}">${I.lib}Mods</button>` : (HOSTINFO.features||[]).includes('gamingApps') ? `<div class="mkl-act-row"><button class="pill" data-f data-k="mkh-saves" data-act="gamingApp" data-v="saves" data-id="${lId(g)}">Saves</button><button class="pill" data-f data-k="mkh-mods" data-act="gamingApp" data-v="mods" data-id="${lId(g)}">Mods</button></div>` : '<div class="muted">Saves and mods for this game are managed by its store.</div>';
+  else if(t==='set') body = host&&(LINUX||hasFeat('gameSettings'))&&!g.cloud ? `<div class="muted" style="margin-bottom:12px">Proton version, launch options, controller layout and more.</div><button class="pill" data-f data-k="mkh-set" data-act="mkGameSet" data-id="${lId(g)}">${I.gear}Open game settings</button>` : `<div class="muted">${g.cloud?'Cloud games have no settings here.':'Game settings are available on Hearth OS.'}</div><button class="pill" data-f data-k="mkh-page" data-act="game" data-id="${lId(g)}" style="margin-top:12px">${I.info}Game page</button>`;
+  return `<div class="mkl-hero"><div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="mkl-shade"></div>
+      <div class="mkl-in"><h1>${esc(g.title)}</h1><div class="mkl-btns">${lPlay(g,'mkh-play')}
+        ${fr&&!run?`<button class="pill" data-f data-k="mkh-resume" data-act="quickres" data-id="${lId(g)}">Resume where I left off</button>`:''}
+        <button class="sq ${g.fav?'on':''}" data-f data-k="mkh-fav" data-act="mkFav" data-id="${lId(g)}" aria-label="${g.fav?'Remove from favorites':'Add to favorites'}">${I.star}</button>
+        <button class="sq" data-f data-k="mkh-more" data-act="mkMenu" data-id="${lId(g)}" aria-label="More">${I.dots}</button></div>
+      <div class="mkl-stats">${stats.map(([k,v])=>`<div><small>${k}</small><b>${esc(v)}</b></div>`).join('')}</div></div></div>
+    <nav class="mkl-tabs">${MK_TABS.map(([k,l])=>`<button class="${t===k?'on':''}" data-f data-k="mkt-${k}" data-act="mkHeroTab" data-v="${k}">${l}</button>`).join('')}</nav>
+    <div class="mkl-body">${body}</div>`;
+}
+function mkPage(ctx){
+  const k=mkKind();
+  return k==='table' ? mkTable(ctx) : k==='launcher' ? mkLauncher(ctx) : mkDesk(ctx);
+}
+// Draw again, keeping where the lists were scrolled to and what was picked.
+function mkRender(key){
+  const sc={}; document.querySelectorAll('#view .mk-scroll[data-sk]').forEach(e=>{ sc[e.dataset.sk]=e.scrollTop; });
+  render(key || (focused && focused.dataset.k), true);
+  document.querySelectorAll('#view .mk-scroll[data-sk]').forEach(e=>{ if(sc[e.dataset.sk]!=null) e.scrollTop=sc[e.dataset.sk]; });
+  if(focused && document.contains(focused) && $('#view').contains(focused)) focused.scrollIntoView({block:'nearest', inline:'nearest'});
+}
+// The picked game fills the Table's panel / the Launcher's page in place (as lUpdate does).
+function mkSpot(id){
+  const g=G(id); if(!g) return;
+  const d=$('#mkDetail'); if(d && d.dataset.id!==id){ d.dataset.id=id; d.innerHTML=mkDetail(g); MK.cur=id; }
+  const h=$('#mkHero'); if(h && h.dataset.id!==id){ h.dataset.id=id; MK.cur=id; h.innerHTML=mkHero(g, S.view==='home'?'home':'library'); h.scrollTop=0;
+    document.querySelectorAll('#view .mkl-g.cur').forEach(e=>e.classList.remove('cur')); document.querySelectorAll(`#view .mkl-g[data-id="${CSS.escape(id)}"]`).forEach(e=>e.classList.add('cur')); }
+}
+function mkPlay(g){
+  if(!g) return; blip(880,.05,.045);
+  if(S.running===g.id){ closeAll(); return send({type:'resume'}); }
+  if(isFrozen(g)) return quickResume(g.id);
+  if(playable(g)) return launch(g);
+  if(isActive(g)) return navigate('game',{game:g.id});
+  return installGame(g);
+}
+function mkFavToggle(g){
+  if(!g) return;
+  const on=!g.fav; g.fav=on; toast(on?`Added ${g.title} to Favorites`:`Removed ${g.title} from Favorites`);
+  if(host) call('library.setFav',{id:g.id,on}).catch(e=>{ if(g.fav===on){ g.fav=!on; if(!S.layers.length) mkRender(); } toast(e.message); });
+  mkRender();
+}
+// ---------- the right-click menu (a layer, so a controller and the keyboard can use it too) ----------
+function mkMenuOpen(g, x, y){
+  if(!g) return;
+  const sel = mkKind()==='table' && MK.sel.size>1 && MK.sel.has(g.id) ? [...MK.sel].map(G).filter(Boolean) : null;
+  const items = [];
+  if(sel){
+    items.push({label:`Add ${sel.length} to favorites`, key:'F', run:()=>mkBulk('fav')});
+    items.push({label:'Add to collection…', key:'›', run:()=>mkBulk('col')});
+    items.push({label:`Hide ${sel.length} games`, run:()=>mkBulk('hide')});
+    items.push({sep:true});
+    items.push({label:'Clear the selection', key:'Esc', run:()=>mkBulk('clear')});
+  } else {
+    const run=S.running===g.id, fr=isFrozen(g);
+    items.push({label: run||fr ? 'Resume' : playable(g) ? (g.cloud&&!g.inst?'Stream':'Play') : isActive(g) ? 'Show download' : 'Install', key:'Enter', run:()=>mkPlay(g)});
+    items.push({label:'Details', key:'Space', run:()=>navigate('game',{game:g.id})});
+    items.push({label:g.fav?'Remove from favorites':'Add to favorites', key:'F', run:()=>mkFavToggle(g)});
+    items.push({sep:true});
+    gameOptionItems(g).forEach(it=>items.push({label:it.label, run:it.run, danger:/^Uninstall|^Remove|^Cancel/.test(it.label)}));
+  }
+  MK.menu={g, items, x, y};
+  openLayer('mkmenu', 'mm-0');
+}
+function renderMkMenu(){
+  const m=MK.menu, box=$('#mkmenu'); if(!m) return;
+  box.innerHTML = `<div class="mkm" role="menu" aria-label="${esc(m.g.title)}">${m.items.map((it,i)=>it.sep?'<i class="mkm-sep"></i>':`<button class="mkm-i ${it.danger?'danger':''}" role="menuitem" data-f data-k="mm-${i}" data-act="mkMenuPick" data-i="${i}"><span>${esc(it.label)}</span>${it.key?`<kbd>${esc(it.key)}</kbd>`:''}</button>`).join('')}</div>`;
+  const el=box.firstElementChild, r=el.getBoundingClientRect();
+  const x=Math.max(8, Math.min(m.x, innerWidth-r.width-8)), y=Math.max(8, Math.min(m.y, innerHeight-r.height-8));
+  el.style.left=x+'px'; el.style.top=y+'px';
+}
+function mkMenuPick(i){ const m=MK.menu, it=m&&m.items[i]; if(!it||it.sep) return; closeLayer(); setTimeout(()=>it.run(), 0); }
+function mkBulk(what){
+  const gs=[...MK.sel].map(G).filter(Boolean);
+  if(what==='clear'){ MK.sel.clear(); MK.anchor=null; return mkRender(); }
+  if(!gs.length) return;
+  if(what==='fav'){ gs.forEach(g=>{ if(!g.fav){ g.fav=true; if(host) call('library.setFav',{id:g.id,on:true}).catch(e=>toast(e.message)); } }); toast(`Added ${gs.length} game${gs.length===1?'':'s'} to Favorites`); return mkRender(); }
+  if(what==='hide'){ gs.forEach(g=>{ g.hidden=true; if(host) call('library.setHidden',{id:g.id,on:true}).catch(e=>toast(e.message)); }); MK.sel.clear(); toast(`Hid ${gs.length} game${gs.length===1?'':'s'}. Find them under Hidden.`); return mkRender(); }
+  if(what==='col') return openSheet({title:'Add to collection', sub:`${gs.length} game${gs.length===1?'':'s'}`, items:[
+    ...COLS.map(c=>({label:c.name, icon:'lib', run:async()=>{ for(const g of gs) await colSet(c.id,g,true,true); toast(`Added ${gs.length} to ${c.name}`); mkRender(); }})),
+    {label:'New collection…', icon:'lib', run:()=>colNew(gs[0])}]});
+}
+// Table rows: a click picks one; Shift-click a range from the last one picked; Ctrl-click adds or removes one.
+function mkRowClick(id, how){
+  const L=[...document.querySelectorAll('#view .mk-tbody [data-id]')].map(e=>e.dataset.id);
+  if(how==='shift' && MK.anchor && L.includes(MK.anchor)){
+    const a=L.indexOf(MK.anchor), b=L.indexOf(id); MK.sel=new Set(L.slice(Math.min(a,b), Math.max(a,b)+1));
+  } else if(how==='ctrl'){ MK.sel.has(id) ? MK.sel.delete(id) : MK.sel.add(id); MK.anchor=id; }
+  else { MK.sel=new Set(MK.sel.size===1&&MK.sel.has(id)?[]:[id]); MK.anchor=id; }
+  MK.cur=id; mkRender('mkt-'+id);
+}
+function mkAct(a, d, el){
+  switch(a){
+    case 'mkTab': MK.sel.clear();
+      if(d.tab==='played'){ S.tab='all'; S.lfilter='played'; S.sort='recent'; }
+      else if(d.tab==='never'){ S.tab='all'; S.lfilter='unplayed'; }
+      else { S.tab=d.tab; if(['played','unplayed'].includes(S.lfilter)) S.lfilter=''; }
+      return mkRender('mks-'+d.tab);
+    case 'mkUnfilter': S.lfilter=''; return mkRender('lfilter');
+    case 'mkSearch':
+      // A controller (or a finger with no keyboard) types with the on-screen keyboard; a keyboard just types.
+      if(INPUT.last==='pad' || (INPUT.touch && !INPUT.hwKbd)) return openPrompt({title:'Search your games', value:MK.q}).then(v=>{ if(v!=null){ MK.q=v.trim(); mkRender('mk-q'); } });
+      if(INPUT.last==='kbd'){ const f=$('#view .mkgrid [data-f], #view .mk-tbody [data-f], #view .mk-rows [data-f], #view .mkl-g'); if(f) setFocus(f); }
+      return;
+    case 'mkClear': MK.q=''; return mkRender('mk-q');
+    case 'mkSize': MK.size=Math.max(1,Math.min(5,(MK.size|0)+(+d.v))); mkSave(); return mkRender();
+    case 'mkView': MK.view=d.v; mkSave(); return mkRender('mk-v-'+d.v);
+    case 'mkFav': return mkFavToggle(G(d.id));
+    case 'mkMenu': { const r=el.getBoundingClientRect(); return mkMenuOpen(G(d.id), r.left, r.bottom+4); }
+    case 'mkMenuPick': return mkMenuPick(+d.i);
+    case 'mkSort': if(MK.col===d.v) MK.dir=-(MK.dir||-1); else { MK.col=d.v; MK.dir=(MK_COLS.find(c=>c[0]===d.v)||[])[3]||1; } mkSave(); return mkRender('mkh-'+d.v);
+    case 'mkAll': { const L=mkGames(); const all=L.length&&L.every(g=>MK.sel.has(g.id)); MK.sel = all ? new Set() : new Set(L.map(g=>g.id)); return mkRender('mk-all'); }
+    case 'mkCheck': { const id=d.id; MK.sel.has(id) ? MK.sel.delete(id) : MK.sel.add(id); MK.anchor=id; return mkRender('mkt-'+id); }
+    case 'mkRow': {
+      const recent = performance.now()-MK.ptr.t < 600 && INPUT.last==='mouse';
+      if(recent) return mkRowClick(d.id, MK.ptr.shift?'shift':MK.ptr.ctrl?'ctrl':'');
+      return navigate('game',{game:d.id});   // A on a row (controller) or Space: the game's page
+    }
+    case 'mkBulk': return mkBulk(d.v);
+    case 'mkCard': {
+      // The mouse: a click shows the game's page, unless a second click makes it a double-click (that plays).
+      if(performance.now()-MK.ptr.t < 600 && INPUT.last==='mouse'){ clearTimeout(MK.clickT); MK.clickT=setTimeout(()=>{ if(mkActive()) navigate('game',{game:d.id}); }, 280); return; }
+      return navigate('game',{game:d.id});
+    }
+    case 'mkFold': MK.closed[d.v]=!MK.closed[d.v]; mkSave(); return mkRender('mkl-h-'+d.v);
+    case 'mkPick': mkSpot(d.id); if(INPUT.last==='pad'){ const p=$('#mkHero [data-k="mkh-play"]'); if(p) setFocus(p); } return;
+    case 'mkHeroTab': MK.tab=d.v; return mkRender('mkt-'+d.v);
+    case 'mkGameSet': return navigate('gameset',{game:d.id});
+    case 'mkMods': return beaconModsPage(G(d.id));
+  }
+}
+// Keys in a keyboard & mouse layout (before the controller-style keys). true: handled.
+function mkKey(e){
+  if(!mkActive()) return false;
+  const k=e.key, f=focused && $('#view').contains(focused) ? focused : null, id=f && (f.dataset.id || f.dataset.mkplay), g=id && G(id);
+  const inSearch = f && f.dataset.k==='mk-q';
+  if((e.ctrlKey||e.metaKey) && (k==='k'||k==='K')){ const s=$('#view [data-k="mk-q"]'); if(s) setFocus(s); return true; }
+  if((e.ctrlKey||e.metaKey) && (k==='a'||k==='A') && mkKind()==='table' && !inSearch){ const L=mkGames(); MK.sel=new Set(L.map(x=>x.id)); mkRender(); return true; }
+  if(e.ctrlKey||e.metaKey||e.altKey) return false;
+  if(inSearch){
+    if(k.length===1){ MK.q+=k; mkRender('mk-q'); return true; }
+    if(k==='Backspace'){ MK.q=MK.q.slice(0,-1); mkRender('mk-q'); return true; }
+    if(k==='Escape'){ if(MK.q){ MK.q=''; mkRender('mk-q'); return true; } return false; }
+    if(k==='Enter'||k==='ArrowDown'){ const first=$('#view .mkgrid [data-f], #view .mk-tbody [data-f], #view .mk-rows [data-f], #view .mkl-g'); if(first){ setFocus(first); return true; } }
+    return false;
+  }
+  if(k==='ContextMenu' || (k==='F10' && e.shiftKey)){ if(g){ const r=f.getBoundingClientRect(); mkMenuOpen(g, r.left+20, r.top+20); return true; } return false; }
+  if(k==='Escape' && MK.sel.size){ MK.sel.clear(); mkRender(); return true; }
+  if(k==='Escape' && MK.q){ MK.q=''; mkRender(); return true; }
+  if(g && k==='Enter' && f.dataset.mkplay){ mkPlay(g); return true; }
+  if(g && k===' ' && f.dataset.k!=='mk-q'){ if(mkKind()==='launcher' && f.classList.contains('mkl-g')){ act(f); return true; } navigate('game',{game:g.id}); return true; }
+  if(g && (k==='f'||k==='F')){ mkFavToggle(g); return true; }
+  // Any other character starts a search (not the ones a controller's driver could send as keys).
+  if(k.length===1 && /[\p{L}\p{N}]/u.test(k)){ const s=$('#view [data-k="mk-q"]'); if(s){ MK.q=k; mkRender('mk-q'); return true; } }
+  return false;
+}
+// The mouse: right-click a game for its menu; double-click plays; Ctrl + wheel sizes the Desk's covers.
+document.addEventListener('pointerdown', e=>{ MK.ptr={shift:e.shiftKey, ctrl:e.ctrlKey||e.metaKey, t:performance.now()}; }, true);
+document.addEventListener('contextmenu', e=>{
+  if(!mkActive()) return;
+  const el=e.target.closest('#view [data-id]'); const g=el && G(el.dataset.id); if(!g) return;
+  e.preventDefault();
+  if(el.dataset.f!==undefined) setFocus(el, true);
+  mkMenuOpen(g, e.clientX, e.clientY);
+});
+document.addEventListener('dblclick', e=>{
+  if(!mkActive()) return;
+  const el=e.target.closest('#view [data-mkplay]'); const g=el && G(el.dataset.mkplay); if(!g || e.target.closest('.mko,.mkr-p,.mk-cb')) return;
+  clearTimeout(MK.clickT); mkPlay(g);
+});
+document.addEventListener('wheel', e=>{
+  if(!e.ctrlKey || !mkActive() || mkKind()!=='desk' || !e.target.closest('#view .mk-body')) return;
+  e.preventDefault(); const was=MK.size; MK.size=Math.max(1,Math.min(5,(MK.size|0)+(e.deltaY<0?1:-1))); if(MK.size!==was){ mkSave(); mkRender(); }
+}, {passive:false});
 
 // Browser preview only: ?stress=300 adds that many made-up games (all stores, downloads, Quick Resume) to try
 // the layouts with a big library. Never with a host.
@@ -5316,10 +5780,11 @@ function promptSubmit(){
   p.done=true; closeLayer(); p.res(p.text);
 }
 
-const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt()};
+const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt(), mkmenu:()=>renderMkMenu()};
 const LAYER_CLOSE = {
   sheet:()=>{ if(sheet && !sheet.picked && sheet.onCancel) sheet.onCancel(); sheet=null; },
   prompt:()=>{ if(prompt && !prompt.done) prompt.res(null); prompt=null; },
+  mkmenu:()=>{ MK.menu=null; },
 };
 const focusStack=[];
 function openLayer(id, focusKey){
@@ -5358,7 +5823,8 @@ function resumeIfGame(closed){ if(LINUX && host && closed==='qam' && S.running &
 function syncScrim(){
   const top=S.layers.at(-1);
   $('#scrim').classList.toggle('open', !!top && top!=='launch');
-  $('#app').classList.toggle('dim', !!top && top!=='launch');
+  $('#scrim').classList.toggle('light', top==='mkmenu');   // a right-click menu: nothing dims, a click outside closes it
+  $('#app').classList.toggle('dim', !!top && top!=='launch' && top!=='mkmenu');
 }
 
 // =====================================================================
@@ -5382,6 +5848,7 @@ function setFocus(el, quiet){
   focused=el; el.classList.add('focus');
   el.focus({preventScroll:true});
   if(S.view==='library' && !S.layers.length) libFocus(el);   // Library layouts: fit, and fill the detail panel
+  if(el.dataset.mkspot && !S.layers.length) mkSpot(el.dataset.mkspot);   // keyboard & mouse layouts: the panel / page
   const now=performance.now(), rapid = now-lastNav < 260;
   lastNav=now;
   el.scrollIntoView(scrollOpts(el, !quiet && !rapid && !LOOK.reduceMotion));
@@ -5483,6 +5950,7 @@ function act(el){
   if(a.startsWith('bcn')) return beaconAct(a, d);   // Beacon's screens (Game setup, Mods)
   if(a.startsWith('a11y')) return a11yAct(a, d);   // Settings › Accessibility
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
+  if(/^mk[A-Z]/.test(a)) return mkAct(a, d, el);   // the keyboard & mouse layouts
   switch(a){
     case 'unlock': return lockUnlock();
     case 'loginWake': return call('login.setLockOnWake',{on:!(LOGIN.s&&LOGIN.s.lockOnWake)}).then(r=>{ LOGIN.s=r; refreshUI(); toast(r.lockOnWake?'Asks for your password after sleep':'Wakes without asking for a password'); }).catch(e=>toast(e.message));
@@ -6438,6 +6906,9 @@ function imAct(el, d){
 
 function gameOptions(g){
   if(!g) return;
+  openSheet({title:g.title, sub:SOURCES[g.src], items:gameOptionItems(g)});
+}
+function gameOptionItems(g){
   const items=[];
   if(host && (LINUX || hasFeat('gameSettings')) && !g.cloud) items.push({label:'Game settings',icon:'gear',run:()=>navigate('gameset',{game:g.id})});
   items.push({label:'Add to collection…',icon:'lib',run:()=>colPick(g)});
@@ -6453,7 +6924,7 @@ function gameOptions(g){
     items.push({label:'Open Beacon',icon:'sliders',run:()=>beaconOpen()});
   }
   gamingGameItems(g, items);   // Hearth's gaming apps (block below)
-  openSheet({title:g.title, sub:SOURCES[g.src], items});
+  return items;
 }
 // ---------- Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves, Mods ----------
 // Separate programs on Hearth OS (host.info feature "gamingApps"); the host opens them full screen in Game Mode
@@ -8152,7 +8623,7 @@ function setInput(kind){
 const INPUT_NAMES = {pad:'Controller', kbd:'Keyboard', mouse:'Mouse or touch'};
 const GLYPHS = {
   pad: {select:['A','a'], back:['B','b'], search:['Y','y'], menu:['☰',''], qam:['⧉',''], tabs:['LB RB',''], adjust:['◀▶',''], del:['Y','y'], space:['X','x'], done:['☰',''], stores:['X','x']},
-  kbd: {select:['Enter','kc'], back:['Esc','kc'], search:['/','kc'], menu:['M','kc'], qam:['Q','kc'], tabs:['Tab','kc'], adjust:['← →','kc'], del:['Bksp','kc'], space:['Space','kc'], done:['Enter','kc'], stores:['F','kc']},
+  kbd: {mkplay:['Enter','kc'], mkinfo:['Space','kc'], mkfav:['F','kc'], mkmore:['Right-click','kc'], mksearch:['Ctrl K','kc'], select:['Enter','kc'], back:['Esc','kc'], search:['/','kc'], menu:['M','kc'], qam:['Q','kc'], tabs:['Tab','kc'], adjust:['← →','kc'], del:['Bksp','kc'], space:['Space','kc'], done:['Enter','kc'], stores:['F','kc']},
 };
 const HINT_ICON = {back:I.x, search:I.search, menu:'<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>', qam:I.sliders, tabs:I.lib, stores:I.user};
 function renderFooter(){
@@ -8168,8 +8639,11 @@ function renderFooter(){
   if(!top && S.view==='library') h.push(['tabs','Tabs'],['stores','Stores']);
   if(top==='qam') h.push(['tabs','Sections']);
   if(!top) h.push(['search','Search'],['menu','Menu'],['qam','Quick Access']);
+  // Keyboard & mouse layouts with a keyboard or mouse: their own keys.
+  if(!top && style!=='pad' && typeof mkKind==='function' && mkKind()){ h.length=0; h.push(['mkplay','Play'],['mkinfo','Details'],['mkfav','Favorite'],['mkmore','More'],['mksearch','Search'],['back','Back']); }
   const g=S.running&&G(S.running);
   const items = h.filter(([id])=> style!=='mouse' || !['select','adjust'].includes(id)).map(([id,l],i)=>{
+    if(id.startsWith('mk')) return `<button class="hint ${i>3?'hide-s':''}" data-act="hint" data-h="${id}">${`<span class="glyph kc">${GLYPHS.kbd[id][0]}</span>`}${l}</button>`;
     let glyph;
     if(style==='mouse') glyph = HINT_ICON[id] || '';
     else { const [k,c]=(GLYPHS[style]||GLYPHS.kbd)[id]; glyph=`<span class="glyph ${c}">${k}</span>`; }
@@ -8178,6 +8652,14 @@ function renderFooter(){
   $('#footer').innerHTML = (g?`<div class="running"><span class="dot"></span>${esc(g.title)}</div>`:'') + items.join('');
 }
 function hintAction(id){
+  if(id.startsWith('mk')){ const f=focused && $('#view').contains(focused) ? focused : null, g=f && G(f.dataset.id||f.dataset.mkplay);
+    if(id==='mksearch'){ const q=$('#view [data-k="mk-q"]'); return q && setFocus(q); }
+    if(!g) return toast('Pick a game first');
+    if(id==='mkplay') return mkPlay(g);
+    if(id==='mkinfo') return navigate('game',{game:g.id});
+    if(id==='mkfav') return mkFavToggle(g);
+    if(id==='mkmore'){ const r=f.getBoundingClientRect(); return mkMenuOpen(g, r.left+20, r.top+20); }
+    return; }
   ({select:()=>focused&&act(focused), back:()=>back(), search:()=>input('y'), menu:()=>input('start'),
     qam:()=>input('select'), tabs:()=>input('rb'), adjust:()=>{}, del:()=>input('y'), space:()=>input('x'), done:()=>input('start'), stores:()=>input('x')})[id]?.();
 }
@@ -8226,7 +8708,7 @@ function input(k){
 function shiftTab(d){
   const top=S.layers.at(-1);
   if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
-  if(!top && S.view==='library'){ const T=libTabs(), i=T.findIndex(t=>t[0]===S.tab); S.tab=T[(i+d+T.length)%T.length][0]; render('tab-'+S.tab); return blip(600); }
+  if(!top && S.view==='library'){ const T=libTabs(), i=T.findIndex(t=>t[0]===S.tab); S.tab=T[(i+d+T.length)%T.length][0]; if(mkKind()){ MK.sel.clear(); mkRender('mks-'+S.tab); } else render('tab-'+S.tab); return blip(600); }
 }
 
 // Controllers: Xbox-style controllers come from the host (XInput, exact button names, works with any
@@ -8357,6 +8839,7 @@ document.addEventListener('keydown', e=>{
     if(e.key.length===1 && !e.ctrlKey && !e.metaKey){ e.preventDefault(); return typeKey(e.key===' '?'space':e.key); }
     if(e.key==='Backspace'){ e.preventDefault(); if(query) return typeKey('bksp'); return back(); }
   }
+  if(!S.layers.length && mkKey(e)){ e.preventDefault(); setInput('kbd'); return; }   // keyboard & mouse layouts
   if(e.key==='Tab'){ e.preventDefault(); setInput('kbd'); return input(e.shiftKey?'lb':'rb'); }
   if(KEY_EXTRA[e.key] && !e.ctrlKey && !e.altKey){ e.preventDefault(); setInput('kbd'); return KEY_EXTRA[e.key](); }
   if(e.ctrlKey || e.altKey || e.metaKey) return;

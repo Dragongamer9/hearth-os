@@ -18,6 +18,11 @@ on:
 permissions:
   contents: write    # the screenshots branch
 
+# One run per branch at a time: an older, slower run finishing last put its screenshots over the newer ones.
+concurrency:
+  group: layout-shots-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   shots:
     runs-on: ubuntu-latest
