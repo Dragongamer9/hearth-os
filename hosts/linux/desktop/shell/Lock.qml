@@ -42,6 +42,14 @@ Scope {
         stdout: SplitParser { onRead: l => { if (l.indexOf("PrepareForSleep (true") >= 0) root.lock(); } }
     }
 
+    // `loginctl lock-session` (and apps that ask the system to lock, like a password manager's "lock now"): this
+    // session's Lock signal from logind.
+    Process {
+        running: true
+        command: ["sh", "-c", "p=$(busctl --system call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager GetSession s \"${XDG_SESSION_ID:-auto}\" 2>/dev/null | cut -d' ' -f2 | tr -d '\"'); [ -n \"$p\" ] && exec gdbus monitor --system --dest org.freedesktop.login1 --object-path \"$p\""]
+        stdout: SplitParser { onRead: l => { if (l.indexOf(".Session.Lock (") >= 0) root.lock(); } }
+    }
+
     WlSessionLock {
         id: session
         locked: root.locked
