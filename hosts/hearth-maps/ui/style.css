@@ -5,6 +5,7 @@
   --ink:#2a1206; --r:14px; --gut:clamp(10px,1.6vw,24px); --ease:cubic-bezier(.2,.8,.2,1);
 }
 * { box-sizing:border-box; }
+[hidden] { display:none !important; }
 html, body { margin:0; height:100%; background:var(--bg); color:var(--text); overflow:hidden; }
 body { font:400 clamp(14px, .8vw + 7px, 22px)/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; }
 button, input { font:inherit; color:inherit; }

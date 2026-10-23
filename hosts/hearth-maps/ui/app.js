@@ -56,7 +56,7 @@ const styleUrl = id => `hearth://${new URL(S.services.tiles).host}/styles/${id}`
   if (l?.search) { $('#q').value = l.search; runSearch(l.search); }
   else if (l?.geo) {
     const g = l.geo;
-    if (g.lat != null) { const p = { name: g.label || 'Dropped pin', address: `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`, lat: g.lat, lon: g.lon }; showPlace(p, g.zoom || 16); }
+    if (g.lat != null) { const p = { name: g.label || 'Dropped pin', address: '', lat: g.lat, lon: g.lon }; showPlace(p, g.zoom || 16); }
     else if (g.query) { $('#q').value = g.query; runSearch(g.query); }
   }
   render();
