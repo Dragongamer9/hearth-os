@@ -6946,9 +6946,10 @@ function gameOptionItems(g){
   if(isActive(g) && g.installKind==='nimbus') items.unshift({label:'Cancel download',icon:'x',run:()=>cancelInstall(g)});
   if(g.inst && canDelete(g) && !isActive(g)) items.push({label:'Uninstall…',icon:'trash',run:()=>uninstallGame(g)});
   if(g.src==='beacon'){
+    const added=!!(g.beacon&&g.beacon.custom);   // added by hand in Beacon: set up in Beacon's window
     if(g.inst && beaconMods(g).length) items.unshift({label:'Play with…',icon:'play',run:()=>beaconPlayWith(g)});
-    items.push({label:'Game setup',icon:'sliders',run:()=>beaconSetup(g)});
-    if(g.inst) items.push({label:'Mods',icon:'lib',run:()=>beaconModsPage(g)});
+    if(!added) items.push({label:'Game setup',icon:'sliders',run:()=>beaconSetup(g)});
+    if(g.inst && !added) items.push({label:'Mods',icon:'lib',run:()=>beaconModsPage(g)});
     items.push({label:'Open Beacon',icon:'sliders',run:()=>beaconOpen()});
   }
   gamingGameItems(g, items);   // Hearth's gaming apps (block below)
@@ -7042,9 +7043,13 @@ function bcLoad(id){
   return bcCall('beacon.details',{id},90000).then(d=>{ BC.d[id]=d; BC.err[id]=null; })
     .catch(e=>{ BC.err[id]=e.message; }).finally(()=>{ BC.loading[id]=false; bcRedraw(); });
 }
-function beaconSetup(g){ if(!g) return; bcLoad(g.id); navigate('bsetup',{game:g.id}); }
-function beaconModsPage(g){ if(!g) return; bcLoad(g.id); navigate('bmods',{game:g.id}); }
+// Games added by hand in Beacon (beacon:custom:<id>) are set up in Beacon's own window.
+function beaconSetup(g){ if(!g) return; if(g.beacon&&g.beacon.custom) return beaconOpen(); bcLoad(g.id); navigate('bsetup',{game:g.id}); }
+function beaconModsPage(g){ if(!g) return; if(g.beacon&&g.beacon.custom) return beaconOpen(); bcLoad(g.id); navigate('bmods',{game:g.id}); }
 function beaconGameCard(g){
+  // Added by hand in Beacon (any Windows game, Faugus-style): its settings, runner and Wine tools are in Beacon's window.
+  if(g.beacon&&g.beacon.custom) return `<div class="card"><h3>Beacon</h3><div class="muted" style="margin-bottom:10px">${g.inst?'Added in Beacon: its runner, options and Wine tools are in Beacon':'Added in Beacon: choose its program there'}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="pill" data-f data-k="g-bopen" data-act="beaconOpen">${I.sliders}Open Beacon</button></div></div>`;
   return `<div class="card"><h3>Beacon</h3><div class="muted" style="margin-bottom:10px">${g.inst?'Its settings, CD key, runner and mods':'Install it, or show where it\'s installed'}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="pill" data-f data-k="g-bsetup" data-act="bcnSetup" data-id="${esc(g.id)}">${I.sliders}Game setup</button>${g.inst?`<button class="pill" data-f data-k="g-bmods" data-act="bcnMods" data-id="${esc(g.id)}">${I.lib}Mods</button>`:''}</div></div>`;
 }
@@ -7415,7 +7420,7 @@ async function addManual(){
 const INSTALLING = new Set();   // install requests on their way (a second press didn't start a second install)
 async function installGame(g){
   if(!g) return;
-  if(g.src==='beacon') return beaconSetup(g);   // Game setup: install it, or show where it is
+  if(g.src==='beacon') return (g.beacon&&g.beacon.custom) ? beaconOpen() : beaconSetup(g);   // Game setup: install it, or show where it is (games added in Beacon: Beacon's window)
   // The store's sign-in expired: installing needs it, so offer Sign in again instead of failing in the queue.
   const xs = (g.src==='epic' || g.src==='gog') && isExpired(g.src);
   if(xs && !g.note) return expiredSheet(g.src, `${g.title} can't install until you do.`);
@@ -8075,7 +8080,7 @@ function viewStores(){
     const b=(act,label,icon,pri)=>`<button class="sbtn ${pri?'pri':''}" data-f data-k="sa-${a.store}-${act}" data-act="${act}" data-s="${a.store}">${icon?I[icon]:''}${label}</button>`;
     let btns='';
     if(a.store==='steam' && ssign) btns = b('steamShow','Show Steam\'s window','display',true) + b('steamSignCancel','Cancel','x');
-    else if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?'Switch account':'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : '') + (a.signedIn && !a.busy ? b('accRefresh','Refresh list','refresh') : ''); }
+    else if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?'Switch account':'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : '') + ((a.signedIn || a.reason) && !a.busy && a.note!=="Steam isn't installed on this device." ? b('accRefresh','Refresh','refresh') : ''); }
     else if(signing) btns = `<span class="mini-spin"></span>`;
     else if(expired) btns = b('accSignIn','Sign in again','user',true) + (a.owned||a.installed ? b('accShow','Show games','lib') : '') + b('accSignOut','Sign out','x');
     else if(!a.signedIn) btns = b('accSignIn','Sign in','user',true);
@@ -8085,6 +8090,7 @@ function viewStores(){
       <div class="sblurb">${info.blurb}</div>
       ${stats.length?`<div class="sstats">${stats.join('')}</div>`:''}
       ${a.hint?`<div class="sblurb">${esc(a.hint)}</div>`:''}
+      ${a.store==='steam' && a.reason?`<div class="serr">${APP} can't read your Steam games: ${esc(a.reason)}${a.folder?`<br>Steam folder: <code>${esc(a.folder)}</code>`:''}</div>`:''}
       ${ssign?`<div class="sblurb">Steam's sign-in window is in front. Scan its QR code with the Steam app on your phone, or type your account name and password (a keyboard helps). Press the Guide button to come back here; ${APP} notices by itself when you're signed in.</div>`:''}
       ${expired?`<div class="serr">${info.name} stopped accepting your sign-in${a.expiredAt?' '+ago(a.expiredAt).toLowerCase():''}. Sign in again${a.name?' as '+esc(a.name):''} to install games, sync cloud saves and play online. Games you've installed still start if they work offline.</div>`
         : a.error?`<div class="serr">${esc(a.error)}</div>`:''}
