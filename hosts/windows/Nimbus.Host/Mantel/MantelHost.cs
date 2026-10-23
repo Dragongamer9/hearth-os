@@ -77,6 +77,7 @@ public sealed partial class MantelHost : IDisposable
         _tray.Balloon += (app, title, text) => _bar?.BeginInvoke((MethodInvoker)(() => Notifications.Add(app, title, text)));
         _full.WinKey += () => _bar?.BeginInvoke((MethodInvoker)ToggleLauncher);
         _full.TaskManagerKey += () => _bar?.BeginInvoke((MethodInvoker)(() => _ = OpenAppAsync("tasks")));
+        _full.Shortcut += s => _bar?.BeginInvoke((MethodInvoker)(() => OnShortcut(s)));
         _full.VolumeKey += d => _bar?.BeginInvoke((MethodInvoker)(() => VolumeRequested?.Invoke(d)));
         // The screen turned (a handheld held upright) or changed: put the bar on the right edge for its shape.
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => _bar?.BeginInvoke((MethodInvoker)Replace);
@@ -701,6 +702,11 @@ public sealed partial class MantelHost : IDisposable
             case "windowsSettings": HidePanels(); Apps.Launch("windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"); break;
             case "closeSettings": _settings?.Hide(); break;
             case "taskView": HidePanels(); KeyTyper.Combo(0x5B, 0x09); break;
+            case "showDesktop": HidePanels(); ToggleShowDesktop(); break;
+            case "pinsOrder":
+                if (m.TryGetProperty("ids", out var ids) && ids.ValueKind == JsonValueKind.Array)
+                    MantelState.SetPinOrder(ids.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString() ?? ""));
+                break;
             case "toast": Input.Osd.Show(Str("text")); break;
             case "openUrl":
             {
@@ -841,7 +847,50 @@ public sealed partial class MantelHost : IDisposable
     {
         var d = MantelState.Load();
         var pins = d.Pins.Select(p => new { id = p.Id, name = p.Name, icon = Apps.PinIcon(p.Id) }).ToList();
-        Send(to, "mantel.state", new { pins, full = Full, wallpaper = Wallpaper, reduceMotion = ReduceMotion, desktopIcons = d.DesktopIcons, dnd = d.Dnd, clock24 = d.Clock24 });
+        Send(to, "mantel.state", new { pins, full = Full, wallpaper = Wallpaper, reduceMotion = ReduceMotion, desktopIcons = d.DesktopIcons, dnd = d.Dnd, clock24 = d.Clock24, sortBy = d.SortBy });
+    }
+
+    // ------------------------------------------------------------------ Windows-key shortcuts and Show desktop
+
+    /// <summary>A Windows-key shortcut in full Mantel (FullShell; with Explorer running, Windows handles them).</summary>
+    private void OnShortcut(string s)
+    {
+        if (!Active) return;
+        switch (s)
+        {
+            case "showDesktop": HidePanels(); ToggleShowDesktop(); break;
+            case "files": HidePanels(); _ = OpenAppAsync("files"); break;
+            case "settings": HidePanels(); Apps.OpenUri("ms-settings:"); break;
+            case "quick": TogglePanel(_quick); break;
+            case "clock": ToggleClock(); break;
+            case "launcher": ToggleLauncher(); break;
+            case "snip": HidePanels(); Apps.OpenUri("ms-screenclip:"); break;
+            default:
+                if (s.StartsWith("task:") && int.TryParse(s[5..], out var n) && _bar is not null) { HidePanels(); Send(_bar, "mantel.activateNth", new { n }); }
+                break;
+        }
+    }
+
+    /// <summary>The windows Show desktop minimized (put back by the next Show desktop if nothing else was opened).</summary>
+    private List<IntPtr> _shownDesktop = new();
+
+    /// <summary>Show desktop (the strip at the end of the taskbar, Windows+D): every window minimized, then back again.
+    /// With Explorer running it's Explorer's own (Windows+D).</summary>
+    private void ToggleShowDesktop()
+    {
+        if (!Full) { KeyTyper.Combo(0x5B, 0x44); return; }
+        var open = Apps.Windows().Where(w => !w.Minimized).Select(w => new IntPtr(w.Id)).ToList();
+        if (open.Count > 0)
+        {
+            var fg = Native.GetForegroundWindow();
+            // The one in front last, so it comes back on top.
+            _shownDesktop = open.Where(h => h != fg).Concat(open.Where(h => h == fg)).ToList();
+            foreach (var h in open) Native.ShowWindow(h, Native.SW_MINIMIZE);
+            return;
+        }
+        var back = _shownDesktop;
+        _shownDesktop = new();
+        foreach (var h in back) if (Native.IsIconic(h)) Native.ShowWindow(h, Native.SW_RESTORE);
     }
 
     private void PushStateAll() { foreach (var w in All) if (w is not null) PushState(w); }

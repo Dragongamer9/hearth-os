@@ -38,8 +38,17 @@ internal static class DeskBridge
             }
             case "desk.icons": return await Task.Run(() => DesktopIcons.List(Int(a, "cols", 1), Int(a, "rows", 1)));
             case "desk.place": return await Task.Run(() => DesktopIcons.Place(Req(a, "name"), Int(a, "col"), Int(a, "row"), Int(a, "cols", 1), Int(a, "rows", 1)));
-            case "desk.arrange": return await Task.Run(() => DesktopIcons.Arrange(Int(a, "cols", 1), Int(a, "rows", 1)));
+            case "desk.arrange": return await Task.Run(() => DesktopIcons.Arrange(Int(a, "cols", 1), Int(a, "rows", 1), Str(a, "by")));
+            case "desk.placeMany":
+            {
+                var moves = new List<(string Name, int Col, int Row)>();
+                if (a.ValueKind == JsonValueKind.Object && a.TryGetProperty("moves", out var mv) && mv.ValueKind == JsonValueKind.Array)
+                    foreach (var x in mv.EnumerateArray())
+                        if (Str(x, "name") is { } n) moves.Add((n, Int(x, "col"), Int(x, "row")));
+                return await Task.Run(() => DesktopIcons.PlaceMany(moves, Int(a, "cols", 1), Int(a, "rows", 1)));
+            }
             case "desk.newFolder": return await Task.Run(() => DesktopIcons.NewFolder(Str(a, "name")));
+            case "desk.newText": return await Task.Run(DesktopIcons.NewText);
 
             // ------------------------------------------------ notifications (the clock's panel)
             case "notify.list": return Notes();
@@ -110,7 +119,7 @@ internal static class DeskBridge
     public static object State()
     {
         var d = MantelState.Load();
-        return new { pins = d.Pins, desktopIcons = d.DesktopIcons, dnd = d.Dnd, clock24 = d.Clock24 };
+        return new { pins = d.Pins, desktopIcons = d.DesktopIcons, dnd = d.Dnd, clock24 = d.Clock24, sortBy = d.SortBy };
     }
 
     public static object Notes() => new { history = Notifications.All, unseen = Notifications.Unseen, dnd = MantelState.Load().Dnd };
@@ -140,9 +149,10 @@ internal static class DesktopIcons
     public static string UserDir => Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
     public static string PublicDir => Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
 
-    private sealed record Item(string Name, string Label, string Path, bool Dir, bool Launcher, string Ext, long Size, bool Public);
+    private sealed record Item(string Name, string Label, string Path, bool Dir, bool Launcher, string Ext, long Size, bool Public, DateTime Modified);
+    public static readonly string[] Sorts = { "name", "type", "size", "date" };
 
-    private static List<Item> Items()
+    private static List<Item> Items(string? sortBy = null)
     {
         var outp = new List<Item>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -163,15 +173,25 @@ internal static class DesktopIcons
                     bool launcher = ext is ".lnk" or ".url" or ".appref-ms";
                     // Windows hides shortcuts' extensions; other files keep their full name, like Hearth OS shows them.
                     var label = launcher ? System.IO.Path.GetFileNameWithoutExtension(fi.Name) : fi.Name;
-                    outp.Add(new Item(fi.Name, label, fi.FullName, isDir, launcher, ext, isDir ? 0 : ((FileInfo)fi).Length, isPublic));
+                    outp.Add(new Item(fi.Name, label, fi.FullName, isDir, launcher, ext, isDir ? 0 : ((FileInfo)fi).Length, isPublic, fi.LastWriteTimeUtc));
                 }
                 catch { }
             }
         }
+        // Folders first, then by name, type (extension), size (biggest first) or date (newest first), like hearth-desk.
+        var by = sortBy ?? MantelState.Load().SortBy;
         outp.Sort((x, y) =>
         {
             if (x.Dir != y.Dir) return x.Dir ? -1 : 1;
-            int c = string.Compare(x.Label, y.Label, StringComparison.CurrentCultureIgnoreCase);
+            int c = by switch
+            {
+                "type" => string.Compare(x.Ext, y.Ext, StringComparison.OrdinalIgnoreCase),
+                "size" => y.Size.CompareTo(x.Size),
+                "date" => y.Modified.CompareTo(x.Modified),
+                _ => 0,
+            };
+            if (c != 0) return c;
+            c = string.Compare(x.Label, y.Label, StringComparison.CurrentCultureIgnoreCase);
             return c != 0 ? c : string.CompareOrdinal(x.Name, y.Name);
         });
         return outp;
@@ -238,12 +258,57 @@ internal static class DesktopIcons
         return List(cols, rows);
     }
 
-    public static object Arrange(int cols, int rows)
+    /// <summary>Several icons moved together (a selection dragged): icons already at a new place move to the places the
+    /// moved ones left (one icon: a swap), else to the first free place (hearth-desk's place_many).</summary>
+    public static object PlaceMany(List<(string Name, int Col, int Row)> moves, int cols, int rows)
+    {
+        cols = Math.Max(1, cols); rows = Math.Max(1, rows);
+        var names = Items().Select(i => i.Name).ToList();
+        var want = new Dictionary<string, (int C, int R)>();
+        foreach (var (name, col, row) in moves)
+        {
+            if (!names.Contains(name)) throw new InvalidOperationException("“" + name + "” isn't on the desktop any more");
+            var cell = (Math.Clamp(col, 0, cols - 1), Math.Clamp(row, 0, rows - 1));
+            if (!want.ContainsValue(cell)) want[name] = cell;
+        }
+        var d = MantelState.Load();
+        var (placed, _) = Layout(names, d.Icons, cols, rows);
+        var now = new Dictionary<string, (int C, int R)>(placed);
+        foreach (var (n, cell) in want) now[n] = cell;
+        var targets = want.Values.ToHashSet();
+        var displaced = names.Where(n => !want.ContainsKey(n) && targets.Contains(placed[n])).ToList();
+        var taken = now.Where(kv => !displaced.Contains(kv.Key)).Select(kv => kv.Value).ToHashSet();
+        var freed = want.Keys.Select(n => placed[n]).Where(c => !targets.Contains(c) && !taken.Contains(c)).ToList();
+        var spare = new Queue<(int C, int R)>(freed);
+        for (int c = 0; c < cols; c++) for (int r = 0; r < rows; r++) if (!taken.Contains((c, r)) && !freed.Contains((c, r))) spare.Enqueue((c, r));
+        foreach (var n in displaced) now[n] = spare.Count > 0 ? spare.Dequeue() : placed[n];
+        foreach (var n in names) d.Icons[n] = new[] { now[n].C, now[n].R };
+        MantelState.Save(d, notify: false);
+        return List(cols, rows);
+    }
+
+    public static object Arrange(int cols, int rows, string? by = null)
     {
         var d = MantelState.Load();
+        if (by is not null)
+        {
+            if (!Sorts.Contains(by)) throw new ArgumentException("Sort by name, type, size or date");
+            d.SortBy = by;
+        }
         d.Icons.Clear();
         MantelState.Save(d, notify: false);
         return List(cols, rows);
+    }
+
+    /// <summary>A new empty text document on the desktop ("New Text Document.txt", then " (2)"…, like Windows).</summary>
+    public static object NewText()
+    {
+        var dir = UserDir;
+        Directory.CreateDirectory(dir);
+        var target = System.IO.Path.Combine(dir, "New Text Document.txt");
+        for (int n = 2; File.Exists(target) || Directory.Exists(target); n++) target = System.IO.Path.Combine(dir, $"New Text Document ({n}).txt");
+        using (new FileStream(target, FileMode.CreateNew)) { }
+        return new { ok = true, path = target, name = System.IO.Path.GetFileName(target) };
     }
 
     public static object NewFolder(string? name)

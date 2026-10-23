@@ -30,6 +30,8 @@ internal static class MantelState
         public bool Clock24 { get; set; }
         /// <summary>Desktop icon places: file name → [column, row].</summary>
         public Dictionary<string, int[]> Icons { get; set; } = new();
+        /// <summary>How the desktop icons are sorted when they're lined up: name, type, size or date.</summary>
+        public string SortBy { get; set; } = "name";
     }
 
     /// <summary>A pinned app: a Start menu app id (shell:AppsFolder\…), an .exe path, or one of Hearth's own (hearth:files).</summary>
@@ -80,6 +82,24 @@ internal static class MantelState
         lock (Lock) { d = Load(); change(d); Save(d, false); }
         if (notify) Changed?.Invoke();
         return d;
+    }
+
+    /// <summary>The pins in this order (dragged on the taskbar); ids that aren't pinned are ignored, pins not named keep
+    /// their order after the named ones.</summary>
+    public static void SetPinOrder(IEnumerable<string> ids)
+    {
+        var want = ids.ToList();
+        Update(d =>
+        {
+            var ordered = new List<Pin>();
+            foreach (var id in want)
+            {
+                var p = d.Pins.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+                if (p is not null && !ordered.Contains(p)) ordered.Add(p);
+            }
+            foreach (var p in d.Pins) if (!ordered.Contains(p)) ordered.Add(p);
+            d.Pins = ordered;
+        });
     }
 
     public static bool IsPinned(string id) => Load().Pins.Any(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
