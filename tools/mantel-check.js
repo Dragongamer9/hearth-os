@@ -92,9 +92,38 @@ const PINS = [{ id: 'Valve.Steam', name: 'Steam' }, { id: 'Discord.Discord', nam
     await p.click('.wins .bb:nth-child(1)', { button: 'right' });
     const m2 = (await sent(p, 'menu')).pop();
     expect(m2.items.some(i => i.label === 'Unpin from taskbar'), 'a pinned app offers Unpin from taskbar');
-    // Middle click closes the window in front; a click on a pinned app that isn't running opens it.
+    // A click on a pinned app that isn't running opens it; middle-click opens another window (like Windows).
     await p.click('.wins .bb:nth-child(2)');
     expect((await sent(p, 'launch')).some(x => x.id === 'Discord.Discord'), 'clicking a pin that isn\'t running opens it');
+    await p.click('.wins .bb:nth-child(1)', { button: 'middle' });
+    expect((await sent(p, 'launch')).some(x => x.id === 'Valve.Steam') && !(await sent(p, 'close')).length, 'middle-click opens another Steam window and closes nothing');
+    // An app with two windows: a click lists them to pick from.
+    await p.click('.wins .bb:nth-child(3)');
+    const wl = (await sent(p, 'menu')).pop();
+    expect(wl.items.filter(i => i.icon === 'window').map(i => i.label).join('|') === 'Downloads - File Explorer|Mods - File Explorer', 'a click on an app with 2 windows lists them');
+    await p.evaluate(id => __push('mantel.menuPick', { id }), wl.items[1].id);
+    await p.waitForTimeout(50);
+    expect((await sent(p, 'activate')).some(x => x.id === 3), 'picking a window brings it to the front');
+    // Windows+2 (from Ember's keyboard hook): the second app on the taskbar.
+    await p.evaluate(() => __push('mantel.activateNth', { n: 2 }));
+    expect((await sent(p, 'launch')).filter(x => x.id === 'Discord.Discord').length === 2, 'Windows+2 opens Discord');
+    // Volume: click opens Quick Access, right-click a menu with Windows' sound settings.
+    await p.click('.vol');
+    expect((await sent(p, 'quick')).length >= 1, 'the volume opens Quick Access');
+    await p.click('.vol', { button: 'right' });
+    const vm = (await sent(p, 'menu')).pop();
+    expect(vm.items.some(i => i.label === 'Sound settings') && vm.items.some(i => i.label === 'Mute'), 'the volume\'s menu');
+    expect(await p.$eval('.bell .dot', d => d.textContent) === '1', 'the bell shows how many are unseen');
+    await p.click('.sdesk');
+    expect((await sent(p, 'showDesktop')).length === 1, 'the strip at the end shows the desktop');
+    // Drag Steam (first pin) past Discord: the new order goes to Ember.
+    const b1 = await p.$eval('.wins .bb:nth-child(1)', b => { const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    const b2 = await p.$eval('.wins .bb:nth-child(2)', b => { const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    await p.mouse.move(b1.x, b1.y); await p.mouse.down(); await p.mouse.move(b2.x + 14, b1.y, { steps: 8 }); await p.mouse.up();
+    await p.waitForTimeout(50);
+    const po = (await sent(p, 'pinsOrder')).pop();
+    expect(po && po.ids.join() === 'Discord.Discord,Valve.Steam', 'dragging Steam past Discord saves the new order');
+    expect(!(await sent(p, 'focus')).length, 'the drag isn\'t also a click');
     await p.click('.desks .dk:nth-child(2)');
     expect(await p.evaluate(() => __sent.some(m => m.type === 'call' && m.method === 'vdesk.switch' && m.args.index === 1)), 'the desktop switcher switches');
     await p.evaluate(() => __push('mantel.state', { pins: [], clock24: true }));
@@ -247,10 +276,28 @@ const PINS = [{ id: 'Valve.Steam', name: 'Steam' }, { id: 'Discord.Discord', nam
     await shot(p, 'desktop');
     await p.click('.di[data-name="Steam.lnk"]', { button: 'right' });
     let m = (await sent(p, 'menu')).pop();
-    expect(m.items.filter(i => !i.separator).map(i => i.label).join() === 'Open,Show in Files,Rename,Move to the Recycle Bin,Properties', 'an icon\'s menu');
+    expect(m.items.filter(i => !i.separator).map(i => i.label).join() === 'Open,Show in Files,Cut,Copy,Rename,Move to the Recycle Bin,Properties', 'an icon\'s menu');
     await p.mouse.click(900, 500, { button: 'right' });
     m = (await sent(p, 'menu')).pop();
-    expect(m.title === 'Desktop' && m.items.some(i => i.label === 'Show desktop icons' && i.checked === true) && m.items.some(i => i.label === 'Line up icons by name'), 'the background\'s menu');
+    expect(m.title === 'Desktop' && m.items.some(i => i.label === 'Show desktop icons' && i.checked === true) && m.items.some(i => i.label === 'Sort by' && i.sub.length === 4), 'the background\'s menu');
+    for (const l of ['New folder', 'New text document', 'Paste', 'Refresh']) expect(m.items.some(i => i.label === l), `the background's menu lacks ${l}`);
+    // Pick both (Ctrl+click), copy them to Windows' clipboard; a selection box picks both too.
+    await p.click('.di[data-name="Games"]');
+    await p.click('.di[data-name="Steam.lnk"]', { modifiers: ['Control'] });
+    expect(await p.$$eval('.di.sel', x => x.length) === 2, 'Ctrl+click picks a second icon');
+    await p.keyboard.press('Control+c');
+    expect(await p.evaluate(() => __sent.some(m => m.type === 'call' && m.method === 'files.clipSet' && m.args.paths.length === 2 && m.args.cut === false)), 'Ctrl+C copies both');
+    await p.click('.di[data-name="Steam.lnk"]', { button: 'right' });
+    m = (await sent(p, 'menu')).pop();
+    expect(m.title === '2 items' && m.items[0].label === 'Open 2 items', 'the menu for two icons');
+    await p.mouse.click(900, 500);
+    expect(await p.$$eval('.di.sel', x => x.length) === 0, 'a click on the desktop picks nothing');
+    await p.mouse.move(400, 300); await p.mouse.down(); await p.mouse.move(20, 20, { steps: 6 }); await p.mouse.up();
+    expect(await p.$$eval('.di.sel', x => x.length) === 2, 'a selection box picks both');
+    await p.keyboard.press('Shift+Delete');
+    const dlg = (await sent(p, 'dialog')).pop();
+    expect(dlg && dlg.mode === 'confirm' && /for good/.test(dlg.title), 'Shift+Delete asks first');
+    await p.mouse.click(900, 500);
     // Drag an icon to another place: Ember remembers it.
     await p.mouse.move(64, 60); await p.mouse.down(); await p.mouse.move(200, 70, { steps: 5 }); await p.mouse.up();
     await p.waitForTimeout(50);
@@ -259,6 +306,7 @@ const PINS = [{ id: 'Valve.Steam', name: 'Steam' }, { id: 'Discord.Discord', nam
     await p.click('.di[data-name="Steam.lnk"]');
     await p.keyboard.press('Delete');
     expect(await p.evaluate(() => __sent.some(m => m.type === 'call' && m.method === 'files.trash')), 'Delete moves it to the Recycle Bin');
+    await p.click('.di[data-name="Steam.lnk"]');
     await p.keyboard.press('F2');
     expect((await sent(p, 'dialog')).pop().mode === 'ask', 'F2 asks for the new name');
     await p.close();
