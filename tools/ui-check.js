@@ -354,6 +354,24 @@ const path = require('path');
       await page.evaluate(() => { act(document.querySelector('#view [data-k="ap-mf-auto"]')); closeAll(); navigate('home', {}, false); });
     } catch (e) { errors.push('keyboard / on-screen keyboard: ' + e.message.split('\n')[0]); }
   }
+  // The experimental layouts sit in drop-downs (closed at first, they stay as you left them): Home's in Appearance,
+  // the Library's in Library layout, each with its own Keyboard & mouse one; the upvote buttons are still there.
+  await step('experimental drop-downs', () => {
+    localStorage.removeItem('hearth.xopen'); for (const k in XOPEN) delete XOPEN[k];
+    closeAll(); S.settingsTab = 'appearance'; navigate('settings', {}, false);
+    const q = k => document.querySelector(`#view [data-k="${k}"]`);
+    if (!q('xd-home-x')) throw new Error('no Experimental layouts drop-down in Appearance');
+    if (q('ap-l-x-carousel')) throw new Error('the experimental layouts show before the drop-down is opened');
+    act(q('xd-home-x'));
+    if (!q('ap-l-x-carousel') || !q('xv-x-carousel')) throw new Error('opening the drop-down shows no layouts or no upvote');
+    if (!JSON.parse(localStorage.getItem('hearth.xopen') || '{}')['home-x']) throw new Error("the drop-down's open state isn't kept");
+    act(q('xd-home-x')); if (q('ap-l-x-carousel')) throw new Error("the drop-down doesn't close");
+    S.settingsTab = 'liblook'; render(null, true);
+    if (!q('xd-lib-x')) throw new Error('no Experimental drop-down in Library layout');
+    act(q('xd-lib-x')); if (!q('ap-l-x-lib-flow') || !q('xv-x-lib-flow')) throw new Error('the Library drop-down shows no layouts');
+    act(q('xd-lib-x'));
+    closeAll(); navigate('home', {}, false);
+  });
   // The lock screen's and the Focus layout's big clocks keep time (they kept the time they were drawn at).
   await step('big clocks keep time', () => {
     S.layers = []; S.view = 'lock'; render(null, true);

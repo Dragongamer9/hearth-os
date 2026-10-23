@@ -33,6 +33,20 @@ function inspect(opts) {
   }
   if (offs.length) out.push(`${offs.length} controls off screen, nothing scrolls to them: ${offs.slice(0, 6).join(', ')}`);
   if (document.documentElement.scrollWidth > W + 2) out.push(`the page is ${document.documentElement.scrollWidth - W}px wider than the window`);
+  // 2b. Layouts that fill the screen (.lfit): inside the screen, their content inside them, the tabs still in sight.
+  const lf = view.querySelector('.lfit');
+  if (lf) {
+    const r = lf.getBoundingClientRect(), vr = view.getBoundingClientRect();
+    if (r.bottom > vr.bottom + 4) out.push(`fills ${Math.round(r.bottom - vr.bottom)}px past the bottom of the screen`);
+    if (lf.scrollHeight > lf.clientHeight + 4 && getComputedStyle(lf).overflowY === 'hidden') out.push(`its content is ${lf.scrollHeight - lf.clientHeight}px taller than the space it has`);
+    const head = view.querySelector('.libhead'); if (head && head.getBoundingClientRect().bottom < vr.top + 4) out.push('the tabs scrolled out of sight');
+  }
+  // 2c. Controls hidden behind the footer (an info bar or strip drawn over it, or under it).
+  const foot = document.querySelector('#footer'), fr = foot && foot.getBoundingClientRect();
+  if (fr && fr.height) {
+    const top = document.elementFromPoint(Math.min(W - 2, fr.right - 40), fr.top + fr.height / 2);
+    if (top && !foot.contains(top)) out.push('something is drawn over the footer: ' + name(top));
+  }
   // 3. Text: clipped without an ellipsis, overlapping other text, low contrast.
   const texts = [];
   const walker = document.createTreeWalker(view, NodeFilter.SHOW_TEXT, { acceptNode: n => n.textContent.trim().length > 1 ? 1 : 2 });
