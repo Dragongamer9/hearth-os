@@ -1,7 +1,8 @@
 pragma Singleton
 
 // What the taskbar and the desktop remember (~/.config/nimbus/desk.json, written by hearth-desk): apps pinned
-// to the taskbar, desktop icons on or off, Do Not Disturb. Also the notification history for this session
+// to the taskbar (in order), desktop icons on or off and how they're sorted, Do Not Disturb, apps whose
+// notifications don't pop up. Also the notification history for this session
 // (Notifications.qml adds to it, the clock's panel (ClockPanel.qml) lists it).
 import QtQuick
 import Quickshell
@@ -12,11 +13,16 @@ Singleton {
     property var pins: []                  // .desktop ids, in taskbar order
     property bool desktopIcons: true
     property bool dnd: false               // Do Not Disturb: notifications go straight to the history
+    property bool autoArrange: false       // desktop icons kept lined up in sorted order
+    property string sortBy: "name"         // name | type | size | date
+    property var muted: []                 // app names whose notifications only go to the history
     property var history: []               // newest first: {key, app, summary, body, icon, time}
     property int unseen: 0                 // added since the panel was last opened
     property int seq: 0
     property bool overlayShown: false      // a menu, dialog or the clock's panel is open (Pad.qml: the controller types keys)
     property var mainDesktop: null         // the main screen's Desktop (for `quickshell ipc ... call desktop menu`)
+    property var mainBar: null             // the main screen's taskbar (Super+1-9)
+    property var shownDesktop: null        // Show desktop: {windows, front} that were minimized for it
 
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-desk").toString().replace(/^file:\/\//, ""))
     readonly property string filesHelper: decodeURIComponent(Qt.resolvedUrl("hearth-files").toString().replace(/^file:\/\//, ""))
@@ -55,6 +61,9 @@ Singleton {
         pins = r.pins;
         desktopIcons = r.desktopIcons !== false;
         dnd = r.dnd === true;
+        autoArrange = r.autoArrange === true;
+        sortBy = r.sortBy || "name";
+        muted = Array.isArray(r.muted) ? r.muted : [];
     }
 
     // ------------------------------------------------ taskbar pins
@@ -69,11 +78,26 @@ Singleton {
         call(["unpin", id], (r, err) => { if (!err) apply(r); });
     }
     function togglePin(id) { isPinned(id) ? unpin(id) : pin(id); }
+    function reorderPins(order) {
+        pins = order;
+        call(["pins-order"].concat(order), (r, err) => { if (err) SettingsNav.toast(err); else apply(r); });
+    }
 
     // ------------------------------------------------ switches
     function setDnd(on) {
         dnd = on;
         call(["set", "dnd", on ? "on" : "off"], (r, err) => { if (!err) apply(r); });
+    }
+    function setAutoArrange(on) {
+        autoArrange = on;
+        call(["set", "autoArrange", on ? "on" : "off"], (r, err) => { if (!err) apply(r); });
+    }
+    // Notifications from an app: muted ones go to the history without popping up.
+    function isMuted(app) { return !!app && muted.indexOf(app) >= 0; }
+    function setMuted(app, on) {
+        if (!app) return;
+        muted = on ? muted.filter(m => m !== app).concat([app]) : muted.filter(m => m !== app);
+        call(["mute-app", app, on ? "on" : "off"], (r, err) => { if (err) SettingsNav.toast(err); else apply(r); });
     }
     function setDesktopIcons(on) {
         desktopIcons = on;
