@@ -3128,7 +3128,7 @@ function dispHzTip(d){
   const cur=dispModeOf(d.width,d.height), curMax=cur&&cur.rates.length?Math.max(...cur.rates):0;
   let best=null; modes.forEach(m=>{ const r=m.rates.length?Math.max(...m.rates):0; if(!best||r>best.r||(r===best.r&&m.width*m.height>best.m.width*best.m.height)) best={m,r}; });
   if(!best || !curMax) return '';
-  const fix='If your screen can go faster, turn on its enhanced HDMI or PC/Game mode for this input (TVs call it Input Signal Plus, HDMI Ultra HD Deep Colour, Enhanced format or similar), use an HDMI 2.1 port and an Ultra High Speed HDMI cable (or DisplayPort), then restart '+APP+'.';
+  const fix='If your screen can go faster, turn on its enhanced HDMI or PC/Game mode for this input (TVs call it Input Signal Plus, HDMI Ultra HD Deep Colour, Enhanced format or similar), use an HDMI 2.1 port and an Ultra High Speed HDMI cable (or DisplayPort), then restart '+APP+'. If it went faster before on this PC, turn the screen off and on again with its own power button while '+APP+' is showing: the fast HDMI 2.1 link is set up when the screen is found, and a TV that was asleep then can be stuck at HDMI 2.0 rates.';
   if(best.r>curMax) return `At ${d.width} × ${d.height} this screen only reports up to ${curMax} Hz; it reports ${best.r} Hz at ${best.m.width} × ${best.m.height}. ${fix}`;
   if(curMax<=60) return `This screen only reports up to ${curMax} Hz, so that's the most ${APP} can use. ${fix}`;
   return '';
