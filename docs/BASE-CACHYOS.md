@@ -1,3 +1,5 @@
+> **Archived (2026-10-22).** Hearth OS on CachyOS isn't built or offered for now, to focus on Anatase and Peppermint; it comes back after that. Systems on it can switch from Settings › Updates › Switch edition.
+
 # Hearth OS on CachyOS (Beta Experimental)
 
 **Status: Beta Experimental.** The recipe and CI workflow are written; the image has not yet been built by CI or

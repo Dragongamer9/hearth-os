@@ -34,6 +34,11 @@ pub const EDITIONS: &[Edition] = &[
 
 pub fn edition(id: &str) -> Option<&'static Edition> { EDITIONS.iter().find(|e| e.id == id) }
 
+/// Archived editions (October 2026): still known, so a system on one is recognised and can switch away, but never
+/// offered and never switched to. hearth-admin has the same list (ARCHIVED_EDITIONS).
+pub const ARCHIVED: &[&str] = &["ubuntu", "cachyos"];
+pub fn archived(id: &str) -> bool { ARCHIVED.contains(&id) }
+
 /// The tag used: :testing when asked for (or the only one there is), else the edition's own.
 pub fn tag_for(e: &Edition, testing: bool) -> &'static str { if testing { "testing" } else { e.tag } }
 
@@ -156,14 +161,17 @@ fn progress_status() -> Value {
 pub fn status() -> Value {
     let mut s = progress_status();
     if s["eligible"] != true { s["published"] = Value::Null; return s; }
+    let offered: Vec<&'static Edition> = EDITIONS.iter().filter(|e| !archived(e.id)).collect();
     let pubs: Vec<Option<bool>> = std::thread::scope(|sc| {
-        let hs: Vec<_> = EDITIONS.iter().map(|e| sc.spawn(move || published(e.repo, tag_for(e, false)))).collect();
+        let hs: Vec<_> = offered.iter().map(|&e| sc.spawn(move || published(e.repo, tag_for(e, false)))).collect();
         hs.into_iter().map(|h| h.join().unwrap_or(None)).collect()
     });
     let (v3, sb) = (cpu_v3(), secure_boot());
     s["published"] = json!(pubs[0]);
     let cur = current();
-    s["editions"] = Value::Array(EDITIONS.iter().zip(pubs).filter(|(e, _)| Some(e.id) != cur).map(|(e, p)| choice_from(e, p, v3, sb, cur)).collect());
+    s["editions"] = Value::Array(offered.iter().zip(pubs).filter(|(e, _)| Some(e.id) != cur).map(|(e, p)| choice_from(e, p, v3, sb, cur)).collect());
+    // On an archived edition: say so, so the page can ask to switch.
+    if cur.map(archived).unwrap_or(false) { s["archived"] = json!(true); }
     s
 }
 
@@ -194,6 +202,7 @@ pub fn start(emit: crate::system::bt_scan::Emit, edition_id: &str, testing: bool
     if !eligible() { return Err("Hearth OS can't switch from here.".into()); }
     let e = edition(edition_id).ok_or("Unknown choice")?;
     if current() == Some(e.id) { return Err(format!("This is already {}.", e.label)); }
+    if archived(e.id) { return Err(format!("Hearth OS on {} is archived: switch to Anatase or Peppermint instead.", e.label)); }
     if e.id == "cachyos" && !cpu_v3() { return Err("Hearth OS on CachyOS needs a newer processor.".into()); }
     if published_cached(e.repo, tag_for(e, testing)) == Some(false) { return Err(format!("{} isn't ready yet.", e.label)); }
     {
@@ -381,6 +390,7 @@ mod tests {
     #[test]
     fn choices() {
         assert_eq!(EDITIONS.len(), 4);
+        assert!(archived("ubuntu") && archived("cachyos") && !archived("anatase") && !archived("peppermint"));
         let a = edition("anatase").unwrap();
         assert_eq!(image_of(a, false), "ghcr.io/dragongamer9/hearth-os:latest");
         assert_eq!(image_of(a, true), "ghcr.io/dragongamer9/hearth-os:testing");
