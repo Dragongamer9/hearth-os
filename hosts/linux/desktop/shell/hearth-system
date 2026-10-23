@@ -369,8 +369,15 @@ ACTION_WORDS = {
     'ToggleShowDesktop': 'Show the desktop, or the windows again',
 }
 COMMAND_WORDS = [
-    (r'call launcher toggle', 'Open or close the app launcher'), (r'open\.sh terminal', 'Open a terminal'),
-    (r'open\.sh files', 'Open Files'), (r'open\.sh screenshot', 'Take a screenshot'),
+    (r'call launcher toggle', 'Open or close the app launcher'), (r'call launcher open', 'Search apps'),
+    (r'open\.sh terminal', 'Open a terminal'), (r'open\.sh files', 'Open Files'),
+    (r'open\.sh screenshot-region', 'Screenshot of an area you choose'),
+    (r'open\.sh screenshot-clipboard', 'Screenshot to the clipboard only'),
+    (r'open\.sh screenshot', 'Screenshot of the whole screen'),
+    (r'call taskbar activate (\d)', 'Open or switch to taskbar app'), (r'call calendar toggle', 'Notifications and calendar'),
+    (r'call media playPause', 'Play or pause'), (r'call media next', 'Next track'), (r'call media previous', 'Previous track'),
+    (r'call media stop', 'Stop playing'), (r'call brightness up', 'Brightness up'), (r'call brightness down', 'Brightness down'),
+    (r'set-mute @DEFAULT_AUDIO_SOURCE@', 'Microphone on or off'), (r'systemctl suspend', 'Sleep'),
     (r'call tasks toggle', 'Open Task Manager'), (r'call lock lock', 'Lock the screen'),
     (r'call clipboard toggle', 'Clipboard history'), (r'call settings', 'Open Settings'),
     (r'call apps', 'Open Apps'), (r'call quick toggle', 'Quick Access'), (r'call power menu', 'Power menu'),
@@ -384,9 +391,13 @@ KEYSYM_WORDS = {
     'Left': 'Left', 'Right': 'Right', 'Super_L': 'Super', 'Super_R': 'Super', 'Delete': 'Delete', 'BackSpace': 'Backspace',
     'XF86AudioRaiseVolume': 'Volume up key', 'XF86AudioLowerVolume': 'Volume down key', 'XF86AudioMute': 'Mute key',
     'XF86PowerOff': 'Power key', 'XF86MonBrightnessUp': 'Brightness up key', 'XF86MonBrightnessDown': 'Brightness down key',
+    'XF86AudioMicMute': 'Microphone mute key', 'XF86AudioPlay': 'Play key', 'XF86AudioPause': 'Pause key',
+    'XF86AudioNext': 'Next track key', 'XF86AudioPrev': 'Previous track key', 'XF86AudioStop': 'Stop key',
+    'XF86Sleep': 'Sleep key',
 }
 # labwc's own shortcuts that <default /> keeps unless rc.xml sets the same key.
-LABWC_DEFAULTS = [('A-Tab', 'Switch to the next window'), ('A-F4', 'Close the window')]
+LABWC_DEFAULTS = [('A-Tab', 'Switch to the next window'), ('A-S-Tab', 'Switch to the previous window'),
+                  ('A-F4', 'Close the window'), ('A-Space', 'Window menu')]
 
 
 def key_words(key):
@@ -409,12 +420,15 @@ def action_words(action):
     if name == 'Execute':
         cmd = action.get('command') or ''
         for pat, words in COMMAND_WORDS:
-            if re.search(pat, cmd):
-                return words
+            m = re.search(pat, cmd)
+            if m:
+                return words + (' ' + m.group(1) if m.groups() else '')
         word = (cmd.split() or [''])[0]
         return 'Run ' + os.path.basename(word) if word else 'Run a command'
     if name == 'SnapToEdge':
         return 'Snap the window to the %s' % {'left': 'left half', 'right': 'right half', 'up': 'top', 'down': 'bottom'}.get(action.get('direction', ''), 'edge')
+    if name == 'MoveToOutput':
+        return 'Move the window to the screen on the %s' % action.get('direction', 'other side')
     if name == 'MoveToEdge':
         return 'Move the window to the %s edge' % action.get('direction', '')
     if name == 'GoToDesktop':

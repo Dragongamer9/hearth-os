@@ -71,6 +71,28 @@
     <!-- Clipboard history (Settings › Clipboard) -->
     <keybind key="W-v"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call clipboard toggle'" /></keybind>
     <keybind key="W-Return"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh terminal'" /></keybind>
+    <keybind key="C-A-t"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh terminal'" /></keybind>
+    <!-- Like Windows 11: Super+I Settings, Super+A Quick Access, Super+N notifications and the calendar,
+         Super+S / Super+R the app menu's search, Super+1-9 the apps on the taskbar (open, or switch to). -->
+    <keybind key="W-i"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call settings open'" /></keybind>
+    <keybind key="W-a"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call quick toggle'" /></keybind>
+    <keybind key="W-n"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call calendar toggle'" /></keybind>
+    <keybind key="W-s"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher open'" /></keybind>
+    <keybind key="W-r"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher open'" /></keybind>
+    <keybind key="W-1"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 1'" /></keybind>
+    <keybind key="W-2"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 2'" /></keybind>
+    <keybind key="W-3"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 3'" /></keybind>
+    <keybind key="W-4"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 4'" /></keybind>
+    <keybind key="W-5"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 5'" /></keybind>
+    <keybind key="W-6"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 6'" /></keybind>
+    <keybind key="W-7"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 7'" /></keybind>
+    <keybind key="W-8"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 8'" /></keybind>
+    <keybind key="W-9"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 9'" /></keybind>
+    <!-- Super+Tab and Alt+Tab both switch windows (labwc's own Alt+Tab). -->
+    <keybind key="W-Tab"><action name="NextWindow" /></keybind>
+    <keybind key="W-S-Tab"><action name="PreviousWindow" /></keybind>
+    <!-- Ctrl+Alt+Delete: the power menu (lock, sign out, restart, shut down). -->
+    <keybind key="C-A-Delete"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call power menu'" /></keybind>
     <keybind key="W-e"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh files'" /></keybind>
     <keybind key="C-S-Escape"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call tasks toggle'" /></keybind>
     <keybind key="W-g"><action name="Execute" command="nimbus-mode game" /></keybind>
@@ -114,6 +136,10 @@
       </action>
     </keybind>
     <keybind key="W-d"><action name="ToggleShowDesktop" /></keybind>
+    <keybind key="W-m"><action name="ToggleShowDesktop" /></keybind>
+    <!-- Two or more screens: Super+Shift+Left/Right moves the window to the next screen that way. -->
+    <keybind key="W-S-Left"><action name="MoveToOutput" direction="left" wrap="yes" /></keybind>
+    <keybind key="W-S-Right"><action name="MoveToOutput" direction="right" wrap="yes" /></keybind>
     <!-- Virtual desktops: switch, take the window along, or send it without following.
          Super+Alt+number is what the taskbar's "Move to desktop" types (with wtype). -->
     <keybind key="W-C-Left"><action name="GoToDesktop" to="left" wrap="no" /></keybind>
@@ -132,18 +158,41 @@
     <keybind key="W-A-2"><action name="SendToDesktop" to="2" follow="no" /></keybind>
     <keybind key="W-A-3"><action name="SendToDesktop" to="3" follow="no" /></keybind>
     <keybind key="W-A-4"><action name="SendToDesktop" to="4" follow="no" /></keybind>
+    <!-- Screenshots go to Pictures/Screenshots and the clipboard, with a notification to open them.
+         Print Screen: the whole screen. Shift+Print Screen or Super+Shift+S: drag a box around what you want.
+         Ctrl+Print Screen: the whole screen to the clipboard only. -->
     <keybind key="Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot'" /></keybind>
+    <keybind key="S-Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'" /></keybind>
+    <keybind key="W-S-s"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'" /></keybind>
+    <keybind key="C-Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-clipboard'" /></keybind>
     <!-- Volume and power keys go to the shell (volume bar, over-amplification, Settings › Power button);
          wpctl directly if the shell isn't running. -->
     <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons up || wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+'" /></keybind>
     <keybind key="XF86AudioLowerVolume"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons down || wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-'" /></keybind>
     <keybind key="XF86AudioMute"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons mute || wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle'" /></keybind>
     <keybind key="XF86PowerOff"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons power'" /></keybind>
-    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="brightnessctl set 5%+" /></keybind>
-    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="brightnessctl set 5%-" /></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call brightness up || brightnessctl set 5%+'" /></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call brightness down || brightnessctl set 5%-'" /></keybind>
+    <keybind key="XF86AudioMicMute"><action name="Execute" command="wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle" /></keybind>
+    <!-- Media keys: whatever is playing (MPRIS: browsers, Spotify, music and video players). -->
+    <keybind key="XF86AudioPlay"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media playPause'" /></keybind>
+    <keybind key="XF86AudioPause"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media playPause'" /></keybind>
+    <keybind key="XF86AudioNext"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media next'" /></keybind>
+    <keybind key="XF86AudioPrev"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media previous'" /></keybind>
+    <keybind key="XF86AudioStop"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media stop'" /></keybind>
+    <!-- The sleep key (the session holds it so the power button stays Hearth's, so it's done here). -->
+    <keybind key="XF86Sleep"><action name="Execute" command="systemctl suspend" /></keybind>
   </keyboard>
 
-  <mouse><default /></mouse>
+  <mouse>
+    <default />
+    <!-- labwc rolls a window up into its title bar when you scroll over the title bar; no other desktop does,
+         and it happens by accident, so scrolling there does nothing. -->
+    <context name="TitleBar">
+      <mousebind button="Up" action="Scroll"><action name="None" /></mousebind>
+      <mousebind button="Down" action="Scroll"><action name="None" /></mousebind>
+    </context>
+  </mouse>
 
   <windowRules>
     <!-- Hearth Settings and the Hearth app open as normal windows with title bars (fullscreen ones have none anyway). -->
