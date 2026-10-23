@@ -33,9 +33,9 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      Hearth only): writes /var/lib/hearth/clean-install.json (what the new
                                      system's first start keeps, for which account, when), then switches to the
                                      edition's image (fixed list, NEW_OS_EDITIONS): anatase (the default)
-                                     ghcr.io/dragongamer9/hearth-os:latest (:testing with --testing); ubuntu,
-                                     cachyos, peppermint (Beta Experimental) hearth-<edition>:testing. CachyOS
-                                     needs an x86-64-v3 processor. Download progress like update; the new system
+                                     ghcr.io/dragongamer9/hearth-os:latest (:testing with --testing); peppermint
+                                     (Beta Experimental) hearth-peppermint:testing. Ubuntu and CachyOS are
+                                     archived: refused. Download progress like update; the new system
                                      starts at the next restart
   hearth-admin hibernate-setup       room on the drive (a swap file the size of memory) so the PC can turn
                                      off with Quick Resume games kept, and the boot options to come back to it
@@ -1623,6 +1623,9 @@ NEW_OS_EDITIONS = {
     'cachyos': ('ghcr.io/dragongamer9/hearth-cachyos', ('testing',)),
     'peppermint': ('ghcr.io/dragongamer9/hearth-peppermint', ('testing',)),
 }
+# Archived editions (October 2026): no longer built or offered. Still known (a system on one is recognised and can
+# switch away), but nothing switches to them.
+ARCHIVED_EDITIONS = ('ubuntu', 'cachyos')
 # CachyOS' image is built for x86-64-v3: these processor features (the ones /proc/cpuinfo names) must be there.
 X86_64_V3_FLAGS = ('avx2', 'bmi2', 'fma', 'movbe')
 CLEAN_INSTALL = '/var/lib/hearth/clean-install.json'
@@ -1742,6 +1745,8 @@ def clean_install_plan(user, flatpaks, image, now=None, edition='anatase', from_
 
 def move_to_new_os(edition='anatase', testing=False):
     user = caller()
+    if edition in ARCHIVED_EDITIONS:
+        fail(f'Hearth OS on {edition.capitalize() if edition != "cachyos" else "CachyOS"} is archived: switch to Anatase or Peppermint instead')
     if not os.path.exists('/run/ostree-booted'):
         fail('this only works on Hearth OS')
     # From the Bazzite-based Hearth to any edition, or from one edition to another (Settings › Updates › Switch

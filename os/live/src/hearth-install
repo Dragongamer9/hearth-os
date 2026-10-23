@@ -150,6 +150,8 @@ EDITIONS = {
                    'about': 'Hearth OS built on Peppermint OS (Debian). Still being tested: some things may not work yet.'},
 }
 DEFAULT_EDITION = 'anatase'
+# Archived editions (October 2026): kept in the table so old plans are understood, but never offered or installed.
+ARCHIVED_EDITIONS = ('ubuntu', 'cachyos')
 # CachyOS' image is built for x86-64-v3: every processor in /proc/cpuinfo needs these features.
 X86_64_V3_FLAGS = ('avx2', 'bmi2', 'fma', 'movbe')
 SB_VAR = '/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d0-aa4b-00e098032b8c'
@@ -162,7 +164,7 @@ def image_of(edition=None):
     """The image of an edition in EDITIONS (default: Hearth OS on Anatase). Fail for anything else."""
     e = EDITIONS.get(edition or DEFAULT_EDITION)
     if not e:
-        raise Fail('unknown edition: choose Hearth OS on Anatase, Ubuntu, CachyOS or Peppermint')
+        raise Fail('unknown edition: choose Hearth OS on Anatase or Peppermint')
     return e['image']
 
 
@@ -176,12 +178,14 @@ def plan_edition(p):
     (older callers). Anything else is refused. CachyOS is refused on a processor without x86-64-v3."""
     ed, img = p.get('edition'), p.get('image')
     if ed is not None and (not isinstance(ed, str) or ed not in EDITIONS):
-        raise Fail('unknown edition: choose Hearth OS on Anatase, Ubuntu, CachyOS or Peppermint')
+        raise Fail('unknown edition: choose Hearth OS on Anatase or Peppermint')
     if img is not None:
         by_image = next((k for k, v in EDITIONS.items() if v['image'] == img), None)
         if not by_image or (ed and ed != by_image):
             raise Fail('bad image name')
         ed = by_image
+    if ed in ARCHIVED_EDITIONS:
+        raise Fail('that edition is archived: choose Hearth OS on Anatase or Peppermint')
     ed = ed or usb_edition()
     if ed == 'cachyos' and not cpu_v3():
         raise Fail(NO_V3)
@@ -252,7 +256,7 @@ def editions_offered(usb=None):
     """The editions the install screens offer: all of them on the small installer, which downloads what it installs;
     on an offline USB, the one it carries (it's on the stick, so no internet is needed)."""
     u = usb or this_usb()
-    return list(EDITIONS) if u == 'installer' else [u]
+    return [k for k in EDITIONS if k not in ARCHIVED_EDITIONS] if u == 'installer' else [u]
 
 
 def published(img, timeout=6):

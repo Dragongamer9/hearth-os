@@ -1,19 +1,24 @@
+# ARCHIVED (October 2026, after 0.5.1): Hearth OS on Ubuntu is no longer built, offered or updated. Hearth OS
+# is Anatase (base-anatase.yml) and Peppermint (base-peppermint.yml); Ubuntu installs move over from Settings ›
+# Updates › Switch edition. Kept for reference; it only runs by hand, with "archived" typed in.
+#
 # Builds Hearth on Ubuntu (Beta Experimental): Ubuntu 26.04 LTS, snap-free, made into a bootc image with the
 # Hearth session, from os-bases/ubuntu (see docs/BASE-UBUNTU.md). Published as
 # ghcr.io/dragongamer9/hearth-ubuntu:testing (never :latest: this isn't the main Hearth).
 # Failures show up as annotations on the run (the end of the failing step's output), so the full log isn't needed.
-name: Hearth OS (Ubuntu base)
+name: Hearth OS (Ubuntu base, archived)
 
 on:
   workflow_dispatch:
     inputs:
+      confirm:
+        description: 'This build is archived. Type "archived" to build it anyway'
+        required: true
+        default: ''
       publish:
         description: 'Publish the image (off: build and check it only, e.g. to test a branch before merging)'
         type: boolean
         default: true
-  push:
-    branches: [linux-host, main]
-    paths: ['os-bases/ubuntu/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-ubuntu.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-ubuntu
@@ -26,6 +31,7 @@ jobs:
   # The Rust app (hosts/hearth-rs), built inside Ubuntu 26.04 itself rather than on the runner: then it links
   # exactly the WebKitGTK/GTK/libsoup the image has, and its glibc (2.43) whatever ubuntu-latest is this month.
   app:
+    if: inputs.confirm == 'archived'
     name: Build the Hearth app (Rust, on Ubuntu 26.04)
     runs-on: ubuntu-latest
     container: docker.io/library/ubuntu:26.04
@@ -102,6 +108,7 @@ jobs:
   # Hearth Browser is still an Electron app (hosts/linux/src/web): Electron brings its own libraries and asks
   # little of glibc, so it's built on the runner as in os.yml.
   browser:
+    if: inputs.confirm == 'archived'
     name: Build Hearth Browser (Electron)
     runs-on: ubuntu-latest
     needs: [app]
