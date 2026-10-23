@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'hosts/hearth-tools/**', 'branding/icons/apps/**']
+    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'hosts/hearth-tools/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -76,7 +76,7 @@ jobs:
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
       # Scanner and Welcome & Tips in one program, put beside the app in hearth-app.tar (hearth-tools/) with its menu
-      # entries and icons; build.sh installs them. Not fatal: without it the image is still made.
+      # entries; build.sh installs them (their icons come with Hearth's icon set, branding/icons). Not fatal: without it the image is still made.
       - name: Build Hearth Tools
         continue-on-error: true
         working-directory: hosts/hearth-tools
@@ -85,10 +85,9 @@ jobs:
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
           sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
           cargo build --release || { echo "::warning title=Hearth Tools::it didn't build, so this image is made without it"; exit 1; }
-          mkdir -p /tmp/app/hearth-tools/icons
+          mkdir -p /tmp/app/hearth-tools
           cp "$CARGO_TARGET_DIR/release/hearth-tools" /tmp/app/hearth-tools/hearth-tools
           cp desktop/hearth-*.desktop /tmp/app/hearth-tools/
-          for n in disk-usage system-info logs network passwords printers welcome; do cp "../../branding/icons/apps/hearth-$n.svg" /tmp/app/hearth-tools/icons/; done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end Hearth Tools
       - uses: actions/setup-node@v4
