@@ -2,8 +2,8 @@
 # Installs Hearth Office (Write, Sheets, Slides) into a Hearth OS image. Run by os-bases/*/build.sh from the
 # folder CI packs into hearth-app.tar (base-anatase.yml, base-peppermint.yml):
 #   office/hearth-office        the program (one for the three apps)
-#   office/icons/*.svg          hearth-write, hearth-sheets, hearth-slides (branding/icons/apps)
 #   office/install.sh           this script
+# The icons (hearth-write, hearth-sheets, hearth-slides) come with Hearth's icon set (branding/icons).
 # Puts the program in /usr/bin with a name per app, their menu entries (with the file types they open), the
 # .hslides file type, and makes them the default apps for office files in Hearth's desktop (nimbus-mimeapps.list).
 # DESTDIR installs somewhere else (for checking this script).
@@ -16,9 +16,6 @@ for a in write sheets slides; do ln -sf hearth-office "$D/usr/bin/hearth-$a"; do
 if [ -z "$D" ] && command -v ldd >/dev/null && ldd /usr/bin/hearth-office | grep 'not found'; then
   echo "warning: Hearth Office needs the libraries above, which this image doesn't have"
 fi
-for a in write sheets slides; do
-  if [ -f "$SRC/icons/hearth-$a.svg" ]; then install -Dm644 "$SRC/icons/hearth-$a.svg" "$D/usr/share/icons/hicolor/scalable/apps/hearth-$a.svg"; fi
-done
 
 W='application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.oasis.opendocument.text;application/rtf;text/rtf;text/markdown;text/x-markdown;'
 S='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.ms-excel.sheet.macroEnabled.12;application/vnd.ms-excel;application/vnd.oasis.opendocument.spreadsheet;text/csv;text/tab-separated-values;'
