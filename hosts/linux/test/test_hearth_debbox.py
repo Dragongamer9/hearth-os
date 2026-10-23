@@ -66,10 +66,10 @@ class Commands(Base):
     def test_apt_install_takes_the_file_as_one_argument(self):
         cmd = self.d.apt_install_cmd('/home/me/Downloads/My App; rm -rf.deb')
         self.assertEqual(cmd[-1], '/home/me/Downloads/My App; rm -rf.deb')
-        self.assertEqual(cmd[:6], ['distrobox', 'enter', '--name', 'hearth-debian', '--no-tty', '--'])
+        self.assertEqual(cmd[:7], ['podman', 'exec', '--user', 'root', '--env', 'DEBIAN_FRONTEND=noninteractive', 'hearth-debian'])
         self.assertIn('APT::Status-Fd=1', cmd)
         self.assertIn('-y', cmd)
-        self.assertEqual(cmd[6:9], ['sudo', 'env', 'DEBIAN_FRONTEND=noninteractive'])
+        self.assertEqual(cmd[7:9], ['apt-get', 'install'])
         with self.assertRaises(self.d.Fail):
             self.d.apt_install_cmd('relative.deb')   # apt would look it up as a package name
 
@@ -252,6 +252,16 @@ sys.exit(1)
 '''
 FAKE_PODMAN = r'''#!/bin/sh
 echo "$*" >> "$FAKE_LOG.podman"
+if [ "$1" = exec ]; then
+  shift 6
+  exec python3 -c 'import json, os, sys; open(os.environ["FAKE_LOG"], "a").write(json.dumps(["root-exec"] + sys.argv[1:]) + "\n")
+a = sys.argv[1:]
+if "install" in a:
+    if not os.path.exists(a[-1]):
+        print("E: Unsupported file " + a[-1] + " given on commandline"); sys.exit(100)
+    print("dlstatus:1:50:Retrieving file 1 of 2"); print("pmstatus:hearth-hello:20:Preparing hearth-hello"); print("pmstatus:hearth-hello:100:Installed hearth-hello")
+' "$@"
+fi
 case "$1 $2" in
   "container exists") [ -e "$FAKE_STATE" ] ;;
   "rm --force") rm -f "$FAKE_STATE" ;;
@@ -297,7 +307,7 @@ class WholeInstall(Base):
         calls = self.calls()
         self.assertEqual(calls[0][:3], ['create', '--name', 'hearth-debian'])
         self.assertIn(['enter', '--name', 'hearth-debian', '--no-tty', '--', 'true'], calls)
-        inst = next(c for c in calls if 'install' in c and 'apt-get' in c)
+        inst = next(c for c in calls if c[0] == 'root-exec' and 'install' in c)
         self.assertEqual(inst[-1], os.path.realpath(deb))     # the same path in the box (home is shared)
         exp = next(c for c in calls if 'distrobox-export' in c)
         self.assertEqual(exp[-4:], ['--app', '/usr/share/applications/hearth-hello.desktop', '--export-label', 'none'])
@@ -311,7 +321,7 @@ class WholeInstall(Base):
         r, _ = self.quiet(self.d.remove, 'hearth-hello')
         self.assertFalse(os.path.exists(exported))
         self.assertEqual(self.d.list_packages()['packages'], [])
-        rm = [c for c in self.calls() if 'remove' in c and 'apt-get' in c]
+        rm = [c for c in self.calls() if c[0] == 'root-exec' and 'remove' in c]
         self.assertEqual(rm[0][-2:], ['--', 'hearth-hello'])
 
     def test_a_file_outside_home_is_copied_in(self):
@@ -320,7 +330,7 @@ class WholeInstall(Base):
         deb = make_test_deb.make(os.path.join(outside, 'hello.deb'))
         open(os.environ['FAKE_STATE'], 'w').close()
         self.quiet(self.d.install, deb)
-        inst = next(c for c in self.calls() if 'install' in c and 'apt-get' in c)
+        inst = next(c for c in self.calls() if c[0] == 'root-exec' and 'install' in c)
         self.assertTrue(inst[-1].startswith(os.path.realpath(self.home)), inst[-1])
         self.assertFalse(os.path.exists(inst[-1]))         # removed again afterwards
 

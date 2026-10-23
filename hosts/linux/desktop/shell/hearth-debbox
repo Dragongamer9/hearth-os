@@ -80,24 +80,29 @@ def enter_cmd(args, tty=False):
     return ['distrobox', 'enter', '--name', BOX] + ([] if tty else ['--no-tty']) + ['--'] + list(args)
 
 
+def root_cmd(args):
+    """A command run as root inside the box (podman exec: the box's root, which is you outside it). apt goes this
+    way rather than through sudo inside the box, so it works even before distrobox has set sudo up there."""
+    return ['podman', 'exec', '--user', 'root', '--env', 'DEBIAN_FRONTEND=noninteractive', BOX] + list(args)
+
+
 def apt_install_cmd(box_path):
     """apt-get installing a .deb file (its path as the box sees it) with its dependencies, with machine-readable
     progress (APT::Status-Fd: "dlstatus:..." and "pmstatus:..." lines)."""
     if not box_path.startswith('/'):
         raise Fail('the package file needs a full path')
-    return enter_cmd(['sudo', 'env', 'DEBIAN_FRONTEND=noninteractive', 'apt-get', 'install', '-y',
-                      '--no-install-recommends', '-o', 'APT::Status-Fd=1', '-o', 'Dpkg::Use-Pty=0', box_path])
+    return root_cmd(['apt-get', 'install', '-y', '--no-install-recommends', '-o', 'APT::Status-Fd=1',
+                     '-o', 'Dpkg::Use-Pty=0', box_path])
 
 
 def apt_update_cmd():
-    return enter_cmd(['sudo', 'env', 'DEBIAN_FRONTEND=noninteractive', 'apt-get', 'update', '-o', 'APT::Status-Fd=1'])
+    return root_cmd(['apt-get', 'update', '-o', 'APT::Status-Fd=1'])
 
 
 def apt_remove_cmd(package):
     if not PKG_NAME.fullmatch(package or ''):
         raise Fail('not a package name')
-    return enter_cmd(['sudo', 'env', 'DEBIAN_FRONTEND=noninteractive', 'apt-get', 'remove', '-y', '--autoremove',
-                      '-o', 'Dpkg::Use-Pty=0', '--', package])
+    return root_cmd(['apt-get', 'remove', '-y', '--autoremove', '-o', 'Dpkg::Use-Pty=0', '--', package])
 
 
 def export_cmd(desktop, delete=False, label=True):
@@ -536,6 +541,7 @@ def install(path):
         os.makedirs(os.path.dirname(tmp), exist_ok=True)
         shutil.copyfile(p, tmp)
         target = box_path(tmp)
+    run(['podman', 'start', BOX], timeout=300)
     progress(5, 'Getting Debian\'s list of packages')
     run(apt_update_cmd(), timeout=900)
     state = {'from': 10, 'to': 92, 'shown': 0, 'last': ''}
@@ -583,6 +589,7 @@ def remove(package):
     progress(10, 'Taking its apps out of your menu')
     unexport((rec.get(package) or {}).get('apps'))
     if box_exists():
+        run(['podman', 'start', BOX], timeout=300)
         progress(40, 'Removing %s' % package)
         code, out = run(apt_remove_cmd(package), timeout=1200)
         if code != 0 and 'is not installed' not in out and 'Unable to locate package' not in out:
