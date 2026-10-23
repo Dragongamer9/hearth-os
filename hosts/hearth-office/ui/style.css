@@ -154,7 +154,7 @@ body[data-app=slides] .tile .thumb { aspect-ratio: 16 / 9; }
 .rrow .rn span { color: var(--muted); }
 
 /* ---------- printing: only the print layout (#print) is printed ---------- */
-#print { display: none; }
+#print { display: none; color: #000; background: #fff; }
 @media print {
   html, body { overflow: visible !important; height: auto !important; background: #fff !important; }
   #app, #start, #layer, #toast, #busy { display: none !important; }
