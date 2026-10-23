@@ -552,6 +552,9 @@ jobs:
           if [ -x /usr/bin/hearth-recorder ]; then
             echo "::notice title=Recorder here::$(HOME=/tmp/rp /usr/bin/hearth-recorder --probe 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print("ffmpeg encoders:", [e["id"] for e in d["encoders"]], "audio:", d["audioEncoders"], "gsr:", d["gsr"], "region:", d["gsrRegion"], "wf-recorder:", d["wf"], "slurp:", d["slurp"])' 2>&1 | cut -c1-600)"
           fi
+          if command -v gpu-screen-recorder >/dev/null; then
+            echo "::notice title=gpu-screen-recorder here::version $(timeout 5 gpu-screen-recorder --version 2>&1 | head -1 | cut -c1-80); help: $(timeout 5 gpu-screen-recorder --help 2>&1 | grep -m1 -E -- '-w ' | cut -c1-240)"
+          fi
           # ==== end of Hearth Recorder, Camera and Share
           # ---- Hearth Contacts and Hearth Maps
           warn "Hearth Contacts is installed, finds its libraries and opens .vcf files" "test -x /usr/bin/hearth-contacts && ! ldd /usr/bin/hearth-contacts | grep -q 'not found' && grep -q text/vcard /usr/share/applications/hearth-contacts.desktop"

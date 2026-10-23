@@ -59,7 +59,8 @@ impl Env {
         e.gsr = tools::have("gpu-screen-recorder") && std::env::var("HEARTH_RECORDER_NO_GSR").map(|v| v.is_empty() || v == "0").unwrap_or(true);
         if e.gsr {
             let help = tools::run("gpu-screen-recorder", &["--help"], Duration::from_secs(5)).map(|o| format!("{}{}", o.stdout, o.stderr)).unwrap_or_default();
-            e.gsr_region = help.contains("region");
+            let version = tools::run("gpu-screen-recorder", &["--version"], Duration::from_secs(5)).map(|o| format!("{}{}", o.stdout, o.stderr)).unwrap_or_default();
+            e.gsr_region = gsr_has_region(&help, &version);
         }
         e.slurp = tools::have("slurp");
         e.pactl = tools::have("pactl");
@@ -80,6 +81,16 @@ impl Env {
         e.force = std::env::var("HEARTH_RECORDER_BACKEND").ok().filter(|v| !v.is_empty());
         e
     }
+}
+
+/// Whether gpu-screen-recorder records an area (-w region). Its help says so; when the help can't be read (it
+/// can refuse to start without a screen, or print only a short usage line), its version does: 5.10 and later have it.
+pub fn gsr_has_region(help: &str, version: &str) -> bool {
+    if help.contains("region") { return true; }
+    let v = version.split(|c: char| !(c.is_ascii_digit() || c == '.')).find(|w| w.contains('.')).unwrap_or("");
+    let mut n = v.split('.').map(|x| x.parse::<u32>().unwrap_or(0));
+    let (major, minor) = (n.next().unwrap_or(0), n.next().unwrap_or(0));
+    major > 5 || (major == 5 && minor >= 10)
 }
 
 /// gamescope's PipeWire video stream (the node called "gamescope"), from pw-dump.
@@ -106,5 +117,13 @@ mod tests {
         assert_eq!(parse_node(d, "gamescope"), Some(77));
         assert_eq!(parse_node(d, "nope"), None);
         assert_eq!(parse_node("not json", "gamescope"), None);
+    }
+    #[test]
+    fn gsr_region_from_help_or_version() {
+        assert!(gsr_has_region("-w <window_id|monitor|focused|portal|region|v4l2_device_path>", ""));
+        assert!(gsr_has_region("", "5.13.8\n"));
+        assert!(gsr_has_region("usage: gpu-screen-recorder -w", "gpu-screen-recorder 6.1.5"));
+        assert!(!gsr_has_region("", "5.3.0"));
+        assert!(!gsr_has_region("", ""));
     }
 }
