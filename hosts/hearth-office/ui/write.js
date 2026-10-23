@@ -169,11 +169,14 @@ W.afterChange = () => { H.changed(); W.countSoon(); W.spell.soon(); W.guidesSoon
 W.exec = (cmd, val) => {
   W.focus();
   const before = W.ed.innerHTML;
-  W.record();
+  // Bold (and the like) with nothing selected only changes what's typed next: not an undo step of its own.
+  const atCaret = getSelection().isCollapsed && /^(bold|italic|underline|strikeThrough|superscript|subscript|foreColor|fontName|fontSize)$/.test(cmd);
+  if (!atCaret) W.record();
   document.execCommand('styleWithCSS', false, false);
   document.execCommand(cmd, false, val);
   W.normalizeFonts();
-  if (W.ed.innerHTML === before) { U.stack.pop(); W.updateState(); return; } // nothing changed (e.g. bold for what's typed next)
+  if (atCaret) { U.lastKind = ''; W.updateState(); if (W.ed.innerHTML !== before) H.changed(); return; }
+  if (W.ed.innerHTML === before) { U.stack.pop(); W.updateState(); return; } // nothing changed
   W.afterChange(); W.updateState();
 };
 // execCommand writes <font> tags; Write keeps spans with styles (they save to every format the same way).
