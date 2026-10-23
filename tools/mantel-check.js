@@ -1,5 +1,5 @@
-// Release check for Mantel on Windows (Ember): every part of ui/mantel.html, Hearth Settings (mantel-settings.html)
-// and Apps (mantel-apps.html) must load and draw without a script error, and the taskbar, launcher, menus, clock
+// Release check for Mantel on Windows (Ember): every part of ui/mantel.html, Hearth Settings (mantel-settings.html),
+// Apps (mantel-apps.html) and Hearth Files (mantel-files.html) must load and draw without a script error, and the taskbar, launcher, menus, clock
 // panel, clipboard history, dialogs and desktop icons must do what Hearth OS's Mantel does. Each page gets a stand-in
 // for Ember's WebView2 host that answers bridge calls and records the messages the page sends.
 //   npm i --no-save playwright@1.48.2 && npx playwright install chromium && node tools/mantel-check.js
@@ -324,7 +324,89 @@ const PINS = [{ id: 'Valve.Steam', name: 'Steam' }, { id: 'Discord.Discord', nam
     await p.close();
   });
 
+
+  // ---------------------------------------------------------------- Hearth Files
+  await check('files', async () => {
+    const H = 'C:\\Users\\a';
+    const e = (name, kind, ext, size, days, dir) => ({ name, path: H + '\\' + name, dir: !!dir, size: size || 0, modified: Date.now() - days * 864e5, ext: ext || '', hidden: false, kind });
+    const entries = [e('Games', 'folder', '', 0, 0, true), e('notes.txt', 'doc', 'txt', 1200, 3), e('pic.jpg', 'image', 'jpg', 3e6, 40), e('pack.zip', 'archive', 'zip', 5e6, 0)];
+    const p = await open('mantel-files.html', 1280, 800, {
+      'files.places': { home: H, folders: [{ id: 'home', name: 'Home', path: H, icon: 'home' }], games: [], drives: [{ id: 'c', name: 'Local disk (C:)', path: 'C:\\', icon: 'drive', total: 5e11, free: 2e11 }], recycle: { id: 'recycle', name: 'Recycle Bin', path: 'recycle:', icon: 'trash', count: 0 } },
+      'files.list': { path: H, name: 'a', parent: 'C:\\Users', entries, recycle: false },
+      'files.clipGet': { paths: ['D:\\x\\notes.txt', 'D:\\x\\Games'], cut: false },
+      'files.conflicts': { conflicts: [
+        { name: 'notes.txt', src: 'D:\\x\\notes.txt', target: H + '\\notes.txt', srcDir: false, targetDir: false, srcSize: 10, targetSize: 1200, srcModified: Date.now(), targetModified: Date.now() - 1e9 },
+        { name: 'Games', src: 'D:\\x\\Games', target: H + '\\Games', srcDir: true, targetDir: true, srcSize: 0, targetSize: 0, srcModified: Date.now(), targetModified: Date.now() }], dest: H },
+      'files.paste': { id: 7 }, 'files.count': { id: 3 }, 'files.checksum': { sum: 'abc123', algo: 'md5' }, 'files.searchStart': { id: 9 },
+      'files.templates': { templates: [{ name: 'Letter', file: 'Letter.docx', path: 'C:\\T\\Letter.docx' }] },
+    });
+    await p.evaluate(() => {
+      const H = 'C:\\Users\\a';
+      __answers['files.props'] = a => a.paths.length > 1 ? { multi: true, count: a.paths.length, files: 1, folders: 1, location: H, items: [], driveFree: 2e11, driveTotal: 5e11 }
+        : { name: 'notes.txt', path: H + '\\notes.txt', location: H, dir: false, isRoot: false, ext: 'txt', kind: 'doc', type: 'Text Document', size: 1200, disk: 4096,
+            created: Date.now() - 9e9, modified: Date.now() - 1e8, accessed: Date.now(), readOnly: false, hidden: false, owner: 'PC\\a', app: 'Notepad', canRename: true, driveFree: 2e11, driveTotal: 5e11, driveFormat: 'NTFS' };
+    });
+    await p.waitForTimeout(200);
+    expect((await p.$$('.files .it')).length === 4, 'the folder shows its 4 items');
+    await shot(p, 'files');
+    // Details, grouped by type.
+    await p.keyboard.press('Control+3');
+    await p.click('[data-act="sort"]'); await p.click('.si:has-text("Group by type")'); await p.waitForTimeout(50);
+    expect((await p.$$('.list .it')).length === 4 && (await p.$$('.gh')).length >= 3, 'Details view with group headings');
+    await shot(p, 'files-details');
+    // Properties (Alt+Enter): the full General page, the read-only box with the keys, Apply, then Checksums.
+    await p.keyboard.press('ArrowDown'); await p.keyboard.press('Alt+Enter'); await p.waitForTimeout(100);
+    const text = await p.textContent('.sheet');
+    expect(/Size on disk/.test(text) && /Notepad/.test(text) && /Owner/.test(text) && /Accessed/.test(text), 'Properties shows size on disk, the app, owner and times');
+    await shot(p, 'files-properties');
+    for (let i = 0; i < 12 && await p.evaluate(() => S.sheet.focus) !== 'ro'; i++) await p.keyboard.press('ArrowDown');
+    await p.keyboard.press('Enter');
+    expect(await p.evaluate(() => S.sheet.pend.readOnly === true), 'the controller reaches and ticks Read-only');
+    for (let i = 0; i < 12 && await p.evaluate(() => S.sheet.focus) !== 'apply'; i++) await p.keyboard.press('ArrowDown');
+    await p.keyboard.press('Enter'); await p.waitForTimeout(100);
+    expect(await p.evaluate(() => __sent.some(m => m.method === 'files.setAttributes' && m.args.readOnly === true)), 'Apply sets the attribute');
+    await p.click('.pt[data-tab="sums"]'); await p.click('[data-sum="md5"]'); await p.waitForTimeout(50);
+    expect(/abc123/.test(await p.textContent('.sheet')), 'a checksum is calculated');
+    await p.keyboard.press('Escape');
+    // Several things: the size adds up live.
+    await p.evaluate(() => properties(['C:\\Users\\a\\Games', 'C:\\Users\\a\\notes.txt'])); await p.waitForTimeout(50);
+    await p.evaluate(() => __push('files.count', { id: 3, size: 123456789, files: 10, folders: 2, done: false })); await p.waitForTimeout(30);
+    expect(/counting/.test(await p.textContent('.sheet')) && /123,456,789/.test(await p.textContent('.sheet')), 'folder sizes add up live');
+    await p.keyboard.press('Escape');
+    // Paste over names that are there: Replace for the file, Keep both for the folder.
+    await p.keyboard.press('Control+v'); await p.waitForTimeout(100);
+    expect(/already in/.test(await p.textContent('.sheet')), 'pasting asks about a name that is there');
+    await shot(p, 'files-conflict');
+    await p.keyboard.press('ArrowUp'); await p.keyboard.press('Enter'); await p.waitForTimeout(50);
+    expect(/Merge/.test(await p.textContent('.sheet')), 'a folder offers Merge');
+    await p.keyboard.press('Enter'); await p.waitForTimeout(100);
+    const paste = await p.evaluate(() => __sent.find(m => m.method === 'files.paste'));
+    expect(paste && paste.args.decide['notes.txt'] === 'replace' && paste.args.decide.Games === 'rename', 'the paste carries the choices');
+    // Tabs, Compact, search inside with live results, the typed path, preview, rubber band.
+    await p.keyboard.press('Control+t'); await p.waitForTimeout(100);
+    expect((await p.$$('.tab[data-i]')).length === 2, 'Ctrl+T opens a tab');
+    await p.keyboard.press('Control+2'); await p.waitForTimeout(50);
+    expect(await p.$('.grid.compact'), 'Compact view');
+    await p.fill('.search', 'note'); await p.press('.search', 'Enter'); await p.waitForTimeout(50);
+    await p.evaluate(() => __push('files.found', { id: 9, entries: [{ name: 'note2.txt', path: 'C:\\Users\\a\\x\\note2.txt', dir: false, size: 3, modified: Date.now(), ext: 'txt', hidden: false, kind: 'doc' }] }));
+    await p.waitForTimeout(200);
+    expect(/Searching/.test(await p.textContent('.status')), 'the search shows it is still looking');
+    await p.evaluate(() => __push('files.searchDone', { id: 9, count: 1 })); await p.waitForTimeout(50);
+    expect((await p.$$('.files .it')).length === 1, 'results from the folders inside');
+    await p.keyboard.press('Escape');
+    await p.keyboard.press('Control+l');
+    expect(await p.evaluate(() => document.activeElement.classList.contains('pathin')), 'Ctrl+L types a path');
+    await p.keyboard.press('Escape');
+    await p.keyboard.press('Control+1'); await p.keyboard.press('Home'); await p.keyboard.press('ArrowRight'); await p.keyboard.press(' '); await p.waitForTimeout(50);
+    expect(await p.$('.sheet.preview'), 'Space previews');
+    await p.keyboard.press(' ');
+    const box = await p.$eval('.files', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+    await p.mouse.move(box.x + box.w - 5, box.y + box.h - 5); await p.mouse.down(); await p.mouse.move(box.x + 20, box.y + 20, { steps: 8 }); await p.mouse.up();
+    expect(await p.evaluate(() => S.sel.size) >= 2, 'a rubber band picks several');
+    await p.close();
+  });
+
   await browser.close();
   if (errors.length) { console.error('Mantel check failed:\n  ' + errors.join('\n  ')); process.exit(1); }
-  console.log('Mantel check passed: taskbar, launcher, menus, clock, clipboard, dialogs, desktop icons, Settings pages and Apps');
+  console.log('Mantel check passed: taskbar, launcher, menus, clock, clipboard, dialogs, desktop icons, Settings pages, Apps and Files');
 })();
