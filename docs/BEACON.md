@@ -150,12 +150,33 @@ How it runs:
 
 **Asks of Beacon:** keep `--wait` waiting for the game, and keep the environment as it is (no `env_clear`).
 
+## Games added in Beacon (Beacon 0.0.8+)
+
+Beacon can run any Windows game or installer you add to it (Faugus Launcher's features, rebuilt in Beacon: a Wine
+prefix per game, the runner, GAMEID/STORE, DXVK/VKD3D, MangoHud/GameMode/gamescope, Proton options, Wine tools, play
+time, import from Faugus). Hearth shows them in the Library with Beacon's games, under **Other Games**:
+
+- `beacon custom list --json` (read with `status`, 20 s limit) lists them; `beacon::parse_custom` checks each one. An
+  older Beacon doesn't know the command; that only means there are none.
+- Library id `beacon:custom:<id>` (`<id>`: lowercase letters, digits and dashes), family `other`.
+- Art: the game's cover in Beacon (else its icon, taken from the exe) as `cover`, its background as `hero` and `wide`,
+  all local files in `~/.local/share/beacon/art/<id>/`.
+- Play time: Beacon's `play_seconds` and `last_played` go in as the store's numbers; Hearth's own count adds up as for
+  any game, and the larger shows.
+- Play runs `beacon custom launch <id> --wait` the same way as `launch` (`HEARTH_GAME_ID`, Beacon stays the parent,
+  the program's folder as the fallback for finding its processes). Beacon records the session's play time when the
+  game closes.
+- Their settings live in Beacon's window: Game setup, Mods and Set up open Beacon (`beacon-app`) for them.
+- Hearth notices changes through `custom-games.json` (next to config.json) and `playtime.json` (in Beacon's data
+  folder), native and Flatpak.
+
 ## Noticing changes
 
 Hearth looks every 4 seconds at the modification times of these places, native and Flatpak (`beacon::signature`):
 
 - Beacon's config file: `$BEACON_CONFIG` or `~/.config/beacon/config.json`;
 - its mods folder and each game's folder inside it: `$BEACON_DATA_DIR/mods`, `~/.local/share/beacon/mods/<game>`;
+- games added in Beacon and play time: `custom-games.json` next to the config file, `playtime.json` in the data folder;
 - whether `beacon` is installed.
 
 When something changes, Hearth reads the games again in the background and the library updates. This happens when
