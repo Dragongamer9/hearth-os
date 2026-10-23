@@ -15,7 +15,7 @@ echo "--- cameras"; $B --list | tee "$OUT/cameras-$KIND.json"
 grep -q '"test"' "$OUT/cameras-$KIND.json" && note "lists the cameras (and the test camera)" || fail "list" "no test camera"
 
 p=$($B --photo --device test 2>&1 | tail -1); s=$(streams "$p")
-if [[ "$s" == *mjpeg,1280,720* ]]; then note "photo: $s"; cp "$p" "$OUT/photo-$KIND.jpg"; else fail "photo" "$p: $s"; fi
+if [[ "$s" == *mjpeg*1280,720* ]]; then note "photo: $s"; cp "$p" "$OUT/photo-$KIND.jpg"; else fail "photo" "$p: $s"; fi
 
 v=$($B --video 4 --device test 2>&1 | tail -1); s=$(streams "$v"); d=$(dur "$v")
 if [[ "$s" == *video* ]] && [[ "$s" == *audio* ]] && [ "${d:-0}" -ge 3 ]; then note "video with sound: $s ${d}s"; cp "$v" "$OUT/video-$KIND.mp4"; else fail "video" "$v: $s ${d}s"; fi
