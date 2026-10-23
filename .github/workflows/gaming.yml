@@ -78,7 +78,7 @@ jobs:
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
           Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
           sleep 2
-          shot() { import -window root "shots/$1.png" || true; }
+          shot() { import -window root "shots/$1.png" || true; echo "$1: $(xdotool search --onlyvisible --name . getwindowname %@ 2>/dev/null | tr '\n' ',')" >> windows.txt; }
           front() { w=$(xdotool search --name "^$1\$" | tail -1); [ -n "$w" ] && xdotool windowactivate --sync "$w" 2>/dev/null; true; }
           H="$RUNNER_TEMP/saves/pc1/home"
           # Saves, on the fake home the Saves test left (its backups on the "USB drive" too).
@@ -103,12 +103,15 @@ jobs:
           sleep 9; front "Controller Lab"; shot controller-lab
           sleep 2; shot controller-lab-2
           pkill -f target/release/hearth-controller-lab || true
+          echo "::notice title=Windows open at each screenshot::$(tr '\n' '|' < windows.txt)"
           echo "::notice title=App output::$(tail -c 1200 saves.log mods.log lab.log | tr '\n' '|')"
-      - name: Screenshots in the log too (small JPEGs, base64, for reading without the artifact)
+      - name: What the screenshots show (size and how much is drawn, so a blank window shows up here)
         if: always()
         working-directory: hosts/hearth-gaming
         run: |
-          for f in shots/*.png; do [ -f "$f" ] || continue; convert "$f" -resize 1000x -quality 70 /tmp/s.jpg; echo "SHOT-BEGIN $(basename "$f" .png)"; base64 -w 0 /tmp/s.jpg; echo; echo "SHOT-END"; done
+          out=""
+          for f in shots/*.png; do [ -f "$f" ] || continue; out="$out $(basename "$f" .png): $(identify -format '%wx%h, %k colours, spread %[fx:standard_deviation]' "$f") |"; done
+          echo "::notice title=Screenshots::$out"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
