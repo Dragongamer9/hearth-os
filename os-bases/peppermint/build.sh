@@ -168,7 +168,7 @@ systemctl enable hhd.service
   xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk foot fuse-overlayfs bubblewrap \
   libwebkit2gtk-4.1-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libnss3 libgbm1
 # The rest of what Desktop Mode, Couch Co-op and Hearth Browser (Electron) use; names that can differ.
-optional qt6-svg-plugins qt5ct breeze-icon-theme 7zip gstreamer1.0-plugins-bad gstreamer1.0-pipewire \
+optional qt6-svg-plugins qt5ct breeze-icon-theme 7zip libarchive-tools gstreamer1.0-plugins-bad gstreamer1.0-pipewire \
   libasound2t64 libcups2t64 libgtk-3-0t64 libxss1 libatk-bridge2.0-0t64
 # Claude Desktop (Hearth Settings › Claude: Anthropic's package, unpacked in the user's home folder by
 # desktop/shell/hearth-claude, never shipped in this image): gpg checks Anthropic's signature; the app links
