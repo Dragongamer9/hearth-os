@@ -504,9 +504,14 @@ def short(a):
 
 
 def featured_ids():
-    cache = os.path.join(CACHE, 'featured.json')
+    """Flathub's popular apps (cached for a day), or Hearth's own list when Flathub's API can't be reached. Never
+    fails: an unwritable ~/.cache (root-owned after moving editions) only means no cache."""
     try:
-        if time.time() - os.path.getmtime(cache) < DAY:
+        cache = os.path.join(cache_dir(), 'featured.json')
+    except Fail:
+        cache = None
+    try:
+        if cache and time.time() - os.path.getmtime(cache) < DAY:
             with open(cache) as f:
                 ids = json.load(f)
             if ids:
@@ -521,9 +526,13 @@ def featured_ids():
     except Exception:
         ids = []
     if ids:
-        os.makedirs(CACHE, exist_ok=True)
-        with open(cache, 'w') as f:
-            json.dump(ids, f)
+        if cache:
+            try:
+                with open(cache + '.tmp', 'w') as f:
+                    json.dump(ids, f)
+                os.replace(cache + '.tmp', cache)
+            except OSError:
+                pass
         return ids
     return FEATURED_FALLBACK
 
