@@ -24,7 +24,8 @@ H=/var/home/boxtest
 # vfs storage and cgroupfs: what works for podman nested in a container without systemd.
 install -d -o boxtest -g boxtest "$H/.config/containers" "$H/Downloads"
 printf '[storage]\ndriver = "vfs"\n' > "$H/.config/containers/storage.conf"
-printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' > "$H/.config/containers/containers.conf"
+# (no systemd here, so no journald: events and container logs both go to files)
+printf '[containers]\nlog_driver = "k8s-file"\n[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' > "$H/.config/containers/containers.conf"
 chown -R boxtest:boxtest "$H"
 as() { runuser -u boxtest -- env HOME="$H" USER=boxtest LOGNAME=boxtest XDG_RUNTIME_DIR="/run/user/$U" PATH=/usr/local/bin:/usr/bin:/bin "$@"; }
 tailof() { tail -n "${2:-4}" "$1" 2>/dev/null | tr '\n' ' ' | cut -c1-700; }
