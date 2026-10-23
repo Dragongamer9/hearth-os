@@ -355,6 +355,28 @@ DESKTOP
 # Folders open in Hearth Files in Desktop Mode (XDG_CURRENT_DESKTOP=Nimbus); Plasma keeps Dolphin.
 mkdir -p /etc/xdg
 printf '[Default Applications]\ninode/directory=hearth-files.desktop\n' > /etc/xdg/nimbus-mimeapps.list
+# ---- Hearth Text (hosts/hearth-text): Hearth OS's text editor, built by CI next to the Hearth app (base-*.yml) and
+# carried in os/nimbus-app. Its menu entry (hearth-text.desktop, icon hearth-text from the Hearth icon set) comes from
+# os/system_files. In Desktop
+# Mode it opens text files, scripts, settings files and logs (nimbus-mimeapps.list, written just above), and Hearth
+# Files opens text-like files without an app in it.
+if [ -x /ctx/nimbus-app/hearth-text ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-text /usr/bin/hearth-text
+  # An editor that can't start is worse than none: then text files open in whatever else is installed.
+  if ldd /usr/bin/hearth-text | grep 'not found'; then echo "Hearth Text needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/hearth-text; fi
+fi
+if [ -x /usr/bin/hearth-text ]; then
+  for m in text/plain text/x-log text/markdown text/x-markdown text/x-python text/x-python3 application/x-shellscript text/x-shellscript \
+           application/json application/x-yaml text/x-yaml application/yaml application/toml text/x-toml text/x-ini text/x-csrc text/x-chdr \
+           text/x-c++src text/x-c++hdr text/x-csharp text/x-rust text/rust text/javascript application/javascript text/x-typescript \
+           application/typescript text/css text/xml application/xml text/x-makefile text/x-cmake text/x-diff text/x-patch text/x-java \
+           text/x-go text/x-lua text/x-sql application/sql text/x-readme text/x-changelog application/x-zerosize text/x-systemd-unit \
+           application/x-ruby text/x-perl application/x-perl application/x-powershell text/x-dockerfile; do
+    echo "$m=hearth-text.desktop;" >> /etc/xdg/nimbus-mimeapps.list
+  done
+  command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
+fi
+# ---- end of Hearth Text
 cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
 [Desktop Entry]
 Name=Task Manager

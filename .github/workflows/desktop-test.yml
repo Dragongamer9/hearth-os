@@ -125,6 +125,20 @@ jobs:
           ipc fileprops open "$HOME/Documents"; grim shots/files-9-folder-properties.png || true
           ipc fileprops close; ipc files close
           n=$((n+3))
+          # Hearth Files opening Linux files: a script asks (Run in Terminal / Run / Open in Hearth Text), a .desktop file
+          # shows what it runs first, a settings file with no app opens in Hearth Text (a stand-in that notes its arguments).
+          printf '#!/bin/sh\necho hello\n' > "$HOME/Documents/run-me.sh"
+          printf '[Desktop Entry]\nType=Application\nName=Steam\nComment=Games\nExec=steam -silent %%U\n' > "$HOME/Documents/Steam.desktop"
+          printf 'volume = 3\n' > "$HOME/Documents/game.conf"; printf 'plain words\n' > "$HOME/Documents/NOTES"
+          printf '#!/bin/sh\necho "$@" > "$HOME/hearth-text-args"\n' > /tmp/fakebin/hearth-text && chmod +x /tmp/fakebin/hearth-text
+          ipc files open "$HOME/Documents"; ipc filemanager view details
+          ipc filemanager activate run-me.sh; grim "shots/files-10-open-script.png" || true; ipc filemanager close
+          ipc filemanager select run-me.sh; ipc filemanager menu; grim "shots/files-11-script-menu.png" || true; ipc filemanager close
+          ipc filemanager activate Steam.desktop; grim "shots/files-12-open-desktop-file.png" || true; ipc filemanager close
+          ipc filemanager activate NOTES; sleep 2
+          { echo "hearth-text was given: $(cat "$HOME/hearth-text-args" 2>&1)"; python3 hosts/linux/desktop/shell/hearth-files open-plan "$HOME/Documents/run-me.sh"; python3 hosts/linux/desktop/shell/hearth-files open-plan "$HOME/Documents/game.conf"; } > shots/files-open-plans.txt 2>&1
+          grep -q "NOTES" "$HOME/hearth-text-args" 2>/dev/null || { echo "::error title=Hearth Files::a text file with no app didn't open in Hearth Text: $(tr '\n' '|' < shots/files-open-plans.txt)"; touch shots/FAILED; }
+          ipc files close
           # Desktop icons: one picked and its menu (Open with, Cut, Copy...).
           ipc desktop itemMenu notes.txt; grim "shots/$n-desktop-item-menu.png" || true; ipc desktop close; n=$((n+1))
           # A notification pops up (with action buttons), then shows in the clock's panel with a count on the bell.
