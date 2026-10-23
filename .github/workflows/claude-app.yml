@@ -15,24 +15,37 @@ jobs:
   probe:
     runs-on: ubuntu-24.04
     steps:
-      - name: Look at Anthropic's repository
+      - name: Get the package
+        run: |
+          B=https://downloads.claude.ai/claude-desktop/apt/stable
+          curl -fsS $B/dists/stable/main/binary-amd64/Packages -o Packages
+          f=$(awk '/^Filename:/{print $2}' Packages | tail -1)
+          curl -fsS "$B/$f" -o c.deb; mkdir x ctl && dpkg-deb -x c.deb x && dpkg-deb -e c.deb ctl
+          tar -C x -cf x.tar . 
+      - uses: actions/upload-artifact@v4
+        with: { name: claude-x, path: x.tar, retention-days: 1, compression-level: 0 }
+      - name: Look inside
         run: |
           note() { t="$1"; printf '::notice title=%s::%s\n' "$t" "$(head -c 3800 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
-          B=https://downloads.claude.ai/claude-desktop/apt/stable
-          curl -fsS $B/dists/stable/InRelease -o InRelease; head -c 3800 InRelease | note InRelease
-          curl -fsS https://downloads.claude.ai/claude-desktop/key.asc -o key.asc
-          gpg --show-keys --with-fingerprint key.asc 2>&1 | note key
-          curl -fsS $B/dists/stable/main/binary-amd64/Packages -o Packages; { grep -c '^Package:' Packages; tail -c 3000 Packages; } | note Packages
-          { curl -sSI $B/dists/stable/main/binary-arm64/Packages | head -1; curl -sSI $B/dists/stable/main/binary-amd64/Packages.gz | head -1; curl -sS -o /dev/null -w '%{http_code}' $B/dists/stable/Release; } 2>&1 | note other-files
-          f=$(awk '/^Filename:/{print $2}' Packages | tail -1)
-          curl -fsS "$B/$f" -o c.deb; { echo "$f"; ls -la c.deb; sha256sum c.deb; ar t c.deb; dpkg-deb -I c.deb; } | note deb-info
-          mkdir x ctl && dpkg-deb -x c.deb x && dpkg-deb -e c.deb ctl
-          for s in ctl/*; do echo "== $s"; head -c 1500 "$s"; done | note control
-          cat x/usr/share/applications/*.desktop | note desktop
-          { find x -maxdepth 4 | head -60; } | note tree
-          { find x -name chrome-sandbox -o -name '*.png' -o -name '*.svg' | head -30; find x -type f -perm -u+x | grep -v '\.so' | head -30; } | note files
-          exe=$(find x -type f \( -name claude-desktop -o -name claude -o -name Claude \) | head -1)
-          { echo "exe=$exe"; ldd "$exe" | grep 'not found' || echo all-found; ldd "$exe" | awk '{print $1}' | tr '\n' ' '; } | note ldd
-          { timeout 30 "$exe" --version; echo "rc=$?"; timeout 30 xvfb-run -a "$exe" --version 2>&1 | tail -5; echo "rc=$?"; } 2>&1 | note version
-          { find x/usr/bin -ls 2>/dev/null; cat x/usr/bin/* 2>/dev/null | head -c 1500; } | note usr-bin
-          { find x -name '*.node' | head; find x -name 'app.asar*' | head; } | note native
+          { ls -la x/usr/bin; file x/usr/bin/claude-desktop; head -c 3000 x/usr/bin/claude-desktop | strings | head -60; } 2>&1 | note usr-bin
+          { cat x/usr/lib/claude-desktop/version; echo; ls x/usr/lib/claude-desktop/resources | head -40; } | note version-file
+          sed -n '30,140p' ctl/postinst | note postinst-1
+          sed -n '140,344p' ctl/postinst | grep -v '^\s*#' | head -c 3800 | note postinst-2
+          { sysctl kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces 2>&1; cat /proc/sys/kernel/unprivileged_userns_clone 2>&1; } | note sysctl
+      - name: Run it from a home folder
+        run: |
+          note() { t="$1"; printf '::notice title=%s::%s\n' "$t" "$(head -c 3800 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          export HOME=$RUNNER_TEMP/h; mkdir -p $HOME/.local/opt; cp -a x/usr/lib/claude-desktop $HOME/.local/opt/claude-desktop; rm $HOME/.local/opt/claude-desktop/chrome-sandbox
+          exe=$HOME/.local/opt/claude-desktop/claude-desktop
+          { timeout 20 $exe --version; echo "rc=$?"; } 2>&1 | tail -8 | note version-run
+          sudo apt-get install -y -qq xvfb >/dev/null 2>&1 || true
+          ( timeout 25 xvfb-run -a $exe --enable-logging=stderr > run.log 2>&1; echo "rc=$?" >> run.log ) || true
+          { grep -i -E 'sandbox|fatal|error' run.log | head -20; tail -15 run.log; } | note run-userns
+          ps aux | grep -c claude-desktop || true
+      - name: Libraries on other systems
+        run: |
+          note() { t="$1"; printf '::notice title=%s::%s\n' "$t" "$(head -c 3800 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
+          for img in fedora:43 archlinux:latest debian:trixie; do
+            docker run --rm -v $PWD/x:/x:ro $img sh -c 'for f in /x/usr/lib/claude-desktop/claude-desktop /x/usr/lib/claude-desktop/resources/app.asar.unpacked/node_modules/@ant/claude-native/claude-native-binding.node; do ldd $f 2>&1 | grep "not found"; done | sort -u | tr "\n" " "' | note "missing-$img"
+          done
