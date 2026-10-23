@@ -14,7 +14,10 @@
 # option, notifications, polkit's password prompt, the .deb double-click.
 set -u
 fail=0
-ok() { echo "ok: $1"; }
+passed=0
+ok() { echo "ok: $1"; passed=$((passed + 1)); }
+# Installed (not just its configuration files left, which `dpkg -s` also answers for).
+installed() { [ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null)" = installed ]; }
 bad() { echo "::error title=writable layer::$1"; fail=1; }
 L=/usr/libexec/nimbus/hearth-apt-layer
 export DEBIAN_FRONTEND=noninteractive
@@ -47,15 +50,15 @@ $L status --json | grep -q '"hello"' && ok "hello is on the list" || bad "hello 
 
 echo "--- 3. removing and upgrading image packages; guard rails"
 listed() { $L status --json | python3 -c "import json,sys; sys.exit(0 if sys.argv[2] in json.load(sys.stdin)[sys.argv[1]] else 1)" "$1" "$2"; }
-if apt-get remove -y nano >/tmp/r.log 2>&1 && ! dpkg -s nano >/dev/null 2>&1; then ok "removing an image package (nano) works"; else tail -5 /tmp/r.log; bad "removing nano failed"; fi
+if apt-get remove -y nano >/tmp/r.log 2>&1 && ! installed nano; then ok "removing an image package (nano) works"; else tail -5 /tmp/r.log; bad "removing nano failed"; fi
 listed removed nano && ok "the removal is recorded" || bad "nano isn't recorded as removed"
-out=$(apt-get remove -y python3 2>&1); if dpkg -s python3 >/dev/null 2>&1 && echo "$out" | grep -q "Hearth:.*python3 stays"; then ok "removing what Hearth's tools need (python3) is refused"; else echo "$out" | tail -5; bad "removing python3 wasn't refused"; fi
+out=$(apt-get remove -y python3 2>&1); if installed python3 && echo "$out" | grep -q "Hearth:.*python3 stays"; then ok "removing what Hearth's tools need (python3) is refused"; else echo "$out" | tail -5; bad "removing python3 wasn't refused"; fi
 [ -s /usr/share/hearth/apt-layer/protected ] && grep -qx apt /usr/share/hearth/apt-layer/protected && ok "the protected list is in the image" || bad "no protected list"
 boot=""; for p in dracut-network dracut-squash dracut-live linux-image-cloud-amd64 linux-image-rt-amd64 linux-image-virtual; do
-  if apt-cache show "$p" >/dev/null 2>&1 && ! dpkg -s "$p" >/dev/null 2>&1; then boot=$p; break; fi
+  if apt-cache show "$p" >/dev/null 2>&1 && ! installed "$p"; then boot=$p; break; fi
 done
 if [ -n "$boot" ]; then
-  out=$(apt-get install -y "$boot" 2>&1); if ! dpkg -s "$boot" >/dev/null 2>&1 && echo "$out" | grep -q 'Hearth:.*kernel, initramfs and boot loader'; then ok "a boot package ($boot) is refused"; else echo "$out" | tail -5; bad "$boot wasn't refused"; fi
+  out=$(apt-get install -y "$boot" 2>&1); if ! installed "$boot" && echo "$out" | grep -q 'Hearth:.*kernel, initramfs and boot loader'; then ok "a boot package ($boot) is refused"; else echo "$out" | tail -5; bad "$boot wasn't refused"; fi
 else echo "::warning title=writable layer::no boot package to test the refusal with"; fi
 if apt-get -s full-upgrade >/tmp/fu.log 2>&1; then ok "apt full-upgrade can run"; else tail -5 /tmp/fu.log; bad "apt-get -s full-upgrade failed"; fi
 grep -E '^Inst (linux-image|grub|shim|dracut)' /tmp/fu.log && bad "full-upgrade would change kernel or boot packages" || ok "full-upgrade passes the kernel and boot loader over (pinned)"
@@ -91,11 +94,11 @@ sed -i 's/^Version: 1.0/Version: 1.1\nDepends: hearth-ci-missing (>= 9)/' "$d/DE
 dpkg-deb --build "$d" /var/lib/hearth/layer/debs/hearth-ci-test.deb >/dev/null
 umount /usr 2>/dev/null || umount -l /usr
 HEARTH_APT_LAYER_KEY=ci-deployment-b $L mount || bad "mounting the new deployment's layer failed"
-if ! dpkg -s hello >/dev/null 2>&1 && [ ! -e /usr/bin/hello ] && dpkg -s nano >/dev/null 2>&1; then ok "the new deployment starts with an empty layer (the image's nano is back)"; else bad "files from the old layer leaked into the new one"; fi
+if ! installed hello && [ ! -e /usr/bin/hello ] && installed nano; then ok "the new deployment starts with an empty layer (the image's nano is back)"; else bad "files from the old layer leaked into the new one"; fi
 grep -qx ci-deployment-b /var/lib/hearth/layer/pending && ok "the put-back is pending" || bad "no pending put-back"
 [ ! -s /var/lib/hearth/layer/added-apps ] && ok "added-apps is empty until the apps are back" || bad "added-apps lists apps that aren't installed"
 HEARTH_APT_LAYER_KEY=ci-deployment-b $L reapply >/tmp/re.log 2>&1; cat /tmp/re.log | tail -8
-dpkg -s hello >/dev/null 2>&1 && hello | grep -q 'Hello, world' && ok "hello is back after the update" || bad "hello wasn't put back"
+installed hello && hello | grep -q 'Hello, world' && ok "hello is back after the update" || bad "hello wasn't put back"
 python3 - <<'EOF' && ok "the package that no longer fits is skipped and reported" || bad "status.json doesn't report the skipped package"
 import json, sys
 s = json.load(open('/var/lib/hearth/layer/status.json'))
@@ -104,12 +107,13 @@ sys.exit(0 if 'hello' in s['reinstalled'] and 'nano' in s['reremoved'] and [k['n
 EOF
 [ ! -e /var/lib/hearth/layer/pending ] && ok "nothing pending afterwards" || bad "still pending"
 $L status --json | grep -q '"hearth-ci-test"' && ok "the skipped package stays on the list (retry later)" || bad "the skipped package fell off the list"
-! dpkg -s nano >/dev/null 2>&1 && ok "nano is removed again on the new version" || bad "nano wasn't removed again"
-dpkg -s hearth-ci-opt >/dev/null 2>&1 && grep -q opt-ok /opt/hearth-ci-opt/check.txt && ok "the /opt package is back" || bad "the /opt package wasn't put back"
+! installed nano && ok "nano is removed again on the new version" || bad "nano wasn't removed again"
+installed hearth-ci-opt && grep -q opt-ok /opt/hearth-ci-opt/check.txt && ok "the /opt package is back" || bad "the /opt package wasn't put back"
 [ -z "$(dpkg --audit 2>&1)" ] && ok "dpkg --audit is clean" || bad "dpkg --audit: $(dpkg --audit 2>&1 | head -3)"
 # The image's own dpkg database (the lower layer) never changed.
 grep -q '^Package: hello$' /usr/share/hearth/apt-layer/image-packages && bad "hello is in the image list" || ok "the image's package list is untouched"
 apt-get remove -y hello >/dev/null 2>&1; listed packages hello && bad "removing hello left it on the list" || ok "removing a package takes it off the list"
 apt-get install -y nano >/dev/null 2>&1; listed removed nano && bad "reinstalling nano left it on the removed list" || ok "reinstalling a removed image package takes it off the list"
 umount /usr 2>/dev/null || umount -l /usr
+echo "::notice title=writable layer::$passed checks passed$([ "$fail" = 0 ] || echo ', some failed (see the errors)')"
 exit $fail
