@@ -197,6 +197,13 @@ ShellRoot {
         // The launcher open at a section: apps or games.
         function section(name: string): void { launcher.openTab(name === "games" ? "games" : "apps"); }
     }
+    // App icons (AppIcons.qml), for checks: what an Icon= value and/or a window's app id resolve to ("" = nothing
+    // found), and which desktop entry a window's app id belongs to.
+    IpcHandler {
+        target: "icons"
+        function resolve(icon: string, appId: string): string { return AppIcons.find(icon, appId); }
+        function entry(appId: string): string { const e = AppIcons.entryFor(appId); return e ? e.id + " " + (e.icon || "") : ""; }
+    }
     IpcHandler {
         target: "quick"
         function toggle(): void { quick.toggle(); }
