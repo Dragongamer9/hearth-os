@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Builds site/docs/*.html (Hearth OS documentation) from the content below: one header, section list and
 footer for every page. The Website workflow runs it before publishing; the release notes come from docs/ROADMAP.md
-and the version from Nimbus.Host.csproj, so they follow each release. Usage: tools/build-docs.py [site/docs]"""
-import html, os, re, sys
+and the version from Nimbus.Host.csproj, so they follow each release. Usage: tools/build-docs.py [site/docs]
+  tools/build-docs.py --help-json FILE   the same content as JSON for Welcome & Tips (hosts/hearth-tools), so the
+                                         help in the OS and the website never disagree (see help_index below)"""
+import html, json, os, re, sys
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), '..', 'site', 'docs')
+HELP_JSON = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == '--help-json' else None
+OUT = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith('--') else os.path.join(os.path.dirname(__file__), '..', 'site', 'docs')
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 R2 = 'https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/'
 VERSION = re.search(r'<Version>([^<]+)</Version>', open(os.path.join(ROOT, 'hosts/windows/Nimbus.Host/Nimbus.Host.csproj')).read()).group(1)
@@ -342,6 +345,16 @@ Holding the button for several seconds always turns the device off.</p>
 <li><b>Disks</b>: your drives and their health, formatting USB drives and SD cards, partitions, and <b>Use for games</b> (a drive or SD card as a Steam library in one step). It won't touch the drive the system runs from.</li>
 <li><b>hearthfetch</b>: type it in the Terminal for a summary of your system.</li>
 </ul>
+<p><b>System tools</b> (Hearth OS, Beta Experimental), in the app menu too:</p>
+<ul>
+<li><b>Disk Usage</b>: what's filling a drive, as a ring chart and a list. Click into folders, open them in Hearth Files, move things to the Trash, and quick finds for big files, old downloads and caches.</li>
+<li><b>System Info</b>: your device, processor, graphics and driver, memory, drives and their health, battery health, screens and Hearth's version. <b>Copy as text</b> for a forum post or a bug report.</li>
+<li><b>Logs</b>: the system's and Hearth's logs, easy to read, with filters (this start, errors only, one app, the last hour) and search. <b>Send to the developer</b> sends them the same way as Settings does.</li>
+<li><b>Network Tools</b>: a speed test, what's connected and which apps use the network, Wi-Fi signal and channel, ping, traceroute and DNS lookup.</li>
+<li><b>Passwords &amp; Keys</b>: the passwords apps saved in your keyring and your saved Wi-Fi passwords. Showing a password asks for yours first. Nothing leaves the device.</li>
+<li><b>Printers &amp; Scanner</b>: the print queue (pause, cancel), adding a printer, and scanning to PDF (several pages) or PNG.</li>
+<li><b>Welcome &amp; Tips</b>: a short tour the first time, and this help, searchable, from the app menu.</li>
+</ul>
 <p>Desktop Mode's app drawer has a <b>Games</b> tab with your installed games; on Windows it also has a <b>Windows</b> tab with the built-in programs.</p>
 
 {h2('claude', 'Installing Claude')}
@@ -650,6 +663,49 @@ ASK_JS = '''
   });
 })();
 '''
+
+# ------------------------------------------------------------------ Welcome & Tips (hosts/hearth-tools, --app welcome)
+# Its searchable "How do I…" help is these pages, section by section (Requests and Release notes left out: they
+# need the website), plus the Desktop Mode controller list from Mantel's own help card (Help.qml).
+HELP_PAGES = ['index', 'install', 'updates', 'using', 'troubleshooting']
+
+
+def help_text(fragment):
+    """A section's words without its markup, for searching."""
+    t = re.sub(r'<(script|style)[^>]*>.*?</\1>', ' ', fragment, flags=re.S)
+    t = re.sub(r'<[^>]+>', ' ', t)
+    return re.sub(r'\s+', ' ', html.unescape(t)).strip()
+
+
+def help_index(bodies):
+    sections = []
+    for slug, body in bodies:
+        if slug not in HELP_PAGES:
+            continue
+        title = next(p[1] for p in PAGES if p[0] == slug)
+        for part in re.split(r'(?=<h2 id=")', body)[1:]:
+            m = re.match(r'<h2 id="([^"]+)">(.*?)</h2>', part, re.S)
+            content = re.sub(r'<script[^>]*>.*?</script>', '', part[m.end():], flags=re.S).strip()
+            sections.append({'page': slug, 'pageTitle': title, 'id': m.group(1), 'title': help_text(m.group(2)),
+                             'eds': SECTION_EDS.get(m.group(1), ''), 'html': content, 'text': help_text(content)})
+    qml = open(os.path.join(ROOT, 'hosts/linux/desktop/shell/Help.qml')).read()
+    block = re.search(r'property var controls:\s*\[(.*?)\n\s*\]', qml, re.S)
+    controls = re.findall(r'\["([^"]+)",\s*"([^"]+)"\]', block.group(1)) if block else []
+    return {'version': VERSION, 'site': 'https://hearthos.fun/docs/', 'source': 'tools/build-docs.py',
+            'pages': [{'slug': s, 'title': t, 'lead': l} for s, t, l in PAGES if s in HELP_PAGES],
+            'sections': sections, 'controls': [list(c) for c in controls]}
+
+
+if HELP_JSON:
+    data = help_index([('index', INDEX), ('install', INSTALL), ('updates', UPDATES), ('using', USING), ('troubleshooting', TROUBLE)])
+    if HELP_JSON == '-':
+        print(json.dumps(data, ensure_ascii=False, indent=1))
+    else:
+        os.makedirs(os.path.dirname(os.path.abspath(HELP_JSON)), exist_ok=True)
+        with open(HELP_JSON, 'w') as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        print('help index:', len(data['sections']), 'sections,', len(data['controls']), 'controller buttons ->', HELP_JSON)
+    sys.exit(0)
 
 os.makedirs(OUT, exist_ok=True)
 for slug, body in [('index', INDEX), ('install', INSTALL), ('updates', UPDATES), ('using', USING), ('troubleshooting', TROUBLE), ('requests', REQUESTS), ('releases', releases_body())]:
