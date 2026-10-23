@@ -183,6 +183,8 @@ QUICKSHELL=$(first_of quickshell quickshell-git) || { echo "quickshell isn't in 
 optional qt6ct qt5ct gst-plugin-pipewire qt6-5compat
 # Printing (Settings › Printers: CUPS, driverless IPP Everywhere, ipp-usb, Avahi) and clipboard history (Super+V).
 optional cups cups-filters ipp-usb avahi nss-mdns wl-clipboard cliphist wtype
+# Desktop Mode: screenshot notifications (notify-send) and turning the screen off when idle (Settings › Power).
+optional libnotify wlopm
 
 # ------------------------------------------------------------------ the login screen (SDDM, as on Bazzite)
 # nimbus-autologin writes SDDM's autologin; the Hearth theme (os/system_files) is Qt 6, as Arch's SDDM is. SDDM's
