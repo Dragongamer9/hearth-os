@@ -9,7 +9,11 @@ change as you (no root). The parts that need root go through /usr/libexec/nimbus
   hearth-system keyboard-set         stdin: {"layouts": [{"layout", "variant"}], "switch": "grp:...", "delay": ms,
                                      "rate": per second}. Writes ~/.config/labwc/environment (XKB_DEFAULT_*) and
                                      ~/.config/nimbus/keyboard.json, then asks labwc to reload
-  hearth-system labwc-config         prepare Desktop Mode's labwc folder with your keyboard settings in it
+  hearth-system pointer              JSON: mouse and touchpad settings (speed, natural scrolling, tap to click...)
+                                     and whether there's a touchpad
+  hearth-system pointer-set          stdin: {"mouse": {...}, "touchpad": {...}} (see POINTER_KEYS). Writes
+                                     ~/.config/nimbus/pointer.json, then asks labwc to reload
+  hearth-system labwc-config         prepare Desktop Mode's labwc folder with your keyboard and mouse settings in it
                                      ($XDG_RUNTIME_DIR/hearth-labwc) and print its path (nimbus-session runs it)
   hearth-system shortcuts            JSON: Desktop Mode's keyboard shortcuts, from labwc's rc.xml
   hearth-system defaults             JSON: the default browser, file manager, text editor, image viewer, video and
@@ -43,6 +47,19 @@ ADMIN = '/usr/libexec/nimbus/hearth-admin'
 LABWC_DIR = os.path.normpath(os.path.join(HERE, '..', 'labwc'))
 LABWC_ENV = os.path.join(CONFIG, 'labwc', 'environment')
 KEYBOARD_JSON = os.path.join(CONFIG, 'nimbus', 'keyboard.json')
+POINTER_JSON = os.path.join(CONFIG, 'nimbus', 'pointer.json')
+# Mouse and touchpad settings: name -> (kind, labwc <libinput><device> element). Speed is -1..1 (0 = normal).
+POINTER_KEYS = {
+    'mouse': {'speed': ('speed', 'pointerSpeed'), 'natural': ('bool', 'naturalScroll'),
+              'leftHanded': ('bool', 'leftHanded'), 'accel': (('adaptive', 'flat'), 'accelProfile')},
+    'touchpad': {'speed': ('speed', 'pointerSpeed'), 'natural': ('bool', 'naturalScroll'), 'tap': ('bool', 'tap'),
+                 'dwt': ('bool', 'disableWhileTyping'), 'scroll': (('twofinger', 'edge'), 'scrollMethod'),
+                 'leftHanded': ('bool', 'leftHanded')},
+}
+POINTER_DEFAULT = {'mouse': {'speed': 0.0, 'natural': False, 'leftHanded': False, 'accel': 'adaptive'},
+                   'touchpad': {'speed': 0.0, 'natural': False, 'tap': True, 'dwt': True, 'scroll': 'twofinger',
+                                'leftHanded': False}}
+LABWC_CATEGORY = {'mouse': 'non-touch', 'touchpad': 'touchpad'}
 XKB_RULES = ['/usr/share/X11/xkb/rules/evdev.lst', '/usr/share/X11/xkb/rules/base.lst']
 ZONEINFO = '/usr/share/zoneinfo'
 LAYOUT_RE = re.compile(r'^[a-z][a-z0-9_-]{0,31}$')
@@ -310,9 +327,98 @@ def keyboard_saved():
         return REPEAT_DEFAULT['delay'], REPEAT_DEFAULT['rate']
 
 
+# ---------------------------------------------------------------------- mouse and touchpad
+def pointer_clean(raw):
+    """Mouse and touchpad settings with anything odd dropped (defaults for what's missing)."""
+    out = {k: dict(v) for k, v in POINTER_DEFAULT.items()}
+    if not isinstance(raw, dict):
+        return out
+    for dev, keys in POINTER_KEYS.items():
+        got = raw.get(dev)
+        if not isinstance(got, dict):
+            continue
+        for k, (kind, _) in keys.items():
+            v = got.get(k)
+            if kind == 'speed' and isinstance(v, (int, float)) and not isinstance(v, bool):
+                out[dev][k] = round(max(-1.0, min(1.0, float(v))), 2)
+            elif kind == 'bool' and isinstance(v, bool):
+                out[dev][k] = v
+            elif isinstance(kind, tuple) and v in kind:
+                out[dev][k] = v
+    return out
+
+
+def pointer_saved():
+    try:
+        return pointer_clean(json.loads(read(POINTER_JSON, '{}')))
+    except ValueError:
+        return pointer_clean(None)
+
+
+def has_touchpad(devices_text=None):
+    """A touchpad is connected (from /proc/bus/input/devices: a device named ...Touchpad / Trackpad, or one
+    libinput would treat as a touchpad: absolute X/Y with finger-count buttons)."""
+    text = devices_text if devices_text is not None else read('/proc/bus/input/devices')
+    for block in text.split('\n\n'):
+        name = re.search(r'^N: Name="(.*)"', block, re.M)
+        if name and re.search(r'touch ?pad|trackpad|glidepoint|clickpad', name.group(1), re.I):
+            return True
+    return False
+
+
+def pointer_status():
+    return dict(pointer_saved(), hasTouchpad=has_touchpad())
+
+
+def libinput_xml(settings):
+    """labwc's <libinput> block for these settings (one <device> per kind)."""
+    lines = ['  <!-- Your mouse and touchpad (Hearth Settings › Mouse & touchpad) -->', '  <libinput>']
+    for dev in ('mouse', 'touchpad'):
+        lines.append('    <device category="%s">' % LABWC_CATEGORY[dev])
+        for k, (kind, tag) in POINTER_KEYS[dev].items():
+            v = settings[dev][k]
+            text = ('%.2f' % v) if kind == 'speed' else ('yes' if v else 'no') if kind == 'bool' else v
+            lines.append('      <%s>%s</%s>' % (tag, text, tag))
+        lines.append('    </device>')
+    lines.append('  </libinput>')
+    return '\n'.join(lines) + '\n'
+
+
+def rc_with_pointer(text, settings):
+    """rc.xml text with its <libinput> block replaced by (or given) one for these settings."""
+    block = libinput_xml(settings)
+    if re.search(r'<libinput\b', text):
+        text = re.sub(r'[ \t]*(<!--[^>]*Mouse & touchpad[^>]*-->\s*)?<libinput\b.*?</libinput>\s*\n?', '', text, count=1, flags=re.S)
+    return re.sub(r'</labwc_config>', block.replace('\\', '\\\\') + '</labwc_config>', text, count=1)
+
+
+def pointer_set(raw):
+    try:
+        req = json.loads(raw or 'null')
+    except ValueError:
+        raise Fail('expected JSON on stdin')
+    if not isinstance(req, dict):
+        raise Fail('expected {"mouse": {...}, "touchpad": {...}}')
+    merged = pointer_saved()
+    for dev in POINTER_KEYS:
+        if isinstance(req.get(dev), dict):
+            merged[dev].update(req[dev])
+    settings = pointer_clean(merged)
+    write_atomic(POINTER_JSON, json.dumps(settings, indent=2) + '\n')
+    live = False
+    if os.path.isdir(runtime_dir()):
+        labwc_config()
+        live = True
+    reloaded = False
+    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+        reloaded = run(['labwc', '--reconfigure'])[0] == 0
+    return dict(settings, ok=True, reloaded=reloaded and live, hasTouchpad=has_touchpad())
+
+
 def labwc_config(src=None, dest=None):
-    """Desktop Mode's labwc folder with your keyboard settings: Hearth's own files (linked), its environment file
-    with your ~/.config/labwc/environment keyboard lines after it, and its rc.xml with your key repeat."""
+    """Desktop Mode's labwc folder with your keyboard and mouse settings: Hearth's own files (linked), its
+    environment file with your ~/.config/labwc/environment keyboard lines after it, and its rc.xml with your key
+    repeat and your mouse and touchpad settings."""
     src = src or LABWC_DIR
     dest = dest or runtime_dir()
     os.makedirs(dest, mode=0o700, exist_ok=True)
@@ -333,7 +439,10 @@ def labwc_config(src=None, dest=None):
             ''.join('%s=%s\n' % kv for kv in sorted(mine.items()))
     write_atomic(os.path.join(dest, 'environment'), env)
     delay, rate = keyboard_saved()
-    write_atomic(os.path.join(dest, 'rc.xml'), rc_with_repeat(read(os.path.join(src, 'rc.xml')), delay, rate))
+    rc = rc_with_repeat(read(os.path.join(src, 'rc.xml')), delay, rate)
+    if os.path.exists(POINTER_JSON):
+        rc = rc_with_pointer(rc, pointer_saved())
+    write_atomic(os.path.join(dest, 'rc.xml'), rc)
     return dest
 
 
@@ -369,8 +478,15 @@ ACTION_WORDS = {
     'ToggleShowDesktop': 'Show the desktop, or the windows again',
 }
 COMMAND_WORDS = [
-    (r'call launcher toggle', 'Open or close the app launcher'), (r'open\.sh terminal', 'Open a terminal'),
-    (r'open\.sh files', 'Open Files'), (r'open\.sh screenshot', 'Take a screenshot'),
+    (r'call launcher toggle', 'Open or close the app launcher'), (r'call launcher open', 'Search apps'),
+    (r'open\.sh terminal', 'Open a terminal'), (r'open\.sh files', 'Open Files'),
+    (r'open\.sh screenshot-region', 'Screenshot of an area you choose'),
+    (r'open\.sh screenshot-clipboard', 'Screenshot to the clipboard only'),
+    (r'open\.sh screenshot', 'Screenshot of the whole screen'),
+    (r'call taskbar activate (\d)', 'Open or switch to taskbar app'), (r'call taskbar showDesktop', 'Show the desktop, or the windows again'), (r'call calendar toggle', 'Notifications and calendar'),
+    (r'call media playPause', 'Play or pause'), (r'call media next', 'Next track'), (r'call media previous', 'Previous track'),
+    (r'call media stop', 'Stop playing'), (r'call brightness up', 'Brightness up'), (r'call brightness down', 'Brightness down'),
+    (r'set-mute @DEFAULT_AUDIO_SOURCE@', 'Microphone on or off'), (r'systemctl suspend', 'Sleep'),
     (r'call tasks toggle', 'Open Task Manager'), (r'call lock lock', 'Lock the screen'),
     (r'call clipboard toggle', 'Clipboard history'), (r'call settings', 'Open Settings'),
     (r'call apps', 'Open Apps'), (r'call quick toggle', 'Quick Access'), (r'call power menu', 'Power menu'),
@@ -384,9 +500,13 @@ KEYSYM_WORDS = {
     'Left': 'Left', 'Right': 'Right', 'Super_L': 'Super', 'Super_R': 'Super', 'Delete': 'Delete', 'BackSpace': 'Backspace',
     'XF86AudioRaiseVolume': 'Volume up key', 'XF86AudioLowerVolume': 'Volume down key', 'XF86AudioMute': 'Mute key',
     'XF86PowerOff': 'Power key', 'XF86MonBrightnessUp': 'Brightness up key', 'XF86MonBrightnessDown': 'Brightness down key',
+    'XF86AudioMicMute': 'Microphone mute key', 'XF86AudioPlay': 'Play key', 'XF86AudioPause': 'Pause key',
+    'XF86AudioNext': 'Next track key', 'XF86AudioPrev': 'Previous track key', 'XF86AudioStop': 'Stop key',
+    'XF86Sleep': 'Sleep key',
 }
 # labwc's own shortcuts that <default /> keeps unless rc.xml sets the same key.
-LABWC_DEFAULTS = [('A-Tab', 'Switch to the next window'), ('A-F4', 'Close the window')]
+LABWC_DEFAULTS = [('A-Tab', 'Switch to the next window'), ('A-S-Tab', 'Switch to the previous window'),
+                  ('A-F4', 'Close the window'), ('A-Space', 'Window menu')]
 
 
 def key_words(key):
@@ -409,12 +529,15 @@ def action_words(action):
     if name == 'Execute':
         cmd = action.get('command') or ''
         for pat, words in COMMAND_WORDS:
-            if re.search(pat, cmd):
-                return words
+            m = re.search(pat, cmd)
+            if m:
+                return words + (' ' + m.group(1) if m.groups() else '')
         word = (cmd.split() or [''])[0]
         return 'Run ' + os.path.basename(word) if word else 'Run a command'
     if name == 'SnapToEdge':
         return 'Snap the window to the %s' % {'left': 'left half', 'right': 'right half', 'up': 'top', 'down': 'bottom'}.get(action.get('direction', ''), 'edge')
+    if name == 'MoveToOutput':
+        return 'Move the window to the screen on the %s' % action.get('direction', 'other side')
     if name == 'MoveToEdge':
         return 'Move the window to the %s edge' % action.get('direction', '')
     if name == 'GoToDesktop':
@@ -782,6 +905,10 @@ def main(argv):
         out = keyboard_layouts()
     elif c == 'keyboard-set' and not a:
         out = keyboard_set(sys.stdin.read())
+    elif c == 'pointer' and not a:
+        out = pointer_status()
+    elif c == 'pointer-set' and not a:
+        out = pointer_set(sys.stdin.read())
     elif c == 'labwc-config' and not a:
         print(labwc_config())
         return
@@ -802,7 +929,7 @@ def main(argv):
     elif c == 'printer-test' and len(a) == 1:
         out = printer_test(a[0])
     else:
-        print('usage: hearth-system time | timezones | keyboard | keyboard-layouts | keyboard-set | labwc-config | '
+        print('usage: hearth-system time | timezones | keyboard | keyboard-layouts | keyboard-set | pointer | pointer-set | labwc-config | '
               'shortcuts | defaults | default-set KIND APP_ID | users | pictures | picture-set PATH | printers | '
               'printer-test NAME')
         sys.exit(2)

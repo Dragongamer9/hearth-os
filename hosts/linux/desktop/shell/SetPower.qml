@@ -10,6 +10,7 @@ SetPage {
     title: "Power"
     readonly property var dev: UPower.displayDevice
     readonly property bool battery: !!(dev && dev.isLaptopBattery)
+    property bool canScreenOff: false    // wlopm is installed (IdlePower.qml)
     property string profile: ""
     property var profiles: []
     property var tdp: null             // {supported, watts, min, max, via}
@@ -80,6 +81,29 @@ SetPage {
         Layout.fillWidth: true
         text: page.powerError; color: Theme.danger; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
+    SetHeader { text: "When you're away" }
+    Process {
+        running: true
+        command: ["sh", "-c", "command -v wlopm"]
+        onExited: code => page.canScreenOff = code === 0
+    }
+    SetChoice {
+        title: "Turn the screen off after"
+        sub: page.canScreenOff ? "Videos and games that are playing keep it on" : "Needs wlopm, which isn't installed"
+        enabled: page.canScreenOff
+        opacity: page.canScreenOff ? 1 : 0.5
+        options: [{ value: 0, label: "Never" }, { value: 2, label: "2 min" }, { value: 5, label: "5 min" }, { value: 10, label: "10 min" }, { value: 15, label: "15 min" }, { value: 30, label: "30 min" }]
+        current: Settings.screenOffMinutes
+        onChosen: v => Settings.screenOffMinutes = v
+    }
+    SetChoice {
+        title: "Go to sleep after"
+        sub: "Downloads stop while it sleeps. Videos and games that are playing keep it awake"
+        options: [{ value: 0, label: "Never" }, { value: 10, label: "10 min" }, { value: 15, label: "15 min" }, { value: 30, label: "30 min" }, { value: 60, label: "1 hour" }, { value: 120, label: "2 hours" }]
+        current: Settings.sleepMinutes
+        onChosen: v => Settings.sleepMinutes = v
+    }
+
     SetHeader { text: "Power button" }
     SetChoice {
         title: "Press"; sub: "A quick press"

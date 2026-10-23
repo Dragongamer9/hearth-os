@@ -1,6 +1,7 @@
 // Small questions and details for the desktop: rename, a new folder's name, a file's properties.
 //   dialog.ask(screen, "Rename", "notes.txt", "Rename", text => ...)     a text box with OK / Cancel
 //   dialog.info(screen, "notes.txt", [["Kind", "Text"], ["Size", "2 KB"]]) a card of details
+//   dialog.confirm(screen, "Delete 3 items?", "This can't be undone.", "Delete", () => ...)   OK / Cancel
 // Enter (A) is OK, Esc (B) cancels, Tab moves between the box and the buttons; Y on the controller types.
 import QtQuick
 import QtQuick.Layouts
@@ -10,7 +11,8 @@ import Quickshell.Wayland
 PanelWindow {
     id: root
     property bool shown: false
-    property string mode: "ask"            // ask | info
+    property string mode: "ask"            // ask | info | confirm
+    property string message: ""            // confirm: the text under the title
     property string title: ""
     property string okLabel: "OK"
     property var rows: []
@@ -35,8 +37,19 @@ PanelWindow {
         focusIndex = 0;
         keys.forceActiveFocus();
     }
+    function confirm(scr, t, msg, ok, cb) {
+        if (scr) screen = scr;
+        mode = "confirm"; title = t; message = msg || ""; okLabel = ok || "OK"; done = cb; rows = [];
+        shown = true;
+        focusIndex = 2;                    // Cancel first: Enter alone doesn't delete anything
+        keys.forceActiveFocus();
+    }
     function accept() {
-        if (mode === "ask") {
+        if (mode === "confirm") {
+            const cb = done;
+            shown = false;
+            if (cb) cb();
+        } else if (mode === "ask") {
             const v = field.text.trim();
             if (!v) return;
             const cb = done;
@@ -63,13 +76,15 @@ PanelWindow {
             switch (event.key) {
             case Qt.Key_Escape: root.cancel(); break;
             case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space:
-                if (root.mode === "ask" && root.focusIndex === 2) root.cancel(); else root.accept();
+                if (root.mode !== "info" && root.focusIndex === 2) root.cancel(); else root.accept();
                 break;
             case Qt.Key_Tab: case Qt.Key_Right: case Qt.Key_Down:
                 if (root.mode === "ask") root.focusIndex = Math.min(2, root.focusIndex + 1);
+                else if (root.mode === "confirm") root.focusIndex = 2;
                 break;
             case Qt.Key_Backtab: case Qt.Key_Left: case Qt.Key_Up:
                 if (root.mode === "ask") { root.focusIndex = Math.max(0, root.focusIndex - 1); if (root.focusIndex === 0) field.forceActiveFocus(); }
+                else if (root.mode === "confirm") root.focusIndex = 1;
                 break;
             default: return;
             }
@@ -136,6 +151,17 @@ PanelWindow {
                 font.pixelSize: 12
             }
 
+            // confirm: what will happen
+            Text {
+                visible: root.mode === "confirm" && root.message !== ""
+                Layout.fillWidth: true
+                text: root.message
+                color: Theme.muted
+                font.family: Theme.font
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+
             // info: the details
             GridLayout {
                 visible: root.mode === "info"
@@ -164,8 +190,8 @@ PanelWindow {
                 Layout.topMargin: 4
                 spacing: 8
                 Item { Layout.fillWidth: true }
-                DlgButton { visible: root.mode === "ask"; label: "Cancel"; lit: root.focusIndex === 2; onPicked: root.cancel() }
-                DlgButton { label: root.mode === "ask" ? root.okLabel : "Close"; primary: true; lit: root.mode === "info" || root.focusIndex === 1; onPicked: root.accept() }
+                DlgButton { visible: root.mode !== "info"; label: "Cancel"; lit: root.focusIndex === 2; onPicked: root.cancel() }
+                DlgButton { label: root.mode !== "info" ? root.okLabel : "Close"; primary: true; lit: root.mode === "info" || root.focusIndex === 1; onPicked: root.accept() }
             }
         }
     }

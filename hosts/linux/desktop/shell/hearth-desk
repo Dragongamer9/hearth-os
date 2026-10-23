@@ -7,9 +7,22 @@
   hearth-desk set KEY on|off                desktopIcons | dnd
   hearth-desk icons COLS ROWS               what's in your Desktop folder, each with its place on a COLS x ROWS grid
   hearth-desk place NAME COL ROW COLS ROWS  move one desktop icon to a place (swaps with an icon already there)
+  hearth-desk place-many COLS ROWS NAME COL ROW [NAME COL ROW...]
+                                            move several icons at once (icons in the way take the places left)
+  hearth-desk same-device DEST PATH...      {move: true} when every PATH is on DEST's drive (a drop there moves)
   hearth-desk arrange COLS ROWS             line the desktop icons up by name
   hearth-desk new-folder [NAME]             a new folder on the desktop ("New folder", "New folder 2", ...)
   hearth-desk launch PATH                   start the app a .desktop launcher on the desktop points to
+  hearth-desk pins-order ID...              put the pinned apps in this order (dragged on the taskbar)
+  hearth-desk set-sort name|type|size|date  how the icons are sorted when they're lined up
+  hearth-desk templates                     the files in your Templates folder (the desktop's "New document")
+  hearth-desk new-file [TEMPLATE]           a new empty text file on the desktop, or a copy of a template
+  hearth-desk clip-copy [--cut] PATH...     put files on the clipboard (text/uri-list, so file managers paste them)
+  hearth-desk clipboard                     what's on the clipboard: files ({paths, cut}) or a picture ({image})
+  hearth-desk paste-image                   save the picture on the clipboard to the desktop
+  hearth-desk desktop-shortcut ID           put an app (its .desktop id) on the desktop
+  hearth-desk recent ID                     an app was opened from the app menu (its Recent row, newest first)
+  hearth-desk mute-app NAME on|off          no pop-ups from this app (its notifications still go to the history)
 
 Kept in $XDG_CONFIG_HOME/nimbus/desk.json (~/.config/nimbus/desk.json). Output is one JSON line; failures
 print "error: ..." and exit 1. File work (rename, Trash, details) goes through hearth-files.
@@ -20,15 +33,21 @@ import json
 import os
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 MAX_PINS = 40
-DEFAULTS = {'pins': [], 'desktopIcons': True, 'dnd': False, 'icons': {}}
-SWITCHES = ('desktopIcons', 'dnd')
+DEFAULTS = {'pins': [], 'desktopIcons': True, 'dnd': False, 'icons': {}, 'autoArrange': False, 'sortBy': 'name',
+            'muted': [], 'recent': []}
+SWITCHES = ('desktopIcons', 'dnd', 'autoArrange')
+SORTS = ('name', 'type', 'size', 'date')
+MAX_MUTED = 100
+MAX_RECENT = 8
 
 
 class Fail(Exception):
@@ -84,6 +103,18 @@ def clean(raw):
         if isinstance(name, str) and isinstance(cell, list) and len(cell) == 2 and all(isinstance(c, int) and 0 <= c < 1000 for c in cell):
             icons[name] = [cell[0], cell[1]]
     out['icons'] = icons
+    if raw.get('sortBy') in SORTS:
+        out['sortBy'] = raw['sortBy']
+    muted = []
+    for m in raw.get('muted') or []:
+        if isinstance(m, str) and m.strip() and len(m) <= 200 and m not in muted:
+            muted.append(m)
+    out['muted'] = muted[:MAX_MUTED]
+    recent = []
+    for r in raw.get('recent') or []:
+        if isinstance(r, str) and valid_id(r) and r not in recent:
+            recent.append(r)
+    out['recent'] = recent[:MAX_RECENT]
     return out
 
 
@@ -134,7 +165,9 @@ def save(state):
 
 
 def public(state):
-    return {'pins': state['pins'], 'desktopIcons': state['desktopIcons'], 'dnd': state['dnd']}
+    return {'pins': state['pins'], 'desktopIcons': state['desktopIcons'], 'dnd': state['dnd'],
+            'autoArrange': state['autoArrange'], 'sortBy': state['sortBy'], 'muted': state['muted'],
+            'recent': state['recent']}
 
 
 # ---------------------------------------------------------------------- taskbar pins
@@ -162,6 +195,53 @@ def unpin(app_id):
     return public(s)
 
 
+def pins_order(ids):
+    """The pinned apps in the order given (ids that aren't pinned are ignored; pins not named keep their order
+    after the named ones), for dragging them around on the taskbar."""
+    s = load()
+    named = []
+    for i in ids:
+        if i in s['pins'] and i not in named:
+            named.append(i)
+    s['pins'] = named + [p for p in s['pins'] if p not in named]
+    save(s)
+    return public(s)
+
+
+def set_sort(key):
+    if key not in SORTS:
+        raise Fail('Sort by name, type, size or date')
+    s = load()
+    s['sortBy'] = key
+    save(s)
+    return public(s)
+
+
+def note_recent(app_id):
+    if not valid_id(app_id):
+        raise Fail('Not an app id')
+    s = load()
+    s['recent'] = ([app_id] + [r for r in s['recent'] if r != app_id])[:MAX_RECENT]
+    save(s)
+    return public(s)
+
+
+def mute_app(name, value):
+    name = (name or '').strip()
+    if not name or len(name) > 200:
+        raise Fail("That app can't be muted")
+    s = load()
+    on = value.lower() in ('on', 'true', 'yes', '1')
+    if on and name not in s['muted']:
+        if len(s['muted']) >= MAX_MUTED:
+            raise Fail('Too many muted apps. Unmute one first')
+        s['muted'].append(name)
+    elif not on and name in s['muted']:
+        s['muted'].remove(name)
+    save(s)
+    return public(s)
+
+
 def set_switch(key, value):
     if key not in SWITCHES:
         raise Fail('Unknown setting: ' + key)
@@ -185,8 +265,25 @@ def desktop_dir():
     return d
 
 
-def desktop_items(d):
-    """Desktop folder entries (no hidden ones): folders first, then by name."""
+def sort_key(by):
+    """Sorting for desktop entries: folders always first, then by name, type (extension), size or date."""
+    def name(e):
+        return (e.get('label', e['name']).casefold(), e['name'])
+
+    def key(e):
+        if by == 'type':
+            ext = '' if e['dir'] else os.path.splitext(e['name'])[1].casefold()
+            return (not e['dir'], ext, name(e))
+        if by == 'size':
+            return (not e['dir'], -(e.get('size') or 0), name(e))
+        if by == 'date':
+            return (not e['dir'], -(e.get('mtime') or 0), name(e))
+        return (not e['dir'], name(e))
+    return key
+
+
+def desktop_items(d, by='name'):
+    """Desktop folder entries (no hidden ones): folders first, then by name (or by = type, size, date)."""
     try:
         names = os.listdir(d)
     except OSError:
@@ -205,7 +302,7 @@ def desktop_items(d):
                 e['icon'] = fields.get('Icon', '')
                 e['launcher'] = True
         out.append(e)
-    out.sort(key=lambda e: (not e['dir'], e.get('label', e['name']).casefold(), e['name']))
+    out.sort(key=sort_key(by))
     return out
 
 
@@ -243,9 +340,15 @@ def icons(cols, rows):
     d = desktop_dir()
     if not d or not os.path.isdir(d):
         return {'dir': d, 'exists': False, 'entries': []}
-    items = desktop_items(d)
     s = load()
+    items = desktop_items(d, s['sortBy'])
     names = [e['name'] for e in items]
+    if s['autoArrange']:
+        # Kept lined up: every icon in sorted order, the saved places are left alone for when it's turned off.
+        placed, _ = layout(names, {}, cols, rows)
+        for e in items:
+            e['col'], e['row'] = placed[e['name']]
+        return {'dir': d, 'exists': True, 'entries': items}
     placed, fresh = layout(names, s['icons'], cols, rows)
     # Remember new icons' places (so the next new file doesn't shuffle them) and forget removed files.
     # A saved place outside today's grid (a smaller screen) is kept for when the screen is big again.
@@ -262,31 +365,269 @@ def icons(cols, rows):
 
 
 def place(name, col, row, cols, rows):
+    return place_many([(name, col, row)], cols, rows)
+
+
+def place_many(moves, cols, rows):
+    """Move icons to new places together (dragging a selection). Icons already at a new place move to the places
+    the moved ones left (one icon: a swap), else to the first free place."""
     d = desktop_dir()
     if not d or not os.path.isdir(d):
         raise Fail("There's no Desktop folder")
     names = [e['name'] for e in desktop_items(d)]
-    if name not in names:
-        raise Fail('“' + name + "” isn't on the desktop any more")
-    col = max(0, min(max(1, cols) - 1, col))
-    row = max(0, min(max(1, rows) - 1, row))
+    cols, rows = max(1, cols), max(1, rows)
+    want = {}
+    for name, col, row in moves:
+        if name not in names:
+            raise Fail('“' + name + "” isn't on the desktop any more")
+        cell = (max(0, min(cols - 1, col)), max(0, min(rows - 1, row)))
+        if cell not in want.values():
+            want[name] = cell
     s = load()
     placed, _ = layout(names, s['icons'], cols, rows)
-    old = placed[name]
-    for other, cell in placed.items():
-        if other != name and cell == (col, row):
-            s['icons'][other] = list(old)          # swap
-            break
-    s['icons'][name] = [col, row]
+    new = dict(placed)
+    for n, cell in want.items():
+        new[n] = cell
+    targets = set(want.values())
+    displaced = [n for n in names if n not in want and placed[n] in targets]
+    freed = [placed[n] for n in want if placed[n] not in targets]
+    taken = {cell for n, cell in new.items() if n not in displaced}
+    spare = [c for c in freed if c not in taken] + [c for c in cells(cols, rows) if c not in taken and c not in freed]
+    for n in displaced:
+        new[n] = spare.pop(0) if spare else placed[n]
+    for n in names:
+        s['icons'][n] = list(new[n])
     save(s)
     return icons(cols, rows)
 
 
-def arrange(cols, rows):
+def same_device(dest, paths):
+    """Would a drop of these on DEST move them (all on DEST's drive, like file managers do) or copy them."""
+    try:
+        dev = os.stat(dest).st_dev
+        return {'move': bool(paths) and all(os.lstat(p).st_dev == dev for p in paths)}
+    except OSError:
+        return {'move': False}
+
+
+def arrange(cols, rows, by=None):
     s = load()
+    if by is not None:
+        if by not in SORTS:
+            raise Fail('Sort by name, type, size or date')
+        s['sortBy'] = by
     s['icons'] = {}
     save(s)
     return icons(cols, rows)
+
+
+# ---------------------------------------------------------------------- new files
+def templates_dir():
+    d = hf().user_dirs().get('TEMPLATES') or os.path.join(home(), 'Templates')
+    d = os.path.normpath(d)
+    return None if os.path.realpath(d) == os.path.realpath(home()) else d
+
+
+def templates():
+    """Files in your Templates folder (not folders, not hidden), by name: what "New document" offers."""
+    d = templates_dir()
+    out = []
+    if d and os.path.isdir(d):
+        for name in sorted(os.listdir(d), key=str.casefold):
+            p = os.path.join(d, name)
+            if name.startswith('.') or not os.path.isfile(p):
+                continue
+            out.append({'name': os.path.splitext(name)[0] or name, 'path': p, 'file': name})
+    return {'dir': d, 'templates': out[:50]}
+
+
+def unique_path(d, base, ext=''):
+    target = os.path.join(d, base + ext)
+    n = 1
+    while hf().lexists(target):
+        n += 1
+        target = os.path.join(d, '%s %d%s' % (base, n, ext))
+    return target
+
+
+def new_file(template=''):
+    d = desktop_dir()
+    if not d:
+        raise Fail("Your Desktop folder is set to your home folder, so Hearth doesn't add things there")
+    os.makedirs(d, exist_ok=True)
+    if template:
+        src = os.path.abspath(os.path.expanduser(template))
+        tdir = templates_dir()
+        if not tdir or os.path.dirname(src) != os.path.normpath(tdir) or not os.path.isfile(src):
+            raise Fail("That template isn't in your Templates folder")
+        base, ext = os.path.splitext(os.path.basename(src))
+        target = unique_path(d, 'New ' + base if not base.lower().startswith('new ') else base, ext)
+        with open(src, 'rb') as fi:
+            data = fi.read(64 * 1024 * 1024)
+    else:
+        target = unique_path(d, 'New text file', '.txt')
+        data = b''
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+    return {'ok': True, 'path': target, 'name': os.path.basename(target)}
+
+
+def find_app(app_id):
+    """The .desktop file for an app id ("firefox" or "firefox.desktop"), the first in the XDG data folders."""
+    if not valid_id(app_id):
+        return None
+    name = app_id if app_id.endswith('.desktop') else app_id + '.desktop'
+    for d in data_dirs():
+        p = os.path.join(d, 'applications', name)
+        if os.path.isfile(p):
+            return p
+        # Ids with dashes may live in subfolders (kde4-foo.desktop is kde4/foo.desktop).
+        if '-' in name:
+            p = os.path.join(d, 'applications', *name.split('-', 1))
+            if os.path.isfile(p):
+                return p
+    return None
+
+
+def desktop_shortcut(app_id):
+    d = desktop_dir()
+    if not d:
+        raise Fail("Your Desktop folder is set to your home folder, so Hearth doesn't add things there")
+    src = find_app(app_id)
+    if not src:
+        raise Fail("That app's launcher couldn't be found")
+    os.makedirs(d, exist_ok=True)
+    base = os.path.basename(src)[:-8]
+    target = unique_path(d, base, '.desktop')
+    with open(src, 'rb') as f:
+        data = f.read(1024 * 1024)
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o755)
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+    return {'ok': True, 'path': target, 'name': os.path.basename(target)}
+
+
+# ---------------------------------------------------------------------- the clipboard (files and pictures)
+# Files go on the clipboard as text/uri-list (wl-copy), which Dolphin, Nautilus, Thunar, browsers and Hearth Files
+# all paste. A cut is remembered here ($XDG_RUNTIME_DIR/hearth-cut): pasting the same files on the desktop moves
+# them; another app pasting them copies (it can't know they were cut).
+def cut_file():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-cut.json')
+
+
+def file_uri(p):
+    return 'file://' + urllib.parse.quote(os.path.abspath(p))
+
+
+def uri_paths(text):
+    """Local paths in a text/uri-list (or a plain list of paths), comments and other schemes skipped."""
+    out = []
+    for line in (text or '').replace('\r', '').split('\n'):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('file://'):
+            rest = line[7:]
+            if not rest.startswith('/'):           # file://host/path: only this computer's
+                host, _, rest = rest.partition('/')
+                if host not in ('', 'localhost'):
+                    continue
+                rest = '/' + rest
+            p = urllib.parse.unquote(rest)
+        elif line.startswith('/'):
+            p = line
+        else:
+            continue
+        if p not in out:
+            out.append(p)
+    return out
+
+
+def clip_copy(paths, cut=False):
+    paths = [os.path.abspath(os.path.expanduser(p)) for p in paths]
+    paths = [p for p in paths if hf().lexists(p)]
+    if not paths:
+        raise Fail('Nothing to copy')
+    if not shutil.which('wl-copy'):
+        raise Fail('Copying files needs wl-clipboard, which isn\'t installed')
+    text = '\r\n'.join(file_uri(p) for p in paths) + '\r\n'
+    try:
+        r = subprocess.run(['wl-copy', '--type', 'text/uri-list'], input=text.encode(), timeout=10,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Fail("Couldn't use the clipboard: " + str(e))
+    if r.returncode != 0:
+        raise Fail("Couldn't use the clipboard")
+    try:
+        if cut:
+            with open(cut_file(), 'w', encoding='utf-8') as f:
+                json.dump({'paths': paths}, f)
+        elif os.path.exists(cut_file()):
+            os.remove(cut_file())
+    except OSError:
+        pass
+    return {'ok': True, 'count': len(paths), 'cut': bool(cut)}
+
+
+def wl_paste(*args):
+    try:
+        r = subprocess.run(['wl-paste', '--no-newline'] + list(args), stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def clipboard():
+    """What pasting on the desktop would do: {paths, cut} for files, {image: true} for a picture, else {}."""
+    if not shutil.which('wl-paste'):
+        return {'paths': [], 'cut': False, 'image': False}
+    types = (wl_paste('--list-types') or b'').decode('utf-8', 'replace').split()
+    paths, cut = [], False
+    if 'text/uri-list' in types:
+        paths = uri_paths((wl_paste('--type', 'text/uri-list') or b'').decode('utf-8', 'replace'))
+    elif 'x-special/gnome-copied-files' in types:
+        text = (wl_paste('--type', 'x-special/gnome-copied-files') or b'').decode('utf-8', 'replace')
+        first, _, rest = text.partition('\n')
+        cut = first.strip() == 'cut'
+        paths = uri_paths(rest)
+    paths = [p for p in paths if hf().lexists(p)]
+    if paths and not cut:
+        try:
+            with open(cut_file(), encoding='utf-8') as f:
+                cut = sorted(json.load(f).get('paths') or []) == sorted(paths)
+        except (OSError, ValueError, AttributeError):
+            pass
+    image = not paths and any(t in types for t in ('image/png', 'image/jpeg'))
+    return {'paths': paths, 'cut': cut, 'image': image}
+
+
+def pasted(paths):
+    """Files were pasted (moved, after a cut): forget the cut."""
+    try:
+        os.remove(cut_file())
+    except OSError:
+        pass
+
+
+def paste_image():
+    d = desktop_dir()
+    if not d:
+        raise Fail("Your Desktop folder is set to your home folder, so Hearth doesn't add things there")
+    types = (wl_paste('--list-types') or b'').decode('utf-8', 'replace').split()
+    kind = 'image/png' if 'image/png' in types else 'image/jpeg' if 'image/jpeg' in types else None
+    if not kind:
+        raise Fail("There's no picture on the clipboard")
+    data = wl_paste('--type', kind)
+    if not data:
+        raise Fail("Couldn't read the picture on the clipboard")
+    os.makedirs(d, exist_ok=True)
+    target = unique_path(d, 'Pasted picture', '.png' if kind == 'image/png' else '.jpg')
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+    return {'ok': True, 'path': target, 'name': os.path.basename(target)}
 
 
 def new_folder(name=''):
@@ -353,8 +694,11 @@ def _spawn(argv, cwd=None):
 
 
 # ---------------------------------------------------------------------- command line
-USAGE = ('usage: hearth-desk state | pin ID | unpin ID | set desktopIcons|dnd on|off | icons COLS ROWS | '
-         'place NAME COL ROW COLS ROWS | arrange COLS ROWS | new-folder [NAME] | launch PATH')
+USAGE = ('usage: hearth-desk state | pin ID | unpin ID | pins-order ID... | set desktopIcons|dnd|autoArrange on|off | '
+         'set-sort name|type|size|date | icons COLS ROWS | place NAME COL ROW COLS ROWS | '
+         'place-many COLS ROWS NAME COL ROW... | same-device DEST PATH... | arrange COLS ROWS [SORT] | '
+         'new-folder [NAME] | templates | new-file [TEMPLATE] | launch PATH | clip-copy [--cut] PATH... | clipboard | '
+         'pasted | paste-image | desktop-shortcut ID | recent ID | mute-app NAME on|off')
 
 
 def num(v):
@@ -382,8 +726,41 @@ def cmd(argv):
         out = icons(num(rest[0]), num(rest[1]))
     elif c == 'place' and len(rest) == 5:
         out = place(rest[0], num(rest[1]), num(rest[2]), num(rest[3]), num(rest[4]))
-    elif c == 'arrange' and len(rest) == 2:
-        out = arrange(num(rest[0]), num(rest[1]))
+    elif c == 'place-many' and len(rest) >= 5 and (len(rest) - 2) % 3 == 0:
+        moves = [(rest[i], num(rest[i + 1]), num(rest[i + 2])) for i in range(2, len(rest), 3)]
+        out = place_many(moves, num(rest[0]), num(rest[1]))
+    elif c == 'same-device' and len(rest) >= 2:
+        out = same_device(rest[0], rest[1:])
+    elif c == 'arrange' and len(rest) in (2, 3):
+        out = arrange(num(rest[0]), num(rest[1]), rest[2] if len(rest) == 3 else None)
+    elif c == 'pins-order':
+        out = pins_order(rest)
+    elif c == 'set-sort' and len(rest) == 1:
+        out = set_sort(rest[0])
+    elif c == 'templates' and not rest:
+        out = templates()
+    elif c == 'new-file' and len(rest) <= 1:
+        out = new_file(rest[0] if rest else '')
+    elif c == 'clip-copy' and rest:
+        cut = rest[0] == '--cut'
+        paths = rest[1:] if cut else rest
+        if not paths:
+            print(USAGE)
+            sys.exit(2)
+        out = clip_copy(paths, cut)
+    elif c == 'clipboard' and not rest:
+        out = clipboard()
+    elif c == 'pasted' and not rest:
+        pasted(rest)
+        out = {'ok': True}
+    elif c == 'paste-image' and not rest:
+        out = paste_image()
+    elif c == 'desktop-shortcut' and len(rest) == 1:
+        out = desktop_shortcut(rest[0])
+    elif c == 'recent' and len(rest) == 1:
+        out = note_recent(rest[0])
+    elif c == 'mute-app' and len(rest) == 2:
+        out = mute_app(rest[0], rest[1])
     elif c == 'new-folder' and len(rest) <= 1:
         out = new_folder(rest[0] if rest else '')
     elif c == 'launch' and len(rest) == 1:

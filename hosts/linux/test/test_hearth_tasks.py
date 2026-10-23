@@ -391,5 +391,65 @@ class Startup(unittest.TestCase):
         self.assertIsNone(ht.steam_name('1', [lib]))
 
 
+class AutostartRun(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.user = os.path.join(self.tmp, 'user')
+        self.sys = os.path.join(self.tmp, 'sys')
+        self.bin = os.path.join(self.tmp, 'bin')
+        os.makedirs(self.bin)
+        for prog in ('discord', 'steam', 'nm-applet', 'lxpolkit', 'syncthing', 'gnome-thing'):
+            write(os.path.join(self.bin, prog), '#!/bin/sh\n')
+            os.chmod(os.path.join(self.bin, prog), 0o755)
+        self.old = dict(os.environ)
+        os.environ['PATH'] = self.bin
+        os.environ['XDG_CURRENT_DESKTOP'] = 'Nimbus:wlroots'
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self.old)
+
+    def entry(self, d, name, body):
+        write(os.path.join(d, name), '[Desktop Entry]\nType=Application\n' + body)
+
+    def plan(self):
+        return {os.path.basename(p['file']): p for p in ht.autostart_plan(self.user, [self.sys])}
+
+    def test_what_starts_and_what_doesnt(self):
+        self.entry(self.user, 'discord.desktop', 'Name=Discord\nExec=discord --start-minimized %U\n')
+        self.entry(self.user, 'steam.desktop', 'Name=Steam\nExec=steam %U -silent\n')
+        self.entry(self.user, 'off.desktop', 'Name=Off\nExec=discord\nHidden=true\n')
+        self.entry(self.sys, 'gnome.desktop', 'Name=G\nExec=gnome-thing\nOnlyShowIn=GNOME;\n')
+        self.entry(self.sys, 'notnimbus.desktop', 'Name=N\nExec=gnome-thing\nNotShowIn=Nimbus;\n')
+        self.entry(self.sys, 'lxpolkit.desktop', 'Name=Polkit\nExec=lxpolkit\n')
+        self.entry(self.sys, 'missing.desktop', 'Name=M\nExec=not-installed\n')
+        self.entry(self.sys, 'sync.desktop', 'Name=Syncthing\nExec=syncthing -no-browser\nX-GNOME-Autostart-Delay=5\n')
+        self.entry(self.sys, 'term.desktop', 'Name=T\nExec=syncthing\nTerminal=true\n')
+        self.entry(self.sys, 'flatsteam.desktop', 'Name=FS\nExec=syncthing run com.valvesoftware.Steam\n')
+        p = self.plan()
+        self.assertEqual(p['discord.desktop']['argv'], ['discord', '--start-minimized'])
+        self.assertTrue(p['discord.desktop']['start'])
+        self.assertEqual(p['sync.desktop']['delay'], 5)
+        for fn in ('steam.desktop', 'off.desktop', 'gnome.desktop', 'notnimbus.desktop', 'lxpolkit.desktop',
+                   'missing.desktop', 'term.desktop', 'flatsteam.desktop'):
+            self.assertFalse(p[fn]['start'], fn)
+            self.assertTrue(p[fn]['why'], fn)
+        self.assertEqual(p['steam.desktop']['why'], 'Hearth starts Steam itself')
+
+    def test_yours_overrides_the_systems(self):
+        self.entry(self.sys, 'sync.desktop', 'Name=Syncthing\nExec=syncthing\n')
+        self.entry(self.user, 'sync.desktop', 'Name=Syncthing\nExec=syncthing\nHidden=true\n')
+        self.assertFalse(self.plan()['sync.desktop']['start'])
+
+    def test_run_spawns_with_delay(self):
+        self.entry(self.user, 'discord.desktop', 'Name=Discord\nExec=discord\n')
+        self.entry(self.user, 'sync.desktop', 'Name=Syncthing\nExec=syncthing\nX-GNOME-Autostart-Delay=3\n')
+        calls = []
+        out = ht.autostart_run(ht.autostart_plan(self.user, []), spawn=lambda argv, cwd: calls.append(argv))
+        self.assertEqual(sorted(out['started']), ['Discord', 'Syncthing'])
+        self.assertIn(['discord'], calls)
+        self.assertIn(['sh', '-c', 'sleep "$0"; exec "$@"', '3', 'syncthing'], calls)
+
+
 if __name__ == '__main__':
     unittest.main()

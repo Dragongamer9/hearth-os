@@ -1,7 +1,8 @@
-// Hearth Settings › Display: resolution, refresh rate, scale (wlr-randr), and brightness. A new mode is
-// kept only if you confirm it within 15 seconds, so a mode the screen can't show fixes itself. Kept modes
-// go to ~/.config/nimbus/display.sh, which Desktop Mode runs at start (same file as Hearth's Game Mode
-// settings use for the desktop).
+// Hearth Settings › Display: resolution, refresh rate, scale (wlr-randr), and brightness. With two or more screens:
+// which one you're setting, where it is next to the others, and turning one off. A change is kept only if you
+// confirm it within 15 seconds, so a mode the screen can't show fixes itself. Kept settings go to
+// ~/.config/nimbus/display.sh, which Desktop Mode runs at start (same file as Hearth's Game Mode settings use for
+// the desktop).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -10,7 +11,9 @@ import Quickshell.Io
 SetPage {
     id: page
     title: "Display"
-    property var out: null        // wlr-randr's output
+    property var out: null        // wlr-randr's output (the one being set)
+    property var outs: []         // every screen wlr-randr knows (on or off)
+    property string picked: ""    // the name of the screen being set ("" = the first one that's on)
     property var cur: null        // {width, height, refresh}
     property var prev: null       // what to go back to if not confirmed
     property int countdown: 0
@@ -19,7 +22,7 @@ SetPage {
     property int brightness: -1
 
     readonly property var resolutions: {
-        if (!out) return [];
+        if (!out || !out.enabled) return [];
         const seen = {}, r = [];
         for (const m of out.modes) { const k = m.width + "x" + m.height; if (!seen[k]) { seen[k] = true; r.push({ w: m.width, h: m.height }); } }
         return r.sort((a, b) => b.w * b.h - a.w * a.h);
@@ -34,8 +37,11 @@ SetPage {
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
-                    const outs = JSON.parse(text).filter(o => o.enabled);
-                    page.out = outs[0] || null;
+                    const all = JSON.parse(text);
+                    page.outs = all;
+                    const outs = all.filter(o => o.enabled);
+                    page.out = all.find(o => o.name === page.picked) || outs[0] || null;
+                    if (page.out && !page.picked) page.picked = page.out.name;
                     const m = page.out ? page.out.modes.find(x => x.current) : null;
                     page.cur = m ? { width: m.width, height: m.height, refresh: m.refresh } : null;
                     // Did the screen really switch? (wlr-randr can refuse quietly.)
@@ -59,7 +65,7 @@ SetPage {
         if (!out || !cur) return;
         // A second change while one is waiting for Keep goes back to what was there before both, not to the
         // one waiting (it may be the mode the screen can't show).
-        if (countdown === 0) prev = { mode: modeArg(cur.width, cur.height, cur.refresh), scale: out.scale };
+        if (countdown === 0) prev = { name: out.name, mode: modeArg(cur.width, cur.height, cur.refresh), scale: out.scale, pos: posArg(out), on: true };
         const args = ["wlr-randr", "--output", out.name];
         if (w) {
             // The screen's exact rate (e.g. 143.981), not the rounded one shown on the button: wlr-randr only
@@ -77,16 +83,79 @@ SetPage {
     }
     // wlr-randr runs, then the screen is read back to see what it's really showing.
     Process { id: applyProc; onExited: (code) => { if (code !== 0 && page.want) { page.problem = "The screen didn't accept that mode."; page.countdown = 0; page.want = null; } Qt.callLater(page.load); } }
+    // ---- several screens: where each one is, and turning one off
+    function posArg(o) { const p = o && o.position ? o.position : { x: 0, y: 0 }; return p.x + "," + p.y; }
+    // A screen's size on the desktop (its mode divided by its scale, turned for a rotated screen).
+    function logical(o) {
+        const m = o.modes.find(x => x.current) || o.modes[0] || { width: 1920, height: 1080 };
+        const turned = /90|270/.test(o.transform || "");
+        const sc = o.scale || 1;
+        return { w: Math.round((turned ? m.height : m.width) / sc), h: Math.round((turned ? m.width : m.height) / sc) };
+    }
+    readonly property var others: outs.filter(o => o.enabled && out && o.name !== out.name)
+    readonly property string side: {
+        if (!out || !others.length || !out.position) return "";
+        const o = others[0], p = out.position, q = o.position || { x: 0, y: 0 };
+        const a = logical(o);
+        if (p.x >= q.x + a.w) return "right";
+        if (p.x + logical(out).w <= q.x) return "left";
+        if (p.y + logical(out).h <= q.y) return "above";
+        if (p.y >= q.y + a.h) return "below";
+        return "";
+    }
+    function placeAt(where) {
+        if (!out || !others.length) return;
+        const o = others[0], q = o.position || { x: 0, y: 0 }, a = logical(o), me = logical(out);
+        const pos = where === "right" ? [q.x + a.w, q.y] : where === "left" ? [q.x - me.w, q.y]
+            : where === "above" ? [q.x, q.y - me.h] : [q.x, q.y + a.h];
+        // wlroots wants positions from 0: move the other screen over instead of going below 0.
+        const args = ["wlr-randr", "--output", out.name, "--pos", Math.max(0, pos[0]) + "," + Math.max(0, pos[1])];
+        if (pos[0] < 0 || pos[1] < 0) args.push("--output", o.name, "--pos", Math.max(0, -pos[0]) + "," + Math.max(0, -pos[1]));
+        if (countdown === 0) prev = { name: out.name, mode: modeArg(cur.width, cur.height, cur.refresh), scale: out.scale, pos: posArg(out), on: true, other: o.name, otherPos: posArg(o) };
+        problem = "";
+        applyProc.command = args;
+        applyProc.running = true;
+        countdown = 15;
+    }
+    function setOn(on) {
+        if (!out) return;
+        if (!on && !others.length) { problem = "That's the only screen that's on, so it stays on."; return; }
+        if (countdown === 0) prev = { name: out.name, mode: cur ? modeArg(cur.width, cur.height, cur.refresh) : "", scale: out.scale, pos: posArg(out), on: out.enabled };
+        problem = "";
+        applyProc.command = ["wlr-randr", "--output", out.name, on ? "--on" : "--off"];
+        applyProc.running = true;
+        countdown = 15;
+    }
+    function lineFor(o) {
+        if (!o.enabled) return `wlr-randr --output '${o.name}' --off`;   // turned off: remembered as off
+        const m = o.modes.find(x => x.current) || o.modes[0];
+        return `wlr-randr --output '${o.name}' --on --mode '${modeArg(m.width, m.height, m.refresh)}' --scale ${o.scale}` + (outs.length > 1 ? ` --pos ${posArg(o)}` : "");
+    }
     function keep() {
         countdown = 0;
-        const m = out.modes.find(x => x.current) || { width: cur.width, height: cur.height, refresh: cur.refresh };
-        const line = `wlr-randr --output '${out.name}' --mode '${modeArg(m.width, m.height, m.refresh)}' --scale ${out.scale}`;
-        // The other screens' lines are kept: Keep on one screen used to forget what was chosen for the others.
-        Quickshell.execDetached(["sh", "-c", 'f="$HOME/.config/nimbus/display.sh"; mkdir -p "$HOME/.config/nimbus" && { printf \'#!/bin/sh\\n# Written by Hearth Settings › Display\\n\'; [ -f "$f" ] && grep "^wlr-randr " "$f" | grep -vF -- "--output \'$2\' "; printf \'%s\\n\' "$1"; } > "$f.tmp" && chmod +x "$f.tmp" && mv -f "$f.tmp" "$f"', "sh", line, out.name]);
+        const lines = [[lineFor(out), out.name]];
+        // A screen moved over to make room keeps its new place too.
+        if (prev && prev.other) { const o = outs.find(x => x.name === prev.other); if (o && o.enabled) lines.push([lineFor(o), o.name]); }
+        saveLines(lines);
+    }
+    // [[line, screen name]...] into display.sh, replacing those screens' lines and keeping the others'.
+    function saveLines(lines) {
+        Quickshell.execDetached(["sh", "-c", 'f="$HOME/.config/nimbus/display.sh"; mkdir -p "$HOME/.config/nimbus" || exit 1; keep=$(grep "^wlr-randr " "$f" 2>/dev/null); new=""; while [ $# -ge 2 ]; do keep=$(printf "%s\n" "$keep" | grep -vF -- "--output \'$2\' "); new="$new$1\n"; shift 2; done; { printf "#!/bin/sh\n# Written by Hearth Settings › Display\n"; [ -n "$keep" ] && printf "%s\n" "$keep"; printf "$new"; } > "$f.tmp" && chmod +x "$f.tmp" && mv -f "$f.tmp" "$f"', "sh"].concat([].concat.apply([], lines)));
     }
     function revert() {
         countdown = 0;
-        if (prev) Quickshell.execDetached(["wlr-randr", "--output", out.name, "--mode", prev.mode, "--scale", String(prev.scale)]);
+        if (prev) {
+            const args = ["wlr-randr", "--output", prev.name || out.name];
+            if (prev.on === false) args.push("--off");
+            else {
+                args.push("--on");
+                if (prev.mode) args.push("--mode", prev.mode);
+                args.push("--scale", String(prev.scale));
+                if (outs.length > 1 && prev.pos) args.push("--pos", prev.pos);
+            }
+            if (prev.other) args.push("--output", prev.other, "--pos", prev.otherPos);
+            Quickshell.execDetached(args);
+        }
         Qt.callLater(load);
     }
     Timer { interval: 1000; repeat: true; running: page.countdown > 0; onTriggered: { page.countdown--; if (page.countdown === 0) page.revert(); } }
@@ -111,13 +180,35 @@ SetPage {
     }
     onCountdownChanged: if (countdown === 15) keepBtn.forceActiveFocus()
 
+    // Two or more screens: which one these settings are for, where it is, and on or off.
+    SetChoice {
+        visible: page.outs.length > 1
+        title: "Screen"; sub: "The settings below are for this one"
+        options: page.outs.slice(0, 4).map(o => ({ value: o.name, label: (o.model || o.description || o.name).split(" ").slice(0, 3).join(" ") + (o.enabled ? "" : " (off)") }))
+        current: page.picked
+        onChosen: v => { page.picked = v; page.countdown = 0; page.load(); }
+    }
+    SetSwitch {
+        visible: page.outs.length > 1 && !!page.out
+        icon: "display"; title: "Use this screen"
+        sub: page.out && page.out.enabled ? "On" : "Off: windows and the taskbar move to the other screens"
+        checked: !!page.out && page.out.enabled
+        onToggled: v => page.setOn(v)
+    }
+    SetChoice {
+        visible: page.others.length > 0 && !!page.out && page.out.enabled
+        title: "Where it is"; sub: "Next to " + (page.others.length ? (page.others[0].model || page.others[0].name) : "the other screen") + ", so the pointer goes across where they meet"
+        options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "above", label: "Above" }, { value: "below", label: "Below" }]
+        current: page.side
+        onChosen: v => page.placeAt(v)
+    }
     SetSlider {
         visible: page.brightness >= 0
         icon: "sun"; title: "Brightness"; value: page.brightness / 100
         onMoved: v => { page.brightness = Math.max(1, Math.round(v * 100)); Quickshell.execDetached(["brightnessctl", "-q", "-c", "backlight", "set", page.brightness + "%"]); }
     }
     SetChoice {
-        visible: !!page.out
+        visible: !!page.out && page.out.enabled
         title: "Scale"; sub: "Makes text and everything else bigger or smaller"
         options: [1, 1.25, 1.5, 1.75, 2].map(v => ({ value: v, label: Math.round(v * 100) + "%" }))
         current: page.out ? page.out.scale : 1

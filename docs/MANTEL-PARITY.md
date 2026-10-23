@@ -35,14 +35,14 @@ different, with the reason.
 | Shape and size | 60 px strip, floating bar 8/4/6 px in, radius 14, down the left side on upright screens | Same | **same** |
 | Launcher button | Hearth mark, 32 px, "Apps (Super)" | Same, "Apps (Windows key)" | **same** (the key's Windows name) |
 | Apps on the taskbar | Pinned apps first (in pin order), then open apps; one button per app (its windows share it); marks: 16 px accent in front, 10 px for several windows, 5 px for one | Pinned apps (matched to windows by a guess at the name), every window its own button | **done**: windows are matched to their app by Windows' app id (AppUserModelID, set on the window or the packaged app's) or the program behind a Start menu entry, so each app has one button and a pin lights up when its app runs; same three marks; pins keep their icon when the app isn't running |
-| Click / middle-click | Click: open (no windows), focus (in front: minimize), several windows: the next one; middle-click closes the window in front | Click focused one window (and the taskbar took the front, so "in front: minimize" never happened) | **done**: the taskbar no longer takes the front when clicked, like Hearth's layer-shell bar |
+| Click / middle-click | Click: open (no windows), focus (in front: minimize), several windows: a list of them to pick from (Super+1-9 steps through them); middle-click opens another window; pinned apps can be dragged into a new order | Click focused one window (and the taskbar took the front, so "in front: minimize" never happened) | **same** (October 2026 "normal desktop" round): same click, list, middle-click and dragging; Windows+1-9 in full Mantel |
 | Right-click an app (X on the controller, or press and hold) | New window / Open, Pin to / Unpin from taskbar, Move to desktop ›, Maximize / Restore size, Close window / Close all N windows | Nothing (the browser's menu was turned off) | **done**, same items and words. Move to desktop: see Virtual desktops |
 | Pins | `hearth-desk pin/unpin` (desk.json), up to 40 | `mantel.json`, from the launcher's hover button only | **done**: the same three ways to pin as Hearth OS (taskbar menu, launcher menu), up to 40; a pin is a Start menu app id, a program's path (from a running window) or one of Hearth's apps |
 | Virtual desktops (DeskSwitcher.qml) | Numbered pills (24 px, accent on the current), click switches, scroll steps; hidden with one desktop | — | **done** over Explorer: Windows' own desktops (list and names read from Explorer's registry values, the current one too). Switching types Win+Ctrl+Left/Right (Windows has no public switch API). **Differs**: moving a window uses IVirtualDesktopManager, which Windows only allows for the caller's own windows, so for other apps Mantel says to drag it in Task View (Win+Tab); desktops are made in Task View. Full Mantel has no Explorer and so no virtual desktops: the switcher hides |
 | Notifications bell | Bell (crossed out with Do Not Disturb), accent dot for unseen ones; click opens the clock's panel, right-click toggles Do Not Disturb | — | **done** |
 | Own apps' icons | Hearth Settings / Task Manager / Files show the Hearth mark | Ember's exe icon | **done**: Hearth Settings, Task Manager, Files and Apps show the Hearth mark and share a button with their pin |
 | Tray icons | SNI items, 30 px wide; click activates (or its menu), right-click its menu, middle-click the second action, scroll, tooltip with description | Full Mantel: hosted tray (click, right-click, double-click); on top of Explorer: a `^` button that shows Windows' tray for 10 s | **done** in Full Mantel: middle-click added; **differs**: Windows tray icons have no scroll action and one-line tooltips. The `^` is Windows-only (Explorer owns the tray) |
-| Volume | Icon (high > 66, medium > 33, low, muted) + %, click mutes, scroll ±5 % | Showed "muted" at 0 % | **done**: same thresholds; muted only when muted |
+| Volume | Icon (high > 66, medium > 33, low, muted) + %, click opens Quick Access, middle-click mutes, right-click: sound output, Mute, Sound settings; scroll ±5 % | Showed "muted" at 0 % | **same**, except the right-click menu offers Windows' Sound settings and Volume mixer instead of a list of outputs |
 | Network | Wired → wired icon, Wi-Fi connected → Wi-Fi, else offline; click opens Quick Access | Wi-Fi on but not connected showed Wi-Fi; wired never detected | **done**: `sys.status` reports `wired`; same icon rules and tooltip |
 | Battery | > 60 good, > 20 low, else caution; charging icon | Threshold 20 only | **done** |
 | Quick Access, Keyboard buttons | open-menu and keyboard icons | Keyboard opened Windows' touch keyboard / osk.exe | **done**: opens Hearth's on-screen keyboard (see below) |
@@ -143,6 +143,17 @@ different, with the reason.
 |---|---|---|---|
 | Bar | Glass pill at the top, 360×64, ember→flame, 1.5 s | Full Mantel: the same pill (native `VolumeOsd`) | **same** in Full Mantel; on top of Explorer, Windows shows its own volume flyout (Explorer handles the keys) |
 | Over 100 % | Over-amplification to 150 % | — | **differs**: Windows has no system-wide over-amplification |
+
+## Normal-desktop round (October 2026)
+
+| Item | Hearth OS | Windows (Ember) |
+|---|---|---|
+| Show desktop | Strip at the end of the taskbar, Super+D / Super+M (the shell minimizes everything, then puts it back) | Same strip; Windows+D over Explorer, Ember's own in full Mantel |
+| Desktop icons | Double-click opens, Ctrl/Shift+click, selection box, Cut/Copy/Paste (text/uri-list, so file managers share it), drag out to apps and in from them, Open with, New text file and Templates, Sort by, Keep icons lined up, Shift+Delete asks | Same except dragging files out of / into the desktop (WebView2 can't start a Windows file drag) and Keep icons lined up; the clipboard is Windows' (File Explorer pastes it) |
+| Windows-key shortcuts | Super+I/A/N/S/R/1-9/Tab, Ctrl+Alt+T, Print / Shift+Print / Super+Shift+S screenshots (clipboard + notification) | Windows handles them over Explorer; full Mantel handles D, M, E, I, A, N, S, R, Shift+S (Snipping Tool) and 1-9 |
+| Notifications | Mute an app from its pop-up, Settings › Notifications | not yet |
+| Mouse & touchpad, screen off / sleep timers, several screens | Hearth Settings | Windows Settings |
+| Autostart apps | XDG autostart entries that are on (not Steam) | Windows' own |
 
 ## Desktop and wallpaper (Wallpaper.qml)
 
