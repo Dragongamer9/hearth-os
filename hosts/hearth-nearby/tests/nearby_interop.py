@@ -26,6 +26,9 @@ procs = []
 
 def ok(name, cond, detail='', required=True):
     results.append((name, bool(cond), required, detail))
+    level = 'notice' if cond else ('error' if required else 'warning')
+    msg = (str(detail)[:900] if detail else '').replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+    print('::%s title=%s::%s' % (level, ('ok: ' if cond else 'FAILED: ' if required else 'warn: ') + name.replace(':', ' -').replace(',', ';'), msg or '-'), flush=True)
     print(('PASS ' if cond else ('FAIL ' if required else 'WARN ')) + name + (' :: ' + str(detail)[:400] if detail else ''), flush=True)
     return cond
 
@@ -214,7 +217,10 @@ if __name__ == '__main__':
         for name in ('A', 'B', 'C', 'ls-recv'):
             pth = os.path.join(TMP, name + '.log')
             if os.path.exists(pth):
+                tail = open(pth, errors='replace').read()[-3000:]
                 print('---- %s.log (end)' % name)
-                print(open(pth, errors='replace').read()[-3000:])
+                print(tail)
+                if failed:
+                    print('::warning title=%s.log::%s' % (name, tail[-1500:].replace('%', '%25').replace('\n', '%0A')))
         shutil.rmtree(os.path.join(TMP, 'src'), ignore_errors=True)
     sys.exit(1 if failed or not results else 0)
