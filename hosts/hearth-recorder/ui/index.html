@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recorder</title>
+<link rel="stylesheet" href="hearth.css">
+<style>
+main { display:grid; grid-template-columns:minmax(18em, 1.15fr) minmax(16em, 1fr); gap:var(--gut); }
+.col { display:flex; flex-direction:column; gap:.8em; }
+.hero { display:grid; grid-template-columns:auto 1fr; gap:.4em 1.2em; align-items:center; padding:1.2em 1.3em; }
+.hero h2 { font-size:1.2em; margin:0; }
+.hero p { margin:.15em 0 0; }
+.hero .row { grid-column:1 / -1; margin-top:.5em; }
+.big { width:4.6em; height:4.6em; border-radius:50%; display:grid; place-items:center; background:var(--panel3); border:2px solid #5a3f2c; }
+.big i { width:2.1em; height:2.1em; border-radius:50%; background:var(--rec); display:block; transition:.2s var(--ease); }
+.big[disabled] { opacity:.45; }
+.big.on i { border-radius:.35em; width:1.6em; height:1.6em; }
+.big.mic i { background:none; width:auto; height:auto; color:var(--rec); }
+.big.mic svg { width:2.1em; height:2.1em; }
+.timer { font-size:2.3em; font-weight:650; font-variant-numeric:tabular-nums; letter-spacing:.02em; }
+.status { display:flex; align-items:center; gap:.5em; }
+.meter { grid-column:1 / -1; height:.6em; border-radius:9px; background:var(--panel3); overflow:hidden; }
+.meter i { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--good), var(--flame) 70%, var(--rec)); border-radius:9px; transition:width .12s linear; }
+.facts { color:var(--muted); font-size:.82em; display:flex; flex-wrap:wrap; gap:.2em 1em; }
+.warn { color:var(--flame); font-size:.85em; margin-top:.5em; }
+.keys { color:var(--muted); font-size:.8em; display:flex; flex-wrap:wrap; gap:.3em 1.1em; }
+.keys kbd { font:inherit; background:var(--panel3); border-radius:6px; padding:.05em .4em; color:var(--text); }
+.listhead { display:flex; align-items:baseline; gap:.6em; margin:0 0 .5em; }
+.listhead h2 { margin:0; font-size:1em; }
+.right { display:grid; grid-template-rows:auto 1fr; min-height:0; }
+@media (max-width: 780px) { main { grid-template-columns:1fr; overflow:auto; } .right { min-height:22em; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Recorder</h1>
+    <div class="tabs" role="tablist">
+      <button class="tab f" data-k="tab-screen" data-act="tab" data-tab="screen">Screen</button>
+      <button class="tab f" data-k="tab-sound" data-act="tab" data-tab="sound">Sound</button>
+    </div>
+    <span class="spacer"></span>
+    <span class="sub" id="pill"></span>
+  </header>
+  <main id="main"></main>
+  <footer><span><b>A</b>Choose</span><span><b>Y</b>Record / Stop</span><span id="xhint"></span><span><b>LB</b><b>RB</b>Screen / Sound</span></footer>
+</div>
+<div id="layer"></div>
+<div id="toast"></div>
+<script src="nav.js"></script>
+<script>
+'use strict';
+const T = window.__TAURI__;
+const invoke = T ? T.core.invoke : demoInvoke;
+const $ = (s, el = document) => el.querySelector(s);
+const { esc, toast, human, when, clock } = Nav;
+const I = {
+  video: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>',
+  audio: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+  area: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-dasharray="3 2"><rect x="4" y="5" width="16" height="14" rx="1"/></svg>',
+  replay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4"/><path d="M12 8v4l3 2"/></svg>',
+  save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+};
+
+const S = { tab: window.HEARTH_TAB === 'sound' ? 'sound' : 'screen', session: null, last: null, settings: null, env: null, files: { videos: [], sounds: [] }, busy: '', drawn: '' };
+
+function sessionKind() { return S.session ? S.session.kind : ''; }
+function elapsed() { return S.session && S.session.status !== 'starting' ? Date.now() - S.session.started : 0; }
+function lengthLabel(s) { return s >= 60 ? (s / 60) + ' min' : s + ' s'; }
+
+// What can be done here, from what Recorder found on this PC.
+function canArea() { const e = S.env; return !!e && ((e.session === 'wayland' && e.slurp && (e.wf || e.gsrRegion)) || (e.session !== 'gamescope' && e.gsr && e.gsrRegion && e.slurp)); }
+function envWarning() {
+  const e = S.env; if (!e) return '';
+  if (e.session === 'none') return 'There\'s no screen here to record.';
+  if (e.session === 'gamescope' && !e.gsr && !(e.gstPipewire && e.gamescopeNode != null)) return 'Recording in Game Mode needs gpu-screen-recorder or GStreamer\'s PipeWire plugin.';
+  if (e.session === 'wayland' && !e.gsr && !e.wf) return 'Recording the desktop needs gpu-screen-recorder or wf-recorder.';
+  if (!e.gsr && e.session !== 'gamescope' && !(e.encoders || []).length) return 'ffmpeg has no video encoder Recorder can use.';
+  return '';
+}
+function encoderLine() {
+  const e = S.env; if (!e) return 'Looking at this PC…';
+  if (e.gsr) return 'gpu-screen-recorder: captures and encodes on the graphics card';
+  const list = e.session === 'gamescope' ? e.gstEncoders : e.encoders;
+  const pref = S.settings.encoder;
+  const pick = (list || []).find(x => pref === 'software' ? !x.hw : pref === 'hardware' ? x.hw : true) || (list || [])[0];
+  return pick ? pick.label : 'No video encoder found';
+}
+
+function chip(key, label, on, act, extra = '') { return `<button class="chip f ${on ? 'on' : ''}" data-k="${key}" data-act="${act}" ${extra}>${label}</button>`; }
+
+function screenLeft() {
+  const k = sessionKind(), st = S.settings, gm = S.env && S.env.session === 'gamescope';
+  let hero;
+  if (k === 'record') {
+    hero = `<section class="panel hero"><button class="big on f" data-k="rec" data-act="stop" aria-label="Stop and save"><i></i></button>
+      <div><div class="status"><span class="dot rec"></span><span>${S.session.status === 'stopping' ? 'Saving…' : 'Recording' + (S.session.area ? ' an area' : '')}</span></div>
+      <div class="timer" id="timer">${clock(elapsed())}</div></div>
+      <div class="row"><button class="btn rec f" data-k="stop" data-act="stop">Stop and save</button></div>
+      <div class="facts" style="grid-column:1/-1">${esc(S.session.encoder)}<span>${esc(S.session.audio)}</span></div></section>`;
+  } else {
+    const busy = k === 'replay' || k === 'sound';
+    hero = `<section class="panel hero"><button class="big f" data-k="rec" data-act="record" aria-label="Record" ${busy || S.busy ? 'disabled' : ''}><i></i></button>
+      <div><h2>${gm ? 'Record the game' : 'Record the screen'}</h2><p class="muted small">${busy ? (k === 'replay' ? 'Instant replay is on. Turn it off to record, or press Super+Alt+R (that turns it off for you).' : 'The sound recorder is recording.') : 'Recorder gets out of the way while it records. Stop from here, Quick Access or Super+Alt+R.'}</p></div>
+      ${canArea() ? `<div class="row"><button class="btn f" data-k="area" data-act="area" ${busy || S.busy ? 'disabled' : ''}>${I.area}Record an area</button></div>` : ''}
+      ${envWarning() ? `<div class="warn" style="grid-column:1/-1">${esc(envWarning())}</div>` : ''}</section>`;
+  }
+  const on = k === 'replay';
+  const len = st.replaySecs;
+  const replay = `<section class="panel"><h3>${I.replay.replace('<svg', '<svg style="width:1em;height:1em;vertical-align:-.15em;margin-right:.35em;color:var(--ember)"')}Instant replay</h3>
+    ${on ? `<div class="status small"><span class="dot rec"></span>On: keeping the last ${lengthLabel(len)}${S.session.saves ? ` · saved ${S.session.saves}` : ''}${S.session.status === 'saving' ? ' · saving…' : ''}</div>
+      <div class="row" style="margin-top:.7em"><button class="btn primary f" data-k="save" data-act="save">${I.save}Save the last ${lengthLabel(len)}</button><button class="btn f" data-k="replayoff" data-act="stop">Turn off</button></div>`
+    : `<p class="muted small" style="margin:0 0 .6em">Keeps recording the last stretch while you play, and saves it only when something worth keeping happens (Super+Alt+G, or Quick Access).</p>
+      <div class="chips">${[30, 60, 300].map(s => chip('len-' + s, lengthLabel(s), len === s, 'len', `data-v="${s}"`)).join('')}</div>
+      <div class="row" style="margin-top:.7em"><button class="btn f" data-k="replayon" data-act="replay" ${k || S.busy ? 'disabled' : ''}>Turn on</button></div>`}
+  </section>`;
+  const opts = `<section class="panel"><h3>Recording</h3>
+    <div class="field"><label>Sound</label><div class="chips">${chip('sys', 'What\'s playing', st.system, 'opt', 'data-o="system"')}${chip('mic', 'Microphone', st.mic, 'opt', 'data-o="mic"')}</div></div>
+    <div class="field"><label>Quality</label><div class="chips">${chip('q-std', 'Standard<small>Smaller files</small>', st.quality === 'standard', 'set', 'data-o="quality" data-v="standard"')}${chip('q-high', 'High<small>Sharper, bigger</small>', st.quality === 'high', 'set', 'data-o="quality" data-v="high"')}</div></div>
+    <div class="field"><label>Frames per second</label><div class="chips">${[30, 60].map(f => chip('fps-' + f, String(f), st.fps === f, 'set', `data-o="fps" data-v="${f}"`)).join('')}</div></div>
+    <div class="field"><label>Encoding</label><div class="chips">${chip('e-auto', 'Best here', st.encoder === 'auto', 'set', 'data-o="encoder" data-v="auto"')}${chip('e-hw', 'Graphics card', st.encoder === 'hardware', 'set', 'data-o="encoder" data-v="hardware"')}${chip('e-sw', 'Processor', st.encoder === 'software', 'set', 'data-o="encoder" data-v="software"')}</div>
+      <div class="facts" style="margin-top:.45em">${esc(encoderLine())}</div></div>
+    ${k ? '<div class="faint small" style="margin-top:.6em">Changes count from the next recording.</div>' : ''}
+  </section>
+  <div class="keys"><span><kbd>Super</kbd>+<kbd>Alt</kbd>+<kbd>R</kbd> record / stop</span><span><kbd>Super</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd> save instant replay</span></div>`;
+  return `<div class="col scroll">${hero}${replay}${opts}</div>`;
+}
+
+function soundLeft() {
+  const k = sessionKind(), st = S.settings;
+  const on = k === 'sound';
+  const hero = on
+    ? `<section class="panel hero"><button class="big mic on f" data-k="srec" data-act="stop" aria-label="Stop and save"><i>${I.mic}</i></button>
+       <div><div class="status"><span class="dot rec"></span><span>${S.session.status === 'stopping' ? 'Saving…' : 'Recording sound'}</span></div><div class="timer" id="timer">${clock(elapsed())}</div></div>
+       <div class="meter"><i id="level"></i></div>
+       <div class="row"><button class="btn rec f" data-k="sstop" data-act="stop">Stop and save</button></div></section>`
+    : `<section class="panel hero"><button class="big mic f" data-k="srec" data-act="sound" aria-label="Record sound" ${k || S.busy ? 'disabled' : ''}><i>${I.mic}</i></button>
+       <div><h2>Record sound</h2><p class="muted small">${k ? 'Recorder is busy with the screen.' : 'From the microphone. Recordings are kept in Music › Recordings.'}</p></div></section>`;
+  const opts = `<section class="panel"><h3>Format</h3><div class="chips">
+      ${chip('f-opus', 'Opus<small>Small, clear</small>', st.soundFormat === 'opus', 'set', 'data-o="soundFormat" data-v="opus"')}
+      ${chip('f-mp3', 'MP3<small>Plays everywhere</small>', st.soundFormat === 'mp3', 'set', 'data-o="soundFormat" data-v="mp3"')}</div></section>`;
+  return `<div class="col scroll">${hero}${opts}</div>`;
+}
+
+function list(items, kind) {
+  const dir = kind === 'video' ? S.files.videoDir : S.files.soundDir;
+  const head = `<div class="listhead"><h2>${kind === 'video' ? 'Recordings' : 'Sound recordings'}</h2><span class="muted small">${items.length || 'none yet'}</span></div>`;
+  if (!items.length) return `<div class="right">${head}<div class="empty panel">${kind === 'video' ? 'Your recordings and instant replays show up here.' : 'Your sound recordings show up here.'}<div class="faint small" style="margin-top:.4em">${esc(dir || '')}</div></div></div>`;
+  return `<div class="right">${head}<div class="scroll"><div class="files">${items.map((f, i) => `<div class="file">
+      <span class="ico">${kind === 'video' ? I.video : I.audio}</span><span class="n" title="${esc(f.name)}">${esc(f.name.replace(/\.[^.]+$/, ''))}</span>
+      <span class="acts"><button class="btn sm f" data-k="o-${i}" data-act="open" data-p="${esc(f.path)}" aria-label="Open">${I.play}</button><button class="btn sm f" data-k="s-${i}" data-act="show" data-p="${esc(f.path)}" aria-label="Show in folder">${I.folder}</button><button class="btn sm f" data-k="r-${i}" data-act="rename" data-p="${esc(f.path)}" data-n="${esc(f.name)}" aria-label="Rename">${I.pen}</button><button class="btn sm danger f" data-k="d-${i}" data-act="delete" data-p="${esc(f.path)}" data-n="${esc(f.name)}" aria-label="Delete">${I.trash}</button></span>
+      <span class="m">${when(f.time)} · ${human(f.size)}</span></div>`).join('')}</div></div></div>`;
+}
+
+function render(force) {
+  if (!S.settings) return;
+  const html = S.tab === 'screen' ? screenLeft() + list(S.files.videos, 'video') : soundLeft() + list(S.files.sounds, 'audio');
+  // Only drawn again when something shown changed (the timer and level are updated in place).
+  const key = html.replace(/id="timer">[^<]*/, '');
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === S.tab));
+  const k = sessionKind();
+  $('#pill').innerHTML = k ? `<span class="status"><span class="dot rec"></span>${k === 'replay' ? 'Instant replay on' : k === 'sound' ? 'Recording sound' : 'Recording'}</span>` : (S.env ? esc(S.env.session === 'gamescope' ? 'Game Mode' : S.env.session === 'wayland' ? 'Desktop Mode' : S.env.session === 'x11' ? 'X11' : '') : '');
+  $('#xhint').innerHTML = k === 'replay' ? '<b>X</b>Save replay' : '';
+  if (!force && key === S.drawn) { tick(); return; }
+  const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.k : null;
+  $('#main').innerHTML = html;
+  S.drawn = key;
+  const again = focused && document.querySelector(`[data-k="${CSS.escape(focused)}"]`);
+  if (again && !again.disabled) again.focus({ preventScroll: true });
+  else if (focused && !$('#layer').firstChild) (document.querySelector('#main .f:not([disabled])') || document.querySelector('.tab.on')).focus({ preventScroll: true });
+  tick();
+}
+function tick() {
+  const t = $('#timer'); if (t) t.textContent = clock(elapsed());
+  const l = $('#level'); if (l && S.session) l.style.width = Math.min(100, Math.round(Math.sqrt(S.session.level || 0) * 100)) + '%';
+}
+
+async function refresh() {
+  try {
+    const r = await invoke('status');
+    const was = sessionKind();
+    S.session = r.session; S.last = r.last; if (!S.settings) S.settings = r.settings;
+    // A recording just ended (here or from a shortcut): its file appears in the list.
+    if (was && !sessionKind()) { await loadFiles(); if (r.last && !r.last.ok && r.last.error) toast(r.last.error, true); }
+    render();
+  } catch (e) { toast(String(e), true); }
+}
+async function loadFiles() { try { S.files = await invoke('files'); } catch (e) { /* the lists stay as they were */ } }
+
+async function act(el) {
+  const a = el.dataset.act;
+  if (a === 'tab') { S.tab = el.dataset.tab; render(true); return; }
+  if (a === 'opt' || a === 'set' || a === 'len') {
+    const s = { ...S.settings };
+    if (a === 'opt') s[el.dataset.o] = !s[el.dataset.o];
+    else if (a === 'len') s.replaySecs = +el.dataset.v;
+    else s[el.dataset.o] = el.dataset.o === 'fps' ? +el.dataset.v : el.dataset.v;
+    try { S.settings = await invoke('set_settings', { s }); } catch (e) { toast(String(e), true); }
+    render(); return;
+  }
+  if (a === 'open' || a === 'show') { try { await invoke(a, { path: el.dataset.p }); } catch (e) { toast(String(e), true); } return; }
+  if (a === 'delete') {
+    if (!await Nav.ask('Delete this recording?', el.dataset.n, 'Delete', true)) return;
+    try { await invoke('delete', { path: el.dataset.p }); await loadFiles(); render(); toast('Deleted'); } catch (e) { toast(String(e), true); }
+    return;
+  }
+  if (a === 'rename') {
+    const n = await Nav.prompt('Rename', el.dataset.n.replace(/\.[^.]+$/, ''), 'Rename'); if (n == null) return;
+    try { await invoke('rename', { path: el.dataset.p, name: n }); await loadFiles(); render(); } catch (e) { toast(String(e), true); }
+    return;
+  }
+  if (S.busy) return;
+  S.busy = a; render();
+  try {
+    if (a === 'record' || a === 'area' || a === 'replay' || a === 'sound') {
+      const r = await invoke('start', { kind: a === 'area' ? 'record' : a, area: a === 'area' });
+      if (r && a === 'replay') toast(`Instant replay is on: Super+Alt+G saves the last ${lengthLabel(S.settings.replaySecs)}`);
+    } else if (a === 'stop') {
+      const r = await invoke('stop');
+      await loadFiles();
+      if (r && r.file) toast('Saved ' + r.file.split('/').pop());
+    } else if (a === 'save') {
+      const f = await invoke('save_replay');
+      await loadFiles();
+      toast('Saved ' + f.split('/').pop());
+    }
+  } catch (e) { toast(String(e), true); }
+  S.busy = '';
+  await refresh();
+  render(true);
+}
+
+document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (el && !el.disabled && !e.target.closest('#layer')) act(el); });
+Nav.init({
+  y: () => { const k = sessionKind(); if (k) act({ dataset: { act: 'stop' } }); else act({ dataset: { act: S.tab === 'sound' ? 'sound' : 'record' } }); },
+  x: () => { if (sessionKind() === 'replay') act({ dataset: { act: 'save' } }); },
+  lb: () => { S.tab = 'screen'; render(true); }, rb: () => { S.tab = 'sound'; render(true); },
+  back: () => { if (S.tab === 'sound') { S.tab = 'screen'; render(true); } },
+});
+
+(async function startUp() {
+  await refresh();
+  await loadFiles();
+  render(true);
+  (document.querySelector('#main .big:not([disabled])') || document.querySelector('.tab.on')).focus();
+  invoke('environment', { fresh: false }).then(e => { S.env = e; render(true); }).catch(() => {});
+  setInterval(() => { if (document.visibilityState === 'visible' || sessionKind()) refresh(); }, 700);
+  setInterval(tick, 250);
+  window.addEventListener('focus', () => loadFiles().then(() => render()));
+})();
+
+// ---------------------------------------------------------------- opened in a browser (no app): a preview with samples
+function demoInvoke(cmd, args) {
+  const D = demoInvoke.d || (demoInvoke.d = { session: null, settings: { fps: 60, quality: 'standard', system: true, mic: false, replaySecs: 30, encoder: 'auto', soundFormat: 'opus' } });
+  const now = Date.now();
+  const v = (n, ago, size) => ({ name: n, path: '/home/you/Videos/Recordings/' + n, size, time: now - ago, kind: 'video' });
+  switch (cmd) {
+    case 'status': return Promise.resolve({ session: D.session, last: null, settings: D.settings });
+    case 'files': return Promise.resolve({ videoDir: '/home/you/Videos/Recordings', soundDir: '/home/you/Music/Recordings',
+      videos: [v('Replay 2026-10-22 21-14-02.mp4', 3e5, 41e6), v('Recording 2026-10-22 20-03-55.mp4', 4e6, 512e6), v('Area recording 2026-10-21 18-40-10.mp4', 9e7, 23e6)],
+      sounds: [{ name: 'Sound recording 2026-10-20 09-12-44.opus', path: '/home/you/Music/Recordings/a.opus', size: 840e3, time: now - 2e8, kind: 'audio' }] });
+    case 'environment': return Promise.resolve({ session: 'wayland', gsr: false, wf: true, slurp: true, gsrRegion: false, encoders: [{ id: 'h264_vaapi', codec: 'h264', hw: true, label: 'AMD graphics (VA-API), H.264' }, { id: 'libx264', codec: 'h264', hw: false, label: 'Software (the processor), H.264' }] });
+    case 'set_settings': D.settings = args.s; return Promise.resolve(args.s);
+    case 'start': D.session = { kind: args.kind, status: 'recording', started: now, encoder: 'AMD graphics (VA-API), H.264', audio: 'What\'s playing', area: args.area, saves: 0, level: .3 }; return Promise.resolve(D.session);
+    case 'stop': D.session = null; return Promise.resolve({ ok: true, file: '/home/you/Videos/Recordings/Recording.mp4' });
+    case 'save_replay': D.session.saves++; return Promise.resolve('/home/you/Videos/Recordings/Replay.mp4');
+    default: return Promise.reject('This is a preview: open Recorder to do that.');
+  }
+}
+</script>
+</body>
+</html>

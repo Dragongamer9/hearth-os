@@ -1,0 +1,17 @@
+[package]
+name = "hearth-media"
+version = "0.1.0"
+edition = "2021"
+description = "What Hearth Recorder, Hearth Camera and Hearth Share have in common: finding the capture tools and encoders, PipeWire/PulseAudio sources, JPEG frame streams, a tiny HTTP server, notifications and file lists"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "hearth_media"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

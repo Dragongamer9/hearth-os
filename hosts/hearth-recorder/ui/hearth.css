@@ -1,0 +1,78 @@
+/* Hearth's look for its small apps (Recorder, Camera, Share): the ember palette of Mantel (hosts/linux/desktop/
+   shell/Theme.qml) and Disks. The same file is in each app's ui/ folder; keep them alike. */
+:root {
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --faint:#6f6055; --ember:#ff8a3d; --flame:#ffd166; --danger:#ff5d5d; --good:#6fd08c; --rec:#ff4d4d;
+  --ink:#2a1206; --r:14px; --gut:clamp(14px,2.4vw,36px); --ease:cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
+body { font:400 clamp(15px, .9vw + 7px, 24px)/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; overflow:hidden;
+  background:radial-gradient(1200px 700px at 85% -10%, #2a170d 0%, transparent 60%), var(--bg); user-select:none; -webkit-user-select:none; }
+button, input, select { font:inherit; color:inherit; }
+button { background:none; border:0; padding:0; }
+.app { display:grid; grid-template-rows:auto 1fr auto; height:100%; }
+header { display:flex; align-items:center; gap:.8em; padding:.7em var(--gut) .5em; flex-wrap:wrap; }
+header h1 { font-size:1.35em; margin:0; font-weight:650; letter-spacing:.01em; }
+header .sub { color:var(--muted); font-size:.85em; }
+.spacer { flex:1; }
+main { padding:0 var(--gut) .6em; min-height:0; }
+footer { display:flex; gap:1.4em; padding:.45em var(--gut) .7em; color:var(--muted); font-size:.8em; flex-wrap:wrap; }
+footer b { display:inline-grid; place-items:center; min-width:1.6em; height:1.6em; padding:0 .3em; border-radius:99px; background:var(--panel3); color:var(--text); margin-right:.35em; font-size:.85em; }
+.scroll { overflow:auto; min-height:0; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; padding:4px; }
+
+/* Focus: one clear ember ring, the same for mouse, keyboard, controller and touch. */
+.f { outline:none; cursor:pointer; transition:transform .14s var(--ease), box-shadow .14s var(--ease), background .14s; }
+.f:focus, .f.focus { box-shadow:0 0 0 3px var(--ember), 0 0 22px rgba(255,138,61,.35); }
+.f:active { transform:scale(.985); }
+
+.tabs { display:flex; gap:.3em; background:var(--panel); border:1px solid var(--line); border-radius:99px; padding:.25em; }
+.tab { padding:.35em 1em; border-radius:99px; color:var(--muted); }
+.tab.on { background:var(--panel3); color:var(--text); font-weight:600; }
+
+.btn { display:inline-flex; align-items:center; gap:.45em; padding:.55em 1em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); min-height:2.6em; }
+.btn svg { width:1.15em; height:1.15em; flex:none; }
+.btn.danger { color:#ffb3a1; border-color:#5c2a22; background:#2a1512; }
+.btn.primary { background:var(--ember); color:var(--ink); border-color:transparent; font-weight:650; }
+.btn.rec { background:var(--rec); color:#2a0606; border-color:transparent; font-weight:650; }
+.btn.sm { min-height:2.1em; padding:.35em .75em; font-size:.88em; }
+.btn[disabled] { opacity:.45; pointer-events:none; }
+
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:.9em 1.1em; }
+.panel h2, .panel h3 { margin:0 0 .5em; font-size:1em; font-weight:650; }
+.muted { color:var(--muted); } .faint { color:var(--faint); }
+.small { font-size:.82em; }
+.chips { display:flex; flex-wrap:wrap; gap:.45em; }
+.chip { padding:.42em .85em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); text-align:left; }
+.chip.on { border-color:var(--ember); background:#3a2416; color:var(--text); }
+.chip small { display:block; color:var(--muted); font-size:.75em; }
+.row { display:flex; gap:.6em; align-items:center; flex-wrap:wrap; }
+.row.end { justify-content:flex-end; }
+.field { margin:.75em 0 0; }
+.field > label { display:block; color:var(--muted); font-size:.82em; margin-bottom:.35em; }
+.empty { color:var(--muted); padding:2em 0; text-align:center; }
+.dot { width:.7em; height:.7em; border-radius:50%; display:inline-block; background:var(--faint); flex:none; }
+.dot.rec { background:var(--rec); animation:pulse 1.2s ease-in-out infinite; }
+.dot.good { background:var(--good); }
+@keyframes pulse { 50% { opacity:.35; } }
+
+/* Lists of files. */
+.files { display:flex; flex-direction:column; gap:.45em; }
+.file { display:grid; grid-template-columns:2.2em 1fr auto; gap:.1em .8em; align-items:center; width:100%; text-align:left; padding:.6em .8em; border-radius:12px; background:var(--panel); border:1px solid var(--line); }
+.file .ico { grid-row:span 2; width:2.2em; height:2.2em; border-radius:9px; display:grid; place-items:center; background:var(--panel3); color:var(--ember); }
+.file .ico svg { width:1.2em; height:1.2em; }
+.file .n { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.file .m { color:var(--muted); font-size:.8em; }
+.file .acts { grid-row:span 2; display:flex; gap:.35em; }
+.file.sel { background:var(--panel2); border-color:#5a3f2c; }
+
+/* Dialogs and messages. */
+.veil { position:fixed; inset:0; background:rgba(8,5,4,.72); display:grid; place-items:center; padding:var(--gut); z-index:10; backdrop-filter:blur(3px); }
+.dlg { width:min(36em, 100%); max-height:100%; overflow:auto; background:var(--panel); border:1px solid #4a372b; border-radius:18px; padding:1.1em 1.3em; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+.dlg h2 { margin:0 0 .5em; font-size:1.2em; }
+.inp { width:100%; padding:.6em .8em; border-radius:12px; border:1px solid var(--line); background:var(--bg2); outline:none; }
+.inp:focus { border-color:var(--ember); }
+#toast { position:fixed; left:50%; bottom:3.2em; transform:translateX(-50%) translateY(1em); opacity:0; pointer-events:none; background:var(--panel3); border:1px solid #5a3f2c;
+  padding:.6em 1.1em; border-radius:12px; transition:.2s var(--ease); max-width:min(40em, 90vw); z-index:20; }
+#toast.on { opacity:1; transform:translateX(-50%); }
+#toast.bad { border-color:#6a2a22; color:#ffc2b3; }
