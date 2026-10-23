@@ -300,7 +300,7 @@ jobs:
           check "nothing makes an empty /var/lib/flatpak/repo at boot (flatpak can't open one: openat(config))" "! grep -rqs 'var/lib/flatpak/repo' /usr/lib/tmpfiles.d /etc/tmpfiles.d"
           check "Bazaar: the image's package, or installed at boot (hearth-flatpak-setup)" "test -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop || grep -q io.github.kolunmi.Bazaar /usr/libexec/nimbus/hearth-flatpak-setup"
           if [ -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop ]; then echo "::notice title=Bazaar::the image has it as a package"; else echo "::notice title=Bazaar::installed from Flathub at the first online boot (hearth-flatpak-setup.service)"; fi
-          check "a Flathub remote file for the system installation" "test -s /etc/flatpak/remotes.d/flathub.flatpakrepo"
+          check "a Flathub remote file for the system installation" "grep -qls dl.flathub.org /etc/flatpak/remotes.d/*.flatpakrepo /usr/share/flatpak/remotes.d/*.flatpakrepo"
           # A new account gets a container id range from hearth-home-repair (rootless podman needs one).
           mkdir -p /var/home && useradd -m -d /var/home/subtest subtest >/dev/null 2>&1; sed -i '/^subtest:/d' /etc/subuid /etc/subgid
           check "hearth-home-repair gives an account its subuid/subgid range" "/usr/libexec/nimbus/hearth-home-repair --user subtest && grep -q '^subtest:[0-9]*:65536' /etc/subuid && grep -q '^subtest:[0-9]*:65536' /etc/subgid"

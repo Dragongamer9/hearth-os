@@ -96,7 +96,10 @@ def ensure_remote():
     code, out = flatpak(['remotes', '--system', '--columns=name'])
     if code == 0 and REMOTE in out.split():
         return True
-    src = p(REMOTE_FILE) if os.path.exists(p(REMOTE_FILE)) else REMOTE_URL
+    import glob
+    files = [f for f in [p(REMOTE_FILE)] + sorted(glob.glob(p('etc/flatpak/remotes.d/*.flatpakrepo')) + glob.glob(p('usr/share/flatpak/remotes.d/*.flatpakrepo')))
+             if os.path.exists(f) and 'dl.flathub.org' in open(f, errors='replace').read()]
+    src = files[0] if files else REMOTE_URL
     code, out = flatpak(['remote-add', '--system', '--if-not-exists', REMOTE, src], timeout=300)
     log('flathub: %s (%s)' % ('added to the system installation' if code == 0 else 'couldn\'t be added', out.splitlines()[-1] if out else src))
     return code == 0
