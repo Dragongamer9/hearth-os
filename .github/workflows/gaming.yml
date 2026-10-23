@@ -78,6 +78,9 @@ jobs:
         if: always()
         working-directory: hosts/hearth-gaming
         run: |
+          # Best effort: a command that fails here (xdotool without a window manager...) is reported, not fatal.
+          set +e
+          trap 'echo "::warning title=screenshots::line $LINENO failed: $BASH_COMMAND"' ERR
           mkdir -p shots
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 NO_AT_BRIDGE=1
           Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
