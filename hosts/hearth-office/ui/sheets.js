@@ -42,8 +42,8 @@ S.makeEngine = () => {
   try { S.hf.addNamedExpression('TRUE', '=TRUE()'); S.hf.addNamedExpression('FALSE', '=FALSE()'); } catch {}
 };
 S.sh = () => S.sheets[S.cur];
-S.sid = () => S.sh().id;
-S.meta = () => S.sh().meta;
+S.sid = () => (S.sh() ? S.sh().id : 0);
+S.meta = () => (S.sh() ? S.sh().meta : null);
 S.val = (r, c, sid = S.sid()) => S.hf.getCellValue({ sheet: sid, row: r, col: c });
 S.ser = (r, c, sid = S.sid()) => S.hf.getCellSerialized({ sheet: sid, row: r, col: c });
 S.fmtAt = (r, c, m = S.meta()) => m.fmt[key(r, c)] || null;

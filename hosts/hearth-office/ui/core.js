@@ -481,7 +481,8 @@ H.preparePrint = async () => {
   const dims = await H.app.printLayout(box);
   let st = $('#printPage');
   if (!st) { st = H.el('style', { id: 'printPage' }); document.head.append(st); }
-  st.textContent = `@page { size: ${dims.w}mm ${dims.h}mm; margin: 0; }`;
+  // The page boxes a hair shorter than the paper, so rounding never pushes a blank page after each one.
+  st.textContent = `@page { size: ${dims.w}mm ${dims.h}mm; margin: 0; } @media print { #print > .ppage { height: ${dims.h - 0.4}mm !important; } }`;
   // Pictures must be loaded before the page is printed.
   await Promise.all($$('img', box).map((i) => i.complete ? null : new Promise((r) => { i.onload = i.onerror = r; })));
   if (document.fonts && document.fonts.ready) await document.fonts.ready;

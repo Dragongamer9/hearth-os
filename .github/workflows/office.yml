@@ -55,7 +55,7 @@ jobs:
     needs: vendor
     if: ${{ !cancelled() && (needs.vendor.result == 'success' || needs.vendor.result == 'skipped') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: hosts/hearth-office
@@ -79,13 +79,13 @@ jobs:
       - name: Open and save sample files (Chromium)
         run: |
           set -o pipefail
-          python tests/ui_test.py --browser chromium --shots shots/chromium 2>&1 | tee chromium.log || { echo "::error title=page tests (Chromium)::$(grep -E '^FAIL' chromium.log | head -30 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          timeout 1200 python tests/ui_test.py --browser chromium --shots shots/chromium 2>&1 | tee chromium.log || { echo "::error title=page tests (Chromium)::$(grep -E '^FAIL' chromium.log | head -30 | tr '\n' '|' | cut -c1-3000) last: $(tail -4 chromium.log | tr '\n' '|' | cut -c1-700)"; exit 1; }
           echo "::notice title=page tests (Chromium)::$(tail -1 chromium.log)"
       - name: Open and save sample files (WebKit, the engine Hearth's window uses)
         if: always()
         run: |
           set -o pipefail
-          python tests/ui_test.py --browser webkit --shots shots/webkit 2>&1 | tee webkit.log || { echo "::error title=page tests (WebKit)::$(grep -E '^FAIL' webkit.log | head -30 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          timeout 1200 python tests/ui_test.py --browser webkit --shots shots/webkit 2>&1 | tee webkit.log || { echo "::error title=page tests (WebKit)::$(grep -E '^FAIL' webkit.log | head -30 | tr '\n' '|' | cut -c1-3000) last: $(tail -4 webkit.log | tr '\n' '|' | cut -c1-700)"; exit 1; }
           echo "::notice title=page tests (WebKit)::$(tail -1 webkit.log)"
       - uses: actions/upload-artifact@v4
         if: always()
