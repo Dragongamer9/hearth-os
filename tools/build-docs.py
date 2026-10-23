@@ -348,6 +348,26 @@ Holding the button for several seconds always turns the device off.</p>
 </ul>
 <p>Desktop Mode's app drawer has a <b>Games</b> tab with your installed games; on Windows it also has a <b>Windows</b> tab with the built-in programs.</p>
 
+{h2('claude', 'Installing Claude')}
+<p>Claude, Anthropic's AI assistant, can be installed on every edition. It goes in your home folder, so it doesn't change the
+system and stays through Hearth OS updates. Sign in with your Claude account in the browser when it asks.</p>
+<ul>
+<li><b>Claude Desktop</b> (the app: chat, Cowork and Claude Code sessions): <b>Get Claude</b> in Desktop Mode's app menu, or
+<b>Hearth Settings › Claude</b>, or in Game Mode <b>Settings › System › Claude</b>. Hearth downloads Anthropic's own package from
+downloads.claude.ai, checks it against Anthropic's signing key, installs it and opens it.</li>
+<li><b>Updates:</b> Anthropic's Linux app doesn't update itself, so Hearth checks for a newer one every day and installs it
+(if Claude is open, the next time it's closed). <b>Check for an update</b> on the same page does it now.</li>
+<li><b>Claude Code</b> (Claude in the Terminal, for coding): <b>Get Claude Code</b> on the same page runs Anthropic's installer
+for you. Then type <code>claude</code> in the Terminal. It keeps itself up to date.</li>
+</ul>
+<p>From the Terminal instead:</p>
+{cmd('claude-desktop', 'hearth-claude install')}
+{cmd('claude-code', 'hearth-claude install-code')}
+<p><code>hearth-claude status</code>, <code>update</code> and <code>remove</code> do the rest (<code>remove-code</code> for Claude Code).
+Removing keeps your chats (they're in your Claude account) and settings.</p>
+{only('anatase cachyos', '<div class="note"><p>Anthropic supports Claude Desktop for Linux (in beta) on Debian and Ubuntu. On Anatase and CachyOS, Hearth runs Anthropic\'s Debian build from your home folder: it should work, but Anthropic doesn\'t support it there yet. Claude Code is supported everywhere.</p></div>')}
+{only('ubuntu peppermint', '<div class="note"><p>On Ubuntu and Peppermint you can also install <code>claude-desktop</code> with apt from Anthropic\'s repository, following Anthropic\'s instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div>')}
+
 {h2('logs', 'Sending logs')}
 <p>When something goes wrong, <b>Settings › System › Send logs to the developer</b>. You get a short code (like
 <code>ABCD-EFGH-JK</code>): share it when you report the problem. Logs are kept 14 days, personal details are taken out

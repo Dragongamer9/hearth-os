@@ -48,6 +48,8 @@ pub struct Bridge {
     power_seen: Option<String>,
     power_back: Option<Value>,
     browser: std::sync::Arc<std::sync::Mutex<Value>>,
+    /// Claude Desktop / Claude Code being installed by desktop/shell/hearth-claude (Settings › System › Claude).
+    claude: std::sync::Arc<std::sync::Mutex<Value>>,
     pub app_updates: crate::appupdate::AppUpdates,
     /// The call being answered (calls that answer later, from background work, reply to it themselves).
     cur_id: Value,
@@ -86,6 +88,7 @@ impl Bridge {
                  pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(), guide: crate::guide::Guide::new(),
                  buttons: Arc::new(std::sync::Mutex::new(json!({"devices": [], "problems": ["Only in Game Mode"]}))), host: Arc::new(|_, _| {}),
                  parental_since: 0, parental_warned: false, per_game: None, power_seen: None, power_back: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
+                 claude: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
                  app_updates: crate::appupdate::AppUpdates::new(version), cur_id: Value::Null, cur_label: "main".into() }
     }
 
@@ -575,6 +578,10 @@ impl Bridge {
                 if a["action"] == "default" { system::run("xdg-settings", &["set", "default-web-browser", "hearth-browser.desktop"]).map_err(|_| "Couldn't make it the default".to_string())?; }
                 Ok(self.browser_status())
             }
+            // Claude (Anthropic): Claude Desktop from Anthropic's repository and Claude Code with Anthropic's installer,
+            // both put in your home folder by desktop/shell/hearth-claude (also Desktop Mode's Settings › Claude).
+            "claude.status" => Ok(self.claude_status()),
+            "claude.act" => { self.claude_act(&req("action")?)?; Ok(self.claude_status()) }
             // "Make Hearth my shell" (a Hearth session on the login screen)
             "shell.status" => Ok(shell_status()),
             "shell.register" => { shell_install(false)?; Ok(shell_status()) }
@@ -1251,7 +1258,7 @@ impl Bridge {
         let helper = paths::desktop_dir().join("shell/hearth-browser");
         let job = self.browser.lock().unwrap().clone();
         let mut s = if helper.exists() {
-            let last = if job["state"] == "idle" { browser_run(&helper, &["status"], &mut |_, _| {}).unwrap_or(Value::Null) } else { Value::Null };
+            let last = if job["state"] == "idle" { helper_run(&helper, &["status"], &mut |_, _| {}).unwrap_or(Value::Null) } else { Value::Null };
             let mut s = if last.is_object() { last } else { json!({}) };
             s["available"] = json!(true); s
         } else { json!({"available": false}) };
@@ -1267,7 +1274,36 @@ impl Bridge {
         let (job, what) = (self.browser.clone(), what.to_string());
         std::thread::spawn(move || {
             let push = |j: &Value| { let mut s = j.clone(); s["available"] = json!(true); crate::stores::notify(Bridge::event("browser", s)); };
-            let r = browser_run(&helper, &[&what], &mut |p, line| { let mut j = job.lock().unwrap(); j["progress"] = json!(p); j["line"] = json!(line); push(&j); });
+            let r = helper_run(&helper, &[&what], &mut |p, line| { let mut j = job.lock().unwrap(); j["progress"] = json!(p); j["line"] = json!(line); push(&j); });
+            let mut j = job.lock().unwrap();
+            *j = json!({"state": "idle", "progress": null, "line": "", "error": r.err()});
+            push(&j);
+        });
+        Ok(())
+    }
+
+    /// Claude Desktop and Claude Code (desktop/shell/hearth-claude): its status, with the running job's progress.
+    fn claude_status(&self) -> Value {
+        let helper = paths::desktop_dir().join("shell/hearth-claude");
+        let job = self.claude.lock().unwrap().clone();
+        let mut s = if helper.exists() {
+            let last = if job["state"] == "idle" { helper_run(&helper, &["status"], &mut |_, _| {}).unwrap_or(Value::Null) } else { Value::Null };
+            let mut s = if last.is_object() { last } else { json!({}) };
+            s["available"] = json!(true); s
+        } else { json!({"available": false}) };
+        for (k, v) in job.as_object().cloned().unwrap_or_default() { s[k] = v; }
+        s
+    }
+    fn claude_act(&self, what: &str) -> Result<(), String> {
+        let args = claude_args(what).ok_or("Unknown action")?;
+        let helper = paths::desktop_dir().join("shell/hearth-claude");
+        if !helper.exists() { return Err("Claude is installed from Hearth OS's Desktop Mode helper, which isn't here".into()); }
+        if what == "open" { return helper_run(&helper, &args, &mut |_, _| {}).map(|_| ()); }
+        { let mut j = self.claude.lock().unwrap(); if j["state"] != "idle" { return Ok(()); } *j = json!({"state": what, "progress": json!(0), "line": "", "error": null}); }
+        let job = self.claude.clone();
+        std::thread::spawn(move || {
+            let push = |j: &Value| { let mut s = j.clone(); s["available"] = json!(true); crate::stores::notify(Bridge::event("claude", s)); };
+            let r = helper_run(&helper, &args, &mut |p, line| { let mut j = job.lock().unwrap(); j["progress"] = json!(p); j["line"] = json!(line); push(&j); });
             let mut j = job.lock().unwrap();
             *j = json!({"state": "idle", "progress": null, "line": "", "error": r.err()});
             push(&j);
@@ -1422,8 +1458,18 @@ fn write_redacted(dir: &std::path::Path, files: &[(&str, String)], user: &str, h
 
 fn value_text(v: &Value) -> String { match v { Value::String(s) => s.clone(), Value::Null => String::new(), other => other.to_string() } }
 
-/// Runs hearth-browser: "progress: <pct> <line>" lines while it works, then its JSON answer.
-fn browser_run(helper: &std::path::Path, args: &[&str], on_progress: &mut dyn FnMut(f64, &str)) -> Result<Value, String> {
+/// What `claude.act` may ask hearth-claude to do (nothing else reaches its command line).
+fn claude_args(what: &str) -> Option<Vec<&'static str>> {
+    Some(match what {
+        "install" => vec!["install"], "update" => vec!["update"], "remove" => vec!["remove"], "open" => vec!["open"],
+        "check" => vec!["status", "--check"], "install-code" => vec!["install-code"], "remove-code" => vec!["remove-code"],
+        _ => return None,
+    })
+}
+
+/// Runs one of Desktop Mode's helpers (hearth-browser, hearth-claude): "progress: <pct> <line>" lines while it
+/// works, then its JSON answer; "error: ..." is the failure to show.
+fn helper_run(helper: &std::path::Path, args: &[&str], on_progress: &mut dyn FnMut(f64, &str)) -> Result<Value, String> {
     use std::io::BufRead;
     let mut child = std::process::Command::new("python3").arg(helper).args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null())
         .spawn().map_err(|e| e.to_string())?;
@@ -1439,7 +1485,8 @@ fn browser_run(helper: &std::path::Path, args: &[&str], on_progress: &mut dyn Fn
         }
     }
     let code = child.wait().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
-    match (err, code) { (Some(e), _) => Err(e), (None, 0) => Ok(result), (None, c) => Err(format!("hearth-browser exited with {c}")) }
+    let name = helper.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    match (err, code) { (Some(e), _) => Err(e), (None, 0) => Ok(result), (None, c) => Err(format!("{name} exited with {c}")) }
 }
 
 // ------------------------------------------------------------------ "Make Hearth my shell"
@@ -1540,6 +1587,39 @@ mod tests {
         let r = b.handle(&json!({"type":"call","id":9,"method":"library.setFav","args":{"id":"steam:1","on":true}})).unwrap();
         assert_eq!(r["ok"], true);
         assert!(b.library.store.list_has("favorites", "steam:1"));
+    }
+    #[test]
+    fn claude_actions_are_a_fixed_list() {
+        assert_eq!(claude_args("install"), Some(vec!["install"]));
+        assert_eq!(claude_args("check"), Some(vec!["status", "--check"]));
+        assert_eq!(claude_args("install-code"), Some(vec!["install-code"]));
+        assert_eq!(claude_args("remove-code"), Some(vec!["remove-code"]));
+        for bad in ["", "auto-update", "install; rm -rf ~", "--help", "status"] { assert_eq!(claude_args(bad), None, "{bad}"); }
+    }
+    #[test]
+    fn helper_run_reads_progress_answer_and_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let ok = dir.path().join("hearth-claude");
+        std::fs::write(&ok, "import sys\nprint('progress: 40 Downloading Claude Desktop', flush=True)\nprint('log: ignored')\nprint('{\"installed\": true, \"args\": \"' + ' '.join(sys.argv[1:]) + '\"}')\n").unwrap();
+        let mut seen = Vec::new();
+        let v = helper_run(&ok, &["status", "--check"], &mut |p, l| seen.push((p, l.to_string()))).unwrap();
+        assert_eq!(v["installed"], true);
+        assert_eq!(v["args"], "status --check");
+        assert_eq!(seen, vec![(0.4, "Downloading Claude Desktop".to_string())]);
+        let bad = dir.path().join("bad");
+        std::fs::write(&bad, "print('error: Close Claude first, then try again')\nraise SystemExit(1)\n").unwrap();
+        assert_eq!(helper_run(&bad, &[], &mut |_, _| {}).unwrap_err(), "Close Claude first, then try again");
+        let silent = dir.path().join("silent");
+        std::fs::write(&silent, "raise SystemExit(3)\n").unwrap();
+        assert_eq!(helper_run(&silent, &[], &mut |_, _| {}).unwrap_err(), "silent exited with 3");
+    }
+    #[test]
+    fn claude_act_refuses_what_isnt_on_the_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut b = Bridge::with(Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), crate::profiles::Profiles::open(dir.path()), "0.0.23");
+        let r = b.handle(&json!({"type":"call","id":4,"method":"claude.act","args":{"action":"auto-update"}})).unwrap();
+        assert_eq!(r["ok"], false);
+        assert_eq!(r["error"], "Unknown action");
     }
     #[test]
     fn saved_logs_leave_out_personal_details() {

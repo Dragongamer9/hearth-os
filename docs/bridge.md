@@ -86,6 +86,7 @@ Values are camelCase JSON. "—" means the method returns `null`.
 | `audio.input` · `audio.setInputVolume` (Windows, Mantel's Sound page) | — · `{v}` | `{present, volume, devices:[{id,name,isDefault}]}` · — (`audio.setDefault` also takes a microphone's id) |
 | `desktop.get` · `desktop.set` (Windows, Mantel) | — · `{key: nightLight\|reduceMotion\|pointerSpeed\|lockOnWake\|powerPress, value}` | `{nightLight, nightAvailable, reduceMotion, pointerSpeed, lockOnWake, powerPress}` (`lockOnWake`/`powerPress` null when Windows can't tell) |
 | `browser.status` (Windows, Mantel) | | `{installed, default, version}` for Aloha Browser |
+| `claude.status` · `claude.act` (Hearth OS) | — · `{action: install\|update\|check\|remove\|open\|install-code\|remove-code}` | hearth-claude's status (`{installed, ours, apt, version, latest, updateAvailable, pending, running, official, sandbox, code: {installed, version}}`) with the running job's `state`, `progress`, `line`, `error`; jobs push `claude` |
 | `shell.pickWallpaper` (Windows) | | shell status, or `null` if cancelled; `shell.status` has `pictures` (file names) and `shell.setWallpaper` takes `custom:<file>` |
 | `system.update.status` · `.check` · `.install` (Hearth OS) | | `{canAdmin, state: idle\|checking\|updating, line, error, status: {booted, staged, available}}`; check and install return at once and push `systemUpdate` |
 
