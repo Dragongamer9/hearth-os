@@ -585,18 +585,10 @@ function deskTrash(e){
   if(!e) return;
   call('files.trash', {paths:[e.path]}).then(()=>{ toast('Moved “'+(e.label||e.name)+'” to the Recycle Bin'); refreshIcons(); }).catch(err=>toast(err.message));
 }
-const human = n => { const u=['bytes','KB','MB','GB','TB']; let i=0; n=+n||0; while(n>=1024 && i<u.length-1){ n/=1024; i++; } return (i===0?n:n.toFixed(n<10?1:0))+' '+u[i]; };
 function deskProps(e){
+  // The same Properties as Hearth Files (mantel-files.html opens it for this item: Ember's "props:" path).
   if(!e) return;
-  call('files.info', {path:e.path}).then(r=>{
-    const rows=[['Kind', e.launcher?'Shortcut':r.dir?'Folder':(r.type||'File')], ['Size', human(r.size)+(r.dir?` (${r.files} files, ${r.folders} folders${r.partial?', still counting':''})`:'')],
-      ['Where', r.location||''], ['Changed', new Date(r.modified).toLocaleString([], {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'})]];
-    if(r.company) rows.push(['Made by', r.company]);
-    if(r.version) rows.push(['Version', r.version]);
-    if(r.readOnly || r.hidden) rows.push(['Attributes', [r.readOnly?'Read-only':'', r.hidden?'Hidden':''].filter(x=>x).join(', ')]);
-    if(e.public) rows.push(['Shown for', 'Everyone on this PC (Public desktop)']);
-    info(e.label||e.name, rows);
-  }).catch(err=>toast(err.message));
+  mantel('openApp', {app:'files', path:'props:'+e.path});
 }
 function deskNewFolder(){
   ask('New folder on the desktop', 'New folder', 'Create', v=>{
