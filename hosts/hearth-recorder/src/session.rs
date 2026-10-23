@@ -191,12 +191,14 @@ fn record(req: &Req, st: &mut State) -> Result<Option<PathBuf>, String> {
                     Ok(f) => {
                         st.saves += 1;
                         st.last_save = f.to_string_lossy().into();
+                        st.last_error = String::new();
                         let name = f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                         notify::saved(APP, ICON, "Replay saved", &format!("The last {}: {name}", duration_text(req.replay_secs as u64 * 1000)), &f);
                     }
                     Err(e) => {
                         st.saves += 1;
                         st.last_save = String::new();
+                        st.last_error = e.clone();
                         notify::info(APP, ICON, "Couldn't save the replay", &e);
                     }
                 }

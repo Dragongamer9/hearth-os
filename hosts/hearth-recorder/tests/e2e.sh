@@ -68,7 +68,7 @@ r=$($B --replay --json); echo "$r"
 if [ "$(echo "$r" | field ok)" = True ]; then
   sleep 14
   r=$($B --save-replay --json); echo "$r"; f=$(echo "$r" | field saved); d=$(dur "$f")
-  if [ -s "$f" ] && [ "${d:-0}" -ge 5 ] && [ "${d:-99}" -le 13 ]; then note "instant replay saved ${d}s ($(streams "$f"))"; keep "$f" "replay-$KIND.mp4"; else fail "instant replay" "$f: ${d}s"; fi
+  if [ -s "$f" ] && [ "${d:-0}" -ge 5 ] && [ "${d:-99}" -le 13 ]; then note "instant replay saved ${d}s ($(streams "$f"))"; keep "$f" "replay-$KIND.mp4"; else fail "instant replay" "$f: ${d}s ($r)"; fi
   sleep 3
   r=$($B --save-replay --json); f2=$(echo "$r" | field saved)
   [ -s "$f2" ] && [ "$f2" != "$f" ] && note "saved a second replay" || fail "instant replay" "second save: $r"
