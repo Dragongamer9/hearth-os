@@ -28,7 +28,7 @@
   </div>
 </nav>
 <div class="wrap layout">
-  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html" class="cur" aria-current="page">Using Hearth</a><div class="sub"><a href="#modes">Game Mode and Desktop Mode</a><a href="#controller">Controller</a><a href="#keyboard">The on-screen keyboard</a><a href="#power">The power button</a><a href="#display">Display and performance</a><a href="#profiles">Profiles and stores</a><a href="#apps">Hearth's own apps</a><a href="#logs">Sending logs</a></div><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
+  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html" class="cur" aria-current="page">Using Hearth</a><div class="sub"><a href="#modes">Game Mode and Desktop Mode</a><a href="#controller">Controller</a><a href="#keyboard">The on-screen keyboard</a><a href="#power">The power button</a><a href="#display">Display and performance</a><a href="#profiles">Profiles and stores</a><a href="#apps">Hearth's own apps</a><a href="#claude">Installing Claude</a><a href="#logs">Sending logs</a></div><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
   <main id="main">
     <div class="crumb"><span>Docs · for Hearth OS 0.5.1</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
     <h1>Using Hearth</h1>
@@ -94,6 +94,26 @@ Holding the button for several seconds always turns the device off.</p>
 <li><b>hearthfetch</b>: type it in the Terminal for a summary of your system.</li>
 </ul>
 <p>Desktop Mode's app drawer has a <b>Games</b> tab with your installed games; on Windows it also has a <b>Windows</b> tab with the built-in programs.</p>
+
+</section><section><h2 id="claude">Installing Claude</h2>
+<p>Claude, Anthropic's AI assistant, can be installed on every edition. It goes in your home folder, so it doesn't change the
+system and stays through Hearth OS updates. Sign in with your Claude account in the browser when it asks.</p>
+<ul>
+<li><b>Claude Desktop</b> (the app: chat, Cowork and Claude Code sessions): <b>Get Claude</b> in Desktop Mode's app menu, or
+<b>Hearth Settings › Claude</b>, or in Game Mode <b>Settings › System › Claude</b>. Hearth downloads Anthropic's own package from
+downloads.claude.ai, checks it against Anthropic's signing key, installs it and opens it.</li>
+<li><b>Updates:</b> Anthropic's Linux app doesn't update itself, so Hearth checks for a newer one every day and installs it
+(if Claude is open, the next time it's closed). <b>Check for an update</b> on the same page does it now.</li>
+<li><b>Claude Code</b> (Claude in the Terminal, for coding): <b>Get Claude Code</b> on the same page runs Anthropic's installer
+for you. Then type <code>claude</code> in the Terminal. It keeps itself up to date.</li>
+</ul>
+<p>From the Terminal instead:</p>
+<div class="cmd" data-cmd="claude-desktop"><pre><code>hearth-claude install</code></pre></div>
+<div class="cmd" data-cmd="claude-code"><pre><code>hearth-claude install-code</code></pre></div>
+<p><code>hearth-claude status</code>, <code>update</code> and <code>remove</code> do the rest (<code>remove-code</code> for Claude Code).
+Removing keeps your chats (they're in your Claude account) and settings.</p>
+<div class="ed" data-ed="anatase"><div class="note"><p>Anthropic supports Claude Desktop for Linux (in beta) on Debian and Ubuntu. On Anatase, Hearth runs Anthropic's Debian build from your home folder: it should work, but Anthropic doesn't support it there yet. Claude Code is supported everywhere.</p></div></div>
+<div class="ed" data-ed="peppermint"><div class="note"><p>On Peppermint you can also install <code>claude-desktop</code> with apt from Anthropic's repository, following Anthropic's instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div></div>
 
 </section><section><h2 id="logs">Sending logs</h2>
 <p>When something goes wrong, <b>Settings › System › Send logs to the developer</b>. You get a short code (like
