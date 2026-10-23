@@ -428,6 +428,80 @@ for l in $(ff_missing); do dnf5 -y install --setopt=install_weak_deps=False "$l(
 chmod 755 /usr/bin/hearth-browser /usr/share/hearth-browser/install-firefox
 # Links open in it in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), unless you pick another browser.
 printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hearth-browser.desktop\ntext/html=hearth-browser.desktop\napplication/xhtml+xml=hearth-browser.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
+
+# ------------------------------------------------------------------ Hearth Photos and Hearth Documents
+# (hosts/hearth-photos, hosts/hearth-documents) Hearth's picture viewer/editor and its reader for PDFs, e-books (EPUB)
+# and comic books (CBZ), built by CI with the app (base-anatase.yml) and carried in os/nimbus-app (their icons,
+# hearth-photos and hearth-documents, come with the Hearth icon set above).
+# Their menu entries and file types are set here, and they're the default apps for pictures and documents: in every
+# desktop (/usr/share/applications/mimeapps.list, which Hearth Files' Open reads too) and in Desktop Mode's own list.
+# libheif's tools let Photos open HEIC pictures from phones; wl-clipboard is how it copies a picture.
+dnf5 -y install --skip-unavailable libheif-tools wl-clipboard || true
+# HEIC needs an HEVC decoder for libheif: RPM Fusion's libheif-freeworld where RPM Fusion is on.
+dnf5 -y install --skip-unavailable libheif-freeworld 2>/dev/null || true
+for app in hearth-photos hearth-documents; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app is missing the libraries above"; fi
+  fi
+done
+HEARTH_PICTURE_TYPES="image/jpeg;image/png;image/gif;image/webp;image/bmp;image/x-bmp;image/x-ms-bmp;image/tiff;image/svg+xml;image/avif;image/heic;image/heif;image/jxl;image/x-icon;image/vnd.microsoft.icon;image/apng;"
+HEARTH_DOCUMENT_TYPES="application/pdf;application/x-pdf;application/epub+zip;application/vnd.comicbook+zip;application/x-cbz;"
+if [ -x /usr/bin/hearth-photos ]; then
+  cat > /usr/share/applications/hearth-photos.desktop <<DESKTOP
+[Desktop Entry]
+Name=Photos
+GenericName=Picture Viewer
+Comment=Look through your pictures, and crop, straighten or brighten them
+Exec=/usr/bin/hearth-photos %U
+TryExec=/usr/bin/hearth-photos
+Icon=hearth-photos
+Type=Application
+Categories=Graphics;Viewer;RasterGraphics;2DGraphics;Photography;
+MimeType=${HEARTH_PICTURE_TYPES}
+Keywords=photo;picture;image;viewer;gallery;slideshow;crop;rotate;edit;
+StartupNotify=true
+StartupWMClass=hearth-photos
+Actions=slideshow;
+
+[Desktop Action slideshow]
+Name=Slideshow of your Pictures
+Exec=/usr/bin/hearth-photos --slideshow
+DESKTOP
+fi
+if [ -x /usr/bin/hearth-documents ]; then
+  cat > /usr/share/applications/hearth-documents.desktop <<DESKTOP
+[Desktop Entry]
+Name=Documents
+GenericName=Document Viewer
+Comment=Read PDFs, e-books and comic books
+Exec=/usr/bin/hearth-documents %U
+TryExec=/usr/bin/hearth-documents
+Icon=hearth-documents
+Type=Application
+Categories=Office;Viewer;Graphics;
+MimeType=${HEARTH_DOCUMENT_TYPES}
+Keywords=pdf;document;viewer;reader;ebook;epub;book;comic;cbz;
+StartupNotify=true
+StartupWMClass=hearth-documents
+DESKTOP
+fi
+# The defaults: added to both lists (made when they don't exist yet; other apps' lines are kept).
+hearth_default() { # FILE APP TYPES
+  [ -f "$1" ] || printf '[Default Applications]\n' > "$1"
+  grep -q '^\[Default Applications\]' "$1" || printf '\n[Default Applications]\n' >> "$1"
+  local t lines=""
+  for t in $(echo "$3" | tr ';' ' '); do sed -i "\#^$t=#d" "$1"; lines="$lines$t=$2;\n"; done
+  # Right under the [Default Applications] heading.
+  awk -v add="$lines" '{ print } /^\[Default Applications\]$/ && !done { printf "%s", add; done = 1 }' "$1" > "$1.new" && mv "$1.new" "$1"
+}
+for list in /usr/share/applications/mimeapps.list /etc/xdg/nimbus-mimeapps.list; do
+  if [ -x /usr/bin/hearth-photos ]; then hearth_default "$list" hearth-photos.desktop "$HEARTH_PICTURE_TYPES"; fi
+  if [ -x /usr/bin/hearth-documents ]; then hearth_default "$list" hearth-documents.desktop "$HEARTH_DOCUMENT_TYPES"; fi
+done
+gtk-update-icon-cache -q -f /usr/share/icons/hicolor 2>/dev/null || true
+update-desktop-database -q /usr/share/applications 2>/dev/null || true
+# ---- end of Hearth Photos and Hearth Documents
 install -Dm644 /usr/share/nimbus/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
 declare -A WALL=([fireside]="Fireside" [embers]="Embers" [ridge]="Dusk Ridge" [mark]="The Mark" [kiln]="Kiln"
   [cat]="Hearth Cat" [cabin]="Night Cabin" [lanterns]="Lanterns" [bloom]="Ember Bloom" [peaks]="Low Poly Peaks"
