@@ -1,7 +1,10 @@
 //! Hearth Connect: a phone linked to Hearth OS. It speaks KDE Connect's open protocol (version 8, the one the
 //! KDE Connect apps for Android and iOS and the KDE Connect desktop use), implemented here rather than by shipping
-//! KDE's daemon (kdeconnectd): see docs/HEARTH-CONNECT.md for why (in short: the phone-as-touchpad needs an input
-//! path that works in Game Mode's gamescope and Desktop Mode's labwc, which kdeconnectd doesn't have there).
+//! KDE's daemon (kdeconnectd). Why: kdeconnectd's remote input on Wayland goes through the RemoteDesktop desktop
+//! portal (libei), which neither Game Mode's gamescope nor Desktop Mode's labwc provide, so the phone couldn't be a
+//! touchpad; its prompts and notifications are KDE desktop notifications Game Mode doesn't show; and it pulls in a
+//! large part of KDE Frameworks. Hearth's own service uses uinput for input (works in both modes), shows everything
+//! in its own window, and is a few MB. It's checked against the real kdeconnectd in CI (link-apps.yml).
 //!
 //! It runs as a small background service for the signed-in person (`hearth-connect --daemon`, the systemd user unit
 //! hearth-connect.service), so the phone stays linked whether or not the window is open and in both modes. The

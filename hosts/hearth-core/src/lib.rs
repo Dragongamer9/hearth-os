@@ -26,6 +26,9 @@ pub mod inputplumber;
 pub mod logs;
 pub mod xodus;
 pub mod library;
+// ---- Nearby Share and Hearth Connect, opened from Game Mode
+pub mod link_apps;
+// ---- end of Nearby Share and Hearth Connect
 pub mod multiplay;
 pub mod owned;
 pub mod padmouse;
