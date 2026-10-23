@@ -1,1 +1,246 @@
-<!doctype html><title>weather</title><button class=f autofocus onclick="window.__TAURI__.core.invoke('ring_done',{action:'dismiss'})">Dismiss</button>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather</title>
+<link rel="stylesheet" href="hearth.css">
+<style>
+main { overflow:auto; display:flex; flex-direction:column; gap:var(--gut); padding-bottom:1em; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
+.now { display:grid; grid-template-columns:auto 1fr auto; gap:.4em 1.6em; align-items:center; padding:1.1em 1.4em; border-radius:20px;
+  background:linear-gradient(135deg, rgba(255,138,61,.16), rgba(111,183,255,.06)), var(--panel); border:1px solid var(--line); }
+.now .wi { width:clamp(4.5em, 12vw, 7.5em); height:clamp(4.5em, 12vw, 7.5em); }
+.now .temp { font-size:clamp(3.2em, 9vw, 6em); font-weight:200; line-height:1; font-variant-numeric:tabular-nums; }
+.now .temp small { font-size:.4em; color:var(--muted); vertical-align:top; }
+.now .desc { font-size:1.3em; font-weight:600; }
+.now .hl { color:var(--muted); }
+.facts { display:grid; grid-template-columns:repeat(2, auto); gap:.25em 1.2em; font-size:.88em; }
+.facts dt { color:var(--muted); } .facts dd { margin:0; font-variant-numeric:tabular-nums; }
+h2 { font-size:1em; color:var(--muted); font-weight:600; margin:0 0 .5em; }
+.hours { display:flex; gap:.5em; overflow-x:auto; padding:4px 4px .5em; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
+.hr { flex:none; width:5.2em; display:grid; justify-items:center; gap:.25em; padding:.6em .3em; border-radius:14px; background:var(--panel); border:1px solid var(--line); }
+.hr.now1 { border-color:#6a4428; background:var(--panel2); }
+.hr .h { color:var(--muted); font-size:.8em; }
+.hr .t { font-weight:650; font-variant-numeric:tabular-nums; }
+.hr .p { color:var(--sky); font-size:.75em; min-height:1.2em; }
+.hr .wi { width:2em; height:2em; }
+.days { display:flex; flex-direction:column; gap:.4em; }
+.dy { display:grid; grid-template-columns:7em 2.2em 3.4em 3em 1fr 3em; gap:.8em; align-items:center; padding:.55em .9em; border-radius:12px; background:var(--panel); border:1px solid var(--line); }
+.dy .n { font-weight:600; }
+.dy .wi { width:1.9em; height:1.9em; }
+.dy .p { color:var(--sky); font-size:.85em; }
+.dy .lo { color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; }
+.dy .hi { font-variant-numeric:tabular-nums; }
+.range { position:relative; height:.45em; border-radius:9px; background:var(--panel3); }
+.range i { position:absolute; top:0; bottom:0; border-radius:9px; background:linear-gradient(90deg, #6fb7ff, #ffd166 60%, #ff8a3d); }
+.banner { padding:.6em 1em; border-radius:12px; background:#2a1d12; border:1px solid #5a3f2c; color:var(--flame); font-size:.9em; }
+.welcome { max-width:34em; margin:4vh auto 0; text-align:center; }
+.welcome .wi { width:6em; height:6em; margin:0 auto .6em; display:block; }
+.results { display:flex; flex-direction:column; gap:.4em; margin-top:.8em; text-align:left; max-height:50vh; overflow:auto; padding:3px; }
+.results .card { display:flex; justify-content:space-between; gap:1em; padding:.6em .9em; }
+.unit { display:flex; }
+.unit .btn { border-radius:0; } .unit .btn:first-child { border-radius:12px 0 0 12px; } .unit .btn:last-child { border-radius:0 12px 12px 0; }
+.unit .btn.on { background:var(--panel3); color:var(--ember); }
+@media (max-width: 760px) { .now { grid-template-columns:auto 1fr; } .facts { grid-column:1 / -1; } .dy { grid-template-columns:5em 2em 3em 1fr 3em; } .dy .p { display:none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1 id="place">Weather</h1><span class="sub" id="upd"></span>
+    <span class="spacer"></span>
+    <div class="unit" id="units"><button class="btn f" data-units="metric">°C</button><button class="btn f" data-units="imperial">°F</button></div>
+    <button class="btn f" data-act="refresh" id="refbtn"></button>
+    <button class="btn f" data-act="place" id="placebtn"></button>
+  </header>
+  <main id="main"></main>
+  <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Change place</span><span><b>Y</b>Refresh</span><span>Forecasts from Open-Meteo</span></footer>
+</div>
+<div id="layer"></div>
+<script src="hearth.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, icon, invoke } = H;
+const S = { settings: {}, f: null, error: '', loading: false };
+$('#refbtn').innerHTML = `${icon('refresh')}Refresh`; $('#placebtn').innerHTML = `${icon('place')}Change place`;
+
+// ------------------------------------------------------------------------------------------------ weather words and pictures
+const WORDS = { 0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Cloudy', 45: 'Fog', 48: 'Fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 56: 'Freezing drizzle', 57: 'Freezing drizzle',
+  61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 66: 'Freezing rain', 67: 'Freezing rain', 71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains', 80: 'Showers', 81: 'Showers', 82: 'Heavy showers',
+  85: 'Snow showers', 86: 'Snow showers', 95: 'Thunderstorm', 96: 'Thunderstorm, hail', 99: 'Thunderstorm, hail' };
+const kind = c => c <= 1 ? 'clear' : c === 2 ? 'partly' : c === 3 ? 'cloud' : c <= 48 ? 'fog' : (c <= 67 || (c >= 80 && c <= 82)) ? 'rain' : (c <= 77 || c === 85 || c === 86) ? 'snow' : c >= 95 ? 'storm' : 'cloud';
+function wicon(code, day = true) {
+  const k = kind(code ?? 3);
+  const sun = '<circle cx="24" cy="24" r="9" fill="#ffd166"/><g stroke="#ffd166" stroke-width="3" stroke-linecap="round">' + [0, 45, 90, 135, 180, 225, 270, 315].map(a => { const r = a * Math.PI / 180; return `<line x1="${24 + Math.cos(r) * 14}" y1="${24 + Math.sin(r) * 14}" x2="${24 + Math.cos(r) * 19}" y2="${24 + Math.sin(r) * 19}"/>`; }).join('') + '</g>';
+  const moon = '<path d="M31 9a15 15 0 1 0 9 22A12 12 0 0 1 31 9z" fill="#f4e4c1"/>';
+  const cloud = (x = 0, y = 0, c = '#c9bdb2') => `<path transform="translate(${x} ${y})" d="M14 38h22a9 9 0 0 0 0-18 12 12 0 0 0-23-1 9.5 9.5 0 0 0 1 19z" fill="${c}"/>`;
+  const drops = '<g stroke="#6fb7ff" stroke-width="3" stroke-linecap="round"><line x1="17" y1="41" x2="15" y2="46"/><line x1="25" y1="41" x2="23" y2="46"/><line x1="33" y1="41" x2="31" y2="46"/></g>';
+  const flakes = '<g fill="#e8f1ff"><circle cx="16" cy="43" r="2"/><circle cx="24" cy="45" r="2"/><circle cx="32" cy="43" r="2"/></g>';
+  const bolt = '<path d="M25 34l-5 8h5l-3 6 8-10h-5l3-4z" fill="#ffd166"/>';
+  const fog = '<g stroke="#c9bdb2" stroke-width="3" stroke-linecap="round"><line x1="8" y1="20" x2="40" y2="20"/><line x1="5" y1="27" x2="36" y2="27"/><line x1="10" y1="34" x2="42" y2="34"/></g>';
+  const body = { clear: day ? sun : moon, partly: `<g transform="translate(-5 -6) scale(.8)">${day ? sun : moon}</g>${cloud(3, 2)}`, cloud: cloud(-2, -4, '#a99c90') + cloud(3, 1),
+    fog, rain: cloud(0, -6) + drops, snow: cloud(0, -6) + flakes, storm: cloud(0, -7, '#8a7d72') + bolt }[k];
+  return `<svg class="wi" viewBox="0 0 48 48" aria-label="${esc(WORDS[code] || '')}">${body}</svg>`;
+}
+const deg = v => v == null ? '–' : `${Math.round(v)}°`;
+const imperial = () => S.settings.units === 'imperial';
+const compass = d => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((d ?? 0) % 360) / 45) % 8];
+// Open-Meteo gives times in the place's own time zone ("2026-10-22T14:00"): read them as written.
+const placeTime = s => { const [d, t] = s.split('T'); const x = H.parseYmd(d); if (t) { const [h, m] = t.split(':').map(Number); x.setHours(h, m); } return x; };
+const hourText = d => H.clock24 ? `${H.pad2(d.getHours())}:00` : `${d.getHours() % 12 || 12} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
+
+// ------------------------------------------------------------------------------------------------ drawing
+function drawUnits() { $$('#units .btn').forEach(b => b.classList.toggle('on', b.dataset.units === (S.settings.units || 'metric'))); }
+function draw() {
+  drawUnits();
+  const p = S.settings.place;
+  $('#refbtn').hidden = !p; $('#placebtn').hidden = !p;
+  if (!p) { welcome(); return; }
+  $('#place').textContent = p.name + (p.country ? `, ${p.country}` : '');
+  const f = S.f;
+  if (!f || !f.current) {
+    $('#upd').textContent = '';
+    $('#main').innerHTML = S.loading ? '<div class="empty">Getting the forecast…</div>' : `<div class="empty">${esc(S.error || 'No forecast yet.')}<br><br><button class="btn primary f" data-act="refresh">${icon('refresh')}Try again</button></div>`;
+    return;
+  }
+  const c = f.current, d = f.daily || {}, h = f.hourly || {};
+  const u = f.current_units || {};
+  $('#upd').textContent = f.fetchedAt ? `Updated ${H.ago(f.fetchedAt)}` : '';
+  // The next 24 hours from now in the place's time.
+  const nowPlace = placeTime(c.time || '');
+  const hours = (h.time || []).map((t, i) => ({ t: placeTime(t), temp: h.temperature_2m?.[i], code: h.weather_code?.[i], p: h.precipitation_probability?.[i], day: h.is_day?.[i] !== 0 }))
+    .filter(x => x.t.getTime() >= nowPlace.getTime() - 3600e3).slice(0, 24);
+  const lows = d.temperature_2m_min || [], highs = d.temperature_2m_max || [];
+  const lo = Math.min(...lows.filter(x => x != null)), hi = Math.max(...highs.filter(x => x != null));
+  const span = Math.max(1, hi - lo);
+  const sun = (s) => s ? H.fmtTime(placeTime(s)) : '–';
+  $('#main').innerHTML = `
+    ${f.stale ? `<div class="banner">Offline: this is the forecast from ${esc(H.ago(f.fetchedAt))}. (${esc(f.stale)})</div>` : ''}
+    <section class="now">
+      ${wicon(c.weather_code, c.is_day !== 0)}
+      <div><div class="temp">${Math.round(c.temperature_2m)}<small>${imperial() ? '°F' : '°C'}</small></div><div class="desc">${esc(WORDS[c.weather_code] || '')}</div>
+        <div class="hl">High ${deg(highs[0])} · Low ${deg(lows[0])}</div></div>
+      <dl class="facts">
+        <dt>Feels like</dt><dd>${deg(c.apparent_temperature)}</dd>
+        <dt>Humidity</dt><dd>${c.relative_humidity_2m ?? '–'}%</dd>
+        <dt>Wind</dt><dd>${Math.round(c.wind_speed_10m ?? 0)} ${esc(u.wind_speed_10m || (imperial() ? 'mph' : 'km/h'))} ${compass(c.wind_direction_10m)}</dd>
+        <dt>Rain now</dt><dd>${c.precipitation ?? 0} ${esc(u.precipitation || (imperial() ? 'inch' : 'mm'))}</dd>
+        <dt>Sunrise</dt><dd>${sun(d.sunrise?.[0])}</dd><dt>Sunset</dt><dd>${sun(d.sunset?.[0])}</dd>
+        ${d.uv_index_max?.[0] != null ? `<dt>UV index</dt><dd>${Math.round(d.uv_index_max[0])}</dd>` : ''}
+      </dl>
+    </section>
+    <section><h2>Next 24 hours</h2><div class="hours" id="hours">${hours.map((x, i) => `<div class="hr f ${i === 0 ? 'now1' : ''}" tabindex="0"><span class="h">${i === 0 ? 'Now' : hourText(x.t)}</span>${wicon(x.code, x.day)}<span class="t">${deg(x.temp)}</span><span class="p">${x.p ? x.p + '%' : ''}</span></div>`).join('')}</div></section>
+    <section><h2>7 days</h2><div class="days">${(d.time || []).map((t, i) => {
+      const day = H.parseYmd(t), name = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : H.DAYS[day.getDay()];
+      const a = ((lows[i] - lo) / span) * 100, b = ((highs[i] - lo) / span) * 100;
+      return `<div class="dy f" tabindex="0"><span class="n">${esc(name)}</span>${wicon(d.weather_code?.[i])}<span class="p">${d.precipitation_probability_max?.[i] ? d.precipitation_probability_max[i] + '%' : ''}</span><span class="lo">${deg(lows[i])}</span><span class="range"><i style="left:${a}%;width:${Math.max(4, b - a)}%"></i></span><span class="hi">${deg(highs[i])}</span></div>`;
+    }).join('')}</div></section>`;
+}
+function welcome() {
+  $('#place').textContent = 'Weather'; $('#upd').textContent = '';
+  $('#main').innerHTML = `<div class="welcome">${wicon(2)}<h2 style="font-size:1.3em;color:var(--text)">Which place?</h2>
+    <p class="muted">Type a city or town. Weather never looks up where you are: it only shows the place you choose.</p>
+    <input class="inp f" id="q" placeholder="City or town" spellcheck="false" autocomplete="off" data-enter="1"><div class="results" id="res"></div></div>`;
+  wireSearch($('#main'));
+  $('#q').focus();
+}
+function wireSearch(root) {
+  let t = 0, n = 0;
+  const q = $('#q', root), res = $('#res', root);
+  const run = async () => {
+    const text = q.value.trim(), my = ++n;
+    if (text.length < 2) { res.innerHTML = ''; return; }
+    res.innerHTML = '<div class="empty" style="padding:1em">Looking…</div>';
+    try {
+      const list = await invoke('weather_search', { q: text });
+      if (my !== n) return;
+      res.innerHTML = list.length ? list.map((p, i) => `<button class="card f" data-i="${i}"><span><b>${esc(p.name)}</b> <span class="muted">${esc([p.admin1, p.country].filter(Boolean).join(', '))}</span></span><span class="faint">${(+p.latitude).toFixed(2)}, ${(+p.longitude).toFixed(2)}</span></button>`).join('') : '<div class="empty" style="padding:1em">No place by that name</div>';
+      res._list = list;
+    } catch (e) { if (my === n) res.innerHTML = `<div class="empty" style="padding:1em">${esc(e)}</div>`; }
+  };
+  q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(run, 450); });
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(t); run().then(() => $('.card', res)?.focus()); } });
+  res.addEventListener('click', async e => {
+    const b = e.target.closest('[data-i]'); if (!b) return;
+    const p = res._list[+b.dataset.i];
+    try { S.settings = await invoke('weather_set', { place: p }); H.closeDialog(); S.f = null; await load(true); } catch (x) { H.toast(String(x)); }
+  });
+}
+function placeDialog() {
+  const d = H.dialog(`<h2>Change place</h2><input class="inp f" id="q" placeholder="City or town" spellcheck="false" autocomplete="off" data-enter="1" data-autofocus><div class="results" id="res"></div>
+    <div class="row end">${S.settings.place ? `<button class="btn danger f" data-a="forget">Forget ${esc(S.settings.place.name)}</button><span class="spacer"></span>` : ''}<button class="btn f" data-a="close">Cancel</button></div>`, { wide: true });
+  wireSearch(d);
+  d.addEventListener('click', async e => {
+    const b = e.target.closest('[data-a]'); if (!b) return;
+    if (b.dataset.a === 'close') H.closeDialog();
+    if (b.dataset.a === 'forget') { S.settings = await invoke('weather_set', { forget: true }).catch(() => S.settings); S.f = null; H.closeDialog(); draw(); }
+  });
+}
+
+// ------------------------------------------------------------------------------------------------ loading
+async function load(force = false) {
+  if (!S.settings.place) { draw(); return; }
+  S.loading = true; if (!S.f) draw();
+  try {
+    const r = await invoke('weather_get', { force });
+    S.settings = r.settings || S.settings; S.f = r.forecast && r.forecast.current ? r.forecast : null; S.error = r.error || '';
+    if (r.error && S.f) S.f.stale = r.error;
+  } catch (e) { S.error = String(e); }
+  S.loading = false; draw();
+  if (S.error && force) H.toast(S.error);
+}
+document.addEventListener('click', async e => {
+  if (H.dialogOpen() && e.target.closest('#layer')) return;
+  const u = e.target.closest('[data-units]');
+  if (u) { try { S.settings = await invoke('weather_set', { units: u.dataset.units }); } catch (x) { H.toast(String(x)); } drawUnits(); load(true); return; }
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'refresh') load(true);
+  if (b.dataset.act === 'place') placeDialog();
+});
+H.buttons.x = () => { if (!H.dialogOpen() && S.settings.place) placeDialog(); };
+H.buttons.y = () => { if (!H.dialogOpen()) load(true); };
+H.onBack = () => invoke('quit');
+H.onKey = e => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return false;
+  const k = e.key.toLowerCase();
+  if (k === 'r' || e.key === 'F5') { load(true); return true; }
+  if (k === 'c' && S.settings.place) { placeDialog(); return true; }
+  if (k === 'u') { $(`[data-units="${imperial() ? 'metric' : 'imperial'}"]`).click(); return true; }
+  return false;
+};
+setInterval(() => { if (!H.dialogOpen() && document.visibilityState === 'visible') load(false); }, 10 * 60 * 1000);
+window.addEventListener('focus', () => { if (S.f?.fetchedAt && Date.now() - S.f.fetchedAt > 30 * 60 * 1000) load(false); });
+
+invoke('weather_get', { force: false }).then(r => {
+  S.settings = r.settings || {}; S.f = r.forecast && r.forecast.current ? r.forecast : null; S.error = r.error || '';
+  draw(); $('#main .f, #units .btn')?.focus?.();
+}).catch(e => { $('#main').innerHTML = `<div class="empty">${esc(e)}</div>`; });
+
+// ------------------------------------------------------------------------------------------------ sample data (no app)
+window.DEMO = (() => {
+  let settings = { place: { name: 'Lisbon', admin1: 'Lisbon', country: 'Portugal', latitude: 38.72, longitude: -9.13, timezone: 'Europe/Lisbon' }, units: 'metric' };
+  const pad = H.pad2, now = new Date();
+  const iso = d => `${H.ymd(d)}T${pad(d.getHours())}:00`;
+  const hours = [...Array(48)].map((_, i) => { const d = new Date(now); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + i); return d; });
+  const codes = [0, 1, 2, 2, 3, 61, 80, 3, 2, 1, 0, 0];
+  const forecast = () => ({
+    fetchedAt: Date.now() - 8 * 60000, place: settings.place, units: settings.units,
+    current: { time: iso(now), temperature_2m: 18.4, apparent_temperature: 17.1, relative_humidity_2m: 64, weather_code: 2, is_day: 1, wind_speed_10m: 14, wind_direction_10m: 300, precipitation: 0 },
+    current_units: { wind_speed_10m: 'km/h', precipitation: 'mm' },
+    hourly: { time: hours.map(iso), temperature_2m: hours.map((d, i) => 14 + 6 * Math.sin((d.getHours() - 9) / 24 * 2 * Math.PI) + (i > 24 ? -1 : 0)), weather_code: hours.map((_, i) => codes[i % codes.length]), precipitation_probability: hours.map((_, i) => [0, 0, 5, 10, 20, 70, 55, 20, 5, 0, 0, 0][i % 12]), is_day: hours.map(d => d.getHours() >= 7 && d.getHours() < 19 ? 1 : 0) },
+    daily: { time: [...Array(7)].map((_, i) => H.ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + i))), weather_code: [2, 61, 80, 3, 1, 0, 95], temperature_2m_max: [21, 17, 16, 18, 22, 24, 20], temperature_2m_min: [13, 12, 11, 11, 13, 15, 14],
+      precipitation_probability_max: [10, 80, 65, 20, 0, 0, 60], sunrise: [...Array(7)].map(() => `${H.ymd(now)}T07:41`), sunset: [...Array(7)].map(() => `${H.ymd(now)}T18:36`), uv_index_max: [4, 2, 2, 3, 5, 5, 3] },
+  });
+  return (cmd, a) => {
+    switch (cmd) {
+      case 'weather_get': return { settings, forecast: settings.place ? forecast() : null, now: Date.now() };
+      case 'weather_search': return [{ name: 'Porto', admin1: 'Porto', country: 'Portugal', latitude: 41.15, longitude: -8.61 }, { name: 'Portland', admin1: 'Oregon', country: 'United States', latitude: 45.52, longitude: -122.68 }];
+      case 'weather_set': if (a.forget) settings.place = null; else if (a.place) settings.place = a.place; if (a.units) settings.units = a.units; return settings;
+      case 'quit': return null;
+    }
+    throw new Error('unknown ' + cmd);
+  };
+})();
+</script>
+</body>
+</html>

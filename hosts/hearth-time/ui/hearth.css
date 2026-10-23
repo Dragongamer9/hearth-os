@@ -1,0 +1,98 @@
+/* Hearth's look for its apps: the ember palette of hosts/linux/desktop/shell/Theme.qml (the same as Disks and
+   Terminal), big touch- and controller-sized targets, one clear focus ring for mouse, keyboard, controller and touch. */
+:root {
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --faint:#6f6055; --ember:#ff8a3d; --flame:#ffd166; --danger:#ff5d5d; --good:#6fd08c;
+  --sky:#6fb7ff; --ink:#2a1206; --r:14px; --gut:clamp(14px,2.4vw,36px); --ease:cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
+body { font:400 clamp(15px, .9vw + 7px, 24px)/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; overflow:hidden;
+  background:radial-gradient(1200px 700px at 85% -10%, #2a170d 0%, transparent 60%), var(--bg); user-select:none; -webkit-user-select:none; }
+button, input, textarea, select { font:inherit; color:inherit; }
+button { background:none; border:0; padding:0; }
+.app { display:grid; grid-template-rows:auto 1fr auto; height:100%; }
+header { display:flex; align-items:center; gap:.7em; padding:.7em var(--gut) .5em; flex-wrap:wrap; }
+header h1 { font-size:1.35em; margin:0; font-weight:650; letter-spacing:.01em; }
+header .sub { color:var(--muted); font-size:.85em; }
+.spacer { flex:1; }
+main { min-height:0; padding:0 var(--gut) .6em; }
+footer { display:flex; gap:1.4em; padding:.45em var(--gut) .7em; color:var(--muted); font-size:.8em; flex-wrap:wrap; }
+footer b { display:inline-grid; place-items:center; min-width:1.6em; height:1.6em; padding:0 .3em; border-radius:99px; background:var(--panel3); color:var(--text); margin-right:.35em; font-size:.85em; }
+.scroll { overflow:auto; min-height:0; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; padding:4px; }
+
+/* Focus */
+.f { outline:none; cursor:pointer; transition:transform .14s var(--ease), box-shadow .14s var(--ease), background .14s, border-color .14s; }
+.f:focus, .f.focus { box-shadow:0 0 0 3px var(--ember), 0 0 22px rgba(255,138,61,.35); }
+.f:active { transform:scale(.985); }
+input.f:focus, textarea.f:focus { border-color:var(--ember); }
+
+/* Buttons and chips */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:.45em; padding:.55em 1em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); min-height:2.6em; white-space:nowrap; }
+.btn:hover { background:var(--panel3); }
+.btn.primary { background:var(--ember); color:var(--ink); border-color:transparent; font-weight:650; }
+.btn.primary:hover { background:#ff9a55; }
+.btn.danger { color:#ffb3a1; border-color:#5c2a22; background:#2a1512; }
+.btn.ghost { background:transparent; border-color:transparent; }
+.btn.round { width:2.6em; padding:0; border-radius:50%; }
+.btn[disabled] { opacity:.45; pointer-events:none; }
+.btn svg, .ico svg { width:1.15em; height:1.15em; flex:none; }
+.tabs { display:flex; gap:.35em; background:var(--bg2); border:1px solid var(--line); border-radius:14px; padding:.25em; }
+.tab { padding:.45em 1em; border-radius:10px; color:var(--muted); font-weight:550; }
+.tab.on { background:var(--panel3); color:var(--text); }
+.chips { display:flex; flex-wrap:wrap; gap:.45em; }
+.chip { padding:.45em .85em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); text-align:left; }
+.chip.on { border-color:var(--ember); background:#3a2416; color:var(--text); }
+.chip small { display:block; color:var(--muted); font-size:.75em; }
+.switch { position:relative; width:2.9em; height:1.65em; border-radius:99px; background:var(--panel3); flex:none; }
+.switch::after { content:""; position:absolute; top:.2em; left:.2em; width:1.25em; height:1.25em; border-radius:50%; background:var(--muted); transition:left .18s var(--ease), background .18s; }
+.switch.on { background:var(--ember); }
+.switch.on::after { left:1.45em; background:var(--ink); }
+
+/* Panels, cards, lists */
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:.8em 1em; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:.8em 1em; text-align:left; width:100%; display:block; }
+.card:hover { background:var(--panel2); }
+.card.sel { background:var(--panel2); border-color:#5a3f2c; }
+.muted { color:var(--muted); }
+.faint { color:var(--faint); }
+.empty { color:var(--muted); padding:2.5em 1em; text-align:center; }
+.empty .big { font-size:2.6em; display:block; margin-bottom:.2em; opacity:.6; }
+.badge { font-size:.72em; padding:.12em .55em; border-radius:99px; background:rgba(255,138,61,.16); color:var(--ember); white-space:nowrap; }
+.num { font-variant-numeric:tabular-nums; }
+.inp { width:100%; padding:.6em .8em; border-radius:12px; border:1px solid var(--line); background:var(--bg2); outline:none; }
+textarea.inp { resize:none; line-height:1.45; user-select:text; -webkit-user-select:text; }
+input.inp { user-select:text; -webkit-user-select:text; }
+.field { margin:.75em 0; }
+.field > label, .label { display:block; color:var(--muted); font-size:.85em; margin-bottom:.35em; }
+.row { display:flex; gap:.6em; align-items:center; flex-wrap:wrap; }
+.row.end { justify-content:flex-end; margin-top:1em; }
+
+/* Spinners: a number you change with Up/Down (D-pad), the buttons, the mouse wheel, or by typing digits. */
+.spins { display:flex; align-items:center; gap:.35em; flex-wrap:wrap; }
+.spin { display:inline-grid; grid-template-rows:auto auto auto; justify-items:center; border-radius:12px; background:var(--bg2); border:1px solid var(--line); padding:.1em .35em; min-width:3.6em; }
+.spin .v { font-size:1.6em; font-weight:650; font-variant-numeric:tabular-nums; padding:.05em .2em; }
+.spin .u, .spin .d { color:var(--muted); font-size:.75em; line-height:1; padding:.2em .6em; cursor:pointer; }
+.spin .u svg, .spin .d svg { width:1.3em; height:1.3em; display:block; }
+.spin .u:hover, .spin .d:hover { color:var(--ember); }
+.spin .cap { font-size:.65em; color:var(--faint); }
+.spins .sep { font-size:1.6em; font-weight:650; color:var(--muted); }
+
+/* Dialogs */
+#layer:empty { display:none; }
+.veil { position:fixed; inset:0; background:rgba(8,5,4,.72); display:grid; place-items:center; padding:var(--gut); z-index:10; backdrop-filter:blur(3px); }
+.dlg { width:min(40em, 100%); max-height:100%; overflow:auto; background:var(--panel); border:1px solid #4a372b; border-radius:18px; padding:1.1em 1.3em; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+.dlg.wide { width:min(56em, 100%); }
+.dlg h2 { margin:0 0 .6em; font-size:1.2em; }
+.toast { position:fixed; left:50%; bottom:3.4em; transform:translateX(-50%) translateY(1em); background:var(--panel3); border:1px solid #4a372b; color:var(--text); padding:.6em 1.1em; border-radius:12px;
+  opacity:0; transition:opacity .2s, transform .2s var(--ease); pointer-events:none; z-index:20; max-width:90vw; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+.toast.on { opacity:1; transform:translateX(-50%); }
+
+/* On-screen keyboard (typing with a controller) */
+.osk { display:grid; grid-template-columns:repeat(10, 1fr); gap:.3em; margin-top:.5em; }
+.osk button { padding:.45em 0; border-radius:9px; background:var(--panel3); border:1px solid var(--line); }
+.osk .wide { grid-column:span 2; }
+.osk .wider { grid-column:span 4; }
+
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }

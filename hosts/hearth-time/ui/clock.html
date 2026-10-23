@@ -1,1 +1,452 @@
-<!doctype html><title>clock</title><button class=f autofocus onclick="window.__TAURI__.core.invoke('ring_done',{action:'dismiss'})">Dismiss</button>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clock</title>
+<link rel="stylesheet" href="hearth.css">
+<style>
+header .now { font-size:1.05em; color:var(--muted); font-variant-numeric:tabular-nums; }
+main { display:grid; grid-template-rows:auto 1fr; gap:.8em; }
+.view { min-height:0; overflow:auto; padding:4px 4px 1em; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(17em, 1fr)); gap:.8em; }
+.ringing { display:flex; align-items:center; gap:1em; padding:.8em 1em; border-radius:var(--r); background:linear-gradient(90deg, #4a2412, #2a1810); border:1px solid #7a3a1a; }
+.ringing b { color:var(--flame); }
+
+/* Alarms */
+.alarm { display:grid; grid-template-columns:1fr auto; gap:.2em .8em; align-items:center; }
+.alarm .t { font-size:2.3em; font-weight:300; letter-spacing:.01em; font-variant-numeric:tabular-nums; line-height:1.1; }
+.alarm .t small { font-size:.42em; color:var(--muted); margin-left:.3em; font-weight:500; }
+.alarm .l { color:var(--text); font-weight:550; }
+.alarm .s { color:var(--muted); font-size:.82em; grid-column:1 / -1; display:flex; gap:.4em 1em; flex-wrap:wrap; }
+.alarm.off .t, .alarm.off .l { opacity:.45; }
+.days { display:flex; gap:.3em; }
+.days span { width:1.55em; height:1.55em; display:grid; place-items:center; border-radius:50%; font-size:.72em; background:var(--panel3); color:var(--muted); }
+.days span.on { background:rgba(255,138,61,.22); color:var(--ember); font-weight:700; }
+.add { display:grid; place-items:center; min-height:7.5em; border:1px dashed #4a372b; background:transparent; color:var(--muted); border-radius:var(--r); gap:.3em; }
+.add svg { width:1.6em; height:1.6em; }
+
+/* Timers */
+.timer { display:grid; grid-template-columns:auto 1fr; gap:.9em; align-items:center; }
+.ring { width:6.2em; height:6.2em; position:relative; }
+.ring svg { width:100%; height:100%; transform:rotate(-90deg); }
+.ring .rt { position:absolute; inset:0; display:grid; place-items:center; font-variant-numeric:tabular-nums; font-weight:600; font-size:1.05em; }
+.timer .lbl { font-weight:600; }
+.timer .acts { display:flex; gap:.4em; flex-wrap:wrap; margin-top:.4em; }
+.timer.done .rt { color:var(--flame); animation:blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity:.35; } }
+
+/* Stopwatch */
+.sw { display:grid; grid-template-columns:minmax(0, 1fr) minmax(14em, 24em); gap:var(--gut); height:100%; }
+.sw .big { font-size:clamp(3em, 9vw, 7.5em); font-weight:200; font-variant-numeric:tabular-nums; text-align:center; letter-spacing:.02em; }
+.sw .big small { font-size:.45em; color:var(--muted); }
+.sw .ctl { display:flex; gap:.8em; justify-content:center; margin-top:.6em; }
+.sw .ctl .btn { min-width:7em; min-height:3em; }
+.laps { display:flex; flex-direction:column; gap:.35em; }
+.lap { display:grid; grid-template-columns:3.4em 1fr 1fr; gap:.6em; padding:.45em .8em; border-radius:10px; background:var(--panel); font-variant-numeric:tabular-nums; }
+.lap .n { color:var(--muted); }
+.lap.best .d { color:var(--good); } .lap.worst .d { color:var(--danger); }
+
+/* World */
+.city { display:grid; grid-template-columns:1fr auto; gap:.1em .8em; align-items:center; }
+.city .n { font-weight:600; font-size:1.1em; }
+.city .o { color:var(--muted); font-size:.82em; }
+.city .t { grid-row:span 2; font-size:2em; font-weight:300; font-variant-numeric:tabular-nums; }
+.city.here { border-color:#5a3f2c; }
+.results { display:flex; flex-direction:column; gap:.35em; max-height:50vh; overflow:auto; margin-top:.6em; padding:3px; }
+.results .card { padding:.55em .9em; display:flex; justify-content:space-between; gap:1em; }
+@media (max-width: 760px) { .sw { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Clock</h1>
+    <span class="now" id="now"></span>
+    <span class="spacer"></span>
+    <div class="tabs" id="tabs" role="tablist">
+      <button class="tab f" data-tab="alarms">Alarms</button>
+      <button class="tab f" data-tab="timers">Timers</button>
+      <button class="tab f" data-tab="stopwatch">Stopwatch</button>
+      <button class="tab f" data-tab="world">World</button>
+    </div>
+  </header>
+  <main>
+    <div id="ringing" hidden></div>
+    <section class="view" id="view"></section>
+  </main>
+  <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Add</span><span><b>LB</b><b>RB</b>Switch tab</span><span id="hint"></span></footer>
+</div>
+<div id="layer"></div>
+<script src="hearth.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, icon, invoke, pad2 } = H;
+const S = { tab: 'alarms', clock: { alarms: [], timers: [], stopwatch: { startedAt: null, elapsed: 0, laps: [] }, world: [], settings: {} }, mtime: 0, ringing: null, offset: 0 };
+const now = () => Date.now() + S.offset;
+const DAY1 = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+try { const t = localStorage.getItem('clock.tab'); if (t) S.tab = t; } catch { }
+
+// ------------------------------------------------------------------------------------------------ saving
+let saveTimer = 0;
+function save(soon = false) {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try { S.mtime = await invoke('clock_save', { value: S.clock }); } catch (e) { H.toast(`Couldn't save: ${e}`); }
+  }, soon ? 0 : 250);
+}
+async function load(force = false) {
+  try {
+    const r = await invoke('clock_get');
+    S.offset = r.now ? r.now - Date.now() : 0;
+    S.ringing = r.ringing;
+    if (force || r.mtime !== S.mtime) { S.clock = r.clock; S.mtime = r.mtime; fixOnce(); render(); }
+    renderRinging();
+  } catch (e) { $('#view').innerHTML = `<div class="empty">${esc(e)}</div>`; }
+}
+// A one-time alarm whose moment has passed (the PC was off, say) shows as off.
+function fixOnce() {
+  let changed = false;
+  for (const a of S.clock.alarms) {
+    if (a.enabled && !(a.days || []).length && !a.snoozedUntil) {
+      const at = onceMoment(a);
+      if (at && at < now() - 30 * 60000) { a.enabled = false; changed = true; }
+    }
+  }
+  if (changed) save();
+}
+
+// ------------------------------------------------------------------------------------------------ alarm times
+const parseHM = s => { const [h, m] = String(s || '7:00').split(':').map(Number); return [h || 0, m || 0]; };
+function onceMoment(a) { if (!a.date) return null; const [h, m] = parseHM(a.time); const d = H.parseYmd(a.date); d.setHours(h, m, 0, 0); return d.getTime(); }
+// The next day a one-time alarm at this time rings: today if it's still ahead, else tomorrow.
+function nextDateFor(time) { const [h, m] = parseHM(time); const d = new Date(now()); d.setHours(h, m, 0, 0); if (d.getTime() <= now()) d.setDate(d.getDate() + 1); return H.ymd(d); }
+function nextRing(a) {
+  if (!a.enabled) return null;
+  const snooze = a.snoozedUntil && a.snoozedUntil > now() ? a.snoozedUntil : null;
+  let reg = null;
+  const days = a.days || [];
+  if (!days.length) { const m = onceMoment(a); reg = m && m > now() ? m : null; }
+  else {
+    const [h, mi] = parseHM(a.time);
+    for (let i = 0; i < 8 && !reg; i++) {
+      const d = new Date(now()); d.setDate(d.getDate() + i); d.setHours(h, mi, 0, 0);
+      if (days.includes(d.getDay()) && d.getTime() > now()) reg = d.getTime();
+    }
+  }
+  return snooze && reg ? Math.min(snooze, reg) : snooze || reg;
+}
+function daysText(days) {
+  if (!days || !days.length) return 'Once';
+  const s = [...days].sort().join(',');
+  if (s === '0,1,2,3,4,5,6') return 'Every day';
+  if (s === '1,2,3,4,5') return 'Weekdays';
+  if (s === '0,6') return 'Weekends';
+  return [...days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => H.DAYS[d].slice(0, 3)).join(', ');
+}
+function hmText(time) {
+  const [h, m] = parseHM(time);
+  if (H.clock24) return { t: `${pad2(h)}:${pad2(m)}`, ap: '' };
+  return { t: `${h % 12 || 12}:${pad2(m)}`, ap: h < 12 ? 'AM' : 'PM' };
+}
+
+// ------------------------------------------------------------------------------------------------ drawing
+function setTab(t) {
+  S.tab = t;
+  try { localStorage.setItem('clock.tab', t); } catch { }
+  $$('#tabs .tab').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  render();
+  ($('#view .f') || $(`#tabs [data-tab="${t}"]`))?.focus({ preventScroll: true });
+}
+function render() {
+  $$('#tabs .tab').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
+  const f = document.activeElement?.dataset?.key;
+  ({ alarms: renderAlarms, timers: renderTimers, stopwatch: renderStopwatch, world: renderWorld })[S.tab]();
+  if (f) $(`#view [data-key="${CSS.escape(f)}"]`)?.focus({ preventScroll: true });
+}
+function renderRinging() {
+  const el = $('#ringing');
+  if (!S.ringing) { el.hidden = true; el.innerHTML = ''; return; }
+  const it = S.ringing.items?.[0] || {};
+  el.hidden = false;
+  el.innerHTML = `<div class="ringing">${icon('bell')}<span><b>${esc(it.kind === 'timer' ? 'Timer done' : 'Alarm ringing')}</b> ${esc(it.label || '')}</span><span class="spacer"></span><button class="btn primary f" data-act="stop-ring">Stop</button></div>`;
+}
+
+function renderAlarms() {
+  const list = S.clock.alarms;
+  $('#view').innerHTML = `<div class="grid">${list.map(a => {
+    const t = hmText(a.time), next = nextRing(a);
+    const days = a.days || [];
+    return `<div class="card alarm f ${a.enabled ? '' : 'off'}" tabindex="0" data-key="alarm:${esc(a.id)}" data-act="edit-alarm" data-id="${esc(a.id)}">
+      <div><div class="t">${esc(t.t)}<small>${esc(t.ap)}</small></div><div class="l">${esc(a.label || 'Alarm')}</div></div>
+      <button class="switch f ${a.enabled ? 'on' : ''}" data-act="toggle-alarm" data-id="${esc(a.id)}" data-key="sw:${esc(a.id)}" aria-label="${a.enabled ? 'On' : 'Off'}"></button>
+      <div class="s"><span class="days">${DAY1.map((d, i) => `<span class="${days.includes(i) ? 'on' : ''}">${d}</span>`).join('')}</span>
+        <span>${esc(daysText(days))}</span><span>${next ? (a.snoozedUntil > now() ? 'Snoozed, rings in ' : 'Rings in ') + H.words(next - now()) : 'Off'}</span></div>
+    </div>`;
+  }).join('')}<button class="add f" data-act="new-alarm" data-key="new-alarm">${icon('plus')}<span>Add alarm</span></button></div>
+  ${list.length ? '' : '<p class="muted" style="margin-top:1em">Alarms ring even when Clock is closed, in Game Mode, and in Do not disturb.</p>'}`;
+}
+
+function timerLeft(t) { return t.endsAt ? t.endsAt - now() : (t.remaining ?? t.duration); }
+function renderTimers() {
+  const list = S.clock.timers;
+  $('#view').innerHTML = `<div class="grid">${list.map(t => {
+    const left = timerLeft(t), run = !!t.endsAt, done = run && left <= 0;
+    const frac = Math.max(0, Math.min(1, left / (t.duration || 1)));
+    const C = 2 * Math.PI * 44;
+    return `<div class="card timer ${done ? 'done' : ''}" data-id="${esc(t.id)}">
+      <div class="ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="var(--panel3)" stroke-width="7"/><circle class="arc" cx="50" cy="50" r="44" fill="none" stroke="${done ? 'var(--flame)' : 'var(--ember)'}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - frac)}"/></svg><span class="rt">${done ? 'Done' : H.dur(left, { ceil: true })}</span></div>
+      <div><div class="lbl">${esc(t.label || 'Timer')}</div><div class="muted" style="font-size:.82em">${esc(H.dur(t.duration))}${run && !done ? ' · ends ' + esc(H.fmtTime(t.endsAt)) : ''}</div>
+        <div class="acts">
+          ${done ? `<button class="btn primary f" data-act="timer-reset" data-id="${esc(t.id)}" data-key="tr:${esc(t.id)}">${icon('check')}Done</button>`
+          : `<button class="btn ${run ? '' : 'primary'} f" data-act="timer-toggle" data-id="${esc(t.id)}" data-key="tt:${esc(t.id)}">${icon(run ? 'pause' : 'play')}${run ? 'Pause' : (left < t.duration ? 'Resume' : 'Start')}</button>`}
+          <button class="btn f" data-act="timer-plus" data-id="${esc(t.id)}" data-key="tp:${esc(t.id)}">+1 min</button>
+          <button class="btn round f" data-act="timer-reset" data-id="${esc(t.id)}" data-key="tz:${esc(t.id)}" aria-label="Reset">${icon('reset')}</button>
+          <button class="btn round f" data-act="timer-del" data-id="${esc(t.id)}" data-key="td:${esc(t.id)}" aria-label="Delete">${icon('trash')}</button>
+        </div></div></div>`;
+  }).join('')}<button class="add f" data-act="new-timer" data-key="new-timer">${icon('plus')}<span>New timer</span></button></div>
+  ${list.length ? '' : '<p class="muted" style="margin-top:1em">Run as many timers as you like at once. They ring with Clock closed too.</p>'}`;
+}
+
+function swElapsed() { const s = S.clock.stopwatch; return (s.elapsed || 0) + (s.startedAt ? now() - s.startedAt : 0); }
+function renderStopwatch() {
+  const s = S.clock.stopwatch, run = !!s.startedAt, laps = s.laps || [];
+  const diffs = laps.map((l, i) => l - (laps[i - 1] || 0));
+  const best = diffs.length > 1 ? Math.min(...diffs) : -1, worst = diffs.length > 1 ? Math.max(...diffs) : -1;
+  $('#view').innerHTML = `<div class="sw"><div>
+      <div class="big" id="swbig">${swText(swElapsed())}</div>
+      <div class="ctl">
+        <button class="btn ${run ? '' : 'primary'} f" data-act="sw-toggle" data-key="sw-toggle">${icon(run ? 'pause' : 'play')}${run ? 'Stop' : (swElapsed() ? 'Resume' : 'Start')}</button>
+        <button class="btn f" data-act="sw-lap" data-key="sw-lap" ${run ? '' : 'disabled'}>${icon('flag')}Lap</button>
+        <button class="btn f" data-act="sw-reset" data-key="sw-reset" ${swElapsed() && !run ? '' : 'disabled'}>${icon('reset')}Reset</button>
+      </div></div>
+      <div class="laps scroll">${laps.length ? laps.map((l, i) => i).reverse().map(i => `<div class="lap ${diffs[i] === best ? 'best' : diffs[i] === worst ? 'worst' : ''}"><span class="n">Lap ${i + 1}</span><span class="d">${H.dur(diffs[i], { cs: true })}</span><span>${H.dur(laps[i], { cs: true })}</span></div>`).join('') : '<div class="empty">Laps show here</div>'}</div>
+    </div>`;
+}
+function swText(ms) { const t = H.dur(ms, { cs: true }); const [a, b] = t.split('.'); return `${a}<small>.${b}</small>`; }
+
+const CITIES = [['Honolulu', 'Pacific/Honolulu'], ['Anchorage', 'America/Anchorage'], ['Los Angeles', 'America/Los_Angeles'], ['San Francisco', 'America/Los_Angeles'], ['Vancouver', 'America/Vancouver'], ['Seattle', 'America/Los_Angeles'],
+  ['Denver', 'America/Denver'], ['Phoenix', 'America/Phoenix'], ['Mexico City', 'America/Mexico_City'], ['Chicago', 'America/Chicago'], ['Dallas', 'America/Chicago'], ['Toronto', 'America/Toronto'], ['New York', 'America/New_York'],
+  ['Miami', 'America/New_York'], ['Bogotá', 'America/Bogota'], ['Lima', 'America/Lima'], ['Santiago', 'America/Santiago'], ['Caracas', 'America/Caracas'], ['Buenos Aires', 'America/Argentina/Buenos_Aires'], ['São Paulo', 'America/Sao_Paulo'],
+  ['Rio de Janeiro', 'America/Sao_Paulo'], ['Reykjavík', 'Atlantic/Reykjavik'], ['London', 'Europe/London'], ['Dublin', 'Europe/Dublin'], ['Lisbon', 'Europe/Lisbon'], ['Madrid', 'Europe/Madrid'], ['Paris', 'Europe/Paris'],
+  ['Brussels', 'Europe/Brussels'], ['Amsterdam', 'Europe/Amsterdam'], ['Berlin', 'Europe/Berlin'], ['Zurich', 'Europe/Zurich'], ['Rome', 'Europe/Rome'], ['Vienna', 'Europe/Vienna'], ['Prague', 'Europe/Prague'],
+  ['Stockholm', 'Europe/Stockholm'], ['Oslo', 'Europe/Oslo'], ['Copenhagen', 'Europe/Copenhagen'], ['Warsaw', 'Europe/Warsaw'], ['Helsinki', 'Europe/Helsinki'], ['Athens', 'Europe/Athens'], ['Istanbul', 'Europe/Istanbul'],
+  ['Kyiv', 'Europe/Kyiv'], ['Moscow', 'Europe/Moscow'], ['Cairo', 'Africa/Cairo'], ['Lagos', 'Africa/Lagos'], ['Nairobi', 'Africa/Nairobi'], ['Johannesburg', 'Africa/Johannesburg'], ['Casablanca', 'Africa/Casablanca'],
+  ['Jerusalem', 'Asia/Jerusalem'], ['Riyadh', 'Asia/Riyadh'], ['Tehran', 'Asia/Tehran'], ['Dubai', 'Asia/Dubai'], ['Karachi', 'Asia/Karachi'], ['Delhi', 'Asia/Kolkata'], ['Mumbai', 'Asia/Kolkata'], ['Kathmandu', 'Asia/Kathmandu'],
+  ['Dhaka', 'Asia/Dhaka'], ['Bangkok', 'Asia/Bangkok'], ['Jakarta', 'Asia/Jakarta'], ['Singapore', 'Asia/Singapore'], ['Kuala Lumpur', 'Asia/Kuala_Lumpur'], ['Manila', 'Asia/Manila'], ['Hong Kong', 'Asia/Hong_Kong'],
+  ['Beijing', 'Asia/Shanghai'], ['Shanghai', 'Asia/Shanghai'], ['Taipei', 'Asia/Taipei'], ['Seoul', 'Asia/Seoul'], ['Tokyo', 'Asia/Tokyo'], ['Perth', 'Australia/Perth'], ['Adelaide', 'Australia/Adelaide'],
+  ['Brisbane', 'Australia/Brisbane'], ['Sydney', 'Australia/Sydney'], ['Melbourne', 'Australia/Melbourne'], ['Auckland', 'Pacific/Auckland'], ['UTC', 'UTC']];
+function zoneParts(tz, at) {
+  try {
+    const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
+    const p = Object.fromEntries(f.formatToParts(new Date(at)).map(x => [x.type, x.value]));
+    return { y: +p.year, mo: +p.month, d: +p.day, h: +p.hour % 24, mi: +p.minute };
+  } catch { return null; }
+}
+function cityLine(tz) {
+  const t = now(), z = zoneParts(tz, t); if (!z) return { time: '?', off: 'Unknown time zone' };
+  const local = new Date(t);
+  const there = Date.UTC(z.y, z.mo - 1, z.d, z.h, z.mi), here = Date.UTC(local.getFullYear(), local.getMonth(), local.getDate(), local.getHours(), local.getMinutes());
+  const diffH = Math.round((there - here) / 900000) / 4;
+  const dayDiff = Math.round((Date.UTC(z.y, z.mo - 1, z.d) - Date.UTC(local.getFullYear(), local.getMonth(), local.getDate())) / 86400000);
+  const day = dayDiff === 0 ? 'Today' : dayDiff === 1 ? 'Tomorrow' : dayDiff === -1 ? 'Yesterday' : '';
+  const off = diffH === 0 ? 'Same time as here' : `${diffH > 0 ? '+' : '−'}${Math.abs(diffH)} h`;
+  const time = H.clock24 ? `${pad2(z.h)}:${pad2(z.mi)}` : `${z.h % 12 || 12}:${pad2(z.mi)} ${z.h < 12 ? 'AM' : 'PM'}`;
+  return { time, off: `${day}${day ? ', ' : ''}${off}` };
+}
+function renderWorld() {
+  const list = S.clock.world;
+  const here = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  $('#view').innerHTML = `<div class="grid">
+    <div class="card city here"><div class="n">Here</div><div class="t">${esc(H.fmtTime(now()))}</div><div class="o">${esc(here.replace(/_/g, ' '))}</div></div>
+    ${list.map((c, i) => { const l = cityLine(c.tz); return `<div class="card city f" tabindex="0" data-act="city" data-i="${i}" data-key="city:${esc(c.tz)}:${esc(c.name)}"><div class="n">${esc(c.name)}</div><div class="t">${esc(l.time)}</div><div class="o">${esc(l.off)}</div></div>`; }).join('')}
+    <button class="add f" data-act="new-city" data-key="new-city" style="min-height:5.5em">${icon('plus')}<span>Add a city</span></button></div>`;
+}
+
+// ------------------------------------------------------------------------------------------------ dialogs
+function alarmDialog(a) {
+  const isNew = !a;
+  a = a ? JSON.parse(JSON.stringify(a)) : { id: '', time: '07:00', days: [1, 2, 3, 4, 5], label: '', enabled: true, snooze: S.clock.settings?.snooze || 10 };
+  const [h, m] = parseHM(a.time);
+  const d = H.dialog(`<h2>${isNew ? 'New alarm' : 'Edit alarm'}</h2>
+    <div class="spins" style="justify-content:center">${H.spin('h', h, 0, 23, { cap: 'Hour' })}<span class="sep">:</span>${H.spin('m', m, 0, 59, { cap: 'Minute' })}</div>
+    <div class="muted" id="hm" style="text-align:center;margin-top:.3em"></div>
+    <div class="field"><label>Repeat</label><div class="chips" id="days">${[1, 2, 3, 4, 5, 6, 0].map(i => `<button class="chip f ${a.days.includes(i) ? 'on' : ''}" data-day="${i}">${H.DAYS[i].slice(0, 3)}</button>`).join('')}</div>
+      <div class="chips" style="margin-top:.45em"><button class="chip f" data-preset="">Once</button><button class="chip f" data-preset="1,2,3,4,5">Weekdays</button><button class="chip f" data-preset="0,6">Weekends</button><button class="chip f" data-preset="0,1,2,3,4,5,6">Every day</button></div></div>
+    <div class="field"><label for="lbl">Name</label><input class="inp f" id="lbl" maxlength="60" placeholder="Alarm" value="${esc(a.label)}" spellcheck="false" autocomplete="off"></div>
+    <div class="field"><label>Snooze</label><div class="chips" id="snz">${[5, 10, 15, 20].map(n => `<button class="chip f ${(a.snooze || 10) === n ? 'on' : ''}" data-snooze="${n}">${n} min</button>`).join('')}</div></div>
+    <div class="row end">${isNew ? '' : `<button class="btn danger f" data-a="del">${icon('trash')}Delete</button><span class="spacer"></span>`}<button class="btn f" data-a="cancel">Cancel</button><button class="btn primary f" data-a="save" data-autofocus>Save</button></div>`);
+  $('.spin', d).focus();
+  const showHm = () => { const hh = +$('[data-spin="h"]', d).dataset.v, mm = +$('[data-spin="m"]', d).dataset.v, t = hmText(`${hh}:${mm}`); $('#hm', d).textContent = `${t.t} ${t.ap}`.trim() + (H.clock24 ? '' : ''); };
+  showHm(); d.addEventListener('spin', showHm);
+  const days = () => $$('#days .chip.on', d).map(b => +b.dataset.day);
+  d.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.day) b.classList.toggle('on');
+    else if ('preset' in b.dataset) { const p = b.dataset.preset ? b.dataset.preset.split(',').map(Number) : []; $$('#days .chip', d).forEach(c => c.classList.toggle('on', p.includes(+c.dataset.day))); }
+    else if (b.dataset.snooze) { $$('#snz .chip', d).forEach(c => c.classList.toggle('on', c === b)); }
+    else if (b.dataset.a === 'cancel') H.closeDialog();
+    else if (b.dataset.a === 'del') { S.clock.alarms = S.clock.alarms.filter(x => x.id !== a.id); save(); H.closeDialog(); render(); }
+    else if (b.dataset.a === 'save') {
+      a.time = `${pad2($('[data-spin="h"]', d).dataset.v)}:${pad2($('[data-spin="m"]', d).dataset.v)}`;
+      a.days = days(); a.label = $('#lbl', d).value.trim();
+      a.snooze = +($('#snz .chip.on', d)?.dataset.snooze || 10);
+      a.enabled = true; a.since = now(); a.snoozedUntil = null;
+      a.date = a.days.length ? null : nextDateFor(a.time);
+      if (!a.id) { a.id = 'a' + Date.now().toString(36); S.clock.alarms.push(a); }
+      else S.clock.alarms = S.clock.alarms.map(x => x.id === a.id ? a : x);
+      S.clock.alarms.sort((x, y) => x.time.localeCompare(y.time));
+      save(); H.closeDialog(); render();
+      const n = nextRing(a); if (n) H.toast(`Rings in ${H.words(n - now())}`);
+    }
+  });
+}
+
+function timerDialog() {
+  const d = H.dialog(`<h2>New timer</h2>
+    <div class="chips" id="pre">${[[1, '1 min'], [3, '3 min'], [5, '5 min'], [10, '10 min'], [15, '15 min'], [20, '20 min'], [30, '30 min'], [45, '45 min'], [60, '1 hour']].map(([m, l]) => `<button class="chip f" data-min="${m}">${l}</button>`).join('')}</div>
+    <div class="field"><label>Or exactly</label><div class="spins">${H.spin('h', 0, 0, 23, { cap: 'Hours' })}<span class="sep">:</span>${H.spin('m', 10, 0, 59, { cap: 'Minutes' })}<span class="sep">:</span>${H.spin('s', 0, 0, 59, { cap: 'Seconds' })}</div></div>
+    <div class="field"><label for="lbl">Name</label><input class="inp f" id="lbl" maxlength="40" placeholder="Timer" spellcheck="false" autocomplete="off"></div>
+    <div class="row end"><button class="btn f" data-a="cancel">Cancel</button><button class="btn primary f" data-a="start" data-autofocus>${icon('play')}Start</button></div>`);
+  const go = ms => {
+    if (ms < 1000) { H.toast('Set a time first'); return; }
+    const t = { id: 't' + Date.now().toString(36), label: $('#lbl', d).value.trim(), duration: ms, remaining: ms, endsAt: now() + ms };
+    S.clock.timers.push(t); save(); H.closeDialog(); render();
+  };
+  d.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.min) go(+b.dataset.min * 60000);
+    else if (b.dataset.a === 'cancel') H.closeDialog();
+    else if (b.dataset.a === 'start') go(((+$('[data-spin="h"]', d).dataset.v * 60 + +$('[data-spin="m"]', d).dataset.v) * 60 + +$('[data-spin="s"]', d).dataset.v) * 1000);
+  });
+}
+
+function cityDialog() {
+  const d = H.dialog(`<h2>Add a city</h2><input class="inp f" id="q" placeholder="Search cities" spellcheck="false" autocomplete="off" data-enter="1"><div class="results" id="res"></div>
+    <div class="row end"><button class="btn f" data-a="cancel">Close</button></div>`, { wide: false });
+  const draw = () => {
+    const q = $('#q', d).value.trim().toLowerCase();
+    const have = new Set(S.clock.world.map(c => c.name + c.tz));
+    const list = CITIES.filter(([n, z]) => !have.has(n + z) && (!q || n.toLowerCase().includes(q) || z.toLowerCase().includes(q))).slice(0, 40);
+    $('#res', d).innerHTML = list.length ? list.map(([n, z]) => `<button class="card f" data-name="${esc(n)}" data-tz="${esc(z)}"><span>${esc(n)}</span><span class="muted">${esc(cityLine(z).time)}</span></button>`).join('') : '<div class="empty">No city by that name</div>';
+  };
+  draw();
+  $('#q', d).addEventListener('input', draw);
+  $('#q', d).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#res .card', d)?.click(); } });
+  d.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.tz) { S.clock.world.push({ name: b.dataset.name, tz: b.dataset.tz }); save(); H.closeDialog(); render(); }
+    else if (b.dataset.a === 'cancel') H.closeDialog();
+  });
+}
+function cityMenu(i) {
+  const c = S.clock.world[i];
+  const d = H.dialog(`<h2>${esc(c.name)}</h2><p class="muted">${esc(c.tz.replace(/_/g, ' '))}</p><div class="row end">
+    <button class="btn f" data-a="up" ${i ? '' : 'disabled'}>${icon('up')}Move up</button><button class="btn danger f" data-a="del">${icon('trash')}Remove</button><button class="btn primary f" data-a="cancel" data-autofocus>Done</button></div>`);
+  d.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.a === 'del') { S.clock.world.splice(i, 1); save(); }
+    if (b.dataset.a === 'up' && i) { const w = S.clock.world; [w[i - 1], w[i]] = [w[i], w[i - 1]]; save(); }
+    H.closeDialog(); render();
+  });
+}
+
+// ------------------------------------------------------------------------------------------------ actions
+document.addEventListener('click', e => {
+  if (H.dialogOpen() && e.target.closest('#layer')) return;
+  const tab = e.target.closest('[data-tab]'); if (tab) { setTab(tab.dataset.tab); return; }
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const id = b.dataset.id, act = b.dataset.act;
+  const T = () => S.clock.timers.find(t => t.id === id);
+  switch (act) {
+    case 'new-alarm': alarmDialog(); break;
+    case 'edit-alarm': alarmDialog(S.clock.alarms.find(a => a.id === id)); break;
+    case 'toggle-alarm': {
+      e.stopPropagation();
+      const a = S.clock.alarms.find(x => x.id === id); if (!a) break;
+      a.enabled = !a.enabled; a.snoozedUntil = null;
+      if (a.enabled) { a.since = now(); if (!(a.days || []).length) a.date = nextDateFor(a.time); const n = nextRing(a); if (n) H.toast(`Rings in ${H.words(n - now())}`); }
+      save(); render(); break;
+    }
+    case 'new-timer': timerDialog(); break;
+    case 'timer-toggle': { const t = T(); if (!t) break; if (t.endsAt) { t.remaining = Math.max(0, t.endsAt - now()); t.endsAt = null; } else { t.endsAt = now() + (t.remaining ?? t.duration); } save(); render(); break; }
+    case 'timer-plus': { const t = T(); if (!t) break; if (t.endsAt) t.endsAt = Math.max(t.endsAt, now()) + 60000; else t.remaining = (t.remaining ?? t.duration) + 60000; t.duration = Math.max(t.duration, timerLeft(t)); save(); render(); break; }
+    case 'timer-reset': { const t = T(); if (!t) break; t.endsAt = null; t.remaining = t.duration; save(); render(); break; }
+    case 'timer-del': S.clock.timers = S.clock.timers.filter(t => t.id !== id); save(); render(); break;
+    case 'sw-toggle': { const s = S.clock.stopwatch; if (s.startedAt) { s.elapsed = swElapsed(); s.startedAt = null; } else s.startedAt = now(); save(); render(); break; }
+    case 'sw-lap': { const s = S.clock.stopwatch; if (s.startedAt) { (s.laps ||= []).push(swElapsed()); save(); render(); } break; }
+    case 'sw-reset': S.clock.stopwatch = { startedAt: null, elapsed: 0, laps: [] }; save(); render(); break;
+    case 'new-city': cityDialog(); break;
+    case 'city': cityMenu(+b.dataset.i); break;
+    case 'stop-ring': invoke('ring_stop').then(() => { S.ringing = null; renderRinging(); setTimeout(() => load(true), 800); }); break;
+  }
+});
+const TABS = ['alarms', 'timers', 'stopwatch', 'world'];
+const nextTab = d => setTab(TABS[(TABS.indexOf(S.tab) + d + TABS.length) % TABS.length]);
+H.buttons.lb = () => { if (!H.dialogOpen()) nextTab(-1); };
+H.buttons.rb = () => { if (!H.dialogOpen()) nextTab(1); };
+H.buttons.x = () => { if (H.dialogOpen()) return; ({ alarms: alarmDialog, timers: timerDialog, stopwatch: () => $('[data-act="sw-lap"]:not([disabled])')?.click(), world: cityDialog })[S.tab](); };
+H.buttons.y = () => { if (!H.dialogOpen() && S.tab === 'stopwatch') $('[data-act="sw-toggle"]').click(); };
+H.onBack = () => { const t = $(`#tabs [data-tab="${S.tab}"]`); if (document.activeElement !== t) t.focus(); else invoke('quit'); };
+H.onKey = e => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return false;
+  const k = e.key.toLowerCase();
+  if (k >= '1' && k <= '4') { setTab(TABS[+k - 1]); return true; }
+  if (k === 'n' || k === '+') { H.buttons.x(); return true; }
+  if (k === 'pageup') { nextTab(-1); return true; }
+  if (k === 'pagedown') { nextTab(1); return true; }
+  if (S.tab === 'stopwatch' && k === ' ' && document.activeElement?.tagName !== 'BUTTON') { $('[data-act="sw-toggle"]').click(); return true; }
+  if (S.tab === 'stopwatch' && k === 'l') { $('[data-act="sw-lap"]:not([disabled])')?.click(); return true; }
+  return false;
+};
+
+// ------------------------------------------------------------------------------------------------ ticking
+let lastMinute = -1;
+function tick() {
+  const t = new Date(now());
+  $('#now').textContent = `${H.fmtDate(t)}  ·  ${H.fmtTime(t, { sec: true })}`;
+  if (S.tab === 'stopwatch' && S.clock.stopwatch.startedAt) { const b = $('#swbig'); if (b) b.innerHTML = swText(swElapsed()); }
+  if (S.tab === 'timers' && !H.dialogOpen()) {
+    for (const el of $$('.timer')) {
+      const tm = S.clock.timers.find(x => x.id === el.dataset.id); if (!tm || !tm.endsAt) continue;
+      const left = timerLeft(tm);
+      if (left <= 0 && !el.classList.contains('done')) { render(); break; }
+      const rt = $('.rt', el); if (rt && left > 0) rt.textContent = H.dur(left, { ceil: true });
+      const C = 2 * Math.PI * 44, arc = $('.arc', el); if (arc) arc.setAttribute('stroke-dashoffset', C * (1 - Math.max(0, Math.min(1, left / (tm.duration || 1)))));
+    }
+  }
+  if (t.getMinutes() !== lastMinute) { lastMinute = t.getMinutes(); if (!H.dialogOpen() && (S.tab === 'alarms' || S.tab === 'world')) render(); }
+  requestAnimationFrame(() => setTimeout(tick, S.tab === 'stopwatch' && S.clock.stopwatch.startedAt ? 30 : 250));
+}
+setInterval(() => { if (!H.dialogOpen()) load(); }, 2000);
+window.addEventListener('focus', () => load());
+
+// ------------------------------------------------------------------------------------------------ start
+invoke('init').then(i => { if (i && i.clock24 !== undefined) H.clock24 = i.clock24; }).catch(() => { });
+load(true).then(() => { setTab(S.tab); tick(); });
+
+// ------------------------------------------------------------------------------------------------ sample data (no app)
+window.DEMO = (() => {
+  const t0 = Date.now();
+  let clock = {
+    alarms: [
+      { id: 'a1', time: '06:45', days: [1, 2, 3, 4, 5], label: 'Work', enabled: true, since: 0, snooze: 10 },
+      { id: 'a2', time: '09:30', days: [0, 6], label: 'Weekend', enabled: true, since: 0 },
+      { id: 'a3', time: '14:00', days: [], date: H.ymd(new Date(t0 + 86400000)), label: 'Pick up parcel', enabled: false, since: 0 }],
+    timers: [{ id: 't1', label: 'Pasta', duration: 600000, endsAt: t0 + 421000, remaining: 600000 }, { id: 't2', label: 'Tea', duration: 240000, endsAt: null, remaining: 95000 }],
+    stopwatch: { startedAt: null, elapsed: 83450, laps: [26100, 54300, 83450] },
+    world: [{ name: 'Tokyo', tz: 'Asia/Tokyo' }, { name: 'New York', tz: 'America/New_York' }, { name: 'London', tz: 'Europe/London' }],
+    settings: { ringMinutes: 10, snooze: 10 },
+  };
+  let m = 1;
+  return (cmd, a) => {
+    if (cmd === 'init') return { app: 'clock', platform: 'linux', version: 'preview', ring: [] };
+    if (cmd === 'clock_get') return { clock: JSON.parse(JSON.stringify(clock)), mtime: m, ringing: null, now: Date.now() };
+    if (cmd === 'clock_save') { clock = JSON.parse(JSON.stringify(a.value)); return ++m; }
+    if (cmd === 'ring_stop' || cmd === 'quit') return null;
+    throw new Error('unknown ' + cmd);
+  };
+})();
+</script>
+</body>
+</html>

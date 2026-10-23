@@ -1,1 +1,362 @@
-<!doctype html><title>notes</title><button class=f autofocus onclick="window.__TAURI__.core.invoke('ring_done',{action:'dismiss'})">Dismiss</button>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes</title>
+<link rel="stylesheet" href="hearth.css">
+<style>
+main { display:grid; grid-template-columns:minmax(15em, 23em) 1fr; gap:var(--gut); }
+.left { display:flex; flex-direction:column; gap:.6em; min-height:0; }
+.search { position:relative; }
+.search svg { position:absolute; left:.75em; top:50%; transform:translateY(-50%); width:1.1em; height:1.1em; color:var(--muted); }
+.search input { padding-left:2.3em; }
+.newrow { display:flex; gap:.5em; }
+.newrow .btn { flex:1; }
+.list { display:flex; flex-direction:column; gap:.45em; overflow:auto; min-height:0; padding:3px; }
+.list h3 { margin:.5em 0 .1em; font-size:.75em; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+.nt { display:grid; grid-template-columns:1fr auto; gap:.1em .6em; padding:.6em .85em; border-radius:12px; background:var(--panel); border:1px solid var(--line); text-align:left; width:100%; }
+.nt.sel { background:var(--panel2); border-color:#5a3f2c; }
+.nt .t { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nt .pinico { width:.9em; height:.9em; color:var(--ember); vertical-align:-.1em; margin-right:.3em; }
+.nt .d { color:var(--faint); font-size:.75em; white-space:nowrap; }
+.nt .p { grid-column:1 / -1; color:var(--muted); font-size:.82em; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.nt .prog { grid-column:1 / -1; height:.3em; border-radius:9px; background:var(--panel3); overflow:hidden; margin-top:.25em; }
+.nt .prog i { display:block; height:100%; background:var(--good); }
+mark { background:rgba(255,209,102,.35); color:inherit; border-radius:3px; }
+
+.ed { display:grid; grid-template-rows:auto 1fr auto; min-height:0; background:var(--panel); border:1px solid var(--line); border-radius:var(--r); }
+.bar { display:flex; gap:.35em; padding:.5em .6em; border-bottom:1px solid var(--line); flex-wrap:wrap; align-items:center; }
+.bar .btn { min-height:2.3em; padding:.35em .7em; }
+.bar .btn.on { color:var(--ember); border-color:#6a4428; }
+.page { overflow:auto; min-height:0; padding:1em 1.3em; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
+.page textarea:focus { box-shadow:none; }
+.page textarea { width:100%; height:100%; min-height:60vh; background:transparent; border:0; outline:none; resize:none; line-height:1.55; font-family:inherit; padding:0; }
+.status { color:var(--faint); font-size:.75em; padding:.35em 1em .5em; display:flex; gap:1em; }
+.md { line-height:1.55; user-select:text; -webkit-user-select:text; }
+.md h1, .md h2, .md h3 { margin:.5em 0 .3em; line-height:1.2; }
+.md h1 { font-size:1.6em; } .md h2 { font-size:1.3em; } .md h3 { font-size:1.1em; }
+.md p { margin:.35em 0; }
+.md ul, .md ol { margin:.3em 0; padding-left:1.4em; }
+.md li.task { list-style:none; margin-left:-1.4em; display:flex; gap:.6em; align-items:flex-start; padding:.15em 0; }
+.md li.task .box { width:1.3em; height:1.3em; border-radius:6px; border:2px solid var(--muted); flex:none; display:grid; place-items:center; margin-top:.1em; }
+.md li.task.done .box { background:var(--good); border-color:var(--good); color:var(--ink); }
+.md li.task.done > span:last-child { color:var(--muted); text-decoration:line-through; }
+.md li.task .box svg { width:.9em; height:.9em; }
+.md code { background:var(--bg2); padding:.1em .35em; border-radius:6px; font-family:ui-monospace, "JetBrains Mono", monospace; font-size:.9em; }
+.md pre { background:var(--bg2); padding:.7em .9em; border-radius:10px; overflow:auto; }
+.md blockquote { margin:.4em 0; padding:.1em .9em; border-left:3px solid var(--ember); color:var(--muted); }
+.md hr { border:0; border-top:1px solid var(--line); margin:1em 0; }
+.md img { max-width:100%; border-radius:10px; display:block; margin:.4em 0; }
+.md a { color:var(--sky); }
+.md .ph { color:var(--faint); }
+@media (max-width: 760px) { main { grid-template-columns:1fr; } main.editing .left { display:none; } main:not(.editing) .ed { display:none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Notes</h1><span class="sub" id="where"></span>
+    <span class="spacer"></span>
+    <button class="btn f" data-act="folder" id="folderbtn"></button>
+  </header>
+  <main id="main">
+    <div class="left">
+      <div class="search"><span id="sico"></span><input class="inp f" id="q" placeholder="Search notes" spellcheck="false" autocomplete="off" data-enter="1"></div>
+      <div class="newrow"><button class="btn primary f" data-act="new" id="newn"></button><button class="btn f" data-act="new-list" id="newl"></button></div>
+      <div class="list" id="list"></div>
+    </div>
+    <section class="ed" id="ed"></section>
+  </main>
+  <footer><span><b>A</b>Open / edit</span><span><b>B</b>Back</span><span><b>X</b>New note</span><span><b>Y</b>Pin</span><span id="hint">Saved as plain files in Documents › Notes</span></footer>
+</div>
+<div id="layer"></div>
+<script src="hearth.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, icon, invoke } = H;
+const S = { notes: [], sel: null, text: '', editing: false, q: '', dirty: false, saving: null, dir: '' };
+$('#sico').innerHTML = icon('search');
+$('#newn').innerHTML = `${icon('plus')}Note`; $('#newl').innerHTML = `${icon('checklist')}Checklist`; $('#folderbtn').innerHTML = `${icon('folder')}Open folder`;
+
+// ------------------------------------------------------------------------------------------------ Markdown-light
+// Headings, **bold**, *italic*, ~~struck~~, `code`, ``` blocks, lists, - [ ] checklists, > quotes, ---, links and
+// pasted pictures (![](images/...)). Everything else shows as written.
+const imgCache = new Map();
+function inline(s) {
+  s = esc(s);
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => `<img data-src="${src}" alt="${alt}">`);
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/__([^_]+)__/g, '<b>$1</b>');
+  s = s.replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>').replace(/(^|[^_\w])_([^_\s][^_]*)_/g, '$1<i>$2</i>');
+  s = s.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+  return s;
+}
+function render(md) {
+  const lines = md.replace(/\r/g, '').split('\n');
+  let out = '', list = null, code = false;
+  const close = () => { if (list) { out += `</${list}>`; list = null; } };
+  lines.forEach((line, i) => {
+    if (/^```/.test(line)) { close(); out += code ? '</code></pre>' : '<pre><code>'; code = !code; return; }
+    if (code) { out += esc(line) + '\n'; return; }
+    let m;
+    if ((m = line.match(/^\s*[-*] \[( |x|X)\] ?(.*)$/))) {
+      if (list !== 'ul') { close(); out += '<ul>'; list = 'ul'; }
+      const done = m[1] !== ' ';
+      out += `<li class="task ${done ? 'done' : ''}" data-line="${i}"><button class="box f" data-toggle="${i}" aria-label="${done ? 'Done' : 'Not done'}">${done ? icon('check') : ''}</button><span>${inline(m[2]) || '&nbsp;'}</span></li>`;
+    } else if ((m = line.match(/^\s*[-*+] (.*)$/))) {
+      if (list !== 'ul') { close(); out += '<ul>'; list = 'ul'; } out += `<li>${inline(m[1])}</li>`;
+    } else if ((m = line.match(/^\s*\d+[.)] (.*)$/))) {
+      if (list !== 'ol') { close(); out += '<ol>'; list = 'ol'; } out += `<li>${inline(m[1])}</li>`;
+    } else {
+      close();
+      if ((m = line.match(/^(#{1,3}) (.*)$/))) out += `<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`;
+      else if (/^\s*(---|\*\*\*)\s*$/.test(line)) out += '<hr>';
+      else if ((m = line.match(/^> ?(.*)$/))) out += `<blockquote>${inline(m[1])}</blockquote>`;
+      else if (line.trim()) out += `<p>${inline(line)}</p>`;
+    }
+  });
+  close(); if (code) out += '</code></pre>';
+  return out || '<p class="ph">Empty note. Press A or Enter to write.</p>';
+}
+async function loadImages(root) {
+  for (const img of $$('img[data-src]', root)) {
+    const src = img.dataset.src;
+    if (/^https?:/.test(src)) { img.src = src; continue; }
+    try { if (!imgCache.has(src)) imgCache.set(src, await invoke('note_image', { path: src })); img.src = imgCache.get(src); }
+    catch { img.alt = `[missing picture: ${src}]`; }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------ the list
+const titleOf = t => (t.split('\n').map(l => l.trim()).find(l => l) || '').replace(/^#+\s*/, '').replace(/^- \[[ xX]\]\s*/, '');
+const preview = t => t.split('\n').map(l => l.trim()).filter(l => l && !/^(---|\*\*\*)$/.test(l)).slice(1).map(l => l.replace(/^([-*+] \[[ xX]\]|[-*+]|\d+[.)]|#+|>)\s+/, '')).join(' · ').replace(/[*_`]/g, '').slice(0, 160);
+function mark(text, q) { const s = esc(text); if (!q) return s; const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'); return s.replace(re, m => `<mark>${m}</mark>`); }
+function when(ms) { const d = new Date(ms), n = new Date(); return H.ymd(d) === H.ymd(n) ? H.fmtTime(d) : H.fmtDate(d, { short: true, noDay: true }); }
+function drawList() {
+  const q = S.q.trim().toLowerCase();
+  const list = S.notes.filter(n => !q || n.title.toLowerCase().includes(q) || n.text.toLowerCase().includes(q));
+  const pinned = list.filter(n => n.pinned), rest = list.filter(n => !n.pinned);
+  const card = n => {
+    const total = n.open + n.done;
+    return `<button class="nt f ${n.name === S.sel ? 'sel' : ''}" data-name="${esc(n.name)}" data-key="n:${esc(n.name)}"><span class="t">${n.pinned ? icon('pin', 'pinico') : ''}${mark(n.title, q)}</span><span class="d">${esc(when(n.modified))}</span>
+      <span class="p">${mark(preview(n.text) || (total ? '' : 'No more text'), q)}</span>${total ? `<span class="prog" title="${n.done} of ${total} done"><i style="width:${n.done / total * 100}%"></i></span>` : ''}</button>`;
+  };
+  $('#list').innerHTML = !S.notes.length ? `<div class="empty"><span class="big">${icon('note')}</span>No notes yet</div>`
+    : !list.length ? '<div class="empty">Nothing matches</div>'
+    : `${pinned.length ? `<h3>Pinned</h3>${pinned.map(card).join('')}${rest.length ? '<h3>Notes</h3>' : ''}` : ''}${rest.map(card).join('')}`;
+}
+async function loadList() {
+  try { const r = await invoke('notes_list'); S.notes = r.notes || []; S.dir = r.dir || ''; $('#where').textContent = S.dir ? S.dir.replace(/^\/home\/[^/]+/, '~') : ''; } catch (e) { H.toast(String(e)); }
+  drawList();
+}
+
+// ------------------------------------------------------------------------------------------------ the editor
+function drawEditor() {
+  const n = S.notes.find(x => x.name === S.sel);
+  if (!S.sel && !S.editing) { $('#ed').innerHTML = `<div class="empty" style="grid-row:1/-1;align-self:center"><span class="big">${icon('note')}</span>Pick a note, or make a new one.<br><span class="faint" style="font-size:.85em">Notes are Markdown files in ${esc(S.dir || 'Documents/Notes')}.</span></div>`; $('#main').classList.remove('editing'); return; }
+  $('#main').classList.add('editing');
+  const pinned = n?.pinned;
+  $('#ed').innerHTML = `<div class="bar">
+      <button class="btn f ${S.editing ? 'on' : ''}" data-act="mode" data-key="mode">${icon(S.editing ? 'eye' : 'edit')}${S.editing ? 'Done' : 'Edit'}</button>
+      ${S.editing ? `<button class="btn f" data-fmt="task" title="Checklist item">${icon('checklist')}</button><button class="btn f" data-fmt="bullet" title="List">${icon('bullet')}</button><button class="btn f" data-fmt="h" title="Heading">${icon('heading')}</button><button class="btn f" data-fmt="b" title="Bold">${icon('bold')}</button>` : ''}
+      <span class="spacer"></span>
+      <button class="btn f ${pinned ? 'on' : ''}" data-act="pin" ${S.sel ? '' : 'disabled'} data-key="pin">${icon('pin')}${pinned ? 'Pinned' : 'Pin'}</button>
+      <button class="btn f" data-act="delete" ${S.sel ? '' : 'disabled'} data-key="del">${icon('trash')}</button>
+    </div>
+    <div class="page" id="page">${S.editing ? `<textarea class="f" id="ta" spellcheck="true" placeholder="Title on the first line, then anything.\n- [ ] a checklist item\n**bold**, *italic*, # heading. Paste pictures straight in.">${esc(S.text)}</textarea>` : `<div class="md" id="md">${render(S.text)}</div>`}</div>
+    <div class="status"><span id="st">${S.sel ? esc(S.sel) : 'New note'}</span><span class="spacer"></span><span id="saved"></span></div>`;
+  if (S.editing) { const ta = $('#ta'); ta.focus(); } else loadImages($('#md'));
+}
+async function open(name, edit = false) {
+  await flush();
+  try { S.text = await invoke('note_read', { name }); } catch (e) { H.toast(String(e)); loadList(); return; }
+  S.sel = name; S.editing = edit; S.dirty = false;
+  drawList(); drawEditor();
+  if (!edit) $('#ed [data-key="mode"]')?.focus({ preventScroll: true });
+}
+async function newNote(checklist) {
+  await flush();
+  S.sel = null; S.text = checklist ? 'Checklist\n- [ ] ' : ''; S.editing = true; S.dirty = false;
+  drawList(); drawEditor();
+  const ta = $('#ta'); if (ta) { ta.setSelectionRange(checklist ? 0 : 0, checklist ? 9 : 0); }
+}
+
+// Autosave: a moment after you stop typing, and when you leave the note.
+let saveTimer = 0;
+function changed() { S.dirty = true; $('#saved').textContent = 'Editing…'; clearTimeout(saveTimer); saveTimer = setTimeout(flush, 700); }
+async function flush() {
+  clearTimeout(saveTimer);
+  if (!S.dirty) return S.saving;
+  if (!S.sel && !S.text.trim()) { S.dirty = false; return; }
+  S.dirty = false;
+  const text = S.text;
+  S.saving = invoke('note_write', { name: S.sel || '', text }).then(r => {
+    const old = S.sel; S.sel = r.name;
+    const n = S.notes.find(x => x.name === old) || (S.notes.unshift({ name: r.name, pinned: false }), S.notes[0]);
+    Object.assign(n, { name: r.name, text, title: titleOf(text) || r.name.replace(/\.md$/, ''), modified: r.modified, open: (text.match(/^\s*- \[ \]/gm) || []).length, done: (text.match(/^\s*- \[[xX]\]/gm) || []).length });
+    S.notes.sort((a, b) => (b.pinned - a.pinned) || (b.modified - a.modified));
+    drawList();
+    const st = $('#st'); if (st) st.textContent = r.name;
+    const sv = $('#saved'); if (sv && !S.dirty) sv.textContent = 'Saved';
+  }).catch(e => { S.dirty = true; H.toast(`Couldn't save: ${e}`); });
+  return S.saving;
+}
+function setMode(edit) {
+  if (!edit) flush();
+  S.editing = edit; drawEditor();
+  if (!edit) $('#ed [data-key="mode"]')?.focus({ preventScroll: true });
+}
+// Toolbar: line formats apply to the current line(s); bold wraps the selection.
+function fmt(kind) {
+  const ta = $('#ta'); if (!ta) return;
+  let s = ta.selectionStart, e = ta.selectionEnd, v = ta.value;
+  if (kind === 'b') { const sel = v.slice(s, e) || 'bold'; ta.setRangeText(`**${sel}**`, s, e, 'end'); }
+  else {
+    const ls = v.lastIndexOf('\n', s - 1) + 1, le = v.indexOf('\n', e); const end = le < 0 ? v.length : le;
+    const prefix = { task: '- [ ] ', bullet: '- ', h: '# ' }[kind];
+    const block = v.slice(ls, end).split('\n').map(l => l.startsWith(prefix) ? l.slice(prefix.length) : prefix + l.replace(/^(- \[[ xX]\] |- |#+ )/, '')).join('\n');
+    ta.setRangeText(block, ls, end, 'end');
+  }
+  ta.focus(); S.text = ta.value; changed();
+}
+function toggleTask(i) {
+  const lines = S.text.split('\n');
+  lines[i] = lines[i].replace(/\[( |x|X)\]/, (_, c) => c === ' ' ? '[x]' : '[ ]');
+  S.text = lines.join('\n'); changed();
+  const f = document.activeElement?.dataset?.toggle;
+  $('#md').innerHTML = render(S.text); loadImages($('#md'));
+  if (f) $(`[data-toggle="${f}"]`)?.focus({ preventScroll: true });
+}
+// Pictures pasted (or dropped) into a note go to Notes/images and are linked from the note.
+async function addImages(files, ta) {
+  for (const f of files) {
+    if (!f.type.startsWith('image/')) continue;
+    const data = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+    try {
+      const rel = await invoke('note_image_save', { data });
+      imgCache.set(rel, data);
+      ta.setRangeText(`\n![](${rel})\n`, ta.selectionStart, ta.selectionEnd, 'end');
+      S.text = ta.value; changed();
+    } catch (e) { H.toast(String(e)); }
+  }
+}
+document.addEventListener('paste', e => {
+  const ta = e.target.closest?.('#ta'); if (!ta) return;
+  const files = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+  if (files.length) { e.preventDefault(); addImages(files, ta); }
+});
+document.addEventListener('drop', e => { const ta = e.target.closest?.('#ta'); if (!ta || !e.dataTransfer?.files?.length) return; e.preventDefault(); addImages([...e.dataTransfer.files], ta); });
+document.addEventListener('dragover', e => { if (e.target.closest?.('#ta')) e.preventDefault(); });
+document.addEventListener('input', e => {
+  if (e.target.id === 'ta') { S.text = e.target.value; changed(); }
+  if (e.target.id === 'q') { S.q = e.target.value; drawList(); }
+});
+
+// ------------------------------------------------------------------------------------------------ actions
+document.addEventListener('click', async e => {
+  if (H.dialogOpen() && e.target.closest('#layer')) return;
+  const n = e.target.closest('[data-name]'); if (n) { open(n.dataset.name); return; }
+  const t = e.target.closest('[data-toggle]'); if (t) { toggleTask(+t.dataset.toggle); return; }
+  const f = e.target.closest('[data-fmt]'); if (f) { fmt(f.dataset.fmt); return; }
+  if (e.target.closest('#md') && !e.target.closest('a,button')) { setMode(true); return; }
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  switch (b.dataset.act) {
+    case 'new': newNote(false); break;
+    case 'new-list': newNote(true); break;
+    case 'mode': setMode(!S.editing); break;
+    case 'folder': invoke('open_folder', { which: 'notes' }).catch(x => H.toast(String(x))); break;
+    case 'pin': {
+      await flush(); const note = S.notes.find(x => x.name === S.sel); if (!note) break;
+      note.pinned = !note.pinned;
+      await invoke('note_pin', { name: note.name, on: note.pinned }).catch(x => H.toast(String(x)));
+      S.notes.sort((a, b) => (b.pinned - a.pinned) || (b.modified - a.modified)); drawList(); drawEditor();
+      $('#ed [data-key="pin"]')?.focus({ preventScroll: true }); break;
+    }
+    case 'delete': {
+      await flush(); if (!S.sel) break;
+      const title = S.notes.find(x => x.name === S.sel)?.title || S.sel;
+      if (!await H.ask(`Delete "${title}"?`, 'It goes to the .trash folder inside Notes, so you can still get it back from there.', 'Delete', true)) break;
+      try { await invoke('note_delete', { name: S.sel }); S.notes = S.notes.filter(x => x.name !== S.sel); S.sel = null; S.text = ''; S.editing = false; drawList(); drawEditor(); $('#list .nt')?.focus(); }
+      catch (x) { H.toast(String(x)); }
+      break;
+    }
+  }
+});
+H.onEscapeTyping = el => { if (el.id === 'ta') setMode(false); else if (el.id === 'q') { el.value = ''; S.q = ''; drawList(); $('#list .nt')?.focus(); } };
+H.onBack = () => {
+  if (S.editing) { setMode(false); return; }
+  if (S.sel && !$('#list').contains(document.activeElement)) { $(`#list [data-name="${CSS.escape(S.sel)}"]`)?.focus(); return; }
+  flush().then(() => invoke('quit'));
+};
+H.buttons.x = () => { if (!H.dialogOpen()) newNote(false); };
+H.buttons.y = () => { if (!H.dialogOpen() && S.sel) $('[data-act="pin"]')?.click(); };
+H.buttons.start = () => { if (!H.dialogOpen()) $('#q').focus(); };
+H.onKey = e => {
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'n') { newNote(e.shiftKey); return true; }
+  if ((e.ctrlKey || e.metaKey) && k === 'f') { $('#q').focus(); return true; }
+  if (e.ctrlKey || e.altKey || e.metaKey) return false;
+  if (k === 'n') { newNote(false); return true; }
+  if (k === 'c') { newNote(true); return true; }
+  if (k === '/') { $('#q').focus(); return true; }
+  if (k === 'e' && S.sel) { setMode(true); return true; }
+  if (k === 'p' && S.sel) { $('[data-act="pin"]')?.click(); return true; }
+  return false;
+};
+// Ctrl+S / Ctrl+B and friends while typing.
+document.addEventListener('keydown', e => {
+  if (e.target.id !== 'ta' || !(e.ctrlKey || e.metaKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === 's') { e.preventDefault(); flush(); }
+  if (k === 'b') { e.preventDefault(); fmt('b'); }
+  if (k === 'l' && e.shiftKey) { e.preventDefault(); fmt('task'); }
+  if (k === 'enter') { e.preventDefault(); setMode(false); }
+});
+// A new line after a list item continues the list.
+document.addEventListener('keydown', e => {
+  if (e.target.id !== 'ta' || e.key !== 'Enter' || e.shiftKey || e.ctrlKey) return;
+  const ta = e.target, v = ta.value, s = ta.selectionStart;
+  const ls = v.lastIndexOf('\n', s - 1) + 1, line = v.slice(ls, s);
+  const m = line.match(/^(\s*)(- \[[ xX]\] |[-*+] |(\d+)[.)] )/); if (!m) return;
+  e.preventDefault();
+  if (line.trim() === m[2].trim()) { ta.setRangeText('', ls, s, 'end'); }
+  else { const next = m[3] ? `${+m[3] + 1}. ` : m[2].startsWith('- [') ? '- [ ] ' : m[2]; ta.setRangeText('\n' + m[1] + next, s, ta.selectionEnd, 'end'); }
+  S.text = ta.value; changed();
+});
+window.addEventListener('blur', () => flush());
+window.addEventListener('beforeunload', () => flush());
+// Notes changed by another program (a sync tool, an editor): the list follows when you come back.
+window.addEventListener('focus', () => { if (!S.editing && !H.dialogOpen()) loadList(); });
+
+loadList().then(() => { drawEditor(); ($('#list .nt') || $('#newn')).focus(); });
+
+// ------------------------------------------------------------------------------------------------ sample data (no app)
+window.DEMO = (() => {
+  const now = Date.now();
+  const notes = {
+    'Shopping.md': { text: '# Shopping\n- [x] Eggs\n- [ ] Oat milk\n- [ ] Coffee beans\n- [ ] Batteries for the controller', modified: now - 3600e3, pinned: true },
+    'Game backlog.md': { text: '# Game backlog\n**Playing:** Elden Ring\n\n- Hollow Knight: Silksong\n- *Outer Wilds* (again)\n- Balatro\n\n> Finish one before buying another.', modified: now - 86400e3, pinned: false },
+    'Wi-Fi at the cabin.md': { text: 'Wi-Fi at the cabin\nNetwork: `Lakeside-5G`\nThe router is behind the bookshelf.', modified: now - 5 * 86400e3, pinned: false },
+    'Trip packing.md': { text: 'Trip packing\n- [x] Charger\n- [x] Steam Deck case\n- [ ] Passport\n---\nLeave by 7:30.', modified: now - 9 * 86400e3, pinned: false },
+  };
+  const list = () => Object.entries(notes).map(([name, n]) => ({ name, title: titleOf(n.text), text: n.text, modified: n.modified, pinned: n.pinned, open: (n.text.match(/^\s*- \[ \]/gm) || []).length, done: (n.text.match(/^\s*- \[x\]/gm) || []).length }))
+    .sort((a, b) => (b.pinned - a.pinned) || (b.modified - a.modified));
+  return (cmd, a) => {
+    switch (cmd) {
+      case 'notes_list': return { notes: list(), dir: '/home/you/Documents/Notes' };
+      case 'note_read': return notes[a.name]?.text ?? Promise.reject('gone');
+      case 'note_write': { const name = a.name || (titleOf(a.text) || 'Note') + '.md'; notes[name] = { ...(notes[name] || { pinned: false }), text: a.text, modified: Date.now() }; return { name, modified: Date.now() }; }
+      case 'note_delete': delete notes[a.name]; return null;
+      case 'note_pin': notes[a.name].pinned = a.on; return null;
+      case 'note_image_save': return 'images/pasted.png';
+      case 'note_image': return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120"><rect width="320" height="120" fill="#33271f"/><text x="20" y="66" fill="#ffd166" font-size="20">picture</text></svg>');
+      case 'open_folder': case 'quit': return null;
+    }
+    throw new Error('unknown ' + cmd);
+  };
+})();
+</script>
+</body>
+</html>

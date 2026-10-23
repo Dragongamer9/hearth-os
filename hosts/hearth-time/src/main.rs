@@ -269,7 +269,11 @@ fn weather_get(force: bool) -> Value {
 fn weather_search(q: String) -> Result<Vec<Value>, String> { weather::search(&q) }
 
 #[tauri::command(async)]
-fn weather_set(place: Option<Value>, units: Option<String>) -> Result<Value, String> { weather::set(place, units) }
+fn weather_set(place: Option<Value>, units: Option<String>, forget: Option<bool>) -> Result<Value, String> {
+    // A null place would arrive as None: forgetting the place is its own flag.
+    let place = if forget == Some(true) { Some(Value::Null) } else { place.filter(|p| p.is_object()) };
+    weather::set(place, units)
+}
 
 // ---------------------------------------------------------------------------------------------- start
 
