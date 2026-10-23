@@ -25,7 +25,8 @@ def ok(name, cond, detail='', required=True):
     results.append((name, bool(cond), required, detail))
     level = 'notice' if cond else ('error' if required else 'warning')
     msg = (str(detail)[:900] if detail else '').replace('%', '%25').replace('\r', '').replace('\n', '%0A')
-    print('::%s title=%s::%s' % (level, ('ok: ' if cond else 'FAILED: ' if required else 'warn: ') + name.replace(':', ' -').replace(',', ';'), msg or '-'), flush=True)
+    if not cond:
+        print('::%s title=%s::%s' % (level, ('ok: ' if cond else 'FAILED: ' if required else 'warn: ') + name.replace(':', ' -').replace(',', ';'), msg or '-'), flush=True)
     print(('PASS ' if cond else ('FAIL ' if required else 'WARN ')) + name + (' :: ' + detail if detail else ''), flush=True)
     return cond
 
@@ -189,6 +190,7 @@ if __name__ == '__main__':
     finally:
         failed = [r for r in results if not r[1] and r[2]]
         print('\n%d checks, %d failed' % (len(results), len(failed)))
+        print('::notice title=%d checks, %d failed::%s' % (len(results), len(failed), '%0A'.join(('pass  ' if g else ('FAIL  ' if q else 'warn  ')) + n for n, g, q, _ in results)))
         with open(os.environ.get('GITHUB_STEP_SUMMARY', '/dev/null'), 'a') as s:
             s.write('### Hearth Connect against KDE Connect (kdeconnectd)\n\n| Check | Result |\n|---|---|\n')
             for n, good, req, d in results:

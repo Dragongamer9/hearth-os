@@ -10,6 +10,7 @@ Prints a summary (also to the job summary); exits 1 if a required check failed."
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -28,7 +29,8 @@ def ok(name, cond, detail='', required=True):
     results.append((name, bool(cond), required, detail))
     level = 'notice' if cond else ('error' if required else 'warning')
     msg = (str(detail)[:900] if detail else '').replace('%', '%25').replace('\r', '').replace('\n', '%0A')
-    print('::%s title=%s::%s' % (level, ('ok: ' if cond else 'FAILED: ' if required else 'warn: ') + name.replace(':', ' -').replace(',', ';'), msg or '-'), flush=True)
+    if not cond:
+        print('::%s title=%s::%s' % (level, ('ok: ' if cond else 'FAILED: ' if required else 'warn: ') + name.replace(':', ' -').replace(',', ';'), msg or '-'), flush=True)
     print(('PASS ' if cond else ('FAIL ' if required else 'WARN ')) + name + (' :: ' + str(detail)[:400] if detail else ''), flush=True)
     return cond
 
@@ -139,18 +141,36 @@ def localsend(ip):
     lsenv = dict(os.environ, XDG_CONFIG_HOME=cfg, HOME=os.path.join(TMP, 'ls-home'))
     os.makedirs(lsenv['HOME'], exist_ok=True)
     dest = os.path.join(TMP, 'recv-A')
-    # LocalSend -> Nearby Share (A is listening on 53317 and accepts).
+    # LocalSend -> Nearby Share (A is listening on 53317 and accepts). The released CLI is interactive: started with
+    # --file, it lists the devices it finds as "[n] name (address)" and sends to the one whose number is typed.
     f = os.path.join(TMP, 'from-localsend.bin')
     with open(f, 'wb') as fh:
         fh.write(os.urandom(5 * 1024 * 1024 + 9))
-    p = subprocess.run([LS, '--port', '53360', '--alias', 'LocalSend CLI', '--destination', os.path.join(TMP, 'ls-unused'), 'send', '--to', ip, f],
-                       env=lsenv, capture_output=True, text=True, timeout=180)
-    ok('LocalSend -> Nearby Share: a file', p.returncode == 0 and os.path.exists(os.path.join(dest, 'from-localsend.bin')) and sha(f) == sha(os.path.join(dest, 'from-localsend.bin')),
-       (p.stdout + p.stderr)[-600:])
-    p = subprocess.run([LS, '--port', '53360', '--alias', 'LocalSend CLI', 'send', '--to', ip, '--text', 'hello from LocalSend'], env=lsenv, capture_output=True, text=True, timeout=120)
-    time.sleep(0.5)
-    ok('LocalSend -> Nearby Share: a text message', any(e['event'] == 'message' and e['data']['text'] == 'hello from LocalSend' for e in events(os.path.join(TMP, 'A.log'))), (p.stdout + p.stderr)[-400:])
-    ok('LocalSend registered with Nearby Share (seen as a device)', any(e['event'] == 'message' and e['data'].get('from') == 'LocalSend CLI' for e in events(os.path.join(TMP, 'A.log'))), required=False)
+    slog_path = os.path.join(TMP, 'ls-send.log')
+    slog = open(slog_path, 'w')
+    cmd = 'stty cols 160 rows 50; exec %s --port 53360 --alias "LocalSend CLI" --destination %s --file %s' % (LS, os.path.join(TMP, 'ls-unused'), f)
+    sp = subprocess.Popen(['script', '-qfec', cmd, '/dev/null'], env=dict(lsenv, TERM='xterm-256color'), stdin=subprocess.PIPE, stdout=slog, stderr=subprocess.STDOUT)
+    procs.append(sp)
+    num = None
+    for _ in range(40):
+        time.sleep(1)
+        text = re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', open(slog_path, errors='replace').read())
+        m = re.search(r'\[(\d)\] Hearth A ', text)
+        if m:
+            num = m.group(1)
+            break
+    ok('LocalSend discovers Nearby Share (listed as a device)', num, text[-500:] if num is None else 'number ' + num)
+    got = os.path.join(dest, 'from-localsend.bin')
+    if num:
+        sp.stdin.write(num.encode())
+        sp.stdin.flush()
+        for _ in range(60):
+            if os.path.exists(got) and os.path.getsize(got) == os.path.getsize(f):
+                break
+            time.sleep(1)
+    time.sleep(1)
+    ok('LocalSend -> Nearby Share: a file', os.path.exists(got) and sha(f) == sha(got),
+       re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', open(slog_path, errors='replace').read())[-700:])
 
     # Nearby Share -> LocalSend: the CLI receiving, trusting the sender's fingerprint (paired-v2.json).
     fp = subprocess.run([BIN, '--fingerprint'], env=env(os.path.join(TMP, 'nb-sender')), capture_output=True, text=True).stdout.strip()
@@ -210,11 +230,12 @@ if __name__ == '__main__':
                 pass
         failed = [r for r in results if not r[1] and r[2]]
         print('\n%d checks, %d failed' % (len(results), len(failed)))
+        print('::notice title=%d checks, %d failed::%s' % (len(results), len(failed), '%0A'.join(('pass  ' if g else ('FAIL  ' if q else 'warn  ')) + n for n, g, q, _ in results)))
         with open(os.environ.get('GITHUB_STEP_SUMMARY', '/dev/null'), 'a') as s:
             s.write('### Nearby Share: protocol tests\n\n| Check | Result |\n|---|---|\n')
             for n, good, req, d in results:
                 s.write('| %s | %s |\n' % (n, 'pass' if good else ('FAIL' if req else 'warn')))
-        for name in ('A', 'B', 'C', 'ls-recv'):
+        for name in ('A', 'B', 'C', 'ls-recv', 'ls-send'):
             pth = os.path.join(TMP, name + '.log')
             if os.path.exists(pth):
                 tail = open(pth, errors='replace').read()[-3000:]
