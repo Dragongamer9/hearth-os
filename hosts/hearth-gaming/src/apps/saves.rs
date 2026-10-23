@@ -225,7 +225,7 @@ fn set_folder(id: String, path: String, add: bool) -> Result<Value, String> {
 }
 
 #[tauri::command]
-fn destinations() -> Value { saves::destinations(&saves::load_config()) }
+fn destinations() -> Value { Value::Array(saves::destinations(&saves::load_config())) }
 #[tauri::command]
 fn places() -> Value { hearth_gaming::browse::places() }
 #[tauri::command]

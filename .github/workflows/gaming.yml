@@ -31,6 +31,9 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
             xvfb imagemagick dbus-x11 xdotool python3-evdev libarchive-tools >/dev/null
+      - name: Test the part of Hearth that opens them from Game Mode (hearth-core gaming_apps.rs)
+        working-directory: hosts/hearth-core
+        run: cargo test gaming_apps 2>&1 | tail -8
       - name: Unit tests (manifest, finding saves, backup and restore, mods in and out, evdev numbers)
         working-directory: hosts/hearth-gaming
         run: |

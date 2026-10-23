@@ -300,7 +300,7 @@ def pads(bindir):
         ds.write(E.EV_KEY, E.BTN_SOUTH, 1); ds.write(E.EV_KEY, E.BTN_NORTH, 1)
         ds.write(E.EV_ABS, E.ABS_X, 255); ds.write(E.EV_ABS, E.ABS_Y, 128); ds.write(E.EV_ABS, E.ABS_RZ, 200); ds.write(E.EV_ABS, E.ABS_HAT0Y, -1); ds.syn()
         motion.write(E.EV_ABS, E.ABS_Y, 8192); motion.write(E.EV_ABS, E.ABS_RX, 1024 * 90); motion.syn()
-        xb.write(E.EV_KEY, E.BTN_WEST, 1); xb.write(E.EV_ABS, E.ABS_Z, 1023); xb.syn()
+        xb.write(E.EV_KEY, 0x133, 1); xb.write(E.EV_ABS, E.ABS_Z, 1023); xb.syn()   # 0x133: what xpad sends for X
     threading.Thread(target=press, daemon=True).start()
     r = subprocess.run([exe, '--dump', '1500'], capture_output=True, text=True, timeout=60)
     d = as_json(r) or {}
@@ -317,7 +317,7 @@ def pads(bindir):
     check('right trigger analogue value', abs(((a.get('triggers') or {}).get('r') or {}).get('v', 0) - 200 / 255) < 0.02, (a.get('triggers') or {}).get('r'))
     mo = a.get('motion') or {}
     check('motion sensors: 1 g on Y, 90 °/s on the gyro', abs((mo.get('accel') or [0, 0])[1] - 1.0) < 0.01 and abs((mo.get('gyro') or [0])[0] - 90) < 0.5, mo)
-    check('it says it\'s a virtual pad', a.get('virtual') is True and 'Virtual' in (a.get('driverLabel') or ''), a.get('driverLabel'))
+    check('it says it\'s a virtual pad', a.get('virtual') is True and 'virtual pad' in (a.get('driverLabel') or '').lower(), a.get('driverLabel'))
     check('rumble is reported for the pad that has it', a.get('rumble') is True and x.get('rumble') is False)
     xbtn = x.get('buttons', {})
     check('Xbox layout: X (0x133) is the left button', xbtn.get('west') is True and xbtn.get('north') is False, xbtn)
