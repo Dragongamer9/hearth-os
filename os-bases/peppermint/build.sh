@@ -322,6 +322,66 @@ if [ -x /ctx/nimbus-app/hearth-terminal ]; then
 fi
 # ---- end of Hearth Terminal
 
+# ------------------------------------------------------------------ Hearth's gaming apps (hosts/hearth-gaming)
+# Controller Lab, Saves and Mods: built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons come
+# with Hearth's icon set (branding/icons, above: Icon=hearth-controller-lab ...). Desktop Mode lists them
+# with Hearth's own apps (their ids start with "hearth"); Game Mode opens them from Settings › Controls and a
+# game's ⋯ menu (hearth-core gaming_apps.rs). Saves' hourly timer is on for everyone and does nothing until a
+# schedule is chosen in Saves (hearth-saves --auto). Mods unpacks .7z and .rar files with bsdtar.
+command -v bsdtar >/dev/null || echo "warning: bsdtar is missing, so Mods can only unpack .zip files"
+gaming_entry() {   # id, name, generic name, comment, keywords
+  [ -x "/usr/bin/$1" ] || return 0
+  cat > "/usr/share/applications/$1.desktop" <<DESKTOP
+[Desktop Entry]
+Name=$2
+GenericName=$3
+Comment=$4
+Exec=/usr/bin/$1
+Icon=$1
+Type=Application
+Categories=Game;Utility;
+Keywords=$5
+StartupNotify=true
+StartupWMClass=$1
+DESKTOP
+}
+install -d /usr/share/applications
+for app in hearth-controller-lab hearth-saves hearth-mods; do
+  [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so this image goes without it"; continue; }
+  install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+  if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs the libraries above; left out"; rm -f "/usr/bin/$app"; continue; fi
+done
+gaming_entry hearth-controller-lab "Controller Lab" "Controller Tester" "Test every button, stick, trigger, gyro and rumble; measure stick drift and calibrate" "controller;gamepad;joystick;test;tester;calibrate;drift;deadzone;rumble;gyro;battery;"
+gaming_entry hearth-saves "Saves" "Game Save Backup" "Back up and restore your games' saves, and move them to another PC" "save;saves;backup;restore;game;steam;proton;usb;"
+gaming_entry hearth-mods "Mods" "Mod Manager" "Install mods for your games, turn them on and off, and choose their order" "mod;mods;modding;manager;nexus;game;"
+if [ -x /usr/bin/hearth-saves ]; then
+  install -d /usr/lib/systemd/user/timers.target.wants
+  cat > /usr/lib/systemd/user/hearth-saves-auto.service <<'UNIT'
+[Unit]
+Description=Hearth Saves: scheduled game save backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/hearth-saves --auto
+Nice=10
+IOSchedulingClass=idle
+UNIT
+  cat > /usr/lib/systemd/user/hearth-saves-auto.timer <<'UNIT'
+[Unit]
+Description=Hearth Saves: look every hour whether a scheduled backup is due
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+  ln -sf ../hearth-saves-auto.timer /usr/lib/systemd/user/timers.target.wants/hearth-saves-auto.timer
+fi
+# ---- end of Hearth's gaming apps
+
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session
 install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
