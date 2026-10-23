@@ -1,0 +1,213 @@
+# Nearby Share (hosts/hearth-nearby, LocalSend's protocol) and Hearth Connect (hosts/hearth-connect, KDE Connect's
+# protocol): Hearth OS's own apps for phones and other devices on the same network. Built and tested on Linux, and
+# tested against the real thing: Nearby Share against the official LocalSend CLI, Hearth Connect against KDE
+# Connect's own daemon (kdeconnectd, from Fedora, in a container). Windows (Ember) builds come later; Nearby Share's
+# Windows build here is only a check that it still compiles. Release builds are made by base-anatase.yml and
+# base-peppermint.yml (the Linux images).
+name: Nearby Share and Hearth Connect
+
+on:
+  push:
+    branches: [apps-link, main, linux-host]
+    paths: ['hosts/hearth-nearby/**', 'hosts/hearth-connect/**', 'os/system_files/usr/libexec/nimbus/hearth-link-firewall', '.github/workflows/link-apps.yml']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  nearby:
+    name: Nearby Share (Linux) + LocalSend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-nearby
+      - name: WebKit and GTK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev xvfb imagemagick xdotool >/dev/null
+      - name: The firewall helper (hearth-link-firewall)
+        run: python3 hosts/hearth-nearby/tests/test_link_firewall.py -v
+      - name: Unit tests
+        working-directory: hosts/hearth-nearby
+        run: |
+          set -o pipefail
+          cargo test --lib 2>&1 | tee test.log || { echo "::error title=unit tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 test.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        working-directory: hosts/hearth-nearby
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A12 build.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=size::$(du -h target/release/hearth-nearby | cut -f1)"
+      - name: The LocalSend CLI (official release, or built from LocalSend's source)
+        id: ls
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/ls" && cd "$RUNNER_TEMP/ls"
+          tag=$(gh release view -R localsend/localsend --json tagName -q .tagName)
+          echo "LocalSend $tag"
+          gh release view "$tag" -R localsend/localsend --json assets -q '.assets[].name' | tee assets.txt
+          asset=$(grep -iE 'cli' assets.txt | grep -iE 'linux' | grep -iE 'x86[-_]?64|amd64' | grep -viE 'sha|sig|arm' | head -1 || true)
+          if [ -n "$asset" ]; then
+            gh release download "$tag" -R localsend/localsend -p "$asset"
+            case "$asset" in
+              *.tar.gz|*.tgz) tar xzf "$asset" ;;
+              *.zip) unzip -q "$asset" ;;
+              *.deb) dpkg-deb -x "$asset" deb ;;
+              *) chmod +x "$asset" ;;
+            esac
+            bin=$(find . -type f \( -name 'localsend-cli' -o -name "$asset" \) -perm -u+x | head -1)
+          fi
+          if [ -z "${bin:-}" ]; then
+            echo "No CLI in the release assets: building it from LocalSend's source ($tag)"
+            git clone -q --depth 1 --branch "$tag" https://github.com/localsend/localsend src
+            (cd src && cargo build --release -p localsend-cli 2>&1 | tail -20)
+            bin=src/target/release/localsend-cli
+          fi
+          test -x "$bin"
+          echo "path=$RUNNER_TEMP/ls/$bin" >> "$GITHUB_OUTPUT"
+          "$bin" --version || true
+          echo "::notice title=LocalSend CLI::$tag ($asset)"
+      - name: Protocol tests (two Nearby Shares, and LocalSend both ways)
+        env:
+          NEARBY_BIN: ${{ github.workspace }}/hosts/hearth-nearby/target/release/hearth-nearby
+          LS_CLI: ${{ steps.ls.outputs.path }}
+        run: python3 hosts/hearth-nearby/tests/nearby_interop.py
+      - name: Screenshot of the window
+        working-directory: hosts/hearth-nearby
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          # Something to see: another Nearby Share answering on the network.
+          HEARTH_NEARBY_TEST=1 HEARTH_NEARBY_HOME="$RUNNER_TEMP/shot-peer" HEARTH_NEARBY_DEST="$RUNNER_TEMP/shot-recv" ./target/release/hearth-nearby --serve --answer decline --alias "Pixel 9" --port 53317 > peer.log 2>&1 &
+          sleep 2
+          HEARTH_NEARBY_HOME="$RUNNER_TEMP/shot-app" ./target/release/hearth-nearby > run.log 2>&1 &
+          sleep 9
+          import -window root shots/nearby.png || true
+          w=$(xdotool search --name '^Nearby Share$' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true
+          xdotool key Tab; sleep 0.5; xdotool key Right; sleep 0.5; xdotool key Return; sleep 2
+          import -window root shots/nearby-pick.png || true
+          pkill -f target/release/hearth-nearby || true
+          echo "::notice title=App output::$(tail -c 1500 run.log | tr '\n' '|')"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-nearby-linux
+          path: |
+            hosts/hearth-nearby/target/release/hearth-nearby
+            hosts/hearth-nearby/shots
+
+  connect:
+    name: Hearth Connect (Linux) + KDE Connect
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-connect
+      - name: WebKit and GTK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev xvfb imagemagick xdotool >/dev/null
+      - name: Unit tests
+        working-directory: hosts/hearth-connect
+        run: |
+          set -o pipefail
+          cargo test --lib 2>&1 | tee test.log || { echo "::error title=unit tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 test.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        working-directory: hosts/hearth-connect
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A12 build.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=size::$(du -h target/release/hearth-connect | cut -f1)"
+      - name: KDE Connect (kdeconnectd from Fedora) in a container
+        run: |
+          mkdir -p "$RUNNER_TEMP/kc"
+          docker run -d --name kde -v "$RUNNER_TEMP/kc:/kc" registry.fedoraproject.org/fedora:42 sleep infinity
+          docker exec kde dnf -y -q install --setopt=install_weak_deps=False kde-connect dbus-daemon glib2 libnotify procps-ng >/dev/null 2>&1 \
+            || docker exec kde dnf -y -q install kde-connect dbus-daemon glib2 libnotify
+          docker exec kde sh -c 'rpm -q kde-connect; command -v kdeconnect-cli'
+          kd=$(docker exec kde sh -c 'ls /usr/libexec/kdeconnectd /usr/bin/kdeconnectd /usr/lib64/libexec/kdeconnectd 2>/dev/null | head -1')
+          echo "kdeconnectd: $kd"
+          echo "KDE_DAEMON=$kd" >> "$GITHUB_ENV"
+      - name: Hearth Connect against KDE Connect
+        env:
+          HEARTH_CONNECT_BIN: ${{ github.workspace }}/hosts/hearth-connect/target/release/hearth-connect
+        run: |
+          export HEARTH_CONNECT_HOME="$RUNNER_TEMP/hc-home" HEARTH_CONNECT_DEST="$RUNNER_TEMP/hc-recv" HEARTH_CONNECT_SOCKET="$RUNNER_TEMP/hc.sock"
+          export HEARTH_CONNECT_TEST=1 HEARTH_CONNECT_FAKE_BATTERY=57 KC_DIR="$RUNNER_TEMP/kc"
+          # The phone-as-touchpad needs /dev/uinput (Hearth OS gives it to the person at the device).
+          sudo modprobe uinput 2>/dev/null || true; sudo chmod 666 /dev/uinput 2>/dev/null || true
+          "$HEARTH_CONNECT_BIN" --daemon > "$RUNNER_TEMP/hc.log" 2>&1 &
+          sleep 2
+          "$HEARTH_CONNECT_BIN" --events > "$RUNNER_TEMP/hc-events.log" 2>&1 &
+          docker exec -d kde sh -c "mkdir -p /tmp/run && chmod 700 /tmp/run && export XDG_RUNTIME_DIR=/tmp/run QT_QPA_PLATFORM=offscreen && dbus-daemon --session --address=unix:path=/tmp/bus --fork && DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/bus $KDE_DAEMON > /kc/kdeconnectd.log 2>&1"
+          sleep 6
+          set +e
+          python3 hosts/hearth-connect/tests/kde_interop.py; code=$?
+          echo "---- Hearth Connect's log"; tail -c 4000 "$RUNNER_TEMP/hc.log"
+          echo "---- its events"; tail -c 6000 "$RUNNER_TEMP/hc-events.log"
+          echo "---- kdeconnectd's log"; tail -c 6000 "$RUNNER_TEMP/kc/kdeconnectd.log"
+          exit $code
+      - name: Screenshot of the window
+        if: always()
+        working-directory: hosts/hearth-connect
+        run: |
+          mkdir -p shots
+          export HEARTH_CONNECT_HOME="$RUNNER_TEMP/hc-home" HEARTH_CONNECT_DEST="$RUNNER_TEMP/hc-recv" HEARTH_CONNECT_SOCKET="$RUNNER_TEMP/hc.sock" HEARTH_CONNECT_TEST=1
+          # Paired again for the picture (the test ended by unpairing).
+          kid=$(docker exec kde env DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/bus kdeconnect-cli --my-id 2>/dev/null || true)
+          hid=$(./target/release/hearth-connect --call state | python3 -c 'import json,sys; print(json.load(sys.stdin)["deviceId"])' 2>/dev/null || true)
+          if [ -n "$kid" ] && [ -n "$hid" ]; then
+            docker exec kde env DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/bus kdeconnect-cli -d "$hid" --pair || true
+            sleep 3
+          fi
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          ./target/release/hearth-connect > run.log 2>&1 &
+          sleep 9
+          import -window root shots/connect.png || true
+          if [ -n "$kid" ]; then ./target/release/hearth-connect --call accept "{\"id\":\"$kid\"}" || true; sleep 3; fi
+          import -window root shots/connect-paired.png || true
+          pkill -f 'target/release/hearth-connect$' || true
+          echo "::notice title=App output::$(tail -c 1500 run.log | tr '\n' '|')"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-connect-linux
+          path: |
+            hosts/hearth-connect/target/release/hearth-connect
+            hosts/hearth-connect/shots
+
+  nearby-windows:
+    name: Nearby Share (Windows, compile check only)
+    runs-on: windows-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-nearby
+      - name: Unit tests and build
+        working-directory: hosts/hearth-nearby
+        shell: pwsh
+        run: |
+          cargo test --lib
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          cargo build --release
+          if ($LASTEXITCODE -ne 0) { exit 1 }
