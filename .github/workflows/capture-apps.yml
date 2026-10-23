@@ -114,7 +114,7 @@ jobs:
           if command -v dnf >/dev/null; then
             # As on Anatase: Cisco's openh264 (Fedora's ffmpeg-free and GStreamer encode H.264 with it).
             dnf -y -q install --skip-unavailable --setopt=fedora-cisco-openh264.enabled=1 openh264 >/dev/null || true
-            dnf -y -q install --skip-unavailable --setopt=fedora-cisco-openh264.enabled=1 git python3 webkit2gtk4.1 gtk3 dbus-daemon ffmpeg-free wf-recorder labwc foot wlr-randr dejavu-sans-mono-fonts \
+            dnf -y -q install --skip-unavailable --setopt=fedora-cisco-openh264.enabled=1 git python3 webkit2gtk4.1 gtk3 dbus-daemon ffmpeg-free wf-recorder labwc xorg-x11-server-Xwayland foot wlr-randr dejavu-sans-mono-fonts \
               pipewire pipewire-pulseaudio wireplumber pulseaudio-utils pipewire-utils gstreamer1-plugins-good gstreamer1-plugins-bad-free \
               gstreamer1-plugin-openh264 slurp procps-ng libnotify v4l-utils qrencode curl >/dev/null
           else
@@ -133,13 +133,17 @@ jobs:
           chmod +x bin/* hosts/hearth-media/ci/session.sh
           mkdir -p /tmp/out && chmod 777 /tmp/out
           ldd bin/hearth-recorder | grep 'not found' && echo "::warning::missing libraries above"
+          set +e
           status=0
           for t in hosts/hearth-recorder/tests/e2e.sh hosts/hearth-camera/tests/e2e.sh hosts/hearth-share/tests/e2e.sh; do
             [ -f "$t" ] || continue
             runuser -u tester -- env KIND=${{ matrix.kind }} OUT=/tmp/out LOGS=/tmp/out/logs-$(basename $(dirname $(dirname $t))) \
               RECORDER=$PWD/bin/hearth-recorder CAMERA=$PWD/bin/hearth-camera SHARE=$PWD/bin/hearth-share \
-              timeout 900 dbus-run-session -- bash hosts/hearth-media/ci/session.sh bash "$t" 2>&1 | tee -a /tmp/out/e2e.log || status=1
-            [ "${PIPESTATUS[0]}" = 0 ] || status=1
+              timeout 900 dbus-run-session -- bash hosts/hearth-media/ci/session.sh bash "$t" > /tmp/out/e2e-$(basename $(dirname $(dirname $t))).log 2>&1
+            rc=$?
+            cat /tmp/out/e2e-$(basename $(dirname $(dirname $t))).log
+            echo "::notice title=$(basename $(dirname $(dirname $t))) (${{ matrix.kind }})::finished with exit code $rc"
+            [ $rc = 0 ] || status=1
           done
           exit $status
       - name: What the session's programs said (when something failed)
