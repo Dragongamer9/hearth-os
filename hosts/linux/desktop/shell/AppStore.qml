@@ -101,9 +101,8 @@ Scope {
     function hasUpdate(id) { return updatesList.some(u => u.id === id); }
     function iconUrl(a) {
         if (!a) return "";
-        if (a.icon && a.icon.startsWith("/")) return "file://" + a.icon;
-        if (a.icon && a.icon.startsWith("https://")) return a.icon;
-        return Quickshell.iconPath(a.id, "application-x-executable");
+        if (a.icon && /^(\/|https:\/\/)/.test(a.icon)) return AppIcons.fromIcon(a.icon);
+        return AppIcons.source(a.icon || "", a.id || "");
     }
 
     SetJob { id: reader; helper: "hearth-apps" }
