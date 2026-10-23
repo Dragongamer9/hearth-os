@@ -1,7 +1,8 @@
 // Notification server for Desktop Mode: apps' notifications pop up in the top-right corner
 // and go away after a few seconds. Click one to run its default action; × dismisses it.
 // Past ones are kept for the session in DeskState.history (listed in the clock's panel); Do Not Disturb
-// (DeskState.dnd) keeps them from popping up.
+// (DeskState.dnd) keeps them from popping up, and so does muting an app (the bell button on its pop-up, or
+// Settings › Notifications), except urgent ones.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -20,7 +21,7 @@ Scope {
         // only urgent ones pop up.
         onNotification: n => {
             DeskState.remember(n);
-            if (DeskState.dnd && n.urgency !== NotificationUrgency.Critical) return;
+            if ((DeskState.dnd || DeskState.isMuted(n.appName)) && n.urgency !== NotificationUrgency.Critical) return;
             n.tracked = true;
         }
     }
@@ -123,6 +124,23 @@ Scope {
                             }
                         }
 
+                        // Mute this app: its notifications stop popping up (they still go to the list).
+                        Item {
+                            Layout.alignment: Qt.AlignTop
+                            implicitWidth: 18; implicitHeight: 18
+                            visible: card.modelData.appName !== "" && (hover.containsMouse || muteArea.containsMouse || closeArea.containsMouse)
+                            Icon { anchors.centerIn: parent; name: "bell-off"; size: 16; color: muteArea.containsMouse ? Theme.text : Theme.muted }
+                            MouseArea {
+                                id: muteArea
+                                anchors.fill: parent; anchors.margins: -6
+                                hoverEnabled: true
+                                onClicked: {
+                                    DeskState.setMuted(card.modelData.appName, true);
+                                    SettingsNav.toast(card.modelData.appName + " won't pop up any more. Settings › Notifications turns it back on");
+                                    card.modelData.dismiss();
+                                }
+                            }
+                        }
                         Text {
                             Layout.alignment: Qt.AlignTop
                             text: "×"
