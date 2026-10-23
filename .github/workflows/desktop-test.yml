@@ -110,6 +110,17 @@ jobs:
             ipc settings page "$p"; grim "shots/$n-settings-$p.png" || true; n=$((n+1))
           done
           ipc settings close
+          # ---- Settings › Accessibility (hearth-access), and labwc's magnifier on Super+= (zoomed in, then out again)
+          ipc settings page accessibility; grim "shots/$n-settings-accessibility.png" || true; n=$((n+1))
+          python3 hosts/linux/desktop/shell/hearth-access status > shots/accessibility-status.json 2>&1 || true
+          ipc settings close
+          if command -v wtype >/dev/null; then
+            wtype -M logo -k equal -m logo; sleep 1; wtype -M logo -k equal -m logo; sleep 2
+            grim "shots/$n-magnifier.png" || true; n=$((n+1))
+            wtype -M logo -k minus -m logo; sleep 1; wtype -M logo -k minus -m logo; sleep 1
+          fi
+          labwc --version > shots/labwc-version.txt 2>&1 || true
+          # ---- end Settings › Accessibility
           ipc power menu; grim "shots/$n-power-menu.png" || true; ipc power close
           # Taskbar & desktop: a folder and a file on the desktop, its right-click menu, the clock's panel
           mkdir -p "$HOME/Desktop/Projects" && echo hi > "$HOME/Desktop/notes.txt"; sleep 4
