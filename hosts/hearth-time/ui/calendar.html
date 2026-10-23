@@ -446,7 +446,8 @@ document.addEventListener('click', e => {
   const v = e.target.closest('[data-view]'); if (v) { setView(v.dataset.view); return; }
   const ev = e.target.closest('[data-ev]'); if (ev) { openEvent(ev.dataset.ev, ev.dataset.occ); return; }
   const cell = e.target.closest('.cell');
-  if (cell) { selectDay(cell.dataset.date); cell.focus({ preventScroll: true }); return; }
+  // A controller's A on a day: that day's view (a click only picks the day; Enter also opens it).
+  if (cell) { if (H.pad && cell.dataset.date === ymd(S.cur)) { setView('day'); return; } selectDay(cell.dataset.date); cell.focus({ preventScroll: true }); return; }
   const b = e.target.closest('[data-act]'); if (!b) return;
   switch (b.dataset.act) {
     case 'prev': shift(-1); break;
