@@ -85,14 +85,15 @@ sudo umount -R $H && sudo losetup -d "$LOOP"
 echo "--- 3. boot it"
 sudo apt-get install -y -qq qemu-system-x86 ovmf >/dev/null
 cp /usr/share/OVMF/OVMF_VARS_4M.fd "$W/vars.fd" 2>/dev/null || cp /usr/share/OVMF/OVMF_VARS.fd "$W/vars.fd"
-code=$(ls /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd 2>/dev/null | head -1)
+code=$(ls /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd 2>/dev/null | head -1 || true)
 timeout 2400 sudo qemu-system-x86_64 -m 4096 -smp 2 $( [ -e /dev/kvm ] && echo -enable-kvm -cpu host ) \
   -drive if=pflash,format=raw,readonly=on,file="$code" -drive if=pflash,format=raw,file="$W/vars.fd" \
   -drive file="$W/disk.img",format=raw,if=virtio -nographic -serial mon:stdio -display none -net none \
   > "$W/boot.log" 2>&1 < /dev/null &
 ok=0
 for i in $(seq 1 450); do
-  if clean "$W/boot.log" | grep -q 'hearth-boot-guard: this start was good, after starting the previous version'; then ok=1; sleep 60; break; fi
+  clean "$W/boot.log" > "$W/boot.txt" 2>/dev/null || true   # (no `producer | grep -q`: pipefail and SIGPIPE)
+  if grep -aq 'hearth-boot-guard: this start was good, after starting the previous version' "$W/boot.txt"; then ok=1; sleep 60; break; fi
   sleep 5
 done
 sudo pkill qemu-system || true
@@ -102,7 +103,7 @@ starts=$(clean "$W/boot.log" | grep -c "couldn't finish starting" || true)
 echo "emergency screen drawn $screens times; 'couldn't finish starting' $starts times"
 clean "$W/boot.log" | grep -a -E "hearth-boot-guard|Restarting|previous version|Command line" | uniq | tail -n 40 || true
 cp "$W/boot.log" boot-rollback.log
-[ "$ok" = 1 ] || fail "the previous version never came up by itself: $(clean "$W/boot.log" | tail -c 2500 | tr '\n' '|')"
+[ "$ok" = 1 ] || fail "the previous version never came up by itself (emergency screen $starts times): $(clean "$W/boot.log" | grep -av '^\s*$' | tail -c 2500 | tr '\n' '|' || true)"
 [ "$starts" -ge 1 ] || fail "the emergency screen didn't show"
 
 echo "--- 4. the disk afterwards"
