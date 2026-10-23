@@ -437,13 +437,39 @@ def labwc_config(src=None, dest=None):
     if mine:
         env = env.rstrip('\n') + '\n\n# Your keyboard (Hearth Settings › Keyboard, ~/.config/labwc/environment)\n' + \
             ''.join('%s=%s\n' % kv for kv in sorted(mine.items()))
+    # ---- Accessibility (hearth-access, Settings › Accessibility): text size, high contrast, pointer, screen reader
+    access = load_access_helper()
+    if access:
+        env = env.rstrip('\n') + '\n' + access.env_lines()
+    # ---- end Accessibility
     write_atomic(os.path.join(dest, 'environment'), env)
     delay, rate = keyboard_saved()
     rc = rc_with_repeat(read(os.path.join(src, 'rc.xml')), delay, rate)
     if os.path.exists(POINTER_JSON):
         rc = rc_with_pointer(rc, pointer_saved())
+    # ---- Accessibility: the magnifier's size and steps, window titles at your text size
+    if access:
+        rc = access.rc_with_access(rc)
+    # ---- end Accessibility
     write_atomic(os.path.join(dest, 'rc.xml'), rc)
     return dest
+
+
+# ---- Accessibility (hearth-access, next to this file)
+def load_access_helper():
+    """hearth-access as a module, or None (an older shell folder without it, or a broken one: never stops Desktop Mode)."""
+    path = os.path.join(HERE, 'hearth-access')
+    if not os.path.exists(path):
+        return None
+    try:
+        loader = importlib.machinery.SourceFileLoader('hearth_access', path)
+        spec = importlib.util.spec_from_loader('hearth_access', loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+# ---- end Accessibility
 
 
 def keyboard_set(raw):
@@ -607,7 +633,8 @@ KINDS = [
     {'kind': 'browser', 'label': 'Web browser', 'category': 'WebBrowser', 'mimes': None},
     {'kind': 'files', 'label': 'File manager', 'category': 'FileManager', 'mimes': ['inode/directory']},
     {'kind': 'text', 'label': 'Text editor', 'category': 'TextEditor', 'mimes': ['text/plain']},
-    {'kind': 'image', 'label': 'Image viewer', 'category': 'Viewer', 'mimes': ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff', 'image/svg+xml']},
+    {'kind': 'image', 'label': 'Image viewer', 'category': 'Viewer', 'mimes': ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff', 'image/svg+xml', 'image/avif', 'image/heic']},
+    {'kind': 'documents', 'label': 'Document viewer', 'category': 'Viewer', 'mimes': ['application/pdf', 'application/epub+zip', 'application/vnd.comicbook+zip']},
     {'kind': 'video', 'label': 'Video player', 'category': 'Video', 'mimes': ['video/mp4', 'video/x-matroska', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/mpeg', 'video/ogg']},
     {'kind': 'music', 'label': 'Music player', 'category': 'Audio', 'mimes': ['audio/mpeg', 'audio/flac', 'audio/ogg', 'audio/x-wav', 'audio/mp4', 'audio/x-vorbis+ogg', 'audio/opus']},
 ]

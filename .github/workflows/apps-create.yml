@@ -1,0 +1,158 @@
+# Hearth's everyday apps for drawing, typing and reading (Hearth OS's own): Hearth Paint (hosts/hearth-paint), the
+# emoji and symbol picker (hosts/hearth-emoji, Super+.), Hearth Fonts (hosts/hearth-fonts), and hearth-gamma
+# (hosts/hearth-gamma, Desktop Mode's inverted colours for Settings › Accessibility). Built and tested on Linux, with
+# screenshots of each window; hearth-gamma is tried against labwc. Windows builds are checked too but not shipped
+# yet (Ember gets these apps later). Release builds are made by base-anatase.yml and base-peppermint.yml.
+name: Hearth Paint, Emoji and Fonts
+
+on:
+  push:
+    branches: [apps-create-access, main, linux-host]
+    paths: ['hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/linux/desktop/shell/hearth-access', '.github/workflows/apps-create.yml']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: never
+
+permissions:
+  contents: write    # the screenshots branch
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target-apps
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-paint -> ../../target-apps
+          key: apps-create
+      - name: WebKit and GTK, fonts, the clipboard and screen tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb x11-utils imagemagick xdotool dbus-x11 dbus-daemon fontconfig fonts-dejavu fonts-noto-color-emoji fonts-noto-core labwc wtype wl-clipboard grim >/dev/null
+      - name: Unit tests (each app's library, hearth-gamma's ramps, Settings › Accessibility's helper)
+        run: |
+          set -o pipefail
+          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+            echo "::group::$c"
+            if [ "$c" = hearth-gamma ]; then what=--bins; else what=--lib; fi
+            (cd hosts/$c && cargo test $what 2>&1 | tee ../../test-$c.log) || { echo "::error title=$c tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 test-$c.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+            echo "::notice title=$c tests::$(grep -E '^test result' test-$c.log | tr '\n' ' ')"
+            echo "::endgroup::"
+          done
+          cd hosts/linux && python3 -m unittest discover -s test -p 'test_hearth_access.py' -v 2>&1 | tail -20
+      - name: Build
+        run: |
+          set -o pipefail
+          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+            (cd hosts/$c && cargo build --release 2>&1 | tee ../../build-$c.log) || { echo "::error title=$c build::$(grep -E '^error' -A8 build-$c.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+            echo "::notice title=$c::$(du -h "$CARGO_TARGET_DIR/release/$c" | cut -f1)"
+          done
+      - name: Fonts lists this machine's fonts; hearth-gamma talks to labwc
+        run: |
+          set -o pipefail
+          "$CARGO_TARGET_DIR/release/hearth-fonts" --list > fonts.json
+          python3 -c "import json; f = json.load(open('fonts.json')); print(len(f), 'families'); assert any(x['name'].startswith('DejaVu') for x in f)"
+          # labwc on a virtual screen (no real colour ramp there): hearth-gamma has to connect, find the protocol and
+          # the screen, and be told the screen can't change its ramp.
+          export XDG_RUNTIME_DIR=/tmp/xdg && mkdir -p $XDG_RUNTIME_DIR && chmod 700 $XDG_RUNTIME_DIR
+          WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 labwc > labwc.log 2>&1 &
+          for i in $(seq 1 20); do ls $XDG_RUNTIME_DIR/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls $XDG_RUNTIME_DIR/wayland-? | head -1)")
+          out=$("$CARGO_TARGET_DIR/release/hearth-gamma" check 2>&1) && code=0 || code=$?
+          echo "$out (exit $code)"
+          echo "::notice title=hearth-gamma against labwc::$out (exit $code)"
+          echo "$out" | grep -qE "ramp of [0-9]+ steps|can't be changed" || { echo "::error title=hearth-gamma::$out"; exit 1; }
+          labwc --version || true
+          pkill labwc || true
+      - name: Screenshots of the windows
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          mkdir -p $HOME/Pictures $HOME/Downloads
+          Xvfb :99 -screen 0 1360x860x24 >/dev/null 2>&1 &
+          sleep 2
+          win() { for i in $(seq 1 20); do w=$(xdotool search --name "$1" 2>/dev/null | tail -1); [ -n "$w" ] && { echo "$w"; return; }; sleep 0.5; done; }
+          # Paint, with a picture opened from the command line.
+          convert -size 900x560 gradient:'#ff8a3d-#2a1206' -fill white -pointsize 44 -gravity center -annotate 0 'Hearth Paint' $HOME/Pictures/test.png
+          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-paint" $HOME/Pictures/test.png > paint.log 2>&1 &
+          sleep 8; w=$(win 'Paint'); xdotool windowactivate --sync "$w" 2>/dev/null || true
+          { echo "--- processes"; ps aux | grep -E 'hearth-|Xvfb|WebKit' | grep -v grep; echo "--- windows"; xwininfo -root -children 2>&1 | head -30; echo "--- paint window: $w"; } > shots/diagnostics.txt 2>&1
+          sleep 10; { echo "--- 10 s later"; xwininfo -root -children 2>&1 | head -30; } >> shots/diagnostics.txt 2>&1
+          import -window root shots/paint.png || true
+          # Draw a rectangle and an arrow with the mouse.
+          eval "$(xdotool getwindowgeometry --shell "$w" 2>/dev/null)" || true
+          xdotool key r; xdotool mousemove $((X+500)) $((Y+250)) mousedown 1 mousemove $((X+700)) $((Y+330)) mousemove $((X+800)) $((Y+420)) mouseup 1
+          xdotool key a; xdotool mousemove $((X+300)) $((Y+500)) mousedown 1 mousemove $((X+420)) $((Y+420)) mousemove $((X+520)) $((Y+330)) mouseup 1
+          sleep 1; import -window root shots/paint-drawn.png || true
+          pkill -f release/hearth-paint || true
+          # Fonts.
+          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-fonts" > fonts.log 2>&1 &
+          sleep 8; import -window root shots/fonts.png || true
+          w=$(win 'Fonts'); xdotool windowactivate --sync "$w" 2>/dev/null || true
+          xdotool key Down Down Down; sleep 2; import -window root shots/fonts-picked.png || true
+          pkill -f release/hearth-fonts || true
+          # Fonts opening a font file (as Hearth Files does).
+          f=$(fc-list : file | grep -m1 -i 'DejaVuSerif.ttf' | cut -d: -f1); cp "$f" $HOME/Downloads/Test-Serif.ttf
+          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-fonts" $HOME/Downloads/Test-Serif.ttf > fonts2.log 2>&1 &
+          sleep 8; import -window root shots/fonts-file.png || true
+          pkill -f release/hearth-fonts || true
+          # The emoji picker, then a search.
+          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-emoji" > emoji.log 2>&1 &
+          sleep 7; import -window root shots/emoji.png || true
+          w=$(win 'Emoji'); xdotool windowactivate --sync "$w" 2>/dev/null || true
+          xdotool type --delay 80 'heart'; sleep 1; import -window root shots/emoji-search.png || true
+          pkill -f release/hearth-emoji || true
+          for l in paint fonts fonts2 emoji; do echo "::notice title=$l output::$(tail -c 800 $l.log | tr '\n' '|')"; done
+          cp paint.log fonts.log fonts2.log emoji.log fonts.json shots/ 2>/dev/null || true
+      # The screenshots also go to the ci/apps-create-shots branch (ci/apps-create-shots-<branch> for other branches),
+      # to look at without downloading the artifact.
+      - name: Publish screenshots to a branch
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          to=ci/apps-create-shots
+          if [ "$GITHUB_REF_NAME" != main ] && [ "$GITHUB_REF_NAME" != linux-host ]; then to="ci/apps-create-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"; fi
+          mkdir -p shots && cd shots && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Paint, Emoji and Fonts ${GITHUB_SHA::7}" --allow-empty
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-create-apps-linux
+          path: |
+            target-apps/release/hearth-paint
+            target-apps/release/hearth-emoji
+            target-apps/release/hearth-fonts
+            target-apps/release/hearth-gamma
+            shots
+
+  # Not shipped in Ember yet: this only checks the apps still build on Windows.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}\target-apps
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-paint -> ../../target-apps
+          key: apps-create-win
+      - name: Unit tests and builds
+        shell: pwsh
+        run: |
+          foreach ($c in 'hearth-paint', 'hearth-emoji', 'hearth-fonts') {
+            Push-Location "hosts/$c"
+            cargo test --lib
+            if ($LASTEXITCODE -ne 0) { throw "$c tests failed" }
+            cargo build --release
+            if ($LASTEXITCODE -ne 0) { throw "$c didn't build" }
+            Pop-Location
+          }
+          Get-ChildItem target-apps/release/*.exe | Format-Table Name, Length

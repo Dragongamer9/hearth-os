@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Logs
+GenericName=Log Viewer
+Comment=Read the system's and Hearth's logs, filter and search them, and send them to the developer
+Exec=/usr/bin/hearth-tools --app logs
+TryExec=/usr/bin/hearth-tools
+Icon=hearth-logs
+Type=Application
+Categories=System;Utility;
+Keywords=log;logs;journal;journalctl;events;errors;debug;report;bug;
+StartupWMClass=io.github.dragongamer9.hearth.logs

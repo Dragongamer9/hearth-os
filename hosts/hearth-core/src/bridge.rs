@@ -372,7 +372,13 @@ impl Bridge {
             "remote.unpair" => crate::remote::unpair(&req("uuid")?).map(|v| json!(v)),
             "remote.login" => crate::remote::login(a["user"].as_str().unwrap_or(""), a["pass"].as_str().unwrap_or("")).map(|v| json!(v)),
             "moonlight.open" => Ok(json!(crate::remote::open_moonlight())),
+            // ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect), from Game Mode
+            "linkapps.open" => crate::link_apps::open(a["app"].as_str().unwrap_or("")).map(|_| json!({"ok": true})),
+            // ---- end of Nearby Share and Hearth Connect
             "moonlight.install" => crate::remote::install_moonlight().map(|v| json!(v)),
+            // ---- Hearth's gaming apps (gaming_apps.rs): Controller Lab, Saves and Mods, opened on a game
+            "gamingApps.open" => crate::gaming_apps::open(&req("app")?, a["game"].as_str(), crate::signin_handoff::game_mode()).map(|_| json!({"ok": true})),
+            // ---- end of Hearth's gaming apps
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
@@ -542,6 +548,11 @@ impl Bridge {
             }
             "controller.preset" => crate::guide::controller(&["preset", &req("name")?]),
             "controller.reset" => crate::guide::controller(&["reset"]),
+            // ---- Accessibility (Settings › Accessibility: zoom, colour filters, screen reader; access.rs)
+            "access.status" => crate::access::run(&["status"]),
+            "access.set" => { let j = crate::access::set_args(a)?; crate::access::run(&["set", &j]) }
+            "access.apply" => crate::access::run(&["apply", "game"]),
+            // ---- end Accessibility
             // Is Handheld Daemon running, its controllers and power limit (Settings › Controls shows the way in).
             "hhd.status" => Ok(crate::hhd::status()),
             // Settings › Controls › Handheld Daemon: HHD's whole settings tree with its state, the state alone (the
@@ -1532,6 +1543,9 @@ fn features() -> Vec<&'static str> {
     if std::env::var_os("HEARTH_SEAT").is_some() { f.push("extraSeat"); }
     if std::path::Path::new("/sys/module/nvidia").exists() { f.push("nvidiaDrawing"); }
     if std::path::Path::new(crate::renderer::ELECTRON_APP).is_file() { f.push("renderer"); }
+    // ---- Hearth's gaming apps: Settings › Controls › Controller Lab, a game's ⋯ › Back up saves / Mods
+    if crate::gaming_apps::available() { f.push("gamingApps"); }
+    // ---- end of Hearth's gaming apps
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a

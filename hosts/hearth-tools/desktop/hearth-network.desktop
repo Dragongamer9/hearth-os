@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Network Tools
+GenericName=Network Tools
+Comment=Speed test, connections and apps using the network, Wi-Fi signal and channels, ping, traceroute and DNS
+Exec=/usr/bin/hearth-tools --app network
+TryExec=/usr/bin/hearth-tools
+Icon=hearth-network
+Type=Application
+Categories=System;Utility;
+Keywords=network;internet;speed;test;wifi;wi-fi;ping;traceroute;dns;lookup;connections;bandwidth;
+StartupWMClass=io.github.dragongamer9.hearth.network
