@@ -1,36 +1,44 @@
 #!/usr/bin/python3
-"""hearth-apt-layer: apps you add with apt (or by opening a .deb) on the Ubuntu and Peppermint editions, kept
-through restarts and put back after every system update. See docs/APT-LAYER.md.
+"""hearth-apt-layer: the Peppermint edition's permanent writable layer on /usr. Apps you install with apt (or
+by opening a .deb), packages you remove and packages you upgrade all stay through restarts, and Hearth puts them
+back on top of every new system version (bootc update). See docs/APT-LAYER.md.
 
-The system image is read-only and updates in one piece (bootc). This adds one writable layer on top of /usr:
+The system is still an image (read-only, updated and rolled back in one piece). On top of it:
 
   - An overlay on /usr whose changes live in /var/lib/hearth/layer/usr/<deployment>/ (/var is the machine's
     and survives restarts). One per deployment (the ostree commit bootc made from the image), so files from one
     image never leak into the next: after an update the new system starts with an empty layer.
   - dpkg's database is in /usr/lib/sysimage/dpkg (/var/lib/dpkg links to it), so it's inside the overlay too:
-    apt sees the image's packages as installed plus yours, and a new image brings its own database.
-  - A list of the packages you added (state.json). dpkg runs `record` after every change, so installing adds
-    to it and removing takes off. .deb files installed from a file are kept in debs/ to put them back offline.
-  - After an update (an empty layer and a non-empty list), hearth-apt-layer-sync.service puts your packages
-    back on the new image. One that no longer fits (it would need to replace, remove or downgrade part of the
-    system) is skipped and reported: a notification, status.json (Settings > Updates) and the journal.
-  - Guard rails (apt hooks, image pins): system packages aren't upgraded, reinstalled or removed into the layer
-    (Hearth's system updates do that), and kernel, initramfs and boot loader packages are refused (they can't
-    take effect this way).
+    apt sees the image's packages plus your changes, and a new image brings its own database.
+  - Your changes (state.json), kept current by dpkg's post-invoke hook (`record`):
+      packages  what you installed (not in the image, not just a dependency); .deb files installed from a
+                file are kept in debs/ to put them back without the internet
+      removed   image packages you removed
+      upgraded  image packages you moved to another version (apt upgrade)
+  - After an update hearth-apt-layer-sync.service puts them back on the new image: removes again what you
+    removed (unless the new image needs it: removing it would take more with it), upgrades again what you
+    upgraded (only if the new image's version is still older; otherwise the image caught up and the entry is
+    dropped), installs what you installed. Anything that doesn't fit is skipped and reported (a notification,
+    status.json for Settings > Updates, the journal); it never blocks the boot or the update.
+  - Guard rails: only the kernel, initramfs and boot loader (they can't take effect from a layer mounted after
+    boot) and the few packages this machinery itself runs on (apt, dpkg, Python, mount, sudo/pkexec, systemd:
+    image-setup lists them in `protected`) stay managed by Hearth. Kernel and boot packages are also pinned, so
+    `apt upgrade` passes them over instead of failing.
 
   hearth-apt-layer mount            (boot, hearth-apt-layer.service) mount the layer for this deployment
   hearth-apt-layer boot-sync        (boot, hearth-apt-layer-sync.service) start your apps' services, tidy old
-                                    layers, and put your packages back after an update
-  hearth-apt-layer reapply|retry    put back what's on the list and missing (retry: the skipped ones again)
+                                    layers, and put your changes back after an update
+  hearth-apt-layer reapply|retry    put back your changes that are missing (retry: the skipped ones again)
   hearth-apt-layer record           (dpkg post-invoke) bring the list up to date
-  hearth-apt-layer apt-hook         (apt, DPkg::Pre-Install-Pkgs, protocol 3) refuse removing system packages
-  hearth-apt-layer-debs             (apt, DPkg::Pre-Install-Pkgs, protocol 1; a link to this file) refuse
-                                    replacing system packages and boot packages; keep local .deb files
+  hearth-apt-layer apt-hook         (apt, DPkg::Pre-Install-Pkgs, protocol 3) refuse removing kernel, boot and
+                                    protected packages
+  hearth-apt-layer-debs             (apt, DPkg::Pre-Install-Pkgs, protocol 1; a link to this file) refuse kernel,
+                                    initramfs and boot loader packages; keep local .deb files
   hearth-apt-layer install-deb FILE install a .deb file (and what it needs) into the layer
-  hearth-apt-layer forget PKG...    take packages off the list (they aren't put back after updates)
-  hearth-apt-layer reset            start this system's layer empty at the next start (your list stays, so
-                                    everything is put back fresh)
-  hearth-apt-layer status [--json]  what's on the list and what happened after the last update
+  hearth-apt-layer forget PKG...    stop putting a change back after updates
+  hearth-apt-layer reset            start this system's layer empty at the next start (your changes are then
+                                    put back fresh)
+  hearth-apt-layer status [--json]  your changes and what happened after the last update
   hearth-apt-layer image-setup      (image build) what the guard rails need from the image
 
 Exit codes: 0 ok, 1 error ("error: ..." on stderr), 2 usage. Hooks never break dpkg: `record` always exits 0.
@@ -62,6 +70,11 @@ ADDED_APPS = os.path.join(LAYER, 'added-apps')     # .desktop files your package
 LOCK = os.path.join(LAYER, '.lock')
 ACTIVE = os.path.join(RUN, 'active.json')          # written once the layer is mounted (hooks only act then)
 IMAGE_LIST = os.path.join(DATA, 'image-packages')  # "<package>\t<version>": what the image has installed
+PROTECTED_LIST = os.path.join(DATA, 'protected')   # image packages Hearth's own tools need: never removed
+# What the protected list is made from (with everything they depend on): the package tools, the interpreter this
+# file and hearth-admin run on, mount (the layer), the ways to get root, and the init system.
+PROTECTED_ROOTS = ['apt', 'dpkg', 'python3', 'python3-minimal', 'mount', 'util-linux', 'sudo', 'sudo-rs', 'pkexec',
+                   'polkitd', 'systemd', 'systemd-sysv', 'libpam-runtime', 'base-files', 'bash', 'coreutils']
 LOG_TAG = 'hearth-apt-layer'
 
 # Names that can't take effect from a layer mounted after boot: the kernel and its modules, the initramfs, the
@@ -236,44 +249,72 @@ def user_packages(status, image, auto):
     return {pid for pid in status if pid not in image and pid not in auto}
 
 
+def image_changes(status, image):
+    """(image packages not installed now, {image package: installed version} where that isn't the image's)."""
+    removed = {pid for pid in image if pid not in status}
+    changed = {pid: status[pid]['version'] for pid in image if pid in status and image[pid]
+               and status[pid]['version'] != image[pid]}
+    return removed, changed
+
+
 def is_boot_package(name):
     return bool(BOOT_RE.match(name.split(':', 1)[0]))
 
 
 # ---------------------------------------------------------------------- the list
 def empty_state():
-    return {'version': 1, 'packages': {}, 'seen': {}}
+    return {'version': 2, 'packages': {}, 'removed': {}, 'upgraded': {}, 'seen': {}}
 
 
 def load_state():
     s = load_json(STATE, empty_state())
-    if not isinstance(s.get('packages'), dict):
-        s['packages'] = {}
-    if not isinstance(s.get('seen'), dict):
-        s['seen'] = {}
+    for k in ('packages', 'removed', 'upgraded', 'seen'):
+        if not isinstance(s.get(k), dict):
+            s[k] = {}
     return s
 
 
-def update_list(state, key, now_user, status=None, now=None):
-    """Brings the list in step with what's installed in deployment `key`.
+def seen_of(state, key):
+    s = state['seen'].get(key)
+    if isinstance(s, list):          # version 1: only what was installed
+        s = {'installed': s}
+    s = s if isinstance(s, dict) else {}
+    return set(s.get('installed', [])), set(s.get('removed', [])), dict(s.get('changed', {}))
 
-    Added: one of yours that's installed now and wasn't the last time this deployment was looked at. Removed:
-    one that was installed then and isn't now (you removed it). Something on the list that was never installed
-    in this deployment (it's still being put back, or it was skipped) stays on the list. Returns
-    (state, added ids, removed ids)."""
+
+def update_list(state, key, now_user, status=None, now=None, removed=None, changed=None, image=None):
+    """Brings your changes in step with what deployment `key` has now.
+
+    Something that changed since this deployment was last looked at is recorded (installed, removed, or another
+    version of an image package); something that went back is dropped (you removed what you'd installed,
+    reinstalled what you'd removed, or the image's version is back). An entry this deployment never showed (it's
+    still being put back, or it was skipped) stays. Returns (state, added ids, removed ids) for the installs."""
     now = int(now if now is not None else time.time())
-    seen = set(state['seen'].get(key, []))
-    added = sorted(now_user - seen)
-    removed = sorted(seen - now_user)
+    image = image or {}
+    s_inst, s_rem, s_chg = seen_of(state, key)
+    added = sorted(now_user - s_inst)
+    gone = sorted(s_inst - now_user)
     for pid in added:
         info = state['packages'].get(pid) or {'added': now}
         if status and pid in status:
             info['version'] = status[pid]['version']
         state['packages'][pid] = info
-    for pid in removed:
+    for pid in gone:
         state['packages'].pop(pid, None)
-    state['seen'][key] = sorted(now_user)
-    return state, added, removed
+    removed = set(removed or ())
+    changed = dict(changed or {})
+    for pid in sorted(removed - s_rem):
+        state['removed'][pid] = {'image': image.get(pid, ''), 'added': now}
+        state['upgraded'].pop(pid, None)
+    for pid in sorted(s_rem - removed):
+        state['removed'].pop(pid, None)
+    for pid, v in sorted(changed.items()):
+        if s_chg.get(pid) != v:
+            state['upgraded'][pid] = {'version': v, 'image': image.get(pid, ''), 'added': now}
+    for pid in sorted(set(s_chg) - set(changed) - removed):
+        state['upgraded'].pop(pid, None)
+    state['seen'][key] = {'installed': sorted(now_user), 'removed': sorted(removed), 'changed': changed}
+    return state, added, gone
 
 
 def deb_name(pid):
@@ -446,9 +487,10 @@ def cmd_mount():
         write_added_apps(state, current_status())
     except OSError:
         pass
-    if fresh and state['packages']:
+    n = len(state['packages']) + len(state['removed']) + len(state['upgraded'])
+    if fresh and n:
         write_atomic(PENDING, key + '\n')
-        log('new system version: %d added package(s) will be put back once the network is up' % len(state['packages']))
+        log('new system version: %d change(s) of yours will be put back once the network is up' % n)
     elif read(PENDING).strip() not in ('', key):
         # A put-back for another deployment that never finished (rolled back before it ran): not for this one.
         try:
@@ -641,19 +683,119 @@ def plan_reapply(wanted, present, image, kept, candidates, net_ok, newer=None):
     return jobs, skipped, included, already
 
 
+def plan_removals(removed, image, present):
+    """Image packages you removed: (ids to remove again, ids the new image doesn't have: nothing to do)."""
+    todo = sorted(pid for pid in removed if pid in image and pid in present)
+    gone = sorted(pid for pid in removed if pid not in image)
+    return todo, gone
+
+
+def removal_extras(sim_out, allowed):
+    """What else `apt-get -s remove` would remove besides `allowed` (then the new image needs the package)."""
+    out = []
+    for m in re.finditer(r'^Remv (\S+)', sim_out, re.M):
+        if m.group(1) not in allowed and m.group(1) not in out:
+            out.append(m.group(1))
+    return out
+
+
+def plan_upgrades(upgraded, image, present, candidates, net_ok, newer=None):
+    """Image packages you moved to another version. Upgrade again only while the new image's version is older
+    than yours; if it isn't, the image caught up and the entry goes. Returns (jobs [ids], skipped [(id, why)],
+    caught up [ids], dropped [(id, why)])."""
+    newer = newer or version_gt
+    jobs, skipped, caught, dropped = [], [], [], []
+    for pid in sorted(upgraded):
+        mine = upgraded[pid].get('version', '')
+        if pid not in image:
+            dropped.append((pid, 'the new system doesn\'t include it any more'))
+            continue
+        if pid not in present:
+            dropped.append((pid, 'it isn\'t installed'))
+            continue
+        if not mine or not newer(mine, image[pid]):
+            caught.append(pid)
+            continue
+        if not net_ok:
+            skipped.append((pid, 'no internet connection (tried again at the next start, or with Try again)'))
+            continue
+        cand = candidates.get(pid)
+        if cand and newer(cand, image[pid]):
+            jobs.append(pid)
+        else:
+            skipped.append((pid, 'version %s isn\'t available from your software sources any more' % mine))
+    return jobs, skipped, caught, dropped
+
+
 def current_status():
     return parse_status(read(DPKG_STATUS), native_arch())
 
 
+def try_batch(cmd_for, ids, sim_for=None):
+    """Runs the command for all ids at once, else one by one. Returns (done, [(id, why)])."""
+    if not ids:
+        return [], []
+    code, out = run(cmd_for(ids))
+    if code == 0:
+        return list(ids), []
+    log('all at once failed (%s); one at a time' % apt_reason(out))
+    done, failed = [], []
+    for pid in ids:
+        code, out = run(cmd_for([pid]))
+        if code == 0:
+            done.append(pid)
+        else:
+            failed.append((pid, friendly_reason(apt_reason(out))))
+    return done, failed
+
+
 def reapply(key, only=None):
-    """Put back what's on the list and missing from this deployment. only: limit to these ids (retry)."""
+    """Put back your changes that this deployment is missing: removals, upgrades, then installs. only: limit to
+    these ids (retry)."""
     with Locked(os.path.join(LAYER, '.reapply.lock')):
         state = load_state()
-        wanted = {k: v for k, v in state['packages'].items() if only is None or k in only}
+        pick = lambda d: {k: v for k, v in d.items() if only is None or k in only}
+        wanted, removed, upgraded = pick(state['packages']), pick(state['removed']), pick(state['upgraded'])
         image = image_packages()
         status = current_status()
-        log('putting back %d added package(s)' % len(wanted))
-        net_ok = apt_update() if wanted else True
+        log('putting back %d install(s), %d removal(s), %d upgrade(s)' % (len(wanted), len(removed), len(upgraded)))
+        net_ok = apt_update() if (wanted or upgraded) else True
+        skipped = []
+
+        # 1. removals (unless the new image needs the package: removing it would take more with it)
+        rem_todo, rem_gone = plan_removals(removed, image, set(status))
+        rem_done = []
+        if rem_todo:
+            code, out = run(['apt-get', '-s', 'remove'] + rem_todo)
+            extras = removal_extras(out, set(rem_todo))
+            if code == 0 and not extras:
+                done, failed = try_batch(lambda ids: ['apt-get', 'remove', '-y'] + ids, rem_todo)
+                rem_done += done
+                skipped += failed
+            else:
+                for pid in rem_todo:
+                    code, out = run(['apt-get', '-s', 'remove', pid])
+                    extras = removal_extras(out, set(rem_todo))
+                    if code != 0:
+                        skipped.append((pid, friendly_reason(apt_reason(out))))
+                    elif extras:
+                        more = ', '.join(extras[:5]) + ('…' if len(extras) > 5 else '')
+                        skipped.append((pid, 'the new system needs it (removing it would also remove %s)' % more))
+                    else:
+                        done, failed = try_batch(lambda ids: ['apt-get', 'remove', '-y'] + ids, [pid])
+                        rem_done += done
+                        skipped += failed
+
+        # 2. upgrades (only while the new image's version is still older than yours)
+        status = current_status()
+        cands = {pid: candidate(pid) for pid in upgraded if pid in image and pid in status} if net_ok else {}
+        up_jobs, up_skipped, caught, up_dropped = plan_upgrades(upgraded, image, set(status), cands, net_ok)
+        skipped += up_skipped
+        up_done, failed = try_batch(lambda ids: ['apt-get', 'install', '--only-upgrade'] + APT_OPTS + ids, up_jobs)
+        skipped += failed
+
+        # 3. installs (repo packages, kept .deb files)
+        status = current_status()
         kept, cands = {}, {}
         for pid in wanted:
             p = kept_deb(pid)
@@ -661,35 +803,46 @@ def reapply(key, only=None):
                 f = deb_fields(p)
                 kept[pid] = (p, f['Version'] if f else '')
             if pid not in image and pid not in status:
-                cands[pid] = candidate(pid)
-        jobs, skipped, included, already = plan_reapply(wanted, set(status), image, kept, cands, net_ok)
-        done = []
-        if jobs:
-            code, out = run(['apt-get', 'install'] + APT_OPTS + [a for _, a in jobs])
-            if code == 0:
-                done = [pid for pid, _ in jobs]
-            else:
-                log('putting everything back at once failed (%s); one at a time' % apt_reason(out))
-                for pid, arg in jobs:
-                    code, out = run(['apt-get', 'install'] + APT_OPTS + [arg])
-                    if code == 0:
-                        done.append(pid)
-                    else:
-                        skipped.append((pid, friendly_reason(apt_reason(out))))
-        # Packages put back by name are marked as yours again (installing a kept .deb file does too).
+                cands[pid] = candidate(pid) if net_ok else None
+        jobs, inst_skipped, included, already = plan_reapply(wanted, set(status), image, kept, cands, net_ok)
+        skipped += inst_skipped
+        args = dict(jobs)
+        done, failed = try_batch(lambda ids: ['apt-get', 'install'] + APT_OPTS + [args[i] for i in ids],
+                                 [pid for pid, _ in jobs])
+        skipped += failed
+
+        # What no longer applies comes off the list.
+        with Locked():
+            st = load_state()
+            for pid in rem_gone:
+                st['removed'].pop(pid, None)
+            for pid in caught:
+                st['upgraded'].pop(pid, None)
+            for pid, _ in up_dropped:
+                st['upgraded'].pop(pid, None)
+            save_json(STATE, st)
+        for pid in rem_done:
+            log('removed again: %s' % pid)
+        for pid in up_done:
+            log('upgraded again: %s' % pid)
         for pid in done:
             log('put back: %s' % pid)
+        for pid in caught:
+            log('the new system already has %s at your version or newer: no longer upgraded by you' % pid)
         for pid, why in skipped:
             log('skipped: %s: %s' % (pid, why))
         offline = any('no internet' in why for _, why in skipped)
-        prev = load_json(STATUS, {})
+        prev = load_json(STATUS, {}) if only is not None else {}
+        merge = lambda k, new: sorted(set(prev.get(k, [])) | set(new))
         result = {
             'key': key, 'time': int(time.time()),
-            'reinstalled': sorted(done + already) if only is None else sorted(set(prev.get('reinstalled', []))
-                                                                              | set(done + already)),
+            'reinstalled': merge('reinstalled', done + already),
+            'reremoved': merge('reremoved', rem_done),
+            'reupgraded': merge('reupgraded', up_done),
+            'caughtUp': merge('caughtUp', caught),
             'skipped': [{'name': pid, 'reason': why} for pid, why in sorted(skipped)],
             'included': sorted(included),
-            'total': len(state['packages']),
+            'total': len(state['packages']) + len(state['removed']) + len(state['upgraded']),
             'pending': offline,
         }
         save_json(STATUS, result)
@@ -723,14 +876,15 @@ def cmd_reapply(retry=False):
 
 # ---------------------------------------------------------------------- telling the person
 def summary(result):
-    n, m = len(result.get('reinstalled', [])), len(result.get('skipped', []))
-    title = 'Your added apps are back' if not m else 'Some of your added apps weren\'t put back'
-    body = '%d re-installed' % n
+    n = sum(len(result.get(k, [])) for k in ('reinstalled', 'reremoved', 'reupgraded'))
+    m = len(result.get('skipped', []))
+    title = 'Your changes are back' if not m else 'Some of your changes weren\'t put back'
+    body = '%d put back on the updated system' % n
     if m:
         body += ', %d skipped: %s. Settings › Updates says why and can try again.' % (
             m, ', '.join(s['name'] for s in result['skipped'][:4]) + ('…' if m > 4 else ''))
     else:
-        body += ' on the updated system.'
+        body += '.'
     return title, body
 
 
@@ -751,7 +905,7 @@ def sessions():
 
 
 def notify_result(result):
-    if not result.get('reinstalled') and not result.get('skipped'):
+    if not any(result.get(k) for k in ('reinstalled', 'reremoved', 'reupgraded', 'skipped')):
         return
     title, body = summary(result)
     for user, uid in sessions():
@@ -782,11 +936,14 @@ def cmd_record():
         if not image:
             return 0
         auto = parse_extended_states(read(EXT_STATES), native)
+        removed, changed = image_changes(status, image)
         with Locked():
             state = load_state()
-            state, added, removed = update_list(state, a['key'], user_packages(status, image, auto), status)
-            if added or removed:
-                save_json(STATE, state)
+            before = json.dumps([state['packages'], state['removed'], state['upgraded']], sort_keys=True)
+            state, added, _ = update_list(state, a['key'], user_packages(status, image, auto), status,
+                                          removed=removed, changed=changed, image=image)
+            save_json(STATE, state)
+            if json.dumps([state['packages'], state['removed'], state['upgraded']], sort_keys=True) != before:
                 prune_debs(state)
                 for pid in added:
                     log('Hearth: %s is kept through restarts and system updates' % pid)
@@ -816,39 +973,42 @@ def parse_hook_v3(text):
     return out
 
 
-def check_v3(actions, image, native):
-    """Problems (messages) with a plan: removing system packages."""
+def protected_packages():
+    return set(l.strip() for l in read(PROTECTED_LIST).splitlines() if l.strip() and not l.startswith('#'))
+
+
+def check_v3(actions, image, native, protected=frozenset()):
+    """Problems (messages) with a plan: removing the kernel, initramfs, boot loader, or what Hearth's own tools
+    need. Removing any other image package is fine (it's put back off after updates too)."""
     problems = []
     for a in actions:
         if a['action'] != '**REMOVE**':
             continue
         pid = pkg_id(a['name'], a['oldarch'], native)
-        if pid in image:
-            problems.append('%s is part of Hearth OS and can\'t be removed (it comes with the system image).' % pid)
+        if pid not in image:
+            continue
+        if is_boot_package(a['name']):
+            problems.append('%s stays: the kernel, initramfs and boot loader are managed by Hearth (they change with '
+                            'its system updates).' % pid)
+        elif pid in protected:
+            problems.append('%s stays: Hearth\'s own tools need it (apt, dpkg, Python, sudo and the like are '
+                            'managed by Hearth).' % pid)
     return problems
 
 
 def check_debs(debs, image, native, reapplying=False):
-    """Problems with the .deb files about to be unpacked, and which are local files to keep.
-    debs: [(path, fields)]."""
+    """Problems with the .deb files about to be unpacked (kernel, initramfs and boot loader packages), and which
+    are local files to keep (packages you add from a file). debs: [(path, fields)]."""
     problems, keep = [], []
     for path, f in debs:
         if not f:
             continue
         pid = pkg_id(f['Package'], f['Architecture'], native)
-        if pid in image:
-            v = image[pid]
-            if v and v != f['Version']:
-                problems.append('%s %s would replace the system\'s %s %s. System packages are updated with Hearth\'s '
-                                'system updates (Settings › Updates), not apt.' % (pid, f['Version'], pid, v))
-            else:
-                problems.append('%s is part of Hearth OS: it can\'t be reinstalled into your added apps.' % pid)
-            continue
         if is_boot_package(f['Package']):
-            problems.append('%s can\'t be installed: the kernel, initramfs and boot loader come with the system image '
-                            'and change only with Hearth\'s system updates.' % pid)
+            problems.append('%s can\'t be installed or changed here: the kernel, initramfs and boot loader come with '
+                            'the system image and change only with Hearth\'s system updates.' % pid)
             continue
-        if not path.startswith('/var/cache/apt/archives/'):
+        if pid not in image and not path.startswith('/var/cache/apt/archives/'):
             keep.append((pid, path))
     return problems, keep
 
@@ -857,8 +1017,8 @@ def refuse(problems):
     log('')
     for p in problems:
         log('Hearth: ' + p)
-    log('Hearth: nothing was changed. Apps you add with apt are kept through system updates; the system itself '
-        'updates in one piece. See docs/APT-LAYER.md.')
+    log('Hearth: nothing was changed. Everything else you install, remove or upgrade with apt is kept and put '
+        'back after system updates. See docs/APT-LAYER.md.')
     return 1
 
 
@@ -870,7 +1030,7 @@ def cmd_apt_hook():
     image = image_packages()
     if not image:
         return 0
-    problems = check_v3(parse_hook_v3(text), image, native_arch())
+    problems = check_v3(parse_hook_v3(text), image, native_arch(), protected_packages())
     return refuse(problems) if problems else 0
 
 
@@ -902,7 +1062,7 @@ def cmd_apt_hook_debs():
             log('Hearth: couldn\'t keep a copy of %s (%s): it can only come back after updates from your software '
                 'sources' % (os.path.basename(path), e))
     if debs and not os.environ.get('HEARTH_APT_LAYER_REAPPLY'):
-        log('Hearth: installing into your added apps (kept through restarts and system updates).')
+        log('Hearth: your changes are kept through restarts and put back after system updates.')
     return 0
 
 
@@ -944,8 +1104,9 @@ def cmd_forget(names):
         gone = []
         for n in names:
             pid = pkg_id(n, n.split(':', 1)[1] if ':' in n else '', native)
-            if state['packages'].pop(pid, None) is not None:
-                gone.append(pid)
+            for k in ('packages', 'removed', 'upgraded'):
+                if state[k].pop(pid, None) is not None and pid not in gone:
+                    gone.append(pid)
         save_json(STATE, state)
         prune_debs(state)
         write_added_apps(state, current_status())
@@ -976,6 +1137,8 @@ def status_json():
     return {
         'active': bool(a),
         'packages': sorted(state['packages']),
+        'removed': sorted(state['removed']),
+        'upgraded': sorted(state['upgraded']),
         'keptDebs': sorted(pid for pid in state['packages'] if kept_deb(pid)),
         'pending': bool(a) and read(PENDING).strip() == (a or {}).get('key'),
         'last': st or None,
@@ -988,14 +1151,17 @@ def cmd_status(as_json):
     if as_json:
         print(json.dumps(s))
         return 0
-    print('Added-apps layer: %s' % ('active' if s['active'] else 'not active'))
-    print('Your added packages (%d): %s' % (len(s['packages']), ', '.join(s['packages']) or 'none'))
+    print('Writable layer: %s' % ('active' if s['active'] else 'not active'))
+    print('Installed by you (%d): %s' % (len(s['packages']), ', '.join(s['packages']) or 'none'))
+    print('System packages you removed (%d): %s' % (len(s['removed']), ', '.join(s['removed']) or 'none'))
+    print('System packages you upgraded (%d): %s' % (len(s['upgraded']), ', '.join(s['upgraded']) or 'none'))
     last = s['last']
     if s['pending']:
         print('Being put back on this system version now.')
     if last:
-        print('After the last system update: %d re-installed, %d skipped' % (len(last.get('reinstalled', [])),
-                                                                             len(last.get('skipped', []))))
+        print('After the last system update: %d re-installed, %d removed again, %d upgraded again, %d skipped' % (
+            len(last.get('reinstalled', [])), len(last.get('reremoved', [])), len(last.get('reupgraded', [])),
+            len(last.get('skipped', []))))
         for k in last.get('skipped', []):
             print('  skipped %s: %s' % (k['name'], k['reason']))
         if last.get('skipped'):
@@ -1005,14 +1171,15 @@ def cmd_status(as_json):
 
 # ---------------------------------------------------------------------- image build
 def pins_text(image):
-    """apt preferences that hold every system package at the image's version (priority over 1000: apt never
-    picks another version, so `apt upgrade` only upgrades what you added)."""
+    """apt preferences holding the image's kernel, initramfs and boot loader packages at the image's versions
+    (priority over 1000), so `apt upgrade` passes them over instead of failing on the guard rail."""
     by_name = {}
     for pid, v in image.items():
         name, _, arch = pid.partition(':')
-        by_name.setdefault(name, {})[arch] = v
-    out = ['# Written by hearth-apt-layer image-setup: the system packages stay at the image\'s versions.',
-           '# They update with the system image (Hearth\'s system updates). See docs/APT-LAYER.md.', '']
+        if is_boot_package(name):
+            by_name.setdefault(name, {})[arch] = v
+    out = ['# Written by hearth-apt-layer image-setup: the kernel, initramfs and boot loader stay at the image\'s',
+           '# versions. They update with the system image (Hearth\'s system updates). See docs/APT-LAYER.md.', '']
     for name in sorted(by_name):
         vers = by_name[name]
         if len(set(vers.values())) == 1:
@@ -1031,6 +1198,18 @@ def image_list_text(status):
     return '\n'.join(lines) + '\n'
 
 
+def protected_from_depends(text, image):
+    """Installed package names in `apt-cache depends --recurse` output that are part of the image."""
+    out = set()
+    for line in text.splitlines():
+        if not line or line[0] in ' \t' or line.startswith('<'):
+            continue
+        n = line.strip()
+        if n in image:
+            out.add(n)
+    return out
+
+
 def cmd_image_setup():
     native = native_arch()
     status = parse_status(read(DPKG_STATUS), native)
@@ -1040,7 +1219,15 @@ def cmd_image_setup():
     image = {pid: s['version'] for pid, s in status.items()}
     write_atomic(IMAGE_LIST, image_list_text(status))
     write_atomic(os.path.join(DATA, 'image-pins.pref'), pins_text(image))
-    print('image-setup: %d system packages listed and pinned' % len(image))
+    roots = [r for r in PROTECTED_ROOTS if r in image]
+    r = subprocess.run(['apt-cache', 'depends', '--recurse', '--installed', '--no-recommends', '--no-suggests',
+                        '--no-conflicts', '--no-breaks', '--no-replaces', '--no-enhances'] + roots,
+                       capture_output=True, text=True)
+    prot = protected_from_depends(r.stdout, image) | set(roots)
+    write_atomic(PROTECTED_LIST, '# Written by hearth-apt-layer image-setup: image packages Hearth\'s own tools '
+                 'need (never removed).\n' + ''.join(n + '\n' for n in sorted(prot)))
+    print('image-setup: %d system packages listed, %d protected, %d boot packages pinned' % (
+        len(image), len(prot), pins_text(image).count('Package:')))
     return 0
 
 

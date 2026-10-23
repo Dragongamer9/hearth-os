@@ -117,8 +117,10 @@ SetPage {
         icon: "update"; title: "Update anyway"; sub: "Downloads anything new for Hearth and its apps"
         onActivated: page.start("update")
     }
-    // Your added apps (Ubuntu and Peppermint editions, docs/APT-LAYER.md): what was put back after the last
-    // system update, what was skipped and why, and a way to try the skipped ones again.
+    // Your apt changes (Peppermint's writable layer, docs/APT-LAYER.md): what was put back after the last system
+    // update (installs, removals, upgrades), what was skipped and why, and a way to try the skipped ones again.
+    function layerCount(l) { return l ? l.packages.length + (l.removed || []).length + (l.upgraded || []).length : 0; }
+    function putBack(last) { return last ? (last.reinstalled || []).length + (last.reremoved || []).length + (last.reupgraded || []).length : 0; }
     property var layer: null
     property bool layerBusy: false
     function layerLoad() { layerProc.running = true; }
@@ -138,13 +140,13 @@ SetPage {
     }
     SetRow {
         readonly property var last: page.layer ? page.layer.last : null
-        visible: !!(page.layer && page.layer.active && page.layer.packages.length > 0)
+        visible: !!(page.layer && page.layer.active && page.layerCount(page.layer) > 0)
         interactive: false; chevron: false
         icon: "update"
-        title: "Your added apps: " + (page.layer ? page.layer.packages.length : 0)
+        title: "Your apt changes: " + page.layerCount(page.layer)
         sub: page.layer && page.layer.pending ? "Being put back on this version…"
-            : last ? (last.reinstalled.length + " re-installed, " + last.skipped.length + " skipped after the last update")
-            : "Kept through restarts and system updates"
+            : last ? (page.putBack(last) + " put back, " + last.skipped.length + " skipped after the last update")
+            : "Installs, removals and upgrades are kept through restarts and system updates"
     }
     Repeater {
         model: page.layer && page.layer.last ? page.layer.last.skipped : []
@@ -157,7 +159,7 @@ SetPage {
     }
     SetRow {
         visible: page.canAdmin && !page.layerBusy && !!(page.layer && page.layer.last && page.layer.last.skipped.length > 0)
-        icon: "restart"; title: "Try the skipped apps again"
+        icon: "restart"; title: "Try the skipped changes again"
         onActivated: { page.layerBusy = true; layerRetry.running = true; }
     }
 

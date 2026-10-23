@@ -139,14 +139,15 @@ Ubuntu runner. A runner build would link fine today (same sonames). But `ubuntu-
 releases, whose glibc trixie (2.41) doesn't have. Hearth Browser (Electron) is built on the runner, as in
 `os.yml`. `build.sh` and CI fail the build if `ldd` finds a missing library.
 
-### Apps you add with apt and .deb files
+### The writable layer: apt works
 
-`sudo apt install` and opening a `.deb` file work. The app goes into a writable layer on top of the read-only
-image (an overlay on `/usr`, one per deployment, kept in `/var/lib/hearth/layer`). It stays through restarts, and
-after a system update it's put back on the new version by itself. A package that no longer fits is skipped and
-reported. The system's own packages are pinned and protected: `apt upgrade` only upgrades what you added, and
-removing system packages or installing kernel and boot loader packages is refused. Shared with the other
-Debian-family edition in `os-bases/apt-layer/`. **The details are in [APT-LAYER.md](APT-LAYER.md).**
+The system is still an image (updates in one piece, rollback in the boot menu). A permanent writable layer on
+`/usr` sits on top of it. `apt install`, opening a `.deb`, `apt remove`/`purge` and `apt upgrade`/`full-upgrade`
+all work, including on the system's own packages, and stay through restarts. After every system update, Hearth
+puts your changes back on the new version. Anything that no longer fits is skipped and reported. Only the kernel,
+initramfs and boot loader, and removing what Hearth's own tools run on (apt, dpkg, Python, sudo...), stay managed
+by Hearth. `/etc`, `/var`, `/opt` and `/usr/local` are writable too. **The details are in
+[APT-LAYER.md](APT-LAYER.md).**
 
 ## How to run it
 

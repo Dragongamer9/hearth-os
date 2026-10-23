@@ -57,11 +57,11 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      add a printer (driverless IPP Everywhere first, then a matching driver)
   hearth-admin printer-remove NAME   remove a printer
   hearth-admin printer-default NAME  the printer everyone prints to unless they pick another
-  hearth-admin install-deb FILE      install a .deb file into your added apps (Ubuntu and Peppermint editions:
-                                     kept through restarts and put back after system updates, docs/APT-LAYER.md).
+  hearth-admin install-deb FILE      install a .deb file into the writable layer (Peppermint edition: kept
+                                     through restarts and put back after system updates, docs/APT-LAYER.md).
                                      Always asks for the password (polkit rule). The file is read as you (only
                                      files you can read), copied, checked, then installed with apt
-  hearth-admin apt-layer-retry       put back the added apps the last system update skipped (same editions)
+  hearth-admin apt-layer-retry       put back your changes the last system update skipped (same edition)
 
 Output: progress lines as "log: ...", percentages as "progress: <0-100> <what>", the result as one JSON line. Exit 1 with "error: ..." on failure.
 """
@@ -201,8 +201,8 @@ APT_LAYER_STATUS = '/var/lib/hearth/layer/status.json'
 
 
 def added_apps():
-    """What happened to the apps added with apt after the last system update (Ubuntu and Peppermint editions), for
-    Settings > Updates: {"reinstalled": [...], "skipped": [{"name", "reason"}], "time"}, or None."""
+    """What happened to your apt changes after the last system update (Peppermint's writable layer), for Settings >
+    Updates: {"reinstalled", "reremoved", "reupgraded": [...], "skipped": [{"name", "reason"}], "time"}, or None."""
     if not os.path.exists(APT_LAYER):
         return None
     try:
@@ -212,7 +212,8 @@ def added_apps():
         return None
     if not isinstance(st, dict):
         return None
-    return {'reinstalled': list(st.get('reinstalled') or []), 'skipped': list(st.get('skipped') or []),
+    return {'reinstalled': list(st.get('reinstalled') or []), 'reremoved': list(st.get('reremoved') or []),
+            'reupgraded': list(st.get('reupgraded') or []), 'skipped': list(st.get('skipped') or []),
             'included': list(st.get('included') or []), 'time': st.get('time'), 'pending': bool(st.get('pending'))}
 
 
@@ -235,7 +236,7 @@ def valid_deb_path(path):
 
 def install_deb(path):
     if not os.path.exists(APT_LAYER):
-        fail('installing .deb files works on Hearth OS\'s Ubuntu and Peppermint editions')
+        fail('installing .deb files works on Hearth OS\'s Peppermint edition')
     real = valid_deb_path(path)
     if not real:
         fail('expected the full path of a .deb file')
@@ -265,8 +266,8 @@ def install_deb(path):
 
 def apt_layer_retry():
     if not os.path.exists(APT_LAYER):
-        fail('added apps are only kept on Hearth OS\'s Ubuntu and Peppermint editions')
-    print('log: Putting back the added apps that were skipped…', flush=True)
+        fail('apt changes are only kept on Hearth OS\'s Peppermint edition')
+    print('log: Putting back the changes that were skipped…', flush=True)
     r = subprocess.run([APT_LAYER, 'retry'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     for line in r.stdout.splitlines():
         if line.strip() and not line.startswith('{'):

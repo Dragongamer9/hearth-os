@@ -114,14 +114,10 @@ This stage is the same as Peppermint's, with the same pinned versions:
 WebKitGTK and glibc (2.43). `ubuntu-latest` runners may be on an older Ubuntu. Hearth Browser (Electron) is built
 on the runner, as in `os.yml`.
 
-### Apps you add with apt and .deb files
+### The writable layer (archived edition)
 
-`sudo apt install` and opening a `.deb` file work. The app goes into a writable layer on top of the read-only
-image (an overlay on `/usr`, one per deployment, kept in `/var/lib/hearth/layer`). It stays through restarts, and
-after a system update it's put back on the new version by itself. A package that no longer fits is skipped and
-reported. The system's own packages are pinned and protected: `apt upgrade` only upgrades what you added, and
-removing system packages or installing kernel and boot loader packages is refused. Shared with the other
-Debian-family edition in `os-bases/apt-layer/`. **The details are in [APT-LAYER.md](APT-LAYER.md).**
+`os-bases/apt-layer` (Peppermint's writable layer, [APT-LAYER.md](APT-LAYER.md)) is also wired into this
+image's build. This edition is archived, so it's untested here.
 
 ## How to run it
 
