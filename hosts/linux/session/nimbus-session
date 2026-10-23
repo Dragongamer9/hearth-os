@@ -38,6 +38,21 @@ export NIMBUS_SESSION=1 NIMBUS_APP NIMBUS_SHARE="$SHARE"
 # when the folder is only made later. Login shells get the same from /etc/profile.d/hearth-local-bin.sh.
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac
 export PATH
+# Where apps and their icons are found, for everything this session starts (labwc and its Alt+Tab, Mantel's
+# launcher, taskbar and notifications, Hearth, the apps): Flatpak's exported apps (yours and the system's), Snap's,
+# and the system's. The login screen doesn't always run /etc/profile.d/flatpak.sh first (that depends on the login
+# screen and your shell), and without these folders Flatpak apps were missing from the launcher or had no icons.
+# ~/.local/share (AppImages, Distrobox exports, your own .desktop files and ~/.local/share/icons) is
+# $XDG_DATA_HOME, which is always searched first. (desktop-test.yml runs these lines, between the >>> and <<< marks.)
+# >>> data dirs
+data_dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"; do
+  case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) data_dirs="$d:$data_dirs" ;; esac
+done
+case ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$data_dirs:/usr/local/share:/usr/share" ;; esac
+export XDG_DATA_DIRS="$data_dirs"
+unset data_dirs d
+# <<< data dirs
 export XDG_CURRENT_DESKTOP=Nimbus XDG_SESSION_DESKTOP=nimbus
 # gamescope reuses a mode saved in GAMESCOPE_MODE_SAVE_FILE (set by some Steam sessions) whenever -W/-H/-r are
 # absent or don't match, so a switch back to "the screen's own mode" could land on an old saved 144 Hz instead.
