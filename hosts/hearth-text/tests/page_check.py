@@ -67,8 +67,10 @@ MOCK = r"""
 
 
 def main():
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=os.path.abspath(UI))
-    handler.log_message = lambda *a: None
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+    handler = functools.partial(Quiet, directory=os.path.abspath(UI))
     srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = 'http://127.0.0.1:%d/index.html' % srv.server_address[1]
@@ -248,7 +250,7 @@ def main():
         pg.evaluate("window.__mock.emit('close-requested')")
         pg.wait_for_timeout(200)
         check(pg.is_visible('#shade'), 'closing the window asks')
-        pg.click('#dlgButtons button:has-text("Don\'t save")')
+        pg.click('#dlgButtons button.danger')
         pg.wait_for_timeout(300)
         check(pg.evaluate('window.__quit === true'), 'Don\'t save closes the window')
 
