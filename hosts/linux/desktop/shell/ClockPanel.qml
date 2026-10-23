@@ -1,10 +1,13 @@
 // The clock's panel (ClockPanel): notifications you missed (with Clear all and Do Not Disturb) above a month calendar with
 // today marked. Opens from the taskbar clock or bell, or `quickshell ipc ... call calendar toggle`.
+// With Hearth Calendar installed (hearth-time), days with events get a dot and the next events show under the month,
+// with a row that opens Calendar.
 // Keyboard / controller: Up/Down move, Enter (A) chooses, Left/Right (or Page Up/Down) change the
 // month on the calendar row, Esc (B) closes.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
 
@@ -23,6 +26,7 @@ PanelWindow {
         month = new Date(t.getFullYear(), t.getMonth(), 1);
         nav = -1;
         shown = true;
+        readEvents();   // Hearth Calendar
         DeskState.unseen = 0;
         keys.forceActiveFocus();
     }
@@ -30,11 +34,63 @@ PanelWindow {
 
     readonly property var history: DeskState.history
     readonly property int calRow: 2 + history.length
-    function shiftMonth(d) { month = new Date(month.getFullYear(), month.getMonth() + d, 1); }
+    function shiftMonth(d) { month = new Date(month.getFullYear(), month.getMonth() + d, 1); readEvents(); }
+
+    // ---- Hearth Calendar (hosts/hearth-time): events from `hearth-time --events FROM TO` for the month on show and
+    // the week ahead. hasCalendar: the program answered (else none of this shows).
+    property var calEvents: []
+    property bool hasCalendar: false
+    readonly property int calOpenRow: calRow + 1
+    readonly property int lastRow: hasCalendar ? calOpenRow : calRow
+    function ymd(d) { return Qt.formatDate(d, "yyyy-MM-dd"); }
+    function readEvents() {
+        const first = new Date(month.getFullYear(), month.getMonth(), 1);
+        const lead = (first.getDay() - Qt.locale().firstDayOfWeek % 7 + 7) % 7;
+        const from = new Date(first.getFullYear(), first.getMonth(), 1 - lead);
+        const t = new Date();
+        const today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+        const start = from < today ? from : today;
+        const gridEnd = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 42);
+        const weekEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 8);
+        calRead.running = false;
+        calRead.command = ["hearth-time", "--events", ymd(start), ymd(gridEnd > weekEnd ? gridEnd : weekEnd)];
+        calRead.running = true;
+    }
+    Process {
+        id: calRead
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { const r = JSON.parse(text.trim().split("\n").pop()); root.calEvents = r.events || []; root.hasCalendar = true; }
+                catch (e) { root.calEvents = []; }
+            }
+        }
+    }
+    readonly property var eventDays: {
+        const m = {};
+        for (const e of calEvents) {
+            const a = new Date(e.date + "T00:00:00"), b = new Date((e.lastDate || e.date) + "T00:00:00");
+            for (let d = a, n = 0; d <= b && n < 62; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1), n++) m[ymd(d)] = true;
+        }
+        return m;
+    }
+    readonly property var upcoming: {
+        const t = new Date(), k = ymd(t), end = ymd(new Date(t.getFullYear(), t.getMonth(), t.getDate() + 7));
+        return calEvents.filter(e => (e.lastDate || e.date) >= k && e.date <= end && (e.allDay || e.end > Date.now())).slice(0, 4);
+    }
+    function whenText(e) {
+        const t = new Date();
+        const k = e.date < ymd(t) ? ymd(t) : e.date;
+        const tm = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
+        const day = k === ymd(t) ? "Today" : k === ymd(tm) ? "Tomorrow" : Qt.formatDate(new Date(k + "T00:00:00"), "ddd d MMM");
+        return e.allDay ? day + " · All day" : day + " · " + Qt.formatTime(new Date(e.start), Settings.clock24 ? "HH:mm" : "h:mm AP");
+    }
+    function openCalendar() { close(); Quickshell.execDetached(["hearth-calendar"]); }
+    // ---- end of Hearth Calendar
     function activate(i) {
         if (i === 0) DeskState.setDnd(!DeskState.dnd);
         else if (i === 1) { DeskState.clearHistory(); nav = 0; }
-        else if (i === calRow) { const t = new Date(); month = new Date(t.getFullYear(), t.getMonth(), 1); }
+        else if (i === calRow) { const t = new Date(); month = new Date(t.getFullYear(), t.getMonth(), 1); readEvents(); }
+        else if (i === calOpenRow && hasCalendar) openCalendar();   // Hearth Calendar
         else if (i >= 2) { DeskState.forget(history[i - 2].key); nav = Math.min(nav, calRow - 1); }
     }
     function when(d) {
@@ -61,8 +117,8 @@ PanelWindow {
         Keys.onPressed: event => {
             switch (event.key) {
             case Qt.Key_Escape: root.close(); break;
-            case Qt.Key_Up: root.nav = root.nav < 0 ? root.calRow : Math.max(0, root.nav - 1); if (root.history.length === 0 && root.nav === 1) root.nav = 0; break;
-            case Qt.Key_Down: case Qt.Key_Tab: root.nav = root.nav < 0 ? 0 : Math.min(root.calRow, root.nav + 1); if (root.history.length === 0 && root.nav === 1) root.nav = root.calRow; break;
+            case Qt.Key_Up: root.nav = root.nav < 0 ? root.lastRow : Math.max(0, root.nav - 1); if (root.history.length === 0 && root.nav === 1) root.nav = 0; break;
+            case Qt.Key_Down: case Qt.Key_Tab: root.nav = root.nav < 0 ? 0 : Math.min(root.lastRow, root.nav + 1); if (root.history.length === 0 && root.nav === 1) root.nav = root.calRow; break;
             case Qt.Key_Left: if (root.nav === root.calRow || root.nav < 0) root.shiftMonth(-1); else if (root.nav === 1) root.nav = 0; break;
             case Qt.Key_Right: if (root.nav === root.calRow || root.nav < 0) root.shiftMonth(1); else if (root.nav === 0 && root.history.length) root.nav = 1; break;
             case Qt.Key_PageUp: root.shiftMonth(-1); break;
@@ -274,6 +330,14 @@ PanelWindow {
                                     color: day.today ? Theme.accent : "transparent"
                                     border.color: day.today ? Qt.lighter(Theme.accent, 1.2) : "transparent"
                                 }
+                                // Hearth Calendar: a dot on days with events.
+                                Rectangle {
+                                    visible: !!root.eventDays[root.ymd(day.modelData)]
+                                    width: 4; height: 4; radius: 2
+                                    anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 2 }
+                                    color: day.today ? Theme.accentInk : Theme.accent
+                                    z: 1
+                                }
                                 Text {
                                     anchors.centerIn: parent
                                     text: day.modelData.getDate()
@@ -288,6 +352,49 @@ PanelWindow {
                     }
                 }
             }
+
+            // ---- Hearth Calendar: the next events (a week ahead) and a row that opens Calendar.
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: root.hasCalendar
+                spacing: 6
+                Repeater {
+                    model: root.upcoming
+                    delegate: Item {
+                        id: up
+                        required property var modelData
+                        Layout.fillWidth: true
+                        implicitHeight: urow.implicitHeight + 4
+                        RowLayout {
+                            id: urow
+                            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
+                            spacing: 10
+                            Rectangle { implicitWidth: 4; Layout.fillHeight: true; radius: 2; color: up.modelData.color || Theme.accent }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 0
+                                Text { Layout.fillWidth: true; text: up.modelData.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                Text { Layout.fillWidth: true; text: root.whenText(up.modelData) + (up.modelData.location ? " · " + up.modelData.location : ""); color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; elide: Text.ElideRight }
+                            }
+                        }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openCalendar() }
+                    }
+                }
+                Text {
+                    visible: root.upcoming.length === 0
+                    text: "Nothing planned this week"
+                    color: Theme.muted
+                    font.family: Theme.font
+                    font.pixelSize: 12
+                }
+                Chip {
+                    navIndex: root.calOpenRow
+                    Layout.fillWidth: true
+                    icon: "calendar"
+                    label: "Open Calendar"
+                }
+            }
+            // ---- end of Hearth Calendar
         }
     }
 
