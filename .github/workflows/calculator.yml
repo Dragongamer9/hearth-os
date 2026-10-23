@@ -75,9 +75,8 @@ jobs:
       - name: The page in Chromium
         run: |
           set -o pipefail
-          python3 -m venv "$RUNNER_TEMP/pw"; . "$RUNNER_TEMP/pw/bin/activate"
-          pip install -q playwright==1.48.2
-          python -m playwright install --with-deps chromium >/dev/null
+          { python3 -m pip install -q --user --break-system-packages playwright==1.48.2 && python3 -m playwright install --with-deps chromium; } > pw.log 2>&1 \
+            || { echo "::error title=Playwright::$(tail -c 2500 pw.log | tr '\n' '|')"; exit 1; }
           python3 tests/ui_test.py shots/page 2>&1 | tee ui.log || { echo "::error title=page::$(tail -c 3000 ui.log | tr '\n' '|')"; exit 1; }
           echo "::notice title=Page::$(grep -c '^ok' ui.log) checks passed"
       - uses: actions/upload-artifact@v4
