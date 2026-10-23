@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=System Info
+GenericName=System Information
+Comment=Your device, processor, graphics, memory, drives, battery health and Hearth version
+Exec=/usr/bin/hearth-tools --app system-info
+TryExec=/usr/bin/hearth-tools
+Icon=hearth-system-info
+Type=Application
+Categories=System;Utility;
+Keywords=system;info;hardware;cpu;gpu;memory;ram;battery;specs;about;fetch;
+StartupWMClass=io.github.dragongamer9.hearth.systeminfo

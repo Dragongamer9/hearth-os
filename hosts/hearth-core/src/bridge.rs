@@ -373,6 +373,9 @@ impl Bridge {
             "remote.login" => crate::remote::login(a["user"].as_str().unwrap_or(""), a["pass"].as_str().unwrap_or("")).map(|v| json!(v)),
             "moonlight.open" => Ok(json!(crate::remote::open_moonlight())),
             "moonlight.install" => crate::remote::install_moonlight().map(|v| json!(v)),
+            // ---- Hearth's gaming apps (gaming_apps.rs): Controller Lab, Saves and Mods, opened on a game
+            "gamingApps.open" => crate::gaming_apps::open(&req("app")?, a["game"].as_str(), crate::signin_handoff::game_mode()).map(|_| json!({"ok": true})),
+            // ---- end of Hearth's gaming apps
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
@@ -1532,6 +1535,9 @@ fn features() -> Vec<&'static str> {
     if std::env::var_os("HEARTH_SEAT").is_some() { f.push("extraSeat"); }
     if std::path::Path::new("/sys/module/nvidia").exists() { f.push("nvidiaDrawing"); }
     if std::path::Path::new(crate::renderer::ELECTRON_APP).is_file() { f.push("renderer"); }
+    // ---- Hearth's gaming apps: Settings › Controls › Controller Lab, a game's ⋯ › Back up saves / Mods
+    if crate::gaming_apps::available() { f.push("gamingApps"); }
+    // ---- end of Hearth's gaming apps
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a

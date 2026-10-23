@@ -81,6 +81,9 @@ for agent in /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
              /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 \
              /usr/libexec/polkit-kde-authentication-agent-1 \
              /usr/lib/polkit-kde-authentication-agent-1 \
+             /usr/libexec/polkit-mate-authentication-agent-1 \
+             /usr/lib/x86_64-linux-gnu/mate-polkit/polkit-mate-authentication-agent-1 \
+             lxpolkit \
              lxqt-policykit-agent; do
   if command -v "$agent" >/dev/null 2>&1; then "$agent" >/dev/null 2>&1 & break; fi
 done
@@ -105,3 +108,12 @@ fi
 
 # A store sign-in asked for in Game Mode (Library › Stores): Hearth opens here in a window and starts it.
 [ -f "$SHARE/desktop/shell/hearth-signin" ] && command -v python3 >/dev/null 2>&1 && python3 "$SHARE/desktop/shell/hearth-signin" desktop-start >/dev/null 2>&1 &
+
+# ---- Welcome & Tips (hosts/hearth-tools): the first-run tour, the first time Desktop Mode starts on this account.
+# hearth-tools remembers it was shown (~/.local/share/nimbus/welcome-done) and does nothing after that. Not on a live
+# USB (the installer has its own welcome) or a second player's seat.
+if [ -z "$HEARTH_SEAT" ] && [ ! -e /etc/hearth-live ] && command -v hearth-tools >/dev/null 2>&1 \
+   && [ ! -e "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/welcome-done" ]; then
+  (sleep 6; hearth-tools --app welcome --first-run >/dev/null 2>&1) &
+fi
+# ---- end Welcome & Tips

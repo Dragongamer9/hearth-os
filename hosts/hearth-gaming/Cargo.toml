@@ -1,0 +1,49 @@
+[package]
+name = "hearth-gaming"
+version = "0.6.0"
+edition = "2021"
+description = "Hearth's own gaming utilities: Controller Lab (test and calibrate controllers), Saves (back up and restore game saves) and Mods (a mod manager)"
+license = "GPL-3.0-or-later"
+
+# What doesn't need a window (reading controllers, finding and zipping saves, putting mods in place) is a library,
+# so the tests drive it without opening an app. Each app is its own program with its own page (ui/*.html).
+[lib]
+name = "hearth_gaming"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-controller-lab"
+path = "src/apps/controller_lab.rs"
+
+[[bin]]
+name = "hearth-saves"
+path = "src/apps/saves.rs"
+
+[[bin]]
+name = "hearth-mods"
+path = "src/apps/mods.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+# Linux: controllers through evdev (/dev/input), and Hearth's own library (hearth-core) for the games.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+hearth-core = { path = "../hearth-core" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

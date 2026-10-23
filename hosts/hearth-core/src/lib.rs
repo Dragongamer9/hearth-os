@@ -13,6 +13,9 @@ pub mod desktop_games;
 pub mod display;
 pub mod emulators;
 pub mod friends;
+// ---- Hearth's gaming apps (Controller Lab, Saves, Mods): opened from Game Mode
+pub mod gaming_apps;
+// ---- end of Hearth's gaming apps
 pub mod game_options;
 pub mod gameinfo;
 pub mod gamescope;
