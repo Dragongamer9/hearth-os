@@ -9,7 +9,7 @@
     <RootNamespace>Nimbus.Host</RootNamespace>
     <AssemblyName>Nimbus</AssemblyName>
     <!-- Release builds get their version from the git tag (vX.Y.Z) in CI. -->
-    <Version>0.6.1</Version>
+    <Version>0.6.2</Version>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Platforms>x64;ARM64</Platforms>
