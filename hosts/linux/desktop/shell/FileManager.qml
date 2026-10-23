@@ -98,6 +98,9 @@ Scope {
     property string dlgPath: ""
     property var cf: null                      // a name clash: {verb, paths, dest, list, i, decide, all, button}
     property var pv: null                      // quick preview: {e, text, error}
+    property string dlgAlt: ""                 // a confirm's third button (Open in Hearth Text), "" for none
+    property var dlgAltAction: null
+    property var foPlan: null                  // opening a script, program or .desktop file: {e, plan, remember}
 
     // ------------------------------------------------ long copy / move / compress / extract
     property var job: null                     // {verb, count, name, destName, done, total, speed, file, cancelling}
@@ -118,6 +121,7 @@ Scope {
         function search(q: string): void { app.runSearch(q); }
         function tab(p: string): void { app.open(""); app.newTab(p); }
         function select(name: string): void { const i = app.entries.findIndex(e => e.name === name); if (i >= 0) app.cur = i; }
+        function activate(name: string): void { if (app.found !== null) app.clearSearch(); const i = app.entries.findIndex(e => e.name === name); if (i >= 0) { app.cur = i; app.activate(app.entries[i]); } }
         function close(): void { app.closeOverlay(); }
     }
 
@@ -588,8 +592,7 @@ Scope {
         }
         if (isAppImage(e)) return runAppImage(e);
         if (isDeb(e)) return installDeb(e);
-        say("Opening “" + e.name + "”…");
-        call(["open", e.path], (r, err) => { if (err) say(err, true); });
+        openFile(e);
     }
     function openPlace(i) {
         const p = places[i];
@@ -747,6 +750,7 @@ Scope {
         } else {
             if (e) items.push({ id: "open", label: "Open", key: "Enter" });
             if (e && !e.dir) items.push({ id: "openwith", label: "Open with…" });
+            if (e && !e.dir && n === 1) for (const it of fileOpenMenuItems(e)) items.push(it);
             if (e && e.dir && n === 1) items.push({ id: "newtab", label: "Open in new tab" });
             if (n === 1 && isAppImage(e)) items.push({ id: "airun", label: "Run" }, e.inMenu ? { id: "aimenurm", label: "Remove from app menu" } : { id: "aimenu", label: "Add to app menu" });
             if (n === 1 && isDeb(e)) items.push({ id: "debinstall", label: "Install" });
@@ -842,6 +846,7 @@ Scope {
         if (id.startsWith("group:")) return setGroup(id.slice(6));
         if (id.startsWith("view:")) return setView(id.slice(5));
         if (id.startsWith("tpl:")) return newFromTemplate(templates[parseInt(id.slice(4), 10)]);
+        if (id.startsWith("fo-")) return fileOpenChoice(id.slice(3), e);
         switch (id) {
         case "stop": cancelJob(); break;
         case "open": activate(e); break;
@@ -1105,6 +1110,127 @@ Scope {
         transferTo(copy ? "copy" : "move", list, dest);
     }
 
+    // ================================================ opening scripts, programs, .desktop files and text
+    // hearth-files open-plan says what opening the file should do. Scripts and programs ask what to do (the
+    // answer is remembered for that file until it changes), .desktop files show what they run before starting it,
+    // text-like files no app claims open in Hearth Text, and other files without an app offer a read-only view.
+    function openFile(e) {
+        call(["open-plan", e.path], (r, err) => {
+            if (err || !r) return say(err || "Couldn't open “" + e.name + "”", true);
+            if (r.kind === "script" || r.kind === "program") {
+                if (r.remembered) return fileOpenChoice(r.remembered, e, r);
+                return askRunOrOpen(e, r);
+            }
+            if (r.kind === "desktop") return askDesktop(e, r);
+            if (r.kind === "text") return openInText(e, false);
+            if (r.kind === "binary") {
+                foPlan = { e: e, plan: r, remember: false };
+                return showMenu("No app opens “" + e.name + "”", [
+                    { id: "fo-view", label: "Open in Hearth Text (read-only)" },
+                    { id: "fo-openwith", label: "Open with…" },
+                    sep(),
+                    { id: "fo-cancel", label: "Cancel" }
+                ]);
+            }
+            say("Opening “" + e.name + "”…");
+            call(["open", e.path], (r2, err2) => { if (err2) say(err2, true); });
+        });
+    }
+    function askRunOrOpen(e, r) {
+        foPlan = { e: e, plan: r, remember: true };
+        const more = r.executable ? "" : "…";
+        const items = [
+            { id: "fo-terminal", label: "Run in Terminal" + more },
+            { id: "fo-run", label: "Run" + more }
+        ];
+        if (r.text) items.push({ id: "fo-text", label: "Open in Hearth Text" });
+        if (!r.executable && r.canChmod) items.push(sep(), { id: "fo-chmod", label: "Make it runnable…" });
+        items.push(sep(), { id: "fo-cancel", label: "Cancel" });
+        showMenu("Open “" + e.name + "” · " + (r.kind === "program" ? "a program" : (r.interpreter ? r.interpreter + " " : "") + "script"), items);
+    }
+    function fileOpenMenuItems(e) {
+        const name = e.name.toLowerCase();
+        if (/\.appimage$/.test(name)) return [];
+        if (/\.desktop$/.test(name)) return [{ id: "fo-launch", label: "Start…" }, { id: "fo-text", label: "Open in Hearth Text" }];
+        const script = /\.(sh|bash|zsh|ksh|command|py|pyw|pl|rb|lua|run|bats)$/.test(name);
+        const out = [];
+        if (script || e.exec) {
+            out.push({ id: "fo-terminal", label: "Run in Terminal" }, { id: "fo-run", label: "Run" });
+            if (!e.exec) out.push({ id: "fo-chmod", label: "Make it runnable…" });
+        }
+        if (script || ["text", "file"].indexOf(kindOf(e)) >= 0) out.push({ id: "fo-text", label: "Open in Hearth Text" });
+        if (script || e.exec) out.push({ id: "fo-forget", label: "Ask what opening does" });
+        return out;
+    }
+    // A choice from the open question (remembered for the file) or from the right-click menu.
+    function fileOpenChoice(choice, e, plan) {
+        const fp = foPlan;
+        foPlan = null;
+        if (fp && fp.e) { e = fp.e; plan = fp.plan; }
+        if (!e || choice === "cancel") return;
+        const remember = !!(fp && fp.remember) && ["terminal", "run", "text"].indexOf(choice) >= 0;
+        if (remember) call(["open-choice", e.path, choice], (r, err) => {
+            if (!err) say("Opening “" + e.name + "” does this from now on (right-click it for the other choices)");
+        });
+        switch (choice) {
+        case "terminal":
+        case "run":
+            return runFileAs(e, choice === "terminal", plan);
+        case "text": return openInText(e, false);
+        case "view": return openInText(e, true);
+        case "openwith": return showApps(e, false);
+        case "chmod": return askRunnable(e, null);
+        case "forget":
+            return call(["open-choice", e.path], (r, err) => say(err ? err : "Opening “" + e.name + "” asks what to do again", !!err));
+        case "launch":
+            return call(["open-plan", e.path], (r, err) => { if (err) return say(err, true); askDesktop(e, r); });
+        }
+    }
+    function runFileAs(e, inTerminal, plan) {
+        const go = () => {
+            say((inTerminal ? "Running “" : "Starting “") + e.name + (inTerminal ? "” in Terminal…" : "”…"));
+            call(["run", e.path].concat(inTerminal ? ["--terminal"] : []), (r, err) => {
+                if (err && err.indexOf("confirm:") === 0) return askRunnable(e, go);
+                if (err) say(err, true);
+            });
+        };
+        if (plan && !plan.executable) return askRunnable(e, go);
+        go();
+    }
+    function askRunnable(e, then) {
+        confirm("Make “" + e.name + "” runnable?",
+            "Only run scripts and programs you trust. One from the internet or from someone you don't know can delete your files or install something harmful, and Hearth can't tell what it will do.",
+            then ? "Make runnable and run" : "Make runnable", () => {
+                call(["make-runnable", e.path], (r, err) => {
+                    if (err) return say(err, true);
+                    if (listing) reload();
+                    if (then) then(); else say("“" + e.name + "” can run now");
+                });
+            });
+        dlgDanger = false;
+    }
+    function askDesktop(e, r) {
+        const d = r.desktop || {};
+        if (!d.runnable) return openInText(e, false);
+        const where = parentOf(e.path).replace(home, "~");
+        confirm("Start “" + d.name + "”?",
+            (d.comment ? d.comment + "\n\n" : "") + "This shortcut runs:  " + (d.type === "Link" ? d.url : d.exec) + (d.terminal ? "  (in a terminal)" : "")
+            + "\n\nIt's in " + where + ". Only start shortcuts you trust: what it runs can do anything you can.",
+            "Start", () => call(["desktop-launch", e.path], (r2, err) => say(err ? err : "Starting " + d.name + "…", !!err)));
+        dlgDanger = false;
+        dlgAlt = "Open in Hearth Text";
+        dlgAltAction = () => openInText(e, false);
+    }
+    function openInText(e, readonly) {
+        say("Opening “" + e.name + "” in Hearth Text…");
+        call(["open-text", e.path].concat(readonly ? ["--readonly"] : []), (r, err) => { if (err) say(err, true); });
+    }
+    function acceptAlt() {
+        const a = dlgAltAction;
+        closeOverlay();
+        if (a) a();
+    }
+
     // ================================================ dialogs
     function askText(title, initial, ok, selectTo, action) {
         dlgTitle = title;
@@ -1121,6 +1247,8 @@ Scope {
         dlgDanger = false;
     }
     function confirm(title, text, ok, action) {
+        dlgAlt = "";
+        dlgAltAction = null;
         dlgTitle = title;
         dlgText = text;
         dlgOk = ok;
@@ -1193,6 +1321,8 @@ Scope {
         overlay = "";
         menuOnFolder = false;
         dlgAction = null;
+        dlgAlt = "";
+        dlgAltAction = null;
         dlgPath = "";
         cf = null;
         pv = null;
@@ -1592,9 +1722,12 @@ Scope {
                     else if (back || e.key === Qt.Key_Left) app.closeOverlay();
                     else return;
                 } else if (app.overlay === "confirm") {
-                    if (e.key === Qt.Key_Left || up) app.dlgButton = 0;
-                    else if (e.key === Qt.Key_Right || down) app.dlgButton = 1;
-                    else if (ok) { if (app.dlgButton === 1) app.accept(""); else app.closeOverlay(); }
+                    // Buttons left to right: Cancel (0), the third one if there is one (2), OK (1).
+                    const order = app.dlgAlt ? [0, 2, 1] : [0, 1];
+                    const at = Math.max(0, order.indexOf(app.dlgButton));
+                    if (e.key === Qt.Key_Left || up) app.dlgButton = order[Math.max(0, at - 1)];
+                    else if (e.key === Qt.Key_Right || down) app.dlgButton = order[Math.min(order.length - 1, at + 1)];
+                    else if (ok) { if (app.dlgButton === 1) app.accept(""); else if (app.dlgButton === 2) app.acceptAlt(); else app.closeOverlay(); }
                     else if (back) app.closeOverlay();
                     else return;
                 } else if (app.overlay === "conflict") {
@@ -2919,6 +3052,12 @@ Scope {
                                 label: app.overlay === "apps" || app.overlay === "preview" ? "Close" : "Cancel"
                                 focused: app.overlay === "confirm" && app.dlgButton === 0
                                 onClicked: app.closeOverlay()
+                            }
+                            Chip {
+                                visible: app.overlay === "confirm" && app.dlgAlt !== ""
+                                label: app.dlgAlt
+                                focused: app.overlay === "confirm" && app.dlgButton === 2
+                                onClicked: app.acceptAlt()
                             }
                             Chip {
                                 visible: app.overlay === "input" || app.overlay === "confirm"

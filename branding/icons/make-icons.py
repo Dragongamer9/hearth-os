@@ -276,7 +276,8 @@ G['hearth-generic-app'] = (  # any app without an icon of its own
     '<rect x="128" y="148" width="256" height="216" rx="40" fill="none" stroke="#c2ae98" stroke-width="32"/>'
     + stroke('M132 214 H380', SHADE, 28) + circle(180, 188, 10, E) + rect(176, 254, 72, 72, 16, SHADE) + stroke('M284 266 H336 M284 314 H320', SHADE, 22))
 
-WINDOW_ICONS = {'hearth-terminal': 'hosts/hearth-terminal/icons/icon.png', 'hearth-disks': 'hosts/hearth-disks/icons/icon.png'}
+WINDOW_ICONS = {'hearth-terminal': 'hosts/hearth-terminal/icons/icon.png', 'hearth-disks': 'hosts/hearth-disks/icons/icon.png',
+                'hearth-text': 'hosts/hearth-text/icons/icon.png'}
 
 ALIASES = {'hearth-task-manager': 'hearth-tasks', 'hearth-claude-get': 'hearth-get-claude', 'hearth-install': 'hearth-installer'}
 
