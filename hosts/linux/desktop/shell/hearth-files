@@ -1695,6 +1695,13 @@ ARCHIVE_EXT = ('.tar.gz', '.tgz', '.tar.xz', '.txz', '.tar.bz2', '.tbz2', '.tbz'
                '.zip', '.7z', '.rar', '.gz', '.xz', '.bz2', '.zst', '.iso', '.cbz', '.cbr', '.jar', '.apk')
 
 
+# The archive types Hearth Files opens (its .desktop file's MimeType: it's their default app on Hearth OS).
+ARCHIVE_TYPES = ('application/zip', 'application/x-tar', 'application/x-compressed-tar', 'application/x-xz-compressed-tar',
+                 'application/x-bzip2-compressed-tar', 'application/x-zstd-compressed-tar', 'application/gzip',
+                 'application/x-gzip', 'application/x-xz', 'application/x-bzip2', 'application/zstd',
+                 'application/x-7z-compressed', 'application/vnd.rar', 'application/x-rar')
+
+
 def archive_stem(name):
     low = name.lower()
     for ext in ARCHIVE_EXT:
@@ -2450,7 +2457,12 @@ def open_plan(path):
         return out
     mime = sniff_mime(p)
     out['mime'] = mime
-    if default_app(mime):
+    app = default_app(mime)
+    # Archives whose app is Hearth Files itself (Hearth's default for them), or none: Files offers to unpack it.
+    if is_archive(p) and mime in ARCHIVE_TYPES and (not app or app['id'] == 'hearth-files.desktop'):
+        out['kind'] = 'archive'
+        return out
+    if app:
         return out
     out['kind'] = 'text' if out['text'] else 'binary'
     return out

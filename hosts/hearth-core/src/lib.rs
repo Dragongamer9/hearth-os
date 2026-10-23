@@ -9,6 +9,7 @@ pub mod backup;
 pub mod beacon;
 pub mod binkv;
 pub mod bridge;
+pub mod defaults;   // Settings › Default apps (desktop/shell/hearth-system)
 pub mod collections;
 pub mod desktop_games;
 pub mod display;

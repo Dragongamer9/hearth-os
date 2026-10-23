@@ -89,6 +89,12 @@ password_store() {
 }
 password_store
 
+# Default apps: your own choices (Settings › Default apps, ~/.config/mimeapps.list) stay, but a Hearth app an older
+# Hearth put there that isn't installed any more comes out, so its files open in Hearth's default again.
+if [ -f "$SHARE/desktop/shell/hearth-system" ] && have python3; then
+  python3 "$SHARE/desktop/shell/hearth-system" defaults-tidy >/dev/null 2>&1 || log "defaults-tidy failed"
+fi
+
 SESSION_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/session.conf"
 # gamescope's screen mode options with their values (-W 1920, --nested-refresh=60, -r 59.94...), for sed -E.
 MODE_ARGS_RE='(^|[[:space:]"])(-[WHr][[:space:]]+|--(output-width|output-height|nested-refresh)[=[:space:]]+)[^[:space:]"]+'
