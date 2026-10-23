@@ -713,6 +713,15 @@ DESKTOP
 fi
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # ---- end of Hearth Contacts and Hearth Maps
+# ---- Hearth Office (hosts/hearth-office): Write, Sheets and Slides, built by CI with the app (base-anatase.yml) and
+# carried in os/nimbus-app/office. office/install.sh puts in the program (hearth-write, hearth-sheets and
+# hearth-slides are links to it), the menu entries and the .hslides file type (the icons are in Hearth's icon set), and makes them the default
+# apps for office files in Hearth's desktop (nimbus-mimeapps.list, so after the file manager's line above). Fonts with
+# the same sizes as Office's (Calibri, Cambria, Arial, Times New Roman), so documents keep their layout.
+dnf5 -y install --skip-unavailable google-carlito-fonts google-crosextra-caladea-fonts liberation-sans-fonts liberation-serif-fonts liberation-mono-fonts || true
+if [ -x /ctx/nimbus-app/office/hearth-office ]; then sh /ctx/nimbus-app/office/install.sh
+else echo "Hearth Office wasn't built; this image goes without it"; fi
+# ---- end of Hearth Office
 
 # ------------------------------------------------------------------ boot straight into Hearth
 # nimbus-autologin writes the login screen's autologin: Plasma Login Manager's /etc/plasmalogin.conf on Anatase
