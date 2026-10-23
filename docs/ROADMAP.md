@@ -98,6 +98,11 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.3 (released)
+
+- [x] Send logs includes the screen's full list of modes, what it says it can do (EDID) and the Nvidia driver's HDMI link messages, to find out why a 120/144 Hz TV only shows 60 Hz at 4K
+- [x] Settings › Display's 60 Hz tip adds the usual workaround: switch the screen off and on with its own power button while Hearth is showing
+
 ## 0.6.2 (released)
 
 - [x] The new Quick Access overlay opens over games and while a game is loading on Nvidia PCs (Chromium drawing engine): the old full-window panel no longer appears, and the game isn't pulled back in front while Quick Access is open
