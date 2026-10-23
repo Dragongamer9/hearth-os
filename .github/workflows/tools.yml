@@ -12,6 +12,11 @@ on:
     paths: ['hosts/hearth-tools/**', 'hosts/hearthfetch/**', 'hosts/hearth-core/**', 'hosts/hearth-disks/**', 'tools/build-docs.py',
             'branding/icons/apps/**', 'os/system_files/usr/libexec/nimbus/hearth-admin', 'hosts/linux/test/test_hearth_system_tools.py', '.github/workflows/tools.yml']
   workflow_dispatch:
+    inputs:
+      shots:
+        description: 'Put small copies of these tools'' window screenshots on the run as notices (comma-separated, e.g. logs,network)'
+        type: string
+        default: ''
 
 env:
   CARGO_TERM_COLOR: never
@@ -113,6 +118,40 @@ jobs:
             kill $pid 2>/dev/null; sleep 1
             echo "::notice title=$app window::$(tail -c 400 "shots/app/$app.log" | tr '\n' '|')"
           done
+      # Started by hand with "shots": small copies of the chosen windows as notices (base64 JPEG in pieces), one step
+      # each, for looking at without downloading the artifact.
+      - name: Screenshot 1 as notices
+        if: inputs.shots != ''
+        working-directory: hosts/hearth-tools/shots/app
+        run: |
+          app=$(echo "${{ inputs.shots }}" | cut -d, -f"$SHOT")
+          [ -n "$app" ] && [ -f "$app.png" ] || exit 0
+          convert "$app.png" -resize 600x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $app $i::$part"; done
+        env: { SHOT: 1 }
+      - name: Screenshot 2 as notices
+        if: inputs.shots != ''
+        working-directory: hosts/hearth-tools/shots/app
+        run: |
+          app=$(echo "${{ inputs.shots }}" | cut -d, -f"$SHOT")
+          [ -n "$app" ] && [ -f "$app.png" ] || exit 0
+          convert "$app.png" -resize 600x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $app $i::$part"; done
+        env: { SHOT: 2 }
+      - name: Screenshot 3 as notices
+        if: inputs.shots != ''
+        working-directory: hosts/hearth-tools/shots/app
+        run: |
+          app=$(echo "${{ inputs.shots }}" | cut -d, -f"$SHOT")
+          [ -n "$app" ] && [ -f "$app.png" ] || exit 0
+          convert "$app.png" -resize 600x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $app $i::$part"; done
+        env: { SHOT: 3 }
+      - name: Screenshot 4 as notices
+        if: inputs.shots != ''
+        working-directory: hosts/hearth-tools/shots/app
+        run: |
+          app=$(echo "${{ inputs.shots }}" | cut -d, -f"$SHOT")
+          [ -n "$app" ] && [ -f "$app.png" ] || exit 0
+          convert "$app.png" -resize 600x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $app $i::$part"; done
+        env: { SHOT: 4 }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
