@@ -387,7 +387,7 @@ Scope {
 
     IpcHandler {
         target: "fileprops"
-        function show(path: string): void { pr.show([path]); }
+        function open(path: string): void { pr.show([path]); }
         function tab(name: string): void { pr.tab = name; }
         function close(): void { pr.close(); }
     }
