@@ -72,7 +72,7 @@ fn os() -> Value {
         "name": osr.get("PRETTY_NAME").or(osr.get("NAME")),
         "edition": if base.is_empty() { Value::Null } else { json!(hearthfetch::parse::edition_name(base)) },
         "editionDetail": image["base-detail"], "imageRef": image["image-ref"], "imageTag": image["image-tag"],
-        "hearth": crate::util::version(), "toolsVersion": env!("CARGO_PKG_VERSION"),
+        "hearth": line("/usr/share/nimbus/version").filter(|v| v != "0.0.0"), "toolsVersion": env!("CARGO_PKG_VERSION"),
         "kernel": line("/proc/sys/kernel/osrelease"), "arch": std::env::consts::ARCH,
         "desktop": std::env::var("XDG_CURRENT_DESKTOP").ok(), "session": std::env::var("XDG_SESSION_TYPE").ok(),
         "uptime": read("/proc/uptime").and_then(|t| hearthfetch::parse::uptime_secs(&t)),

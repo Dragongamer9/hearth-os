@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'hosts/hearth-tools/**']
+    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os

@@ -5,7 +5,8 @@ SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
 # Let portals (screen sharing, file pickers) and D-Bus-started apps see this session.
 # DISPLAY too (Xwayland's; Game Mode's gamescope display is gone by now), and the portals' failures from Game Mode
 # are forgotten, or systemd wouldn't start them again for a while ("start-limit-hit").
-{ dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE NIMBUS_SHARE NIMBUS_APP
+# XDG_DATA_DIRS too (with Flatpak's folders, from nimbus-session), so apps D-Bus starts find Flatpak apps and icons.
+{ dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_DATA_DIRS NIMBUS_SHARE NIMBUS_APP
   systemctl --user reset-failed xdg-desktop-portal.service xdg-desktop-portal-gtk.service; } >/dev/null 2>&1 &
 
 # Resolution, refresh rate and scale chosen in Settings › Display. Until you choose, small sharp screens
