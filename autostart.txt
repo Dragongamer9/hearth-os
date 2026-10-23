@@ -1,0 +1,10 @@
++ python3 hosts/linux/desktop/shell/hearth-tasks autostart-plan
+{"plan":[{"file":"/etc/xdg/autostart/at-spi-dbus-bus.desktop","name":"AT-SPI D-Bus Bus","argv":[],"delay":0,"start":false,"why":"only for GNOME;Unity"},{"file":"/etc/xdg/autostart/geoclue-demo-agent.desktop","name":"Geoclue Demo agent","argv":["/usr/libexec/geoclue-2.0/demos/agent"],"delay":0,"start":true,"why":"","cwd":""},{"file":"/etc/xdg/autostart/localsearch-3.desktop","name":"Tracker File System Miner","argv":[],"delay":0,"start":false,"why":"only for GNOME;KDE;XFCE;X-IVI;Unity"},{"file":"/tmp/home/.config/autostart/steam.desktop","name":"Steam","argv":[],"delay":0,"start":false,"why":"Hearth starts Steam itself"},{"file":"/tmp/home/.config/autostart/test.desktop","name":"Autostart test","argv":["touch","/tmp/home/autostarted"],"delay":0,"start":true,"why":"","cwd":""}]}
++ echo
+
++ ls /tmp/home
+Desktop
+Documents
+Pictures
+Templates
+autostarted
