@@ -12,6 +12,11 @@ SetBase {
     property bool danger: false
     Layout.fillWidth: true
     implicitHeight: Math.max(64, col.implicitHeight + 24)
+    // For the screen reader (Orca, Settings › Accessibility): what this row is.
+    Accessible.role: Accessible.Button
+    Accessible.name: title
+    Accessible.description: sub
+    Accessible.onPressAction: activated()
 
     RowLayout {
         anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
