@@ -752,7 +752,7 @@ public sealed partial class MantelHost : IDisposable
     }
 
     /// <summary>Opens one of Hearth's own apps: "tasks" (Hearth Task Manager), "files" (Hearth Files, optionally at
-    /// a folder), "apps" (Apps), "clipboard" (clipboard history) or "settings". From the launcher (ids hearth:…),
+    /// a folder, or "props:&lt;path&gt;" for its Properties), "apps" (Apps), "clipboard" (clipboard history) or "settings". From the launcher (ids hearth:…),
     /// a pin, or {type:"mantel", action:"openApp", app, path}.</summary>
     public async Task OpenAppAsync(string app, string? path = null)
     {
@@ -768,7 +768,9 @@ public sealed partial class MantelHost : IDisposable
                     break;
                 case "files":
                     if (_files is null || _files.IsDisposed) { _files = new FilesWindow(); Wire(_files); }
-                    await _files.OpenAsync(_env, _baseUrl, _setup, string.IsNullOrEmpty(path) ? null : "path=" + Uri.EscapeDataString(path));
+                    // "props:<path>": open Hearth Files' Properties for it (the desktop's Properties uses this).
+                    await _files.OpenAsync(_env, _baseUrl, _setup, string.IsNullOrEmpty(path) ? null
+                        : path.StartsWith("props:") ? "props=" + Uri.EscapeDataString(path[6..]) : "path=" + Uri.EscapeDataString(path));
                     break;
                 case "apps":
                     if (_apps is null || _apps.IsDisposed) { _apps = new AppsWindow(); Wire(_apps); }
