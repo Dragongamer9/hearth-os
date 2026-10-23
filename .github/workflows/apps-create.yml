@@ -73,7 +73,7 @@ jobs:
       - name: Screenshots of the windows
         run: |
           mkdir -p shots
-          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HOME=$RUNNER_TEMP/home
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
           mkdir -p $HOME/Pictures $HOME/Downloads
           Xvfb :99 -screen 0 1360x860x24 >/dev/null 2>&1 &
           sleep 2
@@ -83,6 +83,7 @@ jobs:
           "$CARGO_TARGET_DIR/release/hearth-paint" $HOME/Pictures/test.png > paint.log 2>&1 &
           sleep 8; w=$(win 'Paint'); xdotool windowactivate --sync "$w" 2>/dev/null || true
           { echo "--- processes"; ps aux | grep -E 'hearth-|Xvfb|WebKit' | grep -v grep; echo "--- windows"; xwininfo -root -children 2>&1 | head -30; echo "--- paint window: $w"; } > shots/diagnostics.txt 2>&1
+          sleep 10; { echo "--- 10 s later"; xwininfo -root -children 2>&1 | head -30; } >> shots/diagnostics.txt 2>&1
           import -window root shots/paint.png || true
           # Draw a rectangle and an arrow with the mouse.
           eval "$(xdotool getwindowgeometry --shell "$w" 2>/dev/null)" || true
