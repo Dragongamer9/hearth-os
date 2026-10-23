@@ -1,0 +1,753 @@
+#!/usr/bin/python3
+"""hearth-debbox: .deb packages on Hearth OS, through Distrobox. The system itself is an image (/usr can't be
+changed), so a .deb goes into "Hearth's Debian box": a Debian 13 (trixie) container made with Distrobox (podman,
+rootless, your home folder shared), and the apps it brings are put in your app menu (distrobox-export). Most desktop
+apps work this way; drivers, system services and kernel modules can't be installed like this.
+Used by the "Install Package" window (DebInstaller.qml), Hearth Settings › Apps (SetApps.qml) and from a terminal.
+
+  hearth-debbox status [--quick]     JSON: Distrobox/podman there, the box made, its size, the packages installed
+  hearth-debbox create               make the box (first use; ~1-2 minutes and a download); progress lines
+  hearth-debbox inspect FILE.deb     JSON: the package's name, version, description, size, dependencies, and
+                                     whether it's installed in the box already
+  hearth-debbox install FILE.deb     install it in the box (making the box first if needed) and put its apps in
+                                     your menu; progress lines, then JSON {package, version, apps: [...]}
+  hearth-debbox remove PACKAGE       take its apps out of the menu and remove it from the box
+  hearth-debbox list                 JSON: the packages installed through Hearth, with their apps
+  hearth-debbox open APP_ID          start an app the box exported (hearth-debian-<name>.desktop)
+  hearth-debbox owner APP_ID         JSON: which package an exported app came from
+  hearth-debbox reset                remove the box and everything in it, then make a fresh one
+  hearth-debbox remove-box           remove the box, everything in it and its apps in the menu
+  hearth-debbox apt ARGS...          apt in the box, for terminal users ("hearth-debbox apt install foo");
+                                     apps installed this way are put in the menu too
+Progress lines are "progress: <0-100> <what>"; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import pwd
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tarfile
+import io
+import time
+
+BOX = 'hearth-debian'
+IMAGE = 'docker.io/library/debian:trixie'
+HOME = os.path.expanduser('~')
+DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+STATE_DIR = os.path.join(DATA, 'nimbus', 'debbox')
+RECORDS = os.path.join(STATE_DIR, 'packages.json')
+APPS_DIR = os.path.join(DATA, 'applications')
+PKG_NAME = re.compile(r'^[a-z0-9][a-z0-9+.-]{0,99}$')
+APP_ID = re.compile(r'^' + re.escape(BOX) + r'-[A-Za-z0-9_.+-]{1,200}\.desktop$')
+DESKTOP_IN_BOX = re.compile(r'^/usr/share/applications/[^/]+\.desktop$')
+# Shown in the window and kept in one place.
+LIMITS = ('The app runs in Hearth\'s Debian box (Debian 13). Most desktop apps work; drivers, system services and '
+          'kernel modules can\'t be installed this way.')
+
+
+class Fail(Exception):
+    pass
+
+
+def progress(pct, what):
+    print('progress: %d %s' % (max(0, min(100, int(pct))), what), flush=True)
+
+
+def env():
+    """distrobox always on podman (it would pick docker if that were there), in plain C output."""
+    return dict(os.environ, DBX_CONTAINER_MANAGER='podman', LC_ALL='C')
+
+
+# ---------------------------------------------------------------------- the commands (kept pure: unit-tested)
+def has_nvidia(root='/'):
+    return any(os.path.exists(os.path.join(root, p)) for p in ('proc/driver/nvidia/version', 'dev/nvidiactl'))
+
+
+def create_cmd(nvidia=False):
+    """distrobox create for the box: Debian 13, no launcher entry for the box itself, Nvidia's driver shared from
+    the system on Nvidia PCs (distrobox's --nvidia)."""
+    cmd = ['distrobox', 'create', '--name', BOX, '--image', IMAGE, '--yes', '--no-entry']
+    if nvidia:
+        cmd.append('--nvidia')
+    return cmd
+
+
+def enter_cmd(args, tty=False):
+    """A command run inside the box (no terminal unless tty: then it's interactive, for apt in a terminal)."""
+    return ['distrobox', 'enter', '--name', BOX] + ([] if tty else ['--no-tty']) + ['--'] + list(args)
+
+
+def apt_install_cmd(box_path):
+    """apt-get installing a .deb file (its path as the box sees it) with its dependencies, with machine-readable
+    progress (APT::Status-Fd: "dlstatus:..." and "pmstatus:..." lines)."""
+    if not box_path.startswith('/'):
+        raise Fail('the package file needs a full path')
+    return enter_cmd(['sudo', 'env', 'DEBIAN_FRONTEND=noninteractive', 'apt-get', 'install', '-y',
+                      '--no-install-recommends', '-o', 'APT::Status-Fd=1', '-o', 'Dpkg::Use-Pty=0', box_path])
+
+
+def apt_update_cmd():
+    return enter_cmd(['sudo', 'env', 'DEBIAN_FRONTEND=noninteractive', 'apt-get', 'update', '-o', 'APT::Status-Fd=1'])
+
+
+def apt_remove_cmd(package):
+    if not PKG_NAME.fullmatch(package or ''):
+        raise Fail('not a package name')
+    return enter_cmd(['sudo', 'env', 'DEBIAN_FRONTEND=noninteractive', 'apt-get', 'remove', '-y', '--autoremove',
+                      '-o', 'Dpkg::Use-Pty=0', '--', package])
+
+
+def export_cmd(desktop, delete=False, label=True):
+    """distrobox-export run inside the box for one of its .desktop files: it writes
+    ~/.local/share/applications/hearth-debian-<name>.desktop (and its icons) on the system. No "(on hearth-debian)"
+    after the name: they're your apps (--export-label none; older distrobox doesn't know it, see export())."""
+    if not DESKTOP_IN_BOX.fullmatch(desktop or ''):
+        raise Fail('not an app in the box')
+    cmd = ['distrobox-export', '--app', desktop]
+    if delete:
+        cmd.append('--delete')
+    elif label:
+        cmd += ['--export-label', 'none']
+    return enter_cmd(cmd)
+
+
+def box_path(path, home=HOME):
+    """Where the box sees a file of yours: your home folder is the same path in the box; everything else is under
+    /run/host (distrobox mounts the system's / there)."""
+    real = os.path.realpath(path)
+    h = os.path.realpath(home)
+    if real == h or real.startswith(h.rstrip('/') + '/'):
+        return real
+    return '/run/host' + real
+
+
+def exported_path(desktop, apps_dir=APPS_DIR):
+    """The system's copy distrobox-export makes of a .desktop file in the box."""
+    return os.path.join(apps_dir, BOX + '-' + os.path.basename(desktop))
+
+
+def apt_progress(line, phase_from=10, phase_to=95):
+    """(percent, what) from an APT::Status-Fd line, or None: downloads take the first half of the range,
+    unpacking and setting up the second."""
+    m = re.match(r'^(dlstatus|pmstatus):([^:]*):([\d.]+):(.*)$', line.strip())
+    if not m:
+        return None
+    kind, pkg, pct, what = m.group(1), m.group(2), float(m.group(3)), m.group(4).strip()
+    mid = phase_from + (phase_to - phase_from) / 2.0
+    if kind == 'dlstatus':
+        return int(phase_from + (mid - phase_from) * pct / 100.0), 'Downloading ' + (what or pkg)
+    return int(mid + (phase_to - mid) * pct / 100.0), what or ('Installing ' + pkg)
+
+
+# ---------------------------------------------------------------------- reading a .deb (no dpkg needed)
+def ar_members(data):
+    """[(name, bytes)] of an ar archive (a .deb is one: debian-binary, control.tar.*, data.tar.*)."""
+    if not data.startswith(b'!<arch>\n'):
+        raise Fail('this isn\'t a Debian package (.deb)')
+    out, pos = [], 8
+    while pos + 60 <= len(data):
+        head = data[pos:pos + 60]
+        if head[58:60] != b'`\n':
+            raise Fail('this .deb file is damaged')
+        name = head[0:16].decode('ascii', 'replace').strip()
+        if name.endswith('/'):
+            name = name[:-1]
+        try:
+            size = int(head[48:58].decode('ascii').strip())
+        except ValueError:
+            raise Fail('this .deb file is damaged')
+        pos += 60
+        out.append((name, data[pos:pos + size]))
+        pos += size + (size & 1)
+    return out
+
+
+def decompress(name, blob):
+    """A control.tar.* member as a plain tar."""
+    if name.endswith('.tar'):
+        return blob
+    if name.endswith(('.gz', '.xz', '.bz2', '.lzma')):
+        import gzip
+        import lzma
+        import bz2
+        if name.endswith('.gz'):
+            return gzip.decompress(blob)
+        if name.endswith('.bz2'):
+            return bz2.decompress(blob)
+        return lzma.decompress(blob)
+    if name.endswith('.zst'):
+        try:
+            from compression import zstd   # Python 3.14
+            return zstd.decompress(blob)
+        except ImportError:
+            pass
+        if shutil.which('zstd'):
+            r = subprocess.run(['zstd', '-dc'], input=blob, capture_output=True, timeout=60)
+            if r.returncode == 0:
+                return r.stdout
+        raise Fail('this package is compressed with zstd, which isn\'t installed')
+    raise Fail('this .deb file uses a kind of compression Hearth doesn\'t know (%s)' % name)
+
+
+def parse_control(text):
+    """A Debian control file (Field: value, continuation lines start with a space) -> {Field: value}."""
+    fields, last = {}, None
+    for line in text.splitlines():
+        if not line.strip():
+            if fields:
+                break
+            continue
+        if line[0] in ' \t' and last:
+            fields[last] += '\n' + (line[1:] if line[1:].strip() != '.' else '')
+        elif ':' in line:
+            k, v = line.split(':', 1)
+            last = k.strip()
+            fields[last] = v.strip()
+    return fields
+
+
+def control_from_deb_bytes(data):
+    for name, blob in ar_members(data):
+        if name.startswith('control.tar'):
+            tar = tarfile.open(fileobj=io.BytesIO(decompress(name, blob)), mode='r:')
+            for m in tar.getmembers():
+                if m.name in ('./control', 'control') and m.isfile():
+                    return parse_control(tar.extractfile(m).read().decode('utf-8', 'replace'))
+            raise Fail('this .deb file has no control information')
+    raise Fail('this .deb file has no control information')
+
+
+def read_control(path):
+    """The package's control fields: dpkg-deb when the system has it (Peppermint), else read here (Anatase)."""
+    if shutil.which('dpkg-deb'):
+        try:
+            r = subprocess.run(['dpkg-deb', '-f', '--', path], capture_output=True, text=True, timeout=60)
+            if r.returncode == 0 and r.stdout.strip():
+                return parse_control(r.stdout)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    try:
+        with open(path, 'rb') as f:
+            data = f.read(512 * 1024 * 1024 + 1)
+    except OSError as e:
+        raise Fail('couldn\'t read the file (%s)' % (e.strerror or e))
+    return control_from_deb_bytes(data)
+
+
+def human(n):
+    for unit in ('bytes', 'KB', 'MB', 'GB'):
+        if n < 1024 or unit == 'GB':
+            return ('%d %s' % (n, unit)) if unit == 'bytes' else ('%.1f %s' % (n, unit))
+        n /= 1024.0
+
+
+def deps_list(text):
+    """Depends/Pre-Depends -> plain names ("libc6 (>= 2.34), libgtk-3-0 | libgtk-4-1" -> ["libc6", "libgtk-3-0 or libgtk-4-1"])."""
+    out = []
+    for part in (text or '').split(','):
+        alts = [re.sub(r'\s*[\(\[].*?[\)\]]', '', a).strip() for a in part.split('|')]
+        alts = [a for a in alts if a]
+        if alts:
+            out.append(' or '.join(alts))
+    return out
+
+
+def package_info(fields, file_size=0):
+    """What the window shows about a package, and the warnings for what can't work in a box."""
+    desc = fields.get('Description', '')
+    summary, _, long_desc = desc.partition('\n')
+    arch = fields.get('Architecture', '')
+    deps = deps_list(fields.get('Pre-Depends', '')) + deps_list(fields.get('Depends', ''))
+    warnings = []
+    machine = os.uname().machine
+    want = {'x86_64': 'amd64', 'aarch64': 'arm64'}.get(machine, machine)
+    if arch and arch not in ('all', want):
+        warnings.append('This package is for %s PCs, not this one (%s): it can\'t be installed.' % (arch, want))
+    name = fields.get('Package', '')
+    if name.endswith('-dkms') or any(d.split(' ')[0] in ('dkms', 'linux-image', 'linux-headers-amd64') for d in deps) \
+            or fields.get('Section', '').endswith('kernel'):
+        warnings.append('It looks like a driver or kernel module, which can\'t work from the Debian box.')
+    try:
+        isize = int(fields.get('Installed-Size', '0')) * 1024
+    except ValueError:
+        isize = 0
+    return {'package': name, 'version': fields.get('Version', ''), 'architecture': arch,
+            'summary': summary.strip(), 'description': long_desc.strip()[:4000],
+            'maintainer': fields.get('Maintainer', ''), 'homepage': fields.get('Homepage', ''),
+            'section': fields.get('Section', ''), 'depends': deps[:80],
+            'installedSize': isize, 'installedSizeText': human(isize) if isize else '',
+            'fileSize': file_size, 'fileSizeText': human(file_size) if file_size else '',
+            'installable': not any('can\'t be installed' in w for w in warnings), 'warnings': warnings}
+
+
+# ---------------------------------------------------------------------- records (what Hearth installed in the box)
+def load_records():
+    try:
+        with open(RECORDS) as f:
+            r = json.load(f)
+        return r if isinstance(r, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_records(rec):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    tmp = RECORDS + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(rec, f, indent=1)
+    os.replace(tmp, RECORDS)
+
+
+def parse_desktops(text):
+    """The output of DESKTOPS_SCRIPT -> [{desktop, name, icon, hidden}]."""
+    out, cur = [], None
+    for line in text.splitlines():
+        if line.startswith('@@/'):
+            cur = {'desktop': line[2:].strip(), 'name': '', 'icon': '', 'hidden': False}
+            out.append(cur)
+        elif cur is not None and '=' in line:
+            k, v = line.split('=', 1)
+            k = k.strip()
+            if k == 'Name' and not cur['name']:
+                cur['name'] = v.strip()
+            elif k == 'Icon' and not cur['icon']:
+                cur['icon'] = v.strip()
+            elif k in ('NoDisplay', 'Hidden') and v.strip().lower() == 'true':
+                cur['hidden'] = True
+            elif k == 'Type' and v.strip() != 'Application':
+                cur['hidden'] = True
+    return [d for d in out if DESKTOP_IN_BOX.fullmatch(d['desktop'])]
+
+
+# The package's own .desktop files, with the [Desktop Entry] part of each (run inside the box; $1 is the package).
+DESKTOPS_SCRIPT = ('dpkg-query -L "$1" 2>/dev/null | grep -E "^/usr/share/applications/[^/]+\\.desktop$" | '
+                   'while read -r f; do printf "@@%s\\n" "$f"; sed -n "/^\\[Desktop Entry\\]/,/^\\[/p" "$f"; done')
+
+
+# ---------------------------------------------------------------------- running things
+def run(cmd, timeout=600):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env())
+        return r.returncode, (r.stdout or '') + (r.stderr or '')
+    except FileNotFoundError:
+        return 127, '%s isn\'t installed' % cmd[0]
+    except subprocess.TimeoutExpired:
+        return 124, 'it took too long'
+
+
+def last_line(text, default):
+    lines = [l.strip() for l in (text or '').splitlines() if l.strip() and not l.startswith(('dlstatus:', 'pmstatus:'))]
+    for l in reversed(lines):
+        if l.lower().startswith(('e:', 'error')):
+            return re.sub(r'^(e:|error:?)\s*', '', l, flags=re.I)
+    return lines[-1][:300] if lines else default
+
+
+def stream(cmd, on_line, timeout=1800):
+    """Runs cmd, calling on_line for each output line; (code, all output)."""
+    try:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env(),
+                             stdin=subprocess.DEVNULL, bufsize=1)
+    except FileNotFoundError:
+        return 127, '%s isn\'t installed' % cmd[0]
+    out, start = [], time.time()
+    with p.stdout:
+        for line in p.stdout:
+            out.append(line)
+            on_line(line.rstrip('\n'))
+            if time.time() - start > timeout:
+                p.kill()
+                break
+    return p.wait(), ''.join(out[-200:])
+
+
+def tools():
+    return {'distrobox': bool(shutil.which('distrobox')), 'podman': bool(shutil.which('podman'))}
+
+
+def need_tools():
+    t = tools()
+    if not t['podman']:
+        raise Fail('podman isn\'t installed, so the Debian box can\'t be made')
+    if not t['distrobox']:
+        raise Fail('Distrobox isn\'t installed, so the Debian box can\'t be made (it comes with Hearth OS 0.6.1 and newer)')
+
+
+def me():
+    try:
+        return pwd.getpwuid(os.getuid()).pw_name
+    except KeyError:
+        return os.environ.get('USER', '')
+
+
+def has_subids(user, uid, path):
+    """Whether /etc/subuid (or subgid) gives this account a range: rootless podman needs one."""
+    try:
+        with open(path) as f:
+            for line in f:
+                p = line.strip().split(':')
+                if len(p) == 3 and p[0] in (user, str(uid)) and p[2].isdigit() and int(p[2]) >= 65536:
+                    return True
+    except OSError:
+        pass
+    return False
+
+
+def box_exists():
+    code, _ = run(['podman', 'container', 'exists', BOX], timeout=60)
+    return code == 0
+
+
+def box_size():
+    code, out = run(['podman', 'ps', '--all', '--size', '--filter', 'name=^%s$' % BOX, '--format', '{{.Size}}'], timeout=120)
+    return out.strip().splitlines()[0] if code == 0 and out.strip() else ''
+
+
+def status(quick=False):
+    t = tools()
+    user, uid = me(), os.getuid()
+    rootless = has_subids(user, uid, '/etc/subuid') and has_subids(user, uid, '/etc/subgid')
+    exists = box_exists() if t['podman'] else False
+    rec = load_records()
+    out = {'distrobox': t['distrobox'], 'podman': t['podman'], 'rootless': rootless, 'box': exists, 'name': BOX,
+           'image': IMAGE, 'nvidia': has_nvidia(), 'packages': sorted(rec), 'count': len(rec), 'limits': LIMITS}
+    if not quick and exists:
+        out['size'] = box_size()
+    if not t['distrobox'] or not t['podman']:
+        out['problem'] = 'Distrobox or podman is missing from this system'
+    elif not rootless:
+        out['problem'] = ('Your account has no container id range (/etc/subuid), which the box needs. Restarting the PC '
+                          'sets it up (Hearth does it at every start).')
+    return out
+
+
+def init_progress(line, state):
+    """distrobox's first start in the box prints its steps; each one moves the bar a little."""
+    l = line.strip()
+    if not l:
+        return
+    if re.search(r'Copying blob|Writing manifest|Trying to pull|Getting image source', l):
+        state['pct'] = min(30, state['pct'] + 1)
+        progress(state['pct'], 'Downloading Debian 13 (about 50 MB)')
+    elif re.search(r'(?i)installing|setting up|creating|starting|checking|mounting|integration|done', l):
+        state['pct'] = min(88, max(state['pct'], 35) + 3)
+        progress(state['pct'], 'Setting up the Debian box: ' + re.sub(r'\s+\[.*$', '', l)[:80])
+
+
+def create(quiet=False):
+    """Makes the box and starts it once (distrobox sets it up on the first start), then apt's package lists."""
+    need_tools()
+    if box_exists():
+        return {'ok': True, 'created': False}
+    user, uid = me(), os.getuid()
+    if not (has_subids(user, uid, '/etc/subuid') and has_subids(user, uid, '/etc/subgid')):
+        raise Fail('your account has no container id range (/etc/subuid and /etc/subgid). Restart the PC (Hearth '
+                   'sets it up at every start), or run: pkexec /usr/libexec/nimbus/hearth-admin home-repair')
+    state = {'pct': 2}
+    progress(2, 'Setting up Hearth\'s Debian box (first time: 1-2 minutes and a download)')
+    code, out = stream(create_cmd(has_nvidia()), lambda l: init_progress(l, state), timeout=1200)
+    if code != 0 and not box_exists():
+        raise Fail('couldn\'t make the Debian box (%s)' % last_line(out, 'distrobox create failed'))
+    state['pct'] = max(state['pct'], 32)
+    progress(state['pct'], 'Starting the Debian box for the first time')
+    code, out = stream(enter_cmd(['true']), lambda l: init_progress(l, state), timeout=1800)
+    if code != 0:
+        raise Fail('the Debian box was made but didn\'t start (%s)' % last_line(out, 'distrobox enter failed'))
+    progress(90, 'Getting Debian\'s list of packages')
+    code, out = run(apt_update_cmd(), timeout=900)
+    if code != 0:
+        raise Fail('the Debian box can\'t reach Debian\'s servers (%s). Check the internet connection.' % last_line(out, 'apt-get update failed'))
+    progress(100, 'The Debian box is ready')
+    return {'ok': True, 'created': True}
+
+
+def inspect(path):
+    p = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isfile(p):
+        raise Fail('“%s” isn\'t there' % os.path.basename(p))
+    info = package_info(read_control(p), os.path.getsize(p))
+    if not PKG_NAME.fullmatch(info['package']):
+        raise Fail('this .deb file doesn\'t name its package')
+    rec = load_records().get(info['package'])
+    info.update({'file': p, 'installed': bool(rec), 'installedVersion': (rec or {}).get('version', ''),
+                 'apps': (rec or {}).get('apps', []), 'limits': LIMITS, 'boxReady': tools()['podman'] and box_exists()})
+    return info
+
+
+def export(desktops):
+    """Puts the package's apps in your menu; [{id, name, desktop, exported}] of what got there."""
+    apps = []
+    for d in desktops:
+        if d['hidden']:
+            continue
+        code, out = run(export_cmd(d['desktop']), timeout=120)
+        if code != 0 and 'export-label' in out:
+            code, out = run(export_cmd(d['desktop'], label=False), timeout=120)
+        target = exported_path(d['desktop'])
+        if os.path.exists(target):
+            apps.append({'id': os.path.basename(target), 'name': d['name'] or os.path.basename(d['desktop'])[:-8],
+                         'desktop': d['desktop'], 'exported': target, 'icon': d['icon']})
+    return apps
+
+
+def desktops_of(package):
+    code, out = run(enter_cmd(['sh', '-c', DESKTOPS_SCRIPT, 'sh', package]), timeout=120)
+    return parse_desktops(out) if code == 0 else []
+
+
+def apt_line(line, state):
+    pr = apt_progress(line, state['from'], state['to'])
+    if pr and pr[0] >= state['shown']:
+        state['shown'] = pr[0]
+        progress(pr[0], pr[1])
+    elif not line.startswith(('dlstatus:', 'pmstatus:', 'progress:')) and line.strip():
+        state['last'] = line.strip()
+
+
+def install(path):
+    p = os.path.abspath(os.path.expanduser(path))
+    info = inspect(p)
+    if not info['installable']:
+        raise Fail(info['warnings'][0])
+    pkg = info['package']
+    if not box_exists():
+        create()
+    if not os.access(p, os.R_OK):
+        raise Fail('the package file can\'t be read')
+    # A file outside your home folder (a USB drive, /tmp): copied into your home folder first, which the box shares
+    # at the same path (/run/host works too, but not for every mount, e.g. a drive mounted after the box started).
+    target = box_path(p)
+    tmp = None
+    if target.startswith('/run/host/'):
+        tmp = os.path.join(HOME, '.cache', 'nimbus', 'debbox', os.path.basename(p))
+        os.makedirs(os.path.dirname(tmp), exist_ok=True)
+        shutil.copyfile(p, tmp)
+        target = box_path(tmp)
+    progress(5, 'Getting Debian\'s list of packages')
+    run(apt_update_cmd(), timeout=900)
+    state = {'from': 10, 'to': 92, 'shown': 0, 'last': ''}
+    progress(10, 'Installing %s %s' % (pkg, info['version']))
+    try:
+        code, out = stream(apt_install_cmd(target), lambda l: apt_line(l, state), timeout=3600)
+    finally:
+        if tmp:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    if code != 0:
+        raise Fail('couldn\'t install %s (%s)' % (pkg, last_line(out, state['last'] or 'apt-get failed')))
+    progress(94, 'Adding its apps to your menu')
+    apps = export(desktops_of(pkg))
+    rec = load_records()
+    rec[pkg] = {'version': info['version'], 'summary': info['summary'], 'file': p, 'installed': int(time.time()),
+                'apps': apps}
+    save_records(rec)
+    progress(100, 'Installed')
+    return {'ok': True, 'package': pkg, 'version': info['version'], 'apps': apps}
+
+
+def unexport(apps):
+    for a in apps or []:
+        if a.get('desktop'):
+            try:
+                run(export_cmd(a['desktop'], delete=True), timeout=120)
+            except Fail:
+                pass
+        f = a.get('exported') or ''
+        if f and os.path.dirname(os.path.abspath(f)) == os.path.abspath(APPS_DIR) and APP_ID.fullmatch(os.path.basename(f)):
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+
+
+def remove(package):
+    if not PKG_NAME.fullmatch(package or ''):
+        raise Fail('not a package name')
+    rec = load_records()
+    need_tools()
+    progress(10, 'Taking its apps out of your menu')
+    unexport((rec.get(package) or {}).get('apps'))
+    if box_exists():
+        progress(40, 'Removing %s' % package)
+        code, out = run(apt_remove_cmd(package), timeout=1200)
+        if code != 0 and 'is not installed' not in out and 'Unable to locate package' not in out:
+            raise Fail('couldn\'t remove %s (%s)' % (package, last_line(out, 'apt-get failed')))
+    rec.pop(package, None)
+    save_records(rec)
+    progress(100, 'Removed')
+    return {'ok': True, 'package': package}
+
+
+def our_exports(apps_dir=APPS_DIR):
+    """Every app the box put in the menu (hearth-debian-*.desktop that start distrobox), recorded or not."""
+    out = []
+    try:
+        names = os.listdir(apps_dir)
+    except OSError:
+        return out
+    for n in names:
+        if not APP_ID.fullmatch(n):
+            continue
+        f = os.path.join(apps_dir, n)
+        try:
+            if os.path.islink(f):
+                continue
+            with open(f, encoding='utf-8', errors='replace') as fh:
+                text = fh.read(65536)
+        except OSError:
+            continue
+        if 'distrobox' in text and BOX in text:
+            out.append(f)
+    return out
+
+
+def remove_box(keep_image=False):
+    need_tools()
+    progress(10, 'Taking the box\'s apps out of your menu')
+    for f in our_exports():
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    progress(40, 'Removing the Debian box')
+    if box_exists():
+        code, out = run(['podman', 'rm', '--force', BOX], timeout=600)
+        if code != 0 and box_exists():
+            raise Fail('couldn\'t remove the Debian box (%s)' % last_line(out, 'podman rm failed'))
+    if not keep_image:
+        run(['podman', 'rmi', IMAGE], timeout=300)
+    save_records({})
+    progress(100, 'The Debian box is removed')
+    return {'ok': True}
+
+
+def reset():
+    remove_box(keep_image=True)
+    return create()
+
+
+def list_packages():
+    rec = load_records()
+    rows = []
+    for pkg, r in sorted(rec.items()):
+        apps = [a for a in r.get('apps', []) if os.path.exists(a.get('exported', ''))]
+        rows.append({'package': pkg, 'version': r.get('version', ''), 'summary': r.get('summary', ''),
+                     'installed': r.get('installed', 0), 'apps': apps})
+    return {'packages': rows}
+
+
+def owner(app_id):
+    if not APP_ID.fullmatch(app_id or ''):
+        raise Fail('not an app from the Debian box')
+    for pkg, r in load_records().items():
+        if any(a.get('id') == app_id for a in r.get('apps', [])):
+            return {'package': pkg, 'version': r.get('version', ''), 'summary': r.get('summary', '')}
+    return {'package': ''}
+
+
+def exec_argv(text):
+    """Exec= of a .desktop file -> argv without its field codes."""
+    m = re.search(r'^Exec=(.*)$', text, re.M)
+    if not m:
+        raise Fail('that app has no command')
+    try:
+        words = shlex.split(m.group(1))
+    except ValueError:
+        words = m.group(1).split()
+    return [w for w in words if not re.fullmatch(r'%[fFuUdDnNickvm]', w)]
+
+
+def open_app(app_id):
+    if not APP_ID.fullmatch(app_id or ''):
+        raise Fail('not an app from the Debian box')
+    f = os.path.join(APPS_DIR, app_id)
+    try:
+        with open(f, encoding='utf-8', errors='replace') as fh:
+            argv = exec_argv(fh.read())
+    except OSError:
+        raise Fail('that app isn\'t in your menu any more')
+    subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True, env=env())
+    return {'ok': True, 'id': app_id}
+
+
+def apt_passthrough(args):
+    """apt in the box from a terminal. Packages installed this way are recorded and their apps put in the menu;
+    removed ones taken out."""
+    need_tools()
+    if not box_exists():
+        create()
+    debs = [a for a in args[1:] if a.endswith('.deb') and os.path.isfile(a)]
+    if args and args[0] == 'install' and debs:
+        out = None
+        for d in debs:
+            out = install(d)
+        return out
+    code = subprocess.call(enter_cmd(['sudo', 'apt'] + list(args), tty=sys.stdin.isatty()), env=dict(env(), LC_ALL=os.environ.get('LC_ALL', '')))
+    names = [a for a in args[1:] if PKG_NAME.fullmatch(a)]
+    if code == 0 and args and args[0] == 'install':
+        rec = load_records()
+        for n in names:
+            apps = export(desktops_of(n))
+            rec[n] = {'version': '', 'summary': '', 'file': '', 'installed': int(time.time()), 'apps': apps}
+            for a in apps:
+                print('Added to your app menu: %s' % a['name'])
+        save_records(rec)
+    elif code == 0 and args and args[0] in ('remove', 'purge', 'autoremove'):
+        rec = load_records()
+        for n in names:
+            if n in rec:
+                unexport(rec.pop(n).get('apps'))
+        save_records(rec)
+    sys.exit(code)
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    if c == 'status' and a in ([], ['--quick']):
+        out = status(a == ['--quick'])
+    elif c == 'create' and not a:
+        out = create()
+    elif c == 'inspect' and len(a) == 1:
+        out = inspect(a[0])
+    elif c == 'install' and len(a) == 1:
+        out = install(a[0])
+    elif c == 'remove' and len(a) == 1:
+        out = remove(a[0])
+    elif c == 'list' and not a:
+        out = list_packages()
+    elif c == 'open' and len(a) == 1:
+        out = open_app(a[0])
+    elif c == 'owner' and len(a) == 1:
+        out = owner(a[0])
+    elif c == 'reset' and not a:
+        out = reset()
+    elif c == 'remove-box' and not a:
+        out = remove_box()
+    elif c == 'apt' and a:
+        out = apt_passthrough(a)
+    else:
+        print(__doc__.split('\n\n', 1)[1] if c in ('', '-h', '--help', 'help') else
+              'usage: hearth-debbox status [--quick] | create | inspect FILE.deb | install FILE.deb | remove PACKAGE | '
+              'list | open APP_ID | owner APP_ID | reset | remove-box | apt ARGS...')
+        sys.exit(2)
+    print(json.dumps(out), flush=True)
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv)
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)
+    except OSError as e:
+        print('error: ' + (e.strerror or str(e)), flush=True)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        sys.exit(130)

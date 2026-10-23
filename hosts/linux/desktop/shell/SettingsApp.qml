@@ -29,6 +29,7 @@ Scope {
         { id: "printers", icon: "printer", label: "Printers" },
         { id: "datetime", icon: "clock", label: "Date & time" },
         { id: "defaults", icon: "grid", label: "Default apps" },
+        { id: "apps", icon: "store", label: "Apps" },
         { id: "clipboard", icon: "clipboard", label: "Clipboard" },
         { id: "users", icon: "user", label: "Users" },
         { id: "signin", icon: "lock", label: "Sign-in" },
@@ -40,7 +41,7 @@ Scope {
     readonly property var files: ({ wifi: "SetWifi.qml", bluetooth: "SetBluetooth.qml", sound: "SetSound.qml", display: "SetDisplay.qml",
         appearance: "SetAppearance.qml", power: "SetPower.qml", controller: "SetController.qml", signin: "SetSignin.qml", browser: "SetBrowser.qml", claude: "SetClaude.qml",
         updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml",
-        keyboard: "SetKeyboard.qml", printers: "SetPrinters.qml", datetime: "SetDateTime.qml", defaults: "SetDefaults.qml",
+        keyboard: "SetKeyboard.qml", apps: "SetApps.qml", printers: "SetPrinters.qml", datetime: "SetDateTime.qml", defaults: "SetDefaults.qml",
         clipboard: "SetClipboard.qml", users: "SetUsers.qml", mouse: "SetMouse.qml", notifications: "SetNotifications.qml" })
 
     function open(p) {
