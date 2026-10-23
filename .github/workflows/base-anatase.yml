@@ -442,6 +442,7 @@ jobs:
           check ".deb files open in Install Package (desktop file and MIME default)" "test -x /usr/bin/hearth-install-package && grep -q 'application/vnd.debian.binary-package' /usr/share/applications/hearth-install-package.desktop && grep -q '^application/vnd.debian.binary-package=hearth-install-package.desktop' /etc/xdg/nimbus-mimeapps.list && test -f /usr/share/nimbus/desktop/shell/DebInstaller.qml"
           check "FUSE 2 for AppImages (libfuse.so.2 and fusermount)" "ldconfig -p | grep -q 'libfuse.so.2 ' && command -v fusermount"
           check "home folder repair is installed and runs every boot" "python3 -m py_compile /usr/libexec/nimbus/hearth-home-repair && test -L /etc/systemd/system/multi-user.target.wants/hearth-home-repair.service"
+          check "/etc/hosts maps the device's name at boot and after a rename (hearth-hosts)" "python3 -m py_compile /usr/libexec/nimbus/hearth-hosts && test -L /etc/systemd/system/multi-user.target.wants/hearth-hosts.service && test -L /etc/systemd/system/multi-user.target.wants/hearth-hosts.path && printf '127.0.0.1 localhost\n127.0.1.1 old-name\n' > /tmp/hosts.t && /usr/libexec/nimbus/hearth-hosts --file /tmp/hosts.t --hostname chris-hearth && grep -q '^127.0.1.1.*chris-hearth' /tmp/hosts.t && ! grep -q old-name /tmp/hosts.t && grep -q '^127.0.0.1.*localhost' /tmp/hosts.t"
           check "Flatpak's system installation set up / Bazaar installer runs every boot" "python3 -m py_compile /usr/libexec/nimbus/hearth-flatpak-setup && test -L /etc/systemd/system/multi-user.target.wants/hearth-flatpak-setup.service"
           check "nothing makes an empty /var/lib/flatpak/repo at boot (flatpak can't open one: openat(config))" "! grep -rqs 'var/lib/flatpak/repo' /usr/lib/tmpfiles.d /etc/tmpfiles.d"
           check "Bazaar: the image's package, or installed at boot (hearth-flatpak-setup)" "test -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop || grep -q io.github.kolunmi.Bazaar /usr/libexec/nimbus/hearth-flatpak-setup"
@@ -470,12 +471,24 @@ jobs:
       # WARN-ONLY: rootless podman, Hearth's Debian box with a small .deb, AppImages through FUSE, Bazaar from Flathub,
       # for a throwaway account in a privileged container (.github/scripts/hearth-box-check.sh). Needs the network and
       # nested containers, which a runner may not give, so it never fails the build.
-      - name: Debian box, AppImages and Bazaar (warn-only)
+      - name: Debian box, a .deb through Distrobox (warn-only)
         continue-on-error: true
         timeout-minutes: 40
         run: |
           sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
-            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:build bash /box.sh || echo "::warning title=box check::the check didn't finish"
+            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:build bash /box.sh box || echo "::warning title=box check::the box check didn't finish"
+      - name: AppImages through FUSE (warn-only)
+        continue-on-error: true
+        timeout-minutes: 40
+        run: |
+          sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
+            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:build bash /box.sh appimage || echo "::warning title=box check::the appimage check didn't finish"
+      - name: Flatpak repair, Bazaar and the app store (warn-only)
+        continue-on-error: true
+        timeout-minutes: 40
+        run: |
+          sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
+            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:build bash /box.sh flatpak || echo "::warning title=box check::the flatpak check didn't finish"
 
       # Only :testing (and a dated testing tag). Never :latest.
       - name: Publish to GitHub Container Registry
