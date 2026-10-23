@@ -1,0 +1,38 @@
+# Claude on Hearth OS (desktop/shell/hearth-claude): runs its tests, and on a fresh Ubuntu runner installs Claude
+# Desktop from Anthropic's apt repository into a throwaway home folder the way Hearth does on a device.
+name: Claude app
+
+on:
+  push:
+    branches-ignore: [main]
+    paths: ['hosts/linux/desktop/shell/hearth-claude', 'hosts/linux/test/test_hearth_claude.py', '.github/workflows/claude-app.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Look at Anthropic's repository
+        run: |
+          set -x
+          B=https://downloads.claude.ai/claude-desktop/apt/stable
+          curl -fsS $B/dists/stable/InRelease | tee InRelease | head -60
+          curl -fsS https://downloads.claude.ai/claude-desktop/key.asc -o key.asc
+          gpg --show-keys --with-fingerprint key.asc
+          curl -fsS $B/dists/stable/main/binary-amd64/Packages -o Packages; head -c 4000 Packages; grep -c '^Package:' Packages
+          curl -fsSI $B/dists/stable/main/binary-amd64/Packages.gz | head -3 || true
+          f=$(awk '/^Filename:/{print $2}' Packages | tail -1); echo "$f"
+          curl -fsS "$B/$f" -o c.deb; ls -la c.deb; sha256sum c.deb
+          dpkg-deb -I c.deb
+          dpkg-deb -c c.deb | grep -vE '\.(pak|js|map|json|node|so[.0-9]*)$' | head -150
+          mkdir x && dpkg-deb -x c.deb x && mkdir ctl && dpkg-deb -e c.deb ctl && for s in ctl/*; do echo "== $s"; cat "$s"; done
+          for d in x/usr/share/applications/*.desktop; do echo "== $d"; cat "$d"; done
+          find x -name chrome-sandbox -o -name 'claude*' -maxdepth 6 | head; find x -type f -perm -u+x | grep -v '\.so' | head -30
+          ar t c.deb
+          exe=$(find x -type f -name claude-desktop -o -type f -name claude | head -1); echo "exe=$exe"
+          ldd "$exe" | grep 'not found' || echo all-found
+          timeout 30 "$exe" --version || true
+          timeout 30 xvfb-run -a "$exe" --version --no-sandbox || true
