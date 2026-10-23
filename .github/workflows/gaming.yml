@@ -75,7 +75,7 @@ jobs:
         working-directory: hosts/hearth-gaming
         run: |
           mkdir -p shots
-          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 NO_AT_BRIDGE=1
           Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
           sleep 2
           sudo apt-get install -y -qq x11-utils >/dev/null 2>&1 || true
@@ -83,7 +83,7 @@ jobs:
           front() { w=$(xdotool search --name "^$1\$" | tail -1); [ -n "$w" ] && xdotool windowactivate --sync "$w" 2>/dev/null; true; }
           H="$RUNNER_TEMP/saves/pc1/home"
           # Saves, on the fake home the Saves test left (its backups on the "USB drive" too).
-          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME="$H" HEARTH_SAVES_MANIFEST="$RUNNER_TEMP/saves/manifest.yaml" ./target/release/hearth-saves > saves.log 2>&1 &
+          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME="$H" HEARTH_SAVES_MANIFEST="$RUNNER_TEMP/saves/manifest.yaml" dbus-run-session -- ./target/release/hearth-saves > saves.log 2>&1 &
           sleep 9
           echo "::notice title=Saves window check::$(pgrep -af hearth-saves | tr '\n' ' ') | $(xwininfo -root -tree 2>&1 | grep -v 'has no name' | head -12 | tr '\n' '|')"
           front Saves; shot saves-games
@@ -94,7 +94,7 @@ jobs:
           # Mods, on the fake game the Mods test used, with one mod put back in.
           M="$RUNNER_TEMP/mods/pc/home"
           (cd "$RUNNER_TEMP/mods" && HOME="$M" "$GITHUB_WORKSPACE/hosts/hearth-gaming/target/release/hearth-mods" --install steam:367520 "$RUNNER_TEMP/mods/Cool Mod v1.2.zip" >/dev/null 2>&1 || true)
-          HOME="$M" ./target/release/hearth-mods > mods.log 2>&1 &
+          HOME="$M" dbus-run-session -- ./target/release/hearth-mods > mods.log 2>&1 &
           sleep 8; front Mods; shot mods
           xdotool key Return; sleep 1; xdotool key Right; sleep 1; shot mods-detail
           pkill -f target/release/hearth-mods || true
@@ -102,7 +102,7 @@ jobs:
           sudo modprobe uinput
           sudo /usr/bin/python3 "$GITHUB_WORKSPACE/tools/gaming-e2e/e2e.py" hold 25 &
           sleep 2
-          ./target/release/hearth-controller-lab > lab.log 2>&1 &
+          dbus-run-session -- ./target/release/hearth-controller-lab > lab.log 2>&1 &
           sleep 9; front "Controller Lab"; shot controller-lab
           sleep 2; shot controller-lab-2
           pkill -f target/release/hearth-controller-lab || true
