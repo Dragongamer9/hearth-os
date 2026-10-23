@@ -98,6 +98,11 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.2 (released)
+
+- [x] The new Quick Access overlay opens over games and while a game is loading on Nvidia PCs (Chromium drawing engine): the old full-window panel no longer appears, and the game isn't pulled back in front while Quick Access is open
+- [x] Settings › Display explains when a TV or monitor only reports 60 Hz at your resolution, and what usually fixes it
+
 ## 0.6.1 (released)
 
 - [x] New Hearth apps on Anatase and Peppermint, each with its own icon and opening with a controller, keyboard or mouse: Hearth Text (text and code editor; Files now opens scripts, .desktop files, configs and logs sensibly), Photos and Documents (PDF, e-books, comics), Player (video, music, podcasts and radio, with trimming and other edits saved as a copy) and Calculator, Clock (alarms that ring with the app closed, timers, stopwatch, world clock), Calendar, Notes and Weather, Office (Write, Sheets and Slides: .docx, .xlsx, .pptx and more), Paint, Emoji & symbols (Super+.), Fonts, Contacts (vCard, optional CardDAV sync) and Maps (OpenStreetMap), Nearby Share (LocalSend-compatible) and Hearth Connect (KDE Connect-compatible phone link), Controller Lab, Saves and Mods, and System tools (Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers & Scanner, Welcome & Tips)
