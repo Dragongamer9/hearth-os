@@ -39,7 +39,7 @@ jobs:
           set -o pipefail
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target-capture"
           for c in hearth-media hearth-recorder hearth-camera hearth-share; do
-            [ -d hosts/$c ] || continue
+            [ -f hosts/$c/Cargo.toml ] || continue
             echo "=== $c"
             (cd hosts/$c && cargo test --lib 2>&1 | tee "/tmp/test-$c.log") || { echo "::error title=$c unit tests::$(grep -E '^(error|---- |thread .* panicked|  left|  right)' -A6 /tmp/test-$c.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
             echo "::notice title=$c unit tests::$(grep -E '^test result' /tmp/test-$c.log | tr '\n' ' ')"
@@ -50,7 +50,7 @@ jobs:
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target-capture"
           mkdir -p bin
           for c in hearth-recorder hearth-camera hearth-share; do
-            [ -d hosts/$c ] || continue
+            [ -f hosts/$c/Cargo.toml ] || continue
             (cd hosts/$c && cargo build --release 2>&1 | tee "/tmp/build-$c.log") || { echo "::error title=$c build::$(grep -E '^error' -A12 /tmp/build-$c.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
             cp "$CARGO_TARGET_DIR/release/$c" bin/
             echo "::notice title=$c::$(du -h bin/$c | cut -f1)"
