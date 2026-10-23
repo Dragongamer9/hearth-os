@@ -98,6 +98,15 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.0 (released)
+
+- [x] Claude on Hearth OS: Get Claude (the desktop app, from Anthropic, kept up to date) and Get Claude Code, from the app menu and Settings, on Anatase and Peppermint
+- [x] Hearth Files is a full file manager: a complete Properties window (sizes counted live, dates, permissions, opens with, checksums), tabs, bookmarks, a path bar you can type in, icon/compact/detail views, drag and drop, Replace / Skip / Keep both, templates, batch rename, compress and extract (.zip, .7z, .tar, .rar and more), search, open a terminal here (Linux and Windows)
+- [x] Desktop Mode works like a normal desktop: Super+D and the usual shortcuts, screenshots of the screen or an area (saved, copied, with a notification), a taskbar with pin dragging, app actions, show desktop and a notification count, desktop icons with multi-select, cut/copy/paste and drag and drop, Mouse & touchpad settings, screen-off and sleep timers, several screens, and apps set to start automatically really start; Ember's Mantel gets the same where Windows allows
+- [x] App menu: the apps that came with the system are in one System apps folder; Hearth's own and yours come first
+- [x] Ubuntu and CachyOS editions archived for now, to focus on Anatase and Peppermint; systems on them can switch from Settings › Updates
+- [x] Ember (Windows) and the one-line installer find new versions again (they skipped everything numbered 0.3 to 0.5)
+
 ## 0.5.1 (released)
 
 - [x] Quick Resume keeps your games through Restart and Shut down, not just sleep: one switch, the power menu says which actions keep your games, and "Shut down and close games" / "Restart and close games" really close them; Settings says plainly why if this PC can't keep them yet, with Set up right there (Linux; on Windows, Shut down keeps them)
