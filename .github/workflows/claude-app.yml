@@ -57,7 +57,8 @@ jobs:
           sudo apt-get install -y -qq xvfb dbus-x11 >/dev/null
           ( timeout 30 dbus-run-session -- xvfb-run -a "$HOME/.local/bin/claude-desktop" > run.log 2>&1; echo "exit=$?" >> run.log ) || true
           tail -3 run.log
-          if grep -qiE 'No usable sandbox|SUID sandbox helper|FATAL' run.log; then grep -iE 'sandbox|FATAL' run.log | head -5 | note "sandbox problem"; exit 1; fi
+          # (WebGL "kFatalFailure: blocklisted" lines are Xvfb having no GPU, not a problem.)
+          if grep -qE 'No usable sandbox|SUID sandbox helper|:FATAL:' run.log; then grep -E 'sandbox|:FATAL:' run.log | head -5 | note "sandbox problem"; exit 1; fi
           # timeout ends it after 30 s: exit 124 means it was still running.
           grep -q 'exit=124' run.log || { tail -20 run.log | note "Claude Desktop stopped early"; exit 1; }
           echo "ran 30 s under Xvfb with the namespace sandbox; no sandbox errors" | note "Claude Desktop runs"
