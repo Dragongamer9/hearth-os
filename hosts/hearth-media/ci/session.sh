@@ -47,6 +47,7 @@ elif [ "$KIND" = gamescope ]; then
   # Game Mode: gamescope's headless backend (lavapipe, no graphics card) with an X11 program moving inside it.
   # The tests run beside it with gamescope's variables, the way Game Mode's apps are started.
   rm -f /tmp/gs-env
+  echo "::notice title=gamescope here::$(gamescope --version 2>&1 | head -1); udmabuf: $(ls -l /dev/udmabuf 2>&1); dri: $(ls /dev/dri 2>&1 | tr '\n' ' ')"
   gamescope --backend headless -W 1280 -H 720 -w 1280 -h 720 -- sh -c 'env > /tmp/gs-env.tmp && mv /tmp/gs-env.tmp /tmp/gs-env; exec xterm -geometry 160x50+0+0 -e top -d 0.3' >"$L/gamescope.log" 2>&1 &
   for _ in $(seq 80); do [ -s /tmp/gs-env ] && break; sleep 0.25; done
   if [ ! -s /tmp/gs-env ]; then echo "::error title=gamescope didn't start::$(tail -c 1500 "$L/gamescope.log" | tr '\n' '|')"; fi

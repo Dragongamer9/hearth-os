@@ -103,14 +103,21 @@ jobs:
           - name: fedora-wayland
             image: registry.fedoraproject.org/fedora:latest
             kind: wayland
+          # Game Mode: gamescope on Mesa's software Vulkan needs dma-buf memory (/dev/udmabuf), hence a privileged
+          # container. Not blocking yet: gamescope on lavapipe in CI may not start at all (then the run says so).
           - name: fedora-gamescope
             image: registry.fedoraproject.org/fedora:latest
             kind: gamescope
+            options: --privileged
+            optional: true
           - name: debian13-x11
             image: docker.io/library/debian:trixie
             kind: x11
     name: e2e (${{ matrix.name }})
-    container: ${{ matrix.image }}
+    continue-on-error: ${{ matrix.optional == true }}
+    container:
+      image: ${{ matrix.image }}
+      options: ${{ matrix.options || '' }}
     steps:
       - name: The edition's own packages
         timeout-minutes: 15
