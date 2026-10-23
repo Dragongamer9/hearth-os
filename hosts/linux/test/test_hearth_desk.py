@@ -59,7 +59,7 @@ class Base(unittest.TestCase):
 class Pins(Base):
     def test_defaults_without_a_file(self):
         self.assertEqual(self.hd.public(self.hd.load()), {'pins': [], 'desktopIcons': True, 'dnd': False,
-                                                          'autoArrange': False, 'sortBy': 'name', 'muted': []})
+                                                          'autoArrange': False, 'sortBy': 'name', 'muted': [], 'recent': []})
 
     def test_beacon_pinned_for_a_new_user_when_installed(self):
         share = os.path.join(self.tmp, 'share')
@@ -285,6 +285,16 @@ class Order(Base):
         self.hd.place('a.png', 2, 2, 3, 3)
         r = self.hd.icons(3, 3)
         self.assertEqual([(e['name'], e['col'], e['row']) for e in r['entries']][:2], [('z folder', 0, 0), ('a.png', 0, 1)])
+
+    def test_recent_apps(self):
+        for i in ('a', 'b', 'c', 'a'):
+            self.hd.note_recent(i)
+        self.assertEqual(self.hd.load()['recent'], ['a', 'c', 'b'])
+        for i in range(12):
+            self.hd.note_recent('app%d' % i)
+        self.assertEqual(len(self.hd.load()['recent']), 8)
+        with self.assertRaises(self.hd.Fail):
+            self.hd.note_recent('../x')
 
     def test_mute_app(self):
         self.assertEqual(self.hd.mute_app('Discord', 'on')['muted'], ['Discord'])

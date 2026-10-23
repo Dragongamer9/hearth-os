@@ -16,6 +16,7 @@ Singleton {
     property bool autoArrange: false       // desktop icons kept lined up in sorted order
     property string sortBy: "name"         // name | type | size | date
     property var muted: []                 // app names whose notifications only go to the history
+    property var recent: []                // .desktop ids opened from the app menu, newest first
     property var history: []               // newest first: {key, app, summary, body, icon, time}
     property int unseen: 0                 // added since the panel was last opened
     property int seq: 0
@@ -64,6 +65,7 @@ Singleton {
         autoArrange = r.autoArrange === true;
         sortBy = r.sortBy || "name";
         muted = Array.isArray(r.muted) ? r.muted : [];
+        recent = Array.isArray(r.recent) ? r.recent : [];
     }
 
     // ------------------------------------------------ taskbar pins
@@ -87,6 +89,11 @@ Singleton {
     function setDnd(on) {
         dnd = on;
         call(["set", "dnd", on ? "on" : "off"], (r, err) => { if (!err) apply(r); });
+    }
+    function noteLaunch(id) {
+        if (!id) return;
+        recent = [id].concat(recent.filter(r => r !== id)).slice(0, 8);
+        call(["recent", id], (r, err) => { if (!err) apply(r); });
     }
     function setAutoArrange(on) {
         autoArrange = on;
