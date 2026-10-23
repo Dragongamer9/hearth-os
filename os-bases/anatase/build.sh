@@ -884,15 +884,16 @@ echo "Nvidia power management Anatase brings: $(grep -rhs 'NVreg_PreserveVideoMe
 # fast link (FRL) depends on the driver's version and nvidia-modeset's options, 4K above 60 Hz needs it): the
 # driver's packages and version, open or Nvidia's own kernel modules, every nvidia option in modprobe.d, the
 # kernel arguments the image adds, and gamescope's version.
-{
+(
+  set +x   # the build's command tracing kept out of the notice
   NV_KVER=$(ls /usr/lib/modules | sort -V | tail -1)
   echo "kernel $NV_KVER;"
-  echo "packages: $(rpm -qa 2>/dev/null | grep -iE 'nvidia|^kmod-nv|gamescope|edid-decode|libdisplay-info' | sort | tr '\n' ' ');"
   echo "nvidia module: version $(modinfo -k "$NV_KVER" -F version nvidia 2>/dev/null || echo none), license $(modinfo -k "$NV_KVER" -F license nvidia 2>/dev/null || echo none) (Dual MIT/GPL = open modules);"
   echo "nvidia-modeset options: $(modinfo -k "$NV_KVER" -F parm nvidia_modeset 2>/dev/null | cut -d: -f1 | tr '\n' ' ');"
   echo "modprobe.d: $(grep -rhsE '^[[:space:]]*(options|install|blacklist)[[:space:]].*(nvidia|nouveau|nova)' /usr/lib/modprobe.d /etc/modprobe.d | tr '\n' ';');"
   echo "kargs.d: $(cat /usr/lib/bootc/kargs.d/*.toml 2>/dev/null | grep -E '^kargs' | tr '\n' ' ')"
-} > /tmp/hearth-nvidia-notice.txt 2>&1 || true
+  echo "packages: $(rpm -qa 2>/dev/null | grep -iE '^(nvidia-driver|nvidia-kmod-common|kernel-nvidia|gamescope|edid-decode|libdisplay-info-tools)-[0-9]' | sort -u | tr '\n' ' ')"
+) > /tmp/hearth-nvidia-notice.txt 2>/dev/null || true
 cat /tmp/hearth-nvidia-notice.txt || true
 echo "::notice title=Screen and Nvidia driver in this image::$(tr '\n' ' ' < /tmp/hearth-nvidia-notice.txt | cut -c1-3500)" || true
 mkdir -p /usr/lib/modprobe.d
