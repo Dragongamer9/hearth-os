@@ -20,6 +20,7 @@ COPY os/branding/wallpapers /wallpapers
 COPY os/nimbus-app /nimbus-app
 COPY hosts/linux/session /session
 COPY hosts/linux/desktop /desktop
+COPY branding/icons /icons
 
 # ------------------------------------------------------------------ Debian trixie, set up the way Peppermint has it
 # All of Debian's components (games need contrib and non-free: Steam, gamescope, firmware, Nvidia), trixie-backports
