@@ -5006,6 +5006,35 @@ async function overlayShown(){
 }
 function overlayHidden(){ OV.shown=false; document.body.classList.add('ov-closed'); while(S.layers.length>1) closeLayer(); }
 
+// ==== Hearth Recorder (hosts/hearth-recorder) in Quick Access › Now playing: record the game (or the screen), and
+// instant replay (turn on, save the last stretch). Linux only; the host runs `hearth-recorder --json` (bridge.rs /
+// bridge.js "recorder.*"). Hidden when Recorder isn't installed.
+const REC = {ok:false, st:null, at:0};
+function recLoad(){
+  if(!LINUX || !host || Date.now()-REC.at<1500) return;
+  REC.at=Date.now();
+  call('recorder.status',{},8000).then(r=>{
+    const was=JSON.stringify([REC.ok,REC.st]); REC.ok=true; REC.st=(r&&r.session)||null; REC.secs=(r&&r.settings&&r.settings.replaySecs)||30;
+    if(JSON.stringify([REC.ok,REC.st])!==was && S.layers.includes('qam') && S.qtab==='now'){ const k=document.activeElement&&document.activeElement.dataset.k; renderQam(); if(k) setFocus($(`#qam [data-k="${k}"]`)||$('#qam .qbody [data-f]'),true); }
+  }).catch(()=>{ REC.ok=false; });
+}
+function recQam(){
+  if(!LINUX || !REC.ok) return '';
+  const k=REC.st&&REC.st.kind, len=REC.secs>=60?(REC.secs/60)+' min':(REC.secs||30)+' s';
+  const rec = k==='record' ? `<button class="btn danger" data-f data-k="q-rec" data-act="recToggle">${I.stop}Stop recording</button>`
+    : `<button class="btn" data-f data-k="q-rec" data-act="recToggle" ${k==='sound'?'disabled':''}>${I.display}Record</button>`;
+  const rep = k==='replay' ? `<button class="btn" data-f data-k="q-rsave" data-act="recSave">${I.dl||I.display}Save last ${len}</button><button class="btn sm" data-f data-k="q-roff" data-act="recReplay">Instant replay off</button>`
+    : `<button class="btn" data-f data-k="q-ron" data-act="recReplay" ${k?'disabled':''}>${I.restart||I.play}Instant replay</button>`;
+  return `<h3 style="margin-top:16px">Recorder${k==='record'?' · recording':k==='replay'?' · instant replay on':''}</h3><div class="two">${rec}${rep}</div>`;
+}
+function recDone(r, what){
+  REC.at=0; recLoad();
+  const f = r && (r.file||r.saved);
+  if(f) toast(`${what} saved · ${String(f).split('/').pop()} (Videos › Recordings)`);
+  else if(r && r.started) toast(r.started.kind==='replay' ? `Instant replay on · Save last ${REC.secs>=60?(REC.secs/60)+' min':(REC.secs||30)+' s'} from here` : 'Recording · stop it from here');
+  else toast(what==='Replay'?'Instant replay off':'Done');
+}
+// ==== end of Hearth Recorder in Quick Access
 function renderQam(){
   const t=S.qtab; let body='';
   if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
@@ -5031,9 +5060,10 @@ function renderQam(){
       ${LINUX?`<button class="btn" data-f data-k="q-resume" data-act="resume">${I.play}Back to game</button>`:''}
       ${(LINUX||hasFeat('pause'))&&!G(S.running)?.cloud?`<button class="btn" data-f data-k="q-pause" data-act="pauseGame">${S.paused?I.play+'Unpause':I.pause+'Pause'}</button>`:''}
       ${qrFeature()&&QR.on&&!g.cloud?`<button class="btn" data-f data-k="q-aside" data-act="putaside">${I.pause}Put aside (Quick Resume)</button>`:''}
-      <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>${inputQam(g)}${qamQuick()}`
-      : (QR.list.length && !OVERLAY) ? `<div class="muted" style="margin-bottom:10px">Nothing running right now.</div>${qamQuick()}`
-      : OVERLAY ? `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}` : '<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
+      <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>${recQam()}${inputQam(g)}${qamQuick()}`
+      : (QR.list.length && !OVERLAY) ? `<div class="muted" style="margin-bottom:10px">Nothing running right now.</div>${recQam()}${qamQuick()}`
+      : OVERLAY ? `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}${recQam()}` : `<div class="muted">Nothing running. Launch a game from Home or Library.</div>${recQam()}`}`;
+    recLoad();
   }
   $('#qam').innerHTML = `<div class="qbody">${body}</div><div class="qtabs">${QTABS.map(([k,ic,l])=>`<button class="qtab ${t===k?'on':''}" data-f data-k="qt-${k}" data-act="qtab" data-tab="${k}" aria-label="${l}">${I[ic]}</button>`).join('')}</div>`;
 }
@@ -5509,6 +5539,11 @@ function act(el){
     case 'perfOverlay': return call('perf.setOverlay',{level:+d.v}).then(r=>{ if(PERF.s) PERF.s.perfOverlay=r.perfOverlay; toast(r.perfOverlay?`Overlay: ${PO_LEVELS[r.perfOverlay]}`:'Overlay off'); renderQam(); setFocus($(`#qam [data-k="po-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'fpsLimit': return call('perf.setFpsLimit',{fps:+d.v}).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'perfPower': return call('power.setMode',{mode:d.v}).then(r=>{ if(PERF.s) PERF.s.powerMode=r.mode||d.v; renderQam(); setFocus($(`#qam [data-k="pp-${d.v}"]`),true); }).catch(e=>toast(e.message));
+    // ==== Hearth Recorder (recQam)
+    case 'recToggle': toast(REC.st&&REC.st.kind==='record'?'Saving the recording…':'Starting to record…'); return call('recorder.toggle',{},70000).then(r=>recDone(r,'Recording')).catch(e=>{ REC.at=0; recLoad(); toast(e.message); });
+    case 'recReplay': return call('recorder.replay',{},70000).then(r=>recDone(r,'Replay')).catch(e=>{ REC.at=0; recLoad(); toast(e.message); });
+    case 'recSave': toast('Saving the replay…'); return call('recorder.saveReplay',{},70000).then(r=>recDone(r,'Replay')).catch(e=>toast(e.message));
+    // ==== end of Hearth Recorder
     case 'ovShot': return call('overlay.screenshot',{},20000).then(r=>{ SH.list=null; toast(`Screenshot saved · see it in Library › Screenshots`); }).catch(e=>toast(e.message));
     case 'ovHome': return send({type:'overlay', action:'home'});
     case 'ovHoldView': return call('overlay.setHoldView',{on:!(OVS.s&&OVS.s.holdView)}).then(r=>{ OVS.s=r; render('ov-hold'); }).catch(e=>toast(e.message));
