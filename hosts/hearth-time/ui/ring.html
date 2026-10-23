@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ringing - Clock</title>
+<link rel="stylesheet" href="hearth.css">
+<style>
+body { background:radial-gradient(900px 600px at 50% 40%, #4a2210 0%, #1a0f0a 55%, var(--bg) 100%); }
+.wrap { height:100%; display:grid; place-items:center; text-align:center; padding:var(--gut); }
+.pulse { width:min(46vmin, 15em); height:min(46vmin, 15em); border-radius:50%; display:grid; place-items:center; margin:0 auto 1.2em;
+  background:radial-gradient(circle, rgba(255,138,61,.35), rgba(255,138,61,.05) 65%, transparent 70%); animation:pulse 1.6s ease-in-out infinite; color:var(--ember); }
+.pulse svg { width:45%; height:45%; }
+@keyframes pulse { 0%,100% { transform:scale(.92); } 50% { transform:scale(1.04); } }
+.time { font-size:clamp(3.2em, 11vw, 7em); font-weight:200; font-variant-numeric:tabular-nums; line-height:1; }
+.what { font-size:1.5em; font-weight:600; margin:.3em 0 .1em; color:var(--flame); }
+.more { color:var(--muted); }
+.acts { display:flex; gap:1em; justify-content:center; margin-top:1.8em; flex-wrap:wrap; }
+.acts .btn { min-width:11em; min-height:3.4em; font-size:1.1em; border-radius:18px; }
+.hint { color:var(--faint); margin-top:1.2em; font-size:.85em; }
+</style>
+</head>
+<body>
+<div class="wrap"><div>
+  <div class="pulse" id="ico"></div>
+  <div class="time" id="time"></div>
+  <div class="what" id="what"></div>
+  <div class="more" id="more"></div>
+  <div class="acts">
+    <button class="btn f" id="snooze" data-a="snooze"></button>
+    <button class="btn primary f" id="dismiss" data-a="dismiss" autofocus>Dismiss</button>
+  </div>
+  <div class="hint">A: choose · X: snooze · B: dismiss</div>
+</div></div>
+<div id="layer"></div>
+<script src="hearth.js"></script>
+<script>
+'use strict';
+const { $, esc, icon, invoke } = H;
+let kind = 'alarm';
+function tick() { $('#time').textContent = H.fmtTime(new Date()); setTimeout(tick, 1000); }
+async function start() {
+  const r = await invoke('ring_info').catch(() => ({ items: [] }));
+  const items = r.items || [];
+  const first = items[0] || { kind: 'alarm', item: {} };
+  kind = first.kind;
+  const it = first.item || {};
+  $('#ico').innerHTML = icon(kind === 'timer' ? 'timer' : 'alarm');
+  $('#what').textContent = kind === 'timer' ? `${it.label || 'Timer'} is done` : (it.label || 'Alarm');
+  $('#more').textContent = items.length > 1 ? `and ${items.slice(1).map(x => x.item?.label || (x.kind === 'timer' ? 'a timer' : 'an alarm')).join(', ')}` : (kind === 'timer' ? H.dur(it.duration || 0) + ' timer' : '');
+  const snooze = it.snooze || r.settings?.snooze || 10;
+  $('#snooze').innerHTML = kind === 'timer' ? `${icon('plus')}1 minute` : `${icon('snooze')}Snooze ${snooze} min`;
+  document.title = 'Ringing - Clock';
+  $('#dismiss').focus();
+}
+async function done(action) { try { await invoke('ring_done', { action }); } catch (e) { H.toast(String(e)); } }
+document.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b) done(b.dataset.a); });
+H.buttons.x = () => done('snooze');
+H.onBack = () => done('dismiss');
+H.onKey = e => { if (e.key.toLowerCase() === 's') { done('snooze'); return true; } return false; };
+tick();
+start();
+window.DEMO = (cmd) => {
+  if (cmd === 'ring_info') return { items: [{ kind: 'alarm', id: 'a1', item: { label: 'Work', snooze: 10, time: '06:45' } }], settings: { snooze: 10 } };
+  return null;
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+target/
+gen/
+Cargo.lock
+shots/
+shots-pages/
+node_modules/
+*.log
