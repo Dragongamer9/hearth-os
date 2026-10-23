@@ -176,7 +176,7 @@ async function playIndex(i, { at = null, noResume = false } = {}) {
   S.qi = i; S.item = S.queue[i]; S.track++; S.probe = null; S.subs = []; S.subOn = -1; S.prepared = null;
   closeNotice();
   setBodyMode(); hints();
-  for (const t of $$('track', video)) t.remove();
+  shownCue = null;
   $('#title').textContent = S.item.name;
   call('set_title', { title: `${S.item.title || S.item.name} - Hearth Player` }).catch(() => {});
   let url;
@@ -344,25 +344,50 @@ function speedStep(dir) { const c = video.playbackRate || 1; const i = SPEEDS.fi
 let osdTimer;
 function osd(text) { const o = $('#osd'); o.textContent = text; o.classList.add('show'); clearTimeout(osdTimer); osdTimer = setTimeout(() => o.classList.remove('show'), 1100); }
 
-// Subtitles: <track> elements made from WebVTT the app serves.
+// Subtitles: the app turns them into WebVTT (files beside the video, or text streams inside it, via ffmpeg) and the
+// page draws the cues itself over the video, the same in every web view.
+function parseVtt(text) {
+  const t = s => { const m = /(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})/.exec(s); return m ? (+(m[1] || 0)) * 3600 + (+m[2]) * 60 + (+m[3]) + (+m[4].padEnd(3, '0')) / 1000 : NaN; };
+  const cues = [];
+  for (const block of String(text).replace(/\r/g, '').split(/\n{2,}/)) {
+    const lines = block.split('\n');
+    const i = lines.findIndex(l => l.includes('-->'));
+    if (i < 0) continue;
+    const [a, b] = lines[i].split('-->');
+    const start = t(a), end = t(b);
+    if (!isFinite(start) || !isFinite(end)) continue;
+    // Only <i>, <b> and <u> are kept; everything else is shown as text.
+    const html = lines.slice(i + 1).join('\n').split(/(<\/?[ibu]>)/).map(p => (/^<\/?[ibu]>$/.test(p) ? p : esc(p.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')))).join('').replace(/\n/g, '<br>');
+    cues.push({ start, end, html });
+  }
+  return cues.sort((x, y) => x.start - y.start);
+}
+let shownCue = '';
+function drawCues() {
+  const el = $('#cues');
+  const s = S.subOn >= 0 ? S.subs[S.subOn] : null;
+  const t = video.currentTime;
+  const html = s && s.cues ? s.cues.filter(c => t >= c.start && t < c.end).map(c => `<span>${c.html}</span>`).join('<br>') : '';
+  if (html !== shownCue) { el.innerHTML = html; shownCue = html; }
+}
+video.addEventListener('timeupdate', drawCues);
+video.addEventListener('seeked', drawCues);
 async function selectSub(i, quiet = false) {
-  for (const tt of video.textTracks) tt.mode = 'disabled';
   S.subOn = -1;
-  if (i < 0) { S.settings.subsOff = true; saveSettings(); updateButtons(); if (!quiet) osd('Subtitles off'); return; }
+  if (i < 0) { S.settings.subsOff = true; saveSettings(); updateButtons(); drawCues(); if (!quiet) osd('Subtitles off'); return; }
   const s = S.subs[i]; if (!s) return;
   if (s.text === false) { toast('Picture subtitles (Blu-ray and DVD) can\'t be shown yet. Try a text track or a subtitle file.'); return; }
   try {
-    if (!s.el) {
-      const url = s.file ? await call('subtitle_url', { path: s.file }) : s.extFile ? await call('subtitle_file_url', { path: s.extFile }) : await call('subtitle_url', { path: S.item.path, stream: s.stream });
-      const tr = document.createElement('track');
-      tr.kind = 'subtitles'; tr.label = s.label; tr.srclang = (s.lang || 'und').slice(0, 2); tr.src = url;
-      video.appendChild(tr); s.el = tr;
+    if (!s.cues) {
+      const vtt = s.file ? await call('subtitle_vtt', { path: s.file }) : s.extFile ? await call('subtitle_file_vtt', { path: s.extFile }) : await call('subtitle_vtt', { path: S.item.path, stream: s.stream });
+      s.cues = parseVtt(vtt);
+      if (!s.cues.length) { toast('There are no subtitles in that track.'); return; }
     }
-    s.el.track.mode = 'showing';
     S.subOn = i;
     S.settings.subsOff = false; if (s.lang) S.settings.subLang = s.lang.toLowerCase().slice(0, 2); saveSettings();
     if (!quiet) osd(s.label);
   } catch (e) { toast(e.message); }
+  drawCues();
   updateButtons();
 }
 function subsMenu() {
@@ -372,7 +397,7 @@ function subsMenu() {
   items.push({ sep: true }, ...sizes.map(([l, v]) => ({ label: `Text size: ${l}`, on: (S.settings.cue || 1) === v, run: () => { S.settings.cue = v; applyCue(); saveSettings(); } })));
   menu('Subtitles', items);
 }
-const applyCue = () => document.documentElement.style.setProperty('--cue', `${S.settings.cue || 1}em`);
+const applyCue = () => document.documentElement.style.setProperty('--cue', `${S.settings.cue || 1}`);
 function cycleSubs() { if (!S.subs.length) { osd('No subtitles'); return; } selectSub(S.subOn + 1 >= S.subs.length ? -1 : S.subOn + 1); }
 
 function audioTracks() { return (S.probe?.streams || []).filter(s => s.kind === 'audio'); }
@@ -1138,7 +1163,7 @@ function demoInvoke(cmd, a) {
     case 'folder_tracks': return r(files.filter(f => f.kind === 'audio').map(f => ({ path: `${dirName(a.path)}/${f.name}`, name: f.name, kind: 'audio' })));
     case 'media_url': return r(isUrl(a.path) ? a.path : base + encodeURIComponent(baseName(a.path)));
     case 'probe': return r(D.probe ? D.probe(a.path) : { info: { duration: 0, streams: [], chapters: [] }, subs: [], tags: null });
-    case 'subtitle_url': case 'subtitle_file_url': return r(D.vtt || 'data:text/vtt,WEBVTT%0A%0A00:00:00.000 --> 00:00:30.000%0AHello from the subtitles');
+    case 'subtitle_vtt': case 'subtitle_file_vtt': return r(D.vtt || 'WEBVTT\n\n00:00:00.000 --> 00:00:30.000\nHello from the <i>subtitles</i>\n');
     case 'art_url': return r(null);
     case 'tags_read': return r({ title: 'Song one', artist: 'Hearth Band', album: 'Embers', genre: 'Folk', track: 1, year: 2026, duration: 30, has_cover: false });
     case 'tags_write': (window.__demoCalls ||= []).push([cmd, a]); return r({ ...a.tags });

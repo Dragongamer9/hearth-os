@@ -88,23 +88,19 @@ fn probe(app: tauri::State<Arc<App>>, path: String) -> Value {
     })
 }
 
-/// A subtitle file beside the video, or a text subtitle stream inside it, as a WebVTT address for <track>.
+/// A subtitle file beside the video, or a text subtitle stream inside it (ffmpeg), as WebVTT text (the page draws it).
 #[tauri::command(async)]
-fn subtitle_url(app: tauri::State<Arc<App>>, path: String, stream: Option<u32>) -> Result<String, String> {
+fn subtitle_vtt(app: tauri::State<Arc<App>>, path: String, stream: Option<u32>) -> Result<String, String> {
     let p = PathBuf::from(&path);
-    let vtt = match stream {
-        Some(i) => { let t = app.tools.lock().unwrap().clone(); tools::extract_subtitle(&t, &p, i)? }
-        None => media::to_vtt(&p)?,
-    };
-    Ok(app.server.bytes_url(vtt.into_bytes(), "text/vtt; charset=utf-8", "subs.vtt"))
+    match stream {
+        Some(i) => { let t = app.tools.lock().unwrap().clone(); tools::extract_subtitle(&t, &p, i) }
+        None => media::to_vtt(&p),
+    }
 }
 
-/// A subtitle file picked by hand (any name).
+/// A subtitle file picked by hand (any name), as WebVTT text.
 #[tauri::command(async)]
-fn subtitle_file_url(app: tauri::State<Arc<App>>, path: String) -> Result<String, String> {
-    let vtt = media::to_vtt(Path::new(&path))?;
-    Ok(app.server.bytes_url(vtt.into_bytes(), "text/vtt; charset=utf-8", "subs.vtt"))
-}
+fn subtitle_file_vtt(path: String) -> Result<String, String> { media::to_vtt(Path::new(&path)) }
 
 /// The song's cover: the picture inside it, else folder.jpg/cover.jpg beside it.
 #[tauri::command(async)]
@@ -369,7 +365,7 @@ fn main() {
     tauri::Builder::default()
         .manage(app.clone())
         .invoke_handler(tauri::generate_handler![
-            init, open_paths, folder_tracks, list_dir, media_url, proxy_url, probe, subtitle_url, subtitle_file_url, art_url,
+            init, open_paths, folder_tracks, list_dir, media_url, proxy_url, probe, subtitle_vtt, subtitle_file_vtt, art_url,
             tags_read, tags_write, store_get, store_set, keep_awake, now_playing, fullscreen, set_title, net_get, save_frame,
             job_cancel, edit_plan, edit_start, prepare_start, download_start, delete_download, save_playlist, file_exists, quit
         ])
