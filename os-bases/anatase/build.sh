@@ -86,6 +86,66 @@ Keywords=disk;drive;partition;format;usb;sd;card;mount;eject;storage;steam;libra
 DESKTOP
 fi
 
+# ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect) ------------------------------
+# Hearth's apps for phones and nearby devices, built with the app (base-anatase.yml) and carried in os/nimbus-app
+# with their icons. Nearby Share speaks LocalSend's protocol, Hearth Connect KDE Connect's. playerctl lets a phone
+# control this PC's music, wl-clipboard/wtype give Hearth Connect the clipboard and typing in Desktop Mode, and
+# notify-send's library its notifications. Their firewall helper and polkit rule come from os/system_files
+# (hearth-link-firewall, 49-hearth-link.rules): ports open only while the apps listen, and only to local addresses.
+dnf5 -y install --skip-unavailable playerctl wl-clipboard wtype libnotify || true
+for app in hearth-nearby hearth-connect; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app is missing the libraries above"; fi
+  fi
+  if [ -f "/ctx/nimbus-app/icons/$app.svg" ]; then install -Dm644 "/ctx/nimbus-app/icons/$app.svg" "/usr/share/icons/hicolor/scalable/apps/$app.svg"; fi
+done
+chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
+rpm -q firewalld >/dev/null 2>&1 && echo "firewalld is in this image: Nearby Share and Hearth Connect open their ports with it" || echo "no firewalld in this image: nothing to open"
+install -d /usr/share/applications /usr/lib/systemd/user
+if [ -x /usr/bin/hearth-nearby ]; then
+  cat > /usr/share/applications/hearth-nearby.desktop <<DESKTOP
+[Desktop Entry]
+Name=Nearby Share
+GenericName=File Sharing
+Comment=Send and receive files with phones and computers on the same network (works with LocalSend)
+Exec=/usr/bin/hearth-nearby %F
+Icon=hearth-nearby
+Type=Application
+Categories=Network;FileTransfer;Utility;
+Keywords=localsend;share;send;receive;nearby;airdrop;transfer;phone;files;
+DESKTOP
+fi
+if [ -x /usr/bin/hearth-connect ]; then
+  cat > /usr/share/applications/hearth-connect.desktop <<DESKTOP
+[Desktop Entry]
+Name=Hearth Connect
+GenericName=Phone Link
+Comment=Link your phone: files, notifications, clipboard, phone as touchpad, music, find my phone (works with KDE Connect)
+Exec=/usr/bin/hearth-connect
+Icon=hearth-connect
+Type=Application
+Categories=Network;Utility;
+Keywords=kde connect;kdeconnect;phone;android;iphone;notifications;clipboard;remote;touchpad;
+DESKTOP
+  # The background service that keeps the phone linked. Off until the person opens Hearth Connect (which turns it on
+  # for their account), so nothing listens on the network before they ask for it.
+  cat > /usr/lib/systemd/user/hearth-connect.service <<UNIT
+[Unit]
+Description=Hearth Connect (your phone, linked; KDE Connect's protocol)
+
+[Service]
+ExecStart=/usr/bin/hearth-connect --daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+fi
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+# ---- end of Nearby Share and Hearth Connect
+
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session
 install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
