@@ -154,8 +154,10 @@ def localsend(ip):
     num = None
     for _ in range(40):
         time.sleep(1)
-        text = re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', open(slog_path, errors='replace').read())
-        m = re.search(r'\[(\d)\] Hearth A ', text)
+        # The list is drawn with cursor moves between words: those become spaces, other escapes go.
+        text = re.sub(r'\x1b\[\d+;\d+H', ' ', open(slog_path, errors='replace').read())
+        text = re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', text)
+        m = re.search(r'\[(\d)\]\s+Hearth\s+A\b', text)
         if m:
             num = m.group(1)
             break
