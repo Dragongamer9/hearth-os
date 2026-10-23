@@ -8,6 +8,7 @@
 //   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close   menu open   settings open|page <name>|close
 //   tasks open|tab <apps|perf|startup>|close|toggle   files open <path>|home|toggle|close
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
+//   taskbar activate <1-9>|showDesktop   brightness up|down   media playPause|next|previous|stop
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -31,7 +32,9 @@ ShellRoot {
                 }
                 Bar {
                     screen: modelData
+                    primary: modelData === Quickshell.screens[0]
                     menu: popMenu
+                    onSettingsRequested: page => settings.open(page)
                     onLauncherRequested: launcher.toggle()
                     onQuickRequested: quick.toggle()
                     onKeyboardRequested: keyboard.open ? pad.closeKeyboard() : pad.openKeyboard()
@@ -54,10 +57,19 @@ ShellRoot {
         onSettingsRequested: settings.open("")
         onMenuRequested: (entry, x, y) => {
             const pinned = DeskState.isPinned(entry.id);
-            popMenu.popup(launcher.screen, x, y, { title: entry.name }, [
-                { label: "Open", icon: "open", run: () => launcher.launch(entry) },
-                { label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", run: () => DeskState.togglePin(entry.id) }
-            ]);
+            const list = [{ label: "Open", icon: "open", run: () => launcher.launch(entry) }];
+            // The app's own actions (New private window...), from its .desktop file.
+            const acts = entry.actions ? Array.from(entry.actions).slice(0, 6) : [];
+            for (const a of acts) list.push({ label: a.name, icon: "open", run: () => { a.execute(); launcher.shown = false; } });
+            list.push({ separator: true });
+            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", run: () => DeskState.togglePin(entry.id) });
+            list.push({ label: "Add to desktop", icon: "plus", run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
+            // Apps installed from Flathub can be removed in Apps (their page has Remove).
+            if (/\bflatpak\b/.test(entry.execString || "")) {
+                list.push({ separator: true });
+                list.push({ label: "Uninstall…", icon: "trash", danger: true, run: () => { launcher.shown = false; appStore.open(entry.id); } });
+            }
+            popMenu.popup(launcher.screen, x, y, { title: entry.name }, list);
         }
     }
     // ---- Taskbar & desktop: right-click menus, the desktop's small dialogs, the clock's calendar and notifications.
@@ -85,7 +97,11 @@ ShellRoot {
     // ---- end Apps / clipboard
     TaskManager { id: tasks }
     FileManager { id: files }
-    VolumeOsd {}
+    VolumeOsd { id: osd }
+    // The media keys (MPRIS) and turning the screen off / sleeping when idle: loaded separately, so a Quickshell
+    // without one of these services only loses that.
+    Loader { source: "MediaKeys.qml" }
+    Loader { source: "IdlePower.qml" }
     PowerMenu { id: powerMenu }
     Lock { id: lockScreen }
     LiveWelcome { id: liveWelcome; settingsApp: settings }
@@ -130,6 +146,16 @@ ShellRoot {
     IpcHandler {
         target: "lock"
         function lock(): void { lockScreen.lock(); }
+    }
+    IpcHandler {
+        target: "brightness"
+        function up(): void { osd.brightness(true); }
+        function down(): void { osd.brightness(false); }
+    }
+    IpcHandler {
+        target: "taskbar"
+        function activate(n: int): void { if (DeskState.mainBar) DeskState.mainBar.activateNth(n); }
+        function showDesktop(): void { if (DeskState.mainBar) DeskState.mainBar.toggleShowDesktop(); }
     }
     IpcHandler {
         target: "live"
@@ -205,6 +231,12 @@ ShellRoot {
         target: "desktop"
         function menu(): void { if (DeskState.mainDesktop) DeskState.mainDesktop.backgroundMenu(DeskState.mainDesktop.width / 2, DeskState.mainDesktop.height / 3); }
         function icons(state: string): void { DeskState.setDesktopIcons(state === "toggle" ? !DeskState.desktopIcons : state === "on"); }
+        // An icon's right-click menu (by its file name in the Desktop folder).
+        function itemMenu(name: string): void {
+            const d = DeskState.mainDesktop;
+            const e = d ? d.entries.find(x => x.name === name) : null;
+            if (e) { const c = d.cellCenter(e); d.itemMenu(e, c.x, c.y); }
+        }
         function close(): void { popMenu.close(); deskDialog.cancel(); }
     }
 }
