@@ -231,7 +231,7 @@ jobs:
           [ "$GTK_USE_PORTAL" = 1 ] && [ "$GDK_DEBUG" = portals ] || { echo "::error title=file chooser::nimbus-session doesn't ask GTK apps to use the portal"; touch shots/FAILED; }
           unset QT_QPA_PLATFORMTHEME
           dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_RUNTIME_DIR HOME PATH QT_QUICK_BACKEND NIMBUS_SHARE XDG_DATA_DIRS || echo "dbus-update-activation-environment failed"
-          XDP=$(ls /usr/libexec/xdg-desktop-portal /usr/lib/xdg-desktop-portal 2>/dev/null | head -1)
+          XDP=""; for x in /usr/libexec/xdg-desktop-portal /usr/lib/xdg-desktop-portal; do [ -x "$x" ] && { XDP="$x"; break; }; done
           if [ -n "$XDP" ] && python3 -c 'import gi' 2>/dev/null; then
             "$XDP" -r -v > shots/xdg-desktop-portal.log 2>&1 &
             python3 hosts/linux/desktop/shell/hearth-portal filemanager1 --replace > shots/filemanager1.log 2>&1 &
