@@ -28,7 +28,7 @@ PanelWindow {
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
 
-    onShownChanged: if (shown) { refresh(); r = 0; c = 0; keys.forceActiveFocus(); } else closing.restart()
+    onShownChanged: if (shown) { refresh(); r = navRows[0][0] === "weather" ? 1 : 0; c = 0; keys.forceActiveFocus(); } else closing.restart()   // (Hearth Weather's row sits above Volume)
 
     // ------------------------------------------------------------------ state read from the system
     PwObjectTracker { objects: [Pipewire.defaultAudioSink] }
@@ -38,7 +38,7 @@ PanelWindow {
     property bool wifiKnown: false
     property string profile: ""          // power-saver | balanced | performance; "" = not available
 
-    function refresh() { brightRead.running = true; wifiRead.running = true; ppdRead.running = true; }
+    function refresh() { brightRead.running = true; wifiRead.running = true; ppdRead.running = true; weatherRead.running = true; }
     function run(cmd) { Quickshell.execDetached(cmd); }
 
     Process {
@@ -63,6 +63,16 @@ PanelWindow {
             }
         }
     }
+    // ---- Hearth Weather (hosts/hearth-time): the weather in a few words for the place chosen in the Weather app
+    // (`hearth-time --weather-summary`: {} when no place is chosen or the app isn't installed). Opens Weather.
+    property var weather: ({})
+    Process {
+        id: weatherRead
+        running: true
+        command: ["hearth-time", "--weather-summary"]
+        stdout: StdioCollector { onStreamFinished: { try { root.weather = JSON.parse(text.trim().split("\n").pop() || "{}"); } catch (e) { root.weather = {}; } } }
+    }
+    // ---- end of Hearth Weather
     function setBrightness(p) {
         brightness = Math.max(1, Math.min(100, p));
         run(["brightnessctl", "-q", "-c", "backlight", "set", brightness + "%"]);
@@ -74,6 +84,7 @@ PanelWindow {
     // ------------------------------------------------------------------ controller / keyboard navigation
     readonly property var navRows: {
         const rows = [["volume"]];
+        if (weather.line) rows.unshift(["weather"]);   // Hearth Weather
         if (brightness >= 0) rows.push(["brightness"]);
         rows.push(["night", "mouse", "wifi"]);
         if (profile !== "") rows.push(["power-saver", "balanced", "performance"]);
@@ -108,6 +119,7 @@ PanelWindow {
         case "screenshot": shown = false; run(["sh", "-c", "sleep 0.4; sh \"${NIMBUS_SHARE:-/usr/local/share/nimbus}/desktop/open.sh\" screenshot"]); break;
         case "game": run(["nimbus-mode", "game"]); break;
         case "sleep": shown = false; run(["systemctl", "suspend"]); break;
+        case "weather": shown = false; run(["hearth-weather"]); break;   // Hearth Weather
         }
     }
 
@@ -164,6 +176,24 @@ PanelWindow {
                     SystemClock { id: clock; precision: SystemClock.Minutes }
                     Text { text: Qt.formatTime(clock.date, "h:mm AP"); color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.DemiBold }
                     Item { Layout.fillWidth: true }
+                    // ---- Hearth Weather: "18° Partly cloudy" for the chosen place; opens Weather.
+                    Focusable {
+                        navId: "weather"
+                        visible: !!root.weather.line
+                        implicitWidth: wrow.implicitWidth + 20
+                        implicitHeight: 40
+                        color: wma.containsMouse ? Theme.panel3 : "transparent"
+                        Row {
+                            id: wrow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Icon { anchors.verticalCenter: parent.verticalCenter; name: root.weather.day === false ? "moon" : "sun"; size: 18 }
+                            Text { anchors.verticalCenter: parent.verticalCenter; text: root.weather.line || ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 14 }
+                            Text { anchors.verticalCenter: parent.verticalCenter; text: root.weather.place || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+                        }
+                        MouseArea { id: wma; anchors.fill: parent; hoverEnabled: true; onClicked: root.activate("weather") }
+                    }
+                    // ---- end of Hearth Weather
                     Row {
                         spacing: 6
                         visible: UPower.displayDevice && UPower.displayDevice.isLaptopBattery
