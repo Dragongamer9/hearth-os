@@ -234,8 +234,8 @@ pub fn sidecar_subs(video: &Path) -> Vec<Sub> {
             let parts: Vec<&str> = rest.split(['.', '_', ' ']).filter(|s| !s.is_empty()).collect();
             let lang = parts.iter().find(|s| LANGS.iter().any(|(k, _)| k == *s)).map(|s| s.to_string()).unwrap_or_default();
             let mut label = if lang.is_empty() { String::new() } else { lang_name(&lang) };
-            if parts.iter().any(|s| *s == "forced") { label = format!("{} (forced)", if label.is_empty() { "Subtitles" } else { &label }).trim().to_string(); }
-            if parts.iter().any(|s| *s == "sdh" || *s == "cc") { label = format!("{} (SDH)", if label.is_empty() { "Subtitles" } else { &label }); }
+            if parts.iter().any(|s| *s == "forced") { label = format!("{} (forced)", if label.is_empty() { "Subtitles" } else { label.as_str() }).trim().to_string(); }
+            if parts.iter().any(|s| *s == "sdh" || *s == "cc") { label = format!("{} (SDH)", if label.is_empty() { "Subtitles" } else { label.as_str() }); }
             if label.is_empty() { label = if rest.is_empty() { "Subtitles".into() } else { rest.clone() }; }
             let e = ext(&p).to_uppercase();
             out.push(Sub { path: p.to_string_lossy().into_owned(), label: format!("{label} ({e} file)"), lang });
@@ -261,7 +261,7 @@ pub fn cover_file(dir: &Path) -> Option<PathBuf> {
 fn vtt_time(t: &str) -> Option<String> {
     // SRT: 00:01:02,345   ASS: 0:01:02.34
     let t = t.trim().replace(',', ".");
-    let (hms, frac) = t.split_once('.').unwrap_or((&t, "0"));
+    let (hms, frac) = t.split_once('.').unwrap_or((t.as_str(), "0"));
     let parts: Vec<&str> = hms.split(':').collect();
     let (h, m, s) = match parts.as_slice() {
         [h, m, s] => (h.parse::<u32>().ok()?, m.parse::<u32>().ok()?, s.parse::<u32>().ok()?),
