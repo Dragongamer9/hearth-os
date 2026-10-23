@@ -6,6 +6,7 @@
   --ink:#2a1206; --r:14px; --gut:clamp(14px,2.4vw,36px); --ease:cubic-bezier(.2,.8,.2,1);
 }
 * { box-sizing:border-box; }
+[hidden] { display:none !important; }
 html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
 body { font:400 clamp(15px, .9vw + 7px, 24px)/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; overflow:hidden;
   background:radial-gradient(1200px 700px at 85% -10%, #2a170d 0%, transparent 60%), var(--bg); user-select:none; -webkit-user-select:none; }

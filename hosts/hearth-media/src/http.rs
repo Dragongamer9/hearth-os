@@ -19,6 +19,22 @@ impl Request {
     }
 }
 
+/// Undoes %XX and + in a query value.
+pub fn decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            let hex = |c: u8| (c as char).to_digit(16);
+            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) { out.push((h * 16 + l) as u8); i += 3; continue; }
+        }
+        out.push(if b[i] == b'+' { b' ' } else { b[i] });
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
 /// The request line out of what the browser sent: "GET /x?y HTTP/1.1".
 pub fn parse_request(head: &str) -> Option<(String, String, String)> {
     let line = head.lines().next()?;
@@ -145,6 +161,9 @@ mod tests {
         let r = Request { method: "GET".into(), path: "/".into(), query: "a=1&k=xyz".into(), peer: None };
         assert_eq!(r.param("k").as_deref(), Some("xyz"));
         assert_eq!(r.param("z"), None);
+        assert_eq!(decode("%2Fhome%2Fyou%2FPhoto+1.jpg"), "/home/you/Photo 1.jpg");
+        assert_eq!(decode("100%"), "100%");
+        assert_eq!(decode("%zz"), "%zz");
     }
     #[test]
     fn local_addresses() {
