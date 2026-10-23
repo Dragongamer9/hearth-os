@@ -6,13 +6,22 @@
 <title>Hearth Files</title>
 <!--
   Hearth Files for Mantel on Windows, like Mantel's file manager on Hearth OS (hosts/linux/desktop/shell/FileManager.qml):
-  places on the left (your folders, game libraries, drives, the Recycle Bin), the folder on the right as a grid
-  or a list. Works with the mouse, the keyboard and the controller the same way as Hearth Settings:
-    places   Up/Down pick a place, Right/Enter go into it, Esc closes
+  places on the left (your folders, bookmarks, game libraries, drives, the Recycle Bin), the folder on the right as
+  icons, a compact list or details with sortable columns (grouped by type or date if you like; remembered per
+  folder), in tabs. Works with the mouse, the keyboard and the controller the same way as Hearth Settings:
+    places   Up/Down pick a place, Right/Enter go into it, X its menu (bookmarks, eject), Esc closes
     files    D-pad / arrows move, A / Enter opens, B / Esc goes up a folder (to the places at the top),
-             X (menu key, Shift+F10, right click) shows what you can do, Y (Ctrl+F) searches, LB/RB (Tab) switch
-             between places and files. Keyboard extras: typing searches the folder, Ctrl+C/X/V, F2 rename, Delete / Shift+Delete,
-             Ctrl+A, Space select, Ctrl+1/2 grid/list, Ctrl+Shift+N new folder, Alt+Enter properties, Backspace back, F5 refresh, Ctrl+H hidden.
+             X (menu key, Shift+F10, right click) shows what you can do, Y (Ctrl+F) searches (typing filters this
+             folder, Enter looks in the folders inside too), LB/RB (Tab) switch between places and files.
+    keyboard Ctrl+C/X/V, F2 rename (several: Name 1, 2, 3…), Delete / Shift+Delete, Ctrl+A, Ctrl+I invert, Space
+             preview, Ctrl+Space select, Ctrl+1/2/3 icons/compact/details, Ctrl+Shift+N new folder, Alt+Enter
+             properties, Alt+←/→/↑ back/forward/up, Backspace back, Ctrl+L / F4 type a path, Ctrl+T/W/Tab tabs,
+             Ctrl+D bookmark, Ctrl+Shift+C copy path, Shift+F4 terminal here, F5 refresh, Ctrl+H hidden.
+    mouse    click picks (Ctrl adds, Shift a range), drag on empty space for a rubber band, drag files onto a
+             folder, a place or the path (Ctrl copies), middle click opens a folder in a new tab.
+  Pasting asks about names that are already there (Replace / Keep both / Skip; Merge for folders). Properties shows
+  everything (size on disk, live folder sizes, owner, attributes, picture size, length, default app with Change…,
+  drive space, checksums). ?props=<path> (or mantel.appArgs props=…) opens Properties for a file, for the desktop.
   Hosted by Ember (Mantel/AppWindow.cs, FilesWindow) in WebView2; calls files.* (Services/FileService.cs);
   thumbnails come from https://hearth-files.local/thumb. Opens in a normal browser too, with sample data.
 -->
@@ -127,18 +136,104 @@ nav.focus .ni.cur .bar{background:#0003}
 .msg.show{opacity:1}
 .spin{width:22px;height:22px;border-radius:50%;border:2px solid var(--panel3);border-top-color:var(--accent);animation:s 1s linear infinite;flex:none}
 @keyframes s{to{transform:rotate(360deg)}}
+/* tabs, the typed path, forward/sort buttons */
+.tabs{display:flex;gap:6px;padding:8px 14px 0;background:var(--bg2);overflow-x:auto;scrollbar-width:none}
+.tabs[hidden]{display:none}
+.tab{height:34px;border-radius:9px 9px 0 0;padding:0 10px 0 14px;display:flex;align-items:center;gap:8px;max-width:220px;flex:none;color:var(--muted);font-size:13px}
+.tab span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab.on{background:var(--bg);color:var(--text);font-weight:600}
+.tab:hover:not(.on){background:var(--panel2)}
+.tab .tx{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;color:var(--muted);font-size:12px}
+.tab .tx:hover{background:var(--panel3)}
+.tab.add{padding:0 12px;font-size:18px}
+.pathin{flex:1;min-width:0;height:38px;border-radius:10px;background:var(--panel2);border:2px solid var(--accent);padding:0 12px;font-size:14px}
+.pathin[hidden],.crumbs[hidden]{display:none}
+.crumbs{cursor:text}
+.crumbs .cr{cursor:pointer}
+/* compact view, group headings, drop targets, the rubber band */
+.grid.compact{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px}
+.grid.compact .it{flex-direction:row;align-items:center;gap:10px;padding:4px 10px;height:40px}
+.grid.compact .th{width:28px;height:28px}
+.grid.compact .th img{max-width:28px;max-height:28px;box-shadow:none;border-radius:4px}
+.grid.compact .th img.ico{width:24px;height:24px}
+.grid.compact .th svg{width:24px;height:24px;stroke-width:1.5}
+.grid.compact .nm{text-align:left;-webkit-line-clamp:1;display:block;white-space:nowrap}
+.grid.compact .it.sel::after{top:11px;right:6px;width:14px;height:14px;background-size:9px}
+.gh{color:var(--accent);font-size:12px;font-weight:600;padding:14px 12px 4px;letter-spacing:.02em}
+.grid .gh{grid-column:1/-1}
+.it.drop,.ni.drop,.cr.drop{box-shadow:inset 0 0 0 2px var(--accent);background:var(--panel3)}
+.files.drop{box-shadow:inset 0 0 0 2px var(--accent)}
+.band{position:absolute;border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent);border-radius:4px;pointer-events:none;z-index:2}
+.where{color:var(--muted);font-size:12px}
+.status .stop{height:22px;border-radius:7px;padding:0 10px;background:var(--panel3);font-size:12px;color:var(--text)}
+/* properties */
+.sheet.props{width:min(620px,calc(100% - 32px));padding:0;gap:0;overflow:hidden;max-height:calc(100% - 32px)}
+.ph{display:flex;align-items:center;gap:16px;padding:18px 20px 12px;background:var(--panel)}
+.ph .pic{width:64px;height:64px;display:grid;place-items:center;flex:none}
+.ph .pic img{max-width:64px;max-height:64px;border-radius:6px;object-fit:contain}
+.ph .pic svg{width:52px;height:52px;stroke-width:1.2}
+.ph .pn{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.ph .pn small{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pname{height:42px;border-radius:10px;background:var(--panel3);border:2px solid transparent;padding:0 12px;font-size:17px;font-weight:600;width:100%}
+.sheet input.pname{border-color:transparent;margin:0}
+.sheet input.pname:focus,.sheet input.pname.lit{border-color:var(--accent)}
+.pname[readonly]{background:none;padding:0}
+.ptabs{display:flex;gap:6px;padding:0 18px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.pt{height:36px;border-radius:10px;padding:0 16px;font-size:14px;border:2px solid transparent}
+.pt.on{background:var(--panel3);font-weight:600}
+.pbody{overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:9px;flex:1;min-height:0;scrollbar-width:thin}
+.prow{display:grid;grid-template-columns:132px minmax(0,1fr) auto;gap:12px;align-items:center;font-size:13px;min-height:24px}
+.prow>small{color:var(--muted)}
+.prow>span{word-break:break-all;user-select:text}
+.prow .mini{height:34px;border-radius:9px;padding:0 12px;background:var(--panel2);font-size:13px;border:2px solid transparent;flex:none}
+.prow .mini:hover{background:var(--panel3)}
+.psep{height:1px;background:var(--line);margin:4px 0}
+.ck{display:inline-flex;align-items:center;gap:10px;height:38px;border-radius:10px;padding:0 12px 0 8px;border:2px solid transparent;font-size:14px}
+.ck i{width:22px;height:22px;border-radius:6px;background:var(--panel3);border:2px solid var(--line);display:grid;place-items:center}
+.ck.on i{background:var(--accent);border-color:var(--accent)}
+.ck.on i::after{content:"";width:12px;height:12px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232a1206' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/12px no-repeat}
+.ck[disabled]{opacity:.45}
+.dbar{height:10px;border-radius:5px;background:var(--panel3);overflow:hidden;margin-top:2px}
+.dbar i{display:block;height:100%;background:linear-gradient(90deg,var(--ember),var(--flame))}
+.dbar.full i{background:var(--danger)}
+.sumrow{background:var(--panel2);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;border:2px solid transparent}
+.sumrow .top2{display:flex;align-items:center;gap:10px}
+.sumrow b{flex:1;font-weight:600}
+.sumrow code{font:13px Consolas,"Cascadia Mono",monospace;word-break:break-all;user-select:text}
+.sumrow .pb{height:6px;border-radius:3px;background:var(--panel3);overflow:hidden}
+.sumrow .pb i{display:block;height:100%;background:var(--accent)}
+.perr{color:var(--danger);font-size:13px;padding:0 20px 8px}
+.pbtns{display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--line);background:var(--panel)}
+.pbtns .hint{flex:1;color:var(--muted);font-size:12px}
+.btn.pri{background:var(--accent);color:var(--accentInk)}
+.btn.dim{opacity:.5}
+.btn{border:2px solid transparent}
+.lit.fx,.fx.lit{border-color:var(--accent)!important}
+.btn.pri.lit{border-color:var(--text)!important}
+.pt.on.lit{background:var(--accent);color:var(--accentInk)}
+/* preview */
+.sheet.preview{width:min(820px,calc(100% - 32px))}
+.pv{height:min(460px,60vh);display:grid;place-items:center;background:var(--bg2);border-radius:12px;overflow:hidden}
+.pv img{max-width:100%;max-height:100%;object-fit:contain}
+.pv pre{align-self:stretch;justify-self:stretch;overflow:auto;padding:14px;margin:0;font:13px Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;word-break:break-all;user-select:text}
+.pv .basic{display:flex;flex-direction:column;align-items:center;gap:12px;color:var(--muted)}
+.pv .basic svg{width:96px;height:96px;stroke-width:1}
 </style>
 </head>
 <body>
 <div class="app">
   <nav></nav>
   <section class="main">
+    <div class="tabs" hidden></div>
     <header class="top">
-      <button class="tb" data-act="back" title="Back (Backspace)"></button>
+      <button class="tb" data-act="back" title="Back (Alt+←)"></button>
+      <button class="tb" data-act="forward" title="Forward (Alt+→)"></button>
       <button class="tb" data-act="up" title="Up a folder (Ⓑ)"></button>
-      <div class="crumbs"></div>
-      <input class="search" placeholder="Search  (Ⓨ)" spellcheck="false">
-      <button class="tb" data-act="view" title="Grid or list"></button>
+      <div class="crumbs" title="Click beside the path to type one (Ctrl+L)"></div>
+      <input class="pathin" hidden spellcheck="false" placeholder="Type a folder, like C:\Games">
+      <input class="search" placeholder="Filter · Enter searches inside (Ⓨ)" spellcheck="false">
+      <button class="tb" data-act="view" title="View"></button>
+      <button class="tb" data-act="sort" title="Sort and group"></button>
       <button class="tb" data-act="menu" title="More (Ⓧ)"></button>
     </header>
     <div class="files"></div>
@@ -190,21 +285,65 @@ const I = {
   sort:sv('<path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/>'), refresh:sv('<path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.5"/><path d="M20 4v4.5h-4.5"/>'),
   restore:sv('<path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5"/>'), x:sv('<path d="m6 6 12 12M18 6 6 18"/>'), ext:sv('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'),
 };
+Object.assign(I, {
+  forward:sv('<path d="M5 12h14m-6-6 6 6-6 6"/>'),
+  compact:sv('<path d="M4 6h6M4 12h6M4 18h6M14 6h6M14 12h6M14 18h6"/>'),
+  term:sv('<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="m7 9.5 3 2.5-3 2.5M12.5 15h4"/>'),
+  zip:sv('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M12 3.5v2m0 2v2m0 2v2m-1.5 2h3v3h-3z"/>'),
+  star:sv('<path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.3L12 16l-4.9 2.6 1.1-5.3-4-3.7 5.4-.6z"/>'),
+  link:sv('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
+  tab:sv('<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h7V5"/>'),
+  eject:sv('<path d="M12 5 5 13h14zM5 17.5h14"/>'),
+});
 const KIND_ICON = {folder:'folder', image:'image', video:'video', audio:'audio', archive:'archive', app:'app', doc:'doc', file:'file'};
 const kindSvg = k => k==='folder' ? I.folder : `<span class="k-${k}" style="display:contents">${I[KIND_ICON[k]||'file']}</span>`;
 function bytes(n){ if(n==null||isNaN(n)) return ''; const u=['B','KB','MB','GB','TB']; let i=0; n=+n; while(n>=1024&&i<u.length-1){ n/=1024; i++; } return (n>=100||i===0?Math.round(n):n.toFixed(1))+' '+u[i]; }
+const exact = n => Number(n||0).toLocaleString();
 const when = ms => ms ? new Date(ms).toLocaleString([], {year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : '';
+const whenLong = ms => ms ? new Date(ms).toLocaleString([], {weekday:'short', year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', second:'2-digit'}) : 'Unknown';
 const TYPE_NAMES = {folder:'Folder', image:'Picture', video:'Video', audio:'Music', archive:'Archive', app:'App', doc:'Document', file:'File'};
 const typeOf = e => e.dir ? 'Folder' : (e.ext ? e.ext.toUpperCase()+' ' : '') + (TYPE_NAMES[e.kind]||'File').toLowerCase().replace(/^./, c=>e.ext?c:c.toUpperCase());
+const base = p => { const s=String(p||'').replace(/\\+$/,''); return s.slice(s.lastIndexOf('\\')+1) || p; };
+const parentOf = p => { const s=String(p||'').replace(/\\+$/,''); const i=s.lastIndexOf('\\'); return i<0 ? s : (i<=2 ? s.slice(0,3) : s.slice(0,i)); };
+const driveOf = p => /^[A-Za-z]:/.test(p||'') ? p.slice(0,2).toUpperCase() : (String(p||'').match(/^\\\\[^\\]+\\[^\\]+/)||[''])[0].toLowerCase();
+const fmtDur = s => { s=Math.round(s||0); const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60, two=v=>(v<10?'0':'')+v; return h?`${h}:${two(m)}:${two(x)}`:`${m}:${two(x)}`; };
+const isArchive = e => e && !e.dir && /\.(zip|tar|tgz|gz|7z|rar|cbz|cbr|jar|apk|xz|bz2|zst)$/i.test(e.name);
+const stemOf = n => { const m=n.match(/^(.*?)(\.tar\.(gz|xz|bz2|zst)|\.[a-z0-9]+)$/i); return m&&m[1]?m[1]:n; };
 
 // ---------------------------------------------------------------- state
 const S = {places:null, navItems:[], navF:0, zone:'files', path:null, name:'', parent:null, recycle:false, entries:[], loading:true, error:null,
-  back:[], fwd:[], f:0, sel:new Set(), anchor:null, view:'grid', sort:'name', desc:false, hidden:false, q:'', found:null,
-  clip:null, jobs:{}, sheet:null, viaPad:false};
-try{ const p=JSON.parse(localStorage.getItem('files.prefs')||'{}'); if(p.view) S.view=p.view; if(p.sort) S.sort=p.sort; S.desc=!!p.desc; S.hidden=!!p.hidden; }catch(_){}
-const savePrefs = () => { try{ localStorage.setItem('files.prefs', JSON.stringify({view:S.view, sort:S.sort, desc:S.desc, hidden:S.hidden})); }catch(_){} };
+  back:[], fwd:[], f:0, sel:new Set(), anchor:null, view:'grid', sort:'name', desc:false, group:'none', hidden:false, q:'', found:null,
+  clip:null, jobs:{}, sheet:null, viaPad:false, tabs:[{path:null, back:[], fwd:[], f:0}], tab:0, bookmarks:[], folders:{}, templates:[],
+  editingPath:false, deadSearch:new Set()};
+const load = (k, d) => { try{ const v=JSON.parse(localStorage.getItem(k)||'null'); return v==null?d:v; }catch(_){ return d; } };
+const save = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch(_){} };
+const G = load('files.prefs', {});
+if(G.view) S.view=G.view; if(G.sort) S.sort=G.sort; S.desc=!!G.desc; S.hidden=!!G.hidden; if(G.group) S.group=G.group;
+S.bookmarks = load('files.bookmarks', []);
+S.folders = load('files.folders', {});
+const savePrefs = () => save('files.prefs', {view:S.view, sort:S.sort, desc:S.desc, hidden:S.hidden, group:S.group});
+// The view (icons / compact / details, sort, groups) is remembered for each folder, and the last one chosen is the default.
+function applyFolderPrefs(path){
+  const p = (path && S.folders[path.toLowerCase()]) || load('files.prefs', {});
+  S.view = ['grid','compact','list'].includes(p.view) ? p.view : 'grid';
+  S.sort = ['name','date','size','type'].includes(p.sort) ? p.sort : 'name';
+  S.desc = !!p.desc; S.group = ['none','type','date'].includes(p.group) ? p.group : 'none';
+}
+function rememberView(){
+  if(S.path){
+    const k=S.path.toLowerCase(); delete S.folders[k];
+    S.folders[k]={view:S.view, sort:S.sort, desc:S.desc, group:S.group};
+    const keys=Object.keys(S.folders); if(keys.length>300) for(const x of keys.slice(0, keys.length-300)) delete S.folders[x];
+    save('files.folders', S.folders);
+  }
+  savePrefs();
+}
 function toast(t){ const m=$('.msg'); m.textContent=t; m.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>m.classList.remove('show'), 2800); }
-const plural = (n, w) => `${n} ${w}${n===1?'':'s'}`;
+const plural = (n, w, many) => `${n} ${n===1?w:(many||w+'s')}`;
+function copyText(t){
+  if(!t) return;
+  call('files.copyText',{text:t}).then(()=>toast('Copied')).catch(()=>{ try{ navigator.clipboard.writeText(t).then(()=>toast('Copied')); }catch(_){ toast("Couldn't copy"); } });
+}
 
 // ---------------------------------------------------------------- places
 function renderNav(){
@@ -214,6 +353,7 @@ function renderNav(){
     return `<button class="ni" data-nav="${i}" title="${esc(it.path==='recycle:'?'Recycle Bin':it.path)}">${I[it.icon]||I.folder}<span>${esc(it.name)}${extra}</span></button>`; };
   if(p){
     h += p.folders.map(f=>btn(f)).join('');
+    if(S.bookmarks.length) h += `<div class="nh">Bookmarks</div>` + S.bookmarks.map(b=>btn({id:'bm:'+b.path, name:b.name||base(b.path), path:b.path, icon:'star', bookmark:true})).join('');
     if(p.games.length) h += `<div class="nh">Games</div>` + p.games.map(g=>btn(g)).join('');
     if(p.drives.length) h += `<div class="nh">Drives</div>` + p.drives.map(d=>btn(d, d.total?`<small style="display:block">${bytes(d.free)} free of ${bytes(d.total)}</small><span class="bar"><i style="width:${Math.round((1-d.free/d.total)*100)}%"></i></span>`:'')).join('');
     h += `<div class="nh"></div>` + btn(p.recycle, p.recycle.count?` <small>(${p.recycle.count})</small>`:'');
@@ -241,45 +381,92 @@ async function loadPlaces(){
     S.places=p; renderNav();
   }catch(e){ if(!S.places) toast(e.message); }
 }
+function navMenu(i){
+  const it=S.navItems[i]; if(!it) return;
+  const items=[{label:'Open', icon:I.open, run:()=>{ closeSheet(); openFolder(it.path); }}];
+  if(it.path!=='recycle:') items.push({label:'Open in new tab', icon:I.tab, run:()=>{ closeSheet(); newTab(it.path); }});
+  if(it.bookmark) items.push({label:'Remove bookmark', icon:I.x, danger:true, run:()=>{ closeSheet(); removeBookmark(it.path); }});
+  if(it.removable || it.icon==='disc') items.push({label:it.icon==='disc'?'Eject':'Safely remove', icon:I.eject, run:async()=>{ closeSheet(); try{ await call('files.eject',{path:it.path}, 60000); toast(`You can take out ${it.name} now`); }catch(e){ toast(e.message); } loadPlaces(); }});
+  if(it.path==='recycle:') items.push({label:'Empty the Recycle Bin…', icon:I.trash, danger:true, run:confirmEmpty});
+  if(it.path!=='recycle:') items.push({sep:true},{label:'Properties', icon:I.info, key:'Alt+Enter', run:()=>properties([it.path])});
+  openSheet({title:it.name, items});
+}
+function addBookmark(path){
+  if(!path || path==='recycle:') return;
+  if(S.bookmarks.some(b=>b.path.toLowerCase()===path.toLowerCase())) return toast('It\'s in your bookmarks already');
+  S.bookmarks.push({path, name:base(path)}); save('files.bookmarks', S.bookmarks); renderNav(); toast(`Added ${base(path)} to your bookmarks`);
+}
+function removeBookmark(path){ S.bookmarks=S.bookmarks.filter(b=>b.path.toLowerCase()!==path.toLowerCase()); save('files.bookmarks', S.bookmarks); renderNav(); }
 
 // ---------------------------------------------------------------- the folder
+const KIND_ORDER=['folder','doc','image','video','audio','archive','app','file'];
+function groupRank(e){
+  if(S.group==='type') return Math.max(0, KIND_ORDER.indexOf(e.kind));
+  const t=e.modified||0, now=new Date(), day=new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if(t>=day) return 0; if(t>=day-864e5) return 1; if(t>=day-6*864e5) return 2; if(t>=day-30*864e5) return 3;
+  const y=new Date(t).getFullYear(); return y===now.getFullYear() ? 4 : 5+(now.getFullYear()-y);
+}
+function groupName(e){
+  if(S.group==='none') return '';
+  if(S.group==='type') return ({folder:'Folders', doc:'Documents', image:'Pictures', video:'Videos', audio:'Music', archive:'Archives', app:'Apps', file:'Other files'})[e.kind]||'Other files';
+  const r=groupRank(e); return ['Today','Yesterday','Earlier this week','Earlier this month','Earlier this year'][r] || String(new Date(e.modified).getFullYear());
+}
+let visKey=null, visVal=[];
 function visible(){
-  if(S.found) return S.found.entries;
-  const q=S.q.trim().toLowerCase();
-  const list=q ? S.entries.filter(e=>e.name.toLowerCase().includes(q)) : S.entries.slice();
+  const src=S.found?S.found.entries:S.entries;
+  const key=[src, src.length, S.q, S.sort, S.desc, S.group, S.recycle];
+  if(visKey && key.every((k,i)=>k===visKey[i])) return visVal;
+  const q=S.found?'':S.q.trim().toLowerCase();
+  const list=q ? src.filter(e=>e.name.toLowerCase().includes(q)) : src.slice();
   const dir=S.desc?-1:1, name=(a,b)=>a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:'base'});
   const by={
     name, date:(a,b)=>((S.recycle?(a.deleted||0)-(b.deleted||0):a.modified-b.modified))||name(a,b), size:(a,b)=>(a.size-b.size)||name(a,b),
     type:(a,b)=>(a.ext||'').localeCompare(b.ext||'')||name(a,b),
   }[S.sort]||name;
-  return list.sort((a,b)=> (b.dir-a.dir) || dir*by(a,b));
+  visVal=list.sort((a,b)=> (S.group!=='none' ? groupRank(a)-groupRank(b) : 0) || (b.dir-a.dir) || dir*by(a,b));
+  visKey=key;
+  return visVal;
 }
 const SHOW_MAX = 4000;
+function thumbUrl(e, px, icon){
+  const real=e.path.startsWith('recycle:') ? e.path.slice(8) : e.path;
+  return `https://hearth-files.local/thumb?p=${encodeURIComponent(real)}&s=${Math.round(px*(window.devicePixelRatio||1))}&t=${e.modified||0}${icon?'&icon=1':''}`;
+}
 function thumb(e, px){
   if(!host) return kindSvg(e.kind);
-  const real=e.path.startsWith('recycle:') ? e.path.slice(8) : e.path;
   const isIcon=['exe','lnk','url','msi','appx','msix'].includes(e.ext);
-  if(e.kind==='image' || e.kind==='video' || e.ext==='pdf' || isIcon){
-    const size=Math.round(px*(window.devicePixelRatio||1));
-    return `<img loading="lazy" decoding="async" class="${isIcon?'ico':''}" data-kind="${e.kind}" alt="" src="https://hearth-files.local/thumb?p=${encodeURIComponent(real)}&s=${size}&t=${e.modified||0}${isIcon?'&icon=1':''}">`;
-  }
+  if(e.kind==='image' || e.kind==='video' || e.ext==='pdf' || isIcon)
+    return `<img loading="lazy" decoding="async" class="${isIcon?'ico':''}" data-kind="${e.kind}" alt="" src="${thumbUrl(e, px, isIcon)}">`;
   return kindSvg(e.kind);
 }
 // A picture Windows can't make a thumbnail of: its kind's icon instead.
 document.addEventListener('error', e => { const t=e.target; if(t && t.tagName==='IMG' && t.dataset.kind){ const s=document.createElement('span'); s.style.display='contents'; s.innerHTML=kindSvg(t.dataset.kind); t.replaceWith(s); } }, true);
 
+function renderTabs(){
+  const el=$('.tabs');
+  el.hidden=S.tabs.length<2;
+  if(el.hidden){ el.innerHTML=''; return; }
+  el.innerHTML=S.tabs.map((t,i)=>{ const p=i===S.tab?S.path:t.path; const nm=p==='recycle:'?'Recycle Bin':base(p||'');
+    return `<button class="tab ${i===S.tab?'on':''}" data-act="tab" data-i="${i}" title="${esc(p||'')}"><span>${esc(nm)}</span><i class="tx" data-act="closeTab" data-i="${i}">✕</i></button>`; }).join('')
+    + `<button class="tab add" data-act="newTab" title="New tab (Ctrl+T)">+</button>`;
+}
 function renderTop(){
-  const back=$('[data-act="back"]'), up=$('[data-act="up"]'), view=$('[data-act="view"]'), more=$('[data-act="menu"]');
+  const back=$('[data-act="back"]'), fwd=$('[data-act="forward"]'), up=$('[data-act="up"]'), view=$('[data-act="view"]'), sort=$('[data-act="sort"]'), more=$('[data-act="menu"]');
   back.innerHTML=I.back; back.disabled=!S.back.length;
+  fwd.innerHTML=I.forward; fwd.disabled=!S.fwd.length;
   up.innerHTML=I.up; up.disabled=!S.parent && !S.found;
-  view.innerHTML=S.view==='grid'?I.list:I.grid; view.title=S.view==='grid'?'Show as a list':'Show as a grid';
+  const nextView={grid:'compact', compact:'list', list:'grid'}[S.view];
+  view.innerHTML={grid:I.grid, compact:I.compact, list:I.list}[S.view]; view.title=`View: ${({grid:'icons', compact:'compact', list:'details'})[S.view]} (next: ${({grid:'icons', compact:'compact', list:'details'})[nextView]})`;
+  sort.innerHTML=I.sort; sort.title='Sort and group';
   more.innerHTML=I.more;
   const cr=crumbs(S.path||'');
   let h=cr.map((c,i)=>`${i?`<span class="sep">›</span>`:''}<button class="cr" data-act="crumb" data-path="${esc(c.path)}">${esc(c.name)}</button>`).join('');
   if(S.found) h += `<span class="sep">›</span><button class="cr">Search: “${esc(S.found.query)}”</button>`;
   const el=$('.crumbs'); el.innerHTML=h;
+  el.hidden=S.editingPath; $('.pathin').hidden=!S.editingPath;
   el.classList.toggle('short', el.scrollWidth<=el.clientWidth);
   el.scrollLeft=el.scrollWidth;
+  renderTabs();
 }
 function crumbs(path){
   if(!path) return [];
@@ -304,15 +491,19 @@ function renderFiles(){
   S.f=Math.max(0, Math.min(S.f, shown.length-1));
   const cutSet = S.clip && S.clip.cut ? new Set(S.clip.paths.map(p=>p.toLowerCase())) : null;
   const cls = (e,i) => `it ${i===S.f?'cur':''} ${S.sel.has(e.path)?'sel':''} ${cutSet&&cutSet.has(e.path.toLowerCase())?'cut':''}`;
+  const drag = S.recycle ? '' : 'draggable="true"';
+  const where = e => S.found && e.path ? `<span class="where">${esc(parentOf(e.path).slice((S.path||'').length).replace(/^\\/,'')||'.')}</span>` : '';
   let h;
+  const heads = (e,i) => { if(S.group==='none') return ''; const g=groupName(e); return (i===0 || groupName(shown[i-1])!==g) ? `<div class="gh">${esc(g)}</div>` : ''; };
   if(!shown.length){
-    h=`<div class="empty">${S.recycle?I.trash:S.found||S.q?I.eye:I.folder}<div>${S.recycle?'The Recycle Bin is empty':S.found?'Nothing found':S.q?`Nothing here matches “${esc(S.q)}”`:'This folder is empty'}</div></div>`;
-  } else if(S.view==='grid'){
-    h=`<div class="grid">${shown.map((e,i)=>`<div class="${cls(e,i)}" data-i="${i}" title="${esc(e.name)}${e.original?`\nFrom ${esc(e.original)}`:''}"><div class="th">${thumb(e, 96)}</div><span class="nm">${esc(e.name)}</span></div>`).join('')}</div>`;
+    h=`<div class="empty">${S.recycle?I.trash:S.found||S.q?I.eye:I.folder}<div>${S.recycle?'The Recycle Bin is empty':S.found?(S.found.running?`Searching for “${esc(S.found.query)}”…`:'Nothing found'):S.q?`Nothing here matches “${esc(S.q)}”. Press Enter to look in the folders inside too.`:'This folder is empty'}</div></div>`;
+  } else if(S.view==='grid' || S.view==='compact'){
+    const compact=S.view==='compact';
+    h=`<div class="grid ${compact?'compact':''}">${shown.map((e,i)=>`${heads(e,i)}<div class="${cls(e,i)}" data-i="${i}" ${drag} title="${esc(e.name)}${e.original?`\nFrom ${esc(e.original)}`:''}${S.found?`\n${esc(e.path)}`:''}"><div class="th">${thumb(e, compact?28:96)}</div><span class="nm">${esc(e.name)}</span></div>`).join('')}</div>`;
   } else {
     const col=(k,l,r)=>`<button class="${S.sort===k?'on':''}" data-act="sortBy" data-k="${k}" style="${r?'text-align:right':''}">${l}${S.sort===k?(S.desc?' ↓':' ↑'):''}</button>`;
     h=`<div class="list ${S.recycle?'rec':''}"><div class="lh"><span></span>${col('name','Name')}${S.recycle?'<span>From</span>':col('date','Modified')}${S.recycle?col('date','Deleted'):col('type','Type')}${col('size','Size',true)}</div>`
-      + shown.map((e,i)=>`<div class="${cls(e,i)}" data-i="${i}" title="${esc(e.path.startsWith('recycle:')?e.original:e.path)}"><div class="ti">${thumb(e, 32)}</div><span class="nm">${esc(e.name)}</span>`
+      + shown.map((e,i)=>`${heads(e,i)}<div class="${cls(e,i)}" data-i="${i}" ${drag} title="${esc(e.path.startsWith('recycle:')?e.original:e.path)}"><div class="ti">${thumb(e, 32)}</div><span class="nm">${esc(e.name)} ${where(e)}</span>`
         + (S.recycle ? `<span class="c">${esc((e.original||'').replace(/\\[^\\]*$/,''))}</span><span class="c">${when(e.deleted)}</span>` : `<span class="c">${when(e.modified)}</span><span class="c">${esc(typeOf(e))}</span>`)
         + `<span class="c r">${e.dir?'':bytes(e.size)}</span></div>`).join('') + `</div>`;
   }
@@ -323,17 +514,18 @@ function renderFiles(){
 }
 function scrollToCur(){ const c=$('.files .it.cur'); if(c) c.scrollIntoView({block:'nearest'}); }
 function paintCur(){
-  $$('.files .it').forEach(el=>{ const i=+el.dataset.i, e=visible()[i]; el.classList.toggle('cur', i===S.f); if(e) el.classList.toggle('sel', S.sel.has(e.path)); });
+  const l=visible();
+  $$('.files .it').forEach(el=>{ const i=+el.dataset.i, e=l[i]; el.classList.toggle('cur', i===S.f); if(e) el.classList.toggle('sel', S.sel.has(e.path)); });
   scrollToCur(); renderStatus();
 }
 function renderStatus(){
   const list=visible(), sel=list.filter(e=>S.sel.has(e.path));
-  const parts=[S.loading?'Loading…':plural(list.length,'item')];
+  const parts=[S.loading?'Loading…':S.found?`${S.found.running?'Searching… ':''}${plural(list.length,'match','matches')} for “${S.found.query}”`:plural(list.length,'item')];
   if(sel.length) parts.push(`${sel.length} selected${sel.some(e=>!e.dir)?` (${bytes(sel.reduce((n,e)=>n+(e.dir?0:e.size),0))})`:''}`);
   if(S.found && S.found.truncated) parts.push('More results not shown');
   const d=S.places&&S.path&&S.places.drives.find(x=>S.path.toLowerCase().startsWith(x.path.toLowerCase()));
   if(d && d.total) parts.push(`${bytes(d.free)} free`);
-  $('.status').innerHTML = parts.map(p=>`<span>${esc(p)}</span>`).join('') + `<span class="hint">Ⓐ open · Ⓑ up · Ⓧ actions · Ⓨ search</span>`;
+  $('.status').innerHTML = parts.map(p=>`<span>${esc(p)}</span>`).join('') + (S.found&&S.found.running?`<button class="stop" data-act="stopSearch">Stop</button>`:'') + `<span class="hint">Ⓐ open · Ⓑ up · Ⓧ actions · Ⓨ search</span>`;
 }
 function render(){ renderTop(); renderFiles(); paintNav(); }
 
@@ -351,7 +543,9 @@ async function openFolder(path, opt={}){
     if(history==='push'){ S.back.push({path:old, f:oldF}); S.fwd=[]; if(S.back.length>100) S.back.shift(); }
   }
   const same = old===r.path;
-  S.path=r.path; S.name=r.name; S.parent=r.parent; S.recycle=!!r.recycle; S.entries=r.entries||[]; S.loading=false; S.error=null;
+  if(!same){ stopSearch(); applyFolderPrefs(r.path); }
+  S.path=r.path; S.name=r.name; S.parent=r.parent; S.recycle=!!r.recycle; S.entries=r.entries||[]; S.loading=false; S.error=null; S.editingPath=false;
+  visKey=null;
   if(!same || !keepFocus){ S.sel.clear(); S.anchor=null; S.q=''; $('.search').value=''; S.found=null; }
   const list=visible();
   if(focusName){ const i=list.findIndex(e=>e.name.toLowerCase()===focusName.toLowerCase()); S.f=i>=0?i:0; }
@@ -364,12 +558,50 @@ async function openFolder(path, opt={}){
 openFolder.n=0;
 const refresh = (focusName) => S.path ? openFolder(S.path, {history:'none', keepFocus:true, focusName}) : null;
 function goUp(){
-  if(S.found){ S.found=null; $('.search').value=''; S.q=''; return render(); }
+  if(S.found){ clearSearch(); return; }
   if(S.parent){ const name=S.name; return openFolder(S.parent, {focusName:name}); }
   S.zone='nav'; S.navF=Math.max(0,S.litNav); paintNav();
 }
 function goBack(){ const b=S.back.pop(); if(!b) return; S.fwd.push({path:S.path, f:S.f}); openFolder(b.path, {history:'none', f:b.f}); }
 function goForward(){ const b=S.fwd.pop(); if(!b) return; S.back.push({path:S.path, f:S.f}); openFolder(b.path, {history:'none', f:b.f}); }
+
+// ---------------------------------------------------------------- tabs
+function saveTab(){ S.tabs[S.tab]={path:S.path, back:S.back, fwd:S.fwd, f:S.f}; }
+function newTab(path){
+  saveTab();
+  S.tabs.push({path:path||S.path, back:[], fwd:[], f:0}); S.tab=S.tabs.length-1; S.back=[]; S.fwd=[];
+  openFolder(S.tabs[S.tab].path, {history:'none'}).then(()=>renderTabs());
+}
+function switchTab(i){
+  if(i===S.tab || !S.tabs[i]) return;
+  saveTab(); S.tab=i; const t=S.tabs[i]; S.back=t.back; S.fwd=t.fwd;
+  openFolder(t.path, {history:'none', f:t.f});
+}
+function closeTab(i){
+  if(S.tabs.length<=1) return send({type:'mantel', action:'closeApp', app:'files'});
+  saveTab(); S.tabs.splice(i,1);
+  if(i===S.tab){ S.tab=Math.min(i, S.tabs.length-1); const t=S.tabs[S.tab]; S.back=t.back; S.fwd=t.fwd; openFolder(t.path, {history:'none', f:t.f}); }
+  else { if(i<S.tab) S.tab--; renderTabs(); }
+}
+
+// ---------------------------------------------------------------- the typed path (Ctrl+L, F4, or a click beside the path)
+function editPath(){
+  if(S.sheet) return;
+  S.editingPath=true; renderTop();
+  const i=$('.pathin'); i.value=S.path==='recycle:'?'':(S.path||''); i.focus(); i.select();
+  if(S.viaPad) send({type:'mantel', action:'keyboard'});
+}
+function endEditPath(go){
+  const v=$('.pathin').value.trim();
+  S.editingPath=false; $('.pathin').blur(); renderTop();
+  if(go && v) openFolder(v.replace(/^"(.*)"$/,'$1'));
+}
+$('.pathin').addEventListener('keydown', e => {
+  e.stopPropagation();
+  if(e.key==='Enter'){ e.preventDefault(); endEditPath(true); }
+  else if(e.key==='Escape'||e.key==='ArrowDown'){ e.preventDefault(); endEditPath(false); }
+});
+$('.pathin').addEventListener('blur', () => { if(S.editingPath){ S.editingPath=false; renderTop(); } });
 
 // ---------------------------------------------------------------- what you can do
 const cur = () => visible()[S.f];
@@ -377,7 +609,7 @@ function targets(){ const list=visible(); if(S.sel.size){ const t=list.filter(e=
 function activate(e){
   if(!e) return;
   if(S.recycle) return menu();
-  if(e.dir) return openFolder(e.path);
+  if(e.dir){ if(S.found) stopSearch(); return openFolder(e.path); }
   call('files.open',{path:e.path}).then(()=>toast(`Opening ${e.name}…`)).catch(err=>toast(err.message));
 }
 async function refreshClip(){ try{ const c=await call('files.clipGet'); S.clip=c&&c.paths&&c.paths.length?c:null; }catch(_){ } }
@@ -385,52 +617,89 @@ async function menu(onBackground=false){
   await refreshClip();
   const t=onBackground?[]:targets(), one=t.length===1?t[0]:null, items=[], sep=()=>items.push({sep:true});
   const c=cur();
+  const what=t.length>1?` (${t.length})`:'';
   if(S.recycle){
     if(t.length){
-      items.push({label:'Restore', icon:I.restore, run:()=>restore(t)});
-      items.push({label:'Delete permanently…', icon:I.trash, danger:true, run:()=>confirmDelete(t)});
-      if(c && !onBackground) items.push({label:S.sel.has(c.path)?'Unselect':'Select', icon:I.check, key:'Space', run:()=>{ toggleSel(c); closeSheet(); }});
+      items.push({label:'Restore'+what, icon:I.restore, run:()=>restore(t)});
+      items.push({label:'Delete permanently…', icon:I.trash, danger:true, key:'Del', run:()=>confirmDelete(t)});
+      if(c && !onBackground) items.push({label:S.sel.has(c.path)?'Unselect':'Select', icon:I.check, key:'Ctrl+Space', run:()=>{ toggleSel(c); closeSheet(); }});
       sep();
     }
     items.push({label:'Empty the Recycle Bin…', icon:I.trash, danger:true, disabled:!S.entries.length, run:confirmEmpty});
   } else {
     if(t.length){
-      if(one) items.push({label:one.dir?'Open':'Open', icon:I.open, key:'Enter', run:()=>{ closeSheet(); activate(one); }});
+      if(one) items.push({label:'Open', icon:I.open, key:'Enter', run:()=>{ closeSheet(); activate(one); }});
       if(one && !one.dir) items.push({label:'Open with…', icon:I.ext, run:()=>{ closeSheet(); call('files.openWith',{path:one.path}).catch(e=>toast(e.message)); }});
-      if(S.found && one) items.push({label:'Show in its folder', icon:I.folder, run:()=>{ closeSheet(); openFolder(one.path.replace(/\\[^\\]*$/,'')||one.path, {focusName:one.name}); }});
-      items.push({label:'Cut', icon:I.cut, key:'Ctrl+X', run:()=>clip(t, true)});
-      items.push({label:'Copy', icon:I.copy, key:'Ctrl+C', run:()=>clip(t, false)});
+      if(one && one.dir) items.push({label:'Open in new tab', icon:I.tab, run:()=>{ closeSheet(); newTab(one.path); }});
+      if(S.found && one) items.push({label:'Show in its folder', icon:I.folder, run:()=>{ closeSheet(); openFolder(parentOf(one.path), {focusName:one.name}); }});
+      if(one && !one.dir) items.push({label:'Preview', icon:I.eye, key:'Space', run:()=>{ closeSheet(); preview(one); }});
+      sep();
+      items.push({label:'Cut'+what, icon:I.cut, key:'Ctrl+X', run:()=>clip(t, true)});
+      items.push({label:'Copy'+what, icon:I.copy, key:'Ctrl+C', run:()=>clip(t, false)});
     }
-    if(S.clip && !S.found) items.push({label:`Paste ${plural(S.clip.paths.length,'item')}${S.clip.cut?' (move)':''}`, icon:I.paste, key:'Ctrl+V', run:paste});
+    if(!S.found) items.push({label:S.clip?`Paste ${plural(S.clip.paths.length,'item')}${S.clip.cut?' (move)':''}`:'Paste', icon:I.paste, key:'Ctrl+V', disabled:!S.clip, run:paste});
+    items.push({label:t.length>1?'Copy paths':'Copy path', icon:I.link, key:'Ctrl+Shift+C', run:()=>{ closeSheet(); copyText(t.length?t.map(e=>e.path).join('\r\n'):S.path); }});
+    sep();
     if(one) items.push({label:'Rename…', icon:I.rename, key:'F2', run:()=>rename(one)});
+    if(t.length>1) items.push({label:`Rename ${t.length} items…`, icon:I.rename, key:'F2', run:()=>batchRename(t)});
+    if(t.length) items.push({label:'Compress…', icon:I.zip, run:()=>compress(t)});
+    if(one && isArchive(one)){
+      items.push({label:'Extract here', icon:I.zip, run:()=>{ closeSheet(); extract(one, null); }});
+      items.push({label:'Extract to…', icon:I.zip, run:()=>extractTo(one)});
+    }
+    if(!t.length && !S.found){
+      items.push({label:'New folder…', icon:I.plus, key:'Ctrl+Shift+N', run:newFolder});
+      items.push({label:'New text document…', icon:I.doc, run:()=>newFile()});
+      if(S.templates.length) items.push({label:'New from a template  ›', icon:I.doc, run:templatesMenu});
+    }
     if(t.length){
-      items.push({label:'Move to the Recycle Bin', icon:I.trash, key:'Del', run:()=>trash(t)});
+      sep();
+      items.push({label:'Move to the Recycle Bin'+what, icon:I.trash, key:'Del', run:()=>trash(t)});
       items.push({label:'Delete permanently…', icon:I.trash, danger:true, key:'Shift+Del', run:()=>confirmDelete(t)});
     }
-    if(c && !onBackground) items.push({label:S.sel.has(c.path)?'Unselect':'Select', icon:I.check, key:'Space', run:()=>{ toggleSel(c); closeSheet(); }});
-    if(visible().length) items.push({label:'Select all', icon:I.check, key:'Ctrl+A', run:()=>{ selectAll(); closeSheet(); }});
-    if(one) items.push({label:'Properties', icon:I.info, key:'Alt+Enter', run:()=>properties(one)});
     sep();
-    if(!S.found) items.push({label:'New folder…', icon:I.plus, key:'Ctrl+Shift+N', run:newFolder});
+    if(c && !onBackground) items.push({label:S.sel.has(c.path)?'Unselect':'Select', icon:I.check, key:'Ctrl+Space', run:()=>{ toggleSel(c); closeSheet(); }});
+    if(visible().length) items.push({label:'Select all', icon:I.check, key:'Ctrl+A', run:()=>{ selectAll(); closeSheet(); }});
+    if(S.sel.size) items.push({label:'Invert selection', icon:I.check, key:'Ctrl+I', run:()=>{ invertSel(); closeSheet(); }});
+    sep();
+    const bm = one && one.dir ? one.path : (!t.length ? S.path : null);
+    if(bm && !S.bookmarks.some(b=>b.path.toLowerCase()===bm.toLowerCase())) items.push({label:'Add to bookmarks', icon:I.star, key:'Ctrl+D', run:()=>{ closeSheet(); addBookmark(bm); }});
+    if(!t.length || (one && one.dir)) items.push({label:'Open terminal here', icon:I.term, key:'Shift+F4', run:()=>{ closeSheet(); call('files.terminal',{path:one&&one.dir?one.path:S.path}).catch(e=>toast(e.message)); }});
+    if(!onBackground || t.length) items.push({label:'Properties', icon:I.info, key:'Alt+Enter', run:()=>properties(t.map(e=>e.path))});
+    else items.push({label:'Folder properties', icon:I.info, key:'Alt+Enter', run:()=>properties([S.path])});
   }
-  items.push({label:S.view==='grid'?'Show as a list':'Show as a grid', icon:S.view==='grid'?I.list:I.grid, run:()=>{ toggleView(); closeSheet(); }});
-  items.push({label:'Sort by…', icon:I.sort, run:sortMenu});
+  sep();
+  items.push({label:'View  ›', icon:{grid:I.grid, compact:I.compact, list:I.list}[S.view], run:viewMenu});
+  items.push({label:'Sort and group  ›', icon:I.sort, run:sortMenu});
   if(!S.recycle) items.push({label:S.hidden?'Hide hidden files':'Show hidden files', icon:I.eye, key:'Ctrl+H', run:()=>{ toggleHidden(); closeSheet(); }});
+  items.push({label:'New tab', icon:I.tab, key:'Ctrl+T', run:()=>{ closeSheet(); newTab(S.path); }});
+  if(S.tabs.length>1) items.push({label:'Close tab', icon:I.x, key:'Ctrl+W', run:()=>{ closeSheet(); closeTab(S.tab); }});
   items.push({label:'Refresh', icon:I.refresh, key:'F5', run:()=>{ closeSheet(); refresh(); }});
-  for(const [id,j] of Object.entries(S.jobs)) items.push({label:`Stop ${j.op==='move'?'moving':'copying'}`, icon:I.x, danger:true, run:()=>{ closeSheet(); cancelJob(+id); }});
+  for(const [id,j] of Object.entries(S.jobs)) items.push({label:`Stop ${({move:'moving', copy:'copying', compress:'compressing', extract:'unpacking'})[j.op]||'it'}`, icon:I.x, danger:true, run:()=>{ closeSheet(); cancelJob(+id); }});
   const title = one ? one.name : t.length ? `${t.length} items` : (S.recycle?'Recycle Bin':S.name||'Folder');
-  openSheet({title, sub: one && one.original ? `From ${one.original}` : '', items});
+  openSheet({title, sub: one && one.original ? `From ${one.original}` : '', items:tidy(items)});
 }
+// No separator first, last or twice in a row.
+function tidy(items){ const out=[]; for(const it of items){ if(it.sep && (!out.length || out[out.length-1].sep)) continue; out.push(it); } while(out.length && out[out.length-1].sep) out.pop(); return out; }
 function sortMenu(){
   const opts=[['name','Name'],['date',S.recycle?'Date deleted':'Date modified'],['size','Size'],['type','Type']];
-  openSheet({title:'Sort by', items: opts.map(([k,l])=>({label:l+(S.sort===k?(S.desc?'  ↓':'  ↑'):''), icon:S.sort===k?I.check:'', run:()=>{ setSort(k); closeSheet(); }}))
-    .concat([{sep:true},{label:S.desc?'Ascending':'Descending', icon:I.sort, run:()=>{ S.desc=!S.desc; savePrefs(); closeSheet(); renderFiles(); }}])});
+  openSheet({title:'Sort and group', items: opts.map(([k,l])=>({label:l+(S.sort===k?(S.desc?'  ↓':'  ↑'):''), icon:S.sort===k?I.check:'', run:()=>{ setSort(k); closeSheet(); }}))
+    .concat([{sep:true},{label:S.desc?'Ascending':'Descending', icon:I.sort, run:()=>{ S.desc=!S.desc; rememberView(); visKey=null; closeSheet(); renderFiles(); }}, {sep:true}])
+    .concat([['none','Don\'t group'],['type','Group by type'],['date','Group by date modified']].map(([g,l])=>({label:l, icon:S.group===g?I.check:'', run:()=>{ S.group=g; rememberView(); visKey=null; closeSheet(); renderFiles(); }})))});
 }
-function setSort(k){ if(S.sort===k) S.desc=!S.desc; else { S.sort=k; S.desc=(k==='date'||k==='size'); } savePrefs(); renderFiles(); }
-function toggleView(){ S.view=S.view==='grid'?'list':'grid'; savePrefs(); render(); }
+function viewMenu(){
+  openSheet({title:'View', items:[['grid','Icons','Ctrl+1'],['compact','Compact','Ctrl+2'],['list','Details','Ctrl+3']].map(([v,l,k])=>({label:l, key:k, icon:S.view===v?I.check:'', run:()=>{ setView(v); closeSheet(); }}))});
+}
+function templatesMenu(){
+  openSheet({title:'New from a template', items:S.templates.map(t=>({label:t.name, icon:I.doc, run:()=>newFromTemplate(t)})).concat([{sep:true},{label:'Back', run:()=>menu(true)}])});
+}
+function setSort(k){ if(S.sort===k) S.desc=!S.desc; else { S.sort=k; S.desc=(k==='date'||k==='size'); } rememberView(); visKey=null; renderFiles(); }
+function setView(v){ S.view=v; rememberView(); render(); }
+function cycleView(){ setView({grid:'compact', compact:'list', list:'grid'}[S.view]); }
 function toggleHidden(){ S.hidden=!S.hidden; savePrefs(); toast(S.hidden?'Showing hidden files':'Hiding hidden files'); refresh(); }
 function toggleSel(e){ if(!e) return; if(S.sel.has(e.path)) S.sel.delete(e.path); else S.sel.add(e.path); S.anchor=S.f; paintCur(); }
 function selectAll(){ const l=visible(); if(S.sel.size===l.length) S.sel.clear(); else l.forEach(e=>S.sel.add(e.path)); paintCur(); }
+function invertSel(){ const l=visible(); const n=new Set(); l.forEach(e=>{ if(!S.sel.has(e.path)) n.add(e.path); }); S.sel=n; paintCur(); }
 
 async function clip(t, cut){
   closeSheet();
@@ -445,12 +714,43 @@ async function paste(){
   await refreshClip();
   if(!S.clip) return toast('Nothing to paste');
   const {paths, cut}=S.clip;
+  const ok=await transferTo(cut?'move':'copy', paths, S.path);
+  if(ok && cut){ S.clip=null; call('files.clipClear').catch(()=>{}); }
+}
+// Copy or move, asking first about names that are already there (Replace / Keep both / Skip; Merge for folders).
+async function transferTo(op, paths, dest){
+  let c;
+  try{ c=await call('files.conflicts',{paths, dest}); }catch(e){ toast(e.message); return false; }
+  if(!c || !c.conflicts || !c.conflicts.length){ return startPaste(op, paths, dest, {}); }
+  return new Promise(done => askConflict({op, paths, dest, list:c.conflicts, i:0, decide:{}, all:false, done}));
+}
+function askConflict(cf, keepF){
+  const it=cf.list[cf.i], both=it.srcDir&&it.targetDir, rest=cf.list.length-cf.i-1;
+  const choose=ch=>{
+    const d={...cf.decide}, last=cf.all?cf.list.length-1:cf.i;
+    for(let k=cf.i;k<=last;k++) d[cf.list[k].name]=ch;
+    if(last+1>=cf.list.length){ closeSheet(); startPaste(cf.op, cf.paths, cf.dest, d).then(cf.done); }
+    else askConflict({...cf, i:last+1, decide:d});
+  };
+  const items=[
+    {label:both?'Merge the folders':'Replace it', icon:I.copy, run:()=>choose('replace')},
+    {label:'Keep both', icon:I.plus, run:()=>choose('rename')},
+    {label:'Skip this one', icon:I.x, run:()=>choose('skip')}];
+  if(rest>0) items.push({sep:true},{label:`${cf.all?'☑':'☐'}  Do the same for the other ${rest}`, run:()=>{ cf.all=!cf.all; askConflict(cf, true); }});
+  items.push({sep:true},{label:'Cancel', run:()=>{ closeSheet(); toast(`Nothing was ${cf.op==='move'?'moved':'copied'}`); cf.done(false); }});
+  const row=(l,d,s,m)=>`<small>${l}</small><span>${d?'Folder':bytes(s)} · modified ${esc(when(m))}</span>`;
+  const f=keepF&&S.sheet?S.sheet.f:1;
+  openSheet({title:`“${it.name}” is already in “${base(cf.dest)}”`, sub:both?'Merging puts what\'s in the new folder into the one that\'s there; files with the same name are replaced.':'Replacing it overwrites what\'s there.',
+    body:`<div class="kv">${row('There now', it.targetDir, it.targetSize, it.targetModified)}${row('New one', it.srcDir, it.srcSize, it.srcModified)}</div>`, items});
+  S.sheet.f=f; S.sheet.conflict=true; renderSheet();
+}
+async function startPaste(op, paths, dest, decide){
   try{
-    const r=await call('files.paste',{paths, dest:S.path, move:cut});
-    S.jobs[r.id]={op:cut?'move':'copy', text:'Getting ready…', done:0, total:0, dest:S.path};
+    const r=await call('files.paste',{paths, dest, move:op==='move', decide});
+    S.jobs[r.id]={op, text:'Getting ready…', done:0, total:0, dest};
     renderJobs();
-    if(cut){ S.clip=null; call('files.clipClear').catch(()=>{}); }
-  }catch(e){ toast(e.message); }
+    return true;
+  }catch(e){ toast(e.message); return false; }
 }
 async function trash(t){
   closeSheet();
@@ -462,13 +762,13 @@ async function trash(t){
 function confirmDelete(t){
   const name=t.length===1?`“${t[0].name}”`:plural(t.length,'item');
   openSheet({title:`Delete ${name} permanently?`, sub:'It won\'t go to the Recycle Bin, and it can\'t be undone.', items:[
-    {label:'Delete permanently', icon:I.trash, danger:true, run:async()=>{ closeSheet(); try{ await call('files.delete',{paths:t.map(e=>e.path)}, 600000); toast(`Deleted ${name}`); }catch(e){ toast(e.message); } S.sel.clear(); refresh(); loadPlaces(); }},
-    {label:'Cancel', run:closeSheet}]});
+    {label:'Cancel', run:closeSheet},
+    {label:'Delete permanently', icon:I.trash, danger:true, run:async()=>{ closeSheet(); try{ await call('files.delete',{paths:t.map(e=>e.path)}, 600000); toast(`Deleted ${name}`); }catch(e){ toast(e.message); } S.sel.clear(); refresh(); loadPlaces(); }}]});
 }
 function confirmEmpty(){
-  openSheet({title:'Empty the Recycle Bin?', sub:`${plural(S.entries.length,'item')} will be deleted for good, on every drive.`, items:[
-    {label:'Empty the Recycle Bin', icon:I.trash, danger:true, run:async()=>{ closeSheet(); try{ await call('files.emptyRecycleBin',{}, 600000); toast('The Recycle Bin is empty'); }catch(e){ toast(e.message); } refresh(); loadPlaces(); }},
-    {label:'Cancel', run:closeSheet}]});
+  openSheet({title:'Empty the Recycle Bin?', sub:'Everything in it will be deleted for good, on every drive.', items:[
+    {label:'Cancel', run:closeSheet},
+    {label:'Empty the Recycle Bin', icon:I.trash, danger:true, run:async()=>{ closeSheet(); try{ await call('files.emptyRecycleBin',{}, 600000); toast('The Recycle Bin is empty'); }catch(e){ toast(e.message); } refresh(); loadPlaces(); }}]});
 }
 async function restore(t){
   closeSheet();
@@ -480,7 +780,13 @@ function rename(e){
   const dot=e.dir?-1:e.name.lastIndexOf('.');
   ask({title:'Rename', value:e.name, selectTo:dot>0?dot:e.name.length, ok:'Rename', run:async v=>{
     if(!v.trim() || v===e.name) return;
-    try{ const r=await call('files.rename',{path:e.path, name:v}); S.sel.delete(e.path); await refresh(r.path.replace(/^.*\\/,'')); }
+    try{ const r=await call('files.rename',{path:e.path, name:v}); S.sel.delete(e.path); await refresh(base(r.path)); }
+    catch(err){ toast(err.message); }
+  }});
+}
+function batchRename(t){
+  ask({title:`Rename ${t.length} items (# becomes 1, 2, 3…)`, value:'Name #', selectTo:4, ok:'Rename all', run:async v=>{
+    try{ const r=await call('files.batchRename',{pattern:v, paths:t.map(e=>e.path)}); S.sel.clear(); toast(`Renamed ${t.length} items`); await refresh(r.paths.length?base(r.paths[0]):null); }
     catch(err){ toast(err.message); }
   }});
 }
@@ -490,22 +796,252 @@ function newFolder(){
     catch(err){ toast(err.message); }
   }});
 }
-async function properties(e){
-  closeSheet();
-  if(S.recycle) return;
-  let i;
-  try{ i=await call('files.info',{path:e.path}); }catch(err){ return toast(err.message); }
-  const rows=[['Type',i.type],['Location',i.location],['Size',`${bytes(i.size)}${i.dir?` · ${plural(i.files,'file')}, ${plural(i.folders,'folder')}${i.partial?' (still counting: big folder)':''}`:''}`],
-    ['Created',when(i.created)],['Modified',when(i.modified)],['Opened',when(i.accessed)],['Version',i.version],['Company',i.company],
-    ['Attributes',[i.readOnly&&'Read-only',i.hidden&&'Hidden'].filter(Boolean).join(', ')],
-    ['Drive',i.driveTotal?`${bytes(i.driveFree)} free of ${bytes(i.driveTotal)}`:'']].filter(r=>r[1]);
-  openSheet({title:i.name, body:`<div class="kv">${rows.map(([k,v])=>`<small>${k}</small><span>${esc(v)}</span>`).join('')}</div>`, items:[
-    {label:'More in Windows\' Properties', icon:I.ext, run:()=>{ closeSheet(); call('files.properties',{path:e.path}).catch(err=>toast(err.message)); }},
-    {label:'Close', run:closeSheet}]});
+function newFile(){
+  ask({title:'New text document', value:'New text document.txt', selectTo:17, ok:'Create', run:async v=>{
+    try{ const r=await call('files.newFile',{dir:S.path, name:v}); await refresh(r.name); }
+    catch(err){ toast(err.message); }
+  }});
+}
+function newFromTemplate(t){
+  const dot=t.file.lastIndexOf('.');
+  ask({title:`New ${t.name}`, value:t.file, selectTo:dot>0?dot:t.file.length, ok:'Create', run:async v=>{
+    try{ const r=await call('files.fromTemplate',{template:t.path, dir:S.path, name:v}); await refresh(r.name); }
+    catch(err){ toast(err.message); }
+  }});
+}
+function compress(t){
+  const nm=(t.length===1?stemOf(t[0].name):(S.name||'Archive'))+'.zip';
+  ask({title:'Compress (end the name with .zip, .tar.gz or .tar)', value:nm, selectTo:nm.length-4, ok:'Compress', run:async v=>{
+    const format=/\.(tar\.gz|tgz)$/i.test(v)?'tar.gz':/\.tar$/i.test(v)?'tar':'zip';
+    const file=format==='zip'&&!/\.zip$/i.test(v)?v+'.zip':v;
+    try{ const r=await call('files.compress',{paths:t.map(e=>e.path), archive:S.path.replace(/\\?$/,'\\')+file, format}); S.jobs[r.id]={op:'compress', text:'Getting ready…', done:0, total:0, dest:S.path, name:file}; renderJobs(); }
+    catch(err){ toast(err.message); }
+  }});
+}
+async function extract(e, dest){
+  try{ const r=await call('files.extract',{archive:e.path, dest, here:!dest}); S.jobs[r.id]={op:'extract', text:`Unpacking ${e.name}`, done:0, total:0, dest:dest||S.path}; renderJobs(); }
+  catch(err){ toast(err.message); }
+}
+function extractTo(e){
+  const into=S.path.replace(/\\?$/,'\\')+stemOf(e.name);
+  ask({title:`Extract “${e.name}” to`, value:into, selectTo:into.length, ok:'Extract', run:v=>{ const d=/^[A-Za-z]:|^\\\\/.test(v)?v:S.path.replace(/\\?$/,'\\')+v; extract(e, d); }});
 }
 function cancelJob(id){ call('files.cancel',{id}).catch(()=>{}); if(S.jobs[id]){ S.jobs[id].text='Stopping…'; renderJobs(); } }
 
-// ---------------------------------------------------------------- copies and moves (the bar along the bottom)
+// ---------------------------------------------------------------- Properties: everything about a file, a folder or several
+async function properties(paths){
+  closeSheet();
+  paths=(paths||[]).filter(Boolean);
+  if(!paths.length) return;
+  if(S.recycle || paths[0].startsWith('recycle:')){
+    const e=visible().find(x=>x.path===paths[0]); if(!e) return;
+    return openSheet({title:e.name, body:`<div class="kv"><small>Came from</small><span>${esc(e.original||'')}</span><small>Deleted</small><span>${esc(when(e.deleted))}</span><small>Size</small><span>${e.dir?'Folder':esc(bytes(e.size))}</span></div>`, items:[{label:'Close', run:closeSheet}]});
+  }
+  S.sheet={props:true, paths, info:null, tab:'general', focus:'tab', pend:{}, count:null, countId:null, sums:{}, error:'', busy:false};
+  renderSheet();
+  let i;
+  try{ i=await call('files.props',{paths}); }catch(err){ if(S.sheet&&S.sheet.props){ S.sheet.error=err.message; renderSheet(); } return; }
+  const P=S.sheet; if(!P || !P.props || P.paths!==paths) return;
+  P.info=i;
+  if(i.multi || (i.dir && !i.isRoot)) startCount(P, i.multi ? i.items.map(x=>x.path) : [i.path]);
+  renderSheet();
+}
+async function startCount(P, paths){
+  P.count={size:0, files:0, folders:0, done:false}; P.countId=null;
+  try{ const r=await call('files.count',{paths}); if(S.sheet===P && P.countId==null) P.countId=r.id; else if(S.sheet!==P) call('files.cancel',{id:r.id}).catch(()=>{}); }catch(_){ }
+}
+function propsDirty(P){ const i=P.info; if(!i||i.multi) return false; const p=P.pend; return (p.name!=null && p.name!==i.name) || (p.readOnly!=null && p.readOnly!==i.readOnly) || (p.hidden!=null && p.hidden!==i.hidden); }
+function propsTabs(P){ const i=P.info; const t=[['general','General']]; if(i && !i.multi && !i.dir) t.push(['sums','Checksums']); return t; }
+function renderProps(){
+  const P=S.sheet, i=P.info, sh=$('.sheet');
+  sh.className='sheet props';
+  const tabs=propsTabs(P);
+  const val=(k,d)=>P.pend[k]!=null?P.pend[k]:d;
+  let pic=I.file;
+  if(i && i.multi) pic=I.folder;
+  else if(i) pic = host && (['image','video'].includes(i.kind) || ['pdf','exe','lnk','url','msi'].includes(i.ext)) ? `<img alt="" src="${thumbUrl({path:i.path, modified:i.modified}, 64, ['exe','lnk','url','msi'].includes(i.ext))}">` : (i.isRoot?I.drive:kindSvg(i.kind||'file'));
+  const name = !i ? '…' : i.multi ? plural(i.count,'item') : val('name', i.name);
+  const canRename = i && !i.multi && i.canRename;
+  const sub = !i ? (P.error||'Looking…') : i.multi ? (i.type?`All ${i.type}`:`${plural(i.files,'file')}, ${plural(i.folders,'folder')}`) : (i.type||'File')+(i.ext?` (.${i.ext})`:'');
+  let h=`<div class="ph"><div class="pic">${pic}</div><div class="pn"><input class="pname fx" data-fx="name" spellcheck="false" value="${esc(name)}" ${canRename?'':'readonly tabindex="-1"'}><small>${esc(sub)}</small></div></div>`;
+  h+=`<div class="ptabs">${tabs.map(([k,l])=>`<button class="pt fx ${P.tab===k?'on':''}" data-fx="tab" data-tab="${k}">${l}</button>`).join('')}</div><div class="pbody">`;
+  const row=(l,v,btn,fx)=>`<div class="prow"><small>${l}</small><span>${v}</span>${btn?`<button class="mini fx" data-fx="${fx}">${btn}</button>`:'<span></span>'}</div>`;
+  const sepr=()=>`<div class="psep"></div>`;
+  const c=P.count, counting=c&&!c.done?' · counting…':'';
+  if(i && P.tab==='general'){
+    if(i.multi){
+      h+=row('Items', esc(`${plural(i.count,'item')} (${plural(i.files,'file')}, ${plural(i.folders,'folder')})`));
+      if(i.type) h+=row('Type', esc(i.type));
+      h+=row('Location', esc(i.location||'Different folders'), i.location?'Copy':'', 'copyloc');
+      h+=row('Total size', c?esc(`${bytes(c.size)} (${exact(c.size)} bytes)${counting}`):'…');
+      h+=row('Contains', c?esc(`${plural(c.files,'file')}, ${plural(c.folders,'folder')}${counting}`):'…');
+    } else {
+      if(!i.dir) h+=row('Opens with', esc(i.app||'No app chosen'), 'Change…', 'change');
+      h+=row('Location', esc(i.location||i.path), 'Copy', 'copyloc');
+      if(i.target) h+=row('Points to', esc(i.target), 'Copy', 'copytarget');
+      if(i.dir && !i.isRoot){
+        h+=row('Size', c?esc(`${bytes(c.size)} (${exact(c.size)} bytes)${counting}`):'…');
+        h+=row('Contains', c?esc(`${plural(c.files,'file')}, ${plural(c.folders,'folder')}${counting}`):'…');
+      } else if(!i.dir){
+        h+=row('Size', esc(`${bytes(i.size)} (${exact(i.size)} bytes)`));
+        if(i.disk!=null) h+=row('Size on disk', esc(`${bytes(i.disk)} (${exact(i.disk)} bytes)`));
+      }
+      if(i.width) h+=row('Picture size', esc(`${i.width} × ${i.height} pixels`));
+      if(i.duration) h+=row('Length', esc(fmtDur(i.duration)));
+      if(i.version) h+=row('Version', esc(i.version));
+      if(i.company) h+=row('Made by', esc(i.company));
+      h+=sepr();
+      h+=row('Created', esc(whenLong(i.created)));
+      h+=row('Modified', esc(whenLong(i.modified)));
+      h+=row('Accessed', esc(whenLong(i.accessed)));
+      h+=sepr();
+      if(i.owner) h+=row('Owner', esc(i.owner));
+      if(!i.isRoot){
+        const ck=(fx,l,on)=>`<button class="ck fx ${on?'on':''}" data-fx="${fx}"><i></i>${l}</button>`;
+        h+=`<div class="prow"><small>Attributes</small><span style="display:flex;gap:8px;flex-wrap:wrap">${ck('ro','Read-only',val('readOnly',i.readOnly))}${ck('hid','Hidden',val('hidden',i.hidden))}</span><span></span></div>`;
+      }
+    }
+    if(i.driveTotal){
+      h+=sepr();
+      const used=i.driveTotal-i.driveFree, pct=Math.round(used/i.driveTotal*100);
+      if(i.isRoot){
+        h+=row('Drive', esc(`${i.driveLabel||'Local disk'}${i.driveFormat?` · ${i.driveFormat}`:''}`));
+        h+=`<div class="prow"><small>Space</small><span><div class="dbar ${i.driveFree/i.driveTotal<.1?'full':''}"><i style="width:${pct}%"></i></div></span><span></span></div>`;
+        h+=row('', esc(`${bytes(used)} used · ${bytes(i.driveFree)} free of ${bytes(i.driveTotal)} (${pct}% full)`));
+      } else h+=row('On the drive', esc(`${bytes(i.driveFree)} free of ${bytes(i.driveTotal)}`));
+    }
+    if(!i.multi){ h+=sepr(); h+=`<div class="prow"><small></small><span></span><button class="mini fx" data-fx="winprops">More in Windows' Properties</button></div>`; }
+  } else if(i && P.tab==='sums'){
+    h+=`<p style="color:var(--muted);font-size:13px">Checksums show whether a download arrived whole: compare them with the ones the website lists.</p>`;
+    for(const [k,l] of [['md5','MD5'],['sha1','SHA-1'],['sha256','SHA-256']]){
+      const s=P.sums[k];
+      h+=`<div class="sumrow fx" data-fx="sum-${k}"><div class="top2"><b>${l}</b><button class="mini fx-in" data-sum="${k}">${s&&s.sum?'Copy':s&&s.running?'Working…':'Calculate'}</button></div>`
+        + (s&&s.running?`<div class="pb"><i style="width:${s.total?Math.min(100,s.done/s.total*100):0}%"></i></div>`:'')
+        + (s&&(s.sum||s.error)?`<code style="${s.error?'color:var(--danger)':''}">${esc(s.sum||s.error)}</code>`:'') + `</div>`;
+    }
+  }
+  h+=`</div>${P.error&&i?`<div class="perr">${esc(P.error)}</div>`:''}<div class="pbtns"><span class="hint">${P.busy?'Applying…':'Ⓐ choose · Ⓑ close'}</span>`
+    + `<button class="btn fx" data-fx="cancel">${propsDirty(P)?'Cancel':'Close'}</button>${i&&!i.multi?`<button class="btn fx ${propsDirty(P)?'':'dim'}" data-fx="apply">Apply</button>`:''}<button class="btn pri fx" data-fx="ok">OK</button></div>`;
+  const keepScroll=sh.querySelector('.pbody')?.scrollTop||0;
+  const active=document.activeElement && document.activeElement.classList.contains('pname');
+  const caret=active?[document.activeElement.selectionStart, document.activeElement.selectionEnd]:null;
+  sh.innerHTML=h;
+  const pb=sh.querySelector('.pbody'); if(pb) pb.scrollTop=keepScroll;
+  paintPropsFocus();
+  if(active){ const n=sh.querySelector('.pname'); n.focus(); try{ n.setSelectionRange(caret[0], caret[1]); }catch(_){} }
+}
+function propsFocusList(){ const ids=[]; $$('.sheet [data-fx]').forEach(el=>{ const f=el.dataset.fx; if(el.hasAttribute('readonly')) return; if(ids[ids.length-1]!==f) ids.push(f); }); return ids; }
+function paintPropsFocus(){
+  const P=S.sheet; if(!P||!P.props) return;
+  $$('.sheet [data-fx]').forEach(el=>el.classList.toggle('lit', el.dataset.fx===P.focus && (P.focus!=='tab' || el.classList.contains('on'))));
+  const el=$(`.sheet [data-fx="${P.focus}"]${P.focus==='tab'?'.on':''}`); if(el) el.scrollIntoView({block:'nearest'});
+}
+function propsAct(fx){
+  const P=S.sheet, i=P.info; if(!i && !['cancel','ok'].includes(fx)) return;
+  switch(fx){
+    case 'tab': { const t=propsTabs(P); const k=t.findIndex(x=>x[0]===P.tab); P.tab=t[(k+1)%t.length][0]; return renderSheet(); }
+    case 'name': { const n=$('.sheet .pname'); if(n && !n.readOnly){ n.focus(); const v=n.value, dot=i.dir?-1:v.lastIndexOf('.'); n.setSelectionRange(0, dot>0?dot:v.length); if(S.viaPad) send({type:'mantel', action:'keyboard'}); } return; }
+    case 'copyloc': return copyText(i.multi?i.location:i.path);
+    case 'copytarget': return copyText(i.target);
+    case 'change': return call('files.changeDefault',{path:i.path}, 3600000).then(()=>reloadProps()).catch(e=>{ P.error=e.message; renderSheet(); });
+    case 'winprops': return call('files.properties',{path:i.path}).catch(e=>{ P.error=e.message; renderSheet(); });
+    case 'ro': P.pend.readOnly=!(P.pend.readOnly!=null?P.pend.readOnly:i.readOnly); return renderSheet();
+    case 'hid': P.pend.hidden=!(P.pend.hidden!=null?P.pend.hidden:i.hidden); return renderSheet();
+    case 'cancel': return closeSheet();
+    case 'apply': return applyProps(false);
+    case 'ok': return i&&!i.multi?applyProps(true):closeSheet();
+  }
+  if(fx.startsWith('sum-')) return sumAct(fx.slice(4));
+}
+function sumAct(k){
+  const P=S.sheet, s=P.sums[k];
+  if(s&&s.sum) return copyText(s.sum);
+  if(s&&s.running) return;
+  P.sums[k]={running:true, done:0, total:P.info.size};
+  renderSheet();
+  call('files.checksum',{path:P.info.path, algo:k}, 3600000).then(r=>{ P.sums[k]={sum:r.sum}; if(S.sheet===P) renderSheet(); })
+    .catch(e=>{ P.sums[k]={error:e.message}; if(S.sheet===P) renderSheet(); });
+}
+async function reloadProps(path){
+  const P=S.sheet; if(!P||!P.props) return;
+  if(path) P.paths=[path];
+  try{ const i=await call('files.props',{paths:P.paths}); if(S.sheet===P){ P.info=i; renderSheet(); } }catch(e){ P.error=e.message; renderSheet(); }
+}
+async function applyProps(close){
+  const P=S.sheet, i=P.info; if(!i||P.busy) return;
+  const n=$('.sheet .pname'); if(n && !n.readOnly && n.value.trim() && n.value.trim()!==i.name) P.pend.name=n.value.trim();
+  if(!propsDirty(P)){ if(close) closeSheet(); return; }
+  P.busy=true; P.error=''; renderSheet();
+  let path=i.path;
+  try{
+    if(P.pend.name!=null && P.pend.name!==i.name){ const r=await call('files.rename',{path, name:P.pend.name}); path=r.path; P.paths=[path]; }
+    if((P.pend.readOnly!=null && P.pend.readOnly!==i.readOnly) || (P.pend.hidden!=null && P.pend.hidden!==i.hidden)){
+      const a={path}; if(P.pend.readOnly!=null) a.readOnly=P.pend.readOnly; if(P.pend.hidden!=null) a.hidden=P.pend.hidden;
+      await call('files.setAttributes', a);
+    }
+    P.pend={}; P.busy=false;
+    refresh(base(path));
+    if(close) return closeSheet();
+    await reloadProps(path);
+  }catch(e){
+    P.busy=false; P.error=e.message;
+    if(path!==i.path){ delete P.pend.name; refresh(base(path)); await reloadProps(path); }
+    else renderSheet();
+  }
+}
+function propsKey(e){
+  const P=S.sheet, inName=document.activeElement && document.activeElement.classList.contains('pname');
+  if(inName){
+    if(e.key==='Enter'||e.key==='ArrowDown'||e.key==='Tab'){ e.preventDefault(); const v=document.activeElement.value.trim(); if(P.info && v && v!==P.info.name) P.pend.name=v; document.activeElement.blur(); P.focus='name'; if(e.key!=='Enter') moveProps(1); else renderSheet(); }
+    else if(e.key==='Escape'){ e.preventDefault(); delete P.pend.name; document.activeElement.blur(); renderSheet(); }
+    else if(e.key==='ArrowUp') e.preventDefault();
+    return;
+  }
+  const row=['tab','cancel','apply','ok'].includes(P.focus);
+  switch(e.key){
+    case 'ArrowDown': case 'Tab': e.preventDefault(); return moveProps(e.shiftKey&&e.key==='Tab'?-1:1);
+    case 'ArrowUp': e.preventDefault(); return moveProps(-1);
+    case 'ArrowLeft': e.preventDefault(); if(P.focus==='tab'){ const t=propsTabs(P), k=t.findIndex(x=>x[0]===P.tab); P.tab=t[Math.max(0,k-1)][0]; return renderSheet(); } if(row) return moveProps(-1); return;
+    case 'ArrowRight': e.preventDefault(); if(P.focus==='tab'){ const t=propsTabs(P), k=t.findIndex(x=>x[0]===P.tab); P.tab=t[Math.min(t.length-1,k+1)][0]; return renderSheet(); } if(row) return moveProps(1); return;
+    case 'Enter': case ' ': e.preventDefault(); return propsAct(P.focus);
+    case 'F2': e.preventDefault(); return propsAct('name');
+    case 'Escape': case 'F23': case 'Backspace': e.preventDefault(); return closeSheet();
+    case 'F24': e.preventDefault(); return propsAct('name');
+  }
+}
+function moveProps(d){ const P=S.sheet, l=propsFocusList(); let k=l.indexOf(P.focus); k=Math.max(0, Math.min(l.length-1, (k<0?0:k)+d)); P.focus=l[k]; paintPropsFocus(); }
+
+// ---------------------------------------------------------------- quick preview (Space)
+async function preview(e){
+  if(!e) return;
+  S.sheet={preview:true, e, text:null, error:'', items:[], f:0};
+  renderSheet();
+  if(e.kind==='doc' && /^(txt|md|log|json|ini|xml|csv)$/.test(e.ext) || e.kind==='file' && e.size<4e6){
+    try{ const r=await call('files.peek',{path:e.path}); if(S.sheet&&S.sheet.e===e){ S.sheet.text=r.text+(r.more?'\n…':''); renderSheet(); } }
+    catch(err){ if(S.sheet&&S.sheet.e===e){ S.sheet.error=err.message; renderSheet(); } }
+  }
+}
+function renderPreview(){
+  const P=S.sheet, e=P.e, sh=$('.sheet');
+  sh.className='sheet preview';
+  let body;
+  if(host && (e.kind==='image' || e.kind==='video' || e.ext==='pdf')) body=`<img alt="" src="${thumbUrl(e, 512)}">`;
+  else if(P.text!=null) body=`<pre>${esc(P.text)}</pre>`;
+  else body=`<div class="basic">${kindSvg(e.kind)}<div>${esc(typeOf(e))}${e.dir?'':' · '+esc(bytes(e.size))} · ${esc(when(e.modified))}</div></div>`;
+  sh.innerHTML=`<h2>${esc(e.name)}</h2><div class="pv">${body}</div><p>← → previous / next · Enter opens · Space or Ⓑ closes</p>`;
+}
+function previewKey(ev){
+  const P=S.sheet;
+  const step=d=>{ const l=visible(); S.f=Math.max(0, Math.min(l.length-1, S.f+d)); paintCur(); preview(l[S.f]); };
+  switch(ev.key){
+    case 'ArrowLeft': case 'ArrowUp': ev.preventDefault(); return step(-1);
+    case 'ArrowRight': case 'ArrowDown': ev.preventDefault(); return step(1);
+    case 'Enter': ev.preventDefault(); { const e=P.e; closeSheet(); return activate(e); }
+    case ' ': case 'Escape': case 'F23': case 'Backspace': ev.preventDefault(); return closeSheet();
+  }
+}
+
+// ---------------------------------------------------------------- copies, moves, archives (the bar along the bottom)
 function renderJobs(){
   const el=$('.jobs');
   el.innerHTML=Object.entries(S.jobs).map(([id,j])=>{
@@ -517,10 +1053,12 @@ function renderJobs(){
 }
 function onProgress(d){ const j=S.jobs[d.id]||(S.jobs[d.id]={op:d.op}); Object.assign(j, {done:d.done, total:d.total, bytesPerSec:d.bytesPerSec}); if(j.text!=='Stopping…' && d.current) j.text=d.text; renderJobs(); }
 function onDone(d){
+  const j=S.jobs[d.id]||{};
   delete S.jobs[d.id]; renderJobs();
-  const verb=d.op==='move'?'Moved':'Copied';
-  toast(d.cancelled?`Stopped ${d.op==='move'?'moving':'copying'}`:d.ok?`${verb} ${plural(d.count,'item')}`:`Couldn't finish: ${d.error}`);
-  if(S.path && !S.recycle) refresh();
+  const verb={move:'Moved', copy:'Copied', compress:'Made', extract:'Unpacked'}[d.op]||'Done';
+  const what=d.op==='compress'?`“${base(d.path||'')}”`:d.op==='extract'?`into “${base(d.path||'')}”`:plural(d.count,'item');
+  toast(d.cancelled?`Stopped. Nothing half-done was left behind.`:d.ok?`${verb} ${what}${d.skipped?` (skipped ${d.skipped})`:''}`:`Couldn't finish: ${d.error}`);
+  if(S.path && !S.recycle) refresh(d.ok && d.path && parentOf(d.path).toLowerCase()===(S.path||'').toLowerCase() ? base(d.path) : null);
   loadPlaces();
 }
 
@@ -536,16 +1074,25 @@ function submitAsk(){ const s=S.sheet; if(!s||!s.input) return; const v=$('.shee
 function renderSheet(){
   const sh=$('.shade');
   if(!S.sheet){ sh.hidden=true; return; }
+  sh.hidden=false;
+  if(S.sheet.props) return renderProps();
+  if(S.sheet.preview) return renderPreview();
   const s=S.sheet;
+  $('.sheet').className='sheet';
   $('.sheet').innerHTML=`<h2>${esc(s.title)}</h2>${s.sub?`<p>${esc(s.sub)}</p>`:''}${s.body||''}${s.input?`<input spellcheck="false" value="${esc(s.input.value)}">`:''}`
     + s.items.map((it,i)=>it.sep?`<div class="ssep"></div>`:`<button class="si ${i===s.f?'lit':''} ${it.danger?'danger':''}" data-si="${i}" ${it.disabled?'disabled':''}>${it.icon||''}<span>${esc(it.label)}</span>${it.key?`<kbd>${esc(it.key)}</kbd>`:''}</button>`).join('');
-  sh.hidden=false;
   const lit=$('.si.lit'), first=s.items.findIndex(x=>!x.sep&&!x.disabled);
   if(s.f<=first) $('.sheet').scrollTop=0; else if(lit) lit.scrollIntoView({block:'nearest'});
 }
-function closeSheet(){ S.sheet=null; renderSheet(); }
+function closeSheet(){
+  const s=S.sheet;
+  if(s && s.props){ if(s.countId!=null) call('files.cancel',{id:s.countId}).catch(()=>{}); if(Object.values(s.sums).some(x=>x&&x.running)) call('files.cancelChecksums').catch(()=>{}); }
+  S.sheet=null; renderSheet();
+}
 function sheetKey(e){
-  const s=S.sheet, n=s.items.length, inInput=document.activeElement && document.activeElement.tagName==='INPUT';
+  if(S.sheet.props) return propsKey(e);
+  if(S.sheet.preview) return previewKey(e);
+  const s=S.sheet, n=s.items.length, inInput=document.activeElement && document.activeElement.tagName==='INPUT' && document.activeElement.closest('.sheet');
   const ok = i => i>=0 && i<n && !s.items[i].sep && !s.items[i].disabled;
   const step=d=>{ let i=s.f; for(let k=0;k<n;k++){ i=(i+d+n)%n; if(ok(i)){ s.f=i; break; } } if(inInput) document.activeElement.blur(); renderSheet(); };
   if(inInput){
@@ -558,39 +1105,62 @@ function sheetKey(e){
     case 'ArrowDown': case 'Tab': e.preventDefault(); return step(e.shiftKey&&e.key==='Tab'?-1:1);
     case 'ArrowUp': e.preventDefault(); if(s.input && s.f===s.items.findIndex(x=>!x.sep&&!x.disabled)){ s.f=-1; renderSheet(); const i=$('.sheet input'); if(i) i.focus(); return; } return step(-1);
     case 'Enter': case ' ': e.preventDefault(); { const it=s.items[s.f]; if(it&&ok(s.f)&&it.run) it.run(); } return;
-    case 'Escape': case 'F23': e.preventDefault(); return closeSheet();
+    case 'Escape': case 'F23': e.preventDefault(); if(s.conflict){ const c=s.items.find(x=>x.label==='Cancel'); if(c) return c.run(); } return closeSheet();
     case 'F24': if(s.input){ e.preventDefault(); s.f=-1; renderSheet(); const i=$('.sheet input'); if(i) i.focus(); send({type:'mantel', action:'keyboard'}); } return;
   }
 }
 $('.shade').addEventListener('click', e => {
+  if(S.sheet && S.sheet.props){
+    const t=e.target.closest('.pt'); if(t){ S.sheet.tab=t.dataset.tab; S.sheet.focus='tab'; return renderSheet(); }
+    const sb=e.target.closest('[data-sum]'); if(sb){ S.sheet.focus='sum-'+sb.dataset.sum; return sumAct(sb.dataset.sum); }
+    const f=e.target.closest('[data-fx]'); if(f){ S.sheet.focus=f.dataset.fx; paintPropsFocus(); if(f.dataset.fx!=='name') propsAct(f.dataset.fx); return; }
+    if(e.target===$('.shade')) closeSheet();
+    return;
+  }
   const b=e.target.closest('[data-si]');
   if(b){ const it=S.sheet&&S.sheet.items[+b.dataset.si]; if(it&&!it.disabled&&it.run) it.run(); return; }
-  if(e.target===$('.shade')) closeSheet();
+  if(e.target===$('.shade') && !(S.sheet && S.sheet.conflict)) closeSheet();
 });
-$('.shade').addEventListener('mouseover', e => { const b=e.target.closest('[data-si]'); if(b&&S.sheet&&!S.sheet.input&&+b.dataset.si!==S.sheet.f&&!b.disabled){ S.sheet.f=+b.dataset.si; renderSheet(); } });
+$('.shade').addEventListener('mouseover', e => { if(!S.sheet||S.sheet.props||S.sheet.preview) return; const b=e.target.closest('[data-si]'); if(b&&!S.sheet.input&&+b.dataset.si!==S.sheet.f&&!b.disabled){ S.sheet.f=+b.dataset.si; renderSheet(); } });
 
-// ---------------------------------------------------------------- search
+// ---------------------------------------------------------------- search: typing filters this folder, Enter looks inside too
 const searchBox = $('.search');
 function focusSearch(){ S.zone='files'; paintNav(); searchBox.focus(); searchBox.select(); if(S.viaPad) send({type:'mantel', action:'keyboard'}); }
-searchBox.addEventListener('input', () => { S.q=searchBox.value; S.found=null; S.f=0; renderFiles(); renderTop(); });
+searchBox.addEventListener('input', () => { if(S.found){ stopSearch(); S.found=null; } S.q=searchBox.value; S.f=0; visKey=null; renderFiles(); renderTop(); });
 async function deepSearch(){
   const q=searchBox.value.trim(); if(!q || !S.path || S.recycle) return;
-  S.loading=true; renderStatus();
-  try{ const r=await call('files.search',{path:S.path, query:q, hidden:S.hidden}, 30000); S.found={query:q, entries:r.entries, truncated:r.truncated}; S.f=0; S.sel.clear(); }
-  catch(e){ toast(e.message); }
-  S.loading=false; searchBox.blur(); render();
+  stopSearch();
+  S.found={query:q, entries:[], truncated:false, running:true, id:null}; S.q=''; S.f=0; S.sel.clear(); visKey=null;
+  searchBox.blur(); render();
+  const F=S.found;
+  try{ const r=await call('files.searchStart',{path:S.path, query:q, hidden:S.hidden}); if(S.found===F && F.id==null) F.id=r.id; else if(S.found!==F){ S.deadSearch.add(r.id); call('files.cancel',{id:r.id}).catch(()=>{}); } }
+  catch(e){ F.running=false; toast(e.message); render(); }
+}
+function stopSearch(){ const F=S.found; if(F && F.running){ F.running=false; if(F.id!=null){ S.deadSearch.add(F.id); call('files.cancel',{id:F.id}).catch(()=>{}); } renderStatus(); } }
+function clearSearch(){ stopSearch(); S.found=null; S.q=''; searchBox.value=''; visKey=null; render(); }
+let foundPaint=0;
+function onFound(d){
+  const F=S.found; if(!F || S.deadSearch.has(d.id)) return;
+  if(F.id==null) F.id=d.id; else if(F.id!==d.id) return;
+  F.entries=F.entries.concat(d.entries||[]); visKey=null;
+  if(!foundPaint) foundPaint=setTimeout(()=>{ foundPaint=0; renderFiles(); }, 120);
+}
+function onSearchDone(d){
+  const F=S.found; if(!F || S.deadSearch.has(d.id)) return;
+  if(F.id==null) F.id=d.id; else if(F.id!==d.id) return;
+  F.running=false; F.truncated=!!d.truncated; visKey=null; renderFiles();
 }
 searchBox.addEventListener('keydown', e => {
   if(S.sheet) return;
-  if(e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); if(e.ctrlKey||S.q===''||visible().length===0||e.shiftKey) return deepSearch(); searchBox.blur(); S.zone='files'; return render(); }
-  if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); if(searchBox.value){ searchBox.value=''; S.q=''; S.found=null; renderFiles(); renderTop(); } searchBox.blur(); return; }
+  if(e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); return deepSearch(); }
+  if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); if(searchBox.value){ searchBox.value=''; S.q=''; visKey=null; renderFiles(); renderTop(); } searchBox.blur(); return; }
   if(e.key==='ArrowDown'||e.key==='Tab'){ e.preventDefault(); e.stopPropagation(); searchBox.blur(); S.zone='files'; paintNav(); return; }
   e.stopPropagation();
 });
 
 // ---------------------------------------------------------------- keyboard and controller
 function gridCols(){
-  if(S.view!=='grid') return 1;
+  if(S.view==='list') return 1;
   const items=$$('.files .it'); if(items.length<2) return 1;
   const top=items[0].offsetTop; let n=0;
   for(const it of items){ if(it.offsetTop!==top) break; n++; }
@@ -615,18 +1185,26 @@ document.addEventListener('keydown', e => {
   if(e.key==='F23'||e.key==='F24') S.viaPad=true;
   else if(e.key.length===1 && !e.ctrlKey && !e.altKey) S.viaPad=false;
   if(S.sheet) return sheetKey(e);
-  if(document.activeElement===searchBox) return;
+  if(document.activeElement===searchBox || document.activeElement===$('.pathin')) return;
   const k=e.key, ctrl=e.ctrlKey||e.metaKey;
   // anywhere
   if((ctrl&&k==='f') || k==='F3' || k==='F24'){ e.preventDefault(); return focusSearch(); }
-  if(k==='Tab'){ e.preventDefault(); S.zone=S.zone==='nav'?'files':'nav'; if(S.zone==='nav') S.navF=Math.max(0,S.litNav); return paintNav(); }
+  if((ctrl&&k==='l') || (e.altKey&&k==='d') || k==='F4' && !e.shiftKey){ e.preventDefault(); return editPath(); }
+  if(k==='Tab' && !ctrl){ e.preventDefault(); S.zone=S.zone==='nav'?'files':'nav'; if(S.zone==='nav') S.navF=Math.max(0,S.litNav); return paintNav(); }
+  if(ctrl&&k==='Tab'){ e.preventDefault(); return switchTab((S.tab+(e.shiftKey?-1:1)+S.tabs.length)%S.tabs.length); }
+  if(ctrl&&(k==='PageDown'||k==='PageUp')){ e.preventDefault(); return switchTab((S.tab+(k==='PageUp'?-1:1)+S.tabs.length)%S.tabs.length); }
+  if(ctrl&&k==='t'){ e.preventDefault(); return newTab(S.path); }
+  if(ctrl&&k==='w'){ e.preventDefault(); return closeTab(S.tab); }
   if(k==='F5'){ e.preventDefault(); return refresh(); }
   if(ctrl&&k==='h'){ e.preventDefault(); return toggleHidden(); }
   if(k==='Backspace'||(e.altKey&&k==='ArrowLeft')||k==='BrowserBack'){ e.preventDefault(); return goBack(); }
   if((e.altKey&&k==='ArrowRight')||k==='BrowserForward'){ e.preventDefault(); return goForward(); }
   if(e.altKey&&k==='ArrowUp'){ e.preventDefault(); return goUp(); }
+  if(e.altKey&&k==='Home'){ e.preventDefault(); return S.places&&openFolder(S.places.home); }
   if(ctrl&&e.shiftKey&&(k==='N'||k==='n')){ e.preventDefault(); return S.recycle||S.found?null:newFolder(); }
   if(ctrl&&k==='v'){ e.preventDefault(); return paste(); }
+  if(ctrl&&k==='d'){ e.preventDefault(); return addBookmark(S.path); }
+  if(k==='F4' && e.shiftKey){ e.preventDefault(); return call('files.terminal',{path:S.path}).catch(err=>toast(err.message)); }
   if(S.zone==='nav'){
     switch(k){
       case 'ArrowDown': e.preventDefault(); return navPick(S.navF+1);
@@ -641,19 +1219,20 @@ document.addEventListener('keydown', e => {
         return;
       }
       case 'Escape': e.preventDefault(); return send({type:'mantel', action:'closeApp', app:'files'});
-      case 'F23': case 'ContextMenu': e.preventDefault(); S.zone='files'; paintNav(); return menu(true);
+      case 'F23': case 'ContextMenu': e.preventDefault(); return navMenu(S.navF);
+      case 'Enter': if(e.altKey){ e.preventDefault(); const it=S.navItems[S.navF]; if(it) properties([it.path]); } return;
     }
     return;
   }
   // the files
   const cols=gridCols(), n=Math.min(visible().length, SHOW_MAX), e0=cur();
   switch(k){
-    case 'ArrowRight': e.preventDefault(); if(S.view==='grid') moveTo(S.f+1, e.shiftKey); return;
+    case 'ArrowRight': e.preventDefault(); if(S.view!=='list') moveTo(S.f+1, e.shiftKey); return;
     case 'ArrowLeft':
       e.preventDefault();
-      if(S.view==='grid' && S.f%cols!==0) return moveTo(S.f-1, e.shiftKey);
+      if(S.view!=='list' && S.f%cols!==0) return moveTo(S.f-1, e.shiftKey);
       S.zone='nav'; S.navF=Math.max(0,S.litNav); return paintNav();
-    case 'ArrowDown': e.preventDefault(); if(S.f+cols<n || S.view!=='grid') return moveTo(S.f+cols, e.shiftKey); return moveTo(n-1, e.shiftKey);
+    case 'ArrowDown': e.preventDefault(); if(S.f+cols<n || S.view==='list') return moveTo(S.f+cols, e.shiftKey); return moveTo(n-1, e.shiftKey);
     case 'ArrowUp': e.preventDefault(); if(S.f-cols>=0) return moveTo(S.f-cols, e.shiftKey); if(S.f>0) return moveTo(0, e.shiftKey); return focusSearch();
     case 'PageDown': e.preventDefault(); return moveTo(S.f+cols*5, e.shiftKey);
     case 'PageUp': e.preventDefault(); return moveTo(S.f-cols*5, e.shiftKey);
@@ -661,16 +1240,16 @@ document.addEventListener('keydown', e => {
     case 'End': e.preventDefault(); return moveTo(n-1, e.shiftKey);
     case 'Enter':
       e.preventDefault();
-      if(e.altKey){ if(e0) properties(e0); return; }
+      if(e.altKey){ const t=targets(); return properties(t.length?t.map(x=>x.path):[S.path]); }
       return activate(e0);
-    case ' ': e.preventDefault(); return toggleSel(e0);
+    case ' ': e.preventDefault(); if(ctrl) return toggleSel(e0); return preview(e0);
     case 'Escape':
       e.preventDefault();
       if(S.sel.size){ S.sel.clear(); return paintCur(); }
       return goUp();
     case 'F23': case 'ContextMenu': e.preventDefault(); return menu();
     case 'F10': if(e.shiftKey){ e.preventDefault(); return menu(); } return;
-    case 'F2': e.preventDefault(); if(e0 && !S.recycle) rename(e0); return;
+    case 'F2': e.preventDefault(); if(S.recycle) return; { const t=targets(); if(t.length>1) return batchRename(t); if(e0) rename(e0); } return;
     case 'Delete': {
       e.preventDefault(); const t=targets(); if(!t.length) return;
       if(e.shiftKey || S.recycle) return confirmDelete(t);
@@ -678,62 +1257,173 @@ document.addEventListener('keydown', e => {
     }
   }
   if(ctrl && k==='a'){ e.preventDefault(); return selectAll(); }
+  if(ctrl && k==='i'){ e.preventDefault(); return invertSel(); }
+  if(ctrl && e.shiftKey && (k==='C'||k==='c')){ e.preventDefault(); const t=targets(); return copyText(t.length?t.map(x=>x.path).join('\r\n'):S.path); }
   if(ctrl && (k==='c'||k==='x')){ e.preventDefault(); const t=targets(); if(t.length) clip(t, k==='x'); return; }
-  if(ctrl && k==='1'){ e.preventDefault(); if(S.view!=='grid') toggleView(); return; }
-  if(ctrl && k==='2'){ e.preventDefault(); if(S.view!=='list') toggleView(); return; }
+  if(ctrl && k==='1'){ e.preventDefault(); return setView('grid'); }
+  if(ctrl && k==='2'){ e.preventDefault(); return setView('compact'); }
+  if(ctrl && k==='3'){ e.preventDefault(); return setView('list'); }
   if(ctrl && k==='r'){ e.preventDefault(); return refresh(); }
-  // Typing searches this folder (like Hearth's on Hearth OS).
+  // Typing filters this folder (like Hearth's on Hearth OS).
   if(k.length===1 && !ctrl && !e.altKey && k!==' '){
     e.preventDefault(); S.zone='files'; paintNav();
-    searchBox.focus(); searchBox.value += k; S.q=searchBox.value; S.found=null; S.f=0; renderFiles(); renderTop();
+    searchBox.focus(); searchBox.value += k; S.q=searchBox.value; S.found=null; S.f=0; visKey=null; renderFiles(); renderTop();
   }
 });
-// The mouse: click picks (Ctrl adds, Shift picks a range), double click opens, right click shows actions.
+// The mouse: click picks (Ctrl adds, Shift picks a range), drag on empty space for a rubber band, double click opens,
+// middle click opens a folder in a new tab, right click shows actions.
+let band=null;
 $('.files').addEventListener('mousedown', e => {
   S.viaPad=false;
   const el=e.target.closest('.it'); S.zone='files'; paintNav();
-  if(!el){ if(e.button===0 && !e.target.closest('.lh')){ S.sel.clear(); paintCur(); } return; }
+  if(!el){
+    if(e.button===0 && !e.target.closest('.lh')){
+      const box=$('.files'), r=box.getBoundingClientRect();
+      band={x0:e.clientX, y0:e.clientY, sx:box.scrollLeft, sy:box.scrollTop, base:e.ctrlKey?new Set(S.sel):new Set(), moved:false, el:null, r};
+      if(!e.ctrlKey){ S.sel.clear(); paintCur(); }
+    }
+    return;
+  }
   const i=+el.dataset.i, item=visible()[i]; if(!item) return;
   if(e.button===2){ if(!S.sel.has(item.path)){ S.sel.clear(); } S.f=i; paintCur(); return; }
   if(e.button!==0) return;
   if(e.ctrlKey){ S.f=i; return toggleSel(item); }
   if(e.shiftKey){ return moveTo(i, true); }
+  if(S.sel.has(item.path) && S.sel.size>1){ S.f=i; S.pendingSingle=i; paintCur(); return; }   // keep the selection for a drag
   S.sel.clear(); S.anchor=i; S.f=i; paintCur();
 });
+document.addEventListener('mousemove', e => {
+  if(!band) return;
+  if(!(e.buttons&1)){ endBand(); return; }
+  const box=$('.files');
+  const dx=e.clientX-band.x0, dy=e.clientY-band.y0;
+  if(!band.moved && Math.abs(dx)+Math.abs(dy)<6) return;
+  band.moved=true;
+  if(!band.el){ band.el=document.createElement('div'); band.el.className='band'; box.appendChild(band.el); }
+  const r=box.getBoundingClientRect();
+  // Scroll while dragging near the top or bottom edge.
+  if(e.clientY>r.bottom-24) box.scrollTop+=18; else if(e.clientY<r.top+24) box.scrollTop-=18;
+  const x0=band.x0-r.left+band.sx, y0=band.y0-r.top+band.sy, x1=e.clientX-r.left+box.scrollLeft, y1=Math.max(0,e.clientY-r.top+box.scrollTop);
+  const L=Math.min(x0,x1), T=Math.min(y0,y1), W=Math.abs(x1-x0), H=Math.abs(y1-y0);
+  Object.assign(band.el.style, {left:L+'px', top:T+'px', width:W+'px', height:H+'px'});
+  const sel=new Set(band.base), l=visible();
+  for(const it of $$('.files .it')){
+    const b=it.getBoundingClientRect(), bx=b.left-r.left+box.scrollLeft, by=b.top-r.top+box.scrollTop;
+    if(bx<L+W && bx+b.width>L && by<T+H && by+b.height>T){ const x=l[+it.dataset.i]; if(x){ sel.add(x.path); S.f=+it.dataset.i; } }
+  }
+  S.sel=sel; paintCur();
+});
+function endBand(){ if(band&&band.el) band.el.remove(); band=null; }
+document.addEventListener('mouseup', e => {
+  if(band){ endBand(); }
+  if(S.pendingSingle!=null && e.button===0){ const i=S.pendingSingle; S.pendingSingle=null; const it=visible()[i]; if(it && !dragging){ S.sel.clear(); S.anchor=i; S.f=i; paintCur(); } }
+  if(e.button===3){ e.preventDefault(); goBack(); } if(e.button===4){ e.preventDefault(); goForward(); }
+});
 $('.files').addEventListener('dblclick', e => { const el=e.target.closest('.it'); if(el) activate(visible()[+el.dataset.i]); });
+document.addEventListener('auxclick', e => {
+  if(e.button!==1) return;
+  const el=e.target.closest('.files .it'); if(el){ const it=visible()[+el.dataset.i]; if(it&&it.dir){ e.preventDefault(); newTab(it.path); } return; }
+  const nb=e.target.closest('[data-nav]'); if(nb){ const it=S.navItems[+nb.dataset.nav]; if(it&&it.path!=='recycle:'){ e.preventDefault(); newTab(it.path); } return; }
+  const tb=e.target.closest('.tab[data-i]'); if(tb){ e.preventDefault(); closeTab(+tb.dataset.i); }
+});
 document.addEventListener('contextmenu', e => {
   e.preventDefault();
+  const nb=e.target.closest('[data-nav]'); if(nb){ S.navF=+nb.dataset.nav; return navMenu(S.navF); }
   if(e.target.closest('.files')) return menu(!e.target.closest('.it'));
 });
-document.addEventListener('mouseup', e => { if(e.button===3){ e.preventDefault(); goBack(); } if(e.button===4){ e.preventDefault(); goForward(); } });
 document.addEventListener('click', e => {
   if(e.target.closest('.shade')) return;
   const nb=e.target.closest('[data-nav]');
   if(nb){ S.viaPad=false; S.zone='nav'; S.navF=+nb.dataset.nav; clearTimeout(navTimer); const it=S.navItems[S.navF]; paintNav(); if(it) openFolder(it.path).then(()=>{ S.zone='files'; paintNav(); }); return; }
+  if(e.target.closest('.crumbs') && !e.target.closest('.cr')) return editPath();
   const el=e.target.closest('[data-act]'); if(!el) return;
   const d=el.dataset;
   switch(d.act){
     case 'back': return goBack();
+    case 'forward': return goForward();
     case 'up': return goUp();
-    case 'view': return toggleView();
+    case 'view': return cycleView();
+    case 'sort': return sortMenu();
     case 'menu': return menu(true);
-    case 'crumb': if(d.path && d.path!==S.path) openFolder(d.path); else if(S.found){ S.found=null; render(); } return;
+    case 'crumb': if(d.path && d.path!==S.path) openFolder(d.path); else if(S.found) clearSearch(); return;
     case 'sortBy': return setSort(d.k);
     case 'cancelJob': return cancelJob(+d.id);
+    case 'stopSearch': return stopSearch();
+    case 'closeTab': e.stopPropagation(); return closeTab(+d.i);
+    case 'tab': return switchTab(+d.i);
+    case 'newTab': return newTab(S.path);
   }
 });
 addEventListener('resize', () => renderTop());
 
+// ---------------------------------------------------------------- drag and drop: onto folders, places, the path, or this folder
+let dragging=false;
+document.addEventListener('dragstart', e => {
+  const el=e.target.closest && e.target.closest('.files .it');
+  if(!el || S.recycle){ return; }
+  const i=+el.dataset.i, l=visible(), item=l[i]; if(!item) return;
+  if(!S.sel.has(item.path)){ S.sel.clear(); S.sel.add(item.path); S.f=i; S.anchor=i; paintCur(); }
+  const paths=l.filter(x=>S.sel.has(x.path)).map(x=>x.path);
+  dragging=true; S.pendingSingle=null;
+  e.dataTransfer.setData('application/x-hearth-paths', JSON.stringify(paths));
+  e.dataTransfer.setData('text/plain', paths.join('\r\n'));
+  e.dataTransfer.effectAllowed='copyMove';
+});
+document.addEventListener('dragend', () => { dragging=false; clearDrop(); });
+function dropTarget(el){
+  if(!el || !el.closest) return null;
+  const it=el.closest('.files .it'); if(it){ const x=visible()[+it.dataset.i]; if(x && x.dir && !S.recycle) return {el:it, dest:x.path}; }
+  const ni=el.closest('.ni'); if(ni){ const n=S.navItems[+ni.dataset.nav]; if(n) return {el:ni, dest:n.path}; }
+  const cr=el.closest('.cr[data-path]'); if(cr) return {el:cr, dest:cr.dataset.path};
+  if(el.closest('.files') && S.path && !S.recycle && !S.found) return {el:$('.files'), dest:S.path};
+  return null;
+}
+function clearDrop(){ $$('.drop').forEach(x=>x.classList.remove('drop')); }
+document.addEventListener('dragover', e => {
+  if(!e.dataTransfer || !e.dataTransfer.types.includes('application/x-hearth-paths')) return;
+  const t=dropTarget(e.target); clearDrop(); if(!t) return;
+  e.preventDefault(); e.dataTransfer.dropEffect=e.ctrlKey?'copy':'move'; t.el.classList.add('drop');
+});
+document.addEventListener('drop', e => {
+  const t=dropTarget(e.target); clearDrop();
+  if(!t || !e.dataTransfer.types.includes('application/x-hearth-paths')) return;
+  e.preventDefault();
+  let paths=[]; try{ paths=JSON.parse(e.dataTransfer.getData('application/x-hearth-paths')||'[]'); }catch(_){}
+  dropPaths(paths, t.dest, e.ctrlKey, e.shiftKey);
+});
+function dropPaths(paths, dest, ctrl, shift){
+  paths=paths.filter(p=>p.toLowerCase()!==String(dest).toLowerCase());
+  if(!paths.length || !dest) return;
+  if(dest==='recycle:') return trash(paths.map(p=>({path:p, name:base(p)})));
+  const op=ctrl?'copy':shift?'move':driveOf(paths[0])===driveOf(dest)?'move':'copy';
+  const list=op==='move'?paths.filter(p=>parentOf(p).toLowerCase()!==dest.toLowerCase()):paths;
+  if(list.length) transferTo(op, list, dest);
+}
+
 // ---------------------------------------------------------------- from Ember
+function onEvent(name, d){
+  if(name==='files.progress') onProgress(d);
+  else if(name==='files.done') onDone(d);
+  else if(name==='files.found') onFound(d);
+  else if(name==='files.searchDone') onSearchDone(d);
+  else if(name==='files.count'){
+    const P=S.sheet; if(!P||!P.props||!P.count) return;
+    if(P.countId==null) P.countId=d.id; else if(P.countId!==d.id) return;
+    P.count={size:d.size, files:d.files, folders:d.folders, done:!!d.done}; renderSheet();
+  }
+  else if(name==='files.sumProgress'){
+    const P=S.sheet; if(!P||!P.props||!P.info||P.info.path!==d.path) return;
+    const s=P.sums[d.algo]; if(s&&s.running){ s.done=d.done; s.total=d.total; renderSheet(); }
+  }
+  else if(name==='mantel.appArgs'){ const q=new URLSearchParams((d&&d.query)||''); const p=q.get('path'), pr=q.get('props'); if(p){ S.zone='files'; openFolder(p); } if(pr) openProps(pr); }
+  else if(name==='profile' && d && d.accent) setAccent(d.accent);
+}
+// Properties asked for from outside (the desktop): the folder it's in opens behind.
+async function openProps(path){ const dir=parentOf(path); if(dir && dir.toLowerCase()!==(S.path||'').toLowerCase()) await openFolder(dir, {focusName:base(path)}); properties([path]); }
 if(host) host.addEventListener('message', e => {
   const m=e.data; if(!m||typeof m!=='object') return;
   if(m.type==='result'){ const p=pending[m.id]; if(!p) return; delete pending[m.id]; m.ok ? p.ok(m.value) : p.no(new Error(m.error)); return; }
-  if(m.type!=='event') return;
-  const d=m.data;
-  if(m.name==='files.progress') onProgress(d);
-  else if(m.name==='files.done') onDone(d);
-  else if(m.name==='mantel.appArgs'){ const p=new URLSearchParams((d&&d.query)||'').get('path'); if(p){ S.zone='files'; openFolder(p); } }
-  else if(m.name==='profile' && d && d.accent) setAccent(d.accent);
+  if(m.type==='event') onEvent(m.name, m.data);
 });
 function setAccent(a){
   if(!/^#[0-9a-f]{6}$/i.test(a||'')) return;
@@ -742,7 +1432,7 @@ function setAccent(a){
   document.documentElement.style.setProperty('--accentInk',((n>>16&255)*.2126+(n>>8&255)*.7152+(n&255)*.0722)/255>.45?'#2a1206':'#ffffff');
 }
 
-// ---------------------------------------------------------------- preview data
+// ---------------------------------------------------------------- preview data (opened in a normal browser)
 const HOME='C:\\Users\\you';
 const mk=(name,dir,kind,size,ext)=>({name, path:HOME+'\\Downloads\\'+name, dir, size:size||0, modified:Date.now()-Math.random()*9e9, ext:ext||'', hidden:false, kind});
 const MOCK = {
@@ -754,17 +1444,27 @@ const MOCK = {
   'files.list':a=>({path:a.path, name:a.path.split('\\').filter(Boolean).pop()||a.path, parent:a.path.length>3?a.path.replace(/\\[^\\]+\\?$/,'')||'C:\\':null, recycle:a.path==='recycle:',
     entries:[mk('Mods',true,'folder'),mk('Screenshots',true,'folder'),mk('setup.exe',false,'app',84e6,'exe'),mk('holiday.jpg',false,'image',3.2e6,'jpg'),mk('clip.mp4',false,'video',412e6,'mp4'),
       mk('notes.txt',false,'doc',2e3,'txt'),mk('soundtrack.flac',false,'audio',38e6,'flac'),mk('backup.zip',false,'archive',1.2e9,'zip'),mk('readme.pdf',false,'doc',220e3,'pdf'),mk('save.dat',false,'file',512e3,'dat')]}),
-  'files.clipGet':()=>({paths:[], cut:false}), 'files.clipSet':()=>null,
-  'files.info':a=>({name:a.path.split('\\').pop(), path:a.path, location:HOME+'\\Downloads', dir:false, type:'File', size:12345, files:0, folders:0, created:Date.now()-9e9, modified:Date.now()-1e9, accessed:Date.now()}),
+  'files.clipGet':()=>({paths:[], cut:false}), 'files.clipSet':()=>null, 'files.templates':()=>({templates:[{name:'Letter', file:'Letter.docx', path:'C:\\Templates\\Letter.docx'}]}),
+  'files.props':a=>a.paths.length>1?{multi:true, count:a.paths.length, files:a.paths.length, folders:0, location:HOME+'\\Downloads', items:a.paths.map(p=>({name:base(p), path:p, dir:false})), driveFree:180e9, driveTotal:512e9}
+    :{name:base(a.paths[0]), path:a.paths[0], location:HOME+'\\Downloads', dir:false, isRoot:false, ext:'jpg', kind:'image', type:'JPEG image', size:3355443, disk:3358720, created:Date.now()-9e9, modified:Date.now()-1e9, accessed:Date.now(),
+      readOnly:false, hidden:false, owner:'PC\\you', width:4032, height:3024, app:'Photos', canRename:true, driveFree:180e9, driveTotal:512e9, driveFormat:'NTFS'},
+  'files.count':()=>{ setTimeout(()=>onEvent('files.count',{id:1, size:5e9, files:1234, folders:56, done:true}), 300); return {id:1}; },
+  'files.conflicts':()=>({conflicts:[]}),
 };
 
 // ---------------------------------------------------------------- start
 (async () => {
   render();
   await loadPlaces();
-  const start=new URLSearchParams(location.search).get('path') || (S.places&&S.places.home) || 'C:\\';
-  await openFolder(start, {history:'none'});
+  const q=new URLSearchParams(location.search);
+  const props=q.get('props');
+  const start=q.get('path') || (props?parentOf(props):'') || (S.places&&S.places.home) || 'C:\\';
+  await openFolder(start, {history:'none', focusName:props?base(props):null});
   if(!S.path && S.places && S.places.home && start!==S.places.home) await openFolder(S.places.home, {history:'none'});
+  S.tabs[0].path=S.path;
+  renderTabs();
+  if(props) properties([props]);
+  call('files.templates').then(r=>{ S.templates=(r&&r.templates)||[]; }).catch(()=>{});
   setInterval(() => { if(!document.hidden) loadPlaces(); }, 8000);
 })();
 if(host){ send({type:'ready'}); call('profile.get').then(p=>setAccent(p&&p.accent)).catch(()=>{}); }

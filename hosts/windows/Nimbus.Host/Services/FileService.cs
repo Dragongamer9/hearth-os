@@ -1,22 +1,32 @@
 using System.Collections.Specialized;
 using System.Diagnostics;
+using System.Formats.Tar;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Cryptography;
 using System.Security.Principal;
+using System.Text.RegularExpressions;
 
 namespace Nimbus.Host.Services;
 
 /// <summary>
 /// Hearth Files on Windows (mantel-files.html), like Mantel's file manager on Hearth OS: places (your folders,
 /// game libraries, drives, the Recycle Bin), folder listings, opening with the default app or another one,
-/// copy / cut / paste with progress and cancel, rename, Recycle Bin, delete, new folder and properties.
-/// Thumbnails are served to the page by FilesWindow (https://hearth-files.local/thumb?p=…).
-/// Long copies and moves run in the background and report through events: files.progress and files.done.
+/// copy / cut / paste with progress and cancel (Replace / Skip / Keep both for names already there; replacing a
+/// folder merges into it), rename and batch rename, Recycle Bin, delete, new folder / file / from a template,
+/// compress and extract (zip, tar, tar.gz), search with live results, open a terminal there, and the full
+/// properties panel (size on disk, owner, attributes, picture size, length, default app, checksums, live
+/// folder sizes). Thumbnails are served to the page by FilesWindow (https://hearth-files.local/thumb?p=…).
+/// Long work runs in the background and reports through events: files.progress / files.done (copy, move,
+/// compress, extract), files.count (folder sizes), files.found / files.searchDone (search), files.sumProgress.
 /// </summary>
 public sealed class FileService
 {
     public const string RecyclePath = "recycle:";
     private readonly Action<string, object> _event;
     private readonly Dictionary<int, CancellationTokenSource> _jobs = new();
+    private readonly Dictionary<string, CancellationTokenSource> _sums = new();
     private int _jobId;
 
     public FileService(Action<string, object> raiseEvent) { _event = raiseEvent; }
@@ -256,6 +266,764 @@ public sealed class FileService
         return r == IntPtr.Zero ? null : info.szTypeName;
     }
 
+    // ------------------------------------------------------------------ the full properties panel
+
+    /// <summary>Everything Hearth's Properties panel shows about one item, or a summary of several. Folder sizes
+    /// come separately and live (StartCount), checksums on demand (Checksum).</summary>
+    public async Task<object> Props(string[] paths)
+    {
+        if (paths.Length == 1) return await Task.Run(() => PropsOne(paths[0]));
+        return await Task.Run(() =>
+        {
+            var items = new List<object>();
+            var parents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var types = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int files = 0, folders = 0;
+            foreach (var raw in paths)
+            {
+                string p;
+                try { p = Full(raw); } catch { continue; }
+                bool dir = Directory.Exists(p);
+                if (!dir && !File.Exists(p)) continue;
+                if (dir) folders++; else files++;
+                parents.Add(Path.GetDirectoryName(p) ?? "");
+                types.Add(dir ? "Folder" : TypeName(p) ?? Path.GetExtension(p));
+                items.Add(new { name = Path.GetFileName(p), path = p, dir });
+            }
+            if (items.Count == 0) throw new FileNotFoundException("These aren't there any more");
+            DriveInfo? drive = null;
+            try { drive = new DriveInfo(Path.GetPathRoot(Full(paths[0]))!); } catch { }
+            return (object)new
+            {
+                multi = true, count = items.Count, items, files, folders,
+                location = parents.Count == 1 ? parents.First() : null,
+                type = types.Count == 1 ? types.First() : null,
+                driveFree = drive is { IsReady: true } ? drive.AvailableFreeSpace : (long?)null,
+                driveTotal = drive is { IsReady: true } ? drive.TotalSize : (long?)null,
+            };
+        });
+    }
+
+    private object PropsOne(string raw)
+    {
+        var path = Full(raw);
+        bool dir = Directory.Exists(path);
+        FileSystemInfo fi = dir ? new DirectoryInfo(path) : new FileInfo(path);
+        if (!fi.Exists) throw new FileNotFoundException("It isn't there any more");
+        var root = Path.GetPathRoot(path) ?? "";
+        bool isRoot = dir && string.Equals(root.TrimEnd('\\'), path.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+        long size = dir ? 0 : ((FileInfo)fi).Length;
+        string? target = null;
+        try { target = fi.LinkTarget; } catch { }
+        string? type = dir ? (isRoot ? "Drive" : "File folder") : TypeName(path);
+        string? version = null, company = null, app = null;
+        int? width = null, height = null;
+        double? duration = null;
+        if (!dir)
+        {
+            var ext = fi.Extension.ToLowerInvariant();
+            if (ext is ".exe" or ".dll")
+            {
+                try { var v = FileVersionInfo.GetVersionInfo(path); version = v.FileVersion; company = v.CompanyName; } catch { }
+            }
+            (width, height, duration) = MediaProps(path);
+            app = DefaultAppName(fi.Extension);
+        }
+        DriveInfo? drive = null;
+        try { drive = new DriveInfo(root); } catch { }
+        bool ready = drive is { IsReady: true };
+        return new
+        {
+            name = fi.Name.Length > 0 ? fi.Name : fi.FullName,
+            path = fi.FullName,
+            location = Path.GetDirectoryName(fi.FullName),
+            dir, isRoot,
+            ext = dir ? "" : fi.Extension.TrimStart('.').ToLowerInvariant(),
+            kind = dir ? "folder" : KindOf(fi.Extension.TrimStart('.')),
+            type,
+            size,
+            disk = dir ? (long?)null : SizeOnDisk(path, size),
+            created = ToMs(fi.CreationTimeUtc),
+            modified = ToMs(fi.LastWriteTimeUtc),
+            accessed = ToMs(fi.LastAccessTimeUtc),
+            readOnly = (fi.Attributes & FileAttributes.ReadOnly) != 0,
+            hidden = (fi.Attributes & FileAttributes.Hidden) != 0,
+            system = (fi.Attributes & FileAttributes.System) != 0,
+            owner = Owner(fi),
+            target, width, height, duration, app, version, company,
+            canRename = !isRoot,
+            driveFree = ready ? drive!.AvailableFreeSpace : (long?)null,
+            driveTotal = ready ? drive!.TotalSize : (long?)null,
+            driveFormat = ready ? drive!.DriveFormat : null,
+            driveLabel = ready ? drive!.VolumeLabel : null,
+            driveKind = drive?.DriveType.ToString(),
+        };
+    }
+
+    /// <summary>The space a file really takes (compressed / sparse files less, everything rounded up to clusters).</summary>
+    private static long SizeOnDisk(string path, long size)
+    {
+        try
+        {
+            uint lo = GetCompressedFileSizeW(path, out uint hi);
+            if (lo == 0xFFFFFFFF && Marshal.GetLastWin32Error() != 0) return size;
+            long n = ((long)hi << 32) | lo;
+            var root = Path.GetPathRoot(path);
+            if (root is not null && GetDiskFreeSpaceW(root, out uint spc, out uint bps, out _, out _))
+            {
+                long cluster = (long)spc * bps;
+                if (cluster > 0) n = (n + cluster - 1) / cluster * cluster;
+            }
+            return n;
+        }
+        catch { return size; }
+    }
+
+    private static string? Owner(FileSystemInfo fi)
+    {
+        try
+        {
+            FileSystemSecurity sec = fi is DirectoryInfo d ? d.GetAccessControl(AccessControlSections.Owner) : ((FileInfo)fi).GetAccessControl(AccessControlSections.Owner);
+            return sec.GetOwner(typeof(NTAccount))?.Value;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>A picture's width and height and a song's or video's length, from Windows' property system.</summary>
+    private static (int?, int?, double?) MediaProps(string path)
+    {
+        int? w = null, h = null;
+        double? secs = null;
+        try
+        {
+            var iid = typeof(IPropertyStore).GUID;
+            SHGetPropertyStoreFromParsingName(path, IntPtr.Zero, 0, ref iid, out var store);
+            try
+            {
+                var imageFmt = new Guid("6444048F-4C8B-11D1-8B70-080036B11A03");
+                uint? Read(Guid fmt, uint pid)
+                {
+                    var key = new PROPERTYKEY { fmtid = fmt, pid = pid };
+                    store.GetValue(ref key, out var pv);
+                    try
+                    {
+                        return pv.vt switch { 19 => pv.u4, 21 => (uint)Math.Min(uint.MaxValue, pv.u8 / 10_000_000UL), _ => null };
+                    }
+                    finally { PropVariantClear(ref pv); }
+                }
+                var hw = Read(imageFmt, 3);
+                var hh = Read(imageFmt, 4);
+                if (hw is > 0 && hh is > 0) { w = (int)hw; h = (int)hh; }
+                var d = Read(new Guid("64440490-4C8B-11D1-8B70-080036B11A03"), 3);
+                if (d is > 0) secs = d;
+            }
+            finally { Marshal.ReleaseComObject(store); }
+        }
+        catch { }
+        return (w, h, secs);
+    }
+
+    /// <summary>The app that opens this kind of file ("Photos"), or null.</summary>
+    private static string? DefaultAppName(string ext)
+    {
+        if (string.IsNullOrEmpty(ext)) return null;
+        try
+        {
+            uint len = 0;
+            AssocQueryString(0, 4 /* FRIENDLYAPPNAME */, ext, null, null, ref len);
+            if (len == 0) return null;
+            var sb = new System.Text.StringBuilder((int)len);
+            return AssocQueryString(0, 4, ext, null, sb, ref len) == 0 ? sb.ToString() : null;
+        }
+        catch { return null; }
+    }
+
+    public void SetAttributes(string path, bool? readOnly, bool? hidden)
+    {
+        path = Full(path);
+        if (!File.Exists(path) && !Directory.Exists(path)) throw new FileNotFoundException("It isn't there any more");
+        var a = File.GetAttributes(path);
+        if (readOnly is bool r) a = r ? a | FileAttributes.ReadOnly : a & ~FileAttributes.ReadOnly;
+        if (hidden is bool hd) a = hd ? a | FileAttributes.Hidden : a & ~FileAttributes.Hidden;
+        File.SetAttributes(path, a);
+    }
+
+    /// <summary>Windows' "How do you want to open .x files from now on?" (Always use this app); finishes when it closes.</summary>
+    public Task ChangeDefaultApp(string path, IntPtr owner)
+    {
+        path = Full(path);
+        if (!File.Exists(path)) throw new FileNotFoundException("Only files open with an app");
+        var done = new TaskCompletionSource();
+        var t = new Thread(() =>
+        {
+            try
+            {
+                var info = new OPENASINFO { pcszFile = path, pcszClass = null, oaifInFlags = 0x1 /* ALLOW_REGISTRATION */ | 0x2 /* REGISTER_EXT */ | 0x8 /* FORCE_REGISTRATION: "Always use" ticked */ };
+                SHOpenWithDialog(owner, ref info);
+            }
+            catch (Exception ex) { SystemBridge.Log("files: change default app: " + ex.Message); }
+            done.TrySetResult();
+        }) { IsBackground = true };
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        return done.Task;
+    }
+
+    /// <summary>Adds up folders in the background: files.count events {id, size, files, folders, done}.</summary>
+    public int StartCount(string[] paths)
+    {
+        var cts = new CancellationTokenSource();
+        int id;
+        lock (_jobs) { id = ++_jobId; _jobs[id] = cts; }
+        var ct = cts.Token;
+        _ = Task.Run(() =>
+        {
+            long size = 0;
+            int files = 0, folders = 0;
+            var sw = Stopwatch.StartNew();
+            long last = 0;
+            void Report(bool done) => _event("files.count", new { id, size, files, folders, done });
+            try
+            {
+                foreach (var raw in paths)
+                {
+                    var p = Full(raw);
+                    if (File.Exists(p)) { files++; size += SafeLength(p); continue; }
+                    if (!Directory.Exists(p)) continue;
+                    var opts = new EnumerationOptions { IgnoreInaccessible = true, RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint };
+                    foreach (var i in new DirectoryInfo(p).EnumerateFileSystemInfos("*", opts))
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        if ((i.Attributes & FileAttributes.Directory) != 0) folders++;
+                        else { files++; try { size += ((FileInfo)i).Length; } catch { } }
+                        if (sw.ElapsedMilliseconds - last > 250) { last = sw.ElapsedMilliseconds; Report(false); }
+                    }
+                }
+                Report(true);
+            }
+            catch (OperationCanceledException) { }
+            catch { Report(true); }
+            finally { lock (_jobs) { if (_jobs.Remove(id, out var c)) c.Dispose(); } }
+        });
+        return id;
+    }
+
+    /// <summary>MD5, SHA-1 or SHA-256 of a file (files.sumProgress events on the way). CancelChecksums stops it.</summary>
+    public async Task<object> Checksum(string path, string algo)
+    {
+        path = Full(path);
+        if (!File.Exists(path)) throw new FileNotFoundException("Only files have checksums");
+        algo = algo.ToLowerInvariant().Replace("-", "");
+        if (algo is not ("md5" or "sha1" or "sha256")) throw new ArgumentException("Hearth Files knows MD5, SHA-1 and SHA-256");
+        var key = path + "|" + algo;
+        var cts = new CancellationTokenSource();
+        lock (_sums) { if (_sums.Remove(key, out var old)) old.Cancel(); _sums[key] = cts; }
+        try
+        {
+            return await Task.Run(() =>
+            {
+                using HashAlgorithm h = algo == "md5" ? MD5.Create() : algo == "sha1" ? SHA1.Create() : SHA256.Create();
+                using var s = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16, FileOptions.SequentialScan);
+                var buf = new byte[1 << 20];
+                long done = 0, total = s.Length, last = 0;
+                var sw = Stopwatch.StartNew();
+                int n;
+                while ((n = s.Read(buf, 0, buf.Length)) > 0)
+                {
+                    cts.Token.ThrowIfCancellationRequested();
+                    h.TransformBlock(buf, 0, n, null, 0);
+                    done += n;
+                    if (sw.ElapsedMilliseconds - last > 200) { last = sw.ElapsedMilliseconds; _event("files.sumProgress", new { path, algo, done, total }); }
+                }
+                h.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+                return (object)new { algo, sum = Convert.ToHexString(h.Hash!).ToLowerInvariant() };
+            }, cts.Token);
+        }
+        finally
+        {
+            lock (_sums) { if (_sums.TryGetValue(key, out var c) && c == cts) _sums.Remove(key); }
+            cts.Dispose();
+        }
+    }
+
+    public void CancelChecksums()
+    {
+        lock (_sums) { foreach (var c in _sums.Values) c.Cancel(); }
+    }
+
+    /// <summary>The start of a text file, for the quick preview (Space).</summary>
+    public object Peek(string path)
+    {
+        path = Full(path);
+        var buf = new byte[65536];
+        int n;
+        using (var s = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) n = s.Read(buf, 0, buf.Length);
+        if (Array.IndexOf(buf, (byte)0, 0, Math.Min(n, 8192)) >= 0) throw new InvalidDataException("This isn't a text file");
+        return new { text = System.Text.Encoding.UTF8.GetString(buf, 0, n), more = n == buf.Length };
+    }
+
+    // ------------------------------------------------------------------ new files, batch rename, terminal
+
+    public object NewFile(string dir, string name)
+    {
+        dir = Full(dir);
+        var target = Path.Combine(dir, CheckName(name));
+        if (File.Exists(target) || Directory.Exists(target)) throw new IOException($"There's already something called \"{Path.GetFileName(target)}\" here");
+        using (new FileStream(target, FileMode.CreateNew)) { }
+        return new { path = target, name = Path.GetFileName(target) };
+    }
+
+    /// <summary>Document templates: yours and everyone's (the Templates folders), for New document › …</summary>
+    public object Templates()
+    {
+        var list = new List<object>();
+        foreach (var dir in new[] { Environment.GetFolderPath(Environment.SpecialFolder.Templates), Environment.GetFolderPath(Environment.SpecialFolder.CommonTemplates) })
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) continue;
+                foreach (var f in Directory.EnumerateFiles(dir))
+                {
+                    var n = Path.GetFileName(f);
+                    if (n.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase) || (File.GetAttributes(f) & FileAttributes.Hidden) != 0) continue;
+                    list.Add(new { name = Path.GetFileNameWithoutExtension(f), file = n, path = f });
+                }
+            }
+            catch { }
+        }
+        return new { templates = list };
+    }
+
+    public object FromTemplate(string template, string dir, string? name)
+    {
+        template = Full(template);
+        dir = Full(dir);
+        if (!File.Exists(template)) throw new FileNotFoundException("That template isn't there any more");
+        var target = Unique(Path.Combine(dir, CheckName(string.IsNullOrWhiteSpace(name) ? Path.GetFileName(template) : name)));
+        File.Copy(template, target);
+        File.SetAttributes(target, File.GetAttributes(target) & ~(FileAttributes.ReadOnly | FileAttributes.Hidden | FileAttributes.System));
+        return new { path = target, name = Path.GetFileName(target) };
+    }
+
+    /// <summary>"Holiday #" → Holiday 1.jpg, Holiday 2.jpg… (## pads: 01). Extensions stay.</summary>
+    public object BatchRename(string pattern, string[] paths)
+    {
+        if (!pattern.Contains('#')) pattern += " #";
+        var m = Regex.Match(pattern, "#+");
+        var plan = new List<(string From, string To)>();
+        for (int i = 0; i < paths.Length; i++)
+        {
+            var p = Full(paths[i]);
+            bool dir = Directory.Exists(p);
+            if (!dir && !File.Exists(p)) throw new FileNotFoundException($"\"{Path.GetFileName(p)}\" isn't there any more");
+            var name = CheckName(pattern[..m.Index] + (i + 1).ToString().PadLeft(m.Length, '0') + pattern[(m.Index + m.Length)..] + (dir ? "" : Path.GetExtension(p)));
+            plan.Add((p, Path.Combine(Path.GetDirectoryName(p)!, name)));
+        }
+        var from = new HashSet<string>(plan.Select(x => x.From), StringComparer.OrdinalIgnoreCase);
+        foreach (var (_, to) in plan)
+            if ((File.Exists(to) || Directory.Exists(to)) && !from.Contains(to)) throw new IOException($"There's already something called \"{Path.GetFileName(to)}\" there");
+        var temps = new List<(string Tmp, string From, string To)>();
+        try
+        {
+            foreach (var (f, to) in plan)
+            {
+                var tmp = Path.Combine(Path.GetDirectoryName(f)!, ".hearth-rename-" + Guid.NewGuid().ToString("N")[..8]);
+                if (Directory.Exists(f)) Directory.Move(f, tmp); else File.Move(f, tmp);
+                temps.Add((tmp, f, to));
+            }
+            foreach (var (tmp, _, to) in temps) { if (Directory.Exists(tmp)) Directory.Move(tmp, to); else File.Move(tmp, to); }
+        }
+        catch
+        {
+            foreach (var (tmp, f, _) in temps)
+            {
+                try { if (Directory.Exists(tmp)) Directory.Move(tmp, f); else if (File.Exists(tmp)) File.Move(tmp, f); } catch { }
+            }
+            throw;
+        }
+        return new { paths = plan.Select(x => x.To).ToArray() };
+    }
+
+    /// <summary>Hearth Terminal (or Windows Terminal, or PowerShell) in this folder.</summary>
+    public void Terminal(string path)
+    {
+        path = Full(path);
+        if (!Directory.Exists(path)) path = Path.GetDirectoryName(path) ?? path;
+        if (File.Exists(HearthTerminal.Exe))
+        {
+            var psi = new ProcessStartInfo(HearthTerminal.Exe) { UseShellExecute = false, WorkingDirectory = path };
+            psi.ArgumentList.Add("--cwd");
+            psi.ArgumentList.Add(path);
+            Process.Start(psi)?.Dispose();
+            return;
+        }
+        try
+        {
+            var wt = new ProcessStartInfo("wt.exe") { UseShellExecute = true, WorkingDirectory = path };
+            wt.ArgumentList.Add("-d");
+            wt.ArgumentList.Add(path);
+            Process.Start(wt)?.Dispose();
+        }
+        catch
+        {
+            Process.Start(new ProcessStartInfo("powershell.exe") { UseShellExecute = true, WorkingDirectory = path })?.Dispose();
+        }
+    }
+
+    /// <summary>Text on Windows' clipboard (Copy path). UI thread only.</summary>
+    public void CopyText(string text) { if (!string.IsNullOrEmpty(text)) Clipboard.SetText(text); }
+
+    /// <summary>Safely removes a USB drive or ejects a disc, as Explorer's Eject does.</summary>
+    public void Eject(string drive)
+    {
+        var root = (Path.GetPathRoot(Full(drive)) ?? "").TrimEnd('\\');
+        if (root.Length != 2) throw new ArgumentException("Only drives can be ejected");
+        var shellType = Type.GetTypeFromProgID("Shell.Application") ?? throw new InvalidOperationException("Windows' shell isn't there");
+        dynamic shell = Activator.CreateInstance(shellType)!;
+        dynamic? item = shell.NameSpace(17 /* This PC */)?.ParseName(root);
+        if (item is null) throw new InvalidOperationException("Windows doesn't see that drive");
+        item.InvokeVerb("Eject");
+    }
+
+    // ------------------------------------------------------------------ search, live
+
+    /// <summary>Looks below a folder for names containing the text (or matching * and ?): files.found events with
+    /// the matches as they come, then files.searchDone. Stopped with Cancel(id).</summary>
+    public int StartSearch(string path, string query, bool showHidden)
+    {
+        path = Full(path);
+        query = query.Trim();
+        if (query.Length == 0) throw new ArgumentException("Type something to search for");
+        Regex? wild = query.IndexOfAny(new[] { '*', '?' }) >= 0
+            ? new Regex("^" + Regex.Escape(query).Replace("\\*", ".*").Replace("\\?", ".") + "$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            : null;
+        var cts = new CancellationTokenSource();
+        int id;
+        lock (_jobs) { id = ++_jobId; _jobs[id] = cts; }
+        var ct = cts.Token;
+        _ = Task.Run(() =>
+        {
+            var batch = new List<Entry>();
+            int count = 0;
+            bool truncated = false, cancelled = false;
+            var sw = Stopwatch.StartNew();
+            long last = 0;
+            void Flush() { if (batch.Count == 0) return; _event("files.found", new { id, entries = batch.ToArray() }); batch.Clear(); }
+            try
+            {
+                var opts = new EnumerationOptions { IgnoreInaccessible = true, RecurseSubdirectories = true, AttributesToSkip = showHidden ? FileAttributes.ReparsePoint : FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint };
+                foreach (var i in new DirectoryInfo(path).EnumerateFileSystemInfos("*", opts))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    bool hit = wild is not null ? wild.IsMatch(i.Name) : i.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase);
+                    if (hit)
+                    {
+                        bool isDir = (i.Attributes & FileAttributes.Directory) != 0;
+                        var ext = isDir ? "" : i.Extension.TrimStart('.').ToLowerInvariant();
+                        long size = 0;
+                        try { size = isDir ? 0 : ((FileInfo)i).Length; } catch { }
+                        batch.Add(new Entry(i.Name, i.FullName, isDir, size, ToMs(i.LastWriteTimeUtc), ext, (i.Attributes & FileAttributes.Hidden) != 0, isDir ? "folder" : KindOf(ext)));
+                        if (++count >= 5000) { truncated = true; break; }
+                    }
+                    if (sw.ElapsedMilliseconds - last > 250) { last = sw.ElapsedMilliseconds; Flush(); }
+                }
+            }
+            catch (OperationCanceledException) { cancelled = true; }
+            catch (Exception ex) { SystemBridge.Log("files: search: " + ex.Message); }
+            Flush();
+            lock (_jobs) { if (_jobs.Remove(id, out var c)) c.Dispose(); }
+            _event("files.searchDone", new { id, count, truncated, cancelled });
+        });
+        return id;
+    }
+
+    // ------------------------------------------------------------------ archives
+
+    /// <summary>Packs sources into archive (zip, tar.gz or tar) in the background, with files.progress events.</summary>
+    public int StartCompress(string[] sources, string archive, string fmt)
+    {
+        archive = Full(archive);
+        CheckName(Path.GetFileName(archive));
+        if (File.Exists(archive) || Directory.Exists(archive)) throw new IOException($"There's already something called \"{Path.GetFileName(archive)}\" here");
+        fmt = fmt is "tar.gz" or "tar" ? fmt : "zip";
+        var src = sources.Select(Full).Where(p => File.Exists(p) || Directory.Exists(p)).ToArray();
+        if (src.Length == 0) throw new FileNotFoundException("Nothing to compress");
+        var cts = new CancellationTokenSource();
+        int id;
+        lock (_jobs) { id = ++_jobId; _jobs[id] = cts; }
+        _ = Task.Run(() => RunArchive(id, "compress", cts.Token, archive, (report) => Compress(src, archive, fmt, report, cts.Token)));
+        return id;
+    }
+
+    /// <summary>Unpacks an archive: here = next to it (straight in if it holds one folder, else in a folder named
+    /// after it), otherwise into dest.</summary>
+    public int StartExtract(string archive, string? dest, bool here)
+    {
+        archive = Full(archive);
+        if (!File.Exists(archive)) throw new FileNotFoundException("That archive isn't there any more");
+        var to = here ? null : Full(dest ?? throw new ArgumentException("Where to?"));
+        var cts = new CancellationTokenSource();
+        int id;
+        lock (_jobs) { id = ++_jobId; _jobs[id] = cts; }
+        _ = Task.Run(() => RunArchive(id, "extract", cts.Token, archive, (report) => Extract(archive, to, report, cts.Token)));
+        return id;
+    }
+
+    private delegate void ArchiveReport(long done, long total, string current);
+
+    private void RunArchive(int id, string op, CancellationToken ct, string archive, Func<ArchiveReport, (string Path, List<string> Made)> work)
+    {
+        var sw = Stopwatch.StartNew();
+        long lastReport = -1000;
+        string? error = null, result = null;
+        bool cancelled = false;
+        void Report(long done, long total, string current)
+        {
+            if (sw.ElapsedMilliseconds - lastReport < 200 && done < total) return;
+            lastReport = sw.ElapsedMilliseconds;
+            double secs = Math.Max(0.001, sw.Elapsed.TotalSeconds);
+            _event("files.progress", new { id, op, done, total, count = 0, current, text = (op == "compress" ? "Compressing " : "Unpacking ") + current, bytesPerSec = (long)(done / secs) });
+        }
+        List<string>? made = null;
+        try
+        {
+            Report(0, 0, Path.GetFileName(archive));
+            var r = work(Report);
+            result = r.Path;
+            made = r.Made;
+        }
+        catch (OperationCanceledException) { cancelled = true; }
+        catch (InvalidDataException ex) { error = "The archive is damaged: " + ex.Message; }
+        catch (Exception ex) { error = ex.Message; }
+        lock (_jobs) { if (_jobs.Remove(id, out var cts)) cts.Dispose(); }
+        _event("files.done", new { id, op, ok = error is null && !cancelled, cancelled, error, dest = Path.GetDirectoryName(archive), count = 1, path = result });
+    }
+
+    private static (string, List<string>) Compress(string[] sources, string archive, string fmt, ArchiveReport report, CancellationToken ct)
+    {
+        var files = new List<(string Full, string Name, bool Dir)>();
+        foreach (var s in sources)
+        {
+            var parent = Path.GetDirectoryName(s.TrimEnd('\\')) ?? "";
+            if (Directory.Exists(s))
+            {
+                files.Add((s, Path.GetRelativePath(parent, s).Replace('\\', '/'), true));
+                foreach (var i in new DirectoryInfo(s).EnumerateFileSystemInfos("*", new EnumerationOptions { IgnoreInaccessible = true, RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint }))
+                    files.Add((i.FullName, Path.GetRelativePath(parent, i.FullName).Replace('\\', '/'), (i.Attributes & FileAttributes.Directory) != 0));
+            }
+            else files.Add((s, Path.GetFileName(s), false));
+        }
+        long total = files.Where(f => !f.Dir).Sum(f => SafeLength(f.Full)), done = 0;
+        var part = Path.Combine(Path.GetDirectoryName(archive)!, "." + Path.GetFileName(archive) + ".hearth-part");
+        try
+        {
+            using (var fs = new FileStream(part, FileMode.Create))
+            {
+                if (fmt == "zip")
+                {
+                    using var zip = new ZipArchive(fs, ZipArchiveMode.Create);
+                    foreach (var (full, name, dir) in files)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        if (dir) { zip.CreateEntry(name + "/"); continue; }
+                        var e = zip.CreateEntry(name, CompressionLevel.Optimal);
+                        try { e.LastWriteTime = File.GetLastWriteTime(full); } catch { }
+                        using var es = e.Open();
+                        using var input = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                        CopyWithProgress(input, es, ref done, total, Path.GetFileName(full), report, ct);
+                    }
+                }
+                else
+                {
+                    using Stream outer = fmt == "tar.gz" ? new GZipStream(fs, CompressionLevel.Optimal, leaveOpen: true) : fs;
+                    using var tw = new TarWriter(outer, TarEntryFormat.Pax, leaveOpen: true);
+                    foreach (var (full, name, dir) in files)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        if (dir) { tw.WriteEntry(new PaxTarEntry(TarEntryType.Directory, name + "/")); continue; }
+                        using var input = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                        var counting = new ProgressStream(input, n => { done += n; report(done, total, Path.GetFileName(full)); }, ct);
+                        var te = new PaxTarEntry(TarEntryType.RegularFile, name) { DataStream = counting };
+                        try { te.ModificationTime = File.GetLastWriteTimeUtc(full); } catch { }
+                        tw.WriteEntry(te);
+                    }
+                }
+            }
+            File.Move(part, archive);
+        }
+        catch
+        {
+            try { File.Delete(part); } catch { }
+            throw;
+        }
+        report(total, total, Path.GetFileName(archive));
+        return (archive, new List<string> { archive });
+    }
+
+    private static void CopyWithProgress(Stream input, Stream output, ref long done, long total, string name, ArchiveReport report, CancellationToken ct)
+    {
+        var buf = new byte[1 << 20];
+        int n;
+        while ((n = input.Read(buf, 0, buf.Length)) > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            output.Write(buf, 0, n);
+            done += n;
+            report(done, total, name);
+        }
+    }
+
+    private static string? SafeMember(string name)
+    {
+        var parts = name.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries).Where(x => x != ".").ToArray();
+        if (parts.Length == 0 || parts.Contains("..") || name.StartsWith('/') || name.StartsWith('\\') || parts[0].Contains(':')) return null;
+        return string.Join('/', parts);
+    }
+
+    private static (string, List<string>) Extract(string archive, string? dest, ArchiveReport report, CancellationToken ct)
+    {
+        var lower = archive.ToLowerInvariant();
+        bool isZip = lower.EndsWith(".zip") || lower.EndsWith(".cbz") || lower.EndsWith(".jar") || lower.EndsWith(".apk");
+        bool isTar = lower.EndsWith(".tar") || lower.EndsWith(".tar.gz") || lower.EndsWith(".tgz");
+        if (!isZip && !isTar)
+        {
+            // Everything else through 7-Zip, if it's installed.
+            var seven = new[] { Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86) }
+                .Select(d => Path.Combine(d, "7-Zip", "7z.exe")).FirstOrDefault(File.Exists);
+            if (seven is null) throw new InvalidOperationException("Hearth Files opens .zip, .tar and .tar.gz; install 7-Zip for the others");
+            var outDir = dest ?? Unique(Path.Combine(Path.GetDirectoryName(archive)!, StemOf(Path.GetFileName(archive))));
+            var psi = new ProcessStartInfo(seven) { UseShellExecute = false, CreateNoWindow = true };
+            foreach (var a in new[] { "x", "-y", "-o" + outDir, archive }) psi.ArgumentList.Add(a);
+            using var p = Process.Start(psi)!;
+            while (!p.WaitForExit(200)) { if (ct.IsCancellationRequested) { try { p.Kill(true); } catch { } ct.ThrowIfCancellationRequested(); } }
+            if (p.ExitCode != 0) throw new IOException("7-Zip couldn't unpack it");
+            return (outDir, new List<string>());
+        }
+        // What's inside: the names (safe ones only) and whether it's all in one folder.
+        var names = new List<string>();
+        if (isZip) { using var z = ZipFile.OpenRead(archive); names.AddRange(z.Entries.Select(e => e.FullName)); }
+        else
+        {
+            using var fs = File.OpenRead(archive);
+            using Stream s = lower.EndsWith(".tar") ? fs : new GZipStream(fs, CompressionMode.Decompress);
+            using var tr = new TarReader(s);
+            TarEntry? te;
+            while ((te = tr.GetNextEntry()) is not null) names.Add(te.Name);
+        }
+        var safe = names.Select(SafeMember).Where(x => x is not null).Select(x => x!).ToList();
+        var tops = safe.Select(x => x.Split('/')[0]).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        string root;
+        string? renameTop = null;
+        var parentDir = Path.GetDirectoryName(archive)!;
+        if (dest is null)
+        {
+            bool oneFolder = tops.Count == 1 && safe.Any(x => x.Contains('/') || names.Any(n => n.TrimEnd('/') == tops[0] && n.EndsWith('/')));
+            if (oneFolder)
+            {
+                root = parentDir;
+                var t = Path.Combine(root, tops[0]);
+                if (File.Exists(t) || Directory.Exists(t)) renameTop = Path.GetFileName(Unique(t));
+            }
+            else root = Unique(Path.Combine(parentDir, StemOf(Path.GetFileName(archive))));
+        }
+        else root = dest;
+        var made = new List<string>();
+        bool rootExisted = Directory.Exists(root);
+        Directory.CreateDirectory(root);
+        if (!rootExisted) made.Add(root);
+        var rootFull = Path.GetFullPath(root).TrimEnd('\\') + "\\";
+        string? Place(string name)
+        {
+            var m = SafeMember(name);
+            if (m is null) return null;
+            if (renameTop is not null) { var rest = m.Contains('/') ? m[(m.IndexOf('/') + 1)..] : ""; m = renameTop + (rest.Length > 0 ? "/" + rest : ""); }
+            var full = Path.GetFullPath(Path.Combine(root, m.Replace('/', '\\')));
+            if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) return null;
+            var top = Path.Combine(root, m.Split('/')[0]);
+            if (rootExisted && !made.Contains(top) && !File.Exists(top) && !Directory.Exists(top)) made.Add(top);
+            return full;
+        }
+        try
+        {
+            if (isZip)
+            {
+                using var z = ZipFile.OpenRead(archive);
+                long total = z.Entries.Sum(e => e.Length), done = 0;
+                foreach (var e in z.Entries)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var full = Place(e.FullName);
+                    if (full is null) continue;
+                    if (e.FullName.EndsWith('/') || e.FullName.EndsWith('\\')) { Directory.CreateDirectory(full); continue; }
+                    Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                    using (var input = e.Open())
+                    using (var output = new FileStream(full, FileMode.Create))
+                        CopyWithProgress(input, output, ref done, total, e.Name, report, ct);
+                    try { File.SetLastWriteTime(full, e.LastWriteTime.DateTime); } catch { }
+                }
+            }
+            else
+            {
+                using var fs = File.OpenRead(archive);
+                long total = fs.Length;
+                var counting = new ProgressStream(fs, _ => report(fs.Position, total, Path.GetFileName(archive)), ct);
+                using Stream s = lower.EndsWith(".tar") ? counting : new GZipStream(counting, CompressionMode.Decompress);
+                using var tr = new TarReader(s);
+                TarEntry? e;
+                while ((e = tr.GetNextEntry()) is not null)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var full = Place(e.Name);
+                    if (full is null) continue;
+                    if (e.EntryType == TarEntryType.Directory) { Directory.CreateDirectory(full); continue; }
+                    if (e.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile or TarEntryType.ContiguousFile) || e.DataStream is null) continue;
+                    Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                    using (var output = new FileStream(full, FileMode.Create)) e.DataStream.CopyTo(output);
+                    try { File.SetLastWriteTimeUtc(full, e.ModificationTime.UtcDateTime); } catch { }
+                }
+            }
+        }
+        catch
+        {
+            for (int i = made.Count - 1; i >= 0; i--) { try { DeleteAny(made[i]); } catch { } }
+            throw;
+        }
+        var result = dest is null && root == parentDir ? Path.Combine(root, renameTop ?? tops.FirstOrDefault() ?? "") : root;
+        return (result, made);
+    }
+
+    private static string StemOf(string name)
+    {
+        foreach (var x in new[] { ".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar", ".cbz", ".cbr", ".jar", ".apk", ".xz", ".gz", ".bz2", ".zst", ".iso" })
+            if (name.EndsWith(x, StringComparison.OrdinalIgnoreCase) && name.Length > x.Length) return name[..^x.Length];
+        return Path.GetFileNameWithoutExtension(name);
+    }
+
+    /// <summary>A read-only stream that reports how much was read and stops when cancelled.</summary>
+    private sealed class ProgressStream : Stream
+    {
+        private readonly Stream _inner;
+        private readonly Action<int> _read;
+        private readonly CancellationToken _ct;
+        public ProgressStream(Stream inner, Action<int> read, CancellationToken ct) { _inner = inner; _read = read; _ct = ct; }
+        public override bool CanRead => true;
+        public override bool CanSeek => _inner.CanSeek;
+        public override bool CanWrite => false;
+        public override long Length => _inner.Length;
+        public override long Position { get => _inner.Position; set => _inner.Position = value; }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            _ct.ThrowIfCancellationRequested();
+            int n = _inner.Read(buffer, offset, count);
+            if (n > 0) _read(n);
+            return n;
+        }
+        public override long Seek(long offset, SeekOrigin origin) => _inner.Seek(offset, origin);
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     // ------------------------------------------------------------------ simple changes
 
     public object NewFolder(string parent, string? name)
@@ -408,7 +1176,7 @@ public sealed class FileService
     // ------------------------------------------------------------------ copy and move, with progress
 
     /// <summary>Starts copying (or moving) into a folder. Returns the job id; progress comes as events.</summary>
-    public int StartTransfer(string[] sources, string destDir, bool move)
+    public int StartTransfer(string[] sources, string destDir, bool move, Dictionary<string, string>? decide = null, string? fallback = null)
     {
         destDir = Full(destDir);
         if (!Directory.Exists(destDir)) throw new DirectoryNotFoundException("The folder to paste into isn't there");
@@ -423,7 +1191,9 @@ public sealed class FileService
         var cts = new CancellationTokenSource();
         int id;
         lock (_jobs) { id = ++_jobId; _jobs[id] = cts; }
-        _ = Task.Run(() => RunTransfer(id, src, destDir, move, cts.Token));
+        var d = decide ?? new Dictionary<string, string>();
+        var f = fallback is "replace" or "skip" ? fallback : "rename";
+        _ = Task.Run(() => RunTransfer(id, src, destDir, move, cts.Token, d, f));
         return id;
     }
 
@@ -433,7 +1203,7 @@ public sealed class FileService
         return false;
     }
 
-    private void RunTransfer(int id, string[] sources, string destDir, bool move, CancellationToken ct)
+    private void RunTransfer(int id, string[] sources, string destDir, bool move, CancellationToken ct, Dictionary<string, string> decide, string fallback)
     {
         string verb = move ? "Moving" : "Copying";
         long total = 0, done = 0;
@@ -442,6 +1212,7 @@ public sealed class FileService
         long lastReport = -1000;
         string? error = null;
         bool cancelled = false;
+        int skipped = 0;
         var created = new List<string>();
         void Report(string current, bool force = false)
         {
@@ -469,13 +1240,38 @@ public sealed class FileService
                 var name = Path.GetFileName(s.TrimEnd('\\'));
                 if (string.IsNullOrEmpty(name)) name = s.TrimEnd('\\', ':');   // a whole drive: a folder named after it
                 var target = Path.Combine(destDir, name);
-                // Pasting into the same folder (or over something with that name) keeps both: "name (2)".
+                // Pasting into the same folder keeps both: "name (2)". Something else with that name: what the
+                // page decided (Replace merges folders, Skip, Keep both).
                 if (string.Equals(Path.GetFullPath(s).TrimEnd('\\'), Path.GetFullPath(target).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
                 {
                     if (move) continue;   // moving into where it already is: nothing to do
                     target = Unique(target);
                 }
-                else target = Unique(target);
+                else if (File.Exists(target) || Directory.Exists(target))
+                {
+                    var choice = decide.TryGetValue(name, out var c) ? c : fallback;
+                    if (choice == "skip") { skipped++; continue; }
+                    if (choice == "replace")
+                    {
+                        bool srcDir = Directory.Exists(s), dstDir = Directory.Exists(target);
+                        if (srcDir && dstDir)
+                        {
+                            MergeDir(s, target, move, rename, ref done, ref count, ct, Report);
+                            count++;
+                            continue;
+                        }
+                        if (!srcDir && !dstDir && !rename)
+                        {
+                            // A file over a file: written next to it and swapped in, so stopping keeps the old one.
+                            CopyFileReplace(s, target, ref done, ct, Report);
+                            count++;
+                            if (move) { File.SetAttributes(s, FileAttributes.Normal); File.Delete(s); }
+                            continue;
+                        }
+                        DeleteAny(target);
+                    }
+                    else target = Unique(target);
+                }
                 if (rename)
                 {
                     if (Directory.Exists(s)) Directory.Move(s, target); else File.Move(s, target);
@@ -507,8 +1303,86 @@ public sealed class FileService
         }
         lock (_jobs) { if (_jobs.Remove(id, out var cts)) cts.Dispose(); }
         Report("", true);
-        _event("files.done", new { id, op = move ? "move" : "copy", ok = error is null && !cancelled, cancelled, error, dest = destDir, count });
+        _event("files.done", new { id, op = move ? "move" : "copy", ok = error is null && !cancelled, cancelled, error, dest = destDir, count, skipped });
     }
+
+    /// <summary>Puts the folder src into the folder dst that's there already: new things go in, clashing files are
+    /// replaced, clashing folders merged the same way. rename: moving on the same drive (instant moves).</summary>
+    private static void MergeDir(string src, string dst, bool move, bool rename, ref long done, ref int count, CancellationToken ct, ReportFn report)
+    {
+        Directory.CreateDirectory(dst);
+        foreach (var d in Directory.EnumerateDirectories(src))
+        {
+            ct.ThrowIfCancellationRequested();
+            if ((File.GetAttributes(d) & FileAttributes.ReparsePoint) != 0) continue;
+            var t = Path.Combine(dst, Path.GetFileName(d));
+            if (File.Exists(t)) DeleteAny(t);
+            if (Directory.Exists(t)) MergeDir(d, t, move, rename, ref done, ref count, ct, report);
+            else if (move && rename) Directory.Move(d, t);
+            else CopyDir(d, t, ref done, ref count, ct, report);
+        }
+        foreach (var f in Directory.EnumerateFiles(src))
+        {
+            ct.ThrowIfCancellationRequested();
+            var t = Path.Combine(dst, Path.GetFileName(f));
+            if (Directory.Exists(t)) DeleteAny(t);
+            if (move && rename)
+            {
+                if (File.Exists(t)) File.SetAttributes(t, FileAttributes.Normal);
+                File.Move(f, t, true);
+            }
+            else CopyFileReplace(f, t, ref done, ct, report);
+            count++;
+        }
+        if (move)
+        {
+            try { ClearReadOnly(src); Directory.Delete(src, true); } catch { }
+        }
+    }
+
+    private static void CopyFileReplace(string src, string dst, ref long done, CancellationToken ct, ReportFn report)
+    {
+        if (!File.Exists(dst)) { CopyFile(src, dst, ref done, ct, report); return; }
+        var part = Path.Combine(Path.GetDirectoryName(dst)!, "." + Path.GetFileName(dst) + ".hearth-part");
+        if (File.Exists(part)) File.Delete(part);
+        CopyFile(src, part, ref done, ct, report);
+        File.SetAttributes(dst, FileAttributes.Normal);
+        File.Move(part, dst, true);
+    }
+
+    private static void DeleteAny(string p)
+    {
+        if (Directory.Exists(p)) { ClearReadOnly(p); Directory.Delete(p, true); }
+        else if (File.Exists(p)) { File.SetAttributes(p, FileAttributes.Normal); File.Delete(p); }
+    }
+
+    /// <summary>What's already in destDir with the same name as something about to go there.</summary>
+    public object Conflicts(string[] sources, string destDir)
+    {
+        destDir = Full(destDir);
+        var list = new List<object>();
+        foreach (var raw in sources)
+        {
+            string s;
+            try { s = Full(raw); } catch { continue; }
+            var name = Path.GetFileName(s.TrimEnd('\\'));
+            if (string.IsNullOrEmpty(name)) continue;
+            if (string.Equals((Path.GetDirectoryName(s.TrimEnd('\\')) ?? "").TrimEnd('\\'), destDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) continue;
+            var t = Path.Combine(destDir, name);
+            bool tDir = Directory.Exists(t), sDir = Directory.Exists(s);
+            if (!tDir && !File.Exists(t)) continue;
+            list.Add(new
+            {
+                name, src = s, target = t, srcDir = sDir, targetDir = tDir,
+                srcSize = sDir ? 0 : SafeLength(s), targetSize = tDir ? 0 : SafeLength(t),
+                srcModified = ToMs(sDir ? Directory.GetLastWriteTimeUtc(s) : File.GetLastWriteTimeUtc(s)),
+                targetModified = ToMs(tDir ? Directory.GetLastWriteTimeUtc(t) : File.GetLastWriteTimeUtc(t)),
+            });
+        }
+        return new { conflicts = list, dest = destDir };
+    }
+
+    private static long SafeLength(string p) { try { return new FileInfo(p).Length; } catch { return 0; } }
 
     private static long SizeOf(string path, CancellationToken ct)
     {
@@ -755,6 +1629,35 @@ public sealed class FileService
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string szTypeName;
     }
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SHGetFileInfo(string path, uint attrs, ref SHFILEINFO info, uint size, uint flags);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern uint GetCompressedFileSizeW(string name, out uint high);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetDiskFreeSpaceW(string root, out uint sectorsPerCluster, out uint bytesPerSector, out uint freeClusters, out uint totalClusters);
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)] private static extern int AssocQueryString(uint flags, int str, string assoc, string? extra, System.Text.StringBuilder? outStr, ref uint outLen);
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct PROPERTYKEY { public Guid fmtid; public uint pid; }
+    // PROPVARIANT, enough of it for numbers (VT_UI4 = 19, VT_UI8 = 21); 24 bytes on 64-bit.
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
+    private struct PROPVARIANT
+    {
+        [FieldOffset(0)] public ushort vt;
+        [FieldOffset(8)] public uint u4;
+        [FieldOffset(8)] public ulong u8;
+    }
+    [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPropertyStore
+    {
+        void GetCount(out uint count);
+        void GetAt(uint index, out PROPERTYKEY key);
+        void GetValue(ref PROPERTYKEY key, out PROPVARIANT value);
+        void SetValue(ref PROPERTYKEY key, ref PROPVARIANT value);
+        void Commit();
+    }
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    private static extern void SHGetPropertyStoreFromParsingName(string path, IntPtr bindCtx, int flags, ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
+    [DllImport("ole32.dll")] private static extern int PropVariantClear(ref PROPVARIANT pv);
 
     [DllImport("shell32.dll")] private static extern int SHGetKnownFolderPath([MarshalAs(UnmanagedType.LPStruct)] Guid id, uint flags, IntPtr token, out IntPtr path);
 }

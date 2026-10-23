@@ -12,9 +12,31 @@
   hearth-files copy SRC... DEST         copy into the folder DEST     } print "progress: {json}" lines while
   hearth-files move SRC... DEST         move into the folder DEST     } working, then the final JSON line
   hearth-files info PATH                details, with the total size of a folder
-  hearth-files apps PATH                apps that can open it (and which one is the default)
+  hearth-files apps PATH [--all]        apps that can open it (and which one is the default); --all: any app that opens files
   hearth-files open PATH [APP_ID]       open with the default app, or with APP_ID (a .desktop id)
   hearth-files eject PATH               safely remove the USB drive / SD card mounted at PATH
+  hearth-files mount DEVICE / unmount PATH   mount a plugged-in drive (prints its path) / unmount it
+  hearth-files props PATH...            everything the Properties window shows (several: a summary)
+  hearth-files count PATH...            folder sizes, adding up live ("progress: {size, disk, files, folders}")
+  hearth-files checksum ALGO PATH       md5 | sha1 | sha256 | sha512, with progress lines
+  hearth-files chmod PATH MODE          permissions as an octal number (755)
+  hearth-files set-default PATH APP_ID  the app that opens this kind of file from now on
+  hearth-files conflicts SRC... DEST    what's already in DEST with the same names
+  hearth-files copy|move SRC... DEST [--decide JSON] [--default rename|replace|skip]
+                                        {name: replace|skip|rename} for names already there (replace merges folders)
+  hearth-files new-file PATH            an empty file
+  hearth-files templates                your document templates (~/Templates)
+  hearth-files from-template TEMPLATE FOLDER [NAME]
+  hearth-files batch-rename PATTERN PATH...   "Holiday #" → Holiday 1.jpg, Holiday 2.jpg…
+  hearth-files compress zip|tar.gz|tar.xz|tar ARCHIVE SRC...    } progress lines like copy, stop
+  hearth-files extract ARCHIVE DEST | extract ARCHIVE --here    } cleanly on SIGTERM
+  hearth-files search PATH QUERY [--hidden]    "found: {entry}" lines below PATH (stops on SIGTERM)
+  hearth-files bookmarks | bookmark-add PATH [LABEL] | bookmark-remove PATH   (GTK's bookmarks file)
+  hearth-files prefs | prefs-set JSON   Hearth Files' settings (~/.config/nimbus/files.json)
+  hearth-files clip-set copy|cut PATH... | clip-get    files on the system clipboard (wl-copy / wl-paste)
+  hearth-files peek PATH                the start of a text file (quick preview)
+  hearth-files thumbs PATH...           make missing video thumbnails (ffmpegthumbnailer or ffmpeg)
+  hearth-files terminal PATH            open Hearth Terminal there
 
 Output is one JSON line; failures print "error: ..." and exit 1. Anything that changes files only works in
 your home folder, on USB drives and SD cards (/run/media/$USER, /media/$USER) and in /tmp; listing,
@@ -466,7 +488,7 @@ def drives():
             kind, sub = drive_kind(m.get(p, ''))
             free, total = free_space(p)
             out.append({'id': 'drive:' + p, 'label': name, 'path': p, 'kind': kind, 'sub': sub, 'section': 'drives',
-                        'free': free, 'total': total, 'removable': True})
+                        'free': free, 'total': total, 'removable': True, 'mounted': True})
     return out
 
 
@@ -503,7 +525,9 @@ def places():
             label = 'Steam games (' + (os.path.basename(lib.rstrip('/')) or lib) + ')'
         out.append({'id': 'steam:' + lib, 'label': label, 'path': os.path.join(lib, 'steamapps', 'common'),
                     'kind': 'games', 'section': 'games'})
+    out += bookmark_places()
     out += dl
+    out += unmounted_drives()
     tf = os.path.join(home_trash(), 'files')
     try:
         count = len(os.listdir(tf))
@@ -715,13 +739,105 @@ def human(n):
         n /= 1024.0
 
 
-def transfer(srcs, dest, move):
+def merge_tree(src, dst, prog, sync, move, state):
+    """Put the folder src into the folder dst that's already there: what isn't there yet goes in (moved by a
+    rename on the same drive), clashing files are replaced, clashing folders are merged the same way."""
+    try:
+        names = os.listdir(src)
+    except OSError as e:
+        raise Fail(friendly(e, src))
+    for name in names:
+        s, d = os.path.join(src, name), os.path.join(dst, name)
+        s_dir = os.path.isdir(s) and not os.path.islink(s)
+        if lexists(d):
+            if s_dir and os.path.isdir(d) and not os.path.islink(d):
+                merge_tree(s, d, prog, sync, move, state)
+                continue
+            replace_item(s, d, prog, sync, move, state)
+            continue
+        put_item(s, d, prog, sync, move, state)
+    if move:
+        try:
+            os.rmdir(src)
+        except OSError:
+            pass
+
+
+def put_item(s, d, prog, sync, move, state):
+    """s to the free spot d: a rename when moving on the same drive, else a copy (then s is removed)."""
+    prog.file = os.path.basename(s)
+    if move and same_device(s, os.path.dirname(d)):
+        size = tree_size(s)[0]
+        try:
+            os.rename(s, d)
+            prog.tick(size)
+            return
+        except OSError as e:
+            if e.errno != errno.EXDEV:
+                raise
+    state['current'] = d
+    copy_tree(s, d, prog, sync)
+    state['current'] = None
+    if move:
+        remove(s)
+
+
+def replace_item(s, d, prog, sync, move, state):
+    """s in place of d. A file is written next to it first and swapped in at the end, so stopping halfway
+    leaves the old one."""
+    s_dir = os.path.isdir(s) and not os.path.islink(s)
+    if not s_dir and not (os.path.isdir(d) and not os.path.islink(d)):
+        part = os.path.join(os.path.dirname(d), '.' + os.path.basename(d) + '.hearth-part')
+        if lexists(part):
+            remove(part)
+        if move and same_device(s, os.path.dirname(d)):
+            prog.file = os.path.basename(s)
+            os.replace(s, d)
+            prog.tick(tree_size(d)[0])
+            return
+        state['current'] = part
+        copy_tree(s, part, prog, sync)
+        os.replace(part, d)
+        state['current'] = None
+        if move:
+            remove(s)
+        return
+    remove(d)
+    put_item(s, d, prog, sync, move, state)
+
+
+def conflicts(srcs, dest):
+    """What's already in dest with the same name as something about to go there (nothing for items that are
+    already in dest: pasting there makes a copy named "name (2)")."""
+    d = norm(dest)
+    out = []
+    for s in srcs:
+        src = norm(s)
+        if not lexists(src) or os.path.realpath(os.path.dirname(src)) == os.path.realpath(d):
+            continue
+        target = os.path.join(d, os.path.basename(src))
+        if not lexists(target):
+            continue
+        a, b = entry(src, os.path.basename(src)), entry(target, os.path.basename(target))
+        if not a or not b:
+            continue
+        out.append({'name': a['name'], 'src': src, 'target': target, 'srcDir': a['dir'], 'targetDir': b['dir'],
+                    'srcSize': a['size'], 'targetSize': b['size'], 'srcMtime': a['mtime'], 'targetMtime': b['mtime']})
+    return {'conflicts': out, 'dest': d}
+
+
+def transfer(srcs, dest, move, decide=None, default='rename'):
+    """Copy or move srcs into the folder dest. decide: {name: 'replace' | 'skip' | 'rename'} for names that are
+    already there (anything not listed gets default; 'rename' keeps both: "name (2)"). Replacing a folder
+    merges into it, replacing the files that clash."""
+    decide = decide or {}
     d = check_writable(dest, allow_root=True)
     if not os.path.isdir(d):
         raise Fail('The place to copy to has to be a folder')
     if not os.access(d, os.W_OK):
         raise Fail("You don't have permission to put things in “" + os.path.basename(d) + '”')
-    plan = []                          # (src, target, by_rename, bytes)
+    plan = []                          # [src, target, how, bytes]  how: rename | copy | replace | merge
+    skipped = []
     for s in srcs:
         src = check_writable(s) if move else norm(s)
         if not lexists(src):
@@ -729,18 +845,34 @@ def transfer(srcs, dest, move):
         rs, rd = os.path.realpath(src), os.path.realpath(d)
         if os.path.isdir(src) and not os.path.islink(src) and under(rd, rs):
             raise Fail("A folder can't go inside itself")
-        if move and os.path.realpath(os.path.dirname(src)) == rd:
+        here = os.path.realpath(os.path.dirname(src)) == rd
+        if move and here:
             continue                   # already there
-        rename_ok = move and same_device(src, d)
+        target = os.path.join(d, os.path.basename(src))
+        how = 'rename' if move and same_device(src, d) else 'copy'
+        if lexists(target):
+            choice = 'rename' if here else decide.get(os.path.basename(src), default)
+            if choice == 'skip':
+                skipped.append(src)
+                continue
+            if choice == 'replace':
+                both_dirs = (os.path.isdir(src) and not os.path.islink(src)
+                             and os.path.isdir(target) and not os.path.islink(target))
+                how = 'merge' if both_dirs else 'replace'
+            else:
+                target = unique(target)
         size = tree_size(src)[0]
-        plan.append([src, os.path.join(d, os.path.basename(src)), rename_ok, size])
-    need = sum(p[3] for p in plan if not p[2])
+        plan.append([src, target, how, size])
+    need = sum(p[3] for p in plan if p[2] != 'rename')
+    if move:
+        need = sum(p[3] for p in plan if not same_device(p[0], d))
     free, _ = free_space(d)
     if free is not None and need > free:
         raise Fail('Not enough space: this needs %s and there is %s free' % (human(need), human(free)))
     prog = Progress(sum(p[3] for p in plan), len(plan))
     sync = any(under(os.path.realpath(d), os.path.realpath(b)) for b in media_bases())
-    finished, current = [], None
+    finished = []
+    state = {'current': None}
 
     def stop(*_):
         raise Cancelled()
@@ -749,45 +881,57 @@ def transfer(srcs, dest, move):
     prog.tick(0, force=True)
     try:
         for i, item in enumerate(plan):
-            src, target, by_rename, size = item
+            src, target, how, size = item
             prog.item = i + 1
-            target = item[1] = unique(target)
-            if by_rename:
-                prog.file = os.path.basename(src)
+            prog.file = os.path.basename(src)
+            if how == 'rename':
+                if lexists(target):
+                    target = item[1] = unique(target)
                 try:
                     os.rename(src, target)
                     prog.tick(size, force=True)
+                    finished.append(target)
+                    continue
                 except OSError as e:
                     # The same drive mounted in two places (a bind mount): it can't be renamed across, so copy.
                     if e.errno != errno.EXDEV:
                         raise
-                    by_rename = False
-            if not by_rename:
-                current = target
+                    how = 'copy'
+            if how == 'copy':
+                if lexists(target):
+                    target = item[1] = unique(target)
+                state['current'] = target
                 copy_tree(src, target, prog, sync)
-                current = None
+                state['current'] = None
                 if move:
                     remove(src)
+            elif how == 'replace':
+                replace_item(src, target, prog, sync, move, state)
+            elif how == 'merge':
+                merge_tree(src, target, prog, sync, move, state)
             finished.append(target)
         prog.tick(0, force=True)
     except Cancelled:
-        if current and lexists(current):
+        cur = state['current']
+        if cur and lexists(cur):
             try:
-                remove(current)
+                remove(cur)
             except OSError:
                 pass
         return {'cancelled': True, 'items': finished}
     except OSError as e:
-        if current and lexists(current):
+        cur = state['current']
+        if cur and lexists(cur):
             try:
-                remove(current)
+                remove(cur)
             except OSError:
                 pass
-        raise Fail(friendly(e, e.filename or current))
+        raise Fail(friendly(e, e.filename or cur))
     finally:
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         signal.signal(signal.SIGINT, signal.SIG_DFL)
-    return {'ok': True, 'items': finished, 'bytes': prog.total, 'seconds': round(time.monotonic() - prog.start, 2)}
+    return {'ok': True, 'items': finished, 'skipped': skipped, 'bytes': prog.total,
+            'seconds': round(time.monotonic() - prog.start, 2)}
 
 
 # ---------------------------------------------------------------------- details
@@ -926,7 +1070,8 @@ def mimeapps(mime):
     return defaults, added, removed
 
 
-def apps(path):
+def apps(path, everything=False):
+    """Apps that say they open this kind of file, the default first; everything: every app (Open with › Other…)."""
     p = os.path.abspath(os.path.expanduser(path))
     mime = sniff_mime(p)
     entries = desktop_entries()
@@ -950,6 +1095,8 @@ def apps(path):
     for did, (_, fields) in sorted(entries.items(), key=lambda kv: (kv[1][1].get('Name') or kv[0]).lower()):
         types = [t for t in fields.get('MimeType', '').split(';') if t]
         hit = mime in types or major in types or (mime.startswith('text/') and 'text/plain' in types)
+        if everything and '%' in fields.get('Exec', '') and re.search(r'%[fFuU]', fields.get('Exec', '')):
+            hit = True
         if hit and (fields.get('NoDisplay', '').lower() != 'true'):
             add(did, fields)
     for a in out:
@@ -1067,10 +1214,1096 @@ def eject(path):
     raise Fail("Couldn't remove the drive" + (': ' + msg.splitlines()[-1] if msg else ''))
 
 
+# ---------------------------------------------------------------------- properties
+def mime_comment(mime):
+    """The plain-words name of a type ("PNG image") from the shared MIME database, or ''."""
+    if not mime or '/' not in mime:
+        return ''
+    for d in data_dirs():
+        f = os.path.join(d, 'mime', mime + '.xml')
+        try:
+            with open(f, encoding='utf-8', errors='replace') as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        m = re.search(r'<comment>([^<]*)</comment>', text)
+        if m:
+            return m.group(1).strip()
+    return ''
+
+
+GENERIC_ICONS = (('image/', 'image-x-generic'), ('video/', 'video-x-generic'), ('audio/', 'audio-x-generic'),
+                 ('text/', 'text-x-generic'), ('font/', 'font-x-generic'))
+
+
+def icon_names(mime, isdir=False):
+    """(theme icon name, its generic fallback) for a type, the way file managers pick them."""
+    if isdir:
+        return 'folder', 'inode-directory'
+    generic = next((g for pre, g in GENERIC_ICONS if mime.startswith(pre)), '')
+    if not generic:
+        if re.search(r'zip|x-7z|rar|x-tar|gzip|x-xz|zstd|bzip|compressed', mime):
+            generic = 'package-x-generic'
+        elif re.search(r'executable|x-msi|appimage|x-shellscript', mime):
+            generic = 'application-x-executable'
+        elif re.search(r'pdf|document|msword|opendocument|epub', mime):
+            generic = 'x-office-document'
+        else:
+            generic = 'text-x-generic'
+    return mime.replace('/', '-'), generic
+
+
+def birth_time(p):
+    """When the file was made, if the drive keeps that (statx through coreutils' stat), else None."""
+    try:
+        r = subprocess.run(['stat', '-c', '%W', '--', p], capture_output=True, text=True, timeout=3)
+        v = int(r.stdout.strip() or 0)
+        return v if v > 0 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+def image_size(p):
+    """(width, height) read from a picture's header (PNG, GIF, JPEG, BMP, WebP), or None. Cheap: no decoding."""
+    try:
+        with open(p, 'rb') as f:
+            head = f.read(64)
+            if head[:8] == b'\x89PNG\r\n\x1a\n' and head[12:16] == b'IHDR':
+                return int.from_bytes(head[16:20], 'big'), int.from_bytes(head[20:24], 'big')
+            if head[:6] in (b'GIF87a', b'GIF89a'):
+                return int.from_bytes(head[6:8], 'little'), int.from_bytes(head[8:10], 'little')
+            if head[:2] == b'BM' and len(head) >= 26:
+                return int.from_bytes(head[18:22], 'little', signed=True), abs(int.from_bytes(head[22:26], 'little', signed=True))
+            if head[:4] == b'RIFF' and head[8:12] == b'WEBP':
+                kind = head[12:16]
+                if kind == b'VP8X':
+                    return 1 + int.from_bytes(head[24:27], 'little'), 1 + int.from_bytes(head[27:30], 'little')
+                if kind == b'VP8 ':
+                    return int.from_bytes(head[26:28], 'little') & 0x3fff, int.from_bytes(head[28:30], 'little') & 0x3fff
+                if kind == b'VP8L':
+                    b = head[21:25]
+                    return 1 + (((b[1] & 0x3f) << 8) | b[0]), 1 + (((b[3] & 0xf) << 10) | (b[2] << 2) | ((b[1] & 0xc0) >> 6))
+                return None
+            if head[:2] == b'\xff\xd8':
+                f.seek(2)
+                while True:
+                    m = f.read(2)
+                    if len(m) < 2 or m[0] != 0xff:
+                        return None
+                    marker = m[1]
+                    if marker in (0xd8, 0x01) or 0xd0 <= marker <= 0xd7:
+                        continue
+                    ln = int.from_bytes(f.read(2), 'big')
+                    if marker in (0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf):
+                        seg = f.read(5)
+                        return int.from_bytes(seg[3:5], 'big'), int.from_bytes(seg[1:3], 'big')
+                    if ln < 2:
+                        return None
+                    f.seek(ln - 2, 1)
+    except OSError:
+        pass
+    return None
+
+
+def media_duration(p):
+    """Seconds of audio or video, if ffprobe is installed (and answers quickly), else None."""
+    if not shutil.which('ffprobe'):
+        return None
+    try:
+        r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', '--', p],
+                           capture_output=True, text=True, timeout=4)
+        v = float(r.stdout.strip().splitlines()[0])
+        return round(v, 2) if v > 0 else None
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        return None
+
+
+def mount_info(p):
+    """(mount point, device, filesystem type) of the drive p is on."""
+    mp = mount_point(p)
+    dev = fs = ''
+    try:
+        with open('/proc/mounts') as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3 and re.sub(r'\\([0-7]{3})', lambda x: chr(int(x.group(1), 8)), parts[1]) == mp:
+                    dev, fs = parts[0], parts[2]
+    except OSError:
+        pass
+    return mp, dev, fs
+
+
+def group_name(gid):
+    try:
+        import grp
+        return grp.getgrgid(gid).gr_name
+    except (KeyError, ImportError):
+        return str(gid)
+
+
+def default_app(mime):
+    entries = desktop_entries()
+    defaults, _, _ = mimeapps(mime)
+    did = next((d for d in defaults if d in entries and usable(entries[d][1])), None)
+    if not did and shutil.which('gio'):
+        # No choice in mimeapps.list: what GLib would pick (its own rules, e.g. the type's parent).
+        try:
+            r = subprocess.run(['gio', 'mime', mime], capture_output=True, text=True, timeout=3)
+            m = re.search(r"Default application for .*?:\s*(\S+\.desktop)", r.stdout)
+            if m and m.group(1) in entries:
+                did = m.group(1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if not did:
+        return None
+    f = entries[did][1]
+    return {'id': did, 'name': f.get('Name') or did[:-8], 'icon': f.get('Icon', '')}
+
+
+def props_one(path):
+    p = os.path.abspath(os.path.expanduser(path))
+    try:
+        lst = os.lstat(p)
+    except OSError as e:
+        raise Fail(friendly(e, p))
+    link = stat.S_ISLNK(lst.st_mode)
+    broken = False
+    st = lst
+    if link:
+        try:
+            st = os.stat(p)
+        except OSError:
+            broken = True
+    isdir = stat.S_ISDIR(st.st_mode)
+    mime = 'inode/symlink' if broken else sniff_mime(p)
+    icon, generic = icon_names(mime, isdir)
+    try:
+        owner = pwd.getpwuid(st.st_uid).pw_name
+    except KeyError:
+        owner = str(st.st_uid)
+    mp, dev, fs = mount_info(p if isdir else os.path.dirname(p))
+    free, total = free_space(p if isdir else os.path.dirname(p))
+    parent_ok = os.access(os.path.dirname(p) or '/', os.W_OK)
+    out = {'name': os.path.basename(p) or '/', 'path': p, 'parent': os.path.dirname(p), 'dir': isdir,
+           'isLink': link, 'broken': broken, 'mime': mime, 'desc': mime_comment(mime), 'icon': icon,
+           'iconFallback': generic, 'size': 0 if isdir else st.st_size,
+           'disk': 0 if isdir else getattr(lst, 'st_blocks', 0) * 512,
+           'mtime': int(st.st_mtime), 'atime': int(st.st_atime), 'ctime': int(st.st_ctime), 'btime': birth_time(p),
+           'owner': owner, 'group': group_name(st.st_gid), 'uid': st.st_uid, 'gid': st.st_gid,
+           'mode': stat.S_IMODE(st.st_mode), 'modeText': stat.filemode(st.st_mode),
+           'mine': os.getuid() in (0, st.st_uid) and allowed(p) and not link,
+           'canRename': allowed(p) and parent_ok and p not in write_roots() and p != '/',
+           'exec': bool(not isdir and stat.S_ISREG(st.st_mode) and st.st_mode & 0o111),
+           'mount': isdir and not link and os.path.ismount(p), 'mountPoint': mp, 'device': dev, 'fs': fs,
+           'free': free, 'total': total, 'trashed': in_trash(p)}
+    if link:
+        try:
+            out['target'] = os.readlink(p)
+        except OSError:
+            out['target'] = ''
+    if out['trashed']:
+        out['origPath'], out['deleted'] = read_trash_info(*trash_info_for(p))
+    if not isdir and not broken:
+        if mime.startswith('image/'):
+            wh = image_size(p)
+            if wh:
+                out['width'], out['height'] = wh
+        if mime.startswith('audio/') or mime.startswith('video/'):
+            out['duration'] = media_duration(p)
+        try:
+            out['app'] = default_app(mime)
+        except OSError:
+            out['app'] = None
+    return out
+
+
+def props(paths):
+    """What the Properties window shows: everything about one item, or a summary of several."""
+    if len(paths) == 1:
+        return props_one(paths[0])
+    items = []
+    for path in paths:
+        p = os.path.abspath(os.path.expanduser(path))
+        e = entry(p, os.path.basename(p))
+        if e:
+            items.append({'name': e['name'], 'path': p, 'dir': e['dir'], 'mime': e['mime'], 'size': e['size']})
+    if not items:
+        raise Fail("These aren't there any more")
+    parents = {os.path.dirname(i['path']) for i in items}
+    mimes = {i['mime'] for i in items}
+    mime = mimes.pop() if len(mimes) == 1 else ''
+    out = {'multi': True, 'count': len(items), 'items': items, 'parent': parents.pop() if len(parents) == 1 else None,
+           'files': sum(1 for i in items if not i['dir']), 'folders': sum(1 for i in items if i['dir']),
+           'mime': mime, 'desc': mime_comment(mime) if mime else ''}
+    free, total = free_space(items[0]['path'])
+    out['free'], out['total'] = free, total
+    return out
+
+
+def count(paths):
+    """Adds up folders in the background: "progress: {size, disk, files, folders}" lines, then the total."""
+    totals = {'size': 0, 'disk': 0, 'files': 0, 'folders': 0, 'unreadable': 0}
+    last = [time.monotonic()]
+
+    def stop(*_):
+        raise Cancelled()
+    signal.signal(signal.SIGTERM, stop)
+
+    def report(force=False):
+        now = time.monotonic()
+        if force or now - last[0] >= 0.2:
+            last[0] = now
+            print('progress: ' + json.dumps(totals), flush=True)
+
+    def add(st):
+        totals['size'] += st.st_size
+        totals['disk'] += getattr(st, 'st_blocks', 0) * 512
+
+    try:
+        for path in paths:
+            p = os.path.abspath(os.path.expanduser(path))
+            try:
+                st = os.lstat(p)
+            except OSError:
+                continue
+            if not stat.S_ISDIR(st.st_mode):
+                add(st)
+                totals['files'] += 1
+                continue
+            stack = [p]
+            while stack:
+                d = stack.pop()
+                try:
+                    it = os.scandir(d)
+                except OSError:
+                    totals['unreadable'] += 1
+                    continue
+                with it:
+                    for e in it:
+                        try:
+                            est = e.stat(follow_symlinks=False)
+                        except OSError:
+                            continue
+                        if stat.S_ISDIR(est.st_mode):
+                            totals['folders'] += 1
+                            stack.append(e.path)
+                        else:
+                            totals['files'] += 1
+                            add(est)
+                report()
+    except Cancelled:
+        return dict(totals, cancelled=True)
+    report(True)
+    return dict(totals, ok=True)
+
+
+def checksum(algo, path):
+    """MD5, SHA-1 or SHA-256 of a file, with "progress: {done, total}" lines on the way."""
+    import hashlib
+    algo = algo.lower().replace('-', '')
+    if algo not in ('md5', 'sha1', 'sha256', 'sha512'):
+        raise Fail('Hearth Files knows MD5, SHA-1, SHA-256 and SHA-512')
+    p = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isfile(p):
+        raise Fail('Only files have checksums')
+
+    def stop(*_):
+        raise Cancelled()
+    signal.signal(signal.SIGTERM, stop)
+    h = hashlib.new(algo)
+    total = os.path.getsize(p)
+    done, last = 0, time.monotonic()
+    try:
+        with open(p, 'rb') as f:
+            while True:
+                buf = f.read(CHUNK)
+                if not buf:
+                    break
+                h.update(buf)
+                done += len(buf)
+                if time.monotonic() - last >= 0.2:
+                    last = time.monotonic()
+                    print('progress: ' + json.dumps({'done': done, 'total': total}), flush=True)
+    except Cancelled:
+        return {'cancelled': True}
+    except OSError as e:
+        raise Fail(friendly(e, p))
+    return {'ok': True, 'algo': algo, 'sum': h.hexdigest(), 'path': p}
+
+
+def chmod(path, mode):
+    """Set the read / write / run permissions (an octal number like 755)."""
+    p = check_writable(path, allow_root=True)
+    try:
+        m = int(str(mode), 8)
+    except ValueError:
+        raise Fail("That isn't a permission number")
+    if m < 0 or m > 0o7777:
+        raise Fail("That isn't a permission number")
+    if os.path.islink(p):
+        raise Fail("A shortcut's permissions are the ones of what it points to")
+    try:
+        os.chmod(p, m)
+    except OSError as e:
+        raise Fail(friendly(e, p))
+    return {'ok': True, 'mode': stat.S_IMODE(os.stat(p).st_mode)}
+
+
+def set_default(path, app_id):
+    """Makes app_id the app that opens this kind of file (your mimeapps.list, as every desktop reads it)."""
+    p = os.path.abspath(os.path.expanduser(path))
+    mime = sniff_mime(p)
+    if app_id not in desktop_entries():
+        raise Fail("That app isn't installed any more")
+    cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config')
+    f = os.path.join(cfg, 'mimeapps.list')
+    try:
+        with open(f, encoding='utf-8', errors='surrogateescape') as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        lines = []
+
+    def put(section, value, front=True):
+        nonlocal lines
+        try:
+            i = lines.index(section)
+        except ValueError:
+            if lines and lines[-1].strip():
+                lines.append('')
+            lines += [section]
+            i = len(lines) - 1
+        j = i + 1
+        while j < len(lines) and not lines[j].startswith('['):
+            k = lines[j].split('=', 1)[0].strip()
+            if k == mime:
+                old = [x for x in lines[j].split('=', 1)[1].strip().split(';') if x and x != value]
+                lines[j] = mime + '=' + ';'.join(([value] + old) if front else [value]) + ';'
+                return
+            j += 1
+        while j > i + 1 and not lines[j - 1].strip():
+            j -= 1
+        lines.insert(j, mime + '=' + value + ';')
+
+    put('[Default Applications]', app_id, front=False)
+    put('[Added Associations]', app_id)
+    os.makedirs(cfg, exist_ok=True)
+    tmp = f + '.hearth-tmp'
+    with open(tmp, 'w', encoding='utf-8', errors='surrogateescape') as fh:
+        fh.write('\n'.join(lines) + '\n')
+    os.replace(tmp, f)
+    return {'ok': True, 'mime': mime, 'app': app_id}
+
+
+# ---------------------------------------------------------------------- new files
+def new_file(path):
+    p = check_writable(path)
+    valid_name(os.path.basename(p))
+    try:
+        os.close(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644))
+    except OSError as e:
+        raise Fail(friendly(e, p))
+    return {'ok': True, 'path': p}
+
+
+def templates_dir():
+    return user_dirs().get('TEMPLATES') or os.path.join(home(), 'Templates')
+
+
+def templates():
+    """Your document templates (~/Templates): New document › …"""
+    t = templates_dir()
+    out = []
+    if os.path.realpath(t) == os.path.realpath(home()):
+        return {'dir': t, 'templates': out}
+    for root, dirs, files in os.walk(t):
+        dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
+        for name in sorted(files, key=str.lower):
+            if name.startswith('.'):
+                continue
+            full = os.path.join(root, name)
+            stem = os.path.splitext(name)[0] or name
+            rel = os.path.relpath(root, t)
+            out.append({'name': stem if rel == '.' else rel + ' › ' + stem, 'file': name, 'path': full,
+                        'mime': mime_of(name)})
+        if len(out) > 100:
+            break
+    return {'dir': t, 'templates': out}
+
+
+def from_template(template, folder, name=None):
+    src = os.path.abspath(os.path.expanduser(template))
+    if not os.path.isfile(src):
+        raise Fail("That template isn't there any more")
+    d = check_writable(folder, allow_root=True)
+    name = valid_name((name or os.path.basename(src)).strip())
+    target = unique(os.path.join(d, name))
+    check_writable(target)
+    try:
+        shutil.copyfile(src, target)
+    except OSError as e:
+        raise Fail(friendly(e, target))
+    return {'ok': True, 'path': target}
+
+
+def batch_rename(pattern, paths):
+    """Renames several at once: "Holiday #" → Holiday 1.jpg, Holiday 2.jpg… (### pads: 001). Extensions stay."""
+    if '#' not in pattern:
+        pattern = pattern + ' #'
+    m = re.search(r'#+', pattern)
+    width = len(m.group(0))
+    plan = []
+    for i, path in enumerate(paths, 1):
+        p = check_writable(path)
+        if not lexists(p):
+            raise Fail('“' + os.path.basename(p) + "” isn't there any more")
+        ext = '' if os.path.isdir(p) else os.path.splitext(os.path.basename(p))[1]
+        new = valid_name(pattern[:m.start()] + str(i).zfill(width) + pattern[m.end():] + ext)
+        plan.append((p, os.path.join(os.path.dirname(p), new)))
+    olds = {p for p, _ in plan}
+    for p, dest in plan:
+        if lexists(dest) and dest not in olds:
+            raise Fail("There's already something called “" + os.path.basename(dest) + '” there')
+    # Through temporary names first, so "b → a, a → b" style swaps work.
+    temps = []
+    try:
+        for n, (p, dest) in enumerate(plan):
+            t = os.path.join(os.path.dirname(p), '.hearth-rename-%d-%d' % (os.getpid(), n))
+            os.rename(p, t)
+            temps.append((t, p, dest))
+        for t, _, dest in temps:
+            os.rename(t, dest)
+    except OSError as e:
+        for t, p, _ in temps:
+            if lexists(t):
+                try:
+                    os.rename(t, p)
+                except OSError:
+                    pass
+        raise Fail(friendly(e))
+    return {'ok': True, 'paths': [d for _, d in plan]}
+
+
+# ---------------------------------------------------------------------- archives
+ARCHIVE_EXT = ('.tar.gz', '.tgz', '.tar.xz', '.txz', '.tar.bz2', '.tbz2', '.tbz', '.tar.zst', '.tzst', '.tar',
+               '.zip', '.7z', '.rar', '.gz', '.xz', '.bz2', '.zst', '.iso', '.cbz', '.cbr', '.jar', '.apk')
+
+
+def archive_stem(name):
+    low = name.lower()
+    for ext in ARCHIVE_EXT:
+        if low.endswith(ext) and len(name) > len(ext):
+            return name[:-len(ext)]
+    return os.path.splitext(name)[0] or name
+
+
+def is_archive(name):
+    low = name.lower()
+    return any(low.endswith(e) for e in ARCHIVE_EXT)
+
+
+def compress(fmt, archive, srcs):
+    """Packs srcs into archive (zip or tar.gz), with progress lines; stopping removes the half-made file."""
+    import tarfile
+    import zipfile
+    fmt = fmt.lower()
+    if fmt not in ('zip', 'tar.gz', 'tar.xz', 'tar'):
+        raise Fail('Hearth Files makes .zip, .tar.gz, .tar.xz and .tar archives')
+    out = check_writable(archive)
+    valid_name(os.path.basename(out))
+    if lexists(out):
+        raise Fail("There's already something called “" + os.path.basename(out) + '” here')
+    items = []
+    for s in srcs:
+        p = norm(s)
+        if not lexists(p):
+            raise Fail('“' + os.path.basename(p) + "” isn't there any more")
+        items.append(p)
+    if os.path.realpath(out) in {os.path.realpath(i) for i in items}:
+        raise Fail("An archive can't hold itself")
+    files = []                         # (full path, name inside, is folder)
+    for p in items:
+        base = os.path.dirname(p)
+        if os.path.isdir(p) and not os.path.islink(p):
+            for root, dirs, fs in os.walk(p):
+                dirs.sort()
+                files.append((root, os.path.relpath(root, base), True))
+                for n in sorted(fs):
+                    full = os.path.join(root, n)
+                    if os.path.realpath(full) != os.path.realpath(out):
+                        files.append((full, os.path.relpath(full, base), False))
+        else:
+            files.append((p, os.path.basename(p), False))
+    total = 0
+    for f, _, isd in files:
+        if not isd:
+            try:
+                total += os.lstat(f).st_size
+            except OSError:
+                pass
+    prog = Progress(total, len(items))
+    part = os.path.join(os.path.dirname(out), '.' + os.path.basename(out) + '.hearth-part')
+
+    def stop(*_):
+        raise Cancelled()
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    prog.tick(0, force=True)
+    try:
+        if fmt == 'zip':
+            with zipfile.ZipFile(part, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+                for full, arc, isd in files:
+                    prog.file = os.path.basename(full)
+                    if isd:
+                        z.write(full, arc + '/')
+                    elif os.path.islink(full) and not os.path.exists(full):
+                        continue
+                    else:
+                        zi = zipfile.ZipInfo.from_file(full, arc)
+                        zi.compress_type = zipfile.ZIP_DEFLATED
+                        with open(full, 'rb') as fi, z.open(zi, 'w', force_zip64=True) as fo:
+                            while True:
+                                buf = fi.read(CHUNK)
+                                if not buf:
+                                    break
+                                fo.write(buf)
+                                prog.tick(len(buf))
+        else:
+            mode = {'tar.gz': 'w:gz', 'tar.xz': 'w:xz', 'tar': 'w'}[fmt]
+            with tarfile.open(part, mode) as t:
+                for full, arc, isd in files:
+                    prog.file = os.path.basename(full)
+                    t.add(full, arc, recursive=False)
+                    if not isd:
+                        try:
+                            prog.tick(os.lstat(full).st_size)
+                        except OSError:
+                            pass
+        os.rename(part, out)
+        prog.tick(0, force=True)
+    except Cancelled:
+        if lexists(part):
+            os.unlink(part)
+        return {'cancelled': True, 'items': []}
+    except OSError as e:
+        if lexists(part):
+            os.unlink(part)
+        raise Fail(friendly(e, e.filename))
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+    return {'ok': True, 'items': [out], 'path': out, 'bytes': total}
+
+
+def safe_member(name):
+    """A member name that stays inside the folder it's unpacked into, or None."""
+    n = name.replace('\\', '/')
+    parts = [x for x in n.split('/') if x not in ('', '.')]
+    if not parts or n.startswith('/') or '..' in parts:
+        return None
+    return '/'.join(parts)
+
+
+def extract(archive, dest, here=False):
+    """Unpacks archive. here: next to it, straight in if everything is in one folder already (else in a folder
+    named after the archive); otherwise into the folder dest (made if needed). Progress lines as for copy."""
+    import tarfile
+    import zipfile
+    a = os.path.abspath(os.path.expanduser(archive))
+    if not os.path.isfile(a):
+        raise Fail("That archive isn't there any more")
+    low = a.lower()
+    kind = 'zip' if zipfile.is_zipfile(a) else 'tar' if tarfile.is_tarfile(a) else 'other'
+    if kind == 'other' and not (shutil.which('bsdtar') or shutil.which('7z') or shutil.which('7za')):
+        raise Fail("Hearth Files can't open this kind of archive (install 7-Zip or bsdtar for .7z and .rar)")
+    members = []                       # (name, size, is folder)
+    if kind == 'zip':
+        with zipfile.ZipFile(a) as z:
+            for i in z.infolist():
+                members.append((i.filename, i.file_size, i.is_dir()))
+    elif kind == 'tar':
+        with tarfile.open(a) as t:
+            for i in t.getmembers():
+                members.append((i.name, i.size, i.isdir()))
+    if here:
+        parent = check_writable(os.path.dirname(a), allow_root=True)
+        tops = {safe_member(m[0]).split('/')[0] for m in members if safe_member(m[0])}
+        single_dir = len(tops) == 1 and any((safe_member(m[0]) or '').count('/') > 0 or m[2] for m in members)
+        if kind != 'other' and single_dir:
+            top = tops.pop()
+            target_root, rename_top = parent, None
+            if lexists(os.path.join(parent, top)):
+                rename_top = os.path.basename(unique(os.path.join(parent, top)))
+        else:
+            target_root, rename_top = unique(os.path.join(parent, archive_stem(os.path.basename(a)))), None
+    else:
+        target_root, rename_top = check_writable(dest, allow_root=True), None
+    check_writable(target_root, allow_root=True)
+    total = sum(m[1] for m in members if not m[2])
+    prog = Progress(total, 1)
+    made = []                          # what we created, removed if stopped
+
+    def stop(*_):
+        raise Cancelled()
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    prog.tick(0, force=True)
+    root_existed = os.path.isdir(target_root)
+    try:
+        os.makedirs(target_root, exist_ok=True)
+        if not root_existed:
+            made.append(target_root)
+
+        def place(name):
+            """Where a member goes (None: a name that would land outside); notes new top-level items."""
+            m = safe_member(name)
+            if not m:
+                return None
+            if rename_top:
+                rest = m.partition('/')[2]
+                m = rename_top + ('/' + rest if rest else '')
+            top = os.path.join(target_root, m.split('/')[0])
+            if root_existed and top not in made and not lexists(top):
+                made.append(top)
+            return os.path.join(target_root, m)
+
+        if kind == 'zip':
+            with zipfile.ZipFile(a) as z:
+                for i in z.infolist():
+                    full = place(i.filename)
+                    if not full:
+                        continue
+                    prog.file = os.path.basename(i.filename.rstrip('/'))
+                    if i.is_dir():
+                        os.makedirs(full, exist_ok=True)
+                        continue
+                    os.makedirs(os.path.dirname(full), exist_ok=True)
+                    with z.open(i) as fi, open(full, 'wb') as fo:
+                        while True:
+                            buf = fi.read(CHUNK)
+                            if not buf:
+                                break
+                            fo.write(buf)
+                            prog.tick(len(buf))
+                    perm = (i.external_attr >> 16) & 0o777
+                    if perm:
+                        try:
+                            os.chmod(full, perm | 0o600)
+                        except OSError:
+                            pass
+                    try:
+                        t = time.mktime(i.date_time + (0, 0, -1))
+                        os.utime(full, (t, t))
+                    except (OverflowError, ValueError, OSError):
+                        pass
+        elif kind == 'tar':
+            with tarfile.open(a) as t:
+                for i in t.getmembers():
+                    full = place(i.name)
+                    if not full or not (i.isfile() or i.isdir() or i.issym()):
+                        continue
+                    prog.file = os.path.basename(i.name.rstrip('/'))
+                    if i.isdir():
+                        os.makedirs(full, exist_ok=True)
+                        continue
+                    os.makedirs(os.path.dirname(full), exist_ok=True)
+                    if i.issym():
+                        # Only links that stay inside what's being unpacked.
+                        tgt = os.path.normpath(os.path.join(os.path.dirname(full), i.linkname))
+                        if not i.linkname.startswith('/') and under(tgt, target_root) and not lexists(full):
+                            os.symlink(i.linkname, full)
+                        continue
+                    fi = t.extractfile(i)
+                    if fi is None:
+                        continue
+                    with fi, open(full, 'wb') as fo:
+                        while True:
+                            buf = fi.read(CHUNK)
+                            if not buf:
+                                break
+                            fo.write(buf)
+                            prog.tick(len(buf))
+                    try:
+                        os.chmod(full, (i.mode & 0o777) | 0o600)
+                        os.utime(full, (i.mtime, i.mtime))
+                    except (OSError, OverflowError):
+                        pass
+        else:
+            prog.file = os.path.basename(a)
+            seven = shutil.which('7z') or shutil.which('7za')
+            if seven and (low.endswith('.7z') or not shutil.which('bsdtar')):
+                cmdline = [seven, 'x', '-y', '-o' + target_root, a]
+            else:
+                cmdline = ['bsdtar', '-xf', a, '-C', target_root]
+            p = subprocess.Popen(cmdline, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            try:
+                _, err = p.communicate()
+            except Cancelled:
+                p.terminate()
+                raise
+            if p.returncode != 0:
+                raise Fail("Couldn't unpack it" + (': ' + err.strip().splitlines()[-1] if err.strip() else ''))
+        prog.tick(0, force=True)
+    except Cancelled:
+        for m in reversed(made):
+            if lexists(m):
+                try:
+                    remove(m)
+                except OSError:
+                    pass
+        return {'cancelled': True, 'items': []}
+    except (OSError, zipfile.BadZipFile, tarfile.TarError, EOFError) as e:
+        for m in reversed(made):
+            if lexists(m):
+                try:
+                    remove(m)
+                except OSError:
+                    pass
+        if isinstance(e, OSError):
+            raise Fail(friendly(e, e.filename))
+        raise Fail("The archive is damaged: " + str(e))
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+    result = target_root
+    if here and target_root == os.path.dirname(a):
+        top = rename_top or next(iter({safe_member(m[0]).split('/')[0] for m in members if safe_member(m[0])}), '')
+        result = os.path.join(target_root, top)
+    return {'ok': True, 'items': [result], 'path': result, 'bytes': total}
+
+
+# ---------------------------------------------------------------------- search
+def search(path, query, hidden=False, limit=5000):
+    """Looks below path for names containing query (or matching it, with * and ?): a "found: {entry}" line
+    for each, then {"ok": true, "count": n, "truncated": bool}. Stops on SIGTERM (the Stop button)."""
+    import fnmatch
+    root = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isdir(root):
+        raise Fail("This folder isn't there any more")
+    q = query.strip().lower()
+    if not q:
+        raise Fail('Type something to search for')
+    glob = any(c in q for c in '*?[')
+
+    def stop(*_):
+        raise Cancelled()
+    signal.signal(signal.SIGTERM, stop)
+    n, truncated = 0, False
+    try:
+        for d, dirs, files in os.walk(root, followlinks=False):
+            if not hidden:
+                dirs[:] = [x for x in dirs if not x.startswith('.')]
+            dirs.sort()
+            for name in dirs + sorted(files):
+                if not hidden and name.startswith('.'):
+                    continue
+                low = name.lower()
+                if not (fnmatch.fnmatch(low, q) if glob else q in low):
+                    continue
+                e = entry(os.path.join(d, name), name)
+                if not e:
+                    continue
+                e['where'] = os.path.relpath(d, root)
+                print('found: ' + json.dumps(e), flush=True)
+                n += 1
+                if n >= limit:
+                    truncated = True
+                    raise StopIteration
+    except StopIteration:
+        pass
+    except Cancelled:
+        return {'cancelled': True, 'count': n}
+    return {'ok': True, 'count': n, 'truncated': truncated}
+
+
+# ---------------------------------------------------------------------- drives, bookmarks, settings
+def unmounted_drives():
+    """USB drives and SD cards that are plugged in but not mounted (lsblk), for the sidebar."""
+    if not shutil.which('lsblk'):
+        return []
+    try:
+        r = subprocess.run(['lsblk', '-J', '-b', '-o', 'NAME,PATH,LABEL,MOUNTPOINT,RM,HOTPLUG,FSTYPE,SIZE,TYPE'],
+                           capture_output=True, text=True, timeout=4)
+        tree = json.loads(r.stdout or '{}').get('blockdevices', [])
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return []
+    out = []
+
+    def walk(devs, removable):
+        for d in devs:
+            rm = removable or d.get('rm') in (True, '1', 1) or d.get('hotplug') in (True, '1', 1)
+            fs = d.get('fstype') or ''
+            if rm and fs and fs not in ('swap', 'crypto_LUKS', 'LVM2_member') and not d.get('mountpoint') \
+                    and d.get('type') in ('part', 'disk'):
+                path = d.get('path') or '/dev/' + d.get('name', '')
+                kind, sub = drive_kind(path)
+                size = int(d.get('size') or 0)
+                out.append({'id': 'dev:' + path, 'label': d.get('label') or (human(size) + ' ' + sub.lower()),
+                            'path': '', 'device': path, 'kind': kind, 'sub': sub + ' · not mounted',
+                            'section': 'drives', 'mounted': False, 'removable': True, 'total': size or None})
+            walk(d.get('children') or [], rm)
+    walk(tree, False)
+    return out
+
+
+def mount(device):
+    if not device.startswith('/dev/') or not shutil.which('udisksctl'):
+        raise Fail("Couldn't mount the drive" + ('' if shutil.which('udisksctl') else ' (udisksctl is missing)'))
+    r = subprocess.run(['udisksctl', 'mount', '-b', device, '--no-user-interaction'], capture_output=True, text=True,
+                       timeout=60)
+    m = re.search(r' at (.+?)\.?\s*$', r.stdout.strip())
+    if r.returncode != 0:
+        msg = (r.stderr or r.stdout).strip()
+        if 'AlreadyMounted' in msg:
+            m2 = re.search(r"mounted at [`'](.+?)[`']", msg)
+            if m2:
+                return {'ok': True, 'path': m2.group(1)}
+        raise Fail("Couldn't mount the drive" + (': ' + msg.splitlines()[-1] if msg else ''))
+    path = m.group(1) if m else ''
+    return {'ok': True, 'path': path}
+
+
+def unmount(path):
+    """Unmounts a drive (it stays powered: plug-and-mount again from the sidebar). eject also powers it off."""
+    p = norm(path)
+    if not any(under(p, os.path.realpath(b)) and p != os.path.realpath(b) for b in media_bases()):
+        raise Fail('Only USB drives and SD cards can be unmounted here')
+    dev = mounts().get(p)
+    subprocess.run(['sync'], timeout=120)
+    errors = []
+    if dev and shutil.which('udisksctl'):
+        r = subprocess.run(['udisksctl', 'unmount', '-b', dev], capture_output=True, text=True, timeout=60)
+        if r.returncode == 0:
+            return {'ok': True}
+        errors.append((r.stderr or r.stdout).strip())
+    if shutil.which('gio'):
+        r = subprocess.run(['gio', 'mount', '-u', p], capture_output=True, text=True, timeout=60)
+        if r.returncode == 0:
+            return {'ok': True}
+        errors.append((r.stderr or r.stdout).strip())
+    msg = next((e for e in errors if e), '')
+    if 'busy' in msg.lower():
+        raise Fail('Something is still using this drive. Close it and try again')
+    raise Fail("Couldn't unmount the drive" + (': ' + msg.splitlines()[-1] if msg else ''))
+
+
+def bookmarks_file():
+    cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config')
+    return os.path.join(cfg, 'gtk-3.0', 'bookmarks')
+
+
+def read_bookmarks():
+    """[(path, label)] from the GTK bookmarks file (the one Nautilus, Thunar and file dialogs share)."""
+    out = []
+    try:
+        with open(bookmarks_file(), encoding='utf-8', errors='surrogateescape') as f:
+            for line in f:
+                line = line.rstrip('\n')
+                if not line.startswith('file://'):
+                    continue
+                uri, _, label = line.partition(' ')
+                p = urllib.parse.unquote(urllib.parse.urlparse(uri).path, errors='surrogateescape')
+                out.append((p, label.strip()))
+    except OSError:
+        pass
+    return out
+
+
+def write_bookmarks(items):
+    f = bookmarks_file()
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    tmp = f + '.hearth-tmp'
+    with open(tmp, 'w', encoding='utf-8', errors='surrogateescape') as fh:
+        for p, label in items:
+            fh.write(file_uri(p) + (' ' + label if label else '') + '\n')
+    os.replace(tmp, f)
+
+
+def bookmark_add(path, label=''):
+    p = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isdir(p):
+        raise Fail('Only folders can be bookmarked')
+    items = [b for b in read_bookmarks() if b[0] != p]
+    items.append((p, label.strip()))
+    write_bookmarks(items)
+    return {'ok': True}
+
+
+def bookmark_remove(path):
+    p = os.path.abspath(os.path.expanduser(path))
+    write_bookmarks([b for b in read_bookmarks() if b[0] != p])
+    return {'ok': True}
+
+
+def bookmark_places():
+    out = []
+    for p, label in read_bookmarks():
+        if not os.path.isdir(p):
+            continue
+        out.append({'id': 'bookmark:' + p, 'label': label or os.path.basename(p.rstrip('/')) or p, 'path': p,
+                    'kind': 'folder', 'section': 'bookmarks', 'bookmark': True})
+    return out
+
+
+def prefs_file():
+    cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config')
+    return os.path.join(cfg, 'nimbus', 'files.json')
+
+
+def prefs_get():
+    try:
+        with open(prefs_file(), encoding='utf-8') as f:
+            v = json.load(f)
+            return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def prefs_set(text):
+    """Merges the JSON object text into Hearth Files' settings (view, sort, per-folder views…)."""
+    try:
+        new = json.loads(text)
+    except ValueError:
+        raise Fail('Settings have to be JSON')
+    if not isinstance(new, dict):
+        raise Fail('Settings have to be a JSON object')
+    cur = prefs_get()
+    cur.update(new)
+    folders = cur.get('folders')
+    if isinstance(folders, dict) and len(folders) > 400:     # keep the newest 400 folders' views
+        cur['folders'] = dict(list(folders.items())[-400:])
+    f = prefs_file()
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    with open(f + '.tmp', 'w', encoding='utf-8') as fh:
+        json.dump(cur, fh)
+    os.replace(f + '.tmp', f)
+    return {'ok': True}
+
+
+# ---------------------------------------------------------------------- clipboard, preview, thumbnails, terminal
+def clip_set(mode, paths):
+    """Puts files on the system clipboard (text/uri-list, which Dolphin, Nautilus and browsers read)."""
+    if not shutil.which('wl-copy'):
+        return {'ok': False}
+    data = ''.join(file_uri(os.path.abspath(p)) + '\r\n' for p in paths)
+    try:
+        p = subprocess.Popen(['wl-copy', '--type', 'text/uri-list'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        p.stdin.write(data.encode('utf-8', 'surrogateescape'))
+        p.stdin.close()
+    except OSError:
+        return {'ok': False}
+    return {'ok': True, 'mode': mode}
+
+
+def clip_get():
+    """Files on the system clipboard (copied in Hearth Files or another file manager)."""
+    if not shutil.which('wl-paste'):
+        return {'paths': [], 'cut': False, 'available': False}
+    try:
+        types = subprocess.run(['wl-paste', '--list-types'], capture_output=True, text=True, timeout=2).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return {'paths': [], 'cut': False, 'available': False}
+    cut = False
+    for t in ('x-special/gnome-copied-files', 'text/uri-list'):
+        if t not in types:
+            continue
+        try:
+            text = subprocess.run(['wl-paste', '--no-newline', '--type', t], capture_output=True, text=True,
+                                  timeout=2).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        lines = [x.strip() for x in text.splitlines() if x.strip()]
+        if t.startswith('x-special') and lines and lines[0] in ('copy', 'cut'):
+            cut = lines.pop(0) == 'cut'
+        paths = [urllib.parse.unquote(urllib.parse.urlparse(x).path, errors='surrogateescape')
+                 for x in lines if x.startswith('file://')]
+        if paths:
+            if 'application/x-kde-cutselection' in types:
+                try:
+                    cut = subprocess.run(['wl-paste', '--no-newline', '--type', 'application/x-kde-cutselection'],
+                                         capture_output=True, text=True, timeout=2).stdout.strip() == '1'
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            return {'paths': paths, 'cut': cut, 'available': True}
+    return {'paths': [], 'cut': False, 'available': True}
+
+
+def peek(path, limit=65536):
+    """The start of a text file, for the quick preview (Space)."""
+    p = os.path.abspath(os.path.expanduser(path))
+    try:
+        with open(p, 'rb') as f:
+            data = f.read(limit + 1)
+    except OSError as e:
+        raise Fail(friendly(e, p))
+    if b'\0' in data[:8192]:
+        raise Fail("This isn't a text file")
+    return {'text': data[:limit].decode('utf-8', 'replace'), 'more': len(data) > limit}
+
+
+def thumb_path(p):
+    import hashlib
+    cache = os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache')
+    return os.path.join(cache, 'thumbnails', 'large', hashlib.md5(file_uri(p).encode()).hexdigest() + '.png')
+
+
+def thumbs(paths):
+    """Makes the missing video thumbnails (with ffmpegthumbnailer or ffmpeg, if installed), at most 30 a call,
+    in the shared freedesktop cache, so other apps can use them too."""
+    tool = shutil.which('ffmpegthumbnailer') or shutil.which('ffmpeg')
+    made = []
+    if not tool:
+        return {'ok': False, 'made': made}
+    for path in paths[:30]:
+        p = os.path.abspath(path)
+        out = thumb_path(p)
+        try:
+            if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(p):
+                continue
+        except OSError:
+            continue
+        os.makedirs(os.path.dirname(out), mode=0o700, exist_ok=True)
+        tmp = out + '.%d.tmp.png' % os.getpid()
+        if tool.endswith('ffmpegthumbnailer'):
+            argv = [tool, '-i', p, '-o', tmp, '-s', '256', '-c', 'png']
+        else:
+            argv = [tool, '-v', 'error', '-y', '-ss', '3', '-i', p, '-frames:v', '1', '-vf', 'scale=256:-1', tmp]
+        try:
+            r = subprocess.run(argv, capture_output=True, timeout=15)
+            if r.returncode == 0 and os.path.exists(tmp):
+                os.replace(tmp, out)
+                made.append(p)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    return {'ok': True, 'made': made}
+
+
+def terminal(path):
+    """Opens Hearth Terminal (or the terminal you have) in this folder."""
+    p = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isdir(p):
+        p = os.path.dirname(p)
+    for argv in ([os.environ.get('TERMINAL', '')], ['hearth-terminal', '--cwd', p], ['foot', '-D', p],
+                 ['alacritty', '--working-directory', p], ['kitty', '-d', p], ['wezterm', 'start', '--cwd', p],
+                 ['konsole', '--workdir', p], ['gnome-terminal', '--working-directory=' + p], ['xfce4-terminal', '--working-directory=' + p],
+                 ['xterm']):
+        if argv[0] and shutil.which(argv[0]):
+            spawn(argv, cwd=p)
+            return {'ok': True, 'app': argv[0]}
+    raise Fail('No terminal app is installed')
+
+
 # ---------------------------------------------------------------------- command line
 USAGE = ('usage: hearth-files list PATH [--hidden] | places | mkdir PATH | rename PATH NEWNAME | trash PATH... | '
          'restore PATH... | empty-trash | delete PATH... | copy SRC... DEST | move SRC... DEST | info PATH | '
-         'apps PATH | open PATH [APP_ID] | eject PATH')
+         'apps PATH | open PATH [APP_ID] | eject PATH | mount DEVICE | unmount PATH | props PATH... | count PATH... | '
+         'checksum ALGO PATH | chmod PATH MODE | set-default PATH APP_ID | conflicts SRC... DEST | new-file PATH | '
+         'templates | from-template TEMPLATE FOLDER [NAME] | batch-rename PATTERN PATH... | '
+         'compress FORMAT ARCHIVE SRC... | extract ARCHIVE DEST|--here | search PATH QUERY [--hidden] | bookmarks | '
+         'bookmark-add PATH [LABEL] | bookmark-remove PATH | prefs | prefs-set JSON | clip-set MODE PATH... | '
+         'clip-get | peek PATH | thumbs PATH... | terminal PATH')
 
 
 def cmd(argv):
@@ -1098,15 +2331,84 @@ def cmd(argv):
     elif c == 'delete' and rest:
         out = delete(rest)
     elif c in ('copy', 'move') and len(rest) >= 2:
-        out = transfer(rest[:-1], rest[-1], c == 'move')
+        decide, default, plain = {}, 'rename', []
+        i = 0
+        while i < len(rest):
+            if rest[i] == '--decide' and i + 1 < len(rest):
+                try:
+                    decide = json.loads(rest[i + 1])
+                except ValueError:
+                    raise Fail('--decide takes JSON')
+                i += 2
+            elif rest[i] == '--default' and i + 1 < len(rest) and rest[i + 1] in ('rename', 'replace', 'skip'):
+                default = rest[i + 1]
+                i += 2
+            else:
+                plain.append(rest[i])
+                i += 1
+        if len(plain) < 2:
+            print(USAGE)
+            sys.exit(2)
+        out = transfer(plain[:-1], plain[-1], c == 'move', decide, default)
     elif c == 'info' and len(rest) == 1:
         out = info(rest[0])
-    elif c == 'apps' and len(rest) == 1:
-        out = apps(rest[0])
+    elif c == 'apps' and len(rest) in (1, 2):
+        out = apps(rest[0], '--all' in rest[1:])
     elif c == 'open' and len(rest) in (1, 2):
         out = open_path(rest[0], rest[1] if len(rest) == 2 else None)
     elif c == 'eject' and len(rest) == 1:
         out = eject(rest[0])
+    elif c == 'mount' and len(rest) == 1:
+        out = mount(rest[0])
+    elif c == 'unmount' and len(rest) == 1:
+        out = unmount(rest[0])
+    elif c == 'props' and rest:
+        out = props(rest)
+    elif c == 'count' and rest:
+        out = count(rest)
+    elif c == 'checksum' and len(rest) == 2:
+        out = checksum(rest[0], rest[1])
+    elif c == 'chmod' and len(rest) == 2:
+        out = chmod(rest[0], rest[1])
+    elif c == 'set-default' and len(rest) == 2:
+        out = set_default(rest[0], rest[1])
+    elif c == 'conflicts' and len(rest) >= 2:
+        out = conflicts(rest[:-1], rest[-1])
+    elif c == 'new-file' and len(rest) == 1:
+        out = new_file(rest[0])
+    elif c == 'templates':
+        out = templates()
+    elif c == 'from-template' and len(rest) in (2, 3):
+        out = from_template(rest[0], rest[1], rest[2] if len(rest) == 3 else None)
+    elif c == 'batch-rename' and len(rest) >= 2:
+        out = batch_rename(rest[0], rest[1:])
+    elif c == 'compress' and len(rest) >= 3:
+        out = compress(rest[0], rest[1], rest[2:])
+    elif c == 'extract' and len(rest) == 2:
+        out = extract(rest[0], rest[1], here=rest[1] == '--here')
+    elif c == 'search' and len(rest) >= 2:
+        args = [a for a in rest if a != '--hidden']
+        out = search(args[0], ' '.join(args[1:]), '--hidden' in rest)
+    elif c == 'bookmarks':
+        out = {'bookmarks': [{'path': p, 'label': l} for p, l in read_bookmarks()]}
+    elif c == 'bookmark-add' and len(rest) in (1, 2):
+        out = bookmark_add(rest[0], rest[1] if len(rest) == 2 else '')
+    elif c == 'bookmark-remove' and len(rest) == 1:
+        out = bookmark_remove(rest[0])
+    elif c == 'prefs':
+        out = prefs_get()
+    elif c == 'prefs-set' and len(rest) == 1:
+        out = prefs_set(rest[0])
+    elif c == 'clip-set' and len(rest) >= 2 and rest[0] in ('copy', 'cut'):
+        out = clip_set(rest[0], rest[1:])
+    elif c == 'clip-get':
+        out = clip_get()
+    elif c == 'peek' and len(rest) == 1:
+        out = peek(rest[0])
+    elif c == 'thumbs' and rest:
+        out = thumbs(rest)
+    elif c == 'terminal' and len(rest) == 1:
+        out = terminal(rest[0])
     else:
         print(USAGE)
         sys.exit(2)
