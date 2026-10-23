@@ -87,7 +87,11 @@ impl Env {
 /// can refuse to start without a screen, or print only a short usage line), its version does: 5.10 and later have it.
 pub fn gsr_has_region(help: &str, version: &str) -> bool {
     if help.contains("region") { return true; }
-    let v = version.split(|c: char| !(c.is_ascii_digit() || c == '.')).find(|w| w.contains('.')).unwrap_or("");
+    // The first word that is a version (5.13.8): it can print warnings with paths (/root/.cache) first.
+    let v = version.split(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .map(|w| w.trim_matches('.'))
+        .find(|w| { let p: Vec<&str> = w.split('.').collect(); p.len() >= 2 && p.iter().all(|x| !x.is_empty() && x.bytes().all(|b| b.is_ascii_digit())) })
+        .unwrap_or("");
     let mut n = v.split('.').map(|x| x.parse::<u32>().unwrap_or(0));
     let (major, minor) = (n.next().unwrap_or(0), n.next().unwrap_or(0));
     major > 5 || (major == 5 && minor >= 10)
@@ -124,6 +128,8 @@ mod tests {
         assert!(gsr_has_region("", "5.13.8\n"));
         assert!(gsr_has_region("usage: gpu-screen-recorder -w", "gpu-screen-recorder 6.1.5"));
         assert!(!gsr_has_region("", "5.3.0"));
+        assert!(gsr_has_region("", "gsr warning: install_cuda_no_stable_perf_limit: failed to create directory: /root/.cache/x.1\n5.13.8\n"));
+        assert!(!gsr_has_region("", "gsr warning: failed to create directory: /root/.cache"));
         assert!(!gsr_has_region("", ""));
     }
 }

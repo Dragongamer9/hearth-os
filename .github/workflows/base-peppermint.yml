@@ -553,7 +553,7 @@ jobs:
             echo "::notice title=Recorder here::$(HOME=/tmp/rp /usr/bin/hearth-recorder --probe 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print("ffmpeg encoders:", [e["id"] for e in d["encoders"]], "audio:", d["audioEncoders"], "gsr:", d["gsr"], "region:", d["gsrRegion"], "wf-recorder:", d["wf"], "slurp:", d["slurp"])' 2>&1 | cut -c1-600)"
           fi
           if command -v gpu-screen-recorder >/dev/null; then
-            echo "::notice title=gpu-screen-recorder here::version $(timeout 5 gpu-screen-recorder --version 2>&1 | head -1 | cut -c1-80); help: $(timeout 5 gpu-screen-recorder --help 2>&1 | grep -m1 -E -- '-w ' | cut -c1-240)"
+            echo "::notice title=gpu-screen-recorder here::version: $(HOME=/tmp timeout 5 gpu-screen-recorder --version 2>&1 | tail -n 3 | tr '\n' '|' | cut -c1-240); help: $(HOME=/tmp timeout 5 gpu-screen-recorder --help 2>&1 | grep -m1 -E -- '-w ' | cut -c1-240) (exit $(HOME=/tmp timeout 5 gpu-screen-recorder --help >/dev/null 2>&1; echo $?))"
           fi
           # ==== end of Hearth Recorder, Camera and Share
           # ---- Hearth Contacts and Hearth Maps
