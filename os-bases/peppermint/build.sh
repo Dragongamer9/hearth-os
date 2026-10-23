@@ -621,6 +621,58 @@ org.freedesktop.impl.portal.Screenshot=wlr
 org.freedesktop.impl.portal.FileChooser=gtk
 PORTALS
 
+# ------------------------------------------------------------------ Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps)
+# Built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons (Icon=hearth-contacts, hearth-maps)
+# come with Hearth's icon set above.
+# Contacts opens .vcf files and keeps CardDAV passwords in GNOME Keyring (Hearth's session starts it); Maps opens
+# geo: links and asks GeoClue for "Where am I" only when that button is pressed (docs/HEARTH-MAPS.md).
+"${APT[@]}" geoclue-2.0 libsecret-1-0 || true
+install -d /usr/share/applications
+for app in hearth-contacts hearth-maps; do
+  [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so this image goes without it"; continue; }
+  install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+  if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app is missing the libraries above"; fi
+done
+if [ -x /usr/bin/hearth-contacts ]; then
+  cat > /usr/share/applications/hearth-contacts.desktop <<DESKTOP
+[Desktop Entry]
+Name=Contacts
+GenericName=Address Book
+Comment=Names, numbers, emails and addresses, kept in step with Nextcloud, iCloud or Fastmail if you like
+Exec=/usr/bin/hearth-contacts %f
+Icon=hearth-contacts
+Type=Application
+Categories=Office;ContactManagement;
+MimeType=text/vcard;text/x-vcard;text/directory;
+Keywords=contacts;address;book;people;phone;email;vcard;vcf;carddav;
+StartupWMClass=hearth-contacts
+DESKTOP
+  # .vcf files open in it (Desktop Mode and Game Mode: XDG_CURRENT_DESKTOP=Nimbus).
+  printf 'text/vcard=hearth-contacts.desktop\ntext/x-vcard=hearth-contacts.desktop\ntext/directory=hearth-contacts.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
+fi
+if [ -x /usr/bin/hearth-maps ]; then
+  cat > /usr/share/applications/hearth-maps.desktop <<DESKTOP
+[Desktop Entry]
+Name=Maps
+GenericName=Maps
+Comment=OpenStreetMap maps: find places and get directions
+Exec=/usr/bin/hearth-maps %u
+Icon=hearth-maps
+Type=Application
+Categories=Utility;Maps;
+MimeType=x-scheme-handler/geo;
+Keywords=map;maps;openstreetmap;osm;directions;route;navigation;places;geo;location;
+StartupWMClass=hearth-maps
+DESKTOP
+  printf 'x-scheme-handler/geo=hearth-maps.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
+  # GeoClue may tell Hearth Maps the location without asking an agent (Hearth's session has none). Maps only asks
+  # when the person presses Where am I, and GeoClue still decides where the location comes from.
+  install -d /etc/geoclue/conf.d
+  printf '[hearth-maps]\nallowed=true\nsystem=false\nusers=\n' > /etc/geoclue/conf.d/90-hearth-maps.conf
+fi
+update-desktop-database -q /usr/share/applications 2>/dev/null || true
+# ---- end of Hearth Contacts and Hearth Maps
+
 # ------------------------------------------------------------------ Beacon (BFME, Age of the Ring, LOTR: Conquest...)
 # Beacon's release package: `beacon`, the tool Hearth's library talks to (hosts/hearth-core/src/beacon.rs), and
 # `beacon-app`, its window (beacon.desktop: in Mantel's launcher and pinned to its taskbar). See docs/BEACON.md.
