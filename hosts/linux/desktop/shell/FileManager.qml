@@ -2966,7 +2966,7 @@ Scope {
                                     IconImage {
                                         visible: !ap.modelData.other
                                         implicitSize: 30
-                                        source: ap.modelData.other ? "" : Quickshell.iconPath(ap.modelData.icon || "", "application-x-executable")
+                                        source: ap.modelData.other ? "" : AppIcons.source(ap.modelData.icon || "", ap.modelData.id || "")
                                     }
                                     Text {
                                         Layout.fillWidth: true

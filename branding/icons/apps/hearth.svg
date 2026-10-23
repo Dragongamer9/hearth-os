@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<!-- Hearth icon set: hearth (branding/icons/make-icons.py) -->
+<defs>
+  <linearGradient id="tile" x1="0" y1="24" x2="0" y2="488" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#3a2b22"/><stop offset="1" stop-color="#140e0b"/>
+  </linearGradient>
+  <linearGradient id="rim" x1="0" y1="24" x2="0" y2="260" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffe9d2" stop-opacity=".22"/><stop offset="1" stop-color="#ffe9d2" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="c" x1="0" y1="112" x2="0" y2="400" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#fff8f0"/><stop offset="1" stop-color="#d6c3ae"/>
+  </linearGradient>
+  <linearGradient id="e" x1="0" y1="112" x2="0" y2="400" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffd166"/><stop offset=".55" stop-color="#ff8a3d"/><stop offset="1" stop-color="#e5483b"/>
+  </linearGradient>
+  <linearGradient id="core" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff6d6"/><stop offset="1" stop-color="#ffc24f"/>
+  </linearGradient>
+</defs>
+<rect x="24" y="30" width="464" height="464" rx="112" fill="#000" opacity=".28"/>
+<rect x="24" y="24" width="464" height="464" rx="112" fill="url(#tile)"/>
+<rect x="27" y="27" width="458" height="458" rx="109" fill="none" stroke="url(#rim)" stroke-width="6"/>
+<g transform="translate(256 262) scale(.72) translate(-256 -290)"><path d="M112 432 V252 A144 144 0 0 1 400 252 V432" fill="none" stroke="url(#c)" stroke-width="40" stroke-linecap="round"/><path d="M76 462 H436" stroke="url(#c)" stroke-width="36" stroke-linecap="round"/><path d="M256 168 C298 222 340 262 340 332 C340 386 302 422 256 422 C210 422 172 386 172 332 C172 294 190 266 212 244 C210 276 222 298 242 306 C232 258 236 212 256 168 Z" fill="url(#e)"/><path d="M258 284 C280 314 300 338 300 368 C300 394 282 412 258 412 C234 412 216 394 216 368 C216 340 238 316 258 284 Z" fill="url(#core)"/></g>
+</svg>
