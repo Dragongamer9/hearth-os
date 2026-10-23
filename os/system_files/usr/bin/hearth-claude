@@ -1,0 +1,6 @@
+#!/bin/sh
+# Claude (Anthropic) for you, in your home folder: Claude Desktop from Anthropic's repository, checked against
+# Anthropic's signing key, and Claude Code with Anthropic's installer. Also in Hearth Settings › Claude.
+#   hearth-claude status | install | update | remove | open | install-code | remove-code
+# The work is done by Desktop Mode's helper (desktop/shell/hearth-claude).
+exec python3 "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell/hearth-claude" "$@"
