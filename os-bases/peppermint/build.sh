@@ -419,6 +419,47 @@ ff_missing() { LD_LIBRARY_PATH=/usr/lib/hearth-browser/firefox ldd /usr/lib/hear
 chmod 755 /usr/bin/hearth-browser /usr/share/hearth-browser/install-firefox
 # Links open in it in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), unless you pick another browser.
 printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hearth-browser.desktop\ntext/html=hearth-browser.desktop\napplication/xhtml+xml=hearth-browser.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
+
+# ------------------------------------------------------------------ Hearth Player and Hearth Calculator
+# ---- hosts/hearth-player and hosts/hearth-calculator, built by CI with the app (base-peppermint.yml) and carried in
+# os/nimbus-app; their menu entries are os/system_files' hearth-player.desktop and hearth-calculator.desktop.
+# The player plays through WebKitGTK (GStreamer: gstreamer1.0-libav is Debian's full FFmpeg) and edits with ffmpeg
+# (Debian's has libx264, libx265 and every common decoder). What ended up in is in /usr/share/nimbus/media-codecs.txt.
+"${APT[@]}" ffmpeg gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav gstreamer1.0-tools
+optional gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-vaapi
+for app in hearth-player hearth-calculator; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    # An app that can't start is worse than none (its menu entry hides itself without it: TryExec).
+    if ldd "/usr/bin/$app" | grep 'not found'; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
+  else
+    echo "warning: $app wasn't built for this image"
+  fi
+  if [ -f "/ctx/icons/apps/$app.svg" ]; then install -Dm644 "/ctx/icons/apps/$app.svg" "/usr/share/icons/hicolor/scalable/apps/$app.svg"; fi
+done
+# Videos, music and playlists open in Hearth Player in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), so
+# Hearth Files' Open uses it; every type it lists in hearth-player.desktop (os/system_files).
+if [ -x /usr/bin/hearth-player ]; then
+  sed -n 's/^MimeType=//p' /usr/share/applications/hearth-player.desktop | tr ';' '\n' | grep . | sed 's/$/=hearth-player.desktop/' >> /etc/xdg/nimbus-mimeapps.list
+fi
+update-desktop-database /usr/share/applications 2>/dev/null || true
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+# What plays and what edits: in the build log and in the image.
+{
+  echo "Hearth Player media support, $(date -u +%F)"
+  echo "ffmpeg: $(ffmpeg -hide_banner -version 2>/dev/null | head -1 || echo missing)"
+  echo "--- ffmpeg decoders"
+  ffmpeg -hide_banner -decoders 2>/dev/null | awk '{print $2}' | grep -xE 'h264|hevc|av1|libdav1d|vp8|vp9|libvpx-vp9|mpeg2video|mpeg4|aac|mp3|mp3float|flac|opus|libopus|vorbis|ac3|eac3|dca|truehd|alac|wmav2|subrip|ass|mov_text' | tr '\n' ' ' || true
+  echo; echo "--- ffmpeg encoders"
+  ffmpeg -hide_banner -encoders 2>/dev/null | awk '{print $2}' | grep -xE 'libx264|libopenh264|libx265|h264_vaapi|hevc_vaapi|libsvtav1|libaom-av1|libvpx-vp9|libvpx|mpeg4|aac|libfdk_aac|libmp3lame|libopus|libvorbis|flac|pcm_s16le|wavpack|wmav2' | tr '\n' ' ' || true
+  echo; echo "--- GStreamer (what WebKitGTK plays with)"
+  for e in avdec_h264 avdec_h265 avdec_av1 openh264dec dav1ddec vp9dec vah264dec vah265dec avdec_aac faad avdec_mp3 mpg123audiodec flacdec opusdec vorbisdec avdec_ac3 matroskademux qtdemux webmmux; do
+    if gst-inspect-1.0 --exists "$e" 2>/dev/null; then echo "$e yes"; else echo "$e no"; fi
+  done | tr '\n' ' ' || true
+  echo
+} | tee /usr/share/nimbus/media-codecs.txt || true
+# ---- end of Hearth Player and Hearth Calculator
+
 install -Dm644 /usr/share/nimbus/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
 declare -A WALL=([fireside]="Fireside" [embers]="Embers" [ridge]="Dusk Ridge" [mark]="The Mark" [kiln]="Kiln"
   [cat]="Hearth Cat" [cabin]="Night Cabin" [lanterns]="Lanterns" [bloom]="Ember Bloom" [peaks]="Low Poly Peaks"
