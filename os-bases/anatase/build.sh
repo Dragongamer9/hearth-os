@@ -264,12 +264,11 @@ DESKTOP
 mkdir -p /etc/xdg
 printf '[Default Applications]\ninode/directory=hearth-files.desktop\n' > /etc/xdg/nimbus-mimeapps.list
 # ---- Hearth Text (hosts/hearth-text): Hearth OS's text editor, built by CI next to the Hearth app (base-*.yml) and
-# carried in os/nimbus-app with its icon. Its menu entry (hearth-text.desktop) comes from os/system_files. In Desktop
+# carried in os/nimbus-app. Its menu entry (icon: hearth-text from the Hearth icon set) (hearth-text.desktop) comes from os/system_files. In Desktop
 # Mode it opens text files, scripts, settings files and logs (nimbus-mimeapps.list, written just above), and Hearth
 # Files opens text-like files without an app in it.
 if [ -x /ctx/nimbus-app/hearth-text ]; then
   install -Dm755 /ctx/nimbus-app/hearth-text /usr/bin/hearth-text
-  if [ -f /ctx/nimbus-app/hearth-text.svg ]; then install -Dm644 /ctx/nimbus-app/hearth-text.svg /usr/share/icons/hicolor/scalable/apps/hearth-text.svg; fi
   # An editor that can't start is worse than none: then text files open in whatever else is installed.
   if ldd /usr/bin/hearth-text | grep 'not found'; then echo "Hearth Text needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/hearth-text; fi
 fi
@@ -282,7 +281,6 @@ if [ -x /usr/bin/hearth-text ]; then
            application/x-ruby text/x-perl application/x-perl application/x-powershell text/x-dockerfile; do
     echo "$m=hearth-text.desktop;" >> /etc/xdg/nimbus-mimeapps.list
   done
-  command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -qf /usr/share/icons/hicolor || true
   command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
 fi
 # ---- end of Hearth Text
