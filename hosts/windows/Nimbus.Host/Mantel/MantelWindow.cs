@@ -23,6 +23,10 @@ internal sealed class MantelWindow : Form
     public event Action<JsonElement>? PageMessage;
     /// <summary>A panel (launcher, Quick Access, power menu) closed itself, e.g. by losing focus.</summary>
     public event Action? PanelClosed;
+    /// <summary>Alt+F4 (or the system menu's Close) on this window: Mantel's windows are never closed that way (the
+    /// desktop would go black); MantelHost hides a panel, or on the desktop and taskbar opens the power menu, like
+    /// Alt+F4 on Windows' desktop opens Shut Down Windows.</summary>
+    public event Action? CloseKey;
     public bool Ready { get; private set; }
 
     private bool IsPanel => Part is not (MantelPart.Bar or MantelPart.Desktop or MantelPart.Keyboard);
@@ -331,6 +335,7 @@ internal sealed class MantelWindow : Form
         }
         if ((Part is MantelPart.Keyboard or MantelPart.Bar || (Part == MantelPart.Desktop && !DesktopTakesKeys)) && m.Msg == 0x0021 /* WM_MOUSEACTIVATE */) { m.Result = (IntPtr)3; return; }
         if (m.Msg == 0x0006 /* WM_ACTIVATE */) _activating = (m.WParam.ToInt64() & 0xFFFF) == 0 ? m.LParam : IntPtr.Zero;
+        if (m.Msg == 0x0112 /* WM_SYSCOMMAND */ && (m.WParam.ToInt64() & 0xFFF0) == 0xF060 /* SC_CLOSE */) { CloseKey?.Invoke(); m.Result = IntPtr.Zero; return; }
         // ABN_POSCHANGED (another app bar or the screen changed): put ours back.
         if (_appBar && m.Msg == CallbackMsg && m.WParam.ToInt32() == 1) PlaceAppBar();
         base.WndProc(ref m);
