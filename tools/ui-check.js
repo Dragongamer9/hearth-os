@@ -765,6 +765,41 @@ const path = require('path');
     });
     await lp.close();
   }
+  // Game Mode, Guide over a game (gamemode.rs main_page_reads_pad): while Hearth says its window isn't on screen (set
+  // aside for a game, or Quick Access open over it), the controller this page reads itself does nothing here; a button
+  // still held when it gets the controller back isn't a new press; on screen again, Guide opens Quick Access as always.
+  try {
+    await page.evaluate(() => {
+      const pad = { id: 'Xbox Wireless Controller (test)', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0],
+                    buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+      window.__pad = pad;
+      navigator.getGamepads = () => [pad];
+      window.__sent = [];
+      const realSend = window.send;
+      window.send = m => { window.__sent.push(m); try { return realSend(m); } catch (e) { return null; } };
+      closeAll(); S.history = []; navigate('home', {}, false);
+    });
+    const guide = on => page.evaluate(on => { window.__pad.buttons[16] = { pressed: on, value: on ? 1 : 0 }; }, on);
+    const state = () => page.evaluate(() => ({ qam: S.layers.includes('qam'), resume: window.__sent.filter(m => m && m.type === 'resume').length }));
+    await page.evaluate(() => onSysEvent('hostScreen', { pads: false }));
+    await guide(true); await page.waitForTimeout(200); await guide(false); await page.waitForTimeout(200);
+    let st = await state();
+    if (st.qam) errors.push("guide over a game: Hearth's hidden window opened its own Quick Access");
+    await guide(true); await page.waitForTimeout(200); await guide(false); await page.waitForTimeout(200);
+    st = await state();
+    if (st.qam || st.resume) errors.push(`guide over a game, second press: the hidden window acted (Quick Access ${st.qam}, back-to-game ${st.resume})`);
+    await guide(true); await page.waitForTimeout(150);
+    await page.evaluate(() => onSysEvent('hostScreen', { pads: true }));
+    await page.waitForTimeout(200);
+    st = await state();
+    if (st.qam) errors.push('a Guide still held when Hearth came back was taken for a new press');
+    await guide(false); await page.waitForTimeout(150);
+    await guide(true); await page.waitForTimeout(200); await guide(false); await page.waitForTimeout(200);
+    st = await state();
+    if (!st.qam) errors.push('Hearth on screen: Guide no longer opens its Quick Access');
+    await page.evaluate(() => { closeAll(); delete navigator.getGamepads; });
+  } catch (e) { errors.push('guide over a game: ' + e.message.split('\n')[0]); }
+
   await browser.close();
   if (errors.length) {
     for (const e of errors) console.log(`::error title=Hearth page::${e}`);
