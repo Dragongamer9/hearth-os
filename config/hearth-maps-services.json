@@ -1,0 +1,7 @@
+{
+  "_about": "Hearth Maps reads this file (from the main branch) at most once a day. Set searchEnabled, routingEnabled or tilesEnabled to false to switch that service off in every copy of Hearth Maps without an update (Nominatim's usage policy asks for this), point a service at another https:// address, or show a notice. See docs/HEARTH-MAPS.md.",
+  "tilesEnabled": true,
+  "searchEnabled": true,
+  "routingEnabled": true,
+  "notice": ""
+}
