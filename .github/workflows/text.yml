@@ -1,0 +1,153 @@
+# Hearth Text (hosts/hearth-text): tests reading and saving files (encodings, line endings, big files), checks the
+# editor page in a browser with a stand-in for the app, builds the app for Linux and runs it on a virtual screen:
+# it opens files, types and saves, finds and replaces, opens a big log and a read-only file, hands a second file to
+# the window that's already open, and asks before closing with unsaved changes. Screenshots are in the run's
+# hearth-text-linux artifact. (Ember, the Windows edition, gets Hearth Text later.)
+# "vendor" (when started by hand), or a push where ui/vendor is missing: downloads the pinned CodeMirror files and
+# font (vendor.sh) and commits them.
+name: Hearth Text
+
+on:
+  push:
+    branches: [main, linux-host, hearth-text]
+    paths: ['hosts/hearth-text/**', '.github/workflows/text.yml']
+  pull_request:
+    paths: ['hosts/hearth-text/**', '.github/workflows/text.yml']
+  workflow_dispatch:
+    inputs:
+      vendor:
+        description: Download the pinned CodeMirror files and font into ui/vendor and commit them
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  vendor:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    outputs:
+      committed: ${{ steps.v.outputs.committed }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and commit
+        id: v
+        run: |
+          if [ "${{ github.event_name == 'workflow_dispatch' && inputs.vendor }}" != true ] && [ -s hosts/hearth-text/ui/vendor/VERSIONS ]; then
+            echo "Already vendored"; exit 0
+          fi
+          sh hosts/hearth-text/vendor.sh
+          git config user.name "Dragongamer9"; git config user.email "Dragongamer9@users.noreply.github.com"
+          git add hosts/hearth-text/ui/vendor
+          if git diff --cached --quiet; then echo "Already up to date"; exit 0; fi
+          git commit -qm "Hearth Text: vendored CodeMirror 6 and JetBrains Mono (vendor.sh)"
+          git push -q origin "HEAD:refs/heads/${{ github.ref_name }}"
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+
+  page:
+    needs: vendor
+    if: ${{ !cancelled() && (needs.vendor.result == 'success' || needs.vendor.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.sha || github.ref_name }}
+      - name: The page's files are there
+        working-directory: hosts/hearth-text
+        run: |
+          for f in codemirror-state.js codemirror-view.js codemirror-language.js codemirror-search.js codemirror-commands.js lezer-highlight.js legacy-modes/shell.js jetbrains-mono-latin-400-normal.woff2; do
+            test -s "ui/vendor/$f" || { echo "::error title=vendor::ui/vendor/$f is missing: run this workflow by hand with 'vendor' ticked"; exit 1; }
+          done
+          for f in ui/app.js ui/editor.js; do node --check "$f"; done
+      - name: The page in a browser (a stand-in for the app)
+        run: |
+          pip install -q playwright==1.48.0 >/dev/null
+          python3 -m playwright install --with-deps chromium >/dev/null
+          python3 hosts/hearth-text/tests/page_check.py --shots page-shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-text-page
+          path: page-shots
+
+  linux:
+    needs: vendor
+    if: ${{ !cancelled() && (needs.vendor.result == 'success' || needs.vendor.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: hosts/hearth-text
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.sha || github.ref_name }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-text
+      - name: WebKit and GTK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick x11-utils dbus-x11 xdotool >/dev/null
+      - name: Test (reading and saving files)
+        run: |
+          set -o pipefail
+          cargo test 2>&1 | tee test.log || { echo "::error title=tests::$(grep -E '^(error|---- |thread .* panicked)' -A10 test.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=Linux tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Size::$(du -h target/release/hearth-text | cut -f1)"
+          ./target/release/hearth-text --help
+      - name: Run it
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 NO_AT_BRIDGE=1
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          eval "$(dbus-launch --sh-syntax)"
+          D=/tmp/ht; rm -rf "$D"; mkdir -p "$D"
+          python3 tests/make_samples.py "$D"
+          printf 'root-only\n' > "$D/locked.conf"; chmod 444 "$D/locked.conf"
+          shot() { import -window root "shots/$1.png" || true; }
+          win() { w=$(xdotool search --name 'Text' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true; }
+          bin="$PWD/target/release/hearth-text"
+          # 1. Two files with colors, and a new file that's typed and saved.
+          "$bin" "$D/sample.sh" "$D/app.py" "$D/new.txt" > run.log 2>&1 &
+          sleep 10; win; shot 1-new-file
+          xdotool type --delay 30 'hello from CI'; xdotool key ctrl+s; sleep 2; shot 2-saved
+          test "$(cat "$D/new.txt" 2>/dev/null)" = "hello from CI" || { echo "::error title=save::new.txt has '$(cat "$D/new.txt" 2>&1)'"; tail -c 1500 run.log; exit 1; }
+          echo "::notice title=save::typed and saved new.txt"
+          xdotool key ctrl+Tab; sleep 1; shot 3-shell-colors
+          xdotool key ctrl+Tab; sleep 1; shot 4-python-colors
+          # 2. Find and replace, go to line, the menu.
+          xdotool key ctrl+h; sleep 1; xdotool type 'name'; sleep 1; shot 5-find-replace
+          xdotool key Escape; sleep 1
+          xdotool key ctrl+g; sleep 1; shot 6-go-to-line; xdotool key Escape; sleep 1
+          xdotool key F10; sleep 1; shot 7-menu; xdotool key Escape; sleep 1
+          # 3. A second launch hands its file to this window (and exits).
+          timeout 20 "$bin" "$D/config.ini" > run2.log 2>&1; echo "second launch exited with $?" ; sleep 2; shot 8-second-file-in-a-tab
+          xdotool key alt+z; sleep 1; shot 9-word-wrap; xdotool key alt+z
+          "$bin" "$D/locked.conf" > /dev/null 2>&1; sleep 2; shot 10-read-only
+          "$bin" "$D/huge.log" > /dev/null 2>&1; sleep 6; shot 11-big-log
+          "$bin" "$D/latin1.txt" "$D/crlf.ini" "$D/utf16.txt" > /dev/null 2>&1; sleep 3; shot 12-encodings
+          # 4. Unsaved changes: closing asks first.
+          xdotool type 'unsaved words'; xdotool key ctrl+q; sleep 2; shot 13-unsaved-question
+          xdotool key Escape; sleep 1
+          pgrep -f target/release/hearth-text >/dev/null || { echo "::error title=close::the window closed without asking"; exit 1; }
+          pkill -f 'target/release/hearth-text' || true
+          echo "::notice title=App output::$(tail -c 1200 run.log | tr '\n' '|')"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-text-linux
+          path: |
+            hosts/hearth-text/target/release/hearth-text
+            hosts/hearth-text/shots
