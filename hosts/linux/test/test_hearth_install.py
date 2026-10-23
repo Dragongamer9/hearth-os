@@ -345,6 +345,12 @@ class Parsing(unittest.TestCase):
         self.assertIn('UUID=R /var/home btrfs subvol=home', t)
         self.assertIn('UUID=B /boot ext4', t)
         self.assertIn('UUID=E /boot/efi vfat', t)
+        # The EFI partition isn't needed to run: a damaged one mustn't stop the start (emergency mode).
+        esp = next(l for l in t.splitlines() if ' /boot/efi ' in l)
+        self.assertIn('nofail', esp.split()[3].split(','))
+        boot = next(l for l in t.splitlines() if ' /boot ' in l)
+        self.assertNotIn('nofail', boot)
+        self.assertEqual(boot.split()[5], '2')   # checked (systemd-fsck) at start
 
     def test_reads_bls_menu(self):
         with tempfile.TemporaryDirectory() as d:

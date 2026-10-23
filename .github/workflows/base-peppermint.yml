@@ -292,6 +292,7 @@ jobs:
           check "the emergency screen's tools are there (setpriv, su, findfs, e2fsck, fsck.vfat, btrfs)" "command -v setpriv && command -v su && command -v findfs && command -v e2fsck && command -v fsck.vfat && command -v btrfs"
           check "bootupd's GRUB config reads custom.cfg (where the boot count comes in)" "cat /usr/lib/bootupd/grub2-static/configs.d/*.cfg | grep -q 'custom.cfg'"
           warn "GRUB has load_env and save_env (the boot count is kept in grubenv)" "grep -aqs save_env /usr/lib/efi/grub2/*/EFI/*/grubx64.efi && grep -aqs load_env /usr/lib/efi/grub2/*/EFI/*/grubx64.efi"
+          check "/boot and the EFI partition are repaired at start after a power cut (fsck.repair=yes)" "grep -hs fsck.repair=yes /usr/lib/bootc/kargs.d/*.toml"
           check "background updates skip a version that didn't start here" "grep -q 'hearth-boot-guard update-allowed' /usr/lib/systemd/system/bootc-fetch-apply-updates.service.d/20-hearth-boot-guard.conf"
           check "GRUB's menu is written from the boot entries where GRUB can't read them (also after switching edition)" "sh -n /usr/libexec/nimbus/hearth-bls-grub && test -L /etc/systemd/system/multi-user.target.wants/hearth-bls-grub.service"
           exit $fail
