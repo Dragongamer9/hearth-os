@@ -1,0 +1,17 @@
+[package]
+name = "hearth-gamma"
+version = "0.1.0"
+edition = "2021"
+description = "Hearth's colour filter for Desktop Mode: holds an inverted colour ramp on every screen (wlr-gamma-control) until it's stopped"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+libc = "0.2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
