@@ -1,0 +1,719 @@
+#!/usr/bin/python3
+"""hearth-portal: Hearth Files as every app's file chooser, and as the file manager other apps open.
+
+  hearth-portal filechooser             the xdg-desktop-portal FileChooser backend, D-Bus name
+                                        org.freedesktop.impl.portal.desktop.hearth (started by D-Bus; hearth.portal and
+                                        nimbus-portals.conf send xdg-desktop-portal's OpenFile / SaveFile / SaveFiles here)
+  hearth-portal filemanager1 [--replace]   org.freedesktop.FileManager1: ShowFolders, ShowItems, ShowItemProperties
+                                        ("Show in folder" / "Open containing folder" in Firefox, Chromium and Electron
+                                        apps, Steam, GTK and Qt apps). Started by nimbus-session in both modes, so it holds
+                                        the name before Dolphin, Nautilus or Thunar could be started for it.
+  hearth-portal show PATH [--props]     Hearth Files at PATH (a file: its folder with it picked; --props: its Properties)
+  hearth-portal pick REQUEST.json       the picker for a request (as the portal builds it); prints what was picked
+
+How the window opens: in Desktop Mode, ShowFolders and friends use the desktop's own Hearth Files (quickshell ipc).
+The picker, and Hearth Files in Game Mode, are picker.qml: Hearth Files (FileManager.qml) in its own Quickshell
+window. In Game Mode (gamescope) that window is pinned in front (GAMESCOPECTRL_BASELAYER_WINDOW, the way Hearth shows
+Steam's questions) and gets the controller through its own hearth-pad; Game Mode's controller mouse waits meanwhile.
+Which mode is on comes from the session's activation environment (systemctl --user show-environment): Desktop Mode's
+labwc puts WAYLAND_DISPLAY there, Game Mode's nimbus-watchdog DISPLAY with an empty WAYLAND_DISPLAY.
+
+The picker gets a request file (HEARTH_PICK_REQUEST, JSON) and writes what was picked to HEARTH_PICK_RESULT:
+  request: {kind: open|save|savefiles, title, accept, multiple, directory, filters: [{name, globs, mimes}], filter,
+            folder, name, files, choices: [{id, label, options: [[id, label]], value}], app}
+  result:  {paths: [...], filter: N, choices: {id: value}}   or   {cancel: true}
+"""
+import json
+import os
+import pathlib
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PICKER_QML = os.path.join(HERE, 'picker.qml')
+BUS_NAME = 'org.freedesktop.impl.portal.desktop.hearth'
+PORTAL_PATH = '/org/freedesktop/portal/desktop'
+FC_IFACE = 'org.freedesktop.impl.portal.FileChooser'
+REQ_IFACE = 'org.freedesktop.impl.portal.Request'
+FM_NAME = 'org.freedesktop.FileManager1'
+FM_PATH = '/org/freedesktop/FileManager1'
+FC_VERSION = 4
+IDLE_EXIT = 300            # s: the portal backend ends when nobody asked for a while (D-Bus starts it again)
+
+_FC_METHOD = '''<method name="%s">
+  <arg type="o" name="handle" direction="in"/><arg type="s" name="app_id" direction="in"/>
+  <arg type="s" name="parent_window" direction="in"/><arg type="s" name="title" direction="in"/>
+  <arg type="a{sv}" name="options" direction="in"/>
+  <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/>
+</method>'''
+FILECHOOSER_XML = '''<node>
+<interface name="%s">%s%s%s<property name="version" type="u" access="read"/></interface>
+<interface name="%s"><method name="Close"/></interface>
+</node>''' % (FC_IFACE, _FC_METHOD % 'OpenFile', _FC_METHOD % 'SaveFile', _FC_METHOD % 'SaveFiles', REQ_IFACE)
+_FM_METHOD = '''<method name="%s"><arg type="as" name="uris" direction="in"/><arg type="s" name="startup_id" direction="in"/></method>'''
+FILEMANAGER_XML = '<node><interface name="%s">%s%s%s</interface></node>' % (
+    FM_NAME, _FM_METHOD % 'ShowFolders', _FM_METHOD % 'ShowItems', _FM_METHOD % 'ShowItemProperties')
+
+
+class Fail(Exception):
+    pass
+
+
+def log(msg):
+    sys.stderr.write('hearth-portal: %s\n' % msg)
+    sys.stderr.flush()
+
+
+# ---------------------------------------------------------------------- what an app asked for → the picker's request
+
+def decode_path(v):
+    """A portal path (ay, NUL-terminated; or already a string) as a str."""
+    if v is None:
+        return ''
+    if isinstance(v, str):
+        return v.rstrip('\0')
+    if isinstance(v, (list, tuple)):
+        v = bytes(int(x) & 0xff for x in v)
+    if isinstance(v, (bytes, bytearray)):
+        return bytes(v).split(b'\0', 1)[0].decode('utf-8', 'surrogateescape')
+    return str(v)
+
+
+def plain_label(s):
+    """GTK mnemonics out of an accept label: "_Open" → "Open", "Save __as" → "Save _as"."""
+    return re.sub(r'_(_?)', lambda m: m.group(1), s or '').strip()
+
+
+def mime_tables(dirs=None):
+    """(globs, subclasses) from shared-mime-info: mime → [glob], parent → {child mimes}."""
+    if dirs is None:
+        home = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+        dirs = [home] + (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':')
+    globs, subs = {}, {}
+    for d in reversed([d for d in dirs if d]):
+        try:
+            with open(os.path.join(d, 'mime', 'globs2'), encoding='utf-8', errors='replace') as f:
+                for line in f:
+                    parts = line.rstrip('\n').split(':')
+                    if line.startswith('#') or len(parts) < 3:
+                        continue
+                    lst = globs.setdefault(parts[1], [])
+                    if parts[2] not in lst:
+                        lst.append(parts[2])
+        except OSError:
+            pass
+        try:
+            with open(os.path.join(d, 'mime', 'subclasses'), encoding='utf-8', errors='replace') as f:
+                for line in f:
+                    p = line.split()
+                    if len(p) == 2:
+                        subs.setdefault(p[1], set()).add(p[0])
+        except OSError:
+            pass
+    return globs, subs
+
+
+def mime_family(mime, subs, limit=400):
+    """The type and every type that's a kind of it (text/plain → text/x-python, ...), like GTK's filters."""
+    out, todo = [], [mime]
+    while todo and len(out) < limit:
+        m = todo.pop(0)
+        if m in out:
+            continue
+        out.append(m)
+        todo.extend(sorted(subs.get(m, ())))
+    return out
+
+
+def mime_globs(mime, tables):
+    """File name patterns for a type (wildcards like image/* too), from shared-mime-info."""
+    globs, subs = tables
+    if mime.endswith('/*'):
+        pre = mime[:-1]
+        fam = [m for m in globs if m.startswith(pre)]
+    else:
+        fam = mime_family(mime, subs)
+    out = []
+    for m in fam:
+        for g in globs.get(m, ()):
+            if g not in out:
+                out.append(g)
+    return out
+
+
+def map_filter(f, tables):
+    """A portal filter (name, [(0, glob) | (1, mime)]) → {name, globs, mimes} for the picker."""
+    name, pats = f[0], f[1]
+    globs, mimes = [], []
+    for kind, pat in pats:
+        if int(kind) == 0:
+            if pat not in globs:
+                globs.append(pat)
+        else:
+            mimes.append(pat)
+            for g in mime_globs(pat, tables):
+                if g not in globs:
+                    globs.append(g)
+    return {'name': name or 'Files', 'globs': globs, 'mimes': mimes}
+
+
+def same_filter(a, b):
+    return a[0] == b[0] and [(int(k), p) for k, p in a[1]] == [(int(k), p) for k, p in b[1]]
+
+
+def build_request(method, app_id, parent_window, title, options, tables=None, home=None, remembered=None):
+    """xdg-desktop-portal's OpenFile / SaveFile / SaveFiles call → the picker's request (plus the original filters,
+    kept under 'raw' for the reply's current_filter)."""
+    o = dict(options or {})
+    home = home or os.path.expanduser('~')
+    kind = {'OpenFile': 'open', 'SaveFile': 'save', 'SaveFiles': 'savefiles'}[method]
+    directory = kind == 'open' and bool(o.get('directory', False))
+    multiple = kind == 'open' and bool(o.get('multiple', False))
+    raw = [(f[0], [(int(k), p) for k, p in f[1]]) for f in (o.get('filters') or [])]
+    cur = o.get('current_filter')
+    filt = -1
+    if cur and len(cur) == 2:
+        cur = (cur[0], [(int(k), p) for k, p in cur[1]])
+        filt = next((i for i, f in enumerate(raw) if same_filter(f, cur)), -1)
+        if filt < 0:
+            raw.append(cur)
+            filt = len(raw) - 1
+    if raw and filt < 0:
+        filt = 0
+    if directory:          # folders only: file filters don't apply
+        raw, filt = [], -1
+    if raw and tables is None:
+        tables = mime_tables()
+    folder = decode_path(o.get('current_folder'))
+    name = o.get('current_name') or ''
+    if kind == 'save' and o.get('current_file'):
+        cf = decode_path(o.get('current_file'))
+        if cf:
+            folder, name = os.path.dirname(cf) or folder, os.path.basename(cf) or name
+    if not folder or not os.path.isdir(folder):
+        folder = (remembered or {}).get(app_id or '') or ''
+        if not folder or not os.path.isdir(folder):
+            folder = home
+    files = [os.path.basename(decode_path(f)) for f in (o.get('files') or [])] if kind == 'savefiles' else []
+    choices = []
+    for c in o.get('choices') or []:
+        cid, label, opts, initial = c[0], c[1], list(c[2] or []), c[3]
+        choices.append({'id': cid, 'label': label, 'options': [[a, b] for a, b in opts],
+                        'value': initial if (initial or not opts) else opts[0][0]})
+        if not opts and choices[-1]['value'] not in ('true', 'false'):
+            choices[-1]['value'] = 'false'
+    default_title = {'open': 'Choose a Folder' if directory else ('Open Files' if multiple else 'Open File'),
+                     'save': 'Save File', 'savefiles': 'Choose Where to Save'}[kind]
+    default_accept = {'open': 'Choose' if directory else 'Open', 'save': 'Save', 'savefiles': 'Save Here'}[kind]
+    return {
+        'kind': kind,
+        'title': (title or '').strip() or default_title,
+        'accept': plain_label(o.get('accept_label')) or default_accept,
+        'multiple': multiple,
+        'directory': directory,
+        'filters': [map_filter(f, tables) for f in raw],
+        'filter': filt,
+        'folder': folder,
+        'name': name if kind == 'save' else '',
+        'files': files,
+        'choices': choices,
+        'app': app_id or '',
+        'parent': parent_window or '',
+        'raw': [[f[0], [[k, p] for k, p in f[1]]] for f in raw],
+    }
+
+
+def uri_for(path):
+    return pathlib.Path(os.path.abspath(path)).as_uri()
+
+
+def build_results(req, res):
+    """What the picker wrote → (response, results) for xdg-desktop-portal. Results are {key: (signature, value)}.
+    Responses: 0 chosen, 1 cancelled, 2 something else (it couldn't open, or the app closed the request)."""
+    if res is None:
+        return 2, {}
+    if res.get('cancel') or not res.get('paths'):
+        return 1, {}
+    paths = [p for p in res['paths'] if isinstance(p, str) and p.startswith('/')]
+    if not paths:
+        return 1, {}
+    if req['kind'] == 'savefiles':
+        uris = [uri_for(os.path.join(paths[0], n)) for n in req['files']]
+    else:
+        if req['kind'] == 'save' or not req.get('multiple'):
+            paths = paths[:1]
+        uris = [uri_for(p) for p in paths]
+    out = {'uris': ('as', uris)}
+    if req.get('choices'):
+        got = res.get('choices') or {}
+        out['choices'] = ('a(ss)', [(c['id'], str(got.get(c['id'], c['value']))) for c in req['choices']])
+    raw = req.get('raw') or []
+    try:
+        fi = int(res.get('filter', req.get('filter', -1)))
+    except (TypeError, ValueError):
+        fi = -1
+    if 0 <= fi < len(raw):
+        f = raw[fi]
+        out['current_filter'] = ('(sa(us))', (f[0], [(int(k), str(p)) for k, p in f[1]]))
+    return 0, out
+
+
+def remember_folder(req, res, data):
+    """The folder this app's picker opens in next time (when the app doesn't say)."""
+    if not req.get('app') or not res or res.get('cancel') or not res.get('paths'):
+        return data
+    p = res['paths'][0]
+    folder = p if (req['directory'] or req['kind'] == 'savefiles') else os.path.dirname(p)
+    data = {k: v for k, v in (data or {}).items() if k != req['app']}
+    data[req['app']] = folder
+    return dict(list(data.items())[-100:])
+
+
+def state_file():
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'nimbus', 'picker.json')
+
+
+def load_state():
+    try:
+        with open(state_file()) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(d):
+    try:
+        os.makedirs(os.path.dirname(state_file()), exist_ok=True)
+        tmp = state_file() + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(d, f)
+        os.replace(tmp, state_file())
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------------- which mode, which display
+
+SESSION_VARS = ('WAYLAND_DISPLAY', 'DISPLAY', 'XAUTHORITY', 'XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'XDG_DATA_DIRS',
+                'NIMBUS_SHARE', 'NIMBUS_APP')
+
+
+def parse_env(text):
+    out = {}
+    for line in (text or '').splitlines():
+        k, sep, v = line.partition('=')
+        if not sep or not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', k):
+            continue
+        if v.startswith("$'") and v.endswith("'"):
+            v = v[2:-1].encode('latin-1', 'backslashreplace').decode('unicode_escape')
+        elif len(v) >= 2 and v[0] == v[-1] and v[0] in '"\'':
+            v = v[1:-1]
+        out[k] = v
+    return out
+
+
+def session_env(base=None, show=None):
+    """(environment for the window, game): the display of the mode that's on now. A long-running service started
+    before (or in the other mode) has stale DISPLAY / WAYLAND_DISPLAY, so they come from systemd's activation
+    environment, which Desktop Mode (labwc's autostart) and Game Mode (nimbus-watchdog) keep up to date."""
+    env = dict(os.environ if base is None else base)
+    if show is None:
+        try:
+            show = subprocess.run(['systemctl', '--user', 'show-environment'], capture_output=True, text=True,
+                                  timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            show = ''
+    act = parse_env(show)
+    if act.get('DISPLAY') or act.get('WAYLAND_DISPLAY'):
+        for k in SESSION_VARS:
+            if k in act:
+                env[k] = act[k]
+    game = not env.get('WAYLAND_DISPLAY') and bool(env.get('DISPLAY'))
+    if game:
+        env.pop('WAYLAND_DISPLAY', None)
+        env['QT_QPA_PLATFORM'] = 'xcb'
+    else:
+        env['QT_QPA_PLATFORM'] = 'wayland;xcb'
+    # The picker's own Qt theme: plain (it draws Hearth's look itself), never the portal (that's us).
+    env.pop('QT_QPA_PLATFORMTHEME', None)
+    return env, game
+
+
+def quickshell():
+    return shutil.which('quickshell') or shutil.which('qs')
+
+
+def desktop_ipc(env, args):
+    """A call to the running desktop shell (Desktop Mode); False when it isn't there."""
+    qs = quickshell()
+    if not qs:
+        return False
+    try:
+        r = subprocess.run([qs, 'ipc', '-p', HERE, 'call'] + list(args), env=env, capture_output=True, text=True,
+                           timeout=8)
+        return r.returncode == 0 and 'No running instances' not in (r.stdout + r.stderr)
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+# ---------------------------------------------------------------------- Game Mode: in front of the game, the controller
+
+def _xrun(env, args, timeout=3):
+    try:
+        return subprocess.run(args, env=env, capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ''
+
+
+def root_cardinal(env, name):
+    m = re.search(r'=\s*(\d+|0x[0-9a-fA-F]+)', _xrun(env, ['xprop', '-root', name]))
+    return int(m.group(1), 0) if m else None
+
+
+def set_root(env, name, val):
+    _xrun(env, ['xprop', '-root', '-f', name, '32c', '-set', name, str(val)])
+
+
+def remove_root(env, name):
+    _xrun(env, ['xprop', '-root', '-remove', name])
+
+
+def parse_ids(text):
+    return [int(x) for x in (text or '').split() if x.isdigit()]
+
+
+def find_window(env, pid):
+    ids = parse_ids(_xrun(env, ['xdotool', 'search', '--onlyvisible', '--pid', str(pid)]))
+    if not ids:
+        ids = parse_ids(_xrun(env, ['xdotool', 'search', '--onlyvisible', '--name', ' – Files$']))
+    return ids[-1] if ids else None
+
+
+PIN = 'GAMESCOPECTRL_BASELAYER_WINDOW'
+
+
+class Pinner:
+    """Keeps the picker's window in front in gamescope, and puts back what was pinned before when it closes."""
+
+    def __init__(self, env):
+        self.env = env
+        self.win = None
+        self.prev = root_cardinal(env, PIN)
+
+    def step(self, pid):
+        if not self.win:
+            w = find_window(self.env, pid)
+            if w:
+                self.win = w
+                set_root(self.env, PIN, w)
+                _xrun(self.env, ['xdotool', 'windowactivate', str(w)])
+            return
+        cur = root_cardinal(self.env, PIN)
+        # Hearth drops the pin when it changes what's shown; anything else pinned since (an app chosen in Quick
+        # Access) is left alone.
+        if cur != self.win and cur in (None, self.prev):
+            set_root(self.env, PIN, self.win)
+
+    def release(self):
+        if not self.win:
+            return
+        if root_cardinal(self.env, PIN) == self.win:
+            if self.prev:
+                set_root(self.env, PIN, self.prev)
+            else:
+                remove_root(self.env, PIN)
+
+
+def padmouse_pids():
+    """Game Mode's controller mouse (hearth-pad --game), which would move the pointer twice while the picker's own
+    hearth-pad runs."""
+    out = _xrun(None, ['pgrep', '-u', str(os.getuid()), '-f', 'hearth-pad.*--game'])
+    return [int(p) for p in out.split() if p.isdigit() and int(p) != os.getpid()]
+
+
+def signal_all(pids, sig):
+    for p in pids:
+        try:
+            os.kill(p, sig)
+        except OSError:
+            pass
+
+
+def log_file():
+    d = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'nimbus')
+    try:
+        os.makedirs(d, exist_ok=True)
+        p = os.path.join(d, 'picker.log')
+        if os.path.exists(p) and os.path.getsize(p) > 1000000:
+            os.replace(p, p + '.old')
+        return open(p, 'ab')
+    except OSError:
+        return subprocess.DEVNULL
+
+
+def run_window(extra, env, game, holder=None):
+    """picker.qml in its own Quickshell, until its window closes. Returns its exit code."""
+    qs = quickshell()
+    if not qs:
+        raise Fail('Quickshell is missing')
+    e = dict(env)
+    e.update(extra)
+    if game:
+        e['HEARTH_PICKER_PAD'] = '1'
+    out = log_file()
+    proc = subprocess.Popen([qs, '-p', PICKER_QML], env=e, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                            start_new_session=True)
+    if holder is not None:
+        holder['proc'] = proc
+    paused = padmouse_pids() if game else []
+    signal_all(paused, signal.SIGSTOP)
+    pin = Pinner(e) if game else None
+    try:
+        while True:
+            try:
+                proc.wait(timeout=0.4)
+                break
+            except subprocess.TimeoutExpired:
+                pass
+            if pin:
+                pin.step(proc.pid)
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+        if pin:
+            pin.release()
+        signal_all(paused, signal.SIGCONT)
+        if out is not subprocess.DEVNULL:
+            out.close()
+    return proc.returncode
+
+
+def run_picker(req, env=None, game=None, holder=None):
+    """Shows the picker for a request and returns what it wrote (None: it never answered)."""
+    if env is None:
+        env, game = session_env()
+    tmp = tempfile.mkdtemp(prefix='hearth-picker-', dir=os.environ.get('XDG_RUNTIME_DIR') or None)
+    try:
+        rq, rs = os.path.join(tmp, 'request.json'), os.path.join(tmp, 'result.json')
+        with open(rq, 'w') as f:
+            json.dump({k: v for k, v in req.items() if k != 'raw'}, f)
+        run_window({'HEARTH_PICK_REQUEST': rq, 'HEARTH_PICK_RESULT': rs}, env, game, holder)
+        try:
+            with open(rs) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def other_file_managers(path):
+    """Outside Hearth's session (Plasma on Anatase, Xfce on Peppermint) "Show in folder" stays with that desktop's
+    file manager."""
+    isdir = os.path.isdir(path)
+    return [['dolphin', path] if isdir else ['dolphin', '--select', path],
+            ['nautilus', path] if isdir else ['nautilus', '--select', path],
+            ['thunar', path], ['pcmanfm-qt', path], ['nemo', path]]
+
+
+def in_hearth(env):
+    return 'Nimbus' in (env.get('XDG_CURRENT_DESKTOP') or '').split(':')
+
+
+def show(path, props=False):
+    """Hearth Files at PATH: the desktop's own window in Desktop Mode, picker.qml's otherwise."""
+    env, game = session_env()
+    if not in_hearth(env):
+        fm_env = dict(os.environ)
+        fm_env.update({k: env[k] for k in SESSION_VARS if k in env})
+        for argv in other_file_managers(path):
+            if shutil.which(argv[0]):
+                subprocess.Popen(argv, env=fm_env, stdin=subprocess.DEVNULL, start_new_session=True)
+                return 0
+    if not game:
+        if props and desktop_ipc(env, ['fileprops', 'open', path]):
+            return 0
+        if not props and desktop_ipc(env, ['files', 'open', path]):
+            return 0
+    if not env.get('DISPLAY') and not env.get('WAYLAND_DISPLAY'):
+        raise Fail('no screen to show Hearth Files on')
+    extra = {'HEARTH_FILES_OPEN': path}
+    if props:
+        extra['HEARTH_FILES_PROPS'] = '1'
+    run_window(extra, env, game)
+    return 0
+
+
+def uri_path(u):
+    """file:// URIs (and plain paths) → paths; anything else → None."""
+    from urllib.parse import unquote, urlparse
+    if u.startswith('/'):
+        return u
+    p = urlparse(u)
+    if p.scheme != 'file' or p.netloc not in ('', 'localhost'):
+        return None
+    return unquote(p.path)
+
+
+def fm_targets(method, uris):
+    """FileManager1 call → [(path, props)] to show (one window per call; Hearth Files picks one item)."""
+    paths = [p for p in (uri_path(u) for u in uris or []) if p]
+    if not paths:
+        return []
+    return [(paths[0], method == 'ShowItemProperties')]
+
+
+# ---------------------------------------------------------------------- D-Bus
+
+def _gio():
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio, GLib
+    return Gio, GLib
+
+
+def to_variants(GLib, results):
+    return {k: GLib.Variant(sig, val) for k, (sig, val) in results.items()}
+
+
+def serve_filechooser():
+    Gio, GLib = _gio()
+    node = Gio.DBusNodeInfo.new_for_xml(FILECHOOSER_XML)
+    fc_info, req_info = node.lookup_interface(FC_IFACE), node.lookup_interface(REQ_IFACE)
+    loop = GLib.MainLoop()
+    state = {'busy': 0, 'last': time.monotonic()}
+
+    def idle_check():
+        if state['busy'] == 0 and time.monotonic() - state['last'] > IDLE_EXIT:
+            loop.quit()
+            return False
+        return True
+
+    def handle(conn, method, params, inv):
+        handle_path, app_id, parent, title, options = params.unpack()
+        try:
+            req = build_request(method, app_id, parent, title, options, remembered=load_state())
+        except Exception as e:   # a request we can't read: answer "didn't work" rather than leave the app waiting
+            log('bad %s request from %s: %r' % (method, app_id, e))
+            inv.return_value(GLib.Variant('(ua{sv})', (2, {})))
+            return
+        holder = {'closed': False}
+        state['busy'] += 1
+
+        def on_close(c, sender, path, iface, m, p, i):
+            holder['closed'] = True
+            pr = holder.get('proc')
+            if pr and pr.poll() is None:
+                pr.terminate()
+            i.return_value(None)
+        try:
+            reg = conn.register_object(handle_path, req_info, on_close, None, None)
+        except Exception:
+            reg = 0
+
+        def finish(resp, results):
+            if reg:
+                conn.unregister_object(reg)
+            state['busy'] -= 1
+            state['last'] = time.monotonic()
+            inv.return_value(GLib.Variant('(ua{sv})', (resp, to_variants(GLib, results))))
+            return False
+
+        def work():
+            try:
+                res = run_picker(req, holder=holder)
+            except Exception as e:
+                log('picker failed: %r' % e)
+                res = None
+            if holder['closed']:
+                GLib.idle_add(finish, 2, {})
+                return
+            resp, results = build_results(req, res)
+            if resp == 0:
+                save_state(remember_folder(req, res, load_state()))
+            GLib.idle_add(finish, resp, results)
+        threading.Thread(target=work, daemon=True).start()
+
+    def on_call(conn, sender, path, iface, method, params, inv):
+        if iface == FC_IFACE and method in ('OpenFile', 'SaveFile', 'SaveFiles'):
+            handle(conn, method, params, inv)
+        else:
+            inv.return_dbus_error('org.freedesktop.DBus.Error.UnknownMethod', method)
+
+    def get_prop(conn, sender, path, iface, prop):
+        return GLib.Variant('u', FC_VERSION) if prop == 'version' else None
+
+    def on_bus(conn, name):
+        conn.register_object(PORTAL_PATH, fc_info, on_call, get_prop, None)
+
+    Gio.bus_own_name(Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE, on_bus, None,
+                     lambda c, n: loop.quit())
+    GLib.timeout_add_seconds(30, idle_check)
+    loop.run()
+    return 0
+
+
+def serve_filemanager1(replace=False):
+    Gio, GLib = _gio()
+    node = Gio.DBusNodeInfo.new_for_xml(FILEMANAGER_XML)
+    loop = GLib.MainLoop()
+
+    def on_call(conn, sender, path, iface, method, params, inv):
+        uris, _startup = params.unpack()
+        inv.return_value(None)
+        for p, props in fm_targets(method, uris):
+            # A process of its own: in Game Mode it stays to keep the window in front, and this service stays free.
+            argv = [sys.executable, os.path.abspath(__file__), 'show', p] + (['--props'] if props else [])
+            try:
+                subprocess.Popen(argv, stdin=subprocess.DEVNULL, start_new_session=True)
+            except OSError as e:
+                log('couldn\'t open Hearth Files: %s' % e)
+
+    def on_bus(conn, name):
+        conn.register_object(FM_PATH, node.interfaces[0], on_call, None, None)
+
+    def lost(conn, name):
+        log('%s belongs to another program now' % FM_NAME)
+        loop.quit()
+
+    flags = Gio.BusNameOwnerFlags.REPLACE if replace else Gio.BusNameOwnerFlags.NONE
+    Gio.bus_own_name(Gio.BusType.SESSION, FM_NAME, flags, on_bus, None, lost)
+    loop.run()
+    return 0
+
+
+def main(argv):
+    if not argv or argv[0] in ('-h', '--help'):
+        print(__doc__)
+        return 0 if argv else 2
+    cmd, rest = argv[0], argv[1:]
+    try:
+        if cmd == 'filechooser':
+            return serve_filechooser()
+        if cmd == 'filemanager1':
+            return serve_filemanager1('--replace' in rest)
+        if cmd == 'show' and rest:
+            p = uri_path(rest[0]) or rest[0]
+            return show(os.path.abspath(os.path.expanduser(p)), '--props' in rest[1:])
+        if cmd == 'pick' and rest:
+            with open(rest[0]) as f:
+                req = json.load(f)
+            res = run_picker(req)
+            print(json.dumps(res))
+            return 0 if res and not res.get('cancel') else 1
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    print(__doc__)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
