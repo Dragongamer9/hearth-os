@@ -1081,7 +1081,7 @@ Scope {
                                     IconImage {
                                         visible: !ap.modelData.other
                                         implicitSize: 28
-                                        source: ap.modelData.other ? "" : Quickshell.iconPath(ap.modelData.icon || "", "application-x-executable")
+                                        source: ap.modelData.other ? "" : AppIcons.source(ap.modelData.icon || "", ap.modelData.id || "")
                                     }
                                     Text {
                                         Layout.fillWidth: true
@@ -1157,7 +1157,7 @@ Scope {
             x: 150
             anchors.verticalCenter: parent.verticalCenter
             implicitSize: row.icon !== "" ? 22 : 0
-            source: row.icon !== "" ? Quickshell.iconPath(row.icon, "application-x-executable") : ""
+            source: row.icon !== "" ? AppIcons.source(row.icon, "") : ""
         }
         TextEdit {
             id: valueText
