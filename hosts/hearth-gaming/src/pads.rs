@@ -474,6 +474,15 @@ impl Lab {
     }
 }
 
+/// Sets one axis's range and dead zone on an event device by its path (for tests and the command line).
+pub fn set_axis_path(path: &Path, code: u16, min: i32, max: i32, flat: i32) -> Result<AbsInfo, String> {
+    let f = OpenOptions::new().read(true).write(true).open(path).map_err(|e| format!("Can't open {} ({e})", path.display()))?;
+    let cur = get_abs(f.as_raw_fd(), code).ok_or("That device has no such axis.")?;
+    let new = AbsInfo { value: cur.value, min, max, fuzz: cur.fuzz, flat, res: cur.res };
+    set_abs(f.as_raw_fd(), code, &new).map_err(|e| format!("The driver didn't accept it ({e})."))?;
+    get_abs(f.as_raw_fd(), code).ok_or_else(|| "Couldn't read it back.".to_string())
+}
+
 /// One rumble: upload an FF_RUMBLE effect, play it, wait, take it away.
 pub fn rumble_now(path: &Path, strong: f64, weak: f64, ms: u32) -> Result<(), String> {
     let mut f = OpenOptions::new().read(true).write(true).open(path).map_err(|e| format!("Can't send rumble to it ({e})."))?;
