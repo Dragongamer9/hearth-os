@@ -1,0 +1,135 @@
+#!/usr/bin/python3
+"""hearth-link-firewall: opens the firewall for Nearby Share and Hearth Connect while they're listening, and only to
+the local network. Run by the apps through pkexec; /usr/share/polkit-1/rules.d/49-hearth-link.rules lets the person
+signed in at the device (local, active session, in the wheel group) run it without a password prompt.
+
+  hearth-link-firewall open nearby [PORT]     Nearby Share (LocalSend's protocol): PORT over TCP and UDP
+                                              (53317, or 53318-53327 when another app has 53317)
+  hearth-link-firewall close nearby [PORT]
+  hearth-link-firewall open connect           Hearth Connect (KDE Connect's protocol): 1714-1764 over TCP and UDP
+  hearth-link-firewall close connect
+  hearth-link-firewall status                 which firewall runs here (JSON)
+
+Only from local addresses (10/8, 172.16/12, 192.168/16, 169.254/16; IPv6 fe80::/10 and fc00::/7): the ports are
+never opened to the internet. firewalld (Anatase): runtime rules only, so they are gone at the next start even if
+an app crashes. ufw: its rules are kept until removed, so every rule is tagged ("hearth-nearby"/"hearth-connect")
+and `close` removes them; the apps also close at start. No firewall running: nothing to do, says so.
+One JSON line on stdout: {"ok": true, "firewall": "firewalld"|"ufw"|"none", ...}.
+"""
+import json
+import shutil
+import subprocess
+import sys
+
+LOCAL_V4 = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16']
+LOCAL_V6 = ['fe80::/10', 'fc00::/7']
+NEARBY_PORTS = range(53317, 53328)
+
+
+def run(cmd):
+    """(exit code, output). Tests replace this."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def which(name):
+    """Tests replace this."""
+    return shutil.which(name)
+
+
+def detect():
+    """The firewall that's actually running: 'firewalld', 'ufw' or 'none'."""
+    if which('firewall-cmd') and run(['firewall-cmd', '--state'])[0] == 0:
+        return 'firewalld'
+    if which('ufw'):
+        code, out = run(['ufw', 'status'])
+        if code == 0 and 'Status: active' in out:
+            return 'ufw'
+    return 'none'
+
+
+def ports_for(app, port):
+    """[(port or 'a:b' range, protocol)] the app needs."""
+    if app == 'nearby':
+        return [(str(port), 'tcp'), (str(port), 'udp')]
+    if app == 'connect':
+        return [('1714-1764', 'tcp'), ('1714-1764', 'udp')]
+    raise ValueError(app)
+
+
+def firewalld_rules(app, port):
+    out = []
+    for p, proto in ports_for(app, port):
+        for fam, nets in (('ipv4', LOCAL_V4), ('ipv6', LOCAL_V6)):
+            for net in nets:
+                out.append('rule family="%s" source address="%s" port port="%s" protocol="%s" accept' % (fam, net, p, proto))
+    return out
+
+
+def ufw_rules(app, port):
+    out = []
+    for p, proto in ports_for(app, port):
+        for net in LOCAL_V4 + LOCAL_V6:
+            out.append(['proto', proto, 'from', net, 'to', 'any', 'port', p.replace('-', ':')])
+    return out
+
+
+def apply(action, app, port):
+    fw = detect()
+    res = {'ok': True, 'firewall': fw, 'app': app, 'action': action}
+    if app == 'nearby':
+        res['port'] = port
+    if fw == 'firewalld':
+        flag = '--add-rich-rule=' if action == 'open' else '--remove-rich-rule='
+        failed = 0
+        for r in firewalld_rules(app, port):
+            code, out = run(['firewall-cmd', flag + r])
+            # Removing a rule that isn't there, or adding one that is: fine.
+            if code != 0 and 'NOT_ENABLED' not in out and 'ALREADY_ENABLED' not in out:
+                failed += 1
+        if failed:
+            res['ok'] = False
+            res['error'] = '%d firewall rules failed' % failed
+    elif fw == 'ufw':
+        failed = 0
+        for r in ufw_rules(app, port):
+            if action == 'open':
+                code, out = run(['ufw', 'allow'] + r + ['comment', 'hearth-' + app])
+            else:
+                code, out = run(['ufw', 'delete', 'allow'] + r + ['comment', 'hearth-' + app])
+                if code != 0:
+                    code, out = run(['ufw', 'delete', 'allow'] + r)
+                if code != 0 and ('Could not delete non-existent rule' in out or 'non-existent' in out):
+                    code = 0
+            # IPv6 rules fail where ufw has IPv6 turned off: only the IPv4 ones count.
+            if code != 0 and ':' not in r[3]:
+                failed += 1
+        if failed:
+            res['ok'] = False
+            res['error'] = '%d firewall rules failed' % failed
+    return res
+
+
+def main(argv):
+    if len(argv) == 2 and argv[1] == 'status':
+        print(json.dumps({'ok': True, 'firewall': detect()}))
+        return 0
+    if len(argv) not in (3, 4) or argv[1] not in ('open', 'close') or argv[2] not in ('nearby', 'connect'):
+        print(json.dumps({'ok': False, 'error': 'usage: hearth-link-firewall open|close nearby [PORT] | open|close connect | status'}))
+        return 2
+    port = 53317
+    if len(argv) == 4:
+        if argv[2] != 'nearby' or not argv[3].isdigit() or int(argv[3]) not in NEARBY_PORTS:
+            print(json.dumps({'ok': False, 'error': 'the port must be 53317-53327'}))
+            return 2
+        port = int(argv[3])
+    res = apply(argv[1], argv[2], port)
+    print(json.dumps(res))
+    return 0 if res['ok'] else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
