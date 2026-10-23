@@ -309,6 +309,51 @@ const path = require('path');
     const q = query; closeAll();
     if (q !== "':&é") throw new Error('typed ' + JSON.stringify(q));
   });
+  // A real keyboard never brings up the on-screen keyboard: typing opens search with no keyboard on screen, a text
+  // prompt opened after keyboard or mouse input has none either, and clicking its field with the mouse doesn't bring
+  // it up. A controller's A on the field does; typing on the real keyboard again sends it away.
+  {
+    const osk = sel => page.evaluate(sel => !!document.querySelector(sel + ' .kb'), sel);
+    try {
+      await page.evaluate(() => { closeAll(); S.history = []; navigate('home', {}, false); });
+      await page.keyboard.press('x'); await page.keyboard.press('/'); await wait(250);
+      if (!(await page.evaluate(() => S.layers.includes('search')))) errors.push('keyboard: / did not open search');
+      if (await osk('#search')) errors.push('keyboard: the on-screen keyboard came up for search after typing on a keyboard');
+      await page.keyboard.type('sta'); await wait(150);
+      const q = await page.evaluate(() => query);
+      if (q !== 'sta') errors.push('keyboard: typed into search ' + JSON.stringify(q));
+      if (await osk('#search')) errors.push('keyboard: typing in search brought up the on-screen keyboard');
+      await page.keyboard.press('Escape'); await wait(150);
+      await page.evaluate(() => { window.__pr = openPrompt({title: 'Name'}); });
+      await wait(250);
+      if (await osk('#prompt')) errors.push('keyboard: a text prompt opened after keyboard input showed the on-screen keyboard');
+      const box = await page.evaluate(() => { const r = document.querySelector('#prompt [data-k="pk-field"]').getBoundingClientRect(); return {x: r.left + 30, y: r.top + r.height / 2}; });
+      await page.mouse.move(box.x - 40, box.y); await page.mouse.move(box.x, box.y, {steps: 3}); await page.mouse.click(box.x, box.y); await wait(200);
+      if (await osk('#prompt')) errors.push('mouse: clicking the text field brought up the on-screen keyboard');
+      await page.keyboard.type('Al'); await wait(100);
+      if ((await page.evaluate(() => prompt && prompt.text)) !== 'Al') errors.push('keyboard: typing into the prompt did not reach it');
+      await page.evaluate(() => { setFocus(document.querySelector('#prompt [data-k="pk-field"]'), true); padPressed('a'); });
+      await wait(200);
+      if (!(await osk('#prompt'))) errors.push('controller: A on a focused text field did not bring up the on-screen keyboard');
+      await page.keyboard.type('x'); await wait(150);
+      if (await osk('#prompt')) errors.push('keyboard: typing on a real keyboard left the on-screen keyboard up');
+      const got = await page.evaluate(async () => { promptSubmit(); return await window.__pr; });
+      if (got !== 'Alx') errors.push('prompt: got ' + JSON.stringify(got));
+      // A controller opening search gets the keyboard straight away.
+      await page.evaluate(() => { closeAll(); padPressed('y'); }); await wait(200);
+      if (!(await osk('#search'))) errors.push('controller: Y did not open search with the on-screen keyboard');
+      await page.evaluate(() => { closeAll(); LOOK.madeFor = 'auto'; saveLook(); });
+      // Settings › Appearance › Made for
+      await page.evaluate(() => { S.settingsTab = 'appearance'; navigate('settings', {}, false); });
+      await wait(200);
+      if (!(await page.evaluate(() => ['auto', 'mk', 'pad'].every(k => document.querySelector(`#view [data-k="ap-mf-${k}"]`))))) errors.push('Appearance: no Made for choice');
+      await page.evaluate(() => act(document.querySelector('#view [data-k="ap-mf-pad"]')));
+      if (!(await page.evaluate(() => LOOK.madeFor === 'pad' && !document.body.classList.contains('mk')))) errors.push('Made for: Controller did not turn mouse & keyboard off');
+      await page.evaluate(() => act(document.querySelector('#view [data-k="ap-mf-mk"]')));
+      if (!(await page.evaluate(() => document.body.classList.contains('mk')))) errors.push('Made for: Mouse & keyboard did not turn it on');
+      await page.evaluate(() => { act(document.querySelector('#view [data-k="ap-mf-auto"]')); closeAll(); navigate('home', {}, false); });
+    } catch (e) { errors.push('keyboard / on-screen keyboard: ' + e.message.split('\n')[0]); }
+  }
   // The lock screen's and the Focus layout's big clocks keep time (they kept the time they were drawn at).
   await step('big clocks keep time', () => {
     S.layers = []; S.view = 'lock'; render(null, true);
