@@ -2781,8 +2781,15 @@ function libMove(dir){
   // List & details: right goes to the panel's Play, left from the panel back to the game you were on.
   if(f.classList.contains('ll-row') && dir==='right') return $('#lDetail [data-f]');
   if(f.closest('#lDetail') && dir==='left' && !f.previousElementSibling){ const r=LST.row && $(`#view [data-k="${CSS.escape(LST.row)}"]`); if(r) return r; }
+  // Keyboard & mouse layouts: right from a Table row / Launcher game goes to the panel / page, and back.
+  if(f.closest('.mk')){
+    if(dir==='right' && f.classList.contains('mkr') && !f.classList.contains('mkr-hd')){ const d=$('#mkDetail [data-f]'); if(d) return d; }
+    if(dir==='right' && f.classList.contains('mkl-g')){ const d=$('#mkHero [data-k="mkh-play"]'); if(d) return d; }
+    if(dir==='left' && f.closest('#mkDetail,#mkHero .mkl-btns') && !f.previousElementSibling){ const r=MK.cur && $(`#view .mk-tbody [data-id="${CSS.escape(MK.cur)}"], #view .mkl-g[data-id="${CSS.escape(MK.cur)}"]`); if(r) return r; }
+  }
   const nav=p.dataset.lnav; if(!nav) return null;
   const h=nav==='h', along = h ? (dir==='left'||dir==='right') : (dir==='up'||dir==='down');
+  if(!along && f.closest('.mk')) return null;   // across: the usual search (to the sidebar, the panel)
   const fwd = dir==='right'||dir==='down';
   if(along){
     let s=f; do{ s = fwd ? s.nextElementSibling : s.previousElementSibling; } while(s && !s.hasAttribute('data-f'));
