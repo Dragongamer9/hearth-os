@@ -43,9 +43,10 @@ fn device() -> Value {
         Some(36) => "Mini PC",
         _ => "",
     };
+    let board = [dmi("board_vendor"), dmi("board_name")].iter().flatten().cloned().collect::<Vec<_>>().join(" ");
+    let bios = [dmi("bios_vendor"), dmi("bios_version"), dmi("bios_date").map(|d| format!("({d})"))].iter().flatten().cloned().collect::<Vec<_>>().join(" ");
     json!({"vendor": dmi("sys_vendor"), "product": dmi("product_name"), "version": dmi("product_version"), "family": dmi("product_family"),
-        "board": [dmi("board_vendor"), dmi("board_name")].iter().flatten().cloned().collect::<Vec<_>>().join(" "),
-        "bios": [dmi("bios_vendor"), dmi("bios_version"), dmi("bios_date").map(|d| format!("({d})"))].iter().flatten().cloned().collect::<Vec<_>>().join(" "),
+        "board": board, "bios": bios,
         "chassis": chassis, "firmware": if Path::new("/sys/firmware/efi").exists() { "UEFI" } else { "BIOS (legacy)" },
         "secureBoot": secure_boot(), "hostname": line("/proc/sys/kernel/hostname")})
 }
