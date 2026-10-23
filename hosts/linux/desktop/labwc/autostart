@@ -12,6 +12,10 @@ SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
 # (handhelds, high-DPI laptops) get a comfortable scale so text and buttons are big enough to touch.
 if [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" ]; then
   "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh"
+  # A screen turned off there, and the one left on is unplugged now: never no screen at all.
+  if command -v wlr-randr >/dev/null 2>&1 && ! wlr-randr 2>/dev/null | grep -q "Enabled: yes"; then
+    for o in $(wlr-randr 2>/dev/null | grep -o '^[^ ]*'); do wlr-randr --output "$o" --on; done
+  fi
 elif command -v wlr-randr >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
   wlr-randr --json 2>/dev/null | python3 -c '
 import json, subprocess, sys
