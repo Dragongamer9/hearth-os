@@ -218,6 +218,26 @@ cp -avf /ctx/system_files/. /
 cp -avf /ctx/peppermint_files/. /
 chmod 440 /etc/sudoers.d/hearth-wheel
 
+# ------------------------------------------------------------------ Hearth icon set (branding/icons)
+# Every Hearth app's icon (Hearth, Settings, Files, Terminal, Disks, Browser, Task Manager, Apps, the installer and
+# the newer apps: hearth-text, hearth-photos...) in the hicolor theme, so Mantel, labwc's Alt+Tab and any other
+# desktop find them by name (Icon=hearth-settings). Drawn by branding/icons/make-icons.py: one SVG each plus PNGs
+# from 16 to 256 px. Apps on other branches only need their .desktop file's Icon= set to their name.
+optional hicolor-icon-theme adwaita-icon-theme libgtk-3-bin
+for svg in /ctx/icons/apps/*.svg; do
+  install -Dm644 "$svg" "/usr/share/icons/hicolor/scalable/apps/$(basename "$svg")"
+done
+for dir in /ctx/icons/png/*x*; do
+  install -d "/usr/share/icons/hicolor/$(basename "$dir")/apps"
+  install -m644 "$dir"/*.png "/usr/share/icons/hicolor/$(basename "$dir")/apps/"
+done
+# The old 512 px Hearth logo (os/system_files, without the tile) would win over the set at large sizes.
+rm -f /usr/share/icons/hicolor/512x512/apps/hearth.png
+test -f /usr/share/icons/hicolor/scalable/apps/hearth-settings.svg
+test -f /usr/share/icons/hicolor/48x48/apps/hearth-files.png
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
+# ---- end of the Hearth icon set
+
 # ------------------------------------------------------------------ Hearth itself, under /usr (the OS updates it)
 mkdir -p /usr/lib/nimbus
 if [ -x /ctx/nimbus-app/hearth ]; then
@@ -267,7 +287,7 @@ Name=Disks
 GenericName=Disk Manager
 Comment=See your drives and their health, format USB drives and SD cards, and set up drives for games
 Exec=/usr/bin/hearth-disks
-Icon=hearth
+Icon=hearth-disks
 Type=Application
 Categories=System;Utility;
 Keywords=disk;drive;partition;format;usb;sd;card;mount;eject;storage;steam;library;
@@ -338,7 +358,7 @@ Name=Files
 GenericName=File Manager
 Comment=Browse, copy and move your files, games, USB drives and SD cards
 Exec=/usr/bin/hearth-filemanager %U
-Icon=hearth
+Icon=hearth-files
 Type=Application
 Categories=System;FileManager;Utility;
 MimeType=inode/directory;
@@ -352,7 +372,7 @@ cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
 Name=Task Manager
 Comment=See what's running, close apps that stopped responding, and check performance
 Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call tasks open
-Icon=hearth
+Icon=hearth-tasks
 Type=Application
 Categories=System;Monitor;
 Keywords=task;process;end;kill;cpu;memory;gpu;performance;startup;
@@ -363,7 +383,7 @@ cat > /usr/share/applications/hearth-settings.desktop <<DESKTOP
 Name=Hearth Settings
 Comment=Wi-Fi, Bluetooth, sound, display, controllers, accounts and updates
 Exec=/usr/bin/hearth-settings
-Icon=hearth
+Icon=hearth-settings
 Type=Application
 Categories=Settings;
 Keywords=wifi;bluetooth;sound;display;controller;update;
@@ -374,7 +394,7 @@ Name=Apps
 GenericName=App Store
 Comment=Find, install and update apps from Flathub
 Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call apps open
-Icon=hearth
+Icon=hearth-apps
 Type=Application
 Categories=System;PackageManager;
 Keywords=store;software;install;update;flathub;flatpak;
@@ -422,7 +442,8 @@ printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hea
 
 # ------------------------------------------------------------------ Hearth Photos and Hearth Documents
 # (hosts/hearth-photos, hosts/hearth-documents) Hearth's picture viewer/editor and its reader for PDFs, e-books (EPUB)
-# and comic books (CBZ), built by CI with the app (base-peppermint.yml) and carried in os/nimbus-app with their icons.
+# and comic books (CBZ), built by CI with the app (base-peppermint.yml) and carried in os/nimbus-app (their icons,
+# hearth-photos and hearth-documents, come with the Hearth icon set above).
 # Their menu entries and file types are set here, and they're the default apps for pictures and documents: in every
 # desktop (/usr/share/applications/mimeapps.list, which Hearth Files' Open reads too) and in Desktop Mode's own list.
 # libheif's tools let Photos open HEIC pictures from phones; wl-clipboard is how it copies a picture.
@@ -432,7 +453,6 @@ for app in hearth-photos hearth-documents; do
     install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
     if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app is missing the libraries above"; fi
   fi
-  if [ -f "/ctx/nimbus-app/icons/$app.svg" ]; then install -Dm644 "/ctx/nimbus-app/icons/$app.svg" "/usr/share/icons/hicolor/scalable/apps/$app.svg"; fi
 done
 HEARTH_PICTURE_TYPES="image/jpeg;image/png;image/gif;image/webp;image/bmp;image/x-bmp;image/x-ms-bmp;image/tiff;image/svg+xml;image/avif;image/heic;image/heif;image/jxl;image/x-icon;image/vnd.microsoft.icon;image/apng;"
 HEARTH_DOCUMENT_TYPES="application/pdf;application/x-pdf;application/epub+zip;application/vnd.comicbook+zip;application/x-cbz;"

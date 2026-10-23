@@ -120,6 +120,7 @@ Singleton {
             summary: n.summary || "",
             body: String(n.body || "").replace(/<[^>]*>/g, ""),
             icon: n.appIcon || "",
+            entry: n.desktopEntry || "",
             image: /^(file:\/\/|\/)/.test(img) ? img : "",
             time: new Date()
         };
