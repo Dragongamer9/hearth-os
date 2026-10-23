@@ -727,8 +727,28 @@ public sealed class SystemBridge : IDisposable
             case "files.clipSet": Files.SetClipboard(Strs(a, "paths"), Bool(a, "cut")); return null;
             case "files.clipGet": return Files.GetClipboard();
             case "files.clipClear": Files.ClearClipboard(); return null;
-            case "files.paste": return new { id = Files.StartTransfer(Strs(a, "paths"), Req(a, "dest"), Bool(a, "move")) };
+            case "files.paste": return new { id = Files.StartTransfer(Strs(a, "paths"), Req(a, "dest"), Bool(a, "move"), Dict(a, "decide"), Str(a, "fallback")) };
             case "files.cancel": return new { ok = Files.Cancel(Int(a, "id")) };
+            case "files.conflicts": return await Task.Run(() => Files.Conflicts(Strs(a, "paths"), Req(a, "dest")));
+            case "files.props": return await Files.Props(Strs(a, "paths"));
+            case "files.count": return new { id = Files.StartCount(Strs(a, "paths")) };
+            case "files.checksum": return await Files.Checksum(Req(a, "path"), Req(a, "algo"));
+            case "files.cancelChecksums": Files.CancelChecksums(); return null;
+            case "files.setAttributes":
+                Files.SetAttributes(Req(a, "path"), a.TryGetProperty("readOnly", out _) ? Bool(a, "readOnly") : null, a.TryGetProperty("hidden", out _) ? Bool(a, "hidden") : null);
+                return null;
+            case "files.changeDefault": await Files.ChangeDefaultApp(Req(a, "path"), Mantel.Native.GetForegroundWindow()); return null;
+            case "files.peek": return await Task.Run(() => Files.Peek(Req(a, "path")));
+            case "files.newFile": return Files.NewFile(Req(a, "dir"), Req(a, "name"));
+            case "files.templates": return await Task.Run(Files.Templates);
+            case "files.fromTemplate": return Files.FromTemplate(Req(a, "template"), Req(a, "dir"), Str(a, "name"));
+            case "files.batchRename": return await Task.Run(() => Files.BatchRename(Req(a, "pattern"), Strs(a, "paths")));
+            case "files.compress": return new { id = Files.StartCompress(Strs(a, "paths"), Req(a, "archive"), Str(a, "format") ?? "zip") };
+            case "files.extract": return new { id = Files.StartExtract(Req(a, "archive"), Str(a, "dest"), Bool(a, "here")) };
+            case "files.searchStart": return new { id = Files.StartSearch(Req(a, "path"), Req(a, "query"), Bool(a, "hidden")) };
+            case "files.terminal": Files.Terminal(Req(a, "path")); return null;
+            case "files.copyText": Files.CopyText(Req(a, "text")); return null;
+            case "files.eject": await Task.Run(() => Files.Eject(Req(a, "path"))); return null;
 
             case "overlay.settings": return OverlaySettings();
             case "overlay.setHoldView":
@@ -966,6 +986,14 @@ public sealed class SystemBridge : IDisposable
         a.ValueKind == JsonValueKind.Object && a.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Array
             ? v.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray()
             : Array.Empty<string>();
+
+    private static Dictionary<string, string> Dict(JsonElement a, string k)
+    {
+        var d = new Dictionary<string, string>();
+        if (a.ValueKind == JsonValueKind.Object && a.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Object)
+            foreach (var p in v.EnumerateObject()) if (p.Value.ValueKind == JsonValueKind.String) d[p.Name] = p.Value.GetString() ?? "";
+        return d;
+    }
 
     private static bool Bool(JsonElement a, string k) =>
         a.ValueKind == JsonValueKind.Object && a.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.True;
