@@ -23,6 +23,7 @@ loud() { ffmpeg -nostdin -i "$1" -af volumedetect -f null - 2>&1 | grep -o 'mean
 settings() { echo "$1" > "$CFG/settings.json"; }
 keep() { cp "$1" "$OUT/$2" 2>/dev/null; }
 FAILED=0
+SUMMARY=""
 
 echo "--- what Recorder finds here"
 $B --probe | tee "$OUT/probe-$KIND.json" | head -60
