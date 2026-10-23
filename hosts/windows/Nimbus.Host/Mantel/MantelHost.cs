@@ -170,6 +170,12 @@ public sealed partial class MantelHost : IDisposable
         var w = new MantelWindow(part);
         w.PageMessage += m => OnMessage(m, w);
         w.PanelClosed += () => PanelClosed(w);
+        w.CloseKey += () =>
+        {
+            if (w.Part is MantelPart.Desktop or MantelPart.Bar) { HidePanels(); TogglePanel(_power); }
+            else if (w.Part is not MantelPart.Keyboard) { w.Hide(); PanelClosed(w); }
+            else HideKeyboard();
+        };
         await w.InitAsync(_env, _baseUrl + "mantel.html?part=" + part.ToString().ToLowerInvariant(), _setup);
         return w;
     }
