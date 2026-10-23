@@ -321,6 +321,7 @@ class Details(Base):
         self.assertEqual(r['mime'], 'image/png')
         self.assertEqual([a['id'] for a in r['apps']], ['painter.desktop', 'viewer.desktop'])
         self.assertTrue(r['apps'][0]['default'])
+        self.assertIn('text.desktop', [a['id'] for a in self.hf.apps(pic, everything=True)['apps']])   # Other…
         self.assertEqual(self.hf.expand_exec('viewer --open %F', pic), ['viewer', '--open', pic])
         self.assertEqual(self.hf.expand_exec('painter %u', pic), ['painter', 'file://' + pic.replace(' ', '%20')])
         self.assertEqual(self.hf.expand_exec('"/opt/my app/run"', pic), ['/opt/my app/run', pic])

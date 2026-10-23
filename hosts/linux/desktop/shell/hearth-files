@@ -12,7 +12,7 @@
   hearth-files copy SRC... DEST         copy into the folder DEST     } print "progress: {json}" lines while
   hearth-files move SRC... DEST         move into the folder DEST     } working, then the final JSON line
   hearth-files info PATH                details, with the total size of a folder
-  hearth-files apps PATH                apps that can open it (and which one is the default)
+  hearth-files apps PATH [--all]        apps that can open it (and which one is the default); --all: any app that opens files
   hearth-files open PATH [APP_ID]       open with the default app, or with APP_ID (a .desktop id)
   hearth-files eject PATH               safely remove the USB drive / SD card mounted at PATH
   hearth-files mount DEVICE / unmount PATH   mount a plugged-in drive (prints its path) / unmount it
@@ -1070,7 +1070,8 @@ def mimeapps(mime):
     return defaults, added, removed
 
 
-def apps(path):
+def apps(path, everything=False):
+    """Apps that say they open this kind of file, the default first; everything: every app (Open with › Other…)."""
     p = os.path.abspath(os.path.expanduser(path))
     mime = sniff_mime(p)
     entries = desktop_entries()
@@ -1094,6 +1095,8 @@ def apps(path):
     for did, (_, fields) in sorted(entries.items(), key=lambda kv: (kv[1][1].get('Name') or kv[0]).lower()):
         types = [t for t in fields.get('MimeType', '').split(';') if t]
         hit = mime in types or major in types or (mime.startswith('text/') and 'text/plain' in types)
+        if everything and '%' in fields.get('Exec', '') and re.search(r'%[fFuU]', fields.get('Exec', '')):
+            hit = True
         if hit and (fields.get('NoDisplay', '').lower() != 'true'):
             add(did, fields)
     for a in out:
@@ -2340,8 +2343,8 @@ def cmd(argv):
         out = transfer(plain[:-1], plain[-1], c == 'move', decide, default)
     elif c == 'info' and len(rest) == 1:
         out = info(rest[0])
-    elif c == 'apps' and len(rest) == 1:
-        out = apps(rest[0])
+    elif c == 'apps' and len(rest) in (1, 2):
+        out = apps(rest[0], '--all' in rest[1:])
     elif c == 'open' and len(rest) in (1, 2):
         out = open_path(rest[0], rest[1] if len(rest) == 2 else None)
     elif c == 'eject' and len(rest) == 1:
