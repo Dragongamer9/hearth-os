@@ -483,7 +483,7 @@ COMMAND_WORDS = [
     (r'open\.sh screenshot-region', 'Screenshot of an area you choose'),
     (r'open\.sh screenshot-clipboard', 'Screenshot to the clipboard only'),
     (r'open\.sh screenshot', 'Screenshot of the whole screen'),
-    (r'call taskbar activate (\d)', 'Open or switch to taskbar app'), (r'call calendar toggle', 'Notifications and calendar'),
+    (r'call taskbar activate (\d)', 'Open or switch to taskbar app'), (r'call taskbar showDesktop', 'Show the desktop, or the windows again'), (r'call calendar toggle', 'Notifications and calendar'),
     (r'call media playPause', 'Play or pause'), (r'call media next', 'Next track'), (r'call media previous', 'Previous track'),
     (r'call media stop', 'Stop playing'), (r'call brightness up', 'Brightness up'), (r'call brightness down', 'Brightness down'),
     (r'set-mute @DEFAULT_AUDIO_SOURCE@', 'Microphone on or off'), (r'systemctl suspend', 'Sleep'),
