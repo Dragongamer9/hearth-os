@@ -2163,6 +2163,7 @@ function pageSystem(){
   const tz=(()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }catch(e){ return ''; } })();
   if(LINUX && ART.s) h += shead('Offline') + `<div class="row" data-f data-k="sy-art"><span class="ricon">${I.dl}</span><div class="rt"><b>Game art on this device</b><small>${ART.s.pictures} pictures (${Math.round(ART.s.bytes/1e6)} MB)${ART.s.waiting?` · ${ART.s.waiting} still downloading`:' · your library looks the same offline'}</small></div></div>`;
   if(LINUX || WINHOST) h += browserRows();
+  if(LINUX && CLAUDE.s && CLAUDE.s.available) h += claudeRows();
   h += shead('Date and time')
     + sgrid(infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
     + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM'));
@@ -2284,6 +2285,41 @@ function browserRows(){
     h += `<button class="row" data-f data-k="br-inst" data-act="browser" data-v="install"><span class="ricon">${I.dl}</span><div class="rt"><b>Install Aloha Browser</b><small>Downloads the official package from alohabrowser.com (about 150 MB) and makes it the default browser</small></div></button>`;
   }
   if(b.error) h += note('Last try didn\'t work: '+esc(b.error));
+  return h;
+}
+
+// ---------- Settings › System › Claude (Linux): Claude Desktop and Claude Code from Anthropic, in your home folder ----------
+// desktop/shell/hearth-claude does the work (hearth-core's claude.status / claude.act); Desktop Mode has the same
+// in Hearth Settings › Claude.
+const CLAUDE = {s:null};
+function loadClaude(){ if(LINUX && host) call('claude.status').then(r=>{ CLAUDE.s=r; refreshUI(); }).catch(()=>{}); }
+function claudeRows(){
+  const c=CLAUDE.s;
+  let h = shead('Claude');
+  const busy = c.state && c.state!=='idle';
+  if(busy){
+    const pct = c.progress!=null ? Math.round(c.progress*100) : null;
+    h += `<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>${{install:'Getting Claude',update:'Updating Claude',remove:'Removing Claude',check:'Checking for a newer Claude','install-code':'Getting Claude Code','remove-code':'Removing Claude Code'}[c.state]||'Working'}…</b><small>${esc(c.line||'')}</small>${pct!=null?`<div class="storage"><i style="width:${pct}%"></i></div>`:''}</div><div class="rv">${pct!=null?pct+'%':''}</div></div>`;
+    return h;
+  }
+  if(c.supported===false) return h + note('Anthropic makes Claude Desktop for x86-64 and ARM64 computers only.');
+  if(c.installed){
+    const about = c.apt ? 'Installed through apt'+(c.aptVersion&&c.aptVersion!=='?'?' · version '+esc(c.aptVersion):'')+'. apt keeps it up to date.'
+      : 'Version '+esc(c.version||'?')+(c.pending?' · '+esc(c.pending)+' is ready: close Claude to finish':c.updateAvailable?' · '+esc(c.latest)+' is available':' · up to date')+' · Hearth checks for updates every day';
+    h += `<button class="row" data-f data-k="cl-open" data-act="claude" data-v="open"><span class="ricon">${I.globe||I.display}</span><div class="rt"><b>Claude Desktop</b><small>${about}</small></div><div class="rv">Open ›</div></button>`;
+    if(c.ours) h += sgrid(`<button class="row" data-f data-k="cl-upd" data-act="claude" data-v="${c.updateAvailable||c.pending?'update':'check'}"><span class="ricon">${I.refresh}</span><div class="rt"><b>${c.updateAvailable||c.pending?'Update now':'Check for an update'}</b><small>${c.running?'Close Claude first':'From Anthropic, checked against its signing key'}</small></div></button>`
+      + `<button class="row" data-f data-k="cl-rm" data-act="claudeRemove" data-v="remove"><span class="ricon">${I.trash}</span><div class="rt"><b>Remove Claude Desktop</b><small>Your chats stay in your Claude account</small></div></button>`);
+  } else {
+    h += `<button class="row" data-f data-k="cl-get" data-act="claude" data-v="install"><span class="ricon">${I.dl}</span><div class="rt"><b>Get Claude</b><small>Claude Desktop from Anthropic (about 170 MB), installed for you, then opened. Sign in with your Claude account in the browser.</small></div></button>`;
+  }
+  if(!c.official) h += note('Anthropic supports its Linux app on Debian and Ubuntu. On this edition it\'s Anthropic\'s Debian build, run by Hearth from your home folder: it should work, but Anthropic doesn\'t support it yet.');
+  if(c.sandbox===false) h += note('This system blocks the user namespaces Claude Desktop sandboxes itself with, so it won\'t start until they\'re allowed.');
+  const code=c.code||{};
+  h += code.installed
+    ? sgrid(`<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Claude Code</b><small>${code.version?'Version '+esc(code.version)+' · ':''}Type claude in the Terminal (Desktop Mode). It keeps itself up to date.</small></div></div>`
+      + `<button class="row" data-f data-k="cl-rmcode" data-act="claudeRemove" data-v="remove-code"><span class="ricon">${I.trash}</span><div class="rt"><b>Remove Claude Code</b><small>Your settings in ~/.claude stay</small></div></button>`)
+    : `<button class="row" data-f data-k="cl-code" data-act="claude" data-v="install-code"><span class="ricon">${I.dl}</span><div class="rt"><b>Get Claude Code</b><small>Claude in the Terminal, for coding. Runs Anthropic's installer for you.</small></div></button>`;
+  if(c.error) h += note('Last try didn\'t work: '+esc(c.error));
   return h;
 }
 
@@ -5321,6 +5357,11 @@ function act(el){
     case 'autoReport': return call('logs.setAutoReport',{on:HOSTINFO.autoReport===false}).then(on=>{ HOSTINFO.autoReport=on; toast(on?'Reports sent when it gets stuck':'No reports sent by itself'); render('sy-autorep',true); }).catch(e=>toast(e.message));
     case 'inputLog': INPUT_LOG=!INPUT_LOG; try{ localStorage.setItem('nimbus.inputLog', INPUT_LOG?'1':'0'); }catch(e){} toast(INPUT_LOG?'Logging controller input':'Stopped logging controller input'); return render('sy-inlog',true);
     case 'browser': return call('browser.act',{action:d.v}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
+    case 'claude':
+      if(d.v==='open'){ toast('Opening Claude…'); return call('claude.act',{action:'open'}).catch(e=>toast(e.message)); }
+      if(d.v==='install') CLAUDE.openAfter=true;
+      return call('claude.act',{action:d.v}).then(r=>{ CLAUDE.s=r; render(null,true); }).catch(e=>toast(e.message));
+    case 'claudeRemove': return openSheet({title:d.v==='remove-code'?'Remove Claude Code?':'Remove Claude Desktop?', sub:d.v==='remove-code'?'Your settings in ~/.claude stay.':'Your chats stay in your Claude account. Its settings stay in your home folder.', items:[{label:'Remove', icon:'trash', run:()=>call('claude.act',{action:d.v}).then(r=>{ CLAUDE.s=r; render(null,true); }).catch(e=>toast(e.message))}]});
     case 'browserRemove': return openSheet({title:'Remove Aloha Browser?', sub:'Your bookmarks and history stay in your home folder.', items:[{label:'Remove', icon:'trash', run:()=>call('browser.act',{action:'remove'}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message))}]});
     case 'setTdp': return call('perf.setTdp',{watts:+d.v}).then(r=>{ S.sys.power=Object.assign(S.sys.power||{},{tdp:r}); toast(`Power limit ${r.watts} W`); render('ptd-'+d.v,true); }).catch(e=>toast(e.message));
     case 'pbtn': return call('buttons.set',{[d.w]:d.v}).then(r=>{ BTNS.s=r; render('pb-'+d.w+'-'+d.v,true); }).catch(e=>toast(e.message));
@@ -7671,6 +7712,16 @@ function onSysEvent(name, data){
   if(name==='osd') return showOsd(data);
   if(name==='library.art'){ if(!LIB.loading && !OVERLAY) loadLibrary(false); return; }
   if(name==='net'){ S.online=!!data.online; toast(data.online?'Back online':"You're offline. Installed games and your library still work."); return; }
+  if(name==='claude'){
+    const was=CLAUDE.s; CLAUDE.s=Object.assign({}, was||{}, data);
+    if(data && data.state==='idle'){
+      if(data.error){ CLAUDE.openAfter=false; toast(data.error); }
+      loadClaude();
+      if(CLAUDE.openAfter && !data.error){ CLAUDE.openAfter=false; toast('Claude is installed. Opening it…'); call('claude.act',{action:'open'}).catch(()=>{}); }
+    }
+    if(S.view==='settings' && S.settingsTab==='system') render(null,true);
+    return;
+  }
   if(name==='browser'){ BROWSER.s=data; if(S.view==='settings' && S.settingsTab==='system') render(null,true); if(data && data.error && data.state==='idle') toast(data.error); return; }
   if(name==='overlay.unavailable'){ if(!OVERLAY && S.layers.at(-1)==='launch'){ send({type:'log', text:'overlay: none to show Quick Access in over the starting screen; using this window\'s'}); openLayer('qam'); } return; }
   if(name==='power.menu'){ if(OVERLAY && OV.busy){ OV.wantPower=true; return; } if(S.layers.at(-1)!=='power'){ if(!OVERLAY) closeAll(); openLayer('power'); } return; }
@@ -7756,7 +7807,7 @@ function onSettingsTab(t){
   if(t==='system' || t==='about') loadSysInfo();
   if(ANDROID && (t==='sources' || t==='system' || t==='controller')) loadAnd();
   if(t==='linux' && lxOn()){ loadLinux(); loadDesktop(); }
-  if(t==='system'){ loadBrowser(); loadArtStatus(); loadOldFiles(false); }
+  if(t==='system'){ loadBrowser(); loadClaude(); loadArtStatus(); loadOldFiles(false); }
   if(t==='about'){ loadCounterStats(); if(!UPD.status) loadUpdateStatus(); loadSystemUpdate(); if(host) call('display.get').then(r=>{ Object.assign(S.sys.display,r); refreshUI(); }).catch(()=>{}); }
   if(t==='controller') call('overlay.settings').then(r=>{ OVS.s=r; render(null,true); }).catch(()=>{});
   if(t==='controller' && host) call('pad.status').then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; PAD.host=s.connected>0||!!HOSTINFO.seatPads; render(null,true); }).catch(()=>{});

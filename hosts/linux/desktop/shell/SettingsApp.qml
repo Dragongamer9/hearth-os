@@ -31,11 +31,12 @@ Scope {
         { id: "users", icon: "user", label: "Users" },
         { id: "signin", icon: "lock", label: "Sign-in" },
         { id: "browser", icon: "globe", label: "Web browser" },
+        { id: "claude", icon: "grid", label: "Claude" },
         { id: "updates", icon: "update", label: "Updates" },
         { id: "about", icon: "info", label: "About" }
     ])
     readonly property var files: ({ wifi: "SetWifi.qml", bluetooth: "SetBluetooth.qml", sound: "SetSound.qml", display: "SetDisplay.qml",
-        appearance: "SetAppearance.qml", power: "SetPower.qml", controller: "SetController.qml", signin: "SetSignin.qml", browser: "SetBrowser.qml",
+        appearance: "SetAppearance.qml", power: "SetPower.qml", controller: "SetController.qml", signin: "SetSignin.qml", browser: "SetBrowser.qml", claude: "SetClaude.qml",
         updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml",
         keyboard: "SetKeyboard.qml", printers: "SetPrinters.qml", datetime: "SetDateTime.qml", defaults: "SetDefaults.qml",
         clipboard: "SetClipboard.qml", users: "SetUsers.qml" })
