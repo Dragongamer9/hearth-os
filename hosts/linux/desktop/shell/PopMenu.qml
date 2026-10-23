@@ -191,6 +191,13 @@ PanelWindow {
                             font.pixelSize: 14
                             elide: Text.ElideRight
                         }
+                        Text {                   // the keyboard shortcut for it (Ctrl+C...)
+                            visible: !!row.modelData.hint && !row.modelData.sub
+                            text: row.modelData.hint || ""
+                            color: row.lit ? Theme.accentInk : Theme.muted
+                            font.family: Theme.font
+                            font.pixelSize: 12
+                        }
                         Icon {
                             visible: !!row.modelData.sub
                             name: "forward"; size: 14
