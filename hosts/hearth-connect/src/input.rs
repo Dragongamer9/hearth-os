@@ -214,16 +214,16 @@ impl Input {
                         d.sync();
                     }
                     Action::Click(b) => tap(*b),
-                    Action::DoubleClick => { tap(super::BTN_LEFT); tap(super::BTN_LEFT); }
-                    Action::Hold(down) => { d.emit(EV_KEY, super::BTN_LEFT, if *down { 1 } else { 0 }); d.sync(); }
+                    Action::DoubleClick => { tap(BTN_LEFT); tap(BTN_LEFT); }
+                    Action::Hold(down) => { d.emit(EV_KEY, BTN_LEFT, if *down { 1 } else { 0 }); d.sync(); }
                     Action::Scroll(n) => { d.emit(EV_REL, REL_WHEEL, *n); d.emit(EV_REL, REL_WHEEL_HI_RES, n * 120); d.sync(); }
                     Action::Keys { mods, keys, unicode } => {
                         for m in mods { d.emit(EV_KEY, *m, 1); }
                         if !mods.is_empty() { d.sync(); }
                         for (k, shift) in keys {
-                            if *shift { d.emit(EV_KEY, super::KEY_LEFTSHIFT, 1); d.sync(); }
+                            if *shift { d.emit(EV_KEY, KEY_LEFTSHIFT, 1); d.sync(); }
                             tap(*k);
-                            if *shift { d.emit(EV_KEY, super::KEY_LEFTSHIFT, 0); d.sync(); }
+                            if *shift { d.emit(EV_KEY, KEY_LEFTSHIFT, 0); d.sync(); }
                         }
                         for m in mods.iter().rev() { d.emit(EV_KEY, *m, 0); }
                         if !mods.is_empty() { d.sync(); }

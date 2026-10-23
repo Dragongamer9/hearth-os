@@ -12,6 +12,10 @@ on:
     paths: ['hosts/hearth-nearby/**', 'hosts/hearth-connect/**', 'os/system_files/usr/libexec/nimbus/hearth-link-firewall', '.github/workflows/link-apps.yml']
   workflow_dispatch:
 
+concurrency:
+  group: link-apps-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: never
 
