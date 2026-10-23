@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Text</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="bar">
+    <div id="tabs" role="tablist" aria-label="Open files"></div>
+    <button id="btnNew" class="ibtn" data-f title="New (Ctrl+N)" aria-label="New file">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <div class="sp"></div>
+    <button id="btnOpen" class="ibtn" data-f title="Open (Ctrl+O)" aria-label="Open">
+      <svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>
+    </button>
+    <button id="btnSave" class="ibtn" data-f title="Save (Ctrl+S)" aria-label="Save">
+      <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>
+    </button>
+    <button id="btnUndo" class="ibtn" data-f title="Undo (Ctrl+Z)" aria-label="Undo">
+      <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+    </button>
+    <button id="btnRedo" class="ibtn" data-f title="Redo (Ctrl+Y)" aria-label="Redo">
+      <svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+    </button>
+    <button id="btnFind" class="ibtn" data-f title="Find and replace (Ctrl+F)" aria-label="Find">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
+    </button>
+    <button id="btnMenu" class="ibtn" data-f title="Menu (F10)" aria-label="Menu">
+      <svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
+    </button>
+  </header>
+
+  <div id="findbar" hidden>
+    <div class="frow">
+      <input id="findInput" type="text" placeholder="Find" spellcheck="false" autocomplete="off" aria-label="Find">
+      <button id="optCase" class="tbtn" data-f title="Match case (Alt+C)" aria-pressed="false">Aa</button>
+      <button id="optWord" class="tbtn" data-f title="Whole words (Alt+W)" aria-pressed="false">“ab”</button>
+      <button id="optRegex" class="tbtn" data-f title="Regular expression (Alt+R)" aria-pressed="false">.*</button>
+      <span id="findCount"></span>
+      <button id="findPrev" class="ibtn" data-f title="Previous (Shift+Enter, Shift+F3)" aria-label="Previous">
+        <svg viewBox="0 0 24 24"><path d="M7 14l5-5 5 5"/></svg>
+      </button>
+      <button id="findNext" class="ibtn" data-f title="Next (Enter, F3)" aria-label="Next">
+        <svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg>
+      </button>
+      <button id="findClose" class="ibtn" data-f title="Close (Esc)" aria-label="Close find">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="frow" id="replaceRow">
+      <input id="replaceInput" type="text" placeholder="Replace with" spellcheck="false" autocomplete="off" aria-label="Replace with">
+      <button id="replaceOne" class="pbtn" data-f title="Replace this one and find the next (Ctrl+Enter in the box)">Replace</button>
+      <button id="replaceAll" class="pbtn" data-f title="Replace every match (Ctrl+Alt+Enter)">Replace all</button>
+    </div>
+  </div>
+
+  <div id="banner" hidden>
+    <span id="bannerText"></span>
+    <span id="bannerButtons"></span>
+  </div>
+
+  <main id="editors">
+    <div id="start" hidden>
+      <h1>Hearth Text</h1>
+      <p>Start typing, or open a file.</p>
+      <div class="startbtns">
+        <button class="pbtn" data-f id="startOpen">Open a file…</button>
+      </div>
+      <h2 id="recentHead">Recent files</h2>
+      <div id="recentList"></div>
+    </div>
+  </main>
+
+  <footer id="status">
+    <button id="stPos" class="sbtn" data-f title="Go to line (Ctrl+G)"></button>
+    <span id="stRO" class="pill" hidden>Read-only</span>
+    <span id="stAdmin" class="pill warn" hidden>Administrator</span>
+    <span class="sp"></span>
+    <button id="stLang" class="sbtn" data-f title="Highlighting"></button>
+    <button id="stIndent" class="sbtn" data-f title="Indentation"></button>
+    <button id="stEnc" class="sbtn" data-f title="Encoding"></button>
+    <button id="stEol" class="sbtn" data-f title="Line endings"></button>
+    <button id="stZoom" class="sbtn" data-f title="Text size (Ctrl + / − / 0)"></button>
+  </footer>
+</div>
+
+<div id="menu" role="menu" hidden></div>
+
+<div id="shade" hidden>
+  <div id="dialog" role="dialog" aria-modal="true">
+    <h1 id="dlgTitle"></h1>
+    <p id="dlgText"></p>
+    <input id="dlgInput" type="text" spellcheck="false" autocomplete="off" hidden>
+    <div id="dlgButtons"></div>
+  </div>
+</div>
+
+<pre id="printout" aria-hidden="true"></pre>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
