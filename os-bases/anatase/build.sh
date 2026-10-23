@@ -121,6 +121,14 @@ command -v ffmpeg >/dev/null || dnf5 -y install ffmpeg-free || dnf5 -y install f
 dnf5 -y install --skip-unavailable --setopt=fedora-cisco-openh264.enabled=1 openh264 gstreamer1-plugin-openh264 || true
 dnf5 -y install --skip-unavailable wf-recorder slurp pulseaudio-utils pipewire-utils pipewire-gstreamer gstreamer1-plugins-good \
   gstreamer1-plugins-bad-free gstreamer1-plugin-libav v4l-utils libnotify qrencode libcap || true
+# CI builds it inside Anatase itself (base-anatase.yml, gsr/ next to the app); the COPR package is the fallback.
+if [ -x /ctx/nimbus-app/gsr/gpu-screen-recorder ] && ! command -v gpu-screen-recorder >/dev/null; then
+  install -Dm755 /ctx/nimbus-app/gsr/gpu-screen-recorder /usr/bin/gpu-screen-recorder
+  if [ -x /ctx/nimbus-app/gsr/gsr-kms-server ]; then install -Dm755 /ctx/nimbus-app/gsr/gsr-kms-server /usr/bin/gsr-kms-server; fi
+  if ldd /usr/bin/gpu-screen-recorder | grep 'not found'; then
+    echo "warning: gpu-screen-recorder needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/gpu-screen-recorder /usr/bin/gsr-kms-server
+  fi
+fi
 if ! command -v gpu-screen-recorder >/dev/null; then
   if dnf5 -y copr enable brycensranch/gpu-screen-recorder-git && dnf5 -y install gpu-screen-recorder; then
     echo "gpu-screen-recorder installed (COPR)"

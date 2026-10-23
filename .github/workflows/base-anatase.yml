@@ -88,6 +88,37 @@ jobs:
             else echo "::warning title=$c::it didn't build, so this image is made without it"; fi
           done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # gpu-screen-recorder, Recorder's best way to capture (graphics card capture and encoding, Game Mode, instant
+      # replay), built from its release inside Anatase's own image (so it links exactly Anatase's ffmpeg and
+      # libraries) and carried as gsr/ (build.sh installs it; the COPR package is only the fallback).
+      - name: Build gpu-screen-recorder for Hearth Recorder (inside Anatase)
+        continue-on-error: true
+        env:
+          GSR_VERSION: '5.13.8'
+        run: |
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          mkdir -p /tmp/app/gsr
+          cat > /tmp/gsr-build.sh <<'SH'
+          set -e
+          dnf5 -y install --skip-unavailable meson ninja-build gcc gcc-c++ binutils pkgconf-pkg-config curl tar gzip findutils \
+            libavcodec-free-devel libavformat-free-devel libavutil-free-devel libswresample-free-devel libavfilter-free-devel \
+            libX11-devel libXcomposite-devel libXrandr-devel libXfixes-devel libXdamage-devel pulseaudio-libs-devel libva-devel libdrm-devel \
+            wayland-devel libcap-devel pipewire-devel dbus-devel vulkan-headers vulkan-loader-devel mesa-libEGL-devel mesa-libGL-devel libglvnd-devel \
+            >/tmp/dnf.log 2>&1 || { tail -20 /tmp/dnf.log; exit 1; }
+          mkdir -p /src && cd /src
+          curl -fsSL --retry 3 -o gsr.tar.gz "https://dec05eba.com/snapshot/gpu-screen-recorder.git.${GSR_VERSION}.tar.gz"
+          tar -xzf gsr.tar.gz
+          cd "$(dirname "$(find . -maxdepth 3 -name meson.build | sort | head -1)")"
+          meson setup build --buildtype=release >/tmp/meson.log 2>&1 || { tail -30 /tmp/meson.log; exit 1; }
+          ninja -C build >/tmp/ninja.log 2>&1 || { tail -30 /tmp/ninja.log; exit 1; }
+          for b in gpu-screen-recorder gsr-kms-server; do f=$(find build -type f -name "$b" -perm -u+x | head -1); [ -n "$f" ] && cp "$f" /out/ && strip "/out/$b"; done
+          /out/gpu-screen-recorder --version 2>&1 | head -1 || true
+          SH
+          docker run --rm -e GSR_VERSION -v /tmp/gsr-build.sh:/b.sh:ro -v /tmp/app/gsr:/out "$base" bash /b.sh 2>&1 | tail -40
+          ls -l /tmp/app/gsr
+          test -x /tmp/app/gsr/gpu-screen-recorder || { echo "::warning title=gpu-screen-recorder::didn't build inside Anatase; the image tries the COPR package"; rmdir /tmp/app/gsr 2>/dev/null; exit 1; }
+          echo "::notice title=gpu-screen-recorder::built ${GSR_VERSION} inside Anatase for the image"
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ==== end of Hearth Recorder, Camera and Share
       - uses: actions/setup-node@v4
         with:
