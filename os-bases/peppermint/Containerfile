@@ -17,8 +17,6 @@ COPY os-bases/peppermint/build.sh /build.sh
 COPY os-bases/peppermint/system_files /peppermint_files
 COPY os/system_files /system_files
 COPY os/branding/wallpapers /wallpapers
-# Hearth apps' icons (hicolor scalable/apps: build.sh's Hearth Player and Calculator blocks install theirs).
-COPY branding/icons /icons
 COPY os/nimbus-app /nimbus-app
 COPY hosts/linux/session /session
 COPY hosts/linux/desktop /desktop
