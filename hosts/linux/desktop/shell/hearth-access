@@ -1,0 +1,483 @@
+#!/usr/bin/python3
+"""hearth-access: Hearth's accessibility settings (Desktop Mode's Settings › Accessibility, SetAccessibility.qml, and
+Game Mode's Settings › Accessibility through hearth-core's access.* calls). One file of settings for both modes,
+~/.config/nimbus/accessibility.json; each mode applies what it can:
+
+  Magnifier       Desktop Mode: labwc's own magnifier (Super+= zooms in and turns it on, Super+- zooms out and off at
+                  the lowest step, Super+Esc turns it off). This file sets its size and steps in the rc.xml Hearth
+                  starts labwc with (hearth-system labwc-config calls rc_with_access); Super+Esc turns it back on at
+                  the last level (the first time at the Settings level). Game Mode: gamescope's zoom
+                  (STEAM_SCREEN_MAGNIFICATION on its X root window), a fixed level from Settings.
+  Colour filters  Game Mode: gamescope's colour "looks" (3D LUTs: GAMESCOPE_COLOR_LOOK_G22/_PQ): greyscale, inverted
+                  colours or brightness, and the three colour-blindness filters. Valve's own .cube files when
+                  gamescope has them, else ones made here. Desktop Mode: labwc has no colour shaders, so only what a
+                  gamma ramp can do: inverted colours (hearth-gamma holds the ramp; Night light has to be off).
+  Screen reader   Orca, in both modes (Super+Alt+S in Desktop Mode). Qt (Mantel) and GTK/WebKit apps talk to it
+                  over AT-SPI.
+  Text size, high contrast, large pointer
+                  Desktop Mode: apps' text (GTK, Qt, WebKit) and window titles bigger; GTK's high-contrast theme;
+                  a bigger pointer. Some of it reaches apps only after signing out and in (they read it at start).
+                  Game Mode has its own (Settings › Accessibility there keeps those in the page).
+
+  hearth-access status               JSON: the settings, what this device can do, and which mode this is
+  hearth-access set JSON             change some settings ({"filter": "grayscale"} etc.), save and apply them
+  hearth-access apply [game|desktop] apply the saved settings to the mode this runs in (at the start of each mode);
+                                     with a mode, only when this is that mode
+  hearth-access screen-reader on|off|toggle
+  hearth-access magnifier in|out|off Desktop Mode: the same as Super+= / Super+- / Super+Esc
+  hearth-access look NAME            print the path of a colour filter's .cube file (made if needed)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True     # hearth-system loads this file: no .pyc next to it
+HOME = os.path.expanduser('~')
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+CACHE = os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache')
+SETTINGS_JSON = os.path.join(CONFIG, 'nimbus', 'accessibility.json')
+LOOKS_DIR = os.path.join(CACHE, 'nimbus', 'looks')
+VALVE_LOOKS = ['/usr/share/gamescope/looks', '/usr/local/share/gamescope/looks']
+
+FILTERS = ['none', 'grayscale', 'invert', 'invert-brightness', 'protanopia', 'deuteranopia', 'tritanopia']
+# Valve's file names for the same filters (gamescope's looks folder), without _g22.cube / _pq.cube.
+VALVE_NAMES = {'grayscale': 'grayscale', 'invert': 'invertcolors', 'invert-brightness': 'invertbrightness',
+               'protanopia': 'cb_prot', 'deuteranopia': 'cb_deut', 'tritanopia': 'cb_trit'}
+# What Desktop Mode can show with a gamma ramp (labwc has nothing else for colours).
+DESKTOP_FILTERS = ['none', 'invert']
+TEXT_SCALES = [1.0, 1.15, 1.3, 1.5]
+DEFAULTS = {
+    'magnifierSize': 'full',      # 'full' (the whole screen follows the pointer) or 'lens' (a box around the pointer)
+    'magnifierZoom': 2.0,         # where Super+Esc first turns it on (labwc: initScale; Super+= starts at 1 + step)
+    'magnifierStep': 0.5,         # how much each Super+= / Super+- changes it
+    'gameZoom': 1.0,              # Game Mode: gamescope's zoom (1 = off)
+    'filter': 'none',
+    'screenReader': False,
+    'textScale': 1.0,
+    'highContrast': False,
+    'largePointer': False,
+}
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=10, env=None):
+    """(code, stdout); (127, '') when the command isn't there."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        return r.returncode, r.stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+
+
+def spawn(cmd):
+    """Starts a program that keeps running after this helper ends (its own session, no output kept)."""
+    try:
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        return True
+    except OSError:
+        return False
+
+
+def write_atomic(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------------- settings
+def clean(raw):
+    """The settings with anything odd dropped (defaults for what's missing or wrong)."""
+    out = dict(DEFAULTS)
+    if not isinstance(raw, dict):
+        return out
+    if raw.get('magnifierSize') in ('full', 'lens'):
+        out['magnifierSize'] = raw['magnifierSize']
+    for k, lo, hi in (('magnifierZoom', 1.25, 8.0), ('magnifierStep', 0.1, 2.0), ('gameZoom', 1.0, 4.0)):
+        v = raw.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out[k] = round(max(lo, min(hi, float(v))), 2)
+    if raw.get('filter') in FILTERS:
+        out['filter'] = raw['filter']
+    v = raw.get('textScale')
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        out['textScale'] = min(TEXT_SCALES, key=lambda s: abs(s - float(v)))
+    for k in ('screenReader', 'highContrast', 'largePointer'):
+        if isinstance(raw.get(k), bool):
+            out[k] = raw[k]
+    return out
+
+
+def saved():
+    try:
+        with open(SETTINGS_JSON) as f:
+            return clean(json.load(f))
+    except (OSError, ValueError):
+        return clean(None)
+
+
+def save(settings):
+    write_atomic(SETTINGS_JSON, json.dumps(settings, indent=2) + '\n')
+
+
+def mode():
+    """'game' inside gamescope (Game Mode), 'desktop' inside labwc (Desktop Mode), else 'other'."""
+    if os.environ.get('LABWC_PID'):
+        return 'desktop'
+    if os.environ.get('GAMESCOPE_WAYLAND_DISPLAY') or os.environ.get('HEARTH_GAME_MODE'):
+        return 'game'
+    return 'other'
+
+
+# ---------------------------------------------------------------------- labwc (Desktop Mode)
+def magnifier_xml(s):
+    full = s['magnifierSize'] == 'full'
+    return ('  <!-- Your magnifier (Hearth Settings › Accessibility) -->\n'
+            '  <magnifier>\n'
+            '    <width>%d</width>\n    <height>%d</height>\n'
+            '    <initScale>%.2f</initScale>\n    <increment>%.2f</increment>\n'
+            '    <useFilter>yes</useFilter>\n'
+            '  </magnifier>\n') % (-1 if full else 640, -1 if full else 400, s['magnifierZoom'], s['magnifierStep'])
+
+
+def rc_with_access(text, s=None):
+    """labwc rc.xml text with the magnifier block for these settings and window-title fonts scaled to the text size."""
+    s = s or saved()
+    text = re.sub(r'[ \t]*(<!--[^>]*Accessibility[^>]*-->\s*)?<magnifier\b.*?</magnifier>\s*\n?', '', text, count=1, flags=re.S)
+    if s['textScale'] != 1.0:
+        def bigger(m):
+            return '%s%d%s' % (m.group(1), max(1, round(int(m.group(2)) * s['textScale'])), m.group(3))
+        text = re.sub(r'(<font\b[^>]*>.*?<size>)(\d+)(</size>)', bigger, text, flags=re.S)
+    return re.sub(r'</labwc_config>', magnifier_xml(s).replace('\\', '\\\\') + '</labwc_config>', text, count=1)
+
+
+def env_lines(s=None):
+    """Lines for Desktop Mode's labwc environment file (apps read them when they start)."""
+    s = s or saved()
+    out = []
+    if s['textScale'] != 1.0:
+        out += ['GDK_DPI_SCALE=%.2f' % s['textScale'], 'QT_FONT_DPI=%d' % round(96 * s['textScale'])]
+    if s['highContrast']:
+        out += ['GTK_THEME=HighContrastInverse']
+    if s['largePointer']:
+        out += ['XCURSOR_SIZE=48']
+    if s['screenReader']:
+        # Qt apps (Mantel too) only offer themselves to a screen reader when asked to, or when one was running
+        # before they started.
+        out += ['QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1', 'QT_ACCESSIBILITY=1']
+    if not out:
+        return ''
+    return '\n# Accessibility (Hearth Settings › Accessibility)\n' + ''.join(l + '\n' for l in out)
+
+
+def labwc_version():
+    """(major, minor, patch) of labwc, or None."""
+    code, out = run(['labwc', '--version'])
+    m = re.search(r'(\d+)\.(\d+)\.(\d+)', out or '')
+    return tuple(int(x) for x in m.groups()) if code == 0 and m else None
+
+
+def reload_labwc():
+    """Rebuilds Desktop Mode's labwc folder (hearth-system) and asks labwc to read it again."""
+    here = os.path.dirname(os.path.realpath(__file__))
+    rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
+    if os.path.isdir(rt):
+        run(['python3', os.path.join(here, 'hearth-system'), 'labwc-config'])
+    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+        return run(['labwc', '--reconfigure'])[0] == 0
+    return False
+
+
+def gsettings(schema, key, value):
+    if shutil.which('gsettings'):
+        run(['gsettings', 'set', schema, key, value])
+
+
+def apply_desktop_look(s):
+    """What running GTK apps can pick up now: text size and the screen-reader switch (gsettings, through the portal)."""
+    gsettings('org.gnome.desktop.interface', 'text-scaling-factor', '%.2f' % s['textScale'])
+    gsettings('org.gnome.desktop.a11y.interface', 'high-contrast', 'true' if s['highContrast'] else 'false')
+    gsettings('org.gnome.desktop.interface', 'cursor-size', '48' if s['largePointer'] else '24')
+
+
+# ---------------------------------------------------------------------- colour filters
+def _lin(c):
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _enc(c):
+    c = max(0.0, min(1.0, c))
+    return c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
+
+
+def _mul(m, v):
+    return [m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+            m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+            m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]]
+
+
+RGB2LMS = [[0.31399022, 0.63951294, 0.04649755], [0.15537241, 0.75789446, 0.08670142], [0.01775239, 0.10944209, 0.87256922]]
+LMS2RGB = [[5.47221206, -4.6419601, 0.16963708], [-1.1252419, 2.29317094, -0.1678952], [0.02980165, -0.19318073, 1.16364789]]
+# How each kind of colour blindness sees (LMS), and where the colours it misses are moved to (Fidaner's daltonize).
+SIMULATE = {
+    'protanopia': [[0.0, 1.05118294, -0.05116099], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+    'deuteranopia': [[1.0, 0.0, 0.0], [0.9513092, 0.0, 0.04866992], [0.0, 0.0, 1.0]],
+    'tritanopia': [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-0.86744736, 1.86727089, 0.0]],
+}
+SHIFT = [[0.0, 0.0, 0.0], [0.7, 1.0, 0.0], [0.7, 0.0, 1.0]]
+
+
+def filter_color(name, r, g, b):
+    """One colour (0..1, as shown) through a filter."""
+    if name == 'invert':
+        return 1 - r, 1 - g, 1 - b
+    lr, lg, lb = _lin(r), _lin(g), _lin(b)
+    y = 0.2126 * lr + 0.7152 * lg + 0.0722 * lb
+    if name == 'grayscale':
+        e = _enc(y)
+        return e, e, e
+    if name == 'invert-brightness':
+        # Light becomes dark and dark light, with the colours kept (inverted, then the hue turned back).
+        ir, ig, ib = 1 - r, 1 - g, 1 - b
+        m = (ir + ig + ib) / 3
+        return tuple(max(0.0, min(1.0, m + (m - c))) for c in (ir, ig, ib))
+    if name in SIMULATE:
+        lms = _mul(RGB2LMS, [lr, lg, lb])
+        sim = _mul(LMS2RGB, _mul(SIMULATE[name], lms))
+        err = [lr - sim[0], lg - sim[1], lb - sim[2]]
+        fix = _mul(SHIFT, err)
+        return _enc(lr + fix[0]), _enc(lg + fix[1]), _enc(lb + fix[2])
+    return r, g, b
+
+
+def cube_text(name, size=17):
+    lines = ['# Hearth colour filter: %s' % name, 'TITLE "Hearth %s"' % name, 'LUT_3D_SIZE %d' % size]
+    n = size - 1
+    for bi in range(size):
+        for gi in range(size):
+            for ri in range(size):
+                lines.append('%.6f %.6f %.6f' % filter_color(name, ri / n, gi / n, bi / n))
+    return '\n'.join(lines) + '\n'
+
+
+def look_paths(name):
+    """(g22 path, pq path) for a filter: Valve's (gamescope's own) when there, else Hearth's own (one for both)."""
+    if name == 'none':
+        return None, None
+    v = VALVE_NAMES[name]
+    for d in VALVE_LOOKS:
+        g22, pq = os.path.join(d, v + '_g22.cube'), os.path.join(d, v + '_pq.cube')
+        if os.path.isfile(g22):
+            return g22, (pq if os.path.isfile(pq) else g22)
+    path = os.path.join(LOOKS_DIR, 'hearth-%s.cube' % name)
+    if not os.path.isfile(path):
+        write_atomic(path, cube_text(name))
+    return path, path
+
+
+GAMMA_BIN = ['hearth-gamma', '/usr/bin/hearth-gamma', '/usr/libexec/nimbus/hearth-gamma']
+
+
+def gamma_tool():
+    for c in GAMMA_BIN:
+        p = shutil.which(c) if '/' not in c else (c if os.access(c, os.X_OK) else None)
+        if p:
+            return p
+    return None
+
+
+def stop_gamma():
+    run(['pkill', '-x', 'hearth-gamma'])
+
+
+def apply_filter_desktop(name):
+    """Desktop Mode: inverted colours through a gamma ramp; anything else can't be shown here."""
+    stop_gamma()
+    if name == 'none':
+        return None
+    if name not in DESKTOP_FILTERS:
+        return 'Desktop Mode can only invert colours; this filter works in Game Mode.'
+    tool = gamma_tool()
+    if not tool:
+        return 'hearth-gamma isn\'t installed, so Desktop Mode can\'t invert colours.'
+    try:
+        p = subprocess.Popen([tool, name], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                             text=True, start_new_session=True)
+    except OSError as e:
+        return str(e)
+    time.sleep(0.6)
+    if p.poll() is not None:
+        err = (p.stderr.read() or '').strip().splitlines()
+        return (err[-1] if err else 'hearth-gamma stopped') + ' (Night light has to be off for this.)'
+    return None
+
+
+def apply_filter_game(name):
+    """Game Mode: gamescope's colour look, set on its X root window."""
+    if not os.environ.get('DISPLAY') or not shutil.which('xprop'):
+        return 'Needs gamescope\'s display and xprop.'
+    if name == 'none':
+        for atom in ('GAMESCOPE_COLOR_LOOK_G22', 'GAMESCOPE_COLOR_LOOK_PQ'):
+            run(['xprop', '-root', '-remove', atom])
+        return None
+    g22, pq = look_paths(name)
+    bad = 0
+    for atom, path in (('GAMESCOPE_COLOR_LOOK_G22', g22), ('GAMESCOPE_COLOR_LOOK_PQ', pq)):
+        bad += run(['xprop', '-root', '-f', atom, '8s', '-set', atom, path])[0] != 0
+    return 'gamescope didn\'t take the filter.' if bad == 2 else None
+
+
+def apply_zoom_game(zoom):
+    if not os.environ.get('DISPLAY') or not shutil.which('xprop'):
+        return 'Needs gamescope\'s display and xprop.'
+    atom = 'STEAM_SCREEN_MAGNIFICATION'
+    if zoom <= 1.0:
+        run(['xprop', '-root', '-remove', atom])
+        return None
+    # gamescope reads it as a fraction of 0xFFFF (65535 = 1x).
+    code = run(['xprop', '-root', '-f', atom, '32c', '-set', atom, str(int(round(zoom * 0xFFFF)))])[0]
+    return None if code == 0 else 'gamescope didn\'t take the zoom.'
+
+
+# ---------------------------------------------------------------------- screen reader (Orca)
+def orca_running():
+    return run(['pgrep', '-x', 'orca'])[0] == 0
+
+
+def screen_reader(on):
+    gsettings('org.gnome.desktop.a11y.applications', 'screen-reader-enabled', 'true' if on else 'false')
+    gsettings('org.gnome.desktop.interface', 'toolkit-accessibility', 'true' if on else 'false')
+    if on:
+        if not shutil.which('orca'):
+            raise Fail('Orca, the screen reader, isn\'t installed.')
+        if not orca_running():
+            spawn(['orca', '--replace'])
+    else:
+        if orca_running():
+            if run(['orca', '--quit'], timeout=5)[0] != 0 or orca_running():
+                run(['pkill', '-x', 'orca'])
+    return on
+
+
+# ---------------------------------------------------------------------- status / set / apply
+def available():
+    lv = labwc_version()
+    return {
+        'orca': bool(shutil.which('orca')),
+        'wtype': bool(shutil.which('wtype')),
+        'gamma': bool(gamma_tool()),
+        'xprop': bool(shutil.which('xprop')),
+        'labwc': '.'.join(map(str, lv)) if lv else '',
+        # labwc's magnifier came in 0.7.3.
+        'labwcMagnifier': bool(lv and lv >= (0, 7, 3)),
+        'valveLooks': any(os.path.isdir(d) for d in VALVE_LOOKS),
+        'desktopFilters': DESKTOP_FILTERS,
+        'filters': FILTERS,
+        'textScales': TEXT_SCALES,
+    }
+
+
+def status(problems=None):
+    return {'settings': saved(), 'mode': mode(), 'available': available(), 'orcaRunning': orca_running(),
+            'problems': problems or {}}
+
+
+def apply(s, changed=None, where=None):
+    """Applies settings (all of them, or the changed keys) to the mode this runs in. Returns {key: problem}."""
+    where = where or mode()
+    keys = set(changed) if changed is not None else set(DEFAULTS)
+    problems = {}
+    if where == 'game':
+        if 'filter' in keys:
+            p = apply_filter_game(s['filter'])
+            if p:
+                problems['filter'] = p
+        if 'gameZoom' in keys:
+            p = apply_zoom_game(s['gameZoom'])
+            if p:
+                problems['gameZoom'] = p
+    elif where == 'desktop':
+        if 'filter' in keys:
+            p = apply_filter_desktop(s['filter'])
+            if p:
+                problems['filter'] = p
+        # (At the start of Desktop Mode labwc has just read them.)
+        if changed is not None and keys & {'magnifierSize', 'magnifierZoom', 'magnifierStep', 'textScale', 'highContrast', 'largePointer', 'screenReader'}:
+            reload_labwc()
+        if keys & {'textScale', 'highContrast', 'largePointer'}:
+            apply_desktop_look(s)
+    if 'screenReader' in keys and where in ('game', 'desktop') and (changed is not None or s['screenReader']):
+        try:
+            screen_reader(s['screenReader'])
+        except Fail as e:
+            problems['screenReader'] = str(e)
+    return problems
+
+
+def set_settings(raw):
+    try:
+        req = json.loads(raw or 'null')
+    except ValueError:
+        raise Fail('expected JSON')
+    if not isinstance(req, dict):
+        raise Fail('expected {"setting": value, ...}')
+    old = saved()
+    new = clean(dict(old, **req))
+    save(new)
+    changed = [k for k in DEFAULTS if new[k] != old[k] or k in req]
+    return status(apply(new, changed))
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    if c == 'status' and not a:
+        out = status()
+    elif c == 'set' and len(a) <= 1:
+        out = set_settings(a[0] if a else sys.stdin.read())
+    elif c == 'apply' and (not a or (len(a) == 1 and a[0] in ('game', 'desktop'))):
+        # With a mode: only there (Hearth's window asks at every start, also when it's a window in Desktop Mode).
+        out = status(apply(saved()) if not a or a[0] == mode() else {})
+    elif c == 'screen-reader' and len(a) == 1 and a[0] in ('on', 'off', 'toggle'):
+        on = (not orca_running()) if a[0] == 'toggle' else a[0] == 'on'
+        s = dict(saved(), screenReader=on)
+        save(s)
+        screen_reader(on)
+        out = {'screenReader': on}
+    elif c == 'magnifier' and len(a) == 1 and a[0] in ('in', 'out', 'off'):
+        # The same keys labwc has for it (rc.xml), typed: labwc reads keys typed by wtype like real ones.
+        if not shutil.which('wtype'):
+            raise Fail('wtype isn\'t installed')
+        key = {'in': 'equal', 'out': 'minus', 'off': 'Escape'}[a[0]]
+        if run(['wtype', '-M', 'logo', '-k', key, '-m', 'logo'])[0] != 0:
+            raise Fail('couldn\'t reach the magnifier')
+        out = {'ok': True}
+    elif c == 'look' and len(a) == 1 and a[0] in FILTERS and a[0] != 'none':
+        print(look_paths(a[0])[0])
+        return
+    else:
+        print('usage: hearth-access status | set JSON | apply [game|desktop] | screen-reader on|off|toggle | magnifier in|out|off | look NAME')
+        sys.exit(2)
+    print(json.dumps(out), flush=True)
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv)
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)
+    except OSError as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)

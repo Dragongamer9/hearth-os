@@ -1,0 +1,29 @@
+[package]
+name = "hearth-paint"
+version = "0.1.0"
+edition = "2021"
+description = "Hearth Paint: draw and mark up pictures and screenshots (brush, pencil, shapes, text, fill, select, crop), open and save PNG and JPEG"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "hearth_paint"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-paint"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
