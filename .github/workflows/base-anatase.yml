@@ -108,7 +108,7 @@ jobs:
 
   # REQUIRED: Hearth's page must load and draw every screen without a script error.
   ui:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # playwright 1.48 can't install its browser deps on Ubuntu 26 (ubuntu-latest from 2026-10-19)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
