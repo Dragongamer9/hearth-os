@@ -53,7 +53,9 @@ footer b { display:inline-grid; place-items:center; min-width:1.6em; height:1.6e
 .btn[disabled] { opacity:.45; pointer-events:none; }
 .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:.7em 1em; }
 .card h3 { margin:0 0 .35em; font-size:.8em; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
-.item { display:grid; grid-template-columns:6em 1fr auto; gap:.2em .8em; align-items:center; padding:.3em 0; }
+.item { display:grid; grid-template-columns:5.5em minmax(0, 1fr); gap:.15em .8em; align-items:center; padding:.35em 0; }
+.item .acts { grid-column:2; margin:0; }
+.item .acts:empty, .item > span:empty { display:none; }
 .item .k { color:var(--muted); font-size:.85em; }
 .item .v { overflow-wrap:anywhere; user-select:text; white-space:pre-wrap; }
 .chips { display:flex; flex-wrap:wrap; gap:.45em; }

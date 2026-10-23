@@ -32,10 +32,14 @@ const styleUrl = id => `hearth://${new URL(S.services.tiles).host}/styles/${id}`
   const c = await invoke('config');
   Object.assign(S, { services: c.services, view: c.view, saved: c.saved, cacheBytes: c.cacheBytes });
   if (!S.services.styles.find(s => s.id === S.view.style)) S.view.style = S.services.styles[0].id;
-  map = new maplibregl.Map({
+  try { map = new maplibregl.Map({
     container: 'map', style: styleUrl(S.view.style), center: [S.view.lon, S.view.lat], zoom: S.view.zoom,
     attributionControl: false, maxPitch: 60, dragRotate: true, keyboard: true, fadeDuration: 150,
-  });
+  }); } catch (e) {
+    // MapLibre needs WebGL; without it the panel still works for search, but there's no map to draw on.
+    $('#pbody').innerHTML = `<p class="bad">This computer's graphics couldn't start the map (WebGL: ${esc(e.message || e)}).</p>`;
+    throw e;
+  }
   // The map data's attribution comes with the style (OpenFreeMap, OpenMapTiles, OpenStreetMap); search and
   // directions are credited here, with the link to fix the map that FOSSGIS asks for.
   map.addControl(new maplibregl.AttributionControl({ compact: false, customAttribution: 'Search <a href="https://nominatim.org/">Nominatim</a> · Directions <a href="https://project-osrm.org/">OSRM</a> by <a href="https://routing.openstreetmap.de/">FOSSGIS</a> · <a href="https://www.openstreetmap.org/fixthemap">Fix the map</a>' }), 'bottom-right');
@@ -60,6 +64,8 @@ const styleUrl = id => `hearth://${new URL(S.services.tiles).host}/styles/${id}`
 })().catch(e => toast(String(e), true));
 
 listen('maps://offline', () => offline(true));
+window.addEventListener('error', e => toast(`Something went wrong: ${e.message}`, true));
+window.addEventListener('unhandledrejection', e => toast(String(e.reason?.message || e.reason), true));
 let offlineTimer;
 function offline(on) {
   $('#banner').hidden = !on;
