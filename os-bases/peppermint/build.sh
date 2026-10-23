@@ -170,6 +170,12 @@ systemctl enable hhd.service
 # The rest of what Desktop Mode, Couch Co-op and Hearth Browser (Electron) use; names that can differ.
 optional qt6-svg-plugins qt5ct breeze-icon-theme 7zip gstreamer1.0-plugins-bad gstreamer1.0-pipewire \
   libasound2t64 libcups2t64 libgtk-3-0t64 libxss1 libatk-bridge2.0-0t64
+# Claude Desktop (Hearth Settings › Claude: Anthropic's package, unpacked in the user's home folder by
+# desktop/shell/hearth-claude, never shipped in this image): gpg checks Anthropic's signature; the app links
+# GTK 3, NSS, libdrm/gbm, libxtst, PipeWire and AT-SPI (above), and opens libsecret (the sign-in kept in the
+# password store), libnotify (notifications) and the tray library while it runs.
+"${APT[@]}" gpg
+optional libsecret-1-0 libnotify4 libxcb-dri3-0 libatspi2.0-0t64 libuuid1 xdg-utils libayatana-appindicator3-1
 # Quickshell's QML modules (Hearth's shell imports QtQuick, Layouts, Particles, Window; Quickshell itself the rest).
 optional qt6ct qml6-module-qtquick qml6-module-qtquick-layouts qml6-module-qtquick-particles qml6-module-qtquick-window \
   qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtquick-shapes qml6-module-qtquick-effects \

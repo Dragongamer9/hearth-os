@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Get Claude
+GenericName=AI assistant
+Comment=Install Claude Desktop and Claude Code from Anthropic
+Exec=hearth-settings claude
+Icon=hearth-get-claude
+Categories=Utility;
+Keywords=Claude;Anthropic;AI;Assistant;Code;

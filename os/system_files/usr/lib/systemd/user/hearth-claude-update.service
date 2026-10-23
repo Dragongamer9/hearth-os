@@ -1,0 +1,13 @@
+# Keeps Claude Desktop up to date when Hearth installed it in your home folder (Hearth Settings › Claude).
+# Anthropic's Linux app doesn't update itself; this installs a newer one when Anthropic publishes it, checked
+# against Anthropic's signing key. Nothing happens if Claude isn't installed, was installed through apt, or is
+# open (it's tried again the next day). See hearth-claude-update.timer.
+[Unit]
+Description=Update Claude Desktop (installed by Hearth)
+ConditionPathExists=%h/.local/opt/claude-desktop/claude-desktop
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/hearth-claude auto-update
+Nice=10
+IOSchedulingClass=idle
