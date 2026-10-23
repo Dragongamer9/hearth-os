@@ -11,7 +11,7 @@
 //!                                                     starts it; with --wait Beacon stays the parent of the Wine
 //!                                                     processes, which carry HEARTH_GAME_ID (appid.rs)
 //!   beacon-app [--fullscreen]                         Beacon's window: mods, settings, setting up a game
-//!   beacon custom list --json                         (Beacon 0.0.8+) games added by hand in Beacon (any Windows game or
+//!   beacon custom list --json                         (Beacon 0.0.18+) games added by hand in Beacon (any Windows game or
 //!                                                     installer, Faugus-style): Library › Beacon › Other Games
 //!   beacon custom launch <id> --wait                  starts one, like `launch` (HEARTH_GAME_ID reaches its processes;
 //!                                                     Beacon records its play time when it closes)
@@ -242,7 +242,7 @@ fn file_path(v: &Value) -> Option<String> {
     v.as_str().filter(|p| p.starts_with('/') && !p.contains('\0') && p.len() < 4096 && !p.split('/').any(|c| c == "..")).map(str::to_string)
 }
 
-/// `beacon custom list --json` (Beacon 0.0.8+), checked: games added by hand in Beacon, as BeaconGames with the id
+/// `beacon custom list --json` (Beacon 0.0.18+), checked: games added by hand in Beacon, as BeaconGames with the id
 /// "custom:<id>" and family "other". Ids that aren't Beacon's kind are left out.
 pub fn parse_custom(json: &str) -> Result<Vec<BeaconGame>, String> {
     let v: Value = serde_json::from_str(json).map_err(|e| format!("Beacon's list of added games isn't valid: {e}"))?;
@@ -391,7 +391,7 @@ pub fn load(home: &Path) -> Snapshot {
         // Taken again after Beacon ran: a Beacon that writes its own files while answering isn't read over and over.
         Err(e) => { crate::bridge::log(&format!("beacon: status: {e}")); s.error = Some(e); s.sig = signature(home); return s; }
     }
-    // Games added by hand (Beacon 0.0.8+; an older Beacon doesn't know the command, which only means none).
+    // Games added by hand (Beacon 0.0.18+; an older Beacon doesn't know the command, which only means none).
     match run(&cli, &["custom".to_string(), "list".to_string(), "--json".to_string()], Duration::from_secs(20)).and_then(|t| parse_custom(&t)) {
         Ok(list) => s.games.extend(list),
         Err(e) => crate::bridge::log(&format!("beacon: custom list: {}", e.chars().take(200).collect::<String>())),
