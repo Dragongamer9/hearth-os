@@ -178,6 +178,10 @@ such starts GRUB starts the previous version.
   (by `multi-user.target` or `bluetooth.service`). None is required by `local-fs.target`, `sysinit.target` or
   another unit that emergency mode follows from. If one fails, it's logged and the start carries on.
   (`RequiresMountsFor=` on some of them only makes that unit wait for, or fail with, its own mount.)
+- The system log is kept on the drive and written every 15 seconds (`journald.conf.d/50-hearth.conf`). The images'
+  `/var` starts empty, so the journal folder wasn't always there, and Peppermint kept the log in memory only. Settings
+  › System › Send logs now includes the previous start: its controller, power and display services, the kernel's
+  graphics/input/power messages, its errors and its last lines. That makes a freeze visible after the restart.
 
 ### Systems switched from another edition
 

@@ -359,7 +359,8 @@ systemctl enable hearth-clean-install.service
 # ------------------------------------------------------------------ when a start fails
 # Back to the previous version by itself after two starts in a row that don't reach Hearth (GRUB counts them through
 # custom.cfg; hearth-boot-success marks a good start), the emergency screen instead of "the root account is locked"
-# (emergency.service.d): all from os/system_files, see docs/BASE-ANATASE.md ("When Hearth OS doesn't start").
+# (emergency.service.d) and a system log kept on the drive (journald.conf.d): all from os/system_files, see
+# docs/BASE-ANATASE.md ("When Hearth OS doesn't start").
 systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-success.service
 # GRUB's menu from the boot entries, for systems switched here from Peppermint, Ubuntu or CachyOS, whose GRUB (kept
 # by the switch) can't read them itself; does nothing on Anatase's own installs (hearth-bls-grub checks grub.cfg).
