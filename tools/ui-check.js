@@ -2,6 +2,8 @@
 // A single error can leave the app blank, so a release that fails this isn't published.
 //   npm i --no-save playwright@1.48.2 && npx playwright install chromium && node tools/ui-check.js
 const { chromium } = require('playwright');
+// 'up' / 'down' when a list of names is sorted that way.
+const MKSORTED = L => L.every((x, i) => !i || L[i - 1].localeCompare(x) <= 0) ? 'up' : L.every((x, i) => !i || L[i - 1].localeCompare(x) >= 0) ? 'down' : 'neither';
 const path = require('path');
 
 (async () => {
@@ -246,7 +248,7 @@ const path = require('path');
     seatsAct({v: 'pair', n: '3'}); if (!S.layers.includes('sheet') || !/Moonlight/.test(document.body.textContent)) throw new Error('no pairing sheet'); closeAll();
     SE.status = null; SE.stream = null; SE.draft = null; S.layers = []; HOSTINFO.features = HOSTINFO.features.filter(f => f !== 'seats'); navigate('home', {}, false);
   });
-  const layouts = await page.evaluate(() => [...(typeof LAYOUTS !== 'undefined' ? LAYOUTS : []), ...(typeof XLAYOUTS !== 'undefined' ? XLAYOUTS : [])].map(l => l.id));
+  const layouts = await page.evaluate(() => [...(typeof LAYOUTS !== 'undefined' ? LAYOUTS : []), ...(typeof XLAYOUTS !== 'undefined' ? XLAYOUTS : []), ...(typeof MK_LAYOUTS !== 'undefined' ? MK_LAYOUTS : [])].map(l => l.id));
   for (const id of layouts) await step('layout ' + id, id => { LOOK.layout = id; saveLook(); S.layers = []; navigate('home', {}, false); }, id);
   // Library layouts (Settings › You › Library): each shows every game of the tab, moving fills its panel / info bar
   // without drawing the page again, and Back from a game's page finds the same game.
@@ -309,6 +311,157 @@ const path = require('path');
     const q = query; closeAll();
     if (q !== "':&é") throw new Error('typed ' + JSON.stringify(q));
   });
+  // A real keyboard never brings up the on-screen keyboard: typing opens search with no keyboard on screen, a text
+  // prompt opened after keyboard or mouse input has none either, and clicking its field with the mouse doesn't bring
+  // it up. A controller's A on the field does; typing on the real keyboard again sends it away.
+  {
+    const osk = sel => page.evaluate(sel => !!document.querySelector(sel + ' .kb'), sel);
+    try {
+      await page.evaluate(() => { closeAll(); S.history = []; navigate('home', {}, false); });
+      await page.keyboard.press('x'); await page.keyboard.press('/'); await wait(250);
+      if (!(await page.evaluate(() => S.layers.includes('search')))) errors.push('keyboard: / did not open search');
+      if (await osk('#search')) errors.push('keyboard: the on-screen keyboard came up for search after typing on a keyboard');
+      await page.keyboard.type('sta'); await wait(150);
+      const q = await page.evaluate(() => query);
+      if (q !== 'sta') errors.push('keyboard: typed into search ' + JSON.stringify(q));
+      if (await osk('#search')) errors.push('keyboard: typing in search brought up the on-screen keyboard');
+      await page.keyboard.press('Escape'); await wait(150);
+      await page.evaluate(() => { window.__pr = openPrompt({title: 'Name'}); });
+      await wait(250);
+      if (await osk('#prompt')) errors.push('keyboard: a text prompt opened after keyboard input showed the on-screen keyboard');
+      const box = await page.evaluate(() => { const r = document.querySelector('#prompt [data-k="pk-field"]').getBoundingClientRect(); return {x: r.left + 30, y: r.top + r.height / 2}; });
+      await page.mouse.move(box.x - 40, box.y); await page.mouse.move(box.x, box.y, {steps: 3}); await page.mouse.click(box.x, box.y); await wait(200);
+      if (await osk('#prompt')) errors.push('mouse: clicking the text field brought up the on-screen keyboard');
+      await page.keyboard.type('Al'); await wait(100);
+      if ((await page.evaluate(() => prompt && prompt.text)) !== 'Al') errors.push('keyboard: typing into the prompt did not reach it');
+      await page.evaluate(() => { setFocus(document.querySelector('#prompt [data-k="pk-field"]'), true); padPressed('a'); });
+      await wait(200);
+      if (!(await osk('#prompt'))) errors.push('controller: A on a focused text field did not bring up the on-screen keyboard');
+      await page.keyboard.type('x'); await wait(150);
+      if (await osk('#prompt')) errors.push('keyboard: typing on a real keyboard left the on-screen keyboard up');
+      const got = await page.evaluate(async () => { promptSubmit(); return await window.__pr; });
+      if (got !== 'Alx') errors.push('prompt: got ' + JSON.stringify(got));
+      // A controller opening search gets the keyboard straight away.
+      await page.evaluate(() => { closeAll(); padPressed('y'); }); await wait(200);
+      if (!(await osk('#search'))) errors.push('controller: Y did not open search with the on-screen keyboard');
+      await page.evaluate(() => { closeAll(); LOOK.madeFor = 'auto'; saveLook(); });
+      // Settings › Appearance › Made for
+      await page.evaluate(() => { S.settingsTab = 'appearance'; navigate('settings', {}, false); });
+      await wait(200);
+      if (!(await page.evaluate(() => ['auto', 'mk', 'pad'].every(k => document.querySelector(`#view [data-k="ap-mf-${k}"]`))))) errors.push('Appearance: no Made for choice');
+      await page.evaluate(() => act(document.querySelector('#view [data-k="ap-mf-pad"]')));
+      if (!(await page.evaluate(() => LOOK.madeFor === 'pad' && !document.body.classList.contains('mk-on')))) errors.push('Made for: Controller did not turn mouse & keyboard off');
+      await page.evaluate(() => act(document.querySelector('#view [data-k="ap-mf-mk"]')));
+      if (!(await page.evaluate(() => document.body.classList.contains('mk-on')))) errors.push('Made for: Mouse & keyboard did not turn it on');
+      await page.evaluate(() => { act(document.querySelector('#view [data-k="ap-mf-auto"]')); closeAll(); navigate('home', {}, false); });
+    } catch (e) { errors.push('keyboard / on-screen keyboard: ' + e.message.split('\n')[0]); }
+  }
+  // The experimental layouts sit in drop-downs (closed at first, they stay as you left them): Home's in Appearance,
+  // the Library's in Library layout, each with its own Keyboard & mouse one; the upvote buttons are still there.
+  await step('experimental drop-downs', () => {
+    localStorage.removeItem('hearth.xopen'); for (const k in XOPEN) delete XOPEN[k];
+    closeAll(); S.settingsTab = 'appearance'; navigate('settings', {}, false);
+    const q = k => document.querySelector(`#view [data-k="${k}"]`);
+    if (!q('xd-home-x')) throw new Error('no Experimental layouts drop-down in Appearance');
+    if (q('ap-l-x-carousel')) throw new Error('the experimental layouts show before the drop-down is opened');
+    act(q('xd-home-x'));
+    if (!q('ap-l-x-carousel') || !q('xv-x-carousel')) throw new Error('opening the drop-down shows no layouts or no upvote');
+    if (!JSON.parse(localStorage.getItem('hearth.xopen') || '{}')['home-x']) throw new Error("the drop-down's open state isn't kept");
+    act(q('xd-home-x')); if (q('ap-l-x-carousel')) throw new Error("the drop-down doesn't close");
+    S.settingsTab = 'liblook'; render(null, true);
+    if (!q('xd-lib-x')) throw new Error('no Experimental drop-down in Library layout');
+    act(q('xd-lib-x')); if (!q('ap-l-x-lib-flow') || !q('xv-x-lib-flow')) throw new Error('the Library drop-down shows no layouts');
+    act(q('xd-lib-x'));
+    closeAll(); navigate('home', {}, false);
+  });
+  // Keyboard & mouse layouts (Desk grid, Table, Launcher; Home and Library), driven with a real keyboard and mouse:
+  // hover shows Play, right-click opens Hearth's menu (never a browser dialog), Enter plays, Space opens the game,
+  // F favorites, Ctrl+K and typing search, double-click plays; Table headers sort and Shift/Ctrl-click pick several;
+  // a controller's A still opens the game.
+  {
+    const ev = f => page.evaluate(f);
+    const mk = async (view, id) => {
+      await page.evaluate(([view, id]) => { closeAll(); S.history = []; S.tab = 'all'; S.lfilter = ''; S.sort = 'recent'; MK.q = ''; MK.sel.clear(); MK.cur = null;
+        window.__launched = null; window.launch = g => { window.__launched = g.id; };
+        if (view === 'home') LOOK.layout = id; else { LOOK.layout = 'shelf'; LOOK.libLayout = id; }
+        saveLook(); navigate(view, {}, false); }, [view, id]);
+      await wait(200);
+    };
+    const center = sel => page.evaluate(sel => { const e = document.querySelector(sel); if (!e) return null; e.scrollIntoView({block: 'nearest'}); const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + Math.min(r.height / 2, 40)}; }, sel);
+    const realLaunch = await ev(() => { window.__realLaunch = window.launch; window.__dialogs = 0; window.alert = window.confirm = () => { window.__dialogs++; return true; }; return true; });
+    try {
+      for (const [view, id] of [['library', 'mk-lib-desk'], ['library', 'mk-lib-table'], ['library', 'mk-lib-launcher'], ['home', 'mk-desk'], ['home', 'mk-table'], ['home', 'mk-launcher']]) {
+        await mk(view, id);
+        const n = await ev(() => ({games: document.querySelectorAll('#view [data-f][data-mkplay]').length, q: !!document.querySelector('#view [data-k="mk-q"]'), err: !document.querySelector('#view .mk')}));
+        if (n.err || !n.games || !n.q) errors.push(`${id}: drew ${n.games} games, search box ${n.q}`);
+      }
+      // Desk grid
+      await mk('library', 'mk-lib-desk');
+      await page.keyboard.press('Shift');   // a keyboard
+      const card = '#view .mkgrid .mkc';
+      const id0 = await ev(() => { const c = document.querySelector('#view .mkgrid .mkc'); setFocus(c, true); return c.dataset.id; });
+      const fav0 = await ev(() => !!G(document.querySelector('#view .mkgrid .mkc').dataset.id).fav);
+      await page.keyboard.press('f'); await wait(100);
+      if ((await page.evaluate(id => !!G(id).fav, id0)) === fav0) errors.push('Desk grid: F did not change the favorite');
+      await page.evaluate(id => setFocus(document.querySelector(`#view [data-k="mkd-${id}"]`), true), id0);
+      await page.keyboard.press('Enter'); await wait(100);
+      if ((await ev(() => window.__launched)) !== id0) errors.push('Desk grid: Enter did not play the game');
+      await page.keyboard.press(' '); await wait(150);
+      if ((await ev(() => S.view + ':' + S.game)) !== 'game:' + id0) errors.push('Desk grid: Space did not open the game');
+      await ev(() => goBack()); await wait(200);
+      await page.keyboard.press('Control+k'); await wait(100);
+      if ((await ev(() => focused && focused.dataset.k)) !== 'mk-q') errors.push('Desk grid: Ctrl+K did not go to the search box');
+      await page.keyboard.type('zzqx'); await wait(150);
+      if ((await ev(() => [MK.q, document.querySelectorAll('#view .mkgrid .mkc').length].join()))!== 'zzqx,0') errors.push('Desk grid: typing in the search box did not filter: ' + (await ev(() => MK.q)));
+      await page.keyboard.press('Escape'); await wait(100);
+      if (await ev(() => MK.q)) errors.push('Desk grid: Esc did not clear the search');
+      await ev(() => setFocus(document.querySelector('#view .mkgrid .mkc'), true));
+      await page.keyboard.press('s'); await wait(100);
+      if ((await ev(() => [focused && focused.dataset.k, MK.q].join())) !== 'mk-q,s') errors.push('Desk grid: typing a letter did not start a search');
+      await ev(() => { MK.q = ''; mkRender(); });
+      let c = await center(card);
+      await page.mouse.move(c.x - 50, c.y); await page.mouse.move(c.x, c.y, {steps: 4}); await wait(250);
+      if (!(await ev(() => { const o = document.querySelector('#view .mkgrid .mkc:hover .mko'); return o && +getComputedStyle(o).opacity > .5; }))) errors.push('Desk grid: hovering a game shows no Play');
+      await page.mouse.click(c.x, c.y, {button: 'right'}); await wait(200);
+      if (!(await ev(() => S.layers.includes('mkmenu') && document.querySelectorAll('#mkmenu .mkm-i').length >= 4))) errors.push("Desk grid: right-click did not open Hearth's menu");
+      await page.keyboard.press('Escape'); await wait(150);
+      if (await ev(() => S.layers.includes('mkmenu'))) errors.push('Desk grid: Esc did not close the menu');
+      await ev(() => { window.__launched = null; });
+      c = await center(card + ' > b');
+      await page.mouse.dblclick(c.x, c.y); await wait(450);
+      if (!(await ev(() => window.__launched))) errors.push('Desk grid: double-click did not play');
+      if ((await ev(() => S.view)) !== 'library') { errors.push('Desk grid: double-click also opened the game page'); await ev(() => goBack()); }
+      // Table
+      await mk('library', 'mk-lib-table');
+      c = await center('#view [data-k="mkh-name"]'); await page.mouse.click(c.x, c.y); await wait(150);
+      const order = await ev(() => [...document.querySelectorAll('#view .mk-tbody [data-id]')].map(e => G(e.dataset.id).title.toLowerCase()));
+      if (MKSORTED(order) !== 'up') errors.push('Table: the Name header did not sort A–Z');
+      c = await center('#view [data-k="mkh-name"]'); await page.mouse.click(c.x, c.y); await wait(150);
+      const order2 = await ev(() => [...document.querySelectorAll('#view .mk-tbody [data-id]')].map(e => G(e.dataset.id).title.toLowerCase()));
+      if (MKSORTED(order2) !== 'down') errors.push('Table: clicking Name again did not reverse it');
+      const rows = await ev(() => [...document.querySelectorAll('#view .mk-tbody .mkr')].slice(0, 5).map(e => e.dataset.k));
+      const rowAt = async k => { const p = await center(`#view [data-k="${k}"] .mkr-n`); return p; };
+      let p = await rowAt(rows[0]); await page.mouse.click(p.x, p.y); await wait(120);
+      p = await rowAt(rows[2]); await page.keyboard.down('Shift'); await page.mouse.click(p.x, p.y); await page.keyboard.up('Shift'); await wait(120);
+      if ((await ev(() => MK.sel.size)) !== 3) errors.push('Table: Shift-click did not pick the range: ' + (await ev(() => MK.sel.size)));
+      p = await rowAt(rows[4]); await page.keyboard.down('Control'); await page.mouse.click(p.x, p.y); await page.keyboard.up('Control'); await wait(120);
+      if ((await ev(() => MK.sel.size)) !== 4) errors.push('Table: Ctrl-click did not add one');
+      if (!(await ev(() => !!document.querySelector('#view .mk-bulk')))) errors.push('Table: no bar for the picked games');
+      if ((await ev(() => S.view)) !== 'library') errors.push('Table: clicking rows left the Library');
+      await ev(() => { setFocus(document.querySelector('#view .mk-tbody .mkr'), true); padPressed('a'); }); await wait(150);
+      if ((await ev(() => S.view)) !== 'game') errors.push("Table: a controller's A on a row did not open the game");
+      await ev(() => { closeAll(); goBack(); });
+      // Launcher
+      await mk('library', 'mk-lib-launcher');
+      const pick = await ev(() => { const e = [...document.querySelectorAll('#view .mkl-g')][2]; return e && e.dataset.k; });
+      p = await center(`#view [data-k="${pick}"]`); await page.mouse.click(p.x, p.y); await wait(150);
+      if (!(await page.evaluate(k => document.querySelector('#mkHero').dataset.id === document.querySelector(`#view [data-k="${k}"]`).dataset.id, pick))) errors.push('Launcher: clicking a game did not show it');
+      await ev(() => { window.__launched = null; }); await page.keyboard.press('Enter'); await wait(100);
+      if (!(await ev(() => window.__launched))) errors.push('Launcher: Enter did not play the picked game');
+      if (await ev(() => window.__dialogs)) errors.push('a browser dialog (alert / confirm) came up');
+    } catch (e) { errors.push('keyboard & mouse layouts: ' + e.message.split('\n')[0]); }
+    await ev(() => { window.launch = window.__realLaunch; closeAll(); LOOK.layout = 'shelf'; LOOK.libLayout = 'covers'; saveLook(); S.history = []; navigate('home', {}, false); });
+  }
   // The lock screen's and the Focus layout's big clocks keep time (they kept the time they were drawn at).
   await step('big clocks keep time', () => {
     S.layers = []; S.view = 'lock'; render(null, true);
@@ -370,7 +523,8 @@ const path = require('path');
         if (!has('.qhhd [data-key="tdp.unified.tdp.mode"]')) throw new Error("Handheld Daemon's power mode isn't shown");
         if (has('[data-act="tdp"]') || has('[data-act="perfPower"]')) throw new Error("Hearth's own power controls show next to Handheld Daemon's");
         if (has('[data-slider="hhd:tdp.unified.fan.manual_edge.st40"]')) throw new Error('a fan curve point shows in Quick Access');
-        if (!overlay !== has('[data-act="hhdOpen"]')) throw new Error('the Handheld Daemon settings button is wrong for this page');
+        // The same in Hearth's panel and over a game: where its whole page is, not a button only one of them had.
+        if (has('[data-act="hhdOpen"]') || !has('.qhhd-note')) throw new Error("Quick Access doesn't say where Handheld Daemon's settings are (or has a button only Hearth's panel had)");
       } else {
         if (has('.qhhd')) throw new Error("Handheld Daemon's settings show without it");
         if (!has('[data-act="tdp"]') || !has('[data-act="perfPower"]')) throw new Error("Hearth's power controls are missing");
@@ -805,6 +959,79 @@ const path = require('path');
     await gp.evaluate(() => { closeAll(); delete navigator.getGamepads; });
   } catch (e) { errors.push('guide over a game: ' + e.message.split('\n')[0]); }
   await gp.close();
+
+  // Quick Access is one panel: Hearth's own (Guide with Hearth on screen, the starting screen, LAST RESORT) and the
+  // overlay over a game (?overlay=full, HHD's overlay app or Hearth's overlay window) draw the same size, tabs,
+  // sections and buttons in the same order, with the same actions and the same controller navigation. Screenshots of
+  // both go to tools/qa-shots (release.yml posts them as notices).
+  const qaShots = path.resolve(__dirname, 'qa-shots');
+  try { require('fs').mkdirSync(qaShots, { recursive: true }); } catch {}
+  const qaPanel = async (which) => {
+    const qp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    qp.on('pageerror', e => errors.push(`quick access (${which}): ${e.message}`));
+    const out = {};
+    try {
+      await qp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + (which === 'overlay' ? '?preview=linux&overlay=full' : '?preview=linux'));
+      await qp.waitForTimeout(1200);
+      // A game running, another put aside (Quick Resume), Quick Resume and Pause available.
+      await qp.evaluate(() => {
+        HOSTINFO.features = ['quickResume', 'pause']; QR.on = true;
+        const gs = GAMES.filter(g => !g.cloud);
+        window.__game = gs[0].id; QR.list = [{ id: gs[1].id, frozenAt: Date.now() - 6e5 }];
+        const real = MOCK.call;
+        MOCK.call = (m, a) => m === 'perf.stats' ? real(m, a).then(r => Object.assign({}, r, { runningId: window.__game, runningSince: Date.now() - 6e5 })) : real(m, a);
+        S.running = window.__game; S.runningSince = Date.now() - 6e5;
+      });
+      // How it opens: Guide in Hearth's window; Hearth's "shown" over a game.
+      const open = async () => {
+        if (which === 'overlay') await qp.evaluate(async () => { await overlayShown(); });
+        else await qp.evaluate(() => { closeAll(); S.history = []; navigate('home', {}, false); input('guide'); });
+        await qp.waitForTimeout(400);
+      };
+      const read = () => qp.evaluate(() => ({
+        tab: S.qtab,
+        tabs: [...document.querySelectorAll('#qam .qtab')].map(e => e.dataset.tab).join(' '),
+        buttons: [...document.querySelectorAll('#qam .qbody [data-f]')].map(e => `${e.dataset.k}:${e.dataset.act || e.dataset.slider || ''}:${e.textContent.replace(/\s+/g, ' ').trim()}`),
+        focus: focused && focused.dataset.k,
+      }));
+      await open();
+      out.rect = await qp.evaluate(() => { const r = document.querySelector('#qam').getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`; });
+      out.now = await read();
+      // Controller: down through the panel, then RB through every tab.
+      out.nav = await qp.evaluate(() => { const ks = []; for (let i = 0; i < 6; i++) { input('down'); ks.push(focused && focused.dataset.k); } return ks.join(' '); });
+      out.tabsVisited = [];
+      for (let i = 0; i < 6; i++) { await qp.evaluate(() => input('rb')); await qp.waitForTimeout(await qp.evaluate(() => S.qtab === 'perf' || S.qtab === 'apps') ? 1500 : 200); const r = await read(); out.tabsVisited.push(r.tab); out['tab-' + r.tab] = out['tab-' + r.tab] || r.buttons.join(' | ').replace(/\d+ ?(min|%|°C|W|MHz|MB|GB|fps)\b/g, '#'); }
+      out.tabsVisited = out.tabsVisited.join(' ');
+      // The screenshot: Now playing with the game running.
+      await qp.evaluate(() => { S.qtab = 'now'; renderQam(); setFocus(document.querySelector('#qam .qbody [data-f]'), true); });
+      await qp.waitForTimeout(300);
+      for (const q of [55, 40, 30, 22, 15]) {
+        const buf = await qp.screenshot({ type: 'jpeg', quality: q, clip: { x: 1280 - 460, y: 0, width: 460, height: 800 } });
+        if (buf.toString('base64').length <= 9 * 3800 || q === 15) { require('fs').writeFileSync(path.join(qaShots, `${which}.jpg`), buf); break; }
+      }
+      // Nothing running: the same "no game" card, buttons and Quick Resume list.
+      await qp.evaluate(() => { window.__game = null; S.running = null; closeAll(); });
+      await open();
+      out.idle = await read();
+    } catch (e) { errors.push(`quick access (${which}): ${e.message.split('\n')[0]}`); }
+    await qp.close();
+    return out;
+  };
+  {
+    const main = await qaPanel('main'), ov = await qaPanel('overlay');
+    const same = (what, a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) errors.push(`quick access: ${what} differ between Hearth's panel and the overlay:\n  panel:   ${JSON.stringify(a)}\n  overlay: ${JSON.stringify(b)}`); };
+    same('size and position', main.rect, ov.rect);
+    for (const k of ['now', 'idle']) { same(`opening tab (${k})`, main[k] && main[k].tab, ov[k] && ov[k].tab); same(`tabs (${k})`, main[k] && main[k].tabs, ov[k] && ov[k].tabs); same(`buttons (${k})`, main[k] && main[k].buttons, ov[k] && ov[k].buttons); same(`first focus (${k})`, main[k] && main[k].focus, ov[k] && ov[k].focus); }
+    same('controller navigation', main.nav, ov.nav);
+    same('tab order (RB)', main.tabsVisited, ov.tabsVisited);
+    // (Notifications: the overlay page starts with none of its own; what's in them isn't a button set.)
+    for (const k of Object.keys(main).filter(k => k.startsWith('tab-') && k !== 'tab-notif')) same(`the ${k.slice(4)} tab`, main[k], ov[k]);
+    const want = ['q-shot', 'q-mouse', 'q-home', 'q-resume', 'q-pause', 'q-aside', 'q-exit'];
+    const got = ((main.now && main.now.buttons) || []).map(b => b.split(':')[0]).filter(k => want.includes(k));
+    if (JSON.stringify(got) !== JSON.stringify(want)) errors.push(`quick access: Now playing buttons ${got.join(' ')} (want ${want.join(' ')})`);
+    if (main.rect && !/^840,0 440x800$/.test(main.rect)) errors.push(`quick access: panel at ${main.rect} (want the overlay's 440 px on the right)`);
+    console.log(`quick access: panel ${main.rect}, overlay ${ov.rect}; tabs ${main.now && main.now.tabs}; now playing: ${got.join(' ')}`);
+  }
 
   await browser.close();
   if (errors.length) {
