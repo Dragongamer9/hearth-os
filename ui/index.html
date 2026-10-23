@@ -3489,6 +3489,7 @@ function pageControls(){
   }
   h += pads.length ? pads.map((p,i)=>`<div class="row"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(p.id.split('(')[0].trim()||'Controller')}</b><small>Player ${i+1}</small></div></div>`).join('')
                    : note('No controller detected. Press any button on a connected controller.');
+  if(hasFeat('gamingApps')) h += gamingLabRow();   // Hearth's gaming apps (block below)
   // Handheld Daemon's own settings (Hearth OS on handhelds): a page of their own.
   if(LINUX) h += hhdLinkRow();
   if(!LINUX){
@@ -5334,6 +5335,7 @@ function act(el){
   if(S.locked && !['unlock','pkey','back','sheet'].includes(a)) return;   // locked: only unlocking
   blip(880,.05,.045);
   if(a.startsWith('bcn')) return beaconAct(a, d);   // Beacon's screens (Game setup, Mods)
+  if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
   switch(a){
     case 'unlock': return lockUnlock();
     case 'loginWake': return call('login.setLockOnWake',{on:!(LOGIN.s&&LOGIN.s.lockOnWake)}).then(r=>{ LOGIN.s=r; refreshUI(); toast(r.lockOnWake?'Asks for your password after sleep':'Wakes without asking for a password'); }).catch(e=>toast(e.message));
@@ -6300,8 +6302,26 @@ function gameOptions(g){
     if(g.inst) items.push({label:'Mods',icon:'lib',run:()=>beaconModsPage(g)});
     items.push({label:'Open Beacon',icon:'sliders',run:()=>beaconOpen()});
   }
+  gamingGameItems(g, items);   // Hearth's gaming apps (block below)
   openSheet({title:g.title, sub:SOURCES[g.src], items});
 }
+// ---------- Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves, Mods ----------
+// Separate programs on Hearth OS (host.info feature "gamingApps"); the host opens them full screen in Game Mode
+// (gamingApps.open, hearth-core gaming_apps.rs). Beacon's games keep Beacon's own Mods entry.
+function gamingLabRow(){
+  return `<button class="row" data-f data-k="ctl-lab" data-act="gamingApp" data-v="controller-lab"><span class="ricon">${I.pad}</span><div class="rt"><b>Controller Lab</b><small>Test every button, stick, trigger, gyro and rumble; measure stick drift; calibrate</small></div><div class="rv">›</div></button>`;
+}
+function gamingOpen(app, id){
+  const names = {'controller-lab':'Controller Lab', saves:'Saves', mods:'Mods'};
+  closeAll();
+  return call('gamingApps.open',{app, game:id||''},15000).then(()=>toast(`Opening ${names[app]||app}…`)).catch(e=>toast(e.message));
+}
+function gamingGameItems(g, items){
+  if(!hasFeat('gamingApps') || !g || !g.inst || g.cloud) return;
+  items.push({label:'Back up saves',icon:'dl',run:()=>gamingOpen('saves', g.id)});
+  if(g.src!=='beacon') items.push({label:'Mods',icon:'sliders',run:()=>gamingOpen('mods', g.id)});
+}
+// ---------- end of Hearth's gaming apps ----------
 // ---------- Beacon (BFME, Age of the Ring, LOTR: Conquest…): mods, Play with…, Beacon's window ----------
 // Beacon keeps each game's mod (beacon select-mod); Play starts with it, Play with… picks one for this time only.
 const beaconMods = g => (g&&g.beacon&&g.beacon.mods)||[];

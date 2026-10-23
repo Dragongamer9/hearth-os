@@ -1,0 +1,143 @@
+# Hearth Photos (hosts/hearth-photos), the picture viewer and editor: tests its library (turning JPEGs without loss,
+# thumbnails, saving edits, the Trash), builds it, and runs it under Xvfb against a folder of sample pictures in every
+# format: it reports which ones WebKitGTK shows by itself and which are converted (the "formats" notice), and takes
+# screenshots of the viewer, the info panel, the strip, slideshow and the editor (in the hearth-photos-linux artifact).
+# Linux only for now (Ember/Windows comes later). Release builds are made by base-anatase.yml / base-peppermint.yml.
+name: Hearth Photos
+
+on:
+  push:
+    branches: [main, linux-host, hearth-photos-docs]
+    paths: ['hosts/hearth-photos/**', '.github/workflows/photos.yml']
+  pull_request:
+    paths: ['hosts/hearth-photos/**', '.github/workflows/photos.yml']
+  workflow_dispatch:
+    inputs:
+      shots:
+        description: Put small copies of the screenshots on the run as notices
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: hosts/hearth-photos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-photos
+      - name: The page's scripts
+        run: |
+          node --check ui/app.js
+          node --check ui/edit.js
+      - name: WebKit and GTK, and tools for the sample pictures
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick x11-utils dbus-x11 xdotool libheif-examples libheif-plugin-x265 libheif-plugin-libde265 >/dev/null || \
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick x11-utils dbus-x11 xdotool libheif-examples >/dev/null
+          echo "::notice title=WebKitGTK::$(dpkg-query -W -f '${Version}' libwebkit2gtk-4.1-0 2>/dev/null)"
+      - name: Test
+        run: |
+          set -o pipefail
+          cargo test 2>&1 | tee test.log || { echo "::error title=tests::$(grep -E '^(error|---- |thread .* panicked)' -A10 test.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=size::$(du -h target/release/hearth-photos | cut -f1)"
+          ./target/release/hearth-photos --help
+      - name: Sample pictures in every format
+        run: |
+          d="$RUNNER_TEMP/pics"; mkdir -p "$d"; cd "$d"
+          convert -size 1600x1000 gradient:'#ff8a3d-#2a1206' -fill '#ffd166' -draw 'circle 1150,300 1150,420' -fill '#1c1512' -draw 'polygon 0,800 500,420 900,720 1200,500 1600,820 1600,1000 0,1000' \
+            -fill white -pointsize 72 -annotate +60+940 'Hearth' base.png
+          convert base.png -quality 88 01-photo.jpg
+          # A sideways photo: stored wide, EXIF says "turn right" (what phones do).
+          convert base.png -rotate -90 -quality 88 02-sideways.jpg && exiftool -q -Orientation=6 -n 02-sideways.jpg 2>/dev/null || python3 - <<'PY' || true
+          import struct
+          p = '02-sideways.jpg'; b = open(p, 'rb').read()
+          app1 = b'\xff\xe1' + struct.pack('>H', 34) + b'Exif\0\0MM\0*\0\0\0\x08\0\x01\x01\x12\0\x03\0\0\0\x01\0\x06\0\0\0\0\0\0'
+          open(p, 'wb').write(b[:2] + app1 + b[2:])
+          PY
+          convert base.png -alpha set -channel A -fx 'i/w' 03-see-through.png
+          convert base.png 04-picture.webp
+          convert base.png -resize 50% 05-picture.bmp
+          convert base.png -compress lzw 06-scan.tif
+          convert -delay 40 -size 320x200 xc:'#ff8a3d' xc:'#ffd166' xc:'#6fd08c' -loop 0 07-moving.gif
+          cat > 08-drawing.svg <<'SVG'
+          <svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500"><rect width="800" height="500" fill="#261d18"/><circle cx="400" cy="250" r="160" fill="#ff8a3d"/><text x="400" y="265" font-size="48" text-anchor="middle" fill="#2a1206" font-family="sans-serif">SVG</text></svg>
+          SVG
+          (heif-enc -q 80 -o 09-phone.heic 01-photo.jpg >/dev/null 2>&1 || convert base.png 09-phone.heic) || true
+          (heif-enc -A -q 70 -o 10-picture.avif 01-photo.jpg >/dev/null 2>&1 || convert base.png 10-picture.avif) || true
+          convert base.png -resize 64x64 11-icon.ico
+          rm base.png
+          ls -la
+      - name: Formats (which ones WebKitGTK shows itself, which are converted) and thumbnails
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_PHOTOS_CACHE="$RUNNER_TEMP/cache"
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          for f in "$RUNNER_TEMP"/pics/*; do
+            if ./target/release/hearth-photos --thumb "$f" "$RUNNER_TEMP/t.png" 2>/dev/null; then echo "thumbnail ok: $(basename "$f")"; else echo "thumbnail FAILED: $(basename "$f")"; fi
+          done | tee thumbs.log
+          ./target/release/hearth-photos --info "$RUNNER_TEMP/pics/02-sideways.jpg" | tee info.json
+          grep -q '"orientation": 6' info.json || echo "::warning title=orientation::the sideways sample's EXIF orientation wasn't read"
+          HEARTH_PHOTOS_SELFTEST=1 timeout 120 dbus-run-session -- ./target/release/hearth-photos "$RUNNER_TEMP/pics/01-photo.jpg" > selftest.log 2>&1 || true
+          cat selftest.log | tail -40
+          grep -q 'SELFTEST done' selftest.log || { echo "::error title=selftest::the page didn't finish: $(tail -c 1500 selftest.log | tr '\n' '|')"; exit 1; }
+          echo "::notice title=formats (WebKitGTK $(dpkg-query -W -f '${Version}' libwebkit2gtk-4.1-0))::$(grep '^SELFTEST' selftest.log | sed 's/^SELFTEST //' | tr '\n' '|')"
+          echo "::notice title=thumbnails::$(tr '\n' '|' < thumbs.log)"
+          ! grep -q 'NOT SHOWN: .*\(jpg\|png\|webp\|gif\|bmp\|tif\|svg\)' selftest.log || { echo "::error title=formats::a common format wasn't shown"; exit 1; }
+      - name: Run it (screenshots)
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_PHOTOS_CACHE="$RUNNER_TEMP/cache"
+          pgrep Xvfb >/dev/null || { Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 2; }
+          dbus-run-session -- ./target/release/hearth-photos "$RUNNER_TEMP/pics/01-photo.jpg" > run.log 2>&1 &
+          sleep 8
+          w=$(xdotool search --name 'Photos' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true
+          xdotool windowsize "$w" 1280 800 2>/dev/null || true; sleep 1
+          shot() { import -window root "shots/$1.png" || true; }
+          shot viewer
+          xdotool key Right; sleep 2; shot sideways
+          xdotool key i; sleep 2; shot info
+          xdotool key i; xdotool key Right Right Right Right Right Right; sleep 2; shot moving-gif
+          xdotool key Right; sleep 2; shot svg
+          xdotool key Right; sleep 3; shot heic
+          xdotool key Home; sleep 2
+          xdotool key plus plus plus; sleep 1; shot zoom
+          xdotool key 0 r; sleep 1; shot turned
+          xdotool key Escape; xdotool key 0
+          xdotool click 1 2>/dev/null; xdotool mousemove 1240 30 click 1; sleep 1; shot menu
+          xdotool key Escape; sleep 1
+          xdotool key e; sleep 4; shot edit-crop
+          xdotool key ctrl+s; sleep 2; shot edit-save
+          xdotool key Escape; sleep 1; xdotool key Escape; sleep 1; shot edit-leave
+          pkill -f 'target/release/hearth-photos' || true
+          echo "::notice title=App output::$(tail -c 1200 run.log | tr '\n' '|')"
+      - name: Screenshots as notices (started by hand with "shots", or a commit saying [shots])
+        if: always() && ((github.event_name == 'workflow_dispatch' && inputs.shots) || contains(github.event.head_commit.message, '[shots]'))
+        run: |
+          for n in viewer sideways info heic edit-crop; do
+            f=shots/$n.png; [ -f "$f" ] || continue
+            convert "$f" -resize 720x -quality 50 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-photos-linux
+          path: |
+            hosts/hearth-photos/target/release/hearth-photos
+            hosts/hearth-photos/shots
+            hosts/hearth-photos/*.log

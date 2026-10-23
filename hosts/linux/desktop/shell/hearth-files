@@ -37,6 +37,13 @@
   hearth-files peek PATH                the start of a text file (quick preview)
   hearth-files thumbs PATH...           make missing video thumbnails (ffmpegthumbnailer or ffmpeg)
   hearth-files terminal PATH            open Hearth Terminal there
+  hearth-files open-plan PATH           what opening it should do: script | program | desktop | text | binary | default
+                                        (with the choice remembered for this file, if any)
+  hearth-files run PATH [--terminal]    run a script or program (in Hearth Terminal, which stays open at the end)
+  hearth-files make-runnable PATH       mark a file as a program (chmod +x)
+  hearth-files open-text PATH [--readonly]   open it in Hearth Text
+  hearth-files desktop-launch PATH      start what a .desktop file runs (after Files asked)
+  hearth-files open-choice PATH [CHOICE]     remember (or, without CHOICE, forget) what opening this file does
 
 Output is one JSON line; failures print "error: ..." and exit 1. Anything that changes files only works in
 your home folder, on USB drives and SD cards (/run/media/$USER, /media/$USER) and in /tmp; listing,
@@ -1179,13 +1186,13 @@ def open_path(path, app_id=None):
                                start_new_session=True)
             if r.returncode == 0:
                 return {'ok': True}
-            raise Fail('No app is set up to open this kind of file. Try “Open with…”')
+            return open_unknown(p)
         except subprocess.TimeoutExpired:
             return {'ok': True}
     if shutil.which('xdg-open'):
         spawn(['xdg-open', p], cwd=cwd)
         return {'ok': True}
-    raise Fail('No app is set up to open this kind of file. Try “Open with…”')
+    return open_unknown(p)
 
 
 def eject(path):
@@ -2306,6 +2313,245 @@ def terminal(path):
     raise Fail('No terminal app is installed')
 
 
+# ---------------------------------------------------------------------- scripts, programs, .desktop files, text
+# What opening a file does when it isn't simply "the app for this type": scripts and programs ask (Run in Terminal,
+# Run, Open in Hearth Text), .desktop files show what they run before starting it, and text-like files no app
+# claims (configs, logs, dotfiles, files without an extension) open in Hearth Text.
+SCRIPT_EXT = ('.sh', '.bash', '.zsh', '.ksh', '.command', '.py', '.pyw', '.pl', '.rb', '.lua', '.run', '.bats')
+INTERPRETERS = {'.py': 'python3', '.pyw': 'python3', '.pl': 'perl', '.rb': 'ruby', '.lua': 'lua', '.bash': 'bash',
+                '.sh': 'bash', '.zsh': 'zsh', '.ksh': 'ksh', '.command': 'bash', '.bats': 'bats'}
+RUN_CHOICES = ('terminal', 'run', 'text')
+
+
+def head_bytes(p, n=8192):
+    try:
+        with open(p, 'rb') as f:
+            return f.read(n)
+    except OSError:
+        return b''
+
+
+def looks_text(p, head=None):
+    """No NUL byte in the first 8 KB (or a UTF-16 byte-order mark): text. An empty file counts as text."""
+    head = head_bytes(p) if head is None else head
+    return head[:2] in (b'\xff\xfe', b'\xfe\xff') or b'\0' not in head
+
+
+def is_elf(head):
+    return head[:4] == b'\x7fELF'
+
+
+def is_appimage(p, head):
+    return (is_elf(head) and head[8:10] == b'AI') or p.lower().endswith('.appimage')
+
+
+def text_editor():
+    """argv start for opening text: Hearth Text, else the default app for plain text."""
+    if shutil.which('hearth-text'):
+        return ['hearth-text']
+    return None
+
+
+def open_text(path, readonly=False):
+    p = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isfile(p):
+        raise Fail('“' + os.path.basename(p) + "” isn't there any more")
+    ed = text_editor()
+    if ed:
+        spawn(ed + (['--readonly'] if readonly else []) + ['--', p], cwd=os.path.dirname(p))
+        return {'ok': True, 'app': 'hearth-text.desktop'}
+    d = default_app('text/plain')
+    if d:
+        full, fields = desktop_entries()[d['id']]
+        spawn(expand_exec(fields['Exec'], p, fields, full), cwd=os.path.dirname(p))
+        return {'ok': True, 'app': d['id']}
+    raise Fail('No text editor is installed')
+
+
+def open_unknown(p):
+    """No app opens this type: text opens in Hearth Text, anything else asks for "Open with…"."""
+    if os.path.isfile(p) and looks_text(p) and (text_editor() or default_app('text/plain')):
+        return open_text(p)
+    raise Fail('No app is set up to open this kind of file. Try “Open with…”')
+
+
+def desktop_info(p):
+    f = parse_desktop(p)
+    if f is None:
+        raise Fail("Couldn't read “" + os.path.basename(p) + '”')
+    kind = f.get('Type', 'Application')
+    return {'name': f.get('Name') or os.path.basename(p), 'comment': f.get('Comment', ''), 'type': kind,
+            'exec': f.get('Exec', ''), 'url': f.get('URL', ''), 'terminal': f.get('Terminal', '').lower() == 'true',
+            'icon': f.get('Icon', ''), 'path': f.get('Path', ''),
+            'runnable': (kind == 'Application' and bool(f.get('Exec'))) or (kind == 'Link' and bool(f.get('URL')))}
+
+
+def choices():
+    c = prefs_get().get('openChoices')
+    return c if isinstance(c, dict) else {}
+
+
+def remembered(p):
+    """The choice made for this file before, if the file hasn't changed since."""
+    try:
+        st = os.stat(p)
+    except OSError:
+        return None
+    c = choices().get(os.path.realpath(p))
+    if isinstance(c, list) and len(c) == 3 and c[0] in RUN_CHOICES and c[1] == int(st.st_mtime) and c[2] == st.st_size:
+        return c[0]
+    return None
+
+
+def open_choice(path, choice=None):
+    p = os.path.realpath(os.path.abspath(os.path.expanduser(path)))
+    c = choices()
+    c.pop(p, None)
+    if choice:
+        if choice not in RUN_CHOICES:
+            raise Fail('That isn\'t a choice')
+        st = os.stat(p)
+        c[p] = [choice, int(st.st_mtime), st.st_size]
+        c = dict(list(c.items())[-300:])
+    prefs_set(json.dumps({'openChoices': c}))
+    return {'ok': True, 'choice': choice}
+
+
+def open_plan(path):
+    p = os.path.abspath(os.path.expanduser(path))
+    if not lexists(p):
+        raise Fail('“' + os.path.basename(p) + "” isn't there any more")
+    out = {'path': p, 'name': os.path.basename(p), 'kind': 'default', 'executable': os.access(p, os.X_OK),
+           'text': False, 'editor': bool(text_editor()), 'canChmod': False, 'remembered': None}
+    if os.path.isdir(p):
+        return out
+    head = head_bytes(p)
+    out['text'] = looks_text(p, head)
+    out['canChmod'] = allowed(p) and os.access(p, os.W_OK) and not out['executable']
+    ext = os.path.splitext(p)[1].lower()
+    if ext == '.desktop':
+        out['kind'] = 'desktop'
+        out['desktop'] = desktop_info(p)
+        out['trusted'] = under(norm(p), os.path.realpath('/usr/share/applications')) or under(norm(p), os.path.realpath(os.path.join(home(), '.local/share/applications')))
+        return out
+    if is_appimage(p, head) or ext in ('.deb', '.rpm', '.exe', '.msi', '.flatpakref', '.flatpakrepo'):
+        return out                     # their own handling (Files, open_path, or the app for the type)
+    if is_elf(head):
+        out['kind'] = 'program'
+    elif ext in SCRIPT_EXT or (head[:2] == b'#!' and out['text']):
+        out['kind'] = 'script'
+        first = head.split(b'\n', 1)[0].decode('utf-8', 'replace') if head[:2] == b'#!' else ''
+        out['shebang'] = first[2:].strip()
+        out['interpreter'] = os.path.basename(first[2:].split()[0]) if first[2:].split() else INTERPRETERS.get(ext, '')
+        if out['interpreter'] == 'env' and len(first[2:].split()) > 1:
+            out['interpreter'] = first[2:].split()[-1]
+    if out['kind'] in ('program', 'script'):
+        out['remembered'] = remembered(p)
+        return out
+    mime = sniff_mime(p)
+    out['mime'] = mime
+    if default_app(mime):
+        return out
+    out['kind'] = 'text' if out['text'] else 'binary'
+    return out
+
+
+def make_runnable(path):
+    p = check_writable(path, allow_root=True)
+    if not os.path.isfile(p):
+        raise Fail('Only files can be made runnable')
+    try:
+        if os.statvfs(p).f_flag & getattr(os, 'ST_NOEXEC', 8):
+            raise Fail("Programs can't run from this drive. Copy it to your home folder first.")
+    except OSError:
+        pass
+    st = os.stat(p)
+    mode = st.st_mode | stat.S_IXUSR | (stat.S_IXGRP if st.st_mode & stat.S_IRGRP else 0) | (stat.S_IXOTH if st.st_mode & stat.S_IROTH else 0)
+    try:
+        os.chmod(p, stat.S_IMODE(mode))
+    except OSError as e:
+        raise Fail("Couldn't make it runnable: " + friendly(e, p))
+    if not os.access(p, os.X_OK):
+        raise Fail("This drive can't mark files as runnable. Copy it to your home folder first.")
+    return {'ok': True, 'mode': stat.S_IMODE(os.stat(p).st_mode)}
+
+
+def run_argv(p):
+    """How to run a script or program: by itself when it's a program or starts with #!, else through the
+    interpreter its extension names."""
+    head = head_bytes(p, 256)
+    if is_elf(head) or head[:2] == b'#!':
+        return [p]
+    it = INTERPRETERS.get(os.path.splitext(p)[1].lower())
+    if it and shutil.which(it):
+        return [it, p]
+    if it == 'bash' and shutil.which('sh'):
+        return ['sh', p]
+    return [p]
+
+
+HOLD = ('name=$1; shift; "$@"; s=$?; printf "\\n\\033[1m%s finished (exit code %s).\\033[0m Press Enter to close this window.\\n" '
+        '"$name" "$s"; read -r _')
+
+
+def terminal_argv(argv, cwd, hold=True, title=''):
+    """argv that runs argv in a terminal window (which waits for Enter at the end when hold)."""
+    inner = ['sh', '-c', HOLD, 'hearth-run', title or os.path.basename(argv[-1])] + argv if hold else argv
+    for term, pre in (('hearth-terminal', ['--cwd', cwd, '-e']), ('foot', ['-D', cwd]), ('konsole', ['--workdir', cwd, '-e']),
+                      ('gnome-terminal', ['--working-directory=' + cwd, '--']), ('xfce4-terminal', ['--working-directory', cwd, '-x']),
+                      ('alacritty', ['--working-directory', cwd, '-e']), ('kitty', ['-d', cwd]), ('wezterm', ['start', '--cwd', cwd, '--']),
+                      ('xterm', ['-e'])):
+        if shutil.which(term):
+            return [term] + pre + inner
+    raise Fail('No terminal app is installed')
+
+
+def run_file(path, in_terminal=False):
+    p = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isfile(p):
+        raise Fail('“' + os.path.basename(p) + "” isn't there any more")
+    if not os.access(p, os.X_OK):
+        raise Fail('confirm: “' + os.path.basename(p) + '” isn\'t marked as runnable yet')
+    cwd = os.path.dirname(p)
+    argv = run_argv(p)
+    spawn(terminal_argv(argv, cwd, title=os.path.basename(p)) if in_terminal else argv, cwd=cwd)
+    return {'ok': True, 'terminal': in_terminal}
+
+
+def desktop_launch(path):
+    p = os.path.abspath(os.path.expanduser(path))
+    d = desktop_info(p)
+    if d['type'] == 'Link' and d['url']:
+        spawn(['xdg-open', d['url']] if shutil.which('xdg-open') else ['gio', 'open', d['url']])
+        return {'ok': True}
+    if d['type'] != 'Application' or not d['exec']:
+        raise Fail('“' + d['name'] + '” doesn\'t start anything')
+    f = parse_desktop(p) or {}
+    te = f.get('TryExec')
+    if te and not (shutil.which(te) or os.path.exists(te)):
+        raise Fail('What “' + d['name'] + '” starts (' + te + ') isn\'t installed')
+    try:
+        words = shlex.split(d['exec'])
+    except ValueError:
+        raise Fail('“' + d['name'] + '” has a broken Exec line')
+    argv = []
+    for w in words:
+        if re.fullmatch(r'%[fFuUdDnNickvm]', w):
+            if w == '%i' and d['icon']:
+                argv += ['--icon', d['icon']]
+            elif w == '%c':
+                argv.append(d['name'])
+            elif w == '%k':
+                argv.append(p)
+            continue
+        argv.append(re.sub(r'%(.)', lambda m: '%' if m.group(1) == '%' else '', w))
+    if not argv:
+        raise Fail('“' + d['name'] + '” has an empty Exec line')
+    cwd = d['path'] if d['path'] and os.path.isdir(d['path']) else home()
+    spawn(terminal_argv(argv, cwd, hold=False) if d['terminal'] else argv, cwd=cwd)
+    return {'ok': True, 'name': d['name']}
+
+
 # ---------------------------------------------------------------------- command line
 USAGE = ('usage: hearth-files list PATH [--hidden] | places | mkdir PATH | rename PATH NEWNAME | trash PATH... | '
          'restore PATH... | empty-trash | delete PATH... | copy SRC... DEST | move SRC... DEST | info PATH | '
@@ -2314,7 +2560,8 @@ USAGE = ('usage: hearth-files list PATH [--hidden] | places | mkdir PATH | renam
          'templates | from-template TEMPLATE FOLDER [NAME] | batch-rename PATTERN PATH... | '
          'compress FORMAT ARCHIVE SRC... | extract ARCHIVE DEST|--here | search PATH QUERY [--hidden] | bookmarks | '
          'bookmark-add PATH [LABEL] | bookmark-remove PATH | prefs | prefs-set JSON | clip-set MODE PATH... | '
-         'clip-get | peek PATH | thumbs PATH... | terminal PATH')
+         'clip-get | peek PATH | thumbs PATH... | terminal PATH | open-plan PATH | run PATH [--terminal] | '
+         'make-runnable PATH | open-text PATH [--readonly] | desktop-launch PATH | open-choice PATH [CHOICE]')
 
 
 def cmd(argv):
@@ -2420,6 +2667,18 @@ def cmd(argv):
         out = thumbs(rest)
     elif c == 'terminal' and len(rest) == 1:
         out = terminal(rest[0])
+    elif c == 'open-plan' and len(rest) == 1:
+        out = open_plan(rest[0])
+    elif c == 'run' and len(rest) in (1, 2) and rest[1:] in ([], ['--terminal']):
+        out = run_file(rest[0], rest[1:] == ['--terminal'])
+    elif c == 'make-runnable' and len(rest) == 1:
+        out = make_runnable(rest[0])
+    elif c == 'open-text' and len(rest) in (1, 2) and rest[1:] in ([], ['--readonly']):
+        out = open_text(rest[0], rest[1:] == ['--readonly'])
+    elif c == 'desktop-launch' and len(rest) == 1:
+        out = desktop_launch(rest[0])
+    elif c == 'open-choice' and len(rest) in (1, 2):
+        out = open_choice(rest[0], rest[1] if len(rest) == 2 else None)
     else:
         print(USAGE)
         sys.exit(2)
