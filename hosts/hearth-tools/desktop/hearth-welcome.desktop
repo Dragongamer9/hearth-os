@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Welcome & Tips
+GenericName=Help
+Comment=A short tour of Hearth OS and searchable answers to "How do I…"
+Exec=/usr/bin/hearth-tools --app welcome
+TryExec=/usr/bin/hearth-tools
+Icon=hearth-welcome
+Type=Application
+Categories=System;Utility;
+Keywords=welcome;tips;help;tour;guide;docs;how;faq;controller;
+StartupWMClass=io.github.dragongamer9.hearth.welcome

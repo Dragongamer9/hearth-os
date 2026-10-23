@@ -1,0 +1,36 @@
+[package]
+name = "hearth-text"
+version = "0.1.0"
+edition = "2021"
+description = "Hearth Text: Hearth OS's own text editor, for Linux (Mantel) and Windows (Ember)"
+license = "GPL-3.0-or-later"
+
+# Reading and writing files (encodings, line endings, big files, saving safely), settings and the command line are
+# a library, so the tests can check them without opening the app.
+[lib]
+name = "hearth_text"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-text"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
