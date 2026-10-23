@@ -3,7 +3,8 @@
 # "$@" in it:
 #  - a D-Bus session, PipeWire with WirePlumber and its PulseAudio side
 #  - "speakers" (the default output) playing a 440 Hz tone, and a fake microphone (the default input) hearing 880 Hz
-#  - a screen: labwc headless with something moving on it (KIND=wayland, like Mantel), or Xvfb (KIND=x11)
+#  - a screen: labwc headless with something moving on it (KIND=wayland, like Mantel), Xvfb (KIND=x11), or
+#    gamescope headless on software Vulkan (KIND=gamescope, like Game Mode: its PipeWire stream "gamescope")
 # Run it under dbus-run-session.
 set -u
 KIND=${KIND:-x11}
@@ -42,6 +43,20 @@ if [ "$KIND" = wayland ]; then
   command -v wlr-randr >/dev/null && wlr-randr --output HEADLESS-1 --custom-mode 1280x720 2>/dev/null
   # Something that changes, so the screen has new pictures to capture.
   foot -e top -d 0.3 >"$L/foot.log" 2>&1 &
+elif [ "$KIND" = gamescope ]; then
+  # Game Mode: gamescope's headless backend (lavapipe, no graphics card) with an X11 program moving inside it.
+  # The tests run beside it with gamescope's variables, the way Game Mode's apps are started.
+  rm -f /tmp/gs-env
+  gamescope --backend headless -W 1280 -H 720 -w 1280 -h 720 -- sh -c 'env > /tmp/gs-env.tmp && mv /tmp/gs-env.tmp /tmp/gs-env; exec xterm -geometry 160x50+0+0 -e top -d 0.3' >"$L/gamescope.log" 2>&1 &
+  for _ in $(seq 80); do [ -s /tmp/gs-env ] && break; sleep 0.25; done
+  if [ ! -s /tmp/gs-env ]; then echo "::error title=gamescope didn't start::$(tail -c 1500 "$L/gamescope.log" | tr '\n' '|')"; fi
+  for k in GAMESCOPE_WAYLAND_DISPLAY WAYLAND_DISPLAY DISPLAY; do
+    v=$(grep "^$k=" /tmp/gs-env 2>/dev/null | head -1 | cut -d= -f2-); [ -n "$v" ] && export "$k=$v"
+  done
+  echo "gamescope: GAMESCOPE_WAYLAND_DISPLAY=${GAMESCOPE_WAYLAND_DISPLAY:-} DISPLAY=${DISPLAY:-}"
+  # Its PipeWire stream
+  for _ in $(seq 40); do timeout 5 pw-dump 2>/dev/null | grep -q '"node.name": "gamescope"' && break; sleep 0.25; done
+  timeout 5 pw-dump 2>/dev/null | grep -q '"node.name": "gamescope"' && echo "gamescope's PipeWire stream is there" || echo "::warning title=gamescope::no PipeWire stream called gamescope: $(grep -i pipewire "$L/gamescope.log" | tail -3 | tr '\n' '|')"
 else
   Xvfb :99 -screen 0 1280x720x24 >"$L/xvfb.log" 2>&1 &
   export DISPLAY=:99

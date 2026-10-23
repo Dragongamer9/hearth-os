@@ -41,10 +41,12 @@ if [ "$(echo "$r" | field ok)" = True ]; then
   else fail "whole screen" "$f: streams '$s', ${d}s, volume ${v}"; fi
 else fail "whole screen" "didn't start: $(echo "$r" | field error)"; fi
 
-# 2. An area, 640x480, no sound.
+# 2. An area, 640x480, no sound (Game Mode without gpu-screen-recorder records the whole screen only, and says so).
 settings '{"fps": 30, "system": false, "mic": false}'
 r=$($B --start --area="16,16 640x480" --json); echo "$r"
-if [ "$(echo "$r" | field ok)" = True ]; then
+if [ "$KIND" = gamescope ] && [ "$(echo "$r" | field ok)" != True ]; then
+  [[ "$(echo "$r" | field error)" == *whole\ screen* ]] && note "area in Game Mode: $(echo "$r" | field error)" || fail "area" "$(echo "$r" | field error)"
+elif [ "$(echo "$r" | field ok)" = True ]; then
   sleep 3
   f=$($B --stop --json | field file); s=$(streams "$f")
   if [[ "$s" == *640,480* ]] && [[ "$s" != *audio* ]]; then note "area: $s"; keep "$f" "area-$KIND.mp4"; else fail "area" "$f: '$s'"; fi
