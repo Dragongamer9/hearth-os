@@ -148,18 +148,9 @@ PanelWindow {
         return (i === 0 ? n : n.toFixed(n < 10 ? 1 : 0)) + " " + u[i];
     }
     function properties(e) {
-        if (!e || !dialog) return;
-        DeskState.files(["info", e.path], (r, err) => {
-            if (err) return say(err);
-            const rows = [];
-            rows.push(["Kind", e.launcher ? "App shortcut" : r.dir ? "Folder" : (r.mime || "File")]);
-            rows.push(["Size", human(r.size) + (r.dir ? " (" + r.files + " files, " + r.folders + " folders)" : "")]);
-            rows.push(["Where", r.parent]);
-            rows.push(["Changed", Qt.formatDateTime(new Date(r.mtime * 1000), "MMM d, yyyy  h:mm AP")]);
-            if (r.target) rows.push(["Points to", r.target]);
-            rows.push(["Permissions", r.mode + "  (" + r.owner + ")"]);
-            dialog.info(screen, e.label || e.name, rows);
-        });
+        // The same Properties window as Hearth Files (FileProperties.qml, through FileManager.qml).
+        if (!e || !filesApp) return;
+        filesApp.properties([e.path]);
     }
     function newFolder() {
         if (!dialog) return;
