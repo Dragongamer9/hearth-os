@@ -827,6 +827,7 @@ chmod 755 /usr/libexec/nimbus/hearth-seat-input 2>/dev/null || true
 # Hearth's administrators group (the installer puts the first account in it; the polkit rules use it). In
 # /etc/group now (the installer adds the account against the image's /etc) and in sysusers.d for later.
 getent group wheel >/dev/null || groupadd -r wheel
+getent group netdev >/dev/null || groupadd -r netdev   # Wi-Fi and network changes (49-hearth-network.rules, hearth-groups)
 sed -i 's/^#\s*\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen && locale-gen
 echo 'LANG=en_US.UTF-8' > /etc/locale.conf
 echo 'LANG=en_US.UTF-8' > /etc/default/locale
