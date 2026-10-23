@@ -128,6 +128,8 @@ fi
 # Couch Co-op (Beta Experimental), Move games / Make Hearth bigger, Proton for games added by hand: not fatal,
 # Hearth says what's missing.
 dnf5 -y install 7zip || dnf5 -y install p7zip p7zip-plugins || true
+# bsdtar: Hearth Files opens .rar, .iso, .cbr and the rest of the archive kinds 7-Zip doesn't.
+dnf5 -y install bsdtar || true
 dnf5 -y install fuse-overlayfs bubblewrap xdpyinfo xrandr || true
 dnf5 -y install ntfsprogs ntfs-3g e2fsprogs btrfs-progs util-linux || true
 dnf5 -y install umu-launcher || true

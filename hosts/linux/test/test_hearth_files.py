@@ -579,6 +579,29 @@ class Archives(Base):
         r = self.hf.extract(t, out)
         self.assertTrue(os.path.isfile(os.path.join(out, 'readme.txt')))
 
+    def test_7z_round_trip(self):
+        if not (shutil.which('7z') or shutil.which('7zz') or shutil.which('7za')):
+            self.skipTest('no 7-Zip here')
+        src = self.make_tree()
+        a = os.path.join(self.home, 'Project.7z')
+        r = self.hf.compress('7z', a, [src])
+        self.assertTrue(r['ok'] and os.path.isfile(a))
+        self.assertFalse([n for n in os.listdir(self.home) if n.endswith('.hearth-part')])
+        shutil.rmtree(src)
+        r = self.hf.extract(a, '--here', here=True)
+        with open(os.path.join(src, 'readme.txt')) as f:
+            self.assertEqual(f.read(), 'hello')
+
+    def test_7z_needs_7zip(self):
+        src = self.make_tree()
+        real = shutil.which
+        self.hf.shutil.which = lambda n, *a, **k: None if n.startswith('7z') else real(n, *a, **k)
+        try:
+            with self.assertRaises(self.hf.Fail):
+                self.hf.compress('7z', os.path.join(self.home, 'x.7z'), [src])
+        finally:
+            self.hf.shutil.which = real
+
     def test_refuses_paths_outside(self):
         import zipfile
         z = os.path.join(self.home, 'evil.zip')

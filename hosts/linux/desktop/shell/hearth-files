@@ -1706,8 +1706,11 @@ def compress(fmt, archive, srcs):
     import tarfile
     import zipfile
     fmt = fmt.lower()
-    if fmt not in ('zip', 'tar.gz', 'tar.xz', 'tar'):
-        raise Fail('Hearth Files makes .zip, .tar.gz, .tar.xz and .tar archives')
+    if fmt not in ('zip', 'tar.gz', 'tar.xz', 'tar', '7z'):
+        raise Fail('Hearth Files makes .zip, .7z, .tar.gz, .tar.xz and .tar archives')
+    seven = (shutil.which('7z') or shutil.which('7zz') or shutil.which('7za')) if fmt == '7z' else None
+    if fmt == '7z' and not seven:
+        raise Fail('making .7z archives needs 7-Zip')
     out = check_writable(archive)
     valid_name(os.path.basename(out))
     if lexists(out):
@@ -1767,6 +1770,14 @@ def compress(fmt, archive, srcs):
                                     break
                                 fo.write(buf)
                                 prog.tick(len(buf))
+        elif fmt == '7z':
+            # 7-Zip stores each item under its own name (a folder with what's in it), like the zip above.
+            prog.file = os.path.basename(items[0]) if len(items) == 1 else ''
+            r = subprocess.run([seven, 'a', '-t7z', '-y', '-bso0', '-bsp0', '--', part] + items,
+                               capture_output=True, text=True)
+            if r.returncode != 0:
+                raise OSError(errno.EIO, (r.stderr or r.stdout or '7-Zip failed').strip().splitlines()[-1], part)
+            prog.tick(total)
         else:
             mode = {'tar.gz': 'w:gz', 'tar.xz': 'w:xz', 'tar': 'w'}[fmt]
             with tarfile.open(part, mode) as t:
