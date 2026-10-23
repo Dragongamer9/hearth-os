@@ -10,21 +10,23 @@ KIND=${KIND:-x11}
 export XDG_RUNTIME_DIR=/tmp/xdg-$(id -u)
 mkdir -p -m 700 "$XDG_RUNTIME_DIR"
 L=${LOGS:-/tmp/session-logs}; mkdir -p "$L"
+# Everything started here goes away with it (nothing left holding the CI step's output open).
+trap 'kill $(jobs -p) 2>/dev/null; sleep 0.5; kill -9 $(jobs -p) 2>/dev/null; true' EXIT
 
 pipewire >"$L/pipewire.log" 2>&1 &
 sleep 1
 wireplumber >"$L/wireplumber.log" 2>&1 &
 sleep 1
 pipewire-pulse >"$L/pipewire-pulse.log" 2>&1 &
-for _ in $(seq 40); do pactl info >/dev/null 2>&1 && break; sleep 0.5; done
-pactl info | grep -E 'Server Name|Default' || { echo "::error::PipeWire's PulseAudio side didn't start"; tail -20 "$L"/*.log; }
-pactl load-module module-null-sink sink_name=speakers sink_properties=device.description=Speakers >/dev/null
-pactl load-module module-null-sink sink_name=micfeed sink_properties=device.description=Micfeed >/dev/null
-pactl load-module module-remap-source master=micfeed.monitor source_name=fakemic source_properties=device.description=Fake-microphone >/dev/null
+for _ in $(seq 40); do timeout 5 pactl info >/dev/null 2>&1 && break; sleep 0.5; done
+timeout 5 pactl info | grep -E 'Server Name|Default' || { echo "::error::PipeWire's PulseAudio side didn't start"; tail -20 "$L"/*.log; }
+timeout 10 pactl load-module module-null-sink sink_name=speakers sink_properties=device.description=Speakers >/dev/null
+timeout 10 pactl load-module module-null-sink sink_name=micfeed sink_properties=device.description=Micfeed >/dev/null
+timeout 10 pactl load-module module-remap-source master=micfeed.monitor source_name=fakemic source_properties=device.description=Fake-microphone >/dev/null
 sleep 1
-pactl set-default-sink speakers
-pactl set-default-source fakemic
-echo "default sink: $(pactl get-default-sink), default source: $(pactl get-default-source)"
+timeout 10 pactl set-default-sink speakers
+timeout 10 pactl set-default-source fakemic
+echo "default sink: $(timeout 5 pactl get-default-sink), default source: $(timeout 5 pactl get-default-source)"
 ffmpeg -nostdin -loglevel error -re -f lavfi -i "sine=frequency=440:sample_rate=48000" -f pulse -device speakers "tone" >"$L/tone.log" 2>&1 &
 ffmpeg -nostdin -loglevel error -re -f lavfi -i "sine=frequency=880:sample_rate=48000" -f pulse -device micfeed "voice" >"$L/voice.log" 2>&1 &
 
@@ -48,4 +50,4 @@ else
   command -v xterm >/dev/null && xterm -geometry 120x40+0+0 -e top -d 0.3 >/dev/null 2>&1 &
 fi
 sleep 2
-"$@"
+"$@" </dev/null
