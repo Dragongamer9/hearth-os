@@ -252,6 +252,16 @@ jobs:
           check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
           warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
+          # ==== Hearth Recorder, Camera and Share (capture-apps.yml tests them for real): installed, with what they run.
+          echo "--- Hearth Recorder, Camera and Share"
+          for a in hearth-recorder hearth-camera hearth-share; do warn "$a is installed with its libraries and menu entry" "test -x /usr/bin/$a && ! ldd /usr/bin/$a | grep -q 'not found' && test -f /usr/share/applications/$a.desktop"; done
+          warn "Recorder's tools: ffmpeg, wf-recorder, slurp, pactl, pw-dump" "command -v ffmpeg && command -v wf-recorder && command -v slurp && command -v pactl && command -v pw-dump"
+          warn "GStreamer can read gamescope's PipeWire stream (Game Mode without gpu-screen-recorder, Share)" "gst-inspect-1.0 --exists pipewiresrc"
+          warn "gpu-screen-recorder is installed, with the capability its KMS capture needs" "command -v gpu-screen-recorder && getcap \$(command -v gsr-kms-server) | grep -q cap_sys_admin"
+          if [ -x /usr/bin/hearth-recorder ]; then
+            echo "::notice title=Recorder here::$(HOME=/tmp/rp /usr/bin/hearth-recorder --probe 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print("ffmpeg encoders:", [e["id"] for e in d["encoders"]], "audio:", d["audioEncoders"], "gsr:", d["gsr"], "region:", d["gsrRegion"], "wf-recorder:", d["wf"], "slurp:", d["slurp"])' 2>&1 | cut -c1-600)"
+          fi
+          # ==== end of Hearth Recorder, Camera and Share
           exit $fail
           EOF
           sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-os:build sh /check.sh
