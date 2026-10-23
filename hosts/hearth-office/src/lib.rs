@@ -43,8 +43,10 @@ impl App {
     }
     /// From the name the program was started as (hearth-write, hearth-sheets.exe...).
     pub fn from_program(argv0: &str) -> Option<App> {
-        let stem = Path::new(argv0).file_stem()?.to_str()?.to_ascii_lowercase();
-        match stem.as_str() {
+        // Either kind of slash, whichever system the name came from.
+        let base = argv0.rsplit(|c| c == '/' || c == '\\').next()?.to_ascii_lowercase();
+        let stem = base.strip_suffix(".exe").unwrap_or(&base);
+        match stem {
             "hearth-write" => Some(App::Write),
             "hearth-sheets" => Some(App::Sheets),
             "hearth-slides" => Some(App::Slides),
