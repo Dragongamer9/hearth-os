@@ -189,7 +189,7 @@ fn main() {
             Err(e) => { eprintln!("{e}"); std::process::exit(1); }
         }
     }
-    let fullscreen = args.iter().any(|a| a == "--fullscreen");
+    let start_fullscreen = args.iter().any(|a| a == "--fullscreen");
     let slideshow = args.iter().any(|a| a == "--slideshow");
     let target = args.iter().find(|a| !a.starts_with("--")).map(|a| {
         let p = hearth_photos::path_from_arg(a);
@@ -215,7 +215,7 @@ fn main() {
                 .title("Photos")
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(420.0, 320.0)
-                .fullscreen(fullscreen)
+                .fullscreen(start_fullscreen)
                 .background_color(tauri::window::Color(15, 11, 9, 255))
                 .build()?;
             let _ = w.set_focus();
