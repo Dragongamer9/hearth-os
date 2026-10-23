@@ -170,16 +170,18 @@ def localsend(ip):
             time.sleep(1)
         return False
     if num:
-        # With --file it opens a device picker: close it (Esc) and use the number hotkey; if that doesn't send,
-        # open the picker again (d) and choose with the arrow keys and Enter.
+        # With --file it opens a device picker listing "[n] name": move down to ours and press Enter.
+        def keys(k):
+            try:
+                sp.stdin.write(k); sp.stdin.flush()
+            except OSError:
+                pass
         time.sleep(3)
-        sp.stdin.write(b'\x1b'); sp.stdin.flush(); time.sleep(1.5)
-        sp.stdin.write(num.encode()); sp.stdin.flush()
-        if not arrived(20):
-            sp.stdin.write(b'\x1b'); sp.stdin.flush(); time.sleep(1)
-            sp.stdin.write(b'd'); sp.stdin.flush(); time.sleep(1.5)
-            sp.stdin.write(b'\x1b[B' * (int(num) - 1) + b'\r'); sp.stdin.flush()
-            arrived(40)
+        keys(b'\x1b[B' * (int(num) - 1)); time.sleep(1)
+        keys(b'\r')
+        if not arrived(30):
+            keys(num.encode())
+            arrived(30)
     time.sleep(1)
     ok('LocalSend -> Nearby Share: a file', os.path.exists(got) and sha(f) == sha(got),
        re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', open(slog_path, errors='replace').read())[-700:])
