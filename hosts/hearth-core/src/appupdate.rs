@@ -33,8 +33,12 @@ pub fn newer(a: &str, b: &str) -> bool {
     }
     match (xa, xb) { (Some(x), Some(y)) => x > y, (Some(_), None) => true, _ => false }
 }
-/// Releases from before Hearth was renumbered to 0.0.x look newer than they are: never offered.
-fn legacy(tag: &str) -> bool { let t = tag.trim_start_matches('v'); t.starts_with("0.3.") || t.starts_with("0.4.") || t.starts_with("0.5.") }
+/// Linux previews from before Hearth was renumbered to 0.0.x (v0.3.x to v0.5.x with "-linux.N", like the
+/// v0.4.0-linux.100 bridge) look newer than they are: never offered. Plain v0.3.0 and later are today's releases.
+fn legacy(tag: &str) -> bool {
+    let t = tag.trim_start_matches('v');
+    (t.starts_with("0.3.") || t.starts_with("0.4.") || t.starts_with("0.5.")) && t.contains("-linux.")
+}
 
 /// After moving from the old Electron app to this one (an AppImage update swaps the file and keeps the
 /// previous one as <AppImage>.old): once this version has run fine for a while, the old Electron AppImage is
@@ -198,5 +202,8 @@ mod tests {
         assert!(!newer("0.0.23", "0.0.23-linux.2"));
         assert!(newer("v0.1.0", "0.0.99"));
         assert!(legacy("v0.4.0-linux.100"));
+        assert!(!legacy("v0.5.1"));
+        assert!(!legacy("v0.3.0"));
+        assert!(newer("v0.5.1", "0.5.0"));
     }
 }

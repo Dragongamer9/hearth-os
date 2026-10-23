@@ -77,8 +77,7 @@ public sealed class UpdateService
         Set("checking");
         try
         {
-            // All recent releases, not just GitHub's "latest": that one stays on the v0.5.1 bridge release
-            // (see LegacyTag) so copies from before the renumbering can still update.
+            // All recent releases, newest Windows build first (see LegacyTag for the old previews that are skipped).
             using var res = await Http.GetAsync($"https://api.github.com/repos/{Repo}/releases?per_page=30");
             LastChecked = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             res.EnsureSuccessStatusCode();
@@ -123,10 +122,11 @@ public sealed class UpdateService
     }
 
     /// <summary>
-    /// Nimbus was renumbered to 0.0.x at 0.0.5. Releases from before that (v0.3.0 to v0.5.x, including the
-    /// v0.5.1 bridge that carried 0.0.5 to existing installs) look newer than 0.0.x, so they're skipped.
+    /// Nimbus was renumbered to 0.0.x at 0.0.5. Linux previews from before that (v0.3.x to v0.5.x with -linux.N)
+    /// look newer than they are, so they're skipped. Plain v0.3.0 and later are today's releases (skipping them
+    /// kept Ember from ever being offered 0.3.0 to 0.5.1).
     /// </summary>
-    private static readonly System.Text.RegularExpressions.Regex LegacyTag = new(@"^v?0\.[3-5]\.");
+    private static readonly System.Text.RegularExpressions.Regex LegacyTag = new(@"^v?0\.[3-5]\.\d+-linux\.");
 
     public static bool IsNewer(string candidate, string current)
     {
