@@ -6,9 +6,9 @@ name: Desktop Mode test
 on:
   push:
     branches: [main, linux-host]
-    paths: ['hosts/linux/desktop/**', '.github/workflows/desktop-test.yml']
+    paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**', '.github/workflows/desktop-test.yml']
   pull_request:
-    paths: ['hosts/linux/desktop/**']
+    paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**']
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,8 @@ jobs:
             google-noto-sans-fonts adwaita-icon-theme NetworkManager bluez pciutils breeze-icon-theme wlsunset >/dev/null
           # A session bus (notifications, the tray, media keys), notify-send, the clipboard and typing keys (wtype).
           dnf -y install dbus-daemon libnotify wl-clipboard wtype slurp >/dev/null || true
+          # A Wayland app whose app id can be set (a stand-in Flatpak window for the taskbar's icon check).
+          dnf -y install foot hicolor-icon-theme >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           quickshell --version || true
@@ -62,6 +64,33 @@ jobs:
           export PATH="/tmp/fakebin:$PATH"
           printf '[Desktop Entry]\nType=Application\nName=Autostart test\nExec=touch %s/autostarted\n' "$HOME" > "$HOME/.config/autostart/test.desktop"
           printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=steam -silent %%U\n' > "$HOME/.config/autostart/steam.desktop"
+          # App icons: apps the way Flatpak (yours and the system's), AppImage/Distrobox exports and old-style
+          # packages leave them, and Hearth's own icon set as the images install it. XDG_DATA_DIRS comes from
+          # nimbus-session's own lines (the login screen gives the session none here).
+          ICONS="$HOME/.local/share/icons/hicolor"
+          for d in branding/icons/png/*x*; do mkdir -p "$ICONS/$(basename "$d")/apps" && cp "$d"/*.png "$ICONS/$(basename "$d")/apps/"; done
+          mkdir -p "$ICONS/scalable/apps" && cp branding/icons/apps/*.svg "$ICONS/scalable/apps/"
+          testicon() { printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="4" y="4" width="56" height="56" rx="14" fill="%s"/><circle cx="32" cy="32" r="14" fill="#fff"/></svg>' "$1"; }
+          entry() { printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\n%b' "$1" "$2" "$3" "$4"; }
+          UF="$HOME/.local/share/flatpak/exports/share"; SF=/var/lib/flatpak/exports/share
+          mkdir -p "$UF/applications" "$UF/icons/hicolor/scalable/apps" "$SF/applications" "$SF/icons/hicolor/scalable/apps" \
+            "$HOME/.local/share/applications" "$ICONS/48x48/apps" /usr/share/pixmaps /opt/icontest
+          entry "Aa Flatpak (yours)" "/usr/bin/flatpak run --branch=stable --arch=x86_64 org.hearth.IconTest" org.hearth.IconTest "StartupWMClass=icontest-window\n" > "$UF/applications/org.hearth.IconTest.desktop"
+          testicon '#2f9e44' > "$UF/icons/hicolor/scalable/apps/org.hearth.IconTest.svg"
+          entry "Aa Flatpak (system)" "/usr/bin/flatpak run org.hearth.SystemTest" org.hearth.SystemTest "" > "$SF/applications/org.hearth.SystemTest.desktop"
+          testicon '#1971c2' > "$SF/icons/hicolor/scalable/apps/org.hearth.SystemTest.svg"
+          entry "Aa AppImage" "/opt/icontest/app.AppImage" appimagekit_icontest "" > "$HOME/.local/share/applications/appimagekit_icontest.desktop"
+          cp branding/icons/png/48x48/hearth-paint.png "$ICONS/48x48/apps/appimagekit_icontest.png"
+          entry "Aa Pixmaps only" "/opt/icontest/pix" icontest-pixmap.png "" > "$HOME/.local/share/applications/icontest-pixmap.desktop"
+          cp branding/icons/png/64x64/hearth-maps.png /usr/share/pixmaps/icontest-pixmap.png
+          entry "Aa Absolute path" "/opt/icontest/abs" /opt/icontest/abs-icon.png "" > "$HOME/.local/share/applications/icontest-abs.desktop"
+          cp branding/icons/png/128x128/hearth-emoji.png /opt/icontest/abs-icon.png
+          entry "Aa No icon" "/opt/icontest/none" icontest-missing "" > "$HOME/.local/share/applications/icontest-none.desktop"
+          unset XDG_DATA_DIRS
+          eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          echo "XDG_DATA_DIRS=$XDG_DATA_DIRS"
+          case ":$XDG_DATA_DIRS:" in *":$UF:"*) ;; *) echo "::error title=icons::nimbus-session doesn't put your Flatpak apps in XDG_DATA_DIRS"; touch shots/FAILED ;; esac
+          case ":$XDG_DATA_DIRS:" in *":$SF:"*) ;; *) echo "::error title=icons::nimbus-session doesn't put the system's Flatpak apps in XDG_DATA_DIRS"; touch shots/FAILED ;; esac
           labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
@@ -120,6 +149,39 @@ jobs:
             wtype -M logo -k i -m logo; sleep 3; grim "shots/$n-super-i-settings.png" || true; n=$((n+1)); ipc settings close
             wtype -M logo -k a -m logo; sleep 3; grim "shots/$n-super-a-quick.png" || true; n=$((n+1)); ipc quick toggle
           fi
+          # App icons: every kind of app above resolves (Icon= names through hicolor and Flatpak's exports, a pixmap,
+          # an absolute path, windows by app id and StartupWMClass), and they show in the launcher, on the taskbar
+          # and on a notification.
+          icons_ok=1
+          check() {  # what, ipc function, args...
+            what="$1"; shift
+            out=$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call icons "$@" 2>&1 | tail -n1)
+            echo "$what: $out" >> shots/icons.txt
+            if [ -z "$out" ] || printf '%s' "$out" | grep -qiE "error|not found|no such"; then echo "::error title=icons::$what didn't resolve ($out)"; icons_ok=0; fi
+          }
+          : > shots/icons.txt
+          check "Flatpak (yours), by Icon=" resolve org.hearth.IconTest ""
+          check "Flatpak (system), by Icon=" resolve org.hearth.SystemTest ""
+          check "Flatpak window, by app id only" resolve "" org.hearth.IconTest
+          check "Flatpak window, by StartupWMClass" entry icontest-window
+          check "Flatpak window, entry by app id" entry org.hearth.IconTest
+          check "AppImage (~/.local/share/icons)" resolve appimagekit_icontest ""
+          check "Pixmaps only (Icon=name.png)" resolve icontest-pixmap.png ""
+          check "Absolute path" resolve /opt/icontest/abs-icon.png ""
+          for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app; do
+            check "Hearth icon set: $n" resolve "$n" ""
+          done
+          ipc launcher section apps; grim shots/icons-1-launcher.png || true; ipc launcher close
+          if command -v foot >/dev/null; then
+            foot --app-id org.hearth.IconTest --title "Flatpak window" sh -c 'sleep 60' >/dev/null 2>&1 &
+            foot --app-id icontest-window --title "StartupWMClass window" sh -c 'sleep 60' >/dev/null 2>&1 &
+            foot --app-id hearth-terminal --title "Hearth Terminal" sh -c 'sleep 60' >/dev/null 2>&1 &
+            sleep 5; grim shots/icons-2-taskbar.png || true
+            grim -g "0,1010 1920x70" shots/icons-3-taskbar-closeup.png 2>/dev/null || true
+          fi
+          (timeout 15 notify-send -a "Flatpak test" -h string:desktop-entry:org.hearth.IconTest "From a Flatpak app" "Its icon comes from its desktop entry" || true) &
+          sleep 3; grim shots/icons-4-notification.png || true
+          [ "$icons_ok" = 1 ] || touch shots/FAILED
           # Autostart: the test app ran, Steam's entry didn't.
           { python3 hosts/linux/desktop/shell/hearth-tasks autostart-plan; echo; ls "$HOME"; } > shots/autostart.txt 2>&1
           if [ ! -e "$HOME/autostarted" ]; then echo "::error title=autostart::The autostart app didn't start"; touch shots/FAILED; fi
