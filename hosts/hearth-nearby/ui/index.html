@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nearby Share</title>
+<style>
+/* Hearth's ember palette (hosts/linux/desktop/shell/Theme.qml), as in Disks. */
+:root {
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --faint:#6f6055; --ember:#ff8a3d; --flame:#ffd166; --danger:#ff5d5d; --good:#6fd08c;
+  --ink:#2a1206; --r:14px; --gut:clamp(14px,2.4vw,36px); --ease:cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
+body { font:400 clamp(15px, .9vw + 7px, 24px)/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; overflow:hidden;
+  background:radial-gradient(1200px 700px at 85% -10%, #2a170d 0%, transparent 60%), var(--bg); user-select:none; -webkit-user-select:none; }
+button, input, textarea { font:inherit; color:inherit; }
+.app { display:grid; grid-template-rows:auto 1fr auto; height:100%; }
+header { display:flex; align-items:center; gap:.8em; padding:.7em var(--gut) .5em; flex-wrap:wrap; }
+header h1 { font-size:1.35em; margin:0; font-weight:650; }
+header .sub { color:var(--muted); font-size:.85em; }
+header .spacer { flex:1; }
+main { display:grid; grid-template-columns:minmax(15em, 26em) 1fr; gap:var(--gut); padding:0 var(--gut) .6em; min-height:0; }
+footer { display:flex; gap:1.4em; padding:.45em var(--gut) .7em; color:var(--muted); font-size:.8em; flex-wrap:wrap; }
+footer b { display:inline-grid; place-items:center; min-width:1.6em; height:1.6em; border-radius:50%; background:var(--panel3); color:var(--text); margin-right:.35em; font-size:.85em; }
+.scroll { overflow:auto; min-height:0; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; padding:4px; }
+h2.sec { font-size:.85em; color:var(--muted); font-weight:600; margin:.2em 0 .5em; text-transform:none; letter-spacing:.02em; }
+
+.f { outline:none; cursor:pointer; transition:transform .14s var(--ease), box-shadow .14s var(--ease), background .14s; }
+.f:focus, .f.focus { box-shadow:0 0 0 3px var(--ember), 0 0 22px rgba(255,138,61,.35); }
+.f:active { transform:scale(.985); }
+
+.list { display:flex; flex-direction:column; gap:.55em; }
+.dev { display:grid; grid-template-columns:2.4em 1fr auto; gap:.15em .8em; align-items:center; text-align:left; width:100%;
+  padding:.7em .9em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); }
+.dev.sel { background:var(--panel2); border-color:var(--ember); }
+.dev .ico { grid-row:span 2; width:2.4em; height:2.4em; border-radius:10px; display:grid; place-items:center; background:var(--panel3); color:var(--ember); }
+.dev .ico svg { width:1.4em; height:1.4em; }
+.dev .n { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dev .m { color:var(--muted); font-size:.8em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dev .tick { grid-row:span 2; color:var(--ember); font-size:1.2em; }
+.badge { font-size:.72em; padding:.12em .55em; border-radius:99px; background:rgba(255,138,61,.16); color:var(--ember); white-space:nowrap; }
+.badge.good { background:rgba(111,208,140,.15); color:var(--good); }
+.badge.warn { background:rgba(255,209,102,.14); color:var(--flame); }
+.empty { color:var(--muted); padding:1.2em .4em; line-height:1.5; }
+
+.send { display:grid; grid-template-rows:auto auto 1fr; gap:.8em; min-height:0; }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:.8em 1em; }
+.acts { display:flex; flex-wrap:wrap; gap:.5em; }
+.btn { padding:.55em 1em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); min-height:2.6em; }
+.btn.primary { background:var(--ember); color:var(--ink); border-color:transparent; font-weight:650; }
+.btn.danger { color:#ffb3a1; border-color:#5c2a22; background:#2a1512; }
+.btn[disabled] { opacity:.45; pointer-events:none; }
+.chips { display:flex; flex-wrap:wrap; gap:.4em; margin:.6em 0 0; }
+.chip { padding:.35em .7em; border-radius:10px; background:var(--panel2); border:1px solid var(--line); max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:.85em; }
+.chip.on { border-color:var(--ember); background:#3a2416; }
+.log { display:flex; flex-direction:column; gap:.45em; }
+.ev { display:grid; grid-template-columns:auto 1fr auto; gap:.2em .8em; align-items:center; padding:.55em .8em; border-radius:12px; background:var(--panel); border:1px solid var(--line); text-align:left; width:100%; }
+.ev .t { font-weight:600; }
+.ev .s { color:var(--muted); font-size:.8em; grid-column:2; overflow-wrap:anywhere; }
+.ev .ic { grid-row:span 2; font-size:1.2em; }
+.ok { color:var(--good); } .bad { color:var(--danger); }
+
+.veil { position:fixed; inset:0; background:rgba(8,5,4,.74); display:grid; place-items:center; padding:var(--gut); z-index:10; backdrop-filter:blur(3px); }
+.dlg { width:min(46em, 100%); max-height:100%; overflow:auto; background:var(--panel); border:1px solid #4a372b; border-radius:18px; padding:1.1em 1.3em; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+.dlg h2 { margin:0 0 .5em; font-size:1.2em; }
+.dlg .who { display:flex; gap:.5em; align-items:center; flex-wrap:wrap; color:var(--muted); font-size:.85em; margin-bottom:.6em; }
+.files { display:flex; flex-direction:column; gap:.35em; max-height:40vh; overflow:auto; padding:3px; }
+.file { display:grid; grid-template-columns:1.6em 1fr auto; gap:.6em; align-items:center; padding:.45em .7em; border-radius:10px; background:var(--panel2); border:1px solid var(--line); text-align:left; width:100%; }
+.file .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.file .sz { color:var(--muted); font-size:.8em; font-variant-numeric:tabular-nums; }
+.file.off { opacity:.5; }
+.box { width:1.2em; height:1.2em; border-radius:5px; border:2px solid var(--muted); display:grid; place-items:center; font-size:.8em; }
+.on .box, .box.on { background:var(--ember); border-color:var(--ember); color:var(--ink); }
+.row { display:flex; gap:.6em; justify-content:flex-end; margin-top:1em; flex-wrap:wrap; }
+.row.left { justify-content:flex-start; }
+.check { display:flex; gap:.6em; align-items:center; padding:.5em .7em; border-radius:10px; background:var(--panel2); border:1px solid var(--line); text-align:left; width:100%; margin-top:.6em; }
+.warn { color:var(--flame); font-size:.88em; margin:.4em 0; }
+.note { color:var(--muted); font-size:.85em; margin:.4em 0; line-height:1.45; }
+.msgtext { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--bg2); border:1px solid var(--line); border-radius:12px; padding:.8em; max-height:45vh; overflow:auto; user-select:text; -webkit-user-select:text; }
+.inp { width:100%; padding:.6em .8em; border-radius:12px; border:1px solid var(--line); background:var(--bg2); }
+textarea.inp { min-height:7em; resize:vertical; }
+.inp:focus { border-color:var(--ember); outline:none; }
+.prog { height:.6em; border-radius:9px; background:var(--panel3); overflow:hidden; margin:.8em 0 .3em; }
+.prog i { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--ember), var(--flame)); border-radius:9px; transition:width .2s; }
+.prog.spin i { width:30%; animation:slide 1.3s var(--ease) infinite; }
+@keyframes slide { 0% { transform:translateX(-100%); } 100% { transform:translateX(340%); } }
+.places { display:flex; gap:.4em; flex-wrap:wrap; margin-bottom:.6em; }
+.path { color:var(--muted); font-size:.8em; margin:.2em 0 .5em; overflow-wrap:anywhere; }
+.osk { display:grid; grid-template-columns:repeat(10, 1fr); gap:.3em; margin-top:.5em; }
+.osk button { padding:.45em 0; border-radius:9px; background:var(--panel3); border:1px solid var(--line); }
+.osk .wide { grid-column:span 2; }
+.kv { display:grid; grid-template-columns:auto 1fr; gap:.25em 1em; font-size:.85em; margin:.4em 0; }
+.kv dt { color:var(--muted); } .kv dd { margin:0; overflow-wrap:anywhere; }
+.toast { position:fixed; left:50%; bottom:3.2em; transform:translateX(-50%); background:var(--panel3); border:1px solid var(--line); padding:.6em 1.1em; border-radius:12px; z-index:20; box-shadow:0 10px 30px rgba(0,0,0,.5); }
+@media (max-width: 760px) { main { grid-template-columns:1fr; overflow:auto; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Nearby Share</h1>
+    <span class="sub" id="sub">Starting…</span>
+    <span class="spacer"></span>
+    <button class="btn f" data-act="refresh">Look again</button>
+    <button class="btn f" data-act="folder">Received files</button>
+    <button class="btn f" data-act="settings">Settings</button>
+  </header>
+  <main>
+    <section class="scroll">
+      <h2 class="sec">Devices nearby</h2>
+      <div class="list" id="devices"></div>
+    </section>
+    <section class="send">
+      <div class="panel">
+        <h2 class="sec" style="margin-top:0">Send</h2>
+        <div class="acts">
+          <button class="btn f" data-act="pick">Choose files</button>
+          <button class="btn f" data-act="write">Write a message</button>
+          <button class="btn primary f" data-act="send" id="sendBtn" disabled>Send</button>
+          <button class="btn f" data-act="clear" id="clearBtn" hidden>Clear</button>
+        </div>
+        <div class="chips" id="chosen"></div>
+        <div class="note" id="sendNote"></div>
+      </div>
+      <h2 class="sec">This time</h2>
+      <div class="scroll"><div class="log" id="log"><div class="empty">Phones and computers with <b>LocalSend</b> open on the same Wi-Fi show up on the left. To send to this PC, open LocalSend on the other device and choose it there.</div></div></div>
+    </section>
+  </main>
+  <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Choose files</span><span><b>Y</b>Look again</span><span id="hint"></span></footer>
+</div>
+<div id="layer"></div>
+<script>
+'use strict';
+const T = window.__TAURI__;
+const invoke = T ? T.core.invoke : demoInvoke;
+const listen = T ? T.event.listen : () => {};
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const human = b => { if (b == null) return ''; const u = ['bytes','KB','MB','GB','TB']; let v = b, i = 0; while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; } return (i ? v.toFixed(v < 10 ? 1 : 0) : v) + ' ' + u[i]; };
+const ICON = {
+  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>',
+  pc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  web: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+};
+const S = { st: null, sel: null, chosen: [], text: '', pad: false, dlg: null, pin: '', browse: null, picked: new Set(), log: [] };
+
+function toast(t) { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 3500); }
+function addLog(icon, title, sub, path) { S.log.unshift({ icon, title, sub, path, at: new Date() }); S.log = S.log.slice(0, 50); drawLog(); }
+function drawLog() {
+  if (!S.log.length) return;
+  $('#log').innerHTML = S.log.map((e, i) => `<button class="ev f" data-log="${i}"><span class="ic">${e.icon}</span><span class="t">${esc(e.title)}</span><span class="s">${esc(e.sub || '')}</span><span class="s" style="grid-column:3;grid-row:1">${e.at.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></button>`).join('');
+}
+
+async function load() {
+  try { S.st = await invoke('state'); } catch (e) { $('#sub').textContent = String(e); return; }
+  const st = S.st;
+  $('#sub').textContent = `Visible as “${st.alias}”${st.addresses?.length ? ' · ' + st.addresses.join(', ') : ''}${st.pin ? ' · PIN on' : ''}`;
+  if (st.preselected?.length && !S.chosen.length && !S.usedPre) { S.usedPre = true; S.chosen = st.preselected.slice(); }
+  drawDevices(); drawChosen();
+  if (st.receive && st.receive.asking && S.dlg !== 'request:' + st.receive.sessionId) showRequest(st.receive);
+}
+
+function devIcon(d) { const t = d.deviceType || 'desktop'; return t === 'mobile' ? ICON.phone : t === 'web' ? ICON.web : ICON.pc; }
+function drawDevices() {
+  const ds = S.st?.devices || [];
+  if (S.sel && !ds.some(d => d.fingerprint === S.sel)) S.sel = null;
+  if (!S.sel && ds.length === 1) S.sel = ds[0].fingerprint;
+  const focusedKey = document.activeElement?.dataset?.dev;
+  $('#devices').innerHTML = (ds.length ? ds.map(d => `<button class="dev f ${d.fingerprint === S.sel ? 'sel' : ''}" data-dev="${esc(d.fingerprint)}">
+      <span class="ico">${devIcon(d)}</span><span class="n">${esc(d.alias)}</span>
+      <span class="tick">${d.fingerprint === S.sel ? '✓' : ''}</span>
+      <span class="m">${esc(d.deviceModel || d.typeLabel)} · ${esc(d.ip)}${d.trusted ? ' · <span class="badge good">Trusted</span>' : ''}</span></button>`).join('')
+    : `<div class="empty">Looking for devices… Open <b>LocalSend</b> on your phone (Android, iPhone) or computer, on the same Wi-Fi as this PC.</div>`)
+    + `<button class="dev f" data-act="address"><span class="ico">＋</span><span class="n">Add by address</span><span class="tick"></span><span class="m">If a device doesn't show up: type the IP address LocalSend shows</span></button>`;
+  if (focusedKey) $(`[data-dev="${CSS.escape(focusedKey)}"]`)?.focus({ preventScroll: true });
+  updateSend();
+}
+function drawChosen() {
+  const items = S.text ? [`Message: ${S.text.slice(0, 60)}${S.text.length > 60 ? '…' : ''}`] : S.chosen.map(p => p.split(/[\\/]/).pop());
+  $('#chosen').innerHTML = items.slice(0, 30).map(n => `<span class="chip">${esc(n)}</span>`).join('') + (items.length > 30 ? `<span class="chip">and ${items.length - 30} more</span>` : '');
+  $('#clearBtn').hidden = !items.length;
+  updateSend();
+}
+function updateSend() {
+  const d = (S.st?.devices || []).find(x => x.fingerprint === S.sel);
+  const have = S.text || S.chosen.length;
+  const b = $('#sendBtn');
+  b.disabled = !(d && have) || S.st?.sending;
+  b.textContent = S.st?.sending ? 'Sending…' : d ? `Send to ${d.alias}` : 'Send';
+  $('#sendNote').textContent = !have ? 'Choose files or write a message, pick a device on the left, then Send.' : !d ? 'Now pick the device to send to.' : '';
+}
+
+// ---------------------------------------------------------------- dialogs
+function showDialog(html, key) {
+  S.dlg = key || 'dlg';
+  $('#layer').innerHTML = `<div class="veil"><div class="dlg">${html}</div></div>`;
+  ($('#layer [data-autofocus]') || $('#layer .f'))?.focus();
+}
+function closeDialog() { $('#layer').innerHTML = ''; S.dlg = null; oskTarget = null; ($('.dev.sel') || $('.dev'))?.focus(); }
+
+function showRequest(r) {
+  S.req = { id: r.sessionId, on: new Set(r.files.map(f => f.id)), trust: false };
+  const who = `<div class="who"><span>${esc(r.deviceType)}${r.deviceModel ? ' · ' + esc(r.deviceModel) : ''} · ${esc(r.ip)}</span>${r.verified ? '<span class="badge good">Identity checked</span>' : '<span class="badge warn">Can\'t prove who it is</span>'}</div>`;
+  const files = r.files.map(f => `<button class="file f on" data-rf="${esc(f.id)}"><span class="box">✓</span><span class="nm">${esc(f.name)}</span><span class="sz">${human(f.size)}</span></button>`).join('');
+  const trust = r.verified ? `<button class="check f" data-act="trust"><span class="box" id="trustBox"></span><span>Always accept from ${esc(r.from)} <span class="note">(files are saved without asking)</span></span></button>` : `<p class="note">This device didn't prove who it is, so it can't be trusted to send without asking.</p>`;
+  showDialog(`<h2>${esc(r.from)} wants to send you ${r.count === 1 ? 'a file' : r.count + ' files'} (${human(r.total)})</h2>${who}
+    <div class="files">${files}</div>${trust}
+    <p class="note">They'll go to ${esc(S.st?.folder || 'Downloads/Nearby')}. Only accept files you expect.</p>
+    <div class="row"><button class="btn f" data-act="decline">Decline</button><button class="btn primary f" data-act="accept" data-autofocus>Accept</button></div>`, 'request:' + r.sessionId);
+}
+function showProgress(title, sub, cancelAct) {
+  showDialog(`<h2>${esc(title)}</h2><div class="prog spin" id="pg"><i></i></div><div class="note" id="pgt">${esc(sub || '')}</div>
+    <div class="row"><button class="btn f" data-act="${cancelAct}" data-autofocus>Cancel</button></div>`, 'progress');
+}
+function setProgress(done, total, text) {
+  const pg = $('#pg'); if (!pg) return;
+  if (total > 0) { pg.classList.remove('spin'); pg.firstChild.style.width = `${Math.min(100, Math.round(done * 100 / total))}%`; }
+  if (text) $('#pgt').textContent = text;
+}
+function showMessage(m) {
+  S.lastMsg = m.text;
+  showDialog(`<h2>Message from ${esc(m.from)}</h2><div class="who"><span>${esc(m.ip)}</span>${m.verified ? '<span class="badge good">Identity checked</span>' : ''}</div>
+    <div class="msgtext">${esc(m.text)}</div>
+    <div class="row"><button class="btn f" data-act="copymsg">Copy</button><button class="btn primary f" data-act="close" data-autofocus>Close</button></div>`, 'message');
+}
+
+// File browser: works with a controller (a system file dialog doesn't).
+async function browse(path) {
+  try {
+    const [list, places] = await Promise.all([invoke('list_dir', { path: path || '' }), S.places ? Promise.resolve(S.places) : invoke('places')]);
+    S.places = places; S.browse = list;
+  } catch (e) { toast(String(e)); return; }
+  const l = S.browse;
+  const items = l.items.map(it => it.dir
+    ? `<button class="file f" data-open="${esc(it.path)}"><span>📁</span><span class="nm">${esc(it.name)}</span><span class="sz">${S.picked.has(it.path) ? 'chosen' : ''}</span></button>`
+    : `<button class="file f ${S.picked.has(it.path) ? 'on' : ''}" data-pickf="${esc(it.path)}"><span class="box">${S.picked.has(it.path) ? '✓' : ''}</span><span class="nm">${esc(it.name)}</span><span class="sz">${human(it.size)}</span></button>`).join('');
+  showDialog(`<h2>Choose files to send</h2>
+    <div class="places">${S.places.map(p => `<button class="chip f" data-open="${esc(p.path)}">${esc(p.name)}</button>`).join('')}</div>
+    <div class="path">${esc(l.path)}</div>
+    <div class="files" style="max-height:48vh">${l.parent ? `<button class="file f" data-open="${esc(l.parent)}"><span>⬆</span><span class="nm">Up one folder</span><span></span></button>` : ''}
+      <button class="file f" data-pickdir="${esc(l.path)}"><span class="box ${S.picked.has(l.path) ? 'on' : ''}">${S.picked.has(l.path) ? '✓' : ''}</span><span class="nm">This whole folder</span><span></span></button>${items || '<div class="empty">Nothing here.</div>'}</div>
+    <div class="row"><button class="btn f" data-act="close">Cancel</button><button class="btn primary f" data-act="picked">Done${S.picked.size ? ` (${S.picked.size} chosen)` : ''}</button></div>`, 'browse');
+}
+
+function showWrite() {
+  showDialog(`<h2>Write a message</h2><textarea class="inp f" id="msg" data-osk="msg" maxlength="20000" placeholder="Text or a link">${esc(S.text)}</textarea>
+    <div class="row"><button class="btn f" data-act="close">Cancel</button><button class="btn primary f" data-act="msgdone">Use this message</button></div>`, 'write');
+  $('#msg').focus();
+}
+
+function showSettings() {
+  const st = S.st || {};
+  const trusted = (st.trusted || []).map(t => `<button class="file f" data-untrust="${esc(t.fingerprint)}"><span>✓</span><span class="nm">${esc(t.alias)}</span><span class="sz">Remove</span></button>`).join('') || '<div class="note">None. When you accept files you can choose to always accept from that device.</div>';
+  showDialog(`<h2>Nearby Share settings</h2>
+    <label class="note" for="alias">The name other devices see</label>
+    <input class="inp f" id="alias" data-osk="alias" maxlength="48" value="${esc(st.alias)}" spellcheck="false" autocomplete="off">
+    <button class="check f" data-act="pin"><span class="box ${st.pin ? 'on' : ''}">${st.pin ? '✓' : ''}</span><span>Ask senders for a PIN${st.pin ? `: <b>${esc(st.pin)}</b>` : ''} <span class="note">(LocalSend asks them to type it)</span></span></button>
+    <h2 class="sec" style="margin-top:1em">Trusted devices</h2><div class="files">${trusted}</div>
+    <dl class="kv"><dt>Received files go to</dt><dd>${esc(st.folder)}</dd><dt>Firewall</dt><dd>${esc(st.firewall)}</dd>
+      <dt>This PC's addresses</dt><dd>${esc((st.addresses || []).join(', ') || 'Not on a network')}</dd><dt>Port</dt><dd>${esc(st.port)}</dd>
+      <dt>Fingerprint</dt><dd>${esc((st.fingerprint || '').slice(0, 16))}…</dd></dl>
+    <p class="note">Nearby Share only answers devices on your local network, and only while this window is open. It works with LocalSend (localsend.org): free, open source, for Android, iPhone, Windows, macOS and Linux.</p>
+    <div class="row"><button class="btn f" data-act="close">Close</button><button class="btn primary f" data-act="savealias" data-autofocus>Save name</button></div>`, 'settings');
+}
+
+function showAddress() {
+  showDialog(`<h2>Add a device by address</h2><p class="note">LocalSend shows its address under Receive (for example 192.168.1.23). Only addresses on your network work.</p>
+    <input class="inp f" id="addr" data-osk="addr" maxlength="60" placeholder="192.168.1.23" spellcheck="false" autocomplete="off" inputmode="decimal">
+    <div class="row"><button class="btn f" data-act="close">Cancel</button><button class="btn primary f" data-act="addaddr">Add</button></div>`, 'address');
+  $('#addr').focus();
+}
+
+function askPin(then) {
+  showDialog(`<h2>${esc(then.alias)} wants a PIN</h2><p class="note">Type the PIN shown on that device.</p>
+    <input class="inp f" id="pinin" data-osk="pinin" maxlength="12" spellcheck="false" autocomplete="off">
+    <div class="row"><button class="btn f" data-act="close">Cancel</button><button class="btn primary f" data-act="pinsend">Send</button></div>`, 'pin');
+  S.pinThen = then; $('#pinin').focus();
+}
+
+async function doSend(pin) {
+  const d = (S.st?.devices || []).find(x => x.fingerprint === S.sel); if (!d) return;
+  S.sendTo = d.alias;
+  try {
+    await invoke('send', { fingerprint: d.fingerprint, paths: S.text ? [] : S.chosen, text: S.text || null, pin: pin || null });
+    showProgress(`Sending to ${d.alias}`, `Waiting for ${d.alias} to accept…`, 'cancelsend');
+  } catch (e) { toast(String(e)); }
+}
+
+// ---------------------------------------------------------------- clicks
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const act = b.dataset.act;
+  if (b.dataset.dev) { S.sel = b.dataset.dev; drawDevices(); $(`[data-dev="${CSS.escape(S.sel)}"]`)?.focus(); return; }
+  if (b.dataset.rf) { const on = S.req.on; on.has(b.dataset.rf) ? on.delete(b.dataset.rf) : on.add(b.dataset.rf); b.classList.toggle('on', on.has(b.dataset.rf)); b.querySelector('.box').textContent = on.has(b.dataset.rf) ? '✓' : ''; return; }
+  if (b.dataset.open) { browse(b.dataset.open); return; }
+  if (b.dataset.pickf || b.dataset.pickdir) { const p = b.dataset.pickf || b.dataset.pickdir; S.picked.has(p) ? S.picked.delete(p) : S.picked.add(p); const key = b.dataset.pickf ? `[data-pickf="${CSS.escape(p)}"]` : `[data-pickdir="${CSS.escape(p)}"]`; await browse(S.browse.path); $(key)?.focus(); return; }
+  if (b.dataset.untrust) { const t = (S.st.trusted || []).find(x => x.fingerprint === b.dataset.untrust); await invoke('trust', { fingerprint: b.dataset.untrust, alias: t?.alias || '', on: false }).catch(err => toast(String(err))); await load(); showSettings(); return; }
+  if (b.dataset.log) { const ev = S.log[Number(b.dataset.log)]; if (ev?.path) invoke('open_folder', { path: ev.path }).catch(err => toast(String(err))); return; }
+  if (b.dataset.key) { oskPress(b.dataset.key); return; }
+  switch (act) {
+    case 'refresh': await invoke('refresh').catch(() => {}); toast('Looking for devices…'); return load();
+    case 'folder': return invoke('open_folder', { path: null }).catch(err => toast(String(err)));
+    case 'settings': return showSettings();
+    case 'pick': S.picked = new Set(S.chosen); return browse(S.browse?.path || '');
+    case 'picked': S.chosen = [...S.picked]; if (S.chosen.length) S.text = ''; closeDialog(); drawChosen(); $('#sendBtn').disabled || $('#sendBtn').focus(); return;
+    case 'write': return showWrite();
+    case 'msgdone': S.text = $('#msg').value.trim(); if (S.text) S.chosen = []; closeDialog(); drawChosen(); return;
+    case 'clear': S.chosen = []; S.text = ''; drawChosen(); return;
+    case 'send': return doSend();
+    case 'cancelsend': await invoke('cancel_send').catch(() => {}); return;
+    case 'accept': { const ids = [...S.req.on]; if (!ids.length) { toast('Choose at least one file, or Decline'); return; } await invoke('decide', { accept: true, ids, trust: S.req.trust }).catch(err => toast(String(err))); return; }
+    case 'decline': await invoke('decide', { accept: false, ids: null, trust: false }).catch(() => {}); closeDialog(); return;
+    case 'trust': S.req.trust = !S.req.trust; $('#trustBox').classList.toggle('on', S.req.trust); $('#trustBox').textContent = S.req.trust ? '✓' : ''; return;
+    case 'cancelrecv': await invoke('cancel_receive').catch(() => {}); closeDialog(); return;
+    case 'copymsg': try { await navigator.clipboard.writeText(S.lastMsg || ''); toast('Copied'); } catch { toast('Couldn\'t copy'); } return;
+    case 'close': return closeDialog();
+    case 'savealias': await invoke('set_alias', { alias: $('#alias').value }).then(() => toast('Saved'), err => toast(String(err))); await load(); return closeDialog();
+    case 'pin': { const on = !S.st.pin; const pin = on ? String(Math.floor(100000 + Math.random() * 900000)) : null; await invoke('set_pin', { pin }).catch(err => toast(String(err))); await load(); return showSettings(); }
+    case 'address': return showAddress();
+    case 'addaddr': { const a = $('#addr').value; b.disabled = true; try { const r = await invoke('add_address', { address: a }); toast(`Found ${r.alias}`); closeDialog(); load(); } catch (err) { toast(String(err)); b.disabled = false; } return; }
+    case 'pinsend': { const p = $('#pinin').value.trim(); closeDialog(); return doSend(p); }
+  }
+});
+
+// ---------------------------------------------------------------- events from Nearby Share
+listen('nearby://state', () => load());
+listen('nearby://request', ev => { S.st && (S.st.receive = ev.payload); showRequest(ev.payload); });
+listen('nearby://request-gone', ev => { if (S.dlg?.startsWith('request:')) closeDialog(); addLog('↩', `${ev.payload.from} stopped asking`, ''); });
+listen('nearby://declined', ev => addLog('✕', `Declined ${ev.payload.from}'s files`, ''));
+listen('nearby://receiving', ev => { const r = ev.payload; showProgress(`Receiving from ${r.from}`, `${r.files.filter(f => f.accepted).length} files, ${human(r.total)}`, 'cancelrecv'); });
+listen('nearby://progress', ev => { const p = ev.payload; setProgress(p.received, p.total, `${human(p.received)} of ${human(p.total)} · ${p.file}`); });
+listen('nearby://received', ev => { const r = ev.payload; if (S.dlg === 'progress') closeDialog(); addLog('⬇', `${r.saved.length} ${r.saved.length === 1 ? 'file' : 'files'} from ${r.from}`, r.saved.map(p => p.split(/[\\/]/).pop()).join(', '), r.saved[0] || r.folder); toast(`Saved to ${r.folder}`); });
+listen('nearby://cancelled', ev => { if (S.dlg === 'progress' || S.dlg?.startsWith('request:')) closeDialog(); addLog('✕', `From ${ev.payload.from}: ${ev.payload.reason}`, ''); });
+listen('nearby://file-failed', ev => addLog('⚠', `“${ev.payload.file}” didn't arrive`, ev.payload.error));
+listen('nearby://message', ev => { addLog('✉', `Message from ${ev.payload.from}`, ev.payload.text.slice(0, 120)); showMessage(ev.payload); });
+listen('nearby://send-state', ev => { const s = ev.payload; if (s.state === 'sending') setProgress(0, s.total || 1, `Sending ${s.count} ${s.count === 1 ? 'file' : 'files'}…`); });
+listen('nearby://send-progress', ev => { const p = ev.payload; setProgress(p.sent, p.total, `${human(p.sent)} of ${human(p.total)}`); });
+listen('nearby://send-done', ev => {
+  const r = ev.payload; if (S.dlg === 'progress') closeDialog();
+  if (r.ok) { addLog('⬆', `Sent to ${r.to}`, S.text ? 'A message' : `${r.count} ${r.count === 1 ? 'file' : 'files'}`); toast(`Sent to ${r.to}`); S.chosen = []; S.text = ''; drawChosen(); }
+  else if (r.needPin) askPin({ alias: r.to });
+  else if (!r.cancelled) { addLog('✕', `Not sent to ${r.to}`, r.error); toast(r.error); }
+  load();
+});
+listen('nearby://discovery-error', ev => toast(ev.payload.error));
+
+// ---------------------------------------------------------------- on-screen keyboard (controller typing)
+let oskTarget = null, lower = true;
+const OSK = 'QWERTYUIOP ASDFGHJKL. ZXCVBNM-_ 1234567890'.split(' ');
+function openOsk(input) {
+  oskTarget = input;
+  const rows = OSK.map(r => [...r].map(c => `<button class="f" data-key="${c}">${lower ? c.toLowerCase() : c}</button>`).join('')).join('');
+  input.insertAdjacentHTML('afterend', `<div class="osk" id="osk">${rows}<button class="f wide" data-key="space">Space</button><button class="f wide" data-key="back">⌫</button><button class="f wide" data-key="shift">Aa</button><button class="f wide" data-key=":">:</button><button class="f wide" data-key="done">Done</button></div>`);
+  $('#osk .f').focus();
+}
+function closeOsk() { const t = oskTarget; $('#osk')?.remove(); oskTarget = null; t?.focus(); }
+function oskPress(k) {
+  const t = oskTarget; if (!t) return;
+  if (k === 'done') return closeOsk();
+  if (k === 'shift') { lower = !lower; document.querySelectorAll('#osk [data-key]').forEach(b => { if (b.dataset.key.length === 1) b.textContent = lower ? b.dataset.key.toLowerCase() : b.dataset.key; }); return; }
+  if (k === 'back') t.value = t.value.slice(0, -1);
+  else if (t.value.length < (t.maxLength > 0 ? t.maxLength : 200)) t.value += k === 'space' ? ' ' : (lower ? k.toLowerCase() : k);
+}
+
+// ---------------------------------------------------------------- moving around: D-pad, stick, arrow keys
+function focusables() {
+  const root = $('#layer').firstChild || document;
+  return [...root.querySelectorAll('.f')].filter(el => !el.disabled && el.offsetParent !== null);
+}
+function move(dir) {
+  const cur = document.activeElement;
+  const all = focusables(); if (!all.length) return;
+  if (!cur || !all.includes(cur)) { all[0].focus(); return; }
+  const a = cur.getBoundingClientRect(); const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+  let best = null, bestScore = Infinity;
+  for (const el of all) {
+    if (el === cur) continue;
+    const r = el.getBoundingClientRect(); const bx = r.left + r.width / 2, by = r.top + r.height / 2;
+    const ok = dir === 'left' ? r.right <= a.left + 4 : dir === 'right' ? r.left >= a.right - 4 : dir === 'up' ? r.bottom <= a.top + 4 : r.top >= a.bottom - 4;
+    if (!ok) continue;
+    const main = dir === 'left' || dir === 'right' ? Math.abs(bx - ax) : Math.abs(by - ay);
+    const cross = dir === 'left' || dir === 'right' ? Math.abs(by - ay) : Math.abs(bx - ax);
+    const score = main + cross * 2.2;
+    if (score < bestScore) { bestScore = score; best = el; }
+  }
+  if (best) { best.focus(); best.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+}
+function choose() {
+  const el = document.activeElement;
+  if (!el || el === document.body) { focusables()[0]?.focus(); return; }
+  if (el.dataset.osk && S.pad) { if (!oskTarget) openOsk(el); return; }
+  if (el.tagName === 'BUTTON') el.click();
+}
+function back() {
+  if (oskTarget) return closeOsk();
+  if (S.dlg?.startsWith('request:')) return $('[data-act="decline"]')?.click();
+  if (S.dlg === 'progress') return;
+  if (S.dlg) return closeDialog();
+}
+document.addEventListener('keydown', e => {
+  S.pad = false;
+  const typing = (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
+  const k = e.key;
+  if (k === 'Escape') { e.preventDefault(); back(); return; }
+  if (typing) return;
+  const dirs = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  if (dirs[k]) { e.preventDefault(); move(dirs[k]); return; }
+  if (k === 'Backspace') { e.preventDefault(); back(); return; }
+  if (k === 'F5') { e.preventDefault(); $('[data-act="refresh"]').click(); }
+});
+
+// Controllers (the standard mapping): D-pad or left stick moves, A chooses, B goes back, X files, Y looks again.
+const held = {}; let lastPadMove = 0;
+function pad() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const now = performance.now();
+  const state = { up: false, down: false, left: false, right: false, a: false, b: false, x: false, y: false };
+  for (const g of pads) {
+    const bt = i => g.buttons[i]?.pressed;
+    const ax = g.axes[0] || 0, ay = g.axes[1] || 0;
+    state.up ||= bt(12) || ay < -.6; state.down ||= bt(13) || ay > .6; state.left ||= bt(14) || ax < -.6; state.right ||= bt(15) || ax > .6;
+    state.a ||= bt(0); state.b ||= bt(1); state.x ||= bt(2); state.y ||= bt(3);
+  }
+  for (const [k, on] of Object.entries(state)) {
+    if (!on) { held[k] = 0; continue; }
+    const first = !held[k];
+    const repeat = held[k] && now - held[k] > 380 && now - lastPadMove > 110;
+    if (first) held[k] = now;
+    if (!(first || (repeat && ['up','down','left','right'].includes(k)))) continue;
+    S.pad = true; lastPadMove = now;
+    if (k === 'a') choose(); else if (k === 'b') back();
+    else if (k === 'x') { if (!S.dlg) $('[data-act="pick"]').click(); }
+    else if (k === 'y') { if (!S.dlg) $('[data-act="refresh"]').click(); }
+    else move(k);
+  }
+  requestAnimationFrame(pad);
+}
+requestAnimationFrame(pad);
+window.addEventListener('gamepadconnected', () => { $('#hint').textContent = 'Controller connected'; });
+setInterval(() => { if (!S.dlg && document.visibilityState === 'visible') load(); }, 4000);
+load().then(() => ($('.dev') || $('[data-act="pick"]'))?.focus());
+
+// ---------------------------------------------------------------- without the app (the page in a browser): sample devices
+function demoInvoke(cmd, args) {
+  const st = { alias: 'Living room PC', fingerprint: 'AB12CD34EF56AB12', port: 53317, folder: '/home/you/Downloads/Nearby', pin: null, trusted: [], sending: false,
+    firewall: 'The firewall lets local devices in while Nearby Share is open', firewallOk: true, addresses: ['192.168.1.20'], receive: null, preselected: [],
+    devices: [{ fingerprint: 'F1', alias: 'Pixel 9', deviceModel: 'Google', deviceType: 'mobile', typeLabel: 'Phone or tablet', ip: '192.168.1.31', port: 53317, https: true, trusted: true },
+      { fingerprint: 'F2', alias: 'Work laptop', deviceModel: 'Windows', deviceType: 'desktop', typeLabel: 'Computer', ip: '192.168.1.40', port: 53317, https: true, trusted: false }] };
+  if (cmd === 'state') return Promise.resolve(st);
+  if (cmd === 'places') return Promise.resolve([{ name: 'Home', path: '/home/you' }, { name: 'Downloads', path: '/home/you/Downloads' }]);
+  if (cmd === 'list_dir') return Promise.resolve({ path: args.path || '/home/you', parent: '/home', items: [{ name: 'Pictures', path: '/home/you/Pictures', dir: true }, { name: 'clip.mp4', path: '/home/you/clip.mp4', dir: false, size: 48e6 }] });
+  if (cmd === 'refresh' || cmd === 'decide' || cmd === 'cancel_send' || cmd === 'cancel_receive') return Promise.resolve(null);
+  return Promise.reject('This is a preview: open Nearby Share to send.');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disk Usage</title>
+<link rel="stylesheet" href="common.css">
+<style>
+.places { display:flex; gap:.6em; overflow-x:auto; padding:4px 4px .6em; scrollbar-width:thin; }
+.place { min-width:13em; text-align:left; padding:.6em .85em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); display:grid; gap:.25em; }
+.place.on { border-color:var(--ember); background:#2a1b12; }
+.place .n { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.place .m { color:var(--muted); font-size:.8em; }
+.explore { display:grid; grid-template-columns:minmax(18em, 1fr) minmax(20em, 1.15fr); grid-template-rows:minmax(0, 1fr); gap:var(--gut); min-height:0; flex:1; }
+.chart { position:relative; min-height:0; height:100%; overflow:hidden; }
+.chart svg { position:absolute; inset:0; width:100%; height:100%; }
+.chart path { stroke:var(--bg); stroke-width:1.2; cursor:pointer; transition:opacity .15s; }
+.chart path.dim { opacity:.35; }
+.chart path.hl { stroke:var(--text); stroke-width:2.5; }
+.center { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; text-align:center; }
+.center div { max-width:9.5em; }
+.center b { display:block; font-size:1.25em; }
+.center span { color:var(--muted); font-size:.85em; overflow-wrap:anywhere; }
+.side { display:flex; flex-direction:column; min-height:0; gap:.5em; }
+.crumbs { display:flex; gap:.25em; flex-wrap:wrap; align-items:center; font-size:.88em; }
+.crumbs button { background:none; border:0; color:var(--muted); padding:.2em .35em; border-radius:8px; }
+.crumbs button:last-child { color:var(--text); font-weight:600; }
+.items { display:flex; flex-direction:column; gap:.3em; }
+.item { display:grid; grid-template-columns:1fr auto auto; gap:.4em; align-items:center; }
+.item .name { display:grid; grid-template-columns:.8em 1fr auto; gap:.2em .7em; align-items:center; text-align:left; padding:.45em .7em; border-radius:11px; background:var(--panel); border:1px solid var(--line); min-width:0; }
+.item .sw { width:.8em; height:.8em; border-radius:4px; grid-row:span 2; }
+.item .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.item .s { font-variant-numeric:tabular-nums; text-align:right; grid-row:span 2; }
+.item .p { grid-column:2; height:.3em; border-radius:9px; background:var(--panel3); overflow:hidden; }
+.item .p i { display:block; height:100%; }
+.item.sel .name { border-color:var(--ember); }
+.scanning { flex:1; display:grid; place-items:center; text-align:center; }
+.scanning .big { font-size:2em; font-weight:700; }
+.found { display:flex; flex-direction:column; gap:.35em; }
+.frow { display:grid; grid-template-columns:1fr auto auto auto; gap:.5em; align-items:center; padding:.45em .7em; border-radius:11px; background:var(--panel); border:1px solid var(--line); }
+.frow .t { min-width:0; } .frow .t div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .frow .t small { color:var(--muted); display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@media (max-width: 860px) { .explore { grid-template-columns:1fr; overflow:auto; } .chart { min-height:18em; } }
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, human } = H;
+const COLORS = ['#ff8a3d', '#66c0f4', '#ffd166', '#6fd08c', '#b07cff', '#ff6f91', '#4fd1c5', '#e0a96d', '#9a8fb8', '#f6ad55'];
+const S = { places: [], place: null, root: null, path: null, view: null, list: null, scanning: false, job: null, progress: null, hl: null, tab: 'explore', quick: {} };
+
+H.shell({ title: 'Disk Usage', sub: 'What\'s filling your drives', tabs: [{ id: 'explore', label: 'Explore' }, { id: 'big', label: 'Big files' }, { id: 'downloads', label: 'Old downloads' }, { id: 'caches', label: 'Caches' }],
+  onTab: t => { S.tab = t; render(); if (t !== 'explore') loadQuick(t); }, hints: [['X', 'Move to Trash'], ['Y', 'Scan again']] });
+H.actions('<button class="btn f" id="other">Scan a folder…</button><button class="btn f" id="rescan">Scan again</button>');
+$('#other').onclick = async () => { const p = await H.prompt('Scan a folder', 'The full path of a folder to scan:', S.root || '', '/path/to/folder'); if (p) scan(p.trim()); };
+$('#rescan').onclick = () => S.root && scan(S.root);
+H.S.refresh = () => S.root && !S.scanning && scan(S.root);
+H.S.back = () => { if (S.tab === 'explore' && S.path && S.path !== S.root) { up(); return true; } return false; };
+H.S.alt = () => { const el = document.activeElement; const p = el && el.closest('[data-path]')?.dataset.path; if (p) trash([p]); };
+
+function color(i, depth) { const c = COLORS[i % COLORS.length]; return depth <= 1 ? c : `color-mix(in srgb, ${c} ${Math.max(35, 100 - depth * 18)}%, #1c1512)`; }
+const pct = (a, b) => b ? Math.round(a / b * 1000) / 10 : 0;
+
+async function loadPlaces() {
+  try {
+    const r = await H.call('du.places');
+    S.places = r.places;
+    if (!S.place) S.place = r.places[0]?.path;
+    render();
+    if (!S.root && S.place) scan(S.place);
+  } catch (e) { H.fail(e); }
+}
+
+async function scan(path) {
+  if (S.job) S.job.cancel();
+  S.scanning = true; S.root = path; S.path = path; S.progress = { files: 0, bytes: 0, current: '' }; S.quick = {};
+  S.place = S.places.find(p => p.path === path) ? path : S.place;
+  render();
+  const j = H.job('du.scan', { path }, p => { S.progress = p; drawProgress(); });
+  S.job = j;
+  try {
+    const r = await j;
+    if (S.job !== j) return;
+    S.summary = r; S.scanning = false; S.job = null;
+    H.sub(`${human(r.size)} in ${r.files.toLocaleString()} files · scanned in ${(r.ms / 1000).toFixed(1)} s`);
+    await go(path);
+  } catch (e) { if (S.job === j) { S.scanning = false; S.job = null; render(); H.fail(e); } }
+}
+
+async function go(path, focusPath = null) {
+  try {
+    const [v, l] = await Promise.all([H.call('du.view', { path, depth: 3 }), H.call('du.list', { path })]);
+    S.path = path; S.view = v; S.list = l; S.hl = null;
+    render();
+    const f = (focusPath && $(`.item[data-path="${CSS.escape(focusPath)}"] .name`)) || $('.item .name');
+    if (f) setTimeout(() => f.focus({ preventScroll: true }), 0);
+  } catch (e) { H.fail(e); }
+}
+function up() { if (S.view && S.view.parent) go(S.view.parent, S.path); }
+
+function render() {
+  const m = $('#main');
+  const places = `<div class="places">${S.places.map(p => `<button class="place f${p.path === S.place ? ' on' : ''}" data-place="${esc(p.path)}">
+      <span class="n">${esc(p.label)}</span><span class="m">${p.total ? `${human(p.used)} of ${human(p.total)} used` : esc(p.path)}</span>
+      ${p.total ? `<span class="bar"><i style="width:${pct(p.used, p.total)}%"></i></span>` : ''}</button>`).join('')}</div>`;
+  let body = '';
+  if (S.tab === 'explore') {
+    if (S.scanning) body = `<div class="scanning"><div><div class="spinner" style="width:2.4em;height:2.4em"></div><p class="big" id="pb"></p><p class="muted" id="pf"></p><p class="faint mono" id="pc" style="max-width:40em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></p>
+      <button class="btn f" id="stop">Stop</button></div></div>`;
+    else if (!S.view) body = `<div class="empty">Pick a drive or folder above.</div>`;
+    else body = `<div class="explore"><div class="chart" id="chart"></div><div class="side"><div class="crumbs" id="crumbs"></div><div class="scroll"><div class="items" id="items"></div></div></div></div>`;
+  } else body = `<div class="scroll" style="flex:1"><div id="quick"></div></div>`;
+  m.innerHTML = places + body;
+  $$('[data-place]').forEach(b => b.onclick = () => { S.place = b.dataset.place; scan(b.dataset.place); });
+  if (S.scanning) { $('#stop').onclick = () => { S.job && S.job.cancel(); }; drawProgress(); }
+  if (S.tab === 'explore' && S.view && !S.scanning) { drawChart(); drawList(); drawCrumbs(); }
+  if (S.tab !== 'explore') drawQuick();
+}
+function drawProgress() {
+  const p = S.progress || {};
+  if ($('#pb')) $('#pb').textContent = human(p.bytes || 0);
+  if ($('#pf')) $('#pf').textContent = `${(p.files || 0).toLocaleString()} files so far`;
+  if ($('#pc')) $('#pc').textContent = p.current || '';
+}
+
+// ---------------------------------------------------------------- the ring chart
+function arc(cx, cy, r0, r1, a0, a1) {
+  const big = a1 - a0 > Math.PI ? 1 : 0;
+  if (a1 - a0 >= Math.PI * 2 - 1e-6) a1 = a0 + Math.PI * 2 - 1e-4;
+  const p = (r, a) => `${(cx + r * Math.sin(a)).toFixed(2)} ${(cy - r * Math.cos(a)).toFixed(2)}`;
+  return `M${p(r1, a0)} A${r1} ${r1} 0 ${big} 1 ${p(r1, a1)} L${p(r0, a1)} A${r0} ${r0} 0 ${big} 0 ${p(r0, a0)}Z`;
+}
+function drawChart() {
+  const v = S.view, size = 400, c = size / 2, hole = 70, ring = (c - hole - 6) / 3;
+  const paths = [];
+  const walk = (node, a0, a1, depth, ci) => {
+    let a = a0;
+    (node.children || []).forEach((ch, i) => {
+      const span = node.size ? (ch.size / node.size) * (a1 - a0) : 0;
+      const idx = depth === 1 ? i : ci;
+      if (span > 0.004) {
+        const fill = ch.kind === 'small' ? '#3b2e26' : ch.kind === 'mount' ? '#2b211b' : ch.kind === 'file' ? `color-mix(in srgb, ${COLORS[idx % COLORS.length]} 55%, #f4ece3)` : color(idx, depth);
+        paths.push(`<path d="${arc(c, c, hole + (depth - 1) * ring, hole + depth * ring - 1, a, a + span)}" fill="${fill}" data-arc="${esc(ch.path || '')}" data-kind="${ch.kind}" data-name="${esc(ch.name)}" data-size="${ch.size}"></path>`);
+        if (ch.children && depth < 3) walk(ch, a, a + span, depth + 1, idx);
+      }
+      a += span;
+    });
+  };
+  walk(v, 0, Math.PI * 2, 1, 0);
+  $('#chart').innerHTML = `<svg viewBox="0 0 ${size} ${size}" role="img" aria-label="What's using the space">${paths.join('')}<circle cx="${c}" cy="${c}" r="${hole - 3}" fill="var(--panel)" data-center="1" style="cursor:${v.parent ? 'pointer' : 'default'}"></circle></svg>
+    <div class="center"><div id="ctext"></div></div>`;
+  centerText();
+  $$('#chart path').forEach(p => {
+    p.onmouseenter = () => centerText(p.dataset.name, +p.dataset.size);
+    p.onmouseleave = () => centerText();
+    p.onclick = () => { if (p.dataset.kind === 'dir' && p.dataset.arc) go(p.dataset.arc); else if (p.dataset.arc) focusItem(p.dataset.arc); };
+  });
+  $('#chart circle').onclick = () => up();
+}
+function centerText(name, size) {
+  const v = S.view; const el = $('#ctext'); if (!el) return;
+  if (name) el.innerHTML = `<b>${human(size)}</b><span>${esc(name)} · ${pct(size, v.size)}%</span>`;
+  else el.innerHTML = `<b>${human(v.size)}</b><span>${esc(v.path === S.root ? v.path : v.name)}${v.parent ? '<br>Click the middle to go up' : ''}</span>`;
+}
+function highlight(path) {
+  $$('#chart path').forEach(p => { p.classList.toggle('hl', p.dataset.arc === path); p.classList.toggle('dim', !!path && p.dataset.arc !== path && !(p.dataset.arc || '').startsWith(path + '/')); });
+  const p = path && $(`#chart path[data-arc="${CSS.escape(path)}"]`);
+  if (p) centerText(p.dataset.name, +p.dataset.size); else centerText();
+}
+function focusItem(path) { const b = $(`.item[data-path="${CSS.escape(path)}"] .name`); if (b) { b.focus(); b.scrollIntoView({ block: 'nearest' }); } }
+
+// ---------------------------------------------------------------- the list
+function drawCrumbs() {
+  const parts = []; let p = S.path;
+  while (p && p.length >= S.root.length) { parts.unshift(p); if (p === S.root) break; p = p.slice(0, p.lastIndexOf('/')) || '/'; }
+  $('#crumbs').innerHTML = parts.map((x, i) => `<button class="f" data-crumb="${esc(x)}">${esc(i === 0 ? x : x.slice(x.lastIndexOf('/') + 1))}</button>${i < parts.length - 1 ? '<span class="faint">›</span>' : ''}`).join('')
+    + `<span class="spacer" style="flex:1"></span><button class="btn small f" id="openhere">Open in Files</button>`;
+  $$('[data-crumb]').forEach(b => b.onclick = () => go(b.dataset.crumb));
+  $('#openhere').onclick = () => H.call('du.open', { path: S.path }).catch(H.fail);
+}
+function drawList() {
+  const l = S.list, top = l.children || [];
+  const idxOf = new Map((S.view.children || []).map((c, i) => [c.path, i]));
+  $('#items').innerHTML = top.length ? top.map(ch => {
+    const i = idxOf.has(ch.path) ? idxOf.get(ch.path) : 0;
+    const sw = ch.kind === 'small' ? '#3b2e26' : ch.kind === 'mount' ? 'transparent;border:1px dashed var(--faint)' : ch.kind === 'file' ? `color-mix(in srgb, ${COLORS[i % COLORS.length]} 55%, #f4ece3)` : COLORS[i % COLORS.length];
+    const what = ch.kind === 'dir' ? `${(ch.files || 0).toLocaleString()} files` : ch.kind === 'mount' ? 'Another drive (not counted here)' : ch.kind === 'denied' ? 'Not allowed to look inside' : ch.kind === 'small' ? 'Small files, together' : 'File';
+    const acts = ch.path && ch.kind !== 'mount' && ch.kind !== 'small' ? `<button class="btn small f" data-open="${esc(ch.path)}">Open</button><button class="btn small danger f" data-trash="${esc(ch.path)}">Trash</button>` : '<span></span><span></span>';
+    return `<div class="item" data-path="${esc(ch.path || '')}"><button class="name f" data-go="${esc(ch.kind === 'dir' ? ch.path : '')}" title="${esc(ch.path || ch.name)}">
+      <span class="sw" style="background:${sw}"></span><span class="t">${ch.kind === 'dir' ? '📁 ' : ''}${esc(ch.name)} <small class="muted">· ${what}</small></span><span class="s">${human(ch.size)}<br><small class="muted">${pct(ch.size, l.size)}%</small></span>
+      <span class="p"><i style="width:${pct(ch.size, top[0].size)}%;background:${ch.kind === 'small' ? 'var(--faint)' : COLORS[i % COLORS.length]}"></i></span></button>${acts}</div>`;
+  }).join('') : '<div class="empty">This folder is empty.</div>';
+  $$('[data-go]').forEach(b => {
+    b.onclick = () => { if (b.dataset.go) go(b.dataset.go); else if (b.closest('.item').dataset.path) H.call('du.open', { path: b.closest('.item').dataset.path }).catch(H.fail); };
+    b.onfocus = () => highlight(b.closest('.item').dataset.path); b.onmouseenter = () => highlight(b.closest('.item').dataset.path);
+  });
+  $$('[data-open]').forEach(b => b.onclick = () => H.call('du.open', { path: b.dataset.open }).then(() => H.toast('Opening in Hearth Files')).catch(H.fail));
+  $$('[data-trash]').forEach(b => b.onclick = () => trash([b.dataset.trash]));
+}
+
+async function trash(paths) {
+  const names = paths.map(p => p.slice(p.lastIndexOf('/') + 1));
+  const ok = await H.confirm('Move to the Trash?', `<p>${names.map(n => `<b>${esc(n)}</b>`).join(', ')} will go to the Trash. You can put ${paths.length > 1 ? 'them' : 'it'} back from there until you empty it.</p>`, 'Move to Trash', true);
+  if (!ok) return;
+  try {
+    await H.call('du.trash', { paths });
+    H.toast(paths.length > 1 ? `${paths.length} items moved to the Trash` : `“${names[0]}” moved to the Trash`);
+    if (S.tab === 'explore') go(S.path); else { delete S.quick[S.tab]; loadQuick(S.tab); }
+  } catch (e) { H.fail(e); if (S.tab === 'explore') go(S.path); }
+}
+
+// ---------------------------------------------------------------- quick finds
+async function loadQuick(kind) {
+  if (S.quick[kind]) { drawQuick(); return; }
+  S.quick[kind] = { loading: true }; drawQuick();
+  try {
+    S.quick[kind] = kind === 'big' ? await H.call('du.bigFiles') : await H.job('du.quick', { kind: kind === 'downloads' ? 'downloads' : 'caches' });
+  } catch (e) { S.quick[kind] = { error: String(e) }; }
+  if (S.tab === kind) drawQuick();
+}
+function drawQuick() {
+  const el = $('#quick'); if (!el) return;
+  const q = S.quick[S.tab] || { loading: true };
+  const intro = { big: 'The biggest files in what you scanned (100 MB and up).', downloads: 'Things in your Downloads folder you haven\'t opened or changed in 90 days.', caches: 'Space apps use for caches. They make them again when needed, so these are usually safe to clear. Clearing moves them to the Trash: empty it to get the space back.' }[S.tab];
+  if (q.loading) { el.innerHTML = `<p class="muted">${intro}</p><div class="empty"><span class="spinner"></span> Looking…</div>`; return; }
+  if (q.error) { el.innerHTML = `<p class="muted">${intro}</p><div class="empty bad">${esc(q.error)}</div>`; return; }
+  const items = q.items || [];
+  const total = items.reduce((a, b) => a + (b.size || 0), 0);
+  el.innerHTML = `<div class="row" style="margin-bottom:.6em"><p class="muted grow" style="margin:0">${intro}</p>${items.length ? `<span class="badge">${human(total)} in ${items.length}</span>` : ''}
+      ${S.tab === 'caches' ? '<button class="btn small f" id="empty">Empty the Trash</button>' : ''}</div>
+    <div class="found">${items.length ? items.map(it => `<div class="frow" data-path="${esc(it.path)}"><div class="t"><div>${esc(it.label || it.path.slice(it.path.lastIndexOf('/') + 1))}</div><small>${esc(it.path)}${it.mtime ? ' · changed ' + H.ago(it.mtime * 1000) : ''}</small></div>
+      <span class="num">${human(it.size)}</span><button class="btn small f" data-open="${esc(it.path)}">Open</button>${it.trash ? '<span></span>' : `<button class="btn small danger f" data-trash="${esc(it.path)}">${S.tab === 'caches' ? 'Clear' : 'Trash'}</button>`}</div>`).join('') : '<div class="empty">Nothing found here. Nice and tidy.</div>'}</div>`;
+  $$('[data-open]', el).forEach(b => b.onclick = () => H.call('du.open', { path: b.dataset.open }).catch(H.fail));
+  $$('[data-trash]', el).forEach(b => b.onclick = () => trash([b.dataset.trash]));
+  if ($('#empty')) $('#empty').onclick = async () => { if (await H.confirm('Empty the Trash?', '<p>Everything in the Trash is deleted for good.</p>', 'Empty Trash', true)) { try { await H.call('du.emptyTrash'); H.toast('The Trash is empty'); delete S.quick.caches; loadQuick('caches'); } catch (e) { H.fail(e); } } };
+}
+
+// ---------------------------------------------------------------- without the app: sample data
+H.demo.call = (m, a) => {
+  const G = 1e9;
+  const home = '/var/home/sam';
+  const mk = (path, name, size, kind = 'dir', children) => ({ path, name, size, kind, files: Math.round(size / 3e6), children });
+  const tree = mk(home, home, 412 * G, 'dir', [
+    mk(home + '/.local', '.local', 268 * G, 'dir', [mk(home + '/.local/share', 'share', 266 * G, 'dir', [mk(home + '/.local/share/Steam', 'Steam', 251 * G), mk(home + '/.local/share/Trash', 'Trash', 9 * G), { name: '41 smaller items', size: 6 * G, kind: 'small' }])]),
+    mk(home + '/Videos', 'Videos', 62 * G, 'dir', [mk(home + '/Videos/Clips', 'Clips', 40 * G), mk(home + '/Videos/holiday.mkv', 'holiday.mkv', 22 * G, 'file')]),
+    mk(home + '/Downloads', 'Downloads', 38 * G, 'dir', [mk(home + '/Downloads/hearth-os-live.iso', 'hearth-os-live.iso', 9 * G, 'file'), mk(home + '/Downloads/Games', 'Games', 21 * G), { name: '120 smaller items', size: 8 * G, kind: 'small' }]),
+    mk(home + '/.cache', '.cache', 19 * G, 'dir', [mk(home + '/.cache/mesa_shader_cache', 'mesa_shader_cache', 11 * G), mk(home + '/.cache/thumbnails', 'thumbnails', 4 * G)]),
+    mk(home + '/.var', '.var', 14 * G), mk(home + '/Pictures', 'Pictures', 8 * G), mk(home + '/Music', 'Music', 3 * G),
+    { name: '58 smaller items', size: 0.6 * G, kind: 'small' }]);
+  const find = (n, p) => n.path === p ? n : (n.children || []).map(c => find(c, p)).find(Boolean);
+  if (m === 'du.places') return { places: [{ path: home, label: 'Home folder', kind: 'home', used: 412 * G, total: 0 }, { path: '/var', label: 'The system\'s drive (your data)', kind: 'drive', used: 470 * G, total: 1000 * G }, { path: '/run/media/sam/SD', label: 'SD', kind: 'removable', used: 101 * G, total: 512 * G }], home };
+  if (m === 'du.view' || m === 'du.list') { const n = find(tree, a.path || home) || tree; return Object.assign({}, n, { parent: n.path === home ? null : n.path.slice(0, n.path.lastIndexOf('/')), root: home }); }
+  if (m === 'du.bigFiles') return { items: [{ path: home + '/Videos/holiday.mkv', size: 22 * G, mtime: 1.75e9 }, { path: home + '/Downloads/hearth-os-live.iso', size: 9 * G, mtime: 1.74e9 }] };
+  throw 'This is a preview: open Disk Usage to make changes.';
+};
+H.demo.job = (n, a, step) => {
+  if (n === 'du.scan') return { path: a.path, size: 412e9, files: 1234567, ms: 4210 };
+  if (n === 'du.quick') return a.kind === 'downloads' ? { items: [{ path: '/var/home/sam/Downloads/old-installer.exe', size: 2.1e9, mtime: 1.70e9, kind: 'file' }] }
+    : { items: [{ path: '/var/home/sam/.cache/mesa_shader_cache', label: 'mesa_shader_cache (app cache)', size: 11e9 }, { path: '/var/home/sam/.local/share/Trash', label: 'The Trash', size: 9e9, trash: true }] };
+};
+
+render();
+loadPlaces();
+</script>
+</body>
+</html>

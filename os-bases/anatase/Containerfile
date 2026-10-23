@@ -18,6 +18,7 @@ COPY os/branding/wallpapers /wallpapers
 COPY os/nimbus-app /nimbus-app
 COPY hosts/linux/session /session
 COPY hosts/linux/desktop /desktop
+COPY branding/icons /icons
 
 FROM ${BASE_IMAGE}
 
