@@ -107,10 +107,16 @@ jobs:
           pin=$(xprop -root GAMESCOPECTRL_BASELAYER_WINDOW | grep -o '[0-9]*$')
           echo "::notice title=alarm::rang; the ringing window ($w) is pinned in front for Game Mode: $pin"
           test "$pin" = "$w" || echo "::warning title=alarm::the window pinned ($pin) isn't the ringing window ($w)"
-          # Dismiss it with the keyboard (Enter on the focused Dismiss button).
-          xdotool windowactivate --sync "$w" 2>/dev/null || true
-          xdotool key Return
-          for i in $(seq 15); do xdotool search --name 'Ringing - Clock' >/dev/null 2>&1 || break; sleep 1; done
+          # Dismiss it with the keyboard (Enter on the focused Dismiss button). Xvfb has no window manager to give the
+          # window the keyboard, so it's focused by hand (and tried again if a key went elsewhere).
+          for try in 1 2 3; do
+            xdotool search --name 'Ringing - Clock' >/dev/null 2>&1 || break
+            xdotool mousemove --window "$w" 20 20 2>/dev/null || true
+            xdotool windowfocus --sync "$w" 2>/dev/null || true
+            sleep 1
+            xdotool key Return
+            for i in $(seq 8); do xdotool search --name 'Ringing - Clock' >/dev/null 2>&1 || break; sleep 1; done
+          done
           ! xdotool search --name 'Ringing - Clock' >/dev/null 2>&1 || { echo "::error title=alarm::Dismiss didn't close the window"; exit 1; }
           sleep 2
           cat "$HEARTH_TIME_HOME/config/hearth-clock/clock.json"
