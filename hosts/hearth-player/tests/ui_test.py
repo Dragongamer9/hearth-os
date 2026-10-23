@@ -120,7 +120,7 @@ with sync_playwright() as p:
     t1 = pg.evaluate("document.getElementById('video').currentTime")
     check(t1 - t0 > 3, f"right arrow seeks forward ({t0:.1f} -> {t1:.1f})")
     pg.keyboard.press("v")
-    pg.wait_for_function("[...document.getElementById('video').textTracks].some(t => t.mode === 'showing')")
+    pg.wait_for_function("document.getElementById('cues').textContent.includes('Hello')")
     check(True, "V turns subtitles on")
     check(pg.is_visible("#chapBtn") and pg.is_visible("#audioBtn"), "chapters and sound-track buttons show for a file with them")
     pg.keyboard.press("PageDown")
