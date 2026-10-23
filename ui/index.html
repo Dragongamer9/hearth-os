@@ -3558,7 +3558,24 @@ async function loginHost(){
 
 // ---------- Settings › Updates › System (Hearth, the OS) ----------
 const SYSUPD = {s:null};
-function loadSystemUpdate(){ if(host && LINUX && HOSTINFO.system) call('system.update.status',{},90000).then(r=>{ SYSUPD.s=r; refreshUI(); }).catch(()=>{}); }
+function loadSystemUpdate(){ if(host && LINUX && HOSTINFO.system) call('system.update.status',{},90000).then(r=>{ SYSUPD.s=r; addedAppsNotice(r&&r.status); refreshUI(); }).catch(()=>{}); }
+// Apps added with apt or a .deb file (Ubuntu and Peppermint editions, docs/APT-LAYER.md): after a system update
+// they're put back on the new version; one that no longer fits is skipped. Told once per update.
+function addedAppsNotice(st){
+  const a=st&&st.addedApps; if(!a||!a.skipped||!a.skipped.length||!a.time) return;
+  let seen=''; try{ seen=localStorage.getItem('hearth.addedAppsSeen')||''; }catch(e){}
+  if(seen===String(a.time)) return;
+  try{ localStorage.setItem('hearth.addedAppsSeen', String(a.time)); }catch(e){}
+  NOTIFS.unshift({i:'info', t:a.skipped.length+' of your added apps weren\'t put back after the update', s:'Settings › Updates says why', go:'updates'}); updateBadge();
+}
+function addedAppsRows(st){
+  const a=st&&st.addedApps; if(!a) return '';
+  const n=(a.reinstalled||[]).length, m=(a.skipped||[]).length; if(!n&&!m) return '';
+  let h=`<div class="row" data-f data-k="su-added"><span class="ricon">${I.dl}</span><div class="rt"><b>Your added apps</b><small>${a.pending?'Being put back on this version… ':''}${n} re-installed after the last update${m?`, ${m} skipped`:''}</small></div></div>`;
+  h+=(a.skipped||[]).map(k=>note('Skipped '+esc(k.name)+': '+esc(k.reason))).join('');
+  if(m) h+=note('To try again: Desktop Mode › Settings › Updates, or <code>sudo hearth-apt-layer retry</code> in a terminal.');
+  return h;
+}
 function onSystemUpdate(d){
   const was=SYSUPD.s; SYSUPD.s=d;
   if(was && was.state==='updating' && d.state==='idle') toast(d.error ? d.error : (d.status&&d.status.staged ? 'Update downloaded. Restart to finish.' : 'Everything is up to date'));
@@ -3612,6 +3629,7 @@ function pageSystemUpdate(){
     h += `<button class="row" data-f data-k="su-install" data-act="sysUpdInstall"><span class="ricon">${I.dl}</span><div class="rt"><b>Update now</b><small>Downloads the newest Hearth (system, drivers, ${APP}) and updates your apps. Keep playing while it downloads.</small></div></button>`;
     h += `<button class="row" data-f data-k="su-check" data-act="sysUpdCheck"><span class="ricon">${I.refresh}</span><div class="rt"><b>Check for updates</b></div></button>`;
   }
+  h += addedAppsRows(st);
   h += note('Hearth also updates by itself in the background and finishes the next time you restart.');
   return h + newOsRows();
 }

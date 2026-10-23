@@ -57,6 +57,11 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      add a printer (driverless IPP Everywhere first, then a matching driver)
   hearth-admin printer-remove NAME   remove a printer
   hearth-admin printer-default NAME  the printer everyone prints to unless they pick another
+  hearth-admin install-deb FILE      install a .deb file into your added apps (Ubuntu and Peppermint editions:
+                                     kept through restarts and put back after system updates, docs/APT-LAYER.md).
+                                     Always asks for the password (polkit rule). The file is read as you (only
+                                     files you can read), copied, checked, then installed with apt
+  hearth-admin apt-layer-retry       put back the added apps the last system update skipped (same editions)
 
 Output: progress lines as "log: ...", percentages as "progress: <0-100> <what>", the result as one JSON line. Exit 1 with "error: ..." on failure.
 """
@@ -150,11 +155,95 @@ def bootc_status(quiet=False):
     booted = st.get('booted') or {}
     cached = booted.get('cachedUpdate')
     staged = st.get('staged')
-    return {
+    out = {
         'booted': info(booted),
         'staged': info(staged),
         'available': ({'version': cached.get('version'), 'timestamp': cached.get('timestamp')} if cached else None),
     }
+    apps = added_apps()
+    if apps is not None:
+        out['addedApps'] = apps
+    return out
+
+
+APT_LAYER = '/usr/libexec/nimbus/hearth-apt-layer'
+APT_LAYER_STATUS = '/var/lib/hearth/layer/status.json'
+
+
+def added_apps():
+    """What happened to the apps added with apt after the last system update (Ubuntu and Peppermint editions), for
+    Settings > Updates: {"reinstalled": [...], "skipped": [{"name", "reason"}], "time"}, or None."""
+    if not os.path.exists(APT_LAYER):
+        return None
+    try:
+        with open(APT_LAYER_STATUS) as f:
+            st = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(st, dict):
+        return None
+    return {'reinstalled': list(st.get('reinstalled') or []), 'skipped': list(st.get('skipped') or []),
+            'included': list(st.get('included') or []), 'time': st.get('time'), 'pending': bool(st.get('pending'))}
+
+
+def valid_deb_path(path):
+    """The real path of the .deb file to install, or None."""
+    if not isinstance(path, str) or not path.startswith('/') or len(path) > 4096 or any(c in path for c in '\0\n\r'):
+        return None
+    real = os.path.realpath(path)
+    if not real.lower().endswith('.deb'):
+        return None
+    try:
+        st = os.stat(real)
+    except OSError:
+        return None
+    import stat as stat_mod
+    if not stat_mod.S_ISREG(st.st_mode) or st.st_size <= 0 or st.st_size > 8 * 1024 ** 3:
+        return None
+    return real
+
+
+def install_deb(path):
+    if not os.path.exists(APT_LAYER):
+        fail('installing .deb files works on Hearth OS\'s Ubuntu and Peppermint editions')
+    real = valid_deb_path(path)
+    if not real:
+        fail('expected the full path of a .deb file')
+    user = caller()
+    incoming = '/var/lib/hearth/layer/incoming'
+    os.makedirs(incoming, mode=0o700, exist_ok=True)
+    os.chmod(incoming, 0o700)
+    copy = os.path.join(incoming, '%d-%d.deb' % (os.getpid(), int(time.time())))
+    try:
+        # Read as the person who asked: only a file they can read themselves gets installed.
+        with open(copy, 'wb') as out:
+            r = subprocess.run(['runuser', '-u', user.pw_name, '--', 'cat', '--', real], stdout=out,
+                               stderr=subprocess.PIPE)
+        if r.returncode != 0:
+            fail('couldn\'t read the file (%s)' % r.stderr.decode(errors='replace').strip()[:200])
+        os.chmod(copy, 0o644)
+        sys.stdout.flush()
+        code = subprocess.run([APT_LAYER, 'install-deb', copy]).returncode
+    finally:
+        try:
+            os.unlink(copy)
+        except OSError:
+            pass
+    if code != 0:
+        sys.exit(1)
+
+
+def apt_layer_retry():
+    if not os.path.exists(APT_LAYER):
+        fail('added apps are only kept on Hearth OS\'s Ubuntu and Peppermint editions')
+    print('log: Putting back the added apps that were skipped…', flush=True)
+    r = subprocess.run([APT_LAYER, 'retry'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for line in r.stdout.splitlines():
+        if line.strip() and not line.startswith('{'):
+            print('log: ' + line.strip()[:300], flush=True)
+    if r.returncode != 0:
+        fail(r.stdout.strip().splitlines()[-1] if r.stdout.strip() else 'couldn\'t put the apps back')
+    print(json.dumps({'addedApps': added_apps()}))
 
 
 def run_logged(cmd):
@@ -2267,6 +2356,10 @@ def main(argv):
         printer_remove(argv[2])
     elif cmd == 'printer-default' and len(argv) == 3:
         printer_default(argv[2])
+    elif cmd == 'install-deb' and len(argv) == 3:
+        install_deb(argv[2])
+    elif cmd == 'apt-layer-retry' and len(argv) == 2:
+        apt_layer_retry()
     elif cmd in ('import-scan', 'import-run', 'import-unmount', 'takeover-plan', 'takeover-run'):
         # Bringing games and files over from other drives, and removing the old system afterwards: their own
         # scripts, run as root like the rest.
@@ -2274,7 +2367,7 @@ def main(argv):
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
         os.execv(sys.executable, [sys.executable, helper, sub])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | install-deb FILE | apt-layer-retry')
 
 
 if __name__ == '__main__':

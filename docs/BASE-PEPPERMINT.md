@@ -139,6 +139,15 @@ Ubuntu runner. A runner build would link fine today (same sonames). But `ubuntu-
 releases, whose glibc trixie (2.41) doesn't have. Hearth Browser (Electron) is built on the runner, as in
 `os.yml`. `build.sh` and CI fail the build if `ldd` finds a missing library.
 
+### Apps you add with apt and .deb files
+
+`sudo apt install` and opening a `.deb` file work. The app goes into a writable layer on top of the read-only
+image (an overlay on `/usr`, one per deployment, kept in `/var/lib/hearth/layer`). It stays through restarts, and
+after a system update it's put back on the new version by itself. A package that no longer fits is skipped and
+reported. The system's own packages are pinned and protected: `apt upgrade` only upgrades what you added, and
+removing system packages or installing kernel and boot loader packages is refused. Shared with the other
+Debian-family edition in `os-bases/apt-layer/`. **The details are in [APT-LAYER.md](APT-LAYER.md).**
+
 ## How to run it
 
 CI: Actions → **Hearth OS (Peppermint base)** → Run workflow. It also runs on pushes to `linux-host` that touch

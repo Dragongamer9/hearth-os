@@ -251,6 +251,9 @@ optional qml6-module-qtquick-virtualkeyboard qml6-module-qtmultimedia xserver-xo
 # Hearth's (os/system_files, shared with the Bazzite build), then this image's Ubuntu-specific ones on top.
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/ubuntu_files/. /
+# Apps you add with apt or a .deb file, kept through restarts and updates (shared with the other Debian-family
+# edition; docs/APT-LAYER.md). Set up for real at the end (image-setup.sh), after the last package.
+cp -avf /ctx/apt_layer/system_files/. /
 chmod 440 /etc/sudoers.d/hearth-wheel
 
 # ------------------------------------------------------------------ Hearth itself, under /usr (the OS updates it)
@@ -626,6 +629,10 @@ rm -f /usr/sbin/policy-rc.d
 apt-get clean
 rm -rf /var/lib/apt/lists/* /boot/*
 rm -f /etc/dracut.conf.d/00-hearth-build.conf
+# ------------------------------------------------------------------ apps you add (apt and .deb files)
+# The image's package list and pins, apt's and dpkg's hooks, the services (docs/APT-LAYER.md). After the last
+# package, before dpkg's database moves to /usr/lib/sysimage below.
+bash /ctx/apt_layer/image-setup.sh
 if [ "${#OPTIONAL_MISSING[@]}" -gt 0 ]; then echo "Not installed (not in the repositories): ${OPTIONAL_MISSING[*]}"; fi
 
 # ------------------------------------------------------------------ system accounts that later images add

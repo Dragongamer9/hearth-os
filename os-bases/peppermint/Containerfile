@@ -15,6 +15,7 @@ ARG BASE_IMAGE=docker.io/library/debian:trixie
 FROM scratch AS ctx
 COPY os-bases/peppermint/build.sh /build.sh
 COPY os-bases/peppermint/system_files /peppermint_files
+COPY os-bases/apt-layer /apt_layer
 COPY os/system_files /system_files
 COPY os/branding/wallpapers /wallpapers
 COPY os/nimbus-app /nimbus-app

@@ -137,11 +137,11 @@ EDITION_NOTES = (
 <ul>APPS<li>Steam: from Flathub, installed the first time the device is online.</li>
 <li>Terminal tools that change the system use <code>rpm-ostree</code> (Fedora's image tool).</li></ul>''')
     + only('ubuntu', '''<p><b>Ubuntu</b> is Ubuntu 26.04 underneath, made into an image (bootc). <span class="ver">Beta Experimental</span></p>
-<ul>APPS<li><code>apt</code> can't change the system itself: it's a read-only image that updates in one piece.</li><li>Steam: built in, from Ubuntu's packages.</li></ul>''')
+<ul>APPS<li><code>sudo apt install</code> and opening a <code>.deb</code> file add apps on top of the read-only system. They stay through restarts and are put back by themselves after each system update (one that no longer fits is skipped, and you're told why). The system's own packages update with Hearth's system updates.</li><li>Steam: built in, from Ubuntu's packages.</li></ul>''')
     + only('cachyos', '''<p><b>CachyOS</b> is Arch-based CachyOS underneath, made into an image (bootc), with CachyOS's handheld kernel (Steam Deck, ROG Ally, Legion Go and MSI Claw patches). <span class="ver">Beta Experimental</span></p>
 <ul>APPS<li><code>pacman</code> can't change the system itself: it's a read-only image that updates in one piece.</li><li>Steam: built in, from CachyOS's packages.</li></ul>''')
     + only('peppermint', '''<p><b>Peppermint</b> is Debian 13 "trixie" underneath (Peppermint OS's base), made into an image (bootc). <span class="ver">Beta Experimental</span></p>
-<ul>APPS<li><code>apt</code> can't change the system itself: it's a read-only image that updates in one piece.</li><li>Steam: built in, from Debian's packages.</li></ul>''')
+<ul>APPS<li><code>sudo apt install</code> and opening a <code>.deb</code> file add apps on top of the read-only system. They stay through restarts and are put back by themselves after each system update (one that no longer fits is skipped, and you're told why). The system's own packages update with Hearth's system updates.</li><li>Steam: built in, from Debian's packages.</li></ul>''')
 ).replace('APPS', '<li>Apps: Flatpak, from Flathub, in the <b>Apps</b> store (Desktop Mode).</li>')
 
 # ------------------------------------------------------------------ Overview

@@ -12,6 +12,7 @@ ARG BASE_IMAGE=docker.io/library/ubuntu:26.04
 FROM scratch AS ctx
 COPY os-bases/ubuntu/build.sh /build.sh
 COPY os-bases/ubuntu/system_files /ubuntu_files
+COPY os-bases/apt-layer /apt_layer
 COPY os/system_files /system_files
 COPY os/branding/wallpapers /wallpapers
 COPY os/nimbus-app /nimbus-app

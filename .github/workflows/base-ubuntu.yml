@@ -13,7 +13,7 @@ on:
         default: true
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/ubuntu/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-ubuntu.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**']
+    paths: ['os-bases/ubuntu/**', 'os-bases/apt-layer/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-ubuntu.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-ubuntu
@@ -308,6 +308,17 @@ jobs:
           echo "--- bootc container lint"
           sudo podman run --rm hearth-ubuntu:latest bootc container lint 2>&1 | tee /tmp/lint.log || {
             msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
+
+      # REQUIRED: apps added with apt (docs/APT-LAYER.md). Inside a privileged container: the layer mounts on the
+      # image's /usr, apt install works and is recorded, the guard rails refuse system/boot packages, a .deb goes in
+      # through hearth-admin, and a simulated system update (new deployment) puts the packages back and reports one
+      # that no longer fits. See os-bases/apt-layer/ci-check.sh for what this can't cover.
+      - name: Check the added-apps layer (apt install, kept, put back after an update)
+        run: |
+          set -o pipefail
+          sudo rm -rf /var/tmp/hearth-layer-test && sudo mkdir -p /var/tmp/hearth-layer-test
+          sudo podman run --rm --privileged -v /var/tmp/hearth-layer-test:/var/lib/hearth \
+            -v "$PWD/os-bases/apt-layer/ci-check.sh:/ci-check.sh:ro" hearth-ubuntu:latest bash /ci-check.sh
 
       - name: Publish to GitHub Container Registry
         if: env.PUBLISH == 'true'

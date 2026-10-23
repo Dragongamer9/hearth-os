@@ -1,0 +1,21 @@
+# Hearth's added-apps layer (docs/APT-LAYER.md): after the layer is mounted, starts services your packages added,
+# removes layers of system versions that are gone, and after a system update puts your added packages back on the
+# new version (only then does it wait for the network). Type=exec: the login doesn't wait for it; your apps
+# appear as they're re-installed and a notification says how it went (journalctl -u hearth-apt-layer-sync).
+[Unit]
+Description=Hearth: put your added apps back after a system update
+ConditionPathExists=/run/hearth/apt-layer/active.json
+Requires=hearth-apt-layer.service
+After=hearth-apt-layer.service network-online.target systemd-user-sessions.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/usr/libexec/nimbus/hearth-apt-layer boot-sync
+SyslogIdentifier=hearth-apt-layer
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

@@ -117,6 +117,50 @@ SetPage {
         icon: "update"; title: "Update anyway"; sub: "Downloads anything new for Hearth and its apps"
         onActivated: page.start("update")
     }
+    // Your added apps (Ubuntu and Peppermint editions, docs/APT-LAYER.md): what was put back after the last
+    // system update, what was skipped and why, and a way to try the skipped ones again.
+    property var layer: null
+    property bool layerBusy: false
+    function layerLoad() { layerProc.running = true; }
+    Process {
+        id: layerProc
+        command: ["sh", "-c", "test -x /usr/libexec/nimbus/hearth-apt-layer && /usr/libexec/nimbus/hearth-apt-layer status --json"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: { try { page.layer = text.trim() ? JSON.parse(text) : null; } catch (e) { page.layer = null; } }
+        }
+    }
+    Process {
+        id: layerRetry
+        command: ["pkexec", page.helper, "apt-layer-retry"]
+        stdout: SplitParser { onRead: l => { if (l.startsWith("error: ")) page.error = l.slice(7); } }
+        onExited: code => { page.layerBusy = false; page.layerLoad(); }
+    }
+    SetRow {
+        readonly property var last: page.layer ? page.layer.last : null
+        visible: !!(page.layer && page.layer.active && page.layer.packages.length > 0)
+        interactive: false; chevron: false
+        icon: "update"
+        title: "Your added apps: " + (page.layer ? page.layer.packages.length : 0)
+        sub: page.layer && page.layer.pending ? "Being put back on this version…"
+            : last ? (last.reinstalled.length + " re-installed, " + last.skipped.length + " skipped after the last update")
+            : "Kept through restarts and system updates"
+    }
+    Repeater {
+        model: page.layer && page.layer.last ? page.layer.last.skipped : []
+        delegate: Text {
+            required property var modelData
+            Layout.fillWidth: true
+            text: "Skipped " + modelData.name + ": " + modelData.reason
+            color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
+    }
+    SetRow {
+        visible: page.canAdmin && !page.layerBusy && !!(page.layer && page.layer.last && page.layer.last.skipped.length > 0)
+        icon: "restart"; title: "Try the skipped apps again"
+        onActivated: { page.layerBusy = true; layerRetry.running = true; }
+    }
+
     Text {
         visible: page.error !== ""
         Layout.fillWidth: true

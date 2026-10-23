@@ -1,0 +1,6 @@
+#!/bin/sh
+# Hearth (os-bases/apt-layer/image-setup.sh): the initramfs comes with the system image and changes only with
+# Hearth's system updates, so packages you add can't (and don't need to) rebuild it. The real
+# update-initramfs is kept as update-initramfs.hearth-image.
+echo "update-initramfs: the initramfs comes with Hearth's system image; nothing to do"
+exit 0
