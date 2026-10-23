@@ -32,12 +32,16 @@ function inspect(opts) {
     }
   }
   if (offs.length) out.push(`${offs.length} controls off screen, nothing scrolls to them: ${offs.slice(0, 6).join(', ')}`);
-  if (document.documentElement.scrollWidth > W + 2) out.push(`the page is ${document.documentElement.scrollWidth - W}px wider than the window`);
+  if (document.documentElement.scrollWidth > W + 2) {
+    const wide = [...document.querySelectorAll('body *')].filter(e => { const r = e.getBoundingClientRect(); return r.width && r.right > W + 2 && !(e.parentElement && e.parentElement.getBoundingClientRect().right > W + 2); }).slice(0, 4)
+      .map(e => (e.id ? '#' + e.id : '') + '.' + String(e.className || e.tagName).split(' ')[0] + ' in ' + (e.parentElement.id || String(e.parentElement.className).split(' ')[0]));
+    out.push(`the page is ${document.documentElement.scrollWidth - W}px wider than the window: ${wide.join(', ')}`);
+  }
   // 2b. Layouts that fill the screen (.lfit): inside the screen, their content inside them, the tabs still in sight.
   const lf = view.querySelector('.lfit');
   if (lf) {
     const r = lf.getBoundingClientRect(), vr = view.getBoundingClientRect();
-    if (r.bottom > vr.bottom + 4) out.push(`fills ${Math.round(r.bottom - vr.bottom)}px past the bottom of the screen`);
+    if (r.bottom > vr.bottom + 4) { const ch = []; for (let e = lf; e; e = e.offsetParent) ch.push((e.id || String(e.className).split(' ')[0]) + ':' + e.offsetTop); out.push(`fills ${Math.round(r.bottom - vr.bottom)}px past the bottom of the screen (height ${lf.style.height}, view ${view.clientHeight}/${view.offsetTop}, ${ch.join(' > ')})`); }
     if (lf.scrollHeight > lf.clientHeight + 4 && getComputedStyle(lf).overflowY === 'hidden') out.push(`its content is ${lf.scrollHeight - lf.clientHeight}px taller than the space it has`);
     const head = view.querySelector('.libhead'); if (head && head.getBoundingClientRect().bottom < vr.top + 4) out.push('the tabs scrolled out of sight');
   }
