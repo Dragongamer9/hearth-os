@@ -7,6 +7,7 @@ B=${SHARE:-hearth-share}
 export HOME=$(mktemp -d)
 OUT=${OUT:-/tmp/share-e2e}; mkdir -p "$OUT"
 FAILED=0
+SUMMARY=""
 fail() { echo "::error title=Share ($KIND) $1::$2"; tail -n 5 "$XDG_RUNTIME_DIR/hearth-share/capture.log" 2>/dev/null; FAILED=1; }
 note() { echo "ok: $*"; SUMMARY="$SUMMARY$*  ·  "; }
 field() { python3 -c 'import json,sys
