@@ -1019,6 +1019,14 @@ systemctl enable hearth-home-repair.service   # home folders' Flatpak/cache fold
 # Flatpak's system installation set up (and repaired), Flathub in it, Bazaar (the Flathub store) for everyone. Debian
 # 13 has no Bazaar package, so it's Flathub's, installed at the first boot that's online (existing installs too).
 systemctl enable hearth-flatpak-setup.service
+# /etc/hosts maps the device's name (sudo: "unable to resolve host <name>"), at boot and after a rename; glibc's
+# myhostname module answers for the name too, whatever /etc/hosts says.
+systemctl enable hearth-hosts.service hearth-hosts.path
+optional libnss-myhostname
+if [ -f /etc/nsswitch.conf ] && ! grep -Eq '^hosts:.*myhostname' /etc/nsswitch.conf && [ -e /usr/lib/x86_64-linux-gnu/libnss_myhostname.so.2 ]; then
+  sed -i -E 's/^(hosts:[[:space:]]+files)/\1 myhostname/' /etc/nsswitch.conf
+fi
+grep '^hosts:' /etc/nsswitch.conf || true
 # The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
 # (os/system_files; does nothing without the plan the old system leaves).
 systemctl enable hearth-clean-install.service
