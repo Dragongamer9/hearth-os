@@ -1,0 +1,96 @@
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /index.html HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /app.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /style.css HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /editor.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/codemirror-state.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/codemirror-commands.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/codemirror-view.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/codemirror-language.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/codemirror-search.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/codemirror-autocomplete.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/lezer-highlight.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/lezer-common.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/marijn-find-cluster-break.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/crelt.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/style-mod.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/codemirror-streamparser.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/w3c-keyname.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/jetbrains-mono-latin-400-normal.woff2 HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:02] "GET /vendor/legacy-modes/shell.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:03] "GET /vendor/codemirror-lang-python.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:03] "GET /vendor/lezer-python.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:03] "GET /vendor/lezer-lr.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:08] "GET /vendor/legacy-modes/properties.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:11] "GET /vendor/codemirror-lang-markdown.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:11] "GET /vendor/lezer-markdown.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:11] "GET /vendor/codemirror-lang-html.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:11] "GET /vendor/lezer-html.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:11] "GET /vendor/codemirror-lang-javascript.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:11] "GET /vendor/codemirror-lang-css.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:11] "GET /vendor/lezer-javascript.js HTTP/1.1" 200 -
+127.0.0.1 - - [23/Oct/2026 06:33:11] "GET /vendor/lezer-css.js HTTP/1.1" 200 -
+ok    an empty tab shows the start card
+ok    sample.sh is highlighted as a shell script
+ok    shell script has colored words (41)
+ok    the start card goes away once a file is open (it replaced the empty tab)
+ok    the empty tab was reused
+ok    app.py is Python
+ok    a changed file shows a dot on its tab
+ok    Ctrl+S saves the text with its encoding and line endings
+ok    saved: the dot goes away
+ok    Ctrl+Z undoes
+ok    Ctrl+Y redoes
+ok    find counts matches: 1 of 6
+ok    replace all with a regular expression and a group
+ok    match case
+ok    ignore case finds OSError
+ok    Esc closes find
+ok    go to line 12
+ok    a file you can't write says so
+ok    status shows Read-only
+ok    read-only text can't be typed into
+ok    editing as administrator is shown
+ok    saving as administrator goes through the admin path
+ok    CRLF and INI shown: Ln 1, Col 1
+INI / config
+Spaces: 4
+UTF-8
+CRLF
+100%
+ok    line endings can be changed (and it counts as a change)
+ok    saved with LF
+ok    Latin-1 shown
+ok    encoding can be changed
+ok    a huge log opens in part, read-only, as a log
+ok    F10 opens the menu
+ok    arrows move through the menu (Open recent  ›)
+ok    recent files submenu
+ok    Esc closes the menu
+ok    notes.md is Markdown
+ok    closing a changed tab asks
+ok    Cancel keeps the tab
+ok    closing the window asks
+Traceback (most recent call last):
+  File "/home/runner/work/hearth-os/hearth-os/hosts/hearth-text/tests/page_check.py", line 270, in <module>
+    main()
+  File "/home/runner/work/hearth-os/hearth-os/hosts/hearth-text/tests/page_check.py", line 251, in main
+    pg.click('#dlgButtons button:has-text("Don\'t save")')
+  File "/home/runner/.local/lib/python3.12/site-packages/playwright/sync_api/_generated.py", line 9905, in click
+    self._sync(
+  File "/home/runner/.local/lib/python3.12/site-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/home/runner/.local/lib/python3.12/site-packages/playwright/_impl/_page.py", line 828, in click
+    return await self._main_frame.click(**locals_to_params(locals()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/.local/lib/python3.12/site-packages/playwright/_impl/_frame.py", line 488, in click
+    await self._channel.send("click", locals_to_params(locals()))
+  File "/home/runner/.local/lib/python3.12/site-packages/playwright/_impl/_connection.py", line 59, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/.local/lib/python3.12/site-packages/playwright/_impl/_connection.py", line 520, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: Page.click: Timeout 30000ms exceeded.
+Call log:
+waiting for locator("#dlgButtons button:has-text(\"Don't save\")")
+
