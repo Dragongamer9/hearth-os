@@ -360,11 +360,13 @@ function wireEditor() {
   ed.addEventListener('beforeinput', (e) => {
     if (e.inputType === 'historyUndo') { e.preventDefault(); W.undo(); return; }
     if (e.inputType === 'historyRedo') { e.preventDefault(); W.redo(); return; }
-    W.record(e.inputType === 'insertText' || e.inputType === 'deleteContentBackward' ? 'typing' : 'edit');
+    W.record(/^(insertText|insertParagraph|insertLineBreak|deleteContent)/.test(e.inputType) ? 'typing' : 'edit');
   });
   ed.addEventListener('input', () => { W.afterChange(); if (!ed.firstElementChild) ed.innerHTML = '<p><br></p>'; });
   document.addEventListener('selectionchange', () => { if (document.activeElement === ed) W.updateStateSoon(); });
   ed.addEventListener('keydown', (e) => {
+    // Typing is an undo step (grouped). Not every web view sends beforeinput (WebKitGTK may not), so keys count too.
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key.length === 1 || e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete')) W.record('typing');
     // Tab in a table moves between cells (and adds a row at the end); elsewhere it indents lists or types a tab.
     if (e.key === 'Tab' && !e.ctrlKey && !e.altKey) {
       const td = cellOf(getSelection().anchorNode);
