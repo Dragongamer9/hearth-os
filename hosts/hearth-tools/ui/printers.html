@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Printers &amp; Scanner</title>
+<link rel="stylesheet" href="common.css">
+<style>
+.printers { display:flex; flex-direction:column; gap:.5em; }
+.pr { display:grid; grid-template-columns:2.6em 1fr auto; gap:.2em .8em; align-items:center; padding:.7em .9em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); }
+.pr .ico { grid-row:span 2; width:2.6em; height:2.6em; border-radius:12px; display:grid; place-items:center; background:var(--panel3); font-size:1.2em; }
+.pr .n { font-weight:600; display:flex; gap:.5em; align-items:center; flex-wrap:wrap; }
+.pr .m { color:var(--muted); font-size:.82em; }
+.pr .acts { grid-row:span 2; display:flex; gap:.4em; flex-wrap:wrap; justify-content:flex-end; }
+.scan { display:grid; grid-template-columns:minmax(16em, 22em) 1fr; gap:var(--gut); min-height:0; flex:1; grid-template-rows:minmax(0, 1fr); }
+.opts { display:flex; flex-direction:column; gap:.7em; }
+.opts label { color:var(--muted); font-size:.85em; display:block; margin-bottom:.3em; }
+.glass { position:relative; background:var(--bg2); border:1px solid var(--line); border-radius:var(--r); min-height:0; overflow:hidden; display:grid; place-items:center; }
+.glass .paper { position:relative; background:#2a211c; box-shadow:0 10px 30px rgba(0,0,0,.4); touch-action:none; }
+.glass img { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; }
+.area { position:absolute; border:2px solid var(--ember); background:rgba(255,138,61,.12); box-shadow:0 0 0 9999px rgba(0,0,0,.45); pointer-events:none; }
+.pages { display:flex; gap:.5em; overflow-x:auto; padding:4px; }
+.pages .pg { position:relative; width:5.5em; flex:none; border-radius:8px; overflow:hidden; border:1px solid var(--line); background:var(--bg2); }
+.pages .pg img { width:100%; display:block; }
+.pages .pg span { position:absolute; left:.3em; top:.2em; font-size:.75em; background:rgba(0,0,0,.6); padding:0 .35em; border-radius:6px; }
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, human } = H;
+const S = { tab: 'printers', st: null, devices: null, device: '', opts: null, mode: 'Color', res: 300, format: 'pdf', source: '', preview: null, area: null, pages: [], busy: '', job: null };
+H.shell({ title: 'Printers & Scanner', sub: '', tabs: [{ id: 'printers', label: 'Printers' }, { id: 'scanner', label: 'Scanner' }],
+  onTab: t => { S.tab = t; render(); if (t === 'scanner' && !S.devices) findScanners(); }, hints: [['Y', 'Refresh']] });
+H.S.refresh = () => S.tab === 'printers' ? loadPrinters() : findScanners();
+const AREAS = [['all', 'Whole glass', null], ['a4', 'A4', [210, 297]], ['letter', 'Letter', [215.9, 279.4]], ['photo', 'Photo 10×15', [101.6, 152.4]], ['card', 'Card', [85.6, 54]]];
+
+async function loadPrinters() {
+  try { S.st = await H.call('print.state'); } catch (e) { S.st = { error: String(e), printers: [], jobs: [] }; }
+  if (S.tab === 'printers') render();
+}
+
+function render() { S.tab === 'printers' ? renderPrinters() : renderScanner(); }
+
+function renderPrinters() {
+  const st = S.st;
+  if (!st) { $('#main').innerHTML = '<div class="empty"><span class="spinner"></span></div>'; return; }
+  const ps = st.printers || [], jobs = st.jobs || [];
+  H.sub(ps.length ? `${ps.length} printer${ps.length > 1 ? 's' : ''}${jobs.length ? ` · ${jobs.length} waiting to print` : ''}` : '');
+  $('#main').innerHTML = `<div class="scroll" style="flex:1">
+    <div class="row" style="margin-bottom:.7em"><button class="btn primary f" id="add">Add a printer</button><button class="btn f" id="settings">Printer settings</button><span class="grow"></span>${st.cups === false ? '<span class="warn">The printing service (CUPS) isn\'t running.</span>' : ''}</div>
+    ${st.error ? `<p class="bad">${esc(st.error)}</p>` : ''}
+    <div class="printers">${ps.length ? ps.map(p => `<div class="pr"><span class="ico">🖨</span>
+      <span class="n">${esc(p.info || p.name)}${p.default ? '<span class="badge">default</span>' : ''}${p.state === 'printing' ? '<span class="badge good">printing</span>' : ''}${!p.enabled ? '<span class="badge warn">paused</span>' : ''}</span>
+      <span class="acts">${p.enabled ? `<button class="btn small f" data-pa="pause" data-p="${esc(p.name)}">Pause</button>` : `<button class="btn small f" data-pa="resume" data-p="${esc(p.name)}">Resume</button>`}
+        <button class="btn small f" data-pa="test" data-p="${esc(p.name)}">Test page</button>${p.default ? '' : `<button class="btn small f" data-pa="default" data-p="${esc(p.name)}">Make default</button>`}<button class="btn small danger f" data-pa="remove" data-p="${esc(p.name)}">Remove</button></span>
+      <span class="m">${esc([p.name !== p.info && p.name, p.location, p.reason, p.uri && p.uri.split('/')[0].replace(':', '')].filter(Boolean).join(' · '))}</span></div>`).join('')
+      : '<div class="empty">No printers yet. Most network printers are found by "Add a printer"; USB printers too once plugged in.</div>'}</div>
+    <h3 style="margin:1.1em 0 .4em">Print queue</h3>
+    ${jobs.length ? `<table class="list"><tr><th>Job</th><th>Printer</th><th>From</th><th class="num">Size</th><th>Sent</th><th></th></tr>${jobs.map(j => `<tr><td>${esc(j.id)}${j.held ? ' <span class="badge warn">held</span>' : ''}</td><td>${esc(j.printer)}</td><td>${esc(j.user)}</td><td class="num">${human(j.size)}</td><td>${esc(j.when)}</td>
+      <td class="row end">${j.mine ? (j.held ? `<button class="btn small f" data-ja="release" data-j="${esc(j.id)}">Print now</button>` : `<button class="btn small f" data-ja="hold" data-j="${esc(j.id)}">Hold</button>`) : ''}<button class="btn small danger f" data-ja="cancel" data-j="${esc(j.id)}">Cancel</button></td></tr>`).join('')}</table>`
+      : '<p class="muted">Nothing waiting to print.</p>'}</div>`;
+  $('#add').onclick = addPrinter;
+  $('#settings').onclick = () => H.call('print.settings').catch(H.fail);
+  $$('[data-pa]').forEach(b => b.onclick = async () => {
+    const a = b.dataset.pa, p = b.dataset.p;
+    if (a === 'remove' && !await H.confirm('Remove this printer?', `<p><b>${esc(p)}</b> is removed from this device. You can add it again later.</p>`, 'Remove', true)) return;
+    try { await H.call('print.printer', { action: a, printer: p }); H.toast({ pause: 'Paused', resume: 'Printing again', test: 'Test page sent', default: 'Now the default printer', remove: 'Removed' }[a]); loadPrinters(); } catch (e) { H.fail(e); }
+  });
+  $$('[data-ja]').forEach(b => b.onclick = async () => {
+    try { await H.call('print.job', { action: b.dataset.ja, job: b.dataset.j }); H.toast({ cancel: 'Cancelled', hold: 'Held', release: 'Printing' }[b.dataset.ja]); loadPrinters(); } catch (e) { H.fail(e); }
+  });
+}
+
+async function addPrinter() {
+  H.dialog({ title: 'Add a printer', html: '<p><span class="spinner"></span> Looking for printers on your network and USB… (about 10 seconds)</p>', buttons: [{ label: 'Cancel', value: false }] });
+  let found;
+  try { found = (await H.job('print.discover')).devices || []; } catch (e) { H.closeDialog(null); H.fail(e); return; }
+  if (!$('#layer').firstChild) return;   // cancelled while looking
+  H.closeDialog(null);
+  if (!found.length) { await H.dialog({ title: 'No printers found', html: '<p class="muted">Check that the printer is on and on the same network (or plugged in), then try again. Printer settings can add one by its address.</p>' }); return; }
+  const pick = await H.dialog({ title: 'Add a printer', html: `<p class="muted">Pick your printer:</p><div class="printers">${found.map((d, i) => `<button class="btn f" style="text-align:left;white-space:normal" data-pick="${i}"><b>${esc(d.info || d.makeModel || d.uri)}</b><br><small class="muted">${esc(d.makeModel && d.makeModel !== d.info ? d.makeModel + ' · ' : '')}${esc(d.uri.split(':')[0])}</small></button>`).join('')}</div>`,
+    buttons: [{ label: 'Cancel', value: null }], onOpen: dlg => $$('[data-pick]', dlg).forEach(b => b.onclick = () => H.closeDialog(+b.dataset.pick)) });
+  if (pick == null) return;
+  const d = found[pick];
+  const suggested = (d.info || d.makeModel || 'Printer').replace(/[^A-Za-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'Printer';
+  const name = await H.prompt('Name the printer', 'A short name (letters, digits, dots and dashes):', suggested);
+  if (!name) return;
+  H.toast('Adding the printer…');
+  try { await H.call('print.add', { name, uri: d.uri, info: d.info || d.makeModel || '' }); } catch (e) { H.fail(e); return; }
+  H.toast('Printer added'); loadPrinters();
+}
+
+// ---------------------------------------------------------------- scanner
+async function findScanners() {
+  S.devices = null; S.busy = 'Looking for scanners (network scanners take a few seconds)…'; render();
+  try { S.devices = (await H.job('scan.devices')).devices; } catch (e) { S.devices = []; S.busy = ''; render(); H.fail(e); return; }
+  S.busy = '';
+  if (S.devices.length && !S.devices.some(d => d.id === S.device)) { S.device = S.devices[0].id; await loadOptions(); }
+  render();
+}
+async function loadOptions() {
+  try {
+    S.opts = await H.call('scan.options', { device: S.device });
+    if (!S.opts.modes.includes(S.mode)) S.mode = S.opts.modes[0];
+    if (!S.opts.resolutions.includes(S.res)) S.res = S.opts.resolutions.includes(300) ? 300 : S.opts.resolutions[Math.floor(S.opts.resolutions.length / 2)];
+    S.source = S.opts.sources[0] || '';
+  } catch (e) { S.opts = null; H.fail(e); }
+}
+const modeName = m => ({ Color: 'Colour', Gray: 'Grey', Lineart: 'Black & white' }[m] || m);
+function renderScanner() {
+  const o = S.opts;
+  const devs = S.devices;
+  $('#main').innerHTML = `<div class="scan"><div class="scroll opts">
+      ${devs == null ? `<p><span class="spinner"></span> ${esc(S.busy)}</p>` : !devs.length ? '<p class="muted">No scanner found. Turn it on, connect it to the same network (or USB), then press Look again.</p>'
+        : `<div><label>Scanner</label><select class="inp f" id="dev">${devs.map(d => `<option value="${esc(d.id)}"${d.id === S.device ? ' selected' : ''}>${esc([d.vendor, d.model].filter(Boolean).join(' ') || d.id)}</option>`).join('')}</select></div>`}
+      <button class="btn small f" id="look">Look again</button>
+      ${o ? `<div><label>Colour</label><div class="chips">${o.modes.map(m => `<button class="chip f${m === S.mode ? ' on' : ''}" data-mode="${esc(m)}">${esc(modeName(m))}</button>`).join('')}</div></div>
+      <div><label>Resolution (dpi)</label><div class="chips">${o.resolutions.map(r => `<button class="chip f${r === S.res ? ' on' : ''}" data-res="${r}">${r}</button>`).join('')}</div></div>
+      ${o.sources.length > 1 ? `<div><label>Paper from</label><div class="chips">${o.sources.map(s => `<button class="chip f${s === S.source ? ' on' : ''}" data-src="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>` : ''}
+      <div><label>Area</label><div class="chips">${AREAS.map(([id, l]) => `<button class="chip f${(S.areaId || 'all') === id ? ' on' : ''}" data-area="${id}">${l}</button>`).join('')}</div><small class="faint">Or drag on the preview.</small></div>
+      <div><label>Save as</label><div class="chips"><button class="chip f${S.format === 'pdf' ? ' on' : ''}" data-fmt="pdf">PDF (several pages)</button><button class="chip f${S.format === 'png' ? ' on' : ''}" data-fmt="png">PNG pictures</button></div></div>
+      <div class="row"><button class="btn f" id="prev"${S.busy ? ' disabled' : ''}>Preview</button><button class="btn primary f" id="scan"${S.busy ? ' disabled' : ''}>Scan${S.pages.length ? ' another page' : ''}</button></div>` : ''}
+      ${S.busy && devs ? `<div><div class="prog"><i id="pct" style="width:${S.pct || 3}%"></i></div><span class="muted">${esc(S.busy)}</span> <button class="btn small f" id="stop">Stop</button></div>` : ''}
+      ${S.pages.length ? `<div><label>Scanned pages</label><div class="pages">${S.pages.map((p, i) => `<div class="pg"><img src="${p.image}" alt=""><span>${i + 1}</span></div>`).join('')}</div>
+        <div class="row" style="margin-top:.5em"><button class="btn primary f" id="save">Save ${S.format === 'pdf' ? 'as PDF' : 'as PNG'}</button><button class="btn small danger f" id="clear">Start over</button></div></div>` : ''}
+    </div>
+    <div class="glass" id="glass">${S.preview || o ? `<div class="paper" id="paper">${S.preview ? `<img src="${S.preview}" alt="Preview">` : '<div class="empty" style="position:absolute;inset:0;display:grid;place-items:center">Press Preview to see what\'s on the glass</div>'}<div class="area" id="area" hidden></div></div>` : '<div class="empty">Scans show up here.</div>'}</div></div>`;
+  layoutPaper();
+  if ($('#dev')) $('#dev').onchange = async e => { S.device = e.target.value; S.preview = null; await loadOptions(); render(); };
+  $('#look').onclick = findScanners;
+  $$('[data-mode]').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; render(); $(`[data-mode="${CSS.escape(S.mode)}"]`)?.focus(); });
+  $$('[data-res]').forEach(b => b.onclick = () => { S.res = +b.dataset.res; render(); $(`[data-res="${S.res}"]`)?.focus(); });
+  $$('[data-src]').forEach(b => b.onclick = () => { S.source = b.dataset.src; render(); $(`[data-src="${CSS.escape(S.source)}"]`)?.focus(); });
+  $$('[data-fmt]').forEach(b => b.onclick = () => { if (S.pages.length && b.dataset.fmt !== S.format) { H.toast('Save or start over before changing the format'); return; } S.format = b.dataset.fmt; render(); $(`[data-fmt="${S.format}"]`)?.focus(); });
+  $$('[data-area]').forEach(b => b.onclick = () => { setArea(b.dataset.area); render(); $(`[data-area="${b.dataset.area}"]`)?.focus(); });
+  if ($('#prev')) $('#prev').onclick = () => doScan(true);
+  if ($('#scan')) $('#scan').onclick = () => doScan(false);
+  if ($('#stop')) $('#stop').onclick = () => S.job && S.job.cancel();
+  if ($('#save')) $('#save').onclick = save;
+  if ($('#clear')) $('#clear').onclick = async () => { if (await H.confirm('Start over?', '<p>The scanned pages that weren\'t saved are thrown away.</p>', 'Start over', true)) { await H.call('scan.clear', {}).catch(() => {}); S.pages = []; render(); } };
+}
+function setArea(id) {
+  S.areaId = id; const a = AREAS.find(x => x[0] === id); const o = S.opts || { width: 215.9, height: 297 };
+  S.area = a && a[2] ? { l: 0, t: 0, w: Math.min(a[2][0], o.width), h: Math.min(a[2][1], o.height) } : null;
+}
+function layoutPaper() {
+  const g = $('#glass'), p = $('#paper'); if (!g || !p) return;
+  const o = S.opts || { width: 215.9, height: 297 };
+  const gw = g.clientWidth - 24, gh = g.clientHeight - 24, ratio = o.width / o.height;
+  const w = Math.max(50, Math.min(gw, gh * ratio)), h = w / ratio;
+  p.style.width = w + 'px'; p.style.height = h + 'px';
+  const mm = w / o.width;
+  const ar = $('#area');
+  if (S.area) { Object.assign(ar.style, { left: S.area.l * mm + 'px', top: S.area.t * mm + 'px', width: S.area.w * mm + 'px', height: S.area.h * mm + 'px' }); ar.hidden = false; } else ar.hidden = true;
+  // Drag to choose the area (mouse or touch).
+  let start = null;
+  p.onpointerdown = e => { const r = p.getBoundingClientRect(); start = [(e.clientX - r.left) / mm, (e.clientY - r.top) / mm]; p.setPointerCapture(e.pointerId); };
+  p.onpointermove = e => {
+    if (!start) return; const r = p.getBoundingClientRect(); const x = Math.max(0, Math.min(o.width, (e.clientX - r.left) / mm)), y = Math.max(0, Math.min(o.height, (e.clientY - r.top) / mm));
+    S.area = { l: Math.min(start[0], x), t: Math.min(start[1], y), w: Math.abs(x - start[0]), h: Math.abs(y - start[1]) }; S.areaId = 'custom';
+    Object.assign(ar.style, { left: S.area.l * mm + 'px', top: S.area.t * mm + 'px', width: S.area.w * mm + 'px', height: S.area.h * mm + 'px' }); ar.hidden = false;
+  };
+  p.onpointerup = () => { start = null; if (S.area && (S.area.w < 5 || S.area.h < 5)) { S.area = null; S.areaId = 'all'; } render(); };
+}
+window.addEventListener('resize', () => S.tab === 'scanner' && layoutPaper());
+
+async function doScan(preview) {
+  if (!S.device) return;
+  S.busy = preview ? 'Scanning a quick preview…' : 'Scanning…'; S.pct = 3; render();
+  const j = H.job(preview ? 'scan.preview' : 'scan.page', { device: S.device, mode: S.mode, resolution: S.res, format: S.format, source: S.source, area: S.area }, st => { if (st.pct != null) { S.pct = st.pct; const el = $('#pct'); if (el) el.style.width = st.pct + '%'; } });
+  S.job = j;
+  try {
+    const r = await j;
+    if (preview) S.preview = r.image; else { S.pages.push({ image: r.image }); H.toast(`Page ${S.pages.length} scanned`); }
+  } catch (e) { H.fail(e); }
+  S.busy = ''; S.job = null; render();
+  $(preview ? '#scan' : (S.format === 'pdf' ? '#scan' : '#save'))?.focus();
+}
+async function save() {
+  const name = await H.prompt('Save the scan', 'A name for it (saved in Documents › Scans):', '');
+  if (name == null) return;
+  try {
+    const r = await H.call('scan.save', { name, resolution: S.res });
+    S.pages = []; render();
+    const v = await H.dialog({ title: 'Saved', html: `<p>${r.files.map(f => esc(f.slice(f.lastIndexOf('/') + 1))).join('<br>')}</p><p class="muted">In ${esc(r.folder)}</p>`, buttons: [{ label: 'Open the folder', value: 'open' }, { label: 'Done', value: true, primary: true }] });
+    if (v === 'open') H.call('scan.openFolder').catch(H.fail);
+  } catch (e) { H.fail(e); }
+}
+
+// ---------------------------------------------------------------- without the app: sample data
+H.demo.call = (m) => {
+  if (m === 'print.state') return { cups: true, printers: [{ name: 'HP_LaserJet_M404', info: 'HP LaserJet Pro M404dn', default: true, state: 'idle', enabled: true, location: 'Office', uri: 'ipp://10.0.0.5/ipp/print' }, { name: 'Canon_TS5000', info: 'Canon TS5000 series', state: 'idle', enabled: false, reason: 'Paused', uri: 'dnssd://Canon' }],
+    jobs: [{ id: 'HP_LaserJet_M404-12', printer: 'HP_LaserJet_M404', user: 'sam', size: 245760, when: 'Wed 22 Oct 2026 10:00:00', mine: true, held: false }] };
+  if (m === 'scan.options') return { modes: ['Color', 'Gray', 'Lineart'], resolutions: [75, 150, 300, 600], width: 215.9, height: 297, sources: [] };
+  throw 'This is a preview.';
+};
+H.demo.job = (n) => n === 'scan.devices' ? { devices: [{ id: 'airscan:e0:Canon TS5000', vendor: 'Canon', model: 'TS5000 series', type: 'eSCL network scanner' }] } : { devices: [] };
+
+render(); loadPrinters();
+</script>
+</body>
+</html>
