@@ -30,7 +30,8 @@ Scope {
         if (worker.busy && shown) { SettingsNav.toast("Wait for the package that's being installed to finish."); return; }
         file = p; info = null; loadError = ""; phase = ""; error = ""; apps = []; confirmRemove = false;
         shown = true;
-        reader.run(["inspect", p], r => { inst.info = r; inst.apps = r.apps || []; },
+        // Focus on what to do (Install, or Open/Reinstall) once the package is read, not on Close.
+        reader.run(["inspect", p], r => { inst.info = r; inst.apps = r.apps || []; if (SettingsNav.debNav) Qt.callLater(() => SettingsNav.debNav.focusFirst()); },
             e => inst.loadError = e);
     }
     function close() { if (!worker.busy) shown = false; }
