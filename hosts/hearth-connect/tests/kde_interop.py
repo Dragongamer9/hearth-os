@@ -23,6 +23,9 @@ results = []
 
 def ok(name, cond, detail='', required=True):
     results.append((name, bool(cond), required, detail))
+    level = 'notice' if cond else ('error' if required else 'warning')
+    msg = (str(detail)[:900] if detail else '').replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+    print('::%s title=%s::%s' % (level, ('ok: ' if cond else 'FAILED: ' if required else 'warn: ') + name.replace(':', ' -').replace(',', ';'), msg or '-'), flush=True)
     print(('PASS ' if cond else ('FAIL ' if required else 'WARN ')) + name + (' :: ' + detail if detail else ''), flush=True)
     return cond
 
