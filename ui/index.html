@@ -278,6 +278,10 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .sfield{display:flex;align-items:center;gap:12px;background:var(--bg2);border-radius:10px;padding:14px 16px;font-size:18px;min-height:54px}
 .sfield .q:empty:before{content:attr(data-ph);color:var(--faint)}
 .sfield .q.mono{letter-spacing:.14em}
+.sfield[data-f]{cursor:text}
+/* No on-screen keyboard (keyboard or mouse): a short line of what to do, and buttons for the mouse */
+.kbnone{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px var(--gut);background:var(--panel);border-top:1px solid var(--line);font-size:14px}
+.kbnone .muted{flex:1;min-width:200px}.kbnone b{color:var(--text);font-weight:600}.kbnone .pill svg{width:16px;height:16px}
 .caret{width:2px;height:22px;background:var(--accent);animation:blink 1s steps(2) infinite}
 @keyframes blink{50%{opacity:0}}
 .sres{display:flex;gap:10px;margin:14px 0;min-height:54px;overflow-x:auto;scrollbar-width:none;padding:4px}
@@ -1447,6 +1451,7 @@ function applyLook(){
   b.classList.toggle('reduce-motion', !!LOOK.reduceMotion);
   b.classList.toggle('hc', !!LOOK.highContrast);   // Accessibility: high contrast
   b.classList.toggle('no-battpct', !LOOK.battPct);
+  if(typeof applyMk==='function') applyMk();
   b.style.zoom = (TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[2];
   renderTopNav(); if(typeof tick==='function') tick();
 }
@@ -2124,7 +2129,10 @@ function themeCard(t){
 function pageAppearance(){
   const ts=(TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[1];
   const wl=DESKWALL.v==null?'':(WALLS.find(w=>w[0]===DESKWALL.v)||['','Your picture'])[1];
-  return shead('Themes') + `<div class="opts">${THEME_PACKS.map(themeCard).join('')}</div>`
+  const mf=LOOK.madeFor||'auto';
+  return shead('Made for') + `<div class="row"><span class="ricon">${I.kbd}</span><div class="rt"><b>Made for</b><small>${mf==='auto'?`Automatic: mouse &amp; keyboard while you use them (now: <span id="mfNow">${mkOn()?'mouse &amp; keyboard':'controller'}</span>), controller when you pick one up`:mf==='mk'?'Hover actions, right-click menus and key hints. The on-screen keyboard only comes up from a controller':'Big targets and button prompts. The on-screen keyboard comes up for every text field'}</small></div>
+      <div class="seg">${MADE_FOR.map(([k,l])=>`<button class="${mf===k?'on':''}" data-f data-k="ap-mf-${k}" data-act="madeFor" data-v="${k}">${l}</button>`).join('')}</div></div>`
+    + shead('Themes') + `<div class="opts">${THEME_PACKS.map(themeCard).join('')}</div>`
     + note(`An accent color, background and sounds together${LINUX?', and the desktop\'s wallpaper':''}. Change any of them on its own below or in your profile.`)
     + shead('Home layout')
     + `<div class="layouts">${LAYOUTS.map(l=>`<button class="lcard ${LOOK.layout===l.id?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="layout" data-v="${l.id}">
@@ -4625,7 +4633,7 @@ function deskType(text){
 }
 async function deskKeyboard(){
   deskReleaseAll();
-  const t=await openPrompt({title:'Type into Linux', value:''});
+  const t=await openPrompt({title:'Type into Linux', value:'', osk:true});   // asked for from the controller or the bar
   if(t) deskType(t);
   if(DESK.rfb) try{ DESK.rfb.focus({preventScroll:true}); }catch(e){}
 }
@@ -5160,6 +5168,49 @@ function kbGlyph(c){
   const st=promptStyle(); if(st!=='pad') return '';
   return {bksp:'Y',space:'X',shift:'LB',sym:'RB',done:'☰'}[c]||'';
 }
+// ---------- when the on-screen keyboard shows ----------
+// Only for a controller (or a touchscreen with no keyboard): after keyboard or mouse input, a text field just takes
+// what's typed on the real keyboard, and the on-screen keyboard stays away. Every text field (search and the text
+// prompt) asks oskShown(); a controller's A on the field brings the keyboard up (oskField).
+function oskWanted(){
+  if(!INPUT.seen) return true;              // nothing pressed yet (a controller-only handheld): show it
+  if(INPUT.last==='pad') return true;
+  if(INPUT.last==='kbd') return false;      // typing on a real keyboard never brings it up
+  if(INPUT.touch) return (LOOK.madeFor||'auto')==='pad' || ((LOOK.madeFor||'auto')!=='mk' && !INPUT.hwKbd);
+  return false;                             // the mouse
+}
+const oskShown = t => !!(t && t.forceOsk) || oskWanted();
+// Instead of the keyboard: what to do, plus buttons for the mouse (and one to bring the keyboard up anyway).
+function kbNone(pre, actName){
+  return `<div class="kbnone"><span class="muted">Type on your keyboard · <b>Enter</b> ${pre==='sk'?'opens the first match':'finishes'} · <b>Esc</b> cancels</span>
+    <button class="pill" data-f data-k="${pre}-osk" data-act="oskShow" data-v="${pre}">${I.kbd}On-screen keyboard</button>
+    <button class="pill" data-f data-k="${pre}-done" data-act="${actName}" data-c="${pre==='sk'?'enter':'done'}">${pre==='sk'?'Open':'Done'}</button></div>`;
+}
+// The OSK on or off for the open search / prompt, with the selection kept where it makes sense.
+function oskRefresh(){
+  const top=S.layers.at(-1);
+  if(top!=='prompt' && top!=='search') return;
+  const t = top==='prompt' ? prompt : SKB; if(!t) return;
+  const box=$('#'+top), had=!!box.querySelector('.kb'), want=oskShown(t);
+  if(had===want) return;
+  const pre = top==='prompt' ? 'pk' : 'sk';
+  // The selection stays where it was when it still can (the field, a result); else the keyboard's first letter or
+  // the field.
+  const was = focused && box.contains(focused) ? focused.dataset.k : null;
+  if(top==='prompt') renderPrompt(); else renderSearch();
+  const el = (was && box.querySelector(`[data-k="${CSS.escape(was)}"]`)) || box.querySelector(`[data-k="${want?pre+'-1-0':pre+'-field'}"]`);
+  if(el) setFocus(el,true);
+}
+function oskField(which){
+  const t = which==='prompt' ? prompt : SKB; if(!t) return;
+  // A controller (or a finger with no keyboard) on the field brings the keyboard up; Enter on a keyboard finishes.
+  if(INPUT.last==='pad' || (INPUT.touch && INPUT.last==='mouse' && !INPUT.hwKbd)){
+    t.forceOsk=true; oskRefresh();
+    const k=$(`#${which} [data-k="${which==='prompt'?'pk':'sk'}-1-0"]`); if(k && INPUT.last==='pad') setFocus(k,true);   // on to the letters
+    return;
+  }
+  if(INPUT.last==='kbd') return which==='prompt' ? promptSubmit() : typeKey('enter');
+}
 function kbHTML(t, pre, actName){
   const up=(t.shift||t.caps)&&!t.sym;
   return `<div class="kb">${(t.sym?KB_SYMS:KB_LETTERS).map((r,ri)=>`<div class="kbrow">${r.map((c,ci)=>{
@@ -5198,9 +5249,10 @@ function renderSearch(keepKey){
   const a=allowedList();
   const res = q ? GAMES.filter(g=>(!a || a.includes(g.id)) && (g.title||'').toLowerCase().includes(q)).slice(0,8) : [];
   const t=Object.assign(SKB,{text:query});
-  $('#search').innerHTML = `<div class="kbtop"><div class="sfield">${I.search}${kbField(t,'','Search your library')}</div>
-    <div class="sres">${res.map(g=>`<button class="row" data-f data-k="sr-${esc(g.id)}" data-act="game" data-id="${esc(g.id)}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('') || `<div class="muted" style="padding:16px 4px">${q?'No matches':'Type with the keyboard below, or a real keyboard'}</div>`}</div></div>
-    ${kbHTML(Object.assign(t,{enterLabel:'Search'}),'sk','key')}`;
+  const osk=oskShown(SKB);
+  $('#search').innerHTML = `<div class="kbtop"><div class="sfield" data-f data-k="sk-field" data-act="oskField" data-v="search">${I.search}${kbField(t,'','Search your library')}</div>
+    <div class="sres">${res.map(g=>`<button class="row" data-f data-k="sr-${esc(g.id)}" data-act="game" data-id="${esc(g.id)}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('') || `<div class="muted" style="padding:16px 4px">${q?'No matches':osk?'Type with the keyboard below, or a real keyboard':'Type the name of a game'}</div>`}</div></div>
+    ${osk?kbHTML(Object.assign(t,{enterLabel:'Search'}),'sk','key'):kbNone('sk','key')}`;
   if(keepKey){ const el=$(`#search [data-k="${CSS.escape(keepKey)}"]`); if(el) setFocus(el,true); }
 }
 
@@ -5218,13 +5270,14 @@ function sheetPick(i){ const it=sheet && sheet.items[i]; if(!it) return; sheet.p
 // ---------- text prompt with on-screen keyboard (passwords etc.) ----------
 let prompt=null;
 const OSK_SYM=['1234567890','!@#$%^&*()','-_=+[]{};:',"'\",.?/\\|~`"];
-function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',caret:null,shift:false,caps:false,sym:false,show:!o.secret,res,done:false}; openLayer('prompt','pk-1-0'); }); }
+// o.osk: show the on-screen keyboard even after keyboard or mouse input (it was asked for, e.g. the desktop's keyboard).
+function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',caret:null,shift:false,caps:false,sym:false,show:!o.secret,res,done:false,forceOsk:!!o.osk}; openLayer('prompt',oskShown(prompt)?'pk-1-0':'pk-field'); }); }
 function renderPrompt(keepK){
   const p=prompt; if(!p) return;
   $('#prompt').innerHTML = `<div class="kbtop"><div class="ptitle">${esc(p.title)}</div>
-    <div class="sfield">${p.secret?I.lock:I.kbd}${kbField(p,'',p.secret?'Password':'Type here',p.secret,p.show)}
+    <div class="sfield" data-f data-k="pk-field" data-act="oskField" data-v="prompt">${p.secret?I.lock:I.kbd}${kbField(p,'',p.secret?'Password':'Type here',p.secret,p.show)}
       ${p.secret?`<button class="pill" style="margin-left:auto" data-f data-k="pk-show" data-act="pkey" data-c="show">${p.show?'Hide':'Show'}</button>`:''}</div></div>
-    ${kbHTML(Object.assign(p,{enterLabel:'Done'}),'pk','pkey')}`;
+    ${oskShown(p)?kbHTML(Object.assign(p,{enterLabel:'Done'}),'pk','pkey'):kbNone('pk','pkey')}`;
   if(keepK){ const el=$(`#prompt [data-k="${keepK}"]`); if(el) setFocus(el,true); }
 }
 function promptKey(c){
@@ -5412,7 +5465,7 @@ function act(el){
     case 'loginWake': return call('login.setLockOnWake',{on:!(LOGIN.s&&LOGIN.s.lockOnWake)}).then(r=>{ LOGIN.s=r; refreshUI(); toast(r.lockOnWake?'Asks for your password after sleep':'Wakes without asking for a password'); }).catch(e=>toast(e.message));
     case 'menu': return toggleLayer('menu');
     case 'qam': closeAll(); if(d.tab) S.qtab=d.tab; return openLayer('qam');
-    case 'search': closeAll(); query=''; return openLayer('search');
+    case 'search': closeAll(); query=''; SKB.forceOsk=false; return openLayer('search', oskWanted()?'sk-0-0':'sk-field');
     case 'power': closeAll(); return openLayer('power');
     case 'back': return back();
     case 'nav': closeAll(); if(S.view!==d.view){ S.history=[]; navigate(d.view,{},false);} return;
@@ -5575,6 +5628,9 @@ function act(el){
     case 'padSwap': { const k='swap'+d.v; PAD[k]=!PAD[k]; try{ localStorage.setItem('nimbus.'+k, PAD[k]?'1':'0'); }catch(e){} return render('ctl-swap'+d.v.toLowerCase()); }
     case 'inputMode': INPUT.mode=d.v; try{ localStorage.setItem('nimbus.inputMode', d.v); }catch(e){} renderFooter(); return render('ctl-'+d.v);
     case 'pkey': return promptKey(d.c);
+    case 'oskField': return oskField(d.v);
+    case 'madeFor': LOOK.madeFor=d.v; saveLook(); renderFooter(); return render('ap-mf-'+d.v);
+    case 'oskShow': { const t = d.v==='pk' ? prompt : SKB; if(t){ t.forceOsk=true; oskRefresh(); } return; }
     case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); if(d.tab==='apps') loadApps(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
     case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
     case 'gsRetry': loadGameSet(S.game); return render(null,true);
@@ -8039,16 +8095,34 @@ async function setPowerMode(mode){
 // ---------- input modes & footer prompts ----------
 // Prompts follow whatever you used last: controller buttons, keyboard keys, or clickable buttons for the mouse.
 // Settings › Controls can pin them to one style.
-const INPUT = {last:'kbd', mode:'auto'};
+// INPUT.seen: anything pressed yet. INPUT.touch: the last pointer was a finger. INPUT.hwKbd: a real keyboard typed.
+const INPUT = {last:'kbd', mode:'auto', seen:false, touch:false, hwKbd:false};
 try{ INPUT.mode = localStorage.getItem('nimbus.inputMode') || 'auto'; }catch(e){}
-function promptStyle(){ return INPUT.mode==='auto' ? INPUT.last : INPUT.mode; }
+// Settings › Appearance › Made for: Automatic turns the mouse & keyboard behaviour (no on-screen keyboard, hover
+// actions, key hints, right-click menus) on with keyboard or mouse input and off when a controller is used.
+const MADE_FOR = [['auto','Automatic'],['mk','Mouse & keyboard'],['pad','Controller']];
+function mkOn(){ const m=LOOK.madeFor||'auto'; return m==='mk' || (m==='auto' && (INPUT.last==='kbd' || (INPUT.last==='mouse' && !INPUT.touch))); }
+function applyMk(){ const on=mkOn(); document.body.classList.toggle('mk', on); document.body.classList.toggle('mk-pad', !on); }
+function promptStyle(){
+  if(INPUT.mode!=='auto') return INPUT.mode;
+  const m=LOOK.madeFor||'auto';
+  if(m==='pad') return 'pad';
+  if(mkOn()) return 'kbd';           // key hints (they're buttons too, for the mouse)
+  return INPUT.last;
+}
 let NAV_AT=0;   // when the controller or keyboard last moved the selection (the pointer doesn't take it back right after)
 function setInput(kind){
   if(kind!=='mouse') NAV_AT=performance.now();
+  INPUT.seen=true;
   if(INPUT.last===kind) return;
   INPUT.last=kind;
   document.body.classList.toggle('pad-mode', kind==='pad');
+  applyMk();
   renderFooter();
+  { const n=$('#mfNow'); if(n) n.innerHTML = mkOn()?'mouse &amp; keyboard':'controller'; }
+  // A text field open: a controller brings the on-screen keyboard up, the real keyboard sends it away (the mouse
+  // leaves it as it is: redrawing it under the pointer would swallow the click).
+  if(kind==='kbd'||kind==='pad') oskRefresh();
   // Update the label in place: re-rendering here would swallow the click that caused it.
   const n=$('#inputNow'); if(n) n.textContent = INPUT_NAMES[kind];
 }
@@ -8117,7 +8191,7 @@ function input(k){
     case 'b': return back();
     case 'start': return top==='prompt' ? promptSubmit() : top==='search' ? back() : toggleLayer('menu');
     case 'select': case 'guide': return top==='prompt'||top==='sheet' ? null : toggleLayer('qam');
-    case 'y': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (closeAll(), query='', openLayer('search'));
+    case 'y': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (closeAll(), query='', SKB.forceOsk=false, openLayer('search', oskWanted()?'sk-0-0':'sk-field'));
     case 'x': return top==='prompt' ? promptKey('space') : top==='search' ? typeKey('space') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
     case 'lb': case 'rb':
       if(top==='prompt') return promptKey(k==='lb'?'shift':'sym');
@@ -8226,6 +8300,8 @@ const KEY_EXTRA = {Home:()=>{ closeAll(); if(S.view!=='home'){ S.history=[]; nav
 // Steam (running in the background) can turn controller buttons into keys for the window in front: the d-pad
 // into arrow keys, A into Enter. With the controller also read here, every press counted twice, and the
 // selection jumped two places. Navigation keys that arrive while a controller button is held are dropped.
+// A key within 250 ms of a controller press is the controller's driver (Steam) repeating it as a key.
+function kbdEcho(){ const t=Math.max(0,...Object.values(PAD_AT)); return performance.now()-t < 250; }
 const NAV_KEYS=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter',' ','Escape','Backspace','Tab','w','a','s','d']);
 function padHeldNow(){
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
@@ -8243,6 +8319,9 @@ document.addEventListener('keydown', e=>{
     send({type:'log', text:'debug '+JSON.stringify({id, art:g&&g.art, imgs})});
     toast('Debug info written to bridge.log'); e.preventDefault(); return;
   }
+  // A real keyboard typing (a character, not a key a controller's driver could send): this is a keyboard.
+  if(e.key.length===1 && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key!==' ' || !kbdEcho())){ INPUT.hwKbd=true; if(prompt) prompt.forceOsk=false; SKB.forceOsk=false; setInput('kbd'); oskRefresh(); }
+  else if((S.layers.at(-1)==='prompt'||S.layers.at(-1)==='search') && !kbdEcho()) setInput('kbd');
   if(S.layers.at(-1)==='prompt' && prompt){
     if(e.key==='Enter'){ e.preventDefault(); return promptSubmit(); }
     if(e.key==='Escape'){ e.preventDefault(); return back(); }
@@ -8265,7 +8344,11 @@ document.addEventListener('keydown', e=>{
   if(performance.now()-(PAD_AT[k]||0) < 250 && !e.ctrlKey && !e.altKey){ logInput('key '+e.key+' dropped (echo of the controller)'); return; }
   setInput('kbd'); input(k);
 });
-document.addEventListener('pointerdown', e=>{ if(e.pointerType==='mouse'||e.pointerType==='pen') setInput('mouse'); else if(e.pointerType==='touch') setInput('mouse'); });
+document.addEventListener('pointerdown', e=>{
+  const touch=e.pointerType==='touch';
+  if(INPUT.touch!==touch){ INPUT.touch=touch; if(INPUT.last==='mouse'){ applyMk(); renderFooter(); } }
+  setInput('mouse');
+});
 document.addEventListener('click', e=>{
   const el=e.target.closest('[data-act],[data-f]'); if(!el) return;
   if(el.dataset.f!==undefined) setFocus(el,true);
