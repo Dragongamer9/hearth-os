@@ -1,3 +1,5 @@
+> **Archived (2026-10-22).** Hearth OS on Ubuntu isn't built or offered for now, to focus on Anatase and Peppermint; it comes back after that. Systems on it can switch from Settings › Updates › Switch edition.
+
 # Hearth OS on Ubuntu (Beta Experimental)
 
 **Status: Beta Experimental.** The image recipe and its CI checks are written, but the image hasn't been built
