@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Placeholder: Hearth Documents. The icon pass (branch hearth-icons) replaces this. -->
+  <defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd166"/><stop offset="1" stop-color="#ff6a2b"/></linearGradient></defs>
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="#1c1512"/>
+  <path d="M36 20h40l20 20v66a4 4 0 0 1-4 4H36a4 4 0 0 1-4-4V24a4 4 0 0 1 4-4z" fill="none" stroke="#e8dccd" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M76 20v20h20" fill="none" stroke="#e8dccd" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M46 60h36M46 74h36M46 88h22" stroke="url(#f)" stroke-width="8" stroke-linecap="round"/>
+</svg>
