@@ -48,6 +48,14 @@ jobs:
         run: |
           cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
           node ui-check.js
+      # Quick Access, Hearth's own panel and the overlay over a game (ui-check.js draws both the same): pictures as
+      # notices (a JPEG in base64 pieces, title "SHOT <which> <n>"), one step each (10 notices a step at most).
+      - name: Quick Access picture (Hearth's panel)
+        if: always()
+        run: f=tools/qa-shots/main.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT qa-main $i::$part"; done || true
+      - name: Quick Access picture (overlay)
+        if: always()
+        run: f=tools/qa-shots/overlay.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT qa-overlay $i::$part"; done || true
       # Mantel on Windows (Ember): the taskbar, launcher, menus, clock panel, clipboard history, desktop icons,
       # Hearth Settings and Apps pages, driven through a stand-in for Ember's host.
       - name: Check Mantel's pages
