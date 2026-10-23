@@ -125,6 +125,12 @@ function isReadOnly(t) {
   return t.binary || t.tooBig || !!t.part || t.askedView || (!!t.path && !t.writable);
 }
 
+/// Whether the tab has changes that aren't saved, worked out now (markDirty updates the dot a moment later).
+function isDirty(t) {
+  t.dirty = t.metaDirty || !t.ed.view.state.doc.eq(t.saved);
+  return t.dirty;
+}
+
 function markDirty(tab) {
   clearTimeout(tab.dirtyTimer);
   tab.dirtyTimer = setTimeout(() => {
@@ -306,7 +312,7 @@ async function openPath(path, opts = {}) {
 /// Reads the tab's file again (asks first if there are changes). opts: mode, encoding.
 async function reload(t, opts = {}) {
   if (!t.path) return;
-  if (t.dirty && !opts.force) {
+  if (isDirty(t) && !opts.force) {
     const go = await dialog({ title: `Reload “${t.name}”?`, text: 'Your changes here are lost.', buttons: [{ label: 'Cancel', value: false }, { label: 'Reload', value: true, danger: true }] });
     if (!go) return;
   }
@@ -411,7 +417,7 @@ async function save(t, opts = {}) {
 }
 
 async function saveAll() {
-  for (const t of tabs.filter(x => x.dirty)) { activate(t); if (!await save(t)) return false; }
+  for (const t of tabs.filter(isDirty)) { activate(t); if (!await save(t)) return false; }
   return true;
 }
 
@@ -427,7 +433,7 @@ function askUnsaved(t) {
 
 async function closeTab(t) {
   if (!t) return;
-  if (t.dirty) {
+  if (isDirty(t)) {
     activate(t);
     const a = await askUnsaved(t);
     if (a === 'cancel') return;
@@ -450,7 +456,7 @@ function dropTab(t) {
 }
 
 async function closeWindow() {
-  const dirty = tabs.filter(t => t.dirty);
+  const dirty = tabs.filter(isDirty);
   if (dirty.length === 1) {
     activate(dirty[0]);
     const a = await askUnsaved(dirty[0]);
