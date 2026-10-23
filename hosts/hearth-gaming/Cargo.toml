@@ -13,15 +13,15 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "hearth-controller-lab"
-path = "src/bin/controller_lab.rs"
+path = "src/apps/controller_lab.rs"
 
 [[bin]]
 name = "hearth-saves"
-path = "src/bin/saves.rs"
+path = "src/apps/saves.rs"
 
 [[bin]]
 name = "hearth-mods"
-path = "src/bin/mods.rs"
+path = "src/apps/mods.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

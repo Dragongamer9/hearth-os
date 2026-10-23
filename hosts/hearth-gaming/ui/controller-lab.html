@@ -1,1 +1,383 @@
-<!doctype html><title>controller-lab</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controller Lab</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+.split { grid-template-columns:minmax(15em, 22em) 1fr; }
+.detail { display:grid; grid-template-rows:auto auto 1fr; gap:.7em; min-height:0; }
+.head { display:flex; flex-wrap:wrap; gap:.4em .8em; align-items:center; }
+.head h2 { margin:0; font-size:1.2em; }
+.board { display:grid; grid-template-columns:minmax(0, 1.7fr) minmax(14em, 1fr); gap:.8em; min-height:0; }
+.pad svg { width:100%; height:100%; max-height:62vh; display:block; }
+.pad { display:grid; place-items:center; min-height:0; }
+.pad .b { fill:var(--panel3); stroke:var(--line); stroke-width:1.5; transition:fill .05s; }
+.pad .b.on { fill:var(--ember); stroke:var(--flame); }
+.pad text { fill:var(--text); font:600 13px system-ui, sans-serif; text-anchor:middle; dominant-baseline:central; pointer-events:none; }
+.pad text.dim { fill:var(--muted); font-size:10px; }
+.pad .ring { fill:var(--bg2); stroke:var(--line); stroke-width:1.5; }
+.pad .dz { fill:rgba(255,209,102,.13); stroke:var(--flame); stroke-width:1; stroke-dasharray:3 3; }
+.pad .stick { fill:var(--ember); }
+.pad .stick.on { fill:var(--flame); stroke:#fff; stroke-width:2; }
+.pad .trail { fill:none; stroke:rgba(255,138,61,.35); stroke-width:1.5; }
+.pad .body { fill:var(--panel); stroke:var(--line); stroke-width:2; }
+.read { display:flex; flex-direction:column; gap:.6em; min-height:0; overflow:auto; padding:4px; }
+.meter { display:grid; grid-template-columns:5.5em 1fr 4.2em; gap:.6em; align-items:center; font-size:.85em; }
+.meter .bar { height:.7em; border-radius:9px; background:var(--panel3); overflow:hidden; }
+.meter .bar i { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--ember), var(--flame)); }
+.meter .v { text-align:right; font-variant-numeric:tabular-nums; color:var(--muted); }
+.num { font-variant-numeric:tabular-nums; }
+canvas { width:100%; height:5.2em; display:block; background:var(--bg2); border:1px solid var(--line); border-radius:10px; }
+.touch { position:relative; width:100%; aspect-ratio:2.2; background:var(--bg2); border:1px solid var(--line); border-radius:10px; }
+.touch i { position:absolute; width:1em; height:1em; margin:-.5em; border-radius:50%; background:var(--ember); box-shadow:0 0 12px var(--ember); }
+.touch.click { border-color:var(--ember); }
+.legend { display:flex; gap:.9em; font-size:.75em; color:var(--muted); }
+.legend span::before { content:""; display:inline-block; width:.7em; height:.7em; border-radius:2px; margin-right:.3em; background:var(--c); vertical-align:middle; }
+.tools { display:flex; flex-wrap:wrap; gap:.5em; }
+.testing { position:fixed; top:.6em; left:50%; transform:translateX(-50%); background:var(--ember); color:var(--ink); padding:.4em 1em; border-radius:99px; font-weight:700; z-index:5; font-size:.85em; }
+.hold { height:.3em; background:var(--ink); border-radius:9px; margin-top:.25em; width:0; }
+.player { display:inline-grid; place-items:center; width:2.3em; height:2.3em; border-radius:10px; background:var(--ember); color:var(--ink); font-weight:800; grid-row:span 2; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8h12a4 4 0 0 1 4 4l-1 5a2.5 2.5 0 0 1-4.4 1.2L15 16H9l-1.6 2.2A2.5 2.5 0 0 1 3 17l-1-5a4 4 0 0 1 4-4z"/><path d="M7 11v3M5.5 12.5h3M16 12h.01M18 14h.01"/></svg>Controller Lab</h1>
+    <span class="sub" id="sub"></span>
+  </header>
+  <main id="main" class="split"></main>
+  <footer id="foot"></footer>
+</div>
+<script src="kit.js"></script>
+<script>
+'use strict';
+const { $, esc } = KIT;
+const S = { pads: [], denied: [], sel: null, built: null, test: false, holdB: 0, hearthDz: null, hist: {}, rest: {}, sampler: null, pending: false };
+const LABELS = {
+  xbox: { south: 'A', east: 'B', west: 'X', north: 'Y', back: 'View', start: 'Menu', guide: 'Xbox', share: 'Share', lb: 'LB', rb: 'RB', lt: 'LT', rt: 'RT' },
+  playstation: { south: '✕', east: '○', west: '□', north: '△', back: 'Create', start: 'Options', guide: 'PS', share: 'Mute', lb: 'L1', rb: 'R1', lt: 'L2', rt: 'R2' },
+  nintendo: { south: 'B', east: 'A', west: 'Y', north: 'X', back: '−', start: '+', guide: 'Home', share: 'Capture', lb: 'L', rb: 'R', lt: 'ZL', rt: 'ZR' },
+};
+const pad = () => S.pads.find(p => p.id === S.sel);
+const pct = v => `${Math.round(v * 100)}%`;
+
+// ---------------------------------------------------------------- reading
+async function poll() {
+  if (S.pending) return;
+  S.pending = true;
+  try {
+    const r = await KIT.invoke('state');
+    const sig = JSON.stringify((r.pads || []).map(p => [p.id, p.player, p.name, p.driverLabel, p.battery, p.held, p.calibrated, !!p.motion, !!p.touch])) + JSON.stringify(r.denied);
+    S.pads = r.pads || []; S.denied = r.denied || []; S.unsupported = r.unsupported;
+    if (!pad()) S.sel = S.pads[0]?.id || null;
+    if (sig !== S.sig) { S.sig = sig; render(); }
+    live();
+    if (S.sampler) S.sampler(pad());
+  } catch (e) { /* the next one */ }
+  S.pending = false;
+}
+setInterval(poll, 33);
+
+// ---------------------------------------------------------------- drawing
+function render() {
+  const focusKey = document.activeElement?.dataset?.key;
+  $('#sub').textContent = S.pads.length ? `${S.pads.length} controller${S.pads.length > 1 ? 's' : ''}` : '';
+  const list = S.pads.map(p => `<button class="item f ${p.id === S.sel ? 'sel' : ''}" data-key="p:${esc(p.id)}" data-pad="${esc(p.id)}">
+      <span class="player">P${p.player}</span><span class="n">${esc(p.name || 'Controller')}</span><span class="end">${battery(p)}</span>
+      <span class="m">${esc(p.driverLabel)} · ${esc(p.bus)}</span></button>`).join('');
+  const denied = S.denied.length ? `<div class="panel small" style="margin-top:.6em"><b class="warn">Can't read:</b> ${S.denied.map(esc).join(', ')}<p class="note msg">This account isn't allowed to open ${S.denied.length > 1 ? 'them' : 'it'} (its permissions in /dev/input).</p></div>` : '';
+  const help = `<div class="panel small" style="margin-top:.6em"><span class="msg">Controller Lab reads controllers the way games do (evdev). Press anything on a controller to see it here.</span></div>`;
+  $('#main').innerHTML = `<div class="scroll"><div class="list">${list || `<div class="empty">${S.unsupported ? 'Controller Lab reads controllers on Hearth OS for now.' : 'No controllers found. Connect one by USB or Bluetooth (Settings › Bluetooth).'}</div>`}</div>${denied}${help}</div><section class="detail" id="detail">${detail()}</section>`;
+  S.built = pad()?.id || null;
+  footer();
+  const back = focusKey && document.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
+  if (back) back.focus({ preventScroll: true }); else if (!KIT.dialogOpen() && (!document.activeElement || document.activeElement === document.body)) KIT.focusFirst('.item.sel') || KIT.focusFirst();
+  live();
+}
+function footer() {
+  $('#foot').innerHTML = S.test ? '<span><b class="wide">Hold B</b>Leave the button test (or Esc)</span>'
+    : '<span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>Y</b>Button test</span><span><b>X</b>Rumble</span>';
+}
+function battery(p) {
+  const b = p.battery; if (!b) return '';
+  const t = b.pct != null ? `${b.pct}%` : (b.level || '');
+  return `<span class="badge ${b.pct != null && b.pct < 20 ? '' : 'good'}">🔋 ${esc(t)}${b.status === 'Charging' ? ' ⚡' : ''}</span>`;
+}
+function detail() {
+  const p = pad();
+  if (!p) return '<div class="empty">Connect a controller to test it.</div>';
+  const L = LABELS[p.family] || LABELS.xbox;
+  const badges = [`<span class="badge">${esc(p.driverLabel)}</span>`, `<span class="badge muted">${esc(p.bus)}</span>`, `<span class="badge muted">${esc(p.vendor)}:${esc(p.product)}</span>`,
+    p.rumble ? '<span class="badge good">Rumble</span>' : '', p.motion ? '<span class="badge sky">Motion sensors</span>' : '', p.touch ? '<span class="badge sky">Touchpad</span>' : '',
+    p.calibrated ? '<span class="badge">Calibrated</span>' : '', battery(p)].join(' ');
+  const held = p.held ? `<p class="warn small" style="margin:.3em 0 0">Another program holds this controller (Handheld Daemon does this to the built-in pad), so games get its input through a virtual pad: test that one instead.</p>` : '';
+  const sticks = ['l', 'r'].map(k => p.sticks[k] ? `<div class="meter"><span>${k === 'l' ? 'Left' : 'Right'} stick</span><span class="num small" id="st-${k}">0, 0</span><span class="v" id="dr-${k}">0%</span></div>` : '').join('');
+  const trig = ['l', 'r'].map(k => p.triggers[k] ? `<div class="meter"><span>${L[k + 't']}</span><span class="bar"><i id="tr-${k}"></i></span><span class="v" id="tv-${k}">0</span></div>` : '').join('');
+  const motion = p.motion ? `<div><div class="legend"><b style="color:var(--text)">Gyro</b><span style="--c:#ff8a3d">X</span><span style="--c:#6fd08c">Y</span><span style="--c:#66c0f4">Z</span><span class="num" id="gy-v"></span></div><canvas id="gyro" width="600" height="120"></canvas></div>
+    <div><div class="legend"><b style="color:var(--text)">Accelerometer</b><span style="--c:#ff8a3d">X</span><span style="--c:#6fd08c">Y</span><span style="--c:#66c0f4">Z</span><span class="num" id="ac-v"></span></div><canvas id="accel" width="600" height="120"></canvas></div>` : '';
+  const touch = p.touch ? `<div><div class="legend"><b style="color:var(--text)">Touchpad</b><span class="num" id="tp-v"></span></div><div class="touch" id="touch"></div></div>` : '';
+  return `<div><div class="head"><h2>Player ${p.player}: ${esc(p.name)}</h2></div><div style="display:flex;gap:.4em;flex-wrap:wrap;margin-top:.3em">${badges}</div>${held}</div>
+    <div class="tools">
+      <button class="btn primary f" data-key="t-test" data-act="test">Button test</button>
+      <button class="btn f" data-key="t-rumble" data-act="rumble" ${p.rumble ? '' : 'disabled'}>Rumble…</button>
+      <button class="btn f" data-key="t-drift" data-act="drift">Measure drift</button>
+      <button class="btn f" data-key="t-cal" data-act="calibrate">Calibrate…</button>
+      <button class="btn f" data-key="t-dz" data-act="deadzone">Dead zones…</button>
+      ${p.calibrated ? '<button class="btn f" data-key="t-reset" data-act="reset">Undo calibration</button>' : ''}
+    </div>
+    <div class="board">
+      <div class="panel pad">${svg(p, L)}</div>
+      <div class="panel read">${sticks}${trig}<div class="small msg" id="other">&nbsp;</div>${motion}${touch}
+        <p class="small msg" style="margin:0">Dead zone (dashed): ${S.hearthDz != null ? `${pct(S.hearthDz)} chosen in Dead zones` : 'what the driver reports'}. Drift: how far a stick is from the middle when you aren't touching it.</p></div>
+    </div>`;
+}
+function svg(p, L) {
+  const pr = p.present || {};
+  const btn = (id, x, y, r, label) => `<circle class="b" id="b-${id}" cx="${x}" cy="${y}" r="${r}"/><text x="${x}" y="${y}">${esc(label)}</text>`;
+  const rect = (id, x, y, w, h, label, rx = 8) => `<rect class="b" id="b-${id}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"/><text x="${x + w / 2}" y="${y + h / 2}">${esc(label)}</text>`;
+  const stick = (k, cx, cy) => `<g id="g-${k}"><circle class="ring" cx="${cx}" cy="${cy}" r="44"/><circle class="dz" id="dz-${k}" cx="${cx}" cy="${cy}" r="0"/><path class="trail" id="tl-${k}" d=""/><circle class="stick" id="sk-${k}" cx="${cx}" cy="${cy}" r="11"/></g>`;
+  const trigBar = (k, x) => `<rect class="ring" x="${x}" y="6" width="90" height="16" rx="8"/><rect id="tb-${k}" x="${x}" y="6" width="0" height="16" rx="8" fill="var(--ember)"/><text class="dim" x="${x + 45}" y="14">${esc(L[k + 't'])}</text>`;
+  return `<svg viewBox="0 0 520 330">
+    <path class="body" d="M120 70 H400 C470 70 510 120 510 190 C510 270 470 320 430 320 C400 320 380 300 360 270 H160 C140 300 120 320 90 320 C50 320 10 270 10 190 C10 120 50 70 120 70 Z"/>
+    ${trigBar('l', 60)}${trigBar('r', 370)}
+    ${rect('lb', 55, 34, 100, 26, L.lb, 12)}${rect('rb', 365, 34, 100, 26, L.rb, 12)}
+    ${stick('l', 135, 150)}
+    ${btn('north', 390, 110, 18, L.north)}${btn('west', 355, 145, 18, L.west)}${btn('east', 425, 145, 18, L.east)}${btn('south', 390, 180, 18, L.south)}
+    ${rect('up', 175, 205, 30, 30, '▲', 6)}${rect('down', 175, 265, 30, 30, '▼', 6)}${rect('left', 145, 235, 30, 30, '◀', 6)}${rect('right', 205, 235, 30, 30, '▶', 6)}
+    ${stick('r', 330, 250)}
+    ${rect('back', 205, 120, 44, 22, L.back, 11)}${rect('start', 271, 120, 44, 22, L.start, 11)}
+    ${pr.guide !== false ? btn('guide', 260, 90, 16, L.guide.length > 3 ? '⌂' : L.guide) : ''}
+    ${pr.share ? rect('share', 241, 152, 38, 18, L.share.length > 4 ? '●' : L.share, 9) : ''}
+    ${p.touch ? rect('touch', 215, 180, 90, 24, 'Touchpad', 8) : ''}
+    ${rect('ls', 105, 205, 60, 18, 'L3', 9)}${rect('rs', 300, 300, 60, 18, 'R3', 9)}
+    ${pr.paddles ? `${rect('p1', 60, 290, 34, 18, 'P1', 9)}${rect('p2', 100, 300, 34, 18, 'P2', 9)}${rect('p3', 386, 300, 34, 18, 'P3', 9)}${rect('p4', 426, 290, 34, 18, 'P4', 9)}` : ''}
+    ${pr.digitalTriggers ? '' : ''}
+  </svg>`;
+}
+
+// ---------------------------------------------------------------- live values (no redrawing of the page)
+function live() {
+  const p = pad();
+  if (!p || S.built !== p.id) return;
+  for (const [k, on] of Object.entries(p.buttons)) { const el = document.getElementById('b-' + k); if (el) el.classList.toggle('on', !!on); }
+  for (const k of ['l', 'r']) {
+    const t = p.triggers[k];
+    if (t) { const bar = document.getElementById('tb-' + k); if (bar) bar.setAttribute('width', 90 * t.v); const b = document.getElementById('tr-' + k); if (b) b.style.width = pct(t.v);
+      const v = document.getElementById('tv-' + k); if (v) v.textContent = t.onlyDigital ? (t.digital ? 'pressed' : '—') : `${t.a.raw}`;
+      const bt = document.getElementById('b-' + k + 't'); }
+    const s = p.sticks[k];
+    const sk = document.getElementById('sk-' + k);
+    if (!s || !sk) continue;
+    const ring = sk.parentNode.querySelector('.ring');
+    const cx = +ring.getAttribute('cx'), cy = +ring.getAttribute('cy');
+    const x = Math.max(-1.2, Math.min(1.2, s.x)), y = Math.max(-1.2, Math.min(1.2, s.y));
+    sk.setAttribute('cx', cx + x * 44); sk.setAttribute('cy', cy + y * 44);
+    sk.classList.toggle('on', !!p.buttons[k + 's']);
+    const half = Math.max(1, (s.ax.max - s.ax.min) / 2);
+    const dz = S.hearthDz != null ? S.hearthDz : s.ax.flat / half;
+    document.getElementById('dz-' + k).setAttribute('r', Math.max(0, dz) * 44);
+    const m = Math.hypot(s.x, s.y);
+    const h = (S.hist[p.id + k] ||= []); h.push([x, y]); if (h.length > 40) h.shift();
+    document.getElementById('tl-' + k).setAttribute('d', h.map((q, i) => `${i ? 'L' : 'M'}${(cx + q[0] * 44).toFixed(1)} ${(cy + q[1] * 44).toFixed(1)}`).join(''));
+    const st = document.getElementById('st-' + k); if (st) st.textContent = `${s.x.toFixed(2)}, ${s.y.toFixed(2)}  (${s.ax.raw}, ${s.ay.raw})`;
+    const dr = document.getElementById('dr-' + k); if (dr) { dr.textContent = pct(m); dr.className = 'v ' + (m > 0.9 ? '' : m > Math.max(dz, 0.02) ? 'warn' : ''); }
+  }
+  const o = document.getElementById('other'); if (o) o.textContent = p.other.length ? `Also pressed: ${p.other.join(', ')}` : ' ';
+  if (p.motion) {
+    const g = (S.hist[p.id + 'm'] ||= []); g.push([p.motion.gyro, p.motion.accel]); if (g.length > 150) g.shift();
+    graph('gyro', g.map(q => q[0]), 500); graph('accel', g.map(q => q[1]), 2);
+    const gv = document.getElementById('gy-v'); if (gv) gv.textContent = p.motion.gyro.map(v => v.toFixed(0).padStart(4)).join(' ') + ' °/s';
+    const av = document.getElementById('ac-v'); if (av) av.textContent = p.motion.accel.map(v => v.toFixed(2)).join(' ') + ' g';
+  }
+  if (p.touch) {
+    const t = document.getElementById('touch');
+    if (t) { t.classList.toggle('click', !!p.touch.click); t.innerHTML = p.touch.points.map(q => `<i style="left:${q.x * 100}%;top:${q.y * 100}%"></i>`).join(''); }
+    const tv = document.getElementById('tp-v'); if (tv) tv.textContent = p.touch.points.length ? `${p.touch.points.length} finger${p.touch.points.length > 1 ? 's' : ''}` : '';
+  }
+}
+function graph(id, rows, range) {
+  const c = document.getElementById(id); if (!c) return;
+  const x = c.getContext('2d'); const w = c.width, h = c.height;
+  x.clearRect(0, 0, w, h);
+  x.strokeStyle = '#3b2e26'; x.beginPath(); x.moveTo(0, h / 2); x.lineTo(w, h / 2); x.stroke();
+  ['#ff8a3d', '#6fd08c', '#66c0f4'].forEach((col, j) => {
+    x.strokeStyle = col; x.lineWidth = 2; x.beginPath();
+    rows.forEach((r, i) => { const px = w - (rows.length - 1 - i) * (w / 150); const py = h / 2 - Math.max(-1, Math.min(1, r[j] / range)) * (h / 2 - 3); i ? x.lineTo(px, py) : x.moveTo(px, py); });
+    x.stroke();
+  });
+}
+
+// ---------------------------------------------------------------- choosing things
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled || b.closest('#kit-layer') || KIT.dialogOpen()) return;
+  if (b.dataset.pad) { S.sel = b.dataset.pad; render(); if (KIT.usingPad()) KIT.focusFirst('[data-key="t-test"]'); return; }
+  const a = b.dataset.act;
+  if (a === 'test') return startTest();
+  if (a === 'rumble') return rumbleDialog();
+  if (a === 'drift') return measureDrift();
+  if (a === 'calibrate') return calibrate();
+  if (a === 'deadzone') return deadzones();
+  if (a === 'reset') return KIT.invoke('reset', { id: S.sel }).then(n => KIT.toast(`The driver's own values are back (${n} axes)`)).catch(e => KIT.toast(KIT.err(e)));
+});
+KIT.onBack = () => { if (S.test) return stopTest(); if (!document.activeElement?.dataset?.pad) KIT.focusFirst('.item.sel'); };
+KIT.onY = () => startTest();
+KIT.onX = () => { if (pad()?.rumble) rumbleDialog(); };
+
+// The button test: the controller doesn't move around the page; hold B (or press Esc) to leave.
+function startTest() {
+  if (!pad()) return;
+  S.test = true; S.holdB = 0;
+  document.body.insertAdjacentHTML('beforeend', '<div class="testing" id="testing">Button test: everything you press shows here · hold B to leave<div class="hold" id="holdbar"></div></div>');
+  footer();
+  KIT.capture = (pads, now) => {
+    const b = pads.some(g => g.buttons[1]?.pressed);
+    if (!b) { S.holdB = 0; $('#holdbar').style.width = '0'; return; }
+    if (!S.holdB) S.holdB = now;
+    const f = Math.min(1, (now - S.holdB) / 1500);
+    $('#holdbar').style.width = pct(f);
+    if (f >= 1) stopTest();
+  };
+}
+function stopTest() { S.test = false; KIT.capture = null; $('#testing')?.remove(); footer(); KIT.focusFirst('[data-key="t-test"]'); }
+
+// ---------------------------------------------------------------- rumble
+function rumbleDialog() {
+  const p = pad(); if (!p?.rumble) return KIT.toast('This controller doesn\'t report rumble.');
+  const st = { strong: 0.7, weak: 0.7, ms: 600 };
+  KIT.dialog(`<h2>Rumble: Player ${p.player}</h2>
+    <div class="field"><label for="rs">Strong motor (the big one): <b id="rsv">70%</b></label><input type="range" class="range f" id="rs" min="0" max="100" step="5" value="70"></div>
+    <div class="field"><label for="rw">Weak motor (the small one): <b id="rwv">70%</b></label><input type="range" class="range f" id="rw" min="0" max="100" step="5" value="70"></div>
+    <div class="field"><label>How long</label><div class="chips">${[[250, '¼ s'], [600, '½ s'], [1000, '1 s'], [2500, '2½ s']].map(([ms, l]) => `<button class="chip f ${ms === 600 ? 'on' : ''}" data-ms="${ms}">${l}</button>`).join('')}</div></div>
+    <div class="row"><button class="btn f" data-r="close">Close</button><button class="btn f" data-r="strong">Strong only</button><button class="btn f" data-r="weak">Weak only</button><button class="btn primary f" data-r="go" data-autofocus>Rumble</button></div>`);
+  const go = (s, w) => KIT.invoke('rumble', { id: p.id, strong: s, weak: w, ms: st.ms }).catch(e => KIT.toast(KIT.err(e)));
+  $('#kit-layer').oninput = e => { if (e.target.id === 'rs') { st.strong = e.target.value / 100; $('#rsv').textContent = e.target.value + '%'; } if (e.target.id === 'rw') { st.weak = e.target.value / 100; $('#rwv').textContent = e.target.value + '%'; } };
+  $('#kit-layer').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.ms) { st.ms = +b.dataset.ms; document.querySelectorAll('[data-ms]').forEach(c => c.classList.toggle('on', c === b)); return; }
+    const r = b.dataset.r;
+    if (r === 'close') { $('#kit-layer').onclick = $('#kit-layer').oninput = null; KIT.close(); }
+    if (r === 'go') go(st.strong, st.weak); if (r === 'strong') go(st.strong || 1, 0); if (r === 'weak') go(0, st.weak || 1);
+  };
+}
+
+// ---------------------------------------------------------------- drift, calibration, dead zones
+function sample(ms, fn) {
+  return new Promise(res => { const end = performance.now() + ms; S.sampler = p => { if (p) fn(p); if (performance.now() >= end) { S.sampler = null; res(); } }; });
+}
+async function measureDrift() {
+  const p = pad(); if (!p) return;
+  KIT.dialog(`<h2>Measuring drift</h2><p>Put the controller down and don't touch the sticks for three seconds.</p><div class="prog spin"><i></i></div>`, { locked: true });
+  await new Promise(r => setTimeout(r, 700));
+  const most = { l: 0, r: 0 };
+  await sample(3000, q => { for (const k of ['l', 'r']) if (q.sticks[k]) most[k] = Math.max(most[k], Math.hypot(q.sticks[k].x, q.sticks[k].y)); });
+  S.rest[p.id] = most;
+  const worst = Math.max(most.l, most.r);
+  const rec = Math.min(0.3, Math.max(0.05, Math.ceil((worst + 0.03) * 100) / 100));
+  S.recommend = rec;
+  KIT.close();
+  const line = k => p.sticks[k] ? `<dt>${k === 'l' ? 'Left' : 'Right'} stick</dt><dd>${pct(most[k])} from the middle${most[k] > 0.12 ? ' <span class="warn">(a lot: the stick may be worn)</span>' : most[k] > 0.05 ? ' (some)' : ' (fine)'}</dd>` : '';
+  const ok = await KIT.confirm({ title: 'Drift', ok: `Use a ${pct(rec)} dead zone…`, text: `<dl class="kv">${line('l')}${line('r')}</dl><p class="note">A dead zone a little bigger than the drift (${pct(rec)}) stops the drift reaching games.</p>` });
+  if (ok) deadzones(rec);
+}
+async function calibrate() {
+  const p = pad(); if (!p) return;
+  if (!p.writable) return KIT.alert('Calibrate', 'This account can only read this controller, so its ranges can\'t be changed.', false);
+  const axes = {};
+  const watch = q => {
+    for (const k of ['l', 'r']) { const s = q.sticks[k]; if (!s) continue;
+      for (const [code, a] of [[s.codeX, s.ax], [s.codeY, s.ay]]) { const m = (axes[code] ||= { min: a.raw, max: a.raw, sum: 0, n: 0, drv: a, kind: 'stick' }); m.min = Math.min(m.min, a.raw); m.max = Math.max(m.max, a.raw); } }
+    for (const k of ['l', 'r']) { const t = q.triggers[k]; if (!t || !t.a) continue; const m = (axes[t.code] ||= { min: t.a.raw, max: t.a.raw, drv: t.a, kind: 'trigger' }); m.min = Math.min(m.min, t.a.raw); m.max = Math.max(m.max, t.a.raw); }
+  };
+  // 1. The middle, with the sticks let go.
+  KIT.dialog(`<h2>Calibrate: 1 of 3</h2><p>Let go of both sticks.</p><div class="prog spin"><i></i></div>`, { locked: true });
+  await new Promise(r => setTimeout(r, 800));
+  const centre = {};
+  await sample(1500, q => { for (const k of ['l', 'r']) { const s = q.sticks[k]; if (!s) continue; for (const [code, a] of [[s.codeX, s.ax], [s.codeY, s.ay]]) { const c = (centre[code] ||= { sum: 0, n: 0 }); c.sum += a.raw; c.n++; } } });
+  // 2 and 3. The edges, and the triggers all the way.
+  const step = (n, text) => new Promise(res => {
+    KIT.dialog(`<h2>Calibrate: ${n} of 3</h2><p>${text}</p><div class="row"><button class="btn f" data-c="cancel">Cancel</button><button class="btn primary f" data-c="done" data-autofocus>Done</button></div>`, { onBack: () => { S.sampler = null; KIT.close(); res(false); } });
+    S.sampler = q => q && watch(q);
+    $('#kit-layer').onclick = e => { const b = e.target.closest('[data-c]'); if (!b) return; $('#kit-layer').onclick = null; S.sampler = null; res(b.dataset.c === 'done'); };
+  });
+  if (!await step(2, 'Roll both sticks slowly around their edges, three times. Then choose Done.')) return KIT.close();
+  if (!await step(3, 'Press both triggers all the way in, and let go. Then choose Done.')) return KIT.close();
+  KIT.close();
+  const plan = Object.entries(axes).map(([code, m]) => {
+    const c = centre[code] ? centre[code].sum / centre[code].n : (m.drv.min + m.drv.max) / 2;
+    let min = m.min, max = m.max;
+    if (m.kind === 'stick') { const half = Math.max(c - m.min, m.max - c); min = Math.round(c - half); max = Math.round(c + half); }
+    const usable = (max - min) > (m.drv.max - m.drv.min) * 0.4;
+    return { code: +code, min, max, flat: m.drv.flat, kind: m.kind, drv: m.drv, usable };
+  }).filter(x => x.usable);
+  if (!plan.length) return KIT.alert('Calibrate', 'The sticks and triggers didn\'t move far enough to measure. Try again.', false);
+  const rows = plan.map(x => `<dt>${x.kind === 'stick' ? 'Stick axis' : 'Trigger'} ${x.code}</dt><dd>${x.drv.min}…${x.drv.max} → <b>${x.min}…${x.max}</b></dd>`).join('');
+  const ok = await KIT.confirm({ title: 'Use these ranges?', ok: 'Apply', text: `<dl class="kv">${rows}</dl><p class="note">The driver uses them for this controller until it's disconnected or the PC restarts (games read them when they start, so restart a running game). Undo calibration puts the driver's own back.</p>` });
+  if (!ok) return;
+  let done = 0, err = '';
+  for (const x of plan) { try { await KIT.invoke('set_axis', { id: p.id, code: x.code, min: x.min, max: x.max, flat: x.flat }); done++; } catch (e) { err = KIT.err(e); } }
+  KIT.toast(err ? `Calibrated ${done} axes; ${err}` : `Calibrated ${done} axes`);
+}
+async function deadzones(rec) {
+  const p = pad();
+  let dz = rec ?? S.recommend ?? 0.1;
+  let lay = { games: [] };
+  try { lay = await KIT.invoke('layouts'); } catch (e) {}
+  const custom = (lay.games || []).filter(g => g.custom);
+  const draw = () => {
+    KIT.dialog(`<h2>Dead zones</h2>
+      <div class="field"><label for="dz">Dead zone: <b id="dzv">${pct(dz)}</b> of the stick's travel</label><input type="range" class="range f" id="dz" min="0" max="30" step="1" value="${Math.round(dz * 100)}"></div>
+      <p class="note">Shown as the dashed circle on the sticks. Hearth Input (controller layouts that turn the controller into a keyboard and mouse) uses dead zones for sticks that move the mouse or scroll.</p>
+      <div class="list" style="margin-top:.6em">
+        <button class="item f" data-d="hearth" style="grid-template-columns:1fr"><span class="n">Use in Hearth Input's custom layouts</span><span class="m">${custom.length ? `${custom.length} game${custom.length > 1 ? 's have' : ' has'} a custom layout: their mouse and scroll sticks get this dead zone` : 'No game has a custom layout yet (Game settings › Controller layout › Edit makes one)'}</span></button>
+        ${p && p.writable ? `<button class="item f" data-d="driver" style="grid-template-columns:1fr"><span class="n">Set as the driver's dead zone for Player ${p.player}</span><span class="m">For games that read it (many SDL games); until the controller reconnects</span></button>` : ''}
+        <button class="item f" data-d="show" style="grid-template-columns:1fr"><span class="n">Only show it here</span><span class="m">To see how much of your stick's drift it covers</span></button>
+      </div>
+      <div class="row"><button class="btn f" data-d="close">Close</button></div>`);
+    $('#kit-layer').oninput = e => { if (e.target.id === 'dz') { dz = e.target.value / 100; $('#dzv').textContent = pct(dz); } };
+    $('#kit-layer').onclick = async e => {
+      const b = e.target.closest('[data-d]'); if (!b) return;
+      const d = b.dataset.d;
+      $('#kit-layer').onclick = $('#kit-layer').oninput = null;
+      KIT.close();
+      if (d === 'close') return;
+      S.hearthDz = dz;
+      if (d === 'hearth') {
+        try { const r = await KIT.invoke('apply_deadzone', { dz }); KIT.toast(r.changed.length ? `${pct(r.deadzone)} dead zone in ${r.changed.length} game layout${r.changed.length > 1 ? 's' : ''}` : 'No custom layouts to change'); if (r.failed?.length) KIT.alert('Some layouts weren\'t changed', r.failed.map(esc).join('<br>'), false); }
+        catch (err) { KIT.toast(KIT.err(err)); }
+      }
+      if (d === 'driver' && p) {
+        let n = 0;
+        for (const k of ['l', 'r']) { const s = p.sticks[k]; if (!s) continue;
+          for (const [code, a] of [[s.codeX, s.ax], [s.codeY, s.ay]]) { try { await KIT.invoke('set_axis', { id: p.id, code, min: a.min, max: a.max, flat: Math.round((a.max - a.min) / 2 * dz) }); n++; } catch (err) { KIT.toast(KIT.err(err)); } } }
+        if (n) KIT.toast(`Dead zone set on ${n} stick axes`);
+      }
+      render();
+    };
+  };
+  draw();
+}
+
+// ---------------------------------------------------------------- without the app (opening the page in a browser): a sample controller
+KIT.demo = cmd => {
+  const t = performance.now() / 1000;
+  const ax = (v, min = -32768, max = 32767, flat = 128) => ({ raw: Math.round(v * 32767), min, max, flat, fuzz: 16, res: 0 });
+  const lx = Math.sin(t) * .8, ly = Math.cos(t) * .8;
+  const base = { id: 'demo', player: 1, name: 'DualSense Wireless Controller', family: 'playstation', vendor: '054c', product: '0ce6', bus: 'Bluetooth', driver: 'playstation', driverLabel: 'hid-playstation', virtual: false, held: false, writable: true, rumble: true,
+    battery: { pct: 64, status: 'Discharging' }, calibrated: false, nodes: [],
+    buttons: { south: (t % 2) < .3, east: false, north: false, west: (t % 3) < .2, lb: false, rb: (t % 4) < .4, lt: false, rt: false, back: false, start: false, guide: false, ls: false, rs: false, up: (t % 5) < .5, down: false, left: false, right: false, share: false, touch: false, p1: false, p2: false, p3: false, p4: false },
+    present: { guide: true, share: true, paddles: false, dpad: true },
+    other: [], sticks: { l: { x: lx, y: ly, codeX: 0, codeY: 1, ax: ax(lx), ay: ax(ly) }, r: { x: .03, y: -.02, codeX: 3, codeY: 4, ax: ax(.03), ay: ax(-.02) } },
+    triggers: { l: { v: (Math.sin(t * 1.3) + 1) / 2, code: 2, a: { raw: Math.round((Math.sin(t * 1.3) + 1) * 127), min: 0, max: 255, flat: 0 }, digital: false }, r: { v: .1, code: 5, a: { raw: 25, min: 0, max: 255, flat: 0 }, digital: false } },
+    motion: { accel: [Math.sin(t) * .2, -1 + Math.cos(t * 2) * .05, .1], gyro: [Math.sin(t * 3) * 120, Math.cos(t * 2) * 60, 5] },
+    touch: { points: (t % 3) < 1.5 ? [{ x: (t % 1.5) / 1.5, y: .5 }] : [], click: false } };
+  const xbox = Object.assign({}, base, { id: 'demo2', player: 2, name: 'Xbox Wireless Controller', family: 'xbox', vendor: '045e', product: '0b13', bus: 'USB', driver: 'xpad', driverLabel: 'xpad (Xbox)', battery: null, motion: null, touch: null, present: { guide: true, share: true, paddles: true } });
+  if (cmd === 'state') return { pads: [base, xbox], denied: [] };
+  if (cmd === 'layouts') return { games: [{ id: 'steam:1', custom: true, deadzones: [0.1] }] };
+  if (cmd === 'info') return { version: 'preview' };
+  throw 'This is a preview: open Controller Lab to do that.';
+};
+</script>
+</body>
+</html>
