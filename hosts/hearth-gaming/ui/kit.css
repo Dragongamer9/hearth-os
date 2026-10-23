@@ -1,0 +1,101 @@
+/* Hearth's gaming apps (Controller Lab, Saves, Mods): Hearth's ember look (hosts/linux/desktop/shell/Theme.qml,
+   the same as Disks), big enough to read on a TV and a handheld, with one clear focus ring for the controller. */
+:root {
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --faint:#6f6055; --ember:#ff8a3d; --flame:#ffd166; --danger:#ff5d5d; --good:#6fd08c; --sky:#66c0f4;
+  --ink:#2a1206; --r:14px; --gut:clamp(14px,2.4vw,36px); --ease:cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
+body { font:400 clamp(16px, .9vw + 8px, 26px)/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; overflow:hidden;
+  background:radial-gradient(1200px 700px at 85% -10%, #2a170d 0%, transparent 60%), var(--bg); user-select:none; -webkit-user-select:none; }
+button, input { font:inherit; color:inherit; }
+button { background:none; border:0; padding:0; text-align:left; }
+.app { display:grid; grid-template-rows:auto 1fr auto; height:100%; }
+header { display:flex; align-items:center; gap:.8em; padding:.7em var(--gut) .5em; flex-wrap:wrap; }
+header h1 { font-size:1.35em; margin:0; font-weight:650; letter-spacing:.01em; display:flex; align-items:center; gap:.45em; }
+header h1 svg { width:1.2em; height:1.2em; color:var(--ember); }
+header .sub { color:var(--muted); font-size:.85em; }
+header .spacer { flex:1; }
+.tabs { display:flex; gap:.35em; background:var(--bg2); border:1px solid var(--line); border-radius:99px; padding:.25em; }
+.tab { padding:.4em 1em; border-radius:99px; color:var(--muted); font-weight:600; }
+.tab.on { background:var(--panel3); color:var(--text); }
+.tabs .lbrb { display:inline-grid; place-items:center; min-width:2em; height:1.5em; border-radius:6px; background:var(--panel2); color:var(--muted); font-size:.7em; font-weight:700; align-self:center; padding:0 .3em; }
+main { min-height:0; padding:0 var(--gut) .6em; display:grid; gap:var(--gut); }
+footer { display:flex; gap:1.4em; padding:.45em var(--gut) .7em; color:var(--muted); font-size:.8em; flex-wrap:wrap; }
+footer b { display:inline-grid; place-items:center; min-width:1.6em; height:1.6em; border-radius:50%; background:var(--panel3); color:var(--text); margin-right:.35em; font-size:.85em; padding:0 .3em; }
+footer b.wide { border-radius:8px; }
+.scroll { overflow:auto; min-height:0; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; padding:4px; }
+.split { grid-template-columns:minmax(15em, 24em) 1fr; }
+
+/* Focus: one clear ember ring, the same for mouse, keyboard, controller and touch. */
+.f { outline:none; cursor:pointer; transition:transform .14s var(--ease), box-shadow .14s var(--ease), background .14s; }
+.f:focus, .f.focus { box-shadow:0 0 0 3px var(--ember), 0 0 22px rgba(255,138,61,.35); }
+.f:active { transform:scale(.985); }
+
+.list { display:flex; flex-direction:column; gap:.5em; }
+.item { display:grid; grid-template-columns:auto 1fr auto; gap:.15em .8em; align-items:center; width:100%; padding:.7em .9em; border-radius:var(--r);
+  background:var(--panel); border:1px solid var(--line); min-height:3.4em; }
+.item.sel { background:var(--panel2); border-color:#5a3f2c; }
+.item .ico { grid-row:span 2; width:2.3em; height:2.3em; border-radius:10px; display:grid; place-items:center; background:var(--panel3); color:var(--ember); font-weight:700; }
+.item .ico svg { width:1.35em; height:1.35em; }
+.item .n { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.item .m { color:var(--muted); font-size:.8em; display:flex; gap:.5em; align-items:center; flex-wrap:wrap; min-width:0; }
+.item .end { grid-row:span 2; color:var(--muted); font-size:.85em; text-align:right; }
+.check { width:1.3em; height:1.3em; border-radius:6px; border:2px solid var(--faint); display:inline-grid; place-items:center; flex:none; }
+.check.on { background:var(--ember); border-color:var(--ember); color:var(--ink); }
+.check.on::after { content:"✓"; font-size:.85em; font-weight:800; }
+.badge { font-size:.72em; padding:.12em .55em; border-radius:99px; background:rgba(255,138,61,.16); color:var(--ember); white-space:nowrap; }
+.badge.good { background:rgba(111,208,140,.15); color:var(--good); }
+.badge.muted { background:var(--panel3); color:var(--muted); }
+.badge.sky { background:rgba(102,192,244,.15); color:var(--sky); }
+.dot { width:.62em; height:.62em; border-radius:50%; display:inline-block; background:var(--faint); flex:none; }
+.dot.good { background:var(--good); } .dot.warn { background:var(--flame); } .dot.bad { background:var(--danger); }
+
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:.9em 1.1em; }
+.panel h2, .panel h3 { margin:0 0 .45em; }
+.panel h2 { font-size:1.2em; }
+.panel h3 { font-size:1em; }
+.acts { display:flex; flex-wrap:wrap; gap:.5em; }
+.btn { padding:.55em 1.05em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); min-height:2.7em; display:inline-flex; align-items:center; gap:.45em; }
+.btn svg { width:1.1em; height:1.1em; }
+.btn.primary { background:var(--ember); color:var(--ink); border-color:transparent; font-weight:650; }
+.btn.danger { color:#ffb3a1; border-color:#5c2a22; background:#2a1512; }
+.btn.primary.danger { background:var(--danger); color:#2a0606; }
+.btn[disabled] { opacity:.45; pointer-events:none; }
+.kv { display:grid; grid-template-columns:auto 1fr; gap:.2em 1em; font-size:.88em; }
+.kv dt { color:var(--muted); } .kv dd { margin:0; overflow-wrap:anywhere; }
+.empty { color:var(--muted); padding:2em 1em; text-align:center; }
+.msg { color:var(--muted); }
+.small { font-size:.8em; }
+.path { font-family:ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace; font-size:.78em; color:var(--muted); overflow-wrap:anywhere; }
+.ok { color:var(--good); } .bad { color:var(--danger); } .warn { color:var(--flame); }
+.row { display:flex; gap:.6em; justify-content:flex-end; margin-top:1em; flex-wrap:wrap; }
+.chips { display:flex; flex-wrap:wrap; gap:.5em; }
+.chip { padding:.5em .9em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); text-align:left; max-width:100%; }
+.chip small { display:block; color:var(--muted); font-size:.75em; }
+.chip.on { border-color:var(--ember); background:#3a2416; }
+.field { margin:.8em 0; }
+.field > label { display:block; color:var(--muted); font-size:.85em; margin-bottom:.35em; }
+.inp { width:100%; padding:.6em .8em; border-radius:12px; border:1px solid var(--line); background:var(--bg2); }
+.inp:focus { border-color:var(--ember); }
+.range { width:100%; accent-color:var(--ember); height:2em; }
+.prog { height:.6em; border-radius:9px; background:var(--panel3); overflow:hidden; margin:.8em 0 .3em; }
+.prog i { display:block; height:100%; width:30%; background:linear-gradient(90deg, var(--ember), var(--flame)); border-radius:9px; transition:width .2s; }
+.prog.spin i { animation:slide 1.3s var(--ease) infinite; }
+@keyframes slide { 0% { transform:translateX(-100%); } 100% { transform:translateX(340%); } }
+
+/* Dialogs, the folder browser, the on-screen keyboard, toasts. */
+.veil { position:fixed; inset:0; background:rgba(8,5,4,.72); display:grid; place-items:center; padding:var(--gut); z-index:10; backdrop-filter:blur(3px); }
+.dlg { width:min(46em, 100%); max-height:100%; overflow:auto; background:var(--panel); border:1px solid #4a372b; border-radius:18px; padding:1.1em 1.3em; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+.dlg.wide { width:min(60em, 100%); }
+.dlg h2 { margin:0 0 .6em; font-size:1.2em; }
+.dlg .lose { margin:.7em 0; padding:.7em .9em; border-radius:12px; background:#2a1210; border:1px solid #6a2a22; }
+.picker { display:flex; flex-direction:column; gap:.35em; max-height:52vh; overflow:auto; padding:4px; }
+.picker .item { min-height:2.8em; padding:.45em .8em; }
+.crumbs { display:flex; gap:.4em; flex-wrap:wrap; margin-bottom:.6em; }
+.osk { display:grid; grid-template-columns:repeat(10, 1fr); gap:.3em; margin-top:.5em; }
+.osk button { padding:.45em 0; border-radius:9px; background:var(--panel3); border:1px solid var(--line); text-align:center; }
+.osk .wide { grid-column:span 2; }
+.toast { position:fixed; left:50%; bottom:3.6em; transform:translateX(-50%); background:var(--panel3); border:1px solid #5a3f2c; color:var(--text); padding:.6em 1.1em; border-radius:12px; z-index:20; box-shadow:0 12px 40px rgba(0,0,0,.5); max-width:90vw; }
+@media (max-width: 760px) { .split { grid-template-columns:1fr; overflow:auto; } }

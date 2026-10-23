@@ -1,0 +1,39 @@
+[package]
+name = "hearth-tools"
+version = "0.6.0"
+edition = "2021"
+description = "Hearth's system tools in one program: Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers & Scanner, Welcome & Tips"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "hearth_tools"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-tools"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rayon = "1"
+# System Info shows what hearthfetch finds (the same detection code, as a library).
+hearthfetch = { path = "../hearthfetch" }
+
+# Linux: the keyring (Secret Service) over D-Bus, drives and their health from Hearth Disks, and "Send to the
+# developer" through Hearth's own bug report (hearth-core's logs.rs).
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = "4"
+libc = "0.2"
+hearth-core = { path = "../hearth-core" }
+hearth-disks = { path = "../hearth-disks" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

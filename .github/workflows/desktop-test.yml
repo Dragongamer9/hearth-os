@@ -55,6 +55,12 @@ jobs:
           # Steam). A stand-in "steam" that leaves a mark if it's run.
           mkdir -p "$HOME/.config/autostart" /tmp/fakebin
           printf '#!/bin/sh\ntouch "$HOME/steam-started"\n' > /tmp/fakebin/steam && chmod +x /tmp/fakebin/steam
+          # ---- Hearth Time stand-in (hosts/hearth-time): an event for the clock panel, a weather line for Quick Access.
+          printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+            '  --events) d=$(date +%F); printf "{\"events\":[{\"title\":\"Dentist\",\"date\":\"%s\",\"lastDate\":\"%s\",\"allDay\":false,\"start\":%s000,\"end\":%s000,\"location\":\"Smile Clinic\",\"color\":\"\"}]}\n" "$d" "$d" "$(date -d "+2 hours" +%s)" "$(date -d "+3 hours" +%s)" ;;' \
+            '  --weather-summary) echo "{\"place\":\"Lisbon\",\"line\":\"18° Partly cloudy\",\"day\":true}" ;;' 'esac' > /tmp/fakebin/hearth-time
+          chmod +x /tmp/fakebin/hearth-time
+          # ---- end of Hearth Time stand-in
           export PATH="/tmp/fakebin:$PATH"
           printf '[Desktop Entry]\nType=Application\nName=Autostart test\nExec=touch %s/autostarted\n' "$HOME" > "$HOME/.config/autostart/test.desktop"
           printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=steam -silent %%U\n' > "$HOME/.config/autostart/steam.desktop"
@@ -125,6 +131,20 @@ jobs:
           ipc fileprops open "$HOME/Documents"; grim shots/files-9-folder-properties.png || true
           ipc fileprops close; ipc files close
           n=$((n+3))
+          # Hearth Files opening Linux files: a script asks (Run in Terminal / Run / Open in Hearth Text), a .desktop file
+          # shows what it runs first, a settings file with no app opens in Hearth Text (a stand-in that notes its arguments).
+          printf '#!/bin/sh\necho hello\n' > "$HOME/Documents/run-me.sh"
+          printf '[Desktop Entry]\nType=Application\nName=Steam\nComment=Games\nExec=steam -silent %%U\n' > "$HOME/Documents/Steam.desktop"
+          printf 'volume = 3\n' > "$HOME/Documents/game.conf"; printf 'plain words\n' > "$HOME/Documents/NOTES"
+          printf '#!/bin/sh\necho "$@" > "$HOME/hearth-text-args"\n' > /tmp/fakebin/hearth-text && chmod +x /tmp/fakebin/hearth-text
+          ipc files open "$HOME/Documents"; ipc filemanager view details
+          ipc filemanager activate run-me.sh; grim "shots/files-10-open-script.png" || true; ipc filemanager close
+          ipc filemanager select run-me.sh; ipc filemanager menu; grim "shots/files-11-script-menu.png" || true; ipc filemanager close
+          ipc filemanager activate Steam.desktop; grim "shots/files-12-open-desktop-file.png" || true; ipc filemanager close
+          ipc filemanager activate NOTES; sleep 2
+          { echo "hearth-text was given: $(cat "$HOME/hearth-text-args" 2>&1)"; python3 hosts/linux/desktop/shell/hearth-files open-plan "$HOME/Documents/run-me.sh"; python3 hosts/linux/desktop/shell/hearth-files open-plan "$HOME/Documents/game.conf"; } > shots/files-open-plans.txt 2>&1
+          grep -q "NOTES" "$HOME/hearth-text-args" 2>/dev/null || { echo "::error title=Hearth Files::a text file with no app didn't open in Hearth Text: $(tr '\n' '|' < shots/files-open-plans.txt)"; touch shots/FAILED; }
+          ipc files close
           # Desktop icons: one picked and its menu (Open with, Cut, Copy...).
           ipc desktop itemMenu notes.txt; grim "shots/$n-desktop-item-menu.png" || true; ipc desktop close; n=$((n+1))
           # A notification pops up (with action buttons), then shows in the clock's panel with a count on the bell.

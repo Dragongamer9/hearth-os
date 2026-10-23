@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Hearth Documents",
+  "identifier": "io.github.dragongamer9.hearth.documents",
+  "build": { "frontendDist": "ui" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": false, "icon": ["icons/icon.png", "icons/icon.ico"] }
+}
