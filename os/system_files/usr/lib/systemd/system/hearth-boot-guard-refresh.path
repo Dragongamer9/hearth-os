@@ -1,0 +1,12 @@
+# ostree swaps /boot/loader (a link to loader.0 or loader.1) whenever the boot entries change while the system runs
+# (bootc rollback, kernel argument changes): the boot count's entry ids are rewritten then too.
+[Unit]
+Description=Hearth: watch ostree's boot entries (automatic return to the previous version)
+
+[Path]
+PathChanged=/boot/loader
+PathChanged=/boot/loader/entries
+Unit=hearth-boot-guard-refresh.service
+
+[Install]
+WantedBy=multi-user.target

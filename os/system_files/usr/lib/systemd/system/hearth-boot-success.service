@@ -1,0 +1,17 @@
+# Hearth: this start was good, so GRUB's count of starts that didn't reach Hearth goes back to zero (see
+# /usr/libexec/nimbus/hearth-boot-guard). "Good" = the system got to graphical.target (the login screen or Hearth's
+# session is starting), or multi-user.target on a system that doesn't start graphically. A start that ends in
+# emergency mode, hangs or is cut off before that counts as one that didn't; after two of them GRUB starts the
+# previous version. On the previous version after such a fallback, it becomes the default again (bootc rollback).
+[Unit]
+Description=Hearth: mark this start as good
+After=multi-user.target graphical.target
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/libexec/nimbus/hearth-boot-guard success
+StandardOutput=journal+console
+TimeoutStartSec=5min
+
+[Install]
+WantedBy=multi-user.target graphical.target

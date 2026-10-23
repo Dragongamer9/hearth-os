@@ -512,12 +512,30 @@ def ensure_podman():
         print('log: couldn\'t add podman: %s' % e, flush=True)
 
 
+BOOT_GUARD = '/usr/libexec/nimbus/hearth-boot-guard'
+
+
+def update_blocked():
+    """Why the system update is skipped (the version on offer didn't start on this device before, and Hearth went
+    back to the one before it by itself: hearth-boot-guard), or None."""
+    if not os.path.exists(BOOT_GUARD):
+        return None
+    try:
+        r = subprocess.run([BOOT_GUARD, 'update-allowed'], capture_output=True, text=True, timeout=900)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return (r.stdout.strip() or 'That version didn\'t start on this device before.') if r.returncode == 1 else None
+
+
 def update():
     stage = Stage()
     progress(0, 'Starting')
     print('log: Downloading the system update…', flush=True)
     ensure_podman()
-    if layered():
+    blocked = None if layered() else update_blocked()
+    if blocked:
+        print('log: ' + blocked, flush=True)
+    elif layered():
         print('log: This system has extra packages installed on top, so it updates through rpm-ostree', flush=True)
         rpm_ostree_upgrade(stage)
     else:

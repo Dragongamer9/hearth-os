@@ -1,0 +1,8 @@
+#!/bin/sh
+# Hearth: waking from hibernation (Quick Resume through Restart and Shut down) goes through GRUB, which counts it as a
+# start; the system doesn't start again, so it's marked as good here (see /usr/libexec/nimbus/hearth-boot-guard).
+case "$1/$2" in
+  post/hibernate|post/hybrid-sleep|post/suspend-then-hibernate)
+    /usr/libexec/nimbus/hearth-boot-guard success >/dev/null 2>&1 || true ;;
+esac
+exit 0

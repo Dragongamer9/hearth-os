@@ -118,6 +118,9 @@ The installer also has to run it once after deploying (see "Changes needed outsi
 and its units now live in `os/system_files`, shared with the other editions: a system switched from Peppermint to
 Anatase keeps this GRUB and still needs the menu written.
 
+Going back to the previous version by itself after two failed starts is the same as on Anatase: see "When Hearth OS doesn't start" in
+[BASE-ANATASE.md](BASE-ANATASE.md).
+
 ### What's installed
 
 | Area | What | From |
