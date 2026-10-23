@@ -118,6 +118,24 @@ class Commands(Base):
                 self.d.owner(bad)
 
 
+class Waiting(Base):
+    def test_waits_for_distrobox_setup(self):
+        answers = iter([(1, ''), (1, ''), (0, '/usr/bin/sudo')])
+        seen = []
+        self.d.run = lambda cmd, timeout=600: (seen.append(cmd), next(answers))[1]
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(self.d.wait_ready({'pct': 40}, sleep=lambda s: None))
+        self.assertEqual(len(seen), 3)
+        self.assertEqual(seen[0][:5], ['podman', 'exec', '--user', 'root', 'hearth-debian'])
+
+    def test_apt_tried_again_while_locked(self):
+        answers = iter([(100, 'E: Could not get lock /var/lib/apt/lists/lock'), (100, 'E: Unable to lock directory /var/lib/apt/lists/'), (0, 'ok')])
+        self.d.run = lambda cmd, timeout=600: next(answers)
+        self.assertEqual(self.d.apt_run(['apt-get', 'update'], sleep=lambda s: None), (0, 'ok'))
+        self.d.run = lambda cmd, timeout=600: (100, 'E: Unable to locate package nope')
+        self.assertEqual(self.d.apt_run(['x'], sleep=lambda s: 1 / 0)[0], 100)   # not a lock: no waiting
+
+
 class ReadingDebs(Base):
     def test_control_from_our_own_test_package(self):
         for comp in ('gz', 'xz', 'none'):
@@ -253,7 +271,8 @@ sys.exit(1)
 FAKE_PODMAN = r'''#!/bin/sh
 echo "$*" >> "$FAKE_LOG.podman"
 if [ "$1" = exec ]; then
-  shift 6
+  while [ "$1" != hearth-debian ]; do shift; done; shift
+  [ "$1" = sh ] && exit 0
   exec python3 -c 'import json, os, sys; open(os.environ["FAKE_LOG"], "a").write(json.dumps(["root-exec"] + sys.argv[1:]) + "\n")
 a = sys.argv[1:]
 if "install" in a:
