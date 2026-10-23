@@ -6,6 +6,8 @@
 // top row to the section buttons and press left or right (the D-pad).
 // In Apps, Hearth's own apps and the apps you installed come first; the apps that came with the system (everything
 // else in /usr/share/applications) are in one "System apps" folder at the end. Searching looks through all of them.
+// The apps you opened last are in a Recent row above the list (DeskState.recent). Right-click an app for its own
+// actions, Pin to taskbar, Add to desktop, and Uninstall for apps from Flathub (shell.qml).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -85,7 +87,7 @@ PanelWindow {
         if (!entry) return;
         if (entry.folder) { folderOpen = true; grid.currentIndex = 0; search.forceActiveFocus(); return; }
         if (tab === "games") Quickshell.execDetached(["python3", gamesHelper, "play", entry.id]);
-        else entry.execute();
+        else { entry.execute(); DeskState.noteLaunch(entry.id); }
         shown = false;
     }
 
@@ -220,6 +222,53 @@ PanelWindow {
                         text: root.tab === "games" ? "Search games" : "Search apps"
                         color: Theme.muted
                         font: search.font
+                    }
+                }
+            }
+
+            // Recently opened apps (the newest first), above the list when nothing is typed.
+            Flow {
+                id: recentRow
+                readonly property var entries: DeskState.recent.map(id => root.apps.find(a => a.id === id)).filter(Boolean).slice(0, 6)
+                Layout.fillWidth: true
+                visible: root.tab === "apps" && !search.text && !root.folderOpen && entries.length > 0
+                spacing: 8
+                Text {
+                    height: 36
+                    verticalAlignment: Text.AlignVCenter
+                    text: "Recent"
+                    color: Theme.muted
+                    font.pixelSize: 12
+                    font.family: Theme.font
+                    rightPadding: 4
+                }
+                Repeater {
+                    model: recentRow.visible ? recentRow.entries : []
+                    delegate: Rectangle {
+                        id: chip
+                        required property var modelData
+                        implicitWidth: chipRow.implicitWidth + 20
+                        implicitHeight: 36
+                        radius: 10
+                        color: chipArea.containsMouse ? Theme.panel3 : Theme.panel2
+                        Row {
+                            id: chipRow
+                            anchors.centerIn: parent
+                            spacing: 8
+                            IconImage { anchors.verticalCenter: parent.verticalCenter; implicitSize: 22; source: Quickshell.iconPath(chip.modelData.icon || "", "application-x-executable") }
+                            Text { anchors.verticalCenter: parent.verticalCenter; text: chip.modelData.name; color: Theme.text; font.pixelSize: 13; font.family: Theme.font; elide: Text.ElideRight; width: Math.min(implicitWidth, 140) }
+                        }
+                        MouseArea {
+                            id: chipArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: mouse => {
+                                if (mouse.button === Qt.RightButton) { const p = chip.mapToItem(null, mouse.x, mouse.y); root.menuRequested(chip.modelData, p.x, p.y); }
+                                else root.launch(chip.modelData);
+                            }
+                        }
                     }
                 }
             }
