@@ -30,7 +30,7 @@
 <div class="wrap layout">
   <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html" class="cur" aria-current="page">Overview</a><div class="sub"><a href="#what">What Hearth OS is</a><a href="#editions">Editions</a><a href="#yours">About your edition</a><a href="#needs">What you need</a></div><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
   <main id="main">
-    <div class="crumb"><span>Docs · for Hearth OS 0.5.1</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="ubuntu">Ubuntu (Ubuntu)</option><option value="cachyos">CachyOS (Arch)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
+    <div class="crumb"><span>Docs · for Hearth OS 0.5.1</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
     <h1>Hearth OS documentation</h1>
     <p class="lead">Everything about installing, updating and using Hearth OS, and what to do when something goes wrong.</p>
 
@@ -55,26 +55,24 @@ An update can't half-install, and the version you had before stays on the drive 
 <div class="tbl"><table>
 <tr><th>Edition</th><th>Built on</th><th>Status</th><th>Good for</th></tr>
 <tr><td><b>Anatase</b></td><td>Fedora (Anatase)</td><td>Recommended</td><td>Everyone. The most tested edition, with the best hardware support.</td></tr>
-<tr><td><b>Ubuntu</b></td><td>Ubuntu 26.04</td><td>Beta Experimental</td><td>People who know Ubuntu, or need Ubuntu packages.</td></tr>
-<tr><td><b>CachyOS</b></td><td>CachyOS (Arch)</td><td>Beta Experimental</td><td>Newer processors (x86-64-v3: AVX2). Tuned kernel, handheld patches.</td></tr>
 <tr><td><b>Peppermint</b></td><td>Debian 13</td><td>Beta Experimental</td><td>People who prefer Debian's slower, steady pace.</td></tr>
 </table></div>
 <p>You can <a href="updates.html#switch">switch edition</a> later without a USB stick. Your games and saves come along.</p>
+<div class="note"><p><b>Ubuntu and CachyOS are archived for now.</b> The focus is on making Anatase and Peppermint solid; the other
+editions come back after that. Already on one? It gets no more updates: <a href="updates.html#switch">switch to Anatase or Peppermint</a>
+and your games come with you.</p></div>
 
 </section><section><h2 id="yours">About your edition</h2>
 <p class="ed" data-ed="all">Pick your edition above to see what's particular about it.</p>
 <div class="ed" data-ed="anatase"><p><b>Anatase</b> is Fedora underneath, as an image (bootc). It's the main edition: every change is tested on it first.</p>
 <ul><li>Apps: Flatpak, from Flathub, in the <b>Apps</b> store (Desktop Mode).</li><li>Steam: from Flathub, installed the first time the device is online.</li>
-<li>Terminal tools that change the system use <code>rpm-ostree</code> (Fedora's image tool).</li></ul></div><div class="ed" data-ed="ubuntu"><p><b>Ubuntu</b> is Ubuntu 26.04 underneath, made into an image (bootc). <span class="ver">Beta Experimental</span></p>
-<ul><li>Apps: Flatpak, from Flathub, in the <b>Apps</b> store (Desktop Mode).</li><li><code>apt</code> can't change the system itself: it's a read-only image that updates in one piece.</li><li>Steam: built in, from Ubuntu's packages.</li></ul></div><div class="ed" data-ed="cachyos"><p><b>CachyOS</b> is Arch-based CachyOS underneath, made into an image (bootc), with CachyOS's handheld kernel (Steam Deck, ROG Ally, Legion Go and MSI Claw patches). <span class="ver">Beta Experimental</span></p>
-<ul><li>Apps: Flatpak, from Flathub, in the <b>Apps</b> store (Desktop Mode).</li><li><code>pacman</code> can't change the system itself: it's a read-only image that updates in one piece.</li><li>Steam: built in, from CachyOS's packages.</li></ul></div><div class="ed" data-ed="peppermint"><p><b>Peppermint</b> is Debian 13 "trixie" underneath (Peppermint OS's base), made into an image (bootc). <span class="ver">Beta Experimental</span></p>
+<li>Terminal tools that change the system use <code>rpm-ostree</code> (Fedora's image tool).</li></ul></div><div class="ed" data-ed="peppermint"><p><b>Peppermint</b> is Debian 13 "trixie" underneath (Peppermint OS's base), made into an image (bootc). <span class="ver">Beta Experimental</span></p>
 <ul><li>Apps: Flatpak, from Flathub, in the <b>Apps</b> store (Desktop Mode).</li><li><code>apt</code> can't change the system itself: it's a read-only image that updates in one piece.</li><li>Steam: built in, from Debian's packages.</li></ul></div>
 
 </section><section><h2 id="needs">What you need</h2>
 <ul>
 <li>A 64-bit PC or handheld (x86-64) with AMD, Intel or Nvidia graphics (Nvidia GTX 16 / RTX 20 or newer).</li>
 <li>For installing: a USB stick of 16 GB or more, and a drive of 64 GB or more.</li>
-<li class="ed" data-ed="cachyos">A processor from about 2015 or newer (x86-64-v3: AVX2, BMI2, FMA). Hearth checks before switching to CachyOS.</li>
 </ul>
 <p>Tested on the ASUS ROG Ally and Xbox Ally, and desktop PCs with AMD and Nvidia graphics.</p>
 </section>
