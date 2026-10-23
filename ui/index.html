@@ -3104,6 +3104,7 @@ function pageDisplay(){
   else g += infoRow('scale','Scale',d.scale||'—');
   h += sgrid(g);
   if(!d.supported) h += note('Brightness works on built-in screens (laptops and handhelds), not external monitors yet.');
+  const hzTip=dispHzTip(d); if(hzTip) h += note(hzTip);
   h += note((d.appliesOnRestart ? 'In Game Mode, a new resolution or refresh rate restarts '+APP+' for a moment.'
     : 'A new resolution or refresh rate switches back after 15 seconds unless you keep it.')+(d.scaleIsInterface?' Scale sizes the '+APP+' interface.':''));
   if((HOSTINFO.features||[]).includes('nvidiaDrawing')){
@@ -3120,6 +3121,18 @@ function pageDisplay(){
   return h;
 }
 function dispModeOf(w,h){ return (S.sys.display.modes||[]).find(m=>m.width===w&&m.height===h); }
+// Why a fast TV or monitor only shows 60 Hz: Hearth can only offer the modes the screen itself reports (its EDID).
+// When it reports a higher rate at a lower resolution only, or nothing above 60 Hz, say so and what usually fixes it.
+function dispHzTip(d){
+  const modes=(d&&d.modes)||[]; if(!modes.length || !d.width) return '';
+  const cur=dispModeOf(d.width,d.height), curMax=cur&&cur.rates.length?Math.max(...cur.rates):0;
+  let best=null; modes.forEach(m=>{ const r=m.rates.length?Math.max(...m.rates):0; if(!best||r>best.r||(r===best.r&&m.width*m.height>best.m.width*best.m.height)) best={m,r}; });
+  if(!best || !curMax) return '';
+  const fix='If your screen can go faster, turn on its enhanced HDMI or PC/Game mode for this input (TVs call it Input Signal Plus, HDMI Ultra HD Deep Colour, Enhanced format or similar), use an HDMI 2.1 port and an Ultra High Speed HDMI cable (or DisplayPort), then restart '+APP+'.';
+  if(best.r>curMax) return `At ${d.width} × ${d.height} this screen only reports up to ${curMax} Hz; it reports ${best.r} Hz at ${best.m.width} × ${best.m.height}. ${fix}`;
+  if(curMax<=60) return `This screen only reports up to ${curMax} Hz, so that's the most ${APP} can use. ${fix}`;
+  return '';
+}
 function dispRes(){
   const d=S.sys.display;
   openSheet({title:'Resolution', items:d.modes.slice(0,14).map((m,i)=>({label:`${m.width} × ${m.height}${i===0?'  (native)':''}`, icon:m.width===d.width&&m.height===d.height?'check':'',
@@ -7785,6 +7798,7 @@ function onSysEvent(name, data){
   }
   if(name==='padAxes'){ if(DESK.open) deskAxes(data); return; }
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
+  if(name==='hostScreen'){ HOSTSCREEN.pads = !data || data.pads!==false; return; }
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
   if(name==='friends'){ if(S.view==='friends' && !S.layers.length) loadFriends(); return; }
@@ -8155,10 +8169,18 @@ function pollPads(t){
   try{ pollPadsNow(t); } catch(e){ try{ send({type:'log', text:'controller: '+(e&&e.stack||e)}); }catch(_){} }
   requestAnimationFrame(pollPads);
 }
+// Game Mode: Hearth says whether this window is the one on screen (hostScreen). Set aside for a game (Chromium keeps
+// reading the controller for a hidden window), or with Quick Access open over it, the presses aren't this page's:
+// a Guide press over a game opened this window's old panel behind the game, and the next one sent "back to the game"
+// over the new Quick Access. Held buttons are still followed, so one held when the page gets the controller back
+// isn't taken for a new press.
+const HOSTSCREEN = {pads:true};
+function padsQuiet(){ return !OVERLAY && HOSTSCREEN.pads===false; }
 function pollPadsNow(t){
   // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
   const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
   if(deskActive()) return deskPollPads(pads);
+  const quiet = padsQuiet();
   const st={};
   for(const p of pads){ if(!p) continue;
     const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
@@ -8171,8 +8193,8 @@ function pollPadsNow(t){
   }
   for(const k of ['a','b','x','y','lb','rb','select','start','guide','up','down','left','right','rup','rdown']){
     const on=!!st[k], h=held[k];
-    if(on && !h){ held[k]={t0:t,last:t}; padPressed(mapPad(k)); }
-    else if(on && h && REPEAT.has(k) && t-h.t0>400 && t-h.last>110){ h.last=t; PAD_AT[k]=performance.now(); input(k); }
+    if(on && !h){ held[k]={t0:t,last:t}; if(!quiet) padPressed(mapPad(k)); }
+    else if(on && h && REPEAT.has(k) && t-h.t0>400 && t-h.last>110){ h.last=t; if(!quiet){ PAD_AT[k]=performance.now(); input(k); } }
     else if(!on && h) delete held[k];
   }
 }
