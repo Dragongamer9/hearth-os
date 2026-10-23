@@ -74,7 +74,9 @@ pub fn save_replay() -> Result<String, String> {
     while Instant::now() < until {
         std::thread::sleep(Duration::from_millis(150));
         match control::current() {
-            Some(n) if n.saves > before => return if n.last_save.is_empty() { Err("Couldn't save the replay".into()) } else { Ok(n.last_save) },
+            Some(n) if n.saves > before => return if n.last_save.is_empty() {
+                Err(if n.last_error.is_empty() { "Couldn't save the replay".into() } else { format!("Couldn't save the replay: {}", n.last_error) })
+            } else { Ok(n.last_save) },
             Some(_) => {}
             None => return Err("Instant replay stopped".into()),
         }

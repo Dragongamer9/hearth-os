@@ -266,7 +266,11 @@ pub fn plan(env: &Env, req: &Req, audio: Option<&str>, p: &Paths) -> Result<Plan
             let e = encoders::pick(&env.gst_encoders, &req.encoder, &|_| true).ok_or("GStreamer has no H.264 encoder")?;
             plan.encoder = e.label.clone();
             let node = env.gamescope_node.ok_or("gamescope isn't sharing its picture")?;
-            let mut a = s(&["-e", "-q", "pipewiresrc", &format!("path={node}"), "do-timestamp=true", "!"]);
+            // gamescope sends a picture only when the screen changes (a menu or a paused game can send a few a
+            // second), so videorate makes it a steady frame rate: keyframes then come every 2 seconds, which instant
+            // replay's 2-second pieces need, and the video plays at the right speed.
+            let mut a = s(&["-e", "-q", "pipewiresrc", &format!("path={node}"), "do-timestamp=true", "!", "videorate", "!",
+                            &format!("video/x-raw,framerate={fps}/1"), "!"]);
             a.extend(encoders::gst_video_enc(&e.id, q, fps));
             let mux = if replay { "mpegtsmux" } else { "mp4mux" };
             let out = if replay { fifo.to_string_lossy().to_string() } else { file.clone() };
@@ -424,7 +428,7 @@ mod tests {
         e.gst_pipewire = true; e.ffmpeg = true; e.gamescope_node = Some(77); e.gst_audio = Some("avenc_aac".into());
         e.gst_encoders = vec![enc("x264enc", "h264", false)];
         let p = plan(&e, &req(Kind::Record), Some("sink.monitor"), &paths()).unwrap();
-        assert_eq!(p.procs[0].line(), "gst-launch-1.0 -e -q pipewiresrc path=77 do-timestamp=true ! videoconvert ! video/x-raw,format=NV12 ! queue max-size-buffers=8 leaky=downstream ! x264enc speed-preset=veryfast tune=zerolatency bitrate=10000 key-int-max=120 ! h264parse ! queue ! mp4mux name=mux ! filesink location=/v/Recording.mp4 pulsesrc device=sink.monitor do-timestamp=true ! audioconvert ! audioresample ! queue ! avenc_aac ! queue ! mux.");
+        assert_eq!(p.procs[0].line(), "gst-launch-1.0 -e -q pipewiresrc path=77 do-timestamp=true ! videorate ! video/x-raw,framerate=60/1 ! videoconvert ! video/x-raw,format=NV12 ! queue max-size-buffers=8 leaky=downstream ! x264enc speed-preset=veryfast tune=zerolatency bitrate=10000 key-int-max=120 ! h264parse ! queue ! mp4mux name=mux ! filesink location=/v/Recording.mp4 pulsesrc device=sink.monitor do-timestamp=true ! audioconvert ! audioresample ! queue ! avenc_aac ! queue ! mux.");
         let p = plan(&e, &req(Kind::Replay), None, &paths()).unwrap();
         assert!(p.procs[0].line().ends_with("mpegtsmux name=mux ! filesink location=/run/r/work/capture.ts"));
         assert_eq!(p.procs.len(), 2);

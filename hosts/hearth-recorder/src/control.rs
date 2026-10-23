@@ -28,6 +28,8 @@ pub struct State {
     /// Instant replay: how many times it saved, and the last file
     pub saves: u32,
     pub last_save: String,
+    /// Why the last save didn't work (empty when it did)
+    pub last_error: String,
     /// The sound recorder's level, 0 to 1
     pub level: f32,
 }
