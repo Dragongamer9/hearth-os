@@ -88,16 +88,14 @@ fi
 
 # ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
 # Scanner and Welcome & Tips in one program (/usr/bin/hearth-tools --app NAME), built with the app (base-anatase.yml)
-# and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop) and icons (hicolor). What the
+# and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the
 # tools run: SANE's scanimage and sane-airscan (network scanners), traceroute and tracepath, iw (Wi-Fi link details).
 dnf5 -y install --skip-unavailable sane-backends sane-backends-drivers-scanners sane-airscan traceroute iputils iw || true
 if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
   if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi
-  install -d /usr/share/applications /usr/share/icons/hicolor/scalable/apps
+  install -d /usr/share/applications
   install -m644 /ctx/nimbus-app/hearth-tools/hearth-*.desktop /usr/share/applications/
-  install -m644 /ctx/nimbus-app/hearth-tools/icons/hearth-*.svg /usr/share/icons/hicolor/scalable/apps/
-  if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true; fi
 fi
 # ---- end Hearth Tools
 

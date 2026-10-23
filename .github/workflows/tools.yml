@@ -10,7 +10,7 @@ on:
   push:
     branches: [apps-system, main, linux-host]
     paths: ['hosts/hearth-tools/**', 'hosts/hearthfetch/**', 'hosts/hearth-core/**', 'hosts/hearth-disks/**', 'tools/build-docs.py',
-            'branding/icons/apps/**', 'os/system_files/usr/libexec/nimbus/hearth-admin', 'hosts/linux/test/test_hearth_system_tools.py', '.github/workflows/tools.yml']
+            'os/system_files/usr/libexec/nimbus/hearth-admin', 'hosts/linux/test/test_hearth_system_tools.py', '.github/workflows/tools.yml']
   workflow_dispatch:
     inputs:
       shots:
