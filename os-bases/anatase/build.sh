@@ -502,6 +502,73 @@ chmod 755 /usr/bin/hearth-browser /usr/share/hearth-browser/install-firefox
 # Links open in it in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), unless you pick another browser.
 printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hearth-browser.desktop\ntext/html=hearth-browser.desktop\napplication/xhtml+xml=hearth-browser.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
 
+# ------------------------------------------------------------------ Hearth Player and Hearth Calculator
+# ---- hosts/hearth-player and hosts/hearth-calculator, built by CI with the app (base-anatase.yml) and carried in
+# os/nimbus-app; their menu entries are os/system_files' hearth-player.desktop and hearth-calculator.desktop.
+# The player plays through WebKitGTK (GStreamer) and edits with ffmpeg, so this image gets the codecs for both:
+# RPM Fusion's full ffmpeg (H.264/H.265 decoding and libx264 encoding) and its GStreamer plugins, else Fedora's own
+# (ffmpeg-free, gstreamer1-plugin-libav, openh264). What ended up in is in /usr/share/nimbus/media-codecs.txt.
+if [ ! -f /etc/yum.repos.d/rpmfusion-free.repo ]; then
+  dnf5 -y install "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA}.noarch.rpm" \
+                  "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA}.noarch.rpm" || true
+fi
+RPMF=()
+for r in rpmfusion-free rpmfusion-free-updates rpmfusion-nonfree rpmfusion-nonfree-updates; do
+  if grep -qs "^\[$r\]" /etc/yum.repos.d/rpmfusion-*.repo; then RPMF+=("--enablerepo=$r"); fi
+done
+if [ ${#RPMF[@]} -gt 0 ]; then
+  if rpm -q ffmpeg-free >/dev/null 2>&1; then dnf5 -y swap --allowerasing "${RPMF[@]}" ffmpeg-free ffmpeg || true; fi
+  rpm -q ffmpeg >/dev/null 2>&1 || dnf5 -y install --allowerasing "${RPMF[@]}" ffmpeg || true
+  dnf5 -y install --allowerasing --skip-unavailable "${RPMF[@]}" gstreamer1-plugins-bad-freeworld gstreamer1-plugins-ugly gstreamer1-libav libavcodec-freeworld || true
+fi
+dnf5 -y install --skip-unavailable gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugin-libav gstreamer1-plugin-openh264 gstreamer1-plugin-dav1d gstreamer1-plugins-base-tools || true
+command -v ffmpeg >/dev/null || dnf5 -y install ffmpeg-free || echo "warning: no ffmpeg in this image: Hearth Player can't edit or convert"
+# The RPM Fusion repositories stay off on the installed system (the image brings updates).
+for r in /etc/yum.repos.d/rpmfusion-*.repo; do
+  if [ -f "$r" ]; then sed -i 's/^enabled=1/enabled=0/' "$r"; fi
+done
+for app in hearth-player hearth-calculator; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    # An app that can't start is worse than none (its menu entry hides itself without it: TryExec).
+    if ldd "/usr/bin/$app" | grep 'not found'; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
+  else
+    echo "warning: $app wasn't built for this image"
+  fi
+done
+# Videos, music and playlists open in Hearth Player: in every desktop (/usr/share/applications/mimeapps.list) and in
+# Desktop Mode's own list, so Hearth Files' Open uses it; every type it lists in hearth-player.desktop (os/system_files).
+if [ -x /usr/bin/hearth-player ]; then
+  player_lines=$(sed -n 's/^MimeType=//p' /usr/share/applications/hearth-player.desktop | tr ';' '\n' | grep . | sed 's/$/=hearth-player.desktop;/')
+  for list in /usr/share/applications/mimeapps.list /etc/xdg/nimbus-mimeapps.list; do
+    [ -f "$list" ] || printf '[Default Applications]\n' > "$list"
+    grep -q '^\[Default Applications\]' "$list" || printf '\n[Default Applications]\n' >> "$list"
+    for l in $player_lines; do sed -i "\#^${l%%=*}=#d" "$list"; done
+    # Right under the [Default Applications] heading.
+    awk -v add="$player_lines" '{ print } /^\[Default Applications\]$/ && !done { print add; done = 1 }' "$list" > "$list.new" && mv "$list.new" "$list"
+  done
+fi
+update-desktop-database /usr/share/applications 2>/dev/null || true
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+# What plays and what edits: in the build log and in the image.
+{
+  echo "Hearth Player media support, $(date -u +%F)"
+  echo "ffmpeg: $(ffmpeg -hide_banner -version 2>/dev/null | head -1 || echo missing)"
+  echo "--- ffmpeg decoders"
+  ffmpeg -hide_banner -decoders 2>/dev/null | awk '{print $2}' | grep -xE 'h264|hevc|av1|libdav1d|vp8|vp9|libvpx-vp9|mpeg2video|mpeg4|aac|mp3|mp3float|flac|opus|libopus|vorbis|ac3|eac3|dca|truehd|alac|wmav2|subrip|ass|mov_text' | tr '\n' ' ' || true
+  echo; echo "--- ffmpeg encoders"
+  ffmpeg -hide_banner -encoders 2>/dev/null | awk '{print $2}' | grep -xE 'libx264|libopenh264|libx265|h264_vaapi|hevc_vaapi|libsvtav1|libaom-av1|libvpx-vp9|libvpx|mpeg4|aac|libfdk_aac|libmp3lame|libopus|libvorbis|flac|pcm_s16le|wavpack|wmav2' | tr '\n' ' ' || true
+  echo; echo "--- GStreamer (what WebKitGTK plays with)"
+  for e in avdec_h264 avdec_h265 avdec_av1 openh264dec dav1ddec vp9dec vah264dec vah265dec avdec_aac faad avdec_mp3 mpg123audiodec flacdec opusdec vorbisdec avdec_ac3 matroskademux qtdemux webmmux; do
+    if gst-inspect-1.0 --exists "$e" 2>/dev/null; then echo "$e yes"; else echo "$e no"; fi
+  done | tr '\n' ' ' || true
+  echo
+} | tee /usr/share/nimbus/media-codecs.txt || true
+# The same as a notice on the CI run (the image build's output reaches the workflow).
+echo "::notice title=Hearth Player codecs::$(tr '\n' ' ' < /usr/share/nimbus/media-codecs.txt | cut -c1-3500)" || true
+# ---- end of Hearth Player and Hearth Calculator
+
+
 # ------------------------------------------------------------------ Hearth Photos and Hearth Documents
 # (hosts/hearth-photos, hosts/hearth-documents) Hearth's picture viewer/editor and its reader for PDFs, e-books (EPUB)
 # and comic books (CBZ), built by CI with the app (base-anatase.yml) and carried in os/nimbus-app (their icons,
