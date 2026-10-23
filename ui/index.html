@@ -3081,6 +3081,15 @@ function pageBluetooth(){
   if(S.sys.foundDone && !S.sys.btScanning && !S.sys.found.length) h += note('Nothing new found. Make sure the device is in pairing mode and close by.');
   return h;
 }
+// ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect): opened from Settings › Bluetooth
+// in Game Mode (bridge "linkapps.open"); in Desktop Mode they're in the app list too.
+function pageLinkApps(){
+  if(!LINUX || ANDROID) return '';
+  const row=(k,v,title,sub)=>`<button class="row" data-f data-k="la-${k}" data-act="linkApp" data-v="${v}"><span class="ricon">${I.phone}</span><div class="rt"><b>${title}</b><small>${sub}</small></div><div class="rv">›</div></button>`;
+  return shead('Phones and nearby devices') + sgrid(row('nearby','nearby','Nearby Share','Send and receive files with phones and PCs on this network (works with LocalSend)')
+    + row('connect','connect','Hearth Connect','Link your phone: notifications, files, clipboard, phone as touchpad (works with KDE Connect)'));
+}
+// ---- end of Nearby Share and Hearth Connect
 const NVD = {s:null};
 const RND = {s:null};
 function pageDisplay(){
@@ -4769,7 +4778,7 @@ function viewSettings(){
   const t=S.settingsTab, grp=stabGroup(t), tabs=stabsIn(grp); let body='';
   if(t==='wifi') body = pageWifi();
   if(t==='seats') body = pageSeats();
-  if(t==='bluetooth') body = pageBluetooth();
+  if(t==='bluetooth') body = pageBluetooth() + pageLinkApps();   // + Nearby Share and Hearth Connect
   if(t==='display') body = pageDisplay() + shead('Sound') + pageAudio();
   if(t==='power') body = pagePower();
   if(t==='profile') body = pageProfile();
@@ -5417,6 +5426,9 @@ function act(el){
     case 'countMe': { const on=!counterOn(); try{ localStorage.setItem('nimbus.countMe', on?'1':'0'); }catch(e){} if(on) counterPing(); toast(on?'You\'re in the player count':'You\'re no longer counted'); return render('sy-count',true); }
     case 'autoReport': return call('logs.setAutoReport',{on:HOSTINFO.autoReport===false}).then(on=>{ HOSTINFO.autoReport=on; toast(on?'Reports sent when it gets stuck':'No reports sent by itself'); render('sy-autorep',true); }).catch(e=>toast(e.message));
     case 'inputLog': INPUT_LOG=!INPUT_LOG; try{ localStorage.setItem('nimbus.inputLog', INPUT_LOG?'1':'0'); }catch(e){} toast(INPUT_LOG?'Logging controller input':'Stopped logging controller input'); return render('sy-inlog',true);
+    // ---- Nearby Share and Hearth Connect
+    case 'linkApp': toast(d.v==='nearby'?'Opening Nearby Share…':'Opening Hearth Connect…'); return call('linkapps.open',{app:d.v}).catch(e=>toast(e.message));
+    // ---- end of Nearby Share and Hearth Connect
     case 'browser': return call('browser.act',{action:d.v}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'claude':
       if(d.v==='open'){ toast('Opening Claude…'); return call('claude.act',{action:'open'}).catch(e=>toast(e.message)); }
