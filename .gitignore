@@ -12,3 +12,4 @@ __pycache__/
 !os/system_files/usr/bin/
 hosts/electron/node_modules/
 hosts/electron/dist/
+tools/qa-shots/

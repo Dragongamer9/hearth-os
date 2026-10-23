@@ -370,7 +370,8 @@ const path = require('path');
         if (!has('.qhhd [data-key="tdp.unified.tdp.mode"]')) throw new Error("Handheld Daemon's power mode isn't shown");
         if (has('[data-act="tdp"]') || has('[data-act="perfPower"]')) throw new Error("Hearth's own power controls show next to Handheld Daemon's");
         if (has('[data-slider="hhd:tdp.unified.fan.manual_edge.st40"]')) throw new Error('a fan curve point shows in Quick Access');
-        if (!overlay !== has('[data-act="hhdOpen"]')) throw new Error('the Handheld Daemon settings button is wrong for this page');
+        // The same in Hearth's panel and over a game: where its whole page is, not a button only one of them had.
+        if (has('[data-act="hhdOpen"]') || !has('.qhhd-note')) throw new Error("Quick Access doesn't say where Handheld Daemon's settings are (or has a button only Hearth's panel had)");
       } else {
         if (has('.qhhd')) throw new Error("Handheld Daemon's settings show without it");
         if (!has('[data-act="tdp"]') || !has('[data-act="perfPower"]')) throw new Error("Hearth's power controls are missing");
@@ -805,6 +806,79 @@ const path = require('path');
     await gp.evaluate(() => { closeAll(); delete navigator.getGamepads; });
   } catch (e) { errors.push('guide over a game: ' + e.message.split('\n')[0]); }
   await gp.close();
+
+  // Quick Access is one panel: Hearth's own (Guide with Hearth on screen, the starting screen, LAST RESORT) and the
+  // overlay over a game (?overlay=full, HHD's overlay app or Hearth's overlay window) draw the same size, tabs,
+  // sections and buttons in the same order, with the same actions and the same controller navigation. Screenshots of
+  // both go to tools/qa-shots (release.yml posts them as notices).
+  const qaShots = path.resolve(__dirname, 'qa-shots');
+  try { require('fs').mkdirSync(qaShots, { recursive: true }); } catch {}
+  const qaPanel = async (which) => {
+    const qp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    qp.on('pageerror', e => errors.push(`quick access (${which}): ${e.message}`));
+    const out = {};
+    try {
+      await qp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + (which === 'overlay' ? '?preview=linux&overlay=full' : '?preview=linux'));
+      await qp.waitForTimeout(1200);
+      // A game running, another put aside (Quick Resume), Quick Resume and Pause available.
+      await qp.evaluate(() => {
+        HOSTINFO.features = ['quickResume', 'pause']; QR.on = true;
+        const gs = GAMES.filter(g => !g.cloud);
+        window.__game = gs[0].id; QR.list = [{ id: gs[1].id, frozenAt: Date.now() - 6e5 }];
+        const real = MOCK.call;
+        MOCK.call = (m, a) => m === 'perf.stats' ? real(m, a).then(r => Object.assign({}, r, { runningId: window.__game, runningSince: Date.now() - 6e5 })) : real(m, a);
+        S.running = window.__game; S.runningSince = Date.now() - 6e5;
+      });
+      // How it opens: Guide in Hearth's window; Hearth's "shown" over a game.
+      const open = async () => {
+        if (which === 'overlay') await qp.evaluate(async () => { await overlayShown(); });
+        else await qp.evaluate(() => { closeAll(); S.history = []; navigate('home', {}, false); input('guide'); });
+        await qp.waitForTimeout(400);
+      };
+      const read = () => qp.evaluate(() => ({
+        tab: S.qtab,
+        tabs: [...document.querySelectorAll('#qam .qtab')].map(e => e.dataset.tab).join(' '),
+        buttons: [...document.querySelectorAll('#qam .qbody [data-f]')].map(e => `${e.dataset.k}:${e.dataset.act || e.dataset.slider || ''}:${e.textContent.replace(/\s+/g, ' ').trim()}`),
+        focus: focused && focused.dataset.k,
+      }));
+      await open();
+      out.rect = await qp.evaluate(() => { const r = document.querySelector('#qam').getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`; });
+      out.now = await read();
+      // Controller: down through the panel, then RB through every tab.
+      out.nav = await qp.evaluate(() => { const ks = []; for (let i = 0; i < 6; i++) { input('down'); ks.push(focused && focused.dataset.k); } return ks.join(' '); });
+      out.tabsVisited = [];
+      for (let i = 0; i < 6; i++) { await qp.evaluate(() => input('rb')); await qp.waitForTimeout(await qp.evaluate(() => S.qtab === 'perf' || S.qtab === 'apps') ? 1500 : 200); const r = await read(); out.tabsVisited.push(r.tab); out['tab-' + r.tab] = out['tab-' + r.tab] || r.buttons.join(' | ').replace(/\d+ ?(min|%|°C|W|MHz|MB|GB|fps)\b/g, '#'); }
+      out.tabsVisited = out.tabsVisited.join(' ');
+      // The screenshot: Now playing with the game running.
+      await qp.evaluate(() => { S.qtab = 'now'; renderQam(); setFocus(document.querySelector('#qam .qbody [data-f]'), true); });
+      await qp.waitForTimeout(300);
+      for (const q of [55, 40, 30, 22, 15]) {
+        const buf = await qp.screenshot({ type: 'jpeg', quality: q, clip: { x: 1280 - 460, y: 0, width: 460, height: 800 } });
+        if (buf.toString('base64').length <= 9 * 3800 || q === 15) { require('fs').writeFileSync(path.join(qaShots, `${which}.jpg`), buf); break; }
+      }
+      // Nothing running: the same "no game" card, buttons and Quick Resume list.
+      await qp.evaluate(() => { window.__game = null; S.running = null; closeAll(); });
+      await open();
+      out.idle = await read();
+    } catch (e) { errors.push(`quick access (${which}): ${e.message.split('\n')[0]}`); }
+    await qp.close();
+    return out;
+  };
+  {
+    const main = await qaPanel('main'), ov = await qaPanel('overlay');
+    const same = (what, a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) errors.push(`quick access: ${what} differ between Hearth's panel and the overlay:\n  panel:   ${JSON.stringify(a)}\n  overlay: ${JSON.stringify(b)}`); };
+    same('size and position', main.rect, ov.rect);
+    for (const k of ['now', 'idle']) { same(`opening tab (${k})`, main[k] && main[k].tab, ov[k] && ov[k].tab); same(`tabs (${k})`, main[k] && main[k].tabs, ov[k] && ov[k].tabs); same(`buttons (${k})`, main[k] && main[k].buttons, ov[k] && ov[k].buttons); same(`first focus (${k})`, main[k] && main[k].focus, ov[k] && ov[k].focus); }
+    same('controller navigation', main.nav, ov.nav);
+    same('tab order (RB)', main.tabsVisited, ov.tabsVisited);
+    // (Notifications: the overlay page starts with none of its own; what's in them isn't a button set.)
+    for (const k of Object.keys(main).filter(k => k.startsWith('tab-') && k !== 'tab-notif')) same(`the ${k.slice(4)} tab`, main[k], ov[k]);
+    const want = ['q-shot', 'q-mouse', 'q-home', 'q-resume', 'q-pause', 'q-aside', 'q-exit'];
+    const got = ((main.now && main.now.buttons) || []).map(b => b.split(':')[0]).filter(k => want.includes(k));
+    if (JSON.stringify(got) !== JSON.stringify(want)) errors.push(`quick access: Now playing buttons ${got.join(' ')} (want ${want.join(' ')})`);
+    if (main.rect && !/^840,0 440x800$/.test(main.rect)) errors.push(`quick access: panel at ${main.rect} (want the overlay's 440 px on the right)`);
+    console.log(`quick access: panel ${main.rect}, overlay ${ov.rect}; tabs ${main.now && main.now.tabs}; now playing: ${got.join(' ')}`);
+  }
 
   await browser.close();
   if (errors.length) {
