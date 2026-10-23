@@ -176,6 +176,8 @@ optional qt6ct qml6-module-qtquick qml6-module-qtquick-layouts qml6-module-qtqui
   qml6-module-qtqml-workerscript qml6-module-qt5compat-graphicaleffects qml6-module-qtquick-dialogs
 # Printing (Settings › Printers: CUPS, driverless IPP Everywhere, ipp-usb, Avahi) and clipboard history (Super+V).
 optional cups cups-filters ipp-usb avahi-daemon libnss-mdns wl-clipboard cliphist wtype
+# Desktop Mode: screenshot notifications (notify-send) and turning the screen off when idle (Settings › Power).
+optional libnotify-bin wlopm
 # A polkit agent for Desktop Mode's password prompts. Debian keeps polkit-gnome's in a folder labwc's autostart
 # doesn't look in: link it where it does.
 optional policykit-1-gnome
