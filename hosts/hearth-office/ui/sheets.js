@@ -1139,17 +1139,31 @@ function chartSvg(type, title, labels, series) {
 
 // ------------------------------------------------------------------ menus
 S.contextMenu = (x, y, h) => {
+  const col = h && h.hy && !h.hx, row = h && h.hx && !h.hy;
+  const structure = col ? [
+    { label: 'Insert column left', run: () => S.insert('col', true) }, { label: 'Insert column right', run: () => S.insert('col', false) },
+    { label: 'Delete columns', run: () => S.remove('col') }, { label: 'Column width…', run: () => S.sizeDialog('col') }, { label: 'Fit column width', run: () => S.autoFit(h.c) },
+  ] : row ? [
+    { label: 'Insert row above', run: () => S.insert('row', true) }, { label: 'Insert row below', run: () => S.insert('row', false) },
+    { label: 'Delete rows', run: () => S.remove('row') }, { label: 'Row height…', run: () => S.sizeDialog('row') },
+  ] : [
+    { label: 'Insert row above', run: () => S.insert('row', true) }, { label: 'Insert column left', run: () => S.insert('col', true) },
+    { label: 'Delete rows', run: () => S.remove('row') }, { label: 'Delete columns', run: () => S.remove('col') },
+  ];
   H.showMenu([
     { label: 'Cut', key: 'Ctrl+X', run: () => S.copy(null, true) }, { label: 'Copy', key: 'Ctrl+C', run: () => S.copy(null, false) }, { label: 'Paste', key: 'Ctrl+V', run: () => S.paste(null) }, { sep: true },
-    { label: h && h.hy ? 'Insert column left' : 'Insert row above', run: () => S.insert(h && h.hy ? 'col' : 'row', true) },
-    { label: h && h.hy ? 'Insert column right' : 'Insert row below', run: () => S.insert(h && h.hy ? 'col' : 'row', false) },
-    { label: 'Insert column left', run: () => S.insert('col', true) },
-    { label: h && h.hy ? 'Delete columns' : 'Delete rows', run: () => S.remove(h && h.hy ? 'col' : 'row') },
-    { label: 'Delete columns', run: () => S.remove('col') }, { sep: true },
+    ...structure, { sep: true },
     { label: 'Clear contents', key: 'Delete', run: () => S.clear('contents') }, { label: 'Clear formatting', run: () => S.clear('formats') }, { sep: true },
     { label: 'Sort A → Z', run: () => S.sortQuick(1) }, { label: 'Sort Z → A', run: () => S.sortQuick(-1) }, { label: 'Filter', run: () => S.toggleFilter() }, { sep: true },
     { label: 'Format cells…', key: 'Ctrl+1', run: () => S.formatDialog() },
   ], x, y);
+};
+S.sizeDialog = async (kind) => {
+  const n = norm(S.sel); const m = S.meta();
+  const cur = kind === 'col' ? (m.colW[n.c] ?? DW) : (m.rowH[n.r] ?? DH);
+  const v = await H.prompt(kind === 'col' ? 'Column width' : 'Row height', kind === 'col' ? 'Width in pixels' : 'Height in pixels', String(cur), { type: 'number' });
+  if (!v) return;
+  S.metaChange(() => { if (kind === 'col') for (let c = n.c; c <= Math.min(n.c2, n.c + 500); c++) m.colW[c] = Math.max(8, +v); else for (let r = n.r; r <= Math.min(n.r2, n.r + 5000); r++) m.rowH[r] = Math.max(6, +v); });
 };
 S.formatDialog = async () => {
   const f = S.fmtAt(S.sel.r, S.sel.c) || {};
@@ -1212,8 +1226,7 @@ S.menus = () => [
     { label: 'Bold', key: 'Ctrl+B', run: () => S.toggle('b') }, { label: 'Italic', key: 'Ctrl+I', run: () => S.toggle('i') }, { label: 'Underline', key: 'Ctrl+U', run: () => S.toggle('u') },
     { label: 'Number format', sub: [['General', 'General'], ['0', 'Whole number'], ['#,##0.00', 'Number'], ['"$"#,##0.00', 'Currency ($)'], ['"€"#,##0.00', 'Currency (€)'], ['"£"#,##0.00', 'Currency (£)'], ['0%', 'Percent'], ['0.00%', 'Percent, 2 decimals'], ['yyyy-mm-dd', 'Date (2024-01-31)'], ['m/d/yyyy', 'Date (1/31/2024)'], ['d/m/yyyy', 'Date (31/1/2024)'], ['dddd, mmmm d, yyyy', 'Long date'], ['h:mm AM/PM', 'Time'], ['@', 'Text']].map(([v, l]) => ({ label: l, run: () => S.setFmt({ nf: v === 'General' ? null : v }) })).concat([{ label: 'Custom…', run: () => S.customFormat() }]) },
     { label: 'Borders', sub: borderItems() }, { label: 'Merge or unmerge cells', run: () => S.merge() }, { label: 'Wrap text', run: () => S.toggle('wrap') }, { sep: true },
-    { label: 'Column width…', run: async () => { const n = norm(S.sel); const v = await H.prompt('Column width', 'Width in pixels', String(S.meta().colW[n.c] ?? DW), { type: 'number' }); if (v) S.metaChange(() => { for (let c = n.c; c <= n.c2; c++) S.meta().colW[c] = Math.max(8, +v); }); } },
-    { label: 'Row height…', run: async () => { const n = norm(S.sel); const v = await H.prompt('Row height', 'Height in pixels', String(S.meta().rowH[n.r] ?? DH), { type: 'number' }); if (v) S.metaChange(() => { for (let r = n.r; r <= Math.min(n.r2, n.r + 5000); r++) S.meta().rowH[r] = Math.max(6, +v); }); } },
+    { label: 'Column width…', run: () => S.sizeDialog('col') }, { label: 'Row height…', run: () => S.sizeDialog('row') },
     { label: 'Fit column width', run: () => { const n = norm(S.sel); for (let c = n.c; c <= Math.min(n.c2, n.c + 50); c++) S.autoFit(c); } },
   ] },
   { label: 'Data', items: [
