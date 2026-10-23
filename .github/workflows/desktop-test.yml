@@ -77,10 +77,10 @@ jobs:
           ipc filemanager view compact; grim shots/files-4-compact.png || true
           ipc filemanager search data; grim shots/files-5-search.png || true
           ipc filemanager view grid
-          ipc fileprops show "$HOME/Desktop/notes.txt"; grim shots/files-6-properties.png || true
+          ipc fileprops open "$HOME/Desktop/notes.txt"; grim shots/files-6-properties.png || true
           ipc fileprops tab permissions; grim shots/files-7-permissions.png || true
           ipc fileprops tab checksums; grim shots/files-8-checksums.png || true
-          ipc fileprops show "$HOME/Documents"; grim shots/files-9-folder-properties.png || true
+          ipc fileprops open "$HOME/Documents"; grim shots/files-9-folder-properties.png || true
           ipc fileprops close; ipc files close
           cp "$LOG" shots/nimbus-shell.log 2>/dev/null || true
           ls "$XDG_RUNTIME_DIR" > shots/runtime-dir.txt
