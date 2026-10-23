@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**']
+    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -74,6 +74,98 @@ jobs:
           cargo build --release || { echo "::warning title=Hearth Disks::it didn't build, so this image is made without it"; exit 1; }
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-disks" /tmp/app/hearth-disks
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- Hearth Time (hosts/hearth-time): Clock, Calendar, Notes and Weather, one program. Built the same way and
+      # carried in hearth-app.tar as hearth-time/; build.sh installs it (the icons come with Hearth's icon set). Not
+      # fatal: without it the image is still made.
+      - name: Build Hearth Time (Clock, Calendar, Notes, Weather)
+        continue-on-error: true
+        working-directory: hosts/hearth-time
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release || { echo "::warning title=Hearth Time::it didn't build, so this image is made without Clock, Calendar, Notes and Weather"; exit 1; }
+          mkdir -p /tmp/app/hearth-time
+          cp "$CARGO_TARGET_DIR/release/hearth-time" /tmp/app/hearth-time/hearth-time
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth Time
+      # ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
+      # Scanner and Welcome & Tips in one program, put beside the app in hearth-app.tar (hearth-tools/) with its menu
+      # entries; build.sh installs them (their icons come with Hearth's icon set, branding/icons). Not fatal: without it the image is still made.
+      - name: Build Hearth Tools
+        continue-on-error: true
+        working-directory: hosts/hearth-tools
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release || { echo "::warning title=Hearth Tools::it didn't build, so this image is made without it"; exit 1; }
+          mkdir -p /tmp/app/hearth-tools
+          cp "$CARGO_TARGET_DIR/release/hearth-tools" /tmp/app/hearth-tools/hearth-tools
+          cp desktop/hearth-*.desktop /tmp/app/hearth-tools/
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end Hearth Tools
+      # ---- Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves and Mods, built the same way and put beside
+      # the app in hearth-app.tar (build.sh installs them in /usr/bin; their icons are in Hearth's icon set). Not fatal:
+      # without them the image is still made.
+      - name: Build Hearth's gaming apps (Controller Lab, Saves, Mods)
+        continue-on-error: true
+        working-directory: hosts/hearth-gaming
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release || { echo "::warning title=Hearth's gaming apps::they didn't build, so this image is made without them"; exit 1; }
+          mkdir -p /tmp/app
+          for a in hearth-controller-lab hearth-saves hearth-mods; do cp "$CARGO_TARGET_DIR/release/$a" /tmp/app/; done
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth's gaming apps
+      # ---- Hearth Photos and Hearth Documents (hosts/hearth-photos, hosts/hearth-documents): the picture viewer and
+      # the PDF / e-book / comic reader, built the same way and put beside the app in hearth-app.tar (build.sh installs
+      # them, with their menu entries and file types; their icons come with the Hearth icon set). Not fatal.
+      - name: Build Hearth Photos and Hearth Documents
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          mkdir -p /tmp/app
+          for app in hearth-photos hearth-documents; do
+            if (cd "hosts/$app" && sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml && cargo build --release); then
+      # ---- Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps): built the same way and put
+      # beside the app in hearth-app.tar (their icons are in Hearth's icon set); build.sh installs them as
+      # /usr/bin/hearth-contacts and /usr/bin/hearth-maps. Not fatal: an app that doesn't build is left out.
+      - name: Build Hearth Contacts and Hearth Maps
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          # Contacts keeps CardDAV passwords in the Secret Service through libdbus.
+          sudo apt-get install -y -qq libdbus-1-dev >/dev/null
+          mkdir -p /tmp/app
+          for app in hearth-contacts hearth-maps; do
+            sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" "hosts/$app/Cargo.toml"
+            if (cd "hosts/$app" && cargo build --release); then
+              cp "$CARGO_TARGET_DIR/release/$app" "/tmp/app/$app"
+            else echo "::warning title=$app::it didn't build, so this image is made without it"; fi
+          done
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth Photos and Hearth Documents
+      # ---- Hearth Text (hosts/hearth-text), the text editor: built the same way and put beside the app in
+      # hearth-app.tar (build.sh installs it as /usr/bin/hearth-text and makes it the default for text
+      # files). Not fatal: without it the image is still made.
+      - name: Build Hearth Text
+        continue-on-error: true
+        working-directory: hosts/hearth-text
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          test -s ui/vendor/VERSIONS || { echo "::warning title=Hearth Text::ui/vendor is missing (run the Hearth Text workflow with 'vendor'), so this image is made without it"; exit 1; }
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release || { echo "::warning title=Hearth Text::it didn't build, so this image is made without it"; exit 1; }
+          mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-text" /tmp/app/hearth-text
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth Text
+      # ---- end of Hearth Contacts and Hearth Maps
       # ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect): built the same way and put
       # beside the app in hearth-app.tar (build.sh installs them). Not fatal: without them the image
       # is still made.
@@ -190,6 +282,10 @@ jobs:
           check "pkexec is installed" "command -v pkexec"
           check "hearth-admin is installed" "test -x /usr/libexec/nimbus/hearth-admin"
           check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
+          check "saving a system file (hearth-admin write-file) always asks for a password" "grep -q write-file /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
+          warn "Hearth Text is installed with every library it links" "test -x /usr/bin/hearth-text && ! ldd /usr/bin/hearth-text | grep -q 'not found'"
+          warn "text files open in Hearth Text in Desktop Mode" "grep -q '^text/plain=hearth-text.desktop' /etc/xdg/nimbus-mimeapps.list"
+          warn "Hearth Text's menu entry is installed" "test -f /usr/share/applications/hearth-text.desktop"
           check "hearth-admin's Python is valid" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin"
           echo "--- update path (required, the app's own check)"
           /usr/lib/nimbus/nimbus --check-update-path || fail=1
@@ -209,6 +305,27 @@ jobs:
           warn "Hearth Browser's Firefox runs (--version)" "HOME=/tmp /usr/lib/hearth-browser/firefox/firefox --version | grep -q 'Mozilla Firefox'"
           check "the old Chromium (CEF) Hearth Browser is gone" "test ! -e /usr/lib/hearth-browser-cef"
           check "hearthfetch is installed and runs" "test -x /usr/bin/hearthfetch && /usr/bin/hearthfetch --no-logo | grep -q Hearth"
+          # ---- Hearth Time (Clock, Calendar, Notes, Weather): a warning only, as the build of it isn't required.
+          warn "Hearth Time is installed with its four apps, icons and alarm service" "test -x /usr/bin/hearth-time && ! ldd /usr/bin/hearth-time | grep -q 'not found' && /usr/bin/hearth-time --version && for a in clock calendar notes weather; do test -L /usr/bin/hearth-\$a && test -f /usr/share/applications/hearth-\$a.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-\$a.svg || exit 1; done && test -f /usr/lib/systemd/user/hearth-time.service && test -L /etc/systemd/user/default.target.wants/hearth-time.service"
+          # ---- end of Hearth Time
+          # ---- Hearth Tools (hosts/hearth-tools)
+          warn "Hearth Tools is installed with its menu entries and icons" "test -x /usr/bin/hearth-tools && test -f /usr/share/applications/hearth-disk-usage.desktop && test -f /usr/share/applications/hearth-welcome.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-logs.svg"
+          warn "every library Hearth Tools links is installed" "! ldd /usr/bin/hearth-tools | grep -q 'not found'"
+          warn "Hearth Tools answers without a window (--list-apps, --call sys.overview)" "/usr/bin/hearth-tools --list-apps | grep -q printers && HOME=/tmp /usr/bin/hearth-tools --call sys.overview | grep -q memory"
+          warn "the scanner tools (scanimage, sane-airscan) and traceroute are installed" "command -v scanimage && ls /etc/sane.d/airscan.conf && command -v traceroute"
+          # ---- end Hearth Tools
+          # ---- Hearth's gaming apps (hosts/hearth-gaming): warnings, not failures (the image is still fine without them).
+          warn "Hearth's gaming apps are installed and find their libraries (Controller Lab, Saves, Mods)" "for a in hearth-controller-lab hearth-saves hearth-mods; do test -x /usr/bin/\$a && ! ldd /usr/bin/\$a | grep -q 'not found' || exit 1; done"
+          warn "their menu entries and icons" "for a in hearth-controller-lab hearth-saves hearth-mods; do test -f /usr/share/applications/\$a.desktop && test -f /usr/share/icons/hicolor/scalable/apps/\$a.svg || exit 1; done"
+          warn "Saves answers without a window (--backups)" "HOME=/tmp /usr/bin/hearth-saves --backups /tmp | grep -q '\\['"
+          warn "Saves' hourly timer is on for everyone" "test -f /usr/lib/systemd/user/hearth-saves-auto.service && test -L /usr/lib/systemd/user/timers.target.wants/hearth-saves-auto.timer"
+          # ---- end of Hearth's gaming apps
+          # ---- Hearth Photos and Hearth Documents: installed, starting (--help needs every library), and the defaults
+          warn "Hearth Photos is installed and starts" "test -x /usr/bin/hearth-photos && /usr/bin/hearth-photos --help | grep -q Photos"
+          warn "Hearth Documents is installed and starts" "test -x /usr/bin/hearth-documents && /usr/bin/hearth-documents --help | grep -q Documents"
+          warn "Photos opens JPEGs and Documents opens PDFs by default" "grep -q '^image/jpeg=hearth-photos.desktop' /usr/share/applications/mimeapps.list && grep -q '^application/pdf=hearth-documents.desktop' /usr/share/applications/mimeapps.list && test -f /usr/share/icons/hicolor/scalable/apps/hearth-photos.svg"
+          warn "libheif's tools are installed (HEIC pictures in Photos)" "command -v heif-dec || command -v heif-convert"
+          # ---- end of Hearth Photos and Hearth Documents
           # SVG through gdk-pixbuf: the classic loader in loaders.cache, or glycin's SVG loader (newer gdk-pixbuf).
           check "GTK can load SVG icons (gdk-pixbuf's SVG loader or glycin's)" "grep -qis svg /usr/lib*/gdk-pixbuf-2.0/2.10.0/loaders.cache /usr/lib/*/gdk-pixbuf-2.0/2.10.0/loaders.cache 2>/dev/null || ls /usr/share/glycin-loaders/*/conf.d/ 2>/dev/null | grep -qi svg || ls /usr/libexec/glycin-loaders/*/ /usr/lib/glycin-loaders/*/ 2>/dev/null | grep -qi svg"
           warn "an SVG icon really loads (gdk-pixbuf-thumbnailer)" "gdk-pixbuf-thumbnailer -s 32 /usr/share/icons/Adwaita/scalable/status/image-missing.svg /tmp/svg.png"
@@ -255,6 +372,13 @@ jobs:
           check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
           warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
+          # ---- Hearth Contacts and Hearth Maps
+          warn "Hearth Contacts is installed, finds its libraries and opens .vcf files" "test -x /usr/bin/hearth-contacts && ! ldd /usr/bin/hearth-contacts | grep -q 'not found' && grep -q text/vcard /usr/share/applications/hearth-contacts.desktop"
+          warn "Hearth Contacts runs (--list)" "HOME=/tmp HEARTH_CONTACTS_DIR=/tmp/hc /usr/bin/hearth-contacts --list"
+          warn "Hearth Maps is installed, finds its libraries and opens geo: links" "test -x /usr/bin/hearth-maps && ! ldd /usr/bin/hearth-maps | grep -q 'not found' && grep -q x-scheme-handler/geo /usr/share/applications/hearth-maps.desktop && /usr/bin/hearth-maps --version"
+          warn "Hearth Maps may ask GeoClue for Where am I" "test -f /etc/geoclue/conf.d/90-hearth-maps.conf"
+          warn "the Contacts and Maps icons are installed" "test -f /usr/share/icons/hicolor/scalable/apps/hearth-contacts.svg && test -f /usr/share/icons/hicolor/scalable/apps/hearth-maps.svg"
+          # ---- end of Hearth Contacts and Hearth Maps
           exit $fail
           EOF
           sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-os:build sh /check.sh

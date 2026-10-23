@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The Photos window: its own commands (the folder, saving, trash, wallpaper) and the open dialog.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default"]
+}

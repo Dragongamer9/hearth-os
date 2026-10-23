@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Printers & Scanner
+GenericName=Printers and Scanner
+Comment=Print queue, pausing and cancelling, adding a printer, and scanning to PDF or PNG
+Exec=/usr/bin/hearth-tools --app printers
+TryExec=/usr/bin/hearth-tools
+Icon=hearth-printers
+Type=Application
+Categories=System;Utility;
+Keywords=printer;printers;print;queue;scanner;scan;sane;pdf;cups;
+StartupWMClass=io.github.dragongamer9.hearth.printers
