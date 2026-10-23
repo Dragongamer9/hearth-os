@@ -222,7 +222,10 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .sbtn.pri{background:var(--accent);color:var(--accentInk)}
 .sbtn svg{width:16px;height:16px}
 .libmeta .lmr{display:flex;gap:8px}
-#qam{top:0;bottom:0;right:0;width:min(400px,92vw);background:var(--panel);transform:translateX(102%);transition:transform .24s var(--ease),visibility .24s;display:grid;grid-template-columns:1fr 58px;box-shadow:-20px 0 60px rgba(0,0,0,.4)}
+/* Quick Access: one panel, the same in Hearth's window and over a game (the ?overlay=full page): 440 px on the right,
+   what's behind it dimmed the same way (.scrim.qa, like body.ovfull:before) */
+#qam{top:0;bottom:0;right:0;width:min(440px,92vw);background:var(--panel);transform:translateX(102%);transition:transform .24s var(--ease),visibility .24s;display:grid;grid-template-columns:1fr 58px;box-shadow:-20px 0 60px rgba(0,0,0,.5)}
+.scrim.qa{background:rgba(0,0,0,.35)}
 #qam.open{transform:none}
 .qbody{overflow-y:auto;padding:22px 18px;scrollbar-width:none}
 .qbody h3{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin:4px 0 14px}
@@ -1173,7 +1176,9 @@ const S = {
 };
 const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['emu','Emulators'],['beacon','Beacon'],['manual','Non-library'],['hidden','Hidden']];
 const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settings'],['perf','bolt','Performance'],['now','play','Now playing']];
-if(/[?&]overlay=full/.test(location.search) || (window.nimbusHost && window.nimbusHost.platform!=='android' && !/[?&]overlay/.test(location.search))) QTABS.splice(3,0,['apps','lib','Open apps']);
+// Open apps: wherever the host can list them (Hearth OS's window and every overlay page; not Ember's own window), the
+// same tab in Hearth's panel and over a game.
+if(/[?&]overlay/.test(location.search) || (window.nimbusHost && window.nimbusHost.platform!=='android') || /[?&]preview=linux/.test(location.search)) QTABS.splice(3,0,['apps','lib','Open apps']);
 
 // ---------- host bridge ----------
 // send(): fire-and-forget message.  call(): request/response, resolves with the host's result.
@@ -3938,7 +3943,7 @@ function hhdMode(k, n){
   const cur=hv(k+'.mode'), m=(n.modes||{})[cur];
   let h = `<button class="row" data-f data-k="${HHDP.kp}${k}.mode" data-act="hhd" data-op="pick" data-key="${esc(k)}.mode"><div class="rt"><b>${esc(hhdTitle(n,k))}</b>${m&&m.hint&&!HHDP.compact?`<small>${esc(String(m.hint).trim())}</small>`:hhdHint(n)}</div>${HHDP.busy[k+'.mode']?'<span class="mini-spin"></span>':`<div class="rv">${esc(hhdOptLabel(n, cur))} ›</div>`}</button>`;
   if(m && hhdShown(m)) h += `<div class="hhd-sub">${hhdKids(k+'.'+cur, m)}</div>`;
-  else if(HHDP.compact && m && Object.keys(m.children||{}).length) h += `<div class="muted qhhd-note" style="margin:0 4px 2px">${LINUX&&!OVERLAY?'Its settings are in Handheld Daemon settings, below.':'Its settings are in Settings › Controls › Handheld Daemon.'}</div>`;
+  else if(HHDP.compact && m && Object.keys(m.children||{}).length) h += `<div class="muted qhhd-note" style="margin:0 4px 2px">Its settings are in Settings › Controls › Handheld Daemon.</div>`;
   return h;
 }
 function hhdKids(k, c){
@@ -5462,9 +5467,8 @@ function perfBody(){
       <div class="chips">${choices.map(v=>`<button class="chip ${p.tdp.watts===v?'on':''}" data-f data-k="pt-${v}" data-act="tdp" data-v="${v}">${v} W</button>`).join('')}</div>
       <div class="muted">Lower uses less battery; higher runs demanding games faster.</div></div>`;
   }
-  // Handheld Daemon's whole settings page (fan curve, power modes, lights...): from Hearth itself, not over a game.
-  if(LINUX && !OVERLAY && (hp || (HHDS.s && HHDS.s.running))) h += `<button class="btn sm" data-f data-k="pt-hhd" data-act="hhdOpen"${hp?' style="margin-top:12px"':''}>${I.sliders}Handheld Daemon settings</button>`;
-  else if(hp && OVERLAY) h += `<div class="muted qhhd-note">More (fan curve, lights, the controller): ${APP} › Settings › Controls › Handheld Daemon.</div>`;
+  // Handheld Daemon's whole page is in Settings: Quick Access says where, the same in Hearth's panel and over a game.
+  if(hp) h += `<div class="muted qhhd-note">More (fan curve, lights, the controller): ${APP} › Settings › Controls › Handheld Daemon.</div>`;
   if(!hp && p.powerMode){
     h += `<div class="pctl"><div class="lab">${I.bolt}Power</div>
       <div class="chips">${(p.powerModes&&p.powerModes.length?PMODES.filter(([k])=>p.powerModes.includes(k)):PMODES).map(([k,l])=>`<button class="chip ${p.powerMode===k?'on':''}" data-f data-k="pp-${k}" data-act="perfPower" data-v="${k}">${l}</button>`).join('')}</div></div>`;
@@ -5586,7 +5590,7 @@ async function overlayShown(){
   while(S.layers.length>1) closeLayer();
   try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); if(!r.runningId) S.running=null; if(r.quickResume) applyQuick({list:r.quickResume.list, on:r.quickResume.on}); }catch(e){}
   if(S.running && !G(S.running)) await loadLibrary();
-  S.qtab = S.running ? 'now' : 'quick';
+  qamFresh();
   if(!S.layers.includes('qam')) openLayer('qam'); else { renderQam(); setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
   refreshStatus(); loadProfile();
   if(S.qtab==='perf') startPerf();
@@ -5595,6 +5599,8 @@ async function overlayShown(){
 }
 function overlayHidden(){ OV.shown=false; document.body.classList.add('ov-closed'); while(S.layers.length>1) closeLayer(); }
 
+/** Quick Access opened by Guide (Hearth's panel or the overlay): on Now playing with a game running, else Quick settings. */
+function qamFresh(){ S.qtab = S.running ? 'now' : 'quick'; }
 function renderQam(){
   const t=S.qtab; let body='';
   if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
@@ -5611,18 +5617,20 @@ function renderQam(){
   if(t==='now'){ const g=S.running&&G(S.running);
     const mins = S.runningSince ? Math.max(0,Math.round((Date.now()-S.runningSince)/60000)) : null;
     const mouseBtn = `<button class="btn sm" data-f data-k="q-mouse" data-act="toggleMouse">${I.mouse}Controller mouse: ${PAD.mouseOn?'on':'off'}</button>`;
-    const ovBtns = OVERLAY ? `<button class="btn sm" data-f data-k="q-shot" data-act="ovShot">${I.display}Take a screenshot</button>${mouseBtn}
-      <button class="btn sm" data-f data-k="q-home" data-act="ovHome">${I.home}Back to ${APP}</button>` : '';
+    // The same buttons in Hearth's own panel and over a game (the overlay), in the same order (qamButtons, tools/ui-check.js).
+    // Take a screenshot needs a host that can take one (Hearth OS, or Ember's overlay); Back to Hearth in Hearth's own
+    // window just closes the panel (Hearth is what's on screen).
+    const shotBtn = (OVERLAY||LINUX) ? `<button class="btn sm" data-f data-k="q-shot" data-act="ovShot">${I.display}Take a screenshot</button>` : '';
+    const ovBtns = `${shotBtn}${mouseBtn}
+      <button class="btn sm" data-f data-k="q-home" data-act="ovHome">${I.home}Back to ${APP}</button>`;
     body = `<h3>Now playing</h3>${g?`<div class="np"><div class="nart" style="${artBg(g)}">${artImg(g,['hero','wide','cover'])}</div><div class="nb"><b>${esc(g.title)}</b>
       <div class="muted">${SOURCES[g.src]}${mins!=null?` · playing for ${mins<60?mins+' min':hrs(mins/60)}`:' · running'}</div>
-      ${OVERLAY?'':`<button class="btn" data-f data-k="q-gp" data-act="game" data-id="${g.id}">Game details</button>`}
       ${ovBtns}
       ${LINUX?`<button class="btn" data-f data-k="q-resume" data-act="resume">${I.play}Back to game</button>`:''}
       ${(LINUX||hasFeat('pause'))&&!G(S.running)?.cloud?`<button class="btn" data-f data-k="q-pause" data-act="pauseGame">${S.paused?I.play+'Unpause':I.pause+'Pause'}</button>`:''}
       ${qrFeature()&&QR.on&&!g.cloud?`<button class="btn" data-f data-k="q-aside" data-act="putaside">${I.pause}Put aside (Quick Resume)</button>`:''}
       <button class="btn danger" data-f data-k="q-exit" data-act="exitgame">${I.stop}Exit game</button></div></div>${inputQam(g)}${qamQuick()}`
-      : (QR.list.length && !OVERLAY) ? `<div class="muted" style="margin-bottom:10px">Nothing running right now.</div>${qamQuick()}`
-      : OVERLAY ? `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}` : '<div class="muted">Nothing running. Launch a game from Home or Library.</div>'}`;
+      : `<div class="muted" style="margin-bottom:10px">No game from your library is running.</div>${ovBtns}${qamQuick()}`}`;
   }
   $('#qam').innerHTML = `<div class="qbody">${body}</div><div class="qtabs">${QTABS.map(([k,ic,l])=>`<button class="qtab ${t===k?'on':''}" data-f data-k="qt-${k}" data-act="qtab" data-tab="${k}" aria-label="${l}">${I[ic]}</button>`).join('')}</div>`;
 }
@@ -5809,7 +5817,8 @@ function openLayer(id, focusKey){
   S.layers.push(id);
   $('#'+id).classList.add('open');
   syncScrim();
-  const el = (focusKey && $(`#${id} [data-k="${focusKey}"]`)) || $(`#${id} .cur`) || $(`#${id} .on[data-f]`) || $(`#${id} [data-f]`);
+  // Quick Access starts on its first control (not its tab), in Hearth's panel as over a game.
+  const el = (focusKey && $(`#${id} [data-k="${focusKey}"]`)) || (id==='qam' && $('#qam .qbody [data-f]')) || $(`#${id} .cur`) || $(`#${id} .on[data-f]`) || $(`#${id} [data-f]`);
   setFocus(el, true);
   renderFooter(); blip(520,.05);
 }
@@ -5837,8 +5846,9 @@ function resumeIfGame(closed){ if(LINUX && host && closed==='qam' && S.running &
 function syncScrim(){
   const top=S.layers.at(-1);
   $('#scrim').classList.toggle('open', !!top && top!=='launch');
+  $('#scrim').classList.toggle('qa', top==='qam');
   $('#scrim').classList.toggle('light', top==='mkmenu');   // a right-click menu: nothing dims, a click outside closes it
-  $('#app').classList.toggle('dim', !!top && top!=='launch' && top!=='mkmenu');
+  $('#app').classList.toggle('dim', !!top && top!=='launch' && top!=='mkmenu' && top!=='qam');
 }
 
 // =====================================================================
@@ -6155,8 +6165,12 @@ function act(el){
     case 'perfOverlay': return call('perf.setOverlay',{level:+d.v}).then(r=>{ if(PERF.s) PERF.s.perfOverlay=r.perfOverlay; toast(r.perfOverlay?`Overlay: ${PO_LEVELS[r.perfOverlay]}`:'Overlay off'); renderQam(); setFocus($(`#qam [data-k="po-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'fpsLimit': return call('perf.setFpsLimit',{fps:+d.v}).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'perfPower': return call('power.setMode',{mode:d.v}).then(r=>{ if(PERF.s) PERF.s.powerMode=r.mode||d.v; renderQam(); setFocus($(`#qam [data-k="pp-${d.v}"]`),true); }).catch(e=>toast(e.message));
-    case 'ovShot': return call('overlay.screenshot',{},20000).then(r=>{ SH.list=null; toast(`Screenshot saved · see it in Library › Screenshots`); }).catch(e=>toast(e.message));
-    case 'ovHome': return send({type:'overlay', action:'home'});
+    case 'ovShot': {   // Hearth's own panel closes first, so it isn't in the picture
+      const shot=()=>call('overlay.screenshot',{},20000).then(r=>{ SH.list=null; toast(`Screenshot saved · see it in Library › Screenshots`); }).catch(e=>toast(e.message));
+      if(OVERLAY) return shot();
+      closeAll(); return setTimeout(shot, 350);
+    }
+    case 'ovHome': return OVERLAY ? send({type:'overlay', action:'home'}) : closeAll();   // Hearth's panel: Hearth is already on screen
     case 'ovHoldView': return call('overlay.setHoldView',{on:!(OVS.s&&OVS.s.holdView)}).then(r=>{ OVS.s=r; render('ov-hold'); }).catch(e=>toast(e.message));
     case 'ovGameBar': return call('overlay.setGameBarButton',{on:!(OVS.s&&OVS.s.gameBarButton)}).then(r=>{ OVS.s=r; render('ov-gb'); }).catch(e=>toast(e.message));
     case 'toggle': { S.set[d.key]=!S.set[d.key];
@@ -6375,7 +6389,7 @@ function gameSlow(d){
 }
 function launchQam(){
   if(host && !OVERLAY && (HOSTINFO.features||[]).includes('overlayOverLaunch')) return send({type:'overlay', action:'open'});
-  openLayer('qam');
+  qamFresh(); openLayer('qam');
 }
 function launchShow(){ S.launchWaiting=null; hideLaunch(); send({type:'resume'}); }
 function gameReady(id){
@@ -8392,7 +8406,7 @@ function onSysEvent(name, data){
     return;
   }
   if(name==='browser'){ BROWSER.s=data; if(S.view==='settings' && S.settingsTab==='system') render(null,true); if(data && data.error && data.state==='idle') toast(data.error); return; }
-  if(name==='overlay.unavailable'){ if(!OVERLAY && S.layers.at(-1)==='launch'){ send({type:'log', text:'overlay: none to show Quick Access in over the starting screen; using this window\'s'}); openLayer('qam'); } return; }
+  if(name==='overlay.unavailable'){ if(!OVERLAY && S.layers.at(-1)==='launch'){ send({type:'log', text:'overlay: none to show Quick Access in over the starting screen; using this window\'s'}); qamFresh(); openLayer('qam'); } return; }
   if(name==='power.menu'){ if(OVERLAY && OV.busy){ OV.wantPower=true; return; } if(S.layers.at(-1)!=='power'){ if(!OVERLAY) closeAll(); openLayer('power'); } return; }
   if(name==='overlay.shown') return overlayShown();
   if(name==='overlay.hidden') return overlayHidden();
@@ -8710,7 +8724,7 @@ function input(k){
     case 'a': return focused && act(focused);
     case 'b': return back();
     case 'start': return top==='prompt' ? promptSubmit() : top==='search' ? back() : toggleLayer('menu');
-    case 'select': case 'guide': return top==='prompt'||top==='sheet' ? null : toggleLayer('qam');
+    case 'select': case 'guide': if(top==='prompt'||top==='sheet') return; if(top!=='qam') qamFresh(); return toggleLayer('qam');
     case 'y': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (closeAll(), query='', SKB.forceOsk=false, openLayer('search', oskWanted()?'sk-0-0':'sk-field'));
     case 'x': return top==='prompt' ? promptKey('space') : top==='search' ? typeKey('space') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
     case 'lb': case 'rb':
