@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**']
+    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'branding/icons/apps/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -74,6 +74,26 @@ jobs:
           cargo build --release || { echo "::warning title=Hearth Disks::it didn't build, so this image is made without it"; exit 1; }
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-disks" /tmp/app/hearth-disks
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps): built the same way and put
+      # beside the app in hearth-app.tar with their icons (branding/icons/apps); build.sh installs them as
+      # /usr/bin/hearth-contacts and /usr/bin/hearth-maps. Not fatal: an app that doesn't build is left out.
+      - name: Build Hearth Contacts and Hearth Maps
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          # Contacts keeps CardDAV passwords in the Secret Service through libdbus.
+          sudo apt-get install -y -qq libdbus-1-dev >/dev/null
+          mkdir -p /tmp/app/icons
+          for app in hearth-contacts hearth-maps; do
+            sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" "hosts/$app/Cargo.toml"
+            if (cd "hosts/$app" && cargo build --release); then
+              cp "$CARGO_TARGET_DIR/release/$app" "/tmp/app/$app"
+              cp "branding/icons/apps/$app.svg" /tmp/app/icons/
+            else echo "::warning title=$app::it didn't build, so this image is made without it"; fi
+          done
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth Contacts and Hearth Maps
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -237,6 +257,13 @@ jobs:
           check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
           warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
+          # ---- Hearth Contacts and Hearth Maps
+          warn "Hearth Contacts is installed, finds its libraries and opens .vcf files" "test -x /usr/bin/hearth-contacts && ! ldd /usr/bin/hearth-contacts | grep -q 'not found' && grep -q text/vcard /usr/share/applications/hearth-contacts.desktop"
+          warn "Hearth Contacts runs (--list)" "HOME=/tmp HEARTH_CONTACTS_DIR=/tmp/hc /usr/bin/hearth-contacts --list"
+          warn "Hearth Maps is installed, finds its libraries and opens geo: links" "test -x /usr/bin/hearth-maps && ! ldd /usr/bin/hearth-maps | grep -q 'not found' && grep -q x-scheme-handler/geo /usr/share/applications/hearth-maps.desktop && /usr/bin/hearth-maps --version"
+          warn "Hearth Maps may ask GeoClue for Where am I" "test -f /etc/geoclue/conf.d/90-hearth-maps.conf"
+          warn "the Contacts and Maps icons are installed" "test -f /usr/share/icons/hicolor/scalable/apps/hearth-contacts.svg && test -f /usr/share/icons/hicolor/scalable/apps/hearth-maps.svg"
+          # ---- end of Hearth Contacts and Hearth Maps
           exit $fail
           EOF
           sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-os:build sh /check.sh

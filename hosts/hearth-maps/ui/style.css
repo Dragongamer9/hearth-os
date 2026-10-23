@@ -1,0 +1,79 @@
+/* Hearth's ember palette (hosts/linux/desktop/shell/Theme.qml), as in Hearth Disks. */
+:root {
+  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
+  --text:#f4ece3; --muted:#a69484; --faint:#6f6055; --ember:#ff8a3d; --flame:#ffd166; --danger:#ff5d5d; --good:#6fd08c;
+  --ink:#2a1206; --r:14px; --gut:clamp(10px,1.6vw,24px); --ease:cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; background:var(--bg); color:var(--text); overflow:hidden; }
+body { font:400 clamp(14px, .8vw + 7px, 22px)/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; }
+button, input { font:inherit; color:inherit; }
+#map { position:absolute; inset:0; background:#1a1411; }
+#map:focus-within .maplibregl-canvas, .maplibregl-canvas:focus { outline:none; }
+#map.focus::after { content:""; position:absolute; inset:0; box-shadow:inset 0 0 0 3px var(--ember); pointer-events:none; z-index:2; }
+
+.f { outline:none; cursor:pointer; transition:transform .14s var(--ease), box-shadow .14s var(--ease), background .14s; }
+.f:focus { box-shadow:0 0 0 3px var(--ember), 0 0 22px rgba(255,138,61,.35); }
+.f:active { transform:scale(.985); }
+
+#panel { position:absolute; top:var(--gut); left:var(--gut); width:min(26em, calc(100vw - 2 * var(--gut) - 3.6em)); max-height:calc(100% - 2 * var(--gut) - 2.2em); display:flex; flex-direction:column;
+  background:rgba(28,21,18,.96); border:1px solid var(--line); border-radius:18px; box-shadow:0 18px 50px rgba(0,0,0,.45); z-index:5; overflow:hidden; }
+#searchrow { display:flex; gap:.45em; padding:.6em; }
+#pbody { overflow:auto; padding:0 .6em .6em; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
+#pbody:empty { display:none; }
+.inp { flex:1; min-width:0; padding:.5em .75em; border-radius:12px; border:1px solid var(--line); background:var(--bg2); }
+.inp:focus { border-color:var(--ember); }
+.btn { padding:.45em .9em; border-radius:12px; background:var(--panel2); border:1px solid var(--line); min-height:2.4em; }
+.btn.primary { background:var(--ember); color:var(--ink); border-color:transparent; font-weight:650; }
+.btn.small { min-height:2em; padding:.2em .7em; font-size:.85em; }
+.btn[disabled] { opacity:.45; pointer-events:none; }
+.acts { display:flex; flex-wrap:wrap; gap:.45em; margin:.5em 0; }
+h2 { margin:.3em 0 .2em; font-size:1.15em; font-weight:650; overflow-wrap:anywhere; }
+.sub { color:var(--muted); font-size:.85em; overflow-wrap:anywhere; }
+.res { display:block; width:100%; text-align:left; padding:.5em .7em; margin:.3em 0; border-radius:12px; background:var(--panel); border:1px solid var(--line); }
+.res b { display:block; font-weight:600; }
+.res span { color:var(--muted); font-size:.8em; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.res small { color:var(--ember); font-size:.72em; text-transform:capitalize; }
+.chips { display:flex; flex-wrap:wrap; gap:.4em; margin:.4em 0; }
+.chip { padding:.35em .85em; border-radius:99px; background:var(--panel2); border:1px solid var(--line); }
+.chip.on { border-color:var(--ember); background:#3a2416; }
+.slot { display:flex; gap:.4em; align-items:center; margin:.4em 0; }
+.slot label { width:2.6em; color:var(--muted); font-size:.85em; }
+.sum { margin:.5em 0; font-size:1.1em; }
+.sum b { color:var(--flame); }
+.step { display:grid; grid-template-columns:1fr auto; gap:.6em; width:100%; text-align:left; padding:.45em .6em; border-radius:10px; background:transparent; border:1px solid transparent; }
+.step span:last-child { color:var(--muted); font-size:.8em; white-space:nowrap; }
+.note { color:var(--muted); font-size:.78em; margin:.6em 0 .2em; }
+.note a { color:var(--flame); }
+.bad { color:var(--danger); } .ok { color:var(--good); } .muted { color:var(--muted); }
+.spin { display:inline-block; width:1em; height:1em; border:2px solid var(--panel3); border-top-color:var(--ember); border-radius:50%; animation:sp .9s linear infinite; vertical-align:-.15em; }
+@keyframes sp { to { transform:rotate(360deg); } }
+
+#tools { position:absolute; top:var(--gut); right:var(--gut); display:flex; flex-direction:column; gap:.45em; z-index:5; }
+.tool { width:2.8em; height:2.8em; display:grid; place-items:center; border-radius:14px; background:rgba(28,21,18,.96); border:1px solid var(--line); color:var(--text); box-shadow:0 8px 24px rgba(0,0,0,.35); padding:0; }
+.tool svg { width:1.3em; height:1.3em; }
+.tool.busy { color:var(--ember); animation:pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity:.45; } }
+
+#cross { position:absolute; left:50%; top:50%; width:28px; height:28px; margin:-14px 0 0 -14px; pointer-events:none; z-index:3;
+  background:linear-gradient(var(--ember),var(--ember)) center/2px 100% no-repeat, linear-gradient(var(--ember),var(--ember)) center/100% 2px no-repeat; filter:drop-shadow(0 0 2px #000); }
+#banner { position:absolute; left:50%; top:var(--gut); transform:translateX(-50%); background:var(--panel2); border:1px solid #5a3f2c; padding:.4em .9em; border-radius:12px; z-index:6; font-size:.85em; }
+#hints { position:absolute; left:var(--gut); bottom:2.6em; display:flex; gap:1em; flex-wrap:wrap; color:var(--muted); font-size:.75em; z-index:4; background:rgba(15,11,9,.8); padding:.35em .7em; border-radius:10px; }
+#hints b { color:var(--text); background:var(--panel3); border-radius:99px; padding:0 .4em; margin-right:.25em; }
+
+.pin { width:30px; height:42px; background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 42'%3E%3Cpath d='M15 1C7.3 1 1 7.2 1 14.8 1 25.5 15 41 15 41s14-15.5 14-26.2C29 7.2 22.7 1 15 1z' fill='%23ff8a3d' stroke='%232a1206' stroke-width='2'/%3E%3Ccircle cx='15' cy='15' r='5' fill='%232a1206'/%3E%3C/svg%3E"); cursor:pointer; }
+.pin.from { filter:hue-rotate(160deg) saturate(.8); }
+.me { width:20px; height:20px; border-radius:50%; background:#4aa3ff; border:3px solid #fff; box-shadow:0 0 0 6px rgba(74,163,255,.3); }
+
+/* MapLibre's own controls in Hearth's colours; the attribution always shows in full. */
+.maplibregl-ctrl-attrib { background:rgba(15,11,9,.82) !important; color:var(--muted); font-size:11px; }
+.maplibregl-ctrl-attrib a { color:var(--flame) !important; }
+.maplibregl-ctrl-scale { background:rgba(15,11,9,.7); color:var(--text); border-color:var(--muted); }
+
+.veil { position:fixed; inset:0; background:rgba(8,5,4,.6); display:grid; place-items:center; padding:var(--gut); z-index:10; }
+.osk { display:grid; grid-template-columns:repeat(10, 1fr); gap:.3em; margin:.4em .6em .6em; }
+.osk button { padding:.45em 0; border-radius:9px; background:var(--panel3); border:1px solid var(--line); }
+.osk .wide { grid-column:span 2; }
+.toast { position:fixed; left:50%; bottom:3.2em; transform:translateX(-50%); background:var(--panel2); border:1px solid #5a3f2c; padding:.55em 1em; border-radius:12px; z-index:20; box-shadow:0 10px 30px rgba(0,0,0,.5); max-width:90vw; }
+
+@media (max-width: 640px) { #panel { width:calc(100vw - 2 * var(--gut)); top:auto; bottom:2.4em; max-height:55%; } }

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Placeholder for Hearth Maps (the hearth-icons branch draws the real artwork). -->
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="#1c1512"/>
+  <path d="M44 72l56-20 56 20 56-20v132l-56 20-56-20-56 20z" fill="#33271f"/>
+  <path d="M100 52v132M156 72v132" stroke="#1c1512" stroke-width="6"/>
+  <path d="M44 150c40-10 60 20 100 0s48-30 68-24" fill="none" stroke="#ffd166" stroke-width="10" stroke-linecap="round"/>
+  <path d="M128 40c-26 0-46 20-46 45 0 34 46 83 46 83s46-49 46-83c0-25-20-45-46-45z" fill="#ff8a3d" stroke="#2a1206" stroke-width="6"/>
+  <circle cx="128" cy="86" r="16" fill="#2a1206"/>
+</svg>
