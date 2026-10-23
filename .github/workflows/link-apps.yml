@@ -164,6 +164,11 @@ jobs:
           echo "---- Hearth Connect's log"; tail -c 4000 "$RUNNER_TEMP/hc.log"
           echo "---- its events"; tail -c 6000 "$RUNNER_TEMP/hc-events.log"
           echo "---- kdeconnectd's log"; tail -c 6000 "$RUNNER_TEMP/kc/kdeconnectd.log"
+          if [ $code -ne 0 ]; then
+            echo "::warning title=Hearth Connect log::$(tail -c 1800 "$RUNNER_TEMP/hc.log" | tr '\n' '|')"
+            echo "::warning title=events::$(tail -c 1800 "$RUNNER_TEMP/hc-events.log" | tr '\n' '|')"
+            echo "::warning title=kdeconnectd log::$(tail -c 1800 "$RUNNER_TEMP/kc/kdeconnectd.log" | tr '\n' '|')"
+          fi
           exit $code
       - name: Screenshot of the window
         if: always()

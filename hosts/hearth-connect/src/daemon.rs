@@ -322,7 +322,7 @@ impl Daemon {
                 }
             },
             "kdeconnect.mousepad.keyboardstate" => { if let Some(d) = lock(&self.devices).get_mut(id) { d.keyboard = p.bool("state"); } }
-            "kdeconnect.mpris.request" => self.mpris_request(id, p),
+            "kdeconnect.mpris.request" => self.mpris_request(id, p.clone()),
             "kdeconnect.mpris" => self.phone_media(id, &p),
             "kdeconnect.findmyphone.request" => {
                 desktop::ring();

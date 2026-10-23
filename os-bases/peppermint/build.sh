@@ -275,7 +275,7 @@ DESKTOP
 fi
 # ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect) ------------------------------
 # Hearth's apps for phones and nearby devices, built with the app (base-peppermint.yml) and carried in os/nimbus-app
-# with their icons. Nearby Share speaks LocalSend's protocol, Hearth Connect KDE Connect's. playerctl lets a phone
+# (their icons, hearth-nearby and hearth-connect, come with Hearth's icon set). Nearby Share speaks LocalSend's protocol, Hearth Connect KDE Connect's. playerctl lets a phone
 # control this PC's music, wl-clipboard/wtype give Hearth Connect the clipboard and typing in Desktop Mode, and
 # notify-send's library its notifications. Their firewall helper and polkit rule come from os/system_files
 # (hearth-link-firewall, 49-hearth-link.rules): ports open only while the apps listen, and only to local addresses.
@@ -285,7 +285,6 @@ for app in hearth-nearby hearth-connect; do
     install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
     if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app is missing the libraries above"; fi
   fi
-  if [ -f "/ctx/nimbus-app/icons/$app.svg" ]; then install -Dm644 "/ctx/nimbus-app/icons/$app.svg" "/usr/share/icons/hicolor/scalable/apps/$app.svg"; fi
 done
 chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
 if dpkg -s firewalld >/dev/null 2>&1 || dpkg -s ufw >/dev/null 2>&1; then echo "a firewall is in this image: Nearby Share and Hearth Connect open their ports with it"; else echo "no firewall in this image: nothing to open"; fi
@@ -330,7 +329,6 @@ RestartSec=5
 WantedBy=default.target
 UNIT
 fi
-gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 # ---- end of Nearby Share and Hearth Connect
 
 # CI builds the app in a debian:trixie container, so every library it links must be here under the same name.
