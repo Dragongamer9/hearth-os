@@ -1196,6 +1196,19 @@ def fstab_text(ru, bu, eu):
             f'UUID={ru} /var/home btrfs subvol=home,compress=zstd:1,x-systemd.device-timeout=0 0 0\n')
 
 
+def hosts_text(existing, name):
+    """/etc/hosts with the device's name on 127.0.1.1 (the Debian convention), so programs that look it up
+    (sudo) find it: other lines are kept, an older 127.0.1.1 line is replaced, localhost is added if missing."""
+    lines = [l for l in (existing or '').splitlines() if not re.match(r'\s*127\.0\.1\.1\s', l)]
+    if not any(re.match(r'\s*127\.0\.0\.1\s+.*\blocalhost\b', l) for l in lines):
+        lines.insert(0, '127.0.0.1\tlocalhost')
+    if not any(re.match(r'\s*::1\s+.*\blocalhost\b', l) for l in lines):
+        lines.insert(1, '::1\t\tlocalhost ip6-localhost ip6-loopback')
+    at = next((i + 1 for i, l in enumerate(lines) if re.match(r'\s*127\.0\.0\.1\s', l)), 0)
+    lines.insert(at, '127.0.1.1\t' + name)
+    return '\n'.join(lines) + '\n'
+
+
 def setup_system(dep, root, plan):
     stage('user', 90, 'Creating your account')
     var = f'{TARGET}/ostree/deploy/default/var'
@@ -1211,6 +1224,14 @@ def setup_system(dep, root, plan):
         add_account(dep, u['name'], u['full'], '' if u.get('nopassword') else password_hash(u['password']))
         with open(f'{dep}/etc/hostname', 'w') as f:
             f.write(plan['hostname'] + '\n')
+        hosts = f'{dep}/etc/hosts'
+        try:
+            with open(hosts) as f:
+                old = f.read()
+        except OSError:
+            old = ''
+        with open(hosts, 'w') as f:
+            f.write(hosts_text(old, plan['hostname']))
         if os.path.exists(f'{dep}/usr/share/zoneinfo/{plan["timezone"]}'):
             lt = f'{dep}/etc/localtime'
             if os.path.lexists(lt):

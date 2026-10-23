@@ -230,6 +230,7 @@ jobs:
           check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
           check "hearth-admin's Python is valid" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin"
           check "the wheel group exists (installer, sudo and polkit rules use it)" "getent group wheel"
+          check "the device's own name resolves (nss-myhostname in nsswitch.conf)" "grep '^hosts:' /etc/nsswitch.conf | grep -qw myhostname && ls /usr/lib/*/libnss_myhostname.so.2"
           check "uid 1000 is free for the player (the container image's 'ubuntu' account is gone)" "! getent passwd 1000 && ! getent passwd ubuntu"
           check "background updates are scheduled (bootc timer, stage only)" "test -L /etc/systemd/system/timers.target.wants/bootc-fetch-apply-updates.timer && grep -q 'bootc upgrade --quiet' /usr/lib/systemd/system/bootc-fetch-apply-updates.service.d/10-hearth-no-reboot.conf"
           echo "--- update path (required, the app's own check)"

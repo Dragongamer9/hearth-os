@@ -517,6 +517,17 @@ chmod 755 /usr/libexec/nimbus/hearth-seat-input 2>/dev/null || true
 # Hearth's administrators group (the installer puts the first account in it; the polkit rules use it). In
 # /etc/group now (the installer adds the account against the image's /etc) and in sysusers.d for later.
 getent group wheel >/dev/null || groupadd -r wheel
+# The device's own name resolves (sudo warned "unable to resolve host <name>" without it): nss-myhostname answers
+# for the hostname whatever /etc/hosts says (the installer and hearth-admin hostname also write 127.0.1.1 there).
+"${APT[@]}" libnss-myhostname
+if ! grep -Eq '^hosts:.*[[:space:]]myhostname([[:space:]]|$)' /etc/nsswitch.conf; then
+  if grep -Eq '^hosts:.*[[:space:]]files([[:space:]]|$)' /etc/nsswitch.conf; then
+    sed -i -E '/^hosts:/ s/([[:space:]])files([[:space:]]|$)/\1files myhostname\2/' /etc/nsswitch.conf
+  else
+    sed -i -E 's/^hosts:(.*)$/hosts:\1 myhostname/' /etc/nsswitch.conf
+  fi
+fi
+grep '^hosts:' /etc/nsswitch.conf | grep -qw myhostname || { echo "nsswitch.conf has no myhostname"; exit 1; }
 # Ubuntu's locale-gen takes the locale as an argument (and also reads /etc/locale.gen where there is one).
 if [ -f /etc/locale.gen ]; then sed -i 's/^#\s*\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen; fi
 locale-gen en_US.UTF-8

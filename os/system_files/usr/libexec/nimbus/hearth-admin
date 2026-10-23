@@ -106,10 +106,40 @@ def autologin(state):
     print(json.dumps({'autologin': state == 'on'}))
 
 
+def hosts_text(existing, name):
+    """/etc/hosts with the device's name on 127.0.1.1 (the Debian convention), so programs that look it up
+    (sudo) find it: other lines are kept, an older 127.0.1.1 line is replaced, localhost is added if missing."""
+    lines = [l for l in (existing or '').splitlines() if not re.match(r'\s*127\.0\.1\.1\s', l)]
+    if not any(re.match(r'\s*127\.0\.0\.1\s+.*\blocalhost\b', l) for l in lines):
+        lines.insert(0, '127.0.0.1\tlocalhost')
+    if not any(re.match(r'\s*::1\s+.*\blocalhost\b', l) for l in lines):
+        lines.insert(1, '::1\t\tlocalhost ip6-localhost ip6-loopback')
+    at = next((i + 1 for i, l in enumerate(lines) if re.match(r'\s*127\.0\.0\.1\s', l)), 0)
+    lines.insert(at, '127.0.1.1\t' + name)
+    return '\n'.join(lines) + '\n'
+
+
+HOSTS = '/etc/hosts'
+
+
 def hostname(name):
     if not re.fullmatch(r'[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?', name or ''):
         fail('use letters, numbers and dashes (up to 63), not starting or ending with a dash')
     subprocess.run(['hostnamectl', 'hostname', name], check=True)
+    # The new name on 127.0.1.1 too (sudo looks it up); nss-myhostname covers it where installed.
+    try:
+        try:
+            with open(HOSTS) as f:
+                old = f.read()
+        except FileNotFoundError:
+            old = ''
+        tmp = HOSTS + '.hearth-new'
+        with open(tmp, 'w') as f:
+            f.write(hosts_text(old, name))
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, HOSTS)
+    except OSError as e:
+        print('log: couldn\'t update /etc/hosts (%s)' % e, flush=True)
     print(json.dumps({'hostname': name}))
 
 
