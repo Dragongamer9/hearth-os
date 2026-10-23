@@ -4,6 +4,7 @@
 #  - build: unit tests, release builds, the pages checked in a browser, and screenshots of the real windows
 #  - e2e: the apps for real in the two editions' own systems, with a screen, PipeWire, a tone and a fake microphone:
 #      Fedora (Anatase's base) with labwc headless, as Mantel: wf-recorder, ffmpeg-free's encoders
+#      Fedora with gamescope headless (software Vulkan), as Game Mode: GStreamer reading gamescope's PipeWire stream
 #      Debian 13 (Peppermint's base) with an X11 screen: ffmpeg's x11grab and libx264
 #    Each recording is checked with ffprobe (length, streams, size, not silent).
 # Release builds for the images are made by base-anatase.yml and base-peppermint.yml.
@@ -102,6 +103,9 @@ jobs:
           - name: fedora-wayland
             image: registry.fedoraproject.org/fedora:latest
             kind: wayland
+          - name: fedora-gamescope
+            image: registry.fedoraproject.org/fedora:latest
+            kind: gamescope
           - name: debian13-x11
             image: docker.io/library/debian:trixie
             kind: x11
@@ -117,6 +121,11 @@ jobs:
             dnf -y -q install --skip-unavailable --setopt=fedora-cisco-openh264.enabled=1 git python3 webkit2gtk4.1 gtk3 dbus-daemon ffmpeg-free wf-recorder labwc xorg-x11-server-Xwayland foot wlr-randr dejavu-sans-mono-fonts \
               pipewire pipewire-pulseaudio wireplumber pulseaudio-utils pipewire-utils gstreamer1-plugins-good gstreamer1-plugins-bad-free \
               gstreamer1-plugin-openh264 slurp procps-ng libnotify v4l-utils qrencode curl >/dev/null
+            # Game Mode: gamescope (headless, on Mesa's software Vulkan) and what reads its PipeWire stream, as on Anatase.
+            if [ "${{ matrix.kind }}" = gamescope ]; then
+              dnf -y -q install --skip-unavailable gamescope xterm mesa-vulkan-drivers vulkan-loader pipewire-gstreamer gstreamer1-plugin-libav >/dev/null
+              gamescope --version 2>&1 | head -1
+            fi
           else
             apt-get update -qq
             DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends git ca-certificates python3 libwebkit2gtk-4.1-0 libgtk-3-0t64 \
