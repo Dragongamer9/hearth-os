@@ -1,0 +1,42 @@
+[package]
+name = "hearth-player"
+version = "0.1.0"
+edition = "2021"
+description = "Hearth Player: Hearth OS's own video and music player, with Podcasts & Radio and simple editing"
+license = "GPL-3.0-or-later"
+
+# Everything that doesn't need a window (the play queue, the local file server, ffmpeg plans, tags, podcasts) is a
+# library, so the tests can run it without opening the app.
+[lib]
+name = "hearth_player"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-player"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+base64 = "0.22"
+sha2 = "0.10"
+# Song tags and covers, written without touching the sound.
+lofty = "0.25"
+# Podcast feeds, the podcast and radio directories, downloads and radio streams (rustls: no OpenSSL needed).
+ureq = "2"
+
+# Linux: MPRIS (media keys, Mantel's lock screen) and logind's "keep awake" over D-Bus.
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = "4"
+tokio = { version = "1", features = ["sync"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

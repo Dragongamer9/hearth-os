@@ -1,0 +1,84 @@
+# Hearth Calculator (hosts/hearth-calculator): the arithmetic (tests/engine.test.js, in Node), the page in
+# Chromium (tests/ui_test.py), and the app on Linux: it opens, a sum is typed into it, and the answer is read back
+# from its saved history; with screenshots in the run's hearth-calculator-linux artifact. Release builds come from
+# base-*.yml (the Linux images). Ember (Windows) isn't built yet: the Linux editions come first.
+name: Hearth Calculator
+
+on:
+  push:
+    branches: [main, linux-host, hearth-media]
+    paths: ['hosts/hearth-calculator/**', '.github/workflows/calculator.yml']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: hosts/hearth-calculator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-calculator
+      - name: The arithmetic (Node)
+        run: |
+          node --check ui/engine.js && node --check ui/app.js
+          node --test tests/engine.test.js 2>&1 | tee engine.log
+          echo "::notice title=Arithmetic::$(grep -E '^# (pass|fail)' engine.log | tr '\n' ' ')"
+      - name: WebKit and a desktop to run in
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            xvfb imagemagick x11-utils dbus-x11 xdotool >/dev/null
+      - name: Build
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Size::$(du -h target/release/hearth-calculator | cut -f1)"
+          ./target/release/hearth-calculator --version
+      - name: Run it and type a sum
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_CALCULATOR_CONFIG="$RUNNER_TEMP/calc"
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          dbus-run-session -- ./target/release/hearth-calculator > run.log 2>&1 &
+          sleep 8
+          w=$(xdotool search --name '^Calculator$' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true
+          xdotool type --delay 120 '0.1+0.2='; sleep 1
+          import -window root shots/standard.png || true
+          xdotool key Escape; xdotool type --delay 120 '12*3.5='; sleep 2
+          xdotool key alt+2; sleep 1; xdotool type --delay 120 '2+3*4='; sleep 1
+          import -window root shots/scientific.png || true
+          xdotool key alt+3; sleep 1; import -window root shots/programmer.png || true
+          xdotool key alt+4; sleep 1; xdotool type --delay 120 '12'; sleep 1; import -window root shots/converter.png || true
+          sleep 1
+          cat "$RUNNER_TEMP/calc/state.json" | head -c 1500; echo
+          python3 - "$RUNNER_TEMP/calc/state.json" <<'PY'
+          import json, sys
+          h = [x["result"] for x in json.load(open(sys.argv[1]))["history"]]
+          print("history:", h)
+          assert h[:3] == ["14", "42", "0.3"], h
+          PY
+          rc=$?
+          pkill -f target/release/hearth-calculator || true
+          echo "::notice title=Typed into the app::0.1+0.2=0.3, 12*3.5=42, scientific 2+3*4=14 (read back from its saved history)"
+          [ $rc = 0 ] || { echo "::error title=app::the answers weren't right: $(tail -c 1500 run.log | tr '\n' '|')"; exit 1; }
+      - name: The page in Chromium
+        run: |
+          pip install -q playwright==1.48.2 >/dev/null && python3 -m playwright install --with-deps chromium >/dev/null
+          python3 tests/ui_test.py shots/page 2>&1 | tee ui.log
+          echo "::notice title=Page::$(grep -c '^ok' ui.log) checks passed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-calculator-linux
+          path: |
+            hosts/hearth-calculator/target/release/hearth-calculator
+            hosts/hearth-calculator/shots
