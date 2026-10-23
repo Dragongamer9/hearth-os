@@ -33,6 +33,7 @@ def uri(p):
 
 
 def check(name, ok, detail=''):
+    detail = detail if isinstance(detail, str) else json.dumps(detail, default=str)
     print(('ok    ' if ok else 'FAIL  ') + name + ((': ' + detail) if detail else ''), flush=True)
     if not ok:
         FAILED.append(name)
@@ -132,9 +133,9 @@ st = seen.get('open') or {}
 check('the picker opened for OpenFile, in the folder the app asked for', st.get('path') == DOCS, json.dumps(st))
 check('the picker shows the app\'s title', st.get('title') == 'Open a spreadsheet', st.get('title'))
 ents = st.get('entries') or []
-check('the filter shows folders and .csv files only', 'data.csv' in ents and 'Reports' in ents and 'backup.bin' not in ents, ents)
-check('OpenFile returns the picked file', r and r[0] == 0 and r[1].get('uris') == [uri(os.path.join(DOCS, 'data.csv'))], r)
-check('OpenFile says which filter was on', r and r[0] == 0 and (r[1].get('current_filter') or [''])[0] == 'Spreadsheets', r)
+check('the filter shows folders and .csv files only', bool(ents) and 'data.csv' in ents and 'Reports' in ents and 'backup.bin' not in ents, ents)
+check('OpenFile returns the picked file', bool(r) and r[0] == 0 and r[1].get('uris') == [uri(os.path.join(DOCS, 'data.csv'))], r)
+check('OpenFile says which filter was on', bool(r) and r[0] == 0 and (r[1].get('current_filter') or [''])[0] == 'Spreadsheets', r)
 wait_gone()
 
 
@@ -155,7 +156,7 @@ r = portal_call('SaveFile', {
 }, drive_save, 'Save the report')
 st = seen.get('save') or {}
 check('the picker opened for SaveFile with the suggested name', st.get('name') == 'Untitled.txt', json.dumps(st))
-check('SaveFile returns the new file', r and r[0] == 0 and r[1].get('uris') == [uri(os.path.join(DOCS, 'saved report.txt'))], r)
+check('SaveFile returns the new file', bool(r) and r[0] == 0 and r[1].get('uris') == [uri(os.path.join(DOCS, 'saved report.txt'))], r)
 wait_gone()
 
 
@@ -178,7 +179,7 @@ def drive_overwrite():
 
 r = portal_call('SaveFile', {'current_folder': GLib.Variant('ay', DOCS.encode() + b'\0')}, drive_overwrite)
 check('saving over a file asks before replacing it', (seen.get('overwrite') or {}).get('overlay') == 'confirm', seen.get('overwrite'))
-check('…and returns it once you say Replace', r and r[0] == 0 and r[1].get('uris') == [uri(os.path.join(DOCS, 'data.csv'))], r)
+check('…and returns it once you say Replace', bool(r) and r[0] == 0 and r[1].get('uris') == [uri(os.path.join(DOCS, 'data.csv'))], r)
 wait_gone()
 
 
@@ -190,7 +191,7 @@ def drive_folder():
 
 
 r = portal_call('OpenFile', {'directory': GLib.Variant('b', True), 'current_folder': GLib.Variant('ay', DOCS.encode() + b'\0')}, drive_folder)
-check('OpenFile in folder mode returns the folder', r and r[0] == 0 and r[1].get('uris') == [uri(DOCS)], r)
+check('OpenFile in folder mode returns the folder', bool(r) and r[0] == 0 and r[1].get('uris') == [uri(DOCS)], r)
 wait_gone()
 
 
@@ -200,7 +201,7 @@ def drive_cancel():
 
 
 r = portal_call('OpenFile', {}, drive_cancel)
-check('Cancel tells the app it was cancelled', r and r[0] == 1, r)
+check('Cancel tells the app it was cancelled', bool(r) and r[0] == 1, r)
 wait_gone()
 
 
