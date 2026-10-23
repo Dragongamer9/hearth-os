@@ -3006,6 +3006,7 @@ def cmd(argv):
     elif c == 'thumbs' and rest:
         out = thumbs(rest)
     elif c == 'terminal' and len(rest) == 1:
+        out = terminal(rest[0])
     elif c == 'appimage-info' and len(rest) == 1:
         out = appimage_info(rest[0])
     elif c == 'appimage-run' and len(rest) in (1, 2) and rest[1:] in ([], ['--trust']):
@@ -3014,7 +3015,6 @@ def cmd(argv):
         out = appimage_menu_add(rest[0], rest[1:] == ['--trust'])
     elif c == 'appimage-menu-remove' and len(rest) == 1:
         out = appimage_menu_remove(rest[0])
-        out = terminal(rest[0])
     elif c == 'open-plan' and len(rest) == 1:
         out = open_plan(rest[0])
     elif c == 'run' and len(rest) in (1, 2) and rest[1:] in ([], ['--terminal']):
