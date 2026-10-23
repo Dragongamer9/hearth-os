@@ -126,6 +126,22 @@ fn main() {
         println!("{}", serde_json::to_string_pretty(&lab::state()).unwrap_or_default());
         return;
     }
+    // For tests: rumble one event device, or set one axis's range (`--set-axis <path> <code> <min> <max> <flat>`).
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(i) = args.iter().position(|a| a == "--rumble") {
+            let path = args.get(i + 1).cloned().unwrap_or_default();
+            match hearth_gaming::pads::rumble_now(std::path::Path::new(&path), 0.8, 0.4, 300) { Ok(()) => { println!("rumbled"); return; } Err(e) => { eprintln!("{e}"); std::process::exit(1); } }
+        }
+        if let Some(i) = args.iter().position(|a| a == "--set-axis") {
+            let v: Vec<i64> = args.iter().skip(i + 2).take(4).filter_map(|s| s.parse().ok()).collect();
+            if v.len() != 4 { eprintln!("--set-axis <path> <code> <min> <max> <flat>"); std::process::exit(2); }
+            match hearth_gaming::pads::set_axis_path(std::path::Path::new(&args[i + 1]), v[0] as u16, v[1] as i32, v[2] as i32, v[3] as i32) {
+                Ok(a) => { println!("{}", json!({"min": a.min, "max": a.max, "flat": a.flat})); return; }
+                Err(e) => { eprintln!("{e}"); std::process::exit(1); }
+            }
+        }
+    }
     let fullscreen = args.iter().any(|a| a == "--fullscreen");
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }

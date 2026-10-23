@@ -142,6 +142,24 @@ const path = require('path');
     if (!document.querySelector('#view [data-k="sa-beacon-open"]')) throw new Error('no Beacon card');
   });
   await step('beacon leave', () => { S.layers = []; S.tab = 'inst'; navigate('home', {}, false); });
+  // ---- Hearth's gaming apps (with the host's "gamingApps" feature): Settings › Controls › Controller Lab, and a
+  // game's ⋯ menu › Back up saves / Mods (Beacon's games keep only Beacon's own Mods).
+  await step('gaming apps entries', async () => {
+    const had = HOSTINFO.features;
+    HOSTINFO.features = [...(had || []), 'gamingApps'];
+    try {
+      S.layers = []; S.settingsTab = 'controller'; navigate('settings', {}, false);
+      if (!document.querySelector('#view [data-k="ctl-lab"]')) throw new Error('no Controller Lab row in Settings › Controls');
+      const g = GAMES.find(x => x.inst && !x.cloud && x.src !== 'beacon');
+      gameOptions(g);
+      const t = document.querySelector('#sheet') ? document.querySelector('#sheet').textContent : document.body.textContent;
+      closeAll();
+      if (!/Back up saves/.test(t) || !/Mods/.test(t)) throw new Error('no Back up saves / Mods in the game menu');
+      const b = GAMES.find(x => x.src === 'beacon' && x.inst);
+      if (b) { const items = []; gamingGameItems(b, items); if (items.some(i => i.label === 'Mods')) throw new Error("Beacon's game got a second Mods entry"); }
+    } finally { HOSTINFO.features = had; S.layers = []; closeAll(); navigate('home', {}, false); }
+  });
+  // ---- end of Hearth's gaming apps
   // An expired store sign-in (the preview's GOG): the host says so (accounts.expired), the bell keeps an entry with
   // a warning badge, Library › Stores shows "Sign-in expired" with Sign in again, Downloads and an install say why
   // and offer the same, and signing in again clears it all.

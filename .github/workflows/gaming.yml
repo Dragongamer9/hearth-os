@@ -17,7 +17,7 @@ env:
 jobs:
   linux:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -26,8 +26,10 @@ jobs:
           workspaces: hosts/hearth-gaming
       - name: WebKit and GTK, uinput, and the tools for the screenshots
         run: |
+          # man-db's index rebuild after installing can take many minutes on the runners: off.
+          sudo rm -f /var/lib/man-db/auto-update
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
             xvfb imagemagick dbus-x11 xdotool python3-evdev libarchive-tools >/dev/null
       - name: Unit tests (manifest, finding saves, backup and restore, mods in and out, evdev numbers)
         working-directory: hosts/hearth-gaming
@@ -42,6 +44,63 @@ jobs:
           cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           ls -l target/release/hearth-controller-lab target/release/hearth-saves target/release/hearth-mods
           echo "::notice title=size::$(du -h target/release/hearth-controller-lab target/release/hearth-saves target/release/hearth-mods | tr '\n' ' ')"
+      - name: Saves end to end (fake home, Proton and native saves, backup, restore, another PC, schedule, the real list)
+        run: |
+          set -o pipefail
+          python3 tools/gaming-e2e/e2e.py saves hosts/hearth-gaming/target/release "$RUNNER_TEMP/saves" 2>&1 | tee -a hosts/hearth-gaming/e2e.log
+      - name: Mods end to end (fake game folder)
+        if: always()
+        run: |
+          set -o pipefail
+          python3 tools/gaming-e2e/e2e.py mods hosts/hearth-gaming/target/release "$RUNNER_TEMP/mods" 2>&1 | tee -a hosts/hearth-gaming/e2e.log
+      - name: Controller Lab end to end (virtual controllers through /dev/uinput)
+        if: always()
+        run: |
+          set -o pipefail
+          sudo modprobe uinput
+          # As root: the virtual controllers' /dev/input nodes are root's until the test opens them up.
+          sudo /usr/bin/python3 tools/gaming-e2e/e2e.py pads hosts/hearth-gaming/target/release 2>&1 | tee -a hosts/hearth-gaming/e2e.log
+      - name: Report as annotations
+        if: always()
+        run: |
+          [ -f hosts/hearth-gaming/e2e.log ] || exit 0
+          grep -E '^(ok|FAIL):' hosts/hearth-gaming/e2e.log > /tmp/sum.txt || true
+          echo "::notice title=e2e::$(grep -c '^ok:' /tmp/sum.txt) passed, $(grep -c '^FAIL:' /tmp/sum.txt) failed"
+          grep '^FAIL:' /tmp/sum.txt | head -20 | while read -r l; do echo "::error title=e2e::$(echo "$l" | cut -c1-900)"; done
+      - name: Screenshots of the three windows
+        if: always()
+        working-directory: hosts/hearth-gaming
+        run: |
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          shot() { import -window root "shots/$1.png" || true; }
+          front() { w=$(xdotool search --name "^$1\$" | tail -1); [ -n "$w" ] && xdotool windowactivate --sync "$w" 2>/dev/null; true; }
+          H="$RUNNER_TEMP/saves/pc1/home"
+          # Saves, on the fake home the Saves test left (its backups on the "USB drive" too).
+          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME="$H" HEARTH_SAVES_MANIFEST="$RUNNER_TEMP/saves/manifest.yaml" ./target/release/hearth-saves > saves.log 2>&1 &
+          sleep 9; front Saves; shot saves-games
+          xdotool key Down; sleep 1; xdotool key Return; sleep 1; shot saves-celeste
+          xdotool key Next; sleep 3; shot saves-backups
+          xdotool key Next; sleep 2; shot saves-automatic
+          pkill -f target/release/hearth-saves || true
+          # Mods, on the fake game the Mods test used, with one mod put back in.
+          M="$RUNNER_TEMP/mods/pc/home"
+          (cd "$RUNNER_TEMP/mods" && HOME="$M" "$GITHUB_WORKSPACE/hosts/hearth-gaming/target/release/hearth-mods" --install steam:367520 "$RUNNER_TEMP/mods/Cool Mod v1.2.zip" >/dev/null 2>&1 || true)
+          HOME="$M" ./target/release/hearth-mods > mods.log 2>&1 &
+          sleep 8; front Mods; shot mods
+          xdotool key Return; sleep 1; xdotool key Right; sleep 1; shot mods-detail
+          pkill -f target/release/hearth-mods || true
+          # Controller Lab with a moving virtual DualSense.
+          sudo modprobe uinput
+          sudo /usr/bin/python3 "$GITHUB_WORKSPACE/tools/gaming-e2e/e2e.py" hold 25 &
+          sleep 2
+          ./target/release/hearth-controller-lab > lab.log 2>&1 &
+          sleep 9; front "Controller Lab"; shot controller-lab
+          sleep 2; shot controller-lab-2
+          pkill -f target/release/hearth-controller-lab || true
+          echo "::notice title=App output::$(tail -c 1200 saves.log mods.log lab.log | tr '\n' '|')"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
