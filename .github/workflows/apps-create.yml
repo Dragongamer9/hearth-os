@@ -14,6 +14,9 @@ on:
 env:
   CARGO_TERM_COLOR: never
 
+permissions:
+  contents: write    # the screenshots branch
+
 jobs:
   linux:
     runs-on: ubuntu-24.04
@@ -104,6 +107,17 @@ jobs:
           xdotool type --delay 80 'heart'; sleep 1; import -window root shots/emoji-search.png || true
           pkill -f release/hearth-emoji || true
           for l in paint fonts fonts2 emoji; do echo "::notice title=$l output::$(tail -c 800 $l.log | tr '\n' '|')"; done
+          cp paint.log fonts.log fonts2.log emoji.log fonts.json shots/ 2>/dev/null || true
+      # The screenshots also go to the ci/apps-create-shots branch (ci/apps-create-shots-<branch> for other branches),
+      # to look at without downloading the artifact.
+      - name: Publish screenshots to a branch
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          to=ci/apps-create-shots
+          if [ "$GITHUB_REF_NAME" != main ] && [ "$GITHUB_REF_NAME" != linux-host ]; then to="ci/apps-create-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"; fi
+          mkdir -p shots && cd shots && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Paint, Emoji and Fonts ${GITHUB_SHA::7}" --allow-empty
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-create-apps-linux
