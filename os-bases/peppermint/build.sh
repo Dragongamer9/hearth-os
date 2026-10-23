@@ -273,6 +273,85 @@ Categories=System;Utility;
 Keywords=disk;drive;partition;format;usb;sd;card;mount;eject;storage;steam;library;
 DESKTOP
 fi
+# ==== Hearth Paint, the emoji picker, Hearth Fonts, and Settings › Accessibility (hosts/hearth-paint, hearth-emoji,
+# hearth-fonts, hearth-gamma, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
+# os/nimbus-app with their icons. The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;
+# Settings › Accessibility uses Orca (the screen reader, with speech-dispatcher and eSpeak NG) and xprop (gamescope's
+# zoom and colour filters in Game Mode). Each app is left out if it didn't build or can't find its libraries.
+optional orca speech-dispatcher espeak-ng at-spi2-core fontconfig wtype wl-clipboard x11-utils
+for app in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+  [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so it's left out"; continue; }
+  install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+  if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
+done
+for icon in hearth-paint hearth-emoji hearth-fonts hearth-accessibility; do
+  [ -f "/ctx/nimbus-app/icons/$icon.svg" ] && install -Dm644 "/ctx/nimbus-app/icons/$icon.svg" "/usr/share/icons/hicolor/scalable/apps/$icon.svg"
+done
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
+install -d /usr/share/applications
+if [ -x /usr/bin/hearth-paint ]; then
+  cat > /usr/share/applications/hearth-paint.desktop <<DESKTOP
+[Desktop Entry]
+Name=Paint
+GenericName=Drawing
+Comment=Draw, and mark up pictures and screenshots
+Exec=/usr/bin/hearth-paint %f
+Icon=hearth-paint
+Type=Application
+Categories=Graphics;2DGraphics;RasterGraphics;
+MimeType=image/png;image/jpeg;image/webp;image/bmp;image/gif;
+Keywords=paint;draw;drawing;sketch;annotate;markup;screenshot;picture;image;crop;
+StartupWMClass=hearth-paint
+DESKTOP
+fi
+if [ -x /usr/bin/hearth-emoji ]; then
+  cat > /usr/share/applications/hearth-emoji.desktop <<DESKTOP
+[Desktop Entry]
+Name=Emoji & Symbols
+Comment=Type emoji, symbols and special characters into any app (Super+.)
+Exec=/usr/bin/hearth-emoji
+Icon=hearth-emoji
+Type=Application
+Categories=Utility;
+Keywords=emoji;emoticon;smiley;symbol;character;special;accent;kaomoji;unicode;
+StartupWMClass=hearth-emoji
+DESKTOP
+fi
+if [ -x /usr/bin/hearth-fonts ]; then
+  cat > /usr/share/applications/hearth-fonts.desktop <<DESKTOP
+[Desktop Entry]
+Name=Fonts
+GenericName=Font Viewer
+Comment=See your fonts, and install or remove fonts
+Exec=/usr/bin/hearth-fonts %f
+Icon=hearth-fonts
+Type=Application
+Categories=Utility;
+MimeType=font/ttf;font/otf;font/collection;font/sfnt;application/x-font-ttf;application/x-font-otf;application/vnd.ms-opentype;
+Keywords=font;fonts;typeface;ttf;otf;install;
+StartupWMClass=hearth-fonts
+DESKTOP
+  # Hearth Files opens font files in it.
+  if ! grep -q 'hearth-fonts.desktop' /usr/share/applications/mimeapps.list 2>/dev/null; then
+    printf '\n[Default Applications]\n' >> /usr/share/applications/mimeapps.list
+    for m in font/ttf font/otf font/collection font/sfnt application/x-font-ttf application/x-font-otf application/vnd.ms-opentype; do
+      echo "$m=hearth-fonts.desktop" >> /usr/share/applications/mimeapps.list
+    done
+  fi
+fi
+cat > /usr/share/applications/hearth-accessibility.desktop <<DESKTOP
+[Desktop Entry]
+Name=Accessibility
+Comment=Magnifier, colour filters, screen reader, bigger text
+Exec=/usr/bin/hearth-settings accessibility
+Icon=hearth-accessibility
+Type=Application
+Categories=Settings;Accessibility;
+Keywords=accessibility;a11y;magnifier;zoom;screen reader;orca;colour;color;filter;contrast;text size;
+DESKTOP
+update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+# ==== end Hearth Paint, Emoji, Fonts and Accessibility
+
 # CI builds the app in a debian:trixie container, so every library it links must be here under the same name.
 if ldd /usr/lib/nimbus/nimbus | grep "not found"; then
   echo "The Hearth app needs libraries this image doesn't have (above)"; exit 1

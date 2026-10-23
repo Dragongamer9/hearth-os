@@ -13,7 +13,7 @@ on:
         default: true
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**']
+    paths: ['os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'branding/icons/apps/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -91,6 +91,23 @@ jobs:
           cargo build --release || { echo "::warning title=Hearth Disks::it didn't build, so this image is made without it"; exit 1; }
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-disks" /tmp/app/hearth-disks
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ==== Hearth Paint, the emoji picker, Hearth Fonts and hearth-gamma (hosts/hearth-paint, hearth-emoji, hearth-fonts,
+      # hearth-gamma; apps-create.yml tests them): built the same way and put beside the app in hearth-app.tar with
+      # their icons (build.sh installs them). Not fatal: an app that doesn't build is left out of this image.
+      - name: Build Hearth Paint, Emoji, Fonts and hearth-gamma
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          mkdir -p /tmp/app/icons
+          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+            sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" hosts/$c/Cargo.toml
+            if (cd hosts/$c && cargo build --release); then cp "$CARGO_TARGET_DIR/release/$c" /tmp/app/$c
+            else echo "::warning title=$c::it didn't build, so this image is made without it"; fi
+          done
+          cp branding/icons/apps/hearth-paint.svg branding/icons/apps/hearth-emoji.svg branding/icons/apps/hearth-fonts.svg branding/icons/apps/hearth-accessibility.svg /tmp/app/icons/
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ==== end Hearth Paint, Emoji, Fonts and hearth-gamma
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-app-peppermint
@@ -252,6 +269,17 @@ jobs:
           check "system accounts are recreated by sysusers (sddm, ...)" "grep -q '^u sddm ' /usr/lib/sysusers.d/hearth-image.conf"
           check "the bootc layout (/ostree, /var/home)" "test -L /ostree && test \"\$(readlink /home)\" = var/home"
           check "it's called Hearth" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q Peppermint /usr/lib/os-release"
+          # ---- Hearth Paint, Emoji, Fonts and Settings › Accessibility (apps-create.yml)
+          warn "Hearth Paint is installed and finds its libraries" "test -x /usr/bin/hearth-paint && ! ldd /usr/bin/hearth-paint | grep -q 'not found'"
+          warn "the emoji picker is installed and finds its libraries" "test -x /usr/bin/hearth-emoji && ! ldd /usr/bin/hearth-emoji | grep -q 'not found'"
+          warn "Hearth Fonts is installed and lists the fonts" "test -x /usr/bin/hearth-fonts && HOME=/tmp /usr/bin/hearth-fonts --list | grep -q '\"name\"'"
+          warn "hearth-gamma (inverted colours in Desktop Mode) is installed" "test -x /usr/bin/hearth-gamma"
+          warn "the emoji picker can type and copy (wtype, wl-copy)" "command -v wtype && command -v wl-copy"
+          warn "Orca (the screen reader) is installed" "command -v orca"
+          warn "labwc has the magnifier (0.7.3 or newer)" "labwc --version | grep -qE '0\.(7\.[3-9]|[89]\.|[1-9][0-9]\.)|[1-9]\.'"
+          warn "Settings › Accessibility's helper runs" "HOME=/tmp python3 /usr/share/nimbus/desktop/shell/hearth-access status | grep -q settings"
+          warn "the app icons are in the icon theme" "test -f /usr/share/icons/hicolor/scalable/apps/hearth-paint.svg"
+          # ---- end Hearth Paint, Emoji, Fonts and Accessibility
           echo "--- Game Mode and Desktop Mode"
           check "gamescope is installed" "command -v gamescope"
           check "gamescope is Valve's (Hearth's Game Mode atoms are in it)" "grep -aq GAMESCOPECTRL_BASELAYER_APPID \$(command -v gamescope) && grep -aq GAMESCOPECTRL_BASELAYER_WINDOW \$(command -v gamescope) && grep -aq GAMESCOPE_FPS_LIMIT \$(command -v gamescope) && grep -aq GAMESCOPECTRL_REQUEST_SCREENSHOT \$(command -v gamescope) && grep -aq mangoapp \$(command -v gamescope)"
