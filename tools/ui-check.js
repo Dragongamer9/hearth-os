@@ -350,9 +350,9 @@ const path = require('path');
       await wait(200);
       if (!(await page.evaluate(() => ['auto', 'mk', 'pad'].every(k => document.querySelector(`#view [data-k="ap-mf-${k}"]`))))) errors.push('Appearance: no Made for choice');
       await page.evaluate(() => act(document.querySelector('#view [data-k="ap-mf-pad"]')));
-      if (!(await page.evaluate(() => LOOK.madeFor === 'pad' && !document.body.classList.contains('mk')))) errors.push('Made for: Controller did not turn mouse & keyboard off');
+      if (!(await page.evaluate(() => LOOK.madeFor === 'pad' && !document.body.classList.contains('mk-on')))) errors.push('Made for: Controller did not turn mouse & keyboard off');
       await page.evaluate(() => act(document.querySelector('#view [data-k="ap-mf-mk"]')));
-      if (!(await page.evaluate(() => document.body.classList.contains('mk')))) errors.push('Made for: Mouse & keyboard did not turn it on');
+      if (!(await page.evaluate(() => document.body.classList.contains('mk-on')))) errors.push('Made for: Mouse & keyboard did not turn it on');
       await page.evaluate(() => { act(document.querySelector('#view [data-k="ap-mf-auto"]')); closeAll(); navigate('home', {}, false); });
     } catch (e) { errors.push('keyboard / on-screen keyboard: ' + e.message.split('\n')[0]); }
   }

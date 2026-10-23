@@ -59,9 +59,15 @@ function inspect(opts) {
     const range = document.createRange(); range.selectNodeContents(n);
     const r = range.getBoundingClientRect(); if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > H || r.right < 0 || r.left > W) continue;
     const s = getComputedStyle(el); if (s.visibility === 'hidden' || +s.opacity < 0.05) continue;
-    // hidden by a clipping parent?
-    const c = clipper(el); if (c) { const cr = c.getBoundingClientRect(); if (r.left >= cr.right - 1 || r.right <= cr.left + 1 || r.top >= cr.bottom - 1 || r.bottom <= cr.top + 1) continue; }
-    texts.push({ el, r, t: n.textContent.trim().slice(0, 28), s });
+    // What's left of it inside every box that clips it (its own, when it's cut off with an ellipsis, and every
+    // scrolling list it's in): only that part can overlap anything.
+    let v = {left: r.left, right: r.right, top: r.top, bottom: r.bottom};
+    for (let p = el; p && p !== document.body; p = p.parentElement) {
+      const ps = p === el ? s : getComputedStyle(p); if (ps.overflow === 'visible' && ps.overflowX === 'visible' && ps.overflowY === 'visible') continue;
+      const cr = p.getBoundingClientRect(); v = {left: Math.max(v.left, cr.left), right: Math.min(v.right, cr.right), top: Math.max(v.top, cr.top), bottom: Math.min(v.bottom, cr.bottom)};
+    }
+    if (v.right - v.left < 2 || v.bottom - v.top < 2) continue;
+    texts.push({ el, r: {left: v.left, right: v.right, top: v.top, bottom: v.bottom, width: v.right - v.left, height: v.bottom - v.top}, t: n.textContent.trim().slice(0, 28), s });
   }
   const clipped = [];
   for (const { el, t, s } of texts) {
