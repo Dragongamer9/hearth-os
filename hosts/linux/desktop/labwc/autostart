@@ -34,6 +34,11 @@ fi
 # The Hearth look for apps (colors for Qt/KDE and GTK apps).
 [ -x "$SHARE/desktop/theme/apply.sh" ] && "$SHARE/desktop/theme/apply.sh"
 
+# ---- Accessibility (Settings › Accessibility): inverted colours, the screen reader and the apps' text size, as set
+# (the magnifier and the rest are in the labwc folder hearth-system made).
+[ -f "$SHARE/desktop/shell/hearth-access" ] && python3 "$SHARE/desktop/shell/hearth-access" apply desktop >/dev/null 2>&1 &
+# ---- end Accessibility
+
 # The Hearth taskbar, launcher, Quick Access, notifications and wallpaper (Quickshell).
 # Without it Desktop Mode is an empty black screen you can't leave on a handheld, so it's watched: if it
 # can't start (or keeps crashing), go back to Game Mode, which shows why.
