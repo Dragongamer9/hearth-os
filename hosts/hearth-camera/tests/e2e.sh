@@ -6,6 +6,7 @@ B=${CAMERA:-hearth-camera}
 export HOME=$(mktemp -d) HEARTH_CAMERA_TEST=1
 OUT=${OUT:-/tmp/camera-e2e}; mkdir -p "$OUT"
 FAILED=0
+SUMMARY=""
 fail() { echo "::error title=Camera ($KIND) $1::$2"; tail -n 5 "$XDG_RUNTIME_DIR/hearth-camera/ffmpeg.log" 2>/dev/null; FAILED=1; }
 note() { echo "ok: $*"; SUMMARY="$SUMMARY$*  ·  "; }
 streams() { ffprobe -v error -show_entries stream=codec_type,codec_name,width,height -of csv=p=0 "$1" 2>/dev/null | tr '\n' ' '; }
