@@ -12,6 +12,7 @@ use tauri::{WebviewUrl, WebviewWindowBuilder};
 const USAGE: &str = "hearth-time: Hearth's Clock, Calendar, Notes and Weather
 
   hearth-time --app clock|calendar|notes|weather [--fullscreen]   open an app (also: hearth-clock, hearth-calendar...)
+  hearth-calendar FILE.ics | webcal://...   Calendar, offering to import the file or subscribe to the calendar
   hearth-time --service                     ring alarms and timers, show reminders (run by systemd: hearth-time.service)
   hearth-time --ring alarm:ID[,timer:ID]    the ringing window (the service opens it)
   hearth-time --events FROM TO              calendar events between two dates (YYYY-MM-DD) as JSON, for the taskbar
@@ -19,7 +20,7 @@ const USAGE: &str = "hearth-time: Hearth's Clock, Calendar, Notes and Weather
   hearth-time --version
 ";
 
-struct Start { app: &'static str, ring: Vec<(String, String)> }
+struct Start { app: &'static str, ring: Vec<(String, String)>, open: Option<(&'static str, String)> }
 
 static PINNED: AtomicU64 = AtomicU64::new(0);
 
@@ -34,6 +35,8 @@ fn init(start: tauri::State<Start>) -> Value {
         "ring": start.ring.iter().map(|(k, i)| json!({"kind": k, "id": i})).collect::<Vec<_>>(),
         "notesDir": notes::dir(),
         "dnd": paths::dnd_on(),
+        // Calendar opened with an .ics file or a webcal: link (hearth-calendar.desktop: %u): it offers to import or subscribe.
+        "open": start.open.as_ref().map(|(k, v)| json!({"kind": k, "value": v})),
     })
 }
 
@@ -308,7 +311,8 @@ fn main() {
         (k == "alarm" || k == "timer").then(|| (k.to_string(), id.to_string()))
     }).collect()).unwrap_or_default();
     let ringing = !ring_list.is_empty();
-    let app: &'static str = if ringing { "clock" } else {
+    let open = if ringing { None } else { args.iter().skip(1).find_map(|a| hearth_time::calendar_open_target(a)) };
+    let app: &'static str = if ringing { "clock" } else if open.is_some() { "calendar" } else {
         value("--app").and_then(|a| hearth_time::app_from_name(&a))
             .or_else(|| args.first().and_then(|a| hearth_time::app_from_name(a)))
             .unwrap_or("clock")
@@ -335,7 +339,7 @@ fn main() {
     let mut ctx = tauri::generate_context!();
     ctx.config_mut().identifier = identifier;
     let built = tauri::Builder::default()
-        .manage(Start { app, ring: ring_list })
+        .manage(Start { app, ring: ring_list, open })
         .invoke_handler(tauri::generate_handler![
             init, quit, open_app, open_folder,
             clock_get, clock_save, clock_next, ring_stop, ring_info, ring_done,

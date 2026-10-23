@@ -384,9 +384,9 @@ async function importDialog() {
     try { done(await invoke('cal_import_text', { text: await f.text() })); } catch (x) { H.toast(String(x)); }
   });
 }
-function subscribeDialog() {
+function subscribeDialog(url = '') {
   const d = H.dialog(`<h2>Subscribe to a calendar</h2><p class="muted">Paste the calendar's address (it ends in .ics, or starts with webcal://). Calendar downloads it now and every few hours; its events show read-only.</p>
-    <div class="field"><label for="url">Address</label><input class="inp f" id="url" placeholder="https://example.com/calendar.ics" spellcheck="false" autocomplete="off"></div>
+    <div class="field"><label for="url">Address</label><input class="inp f" id="url" placeholder="https://example.com/calendar.ics" spellcheck="false" autocomplete="off" value="${esc(url)}"></div>
     <div class="field"><label for="nm">Name</label><input class="inp f" id="nm" placeholder="Holidays" maxlength="60" autocomplete="off"></div>
     <div class="row end"><button class="btn f" data-a="close">Cancel</button><button class="btn primary f" data-a="go">Subscribe</button></div>`);
   d.addEventListener('click', async e => {
@@ -485,8 +485,18 @@ H.onKey = e => {
 window.addEventListener('focus', () => { if (!H.dialogOpen()) load(); });
 setInterval(() => { if (!H.dialogOpen() && document.visibilityState === 'visible' && S.view !== 'agenda') { const n = $('.nowline'); if (n) { const t = new Date(); n.style.top = `calc(${t.getHours() + t.getMinutes() / 60} * var(--hh))`; } } }, 60000);
 
+// Opened with an .ics file or a webcal: link (Calendar is their default app): offer to import it or subscribe.
+async function openWith(o) {
+  if (!o || !o.value) return;
+  if (o.kind === 'subscribe') return subscribeDialog(o.value);
+  const name = o.value.split('/').pop();
+  if (!await H.ask(`Import “${name}”?`, 'Its events are added to your calendar.', 'Import')) return;
+  try { const r = await invoke('cal_import_file', { path: o.value }); H.toast(`Imported: ${r.added} new${r.updated ? `, ${r.updated} updated` : ''}`); load(); }
+  catch (x) { H.toast(String(x), 5000); }
+}
+
 // ------------------------------------------------------------------------------------------------ start
-loadMeta().then(() => setView(S.view));
+loadMeta().then(() => setView(S.view)).then(() => invoke('init')).then(i => openWith(i && i.open)).catch(() => { });
 
 // ------------------------------------------------------------------------------------------------ sample data (no app)
 window.DEMO = (() => {
@@ -523,6 +533,7 @@ window.DEMO = (() => {
   };
   return (cmd, a) => {
     switch (cmd) {
+      case 'init': return { app: 'calendar', open: /[?&]open=ics/.test(location.search) ? { kind: 'file', value: '/home/you/Downloads/school-term.ics' } : null };
       case 'cal_get': return { settings: { weekStart: 1, defaultReminder: 10 }, subs: [{ id: 'sub1', name: 'Holidays', url: 'https://example.com/holidays.ics', color: '#9bd36a', updated: Date.now() - 3600000, error: '' }], mtime: 1 };
       case 'cal_range': return expand(a.from, a.to);
       case 'cal_event': return ev.find(e => e.id === a.id) || null;

@@ -567,6 +567,8 @@ impl Bridge {
             "access.set" => { let j = crate::access::set_args(a)?; crate::access::run(&["set", &j]) }
             "access.apply" => crate::access::run(&["apply", "game"]),
             // ---- end Accessibility
+            // Settings › Default apps (desktop/shell/hearth-system, shared with Desktop Mode's page)
+            "defaults.list" | "defaults.set" | "defaults.reset" => { let (m, a) = (method.to_string(), a.clone()); self.later(move || crate::defaults::call(&m, &a)) }
             // Is Handheld Daemon running, its controllers and power limit (Settings › Controls shows the way in).
             "hhd.status" => Ok(crate::hhd::status()),
             // Settings › Controls › Handheld Daemon: HHD's whole settings tree with its state, the state alone (the
