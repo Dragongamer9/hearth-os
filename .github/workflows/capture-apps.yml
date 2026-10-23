@@ -34,9 +34,10 @@ jobs:
           workspaces: |
             hosts/hearth-recorder -> ../../target-capture
       - name: WebKit and GTK
+        timeout-minutes: 12
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+          sudo apt-get install -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
             xvfb imagemagick xdotool ffmpeg >/dev/null
       - name: Unit tests
         run: |
@@ -108,6 +109,7 @@ jobs:
     container: ${{ matrix.image }}
     steps:
       - name: The edition's own packages
+        timeout-minutes: 15
         run: |
           if command -v dnf >/dev/null; then
             # As on Anatase: Cisco's openh264 (Fedora's ffmpeg-free and GStreamer encode H.264 with it).
