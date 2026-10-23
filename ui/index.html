@@ -478,6 +478,11 @@ body.overlay .modal{width:min(380px,92vw)}
 body.L-tiles .topnav,body.L-spotlight .topnav{display:flex}
 body.L-tiles #vtitle,body.L-spotlight #vtitle{display:none}
 body.reduce-motion *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+/* ---- Accessibility: high contrast (Settings › Accessibility) */
+body.hc{--bg:#000;--bg2:#000;--panel:#000;--panel2:#0b0b0b;--panel3:#1c1c1c;--line:#fff;--text:#fff;--dim:#f0f0f0;--faint:#cfcfcf}
+body.hc .row,body.hc .chip,body.hc .btn,body.hc .card{border:1px solid #fff!important}
+body.hc .muted,body.hc small{color:#f0f0f0!important}
+/* ---- end Accessibility */
 /* Lighter effects: when the host draws the compatible way (no DMA-BUF: Nvidia RTX 50, basic graphics), big blurs and
    shadows are drawn without the graphics card's help every frame, which made Hearth sluggish. Same look, flatter. */
 body.lite .home-hero .art,body.lite .home-hero .img,body.lite #launch .art{filter:none!important;opacity:.22;transform:none;will-change:auto}
@@ -1440,6 +1445,7 @@ function applyLook(){
   b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id));
   if(isX(LOOK.layout)){ b.classList.add('L-spotlight','X-'+LOOK.layout); } else b.classList.add('L-'+LOOK.layout);
   b.classList.toggle('reduce-motion', !!LOOK.reduceMotion);
+  b.classList.toggle('hc', !!LOOK.highContrast);   // Accessibility: high contrast
   b.classList.toggle('no-battpct', !LOOK.battPct);
   b.style.zoom = (TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[2];
   renderTopNav(); if(typeof tick==='function') tick();
@@ -2140,6 +2146,53 @@ function lookRow(key,label,sub){ return `<button class="row" data-f data-k="ap-$
 function pickTextSize(){
   openSheet({title:'Text size', sub:'Makes everything in '+APP+' bigger or smaller', items:TEXT_SIZES.map(([k,l])=>({label:l, icon:LOOK.textSize===k?'check':'', run:()=>{ LOOK.textSize=k; saveLook(); render('ap-text'); }}))});
 }
+
+// ---------- Settings › Accessibility (Hearth OS) ----------
+// Zoom and colour filters are gamescope's, the screen reader is Orca: desktop/shell/hearth-access does them (through
+// hearth-core's access.* calls), with the same settings file as Desktop Mode's Settings › Accessibility. Text size,
+// high contrast and reduce motion are this page's own (LOOK). Ember (Windows) doesn't have it yet.
+const A11Y = {s:null, busy:false};
+const A11Y_FILTERS = [['none','Off',''],['grayscale','Greyscale','Shades of grey only'],['invert','Inverted colours','Light becomes dark and colours flip'],
+  ['invert-brightness','Inverted brightness','Light becomes dark; colours stay much the same'],['protanopia','Red-green (protanopia)','Moves reds where they\'re easier to tell apart'],
+  ['deuteranopia','Green-red (deuteranopia)','Moves greens where they\'re easier to tell apart'],['tritanopia','Blue-yellow (tritanopia)','Moves blues and yellows where they\'re easier to tell apart']];
+const A11Y_ZOOMS = [[1,'Off'],[1.25,'1.25×'],[1.5,'1.5×'],[2,'2×'],[2.5,'2.5×'],[3,'3×'],[4,'4×']];
+const A11Y_DEMO = {settings:{magnifierSize:'full',magnifierZoom:2,magnifierStep:.5,gameZoom:1,filter:'none',screenReader:false,textScale:1,highContrast:false,largePointer:false},
+  mode:'game', available:{orca:true, xprop:true, labwcMagnifier:true, filters:A11Y_FILTERS.map(f=>f[0])}, orcaRunning:false, problems:{}};
+function a11yCall(m, args){ return host ? call(m, args||{}, 20000) : Promise.resolve(m==='access.set' ? (Object.assign(A11Y_DEMO.settings, args.set), A11Y_DEMO) : A11Y_DEMO); }
+function a11yLoad(){ a11yCall('access.status').then(r=>{ A11Y.s=r; refreshUI(); }).catch(e=>{ A11Y.s={error:e.message||String(e)}; refreshUI(); }); }
+function a11ySet(o, key, done){
+  A11Y.busy=true; render(key, true);
+  a11yCall('access.set', {set:o}).then(r=>{ A11Y.s=r; const p=Object.values(r.problems||{}); toast(p.length ? p[0] : done); })
+    .catch(e=>toast(e.message||String(e))).finally(()=>{ A11Y.busy=false; render(key, true); });
+}
+function pageAccess(){
+  const st=A11Y.s, set=(st&&st.settings)||{}, av=(st&&st.available)||{};
+  const ts=(TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[1];
+  const zoom=(A11Y_ZOOMS.find(z=>z[0]===set.gameZoom)||[0, set.gameZoom>1 ? set.gameZoom+'×' : 'Off'])[1];
+  const filt=(A11Y_FILTERS.find(f=>f[0]===set.filter)||A11Y_FILTERS[0])[1];
+  const spin = A11Y.busy ? '<span class="mini-spin"></span>' : '';
+  let h = shead('Seeing the screen', !st);
+  if(st && st.error) h += note('Couldn\'t read the accessibility settings: '+esc(st.error));
+  h += sgrid(`<button class="row" data-f data-k="a11y-zoom" data-act="a11yZoom"><span class="ricon">${I.search}</span><div class="rt"><b>Zoom</b><small>Makes the whole screen bigger, around the pointer</small></div>${spin||`<div class="rv">${esc(zoom)} ›</div>`}</button>`
+    + `<button class="row" data-f data-k="a11y-filter" data-act="a11yFilter"><span class="ricon">${I.display}</span><div class="rt"><b>Colour filter</b><small>Greyscale, inverted colours, or colours for colour blindness</small></div>${spin||`<div class="rv">${esc(filt)} ›</div>`}</button>`
+    + `<button class="row" data-f data-k="a11y-reader" data-act="a11yReader"><span class="ricon">${I.vol}</span><div class="rt"><b>Screen reader</b><small>${st&&!av.orca?'Orca, the screen reader, isn\'t installed':'Orca reads out what\'s on the screen'}</small></div>${spin||`<div class="sw ${set.screenReader?'on':''}"></div>`}</button>`
+    + `<button class="row" data-f data-k="a11y-hc" data-act="a11yHc"><span class="ricon">${I.sun}</span><div class="rt"><b>High contrast</b><small>Black and white with clear outlines, in ${APP}</small></div><div class="sw ${LOOK.highContrast?'on':''}"></div></button>`
+    + `<button class="row" data-f data-k="ap-text" data-act="textSize"><span class="ricon">${I.text}</span><div class="rt"><b>Text size</b><small>Makes everything in ${APP} bigger or smaller</small></div><div class="rv">${ts} ›</div></button>`
+    + lookRow('reduceMotion','Reduce motion','Turns off animations and smooth scrolling'));
+  h += shead('In Desktop Mode')
+    + tipRow('a11y-desk', 'Magnifier, filters and more', 'In Desktop Mode, Super+= zooms in around the pointer, Super+- zooms out and Super+Esc turns the magnifier off. Super+Alt+S turns the screen reader on or off, and Super+. opens emoji and symbols. Its Settings › Accessibility has the magnifier\'s size, bigger text for apps, a large pointer and high contrast. There, only inverted colours work of the colour filters.');
+  return h;
+}
+function a11yAct(a, d){
+  const set=(A11Y.s&&A11Y.s.settings)||{};
+  if(a==='a11yZoom') return openSheet({title:'Zoom', sub:'The whole screen, bigger around the pointer. Games too.', items:A11Y_ZOOMS.map(([v,l])=>({label:l, icon:set.gameZoom===v?'check':'', run:()=>a11ySet({gameZoom:v}, 'a11y-zoom', v>1?'Zoomed in to '+l:'Zoom is off')}))});
+  if(a==='a11yFilter') return openSheet({title:'Colour filter', sub:'For the whole screen, games too.', items:A11Y_FILTERS.map(([v,l,sb])=>({label:l+(sb?' · '+sb:''), icon:set.filter===v?'check':'', run:()=>a11ySet({filter:v}, 'a11y-filter', v==='none'?'Colour filter off':l+' is on')}))});
+  if(a==='a11yReader') return a11ySet({screenReader:!set.screenReader}, 'a11y-reader', !set.screenReader?'Screen reader on':'Screen reader off');
+  if(a==='a11yHc'){ LOOK.highContrast=!LOOK.highContrast; saveLook(); return render('a11y-hc'); }
+}
+// Each start of Game Mode: the zoom, colour filter and screen reader as they were set (gamescope forgets them).
+if(LINUX && host && !OVERLAY) setTimeout(()=>call('access.apply',{},20000).catch(()=>{}), 2500);
+// ---------- end Settings › Accessibility
 
 // ---------- Settings › System and › About ----------
 const SYSINFO = {s:null};
@@ -2949,6 +3002,9 @@ const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',liblook:'you',
 const stabGroup = k => STAB_GROUP[k]||'system';
 const stabShown = k => STABS.some(x=>x[0]===k) && k!=='audio' && (ANDROID ? ANDROID_TABS.includes(k) && (k!=='linux'||lxOn()) : k==='linux' ? false : (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX)));
 const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k));
+// ---- Accessibility: its page (pageAccess) in You, on Hearth OS only
+if(LINUX){ STABS.splice(STABS.findIndex(x=>x[0]==='liblook')+1, 0, ['access','text','Accessibility']); STAB_GROUP.access='you'; }
+// ---- end Accessibility
 const SLAST = {};
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
@@ -4722,6 +4778,7 @@ function viewSettings(){
   if(t==='signin') body = pageSignin();
   if(t==='system') body = pageSystem();
   if(t==='appearance') body = pageAppearance();
+  if(t==='access') body = pageAccess();   // Accessibility
   if(t==='liblook') body = pageLibLook();
   if(t==='controller') body = pageControls();
   if(t==='sources'){
@@ -5326,6 +5383,7 @@ function act(el){
   if(S.locked && !['unlock','pkey','back','sheet'].includes(a)) return;   // locked: only unlocking
   blip(880,.05,.045);
   if(a.startsWith('bcn')) return beaconAct(a, d);   // Beacon's screens (Game setup, Mods)
+  if(a.startsWith('a11y')) return a11yAct(a, d);   // Settings › Accessibility
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
   switch(a){
     case 'unlock': return lockUnlock();
@@ -7822,6 +7880,7 @@ function onSettingsTab(t){
   if(t==='sources'){ loadEmu(); loadXodus(); }
   if(t==='appearance'){ loadDeskWall(); watchVotes(true); }
   if(t==='liblook') watchVotes(true);
+  if(t==='access') a11yLoad();   // Accessibility
   if(t==='import') loadImport();
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();
