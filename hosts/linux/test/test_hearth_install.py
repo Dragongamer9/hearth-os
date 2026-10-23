@@ -456,6 +456,10 @@ class Edition(unittest.TestCase):
 
     def test_plan_editions(self):
         for ed in H.EDITIONS:
+            if ed in H.ARCHIVED_EDITIONS:
+                with self.assertRaises(H.Fail, msg=ed):
+                    H.check_plan({**GOOD, 'edition': ed})
+                continue
             p = H.check_plan({**GOOD, 'edition': ed})
             self.assertEqual((p['edition'], p['image']), (ed, H.EDITIONS[ed]['image']))
         with self.assertRaises(H.Fail):
@@ -466,7 +470,9 @@ class Edition(unittest.TestCase):
     def test_never_a_free_form_image(self):
         base = {k: v for k, v in GOOD.items() if k != 'edition'}
         # Exactly one of the table's images is still taken (older callers), as that edition.
-        self.assertEqual(H.check_plan({**base, 'image': 'ghcr.io/dragongamer9/hearth-ubuntu:testing'})['edition'], 'ubuntu')
+        self.assertEqual(H.check_plan({**base, 'image': 'ghcr.io/dragongamer9/hearth-peppermint:testing'})['edition'], 'peppermint')
+        with self.assertRaises(H.Fail):   # an archived edition's image
+            H.check_plan({**base, 'image': 'ghcr.io/dragongamer9/hearth-ubuntu:testing'})
         for bad in ('ghcr.io/dragongamer9/hearth:latest', 'ghcr.io/dragongamer9/hearth-nvidia:latest',
                     'ghcr.io/dragongamer9/hearth-ubuntu:latest', 'docker.io/evil/os:latest', 'ghcr.io/dragongamer9/hearth-os@sha256:abc'):
             with self.assertRaises(H.Fail, msg=bad):
@@ -478,7 +484,9 @@ class Edition(unittest.TestCase):
         H.cpu_v3 = lambda path='/proc/cpuinfo': False
         with self.assertRaises(H.Fail):
             H.check_plan({**GOOD, 'edition': 'cachyos'})
-        self.assertEqual(H.check_plan({**GOOD, 'edition': 'ubuntu'})['edition'], 'ubuntu')
+        with self.assertRaises(H.Fail):   # archived
+            H.check_plan({**GOOD, 'edition': 'ubuntu'})
+        self.assertEqual(H.check_plan({**GOOD, 'edition': 'peppermint'})['edition'], 'peppermint')
         rows = {r['id']: r for r in H.edition_choices(list(H.EDITIONS), False, False)}
         self.assertFalse(rows['cachyos']['allowed'])
         self.assertTrue(rows['anatase']['allowed'] and rows['ubuntu']['allowed'] and rows['peppermint']['allowed'])
@@ -525,14 +533,14 @@ class Edition(unittest.TestCase):
         self.assertEqual(H.editions_offered('ubuntu'), ['ubuntu'])
         self.assertEqual((H.usb_edition('ubuntu'), H.usb_edition('installer'), H.usb_edition('anatase')), ('ubuntu', 'anatase', 'anatase'))
         self.assertEqual(H.published_all(['peppermint']), {}, 'an offline USB has its edition with it')
-        self.assertEqual(H.editions_offered('installer'), ['anatase', 'ubuntu', 'cachyos', 'peppermint'])
+        self.assertEqual(H.editions_offered('installer'), ['anatase', 'peppermint'])   # Ubuntu and CachyOS are archived
         self.assertEqual(H.editions_offered('anatase'), ['anatase'])
-        rows = H.edition_choices(H.editions_offered('installer'), True, False, {'peppermint': False, 'ubuntu': None})
+        rows = H.edition_choices(H.editions_offered('installer'), True, False, {'peppermint': False})
         self.assertEqual([r['id'] for r in rows if r['recommended']], ['anatase'])
-        self.assertEqual([r['id'] for r in rows if r['beta']], ['ubuntu', 'cachyos', 'peppermint'])
+        self.assertEqual([r['id'] for r in rows if r['beta']], ['peppermint'])
         by = {r['id']: r for r in rows}
         self.assertEqual((by['peppermint']['allowed'], by['peppermint']['reason']), (False, 'Not ready yet'))
-        self.assertTrue(by['ubuntu']['allowed'])          # couldn't ask (offline): still allowed
+        self.assertTrue(by['anatase']['allowed'])         # couldn't ask (offline): still allowed
         self.assertEqual(H.published_all(['anatase']), {})  # the live USB's own: not asked
 
 

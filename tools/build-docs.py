@@ -21,7 +21,8 @@ PAGES = [
 ]
 
 
-EDITIONS = [('anatase', 'Anatase', 'Fedora'), ('ubuntu', 'Ubuntu', 'Ubuntu'), ('cachyos', 'CachyOS', 'Arch'), ('peppermint', 'Peppermint', 'Debian')]
+# Ubuntu and CachyOS are archived for now (October 2026): back once Anatase and Peppermint are solid.
+EDITIONS = [('anatase', 'Anatase', 'Fedora'), ('peppermint', 'Peppermint', 'Debian')]
 # Sections (by heading id) that only apply to some editions; everything else is for all of them.
 SECTION_EDS = {
     'podman': 'ubuntu cachyos peppermint',
@@ -136,10 +137,6 @@ EDITION_NOTES = (
     only('anatase', '''<p><b>Anatase</b> is Fedora underneath, as an image (bootc). It's the main edition: every change is tested on it first.</p>
 <ul>APPS<li>Steam: from Flathub, installed the first time the device is online.</li>
 <li>Terminal tools that change the system use <code>rpm-ostree</code> (Fedora's image tool).</li></ul>''')
-    + only('ubuntu', '''<p><b>Ubuntu</b> is Ubuntu 26.04 underneath, made into an image (bootc). <span class="ver">Beta Experimental</span></p>
-<ul>APPS<li><code>apt</code> can't change the system itself: it's a read-only image that updates in one piece.</li><li>Steam: built in, from Ubuntu's packages.</li></ul>''')
-    + only('cachyos', '''<p><b>CachyOS</b> is Arch-based CachyOS underneath, made into an image (bootc), with CachyOS's handheld kernel (Steam Deck, ROG Ally, Legion Go and MSI Claw patches). <span class="ver">Beta Experimental</span></p>
-<ul>APPS<li><code>pacman</code> can't change the system itself: it's a read-only image that updates in one piece.</li><li>Steam: built in, from CachyOS's packages.</li></ul>''')
     + only('peppermint', '''<p><b>Peppermint</b> is Debian 13 "trixie" underneath (Peppermint OS's base), made into an image (bootc). <span class="ver">Beta Experimental</span></p>
 <ul>APPS<li><code>apt</code> can't change the system itself: it's a read-only image that updates in one piece.</li><li>Steam: built in, from Debian's packages.</li></ul>''')
 ).replace('APPS', '<li>Apps: Flatpak, from Flathub, in the <b>Apps</b> store (Desktop Mode).</li>')
@@ -167,11 +164,12 @@ An update can't half-install, and the version you had before stays on the drive 
 <div class="tbl"><table>
 <tr><th>Edition</th><th>Built on</th><th>Status</th><th>Good for</th></tr>
 <tr><td><b>Anatase</b></td><td>Fedora (Anatase)</td><td>Recommended</td><td>Everyone. The most tested edition, with the best hardware support.</td></tr>
-<tr><td><b>Ubuntu</b></td><td>Ubuntu 26.04</td><td>Beta Experimental</td><td>People who know Ubuntu, or need Ubuntu packages.</td></tr>
-<tr><td><b>CachyOS</b></td><td>CachyOS (Arch)</td><td>Beta Experimental</td><td>Newer processors (x86-64-v3: AVX2). Tuned kernel, handheld patches.</td></tr>
 <tr><td><b>Peppermint</b></td><td>Debian 13</td><td>Beta Experimental</td><td>People who prefer Debian's slower, steady pace.</td></tr>
 </table></div>
 <p>You can <a href="updates.html#switch">switch edition</a> later without a USB stick. Your games and saves come along.</p>
+<div class="note"><p><b>Ubuntu and CachyOS are archived for now.</b> The focus is on making Anatase and Peppermint solid; the other
+editions come back after that. Already on one? It gets no more updates: <a href="updates.html#switch">switch to Anatase or Peppermint</a>
+and your games come with you.</p></div>
 
 {h2('yours', 'About your edition')}
 <p class="ed" data-ed="all">Pick your edition above to see what's particular about it.</p>
@@ -181,7 +179,6 @@ An update can't half-install, and the version you had before stays on the drive 
 <ul>
 <li>A 64-bit PC or handheld (x86-64) with AMD, Intel or Nvidia graphics (Nvidia GTX 16 / RTX 20 or newer).</li>
 <li>For installing: a USB stick of 16 GB or more, and a drive of 64 GB or more.</li>
-<li class="ed" data-ed="cachyos">A processor from about 2015 or newer (x86-64-v3: AVX2, BMI2, FMA). Hearth checks before switching to CachyOS.</li>
 </ul>
 <p>Tested on the ASUS ROG Ally and Xbox Ally, and desktop PCs with AMD and Nvidia graphics.</p>
 '''
@@ -195,8 +192,6 @@ downloads the system while it installs, and offers every edition.</p>
 <tr><th>Download</th><th>Size</th><th>Internet while installing</th></tr>
 <tr class="ed" data-ed="anatase"><td><a href="{R2}hearth-os-live.iso">Anatase, offline USB</a> (recommended)</td><td>about 9 GB</td><td>Not needed. Try it before installing.</td></tr>
 <tr><td><a href="{R2}hearth-os-installer.iso">Small installer</a> (every edition)</td><td>1.6 GB</td><td>Needed</td></tr>
-<tr class="ed" data-ed="ubuntu"><td><a href="{R2}hearth-os-ubuntu.iso">Ubuntu, offline</a></td><td>about 4.4 GB</td><td>Not needed</td></tr>
-<tr class="ed" data-ed="cachyos"><td><a href="{R2}hearth-os-cachyos.iso">CachyOS, offline</a></td><td>about 5.2 GB</td><td>Not needed</td></tr>
 <tr class="ed" data-ed="peppermint"><td><a href="{R2}hearth-os-peppermint.iso">Peppermint, offline</a></td><td>about 4.3 GB</td><td>Not needed</td></tr>
 </table></div>
 <p>To check a download wasn't damaged, compare its checksum (a <code>.sha256</code> file sits next to each ISO, for example
@@ -267,7 +262,8 @@ can be moved with the D-pad or volume buttons.</p>
 <p>Then restart. The next update moves you forward again.</p>
 
 {h2('switch', 'Switching edition')}
-<p>Move between Anatase, Ubuntu, CachyOS and Peppermint without a USB stick: <b>Settings › Updates › Switch edition</b>.</p>
+<p>Move between Anatase and Peppermint without a USB stick: <b>Settings › Updates › Switch edition</b>. On Ubuntu or CachyOS
+(archived for now) the same button moves you to Anatase or Peppermint.</p>
 <ul>
 <li><b>Kept:</b> your account, your games, saves and store libraries (Steam, Epic, GOG...).</li>
 <li><b>Set aside:</b> the rest of your home folder goes into a folder called <code>.old-hearth-</code> plus the date, for 30 days,
@@ -277,8 +273,8 @@ so you can copy back anything you need. After 30 days it's deleted.</li>
 <div class="note warn ed" data-ed="ubuntu cachyos peppermint"><p><b>Installed from 0.3.0 or earlier:</b> switching edition (and updating) fails with
 "podman executable not found in PATH". See <a href="troubleshooting.html#podman">the fix</a>.</p></div>
 <h3>Switching from a terminal</h3>
-<p>The same switch as the Settings button. Change <code>ubuntu</code> to <code>anatase</code>, <code>cachyos</code> or <code>peppermint</code>:</p>
-{cmd('switch-edition', 'pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os --edition ubuntu')}
+<p>The same switch as the Settings button. Change <code>peppermint</code> to <code>anatase</code> for the other edition:</p>
+{cmd('switch-edition', 'pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os --edition peppermint')}
 <p>When it says <b>Done. Restart to start the new Hearth OS.</b>, restart.</p>
 
 {h2('versions', 'Versions')}
@@ -465,7 +461,7 @@ Don't include passwords.</p>
     <textarea name="what" rows="5" maxlength="4000" required placeholder="What you did, what you expected, and what happened instead. Error messages word for word help a lot."></textarea></label>
   <div class="row2">
     <label>Edition
-      <select name="edition"><option value="">Not sure</option><option>Anatase</option><option>Ubuntu</option><option>CachyOS</option><option>Peppermint</option><option>Ember (Windows)</option></select></label>
+      <select name="edition"><option value="">Not sure</option><option>Anatase</option><option>Peppermint</option><option>Ember (Windows)</option></select></label>
     <label>Hearth version <input name="version" maxlength="20" placeholder="e.g. 0.3.1 (Settings › Updates)"></label>
   </div>
   <div class="row2">
@@ -503,7 +499,7 @@ REQUESTS = f'''
     <label>What kind of request?
       <select name="type"><option>New feature</option><option>Change something</option><option>New edition</option><option>Device support</option><option>Other</option></select></label>
     <label>For which edition?
-      <select name="edition"><option value="">Every edition</option><option>Anatase</option><option>Ubuntu</option><option>CachyOS</option><option>Peppermint</option><option>Ember (Windows)</option><option>A new edition</option></select></label>
+      <select name="edition"><option value="">Every edition</option><option>Anatase</option><option>Peppermint</option><option>Ember (Windows)</option><option>A new edition</option></select></label>
   </div>
   <label><span>In a few words <span class="req">(needed)</span></span>
     <input name="title" maxlength="120" required placeholder="e.g. Hearth OS on openSUSE, or a battery saver for handhelds"></label>
