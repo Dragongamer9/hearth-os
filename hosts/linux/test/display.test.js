@@ -89,15 +89,20 @@ test('updater picks the newest preview that has an AppImage', async () => {
   assert.equal((await full.check()).state, 'upToDate'); // full releases don't take previews
 });
 
-test('after renumbering, 0.0.x ignores the old 0.3-0.5 releases (and the bridge)', async () => {
+test('the old 0.3-0.5 Linux previews (and the bridge) are ignored; plain 0.3+ releases are offered', async () => {
   const { Updates } = require('../src/updates');
   const rel = (tag, pre) => ({ tag_name: tag, prerelease: pre, draft: false,
     assets: [{ name: 'Nimbus-linux-x86_64.AppImage', browser_download_url: 'https://x/' + tag, size: 1 }] });
   global.fetch = async () => ({ ok: true, json: async () => [
-    rel('v0.4.0-linux.100', true), rel('v0.4.0-linux.16', true), rel('v0.5.0', false), rel('v0.0.5', false), rel('v0.0.6', false)] });
+    rel('v0.4.0-linux.100', false), rel('v0.4.0-linux.16', true), rel('v0.0.5', false), rel('v0.0.6', false)] });
   const u = new Updates({ version: '0.0.5', appImage: '/x/Nimbus.AppImage' });
   const s = await u.check();
   assert.equal(s.latest.version, '0.0.6');
+  // Today's releases use 0.3 and later: they're offered (they used to be skipped along with the old previews).
+  global.fetch = async () => ({ ok: true, json: async () => [rel('v0.5.1', false), rel('v0.5.0', false), rel('v0.4.0-linux.100', false)] });
+  const u2 = new Updates({ version: '0.4.0', appImage: '/x/Nimbus.AppImage' });
+  const s2 = await u2.check();
+  assert.equal(s2.latest.version, '0.5.1');
   // An install still on the old numbering takes the bridge.
   const { newer } = require('../src/updates');
   assert.equal(newer('v0.4.0-linux.100', '0.4.0-linux.16'), true);

@@ -24,10 +24,16 @@ try {
     }
 
     Step "Finding the latest release"
-    # The newest full release with a Windows build. Releases from before the 0.0.x renumbering (v0.3 to v0.5) are skipped.
-    $all = Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=30" -Headers @{ 'User-Agent' = 'Nimbus-Installer' }
-    $rel = $all | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -notmatch '^v?0\.[3-5]\.' -and ($_.assets | Where-Object name -eq 'Nimbus-win-x64.zip') } |
-        Sort-Object { [version](($_.tag_name -replace '^v', '') -replace '-.*$', '') } -Descending | Select-Object -First 1
+    # GitHub's latest full release; if it has no Windows build, the newest one that does. (It used to skip v0.3 to v0.5,
+    # the numbers from before the 0.0.x renumbering; those numbers are the current releases now, so nothing was found.)
+    $hdr = @{ 'User-Agent' = 'Nimbus-Installer' }
+    $rel = $null
+    try { $rel = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest" -Headers $hdr } catch {}
+    if (-not $rel -or -not ($rel.assets | Where-Object name -eq 'Nimbus-win-x64.zip')) {
+        $all = Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=30" -Headers $hdr
+        $rel = $all | Where-Object { -not $_.draft -and -not $_.prerelease -and ($_.assets | Where-Object name -eq 'Nimbus-win-x64.zip') } |
+            Sort-Object { [version](($_.tag_name -replace '^v', '') -replace '-.*$', '') } -Descending | Select-Object -First 1
+    }
     if (-not $rel) { throw "No Ember release with a Windows build was found." }
     $zip = $rel.assets | Where-Object name -eq 'Nimbus-win-x64.zip'
     $sha = $rel.assets | Where-Object name -eq 'Nimbus-win-x64.zip.sha256'

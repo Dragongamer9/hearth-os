@@ -33,10 +33,10 @@ const newer = (a, b) => {
 };
 const isPreview = v => parseVersion(v).preview != null;
 
-// Nimbus was renumbered to 0.0.x at 0.0.5. Releases from before that (v0.3.0 to v0.5.x, including Linux
-// previews and the v0.4.0-linux.100 bridge that carried 0.0.5 to existing installs) use the old numbers,
-// which look newer than 0.0.x; ignore them so they're never offered as updates.
-const LEGACY_TAG = /^v?0\.[3-5]\./;
+// Nimbus was renumbered to 0.0.x at 0.0.5. Its Linux previews from before that (v0.3.x to v0.5.x with -linux.N,
+// like the v0.4.0-linux.100 bridge that carried 0.0.5 to existing installs) look newer than they are: never offered.
+// Plain v0.3.0 and later are today's releases.
+const LEGACY_TAG = /^v?0\.[3-5]\.\d+-linux\./;
 
 class Updates extends EventEmitter {
   constructor({ version, appImage = process.env.APPIMAGE, autoCheck = () => true } = {}) {
