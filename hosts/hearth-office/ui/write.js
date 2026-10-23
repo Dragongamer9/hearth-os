@@ -173,7 +173,8 @@ W.exec = (cmd, val) => {
   const atCaret = getSelection().isCollapsed && /^(bold|italic|underline|strikeThrough|superscript|subscript|foreColor|fontName|fontSize)$/.test(cmd);
   if (!atCaret) W.record();
   document.execCommand('styleWithCSS', false, false);
-  document.execCommand(cmd, false, val);
+  W._inExec = true;
+  try { document.execCommand(cmd, false, val); } finally { W._inExec = false; }
   W.normalizeFonts();
   if (atCaret) { U.lastKind = ''; W.updateState(); if (W.ed.innerHTML !== before) H.changed(); return; }
   if (W.ed.innerHTML === before) { U.stack.pop(); W.updateState(); return; } // nothing changed
@@ -279,7 +280,7 @@ W.paragraphDialog = async () => {
   }
   W.afterChange();
 };
-W.insertHTML = (html) => { W.focus(); W.record(); document.execCommand('insertHTML', false, html); W.normalizeFonts(); W.afterChange(); };
+W.insertHTML = (html) => { W.focus(); W.record(); W._inExec = true; try { document.execCommand('insertHTML', false, html); } finally { W._inExec = false; } W.normalizeFonts(); W.afterChange(); };
 W.pageBreak = () => W.insertHTML('<hr class="page-break"><p><br></p>');
 
 // Links: Ctrl+K adds or changes one; Ctrl+click opens it (web and mail links only).
@@ -360,6 +361,8 @@ function wireEditor() {
   ed.addEventListener('beforeinput', (e) => {
     if (e.inputType === 'historyUndo') { e.preventDefault(); W.undo(); return; }
     if (e.inputType === 'historyRedo') { e.preventDefault(); W.redo(); return; }
+    // Write's own commands record their step themselves (WebKit sends beforeinput for execCommand too).
+    if (W._inExec || /^format/.test(e.inputType)) return;
     W.record(/^(insertText|insertParagraph|insertLineBreak|deleteContent)/.test(e.inputType) ? 'typing' : 'edit');
   });
   ed.addEventListener('input', () => { W.afterChange(); if (!ed.firstElementChild) ed.innerHTML = '<p><br></p>'; });
