@@ -128,11 +128,12 @@ jobs:
           [ "$rc" = 0 ] || { echo "::error title=playback::$(tail -c 3000 drive.log | tr '\n' '|')"; exit 1; }
       - name: The page in Chromium (sample data)
         run: |
+          set -o pipefail
           pip install -q playwright==1.48.2 >/dev/null && python3 -m playwright install --with-deps chromium >/dev/null
           m="$RUNNER_TEMP/uimedia"; mkdir -p "$m"
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=640x360:rate=25:duration=12 -f lavfi -i sine=f=440:duration=12 -c:v libvpx-vp9 -b:v 300k -deadline realtime -c:a libopus -shortest "$m/Sample clip.webm"
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i sine=f=330:duration=30 -c:a libvorbis "$m/Song one.ogg"; cp "$m/Song one.ogg" "$m/Song two.ogg"
-          python3 tests/ui_test.py shots/page "$m" 2>&1 | tee ui.log
+          python3 tests/ui_test.py shots/page "$m" 2>&1 | tee ui.log || { echo "::error title=page::$(tail -c 3000 ui.log | tr '\n' '|')"; exit 1; }
           echo "::notice title=Page::$(grep -c '^ok' ui.log) checks passed"
       - name: Screenshots as notices
         if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
