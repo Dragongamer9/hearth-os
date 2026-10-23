@@ -12,7 +12,7 @@ OUT=${OUT:-/tmp/recorder-e2e}
 mkdir -p "$OUT"
 passed=0
 fail() { echo "::error title=Recorder ($KIND) $1::$2"; tail -n 15 "${XDG_RUNTIME_DIR}/hearth-recorder/log.txt" 2>/dev/null; FAILED=1; }
-note() { echo "::notice title=Recorder ($KIND)::$*"; passed=$((passed + 1)); }
+note() { echo "ok: $*"; SUMMARY="$SUMMARY$*  ·  "; passed=$((passed + 1)); }
 field() { python3 -c 'import json,sys
 d=json.loads(sys.stdin.read() or "{}")
 for k in sys.argv[1].split("."): d = d.get(k) if isinstance(d, dict) else None
@@ -90,4 +90,5 @@ $B --start --json >/dev/null && { r=$($B --sound-toggle --json); [ "$(echo "$r" 
 
 ls -la "$HOME/Videos/Recordings" "$HOME/Music/Recordings" 2>/dev/null
 echo "passed: $passed"
+echo "::notice title=Recorder ($KIND) passed::${SUMMARY:-nothing}" | cut -c1-4000
 exit $FAILED
