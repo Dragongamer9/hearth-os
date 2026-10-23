@@ -1,0 +1,24 @@
+# Hearth's added-apps layer (docs/APT-LAYER.md): mounts the writable layer on /usr for this system version
+# (/var/lib/hearth/layer/usr/<deployment>), early, before anything else uses /usr. Only on the Ubuntu and
+# Peppermint editions (enabled by os-bases/apt-layer/image-setup.sh). Starting with the boot option
+# hearth.apt-layer=0 leaves /usr read-only for that start. A failure here never stops the boot: /usr simply
+# stays read-only (journalctl -u hearth-apt-layer says why).
+[Unit]
+Description=Hearth: your added apps (layer on /usr)
+DefaultDependencies=no
+ConditionPathExists=/run/ostree-booted
+ConditionKernelCommandLine=!hearth.apt-layer=0
+RequiresMountsFor=/var/lib/hearth
+After=local-fs.target ostree-remount.service
+Before=sysinit.target systemd-tmpfiles-setup.service systemd-udev-trigger.service display-manager.service shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/nimbus/hearth-apt-layer mount
+SyslogIdentifier=hearth-apt-layer
+TimeoutStartSec=5min
+
+[Install]
+WantedBy=sysinit.target

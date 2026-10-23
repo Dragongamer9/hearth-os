@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Install Package
+GenericName=Package installer
+Comment=Install a .deb package: it's kept through restarts and system updates
+Exec=/usr/libexec/nimbus/hearth-deb-open %f
+Icon=system-software-install
+MimeType=application/vnd.debian.binary-package;application/x-deb;
+NoDisplay=true
+Terminal=false
+Categories=System;PackageManager;

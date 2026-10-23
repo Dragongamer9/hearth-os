@@ -1,0 +1,55 @@
+#!/bin/bash
+# hearth-deb-open FILE.deb: what opening a .deb file does on the Ubuntu and Peppermint editions (Hearth Files, or
+# any file manager: hearth-install-deb.desktop handles application/vnd.debian.binary-package). Opens a terminal
+# that installs the package into your added apps (kept through restarts and system updates, docs/APT-LAYER.md)
+# through hearth-admin install-deb, which asks for your password first (polkit).
+#   hearth-deb-open FILE          open a terminal and install FILE there
+#   hearth-deb-open --here FILE   install FILE in this terminal (what the terminal runs)
+set -u
+SELF=$(readlink -f "$0")
+ADMIN=/usr/libexec/nimbus/hearth-admin
+
+if [ "${1:-}" = "--here" ]; then
+  f=${2:-}
+  printf 'Installing %s\n' "$(basename -- "$f")"
+  printf 'It goes into your added apps: kept through restarts, and put back after system updates.\n\n'
+  ok=1
+  # hearth-admin prints "log: ..." lines, "error: ..." on failure and a JSON line at the end.
+  while IFS= read -r line; do
+    case "$line" in
+      log:\ *) printf '%s\n' "${line#log: }" ;;
+      error:\ *) printf '\nCould not install it: %s\n' "${line#error: }"; ok=0 ;;
+      \{*) ;;
+      __exit\ *) code=${line#__exit }
+                 if [ "$code" != 0 ] && [ "$ok" = 1 ]; then
+                   ok=0
+                   case "$code" in
+                     126|127) printf '\nNot installed: the password prompt was cancelled (or this account may not install apps).\n' ;;
+                     *) printf '\nNot installed (error %s).\n' "$code" ;;
+                   esac
+                 fi ;;
+      *) printf '%s\n' "$line" ;;
+    esac
+  done < <(pkexec "$ADMIN" install-deb "$f" 2>&1; echo "__exit $?")
+  printf '\n'
+  if [ "$ok" = 1 ]; then printf 'Done.\n'; fi
+  printf 'Press Enter to close this window.'
+  read -r _
+  exit 0
+fi
+
+f=$(readlink -f -- "${1:-}") || f=""
+if [ -z "$f" ] || [ ! -f "$f" ]; then
+  echo "usage: hearth-deb-open FILE.deb" >&2
+  exit 2
+fi
+for t in "${TERMINAL:-}" hearth-terminal x-terminal-emulator foot kitty alacritty xfce4-terminal konsole gnome-terminal xterm; do
+  [ -n "$t" ] && command -v "$t" >/dev/null 2>&1 || continue
+  case "$t" in
+    gnome-terminal) exec "$t" -- "$SELF" --here "$f" ;;
+    foot|kitty) exec "$t" "$SELF" --here "$f" ;;
+    *) exec "$t" -e "$SELF" --here "$f" ;;
+  esac
+done
+# No terminal at all: the password prompt comes from the desktop's polkit agent.
+exec pkexec "$ADMIN" install-deb "$f"

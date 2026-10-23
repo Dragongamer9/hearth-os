@@ -1,0 +1,1090 @@
+#!/usr/bin/python3
+"""hearth-apt-layer: apps you add with apt (or by opening a .deb) on the Ubuntu and Peppermint editions, kept
+through restarts and put back after every system update. See docs/APT-LAYER.md.
+
+The system image is read-only and updates in one piece (bootc). This adds one writable layer on top of /usr:
+
+  - An overlay on /usr whose changes live in /var/lib/hearth/layer/usr/<deployment>/ (/var is the machine's
+    and survives restarts). One per deployment (the ostree commit bootc made from the image), so files from one
+    image never leak into the next: after an update the new system starts with an empty layer.
+  - dpkg's database is in /usr/lib/sysimage/dpkg (/var/lib/dpkg links to it), so it's inside the overlay too:
+    apt sees the image's packages as installed plus yours, and a new image brings its own database.
+  - A list of the packages you added (state.json). dpkg runs `record` after every change, so installing adds
+    to it and removing takes off. .deb files installed from a file are kept in debs/ to put them back offline.
+  - After an update (an empty layer and a non-empty list), hearth-apt-layer-sync.service puts your packages
+    back on the new image. One that no longer fits (it would need to replace, remove or downgrade part of the
+    system) is skipped and reported: a notification, status.json (Settings > Updates) and the journal.
+  - Guard rails (apt hooks, image pins): system packages aren't upgraded, reinstalled or removed into the layer
+    (Hearth's system updates do that), and kernel, initramfs and boot loader packages are refused (they can't
+    take effect this way).
+
+  hearth-apt-layer mount            (boot, hearth-apt-layer.service) mount the layer for this deployment
+  hearth-apt-layer boot-sync        (boot, hearth-apt-layer-sync.service) start your apps' services, tidy old
+                                    layers, and put your packages back after an update
+  hearth-apt-layer reapply|retry    put back what's on the list and missing (retry: the skipped ones again)
+  hearth-apt-layer record           (dpkg post-invoke) bring the list up to date
+  hearth-apt-layer apt-hook         (apt, DPkg::Pre-Install-Pkgs, protocol 3) refuse removing system packages
+  hearth-apt-layer-debs             (apt, DPkg::Pre-Install-Pkgs, protocol 1; a link to this file) refuse
+                                    replacing system packages and boot packages; keep local .deb files
+  hearth-apt-layer install-deb FILE install a .deb file (and what it needs) into the layer
+  hearth-apt-layer forget PKG...    take packages off the list (they aren't put back after updates)
+  hearth-apt-layer reset            start this system's layer empty at the next start (your list stays, so
+                                    everything is put back fresh)
+  hearth-apt-layer status [--json]  what's on the list and what happened after the last update
+  hearth-apt-layer image-setup      (image build) what the guard rails need from the image
+
+Exit codes: 0 ok, 1 error ("error: ..." on stderr), 2 usage. Hooks never break dpkg: `record` always exits 0.
+"""
+import fcntl
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+LAYER = os.environ.get('HEARTH_APT_LAYER_DIR', '/var/lib/hearth/layer')
+RUN = os.environ.get('HEARTH_APT_LAYER_RUN', '/run/hearth/apt-layer')
+DATA = os.environ.get('HEARTH_APT_LAYER_DATA', '/usr/share/hearth/apt-layer')
+DPKG_STATUS = os.environ.get('HEARTH_APT_LAYER_DPKG_STATUS', '/var/lib/dpkg/status')
+EXT_STATES = os.environ.get('HEARTH_APT_LAYER_EXT_STATES', '/var/lib/apt/extended_states')
+USR = '/usr'
+
+STATE = os.path.join(LAYER, 'state.json')          # the list (and what each deployment had installed)
+STATUS = os.path.join(LAYER, 'status.json')        # what the last put-back did (Settings shows it)
+PENDING = os.path.join(LAYER, 'pending')           # this deployment's layer is new: put the packages back
+DEBS = os.path.join(LAYER, 'debs')                 # kept .deb files (installed from a file)
+UPPERS = os.path.join(LAYER, 'usr')                # one folder per deployment: upper/ and work/
+INCOMING = os.path.join(LAYER, 'incoming')         # install-deb's private copy of the file
+ADDED_APPS = os.path.join(LAYER, 'added-apps')     # .desktop files your packages put in /usr/share/applications
+LOCK = os.path.join(LAYER, '.lock')
+ACTIVE = os.path.join(RUN, 'active.json')          # written once the layer is mounted (hooks only act then)
+IMAGE_LIST = os.path.join(DATA, 'image-packages')  # "<package>\t<version>": what the image has installed
+LOG_TAG = 'hearth-apt-layer'
+
+# Names that can't take effect from a layer mounted after boot: the kernel and its modules, the initramfs, the
+# boot loader and what installs the system itself. They come with the image.
+BOOT_PATTERNS = [
+    r'linux-image(-.*)?', r'linux-modules(-.*)?', r'linux-signed(-.*)?', r'linux-generic(-.*)?',
+    r'linux-(virtual|lowlatency|oem|hwe|kvm|aws|azure|gcp|oracle|ibm|nvidia|realtime)(-.*)?', r'linux-kernel(-.*)?',
+    r'linux-objects(-.*)?', r'linux-restricted-modules(-.*)?',
+    r'grub(2)?(-.*)?', r'shim(-.*)?', r'systemd-boot(-.*)?', r'sd-boot(-.*)?', r'refind', r'efibootmgr-.*',
+    r'dracut(-.*)?', r'initramfs-tools(-.*)?', r'tiny-initramfs(-.*)?', r'mkinitcpio',
+    r'bootc', r'bootupd', r'ostree(-.*)?', r'libostree(-.*)?', r'composefs(-.*)?', r'libcomposefs.*',
+]
+BOOT_RE = re.compile(r'^(?:' + '|'.join(BOOT_PATTERNS) + r')$')
+PRESENT_STATES = {'installed', 'unpacked', 'half-configured', 'half-installed', 'triggers-awaited',
+                  'triggers-pending'}
+NAME_RE = re.compile(r'^[a-z0-9][a-z0-9+.-]+$')
+ARCH_RE = re.compile(r'^[a-z0-9][a-z0-9-]*$')
+VERSION_RE = re.compile(r'^[A-Za-z0-9.+~:-]+$')
+KEY_RE = re.compile(r'^[A-Za-z0-9._-]{1,128}$')
+
+
+class Fail(Exception):
+    pass
+
+
+# ---------------------------------------------------------------------- small helpers
+def log(msg):
+    print(msg, file=sys.stderr, flush=True)
+
+
+def read(path, default=''):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+def load_json(path, default):
+    try:
+        with open(path, encoding='utf-8') as f:
+            v = json.load(f)
+        return v if isinstance(v, type(default)) else default
+    except (OSError, ValueError):
+        return default
+
+
+def write_atomic(path, text, mode=0o644):
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix='.' + os.path.basename(path) + '.')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def save_json(path, value):
+    write_atomic(path, json.dumps(value, indent=1, sort_keys=True) + '\n')
+
+
+class Locked:
+    """One writer at a time for state.json (dpkg's hook, the put-back, forget)."""
+
+    def __init__(self, path=None):
+        self.path = path or LOCK
+        self.f = None
+
+    def __enter__(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self.f = open(self.path, 'a')
+        fcntl.flock(self.f, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *a):
+        fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
+
+
+_NATIVE = None
+
+
+def native_arch():
+    global _NATIVE
+    if _NATIVE is None:
+        _NATIVE = os.environ.get('HEARTH_APT_LAYER_ARCH', '')
+        if not _NATIVE:
+            try:
+                _NATIVE = subprocess.run(['dpkg', '--print-architecture'], capture_output=True, text=True,
+                                         timeout=20).stdout.strip() or 'amd64'
+            except (OSError, subprocess.TimeoutExpired):
+                _NATIVE = 'amd64'
+    return _NATIVE
+
+
+def pkg_id(name, arch, native):
+    """How a package is named everywhere here: "name" for native and arch-all packages, "name:arch" else."""
+    name = name.split(':', 1)[0]
+    if not arch or arch in ('all', native, '-', 'any'):
+        return name
+    return name + ':' + arch
+
+
+# ---------------------------------------------------------------------- reading dpkg and apt
+def parse_stanzas(text):
+    out, cur, last = [], {}, None
+    for line in text.splitlines():
+        if not line.strip():
+            if cur:
+                out.append(cur)
+            cur, last = {}, None
+            continue
+        if line[0] in ' \t':
+            if last:
+                cur[last] += '\n' + line.strip()
+            continue
+        k, _, v = line.partition(':')
+        last = k.strip()
+        cur[last] = v.strip()
+    if cur:
+        out.append(cur)
+    return out
+
+
+def parse_status(text, native):
+    """{id: {"name", "arch", "version", "state"}} for every package dpkg has (partly) installed."""
+    pkgs = {}
+    for s in parse_stanzas(text):
+        name = s.get('Package')
+        status = s.get('Status', '').split()
+        if not name or len(status) < 3 or status[2] not in PRESENT_STATES:
+            continue
+        arch = s.get('Architecture', '')
+        pkgs[pkg_id(name, arch, native)] = {'name': name, 'arch': arch, 'version': s.get('Version', ''),
+                                            'state': status[2]}
+    return pkgs
+
+
+def parse_extended_states(text, native):
+    """The ids apt installed automatically (as something else's dependency)."""
+    auto = set()
+    for s in parse_stanzas(text):
+        if s.get('Package') and s.get('Auto-Installed', '0').strip() == '1':
+            auto.add(pkg_id(s['Package'], s.get('Architecture', ''), native))
+    return auto
+
+
+def parse_image_list(text):
+    """{id: version} from image-packages."""
+    out = {}
+    for line in text.splitlines():
+        if not line.strip() or line.startswith('#'):
+            continue
+        parts = line.split('\t')
+        out[parts[0].strip()] = parts[1].strip() if len(parts) > 1 else ''
+    return out
+
+
+def image_packages():
+    return parse_image_list(read(IMAGE_LIST))
+
+
+def user_packages(status, image, auto):
+    """What you added: installed, not part of the image, and not just pulled in as a dependency."""
+    return {pid for pid in status if pid not in image and pid not in auto}
+
+
+def is_boot_package(name):
+    return bool(BOOT_RE.match(name.split(':', 1)[0]))
+
+
+# ---------------------------------------------------------------------- the list
+def empty_state():
+    return {'version': 1, 'packages': {}, 'seen': {}}
+
+
+def load_state():
+    s = load_json(STATE, empty_state())
+    if not isinstance(s.get('packages'), dict):
+        s['packages'] = {}
+    if not isinstance(s.get('seen'), dict):
+        s['seen'] = {}
+    return s
+
+
+def update_list(state, key, now_user, status=None, now=None):
+    """Brings the list in step with what's installed in deployment `key`.
+
+    Added: one of yours that's installed now and wasn't the last time this deployment was looked at. Removed:
+    one that was installed then and isn't now (you removed it). Something on the list that was never installed
+    in this deployment (it's still being put back, or it was skipped) stays on the list. Returns
+    (state, added ids, removed ids)."""
+    now = int(now if now is not None else time.time())
+    seen = set(state['seen'].get(key, []))
+    added = sorted(now_user - seen)
+    removed = sorted(seen - now_user)
+    for pid in added:
+        info = state['packages'].get(pid) or {'added': now}
+        if status and pid in status:
+            info['version'] = status[pid]['version']
+        state['packages'][pid] = info
+    for pid in removed:
+        state['packages'].pop(pid, None)
+    state['seen'][key] = sorted(now_user)
+    return state, added, removed
+
+
+def deb_name(pid):
+    return pid.replace(':', '_') + '.deb'
+
+
+def kept_deb(pid):
+    p = os.path.join(DEBS, deb_name(pid))
+    return p if os.path.isfile(p) else None
+
+
+def prune_debs(state):
+    try:
+        names = os.listdir(DEBS)
+    except OSError:
+        return
+    keep = {deb_name(pid) for pid in state['packages']}
+    for n in names:
+        if n.endswith('.deb') and n not in keep:
+            try:
+                os.unlink(os.path.join(DEBS, n))
+            except OSError:
+                pass
+
+
+def desktop_ids(list_text):
+    """Desktop file ids (spec: path below applications/, "/" -> "-") among a package's files (dpkg -L)."""
+    out = []
+    prefix = '/usr/share/applications/'
+    for line in list_text.splitlines():
+        line = line.strip()
+        if line.startswith(prefix) and line.endswith('.desktop'):
+            out.append(line[len(prefix):].replace('/', '-'))
+    return out
+
+
+def package_files(pid, status):
+    """dpkg's file list for an installed package (info/<name>.list, or <name>:<arch>.list if multi-arch)."""
+    info = os.path.join(os.path.dirname(DPKG_STATUS), 'info')
+    p = status.get(pid)
+    if not p:
+        return ''
+    for n in (p['name'] + ':' + p['arch'], p['name']):
+        t = read(os.path.join(info, n + '.list'), None)
+        if t is not None:
+            return t
+    return ''
+
+
+def write_added_apps(state, status):
+    """/var/lib/hearth/layer/added-apps: one desktop file name per line for the apps your packages added (Desktop
+    Mode's app menu counts them as yours, not the system's). Readable by everyone."""
+    ids = set()
+    for pid in state['packages']:
+        ids.update(desktop_ids(package_files(pid, status)))
+    text = ''.join(i + '\n' for i in sorted(ids))
+    if read(ADDED_APPS, None) != text:
+        write_atomic(ADDED_APPS, text, 0o644)
+
+
+# ---------------------------------------------------------------------- which deployment this is
+def key_from_deploy_path(path):
+    """"<checksum>" from .../ostree/deploy/<os>/deploy/<checksum>.<serial>."""
+    base = os.path.basename(path.rstrip('/'))
+    m = re.fullmatch(r'([0-9a-f]{64})\.\d+', base)
+    return m.group(1) if m else None
+
+
+def key_from_cmdline(cmdline, resolve=os.path.realpath):
+    m = re.search(r'(?:^|\s)ostree=(\S+)', cmdline)
+    if not m:
+        return None
+    for cand in ('/sysroot' + m.group(1), m.group(1)):
+        k = key_from_deploy_path(resolve(cand))
+        if k:
+            return k
+    return None
+
+
+def key_from_admin_status(text):
+    m = re.search(r'^\*\s+\S+\s+([0-9a-f]{64})\.\d+', text, re.M)
+    return m.group(1) if m else None
+
+
+def booted_key():
+    k = os.environ.get('HEARTH_APT_LAYER_KEY', '')
+    if k:
+        if not KEY_RE.match(k):
+            raise Fail('bad HEARTH_APT_LAYER_KEY')
+        return k
+    k = key_from_cmdline(read('/proc/cmdline'))
+    if k:
+        return k
+    try:
+        r = subprocess.run(['ostree', 'admin', 'status'], capture_output=True, text=True, timeout=60)
+        k = key_from_admin_status(r.stdout)
+    except (OSError, subprocess.TimeoutExpired):
+        k = None
+    if not k:
+        raise Fail("couldn't tell which system version is running (no ostree= boot option)")
+    return k
+
+
+def deployment_keys(root='/sysroot/ostree/deploy'):
+    """Checksums of every deployment still on the drive (booted, rollback, staged), or None if unknown."""
+    keys = set()
+    try:
+        for osname in os.listdir(root):
+            d = os.path.join(root, osname, 'deploy')
+            for n in os.listdir(d):
+                k = key_from_deploy_path(n)
+                if k and os.path.isdir(os.path.join(d, n)):
+                    keys.add(k)
+    except OSError:
+        return None
+    return keys or None
+
+
+def active():
+    """The layer this boot mounted ({"key", ...}), or None (not on these editions, the image build, turned off)."""
+    a = load_json(ACTIVE, {})
+    return a if a.get('key') else None
+
+
+# ---------------------------------------------------------------------- mount (early at boot)
+def is_mounted_overlay(path):
+    for line in read('/proc/self/mountinfo').splitlines():
+        parts = line.split(' - ')
+        if len(parts) < 2:
+            continue
+        left, right = parts[0].split(), parts[1].split()
+        if len(left) > 4 and left[4] == path and right and right[0] == 'overlay':
+            return True
+    return False
+
+
+def cmd_mount():
+    if 'hearth.apt-layer=0' in read('/proc/cmdline').split():
+        log('turned off with hearth.apt-layer=0: /usr stays read-only this time')
+        return 0
+    key = booted_key()
+    base = os.path.join(UPPERS, key)
+    upper, work = os.path.join(base, 'upper'), os.path.join(base, 'work')
+    os.makedirs(UPPERS, mode=0o755, exist_ok=True)
+    os.makedirs(DEBS, mode=0o755, exist_ok=True)
+    reset_flag = os.path.join(base, 'reset')
+    fresh = not os.path.exists(os.path.join(base, 'ready')) or os.path.exists(reset_flag)
+    if fresh:
+        shutil.rmtree(base, ignore_errors=True)
+        os.makedirs(upper, mode=0o755)
+        os.makedirs(work, mode=0o700)
+    if is_mounted_overlay(USR):
+        log('/usr already has an overlay on it (bootc usr-overlay?): leaving it')
+        return 0
+    opts = 'lowerdir=%s,upperdir=%s,workdir=%s' % (USR, upper, work)
+    r = subprocess.run(['mount', '-t', 'overlay', 'overlay', '-o', opts, USR], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Fail("couldn't mount the layer on /usr: " + (r.stderr or r.stdout).strip())
+    open(os.path.join(base, 'ready'), 'w').close()
+    os.makedirs(RUN, exist_ok=True)
+    save_json(ACTIVE, {'key': key, 'upper': upper, 'fresh': fresh, 'time': int(time.time())})
+    with Locked():
+        state = load_state()
+        if fresh and key in state['seen']:
+            # An empty layer has none of the packages: what this deployment had seen installed starts over (else
+            # the first dpkg run of the put-back would count the rest as removed).
+            del state['seen'][key]
+            save_json(STATE, state)
+    try:
+        write_added_apps(state, current_status())
+    except OSError:
+        pass
+    if fresh and state['packages']:
+        write_atomic(PENDING, key + '\n')
+        log('new system version: %d added package(s) will be put back once the network is up' % len(state['packages']))
+    elif read(PENDING).strip() not in ('', key):
+        # A put-back for another deployment that never finished (rolled back before it ran): not for this one.
+        try:
+            os.unlink(PENDING)
+        except OSError:
+            pass
+    # /etc/ld.so.cache is the machine's (kept through updates once a package has changed it): rebuild it for
+    # this image plus your layer, so neither points at libraries that aren't there.
+    subprocess.run(['ldconfig'], capture_output=True)
+    # udev reads rules from /usr: your packages' rules count from now on.
+    if os.path.isdir(os.path.join(upper, 'lib', 'udev', 'rules.d')):
+        subprocess.run(['udevadm', 'control', '--reload'], capture_output=True)
+    log('layer mounted on /usr (%s, %s)' % (key[:12], 'new' if fresh else 'kept'))
+    return 0
+
+
+# ---------------------------------------------------------------------- after boot
+UNIT_SUFFIXES = ('.service', '.socket', '.timer', '.path')
+
+
+def layer_units(upper):
+    d = os.path.join(upper, 'lib', 'systemd', 'system')
+    try:
+        return sorted(n for n in os.listdir(d) if n.endswith(UNIT_SUFFIXES) and '@' not in n
+                      and not os.path.islink(os.path.join(d, n)))
+    except OSError:
+        return []
+
+
+def start_layer_units(a):
+    """systemd read its units before the layer was mounted: services your packages added (and you enabled) start
+    now instead."""
+    units = layer_units(a.get('upper', ''))
+    if not units:
+        return
+    subprocess.run(['systemctl', 'daemon-reload'], capture_output=True)
+    for u in units:
+        en = subprocess.run(['systemctl', 'is-enabled', u], capture_output=True, text=True).stdout.strip()
+        if en == 'enabled':
+            subprocess.run(['systemctl', 'start', '--no-block', u], capture_output=True)
+            log('started %s (from your added packages)' % u)
+
+
+def prune_uppers(current):
+    keys = deployment_keys()
+    if not keys or current not in keys:
+        return
+    try:
+        names = os.listdir(UPPERS)
+    except OSError:
+        return
+    for n in names:
+        if n != current and n not in keys:
+            shutil.rmtree(os.path.join(UPPERS, n), ignore_errors=True)
+            log('removed the layer of a system version that is gone (%s)' % n[:12])
+    with Locked():
+        state = load_state()
+        stale = [k for k in state['seen'] if k != current and k not in keys]
+        if stale:
+            for k in stale:
+                del state['seen'][k]
+            save_json(STATE, state)
+
+
+def cmd_boot_sync():
+    a = active()
+    if not a:
+        return 0
+    start_layer_units(a)
+    prune_uppers(a['key'])
+    if read(PENDING).strip() == a['key']:
+        reapply(a['key'])   # what was skipped is in status.json and the journal; the service itself succeeded
+    return 0
+
+
+# ---------------------------------------------------------------------- apt
+APT_ENV = dict(os.environ, DEBIAN_FRONTEND='noninteractive', HEARTH_APT_LAYER_REAPPLY='1',
+               LC_ALL='C.UTF-8', LANG='C.UTF-8')
+APT_OPTS = ['-y', '--no-remove', '-o', 'Dpkg::Options::=--force-confdef', '-o', 'Dpkg::Options::=--force-confold',
+            '-o', 'APT::Get::Allow-Downgrades=false', '-o', 'APT::Get::Allow-Remove-Essential=false',
+            '-o', 'APT::Get::Allow-Change-Held-Packages=false']
+
+
+def run(cmd, timeout=3600, env=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env or APT_ENV)
+        return r.returncode, (r.stdout or '') + (r.stderr or '')
+    except subprocess.TimeoutExpired:
+        return 124, 'timed out'
+    except OSError as e:
+        return 127, str(e)
+
+
+def apt_update(tries=4, wait=20):
+    """True once the package lists could be fetched (a source that's down on its own doesn't count)."""
+    ok = False
+    for i in range(tries):
+        code, out = run(['apt-get', 'update', '-q'], timeout=600)
+        ok = code == 0 and not re.search(r'^E: ', out, re.M)
+        if ok and not re.search(r'^W: (Failed to fetch|Some index files failed)', out, re.M):
+            return True
+        if i < tries - 1:
+            time.sleep(wait)
+    return ok
+
+
+def candidate(pid):
+    code, out = run(['apt-cache', 'policy', pid], timeout=120)
+    m = re.search(r'^\s*Candidate:\s*(\S+)', out, re.M)
+    if not m or m.group(1) == '(none)':
+        return None
+    return m.group(1)
+
+
+def version_gt(a, b):
+    return subprocess.run(['dpkg', '--compare-versions', a, 'gt', b]).returncode == 0
+
+
+def deb_fields(path):
+    r = subprocess.run(['dpkg-deb', '-f', path, 'Package', 'Version', 'Architecture'], capture_output=True,
+                       text=True, timeout=60)
+    if r.returncode != 0:
+        return None
+    f = {}
+    for line in r.stdout.splitlines():
+        k, _, v = line.partition(':')
+        f[k.strip()] = v.strip()
+    if not (NAME_RE.match(f.get('Package', '')) and VERSION_RE.match(f.get('Version', ''))
+            and ARCH_RE.match(f.get('Architecture', ''))):
+        return None
+    return f
+
+
+def apt_reason(out):
+    """The line that says why apt couldn't do it."""
+    lines = [l.strip() for l in out.splitlines() if l.strip()]
+    for l in lines:
+        if l.startswith('Hearth:'):
+            return l[len('Hearth:'):].strip()
+    deps = [l for l in lines if re.search(r'(Depends|Breaks|Conflicts|PreDepends|Pre-Depends):', l)
+            or 'is not installable' in l or 'but it is not going to be installed' in l]
+    if deps:
+        return '; '.join(deps[:3])[:400]
+    for l in reversed(lines):
+        if l.startswith('E: '):
+            return l[3:][:400]
+    return (lines[-1] if lines else 'apt failed')[:400]
+
+
+def friendly_reason(reason):
+    r = reason
+    if 'Packages were downgraded' in r or 'downgrade' in r.lower():
+        return 'it would downgrade part of the system (%s)' % r
+    if 'Packages need to be removed' in r or 'would be removed' in r:
+        return 'it would remove part of the system (%s)' % r
+    if 'Unable to locate package' in r or 'has no installation candidate' in r:
+        return 'it isn\'t in your software sources any more (%s)' % r
+    return r
+
+
+def plan_reapply(wanted, present, image, kept, candidates, net_ok, newer=None):
+    """What to put back and how. wanted: {id: info}; present: ids installed now; image: {id: version};
+    kept: {id: (path, version)}; candidates: {id: version or None}. A kept .deb is used when the software
+    sources don't have the package, or only an older version of it (or there's no network).
+    Returns (jobs [(id, arg)], skipped [(id, reason)], included [ids], already [ids])."""
+    newer = newer or version_gt
+    jobs, skipped, included, already = [], [], [], []
+    for pid in sorted(wanted):
+        if pid in image:
+            included.append(pid)
+            continue
+        if pid in present:
+            already.append(pid)
+            continue
+        name = pid.split(':', 1)[0]
+        if is_boot_package(name):
+            skipped.append((pid, 'kernel, initramfs and boot loader packages come with the system image'))
+            continue
+        deb = kept.get(pid)
+        cand = candidates.get(pid) if net_ok else None
+        if deb and (not cand or (deb[1] and newer(deb[1], cand))):
+            jobs.append((pid, deb[0]))
+        elif cand:
+            jobs.append((pid, pid))
+        elif not net_ok:
+            skipped.append((pid, 'no internet connection (tried again at the next start, or with Try again)'))
+        else:
+            skipped.append((pid, 'it isn\'t in your software sources (a .deb installed with dpkg directly isn\'t '
+                                 'kept: install .deb files by opening them, or with apt install ./file.deb)'))
+    return jobs, skipped, included, already
+
+
+def current_status():
+    return parse_status(read(DPKG_STATUS), native_arch())
+
+
+def reapply(key, only=None):
+    """Put back what's on the list and missing from this deployment. only: limit to these ids (retry)."""
+    with Locked(os.path.join(LAYER, '.reapply.lock')):
+        state = load_state()
+        wanted = {k: v for k, v in state['packages'].items() if only is None or k in only}
+        image = image_packages()
+        status = current_status()
+        log('putting back %d added package(s)' % len(wanted))
+        net_ok = apt_update() if wanted else True
+        kept, cands = {}, {}
+        for pid in wanted:
+            p = kept_deb(pid)
+            if p:
+                f = deb_fields(p)
+                kept[pid] = (p, f['Version'] if f else '')
+            if pid not in image and pid not in status:
+                cands[pid] = candidate(pid)
+        jobs, skipped, included, already = plan_reapply(wanted, set(status), image, kept, cands, net_ok)
+        done = []
+        if jobs:
+            code, out = run(['apt-get', 'install'] + APT_OPTS + [a for _, a in jobs])
+            if code == 0:
+                done = [pid for pid, _ in jobs]
+            else:
+                log('putting everything back at once failed (%s); one at a time' % apt_reason(out))
+                for pid, arg in jobs:
+                    code, out = run(['apt-get', 'install'] + APT_OPTS + [arg])
+                    if code == 0:
+                        done.append(pid)
+                    else:
+                        skipped.append((pid, friendly_reason(apt_reason(out))))
+        # Packages put back by name are marked as yours again (installing a kept .deb file does too).
+        for pid in done:
+            log('put back: %s' % pid)
+        for pid, why in skipped:
+            log('skipped: %s: %s' % (pid, why))
+        offline = any('no internet' in why for _, why in skipped)
+        prev = load_json(STATUS, {})
+        result = {
+            'key': key, 'time': int(time.time()),
+            'reinstalled': sorted(done + already) if only is None else sorted(set(prev.get('reinstalled', []))
+                                                                              | set(done + already)),
+            'skipped': [{'name': pid, 'reason': why} for pid, why in sorted(skipped)],
+            'included': sorted(included),
+            'total': len(state['packages']),
+            'pending': offline,
+        }
+        save_json(STATUS, result)
+        try:
+            write_added_apps(load_state(), current_status())
+        except OSError as e:
+            log("couldn't write the added apps list: %s" % e)
+        if not offline:
+            try:
+                os.unlink(PENDING)
+            except OSError:
+                pass
+        notify_result(result)
+        return 0 if not skipped else 3
+
+
+def cmd_reapply(retry=False):
+    a = active()
+    if not a:
+        raise Fail('the added-apps layer isn\'t active on this system')
+    if os.geteuid() != 0:
+        raise Fail('needs root (sudo hearth-apt-layer %s)' % ('retry' if retry else 'reapply'))
+    only = None
+    if retry:
+        st = load_json(STATUS, {})
+        only = {s.get('name') for s in st.get('skipped', []) if s.get('name')} or None
+    code = reapply(a['key'], only)
+    print(json.dumps(status_json()))
+    return 0 if code in (0, 3) else code
+
+
+# ---------------------------------------------------------------------- telling the person
+def summary(result):
+    n, m = len(result.get('reinstalled', [])), len(result.get('skipped', []))
+    title = 'Your added apps are back' if not m else 'Some of your added apps weren\'t put back'
+    body = '%d re-installed' % n
+    if m:
+        body += ', %d skipped: %s. Settings › Updates says why and can try again.' % (
+            m, ', '.join(s['name'] for s in result['skipped'][:4]) + ('…' if m > 4 else ''))
+    else:
+        body += ' on the updated system.'
+    return title, body
+
+
+def sessions():
+    """(user, uid) of graphical sessions."""
+    out = []
+    try:
+        r = subprocess.run(['loginctl', 'list-sessions', '--no-legend'], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return out
+    for line in r.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[1].isdigit():
+            uid, user = int(parts[1]), parts[2]
+            if uid >= 1000 and (user, uid) not in out:
+                out.append((user, uid))
+    return out
+
+
+def notify_result(result):
+    if not result.get('reinstalled') and not result.get('skipped'):
+        return
+    title, body = summary(result)
+    for user, uid in sessions():
+        bus = 'unix:path=/run/user/%d/bus' % uid
+        if not os.path.exists('/run/user/%d/bus' % uid):
+            continue
+        env = ['env', 'DBUS_SESSION_BUS_ADDRESS=' + bus]
+        if shutil.which('notify-send'):
+            cmd = env + ['notify-send', '-a', 'Hearth', '-i', 'system-software-install', title, body]
+        elif shutil.which('gdbus'):
+            cmd = env + ['gdbus', 'call', '--session', '--dest', 'org.freedesktop.Notifications', '--object-path',
+                         '/org/freedesktop/Notifications', '--method', 'org.freedesktop.Notifications.Notify',
+                         'Hearth', '0', 'system-software-install', title, body, '[]', '{}', '15000']
+        else:
+            return
+        subprocess.run(['runuser', '-u', user, '--'] + cmd, capture_output=True, timeout=20)
+
+
+# ---------------------------------------------------------------------- dpkg's hook: keep the list current
+def cmd_record():
+    try:
+        a = active()
+        if not a or os.geteuid() != 0:
+            return 0
+        native = native_arch()
+        status = parse_status(read(DPKG_STATUS), native)
+        image = image_packages()
+        if not image:
+            return 0
+        auto = parse_extended_states(read(EXT_STATES), native)
+        with Locked():
+            state = load_state()
+            state, added, removed = update_list(state, a['key'], user_packages(status, image, auto), status)
+            if added or removed:
+                save_json(STATE, state)
+                prune_debs(state)
+                for pid in added:
+                    log('Hearth: %s is kept through restarts and system updates' % pid)
+            write_added_apps(state, status)
+    except Exception as e:  # never break dpkg
+        log('hearth-apt-layer record: %s' % e)
+    return 0
+
+
+# ---------------------------------------------------------------------- apt's hooks: guard rails
+def parse_hook_v3(text):
+    """[{"name", "old", "new", "op", "arch", "action"}] from the Pre-Install-Pkgs protocol 3."""
+    lines = text.splitlines()
+    out = []
+    if not lines or not lines[0].startswith('VERSION 3'):
+        return out
+    i = 1
+    while i < len(lines) and lines[i].strip():   # apt's configuration, up to an empty line
+        i += 1
+    for line in lines[i + 1:]:
+        t = line.split()
+        if len(t) != 9:
+            continue
+        name, old, oldarch, _, op, new, newarch, _, action = t
+        out.append({'name': name, 'old': old, 'oldarch': oldarch, 'op': op, 'new': new, 'newarch': newarch,
+                    'action': action})
+    return out
+
+
+def check_v3(actions, image, native):
+    """Problems (messages) with a plan: removing system packages."""
+    problems = []
+    for a in actions:
+        if a['action'] != '**REMOVE**':
+            continue
+        pid = pkg_id(a['name'], a['oldarch'], native)
+        if pid in image:
+            problems.append('%s is part of Hearth OS and can\'t be removed (it comes with the system image).' % pid)
+    return problems
+
+
+def check_debs(debs, image, native, reapplying=False):
+    """Problems with the .deb files about to be unpacked, and which are local files to keep.
+    debs: [(path, fields)]."""
+    problems, keep = [], []
+    for path, f in debs:
+        if not f:
+            continue
+        pid = pkg_id(f['Package'], f['Architecture'], native)
+        if pid in image:
+            v = image[pid]
+            if v and v != f['Version']:
+                problems.append('%s %s would replace the system\'s %s %s. System packages are updated with Hearth\'s '
+                                'system updates (Settings › Updates), not apt.' % (pid, f['Version'], pid, v))
+            else:
+                problems.append('%s is part of Hearth OS: it can\'t be reinstalled into your added apps.' % pid)
+            continue
+        if is_boot_package(f['Package']):
+            problems.append('%s can\'t be installed: the kernel, initramfs and boot loader come with the system image '
+                            'and change only with Hearth\'s system updates.' % pid)
+            continue
+        if not path.startswith('/var/cache/apt/archives/'):
+            keep.append((pid, path))
+    return problems, keep
+
+
+def refuse(problems):
+    log('')
+    for p in problems:
+        log('Hearth: ' + p)
+    log('Hearth: nothing was changed. Apps you add with apt are kept through system updates; the system itself '
+        'updates in one piece. See docs/APT-LAYER.md.')
+    return 1
+
+
+def cmd_apt_hook():
+    text = sys.stdin.read()
+    a = active()
+    if not a:
+        return 0
+    image = image_packages()
+    if not image:
+        return 0
+    problems = check_v3(parse_hook_v3(text), image, native_arch())
+    return refuse(problems) if problems else 0
+
+
+def cmd_apt_hook_debs():
+    text = sys.stdin.read()
+    a = active()
+    if not a:
+        return 0
+    image = image_packages()
+    if not image:
+        return 0
+    native = native_arch()
+    debs = []
+    for line in text.splitlines():
+        p = line.strip()
+        if p.endswith('.deb') and os.path.isfile(p):
+            debs.append((p, deb_fields(p)))
+    problems, keep = check_debs(debs, image, native)
+    if problems:
+        return refuse(problems)
+    for pid, path in keep:
+        try:
+            os.makedirs(DEBS, exist_ok=True)
+            tmp = os.path.join(DEBS, '.' + deb_name(pid))
+            shutil.copyfile(path, tmp)
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, os.path.join(DEBS, deb_name(pid)))
+        except OSError as e:
+            log('Hearth: couldn\'t keep a copy of %s (%s): it can only come back after updates from your software '
+                'sources' % (os.path.basename(path), e))
+    if debs and not os.environ.get('HEARTH_APT_LAYER_REAPPLY'):
+        log('Hearth: installing into your added apps (kept through restarts and system updates).')
+    return 0
+
+
+# ---------------------------------------------------------------------- install-deb, forget, reset, status
+def cmd_install_deb(path):
+    if os.geteuid() != 0:
+        raise Fail('needs root')
+    if not active():
+        raise Fail('the added-apps layer isn\'t active on this system, so packages can\'t be installed')
+    if not path.startswith('/') or not path.endswith('.deb') or not os.path.isfile(path):
+        raise Fail('expected the full path of a .deb file')
+    f = deb_fields(path)
+    if not f:
+        raise Fail('that isn\'t a valid .deb package')
+    print('log: Installing %s %s' % (f['Package'], f['Version']), flush=True)
+    env = dict(APT_ENV)
+    env.pop('HEARTH_APT_LAYER_REAPPLY', None)
+    p = subprocess.Popen(['apt-get', 'install', '-y', '--no-remove', '-o', 'Dpkg::Options::=--force-confdef',
+                          '-o', 'Dpkg::Options::=--force-confold', '-o', 'APT::Get::Allow-Downgrades=false', path],
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+    lines = []
+    for line in p.stdout:
+        line = line.rstrip()
+        if line:
+            lines.append(line)
+            print('log: ' + line[:300], flush=True)
+    if p.wait() != 0:
+        raise Fail(friendly_reason(apt_reason('\n'.join(lines))))
+    print(json.dumps({'ok': True, 'package': f['Package'], 'version': f['Version']}))
+    return 0
+
+
+def cmd_forget(names):
+    if os.geteuid() != 0:
+        raise Fail('needs root (sudo hearth-apt-layer forget ...)')
+    native = native_arch()
+    with Locked():
+        state = load_state()
+        gone = []
+        for n in names:
+            pid = pkg_id(n, n.split(':', 1)[1] if ':' in n else '', native)
+            if state['packages'].pop(pid, None) is not None:
+                gone.append(pid)
+        save_json(STATE, state)
+        prune_debs(state)
+        write_added_apps(state, current_status())
+    st = load_json(STATUS, {})
+    if st.get('skipped'):
+        st['skipped'] = [s for s in st['skipped'] if s.get('name') not in gone]
+        save_json(STATUS, st)
+    print(json.dumps({'forgotten': gone}))
+    return 0
+
+
+def cmd_reset():
+    if os.geteuid() != 0:
+        raise Fail('needs root (sudo hearth-apt-layer reset)')
+    a = active()
+    if not a:
+        raise Fail('the added-apps layer isn\'t active on this system')
+    open(os.path.join(UPPERS, a['key'], 'reset'), 'w').close()
+    print('The layer starts empty at the next restart; your added packages are then put back fresh.')
+    return 0
+
+
+def status_json():
+    native = native_arch()
+    state = load_state()
+    a = active()
+    st = load_json(STATUS, {})
+    return {
+        'active': bool(a),
+        'packages': sorted(state['packages']),
+        'keptDebs': sorted(pid for pid in state['packages'] if kept_deb(pid)),
+        'pending': bool(a) and read(PENDING).strip() == (a or {}).get('key'),
+        'last': st or None,
+        'native': native,
+    }
+
+
+def cmd_status(as_json):
+    s = status_json()
+    if as_json:
+        print(json.dumps(s))
+        return 0
+    print('Added-apps layer: %s' % ('active' if s['active'] else 'not active'))
+    print('Your added packages (%d): %s' % (len(s['packages']), ', '.join(s['packages']) or 'none'))
+    last = s['last']
+    if s['pending']:
+        print('Being put back on this system version now.')
+    if last:
+        print('After the last system update: %d re-installed, %d skipped' % (len(last.get('reinstalled', [])),
+                                                                             len(last.get('skipped', []))))
+        for k in last.get('skipped', []):
+            print('  skipped %s: %s' % (k['name'], k['reason']))
+        if last.get('skipped'):
+            print('Try again: sudo hearth-apt-layer retry. Stop trying: sudo hearth-apt-layer forget NAME')
+    return 0
+
+
+# ---------------------------------------------------------------------- image build
+def pins_text(image):
+    """apt preferences that hold every system package at the image's version (priority over 1000: apt never
+    picks another version, so `apt upgrade` only upgrades what you added)."""
+    by_name = {}
+    for pid, v in image.items():
+        name, _, arch = pid.partition(':')
+        by_name.setdefault(name, {})[arch] = v
+    out = ['# Written by hearth-apt-layer image-setup: the system packages stay at the image\'s versions.',
+           '# They update with the system image (Hearth\'s system updates). See docs/APT-LAYER.md.', '']
+    for name in sorted(by_name):
+        vers = by_name[name]
+        if len(set(vers.values())) == 1:
+            out += ['Package: %s' % name, 'Pin: version %s' % next(iter(vers.values())), 'Pin-Priority: 1001', '']
+        else:
+            for arch, v in sorted(vers.items()):
+                out += ['Package: %s' % (name + ':' + arch if arch else name), 'Pin: version %s' % v,
+                        'Pin-Priority: 1001', '']
+    return '\n'.join(out)
+
+
+def image_list_text(status):
+    lines = ['# Written by hearth-apt-layer image-setup: the packages this image has installed.']
+    for pid in sorted(status):
+        lines.append('%s\t%s' % (pid, status[pid]['version']))
+    return '\n'.join(lines) + '\n'
+
+
+def cmd_image_setup():
+    native = native_arch()
+    status = parse_status(read(DPKG_STATUS), native)
+    if len(status) < 50:
+        raise Fail('dpkg\'s database looks empty (%d packages)' % len(status))
+    os.makedirs(DATA, exist_ok=True)
+    image = {pid: s['version'] for pid, s in status.items()}
+    write_atomic(IMAGE_LIST, image_list_text(status))
+    write_atomic(os.path.join(DATA, 'image-pins.pref'), pins_text(image))
+    print('image-setup: %d system packages listed and pinned' % len(image))
+    return 0
+
+
+# ---------------------------------------------------------------------- command line
+USAGE = ('usage: hearth-apt-layer mount | boot-sync | reapply | retry | record | apt-hook | install-deb FILE | '
+         'forget PKG... | reset | status [--json] | image-setup')
+
+
+def main(argv):
+    prog = os.path.basename(argv[0])
+    args = argv[1:]
+    try:
+        if prog == 'hearth-apt-layer-debs':
+            return cmd_apt_hook_debs()
+        c = args[0] if args else ''
+        if c == 'mount' and len(args) == 1:
+            return cmd_mount()
+        if c == 'boot-sync' and len(args) == 1:
+            return cmd_boot_sync()
+        if c in ('reapply', 'retry') and len(args) == 1:
+            return cmd_reapply(c == 'retry')
+        if c == 'record':
+            return cmd_record()
+        if c == 'apt-hook' and len(args) == 1:
+            return cmd_apt_hook()
+        if c == 'apt-hook-debs' and len(args) == 1:
+            return cmd_apt_hook_debs()
+        if c == 'install-deb' and len(args) == 2:
+            return cmd_install_deb(args[1])
+        if c == 'forget' and len(args) >= 2:
+            return cmd_forget(args[1:])
+        if c == 'reset' and len(args) == 1:
+            return cmd_reset()
+        if c == 'status' and args[1:] in ([], ['--json']):
+            return cmd_status(args[1:] == ['--json'])
+        if c == 'image-setup' and len(args) == 1:
+            return cmd_image_setup()
+        print(USAGE, file=sys.stderr)
+        return 2
+    except Fail as e:
+        print('error: ' + str(e), file=sys.stderr if prog != 'hearth-apt-layer' or args[:1] != ['install-deb']
+              else sys.stdout, flush=True)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

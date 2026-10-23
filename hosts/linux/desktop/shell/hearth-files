@@ -46,6 +46,7 @@ EXTRA_TYPES = {
     '.desktop': 'application/x-desktop', '.exe': 'application/x-ms-dos-executable', '.msi': 'application/x-msi',
     '.sh': 'application/x-shellscript', '.md': 'text/markdown', '.json': 'application/json', '.log': 'text/plain',
     '.nsp': 'application/octet-stream', '.xci': 'application/octet-stream', '.rpm': 'application/x-rpm',
+    '.deb': 'application/vnd.debian.binary-package',
     '.flatpakref': 'application/vnd.flatpak.ref', '.txt': 'text/plain', '.png': 'image/png', '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.pdf': 'application/pdf', '.zip': 'application/zip',
 }
