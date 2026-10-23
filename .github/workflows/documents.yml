@@ -128,8 +128,8 @@ jobs:
           sleep 6; win; shot recent
           pkill -f 'target/release/hearth-documents' || true
           echo "::notice title=App output::$(tail -c 800 run-pdf.log run-epub.log | tr '\n' '|')"
-      - name: Screenshots as notices
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+      - name: Screenshots as notices (started by hand with "shots", or a commit saying [shots])
+        if: always() && ((github.event_name == 'workflow_dispatch' && inputs.shots) || contains(github.event.head_commit.message, '[shots]'))
         run: |
           for n in pdf pdf-find epub recent; do
             f=shots/$n.png; [ -f "$f" ] || continue
