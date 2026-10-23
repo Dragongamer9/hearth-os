@@ -61,7 +61,7 @@ async fn send(fingerprint: String, paths: Vec<String>, text: Option<String>, pin
 }
 
 #[tauri::command]
-async fn cancel_send() -> Result<(), String> { hearth_nearby::send::cancel(&svc()?); Ok(()) }
+async fn cancel_send() -> Result<(), String> { let s = svc()?; hearth_nearby::send::cancel(&s); Ok(()) }
 
 #[tauri::command]
 async fn add_address(address: String) -> Result<Value, String> {
