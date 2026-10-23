@@ -725,6 +725,7 @@ Scope {
             if (n && writable && !(n === 1 && isArchive(e))) items.push({ id: "compress", label: "Compress…" });
             if (n === 1 && isArchive(e) && writable) items.push({ id: "extracthere", label: "Extract here" });
             if (n === 1 && isArchive(e)) items.push({ id: "extractto", label: "Extract to…" });
+            if (n > 1 && writable && t.every(p => isArchive(entries.find(x => x.path === p)))) items.push({ id: "extracteach", label: "Extract " + n + " archives here" });
             if (n === 1 && isArchive(e) && writable) items.push({ id: "compress", label: "Compress…" });
             if (e && kindOf(e) === "image") items.push({ id: "wallpaper", label: "Set as wallpaper" });
             if (!e && writable) {
@@ -838,14 +839,15 @@ Scope {
             break;
         case "compress": {
             const name = (t.length === 1 ? base(t[0]).replace(/\.[^.\/]+$/, "") || base(t[0]) : (listing ? listing.name : "Archive")) + ".zip";
-            askText("Compress (end the name with .zip, .tar.gz or .tar.xz)", name, "Compress", name.length - 4, text => {
-                const fmt = /\.tar\.gz$|\.tgz$/i.test(text) ? "tar.gz" : /\.tar\.xz$|\.txz$/i.test(text) ? "tar.xz" : /\.tar$/i.test(text) ? "tar" : "zip";
+            askText("Compress (end the name with .zip, .7z, .tar.gz or .tar.xz)", name, "Compress", name.length - 4, text => {
+                const fmt = /\.tar\.gz$|\.tgz$/i.test(text) ? "tar.gz" : /\.tar\.xz$|\.txz$/i.test(text) ? "tar.xz" : /\.tar$/i.test(text) ? "tar" : /\.7z$/i.test(text) ? "7z" : "zip";
                 const fileName = fmt === "zip" && !/\.zip$/i.test(text) ? text + ".zip" : text;
                 app.startJob({ verb: "compress", paths: t, fmt: fmt, archive: app.listing.path + "/" + fileName, dest: app.listing.path });
             });
             break;
         }
         case "extracthere": if (e) startJob({ verb: "extract", paths: [e.path], archive: e.path, here: true, dest: listing.path }); break;
+        case "extracteach": for (const p of t) startJob({ verb: "extract", paths: [p], archive: p, here: true, dest: listing.path }); break;
         case "extractto":
             if (e) {
                 const into = (writable ? listing.path : home) + "/" + archiveStem(e.name);
