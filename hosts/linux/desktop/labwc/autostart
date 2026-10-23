@@ -83,6 +83,14 @@ done
 # Your own additions: ~/.config/nimbus/autostart (any executable script).
 [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/autostart" ] && "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/autostart" &
 
+# The apps that start when you sign in (~/.config/autostart and /etc/xdg/autostart, the ones that are on in Task
+# Manager › Startup), like on any desktop: Discord, sync clients, password managers... A few seconds after the
+# taskbar, so their tray icons find it. Steam isn't started here (Hearth starts it when it's needed), nor parts of
+# other desktops. Not for a second player's seat (their apps are the first player's).
+if [ -z "$HEARTH_SEAT" ] && [ -f "$SHARE/desktop/shell/hearth-tasks" ] && command -v python3 >/dev/null 2>&1; then
+  (sleep 4; python3 "$SHARE/desktop/shell/hearth-tasks" autostart-run >/dev/null 2>&1) &
+fi
+
 # Hearth asked for an app to open here (Game Mode's "Sign in from Desktop Mode"): only Hearth's own launchers.
 OPEN_AFTER="$RUN/hearth-open-after"
 if [ -f "$OPEN_AFTER" ]; then

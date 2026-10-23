@@ -937,6 +937,12 @@ Scope {
                             }
                         }
                         SetHeader { text: "Apps that open when you sign in"; visible: autoModel.count > 0 }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: autoModel.count > 0
+                            text: "The ones that are on open when Desktop Mode starts. Steam is left to Hearth, which starts it when a game needs it."
+                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
+                        }
                         Repeater {
                             model: autoModel
                             delegate: TmSwitch {
