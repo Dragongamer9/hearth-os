@@ -49,6 +49,7 @@ if as timeout 1500 hearth-debbox install "$H/Downloads/hearth-hello.deb" > /tmp/
 else
   w "Debian box install didn't work here (network or nested containers): $(grep -v '^progress' /tmp/debbox.txt | tail -5 | tr '\n' ' ' | cut -c1-900)"
   as podman logs --tail 25 hearth-debian > /tmp/boxlog.txt 2>&1 && w "the box's own log (distrobox's setup inside it): $(sed 's/\x1b\[[0-9;]*m//g' /tmp/boxlog.txt | tr '\n' ' ' | cut -c1-1500)"
+  as podman exec --user root hearth-debian sh -c 'getent hosts deb.debian.org || echo "no DNS for deb.debian.org"; command -v sudo || echo "no sudo (distrobox setup unfinished)"; ls -l /usr/bin/distrobox-export /usr/bin/distrobox-host-exec 2>&1' > /tmp/inbox.txt 2>&1; w "inside the box: $(tr '\n' ' ' < /tmp/inbox.txt | cut -c1-600)"
   as timeout 300 distrobox enter --name hearth-debian --no-tty -- true > /tmp/enter.txt 2>&1; w "distrobox enter again (exit $?): $(sed 's/\x1b\[[0-9;]*m//g' /tmp/enter.txt | tail -8 | tr '\n' ' ' | cut -c1-900)"
 fi
 
