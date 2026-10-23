@@ -87,7 +87,9 @@ Scope {
                     spacing: 16
                     Rectangle {
                         Layout.preferredWidth: 72; Layout.preferredHeight: 72; radius: 18; color: Theme.panel3
-                        Icon { anchors.centerIn: parent; name: "store"; size: 38; color: Theme.accent }
+                        // Hearth's Debian box icon (hearth-debbox in the icon set), the store glyph if it's not installed.
+                        Image { id: boxIcon; anchors.fill: parent; source: AppIcons.themed("hearth-debbox"); sourceSize: Qt.size(144, 144); fillMode: Image.PreserveAspectFit; visible: status === Image.Ready }
+                        Icon { anchors.centerIn: parent; visible: !boxIcon.visible; name: "store"; size: 38; color: Theme.accent }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true
