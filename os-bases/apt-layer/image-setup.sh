@@ -1,9 +1,10 @@
 #!/bin/bash
-# Hearth's added-apps layer (docs/APT-LAYER.md): the image side, shared by the Ubuntu and Peppermint editions.
-# Run by os-bases/{ubuntu,peppermint}/build.sh after the last package is installed and before dpkg's database
-# moves to /usr/lib/sysimage/dpkg (system_files/ is already copied in by then).
-#   - the list of the image's packages (what the guard rails protect) and apt pins holding them at the image's
-#     versions, so `apt upgrade` only upgrades what the person added
+# Hearth's writable layer (docs/APT-LAYER.md): the image side. Used by the Peppermint edition (and wired into the
+# archived Ubuntu one). Run by os-bases/<edition>/build.sh after the last package is installed and before dpkg's
+# database moves to /usr/lib/sysimage/dpkg (system_files/ is already copied in by then).
+#   - the list of the image's packages (to tell your changes from the image), the packages Hearth's own tools
+#     need (never removed), and apt pins holding the kernel and boot loader at the image's versions (so
+#     `apt upgrade` passes them over)
 #   - apt's and dpkg's hooks (only now: they'd otherwise run for every package the build installs)
 #   - update-initramfs as a no-op (the initramfs comes with the image; a package's trigger can't rebuild it)
 #   - .deb files open with Hearth's installer (hearth-install-deb.desktop)
@@ -13,7 +14,7 @@ D=/usr/share/hearth/apt-layer
 chmod 755 /usr/libexec/nimbus/hearth-apt-layer /usr/libexec/nimbus/hearth-deb-open
 
 /usr/libexec/nimbus/hearth-apt-layer image-setup
-test -s "$D/image-packages" && test -s "$D/image-pins.pref"
+test -s "$D/image-packages" && test -s "$D/image-pins.pref" && grep -qx apt "$D/protected" && grep -qx python3 "$D/protected"
 
 install -Dm644 "$D/apt.conf" /etc/apt/apt.conf.d/80-hearth-apt-layer
 install -Dm644 "$D/dpkg.cfg" /etc/dpkg/dpkg.cfg.d/hearth-apt-layer

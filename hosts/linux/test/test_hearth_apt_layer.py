@@ -151,6 +151,39 @@ class TheList(unittest.TestCase):
         self.assertEqual(s['packages']['hello'], {'added': 5, 'version': '2.10-3'})
 
 
+class ImageChanges(unittest.TestCase):
+    IMAGE = {'bash': '5.2-1', 'nano': '8.4-1', 'vlc-bin': '3.0.20', 'tzdata': '2025a'}
+
+    def test_finds_removed_and_upgraded_image_packages(self):
+        status = {'bash': {'version': '5.2-1'}, 'vlc-bin': {'version': '3.0.21'}, 'tzdata': {'version': '2025a'}}
+        removed, changed = L.image_changes(status, self.IMAGE)
+        self.assertEqual(removed, {'nano'})
+        self.assertEqual(changed, {'vlc-bin': '3.0.21'})
+
+    def test_records_and_drops_removals_and_upgrades(self):
+        s = L.empty_state()
+        s, _, _ = L.update_list(s, CSUM, set(), removed={'nano'}, changed={'vlc-bin': '3.0.21'}, image=self.IMAGE,
+                                now=5)
+        self.assertEqual(s['removed'], {'nano': {'image': '8.4-1', 'added': 5}})
+        self.assertEqual(s['upgraded']['vlc-bin']['version'], '3.0.21')
+        # Reinstalling nano and going back to the image's vlc-bin drop both.
+        s, _, _ = L.update_list(s, CSUM, set(), removed=set(), changed={}, image=self.IMAGE, now=6)
+        self.assertEqual((s['removed'], s['upgraded']), ({}, {}))
+
+    def test_a_new_deployment_keeps_what_isnt_reapplied_yet(self):
+        s = L.empty_state()
+        s, _, _ = L.update_list(s, CSUM, set(), removed={'nano'}, changed={'vlc-bin': '3.0.21'}, image=self.IMAGE)
+        # The new image: nano is installed again (nothing re-removed yet), vlc-bin at the image's version.
+        s, _, _ = L.update_list(s, CSUM2, set(), removed=set(), changed={}, image=self.IMAGE)
+        self.assertIn('nano', s['removed'])
+        self.assertIn('vlc-bin', s['upgraded'])
+
+    def test_reads_version_1_state(self):
+        s = {'version': 1, 'packages': {'hello': {}}, 'removed': {}, 'upgraded': {}, 'seen': {CSUM: ['hello']}}
+        s, added, gone = L.update_list(s, CSUM, {'hello'})
+        self.assertEqual((added, gone), ([], []))
+
+
 class Guards(unittest.TestCase):
     IMAGE = {'bash': '5.2-1', 'libc6': '2.41-1', 'libc6:i386': '2.41-1'}
 
@@ -165,25 +198,32 @@ class Guards(unittest.TestCase):
     def test_installing_new_packages_is_fine(self):
         self.assertEqual(L.check_v3(L.parse_hook_v3(HOOK_INSTALL), self.IMAGE, 'amd64'), [])
 
-    def test_removing_system_packages_is_refused(self):
-        p = L.check_v3(L.parse_hook_v3(HOOK_REMOVE), self.IMAGE, 'amd64')
-        self.assertEqual(len(p), 2)
-        self.assertIn('bash', p[0])
-        self.assertIn('libc6:i386', p[1])
+    def test_removing_system_packages_is_fine_except_boot_and_protected(self):
+        plan = L.parse_hook_v3(HOOK_REMOVE + 'linux-image-amd64 7.0 amd64 none > - - none **REMOVE**\n')
+        image = dict(self.IMAGE, hello='2.10-3', **{'linux-image-amd64': '7.0'})
+        p = L.check_v3(plan, image, 'amd64', protected={'bash', 'libc6', 'libc6:i386'})
+        self.assertEqual(len(p), 3)
+        self.assertIn('bash stays', p[0])
+        self.assertIn('libc6:i386 stays', p[1])
+        self.assertIn('kernel', p[2])
+        # hello (an image package nothing of Hearth's needs) is removed without a word.
+        self.assertFalse(any('hello' in x for x in p))
+        self.assertEqual(L.check_v3(L.parse_hook_v3(HOOK_REMOVE), image, 'amd64'), [])
 
-    def test_debs_replacing_system_packages_are_refused(self):
+    def test_only_boot_debs_are_refused(self):
         f = lambda n, v, a='amd64': {'Package': n, 'Version': v, 'Architecture': a}
-        debs = [('/var/cache/apt/archives/bash_5.3-1_amd64.deb', f('bash', '5.3-1')),
-                ('/var/cache/apt/archives/bash_5.2-1_amd64.deb', f('bash', '5.2-1')),
+        debs = [('/var/cache/apt/archives/bash_5.3-1_amd64.deb', f('bash', '5.3-1')),            # an upgrade
+                ('/var/cache/apt/archives/bash_5.2-1_amd64.deb', f('bash', '5.2-1')),            # a reinstall
                 ('/var/cache/apt/archives/linux-image-7.1.0-1-generic.deb', f('linux-image-7.1.0-1-generic', '7.1')),
+                ('/var/cache/apt/archives/grub-efi-amd64-signed.deb', f('grub-efi-amd64-signed', '2')),
                 ('/home/sam/Downloads/discord.deb', f('discord', '0.0.90')),
+                ('/home/sam/Downloads/bash.deb', f('bash', '9')),
                 ('/var/cache/apt/archives/vlc_3.0_amd64.deb', f('vlc', '3.0'))]
         problems, keep = L.check_debs(debs, self.IMAGE, 'amd64')
-        self.assertEqual(len(problems), 3)
-        self.assertIn("would replace the system's bash 5.2-1", problems[0])   # an upgrade
-        self.assertIn("can't be reinstalled", problems[1])                    # a reinstall
-        self.assertIn('kernel', problems[2])
-        self.assertEqual(keep, [('discord', '/home/sam/Downloads/discord.deb')])   # only local files are kept
+        self.assertEqual(len(problems), 2)
+        self.assertIn('linux-image-7.1.0-1-generic', problems[0])
+        self.assertIn('grub-efi-amd64-signed', problems[1])
+        self.assertEqual(keep, [('discord', '/home/sam/Downloads/discord.deb')])   # only your own local files
 
     def test_boot_packages(self):
         for n in ('linux-image-7.0.0-12-generic', 'linux-image-amd64', 'linux-modules-extra-7.0.0-1-generic',
@@ -232,12 +272,37 @@ class PutBack(unittest.TestCase):
         self.assertEqual(skipped[0][0], 'vlc')
         self.assertIn('no internet', skipped[0][1])
 
+    def test_removals(self):
+        todo, gone = L.plan_removals({'nano': {}, 'oldpkg': {}, 'vim': {}}, {'nano': '1', 'vim': '2'}, {'nano'})
+        self.assertEqual(todo, ['nano'])        # vim isn't installed on the new system: nothing to do
+        self.assertEqual(gone, ['oldpkg'])      # the new image doesn't have it any more
+
+    def test_removal_that_takes_more_with_it_means_the_image_needs_it(self):
+        sim = 'NOTE: This is only a simulation!\nRemv libfoo1 [1.0]\nRemv foo-tools [1.0]\nRemv nano [8]\n'
+        self.assertEqual(L.removal_extras(sim, {'nano', 'libfoo1'}), ['foo-tools'])
+        self.assertEqual(L.removal_extras('Remv nano [8]\n', {'nano'}), [])
+
+    def test_upgrades(self):
+        up = {'vlc-bin': {'version': '3.1'}, 'mesa': {'version': '25.1'}, 'gone': {'version': '1.0'},
+              'old': {'version': '2.0'}}
+        image = {'vlc-bin': '3.0', 'mesa': '25.2', 'gone-not': '1', 'old': '1.0'}
+        present = {'vlc-bin', 'mesa', 'old'}
+        jobs, skipped, caught, dropped = L.plan_upgrades(up, image, present, {'vlc-bin': '3.2', 'old': '1.0'}, True,
+                                                          self.newer)
+        self.assertEqual(jobs, ['vlc-bin'])                  # the image is still older: upgraded again
+        self.assertEqual(caught, ['mesa'])                   # the image caught up: dropped
+        self.assertEqual([d[0] for d in dropped], ['gone'])  # not in the new image
+        self.assertEqual(skipped[0][0], 'old')               # wanted, but the sources don't have a newer one
+        _, skipped, _, _ = L.plan_upgrades({'vlc-bin': {'version': '3.1'}}, image, present, {}, False, self.newer)
+        self.assertIn('no internet', skipped[0][1])
+
     def test_summary(self):
-        t, b = L.summary({'reinstalled': ['a', 'b'], 'skipped': []})
-        self.assertEqual(t, 'Your added apps are back')
+        t, b = L.summary({'reinstalled': ['a', 'b'], 'reremoved': ['nano'], 'skipped': []})
+        self.assertEqual(t, 'Your changes are back')
+        self.assertIn('3 put back', b)
         t, b = L.summary({'reinstalled': ['a'], 'skipped': [{'name': 'vlc', 'reason': 'x'}]})
         self.assertIn("weren't put back", t)
-        self.assertIn('1 re-installed, 1 skipped: vlc', b)
+        self.assertIn('1 put back on the updated system, 1 skipped: vlc', b)
 
 
 class Deployment(unittest.TestCase):
@@ -263,11 +328,18 @@ class Deployment(unittest.TestCase):
 
 
 class ImageAndApps(unittest.TestCase):
-    def test_pins(self):
-        text = L.pins_text({'bash': '5.2-1', 'libc6': '2.41-1', 'libc6:i386': '2.41-1', 'odd': '1', 'odd:i386': '2'})
-        self.assertIn('Package: bash\nPin: version 5.2-1\nPin-Priority: 1001', text)
-        self.assertEqual(text.count('Package: libc6\n'), 1)   # one stanza for both architectures
-        self.assertIn('Package: odd:i386\nPin: version 2', text)
+    def test_pins_hold_only_boot_packages(self):
+        text = L.pins_text({'bash': '5.2-1', 'linux-image-amd64': '7.0', 'grub-efi-amd64-signed': '2',
+                            'shim-signed': '1', 'shim-signed:i386': '2'})
+        self.assertNotIn('Package: bash', text)
+        self.assertIn('Package: linux-image-amd64\nPin: version 7.0\nPin-Priority: 1001', text)
+        self.assertIn('Package: shim-signed:i386\nPin: version 2', text)
+
+    def test_protected_from_apt_cache_depends(self):
+        out = 'python3\n  Depends: python3-minimal\n  PreDepends: <libc6>\npython3-minimal\n  Depends: libc6\n' \
+              '<virtual-thing>\nlibc6\nnot-installed\n'
+        self.assertEqual(L.protected_from_depends(out, {'python3': '1', 'python3-minimal': '1', 'libc6': '2'}),
+                         {'python3', 'python3-minimal', 'libc6'})
 
     def test_desktop_ids(self):
         lst = ('/.\n/usr\n/usr/share/applications\n/usr/share/applications/discord.desktop\n'

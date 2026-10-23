@@ -12,7 +12,7 @@ ADMIN=/usr/libexec/nimbus/hearth-admin
 if [ "${1:-}" = "--here" ]; then
   f=${2:-}
   printf 'Installing %s\n' "$(basename -- "$f")"
-  printf 'It goes into your added apps: kept through restarts, and put back after system updates.\n\n'
+  printf 'It stays through restarts and is put back after system updates.\n\n'
   ok=1
   # hearth-admin prints "log: ..." lines, "error: ..." on failure and a JSON line at the end.
   while IFS= read -r line; do
