@@ -121,7 +121,7 @@ Scope {
         function search(q: string): void { app.runSearch(q); }
         function tab(p: string): void { app.open(""); app.newTab(p); }
         function select(name: string): void { const i = app.entries.findIndex(e => e.name === name); if (i >= 0) app.cur = i; }
-        function activate(name: string): void { const i = app.entries.findIndex(e => e.name === name); if (i >= 0) { app.cur = i; app.activate(app.entries[i]); } }
+        function activate(name: string): void { if (app.found !== null) app.clearSearch(); const i = app.entries.findIndex(e => e.name === name); if (i >= 0) { app.cur = i; app.activate(app.entries[i]); } }
         function close(): void { app.closeOverlay(); }
     }
 

@@ -17,6 +17,9 @@ class OpenPlan(Base):
         self.spawned = []
         self.hf.spawn = lambda argv, cwd=None: self.spawned.append((argv, cwd))
         self.have = {'hearth-text', 'hearth-terminal', 'python3', 'bash', 'sh', 'xdg-open'}
+        # hf.shutil is the real shutil module: put its which() back afterwards, for the other tests.
+        real = self.hf.shutil.which
+        self.addCleanup(setattr, self.hf.shutil, 'which', real)
         self.hf.shutil.which = lambda n, *a, **k: '/usr/bin/' + n if n in self.have else None
 
     def p(self, name, data=b'', mode=0o644):
