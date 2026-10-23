@@ -104,7 +104,7 @@ jobs:
             image: registry.fedoraproject.org/fedora:latest
             kind: wayland
           # Game Mode: gamescope on Mesa's software Vulkan needs dma-buf memory (/dev/udmabuf), hence a privileged
-          # container. Not blocking yet: gamescope on lavapipe in CI may not start at all (then the run says so).
+          # container. gamescope on lavapipe in CI may not start at all: then its tests are skipped with a warning.
           - name: fedora-gamescope
             image: registry.fedoraproject.org/fedora:latest
             kind: gamescope
@@ -162,7 +162,8 @@ jobs:
             rc=$?
             cat /tmp/out/e2e-$(basename $(dirname $(dirname $t))).log
             echo "::notice title=$(basename $(dirname $(dirname $t))) (${{ matrix.kind }})::finished with exit code $rc"
-            [ $rc = 0 ] || status=1
+            # 78: the session couldn't make this kind of screen here (gamescope without a graphics card): skipped
+            [ $rc = 0 ] || [ $rc = 78 ] || status=1
           done
           exit $status
       - name: What the session's programs said (when something failed)

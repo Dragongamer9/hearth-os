@@ -50,7 +50,12 @@ elif [ "$KIND" = gamescope ]; then
   echo "::notice title=gamescope here::$(gamescope --version 2>&1 | head -1); udmabuf: $(ls -l /dev/udmabuf 2>&1); dri: $(ls /dev/dri 2>&1 | tr '\n' ' ')"
   gamescope --backend headless -W 1280 -H 720 -w 1280 -h 720 -- sh -c 'env > /tmp/gs-env.tmp && mv /tmp/gs-env.tmp /tmp/gs-env; exec xterm -geometry 160x50+0+0 -e top -d 0.3' >"$L/gamescope.log" 2>&1 &
   for _ in $(seq 80); do [ -s /tmp/gs-env ] && break; sleep 0.25; done
-  if [ ! -s /tmp/gs-env ]; then echo "::error title=gamescope didn't start::$(tail -c 1500 "$L/gamescope.log" | tr '\n' '|')"; fi
+  # GitHub's runners have no graphics card, and gamescope on Mesa's software Vulkan can't always start there
+  # (vkAllocateMemory fails): then the Game Mode tests are skipped (exit 78), not failed.
+  if [ ! -s /tmp/gs-env ]; then
+    echo "::warning title=gamescope can't run on this runner (Game Mode tests skipped)::$(grep -E 'Error|Assertion|Failed' "$L/gamescope.log" | tail -3 | sed 's/\x1b\[[0-9;]*m//g' | tr '\n' '|' | cut -c1-600)"
+    exit 78
+  fi
   for k in GAMESCOPE_WAYLAND_DISPLAY WAYLAND_DISPLAY DISPLAY; do
     v=$(grep "^$k=" /tmp/gs-env 2>/dev/null | head -1 | cut -d= -f2-); [ -n "$v" ] && export "$k=$v"
   done
