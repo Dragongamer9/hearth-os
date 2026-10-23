@@ -11,9 +11,10 @@
 # Mounted files: /box.sh (this), /make_test_deb.py.
 set -u
 w() { echo "::warning title=box check::$*"; }
-ok() { echo "ok: $*"; }
+ok() { echo "ok: $*"; echo "::notice title=box check ok::$*"; }
 note() { echo "::notice title=box check::$*"; }
 mkdir -p /var/lib /var/home /var/tmp /run/user
+chmod 1777 /var/tmp      # as tmpfiles.d makes it on a real system (podman unpacks images there)
 [ -d /usr/lib/sysimage/dpkg ] && ln -sfn /usr/lib/sysimage/dpkg /var/lib/dpkg
 useradd -m -d /var/home/boxtest -s /bin/bash boxtest 2>/dev/null || true
 /usr/libexec/nimbus/hearth-home-repair --user boxtest >/dev/null 2>&1 || true
@@ -50,7 +51,10 @@ fi
 
 echo "--- AppImages"
 mkdir -p /tmp/ai
-if curl -fsSL --retry 3 -m 120 -o /tmp/ai/appimagetool.AppImage https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage; then
+# AppImageKit 13's appimagetool: the classic runtime that loads libfuse.so.2 (what most AppImages still use); the
+# newer appimagetool (static runtime) if that one can't be had.
+if curl -fsSL --retry 3 -m 180 -o /tmp/ai/appimagetool.AppImage https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage 2>/tmp/ai/curl.txt \
+   || curl -fsSL --retry 3 -m 180 -o /tmp/ai/appimagetool.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage 2>>/tmp/ai/curl.txt; then
   chmod +x /tmp/ai/appimagetool.AppImage
   /tmp/ai/appimagetool.AppImage --appimage-version >/tmp/ai/v.txt 2>&1 && ok "a type-2 AppImage runtime starts: $(head -1 /tmp/ai/v.txt)" || w "--appimage-version failed: $(tailof /tmp/ai/v.txt)"
   if /tmp/ai/appimagetool.AppImage --version >/tmp/ai/f.txt 2>&1; then ok "a classic AppImage mounts with FUSE 2 and runs: $(tail -1 /tmp/ai/f.txt)"
@@ -62,7 +66,7 @@ if curl -fsSL --retry 3 -m 120 -o /tmp/ai/appimagetool.AppImage https://github.c
     ok "Hearth Files put the AppImage in the app menu ($(grep -m1 '^Name=' "$f"), icon: $(grep -m1 '^Icon=' "$f" | cut -c1-120))"
   else w "Add to app menu failed: $(tailof /tmp/ai/menu.txt)"; fi
 else
-  w "couldn't download a test AppImage (network)"
+  w "couldn't download a test AppImage (network): $(tailof /tmp/ai/curl.txt)"
 fi
 
 echo "--- Flatpak's system installation and Bazaar"
