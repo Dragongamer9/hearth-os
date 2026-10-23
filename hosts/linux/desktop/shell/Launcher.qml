@@ -4,6 +4,8 @@
 // Two sections: Apps (every app with a .desktop file) and Games (your installed games from Hearth's library, through
 // hearth-games; they start through Hearth, like its Play button). Switch with Tab / Shift+Tab, or go up from the
 // top row to the section buttons and press left or right (the D-pad).
+// In Apps, Hearth's own apps and the apps you installed come first; the apps that came with the system (everything
+// else in /usr/share/applications) are in one "System apps" folder at the end. Searching looks through all of them.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -19,6 +21,8 @@ PanelWindow {
     property var games: []                     // hearth-games: [{id, title, source, cover, wide, icon}]
     property bool gamesLoading: false
     property double gamesAt: 0                 // when Hearth was last asked (it takes a moment)
+    property bool folderOpen: false            // the System apps folder is open
+    property var systemIds: ({})               // desktop ids that came with the system image
     readonly property string gamesHelper: decodeURIComponent(Qt.resolvedUrl("hearth-games").toString().replace(/^file:\/\//, ""))
     signal settingsRequested()
     // Right-click, press and hold, or the Menu key (X on the controller): Open / Pin to taskbar (shell.qml).
@@ -28,6 +32,7 @@ PanelWindow {
     function setTab(t) {
         if (tab === t) return;
         tab = t;
+        folderOpen = false;
         grid.currentIndex = 0;
         if (t === "games") loadGames();
     }
@@ -35,6 +40,7 @@ PanelWindow {
     function menuFor(i) {
         if (tab !== "apps") return;            // games: just Play (Enter)
         const e = matches[i];
+        if (e && e.folder) return;             // the System apps folder: just Open
         const cell = grid.itemAtIndex(i);
         if (!e) return;
         const p = cell ? cell.mapToItem(null, cell.width / 2, cell.height / 2) : Qt.point(width / 2, height / 2);
@@ -42,7 +48,8 @@ PanelWindow {
     }
 
     visible: shown
-    onShownChanged: if (shown) { search.text = ""; grid.currentIndex = 0; tabFocus = false; search.forceActiveFocus(); loadGames(); }
+    onShownChanged: if (shown) { search.text = ""; folderOpen = false; grid.currentIndex = 0; tabFocus = false; search.forceActiveFocus(); loadGames(); systemList.running = true; }
+    function closeFolder() { folderOpen = false; grid.currentIndex = Math.max(0, mainApps.length); }
 
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "hearth-launcher"
@@ -55,6 +62,12 @@ PanelWindow {
     readonly property var apps: Array.from(DesktopEntries.applications.values)
         .filter(a => !a.noDisplay && !/^(qt5ct|qt6ct)$/.test(a.id || ""))
         .sort((a, b) => a.name.localeCompare(b.name))
+    // Hearth's own apps (and Beacon): never in the folder.
+    function ours(a) { return /^(hearth|nimbus|beacon)/i.test(a.id || "") || /^Hearth\b/.test(a.name || ""); }
+    function systemApp(a) { return !ours(a) && root.systemIds[a.id] === true; }
+    readonly property var mainApps: apps.filter(a => !systemApp(a))
+    readonly property var sysApps: apps.filter(a => systemApp(a))
+    readonly property var folderTile: ({ folder: true, id: "", name: "System apps", icon: "folder", genericName: "", comment: "", keywords: [] })
     readonly property var matches: {
         const q = search.text.trim().toLowerCase();
         if (tab === "games") {
@@ -62,7 +75,7 @@ PanelWindow {
             return games.filter(g => (g.title || "").toLowerCase().includes(q))
                 .sort((a, b) => (b.title.toLowerCase().startsWith(q) ? 1 : 0) - (a.title.toLowerCase().startsWith(q) ? 1 : 0));
         }
-        if (!q) return apps;
+        if (!q) return folderOpen ? sysApps : (sysApps.length ? mainApps.concat([folderTile]) : mainApps);
         const hit = a => [a.name, a.genericName, a.comment, Array.from(a.keywords || []).join(" ")].join(" ").toLowerCase().includes(q);
         // Names that start with the query first.
         return apps.filter(hit).sort((a, b) => (b.name.toLowerCase().startsWith(q) ? 1 : 0) - (a.name.toLowerCase().startsWith(q) ? 1 : 0));
@@ -70,6 +83,7 @@ PanelWindow {
 
     function launch(entry) {
         if (!entry) return;
+        if (entry.folder) { folderOpen = true; grid.currentIndex = 0; search.forceActiveFocus(); return; }
         if (tab === "games") Quickshell.execDetached(["python3", gamesHelper, "play", entry.id]);
         else entry.execute();
         shown = false;
@@ -89,6 +103,25 @@ PanelWindow {
             const g = JSON.parse(lines[lines.length - 1] || "[]");
             if (Array.isArray(g) && (fresh || games.length === 0) && JSON.stringify(g) !== JSON.stringify(games)) games = g;
         } catch (e) {}
+    }
+    // The apps that came with the system: the image's own .desktop files. Apps added with apt on the Debian editions
+    // (listed by Hearth's package layer in /var/lib/hearth/layer/added-apps) count as yours, not the system's.
+    function takeSystem(text) {
+        const parts = text.split("\n---\n");
+        const added = {};
+        for (const l of (parts[1] || "").split("\n")) { const id = l.trim().replace(/\.desktop$/, ""); if (id) added[id] = true; }
+        const ids = {};
+        for (const l of (parts[0] || "").split("\n")) {
+            const id = l.trim().replace(/\.desktop$/, "");
+            if (id && l.trim().endsWith(".desktop") && !added[id]) ids[id] = true;
+        }
+        systemIds = ids;
+    }
+    Process {
+        id: systemList
+        running: true
+        command: ["sh", "-c", "ls -1 /usr/share/applications 2>/dev/null; printf '\\n---\\n'; cat /var/lib/hearth/layer/added-apps 2>/dev/null; true"]
+        stdout: StdioCollector { onStreamFinished: root.takeSystem(text) }
     }
     Process {
         id: gamesCached
@@ -123,9 +156,19 @@ PanelWindow {
                 spacing: 8
                 TabButton { label: "Apps"; key: "apps" }
                 TabButton { label: "Games"; key: "games" }
+                // In the System apps folder: where you are, and the way back.
+                Rectangle {
+                    visible: root.folderOpen && root.tab === "apps" && !search.text
+                    implicitWidth: backText.implicitWidth + 28
+                    implicitHeight: 38
+                    radius: 10
+                    color: backArea.containsMouse ? Theme.panel3 : Theme.panel2
+                    Text { id: backText; anchors.centerIn: parent; text: "‹ System apps"; color: Theme.text; font.pixelSize: 14; font.family: Theme.font }
+                    MouseArea { id: backArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.closeFolder(); search.forceActiveFocus(); } }
+                }
                 Item { Layout.fillWidth: true }
                 Text {
-                    text: root.tabFocus ? "◀ ▶ switch · ▼ back to the list" : "Tab switches"
+                    text: root.tabFocus ? "◀ ▶ switch · ▼ back to the list" : (root.folderOpen && !search.text ? "Esc goes back · Tab switches" : "Tab switches")
                     color: Theme.muted
                     font.pixelSize: 12
                     font.family: Theme.font
@@ -148,7 +191,7 @@ PanelWindow {
                     font.pixelSize: 17
                     font.family: Theme.font
                     onTextChanged: grid.currentIndex = 0
-                    Keys.onEscapePressed: { if (root.tabFocus) root.tabFocus = false; else root.shown = false; }
+                    Keys.onEscapePressed: { if (root.tabFocus) root.tabFocus = false; else if (root.folderOpen && !search.text) root.closeFolder(); else root.shown = false; }
                     Keys.onMenuPressed: root.menuFor(grid.currentIndex)
                     Keys.onReturnPressed: { if (root.tabFocus) root.tabFocus = false; else root.launch(root.matches[grid.currentIndex]); }
                     Keys.onEnterPressed: { if (root.tabFocus) root.tabFocus = false; else root.launch(root.matches[grid.currentIndex]); }
@@ -257,7 +300,7 @@ PanelWindow {
                     }
                     // Pinned to the taskbar
                     Icon {
-                        visible: !cell.isGame && DeskState.isPinned(cell.modelData.id)
+                        visible: !cell.isGame && !cell.modelData.folder && DeskState.isPinned(cell.modelData.id)
                         anchors { top: parent.top; right: parent.right; margins: 12 }
                         name: "pin"; size: 14; color: Theme.muted
                     }
