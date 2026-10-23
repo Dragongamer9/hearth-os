@@ -126,10 +126,10 @@ jobs:
           xdotool key Escape; sleep 1; xdotool key Escape; sleep 1; shot edit-leave
           pkill -f 'target/release/hearth-photos' || true
           echo "::notice title=App output::$(tail -c 1200 run.log | tr '\n' '|')"
-      - name: Screenshots as notices
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+      - name: Screenshots as notices (started by hand with "shots", or a commit saying [shots])
+        if: always() && ((github.event_name == 'workflow_dispatch' && inputs.shots) || contains(github.event.head_commit.message, '[shots]'))
         run: |
-          for n in viewer info edit-crop heic; do
+          for n in viewer sideways info heic edit-crop; do
             f=shots/$n.png; [ -f "$f" ] || continue
             convert "$f" -resize 720x -quality 50 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
           done
