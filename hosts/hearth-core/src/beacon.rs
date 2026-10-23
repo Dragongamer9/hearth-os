@@ -11,6 +11,10 @@
 //!                                                     starts it; with --wait Beacon stays the parent of the Wine
 //!                                                     processes, which carry HEARTH_GAME_ID (appid.rs)
 //!   beacon-app [--fullscreen]                         Beacon's window: mods, settings, setting up a game
+//!   beacon custom list --json                         (Beacon 0.0.8+) games added by hand in Beacon (any Windows game or
+//!                                                     installer, Faugus-style): Library › Beacon › Other Games
+//!   beacon custom launch <id> --wait                  starts one, like `launch` (HEARTH_GAME_ID reaches its processes;
+//!                                                     Beacon records its play time when it closes)
 //!
 //! Since Beacon 0.0.6 Hearth has Beacon's screens itself (Library › Beacon › a game › Game setup / Mods), through
 //! Beacon's JSON commands (`beacon --json …`, README "For Hearth / scripting"): status, mods, catalog, community,
@@ -41,6 +45,13 @@ const STEAM_IDS: [(&str, u32); 2] = [("uaw", 10430), ("swgb", 356500)];
 const MAX_MODS: usize = 200;
 
 pub fn known_game(id: &str) -> bool { GAMES.contains(&id) }
+
+/// A game added by hand in Beacon: its id there (lowercase letters, digits and dashes, Beacon's custom::valid_id).
+pub fn valid_custom_id(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 64 && !s.starts_with('-') && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+/// "custom:<id>" (BeaconGame::id of a game added by hand) → its id in Beacon.
+pub fn custom_id(game_id: &str) -> Option<&str> { game_id.strip_prefix("custom:").filter(|c| valid_custom_id(c)) }
 /// The games the BFME All-in-One launcher installs.
 pub const AIO_GAMES: [&str; 3] = ["bfme1", "bfme2", "rotwk"];
 /// Jobs that open a window of their own (an installer, a game's launcher, the All-in-One launcher): in Game Mode
@@ -172,6 +183,14 @@ pub struct BeaconGame {
     pub steam_appid: Option<u32>,
     pub via_steam: bool,
     pub mods: Vec<Mod>,
+    /// Added by hand in Beacon (`id` is "custom:<id>"): pictures (absolute files), play time (seconds) and when it
+    /// last closed (Unix seconds), as Beacon keeps them.
+    pub custom: bool,
+    pub cover: Option<String>,
+    pub hero: Option<String>,
+    pub icon: Option<String>,
+    pub play_seconds: u64,
+    pub last_played: u64,
 }
 
 impl BeaconGame {
@@ -213,7 +232,44 @@ pub fn parse_status(json: &str) -> Result<Vec<BeaconGame>, String> {
             installed: g["installed"] == true, ready: g["ready"] == true, issues, selected_mod: selected,
             edition: text(&g["edition"], 80),
             steam_appid: g["steam_appid"].as_u64().filter(|n| *n > 0 && *n < crate::appid::OWN_MIN as u64).map(|n| n as u32),
-            via_steam: g["via_steam"] == true, mods: vec![],
+            via_steam: g["via_steam"] == true, mods: vec![], ..Default::default()
+        });
+    }
+    Ok(out)
+}
+
+fn file_path(v: &Value) -> Option<String> {
+    v.as_str().filter(|p| p.starts_with('/') && !p.contains('\0') && p.len() < 4096 && !p.split('/').any(|c| c == "..")).map(str::to_string)
+}
+
+/// `beacon custom list --json` (Beacon 0.0.8+), checked: games added by hand in Beacon, as BeaconGames with the id
+/// "custom:<id>" and family "other". Ids that aren't Beacon's kind are left out.
+pub fn parse_custom(json: &str) -> Result<Vec<BeaconGame>, String> {
+    let v: Value = serde_json::from_str(json).map_err(|e| format!("Beacon's list of added games isn't valid: {e}"))?;
+    let list = v["games"].as_array().ok_or("Beacon's list of added games has no games")?;
+    let mut out: Vec<BeaconGame> = Vec::new();
+    for g in list.iter().take(500) {
+        let Some(cid) = g["id"].as_str().filter(|c| valid_custom_id(c)) else {
+            crate::bridge::log("beacon: left out an added game whose id isn't safe to use");
+            continue;
+        };
+        let id = format!("custom:{cid}");
+        if out.iter().any(|x| x.id == id) { continue; }
+        let issues = g["issues"].as_array().map(|a| a.iter().take(20).filter_map(|i| {
+            let level = if i["level"] == "error" { "error" } else { "warn" };
+            text(&i["message"], 400).map(|m| (level.to_string(), m))
+        }).collect()).unwrap_or_default();
+        let exe = file_path(&g["exe"]);
+        // The folder its program is in: what Hearth watches for the game's processes.
+        let dir = exe.as_deref().and_then(|e| Path::new(e).parent()).map(|d| d.to_string_lossy().to_string()).filter(|d| d.len() > 1);
+        let title = text(&g["title"], 120).unwrap_or_else(|| cid.to_string());
+        out.push(BeaconGame {
+            short: title.chars().take(40).collect(), title, id, family: "other".into(), path: dir,
+            installed: g["installed"] == true, ready: g["ready"] == true, issues,
+            custom: true, cover: file_path(&g["cover"]), hero: file_path(&g["hero"]), icon: file_path(&g["icon"]),
+            play_seconds: g["play_seconds"].as_u64().unwrap_or(0).min(100 * 365 * 86400),
+            last_played: g["last_played"].as_u64().filter(|t| *t < 32_503_680_000).unwrap_or(0),
+            ..Default::default()
         });
     }
     Ok(out)
@@ -252,8 +308,13 @@ pub fn parse_mods(out: &str) -> (Vec<Mod>, Option<String>) {
 
 // ------------------------------------------------------------------ the arguments Hearth passes
 
-/// The mod to start with: Some(id) that mod, Some("") none (the base game), None Beacon's saved choice.
+/// The mod to start with: Some(id) that mod, Some("") none (the base game), None Beacon's saved choice. A game added
+/// by hand ("custom:<id>") has no mods: `custom launch <id> --wait`.
 pub fn launch_args(game: &str, choice: Option<&str>) -> Result<Vec<String>, String> {
+    if let Some(cid) = custom_id(game) {
+        if choice.map(|c| !c.is_empty()).unwrap_or(false) { return Err("Games added in Beacon have no mods".into()); }
+        return Ok(vec!["custom".into(), "launch".into(), cid.to_string(), "--wait".into()]);
+    }
     if !known_game(game) { return Err("Beacon doesn't know that game".into()); }
     let mut a = vec!["launch".to_string(), game.to_string()];
     match choice {
@@ -304,7 +365,10 @@ pub fn signature(home: &Path) -> String {
     let data = std::env::var_os("BEACON_DATA_DIR").map(PathBuf::from)
         .unwrap_or_else(|| std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share")).join("beacon"));
     let fp = home.join(".var/app").join(FLATPAK_ID);
-    let mut paths = vec![cfg, fp.join("config/beacon/config.json")];
+    // Games added by hand (custom-games.json, next to config.json) and play time (playtime.json, in the data folder).
+    let custom = cfg.with_file_name("custom-games.json");
+    let mut paths = vec![cfg, fp.join("config/beacon/config.json"), custom, fp.join("config/beacon/custom-games.json"),
+                         data.join("playtime.json"), fp.join("data/beacon/playtime.json")];
     for d in [data.join("mods"), fp.join("data/beacon/mods")] {
         paths.push(d.clone());
         for g in GAMES { paths.push(d.join(g)); }
@@ -327,7 +391,12 @@ pub fn load(home: &Path) -> Snapshot {
         // Taken again after Beacon ran: a Beacon that writes its own files while answering isn't read over and over.
         Err(e) => { crate::bridge::log(&format!("beacon: status: {e}")); s.error = Some(e); s.sig = signature(home); return s; }
     }
-    for g in s.games.iter_mut().filter(|g| g.installed) {
+    // Games added by hand (Beacon 0.0.8+; an older Beacon doesn't know the command, which only means none).
+    match run(&cli, &["custom".to_string(), "list".to_string(), "--json".to_string()], Duration::from_secs(20)).and_then(|t| parse_custom(&t)) {
+        Ok(list) => s.games.extend(list),
+        Err(e) => crate::bridge::log(&format!("beacon: custom list: {}", e.chars().take(200).collect::<String>())),
+    }
+    for g in s.games.iter_mut().filter(|g| g.installed && !g.custom) {
         let Ok(args) = mods_args(&g.id) else { continue };
         match run(&cli, &args, Duration::from_secs(15)) {
             Ok(t) => { let (mods, chosen) = parse_mods(&t); g.mods = mods; if g.selected_mod.is_none() { g.selected_mod = chosen; } }
@@ -344,6 +413,7 @@ pub fn load(home: &Path) -> Snapshot {
 pub fn library_games(s: &Snapshot) -> Vec<crate::library::Game> {
     if s.cli.is_none() { return vec![]; }
     s.games.iter().map(|b| {
+        if b.custom { return custom_library_game(b); }
         let appid = b.steam_appid.or_else(|| STEAM_IDS.iter().find(|(g, _)| *g == b.id).map(|(_, n)| *n));
         let art = appid.map(|n| crate::steam::find_art(&n.to_string(), None, Path::new("/nonexistent"))).unwrap_or_default();
         crate::library::Game {
@@ -356,10 +426,31 @@ pub fn library_games(s: &Snapshot) -> Vec<crate::library::Game> {
     }).collect()
 }
 
+/// A game added by hand in Beacon, as a library entry: its own pictures (cover, else its icon; the background as hero
+/// and wide), Beacon's play time and last played (Hearth adds its own on top: the larger counts), Install opens Beacon
+/// (the program is chosen there).
+fn custom_library_game(b: &BeaconGame) -> crate::library::Game {
+    let there = |p: &Option<String>| p.clone().filter(|f| Path::new(f).is_file());
+    let mut art: Vec<(&'static str, String)> = Vec::new();
+    if let Some(c) = there(&b.cover).or_else(|| there(&b.icon)) { art.push(("cover", c)); }
+    if let Some(h) = there(&b.hero) { art.push(("hero", h.clone())); art.push(("wide", h)); }
+    if let Some(i) = there(&b.icon) { art.push(("icon", i)); }
+    crate::library::Game {
+        id: format!("beacon:{}", b.id), title: b.title.clone(), source: "beacon",
+        install_path: b.path.as_ref().map(PathBuf::from), installed: b.installed,
+        state: if b.installed { "installed" } else { "notInstalled" }, art,
+        store_minutes: b.play_seconds / 60, store_last_played: b.last_played.saturating_mul(1000),
+        install_uri: if b.installed { None } else { Some("beacon:open".into()) },
+        beacon: Some(b.clone()), ..Default::default()
+    }
+}
+
 /// Starts a game through `beacon launch … --wait`. `choice`: see launch_args. Its output goes to Hearth's
 /// beacon-launch.log. Returns Beacon's process id.
 pub fn launch(cli: &Exe, game: &BeaconGame, choice: Option<&str>, game_id: u32) -> Result<u32, String> {
-    if !game.installed { return Err(format!("{} isn't set up yet: select Set up on its page.", game.title)); }
+    if !game.installed {
+        return Err(if game.custom { format!("{} isn't ready yet: choose its program in Beacon (Open Beacon).", game.title) } else { format!("{} isn't set up yet: select Set up on its page.", game.title) });
+    }
     if let Some(m) = choice.filter(|m| !m.is_empty()) {
         if !game.mods.iter().any(|x| x.id == m) { return Err("That mod isn't in Beacon anymore.".into()); }
     }
@@ -543,10 +634,12 @@ pub fn run_json(exe: &Exe, args: &[String], stdin: Option<&str>, limit: Duration
 
 // ---- checking what the page sends, before it goes on a command line
 
-/// A game from the page: "beacon:rotwk" or "rotwk".
+/// A game from the page: "beacon:rotwk" or "rotwk". Games added by hand ("beacon:custom:<id>") are set up in Beacon's
+/// own window (Open Beacon), not on Hearth's Game setup page.
 pub fn page_game(v: &Value) -> Result<String, String> {
     let s = v.as_str().unwrap_or("");
     let g = s.strip_prefix("beacon:").unwrap_or(s);
+    if custom_id(g).is_some() { return Err("This game was added in Beacon: its settings are in Beacon (Open Beacon).".into()); }
     if known_game(g) { Ok(g.to_string()) } else { Err("Beacon doesn't know that game.".into()) }
 }
 
@@ -1086,6 +1179,53 @@ mod tests {
         assert_eq!((g[1].installed, g[1].install_uri.as_deref()), (false, Some("beacon:open")));
         assert!(g[2].art.iter().any(|(k, v)| *k == "cover" && v.contains("356500")));
         assert!(g[0].art.is_empty());
+    }
+
+    const CUSTOM: &str = r#"{"games":[
+      {"id":"the-witcher-3","title":"The Witcher 3","exe":"/home/me/Games/Witcher3/bin/x64/witcher3.exe","installed":true,"ready":true,"issues":[],
+       "family":"other","key":"custom:the-witcher-3","icon":"/home/me/.local/share/beacon/art/the-witcher-3/icon.png","cover":"/x/../etc/passwd",
+       "hero":null,"play_seconds":7260,"last_played":1752496496},
+      {"id":"Bad Id; rm","title":"x","installed":true},
+      {"id":"new-game","title":"New Game\u0007","exe":null,"installed":false,"ready":false,"issues":[{"level":"error","message":"Choose the game's program"}]},
+      {"id":"the-witcher-3","title":"twice"}
+    ],"flags":[]}"#;
+
+    #[test]
+    fn games_added_in_beacon() {
+        let g = parse_custom(CUSTOM).unwrap();
+        assert_eq!(g.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), vec!["custom:the-witcher-3", "custom:new-game"]);
+        let w = &g[0];
+        assert!(w.custom && w.installed && w.ready && w.family == "other");
+        assert_eq!(w.path.as_deref(), Some("/home/me/Games/Witcher3/bin/x64"));
+        assert_eq!((w.play_seconds, w.last_played), (7260, 1752496496));
+        assert_eq!(w.cover, None, "a path with .. is dropped");
+        assert!(w.icon.as_deref().unwrap().ends_with("icon.png"));
+        assert_eq!(g[1].title, "New Game");
+        assert_eq!(g[1].blocker(), Some("Choose the game's program"));
+        assert!(parse_custom("[]").is_err() && parse_custom("nope").is_err());
+        // Launching: `custom launch <id> --wait`, never with a mod; Game setup isn't for them.
+        assert_eq!(launch_args("custom:the-witcher-3", None).unwrap(), vec!["custom", "launch", "the-witcher-3", "--wait"]);
+        assert_eq!(launch_args("custom:the-witcher-3", Some("")).unwrap(), vec!["custom", "launch", "the-witcher-3", "--wait"]);
+        assert!(launch_args("custom:the-witcher-3", Some("x:y")).is_err());
+        assert!(launch_args("custom:Bad Id", None).is_err() && launch_args("custom:--help", None).is_err());
+        let (_, argv) = Exe::Flatpak("/usr/bin/flatpak".into(), Some("beacon")).command(&launch_args("custom:the-witcher-3", None).unwrap(), 7);
+        assert_eq!(argv, vec!["run", "--command=beacon", "--env=HEARTH_GAME_ID=7", FLATPAK_ID, "custom", "launch", "the-witcher-3", "--wait"]);
+        assert!(page_game(&json!("beacon:custom:the-witcher-3")).unwrap_err().contains("Open Beacon"));
+        assert!(!rts_by_default("beacon:custom:the-witcher-3"));
+        // In the library: Beacon's entry with its play time; pictures only when the files are there.
+        let t = tempfile::tempdir().unwrap();
+        let icon = t.path().join("icon.png");
+        std::fs::write(&icon, b"png").unwrap();
+        let mut s = Snapshot { cli: Some(Exe::Native("/usr/bin/beacon".into())), ..Default::default() };
+        let mut w = g[0].clone();
+        w.icon = Some(icon.to_string_lossy().to_string());
+        s.games = vec![w, g[1].clone()];
+        let lib = library_games(&s);
+        assert_eq!(lib[0].id, "beacon:custom:the-witcher-3");
+        assert_eq!((lib[0].store_minutes, lib[0].store_last_played), (121, 1752496496000));
+        assert!(lib[0].art.iter().any(|(k, v)| *k == "cover" && v.ends_with("icon.png")));
+        assert_eq!((lib[1].installed, lib[1].install_uri.as_deref()), (false, Some("beacon:open")));
+        assert!(crate::desktop_games::valid_id(&lib[0].id));
     }
 
     #[test]
