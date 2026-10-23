@@ -1,0 +1,18 @@
+[Desktop Entry]
+Name=Text Editor
+GenericName=Text Editor
+Comment=Read and change text files, scripts and settings files
+Exec=hearth-text %F
+TryExec=hearth-text
+Icon=hearth-text
+Type=Application
+Categories=Utility;TextEditor;Development;
+Keywords=text;editor;notepad;edit;plain;code;config;log;script;gedit;kate;
+MimeType=text/plain;text/x-log;text/markdown;text/x-markdown;text/x-python;text/x-python3;application/x-shellscript;text/x-shellscript;application/json;application/x-yaml;text/x-yaml;application/yaml;application/toml;text/x-toml;text/x-ini;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-csharp;text/x-rust;text/rust;text/javascript;application/javascript;text/x-typescript;application/typescript;text/css;text/xml;application/xml;text/x-desktop;application/x-desktop;text/x-makefile;text/x-cmake;text/x-diff;text/x-patch;text/x-java;text/x-go;text/x-lua;text/x-sql;application/sql;text/csv;text/tab-separated-values;text/x-readme;text/x-changelog;application/x-zerosize;text/x-systemd-unit;application/x-ruby;text/x-perl;application/x-perl;application/x-powershell;text/x-dockerfile;
+StartupNotify=true
+StartupWMClass=hearth-text
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New file
+Exec=hearth-text --new

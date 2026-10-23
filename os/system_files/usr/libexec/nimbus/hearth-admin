@@ -61,6 +61,23 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      given back to you when root or a deleted account owns them, and a container
                                      id range for you (see hearth-home-repair). No arguments: only ever the
                                      account that ran pkexec
+  ---- system tools (hosts/hearth-tools: Logs, Passwords & Keys, Printers & Scanner)
+  hearth-admin confirm-password      check your own password before a saved password is shown; stdin:
+                                     {"password": "..."}
+  hearth-admin wifi-psk UUID         a saved Wi-Fi network's password (after checking yours, stdin as above):
+                                     JSON {psk, kind}. Nothing is logged
+  hearth-admin printer-pause NAME | printer-resume NAME
+                                     stop a printer taking jobs from the queue / start it again
+  hearth-admin printer-cancel-job PRINTER-N
+                                     cancel a print job (also someone else's)
+  hearth-admin journal-read --boot N --priority P --lines N [--ident NAME] [--since-min M]
+                                     the system journal as JSON lines, for Logs when your account can't read
+                                     all of it (read only)
+  ---- end system tools
+  hearth-admin write-file PATH       Hearth Text's Edit as administrator: replace the existing regular file PATH with
+                                     stdin (at most 32 MB), keeping its owner, permissions and SELinux label. PATH must
+                                     be absolute and plain (no links, .. or devices). polkit always asks for an
+                                     administrator's password for this one (49-hearth-admin.rules)
 
 Output: progress lines as "log: ...", percentages as "progress: <0-100> <what>", the result as one JSON line. Exit 1 with "error: ..." on failure.
 """
@@ -2215,6 +2232,179 @@ def printer_default(name):
     print(json.dumps({'ok': True, 'default': name}))
 
 
+# ---------------------------------------------------------------------- system tools (hosts/hearth-tools)
+# Passwords & Keys (confirm-password, wifi-psk), Printers & Scanner (printer-pause/resume/cancel-job) and Logs
+# (journal-read). Secrets only ever go to stdout for the app that asked; nothing here logs them.
+SYSTEM_TOOLS_COMMANDS = ('confirm-password', 'wifi-psk', 'printer-pause', 'printer-resume', 'printer-cancel-job', 'journal-read')
+NM_UUID_RE = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+PRINT_JOB_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,126}-[0-9]{1,9}$')
+JOURNAL_IDENT_RE = re.compile(r'^[A-Za-z0-9._@:+-]{1,128}$')
+
+
+def read_password():
+    """{"password": "..."} on stdin."""
+    try:
+        req = json.loads(sys.stdin.readline())
+        pw = str(req['password'])
+    except (ValueError, KeyError, TypeError):
+        fail('expected {"password": ...}')
+    if not pw or len(pw) > 512 or '\0' in pw:
+        fail('the password is incorrect')
+    return pw
+
+
+def check_own_password(user, pw):
+    """The caller's own password, checked the way the login screen does (pam_unix's helper, run as them). A
+    wrong one waits two seconds, so it can't be guessed quickly."""
+    chk = shutil.which('unix_chkpwd') or '/usr/sbin/unix_chkpwd'
+    r = subprocess.run(['runuser', '-u', user.pw_name, '--', chk, user.pw_name, 'nullok'],
+                       input=(pw + '\0').encode(), capture_output=True)
+    if r.returncode != 0:
+        time.sleep(2)
+        fail('the password is incorrect')
+
+
+def nm_secret(uuid):
+    """(secret, kind) of a saved Wi-Fi connection, asked of NetworkManager as root."""
+    code, out = admin_run(['nmcli', '-g', 'connection.type', 'connection', 'show', 'uuid', uuid], timeout=30)
+    if code != 0 or out.strip() not in ('802-11-wireless', 'wifi'):
+        fail('there\'s no saved Wi-Fi network like that')
+    fields = [('802-11-wireless-security.psk', 'wpa'), ('802-11-wireless-security.wep-key0', 'wep'),
+              ('802-1x.password', 'enterprise')]
+    for field, kind in fields:
+        code, out = admin_run(['nmcli', '-s', '-g', field, 'connection', 'show', 'uuid', uuid], timeout=30)
+        value = out.strip() if code == 0 else ''
+        if value:
+            return value, kind
+    code, out = admin_run(['nmcli', '-g', '802-11-wireless-security.key-mgmt', 'connection', 'show', 'uuid', uuid], timeout=30)
+    return '', ('open' if code != 0 or not out.strip() else 'not-saved')
+
+
+def journal_args(args):
+    """journal-read's options, checked, as journalctl's arguments. None if anything is off."""
+    allowed = {'--boot': r'^-?[0-9]{1,3}$', '--priority': r'^[0-7]$', '--lines': r'^[0-9]{1,5}$',
+               '--ident': JOURNAL_IDENT_RE.pattern, '--since-min': r'^[0-9]{1,6}$'}
+    opts = {}
+    if len(args) % 2:
+        return None
+    for k, v in zip(args[0::2], args[1::2]):
+        if k not in allowed or k in opts or not re.fullmatch(allowed[k], v or ''):
+            return None
+        opts[k] = v
+    if not all(k in opts for k in ('--boot', '--priority', '--lines')) or int(opts['--boot']) > 0 or not 1 <= int(opts['--lines']) <= 20000:
+        return None
+    cmd = ['journalctl', '--no-pager', '-o', 'json', '-n', opts['--lines'], '-b', opts['--boot'], '-p', opts['--priority']]
+    if '--ident' in opts:
+        cmd += ['-t', opts['--ident']]
+    if '--since-min' in opts and int(opts['--since-min']) > 0:
+        cmd.append('--since=-%smin' % int(opts['--since-min']))
+    return cmd
+
+
+def system_tools(cmd, args):
+    user = caller()
+    if cmd == 'confirm-password' and not args:
+        check_own_password(user, read_password())
+        print(json.dumps({'ok': True}))
+    elif cmd == 'wifi-psk' and len(args) == 1 and NM_UUID_RE.fullmatch(args[0]):
+        check_own_password(user, read_password())
+        secret, kind = nm_secret(args[0])
+        print(json.dumps({'ok': True, 'psk': secret, 'kind': kind}))
+    elif cmd in ('printer-pause', 'printer-resume') and len(args) == 1:
+        if not PRINTER_NAME_RE.fullmatch(args[0]) or not printer_exists(args[0]):
+            fail('there\'s no printer called that')
+        if cmd == 'printer-pause':
+            code, out = admin_run(['cupsdisable', '-r', 'Paused in Printers & Scanner', args[0]])
+        else:
+            code, out = admin_run(['cupsenable', args[0]])
+        if code != 0:
+            fail('couldn\'t change the printer (%s)' % last_line(out, 'CUPS refused'))
+        print(json.dumps({'ok': True, 'printer': args[0], 'paused': cmd == 'printer-pause'}))
+    elif cmd == 'printer-cancel-job' and len(args) == 1 and PRINT_JOB_RE.fullmatch(args[0]):
+        code, out = admin_run(['cancel', args[0]])
+        if code != 0:
+            fail('couldn\'t cancel it (%s)' % last_line(out, 'CUPS refused'))
+        print(json.dumps({'ok': True, 'cancelled': args[0]}))
+    elif cmd == 'journal-read' and journal_args(args):
+        os.execvp('journalctl', journal_args(args))
+    else:
+        fail('usage: hearth-admin confirm-password | wifi-psk UUID | printer-pause NAME | printer-resume NAME | '
+             'printer-cancel-job PRINTER-N | journal-read --boot N --priority P --lines N [--ident NAME] [--since-min M]')
+# ---------------------------------------------------------------------- end system tools
+# ------------------------------------------------------------------ write-file (Hearth Text: Edit as administrator)
+WRITE_MAX = 32 * 1024 * 1024
+WRITE_REFUSED = ('/proc', '/sys', '/dev', '/run')
+
+
+def write_file(target, data=None):
+    """Replaces the existing regular file `target` with `data` (stdin when None): written to a new file beside it
+    with the old one's owner, permissions and extended attributes (the SELinux label), then swapped in."""
+    import stat
+    import tempfile
+    if not target.startswith('/') or '\0' in target or len(target) > 4096:
+        fail('give the full path of the file')
+    if os.path.normpath(target) != target:
+        fail('the path has to be written plainly (no "..", "." or "//")')
+    if any(target == r or target.startswith(r + '/') for r in WRITE_REFUSED):
+        fail('files in ' + target.split('/')[1] + ' are not saved this way')
+    real = os.path.realpath(target)
+    if real != target:
+        fail('the path goes through a link: open the real file (%s)' % real)
+    try:
+        st = os.lstat(target)
+    except FileNotFoundError:
+        fail('only files that already exist can be saved this way')
+    if not stat.S_ISREG(st.st_mode):
+        fail('only regular files can be saved this way')
+    if st.st_nlink > 1:
+        fail('this file has other names (hard links), so it is not saved this way')
+    if data is None:
+        data = sys.stdin.buffer.read(WRITE_MAX + 1)
+    if len(data) > WRITE_MAX:
+        fail('the text is too big to save this way (32 MB at most)')
+    folder, name = os.path.split(target)
+    try:
+        fd, tmp = tempfile.mkstemp(prefix='.' + name[:100] + '.hearth-admin-', dir=folder)
+    except OSError as e:
+        if e.errno == 30:
+            fail('%s is on a part of the system that cannot be changed' % target)
+        fail('cannot write in %s: %s' % (folder, e.strerror))
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+            os.fchown(f.fileno(), st.st_uid, st.st_gid)
+            os.fchmod(f.fileno(), stat.S_IMODE(st.st_mode))
+            try:
+                names = os.listxattr(target, follow_symlinks=False)
+            except OSError:
+                names = []
+            for n in names:
+                try:
+                    os.setxattr(f.fileno(), n, os.getxattr(target, n, follow_symlinks=False))
+                except OSError:
+                    pass
+        now = os.lstat(target)
+        if (now.st_dev, now.st_ino) != (st.st_dev, st.st_ino) or not stat.S_ISREG(now.st_mode):
+            fail('the file was replaced by something else while saving; nothing was changed')
+        os.rename(tmp, target)
+        tmp = None
+        try:
+            dfd = os.open(folder, os.O_RDONLY)
+            os.fsync(dfd)
+            os.close(dfd)
+        except OSError:
+            pass
+    finally:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+    print(json.dumps({'ok': True, 'path': target, 'size': len(data)}), flush=True)
+
+
 HOME_REPAIR = '/usr/libexec/nimbus/hearth-home-repair'
 
 
@@ -2247,6 +2437,10 @@ def main(argv):
         return space('status', [])   # read-only; without root it leaves out what needs the drive itself
     if os.geteuid() != 0:
         fail('needs root (run through pkexec)')
+    # ---- system tools (hosts/hearth-tools)
+    if cmd in SYSTEM_TOOLS_COMMANDS:
+        return system_tools(cmd, argv[2:])
+    # ---- end system tools
     if cmd == 'autologin' and len(argv) == 3:
         autologin(argv[2])
     elif cmd == 'hostname' and len(argv) == 3:
@@ -2298,12 +2492,15 @@ def main(argv):
         printer_discover()
     elif cmd == 'printer-add' and printer_args(argv[2:]):
         printer_add(*printer_args(argv[2:]))
+    elif cmd == 'home-repair' and len(argv) == 2:
+        home_repair()
     elif cmd == 'printer-remove' and len(argv) == 3:
         printer_remove(argv[2])
     elif cmd == 'printer-default' and len(argv) == 3:
         printer_default(argv[2])
-    elif cmd == 'home-repair' and len(argv) == 2:
-        home_repair()
+    elif cmd == 'write-file' and len(argv) == 3:
+        caller()
+        write_file(argv[2])
     elif cmd in ('import-scan', 'import-run', 'import-unmount', 'takeover-plan', 'takeover-run'):
         # Bringing games and files over from other drives, and removing the old system afterwards: their own
         # scripts, run as root like the rest.
@@ -2311,7 +2508,7 @@ def main(argv):
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
         os.execv(sys.executable, [sys.executable, helper, sub])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | home-repair')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair')
 
 
 if __name__ == '__main__':
