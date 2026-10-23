@@ -1,0 +1,13 @@
+Layout audit: 5 renders with problems, 0 script errors
+x-lib-mosaic: 3, x-wall: 2
+
+n25 home x-wall 1280x720
+  - 1+ texts overlap: "Comet Kitchen" / "Starfall Drift"
+n25 library x-lib-mosaic 1280x720
+  - 1+ texts overlap: "Steam" / "Installed · 38.2 GB"
+n500 home x-wall 1280x720
+  - 3+ texts overlap: "Frost Valley 5" / "Starfall Drift"; "Ember Valley 3" / "Steam · Played today · 143 h"; "Age of the Ring" / "Steam · Played today · 143 h"
+n500 library x-lib-mosaic 1280x800
+  - 2+ texts overlap: "Echo Protocol" / "Starfall Drift"; "Ember Forge 3" / "Starfall Drift"
+n500 library x-lib-mosaic 1920x1080
+  - 1+ texts overlap: "Beacon" / "Steam · 143 hrs · Played tod"
