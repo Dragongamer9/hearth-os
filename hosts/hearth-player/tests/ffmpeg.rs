@@ -98,7 +98,7 @@ fn edits_video_and_music() {
     let srt = d.join("clip.srt");
     std::fs::write(&srt, "1\n00:00:01,000 --> 00:00:03,000\nHello <i>there</i>\n").unwrap();
     let withsubs = d.join("subs.mkv");
-    make(&["-i", clip.to_str().unwrap(), "-i", srt.to_str().unwrap(), "-map", "0", "-map", "1", "-c", "copy", withsubs.to_str().unwrap()]);
+    make(&["-i", clip.to_str().unwrap(), "-i", srt.to_str().unwrap(), "-map", "0:v", "-map", "0:a", "-map", "1", "-c", "copy", withsubs.to_str().unwrap()]);
     let p = tools::probe(&t, &withsubs).unwrap();
     let s = p.streams.iter().find(|s| s.kind == "subtitle").unwrap();
     assert!(s.text);
