@@ -8075,7 +8075,7 @@ function viewStores(){
     const b=(act,label,icon,pri)=>`<button class="sbtn ${pri?'pri':''}" data-f data-k="sa-${a.store}-${act}" data-act="${act}" data-s="${a.store}">${icon?I[icon]:''}${label}</button>`;
     let btns='';
     if(a.store==='steam' && ssign) btns = b('steamShow','Show Steam\'s window','display',true) + b('steamSignCancel','Cancel','x');
-    else if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?'Switch account':'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : '') + (a.signedIn && !a.busy ? b('accRefresh','Refresh list','refresh') : ''); }
+    else if(a.store==='steam'){ btns = b('accSignIn', a.signedIn?'Switch account':'Sign in to Steam', 'user', !a.signedIn) + (a.installed||a.owned ? b('accShow','Show games','lib') : '') + ((a.signedIn || a.reason) && !a.busy && a.note!=="Steam isn't installed on this device." ? b('accRefresh','Refresh','refresh') : ''); }
     else if(signing) btns = `<span class="mini-spin"></span>`;
     else if(expired) btns = b('accSignIn','Sign in again','user',true) + (a.owned||a.installed ? b('accShow','Show games','lib') : '') + b('accSignOut','Sign out','x');
     else if(!a.signedIn) btns = b('accSignIn','Sign in','user',true);
@@ -8085,6 +8085,7 @@ function viewStores(){
       <div class="sblurb">${info.blurb}</div>
       ${stats.length?`<div class="sstats">${stats.join('')}</div>`:''}
       ${a.hint?`<div class="sblurb">${esc(a.hint)}</div>`:''}
+      ${a.store==='steam' && a.reason?`<div class="serr">${APP} can't read your Steam games: ${esc(a.reason)}${a.folder?`<br>Steam folder: <code>${esc(a.folder)}</code>`:''}</div>`:''}
       ${ssign?`<div class="sblurb">Steam's sign-in window is in front. Scan its QR code with the Steam app on your phone, or type your account name and password (a keyboard helps). Press the Guide button to come back here; ${APP} notices by itself when you're signed in.</div>`:''}
       ${expired?`<div class="serr">${info.name} stopped accepting your sign-in${a.expiredAt?' '+ago(a.expiredAt).toLowerCase():''}. Sign in again${a.name?' as '+esc(a.name):''} to install games, sync cloud saves and play online. Games you've installed still start if they work offline.</div>`
         : a.error?`<div class="serr">${esc(a.error)}</div>`:''}
