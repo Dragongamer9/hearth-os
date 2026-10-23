@@ -67,6 +67,21 @@ jobs:
           mkdir -p "$HOME/Desktop/Projects" && echo hi > "$HOME/Desktop/notes.txt"; sleep 4
           ipc desktop menu; grim "shots/$((n+1))-desktop-menu.png" || true; ipc desktop close
           ipc calendar open; grim "shots/$((n+2))-calendar.png" || true; ipc calendar close
+          # Hearth Files: icons, details, compact, the actions menu, a search, and Properties (General, Permissions,
+          # Checksums; a folder; several things)
+          mkdir -p "$HOME/Documents/Reports" "$HOME/Templates" && printf 'a,b\n1,2\n' > "$HOME/Documents/data.csv"
+          head -c 300000 /dev/urandom > "$HOME/Documents/backup.bin"; echo letter > "$HOME/Templates/Letter.txt"
+          ipc files open "$HOME/Documents"; grim shots/files-1-icons.png || true
+          ipc filemanager view details; ipc filemanager select data.csv; grim shots/files-2-details.png || true
+          ipc filemanager menu; grim shots/files-3-menu.png || true; ipc filemanager close
+          ipc filemanager view compact; grim shots/files-4-compact.png || true
+          ipc filemanager search data; grim shots/files-5-search.png || true
+          ipc filemanager view grid
+          ipc fileprops show "$HOME/Desktop/notes.txt"; grim shots/files-6-properties.png || true
+          ipc fileprops tab permissions; grim shots/files-7-permissions.png || true
+          ipc fileprops tab checksums; grim shots/files-8-checksums.png || true
+          ipc fileprops show "$HOME/Documents"; grim shots/files-9-folder-properties.png || true
+          ipc fileprops close; ipc files close
           cp "$LOG" shots/nimbus-shell.log 2>/dev/null || true
           ls "$XDG_RUNTIME_DIR" > shots/runtime-dir.txt
           pgrep -af "quickshell|/qs( |$)" > shots/quickshell-running.txt || echo "not running" > shots/quickshell-running.txt
