@@ -137,12 +137,29 @@ jobs:
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i sine=f=330:duration=30 -c:a libvorbis "$m/Song one.ogg"; cp "$m/Song one.ogg" "$m/Song two.ogg"
           python3 tests/ui_test.py shots/page "$m" 2>&1 | tee ui.log || { echo "::error title=page::$(tail -c 3000 ui.log | tr '\n' '|')"; exit 1; }
           echo "::notice title=Page::$(grep -c '^ok' ui.log) checks passed"
-      - name: Screenshots as notices
+      # GitHub keeps 10 notices per step: two small screenshots each.
+      - name: Screenshots as notices (1)
         if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
         run: |
-          for n in video subtitles edit open Music_Hearth_Band_-_Kiln_01_Ember_song_1_mp3 01_Ember_song_1_mp3; do
+          for n in subtitles edit; do
             f=shots/$n.png; [ -f "$f" ] || continue
-            convert "$f" -resize 640x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+            convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3900 | nl -ba -w2 -s' ' | head -5 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+          done
+      # GitHub keeps 10 notices per step: two small screenshots each.
+      - name: Screenshots as notices (2)
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          for n in open 01_Ember_song_1_mp3; do
+            f=shots/$n.png; [ -f "$f" ] || continue
+            convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3900 | nl -ba -w2 -s' ' | head -5 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+          done
+      # GitHub keeps 10 notices per step: two small screenshots each.
+      - name: Screenshots as notices (3)
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          for n in HEVC_clip_mkv video; do
+            f=shots/$n.png; [ -f "$f" ] || continue
+            convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3900 | nl -ba -w2 -s' ' | head -5 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
           done
       - uses: actions/upload-artifact@v4
         if: always()
