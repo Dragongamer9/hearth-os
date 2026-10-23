@@ -58,7 +58,8 @@ class App:
         self.page = browser.new_page(viewport={'width': 1280, 'height': 820})
         self.errors = []
         self.page.on('pageerror', lambda e: self.errors.append(str(e)))
-        self.page.on('console', lambda m: m.type == 'error' and self.errors.append(m.text))
+        # SheetJS reports number formats it can't put into .ods on the console; that's not a page error.
+        self.page.on('console', lambda m: m.type == 'error' and not m.text.startswith('unrecognized character') and self.errors.append(m.text))
         self.page.goto(f'{base}/index.html?app={app}')
         self.page.wait_for_function('window.H && H.app && H.app.ready && document.querySelector("#start:not([hidden])")', timeout=30000)
         self.page.evaluate('H.app.ready')
@@ -217,6 +218,19 @@ def test_write(browser, base, files, shots, tmp):
         npdf = pdf.count(b'/Type /Page') - pdf.count(b'/Type /Pages')
         check(abs(npdf - pages) <= 1, f'write: the PDF has a page per page ({npdf} for {pages})')
         open(os.path.join(tmp, 'write.pdf'), 'wb').write(pdf)
+    # Recovery copies and recent files.
+    a.js('() => { H.app.setDoc("<p>Recover me please</p>"); H.doc = { name: "Lost.docx", path: null, used: true, rid: "write-test1" }; H.changed(); }')
+    a.js('() => H.autosaveTick()')
+    rec = a.js('() => H.mock.recovery["write-test1"] && H.mock.recovery["write-test1"].body')
+    check(bool(rec) and 'Recover me please' in rec, 'write: a changed document gets a recovery copy')
+    a.js('() => { H.app.newDoc("blank"); H.doc = { name: "Untitled", used: false }; }')
+    a.js('() => H.recover(H.mock.recovery["write-test1"].meta)')
+    check('Recover me please' in a.js('() => H.app.ed.innerText') and a.js('() => H.doc.dirty'), 'write: the recovery copy opens again (and still needs saving)')
+    check(any(r['path'] == '/docs/sample.docx' for r in a.js('() => H.mock.recent')), 'write: opened files are in the recent list')
+    a.js('() => H.showStart()')
+    a.page.wait_for_timeout(300)
+    check('sample.docx' in a.js('() => document.querySelector("#recentList").innerText'), 'write: the start screen lists recent files')
+    a.js('() => H.hideStart()')
     # The unsaved-changes guard.
     a.js('() => H.changed()')
     a.js('() => { H.mock.emit("office://close"); }')
