@@ -346,6 +346,15 @@ class Parsing(unittest.TestCase):
         self.assertIn('UUID=B /boot ext4', t)
         self.assertIn('UUID=E /boot/efi vfat', t)
 
+    def test_reads_bls_menu(self):
+        with tempfile.TemporaryDirectory() as d:
+            c = f'{d}/usr/lib/bootupd/grub2-static/configs.d'
+            os.makedirs(c)
+            open(f'{c}/10_blscfg.cfg', 'w').write('blscfg\n')
+            self.assertFalse(H.reads_bls_menu(d))   # Anatase: Fedora's GRUB reads the entries itself
+            open(f'{c}/10_blscfg.cfg', 'w').write('if [ -f ${prefix}/hearth-bls.cfg ]; then\n  source ${prefix}/hearth-bls.cfg\nfi\n')
+            self.assertTrue(H.reads_bls_menu(d))
+
     def test_image_kargs(self):
         with tempfile.TemporaryDirectory() as d:
             os.makedirs(f'{d}/usr/lib/bootc/kargs.d')

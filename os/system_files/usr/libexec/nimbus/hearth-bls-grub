@@ -1,17 +1,22 @@
 #!/bin/sh
-# Hearth on Peppermint/Debian: turns ostree's boot entries (/boot/loader/entries/*.conf, Boot Loader
-# Specification files) into a GRUB menu at /boot/grub2/hearth-bls.cfg, which bootupd's static grub.cfg sources
-# (system_files/usr/lib/bootupd/grub2-static/configs.d/10_blscfg.cfg).
+# Hearth (shared by the editions): turns ostree's boot entries (/boot/loader/entries/*.conf, Boot Loader
+# Specification files) into a GRUB menu at /boot/grub2/hearth-bls.cfg, which bootupd's static grub.cfg sources on
+# the editions whose GRUB can't read those entries (os-bases/peppermint/system_files/usr/lib/bootupd/grub2-static/
+# configs.d/10_blscfg.cfg; the Ubuntu and CachyOS images had the same).
 #
-# Why: Fedora's GRUB reads those entries itself (its `blscfg` command); Debian's signed GRUB, the one that boots
-# with Secure Boot on through Debian's shim, has no such command. So the menu is written out here whenever the
-# entries change:
+# Why: Fedora's GRUB reads those entries itself (its `blscfg` command); Debian's signed GRUB (the one that boots
+# with Secure Boot on through Debian's shim) and Arch's have no such command. So the menu is written out here
+# whenever the entries change:
 #   - at boot and whenever /boot/loader changes (hearth-bls-grub-refresh.path: `bootc rollback`, kargs changes)
 #   - at shutdown, right after ostree has finalized a staged update (hearth-bls-grub.service's ExecStop)
 #   - by an installer, right after deploying:  hearth-bls-grub --boot /mnt/target/boot
 #
-# The same interface as the Ubuntu image's script, so one installer step serves both. Pure POSIX sh + sed/sort,
-# so it also runs from another system's live USB.
+# In every image, Anatase's too: a system switched from Peppermint, Ubuntu or CachyOS to Anatase (Settings ›
+# Updates › Switch edition) keeps the GRUB and grub.cfg it was installed with, which only read this menu. Without
+# this script on the new edition the menu froze at the switch, and the first update after it left GRUB starting a
+# version that was gone. Where grub.cfg doesn't read this menu (Anatase's own installs), it does nothing.
+#
+# Pure POSIX sh + sed/sort, so it also runs from another system's live USB.
 set -eu
 
 BOOT=/boot
@@ -21,6 +26,10 @@ OUT_DIR="$BOOT/grub2"
 OUT="$OUT_DIR/hearth-bls.cfg"
 
 [ -d "$ENTRIES" ] || { echo "hearth-bls-grub: no $ENTRIES (nothing deployed yet)"; exit 0; }
+if [ "$BOOT" = /boot ] && [ -f "$OUT_DIR/grub.cfg" ] && ! grep -q 'hearth-bls\.cfg' "$OUT_DIR/grub.cfg"; then
+  echo "hearth-bls-grub: this system's GRUB reads the boot entries itself; nothing to do"
+  exit 0
+fi
 mkdir -p "$OUT_DIR"
 TMP="$OUT.tmp.$$"
 trap 'rm -f "$TMP" "$TMP.list"' EXIT
@@ -61,6 +70,11 @@ sort -t "$TAB" -k1,1nr "$TMP.list" | {
 } > "$TMP"
 
 grep -q '^menuentry' "$TMP" || { echo "hearth-bls-grub: no usable entries in $ENTRIES; keeping the old menu" >&2; exit 1; }
+# /boot is written only when something changed (it's what a sudden power cut must not catch mid-write).
+if [ -f "$OUT" ] && cmp -s "$TMP" "$OUT"; then
+  echo "hearth-bls-grub: $OUT is up to date"
+  exit 0
+fi
 sync
 mv -f "$TMP" "$OUT"
 sync

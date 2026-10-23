@@ -1121,6 +1121,18 @@ def other_systems_menu(esp=None):
     return uniq
 
 
+def reads_bls_menu(dep):
+    """The image's GRUB menu comes from hearth-bls-grub (its GRUB has no blscfg: Peppermint), not from GRUB reading
+    the boot entries itself (Anatase). Every image carries the script now (for systems switched between editions)."""
+    for f in glob.glob(f'{dep}/usr/lib/bootupd/grub2-static/configs.d/*.cfg'):
+        try:
+            if 'hearth-bls.cfg' in open(f, errors='replace').read():
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def grub_dir(boot):
     """The folder of the GRUB menu that starts this system, where custom.cfg is read ($prefix/custom.cfg).
     Every edition boots through bootupd's static GRUB config, whatever its GRUB (Fedora's, Debian's and Ubuntu's
@@ -1434,10 +1446,11 @@ def run(plan):
         # Debian- and Ubuntu-based editions: their signed GRUB can't read ostree's boot entries itself, so the
         # image's helper writes the GRUB menu from them (Fedora-based images don't have, or need, it).
         bls = f'{dep}/usr/libexec/nimbus/hearth-bls-grub'
-        if os.path.isfile(bls):
+        bls = bls if os.path.isfile(bls) and reads_bls_menu(dep) else None
+        if bls:
             sh(['sh', bls, '--boot', f'{TARGET}/boot'])
         bootloader(disk, plan.get('firmware', True), dep, esp)
-        if os.path.isfile(bls):   # again: bootupd may have rewritten /boot/grub2
+        if bls:   # again: bootupd may have rewritten /boot/grub2
             sh(['sh', bls, '--boot', f'{TARGET}/boot'])
         other_systems_menu(esp)
         write_fstab(dep, esp, boot, root)

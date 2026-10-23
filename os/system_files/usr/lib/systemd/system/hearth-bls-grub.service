@@ -1,4 +1,4 @@
-# Hearth on Peppermint/Debian: keeps GRUB's menu (/boot/grub2/hearth-bls.cfg) in step with ostree's boot
+# Hearth (editions whose GRUB has no blscfg): keeps GRUB's menu (/boot/grub2/hearth-bls.cfg) in step with ostree's boot
 # entries. Started at boot (writes the menu once); stopped at shutdown *after* ostree-finalize-staged.service has
 # written the new version's entry (units stop in the reverse of their start order: Before= here), so the next
 # start's menu already has the update in it. See /usr/libexec/nimbus/hearth-bls-grub.
