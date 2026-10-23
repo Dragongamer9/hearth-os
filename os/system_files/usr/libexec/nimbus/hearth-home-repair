@@ -1,0 +1,303 @@
+#!/usr/bin/python3
+"""hearth-home-repair: makes sure the folders in a home folder that Hearth (and Flatpak, the app store, the Debian
+box) write to belong to that account, and that the account can run rootless containers. Runs as root.
+
+Why: after a clean install that moved the account between editions (hearth-clean-install), or after something ran
+as root with your home folder as HOME, ~/.local/share/flatpak (or ~/.local, ~/.cache...) can end up owned by root or
+by an account id that no longer exists. Then `flatpak --user` fails with "permission denied" and Apps can't load.
+
+The rules (never more than this):
+  - only these paths inside the account's own home folder: the home folder itself, ~/.local, ~/.local/share,
+    ~/.local/share/flatpak (and everything inside it), ~/.local/share/applications, ~/.local/share/icons,
+    ~/.local/share/nimbus, ~/.local/state, ~/.local/bin, ~/.cache (and ~/.cache/flatpak, ~/.cache/nimbus inside
+    it), ~/.config, ~/.var
+  - only what's owned by root or by an id no account has any more; anything owned by another existing account is
+    left alone (it's theirs), and so is anything that's already right
+  - symlinks are never followed (each folder is opened with O_NOFOLLOW from its parent, and ownership changes
+    never dereference); a root-owned file with more than one hard link is left alone
+  - only accounts with a real home folder under /home or /var/home (ids 1000-59999)
+It also gives the account a subordinate id range in /etc/subuid and /etc/subgid when it has none (rootless podman,
+which the Debian box uses, needs one); useradd normally does that, but accounts moved from another system or made
+before the files existed may have none.
+
+  hearth-home-repair --user NAME [--dry-run]    one account (hearth-admin home-repair runs this for the caller)
+  hearth-home-repair --all-users [--dry-run]    every account (hearth-home-repair.service, once per boot)
+Prints what it changed; JSON summary on the last line.
+"""
+import json
+import os
+import pwd
+import grp
+import stat
+import subprocess
+import sys
+
+HOME_BASES = ('/home', '/var/home')
+# (path inside the home folder, also everything inside it)
+PATHS = [
+    ('', False),
+    ('.local', False),
+    ('.local/share', False),
+    ('.local/share/flatpak', True),
+    ('.local/share/applications', False),
+    ('.local/share/icons', False),
+    ('.local/share/nimbus', False),
+    ('.local/state', False),
+    ('.local/bin', False),
+    ('.cache', False),
+    ('.cache/flatpak', True),
+    ('.cache/nimbus', True),
+    ('.config', False),
+    ('.var', False),
+]
+UID_MIN, UID_MAX = 1000, 60000
+SUB_START, SUB_COUNT = 100000, 65536
+MAX_ITEMS = 500000          # a walk never goes on forever
+
+
+def hardlinks_protected():
+    """fs.protected_hardlinks: with it on (the default), nobody can make a hard link to a file they don't own, so a
+    root-owned file found in a home folder can't be a link to a system file made by that account."""
+    try:
+        with open('/proc/sys/fs/protected_hardlinks') as f:
+            return f.read().strip() == '1'
+    except OSError:
+        return False
+
+
+PROTECTED = hardlinks_protected()
+
+
+def known_uid(uid):
+    try:
+        pwd.getpwuid(uid)
+        return True
+    except KeyError:
+        return False
+
+
+def known_gid(gid):
+    try:
+        grp.getgrgid(gid)
+        return True
+    except KeyError:
+        return False
+
+
+def should_fix(st, uid, uid_known=known_uid):
+    """Whether something with this lstat result should be given to account uid: owned by root, or by an id no
+    account has. Never something already the account's, never another account's, never a root-owned file with
+    several hard links (it could be a link to a system file)."""
+    owner = st.st_uid
+    if owner == uid:
+        return False
+    if owner == 0:
+        if not stat.S_ISDIR(st.st_mode) and (st.st_nlink > 1 or not PROTECTED):
+            return False
+        return True
+    return not uid_known(owner)
+
+
+def valid_home(home, name):
+    """The account's home folder, if it's one this may touch: an absolute, real folder directly under /home or
+    /var/home (symlinks resolved only for the base: /home -> var/home on the image-based editions)."""
+    if not home or not os.path.isabs(home) or '..' in home.split('/'):
+        return None
+    parent, leaf = os.path.split(os.path.normpath(home))
+    if not leaf or leaf in ('.', '..'):
+        return None
+    real_parent = os.path.realpath(parent)
+    if real_parent not in [os.path.realpath(b) for b in HOME_BASES]:
+        return None
+    return os.path.join(real_parent, leaf)
+
+
+def people(passwd_entries=None):
+    """Accounts this looks after: ids 1000-59999 with a home folder under /home or /var/home."""
+    out = []
+    for pw in (passwd_entries if passwd_entries is not None else pwd.getpwall()):
+        if UID_MIN <= pw.pw_uid < UID_MAX and valid_home(pw.pw_dir, pw.pw_name):
+            out.append(pw)
+    return out
+
+
+class Repair:
+    def __init__(self, uid, gid, dry=False, uid_known=known_uid, gid_known=known_gid, log=print):
+        self.uid, self.gid, self.dry = uid, gid, dry
+        self.uid_known, self.gid_known, self.log = uid_known, gid_known, log
+        self.changed, self.seen = [], 0
+
+    def fix_at(self, dir_fd, name, shown):
+        """Fixes one entry (name inside dir_fd), never following a symlink."""
+        try:
+            st = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+        except OSError:
+            return None
+        if should_fix(st, self.uid, self.uid_known):
+            gid = self.gid if (st.st_gid == 0 or not self.gid_known(st.st_gid) or st.st_uid == 0) else st.st_gid
+            self.log('%s %s (owner %d:%d -> %d:%d)' % ('would fix' if self.dry else 'fixed', shown, st.st_uid, st.st_gid, self.uid, gid))
+            if not self.dry:
+                try:
+                    os.chown(name, self.uid, gid, dir_fd=dir_fd, follow_symlinks=False)
+                except OSError as e:
+                    self.log('couldn\'t fix %s (%s)' % (shown, e.strerror or e))
+                    return st
+            self.changed.append(shown)
+        return st
+
+    def open_dir(self, dir_fd, name):
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, 'O_CLOEXEC', 0)
+        return os.open(name, flags, dir_fd=dir_fd)
+
+    def walk(self, fd, shown):
+        """Everything inside the folder open at fd (folders opened one by one with O_NOFOLLOW)."""
+        try:
+            names = os.listdir(fd)
+        except OSError:
+            return
+        for n in names:
+            self.seen += 1
+            if self.seen > MAX_ITEMS:
+                return
+            st = self.fix_at(fd, n, shown + '/' + n)
+            if st is not None and stat.S_ISDIR(st.st_mode):
+                try:
+                    sub = self.open_dir(fd, n)
+                except OSError:
+                    continue
+                try:
+                    self.walk(sub, shown + '/' + n)
+                finally:
+                    os.close(sub)
+
+    def run(self, home):
+        """Goes down each listed path from the home folder, one component at a time."""
+        parent, leaf = os.path.split(home)
+        try:
+            base_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | getattr(os, 'O_CLOEXEC', 0))
+        except OSError:
+            return self.changed
+        try:
+            for rel, deep in PATHS:
+                parts = [leaf] + [p for p in rel.split('/') if p]
+                fd = base_fd
+                opened = []
+                ok = True
+                shown = '~'
+                for i, part in enumerate(parts):
+                    shown = '~' if i == 0 else shown + '/' + part
+                    st = self.fix_at(fd, part, shown) if i == len(parts) - 1 else None
+                    if i == len(parts) - 1 and (st is None or not stat.S_ISDIR(st.st_mode)):
+                        ok = False
+                        break
+                    try:
+                        nfd = self.open_dir(fd, part)
+                    except OSError:
+                        ok = False
+                        break
+                    opened.append(nfd)
+                    fd = nfd
+                if ok and deep:
+                    self.walk(fd, shown)
+                for o in reversed(opened):
+                    os.close(o)
+        finally:
+            os.close(base_fd)
+        return self.changed
+
+
+# ---------------------------------------------------------------------- subordinate ids (rootless podman)
+def parse_subids(text):
+    """[(name, start, count)] from /etc/subuid or /etc/subgid."""
+    out = []
+    for line in (text or '').splitlines():
+        p = line.strip().split(':')
+        if len(p) == 3 and p[1].isdigit() and p[2].isdigit():
+            out.append((p[0], int(p[1]), int(p[2])))
+    return out
+
+
+def has_range(entries, name, uid):
+    return any(n in (name, str(uid)) and c >= SUB_COUNT for n, _, c in entries)
+
+
+def free_range(entries, count=SUB_COUNT, start=SUB_START):
+    """The first start (from 100000, in steps of count) that overlaps no range already given."""
+    s = start
+    taken = sorted((st, st + c) for _, st, c in entries)
+    while True:
+        if all(s + count <= a or s >= b for a, b in taken):
+            return s
+        s += count
+
+
+def ensure_subids(name, uid, dry=False, etc='/etc', log=print):
+    """Adds a range for the account to subuid and subgid when it has none; True when something was added."""
+    added = False
+    for f in ('subuid', 'subgid'):
+        path = os.path.join(etc, f)
+        try:
+            with open(path) as fh:
+                text = fh.read()
+        except FileNotFoundError:
+            text = ''
+        except OSError as e:
+            log('couldn\'t read %s (%s)' % (path, e.strerror or e))
+            continue
+        entries = parse_subids(text)
+        if has_range(entries, name, uid):
+            continue
+        start = free_range(entries)
+        log('%s %s:%d:%d to %s' % ('would add' if dry else 'added', name, start, SUB_COUNT, path))
+        added = True
+        if dry:
+            continue
+        line = '%s:%d:%d\n' % (name, start, SUB_COUNT)
+        new = text + ('' if not text or text.endswith('\n') else '\n') + line
+        tmp = path + '.hearth-tmp'
+        with open(tmp, 'w') as fh:
+            fh.write(new)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    return added
+
+
+def repair_user(pw, dry=False, etc='/etc', log=print):
+    home = valid_home(pw.pw_dir, pw.pw_name)
+    if not home or not os.path.isdir(home):
+        return {'user': pw.pw_name, 'skipped': 'no home folder under /home or /var/home'}
+    r = Repair(pw.pw_uid, pw.pw_gid, dry=dry, log=lambda m: log('%s: %s' % (pw.pw_name, m)))
+    changed = r.run(home)
+    subids = ensure_subids(pw.pw_name, pw.pw_uid, dry=dry, etc=etc, log=lambda m: log('%s: %s' % (pw.pw_name, m)))
+    return {'user': pw.pw_name, 'fixed': len(changed), 'subids': subids}
+
+
+def main(argv):
+    args = argv[1:]
+    dry = '--dry-run' in args
+    args = [a for a in args if a != '--dry-run']
+    if os.geteuid() != 0 and not dry:
+        print('error: needs root')
+        return 1
+    if args == ['--all-users']:
+        targets = people()
+    elif len(args) == 2 and args[0] == '--user':
+        try:
+            pw = pwd.getpwnam(args[1])
+        except KeyError:
+            print('error: there\'s no account called that')
+            return 1
+        if pw not in people([pw]):
+            print('error: that isn\'t a person\'s account with a home folder under /home or /var/home')
+            return 1
+        targets = [pw]
+    else:
+        print('usage: hearth-home-repair --user NAME | --all-users [--dry-run]')
+        return 2
+    results = [repair_user(pw, dry=dry) for pw in targets]
+    print(json.dumps({'ok': True, 'users': results}), flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
