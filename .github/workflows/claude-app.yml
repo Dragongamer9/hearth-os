@@ -1,5 +1,9 @@
-# Claude on Hearth OS (desktop/shell/hearth-claude): runs its tests, and on a fresh Ubuntu runner installs Claude
-# Desktop from Anthropic's apt repository into a throwaway home folder the way Hearth does on a device.
+# Claude on Hearth OS (desktop/shell/hearth-claude): its tests, then the real thing from Anthropic in throwaway home
+# folders, the way Hearth Settings › Claude does it on a device:
+#   - Ubuntu (dpkg-deb unpacks): Claude Desktop installs, answers --version, keeps running in a virtual screen with its
+#     user-namespace sandbox (no setuid helper, no --no-sandbox), registers claude://, and Claude Code installs
+#   - Fedora and Arch containers (no dpkg: hearth-claude reads the .deb itself, as on Anatase and CachyOS): installs
+#     and answers --version
 name: Claude app
 
 on:
@@ -12,40 +16,89 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  tests:
     runs-on: ubuntu-24.04
     steps:
-      - name: Get the package
+      - uses: actions/checkout@v4
+      - name: Unit tests (fake repository signed with a throwaway key)
+        run: cd hosts/linux && python3 -m unittest discover -s test -p 'test_hearth_claude.py' -v
+
+  ubuntu:
+    runs-on: ubuntu-24.04
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Claude Desktop and Claude Code in a throwaway home folder
         run: |
-          B=https://downloads.claude.ai/claude-desktop/apt/stable
-          curl -fsS $B/dists/stable/main/binary-amd64/Packages -o Packages
-          f=$(awk '/^Filename:/{print $2}' Packages | tail -1)
-          curl -fsS "$B/$f" -o c.deb; mkdir x ctl && dpkg-deb -x c.deb x && dpkg-deb -e c.deb ctl
-          tar -C x -cf x.tar . 
-      - uses: actions/upload-artifact@v4
-        with: { name: claude-x, path: x.tar, retention-days: 1, compression-level: 0 }
-      - name: Look inside
+          set -eu
+          note() { printf '::notice title=%s::%s\n' "$1" "$(head -c 3500 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
+          export HOME=$RUNNER_TEMP/home; mkdir -p "$HOME"; unset XDG_DATA_HOME XDG_CONFIG_HOME
+          H=hosts/linux/desktop/shell/hearth-claude
+          python3 $H install | tee install.log | tail -3
+          st=$(python3 $H status | tail -1); echo "$st"
+          v=$("$HOME/.local/bin/claude-desktop" --version | tail -1)
+          echo "$st" | python3 -c "import json,sys; s=json.load(sys.stdin); assert s['ours'] and s['version']=='$v' and s['latest']=='$v' and not s['updateAvailable'], s"
+          test ! -e "$HOME/.local/opt/claude-desktop/chrome-sandbox"
+          grep -q "^Exec=$HOME/.local/bin/claude-desktop %U" "$HOME/.local/share/applications/com.anthropic.Claude.desktop"
+          grep -q '^Hidden=true' "$HOME/.local/share/applications/hearth-get-claude.desktop"
+          handler=$(xdg-mime query default x-scheme-handler/claude 2>/dev/null || grep -h 'x-scheme-handler/claude=' "$HOME/.config/mimeapps.list")
+          echo "$handler" | grep -q com.anthropic.Claude.desktop
+          python3 $H update | tail -1 >/dev/null      # nothing newer: a no-op
+          python3 $H auto-update | tail -1 >/dev/null
+          { echo "version $v"; echo "handler: $handler"; ls "$HOME/.local/bin"; du -sh "$HOME/.local/opt/claude-desktop"; } | note "Claude Desktop (Ubuntu, dpkg-deb)"
+      - name: It runs with its user-namespace sandbox, as on Hearth OS
         run: |
-          note() { t="$1"; printf '::notice title=%s::%s\n' "$t" "$(head -c 3800 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
-          { ls -la x/usr/bin; file x/usr/bin/claude-desktop; head -c 3000 x/usr/bin/claude-desktop | strings | head -60; } 2>&1 | note usr-bin
-          { cat x/usr/lib/claude-desktop/version; echo; ls x/usr/lib/claude-desktop/resources | head -40; } | note version-file
-          sed -n '30,140p' ctl/postinst | note postinst-1
-          sed -n '140,344p' ctl/postinst | grep -v '^\s*#' | head -c 3800 | note postinst-2
-          { sysctl kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces 2>&1; cat /proc/sys/kernel/unprivileged_userns_clone 2>&1; } | note sysctl
-      - name: Run it from a home folder
+          note() { printf '::notice title=%s::%s\n' "$1" "$(head -c 3500 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
+          export HOME=$RUNNER_TEMP/home
+          # Hearth's Ubuntu image lifts Ubuntu's AppArmor user-namespace restriction (61-hearth-ubuntu-userns.conf).
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo apt-get install -y -qq xvfb dbus-x11 >/dev/null
+          ( timeout 30 dbus-run-session -- xvfb-run -a "$HOME/.local/bin/claude-desktop" > run.log 2>&1; echo "exit=$?" >> run.log ) || true
+          tail -3 run.log
+          if grep -qiE 'No usable sandbox|SUID sandbox helper|FATAL' run.log; then grep -iE 'sandbox|FATAL' run.log | head -5 | note "sandbox problem"; exit 1; fi
+          # timeout ends it after 30 s: exit 124 means it was still running.
+          grep -q 'exit=124' run.log || { tail -20 run.log | note "Claude Desktop stopped early"; exit 1; }
+          echo "ran 30 s under Xvfb with the namespace sandbox; no sandbox errors" | note "Claude Desktop runs"
+      - name: Claude Code with Anthropic's installer
         run: |
-          note() { t="$1"; printf '::notice title=%s::%s\n' "$t" "$(head -c 3800 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-          export HOME=$RUNNER_TEMP/h; mkdir -p $HOME/.local/opt; cp -a x/usr/lib/claude-desktop $HOME/.local/opt/claude-desktop; rm $HOME/.local/opt/claude-desktop/chrome-sandbox
-          exe=$HOME/.local/opt/claude-desktop/claude-desktop
-          { timeout 20 $exe --version; echo "rc=$?"; } 2>&1 | tail -8 | note version-run
-          sudo apt-get install -y -qq xvfb >/dev/null 2>&1 || true
-          ( timeout 25 xvfb-run -a $exe --enable-logging=stderr > run.log 2>&1; echo "rc=$?" >> run.log ) || true
-          { grep -i -E 'sandbox|fatal|error' run.log | head -20; tail -15 run.log; } | note run-userns
-          ps aux | grep -c claude-desktop || true
-      - name: Libraries on other systems
+          note() { printf '::notice title=%s::%s\n' "$1" "$(head -c 3500 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
+          export HOME=$RUNNER_TEMP/home
+          H=hosts/linux/desktop/shell/hearth-claude
+          python3 $H install-code | tail -4
+          cv=$("$HOME/.local/bin/claude" --version)
+          python3 $H status | tail -1 | python3 -c "import json,sys; s=json.load(sys.stdin)['code']; assert s['installed'] and s['version'], s"
+          # ~/.local/bin on PATH in a login shell, as /etc/profile.d/hearth-local-bin.sh does on Hearth OS.
+          env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c '. os/system_files/etc/profile.d/hearth-local-bin.sh; command -v claude' | grep -q "$HOME/.local/bin/claude"
+          python3 $H remove-code | tail -1 >/dev/null; test ! -e "$HOME/.local/bin/claude"
+          python3 $H remove | tail -1 >/dev/null; test ! -e "$HOME/.local/opt/claude-desktop"
+          echo "Claude Code $cv installed and removed; Claude Desktop removed" | note "Claude Code"
+
+  no-dpkg:
+    runs-on: ubuntu-24.04
+    needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Fedora (as Anatase)
+            image: registry.fedoraproject.org/fedora:43
+            deps: dnf -y -q install python3 gnupg2 curl which util-linux gtk3 nss libdrm mesa-libgbm libXtst alsa-lib at-spi2-core cups-libs libxkbcommon pipewire-libs libsecret libnotify xdg-utils
+          - name: Arch (as CachyOS)
+            image: docker.io/library/archlinux:latest
+            deps: pacman -Syu --noconfirm --needed python gnupg curl which util-linux gtk3 nss libdrm mesa libxtst alsa-lib at-spi2-core libcups libxkbcommon pipewire libsecret libnotify xdg-utils
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Claude Desktop without dpkg
         run: |
-          note() { t="$1"; printf '::notice title=%s::%s\n' "$t" "$(head -c 3800 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
-          for img in fedora:43 archlinux:latest debian:trixie; do
-            docker run --rm -v $PWD/x:/x:ro $img sh -c 'for f in /x/usr/lib/claude-desktop/claude-desktop /x/usr/lib/claude-desktop/resources/app.asar.unpacked/node_modules/@ant/claude-native/claude-native-binding.node; do ldd $f 2>&1 | grep "not found"; done | sort -u | tr "\n" " "' | note "missing-$img"
-          done
+          cat > /tmp/run.sh <<'EOF'
+          set -eu
+          ${DEPS} >/dev/null
+          ! command -v dpkg-deb
+          useradd -m player
+          cp /src/hosts/linux/desktop/shell/hearth-claude /tmp/hearth-claude
+          su player -c 'python3 /tmp/hearth-claude install | tail -2 && ~/.local/bin/claude-desktop --version && python3 /tmp/hearth-claude status | tail -1'
+          EOF
+          out=$(docker run --rm -e DEPS="${{ matrix.deps }}" -v "$PWD:/src:ro" -v /tmp/run.sh:/run.sh:ro ${{ matrix.image }} sh /run.sh 2>&1) || { echo "$out" | tail -20; echo "::error title=${{ matrix.name }}::$(echo "$out" | tail -5 | tr '\n' ' ' | cut -c1-800)"; exit 1; }
+          echo "$out" | tail -5
+          echo "::notice title=${{ matrix.name }}::$(echo "$out" | grep -v '^{' | tail -2 | tr '\n' ' ' | cut -c1-500)"

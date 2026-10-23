@@ -1,0 +1,995 @@
+#!/usr/bin/python3
+"""hearth-claude: Claude (Anthropic) on Hearth OS, installed for you in your home folder.
+
+Claude Desktop for Linux is in beta and Anthropic publishes it as a Debian package (claude-desktop) in its own apt
+repository. Hearth OS's system is read-only and only two editions use apt, so on every edition this helper takes
+that same package straight from Anthropic, on your device, when you ask for it:
+  1. downloads the repository's InRelease and checks its signature with gpg against Anthropic's signing key, pinned
+     here by fingerprint (a temporary keyring, nothing is added to yours)
+  2. takes the package list's SHA-256 from the signed InRelease and checks the list against it
+  3. picks the newest claude-desktop for this machine (amd64 or arm64), downloads it and checks its SHA-256 from
+     the list
+  4. unpacks it into ~/.local/opt/claude-desktop (dpkg-deb when the system has it; otherwise Python reads the
+     .deb itself) and adds a menu entry, icons, the claude:// link handler (browser sign-in comes back through it)
+     and ~/.local/bin/claude-desktop
+Nothing is installed system-wide and nothing of Anthropic's ships in Hearth's images. On Anatase and CachyOS this is
+Anthropic's Debian build running unofficially (Anthropic supports Debian and Ubuntu; Fedora and Arch "coming").
+If claude-desktop was installed through apt (Ubuntu, Peppermint), apt owns it: this helper leaves it alone.
+
+The sandbox: Electron's setuid helper (chrome-sandbox) can't be setuid in a home folder, so it's left out and
+Chromium uses its user-namespace sandbox instead, which every Hearth edition allows (Ubuntu's AppArmor restriction
+is lifted in that image: 61-hearth-ubuntu-userns.conf). --no-sandbox is never used; if a system blocks user
+namespaces, status says so ("sandbox": false) and the app won't start until they're allowed.
+
+Claude Code (the CLI) is Anthropic's own installer (https://claude.ai/install.sh, run as you): it installs into
+~/.local/bin and keeps itself up to date. Sign-in for both is with your claude.ai account, in the browser; this
+helper never sees a password, key or token.
+
+  hearth-claude status [--check]   JSON: Desktop and Code; --check also asks Anthropic for the newest Desktop
+  hearth-claude install            install (or reinstall) the newest Claude Desktop
+  hearth-claude update             install a newer Claude Desktop if Anthropic has one
+  hearth-claude remove             remove Claude Desktop (your chats and settings in ~/.config/Claude stay)
+  hearth-claude auto-update        what the daily timer runs (hearth-claude-update.timer): update quietly, if
+                                   Hearth installed it and it isn't open
+  hearth-claude open               start Claude Desktop
+  hearth-claude install-code       install Claude Code with Anthropic's installer
+  hearth-claude remove-code        remove Claude Code (~/.local/bin/claude, ~/.local/share/claude)
+Progress lines "progress: <0-100> <what>", then one JSON line; failures print "error: ..." and exit 1.
+"""
+import fcntl
+import hashlib
+import io
+import json
+import os
+import platform
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+from email.utils import parsedate_to_datetime
+
+REPO = 'https://downloads.claude.ai/claude-desktop/apt/stable'
+KEY_URL = 'https://downloads.claude.ai/claude-desktop/key.asc'
+# Anthropic's repository signing key ("Anthropic Claude Code Release Signing"), as published in Anthropic's docs.
+FINGERPRINT = '31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE'
+SUITE = 'stable'
+COMPONENT = 'main'
+PACKAGE = 'claude-desktop'
+CODE_INSTALLER = 'https://claude.ai/install.sh'
+APT_BINARY = '/usr/lib/claude-desktop/claude-desktop'
+
+HOME = os.path.expanduser('~')
+DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+OPT = os.path.join(HOME, '.local', 'opt')
+ROOT = os.path.join(OPT, 'claude-desktop')
+BIN = os.path.join(HOME, '.local', 'bin')
+LAUNCHER = os.path.join(BIN, 'claude-desktop')
+CCD = os.path.join(BIN, 'ccd')
+CODE_BIN = os.path.join(BIN, 'claude')
+CODE_DATA = os.path.join(DATA, 'claude')
+STATE = os.path.join(DATA, 'nimbus', 'claude.json')
+LOCK = os.path.join(DATA, 'nimbus', 'claude.lock')
+DESKTOP_ID = 'com.anthropic.Claude.desktop'
+DESKTOP = os.path.join(DATA, 'applications', DESKTOP_ID)
+# Hearth's "Get Claude" menu entry (/usr/share/applications): hidden for you once Claude Desktop is installed.
+GET_ID = 'hearth-get-claude.desktop'
+GET_HIDE = os.path.join(DATA, 'applications', GET_ID)
+MIME_XML = os.path.join(DATA, 'mime', 'packages', 'com.anthropic.Claude.xml')
+MARK = 'X-Hearth-Installed-By=hearth-claude'
+MAX_LIST = 32 * 1024 * 1024          # the package list (64 KB today)
+GOOD_HASHES = {'8', '9', '10', '11'}  # OpenPGP hash ids: SHA256, SHA384, SHA512, SHA224 (no SHA-1, no MD5)
+
+
+class Fail(Exception):
+    pass
+
+
+def progress(pct, what):
+    print('progress: %d %s' % (max(0, min(100, int(pct))), what), flush=True)
+
+
+def log(msg):
+    print('log: ' + msg, flush=True)
+
+
+# ------------------------------------------------------------------ state
+
+def load_state():
+    try:
+        with open(STATE) as f:
+            st = json.load(f)
+            return st if isinstance(st, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(st):
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE + '.tmp', 'w') as f:
+        json.dump(st, f, indent=2)
+    os.replace(STATE + '.tmp', STATE)
+
+
+class Lock:
+    """One install/update/remove at a time (the Settings page and the daily timer)."""
+    def __enter__(self):
+        os.makedirs(os.path.dirname(LOCK), exist_ok=True)
+        self.f = open(LOCK, 'w')
+        try:
+            fcntl.flock(self.f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.f.close()
+            raise Fail('Claude is already being installed or updated')
+        return self
+
+    def __exit__(self, *a):
+        fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
+
+
+# ------------------------------------------------------------------ Debian versions and fields
+
+def _order(c):
+    if c == '':
+        return 0
+    if c.isdigit():
+        return 0
+    if c.isascii() and c.isalpha():
+        return ord(c)
+    if c == '~':
+        return -1
+    return ord(c) + 256
+
+
+def _verrevcmp(a, b):
+    i = j = 0
+    while i < len(a) or j < len(b):
+        while (i < len(a) and not a[i].isdigit()) or (j < len(b) and not b[j].isdigit()):
+            ac = _order(a[i] if i < len(a) else '')
+            bc = _order(b[j] if j < len(b) else '')
+            if ac != bc:
+                return ac - bc
+            i += 1
+            j += 1
+        while i < len(a) and a[i] == '0':
+            i += 1
+        while j < len(b) and b[j] == '0':
+            j += 1
+        first = 0
+        while i < len(a) and a[i].isdigit() and j < len(b) and b[j].isdigit():
+            if not first:
+                first = ord(a[i]) - ord(b[j])
+            i += 1
+            j += 1
+        if i < len(a) and a[i].isdigit():
+            return 1
+        if j < len(b) and b[j].isdigit():
+            return -1
+        if first:
+            return first
+    return 0
+
+
+def _split_version(v):
+    v = v.strip()
+    epoch = 0
+    if ':' in v:
+        e, v = v.split(':', 1)
+        epoch = int(e) if e.isdigit() else 0
+    if '-' in v:
+        up, rev = v.rsplit('-', 1)
+    else:
+        up, rev = v, ''
+    return epoch, up, rev
+
+
+def version_cmp(a, b):
+    """dpkg's version order: <0, 0 or >0, as dpkg --compare-versions would say."""
+    ea, ua, ra = _split_version(a)
+    eb, ub, rb = _split_version(b)
+    if ea != eb:
+        return ea - eb
+    return _verrevcmp(ua, ub) or _verrevcmp(ra, rb)
+
+
+def parse_stanzas(text):
+    """deb822 paragraphs → list of dicts (continuation lines kept, joined with newlines)."""
+    out, cur, key = [], {}, None
+    for line in text.splitlines():
+        if not line.strip():
+            if cur:
+                out.append(cur)
+            cur, key = {}, None
+            continue
+        if line[0] in ' \t':
+            if key is not None:
+                cur[key] += '\n' + line.strip()
+            continue
+        if ':' not in line:
+            continue
+        k, v = line.split(':', 1)
+        key = k.strip()
+        cur[key] = v.strip()
+    if cur:
+        out.append(cur)
+    return out
+
+
+def deb_arch(machine=None):
+    m = (machine or platform.machine()).lower()
+    return {'x86_64': 'amd64', 'amd64': 'amd64', 'aarch64': 'arm64', 'arm64': 'arm64'}.get(m)
+
+
+# ------------------------------------------------------------------ the signed repository
+
+def _gpg():
+    g = shutil.which('gpg') or shutil.which('gpg2')
+    if not g:
+        raise Fail("gpg isn't installed, so Anthropic's signature can't be checked")
+    return g
+
+
+def verify_inrelease(inrelease, key_file, fingerprint=FINGERPRINT, gpg=None):
+    """InRelease's signed text, if (and only if) it carries a good signature made with the key `fingerprint`.
+
+    The key file may hold any keys: only a signature whose primary key has exactly that fingerprint counts.
+    Anything outside the one clearsigned block is refused."""
+    fingerprint = fingerprint.replace(' ', '').upper()
+    with open(inrelease, 'rb') as f:
+        raw = f.read()
+    text = raw.decode('utf-8', 'strict')
+    begin, sig, end = '-----BEGIN PGP SIGNED MESSAGE-----', '-----BEGIN PGP SIGNATURE-----', '-----END PGP SIGNATURE-----'
+    if not text.startswith(begin) or text.count(begin) != 1 or text.count(sig) != 1 or text.count(end) != 1 \
+            or text.split(end, 1)[1].strip():
+        raise Fail("Anthropic's package list isn't a single signed document")
+    gpg = gpg or _gpg()
+    with tempfile.TemporaryDirectory(prefix='hearth-claude-gpg-', ignore_cleanup_errors=True) as gh:
+        os.chmod(gh, 0o700)
+        base = [gpg, '--batch', '--no-tty', '--homedir', gh, '--no-auto-key-retrieve']
+        r = subprocess.run(base + ['--import', key_file], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise Fail("couldn't read Anthropic's signing key")
+        r = subprocess.run(base + ['--with-colons', '--fingerprint', '--list-keys'], capture_output=True, text=True)
+        primaries, last = set(), None
+        for line in r.stdout.splitlines():
+            f = line.split(':')
+            if f[0] in ('pub', 'sub'):
+                last = f[0]
+            elif f[0] == 'fpr' and last == 'pub' and len(f) > 9:
+                primaries.add(f[9].upper())
+                last = None
+        if fingerprint not in primaries:
+            raise Fail("the key Anthropic's server gave isn't Anthropic's signing key (fingerprint mismatch)")
+        out = os.path.join(gh, 'signed.txt')
+        r = subprocess.run(base + ['--status-fd', '1', '--output', out, '--decrypt', inrelease],
+                           capture_output=True, text=True)
+        good, bad = False, False
+        for line in r.stdout.splitlines():
+            p = line.split()
+            if len(p) < 2 or p[0] != '[GNUPG:]':
+                continue
+            if p[1] in ('BADSIG', 'ERRSIG', 'EXPSIG', 'EXPKEYSIG', 'REVKEYSIG', 'NO_PUBKEY', 'FAILURE'):
+                bad = True
+            elif p[1] == 'VALIDSIG' and len(p) >= 10:
+                primary = (p[11] if len(p) >= 12 else p[2]).upper()
+                if primary == fingerprint and p[9] in GOOD_HASHES:
+                    good = True
+                else:
+                    bad = True
+        if r.returncode != 0 or bad or not good:
+            raise Fail("Anthropic's package list doesn't carry a good signature from Anthropic's key")
+        with open(out, 'rb') as f:
+            return f.read().decode('utf-8')
+
+
+def parse_release(signed_text, arch, now=None, last_date=None):
+    """The signed InRelease → (Packages SHA-256, size, Date as a timestamp). Checks suite, expiry and replays."""
+    st = parse_stanzas(signed_text)
+    if not st:
+        raise Fail("Anthropic's package list is empty")
+    rel = st[0]
+    if rel.get('Suite') != SUITE and rel.get('Codename') != SUITE:
+        raise Fail("Anthropic's package list is for another release")
+    now = time.time() if now is None else now
+    try:
+        date = parsedate_to_datetime(rel['Date']).timestamp()
+    except (KeyError, TypeError, ValueError):
+        raise Fail("Anthropic's package list has no date")
+    if 'Valid-Until' in rel:
+        try:
+            until = parsedate_to_datetime(rel['Valid-Until']).timestamp()
+        except (TypeError, ValueError):
+            raise Fail("Anthropic's package list has a bad expiry date")
+        if now > until:
+            raise Fail("Anthropic's package list has expired (is this device's clock right?)")
+    if last_date and date < last_date:
+        raise Fail("Anthropic's server sent an older package list than last time; not using it")
+    want = '%s/binary-%s/Packages' % (COMPONENT, arch)
+    for line in rel.get('SHA256', '').splitlines():
+        p = line.split()
+        if len(p) == 3 and p[2] == want and re.fullmatch(r'[0-9a-f]{64}', p[0]) and p[1].isdigit():
+            return p[0], int(p[1]), date
+    raise Fail('Anthropic has no Claude Desktop for this kind of processor (%s)' % arch)
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def check_file(path, sha, size, what):
+    if os.path.getsize(path) != size:
+        raise Fail('%s is the wrong size (download cut short, or changed on the way)' % what)
+    if sha256_file(path) != sha:
+        raise Fail("%s doesn't match Anthropic's signed checksum" % what)
+
+
+def pick_package(packages_text, arch, package=PACKAGE):
+    """The newest `package` for `arch` in a Packages file: dict with Version, Filename, Size, SHA256."""
+    best = None
+    for s in parse_stanzas(packages_text):
+        if s.get('Package') != package or s.get('Architecture') not in (arch, 'all'):
+            continue
+        fn, sha, size, ver = s.get('Filename', ''), s.get('SHA256', ''), s.get('Size', ''), s.get('Version', '')
+        if not re.fullmatch(r'pool/[A-Za-z0-9._+~/-]+\.deb', fn) or '..' in fn.split('/') or '//' in fn:
+            continue
+        if not re.fullmatch(r'[0-9a-f]{64}', sha) or not size.isdigit() or not re.fullmatch(r'[0-9][A-Za-z0-9.+~:-]*', ver):
+            continue
+        if best is None or version_cmp(ver, best['Version']) > 0:
+            best = dict(s, Size=int(size))
+    if not best:
+        raise Fail('Anthropic has no Claude Desktop for this kind of processor (%s)' % arch)
+    return best
+
+
+# ------------------------------------------------------------------ downloads
+
+def curl(url, dest, label=None, lo=0, hi=0, max_bytes=None, timeout=3600):
+    cmd = ['curl', '-fL', '--proto', '=https', '--proto-redir', '=https', '--tlsv1.2', '--retry', '2',
+           '--connect-timeout', '20', '--max-time', str(timeout), '-o', dest]
+    if max_bytes:
+        cmd += ['--max-filesize', str(max_bytes)]
+    if not label:
+        r = subprocess.run(cmd + ['-sS', url], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise Fail("couldn't reach %s (are you online?)" % url.split('/')[2])
+        return
+    p = subprocess.Popen(cmd + ['--progress-bar', url], stderr=subprocess.PIPE, text=True, bufsize=1)
+    buf, last = '', -1
+    while True:
+        ch = p.stderr.read(1)
+        if not ch:
+            break
+        if ch in '\r\n':
+            m = re.search(r'(\d+(?:\.\d+)?)%', buf)
+            if m:
+                pct = int(float(m.group(1)))
+                if pct != last:
+                    last = pct
+                    progress(lo + (hi - lo) * pct / 100, label)
+            buf = ''
+        else:
+            buf += ch
+    if p.wait() != 0:
+        raise Fail("couldn't download Claude Desktop from downloads.claude.ai")
+
+
+def fetch_index(tmp, arch, key_file=None, fingerprint=FINGERPRINT, base=REPO, last_date=None):
+    """Download and check InRelease and Packages; → (newest package dict, repository Date)."""
+    inrel = os.path.join(tmp, 'InRelease')
+    curl(base + '/dists/%s/InRelease' % SUITE, inrel, max_bytes=1 << 20, timeout=60)
+    if key_file is None:
+        key_file = os.path.join(tmp, 'key.asc')
+        curl(KEY_URL, key_file, max_bytes=1 << 20, timeout=60)
+    signed = verify_inrelease(inrel, key_file, fingerprint)
+    sha, size, date = parse_release(signed, arch, last_date=last_date)
+    if size > MAX_LIST:
+        raise Fail("Anthropic's package list is unexpectedly large")
+    plist = os.path.join(tmp, 'Packages')
+    curl(base + '/dists/%s/%s/binary-%s/Packages' % (SUITE, COMPONENT, arch), plist, max_bytes=MAX_LIST, timeout=120)
+    check_file(plist, sha, size, "Anthropic's package list")
+    with open(plist, encoding='utf-8') as f:
+        return pick_package(f.read(), arch), date
+
+
+# ------------------------------------------------------------------ unpacking a .deb
+
+def ar_members(path):
+    """(name, offset, size) of each member of an ar archive (a .deb is one)."""
+    out = []
+    with open(path, 'rb') as f:
+        if f.read(8) != b'!<arch>\n':
+            raise Fail("the download isn't a Debian package")
+        while True:
+            hdr = f.read(60)
+            if not hdr:
+                break
+            if len(hdr) < 60 or hdr[58:60] != b'`\n':
+                raise Fail('the Debian package is damaged')
+            name = hdr[0:16].decode('ascii', 'replace').strip()
+            if name.endswith('/'):
+                name = name[:-1]
+            size = int(hdr[48:58].decode('ascii').strip())
+            off = f.tell()
+            out.append((name, off, size))
+            f.seek(off + size + (size & 1))
+    return out
+
+
+class _Slice(io.RawIOBase):
+    """A window of a file, read as a stream (the data member of the .deb)."""
+    def __init__(self, f, off, size):
+        self.f, self.left = f, size
+        f.seek(off)
+
+    def readable(self):
+        return True
+
+    def readinto(self, b):
+        n = min(len(b), self.left)
+        if n <= 0:
+            return 0
+        data = self.f.read(n)
+        b[:len(data)] = data
+        self.left -= len(data)
+        return len(data)
+
+
+def _safe_member(m, dest):
+    """Only plain files, folders and links that stay inside dest; no setuid bits, no devices."""
+    name = m.name
+    if name.startswith('/') or '..' in name.split('/'):
+        raise Fail('the package has a file outside its folder: ' + name)
+    if not (m.isfile() or m.isdir() or m.issym() or m.islnk()):
+        return None
+    if m.issym() or m.islnk():
+        target = m.linkname
+        base = os.path.dirname(name) if m.issym() else ''
+        full = os.path.normpath(os.path.join(dest, base, target))
+        if os.path.isabs(target) or not (full + '/').startswith(os.path.normpath(dest) + '/'):
+            return None   # a link pointing outside the package isn't needed by a user install
+    m.mode &= 0o755
+    m.uid = m.gid = 0
+    m.uname = m.gname = ''
+    return m
+
+
+def _extract_tar(tf, dest):
+    data_filter = getattr(tarfile, 'data_filter', None)
+
+    def filt(member, path):
+        m = _safe_member(member, dest)
+        if m is None:
+            return None
+        return data_filter(m, path) if data_filter else m
+    try:
+        tf.extractall(dest, filter=filt)
+    except TypeError:          # Python without extraction filters
+        for member in tf:
+            m = filt(member, dest)
+            if m is not None:
+                tf.extract(m, dest)
+
+
+def unpack_deb(deb, dest, use_dpkg=None):
+    """A .deb's files into dest: dpkg-deb if it's there (Ubuntu, Peppermint), else Python (Anatase, CachyOS)."""
+    os.makedirs(dest, exist_ok=True)
+    if use_dpkg is None:
+        use_dpkg = bool(shutil.which('dpkg-deb'))
+    if use_dpkg:
+        r = subprocess.run(['dpkg-deb', '-x', deb, dest], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise Fail("couldn't unpack the package: " + (r.stderr.strip().splitlines() or ['dpkg-deb failed'])[-1])
+        return
+    members = ar_members(deb)
+    data = [m for m in members if m[0].startswith('data.tar')]
+    if not members or members[0][0] != 'debian-binary' or len(data) != 1:
+        raise Fail("the download isn't a Debian package")
+    name, off, size = data[0]
+    with open(deb, 'rb') as f:
+        if name.endswith('.zst'):
+            try:
+                with tarfile.open(fileobj=_Slice(f, off, size), mode='r|zst') as tf:
+                    _extract_tar(tf, dest)
+                return
+            except (tarfile.CompressionError, ValueError):
+                pass
+            if not shutil.which('zstd'):
+                raise Fail("can't unpack the package (it's zstd-compressed and zstd isn't installed)")
+            p = subprocess.Popen(['zstd', '-dcq'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            import threading
+
+            def feed():
+                s = _Slice(f, off, size)
+                try:
+                    for chunk in iter(lambda: s.read(1 << 20), b''):
+                        p.stdin.write(chunk)
+                finally:
+                    p.stdin.close()
+            t = threading.Thread(target=feed, daemon=True)
+            t.start()
+            with tarfile.open(fileobj=p.stdout, mode='r|') as tf:
+                _extract_tar(tf, dest)
+            t.join()
+            if p.wait() != 0:
+                raise Fail("couldn't unpack the package (zstd)")
+            return
+        mode = {'.xz': 'r|xz', '.gz': 'r|gz', '.bz2': 'r|bz2', 'data.tar': 'r|'}
+        m = next((v for k, v in mode.items() if name.endswith(k)), None)
+        if not m:
+            raise Fail("can't unpack the package (%s)" % name)
+        with tarfile.open(fileobj=_Slice(f, off, size), mode=m) as tf:
+            _extract_tar(tf, dest)
+
+
+# ------------------------------------------------------------------ what's installed
+
+def apt_installed():
+    """claude-desktop installed through apt/dpkg (Ubuntu, Peppermint): its version, or None."""
+    if shutil.which('dpkg-query'):
+        try:
+            r = subprocess.run(['dpkg-query', '-W', '-f', '${Status}\t${Version}', PACKAGE], capture_output=True, text=True, timeout=10)
+            if r.returncode == 0 and r.stdout.startswith('install ok installed'):
+                return r.stdout.split('\t', 1)[1].strip() or '?'
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return '?' if os.path.exists(APT_BINARY) else None
+
+
+def ours_installed():
+    return os.path.isfile(os.path.join(ROOT, 'claude-desktop')) and os.path.exists(LAUNCHER)
+
+
+def running():
+    """Is Claude Desktop (this home-folder copy) open?"""
+    prefix = (ROOT + '/', ROOT + '.old/')
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit():
+            continue
+        try:
+            exe = os.readlink('/proc/%s/exe' % pid)
+        except OSError:
+            continue
+        if exe.startswith(prefix):
+            return True
+    return False
+
+
+def userns_ok():
+    """Can Chromium's user-namespace sandbox work here (no setuid helper in a home folder)?"""
+    def num(p, default):
+        try:
+            with open(p) as f:
+                return int(f.read().strip())
+        except (OSError, ValueError):
+            return default
+    if num('/proc/sys/user/max_user_namespaces', 1) == 0:
+        return False
+    if num('/proc/sys/kernel/unprivileged_userns_clone', 1) == 0:
+        return False
+    if num('/proc/sys/kernel/apparmor_restrict_unprivileged_userns', 0) == 1:
+        return False
+    return True
+
+
+def edition():
+    try:
+        with open('/usr/share/nimbus/image-info.json') as f:
+            base = json.load(f).get('base')
+        if base in ('anatase', 'cachyos', 'ubuntu', 'peppermint'):
+            return base
+    except (OSError, ValueError, AttributeError):
+        pass
+    try:
+        with open('/etc/os-release') as f:
+            text = f.read()
+    except OSError:
+        return ''
+    ids = ' '.join(re.findall(r'^(?:ID|ID_LIKE)="?([^"\n]+)"?', text, re.M)).lower()
+    v = re.search(r'^VARIANT_ID="?([^"\n]+)"?', text, re.M)
+    if v and v.group(1).lower() in ('anatase', 'cachyos', 'ubuntu', 'peppermint'):
+        return v.group(1).lower()
+    for e in ('anatase', 'cachyos', 'peppermint', 'ubuntu'):
+        if e in ids:
+            return e
+    if 'debian' in ids:
+        return 'debian'
+    if 'fedora' in ids:
+        return 'fedora'
+    if 'arch' in ids:
+        return 'arch'
+    return ids.split()[0] if ids else ''
+
+
+def official(ed=None):
+    """Anthropic supports its Linux build on Debian and Ubuntu (and the editions built on them)."""
+    ed = ed if ed is not None else edition()
+    return ed in ('ubuntu', 'peppermint', 'debian')
+
+
+def code_status():
+    st = {'installed': os.path.exists(CODE_BIN), 'path': CODE_BIN, 'version': None}
+    if st['installed']:
+        try:
+            r = subprocess.run([CODE_BIN, '--version'], capture_output=True, text=True, timeout=20,
+                               env=dict(os.environ, CI='1', NO_COLOR='1'))
+            m = re.search(r'(\d+\.\d+\.\d+[^\s]*)', r.stdout)
+            st['version'] = m.group(1) if m else None
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return st
+
+
+def status():
+    st = load_state()
+    ours = ours_installed()
+    apt = apt_installed()
+    ed = edition()
+    latest = st.get('latest')
+    ver = st.get('version') if ours else None
+    return {
+        'installed': ours or apt is not None,
+        'ours': ours,
+        'apt': apt is not None,
+        'aptVersion': apt,
+        'version': ver if ours else apt,
+        'latest': latest,
+        'updateAvailable': bool(ours and latest and ver and version_cmp(latest, ver) > 0),
+        'pending': st.get('pending') if ours else None,
+        'checkedAt': st.get('checkedAt'),
+        'installedAt': st.get('installedAt') if ours else None,
+        'running': ours and running(),
+        'arch': deb_arch(),
+        'supported': deb_arch() is not None,
+        'edition': ed,
+        'official': official(ed),
+        'sandbox': userns_ok(),
+        'lastError': st.get('lastError'),
+        'code': code_status(),
+    }
+
+
+# ------------------------------------------------------------------ installing
+
+def _desktop_quote(path):
+    if re.fullmatch(r'[A-Za-z0-9_./+-]+', path):
+        return path
+    return '"' + re.sub(r'(["`$\\])', r'\\\1', path) + '"'
+
+
+def rewrite_desktop(text, launcher=None):
+    """Anthropic's menu entry, starting the home-folder copy (every Exec, the actions' too)."""
+    exe = _desktop_quote(launcher or LAUNCHER)
+    out, section = [], ''
+    for line in text.splitlines():
+        if line.startswith('['):
+            section = line.strip()
+        if line.startswith('Exec='):
+            rest = line[5:].split(None, 1)
+            line = 'Exec=' + exe + (' ' + rest[1] if len(rest) > 1 else '')
+        elif line.startswith('TryExec='):
+            continue
+        out.append(line)
+        if section == '[Desktop Entry]' and line.startswith('Exec='):
+            out.append('TryExec=' + (launcher or LAUNCHER))
+            out.append(MARK)
+    return '\n'.join(out) + '\n'
+
+
+def desktop_mimes(text):
+    m = re.search(r'^MimeType=(.*)$', text, re.M)
+    return [x for x in (m.group(1).split(';') if m else []) if x]
+
+
+def set_default_handlers(mimes):
+    if not mimes:
+        return
+    ok = bool(shutil.which('xdg-mime'))
+    for mt in mimes if ok else []:
+        try:
+            ok = subprocess.run(['xdg-mime', 'default', DESKTOP_ID, mt], capture_output=True, timeout=15).returncode == 0 and ok
+        except (OSError, subprocess.TimeoutExpired):
+            ok = False
+    if ok:
+        return
+    # No xdg-utils: write what it would have written.
+    path = os.path.join(CONFIG, 'mimeapps.list')
+    lines = []
+    try:
+        with open(path) as f:
+            lines = [l for l in f.read().splitlines() if not any(l.startswith(mt + '=') for mt in mimes)]
+    except OSError:
+        pass
+    if '[Default Applications]' not in lines:
+        lines.append('[Default Applications]')
+    i = lines.index('[Default Applications]') + 1
+    lines[i:i] = [mt + '=' + DESKTOP_ID for mt in mimes]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+
+
+def missing_libraries(exe):
+    if not shutil.which('ldd'):
+        return []
+    try:
+        r = subprocess.run(['ldd', exe], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return sorted({l.split()[0] for l in r.stdout.splitlines() if 'not found' in l})
+
+
+def place(staging):
+    """The unpacked package (staging/usr/...) → ~/.local/opt/claude-desktop plus the menu entry and icons."""
+    app = os.path.join(staging, 'usr', 'lib', 'claude-desktop')
+    if not os.path.isfile(os.path.join(app, 'claude-desktop')):
+        raise Fail("the package doesn't contain Claude Desktop where it should")
+    # No setuid helper in a home folder: a present-but-not-setuid chrome-sandbox makes Electron refuse to start,
+    # and without one it uses its user-namespace sandbox.
+    for dirpath, _dirs, files in os.walk(app):
+        for fn in files:
+            p = os.path.join(dirpath, fn)
+            if fn == 'chrome-sandbox':
+                os.remove(p)
+                continue
+            try:
+                st = os.lstat(p)
+                if stat.S_ISREG(st.st_mode) and st.st_mode & (stat.S_ISUID | stat.S_ISGID):
+                    os.chmod(p, stat.S_IMODE(st.st_mode) & ~(stat.S_ISUID | stat.S_ISGID))
+            except OSError:
+                pass
+    miss = missing_libraries(os.path.join(app, 'claude-desktop'))
+    if miss:
+        raise Fail('this system is missing libraries Claude Desktop needs: ' + ', '.join(miss))
+
+    new, old = ROOT + '.new', ROOT + '.old'
+    shutil.rmtree(new, ignore_errors=True)
+    shutil.rmtree(old, ignore_errors=True)
+    os.rename(app, new)
+    if os.path.exists(ROOT):
+        os.rename(ROOT, old)
+    os.rename(new, ROOT)
+    shutil.rmtree(old, ignore_errors=True)
+
+    os.makedirs(BIN, exist_ok=True)
+    with open(LAUNCHER + '.tmp', 'w') as f:
+        f.write('#!/bin/sh\n# Claude Desktop (Anthropic), installed in your home folder by Hearth OS.\n'
+                '# hearth-claude status | update | remove\nexec "%s" "$@"\n' % os.path.join(ROOT, 'claude-desktop').replace('"', '\\"'))
+    os.chmod(LAUNCHER + '.tmp', 0o755)
+    os.replace(LAUNCHER + '.tmp', LAUNCHER)
+
+    # Anthropic's terminal launcher (ccd), when this build has one and nothing else has the name.
+    ccd = os.path.join(ROOT, 'resources', 'bin', 'ccd')
+    if os.path.isfile(ccd) and (not os.path.lexists(CCD) or (os.path.islink(CCD) and os.readlink(CCD).startswith(ROOT + '/'))):
+        if os.path.lexists(CCD):
+            os.remove(CCD)
+        os.symlink(ccd, CCD)
+
+    share = os.path.join(staging, 'usr', 'share')
+    icons = []
+    hicolor = os.path.join(share, 'icons', 'hicolor')
+    for dirpath, _dirs, files in os.walk(hicolor):
+        for fn in files:
+            src = os.path.join(dirpath, fn)
+            dst = os.path.join(DATA, 'icons', 'hicolor', os.path.relpath(src, hicolor))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(src, dst)
+            icons.append(dst)
+    entries = os.path.join(share, 'applications')
+    text = ''
+    if os.path.isfile(os.path.join(entries, DESKTOP_ID)):
+        with open(os.path.join(entries, DESKTOP_ID), errors='replace') as f:
+            text = f.read()
+    else:
+        for fn in sorted(os.listdir(entries)) if os.path.isdir(entries) else []:
+            if fn.endswith('.desktop'):
+                with open(os.path.join(entries, fn), errors='replace') as f:
+                    text = f.read()
+                break
+    if not text:
+        text = ('[Desktop Entry]\nName=Claude\nComment=Desktop application for Claude.ai\nExec=claude-desktop %U\n'
+                'Icon=claude-desktop\nType=Application\nStartupWMClass=com.anthropic.Claude\nCategories=Utility;\n'
+                'MimeType=x-scheme-handler/claude;\n')
+    os.makedirs(os.path.dirname(DESKTOP), exist_ok=True)
+    with open(DESKTOP + '.tmp', 'w') as f:
+        f.write(rewrite_desktop(text))
+    os.replace(DESKTOP + '.tmp', DESKTOP)
+    with open(GET_HIDE, 'w') as f:
+        f.write('[Desktop Entry]\nType=Application\nName=Get Claude\nHidden=true\n' + MARK + '\n')
+    mime_src = os.path.join(ROOT, 'resources', 'linux-mime', 'com.anthropic.Claude.xml')
+    if os.path.isfile(mime_src):
+        os.makedirs(os.path.dirname(MIME_XML), exist_ok=True)
+        shutil.copyfile(mime_src, MIME_XML)
+        if shutil.which('update-mime-database'):
+            subprocess.run(['update-mime-database', os.path.join(DATA, 'mime')], capture_output=True)
+    if shutil.which('update-desktop-database'):
+        subprocess.run(['update-desktop-database', os.path.dirname(DESKTOP)], capture_output=True)
+    if shutil.which('gtk-update-icon-cache') and os.path.exists(os.path.join(DATA, 'icons', 'hicolor', 'index.theme')):
+        subprocess.run(['gtk-update-icon-cache', '-q', os.path.join(DATA, 'icons', 'hicolor')], capture_output=True)
+    # The claude:// handler is how browser sign-in comes back to the app.
+    set_default_handlers(desktop_mimes(text))
+    return icons
+
+
+def _tmp_parent():
+    os.makedirs(OPT, exist_ok=True)
+    return OPT
+
+
+def install(only_if_newer=False, quiet_if_running=False):
+    if apt_installed() is not None:
+        raise Fail('Claude Desktop is installed through apt on this system; apt keeps it up to date')
+    arch = deb_arch()
+    if not arch:
+        raise Fail('Claude Desktop is only made for x86-64 and ARM64 computers')
+    st = load_state()
+    progress(2, 'Checking downloads.claude.ai')
+    with tempfile.TemporaryDirectory(prefix='.claude-desktop-', dir=_tmp_parent()) as tmp:
+        pkg, date = fetch_index(tmp, arch, last_date=st.get('repoDate'))
+        st.update({'latest': pkg['Version'], 'checkedAt': int(time.time()), 'repoDate': date})
+        save_state(st)
+        if only_if_newer and ours_installed() and st.get('version') and version_cmp(pkg['Version'], st['version']) <= 0:
+            st.pop('pending', None)
+            save_state(st)
+            return False
+        if ours_installed() and running():
+            st['pending'] = pkg['Version']
+            save_state(st)
+            if quiet_if_running:
+                log('Claude Desktop %s is ready, but Claude is open: trying again later' % pkg['Version'])
+                return False
+            raise Fail('Close Claude first, then try again')
+        need = int(pkg.get('Installed-Size', '0') or 0) * 1024 + pkg['Size'] * 2
+        if shutil.disk_usage(OPT).free < need:
+            raise Fail('not enough free space: Claude Desktop needs about %.1f GB' % (need / 1e9))
+        deb = os.path.join(tmp, 'claude-desktop.deb')
+        curl(REPO + '/' + pkg['Filename'], deb, 'Downloading Claude Desktop %s' % pkg['Version'], 5, 80,
+             max_bytes=pkg['Size'] + 1)
+        progress(81, 'Checking the download')
+        check_file(deb, pkg['SHA256'], pkg['Size'], 'The Claude Desktop download')
+        progress(85, 'Unpacking')
+        staging = os.path.join(tmp, 'unpacked')
+        unpack_deb(deb, staging)
+        progress(93, 'Installing')
+        icons = place(staging)
+    st = load_state()
+    st.update({'installed': True, 'removed': False, 'version': pkg['Version'], 'installedAt': int(time.time()),
+               'icons': icons, 'lastError': None})
+    st.pop('pending', None)
+    save_state(st)
+    progress(100, 'Done')
+    return True
+
+
+def remove():
+    if running():
+        raise Fail('Close Claude first, then try again')
+    st = load_state()
+    for p in (ROOT, ROOT + '.new', ROOT + '.old'):
+        shutil.rmtree(p, ignore_errors=True)
+    if os.path.islink(CCD) and os.readlink(CCD).startswith(ROOT + '/'):
+        os.remove(CCD)
+    for f in [LAUNCHER, DESKTOP, GET_HIDE, MIME_XML] + [i for i in st.get('icons', []) if isinstance(i, str)
+                                                         and i.startswith(os.path.join(DATA, 'icons') + '/')]:
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    if shutil.which('update-desktop-database'):
+        subprocess.run(['update-desktop-database', os.path.dirname(DESKTOP)], capture_output=True)
+    if shutil.which('update-mime-database') and os.path.isdir(os.path.join(DATA, 'mime', 'packages')):
+        subprocess.run(['update-mime-database', os.path.join(DATA, 'mime')], capture_output=True)
+    st.update({'installed': False, 'removed': True, 'version': None, 'icons': []})
+    st.pop('pending', None)
+    save_state(st)
+
+
+def open_app():
+    exe = LAUNCHER if ours_installed() else shutil.which('claude-desktop')
+    if not exe:
+        raise Fail('Claude Desktop is not installed')
+    subprocess.Popen([exe], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+
+
+def install_code():
+    """Anthropic's own installer for Claude Code, downloaded over HTTPS and run as you."""
+    progress(5, "Downloading Anthropic's installer")
+    with tempfile.TemporaryDirectory(prefix='hearth-claude-code-') as tmp:
+        script = os.path.join(tmp, 'install.sh')
+        curl(CODE_INSTALLER, script, max_bytes=1 << 20, timeout=60)
+        with open(script, 'rb') as f:
+            head = f.read(2)
+        if head != b'#!':
+            raise Fail("claude.ai didn't send the installer (are you online?)")
+        progress(15, 'Installing Claude Code')
+        env = dict(os.environ, NO_COLOR='1')
+        p = subprocess.Popen(['bash', script], cwd=tmp, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, errors='replace')
+        pct = 15
+        for line in p.stdout:
+            line = re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', line).strip()
+            if line:
+                pct = min(95, pct + 3)
+                progress(pct, line[:120])
+        if p.wait() != 0:
+            raise Fail("Anthropic's installer for Claude Code didn't finish")
+    if not os.path.exists(CODE_BIN):
+        raise Fail("Claude Code's installer finished, but ~/.local/bin/claude isn't there")
+    progress(100, 'Done')
+
+
+def remove_code():
+    try:
+        os.remove(CODE_BIN)
+    except FileNotFoundError:
+        pass
+    shutil.rmtree(CODE_DATA, ignore_errors=True)
+
+
+def is_root():
+    return os.geteuid() == 0
+
+
+def main(argv):
+    if is_root():
+        raise Fail('run hearth-claude as yourself, not as root (Claude is installed for you, in your home folder)')
+    c = argv[1] if len(argv) > 1 else 'status'
+    if c == 'status':
+        if '--check' in argv[2:] and deb_arch():
+            with Lock(), tempfile.TemporaryDirectory(prefix='.claude-desktop-', dir=_tmp_parent()) as tmp:
+                st = load_state()
+                pkg, date = fetch_index(tmp, deb_arch(), last_date=st.get('repoDate'))
+                st.update({'latest': pkg['Version'], 'checkedAt': int(time.time()), 'repoDate': date})
+                save_state(st)
+    elif c == 'install':
+        with Lock():
+            install()
+    elif c == 'update':
+        if not ours_installed():
+            raise Fail('Claude Desktop is not installed by Hearth' + (' (apt keeps it up to date)' if apt_installed() else ''))
+        with Lock():
+            install(only_if_newer=True)
+    elif c == 'auto-update':
+        st = load_state()
+        if not ours_installed() or st.get('removed') or apt_installed() is not None:
+            return
+        try:
+            with Lock():
+                if install(only_if_newer=True, quiet_if_running=True):
+                    log('updated Claude Desktop to %s' % load_state().get('version'))
+        except (Fail, OSError, subprocess.SubprocessError) as e:
+            st = load_state()
+            st['lastError'] = str(e)
+            save_state(st)
+            log("couldn't update Claude Desktop: %s" % e)   # tried again tomorrow; not a failed unit
+            return
+    elif c == 'remove':
+        with Lock():
+            remove()
+    elif c == 'open':
+        open_app()
+    elif c == 'install-code':
+        install_code()
+    elif c == 'remove-code':
+        remove_code()
+    else:
+        print('usage: hearth-claude status [--check]|install|update|remove|auto-update|open|install-code|remove-code')
+        sys.exit(2)
+    print(json.dumps(status()))
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv)
+    except (Fail, OSError, subprocess.SubprocessError, tarfile.TarError, UnicodeDecodeError) as e:
+        print('error: ' + str(e))
+        sys.exit(1)
