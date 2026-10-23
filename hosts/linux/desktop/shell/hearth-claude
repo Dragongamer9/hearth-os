@@ -3,22 +3,22 @@
 
 Claude Desktop for Linux is in beta and Anthropic publishes it as a Debian package (claude-desktop) in its own apt
 repository. Hearth OS's system is read-only and only two editions use apt, so on every edition this helper takes
-that same package straight from Anthropic, on your device, when you ask for it:
+that same package straight from Anthropic, on your device, when you ask for it (Anatase, Peppermint; the code also
+copes with the archived Ubuntu and CachyOS editions):
   1. downloads the repository's InRelease and checks its signature with gpg against Anthropic's signing key, pinned
      here by fingerprint (a temporary keyring, nothing is added to yours)
   2. takes the package list's SHA-256 from the signed InRelease and checks the list against it
   3. picks the newest claude-desktop for this machine (amd64 or arm64), downloads it and checks its SHA-256 from
      the list
   4. unpacks it into ~/.local/opt/claude-desktop (dpkg-deb when the system has it; otherwise Python reads the
-     .deb itself) and adds a menu entry, icons, the claude:// link handler (browser sign-in comes back through it)
+     .deb itself, as on Anatase) and adds a menu entry, icons, the claude:// link handler (browser sign-in comes back through it)
      and ~/.local/bin/claude-desktop
-Nothing is installed system-wide and nothing of Anthropic's ships in Hearth's images. On Anatase and CachyOS this is
-Anthropic's Debian build running unofficially (Anthropic supports Debian and Ubuntu; Fedora and Arch "coming").
-If claude-desktop was installed through apt (Ubuntu, Peppermint), apt owns it: this helper leaves it alone.
+Nothing is installed system-wide and nothing of Anthropic's ships in Hearth's images. On Anatase this is Anthropic's
+Debian build running unofficially (Anthropic supports Debian and Ubuntu; Fedora "coming"). If claude-desktop was
+installed through apt (Peppermint), apt owns it: this helper leaves it alone.
 
 The sandbox: Electron's setuid helper (chrome-sandbox) can't be setuid in a home folder, so it's left out and
-Chromium uses its user-namespace sandbox instead, which every Hearth edition allows (Ubuntu's AppArmor restriction
-is lifted in that image: 61-hearth-ubuntu-userns.conf). --no-sandbox is never used; if a system blocks user
+Chromium uses its user-namespace sandbox instead, which Anatase and Peppermint allow. --no-sandbox is never used; if a system blocks user
 namespaces, status says so ("sandbox": false) and the app won't start until they're allowed.
 
 Claude Code (the CLI) is Anthropic's own installer (https://claude.ai/install.sh, run as you): it installs into
@@ -480,7 +480,7 @@ def _extract_tar(tf, dest):
 
 
 def unpack_deb(deb, dest, use_dpkg=None):
-    """A .deb's files into dest: dpkg-deb if it's there (Ubuntu, Peppermint), else Python (Anatase, CachyOS)."""
+    """A .deb's files into dest: dpkg-deb if it's there (Peppermint), else Python (Anatase)."""
     os.makedirs(dest, exist_ok=True)
     if use_dpkg is None:
         use_dpkg = bool(shutil.which('dpkg-deb'))
@@ -533,7 +533,7 @@ def unpack_deb(deb, dest, use_dpkg=None):
 # ------------------------------------------------------------------ what's installed
 
 def apt_installed():
-    """claude-desktop installed through apt/dpkg (Ubuntu, Peppermint): its version, or None."""
+    """claude-desktop installed through apt/dpkg (Peppermint): its version, or None."""
     if shutil.which('dpkg-query'):
         try:
             r = subprocess.run(['dpkg-query', '-W', '-f', '${Status}\t${Version}', PACKAGE], capture_output=True, text=True, timeout=10)
