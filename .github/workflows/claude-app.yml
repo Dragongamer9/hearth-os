@@ -17,22 +17,22 @@ jobs:
     steps:
       - name: Look at Anthropic's repository
         run: |
-          set -x
+          note() { t="$1"; printf '::notice title=%s::%s\n' "$t" "$(head -c 3800 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; }
           B=https://downloads.claude.ai/claude-desktop/apt/stable
-          curl -fsS $B/dists/stable/InRelease | tee InRelease | head -60
+          curl -fsS $B/dists/stable/InRelease -o InRelease; head -c 3800 InRelease | note InRelease
           curl -fsS https://downloads.claude.ai/claude-desktop/key.asc -o key.asc
-          gpg --show-keys --with-fingerprint key.asc
-          curl -fsS $B/dists/stable/main/binary-amd64/Packages -o Packages; head -c 4000 Packages; grep -c '^Package:' Packages
-          curl -fsSI $B/dists/stable/main/binary-amd64/Packages.gz | head -3 || true
-          f=$(awk '/^Filename:/{print $2}' Packages | tail -1); echo "$f"
-          curl -fsS "$B/$f" -o c.deb; ls -la c.deb; sha256sum c.deb
-          dpkg-deb -I c.deb
-          dpkg-deb -c c.deb | grep -vE '\.(pak|js|map|json|node|so[.0-9]*)$' | head -150
-          mkdir x && dpkg-deb -x c.deb x && mkdir ctl && dpkg-deb -e c.deb ctl && for s in ctl/*; do echo "== $s"; cat "$s"; done
-          for d in x/usr/share/applications/*.desktop; do echo "== $d"; cat "$d"; done
-          find x -name chrome-sandbox -o -name 'claude*' -maxdepth 6 | head; find x -type f -perm -u+x | grep -v '\.so' | head -30
-          ar t c.deb
-          exe=$(find x -type f -name claude-desktop -o -type f -name claude | head -1); echo "exe=$exe"
-          ldd "$exe" | grep 'not found' || echo all-found
-          timeout 30 "$exe" --version || true
-          timeout 30 xvfb-run -a "$exe" --version --no-sandbox || true
+          gpg --show-keys --with-fingerprint key.asc 2>&1 | note key
+          curl -fsS $B/dists/stable/main/binary-amd64/Packages -o Packages; { grep -c '^Package:' Packages; tail -c 3000 Packages; } | note Packages
+          { curl -sSI $B/dists/stable/main/binary-arm64/Packages | head -1; curl -sSI $B/dists/stable/main/binary-amd64/Packages.gz | head -1; curl -sS -o /dev/null -w '%{http_code}' $B/dists/stable/Release; } 2>&1 | note other-files
+          f=$(awk '/^Filename:/{print $2}' Packages | tail -1)
+          curl -fsS "$B/$f" -o c.deb; { echo "$f"; ls -la c.deb; sha256sum c.deb; ar t c.deb; dpkg-deb -I c.deb; } | note deb-info
+          mkdir x ctl && dpkg-deb -x c.deb x && dpkg-deb -e c.deb ctl
+          for s in ctl/*; do echo "== $s"; head -c 1500 "$s"; done | note control
+          cat x/usr/share/applications/*.desktop | note desktop
+          { find x -maxdepth 4 | head -60; } | note tree
+          { find x -name chrome-sandbox -o -name '*.png' -o -name '*.svg' | head -30; find x -type f -perm -u+x | grep -v '\.so' | head -30; } | note files
+          exe=$(find x -type f \( -name claude-desktop -o -name claude -o -name Claude \) | head -1)
+          { echo "exe=$exe"; ldd "$exe" | grep 'not found' || echo all-found; ldd "$exe" | awk '{print $1}' | tr '\n' ' '; } | note ldd
+          { timeout 30 "$exe" --version; echo "rc=$?"; timeout 30 xvfb-run -a "$exe" --version 2>&1 | tail -5; echo "rc=$?"; } 2>&1 | note version
+          { find x/usr/bin -ls 2>/dev/null; cat x/usr/bin/* 2>/dev/null | head -c 1500; } | note usr-bin
+          { find x -name '*.node' | head; find x -name 'app.asar*' | head; } | note native
