@@ -136,6 +136,34 @@ row, GRUB starts the previous one, and once that one is up it becomes the defaul
   shown at every start until one start is good.
 - `hearth-boot-guard status` shows the count, the versions and any version that didn't start.
 
+### The emergency screen
+
+Without it, a failed start on a system whose root account is locked (all of Hearth's) ends at "Cannot open access to
+console, the root account is locked", which is a dead end, worse still on a handheld. `emergency.service.d/50-hearth.conf`
+and `rescue.service.d/50-hearth.conf` run `/usr/libexec/nimbus/hearth-emergency` instead. If it can't run, the
+usual sulogin comes up as before. The screen:
+
+- says what failed (`systemctl --failed`) and shows the last errors in the system log;
+- works with a keyboard (numbers, or arrows and Enter) and with a handheld's own buttons: volume up/down or the
+  d-pad to move, power or A to choose (it reads `/dev/input` itself);
+- offers: **1** start the previous version (sets the count to `fallback`, or `bootc rollback` if GRUB's
+  settings can't be written, then restarts); **2** check and repair the drives: `/boot` (ext4) and the EFI
+  partition are unmounted and checked read-only first (`e2fsck -n`, `fsck.vfat -n`), then repaired only when you ask
+  (the safe automatic fixes, or "fix everything" after a warning). The btrfs main drive gets a read-only `btrfs check
+  --readonly --force`, plus an optional scrub. `btrfs check --repair` is never offered here; **3** save a bug report
+  (this start's and the previous start's system log, the drives, the versions; e-mail addresses, passwords and Wi-Fi
+  names taken out) to a USB stick, the EFI partition (`hearth-logs/`), `/boot` or `/var/lib/hearth`; **4** restart;
+  **5** a command line, only after an administrator's password. The password is checked through PAM by running `su`
+  as `nobody` for a member of `wheel`/`sudo`. With a root password set, `sulogin` is also offered. The root account
+  stays locked; **6** try to carry on starting; **7** turn off;
+- in emergency mode, while the count hasn't reached the previous version yet, it restarts by itself after 90 seconds
+  unless a key or button is pressed. So a handheld with no keyboard still gets back to the previous version (two
+  failed starts, then GRUB picks it).
+
+It only runs once systemd has switched to the installed system. A failure inside the initramfs (the main drive
+not found, for example) still shows dracut's own emergency shell. The boot count still covers that case: after two
+such starts GRUB starts the previous version.
+
 ### Systems switched from another edition
 
 Settings › Updates › Switch edition (`bootc switch`) changes the system, not the boot loader. A system installed
