@@ -28,6 +28,7 @@ function candidates(home = os.homedir()) {
     path.join(home, '.local', 'share', 'Steam'),
     path.join(home, '.steam', 'steam'),
     path.join(home, '.steam', 'root'),
+    path.join(home, '.steam', 'debian-installation'),   // Debian's and Ubuntu's steam-installer
     path.join(home, '.var', 'app', FLATPAK_ID, '.local', 'share', 'Steam'),
     path.join(home, '.var', 'app', FLATPAK_ID, 'data', 'Steam'),
   ];

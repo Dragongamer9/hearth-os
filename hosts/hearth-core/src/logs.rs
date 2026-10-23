@@ -204,6 +204,11 @@ pub fn report(version: &str) -> String {
         [ -e /proc/driver/nvidia/version ] && command -v nvidia-smi >/dev/null && { echo; nvidia-smi --query-gpu=name,utilization.gpu,utilization.memory,memory.used,memory.total,clocks.gr,clocks.max.gr,pstate,power.draw --format=csv; echo; nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv; } || true"));
     section("Memory", sh("free -m; echo; ps -eo rss=,comm= --sort=-rss | head -25 | awk '{printf \"%7.0f MB  %s\\n\", $1/1024, $2}'"));
     section("Games and processes", sh("ps -eo pid,ppid,stat,etime,comm --sort=start_time | tail -60"));
+    // Steam: the folders Hearth looks in, the one it uses, its account file's counts (no names or ids), the games'
+    // records per library, the owned-games list and Steam's processes (steam::report).
+    let steam_on = std::fs::read(data.join("library.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .map(|v| v["sources"]["steam"] != Value::Bool(false)).unwrap_or(true);
+    section("Steam", crate::steam::report(&crate::paths::home(), steam_on));
     section("Power (hearth-power)", sh(&format!("python3 '{}' status", crate::paths::desktop_dir().join("shell/hearth-power").display())));
     // Apps (Desktop Mode's app store for Flathub): what it sees (can your own Flatpak folder be used, the catalog, the
     // last refresh error), the Flathub remotes (yours and the system's) and who owns the folders it writes to (a
