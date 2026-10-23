@@ -28,7 +28,7 @@ PanelWindow {
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
 
-    onShownChanged: if (shown) { refresh(); r = 0; c = 0; keys.forceActiveFocus(); } else closing.restart()
+    onShownChanged: if (shown) { refresh(); r = navRows[0][0] === "weather" ? 1 : 0; c = 0; keys.forceActiveFocus(); } else closing.restart()   // (Hearth Weather's row sits above Volume)
 
     // ------------------------------------------------------------------ state read from the system
     PwObjectTracker { objects: [Pipewire.defaultAudioSink] }
@@ -68,6 +68,7 @@ PanelWindow {
     property var weather: ({})
     Process {
         id: weatherRead
+        running: true
         command: ["hearth-time", "--weather-summary"]
         stdout: StdioCollector { onStreamFinished: { try { root.weather = JSON.parse(text.trim().split("\n").pop() || "{}"); } catch (e) { root.weather = {}; } } }
     }
