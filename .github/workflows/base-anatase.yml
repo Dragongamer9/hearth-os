@@ -106,48 +106,6 @@ jobs:
           cp "$CARGO_TARGET_DIR/release/hearth-time" /tmp/app/hearth-time/hearth-time
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth Time
-      # ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
-      # Scanner and Welcome & Tips in one program, put beside the app in hearth-app.tar (hearth-tools/) with its menu
-      # entries; build.sh installs them (their icons come with Hearth's icon set, branding/icons). Not fatal: without it the image is still made.
-      - name: Build Hearth Tools
-        continue-on-error: true
-        working-directory: hosts/hearth-tools
-        run: |
-          set -o pipefail
-          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
-          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
-          cargo build --release || { echo "::warning title=Hearth Tools::it didn't build, so this image is made without it"; exit 1; }
-          mkdir -p /tmp/app/hearth-tools
-          cp "$CARGO_TARGET_DIR/release/hearth-tools" /tmp/app/hearth-tools/hearth-tools
-          cp desktop/hearth-*.desktop /tmp/app/hearth-tools/
-          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
-      # ---- end Hearth Tools
-      # ---- Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves and Mods, built the same way and put beside
-      # the app in hearth-app.tar (build.sh installs them in /usr/bin; their icons are in Hearth's icon set). Not fatal:
-      # without them the image is still made.
-      - name: Build Hearth's gaming apps (Controller Lab, Saves, Mods)
-        continue-on-error: true
-        working-directory: hosts/hearth-gaming
-        run: |
-          set -o pipefail
-          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
-          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
-          cargo build --release || { echo "::warning title=Hearth's gaming apps::they didn't build, so this image is made without them"; exit 1; }
-          mkdir -p /tmp/app
-          for a in hearth-controller-lab hearth-saves hearth-mods; do cp "$CARGO_TARGET_DIR/release/$a" /tmp/app/; done
-          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
-      # ---- end of Hearth's gaming apps
-      # ---- Hearth Photos and Hearth Documents (hosts/hearth-photos, hosts/hearth-documents): the picture viewer and
-      # the PDF / e-book / comic reader, built the same way and put beside the app in hearth-app.tar (build.sh installs
-      # them, with their menu entries and file types; their icons come with the Hearth icon set). Not fatal.
-      - name: Build Hearth Photos and Hearth Documents
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
-          mkdir -p /tmp/app
-          for app in hearth-photos hearth-documents; do
-            if (cd "hosts/$app" && sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml && cargo build --release); then
       # ---- Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps): built the same way and put
       # beside the app in hearth-app.tar (their icons are in Hearth's icon set); build.sh installs them as
       # /usr/bin/hearth-contacts and /usr/bin/hearth-maps. Not fatal: an app that doesn't build is left out.
@@ -166,7 +124,7 @@ jobs:
             else echo "::warning title=$app::it didn't build, so this image is made without it"; fi
           done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
-      # ---- end of Hearth Photos and Hearth Documents
+      # ---- end of Hearth Contacts and Hearth Maps
       # ---- Hearth Text (hosts/hearth-text), the text editor: built the same way and put beside the app in
       # hearth-app.tar (build.sh installs it as /usr/bin/hearth-text and makes it the default for text
       # files). Not fatal: without it the image is still made.
@@ -182,7 +140,53 @@ jobs:
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-text" /tmp/app/hearth-text
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth Text
-      # ---- end of Hearth Contacts and Hearth Maps
+      # ---- Hearth Photos and Hearth Documents (hosts/hearth-photos, hosts/hearth-documents): the picture viewer and
+      # the PDF / e-book / comic reader, built the same way and put beside the app in hearth-app.tar (build.sh installs
+      # them, with their menu entries and file types; their icons come with the Hearth icon set). Not fatal.
+      - name: Build Hearth Photos and Hearth Documents
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          mkdir -p /tmp/app
+          for app in hearth-photos hearth-documents; do
+            if (cd "hosts/$app" && sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml && cargo build --release); then
+              cp "$CARGO_TARGET_DIR/release/$app" "/tmp/app/$app"
+            else echo "::warning title=$app::it didn't build, so this image is made without it"; fi
+          done
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth Photos and Hearth Documents
+      # ---- Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves and Mods, built the same way and put beside
+      # the app in hearth-app.tar (build.sh installs them in /usr/bin; their icons are in Hearth's icon set). Not fatal:
+      # without them the image is still made.
+      - name: Build Hearth's gaming apps (Controller Lab, Saves, Mods)
+        continue-on-error: true
+        working-directory: hosts/hearth-gaming
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release || { echo "::warning title=Hearth's gaming apps::they didn't build, so this image is made without them"; exit 1; }
+          mkdir -p /tmp/app
+          for a in hearth-controller-lab hearth-saves hearth-mods; do cp "$CARGO_TARGET_DIR/release/$a" /tmp/app/; done
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth's gaming apps
+      # ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
+      # Scanner and Welcome & Tips in one program, put beside the app in hearth-app.tar (hearth-tools/) with its menu
+      # entries; build.sh installs them (their icons come with Hearth's icon set, branding/icons). Not fatal: without it the image is still made.
+      - name: Build Hearth Tools
+        continue-on-error: true
+        working-directory: hosts/hearth-tools
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release || { echo "::warning title=Hearth Tools::it didn't build, so this image is made without it"; exit 1; }
+          mkdir -p /tmp/app/hearth-tools
+          cp "$CARGO_TARGET_DIR/release/hearth-tools" /tmp/app/hearth-tools/hearth-tools
+          cp desktop/hearth-*.desktop /tmp/app/hearth-tools/
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end Hearth Tools
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -307,24 +311,24 @@ jobs:
           # ---- Hearth Time (Clock, Calendar, Notes, Weather): a warning only, as the build of it isn't required.
           warn "Hearth Time is installed with its four apps, icons and alarm service" "test -x /usr/bin/hearth-time && ! ldd /usr/bin/hearth-time | grep -q 'not found' && /usr/bin/hearth-time --version && for a in clock calendar notes weather; do test -L /usr/bin/hearth-\$a && test -f /usr/share/applications/hearth-\$a.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-\$a.svg || exit 1; done && test -f /usr/lib/systemd/user/hearth-time.service && test -L /etc/systemd/user/default.target.wants/hearth-time.service"
           # ---- end of Hearth Time
-          # ---- Hearth Tools (hosts/hearth-tools)
-          warn "Hearth Tools is installed with its menu entries and icons" "test -x /usr/bin/hearth-tools && test -f /usr/share/applications/hearth-disk-usage.desktop && test -f /usr/share/applications/hearth-welcome.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-logs.svg"
-          warn "every library Hearth Tools links is installed" "! ldd /usr/bin/hearth-tools | grep -q 'not found'"
-          warn "Hearth Tools answers without a window (--list-apps, --call sys.overview)" "/usr/bin/hearth-tools --list-apps | grep -q printers && HOME=/tmp /usr/bin/hearth-tools --call sys.overview | grep -q memory"
-          warn "the scanner tools (scanimage, sane-airscan) and traceroute are installed" "command -v scanimage && ls /etc/sane.d/airscan.conf && command -v traceroute"
-          # ---- end Hearth Tools
-          # ---- Hearth's gaming apps (hosts/hearth-gaming): warnings, not failures (the image is still fine without them).
-          warn "Hearth's gaming apps are installed and find their libraries (Controller Lab, Saves, Mods)" "for a in hearth-controller-lab hearth-saves hearth-mods; do test -x /usr/bin/\$a && ! ldd /usr/bin/\$a | grep -q 'not found' || exit 1; done"
-          warn "their menu entries and icons" "for a in hearth-controller-lab hearth-saves hearth-mods; do test -f /usr/share/applications/\$a.desktop && test -f /usr/share/icons/hicolor/scalable/apps/\$a.svg || exit 1; done"
-          warn "Saves answers without a window (--backups)" "HOME=/tmp /usr/bin/hearth-saves --backups /tmp | grep -q '\\['"
-          warn "Saves' hourly timer is on for everyone" "test -f /usr/lib/systemd/user/hearth-saves-auto.service && test -L /usr/lib/systemd/user/timers.target.wants/hearth-saves-auto.timer"
-          # ---- end of Hearth's gaming apps
           # ---- Hearth Photos and Hearth Documents: installed, starting (--help needs every library), and the defaults
           warn "Hearth Photos is installed and starts" "test -x /usr/bin/hearth-photos && /usr/bin/hearth-photos --help | grep -q Photos"
           warn "Hearth Documents is installed and starts" "test -x /usr/bin/hearth-documents && /usr/bin/hearth-documents --help | grep -q Documents"
           warn "Photos opens JPEGs and Documents opens PDFs by default" "grep -q '^image/jpeg=hearth-photos.desktop' /usr/share/applications/mimeapps.list && grep -q '^application/pdf=hearth-documents.desktop' /usr/share/applications/mimeapps.list && test -f /usr/share/icons/hicolor/scalable/apps/hearth-photos.svg"
           warn "libheif's tools are installed (HEIC pictures in Photos)" "command -v heif-dec || command -v heif-convert"
           # ---- end of Hearth Photos and Hearth Documents
+          # ---- Hearth's gaming apps (hosts/hearth-gaming): warnings, not failures (the image is still fine without them).
+          warn "Hearth's gaming apps are installed and find their libraries (Controller Lab, Saves, Mods)" "for a in hearth-controller-lab hearth-saves hearth-mods; do test -x /usr/bin/\$a && ! ldd /usr/bin/\$a | grep -q 'not found' || exit 1; done"
+          warn "their menu entries and icons" "for a in hearth-controller-lab hearth-saves hearth-mods; do test -f /usr/share/applications/\$a.desktop && test -f /usr/share/icons/hicolor/scalable/apps/\$a.svg || exit 1; done"
+          warn "Saves answers without a window (--backups)" "HOME=/tmp /usr/bin/hearth-saves --backups /tmp | grep -q '\\['"
+          warn "Saves' hourly timer is on for everyone" "test -f /usr/lib/systemd/user/hearth-saves-auto.service && test -L /usr/lib/systemd/user/timers.target.wants/hearth-saves-auto.timer"
+          # ---- end of Hearth's gaming apps
+          # ---- Hearth Tools (hosts/hearth-tools)
+          warn "Hearth Tools is installed with its menu entries and icons" "test -x /usr/bin/hearth-tools && test -f /usr/share/applications/hearth-disk-usage.desktop && test -f /usr/share/applications/hearth-welcome.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-logs.svg"
+          warn "every library Hearth Tools links is installed" "! ldd /usr/bin/hearth-tools | grep -q 'not found'"
+          warn "Hearth Tools answers without a window (--list-apps, --call sys.overview)" "/usr/bin/hearth-tools --list-apps | grep -q printers && HOME=/tmp /usr/bin/hearth-tools --call sys.overview | grep -q memory"
+          warn "the scanner tools (scanimage, sane-airscan) and traceroute are installed" "command -v scanimage && ls /etc/sane.d/airscan.conf && command -v traceroute"
+          # ---- end Hearth Tools
           # SVG through gdk-pixbuf: the classic loader in loaders.cache, or glycin's SVG loader (newer gdk-pixbuf).
           check "GTK can load SVG icons (gdk-pixbuf's SVG loader or glycin's)" "grep -qis svg /usr/lib*/gdk-pixbuf-2.0/2.10.0/loaders.cache /usr/lib/*/gdk-pixbuf-2.0/2.10.0/loaders.cache 2>/dev/null || ls /usr/share/glycin-loaders/*/conf.d/ 2>/dev/null | grep -qi svg || ls /usr/libexec/glycin-loaders/*/ /usr/lib/glycin-loaders/*/ 2>/dev/null | grep -qi svg"
           warn "an SVG icon really loads (gdk-pixbuf-thumbnailer)" "gdk-pixbuf-thumbnailer -s 32 /usr/share/icons/Adwaita/scalable/status/image-missing.svg /tmp/svg.png"
