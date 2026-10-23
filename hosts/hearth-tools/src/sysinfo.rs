@@ -111,7 +111,8 @@ fn hex(s: &str) -> Option<u16> { u16::from_str_radix(s.trim().trim_start_matches
 /// "NVRM version: NVIDIA UNIX x86_64 Kernel Module  560.35.03  ..." -> 560.35.03
 pub fn nvidia_version(text: &str) -> Option<String> {
     let l = text.lines().find(|l| l.contains("Kernel Module"))?;
-    l.split("Kernel Module").nth(1)?.split_whitespace().next().map(str::to_string)
+    // The first word that's a version number ("Open Kernel Module for x86_64  580.82.09 ..." too).
+    l.split("Kernel Module").nth(1)?.split_whitespace().find(|w| w.contains('.') && w.chars().all(|c| c.is_ascii_digit() || c == '.')).map(str::to_string)
 }
 
 /// Mesa's version from its library's file name (libgallium-25.1.4.so), which newer Mesa carries.
