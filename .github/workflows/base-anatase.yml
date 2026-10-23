@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**']
+    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -187,6 +187,22 @@ jobs:
           cp desktop/hearth-*.desktop /tmp/app/hearth-tools/
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end Hearth Tools
+      # ---- Hearth Office (hosts/hearth-office): Write, Sheets and Slides (one program). Built the same way and carried
+      # in hearth-app.tar as office/ with its install script (build.sh runs office/install.sh). Not fatal:
+      # without it the image is still made.
+      - name: Build Hearth Office
+        continue-on-error: true
+        working-directory: hosts/hearth-office
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          for f in xlsx.full.min.js hyperformula.full.min.js docx.iife.js pptxgen.bundle.js; do test -s "ui/vendor/$f" || { echo "::warning title=Hearth Office::ui/vendor/$f is missing (run office.yml with vendor ticked), so this image is made without it"; exit 1; }; done
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release || { echo "::warning title=Hearth Office::it didn't build, so this image is made without it"; exit 1; }
+          mkdir -p /tmp/app/office
+          cp "$CARGO_TARGET_DIR/release/hearth-office" linux/install.sh /tmp/app/office/
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth Office
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -317,6 +333,9 @@ jobs:
           warn "Photos opens JPEGs and Documents opens PDFs by default" "grep -q '^image/jpeg=hearth-photos.desktop' /usr/share/applications/mimeapps.list && grep -q '^application/pdf=hearth-documents.desktop' /usr/share/applications/mimeapps.list && test -f /usr/share/icons/hicolor/scalable/apps/hearth-photos.svg"
           warn "libheif's tools are installed (HEIC pictures in Photos)" "command -v heif-dec || command -v heif-convert"
           # ---- end of Hearth Photos and Hearth Documents
+          # ---- Hearth Office (hosts/hearth-office)
+          warn "Hearth Office is installed (hearth-write, hearth-sheets, hearth-slides) with every library it links" "test -x /usr/bin/hearth-office && test -L /usr/bin/hearth-write && test -f /usr/share/applications/hearth-sheets.desktop && grep -q hearth-slides.desktop /etc/xdg/nimbus-mimeapps.list && ! ldd /usr/bin/hearth-office | grep -q 'not found'"
+          # ---- end of Hearth Office
           # ---- Hearth's gaming apps (hosts/hearth-gaming): warnings, not failures (the image is still fine without them).
           warn "Hearth's gaming apps are installed and find their libraries (Controller Lab, Saves, Mods)" "for a in hearth-controller-lab hearth-saves hearth-mods; do test -x /usr/bin/\$a && ! ldd /usr/bin/\$a | grep -q 'not found' || exit 1; done"
           warn "their menu entries and icons" "for a in hearth-controller-lab hearth-saves hearth-mods; do test -f /usr/share/applications/\$a.desktop && test -f /usr/share/icons/hicolor/scalable/apps/\$a.svg || exit 1; done"

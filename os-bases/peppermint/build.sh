@@ -771,6 +771,15 @@ DESKTOP
 fi
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # ---- end of Hearth Contacts and Hearth Maps
+# ---- Hearth Office (hosts/hearth-office): Write, Sheets and Slides, built by CI with the app (base-peppermint.yml) and
+# carried in os/nimbus-app/office. office/install.sh puts in the program (hearth-write, hearth-sheets and
+# hearth-slides are links to it), the menu entries and the .hslides file type (the icons are in Hearth's icon set), and makes them the default
+# apps for office files in Hearth's desktop (nimbus-mimeapps.list, so after the file manager's line above). Fonts with
+# the same sizes as Office's (Calibri, Cambria, Arial, Times New Roman), so documents keep their layout.
+"${APT[@]}" fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation2 || true
+if [ -x /ctx/nimbus-app/office/hearth-office ]; then sh /ctx/nimbus-app/office/install.sh
+else echo "Hearth Office wasn't built; this image goes without it"; fi
+# ---- end of Hearth Office
 
 # ------------------------------------------------------------------ Beacon (BFME, Age of the Ring, LOTR: Conquest...)
 # Beacon's release package: `beacon`, the tool Hearth's library talks to (hosts/hearth-core/src/beacon.rs), and
