@@ -273,6 +273,59 @@ Categories=System;Utility;
 Keywords=disk;drive;partition;format;usb;sd;card;mount;eject;storage;steam;library;
 DESKTOP
 fi
+
+# ------------------------------------------------------------------ Hearth Time (hosts/hearth-time)
+# Clock, Calendar, Notes and Weather: one program, /usr/bin/hearth-time, with a link per app (hearth-clock,
+# hearth-calendar, hearth-notes, hearth-weather), their menu entries and icons, and the small background service
+# that rings alarms and timers with the apps closed, shows calendar reminders and keeps the weather summary fresh
+# (hearth-time.service, a systemd user service, on for every user). Built with the app (base-*.yml), carried in
+# os/nimbus-app/hearth-time/. Alarms open their window with xprop/xdotool in Game Mode and wlopm in Desktop Mode
+# (installed above), and play their tone with pw-play.
+if [ -x /ctx/nimbus-app/hearth-time/hearth-time ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-time/hearth-time /usr/bin/hearth-time
+  if ldd /usr/bin/hearth-time | grep "not found"; then echo "warning: Hearth Time is missing the libraries above"; fi
+  install -d /usr/share/applications /usr/share/icons/hicolor/scalable/apps /usr/lib/systemd/user
+  for a in clock calendar notes weather; do
+    ln -sf hearth-time "/usr/bin/hearth-$a"
+    if [ -f "/ctx/nimbus-app/hearth-time/hearth-$a.svg" ]; then install -m644 "/ctx/nimbus-app/hearth-time/hearth-$a.svg" "/usr/share/icons/hicolor/scalable/apps/hearth-$a.svg"; fi
+  done
+  hearth_time_entry() {  # id, name, comment, categories, keywords
+    cat > "/usr/share/applications/hearth-$1.desktop" <<DESKTOP
+[Desktop Entry]
+Name=$2
+Comment=$3
+Exec=/usr/bin/hearth-$1
+TryExec=/usr/bin/hearth-time
+Icon=hearth-$1
+Type=Application
+Categories=$4
+Keywords=$5
+StartupNotify=true
+StartupWMClass=io.github.dragongamer9.hearth.$1
+DESKTOP
+  }
+  hearth_time_entry clock Clock "Alarms, timers, a stopwatch and world clocks" "Utility;Clock;" "alarm;timer;stopwatch;world;clock;time;"
+  hearth_time_entry calendar Calendar "Your events and reminders, and .ics calendars" "Office;Calendar;" "calendar;event;reminder;ics;schedule;agenda;"
+  hearth_time_entry notes Notes "Quick notes and checklists, kept as plain files in Documents/Notes" "Office;Utility;" "note;notes;checklist;todo;markdown;memo;"
+  hearth_time_entry weather Weather "The forecast for a place you choose (Open-Meteo)" "Utility;" "weather;forecast;temperature;rain;"
+  cat > /usr/lib/systemd/user/hearth-time.service <<'UNIT'
+[Unit]
+Description=Hearth Clock alarms and timers, Calendar reminders and the weather summary
+
+[Service]
+ExecStart=/usr/bin/hearth-time --service
+Restart=on-failure
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=default.target
+UNIT
+  systemctl --global enable hearth-time.service 2>/dev/null \
+    || { mkdir -p /etc/systemd/user/default.target.wants && ln -sf /usr/lib/systemd/user/hearth-time.service /etc/systemd/user/default.target.wants/hearth-time.service; }
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+fi
+# ---- end of Hearth Time
 # CI builds the app in a debian:trixie container, so every library it links must be here under the same name.
 if ldd /usr/lib/nimbus/nimbus | grep "not found"; then
   echo "The Hearth app needs libraries this image doesn't have (above)"; exit 1

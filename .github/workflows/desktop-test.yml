@@ -53,6 +53,12 @@ jobs:
           # Steam). A stand-in "steam" that leaves a mark if it's run.
           mkdir -p "$HOME/.config/autostart" /tmp/fakebin
           printf '#!/bin/sh\ntouch "$HOME/steam-started"\n' > /tmp/fakebin/steam && chmod +x /tmp/fakebin/steam
+          # ---- Hearth Time stand-in (hosts/hearth-time): an event for the clock panel, a weather line for Quick Access.
+          printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+            '  --events) d=$(date +%F); printf "{\"events\":[{\"title\":\"Dentist\",\"date\":\"%s\",\"lastDate\":\"%s\",\"allDay\":false,\"start\":%s000,\"end\":%s000,\"location\":\"Smile Clinic\",\"color\":\"\"}]}\n" "$d" "$d" "$(date -d "+2 hours" +%s)" "$(date -d "+3 hours" +%s)" ;;' \
+            '  --weather-summary) echo "{\"place\":\"Lisbon\",\"line\":\"18° Partly cloudy\",\"day\":true}" ;;' 'esac' > /tmp/fakebin/hearth-time
+          chmod +x /tmp/fakebin/hearth-time
+          # ---- end of Hearth Time stand-in
           export PATH="/tmp/fakebin:$PATH"
           printf '[Desktop Entry]\nType=Application\nName=Autostart test\nExec=touch %s/autostarted\n' "$HOME" > "$HOME/.config/autostart/test.desktop"
           printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=steam -silent %%U\n' > "$HOME/.config/autostart/steam.desktop"
