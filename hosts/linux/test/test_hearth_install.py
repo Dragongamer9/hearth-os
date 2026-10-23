@@ -554,6 +554,21 @@ class BootMenu(unittest.TestCase):
         self.assertIn("menuentry 'Badname'", t)
 
 
+class Hosts(unittest.TestCase):
+    def test_empty_file_gets_localhost_and_the_name(self):
+        text = H.hosts_text('', 'sams-deck')
+        self.assertEqual(text.splitlines()[:2], ['127.0.0.1\tlocalhost', '127.0.1.1\tsams-deck'])
+        self.assertIn('::1', text)
+
+    def test_replaces_an_old_name_and_keeps_the_rest(self):
+        old = '127.0.0.1 localhost\n127.0.1.1 old-name\n::1 localhost\n10.0.0.5 nas\n'
+        text = H.hosts_text(old, 'new-name')
+        self.assertNotIn('old-name', text)
+        self.assertEqual(text.count('127.0.1.1'), 1)
+        self.assertIn('10.0.0.5 nas', text)
+        self.assertEqual(text.splitlines()[1], '127.0.1.1\tnew-name')
+
+
 if __name__ == '__main__':
     unittest.main()
 
