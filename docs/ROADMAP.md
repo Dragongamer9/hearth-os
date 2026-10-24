@@ -92,6 +92,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 ## Archived
 
 - Hearth OS on Ubuntu and on CachyOS: archived 2026-10-22, to focus on Anatase and Peppermint until they're solid; they come back after that. No builds (base-ubuntu.yml / base-cachyos.yml run by hand only, with "archived" typed in), not offered by the installer or Switch edition; systems on them see a notice and can switch to Anatase or Peppermint. Code in `os-bases/ubuntu` and `os-bases/cachyos`.
+- Hearth's own app store (Apps in Mantel, `hearth-apps`): archived 2026-10-24, it wasn't showing apps; Hearth OS ships Bazaar (Flathub) as its app store on Anatase and Peppermint instead, in every place the store was. Code in `archive/app-store`, see docs/ARCHIVED.md.
 - Hearth for Android (and Hearth Linux on Android): archived 2026-10-21; focus is Hearth OS and Ember. Code in `hosts/android`, build by hand only.
 
 ## 0.2.6 (released)

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""hearth-apps: the work behind Apps (AppStore.qml), Desktop Mode's app store for Flathub, through the flatpak
+"""ARCHIVED (docs/ARCHIVED.md): Hearth OS ships Bazaar as its app store instead. hearth-apps: the work behind Apps (AppStore.qml), Desktop Mode's app store for Flathub, through the flatpak
 command. Apps are installed for you (flatpak --user), the way the rest of Hearth installs Flatpaks (Moonlight,
 emulators); apps that came with the system (--system) are listed, updated and can be removed too.
 When your own Flatpak folder can't be written (~/.local/share/flatpak, or ~/.local/share, owned by root or by an
