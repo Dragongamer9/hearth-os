@@ -6,7 +6,7 @@
 // (on Nvidia graphics, or when chosen in Settings › Display › Drawing engine), so the session and its watchdog
 // don't change.
 
-const { app, BrowserWindow, dialog, ipcMain, protocol, globalShortcut, screen } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, protocol, globalShortcut, screen, session } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -39,7 +39,7 @@ protocol.registerSchemesAsPrivileged([
 // ------------------------------------------------------------------ the core
 let core = null;
 let leaving = false;
-const wins = {};                 // label → BrowserWindow (main, overlay, signin, stream)
+const wins = {};                 // label → BrowserWindow (main, overlay, signin, stream, storeweb)
 const artWait = new Map();       // id → resolve
 let artId = 1;
 
@@ -96,6 +96,8 @@ function act(m) {
     case 'stream.close': if (wins.stream && !wins.stream.isDestroyed()) wins.stream.destroy(); break;
     case 'signin.open': openSignIn(m); break;
     case 'signin.close': closeSignIn(); break;
+    case 'storeweb.open': openStoreWeb(m); break;
+    case 'storeweb.close': if (wins.storeweb && !wins.storeweb.isDestroyed()) wins.storeweb.destroy(); break;
   }
 }
 
@@ -180,8 +182,9 @@ function openSignIn(m) {
   closeSignIn();
   const w = new BrowserWindow({
     title: m.title || 'Sign in', backgroundColor: '#0c1016', fullscreen: !!m.fullscreen, width: 900, height: 760, autoHideMenuBar: true,
-    // A fresh browser profile each time: nothing from one sign-in is left for the next.
-    webPreferences: { partition: 'signin-' + Date.now(), contextIsolation: true, sandbox: true },
+    // The store's own browser profile (m.profile, kept with the person's sign-ins), shared with Game Mode › Store's
+    // store window: signing in here signs that in too, so it's one sign-in. Signing out removes it.
+    webPreferences: { session: storeSession(m.profile), contextIsolation: true, sandbox: true },
   });
   w.on('page-title-updated', e => e.preventDefault());
   // The page never sees the controller (Epic's and Microsoft's react to it on their own: random clicks).
@@ -198,6 +201,46 @@ function openSignIn(m) {
   w.on('closed', () => { if (!w.hearthClosedByCore) send({ t: 'signin.closed' }); });
   track('signin', w);
   w.loadURL(String(m.url || '')).catch(e => log('sign-in page: ' + e.message));
+}
+
+// A store's browser profile: the folder the core named (accounts/web/<store>-<id>/chromium). Without one (an older
+// core), a fresh profile each time, as before.
+function storeSession(dir) {
+  if (typeof dir === 'string' && dir.startsWith('/')) {
+    try { if (typeof session.fromPath === 'function') return session.fromPath(dir); } catch (e) { log('store profile: ' + e.message); }
+    let h = 0; for (const c of dir) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return session.fromPartition('persist:hearth-store-' + h.toString(16));
+  }
+  return session.fromPartition('signin-' + Date.now());
+}
+
+// Game Mode › Store's store window: a store's own page (GOG, Epic, Xbox) for buying and wishlists, signed in with
+// the profile its sign-in window uses. Full screen with the controller helper in Game Mode (B closes it). A payment
+// provider's popup opens as its own small window over it, with the same profile. Closing it tells the core, which
+// fetches that store's games again.
+function openStoreWeb(m) {
+  const old = wins.storeweb && !wins.storeweb.isDestroyed() ? wins.storeweb : null;
+  if (old && old.hearthStore === m.store) { old.loadURL(String(m.url || '')).catch(e => log('store window: ' + e.message)); old.focus(); return; }
+  if (old) old.destroy();
+  const ses = storeSession(m.profile);
+  const w = new BrowserWindow({
+    title: m.title || 'Store', backgroundColor: '#0c1016', fullscreen: !!m.fullscreen, width: 1180, height: 800, autoHideMenuBar: true,
+    webPreferences: { session: ses, contextIsolation: true, sandbox: true },
+  });
+  w.hearthStore = m.store;
+  w.on('page-title-updated', e => e.preventDefault());
+  const inject = script('signin-nogamepad.js') + '\n' + script('storeweb.js') + '\n' + (m.pad ? script('signin-pad.js') : '');
+  const leave = url => String(url).startsWith('hearth-signin://cancel');
+  const web = url => /^https:\/\//.test(String(url));
+  w.webContents.on('will-navigate', (e, url) => { if (leave(url)) { e.preventDefault(); w.destroy(); } else if (!web(url)) e.preventDefault(); });
+  w.webContents.on('will-redirect', (e, url) => { if (!web(url)) e.preventDefault(); });
+  w.webContents.on('dom-ready', () => w.webContents.executeJavaScript(inject).catch(() => {}));
+  w.webContents.setWindowOpenHandler(({ url }) => web(url)
+    ? { action: 'allow', overrideBrowserWindowOptions: { parent: w, width: 600, height: 760, autoHideMenuBar: true, webPreferences: { session: ses, contextIsolation: true, sandbox: true } } }
+    : { action: 'deny' });
+  w.on('closed', () => send({ t: 'storeweb.closed', store: m.store }));
+  track('storeweb', w);
+  w.loadURL(String(m.url || '')).catch(e => log('store window: ' + e.message));
 }
 
 // Xbox Cloud Gaming, full screen, with its own sign-in kept between games.

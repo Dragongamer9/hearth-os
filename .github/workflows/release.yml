@@ -56,23 +56,28 @@ jobs:
       - name: Quick Access picture (overlay)
         if: always()
         run: f=tools/qa-shots/overlay.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT qa-overlay $i::$part"; done || true
-      # Hearth's on-screen keyboard (ui/osk): pictures as notices, the same way (title "SHOT osk-<which> <n>"), one step each
-      # (small JPEGs: a job keeps 50 notices, Quick Access's pictures included).
-      - name: On-screen keyboard picture (1-search)
-        if: always()
-        run: f=tools/osk-shots/1-search.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-1-search $i::$part"; done || true
-      - name: On-screen keyboard picture (2-suggestions)
+      # Hearth's on-screen keyboard (ui/osk): two pictures as notices, the same way (title "SHOT osk-<which> <n>"); a job
+      # keeps 50 notices, so all five (tools/osk-shots) are kept on the run as the on-screen-keyboard download.
+      - name: On-screen keyboard picture (suggestions)
         if: always()
         run: f=tools/osk-shots/2-suggestions.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-2-suggestions $i::$part"; done || true
-      - name: On-screen keyboard picture (3-emoji)
-        if: always()
-        run: f=tools/osk-shots/3-emoji.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-3-emoji $i::$part"; done || true
-      - name: On-screen keyboard picture (4-ember-wheel)
+      - name: On-screen keyboard picture (Ember Wheel)
         if: always()
         run: f=tools/osk-shots/4-ember-wheel.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-4-ember-wheel $i::$part"; done || true
-      - name: On-screen keyboard picture (5-split-daylight)
+      - uses: actions/upload-artifact@v4
         if: always()
-        run: f=tools/osk-shots/5-split-daylight.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-5-split-daylight $i::$part"; done || true
+        with:
+          name: on-screen-keyboard
+          path: tools/osk-shots
+          if-no-files-found: ignore
+          retention-days: 14
+      # Game Mode › Store (the preview's data): Steam's store page and a game's page, the same way (ui-check.js).
+      - name: Store picture (store page)
+        if: always()
+        run: f=tools/store-shots/home.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT store-home $i::$part"; done || true
+      - name: Store picture (game page)
+        if: always()
+        run: f=tools/store-shots/game.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT store-game $i::$part"; done || true
       # Mantel on Windows (Ember): the taskbar, launcher, menus, clock panel, clipboard history, desktop icons,
       # Hearth Settings and Apps pages, driven through a stand-in for Ember's host.
       - name: Check Mantel's pages
