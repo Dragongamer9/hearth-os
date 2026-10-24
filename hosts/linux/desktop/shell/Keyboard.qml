@@ -71,7 +71,22 @@ PanelWindow {
         whichWtype.running = true;
     }
 
+    // The clipboard panel: recent copies (clipboard history, hearth-clipboard).
+    Process {
+        id: clipList
+        command: ["python3", decodeURIComponent(Qt.resolvedUrl("hearth-clipboard").toString().replace(/^file:\/\//, "")), "list"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const d = JSON.parse(text.trim().split("\n").pop());
+                    const items = (Array.isArray(d) ? d : (d.items || [])).filter(x => x && typeof x.text === "string" && x.text).map(x => x.text);
+                    Osk.HearthOSK.configure({ clipboard: items.slice(0, 12) });
+                } catch (e) {}
+            }
+        }
+    }
     function openKb() {
+        if (!clipList.running) clipList.running = true;
         if (!engine) makeEngine();
         engine.reset("text", "");
         engine.setHints(true);

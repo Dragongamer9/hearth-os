@@ -66,7 +66,9 @@ Item {
         // the strip: word suggestions, or what the controller does
         RowLayout {
             Layout.fillWidth: true
+            Layout.fillHeight: false
             Layout.preferredHeight: board.topH
+            Layout.maximumHeight: board.topH
             spacing: 6
             Repeater {
                 model: board.vm ? board.vm.suggestions : []
@@ -76,7 +78,7 @@ Item {
                     required property int index
                     readonly property bool sel: board.vm.active && board.vm.sel.r === -1 && board.vm.sel.c === index
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    Layout.preferredHeight: board.topH
                     radius: height / 2
                     color: sel ? board.th.sel : board.th.bg2
                     border.width: sel ? 3 : 0
@@ -136,7 +138,7 @@ Item {
                             readonly property real total: line.modelData.reduce((a, k) => a + k.w, 0)
                             Repeater {
                                 model: board.split ? [] : line.modelData
-                                delegate: OskKey { board: board; row: line.index; key: modelData; col: index; width: (fullRow.width - board.gap * (line.modelData.length - 1)) * modelData.w / fullRow.total }
+                                delegate: OskKey { owner: board; row: line.index; key: modelData; col: index; width: (fullRow.width - board.gap * (line.modelData.length - 1)) * modelData.w / fullRow.total }
                             }
                         }
                         Row {
@@ -149,7 +151,7 @@ Item {
                             readonly property real total: keys.reduce((a, k) => a + k.w, 0)
                             Repeater {
                                 model: leftHalf.keys
-                                delegate: OskKey { board: board; row: line.index; key: modelData; col: modelData.col; width: (leftHalf.width - board.gap * (leftHalf.keys.length - 1)) * modelData.w / leftHalf.total }
+                                delegate: OskKey { owner: board; row: line.index; key: modelData; col: modelData.col; width: (leftHalf.width - board.gap * (leftHalf.keys.length - 1)) * modelData.w / leftHalf.total }
                             }
                         }
                         Row {
@@ -162,7 +164,7 @@ Item {
                             readonly property real total: keys.reduce((a, k) => a + k.w, 0)
                             Repeater {
                                 model: rightHalf.keys
-                                delegate: OskKey { board: board; row: line.index; key: modelData; col: modelData.col; width: (rightHalf.width - board.gap * (rightHalf.keys.length - 1)) * modelData.w / rightHalf.total }
+                                delegate: OskKey { owner: board; row: line.index; key: modelData; col: modelData.col; width: (rightHalf.width - board.gap * (rightHalf.keys.length - 1)) * modelData.w / rightHalf.total }
                             }
                         }
                     }

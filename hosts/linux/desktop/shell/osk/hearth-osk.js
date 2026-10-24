@@ -16,6 +16,21 @@ var HearthOSK = (function () {
   'use strict';
   var API_VERSION = 1;
 
+  // ------------------------------------------------------------------------------------------------ shared state
+  // Words and what was learned are shared by every keyboard on the page.
+  var STATE = {
+    dict: {},                 // lang → {list: [words, most used first], folded: [...]}
+    learned: {},              // lang → {word: count}
+    next: {},                 // lang → {word: {next word: count}}
+    recentEmoji: [],
+    clipboard: [],
+    systemLayouts: [],        // the system's XKB layouts, in order
+    settings: null,
+    save: null,               // function(data) called (soon after) when learned words change
+    loadWords: null,          // function(lang) to fetch a language's words (set for web pages below)
+    base: '',
+    listeners: []
+  };
   // ------------------------------------------------------------------------------------------------ layouts
   // Letters only: the number row, punctuation and the bottom row are the same everywhere. `xkb`: the system
   // keyboard layouts (Settings › Keyboard) that pick it when the layout is Automatic.
@@ -103,21 +118,6 @@ var HearthOSK = (function () {
     trail: true               // the ember glow follows the selection with a short trail
   };
 
-  // ------------------------------------------------------------------------------------------------ shared state
-  // Words and what was learned are shared by every keyboard on the page.
-  var STATE = {
-    dict: {},                 // lang → {list: [words, most used first], folded: [...]}
-    learned: {},              // lang → {word: count}
-    next: {},                 // lang → {word: {next word: count}}
-    recentEmoji: [],
-    clipboard: [],
-    systemLayouts: [],        // the system's XKB layouts, in order
-    settings: null,
-    save: null,               // function(data) called (soon after) when learned words change
-    loadWords: null,          // function(lang) to fetch a language's words (set for web pages below)
-    base: '',
-    listeners: []
-  };
   function settings() {
     var s = {}, k;
     for (k in DEFAULTS) s[k] = DEFAULTS[k];
@@ -296,6 +296,7 @@ var HearthOSK = (function () {
     };
     var host = opts.host || 'web';
     var listeners = [];
+    var cachedRows = null;   // the keys on screen, worked out again after each change
     if (opts.onChange) listeners.push(opts.onChange);
     function changed() { cachedRows = null; for (var i = 0; i < listeners.length; i++) try { listeners[i](); } catch (e) { /* a view */ } }
     function now() { return Date.now(); }
@@ -490,7 +491,6 @@ var HearthOSK = (function () {
         chars('789').concat([K('enter', '', E.enterLabel || LABELS.enter, 1.2, { go: true })]),
         [K('ch', '-', '−'), K('ch', '0'), K('ch', '.'), K('hide', '', LABELS.hide, 1.2)]];
     }
-    var cachedRows = null;
     function rows() {
       if (cachedRows) return cachedRows;
       var r = E.panel === 'sym' ? symRows() : E.panel === 'emoji' ? emojiRows() : E.panel === 'clip' ? clipRows() : E.panel === 'num' ? numRows() : letterRows();
