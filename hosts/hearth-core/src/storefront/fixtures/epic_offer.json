@@ -1,0 +1,103 @@
+{
+ "data": {
+  "Catalog": {
+   "catalogOffer": {
+    "title": "Hades II",
+    "id": "adbc94588a184ce3a6122a19aae940ae",
+    "namespace": "36a21c249987423a93f8442cc40a0e33",
+    "description": "Battle beyond the Underworld using dark sorcery to take on the Titan of Time in this bewitching sequel to the Game-of-the-Year-winning rogue-like dungeon crawler.",
+    "longDescription": "<!--textBlock-->\n<!--text-->\nThe first-ever sequel from Supergiant Games builds on the best aspects of the original god-like rogue-like dungeon crawler in an all-new, action-packed, endlessly replayable experience rooted in the Underworld of Greek myth and its deep connections to the dawn of witchcraft.\n\n<!--textBlock-->\n<!--title-->\n# BATTLE BEYOND THE UNDERWORLD\n<!--text-->\nAs the immortal Princess of the Underworld, you'll explore a bigger, deeper mythic world, vanquishing the forces of the Titan of Time with the full might of Olympus behind you, in a sweeping story that continually unfolds through your every setback and accomplishment.\n\n<!--textBlock-->\n<!--title-->\n# MASTER WITCHCRAFT AND DARK SORCERY\n<!--text-->\nInfuse your legendary weapons of Night with ancient magick, so that none may stand in your way. Become stronger still with powerful Boons from more than a dozen Olympian gods, from Apollo to Zeus. There are nearly limitless ways to build your abilities.\n\n<!--textBlock-->\n<!--title-->\n# MINGLE WITH (MORE) GODS, GHOSTS, AND MONSTERS\n<!--text-->\nMeet a cast of dozens of fully-voiced, larger-than-life characters, including plenty of new faces and some old friends. Grow closer to them through a variety of new interactions, and experience countless unique story events based on how your journey unfolds.\n\n<!--textBlock-->\n<!--title-->\n# EVERY RUN IS ITS OWN ADVENTURE\n<!--text-->\nNew locations, challenges, upgrade systems, and surprises await as you delve into the ever-shifting Underworld again and again. Reveal the mysteries of the Altar of Ashes, tame witchy familiars, and gather reagents using Tools of the Unseen to get closer to your goal.\n\n<!--textBlock-->\n<!--title-->\n# THE PERKS OF IMMORTALITY\n<!--text-->\nThanks to a variety of permanent upgrades and the ret",
+    "developerDisplayName": "Supergiant Games",
+    "publisherDisplayName": "Supergiant Games",
+    "releaseDate": "2024-05-06T16:30:00.000Z",
+    "effectiveDate": "2024-05-06T16:30:00.000Z",
+    "keyImages": [
+     {
+      "type": "OfferImageWide",
+      "url": "https://cdn1.epicgames.com/spt-assets/ea0a24395cd641d7bbde3e5d78ad462c/hades-ii-7sgi1.png"
+     },
+     {
+      "type": "OfferImageTall",
+      "url": "https://cdn1.epicgames.com/spt-assets/ea0a24395cd641d7bbde3e5d78ad462c/hades-ii-1rb3z.png"
+     },
+     {
+      "type": "Thumbnail",
+      "url": "https://cdn1.epicgames.com/spt-assets/ea0a24395cd641d7bbde3e5d78ad462c/hades-ii-1rb3z.png"
+     },
+     {
+      "type": "heroCarouselVideo",
+      "url": "com.epicgames.video://05ec2865-adea-478f-8fb6-21d70c1e1fbb?cover=https%3A%2F%2Fcdn1.epicgames.com%2Fspt-assets%2Fea0a24395cd641d7bbde3e5d78ad462c%2Fhades-ii-video-ycrh1.png"
+     },
+     {
+      "type": "featuredMedia",
+      "url": "https://cdn1.epicgames.com/spt-assets/ea0a24395cd641d7bbde3e5d78ad462c/hades-ii-bpzuk.png"
+     },
+     {
+      "type": "featuredMedia",
+      "url": "https://cdn1.epicgames.com/spt-assets/ea0a24395cd641d7bbde3e5d78ad462c/hades-ii-1giqq.jpg"
+     },
+     {
+      "type": "featuredMedia",
+      "url": "https://cdn1.epicgames.com/spt-assets/ea0a24395cd641d7bbde3e5d78ad462c/hades-ii-6l588.jpg"
+     },
+     {
+      "type": "featuredMedia",
+      "url": "https://cdn1.epicgames.com/spt-assets/ea0a24395cd641d7bbde3e5d78ad462c/hades-ii-qx46j.jpg"
+     }
+    ],
+    "productSlug": "hades-ii",
+    "urlSlug": "hades-ii",
+    "catalogNs": {
+     "mappings": [
+      {
+       "pageSlug": "hades-ii"
+      }
+     ]
+    },
+    "tags": [
+     {
+      "id": "1216",
+      "name": "Action",
+      "groupName": "genre"
+     },
+     {
+      "id": "21122",
+      "name": "Diverse Characters",
+      "groupName": "usersay"
+     },
+     {
+      "id": "1188",
+      "name": "RELAXING",
+      "groupName": null
+     },
+     {
+      "id": "21894",
+      "name": "Cloud Saves",
+      "groupName": "epicfeature"
+     },
+     {
+      "id": "19847",
+      "name": "Achievements",
+      "groupName": "epicfeature"
+     },
+     {
+      "id": "21127",
+      "name": "Creative Community",
+      "groupName": "usersay"
+     }
+    ],
+    "price": {
+     "totalPrice": {
+      "discountPrice": 2999,
+      "originalPrice": 2999,
+      "currencyCode": "USD",
+      "fmtPrice": {
+       "originalPrice": "$29.99",
+       "discountPrice": "$29.99"
+      }
+     }
+    }
+   }
+  }
+ }
+}

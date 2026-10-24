@@ -1,0 +1,151 @@
+{
+ "pages": 1139,
+ "currentlyShownProductCount": 4556,
+ "productCount": 4556,
+ "products": [
+  {
+   "id": "1211776926",
+   "slug": "dead_age_1_2_bundle",
+   "screenshots": [
+    "https://images.gog-statics.com/26cd4887ff4c0ead6f05c42e2fcfeeb8b310f6497bcdf035bfba78a15754e294_{formatter}.jpg",
+    "https://images.gog-statics.com/16c3acb7c655d843bb5b111abc47b11d57f2537bced33637f9ae4219ba510688_{formatter}.jpg"
+   ],
+   "userPreferredLanguage": null,
+   "releaseDate": "2020.10.28",
+   "storeReleaseDate": "2020.10.28",
+   "productType": "pack",
+   "title": "Dead Age 1 + 2 Bundle",
+   "coverHorizontal": "https://images.gog-statics.com/5a4a5c397cdce1d6336ff3676f7f0272200c2b7beb2682a4650538994ccba82d.png",
+   "coverVertical": "https://images.gog-statics.com/0bea7fb20fa9e1ed62cd7878c984a2462dd83b894b9408097f45dedfc99ad032.jpg",
+   "logo": "https://images.gog-statics.com/804f6e3290be75ae10f672f14e75bad129f5d5569ad60177b9deaa66885c653b.png",
+   "galaxyBackgroundImage": "https://images.gog-statics.com/eb9b0cc79875af9e09aab6c10b857dd6675eb868c0b749f75f163e705eeaec2d.jpg",
+   "developers": [
+    "Silent Dreams"
+   ],
+   "publishers": [
+    "Headup"
+   ],
+   "operatingSystems": [
+    "windows",
+    "linux",
+    "osx"
+   ],
+   "price": {
+    "final": "$1.49",
+    "base": "$29.59",
+    "discount": "-95%",
+    "finalMoney": {
+     "amount": "1.49",
+     "currency": "USD",
+     "discount": "28.10"
+    },
+    "baseMoney": {
+     "amount": "29.59",
+     "currency": "USD"
+    }
+   },
+   "productState": "default",
+   "genres": [
+    {
+     "name": "Role-playing",
+     "slug": "rpg"
+    },
+    {
+     "name": "Turn-based",
+     "slug": "turnbased"
+    },
+    {
+     "name": "Survival",
+     "slug": "survival"
+    }
+   ],
+   "tags": [
+    {
+     "name": "Story Rich",
+     "slug": "story-rich"
+    },
+    {
+     "name": "Atmospheric",
+     "slug": "atmospheric"
+    }
+   ],
+   "reviewsRating": 28,
+   "reviewsCount": 13,
+   "storeLink": "https://www.gog.com/en/game/dead_age_1_2_bundle"
+  },
+  {
+   "id": "1254210921",
+   "slug": "the_black_within",
+   "screenshots": [
+    "https://images.gog-statics.com/2d1f8c227a3fbd42695ddebc1f8457b1c3777b6c97deaf6d9f5c82d831e93b05_{formatter}.jpg",
+    "https://images.gog-statics.com/06d416fedab2a67eeb186b292f83071ec34e5d8f1c88f12aeefe3f734bc690ec_{formatter}.jpg"
+   ],
+   "userPreferredLanguage": {
+    "code": "en",
+    "inAudio": true,
+    "inText": true
+   },
+   "releaseDate": "2024.05.30",
+   "storeReleaseDate": "2024.07.17",
+   "productType": "game",
+   "title": "The Black Within",
+   "coverHorizontal": "https://images.gog-statics.com/262b0d8e8b804ce84f62db51e51ad336db43a54ba68f008fc03de7c90ba3683b.png",
+   "coverVertical": "https://images.gog-statics.com/4914d8f246853a93c91bac7c2365a7d0350aba25de9e6a06d352ae9c13f0e602.jpg",
+   "logo": "https://images.gog-statics.com/40d5e59b6852020e20b78c4dc112b12def7e3d1fe44e6323199f3c6e43bf1112.png",
+   "galaxyBackgroundImage": "https://images.gog-statics.com/b9fedf071a9f3e8aee46590fb1949edb437b76dad7e6f5e611b805c65071d926.jpg",
+   "developers": [
+    "waleedzo"
+   ],
+   "publishers": [
+    "waleedzo"
+   ],
+   "operatingSystems": [
+    "windows"
+   ],
+   "price": {
+    "final": "$0.49",
+    "base": "$9.99",
+    "discount": "-95%",
+    "finalMoney": {
+     "amount": "0.49",
+     "currency": "USD",
+     "discount": "9.50"
+    },
+    "baseMoney": {
+     "amount": "9.99",
+     "currency": "USD"
+    }
+   },
+   "productState": "default",
+   "genres": [
+    {
+     "name": "Simulation",
+     "slug": "simulation"
+    },
+    {
+     "name": "Horror",
+     "slug": "horror"
+    },
+    {
+     "name": "Adventure",
+     "slug": "adventure"
+    }
+   ],
+   "tags": [
+    {
+     "name": "Adventure",
+     "slug": "adventure"
+    },
+    {
+     "name": "Simulation",
+     "slug": "simulation"
+    }
+   ],
+   "reviewsRating": 30,
+   "reviewsCount": 23,
+   "storeLink": "https://www.gog.com/en/game/the_black_within"
+  }
+ ],
+ "dreamlistGames": [],
+ "searchAlgo": "default"
+}

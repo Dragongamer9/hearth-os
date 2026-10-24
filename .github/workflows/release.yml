@@ -56,6 +56,13 @@ jobs:
       - name: Quick Access picture (overlay)
         if: always()
         run: f=tools/qa-shots/overlay.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT qa-overlay $i::$part"; done || true
+      # Game Mode › Store (the preview's data): Steam's store page and a game's page, the same way (ui-check.js).
+      - name: Store picture (store page)
+        if: always()
+        run: f=tools/store-shots/home.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT store-home $i::$part"; done || true
+      - name: Store picture (game page)
+        if: always()
+        run: f=tools/store-shots/game.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT store-game $i::$part"; done || true
       # Mantel on Windows (Ember): the taskbar, launcher, menus, clock panel, clipboard history, desktop icons,
       # Hearth Settings and Apps pages, driven through a stand-in for Ember's host.
       - name: Check Mantel's pages
