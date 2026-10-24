@@ -17,6 +17,9 @@ pub mod manifest;
 pub mod locate;
 pub mod saves;
 pub mod mods;
+pub mod nexus;
+pub mod downloads;
+pub mod wabbajack;
 pub mod games;
 pub mod browse;
 #[cfg(target_os = "linux")]
