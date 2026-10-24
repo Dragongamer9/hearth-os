@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 
 /// The kinds of app the page has (hearth-system's CATEGORIES).
 pub const KINDS: &[&str] = &["browser", "files", "text", "image", "video", "music", "ebooks", "documents", "sheets", "slides",
-    "terminal", "email", "calendar", "contacts", "maps", "archives"];
+    "terminal", "email", "calendar", "contacts", "maps", "archives", "store"];
 
 /// hearth-system's arguments for a bridge call: defaults.list, defaults.set {kind, app}, defaults.reset {kind?}.
 pub fn args(method: &str, a: &Value) -> Result<Vec<String>, String> {

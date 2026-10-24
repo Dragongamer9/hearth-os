@@ -71,7 +71,9 @@ fn sign_in(app: &tauri::AppHandle, page: &hearth_core::stores::SignIn) -> Option
         .center()
         // Full screen in Game Mode; in Desktop Mode (a windowed Hearth) an ordinary window.
         .fullscreen(in_session() && !hearth_core::signin_handoff::windowed())
-        .incognito(true)
+        // The store's own browser profile, shared with Game Mode › Store's store window: signing in here signs that
+        // in too (and the other way round), so it's one sign-in. Signing out removes it (storefront::reset_web_profile).
+        .data_directory(hearth_core::storefront::web_profile(page.store, "webkit"))
         .initialization_script(&script)
         .on_navigation(move |url| {
             if url.as_str().starts_with("hearth-signin://cancel") { signin_answer(None); return false; }
@@ -137,6 +139,55 @@ fn stream(app: &tauri::AppHandle, open: Option<(&str, &str)>, windowed: bool) {
     }
 }
 
+/// Game Mode › Store's store window: a store's own page (GOG, Epic, Xbox) for buying and wishlists, signed in with
+/// the browser profile its sign-in window uses (Library › Stores). Full screen with the controller helper in Game
+/// Mode (B closes it), an ordinary window on the desktop. Closing it tells the core, which refreshes that store's
+/// games (a purchase shows in the library).
+fn store_web(app: &tauri::AppHandle, page: Option<&hearth_core::storefront::WebPage>) {
+    let old = app.get_webview_window("storeweb");
+    let Some(p) = page else { if let Some(w) = old { let _ = w.destroy(); } return };
+    let Ok(u) = p.url.parse() else { return };
+    if let Some(w) = old {
+        // Already open for this store: go to the new page. Another store's sign-in can't be reused: open again.
+        if STORE_WEB.lock().unwrap().as_deref() == Some(p.store.as_str()) { let _ = w.navigate(u); let _ = w.set_focus(); return; }
+        let _ = w.destroy();
+    }
+    *STORE_WEB.lock().unwrap() = Some(p.store.clone());
+    let pad = if desktop_window() { "" } else { include_str!("js/signin-pad.js") };
+    let script = format!("{}\n{}\n{}", include_str!("js/signin-nogamepad.js"), include_str!("js/storeweb.js"), pad);
+    let store = p.store.clone();
+    let closer = app.clone();
+    let r = WebviewWindowBuilder::new(app, "storeweb", WebviewUrl::External(u))
+        .title(&p.title)
+        .inner_size(1180.0, 800.0)
+        .center()
+        .fullscreen(in_session() && !hearth_core::signin_handoff::windowed())
+        .data_directory(p.profile_for("webkit"))
+        .initialization_script(&script)
+        .on_navigation(move |url| {
+            // B (the controller helper) leaves through this address; only web pages load here otherwise.
+            if url.as_str().starts_with("hearth-signin://cancel") {
+                let app = closer.clone();
+                std::thread::spawn(move || if let Some(w) = app.get_webview_window("storeweb") { let _ = w.destroy(); });
+                return false;
+            }
+            matches!(url.scheme(), "https" | "about" | "blob" | "data")
+        })
+        .build();
+    match r {
+        Ok(w) => {
+            w.on_window_event(move |e| if let tauri::WindowEvent::Destroyed = e {
+                hearth_core::stores::notify(serde_json::json!({"type": "internal", "what": "storeWebClosed", "store": store}));
+                if let Some(gm) = GM.get() { gm.come_back(); }
+            });
+            if let Some(gm) = GM.get() { gm.to_front(&p.title); }
+        }
+        Err(e) => hearth_core::bridge::log(&format!("store window: {e}")),
+    }
+}
+/// The store the store window is signed in as (its browser profile).
+static STORE_WEB: Mutex<Option<String>> = Mutex::new(None);
+
 /// Hearth's windows in this process (WebKit, through Tauri).
 struct TauriHost { app: tauri::AppHandle }
 
@@ -163,6 +214,7 @@ impl WindowHost for TauriHost {
     }
     fn sign_in(&self, page: &hearth_core::stores::SignIn) -> Option<String> { sign_in(&self.app, page) }
     fn stream(&self, open: Option<(&str, &str)>, windowed: bool) { stream(&self.app, open, windowed) }
+    fn store_web(&self, page: Option<&hearth_core::storefront::WebPage>) { store_web(&self.app, page) }
     fn zoom(&self, pct: u32) { if let Some(w) = self.app.get_webview_window("main") { let _ = w.set_zoom(pct as f64 / 100.0); } }
     fn create_overlay(&self) -> bool {
         let app = &self.app;
@@ -382,6 +434,9 @@ pub(crate) fn start_core(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, 
             b.sign_in = Arc::new(move |page| signer.sign_in(page));
             let streamer = host.clone();
             b.stream = Arc::new(move |open| streamer.stream(open, windowed));
+            // Game Mode › Store's store window (storefront.rs).
+            let web = host.clone();
+            hearth_core::storefront::set_web_opener(Arc::new(move |page: Option<hearth_core::storefront::WebPage>| web.store_web(page.as_ref())));
             let zoomer = host.clone();
             b.zoom = Arc::new(move |pct| zoomer.zoom(pct));
             // First start after installing: a look for games on other drives, offered once (after 90 s).
@@ -527,8 +582,20 @@ fn start_game_mode(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, window
                 .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() else { return };
             let Some(out) = child.stdout.take() else { return };
             let mut locked = false;
+            // How each sleep went, in Hearth's log: how long, how much of it was real deep sleep (s0i3: fans off,
+            // battery barely dropping), the battery, and what woke it (hearth_core::power::woke_report).
+            let mut before: Option<hearth_core::power::SleepSnap> = None;
             for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
                 if !line.contains("PrepareForSleep") { continue; }
+                if line.contains("(true") {
+                    let s = hearth_core::power::sleep_snapshot();
+                    hearth_core::bridge::log(&format!("sleep: the system is going to sleep (battery {})", s.battery.map(|b| format!("{b}%")).unwrap_or_else(|| "unknown".into())));
+                    before = Some(s);
+                } else if let Some(b) = before.take() {
+                    let after = hearth_core::power::sleep_snapshot();
+                    let wake = hearth_core::power::wake_source_in(std::path::Path::new("/"));
+                    hearth_core::bridge::log(&hearth_core::power::woke_report(&b, &after, wake.as_deref()));
+                }
                 if !line.contains("(true") {
                     // Awake: the power limit you chose, set again (the handheld's own one is back after sleep on
                     // many, ryzenadj's on the ROG Ally). A few seconds first, for the firmware to settle.

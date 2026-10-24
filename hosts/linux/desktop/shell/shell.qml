@@ -5,7 +5,7 @@
 // on-screen keyboard, controller support and touch gestures, on top of labwc.
 // Started by labwc's autostart: quickshell -p <share>/desktop/shell
 // From a terminal or a key binding: quickshell ipc -p <this folder> call <target> <function>
-//   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close   menu open   settings open|page <name>|close
+//   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close|press <button>|tap <key>|state   menu open   settings open|page <name>|close
 //   tasks open|tab <apps|perf|startup>|close|toggle   files open <path>|home|toggle|close
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 //   taskbar activate <1-9>|showDesktop   brightness up|down   media playPause|next|previous|stop
@@ -64,7 +64,7 @@ ShellRoot {
             list.push({ separator: true });
             list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", run: () => DeskState.togglePin(entry.id) });
             list.push({ label: "Add to desktop", icon: "plus", run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
-            // Apps installed from Flathub can be removed in Apps (their page has Remove).
+            // Apps installed from Flathub: Uninstall… asks, then hearth-flatpak removes it (Bazaar can too).
             if (/\bdistrobox\b/.test(entry.execString || "") && /hearth-debian/.test(entry.execString || "")) {
                 // An app from Hearth's Debian box (a .deb): removed in Settings › Apps.
                 list.push({ separator: true });
@@ -72,7 +72,12 @@ ShellRoot {
             }
             if (/\bflatpak\b/.test(entry.execString || "")) {
                 list.push({ separator: true });
-                list.push({ label: "Uninstall…", icon: "trash", danger: true, run: () => { launcher.shown = false; appStore.open(entry.id); } });
+                list.push({ label: "Uninstall…", icon: "trash", danger: true, run: () => {
+                    const scr = launcher.screen;
+                    launcher.shown = false;
+                    deskDialog.confirm(scr, "Uninstall " + entry.name + "?", "Your files stay. An app installed for everyone on this PC is removed for everyone (it may ask for your password).",
+                        "Uninstall", () => bazaar.uninstall(entry));
+                } });
             }
             popMenu.popup(launcher.screen, x, y, { title: entry.name }, list);
         }
@@ -96,10 +101,52 @@ ShellRoot {
     Keyboard { id: keyboard }
     Help { id: help }
     SettingsApp { id: settings }
-    // ---- Apps (Flathub store) and clipboard history (Super+V); their IPC targets "apps" and "clipboard" are inside.
-    AppStore { id: appStore }
+    // ---- Bazaar (Hearth OS's app store; Hearth's own store, AppStore.qml, is archived: docs/ARCHIVED.md) and
+    // clipboard history (Super+V). The IPC target "apps" (older Apps links, keybinds) opens Bazaar; "clipboard" is inside.
+    Scope {
+        id: bazaar
+        readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-flatpak").toString().replace(/^file:\/\//, ""))
+        property string removing: ""
+        function open() { if (!opener.running) opener.running = true; }
+        function uninstall(entry) {
+            const m = /\bflatpak\b.*?\brun\b.*?\s([A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){2,})(\s|$)/.exec(entry.execString || "");
+            const id = m ? m[1] : String(entry.id || "").replace(/\.desktop$/, "");
+            if (remover.running) { SettingsNav.toast("Still removing " + removing); return; }
+            removing = entry.name;
+            remover.command = ["python3", helper, "remove", id];
+            remover.running = true;
+        }
+        Process {
+            id: opener
+            command: ["python3", bazaar.helper, "open-bazaar"]
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    const err = text.split("\n").find(l => l.startsWith("error: "));
+                    if (err) SettingsNav.toast(err.slice(7));
+                }
+            }
+        }
+        Process {
+            id: remover
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    const err = text.split("\n").find(l => l.startsWith("error: "));
+                    SettingsNav.toast(err ? "Couldn't uninstall " + bazaar.removing + ": " + err.slice(7) : bazaar.removing + " was uninstalled");
+                }
+            }
+        }
+        IpcHandler {
+            target: "apps"
+            function open(): void { bazaar.open(); }
+            function page(name: string): void { bazaar.open(); }
+            function app(id: string): void { bazaar.open(); }
+            function toggle(): void { bazaar.open(); }
+            function close(): void {}
+        }
+    }
     DebInstaller { id: debInstaller }
     Clipboard { id: clipboardHistory }
+    Friends { id: friendsPanel }   // Hearth Friends on Matrix; IPC target "friends"
     // ---- end Apps / clipboard
     TaskManager { id: tasks }
     FileManager { id: files }
@@ -218,6 +265,15 @@ ShellRoot {
         target: "keyboard"
         function open(): void { pad.openKeyboard(); }
         function close(): void { pad.closeKeyboard(); }
+        // For checks (desktop-test.yml): a controller button pressed and let go (or held), a key tapped by what it
+        // types ("a", "space", "bksp", "enter"...), the left stick, a setting (not saved), and what it shows.
+        function press(b: string): void { keyboard.padButton(b, true); keyboard.padButton(b, false); }
+        function hold(b: string, ms: int): void { keyboard.holdButton(b, ms); }
+        function tap(key: string): void { keyboard.tapKey(key); }
+        function select(key: string): void { keyboard.tapKey(key, true); }
+        function stick(x: real, y: real): void { keyboard.padAxes(x, y, 0, 0); }
+        function setting(key: string, value: string): void { keyboard.setSetting(key, value); }
+        function state(): string { return keyboard.stateJson(); }
     }
     IpcHandler {
         target: "help"

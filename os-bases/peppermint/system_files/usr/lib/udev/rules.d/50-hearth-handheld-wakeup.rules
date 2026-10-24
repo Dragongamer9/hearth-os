@@ -1,0 +1,5 @@
+# Hearth OS: sleep on handhelds, like SteamOS: the power button wakes the device, the built-in controller doesn't.
+# ASUS ROG Ally X / ROG Xbox Ally / ROG Xbox Ally X built-in controller (0b05:1b4c): left as a wake source, a
+# stick or button moving while the device goes to sleep (or in a bag) wakes it straight back up, or keeps it
+# from settling into deep sleep. The same rule as Bazzite's (50-ally-x-controller.rules).
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0b05", ATTR{idProduct}=="1b4c", TEST=="power/wakeup", ATTR{power/wakeup}="disabled"

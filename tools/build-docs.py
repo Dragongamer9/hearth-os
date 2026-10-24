@@ -90,11 +90,11 @@ def page(slug, title, lead, body):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{full_title}</title>
 <meta name="description" content="{html.escape(lead)}">
-<meta name="theme-color" content="#120c09">
+<meta name="theme-color" content="#16100d">
+<meta name="color-scheme" content="dark light">
 <link rel="icon" href="../img/logo.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="preload" href="../fonts/anybody.woff2" as="font" type="font/woff2" crossorigin>
+<script>try{{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}}catch(e){{}}</script>
 <link rel="stylesheet" href="docs.css">
 </head>
 <body>
@@ -124,7 +124,7 @@ def page(slug, title, lead, body):
 </div>
 <footer>
   <div class="wrap">
-    <a class="brand" href="../"><img src="../img/logo.svg" alt="" width="22" height="22">Hearth OS</a>
+    <a class="brand" href="../"><img src="../img/logo-mono.svg" alt="" width="22" height="22">Hearth OS</a>
     <a href="releases.html">Release notes</a>
     <a href="requests.html">Requests</a>
     <a href="troubleshooting.html#ask">Report a problem</a>
@@ -613,17 +613,17 @@ ASK_CSS = '''
 .ask{display:grid;gap:12px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);padding:18px;margin:14px 0 8px}
 .ask label{display:grid;gap:5px;font-size:13.5px;font-weight:600;color:var(--text)}
 .ask .req,.ask .opt{font-weight:400;color:var(--muted)}
-.ask input,.ask select,.ask textarea{font:inherit;font-size:14.5px;font-weight:400;color:var(--text);background:#0f0a07;border:1px solid var(--line2);border-radius:9px;padding:9px 11px;width:100%}
+.ask input,.ask select,.ask textarea{font:inherit;font-size:14.5px;font-weight:400;color:var(--text);background:var(--code);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;width:100%}
 .ask textarea{resize:vertical;line-height:1.5}
-.ask input:focus,.ask select:focus,.ask textarea:focus{outline:2px solid rgba(255,138,61,.6);outline-offset:0;border-color:var(--ember)}
+.ask input:focus,.ask select:focus,.ask textarea:focus{outline:3px solid var(--focus);outline-offset:0;border-color:var(--ember)}
 .ask .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .ask .send{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .ask button{font:inherit;font-weight:700;font-size:15px;color:var(--ink);background:var(--ember);border:0;border-radius:999px;padding:10px 18px;cursor:pointer}
-.ask button:hover{background:#ff9d5a}
+.ask button:hover{background:var(--ember2)}
 .ask button:disabled{opacity:.6;cursor:default}
 .ask .msg{font-size:14px;color:var(--soft)}
 .ask .msg b{color:var(--flame);font-size:15px;letter-spacing:.04em}
-.ask .msg.err{color:#ff9b8f}
+.ask .msg.err{color:var(--coal)}
 @media (max-width:600px){ .ask .row2{grid-template-columns:1fr} }
 '''
 

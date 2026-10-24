@@ -5,7 +5,8 @@
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-pub const SKIP: [&str; 8] = ["cache", "tools", "prefixes", "art-cache", "nimbus-dev", "session", "xcloud-catalog.json", "before-restore"];
+// signin-backup: the private sign-in backups (signins.rs) stay on this device, never in a backup file.
+pub const SKIP: [&str; 9] = ["cache", "tools", "prefixes", "art-cache", "nimbus-dev", "session", "xcloud-catalog.json", "before-restore", "signin-backup"];
 pub const SIGNINS: [&str; 4] = ["accounts", "legendary", "gog", "remote-play.json"];
 
 fn is_backup_name(n: &str) -> bool { n.starts_with("hearth-backup-") && n.ends_with(".tar.gz") && n[14..n.len() - 7].chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) }

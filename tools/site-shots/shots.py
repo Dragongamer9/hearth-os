@@ -5,6 +5,9 @@
 #
 #   python3 tools/site-shots/art.py      # once, or after changing the art
 #   python3 tools/site-shots/shots.py    # writes site/img/game-*.webp (1280x800)
+#
+# The website itself now shows tools/site-shots.py's screenshots (real open-source games with their own art); these
+# game-*.webp are the README's.
 import asyncio, os, sys
 from io import BytesIO
 

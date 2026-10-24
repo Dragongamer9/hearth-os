@@ -4,583 +4,893 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth OS</title>
-<meta name="description" content="Hearth OS: a controller-first gaming system for handhelds and PCs. Steam, Epic, GOG and Xbox in one library, and a full desktop called Mantel one button away. Built on Anatase.">
+<meta name="description" content="Hearth OS turns a PC or handheld into a console: Steam, Epic, GOG and Xbox in one library you drive with a controller, a full desktop one button away, and updates that roll back. Free and open source.">
 <meta property="og:title" content="Hearth OS">
-<meta property="og:description" content="A controller-first gaming system for handhelds and PCs. Steam, Epic, GOG and Xbox in one library.">
-<meta property="og:image" content="img/game-home.webp">
-<meta name="theme-color" content="#120c09">
+<meta property="og:description" content="The console OS for your PC and handheld. Steam, Epic, GOG and Xbox in one library.">
+<meta property="og:image" content="img/gm-home.webp">
+<meta name="theme-color" content="#16100d">
+<meta name="color-scheme" content="dark light">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
-<link rel="preload" as="image" href="img/game-home.webp" fetchpriority="high">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="preload" href="fonts/anybody.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" as="image" href="img/gm-home.webp" fetchpriority="high">
+<script>try{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
 <style>
+/* Anybody (SIL Open Font License), served from this site: wide, heavy cuts for headings only. */
+@font-face{font-family:"Anybody";src:url(fonts/anybody.woff2) format("woff2");font-weight:100 900;font-stretch:50% 150%;font-display:swap}
+
+/* Colours. Dark is the room by the fire; light is daylight on stone. Teal is Game Mode's selection ring and is
+   only ever used for focus and the selected item, as in Hearth itself. */
 :root{
-  --bg:#110b08; --bg2:#170f0b; --panel:#1c1410; --panel2:#251b15; --line:#33261f; --line2:#47362b;
-  --text:#f6eee6; --soft:#ddd0c3; --muted:#a8968a; --ember:#ff8a3d; --flame:#ffd166; --coal:#e5483b; --ink:#2a1206;
-  --r:14px; --max:1160px; --gut:32px;
+  --bg:#16100d; --bg2:#1c1410; --raise:#231914; --line:#3a2c24; --line2:#4f3c31;
+  --text:#f5ede5; --soft:#dccfc3; --muted:#ad9c8f; --ember:#ff7a2f; --ember2:#ff9a52; --glow:#ffc067; --onember:#2a1206;
+  --focus:#3fd0b8; --code:#0f0a08; --shot:#0d0a08;
+  --display:"Anybody","Arial Black","Segoe UI",system-ui,sans-serif;
+  --body:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Cantarell","Noto Sans",Roboto,sans-serif;
+  --mono:ui-monospace,"JetBrains Mono","Cascadia Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --max:1200px; --gut:40px;
   color-scheme:dark;
 }
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --bg:#eceeed; --bg2:#e2e5e4; --raise:#f8f9f8; --line:#cdd2d0; --line2:#b3b9b6;
+    --text:#1d1714; --soft:#3b312b; --muted:#5d544e; --ember:#b8460c; --ember2:#9c3a08; --glow:#8a4300; --onember:#fff;
+    --focus:#0b7a69; --code:#f8f9f8; --shot:#16100d;
+    color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#eceeed; --bg2:#e2e5e4; --raise:#f8f9f8; --line:#cdd2d0; --line2:#b3b9b6;
+  --text:#1d1714; --soft:#3b312b; --muted:#5d544e; --ember:#b8460c; --ember2:#9c3a08; --glow:#8a4300; --onember:#fff;
+  --focus:#0b7a69; --code:#f8f9f8; --shot:#16100d;
+  color-scheme:light;
+}
+/* The hero and the nav stay by the fire in either theme. */
+.night{
+  --bg:#16100d; --bg2:#1c1410; --raise:#231914; --line:#3a2c24; --line2:#4f3c31;
+  --text:#f5ede5; --soft:#dccfc3; --muted:#b3a295; --ember:#ff7a2f; --ember2:#ff9a52; --glow:#ffc067; --onember:#2a1206; --focus:#3fd0b8;
+  color-scheme:dark; color:var(--text);
+}
+
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;scroll-padding-top:72px;-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:15.5px/1.6 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
-a{color:var(--flame);text-decoration:none;text-underline-offset:3px}
-a:hover{text-decoration:underline}
-:focus-visible{outline:2px solid var(--flame);outline-offset:3px;border-radius:6px}
+html{scroll-behavior:smooth;scroll-padding-top:76px;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--soft);font:16px/1.6 var(--body);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:var(--ember);text-underline-offset:3px;text-decoration-thickness:1px}
+.night a{color:var(--glow)}
+a:hover{color:var(--text)}
+:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:8px}
 img{max-width:100%;height:auto;display:block}
 b,strong{color:var(--text);font-weight:650}
-h1,h2,h3,h4{margin:0;letter-spacing:-.02em;line-height:1.12}
+h1,h2,h3,h4{margin:0;color:var(--text);font-weight:700;line-height:1.15;text-wrap:balance}
 p{margin:0}
+ul,ol{margin:0;padding:0}
 .wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gut)}
-code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;overflow-wrap:anywhere}
-.ico{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.skip{position:absolute;left:12px;top:-60px;z-index:100;background:var(--ember);color:var(--ink);padding:8px 14px;border-radius:10px;font-weight:700}
+.ico{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.skip{position:absolute;left:12px;top:-60px;z-index:100;background:var(--ember);color:var(--onember);padding:8px 14px;border-radius:10px;font-weight:700;text-decoration:none}
 .skip:focus{top:12px}
+code{font:14px/1.5 var(--mono);overflow-wrap:anywhere}
+p code,li code,dd code{background:var(--raise);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--text)}
 
-/* beta strip + nav */
-.beta{background:linear-gradient(90deg,#341709,#22130b);border-bottom:1px solid rgba(255,138,61,.25);font-size:13.5px;color:#f1e3d3;text-align:center;padding:7px 16px}
-.beta b{background:var(--ember);color:var(--ink);border-radius:999px;padding:1px 8px;margin-right:6px;font-size:11.5px;font-weight:800}
-nav{position:sticky;top:0;z-index:20;background:rgba(17,11,8,.78);backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);border-bottom:1px solid rgba(71,54,43,.6)}
-nav .wrap{display:flex;align-items:center;gap:18px;height:58px}
-.brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px;color:var(--text);letter-spacing:-.02em}
-.brand img{width:26px;height:26px}
-.brand:hover{text-decoration:none}
-nav .links{display:flex;align-items:center;gap:2px;margin-left:auto;font-size:14.5px}
-nav .links a{color:var(--muted);padding:6px 11px;border-radius:999px;font-weight:500}
-nav .links a:hover{color:var(--text);background:rgba(255,255,255,.05);text-decoration:none}
-nav .links a.gh{display:inline-flex;align-items:center;gap:6px}
-nav .links a.cta{background:var(--ember);color:var(--ink);font-weight:700;margin-left:6px}
-nav .links a.cta:hover{background:#ff9d5a}
-nav .gh svg{width:17px;height:17px}
+/* type */
+.d{font-family:var(--display);font-stretch:125%;font-weight:800;letter-spacing:-.01em}
+h2.d{font-size:clamp(28px,3.5vw,46px);line-height:1.04;max-width:20ch;font-stretch:115%}
+h3{font-size:19px;letter-spacing:-.01em}
+.lede{font-size:clamp(17px,1.5vw,19px);color:var(--soft);max-width:38em;margin-top:16px}
+.small{font-size:14.5px;color:var(--muted)}
+.prose p{max-width:38em}
+.prose p+p{margin-top:12px}
 
 /* buttons */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 18px;border-radius:999px;font-weight:700;font-size:15px;border:1px solid transparent;transition:transform .15s,background .15s,box-shadow .15s;line-height:1.2;text-align:center}
-.btn:hover{text-decoration:none;transform:translateY(-1px)}
-.btn.primary{position:relative;overflow:hidden;isolation:isolate;background:linear-gradient(180deg,#ffa25e,var(--ember));color:var(--ink);box-shadow:0 8px 28px -10px rgba(255,138,61,.8),inset 0 1px 0 rgba(255,255,255,.35)}
-.btn.ghost{background:rgba(255,255,255,.04);border-color:var(--line2);color:var(--text)}
-.btn.ghost:hover{background:rgba(255,255,255,.08)}
-.btn .ico{width:17px;height:17px}
-.btn small{font-weight:500;opacity:.75}
-
-/* hero */
-.hero{position:relative;overflow:hidden;isolation:isolate;padding:64px 0 150px}
-/* the fireplace behind the hero: still scene (svg), flickering light, live fire (canvas), shade for the text */
-.fp{position:absolute;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:#0d0705}
-.fp img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 100%}
-.glow{position:absolute;inset:0;background:radial-gradient(70% 60% at 50% 100%,rgba(255,150,70,.5),rgba(229,72,59,.14) 55%,transparent 78%);mix-blend-mode:screen;opacity:.85;will-change:opacity}
-#fire{position:absolute;inset:0;width:100%;height:100%}
-.shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(17,11,8,.9),rgba(17,11,8,.6) 34%,rgba(17,11,8,.08) 58%,rgba(17,11,8,0) 80%,rgba(17,11,8,.3)),linear-gradient(180deg,rgba(17,11,8,.75),rgba(17,11,8,.2) 50%,transparent 70%)}
-.hero .wrap{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:48px;align-items:center}
-.pills{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
-.pill{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;background:rgba(28,20,16,.75);border:1px solid var(--line2);font-size:13px;color:var(--soft)}
-.pill .dot{width:7px;height:7px;border-radius:50%;background:var(--ember);box-shadow:0 0 8px var(--ember)}
-.live{background:rgba(91,214,138,.08);border-color:rgba(91,214,138,.35);color:#dff3e6}
-.live[hidden]{display:none}
-.live i{width:8px;height:8px;border-radius:50%;background:#5bd68a;animation:pulse 2s infinite}
-@keyframes pulse{70%{box-shadow:0 0 0 7px rgba(91,214,138,0)}0%{box-shadow:0 0 0 0 rgba(91,214,138,.6)}}
-h1{font-size:clamp(40px,5.6vw,74px);line-height:.98;letter-spacing:-.045em;font-weight:900;margin-bottom:20px}
-h1 .fire{display:block;background:linear-gradient(100deg,var(--flame) 5%,var(--ember) 30%,var(--coal) 50%,var(--ember) 70%,var(--flame) 95%) 0 0/200% auto;animation:shine 7s ease-in-out infinite alternate;-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.06em}
-.lead{font-size:clamp(16px,1.4vw,18px);color:var(--soft);max-width:31em;margin-bottom:26px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:48px;padding:12px 22px;border-radius:12px;font:650 16px/1.2 var(--body);text-decoration:none;border:1px solid transparent;cursor:pointer;text-align:center}
+.btn .ico{width:18px;height:18px}
+.btn small{font-weight:500;opacity:.8}
+.btn.go{background:var(--ember);color:var(--onember)}
+.btn.go:hover{background:var(--ember2);color:var(--onember)}
+.btn.line{border-color:var(--line2);color:var(--text);background:transparent}
+.btn.line:hover{border-color:var(--muted);color:var(--text)}
+.night .btn.go{color:#2a1206}
 .ctas{display:flex;flex-wrap:wrap;gap:10px}
-.fine{font-size:13px;color:var(--muted);margin-top:16px;max-width:34em}
 
-.stage{position:relative;perspective:1600px;animation:floaty 7s ease-in-out infinite}
-@keyframes floaty{50%{transform:translateY(-12px)}}
-@keyframes shine{to{background-position:100% 0}}
-@keyframes sweep{0%,60%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
-.device{position:relative;padding:3.4% 13.5%;border-radius:120px/48%;
-  background:linear-gradient(180deg,#2e231c,#15100c 60%,#0e0a07);
-  box-shadow:inset 0 2px 0 rgba(255,255,255,.08),0 0 0 1px #3a2c23,0 40px 90px -30px rgba(0,0,0,.9),0 30px 120px -40px rgba(255,138,61,.55);
-  transform:rotateY(calc(-10deg + var(--ry,0deg))) rotateX(calc(6deg + var(--rx,0deg)));transition:transform .5s cubic-bezier(.2,.8,.2,1)}
-.screen{border-radius:10px;overflow:hidden;background:#000;box-shadow:0 0 0 2px #050302,0 0 50px rgba(255,138,61,.22);position:relative}
-.screen::after{content:"";position:absolute;inset:0;background:linear-gradient(125deg,rgba(255,255,255,.09),transparent 35%);pointer-events:none}
-.ctl{position:absolute;pointer-events:none}
-.stick{width:7.6%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle at 45% 40%,#3d3029,#1a120e 60%,#0c0806);box-shadow:0 0 0 3px #0a0705,0 0 0 4px rgba(255,138,61,.35)}
-.stick.l{left:3.4%;top:16%}.stick.r{right:3.4%;top:57%}
-.dpad{left:4.3%;top:58%;width:5.8%;aspect-ratio:1;background:linear-gradient(#2e231d,#1a120e) center/33% 100% no-repeat,linear-gradient(#2e231d,#1a120e) center/100% 33% no-repeat}
-.abxy{right:4%;top:15%;width:6.8%;aspect-ratio:1;background:radial-gradient(circle at 50% 14%,#2e231d 0 12%,transparent 13%),radial-gradient(circle at 50% 86%,var(--ember) 0 12%,transparent 13%),radial-gradient(circle at 14% 50%,#2e231d 0 12%,transparent 13%),radial-gradient(circle at 86% 50%,#2e231d 0 12%,transparent 13%)}
-.float{position:absolute;left:-6%;bottom:-8%;width:42%;border-radius:10px;overflow:hidden;box-shadow:0 0 0 1px #4d3b30,0 24px 50px -10px rgba(0,0,0,.85);transform:rotate(-4deg)}
-.runs{display:flex;flex-wrap:wrap;gap:4px 18px;margin:18px 0 0;padding:0;color:var(--soft);font-size:13px;list-style:none}
-.runs li{display:flex;align-items:center;gap:7px}
-.runs li::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--ember)}
+/* nav */
+.top{position:sticky;top:0;z-index:30;background:rgba(22,16,13,.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(79,60,49,.7)}
+.top .wrap{display:flex;align-items:center;gap:8px;height:62px}
+.brand{display:inline-flex;align-items:center;gap:10px;white-space:nowrap;color:var(--text);text-decoration:none;font:800 18px/1 var(--display);font-stretch:118%}
+.night .brand{color:var(--text)}
+.brand svg{width:28px;height:28px}
+.top .links{display:flex;align-items:center;gap:2px;margin-left:auto}
+.top .links a{color:var(--soft);text-decoration:none;font-size:15px;padding:8px 11px;border-radius:9px}
+.top .links a:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.top .links a.dl{background:var(--ember);color:#2a1206;font-weight:650;margin-left:6px}
+.top .links a.dl:hover{background:var(--ember2)}
+.top .gh svg{width:19px;height:19px;display:block}
+.theme{display:grid;place-items:center;width:40px;height:40px;border-radius:9px;border:0;background:transparent;color:var(--soft);cursor:pointer}
+.theme:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.theme .sun{display:none}
+:root[data-theme="light"] .theme .sun{display:block}
+:root[data-theme="light"] .theme .moon{display:none}
+@media (prefers-color-scheme:light){ :root:not([data-theme="dark"]) .theme .sun{display:block} :root:not([data-theme="dark"]) .theme .moon{display:none} }
+
+/* hero: the screen above the hearth */
+.hero{position:relative;overflow:hidden;isolation:isolate;background:var(--bg);padding:56px 0 0}
+.hero .grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:48px;align-items:center}
+.status{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14.5px;color:var(--muted);margin-bottom:22px}
+.status span{display:inline-flex;align-items:center;gap:8px}
+.status .ver::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ember);box-shadow:0 0 10px var(--ember)}
+.status .live[hidden]{display:none}
+.status .live::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--focus)}
+h1.d{font-size:clamp(36px,4vw,62px);line-height:1;letter-spacing:-.015em;font-stretch:120%;
+  background:linear-gradient(180deg,var(--text) 50%,color-mix(in srgb,var(--glow) 75%,var(--text)) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .lede{margin-top:22px;max-width:30em}
+.hero .ctas{margin-top:28px}
+.hero .ctas .btn{padding:12px 18px}
+.hearth{position:relative;padding:10px 0 clamp(110px,10vw,150px)}
+.screen{position:relative;z-index:1;margin:0;border-radius:14px;padding:9px;background:linear-gradient(180deg,#2a201a,#130e0b);
+  box-shadow:0 0 0 1px #3d2f26,0 30px 80px -30px #000,0 calc(40px * var(--f,1)) calc(110px * var(--f,1)) -34px rgba(255,122,47,.6)}
+.screen img{border-radius:6px;aspect-ratio:16/10;object-fit:cover;width:100%;background:var(--shot)}
+.screen figcaption{position:absolute;left:0;right:0;top:100%;margin-top:12px;text-align:center;font-size:13.5px;color:var(--muted)}
+#fire{position:absolute;left:50%;bottom:-10px;transform:translateX(-50%);width:150%;height:clamp(240px,26vw,380px);z-index:0;pointer-events:none}
+.floor{position:absolute;left:-30%;right:-30%;bottom:0;height:60%;z-index:0;pointer-events:none;
+  background:radial-gradient(50% 80% at 50% 100%,rgba(255,130,50,calc(.34 * var(--f,1))),rgba(229,72,59,.08) 55%,transparent 75%)}
+.runs{position:relative;z-index:2;display:flex;flex-wrap:wrap;gap:6px 22px;list-style:none;margin:0;padding:18px 0 28px;font-size:14px;color:var(--soft);border-top:1px solid rgba(79,60,49,.6)}
 
 /* sections */
-section{padding:56px 0;position:relative}
-section.tight{padding:44px 0}
-.tint{background:linear-gradient(180deg,var(--bg2),var(--bg));border-top:1px solid var(--line)}
-.kicker{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--ember);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
-h2{font-size:clamp(28px,3.4vw,42px);letter-spacing:-.035em;font-weight:800;text-wrap:balance}
-.sub{color:var(--muted);font-size:16px;max-width:44em;margin-top:12px}
-.sub b{color:var(--soft)}
-.head{margin-bottom:32px}
-.head.split{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
-.ic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:rgba(255,138,61,.12);color:var(--ember);flex:none;border:1px solid rgba(255,138,61,.2)}
-.badge{display:inline-block;font-size:11.5px;font-weight:700;color:var(--flame);background:rgba(255,209,102,.1);border:1px solid rgba(255,209,102,.35);border-radius:999px;padding:1px 9px;white-space:nowrap;vertical-align:middle}
-.badge.solid{color:var(--ink);background:var(--flame);border-color:var(--flame)}
-.card{position:relative;isolation:isolate;background:linear-gradient(180deg,var(--panel),#18110d);border:1px solid var(--line);border-radius:var(--r);padding:20px;transition:border-color .3s}
-/* motion (only added by the script when motion is allowed) */
-.anim .btn.primary::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.4) 50%,transparent 70%);animation:sweep 5s ease-in-out infinite}
-.rv{opacity:0;transform:translateY(18px);transition:opacity .7s ease var(--d,0s),transform .7s cubic-bezier(.2,.8,.2,1) var(--d,0s)}
-.rv.in{opacity:1;transform:none}
-@media (hover:hover) and (pointer:fine){
-  .anim .card::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;background:radial-gradient(280px circle at var(--mx,50%) var(--my,50%),rgba(255,138,61,.16),transparent 65%);opacity:0;transition:opacity .35s}
-  .anim .card:hover::after{opacity:1}
-  .anim .card:hover{border-color:rgba(255,138,61,.35)}
-}
-.card h3{font-size:17px;margin:12px 0 6px}
-.card p{color:var(--muted);font-size:14.5px}
+section{padding:clamp(64px,9vw,120px) 0;border-top:1px solid var(--line)}
+section.alt{background:var(--bg2)}
+.head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px 56px;align-items:end;margin-bottom:44px}
+.head .lede{margin-top:0}
+.kicker{display:block;font-size:15px;color:var(--muted);margin-bottom:14px}
+.kicker b{color:var(--ember)}
 
-/* what's new */
-.strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
-.strip .card{padding:16px}.strip h3{font-size:15px;margin:10px 0 4px}.strip p{font-size:13.5px}
-.links2{font-size:14px;color:var(--muted)}
-details.rel{margin-top:16px}
-.votes{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--muted)}
-.votes[hidden]{display:none}
-.votes span{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--soft)}
-.votes span b{color:var(--flame);margin-left:4px}
-details.rel{border-top:1px solid var(--line)}
-details.rel:last-of-type{border-bottom:1px solid var(--line)}
-details.rel summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;padding:13px 2px}
-details.rel summary::-webkit-details-marker{display:none}
-details.rel summary:hover .rt{color:var(--flame)}
-.ver{font-weight:700;font-size:12.5px;color:var(--ember);background:rgba(255,138,61,.1);border:1px solid rgba(255,138,61,.3);border-radius:7px;padding:4px 8px;min-width:76px;text-align:center}
-.rt{font-weight:600;font-size:15px;transition:color .15s}
-.rt small{font-weight:400;font-size:13.5px;color:var(--muted);margin-left:8px}
-.chev{width:16px;height:16px;color:var(--muted);transition:transform .2s}
-details.rel[open] .chev{transform:rotate(180deg);color:var(--ember)}
-.rel-body{padding:0 2px 16px;color:var(--muted);font-size:14px;max-width:70em}
-.rel-body p+p{margin-top:8px}
-.log-title{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin:36px 0 8px}
-.log-title h3{font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.log-title a{font-size:14px}
+/* New in 0.6.5: a list you move through like Game Mode, and what's selected beside it */
+.next{display:grid;grid-template-columns:minmax(240px,320px) minmax(0,1fr);gap:28px;align-items:start}
+.picks{display:flex;flex-direction:column;gap:6px;position:sticky;top:90px}
+.picks button{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;align-items:center;text-align:left;font:inherit;color:var(--soft);background:transparent;border:1px solid transparent;border-radius:12px;padding:12px 14px;cursor:pointer}
+.picks button .ico{grid-row:1/3;width:22px;height:22px;color:var(--muted)}
+.picks button b{font-size:16px;font-weight:650}
+.picks button small{font-size:13.5px;color:var(--muted)}
+.picks button:hover{background:var(--raise)}
+.picks button[aria-selected="true"]{background:var(--raise);border-color:var(--line2);box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--focus)}
+.picks button[aria-selected="true"] .ico{color:var(--ember)}
+.picks button:focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--focus)}
+.panel{min-width:0}
+.panel[hidden]{display:none}
+.panel .shot{border-radius:12px;border:1px solid var(--line2);background:var(--shot);overflow:hidden}
+.panel .shot img{width:100%}
+.panel .pair{display:grid;gap:10px}
+.panel h3{font-size:clamp(22px,2.2vw,28px);margin:26px 0 10px}
+.panel .prose{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px 40px}
+.ticks{list-style:none;display:grid;gap:8px}
+.ticks li{position:relative;padding-left:22px;font-size:15px;color:var(--soft)}
+.ticks li::before{content:"";position:absolute;left:2px;top:.62em;width:8px;height:8px;border-radius:2px;background:var(--ember);transform:rotate(45deg)}
+.more{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 36px;list-style:none;margin-top:6px}
+.more li b{display:block;font-size:16.5px;margin-bottom:4px}
+.more li{font-size:15px;color:var(--soft);border-top:1px solid var(--line);padding-top:14px}
 
-/* gallery */
-.tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px;margin:0 0 16px}
+/* Mods: what goes where (no screenshot of this yet, so a plain diagram) */
+.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:12px;padding:28px;border:1px dashed var(--line2);border-radius:12px}
+.flow .node{border:1px solid var(--line2);border-radius:10px;padding:14px 16px;background:var(--raise);font-size:14.5px}
+.flow .node b{display:block;font-size:15.5px;margin-bottom:2px}
+.flow .arrow{color:var(--ember)}
+.flow .arrow .ico{width:26px;height:26px}
+
+/* Game Mode gallery */
+.tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:4px;margin:0 -4px 18px}
 .tabs::-webkit-scrollbar{display:none}
-.tabs button{flex:none;font:inherit;font-size:14px;font-weight:600;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
-.tabs button:hover{color:var(--text)}
-.tabs button[aria-selected="true"]{background:var(--ember);border-color:var(--ember);color:var(--ink)}
-.gallery{position:relative;max-width:980px;margin:0 auto}
-#tabs button:first-child{margin-left:auto}#tabs button:last-child{margin-right:auto}
-.track{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:16px}
+.tabs button{flex:none;font:inherit;font-size:15px;color:var(--soft);background:transparent;border:1px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer}
+.tabs button:hover{border-color:var(--line2);color:var(--text)}
+.tabs button[aria-selected="true"]{color:var(--text);border-color:var(--line2);background:var(--raise);box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--focus)}
+.track{display:flex;gap:20px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
 .track::-webkit-scrollbar{display:none}
-.slide{flex:0 0 100%;scroll-snap-align:center;margin:0;position:relative;transition:opacity .6s ease,transform .6s ease}
-.anim .slide:not(.on){opacity:.25;transform:scale(.97)}
-.slide img{width:100%;border-radius:16px;border:1px solid var(--line2);aspect-ratio:16/10;object-fit:cover;background:var(--panel)}
-.slide figcaption{position:absolute;left:16px;bottom:16px;right:16px;max-width:30em;background:rgba(17,11,8,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line2);border-radius:12px;padding:12px 15px;font-size:14px;color:var(--soft)}
-.slide figcaption b{display:block;font-size:15px;margin-bottom:2px}
-.nav-btn{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;border:1px solid var(--line2);background:rgba(17,11,8,.8);color:var(--text);display:grid;place-items:center;cursor:pointer;backdrop-filter:blur(8px)}
-.nav-btn:hover{background:var(--panel2)}
-.nav-btn.prev{left:12px}.nav-btn.next{right:12px}
-.ticks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 28px;list-style:none;padding:0;margin:28px 0 0}
-.ticks li{position:relative;padding-left:20px;color:var(--muted);font-size:14.5px}
-.ticks li::before{content:"";position:absolute;left:2px;top:8px;width:7px;height:7px;border-radius:50%;background:var(--flame);box-shadow:0 0 0 3px rgba(255,138,61,.2)}
-.ticks b{color:var(--soft)}
-.stores{display:flex;flex-wrap:wrap;gap:7px;margin-top:22px}
-.chip{padding:5px 12px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);font-weight:600;font-size:13px;color:var(--soft)}
+.slide{flex:0 0 100%;scroll-snap-align:start;margin:0}
+.slide img{width:100%;border-radius:12px;border:1px solid var(--line2);aspect-ratio:16/10;object-fit:cover;object-position:top;background:var(--shot)}
+.slide figcaption{margin-top:14px;font-size:15.5px;color:var(--soft);max-width:44em}
+.slide figcaption b{margin-right:6px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px 36px;margin-top:44px;list-style:none}
+.grid3 li{border-top:1px solid var(--line);padding-top:14px;font-size:15px}
+.grid3 li b{display:block;margin-bottom:3px;font-size:16px}
+
+/* rooms: text beside a picture */
+.room{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(28px,5vw,72px);align-items:center}
+.room.flip{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+.room.flip .words{order:2}
+.room .words .lede{margin-top:16px}
+.room .ticks{margin-top:22px}
+.pic{border-radius:12px;border:1px solid var(--line2);overflow:hidden;background:var(--shot)}
+.cap{font-size:13.5px;color:var(--muted);margin-top:10px}
+.stores{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px;list-style:none}
+.stores li{font-size:14px;font-weight:600;color:var(--text);border:1px solid var(--line2);border-radius:999px;padding:5px 12px}
+
+/* Hearth Link: how a copy travels */
+.link{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) minmax(0,1fr);gap:0;align-items:stretch;margin-top:8px}
+.dev{border:1px solid var(--line2);border-radius:14px;padding:22px;background:var(--raise);display:flex;flex-direction:column;gap:6px}
+.dev .ico{width:34px;height:34px;color:var(--ember);margin-bottom:6px}
+.dev b{font-size:18px}
+.dev span{font-size:14px;color:var(--muted)}
+.paths{display:flex;flex-direction:column;justify-content:center;gap:30px;padding:0 4px}
+.path{position:relative;text-align:center;font-size:14.5px;color:var(--soft);padding:0 16px}
+.path::before{content:"";display:block;height:2px;margin:0 -4px 12px;background:repeating-linear-gradient(90deg,var(--ember) 0 14px,transparent 14px 22px)}
+.path.relay::before{background:repeating-linear-gradient(90deg,var(--muted) 0 6px,transparent 6px 12px)}
+.path b{display:block;font-size:15.5px}
+.facts3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px 36px;margin-top:40px;list-style:none}
+.facts3 li{border-top:1px solid var(--line);padding-top:14px;font-size:15px}
+.facts3 li b{display:block;font-size:16px;margin-bottom:3px}
+.split2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(28px,5vw,72px);align-items:start;margin-top:clamp(56px,7vw,96px)}
+
+/* apps */
+.apps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:20px 28px;margin-top:8px}
+.apps h3{font-size:15px;color:var(--muted);font-weight:600;margin-bottom:8px}
+.apps ul{list-style:none;display:grid;gap:4px;font-size:15.5px;color:var(--text)}
+.appshots{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:48px;align-items:start}
+.appshots figure{margin:0}
 
 /* mantel */
-.mantel>*,.hero .wrap>*{min-width:0}
-.mantel{display:grid;grid-template-columns:.9fr 1.1fr;gap:36px;align-items:center;margin:40px 0 28px}
-.shots2{position:relative;padding:0 0 12% 12%}
-.shots2 img{border-radius:12px;box-shadow:0 0 0 1px #4d3b30,0 30px 60px -20px rgba(0,0,0,.85)}
-.shots2 .back{position:absolute;left:0;top:-8%;width:70%;opacity:.6}
-.shots2 .front{position:relative}
-.mantel .ticks{grid-template-columns:1fr 1fr;margin-top:20px}
-.walls{display:flex;gap:8px;margin-top:22px;overflow-x:auto;scrollbar-width:none}
+.walls{display:flex;gap:8px;margin-top:24px;overflow-x:auto;scrollbar-width:none}
 .walls::-webkit-scrollbar{display:none}
-.walls img{width:96px;flex:none;border-radius:8px;border:1px solid var(--line);aspect-ratio:16/10;object-fit:cover}
+.walls img{width:92px;flex:none;border-radius:8px;border:1px solid var(--line);aspect-ratio:16/10;object-fit:cover}
+.duo{position:relative}
+.duo .front{position:relative;z-index:1}
+.duo .menu{position:absolute;z-index:2;right:-18px;bottom:-34px;width:34%;border-radius:50%;border:1px solid var(--line2);box-shadow:0 20px 50px -10px rgba(0,0,0,.7);background:var(--shot)}
 
-/* features */
-.feat{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.feat .card{display:flex;gap:12px;padding:14px}
-.feat .card h3{margin:0 0 3px;font-size:15.5px}
-.feat .card p{font-size:13.5px}
+/* under the hood: an update, step by step */
+.update{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;counter-reset:u;margin-top:8px}
+.update li{counter-increment:u;position:relative;padding:58px 22px 0 0;font-size:15px;color:var(--soft)}
+.update li::before{content:counter(u);position:absolute;left:0;top:0;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font:800 16px/1 var(--display);background:var(--bg);color:var(--ember);border:2px solid var(--ember);z-index:1}
+.update li::after{content:"";position:absolute;left:38px;right:0;top:18px;height:2px;background:var(--line2)}
+.update li:last-child::after{display:none}
+.update li b{display:block;font-size:16.5px;margin-bottom:4px}
+.glance{display:grid;grid-template-columns:auto 1fr;gap:10px 28px;margin:0;font-size:15px}
+.glance dt{color:var(--muted)}
+.glance dd{margin:0;color:var(--text)}
 
 /* editions */
-.edgrid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start}
-.eds{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.eds .why{grid-column:1/-1;margin-top:4px}
-.ed{padding:16px}.ed h3{margin:0;font-size:16px}.ed p{margin-top:6px;font-size:14px}
-.ed{display:flex;flex-direction:column}
-.ed.main{background:radial-gradient(120% 100% at 0% 0%,rgba(255,138,61,.18),transparent 60%),linear-gradient(180deg,#22170f,#18110d);border-color:rgba(255,138,61,.42)}
-.ed .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.ed dl{margin:14px 0 0;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px}
-.ed dt{color:var(--muted)}.ed dd{margin:0;color:var(--soft)}
-.why{margin-top:14px}
-.facts h3{margin:0 0 10px;font-size:16px}
-.facts dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13.5px}
-.facts dt{color:var(--muted)}.facts dd{margin:0;color:var(--soft)}
-.why summary{cursor:pointer;color:var(--flame);font-weight:600;font-size:14.5px}
-.why ul{margin:12px 0 0;padding-left:18px;color:var(--muted);font-size:14.5px;display:grid;gap:6px;max-width:62em}
-.archived{color:var(--muted);font-size:14px;margin-top:14px;max-width:62em}
+.eds{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px}
+.ed{border:1px solid var(--line2);border-radius:14px;padding:26px;background:var(--raise)}
+.ed.main{border-color:color-mix(in srgb,var(--ember) 55%,var(--line2))}
+.ed .tag{display:inline-block;font-size:13px;font-weight:650;color:var(--ember);margin-bottom:10px}
+.ed h3{font-size:22px;margin-bottom:8px}
+.ed p{font-size:15px}
+.archived{margin-top:22px;max-width:46em}
+details.why{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
+details.why summary{cursor:pointer;color:var(--text);font-weight:650;list-style:none;display:flex;gap:10px;align-items:center}
+details.why summary::-webkit-details-marker{display:none}
+details.why summary::before{content:"+";color:var(--ember);font-weight:800;width:14px}
+details.why[open] summary::before{content:"\2013"}
+details.why .body{padding:12px 0 0 24px;max-width:56em;font-size:15px}
+details.why ul{list-style:disc;padding-left:18px;display:grid;gap:6px}
 
 /* download */
-.dl{background:radial-gradient(70% 60% at 50% 0%,rgba(255,138,61,.12),transparent 70%),var(--bg)}
-.dlgrid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px}
-.dlcard{display:flex;flex-direction:column}
-.dlcard.main{background:radial-gradient(120% 80% at 100% 0%,rgba(255,138,61,.22),transparent 60%),linear-gradient(180deg,#23170f,#18110d);border-color:rgba(255,138,61,.45);padding:26px}
-.dlcard.main h3{font-size:19px}
-.dlcard .top{display:flex;align-items:center;gap:10px}
-.dlcard .ctas{margin-top:16px}
-.dlcard.main .ctas .btn{flex:1 1 220px}
-.dlcard .note2{font-size:13px;color:var(--muted);margin-top:12px}
+.dlgrid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+.box{border:1px solid var(--line2);border-radius:14px;padding:28px;background:var(--raise)}
+.box.main{border-color:color-mix(in srgb,var(--ember) 55%,var(--line2))}
+.box h3{font-size:21px;display:flex;align-items:center;gap:10px}
+.box h3 .ico{color:var(--ember);width:24px;height:24px}
+.box p{margin-top:10px;font-size:15px}
+.box .ctas{margin-top:20px}
+.box .ctas .btn{flex:1 1 220px}
+.sums{font-size:14px;color:var(--muted);margin-top:14px}
+.steps{list-style:none;counter-reset:s;display:grid;gap:12px;margin-top:6px}
+.steps li{counter-increment:s;position:relative;padding-left:40px;font-size:15px}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:800 13px/1 var(--display);color:var(--ember);border:1.5px solid var(--ember)}
+.steps b{display:block}
 .cmd{position:relative;margin-top:12px}
-pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b0705;border:1px solid var(--line);border-radius:10px;padding:11px 74px 11px 13px;margin:0;color:#f1dcc4}
-pre code{background:none;border:0;padding:0;font-size:12.5px}
-.copy-btn{position:absolute;top:7px;right:7px;font:600 12px Inter,sans-serif;color:var(--soft);background:var(--panel2);border:1px solid var(--line2);border-radius:7px;padding:4px 9px;cursor:pointer}
-.copy-btn:hover{color:var(--text)}
-.copy-btn[hidden]{display:none}
-.steps{display:grid;grid-template-columns:1fr 1fr;gap:12px;list-style:none;padding:0;margin:14px 0 0;counter-reset:s}
-.steps li{counter-increment:s;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px 14px 50px;position:relative;font-size:14px;color:var(--muted)}
-.steps li::before{content:counter(s);position:absolute;left:14px;top:13px;width:24px;height:24px;border-radius:50%;background:rgba(255,138,61,.15);color:var(--ember);font-weight:800;font-size:13px;display:grid;place-items:center}
-.steps b{display:block;color:var(--soft);margin-bottom:2px}
-.h3row{font-size:18px;margin:32px 0 6px}
-.switch{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
-.small{font-size:13px;color:var(--muted)}
-.note{display:flex;gap:14px;align-items:flex-start;margin-top:24px;padding:18px 20px;border-radius:var(--r);background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.3);color:var(--soft);font-size:14.5px}
+.cmd pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--code);border:1px solid var(--line2);border-radius:10px;padding:13px 84px 13px 15px;color:var(--text)}
+.copy{position:absolute;top:8px;right:8px;font:600 13px/1 var(--body);color:var(--soft);background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:8px 11px;cursor:pointer}
+.copy:hover{color:var(--text)}
+.copy[hidden]{display:none}
+.switch{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:18px}
+.switch .box h4{font-size:17px;color:var(--text)}
+#switch{font-size:24px;margin-top:64px}
+.beta{display:grid;grid-template-columns:auto 1fr;gap:16px;margin-top:40px;padding:22px 24px;border-radius:14px;border:1px solid color-mix(in srgb,var(--glow) 45%,var(--line2));font-size:15.5px}
+.beta .ico{color:var(--glow);width:24px;height:24px}
 
-/* faq */
-.faq{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
-.faq details{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:0 16px}
-.faq summary{cursor:pointer;font-weight:600;padding:13px 0;list-style:none;display:flex;justify-content:space-between;gap:10px}
+/* Ember */
+.ember{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(28px,5vw,72px);align-items:center}
+
+/* FAQ */
+.faq{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 48px}
+.faq details{border-top:1px solid var(--line)}
+.faq summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:16px;padding:16px 0;color:var(--text);font-weight:650;font-size:16.5px}
 .faq summary::-webkit-details-marker{display:none}
-.faq summary::after{content:"+";color:var(--ember);font-weight:700}
-.faq details[open] summary::after{content:"–"}
-.faq p{color:var(--muted);font-size:14.5px;padding:0 0 14px}
+.faq summary::after{content:"+";color:var(--ember);font-weight:800}
+.faq details[open] summary::after{content:"\2013"}
+.faq details p{padding:0 0 18px;font-size:15.5px;max-width:40em}
 
-footer{border-top:1px solid var(--line);padding:30px 0 40px;font-size:14px}
-footer .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px}
-footer a{color:var(--muted)}
+/* earlier releases */
+details.rel{margin-top:40px;border-top:1px solid var(--line);padding-top:14px}
+details.rel summary{cursor:pointer;list-style:none;color:var(--text);font-weight:650}
+details.rel summary::-webkit-details-marker{display:none}
+details.rel summary span{color:var(--muted);font-weight:400}
+details.rel .body{display:grid;gap:10px;padding-top:12px;font-size:15px;max-width:60em}
+
+footer{padding:44px 0 56px;border-top:1px solid var(--line);font-size:15px}
+footer .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:10px 24px}
 footer .brand{margin-right:auto}
-.legal{flex-basis:100%;color:#7d6c60;font-size:12.5px;margin-top:6px}
+footer a{color:var(--soft);text-decoration:none}
+footer a:hover{color:var(--text);text-decoration:underline}
+.legal{flex-basis:100%;font-size:13.5px;color:var(--muted);margin-top:10px;max-width:70em}
+#game-art{padding-top:0}
+#game-art .lede{max-width:52em}
+details.art{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+details.art summary{cursor:pointer;color:var(--text);font-weight:650;list-style:none;display:flex;gap:10px;align-items:center}
+details.art summary::-webkit-details-marker{display:none}
+details.art summary::before{content:"+";color:var(--ember);font-weight:800;width:14px}
+details.art[open] summary::before{content:"\2013"}
+.artnote{max-width:60em;font-size:15px;color:var(--soft);padding-top:12px}
+.credits{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:22px 36px;padding-top:16px}
+.credits h3{font-size:17px;margin:0 0 6px}
+.credits h3 a{color:var(--text);text-decoration:none}
+.credits ul{display:grid;gap:7px;font-size:14px;color:var(--soft);overflow-wrap:anywhere}
+.credits a{color:var(--soft)}
 
-@media (max-width:1020px){
-  .shade{background:linear-gradient(180deg,rgba(17,11,8,.85),rgba(17,11,8,.6) 45%,rgba(17,11,8,.15))}
-  .hero .wrap{grid-template-columns:1fr;gap:40px}
-  .hero-copy{text-align:center}.runs{justify-content:center}.hero .pills,.hero .ctas{justify-content:center}.lead,.fine{margin-left:auto;margin-right:auto}
-  .strip{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .edgrid{grid-template-columns:1fr}
-  .feat,.ticks{grid-template-columns:1fr 1fr}
-  .mantel{grid-template-columns:1fr}
-  .dlgrid{grid-template-columns:1fr}.dlcard.main{grid-row:auto}
-  .steps{grid-template-columns:1fr 1fr}
-  nav .links .mid{display:none}
+@media (max-width:1060px){
+  .top .links .mid{display:none}
+  .hero .grid{grid-template-columns:minmax(0,1fr);gap:36px}
+  h1.d{font-size:clamp(38px,8vw,72px)}
+  .hearth{max-width:820px}
+  .head{grid-template-columns:minmax(0,1fr)}
+  .next{grid-template-columns:minmax(0,1fr)}
+  .picks{position:static;flex-direction:row;overflow-x:auto;scrollbar-width:none;padding:4px;margin:0 -4px}
+  .picks::-webkit-scrollbar{display:none}
+  .picks button{flex:none;grid-template-columns:auto auto}
+  .picks button small{display:none}
+  .picks button .ico{grid-row:auto}
+  .apps{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .room,.room.flip,.ember,.split2{grid-template-columns:minmax(0,1fr)}
+  .room.flip .words{order:0}
+  .eds,.dlgrid{grid-template-columns:minmax(0,1fr)}
+  .update{grid-template-columns:1fr 1fr;row-gap:28px}
+  .update li:nth-child(2)::after{display:none}
 }
-@media (max-width:640px){
+@media (max-width:720px){
   :root{--gut:16px}
-  body{font-size:15px}
-  section{padding:52px 0}
-  .hero{padding:40px 0 24px}
-  .strip,.eds,.feat,.ticks,.switch,.faq,.steps{grid-template-columns:1fr}
-  .device{padding:3.4% 12%;transform:none}
-  .stage{animation:none}
-  .shade{background:linear-gradient(180deg,rgba(17,11,8,.88),rgba(17,11,8,.72) 50%,rgba(17,11,8,.2))}
-  .hero{padding-bottom:120px}
-  .float{display:none}
-  .slide figcaption{position:static;margin-top:10px;max-width:none}
-  .nav-btn{top:38%}
-  nav .links a.gh span{display:none}
+  body{font-size:15.5px}
+  .hero{padding-top:36px}
+  .screen{padding:6px;border-radius:10px}
+  .screen figcaption{position:static;margin-top:10px}
+  .top .links a.gh span{display:none}
   .btn{width:100%}
-  .ctas{width:100%}
-  .rt small{display:block;margin:2px 0 0}
-  .beta{font-size:12.5px}
+  .panel .prose,.more,.grid3,.facts3,.switch,.faq,.appshots{grid-template-columns:minmax(0,1fr)}
+  .apps{grid-template-columns:1fr 1fr}
+  .link{grid-template-columns:minmax(0,1fr)}
+  .paths{padding:22px 0;gap:22px}
+  .flow{grid-template-columns:1fr;padding:18px}
+  .flow .arrow{justify-self:center;transform:rotate(90deg)}
+  .update{grid-template-columns:minmax(0,1fr)}
+  .update li{padding:0 0 0 56px;min-height:40px}
+  .update li::after{display:none}
+  .duo .menu{right:-6px;bottom:-24px;width:38%}
+  .box{padding:20px}
+  .cmd pre{padding-right:15px;padding-top:44px}
 }
-@media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
-  .device{transform:none}.stage{animation:none}
-}
+@media (max-width:440px){ .top .links a{padding:8px 9px} .top .links a.gh{display:none} .top .links a.dl{margin-left:2px} }
+@media (max-width:350px){ .brand span{display:none} }
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} *{transition:none!important;animation:none!important} }
 </style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="i-pad" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="12" rx="4"/><path d="M7 11v4M5 13h4M15 12h.01M18 14h.01"/></symbol>
-  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
-  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
-  <symbol id="i-heal" viewBox="0 0 24 24"><path d="M12 21s-8-4.5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 6.5-8 11-8 11z"/><path d="M12 9v5M9.5 11.5h5"/></symbol>
-  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v4.5h4.5"/></symbol>
-  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
-  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
-  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
-  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></symbol>
-  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
-  <symbol id="i-disk" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 14h18M7 17h.01"/></symbol>
-  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
-  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 512 512"><defs><linearGradient id="lg-f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd166"/><stop offset=".55" stop-color="#ff8a3d"/><stop offset="1" stop-color="#e5483b"/></linearGradient><linearGradient id="lg-c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6d6"/><stop offset="1" stop-color="#ffc24f"/></linearGradient></defs><path d="M112 432 V252 A144 144 0 0 1 400 252 V432" fill="none" stroke="currentColor" stroke-width="30" stroke-linecap="round"/><path d="M76 462 H436" stroke="currentColor" stroke-width="26" stroke-linecap="round"/><path d="M256 168 C298 222 340 262 340 332 C340 386 302 422 256 422 C210 422 172 386 172 332 C172 294 190 266 212 244 C210 276 222 298 242 306 C232 258 236 212 256 168 Z" fill="url(#lg-f)"/><path d="M258 284 C280 314 300 338 300 368 C300 394 282 412 258 412 C234 412 216 394 216 368 C216 340 238 316 258 284 Z" fill="url(#lg-c)"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></symbol>
+  <symbol id="i-bag" viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></symbol>
+  <symbol id="i-kbd" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 10h.01M9 10h.01M12 10h.01M15 10h.01M18 10h.01M7 14h10"/></symbol>
+  <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M10 4a2 2 0 1 1 4 0v2h4v4h-2a2 2 0 1 0 0 4h2v4h-4v-2a2 2 0 1 0-4 0v2H6v-4h2a2 2 0 1 0 0-4H6V6h4z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></symbol>
+  <symbol id="i-pc" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-pad" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="11" rx="4"/><path d="M7 11v4M5 13h4M15 12h.01M18 14h.01"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
   <symbol id="i-usb" viewBox="0 0 24 24"><rect x="7" y="9" width="10" height="13" rx="2"/><path d="M9 9V3h6v6M10.5 5.5h.01M13.5 5.5h.01"/></symbol>
   <symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5 10.5 4.5v7H3zM13 4.2 21 3v8.5h-8zM3 13h7.5v7L3 19zM13 13h8v8l-8-1.2z"/></symbol>
   <symbol id="i-term" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
-  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
-  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
-  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
   <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></symbol>
-  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
 </svg>
 <a class="skip" href="#main">Skip to content</a>
 
-<div class="beta"><b>Beta</b>Hearth OS and Ember are in beta, not ready to be your everyday system yet. <a href="#beta">What that means</a></div>
-
-<nav id="nav" aria-label="Main">
+<nav class="top night" aria-label="Main">
   <div class="wrap">
-    <a class="brand" href="#"><img src="img/logo.svg" alt="">Hearth OS</a>
+    <a class="brand" href="#top" aria-label="Hearth OS, back to the top"><svg aria-hidden="true"><use href="#i-logo"/></svg><span>Hearth OS</span></a>
     <div class="links">
-      <a class="mid" href="#new-020">What's new</a>
+      <a class="mid" href="#new">What's coming</a>
       <a class="mid" href="#game-mode">Game Mode</a>
-      <a class="mid" href="#mantel">Mantel</a>
+      <a class="mid" href="#together">Play together</a>
       <a class="mid" href="#next">Editions</a>
       <a class="mid" href="#faq">FAQ</a>
       <a href="docs/">Docs</a>
-      <a class="gh" href="https://github.com/Dragongamer9/hearth-os"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg><span>GitHub</span></a>
-      <a class="cta" href="#download">Download</a>
+      <a class="gh" href="https://github.com/Dragongamer9/hearth-os" aria-label="Hearth OS on GitHub"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg></a>
+      <button class="theme" type="button" id="theme" aria-label="Switch between light and dark"><svg class="ico moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ico sun" aria-hidden="true"><use href="#i-sun"/></svg></button>
+      <a class="dl" href="#download">Download</a>
     </div>
   </div>
 </nav>
 
-<header class="hero">
-  <div class="fp" aria-hidden="true"><img src="img/fireplace.svg" alt="" fetchpriority="high"><div class="glow" id="glow"></div><canvas id="fire"></canvas><div class="shade"></div></div>
-  <div class="wrap">
-    <div class="hero-copy">
-      <div class="pills">
-        <span class="pill"><span class="dot"></span>Beta · Version 0.6.4</span>
-        <p class="pill live" id="live" hidden><i></i><span id="liveText"></span></p>
-      </div>
-      <h1>Your whole library,<span class="fire">by the fire.</span></h1>
-      <p class="lead">A controller-first system for handhelds and PCs. Steam, Epic, GOG and Xbox in one library you drive with a gamepad, and a full desktop, Mantel, one button away.</p>
+<header class="hero night" id="top">
+  <div class="wrap grid">
+    <div>
+      <p class="status"><span class="ver">Version 0.6.5, in beta</span><span>Free and open source</span><span class="live" id="live" hidden></span></p>
+      <h1 class="d">The console OS for your PC and handheld</h1>
+      <p class="lede">Hearth OS starts in Game Mode: Steam, Epic, GOG and Xbox games in one library you drive with a controller. A full desktop is one button away, and every update can be rolled back.</p>
       <div class="ctas">
-        <a class="btn primary" href="#download"><svg class="ico"><use href="#i-down"/></svg>Download Hearth OS</a>
-        <a class="btn ghost" href="docs/">Read the docs</a>
+        <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download Hearth OS</a>
+        <a class="btn line" href="#new">See what's new in 0.6.5</a>
       </div>
-      <p class="fine">Free and open source. AMD, Intel and Nvidia graphics. Built on Anatase, with a Peppermint (Debian) edition. Also on Windows 11 as Ember.</p>
-      <ul class="runs" aria-label="Runs on">
-      <li>Steam Deck</li><li>ROG Ally</li><li>Legion Go</li><li>Most desktops and laptops</li><li>Windows 11 as Ember</li>
+    </div>
+    <div class="hearth">
+      <canvas id="fire" aria-hidden="true"></canvas>
+      <div class="floor" aria-hidden="true"></div>
+      <figure class="screen">
+        <img src="img/gm-home.webp" width="1600" height="1000" fetchpriority="high" alt="Hearth's Game Mode home screen: recent games in a row, news from your games below, and the Library, Store and Downloads tabs at the top">
+        <figcaption>Game Mode's home screen, with open-source games (<a href="#game-art">art credits</a>).</figcaption>
+      </figure>
+    </div>
+  </div>
+  <div class="wrap">
+    <ul class="runs" aria-label="Runs on">
+      <li>Steam Deck</li><li>ROG Ally and Xbox Ally</li><li>Legion Go</li><li>Most desktops and laptops</li><li>Windows 11, as Ember</li>
     </ul>
-    </div>
-    <div class="stage">
-      <div class="device">
-        <span class="ctl stick l" aria-hidden="true"></span><span class="ctl dpad" aria-hidden="true"></span>
-        <span class="ctl abxy" aria-hidden="true"></span><span class="ctl stick r" aria-hidden="true"></span>
-        <div class="screen"><img src="img/game-home.webp" width="1280" height="800" fetchpriority="high" alt="Hearth's Game Mode home screen with recent games and news"></div>
-      </div>
-      <img class="float" src="img/game-library-list.webp" width="1280" height="800" alt="" loading="lazy">
-    </div>
   </div>
 </header>
 
 <main id="main">
 
-<section id="new-020" class="tint tight">
+<section id="new">
   <div class="wrap">
-    <div class="head split">
-      <div><span class="kicker">New in 0.6 · now 0.6.4</span>
-        <h2>A full set of Hearth apps, keyboard &amp; mouse, and your files your way</h2></div>
-      <p class="links2"><a href="docs/releases.html">Release notes</a> · <a href="docs/releases.html#next">Coming next</a></p>
+    <div class="head">
+      <div><span class="kicker">Hearth OS is <b>now 0.6.5</b></span>
+        <h2 class="d">New in 0.6.5</h2></div>
+      <p class="lede">Your Hearth PCs work together, your friends live in Game Mode, the stores sit next to your library, and typing with a controller is quick. <a href="docs/releases.html">Release notes</a> and <a href="docs/releases.html#next">what's next</a> are in the docs.</p>
     </div>
-    <div class="strip">
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-layers"/></svg></div><div><h3>Every app you need</h3><p>Text, Photos, Documents, Player, Office (Write, Sheets, Slides), Calendar, Clock, Notes, Weather, Paint, Recorder, Camera, Contacts, Maps, Nearby Share and Hearth Connect.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-key"/></svg></div><div><h3>Keyboard &amp; mouse</h3><p>Game Mode knows when you're on a keyboard: no on-screen keyboard popping up, hover actions, right-click menus, and three new keyboard &amp; mouse layouts.</p><p class="votes" id="votes" hidden>Most wanted:</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-disk"/></svg></div><div><h3>Hearth Files everywhere</h3><p>The default file manager and the Open/Save window in other apps, plus Settings › Default apps to choose what opens what.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-flag"/></svg></div><div><h3>Beacon 0.0.18</h3><p>Add any Windows game with its own Proton prefix, and install GE-Proton, Proton-CachyOS and more for Beacon, Steam, Lutris, Heroic and Bottles.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-pad"/></svg></div><div><h3>Steam, overlay and Nvidia fixes</h3><p>Steam games show from every Steam layout, the new Quick Access opens over games, and apps no longer close on Nvidia.</p></div></div>
+    <div class="next">
+      <div class="picks" role="tablist" aria-label="What's new in 0.6.5" aria-orientation="vertical" id="picks">
+        <button role="tab" id="t-link" aria-controls="p-link" aria-selected="true"><svg class="ico" aria-hidden="true"><use href="#i-link"/></svg><b>Hearth Link</b><small>Copy games between your PCs</small></button>
+        <button role="tab" id="t-friends" aria-controls="p-friends" aria-selected="false" tabindex="-1"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg><b>Friends &amp; chat</b><small>On Matrix, inside Hearth</small></button>
+        <button role="tab" id="t-store" aria-controls="p-store" aria-selected="false" tabindex="-1"><svg class="ico" aria-hidden="true"><use href="#i-bag"/></svg><b>Store in Game Mode</b><small>Steam, GOG, Epic and Xbox</small></button>
+        <button role="tab" id="t-osk" aria-controls="p-osk" aria-selected="false" tabindex="-1"><svg class="ico" aria-hidden="true"><use href="#i-kbd"/></svg><b>On-screen keyboard</b><small>The Ember Wheel and more</small></button>
+        <button role="tab" id="t-mods" aria-controls="p-mods" aria-selected="false" tabindex="-1"><svg class="ico" aria-hidden="true"><use href="#i-puzzle"/></svg><b>Hearth Mods</b><small>Nexus Mods and Wabbajack</small></button>
+        <button role="tab" id="t-more" aria-controls="p-more" aria-selected="false" tabindex="-1"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><b>And more</b><small>Bazaar, sleep, sign-ins</small></button>
+      </div>
+
+      <div class="panel" role="tabpanel" id="p-link" aria-labelledby="t-link" tabindex="0">
+        <div class="shot"><img src="img/gm-link.webp" width="1600" height="1000" loading="lazy" alt="Settings, Hearth Link: this device's name, two paired devices (a Steam Deck online, an office desktop), a game copying at 248 MB per second, and the sync settings"></div>
+        <h3>Pair your Hearth PCs and copy games between them</h3>
+        <div class="prose">
+          <p>Pair once with a short code. Then copy a game from one Hearth to another with its saves and settings, on your network or over the internet. In tests a copy ran at about 2 Gbit/s. An update only moves the parts that changed, and a copy that stops picks up where it left off.</p>
+          <ul class="ticks">
+            <li>Library, play time, settings and layouts stay in sync</li>
+            <li>Sign-ins never move between devices</li>
+            <li>Encrypted end to end; only paired devices connect</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel" role="tabpanel" id="p-friends" aria-labelledby="t-friends" tabindex="0" hidden>
+        <div class="shot"><img src="img/friends-chat.webp" width="1040" height="720" loading="lazy" alt="The Friends window: a friend request, a chat with Sarah, who is playing and can be joined, her game invite with a Play button, and Invite to play next to the message box"></div>
+        <h3>Your friends and chats, without leaving Hearth</h3>
+        <div class="prose">
+          <p>Friends and chat run on Matrix, an open, end-to-end encrypted chat network. See who's online and what they're playing, chat one to one or in groups, and send an invite that opens the game for them.</p>
+          <ul class="ticks">
+            <li>Invite to play, and Join game from a friend's status</li>
+            <li>Play together by streaming your game to a friend</li>
+            <li>Friends only by default: strangers can't message you</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel" role="tabpanel" id="p-store" aria-labelledby="t-store" tabindex="0" hidden>
+        <div class="shot"><img src="img/gm-store.webp" width="1600" height="1000" loading="lazy" alt="A game's page in the Store: Battle for Wesnoth from Steam, with its art, Play (it's installed), Linux version, its developer, a description and a screenshot"></div>
+        <h3>Browse and buy from the stores with a controller</h3>
+        <div class="prose">
+          <p>The Store tab has a section for Steam, GOG, Epic and Xbox: featured games, deals, new releases and search. It uses the same sign-in as your Library, so you sign in to a store once and it shows what you already own.</p>
+          <ul class="ticks">
+            <li>Games you own say Installed or In your library</li>
+            <li>Buying happens on the store's own page</li>
+            <li>Made for a controller, works with a mouse</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel" role="tabpanel" id="p-osk" aria-labelledby="t-osk" tabindex="0" hidden>
+        <div class="pair">
+          <div class="shot"><img src="img/osk-wheel.webp" width="1600" height="400" loading="lazy" alt="The on-screen keyboard with the Ember Wheel open: letters arranged in a circle around the left stick, over a QWERTY layout"></div>
+          <div class="shot"><img src="img/osk-split.webp" width="1600" height="400" loading="lazy" alt="The on-screen keyboard split in two halves, one per stick, in the light Daylight theme"></div>
+        </div>
+        <h3>A keyboard made for thumbs</h3>
+        <div class="prose">
+          <p>Type with the Ember Wheel, letters around the stick, or split the keyboard so each stick types on its own half. Word suggestions come from the device itself and never go online.</p>
+          <ul class="ticks">
+            <li>10 layouts, plus emoji, clipboard and a number pad</li>
+            <li>Themes, and the ember glow on the key you're on</li>
+            <li>Stays out of the way when you type on a real keyboard</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel" role="tabpanel" id="p-mods" aria-labelledby="t-mods" tabindex="0" hidden>
+        <div class="flow" role="img" aria-label="Mods come from Nexus Mods or a Wabbajack modlist, go through Hearth Mods, and are installed into the game as links, copies or an overlay">
+          <div class="node"><b>Nexus Mods</b>Mod Manager Download links<br><b style="margin-top:8px">Wabbajack</b>Whole modlists</div>
+          <div class="arrow" aria-hidden="true"><svg class="ico"><use href="#i-right"/></svg></div>
+          <div class="node"><b>Hearth Mods</b>Downloads, keeps track, turns mods on and off</div>
+          <div class="arrow" aria-hidden="true"><svg class="ico"><use href="#i-right"/></svg></div>
+          <div class="node"><b>Your game</b>As links, copies or an overlay that leaves the game's files alone</div>
+        </div>
+        <h3>Mods from Nexus Mods and Wabbajack</h3>
+        <div class="prose">
+          <p>Select Mod Manager Download on Nexus Mods and Hearth Mods takes it from there. Wabbajack modlists install the same way, all of them in one go.</p>
+          <ul class="ticks">
+            <li>Choose links, copies or an overlay per game</li>
+            <li>Turn a mod off without hunting for its files</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel" role="tabpanel" id="p-more" aria-labelledby="t-more" tabindex="0" hidden>
+        <ul class="more">
+          <li><b>Bazaar is the app store</b>Flathub apps in Desktop Mode come from Bazaar, on Anatase and Peppermint.</li>
+          <li><b>Sleep like SteamOS</b>On handhelds, the power button puts the device to sleep and wakes it the way a Steam Deck does.</li>
+          <li><b>Your Steam library from the device</b>Hearth reads the games Steam has on this device, wherever Steam keeps them.</li>
+          <li><b>A safety net for sign-ins</b>Store sign-ins are kept safe through updates and restarts, so you don't sign in again.</li>
+        </ul>
+      </div>
     </div>
+
     <details class="rel" id="releases">
-      <summary><span class="ver">0.1–0.5</span><span class="rt">Earlier releases<small>Library layouts, Beacon, Quick Resume, Hearth Input, Mantel, Couch Co-op</small></span><svg class="ico chev"><use href="#i-chev"/></svg></summary>
-      <div class="rel-body">
-        <p id="new-020"><b>0.2–0.5:</b> 16 library layouts (12 to vote on), Beacon built in, a fail-safe that frees Hearth and sends a report, Couch Co-op fixes with streamed and split-screen multi-seat, installer ISOs, Quick Resume through Restart and Shut down, the new in-game overlay, Claude on Hearth OS, and a full Hearth Files.</p>
-        <p id="new-015"><b>0.1.5–0.1.9:</b> Hearth Input <span class="badge">Beta Experimental</span> (a controller layout plays keyboard-and-mouse games, with gyro and back paddles), Quick Resume with a number per game like SteamOS, every Handheld Daemon setting inside Hearth, and Mantel as a full desktop (snapping, Alt+Tab, four desktops, Flathub Apps store, clipboard history). Beacon arrived in 0.1.6; later fixes for downloads freezing Game Mode and a blank screen on some PCs.</p>
-        <p id="new"><b>0.1.1:</b> Couch Co-op <span class="badge">Beta Experimental</span>, split-screen for 2 to 4 players even in games without it (not with anti-cheat), and Multi-seat <span class="badge">Beta Experimental</span>, one PC as several consoles. Plus Quick Resume, power limit and Wi-Fi fixes.</p>
-        <p id="new-010"><b>0.1.0:</b> Hearth Browser on Chromium with ads blocked, a Task Manager and Files app made for a controller, Ember's Mantel matching Hearth OS, steadier controls and self-testing updates.</p>
+      <summary>Already here in 0.6 <span>(the Hearth apps, keyboard &amp; mouse, Hearth Files, Beacon 0.0.18) and earlier releases</span></summary>
+      <div class="body">
+        <p id="new-060"><b>0.6.0–0.6.4:</b> a full set of Hearth apps, keyboard &amp; mouse mode with Settings › Appearance › Made for and three keyboard &amp; mouse layouts, Hearth Files as the default file manager and the Open/Save window everywhere, Settings › Default apps, Beacon 0.0.18 (add any Windows game, compatibility tools), Claude on Hearth OS, and fixes for Steam, the overlay and Nvidia.</p>
+        <p id="new-020"><b>0.2–0.5:</b> 16 library layouts, Beacon built in, a fail-safe that frees Hearth and sends a report, Couch Co-op with streamed and split-screen multi-seat, installer ISOs, Quick Resume through Restart and Shut down, the new in-game overlay and a full Hearth Files.</p>
+        <p id="new-015"><b>0.1.5–0.1.9:</b> Hearth Input (a controller layout plays keyboard-and-mouse games, with gyro and back paddles), Quick Resume with a number per game, every Handheld Daemon setting inside Hearth, and Mantel as a full desktop.</p>
+        <p id="new-011"><b>0.1.1:</b> Couch Co-op, split-screen for 2 to 4 players even in games without it (not with anti-cheat), and Multi-seat, one PC as several consoles.</p>
+        <p id="new-010"><b>0.1.0:</b> Hearth Browser, a Task Manager and Files app made for a controller, and self-testing updates.</p>
       </div>
     </details>
   </div>
 </section>
 
-<section id="game-mode">
+<section id="game-mode" class="alt">
   <div class="wrap">
-    <div class="head"><span class="kicker">Game Mode</span>
-      <h2>Made for a controller from the first screen</h2>
-      <p class="sub">Fullscreen in gamescope, the compositor SteamOS uses. Steam, Epic, GOG, Xbox Cloud Gaming, Xbox PC games, Beacon and your own games in one library; Epic and GOG install without their launchers.</p></div>
-    <div class="tabs" role="tablist" aria-label="Screenshots" id="tabs"></div>
-    <div class="gallery">
-      <div class="track" id="track">
-        <figure class="slide" data-tab="Home"><img src="img/game-home.webp" width="1280" height="800" alt="Home: recent games and news" loading="lazy">
-          <figcaption><b>Home</b>Your latest games, news and Quick Resume, a press away.</figcaption></figure>
-        <figure class="slide" data-tab="Library"><img src="img/game-library.webp" width="1280" height="800" alt="Library in the Covers layout" loading="lazy">
-          <figcaption><b>One library for every store</b>Install, play and uninstall Epic and GOG games without their launchers.</figcaption></figure>
-        <figure class="slide" data-tab="List &amp; details"><img src="img/game-library-list.webp" width="1280" height="800" alt="Library in the List and details layout" loading="lazy">
-          <figcaption><b>List &amp; details</b>A fast list with play time and status; the game you pick fills the panel beside it.</figcaption></figure>
-        <figure class="slide" data-tab="Shelves"><img src="img/game-library-shelves.webp" width="1280" height="800" alt="Library in the Shelves layout" loading="lazy">
-          <figcaption><b>Shelves</b>Rows like a streaming app: continue playing, recently added, installed, favorites.</figcaption></figure>
-        <figure class="slide" data-tab="Game page"><img src="img/game-page.webp" width="1280" height="800" alt="A game's page with Play, play time and achievements" loading="lazy">
-          <figcaption><b>Game pages</b>Play, play time, achievements, per-game power and controller layouts.</figcaption></figure>
-        <figure class="slide" data-tab="Quick Access"><img src="img/game-qa.webp" width="1280" height="800" alt="Quick Access panel with brightness, volume and toggles" loading="lazy">
-          <figcaption><b>Quick Access over any game</b>Volume, brightness, power limit, frame-rate limit and screenshots. The game keeps running underneath.</figcaption></figure>
-        <figure class="slide" data-tab="Downloads"><img src="img/game-downloads.webp" width="1280" height="800" alt="Downloads page with a speed graph and queue" loading="lazy">
-          <figcaption><b>Downloads</b>A live speed graph, pause and resume, and a queue you can reorder.</figcaption></figure>
-        <figure class="slide" data-tab="Beacon"><img src="img/game-beacon.webp" width="1280" height="800" alt="The Beacon tab in the library" loading="lazy">
-          <figcaption><b>Beacon</b>Battle for Middle-earth, Age of the Ring and more, with their mods, right in the library.</figcaption></figure>
-        <figure class="slide" data-tab="Spotlight"><img src="img/game-spotlight.webp" width="1280" height="800" alt="The Spotlight home layout" loading="lazy">
-          <figcaption><b>Home layouts</b>Shelf, Tiles or Spotlight, plus experimental ones.</figcaption></figure>
-      </div>
-      <button class="nav-btn prev" type="button" aria-label="Previous screenshot" id="prev"><svg class="ico"><use href="#i-left"/></svg></button>
-      <button class="nav-btn next" type="button" aria-label="Next screenshot" id="next-shot"><svg class="ico"><use href="#i-right"/></svg></button>
+    <div class="head">
+      <h2 class="d">Made for a controller from the first screen</h2>
+      <p class="lede">Game Mode runs fullscreen in gamescope, the compositor SteamOS uses. Everything is a press away, and it works just as well with a keyboard and mouse.</p>
     </div>
-    <ul class="ticks">
-      <li><b>Quick Resume</b>: up to five games paused in memory.</li>
-      <li><b>Cloud saves</b> for Epic and GOG; your Steam friends list.</li>
-      <li><b>Profiles</b> with optional PIN and parental controls.</li>
-      <li><b>Works offline</b>: game art is saved on the device.</li>
-      <li><b>Hearth Input</b> plays games with no controller support.</li>
-      <li><b>Nothing injected</b>: anti-cheat has nothing to object to.</li>
+    <div class="tabs" role="tablist" aria-label="Game Mode screenshots" id="tabs"></div>
+    <div class="track" id="track">
+      <figure class="slide" data-tab="Library"><img src="img/gm-library.webp" width="1600" height="1000" loading="lazy" alt="The Library on All games: tabs for Installed, Favorites and each store, and covers of SuperTuxKart, 0 A.D., Battle for Wesnoth, OpenTTD, Endless Sky and Veloren, marked Flathub, Steam or GOG">
+        <figcaption><b>One library for every store.</b>Steam, Epic, GOG, Xbox, Beacon, emulators and your own games, with filters and sorting.</figcaption></figure>
+      <figure class="slide" data-tab="Layouts"><img src="img/lib-flow.webp" width="1600" height="900" loading="lazy" alt="The Library in the Cover Flow layout: covers tilted in a row with the selected game in front">
+        <figcaption><b>Library layouts.</b>Covers, List, Shelves and Wall, plus experimental ones like this Cover Flow that players vote on.</figcaption></figure>
+      <figure class="slide" data-tab="Downloads"><img src="img/gm-downloads.webp" width="1150" height="700" loading="lazy" alt="Downloads: the game downloading with its progress and a live speed graph, and two games queued below">
+        <figcaption><b>Downloads.</b>A live speed graph, pause and resume, and a queue you can reorder.</figcaption></figure>
+      <figure class="slide" data-tab="Game page"><img src="img/gm-game.webp" width="1600" height="1000" loading="lazy" alt="Battle for Wesnoth's page: its art and logo, Play, last played, play time, source and size, and a description">
+        <figcaption><b>Game pages.</b>Play, play time, achievements, and per-game power and controller layouts.</figcaption></figure>
+      <figure class="slide" data-tab="Quick Access"><img src="img/gm-qa.webp" width="1600" height="1000" loading="lazy" alt="Quick Access open while 0 A.D. is running: brightness, volume, Wi-Fi, Bluetooth, airplane mode and interface sounds, over the game's page">
+        <figcaption><b>Quick Access over any game.</b>Volume, brightness, power limit, frame-rate limit and screenshots, with the game still running underneath.</figcaption></figure>
+      <figure class="slide" data-tab="Beacon"><img src="img/game-beacon.webp" width="1280" height="800" loading="lazy" alt="The Beacon tab in the library">
+        <figcaption><b>Beacon.</b>Battle for Middle-earth, Age of the Ring and other classics with their mods, and any Windows game you add.</figcaption></figure>
+    </div>
+    <ul class="grid3">
+      <li><b>Quick Resume</b>Up to five games paused in memory, kept through restarts.</li>
+      <li><b>Cloud saves</b>For Epic and GOG, next to Steam's own.</li>
+      <li><b>Profiles</b>Each with its own library and an optional PIN; parental controls.</li>
+      <li><b>Works offline</b>Game art is kept on the device.</li>
+      <li><b>Hearth Input</b>Plays games that have no controller support.</li>
+      <li><b>Nothing injected</b>The overlay is an ordinary window, so anti-cheat has nothing to object to.</li>
     </ul>
   </div>
 </section>
 
-<section id="features" class="tint">
-  <span id="mantel" class="anchor"></span>
+<section id="library">
+  <div class="wrap room flip">
+    <div class="words">
+      <h2 class="d">Every store, one sign-in each</h2>
+      <p class="lede">Sign in to a store once and its games join your library and its section of the Store. Epic and GOG games install, update and uninstall without their launchers.</p>
+      <ul class="stores" aria-label="Stores and sources">
+        <li>Steam</li><li>Epic Games</li><li>GOG</li><li>Xbox PC games</li><li>Xbox Cloud Gaming</li><li>Beacon</li><li>Emulators</li><li>Your own games</li>
+      </ul>
+    </div>
+    <figure style="margin:0"><div class="pic"><img src="img/gm-store-steam.webp" width="1600" height="1000" loading="lazy" alt="The Store's Steam section: Battle for Wesnoth featured, then rows of free games (Battle for Wesnoth, OpenTTD and Endless Sky), marked Installed or In your library"></div>
+      <figcaption class="cap">The Store's Steam section, with open-source games that are on Steam for free.</figcaption></figure>
+  </div>
+</section>
+
+<section id="together" class="alt">
   <div class="wrap">
-    <div class="head"><span class="kicker">Mantel and under the hood</span>
-      <h2>A real desktop one button away, on a system that looks after itself</h2></div>
-    <div class="mantel">
-      <div class="shots2">
-        <img class="back" src="img/mantel-lanterns.webp" width="1600" height="900" alt="" loading="lazy">
-        <img class="front" src="img/mantel-cabin.webp" width="1600" height="900" alt="The Mantel desktop with a Hearth wallpaper and taskbar" loading="lazy">
+    <div class="head">
+      <h2 class="d">Play together, across every Hearth you own</h2>
+      <p class="lede">Hearth Link copies a game from one of your PCs to another instead of downloading it again, and keeps your Hearth the same on each.</p>
+    </div>
+    <div class="link" role="img" aria-label="A game copies from one Hearth PC to another: straight across on the same network, or over the internet, directly when the networks allow and otherwise through an encrypted relay">
+      <div class="dev"><svg class="ico" aria-hidden="true"><use href="#i-pc"/></svg><b>Living room PC</b><span>Has the game</span></div>
+      <div class="paths">
+        <p class="path"><b>Same network</b>Straight across; about 2 Gbit/s in tests</p>
+        <p class="path relay"><b>Over the internet</b>Directly when the networks allow, otherwise through an encrypted relay</p>
+      </div>
+      <div class="dev"><svg class="ico" aria-hidden="true"><use href="#i-pad"/></svg><b>Steam Deck</b><span>Gets it with its saves and settings</span></div>
+    </div>
+    <ul class="facts3">
+      <li><b>Only what changed</b>Updating a game you copied before moves only the changed parts.</li>
+      <li><b>Picks up where it stopped</b>Close the lid or lose the connection; the copy resumes.</li>
+      <li><b>Never your sign-ins</b>Library, play time, settings and layouts sync. Passwords and store sign-ins stay on each device.</li>
+    </ul>
+    <div class="split2">
+      <div class="prose">
+        <h3 style="font-size:24px;margin-bottom:12px">Friends in Game Mode</h3>
+        <p>See who's online and what they're playing, chat, and invite them to your game. A friend who's playing shows Join game; Play together streams your game to them so you can play side by side from different homes.</p>
+        <p class="small">Friends and chat use Matrix. Only people you've accepted can message you.</p>
+      </div>
+      <div class="prose">
+        <h3 style="font-size:24px;margin-bottom:12px">Couch Co-op and Multi-seat</h3>
+        <p>Split-screen for 2 to 4 players, even in games that don't have it, or one PC as several consoles with a screen each. Both are Beta Experimental and don't work with anti-cheat games.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="apps">
+  <div class="wrap">
+    <div class="head">
+      <h2 class="d">The apps you need, already there</h2>
+      <p class="lede">Hearth's own apps open with a controller, a keyboard or a mouse, share one look, and are the defaults for the files they open. Settings › Default apps changes that.</p>
+    </div>
+    <div class="apps">
+      <div><h3>Work</h3><ul><li>Hearth Text</li><li>Office: Write, Sheets, Slides</li><li>Documents</li><li>Calculator</li></ul></div>
+      <div><h3>Watch and make</h3><ul><li>Photos</li><li>Player</li><li>Paint</li><li>Recorder and Camera</li></ul></div>
+      <div><h3>Every day</h3><ul><li>Calendar</li><li>Clock</li><li>Notes</li><li>Weather</li><li>Contacts</li><li>Maps</li></ul></div>
+      <div><h3>Your devices</h3><ul><li>Hearth Files</li><li>Nearby Share</li><li>Hearth Connect</li><li>Share</li></ul></div>
+      <div><h3>For games</h3><ul><li>Controller Lab</li><li>Saves</li><li>Mods</li><li>System tools</li><li>Claude</li></ul></div>
+    </div>
+    <div class="appshots">
+      <figure style="margin:0"><div class="pic"><img src="img/app-text.webp" width="1040" height="718" loading="lazy" alt="Hearth Text with three files in tabs, showing a Python script with syntax colours and line numbers"></div><figcaption class="cap">Hearth Text, for notes, configs and code.</figcaption></figure>
+      <figure style="margin:0"><div class="pic"><img src="img/app-paint.webp" width="1200" height="759" loading="lazy" alt="Hearth Paint with a drawing of arrows and text on an orange gradient, and the colour palette on the right"></div><figcaption class="cap">Hearth Paint, for quick drawings and marking up screenshots.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="mantel" class="alt">
+  <div class="wrap room">
+    <div class="words">
+      <h2 class="d">A real desktop, one button away</h2>
+      <p class="lede">Mantel is Hearth's desktop for browsing, mods and files. Hop over and back without logging out. The Hearth menu opens with a press of the controller's Hearth button, and the stick picks from it.</p>
+      <ul class="ticks">
+        <li>Hearth Browser (Firefox), Hearth Files and Task Manager</li>
+        <li>The controller as mouse and keyboard</li>
+        <li>Snapping, Alt+Tab, four desktops, clipboard history</li>
+        <li>The same desktop on Windows, as Ember</li>
+      </ul>
+      <div class="walls" aria-label="Some of the wallpapers made for Hearth">
+        <img src="img/wall-lanterns.webp" width="640" height="360" alt="Lanterns wallpaper" loading="lazy">
+        <img src="img/wall-fox.webp" width="640" height="360" alt="Fox wallpaper" loading="lazy">
+        <img src="img/wall-peaks.webp" width="640" height="360" alt="Peaks wallpaper" loading="lazy">
+        <img src="img/wall-forge.webp" width="640" height="360" alt="Forge wallpaper" loading="lazy">
+        <img src="img/wall-topo.webp" width="640" height="360" alt="Topographic wallpaper" loading="lazy">
+        <img src="img/wall-cabin.webp" width="640" height="360" alt="Cabin wallpaper" loading="lazy">
+      </div>
+    </div>
+    <div class="duo">
+      <div class="pic front"><img src="img/mantel-cabin.webp" width="1600" height="900" loading="lazy" alt="The Mantel desktop with a cabin wallpaper and the taskbar"></div>
+      <img class="menu" src="img/hearth-menu.webp" width="800" height="760" loading="lazy" alt="The round Hearth menu: Apps, keyboard, menu, close, controller, screenshot, mouse and help around the Hearth flame">
+    </div>
+  </div>
+</section>
+
+<section id="keyboard">
+  <div class="wrap room flip">
+    <div class="words">
+      <h2 class="d">Keyboard and mouse, when you'd rather</h2>
+      <p class="lede">Hearth notices when you type or move a mouse: the on-screen keyboard stays away, actions show on hover, and right-click opens menus. Settings › Appearance › Made for picks Automatic, Mouse &amp; keyboard or Controller.</p>
+      <ul class="ticks">
+        <li>Three layouts for Home and the Library: Desk grid, Table and Launcher</li>
+        <li>Shortcuts for everything, listed in Settings</li>
+      </ul>
+    </div>
+    <div class="pic"><img src="img/mk-desk.webp" width="1600" height="900" loading="lazy" alt="Home in the Desk grid layout: a sidebar with collections and stores, a row of games to jump back into, and a dense grid of every game"></div>
+  </div>
+</section>
+
+<section id="handhelds" class="alt">
+  <div class="wrap room">
+    <div class="words">
+      <h2 class="d">At home on a handheld</h2>
+      <p class="lede">Handheld Daemon is built in and its settings live in Hearth's own screens. Sleep and wake work like a Steam Deck, and Quick Access opens over whatever you're playing.</p>
+      <ul class="ticks">
+        <li>Power mode, watt limit and frame cap, per game</li>
+        <li>Remap any button and save the layout per game</li>
+        <li>Tested on the ROG Ally and Xbox Ally</li>
+      </ul>
+    </div>
+    <div class="pic"><img src="img/gm-qa.webp" width="1600" height="1000" loading="lazy" alt="Quick Access open while 0 A.D. is running, with brightness, volume and quick toggles, and tabs for performance and open apps"></div>
+  </div>
+</section>
+
+<section id="hood">
+  <div class="wrap">
+    <div class="head">
+      <h2 class="d">An update can't break your system</h2>
+      <p class="lede">Hearth OS is image-based: the whole system is one tested image that updates in one piece. It can't half-install, and the version before stays on the drive.</p>
+    </div>
+    <ol class="update" aria-label="How an update works">
+      <li><b>It downloads in the background</b>The new image comes down while you play, as one piece.</li>
+      <li><b>You restart into it</b>Whenever suits you. Your games, saves and files stay as they are.</li>
+      <li><b>The last version stays</b>It waits in the boot menu, ready.</li>
+      <li><b>Something wrong? Go back</b>Pick it at start-up, or run <code>sudo bootc rollback</code>.</li>
+    </ol>
+    <div class="split2">
+      <dl class="glance" id="glance">
+        <dt>Based on</dt><dd>Anatase (Fedora 44/45, bootc image); Peppermint (Debian 13) edition, Beta Experimental</dd>
+        <dt>Architecture</dt><dd>x86-64</dd>
+        <dt>Desktop</dt><dd>Game Mode (gamescope) and Mantel (labwc, Quickshell)</dd>
+        <dt>Packages</dt><dd>Image-based (bootc) updates, Flatpak apps from Bazaar</dd>
+        <dt>Init</dt><dd>systemd</dd>
+        <dt>Status</dt><dd>Beta</dd>
+        <dt>Latest release</dt><dd>0.6.5 (2026-10-24), <a href="docs/releases.html">release notes</a></dd>
+        <dt>License</dt><dd>Free and open source (GPL-3.0)</dd>
+      </dl>
+      <div class="prose">
+        <p><b>One image for AMD, Intel and Nvidia.</b> Nvidia GTX 16 / RTX 20 and newer work from the same ISO, with no separate download.</p>
+        <p><b>Sign in your way.</b> Like a console with no password, or with a password at start and after sleep. The lock and login screens work with a controller.</p>
+        <p><b>Its own installer.</b> Next to Windows or on the whole drive, and it brings your games over.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="next" class="alt">
+  <div class="wrap">
+    <div class="head">
+      <h2 class="d">Two editions, the same Hearth</h2>
+      <p class="lede">Hearth looks and works the same on both. What changes is the Linux underneath. You can switch later without a USB stick.</p>
+    </div>
+    <div class="eds">
+      <div class="ed main"><span class="tag">Main edition</span><h3>Hearth OS on Anatase</h3>
+        <p>Lean and image-based, from people who worked on Bazzite: Fedora underneath. One ISO for AMD, Intel and Nvidia, with Handheld Daemon built in. Every change is tested here first.</p></div>
+      <div class="ed"><span class="tag">Beta Experimental</span><h3>Hearth OS on Peppermint</h3>
+        <p>Peppermint OS on Debian 13, made into an image, for people who like Debian's steady pace.</p></div>
+    </div>
+    <p class="archived small">The Ubuntu and CachyOS editions are archived for now while Anatase and Peppermint get polished. They'll be back. Systems on them can switch from Settings › Updates.</p>
+    <details class="why">
+      <summary>Why Hearth left Bazzite, and moving from Hearth OS on Bazzite</summary>
+      <div class="body"><ul>
+        <li><b>Too much it doesn't use:</b> Bazzite's Game Mode setup, KDE, tools and services cost space, memory and start-up time.</li>
+        <li><b>Heavier than it should be:</b> 8 to 10 GB installs, bigger updates, sluggish on Nvidia.</li>
+        <li><b>Two of everything:</b> a separate Nvidia image and ISO; Anatase is one for every PC.</li>
+        <li><b>Better handhelds:</b> Handheld Daemon, shown in Hearth's own screens.</li>
+        <li>Hearth OS on Bazzite is archived (0.1.3 was its last update). Move from Settings › Updates › Move to a new Hearth OS; games and saves stay. All editions install from the small installer, Anatase also from the offline USB.</li>
+      </ul></div>
+    </details>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <div class="head">
+      <h2 class="d">Get Hearth OS 0.6.5</h2>
+      <p class="lede">For handhelds and PCs with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics. Already on Bazzite or Fedora Atomic? <a href="#switch">Switch with one command</a>.</p>
+    </div>
+    <div class="dlgrid">
+      <div class="box main">
+        <h3><svg class="ico" aria-hidden="true"><use href="#i-usb"/></svg>Hearth OS on Anatase</h3>
+        <p>Installing erases the drive you pick, or goes next to Windows. The offline USB has everything and installs without internet; the small installer downloads while it installs and offers every edition.</p>
+        <div class="ctas">
+          <a class="btn go" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Offline USB <small>about 9 GB</small></a>
+          <a class="btn line" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Small installer <small>1.6 GB</small></a>
+        </div>
+        <p class="sums">SHA-256 checksums: <a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso.sha256">offline USB</a>, <a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso.sha256">small installer</a>. Peppermint and more in <a href="docs/install.html">Installing</a>.</p>
+      </div>
+      <div class="box">
+        <h3>Installing from the ISO</h3>
+        <ol class="steps">
+          <li><b>Write it to a USB stick</b>16 GB or more, with Fedora Media Writer or balenaEtcher.</li>
+          <li><b>Boot from the USB</b>Boot menu: often F12, F11 or F8. ROG Ally: hold Volume Down at power-on.</li>
+          <li><b>Try it out</b>The live system starts in Hearth with a welcome card. Nothing changes yet.</li>
+          <li><b>Choose Install Hearth</b>Pick a drive and restart when it's done.</li>
+        </ol>
+      </div>
+    </div>
+
+    <h3 id="switch">Switch from Bazzite, Fedora Atomic or another image-based system</h3>
+    <p class="small" style="margin-top:8px;max-width:52em">Bazzite, Bluefin, Aurora, Silverblue or Kinoite switch with one command, no USB stick. Your account and files stay, and the old system stays in the boot menu. <b>Beta Experimental:</b> back up first. Peppermint can't be switched to this way; use the small installer.</p>
+    <div class="switch">
+      <div class="box">
+        <h4>From Bazzite, Bluefin, Aurora or Fedora Atomic</h4>
+        <div class="cmd"><pre><code id="switch-bootc">sudo bootc switch ghcr.io/dragongamer9/hearth-os:latest</code></pre><button class="copy" type="button" data-copy="switch-bootc" aria-label="Copy the bootc switch command" hidden>Copy</button></div>
+        <details class="why"><summary>Older system without bootc, or going back</summary>
+          <div class="body">
+            <div class="cmd"><pre><code id="switch-ostree">sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/dragongamer9/hearth-os:latest</code></pre><button class="copy" type="button" data-copy="switch-ostree" aria-label="Copy the rpm-ostree command" hidden>Copy</button></div>
+            <p class="small" style="margin-top:10px">To go back, pick the previous boot entry or run <code>sudo bootc rollback</code>. Hearth OS updates itself from Settings › Updates.</p>
+          </div>
+        </details>
+      </div>
+      <div class="box">
+        <h4>From Hearth OS on Bazzite</h4>
+        <p>Settings › Updates › <b>Move to a new Hearth OS</b> keeps your games, saves and store libraries (the rest of home is set aside for 30 days). Or in Desktop Mode:</p>
+        <div class="cmd"><pre><code id="switch-hearth">pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os</code></pre><button class="copy" type="button" data-copy="switch-hearth" aria-label="Copy the move command" hidden>Copy</button></div>
+      </div>
+    </div>
+
+    <div class="beta" id="beta"><svg class="ico" aria-hidden="true"><use href="#i-warn"/></svg>
+      <p><b>This is a beta.</b> Hearth OS and Ember aren't ready to be your everyday system yet, and things will break now and then. Updates come out almost daily and install themselves. Keep a backup, and <a href="docs/troubleshooting.html#ask">tell us what breaks</a>.</p></div>
+  </div>
+</section>
+
+<section id="ember" class="alt">
+  <div class="wrap ember">
+    <div>
+      <h2 class="d">On Windows 11? Try Ember</h2>
+      <p class="lede">Ember is Hearth's sister app: the same library and the Mantel desktop as a Windows shell. Switch back to Explorer any time.</p>
+    </div>
+    <div>
+      <p class="small">In PowerShell:</p>
+      <div class="cmd"><pre><code id="ember-cmd">irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex</code></pre><button class="copy" type="button" data-copy="ember-cmd" aria-label="Copy the Ember install command" hidden>Copy</button></div>
+      <div class="ctas" style="margin-top:16px">
+        <a class="btn line" href="https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-win-x64.zip"><svg class="ico" aria-hidden="true"><use href="#i-win"/></svg>Ember .zip</a>
+        <a class="btn line" href="https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-linux-x86_64.AppImage"><svg class="ico" aria-hidden="true"><use href="#i-term"/></svg>Linux AppImage</a>
+      </div>
+      <p class="small" style="margin-top:12px">The AppImage is Hearth's Game Mode, to try on the Linux you already have.</p>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="head"><h2 class="d">Questions</h2></div>
+    <div class="faq">
+      <div>
+        <details><summary>What hardware does it need?</summary><p>Steam Deck, ROG Ally, Legion Go and most x86-64 desktops and laptops with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics. For installing, a USB stick of 16 GB or more and a drive of 64 GB or more.</p></details>
+        <details><summary>Can I go back?</summary><p>Yes. Updates and switches keep the previous system in the boot menu; pick it, or run <code>sudo bootc rollback</code>.</p></details>
+        <details><summary>Does it work with anti-cheat games?</summary><p>Nothing is injected into games; the overlay is an ordinary window. Couch Co-op doesn't support anti-cheat games.</p></details>
       </div>
       <div>
-        <p class="sub" style="margin-top:0"><b>Mantel</b> is Hearth's desktop for browsing, mods and files. Hop over and back with one button, no logging out. Its own Settings, the controller as mouse and keyboard, Hearth Browser, Task Manager and Files, lock and login screens you can use with a pad (or skip), and the same desktop on Windows as Ember.</p>
-        <div class="walls" aria-label="Some of the wallpapers made for Hearth">
-          <img src="img/wall-lanterns.webp" width="640" height="360" alt="Lanterns wallpaper" loading="lazy">
-          <img src="img/wall-fox.webp" width="640" height="360" alt="Fox wallpaper" loading="lazy">
-          <img src="img/wall-peaks.webp" width="640" height="360" alt="Peaks wallpaper" loading="lazy">
-          <img src="img/wall-bloom.webp" width="640" height="360" alt="Bloom wallpaper" loading="lazy">
-          <img src="img/wall-forge.webp" width="640" height="360" alt="Forge wallpaper" loading="lazy">
-          <img src="img/wall-topo.webp" width="640" height="360" alt="Topographic wallpaper" loading="lazy">
-          <img src="img/wall-cat.webp" width="640" height="360" alt="Cat wallpaper" loading="lazy">
-          <img src="img/wall-cabin.webp" width="640" height="360" alt="Cabin wallpaper" loading="lazy">
-        </div>
-      </div>
-    </div>
-    <div class="feat">
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-undo"/></svg></div><div><h3>Updates that roll back</h3><p>Image-based: a bad update is undone from the boot menu.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-pad"/></svg></div><div><h3>Handhelds and desktops</h3><p>Handheld Daemon; one image for AMD, Intel, Nvidia.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-bolt"/></svg></div><div><h3>Your power, your call</h3><p>Power mode, watt limit, frame cap, per game.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-sliders"/></svg></div><div><h3>Remap your controller</h3><p>Change any button and save layouts.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-key"/></svg></div><div><h3>Sign in your way</h3><p>Each store's own sign-in, with on-screen keyboard.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-disk"/></svg></div><div><h3>Its own installer</h3><p>Next to Windows or whole drive; brings your games over.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-lock"/></svg></div><div><h3>Password or not</h3><p>Sign in like a console, or ask at start and after sleep.</p></div></div>
-      <div class="card"><div class="ic"><svg class="ico"><use href="#i-globe"/></svg></div><div><h3>Hearth Browser</h3><p>Firefox with Hearth's look and settings, kept up to date with the system, and an on-screen keyboard for the couch.</p></div></div>
-    </div>
-  </div>
-</section>
-
-<section id="next">
-  <div class="wrap">
-    <div class="head"><span class="kicker">Editions</span>
-      <h2>Built on Anatase, with a Peppermint edition</h2>
-      <p class="sub">The Ubuntu and CachyOS editions are archived for now while Anatase and Peppermint get polished. They'll be back.</p></div>
-    <div class="edgrid">
-      <div class="eds" aria-label="Editions">
-        <div class="card ed main"><div class="top"><h3>Hearth OS on Anatase</h3><span class="badge solid">Main</span></div>
-          <p>Lean, image-based, from people who worked on Bazzite. One ISO for AMD, Intel and Nvidia, Handheld Daemon built in.</p></div>
-        <div class="card ed"><div class="top"><h3>On Peppermint</h3><span class="badge">Beta Experimental</span></div><p>Peppermint OS on Debian 13.</p></div>
-        <details class="why">
-          <summary>Why Hearth left Bazzite, and moving from Hearth OS on Bazzite</summary>
-          <ul>
-            <li><b>Too much it doesn't use:</b> Bazzite's Game Mode setup, KDE, tools and services cost space, memory and start-up time.</li>
-            <li><b>Heavier than it should be:</b> 8 to 10 GB installs, bigger updates, sluggish on Nvidia.</li>
-            <li><b>Two of everything:</b> a separate Nvidia image and ISO; Anatase is one for every PC.</li>
-            <li><b>Better handhelds:</b> Handheld Daemon, shown in Hearth's own screens.</li>
-            <li>Hearth OS on Bazzite is archived (0.1.3 was its last update). Move from Settings › Updates › Move to a new Hearth OS; games and saves stay. All editions install from the small installer, Anatase also from the offline USB.</li>
-          </ul>
-        </details>
-      </div>
-      <div class="card facts" id="glance">
-        <h3>At a glance</h3>
-        <dl>
-          <dt>Based on</dt><dd>Anatase (Fedora 44/45, bootc image); edition on Peppermint (Debian 13), Beta Experimental; Ubuntu and CachyOS archived for now</dd>
-          <dt>Architecture</dt><dd>x86-64</dd>
-          <dt>Desktop</dt><dd>Game Mode (gamescope) + Mantel (labwc + Quickshell)</dd>
-          <dt>Packages</dt><dd>Image-based (bootc) updates, Flatpak</dd>
-          <dt>Init</dt><dd>systemd</dd>
-          <dt>Category</dt><dd>Gaming, handheld</dd>
-          <dt>Status</dt><dd>Beta</dd>
-          <dt>Latest release</dt><dd>0.6.4 (2026-10-24) · <a href="docs/releases.html">Release notes</a> · <a href="docs/releases.html#next">Coming next</a></dd>
-          <dt>License</dt><dd>Free and open source (GPL-3.0)</dd>
-        </dl>
+        <details><summary>Do I need two Hearth PCs for Hearth Link?</summary><p>Hearth Link is for copying games and keeping Hearth in sync between your own Hearth devices, so yes. Friends, chat and Play together work with one.</p></details>
+        <details><summary>Is it really free?</summary><p>Yes. Hearth OS is free and open source under the GPL-3.0. Games you buy come from the stores as usual.</p></details>
+        <details><summary>Something broke. How do I report it?</summary><p>Send logs from Settings › System or with <code>hearth-send-logs</code>, and <a href="docs/troubleshooting.html#ask">tell us what happened</a>.</p></details>
       </div>
     </div>
   </div>
 </section>
 
-<section id="download" class="dl tint">
+<section id="game-art">
   <div class="wrap">
-    <div class="head"><span class="kicker">Download</span>
-      <h2>Get Hearth OS 0.6.4</h2>
-      <p class="sub">Handhelds and PCs with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics. Already on Bazzite or Fedora Atomic? <a href="#switch">Switch with one command</a>.</p></div>
-    <div class="dlgrid">
-      <div class="card dlcard main">
-        <div class="top"><div class="ic"><svg class="ico"><use href="#i-usb"/></svg></div><h3 style="margin:0">Hearth OS on Anatase (ISO)</h3><span class="badge solid">Beta</span></div>
-        <p style="margin-top:10px">Installing erases the drive you pick, or goes next to Windows. The offline USB has everything and installs without internet; the small installer downloads while it installs and offers every edition.</p>
-        <div class="ctas">
-          <a class="btn primary" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso"><svg class="ico"><use href="#i-down"/></svg>Offline USB <small>about 9 GB</small></a>
-          <a class="btn ghost" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso"><svg class="ico"><use href="#i-down"/></svg>Small installer <small>1.6 GB</small></a>
-        </div>
-        <p class="note2">SHA-256: <a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso.sha256">offline USB</a> · <a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso.sha256">small installer</a></p>
-        <details class="why">
-          <summary>Installing from the ISO</summary>
-          <ol class="steps">
-            <li><b>Write it to a USB stick</b>16 GB or more, with Fedora Media Writer or balenaEtcher.</li>
-            <li><b>Boot from the USB</b>Boot menu: often F12, F11 or F8. ROG Ally: hold Volume Down at power-on.</li>
-            <li><b>Try it out</b>The live system starts in Hearth with a welcome card. Nothing changes yet.</li>
-            <li><b>Choose Install Hearth</b>Pick a drive and restart when it's done.</li>
-          </ol>
-        </details>
-      </div>
-      <div class="card dlcard">
-        <div class="top"><div class="ic"><svg class="ico"><use href="#i-win"/></svg></div><h3 style="margin:0">Ember for Windows 11</h3><span class="badge solid">Beta</span></div>
-        <p style="margin-top:8px">The same library as a Windows shell, with Mantel. Switch back to Explorer any time. In PowerShell:</p>
-        <div class="cmd"><pre><code id="ember-cmd">irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex</code></pre><button class="copy-btn" type="button" data-copy="ember-cmd" hidden>Copy</button></div>
-        <div class="ctas">
-          <a class="btn ghost" href="https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-win-x64.zip"><svg class="ico"><use href="#i-down"/></svg>Ember .zip</a>
-          <a class="btn ghost" href="https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-linux-x86_64.AppImage"><svg class="ico"><use href="#i-term"/></svg>Linux AppImage</a>
-        </div>
-        <p class="note2">The AppImage is Hearth's Game Mode, to try on the Linux you already have.</p>
-      </div>
+    <div class="head"><h2 class="d">Game art credits</h2>
+      <p class="lede">The games in the Game Mode screenshots are real open-source games with their own art, used under CC BY-SA and the GPL. Each is shown only on the stores it's really on, and all are free.</p></div>
+    <details class="art"><summary>Every picture, its author, licence and source</summary>
+    <p class="artnote">Art from SuperTuxKart, 0 A.D., The Battle for Wesnoth, Veloren, OpenTTD and Endless Sky. It is only cropped, resized and converted to WebP, as noted for each picture, and each keeps its own licence; the screenshots on this page that show it are shared under the same terms. The names belong to their projects, and Hearth OS isn't affiliated with them.</p>
+    <div class="credits">
+      <div class="cr"><h3><a href="https://supertuxkart.net">SuperTuxKart</a></h3><ul>
+        <li><a href="img/games/stk-cover.webp">stk-cover.webp</a>: Menu background of the Cartoon skin, by LCP and QwertyChouskie. <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/supertuxkart/stk-code/blob/2997f192e6876047909d909498dbb4810e5dbb8d/data/skins/cartoon/background.jpg">background.jpg</a>; cropped to 720×1080 (from x 780), resized to 600×900.</li>
+        <li><a href="img/games/stk-hero.webp">stk-hero.webp</a>: Menu background of the Cartoon Forest skin, by LCP and QwertyChouskie. <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/supertuxkart/stk-code/blob/2997f192e6876047909d909498dbb4810e5dbb8d/data/skins/cartoon-forest/background.jpg">background.jpg</a>; resized to 1600×900.</li>
+        <li><a href="img/games/stk-wide.webp">stk-wide.webp</a>: Menu background of the Cartoon Desert skin, by LCP and QwertyChouskie. <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/supertuxkart/stk-code/blob/2997f192e6876047909d909498dbb4810e5dbb8d/data/skins/cartoon-desert/background.jpg">background.jpg</a>; resized to 640×349.</li>
+        <li><a href="img/games/stk-logo.webp">stk-logo.webp</a>: SuperTuxKart logo, by rastapax. <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0 or later</a>. From <a href="https://github.com/supertuxkart/stk-code/blob/2997f192e6876047909d909498dbb4810e5dbb8d/data/gui/icons/logo.png">logo.png</a>; converted to WebP only.</li>
+      </ul></div>
+      <div class="cr"><h3><a href="https://play0ad.com">0 A.D.</a></h3><ul>
+        <li><a href="img/games/0ad-cover.webp">0ad-cover.webp</a>: Main menu background (Hellenes), by Wildfire Games. <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>. From <a href="https://github.com/0ad/0ad/blob/61a3b9507d974084e6badb88a0826bd89a6d5b8b/binaries/data/mods/public/art/textures/ui/pregame/backgrounds/hellenes1-1.png">hellenes1-1.png</a>; cropped to 683×1024 (from x 500), resized to 600×900.</li>
+        <li><a href="img/games/0ad-hero.webp">0ad-hero.webp</a>: Main menu background (Hellenes), by Wildfire Games. <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>. From <a href="https://github.com/0ad/0ad/blob/61a3b9507d974084e6badb88a0826bd89a6d5b8b/binaries/data/mods/public/art/textures/ui/pregame/backgrounds/hellenes1-1.png">hellenes1-1.png</a>; resized to 1600×800.</li>
+        <li><a href="img/games/0ad-wide.webp">0ad-wide.webp</a>: Main menu background (Hellenes), by Wildfire Games. <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>. From <a href="https://github.com/0ad/0ad/blob/61a3b9507d974084e6badb88a0826bd89a6d5b8b/binaries/data/mods/public/art/textures/ui/pregame/backgrounds/hellenes1-1.png">hellenes1-1.png</a>; resized to 640×320.</li>
+        <li><a href="img/games/0ad-logo.webp">0ad-logo.webp</a>: 0 A.D. Empires Ascendant logo, by Wildfire Games. <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>. From <a href="https://github.com/0ad/0ad/blob/61a3b9507d974084e6badb88a0826bd89a6d5b8b/binaries/data/mods/public/art/textures/ui/pregame/shell/logo/0ad_logo.png">0ad_logo.png</a>; converted to WebP only.</li>
+      </ul></div>
+      <div class="cr"><h3><a href="https://www.wesnoth.org">The Battle for Wesnoth</a></h3><ul>
+        <li><a href="img/games/wesnoth-cover.webp">wesnoth-cover.webp</a>: Story art from The Rise of Wesnoth campaign, by Emilien Rotival (LordBob), credited for the campaign&#x27;s story art; The Battle for Wesnoth Project. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0-or-later</a>. From <a href="https://github.com/wesnoth/wesnoth/blob/700df650eacad399a84e903d1560db154bd63abd/data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_intro_04.webp">trow_intro_04.webp</a>; cropped to 720×1080 (from x 200), resized to 600×900.</li>
+        <li><a href="img/games/wesnoth-hero.webp">wesnoth-hero.webp</a>: Story art from The Rise of Wesnoth campaign (&quot;A Harrowing Escape&quot;), by Emilien Rotival (LordBob), credited for the campaign&#x27;s story art; The Battle for Wesnoth Project. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0-or-later</a>. From <a href="https://github.com/wesnoth/wesnoth/blob/700df650eacad399a84e903d1560db154bd63abd/data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_story_03-A_Harrowing_Escape.webp">trow_story_03-A_Harrowing_Escape.webp</a>; resized to 1600×900.</li>
+        <li><a href="img/games/wesnoth-wide.webp">wesnoth-wide.webp</a>: Story art from The Rise of Wesnoth campaign (&quot;A New Land&quot;), by Emilien Rotival (LordBob), credited for the campaign&#x27;s story art; The Battle for Wesnoth Project. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0-or-later</a>. From <a href="https://github.com/wesnoth/wesnoth/blob/700df650eacad399a84e903d1560db154bd63abd/data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_story_15-A_New_Land.webp">trow_story_15-A_New_Land.webp</a>; resized to 640×360.</li>
+        <li><a href="img/games/wesnoth-logo.webp">wesnoth-logo.webp</a>: The Battle for Wesnoth logo, by The Battle for Wesnoth Project. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0-or-later</a>. From <a href="https://github.com/wesnoth/wesnoth/blob/700df650eacad399a84e903d1560db154bd63abd/images/misc/logo.png">logo.png</a>; converted to WebP only.</li>
+      </ul></div>
+      <div class="cr"><h3><a href="https://veloren.net">Veloren</a></h3><ul>
+        <li><a href="img/games/veloren-cover.webp">veloren-cover.webp</a>: Loading screen background, by Veloren contributors. <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a>. From <a href="https://gitlab.com/veloren/veloren/-/blob/c5024ebfde27b983b497d8400b99d084ee28d809/assets/voxygen/background/bg_5.jpg">bg_5.jpg</a>; cropped to 720×1080 (from x 240), resized to 600×900.</li>
+        <li><a href="img/games/veloren-hero.webp">veloren-hero.webp</a>: Loading screen background, by Veloren contributors. <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a>. From <a href="https://gitlab.com/veloren/veloren/-/blob/c5024ebfde27b983b497d8400b99d084ee28d809/assets/voxygen/background/bg_12.jpg">bg_12.jpg</a>; resized to 1600×900.</li>
+        <li><a href="img/games/veloren-wide.webp">veloren-wide.webp</a>: Loading screen background, by Veloren contributors. <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a>. From <a href="https://gitlab.com/veloren/veloren/-/blob/c5024ebfde27b983b497d8400b99d084ee28d809/assets/voxygen/background/bg_20.jpg">bg_20.jpg</a>; resized to 640×360.</li>
+      </ul></div>
+      <div class="cr"><h3><a href="https://www.openttd.org">OpenTTD</a></h3><ul>
+        <li><a href="img/games/openttd-cover.webp">openttd-cover.webp</a>: Screenshot of the OpenTTD 1.4 title screen, with OpenGFX graphics, from openttd.org, by The OpenTTD team and the OpenGFX authors. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0</a>. From <a href="https://github.com/OpenTTD/website/blob/91b26ac86c09842c9e115b4949107d8240141c13/_screenshots/1.4-02-opengfx-1920x1200.png">1.4-02-opengfx-1920x1200.png</a>; cropped to 760×1140 (from x 0, y 60), resized to 600×900.</li>
+        <li><a href="img/games/openttd-hero.webp">openttd-hero.webp</a>: Screenshot of the OpenTTD 1.4 title screen, with OpenGFX graphics, from openttd.org, by The OpenTTD team and the OpenGFX authors. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0</a>. From <a href="https://github.com/OpenTTD/website/blob/91b26ac86c09842c9e115b4949107d8240141c13/_screenshots/1.4-02-opengfx-1920x1200.png">1.4-02-opengfx-1920x1200.png</a>; cropped to the top 1920×480, resized to 1600×400.</li>
+        <li><a href="img/games/openttd-wide.webp">openttd-wide.webp</a>: Screenshot of the OpenTTD 1.4 title screen, with OpenGFX graphics, from openttd.org, by The OpenTTD team and the OpenGFX authors. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0</a>. From <a href="https://github.com/OpenTTD/website/blob/91b26ac86c09842c9e115b4949107d8240141c13/_screenshots/1.4-02-opengfx-1920x1200.png">1.4-02-opengfx-1920x1200.png</a>; cropped to 790×444 (from x 1130, y 720), resized to 640×360.</li>
+      </ul></div>
+      <div class="cr"><h3><a href="https://endless-sky.github.io">Endless Sky</a></h3><ul>
+        <li><a href="img/games/es-cover.webp">es-cover.webp</a>: Screenshot from the Endless Sky website, by Michael Zahniser and Endless Sky contributors (game graphics). <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/endless-sky/endless-sky.github.io/blob/22dd15b37af679546b32903563f803b50d0cf5fc/screenshots/fight.jpg">fight.jpg</a>; cropped to 400×600 (from x 130).</li>
+        <li><a href="img/games/es-hero.webp">es-hero.webp</a>: Screenshot from the Endless Sky website, by Michael Zahniser and Endless Sky contributors (game graphics). <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/endless-sky/endless-sky.github.io/blob/22dd15b37af679546b32903563f803b50d0cf5fc/screenshots/beams.jpg">beams.jpg</a>; converted to WebP only.</li>
+        <li><a href="img/games/es-wide.webp">es-wide.webp</a>: Screenshot from the Endless Sky website, by Michael Zahniser and Endless Sky contributors (game graphics). <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/endless-sky/endless-sky.github.io/blob/22dd15b37af679546b32903563f803b50d0cf5fc/screenshots/fight.jpg">fight.jpg</a>; cropped to 800×450 (from y 75), resized to 640×360.</li>
+        <li><a href="img/games/es-logo.webp">es-logo.webp</a>: Endless Sky title, by Michael Zahniser. <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/endless-sky/endless-sky/blob/c3c7908862cb18fef88459fd970c208ca06cba20/images/_menu/title@1x.png">title@1x.png</a>; converted to WebP only.</li>
+      </ul></div>
     </div>
-
-    <h3 class="h3row" id="switch">Switch from Bazzite, Fedora Atomic or another image-based system</h3>
-    <p class="small">Bazzite, Bluefin, Aurora, Silverblue or Kinoite switch with one command, no USB stick. Your account and files stay, and the old system stays in the boot menu. <b>Beta Experimental:</b> back up first. Ubuntu, CachyOS and Peppermint can't be switched to; use the small installer.</p>
-    <div class="switch">
-      <div class="card">
-        <h3 style="margin-top:0">From Hearth OS on Bazzite</h3>
-        <p>Settings › Updates › <b>Move to a new Hearth OS</b> keeps your games, saves and store libraries (the rest of home is set aside for 30 days). Or in Desktop Mode:</p>
-        <div class="cmd"><pre><code id="switch-hearth">pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os</code></pre><button class="copy-btn" type="button" data-copy="switch-hearth" hidden>Copy</button></div>
-      </div>
-      <div class="card">
-        <h3 style="margin-top:0">From Bazzite, Bluefin, Aurora or Fedora Atomic</h3>
-        <div class="cmd"><pre><code id="switch-bootc">sudo bootc switch ghcr.io/dragongamer9/hearth-os:latest</code></pre><button class="copy-btn" type="button" data-copy="switch-bootc" hidden>Copy</button></div>
-        <details class="why"><summary>Older system without bootc, or going back</summary>
-          <div class="cmd"><pre><code id="switch-ostree">sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/dragongamer9/hearth-os:latest</code></pre><button class="copy-btn" type="button" data-copy="switch-ostree" hidden>Copy</button></div>
-          <p class="small" style="margin-top:8px">To go back, pick the previous boot entry or run <code>sudo bootc rollback</code>. Hearth OS updates itself from Settings › Updates.</p>
-        </details>
-      </div>
-    </div>
-
-    <div class="note" id="beta"><div class="ic" aria-hidden="true"><svg class="ico"><use href="#i-warn"/></svg></div>
-      <div><b>This is a beta.</b> Hearth OS and Ember aren't ready for everyday use yet and things will break now and then. Updates come out almost daily and install themselves. Keep a backup, and <a href="docs/troubleshooting.html#ask">tell us what breaks</a>.</div></div>
-  </div>
-</section>
-
-<section id="faq" class="tight">
-  <div class="wrap">
-    <div class="head"><span class="kicker">FAQ</span><h2>Questions</h2></div>
-    <div class="faq">
-      <details><summary>What hardware does it need?</summary><p>Steam Deck, ROG Ally, Legion Go and most x86-64 desktops and laptops with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics, and a 16 GB USB stick. CachyOS needs a 2015-or-newer CPU and Secure Boot off.</p></details>
-      <details><summary>Can I go back?</summary><p>Yes. Updates and switches keep the previous system in the boot menu; pick it, or run <code>sudo bootc rollback</code>.</p></details>
-      <details><summary>Does it work with anti-cheat games?</summary><p>Nothing is injected into games; the overlay is an ordinary window. Couch Co-op doesn't support anti-cheat games.</p></details>
-      <details><summary>Something broke. How do I report it?</summary><p>Send logs from Settings › System or with <code>hearth-send-logs</code>, and <a href="docs/troubleshooting.html#ask">tell us what happened</a>.</p></details>
-    </div>
+    </details>
   </div>
 </section>
 
@@ -588,154 +898,150 @@ footer .brand{margin-right:auto}
 
 <footer>
   <div class="wrap">
-    <a class="brand" href="#"><img src="img/logo.svg" alt="">Hearth OS</a>
+    <a class="brand" href="#top"><svg aria-hidden="true"><use href="#i-logo"/></svg>Hearth OS</a>
     <a href="docs/">Documentation</a>
     <a href="docs/troubleshooting.html">Troubleshooting</a>
     <a href="docs/requests.html">Requests</a>
     <a href="docs/releases.html">Release notes</a>
-    <a href="docs/releases.html#next">Coming next</a>
     <a href="docs/troubleshooting.html#ask">Report a problem</a>
+    <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
     <a href="https://anatase.org">Built on Anatase</a>
-    <p class="legal">Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft or Universal Blue.
-      Steam, Epic Games, GOG and Xbox are trademarks of their owners. Games and cover art in the screenshots are invented placeholders made for this site.</p>
+    <p class="legal">Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft, the Matrix.org Foundation or Universal Blue.
+      Steam, Epic Games, GOG and Xbox are trademarks of their owners. Screenshots are of Hearth itself; the people, chats and play times in them are sample data. Game art: SuperTuxKart, 0 A.D., The Battle for Wesnoth, Veloren, OpenTTD and Endless Sky, used under CC BY-SA / GPL; see <a href="#game-art">the credits</a>. The Anybody typeface is under the <a href="fonts/OFL.txt">SIL Open Font License</a>.</p>
   </div>
 </footer>
 
 <script>
-var COUNTER='https://hearth-counter.game305-cl.workers.dev', RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
-if(!RM) document.documentElement.classList.add('anim');
-// Count a number up once (fn gets the current value); straight to the end without motion.
-function countUp(n, fn){ if(RM){ fn(n); return; } var t0=performance.now(); (function f(t){ var k=Math.min(1,(t-t0)/1200); fn(Math.round(n*(1-Math.pow(1-k,3)))); if(k<1) requestAnimationFrame(f); })(t0); }
-// Live player count from the Hearth OS counter (installs say they're running about every 10 minutes).
+var RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Light or dark: follows the system until the visitor picks one here.
 (function(){
-  var el=document.getElementById('live'), t=document.getElementById('liveText');
-  function load(){
-    fetch(COUNTER+'/v1/stats').then(function(r){return r.json();}).then(function(j){
-      if(!j || (!j.now && !j.month)) return;
-      var now=j.now||0, mo=j.month||0, txt=function(k){ return Math.round(now*k).toLocaleString()+' playing now · '+Math.round(mo*k).toLocaleString()+' this month'; };
-      if(el.hidden){ el.hidden=false; countUp(1000, function(v){ t.textContent=txt(v/1000); }); } else t.textContent=txt(1);
-    }).catch(function(){});
-  }
-  load(); setInterval(load, 60000);
+  var b=document.getElementById('theme'), root=document.documentElement;
+  b.addEventListener('click',function(){
+    var now=root.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
+    var next=now==='light'?'dark':'light'; root.dataset.theme=next;
+    try{ localStorage.setItem('hearth.theme',next); }catch(e){}
+  });
 })();
 
-// Most-upvoted Beta Experimental layouts (the votes players cast in Hearth's Settings).
+// How many people are playing right now (installs check in with the Hearth OS counter about every 10 minutes).
 (function(){
-  var N={'x-carousel':'Hearthside carousel','x-rows':'Rows','x-list':'List and detail','x-wall':'Poster wall','x-focus':'Focus (TV)','x-widgets':'Widget board','x-orbit':'Orbit','x-spines':'Game case shelf','x-magazine':'Magazine','x-dock':'Dock','x-collections':'Collections','x-journal':'Play journal',
-    'x-lib-flow':'Cover Flow','x-lib-spines':'Bookshelf','x-lib-timeline':'Timeline','x-lib-towers':'Store towers','x-lib-stars':'Constellations','x-lib-arcade':'Arcade cabinet','x-lib-polaroid':'Polaroids','x-lib-stats':'Stats board','x-lib-rolodex':'Rolodex','x-lib-hex':'Honeycomb','x-lib-deck':'Hand of cards','x-lib-mosaic':'Mosaic'};
-  var el=document.getElementById('votes');
-  fetch(COUNTER+'/v1/votes').then(function(r){return r.json();}).then(function(v){
-    var c=(v&&v.counts)||{}, top=Object.keys(c).filter(function(k){return N[k]&&c[k]>0;}).sort(function(a,b){return c[b]-c[a];}).slice(0,3);
-    if(!top.length) return;
-    top.forEach(function(k){ var s=document.createElement('span'); s.textContent=N[k]; var b=document.createElement('b'); s.appendChild(b); el.appendChild(s); countUp(c[k], function(n){ b.textContent='▲ '+n; }); });
-    el.hidden=false;
+  var el=document.getElementById('live');
+  fetch('https://hearth-counter.game305-cl.workers.dev/v1/stats').then(function(r){return r.json();}).then(function(j){
+    if(!j || !j.now) return;
+    el.textContent=j.now.toLocaleString()+' playing right now'; el.hidden=false;
   }).catch(function(){});
 })();
 
-// Screenshot gallery: tabs and arrows scroll the track; scrolling updates the tab.
-(function(){
-  var track=document.getElementById('track'), tabs=document.getElementById('tabs');
-  var slides=[].slice.call(track.querySelectorAll('.slide')), btns=[], cur=0;
-  slides.forEach(function(s,i){
-    s.id='shot-'+i;
-    var b=document.createElement('button'); b.type='button'; b.setAttribute('role','tab'); b.setAttribute('aria-controls',s.id);
-    b.textContent=s.getAttribute('data-tab'); b.addEventListener('click',function(){ go(i); });
-    tabs.appendChild(b); btns.push(b);
+// Tabs: arrow keys move through them like a D-pad (Up/Down or Left/Right), Home/End jump to the ends.
+function tabs(list, onPick){
+  var btns=[].slice.call(list.querySelectorAll('[role="tab"]'));
+  function pick(i, focus){
+    btns.forEach(function(b,j){ var on=j===i; b.setAttribute('aria-selected',on); b.tabIndex=on?0:-1; });
+    if(focus) btns[i].focus();
+    onPick(i);
+  }
+  btns.forEach(function(b,i){
+    b.addEventListener('click',function(){ pick(i); });
+    b.addEventListener('keydown',function(e){
+      var k=e.key, n=btns.length, j=null;
+      if(k==='ArrowDown'||k==='ArrowRight') j=(i+1)%n; else if(k==='ArrowUp'||k==='ArrowLeft') j=(i-1+n)%n; else if(k==='Home') j=0; else if(k==='End') j=n-1;
+      if(j!==null){ e.preventDefault(); pick(j,true); }
+    });
   });
-  function mark(i){ cur=i; btns.forEach(function(b,j){ b.setAttribute('aria-selected', j===i?'true':'false'); slides[j].classList.toggle('on', j===i); });
-    var b=btns[i]; tabs.scrollTo({left:b.offsetLeft-tabs.clientWidth/2+b.clientWidth/2, behavior:'smooth'}); }
-  function go(i){ i=(i+slides.length)%slides.length; track.scrollTo({left:slides[i].offsetLeft-track.offsetLeft, behavior:'smooth'}); mark(i); }
-  document.getElementById('prev').addEventListener('click',function(){ go(cur-1); });
-  document.getElementById('next-shot').addEventListener('click',function(){ go(cur+1); });
-  var t; track.addEventListener('scroll',function(){ clearTimeout(t); t=setTimeout(function(){ var i=Math.round(track.scrollLeft/track.clientWidth); if(i!==cur) mark(i); },80); },{passive:true});
-  mark(0);
-  tabs.scrollLeft=0;
+  return pick;
+}
+
+// Coming in 0.6.5: the list picks the panel beside it.
+(function(){
+  var list=document.getElementById('picks');
+  tabs(list,function(i){
+    [].forEach.call(list.querySelectorAll('[role="tab"]'),function(b,j){ document.getElementById(b.getAttribute('aria-controls')).hidden=j!==i; });
+    var cur=list.querySelector('[aria-selected="true"]'); if(cur && list.scrollWidth>list.clientWidth) list.scrollTo({left:cur.offsetLeft-16,behavior:RM?'auto':'smooth'});
+  });
 })();
 
-// The hearth: a small particle fire on a canvas over the still fireplace (img/fireplace.svg, same 1440x900 frame).
-// Low resolution (it's soft anyway), particle count by screen and CPU, paused off-screen and in hidden tabs;
-// with reduced motion it draws one still, lit frame.
+// Game Mode screenshots: the tabs scroll the strip; swiping the strip updates the tab.
 (function(){
-  var hero=document.querySelector('.hero'), cv=document.getElementById('fire'), glow=document.getElementById('glow');
-  var c=cv.getContext&&cv.getContext('2d'); if(!c) return;
-  var small=innerWidth<700, cpu=Math.min(1.4,Math.max(.75,(navigator.hardwareConcurrency||4)/8));
-  var N=Math.round((small?70:150)*cpu), NE=Math.round((small?16:36)*cpu), F=[], E=[], W, H, S, ox, oy, t=0, last=0, on=true, shown=true, raf=0;
-  function sprite(col){ var k=document.createElement('canvas'); k.width=k.height=64; var g=k.getContext('2d'), r=g.createRadialGradient(32,32,0,32,32,32);
-    r.addColorStop(0,col); r.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=r; g.fillRect(0,0,64,64); return k; }
-  var SP=[sprite('rgba(255,224,140,.9)'),sprite('rgba(255,150,50,.85)'),sprite('rgba(235,75,30,.7)'),sprite('rgba(150,35,15,.35)')], BED=sprite('rgba(255,120,40,.9)');
-  function size(){ var r=hero.getBoundingClientRect(); W=cv.width=Math.min(small?420:900,Math.round(r.width*.6)); H=cv.height=Math.round(r.height*W/r.width);
-    S=Math.max(W/1440,H/900); ox=(W-1440*S)/2; oy=H-900*S; }
-  function rnd(a,b){ return a+Math.random()*(b-a); }
-  function flame(p){ p.x=ox+(720+(Math.random()+Math.random()-1)*230)*S; p.y=oy+rnd(800,835)*S; p.vx=rnd(-.4,.4)*S; p.vy=-rnd(2.6,4.6)*S;
-    p.l=0; p.m=rnd(40,75); p.r=rnd(30,56)*S; return p; }
-  function ember(p){ p.x=ox+rnd(540,900)*S; p.y=oy+rnd(780,830)*S; p.vx=rnd(-.6,.6)*S; p.vy=-rnd(1.2,3)*S; p.l=0; p.m=rnd(120,320); p.r=rnd(1.2,2.6)*S*2; p.p=rnd(0,6); return p; }
-  function step(d){
-    t+=d; var mid=ox+720*S, i, p;
-    while(F.length<N){ var q=flame({}); q.l=Math.random()*q.m; F.push(q); } while(E.length<NE) E.push(ember({}));
-    for(i=0;i<F.length;i++){ p=F[i]; p.l+=d; if(p.l>p.m){ flame(p); p.l=Math.random()*10; continue; }
-      p.vx+=((mid-p.x)*.0016+Math.sin(t*.09+p.y*.03)*.12*S)*d; p.x+=p.vx*d; p.y+=p.vy*d; }
-    for(i=0;i<E.length;i++){ p=E[i]; p.l+=d; if(p.l>p.m||p.y<0){ ember(p); continue; }
-      p.x+=(p.vx+Math.sin(t*.05+p.p)*.5*S)*d; p.y+=p.vy*d; }
-  }
-  function draw(){
-    c.globalCompositeOperation='source-over'; c.clearRect(0,0,W,H); c.globalCompositeOperation='lighter';
-    var i, p, f, r, fl=.8+.2*Math.sin(t*.21)+Math.random()*.08;
-    c.globalAlpha=.55*fl; c.drawImage(BED,ox+380*S,oy+700*S,680*S,240*S);
-    for(i=0;i<F.length;i++){ p=F[i]; f=p.l/p.m; r=p.r*(1-f*.55);
-      c.globalAlpha=f<.1?f*10:1-f*.7; c.drawImage(SP[f<.22?0:f<.5?1:f<.8?2:3],p.x-r,p.y-r,r*2,r*2); }
-    c.fillStyle='#ffd27a';
-    for(i=0;i<E.length;i++){ p=E[i]; c.globalAlpha=Math.max(0,1-p.l/p.m)*(.6+.4*Math.sin(t*.3+p.p)); c.fillRect(p.x,p.y,p.r,p.r); }
-    c.globalAlpha=1;
-    glow.style.opacity=(.62+.25*fl).toFixed(3);
-  }
-  var ms=0, n=0; window.fireStats=function(){ return {avgMs:n?ms/n:0, frames:n, flames:N, embers:NE, w:W, h:H}; };
-  function frame(now){ raf=0; if(!(on&&shown)) return; var d=last?Math.min(3,(now-last)/16.7):1; last=now;
-    var a=performance.now(); step(d); draw(); ms+=performance.now()-a; n++; raf=requestAnimationFrame(frame); }
-  function go(){ if(!RM&&on&&shown&&!raf){ last=0; raf=requestAnimationFrame(frame); } }
-  size();
-  if(RM){ for(var k=0;k<160;k++) step(1); draw(); glow.style.opacity='.85';
-    addEventListener('resize',function(){ size(); F=[]; E=[]; for(var k=0;k<160;k++) step(1); draw(); }); return; }
-  addEventListener('resize',function(){ size(); F=[]; E=[]; });
-  new IntersectionObserver(function(e){ on=e[0].isIntersecting; go(); }).observe(hero);
-  document.addEventListener('visibilitychange',function(){ shown=!document.hidden; go(); });
-  go();
+  var track=document.getElementById('track'), list=document.getElementById('tabs');
+  var slides=[].slice.call(track.querySelectorAll('.slide'));
+  slides.forEach(function(s,i){
+    s.id='shot-'+i; s.setAttribute('role','tabpanel'); s.setAttribute('aria-label',s.getAttribute('data-tab'));
+    var b=document.createElement('button'); b.type='button'; b.setAttribute('role','tab'); b.setAttribute('aria-controls',s.id);
+    b.textContent=s.getAttribute('data-tab'); list.appendChild(b);
+  });
+  var lock=0;
+  var pick=tabs(list,function(i){ lock=Date.now(); track.scrollTo({left:slides[i].offsetLeft-track.offsetLeft,behavior:RM?'auto':'smooth'}); });
+  var btns=list.querySelectorAll('[role="tab"]');
+  btns.forEach(function(b,j){ b.setAttribute('aria-selected',j===0); b.tabIndex=j===0?0:-1; });
+  var t; track.addEventListener('scroll',function(){ clearTimeout(t); t=setTimeout(function(){
+    if(Date.now()-lock<700) return;
+    var i=Math.round(track.scrollLeft/track.clientWidth);
+    btns.forEach(function(b,j){ b.setAttribute('aria-selected',j===i); b.tabIndex=j===i?0:-1; });
+  },100); },{passive:true});
 })();
 
-// Page motion: reveal on scroll, the handheld following the pointer, a warm light under the pointer on cards.
+// Open the fold-out that holds a followed link (#new-010 and the other earlier releases).
 (function(){
-  if(RM) return;
-  var io=new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } }); },{threshold:.12, rootMargin:'0px 0px -40px 0px'});
-  document.querySelectorAll('main .head, main .card, main .ticks li, .faq details, details.rel, .shots2, .walls, .stores, .gallery, .tabs, .note').forEach(function(el){
-    var sib=el.parentNode?[].indexOf.call(el.parentNode.children,el):0; el.style.setProperty('--d',(Math.min(sib,5)*.07)+'s'); el.classList.add('rv'); io.observe(el); });
-  if(!matchMedia('(hover:hover) and (pointer:fine)').matches) return;
-  var hero=document.querySelector('.hero'), dev=document.querySelector('.device'), pend=0, px=0, py=0;
-  hero.addEventListener('pointermove',function(e){ px=e.clientX/innerWidth-.5; py=e.clientY/innerHeight-.5;
-    if(!pend) pend=requestAnimationFrame(function(){ pend=0; if(innerWidth<1020) return; dev.style.setProperty('--ry',(px*12).toFixed(2)+'deg'); dev.style.setProperty('--rx',(-py*8).toFixed(2)+'deg'); }); });
-  hero.addEventListener('pointerleave',function(){ dev.style.setProperty('--ry','0deg'); dev.style.setProperty('--rx','0deg'); });
-  document.addEventListener('pointermove',function(e){ var k=e.target.closest&&e.target.closest('.card'); if(!k) return; var r=k.getBoundingClientRect();
-    k.style.setProperty('--mx',(e.clientX-r.left)+'px'); k.style.setProperty('--my',(e.clientY-r.top)+'px'); },{passive:true});
-})();
-
-// Open the fold-out around a followed link (#new, #new-010, #new-015).
-(function(){
-  function openHash(){
-    var id=location.hash.slice(1); if(!id) return;
-    var d=document.getElementById(id);
-    var box=d&&d.closest&&d.closest('details'); if(box){ box.open=true; d.scrollIntoView(); }
-  }
-  window.addEventListener('hashchange', openHash); openHash();
+  function openHash(){ var id=location.hash.slice(1); if(!id) return; var d=document.getElementById(id); var box=d&&d.closest&&d.closest('details'); if(box){ box.open=true; d.scrollIntoView(); } }
+  addEventListener('hashchange',openHash); openHash();
 })();
 
 // Copy buttons for the commands.
 (function(){
   if(!navigator.clipboard) return;
-  document.querySelectorAll('.copy-btn').forEach(function(b){
+  document.querySelectorAll('.copy').forEach(function(b){
     b.hidden=false;
-    b.addEventListener('click', function(){
-      var txt=document.getElementById(b.getAttribute('data-copy')).textContent;
-      navigator.clipboard.writeText(txt).then(function(){ b.textContent='Copied'; setTimeout(function(){ b.textContent='Copy'; }, 1600); }).catch(function(){});
+    b.addEventListener('click',function(){
+      navigator.clipboard.writeText(document.getElementById(b.getAttribute('data-copy')).textContent).then(function(){ b.textContent='Copied'; setTimeout(function(){ b.textContent='Copy'; },1600); }).catch(function(){});
     });
   });
+})();
+
+// The hearth under the screen: a small particle fire on a canvas. Its flicker also sets --f, which the screen's
+// glow and the floor light follow. Low resolution (it's soft anyway), fewer particles on small screens and slow
+// CPUs, paused off-screen and in hidden tabs; with reduced motion it draws one still frame.
+(function(){
+  var box=document.querySelector('.hearth'), cv=document.getElementById('fire');
+  var c=cv.getContext&&cv.getContext('2d'); if(!c) return;
+  var small=innerWidth<700, cpu=Math.min(1.4,Math.max(.75,(navigator.hardwareConcurrency||4)/8));
+  var N=Math.round((small?60:130)*cpu), NE=Math.round((small?14:30)*cpu), F=[], E=[], W, H, t=0, last=0, on=true, shown=true, raf=0;
+  function sprite(col){ var k=document.createElement('canvas'); k.width=k.height=64; var g=k.getContext('2d'), r=g.createRadialGradient(32,32,0,32,32,32);
+    r.addColorStop(0,col); r.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=r; g.fillRect(0,0,64,64); return k; }
+  var SP=[sprite('rgba(255,224,140,.9)'),sprite('rgba(255,150,50,.85)'),sprite('rgba(235,75,30,.7)'),sprite('rgba(150,35,15,.35)')], BED=sprite('rgba(255,120,40,.9)');
+  function size(){ var r=cv.getBoundingClientRect(); W=cv.width=Math.min(small?360:720,Math.round(r.width*.5)); H=cv.height=Math.max(1,Math.round(r.height*W/r.width)); }
+  function rnd(a,b){ return a+Math.random()*(b-a); }
+  function flame(p){ p.x=W/2+(Math.random()+Math.random()-1)*W*.2; p.y=H*rnd(.9,.97); p.vx=rnd(-.3,.3); p.vy=-rnd(.007,.012)*H;
+    p.l=0; p.m=rnd(40,72); p.r=rnd(.06,.11)*H; return p; }
+  function ember(p){ p.x=W/2+rnd(-.22,.22)*W; p.y=H*rnd(.85,.95); p.vx=rnd(-.4,.4); p.vy=-rnd(.003,.008)*H; p.l=0; p.m=rnd(100,260); p.r=Math.max(1,H*.006); p.p=rnd(0,6); return p; }
+  function step(d){
+    t+=d; var mid=W/2, i, p;
+    while(F.length<N){ var q=flame({}); q.l=Math.random()*q.m; F.push(q); } while(E.length<NE) E.push(ember({}));
+    for(i=0;i<F.length;i++){ p=F[i]; p.l+=d; if(p.l>p.m){ flame(p); p.l=Math.random()*10; continue; }
+      p.vx+=((mid-p.x)*.0016+Math.sin(t*.09+p.y*.03)*.1)*d; p.x+=p.vx*d; p.y+=p.vy*d; }
+    for(i=0;i<E.length;i++){ p=E[i]; p.l+=d; if(p.l>p.m||p.y<0){ ember(p); continue; }
+      p.x+=(p.vx+Math.sin(t*.05+p.p)*.4)*d; p.y+=p.vy*d; }
+  }
+  function draw(){
+    c.globalCompositeOperation='source-over'; c.clearRect(0,0,W,H); c.globalCompositeOperation='lighter';
+    var i, p, f, r, fl=.8+.2*Math.sin(t*.21)+Math.random()*.08;
+    c.globalAlpha=.5*fl; c.drawImage(BED,W*.22,H*.78,W*.56,H*.3);
+    for(i=0;i<F.length;i++){ p=F[i]; f=p.l/p.m; r=p.r*(1-f*.55);
+      c.globalAlpha=f<.1?f*10:1-f*.7; c.drawImage(SP[f<.22?0:f<.5?1:f<.8?2:3],p.x-r,p.y-r,r*2,r*2); }
+    c.fillStyle='#ffd27a';
+    for(i=0;i<E.length;i++){ p=E[i]; c.globalAlpha=Math.max(0,1-p.l/p.m)*(.6+.4*Math.sin(t*.3+p.p)); c.fillRect(p.x,p.y,p.r,p.r); }
+    c.globalAlpha=1;
+    box.style.setProperty('--f',fl.toFixed(3));
+  }
+  function frame(now){ raf=0; if(!(on&&shown)) return; var d=last?Math.min(3,(now-last)/16.7):1; last=now; step(d); draw(); raf=requestAnimationFrame(frame); }
+  function go(){ if(!RM&&on&&shown&&!raf){ last=0; raf=requestAnimationFrame(frame); } }
+  function still(){ F=[]; E=[]; for(var k=0;k<160;k++) step(1); draw(); }
+  size();
+  if(RM){ still(); addEventListener('resize',function(){ size(); still(); }); return; }
+  addEventListener('resize',function(){ size(); F=[]; E=[]; });
+  new IntersectionObserver(function(e){ on=e[0].isIntersecting; go(); }).observe(box);
+  document.addEventListener('visibilitychange',function(){ shown=!document.hidden; go(); });
+  go();
 })();
 </script>
 </body>

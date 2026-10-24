@@ -25,6 +25,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
+import "osk/hearth-osk.js" as Osk
 
 Scope {
     id: app
@@ -116,9 +117,36 @@ Scope {
     property var pickChoice: ({})
     property string pickName: ""
     property int pickIndex: 0                  // the bar's control the keyboard / controller is on (zone "pick")
-    property var osk: null                     // the on-screen keyboard drawn inside the window (picker.qml in Game Mode)
+    // The on-screen keyboard drawn inside the window (picker.qml in Game Mode, where gamescope shows one window): Hearth's
+    // shared keyboard (OskBoard.qml), its controller presses from picker.qml's hearth-pad, typing through it (oskSend).
+    property bool oskOn: false
+    property var oskEngine: null
+    property var oskVm: null
     signal picked(var result)                  // {paths, filter, choices} or {cancel: true}
-    signal oskKey(string key)
+    signal oskSend(var msg)
+    function oskWinOpen() {
+        if (!oskEngine) {
+            Osk.HearthOSK.configure({ settings: { suggestions: false } });
+            oskEngine = Osk.HearthOSK.createEngine({
+                host: "mantel",
+                adapter: {
+                    insert: (text, mods) => app.oskSend({ cmd: "emit", text: text, mods: mods ? Object.keys(mods).filter(k => mods[k]) : [] }),
+                    deleteBack: n => app.oskSend({ cmd: "key", key: "bksp", n: n }),
+                    key: (name, mods) => app.oskSend({ cmd: "key", key: name, n: 1, mods: mods ? Object.keys(mods).filter(k => mods[k]) : [] })
+                },
+                onChange: () => { app.oskVm = app.oskEngine.view(); },
+                onHide: () => app.oskWinClose()
+            });
+        }
+        oskEngine.reset("text", "Done");
+        oskEngine.setHints(true);
+        oskOn = true;
+        oskSend({ cmd: "osk", open: true });
+    }
+    function oskWinClose() { oskOn = false; oskSend({ cmd: "osk", open: false }); }
+    function oskPad(b, down) { if (oskOn && oskEngine) oskEngine.handle(b, down, Date.now()); }
+    function oskAxes(lx, ly, rx, ry) { if (oskOn && oskEngine) oskEngine.axes(lx, ly, rx, ry, Date.now()); }
+    Timer { interval: 16; repeat: true; running: app.oskOn; onTriggered: if (app.oskEngine) app.oskEngine.tick(Date.now()) }
     property alias propsShown: propsWin.shown
 
     // ------------------------------------------------ long copy / move / compress / extract
@@ -2958,52 +2986,15 @@ Scope {
                     }
 
                     // ------------------------------------------------ on-screen keyboard inside the window (picker.qml in Game
-                    // Mode, where gamescope shows one window): hearth-pad sends the layout and the lit key, and types.
-                    Rectangle {
+                    // Mode, where gamescope shows one window): Hearth's shared keyboard.
+                    OskBoard {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: visible ? Math.min(300, Math.max(220, win.height * 0.36)) : 0
-                        visible: !!app.osk && !!app.osk.open
-                        color: Theme.panel
-                        ColumnLayout {
-                            anchors { fill: parent; margins: 10 }
-                            spacing: 6
-                            Repeater {
-                                model: app.osk && app.osk.rows ? app.osk.rows : []
-                                delegate: RowLayout {
-                                    id: oskLine
-                                    required property var modelData
-                                    required property int index
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    spacing: 6
-                                    Repeater {
-                                        model: oskLine.modelData
-                                        delegate: Rectangle {
-                                            id: oskCap
-                                            required property string modelData
-                                            required property int index
-                                            readonly property var wide: ({ shift: 1.6, space: 4.5, bksp: 1.5, tab: 1.4, enter: 1.8, caps: 1.6, ctrl: 1.3, alt: 1.2, esc: 1.2 })
-                                            readonly property bool lit: app.osk.row === oskLine.index && app.osk.col === index
-                                            Layout.fillWidth: true
-                                            Layout.fillHeight: true
-                                            Layout.preferredWidth: 100 * (wide[modelData] || 1)
-                                            radius: 8
-                                            color: lit ? Theme.panel3 : Theme.panel2
-                                            border.width: 2
-                                            border.color: lit ? Theme.accent : "transparent"
-                                            Text {
-                                                anchors.centerIn: parent
-                                                readonly property var names: ({ shift: "⇧", space: "Space", bksp: "⌫", tab: "Tab", enter: "Enter", caps: "Caps", ctrl: "Ctrl", alt: "Alt", esc: "Esc", up: "↑", down: "↓", left: "←", right: "→" })
-                                                text: names[oskCap.modelData] || ((app.osk.shift !== !!app.osk.caps) && /^[a-z]$/.test(oskCap.modelData) ? oskCap.modelData.toUpperCase()
-                                                    : app.osk.shift && app.osk.shifted ? (app.osk.shifted[oskCap.modelData] || oskCap.modelData) : oskCap.modelData)
-                                                color: Theme.text; font.family: Theme.font; font.pixelSize: 15
-                                            }
-                                            MouseArea { anchors.fill: parent; onClicked: app.oskKey(oskCap.modelData) }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        Layout.preferredHeight: visible ? Math.min(330, Math.max(240, win.height * 0.4)) : 0
+                        visible: app.oskOn
+                        vm: app.oskVm
+                        onTapped: (r, c) => { if (app.oskEngine) app.oskEngine.tap(r, c); }
+                        onLongPressed: (r, c) => { if (app.oskEngine) app.oskEngine.longPress(r, c); }
+                        onAltPicked: i => { if (app.oskEngine) app.oskEngine.pickAlt(i); }
                     }
                 }
             }

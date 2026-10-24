@@ -72,6 +72,31 @@ class Pins(Base):
         s = self.hd.load(); s['pins'] = []; self.hd.save(s)
         self.assertEqual(self.hd.load()['pins'], [])
 
+    def bazaar_installed(self):
+        share = os.path.join(self.tmp, 'share-bazaar')
+        os.environ['XDG_DATA_DIRS'] = share
+        os.makedirs(os.path.join(share, 'applications'), exist_ok=True)
+        with open(os.path.join(share, 'applications', 'io.github.kolunmi.Bazaar.desktop'), 'w', encoding='utf-8') as f:
+            f.write('[Desktop Entry]\nType=Application\nName=Bazaar\nExec=bazaar\n')
+
+    def test_bazaar_pinned_once_on_an_existing_taskbar(self):
+        self.hd.SYSTEM_EXPORTS = os.path.join(self.tmp, 'no-exports')
+        self.hd.pin('firefox.desktop')
+        self.assertEqual(self.hd.load()['pins'], ['firefox.desktop'])      # not installed yet: not pinned
+        self.bazaar_installed()
+        self.assertEqual(self.hd.load()['pins'], ['firefox.desktop', 'io.github.kolunmi.Bazaar'])
+        self.assertEqual(self.saved()['pins'], ['firefox.desktop', 'io.github.kolunmi.Bazaar'])
+        self.hd.unpin('io.github.kolunmi.Bazaar')                         # unpinned stays unpinned
+        self.assertEqual(self.hd.load()['pins'], ['firefox.desktop'])
+
+    def test_the_archived_stores_pin_becomes_bazaar(self):
+        self.hd.SYSTEM_EXPORTS = os.path.join(self.tmp, 'no-exports')
+        self.hd.pin('hearth-apps')
+        self.hd.pin('firefox.desktop')
+        self.assertEqual(self.hd.load()['pins'], ['io.github.kolunmi.Bazaar', 'firefox.desktop'])
+        self.bazaar_installed()
+        self.assertEqual(self.hd.load()['pins'], ['io.github.kolunmi.Bazaar', 'firefox.desktop'])
+
     def test_pin_unpin_kept_in_order(self):
         self.hd.pin('firefox.desktop')
         self.hd.pin('org.gnome.Nautilus.desktop')

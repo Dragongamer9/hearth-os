@@ -71,6 +71,20 @@ jobs:
             '  --weather-summary) echo "{\"place\":\"Lisbon\",\"line\":\"18° Partly cloudy\",\"day\":true}" ;;' 'esac' > /tmp/fakebin/hearth-time
           chmod +x /tmp/fakebin/hearth-time
           # ---- end of Hearth Time stand-in
+          # Hearth Friends (Friends.qml): a stand-in for the service with a signed-in account, a friend playing, a chat.
+          cat > /tmp/fakebin/hearth-friends <<'FAKE'
+          #!/bin/sh
+          case "$1:$2" in
+            watch:*) echo '{"id":1,"ok":true,"value":{"signedIn":true}}'; sleep 3600 ;;
+            call:status) echo '{"signedIn":true,"userId":"@dragon:matrix.org","homeserver":"matrix.org","lives":"matrix.org (run by the Matrix.org Foundation)","synced":true}' ;;
+            call:friends) echo '[{"userId":"@sarah:matrix.org","name":"Sarah","roomId":"!s:m","state":"friend","presence":"online","game":"Dota 2","joinable":true,"unread":2},{"userId":"@mike:matrix.org","name":"Mike","roomId":"!m:m","state":"friend","presence":"unavailable","game":null,"unread":0}]' ;;
+            call:chats) echo '[{"roomId":"!s:m","name":"Sarah","direct":true,"members":2,"unread":2,"muted":false,"encrypted":true,"last":{"body":"Want to play?","mine":false}}]' ;;
+            call:requests) echo '{"requests":[{"roomId":"!r:m","from":"@new:example.org","name":"New person","direct":true}],"invites":[]}' ;;
+            call:messages) echo '{"roomId":"!s:m","messages":[{"id":"$1","sender":"@sarah:matrix.org","senderName":"Sarah","mine":false,"at":1790000000000,"kind":"text","body":"Hey! On tonight?"},{"id":"$2","sender":"@dragon:matrix.org","mine":true,"at":1790000060000,"kind":"text","body":"Yes, after dinner"},{"id":"$3","sender":"@sarah:matrix.org","senderName":"Sarah","mine":false,"at":1790000120000,"kind":"game","body":"Lets play","game":{"title":"Dota 2","store":"steam","id":"steam:570"}}],"atStart":true}' ;;
+            *) echo 'null' ;;
+          esac
+          FAKE
+          sed -i 's/^          //' /tmp/fakebin/hearth-friends; chmod +x /tmp/fakebin/hearth-friends
           export PATH="/tmp/fakebin:$PATH"
           printf '[Desktop Entry]\nType=Application\nName=Autostart test\nExec=touch %s/autostarted\n' "$HOME" > "$HOME/.config/autostart/test.desktop"
           printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=steam -silent %%U\n' > "$HOME/.config/autostart/steam.desktop"
@@ -159,6 +173,9 @@ jobs:
           # Install Package: a small .deb (made without dpkg) opened in the installer window, and in Files' menu.
           mkdir -p "$HOME/Downloads" && python3 hosts/linux/test/make_test_deb.py "$HOME/Downloads/hearth-hello.deb" >/dev/null || true
           ipc debs open "$HOME/Downloads/hearth-hello.deb"; sleep 2; grim shots/deb-1-installer.png || true; ipc debs close
+          # Hearth Friends: the bar's Friends panel, then a chat in it.
+          ipc friends open; sleep 2; grim shots/friends-1-panel.png || true
+          wtype -k Down -k Down -k Return 2>/dev/null || true; sleep 2; grim shots/friends-2-chat.png || true; ipc friends close
           ipc files open "$HOME/Downloads"; ipc filemanager select hearth-hello.deb; ipc filemanager menu; grim shots/deb-2-files-menu.png || true
           ipc filemanager close; ipc files close
           n=$((n+3))
@@ -194,6 +211,50 @@ jobs:
             wtype -M logo -k i -m logo; sleep 3; grim "shots/$n-super-i-settings.png" || true; n=$((n+1)); ipc settings close
             wtype -M logo -k a -m logo; sleep 3; grim "shots/$n-super-a-quick.png" || true; n=$((n+1)); ipc quick toggle
           fi
+          # ---- Hearth's on-screen keyboard (Keyboard.qml: the shared keyboard in ui/osk, docs/OSK.md) typing into a real
+          # Linux app: foot running `cat` into a file. Controller presses go in over IPC (as hearth-pad would send them; there
+          # is no uinput here), taps as from touch; the keyboard types through wtype. Pictures: osk-*.png.
+          if command -v foot >/dev/null && command -v wtype >/dev/null; then
+            kb() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call keyboard "$@" 2>&1 | tail -n1; }
+            rm -f "$HOME/osk-typed.txt"
+            foot --app-id osk-test --title "Typing test" sh -c "stty -echo; cat > $HOME/osk-typed.txt" >/dev/null 2>&1 &
+            OSKFOOT=$!; sleep 4
+            kb open; sleep 2
+            kb tap h; kb tap e; kb tap l; sleep 1
+            kb state > shots/osk-state-1.json
+            grim shots/osk-1-suggestions.png || true
+            # "hel" → the suggestion "hello" (up into the strip, A picks; it brings its own space), X deletes the space,
+            # Y types one back.
+            kb press up; kb press up; kb press up; kb press left; kb press a; sleep 0.5; kb press x; kb press y
+            # Accents: "e" picked, A held, then the second accent (è).
+            kb select e; sleep 0.3
+            kb state > shots/osk-state-2.json
+            kb hold a 750; sleep 1.2
+            grim shots/osk-2-accents.png || true
+            kb press right; kb press a; sleep 0.5
+            # The emoji (L3), its third one, back to letters; the Ember Wheel (left stick up, Y: "a"); ☰ is Enter.
+            kb press l3; sleep 0.5; grim shots/osk-3-emoji.png || true; kb press a; kb press l3
+            kb stick 0 -1; sleep 0.5; grim shots/osk-4-ember-wheel.png || true; kb press y; kb stick 0 0
+            kb press menu; sleep 2
+            kb state > shots/osk-state-3.json
+            kb setting theme daylight; kb setting shape split; sleep 1; grim shots/osk-5-split-daylight.png || true
+            kb setting theme hearth; kb setting shape full
+            kb press b; sleep 1
+            kill "$OSKFOOT" 2>/dev/null || true; sleep 1
+            got=$(cat "$HOME/osk-typed.txt" 2>/dev/null || true)
+            printf '%s' "$got" > shots/osk-typed.txt
+            want="hello è😄a"
+            if [ "$got" != "$want" ]; then
+              echo "::error title=on-screen keyboard::typing into foot gave '$got' (wanted '$want'); state: $(tr -d '\n' < shots/osk-state-3.json | cut -c1-400)"
+              touch shots/FAILED
+            else
+              echo "on-screen keyboard: typed '$got' into foot"
+            fi
+            grep -q '"open":false' <<< "$(kb state)" || { echo "::error title=on-screen keyboard::B didn't hide it"; touch shots/FAILED; }
+          else
+            echo "::warning title=on-screen keyboard::foot or wtype is missing here: the typing test didn't run"
+          fi
+          # ---- end of the on-screen keyboard
           # App icons: every kind of app above resolves (Icon= names through hicolor and Flatpak's exports, a pixmap,
           # an absolute path, windows by app id and StartupWMClass), and they show in the launcher, on the taskbar
           # and on a notification.

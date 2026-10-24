@@ -8,7 +8,7 @@
 //   * Hearth Files where the desktop's own isn't running (Game Mode): HEARTH_FILES_OPEN is the folder or file to
 //     show, HEARTH_FILES_PROPS=1 shows only its Properties.
 // The controller: in Desktop Mode the desktop's hearth-pad drives it (Pad.qml knows windows called "… – Files");
-// in Game Mode (HEARTH_PICKER_PAD=1) it starts its own hearth-pad and draws the on-screen keyboard inside the window.
+// in Game Mode (HEARTH_PICKER_PAD=1) it starts its own hearth-pad and draws Hearth's on-screen keyboard inside the window.
 // For checks: quickshell ipc -p <this file> call picker name <text> | accept | cancel | filter <n> | choice <id> <value>
 //   (and call filemanager select|activate <name>, as for the desktop's Hearth Files)
 import QtQuick
@@ -30,7 +30,7 @@ ShellRoot {
         onPicked: result => root.finish(result)
         onShownChanged: if (!shown && root.started && !root.reqPath && !root.propsOnly) root.quit()
         onPropsShownChanged: if (!propsShown && root.started && root.propsOnly) root.quit()
-        onOskKey: key => pad.send({ cmd: "type", key: key })
+        onOskSend: msg => pad.send(msg)
     }
 
     function begin() {
@@ -74,11 +74,11 @@ ShellRoot {
     QtObject {
         id: padApi
         function openKeyboard() {
-            if (root.ownPad) pad.send({ cmd: "osk", open: true });
+            if (root.ownPad) files.oskWinOpen();
             else Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "keyboard", "open"]);
         }
         function closeKeyboard() {
-            if (root.ownPad) { pad.send({ cmd: "osk", open: false }); files.osk = null; }
+            if (root.ownPad) files.oskWinClose();
             else Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "keyboard", "close"]);
         }
     }
@@ -96,7 +96,9 @@ ShellRoot {
                     let m;
                     try { m = JSON.parse(line); } catch (e) { return; }
                     if (m.t === "ready") { pad.send({ cmd: "keys", on: true }); pad.send({ cmd: "mouse", on: true }); }
-                    else if (m.t === "osk") files.osk = m.open ? m : null;
+                    else if (m.t === "osk") { if (m.open) files.oskWinOpen(); else files.oskWinClose(); }
+                    else if (m.t === "oskpad") files.oskPad(m.b, !!m.down);
+                    else if (m.t === "oskaxes") files.oskAxes(m.lx || 0, m.ly || 0, m.rx || 0, m.ry || 0);
                 }
             }
         }
