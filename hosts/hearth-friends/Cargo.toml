@@ -1,0 +1,47 @@
+[package]
+name = "hearth-friends"
+version = "0.1.0"
+edition = "2021"
+description = "Hearth Friends: friends, chat and game invites on the open Matrix protocol, for Game Mode and Mantel"
+license = "GPL-3.0-or-later"
+
+# The rules (friend links, game invite cards, privacy buckets, settings, keeping tokens out of logs) are a library
+# with unit tests; the Matrix side (matrix-sdk with end-to-end encryption) and the local socket Hearth's core and
+# Mantel talk to are in the binary's modules. See docs/FRIENDS.md.
+[lib]
+name = "hearth_friends"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-friends"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
+# Matrix with end-to-end encryption; the state and the encryption keys live in SQLite, encrypted with a key kept in
+# the system keyring (bundled SQLite: nothing to install on the system).
+matrix-sdk = { version = "0.19.1", default-features = false, features = ["e2e-encryption", "automatic-room-key-forwarding", "bundled-sqlite", "rustls-aws-lc-rs"] }
+mime = "0.3"
+getrandom = "0.2"
+base64 = "0.22"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+
+# The session (access token) and the store key: the Secret Service on Linux (GNOME Keyring in Hearth's session),
+# like Hearth Contacts. Desktop notifications in Mantel go over the same D-Bus.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+dbus = "0.9"
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+keyring = { version = "3" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
