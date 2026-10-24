@@ -1,0 +1,744 @@
+{
+ "$type": "Microsoft.Marketplace.Storefront.Contracts.V1.ResponseItem, Microsoft.Marketplace.Storefront.Contracts",
+ "Path": "/search?market=US&locale=en-US&deviceFamily=Windows.Desktop&query=halo&mediaType=games",
+ "ExpiryUtc": "2026-10-24T05:45:49.6510946Z",
+ "Payload": {
+  "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchResponse, Microsoft.Marketplace.Storefront.Contracts",
+  "SearchResults": [
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V8.One.CardModel, Microsoft.Marketplace.Storefront.Contracts",
+    "ProductId": "9NWQMVSB63N4",
+    "Title": "Halo: Combat Evolved Anniversary",
+    "Images": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "Poster",
+      "BackgroundColor": "#FFFFFF",
+      "ForegroundColor": "#FFFFFF",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.12973.14099260252310267.aaf88f10-6d5d-4b14-9021-3c41790d443b.6d29b59e-72c0-44f6-8388-62899ea15f24",
+      "Height": 2160,
+      "Width": 1440
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "BoxArt",
+      "BackgroundColor": "#FFFFFF",
+      "ForegroundColor": "#FFFFFF",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.26583.14099260252310267.aaf88f10-6d5d-4b14-9021-3c41790d443b.b16f1ac8-1f58-47f8-a60d-d35dc0b4818d",
+      "Height": 2160,
+      "Width": 2160
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "logo",
+      "BackgroundColor": "#FFFFFF",
+      "ForegroundColor": "#FFFFFF",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.5315.14099260252310267.19cb9039-739a-46c0-94e2-0a95d8940b4d.e49ef100-9f60-4f9d-8682-027fdd9f3ad1",
+      "Height": 300,
+      "Width": 300
+     }
+    ],
+    "Previews": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "SuperHeroArt",
+      "BackgroundColor": "#FFFFFF",
+      "ForegroundColor": "#FFFFFF",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.6166.14099260252310267.aaf88f10-6d5d-4b14-9021-3c41790d443b.d7206f58-06ef-4c66-b74d-8434945959ae",
+      "Height": 2160,
+      "Width": 3840
+     }
+    ],
+    "DisplayPrice": "Included",
+    "Price": 0.0,
+    "AverageRating": 3.8,
+    "RatingsCount": "2K",
+    "PackageFamilyNames": [
+     ""
+    ],
+    "PlaintextPassName": "Xbox Game Pass",
+    "AvailableDevicesNarratorText": "PC",
+    "SkusSummary": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V8.SkuSummary, Microsoft.Marketplace.Storefront.Contracts",
+      "SkuId": "0010",
+      "MSRP": 9.99,
+      "DisplayMSRP": "$9.99",
+      "SalePrices": [
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+        "Price": 9.99,
+        "DisplayPrice": "$9.99",
+        "BadgeId": "default"
+       },
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+        "Conditions": {
+         "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePriceConditions, Microsoft.Marketplace.Storefront.Contracts",
+         "Type": "EntitlementId",
+         "Ids": [
+          "CFQ7TTC0KGQ8"
+         ]
+        },
+        "Price": 0.0,
+        "DisplayPrice": "Free",
+        "BadgeId": "gamepass"
+       },
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+        "Conditions": {
+         "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePriceConditions, Microsoft.Marketplace.Storefront.Contracts",
+         "Type": "EntitlementId",
+         "Ids": [
+          "CFQ7TTC0P85B"
+         ]
+        },
+        "Price": 0.0,
+        "DisplayPrice": "Free",
+        "BadgeId": "gamepass"
+       }
+      ],
+      "IncludedWith": [
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.IncludedProgram, Microsoft.Marketplace.Storefront.Contracts",
+        "ProductIds": [
+         "CFQ7TTC0KGQ8",
+         "CFQ7TTC0P85B"
+        ],
+        "Name": "Game Pass Premium • Ultimate • PC",
+        "BadgeId": "gamepass"
+       }
+      ]
+     }
+    ],
+    "ReleaseDate": "2020-03-03T18:00:00Z",
+    "PublisherName": "Xbox Game Studios",
+    "TypeTag": "app",
+    "ProductFamilyName": "Games",
+    "Categories": [
+     "Shooter"
+    ],
+    "LongDescription": "Halo: Combat Evolved Anniversary* comes to PC as the second installment of Halo: The Master Chief Collection. Now optimized for PC, relive the spectacularly remastered edition of the original Halo cam"
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V8.One.CardModel, Microsoft.Marketplace.Storefront.Contracts",
+    "ProductId": "9PP5G1F0C2B6",
+    "Title": "Halo Infinite",
+    "Images": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "Poster",
+      "BackgroundColor": "",
+      "ForegroundColor": "",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.3823.14330850369313893.a687698c-b891-44f6-9576-fe28978ce915.5aada4fa-d850-4eb5-9100-33a81a5cde09",
+      "Height": 2160,
+      "Width": 1440
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "BoxArt",
+      "BackgroundColor": "",
+      "ForegroundColor": "",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.54714.14330850369313893.a687698c-b891-44f6-9576-fe28978ce915.27742122-f062-410c-84f4-0fcf7b89524e",
+      "Height": 1080,
+      "Width": 1080
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "logo",
+      "BackgroundColor": "",
+      "ForegroundColor": "",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.52504.14330850369313893.a687698c-b891-44f6-9576-fe28978ce915.95e011f8-5d23-40a4-abde-4ae00a4bb6f7",
+      "Height": 300,
+      "Width": 300
+     }
+    ],
+    "Previews": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "SuperHeroArt",
+      "BackgroundColor": "",
+      "ForegroundColor": "",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.47030.14330850369313893.a687698c-b891-44f6-9576-fe28978ce915.ce613c75-aac4-4721-9941-6a254d061488",
+      "Height": 2160,
+      "Width": 3840
+     }
+    ],
+    "DisplayPrice": "Free",
+    "Price": 0.0,
+    "AverageRating": 3.9,
+    "RatingsCount": "12K",
+    "PackageFamilyNames": [
+     "Microsoft.254428597CFE2_8wekyb3d8bbwe"
+    ],
+    "AvailableDevicesNarratorText": "PC,Xbox One",
+    "SkusSummary": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V8.SkuSummary, Microsoft.Marketplace.Storefront.Contracts",
+      "SkuId": "0010",
+      "MSRP": 0.0,
+      "DisplayMSRP": "Free",
+      "SalePrices": [
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+        "Price": 0.0,
+        "DisplayPrice": "Free",
+        "BadgeId": "default"
+       },
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+        "Conditions": {
+         "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePriceConditions, Microsoft.Marketplace.Storefront.Contracts",
+         "Type": "EntitlementId",
+         "Ids": [
+          "CFQ7TTC0K6L8"
+         ]
+        },
+        "Price": 0.0,
+        "DisplayPrice": "Free",
+        "BadgeId": "gamepass"
+       },
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+        "Conditions": {
+         "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePriceConditions, Microsoft.Marketplace.Storefront.Contracts",
+         "Type": "EntitlementId",
+         "Ids": [
+          "CFQ7TTC0KGQ8"
+         ]
+        },
+        "Price": 0.0,
+        "DisplayPrice": "Free",
+        "BadgeId": "gamepass"
+       },
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+        "Conditions": {
+         "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePriceConditions, Microsoft.Marketplace.Storefront.Contracts",
+         "Type": "EntitlementId",
+         "Ids": [
+          "CFQ7TTC0P85B"
+         ]
+        },
+        "Price": 0.0,
+        "DisplayPrice": "Free",
+        "BadgeId": "gamepass"
+       }
+      ],
+      "IncludedWith": [
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.IncludedProgram, Microsoft.Marketplace.Storefront.Contracts",
+        "ProductIds": [
+         "CFQ7TTC0P85B",
+         "CFQ7TTC0K6L8",
+         "CFQ7TTC0KGQ8"
+        ],
+        "Name": "Game Pass Premium • Ultimate • PC",
+        "BadgeId": "gamepass"
+       }
+      ]
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V8.SkuSummary, Microsoft.Marketplace.Storefront.Contracts",
+      "SkuId": "0017"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V8.SkuSummary, Microsoft.Marketplace.Storefront.Contracts",
+      "SkuId": "0011"
+     }
+    ],
+    "ReleaseDate": "2021-11-15T18:00:00Z",
+    "PublisherName": "Xbox Game Studios",
+    "TypeTag": "app",
+    "ProductFamilyName": "Games",
+    "Categories": [
+     "Shooter"
+    ],
+    "LongDescription": "Free-to-Play Multiplayer:  \n\nExperience Halo’s celebrated multiplayer reimagined and free-to-play! With over 70 maps in matchmaking, billions of customization configurations, and countless community F"
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V8.One.CardModel, Microsoft.Marketplace.Storefront.Contracts",
+    "ProductId": "9NTM9HXNLSZX",
+    "Title": "Halo: The Master Chief Collection",
+    "Images": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "Poster",
+      "BackgroundColor": "#FFFFFF",
+      "ForegroundColor": "#FFFFFF",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.15328.14011015795942652.ca67db1b-d21e-47e9-bbb4-5ece2ce3f774.516eb47c-697b-46db-8ba6-f44da2e5592d",
+      "Height": 1080,
+      "Width": 720
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "BoxArt",
+      "BackgroundColor": "#FFFFFF",
+      "ForegroundColor": "#FFFFFF",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.39962.14415742612829493.9171a818-3c53-4dc7-a187-714bc0d9631d.8ada5595-cc0a-4d72-9999-103082312e1d",
+      "Height": 1080,
+      "Width": 1080
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "logo",
+      "BackgroundColor": "#FFFFFF",
+      "ForegroundColor": "#FFFFFF",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.25919.14011015795942652.ca67db1b-d21e-47e9-bbb4-5ece2ce3f774.c71a2431-5ef1-4c32-92fa-22cca6162053",
+      "Height": 300,
+      "Width": 300
+     }
+    ],
+    "Previews": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+      "ImageType": "SuperHeroArt",
+      "BackgroundColor": "#FFFFFF",
+      "ForegroundColor": "#FFFFFF",
+      "Caption": "",
+      "ImagePositionInfo": "",
+      "Url": "https://store-images.s-microsoft.com/image/apps.25987.14415742612829493.6fadca60-dee3-4f8d-8d0a-1a3ec8b3f5a4.722cfa9d-c39b-44a4-be37-34624b001975",
+      "Height": 1080,
+      "Width": 1920
+     }
+    ],
+    "DisplayPrice": "Included",
+    "Price": 0.0,
+    "AverageRating": 4.1,
+    "RatingsCount": "3K",
+    "PackageFamilyNames": [
+     ""
+    ],
+    "PlaintextPassName": "Xbox Game Pass",
+    "AvailableDevicesNarratorText": "PC",
+    "SkusSummary": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V8.SkuSummary, Microsoft.Marketplace.Storefront.Contracts",
+      "SkuId": "0010",
+      "MSRP": 39.99,
+      "DisplayMSRP": "$39.99",
+      "SalePrices": [
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+        "Price": 39.99,
+        "DisplayPrice": "$39.99",
+        "BadgeId": "default"
+       },
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+        "Conditions": {
+         "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePriceConditions, Microsoft.Marketplace.Storefront.Contracts",
+         "Type": "EntitlementId",
+         "Ids": [
+          "CFQ7TTC0KGQ8"
+         ]
+        },
+        "Price": 0.0,
+        "DisplayPrice": "Free",
+        "BadgeId": "gamepass"
+       },
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+        "Conditions": {
+         "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePriceConditions, Microsoft.Marketplace.Storefront.Contracts",
+         "Type": "EntitlementId",
+         "Ids": [
+          "CFQ7TTC0P85B"
+         ]
+        },
+        "Price": 0.0,
+        "DisplayPrice": "Free",
+        "BadgeId": "gamepass"
+       }
+      ],
+      "IncludedWith": [
+       {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.IncludedProgram, Microsoft.Marketplace.Storefront.Contracts",
+        "ProductIds": [
+         "CFQ7TTC0KGQ8",
+         "CFQ7TTC0P85B"
+        ],
+        "Name": "Game Pass Premium • Ultimate • PC",
+        "BadgeId": "gamepass"
+       }
+      ]
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V8.SkuSummary, Microsoft.Marketplace.Storefront.Contracts",
+      "SkuId": "0017"
+     }
+    ],
+    "ReleaseDate": "2019-12-03T18:00:00Z",
+    "PublisherName": "Xbox Game Studios",
+    "TypeTag": "app",
+    "ProductFamilyName": "Games",
+    "Categories": [
+     "Shooter"
+    ],
+    "LongDescription": "The series that changed console gaming forever is on PC with six blockbuster games in one epic experience.\r\n\r\nCampaign: Featuring Halo: Reach, Halo: Combat Evolved Anniversary, Halo 2: Anniversary, Ha"
+   }
+  ],
+  "HighlightedResults": [],
+  "FilterOptions": [
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilter, Microsoft.Marketplace.Storefront.Contracts",
+    "Choices": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "all",
+      "Title": "All departments"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "apps",
+      "Title": "Apps"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "games",
+      "Title": "Games",
+      "State": "Selected"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "devices",
+      "Title": "Devices"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "passes",
+      "Title": "Memberships"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "fonts",
+      "Title": "Fonts"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "themes",
+      "Title": "Themes"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "tencent-android",
+      "Title": "Mobile App"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "tencent-mini",
+      "Title": "Weixin Mini Game"
+     }
+    ],
+    "Id": "mediaType",
+    "AlwaysVisible": false,
+    "Title": "Department",
+    "DependentFilters": [
+     "Category",
+     "SubCategory"
+    ]
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilter, Microsoft.Marketplace.Storefront.Contracts",
+    "Choices": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "all",
+      "Title": "All categories",
+      "State": "Selected"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Action & adventure",
+      "Title": "Action & adventure"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Card & board",
+      "Title": "Card & board"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Casino",
+      "Title": "Casino"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Classics",
+      "Title": "Classics"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Companion",
+      "Title": "Companion"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Educational",
+      "Title": "Educational"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Family & kids",
+      "Title": "Family & kids"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Fighting",
+      "Title": "Fighting"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Multi-player Online Battle Arena",
+      "Title": "Multi-Player Online Battle Arena"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Music",
+      "Title": "Music"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Other",
+      "Title": "Other"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Platformer",
+      "Title": "Platformer"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Puzzle & trivia",
+      "Title": "Puzzle & trivia"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Racing & flying",
+      "Title": "Racing & flying"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Role playing",
+      "Title": "Role playing"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Shooter",
+      "Title": "Shooter"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Simulation",
+      "Title": "Simulation"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Social",
+      "Title": "Social"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Sports",
+      "Title": "Sports"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Strategy",
+      "Title": "Strategy"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Tools",
+      "Title": "Tools"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Video",
+      "Title": "Video"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Word",
+      "Title": "Word"
+     }
+    ],
+    "Id": "Category",
+    "AlwaysVisible": false,
+    "Title": "Category",
+    "DependentFilters": [
+     "SubCategory"
+    ]
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilter, Microsoft.Marketplace.Storefront.Contracts",
+    "Choices": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "all",
+      "Title": "All ages",
+      "State": "Selected"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO3",
+      "Title": "3 and under"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO4",
+      "Title": "4"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO5",
+      "Title": "5"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO6",
+      "Title": "6"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO7",
+      "Title": "7"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO8",
+      "Title": "8"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO9",
+      "Title": "9"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO10",
+      "Title": "10"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO11",
+      "Title": "11"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO12",
+      "Title": "12"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO13",
+      "Title": "13"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO14",
+      "Title": "14"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO15",
+      "Title": "15"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO16",
+      "Title": "16"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "TO17",
+      "Title": "17"
+     }
+    ],
+    "Id": "UserAge",
+    "AlwaysVisible": false,
+    "Title": "Audience age"
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilter, Microsoft.Marketplace.Storefront.Contracts",
+    "Choices": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "all",
+      "Title": "All types",
+      "State": "Selected"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Free",
+      "Title": "Free"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Paid",
+      "Title": "Paid"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+      "Id": "Sale",
+      "Title": "On Sale"
+     }
+    ],
+    "Id": "PriceType",
+    "AlwaysVisible": false,
+    "Title": "Price Type"
+   }
+  ],
+  "DepartmentOptions": {
+   "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilter, Microsoft.Marketplace.Storefront.Contracts",
+   "Choices": [
+    {
+     "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+     "Id": "all",
+     "Title": "All departments"
+    },
+    {
+     "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+     "Id": "apps",
+     "Title": "Apps"
+    },
+    {
+     "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SearchFilterChoice, Microsoft.Marketplace.Storefront.Contracts",
+     "Id": "games",
+     "Title": "Games"
+    }
+   ],
+   "Id": "mediaType",
+   "AlwaysVisible": false,
+   "Title": "Department",
+   "DependentFilters": [
+    "Category",
+    "SubCategory"
+   ]
+  },
+  "NextUri": "/v9.0/search?market=US&locale=en-US&deviceFamily=Windows.Desktop&query=halo&mediaType=games&cursor=bz0yMCZiPSZzPWN2JnI9OU5XUU1WU0I2M040JTJjOVBQNUcxRjBDMkI2JTJjOU5UTTlIWE5MU1pYJTJjOVA2VlpDUkdYRk1YJTJjOU42SjRSTkZQS0tMJTJjQzJLRE5MVDJIN0RNJTJjOVBHTDJaMUg5TTRSJTJjOVA1NzM5RzQxOUxEJTJjOVA4Q0ZYWkg5M0NLJTJjOU45V1pUM1BKMjdXJTJjOVBMU0JUSkI4N1E3JTJjOU42SEpTS0RLWENWJTJjOU5CTEdHSDRQQkJNJTJjOU5aMTJSVjdCN1IzJTJjOU1WOEo3Szc3WERYJTJjOU5YRlg2OFpOS0swJTJjOVdaRE5DUkZIV0YxJTJjOU5QMVAxV0ZTMExCJTJjOVBHTEw3N0MyMDFKJTJjOU5CTEdHSDRWMEZSJTJjOU5CTEdHSDUxNUJEJTJjOVA5V0o1RlcwR1REJTJjOU4wNE5TOFRQMjAyJTJjOVA0UzBSOTdSMzZTJTJjOVA2TE5OM0taNzVSJTJjOVdaRE5DUkZIV0ZIJTJjOVBDNUtLSFNNQ1Q1JTJjOU5CTEdHSDRWWFBNJTJjOVBHVzE4TlBCWlY1JTJjOVdaRE5DUkRIM0QyJTJjOU5CTEdHSDNTSE01JTJjOU44QzhMOU1WUTg5JTJjOU5CTEdHSDVXTFIwJTJjOU5GSFdTSjNKV1NDJTJjOU5IRlZXWDFWN1FKJTJjOU5CNkJWTDNNVEc0JTJjOVBOR0RKTTdGS1pIJTJjOU5GSDNWQ0RTTE02JTJjOVA0NUJQWkNQMDA0JTJjOU5CTlIxVDJNNVdEJTJjOU5CTEdHSDRTUEs2JTJjOU40MlNTU1gyTVRHJTJjOVA0S01SNzZQTExRJTJjOVA4TTZCWDlXS1ZTJTJjOU45UENaV0hWUDJMJTJjOU4xNlNMQjZGQjk2JTJjOU5LWDcwQkJDRFJOJTJjOU5GQzdIMzRENjMyJTJjOU5CTEdHSDE4ODQ2JTJjOU5UNFg3UDhCOU5CJTJjOU5HMDdRSk5LMzhKJTJjOVBGUkc0NFhaQ0ZKJTJjOU5CTEdHSDUyUEg5JTJjOVBNUURNMDhTTks5JTJjOU41MzBYV1NDMEpKJTJjOU5DTDZGNTVMVFdTJTJjOU5SM1A3VjU0M0RLJTJjOU5CNzdDVzVKMVRUJTJjOVA4UFM2OTkzTFNMJTJjOU4yR1dMTUNISlROJTJjOU1XTk5NNDFNQjZEJTJjOVdaRE5DUkZKQkZKJTJjOVBGVlFKTDk2S0NHJTJjOU1WMlRSV1dMU1g0JTJjOU5CTEdHSDRUUUREJTJjOU5EUEszUEs4WDFIJTJjOU4zTjZCVExKTEhUJTJjOVA0V0dGNTUzTDlIJTJjOU1aTDg0MlQ1N1FOJTJjOVBESjNKMjZIVzMxJTJjOVA2VjgwWEgxTEg4JTJjOU5MNDcxNFZUTFJTJTJjOVBDRE5CSFIxMU1SJTJjOU1WNjlMNEpTRDMxJTJjOVBKMTVEM1JEWE1WJTJjOU5NNFFXUlBCOVQ5JTJjOU5SUVoxWEZMMUY1JTJjOVBNOU1MVDEwM1dLJTJjOU40WFczTjAyTU5KJTJjOU40MzFQWDE0M1A4JTJjOVA4RkJYS01DTFdDJTJjOU5QVzBUTEpSQldSJTJjOVA5Vk5TUUsxVzNLJTJjOU5USDFLNVJUNDNQJTJjOVA3TDlINDc4R0dWJTJjOU5OTEJMMFQyWjQzJTJjOU5CNUdQSkRKN0tDJTJjOU1YMDNYWEdSU0I0JTJjOU5QVExWMVhaOEg5JTJjOU5CTEdHSDQzUDIyJTJjOVBDVk42TFJWVjEzJTJjOU1WMzFSWDMyUzUyJTJjOVBMMEw5UDY5UjRSJTJjOU5CTEdHSDUyWFQ2JTJjOU5CSDgxSDNWQjdQJTJjOVBMOVAzUVpNUkJNJTJjOU5YTEhHNDRGUFc1JTJjOVdaRE5DUkZKMzlCJTJjOVAyUThKVlYzVFRLJTJjOVBQOTZHUUZIVzg5JnNpZz1jalFwMDBBaUFCeWx3WElEUU5VcGNTZHNnVDVBMVJmQTBvUlVUNW9kZ3pzJTNk&facets=false",
+  "Index": -1
+ }
+}

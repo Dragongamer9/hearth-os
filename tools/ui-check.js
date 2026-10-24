@@ -21,6 +21,53 @@ const path = require('path');
   // Every screen, every Settings page, every home layout.
   for (const v of ['home', 'library', 'downloads', 'friends', 'shots', 'stores'])
     await step('screen ' + v, v => { S.layers = []; navigate(v, {}, false); }, v);
+  // Game Mode › Store (hearth-core storefront): each store's page from the preview's data, LB/RB between stores, a
+  // game's page with the right button (Play/Install when it's in your library, Sign in when the store isn't, Buy on
+  // the store's own page otherwise), searching, and B back to the store. Pictures for release.yml.
+  const shopCard = t => page.evaluate(t => { const c = [...document.querySelectorAll('#view .sft')].find(e => e.querySelector('.sft-t').textContent === t); if (!c) throw new Error('no card for ' + t); return c.dataset.k; }, t);
+  const shopOpen = async (store, title) => {
+    await page.evaluate(s => { S.layers = []; if (SHOP.page) shopBack(); shopTab(s); }, store);
+    await page.waitForTimeout(400);
+    const k = await shopCard(title);
+    await page.evaluate(k => act(document.querySelector(`#view [data-k="${k}"]`)), k);
+    await page.waitForTimeout(400);
+    return page.evaluate(() => { const b = document.querySelector('#view [data-k="sf-buy"]'); return b ? { act: b.dataset.act, text: b.textContent.trim(), v: b.dataset.v || '' } : null; });
+  };
+  await step('store page', async () => {
+    S.layers = []; S.history = []; SHOP.home = {}; SHOP.page = null; SHOP.store = 'steam'; navigate('shop', {}, false);
+    await new Promise(r => setTimeout(r, 500));
+    for (const k of ['sf-t-steam', 'sf-t-gog', 'sf-t-epic', 'sf-t-xbox', 'sf-search', 'sf-hero', 'sf-featured-0', 'sf-deals-0', 'sf-top-0'])
+      if (!document.querySelector(`#view [data-k="${k}"]`)) throw new Error('no ' + k);
+    if (!/-50%/.test(document.querySelector('#view [data-k="sf-deals-0"]').textContent)) throw new Error("a deal doesn't show its discount");
+    if (!/Buying opens Steam's own store/.test(document.querySelector('#view').textContent)) throw new Error("Steam's account line is missing");
+    renderMenu(); if (!document.querySelector('#menu [data-k="m-shop"]')) throw new Error('Store is not in the menu');
+    input('rb'); await new Promise(r => setTimeout(r, 400));
+    if (SHOP.store !== 'gog' || !document.querySelector('#view [data-k="sf-t-gog"].on')) throw new Error('RB did not go to GOG: ' + SHOP.store);
+    input('lb'); if (SHOP.store !== 'steam') throw new Error('LB did not go back to Steam');
+  });
+  try {
+    const owned = await shopOpen('gog', 'Hollow Pines');   // in the preview's library, installed
+    if (!owned || owned.act !== 'shopLib' || owned.v !== 'play') errors.push('store: a game in your library offers ' + JSON.stringify(owned));
+    const back = await page.evaluate(() => { back(); return { page: !!SHOP.page, focus: focused && focused.dataset.k }; });
+    if (back.page || !/^sf-/.test(back.focus || '')) errors.push("store: B on a game's page didn't go back to the store: " + JSON.stringify(back));
+    const signIn = await shopOpen('epic', 'Arc Runner');   // Epic isn't signed in in the preview
+    if (!signIn || signIn.act !== 'shopSignIn' || !/Sign in to Epic Games/.test(signIn.text)) errors.push('store: an Epic game while signed out offers ' + JSON.stringify(signIn));
+    const buy = await shopOpen('xbox', 'Halcyon Drive');
+    if (!buy || buy.act !== 'shopWeb' || buy.v !== 'buy' || !/Buy on Xbox/.test(buy.text)) errors.push('store: an Xbox game offers ' + JSON.stringify(buy));
+    const steam = await shopOpen('steam', 'Copperline');
+    if (!steam || steam.act !== 'shopSteam' || !/Buy in Steam/.test(steam.text)) errors.push('store: a Steam game offers ' + JSON.stringify(steam));
+    const page2 = await page.evaluate(() => ({ stats: [...document.querySelectorAll('#view .gstat .k')].map(e => e.textContent).join(' '), linux: (document.querySelector('#view .pdb') || {}).textContent, about: /placeholder description/.test(document.querySelector('#view .shop-desc') ? document.querySelector('#view .shop-desc').textContent : '') }));
+    if (page2.stats !== 'Price Rating On Linux Released Developer' || page2.linux !== 'Gold' || !page2.about) errors.push("store: the game's page is missing something: " + JSON.stringify(page2));
+    await step('store search', async () => {
+      if (SHOP.page) shopBack();
+      shopDoSearch('steam', 'lantern'); await new Promise(r => setTimeout(r, 300));
+      const r = document.querySelector('#view [data-k="sf-r-0"]');
+      if (!r || !/Lantern Keep/.test(r.textContent)) throw new Error('no search result');
+      if (!document.querySelector('#view [data-k="sf-clear"]')) throw new Error('no Clear');
+      shopDoSearch('steam', '');
+      if (document.querySelector('#view [data-k="sf-r-0"]')) throw new Error("Clear left the results");
+    });
+  } catch (e) { errors.push('store: ' + e.message.split('\n')[0]); }
   // A game's settings, and its controller layout editor (Hearth Input).
   await step('screen gameset', () => { S.layers = []; navigate('gameset', {game: (GAMES.find(g => !g.cloud) || GAMES[0]).id}, false); });
   await step('screen inputmap', async () => {
@@ -1069,6 +1116,33 @@ const path = require('path');
       console.log(`default apps: ${rows} rows`);
     } catch (e) { errors.push('default apps: ' + e.message.split('\n')[0]); }
     await dp.close();
+  }
+
+  // The Store's pictures (Steam's page, and a game's page), half size so each fits in the notices release.yml posts.
+  {
+    const shots = path.resolve(__dirname, 'store-shots');
+    try { require('fs').mkdirSync(shots, { recursive: true }); } catch {}
+    let sp;
+    try { sp = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 0.5 }); }
+    catch { sp = await browser.newPage({ viewport: { width: 960, height: 600 } }); }
+    sp.on('pageerror', e => errors.push(`store pictures: ${e.message}`));
+    try {
+      await sp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await sp.waitForTimeout(1200);
+      const shot = async name => {
+        for (const q of [70, 55, 45, 35, 25, 15]) {
+          const buf = await sp.screenshot({ type: 'jpeg', quality: q });
+          if (buf.toString('base64').length <= 9 * 3800 || q === 15) { require('fs').writeFileSync(path.join(shots, name + '.jpg'), buf); break; }
+        }
+      };
+      await sp.evaluate(() => { closeAll(); S.history = []; SHOP.store = 'steam'; navigate('shop', {}, false); });
+      await sp.waitForTimeout(700);
+      await sp.evaluate(() => { setFocus(document.querySelector('#view [data-k="sf-hero"]'), true); $('#view').scrollTop = 0; });
+      await sp.waitForTimeout(300); await shot('home');
+      await sp.evaluate(() => act(document.querySelector('#view [data-k="sf-deals-1"]')));
+      await sp.waitForTimeout(700); await shot('game');
+    } catch (e) { errors.push('store pictures: ' + e.message.split('\n')[0]); }
+    await sp.close();
   }
 
   await browser.close();

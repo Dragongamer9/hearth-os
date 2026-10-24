@@ -1,0 +1,121 @@
+{
+ "id": 1207664663,
+ "title": "The Witcher 3: Wild Hunt - Complete Edition",
+ "purchase_link": "https://www.gog.com/en/checkout/manual/the_witcher_3_wild_hunt",
+ "slug": "the_witcher_3_wild_hunt",
+ "content_system_compatibility": {
+  "windows": true,
+  "osx": false,
+  "linux": false
+ },
+ "links": {
+  "purchase_link": "https://www.gog.com/en/checkout/manual/the_witcher_3_wild_hunt",
+  "product_card": "https://www.gog.com/game/the_witcher_3_wild_hunt",
+  "support": "https://www.gog.com/support/the_witcher_3_wild_hunt",
+  "forum": "https://www.gog.com/forum/the_witcher_3_wild_hunt"
+ },
+ "in_development": {
+  "active": false,
+  "until": null
+ },
+ "is_secret": false,
+ "is_installable": false,
+ "game_type": "pack",
+ "is_pre_order": false,
+ "release_date": "2015-05-19T01:00:00+0200",
+ "images": {
+  "background": "//images-1.gog-statics.com/a31cc28555c4e773d8962b993f9d1dd62aa6895f2077a5d755eb8a01ed0bba91.jpg",
+  "logo": "//images-4.gog-statics.com/45a0d9d39f01bd10a9d967194d81e0660da0cd93038501be48b32ac4667a8591_glx_logo.jpg",
+  "logo2x": "//images-3.gog-statics.com/45a0d9d39f01bd10a9d967194d81e0660da0cd93038501be48b32ac4667a8591_glx_logo_2x.jpg",
+  "sidebarIcon": "//images-3.gog-statics.com/b42b5d2814d11c06f01558e313b23218029c4a845f1e9f1b9c80e0fc4eb22974_sbicon.png",
+  "sidebarIcon2x": "//images-2.gog-statics.com/b42b5d2814d11c06f01558e313b23218029c4a845f1e9f1b9c80e0fc4eb22974_sbicon_2x.png",
+  "menuNotificationAv": "//images-1.gog-statics.com/b42b5d2814d11c06f01558e313b23218029c4a845f1e9f1b9c80e0fc4eb22974_menu_notification_av.png",
+  "menuNotificationAv2": "//images-1.gog-statics.com/b42b5d2814d11c06f01558e313b23218029c4a845f1e9f1b9c80e0fc4eb22974_menu_notification_av2.png",
+  "icon": "//images-2.gog-statics.com/b42b5d2814d11c06f01558e313b23218029c4a845f1e9f1b9c80e0fc4eb22974.png"
+ },
+ "dlcs": {
+  "products": [
+   {
+    "id": 2021941787,
+    "link": "https://api.gog.com/products/2021941787",
+    "expanded_link": "https://api.gog.com/products/2021941787?expand=description,screenshots,videos"
+   }
+  ],
+  "all_products_url": "https://api.gog.com/products?ids=2021941787",
+  "expanded_all_products_url": "https://api.gog.com/products?ids=2021941787&expand=description,screenshots,videos"
+ },
+ "description": {
+  "lead": "<div style=\"overflow:hidden;\"><a href=\"https://www.gog.com/game/the_witcher_3_wild_hunt_game_of_the_year_edition\"><img src=\"https://items.gog.com/the_witcher_3_wild_hunt/COVER_970x300_EN.png\"></a></div>\r\n<p>\r\n<br>\r\n&nbsp;\r\n</p>\r\n<hr>\r\n<p>\r\n<img src=\"https://items.gog.com/the_witcher_3_wild_hunt/HeaderEN.jpg\">&nbsp;<br>\r\n&nbsp;\r\n</p>\r\n<hr><div style=\"overflow:hidden;\"><img style=\"float:left;margin:",
+  "full": "<div style=\"overflow:hidden;\"><a href=\"https://www.gog.com/game/the_witcher_3_wild_hunt_game_of_the_year_edition\"><img src=\"https://items.gog.com/the_witcher_3_wild_hunt/COVER_970x300_EN.png\"></a></div>\r\n<p>\r\n<br>\r\n&nbsp;\r\n</p>\r\n<hr>\r\n<p>\r\n<img src=\"https://items.gog.com/the_witcher_3_wild_hunt/HeaderEN.jpg\">&nbsp;<br>\r\n&nbsp;\r\n</p>\r\n<hr><div style=\"overflow:hidden;\"><img style=\"float:left;margin:5px 15px 0 10px;\" src=\"https://items.gog.com/the_witcher_3_wild_hunt/rewards_logo.png\"><br>\r\n<a href=\"https://www.thewitcher.com/my-rewards\" target=\"”_blank”\"><span><b>Rewards for owning The Witcher 3: Wild Hunt</b></span></a><br>\r\n<span>Launch The Witcher 3: Wild Hunt via <b>GOG GALAXY 2.0</b> and start playing. Your rewards will be waiting for you in the Royal Palace in Vizima. Check the letter from Yennefer in your inventory for help locating them!</span></div>\r\n<p>\r\n<br>\r\n&nbsp;\r\n</p>\r\n<hr>\r\n<p>\r\n<br>\r\nThe Witcher 3: Wild Hunt, the RPG epic with a mature, non-linear story that reacts to your decisions, a vast open world with a living ecosystem, dynamic and tactical combat, and stunning visuals, is available on GOG.com!&nbsp;<br>\r\n<br>\r\nWe are part of the CD PROJEKT family, so buying here also gives you the chance to support us directly!&nbsp;<br>\r\n<br>\r\n&nbsp;\r\n</p>\r\n\r\n<p class=\"module\" style=\"margin-top:5px;padding:15px;\">\r\n<a href=\"http://www.gog.com/game/the_witcher_3_wild_hunt_expansion_pass\"><span style=\"padding-bottom:2px;\"><b>The Witcher 3: Wild Hunt - Expansion Pass also available!</b></span></a>  The Expansion Pass secures your access to two epic adventures set in the vibrant world of monster hunter Geralt of Rivia. The upcoming expansions will offer gamers new content, gear and foes, and will feature characters both new and dearly missed -- all crafted with maximum attention to detail and quality.\r\n</p>\r\n<div class=\"tw3-layout tw3-layout--with-badge\"><div class=\"tw3-section tw3-section--right-aligned\"><div class=\"tw3-img tw3-img--soundtrack\">&nbsp;</div></div>\r\n<p>\r\n<br>\r\n&nbsp;\r\n</p>\r\n<div class=\"tw3-section\">\r\n<p>\r\n<b>BONUS: Extended soundtrack with 4 bonus tracks</b>\r\n</p>\r\n\r\n<p>\r\nExperience additional 11 minutes of music composed by Marcin Przybyłowicz and the Polish folk-metal band Percival (named after one of the characters from The Witcher novels) and immerse yourself in the mesmerising world of the The Witcher 3: Wild Hunt!.\r\n</p>\r\n</div></div><div class=\"tw3-layout tw3-layout--with-badge\"><div class=\"tw3-section tw3-section--left-aligned\"><d",
+  "whats_cool_about_it": "product_feature_1207664663"
+ },
+ "screenshots": [
+  {
+   "image_id": "3176c5947e367f70bca70cd7433ecf9c9516f8bd1cb58d12e4e0485a0e605267",
+   "formatter_template_url": "https://images-4.gog-statics.com/3176c5947e367f70bca70cd7433ecf9c9516f8bd1cb58d12e4e0485a0e605267_{formatter}.png",
+   "formatted_images": [
+    {
+     "formatter_name": "ggvgt",
+     "image_url": "https://images-1.gog-statics.com/3176c5947e367f70bca70cd7433ecf9c9516f8bd1cb58d12e4e0485a0e605267_ggvgt.jpg"
+    },
+    {
+     "formatter_name": "ggvgt_2x",
+     "image_url": "https://images-1.gog-statics.com/3176c5947e367f70bca70cd7433ecf9c9516f8bd1cb58d12e4e0485a0e605267_ggvgt_2x.jpg"
+    },
+    {
+     "formatter_name": "ggvgm",
+     "image_url": "https://images-4.gog-statics.com/3176c5947e367f70bca70cd7433ecf9c9516f8bd1cb58d12e4e0485a0e605267_ggvgm.jpg"
+    },
+    {
+     "formatter_name": "ggvgm_2x",
+     "image_url": "https://images-1.gog-statics.com/3176c5947e367f70bca70cd7433ecf9c9516f8bd1cb58d12e4e0485a0e605267_ggvgm_2x.jpg"
+    },
+    {
+     "formatter_name": "ggvgl",
+     "image_url": "https://images-4.gog-statics.com/3176c5947e367f70bca70cd7433ecf9c9516f8bd1cb58d12e4e0485a0e605267_ggvgl.jpg"
+    },
+    {
+     "formatter_name": "ggvgl_2x",
+     "image_url": "https://images-3.gog-statics.com/3176c5947e367f70bca70cd7433ecf9c9516f8bd1cb58d12e4e0485a0e605267_ggvgl_2x.jpg"
+    }
+   ]
+  },
+  {
+   "image_id": "5e6de2e64a80c60fd1dbfc43fa0a0ea314fa8107b485c67144f3c220a46b10f6",
+   "formatter_template_url": "https://images-2.gog-statics.com/5e6de2e64a80c60fd1dbfc43fa0a0ea314fa8107b485c67144f3c220a46b10f6_{formatter}.png",
+   "formatted_images": [
+    {
+     "formatter_name": "ggvgt",
+     "image_url": "https://images-2.gog-statics.com/5e6de2e64a80c60fd1dbfc43fa0a0ea314fa8107b485c67144f3c220a46b10f6_ggvgt.jpg"
+    },
+    {
+     "formatter_name": "ggvgt_2x",
+     "image_url": "https://images-1.gog-statics.com/5e6de2e64a80c60fd1dbfc43fa0a0ea314fa8107b485c67144f3c220a46b10f6_ggvgt_2x.jpg"
+    },
+    {
+     "formatter_name": "ggvgm",
+     "image_url": "https://images-3.gog-statics.com/5e6de2e64a80c60fd1dbfc43fa0a0ea314fa8107b485c67144f3c220a46b10f6_ggvgm.jpg"
+    },
+    {
+     "formatter_name": "ggvgm_2x",
+     "image_url": "https://images-1.gog-statics.com/5e6de2e64a80c60fd1dbfc43fa0a0ea314fa8107b485c67144f3c220a46b10f6_ggvgm_2x.jpg"
+    },
+    {
+     "formatter_name": "ggvgl",
+     "image_url": "https://images-3.gog-statics.com/5e6de2e64a80c60fd1dbfc43fa0a0ea314fa8107b485c67144f3c220a46b10f6_ggvgl.jpg"
+    },
+    {
+     "formatter_name": "ggvgl_2x",
+     "image_url": "https://images-3.gog-statics.com/5e6de2e64a80c60fd1dbfc43fa0a0ea314fa8107b485c67144f3c220a46b10f6_ggvgl_2x.jpg"
+    }
+   ]
+  }
+ ],
+ "videos": [
+  {
+   "video_url": "https://fast.wistia.net/embed/iframe/oy433s2tqd",
+   "thumbnail_url": "https://embed-ssl.wistia.com/deliveries/b954879f3afbad7de822f6c6e22731204c7be83c.jpg",
+   "provider": "wistia"
+  }
+ ]
+}

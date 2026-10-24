@@ -15,7 +15,9 @@ fn data() -> PathBuf { crate::paths::data_dir() }
 fn read_json(p: &Path) -> Value { std::fs::read(p).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null) }
 
 /// A sign-in page: where it starts, and how to tell it's done (a code in the address, or for Epic, in the page).
-pub struct SignIn { pub title: &'static str, pub url: String, pub done: fn(&str) -> Option<String>, pub script: Option<&'static str> }
+/// `store`: its browser profile is that store's (storefront::web_profile), shared with Game Mode › Store's store
+/// window, so signing in once covers the library and buying games.
+pub struct SignIn { pub store: &'static str, pub title: &'static str, pub url: String, pub done: fn(&str) -> Option<String>, pub script: Option<&'static str> }
 
 // ------------------------------------------------------------------ Proton (umu)
 
@@ -109,7 +111,7 @@ pub mod epic {
     /// The sign-in page. After signing in, Epic shows a small JSON page with a one-time code: the script hands
     /// it back (as a hearth-signin:// address the app catches); before that, it sends you back to the login.
     pub fn sign_in() -> SignIn {
-        SignIn { title: "Sign in to Epic Games", url: format!("https://www.epicgames.com/id/login?redirectUrl={}", http::urlencode(&redirect())),
+        SignIn { store: "epic", title: "Sign in to Epic Games", url: format!("https://www.epicgames.com/id/login?redirectUrl={}", http::urlencode(&redirect())),
             done: |u| if u.starts_with("hearth-signin://") { Some(http::query_param(u, "code").unwrap_or_default()) } else { None },
             script: Some(r#"(() => { if (!location.href.toLowerCase().startsWith('https://www.epicgames.com/id/api/redirect')) return;
                 const go = () => { let c = ''; try { c = JSON.parse(document.body.innerText).authorizationCode || ''; } catch (e) {}
@@ -279,7 +281,7 @@ pub mod gog {
     pub fn profile() -> (Option<String>, Option<String>) { let p = read_json(&dir().join("profile.json")); (p["name"].as_str().map(str::to_string), p["avatar"].as_str().map(str::to_string)) }
 
     pub fn sign_in() -> SignIn {
-        SignIn { title: "Sign in to GOG",
+        SignIn { store: "gog", title: "Sign in to GOG",
             url: format!("https://auth.gog.com/auth?client_id={CLIENT_ID}&redirect_uri={}&response_type=code&layout=client2", http::urlencode(REDIRECT)),
             done: |u| if u.to_lowercase().starts_with("https://embed.gog.com/on_login_success") { Some(http::query_param(u, "code").unwrap_or_default()) } else { None },
             script: None }
@@ -520,7 +522,7 @@ pub mod xbox {
     pub fn signed_in() -> bool { saved().is_some() }
 
     pub fn sign_in() -> SignIn {
-        SignIn { title: "Sign in with your Microsoft account (Xbox)",
+        SignIn { store: "xbox", title: "Sign in with your Microsoft account (Xbox)",
             url: format!("https://login.live.com/oauth20_authorize.srf?client_id={CLIENT_ID}&response_type=code&display=touch&scope={}&redirect_uri={}", http::urlencode(SCOPE), http::urlencode(REDIRECT)),
             done: |u| if u.to_lowercase().starts_with(REDIRECT) { Some(http::query_param(u, "code").unwrap_or_default()) } else { None },
             script: None }
@@ -885,6 +887,8 @@ pub fn finish_sign_in(s: &str, code: &str) -> Result<(), String> {
 }
 pub fn sign_out(s: &str) -> Result<(), String> {
     match s { "epic" => epic::sign_out(), "gog" => gog::sign_out(), "xbox" => xbox::sign_out(), _ => return Err("Unknown store".into()) }
+    // The store's web sign-in (its sign-in window and Game Mode › Store's store window share it) goes too.
+    crate::storefront::reset_web_profile(s);
     expiry::clear(s);
     crate::bridge::log(&format!("accounts: signed out of {s}"));
     Ok(())
