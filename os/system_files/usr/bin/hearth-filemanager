@@ -1,11 +1,19 @@
 #!/bin/sh
-# Opens Hearth Files (Desktop Mode's file manager) at a folder, or at a file's folder with it picked; Home
-# with nothing. Without the Hearth desktop running, opens another file manager (never xdg-open: that's us).
+# Opens Hearth Files (Hearth's file manager, the default for folders) at a folder, or at a file's folder with it
+# picked; Home with nothing. In Desktop Mode that's the desktop's own Hearth Files; in Game Mode (no desktop shell)
+# hearth-portal shows it in a window of its own, in front of the game. Outside Hearth's session, or without
+# Quickshell, another file manager opens instead (never xdg-open: that's us).
 SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
 # A folder given relative to where you are ("hearth-filemanager ." in a terminal) is made whole here: Hearth Files
 # runs inside the desktop shell, which would read it relative to its own folder instead.
 target="${1:-$HOME}"
 case "$target" in /*|*://*) ;; *) target="$PWD/$target" ;; esac
 if command -v quickshell >/dev/null 2>&1 && quickshell ipc -p "$SHELL_DIR" call files open "$target" >/dev/null 2>&1; then exit 0; fi
+case ":$XDG_CURRENT_DESKTOP:" in
+  *:Nimbus:*)
+    if command -v quickshell >/dev/null 2>&1 && [ -f "$SHELL_DIR/hearth-portal" ]; then
+      exec python3 "$SHELL_DIR/hearth-portal" show "$target"
+    fi ;;
+esac
 for fm in dolphin nautilus thunar pcmanfm-qt nemo; do command -v "$fm" >/dev/null 2>&1 && exec "$fm" "$@"; done
 exit 1
