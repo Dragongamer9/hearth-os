@@ -1,0 +1,151 @@
+#!/usr/bin/python3
+"""hearth-hosts: /etc/hosts knows this device's name, so sudo and other tools don't say
+"unable to resolve host <name>: Name or service not known".
+
+Debian keeps the device's name in /etc/hosts (127.0.1.1 <name>); an image-based Hearth OS gets the /etc/hosts its
+image was built with, which has no line for the name the installer (or Settings › About › Device name) gave it.
+
+What it does, every time it runs:
+  - keeps the localhost lines (adds them when missing)
+  - the line Hearth looks after is "127.0.1.1 <name>"; it's rewritten for the current name, and a line that maps
+    127.0.1.1 to an older name is replaced (renaming the device), so nothing points at the old name
+  - nothing else in the file changes; when the name is already mapped by some other line it's left alone
+  - writes atomically (temporary file + rename) and only when something changes
+
+Runs at boot (hearth-hosts.service), when /etc/hostname changes (hearth-hosts.path) and right after
+hearth-admin hostname renames the device.
+
+  hearth-hosts [--hostname NAME] [--file PATH] [--dry-run]
+"""
+import os
+import re
+import socket
+import sys
+
+HOSTS = '/etc/hosts'
+NAME_RE = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$')
+LOCALHOST_V4 = '127.0.0.1\tlocalhost'
+LOCALHOST_V6 = '::1\t\tlocalhost ip6-localhost ip6-loopback'
+
+
+def current_hostname(etc='/etc'):
+    try:
+        with open(os.path.join(etc, 'hostname')) as f:
+            for line in f:
+                line = line.split('#', 1)[0].strip()
+                if line:
+                    return line
+    except OSError:
+        pass
+    return socket.gethostname()
+
+
+def names_on(line):
+    """(address, [names]) of a hosts line, or (None, []) for comments and blank lines."""
+    body = line.split('#', 1)[0].split()
+    if len(body) < 2:
+        return None, []
+    return body[0], body[1:]
+
+
+def fix(text, name):
+    """The hosts file's new text for this device name (unchanged text when it's already right)."""
+    short = name.split('.', 1)[0]
+    wanted = f'127.0.1.1\t{name}' + (f' {short}' if short != name else '')
+    lines = text.splitlines()
+    out = []
+    have_v4 = have_v6 = mapped = placed = False
+    for line in lines:
+        addr, names = names_on(line)
+        if addr == '127.0.1.1':
+            # Hearth's own line (or Debian's): one, for the current name.
+            if not placed:
+                out.append(wanted)
+                placed = mapped = True
+            continue
+        if addr is not None:
+            if 'localhost' in names and addr.startswith('127.'):
+                have_v4 = True
+            if 'localhost' in names and addr == '::1':
+                have_v6 = True
+            if name in names or short in names:
+                mapped = True
+        out.append(line)
+    head = []
+    if not have_v4:
+        head.append(LOCALHOST_V4)
+    if not mapped:
+        head.append(wanted)
+    if head:
+        # After the localhost line when there is one, otherwise at the top.
+        idx = next((i for i, l in enumerate(out) if names_on(l)[0] and 'localhost' in names_on(l)[1]), None)
+        if idx is None:
+            out = head + out
+        else:
+            out = out[:idx + 1] + head + out[idx + 1:]
+    if not have_v6:
+        out.append(LOCALHOST_V6)
+    new = '\n'.join(out) + '\n'
+    return new
+
+
+def run(path=HOSTS, name=None, dry=False, log=print):
+    name = (name or current_hostname(os.path.dirname(path) or '/etc')).strip()
+    if not NAME_RE.match(name) or name == 'localhost':
+        log(f'hearth-hosts: not mapping "{name}" (not a device name)')
+        return False
+    try:
+        with open(path) as f:
+            text = f.read()
+    except FileNotFoundError:
+        text = ''
+    new = fix(text, name)
+    if new == text:
+        log(f'hearth-hosts: {path} already maps {name}')
+        return False
+    if dry:
+        sys.stdout.write(new)
+        return True
+    st = None
+    try:
+        st = os.stat(path)
+    except OSError:
+        pass
+    # /etc/hosts may be a symlink (rare): write where it points.
+    real = os.path.realpath(path)
+    tmp = real + '.hearth-tmp'
+    with open(tmp, 'w') as f:
+        f.write(new)
+    os.chmod(tmp, (st.st_mode & 0o7777) if st else 0o644)
+    if st:
+        try:
+            os.chown(tmp, st.st_uid, st.st_gid)
+        except OSError:
+            pass
+    os.replace(tmp, real)
+    log(f'hearth-hosts: {path} now maps {name} to 127.0.1.1')
+    return True
+
+
+def main(argv):
+    path, name, dry = HOSTS, None, False
+    it = iter(argv)
+    for a in it:
+        if a == '--file':
+            path = next(it, HOSTS)
+        elif a == '--hostname':
+            name = next(it, None)
+        elif a == '--dry-run':
+            dry = True
+        elif a in ('-h', '--help'):
+            print(__doc__)
+            return 0
+        else:
+            print(f'hearth-hosts: unknown argument {a}', file=sys.stderr)
+            return 2
+    run(path, name, dry)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
