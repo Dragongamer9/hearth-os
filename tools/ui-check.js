@@ -1033,6 +1033,44 @@ const path = require('path');
     console.log(`quick access: panel ${main.rect}, overlay ${ov.rect}; tabs ${main.now && main.now.tabs}; now playing: ${got.join(' ')}`);
   }
 
+  // Settings › Default apps (Hearth OS, ?preview=linux with its made-up apps): in Settings › System, a row per kind
+  // with the app in use (Email only once an app can do it), picking another app with the controller (A on a row opens
+  // its choices), resetting one kind from its choices, and Reset to Hearth's defaults.
+  {
+    const dp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    dp.on('pageerror', e => errors.push(`default apps: ${e.message}`));
+    try {
+      await dp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await dp.waitForTimeout(1200);
+      const rows = await dp.evaluate(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        closeAll(); S.layers = []; S.settingsTab = 'defaults'; navigate('settings', {}, false); onSettingsTab('defaults'); await wait(200);
+        if (!STABS.some(t => t[0] === 'defaults') || stabGroup('defaults') !== 'system') throw new Error("Default apps isn't in Settings › System");
+        for (const k of ['browser', 'files', 'text', 'image', 'video', 'music', 'ebooks', 'documents', 'sheets', 'slides', 'terminal', 'calendar', 'contacts', 'maps', 'archives'])
+          if (!has('df-' + k)) throw new Error('no row for ' + k);
+        if (has('df-email')) throw new Error('Email shows with no app that can do it');
+        if (!/Hearth Browser/.test(has('df-browser').textContent)) throw new Error("the Web browser row doesn't say Hearth Browser");
+        setFocus(has('df-image'), true); input('a'); await wait(150);
+        if (!S.layers.includes('sheet') || !/Paint/.test(document.querySelector('#sheetBox').textContent)) throw new Error('A on Images opened no choices');
+        sheetPick(sheet.items.findIndex(x => /Paint/.test(x.label))); await wait(200);
+        if (!/Paint · your choice/.test(has('df-image').textContent)) throw new Error(`picking Paint didn't show: ${has('df-image').textContent}`);
+        dfAct('dfPick', { kind: 'image' });
+        const j = sheet.items.findIndex(x => /Reset to Hearth/.test(x.label));
+        if (j < 0) throw new Error('no Reset in the Images choices');
+        sheetPick(j); await wait(200);
+        if (!/Photos · Hearth/.test(has('df-image').textContent)) throw new Error("resetting Images didn't bring Photos back");
+        dfAct('dfPick', { kind: 'text' }); sheetPick(sheet.items.findIndex(x => /Kate/.test(x.label))); await wait(200);
+        if (!DF.s.kinds.find(k => k.kind === 'text').yours) throw new Error("picking Kate wasn't kept");
+        setFocus(has('df-reset'), true); input('a'); await wait(150); sheetPick(0); await wait(200);
+        if (DF.s.kinds.some(k => k.yours)) throw new Error('Reset to Hearth\'s defaults left a choice');
+        return document.querySelectorAll('#view [data-k^="df-"]').length;
+      });
+      console.log(`default apps: ${rows} rows`);
+    } catch (e) { errors.push('default apps: ' + e.message.split('\n')[0]); }
+    await dp.close();
+  }
+
   await browser.close();
   if (errors.length) {
     for (const e of errors) console.log(`::error title=Hearth page::${e}`);
