@@ -44,6 +44,7 @@ pub mod manual;
 pub mod matrix_friends;   // Hearth Friends on Matrix (hosts/hearth-friends)
 pub mod newos;
 pub mod osinstall;
+pub mod osk;   // the on-screen keyboard's settings and learned words (ui/osk, docs/OSK.md)
 pub mod overlay_link;
 pub mod paths;
 pub mod perf;

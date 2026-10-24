@@ -51,11 +51,9 @@ Scope {
         radial.open = true;
         send({ cmd: "radial", open: true });
     }
-    function openKeyboard() {
-        if (problem) return help.toast(problem);
-        send({ cmd: "osk", open: true });
-    }
-    function closeKeyboard() { send({ cmd: "osk", open: false }); keyboard.open = false; }
+    // The on-screen keyboard (Keyboard.qml) works without hearth-pad too: touch, the mouse, and typing through wtype.
+    function openKeyboard() { keyboard.openKb(); }
+    function closeKeyboard() { keyboard.closeKb(); }
     function setMouse(on) { mouseOn = on; send({ cmd: "mouse", on: on }); help.toast("Controller mouse " + (on ? "on" : "off")); }
 
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-pad").toString().replace(/^file:\/\//, ""))
@@ -76,10 +74,12 @@ Scope {
         let m;
         try { m = JSON.parse(line); } catch (e) { return; }
         switch (m.t) {
-        case "ready": problem = ""; sync(); break;
+        case "ready": problem = ""; sync(); if (keyboard.open) send({ cmd: "osk", open: true, split: keyboard.cfg.fast === "split" }); break;
         case "error": problem = m.text; break;
         case "radial": radial.update(m); break;
-        case "osk": keyboard.update(m); break;
+        case "osk": if (m.open) openKeyboard(); else closeKeyboard(); break;
+        case "oskpad": keyboard.padButton(m.b, !!m.down); break;
+        case "oskaxes": keyboard.padAxes(m.lx || 0, m.ly || 0, m.rx || 0, m.ry || 0); break;
         case "launcher": launcher.toggle(); break;
         case "help": help.toggle(); break;
         case "toast": help.toast(m.text); break;
@@ -111,7 +111,7 @@ Scope {
     }
     Connections {
         target: pad.keyboard
-        function onTapped(key) { pad.send({ cmd: "type", key: key }); }
         function onCloseRequested() { pad.closeKeyboard(); }
     }
+    Component.onCompleted: keyboard.pad = pad
 }

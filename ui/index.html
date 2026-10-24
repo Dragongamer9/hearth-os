@@ -262,23 +262,11 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 #search,#prompt{inset:0;display:flex;flex-direction:column;background:rgba(6,8,12,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:0;opacity:0;transition:opacity .2s var(--ease),visibility .2s}
 #search.open,#prompt.open{opacity:1}
 .kbtop{background:var(--panel);padding:20px var(--gut) 16px;box-shadow:0 14px 40px rgba(0,0,0,.35)}
-/* The on-screen keyboard (Game Mode), laid out like SteamOS's: docked at the bottom, full width, big keys. */
-.kb{margin-top:auto;background:#15171c;border-radius:18px 18px 0 0;padding:12px max(12px,calc(var(--gut) - 8px)) 14px;display:flex;flex-direction:column;gap:7px;box-shadow:0 -18px 50px rgba(0,0,0,.5);transform:translateY(30px);transition:transform .22s var(--ease)}
+/* The on-screen keyboard's box (Hearth's shared keyboard draws inside it: ui/osk/hearth-osk.css) */
+.kb{margin-top:auto;transform:translateY(30px);transition:transform .22s var(--ease)}
 .open .kb{transform:none}
-.kbrow{display:flex;gap:7px}
-.kb .key{flex:1 1 0;width:auto;min-width:0;height:clamp(44px,7.2vh,58px);border-radius:10px;background:#2b2f37;color:#eef1f6;font-size:clamp(16px,2.1vw,21px);font-weight:600;position:relative;box-shadow:inset 0 -2px 0 rgba(0,0,0,.25)}
-.kb .key.mod{background:#21242b;color:#b8bfcc;font-size:clamp(14px,1.7vw,17px)}
-.kb .key.w15{flex-grow:1.5} .kb .key.w6{flex-grow:6}
-.kb .key.go{background:var(--accent);color:var(--accentInk)}
-.kb .key.on{background:#eef1f6;color:#15171c}
-.kb .key .kg{position:absolute;top:4px;right:6px;font-size:10px;font-weight:700;opacity:.55;letter-spacing:.02em}
-.kb .key:active{transform:translateY(1px)}
-/* The selected key, like SteamOS's: lit up and a little bigger, so it's plain from across the room. After .on and .go so it wins. */
-.kb .key.focus{background:#f4f6fa;color:#101216;box-shadow:0 0 0 3px var(--accent),0 6px 22px color-mix(in srgb,var(--accent) 45%,transparent);transform:scale(1.08);z-index:2}
-.kb .key.go.focus{background:var(--accent);color:var(--accentInk);box-shadow:0 0 0 3px #f4f6fa,0 6px 22px color-mix(in srgb,var(--accent) 55%,transparent)}
-.kb .key.focus .kg{opacity:.8}
-.kb .key.on:not(.focus){background:color-mix(in srgb,var(--accent) 35%,#2b2f37);color:#fff}
-.kb .key{transition:transform .08s,background .08s}
+.kb[data-f].focus{box-shadow:none}
+.kbv{display:contents}
 .sfield{display:flex;align-items:center;gap:12px;background:var(--bg2);border-radius:10px;padding:14px 16px;font-size:18px;min-height:54px}
 .sfield .q:empty:before{content:attr(data-ph);color:var(--faint)}
 .sfield .q.mono{letter-spacing:.14em}
@@ -1023,10 +1011,18 @@ body.mk-on .mk [data-f].focus:not(.mkc):not(.mkr):not(.mkm-i){box-shadow:0 0 0 2
 .lmo.s1 .cover .dl span,.lhx .cover .dl span{display:none}.lx-mos .lmo.s1 .cover:has(.dl) .ct{bottom:20px}.lx-hex .lhx .hxi .cover:has(.dl) .ct{bottom:34px}
 .lmo.s3.focus,.lmo.s2.focus{transform:scale(1.02)}.lmo .lmh{position:absolute;top:8px;left:8px;z-index:2;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px;background:rgba(0,0,0,.55)}
 
+/* Settings › Keyboard: theme previews */
+.osk-prev{position:relative}.osk-prev i{position:absolute;left:22%;right:22%;bottom:22%;height:22%;border-radius:4px;box-shadow:0 0 0 2px var(--accent)}
+.osk-hearth{background:linear-gradient(#2b2b32 0 0) 12% 30%/22% 20% no-repeat,linear-gradient(#2b2b32 0 0) 50% 30%/22% 20% no-repeat,linear-gradient(#2b2b32 0 0) 88% 30%/22% 20% no-repeat,#17171c}.osk-hearth i{background:#f6f2ea}
+.osk-ember{background:radial-gradient(120% 140% at 50% 120%,#5a240c 0%,#120c0a 60%)}.osk-ember i{background:#ffd9bd;box-shadow:0 0 0 2px #ff7a2f,0 0 14px #ff7a2f}
+.osk-slate{background:#1b2028}.osk-slate i{background:#f2f6fb}
+.osk-daylight{background:#e9e6e1}.osk-daylight i{background:#1d1b20}
 /* Settings: Library layout previews */
 .lprev .lp-a{background:var(--accent)}.lprev .lp-t{background:var(--text)}.lprev .lp-p{background:var(--panel2)}
 body.reduce-motion .lfc,body.reduce-motion .ldk{transition:none}
 </style>
+<link rel="stylesheet" href="osk/hearth-osk.css">
+<script src="osk/hearth-osk.js"></script>
 </head>
 <body>
 
@@ -4321,11 +4317,11 @@ function viewDownloads(){
 }
 
 const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['liblook','lib','Library'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display & sound'],['audio','vol','Audio'],['power','bolt','Power'],
-  ['controller','pad','Controls'],['remote','play','Remote play'],['sources','lib','Library'],['seats','display','Multi-seat (Beta Experimental)'],['import','dl','Import'],['osinstall','dl','Install'],['switch','dl','Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['linux','shell','Linux (Beta Experimental)'],['system','gear','System'],['about','info','About']];
+  ['controller','pad','Controls'],['keyboard','kbd','Keyboard'],['remote','play','Remote play'],['sources','lib','Library'],['seats','display','Multi-seat (Beta Experimental)'],['import','dl','Import'],['osinstall','dl','Install'],['switch','dl','Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['linux','shell','Linux (Beta Experimental)'],['system','gear','System'],['about','info','About']];
 // Settings, condensed: five groups on the left, each with its pages as tabs along the top.
 const SGROUPS = [['you','user','You'],['connect','wifi','Connections'],['device','display','Device'],['games','lib','Games'],['system','gear','System']];
 const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',liblook:'you',signin:'you',wifi:'connect',bluetooth:'connect',remote:'connect',
-  display:'device',audio:'device',power:'device',controller:'device',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',linux:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
+  display:'device',audio:'device',power:'device',controller:'device',keyboard:'device',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',linux:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
 const stabGroup = k => STAB_GROUP[k]||'system';
 const stabShown = k => STABS.some(x=>x[0]===k) && k!=='audio' && (ANDROID ? ANDROID_TABS.includes(k) && (k!=='linux'||lxOn()) : k==='linux' ? false : (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX)));
 const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k));
@@ -6263,6 +6259,66 @@ class DeskPreviewRFB extends EventTarget {
   disconnect(){ this.canvas.remove(); this.dispatchEvent(new CustomEvent('disconnect',{detail:{clean:true}})); }
 }
 
+// ---- Settings › Keyboard: Hearth's on-screen keyboard (ui/osk/hearth-osk.js). Saved here (localStorage) and, on
+// Hearth OS, in ~/.config/nimbus/osk.json (osk.set), which Desktop Mode's keyboard follows too.
+const OSK_FAST = [['wheel','Ember Wheel'],['split','Split sticks'],['off','Off']];
+function oskSave(){
+  if(!OSKOK) return;
+  const s=HearthOSK.settings();
+  try{ localStorage.setItem('hearth.osk', JSON.stringify(s)); }catch(e){}
+  if(host) call('osk.set',{settings:s}).catch(()=>{});
+}
+function oskBoot(){
+  if(!OSKOK) return;
+  // Learned words: this page's copy, and Hearth's file (shared with Desktop Mode) when Hearth has one.
+  HearthOSK.configure({save: d=>{ try{ localStorage.setItem('hearth.osk.learned', JSON.stringify(d)); }catch(e){} if(host) call('osk.learn',{data:d}).catch(()=>{}); }});
+  if(!host) return;
+  call('osk.get').then(r=>{
+    if(!r) return;
+    HearthOSK.configure({settings: r.settings && Object.keys(r.settings).length ? r.settings : undefined, systemLayouts: r.systemLayouts||[],
+      learned: r.learned && r.learned.learned ? r.learned : undefined});
+    if(S.view==='settings' && S.settingsTab==='keyboard') render(null,true);
+  }).catch(()=>{});
+}
+function pageKeyboard(){
+  if(!OSKOK) return note("The on-screen keyboard's files are missing from this copy of "+APP+'.');
+  const s=HearthOSK.settings(), lays=s.layouts, active=HearthOSK.activeLayouts();
+  const seg=(key,label,sub,opts)=>`<div class="row"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="seg">${opts.map(([v,l])=>`<button class="${s[key]===v?'on':''}" data-f data-k="kb-${key}-${v}" data-act="oskSet" data-key="${key}" data-v="${v}">${l}</button>`).join('')}</div></div>`;
+  const sw=(key,label,sub)=>`<button class="row" data-f data-k="kb-${key}" data-act="oskSet" data-key="${key}" data-v="toggle"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${s[key]?'on':''}"></div></button>`;
+  const name=id=>(HearthOSK.LAYOUTS.find(l=>l.id===id)||{name:id}).name;
+  const chip=(id,label)=>{ const on=lays.includes(id); return `<button class="chip ${on?'on':''}" data-f data-k="kb-lay-${id}" data-act="oskLay" data-v="${id}">${on&&lays.length>1?(lays.indexOf(id)+1)+' · ':''}${esc(label)}</button>`; };
+  const n=HearthOSK.learnedCount();
+  return shead('Layouts')
+    + `<div class="row"><span class="ricon">${I.kbd}</span><div class="rt"><b>${esc(active.map(name).join(' · '))}</b><small>${lays.includes('auto')?'Automatic follows the keyboard layouts in Desktop Mode\'s Settings › Keyboard. ':''}With more than one, the globe key (or R3) switches. Hold a letter (or press View) for accents.</small></div></div>`
+    + `<div class="chips" style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0 10px">${chip('auto','Automatic')}${HearthOSK.LAYOUTS.map(l=>chip(l.id,l.name)).join('')}</div>`
+    + shead('Typing')
+    + sgrid(sw('suggestions','Word suggestions','Words to pick above the keys, from a word list on this device')
+      + sw('learn','Learn new words','Remembers words you type (never passwords), only on this device')
+      + sw('autocap','Capital letters','At the start of a sentence')
+      + sw('doubleSpace','Double space types a period','Two spaces become ". "'))
+    + seg('fast','Fast typing','Ember Wheel: tilt the left stick at a group of letters, press A B X Y for one of its four. Split sticks: each stick points into its half of the keyboard, LT and RT type.',OSK_FAST)
+    + shead('Look')
+    + `<div class="opts">${HearthOSK.THEMES.map(([id,l])=>`<button class="theme ${s.theme===id?'on':''}" data-f data-k="kb-theme-${id}" data-act="oskSet" data-key="theme" data-v="${id}"><div class="tprev osk-prev osk-${id}"><i></i></div><small>${l}</small></button>`).join('')}</div>`
+    + seg('size','Size','',[['s','Small'],['m','Medium'],['l','Large']])
+    + seg('shape','Shape','Split puts the halves at the edges, under your thumbs on a handheld\'s touchscreen',[['full','Full'],['split','Split']])
+    + seg('position','Position in Desktop Mode and apps','',[['bottom','Bottom'],['top','Top']])
+    + sgrid(sw('trail','Ember trail','A warm glow follows the selection'))
+    + seg('haptics','Rumble on key presses','Controllers that can rumble',[['off','Off'],['light','Light'],['strong','Strong']])
+    + shead('Learned words')
+    + sgrid(`<button class="row" data-f data-k="kb-clear" data-act="oskClear"><span class="ricon">${I.trash||''}</span><div class="rt"><b>Clear learned words</b><small>${n} word${n===1?'':'s'} learned on this device</small></div></button>`
+      + `<button class="row" data-f data-k="kb-try" data-act="oskTry"><span class="ricon">${I.kbd}</span><div class="rt"><b>Try the keyboard</b><small>Type something with your controller, touch or the mouse</small></div><div class="rv">›</div></button>`);
+}
+function oskSettingAct(a, d){
+  if(a==='oskSet'){ const s=HearthOSK.settings(); HearthOSK.setSetting(d.key, d.v==='toggle' ? !s[d.key] : d.v); oskSave(); return render(d.v==='toggle'?'kb-'+d.key:`kb-${d.key}-${d.v}`); }
+  if(a==='oskLay'){
+    let l=HearthOSK.settings().layouts.slice();
+    if(l.includes(d.v)) { if(l.length>1) l=l.filter(x=>x!==d.v); } else l.push(d.v);
+    HearthOSK.setSetting('layouts', l); oskSave(); return render('kb-lay-'+d.v);
+  }
+  if(a==='oskClear') return openSheet({title:'Clear learned words?', sub:'Word suggestions go back to the word list. This keyboard and Desktop Mode\'s forget them.', items:[
+    {label:'Clear', icon:'trash', run:()=>{ HearthOSK.clearLearned(); if(host) call('osk.clear').catch(()=>{}); toast('Learned words cleared'); render('kb-clear'); }}]});
+  if(a==='oskTry') return openPrompt({title:'Try the keyboard', osk:true, placeholder:'Type something'}).then(()=>{});
+}
 function viewSettings(){
   if(S.settingsTab==='audio') S.settingsTab='display';   // Audio is part of the Display page (one page for the screen and sound)
   if(!stabShown(S.settingsTab)) S.settingsTab='profile';
@@ -6283,6 +6339,7 @@ function viewSettings(){
   if(t==='link') body = pageLink();   // Hearth Link
   if(t==='liblook') body = pageLibLook();
   if(t==='controller') body = pageControls();
+  if(t==='keyboard') body = pageKeyboard();
   if(t==='sources'){
     const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
     const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
@@ -6662,19 +6719,71 @@ function renderPower(){
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`;
 }
 let query='';
-const OSK=['1234567890','qwertyuiop','asdfghjkl','zxcvbnm'];
-// ---------- the on-screen keyboard (Game Mode), laid out like SteamOS's ----------
-// Docked at the bottom, full width: a number row with backspace, Enter at the end of the middle row, Shift on both
-// sides (tap once for one capital, twice for caps lock), &123 for symbols, a wide Space and ← → to move the caret.
-// Controller shortcuts, shown on the keys: Y backspace, X space, LB shift, RB symbols, ☰ Done, B closes.
-const KB_LETTERS=[['1','2','3','4','5','6','7','8','9','0','bksp'],['q','w','e','r','t','y','u','i','o','p'],['a','s','d','f','g','h','j','k','l','enter'],['shift','z','x','c','v','b','n','m',',','.','shift2'],['sym','@','space','left','right','done']];
-const KB_SYMS=[['1','2','3','4','5','6','7','8','9','0','bksp'],['!','@','#','$','%','^','&','*','(',')'],['-','_','=','+','[',']','{','}',';','enter'],['shift',"'",'"','/','\\','|','~','`',':','?','shift2'],['sym','.','space','left','right','done']];
-const KB_SPECIAL={bksp:'⌫',enter:'↵',shift:'⇧',shift2:'⇧',sym:'&123',space:'Space',left:'←',right:'→',done:'Done'};
-const KB_WIDE={bksp:'w15',enter:'w15',shift:'w15',shift2:'w15',sym:'w15',space:'w6',done:'w15 go'};
-function kbGlyph(c){
-  const st=promptStyle(); if(st!=='pad') return '';
-  return {bksp:'Y',space:'X',shift:'LB',sym:'RB',done:'☰'}[c]||'';
+// ---------- the on-screen keyboard: Hearth's own, shared with Mantel and Hearth's apps ----------
+// ui/osk/hearth-osk.js draws and runs it (docs/OSK.md). One keyboard for search and the text prompt (and so Quick
+// Access over a game, the same page). Controller: A types (hold it for accents), X ⌫, Y space, LT shift (twice: caps
+// lock), RT symbols, LB / RB move the caret, L3 emoji, R3 the next layout, View accents, ☰ Enter, B hides it; the left
+// stick is the Ember Wheel (or split sticks): Settings › Keyboard. Touch and the mouse type on the keys too.
+const OSKOK = typeof HearthOSK!=='undefined';
+const GOSK = {engine:null, view:null, which:null, box:null};
+const oskTarget = which => which==='prompt' ? prompt : SKB;
+function oskEngine(){
+  if(GOSK.engine || !OSKOK) return GOSK.engine;
+  GOSK.engine = HearthOSK.createEngine({host:'web',
+    adapter: HearthOSK.modelAdapter(()=>GOSK.which==='search' ? Object.assign(SKB,{text:query}) : (prompt||{text:'',caret:0}), oskEdited, oskKeyOut),
+    // Search: words from your games' titles instead of the dictionary's.
+    suggest: (w, prev)=>{ if(GOSK.which!=='search') return null; if(!w) return [];
+      const f=HearthOSK.fold(w), seen=new Set(), out=[];
+      for(const g of GAMES) for(const x of String(g.title||'').split(/[\s:,.!?()\-–]+/)) { const k=x.toLowerCase(); if(x.length>w.length && HearthOSK.fold(x).startsWith(f) && !seen.has(k)){ seen.add(k); out.push(x); if(out.length>=3) return out; } }
+      return out; },
+    onHide: oskHide, onLeave: ()=>{ if(GOSK.box && focused===GOSK.box) move('up'); },
+    onHaptic: (s,ms)=>{ for(const p of (navigator.getGamepads?[...navigator.getGamepads()]:[])) if(p && p.vibrationActuator && p.vibrationActuator.playEffect) p.vibrationActuator.playEffect('dual-rumble',{duration:ms,weakMagnitude:s,strongMagnitude:s*.4}).catch(()=>{}); },
+    onSound: k=>{ if(k==='panel') blip(620,.03,.03); else if(k==='key') blip(820,.018,.02); else if(k==='move') blip(700,.012,.015); }});
+  return GOSK.engine;
 }
+// The board for the open search / prompt: drawn into its box (made by renderSearch / renderPrompt).
+function oskMount(which){
+  const box=$(`#${which} .kb`), e=oskEngine(); if(!box || !e) return;
+  if(GOSK.view) GOSK.view.destroy();
+  GOSK.which=which; GOSK.box=box;
+  const t=oskTarget(which);
+  e.reset(which==='search' ? 'search' : (t.mode || (t.secret ? 'password' : 'text')), which==='search' ? 'Search' : (t.enterLabel || 'Done'));
+  GOSK.view=HearthOSK.mount(box, e, {overGame: OVERLAY});
+  e.setHints(promptStyle()==='pad');
+  e.setActive(focused===box);
+}
+// Typing changed the text: the field (and search's results), not the keyboard.
+function oskEdited(){
+  if(GOSK.which==='search'){ query=SKB.text; searchUpdate(); }
+  else promptFieldUpdate();
+}
+function oskKeyOut(name){
+  if(name!=='enter') return;
+  if(GOSK.which==='prompt') return promptSubmit();
+  const first=$('#search .sres [data-f]'); if(first) act(first);
+}
+// B (or the hide key): the keyboard goes, the field keeps the selection; A on the field brings it back.
+function oskHide(){
+  const t=oskTarget(GOSK.which); if(!t) return;
+  t.oskHidden=true; t.forceOsk=false; oskRefresh();
+  const f=$(`#${GOSK.which} [data-k="${GOSK.which==='prompt'?'pk':'sk'}-field"]`); if(f) setFocus(f,true);
+}
+const oskOwns = () => !!(GOSK.engine && GOSK.box && focused===GOSK.box && document.contains(GOSK.box));
+// While the keyboard has the selection it gets the controller (setFocus calls this).
+function oskFocusSync(){ if(GOSK.engine && GOSK.box) GOSK.engine.setActive(focused===GOSK.box); }
+// Physical keyboard typing into the search / prompt (the on-screen one is away then).
+function kbEdit(t, c){
+  if(t.caret==null||t.caret>t.text.length) t.caret=t.text.length;
+  switch(c){
+    case 'bksp': if(t.caret>0){ const head=HearthOSKgraph(t.text.slice(0,t.caret)); t.text=head+t.text.slice(t.caret); t.caret=head.length; } return;
+    case 'left': t.caret=Math.max(0,t.caret-1); return;
+    case 'right': t.caret=Math.min(t.text.length,t.caret+1); return;
+    case 'enter': case 'done': return c;
+    case 'space': c=' '; break;
+  }
+  t.text=t.text.slice(0,t.caret)+c+t.text.slice(t.caret); t.caret+=c.length;
+}
+function HearthOSKgraph(s){ if(!OSKOK) return s.slice(0,-1); const g=HearthOSK.graphemes(s); g.pop(); return g.join(''); }
 // ---------- when the on-screen keyboard shows ----------
 // Only for a controller (or a touchscreen with no keyboard): after keyboard or mouse input, a text field just takes
 // what's typed on the real keyboard, and the on-screen keyboard stays away. Every text field (search and the text
@@ -6686,81 +6795,70 @@ function oskWanted(){
   if(INPUT.touch) return (LOOK.madeFor||'auto')==='pad' || ((LOOK.madeFor||'auto')!=='mk' && !INPUT.hwKbd);
   return false;                             // the mouse
 }
-const oskShown = t => !!(t && t.forceOsk) || oskWanted();
+const oskShown = t => OSKOK && !!t && !t.oskHidden && (!!t.forceOsk || oskWanted());
 // Instead of the keyboard: what to do, plus buttons for the mouse (and one to bring the keyboard up anyway).
 function kbNone(pre, actName){
   return `<div class="kbnone"><span class="muted">Type on your keyboard · <b>Enter</b> ${pre==='sk'?'opens the first match':'finishes'} · <b>Esc</b> cancels</span>
-    <button class="pill" data-f data-k="${pre}-osk" data-act="oskShow" data-v="${pre}">${I.kbd}On-screen keyboard</button>
+    ${OSKOK?`<button class="pill" data-f data-k="${pre}-osk" data-act="oskShow" data-v="${pre}">${I.kbd}On-screen keyboard</button>`:''}
     <button class="pill" data-f data-k="${pre}-done" data-act="${actName}" data-c="${pre==='sk'?'enter':'done'}">${pre==='sk'?'Open':'Done'}</button></div>`;
 }
+const kbBox = pre => `<div class="kb" data-f data-k="${pre}-kb" data-act="oskKb"></div>`;
 // The OSK on or off for the open search / prompt, with the selection kept where it makes sense.
 function oskRefresh(){
   const top=S.layers.at(-1);
   if(top!=='prompt' && top!=='search') return;
   const t = top==='prompt' ? prompt : SKB; if(!t) return;
   const box=$('#'+top), had=!!box.querySelector('.kb'), want=oskShown(t);
-  if(had===want) return;
+  if(had===want){ if(want && GOSK.engine) GOSK.engine.setHints(promptStyle()==='pad'); return; }
   const pre = top==='prompt' ? 'pk' : 'sk';
-  // The selection stays where it was when it still can (the field, a result); else the keyboard's first letter or
-  // the field.
+  // The selection stays where it was when it still can (the field, a result); else the keyboard or the field.
   const was = focused && box.contains(focused) ? focused.dataset.k : null;
   if(top==='prompt') renderPrompt(); else renderSearch();
-  const el = (was && box.querySelector(`[data-k="${CSS.escape(was)}"]`)) || box.querySelector(`[data-k="${want?pre+'-1-0':pre+'-field'}"]`);
+  const el = (was && box.querySelector(`[data-k="${CSS.escape(was)}"]`)) || box.querySelector(`[data-k="${want && INPUT.last==='pad'?pre+'-kb':pre+'-field'}"]`);
   if(el) setFocus(el,true);
 }
 function oskField(which){
   const t = which==='prompt' ? prompt : SKB; if(!t) return;
   // A controller (or a finger with no keyboard) on the field brings the keyboard up; Enter on a keyboard finishes.
-  if(INPUT.last==='pad' || (INPUT.touch && INPUT.last==='mouse' && !INPUT.hwKbd)){
-    t.forceOsk=true; oskRefresh();
-    const k=$(`#${which} [data-k="${which==='prompt'?'pk':'sk'}-1-0"]`); if(k && INPUT.last==='pad') setFocus(k,true);   // on to the letters
+  if(OSKOK && (INPUT.last==='pad' || (INPUT.touch && INPUT.last==='mouse' && !INPUT.hwKbd))){
+    t.forceOsk=true; t.oskHidden=false; oskRefresh();
+    const k=$(`#${which} .kb`); if(k && INPUT.last==='pad') setFocus(k,true);   // on to the keys
     return;
   }
   if(INPUT.last==='kbd') return which==='prompt' ? promptSubmit() : typeKey('enter');
 }
-function kbHTML(t, pre, actName){
-  const up=(t.shift||t.caps)&&!t.sym;
-  return `<div class="kb">${(t.sym?KB_SYMS:KB_LETTERS).map((r,ri)=>`<div class="kbrow">${r.map((c,ci)=>{
-    const sp=Object.prototype.hasOwnProperty.call(KB_SPECIAL,c);
-    const ch=up?c.toUpperCase():c;
-    const lab=sp?(c==='sym'&&t.sym?'ABC':c==='enter'&&t.enterLabel?t.enterLabel:KB_SPECIAL[c]):ch;
-    const on=(c==='shift'||c==='shift2')&&(t.shift||t.caps);
-    const g=kbGlyph(c);
-    return `<button class="key ${sp?'mod':''} ${KB_WIDE[c]||''} ${on?'on':''}" data-f data-k="${pre}-${ri}-${ci}" data-act="${actName}" data-c="${esc(sp?c:ch)}">${esc(lab)}${g?`<small class="kg">${g}</small>`:''}</button>`;
-  }).join('')}</div>`).join('')}</div>`;
-}
-// One key on a {text, caret, shift, caps, sym} target. Returns 'enter' or 'done' when those were pressed.
-function kbEdit(t, c){
-  if(t.caret==null||t.caret>t.text.length) t.caret=t.text.length;
-  switch(c){
-    case 'bksp': if(t.caret>0){ t.text=t.text.slice(0,t.caret-1)+t.text.slice(t.caret); t.caret--; } return;
-    case 'left': t.caret=Math.max(0,t.caret-1); return;
-    case 'right': t.caret=Math.min(t.text.length,t.caret+1); return;
-    case 'shift': case 'shift2': if(t.caps) t.caps=false; else if(t.shift){ t.shift=false; t.caps=true; } else t.shift=true; return;
-    case 'sym': t.sym=!t.sym; return;
-    case 'enter': case 'done': return c;
-    case 'space': c=' '; break;
-  }
-  t.text=t.text.slice(0,t.caret)+c+t.text.slice(t.caret); t.caret+=c.length; if(t.shift) t.shift=false;
-}
 // The text field with the caret where it is (dots for a hidden password).
 function kbField(t, icon, ph, secret, show){
   const v=x=>secret&&!show?'•'.repeat(x.length):esc(x), c=Math.min(t.caret??t.text.length, t.text.length);
-  return t.text ? `<span class="q ${secret&&!show?'mono':''}">${v(t.text.slice(0,c))}</span><span class="caret"></span><span class="q ${secret&&!show?'mono':''}">${v(t.text.slice(c))}</span>`
-                : `<span class="q" data-ph="${esc(ph)}"></span><span class="caret"></span>`;
+  return `<span class="kbv">${t.text ? `<span class="q ${secret&&!show?'mono':''}">${v(t.text.slice(0,c))}</span><span class="caret"></span><span class="q ${secret&&!show?'mono':''}">${v(t.text.slice(c))}</span>`
+                : `<span class="q" data-ph="${esc(ph)}"></span><span class="caret"></span>`}</span>`;
 }
-const SKB={shift:false,caps:false,sym:false,caret:null};
-function renderSearch(keepKey){
+const SKB={caret:null};
+function searchResults(){
   const q=query.toLowerCase().trim();
   // A profile with parental limits finds only the games it's allowed (as everywhere else).
   const a=allowedList();
   const res = q ? GAMES.filter(g=>(!a || a.includes(g.id)) && (g.title||'').toLowerCase().includes(q)).slice(0,8) : [];
+  return res.map(g=>`<button class="row" data-f data-k="sr-${esc(g.id)}" data-act="game" data-id="${esc(g.id)}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('')
+    || `<div class="muted" style="padding:16px 4px">${q?'No matches':oskShown(SKB)?'Type with the keyboard below, or a real keyboard':'Type the name of a game'}</div>`;
+}
+function renderSearch(keepKey){
   const t=Object.assign(SKB,{text:query});
   const osk=oskShown(SKB);
   $('#search').innerHTML = `<div class="kbtop"><div class="sfield" data-f data-k="sk-field" data-act="oskField" data-v="search">${I.search}${kbField(t,'','Search your library')}</div>
-    <div class="sres">${res.map(g=>`<button class="row" data-f data-k="sr-${esc(g.id)}" data-act="game" data-id="${esc(g.id)}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('') || `<div class="muted" style="padding:16px 4px">${q?'No matches':osk?'Type with the keyboard below, or a real keyboard':'Type the name of a game'}</div>`}</div></div>
-    ${osk?kbHTML(Object.assign(t,{enterLabel:'Search'}),'sk','key'):kbNone('sk','key')}`;
+    <div class="sres">${searchResults()}</div></div>
+    ${osk?kbBox('sk'):kbNone('sk','key')}`;
+  if(osk) oskMount('search');
   if(keepKey){ const el=$(`#search [data-k="${CSS.escape(keepKey)}"]`); if(el) setFocus(el,true); }
+}
+// Search: the field and the results again (the keyboard stays as it is).
+function searchUpdate(){
+  const f=$('#search .sfield .kbv'), r=$('#search .sres');
+  if(!f || !r) return renderSearch(focused?.dataset.k);
+  f.outerHTML=kbField(Object.assign(SKB,{text:query}),'','Search your library');
+  const keep = focused && r.contains(focused) ? focused.dataset.k : null;
+  r.innerHTML=searchResults();
+  if(keep){ const el=r.querySelector(`[data-k="${CSS.escape(keep)}"]`); setFocus(el || $('#search [data-k="sk-field"]'), true); }
 }
 
 // ---------- action sheet (small option menu) ----------
@@ -6776,23 +6874,31 @@ function sheetPick(i){ const it=sheet && sheet.items[i]; if(!it) return; sheet.p
 
 // ---------- text prompt with on-screen keyboard (passwords etc.) ----------
 let prompt=null;
-const OSK_SYM=['1234567890','!@#$%^&*()','-_=+[]{};:',"'\",.?/\\|~`"];
 // o.osk: show the on-screen keyboard even after keyboard or mouse input (it was asked for, e.g. the desktop's keyboard).
-function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',caret:null,shift:false,caps:false,sym:false,show:!o.secret,res,done:false,forceOsk:!!o.osk}; openLayer('prompt',oskShown(prompt)?'pk-1-0':'pk-field'); }); }
+// o.mode: the keyboard's kind ('text', 'password', 'email', 'url', 'number', 'search', 'terminal'): docs/OSK.md.
+function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',caret:null,show:!o.secret,res,done:false,forceOsk:!!o.osk,oskHidden:false}; openLayer('prompt',oskShown(prompt)?'pk-kb':'pk-field'); }); }
 function renderPrompt(keepK){
   const p=prompt; if(!p) return;
+  const osk=oskShown(p);
   $('#prompt').innerHTML = `<div class="kbtop"><div class="ptitle">${esc(p.title)}</div>
-    <div class="sfield" data-f data-k="pk-field" data-act="oskField" data-v="prompt">${p.secret?I.lock:I.kbd}${kbField(p,'',p.secret?'Password':'Type here',p.secret,p.show)}
+    <div class="sfield" data-f data-k="pk-field" data-act="oskField" data-v="prompt">${p.secret?I.lock:I.kbd}${kbField(p,'',p.secret?'Password':(p.placeholder||'Type here'),p.secret,p.show)}
       ${p.secret?`<button class="pill" style="margin-left:auto" data-f data-k="pk-show" data-act="pkey" data-c="show">${p.show?'Hide':'Show'}</button>`:''}</div></div>
-    ${oskShown(p)?kbHTML(Object.assign(p,{enterLabel:'Done'}),'pk','pkey'):kbNone('pk','pkey')}`;
+    ${osk?kbBox('pk'):kbNone('pk','pkey')}`;
+  if(osk) oskMount('prompt');
   if(keepK){ const el=$(`#prompt [data-k="${keepK}"]`); if(el) setFocus(el,true); }
+}
+function promptFieldUpdate(){
+  const p=prompt, f=$('#prompt .sfield .kbv'); if(!p) return;
+  if(!f) return renderPrompt(focused?.dataset.k);
+  f.outerHTML=kbField(p,'',p.secret?'Password':(p.placeholder||'Type here'),p.secret,p.show);
 }
 function promptKey(c){
   const p=prompt; if(!p) return;
-  if(c==='show'){ p.show=!p.show; return renderPrompt(focused?.dataset.k); }
+  if(c==='show'){ p.show=!p.show; const b=$('#prompt [data-k="pk-show"]'); if(b) b.textContent=p.show?'Hide':'Show'; return promptFieldUpdate(); }
   const r=kbEdit(p,c);
   if(r==='done'||r==='enter') return promptSubmit();
-  renderPrompt(focused?.dataset.k);
+  promptFieldUpdate();
+  if(GOSK.engine && GOSK.which==='prompt') GOSK.engine.refresh();
 }
 function promptSubmit(){
   const p=prompt; if(!p) return;
@@ -6869,6 +6975,7 @@ function setFocus(el, quiet){
   if(focused) focused.classList.remove('focus');
   focused=el; el.classList.add('focus');
   el.focus({preventScroll:true});
+  oskFocusSync();
   if(S.view==='library' && !S.layers.length) libFocus(el);   // Library layouts: fit, and fill the detail panel
   if(el.dataset.mkspot && !S.layers.length) mkSpot(el.dataset.mkspot);   // keyboard & mouse layouts: the panel / page
   const now=performance.now(), rapid = now-lastNav < 260;
@@ -6972,6 +7079,7 @@ function act(el){
   if(a.startsWith('bcn')) return beaconAct(a, d);
   if(/^mf[A-Z]/.test(a)) return mfAct(a, d);   // Hearth Friends on Matrix   // Beacon's screens (Game setup, Mods)
   if(a.startsWith('a11y')) return a11yAct(a, d);   // Settings › Accessibility
+  if(a==='oskSet'||a==='oskLay'||a==='oskClear'||a==='oskTry') return oskSettingAct(a, d);   // Settings › Keyboard
   if(a.startsWith('shop')) return shopAct(a, d, el);   // Game Mode › Store
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
@@ -6982,7 +7090,7 @@ function act(el){
     case 'loginWake': return call('login.setLockOnWake',{on:!(LOGIN.s&&LOGIN.s.lockOnWake)}).then(r=>{ LOGIN.s=r; refreshUI(); toast(r.lockOnWake?'Asks for your password after sleep':'Wakes without asking for a password'); }).catch(e=>toast(e.message));
     case 'menu': return toggleLayer('menu');
     case 'qam': closeAll(); if(d.tab) S.qtab=d.tab; return openLayer('qam');
-    case 'search': closeAll(); query=''; SKB.forceOsk=false; return openLayer('search', oskWanted()?'sk-0-0':'sk-field');
+    case 'search': closeAll(); query=''; SKB.forceOsk=false; SKB.oskHidden=false; SKB.caret=0; return openLayer('search', oskWanted()?'sk-kb':'sk-field');
     case 'power': closeAll(); return openLayer('power');
     case 'back': return back();
     case 'nav': closeAll(); if(S.view!==d.view){ S.history=[]; navigate(d.view,{},false);} return;
@@ -7147,7 +7255,8 @@ function act(el){
     case 'pkey': return promptKey(d.c);
     case 'oskField': return oskField(d.v);
     case 'madeFor': LOOK.madeFor=d.v; saveLook(); renderFooter(); return render('ap-mf-'+d.v);
-    case 'oskShow': { const t = d.v==='pk' ? prompt : SKB; if(t){ t.forceOsk=true; oskRefresh(); } return; }
+    case 'oskShow': { const t = d.v==='pk' ? prompt : SKB; if(t){ t.forceOsk=true; t.oskHidden=false; oskRefresh(); } return; }
+    case 'oskKb': return;   // the keyboard's own box (its keys handle taps and clicks themselves)
     case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); if(d.tab==='apps') loadApps(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
     case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
     case 'gsRetry': loadGameSet(S.game); return render(null,true);
@@ -7298,13 +7407,13 @@ function back(){
   if(!S.layers.length && goBack()) return blip(420,.05);
 }
 function typeKey(c){
-  const k=focused?.dataset.k;
-  if(c==='clear'){ query=''; SKB.caret=0; return renderSearch(k); }
+  if(c==='clear'){ query=''; SKB.caret=0; return searchUpdate(); }
   const t=Object.assign(SKB,{text:query});
   const r=kbEdit(t,c); query=t.text;
   if(r==='done') return back();
   if(r==='enter'){ const first=$('#search .sres [data-f]'); if(first) return act(first); return; }
-  renderSearch(k);
+  searchUpdate();
+  if(GOSK.engine && GOSK.which==='search') GOSK.engine.refresh();
 }
 function power(p, sure){
   // Quick Resume keeps games through Shut down and Restart when the PC can (hibernation: Shut down saves them to the
@@ -9670,7 +9779,7 @@ function setInput(kind){
 }
 const INPUT_NAMES = {pad:'Controller', kbd:'Keyboard', mouse:'Mouse or touch'};
 const GLYPHS = {
-  pad: {select:['A','a'], back:['B','b'], search:['Y','y'], menu:['☰',''], qam:['⧉',''], tabs:['LB RB',''], adjust:['◀▶',''], del:['Y','y'], space:['X','x'], done:['☰',''], stores:['X','x']},
+  pad: {select:['A','a'], back:['B','b'], search:['Y','y'], menu:['☰',''], qam:['⧉',''], tabs:['LB RB',''], adjust:['◀▶',''], del:['X','x'], space:['Y','y'], done:['☰',''], stores:['X','x']},
   kbd: {mkplay:['Enter','kc'], mkinfo:['Space','kc'], mkfav:['F','kc'], mkmore:['Right-click','kc'], mksearch:['Ctrl K','kc'], select:['Enter','kc'], back:['Esc','kc'], search:['/','kc'], menu:['M','kc'], qam:['Q','kc'], tabs:['Tab','kc'], adjust:['← →','kc'], del:['Bksp','kc'], space:['Space','kc'], done:['Enter','kc'], stores:['F','kc']},
 };
 const HINT_ICON = {back:I.x, search:I.search, menu:'<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>', qam:I.sliders, tabs:I.lib, stores:I.user};
@@ -9683,7 +9792,7 @@ function renderFooter(){
   if(focused?.dataset.slider){ if(SLIDE===focused) h.push(['adjust','Adjust'],['select','Done']); else h.push(['select','Change']); }
   else h.push(['select','Select']);
   h.push(['back','Back']);
-  if(top==='prompt'||top==='search') h.push(['del','Delete'],['space','Space'],['done','Done']);
+  if(top==='prompt'||top==='search') h.push(['del','Delete'],['space','Space'],['done',top==='search'?'Search':'Done']);
   if(!top && S.view==='library') h.push(['tabs','Tabs'],['stores','Stores']);
   if(!top && S.view==='shop') h.push(['tabs','Stores']);
   if(top==='qam') h.push(['tabs','Sections']);
@@ -9710,7 +9819,7 @@ function hintAction(id){
     if(id==='mkmore'){ const r=f.getBoundingClientRect(); return mkMenuOpen(g, r.left+20, r.top+20); }
     return; }
   ({select:()=>focused&&act(focused), back:()=>back(), search:()=>input('y'), menu:()=>input('start'),
-    qam:()=>input('select'), tabs:()=>input('rb'), adjust:()=>{}, del:()=>input('y'), space:()=>input('x'), done:()=>input('start'), stores:()=>input('x')})[id]?.();
+    qam:()=>input('select'), tabs:()=>input('rb'), adjust:()=>{}, del:()=>input('x'), space:()=>input('y'), done:()=>input('start'), stores:()=>input('x')})[id]?.();
 }
 
 // =====================================================================
@@ -9739,17 +9848,23 @@ function input(k){
     if(k==='start' && top!=='prompt') return;
     if((k==='y'||k==='x') && top!=='prompt') return;
   }
+  // The on-screen keyboard: everything while it has the selection; its shortcuts (X ⌫, Y space, LB/RB caret, ☰ Enter,
+  // LT shift, RT symbols, L3 emoji) while its search / prompt is open with the selection on the field or a result.
+  if((top==='prompt'||top==='search') && GOSK.engine && GOSK.box && document.contains(GOSK.box)){
+    if(oskOwns()){ GOSK.engine.setHints(true); if(GOSK.engine.handle(k,'press')) return; }
+    else if(['x','y','lb','rb','start','lt','rt','l3'].includes(k) && GOSK.engine.handle(k,'press')) return;
+  }
   switch(k){
     case 'up': case 'down': case 'left': case 'right': return move(k);
     case 'a': return focused && act(focused);
     case 'b': return back();
     case 'start': return top==='prompt' ? promptSubmit() : top==='search' ? back() : toggleLayer('menu');
     case 'select': case 'guide': if(top==='prompt'||top==='sheet') return; if(top!=='qam') qamFresh(); return toggleLayer('qam');
-    case 'y': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (closeAll(), query='', SKB.forceOsk=false, openLayer('search', oskWanted()?'sk-0-0':'sk-field'));
-    case 'x': return top==='prompt' ? promptKey('space') : top==='search' ? typeKey('space') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
+    case 'y': return top==='prompt' ? promptKey('space') : top==='search' ? typeKey('space') : (closeAll(), query='', SKB.forceOsk=false, SKB.oskHidden=false, SKB.caret=0, openLayer('search', oskWanted()?'sk-kb':'sk-field'));
+    case 'x': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
     case 'lb': case 'rb':
-      if(top==='prompt') return promptKey(k==='lb'?'shift':'sym');
-      if(top==='search') return typeKey(k==='lb'?'shift':'sym');
+      if(top==='prompt') return promptKey(k==='lb'?'left':'right');
+      if(top==='search') return typeKey(k==='lb'?'left':'right');
       return shiftTab(k==='lb'?-1:1);
     case 'rup': case 'rdown': return top ? null : libJump(k==='rup'?-1:1);   // right stick: A–Z jump in the Library
   }
@@ -9810,15 +9925,33 @@ function pollPadsNow(t){
   const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
   if(deskActive()) return deskPollPads(pads);
   const quiet = padsQuiet();
-  const st={};
-  for(const p of pads){ if(!p) continue;
+  const st={}, ax={lx:0,ly:0,rx:0,ry:0};
+  const kb = !quiet && oskOwns();
+  let anyPad=false;
+  for(const p of pads){ if(!p) continue; anyPad=true;
+    if(kb){ const bb=i=>!!(p.buttons[i] && (p.buttons[i].pressed || (i===6||i===7) && p.buttons[i].value>.5)); st.lt=st.lt||bb(6); st.rt=st.rt||bb(7); st.l3=st.l3||bb(10); st.r3=st.r3||bb(11);
+      for(const [n,i] of [['lx',0],['ly',1],['rx',2],['ry',3]]){ const v=p.axes[i]||0; if(Math.abs(v)>Math.abs(ax[n])) ax[n]=Math.abs(v)<.12?0:v; } }
     const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
     st.a=st.a||b(0); st.b=st.b||b(1); st.x=st.x||b(2); st.y=st.y||b(3);
     st.lb=st.lb||b(4); st.rb=st.rb||b(5); st.select=st.select||b(8); st.start=st.start||b(9); st.guide=st.guide||b(16);
-    const th=k=>held[k]?.35:.55;
-    st.up=st.up||b(12)||ax(1)<-th('up'); st.down=st.down||b(13)||ax(1)>th('down');
-    st.left=st.left||b(14)||ax(0)<-th('left'); st.right=st.right||b(15)||ax(0)>th('right');
+    const th=k=>held[k]?.35:.55, sx=kb?0:1;   // the keyboard reads the left stick itself (acceleration, Ember Wheel)
+    st.up=st.up||b(12)||sx*ax(1)<-th('up'); st.down=st.down||b(13)||sx*ax(1)>th('down');
+    st.left=st.left||b(14)||sx*ax(0)<-th('left'); st.right=st.right||b(15)||sx*ax(0)>th('right');
     if(p.mapping==='standard'){ st.rup=st.rup||ax(3)<-.6; st.rdown=st.rdown||ax(3)>.6; }   // right stick (Library A–Z jump)
+  }
+  if(kb){
+    // The on-screen keyboard: presses and releases (holding repeats, a held A opens accents), and the sticks.
+    const e=GOSK.engine;
+    for(const k of ['a','b','x','y','lb','rb','lt','rt','l3','r3','select','start','up','down','left','right']){
+      const on=!!st[k];
+      if(on && !held[k]){ held[k]={t0:t,last:t}; const m=mapPad(k); PAD_AT[k]=PAD_AT[m]=performance.now(); setInput('pad'); e.setHints(true); PAD.last=k; logInput('osk '+m);
+        if(!e.handle(m, true)) input(m); if(!oskOwns()) return; }
+      else if(!on && held[k]){ delete held[k]; e.handle(mapPad(k), false); }
+    }
+    if(st.guide && !held.guide){ held.guide={t0:t,last:t}; padPressed('guide'); } else if(!st.guide) delete held.guide;
+    if(anyPad) e.axes(ax.lx, ax.ly, ax.rx, ax.ry);
+    e.tick();
+    return;
   }
   for(const k of ['a','b','x','y','lb','rb','select','start','guide','up','down','left','right','rup','rdown']){
     const on=!!st[k], h=held[k];
@@ -9971,6 +10104,7 @@ if(/[?&]overlay=full/.test(location.search)){ document.documentElement.classList
 applyProfile();
 loadProfile();
 loadLibrary();
+oskBoot();
 if(!OVERLAY){ loadAccounts(true); loadUpdateStatus(); }
 else { S.qtab='quick'; openLayer('qam'); }
 requestAnimationFrame(pollPads);
