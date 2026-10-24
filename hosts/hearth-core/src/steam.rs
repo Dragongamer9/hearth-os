@@ -253,11 +253,12 @@ pub fn report(home: &Path, source_on: bool) -> String {
         let n = std::fs::read_dir(lib.join("steamapps")).map(|d| d.flatten().filter(|e| { let f = e.file_name().to_string_lossy().to_string(); f.starts_with("appmanifest_") && f.ends_with(".acf") }).count());
         say!(format!("{}: {}", tilde(home, &lib), match n { Ok(n) => format!("{n} appmanifest files"), Err(_) => "no steamapps folder".into() }));
     }
-    say!("--- owned games list (steamcommunity.com, cached)".into());
+    say!("--- owned games list (steamcommunity.com, or Steam's files on this device; cached)".into());
     match &acc {
         Ok((id, _)) => {
             let c = crate::steam_owned::load(*id);
-            say!(format!("fetched: {}; games: {}; problem: {}", when(c["fetched"].as_u64().unwrap_or(0)), c["games"].as_array().map(|a| a.len()).unwrap_or(0),
+            say!(format!("fetched: {}; games: {}; from: {}; problem: {}", when(c["fetched"].as_u64().unwrap_or(0)), c["games"].as_array().map(|a| a.len()).unwrap_or(0),
+                match c["source"].as_str() { Some("device") => "this device's Steam files", Some(_) => "steamcommunity.com", None => "-" },
                 c["problem"].as_str().unwrap_or("none")));
         }
         Err(_) => say!("not fetched: no signed-in account".into()),
@@ -371,6 +372,12 @@ pub fn account_dir(steam: &Path) -> Option<PathBuf> {
         .max_by_key(|(t, _)| *t).map(|(_, p)| p)
 }
 pub const ID64_BASE: u64 = STEAM_ID64_BASE;
+/// One account's folder (userdata/<account id>) by its SteamID64, when it's there.
+pub fn account_folder(steam: &Path, id64: u64) -> Option<PathBuf> {
+    if id64 <= STEAM_ID64_BASE { return None; }
+    let dir = steam.join("userdata").join((id64 - STEAM_ID64_BASE).to_string());
+    if dir.is_dir() { Some(dir) } else { None }
+}
 
 /// The signed-in Steam account's SteamID64, when this Steam has more than one account (with one, every game is its).
 /// Each Hearth profile signs Steam in as its own account (profiles.rs), so this is the profile's account.
