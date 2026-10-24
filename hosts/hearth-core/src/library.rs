@@ -160,6 +160,28 @@ impl Library {
         }).collect()
     }
 
+}
+
+/// Wabbajack modlists installed by Hearth Mods: one JSON per list in mods/modlists/ (id, title, launch: a .desktop
+/// file that starts its Mod Organizer 2 in its own Proton prefix, folder). Started like a game you added yourself.
+pub fn modlist_games() -> Vec<Game> {
+    let dir = crate::paths::data_dir().join("mods").join("modlists");
+    let Ok(rd) = std::fs::read_dir(&dir) else { return vec![] };
+    let mut out = Vec::new();
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.extension().map(|x| x != "json").unwrap_or(true) { continue; }
+        let Ok(v) = std::fs::read(&p).map(|b| serde_json::from_slice::<Value>(&b).unwrap_or(Value::Null)) else { continue };
+        let (Some(id), Some(launch)) = (v["id"].as_str(), v["launch"].as_str()) else { continue };
+        if !std::path::Path::new(launch).is_file() { continue; }
+        out.push(Game { id: format!("modlist:{id}"), title: v["title"].as_str().unwrap_or("Modlist").to_string(), source: "manual",
+            install_path: v["folder"].as_str().map(PathBuf::from), added: v["added"].as_u64().unwrap_or(0), installed: true, state: "installed",
+            exe: Some(launch.to_string()), note: v["note"].as_str().map(str::to_string), ..Default::default() });
+    }
+    out
+}
+
+impl Library {
     /// A scan that starts nothing: no download is put back in the queue (`hearth --list-games`, desktop_games.rs).
     pub fn scan_quietly(&mut self) { self.queue_restored = true; self.scan(); }
 
@@ -206,6 +228,8 @@ impl Library {
         let manual = self.manual_games();
         counts.insert("manual".to_string(), manual.len());
         for g in manual { all.entry(g.id.clone()).or_insert(g); }
+        // Wabbajack modlists Hearth Mods installed (hosts/hearth-gaming wabbajack.rs): Mod Organizer 2 through Proton.
+        for g in modlist_games() { all.entry(g.id.clone()).or_insert(g); }
         // Games on your Epic and GOG accounts that aren't installed: shown with an Install button.
         for s in ["epic", "gog"] {
             if !self.store.source_on(s) || !stores::signed_in(s) { continue; }
