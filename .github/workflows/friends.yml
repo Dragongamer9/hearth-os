@@ -76,6 +76,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/syn" && "$RUNNER_TEMP/syn/bin/pip" install --quiet matrix-synapse
           d="$RUNNER_TEMP/synapse"; mkdir -p "$d"; cd "$d"
           "$RUNNER_TEMP/syn/bin/python" -m synapse.app.homeserver --server-name hearth.test --config-path hs.yaml --generate-config --report-stats=no >/dev/null
+          echo >> hs.yaml   # the generated file may end without a newline (its last line is a comment)
           cat >> hs.yaml <<'EOF'
           enable_registration: true
           enable_registration_without_verification: true
@@ -94,7 +95,7 @@ jobs:
           rc_presence: {per_user: {per_second: 1000, burst_count: 1000}}
           EOF
           "$RUNNER_TEMP/syn/bin/python" -m synapse.app.homeserver --config-path hs.yaml > synapse.log 2>&1 &
-          grep -nE '^(enable_registration|presence|server_name)' hs.yaml || true
+          echo "::notice title=Synapse settings::$(grep -nE '^(enable_registration|presence|server_name)' hs.yaml | tr '\n' ' ')"
           for i in $(seq 60); do curl -sf http://127.0.0.1:8008/_matrix/client/versions >/dev/null && break; sleep 1; done
           curl -sf http://127.0.0.1:8008/_matrix/client/versions | head -c 300; echo
           echo "::notice title=Synapse::$("$RUNNER_TEMP/syn/bin/pip" show matrix-synapse | grep -i ^version)"
