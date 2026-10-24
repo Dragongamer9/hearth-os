@@ -61,6 +61,8 @@ pub struct Node {
 }
 
 fn transport() -> QuicTransportConfig {
+    // HEARTH_LINK_TUNING=default: iroh's own settings (to compare).
+    if std::env::var("HEARTH_LINK_TUNING").as_deref() == Ok("default") { return QuicTransportConfig::builder().max_concurrent_bidi_streams(VarInt::from_u32(256)).build(); }
     // Big windows so one connection fills a fast link even with some latency (2.5 Gbit/s at 50 ms needs ~16 MB in
     // flight); many streams so a copy's requests run side by side.
     QuicTransportConfig::builder()
@@ -262,7 +264,7 @@ impl Node {
         let direct = conn.paths().iter().find(|p| p.is_selected()).and_then(|p| match p.remote_addr() { TransportAddr::Ip(a) => Some(*a), _ => None });
         crate::lock(&self.peers).seen(&remote, direct);
         loop {
-            let Ok((s, r)) = conn.accept_bi().await else { break };
+            let (s, r) = match conn.accept_bi().await { Ok(x) => x, Err(e) => { eprintln!("hearth-link: connection from {remote} ended: {e:?}"); break; } };
             let n = self.clone(); let id = remote.clone();
             tokio::spawn(async move { n.on_stream(id, s, r).await });
         }

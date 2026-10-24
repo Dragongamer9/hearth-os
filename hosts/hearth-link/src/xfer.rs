@@ -254,6 +254,9 @@ struct Ctx {
     remaining: Vec<AtomicU32>,
     journal: Mutex<Journal>,
     failed: Mutex<Option<String>>,
+    /// Something went wrong in one stream or writer: the others stop.
+    halt: AtomicBool,
+    written: Mutex<HashSet<(u32, u32)>>,
 }
 
 struct WJob { fidx: u32, chunk: u32, h: Header, payload: Vec<u8> }
@@ -296,6 +299,8 @@ fn writer(ctx: Arc<Ctx>, job: Arc<Job>, rx: Arc<Mutex<tokio::sync::mpsc::Receive
                 }
             };
             f.write_all_at(&data, off).map_err(|er| format!("Writing {}: {er}", e.p))?;
+            // A request asked again (a stream broke) can bring a chunk twice: counted once.
+            if !crate::lock(&ctx.written).insert((w.fidx, w.chunk)) { return Ok(()); }
             { let mut j = crate::lock(&ctx.journal); j.pending.extend_from_slice(&w.fidx.to_le_bytes()); j.pending.extend_from_slice(&w.chunk.to_le_bytes()); }
             job.done.fetch_add(data.len() as u64, Ordering::Relaxed);
             if ctx.remaining[w.fidx as usize].fetch_sub(1, Ordering::AcqRel) == 1 {
@@ -304,7 +309,7 @@ fn writer(ctx: Arc<Ctx>, job: Arc<Job>, rx: Arc<Mutex<tokio::sync::mpsc::Receive
             }
             Ok(())
         })();
-        if let Err(e) = r { let mut f = crate::lock(&ctx.failed); if f.is_none() { *f = Some(e); } job.stop.store(true, Ordering::SeqCst); }
+        if let Err(e) = r { let mut f = crate::lock(&ctx.failed); if f.is_none() { *f = Some(e); } ctx.halt.store(true, Ordering::SeqCst); let _ = &job; }
     }
 }
 
@@ -423,11 +428,12 @@ async fn run_unit(conn: &iroh::endpoint::Connection, job: &Job, ctx: &Ctx, unit:
     let mut hb = [0u8; HEADER];
     loop {
         if job.stop.load(Ordering::Relaxed) { let _ = r.stop(iroh::endpoint::VarInt::from_u32(0)); return Err("stopped".into()); }
-        r.read_exact(&mut hb).await.map_err(|e| format!("The connection broke: {e}"))?;
+        if ctx.halt.load(Ordering::Relaxed) { let _ = r.stop(iroh::endpoint::VarInt::from_u32(0)); return Err("halted".into()); }
+        r.read_exact(&mut hb).await.map_err(|e| format!("The connection broke: {e} ({:?})", conn.close_reason()))?;
         let h = Header::decode(&hb)?;
         if h.kind == T_DONE { return Ok(()); }
         let mut payload = vec![0u8; h.wire as usize];
-        r.read_exact(&mut payload).await.map_err(|e| format!("The connection broke: {e}"))?;
+        r.read_exact(&mut payload).await.map_err(|e| format!("The connection broke: {e} ({:?})", conn.close_reason()))?;
         if h.kind == T_ERROR { return Err(String::from_utf8_lossy(&payload).to_string()); }
         if h.kind != T_CHUNK { return Err("Unexpected frame".into()); }
         job.wire.fetch_add(h.wire as u64 + HEADER as u64, Ordering::Relaxed);
@@ -584,7 +590,7 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
     let ctx = Arc::new(Ctx {
         files: files.clone(), paths: paths.clone(), handles: Mutex::new(HashMap::new()), remaining,
         journal: Mutex::new(Journal { file: jfile, pending: Vec::new(), roots: dests.iter().flatten().cloned().collect() }),
-        failed: Mutex::new(None),
+        failed: Mutex::new(None), halt: AtomicBool::new(false), written: Mutex::new(HashSet::new()),
     });
     let queue = Arc::new(Mutex::new(units(&files, &plan.need)));
     eprintln!("hearth-link: copy of {}: {} files, {} need data ({} bytes) in {} requests over {} streams; {} bytes already here",
@@ -612,10 +618,23 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
     for _ in 0..streams.max(1) {
         let (conn, job, ctx, queue, tx) = (conn.clone(), job.clone(), ctx.clone(), queue.clone(), tx.clone());
         workers.spawn(async move {
+            let mut retries = 0;
             loop {
                 let Some(unit) = crate::lock(&queue).pop_front() else { return Ok::<(), String>(()) };
-                if let Err(e) = run_unit(&conn, &job, &ctx, &unit, compress, &tx).await {
-                    job.stop.store(true, Ordering::SeqCst);
+                let r = run_unit(&conn, &job, &ctx, &unit, compress, &tx).await;
+                // One stream broke but the connection is fine: that request again (chunks already written are
+                // written again, the same bytes).
+                if let Err(e) = &r {
+                    if e.starts_with("The connection broke") && conn.close_reason().is_none() && retries < 3 && !job.stop.load(Ordering::SeqCst) {
+                        eprintln!("hearth-link: copy of {}: a stream broke ({e}); asking again", job.title);
+                        retries += 1;
+                        crate::lock(&queue).push_back(unit);
+                        continue;
+                    }
+                }
+                if let Err(e) = r {
+                    // The other streams stop too (not job.stop: that's the person's pause).
+                    ctx.halt.store(true, Ordering::SeqCst);
                     return Err(e);
                 }
             }
@@ -625,7 +644,7 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
     let mut first_err: Option<String> = None;
     while let Some(r) = workers.join_next().await {
         let r = r.map_err(|e| e.to_string()).and_then(|x| x);
-        if let Err(e) = r { eprintln!("hearth-link: copy of {}: a stream ended: {e}", job.title); if first_err.is_none() && e != "stopped" { first_err = Some(e); } }
+        if let Err(e) = r { eprintln!("hearth-link: copy of {}: a stream ended: {e}", job.title); if first_err.is_none() && e != "stopped" && e != "halted" { first_err = Some(e); } }
         job.relay.store(relayed(conn), Ordering::Relaxed);
     }
     // Every chunk handed over is written before the copy stops.
