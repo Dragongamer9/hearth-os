@@ -678,7 +678,7 @@ CATEGORIES = [
     {'kind': 'browser', 'label': 'Web browser', 'hearth': 'hearth-browser.desktop', 'primary': 'x-scheme-handler/https',
      'mimes': BROWSER_TYPES, 'every': True},
     {'kind': 'files', 'label': 'File manager', 'hearth': 'hearth-files.desktop', 'primary': 'inode/directory',
-     'mimes': ['inode/directory'], 'every': True},
+     'mimes': ['inode/directory', 'x-directory/normal'], 'every': True},
     {'kind': 'text', 'label': 'Text editor', 'hearth': 'hearth-text.desktop', 'primary': 'text/plain', 'mimes': TEXT_TYPES,
      'every': True},
     {'kind': 'image', 'label': 'Images', 'hearth': 'hearth-photos.desktop', 'primary': 'image/jpeg', 'mimes': IMAGE_TYPES},
@@ -712,6 +712,9 @@ HEARTH_RANK = ['hearth-browser.desktop', 'hearth-files.desktop', 'hearth-photos.
                'hearth-player.desktop', 'hearth-sheets.desktop', 'hearth-slides.desktop', 'hearth-text.desktop',
                'hearth-write.desktop', 'hearth-calendar.desktop', 'hearth-contacts.desktop', 'hearth-maps.desktop',
                'hearth-fonts.desktop', 'hearth-terminal.desktop', 'hearth-install-package.desktop', 'hearth-paint.desktop']
+# Folders open in Hearth Files in every desktop's list too, though it's only shown in Hearth's (OnlyShowIn=Nimbus):
+# hearth-filemanager hands them to Dolphin and the others outside Hearth's session.
+EVERY_DESKTOP_TOO = ('inode/directory', 'x-directory/normal')
 DEFAULTS = '[Default Applications]'
 ADDED = '[Added Associations]'
 REMOVED = '[Removed Associations]'
@@ -915,16 +918,20 @@ def category_order():
 def system_defaults(apps):
     """apps: {id: fields} of Hearth's own apps. -> (Desktop Mode's table, every desktop's table): {mime: id}, the
     first app in HEARTH_RANK that opens a type; every desktop's leaves out apps only for some desktops
-    (OnlyShowIn=Nimbus: Hearth Files)."""
+    (OnlyShowIn=Nimbus: Hearth Files), but for folders (EVERY_DESKTOP_TOO)."""
     order = category_order()
 
-    def table(ids):
+    def table(ids, also=()):
         out = {}
         for did in sorted(ids, key=hearth_rank):
             for m in mime_list(apps[did]):
                 out.setdefault(m, did)
+        for did in sorted(apps, key=hearth_rank):
+            for m in mime_list(apps[did]):
+                if m in also:
+                    out.setdefault(m, did)
         return {m: out[m] for m in sorted(out, key=lambda m: (order.get(m, len(order)), m))}
-    return table(list(apps)), table([d for d in apps if not only_for_some_desktops(apps[d])])
+    return table(list(apps)), table([d for d in apps if not only_for_some_desktops(apps[d])], EVERY_DESKTOP_TOO)
 
 
 def hearth_apps(apps_dir, hf):

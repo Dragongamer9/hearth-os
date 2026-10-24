@@ -272,7 +272,8 @@ class SystemLists(unittest.TestCase):
             self.assertEqual(self.s.ml_read(nim, m), [d], m)
         self.assertNotIn('hearth-old', nim)
         self.assertEqual(self.s.ml_read(gen, 'image/png'), ['hearth-photos.desktop'])
-        self.assertEqual(self.s.ml_read(gen, 'inode/directory'), [])         # Files is only for Hearth's desktop
+        self.assertEqual(self.s.ml_read(gen, 'inode/directory'), ['hearth-files.desktop'])   # folders: every desktop too
+        self.assertEqual(self.s.ml_read(gen, 'application/zip'), [])         # archives only in Hearth's desktop
         self.assertEqual(self.s.ml_read(gen, 'x/base'), ['base.desktop'])
         self.assertEqual(nim.count('image/png='), 1)
 
@@ -362,7 +363,7 @@ class RepositoryApps(unittest.TestCase):
                         got = self.s.ml_read(nim, m)
                         self.assertEqual(len(got), 1, (base, did, m))
                         self.assertTrue(got[0].startswith('hearth-'), (base, did, m, got))
-                        if not only:
+                        if not only or m in self.s.EVERY_DESKTOP_TOO:
                             self.assertEqual(len(self.s.ml_read(gen, m)), 1, (base, did, m))
                 # No dangling ids: every app in the lists is one of the image's.
                 for text in (nim, gen):
