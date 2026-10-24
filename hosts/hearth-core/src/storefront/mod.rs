@@ -257,9 +257,17 @@ impl WebPage {
 /// which moves with their profile when people switch), one folder per store; `engine` is "webkit" or "chromium"
 /// (each drawing engine keeps its own files). A new folder name after signing out (reset_web_profile), so a
 /// window still open from before can't carry the old sign-in over.
-pub fn web_profile(store: &str, engine: &str) -> PathBuf { web_profile_in(&web_base(), store, engine) }
+pub fn web_profile(store: &str, engine: &str) -> PathBuf {
+    let legacy = crate::signins::legacy_web_dir().join("cookies");
+    web_profile_from(&web_base(), Some(&legacy), store, engine)
+}
 fn web_base() -> PathBuf { crate::paths::data_dir().join("accounts/web") }
-fn web_profile_in(base: &std::path::Path, store: &str, engine: &str) -> PathBuf {
+#[cfg(test)]
+fn web_profile_in(base: &std::path::Path, store: &str, engine: &str) -> PathBuf { web_profile_from(base, None, store, engine) }
+/// `legacy`: the cookie file every sign-in window used up to 0.6.4 (the app's own WebKit folder). A store's new
+/// folder starts with that store's cookies from it (only its own sites), once: so the move to one folder per
+/// store doesn't sign anyone out of the store's website. Never again after signing out (the ".legacy-done" mark).
+fn web_profile_from(base: &std::path::Path, legacy: Option<&std::path::Path>, store: &str, engine: &str) -> PathBuf {
     let idf = base.join(format!("{store}.id"));
     let id = std::fs::read_to_string(&idf).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric()))
         .unwrap_or_else(|| {
@@ -268,7 +276,43 @@ fn web_profile_in(base: &std::path::Path, store: &str, engine: &str) -> PathBuf 
             let _ = crate::paths::write_atomic(&idf, id.as_bytes());
             id
         });
-    base.join(format!("{store}-{id}")).join(engine)
+    let folder = base.join(format!("{store}-{id}"));
+    let done = base.join(format!("{store}.legacy-done"));
+    if let Some(l) = legacy {
+        if !done.exists() && !folder.join("webkit/cookies").exists() {
+            if let Ok(text) = std::fs::read_to_string(l) {
+                let mine = store_cookies(&text, store);
+                if mine.lines().any(|x| !x.trim().is_empty() && !x.starts_with("# ")) {
+                    let _ = std::fs::create_dir_all(folder.join("webkit"));
+                    let _ = crate::signins::write_private_file(&folder.join("webkit/cookies"), mine.as_bytes());
+                    crate::bridge::log(&format!("store: {store}'s web sign-in carried over from the sign-in window's old folder"));
+                }
+            }
+            let _ = crate::paths::write_atomic(&done, b"1");
+        }
+    }
+    folder.join(engine)
+}
+/// The sites a store's web sign-in lives on.
+fn store_sites(store: &str) -> &'static [&'static str] {
+    match store {
+        "gog" => &["gog.com"],
+        "epic" => &["epicgames.com"],
+        "xbox" => &["live.com", "microsoft.com", "microsoftonline.com", "xbox.com", "xboxlive.com"],
+        _ => &[],
+    }
+}
+/// The lines of a WebKit (Netscape format) cookie file that belong to the store's own sites, with the header.
+pub fn store_cookies(text: &str, store: &str) -> String {
+    let sites = store_sites(store);
+    let mut out = String::from("# Netscape HTTP Cookie File\n");
+    for line in text.lines() {
+        let body = line.strip_prefix("#HttpOnly_").unwrap_or(line);
+        if body.starts_with('#') || body.trim().is_empty() { continue; }
+        let host = body.split('\t').next().unwrap_or("").trim_start_matches('.').to_ascii_lowercase();
+        if sites.iter().any(|d| host == *d || host.ends_with(&format!(".{d}"))) { out.push_str(line); out.push('\n'); }
+    }
+    out
 }
 /// Signing out of a store: its web sign-in goes too (cookies and all), and the next sign-in starts fresh.
 pub fn reset_web_profile(store: &str) { reset_web_profile_in(&web_base(), store) }
@@ -279,6 +323,9 @@ fn reset_web_profile_in(base: &std::path::Path, store: &str) {
         if !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric()) { let _ = std::fs::remove_dir_all(base.join(format!("{store}-{id}"))); }
     }
     let _ = std::fs::remove_file(idf);
+    // Signed out: the old folder's cookies never come back into this store's sign-in.
+    let _ = std::fs::create_dir_all(base);
+    let _ = crate::paths::write_atomic(&base.join(format!("{store}.legacy-done")), b"1");
 }
 
 /// The web addresses a store window may start at, per store (the page it opens on must be the store's own).
@@ -439,6 +486,36 @@ mod tests {
         // The web sign-ins move with the person's profile (profiles.rs keeps accounts/ per person).
         assert!(crate::profiles::OWN.contains(&"accounts"));
         assert!(search("amazon", "x").is_err());
+        // (see web_sign_ins_carry_over for the move from 0.6.4's single folder)
         assert!(details("steam", "../etc").is_err());
+    }
+
+    /// 0.6.4 and before: every sign-in window used the app's own WebKit folder. The move to one folder per store
+    /// starts each store's folder with its own cookies from there (no other site's), once, and never after signing out.
+    #[test]
+    fn web_sign_ins_carry_over() {
+        let d = tempfile::tempdir().unwrap();
+        let base = d.path().join("accounts/web");
+        let legacy = d.path().join("io.github.dragongamer9.hearth/cookies");
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(&legacy, "# Netscape HTTP Cookie File\n.gog.com\tTRUE\t/\tTRUE\t1999999999\tgog-al\tg1\n#HttpOnly_.www.epicgames.com\tFALSE\t/\tTRUE\t1999999999\tEPIC_SSO\te1\n.login.live.com\tTRUE\t/\tTRUE\t1999999999\tMSPAuth\tm1\n.notgog.com\tTRUE\t/\tTRUE\t1\tx\ty\n.example.org\tTRUE\t/\tFALSE\t1\tother\tz\n").unwrap();
+        let gog = web_profile_from(&base, Some(&legacy), "gog", "webkit");
+        let c = std::fs::read_to_string(gog.parent().unwrap().join("webkit/cookies")).unwrap();
+        assert!(c.contains("gog-al") && !c.contains("EPIC_SSO") && !c.contains("MSPAuth") && !c.contains("notgog") && !c.contains("example.org"), "{c}");
+        let epic = web_profile_from(&base, Some(&legacy), "epic", "webkit");
+        let c = std::fs::read_to_string(epic.parent().unwrap().join("webkit/cookies")).unwrap();
+        assert!(c.contains("#HttpOnly_.www.epicgames.com") && !c.contains("gog-al"), "{c}");
+        let xbox = web_profile_from(&base, Some(&legacy), "xbox", "chromium");
+        assert!(std::fs::read_to_string(xbox.parent().unwrap().join("webkit/cookies")).unwrap().contains("MSPAuth"));
+        #[cfg(unix)]
+        { use std::os::unix::fs::PermissionsExt; assert_eq!(std::fs::metadata(gog.parent().unwrap().join("webkit/cookies")).unwrap().permissions().mode() & 0o777, 0o600); }
+        // The old file itself is left as it was.
+        assert!(std::fs::read_to_string(&legacy).unwrap().contains("example.org"));
+        // Signed out: a new folder, and the old cookies don't come back.
+        reset_web_profile_in(&base, "gog");
+        std::thread::sleep(Duration::from_millis(5));
+        let again = web_profile_from(&base, Some(&legacy), "gog", "webkit");
+        assert_ne!(again, gog);
+        assert!(!again.parent().unwrap().join("webkit/cookies").exists());
     }
 }
