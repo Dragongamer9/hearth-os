@@ -106,6 +106,114 @@ Keywords=disk;drive;partition;format;usb;sd;card;mount;eject;storage;steam;libra
 DESKTOP
 fi
 
+# ==================================================================== Hearth Recorder, Camera and Share
+# (hosts/hearth-recorder, hosts/hearth-camera, hosts/hearth-share; built with the app by base-anatase.yml, tested by
+# capture-apps.yml.) Hearth's screen recorder (instant replay and a sound recorder too), webcam app and screen
+# sharing. What they run:
+#  - ffmpeg: encoding (Anatase's own if it has one, else Fedora's ffmpeg-free), with Cisco's openh264 for H.264 on
+#    the processor (Fedora's Mesa leaves out H.264/HEVC on AMD's and Intel's encoders; Recorder tries each one)
+#  - wf-recorder and slurp: capturing Mantel's desktop, an area too
+#  - gpu-screen-recorder (COPR): capture and encoding on the graphics card in Game Mode and Desktop Mode (NVENC,
+#    VA-API), and its own instant replay. gsr-kms-server needs CAP_SYS_ADMIN to read the screen.
+#  - GStreamer with PipeWire's plugin: Game Mode (gamescope's own stream) without gpu-screen-recorder, and Share there
+#  - pactl and pw-dump (sound sources, gamescope's stream), v4l-utils (cameras), qrencode (Share's QR code)
+command -v ffmpeg >/dev/null || dnf5 -y install ffmpeg-free || dnf5 -y install ffmpeg || echo "warning: no ffmpeg, so Recorder, Camera and Share can't encode"
+dnf5 -y install --skip-unavailable --setopt=fedora-cisco-openh264.enabled=1 openh264 gstreamer1-plugin-openh264 || true
+dnf5 -y install --skip-unavailable wf-recorder slurp pulseaudio-utils pipewire-utils pipewire-gstreamer gstreamer1-plugins-good \
+  gstreamer1-plugins-bad-free gstreamer1-plugin-libav v4l-utils libnotify qrencode libcap || true
+# CI builds it inside Anatase itself (base-anatase.yml, gsr/ next to the app); the COPR package is the fallback.
+if [ -x /ctx/nimbus-app/gsr/gpu-screen-recorder ] && ! command -v gpu-screen-recorder >/dev/null; then
+  install -Dm755 /ctx/nimbus-app/gsr/gpu-screen-recorder /usr/bin/gpu-screen-recorder
+  if [ -x /ctx/nimbus-app/gsr/gsr-kms-server ]; then install -Dm755 /ctx/nimbus-app/gsr/gsr-kms-server /usr/bin/gsr-kms-server; fi
+  if ldd /usr/bin/gpu-screen-recorder | grep 'not found'; then
+    echo "warning: gpu-screen-recorder needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/gpu-screen-recorder /usr/bin/gsr-kms-server
+  fi
+fi
+if ! command -v gpu-screen-recorder >/dev/null; then
+  if dnf5 -y copr enable brycensranch/gpu-screen-recorder-git && dnf5 -y install gpu-screen-recorder; then
+    echo "gpu-screen-recorder installed (COPR)"
+  else
+    echo "warning: couldn't install gpu-screen-recorder; Recorder uses wf-recorder and GStreamer instead"
+  fi
+  dnf5 -y copr disable brycensranch/gpu-screen-recorder-git >/dev/null 2>&1 || true
+fi
+# Without its capability gpu-screen-recorder asks for the password every time it records.
+for k in /usr/bin/gsr-kms-server /usr/local/bin/gsr-kms-server; do [ -x "$k" ] && { setcap cap_sys_admin+ep "$k" || echo "warning: couldn't give $k its capability"; }; done
+for app in hearth-recorder hearth-camera hearth-share; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    # One that can't start is left out (its menu entry too).
+    if ldd "/usr/bin/$app" | grep 'not found'; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
+  fi
+done
+if [ -x /usr/bin/hearth-recorder ] || [ -x /usr/bin/hearth-camera ] || [ -x /usr/bin/hearth-share ]; then
+  # Their menu entries (ids starting with "hearth": Mantel's app menu lists them as Hearth's own apps).
+  install -d /usr/share/applications
+  if [ -x /usr/bin/hearth-recorder ]; then
+    cat > /usr/share/applications/hearth-recorder.desktop <<DESKTOP
+[Desktop Entry]
+Name=Recorder
+GenericName=Screen Recorder
+Comment=Record the screen, a game or your voice, and keep instant replays of games
+Exec=/usr/bin/hearth-recorder
+Icon=hearth-recorder
+Type=Application
+Categories=AudioVideo;Video;Recorder;
+Keywords=record;screen;recording;video;capture;replay;clip;game;microphone;voice;sound;
+StartupNotify=true
+StartupWMClass=hearth-recorder
+Actions=sound;
+
+[Desktop Action sound]
+Name=Sound recorder
+Exec=/usr/bin/hearth-recorder --sound
+DESKTOP
+  fi
+  if [ -x /usr/bin/hearth-camera ]; then
+    cat > /usr/share/applications/hearth-camera.desktop <<DESKTOP
+[Desktop Entry]
+Name=Camera
+GenericName=Webcam
+Comment=Take photos and videos with your webcam
+Exec=/usr/bin/hearth-camera
+Icon=hearth-camera
+Type=Application
+Categories=AudioVideo;Video;Graphics;Photography;
+Keywords=camera;webcam;photo;selfie;video;picture;
+StartupNotify=true
+StartupWMClass=hearth-camera
+DESKTOP
+  fi
+  if [ -x /usr/bin/hearth-share ]; then
+    cat > /usr/share/applications/hearth-share.desktop <<DESKTOP
+[Desktop Entry]
+Name=Share Screen
+GenericName=Screen Sharing
+Comment=Show this screen on a TV, phone or another computer (web browser or Moonlight)
+Exec=/usr/bin/hearth-share
+Icon=hearth-share
+Type=Application
+Categories=Network;AudioVideo;
+Keywords=share;screen;cast;mirror;tv;stream;moonlight;miracast;chromecast;browser;
+StartupNotify=true
+StartupWMClass=hearth-share
+DESKTOP
+  fi
+fi
+# Share's browser stream (port 47800, only answered while sharing, only to home-network addresses) through firewalld.
+if [ -d /usr/lib/firewalld ] || command -v firewall-offline-cmd >/dev/null; then
+  install -d /usr/lib/firewalld/services
+  cat > /usr/lib/firewalld/services/hearth-share.xml <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>Hearth Share</short>
+  <description>Hearth Share's screen sharing for web browsers on your network. It only answers while Share is sharing.</description>
+  <port protocol="tcp" port="47800"/>
+</service>
+XML
+  firewall-offline-cmd --add-service=hearth-share >/dev/null 2>&1 || echo "note: Share's port wasn't opened in firewalld's default zone"
+fi
+# ==================================================================== end of Hearth Recorder, Camera and Share
 # ------------------------------------------------------------------ Hearth Time (hosts/hearth-time)
 # Clock, Calendar, Notes and Weather: one program, /usr/bin/hearth-time, with a link per app (hearth-clock,
 # hearth-calendar, hearth-notes, hearth-weather), their menu entries, and the small background service

@@ -167,6 +167,13 @@
     <keybind key="S-Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'" /></keybind>
     <keybind key="W-S-s"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'" /></keybind>
     <keybind key="C-Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-clipboard'" /></keybind>
+    <!-- ==== Hearth Recorder (hosts/hearth-recorder): Super+Alt+R records the screen and again stops and saves it
+         (Videos/Recordings, with a notification); Super+Alt+Shift+R drags a box around an area to record;
+         Super+Alt+G saves the last stretch of instant replay (and turns instant replay on when it's off). -->
+    <keybind key="W-A-r"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh record'" /></keybind>
+    <keybind key="W-A-S-r"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh record-area'" /></keybind>
+    <keybind key="W-A-g"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh replay-save'" /></keybind>
+    <!-- ==== end of Hearth Recorder -->
     <!-- Volume and power keys go to the shell (volume bar, over-amplification, Settings › Power button);
          wpctl directly if the shell isn't running. -->
     <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons up || wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+'" /></keybind>
