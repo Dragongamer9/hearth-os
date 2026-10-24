@@ -115,6 +115,10 @@ class Dev:
             try:
                 st = self.call('status', timeout=5)
                 self.id = st['me']['id']
+                if st['me']['name'] != self.name:
+                    # Named after the test's device (A, B) rather than the runner, as the person would name them.
+                    self.call('settings.set', {'name': self.name}, timeout=10)
+                    st = self.call('status', timeout=5)
                 return st
             except Exception:
                 time.sleep(0.2)
