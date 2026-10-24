@@ -313,24 +313,19 @@ impl Node {
     async fn host_pair(self: Arc<Self>, conn: Connection) {
         let remote = conn.remote_id().to_string();
         let short = remote.get(..8).unwrap_or("").to_string();
-        let pairing = {
-            let p = crate::lock(&self.pairing);
-            match &*p {
-                Some(x) if x.open() => x.clone(),
-                Some(_) => {
-                    drop(p);
-                    eprintln!("hearth-link: pairing: {short} tried, but the code expired");
-                    conn.close(VarInt::from_u32(403), b"pairing isn't open: the code expired");
-                    return;
-                }
-                None => { conn.close(VarInt::from_u32(403), b"pairing isn't open"); return; }
-            }
-        };
+        if crate::lock(&self.pairing).is_none() { conn.close(VarInt::from_u32(403), b"pairing isn't open"); return; }
         if self.pair_busy.swap(true, Ordering::SeqCst) {
             eprintln!("hearth-link: pairing: {short} tried while another device was pairing: asked to wait");
             conn.close(VarInt::from_u32(429), b"busy with another device: try again in a moment");
             return;
         }
+        let pairing = crate::lock(&self.pairing).clone().filter(|x| x.open());
+        let Some(pairing) = pairing else {
+            self.pair_busy.store(false, Ordering::SeqCst);
+            eprintln!("hearth-link: pairing: {short} tried, but the code expired");
+            conn.close(VarInt::from_u32(403), b"pairing isn't open: the code expired");
+            return;
+        };
         eprintln!("hearth-link: pairing: {short} connected");
         let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
         let left_if_wrong = crate::pair::MAX_TRIES.saturating_sub(pairing.tries + 1);
@@ -341,7 +336,13 @@ impl Node {
             me.set_event(json!({"state": "checking", "name": j.name, "kind": j.kind}));
         };
         let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::host(&conn, &self.key_bytes(), &self.name(), relay, &pairing, left_if_wrong, seen)).await;
+        self.after_pair_attempt(remote, short, r);
+        // The next attempt is taken only now, with the tries counted.
         self.pair_busy.store(false, Ordering::SeqCst);
+    }
+
+    fn after_pair_attempt(self: &Arc<Self>, remote: String, short: String, r: Result<Result<crate::pair::Joiner, (crate::pair::HostFail, crate::pair::Joiner)>, tokio::time::error::Elapsed>) {
+        let left_if_wrong = crate::lock(&self.pairing).as_ref().map(|p| crate::pair::MAX_TRIES.saturating_sub(p.tries + 1)).unwrap_or(0);
         use crate::pair::HostFail;
         match r {
             Ok(Ok(j)) => {
