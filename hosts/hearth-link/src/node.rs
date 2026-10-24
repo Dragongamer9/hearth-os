@@ -63,12 +63,14 @@ pub struct Node {
 fn transport() -> QuicTransportConfig {
     // HEARTH_LINK_TUNING=default: iroh's own settings (to compare).
     if std::env::var("HEARTH_LINK_TUNING").as_deref() == Ok("default") { return QuicTransportConfig::builder().max_concurrent_bidi_streams(VarInt::from_u32(256)).build(); }
-    // Big windows so one connection fills a fast link even with some latency (2.5 Gbit/s at 50 ms needs ~16 MB in
-    // flight); many streams so a copy's requests run side by side.
+    // Throughput comes from many streams side by side (16 by default), each with a 2 MiB window: 16 × 2 MiB in
+    // flight fills 2.5 Gbit/s up to ~100 ms away. Not bigger per stream: QUIC's reassembly (noq) closes the
+    // connection when one stream's buffer has more than 1024 gaps (lost packets), and 2 MiB is at most ~870 of
+    // them at the smallest packet size; 32 MiB windows did hit that on a lossy moment.
     QuicTransportConfig::builder()
-        .stream_receive_window(VarInt::from_u32(32 << 20))
-        .receive_window(VarInt::from_u32(512 << 20))
-        .send_window(512 << 20)
+        .stream_receive_window(VarInt::from_u32(2 << 20))
+        .receive_window(VarInt::from_u32(96 << 20))
+        .send_window(96 << 20)
         .max_concurrent_bidi_streams(VarInt::from_u32(256))
         .max_concurrent_uni_streams(VarInt::from_u32(16))
         .build()
