@@ -47,6 +47,7 @@ pub mod osk;   // the on-screen keyboard's settings and learned words (ui/osk, d
 pub mod overlay_link;
 pub mod paths;
 pub mod perf;
+pub mod picker;   // file and folder pickers, off the bridge
 pub mod power;
 pub mod procs;
 pub mod profile;
