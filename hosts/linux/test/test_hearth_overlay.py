@@ -102,6 +102,52 @@ class HearthOverlay(unittest.TestCase):
         r = self.run_overlay(STEAM_OVERLAY='1', DISPLAY=':1', XDG_RUNTIME_DIR='/somewhere')
         self.assertEqual(self.logged()[-1], 'env XDG_RUNTIME_DIR=/somewhere')
 
+    def test_game_mode_gives_chromium_fonts_it_can_read(self):
+        """0.6.5 on the Nvidia PC: Quick Access had no text. Chromium's own (older) fontconfig can't read fontconfig 2.17's
+        new conf.d files and found no font; the overlay gets a fonts.conf without them, the old generic rules and a
+        cache of its own named after the image's fonts."""
+        etc = self.dir / 'etc-fonts'
+        (etc / 'conf.d').mkdir(parents=True)
+        (etc / 'fonts.conf').write_text('<fontconfig>\n  <dir>/usr/share/fonts</dir>\n  <dir prefix="xdg">fonts</dir>\n</fontconfig>\n')
+        (etc / 'conf.d' / '10-hinting.conf').write_text('<fontconfig><match/></fontconfig>\n')
+        (etc / 'conf.d' / '48-guessfamily.conf').write_text('<fontconfig><test xsi:nil="true"/><const>sans-serif</const></fontconfig>\n')
+        (etc / 'conf.d' / '49-sansserif.conf').write_text('<fontconfig><const>monospace</const></fontconfig>\n')
+        fonts = self.dir / 'fonts'
+        fonts.mkdir()
+        (fonts / 'a.ttf').write_text('x')
+        el = self.dir / 'nimbus-env'
+        self.fake(el, 'echo "FONTCONFIG_FILE=${FONTCONFIG_FILE:-unset}" >> "%s"' % self.log)
+        env = dict(STEAM_OVERLAY='1', DISPLAY=':1', XDG_RUNTIME_DIR=str(self.run), HEARTH_FONTS_ETC=str(etc),
+                   HEARTH_FONT_DIRS=str(fonts), HEARTH_OVERLAY_ELECTRON=str(el), HEARTH_OVERLAY_NO_SESSION_ENV='1')
+        r = self.run_overlay(**env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        conf = self.run / 'hearth-overlay-fonts' / 'fonts.conf'
+        self.assertEqual(self.logged()[-1], f'FONTCONFIG_FILE={conf}')
+        text = conf.read_text()
+        self.assertIn(f'<include ignore_missing="yes">{etc}/conf.d/10-hinting.conf</include>', text)
+        self.assertNotIn('48-guessfamily.conf</include>', text)
+        self.assertNotIn('49-sansserif.conf</include>', text)
+        self.assertIn('<dir>/usr/share/fonts</dir>', text)
+        self.assertIn('<edit name="family" mode="append_last"><string>sans-serif</string></edit>', text)
+        caches = list((self.dir / '.cache' / 'hearth-overlay').glob('fontconfig-*'))
+        self.assertEqual(len(caches), 1)
+        self.assertIn(f'<cachedir>{caches[0]}</cachedir>', text)
+        self.assertIn('left out (fontconfig 2.17 only): 48-guessfamily.conf 49-sansserif.conf', r.stderr)
+        log = (self.run / 'hearth-overlay.log').read_text()
+        self.assertIn('Quick Access started by Handheld Daemon in Game Mode', log)
+        self.assertIn("fonts: Hearth's setup", log)
+        # The image's fonts change (an update): a new cache, the old one gone.
+        (fonts / 'b.ttf').write_text('y')
+        self.run_overlay(**env)
+        caches2 = list((self.dir / '.cache' / 'hearth-overlay').glob('fontconfig-*'))
+        self.assertEqual(len(caches2), 1)
+        self.assertNotEqual(caches2[0], caches[0])
+        # Turned off, or a FONTCONFIG_FILE of the user's own: left alone.
+        self.run_overlay(**env, HEARTH_OVERLAY_SYSTEM_FONTS='1')
+        self.assertEqual(self.logged()[-1], 'FONTCONFIG_FILE=unset')
+        self.run_overlay(**env, FONTCONFIG_FILE='/mine.conf')
+        self.assertEqual(self.logged()[-1], 'FONTCONFIG_FILE=/mine.conf')
+
     def test_refuses_root_and_a_missing_electron(self):
         r = self.run_overlay(STEAM_OVERLAY='1', FAKE_UID='0')
         self.assertEqual(r.returncode, 1)
