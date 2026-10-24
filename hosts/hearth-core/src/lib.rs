@@ -43,9 +43,11 @@ pub mod padmouse;
 pub mod manual;
 pub mod newos;
 pub mod osinstall;
+pub mod osk;   // the on-screen keyboard's settings and learned words (ui/osk, docs/OSK.md)
 pub mod overlay_link;
 pub mod paths;
 pub mod perf;
+pub mod picker;   // file and folder pickers, off the bridge
 pub mod power;
 pub mod procs;
 pub mod profile;
@@ -53,6 +55,8 @@ pub mod profiles;
 pub mod remote;
 pub mod renderer;
 pub mod signin_handoff;
+// ---- Store sign-ins kept through updates (backed up, put back when missing, said in the log at start)
+pub mod signins;
 pub mod space;
 pub mod steam;
 pub mod steam_ctl;
