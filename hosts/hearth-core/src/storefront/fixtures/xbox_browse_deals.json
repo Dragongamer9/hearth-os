@@ -1,0 +1,148 @@
+{
+ "channels": {
+  "BROWSE_CHANNELID=_FILTERS=eyJvcmRlcmJ5Ijp7ImlkIjoib3JkZXJieSIsImNob2ljZXMiOlt7ImlkIjoiRGlzY291bnRQZXJjZW50YWdlIGRlc2MifV19LCJQbGF5V2l0aCI6eyJpZCI6IlBsYXlXaXRoIiwiY2hvaWNlcyI6W3siaWQiOiJQQyJ9XX0sIlByaWNlIjp7ImlkIjoiUHJpY2UiLCJjaG9pY2VzIjpbeyJpZCI6Ik9uU2FsZSJ9XX19": {
+   "channelKey": "BROWSE_CHANNELID=_FILTERS=eyJvcmRlcmJ5Ijp7ImlkIjoib3JkZXJieSIsImNob2ljZXMiOlt7ImlkIjoiRGlzY291bnRQZXJjZW50YWdlIGRlc2MifV19LCJQbGF5V2l0aCI6eyJpZCI6IlBsYXlXaXRoIiwiY2hvaWNlcyI6W3siaWQiOiJQQyJ9XX0sIlByaWNlIjp7ImlkIjoiUHJpY2UiLCJjaG9pY2VzIjpbeyJpZCI6Ik9uU2FsZSJ9XX19",
+   "products": [
+    {
+     "productId": "BQXTS0SX4W0N"
+    },
+    {
+     "productId": "BNQQ3WVBNZCQ"
+    }
+   ],
+   "totalItems": 284
+  }
+ },
+ "productSummaries": [
+  {
+   "title": "Tomb Raider: Definitive Edition",
+   "productId": "BQXTS0SX4W0N",
+   "images": {
+    "boxArt": {
+     "url": "https://store-images.s-microsoft.com/image/apps.62760.68847167288522183.9fdea778-258f-40d6-9f9e-fab92915bc6d.8b72a483-cc36-481c-8955-b036d99c243e",
+     "width": 1080,
+     "height": 1080
+    },
+    "poster": {
+     "url": "https://store-images.s-microsoft.com/image/apps.35283.68847167288522183.9fdea778-258f-40d6-9f9e-fab92915bc6d.98c2dd25-9180-49e5-bdd3-6bdb1d857889",
+     "width": 720,
+     "height": 1080
+    },
+    "superHeroArt": {
+     "url": "https://store-images.s-microsoft.com/image/apps.29936.68847167288522183.9fdea778-258f-40d6-9f9e-fab92915bc6d.1384d782-b7b3-4a36-bbc6-bd817e308a4f",
+     "width": 1920,
+     "height": 1080
+    }
+   },
+   "specificPrices": {
+    "purchaseable": [
+     {
+      "skuId": "0001",
+      "availabilityId": "B3LBC2KPGND4",
+      "discountPercentage": 90.04502,
+      "eligibilityInfo": {
+       "eligibility": "None",
+       "type": "Unknown"
+      },
+      "availabilityActions": [
+       "Details",
+       "Fulfill",
+       "Purchase",
+       "Browse",
+       "Curate",
+       "Redeem"
+      ],
+      "endDateUtc": "11/05/2026 09:59:59",
+      "hasXPriceOffer": false,
+      "listPrice": 1.99,
+      "msrp": 19.99,
+      "currency": "USD"
+     }
+    ]
+   },
+   "averageRating": 4.6,
+   "ratingCount": 21913,
+   "includedWithPassesProductIds": [],
+   "availableOn": [
+    "XboxOne",
+    "XboxSeriesX",
+    "PC",
+    "XCloud"
+   ],
+   "releaseDate": "2014-01-28T00:00:00.0000000Z",
+   "publisherName": "Crystal Dynamics",
+   "developerName": "Crystal Dynamics",
+   "categories": [
+    "Action & adventure"
+   ],
+   "shortDescription": "The Definitive Edition of the critically acclaimed action-adventure has been rebuilt for next-gen consoles, featuring an",
+   "productKind": "Game"
+  },
+  {
+   "title": "Shadow of the Tomb Raider Definitive Edition",
+   "productId": "BNQQ3WVBNZCQ",
+   "images": {
+    "boxArt": {
+     "url": "https://store-images.s-microsoft.com/image/apps.41412.68112460555114547.f599eff6-c432-4510-af15-bfe339796812.6c84bc32-c1a0-4a5f-bfd3-08bee3ad6365",
+     "width": 1080,
+     "height": 1080,
+     "backgroundColor": "#FFFFFF"
+    },
+    "poster": {
+     "url": "https://store-images.s-microsoft.com/image/apps.23964.68112460555114547.f599eff6-c432-4510-af15-bfe339796812.955330ba-ec69-4007-a274-96058599d8f5",
+     "width": 720,
+     "height": 1080,
+     "backgroundColor": "#FFFFFF"
+    },
+    "superHeroArt": {
+     "url": "https://store-images.s-microsoft.com/image/apps.6674.68112460555114547.f599eff6-c432-4510-af15-bfe339796812.82807eb7-4599-4760-a6f2-d92bbbd9d272",
+     "width": 1920,
+     "height": 1080,
+     "backgroundColor": "#FFFFFF"
+    }
+   },
+   "specificPrices": {
+    "purchaseable": [
+     {
+      "skuId": "0001",
+      "availabilityId": "B3JQC55CNC8C",
+      "discountPercentage": 90.02251,
+      "eligibilityInfo": {
+       "eligibility": "None",
+       "type": "Unknown"
+      },
+      "availabilityActions": [
+       "Details",
+       "Purchase",
+       "Browse",
+       "Curate",
+       "Redeem"
+      ],
+      "endDateUtc": "11/05/2026 09:59:59",
+      "hasXPriceOffer": false,
+      "listPrice": 3.99,
+      "msrp": 39.99,
+      "currency": "USD"
+     }
+    ]
+   },
+   "averageRating": 4.4,
+   "ratingCount": 2298,
+   "includedWithPassesProductIds": [],
+   "availableOn": [
+    "PC",
+    "XboxOne",
+    "XboxSeriesX",
+    "XCloud"
+   ],
+   "releaseDate": "2019-11-05T00:00:00.0000000Z",
+   "publisherName": "Crystal Dynamics",
+   "developerName": "Eidos Montreal",
+   "categories": [
+    "Action & adventure"
+   ],
+   "shortDescription": "In Shadow of the Tomb Raider Definitive Edition experience the final chapter of Lara’s origin as she is forged into the ",
+   "productKind": "Game"
+  }
+ ]
+}

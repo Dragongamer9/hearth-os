@@ -58,6 +58,9 @@ pub mod steam;
 pub mod steam_ctl;
 pub mod steam_owned;
 pub mod store;
+// ---- Game Mode › Store (browsing Steam, GOG, Epic and Xbox; buying on their own pages)
+pub mod storefront;
+// ---- end of Game Mode › Store
 pub mod stores;
 pub mod system;
 pub mod sysinfo;

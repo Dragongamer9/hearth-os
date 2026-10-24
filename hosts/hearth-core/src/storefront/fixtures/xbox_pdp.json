@@ -1,0 +1,337 @@
+{
+ "$type": "Microsoft.Marketplace.Storefront.Contracts.V1.ResponseItem, Microsoft.Marketplace.Storefront.Contracts",
+ "Path": "/products/9NWQMVSB63N4?market=US&locale=en-US&deviceFamily=Windows.Desktop",
+ "ExpiryUtc": "2026-10-24T04:48:07.848274Z",
+ "Payload": {
+  "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ProductDetails, Microsoft.Marketplace.Storefront.Contracts",
+  "Accessible": false,
+  "IsDeviceCompanionApp": false,
+  "SupportUris": [
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.SupportUri, Microsoft.Marketplace.Storefront.Contracts",
+    "Uri": "mailto:appservices@microsoft.com"
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.SupportUri, Microsoft.Marketplace.Storefront.Contracts",
+    "Uri": "https://support.xbox.com/"
+   }
+  ],
+  "PublisherCopyrightInformation": "",
+  "PublisherAddress": "1 Microsoft Way, Redmond, WA, 98052, US",
+  "PublisherPhoneNumber": "+1 800-642-7676",
+  "Version": "",
+  "LastUpdateDateUtc": "2026-05-08T22:04:26Z",
+  "CategoryId": "Shooter",
+  "NavItemId": "games",
+  "NavId": "pcGaming",
+  "RevisionId": "2026-05-08T22:04:30.0038818Z",
+  "PdpBackgroundColor": "#FFFFFF",
+  "ContainsDownloadPackage": false,
+  "KeyIds": [],
+  "AllowedPlatforms": [
+   "Windows.Desktop"
+  ],
+  "InstallationTerms": "Get this app while signed in to your Microsoft account and install on up to ten Windows devices.",
+  "XboxXpa": false,
+  "PrimaryPackageIdentity": {
+   "$type": "Microsoft.Marketplace.Storefront.Contracts.V7.PackageIdentity, Microsoft.Marketplace.Storefront.Contracts",
+   "Pfns": [
+    "Microsoft.Chelan_8wekyb3d8bbwe"
+   ],
+   "ContentIds": [
+    "050fbb4d-16e5-42a8-945a-963d007974aa"
+   ],
+   "ProductId": "9N6VPDLQDVT5",
+   "IsDownloadable": true
+  },
+  "DetailsDisplayConfiguration": {
+   "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.DetailsDisplayConfiguration, Microsoft.Marketplace.Storefront.Contracts"
+  },
+  "WarningMessages": [
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.WarningMessage, Microsoft.Marketplace.Storefront.Contracts",
+    "Header": "Seizure warnings",
+    "Text": "Photosensitive seizure warning",
+    "Target": "https://support.xbox.com/xbox-one/console/photosensitive-seizure-warning"
+   }
+  ],
+  "IsMicrosoftProduct": true,
+  "HasParentBundles": false,
+  "HasAlternateEditions": true,
+  "ProductPartD": {
+   "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ProductPartD, Microsoft.Marketplace.Storefront.Contracts",
+   "Pdp": "pdpgamelayout1",
+   "ModuleTags": [
+    "XboxLiveTierFull",
+    "GamesDefaultTabs"
+   ]
+  },
+  "VideoProductType": 0,
+  "IsMsixvc": false,
+  "CategoryIds": [
+   "Shooter"
+  ],
+  "Installer": {
+   "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.Installer, Microsoft.Marketplace.Storefront.Contracts",
+   "Type": "WindowsUpdate",
+   "Id": "9NWQMVSB63N4"
+  },
+  "CatalogSource": "BigCat",
+  "IsPrivatePreview": false,
+  "IsFullDownloadEnabled": true,
+  "Categories": [
+   "Shooter"
+  ],
+  "Images": [
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+    "ImageType": "Poster",
+    "BackgroundColor": "#FFFFFF",
+    "ForegroundColor": "#FFFFFF",
+    "Caption": "",
+    "ImagePositionInfo": "",
+    "Url": "https://store-images.s-microsoft.com/image/apps.12973.14099260252310267.aaf88f10-6d5d-4b14-9021-3c41790d443b.6d29b59e-72c0-44f6-8388-62899ea15f24",
+    "Height": 2160,
+    "Width": 1440
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+    "ImageType": "BoxArt",
+    "BackgroundColor": "#FFFFFF",
+    "ForegroundColor": "#FFFFFF",
+    "Caption": "",
+    "ImagePositionInfo": "",
+    "Url": "https://store-images.s-microsoft.com/image/apps.26583.14099260252310267.aaf88f10-6d5d-4b14-9021-3c41790d443b.b16f1ac8-1f58-47f8-a60d-d35dc0b4818d",
+    "Height": 2160,
+    "Width": 2160
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+    "ImageType": "logo",
+    "BackgroundColor": "#FFFFFF",
+    "ForegroundColor": "#FFFFFF",
+    "Caption": "",
+    "ImagePositionInfo": "",
+    "Url": "https://store-images.s-microsoft.com/image/apps.5315.14099260252310267.19cb9039-739a-46c0-94e2-0a95d8940b4d.e49ef100-9f60-4f9d-8682-027fdd9f3ad1",
+    "Height": 300,
+    "Width": 300
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+    "ImageType": "hero",
+    "BackgroundColor": "#FFFFFF",
+    "ForegroundColor": "#FFFFFF",
+    "Caption": "",
+    "ImagePositionInfo": "",
+    "Url": "https://store-images.s-microsoft.com/image/apps.6166.14099260252310267.aaf88f10-6d5d-4b14-9021-3c41790d443b.d7206f58-06ef-4c66-b74d-8434945959ae",
+    "Height": 2160,
+    "Width": 3840
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+    "ImageType": "screenshot",
+    "BackgroundColor": "#FFFFFF",
+    "ForegroundColor": "#FFFFFF",
+    "Caption": "",
+    "ImagePositionInfo": "Desktop/1",
+    "Url": "https://store-images.s-microsoft.com/image/apps.6502.14099260252310267.aaf88f10-6d5d-4b14-9021-3c41790d443b.b80dbdc5-f463-4272-bb91-cf3bc1bbc15f",
+    "Height": 2160,
+    "Width": 3840
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+    "ImageType": "screenshot",
+    "BackgroundColor": "#FFFFFF",
+    "ForegroundColor": "#FFFFFF",
+    "Caption": "",
+    "ImagePositionInfo": "Desktop/10",
+    "Url": "https://store-images.s-microsoft.com/image/apps.6150.14099260252310267.aaf88f10-6d5d-4b14-9021-3c41790d443b.38c580bb-f38f-4c0c-abb8-31f132842a47",
+    "Height": 2160,
+    "Width": 3840
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V2.ImageItem, Microsoft.Marketplace.Storefront.Contracts",
+    "ImageType": "screenshot",
+    "BackgroundColor": "#FFFFFF",
+    "ForegroundColor": "#FFFFFF",
+    "Caption": "",
+    "ImagePositionInfo": "Desktop/2",
+    "Url": "https://store-images.s-microsoft.com/image/apps.61882.14099260252310267.aaf88f10-6d5d-4b14-9021-3c41790d443b.a0e664f2-31f3-4aa7-a81b-2d999b36c35b",
+    "Height": 2160,
+    "Width": 3840
+   }
+  ],
+  "ProductId": "9NWQMVSB63N4",
+  "Title": "Halo: Combat Evolved Anniversary",
+  "ShortTitle": "HCEA",
+  "Description": "Halo: Combat Evolved Anniversary* comes to PC as the second installment of Halo: The Master Chief Collection. Now optimized for PC, relive the spectacularly remastered edition of the original Halo campaign, created in celebration of the 10th anniversary of one of the most beloved franchises in gaming history. After crash-landing on a mysterious ringworld known as Halo, the Master Chief is tasked with helping the remaining humans survive against the overwhelming Covenant forces. While doing so, he and Cortana uncover Halo's dark secret and fight to protect all life in the galaxy. \r\n \r\nGame Features:\r\n• PC Settings/Optimizations: Halo: Combat Evolved Anniversary is now optimized for PC and looking better than ever at up to 4k UHD and at 60+ FPS.* Other PC native settings include customizable mouse and keyboard support, ultrawide support, FOV customization, and more. \r\n• Campaign: Experience the second chapter in the Halo saga and fight your way as the Master Chief through 10 unforgettable missions.\r\n• Anniversary Features: Toggle between the remastered graphics in the Anniversary edition and the graphics from the original Halo: Combat Evolved campaign. \r\n• Multiplayer: Continue your ",
+  "ShortDescription": "Halo: Combat Evolved Anniversary comes to PC as the second installment of Halo: The Master Chief Collection, chronicling the rise of the legendary Master Chief. ",
+  "DeveloperName": "343 Industries, Bungie",
+  "PublisherName": "Xbox Game Studios",
+  "PublisherId": "10101150",
+  "IsUniversal": false,
+  "Language": "en-us",
+  "Price": 0.0,
+  "DisplayPrice": "Included",
+  "StrikethroughPrice": "​",
+  "RecentLowestPriceMessage": "",
+  "CurrencyMismatch": false,
+  "AverageRating": 3.8,
+  "RatingCount": 2032,
+  "HasFreeTrial": false,
+  "ProductType": "Application",
+  "ProductFamilyName": "Games",
+  "MediaType": "GAMES",
+  "ContentIds": [],
+  "PackageFamilyNames": [
+   ""
+  ],
+  "AlternateIds": [
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.AlternateId, Microsoft.Marketplace.Storefront.Contracts",
+    "AlternateIdType": "LegacyXboxProductId",
+    "AlternateIdValue": "51574e39-564d-3053-c042-36334e345200",
+    "AlternatedIdTypeString": "LegacyXboxProductId"
+   }
+  ],
+  "CollectionItemType": "Product",
+  "NumberOfSeasons": 0,
+  "ReleaseDateUtc": "2020-03-03T18:00:00Z",
+  "DurationInSeconds": 0,
+  "IsCompatible": false,
+  "IsPurchaseEnabled": true,
+  "DeveloperOptOutOfSDCardInstall": false,
+  "HasAddOns": true,
+  "HasThirdPartyIAPs": false,
+  "VoiceTitle": "",
+  "PlaintextPassName": "Xbox Game Pass",
+  "GlyphTextPassName": "StoreGlyphXboxGamePassInline",
+  "SubscriptionDiscountMessageTemplate": "with {0}",
+  "Capabilities": [
+   "Online co-op (2)",
+   "Online multiplayer  (2-16)",
+   "Single player"
+  ],
+  "HideFromCollections": true,
+  "IsDownloadable": true,
+  "HideFromDownloadsAndUpdates": false,
+  "GamingOptionsXboxLive": true,
+  "ActionOverrides": [
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ActionOverride, Microsoft.Marketplace.Storefront.Contracts",
+    "ActionType": "InstallOnDevices",
+    "Cases": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ActionOverrideCase, Microsoft.Marketplace.Storefront.Contracts",
+      "Conditions": {
+       "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ActionOverrideConditions, Microsoft.Marketplace.Storefront.Contracts",
+       "ClassicAppKeys": [],
+       "Platform": {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.PlatformCondition, Microsoft.Marketplace.Storefront.Contracts",
+        "PlatformName": "Windows.Xbox"
+       }
+      },
+      "Visibility": false
+     }
+    ]
+   },
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ActionOverride, Microsoft.Marketplace.Storefront.Contracts",
+    "ActionType": "share",
+    "Cases": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ActionOverrideCase, Microsoft.Marketplace.Storefront.Contracts",
+      "Conditions": {
+       "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ActionOverrideConditions, Microsoft.Marketplace.Storefront.Contracts",
+       "ClassicAppKeys": [],
+       "Platform": {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.PlatformCondition, Microsoft.Marketplace.Storefront.Contracts",
+        "PlatformName": "Windows.Xbox"
+       }
+      },
+      "Visibility": false
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ActionOverrideCase, Microsoft.Marketplace.Storefront.Contracts",
+      "Conditions": {
+       "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ActionOverrideConditions, Microsoft.Marketplace.Storefront.Contracts",
+       "ClassicAppKeys": [],
+       "Platform": {
+        "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.PlatformCondition, Microsoft.Marketplace.Storefront.Contracts",
+        "PlatformName": "Windows.Holographic"
+       }
+      },
+      "Visibility": false
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V3.ActionOverrideCase, Microsoft.Marketplace.Storefront.Contracts",
+      "Visibility": true,
+      "Uri": "https://apps.microsoft.com/detail/{productId}?hl={locale}&gl={region}&ocid=pdpshare"
+     }
+    ]
+   }
+  ],
+  "AvailableDevicesDisplayText": "",
+  "AvailableDevicesNarratorText": "PC",
+  "CapabilityXboxEnhanced": false,
+  "ApproximateSizeInBytes": 146733297664,
+  "MaxInstallSizeInBytes": 0,
+  "SkusSummary": [
+   {
+    "$type": "Microsoft.Marketplace.Storefront.Contracts.V8.SkuSummary, Microsoft.Marketplace.Storefront.Contracts",
+    "SkuId": "0010",
+    "MSRP": 9.99,
+    "DisplayMSRP": "$9.99",
+    "SalePrices": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+      "Price": 9.99,
+      "DisplayPrice": "$9.99",
+      "BadgeId": "default"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+      "Conditions": {
+       "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePriceConditions, Microsoft.Marketplace.Storefront.Contracts",
+       "Type": "EntitlementId",
+       "Ids": [
+        "CFQ7TTC0KGQ8"
+       ]
+      },
+      "Price": 0.0,
+      "DisplayPrice": "Free",
+      "BadgeId": "gamepass"
+     },
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePrice, Microsoft.Marketplace.Storefront.Contracts",
+      "Conditions": {
+       "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.SalePriceConditions, Microsoft.Marketplace.Storefront.Contracts",
+       "Type": "EntitlementId",
+       "Ids": [
+        "CFQ7TTC0P85B"
+       ]
+      },
+      "Price": 0.0,
+      "DisplayPrice": "Free",
+      "BadgeId": "gamepass"
+     }
+    ],
+    "IncludedWith": [
+     {
+      "$type": "Microsoft.Marketplace.Storefront.Contracts.V9.IncludedProgram, Microsoft.Marketplace.Storefront.Contracts",
+      "ProductIds": [
+       "CFQ7TTC0KGQ8",
+       "CFQ7TTC0P85B"
+      ],
+      "Name": "Game Pass Premium • Ultimate • PC",
+      "BadgeId": "gamepass"
+     }
+    ]
+   }
+  ],
+  "IsGamingAppOnly": false,
+  "SupportsInstantGaming": false,
+  "RequireDeviceRegistration": false,
+  "SupportsIntelligentDelivery": false
+ }
+}
