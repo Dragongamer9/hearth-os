@@ -58,10 +58,13 @@ jobs:
 
       - name: Check image sizes against the RT8 partitions
         run: |
-          python3 -I tools/bootimg.py info out/boot.img
-          python3 -I tools/bootimg.py info out/vendor_boot.img
+          echo "::notice title=rt8 out/::$(ls -l out | sed ':a;N;$!ba;s/\n/%0A/g')"
           for f in boot vendor_boot; do
-            test "$(stat -c%s out/$f.img)" -le 67108864 || { echo "$f.img too big"; exit 1; }
+            test -f out/$f.img || { echo "::error::out/$f.img missing"; exit 1; }
+            info=$(python3 -I tools/bootimg.py info out/$f.img) || { echo "::error::$f.img does not parse"; exit 1; }
+            echo "::notice title=rt8 $f.img::$(echo "$info" | sed ':a;N;$!ba;s/\n/%0A/g')"
+            size=$(stat -c%s out/$f.img)
+            test "$size" -le 67108864 || { echo "::error::$f.img is $size bytes, over the 64 MiB partition"; exit 1; }
           done
 
       - uses: actions/upload-artifact@v4
