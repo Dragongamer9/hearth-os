@@ -1007,6 +1007,111 @@ const path = require('path');
   } catch (e) { errors.push('guide over a game: ' + e.message.split('\n')[0]); }
   await gp.close();
 
+  // The on-screen keyboard driven by a real controller (the Gamepad API, as Game Mode on Linux reads it), not input():
+  // in 0.6.5 pollPadsNow threw "Cannot access 'ax' before initialization" every frame while the keyboard had the
+  // selection, so it came up but the controller did nothing on it. Each place Game Mode types: search (Y), the
+  // Library's "Search your games" prompt, Send logs' "What happened?", a password prompt, and Hearth's own presses
+  // (Quick Access / the overlay / the Windows host: onSysEvent 'pad'). Send logs must say which way presses came.
+  {
+    const op = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    op.on('pageerror', e => errors.push('keyboard with a controller: ' + e.message));
+    const oerr = m => errors.push('keyboard with a controller: ' + m);
+    try {
+      await op.goto('file://' + path.resolve(__dirname, '../ui/index.html'));
+      await op.waitForTimeout(1200);
+      await op.evaluate(() => {
+        const pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0],
+                      buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+        window.__pad = pad; navigator.getGamepads = () => [pad, null, null, null];
+        window.__sent = []; const realSend = window.send;
+        window.send = m => { window.__sent.push(m); try { return realSend(m); } catch (e) { return null; } };
+        closeAll(); S.history = []; navigate('home', {}, false);
+      });
+      const B = { a: 0, b: 1, x: 2, y: 3, up: 12, down: 13, left: 14, right: 15 };
+      const press = async (k) => {
+        await op.evaluate(i => { window.__pad.buttons[i] = { pressed: true, value: 1 }; }, B[k]); await op.waitForTimeout(90);
+        await op.evaluate(i => { window.__pad.buttons[i] = { pressed: false, value: 0 }; }, B[k]); await op.waitForTimeout(90);
+      };
+      const logs = () => op.evaluate(() => window.__sent.filter(m => m && m.type === 'log').map(m => m.text));
+      const errs = async () => (await logs()).filter(t => /^controller: /.test(t));
+      // Moves right once and presses A, all on the controller: one more character, the one that was selected.
+      const typeOne = async (where, textOf) => {
+        const before = await op.evaluate(textOf);
+        const st0 = await op.evaluate(() => ({ owns: oskOwns(), sel: GOSK.engine && GOSK.engine.view().sel }));
+        if (!st0.owns) { oerr(where + ": the keyboard didn't have the selection"); return; }
+        await press('right');
+        const st1 = await op.evaluate(() => { const v = GOSK.engine.view(), k = v.rows[v.sel.r][v.sel.c]; return { sel: v.sel, k: k && k.t === 'ch' ? k.v : null }; });
+        if (st1.sel.r === st0.sel.r && st1.sel.c === st0.sel.c) oerr(where + ': D-pad right on the controller did not move on the keyboard');
+        await press('a');
+        const after = await op.evaluate(textOf);
+        if (after.length !== before.length + 1 || (st1.k && after.slice(-1).toLowerCase() !== st1.k.toLowerCase())) oerr(`${where}: A on the controller typed ${JSON.stringify(before)} → ${JSON.stringify(after)} (key ${st1.k})`);
+        // The left stick reaches the keyboard: the Ember Wheel (the default) picks a petal; without it the selection moves.
+        const s0 = await op.evaluate(() => GOSK.engine.view().sel);
+        await op.evaluate(() => { window.__pad.axes[0] = 0.95; }); await op.waitForTimeout(450);
+        const sw = await op.evaluate(() => { const v = GOSK.engine.view(); return { wheel: !!(v.wheel && v.wheel.active), sel: v.sel }; });
+        await op.evaluate(() => { window.__pad.axes[0] = 0; }); await op.waitForTimeout(150);
+        if (!sw.wheel && s0.r === sw.sel.r && s0.c === sw.sel.c) oerr(where + ': the left stick did nothing on the keyboard (no Ember Wheel petal, no move)');
+        if (await op.evaluate(() => { const v = GOSK.engine.view(); return !!(v.wheel && v.wheel.active); })) oerr(where + ': the Ember Wheel stayed open after the stick was let go');
+      };
+      // 1) Search: Y on the controller.
+      await press('y');
+      if (!(await op.evaluate(() => S.layers.at(-1) === 'search' && !!document.querySelector('#search .kb .hosk')))) oerr('Y on the controller did not open search with the keyboard');
+      await typeOne('search', () => query);
+      await press('b');
+      if (await op.evaluate(() => oskOwns())) oerr('search: B on the controller did not put the keyboard away');
+      // 2) The Library's "Search your games", 3) Send logs' note, 4) a password: openPrompt, as they call it.
+      for (const [where, o] of [['Library search prompt', { title: 'Search your games', value: '' }], ['Send logs note', { title: 'What happened?', value: '' }], ['password prompt', { title: 'Wi-Fi password', secret: true }]]) {
+        await op.evaluate(o => { closeAll(); window.__pr = openPrompt(o); }, o); await op.waitForTimeout(250);
+        await typeOne(where, () => prompt ? prompt.text : '');
+        await op.evaluate(() => closeAll()); await op.waitForTimeout(120);
+      }
+      // Send logs' button itself, when the preview draws it.
+      const dev = await op.evaluate(() => { S.settingsTab = 'system'; navigate('settings', {}, false); const b = document.querySelector('[data-act="sendLogsDev"]'); if (!b) return null; act(b); return S.layers.at(-1); });
+      if (dev !== null) { await op.waitForTimeout(250); if (dev !== 'prompt') oerr('Send logs: no "What happened?" prompt'); else await typeOne('Send logs (from Settings)', () => prompt ? prompt.text : ''); await op.evaluate(() => closeAll()); }
+      const L = await logs();
+      if (!L.some(t => /^osk (search|prompt): keyboard has the selection · controller read here \(Gamepad API\) · pads seen 1/.test(t))) oerr("Send logs doesn't say the keyboard got the controller from the Gamepad API: " + JSON.stringify(L.filter(t => /^osk/.test(t))));
+      if (!L.some(t => /^osk (search|prompt): first press \w+ via gamepad$/.test(t))) oerr("Send logs doesn't say which way the first press reached the keyboard");
+      // 5) Hearth's own presses (the overlay, Quick Access, the Windows host, Multi-seat): no Gamepad API here.
+      await op.evaluate(() => { PAD.host = true; closeAll(); window.__pr = openPrompt({ title: 'Message' }); });
+      await op.waitForTimeout(250);
+      const h = await op.evaluate(() => { const owns = oskOwns(), before = prompt.text, s0 = GOSK.engine.view().sel; onSysEvent('pad', { b: 'right' }); const s1 = GOSK.engine.view().sel; onSysEvent('pad', { b: 'a' }); return { owns, moved: s0.c !== s1.c || s0.r !== s1.r, typed: prompt.text.length - before.length }; });
+      if (!h.owns || !h.moved || h.typed !== 1) oerr("Hearth's own controller presses don't drive the keyboard: " + JSON.stringify(h));
+      if (!(await logs()).some(t => /^osk prompt: first press \w+ via host$/.test(t))) oerr("Send logs doesn't say the keyboard's presses came from Hearth (host)");
+      await op.evaluate(() => { PAD.host = false; closeAll(); });
+      const e = await errs();
+      if (e.length) oerr('the controller loop threw: ' + e[0].split('\n')[0]);
+      await op.evaluate(() => { delete navigator.getGamepads; });
+      console.log('on-screen keyboard with a controller (Gamepad API and Hearth host): search, Library search, Send logs, password ok');
+    } catch (e) { oerr(e.message.split('\n')[0]); }
+    await op.close();
+  }
+
+  // The same with the docked keyboard Hearth's apps and Hearth Browser open (HearthOSK.open, which reads the controller
+  // itself): one app page per kind (hearth-time's notes, hearth-maps' search, hearth-contacts).
+  for (const app of ['hearth-time/ui/notes.html', 'hearth-maps/ui/index.html', 'hearth-contacts/ui/index.html']) {
+    const ap = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const aerr = m => errors.push(`keyboard with a controller (${app}): ` + m);
+    ap.on('pageerror', e => aerr(e.message));
+    try {
+      await ap.addInitScript(() => {
+        const pad = { id: 'Xbox Wireless Controller (test)', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0],
+                      buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+        window.__pad = pad; Object.defineProperty(navigator, 'getGamepads', { value: () => [pad, null, null, null], configurable: true });
+      });
+      await ap.goto('file://' + path.resolve(__dirname, '../hosts/' + app));
+      await ap.waitForTimeout(900);
+      const ok = await ap.evaluate(() => { if (!window.HearthOSK) return false; const i = document.createElement('input'); i.id = '__oskt'; document.body.appendChild(i); i.focus(); HearthOSK.open({ target: i }); return HearthOSK.isOpen(); });
+      if (!ok) { aerr('the keyboard did not open'); await ap.close(); continue; }
+      const press = async i => { await ap.evaluate(i => { window.__pad.buttons[i] = { pressed: true, value: 1 }; }, i); await ap.waitForTimeout(90); await ap.evaluate(i => { window.__pad.buttons[i] = { pressed: false, value: 0 }; }, i); await ap.waitForTimeout(90); };
+      await press(15); await press(0); await press(15); await press(0);
+      const v = await ap.evaluate(() => document.getElementById('__oskt').value);
+      if (v.length !== 2) aerr('D-pad and A on the controller typed ' + JSON.stringify(v));
+      await press(1);
+      if (await ap.evaluate(() => HearthOSK.isOpen())) aerr('B on the controller did not close the keyboard');
+    } catch (e) { aerr(e.message.split('\n')[0]); }
+    await ap.close();
+  }
+
   // Hearth Friends on Matrix (the preview's made-up account): the Friends screen's two halves (Hearth Friends and the
   // stores' friends), friends with "Playing" and Joinable, a chat with a game invite card (Play, Join server, Join via
   // Steam), a Play together request (let them join / not now), a picture, the emoji grid, Requests, Settings (privacy,
