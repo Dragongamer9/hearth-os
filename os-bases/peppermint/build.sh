@@ -1063,6 +1063,39 @@ DESKTOP
 fi
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # ---- end of Hearth Contacts and Hearth Maps
+
+# ------------------------------------------------------------------ Hearth Friends (hosts/hearth-friends)
+# Friends, chats and game invites on Matrix (end-to-end encrypted), for Game Mode's Friends screen, Quick Access and
+# Mantel's Friends panel. Built with the app (base-peppermint.yml) and carried in os/nimbus-app. Its session and store key
+# live in GNOME Keyring (the Secret Service, which Hearth's session starts). A user service, started with the session
+# (Hearth's core and `hearth-friends call` also start it when it isn't running). docs/FRIENDS.md.
+"${APT[@]}" libsecret-1-0 || true
+if [ -x /ctx/nimbus-app/hearth-friends ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-friends /usr/bin/hearth-friends
+  if ldd /usr/bin/hearth-friends | grep "not found"; then echo "warning: hearth-friends is missing the libraries above"; fi
+  install -d /usr/lib/systemd/user
+  cat > /usr/lib/systemd/user/hearth-friends.service <<'UNIT'
+[Unit]
+Description=Hearth Friends (Matrix chat, presence and game invites)
+After=graphical-session-pre.target
+
+[Service]
+ExecStart=/usr/bin/hearth-friends serve
+Restart=on-failure
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=default.target
+UNIT
+  systemctl --global enable hearth-friends.service 2>/dev/null \
+    || { mkdir -p /etc/systemd/user/default.target.wants && ln -sf /usr/lib/systemd/user/hearth-friends.service /etc/systemd/user/default.target.wants/hearth-friends.service; }
+else
+  echo "warning: hearth-friends wasn't built, so this image goes without Hearth Friends"
+fi
+# The chat's emoji picker uses Emoji & symbols' list (hosts/hearth-emoji/ui/emoji-data.js).
+[ -s /ctx/nimbus-app/emoji-data.js ] && install -Dm644 /ctx/nimbus-app/emoji-data.js /usr/share/nimbus/emoji-data.js
+# ---- end of Hearth Friends
 # ---- Hearth Office (hosts/hearth-office): Write, Sheets and Slides, built by CI with the app (base-peppermint.yml) and
 # carried in os/nimbus-app/office. office/install.sh puts in the program (hearth-write, hearth-sheets and
 # hearth-slides are links to it), the menu entries and the .hslides file type (the icons are in Hearth's icon set); they're

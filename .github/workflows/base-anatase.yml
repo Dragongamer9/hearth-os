@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**']
+    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -171,6 +171,23 @@ jobs:
           done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth Contacts and Hearth Maps
+      # ---- Hearth Friends (hosts/hearth-friends): friends, chats and game invites on Matrix, end-to-end encrypted. Its
+      # service is put beside the app in hearth-app.tar with Emoji & symbols' list for the chat's emoji picker; build.sh
+      # installs /usr/bin/hearth-friends and its user service. Not fatal: without it Friends shows Steam's friends only.
+      - name: Build Hearth Friends
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          sudo apt-get install -y -qq libdbus-1-dev cmake >/dev/null || true
+          mkdir -p /tmp/app
+          cp hosts/hearth-emoji/ui/emoji-data.js /tmp/app/emoji-data.js
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" hosts/hearth-friends/Cargo.toml
+          if (cd hosts/hearth-friends && cargo build --release); then
+            cp "$CARGO_TARGET_DIR/release/hearth-friends" /tmp/app/hearth-friends
+          else echo "::warning title=hearth-friends::it didn't build, so this image is made without Hearth Friends"; fi
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth Friends
       # ---- Hearth Text (hosts/hearth-text), the text editor: built the same way and put beside the app in
       # hearth-app.tar (build.sh installs it as /usr/bin/hearth-text and makes it the default for text
       # files). Not fatal: without it the image is still made.
@@ -567,6 +584,11 @@ jobs:
           warn "Hearth Maps may ask GeoClue for Where am I" "test -f /etc/geoclue/conf.d/90-hearth-maps.conf"
           warn "the Contacts and Maps icons are installed" "test -f /usr/share/icons/hicolor/scalable/apps/hearth-contacts.svg && test -f /usr/share/icons/hicolor/scalable/apps/hearth-maps.svg"
           # ---- end of Hearth Contacts and Hearth Maps
+          # ---- Hearth Friends
+          warn "Hearth Friends is installed and finds its libraries" "test -x /usr/bin/hearth-friends && ! ldd /usr/bin/hearth-friends | grep -q 'not found' && /usr/bin/hearth-friends --version"
+          warn "Hearth Friends' user service is there and enabled" "test -f /usr/lib/systemd/user/hearth-friends.service && test -e /etc/systemd/user/default.target.wants/hearth-friends.service"
+          warn "the chat's emoji list is installed" "test -s /usr/share/nimbus/emoji-data.js"
+          # ---- end of Hearth Friends
           echo "--- default apps (Hearth's apps open everything, Settings › Default apps changes it)"
           check "Hearth's default apps were written (hearth-system defaults-system)" "grep -q \"^# Hearth's default apps\" /etc/xdg/nimbus-mimeapps.list && grep -q \"^# Hearth's default apps\" /usr/share/applications/mimeapps.list"
           check "xdg-mime is installed" "command -v xdg-mime"
