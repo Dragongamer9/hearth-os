@@ -21,6 +21,53 @@ const path = require('path');
   // Every screen, every Settings page, every home layout.
   for (const v of ['home', 'library', 'downloads', 'friends', 'shots', 'stores'])
     await step('screen ' + v, v => { S.layers = []; navigate(v, {}, false); }, v);
+  // Game Mode › Store (hearth-core storefront): each store's page from the preview's data, LB/RB between stores, a
+  // game's page with the right button (Play/Install when it's in your library, Sign in when the store isn't, Buy on
+  // the store's own page otherwise), searching, and B back to the store. Pictures for release.yml.
+  const shopCard = t => page.evaluate(t => { const c = [...document.querySelectorAll('#view .sft')].find(e => e.querySelector('.sft-t').textContent === t); if (!c) throw new Error('no card for ' + t); return c.dataset.k; }, t);
+  const shopOpen = async (store, title) => {
+    await page.evaluate(s => { S.layers = []; if (SHOP.page) shopBack(); shopTab(s); }, store);
+    await page.waitForTimeout(400);
+    const k = await shopCard(title);
+    await page.evaluate(k => act(document.querySelector(`#view [data-k="${k}"]`)), k);
+    await page.waitForTimeout(400);
+    return page.evaluate(() => { const b = document.querySelector('#view [data-k="sf-buy"]'); return b ? { act: b.dataset.act, text: b.textContent.trim(), v: b.dataset.v || '' } : null; });
+  };
+  await step('store page', async () => {
+    S.layers = []; S.history = []; SHOP.home = {}; SHOP.page = null; SHOP.store = 'steam'; navigate('shop', {}, false);
+    await new Promise(r => setTimeout(r, 500));
+    for (const k of ['sf-t-steam', 'sf-t-gog', 'sf-t-epic', 'sf-t-xbox', 'sf-search', 'sf-hero', 'sf-featured-0', 'sf-deals-0', 'sf-top-0'])
+      if (!document.querySelector(`#view [data-k="${k}"]`)) throw new Error('no ' + k);
+    if (!/-50%/.test(document.querySelector('#view [data-k="sf-deals-0"]').textContent)) throw new Error("a deal doesn't show its discount");
+    if (!/Buying opens Steam's own store/.test(document.querySelector('#view').textContent)) throw new Error("Steam's account line is missing");
+    renderMenu(); if (!document.querySelector('#menu [data-k="m-shop"]')) throw new Error('Store is not in the menu');
+    input('rb'); await new Promise(r => setTimeout(r, 400));
+    if (SHOP.store !== 'gog' || !document.querySelector('#view [data-k="sf-t-gog"].on')) throw new Error('RB did not go to GOG: ' + SHOP.store);
+    input('lb'); if (SHOP.store !== 'steam') throw new Error('LB did not go back to Steam');
+  });
+  try {
+    const owned = await shopOpen('gog', 'Hollow Pines');   // in the preview's library, installed
+    if (!owned || owned.act !== 'shopLib' || owned.v !== 'play') errors.push('store: a game in your library offers ' + JSON.stringify(owned));
+    const back = await page.evaluate(() => { back(); return { page: !!SHOP.page, focus: focused && focused.dataset.k }; });
+    if (back.page || !/^sf-/.test(back.focus || '')) errors.push("store: B on a game's page didn't go back to the store: " + JSON.stringify(back));
+    const signIn = await shopOpen('epic', 'Arc Runner');   // Epic isn't signed in in the preview
+    if (!signIn || signIn.act !== 'shopSignIn' || !/Sign in to Epic Games/.test(signIn.text)) errors.push('store: an Epic game while signed out offers ' + JSON.stringify(signIn));
+    const buy = await shopOpen('xbox', 'Halcyon Drive');
+    if (!buy || buy.act !== 'shopWeb' || buy.v !== 'buy' || !/Buy on Xbox/.test(buy.text)) errors.push('store: an Xbox game offers ' + JSON.stringify(buy));
+    const steam = await shopOpen('steam', 'Copperline');
+    if (!steam || steam.act !== 'shopSteam' || !/Buy in Steam/.test(steam.text)) errors.push('store: a Steam game offers ' + JSON.stringify(steam));
+    const page2 = await page.evaluate(() => ({ stats: [...document.querySelectorAll('#view .gstat .k')].map(e => e.textContent).join(' '), linux: (document.querySelector('#view .pdb') || {}).textContent, about: /placeholder description/.test(document.querySelector('#view .shop-desc') ? document.querySelector('#view .shop-desc').textContent : '') }));
+    if (page2.stats !== 'Price Rating On Linux Released Developer' || page2.linux !== 'Gold' || !page2.about) errors.push("store: the game's page is missing something: " + JSON.stringify(page2));
+    await step('store search', async () => {
+      if (SHOP.page) shopBack();
+      shopDoSearch('steam', 'lantern'); await new Promise(r => setTimeout(r, 300));
+      const r = document.querySelector('#view [data-k="sf-r-0"]');
+      if (!r || !/Lantern Keep/.test(r.textContent)) throw new Error('no search result');
+      if (!document.querySelector('#view [data-k="sf-clear"]')) throw new Error('no Clear');
+      shopDoSearch('steam', '');
+      if (document.querySelector('#view [data-k="sf-r-0"]')) throw new Error("Clear left the results");
+    });
+  } catch (e) { errors.push('store: ' + e.message.split('\n')[0]); }
   // A game's settings, and its controller layout editor (Hearth Input).
   await step('screen gameset', () => { S.layers = []; navigate('gameset', {game: (GAMES.find(g => !g.cloud) || GAMES[0]).id}, false); });
   await step('screen inputmap', async () => {
@@ -960,6 +1007,83 @@ const path = require('path');
   } catch (e) { errors.push('guide over a game: ' + e.message.split('\n')[0]); }
   await gp.close();
 
+  // Hearth Friends on Matrix (the preview's made-up account): the Friends screen's two halves (Hearth Friends and the
+  // stores' friends), friends with "Playing" and Joinable, a chat with a game invite card (Play, Join server, Join via
+  // Steam), a Play together request (let them join / not now), a picture, the emoji grid, Requests, Settings (privacy,
+  // Steam friends, Discord), signed out (Sign in, Create an account), the friend's sheet with the controller, and
+  // Quick Access › Friends with a chat in it. Pictures of the screens go to tools/qa-shots (friends.yml posts them).
+  {
+    const fp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    fp.on('pageerror', e => errors.push(`friends: ${e.message}`));
+    const shotsDir = path.resolve(__dirname, 'qa-shots');
+    try { require('fs').mkdirSync(shotsDir, { recursive: true }); } catch {}
+    const shoot = async name => { for (const q of [60, 45, 30, 20]) { const buf = await fp.screenshot({ type: 'jpeg', quality: q }); if (buf.toString('base64').length <= 9 * 3800 || q === 20) { require('fs').writeFileSync(path.join(shotsDir, `friends-${name}.jpg`), buf); break; } } };
+    try {
+      await fp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await fp.waitForTimeout(1200);
+      const run = fn => fp.evaluate(fn);
+      await run(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        closeAll(); S.layers = []; S.history = []; MF.top = 'mx'; MF.tab = 'friends'; MF.room = null; navigate('friends', {}, false); await wait(300);
+        if (!has('mft-mx') || !has('mft-stores')) throw new Error('no Hearth Friends / Steam & other stores switch');
+        const sarah = has('mff-@sarah:matrix.org');
+        if (!sarah || !/Playing Starfall Drift/.test(sarah.textContent) || !/Joinable/.test(sarah.textContent)) throw new Error('Sarah isn\'t shown playing and joinable');
+        if (!/Request sent/.test((has('mff-@jo:matrix.org') || {}).textContent || '')) throw new Error('a sent request isn\'t shown');
+        if (!has('mf-add') || !has('mf-code')) throw new Error('no Add friend / My code');
+        setFocus(sarah, true); input('a'); await wait(150);
+        const sh = document.querySelector('#sheetBox').textContent;
+        if (!S.layers.includes('sheet') || !/Message Sarah/.test(sh) || !/Ask to join/.test(sh) || !/Block/.test(sh) || !/Report/.test(sh)) throw new Error('the friend\'s sheet is missing things: ' + sh.slice(0, 200));
+        closeAll();
+      });
+      await shoot('list');
+      await run(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        mfOpenChat('!s:matrix.org'); await wait(400);
+        for (const k of ['mfx-type', 'mfx-emoji', 'mfx-shot', 'mfx-game', 'mfg-p-$3', 'mfg-j-$3', 'mfg-v-$3', 'mfp-a-$4', 'mfp-k-$4', 'mfp-d-$4', 'mfi-$5'])
+          if (!has(k)) throw new Error('the chat has no ' + k);
+        if (!/End-to-end encrypted/.test(document.querySelector('#view .mfchathead').textContent)) throw new Error('the chat doesn\'t say it\'s encrypted');
+        await mfAct('mfEmoji', {}); await wait(150);
+        if (!has('mfe-0')) throw new Error('no emoji grid');
+        await mfAct('mfImg', { id: '$5' }); await wait(200);
+        if (!document.querySelector('#view .mfimg')) throw new Error('the picture didn\'t show');
+      });
+      await shoot('chat');
+      await run(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        await mfAct('mfClose', {}); MF.emojiOpen = false;
+        await mfAct('mfTab', { v: 'requests' }); await wait(150);
+        if (!has('mfr-a-req0') || !has('mfr-b-req0')) throw new Error('Requests has no Accept / Block');
+        await mfAct('mfTab', { v: 'settings' }); await wait(250);
+        for (const k of ['mfs-friendsOnly', 'mfs-sharePlaying', 'mfs-presence', 'mfs-blocked', 'mfs-askToJoin', 'mfs-steam', 'mfs-discord', 'mfs-out'])
+          if (!has(k)) throw new Error('Friends › Settings has no ' + k);
+        if (!/end-to-end encrypted/.test(document.querySelector('#view').textContent)) throw new Error('no end-to-end note');
+      });
+      await shoot('settings');
+      await run(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        await mfAct('mfTop', { v: 'stores' }); await wait(200);
+        if (!document.querySelector('#view .frow') && !/Loading/.test(document.querySelector('#view').textContent)) throw new Error('Steam & other stores shows nothing');
+        await mfAct('mfTop', { v: 'mx' });
+        const was = MF.st; MF.st = { signedIn: false, settings: { homeserver: 'matrix.org' } }; render(null, true); await wait(100);
+        if (!has('mf-signin') || !has('mf-create') || !has('mf-hs')) throw new Error('signed out: no Sign in / Create an account / server');
+        if (!/matrix\.org/.test(document.querySelector('#view').textContent)) throw new Error('signed out: doesn\'t say where the account lives');
+        MF.st = was;
+        // Quick Access › Friends, then a chat in it.
+        closeAll(); openLayer('qam'); S.qtab = 'friends'; MF.room = null; renderQam(); await wait(300); renderQam();
+        if (!document.querySelector('#qam [data-k="mfq-f-@sarah:matrix.org"]') || !document.querySelector('#qam [data-k="mfq-all"]')) throw new Error('Quick Access › Friends has no friends');
+        await mfAct('mfQOpen', { room: '!s:matrix.org' }); await wait(300); renderQam();
+        if (!document.querySelector('#qam [data-k="mfx-type"]') || !document.querySelector('#qam [data-k="mfx-game"]')) throw new Error('Quick Access › Friends chat has no Reply / Invite');
+      });
+      await shoot('qam');
+      await run(() => { closeAll(); MF.room = null; });
+    } catch (e) { errors.push('friends: ' + e.message.split('\n')[0]); }
+    await fp.close();
+  }
+
   // Quick Access is one panel: Hearth's own (Guide with Hearth on screen, the starting screen, LAST RESORT) and the
   // overlay over a game (?overlay=full, HHD's overlay app or Hearth's overlay window) draw the same size, tabs,
   // sections and buttons in the same order, with the same actions and the same controller navigation. Screenshots of
@@ -1069,6 +1193,189 @@ const path = require('path');
       console.log(`default apps: ${rows} rows`);
     } catch (e) { errors.push('default apps: ' + e.message.split('\n')[0]); }
     await dp.close();
+  }
+
+  // Hearth's on-screen keyboard (ui/osk/hearth-osk.js, docs/OSK.md) in Game Mode: typing with the controller (moving
+  // to each key with the D-pad), word suggestions, autocapitals and double-space period, accents (A held), emoji,
+  // layouts (AZERTY), shift on LT, B hiding it, the Ember Wheel, split sticks, touch, and Settings › Keyboard.
+  // Pictures go to tools/osk-shots (release.yml posts two as notices and keeps all of them on the run).
+  {
+    const oskShots = path.resolve(__dirname, 'osk-shots');
+    try { require('fs').mkdirSync(oskShots, { recursive: true }); } catch {}
+    const kp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    kp.on('pageerror', e => errors.push(`on-screen keyboard: ${e.message}`));
+    const kerr = m => errors.push('on-screen keyboard: ' + m);
+    const shot = async (name) => { try { await kp.waitForTimeout(260); await kp.screenshot({ path: path.join(oskShots, name + '.jpg'), type: 'jpeg', quality: 30, clip: { x: 0, y: 390, width: 1280, height: 410 } }); } catch (e) { kerr('picture ' + name + ': ' + e.message); } };
+    try {
+      await kp.goto('file://' + path.resolve(__dirname, '../ui/index.html'));
+      await kp.waitForTimeout(1500);
+      await kp.evaluate(() => {
+        try { localStorage.removeItem('hearth.osk'); localStorage.removeItem('hearth.osk.learned'); } catch (e) {}
+        HearthOSK.configure({ settings: {}, learned: { learned: {}, next: {} } });
+        // Walks the selection to each character with the D-pad (as a controller does) and presses A.
+        window.__padType = (word) => {
+          const e = GOSK.engine;
+          for (const ch of word) {
+            const R = e.view().rows; let to = null;
+            for (let r = 0; r < R.length && !to; r++) for (let c = 0; c < R[r].length; c++) { const k = R[r][c]; if ((k.t === 'ch' && k.v === ch.toLowerCase()) || (ch === ' ' && k.t === 'space')) { to = [r, c]; break; } }
+            if (!to) throw new Error('no key for ' + ch);
+            for (let i = 0; i < 40; i++) {
+              const s = e.view().sel; if (s.r === to[0] && s.c === to[1]) break;
+              input(s.r < to[0] ? 'down' : s.r > to[0] ? 'up' : s.c < to[1] ? 'right' : 'left');
+            }
+            const s = e.view().sel; if (s.r !== to[0] || s.c !== to[1]) throw new Error("the D-pad didn't reach " + ch + ' (at ' + s.r + ',' + s.c + ')');
+            input('a');
+          }
+        };
+      });
+      // Y with the controller opens search with the keyboard, the keyboard has the selection.
+      let st = await kp.evaluate(() => { closeAll(); S.history = []; navigate('home', {}, false); padPressed('y'); return { kb: !!document.querySelector('#search .kb .hosk'), f: focused && focused.dataset.k, active: GOSK.engine.isActive() }; });
+      if (!st.kb || st.f !== 'sk-kb' || !st.active) kerr('Y did not open search with the keyboard selected: ' + JSON.stringify(st));
+      await kp.evaluate(() => __padType('mo'));
+      st = await kp.evaluate(() => ({ q: query, sugg: GOSK.engine.view().suggestions, res: document.querySelectorAll('#search .sres [data-f]').length }));
+      if (st.q !== 'mo') kerr('typing with the D-pad and A gave ' + JSON.stringify(st.q));
+      if (!st.res) kerr('search found nothing for "mo"');
+      await shot('1-search');
+      // A text prompt: autocapital, suggestions (up into the strip, A picks), double space period, X backspace.
+      await kp.evaluate(() => { closeAll(); window.__pr = openPrompt({ title: 'Message' }); });
+      await kp.waitForTimeout(500);
+      st = await kp.evaluate(() => ({ f: focused && focused.dataset.k, shift: GOSK.engine.view().shift, words: HearthOSK.hasWords('en') }));
+      if (st.f !== 'pk-kb') kerr('a prompt opened with the controller did not select its keyboard: ' + st.f);
+      if (!st.shift) kerr('no capital at the start of a sentence');
+      if (!st.words) kerr("the English word list didn't load (ui/osk/words/en.js)");
+      await kp.evaluate(() => __padType('hel'));
+      st = await kp.evaluate(() => ({ t: prompt.text, sugg: GOSK.engine.view().suggestions }));
+      if (st.t !== 'Hel') kerr('typed ' + JSON.stringify(st.t) + ' (wanted "Hel": a capital first)');
+      if (!st.sugg.includes('Hello')) kerr('no "Hello" in the suggestions: ' + JSON.stringify(st.sugg));
+      await shot('2-suggestions');
+      st = await kp.evaluate(() => {
+        const e = GOSK.engine, i = e.view().suggestions.indexOf('Hello');
+        for (let n = 0; n < 8 && e.view().sel.r !== -1; n++) input('up');
+        if (e.view().sel.r !== -1) return 'the D-pad never reached the suggestions';
+        while (e.view().sel.c > i) input('left'); while (e.view().sel.c < i) input('right');
+        input('a'); input('y');
+        return prompt.text;
+      });
+      if (st !== 'Hello. ') kerr('picking a suggestion then Y gave ' + JSON.stringify(st) + ' (wanted "Hello. ")');
+      st = await kp.evaluate(() => { input('x'); input('x'); return prompt.text; });
+      if (st !== 'Hello') kerr('X twice gave ' + JSON.stringify(st));
+      // Accents: A held on "e" opens them, A picks one (it replaces the e).
+      st = await kp.evaluate(() => {
+        const e = GOSK.engine; input('y');
+        const R = e.view().rows; let to; R.forEach((row, r) => row.forEach((k, c) => { if (k.t === 'ch' && k.v === 'e') to = { r, c }; }));
+        e.state.sel = to; const t = Date.now();
+        e.handle('a', true, t); e.tick(t + 520);
+        const pop = e.view().popup; if (!pop) return 'no accents after holding A';
+        e.handle('a', false, t + 560);
+        const want = pop.alts.indexOf('é'); for (let i = 0; i < want; i++) input('right');
+        input('a');
+        return prompt.text;
+      });
+      if (st !== 'Hello é') kerr('accents gave ' + JSON.stringify(st));
+      // LT is shift (one letter), L3 the emoji, B hides the keyboard and A on the field brings it back.
+      st = await kp.evaluate(() => {
+        const out = {};
+        input('lt'); __padType('a'); out.shift = prompt.text.endsWith('A');
+        input('l3'); out.panel = GOSK.engine.view().panel; GOSK.engine.state.sel = { r: 1, c: 0 }; input('a'); out.emoji = /\p{Extended_Pictographic}/u.test(prompt.text.slice(-2));
+        input('l3'); out.back = GOSK.engine.view().panel;
+        input('b'); out.hidden = !document.querySelector('#prompt .kb') && focused && focused.dataset.k;
+        input('a'); out.again = !!document.querySelector('#prompt .kb') && focused && focused.dataset.k;
+        return out;
+      });
+      if (!st.shift) kerr('LT did not make the next letter a capital');
+      if (st.panel !== 'emoji' || !st.emoji || st.back !== 'letters') kerr('emoji (L3): ' + JSON.stringify(st));
+      if (st.hidden !== 'pk-field' || st.again !== 'pk-kb') kerr('B / A on the field: ' + JSON.stringify(st));
+      await kp.evaluate(() => { GOSK.engine.handle('l3'); });
+      await shot('3-emoji');
+      await kp.evaluate(() => { GOSK.engine.handle('l3'); });
+      // Layouts: with English and French, R3 switches to AZERTY.
+      st = await kp.evaluate(() => {
+        HearthOSK.setSetting('layouts', ['en-us', 'fr']); input('r3');
+        const v = GOSK.engine.view(), row = v.rows[1].map(k => k.v).join('');
+        input('r3'); HearthOSK.setSetting('layouts', ['auto']);
+        return { lay: v.layout, row };
+      });
+      if (st.lay !== 'fr' || !st.row.startsWith('azerty')) kerr('R3 did not switch to AZERTY: ' + JSON.stringify(st));
+      // The Ember Wheel: the left stick tilted up is "abcd", Y types its top letter.
+      st = await kp.evaluate(() => {
+        const e = GOSK.engine, before = prompt.text;
+        e.axes(0, -1, 0, 0); const w = e.view().wheel; e.handle('y'); const typed = prompt.text.slice(before.length);
+        return { petal: w && w.petal, active: w && w.active, typed };
+      });
+      if (st.petal !== 0 || !st.active || st.typed.toLowerCase() !== 'a') kerr('Ember Wheel: ' + JSON.stringify(st));
+      await kp.evaluate(() => { HearthOSK.setSetting('theme', 'ember'); GOSK.engine.axes(0.7, -0.7, 0, 0); });
+      await shot('4-ember-wheel');
+      await kp.evaluate(() => { GOSK.engine.axes(0, 0, 0, 0); HearthOSK.setSetting('theme', 'hearth'); });
+      // Split sticks: each stick points into its half, LT / RT type.
+      st = await kp.evaluate(() => {
+        const e = GOSK.engine, before = prompt.text; HearthOSK.setSetting('fast', 'split');
+        e.axes(-1, -0.2, 1, -0.2); const v = e.view(); e.handle('lt', true); e.handle('lt', false); e.handle('rt', true); e.handle('rt', false);
+        e.axes(0, 0, 0, 0); HearthOSK.setSetting('fast', 'wheel');
+        return { l: v.split && v.split.l, r: v.split && v.split.r, typed: prompt.text.slice(before.length) };
+      });
+      if (!st.l || !st.r || st.typed.length !== 2) kerr('split sticks: ' + JSON.stringify(st));
+      // Touch: a tap on a key types it.
+      const key = await kp.evaluate(() => { const b = [...document.querySelectorAll('#prompt .hosk-key.k-ch')].find(x => x.textContent.trim().toLowerCase() === 'k'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+      await kp.mouse.click(key.x, key.y); await kp.waitForTimeout(100);
+      st = await kp.evaluate(() => prompt.text.slice(-1).toLowerCase());
+      if (st !== 'k') kerr('a click on k typed ' + JSON.stringify(st));
+      // ☰ finishes the prompt.
+      st = await kp.evaluate(async () => { input('start'); return await Promise.race([window.__pr, new Promise(r => setTimeout(() => r('still open'), 400))]); });
+      if (typeof st !== 'string' || !st.startsWith('Hello é')) kerr('☰ did not finish the prompt: ' + JSON.stringify(st));
+      // Split shape and Daylight, for the picture; then a real keyboard sends it away again.
+      await kp.evaluate(() => { HearthOSK.setSetting('shape', 'split'); HearthOSK.setSetting('theme', 'daylight'); closeAll(); window.__pr = openPrompt({ title: 'Name', osk: true }); });
+      await shot('5-split-daylight');
+      await kp.evaluate(() => { HearthOSK.setSetting('shape', 'full'); HearthOSK.setSetting('theme', 'hearth'); });
+      await kp.keyboard.type('Zo'); await kp.waitForTimeout(150);
+      st = await kp.evaluate(() => ({ kb: !!document.querySelector('#prompt .kb'), t: prompt && prompt.text }));
+      if (st.kb) kerr('typing on a real keyboard left the on-screen keyboard up');
+      if (st.t !== 'Zo') kerr('a real keyboard typed ' + JSON.stringify(st.t));
+      // Learned words: "hel" typed often enough comes back; Clear forgets.
+      st = await kp.evaluate(() => { const n = HearthOSK.learnedCount(); HearthOSK.clearLearned(); return { n, after: HearthOSK.learnedCount() }; });
+      if (!st.n || st.after) kerr('learned words: ' + JSON.stringify(st));
+      // Settings › Keyboard: every choice is there and saved.
+      st = await kp.evaluate(() => {
+        closeAll(); S.settingsTab = 'keyboard'; navigate('settings', {}, false);
+        const need = ['kb-lay-auto', 'kb-lay-fr', 'kb-suggestions', 'kb-learn', 'kb-autocap', 'kb-doubleSpace', 'kb-fast-wheel', 'kb-fast-split', 'kb-fast-off', 'kb-theme-ember', 'kb-size-l', 'kb-shape-split', 'kb-position-top', 'kb-haptics-strong', 'kb-trail', 'kb-clear', 'kb-try'];
+        const missing = need.filter(k => !document.querySelector(`#view [data-k="${k}"]`));
+        act(document.querySelector('#view [data-k="kb-theme-ember"]'));
+        act(document.querySelector('#view [data-k="kb-lay-de"]'));
+        let saved = {}; try { saved = JSON.parse(localStorage.getItem('hearth.osk') || '{}'); } catch (e) {}
+        act(document.querySelector('#view [data-k="kb-theme-hearth"]')); act(document.querySelector('#view [data-k="kb-lay-de"]'));
+        return { missing, theme: saved.theme, layouts: saved.layouts };
+      });
+      if (st.missing.length) kerr('Settings › Keyboard is missing ' + st.missing.join(', '));
+      if (st.theme !== 'ember' || !(st.layouts || []).includes('de')) kerr("Settings › Keyboard didn't save: " + JSON.stringify(st));
+      console.log('on-screen keyboard: controller, suggestions, accents, emoji, layouts, wheel, split sticks, touch and settings ok');
+    } catch (e) { kerr(e.message.split('\n')[0]); }
+    await kp.close();
+  }
+
+  // The Store's pictures (Steam's page, and a game's page), half size so each fits in the notices release.yml posts.
+  {
+    const shots = path.resolve(__dirname, 'store-shots');
+    try { require('fs').mkdirSync(shots, { recursive: true }); } catch {}
+    let sp;
+    try { sp = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 0.5 }); }
+    catch { sp = await browser.newPage({ viewport: { width: 960, height: 600 } }); }
+    sp.on('pageerror', e => errors.push(`store pictures: ${e.message}`));
+    try {
+      await sp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await sp.waitForTimeout(1200);
+      const shot = async name => {
+        for (const q of [70, 55, 45, 35, 25, 15]) {
+          const buf = await sp.screenshot({ type: 'jpeg', quality: q });
+          if (buf.toString('base64').length <= 9 * 3800 || q === 15) { require('fs').writeFileSync(path.join(shots, name + '.jpg'), buf); break; }
+        }
+      };
+      await sp.evaluate(() => { closeAll(); S.history = []; SHOP.store = 'steam'; navigate('shop', {}, false); });
+      await sp.waitForTimeout(700);
+      await sp.evaluate(() => { setFocus(document.querySelector('#view [data-k="sf-hero"]'), true); $('#view').scrollTop = 0; });
+      await sp.waitForTimeout(300); await shot('home');
+      await sp.evaluate(() => act(document.querySelector('#view [data-k="sf-deals-1"]')));
+      await sp.waitForTimeout(700); await shot('game');
+    } catch (e) { errors.push('store pictures: ' + e.message.split('\n')[0]); }
+    await sp.close();
   }
 
   await browser.close();

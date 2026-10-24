@@ -323,6 +323,54 @@ WantedBy=timers.target
 UNIT
   ln -sf ../hearth-saves-auto.timer /usr/lib/systemd/user/timers.target.wants/hearth-saves-auto.timer
 fi
+# Hearth Mods and Nexus Mods: the site's "Mod Manager Download" button opens nxm:// links, which go to Hearth Mods'
+# download queue (hearth-mods --nxm; hearth-system makes it the default for them with Hearth's other apps). Mods put in
+# with the overlay (fuse-overlayfs) are laid over their games again at each sign-in (hearth-mods --remount).
+if [ -x /usr/bin/hearth-mods ]; then
+  cat > /usr/share/applications/hearth-mods-nxm.desktop <<'DESKTOP'
+[Desktop Entry]
+Name=Mods (Nexus Mods downloads)
+Comment=Downloads a mod from Nexus Mods' "Mod Manager Download" button
+Exec=/usr/bin/hearth-mods --nxm %u
+Icon=hearth-mods
+Type=Application
+NoDisplay=true
+MimeType=x-scheme-handler/nxm;
+DESKTOP
+  install -d /usr/lib/systemd/user/default.target.wants
+  cat > /usr/lib/systemd/user/hearth-mods-remount.service <<'UNIT'
+[Unit]
+Description=Hearth Mods: lay overlay mods over their games again
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/hearth-mods --remount
+
+[Install]
+WantedBy=default.target
+UNIT
+  ln -sf ../hearth-mods-remount.service /usr/lib/systemd/user/default.target.wants/hearth-mods-remount.service
+fi
+# Wabbajack modlists: jackify-engine (Jackify's native Linux build of wabbajack-cli; GPL-3.0, source:
+# https://github.com/Omni-guides/dev-jackify-engine), the newest Linux release, in /usr/lib/hearth/jackify-engine
+# (hearth-gaming wabbajack.rs). Without it, Hearth Mods downloads it on first use.
+if [ "$(uname -m)" = x86_64 ]; then
+  jurl="$(curl -fsSL --retry 3 https://api.github.com/repos/Omni-guides/dev-jackify-engine/releases/latest \
+    | grep -oE '"browser_download_url": *"[^"]*linux[^"]*x64[^"]*\.tar\.gz"' | head -n1 | sed -E 's/.*"(https[^"]+)"/\1/')" || true
+  jtag="$(curl -fsSL --retry 3 https://api.github.com/repos/Omni-guides/dev-jackify-engine/releases/latest | grep -oE '"tag_name": *"[^"]+"' | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')" || true
+  if [ -n "$jurl" ] && curl -fsSL --retry 3 -o /tmp/jackify-engine.tar.gz "$jurl"; then
+    rm -rf /tmp/jackify-engine && mkdir -p /tmp/jackify-engine && tar -xzf /tmp/jackify-engine.tar.gz -C /tmp/jackify-engine
+    jbin="$(find /tmp/jackify-engine -type f -name jackify-engine | head -n1)"
+    if [ -n "$jbin" ]; then
+      rm -rf /usr/lib/hearth/jackify-engine && mkdir -p /usr/lib/hearth
+      cp -a "$(dirname "$jbin")" /usr/lib/hearth/jackify-engine
+      chmod 755 /usr/lib/hearth/jackify-engine/jackify-engine
+      printf '%s\n' "$jtag" > /usr/lib/hearth/jackify-engine/hearth-version.txt
+      printf 'jackify-engine %s, GPL-3.0 (based on Wabbajack, GPL-3.0).\nSource: https://github.com/Omni-guides/dev-jackify-engine\n' "$jtag" > /usr/lib/hearth/jackify-engine/SOURCE.txt
+    else echo "warning: the jackify-engine download has no jackify-engine in it; Hearth Mods downloads it on first use"; fi
+    rm -rf /tmp/jackify-engine /tmp/jackify-engine.tar.gz
+  else echo "warning: couldn't download jackify-engine; Hearth Mods downloads it on first use"; fi
+fi
 # ---- end of Hearth's gaming apps
 
 # ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect) ------------------------------
@@ -383,12 +431,46 @@ UNIT
 fi
 # ---- end of Nearby Share and Hearth Connect
 
+# ---- Hearth Link (hosts/hearth-link): your Hearth devices paired, Hearth data kept in sync, games copied between them.
+# Built with the app (base-anatase.yml) and carried in os/nimbus-app. A small user service, started with every session
+# (default.target): it answers only paired devices (and pairing while a code is showing), stays quiet while a game
+# runs (Hearth's hearth-playing file), and gives way to anything else under load (low CPU/IO weight). Its UDP ports
+# open to the local network only, through hearth-link-firewall.
+if [ -x "/ctx/nimbus-app/hearth-link" ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-link /usr/bin/hearth-link
+  if ldd /usr/bin/hearth-link | grep "not found"; then echo "warning: hearth-link is missing the libraries above"; rm -f /usr/bin/hearth-link; fi
+fi
+if [ -x /usr/bin/hearth-link ]; then
+  install -d /usr/lib/systemd/user/default.target.wants
+  cat > /usr/lib/systemd/user/hearth-link.service <<UNIT
+[Unit]
+Description=Hearth Link (your Hearth devices: sync and game copies)
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/hearth-link serve
+Restart=on-failure
+RestartSec=3
+Nice=10
+CPUWeight=20
+IOWeight=20
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=default.target
+UNIT
+  ln -sf ../hearth-link.service /usr/lib/systemd/user/default.target.wants/hearth-link.service
+fi
+# ---- end of Hearth Link
+
 # ==== Hearth Paint, the emoji picker, Hearth Fonts, and Settings › Accessibility (hosts/hearth-paint, hearth-emoji,
 # hearth-fonts, hearth-gamma, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
 # os/nimbus-app (their icons are in the Hearth icon set, installed above). The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;
 # Settings › Accessibility uses Orca (the screen reader, with speech-dispatcher and eSpeak NG) and xprop (gamescope's
-# zoom and colour filters in Game Mode). Each app is left out if it didn't build or can't find its libraries.
-for p in orca speech-dispatcher espeak-ng fontconfig wtype wl-clipboard xprop; do dnf5 -y install "$p" || echo "warning: $p isn't available"; done
+# zoom and colour filters in Game Mode). Each app is left out if it didn't build or can't find its libraries. Colour
+# emoji (Noto) for the picker and the on-screen keyboard's emoji (Desktop Mode draws them with the system's fonts).
+for p in orca speech-dispatcher espeak-ng fontconfig wtype wl-clipboard xprop google-noto-color-emoji-fonts; do dnf5 -y install "$p" || echo "warning: $p isn't available"; done
 for app in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
   [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so it's left out"; continue; }
   install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
@@ -543,7 +625,7 @@ dnf5 -y install fuse || true
 if ! command -v fusermount >/dev/null && command -v fusermount3 >/dev/null; then ln -s "$(command -v fusermount3)" /usr/bin/fusermount; fi
 touch /etc/subuid /etc/subgid
 command -v distrobox
-# Flathub for the system installation (hearth-flatpak-setup adds it from here; Bazaar and Apps' system fallback use it),
+# Flathub for the system installation (hearth-flatpak-setup adds it from here; Bazaar, the app store, installs from it),
 # unless Anatase already brings a Flathub remote file.
 if ! grep -qls 'dl.flathub.org' /etc/flatpak/remotes.d/*.flatpakrepo /usr/share/flatpak/remotes.d/*.flatpakrepo 2>/dev/null; then
   mkdir -p /etc/flatpak/remotes.d
@@ -704,18 +786,8 @@ Type=Application
 Categories=Settings;
 Keywords=wifi;bluetooth;sound;display;controller;update;
 DESKTOP
-cat > /usr/share/applications/hearth-apps.desktop <<DESKTOP
-[Desktop Entry]
-Name=Apps
-GenericName=App Store
-Comment=Find, install and update apps from Flathub
-Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call apps open
-Icon=hearth-apps
-Type=Application
-Categories=System;PackageManager;
-Keywords=store;software;install;update;flathub;flatpak;
-OnlyShowIn=Nimbus;
-DESKTOP
+# (Hearth's own app store, Apps / hearth-apps.desktop, is archived: Bazaar is the app store, installed for everyone by
+# hearth-flatpak-setup. docs/ARCHIVED.md)
 cat > /usr/share/applications/hearth-browser.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth Browser
@@ -961,6 +1033,39 @@ DESKTOP
 fi
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # ---- end of Hearth Contacts and Hearth Maps
+
+# ------------------------------------------------------------------ Hearth Friends (hosts/hearth-friends)
+# Friends, chats and game invites on Matrix (end-to-end encrypted), for Game Mode's Friends screen, Quick Access and
+# Mantel's Friends panel. Built with the app (base-anatase.yml) and carried in os/nimbus-app. Its session and store key
+# live in GNOME Keyring (the Secret Service, which Hearth's session starts). A user service, started with the session
+# (Hearth's core and `hearth-friends call` also start it when it isn't running). docs/FRIENDS.md.
+dnf5 -y install libsecret || true
+if [ -x /ctx/nimbus-app/hearth-friends ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-friends /usr/bin/hearth-friends
+  if ldd /usr/bin/hearth-friends | grep "not found"; then echo "warning: hearth-friends is missing the libraries above"; fi
+  install -d /usr/lib/systemd/user
+  cat > /usr/lib/systemd/user/hearth-friends.service <<'UNIT'
+[Unit]
+Description=Hearth Friends (Matrix chat, presence and game invites)
+After=graphical-session-pre.target
+
+[Service]
+ExecStart=/usr/bin/hearth-friends serve
+Restart=on-failure
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=default.target
+UNIT
+  systemctl --global enable hearth-friends.service 2>/dev/null \
+    || { mkdir -p /etc/systemd/user/default.target.wants && ln -sf /usr/lib/systemd/user/hearth-friends.service /etc/systemd/user/default.target.wants/hearth-friends.service; }
+else
+  echo "warning: hearth-friends wasn't built, so this image goes without Hearth Friends"
+fi
+# The chat's emoji picker uses Emoji & symbols' list (hosts/hearth-emoji/ui/emoji-data.js).
+[ -s /ctx/nimbus-app/emoji-data.js ] && install -Dm644 /ctx/nimbus-app/emoji-data.js /usr/share/nimbus/emoji-data.js
+# ---- end of Hearth Friends
 # ---- Hearth Office (hosts/hearth-office): Write, Sheets and Slides, built by CI with the app (base-anatase.yml) and
 # carried in os/nimbus-app/office. office/install.sh puts in the program (hearth-write, hearth-sheets and
 # hearth-slides are links to it), the menu entries and the .hslides file type (the icons are in Hearth's icon set); they're

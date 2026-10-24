@@ -6,6 +6,7 @@ pub mod appid;
 pub mod appupdate;
 pub mod artcache;
 pub mod backup;
+pub mod bazaar;   // Bazaar, Hearth OS's app store, opened from Game Mode's menu
 pub mod beacon;
 pub mod binkv;
 pub mod bridge;
@@ -31,6 +32,9 @@ pub mod inputplumber;
 pub mod logs;
 pub mod xodus;
 pub mod library;
+// ---- Hearth Link: paired Hearth devices, data sync and game copies (hosts/hearth-link)
+pub mod link;
+// ---- end of Hearth Link
 // ---- Nearby Share and Hearth Connect, opened from Game Mode
 pub mod link_apps;
 // ---- end of Nearby Share and Hearth Connect
@@ -38,11 +42,14 @@ pub mod multiplay;
 pub mod owned;
 pub mod padmouse;
 pub mod manual;
+pub mod matrix_friends;   // Hearth Friends on Matrix (hosts/hearth-friends)
 pub mod newos;
 pub mod osinstall;
+pub mod osk;   // the on-screen keyboard's settings and learned words (ui/osk, docs/OSK.md)
 pub mod overlay_link;
 pub mod paths;
 pub mod perf;
+pub mod picker;   // file and folder pickers, off the bridge
 pub mod power;
 pub mod procs;
 pub mod profile;
@@ -50,11 +57,16 @@ pub mod profiles;
 pub mod remote;
 pub mod renderer;
 pub mod signin_handoff;
+// ---- Store sign-ins kept through updates (backed up, put back when missing, said in the log at start)
+pub mod signins;
 pub mod space;
 pub mod steam;
 pub mod steam_ctl;
 pub mod steam_owned;
 pub mod store;
+// ---- Game Mode › Store (browsing Steam, GOG, Epic and Xbox; buying on their own pages)
+pub mod storefront;
+// ---- end of Game Mode › Store
 pub mod stores;
 pub mod system;
 pub mod sysinfo;

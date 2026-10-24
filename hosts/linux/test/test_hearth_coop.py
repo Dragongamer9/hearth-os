@@ -342,6 +342,23 @@ class Pads(Base):
         self.assertEqual(p['id'], 'event30')
         self.assertIsNone(hc.wait_button(self.ctx, timeout=0.3, exclude=['event30']))
 
+    def test_wait_button_says_why_nothing_to_listen_to(self):
+        self.handheld()
+        with self.assertRaises(hc.Fail) as cm:
+            hc.wait_button(self.ctx, timeout=0.1, exclude=['event20', 'event30'])
+        self.assertIn('already joined', str(cm.exception))
+        log = slurp(self.ctx.pads_log)
+        self.assertIn('(event30, physical): left out, already joined', log)
+        self.assertIn('(event3): left out, InputPlumber manages it', log)
+
+    def test_wait_button_logs_what_it_heard(self):
+        self.handheld()
+        write(os.path.join(self.dev, 'input', 'event30'), hc.EVENT.pack(0, 0, 1, 0x130, 1))
+        import time
+        self.ctx.now = time.monotonic
+        self.assertEqual(hc.wait_button(self.ctx, timeout=2, exclude=['event20'])['id'], 'event30')
+        self.assertIn('(event30) pressed a button', slurp(self.ctx.pads_log))
+
     def test_pads_command(self):
         self.handheld()
         self.assertEqual(hc.main(['pads'], self.ctx), 0)
@@ -675,6 +692,11 @@ class Session(Base):
             self.assertIn(d, a1)
         self.assertIn('/run/udev', a1)
         self.assertIn('--unshare-pid', a1)
+        # A /tmp of its own (sticky, writable): the nested gamescope's Xwayland refused the real /tmp/.X11-unix,
+        # which shows up owned by "nobody" in bwrap's user namespace, and gamescope crashed at once.
+        t = a1.index('/tmp')
+        self.assertEqual(a1[t - 3:t + 1], ['--perms', '1777', '--tmpfs', '/tmp'])
+        self.assertLess(t, a1.index('--unshare-pid'))
         install = os.path.join(self.steam_dir, 'steamapps/common/Portal')
         i = a1.index('--ro-bind')
         self.assertEqual(a1[i + 1:i + 3], [install, install])
@@ -911,6 +933,44 @@ class Session(Base):
         rc = slurp(os.path.join(run_dir, 'rc.xml'))
         self.assertIn('identifier="gamescope*"', rc)      # the fallback rule for the last launch (seat 1)
         self.assertIn('<action name="MoveTo" x="0" y="0" />', rc.split('gamescope*')[1])
+
+
+    def test_container_reports_players_that_close_at_once(self):
+        s = self.dry()
+        run_dir = os.path.join(self.run_dir, 'hearth-coop')
+        os.makedirs(run_dir)
+        s['runDir'] = run_dir
+        s['labwcPid'] = 777
+        for p in s['players']:
+            write(p['log'], '[gamescope] Info  wlserver: Starting Xwayland on :1\n'
+                            '00:00:00.100 [wlr] [xwayland/sockets.c:63] /tmp/.X11-unix not owned by root or us\n')
+        hc.save_session(self.ctx, s)
+        inner = {'HOME': self.home, 'XDG_RUNTIME_DIR': self.run_dir, 'WAYLAND_DISPLAY': 'wayland-1', 'LABWC_PID': '777'}
+        ctx = hc.Ctx(env=inner, sys_root=self.sys, proc_root=self.proc, dev_root=self.dev, runner=self.runner,
+                     sleep=self.clock.sleep, now=self.clock.now, out=self.out)
+        self.runner.on_spawn = lambda argv, pid: self.runner.live.discard(pid)    # gamescope crashes straight away
+        self.assertEqual(hc.container(ctx, self.ctx.session_file, poll=0.1), 0)
+        last = hc.last_failure(self.ctx)
+        self.assertIn("Player 2's game closed right after starting", last['error'])
+        self.assertIn('not owned by root or us', last['error'])
+        self.assertEqual(sorted(p['seat'] for p in last['players']), [1, 2])
+        st = hc.status(self.ctx)
+        self.assertFalse(st['running'])
+        self.assertIn('closed right after starting', st['lastError'])
+
+    def test_start_fails_with_the_players_reason(self):
+        self.runner.tools['fusermount3'] = '/usr/bin/fusermount3'
+
+        def on_spawn(argv, pid):
+            if argv[0] == 'labwc':
+                # The container (labwc's autostart) found both players gone at once: it leaves the reason, tidies up.
+                hc.remember_failure(self.ctx, {'game': None}, "Player 1's game closed right after starting: boom", [])
+                os.unlink(self.ctx.session_file)
+                self.runner.live.discard(pid)
+        self.runner.on_spawn = on_spawn
+        rc = hc.main(['start', '--game', 'steam:400', '--pads', 'event20,event30', '--width', '1280', '--height', '800'], self.ctx)
+        self.assertEqual(rc, 1)
+        self.assertIn("error: Player 1's game closed right after starting: boom", self.out.getvalue())
 
 
 class CheckAndCli(Base):
