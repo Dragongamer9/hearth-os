@@ -27,8 +27,10 @@ const QUEUE: usize = 1024;
 
 extern "C" {
     fn getuid() -> u32;
+    fn kill(pid: i32, sig: i32) -> i32;
     fn getsockopt(fd: i32, level: i32, name: i32, val: *mut std::ffi::c_void, len: *mut u32) -> i32;
 }
+const SIGTERM: i32 = 15;
 const SOL_SOCKET: i32 = 1;
 const SO_PEERCRED: i32 = 17;
 #[repr(C)]
@@ -106,6 +108,46 @@ pub fn hhd_hosts_overlay() -> bool {
         _ => {}
     }
     is_hearth_overlay(Path::new(HHD_UI))
+}
+
+/// Is this process (its /proc cmdline and environ, NUL-separated) Handheld Daemon's overlay app started for Desktop
+/// Mode? HHD runs it as `/bin/sh <path to hearth-overlay or hhd-ui>` with HHD_MANAGED=1 and no STEAM_OVERLAY
+/// (hhd/plugins/overlay/overlay.py launch_overlay_de); started for Game Mode it has STEAM_OVERLAY=1 (inject_overlay),
+/// and then it's Electron, not the script.
+pub fn is_desktop_mode_overlay(cmdline: &[u8], environ: &[u8]) -> bool {
+    let named = cmdline.split(|b| *b == 0).take(3).any(|a| {
+        let base = a.rsplit(|b| *b == b'/').next().unwrap_or(a);
+        base == b"hearth-overlay" || base == b"hhd-ui"
+    });
+    if !named { return false; }
+    let var = |k: &[u8]| environ.split(|b| *b == 0).find_map(|e| e.strip_prefix(k).filter(|v| !v.is_empty()).map(|_| ()));
+    var(b"HHD_MANAGED=").is_some() && var(b"STEAM_OVERLAY=").is_none()
+}
+
+/// This user's processes that are HHD's overlay app started for Desktop Mode (is_desktop_mode_overlay).
+pub fn desktop_mode_overlays() -> Vec<i32> {
+    use std::os::unix::fs::MetadataExt;
+    let me = uid();
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir("/proc") else { return out };
+    for e in rd.flatten() {
+        let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<i32>().ok()) else { continue };
+        if e.metadata().map(|m| m.uid() != me).unwrap_or(true) { continue; }
+        let Ok(cmd) = std::fs::read(e.path().join("cmdline")) else { continue };
+        if !cmd.windows(6).any(|w| w == b"hhd-ui") && !cmd.windows(14).any(|w| w == b"hearth-overlay") { continue; }
+        let Ok(env) = std::fs::read(e.path().join("environ")) else { continue };
+        if is_desktop_mode_overlay(&cmd, &env) { out.push(pid); }
+    }
+    out
+}
+
+/// Ends HHD's overlay app left from Desktop Mode (it ends itself once it sees Game Mode; this is for one that
+/// doesn't, an older one): HHD keeps sending every QAM press and every start request to it until it ends, then starts
+/// the overlay app in gamescope. Answers the processes asked to end.
+pub fn end_desktop_mode_overlays() -> Vec<i32> {
+    let pids = desktop_mode_overlays();
+    for p in &pids { unsafe { kill(*p, SIGTERM); } }
+    pids
 }
 
 /// Is the overlay app connected?
@@ -244,6 +286,31 @@ mod tests {
     fn checks_who_connected() {
         let (a, _b) = UnixStream::pair().unwrap();
         assert_eq!(peer_uid(&a), Some(uid()));
+    }
+
+    #[test]
+    fn knows_the_desktop_mode_overlay_app() {
+        let sh = b"/bin/sh\0/usr/share/nimbus/desktop/shell/hearth-overlay\0";
+        let link = b"/bin/sh\0/usr/bin/hhd-ui\0";
+        let de = b"HOME=/home/a\0XAUTHORITY=\0DISPLAY=:0\0HHD_MANAGED=1\0PATH=/usr/bin:/bin\0";
+        let gm = b"HOME=/home/a\0DISPLAY=:1\0STEAM_OVERLAY=1\0PATH=/usr/bin:/bin\0";
+        assert!(is_desktop_mode_overlay(sh, de));
+        assert!(is_desktop_mode_overlay(link, de));
+        // Started for Game Mode, or both set (STEAM_OVERLAY wins in the script too): not Desktop Mode's.
+        assert!(!is_desktop_mode_overlay(sh, gm));
+        assert!(!is_desktop_mode_overlay(sh, b"HHD_MANAGED=1\0STEAM_OVERLAY=1\0"));
+        assert!(!is_desktop_mode_overlay(sh, b"HHD_MANAGED=\0"));
+        // Something else that only mentions it, or the Electron app it starts in Game Mode.
+        assert!(!is_desktop_mode_overlay(b"vim\0notes-about-hearth-overlay.txt\0", de));
+        assert!(!is_desktop_mode_overlay(b"/usr/lib/hearth-browser/nimbus\0--hhd-overlay\0", de));
+        assert!(!is_desktop_mode_overlay(b"grep\0-r\0x\0y\0/usr/bin/hhd-ui\0", de));
+        assert!(!is_desktop_mode_overlay(b"", de));
+    }
+
+    #[test]
+    fn finds_no_desktop_mode_overlay_in_a_test_run() {
+        // The scan itself works (reads /proc) and this test run isn't one.
+        assert!(!desktop_mode_overlays().contains(&(std::process::id() as i32)));
     }
 
     #[test]
