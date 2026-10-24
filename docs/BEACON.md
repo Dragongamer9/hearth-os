@@ -150,7 +150,7 @@ How it runs:
 
 **Asks of Beacon:** keep `--wait` waiting for the game, and keep the environment as it is (no `env_clear`).
 
-## Games added in Beacon (Beacon 0.0.8+)
+## Games added in Beacon (Beacon 0.0.18+)
 
 Beacon can run any Windows game or installer you add to it (Faugus Launcher's features, rebuilt in Beacon: a Wine
 prefix per game, the runner, GAMEID/STORE, DXVK/VKD3D, MangoHud/GameMode/gamescope, Proton options, Wine tools, play
