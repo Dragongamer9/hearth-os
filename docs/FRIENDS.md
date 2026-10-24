@@ -62,7 +62,9 @@ Matrix app (Element and others) too.
   4. The friend's Hearth runs `moonlight pair <host> --pin <PIN>` then `moonlight stream <host> Desktop`.
   5. *Remove from game* unpairs that device and closes the stream; the friend is told with `kick`.
   The way to reach the host is a `Transport` (`play_together` in `matrix_friends.rs`): the local network today;
-  Hearth Link plugs in through `hearth-link play-address` (prints `{"ready": bool, "addresses": [...]}`).
+  Hearth Link (hosts/hearth-link) plugs in through `hearth-link call play.address {}` answering
+  `{"ready": bool, "addresses": [...]}`. Hearth Link links your own paired devices and has no tunnel for a friend's
+  device yet, so until that call exists Play together works on the same network only.
 
 ## Accounts
 
