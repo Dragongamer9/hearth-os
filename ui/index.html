@@ -2034,9 +2034,9 @@ function mfEvent(d){
   if(ev==='typing'){ MF.typing[x.roomId]=x.users||[]; if(MF.room===x.roomId) mfRedraw(); return; }
   if(ev==='request'){
     mfSoon();
-    if(x.bucket==='requests' && !x.direct) return;
+    // Requests (from people who aren't friends) wait quietly: an entry in Notifications, no toast.
     NOTIFS.unshift({i:'user', t:x.text||'Friend request', s:'Select to see it in Friends › Requests', mf:'requests'}); updateBadge();
-    if(mfToastOk()) toast(x.text||'New friend request');
+    if(x.bucket!=='requests' && mfToastOk()) toast(x.text||'New invite');
     return;
   }
   if(ev==='message'){

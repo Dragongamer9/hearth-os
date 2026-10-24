@@ -12,9 +12,9 @@ name: Hearth Friends
 on:
   push:
     branches: [main, linux-host, friends-matrix]
-    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', '.github/workflows/friends.yml']
+    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', 'ui/**', 'tools/ui-check.js', '.github/workflows/friends.yml']
   pull_request:
-    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', '.github/workflows/friends.yml']
+    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', 'ui/**', 'tools/ui-check.js', '.github/workflows/friends.yml']
   workflow_dispatch:
     inputs:
       cores:
@@ -26,6 +26,24 @@ env:
   CARGO_TERM_COLOR: never
 
 jobs:
+  # Hearth's page with Hearth Friends in it (tools/ui-check.js, every screen), and pictures of the Friends screens as
+  # notices (title "SHOT friends-<screen> <n>": a JPEG in base64 pieces).
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Hearth's page
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node ui-check.js
+      - name: Pictures of the Friends screens
+        if: always()
+        run: |
+          for w in list chat settings qam; do f=tools/qa-shots/friends-$w.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT friends-$w $i::$part"; done; done || true
+
   friends:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
