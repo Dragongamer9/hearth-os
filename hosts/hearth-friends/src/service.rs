@@ -221,7 +221,7 @@ impl Service {
                 "M_USER_IN_USE" => "That name is taken on this server. Try another.".into(),
                 "M_INVALID_USERNAME" => "Names can have lower-case letters, numbers and . _ = - / only.".into(),
                 "M_WEAK_PASSWORD" => "The server wants a stronger password.".into(),
-                "M_FORBIDDEN" => "This server doesn't take new accounts from apps.".into(),
+                "M_FORBIDDEN" => format!("This server doesn't take new accounts from apps ({}).", hf::redact(v["error"].as_str().unwrap_or("forbidden"))),
                 _ => format!("The server said no: {}", hf::redact(v["error"].as_str().unwrap_or(err))),
             });
         }
