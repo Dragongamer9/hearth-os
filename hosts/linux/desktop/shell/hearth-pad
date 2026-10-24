@@ -14,11 +14,15 @@ It reads every connected controller from /dev/input and acts as a mouse and keyb
   View (tap)    show these controls                 L3           middle-click
 
 Talks to the shell with one JSON object per line: events out on stdout, commands in on stdin.
-Out: ready, error, radial {open, sel, pick}, osk {open, rows, row, col, shift}, launcher, help,
-     mouse {on}, toast {text}.
+Out: ready, error, radial {open, sel, pick}, osk {open} (Y: please open the on-screen keyboard), launcher, help,
+     mouse {on}, toast {text}; while the keyboard is open: oskpad {b, down} (every button but Guide and RT) and
+     oskaxes {lx, ly, rx, ry} (the left stick; the right one too with split sticks).
 In:  pause {on} (a fullscreen app is in front), keys {on} (a menu with keyboard focus is open:
-     A is Enter, B is Esc), osk {open}, type {key} (a key tapped on the on-screen keyboard),
+     A is Enter, B is Esc), osk {open, split} (the keyboard opened or closed: Hearth's shared keyboard,
+     desktop/shell/Keyboard.qml, does the typing; split: both sticks are its), emit {text, mods} and key {key, n, mods}
+     (typing through uinput when wtype isn't there; US layout, ASCII), rumble {strength, ms},
      mouse {on} (controller mouse on/off), radial {open}.
+While the on-screen keyboard is open the right stick still moves the pointer and RT clicks (into another text field).
 Exit codes: 2 python3-evdev missing, 3 no access to /dev/uinput (the shell doesn't restart those).
 
 --game: Game Mode's controller mouse (started by Hearth, hearth-core padmouse.rs). Only the mouse: right stick,
@@ -41,20 +45,14 @@ SCROLL_SPEED = 16.0         # wheel notches/s at full tilt
 ALT_HOLD = 0.9              # s the window switcher stays open after the last LB/RB
 HELP_TAP = 0.45             # View shorter than this (and not used with the D-pad) shows the controls
 
-# A full US keyboard: every character a terminal or a password needs, plus Esc, Ctrl, Alt and arrows.
-# Shift, Ctrl and Alt apply to the next key; Caps keeps letters upper case until pressed again.
-OSK_ROWS = [
-    ['`', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 'bksp'],
-    ['tab', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\\'],
-    ['caps', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', "'", 'enter'],
-    ['shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 'up'],
-    ['ctrl', 'alt', 'esc', 'space', 'left', 'down', 'right'],
-]
+# Shifted characters on a US keyboard (typing through uinput when wtype is missing).
 OSK_SHIFTED = {'`': '~', '1': '!', '2': '@', '3': '#', '4': '$', '5': '%', '6': '^', '7': '&', '8': '*',
                '9': '(', '0': ')', '-': '_', '=': '+', '[': '{', ']': '}', '\\': '|', ';': ':', "'": '"',
                ',': '<', '.': '>', '/': '?'}
 OSK_SPECIAL = {'space': 'KEY_SPACE', 'bksp': 'KEY_BACKSPACE', 'tab': 'KEY_TAB', 'enter': 'KEY_ENTER', 'esc': 'KEY_ESC',
-               'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}
+               'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT', 'home': 'KEY_HOME', 'end': 'KEY_END'}
+# What the on-screen keyboard gets while it's open (Guide stays the Hearth menu, RT the pointer's click).
+OSK_BUTTONS = ('a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'view', 'menu', 'l3', 'r3', 'up', 'down', 'left', 'right')
 
 # Characters the keyboard types → (key, needs Shift). US layout.
 _BASE = {'`': 'KEY_GRAVE', '-': 'KEY_MINUS', '=': 'KEY_EQUAL', '[': 'KEY_LEFTBRACE', ']': 'KEY_RIGHTBRACE',
@@ -75,7 +73,8 @@ SNAP = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RI
 KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
                    set(OSK_SPECIAL.values()) |
                    {'KEY_LEFTSHIFT', 'KEY_LEFTCTRL', 'KEY_LEFTALT', 'KEY_LEFTMETA', 'KEY_TAB', 'KEY_ENTER', 'KEY_ESC',
-                    'KEY_BACKSPACE', 'KEY_Q', 'KEY_COMPOSE'})
+                    'KEY_BACKSPACE', 'KEY_Q', 'KEY_COMPOSE', 'KEY_V'})
+MODS = {'ctrl': 'KEY_LEFTCTRL', 'alt': 'KEY_LEFTALT', 'shift': 'KEY_LEFTSHIFT'}
 
 
 def curve(v):
@@ -107,8 +106,10 @@ class Pad:
         self.precise = False
         self.speed = 1.0           # pointer speed multiplier (Hearth Settings › Controller)
         self.sel = -1
-        self.osk = {'row': 1, 'col': 1, 'shift': False, 'caps': False, 'ctrl': False, 'alt': False}
-        self.repeat = {}           # nav direction → next repeat time (radial / osk)
+        self.osk_split = False     # split sticks: the right stick is the keyboard's too (no pointer)
+        self.osk_axes = (0.0, 0.0, 0.0, 0.0)
+        self.osk_axes_at = 0.0
+        self.repeat = {}           # nav direction → next repeat time (radial)
         self.acc = [0.0, 0.0, 0.0, 0.0]   # sub-pixel pointer x/y, wheel v/h (in 1/120 notches)
 
     # ------------------------------------------------------------------ helpers
@@ -147,19 +148,18 @@ class Pad:
             self.mode = mode
             self.repeat.clear()
 
-    def osk_msg(self, open_=True):
-        m = {'t': 'osk', 'open': open_}
-        if open_:
-            m.update(rows=OSK_ROWS, shifted=OSK_SHIFTED, **self.osk)
-        self.out.send(m)
+    def want_osk(self):
+        """Y: asks the shell for the on-screen keyboard (it answers osk {open: true})."""
+        self.out.send({'t': 'osk', 'open': True})
 
-    def open_osk(self):
+    def open_osk(self, split=False):
         self.set_mode('osk')
-        self.osk_msg()
+        self.osk_split = bool(split)
+        self.osk_axes = (0.0, 0.0, 0.0, 0.0)
 
     def close_osk(self):
         self.set_mode('desk')
-        self.osk_msg(False)
+        self.osk_split = False
 
     def open_radial(self):
         self.set_mode('radial')
@@ -172,40 +172,30 @@ class Pad:
 
     def type_char(self, ch, mods=()):
         if ch not in CHARS:
-            return
+            return False
         key, shift = CHARS[ch]
         self.tap(*(list(mods) + (['KEY_LEFTSHIFT'] if shift else []) + [key]))
+        return True
 
-    def osk_key(self, k):
-        """A key on the on-screen keyboard: chosen with the controller, or tapped."""
-        o = self.osk
-        if k in ('shift', 'caps', 'ctrl', 'alt'):
-            o[k] = not o[k]
-            return self.osk_msg()
-        mods = (['KEY_LEFTCTRL'] if o['ctrl'] else []) + (['KEY_LEFTALT'] if o['alt'] else [])
-        if k in OSK_SPECIAL:
-            self.tap(*(mods + (['KEY_LEFTSHIFT'] if o['shift'] else []) + [OSK_SPECIAL[k]]))
-        else:
-            if k.isalpha():
-                ch = k.upper() if o['shift'] != o['caps'] else k
-            else:
-                ch = OSK_SHIFTED.get(k, k) if o['shift'] else k
-            self.type_char(ch, mods)
-        if o['shift'] or o['ctrl'] or o['alt']:   # one key each
-            o.update(shift=False, ctrl=False, alt=False)
-            self.osk_msg()
+    def emit_text(self, text, mods=()):
+        """Typing for the on-screen keyboard when wtype isn't there: what a US keyboard can type (the rest is skipped)."""
+        m = [MODS[x] for x in mods if x in MODS]
+        skipped = 0
+        for ch in str(text)[:500]:
+            if ch == '\n':
+                self.tap(*(m + ['KEY_ENTER']))
+            elif not self.type_char(ch, m):
+                skipped += 1
+        return skipped
 
-    def osk_move(self, d):
-        r, c = self.osk['row'], self.osk['col']
-        if d in ('up', 'down'):
-            last = len(OSK_ROWS[r]) - 1
-            nr = max(0, min(len(OSK_ROWS) - 1, r + (1 if d == 'down' else -1)))
-            c = round((c / last if last else 0) * (len(OSK_ROWS[nr]) - 1))
-            r = nr
-        else:
-            c = max(0, min(len(OSK_ROWS[r]) - 1, c + (1 if d == 'right' else -1)))
-        self.osk.update(row=r, col=c)
-        self.osk_msg()
+    def emit_key(self, name, n=1, mods=()):
+        m = [MODS[x] for x in mods if x in MODS]
+        if name == 'paste':
+            return self.tap('KEY_LEFTCTRL', 'KEY_V')
+        if name not in OSK_SPECIAL:
+            return
+        for _ in range(max(1, min(int(n or 1), 200))):
+            self.tap(*(m + [OSK_SPECIAL[name]]))
 
     def radial_set(self, sel):
         if sel != self.sel:
@@ -272,27 +262,10 @@ class Pad:
             self.radial_set(((self.sel if self.sel >= 0 else 0) + (1 if name == 'rb' else -1)) % RADIAL_ITEMS)
 
     def osk_button(self, name, down, now):
-        if name == 'rt':                      # click a field without closing the keyboard
+        if name == 'rt' and not self.osk_split:   # click a field without closing the keyboard
             return self.mouse('BTN_LEFT', 'rt', down)
-        if not down:
-            if name in self.repeat:
-                del self.repeat[name]
-            return
-        if name in ('up', 'down', 'left', 'right'):
-            self.osk_move(name)
-            self.repeat[name] = now + 0.4
-        elif name == 'a':
-            self.osk_key(OSK_ROWS[self.osk['row']][self.osk['col']])
-            self.repeat['a'] = now + 0.4
-        elif name == 'x':
-            self.tap('KEY_BACKSPACE')
-            self.repeat['x'] = now + 0.4
-        elif name == 'lb':
-            self.osk_key('shift')
-        elif name == 'menu':
-            self.tap('KEY_ENTER')
-        elif name in ('b', 'y'):
-            self.close_osk()
+        if name in OSK_BUTTONS or (name == 'rt' and self.osk_split):
+            self.out.send({'t': 'oskpad', 'b': name, 'down': bool(down)})
 
     def keys_button(self, name, down):
         if name in ARROWS:
@@ -306,7 +279,7 @@ class Pad:
         elif name == 'x':
             self.tap('KEY_COMPOSE')          # the Menu key: the actions menu in Hearth Files
         elif name == 'y':
-            self.open_osk()
+            self.want_osk()
         elif name == 'menu':
             self.out.send({'t': 'launcher'})
 
@@ -349,7 +322,7 @@ class Pad:
             else:
                 self.tap('KEY_ESC')
         elif name == 'y':
-            self.open_osk()
+            self.want_osk()
         elif name == 'menu':
             self.out.send({'t': 'launcher'})
         elif name in ('lb', 'rb'):
@@ -380,30 +353,15 @@ class Pad:
             return
 
         if self.mode == 'osk':
-            # Left stick picks keys like the D-pad; held D-pad/A/X repeat.
-            stick = None
-            if abs(lx) > 0.6 or abs(ly) > 0.6:
-                stick = ('left' if lx < 0 else 'right') if abs(lx) > abs(ly) else ('up' if ly < 0 else 'down')
-            for d in ('up', 'down', 'left', 'right'):
-                key = 'stick_' + d
-                if stick == d:
-                    if key not in self.repeat:
-                        self.osk_move(d)
-                        self.repeat[key] = now + 0.4
-                    elif now >= self.repeat[key]:
-                        self.osk_move(d)
-                        self.repeat[key] = now + 0.11
-                else:
-                    self.repeat.pop(key, None)
-            for name in ('up', 'down', 'left', 'right', 'a', 'x'):
-                if name in self.repeat and name in self.held and now >= self.repeat[name]:
-                    self.repeat[name] = now + 0.11
-                    if name == 'a':
-                        self.osk_key(OSK_ROWS[self.osk['row']][self.osk['col']])
-                    elif name == 'x':
-                        self.tap('KEY_BACKSPACE')
-                    else:
-                        self.osk_move(name)
+            # The keyboard reads the left stick itself (moving, the Ember Wheel; both sticks with split sticks):
+            # sent when it moves, at most every 30 ms.
+            ax = (lx, ly, rx, ry) if self.osk_split else (lx, ly, 0.0, 0.0)
+            if any(abs(a - b) > 0.04 for a, b in zip(ax, self.osk_axes)) and now - self.osk_axes_at >= 0.03:
+                self.osk_axes = ax
+                self.osk_axes_at = now
+                self.out.send({'t': 'oskaxes', 'lx': round(ax[0], 3), 'ly': round(ax[1], 3), 'rx': round(ax[2], 3), 'ry': round(ax[3], 3)})
+            if self.osk_split:
+                return
         elif self.paused:
             return
 
@@ -440,9 +398,13 @@ class Pad:
             self.release_all()
             self.keys_ctx = bool(m.get('on'))
         elif c == 'osk':
-            self.open_osk() if m.get('open') else (self.close_osk() if self.mode == 'osk' else None)
-        elif c == 'type':
-            self.osk_key(str(m.get('key', '')))
+            self.open_osk(m.get('split')) if m.get('open') else (self.close_osk() if self.mode == 'osk' else None)
+        elif c == 'emit':
+            self.emit_text(m.get('text', ''), m.get('mods') or ())
+        elif c == 'key':
+            self.emit_key(str(m.get('key', '')), m.get('n', 1), m.get('mods') or ())
+        elif c == 'rumble':
+            self.out.rumble(m.get('strength', 0.3), m.get('ms', 20))
         elif c == 'mouse':
             self.user_off = not m.get('on', True)
             if self.user_off:
@@ -478,6 +440,7 @@ class Output:
                                 name='Hearth controller pointer')
         self.kbd = evdev.UInput({e.EV_KEY: [getattr(e, k) for k in KEYS_USED]}, name='Hearth controller keyboard')
         self.wheel_acc = [0, 0]
+        self.rumbler = None
 
     def move(self, dx, dy):
         e = self.e
@@ -511,6 +474,14 @@ class Output:
     def send(self, obj):
         emit(obj)
 
+    def rumble(self, strength, ms):
+        """A short rumble on every controller that can (the on-screen keyboard's key presses)."""
+        if self.rumbler:
+            try:
+                self.rumbler(float(strength), int(ms))
+            except (TypeError, ValueError, OSError):
+                pass
+
 
 def button_map(e):
     m = {e.BTN_SOUTH: 'a', e.BTN_EAST: 'b', e.BTN_NORTH: 'x', e.BTN_WEST: 'y',   # xpad's X/Y codes
@@ -529,6 +500,7 @@ class Controller:
         self.dev = dev
         self.e = e
         self.btn = {}       # name → pressed (buttons, triggers, hat)
+        self.ff_id = None   # its uploaded rumble effect (the on-screen keyboard)
         self.ax = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0}
         self.info = {}
         for code, info in dev.capabilities(absinfo=True).get(e.EV_ABS, []):
@@ -676,6 +648,28 @@ def main():
     if game:
         note('Game Mode controller mouse')
     pads = {}
+
+    def rumble(strength, ms):
+        """A short rumble (force feedback) on every controller that has it."""
+        strength = max(0.0, min(1.0, strength))
+        ms = max(5, min(200, ms))
+        for c in pads.values():
+            if e.EV_FF not in c.dev.capabilities():
+                continue
+            try:
+                eff = evdev.ff.Effect(e.FF_RUMBLE, -1, 0, evdev.ff.Trigger(0, 0), evdev.ff.Replay(ms, 0),
+                                      evdev.ff.EffectType(ff_rumble_effect=evdev.ff.Rumble(strong_magnitude=int(0x7fff * strength * 0.5),
+                                                                                           weak_magnitude=int(0xffff * strength))))
+                if c.ff_id is not None:
+                    try:
+                        c.dev.erase_effect(c.ff_id)
+                    except OSError:
+                        pass
+                c.ff_id = c.dev.upload_effect(eff)
+                c.dev.write(e.EV_FF, c.ff_id, 1)
+            except (OSError, AttributeError, TypeError):
+                pass
+    out.rumbler = rumble
     pressed = set()
     names = ('a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'view', 'menu', 'guide', 'l3', 'r3',
              'up', 'down', 'left', 'right')
