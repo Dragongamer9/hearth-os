@@ -62,6 +62,7 @@ def fail(msg):
         try:
             print('--- service log (tail) ---')
             print(open(SVC.log_path).read()[-4000:])
+            print('AUTHLOG ' + ' | '.join(l.split('hearth-friends: ', 1)[-1] for l in open(SVC.log_path).read().splitlines() if 'auth' in l or 'e2ee' in l or 'restored' in l)[-3000:])
         except OSError:
             pass
     sys.exit(1)
@@ -281,8 +282,11 @@ try:
         fail('the restored session isn\'t the OAuth one: %r' % s)
     wait('syncs after the restart', lambda: SVC.call('status').get('synced'), 60)
     ok('restart: the OAuth session came back from the keyring')
-    SVC.call('setName', {'name': 'Dave from Hearth'})
-    wait('the access token is renewed (60 s tokens) and kept', lambda: 'access token was renewed; the new one is in the keyring' in SVC.log(), 150, 3)
+    def renewed():
+        # Something that needs the server, now and then: an expired token is only noticed on a request.
+        SVC.call('setName', {'name': 'Dave %d' % int(time.time())})
+        return 'access token was renewed; the new one is in the keyring' in SVC.log()
+    wait('the access token is renewed (60 s tokens) and kept', renewed, 330, 20)
     SVC.call('setName', {'name': 'Dave again'})
     if not SVC.call('status').get('signedIn'):
         fail('signed out after the token was renewed')
