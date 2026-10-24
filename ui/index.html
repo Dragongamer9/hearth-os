@@ -1581,7 +1581,7 @@ function blip(f=700,d=.035,v=.035){
 // =====================================================================
 // Views
 // =====================================================================
-const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',friends:'Friends',shots:'Screenshots',coop:'Couch Co-op (Beta Experimental)',settings:'Settings',stores:'Game stores',gameset:'Game settings',hhd:'Handheld Daemon'};
+const TITLES = {home:'Home',library:'Library',game:'',downloads:'Downloads',friends:'Friends',shots:'Screenshots',coop:'Couch Co-op (Beta Experimental)',settings:'Settings',stores:'Game stores',shop:'Store',gameset:'Game settings',hhd:'Handheld Daemon'};
 
 // A profile with parental limits sees only the games it's allowed (when a grown-up chose some).
 const allowedList = () => { const s=PROF.s, c=s&&s.hasPin&&s.list.find(p=>p.current); return c&&c.limits&&c.limits.allowed ? c.limits.allowed : null; };
@@ -1635,7 +1635,7 @@ function applyLook(){
 function saveLook(){ try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} applyLook(); if(typeof lkUiSync==='function') lkUiSync(); }
 function renderTopNav(){
   const n=$('#topnav'); if(!n) return;
-  const items=[['home','Home'],['library','Library'],...(ANDROID?[]:[['downloads','Downloads']]),['settings','Settings']];
+  const items=[['home','Home'],['library','Library'],...(shopOn()?[['shop','Store']]:[]),...(ANDROID?[]:[['downloads','Downloads']]),['settings','Settings']];
   const html = items.map(([v,l])=>`<button class="${S.view===v?'cur':''}" data-f data-k="tn-${v}" data-act="nav" data-view="${v}">${l}</button>`).join('');
   // Only rebuild when it changed: Settings refreshes often (battery, Wi-Fi), and rebuilding these buttons
   // under the selection threw it back to the first setting (Profile), so Home/Library/Downloads couldn't be reached.
@@ -2095,6 +2095,303 @@ function mfQam(){
     <button class="btn sm" data-f data-k="mfq-all" data-act="mfQAll">${I.user}Open Friends</button>`;
 }
 // ---------- end of Hearth Friends on Matrix
+// ---------- Store: the Steam, GOG, Epic and Xbox stores, browsed with a controller (Game Mode › Store) ----------
+// Hearth reads each store's public pages (hearth-core storefront/: lists, prices, search, a game's page); nothing here
+// signs in or sees a password. Buying and wishlists happen on the stores' own pages: Steam's in the Steam client
+// (signed in already), GOG's, Epic's and Xbox's in Hearth's store window, which shares the browser profile of that
+// store's sign-in in Library › Stores, so one sign-in covers the library and the store (docs/STORE.md).
+const SHOP_STORES = [['steam','Steam'],['gog','GOG'],['epic','Epic Games'],['xbox','Xbox']];
+const SHOP = {store:'steam', shot:null, back:null, home:{}, err:{}, busy:{}, q:{}, res:{}, rerr:{}, rbusy:{}, page:null, det:{}, derr:{}, more:false, status:null, steamVisit:0};
+try{ const s=localStorage.getItem('hearth.shopStore'); if(SHOP_STORES.some(x=>x[0]===s)) SHOP.store=s; }catch(e){}
+I.shop='<svg viewBox="0 0 24 24"><path d="M3.5 4.5h2.2l2.1 10.2h10.4l1.9-7.2H6.6"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="16.5" cy="19" r="1.4"/></svg>';
+// In the menus on Hearth (Linux) and in the browser preview; Ember's host and Android don't have the store calls.
+const shopOn = () => !ANDROID && (LINUX || !host);
+const shopName = s => (SHOP_STORES.find(x=>x[0]===s)||[s,s])[1];
+const shopNorm = t => String(t||'').toLowerCase().replace(/[™®©]/g,'').replace(/[^a-z0-9]+/g,'');
+document.head.insertAdjacentHTML('beforeend', `<style id="shop-css">
+.shop-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
+.shop-top .chips{margin:0}
+.shop-acct{font-size:13px;color:var(--dim);margin-left:auto;display:flex;align-items:center;gap:8px}
+.shop-acct.on b{color:var(--accent)}
+.shop-hero{position:relative;display:block;width:100%;height:clamp(170px,30vh,300px);border-radius:14px;overflow:hidden;text-align:left;margin:4px 0 6px;background:var(--panel)}
+.shop-hero .img,.sfa .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.shop-hero:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,11,16,.92) 0,rgba(8,11,16,.55) 45%,transparent 75%)}
+.shop-hero .shk{position:absolute;left:24px;bottom:22px;right:40%;z-index:1}
+.shop-hero .shk small{color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:11px}
+.shop-hero .shk b{display:block;font-size:clamp(22px,3vw,36px);font-weight:800;margin:4px 0 8px;line-height:1.1}
+.sft{flex:none;width:clamp(200px,21vw,290px);text-align:left;border-radius:10px;background:var(--panel);overflow:hidden;display:flex;flex-direction:column}
+.sft[data-f].focus{transform:scale(1.035);z-index:2}
+.sfa{position:relative;aspect-ratio:460/215;width:100%}
+.sfd{position:absolute;left:8px;top:8px;z-index:1;background:#4c7a13;color:#d8f5a2;font-weight:800;font-size:12px;padding:3px 7px;border-radius:5px}
+.sfo{position:absolute;right:8px;top:8px;z-index:1;background:rgba(8,11,16,.8);color:var(--text);font-weight:700;font-size:11px;padding:3px 7px;border-radius:5px}
+.sfo.gp{background:#107c10;color:#fff}
+.sft-t{padding:9px 11px 2px;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sft-p{padding:0 11px 10px;font-size:13px;color:var(--dim)}
+.sft-p b,.shop-price b{color:var(--text)} .sft-p s,.shop-price s{color:var(--faint);margin-right:4px}
+.shop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(clamp(200px,21vw,290px),1fr));gap:16px;padding:6px 0 18px}
+.shop-grid .sft{width:100%}
+.shop-shots{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;padding:6px 2px 14px}
+.shop-shots button{flex:none;width:clamp(220px,26vw,360px);aspect-ratio:16/9;border-radius:8px;overflow:hidden;position:relative;background:var(--panel2)}
+.shop-shots img{width:100%;height:100%;object-fit:cover}
+.gbody .card > img{width:100%;border-radius:8px;display:block}
+.shop-desc p{margin:0 0 8px;color:var(--dim);font-size:14px;line-height:1.55}
+.shop-tag{display:inline-block;padding:3px 8px;border-radius:6px;background:var(--panel2);font-size:12px;margin:0 4px 4px 0}
+.shop-tag.gp{background:#107c10;color:#fff}
+.shop-err{background:var(--panel);border-radius:var(--r);padding:16px 18px;margin:10px 0}
+</style>`);
+
+// The account for a store, from store.status: signed in (or expired), Steam installed, the store window there.
+const shopAcc = s => ((SHOP.status&&SHOP.status.stores)||{})[s] || {};
+function shopOwned(it){
+  if(!it || !it.title) return null;
+  const n=shopNorm(it.title);
+  // Xbox Cloud Gaming's catalog is in the library too: streaming isn't owning (shopCloud finds those).
+  return GAMES.find(g => g.src===it.store && !g.cloud && (
+    it.store==='steam' ? (g.id==='steam:'+it.id || String(g.appId||'')===String(it.id))
+    : (it.store==='gog' && g.id==='gog:'+it.id) || (!!n && shopNorm(g.title)===n))) || null;
+}
+const shopCloud = it => it && it.store==='xbox' ? GAMES.find(g=>g.cloud && g.id!=='xbox:cloud' && shopNorm(g.title)===shopNorm(it.title)) || null : null;
+function shopImg(srcs, cls='img'){
+  const L=[...new Set(srcs.filter(Boolean))];
+  return L.length ? `<img class="${cls}" src="${esc(L[0])}" data-alts="${esc(L.slice(1).join('\n'))}" alt="" loading="lazy" decoding="async" onerror="shopImgNext(this)">` : '';
+}
+function shopImgNext(img){ const a=(img.dataset.alts||'').split('\n').filter(Boolean); if(!a.length) return img.remove(); img.dataset.alts=a.slice(1).join('\n'); img.src=a[0]; }
+const shopPrice = p => !p ? '<span class="muted">Price on the store page</span>' : `${p.base?`<s>${esc(p.base)}</s>`:''}<b>${esc(p.final)}</b>`;
+function shopCard(it, key){
+  const own=shopOwned(it), p=it.price;
+  return `<button class="sft" data-f data-k="${esc(key)}" data-act="shopOpen" data-s="${esc(it.store)}" data-id="${esc(it.id)}">
+    <div class="sfa" style="${artBg({title:it.title||'?'})}">${shopImg([it.wide,it.thumb,it.tall])}${p&&p.discount?`<span class="sfd">-${p.discount}%</span>`:''}${own?`<span class="sfo">${own.inst?'Installed':'In your library'}</span>`:it.gamePass?'<span class="sfo gp">Game Pass</span>':''}</div>
+    <div class="sft-t">${esc(it.title)}</div><div class="sft-p">${shopPrice(p)}</div></button>`;
+}
+
+// ---------- loading ----------
+function shopEnter(params){
+  SHOP.page = params && params.shopPage || null;
+  shopStatus(); shopLoad(SHOP.store);
+  if(SHOP.page) shopLoadDetails(SHOP.page.store, SHOP.page.id);
+}
+async function shopStatus(){
+  try{ SHOP.status = host ? await call('store.status',{},15000) : SHOP_MOCK.status(); }catch(e){ return; }
+  if(S.view==='shop') render(null,true);
+}
+function shopLoad(store, again){
+  if(SHOP.busy[store] || (SHOP.home[store] && !again)) return;
+  SHOP.busy[store]=true; SHOP.err[store]=null;
+  (host ? call('store.home',{store},120000) : SHOP_MOCK.home(store))
+    .then(r=>{ SHOP.home[store]=r; }).catch(e=>{ SHOP.err[store]=e.message; })
+    .finally(()=>{ SHOP.busy[store]=false; if(S.view==='shop' && SHOP.store===store) render(null,true); });
+}
+function shopLoadDetails(store, id){
+  const k=store+':'+id;
+  if(SHOP.det[k]) return;
+  SHOP.derr[k]=null;
+  (host ? call('store.details',{store,id},90000) : SHOP_MOCK.details(store,id))
+    .then(r=>{ SHOP.det[k]=r; }).catch(e=>{ SHOP.derr[k]=e.message; })
+    .finally(()=>{ if(S.view==='shop' && SHOP.page && SHOP.page.store+':'+SHOP.page.id===k) render(null,true); });
+}
+function shopDoSearch(store, q){
+  SHOP.q[store]=q; SHOP.res[store]=null; SHOP.rerr[store]=null;
+  if(!q) return render('sf-search',true);
+  SHOP.rbusy[store]=true; render('sf-search',true);
+  (host ? call('store.search',{store,q},60000) : SHOP_MOCK.search(store,q))
+    .then(r=>{ if(SHOP.q[store]===q) SHOP.res[store]=r.items||[]; }).catch(e=>{ SHOP.rerr[store]=e.message; })
+    .finally(()=>{ SHOP.rbusy[store]=false; if(S.view==='shop' && SHOP.store===store && !SHOP.page) render(null,true); });
+}
+// An item from what's on screen (a shelf or the search results), shown while its page loads.
+function shopFind(store, id){
+  for(const s of ((SHOP.home[store]||{}).sections||[])) for(const it of s.items) if(it.id===id) return it;
+  return (SHOP.res[store]||[]).find(it=>it.id===id) || null;
+}
+
+// ---------- the store's front page ----------
+function shopAcctHtml(st){
+  const a=shopAcc(st), name=shopName(st);
+  if(!SHOP.status) return '';
+  if(st==='steam'){
+    if(!a.installed) return `<span class="shop-acct">Steam isn't installed on this device</span>`;
+    return a.signedIn ? `<span class="shop-acct on"><b>●</b> Buying opens Steam's own store, signed in</span>`
+      : `<span class="shop-acct">Not signed in to Steam<button class="pill" data-f data-k="sf-signin" data-act="shopSignIn" data-s="steam">${I.user}Sign in</button></span>`;
+  }
+  if(a.signedIn) return `<span class="shop-acct on"><b>●</b> Signed in to ${esc(name)}: the same sign-in buys games</span>`;
+  return `<span class="shop-acct">${a.expired?`Your ${esc(name)} sign-in expired`:`Not signed in to ${esc(name)}`}<button class="pill" data-f data-k="sf-signin" data-act="shopSignIn" data-s="${st}">${I.user}${a.expired?'Sign in again':'Sign in'}</button></span>`;
+}
+function shopHero(it){
+  return `<button class="shop-hero" data-f data-k="sf-hero" data-act="shopOpen" data-s="${esc(it.store)}" data-id="${esc(it.id)}" style="${artBg({title:it.title||'?'})}">
+    ${shopImg([it.wide,it.tall,it.thumb])}<div class="shk"><small>${it.price&&it.price.free&&it.until?'Free now':it.price&&it.price.discount?`${it.price.discount}% off`:'Featured'}</small><b>${esc(it.title)}</b><span class="shop-price">${shopPrice(it.price)}</span></div></button>`;
+}
+function viewShop(){
+  if(SHOP.page) return shopDetails();
+  const st=SHOP.store, h=SHOP.home[st], q=SHOP.q[st]||'';
+  let out = `<div class="shop-top"><div class="chips">${SHOP_STORES.map(([k,l])=>`<button class="chip ${k===st?'on':''}" data-f data-k="sf-t-${k}" data-act="shopTab" data-v="${k}">${l}</button>`).join('')}</div>
+    <button class="pill" data-f data-k="sf-search" data-act="shopSearch">${I.search}${q?esc(q):'Search '+esc(shopName(st))}</button>
+    ${q?`<button class="pill ghost" data-f data-k="sf-clear" data-act="shopClear">${I.x}Clear</button>`:''}
+    ${st!=='steam'?`<button class="pill ghost" data-f data-k="sf-site" data-act="shopSite">${I.shop}${esc(SHOP_SITES[st].name)}</button>`:''}${shopAcctHtml(st)}</div>`;
+  if(q){
+    const r=SHOP.res[st];
+    out += shead(`Results for “${esc(q)}”`, SHOP.rbusy[st]);
+    out += SHOP.rerr[st] ? `<div class="shop-err"><b>Couldn't search ${esc(shopName(st))}.</b><div class="muted" style="margin:4px 0 10px">${esc(SHOP.rerr[st])}</div>${st!=='steam'?`<button class="pill" data-f data-k="sf-sitesearch" data-act="shopSite" data-v="search">${I.search}Search on ${esc(SHOP_SITES[st].name)}</button>`:''}</div>`
+      : !r ? '' : r.length ? `<div class="shop-grid">${r.map((it,i)=>shopCard(it,'sf-r-'+i)).join('')}</div>` : note(`No games on ${esc(shopName(st))} match “${esc(q)}”.`);
+  }
+  if(!h){
+    out += SHOP.err[st] ? `<div class="shop-err"><b>Couldn't reach ${esc(shopName(st))}'s store.</b><div class="muted" style="margin:4px 0 10px">${esc(SHOP.err[st])}</div><button class="pill" data-f data-k="sf-retry" data-act="shopRetry">${I.refresh||''}Try again</button></div>`
+      : `<div style="padding:30px 0">${shead(`Loading ${esc(shopName(st))}…`, true)}</div>`;
+    return out;
+  }
+  const secs=(h.sections||[]).filter(s=>s.items&&s.items.length);
+  if(h.stale) out += note(`Showing ${esc(shopName(st))} as it was earlier: the store can't be reached right now.`);
+  if(secs[0] && !q) out += shopHero(secs[0].items[0]);
+  out += secs.map(s=>`<h2>${esc(s.title)}</h2><div class="shelf">${s.items.map((it,j)=>shopCard(it,`sf-${s.id}-${j}`)).join('')}</div>`).join('');
+  out += note(st==='steam'
+    ? `Prices and pictures come from Steam's public store pages. Buy, wishlist and gift in Steam's own store: ${APP} opens it in Steam's window, already signed in. ${APP} never signs in to Steam itself.`
+    : `Prices and pictures come from ${esc(shopName(st))}'s public store pages. Buying happens on ${esc(shopName(st))}'s own page, signed in with the sign-in from Library › Stores &amp; accounts: sign in once and both work. ${APP} never sees your password or card.`);
+  return out;
+}
+
+// ---------- a game's page ----------
+// The main buttons: Play or Install for a game you own; Buy (on the store's own page) otherwise; Sign in first when
+// the store isn't signed in (the library's sign-in, which covers buying too).
+function shopButtons(it, d, own){
+  const st=it.store, name=shopName(st), a=shopAcc(st), id=esc(it.id), free=it.price&&it.price.free;
+  const b=(k,act,label,icon,pri,extra='')=>`<button class="play ${pri?'':'install'}" data-f data-k="${k}" data-act="${act}" data-s="${st}" data-id="${id}" ${extra}>${icon||''}${label}</button>`;
+  if(own){
+    if(st==='xbox') return (SHOP.status&&SHOP.status.xodus) ? b('sf-buy','shopLib','Open Xodus Nexus',I.play,true,'data-v="game" data-g="xodus:nexus"') : b('sf-buy','shopXodus','Set up Xbox PC games',I.dl,true);
+    return own.inst ? b('sf-buy','shopLib','Play',I.play,true,`data-v="play" data-g="${esc(own.id)}"`) : b('sf-buy','shopLib','Install',I.dl,true,`data-v="install" data-g="${esc(own.id)}"`);
+  }
+  if(st==='steam'){
+    if(SHOP.status && !a.installed) return `<div class="muted">Steam isn't installed on this device, so Steam games can't be bought here.</div>`;
+    if(SHOP.status && !a.signedIn) return b('sf-buy','shopSignIn','Sign in to Steam',I.user,true);
+    return b('sf-buy','shopSteam',free?'Get it in Steam':'Buy in Steam',I.shop,true,'data-v="store"');
+  }
+  if(SHOP.status && !a.signedIn) return b('sf-buy','shopSignIn',`Sign in to ${name}`,I.user,true);
+  const cloud=shopCloud(it);
+  return b('sf-buy','shopWeb',free?'Get it free':`Buy on ${name}`,I.shop,true,'data-v="buy"')
+    + (cloud?b('sf-cloud','shopLib','Stream it',I.play,false,`data-v="game" data-g="${esc(cloud.id)}"`):'');
+}
+function shopDetails(){
+  const p=SHOP.page, k=p.store+':'+p.id, d=SHOP.det[k], it=Object.assign({store:p.store,id:p.id,title:''}, p.item||{}, d||{});
+  const own=shopOwned(it), err=SHOP.derr[k], name=shopName(p.store);
+  const pdb=d&&d.protondb;
+  const linux = pdb&&pdb.tier ? `<span class="pdb" style="--c:${PDB_COLORS[pdb.tier]||'#7f8b99'}">${esc(pdb.label)}</span>` : it.linux ? 'Linux version' : p.store==='xbox' ? 'With Xodus Nexus' : '—';
+  const stats=[['Price', own?(own.inst?'Installed':'In your library'):shopPrice(it.price)], ['Rating', it.rating?esc(it.rating.label):'—'], ['On Linux', linux],
+    ['Released', it.released?esc(it.released):'—'], ['Developer', it.developers&&it.developers.length?esc(it.developers.join(', ')):'—']];
+  const text=(d&&d.description)||[];
+  const shots=(d&&d.screenshots)||[];
+  const tags=[...(it.genres||[]).map(g=>`<span class="shop-tag">${esc(g)}</span>`), it.gamePass?'<span class="shop-tag gp">Included with PC Game Pass</span>':''].join('');
+  const after = p.store==='steam' && SHOP.steamVisit && !own ? `<button class="pill" data-f data-k="sf-steamref" data-act="shopSteamRefresh">${I.refresh||''}Bought it? Refresh my Steam games</button>` : '';
+  const how = p.store==='steam'
+    ? `Buying, wishlists and gifts happen in Steam's own store, which ${APP} opens in Steam's window (signed in already). Press the Guide button to come back. Your new game shows in the library once Steam has it.`
+    : `${esc(name)}'s own page opens in ${APP}'s store window, signed in with your ${esc(name)} sign-in from Library › Stores (one sign-in covers both). ${HOSTINFO.gameMode?'The right stick moves a pointer, A clicks, Y opens a keyboard, B comes back here.':'Close the window to come back.'} New games show in your library when you're back.`;
+  return `<div class="gpage">
+    <div class="ghero"><div class="art" style="${artBg({title:it.title||'?'})}"></div>${shopImg([it.hero,shots[0],it.wide])}<div class="glogo">${esc(it.title||'Loading…')}</div></div>
+    <div class="gbar">
+      ${shopButtons(it,d,own)}
+      ${p.store==='steam' ? `<button class="sq" data-f data-k="sf-page" data-act="shopSteam" data-s="steam" data-id="${esc(it.id)}" data-v="store" aria-label="Wishlist in Steam">${I.star}</button>`
+        : (it.url||it.checkout) ? `<button class="sq" data-f data-k="sf-page" data-act="shopWeb" data-s="${esc(p.store)}" data-id="${esc(it.id)}" data-v="page" aria-label="Store page and wishlist">${I.star}</button>` : ''}
+      <div class="gstats">${stats.map(([kk,v])=>`<div class="gstat"><div class="k">${kk}</div><div class="v">${v}</div></div>`).join('')}</div>
+    </div>
+    <div class="gbody">
+      <div>
+        <div class="card"><h3>About</h3>${tags?`<div style="margin-bottom:8px">${tags}</div>`:''}
+          ${err?`<div class="muted">${p.item&&p.item.short?esc(p.item.short)+'<br><br>':''}Couldn't load this game's page: ${esc(err)}</div>${it.url&&p.store!=='steam'?`<button class="pill" style="margin-top:10px" data-f data-k="sf-seeit" data-act="shopWeb" data-s="${esc(p.store)}" data-id="${esc(it.id)}" data-v="page">${I.shop}See it on ${esc(SHOP_SITES[p.store].name)}</button>`:''}` : !d ? shead('Loading…',true)
+            : `<div class="shop-desc">${(text.length?text:[d.short||'']).slice(0, SHOP.more?60:6).map(t=>`<p>${esc(t)}</p>`).join('')}</div>
+               ${text.length>6?`<button class="pill ghost" data-f data-k="sf-more" data-act="shopMore">${SHOP.more?'Show less':'Read more'}</button>`:''}`}
+        </div>
+        ${shots.length&&SHOP.shot!=null&&shots[SHOP.shot]?`<div class="card" style="margin-top:14px;padding:8px">${shopImg([shots[SHOP.shot]],'')}</div>`:''}
+        ${shots.length?`<div class="shop-shots">${shots.map((u,i)=>`<button data-f data-k="sf-shot-${i}" data-act="shopShot" data-v="${i}">${shopImg([u],'')}</button>`).join('')}</div>`:''}
+      </div>
+      <div class="card"><h3>Buying</h3><div class="muted">${how}</div>${after?`<div style="margin-top:10px">${after}</div>`:''}
+        ${it.publishers&&it.publishers.length?`<div class="muted" style="margin-top:10px">Publisher: ${esc(it.publishers.join(', '))}</div>`:''}
+        ${d&&d.stale?`<div class="muted" style="margin-top:10px">Shown as it was earlier: ${esc(name)} can't be reached right now.</div>`:''}</div>
+    </div></div>`;
+}
+
+// ---------- what the buttons do ----------
+function shopAct(a, d, el){
+  switch(a){
+    case 'shopTab': return shopTab(d.v);
+    case 'shopOpen': { SHOP.more=false; SHOP.shot=null; const it=shopFind(d.s,d.id); SHOP.back=focused&&focused.dataset.k; SHOP.page={store:d.s,id:d.id,item:it}; shopLoadDetails(d.s,d.id); $('#view').scrollTop=0; return render('sf-buy'); }
+    case 'shopSearch': return openPrompt({title:`Search ${shopName(SHOP.store)}`, value:SHOP.q[SHOP.store]||''}).then(v=>{ if(v!=null) shopDoSearch(SHOP.store, v.trim().slice(0,80)); });
+    case 'shopClear': return shopDoSearch(SHOP.store, '');
+    case 'shopRetry': return shopLoad(SHOP.store, true), render(null,true);
+    case 'shopMore': SHOP.more=!SHOP.more; return render('sf-more',true);
+    case 'shopShot': SHOP.shot = SHOP.shot===+d.v ? null : +d.v; return render('sf-shot-'+d.v,true);
+    case 'shopLib': return shopLib(d.v, d.g);
+    case 'shopSignIn': return d.s==='steam' ? steamSignIn() : accSignIn(d.s).then(()=>shopStatus());
+    case 'shopXodus': closeAll(); return navigate('stores');
+    case 'shopSteam': return shopSteam(d.id, d.v);
+    case 'shopWeb': return shopWeb(d.s, d.id, d.v);
+    case 'shopSite': { const st=SHOP.store, site=SHOP_SITES[st]; if(!site) return; return shopOpenUrl(st, d.v==='search'&&SHOP.q[st] ? site.search(SHOP.q[st]) : site.home, site.name); }
+    case 'shopSteamRefresh': return call('accounts.refresh',{store:'steam'},10*60e3).then(()=>{ toast('Steam games refreshed'); if(host) loadLibrary(true); }).catch(e=>toast(e.message));
+  }
+}
+// Buttons that hand over to the library's own actions carry the library game in data-g.
+function shopLib(a, id){ const g=G(id); if(!g) return toast('That game isn\'t in your library yet. Refresh the store under Library › Stores.'); return a==='play' ? launch(g) : a==='install' ? installGame(g) : navigate('game',{game:g.id}); }
+function shopTab(s){
+  if(!SHOP_STORES.some(x=>x[0]===s)) return;
+  SHOP.store=s; SHOP.page=null; try{ localStorage.setItem('hearth.shopStore', s); }catch(e){}
+  shopLoad(s); render('sf-t-'+s); blip(600);
+}
+function shopShiftTab(d){ const i=SHOP_STORES.findIndex(x=>x[0]===SHOP.store); shopTab(SHOP_STORES[(i+d+SHOP_STORES.length)%SHOP_STORES.length][0]); }
+function shopBack(){ const k=SHOP.back; SHOP.page=null; render(k||null); return blip(420,.05); }
+function shopSteam(id, what){
+  if(!host) return toast(`Steam's store would open here (preview)`);
+  SHOP.steamVisit=Date.now();
+  call('store.steam',{id, what: what==='install'?'install':'store'},20000)
+    .then(()=>{ toast(`Steam's store is opening. Press the Guide button to come back to ${APP}.`); render(null,true); }).catch(e=>toast(e.message));
+}
+function shopWeb(store, id, which){
+  const k=store+':'+id, it=Object.assign({}, shopFind(store,id)||{}, (SHOP.page&&SHOP.page.item)||{}, SHOP.det[k]||{});
+  const url = which==='buy' && it.checkout ? it.checkout : it.url;
+  if(!url) return toast(`${shopName(store)} has no page for this game`);
+  shopOpenUrl(store, url, `${shopName(store)} · ${it.title||'Store'}`);
+}
+// A store's own site in the store window (signed in with its Library › Stores sign-in).
+function shopOpenUrl(store, url, title){
+  if(!host) return toast(`${shopName(store)}'s page would open in the store window (preview)`);
+  call('store.web',{store, url, title},20000)
+    .then(()=>toast(HOSTINFO.gameMode ? `Opening ${shopName(store)}… press B to come back` : `${shopName(store)} opened in a new window`)).catch(e=>toast(e.message));
+}
+// The stores' own sites: their front page and search, for the store window.
+const SHOP_SITES = {
+  gog: {name:'GOG.com', home:'https://www.gog.com/en/games', search:q=>'https://www.gog.com/en/games?query='+encodeURIComponent(q)},
+  epic: {name:'Epic Games Store', home:'https://store.epicgames.com/en-US/', search:q=>'https://store.epicgames.com/en-US/browse?q='+encodeURIComponent(q)},
+  xbox: {name:'Xbox.com', home:'https://www.xbox.com/en-US/games/browse', search:q=>'https://www.xbox.com/en-US/search/results/games?q='+encodeURIComponent(q)},
+};
+// Back from the store window: the store's games are being fetched again (hearth-core), so a purchase shows up.
+function shopWebClosed(d){
+  const s=d&&d.store; if(!s) return;
+  if(shopAcc(s).signedIn) toast(`Checking your ${shopName(s)} games for anything new…`);
+  shopStatus();
+}
+
+// ---------- the browser preview ----------
+const SHOP_MOCK = (()=>{
+  const names = {steam:['Starfall Drift','Neon Courier','Lantern Keep','Copperline','Hollow Tide','Pixel Harbor','Moonlit Rails','Ember Reach','Glass Orchard'],
+    gog:['Hollow Pines','Orbit Garden','Velvet Static','Old Crown','Tin Soldier','Night Ferry','Wren & Fox','Stone Psalm'],
+    epic:['Ironvale Tactics','Grimforge','Skyline Builders','Arc Runner','Foxglove','Signal Lost','Dune Kites','Rivet City'],
+    xbox:['Tidebound','Echo Protocol','Deepwell','Halcyon Drive','Brass Legion','Polar Line','Cinder Saga','Quiet Harbor']};
+  const titles = {steam:[['featured','Featured'],['deals','Deals'],['top','Top sellers'],['new','Popular new releases']], gog:[['trending','Trending'],['top','Bestsellers'],['deals','Deals'],['new','New on GOG']],
+    epic:[['free','Free now'],['deals','On sale'],['new','New releases'],['soon','Coming soon']], xbox:[['top','Most popular on PC'],['deals','Deals'],['new','New releases'],['pass','Popular with PC Game Pass']]};
+  const item = (s, n, i, sec) => {
+    const disc = sec==='deals' ? [50,75,30,90,20][i%5] : 0, base = 9.99+((i*7)%5)*10;
+    const fin = sec==='free' ? 0 : disc ? base*(1-disc/100) : base, $ = v => '$'+v.toFixed(2);
+    return {store:s, id:s==='epic'?`ns${i}:${hk(n)}`:s==='xbox'?'9N'+hk(n).toUpperCase().slice(0,8):String(2000010+i*10), title:n,
+      price:{final:fin===0?'Free':$(fin), base:disc||fin===0?$(base):null, discount:fin===0?100:disc, free:fin===0}, wide:null, linux:i%3===0, gamePass:s==='xbox'&&i%2===0,
+      rating:{label:(3.5+(i%3)*.5).toFixed(1)+' / 5'}, url:`https://example.com/${s}/${i}`, checkout:s==='epic'?`https://example.com/epic/buy/${i}`:undefined, until:sec==='free'?'2026-11-01T15:00:00.000Z':undefined};
+  };
+  const home = s => ({store:s, sections:titles[s].map(([id,t],k)=>({id, title:t, items:names[s].map((n,i)=>item(s, k?n+(k>1?' '+['II','Remastered','Deluxe'][k-2]:''):n, i, id))}))});
+  return {
+    status: () => ({stores:{steam:{signedIn:true, installed:true}, gog:{signedIn:true}, epic:{signedIn:false, expired:false}, xbox:{signedIn:true}}, webWindow:true, xodus:false, gameMode:false, market:'US'}),
+    home: s => new Promise(r=>setTimeout(()=>r(home(s)), 120)),
+    search: (s, q) => Promise.resolve({items: home(s).sections.flatMap(x=>x.items).filter(it=>it.title.toLowerCase().includes(q.toLowerCase())).slice(0,12)}),
+    details: (s, id) => new Promise(r=>setTimeout(()=>{
+      const it = home(s).sections.flatMap(x=>x.items).find(x=>x.id===id) || item(s,'Game',0,'top');
+      r(Object.assign({}, it, {short:`${it.title}: a placeholder store page from the browser preview.`, description:['A placeholder description for the browser preview, standing in for the store\'s own words about the game.','It runs to a few paragraphs on a real store page; Read more shows the rest.'],
+        screenshots:[], developers:['Preview Studio'], publishers:['Preview Publishing'], genres:['Action','Adventure'], released:'2026-05-14',
+        protondb: s==='steam' ? {tier:'gold', label:'Gold', text:'Runs well after a tweak or two'} : null}));
+    }, 120)),
+  };
+})();
 
 // ---------- Screenshots: the ones taken from Quick Access, to look through and delete ----------
 const SH = {list:null, open:-1};
@@ -2601,7 +2898,7 @@ const xLabel = g => (S.running===g.id || isFrozen(g)) ? 'Resume' : playable(g) ?
 const xMeta = g => [SOURCES[g.src], g.last?'Played '+ago(g.last).toLowerCase():'', g.hrs?hrs(g.hrs):''].filter(Boolean).join(' · ');
 const xBg = g => `<div class="sp-bg" id="xBg" data-id="${g?esc(g.id):''}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</div>`;
 const xPlay = (g,k='x-play') => `<button class="play" data-f data-k="${k}" data-act="${xAct(g)}" data-id="${esc(g.id)}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>${xLabel(g)}</button>`;
-const xNav = () => `<div class="xnav">${[['library','lib','Library'],['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="xn-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
+const xNav = () => `<div class="xnav">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="xn-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
 function xDetail(g){ return g ? `<div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div><div class="sp-acts">${xPlay(g)}<button class="sq" data-f data-k="x-more" data-act="game" data-id="${esc(g.id)}" aria-label="Game page">${I.info}</button></div>` : ''; }
 // The game you move to fills the detail and background (layouts that follow the selection).
 function xUpdate(id){
@@ -2638,7 +2935,7 @@ function homeX(V){
     const d=new Date(), t=xFocusTime(d);
     return `<div class="x-focus"><div class="xf-clock">${t}</div><div class="xf-date">${longDate(d)}</div>
       ${g?`<div class="xf-card"><div class="xf-th">${cover(g,{badge:false})}</div><div class="rt"><div class="xk">Jump back in</div><div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div></div>${xPlay(g,'xf-play')}</div>`:''}
-      <div class="xf-btns">${[['library','lib','Library'],['downloads','dl','Downloads'],['friends','user','Friends'],['coop','pad','Couch Co-op'],['stores','user','Stores'],['settings','gear','Settings']].filter(([v])=>(v!=='friends'||(HOSTINFO.features||[]).includes('friends'))&&(v!=='coop'||coopOn())).map(([v,ic,l])=>`<button class="xf-b" data-f data-k="xf-${v}" data-act="nav" data-view="${v}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
+      <div class="xf-btns">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),['downloads','dl','Downloads'],['friends','user','Friends'],['coop','pad','Couch Co-op'],['stores','user','Stores'],['settings','gear','Settings']].filter(([v])=>(v!=='friends'||(HOSTINFO.features||[]).includes('friends'))&&(v!=='coop'||coopOn())).map(([v,ic,l])=>`<button class="xf-b" data-f data-k="xf-${v}" data-act="nav" data-view="${v}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
   }
   if(id==='x-widgets'){
     const dl=GAMES.find(x=>isActive(x)), b=S.sys.battery||{}, fr=FR.s&&FR.s.friends?FR.s.friends.filter(f=>f.state==='ingame'||f.state==='online').slice(0,4):null;
@@ -3615,7 +3912,7 @@ function mkDesk(ctx){
 function mkEmpty(){
   return `<div class="mk-empty">${LIB.loading?'Loading your games…':MK.q?`Nothing matches “${esc(MK.q)}”. <button class="pill" data-f data-k="mk-clear" data-act="mkClear">Clear the search</button>`:!GAMES.length?'No games yet. Sign in to your stores under Stores &amp; accounts, or add a game from Home.':S.lfilter?'No games match. Remove the filter to see more.':'Nothing here yet.'}</div>`;
 }
-const mkNavPills = () => `<div class="mk-nav">${[['library','lib','Library'],['downloads','dl','Downloads'],['stores','user','Stores'],['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="mkn-${v}" data-act="${v==='stores'?'stores':'nav'}" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
+const mkNavPills = () => `<div class="mk-nav">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),['downloads','dl','Downloads'],['stores','user','Stores'],['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="mkn-${v}" data-act="${v==='stores'?'stores':'nav'}" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
 // A row (Table, and the Desk's list view). Table rows have a checkbox and follow the Shift/Ctrl selection.
 function mkRow(g, k, table){
   const [sc,sl]=lStatus(g), p=mkPdb(g), on=MK.sel.has(g.id);
@@ -6019,7 +6316,7 @@ function viewSettings(){
     <div class="rows srows">${body}</div></div></div>`;
 }
 
-const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, shots:viewShots, coop:viewCoop, settings:viewSettings, stores:viewStores, gameset:viewGameSettings, hhd:viewHhd};
+const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, shots:viewShots, coop:viewCoop, settings:viewSettings, stores:viewStores, shop:viewShop, gameset:viewGameSettings, hhd:viewHhd};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
 // Timing for the speed test (HEARTH_PERF_LOG=1): how long drawing a page and moving the focus take.
@@ -6063,6 +6360,7 @@ function navigate(view, params={}, push=true){
   if(view==='downloads'){ if(host) startDownloadPoll(); loadSysInfo(); }
   if(view==='stores') loadAccounts();
   if(view==='friends'){ loadFriends(); mfLoad(); }
+  if(view==='shop') shopEnter(params);
   if(view==='shots'){ SH.open=-1; loadShots(); }
   if(view==='coop') loadCoop();
   if(view==='gameset') loadGameSet(S.game);
@@ -6078,7 +6376,7 @@ function goBack(){
 // Overlays
 // =====================================================================
 function renderMenu(){
-  const items=[['home','home','Home'],['library','lib','Library'],...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
+  const items=[['home','home','Home'],['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
   $('#menu').innerHTML = `<div class="brand">${LINUX||ANDROID?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
@@ -6674,6 +6972,7 @@ function act(el){
   if(a.startsWith('bcn')) return beaconAct(a, d);
   if(/^mf[A-Z]/.test(a)) return mfAct(a, d);   // Hearth Friends on Matrix   // Beacon's screens (Game setup, Mods)
   if(a.startsWith('a11y')) return a11yAct(a, d);   // Settings › Accessibility
+  if(a.startsWith('shop')) return shopAct(a, d, el);   // Game Mode › Store
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
   if(/^lk[A-Z]/.test(a)) return lkAct(a, d);   // Hearth Link
@@ -6995,6 +7294,7 @@ function back(){
   if(S.layers.length && S.layers.at(-1)==='launch' && S.launchWaiting) return launchShow();
   if(S.layers.length && S.layers.at(-1)!=='launch'){ const top=S.layers.at(-1); closeLayer(); return resumeIfGame(top); }
   if(!S.layers.length && S.view==='shots' && SH.open>=0){ const i=SH.open; SH.open=-1; return render('sh-'+i,true); }
+  if(!S.layers.length && S.view==='shop' && SHOP.page) return shopBack();
   if(!S.layers.length && goBack()) return blip(420,.05);
 }
 function typeKey(c){
@@ -9067,6 +9367,7 @@ function onSysEvent(name, data){
   if(name.startsWith('linux.')) return onLinuxEvent(name, data);
   if(name==='systemUpdate') return onSystemUpdate(data);
   if(name==='xodus') return onXodus(data);
+  if(name==='store.webClosed') return shopWebClosed(data);
   if(name==='import') return onImport(data);
   if(name==='osInstall') return onOsInstall(data);
   if(name==='lock') return lockNow();
@@ -9384,6 +9685,7 @@ function renderFooter(){
   h.push(['back','Back']);
   if(top==='prompt'||top==='search') h.push(['del','Delete'],['space','Space'],['done','Done']);
   if(!top && S.view==='library') h.push(['tabs','Tabs'],['stores','Stores']);
+  if(!top && S.view==='shop') h.push(['tabs','Stores']);
   if(top==='qam') h.push(['tabs','Sections']);
   if(!top) h.push(['search','Search'],['menu','Menu'],['qam','Quick Access']);
   // Keyboard & mouse layouts with a keyboard or mouse: their own keys.
@@ -9455,6 +9757,7 @@ function input(k){
 function shiftTab(d){
   const top=S.layers.at(-1);
   if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
+  if(!top && S.view==='shop') return shopShiftTab(d);
   if(!top && S.view==='library'){ const T=libTabs(), i=T.findIndex(t=>t[0]===S.tab); S.tab=T[(i+d+T.length)%T.length][0]; if(mkKind()){ MK.sel.clear(); mkRender('mks-'+S.tab); } else render('tab-'+S.tab); return blip(600); }
 }
 
