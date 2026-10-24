@@ -89,10 +89,14 @@ class FakeSys:
             os.symlink(adev, os.path.join(sdir, 'device'))
             write(os.path.join(sdir, 'id'), 'HDMI\n')
 
-    def pad(self, name, bus='usb', port='1-2', uniq='', virtual=False, gamepad=True, hidraw=True):
+    def pad(self, name, bus='usb', port='1-2', uniq='', virtual=False, gamepad=True, hidraw=True, ble=False, uhid_bus=None):
+        """ble: a Bluetooth LE pad, which bluez makes through uhid (under /devices/virtual/misc/uhid). uhid_bus: a
+        virtual uhid controller (Sunshine's, HHD's) with that bus and no addresses."""
         self.n_event += 1
         self.n_hid += 1
-        if virtual:
+        if ble or uhid_bus:
+            hid = self.p('devices/virtual/misc/uhid', '%s:045E:0B13.%04X' % ('0005' if ble else uhid_bus, self.n_hid))
+        elif virtual:
             hid = self.p('devices/virtual/input')
         elif bus == 'usb':
             hid = self.p('devices/pci0000:00/0000:00:14.0/usb1', port, port + ':1.0', '0003:045E:028E.%04X' % self.n_hid)
@@ -101,8 +105,8 @@ class FakeSys:
         inp = os.path.join(hid, 'input', 'input%d' % (self.n_event + 10))
         write(os.path.join(inp, 'name'), name + '\n')
         write(os.path.join(inp, 'uniq'), uniq + '\n')
-        write(os.path.join(inp, 'phys'), 'usb-0000:00:14.0-2/input0\n')
-        write(os.path.join(inp, 'id/bustype'), ('0003' if bus == 'usb' else '0005') + '\n')
+        write(os.path.join(inp, 'phys'), ('a0:b1:c2:d3:e4:f5' if ble else '' if uhid_bus else 'usb-0000:00:14.0-2/input0') + '\n')
+        write(os.path.join(inp, 'id/bustype'), (uhid_bus or ('0003' if bus == 'usb' and not ble else '0005')) + '\n')
         write(os.path.join(inp, 'id/vendor'), '045e\n')
         write(os.path.join(inp, 'id/product'), '028e\n')
         # key bitmap: BTN_GAMEPAD is bit 0x130 = word 4 (of 64-bit words), bit 48
@@ -173,6 +177,7 @@ class SeatsBase(unittest.TestCase):
         self.hs.PASSWD = os.path.join(self.root, 'etc/passwd')
         self.hs.GROUP = os.path.join(self.root, 'etc/group')
         self.hs.HOST_STATE = os.path.join(self.root, 'home/state/seat-host.json')
+        self.hs.PADS_LOG = os.path.join(self.root, 'home/multiplay.log')
         write(self.hs.PASSWD, 'root:x:0:0::/root:/bin/bash\nbob:x:1000:1000::/var/home/bob:/bin/bash\n'
                               'hearth-p2:x:1001:1001:Hearth Player 2:/var/home/hearth-p2:/bin/bash\n')
         write(self.hs.GROUP, 'wheel:x:10:bob\ninput:x:104:\nrender:x:105:\n')
@@ -212,6 +217,22 @@ class Scan(SeatsBase):
         self.assertIsNone(bt['usb_port'])
         self.assertEqual(bt['seat'], 1)
 
+    def test_bluetooth_le_pads_through_uhid(self):
+        # Xbox Wireless Controllers on current firmware (and DualSenses) connect over Bluetooth LE: bluez makes them
+        # through uhid, under /devices/virtual like virtual pads. They are real controllers (bus 0005, the adapter's
+        # address as Phys, their own as Uniq) and must be offered; a virtual uhid pad (no addresses) is not.
+        fs = FakeSys(self.hs.SYS)
+        fs.pad('Xbox Wireless Controller', uniq='68:6c:e6:9b:cd:64', ble=True)
+        fs.pad('Xbox Wireless Controller', uniq='f4:6a:d7:60:df:2a', ble=True)
+        fs.pad('Sunshine DualSense', uhid_bus='0003')
+        skipped = []
+        pads = self.hs.scan_pads(None, skipped)
+        self.assertEqual(sorted(p['id'] for p in pads), ['uniq:68:6c:e6:9b:cd:64', 'uniq:f4:6a:d7:60:df:2a'])
+        self.assertTrue(all(p['assignable'] and p['bus'] == 'bluetooth' for p in pads))
+        self.assertEqual(sorted(len(p['hidraw']) for p in pads), [1, 1])
+        self.assertEqual([x['name'] for x in skipped], ['Sunshine DualSense'])
+        self.assertIn('virtual', skipped[0]['why'])
+
     def test_pad_seat_from_config(self):
         standard_sys(self.hs.SYS)
         pads = {p['id']: p for p in self.hs.scan_pads({'seats': [{'seat': 1, 'pads': []}, {'seat': 2, 'pads': ['usb:1-2']}]})}
@@ -227,7 +248,8 @@ class Scan(SeatsBase):
     def test_scan_shape(self):
         standard_sys(self.hs.SYS)
         info = self.hs.scan()
-        self.assertEqual(set(info), {'gpus', 'pads', 'audio', 'logind_seats', 'users', 'config', 'warnings'})
+        self.assertEqual(set(info), {'gpus', 'pads', 'skipped_pads', 'audio', 'logind_seats', 'users', 'config', 'warnings'})
+        self.assertEqual([x['name'] for x in info['skipped_pads']], ['Steam Virtual Gamepad'])
         self.assertEqual(info['logind_seats'], ['seat0'])
         self.assertEqual(info['users']['main']['name'], 'bob')
         self.assertEqual([p['name'] for p in info['users']['players']], ['hearth-p2'])
@@ -807,6 +829,14 @@ class Acl(AdminBase):
         self.assertEqual(nodes, [os.path.join(self.ha.SEATS_DEV, 'hidraw2'), os.path.join(self.ha.SEATS_DEV, 'input', 'event2')])
         self.assertEqual(sorted(n for _, n in self.ha.seats_pad_nodes('usb:1-2')),
                          [os.path.join(self.ha.SEATS_DEV, 'hidraw1'), os.path.join(self.ha.SEATS_DEV, 'input', 'event1')])
+
+    def test_pad_nodes_bluetooth_le(self):
+        fs = FakeSys(self.ha.SEATS_SYS)
+        fs.n_event, fs.n_hid = 20, 20
+        fs.pad('Xbox Wireless Controller', uniq='68:6c:e6:9b:cd:64', ble=True)
+        fs.pad('Sunshine DualSense', uniq='68:6c:e6:9b:cd:64', uhid_bus='0003')   # same "uniq", but virtual
+        nodes = sorted(n for _, n in self.ha.seats_pad_nodes('uniq:68:6c:e6:9b:cd:64'))
+        self.assertEqual(nodes, [os.path.join(self.ha.SEATS_DEV, 'hidraw21'), os.path.join(self.ha.SEATS_DEV, 'input', 'event21')])
 
 
 class Dispatch(AdminBase):
@@ -1397,8 +1427,46 @@ class SplitAndStreamUser(SeatsBase):
             t.join()
         self.assertEqual(pad['id'], 'uniq:aa:bb:cc:dd:ee:ff')
         self.assertIsNone(self.hs.wait_button(0.3, exclude=['usb:1-2']))
-        with self.assertRaises(self.hs.Fail):
+        with self.assertRaises(self.hs.Fail) as cm:
             self.hs.wait_button(0.1, exclude=['usb:1-2', 'uniq:aa:bb:cc:dd:ee:ff'])
+        self.assertIn('already belongs to a player', str(cm.exception))
+        log = slurp(self.hs.PADS_LOG)
+        self.assertIn('Xbox Wireless Controller (uniq:aa:bb:cc:dd:ee:ff) pressed a button', log)
+        self.assertIn('Steam Virtual Gamepad (event3): left out, a virtual controller', log)
+        self.assertIn('Xbox 360 Controller (event1, usb:1-2): left out, already taken', log)
+
+    def test_wait_button_bluetooth_le_pads(self):
+        # The owner's PC: two Xbox Wireless Controllers over Bluetooth LE were "No controllers to listen to".
+        self.hs.DEV = os.path.join(self.root, 'dev')
+        fs = FakeSys(self.hs.SYS)
+        fs.pad('Xbox Wireless Controller', uniq='68:6c:e6:9b:cd:64', ble=True)
+        fs.pad('Xbox Wireless Controller', uniq='f4:6a:d7:60:df:2a', ble=True)
+        os.makedirs(os.path.join(self.hs.DEV, 'input'))
+        for ev in ('event1', 'event2'):
+            os.mkfifo(os.path.join(self.hs.DEV, 'input', ev))
+
+        def press():
+            fd = os.open(os.path.join(self.hs.DEV, 'input', 'event2'), os.O_WRONLY)
+            os.write(fd, self.hs.INPUT_EVENT.pack(0, 0, self.hs.EV_KEY, 0x130, 1))
+            os.close(fd)
+        t = threading.Timer(0.2, press)
+        t.start()
+        try:
+            pad = self.hs.wait_button(5, exclude=['uniq:68:6c:e6:9b:cd:64'])
+        finally:
+            t.join()
+        self.assertEqual(pad['id'], 'uniq:f4:6a:d7:60:df:2a')
+
+    def test_setup_warns_about_a_player_without_controller(self):
+        self.runner.answers = {'pkexec': (0, '{"ok": true}\n', '')}
+        standard_sys(self.hs.SYS)
+        layout = {'mode': 'nested', 'seats': [
+            {'seat': 1, 'user': 'bob', 'mode': 'nested', 'output': 'card0-HDMI-A-1', 'pads': ['usb:1-2']},
+            {'seat': 2, 'user': 'hearth-p2', 'mode': 'nested', 'output': 'card0-DP-1', 'pads': []}]}
+        with mock.patch('sys.stdout', io.StringIO()), mock.patch('os.geteuid', return_value=1000):
+            r = self.hs.setup(json.dumps(layout))
+        self.assertTrue(r['ok'])
+        self.assertIn('Player 2 has no controller yet', r['warnings'][0])
 
 
 # ---------------------------------------------------------------------------------------------- nimbus-session

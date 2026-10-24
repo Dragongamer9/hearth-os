@@ -51,6 +51,11 @@ outer gamescope (Game Mode)       shows one fullscreen window:
      dma-buf devices come back in, plus **only that player's controller**: its `eventN`, its `jsN`, the
      controller's other evdev nodes (DualSense motion and touchpad), and its `hidraw` node.
    - `/run/udev` is an empty tmpfs, so libudev has nothing to report about the other devices.
+   - `/tmp` is a tmpfs of its own (mode 1777). The nested gamescope's Xwayland (wlroots) won't use a
+     `/tmp/.X11-unix` that isn't owned by root or the user, and inside bwrap's user namespace the real one shows
+     up owned by `nobody`: gamescope then crashed at start (a null X server in `gamescope_xwayland_server_t`) and
+     the player's window closed at once. A private `/tmp` also keeps it from deleting the real X servers' lock
+     files, which look stale from inside the new pid namespace.
    - `SDL_JOYSTICK_DISABLE_UDEV=1` is SDL's own switch (SDL2 and SDL3) for scanning `/dev/input` instead of
      asking udev. SDL already falls back like this in sandboxes. Proton's winebus uses SDL too, so Windows
      games get the same behaviour.
