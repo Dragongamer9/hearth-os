@@ -6836,7 +6836,7 @@ function oskHide(){
 }
 const oskOwns = () => !!(GOSK.engine && GOSK.box && focused===GOSK.box && document.contains(GOSK.box));
 // While the keyboard has the selection it gets the controller (setFocus calls this).
-function oskFocusSync(){ if(GOSK.engine && GOSK.box) GOSK.engine.setActive(focused===GOSK.box); }
+function oskFocusSync(){ if(GOSK.engine && GOSK.box){ GOSK.engine.setActive(focused===GOSK.box); if(focused===GOSK.box) try{ oskLogPath(null); }catch(e){} } }
 // Physical keyboard typing into the search / prompt (the on-screen one is away then).
 function kbEdit(t, c){
   if(t.caret==null||t.caret>t.text.length) t.caret=t.text.length;
@@ -9972,15 +9972,32 @@ function padPressed(k){
   const t=$('#padTest'); if(t) t.textContent = PAD_NAMES[k]||k;
   input(k);
 }
-function hostPad(k){ padPressed(mapPad(k)); }
+function hostPad(k){ if(oskOwns()) oskLogPath('host', mapPad(k)); padPressed(mapPad(k)); }
 
 // Gamepad (standard mapping) with key-repeat on d-pad / stick
 const REPEAT = new Set(['up','down','left','right']);
 const held={};
 let padSeen=false;
+// A script error here repeats every frame: logged once, then a count every 10 s (it filled Send logs at 60 a second).
+var PADERR={msg:'', n:0, at:0};
 function pollPads(t){
-  try{ pollPadsNow(t); } catch(e){ try{ send({type:'log', text:'controller: '+(e&&e.stack||e)}); }catch(_){} }
+  try{ pollPadsNow(t); } catch(e){ try{
+    const m=String(e&&e.stack||e), now=performance.now();
+    if(m!==PADERR.msg){ PADERR.msg=m; PADERR.n=0; PADERR.at=now; send({type:'log', text:'controller: '+m}); }
+    else if(++PADERR.n, now-PADERR.at>10000){ send({type:'log', text:`controller: the same error ${PADERR.n} more times in ${Math.round((now-PADERR.at)/1000)} s`}); PADERR.n=0; PADERR.at=now; }
+  }catch(_){} }
   requestAnimationFrame(pollPads);
+}
+// Which way the controller reaches the on-screen keyboard (Send logs): once when it gets the selection, and the first
+// press each way while it's up. 'gamepad' = this page reads the controller (Gamepad API); 'host' = Hearth sends the
+// presses (PAD.host: the Windows host, Multi-seat pads; or the overlay over a game).
+var OSKLOG={box:null, seen:{}};
+function oskLogPath(via, k){
+  if(!OSKLOG || !GOSK.box) return;
+  if(OSKLOG.box!==GOSK.box){ OSKLOG.box=GOSK.box; OSKLOG.seen={};
+    let pads=[]; try{ pads=[...(navigator.getGamepads?navigator.getGamepads():[])].filter(Boolean).map(p=>p.id.split('(')[0].trim()); }catch(e){}
+    send({type:'log', text:`osk ${GOSK.which}: keyboard has the selection · controller ${PAD.host?'from Hearth (host)':ACC.signing?'off (signing in)':'read here (Gamepad API)'} · pads seen ${pads.length}${pads.length?' ('+pads.join(', ')+')':''}${OVERLAY?' · overlay':''}`}); }
+  if(via && !OSKLOG.seen[via]){ OSKLOG.seen[via]=1; send({type:'log', text:`osk ${GOSK.which}: first press ${k} via ${via}`}); }
 }
 // Game Mode: Hearth says whether this window is the one on screen (hostScreen). Set aside for a game (Chromium keeps
 // reading the controller for a hidden window), or with Quick Access open over it, the presses aren't this page's:
@@ -10002,20 +10019,22 @@ function pollPadsNow(t){
   for(const p of pads){ if(!p) continue; anyPad=true;
     if(kb){ const bb=i=>!!(p.buttons[i] && (p.buttons[i].pressed || (i===6||i===7) && p.buttons[i].value>.5)); st.lt=st.lt||bb(6); st.rt=st.rt||bb(7); st.l3=st.l3||bb(10); st.r3=st.r3||bb(11);
       for(const [n,i] of [['lx',0],['ly',1],['rx',2],['ry',3]]){ const v=p.axes[i]||0; if(Math.abs(v)>Math.abs(ax[n])) ax[n]=Math.abs(v)<.12?0:v; } }
-    const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), ax=i=>p.axes[i]||0;
+    // av, not ax: a const ax here shadowed the sticks object above for the whole loop body, so with the keyboard up
+    // every frame threw "Cannot access 'ax' before initialization" and the controller did nothing on it (0.6.5).
+    const b=i=>!!(p.buttons[i] && p.buttons[i].pressed), av=i=>p.axes[i]||0;
     st.a=st.a||b(0); st.b=st.b||b(1); st.x=st.x||b(2); st.y=st.y||b(3);
     st.lb=st.lb||b(4); st.rb=st.rb||b(5); st.select=st.select||b(8); st.start=st.start||b(9); st.guide=st.guide||b(16);
     const th=k=>held[k]?.35:.55, sx=kb?0:1;   // the keyboard reads the left stick itself (acceleration, Ember Wheel)
-    st.up=st.up||b(12)||sx*ax(1)<-th('up'); st.down=st.down||b(13)||sx*ax(1)>th('down');
-    st.left=st.left||b(14)||sx*ax(0)<-th('left'); st.right=st.right||b(15)||sx*ax(0)>th('right');
-    if(p.mapping==='standard'){ st.rup=st.rup||ax(3)<-.6; st.rdown=st.rdown||ax(3)>.6; }   // right stick (Library A–Z jump)
+    st.up=st.up||b(12)||sx*av(1)<-th('up'); st.down=st.down||b(13)||sx*av(1)>th('down');
+    st.left=st.left||b(14)||sx*av(0)<-th('left'); st.right=st.right||b(15)||sx*av(0)>th('right');
+    if(p.mapping==='standard'){ st.rup=st.rup||av(3)<-.6; st.rdown=st.rdown||av(3)>.6; }   // right stick (Library A–Z jump)
   }
   if(kb){
     // The on-screen keyboard: presses and releases (holding repeats, a held A opens accents), and the sticks.
     const e=GOSK.engine;
     for(const k of ['a','b','x','y','lb','rb','lt','rt','l3','r3','select','start','up','down','left','right']){
       const on=!!st[k];
-      if(on && !held[k]){ held[k]={t0:t,last:t}; const m=mapPad(k); PAD_AT[k]=PAD_AT[m]=performance.now(); setInput('pad'); e.setHints(true); PAD.last=k; logInput('osk '+m);
+      if(on && !held[k]){ held[k]={t0:t,last:t}; const m=mapPad(k); PAD_AT[k]=PAD_AT[m]=performance.now(); setInput('pad'); e.setHints(true); PAD.last=k; logInput('osk '+m); oskLogPath('gamepad', m);
         if(!e.handle(m, true)) input(m); if(!oskOwns()) return; }
       else if(!on && held[k]){ delete held[k]; e.handle(mapPad(k), false); }
     }

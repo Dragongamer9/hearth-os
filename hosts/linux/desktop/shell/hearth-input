@@ -1361,8 +1361,15 @@ def serve():
     if not d.listen():
         log('already running')
         return 4
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    signal.signal(signal.SIGHUP, lambda *_: sys.exit(0))
+    # Stop here and now: a SystemExit raised from the handler was swallowed when the signal landed inside evdev's
+    # InputDevice.__del__ ("Exception ignored ... SystemExit: 0" in Send logs) and the old daemon kept running.
+    def _quit(*_):
+        try:
+            d.shutdown()
+        finally:
+            os._exit(0)
+    signal.signal(signal.SIGTERM, _quit)
+    signal.signal(signal.SIGHUP, _quit)
     log('ready at %s' % socket_path())
     try:
         return d.loop()
