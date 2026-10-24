@@ -39,11 +39,14 @@ if ! command -v Xvfb >/dev/null 2>&1; then
   exit "$fail"
 fi
 mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+# Xvfb crashes in some build containers; then Chromium draws headless instead (--ozone-platform=headless). Skia and
+# fontconfig still lay out and rasterise the text there, so whether a font is found is checked the same way.
+HEADLESS=()
 Xvfb :7 -screen 0 1280x800x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
 for _ in $(seq 1 75); do [ -e /tmp/.X11-unix/X7 ] && break; sleep 0.2; done
 if [ ! -e /tmp/.X11-unix/X7 ]; then
-  err "overlay text" "the virtual screen (Xvfb :7) didn't start, so the check couldn't run: $(tail -15 /tmp/xvfb.log; tail -3 /tmp/xvfb-install.log 2>/dev/null)"
-  exit 1
+  note "overlay text" "the virtual screen (Xvfb :7) didn't start here; drawing headless instead: $(tail -4 /tmp/xvfb.log)"
+  HEADLESS=(--ozone-platform=headless)
 fi
 
 # A user like the owner's: a home folder, /run/user/<uid>, nothing else from a session.
@@ -57,7 +60,7 @@ as_hhd() { setpriv --reuid="$uid" --regid="$gid" --init-groups env -i HOME="$hom
 
 run() {  # run <name> <command...>: the self-test's JSON line and Chromium's font complaints
   local name=$1; shift
-  ( sleep 70 | as_hhd timeout 60 "$@" --no-sandbox --disable-gpu >"/tmp/ov-$name.log" 2>&1 ); echo $? >"/tmp/ov-$name.code"
+  ( sleep 70 | as_hhd timeout 60 "$@" --no-sandbox --disable-gpu "${HEADLESS[@]}" >"/tmp/ov-$name.log" 2>&1 ); echo $? >"/tmp/ov-$name.code"
 }
 
 # 1) the way 0.6.5 started it: the Electron alone, no Hearth font setup (reported only).
