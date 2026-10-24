@@ -1,0 +1,21 @@
+#!/bin/sh
+# Opens a .deb file in Hearth's Install Package window (DebInstaller.qml in Desktop Mode), which installs it into
+# Hearth's Debian box (hearth-debbox). Without the Hearth desktop running (another session), installs it from a
+# terminal instead. The handler for application/vnd.debian.binary-package (hearth-install-package.desktop).
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+f="${1:-}"
+case "$f" in file://*) f=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1][7:]))' "$f") ;; esac
+[ -n "$f" ] || { echo "usage: hearth-install-package FILE.deb" >&2; exit 2; }
+case "$f" in /*) ;; *) f="$PWD/$f" ;; esac
+if command -v quickshell >/dev/null 2>&1 && quickshell ipc -p "$SHELL_DIR" call debs open "$f" >/dev/null 2>&1; then exit 0; fi
+cmd="python3 '$SHELL_DIR/hearth-debbox' install \"\$1\"; echo; echo 'Press Enter to close'; read x"
+for t in hearth-terminal foot xfce4-terminal konsole gnome-terminal xterm; do
+  if command -v "$t" >/dev/null 2>&1; then
+    case "$t" in
+      hearth-terminal|foot|xterm|konsole) exec "$t" -e sh -c "$cmd" sh "$f" ;;
+      xfce4-terminal) exec "$t" -x sh -c "$cmd" sh "$f" ;;
+      *) exec "$t" -- sh -c "$cmd" sh "$f" ;;
+    esac
+  fi
+done
+exec python3 "$SHELL_DIR/hearth-debbox" install "$f"
