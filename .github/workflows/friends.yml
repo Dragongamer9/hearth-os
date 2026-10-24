@@ -5,6 +5,9 @@
 #   picture, presence with "Playing <game>", a game invite card, Play together steps, typing, a group chat,
 #   requests from a stranger, block and report, mute, sign-out, and the session coming back from the keyring
 #   (GNOME Keyring through the Secret Service) after a restart
+# - sign-in on the server's own page (OAuth 2.0): a second Synapse with the Matrix Authentication Service (both here,
+#   one throwaway account): phone QR code (device grant), browser (auth code + PKCE, loopback), token refresh,
+#   revoke on sign-out, turned down, prompt=create (tools/friends-oauth-e2e.py)
 # - then the same through two Hearth cores (hosts/hearth-rs --core-stdio), as Game Mode's page calls them
 # Release builds are made by base-anatase.yml and base-peppermint.yml (the Linux images).
 name: Hearth Friends
@@ -12,13 +15,17 @@ name: Hearth Friends
 on:
   push:
     branches: [main, linux-host, friends-matrix]
-    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', 'ui/**', 'tools/ui-check.js', '.github/workflows/friends.yml']
+    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', 'tools/friends-oauth-e2e.py', 'ui/**', 'tools/ui-check.js', '.github/workflows/friends.yml']
   pull_request:
-    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', 'ui/**', 'tools/ui-check.js', '.github/workflows/friends.yml']
+    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', 'tools/friends-oauth-e2e.py', 'ui/**', 'tools/ui-check.js', '.github/workflows/friends.yml']
   workflow_dispatch:
     inputs:
       cores:
         description: Also run the test through two Hearth cores (builds the Hearth app)
+        type: boolean
+        default: true
+      oauth:
+        description: Fail the run when the Matrix Authentication Service can't be set up (sign-in on the server's page)
         type: boolean
         default: true
 
@@ -48,6 +55,9 @@ jobs:
       - name: Picture of the Friends screen (settings)
         if: always()
         run: f=tools/qa-shots/friends-settings.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT friends-settings $i::$part"; done || true
+      - name: Picture of the Friends screen (signin)
+        if: always()
+        run: f=tools/qa-shots/friends-signin.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT friends-signin $i::$part"; done || true
       - name: Picture of the Friends screen (qam)
         if: always()
         run: f=tools/qa-shots/friends-qam.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT friends-qam $i::$part"; done || true
@@ -114,6 +124,85 @@ jobs:
             || { echo "::error title=Friends end to end::$(grep -E 'FAIL|Traceback|Error' -A6 e2e.log | head -60 | tr '\n' '|' | cut -c1-3900) || synapse: $(tail -c 600 "$RUNNER_TEMP/synapse/synapse.log" | tr '\n' '|')"; exit 1; }
           echo "::notice title=Friends e2e summary::$(grep -c '^PASS' e2e.log) checks passed (two services, Synapse)"
           grep '^PASS' e2e.log | while read -r l; do echo "::notice title=Friends e2e::$l"; done
+      # Matrix's newer sign-in (OAuth 2.0, MSC3861; matrix.org runs the Matrix Authentication Service): a second
+      # Synapse that hands accounts to MAS (with PostgreSQL), all on this machine, and one throwaway account made in
+      # MAS. Access tokens last 60 s here so the refresh is tested too.
+      - name: Matrix Authentication Service and a Synapse that uses it
+        id: mas
+        continue-on-error: ${{ github.event_name == 'workflow_dispatch' && !inputs.oauth }}
+        env:
+          MAS_IMAGE: ghcr.io/element-hq/matrix-authentication-service:1.27.1
+        run: |
+          set -e
+          d="$RUNNER_TEMP/mas"; mkdir -p "$d" "$RUNNER_TEMP/synapse2"
+          secret=$(openssl rand -hex 24); echo "::add-mask::$secret"
+          pw=$(openssl rand -hex 12); echo "::add-mask::$pw"; echo "HF_OAUTH_PASSWORD=$pw" >> "$GITHUB_ENV"
+          docker run -d --name mas-db --network host -e POSTGRES_USER=mas -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=mas postgres:16-alpine >/dev/null
+          docker pull -q "$MAS_IMAGE" >/dev/null
+          docker run --rm "$MAS_IMAGE" config generate > "$d/generated.yaml" 2>/dev/null
+          "$RUNNER_TEMP/syn/bin/python" - "$d" "$secret" <<'PY'
+          import sys, yaml
+          d, secret = sys.argv[1], sys.argv[2]
+          c = yaml.safe_load(open(d + '/generated.yaml'))
+          c['http']['public_base'] = 'http://127.0.0.1:8080/'
+          c['http'].pop('issuer', None)
+          for l in c['http']['listeners']:
+              if l.get('name') == 'web':
+                  l['binds'] = [{'address': '127.0.0.1:8080'}]
+          c['database'] = {'uri': 'postgresql://mas:ci@127.0.0.1:5432/mas?sslmode=disable'}
+          c['matrix'] = {'kind': 'synapse', 'homeserver': 'oauth.test', 'endpoint': 'http://127.0.0.1:8018/', 'secret': secret}
+          c.setdefault('passwords', {})['enabled'] = True
+          c['passwords']['minimum_complexity'] = 0
+          c['account'] = {'password_registration_enabled': True, 'password_registration_email_required': False}
+          c.setdefault('experimental', {})['access_token_ttl'] = 60
+          c.setdefault('rate_limiting', {})
+          c.setdefault('oauth', {})['device_code_grant_enabled'] = True
+          yaml.safe_dump(c, open(d + '/mas.yaml', 'w'))
+          PY
+          for i in $(seq 30); do docker exec mas-db pg_isready -U mas >/dev/null 2>&1 && break; sleep 1; done
+          docker run --rm --network host -v "$d:/conf" "$MAS_IMAGE" database migrate --config /conf/mas.yaml >/dev/null
+          docker run -d --name mas --network host -v "$d:/conf" "$MAS_IMAGE" server --config /conf/mas.yaml >/dev/null
+          for i in $(seq 60); do curl -sf http://127.0.0.1:8080/.well-known/openid-configuration >/dev/null && break; sleep 1; done
+          cd "$RUNNER_TEMP/synapse2"
+          "$RUNNER_TEMP/syn/bin/python" -m synapse.app.homeserver --server-name oauth.test --config-path hs.yaml --generate-config --report-stats=no >/dev/null
+          sed -i 's/port: 8008/port: 8018/' hs.yaml
+          echo >> hs.yaml
+          cat >> hs.yaml <<EOF
+          matrix_authentication_service:
+            enabled: true
+            endpoint: http://127.0.0.1:8080/
+            secret: "$secret"
+          presence:
+            enabled: true
+          rc_message: {per_second: 1000, burst_count: 1000}
+          rc_joins:
+            local: {per_second: 1000, burst_count: 1000}
+            remote: {per_second: 1000, burst_count: 1000}
+          EOF
+          "$RUNNER_TEMP/syn/bin/python" -m synapse.app.homeserver --config-path hs.yaml > synapse.log 2>&1 &
+          for i in $(seq 60); do curl -sf http://127.0.0.1:8018/_matrix/client/versions >/dev/null && break; sleep 1; done
+          docker exec mas mas-cli manage register-user --config /conf/mas.yaml --yes --ignore-password-complexity --password "$pw" dave >/dev/null
+          meta=$(curl -sf http://127.0.0.1:8018/_matrix/client/v1/auth_metadata || curl -sf http://127.0.0.1:8018/_matrix/client/unstable/org.matrix.msc2965/auth_metadata)
+          echo "::notice title=MAS::$(docker exec mas mas-cli --version 2>/dev/null | head -1) · Synapse $("$RUNNER_TEMP/syn/bin/pip" show matrix-synapse | grep -i ^version | cut -d' ' -f2) · device endpoint: $(echo "$meta" | python3 -c 'import json,sys; m=json.load(sys.stdin); print(m.get("device_authorization_endpoint"), "· prompt:", m.get("prompt_values_supported"), "· registration:", bool(m.get("registration_endpoint")))')"
+      - name: Sign in on the server's page (phone QR code and browser), end to end
+        if: steps.mas.outcome == 'success'
+        run: |
+          set -o pipefail
+          dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 tools/friends-oauth-e2e.py --bin hosts/hearth-friends/target/release/hearth-friends --homeserver http://127.0.0.1:8018 --user dave' 2>&1 | tee oauth.log \
+            || { echo "::error title=Friends OAuth end to end::$(grep -E 'FAIL|Traceback|Error' -A8 oauth.log | head -60 | tr '\n' '|' | cut -c1-3900) || mas: $(docker logs --tail 30 mas 2>&1 | tr '\n' '|' | cut -c1-1500)"; exit 1; }
+          echo "::notice title=Friends OAuth summary::$(grep -c '^PASS' oauth.log) checks passed (Synapse with the Matrix Authentication Service)"
+          grep '^PASS' oauth.log | while read -r l; do echo "::notice title=Friends OAuth::$l"; done
+      # Read-only look at matrix.org's public sign-in settings (no account, no registration): what Hearth will offer there.
+      - name: What matrix.org offers (read only)
+        if: always()
+        continue-on-error: true
+        run: |
+          meta=$(curl -sf --max-time 20 https://matrix-client.matrix.org/_matrix/client/v1/auth_metadata || true)
+          echo "::notice title=matrix.org sign-in::$(echo "$meta" | python3 -c 'import json,sys
+          try: m=json.load(sys.stdin)
+          except Exception: print("no answer"); raise SystemExit
+          print("issuer", m.get("issuer"), "· device grant:", m.get("device_authorization_endpoint"), "· grants:", m.get("grant_types_supported"), "· prompt:", m.get("prompt_values_supported"), "· registration endpoint:", bool(m.get("registration_endpoint")), "· account:", m.get("account_management_uri"))')"
+          echo "::notice title=matrix.org login flows::$(curl -sf --max-time 20 https://matrix-client.matrix.org/_matrix/client/v3/login | head -c 600)"
       - name: WebKit and GTK for the Hearth app
         if: github.event_name != 'workflow_dispatch' || inputs.cores
         run: sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev >/dev/null
@@ -134,7 +223,7 @@ jobs:
       - name: No tokens in any log
         if: always()
         run: |
-          if grep -rE 'syt_[A-Za-z0-9]|"access_token"' e2e.log cores.log "$RUNNER_TEMP"/friends-*/service.log 2>/dev/null; then echo "::error title=Tokens::an access token showed up in a log"; exit 1; fi
+          if grep -rE 'syt_[A-Za-z0-9]|mat_[A-Za-z0-9]|mar_[A-Za-z0-9]|"access_token"|code=[A-Za-z0-9]' e2e.log cores.log oauth.log "$RUNNER_TEMP"/friends-*/service.log 2>/dev/null; then echo "::error title=Tokens::an access token showed up in a log"; exit 1; fi
           echo "::notice title=Tokens::no access tokens in the services' logs or the test output"
       - uses: actions/upload-artifact@v4
         with:
