@@ -56,7 +56,8 @@ jobs:
       - name: Quick Access picture (overlay)
         if: always()
         run: f=tools/qa-shots/overlay.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT qa-overlay $i::$part"; done || true
-      # Hearth's on-screen keyboard (ui/osk): pictures as notices, the same way (title "SHOT osk-<which> <n>"), one step each.
+      # Hearth's on-screen keyboard (ui/osk): pictures as notices, the same way (title "SHOT osk-<which> <n>"), one step each
+      # (small JPEGs: a job keeps 50 notices, Quick Access's pictures included).
       - name: On-screen keyboard picture (1-search)
         if: always()
         run: f=tools/osk-shots/1-search.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-1-search $i::$part"; done || true
