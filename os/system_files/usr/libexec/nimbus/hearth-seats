@@ -14,6 +14,7 @@ Run by the Hearth app as the signed-in (main) user; the parts that need root go 
   hearth-seats setup --seats JSON      set it up (JSON: a layout like plan's "layout"); --start to start it too
   hearth-seats start | stop            start or stop the other players' screens
   hearth-seats status                  JSON: what's set up and what's running
+  hearth-seats pads                    JSON: the controllers players can be given, and those left out (and why)
   hearth-seats assign-pad --pad ID --seat N
                                        move a controller to another player, right away
   hearth-seats remove [--delete-users] undo everything: back to one player (the extra accounts and their saves are
@@ -80,6 +81,10 @@ SUNSHINE_DEFAULT_UNITS = ('sunshine.service', 'app-dev.lizardbyte.app.Sunshine.s
 STREAM_DIR = os.path.expanduser('~/.config/hearth/seat-stream')   # a streamed player's Sunshine settings and pairings
 
 BTN_JOYSTICK, BTN_GAMEPAD = 0x120, 0x130
+MAC_RE = re.compile(r'^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}')
+# "Player N, press A" and Couch Co-op's listener write what they saw here (which controllers, why each was skipped):
+# the bug report shows it.
+PADS_LOG = os.path.expanduser('~/.local/share/nimbus/multiplay.log')
 EV_KEY = 0x01
 INPUT_EVENT = struct.Struct('llHHi')
 
@@ -227,8 +232,18 @@ def pad_id(uniq, port, phys, bus):
     return None   # can't be told apart after it reconnects; not assignable
 
 
-def scan_pads(config=None):
-    """Game controllers (not virtual ones made by Steam or InputPlumber), one entry per physical controller."""
+def bluetooth_uhid(inp, bustype, phys, uniq):
+    """A Bluetooth LE controller (an Xbox Wireless Controller on current firmware, a DualSense...): bluez hands it
+    to the kernel through uhid, so it lives under /devices/virtual/misc/uhid/ like the virtual controllers Steam,
+    InputPlumber or Sunshine make, but it has the Bluetooth bus, the adapter's address as Phys and its own address as
+    Uniq (virtual ones have neither)."""
+    return ('/devices/virtual/misc/uhid/' in inp and bustype == '0005' and bool(MAC_RE.match(phys or ''))
+            and bool(MAC_RE.match(uniq or '')))
+
+
+def scan_pads(config=None, skipped=None):
+    """Game controllers (not virtual ones made by Steam or InputPlumber), one entry per physical controller.
+    `skipped` (a list), when given, gets {event, name, why} for each controller-like device left out."""
     pads = {}
     assigned = {}
     for s in (config or {}).get('seats', []):
@@ -236,16 +251,20 @@ def scan_pads(config=None):
             assigned[p] = s.get('seat')
     for ev in sorted(glob.glob(os.path.join(SYS, 'class/input/event[0-9]*'))):
         inp = os.path.realpath(os.path.join(ev, 'device'))
-        if '/devices/virtual/' in inp:
-            continue
         joy, pad = has_bits(read(os.path.join(inp, 'capabilities/key')), BTN_JOYSTICK, BTN_GAMEPAD)
         if not (joy or pad):
             continue
         bustype = read(os.path.join(inp, 'id/bustype'))
-        bus = {'0003': 'usb', '0005': 'bluetooth'}.get(bustype, 'other')
         uniq = read(os.path.join(inp, 'uniq'))
+        phys = read(os.path.join(inp, 'phys'))
+        if '/devices/virtual/' in inp and not bluetooth_uhid(inp, bustype, phys, uniq):
+            if skipped is not None:
+                skipped.append({'event': os.path.basename(ev), 'name': read(os.path.join(inp, 'name')) or 'Controller',
+                                'why': 'a virtual controller (Steam, InputPlumber, Hearth Input or a stream make these)'})
+            continue
+        bus = {'0003': 'usb', '0005': 'bluetooth'}.get(bustype, 'other')
         port = usb_port(inp)
-        pid = pad_id(uniq, port, read(os.path.join(inp, 'phys')), bus)
+        pid = pad_id(uniq, port, phys, bus)
         key = pid or ('event:' + os.path.basename(ev))
         entry = pads.setdefault(key, {
             'id': pid, 'name': read(os.path.join(inp, 'name')) or 'Controller', 'bus': bus,
@@ -331,8 +350,9 @@ def scan():
     if users['main_in_input_group']:
         warnings.append('Your account is in the "input" group, so your games could still see the other players\' '
                         'controllers. Multi-seat works best without it.')
-    return {'gpus': gpus, 'pads': scan_pads(config), 'audio': scan_audio(gpus), 'logind_seats': logind_seats(),
-            'users': users, 'config': public_config(config), 'warnings': warnings}
+    skipped = []
+    return {'gpus': gpus, 'pads': scan_pads(config, skipped), 'skipped_pads': skipped, 'audio': scan_audio(gpus),
+            'logind_seats': logind_seats(), 'users': users, 'config': public_config(config), 'warnings': warnings}
 
 
 def public_config(config):
@@ -591,7 +611,14 @@ def setup(seats_json, start=False):
     check_layout(layout, info)
     payload = dict(layout, start=bool(start))
     result = admin(['seats-setup'], payload)
-    return dict(result, restart_game_mode=hosted(layout) and bool(start))
+    # A player on this PC without a controller can't play (nothing reaches their Game Mode): say so plainly.
+    bare = [s.get('seat') for s in layout['seats'] if s.get('seat') != 1 and seat_kind(layout, s) != 'stream'
+            and not s.get('pads')]
+    warnings = list(result.get('warnings') or [])
+    if bare:
+        warnings.insert(0, '%s no controller yet: choose "Move a controller to another player" to give them one.' % (
+            ' and '.join('Player %s' % n for n in bare) + (' have' if len(bare) > 1 else ' has')))
+    return dict(result, restart_game_mode=hosted(layout) and bool(start), warnings=warnings)
 
 
 def check_layout(layout, info):
@@ -1118,20 +1145,56 @@ def stream_unpair(seat, uuid):
 
 
 # ---------------------------------------------------------------------------------------------- "Player N, press A"
+def note_pads(what):
+    """One line in the listener's log (multiplay.log, in bug reports); kept under 256 KB."""
+    try:
+        os.makedirs(os.path.dirname(PADS_LOG), exist_ok=True)
+        if os.path.exists(PADS_LOG) and os.path.getsize(PADS_LOG) > 256 * 1024:
+            os.replace(PADS_LOG, PADS_LOG + '.old')
+        with open(PADS_LOG, 'a') as f:
+            f.write('%s seats: %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), what))
+    except OSError:
+        pass
+
+
 def wait_button(timeout=20.0, exclude=(), now=time.monotonic):
     """The first controller (from scan_pads) on which a button goes down, or None after `timeout` seconds. Only
-    controllers this account may open are listened to (another player's aren't, and don't need to be)."""
+    controllers this account may open are listened to (another player's aren't, and don't need to be). What it saw,
+    and why it left each controller out, goes to multiplay.log."""
     import select
     fds = {}
-    for p in scan_pads(load_config()):
-        if not p.get('assignable') or p['id'] in exclude:
+    skipped = []
+    pads = scan_pads(load_config(), skipped)
+    seen, taken, refused = [], 0, 0
+    for p in pads:
+        label = '%s (%s%s)' % (p['name'], ', '.join(os.path.basename(e) for e in p['events']),
+                               ', ' + p['id'] if p.get('id') else '')
+        if not p.get('assignable'):
+            seen.append(label + ': left out, it has no serial number or USB port to know it by after it reconnects')
             continue
+        if p['id'] in exclude:
+            taken += 1
+            seen.append(label + ': left out, already taken')
+            continue
+        errors = []
         for ev in p['events']:
             try:
                 fds[os.open(ev, os.O_RDONLY | os.O_NONBLOCK)] = p
-            except OSError:
-                pass
+            except OSError as e:
+                errors.append('%s: %s' % (os.path.basename(ev), e.strerror or e))
+        if any(fds[fd] is p for fd in fds):
+            seen.append(label + ': listening')
+        else:
+            refused += 1
+            seen.append(label + ': left out, can\'t open it (%s)' % '; '.join(errors))
+    for x in skipped:
+        seen.append('%s (%s): left out, %s' % (x['name'], x['event'], x['why']))
+    note_pads('wait-button: ' + ('; '.join(seen) if seen else 'no input device looks like a controller'))
     if not fds:
+        if taken and not refused:
+            raise Fail('Every connected controller already belongs to a player. Connect another controller and try again.')
+        if refused:
+            raise Fail('Hearth isn\'t allowed to read the connected controllers. Reconnect them (or restart) and try again.')
         raise Fail('No controllers to listen to. Connect a controller and try again.')
     bufs = {fd: b'' for fd in fds}
     end = now() + timeout
@@ -1139,6 +1202,7 @@ def wait_button(timeout=20.0, exclude=(), now=time.monotonic):
         while True:
             left = end - now()
             if left <= 0:
+                note_pads('wait-button: no button pressed in %g s' % timeout)
                 return None
             ready, _, _ = select.select(list(fds), [], [], min(left, 0.5))
             for fd in ready:
@@ -1153,6 +1217,7 @@ def wait_button(timeout=20.0, exclude=(), now=time.monotonic):
                     _, _, typ, code, value = INPUT_EVENT.unpack_from(bufs[fd])
                     bufs[fd] = bufs[fd][INPUT_EVENT.size:]
                     if typ == EV_KEY and value == 1 and BTN_JOYSTICK <= code <= 0x13e:
+                        note_pads('wait-button: %s (%s) pressed a button' % (fds[fd]['name'], fds[fd]['id']))
                         return fds[fd]
     finally:
         for fd in fds:
@@ -1710,6 +1775,9 @@ def main(argv):
             print(json.dumps(stop()))
         elif cmd == 'status':
             print(json.dumps(status()))
+        elif cmd == 'pads':
+            skipped = []
+            print(json.dumps({'pads': scan_pads(load_config(), skipped), 'skipped': skipped}))
         elif cmd == 'assign-pad':
             pad, seat = arg(argv, '--pad'), arg(argv, '--seat')
             if not pad or not (seat or '').isdigit():
@@ -1757,7 +1825,7 @@ def main(argv):
             sunshine_main()
         else:
             raise Fail('usage: hearth-seats scan | plan | setup --seats JSON [--start] | start | stop | status | '
-                       'assign-pad --pad ID --seat N | remove [--delete-users] | wait-button | stream-info | '
+                       'pads | assign-pad --pad ID --seat N | remove [--delete-users] | wait-button | stream-info | '
                        'stream-pair --seat N --pin PIN | stream-unpair --seat N --uuid UUID | audio')
     except Fail as e:
         fail(str(e))
