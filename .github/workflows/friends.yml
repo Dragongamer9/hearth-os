@@ -11,7 +11,7 @@ name: Hearth Friends
 
 on:
   push:
-    branches: [main, linux-host]
+    branches: [main, linux-host, friends-matrix]
     paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', '.github/workflows/friends.yml']
   pull_request:
     paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', '.github/workflows/friends.yml']
