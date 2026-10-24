@@ -157,7 +157,7 @@ impl Service {
         let Ok(session) = serde_json::from_value::<MatrixSession>(v["session"].clone()) else { return };
         match self.build(&hs, &key).await {
             Ok(c) => match c.matrix_auth().restore_session(session, RoomLoadSettings::default()).await {
-                Ok(()) => { self.st.lock().unwrap().keyring_ok = true; log("session restored from the keyring (password sign-in)"); self.signed_in(c, &hs, false).await; }
+                Ok(()) => { self.st.lock().unwrap().keyring_ok = true; log("session restored from the keyring (signed in with a password)"); self.signed_in(c, &hs, false).await; }
                 Err(e) => { self.st.lock().unwrap().error = Some(format!("Couldn't open your Hearth Friends account: {}", e2s(e))); }
             },
             Err(e) => { self.st.lock().unwrap().error = Some(e); }
@@ -199,7 +199,7 @@ impl Service {
         let saved = keyring_ok && secrets::set(&self.paths, "session", &json!({"homeserver": hs, "session": session}).to_string()).is_ok();
         self.st.lock().unwrap().keyring_ok = saved;
         let mut s = self.settings(); s.homeserver = hs.clone(); s.recovery_asked = false; let _ = self.save_settings(s);
-        log(&format!("auth: signed in with a password{}", if saved { "; session kept in the keyring" } else { "; the keyring isn't available" }));
+        log(&format!("auth: {}; signed in with a user name and password", if saved { "session kept in the keyring" } else { "the keyring isn't available" }));
         self.signed_in(c, &hs, false).await;
         Ok(self.status_value().await)
     }
