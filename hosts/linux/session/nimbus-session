@@ -340,12 +340,16 @@ while :; do
   if [ "$mode" = game ] && ! can_game; then log "game mode unavailable (gamescope or Nimbus missing)"; : >"$RUN/nimbus-game-unavailable"; mode=desktop; fi
   if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc missing)"; can_game && mode=game || exit 1; fi
 
+  # The mode this session is in, for programs started outside it: Handheld Daemon's overlay app
+  # (desktop/shell/hearth-overlay) started for Desktop Mode ends itself once it says game again, so HHD starts Quick
+  # Access the Game Mode way (in gamescope) instead of sending every press to a Desktop Mode that's gone.
+  echo "$mode" >"$RUN/nimbus-mode-now" 2>/dev/null
   if [ "$mode" = game ]; then input_start; run_game; code=$?; input_stop; else run_desktop; code=$?; fi
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
   [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game   # extra multi-seat players have Game Mode only
   case "$next" in
     game|desktop) log "switching to $next"; settle "$mode"; log "starting $next mode"; mode="$next" ;;
-    *) log "$mode mode ended (code $code), leaving the session"; exit 0 ;;
+    *) log "$mode mode ended (code $code), leaving the session"; rm -f "$RUN/nimbus-mode-now"; exit 0 ;;
   esac
 done
