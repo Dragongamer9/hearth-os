@@ -1,0 +1,47 @@
+name: Hearth RT8 port
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'devices/rt8/**'
+      - '.github/workflows/rt8-port.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: devices/rt8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ca-certificates cpio curl device-tree-compiler \
+            fakeroot flex git kmod libelf-dev libssl-dev libtinfo5 lz4 python2 python3 \
+            unzip wget xz-utils pahole libbpf-dev
+          sudo ln -sf python2 /usr/bin/python
+
+      - name: Build kernel and boot images
+        run: ./build.sh
+
+      - name: Check image sizes against the RT8 partitions
+        run: |
+          python3 -I tools/bootimg.py info out/boot.img
+          python3 -I tools/bootimg.py info out/vendor_boot.img
+          for f in boot vendor_boot; do
+            test "$(stat -c%s out/$f.img)" -le 67108864 || { echo "$f.img too big"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-rt8-boot
+          path: |
+            devices/rt8/out/*.img
+          if-no-files-found: error
