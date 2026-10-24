@@ -21,8 +21,13 @@ fn price_fields() -> String {
 /// A GraphQL string (JSON's escaping is GraphQL's).
 fn gql_str(s: &str) -> String { serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into()) }
 
+/// What the page says when Epic's store answers with its browser check (Cloudflare) instead of data: Hearth doesn't
+/// try to get around it; the page offers Epic's own site in the store window (a real browser) instead.
+pub const BROWSER_CHECK: &str = "The Epic Games Store asked for a browser check, so Hearth can't read this part of it right now. Open Epic's store in the store window instead.";
+
 fn ask(kind: &str, query: &str) -> Result<Value, String> {
-    let v = fetch("epic", kind, "POST", GRAPHQL, Some(&json!({"query": query}).to_string()), &[])?;
+    let v = fetch("epic", kind, "POST", GRAPHQL, Some(&json!({"query": query}).to_string()), &[])
+        .map_err(|e| if e.contains("HTTP 403") { BROWSER_CHECK.to_string() } else { e })?;
     if v["data"].is_null() {
         let why = v["errors"][0]["message"].as_str().unwrap_or("no data");
         return Err(format!("The Epic Games Store didn't answer ({why})"));
@@ -68,6 +73,7 @@ pub fn element(e: &Value) -> Option<Value> {
     v["slug"] = json!(slug);
     v["checkout"] = json!(checkout(ns, id));
     if let Some(s) = e["seller"]["name"].as_str() { v["publishers"] = json!([s]); }
+    if let Some(d) = e["description"].as_str().filter(|d| d.trim() != title.trim() && !d.is_empty()) { v["short"] = json!(d); }
     Some(v)
 }
 
@@ -208,6 +214,7 @@ mod tests {
         assert_eq!(h["price"], json!({"final": "$29.99", "base": null, "discount": 0, "free": false}));
         assert!(h["wide"].as_str().unwrap().starts_with("https://cdn1.epicgames.com/"));
         assert_eq!(s[1]["id"], "min:2ae6edb2223c4f8c97e9839b5b6497bb");   // Hades: an old namespace name
+        assert!(h["short"].as_str().unwrap().starts_with("Battle beyond the Underworld"));
         let sale = parse_list(&fx("sale"));
         assert_eq!(sale[0]["price"], json!({"final": "$1.39", "base": "$1.99", "discount": 30, "free": false}));
         assert_eq!(sale[0]["slug"], "backrooms-realms-d21947");   // from catalogNs only
