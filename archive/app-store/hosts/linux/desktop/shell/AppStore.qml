@@ -1,3 +1,4 @@
+// ARCHIVED (docs/ARCHIVED.md): Hearth OS ships Bazaar as its app store instead; this is kept to bring it back later.
 // Apps: Desktop Mode's app store for Flathub. Browse what's popular or a category, search, open an app's page
 // (icon, screenshots, description), install, update and remove apps; "Updates" updates everything at once.
 // A normal window like Hearth Settings, and used the same way with mouse, touch, keyboard or controller: Up/Down

@@ -422,6 +422,8 @@ impl Bridge {
             // ---- Hearth's gaming apps (gaming_apps.rs): Controller Lab, Saves and Mods, opened on a game
             "gamingApps.open" => crate::gaming_apps::open(&req("app")?, a["game"].as_str(), crate::signin_handoff::game_mode()).map(|_| json!({"ok": true})),
             // ---- end of Hearth's gaming apps
+            // ---- Bazaar, Hearth OS's app store (bazaar.rs): Game Mode's menu › Apps
+            "bazaar.open" => crate::bazaar::open(crate::signin_handoff::game_mode()),
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
@@ -1661,6 +1663,7 @@ fn features() -> Vec<&'static str> {
     if crate::gaming_apps::available() { f.push("gamingApps"); }
     // ---- end of Hearth's gaming apps
     if crate::link::available() { f.push("hearthLink"); }
+    if crate::bazaar::available() { f.push("bazaar"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a

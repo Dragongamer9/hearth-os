@@ -1,4 +1,4 @@
-"""Hearth's app store (Apps, hearth-apps) lists apps: the image check's offline store check
+"""ARCHIVED (docs/ARCHIVED.md). Hearth's app store (Apps, hearth-apps) lists apps: the image check's offline store check
 (.github/scripts/hearth-store-check.sh) against the source, and the first page still opens when ~/.cache can't be
 written (root-owned after moving editions; it used to fail with a permission error)."""
 import sys
@@ -31,6 +31,7 @@ class StoreCheck(unittest.TestCase):
         self.assertIn('ok: the first page (popular apps) lists Firefox', r.stdout)
         self.assertIn('ok: search finds Firefox', r.stdout)
 
+    @unittest.skip('archived: the image checks no longer run the store check (docs/ARCHIVED.md)')
     def test_image_checks_run_it(self):
         for wf in ('base-peppermint.yml', 'base-anatase.yml'):
             text = (REPO / '.github' / 'workflows' / wf).read_text()

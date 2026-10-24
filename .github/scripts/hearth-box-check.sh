@@ -7,9 +7,9 @@
 #     its app exported to the account's menu, the command run in the box, then removed
 #   - AppImages: a classic (FUSE 2) AppImage starts (--appimage-version, then --version through FUSE, then unpacked),
 #     and Hearth Files puts it in the app menu
-#   - Bazaar: whether hearth-flatpak-setup can set up the system installation and install it (network)
-#   - Hearth's app store (hearth-apps): Flathub's catalog loads for the account, also when its own Flatpak folder
-#     belongs to root (the system's catalog then), after the system repo was broken the way Peppermint 0.6.0 left it
+#   - Bazaar (Hearth OS's app store): whether hearth-flatpak-setup can set up the system installation and install it
+#     (network), after the system repo was broken the way Peppermint 0.6.0 left it; then what Settings › Apps sees
+#     for an account (hearth-flatpak status), also when its own Flatpak folder belongs to root
 # Mounted files: /box.sh (this), /make_test_deb.py.
 #   bash /box.sh [box|appimage|flatpak|all]   (one part per CI step: GitHub shows only 10 notices per step)
 set -u
@@ -98,24 +98,25 @@ note "hearth-flatpak-setup: $(grep -E '^(repo|flathub|bazaar)' /tmp/fp.txt | tr 
 test -f /var/lib/flatpak/repo/config && flatpak remotes --system --columns=name 2>/dev/null | grep -qx flathub \
   && ok "the broken system repo was repaired (repo/config) and has the flathub remote" || w "system repo after hearth-flatpak-setup: $(flatpak remotes --system 2>&1 | tr '\n' ' ' | cut -c1-300)"
 
-echo "--- Hearth's app store (hearth-apps) for an account"
-HA=/usr/share/nimbus/desktop/shell/hearth-apps
-if as timeout 600 python3 "$HA" refresh > /tmp/ha-refresh.txt 2>&1 && as python3 "$HA" search firefox > /tmp/ha-search.txt 2>&1 \
-   && grep -q 'org.mozilla.firefox' /tmp/ha-search.txt; then
-  ok "Apps loads Flathub's catalog for the account ($(tail -1 /tmp/ha-refresh.txt | cut -c1-120)) and finds Firefox"
-else
-  w "Apps couldn't load the catalog: $(grep -v '^progress' /tmp/ha-refresh.txt | tail -3 | tr '\n' ' ' | cut -c1-500) / search: $(tailof /tmp/ha-search.txt 2)"
+echo "--- Bazaar for an account (hearth-flatpak, what Settings › Apps and Mantel use)"
+HF=/usr/share/nimbus/desktop/shell/hearth-flatpak
+as python3 "$HF" status > /tmp/hf-status.txt 2>&1
+if grep -q '"bazaar": true' /tmp/hf-status.txt; then ok "Settings › Apps sees Bazaar ($(grep -o '"bazaarInstallation": "[a-z]*"' /tmp/hf-status.txt))"
+else w "hearth-flatpak doesn't see Bazaar: $(tailof /tmp/hf-status.txt 2)"; fi
+grep -q '"setup": {' /tmp/hf-status.txt && note "hearth-flatpak-setup's last run: $(grep -o '"setup": {[^}]*}' /tmp/hf-status.txt | cut -c1-300)" \
+  || w "hearth-flatpak-setup left no state in /var/lib/hearth/flatpak-setup.json"
+if flatpak info --system io.github.kolunmi.Bazaar >/dev/null 2>&1; then
+  as timeout 120 flatpak run --command=sh io.github.kolunmi.Bazaar -c 'command -v bazaar' > /tmp/bz-run.txt 2>&1 \
+    && ok "Bazaar's Flatpak starts for the account ($(tailof /tmp/bz-run.txt 1))" || w "Bazaar's sandbox didn't start here (nested bubblewrap): $(tailof /tmp/bz-run.txt 3)"
+  flatpak override --system --show io.github.kolunmi.Bazaar 2>/dev/null | grep -q 'xdg-config/gtk-4.0' \
+    && ok "Bazaar may read ~/.config/gtk-4.0 (Hearth's colours)" || w "no system override for Bazaar's GTK colours: $(flatpak override --system --show io.github.kolunmi.Bazaar 2>&1 | tr '\n' ' ' | cut -c1-200)"
 fi
-# The account's own Flatpak folder owned by root (moving editions): Apps says so and uses the system's catalog.
-timeout 600 flatpak update --appstream --system flathub > /tmp/ha-sysas.txt 2>&1 || w "system appstream: $(tailof /tmp/ha-sysas.txt 2)"
-rm -rf "$H/.local/share/flatpak" "$H/.cache/nimbus/apps" && mkdir -p "$H/.local/share/flatpak" && chown root:root "$H/.local/share/flatpak"
-as python3 "$HA" status > /tmp/ha-status.txt 2>&1
-if grep -q '"userWritable": false' /tmp/ha-status.txt && grep -q '"installTo": "system"' /tmp/ha-status.txt; then
-  ok "Apps sees a root-owned ~/.local/share/flatpak and installs to the system instead"
-else w "Apps status with a root-owned Flatpak folder: $(tailof /tmp/ha-status.txt 3)"; fi
-as timeout 600 python3 "$HA" refresh > /tmp/ha-refresh2.txt 2>&1
-if as python3 "$HA" search firefox 2>/dev/null | grep -q 'org.mozilla.firefox'; then ok "and still lists Flathub's apps from the system's catalog"
-else w "no catalog with a root-owned Flatpak folder: $(grep -v '^progress' /tmp/ha-refresh2.txt | tail -2 | tr '\n' ' ' | cut -c1-500)"; fi
+# The account's own Flatpak folder owned by root (moving editions): said plainly, installs go to the system.
+rm -rf "$H/.local/share/flatpak" && mkdir -p "$H/.local/share/flatpak" && chown root:root "$H/.local/share/flatpak"
+as python3 "$HF" status > /tmp/hf-status2.txt 2>&1
+if grep -q '"userWritable": false' /tmp/hf-status2.txt && grep -q '"installTo": "system"' /tmp/hf-status2.txt; then
+  ok "a root-owned ~/.local/share/flatpak is said plainly (Fix your Flatpak folder) and installs go to the system"
+else w "hearth-flatpak status with a root-owned Flatpak folder: $(tailof /tmp/hf-status2.txt 3)"; fi
 /usr/libexec/nimbus/hearth-home-repair --user boxtest > /tmp/ha-repair.txt 2>&1
 [ "$(stat -c %U "$H/.local/share/flatpak")" = boxtest ] && ok "hearth-home-repair gave the folder back to the account" || w "home repair: $(tailof /tmp/ha-repair.txt 3)"
 fi

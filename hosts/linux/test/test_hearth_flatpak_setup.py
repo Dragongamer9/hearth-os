@@ -82,6 +82,32 @@ class BazaarPlan(unittest.TestCase):
         self.assertEqual(fs.bazaar_plan(False, False, True), 'skip-removed')
         self.assertEqual(fs.bazaar_plan(False, False, False), 'install')
 
+    def test_state_is_kept_for_settings(self):
+        tmp = tempfile.mkdtemp(prefix='hearth-flatpak-state-')
+        self.addCleanup(shutil.rmtree, tmp, True)
+        old = fs.ROOT
+        fs.ROOT = tmp
+        try:
+            fs.save_state(False, 'bazaar', 'offline')
+        finally:
+            fs.ROOT = old
+        import json
+        st = json.loads(pathlib.Path(tmp, 'var/lib/hearth/flatpak-setup.json').read_text())
+        self.assertEqual((st['ok'], st['step'], st['message']), (False, 'bazaar', 'offline'))
+
+    def test_bazaar_gets_hearths_gtk_colours(self):
+        src = (REPO / 'os' / 'system_files' / 'usr' / 'libexec' / 'nimbus' / 'hearth-flatpak-setup').read_text()
+        self.assertIn("BAZAAR = 'io.github.kolunmi.Bazaar'", src)
+        self.assertIn('xdg-config/gtk-4.0:ro', src)
+
+    def test_service_retries_and_runs_every_boot(self):
+        unit = (REPO / 'os' / 'system_files' / 'usr' / 'lib' / 'systemd' / 'system' / 'hearth-flatpak-setup.service').read_text()
+        self.assertIn('Restart=on-failure', unit)
+        self.assertIn('WantedBy=multi-user.target', unit)
+        for b in ('anatase', 'peppermint'):
+            build = (REPO / 'os-bases' / b / 'build.sh').read_text()
+            self.assertIn('systemctl enable hearth-flatpak-setup.service', build, b)
+
 
 if __name__ == '__main__':
     unittest.main()

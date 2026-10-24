@@ -31,6 +31,7 @@ Singleton {
     readonly property string font: "sans-serif"
     readonly property int radius: 14
 
+    property string gtkAccent: ""         // the accent theme/apply.sh last gave GTK apps (set at the first read)
     FileView {
         path: Quickshell.env("HOME") + "/.local/share/nimbus/library.json"
         watchChanges: true
@@ -38,7 +39,12 @@ Singleton {
         onLoaded: {
             try {
                 const a = JSON.parse(text()).profile?.accent;
-                if (/^#[0-9a-fA-F]{6}$/.test(a || "")) accent = a;
+                if (/^#[0-9a-fA-F]{6}$/.test(a || "")) {
+                    // A new accent: GTK apps (Bazaar, GNOME apps) get it too (theme/apply.sh rewrites Hearth's gtk.css).
+                    if (gtkAccent !== "" && gtkAccent !== a) Quickshell.execDetached(["sh", decodeURIComponent(Qt.resolvedUrl("../theme/apply.sh").toString().replace(/^file:\/\//, ""))]);
+                    gtkAccent = a;
+                    accent = a;
+                }
             } catch (e) {}
         }
     }
