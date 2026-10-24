@@ -36,6 +36,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{broadcast, Notify, RwLock};
 
+// Signing in and up on the server's own page (OAuth 2.0): a QR code for a phone, or the browser on this device.
+mod oauth;
+
+/// A line in the service's log (journal / service.log): what happened, never a token, code or secret address.
+fn log(s: &str) { eprintln!("hearth-friends: {}", hf::redact(s)); }
+
 const KEEP: usize = 300;           // messages kept in memory per chat
 const MAX_IMAGE: usize = 20 << 20;  // biggest picture sent or shown
 
@@ -58,6 +64,10 @@ struct State {
     synced: bool,
     keyring_ok: bool,
     homeserver: String,
+    /// Signed in with the server's own page (OAuth 2.0): tokens are refreshed, signing out revokes them.
+    oauth: bool,
+    /// The server's account page (OAuth servers): password, sessions, deleting the account.
+    account_url: Option<String>,
 }
 
 pub struct Service {
@@ -73,6 +83,8 @@ pub struct Service {
     last_restore: AtomicU64,
     /// Signing in, up or out right now: no looking for the old session meanwhile.
     busy: std::sync::atomic::AtomicBool,
+    /// A sign-in on the server's page that's waiting (for the phone, or for the browser to come back).
+    auth: Mutex<Option<oauth::Pending>>,
 }
 
 fn e2s<E: std::fmt::Display>(e: E) -> String { hf::redact(&e.to_string()) }
@@ -93,7 +105,8 @@ impl Service {
         let settings = Settings::load(&paths.config);
         let (tx, _) = broadcast::channel(512);
         Arc::new(Service { paths, client: RwLock::new(None), generation: AtomicU64::new(0), st: Mutex::new(State::default()), settings: Mutex::new(settings),
-                           events: tx, gamemode_watchers: AtomicUsize::new(0), wake: Notify::new(), last_restore: AtomicU64::new(0), busy: std::sync::atomic::AtomicBool::new(false) })
+                           events: tx, gamemode_watchers: AtomicUsize::new(0), wake: Notify::new(), last_restore: AtomicU64::new(0), busy: std::sync::atomic::AtomicBool::new(false),
+                           auth: Mutex::new(None) })
     }
 
     fn emit(&self, name: &str, data: Value) { let _ = self.events.send((name.to_string(), data)); }
@@ -110,7 +123,11 @@ impl Service {
 
     fn store_dir(&self) -> std::path::PathBuf { self.paths.data.join("store") }
 
-    async fn build(&self, homeserver: &str, store_key: &str) -> Result<Client, String> {
+    async fn build(&self, homeserver: &str, store_key: &str) -> Result<Client, String> { self.build_with(homeserver, store_key, false).await }
+
+    /// The client, with its encrypted store. `refresh`: OAuth sessions, whose access tokens expire and are renewed with
+    /// the refresh token (the new ones go to the keyring: oauth.rs).
+    async fn build_with(&self, homeserver: &str, store_key: &str, refresh: bool) -> Result<Client, String> {
         let dir = self.store_dir();
         std::fs::create_dir_all(&dir).map_err(e2s)?;
         #[cfg(unix)] {
@@ -120,11 +137,12 @@ impl Service {
         }
         let mut enc = EncryptionSettings::default();
         enc.auto_enable_cross_signing = true;
-        Client::builder()
+        let mut b = Client::builder()
             .server_name_or_homeserver_url(homeserver)
             .sqlite_store(&dir, Some(store_key))
-            .with_encryption_settings(enc)
-            .build().await
+            .with_encryption_settings(enc);
+        if refresh { b = b.handle_refresh_tokens(); }
+        b.build().await
             .map_err(|e| format!("Couldn't reach {homeserver}: {}", e2s(e)))
     }
 
@@ -134,21 +152,24 @@ impl Service {
         let (Some(sess), Some(key)) = (secrets::get(&self.paths, "session"), secrets::get(&self.paths, "store-key")) else { return };
         let Ok(v) = serde_json::from_str::<Value>(&sess) else { return };
         let hs = v["homeserver"].as_str().unwrap_or("").to_string();
+        // Signed in with the server's page (OAuth 2.0); sessions from before (0.6.5, user name and password) have no kind.
+        if v["kind"] == "oauth" { return self.restore_oauth(&v, &hs, &key).await; }
         let Ok(session) = serde_json::from_value::<MatrixSession>(v["session"].clone()) else { return };
         match self.build(&hs, &key).await {
             Ok(c) => match c.matrix_auth().restore_session(session, RoomLoadSettings::default()).await {
-                Ok(()) => { self.st.lock().unwrap().keyring_ok = true; self.signed_in(c, &hs).await; }
+                Ok(()) => { self.st.lock().unwrap().keyring_ok = true; log("session restored from the keyring (password sign-in)"); self.signed_in(c, &hs, false).await; }
                 Err(e) => { self.st.lock().unwrap().error = Some(format!("Couldn't open your Hearth Friends account: {}", e2s(e))); }
             },
             Err(e) => { self.st.lock().unwrap().error = Some(e); }
         }
     }
 
-    async fn signed_in(self: &Arc<Self>, c: Client, homeserver: &str) {
+    async fn signed_in(self: &Arc<Self>, c: Client, homeserver: &str, oauth: bool) {
+        let account_url = if oauth { c.oauth().cached_server_metadata().await.ok().and_then(|m| m.account_management_uri.map(|u| u.to_string())) } else { None };
         {
             let mut st = self.st.lock().unwrap();
             let keyring_ok = st.keyring_ok;
-            *st = State { keyring_ok, homeserver: homeserver.to_string(), ..Default::default() };
+            *st = State { keyring_ok, homeserver: homeserver.to_string(), oauth, account_url, ..Default::default() };
         }
         self.generation.fetch_add(1, Ordering::SeqCst);
         *self.client.write().await = Some(c.clone());
@@ -166,7 +187,9 @@ impl Service {
         let mut hs = a["homeserver"].as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
             .unwrap_or_else(|| if user.starts_with('@') && user.contains(':') { hf::server_of(&user).to_string() } else { hf::DEFAULT_HOMESERVER.to_string() });
         if hs.ends_with('/') { hs.pop(); }
+        self.auth_cancel_quiet();
         self.sign_out_local().await;
+        log(&format!("auth: signing in to {hs} with a user name and password"));
         let key = hf::random(48, b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
         let keyring_ok = secrets::set(&self.paths, "store-key", &key).is_ok();
         let c = self.build(&hs, &key).await?;
@@ -175,8 +198,9 @@ impl Service {
         let session = c.matrix_auth().session().ok_or("The server didn't start a session.")?;
         let saved = keyring_ok && secrets::set(&self.paths, "session", &json!({"homeserver": hs, "session": session}).to_string()).is_ok();
         self.st.lock().unwrap().keyring_ok = saved;
-        let mut s = self.settings(); s.homeserver = hs.clone(); let _ = self.save_settings(s);
-        self.signed_in(c, &hs).await;
+        let mut s = self.settings(); s.homeserver = hs.clone(); s.recovery_asked = false; let _ = self.save_settings(s);
+        log(&format!("auth: signed in with a password{}", if saved { "; session kept in the keyring" } else { "; the keyring isn't available" }));
+        self.signed_in(c, &hs, false).await;
         Ok(self.status_value().await)
     }
 
@@ -244,7 +268,14 @@ impl Service {
     }
 
     pub async fn logout(self: &Arc<Self>) -> Result<Value, String> {
-        if let Some(c) = self.client.read().await.clone() { let _ = c.matrix_auth().logout().await; }
+        self.auth_cancel_quiet();
+        let oauth = self.st.lock().unwrap().oauth;
+        if let Some(c) = self.client.read().await.clone() {
+            // OAuth sessions: the tokens are revoked at the server (RFC 7009); password sessions end with /logout.
+            let r = if oauth { c.oauth().logout().await.map_err(e2s) } else { c.matrix_auth().logout().await.map(|_| ()).map_err(e2s) };
+            match r { Ok(()) => log(if oauth { "auth: signed out; the server revoked the session's tokens" } else { "auth: signed out at the server" }),
+                      Err(e) => log(&format!("auth: signing out at the server didn't work ({e}); this device's copy is removed anyway")) }
+        }
         self.sign_out_local().await;
         self.emit("status", self.status_value().await);
         Ok(self.status_value().await)
@@ -260,8 +291,11 @@ impl Service {
                 "lives": hf::where_it_lives(&st.homeserver), "keyringOk": st.keyring_ok, "synced": st.synced, "error": st.error,
                 "settings": s, "encryption": "Chats with friends are end-to-end encrypted: only you and the people in the chat can read them.",
                 "playing": st.playing, "joinable": st.joinable,
+                "signIn": if st.oauth { "oauth" } else { "password" }, "accountUrl": st.account_url,
+                "recovery": oauth::recovery_name(c), "askRecovery": st.synced && !s.recovery_asked && matches!(oauth::recovery_name(c), "disabled" | "incomplete"),
             }),
-            None => json!({"signedIn": false, "error": st.error, "settings": s, "defaultHomeserver": hf::DEFAULT_HOMESERVER}),
+            None => json!({"signedIn": false, "error": st.error, "settings": s, "defaultHomeserver": hf::DEFAULT_HOMESERVER,
+                           "auth": self.auth.lock().unwrap().as_ref().map(|p| json!({"mode": p.mode, "homeserver": p.homeserver}))}),
         }
     }
 
@@ -297,7 +331,10 @@ impl Service {
                 Err(e) => {
                     if self.generation.load(Ordering::SeqCst) != gen { continue; }
                     let s = e2s(&e);
-                    if s.contains("M_UNKNOWN_TOKEN") {
+                    // The session ended at the server (or, signed in on its page, the refresh token was refused).
+                    let oauth = self.st.lock().unwrap().oauth;
+                    if s.contains("M_UNKNOWN_TOKEN") || (oauth && s.contains("invalid_grant")) {
+                        log("auth: the server ended the session; signed out on this device");
                         self.sign_out_local().await;
                         self.st.lock().unwrap().error = Some("You were signed out of Hearth Friends (the session ended on the server). Sign in again.".into());
                         self.emit("status", self.status_value().await);
@@ -799,6 +836,21 @@ impl Service {
                 if !self.busy.load(Ordering::SeqCst) && self.client.read().await.is_none() && now_ms().saturating_sub(self.last_restore.load(Ordering::SeqCst)) > 10_000 { self.restore().await; }
                 Ok(self.status_value().await)
             }
+            // The server's own page (OAuth 2.0): what a server offers, a QR code / the browser, cancel, open the page.
+            "authMethods" => self.auth_methods(a).await,
+            "authStart" => {
+                if self.busy.swap(true, Ordering::SeqCst) { return Err("Hold on: still signing in or out.".into()); }
+                let r = self.auth_start(a).await;
+                self.busy.store(false, Ordering::SeqCst);
+                r
+            }
+            "authCancel" => { self.auth_cancel_quiet(); log("auth: sign-in on the server's page cancelled"); self.emit("auth", json!({"state": "cancelled"})); Ok(self.status_value().await) }
+            "authOpen" => self.auth_open(),
+            // End-to-end encryption after signing in: a recovery key (shown once), or the one made on another device.
+            "recovery" => self.recovery().await,
+            "recoveryEnable" => self.recovery_enable().await,
+            "recoveryRestore" => self.recovery_restore(a).await,
+            "recoverySkip" => self.recovery_skip().await,
             "login" | "register" | "logout" => {
                 if self.busy.swap(true, Ordering::SeqCst) { return Err("Hold on: still signing in or out.".into()); }
                 let r = match method { "login" => self.login(a).await, "register" => self.register(a).await, _ => self.logout().await };
