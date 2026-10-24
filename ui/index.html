@@ -687,6 +687,24 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .logcode{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;background:var(--panel2);margin-bottom:6px}.logcode b{font-size:30px;letter-spacing:.12em;color:var(--accent);font-variant-numeric:tabular-nums}.logcode code{font-size:13px;word-break:break-all;color:var(--dim)}
 .frchips{margin:0 0 14px}.frplat{font-size:11px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:2px;background:var(--panel3);color:var(--dim)}.fp-steam{background:#1b2838;color:#66c0f4}.fp-xbox{background:#0e3a12;color:#7ad15a}.fp-epic{background:#2a2a2a;color:#ddd}.frjoin{color:var(--accent);font-weight:700}
 .frav{position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;flex:none;margin-right:12px}.frav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.frav i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#56606e;border:2px solid var(--bg)}.frow.on .frav i{background:#5aa9ff}.frow.ing .frav i{background:#7ad15a}.frow.ing small{color:#7ad15a}
+/* Hearth Friends on Matrix: friends, chats, chat bubbles, game and Play together cards, the emoji grid */
+.fp-mx{background:#0b3a33;color:#5fe0c2}.fp-join{background:#3a2a0b;color:#ffb347}.mftop{margin-bottom:10px}
+.mfhead{display:flex;align-items:center;gap:10px;max-width:900px;margin:0 0 12px}.mfhead .rt{flex:1;min-width:0}.mfhead small{display:block;color:var(--dim)}
+.frav.me{background:var(--accent);color:#1a1208}.mfn{min-width:24px;height:24px;padding:0 7px;border-radius:12px;background:var(--accent);color:#1a1208;font-weight:800;font-size:13px;display:inline-flex;align-items:center;justify-content:center}
+.mflock svg{width:13px;height:13px;vertical-align:-1px;opacity:.7}.mfreq{gap:8px;flex-wrap:wrap}.mfreq .rt{flex:1;min-width:200px}
+.mfwelcome{max-width:720px;padding:8px 4px}.mfwelcome h2{margin:0 0 8px}.mfwelcome p{line-height:1.55;margin:0 0 16px}
+.mfchathead{display:flex;align-items:center;gap:12px;max-width:900px;margin:0 0 10px}.mfchathead small{display:block;color:var(--dim)}.mfchathead small svg{width:12px;height:12px;vertical-align:-1px}
+.mfmsgs{display:flex;flex-direction:column;gap:8px;max-width:900px;max-height:52vh;overflow-y:auto;padding:4px 2px 10px}
+.mfmsg{align-self:flex-start;max-width:78%;background:var(--panel);border-radius:14px 14px 14px 4px;padding:8px 12px}.mfmsg.mine{align-self:flex-end;background:var(--panel3);border-radius:14px 14px 4px 14px}
+.mfmsg small{display:block;color:var(--dim);font-size:11px;margin-bottom:3px}.mftext{white-space:pre-wrap;word-break:break-word;line-height:1.4}.mfsys{align-self:center;color:var(--dim);font-size:12px}
+.mfimg{max-width:100%;max-height:300px;border-radius:10px;display:block}
+.mfcard{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:260px}.mfcard>svg{width:26px;height:26px;color:var(--accent)}.mfcard .rt{flex:1;min-width:160px}.mfcard small{display:block;color:var(--dim)}.mfbtns{display:flex;gap:6px;flex-wrap:wrap;width:100%}
+.mfbar{display:flex;gap:8px;flex-wrap:wrap;max-width:900px;margin-top:8px}
+.mfemoji{max-width:900px;background:var(--panel);border-radius:var(--r);padding:10px;margin-top:8px}.mfemoji .chips{margin-bottom:8px}
+.mfegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(48px,1fr));gap:4px}.mfe{font-size:26px;height:48px;border-radius:10px;background:var(--panel2);border:0;color:inherit;cursor:pointer}
+.mfq{display:flex;align-items:center;gap:8px;width:100%;margin-bottom:6px;text-align:left}.mfq small{color:var(--dim);margin-left:auto}.qmf{max-height:38vh}.qmf .mfmsg{max-width:92%}
+.sheethtml{display:flex;justify-content:center;margin:0 0 12px}.sheethtml svg{width:240px;height:240px;background:#fff;border-radius:12px;padding:6px}
+.mfbadge{position:relative}.mfbadge::after{content:attr(data-badge);position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--accent);color:#1a1208;font-size:10px;font-weight:800;line-height:16px;text-align:center}
 /* ===================== Keyboard & mouse layouts (Experimental · Keyboard & mouse) ===================== */
 .mk{display:flex;height:calc(100vh - var(--top) - var(--foot) - 4px);margin:0 calc(-1*var(--gut)) -40px;background:var(--bg);min-height:320px}
 .mk-scroll{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--panel3) transparent}
@@ -1179,6 +1197,8 @@ const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settin
 // Open apps: wherever the host can list them (Hearth OS's window and every overlay page; not Ember's own window), the
 // same tab in Hearth's panel and over a game.
 if(/[?&]overlay/.test(location.search) || (window.nimbusHost && window.nimbusHost.platform!=='android') || /[?&]preview=linux/.test(location.search)) QTABS.splice(3,0,['apps','lib','Open apps']);
+// Friends (Hearth Friends on Matrix) over a game and in Hearth's panel, wherever Hearth runs on Linux (the tab says so when the service isn't there).
+if(/[?&]overlay/.test(location.search) || (window.nimbusHost && window.nimbusHost.platform!=='android') || /[?&]preview=linux/.test(location.search) || !window.nimbusHost && !(window.chrome && window.chrome.webview)) QTABS.splice(QTABS.length-1,0,['friends','user','Friends']);
 
 // ---------- host bridge ----------
 // send(): fire-and-forget message.  call(): request/response, resolves with the host's result.
@@ -1196,7 +1216,7 @@ if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','A
 // Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
 const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1415,6 +1435,36 @@ const MOCK = (()=>{
       try{ localStorage.setItem('nimbus.profile',JSON.stringify(p)); }catch(e){}
       return {name:'Player One',status:null,avatar:'initials',accent:'#3fd0b8',background:'default',customAvatar:null,customBackground:null,storeAvatars:{},...p}; },
   };
+  // Hearth Friends on Matrix, for the preview: signed in, three friends, two chats, a request.
+  const MFM={st:{signedIn:true,userId:'@dragon:matrix.org',deviceId:'HEARTHPREVIEW',homeserver:'matrix.org',lives:'matrix.org (run by the Matrix.org Foundation)',keyringOk:true,synced:true,error:null,
+      settings:{friendsOnly:true,sharePlaying:true,presence:'online',previews:true,muted:[],homeserver:'matrix.org'},encryption:'Chats with friends are end-to-end encrypted: only you and the people in the chat can read them.'},
+    friends:[{userId:'@sarah:matrix.org',name:'Sarah',roomId:'!s:matrix.org',state:'friend',presence:'online',game:'Starfall Drift',joinable:true,unread:2,muted:false},
+      {userId:'@mike:example.org',name:'Mike',roomId:'!m:matrix.org',state:'friend',presence:'online',game:null,joinable:false,unread:0,muted:false},
+      {userId:'@jo:matrix.org',name:'Jo',roomId:'!j:matrix.org',state:'pending',presence:'unknown',game:null,joinable:false,unread:0,muted:false}],
+    chats:[{roomId:'!s:matrix.org',name:'Sarah',direct:true,with:'@sarah:matrix.org',members:2,unread:2,muted:false,encrypted:true,typing:[],last:{kind:'text',body:'Want to race?',at:now-60e3,mine:false}},
+      {roomId:'!g:matrix.org',name:'Couch crew',direct:false,members:4,unread:0,muted:false,encrypted:true,typing:[],last:{kind:'game',game:{title:'Neon Courier'},at:now-3600e3,mine:true}}],
+    req:{requests:[{roomId:'!r:example.org',from:'@stranger:example.org',name:'Stranger',direct:true,roomName:null}],invites:[]},
+    msgs:[{id:'$1',sender:'@sarah:matrix.org',senderName:'Sarah',mine:false,at:now-600e3,kind:'text',body:'Hey! Are you on tonight? 🎮',encrypted:true},
+      {id:'$2',sender:'@dragon:matrix.org',senderName:'Dragon',mine:true,at:now-500e3,kind:'text',body:'Yes, after dinner',encrypted:true},
+      {id:'$3',sender:'@sarah:matrix.org',senderName:'Sarah',mine:false,at:now-120e3,kind:'game',body:'🎮 Let\'s play Starfall Drift!',game:{title:'Starfall Drift',store:'steam',id:'g01',appId:'1000010',server:'192.168.1.20:27015'},encrypted:true},
+      {id:'$4',sender:'@sarah:matrix.org',senderName:'Sarah',mine:false,at:now-90e3,kind:'play',body:'🕹 I\'d like to join your game (Hearth Play together)',play:{action:'request',session:'pt-preview',game:'Starfall Drift',pin:'1234',device:'Sarah\'s Ally'},encrypted:true},
+      {id:'$5',sender:'@sarah:matrix.org',senderName:'Sarah',mine:false,at:now-60e3,kind:'image',body:'shot.png',image:{w:1280,h:800},encrypted:true},
+      {id:'$6',sender:'@sarah:matrix.org',senderName:'Sarah',mine:false,at:now-30e3,kind:'text',body:'Want to race?',encrypted:true}]};
+  Object.assign(H, {
+    'mfriends.status':async()=>clone(MFM.st), 'mfriends.friends':async()=>clone(MFM.friends), 'mfriends.chats':async()=>clone(MFM.chats), 'mfriends.requests':async()=>clone(MFM.req),
+    'mfriends.messages':async({roomId})=>({roomId, messages:roomId==='!s:matrix.org'?clone(MFM.msgs):[], atStart:true, encrypted:true}),
+    'mfriends.send':async({text})=>{ MFM.msgs.push({id:'$'+Date.now(),sender:MFM.st.userId,senderName:'Dragon',mine:true,at:Date.now(),kind:'text',body:text,encrypted:true}); return {}; },
+    'mfriends.read':async()=>null, 'mfriends.typing':async()=>null, 'mfriends.invite':async()=>({sent:true}), 'mfriends.play':async()=>({sent:true}), 'mfriends.sendImage':async()=>({sent:true}),
+    'mfriends.image':async()=>({url:'data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><rect width="320" height="200" fill="#2a3340"/><text x="20" y="110" fill="#fff" font-size="22">Screenshot</text></svg>')}),
+    'mfriends.add':async()=>({roomId:'!n:matrix.org'}), 'mfriends.accept':async()=>null, 'mfriends.decline':async()=>null, 'mfriends.leave':async()=>null, 'mfriends.block':async()=>({blocked:[]}), 'mfriends.blocked':async()=>[],
+    'mfriends.report':async()=>({reported:'user'}), 'mfriends.mute':async()=>null, 'mfriends.settings':async(a)=>{ MFM.st.settings=Object.assign(MFM.st.settings,a); return clone(MFM.st); }, 'mfriends.setName':async()=>null,
+    'mfriends.createGroup':async()=>({roomId:'!g:matrix.org'}), 'mfriends.link':async()=>({userId:MFM.st.userId,matrixTo:'https://matrix.to/#/'+MFM.st.userId,hearth:'hearth://friends/add/'+MFM.st.userId,qr:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#fff"/><rect x="1" y="1" width="3" height="3"/><rect x="6" y="1" width="3" height="3"/><rect x="1" y="6" width="3" height="3"/></svg>'}),
+    'mfriends.login':async()=>clone(MFM.st), 'mfriends.register':async()=>clone(MFM.st), 'mfriends.logout':async()=>({signedIn:false,settings:MFM.st.settings}),
+    'mfriends.ptInfo':async()=>({canHost:true,canJoin:true,addresses:['192.168.1.42'],transports:['lan'],port:47989,askToJoin:true}), 'mfriends.ptAskToJoin':async({on})=>({canHost:true,canJoin:true,addresses:['192.168.1.42'],transports:['lan'],port:47989,askToJoin:on}),
+    'mfriends.ptAccept':async()=>({waiting:true}), 'mfriends.ptEnd':async()=>({removed:1}), 'mfriends.ptJoin':async()=>({joining:true}), 'mfriends.ptPin':async()=>'1234',
+    'mfriends.openSteam':async()=>null, 'mfriends.discord':async()=>({installed:false,flathub:'https://flathub.org/apps/com.discordapp.Discord'}), 'mfriends.installDiscord':async()=>({installed:true}), 'mfriends.openDiscord':async()=>null,
+    'mfriends.emoji':async()=>[], 'screenshots.list':H['screenshots.list']||(async()=>({list:[{file:'/tmp/shot.png',url:'',time:Date.now()-3600e3}]})),
+  });
   return {call:(m,a)=> H[m] ? H[m](a||{}) : Promise.reject(new Error('Not available in the browser preview: '+m))};
 })();
 
@@ -1614,7 +1664,7 @@ function loadFriends(){ if(!host){ FR.s={signedIn:true,online:3,platforms:[
   call('steam.friends',{},30000).then(r=>{ FR.s=r; if(S.view==='friends') render(null,true); }).catch(e=>toast(e.message)); }
 function frPlatforms(s){ return s.platforms || [{id:'steam',name:'Steam',signedIn:s.signedIn,friends:(s.friends||[]).map(f=>({platform:'steam',canMessage:LINUX,...f}))}]; }
 function frLine(f){ return f.state==='ingame'?`Playing ${esc(f.game||'a game')}`:f.state==='online'?'Online':f.state==='away'||f.state==='snooze'?'Away':f.state==='busy'?'Busy':f.state==='unknown'?(f.platform==='epic'?'Epic friend':'Private profile or checking…'):'Offline'; }
-function viewFriends(){
+function viewFriendsStores(){
   const s=FR.s;
   if(!s) return note('Loading your friends…');
   const plats=frPlatforms(s), signed=plats.filter(p=>p.signedIn);
@@ -1653,6 +1703,398 @@ function frOpen(f){
   if(!items.length) return openSheet({title:f.name, sub:sub+(f.platform==='xbox'?' · Messaging Xbox friends from Hearth isn\'t possible yet':f.platform==='epic'?' · Epic doesn\'t share status or chat outside its own apps':''), items:[]});
   openSheet({title:f.name, sub, items});
 }
+
+// ---------- Hearth Friends on Matrix: friends, chats, game invites and Play together ----------
+// The service (hosts/hearth-friends) keeps the account and the encryption keys; Hearth's core passes mfriends.*
+// calls to it and its events back here ({name:'mfriends', data:{event, data}}: matrix_friends.rs). Every screen
+// works with a controller: lists of buttons, the on-screen keyboard through openPrompt(), emoji as a grid.
+const MF = {st:null, friends:null, chats:null, req:null, top:'mx', tab:'friends', room:null, msgs:{}, atStart:{}, imgs:{}, typing:{}, pt:{}, ptInfo:null,
+            emoji:null, emojiOpen:false, emojiCat:'smileys', loading:false, timer:null, blocked:null, hs:null};
+const MF_EMOJI_FALLBACK = '😀 😂 🙂 😉 😍 😎 🤔 😅 😭 😡 👍 👎 👏 🙌 🙏 💪 🎮 🕹 🏆 🔥 ✨ 🎉 ❤️ 💯 👀 😴 🤝 👋 ✅ ❌ ⚔️ 🛡 🚀 🍕 ☕ 🌙'.split(' ').map(e=>({e, n:'', g:'smileys'}));
+const MF_CATS = [['smileys','😀'],['people','👋'],['animals','🐶'],['food','🍕'],['activities','🎮'],['travel','🚀'],['objects','💡'],['symbols','❤️'],['flags','🏁']];
+const mfOn = () => !host || hasFeat('mfriends');
+const mfIn = () => !!(MF.st && MF.st.signedIn);
+function mfShort(id){ return String(id||'').replace(/^@/,'').split(':')[0]; }
+function mfLoad(lists){
+  if(!mfOn()) return;
+  call('mfriends.status',{},20000).then(st=>{ MF.st=st; if(st.signedIn && lists!==false) return mfLists(); mfRedraw(); }).catch(e=>{ MF.st={signedIn:false, error:e.message}; mfRedraw(); });
+}
+function mfLists(){
+  return Promise.all([call('mfriends.friends',{},30000), call('mfriends.chats',{},30000), call('mfriends.requests',{},30000)])
+    .then(([f,c,r])=>{ MF.friends=f; MF.chats=c; MF.req=r; mfBadge(); mfRedraw(); }).catch(e=>toast(e.message));
+}
+// Lists change in bursts (a sync brings several events): one reload a moment later.
+function mfSoon(){ clearTimeout(MF.timer); MF.timer=setTimeout(()=>{ if(mfIn()) mfLists(); }, 600); }
+function mfRedraw(){
+  if(S.view==='friends' && !S.layers.length) render(null,true);
+  if(S.layers.includes('qam') && S.qtab==='friends') renderQam();
+}
+function mfUnread(){ return (MF.chats||[]).filter(c=>!c.muted).reduce((n,c)=>n+(c.unread||0),0) + ((MF.req&&MF.req.requests)||[]).length; }
+function mfBadge(){ const n=mfUnread(); document.querySelectorAll('[data-k="m-friends"],[data-k="xn-friends"],[data-k="qt-friends"]').forEach(el=>{ el.dataset.badge = n ? String(Math.min(n,99)) : ''; el.classList.toggle('mfbadge', !!n); }); }
+function mfChat(id){ return (MF.chats||[]).find(c=>c.roomId===id); }
+function mfFriendLine(f){
+  if(f.state==='pending') return 'Request sent';
+  if(f.game) return `Playing ${esc(f.game)}`;
+  return f.presence==='online' ? 'Online' : f.presence==='unavailable' ? 'Away' : 'Offline';
+}
+function mfAv(name, cls){ return `<span class="frav ${cls||''}"><b>${esc((name||'?').charAt(0).toUpperCase())}</b><i></i></span>`; }
+
+// The Friends screen: Hearth Friends (Matrix) and the stores' friends (Steam, Xbox, Epic), one button apart.
+function viewFriends(){
+  const tabs = mfOn() ? `<div class="chips frchips mftop">${[['mx','Hearth Friends'],['stores','Steam & other stores']].map(([k,l])=>`<button class="chip ${MF.top===k?'on':''}" data-f data-k="mft-${k}" data-act="mfTop" data-v="${k}">${l}${k==='mx'&&mfUnread()?` · ${mfUnread()}`:''}</button>`).join('')}</div>` : '';
+  if(!mfOn() || MF.top==='stores') return tabs + viewFriendsStores();
+  return tabs + (MF.room ? mfChatView() : mfMain());
+}
+function mfMain(){
+  const st=MF.st;
+  if(!st) return note('Loading Hearth Friends…');
+  if(!st.signedIn) return mfSignedOut();
+  const req=(MF.req&&MF.req.requests)||[], inv=(MF.req&&MF.req.invites)||[];
+  const head = `<div class="mfhead">${mfAv(mfShort(st.userId),'me')}<div class="rt"><b>${esc(st.userId)}</b><small>Your account lives on ${esc(st.lives||st.homeserver)} · ${st.settings&&st.settings.presence==='offline'?'appearing offline':st.settings&&st.settings.presence==='unavailable'?'Away':'Online'}</small></div>
+    <button class="btn sm" data-f data-k="mf-add" data-act="mfAdd">${I.user}Add friend</button><button class="btn sm" data-f data-k="mf-code" data-act="mfCode">${I.layout}My code</button></div>
+    ${st.error?note(esc(st.error)):''}${!st.synced?note('Catching up with your chats…'):''}${st.keyringOk===false?note('The system keyring isn\'t available, so you\'ll need to sign in again next time.'):''}`;
+  const tabs = `<div class="chips frchips">${[['friends','Friends'],['chats','Chats'],['requests','Requests'+(req.length?` · ${req.length}`:'')],['settings','Settings']].map(([k,l])=>`<button class="chip ${MF.tab===k?'on':''}" data-f data-k="mfb-${k}" data-act="mfTab" data-v="${k}">${l}</button>`).join('')}</div>`;
+  let body='';
+  if(MF.tab==='friends'){
+    const fs=MF.friends;
+    if(!fs) body=note('Loading your friends…');
+    else if(!fs.length) body=note('No friends yet. Add one with their Matrix address (like @sam:matrix.org), or show them your code to scan.');
+    else body=`<div class="rows fr">${fs.map((f,i)=>`<button class="row frow ${f.game?'ing':f.presence==='online'?'on':''}" data-f data-k="mff-${esc(f.userId)}" data-act="mfFriend" data-i="${i}">
+      ${mfAv(f.name)}<div class="rt"><b>${esc(f.name)} <span class="frplat fp-mx">Matrix</span>${f.joinable?' <span class="frplat fp-join">Joinable</span>':''}</b><small>${mfFriendLine(f)} · ${esc(f.userId)}</small></div>
+      ${f.unread?`<div class="rv mfn">${f.unread}</div>`:'<div class="rv">›</div>'}</button>`).join('')}</div>`;
+  }
+  if(MF.tab==='chats'){
+    const cs=MF.chats;
+    body = `<div class="two" style="max-width:900px;margin-bottom:10px"><button class="btn" data-f data-k="mf-group" data-act="mfGroup">${I.user}New group chat</button></div>`
+      + (inv.length?shead('Invites from friends')+`<div class="rows">${inv.map((r,i)=>mfReqRow(r,i,'inv')).join('')}</div>`:'')
+      + (!cs ? note('Loading your chats…') : !cs.length ? note('No chats yet.') : `<div class="rows">${cs.map((c,i)=>`<button class="row frow" data-f data-k="mfc-${esc(c.roomId)}" data-act="mfOpen" data-room="${esc(c.roomId)}">
+        ${mfAv(c.name)}<div class="rt"><b>${esc(c.name)}${c.encrypted?` <span class="mflock" title="End-to-end encrypted">${I.lock}</span>`:''}${c.muted?' <span class="frplat">Muted</span>':''}</b><small>${c.typing&&c.typing.length?'typing…':c.last?esc(mfPreview(c.last)):c.direct?'Say hello':esc(c.members+' people')}</small></div>
+        ${c.unread&&!c.muted?`<div class="rv mfn">${c.unread}</div>`:'<div class="rv">›</div>'}</button>`).join('')}</div>`);
+  }
+  if(MF.tab==='requests'){
+    body = (MF.st.settings&&MF.st.settings.friendsOnly?note('Messages from people who aren\'t your friends wait here, without a pop-up.'):'')
+      + (req.length ? `<div class="rows">${req.map((r,i)=>mfReqRow(r,i,'req')).join('')}</div>` : note('No requests.'));
+  }
+  if(MF.tab==='settings') body = mfSettings();
+  return head + tabs + body;
+}
+function mfPreview(m){ return (m.mine?'You: ':'') + (m.kind==='image'?'Picture':m.kind==='game'?`Game invite: ${(m.game&&m.game.title)||''}`:m.kind==='play'?'Play together':m.kind==='locked'?'Encrypted message':(m.body||'')).slice(0,90); }
+function mfReqRow(r,i,kind){
+  return `<div class="row mfreq"><div class="rt"><b>${esc(r.name)}</b><small>${r.direct?'wants to be friends':'invited you to '+esc(r.roomName||'a group chat')} · ${esc(r.from)}</small></div>
+    <button class="btn sm" data-f data-k="mfr-a-${kind}${i}" data-act="mfAccept" data-room="${esc(r.roomId)}">${I.check}Accept</button>
+    <button class="btn sm" data-f data-k="mfr-d-${kind}${i}" data-act="mfDecline" data-room="${esc(r.roomId)}">${I.x}Decline</button>
+    <button class="btn sm danger" data-f data-k="mfr-b-${kind}${i}" data-act="mfBlockReq" data-room="${esc(r.roomId)}" data-user="${esc(r.from)}">Block</button></div>`;
+}
+function mfSignedOut(){
+  const hs = MF.hs || (MF.st&&MF.st.settings&&MF.st.settings.homeserver) || 'matrix.org';
+  return `<div class="mfwelcome"><h2>Friends on Matrix</h2>
+    <p class="muted">Chat, invite friends to games and see what they're playing, on Matrix: the open chat network. Hearth doesn't run a server: your account lives on <b>${esc(hs)}</b>${hs==='matrix.org'?' (run by the Matrix.org Foundation)':''} or any Matrix server you pick, and works in other Matrix apps too. Chats with friends are end-to-end encrypted.</p>
+    ${MF.st&&MF.st.error?note(esc(MF.st.error)):''}
+    <div class="two" style="max-width:640px"><button class="btn" data-f data-k="mf-signin" data-act="mfSignIn">${I.user}Sign in</button><button class="btn" data-f data-k="mf-create" data-act="mfCreate">${I.check}Create an account</button></div>
+    <button class="btn sm" data-f data-k="mf-hs" data-act="mfServer" style="margin-top:10px">${I.globe}Server: ${esc(hs)} · Change</button></div>`;
+}
+function mfSettings(){
+  const s=(MF.st&&MF.st.settings)||{}, pt=MF.ptInfo;
+  const sw=(k,on,label,sub)=>`<button class="row" data-f data-k="mfs-${k}" data-act="mfSet" data-v="${k}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${on?'on':''}"></div></button>`;
+  if(host && !pt && !MF.ptLoading){ MF.ptLoading=true; call('mfriends.ptInfo',{},20000).then(r=>{ MF.ptInfo=r; mfRedraw(); }).catch(()=>{}).finally(()=>{ MF.ptLoading=false; }); }
+  return `${shead('Privacy & safety')}<div class="rows">
+    ${sw('friendsOnly', s.friendsOnly!==false, 'Messages from friends only', 'Everyone else goes to Requests, without a pop-up')}
+    ${sw('sharePlaying', s.sharePlaying!==false, 'Show what I\'m playing', 'Shown as "Playing <game>" to people you share a chat with')}
+    ${sw('previews', s.previews!==false, 'Message text in notifications', 'Off: just "New message from…"')}
+    <button class="row" data-f data-k="mfs-presence" data-act="mfPresence"><div class="rt"><b>Status</b><small>${s.presence==='offline'?'Appear offline':s.presence==='unavailable'?'Away':'Online'}</small></div><div class="rv">›</div></button>
+    <button class="row" data-f data-k="mfs-blocked" data-act="mfBlocked"><div class="rt"><b>Blocked people</b><small>They can't message you or send requests</small></div><div class="rv">›</div></button>
+    ${sw('askToJoin', !pt || pt.askToJoin!==false, 'Let friends ask to join my game', 'Play together (Beta Experimental): you say yes to each join'+(pt&&!pt.canHost?' · needs Remote play\'s Sunshine':''))}
+    </div>
+    <div class="note">${I.lock} Chats with friends are end-to-end encrypted: only the people in a chat can read it, not Hearth and not the server. What you're playing and whether you're online aren't encrypted: your Matrix server sees them.</div>
+    ${shead('Account')}<div class="rows">
+    <div class="row"><div class="rt"><b>${esc(MF.st.userId)}</b><small>Lives on ${esc(MF.st.lives||MF.st.homeserver)} · this device: ${esc(MF.st.deviceId||'')}</small></div></div>
+    <button class="row" data-f data-k="mfs-name" data-act="mfName"><div class="rt"><b>Display name</b><small>What friends see</small></div><div class="rv">›</div></button>
+    <button class="row" data-f data-k="mfs-out" data-act="mfSignOut"><div class="rt"><b>Sign out</b><small>This device's keys are removed; your chats stay on your other devices</small></div><div class="rv">›</div></button></div>
+    ${shead('Other friends')}<div class="rows">
+    <button class="row" data-f data-k="mfs-steam" data-act="mfSteamFriends"><div class="rt"><b>Steam friends</b><small>Steam's own friends and chat</small></div><div class="rv">›</div></button>
+    <button class="row" data-f data-k="mfs-discord" data-act="mfDiscord"><div class="rt"><b>Discord</b><small>Install it from Flathub with one press, or open it</small></div><div class="rv">›</div></button></div>`;
+}
+
+// A chat: messages, then what you can do (type with the on-screen keyboard, emoji, a screenshot, a game invite).
+function mfChatView(){
+  const c=mfChat(MF.room)||{name:'Chat', roomId:MF.room}, ms=MF.msgs[MF.room];
+  const typing=(MF.typing[MF.room]||[]).filter(Boolean);
+  const head = `<div class="mfchathead"><button class="btn sm" data-f data-k="mfx-back" data-act="mfClose">‹ Back</button><div class="rt"><b>${esc(c.name)}</b><small>${c.encrypted!==false?`${I.lock} End-to-end encrypted`:'Not encrypted'}${typing.length?` · ${esc(typing.map(mfShort).join(', '))} typing…`:''}</small></div></div>`;
+  if(!ms) return head + note('Loading messages…');
+  const list = ms.slice(-60).map(m=>mfMsg(m)).join('');
+  const more = MF.atStart[MF.room] ? '' : `<button class="btn sm" data-f data-k="mfx-more" data-act="mfMore">Older messages</button>`;
+  const bar = `<div class="mfbar">
+    <button class="btn" data-f data-k="mfx-type" data-act="mfType">${I.kbd}Write a message</button>
+    <button class="btn sm" data-f data-k="mfx-emoji" data-act="mfEmoji">${MF.emojiOpen?'Close emoji':'😀 Emoji'}</button>
+    <button class="btn sm" data-f data-k="mfx-shot" data-act="mfShot">${I.display}Screenshot</button>
+    <button class="btn sm" data-f data-k="mfx-game" data-act="mfInvite">${I.play}Invite to play</button>
+    ${S.running?`<button class="btn sm" data-f data-k="mfx-pt" data-act="mfPtOffer">${I.pad}Play together</button>`:''}</div>`;
+  return head + `<div class="mfmsgs">${more}${list||note('No messages yet. Say hello!')}</div>` + (MF.emojiOpen?mfEmojiGrid():'') + bar;
+}
+function mfMsg(m){
+  const who = m.mine ? 'You' : esc(m.senderName||mfShort(m.sender));
+  const time = m.at ? new Date(m.at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}) : '';
+  if(m.kind==='member') return `<div class="mfsys">${esc(m.body)}</div>`;
+  let inner = `<div class="mftext">${esc(m.body||'')}</div>`;
+  if(m.kind==='image'){ const u=MF.imgs[m.id]; inner = u ? `<img class="mfimg" src="${esc(u)}" alt="">` : `<button class="btn sm" data-f data-k="mfi-${esc(m.id)}" data-act="mfImg" data-id="${esc(m.id)}">${I.display}Show picture</button>`; }
+  if(m.kind==='locked') inner = `<div class="mftext muted">${I.lock} ${esc(m.body)}</div>`;
+  if(m.kind==='game') inner = mfGameCard(m);
+  if(m.kind==='play') inner = mfPlayCard(m);
+  return `<div class="mfmsg ${m.mine?'mine':''}"><small>${who} · ${time}</small>${inner}</div>`;
+}
+// A game invite on the other side: the same game from your library (by store and id), Steam's own ways in, a server.
+function mfLocal(g){ return GAMES.find(x=>x.id===g.id) || (g.appId && GAMES.find(x=>x.src===g.store && String(x.appId||'')===String(g.appId))) || GAMES.find(x=>(x.title||'').toLowerCase()===(g.title||'').toLowerCase()); }
+function mfGameCard(m){
+  const g=m.game||{}, local=mfLocal(g), k=esc(m.id);
+  const bs=[];
+  if(!m.mine){
+    if(local) bs.push(`<button class="btn sm" data-f data-k="mfg-p-${k}" data-act="mfGamePlay" data-id="${esc(m.id)}">${I.play}${local.inst===false||local.installed===false?'Install':'Play'}</button>`);
+    else if(g.store==='steam' && g.appId) bs.push(`<button class="btn sm" data-f data-k="mfg-s-${k}" data-act="mfSteamUrl" data-url="steam://store/${esc(g.appId)}">${I.dl}Get it on Steam</button>`);
+    if(g.server) bs.push(`<button class="btn sm" data-f data-k="mfg-j-${k}" data-act="mfJoinServer" data-id="${esc(m.id)}">${I.globe}Join server</button>`);
+    if(g.store==='steam') bs.push(`<button class="btn sm" data-f data-k="mfg-v-${k}" data-act="mfSteamUrl" data-url="steam://open/friends">Join via Steam</button>`);
+  }
+  return `<div class="mfcard">${I.pad}<div class="rt"><b>${esc(g.title||'A game')}</b><small>${m.mine?'You sent a game invite':'Game invite'}${g.server?` · server ${esc(g.server)}`:''}${local?'':' · not in your library'}</small></div><div class="mfbtns">${bs.join('')}</div></div>`;
+}
+function mfPlayCard(m){
+  const p=m.play||{}, k=esc(m.id), bs=[];
+  const live = MF.pt[p.session];
+  if(!m.mine && p.action==='offer') bs.push(`<button class="btn sm" data-f data-k="mfp-j-${k}" data-act="mfPtRequest" data-id="${esc(m.id)}">${I.pad}Join</button>`);
+  if(!m.mine && p.action==='request' && !(live&&live.accepted)){
+    bs.push(`<button class="btn sm" data-f data-k="mfp-a-${k}" data-act="mfPtAccept" data-id="${esc(m.id)}" data-c="1">${I.check}Let them join (controller only)</button>`);
+    bs.push(`<button class="btn sm" data-f data-k="mfp-k-${k}" data-act="mfPtAccept" data-id="${esc(m.id)}" data-c="0">With keyboard & mouse</button>`);
+    bs.push(`<button class="btn sm" data-f data-k="mfp-d-${k}" data-act="mfPtDecline" data-id="${esc(m.id)}">${I.x}Not now</button>`);
+  }
+  if(live && live.role==='host' && live.accepted && !live.ended) bs.push(`<button class="btn sm danger" data-f data-k="mfp-x-${k}" data-act="mfPtKick" data-s="${esc(p.session)}">Remove from game</button>`);
+  return `<div class="mfcard">${I.pad}<div class="rt"><b>Play together${p.game?' · '+esc(p.game):''}</b><small>${esc(m.body||'')}${live&&live.state?' · '+esc(live.state):''} · Beta Experimental</small></div><div class="mfbtns">${bs.join('')}</div></div>`;
+}
+function mfEmojiGrid(){
+  const all = (MF.emoji && MF.emoji.length) ? MF.emoji : MF_EMOJI_FALLBACK;
+  const cats = MF.emoji && MF.emoji.length ? MF_CATS : [['smileys','😀']];
+  const list = all.filter(e=>e.g===MF.emojiCat).slice(0,64);
+  return `<div class="mfemoji"><div class="chips">${cats.map(([k,e])=>`<button class="chip ${MF.emojiCat===k?'on':''}" data-f data-k="mfe-c-${k}" data-act="mfEmojiCat" data-v="${k}">${e}</button>`).join('')}</div>
+    <div class="mfegrid">${list.map((e,i)=>`<button class="mfe" data-f data-k="mfe-${i}" data-act="mfSendEmoji" data-v="${esc(e.e)}" aria-label="${esc(e.n||e.e)}">${e.e}</button>`).join('')}</div></div>`;
+}
+
+function mfOpenChat(room){
+  MF.room=room; MF.emojiOpen=false; MF.top='mx';
+  // Over a game (the overlay only shows Quick Access): the chat opens in Quick Access › Friends.
+  if(OVERLAY){ S.qtab='friends'; if(!S.layers.includes('qam')) openLayer('qam'); else renderQam(); setFocus($('#qam [data-k="mfx-type"]'),true); return mfLoadMsgs(room, false); }
+  if(S.view!=='friends'){ closeAll(); navigate('friends'); } else render('mfx-type');
+  mfLoadMsgs(room, false);
+}
+function mfLoadMsgs(room, more){
+  call('mfriends.messages',{roomId:room, more:!!more},60000).then(r=>{ MF.msgs[room]=r.messages; MF.atStart[room]=r.atStart; if(MF.room===room){ mfRedraw(); mfScrollEnd(); } call('mfriends.read',{roomId:room}).catch(()=>{}); }).catch(e=>toast(e.message));
+}
+function mfScrollEnd(){ const v=$('#view .mfmsgs'); if(v) v.scrollTop=v.scrollHeight; const q=$('#qam .mfmsgs'); if(q) q.scrollTop=q.scrollHeight; }
+function mfSend(text){ if(!text||!text.trim()) return; call('mfriends.send',{roomId:MF.room, text:text.trim()}).catch(e=>toast(e.message)); }
+function mfMsgById(id){ return (MF.msgs[MF.room]||[]).find(m=>m.id===id); }
+function mfGamesToInvite(){
+  const run = S.running && G(S.running);
+  const rest = GAMES.filter(g=>!g.cloud && g!==run && (g.inst!==false && g.installed!==false)).sort((a,b)=>(b.last||0)-(a.last||0)).slice(0,8);
+  return run ? [run, ...rest] : rest;
+}
+function mfGameRef(g, server){ return {title:g.title, store:g.src||'', id:g.id, appId:g.appId?String(g.appId):(String(g.id).split(':')[1]||undefined), server:server||undefined}; }
+function mfPickInvite(){
+  const gs=mfGamesToInvite();
+  if(!gs.length) return toast('No games in your library to invite to yet.');
+  openSheet({title:'Invite to play', sub:'Your friend gets a card that opens the same game in their library', items:gs.map((g,i)=>({label:(i===0&&S.running===g.id?'Now playing: ':'')+g.title, icon:'play', run:()=>openSheet({title:g.title, items:[
+    {label:'Send the invite', icon:'play', run:()=>mfSendInvite(g)},
+    {label:'Send it with my server address…', icon:'globe', run:()=>openPrompt({title:'Server to join (address:port)', value:''}).then(a=>{ if(a) mfSendInvite(g, a.trim()); })}]})}))});
+}
+function mfSendInvite(g, server){ call('mfriends.invite',{roomId:MF.room, game:mfGameRef(g, server)}).then(()=>toast(`Invite to ${g.title} sent`)).catch(e=>toast(e.message)); }
+function mfPtSend(room, play){ return call('mfriends.play',{roomId:room, play}); }
+function mfSessionId(){ const b=new Uint8Array(6); crypto.getRandomValues(b); return 'pt-'+[...b].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+async function mfPtRequestTo(room, game, session){
+  try{
+    const info = MF.ptInfo || (host ? await call('mfriends.ptInfo',{},20000) : {canJoin:true}); MF.ptInfo=info;
+    if(!info.canJoin) return openSheet({title:'Play together needs Moonlight', sub:'Install Moonlight from Settings › Remote play, then ask again.', items:[{label:'Open Remote play settings', icon:'gear', run:()=>{ closeAll(); S.settingsTab='remote'; navigate('settings'); }}]});
+    const pin = host ? await call('mfriends.ptPin') : '1234';
+    session = session || mfSessionId();
+    MF.pt[session] = {role:'guest', room, pin, state:'asked'};
+    await mfPtSend(room, {action:'request', session, game:game||'', pin, device:HOSTINFO.name||'Hearth'});
+    toast('Asked to join. Waiting for your friend to say yes…');
+  }catch(e){ toast(e.message); }
+}
+
+async function mfAct(a, d){
+  switch(a){
+    case 'mfTop': MF.top=d.v; if(d.v==='stores') loadFriends(); else mfLoad(); return render('mft-'+d.v,true);
+    case 'mfTab': MF.tab=d.v; if(d.v==='settings') MF.ptInfo=null; return render('mfb-'+d.v,true);
+    case 'mfServer': return openPrompt({title:'Matrix server (like matrix.org, or your own)', value:MF.hs||(MF.st&&MF.st.settings&&MF.st.settings.homeserver)||'matrix.org'}).then(v=>{ if(v){ MF.hs=v.trim(); render('mf-hs',true); } });
+    case 'mfSignIn': {
+      const hs = MF.hs || (MF.st&&MF.st.settings&&MF.st.settings.homeserver) || 'matrix.org';
+      const user = await openPrompt({title:`Your Matrix user name on ${hs} (or @name:server)`}); if(!user) return;
+      const password = await openPrompt({title:'Password', secret:true}); if(!password) return;
+      toast('Signing in…');
+      return call('mfriends.login',{homeserver:hs, user:user.trim(), password},100000).then(st=>{ MF.st=st; toast(`Signed in as ${st.userId}`); mfLists(); mfRedraw(); }).catch(e=>toast(e.message));
+    }
+    case 'mfCreate': {
+      const hs = MF.hs || (MF.st&&MF.st.settings&&MF.st.settings.homeserver) || 'matrix.org';
+      const user = await openPrompt({title:`Pick a user name on ${hs}`}); if(!user) return;
+      const password = await openPrompt({title:'Pick a password (8 characters or more)', secret:true}); if(!password) return;
+      const tryIt = token => call('mfriends.register',{homeserver:hs, user:user.trim(), password, token},100000).then(r=>{
+        if(r.needsToken) return openPrompt({title:'Sign-up token from the server\'s owner', secret:true}).then(t=>{ if(t) return tryIt(t.trim()); });
+        if(r.needsWeb) return openSheet({title:'Make the account on the web', sub:`${r.why} Then come back and press Sign in. ${r.url}`, items:[{label:'OK', icon:'check', run:()=>{}}]});
+        MF.st=r; toast(`Welcome, ${r.userId}`); mfLists(); mfRedraw();
+      });
+      toast('Creating your account…');
+      return tryIt(null).catch(e=>toast(e.message));
+    }
+    case 'mfAdd': return openPrompt({title:'Friend\'s Matrix address (like @sam:matrix.org) or link'}).then(v=>{ if(!v) return; call('mfriends.add',{userId:v.trim()}).then(r=>{ toast(r.already?'You already have a chat with them':'Friend request sent'); mfLists(); }).catch(e=>toast(e.message)); });
+    case 'mfCode': return call('mfriends.link').then(l=>{ MF.code=l; openSheet({title:'Add me on Matrix', sub:`${l.userId} · ${l.matrixTo}`, items:[{label:'Done', icon:'check', run:()=>{}}], html:l.qr}); }).catch(e=>toast(e.message));
+    case 'mfFriend': return mfFriendSheet((MF.friends||[])[+d.i]);
+    case 'mfOpen': return mfOpenChat(d.room);
+    case 'mfQOpen': MF.room=d.room; MF.emojiOpen=false; renderQam(); setFocus($('#qam [data-k="mfx-type"]'),true); return mfLoadMsgs(d.room, false);
+    case 'mfQBack': MF.room=null; MF.emojiOpen=false; renderQam(); return setFocus($('#qam [data-k="mfq-all"]')||$('#qam .qbody [data-f]'),true);
+    case 'mfQAll': if(OVERLAY) return send({type:'overlay', action:'home'}); closeAll(); MF.top='mx'; MF.room=null; if(S.view!=='friends') navigate('friends'); else render(null,true); return;
+    case 'mfNotif': if(d.room==='requests'){ MF.room=null; MF.tab='requests'; MF.top='mx'; if(OVERLAY){ S.qtab='friends'; return renderQam(); } closeAll(); return S.view==='friends'?render('mfb-requests',true):navigate('friends'); } return mfOpenChat(d.room);
+    case 'mfClose': MF.room=null; MF.emojiOpen=false; mfSoon(); return render('mfb-'+MF.tab,true);
+    case 'mfMore': return mfLoadMsgs(MF.room, true);
+    case 'mfType': {
+      const c=mfChat(MF.room); call('mfriends.typing',{roomId:MF.room, on:true}).catch(()=>{});
+      const t = await openPrompt({title:`Message ${c?c.name:''}`});
+      call('mfriends.typing',{roomId:MF.room, on:false}).catch(()=>{});
+      return mfSend(t);
+    }
+    case 'mfEmoji': MF.emojiOpen=!MF.emojiOpen; if(MF.emojiOpen && !MF.emoji && host) call('mfriends.emoji',{},10000).then(r=>{ MF.emoji=r; mfRedraw(); }).catch(()=>{ MF.emoji=[]; }); return S.layers.includes('qam') ? (renderQam(), setFocus($('#qam [data-k="mfe-0"]')||$('#qam [data-k="mfx-emoji"]'),true)) : render(MF.emojiOpen?'mfe-0':'mfx-emoji',true);
+    case 'mfEmojiCat': MF.emojiCat=d.v; return S.layers.includes('qam') ? (renderQam(), setFocus($(`#qam [data-k="mfe-c-${d.v}"]`),true)) : render('mfe-c-'+d.v,true);
+    case 'mfSendEmoji': return mfSend(d.v);
+    case 'mfShot': {
+      const pick = l => { if(!l.length) return toast('No screenshots yet. In a game, open Quick Access and take one.');
+        openSheet({title:'Send a screenshot', sub:'Sent end-to-end encrypted', items:l.slice(0,8).map(x=>({label:shotWhen(x.time), icon:'display', run:()=>{ toast('Sending…'); call('mfriends.sendImage',{roomId:MF.room, path:x.file},90000).then(()=>toast('Screenshot sent')).catch(e=>toast(e.message)); }}))}); };
+      if(!host) return pick([{file:'x.png', time:Date.now()}]);
+      return call('screenshots.list',{},15000).then(r=>pick(r.list||[])).catch(e=>toast(e.message));
+    }
+    case 'mfImg': return call('mfriends.image',{roomId:MF.room, eventId:d.id},60000).then(r=>{ MF.imgs[d.id]=r.url; mfRedraw(); }).catch(e=>toast(e.message));
+    case 'mfInvite': return mfPickInvite();
+    case 'mfGamePlay': { const m=mfMsgById(d.id), g=m&&mfLocal(m.game||{}); if(!g) return; closeAll(); return navigate('game',{game:g.id}); }
+    case 'mfJoinServer': { const m=mfMsgById(d.id), g=m&&m.game; if(!g||!g.server) return;
+      if(g.store==='steam' || /^steam:\/\/connect\//.test(g.server)) return call('mfriends.openSteam',{url:/^steam:/.test(g.server)?g.server:'steam://connect/'+g.server}).then(()=>toast('Joining through Steam…')).catch(e=>toast(e.message));
+      return openSheet({title:`Join ${g.title}`, sub:`In the game, connect to ${g.server}. It's also in Game settings › Launch options as +connect ${g.server} for games that take it.`, items:[{label:'OK', icon:'check', run:()=>{}}]}); }
+    case 'mfSteamUrl': return call('mfriends.openSteam',{url:d.url}).then(()=>toast('Opening Steam…')).catch(e=>toast(e.message));
+    case 'mfPtOffer': { const g=S.running&&G(S.running); const info = MF.ptInfo || (host ? await call('mfriends.ptInfo',{},20000).catch(()=>null) : {canHost:true, addresses:['192.168.1.42']});
+      if(!info || !info.canHost) return toast('Play together needs Sunshine (Settings › Remote play).');
+      const session=mfSessionId(); MF.pt[session]={role:'host', room:MF.room, state:'offered'};
+      return mfPtSend(MF.room, {action:'offer', session, game:g?g.title:'', addresses:info.addresses||[], port:info.port, transport:(info.transports||[])[0]||'lan'}).then(()=>toast('Play together offered')).catch(e=>toast(e.message)); }
+    case 'mfPtRequest': { const m=mfMsgById(d.id); if(!m) return; return mfPtRequestTo(MF.room, m.play.game, m.play.session); }
+    case 'mfPtAccept': { const m=mfMsgById(d.id); if(!m) return; const p=m.play;
+      try{
+        const info = MF.ptInfo || (host ? await call('mfriends.ptInfo',{},20000) : {addresses:['192.168.1.42'], port:47989, transports:['lan']}); MF.ptInfo=info;
+        if(host) await call('mfriends.ptAccept',{session:p.session, pin:p.pin, friend:m.sender, device:p.device||'', controllerOnly:d.c==='1'},20000);
+        MF.pt[p.session]={role:'host', room:MF.room, accepted:true, friend:m.sender, state:'waiting for their device'};
+        await mfPtSend(MF.room, {action:'accept', session:p.session, game:p.game||'', addresses:info.addresses||[], port:info.port, transport:(info.transports||[])[0]||'lan'});
+        toast(`${m.senderName||'Your friend'} is joining…`); mfRedraw();
+      }catch(e){ toast(e.message); }
+      return; }
+    case 'mfPtDecline': { const m=mfMsgById(d.id); if(!m) return; MF.pt[m.play.session]={role:'host', ended:true, state:'declined'}; return mfPtSend(MF.room, {action:'decline', session:m.play.session}).then(mfRedraw).catch(e=>toast(e.message)); }
+    case 'mfPtKick': { const s=MF.pt[d.s]; if(!s) return; if(host) call('mfriends.ptEnd',{name:s.name||null},20000).catch(e=>toast(e.message)); s.ended=true; s.state='ended'; mfPtSend(s.room||MF.room, {action:'kick', session:d.s}).catch(()=>{}); toast('Removed from your game'); return mfRedraw(); }
+    case 'mfAccept': return call('mfriends.accept',{roomId:d.room}).then(()=>{ toast('Accepted'); mfLists(); }).catch(e=>toast(e.message));
+    case 'mfDecline': return call('mfriends.decline',{roomId:d.room}).then(()=>{ toast('Declined'); mfLists(); }).catch(e=>toast(e.message));
+    case 'mfBlockReq': return call('mfriends.block',{userId:d.user, on:true}).then(()=>{ toast('Blocked'); mfLists(); }).catch(e=>toast(e.message));
+    case 'mfGroup': {
+      const name = await openPrompt({title:'Group chat name'}); if(!name) return;
+      const fs=(MF.friends||[]).filter(f=>f.state==='friend');
+      const people = await openPrompt({title:'Who? Matrix addresses, separated by commas', value:fs.slice(0,3).map(f=>f.userId).join(', ')}); if(people==null) return;
+      return call('mfriends.createGroup',{name, users:people.split(',').map(s=>s.trim()).filter(Boolean)}).then(r=>{ toast('Group made'); mfLists().then(()=>mfOpenChat(r.roomId)); }).catch(e=>toast(e.message));
+    }
+    case 'mfSet': {
+      if(d.v==='askToJoin'){ const on=!(MF.ptInfo&&MF.ptInfo.askToJoin===false); return call('mfriends.ptAskToJoin',{on:!on},20000).then(r=>{ MF.ptInfo=r; render('mfs-askToJoin',true); }).catch(e=>toast(e.message)); }
+      const s=(MF.st&&MF.st.settings)||{}; const on = s[d.v]!==false;
+      return call('mfriends.settings',{[d.v]:!on}).then(st=>{ MF.st=st; render('mfs-'+d.v,true); }).catch(e=>toast(e.message));
+    }
+    case 'mfPresence': return openSheet({title:'Status', items:[['online','Online'],['unavailable','Away'],['offline','Appear offline']].map(([k,l])=>({label:l, icon:'user', run:()=>call('mfriends.settings',{presence:k}).then(st=>{ MF.st=st; render('mfs-presence',true); }).catch(e=>toast(e.message))}))});
+    case 'mfBlocked': return call('mfriends.blocked').then(l=>openSheet({title:'Blocked people', sub:l.length?'Pick someone to unblock them':'Nobody is blocked', items:l.map(u=>({label:u, icon:'x', run:()=>call('mfriends.block',{userId:u, on:false}).then(()=>toast('Unblocked')).catch(e=>toast(e.message))}))})).catch(e=>toast(e.message));
+    case 'mfName': return openPrompt({title:'Display name'}).then(n=>{ if(n) call('mfriends.setName',{name:n}).then(()=>toast('Name changed')).catch(e=>toast(e.message)); });
+    case 'mfSignOut': return openSheet({title:'Sign out of Hearth Friends?', sub:'This device\'s encryption keys are removed. Your chats stay on your other Matrix devices.', items:[{label:'Sign out', icon:'power', run:()=>call('mfriends.logout',{},30000).then(st=>{ MF.st=st; MF.friends=MF.chats=MF.req=null; MF.msgs={}; mfRedraw(); }).catch(e=>toast(e.message))}]});
+    case 'mfSteamFriends': return call('mfriends.openSteam',{url:'steam://open/friends'}).then(()=>toast('Opening Steam friends…')).catch(e=>toast(e.message));
+    case 'mfDiscord': return call('mfriends.discord').then(r=>openSheet({title:'Discord', sub:r.installed?'Discord is installed.':'Discord isn\'t part of Hearth; it comes from Flathub ('+r.flathub+').', items:[r.installed?{label:'Open Discord', icon:'play', run:()=>call('mfriends.openDiscord').catch(e=>toast(e.message))}:{label:'Install Discord from Flathub', icon:'dl', run:()=>{ toast('Installing Discord…'); call('mfriends.installDiscord',{},900000).then(()=>toast('Discord is installed')).catch(e=>toast(e.message)); }}]})).catch(e=>toast(e.message));
+  }
+}
+function mfFriendSheet(f){
+  if(!f) return;
+  const items=[];
+  items.push({label:`Message ${f.name}`, icon:'user', run:()=>mfOpenChat(f.roomId)});
+  if(f.state==='friend') items.push({label:'Invite to play', icon:'play', run:()=>{ MF.room=f.roomId; mfPickInvite(); }});
+  if(f.joinable && f.game) items.push({label:`Ask to join ${f.game} (Play together)`, icon:'pad', run:()=>mfPtRequestTo(f.roomId, f.game)});
+  const local = f.game && GAMES.find(g=>(g.title||'').toLowerCase()===f.game.toLowerCase());
+  if(local) items.push({label:`Play ${local.title}`, icon:'play', run:()=>{ closeAll(); navigate('game',{game:local.id}); }});
+  if(local && local.src==='steam') items.push({label:'Join via Steam (Steam\'s friends list)', icon:'globe', run:()=>call('mfriends.openSteam',{url:'steam://open/friends'}).catch(e=>toast(e.message))});
+  items.push({label:f.muted?'Turn notifications on':'Mute', icon:'mute', run:()=>call('mfriends.mute',{roomId:f.roomId, on:!f.muted}).then(mfSoon).catch(e=>toast(e.message))});
+  items.push({label:'Report', icon:'info', run:()=>openPrompt({title:'What happened? (goes to your server\'s admins)'}).then(r=>{ if(r!=null) call('mfriends.report',{userId:f.userId, reason:r||'Reported from Hearth'}).then(()=>toast('Reported. Thank you.')).catch(e=>toast(e.message)); })});
+  items.push({label:'Block', icon:'x', run:()=>call('mfriends.block',{userId:f.userId, on:true}).then(()=>{ toast(`${f.name} is blocked`); mfLists(); }).catch(e=>toast(e.message))});
+  items.push({label:f.state==='pending'?'Cancel the request':'Remove friend', icon:'trash', run:()=>call('mfriends.leave',{roomId:f.roomId}).then(()=>{ toast('Removed'); mfLists(); }).catch(e=>toast(e.message))});
+  openSheet({title:f.name, sub:`${mfFriendLine(f).replace(/&amp;/g,'&')} · ${f.userId}`, items});
+}
+// Events from the service, through the core.
+function mfEvent(d){
+  const ev=d.event, x=d.data||{};
+  if(ev==='connected'){ mfLoad(); return; }
+  if(ev==='status'){ MF.st=x; if(x.signedIn) mfSoon(); mfRedraw(); return; }
+  if(ev==='presence'||ev==='rooms'||ev==='resync'){ mfSoon(); return; }
+  if(ev==='typing'){ MF.typing[x.roomId]=x.users||[]; if(MF.room===x.roomId) mfRedraw(); return; }
+  if(ev==='request'){
+    mfSoon();
+    if(x.bucket==='requests' && !x.direct) return;
+    NOTIFS.unshift({i:'user', t:x.text||'Friend request', s:'Select to see it in Friends › Requests', mf:'requests'}); updateBadge();
+    if(mfToastOk()) toast(x.text||'New friend request');
+    return;
+  }
+  if(ev==='message'){
+    const m=x.msg||{}, room=x.roomId;
+    if(MF.msgs[room] && !MF.msgs[room].some(y=>y.id===m.id)) MF.msgs[room].push(m);
+    if(m.kind==='play' && !m.mine) mfPlayLive(room, m);
+    const c=mfChat(room), open = MF.room===room && (S.view==='friends' || (S.layers.includes('qam') && S.qtab==='friends'));
+    if(open){ mfRedraw(); mfScrollEnd(); call('mfriends.read',{roomId:room}).catch(()=>{}); }
+    else if(!m.mine && !(c&&c.muted)){
+      const who=m.senderName||mfShort(m.sender), what=mfPreview(m);
+      NOTIFS.unshift({i:'user', t:who, s:what, mf:room}); NOTIFS.splice(30); updateBadge();
+      if(mfToastOk()) toast(`${who}: ${what}`);
+    }
+    mfSoon();
+    return;
+  }
+  if(ev==='ptPaired'||ev==='ptFailed'||ev==='ptStreaming'){
+    const s=MF.pt[x.session]; if(s){ s.state = ev==='ptPaired'?'joined':ev==='ptStreaming'?'playing':'didn\'t connect'; if(x.name) s.name=x.name; }
+    toast(ev==='ptPaired'?'Your friend joined. Their controller is another player.':ev==='ptStreaming'?'Connected: you\'re playing on your friend\'s game':(x.why||'Play together didn\'t connect'));
+    mfRedraw(); return;
+  }
+}
+// Hearth's own toast: Game Mode and Quick Access over a game (Desktop Mode gets Mantel's notifications instead).
+function mfToastOk(){ return OVERLAY || !!HOSTINFO.gameMode || !host; }
+// Play together steps that act by themselves when they arrive live: the host said yes (join now), or ended it.
+function mfPlayLive(room, m){
+  const p=m.play||{}, s=MF.pt[p.session];
+  if(p.action==='accept' && s && s.role==='guest' && !s.joining){
+    s.joining=true; s.state='connecting';
+    const addr=(p.addresses||[])[0];
+    if(!addr) return toast('Your friend\'s device didn\'t say how to reach it.');
+    toast('Your friend said yes. Connecting…');
+    if(host) call('mfriends.ptJoin',{session:p.session, address:addr, pin:s.pin},20000).catch(e=>toast(e.message));
+  }
+  if((p.action==='kick'||p.action==='end'||p.action==='decline') && s){ s.ended=true; s.state=p.action==='decline'?'declined':'ended'; toast(p.action==='decline'?'Your friend can\'t play together right now':'Play together ended'); }
+  if(p.action==='request' && mfToastOk()) toast(`${m.senderName||mfShort(m.sender)} wants to join your game. Open Friends to say yes.`);
+}
+// Quick Access › Friends: over a game, the same friends and chats, smaller, all with the controller.
+function mfQam(){
+  if(!mfOn()) return `<h3>Friends</h3><div class="muted">Hearth Friends comes with Hearth OS.</div>`;
+  if(!MF.st && !MF.loading){ MF.loading=true; setTimeout(()=>{ MF.loading=false; }, 3000); mfLoad(); }
+  if(!mfIn()) return `<h3>Friends</h3><div class="muted" style="margin-bottom:10px">Sign in to Hearth Friends (Matrix) from Friends in ${APP}'s menu.</div>`;
+  if(MF.room){
+    const c=mfChat(MF.room)||{name:'Chat'}, ms=(MF.msgs[MF.room]||[]).slice(-6);
+    return `<h3>${esc(c.name)}</h3><div class="mfmsgs qmf">${ms.map(m=>mfMsg(m)).join('')||'<div class="muted">No messages yet.</div>'}</div>
+      ${MF.emojiOpen?mfEmojiGrid():''}
+      <div class="two"><button class="btn" data-f data-k="mfx-type" data-act="mfType">${I.kbd}Reply</button><button class="btn" data-f data-k="mfx-emoji" data-act="mfEmoji">😀 Emoji</button></div>
+      <div class="two"><button class="btn sm" data-f data-k="mfx-game" data-act="mfInvite">${I.play}Invite to this game</button>${S.running?`<button class="btn sm" data-f data-k="mfx-pt" data-act="mfPtOffer">${I.pad}Play together</button>`:''}</div>
+      <button class="btn sm" data-f data-k="mfq-back" data-act="mfQBack">‹ All friends</button>`;
+  }
+  const fs=(MF.friends||[]).filter(f=>f.state==='friend'), on=fs.filter(f=>f.presence!=='offline'||f.game);
+  const unread=(MF.chats||[]).filter(c=>c.unread&&!c.muted);
+  return `<h3>Friends${on.length?` · ${on.length} online`:''}</h3>
+    ${unread.length?`<div class="muted" style="margin:2px 0 6px">New messages</div>${unread.slice(0,4).map(c=>`<button class="btn mfq" data-f data-k="mfq-c-${esc(c.roomId)}" data-act="mfQOpen" data-room="${esc(c.roomId)}"><b>${esc(c.name)}</b><span class="mfn">${c.unread}</span></button>`).join('')}`:''}
+    ${(on.length?on:fs).slice(0,8).map(f=>`<button class="btn mfq" data-f data-k="mfq-f-${esc(f.userId)}" data-act="mfQOpen" data-room="${esc(f.roomId)}"><b>${esc(f.name)}</b><small>${mfFriendLine(f)}</small>${f.joinable?'<span class="frplat fp-join">Joinable</span>':''}</button>`).join('') || '<div class="muted">No friends yet.</div>'}
+    <button class="btn sm" data-f data-k="mfq-all" data-act="mfQAll">${I.user}Open Friends</button>`;
+}
+// ---------- end of Hearth Friends on Matrix
 
 // ---------- Screenshots: the ones taken from Quick Access, to look through and delete ----------
 const SH = {list:null, open:-1};
@@ -5470,7 +5912,7 @@ function navigate(view, params={}, push=true){
   if(view==='settings') onSettingsTab(S.settingsTab);
   if(view==='downloads'){ if(host) startDownloadPoll(); loadSysInfo(); }
   if(view==='stores') loadAccounts();
-  if(view==='friends') loadFriends();
+  if(view==='friends'){ loadFriends(); mfLoad(); }
   if(view==='shots'){ SH.open=-1; loadShots(); }
   if(view==='coop') loadCoop();
   if(view==='gameset') loadGameSet(S.game);
@@ -5709,7 +6151,7 @@ function recDone(r, what){
 function qamFresh(){ S.qtab = S.running ? 'now' : 'quick'; }
 function renderQam(){
   const t=S.qtab; let body='';
-  if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
+  if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.mf?`data-act="mfNotif" data-room="${esc(n.mf)}"`:n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
   if(t==='quick'){ const w=S.sys.wifi;
     body = `<h3>Quick settings</h3>${S.sys.display.supported?sliderCtl('bright','sun','Brightness'):''}${sliderCtl('vol',S.sys.audio.muted?'mute':'vol','Volume',0,volMax())}
     ${qRadio('wifi','wifi','Wi-Fi', w.on ? (w.ssid||'Not connected') : 'Off')}
@@ -5718,6 +6160,7 @@ function renderQam(){
     ${tgCtl('sounds','note','Interface sounds')}
     <div class="two"><button class="btn" data-f data-k="q-gw" data-act="goset" data-tab="wifi">${I.wifi}Wi-Fi</button><button class="btn" data-f data-k="q-gb" data-act="goset" data-tab="bluetooth">${I.bt}Bluetooth</button></div>
     <button class="btn" data-f data-k="q-kbd" data-act="search">${I.kbd}Keyboard</button>`; }
+  if(t==='friends') body = mfQam();
   if(t==='perf') body = `<h3>Performance</h3>${perfBody()}`;
   if(t==='apps') body = `<h3>Open apps</h3>${appsBody()}`;
   if(t==='now'){ const g=S.running&&G(S.running);
@@ -5877,7 +6320,7 @@ let sheet=null;
 function openSheet(s){ sheet=s; openLayer('sheet'); }
 function renderSheet(){
   const s=sheet; if(!s) return;
-  $('#sheetBox').innerHTML = `<h3>${esc(s.title)}</h3>${s.sub?`<div class="muted" style="margin:-6px 0 14px">${esc(s.sub)}</div>`:''}
+  $('#sheetBox').innerHTML = `<h3>${esc(s.title)}</h3>${s.sub?`<div class="muted" style="margin:-6px 0 14px">${esc(s.sub)}</div>`:''}${s.html?`<div class="sheethtml">${s.html}</div>`:''}
     ${s.items.map((it,i)=>`<button class="mitem" data-f data-k="sh-${i}" data-act="sheet" data-i="${i}">${I[it.icon]||''}${esc(it.label)}</button>`).join('')}
     ${s.noCancel?'':`<button class="mitem" data-f data-k="sh-x" data-act="back">${I.x}Cancel</button>`}`;
 }
@@ -6078,7 +6521,8 @@ function act(el){
   if(!a) return;
   if(S.locked && !['unlock','pkey','back','sheet'].includes(a)) return;   // locked: only unlocking
   blip(880,.05,.045);
-  if(a.startsWith('bcn')) return beaconAct(a, d);   // Beacon's screens (Game setup, Mods)
+  if(a.startsWith('bcn')) return beaconAct(a, d);
+  if(/^mf[A-Z]/.test(a)) return mfAct(a, d);   // Hearth Friends on Matrix   // Beacon's screens (Game setup, Mods)
   if(a.startsWith('a11y')) return a11yAct(a, d);   // Settings › Accessibility
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
@@ -8499,6 +8943,7 @@ function onSysEvent(name, data){
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
   if(name==='friends'){ if(S.view==='friends' && !S.layers.length) loadFriends(); return; }
+  if(name==='mfriends') return mfEvent(data||{});   // Hearth Friends on Matrix
   if(name.startsWith('coop.')) return coopEvent(name, data||{});
   if(name.startsWith('seats.')) return seatsEvent(name, data||{});
   if(name.startsWith('space.')) return spaceEvent(name, data||{});
