@@ -1,5 +1,4 @@
-# Checks the download site (Cloudflare R2) works: uploads a tiny test file with the R2_* secrets and reads it
-# back from the public address. Manual: Actions › Download site check › Run workflow.
+# TEMPORARY probe (branch steam-owned-probe only): what steamcommunity.com answers today for public games lists.
 name: Download site check
 
 on:
@@ -8,22 +7,35 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-    env:
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Upload a test file and read it back
+      - name: Probe
         run: |
-          set -euo pipefail
-          for s in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do [ -n "${!s}" ] || { echo "::error title=r2::the $s secret is missing"; exit 1; }; done
-          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" AWS_DEFAULT_REGION=auto
-          export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
-          echo "hearth $(date -u +%FT%TZ)" > check.txt
-          aws s3 --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" cp check.txt s3://hearth-os/check.txt --content-type text/plain \
-            || { echo "::error title=r2::upload failed: check the token has Object Read & Write on the hearth-os bucket, and the account ID"; exit 1; }
-          sleep 3
-          got=$(curl -fsS https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/check.txt) \
-            || { echo "::error title=r2::uploaded, but the public address doesn't serve it: turn on the r2.dev public access for the bucket"; exit 1; }
-          [ "$got" = "$(cat check.txt)" ] && echo "::notice title=r2::the download site works"
+          mkdir -p out && cd out
+          n=0
+          probe() { # name ua extra-curl-args... url
+            n=$((n+1)); name="$1"; ua="$2"; shift 2
+            curl -sS -L -m 30 -A "$ua" -D "$name.hdr" -o "$name.body" -w "%{http_code} %{url_effective} %{num_redirects} %{content_type} %{size_download}\n" "$@" > "$name.meta" 2>"$name.err" || true
+            echo "== $name :: $(cat $name.meta) $(cat $name.err)"
+            head -c 300 "$name.body" | tr '\n' ' '; echo
+            for m in '<gamesList' '<games>' '<game>' '<error>' 'gameslist_config' 'data-profile-gameslist' 'rgGames' 'profile_private_info' 'This profile is private' 'g_rgProfileData' 'agecheck' 'login' 'SSR' 'window.SSR' 'renderContext' 'loaderData' 'queryData' 'application_config' 'data-loyalty_webapi_token' 'webapi_token' 'playtime_forever' 'appid' '"appid"' 'GetOwnedGames' 'responsive_page' 'sessionid'; do c=$(grep -o -F -- "$m" "$name.body" | wc -l); [ "$c" -gt 0 ] && printf '  [%s]=%s' "$m" "$c"; done; echo
+          }
+          for id in 76561197960435530 76561197960287930 76561197972495328 76561197968052866 76561198028121353 76561197993726733; do
+            probe "x-$id" Hearth "https://steamcommunity.com/profiles/$id/games?tab=all&xml=1"
+            probe "h-$id" Hearth "https://steamcommunity.com/profiles/$id/games/?tab=all"
+          done
+          id=76561197960435530
+          probe "xb-$id" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36" "https://steamcommunity.com/profiles/$id/games?tab=all&xml=1"
+          probe "hb-$id" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36" "https://steamcommunity.com/profiles/$id/games/?tab=all"
+          probe "he-$id" Hearth -H "Accept-Language: en" -b "Steam_Language=english; birthtime=0; wants_mature_content=1" "https://steamcommunity.com/profiles/$id/games/?tab=all&l=english"
+          probe "xl-$id" Hearth "https://steamcommunity.com/profiles/$id/games/?tab=all&xml=1&l=english"
+          probe "p-$id" Hearth "https://steamcommunity.com/profiles/$id/?xml=1"
+          probe "id-robin" Hearth "https://steamcommunity.com/id/robinwalker/games/?tab=all&xml=1"
+          probe "idh-robin" Hearth "https://steamcommunity.com/id/robinwalker/games/?tab=all"
+          probe "api-$id" Hearth "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?steamid=$id&include_appinfo=1"
+          ls -la
+      - name: Save raw answers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: steam-probe
+          path: out
