@@ -1,0 +1,24 @@
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/shell.qml"
+[32m  INFO[0m: Shell ID: "46d0510b7d07c529e429b39faef616e5" Path ID "46d0510b7d07c529e429b39faef616e5"
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+[33m  WARN[0m: Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/rfwqhent/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m qt.dbus.integration[0m: QDBusConnection: name 'org.freedesktop.portal.Desktop' had owner '' but we thought it was ':1.8'
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[34:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[36:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[222:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[230:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+[33m  WARN[97m qt.qpa.services[0m: Failed to register with host portal QDBusError("org.freedesktop.portal.Error.Failed", "Could not register app ID: Connection already associated with an application ID")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[243:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("/usr/bin/hearth-browser", "--hearth-status")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
