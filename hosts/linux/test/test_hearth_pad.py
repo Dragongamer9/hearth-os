@@ -19,6 +19,7 @@ class Out:
         self.sent = []
         self.moved = [0, 0]
         self.wheeled = [0, 0]
+        self.rumbled = []
 
     def move(self, dx, dy):
         self.moved[0] += dx
@@ -33,6 +34,9 @@ class Out:
 
     def send(self, obj):
         self.sent.append(obj)
+
+    def rumble(self, strength, ms):
+        self.rumbled.append((strength, ms))
 
 
 def make():
@@ -238,77 +242,80 @@ class Radial(unittest.TestCase):
 
 
 class Keyboard(unittest.TestCase):
+    """The on-screen keyboard is Hearth's shared one (desktop/shell/Keyboard.qml): Y asks for it, and while it's open
+    hearth-pad hands it the buttons and the left stick; it types itself (wtype), or through hearth-pad (emit / key)."""
+
     def typed(self, out):
         return [k for k, d in out.log if d]
 
-    def test_y_opens_and_a_types(self):
+    def test_y_asks_for_it(self):
         pad, out = make()
         press(pad, 'y')
-        self.assertTrue(out.sent[-1]['open'])
-        self.assertEqual(out.sent[-1]['row'], 1)
-        press(pad, 'a', 1)            # 'q'
-        press(pad, 'right', 2)
-        press(pad, 'a', 3)            # 'w'
-        self.assertEqual(self.typed(out), ['KEY_Q', 'KEY_W'])
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        self.assertEqual(pad.mode, 'desk')          # until the shell says it's open
 
-    def test_shift_types_symbols_once(self):
+    def test_buttons_go_to_the_keyboard(self):
         pad, out = make()
         pad.command({'cmd': 'osk', 'open': True})
-        press(pad, 'up')              # row 0, col 1: '1'
-        press(pad, 'lb')              # shift
-        press(pad, 'a')               # '!'
-        press(pad, 'a')               # '1' (shift used up)
-        self.assertEqual(self.typed(out), ['KEY_LEFTSHIFT', 'KEY_1', 'KEY_1'])
+        press(pad, 'a', 1)
+        press(pad, 'x', 2)
+        press(pad, 'lt', 3)
+        got = [(m['b'], m['down']) for m in out.sent if m.get('t') == 'oskpad']
+        self.assertEqual(got, [('a', True), ('a', False), ('x', True), ('x', False), ('lt', True), ('lt', False)])
+        self.assertEqual(self.typed(out), [])        # nothing typed by hearth-pad itself
 
-    def test_tapped_keys(self):
+    def test_rt_and_right_stick_stay_the_pointer(self):
         pad, out = make()
-        pad.command({'cmd': 'type', 'key': '@'})
-        pad.command({'cmd': 'type', 'key': 'bksp'})
-        self.assertEqual(self.typed(out), ['KEY_LEFTSHIFT', 'KEY_2', 'KEY_BACKSPACE'])
+        pad.command({'cmd': 'osk', 'open': True})
+        pad.button('rt', True, 1.0)
+        self.assertIn(('BTN_LEFT', True), out.log)
+        pad.button('rt', False, 1.1)
+        pad.axes(0, 0, 1, 0)
+        pad.tick(1.2, 0.05)
+        self.assertGreater(out.moved[0], 0)
 
-    def test_row_change_keeps_position(self):
+    def test_left_stick_goes_to_the_keyboard(self):
         pad, out = make()
-        press(pad, 'y')
-        for _ in range(12):
-            press(pad, 'right')       # '\\', last of row 1
-        press(pad, 'down')
-        press(pad, 'down')
-        press(pad, 'down')            # bottom row: 'right' (last)
-        self.assertEqual(hp.OSK_ROWS[pad.osk['row']][pad.osk['col']], 'right')
+        pad.command({'cmd': 'osk', 'open': True})
+        pad.axes(0.0, -1.0, 0.0, 0.0)
+        pad.tick(1.0, 0.016)
+        axes = [m for m in out.sent if m.get('t') == 'oskaxes']
+        self.assertEqual(axes[-1]['ly'], -1.0)
+        self.assertEqual(out.wheeled, [0, 0])        # no scrolling meanwhile
 
-    def test_every_terminal_character(self):
-        # Everything a command line needs: quotes, pipes, colons, braces, backslash, tilde...
+    def test_split_sticks_take_both(self):
+        pad, out = make()
+        pad.command({'cmd': 'osk', 'open': True, 'split': True})
+        pad.axes(-1.0, 0.0, 1.0, 0.0)
+        pad.tick(1.0, 0.05)
+        self.assertEqual(out.moved, [0, 0])          # the right stick isn't the pointer now
+        self.assertEqual([m for m in out.sent if m.get('t') == 'oskaxes'][-1]['rx'], 1.0)
+        press(pad, 'rt', 2)
+        self.assertEqual([m['b'] for m in out.sent if m.get('t') == 'oskpad'][-2:], ['rt', 'rt'])
+
+    def test_closing(self):
+        pad, out = make()
+        pad.command({'cmd': 'osk', 'open': True})
+        pad.command({'cmd': 'osk', 'open': False})
+        self.assertEqual(pad.mode, 'desk')
+
+    def test_typing_without_wtype(self):
+        pad, out = make()
+        pad.command({'cmd': 'emit', 'text': 'Hi @'})
+        pad.command({'cmd': 'key', 'key': 'bksp', 'n': 2})
+        self.assertEqual(self.typed(out), ['KEY_LEFTSHIFT', 'KEY_H', 'KEY_I', 'KEY_SPACE', 'KEY_LEFTSHIFT', 'KEY_2', 'KEY_BACKSPACE', 'KEY_BACKSPACE'])
+
+    def test_ctrl_c_and_every_terminal_character(self):
         for ch in '"|:{}\\~<>?_+`^\'[];,./-=':
             self.assertIn(ch, hp.CHARS, ch)
         pad, out = make()
-        pad.command({'cmd': 'type', 'key': 'shift'})
-        pad.command({'cmd': 'type', 'key': '\\'})   # shifted: '|'
-        self.assertEqual(self.typed(out), ['KEY_LEFTSHIFT', 'KEY_BACKSLASH'])
+        pad.command({'cmd': 'emit', 'text': 'c', 'mods': ['ctrl']})
+        self.assertEqual(self.typed(out), ['KEY_LEFTCTRL', 'KEY_C'])
 
-    def test_ctrl_c_and_caps(self):
+    def test_rumble_command(self):
         pad, out = make()
-        for k in ('ctrl', 'c', 'caps', 'a', 'b', 'caps', 'c'):
-            pad.command({'cmd': 'type', 'key': k})
-        self.assertEqual(self.typed(out), ['KEY_LEFTCTRL', 'KEY_C', 'KEY_LEFTSHIFT', 'KEY_A', 'KEY_LEFTSHIFT', 'KEY_B', 'KEY_C'])
-
-    def test_held_dpad_repeats(self):
-        pad, out = make()
-        press(pad, 'y')
-        pad.button('right', True, 1.0)
-        pad.tick(1.2, 0.01)
-        self.assertEqual(pad.osk['col'], 2)
-        pad.tick(1.45, 0.01)
-        self.assertEqual(pad.osk['col'], 3)
-
-    def test_b_closes_and_pointer_still_moves(self):
-        pad, out = make()
-        press(pad, 'y')
-        pad.axes(0, 0, 1, 0)
-        pad.tick(0.1, 0.05)
-        self.assertGreater(out.moved[0], 0)
-        press(pad, 'b')
-        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': False})
-        self.assertEqual(pad.mode, 'desk')
+        pad.command({'cmd': 'rumble', 'strength': 0.5, 'ms': 20})
+        self.assertEqual(out.rumbled, [(0.5, 20)])
 
 
 if __name__ == '__main__':
