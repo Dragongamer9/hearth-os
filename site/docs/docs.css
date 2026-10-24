@@ -67,11 +67,12 @@ nav.top .links a.cta:hover{background:var(--ember2)}
 .side .sub{margin:8px 0 6px}
 .side .sub a{padding-left:22px;font-size:13.5px;color:var(--muted)}
 .side .sub a:hover{color:var(--text)}
+.side .sub a.cur{box-shadow:none;border-color:transparent;background:none;color:var(--text);border-left:2px solid var(--ember);border-radius:0 9px 9px 0}
 main{min-width:0;max-width:780px}
 .crumb{font-size:14px;color:var(--muted);margin-bottom:10px}
 main h1{font:800 clamp(30px,4.2vw,46px)/1.05 var(--display);font-stretch:118%;letter-spacing:-.01em;margin-bottom:14px}
 .lead{font-size:18px;color:var(--soft);margin-bottom:28px;max-width:38em}
-main h2{font:800 25px/1.15 var(--display);font-stretch:112%;margin:52px 0 14px;padding-top:22px;border-top:1px solid var(--line)}
+main h2{font:750 24px/1.2 var(--display);font-stretch:106%;margin:52px 0 14px;padding-top:22px;border-top:1px solid var(--line)}
 main h2:first-of-type{border-top:0;padding-top:0}
 main h3{font-size:18px;font-weight:700;margin:28px 0 8px}
 .ver{display:inline-block;font-size:12px;font-weight:650;color:var(--flame);border:1px solid color-mix(in srgb,var(--flame) 45%,transparent);border-radius:999px;padding:0 8px;vertical-align:middle;margin-left:6px}
@@ -145,6 +146,9 @@ footer .brand img{width:22px;height:22px}
 }
 @media (max-width:600px){
   :root{--gut:16px}
+  nav.top .wrap{gap:6px}
+  .brand{font-size:17px}
+  .brand span{display:none}
   .cards{grid-template-columns:minmax(0,1fr)}
   .cmd .bar .q{flex-basis:100%}
 }
