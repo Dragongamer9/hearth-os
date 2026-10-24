@@ -471,9 +471,13 @@ def lan():
     # 2. Killed halfway, resumed.
     j, _, t0 = copy(b, a, 'steam:1000002', 'Resume Game')
     jid = j['id']
-    j = wait_job(b, jid, until=lambda x: x['state'] == 'copying' and x['total'] > 0 and x['done'] > x['total'] * 0.25)
-    time.sleep(1.5)   # the journal is written every second: a crash loses at most the last second
-    before = b.job(jid)['done']
+    # Killed as soon as the journal (written every second) lists a few hundred chunks, well before the end.
+    jpath = os.path.join(b.link, 'transfers', jid, 'journal')
+    made = 40 * 700   # the "made this file" marks come first
+    j = wait_job(b, jid, until=lambda x: x['state'] == 'copying' and x['done'] > 0 and os.path.exists(jpath) and os.path.getsize(jpath) > made + 40 * 150)
+    before = j['done']
+    if j['done'] >= j['total']:
+        fail('the copy finished before it could be interrupted')
     log('killing B at %d of %d MB' % (before // MB, j['total'] // MB))
     b.kill()
     time.sleep(1)
