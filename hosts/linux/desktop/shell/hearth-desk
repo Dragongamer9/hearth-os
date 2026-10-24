@@ -43,7 +43,7 @@ import urllib.parse
 HERE = os.path.dirname(os.path.realpath(__file__))
 MAX_PINS = 40
 DEFAULTS = {'pins': [], 'desktopIcons': True, 'dnd': False, 'icons': {}, 'autoArrange': False, 'sortBy': 'name',
-            'muted': [], 'recent': []}
+            'muted': [], 'recent': [], 'pinnedOnce': []}
 SWITCHES = ('desktopIcons', 'dnd', 'autoArrange')
 SORTS = ('name', 'type', 'size', 'date')
 MAX_MUTED = 100
@@ -115,11 +115,24 @@ def clean(raw):
         if isinstance(r, str) and valid_id(r) and r not in recent:
             recent.append(r)
     out['recent'] = recent[:MAX_RECENT]
+    once = []
+    for r in raw.get('pinnedOnce') or []:
+        if isinstance(r, str) and valid_id(r) and r not in once:
+            once.append(r)
+    out['pinnedOnce'] = once[:MAX_PINS]
     return out
 
 
-# Apps on a new user's taskbar, when they're installed: Beacon (BFME and friends; Hearth OS ships it).
-DEFAULT_PINS = ('beacon',)
+# Bazaar, Hearth OS's app store (Flathub; hearth-flatpak-setup installs it for everyone). Hearth's own store (Apps,
+# hearth-apps.desktop) is archived: a pin of it becomes Bazaar.
+BAZAAR = 'io.github.kolunmi.Bazaar'
+OLD_STORE = 'hearth-apps'
+# Apps on a new user's taskbar, when they're installed: Beacon (BFME and friends; Hearth OS ships it) and Bazaar.
+DEFAULT_PINS = ('beacon', BAZAAR)
+# Pinned once for everyone, also on a taskbar that's already set up, the first time they're installed (Bazaar comes a
+# few minutes after the first online start); unpinning it then is yours to keep (pinnedOnce remembers).
+PIN_ONCE = (BAZAAR,)
+SYSTEM_EXPORTS = '/var/lib/flatpak/exports/share'
 
 
 def data_dirs():
@@ -129,22 +142,59 @@ def data_dirs():
     return [first] + rest
 
 
+def app_installed(app_id):
+    """Whether an app has a .desktop file: the data folders, and Flatpak's exports (yours and the system's) in case
+    the session's XDG_DATA_DIRS doesn't list them."""
+    dirs = data_dirs() + [os.path.join(home(), '.local', 'share', 'flatpak', 'exports', 'share'), SYSTEM_EXPORTS]
+    return any(os.path.isfile(os.path.join(d, 'applications', app_id + '.desktop')) for d in dirs)
+
+
 def default_pins():
     """The DEFAULT_PINS that are installed (have a .desktop file), for a taskbar nobody has changed yet."""
-    return [p for p in DEFAULT_PINS if any(os.path.isfile(os.path.join(d, 'applications', p + '.desktop')) for d in data_dirs())]
+    return [p for p in DEFAULT_PINS if app_installed(p)]
+
+
+def migrate(state):
+    """An existing taskbar: the archived store's pin becomes Bazaar's; PIN_ONCE apps pinned the first time they're
+    installed. Returns whether anything changed."""
+    changed = False
+    if OLD_STORE in state['pins']:
+        i = state['pins'].index(OLD_STORE)
+        if BAZAAR in state['pins']:
+            state['pins'].pop(i)
+        else:
+            state['pins'][i] = BAZAAR
+        if BAZAAR not in state['pinnedOnce']:
+            state['pinnedOnce'].append(BAZAAR)
+        changed = True
+    for app_id in PIN_ONCE:
+        if app_id in state['pinnedOnce'] or not app_installed(app_id):
+            continue
+        state['pinnedOnce'].append(app_id)
+        if app_id not in state['pins'] and len(state['pins']) < MAX_PINS:
+            state['pins'].append(app_id)
+        changed = True
+    return changed
 
 
 def load():
     try:
         with open(config_path(), encoding='utf-8') as f:
-            return clean(json.load(f))
+            state = clean(json.load(f))
     except FileNotFoundError:
         # A new user: the default pins (only ever here; once the taskbar is saved, your pins are yours).
         state = clean(None)
         state['pins'] = default_pins()
+        state['pinnedOnce'] = [p for p in PIN_ONCE if p in state['pins']]
         return state
     except (OSError, ValueError):
         return clean(None)
+    if migrate(state):
+        try:
+            save(state)
+        except OSError:
+            pass
+    return state
 
 
 def save(state):

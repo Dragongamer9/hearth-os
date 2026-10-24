@@ -1,7 +1,9 @@
 // Hearth Settings › Apps: where apps come from besides Hearth itself.
 //  - Hearth's Debian box (.deb packages, hearth-debbox): whether it's made, its size, the packages installed in it
 //    (each can be removed), Reset (a fresh, empty box) and Remove (the box and its apps gone).
-//  - Flathub (Apps, hearth-apps): opens the app store; says so when your own Flatpak folder can't be used, with the fix.
+//  - Flathub: Bazaar, Hearth OS's app store (hearth-flatpak; Hearth's own store is archived, docs/ARCHIVED.md): opens
+//    it, or says it's still on its way and what hearth-flatpak-setup last did; says so when your own Flatpak folder
+//    can't be used, with the fix.
 //  - AppImages: how they work in Files.
 import QtQuick
 import QtQuick.Layouts
@@ -12,7 +14,7 @@ SetPage {
     title: "Apps"
     property var box: null                // hearth-debbox status
     property var packages: []             // hearth-debbox list
-    property var flat: null               // hearth-apps status
+    property var flat: null               // hearth-flatpak status
     property string confirm: ""           // a package, "reset" or "remove-box"
     property string message: ""
     property bool messageBad: false
@@ -26,7 +28,7 @@ SetPage {
     Component.onCompleted: load()
     SetJob { id: reader; helper: "hearth-debbox" }
     SetJob { id: worker; helper: "hearth-debbox" }
-    SetJob { id: flatJob; helper: "hearth-apps" }
+    SetJob { id: flatJob; helper: "hearth-flatpak" }
     SetJob { id: admin; helper: "/usr/libexec/nimbus/hearth-admin"; admin: true }
 
     function work(args, okText) {
@@ -124,21 +126,18 @@ SetPage {
 
     SetHeader { text: "Flathub" }
     SetRow {
-        icon: "store"; title: "Apps"
-        sub: "Find, install and update apps from Flathub"
-        onActivated: if (SettingsNav.apps) SettingsNav.apps.open("")
+        icon: "store"; title: "Bazaar"
+        sub: !page.flat ? "Looking…"
+            : page.flat.bazaar ? "Hearth OS's app store: find, install and update apps from Flathub"
+            : page.flat.bazaarMissing
+        value: !!page.flat && page.flat.bazaar ? "Open" : ""
+        onActivated: flatJob.run(["open-bazaar"], () => SettingsNav.toast("Opening Bazaar…"), e => page.say(e, true))
     }
     SetRow {
-        visible: !!page.flat && page.flat.bazaar
-        icon: "store"; title: "Get more apps in Bazaar"
-        sub: "A full Flathub store: every app, curated lists and add-ons"
-        onActivated: Quickshell.execDetached(["sh", "-c", page.flat.bazaarCommand])
-    }
-    SetRow {
-        visible: !!page.flat && !page.flat.bazaar
+        visible: !!page.flat && !page.flat.bazaar && !!page.flat.setup
         icon: "info"; chevron: false; interactive: true
-        title: "Bazaar"
-        sub: "Hearth OS installs Bazaar, a full Flathub store, for everyone when the PC is online (it can take a few minutes after an update)."
+        title: page.flat && page.flat.setup && page.flat.setup.ok ? "Bazaar's install" : "Bazaar's install: not done yet"
+        sub: page.flat && page.flat.setup ? page.flat.setup.message + " (" + new Date(page.flat.setup.time * 1000).toLocaleString() + ")" : ""
     }
     SetRow {
         visible: !!page.flat && page.flat.flatpak && !page.flat.userWritable
@@ -147,12 +146,6 @@ SetPage {
         sub: page.flat ? page.flat.userProblem : ""
         onActivated: admin.run(["home-repair"], () => { page.say("Your Flatpak folders are yours again."); page.load(); },
             e => page.say("Couldn't fix it: " + e, true))
-    }
-    SetRow {
-        visible: !!page.flat && !!page.flat.lastError && !!page.flat.lastError.error
-        chevron: false; icon: "info"; interactive: true
-        title: "Last problem downloading Flathub's list"
-        sub: page.flat && page.flat.lastError ? page.flat.lastError.error : ""
     }
 
     SetHeader { text: "AppImages" }
