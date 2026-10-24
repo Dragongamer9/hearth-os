@@ -13,7 +13,7 @@ on:
         default: true
   push:
     branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**']
+    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -187,6 +187,23 @@ jobs:
           done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth Contacts and Hearth Maps
+      # ---- Hearth Friends (hosts/hearth-friends): friends, chats and game invites on Matrix, end-to-end encrypted. Its
+      # service is put beside the app in hearth-app.tar with Emoji & symbols' list for the chat's emoji picker; build.sh
+      # installs /usr/bin/hearth-friends and its user service. Not fatal: without it Friends shows Steam's friends only.
+      - name: Build Hearth Friends
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          apt-get install -y -qq libdbus-1-dev cmake >/dev/null || true
+          mkdir -p /tmp/app
+          cp hosts/hearth-emoji/ui/emoji-data.js /tmp/app/emoji-data.js
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" hosts/hearth-friends/Cargo.toml
+          if (cd hosts/hearth-friends && cargo build --release); then
+            cp "$CARGO_TARGET_DIR/release/hearth-friends" /tmp/app/hearth-friends
+          else echo "::warning title=hearth-friends::it didn't build, so this image is made without Hearth Friends"; fi
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth Friends
       # ---- Hearth Text (hosts/hearth-text), the text editor: built the same way and put beside the app in
       # hearth-app.tar (build.sh installs it as /usr/bin/hearth-text and makes it the default for text
       # files). Not fatal: without it the image is still made.
@@ -299,6 +316,19 @@ jobs:
           done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Nearby Share and Hearth Connect
+      # ---- Hearth Link (hosts/hearth-link; tested by hearth-link.yml): built the same way, beside the app in
+      # hearth-app.tar (build.sh installs it and its user service). Not fatal. Its Cargo.toml has no version (the
+      # owner picks version numbers), so it isn't stamped.
+      - name: Build Hearth Link
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          mkdir -p /tmp/app
+          if (cd hosts/hearth-link && cargo build --release); then cp "$CARGO_TARGET_DIR/release/hearth-link" /tmp/app/hearth-link
+          else echo "::warning title=hearth-link::it didn't build, so this image is made without it"; fi
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of Hearth Link
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-app-peppermint
@@ -428,6 +458,9 @@ jobs:
           check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
           check "saving a system file (hearth-admin write-file) always asks for a password" "grep -q write-file /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
           check "joining Wi-Fi needs no password prompt for the person at the device (polkit rule, netdev group)" "test -f /usr/share/polkit-1/rules.d/49-hearth-network.rules && grep -q netdev /usr/libexec/nimbus/hearth-groups && getent group netdev"
+          warn "Hearth Link is installed with every library it links" "test -x /usr/bin/hearth-link && ! ldd /usr/bin/hearth-link | grep -q 'not found'"
+          check "Hearth Link's user service comes with it and starts with the session" "test ! -x /usr/bin/hearth-link || (grep -q 'hearth-link serve' /usr/lib/systemd/user/hearth-link.service && test -L /usr/lib/systemd/user/default.target.wants/hearth-link.service)"
+          check "the firewall helper knows Hearth Link's ports" "grep -q '47740-47741' /usr/libexec/nimbus/hearth-link-firewall"
           warn "Hearth Text is installed with every library it links" "test -x /usr/bin/hearth-text && ! ldd /usr/bin/hearth-text | grep -q 'not found'"
           warn "text files open in Hearth Text in Desktop Mode" "grep -q '^text/plain=hearth-text.desktop' /etc/xdg/nimbus-mimeapps.list"
           echo "--- Hearth Files: every app's file chooser and the default file manager"
@@ -526,6 +559,13 @@ jobs:
           check "Steam is installed" "command -v steam && dpkg -l steam-installer | grep -q '^ii'"
           check "Steam's 32-bit graphics (Mesa i386)" "dpkg -l 'libgl1-mesa-dri:i386' | grep -q '^ii'"
           check "the Hearth session is installed" "test -f /usr/share/wayland-sessions/nimbus.desktop && test -x /usr/bin/nimbus-session && test -x /usr/bin/nimbus-mode && test -d /usr/share/nimbus/desktop/shell && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/nimbus.desktop"
+          echo "--- sleep like SteamOS: the power button suspends, the Ally's controller doesn't wake it, AMD's deep sleep"
+          check "the power button sleeps at the sign-in screen too (logind: HandlePowerKey=suspend wins over every other logind setting)" "if command -v systemd-analyze; then systemd-analyze cat-config systemd/logind.conf | grep -E '^[[:space:]]*HandlePowerKey=' | tail -1 | grep -qx 'HandlePowerKey=suspend'; else grep -qx 'HandlePowerKey=suspend' /usr/lib/systemd/logind.conf.d/50-hearth-power.conf && ! grep -rqsE '^[[:space:]]*HandlePowerKey=' /etc/systemd/logind.conf /etc/systemd/logind.conf.d; fi"
+          check "the Hearth session takes the power button while it runs (logind's handle-power-key inhibitor: one handler)" "grep -q 'systemd-inhibit --what=handle-power-key' /usr/bin/nimbus-session"
+          check "the ROG Ally X / Xbox Ally controller isn't a wake source (udev rule)" "grep -q 'ATTR{idProduct}==\"1b4c\".*ATTR{power/wakeup}=\"disabled\"' /usr/lib/udev/rules.d/50-hearth-handheld-wakeup.rules"
+          warn "the handheld wakeup rule is valid (udevadm verify)" "! udevadm verify --help >/dev/null 2>&1 || udevadm verify --no-style /usr/lib/udev/rules.d/50-hearth-handheld-wakeup.rules"
+          check "the kernel has AMD's sleep driver (amd_pmc: deep sleep, s0i3, on AMD handhelds and laptops)" "grep -qsE 'amd[-_]pmc' /usr/lib/modules/*/modules.dep /usr/lib/modules/*/modules.builtin"
+          warn "the kernel knows the ROG Xbox Ally's sleep (Van Gogh in amd_pmc: Linux 6.18 or newer)" "python3 -c 'import os, sys; v = sorted(os.listdir(\"/usr/lib/modules\"))[-1]; n = tuple(int(x) for x in v.split(\"-\")[0].split(\"+\")[0].split(\".\")[:2]); print(v); sys.exit(0 if n >= (6, 18) else 1)'"
           check "the login screen boots into Hearth (sddm + nimbus-autologin)" "test -L /etc/systemd/system/display-manager.service && readlink /etc/systemd/system/display-manager.service | grep -q sddm && test -L /etc/systemd/system/multi-user.target.wants/nimbus-autologin.service"
           check "the tools the session uses" "command -v grim && command -v brightnessctl && command -v wlr-randr && command -v wlsunset && command -v xdotool && command -v gnome-keyring-daemon && python3 -c 'import evdev'"
           check "WebKitGTK 4.1, PipeWire, Bluetooth, NetworkManager, Flatpak" "ls /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0 && command -v pipewire && command -v bluetoothctl && command -v nmcli && command -v flatpak"
@@ -555,8 +595,8 @@ jobs:
           else
             echo "::warning title=Claude Desktop install::$(printf '%s' "$cout" | grep -v '^progress' | tail -3 | tr '\n' ' ' | cut -c1-600)"
           fi
-          echo "--- .deb files (Hearth's Debian box), AppImages, the app store"
-          check "a polkit agent Desktop Mode starts (pkexec prompts: Apps' system installs, Hearth Text)" "for a in \$(sed -n '/^for agent in/,/; do/p' /usr/share/nimbus/desktop/labwc/autostart | tr -d '\\\\' | sed 's/for agent in//; s/; do//'); do command -v \"\$a\" && exit 0; done; exit 1"
+          echo "--- .deb files (Hearth's Debian box), AppImages, Bazaar (the app store)"
+          check "a polkit agent Desktop Mode starts (pkexec prompts: Bazaar's system installs, Hearth Text)" "for a in \$(sed -n '/^for agent in/,/; do/p' /usr/share/nimbus/desktop/labwc/autostart | tr -d '\\\\' | sed 's/for agent in//; s/; do//'); do command -v \"\$a\" && exit 0; done; exit 1"
           check "Distrobox, podman and newuidmap/newgidmap are installed (rootless containers)" "command -v distrobox && command -v podman && command -v newuidmap && command -v newgidmap"
           check "hearth-debbox is installed (also as /usr/bin/hearth-debbox) and its Python is valid" "test -x /usr/share/nimbus/desktop/shell/hearth-debbox && test -x /usr/bin/hearth-debbox && python3 -c 'import ast; ast.parse(open(\"/usr/share/nimbus/desktop/shell/hearth-debbox\").read())'"
           check ".deb files open in Install Package (desktop file and MIME default)" "test -x /usr/bin/hearth-install-package && grep -q 'application/vnd.debian.binary-package' /usr/share/applications/hearth-install-package.desktop && grep -q '^application/vnd.debian.binary-package=hearth-install-package.desktop' /etc/xdg/nimbus-mimeapps.list && test -f /usr/share/nimbus/desktop/shell/DebInstaller.qml"
@@ -572,9 +612,14 @@ jobs:
           # A new account gets a container id range from hearth-home-repair (rootless podman needs one).
           mkdir -p /var/home && useradd -m -d /var/home/subtest subtest >/dev/null 2>&1; sed -i '/^subtest:/d' /etc/subuid /etc/subgid
           check "hearth-home-repair gives an account its subuid/subgid range" "/usr/libexec/nimbus/hearth-home-repair --user subtest && grep -q '^subtest:[0-9]*:65536' /etc/subuid && grep -q '^subtest:[0-9]*:65536' /etc/subgid"
-          check "hearth-apps and hearth-files are valid" "python3 -c 'import ast; [ast.parse(open(\"/usr/share/nimbus/desktop/shell/\" + f).read()) for f in (\"hearth-apps\", \"hearth-files\")]'"
-          check "Hearth's app store lists apps from a Flathub catalog (status, popular, a category, search, an app's page; offline)" "sh /store-check.sh"
-          sh /store-check.sh || true   # its own lines, for the log
+          check "hearth-flatpak and hearth-files are valid" "python3 -c 'import ast; [ast.parse(open(\"/usr/share/nimbus/desktop/shell/\" + f).read()) for f in (\"hearth-flatpak\", \"hearth-files\")]'"
+          # Bazaar is the app store (Hearth's own store, Apps / hearth-apps, is archived: docs/ARCHIVED.md). Its real install
+          # needs the network: the warn-only "Flatpak repair and Bazaar" step below tries it.
+          check "Hearth's archived app store isn't installed or in any menu (Bazaar is the app store)" "test ! -e /usr/share/nimbus/desktop/shell/hearth-apps && test ! -e /usr/share/nimbus/desktop/shell/AppStore.qml && test ! -e /usr/share/applications/hearth-apps.desktop && ! grep -rqs 'call apps open' /usr/share/applications"
+          check "Bazaar's install is scheduled: every boot, retried every 15 minutes while offline" "grep -qx 'Restart=on-failure' /usr/lib/systemd/system/hearth-flatpak-setup.service && grep -qx 'RestartSec=15min' /usr/lib/systemd/system/hearth-flatpak-setup.service && grep -q \"BAZAAR = 'io.github.kolunmi.Bazaar'\" /usr/libexec/nimbus/hearth-flatpak-setup"
+          check "Bazaar gets Hearth's look (GTK 4 colours, and Flatpak apps may read them)" "test -f /usr/share/nimbus/desktop/theme/gtk/gtk4.css && grep -q 'xdg-config/gtk-4.0:ro' /usr/libexec/nimbus/hearth-flatpak-setup && grep -q 'xdg-config/gtk-4.0:ro' /usr/share/nimbus/desktop/theme/apply.sh"
+          check "Bazaar is where the store was: Mantel's taskbar pin, Settings › Default apps › App store, the apps IPC target" "grep -q io.github.kolunmi.Bazaar /usr/share/nimbus/desktop/shell/hearth-desk && grep -q io.github.kolunmi.Bazaar.desktop /usr/share/nimbus/desktop/shell/hearth-system && grep -q 'target: \"apps\"' /usr/share/nimbus/desktop/shell/shell.qml && grep -q hearth-flatpak /usr/share/nimbus/desktop/shell/shell.qml"
+          check "hearth-flatpak status answers (Flatpak, Flathub, your Flatpak folder, Bazaar)" "python3 /usr/share/nimbus/desktop/shell/hearth-flatpak status | grep -q bazaarId"
           echo "--- nice to have"
           warn "Peppermint's desktop (Xfce) is on the login screen" "grep -q 'Peppermint desktop' /usr/share/xsessions/xfce.desktop"
           warn "acpi_call (Legion Go power limits through HHD)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
@@ -600,6 +645,11 @@ jobs:
           warn "Hearth Maps may ask GeoClue for Where am I" "test -f /etc/geoclue/conf.d/90-hearth-maps.conf"
           warn "the Contacts and Maps icons are installed" "test -f /usr/share/icons/hicolor/scalable/apps/hearth-contacts.svg && test -f /usr/share/icons/hicolor/scalable/apps/hearth-maps.svg"
           # ---- end of Hearth Contacts and Hearth Maps
+          # ---- Hearth Friends
+          warn "Hearth Friends is installed and finds its libraries" "test -x /usr/bin/hearth-friends && ! ldd /usr/bin/hearth-friends | grep -q 'not found' && /usr/bin/hearth-friends --version"
+          warn "Hearth Friends' user service is there and enabled" "test -f /usr/lib/systemd/user/hearth-friends.service && test -e /etc/systemd/user/default.target.wants/hearth-friends.service"
+          warn "the chat's emoji list is installed" "test -s /usr/share/nimbus/emoji-data.js"
+          # ---- end of Hearth Friends
           echo "--- default apps (Hearth's apps open everything, Settings › Default apps changes it)"
           check "Hearth's default apps were written (hearth-system defaults-system)" "grep -q \"^# Hearth's default apps\" /etc/xdg/nimbus-mimeapps.list && grep -q \"^# Hearth's default apps\" /usr/share/applications/mimeapps.list"
           check "xdg-mime is installed" "command -v xdg-mime"
@@ -639,7 +689,7 @@ jobs:
           echo "::notice title=Default app lists in the image::$(ls /etc/xdg/*mimeapps.list /usr/share/applications/*mimeapps.list 2>/dev/null | tr '\n' ' ')"
           exit $fail
           EOF
-          sudo podman run --rm -v /tmp/check.sh:/check.sh:ro -v "$PWD/.github/scripts/hearth-store-check.sh:/store-check.sh:ro" hearth-peppermint:latest sh /check.sh
+          sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-peppermint:latest sh /check.sh
           echo "--- bootc container lint"
           sudo podman run --rm hearth-peppermint:latest bootc container lint 2>&1 | tee /tmp/lint.log || {
             msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
@@ -659,7 +709,7 @@ jobs:
         run: |
           sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
             -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-peppermint:latest bash /box.sh appimage || echo "::warning title=box check::the appimage check didn't finish"
-      - name: Flatpak repair, Bazaar and the app store (warn-only)
+      - name: Flatpak repair and Bazaar (warn-only)
         continue-on-error: true
         timeout-minutes: 40
         run: |

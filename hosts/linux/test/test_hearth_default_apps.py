@@ -171,6 +171,22 @@ class Settings(unittest.TestCase):
         self.assertIsNone(k['email']['hearth'])
         self.assertEqual(k['music']['hearth'], None)                       # Hearth Player isn't in this made-up system
 
+    def test_bazaar_is_the_app_store(self):
+        k = self.kinds()['store']
+        self.assertEqual(k['label'], 'App store')
+        self.assertIsNone(k['current'])                                    # not installed in this made-up system
+        apps = os.path.join(self.data, 'applications')
+        write(os.path.join(apps, 'io.github.kolunmi.Bazaar.desktop'), entry('Bazaar', 'application/vnd.flatpak.ref;', 'Categories=System;PackageManager;\n'))
+        write(os.path.join(apps, 'org.gnome.Software.desktop'), entry('Software', '', 'Categories=System;PackageManager;\n'))
+        k = self.kinds()['store']
+        self.assertEqual((k['current'], k['isHearth'], k['yours']), ('io.github.kolunmi.Bazaar.desktop', True, False))
+        self.assertEqual([o['id'] for o in k['options']], ['io.github.kolunmi.Bazaar.desktop', 'org.gnome.Software.desktop'])
+        r = self.s.default_set('store', 'org.gnome.Software.desktop', self.hf)
+        self.assertIn('x-scheme-handler/appstream', r['types'])
+        self.assertEqual(self.kinds()['store']['current'], 'org.gnome.Software.desktop')
+        self.s.default_reset('store', self.hf)
+        self.assertEqual(self.kinds()['store']['current'], 'io.github.kolunmi.Bazaar.desktop')
+
     def test_pick_and_reset(self):
         write(os.path.join(self.home, '.config', 'mimeapps.list'), '# mine\n[Default Applications]\napplication/x-foo=foo.desktop;\n')
         write(os.path.join(self.home, '.config', 'nimbus-mimeapps.list'), '[Default Applications]\nimage/png=hearth-paint.desktop;\nvideo/mp4=vlc.desktop;\n')
@@ -380,8 +396,9 @@ class RepositoryApps(unittest.TestCase):
                             for did in [x for x in line.split('=', 1)[1].split(';') if x]:
                                 self.assertIn(did, entries, (base, line))
                 # Settings › Default apps' Hearth app for each kind is in the image and the default for its main type.
+                # (The app store, Bazaar, comes from Flathub at the first online start: hearth-flatpak-setup.)
                 for c in self.s.CATEGORIES:
-                    if c['hearth']:
+                    if c['hearth'] and not c.get('store'):
                         self.assertIn(c['hearth'], entries, (base, c['kind']))
                         self.assertEqual(self.s.ml_read(nim, c['primary']), [c['hearth']], (base, c['kind']))
                 # The choices Hearth makes between its own apps.

@@ -1,0 +1,89 @@
+# Hearth Link (hosts/hearth-link): paired Hearth devices, data sync, game copies. Builds it, runs its unit tests
+# (and hearth-core's, whose bridge talks to it), then end to end with two real instances in two network namespaces
+# (hosts/hearth-link/tests/e2e.py): pairing with a code, a multi-GB synthetic Steam game (huge random and
+# compressible files, thousands of small ones, a Proton prefix with links) copied over the LAN path with its speed
+# posted, a copy killed halfway and resumed, an update copied as only its changed chunks, every file's hash checked,
+# Hearth data synced both ways, unpairing. Then the internet path: both behind their own NAT, with a local iroh relay
+# (hole punching, and relay-only when direct UDP between the NATs is blocked).
+name: Hearth Link
+
+on:
+  push:
+    branches: [hearth-link]
+    paths: ['hosts/hearth-link/**', 'hosts/hearth-core/**', 'ui/**', 'hosts/linux/desktop/shell/SetLink.qml', 'hosts/linux/desktop/shell/hearth-link-settings', 'hosts/linux/test/**', 'os/system_files/usr/libexec/nimbus/hearth-link-firewall', '.github/workflows/hearth-link.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: hearth-link-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  link:
+    name: Build, unit tests, two-device e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Room for the synthetic games
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          df -h / | tail -1
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            hosts/hearth-link
+            hosts/hearth-core
+      - name: Unit tests (hearth-link)
+        working-directory: hosts/hearth-link
+        run: |
+          set -o pipefail
+          cargo test --lib 2>&1 | tee test.log || { echo "::error title=hearth-link unit tests::$( (grep -E '^(error|warning: unused)|^---- |panicked' -A10 test.log | head -90) | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=hearth-link unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Unit tests (hearth-core)
+        working-directory: hosts/hearth-core
+        run: |
+          set -o pipefail
+          cargo test 2>&1 | tee test.log || { echo "::error title=hearth-core tests::$( (grep -E '^error|^---- |panicked' -A10 test.log | head -80) | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=hearth-core tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        working-directory: hosts/hearth-link
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A12 build.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=size::$(du -h target/release/hearth-link | cut -f1)"
+      - name: Python tests
+        run: python3 -m unittest discover -q -s hosts/linux/test
+      - name: Two devices on one network (pair, copy, resume, update, sync, unpair)
+        env:
+          LINK_BIN: ${{ github.workspace }}/hosts/hearth-link/target/release/hearth-link
+        run: sudo -E python3 hosts/hearth-link/tests/e2e.py lan
+      - name: The internet path (NATs and a local iroh relay)
+        env:
+          LINK_BIN: ${{ github.workspace }}/hosts/hearth-link/target/release/hearth-link
+        run: |
+          set -o pipefail
+          cargo install iroh-relay --version 1.4.1 --features server --locked 2>&1 | tail -3 || { echo "::warning title=relay::couldn't build iroh-relay"; exit 0; }
+          export RELAY_BIN="$HOME/.cargo/bin/iroh-relay"
+          sudo -E python3 hosts/hearth-link/tests/e2e.py internet
+      - name: Logs
+        if: failure()
+        run: |
+          for f in /tmp/hl-e2e/*.log; do [ -f "$f" ] || continue; echo "==== $f"; tail -c 4000 "$f"; done
+          for f in /tmp/hl-e2e/*.log; do [ -f "$f" ] || continue; echo "::warning title=$(basename $f)::$(tail -c 1500 "$f" | tr '\n' '|')"; done
+
+  ui:
+    name: Hearth's page still draws every screen
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Hearth's page
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node ui-check.js

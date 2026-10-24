@@ -15,6 +15,40 @@ env:
   CARGO_TERM_COLOR: never
 
 jobs:
+  # Game Mode › Store: the stores' real public endpoints, asked once each (warn-only: a store changing or
+  # rate-limiting an endpoint is a warning, not a failed build). Their answers are kept as a download on the run.
+  store-live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ask the stores' public endpoints
+        run: python3 tools/store-live-check.py store-live
+      # The same stores through Hearth's own code (hosts/hearth-core/src/storefront): what each store page would show.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-core
+      - name: Hearth's store pages, from the real stores
+        working-directory: hosts/hearth-core
+        run: XDG_DATA_HOME="$RUNNER_TEMP/xdg" cargo test --lib storefront::live -- --ignored --nocapture 2>&1 | grep -E '^::(notice|warning)' || echo "::warning title=Store live::the live check didn't run"
+      # Also on the ci/store-live branch, to refresh the test samples from (hosts/hearth-core/src/storefront/fixtures).
+      - name: Keep the answers (ci/store-live)
+        if: always()
+        run: |
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          cp -r store-live /tmp/store-live
+          git checkout -q --orphan ci/store-live
+          git rm -rfq --cached . >/dev/null
+          rm -rf store-live && cp -r /tmp/store-live store-live
+          git add -f store-live
+          git commit -qm "Store endpoints' answers ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/store-live || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: store-live
+          path: store-live
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -57,6 +91,8 @@ jobs:
           echo "$out" | grep -q '"t":"msg"' || { echo "::error title=core-stdio::no reply on the channel: $(echo "$out" | head -c 1500 | tr '\n' '|')"; exit 1; }
           echo "$out" | grep -q '"renderer":"chromium"' || { echo "::error title=core-stdio::host.info didn't say Chromium draws: $(echo "$out" | head -c 1500 | tr '\n' '|')"; exit 1; }
           echo "::notice title=core-stdio::the windowless core answered host.info over the channel"
+          # A folder picker left open: the core keeps answering other calls, then answers the first with the choice.
+          python3 ../../tools/picker-e2e.py target/release/hearth
       - name: Run it once and take screenshots
         working-directory: hosts/hearth-rs
         run: |

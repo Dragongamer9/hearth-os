@@ -43,7 +43,7 @@ const KIT = (() => {
     first?.focus();
     return layer().firstChild;
   };
-  K.close = () => { layer().innerHTML = ''; dlgBack = null; oskTarget = null; const b = backFocus; backFocus = null; setTimeout(() => { if (b && document.contains(b)) b.focus(); else K.focusFirst(); }, 0); };
+  K.close = () => { if (K.sharedOsk() && HearthOSK.isOpen()) HearthOSK.close(); layer().innerHTML = ''; dlgBack = null; oskTarget = null; const b = backFocus; backFocus = null; setTimeout(() => { if (b && document.contains(b)) b.focus(); else K.focusFirst(); }, 0); };
   K.progress = (title, text = 'Starting') => K.dialog(`<h2>${K.esc(title)}</h2><div class="prog spin" id="kit-pg"><i></i></div><div class="msg" id="kit-pgt">${K.esc(text)}</div>`, { locked: true });
   K.setProgress = (text, pct) => { const t = K.$('#kit-pgt'), p = K.$('#kit-pg'); if (t && text) t.textContent = text; if (p && pct != null) { p.classList.remove('spin'); p.firstChild.style.width = `${Math.round(pct * 100)}%`; } };
   K.alert = (title, text, ok = true) => new Promise(res => {
@@ -96,7 +96,14 @@ const KIT = (() => {
   // ---------------------------------------------------------------- on-screen keyboard (typing with a controller)
   let oskTarget = null, lower = false;
   const OSK = 'QWERTYUIOP ASDFGHJKL- ZXCVBNM_. 1234567890'.split(' ');
+  // Hearth's shared keyboard (ui/osk, docs/OSK.md) when it's there; the small one below is only a fallback.
+  K.sharedOsk = () => typeof HearthOSK !== 'undefined' && HearthOSK.version >= 1;
+  K.oskOpen = () => (K.sharedOsk() && HearthOSK.isOpen()) || !!oskTarget;
   K.openOsk = input => {
+    if (K.sharedOsk()) {
+      HearthOSK.open({ target: input, enterLabel: 'Done', pad: true, onEnter: () => { HearthOSK.close(); input.focus(); }, onClose: () => { if (document.contains(input)) input.focus(); } });
+      return;
+    }
     oskTarget = input;
     const rows = OSK.map(r => [...r].map(c => `<button class="f" data-osk-key="${c}">${lower ? c.toLowerCase() : c}</button>`).join('')).join('');
     input.insertAdjacentHTML('afterend', `<div class="osk" id="kit-osk">${rows}<button class="f wide" data-osk-key="space">Space</button><button class="f wide" data-osk-key="back">⌫</button><button class="f wide" data-osk-key="lower">abc</button><button class="f wide" data-osk-key="done">Done</button></div>`);
@@ -141,7 +148,7 @@ const KIT = (() => {
   K.choose_ = () => {
     const el = document.activeElement;
     if (!el || el === document.body) { focusables()[0]?.focus(); return; }
-    if (el.dataset.osk != null && K.pad) { if (!oskTarget) K.openOsk(el); return; }
+    if (el.dataset.osk != null && K.pad) { if (!K.oskOpen()) K.openOsk(el); return; }
     if (el.tagName === 'BUTTON' || el.tagName === 'A') el.click();
   };
   K.back = () => {
@@ -172,6 +179,8 @@ const KIT = (() => {
     const pads = K.rawPads();
     const now = performance.now();
     if (K.capture && !K.dialogOpen()) { try { K.capture(pads, now); } catch (e) { console.error(e); } requestAnimationFrame(frame); return; }
+    // The shared keyboard reads the controller itself while it's open.
+    if (K.sharedOsk() && HearthOSK.isOpen()) { for (const k in held) held[k] = now; requestAnimationFrame(frame); return; }
     const st = { up: false, down: false, left: false, right: false, a: false, b: false, x: false, y: false, lb: false, rb: false, start: false };
     for (const g of pads) {
       const bt = i => g.buttons[i]?.pressed;

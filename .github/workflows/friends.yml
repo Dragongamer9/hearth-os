@@ -1,0 +1,142 @@
+# Hearth Friends (hosts/hearth-friends): friends, chat, presence and game invites on Matrix, end to end encrypted.
+# - unit tests (friend links, invite cards, privacy buckets, settings, tokens kept out of logs)
+# - a real homeserver (Synapse, started here for this run with throwaway accounts on this machine only), two
+#   Hearth Friends services as two users: sign-up, friend request and accept, encrypted messages both ways, a
+#   picture, presence with "Playing <game>", a game invite card, Play together steps, typing, a group chat,
+#   requests from a stranger, block and report, mute, sign-out, and the session coming back from the keyring
+#   (GNOME Keyring through the Secret Service) after a restart
+# - then the same through two Hearth cores (hosts/hearth-rs --core-stdio), as Game Mode's page calls them
+# Release builds are made by base-anatase.yml and base-peppermint.yml (the Linux images).
+name: Hearth Friends
+
+on:
+  push:
+    branches: [main, linux-host, friends-matrix]
+    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', 'ui/**', 'tools/ui-check.js', '.github/workflows/friends.yml']
+  pull_request:
+    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', 'ui/**', 'tools/ui-check.js', '.github/workflows/friends.yml']
+  workflow_dispatch:
+    inputs:
+      cores:
+        description: Also run the test through two Hearth cores (builds the Hearth app)
+        type: boolean
+        default: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  # Hearth's page with Hearth Friends in it (tools/ui-check.js, every screen), and pictures of the Friends screens as
+  # notices (title "SHOT friends-<screen> <n>": a JPEG in base64 pieces).
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Hearth's page
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node ui-check.js
+      - name: Picture of the Friends screen (list)
+        if: always()
+        run: f=tools/qa-shots/friends-list.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT friends-list $i::$part"; done || true
+      - name: Picture of the Friends screen (chat)
+        if: always()
+        run: f=tools/qa-shots/friends-chat.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT friends-chat $i::$part"; done || true
+      - name: Picture of the Friends screen (settings)
+        if: always()
+        run: f=tools/qa-shots/friends-settings.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT friends-settings $i::$part"; done || true
+      - name: Picture of the Friends screen (qam)
+        if: always()
+        run: f=tools/qa-shots/friends-qam.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT friends-qam $i::$part"; done || true
+
+  friends:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            hosts/hearth-friends
+            hosts/hearth-rs
+      - name: D-Bus, GNOME Keyring
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libdbus-1-dev gnome-keyring libsecret-tools dbus-x11 >/dev/null
+      - name: Unit tests
+        working-directory: hosts/hearth-friends
+        run: |
+          set -o pipefail
+          cargo test 2>&1 | tee test.log || { echo "::error title=hearth-friends tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A10 test.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=hearth-friends unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build the service
+        working-directory: hosts/hearth-friends
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=Build failed::$(grep -E '^error' -A12 build.log | head -90 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=hearth-friends size::$(du -h target/release/hearth-friends | cut -f1)"
+      - name: A Matrix homeserver for this run (Synapse)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/syn" && "$RUNNER_TEMP/syn/bin/pip" install --quiet matrix-synapse
+          d="$RUNNER_TEMP/synapse"; mkdir -p "$d"; cd "$d"
+          "$RUNNER_TEMP/syn/bin/python" -m synapse.app.homeserver --server-name hearth.test --config-path hs.yaml --generate-config --report-stats=no >/dev/null
+          echo >> hs.yaml   # the generated file may end without a newline (its last line is a comment)
+          cat >> hs.yaml <<'EOF'
+          enable_registration: true
+          enable_registration_without_verification: true
+          presence:
+            enabled: true
+          rc_message: {per_second: 1000, burst_count: 1000}
+          rc_registration: {per_second: 1000, burst_count: 1000}
+          rc_login:
+            address: {per_second: 1000, burst_count: 1000}
+            account: {per_second: 1000, burst_count: 1000}
+            failed_attempts: {per_second: 1000, burst_count: 1000}
+          rc_joins:
+            local: {per_second: 1000, burst_count: 1000}
+            remote: {per_second: 1000, burst_count: 1000}
+          rc_invites: {per_room: {per_second: 1000, burst_count: 1000}, per_user: {per_second: 1000, burst_count: 1000}, per_issuer: {per_second: 1000, burst_count: 1000}}
+          rc_presence: {per_user: {per_second: 1000, burst_count: 1000}}
+          EOF
+          "$RUNNER_TEMP/syn/bin/python" -m synapse.app.homeserver --config-path hs.yaml > synapse.log 2>&1 &
+          echo "::notice title=Synapse settings::$(grep -nE '^(enable_registration|presence|server_name)' hs.yaml | tr '\n' ' ')"
+          for i in $(seq 60); do curl -sf http://127.0.0.1:8008/_matrix/client/versions >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:8008/_matrix/client/versions | head -c 300; echo
+          echo "::notice title=Synapse::$("$RUNNER_TEMP/syn/bin/pip" show matrix-synapse | grep -i ^version)"
+      - name: Two users, two services, end to end
+        run: |
+          set -o pipefail
+          dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 tools/friends-e2e.py --bin hosts/hearth-friends/target/release/hearth-friends --homeserver http://127.0.0.1:8008' 2>&1 | tee e2e.log \
+            || { echo "::error title=Friends end to end::$(grep -E 'FAIL|Traceback|Error' -A6 e2e.log | head -60 | tr '\n' '|' | cut -c1-3900) || synapse: $(tail -c 600 "$RUNNER_TEMP/synapse/synapse.log" | tr '\n' '|')"; exit 1; }
+          echo "::notice title=Friends e2e summary::$(grep -c '^PASS' e2e.log) checks passed (two services, Synapse)"
+          grep '^PASS' e2e.log | while read -r l; do echo "::notice title=Friends e2e::$l"; done
+      - name: WebKit and GTK for the Hearth app
+        if: github.event_name != 'workflow_dispatch' || inputs.cores
+        run: sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev >/dev/null
+      - name: Build the Hearth app
+        if: github.event_name != 'workflow_dispatch' || inputs.cores
+        working-directory: hosts/hearth-rs
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=Hearth build failed::$(grep -E '^error' -A12 build.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+      - name: Two Hearth cores befriend each other
+        if: github.event_name != 'workflow_dispatch' || inputs.cores
+        run: |
+          set -o pipefail
+          dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 tools/friends-e2e.py --cores --bin hosts/hearth-friends/target/release/hearth-friends --hearth hosts/hearth-rs/target/release/hearth --homeserver http://127.0.0.1:8008' 2>&1 | tee cores.log \
+            || { echo "::error title=Friends through Hearth cores::$(grep -E 'FAIL|Traceback|Error' -A6 cores.log | head -60 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=Friends via cores summary::$(grep -c '^PASS' cores.log) checks passed (two Hearth cores, Synapse)"
+          grep '^PASS' cores.log | while read -r l; do echo "::notice title=Friends via cores::$l"; done
+      - name: No tokens in any log
+        if: always()
+        run: |
+          if grep -rE 'syt_[A-Za-z0-9]|"access_token"' e2e.log cores.log "$RUNNER_TEMP"/friends-*/service.log 2>/dev/null; then echo "::error title=Tokens::an access token showed up in a log"; exit 1; fi
+          echo "::notice title=Tokens::no access tokens in the services' logs or the test output"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-friends-linux
+          path: hosts/hearth-friends/target/release/hearth-friends
