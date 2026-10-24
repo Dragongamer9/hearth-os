@@ -29,6 +29,8 @@ EPIC_SEARCH = ('{Catalog{searchStore(category:"games/edition/base|bundles/games|
 # name, url, keys the answer must have (dotted; a number picks a list item), method/body
 CHECKS = [
     ("steam_featured", "https://store.steampowered.com/api/featuredcategories?cc=US&l=english", ["specials.items", "top_sellers.items"]),
+    ("steam_featured_win", "https://store.steampowered.com/api/featured/?cc=US&l=english", ["featured_win.0.id"]),
+    ("steam_popularnew", "https://store.steampowered.com/search/results/?query&start=0&count=12&filter=popularnew&json=1&cc=US&l=english", ["items.0.name"]),
     ("steam_search", "https://store.steampowered.com/api/storesearch/?term=hades&l=english&cc=US", ["items.0.id"]),
     ("steam_details", "https://store.steampowered.com/api/appdetails?appids=1145360&cc=US&l=english", ["1145360.data.name"]),
     ("steam_reviews", "https://store.steampowered.com/appreviews/1145360?json=1&language=all&purchase_type=all&num_per_page=0", ["query_summary.review_score_desc"]),
